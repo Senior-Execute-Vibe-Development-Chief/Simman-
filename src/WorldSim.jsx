@@ -147,16 +147,14 @@ for(const[ti,to]of flips){if(owner[ti]===to)continue;claimTile(ter,ti,to);nf.add
 // ── Fragmentation: split disconnected tribe components (largest keeps original ID/color) ──
 if(ter.stepCount%16===0){const mark=new Int32Array(tw*th);let gen=0;
 for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=1)continue;
-// Find all connected components
-const comps=[];
-for(let i=0;i<tw*th;i++){if(owner[i]!==st||mark[i]>gen)continue;gen++;
+const baseGen=gen;const comps=[];
+for(let i=0;i<tw*th;i++){if(owner[i]!==st||mark[i]>baseGen)continue;gen++;
 const stack=[i];mark[i]=gen;const comp=[];
 while(stack.length>0){const ci=stack.pop();comp.push(ci);const cy=Math.floor(ci/tw),cx=ci%tw;
 for(const[dx,dy]of DIRS){const nx2=((cx+dx)%tw+tw)%tw,ny2=cy+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-if(mark[ni]!==gen&&owner[ni]===st){mark[ni]=gen;stack.push(ni);}}}
+if(mark[ni]<=baseGen&&owner[ni]===st){mark[ni]=gen;stack.push(ni);}}}
 comps.push(comp);}
 if(comps.length<=1)continue;
-// Largest component keeps original tribe ID; others become new tribes
 comps.sort((a,b)=>b.length-a.length);
 for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor(comps[c][0]/tw));
 for(const ci of comps[c])claimTile(ter,ci,sid);}}}
