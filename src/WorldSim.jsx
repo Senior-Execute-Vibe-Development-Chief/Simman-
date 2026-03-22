@@ -138,7 +138,8 @@ export default function WorldSim(){
 const canvasRef=useRef(null);const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);const[simTime,setSimTime]=useState(0);
 const[climate,setClimate]=useState(()=>getClimate(0));const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);
-const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),simTimeRef=useRef(0),speedRef=useRef(5);
+const[viewMode,setViewMode]=useState("terrain");
+const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),simTimeRef=useRef(0),speedRef=useRef(5),viewRef=useRef("terrain");
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null),lastCacheTm=useRef(null),lastCacheSl=useRef(null);
 const W=580,H=320;
@@ -171,16 +172,41 @@ return buf;},[]);
 // Composite render: terrain + tribe overlay into single canvas
 const draw=useCallback((ter,cl)=>{
 if(!canvasRef.current||!ter)return;const w=worldRef.current;if(!w)return;
-const tm=cl.tempMod,sl=cl.seaLevel;
-// Update terrain cache if climate changed
+const tm=cl.tempMod,sl=cl.seaLevel,vm=viewRef.current;
+const ctx=canvasRef.current.getContext("2d");const img=ctx.createImageData(W,H);const d=img.data;
+if(vm==="depth"){
+// Depth/heightmap view: elevation as grayscale with color tinting
+const tw=Math.ceil(W/RES),th=Math.ceil(H/RES);
+for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const e=w.elevation[si];let r,g,b;
+if(e<=sl){const depth=Math.min(1,Math.max(0,(sl-e)/0.2));r=Math.round(10-depth*8);g=Math.round(30+depth*10);b=Math.round(80+depth*60);}
+else{const h=Math.min(1,(e-sl)/0.6);if(h<0.05){r=Math.round(160+h*200);g=Math.round(155+h*200);b=Math.round(120+h*200);}
+else if(h<0.3){const t2=(h-0.05)/0.25;r=Math.round(60+t2*50);g=Math.round(100+t2*30);b=Math.round(40-t2*10);}
+else if(h<0.6){const t2=(h-0.3)/0.3;r=Math.round(110+t2*40);g=Math.round(130-t2*30);b=Math.round(30-t2*10);}
+else{const t2=(h-0.6)/0.4;r=Math.round(150+t2*80);g=Math.round(100-t2*40);b=Math.round(20+t2*10);}}
+for(let dy2=0;dy2<RES;dy2++){const py=ty*RES+dy2;if(py>=H)continue;
+for(let dx2=0;dx2<RES;dx2++){const px=tx*RES+dx2;if(px>=W)continue;
+const pi=(py*W+px)*4;d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;}}}
+}else if(vm==="tribes"){
+// Tribe-only view: solid tribe colors on land, dark water
+const tw=Math.ceil(W/RES),th=Math.ceil(H/RES);
+for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const e=w.elevation[si],ti=ty*tw+tx,ow=ter.owner[ti];let r,g,b;
+if(e<=sl){r=6;g=8;b=16;}
+else if(ow>=0){const c=tribeRGB(ow);r=c[0];g=c[1];b=c[2];}
+else{r=22;g=20;b=18;}
+for(let dy2=0;dy2<RES;dy2++){const py=ty*RES+dy2;if(py>=H)continue;
+for(let dx2=0;dx2<RES;dx2++){const px=tx*RES+dx2;if(px>=W)continue;
+const pi=(py*W+px)*4;d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;}}}
+}else{
+// Default terrain view with tribe overlay
 if(!terrainCache.current||lastCacheTm.current===null||Math.abs(tm-lastCacheTm.current)>0.006||Math.abs(sl-lastCacheSl.current)>0.0008){
 terrainCache.current=updateTerrainCache(w,cl);lastCacheTm.current=tm;lastCacheSl.current=sl;}
 const tc=terrainCache.current;
-const ctx=canvasRef.current.getContext("2d");const img=ctx.createImageData(W,H);const d=img.data;
-// Composite: for each pixel, start with terrain, blend tribe color on top
 for(let i=0;i<W*H;i++){
 let r=tc[i*3],g=tc[i*3+1],b=tc[i*3+2];
-// Check territory ownership at this pixel
 const px=i%W,py=Math.floor(i/W);
 const tx=Math.floor(px/RES),ty=Math.floor(py/RES);
 if(tx<ter.tw&&ty<ter.th){
@@ -191,7 +217,7 @@ const alpha=ter.frontier.has(ti)?0.55:0.32;
 r=Math.round(r*(1-alpha)+tr2*alpha);
 g=Math.round(g*(1-alpha)+tg*alpha);
 b=Math.round(b*(1-alpha)+tb*alpha);}}
-d[i*4]=r;d[i*4+1]=g;d[i*4+2]=b;d[i*4+3]=255;}
+d[i*4]=r;d[i*4+1]=g;d[i*4+2]=b;d[i*4+3]=255;}}
 ctx.putImageData(img,0,0);
 // Origin marker
 const ox=ter.origin.x*RES+1,oy=ter.origin.y*RES+1;
@@ -199,7 +225,7 @@ ctx.beginPath();ctx.arc(ox,oy,4,0,Math.PI*2);ctx.fillStyle="rgba(255,255,200,0.9
 ctx.beginPath();ctx.arc(ox,oy,6,0,Math.PI*2);ctx.strokeStyle="rgba(255,200,80,0.5)";ctx.lineWidth=1.5;ctx.stroke();
 },[updateTerrainCache]);
 
-useEffect(()=>{if(world&&terRef.current)draw(terRef.current,climate);},[world,climate,draw]);
+useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current,climate);},[world,climate,draw,viewMode]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -257,6 +283,11 @@ color:playing?"#e0a090":"#c9b87a",padding:"8px 28px",borderRadius:3,cursor:"poin
 <input type="range" min={1} max={10} value={speed} onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value}} style={{width:70,accentColor:"#c9b87a"}} /></div>
 <button onClick={()=>setSeed(Math.floor(Math.random()*999999))} style={{background:"rgba(201,184,122,0.05)",border:"1px solid rgba(201,184,122,0.15)",
 color:"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,letterSpacing:1,fontFamily:"inherit"}}>🌍 New World</button>
+<div style={{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:3,padding:2,border:"1px solid rgba(201,184,122,0.1)"}}>
+{[["terrain","Terrain"],["depth","Depth"],["tribes","Tribes"]].map(([k,label])=>(
+<button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}} style={{background:viewMode===k?"rgba(201,184,122,0.18)":"transparent",
+border:"none",color:viewMode===k?"#c9b87a":"#5a5448",padding:"5px 10px",borderRadius:2,cursor:"pointer",fontSize:9,letterSpacing:1,
+textTransform:"uppercase",fontFamily:"inherit",transition:"all 0.2s"}}>{label}</button>))}</div>
 <span style={{fontSize:9,color:"#3a3530",fontFamily:"monospace"}}>seed:{seed}</span></div>
 <div style={{display:"flex",gap:10,marginTop:12,flexWrap:"wrap",justifyContent:"center"}}>
 {[["Deep ocean",[8,18,52]],["Shelf",[32,72,120]],["Sea ice",[225,235,248]],["Beach",[198,186,142]],["Tundra",[140,132,115]],
