@@ -70,7 +70,53 @@ if(elevation[py*W+px]>0){
 outer:for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const wx=((tx+dx)%ctw+ctw)%ctw,wy=ty+dy;if(wy<0||wy>=cth)continue;
 const npx=Math.min(W-1,wx*RES),npy=Math.min(H-1,wy*RES);
 if(elevation[npy*W+npx]<=0){coastal[ty*ctw+tx]=1;break outer;}}}}
-return{elevation,moisture,temperature,coastal,width:W,height:H};}
+const rvr=generateRivers(elevation,moisture,W,H,mkRng(seed+777));
+return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,width:W,height:H};}
+
+// ── River & lake generation: trace flow downhill from wet highlands ──
+function generateRivers(elev,moist,W,H,rng){
+const flow=new Float32Array(W*H),lake=new Uint8Array(W*H);
+const D8=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
+// Collect source candidates: high elevation + wet
+const cands=[];
+for(let y=4;y<H-4;y++)for(let x=0;x<W;x++){const i=y*W+x;
+if(elev[i]>0.1&&moist[i]>0.25)cands.push({x,y,score:elev[i]*0.6+moist[i]*0.4+rng()*0.15});}
+cands.sort((a,b)=>b.score-a.score);
+// Select spaced sources (min 25px apart)
+const sources=[];
+for(const c of cands){if(sources.length>=35)break;let ok=true;
+for(const s of sources){let dx=Math.abs(c.x-s.x);if(dx>W/2)dx=W-dx;
+if(dx*dx+(c.y-s.y)**2<25*25){ok=false;break;}}
+if(ok)sources.push(c);}
+// Trace each river downhill
+for(const src of sources){let cx=src.x,cy=src.y,str=0.3+moist[src.y*W+src.x]*0.7;
+const path=new Set();
+for(let step=0;step<500;step++){const ci=cy*W+cx;if(path.has(ci))break;path.add(ci);
+flow[ci]+=str;str+=0.03;if(elev[ci]<=0)break;
+// Steepest descent among unvisited neighbors
+let bx=-1,by=-1,be=elev[ci];
+for(const[dx,dy]of D8){const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
+if(!path.has(ny*W+nx)&&elev[ny*W+nx]<be){be=elev[ny*W+nx];bx=nx;by=ny;}}
+if(bx>=0){cx=bx;cy=by;continue;}
+// Depression: scan outward for an outlet lower than current elevation
+const ce=elev[ci];let found=false;
+for(let r=2;r<=12&&!found;r++){let bestD=Infinity,ox=-1,oy=-1;
+for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+if(Math.abs(dx)!==r&&Math.abs(dy)!==r)continue;// perimeter only
+const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
+const ni=ny*W+nx;if(elev[ni]<ce&&!path.has(ni)){const d2=dx*dx+dy*dy;
+if(d2<bestD){bestD=d2;ox=nx;oy=ny;}}}
+if(ox>=0){// Mark depression area as lake
+for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
+if(dx*dx+dy*dy<=r*r&&elev[ny*W+nx]<=ce+0.008)lake[ny*W+nx]=1;}
+cx=ox;cy=oy;found=true;}}
+if(!found)break;}}
+// Normalize flow to 0-255 river strength
+let mx=0;for(let i=0;i<W*H;i++)if(flow[i]>mx)mx=flow[i];
+const river=new Uint8Array(W*H);
+if(mx>0)for(let i=0;i<W*H;i++){if(flow[i]>0.2)river[i]=Math.min(255,Math.round(Math.sqrt(flow[i]/mx)*200)+55);}
+return{river,lake};}
 
 const BC=[[8,18,52],[18,40,88],[32,72,120],[198,186,142],[230,238,245],[210,218,228],[140,132,115],[55,78,52],[110,100,90],[130,126,104],[10,80,22],[166,156,66],[202,176,112],[30,98,36],[118,160,52],[38,62,42],[150,146,104]];
 function getBiomeD(e,m,t,sl){if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;const a=e-sl;if(a<0.015)return 3;
@@ -95,7 +141,13 @@ for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){const px=Math.min(w.width-1,tx*
 const ti=ty*tw+tx;tElev[ti]=w.elevation[i];tTemp[ti]=w.temperature[i];tMoist[ti]=w.moisture[i];tCoast[ti]=w.coastal[ti];
 const e=w.elevation[i],t=w.temperature[i],m=w.moisture[i];let diff=0;
 if(e>0.35)diff=Math.max(diff,Math.min(1,(e-0.35)*3));if(t>0.5&&m<0.2)diff=Math.max(diff,Math.min(0.85,(0.2-m)*3*(t-0.3)));
-if(t<0.2)diff=Math.max(diff,Math.min(0.9,(0.2-t)*4));tDiff[ti]=diff;tFert[ti]=tileFert(t,m,e);}
+if(t<0.2)diff=Math.max(diff,Math.min(0.9,(0.2-t)*4));tDiff[ti]=diff;tFert[ti]=tileFert(t,m,e);
+// River/lake fertility boost: check pixels in this tile's block
+if(w.river||w.lake){let hasWater=false;
+for(let dy=0;dy<RES&&!hasWater;dy++)for(let dx=0;dx<RES&&!hasWater;dx++){
+const wi=Math.min(w.height-1,py+dy)*w.width+Math.min(w.width-1,px+dx);
+if((w.river[wi]>0||w.lake[wi])&&e>0)hasWater=true;}
+if(hasWater){tMoist[ti]=Math.min(1,tMoist[ti]+0.2);tFert[ti]=Math.min(1,tFert[ti]+0.15);}}}
 let bx=0,by=0,bs=-999;
 for(let ty=Math.floor(th*.3);ty<Math.floor(th*.7);ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;if(tElev[ti]<=0)continue;
 const s=tTemp[ti]*2+tMoist[ti]+(1-Math.abs(tElev[ti]-.12))-tDiff[ti]*2;if(s>bs){bs=s;bx=tx;by=ty;}}
@@ -307,10 +359,15 @@ r=Math.round(or2*(1-blend)+225*blend);g=Math.round(og2*(1-blend)+235*blend);b=Ma
 }else if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
-// Fill RES×RES block
+// Fill RES×RES block with per-pixel river/lake overlay
 for(let dy=0;dy<RES;dy++){const py=ty*RES+dy;if(py>=H)continue;
 for(let dx=0;dx<RES;dx++){const px=tx*RES+dx;if(px>=W)continue;
-const pi=py*W+px;buf[pi*3]=r;buf[pi*3+1]=g;buf[pi*3+2]=b;}}}
+const pi=py*W+px;let pr=r,pg=g,pb=b;
+if(e>sl){const wi=py*W+px;
+if(w.lake&&w.lake[wi]){pr=28;pg=62;pb=112;}
+else if(w.river&&w.river[wi]){const a=0.45+w.river[wi]/255*0.45;
+pr=Math.round(r*(1-a)+22*a);pg=Math.round(g*(1-a)+52*a);pb=Math.round(b*(1-a)+132*a);}}
+buf[pi*3]=pr;buf[pi*3+1]=pg;buf[pi*3+2]=pb;}}}
 return buf;},[]);
 
 // Composite render: terrain + tribe overlay into single canvas
@@ -331,7 +388,10 @@ else if(h<0.6){const t2=(h-0.3)/0.3;r=Math.round(110+t2*40);g=Math.round(130-t2*
 else{const t2=(h-0.6)/0.4;r=Math.round(150+t2*80);g=Math.round(100-t2*40);b=Math.round(20+t2*10);}}
 for(let dy2=0;dy2<RES;dy2++){const py=ty*RES+dy2;if(py>=H)continue;
 for(let dx2=0;dx2<RES;dx2++){const px=tx*RES+dx2;if(px>=W)continue;
-const pi=(py*W+px)*4;d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;}}}
+const pi=(py*W+px)*4;let pr=r,pg=g,pb=b;
+if(e>sl){const wi=py*W+px;if(w.lake&&w.lake[wi]){pr=20;pg=45;pb=90;}
+else if(w.river&&w.river[wi]){pr=25;pg=55;pb=120;}}
+d[pi]=pr;d[pi+1]=pg;d[pi+2]=pb;d[pi+3]=255;}}}
 }else if(vm==="tribes"){
 // Tribe-only view: solid tribe colors on land, dark water
 const tw=Math.ceil(W/RES),th=Math.ceil(H/RES);
@@ -343,7 +403,10 @@ else if(ow>=0){const c=tribeRGB(ow);r=c[0];g=c[1];b=c[2];}
 else{r=22;g=20;b=18;}
 for(let dy2=0;dy2<RES;dy2++){const py=ty*RES+dy2;if(py>=H)continue;
 for(let dx2=0;dx2<RES;dx2++){const px=tx*RES+dx2;if(px>=W)continue;
-const pi=(py*W+px)*4;d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;}}}
+const pi=(py*W+px)*4;let pr=r,pg=g,pb=b;
+if(e>sl){const wi=py*W+px;if(w.lake&&w.lake[wi]){pr=12;pg=20;pb=40;}
+else if(w.river&&w.river[wi]){const a=0.5;pr=Math.round(r*(1-a)+12*a);pg=Math.round(g*(1-a)+20*a);pb=Math.round(b*(1-a)+45*a);}}
+d[pi]=pr;d[pi+1]=pg;d[pi+2]=pb;d[pi+3]=255;}}}
 }else{
 // Default terrain view with tribe overlay
 if(!terrainCache.current||lastCacheTm.current===null||Math.abs(tm-lastCacheTm.current)>0.006||Math.abs(sl-lastCacheSl.current)>0.0008){
