@@ -424,7 +424,7 @@ const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=u
 const presetRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
-const W=960,H=480;
+const W=1920,H=960;
 const generate=useCallback(s=>{const w=generateWorld(W,H,s,presetRef.current);setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;},[]);
