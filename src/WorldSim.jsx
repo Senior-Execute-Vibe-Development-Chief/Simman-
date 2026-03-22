@@ -105,16 +105,16 @@ const cands=[];
 for(let y=4;y<H-4;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elev[i]>0.1&&moist[i]>0.25)cands.push({x,y,score:elev[i]*0.6+moist[i]*0.4+rng()*0.15});}
 cands.sort((a,b)=>b.score-a.score);
-// Select spaced sources (min 25px apart)
-const sources=[];
-for(const c of cands){if(sources.length>=35)break;let ok=true;
+// Select spaced sources (min ~4% of width apart)
+const sources=[],minSp=Math.round(W*0.043);
+for(const c of cands){if(sources.length>=55)break;let ok=true;
 for(const s of sources){let dx=Math.abs(c.x-s.x);if(dx>W/2)dx=W-dx;
-if(dx*dx+(c.y-s.y)**2<25*25){ok=false;break;}}
+if(dx*dx+(c.y-s.y)**2<minSp*minSp){ok=false;break;}}
 if(ok)sources.push(c);}
 // Trace each river downhill with meandering
 for(const src of sources){let cx=src.x,cy=src.y,str=0.3+moist[src.y*W+src.x]*0.7;
 const path=new Set();
-for(let step=0;step<500;step++){const ci=cy*W+cx;if(path.has(ci))break;path.add(ci);
+for(let step=0;step<800;step++){const ci=cy*W+cx;if(path.has(ci))break;path.add(ci);
 flow[ci]+=str;str+=0.03;if(elev[ci]<=0)break;
 // Gather all downhill unvisited neighbors
 const downs=[];let be=elev[ci];
@@ -133,7 +133,7 @@ for(const d of downs)if(d.e<elev[by*W+bx]){bx=d.x;by=d.y;}
 cx=bx;cy=by;}continue;}
 // Depression: scan outward for an outlet lower than current elevation
 const ce=elev[ci];let found=false;
-for(let r=2;r<=12&&!found;r++){let bestD=Infinity,ox=-1,oy=-1;
+for(let r=2;r<=20&&!found;r++){let bestD=Infinity,ox=-1,oy=-1;
 for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
 if(Math.abs(dx)!==r&&Math.abs(dy)!==r)continue;
 const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
@@ -173,7 +173,7 @@ return[Math.round(hr(p,q,h+1/3)*255),Math.round(hr(p,q,h)*255),Math.round(hr(p,q
 function tileFert(t,m,e){if(e>0.45)return 0.05;const base=Math.min(1,t*1.2)*Math.min(1,m*1.3);return Math.max(0.05,base*(1-Math.max(0,e-0.15)*3));}
 
 const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
-const LEAPS=[];for(let r=3;r<=8;r++)for(let a=0;a<8;a++){const ang=a*Math.PI/4;LEAPS.push([Math.round(Math.cos(ang)*r),Math.round(Math.sin(ang)*r)]);}
+const LEAPS=[];for(let r=5;r<=13;r++)for(let a=0;a<8;a++){const ang=a*Math.PI/4;LEAPS.push([Math.round(Math.cos(ang)*r),Math.round(Math.sin(ang)*r)]);}
 
 function createTerritory(w){
 const tw=Math.ceil(w.width/RES),th=Math.ceil(w.height/RES);
@@ -221,7 +221,7 @@ function tribePower(ter,id){
 // Population = total fertility (what the land can sustain). Military = population.
 // Large fertile empires are genuinely powerful. Logistics penalty keeps it bounded.
 const sz=ter.tribeSizes[id],pop=ter.tribeStrength[id];if(sz<=0)return 0;
-const logistics=1/(1+Math.max(0,sz-30)*0.012);// overextension penalty: 200 tiles → 67% loss
+const logistics=1/(1+Math.max(0,sz-50)*0.007);// overextension penalty scales with map size
 return pop*logistics;
 }
 // Local power projection at a border tile: nearest center projects its share of population
@@ -231,7 +231,7 @@ const centers=ter.tribeCenters[tribeId];if(!centers||centers.length===0)return p
 // Each center projects pop/numCenters (approximate Voronoi share), nearest center used
 let bestDist=Infinity;
 for(const c of centers){const d=tDistW(tx,ty,c.x,c.y,ter.tw);if(d<bestDist)bestDist=d;}
-const projection=Math.max(0.2,1-bestDist*0.02);
+const projection=Math.max(0.2,1-bestDist*0.012);
 const share=pop/centers.length;
 return share*projection;
 }
@@ -275,18 +275,18 @@ const sz=tribeSizes[ow],dens=sz>0?tribeStrength[ow]/sz:0;
 let splitChance=0;
 if(sameN<3){
 // Overextension: large tribes are harder to hold together
-const overext=sz>40?Math.min(0.3,(sz-40)*0.003):0;
+const overext=sz>65?Math.min(0.3,(sz-65)*0.002):0;
 // Geographic barrier: mountains/deserts between parent and frontier
 const barrier=diff>0.5&&pDiff<0.3?0.3:0;
 // Internal inequality: fertile frontier wants independence from poor core
 const ineq=dens>0&&tFert[ni]>dens*1.8?0.25*(tFert[ni]/dens-1):0;
 // Distance weakens central control (from nearest center, not just capital)
-const distF=distMin>15?Math.min(0.25,(distMin-15)*0.008):0;
+const distF=distMin>25?Math.min(0.25,(distMin-25)*0.005):0;
 // Strong, dense tribes resist all splits
 splitChance=Math.max(0,(overext+barrier+ineq+distF)*(1-Math.min(0.9,dens*1.2)));}
 if(splitChance>0&&Math.random()<splitChance)nw=newTribe(ter,nx,ny);
 // Found a new center if fertile tile is far from all existing centers
-else if(tFert[ni]>0.4&&distMin>12&&centers&&centers.length<6)
+else if(tFert[ni]>0.4&&distMin>20&&centers&&centers.length<8)
 centers.push({x:nx,y:ny,prestige:0.3,founded:ter.stepCount});
 claimTile(ter,ni,nw);nf.add(ni);}else room=true;}
 if((tCoast[fi]||(tElev[fi]<=0&&tElev[fi]>sl))&&wet>0.3){for(const[dx,dy]of LEAPS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;const ni=ny*tw+nx;
@@ -298,9 +298,9 @@ if(contested)continue;
 if(Math.random()<0.25*wet){let nw=ow;const centers=tribeCenters[ow];
 const{min:distMin}=nearestCenterDist(centers,nx,ny,tw);
 const sz=tribeSizes[ow],dens=sz>0?tribeStrength[ow]/sz:0;
-const overext=sz>40?Math.min(0.2,(sz-40)*0.002):0;
-if(distMin>16&&Math.random()<overext+(dens<0.3?0.15:0))nw=newTribe(ter,nx,ny);
-else if(tFert[ni]>0.4&&distMin>12&&centers&&centers.length<6)
+const overext=sz>65?Math.min(0.2,(sz-65)*0.0012):0;
+if(distMin>26&&Math.random()<overext+(dens<0.3?0.15:0))nw=newTribe(ter,nx,ny);
+else if(tFert[ni]>0.4&&distMin>20&&centers&&centers.length<8)
 centers.push({x:nx,y:ny,prestige:0.3,founded:ter.stepCount});
 claimTile(ter,ni,nw);nf.add(ni);}}}
 if(room)nf.add(fi);}
@@ -314,7 +314,7 @@ const ty2=Math.floor(i/tw),tx2=i%tw;
 const lpA=localPower(ter,ow,tx2,ty2);// defender's projected power here
 const def=1+Math.min(0.8,tenure[i]*0.004)+tDiff[i]*0.7;// tenure + terrain defense (mountains/snow/desert)
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<10)continue;
+const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<16)continue;
 const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
 if(lpB>lpA*def){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(lpB/(lpA*def)-1)*0.3;
 const prize=0.5+tFert[i]*1.5;
@@ -388,7 +388,7 @@ const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),simTimeRef
 const presetRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null),lastCacheTm=useRef(null),lastCacheSl=useRef(null);
-const W=580,H=320;
+const W=960,H=480;
 const generate=useCallback(s=>{const w=generateWorld(W,H,s,presetRef.current);setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 simTimeRef.current=0;setSimTime(0);setClimate(getClimate(0));setCoverage(0);setTribeCount(1);setPlaying(false);playRef.current=false;
 terrainCache.current=null;lastCacheTm.current=null;lastCacheSl.current=null;},[]);
@@ -510,8 +510,8 @@ return(
 fontFamily:"'Palatino Linotype','Book Antiqua',Palatino,serif",color:"#ccc5b8",display:"flex",flexDirection:"column",alignItems:"center",padding:"16px 12px"}}>
 <div style={{textAlign:"center",marginBottom:14}}>
 <h1 style={{fontSize:26,fontWeight:400,letterSpacing:8,textTransform:"uppercase",color:"#c9b87a",margin:0,textShadow:"0 0 40px rgba(201,184,122,0.15)"}}>Terra Genesis</h1>
-<p style={{fontSize:10,letterSpacing:4,color:"#5a5448",margin:"4px 0 0",textTransform:"uppercase"}}>~69 km/pixel · Milankovitch Climate · Wrapping Globe</p></div>
-<div style={{position:"relative",border:"1px solid rgba(201,184,122,0.12)",boxShadow:"0 4px 80px rgba(0,0,0,0.6),inset 0 0 30px rgba(0,0,0,0.4)",borderRadius:4,overflow:"hidden",width:Math.min(W*1.65,960),maxWidth:"97vw"}}>
+<p style={{fontSize:10,letterSpacing:4,color:"#5a5448",margin:"4px 0 0",textTransform:"uppercase"}}>~42 km/pixel · Milankovitch Climate · Wrapping Globe</p></div>
+<div style={{position:"relative",border:"1px solid rgba(201,184,122,0.12)",boxShadow:"0 4px 80px rgba(0,0,0,0.6),inset 0 0 30px rgba(0,0,0,0.4)",borderRadius:4,overflow:"hidden",width:Math.min(W*1.2,1200),maxWidth:"97vw"}}>
 <canvas ref={canvasRef} width={W} height={H} style={{width:"100%",display:"block",imageRendering:"pixelated"}} />
 <div style={{position:"absolute",top:0,left:0,bottom:14,width:2,background:"linear-gradient(180deg,transparent,rgba(201,184,122,0.12),transparent)",pointerEvents:"none"}} />
 <div style={{position:"absolute",top:0,right:0,bottom:14,width:2,background:"linear-gradient(180deg,transparent,rgba(201,184,122,0.12),transparent)",pointerEvents:"none"}} />
@@ -565,7 +565,7 @@ textTransform:"uppercase",fontFamily:"inherit",transition:"all 0.2s"}}>{label}</
 <span style={{fontSize:9,color:"#4a4438"}}>{n}</span></div>))}
 <div style={{display:"flex",alignItems:"center",gap:3}}><div style={{width:14,height:8,borderRadius:1,background:"linear-gradient(90deg,hsl(20,60%,48%),hsl(120,55%,48%),hsl(220,60%,48%))",opacity:.75}} />
 <span style={{fontSize:9,color:"#4a4438"}}>Peoples</span></div></div>
-<div style={{maxWidth:560,marginTop:14,fontSize:10,color:"#2e2a24",lineHeight:1.7,fontStyle:"italic",textAlign:"center"}}>
+<div style={{maxWidth:900,marginTop:14,fontSize:10,color:"#2e2a24",lineHeight:1.7,fontStyle:"italic",textAlign:"center"}}>
 Single-canvas compositing: terrain and tribe colors are blended per-pixel into one image.
 No scale mismatch possible. Terrain is cached and only recomputed when climate shifts.
 Beaches dynamically follow the current coastline as seas rise and fall.
