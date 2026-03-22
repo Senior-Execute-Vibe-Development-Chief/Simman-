@@ -157,7 +157,7 @@ const LEAPS=[];for(let r=5;r<=13;r++)for(let a=0;a<8;a++){const ang=a*Math.PI/4;
 function createTerritory(w){
 const tw=Math.ceil(w.width/RES),th=Math.ceil(w.height/RES);
 const tElev=new Float32Array(tw*th),tTemp=new Float32Array(tw*th),tMoist=new Float32Array(tw*th),tFert=new Float32Array(tw*th);
-const tCoast=new Uint8Array(tw*th),tDiff=new Float32Array(tw*th),owner=new Int16Array(tw*th).fill(-1),tribeSizes=[],tribeStrength=[],tribeCenters=[];
+const tCoast=new Uint8Array(tw*th),tDiff=new Float32Array(tw*th),tRiver=new Uint8Array(tw*th),owner=new Int16Array(tw*th).fill(-1),tribeSizes=[],tribeStrength=[],tribeCenters=[];
 for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){const px=Math.min(w.width-1,tx*RES),py=Math.min(w.height-1,ty*RES),i=py*w.width+px;
 const ti=ty*tw+tx;tElev[ti]=w.elevation[i];tTemp[ti]=w.temperature[i];tMoist[ti]=w.moisture[i];tCoast[ti]=w.coastal[ti];
 const e=w.elevation[i],t=w.temperature[i],m=w.moisture[i];let diff=0;
@@ -168,7 +168,7 @@ if(w.river||w.lake){let hasWater=false;
 for(let dy=0;dy<RES&&!hasWater;dy++)for(let dx=0;dx<RES&&!hasWater;dx++){
 const wi=Math.min(w.height-1,py+dy)*w.width+Math.min(w.width-1,px+dx);
 if((w.river[wi]>0||w.lake[wi])&&e>0)hasWater=true;}
-if(hasWater){tMoist[ti]=Math.min(1,tMoist[ti]+0.2);tFert[ti]=Math.min(1,tFert[ti]+0.15);}}}
+if(hasWater){tMoist[ti]=Math.min(1,tMoist[ti]+0.2);tFert[ti]=Math.min(1,tFert[ti]+0.15);tRiver[ti]=1;}}}
 // Find multiple spread-out seed locations for starting tribes
 const NUM_TRIBES=w.preset==="earth"?8:6;const minSpacing=Math.round(tw*0.12);
 // Score all habitable tiles
@@ -194,7 +194,7 @@ for(let i=0;i<origins.length;i++){const{x,y}=origins[i],ti=y*tw+x;
 owner[ti]=i;tribeSizes.push(1);tribeStrength.push(tFert[ti]);tenure[ti]=1;frontier.add(ti);
 tribeCenters.push([{x,y,prestige:1.0,founded:0}]);}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tRiver,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
 frontier,landCount:lc,settled:origins.length,tribes:origins.length,origin:origins[0]||{x:0,y:0},stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+Math.pow(y1-y2,2));}
@@ -212,17 +212,17 @@ function tribePower(ter,id){
 // Population = total fertility (what the land can sustain). Military = population.
 // Large fertile empires are genuinely powerful. Logistics penalty keeps it bounded.
 const sz=ter.tribeSizes[id],pop=ter.tribeStrength[id];if(sz<=0)return 0;
-const logistics=1/(1+Math.max(0,sz-50)*0.007);// overextension penalty scales with map size
+const logistics=1/(1+Math.max(0,sz-40)*0.015);// steep overextension: 100 tiles → 52%, 200 tiles → 29%
 return pop*logistics;
 }
 // Local power projection at a border tile: nearest center projects its share of population
 function localPower(ter,tribeId,tx,ty){
 const pop=ter.tribeStrength[tribeId],sz=ter.tribeSizes[tribeId];if(sz<=0)return 0;
 const centers=ter.tribeCenters[tribeId];if(!centers||centers.length===0)return pop;
-// Each center projects pop/numCenters (approximate Voronoi share), nearest center used
 let bestDist=Infinity;
 for(const c of centers){const d=tDistW(tx,ty,c.x,c.y,ter.tw);if(d<bestDist)bestDist=d;}
-const projection=Math.max(0.2,1-bestDist*0.012);
+// Steep exponential distance decay: power halves every ~20 tiles
+const projection=Math.max(0.05,Math.pow(0.97,bestDist));
 const share=pop/centers.length;
 return share*projection;
 }
@@ -236,7 +236,7 @@ if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];}
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];}
 
 function stepTerritory(ter,w){
-const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
+const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,tRiver,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // ── Expansion into empty land ──
 const nf=new Set();
 for(const fi of ter.frontier){if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
@@ -285,21 +285,34 @@ centers.push({x:nx,y:ny,prestige:0.3,founded:ter.stepCount});
 claimTile(ter,ni,nw);nf.add(ni);}}}
 if(room)nf.add(fi);}
 ter.frontier=nf;
-// ── Age tenure for all owned tiles (cap at 200) ──
-if(ter.stepCount%4===0){const{tenure}=ter;for(let i=0;i<tw*th;i++)if(owner[i]>=0&&tenure[i]<200)tenure[i]++;}
+// ── Age tenure + occupation cost: newly conquered tiles drain strength ──
+if(ter.stepCount%4===0){const{tenure}=ter;for(let i=0;i<tw*th;i++){if(owner[i]<0)continue;
+if(tenure[i]<200)tenure[i]++;
+// Occupation cost: tiles with tenure < 20 drain tribe strength (garrisons, resistance)
+if(tenure[i]<20){const drain=tFert[i]*0.03*(1-tenure[i]/20);// decays as tenure grows
+tribeStrength[owner[i]]=Math.max(0.1,tribeStrength[owner[i]]-drain);}}}
 // ── Border conflict: local power projection determines tile flips ──
-if(ter.stepCount%4===0){const flips=[];const{tenure}=ter;
+if(ter.stepCount%4===0){const flips=[];const{tenure,tRiver}=ter;
 for(let i=0;i<tw*th;i++){const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
 const ty2=Math.floor(i/tw),tx2=i%tw;
 const lpA=localPower(ter,ow,tx2,ty2);// defender's projected power here
-const def=1+Math.min(0.8,tenure[i]*0.004)+tDiff[i]*0.7;// tenure + terrain defense (mountains/snow/desert)
+// Defender advantage: 3x base + tenure (up to +1.5x) + terrain (up to +1.4x) + river (up to +2x)
+let def=3+Math.min(1.5,tenure[i]*0.008)+tDiff[i]*1.4;
+if(tRiver[i])def+=2;// rivers are very hard to cross
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<16)continue;
+// River between attacker and defender tiles: additional crossing penalty
+let riverCross=0;if(tRiver[ni])riverCross+=1.5;
 const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
-if(lpB>lpA*def){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(lpB/(lpA*def)-1)*0.3;
+const totalDef=def+riverCross;
+if(lpB>lpA*totalDef){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(lpB/(lpA*totalDef)-1)*0.2;
 const prize=0.5+tFert[i]*1.5;
-if(Math.random()<Math.max(0.01,pressure*prize*(1-diff*0.7))){flips.push([i,no]);break;}}}}
-for(const[ti,to]of flips){if(owner[ti]===to)continue;claimTile(ter,ti,to);nf.add(ti);}}
+if(Math.random()<Math.max(0.005,pressure*prize*(1-diff*0.7))){flips.push([i,no]);break;}}}}
+// Apply flips with attack cost: attacker loses strength proportional to conquest
+for(const[ti,to]of flips){if(owner[ti]===to)continue;
+const attackCost=tFert[ti]*0.5;// attacking costs half the tile's fertility from attacker's strength
+tribeStrength[to]=Math.max(0.1,tribeStrength[to]-attackCost);
+claimTile(ter,ti,to);nf.add(ti);}}
 // ── Center dynamics: prestige growth, validation, capital challenge ──
 if(ter.stepCount%32===0){for(let st=0;st<tribeSizes.length;st++){
 const centers=tribeCenters[st];if(!centers||centers.length<=0||tribeSizes[st]<=0)continue;
@@ -455,10 +468,33 @@ g=Math.round(g*(1-alpha)+tg*alpha);
 b=Math.round(b*(1-alpha)+tb*alpha);}}
 d[i*4]=r;d[i*4+1]=g;d[i*4+2]=b;d[i*4+3]=255;}}
 ctx.putImageData(img,0,0);
-// Origin marker
-const ox=ter.origin.x*RES+1,oy=ter.origin.y*RES+1;
-ctx.beginPath();ctx.arc(ox,oy,4,0,Math.PI*2);ctx.fillStyle="rgba(255,255,200,0.9)";ctx.fill();
-ctx.beginPath();ctx.arc(ox,oy,6,0,Math.PI*2);ctx.strokeStyle="rgba(255,200,80,0.5)";ctx.lineWidth=1.5;ctx.stroke();
+// Draw all tribe centers
+for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
+if(!centers||ter.tribeSizes[st]<=0)continue;const[cr,cg,cb]=tribeRGB(st);
+for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x*RES+1,cy2=centers[ci].y*RES+1;
+const isCapital=ci===0,r2=isCapital?4:3;
+ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
+ctx.fillStyle=isCapital?`rgb(${cr},${cg},${cb})`:`rgba(${cr},${cg},${cb},0.7)`;ctx.fill();
+ctx.beginPath();ctx.arc(cx2,cy2,r2+2,0,Math.PI*2);
+ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?2:1;ctx.stroke();}}
+// Power projection overlay
+if(viewRef.current==="power"&&ter){const tw2=ter.tw,th2=ter.th;
+ctx.globalAlpha=0.5;
+for(let ty2=0;ty2<th2;ty2+=2)for(let tx2=0;tx2<tw2;tx2+=2){
+const ti=ty2*tw2+tx2;if(ter.tElev[ti]<=0)continue;
+// Find strongest tribe's local power here
+let maxP=0;for(let st=0;st<ter.tribeSizes.length;st++){if(ter.tribeSizes[st]<=0)continue;
+const lp=localPower(ter,st,tx2,ty2);if(lp>maxP)maxP=lp;}
+if(maxP<0.01)continue;
+// Draw density: more power = more opaque lines
+const intensity=Math.min(1,maxP*0.3);
+const px=tx2*RES,py=ty2*RES;
+// Hatching pattern: denser lines for stronger power
+if(intensity>0.05){ctx.strokeStyle=`rgba(255,255,255,${intensity*0.6})`;ctx.lineWidth=0.5;
+ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+RES*2,py+RES*2);ctx.stroke();}
+if(intensity>0.3){ctx.beginPath();ctx.moveTo(px+RES*2,py);ctx.lineTo(px,py+RES*2);ctx.stroke();}
+if(intensity>0.6){ctx.beginPath();ctx.moveTo(px+RES,py);ctx.lineTo(px+RES,py+RES*2);ctx.stroke();}}
+ctx.globalAlpha=1.0;}
 },[updateTerrainCache]);
 
 useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode]);
@@ -510,7 +546,7 @@ color:"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,l
 <button onClick={()=>{presetRef.current="earth";setPreset("earth");setSeed(Math.floor(Math.random()*999999));}} style={{background:preset==="earth"?"rgba(100,160,220,0.18)":"rgba(201,184,122,0.05)",border:`1px solid ${preset==="earth"?"rgba(100,160,220,0.3)":"rgba(201,184,122,0.15)"}`,
 color:preset==="earth"?"#7ab8e0":"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,letterSpacing:1,fontFamily:"inherit"}}>🌎 Earth</button>
 <div style={{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:3,padding:2,border:"1px solid rgba(201,184,122,0.1)"}}>
-{[["terrain","Terrain"],["depth","Depth"],["tribes","Tribes"]].map(([k,label])=>(
+{[["terrain","Terrain"],["depth","Depth"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}} style={{background:viewMode===k?"rgba(201,184,122,0.18)":"transparent",
 border:"none",color:viewMode===k?"#c9b87a":"#5a5448",padding:"5px 10px",borderRadius:2,cursor:"pointer",fontSize:9,letterSpacing:1,
 textTransform:"uppercase",fontFamily:"inherit",transition:"all 0.2s"}}>{label}</button>))}</div>
