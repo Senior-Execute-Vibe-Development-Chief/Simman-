@@ -108,13 +108,13 @@ for(const fi of ter.frontier){if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/t
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;const ni=ny*tw+nx;if(owner[ni]>=0)continue;
 const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni]+tm;if(effT<0.02){room=true;continue;}
 const diff=tDiff[ni],adjDiff=Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0));
-let chance;if(elev<=0&&elev>sl)chance=0.7*wet;else if(tCoast[ni])chance=0.9*wet;else chance=0.45*(1-adjDiff)*wet;
-if(effT<0.15)chance*=0.3;
+let chance;if(elev<=0&&elev>sl)chance=0.25*wet;else if(tCoast[ni])chance=0.35*wet;else chance=0.15*(1-adjDiff)*wet;
+if(effT<0.15)chance*=0.2;
 if(Math.random()<chance){let nw=ow;const tc=tribeCenters[ow];const dist=tc?tDistW(nx,ny,tc.x,tc.y,tw):0;
 if(dist>20||(diff>0.5&&pDiff<0.3&&Math.random()<0.4)){nw=tribeCenters.length;tribeCenters.push({x:nx,y:ny});tribeSizes.push(0);ter.tribes=tribeCenters.length;}
 owner[ni]=nw;if(!tribeSizes[nw])tribeSizes[nw]=0;tribeSizes[nw]++;ter.settled++;nf.add(ni);}else room=true;}
 if((tCoast[fi]||(tElev[fi]<=0&&tElev[fi]>sl))&&wet>0.3){for(const[dx,dy]of LEAPS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;const ni=ny*tw+nx;
-if(owner[ni]>=0||tElev[ni]<=sl||tTemp[ni]+tm<0.05)continue;if(Math.random()<0.25*wet){let nw=ow;const tc=tribeCenters[ow];const dist=tc?tDistW(nx,ny,tc.x,tc.y,tw):0;
+if(owner[ni]>=0||tElev[ni]<=sl||tTemp[ni]+tm<0.05)continue;if(Math.random()<0.06*wet){let nw=ow;const tc=tribeCenters[ow];const dist=tc?tDistW(nx,ny,tc.x,tc.y,tw):0;
 if(dist>16){nw=tribeCenters.length;tribeCenters.push({x:nx,y:ny});tribeSizes.push(0);ter.tribes=tribeCenters.length;}
 owner[ni]=nw;if(!tribeSizes[nw])tribeSizes[nw]=0;tribeSizes[nw]++;ter.settled++;nf.add(ni);}}}
 if(room)nf.add(fi);}
@@ -143,26 +143,23 @@ simTimeRef.current=0;setSimTime(0);setClimate(getClimate(0));setCoverage(0);setT
 terrainCache.current=null;lastCacheTm.current=null;lastCacheSl.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 
-// Build terrain RGB cache - renders at RES×RES blocks to match territory tile scale
+// Build terrain RGB cache at full pixel resolution
 const updateTerrainCache=useCallback((w,cl)=>{
 const buf=new Uint8Array(W*H*3);const tm=cl.tempMod,sl=cl.seaLevel;
-// Sample at tile centers, fill RES×RES blocks
-const tw=Math.ceil(W/RES),th=Math.ceil(H/RES);
-for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
-const si=sy*W+sx;const e=w.elevation[si],m=w.moisture[si];
-const t=Math.max(0,Math.min(1,w.temperature[si]+tm));let r,g,b;
-if(e<=sl&&t<0.18){const lat=Math.abs(sy/H-0.5)*2;const iceStr=Math.min(1,(0.18-t)/0.18)*(0.3+lat*0.7);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+const i=y*W+x;const e=w.elevation[i],m=w.moisture[i];
+const t=Math.max(0,Math.min(1,w.temperature[i]+tm));let r,g,b;
+if(e<=sl&&t<0.18){const lat=Math.abs(y/H-0.5)*2;const iceStr=Math.min(1,(0.18-t)/0.18)*(0.3+lat*0.7);
 const df=Math.min(1,Math.max(0,(sl-e)/0.15));const or2=8+df*2,og2=18+df*5,ob2=52+df*15;const blend=Math.min(1,iceStr*1.8);
 r=Math.round(or2*(1-blend)+225*blend);g=Math.round(og2*(1-blend)+235*blend);b=Math.round(ob2*(1-blend)+248*blend);
 }else if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
-// Fill RES×RES block
-for(let dy=0;dy<RES;dy++){const py=ty*RES+dy;if(py>=H)continue;
-for(let dx=0;dx<RES;dx++){const px=tx*RES+dx;if(px>=W)continue;
-const pi=py*W+px;buf[pi*3]=r;buf[pi*3+1]=g;buf[pi*3+2]=b;}}}
+buf[i*3]=r;buf[i*3+1]=g;buf[i*3+2]=b;}
 return buf;},[]);
+
+// Cache tribe colors to avoid recomputing HSL->RGB per pixel
+const tribeColorCache=useRef(new Map());
 
 // Composite render: terrain + tribe overlay into single canvas
 const draw=useCallback((ter,cl)=>{
@@ -172,21 +169,27 @@ const tm=cl.tempMod,sl=cl.seaLevel;
 if(!terrainCache.current||lastCacheTm.current===null||Math.abs(tm-lastCacheTm.current)>0.006||Math.abs(sl-lastCacheSl.current)>0.0008){
 terrainCache.current=updateTerrainCache(w,cl);lastCacheTm.current=tm;lastCacheSl.current=sl;}
 const tc=terrainCache.current;
+// Precompute frontier flags into a typed array (avoids Set.has per pixel)
+const frontierFlags=new Uint8Array(ter.tw*ter.th);
+for(const fi of ter.frontier)frontierFlags[fi]=1;
+// Build tribe color lookup (only compute new ones)
+const cc=tribeColorCache.current;
+for(let t=0;t<ter.tribeCenters.length;t++){if(!cc.has(t))cc.set(t,tribeRGB(t));}
 const ctx=canvasRef.current.getContext("2d");const img=ctx.createImageData(W,H);const d=img.data;
 // Composite: for each pixel, start with terrain, blend tribe color on top
 for(let i=0;i<W*H;i++){
 let r=tc[i*3],g=tc[i*3+1],b=tc[i*3+2];
-// Check territory ownership at this pixel
-const px=i%W,py=Math.floor(i/W);
-const tx=Math.floor(px/RES),ty=Math.floor(py/RES);
+const px=i%W,py=(i-px)/W;
+const tx=(px/RES)|0,ty=(py/RES)|0;
 if(tx<ter.tw&&ty<ter.th){
 const ti=ty*ter.tw+tx,ow=ter.owner[ti];
 if(ow>=0&&ter.tElev[ti]>sl){
-const[tr2,tg,tb]=tribeRGB(ow);
-const alpha=ter.frontier.has(ti)?0.55:0.32;
-r=Math.round(r*(1-alpha)+tr2*alpha);
-g=Math.round(g*(1-alpha)+tg*alpha);
-b=Math.round(b*(1-alpha)+tb*alpha);}}
+const rgb=cc.get(ow);
+const alpha=frontierFlags[ti]?0.55:0.32;
+const inv=1-alpha;
+r=(r*inv+rgb[0]*alpha+0.5)|0;
+g=(g*inv+rgb[1]*alpha+0.5)|0;
+b=(b*inv+rgb[2]*alpha+0.5)|0;}}
 d[i*4]=r;d[i*4+1]=g;d[i*4+2]=b;d[i*4+3]=255;}
 ctx.putImageData(img,0,0);
 // Origin marker
@@ -200,8 +203,8 @@ useEffect(()=>{if(world&&terRef.current)draw(terRef.current,climate);},[world,cl
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
 acc+=now-last;last=now;const iv=Math.max(16,100/speedRef.current);
-if(acc>=iv){acc=0;const dt=0.003*speedRef.current/5;simTimeRef.current=Math.min(1,simTimeRef.current+dt);
-const cl=getClimate(simTimeRef.current);const sub=Math.max(1,Math.ceil(speedRef.current/3));
+if(acc>=iv){acc=0;const dt=0.0012*speedRef.current/5;simTimeRef.current=Math.min(1,simTimeRef.current+dt);
+const cl=getClimate(simTimeRef.current);const sub=1;
 for(let s=0;s<sub;s++)terRef.current=stepTerritory(terRef.current,worldRef.current,cl);
 setSimTime(simTimeRef.current);setClimate(cl);setCoverage(Math.round(terRef.current.settled/terRef.current.landCount*100));
 let alive=0;for(let i=0;i<terRef.current.tribeSizes.length;i++)if(terRef.current.tribeSizes[i]>0)alive++;
