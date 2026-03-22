@@ -107,6 +107,11 @@ frontier:new Set([oi]),landCount:lc,settled:1,tribes:1,origin:{x:bx,y:by},prevSe
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+Math.pow(y1-y2,2));}
 
+function tribePower(ter,id){
+const sz=ter.tribeSizes[id],str=ter.tribeStrength[id];if(sz<=0)return 0;
+const dens=str/sz;// fertility density (economy per tile)
+return str*dens*0.5;// strength × density: big fertile tribes dominate, sprawling empires are weaker per-tile
+}
 function newTribe(ter,x,y){const id=ter.tribeCenters.length;ter.tribeCenters.push({x,y});ter.tribeSizes.push(0);ter.tribeStrength.push(0);ter.tribes=id+1;return id;}
 function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure}=ter;const ow=owner[ti];
 if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];}else{ter.settled++;}
@@ -135,18 +140,29 @@ let chance;if(elev<=0&&elev>sl)chance=0.7*wet;else if(tCoast[ni])chance=0.9*wet;
 if(effT<0.15)chance*=0.3;
 chance*=0.5+tFert[ni]*1.5;// fertile tiles attract expansion (0.5x desert → 2x river valley)
 if(Math.random()<chance){let nw=ow;const tc=tribeCenters[ow];const dist=tc?tDistW(nx,ny,tc.x,tc.y,tw):0;
-// Count same-tribe neighbors: if tile is infill (≥3 same-tribe neighbors), never split
+// Count same-tribe neighbors: if tile is infill (≥3), never split
 let sameN=0;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny+dy2;
 if(ay>=0&&ay<th&&owner[ay*tw+ax]===ow)sameN++;}
-const dens=tribeSizes[ow]>0?tribeStrength[ow]/tribeSizes[ow]:0;
+const sz=tribeSizes[ow],dens=sz>0?tribeStrength[ow]/sz:0;
 let splitChance=0;
-if(sameN<3){splitChance=diff>0.5&&pDiff<0.3?0.4*(1-dens):dist>20?(0.15+0.35*(1-dens))*(tFert[ni]>dens?1.5:0.3):0;}
+if(sameN<3){
+// Overextension: large tribes are harder to hold together
+const overext=sz>40?Math.min(0.3,(sz-40)*0.003):0;
+// Geographic barrier: mountains/deserts between parent and frontier
+const barrier=diff>0.5&&pDiff<0.3?0.3:0;
+// Internal inequality: fertile frontier wants independence from poor core
+const ineq=dens>0&&tFert[ni]>dens*1.8?0.25*(tFert[ni]/dens-1):0;
+// Distance weakens central control
+const distF=dist>15?Math.min(0.25,(dist-15)*0.008):0;
+// Strong, dense tribes resist all splits
+splitChance=Math.max(0,(overext+barrier+ineq+distF)*(1-Math.min(0.9,dens*1.2)));}
 if(splitChance>0&&Math.random()<splitChance)nw=newTribe(ter,nx,ny);
 claimTile(ter,ni,nw);nf.add(ni);}else room=true;}
 if((tCoast[fi]||(tElev[fi]<=0&&tElev[fi]>sl))&&wet>0.3){for(const[dx,dy]of LEAPS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;const ni=ny*tw+nx;
 if(owner[ni]>=0||tElev[ni]<=sl||tTemp[ni]+tm<0.05)continue;if(Math.random()<0.25*wet){let nw=ow;const tc=tribeCenters[ow];const dist=tc?tDistW(nx,ny,tc.x,tc.y,tw):0;
-const dens=tribeSizes[ow]>0?tribeStrength[ow]/tribeSizes[ow]:0;
-if(dist>16&&(dens<0.3||Math.random()<0.15*(1-dens)))nw=newTribe(ter,nx,ny);
+const sz=tribeSizes[ow],dens=sz>0?tribeStrength[ow]/sz:0;
+const overext=sz>40?Math.min(0.2,(sz-40)*0.002):0;
+if(dist>16&&Math.random()<overext+(dens<0.3?0.15:0))nw=newTribe(ter,nx,ny);
 claimTile(ter,ni,nw);nf.add(ni);}}}
 if(room)nf.add(fi);}
 ter.frontier=nf;
@@ -190,7 +206,7 @@ return ter;}
 export default function WorldSim(){
 const canvasRef=useRef(null);const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);const[simTime,setSimTime]=useState(0);
-const[climate,setClimate]=useState(()=>getClimate(0));const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);
+const[climate,setClimate]=useState(()=>getClimate(0));const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
 const[viewMode,setViewMode]=useState("terrain");
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),simTimeRef=useRef(0),speedRef=useRef(5),viewRef=useRef("terrain");
 // Cache terrain RGB to avoid recomputing every frame
@@ -287,13 +303,17 @@ if(acc>=iv){acc=0;const dt=0.003*speedRef.current/5;simTimeRef.current=Math.min(
 const cl=getClimate(simTimeRef.current);const sub=Math.max(1,Math.ceil(speedRef.current/3));
 for(let s=0;s<sub;s++)terRef.current=stepTerritory(terRef.current,worldRef.current,cl);
 setSimTime(simTimeRef.current);setClimate(cl);setCoverage(Math.round(terRef.current.settled/terRef.current.landCount*100));
-let alive=0;for(let i=0;i<terRef.current.tribeSizes.length;i++)if(terRef.current.tribeSizes[i]>0)alive++;
-setTribeCount(alive);draw(terRef.current,cl);
+let alive=0,bestId=-1,bestPow=0;const ter2=terRef.current;
+for(let i=0;i<ter2.tribeSizes.length;i++){if(ter2.tribeSizes[i]<=0)continue;alive++;
+const pw=tribePower(ter2,i);if(pw>bestPow){bestPow=pw;bestId=i;}}
+setTribeCount(alive);setDominant(bestId>=0?{id:bestId,power:bestPow,size:ter2.tribeSizes[bestId],
+strength:ter2.tribeStrength[bestId],density:ter2.tribeStrength[bestId]/ter2.tribeSizes[bestId]}:null);
+draw(terRef.current,cl);
 if(simTimeRef.current>=1){playRef.current=false;setPlaying(false);}}};
 fid=requestAnimationFrame(loop);return()=>cancelAnimationFrame(fid);},[draw]);
 
 const togglePlay=()=>{if(simTime>=1){const t=createTerritory(worldRef.current);terRef.current=t;simTimeRef.current=0;setSimTime(0);
-const cl=getClimate(0);setClimate(cl);setTribeCount(1);setCoverage(0);terrainCache.current=null;draw(t,cl);}
+const cl=getClimate(0);setClimate(cl);setTribeCount(1);setCoverage(0);setDominant(null);terrainCache.current=null;draw(t,cl);}
 playRef.current=!playRef.current;setPlaying(p=>!p);};
 const yearStr=climate.yearsBP>1000?`${Math.round(climate.yearsBP/1000)}k BCE`:climate.yearsBP>0?`${Math.round(climate.yearsBP)} BCE`:"Present";
 const wetColor=climate.wet>0.7?"#6ae87a":climate.wet>0.4?"#b8b080":"#e8956a";const seaPct=Math.round(Math.abs(climate.seaLevel)*5000);
@@ -313,7 +333,11 @@ fontFamily:"'Palatino Linotype','Book Antiqua',Palatino,serif",color:"#ccc5b8",d
 <div style={{fontSize:10,color:"#6a6358",marginTop:3,lineHeight:1.5,fontStyle:"italic"}}>{climate.eraDesc}</div></div>
 <div style={{position:"absolute",top:8,right:8,background:"rgba(6,8,16,0.92)",border:"1px solid rgba(201,184,122,0.1)",borderRadius:3,padding:"8px 12px",display:"flex",gap:14,textAlign:"right"}}>
 <div><div style={{fontSize:8,color:"#5a5448",letterSpacing:1.5,textTransform:"uppercase"}}>Peoples</div><div style={{fontSize:20,color:"#c9b87a",fontWeight:300,lineHeight:1.2}}>{tribeCount}</div></div>
-<div><div style={{fontSize:8,color:"#5a5448",letterSpacing:1.5,textTransform:"uppercase"}}>Land Settled</div><div style={{fontSize:20,color:"#c9b87a",fontWeight:300,lineHeight:1.2}}>{coverage}%</div></div></div>
+<div><div style={{fontSize:8,color:"#5a5448",letterSpacing:1.5,textTransform:"uppercase"}}>Land Settled</div><div style={{fontSize:20,color:"#c9b87a",fontWeight:300,lineHeight:1.2}}>{coverage}%</div></div>
+{dominant&&<div><div style={{fontSize:8,color:"#5a5448",letterSpacing:1.5,textTransform:"uppercase"}}>Dominant</div>
+<div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:8,height:8,borderRadius:1,background:`rgb(${tribeRGB(dominant.id).join(",")})`}} />
+<span style={{fontSize:11,color:"#c9b87a"}}>{dominant.size}t</span>
+<span style={{fontSize:9,color:"#6a6358"}}>P:{Math.round(dominant.power)}</span></div></div>}</div>
 <div style={{position:"absolute",bottom:22,left:8,background:"rgba(6,8,16,0.82)",borderRadius:3,padding:"4px 10px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
 <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:7,color:"#5a5448",letterSpacing:1,textTransform:"uppercase"}}>Temp</span>
 <div style={{width:36,height:5,background:"rgba(255,255,255,0.06)",borderRadius:3,position:"relative"}}>
