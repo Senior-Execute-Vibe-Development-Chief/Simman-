@@ -301,7 +301,7 @@ ter.frontier=nf;
 if(ter.stepCount%4===0){const{tenure}=ter;for(let i=0;i<tw*th;i++){if(owner[i]<0)continue;
 if(tenure[i]<200)tenure[i]++;
 // Occupation cost: tiles with tenure < 20 drain tribe strength (garrisons, resistance)
-if(tenure[i]<20){const drain=tFert[i]*0.03*(1-tenure[i]/20);// decays as tenure grows
+if(tenure[i]<15){const drain=tFert[i]*0.015*(1-tenure[i]/15);// decays as tenure grows
 tribeStrength[owner[i]]=Math.max(0.1,tribeStrength[owner[i]]-drain);}}}
 // ── Border conflict: local power projection determines tile flips ──
 if(ter.stepCount%4===0){const flips=[];const{tenure,tRiver}=ter;
@@ -322,15 +322,19 @@ const atkAggression=atkSz<25?0.4:atkSz>80?1.5:1.0;
 let riverCross=0;if(tRiver[ni])riverCross+=1.5;
 const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
 const totalDef=def+riverCross;
+// Recently flipped tiles (tenure < 5) can't flip again — prevents ping-pong
+if(tenure[i]<5)continue;
 if(lpB>lpA*totalDef){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(lpB/(lpA*totalDef)-1)*0.2*atkAggression;
-const prize=(0.5+tFert[i]*1.5)*(atkSz>60?1+Math.min(0.5,(atkSz-60)*0.005):1);// large tribes value fertile tiles more
-if(Math.random()<Math.max(0.005,pressure*prize*(1-diff*0.7))){flips.push([i,no,lpA,totalDef]);break;}}
-else{// Failed attack attempt: attacker pays a cost for trying
-const attemptCost=tFert[i]*0.08*atkAggression;// aggressive tribes waste more on failed attacks
+const prize=(0.5+tFert[i]*1.5)*(atkSz>60?1+Math.min(0.5,(atkSz-60)*0.005):1);
+if(Math.random()<Math.max(0.005,pressure*prize*(1-diff*0.7))){flips.push([i,no]);break;}}
+else if(lpB>lpA*totalDef*0.5&&Math.random()<0.1){
+// Failed attack cost: only when attacker was a credible threat (>50% of needed power)
+// and only 10% of the time, not every tick
+const attemptCost=tFert[i]*0.04*atkAggression;
 tribeStrength[no]=Math.max(0.1,tribeStrength[no]-attemptCost);}}}
-// Apply flips with attack cost: attacker loses strength proportional to conquest
+// Apply flips with attack cost
 for(const[ti,to]of flips){if(owner[ti]===to)continue;
-const attackCost=tFert[ti]*0.5;
+const attackCost=tFert[ti]*0.3;// conquest cost
 tribeStrength[to]=Math.max(0.1,tribeStrength[to]-attackCost);
 claimTile(ter,ti,to);nf.add(ti);}}
 // ── Center dynamics: prestige growth, validation, capital challenge ──
