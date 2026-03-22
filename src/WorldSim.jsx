@@ -9,29 +9,8 @@ function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16
 
 const RES=2;
 
-function getClimate(simTime){
-const yearsBP=300000*(1-simTime);
-let f=Math.sin(yearsBP/100000*Math.PI*2)*.4+Math.sin(yearsBP/41000*Math.PI*2)*.3+Math.sin(yearsBP/23000*Math.PI*2)*.2;
-f+=-1.2*Math.exp(-Math.pow((yearsBP-20000)/80000,2)*6);
-f+=-0.6*Math.exp(-Math.pow((yearsBP-140000)/80000,2)*6);
-if(yearsBP<15000)f+=(15000-yearsBP)/15000*0.8;
-f+=-0.2+0.05*simTime;
-const tempMod=Math.max(-0.35,Math.min(0.05,f*0.18)),seaLevel=tempMod*0.1;
-const wet=Math.max(0,Math.min(1,0.5+tempMod*2+Math.sin(yearsBP/21000*Math.PI*2)*0.3+0.15*simTime));
-let eraName="",eraDesc="";
-if(yearsBP>250000){eraName="Origin";eraDesc="Modern humans emerge in equatorial Africa";}
-else if(yearsBP>180000){eraName="Early Dispersal";eraDesc="Small bands explore - constrained by climate";}
-else if(yearsBP>125000){eraName="Interglacial Pulse";eraDesc=wet>0.6?"Green corridors open":"Arid conditions limit movement";}
-else if(yearsBP>75000){eraName="Pre-Exodus";eraDesc=wet>0.5?"Conditions favor dispersal":"Drought constrains populations";}
-else if(yearsBP>55000){eraName="Out of Africa";eraDesc="The great coastal migration begins";}
-else if(yearsBP>40000){eraName="Coastal Sprint";eraDesc="Rapid coastal expansion - ~1 km/year";}
-else if(yearsBP>25000){eraName="Settling Eurasia";eraDesc="Europe and East Asia colonized";}
-else if(yearsBP>18000){eraName="Last Glacial Maximum";eraDesc="Ice at maximum - land bridges exposed";}
-else if(yearsBP>12000){eraName="Crossing to Americas";eraDesc="Humans enter the New World";}
-else if(yearsBP>8000){eraName="Rapid Thaw";eraDesc="Ice retreats - explosive recolonization";}
-else if(yearsBP>3000){eraName="Holocene";eraDesc="Agriculture - populations merge and densify";}
-else{eraName="Modern Era";eraDesc="Humanity spans the globe";}
-return{tempMod,seaLevel,wet,yearsBP,eraName,eraDesc};}
+// Static climate: no ice ages or sea level changes
+const CLIMATE={tempMod:0,seaLevel:0,wet:0.7};
 
 function generateWorld(W,H,seed,preset){
 initNoise(seed);const rng=mkRng(seed);
@@ -190,21 +169,33 @@ for(let dy=0;dy<RES&&!hasWater;dy++)for(let dx=0;dx<RES&&!hasWater;dx++){
 const wi=Math.min(w.height-1,py+dy)*w.width+Math.min(w.width-1,px+dx);
 if((w.river[wi]>0||w.lake[wi])&&e>0)hasWater=true;}
 if(hasWater){tMoist[ti]=Math.min(1,tMoist[ti]+0.2);tFert[ti]=Math.min(1,tFert[ti]+0.15);}}}
-let bx=0,by=0,bs=-999;
-if(w.preset==="earth"){// Cradle of mankind: East African Rift Valley (~x=0.51, y=0.47)
-const etx=Math.round(tw*0.51),ety=Math.round(th*0.47),R=Math.round(tw*0.04);
-for(let ty=Math.max(0,ety-R);ty<=Math.min(th-1,ety+R);ty++)for(let tx=etx-R;tx<=etx+R;tx++){
-const wx=((tx%tw)+tw)%tw,ti=ty*tw+wx;if(tElev[ti]<=0)continue;
-const d=Math.sqrt((tx-etx)**2+(ty-ety)**2);
-const s=tFert[ti]*2+tTemp[ti]-d*0.3-tDiff[ti];if(s>bs){bs=s;bx=wx;by=ty;}}
-}else{
-for(let ty=Math.floor(th*.3);ty<Math.floor(th*.7);ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;if(tElev[ti]<=0)continue;
-const s=tTemp[ti]*2+tMoist[ti]+(1-Math.abs(tElev[ti]-.12))-tDiff[ti]*2;if(s>bs){bs=s;bx=tx;by=ty;}}}
-const oi=by*tw+bx;owner[oi]=0;tribeSizes.push(1);tribeStrength.push(tFert[oi]);
-const tenure=new Uint16Array(tw*th);tenure[oi]=1;
+// Find multiple spread-out seed locations for starting tribes
+const NUM_TRIBES=w.preset==="earth"?8:6;const minSpacing=Math.round(tw*0.12);
+// Score all habitable tiles
+const scored=[];
+for(let ty=2;ty<th-2;ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;if(tElev[ti]<=0)continue;
+const s=tFert[ti]*2+tTemp[ti]+tMoist[ti]-tDiff[ti]*2;
+scored.push({x:tx,y:ty,s});}
+scored.sort((a,b)=>b.s-a.s);
+// Pick well-spaced origins (greedy: best first, skip if too close to existing)
+const origins=[];
+if(w.preset==="earth"){// Seed East Africa first (cradle of mankind)
+const etx=Math.round(tw*0.51),ety=Math.round(th*0.47);
+let best=null,bs2=-999;
+for(const c of scored){let dx=Math.abs(c.x-etx);if(dx>tw/2)dx=tw-dx;
+if(dx*dx+(c.y-ety)**2<(tw*0.04)**2&&c.s>bs2){bs2=c.s;best=c;}}
+if(best)origins.push(best);}
+for(const c of scored){if(origins.length>=NUM_TRIBES)break;
+let ok=true;for(const o of origins){let dx=Math.abs(c.x-o.x);if(dx>tw/2)dx=tw-dx;
+if(dx*dx+(c.y-o.y)**2<minSpacing*minSpacing){ok=false;break;}}
+if(ok)origins.push(c);}
+const tenure=new Uint16Array(tw*th);const frontier=new Set();
+for(let i=0;i<origins.length;i++){const{x,y}=origins[i],ti=y*tw+x;
+owner[ti]=i;tribeSizes.push(1);tribeStrength.push(tFert[ti]);tenure[ti]=1;frontier.add(ti);
+tribeCenters.push([{x,y,prestige:1.0,founded:0}]);}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,owner,tenure,tribeCenters:[[{x:bx,y:by,prestige:1.0,founded:0}]],tribeSizes,tribeStrength,
-frontier:new Set([oi]),landCount:lc,settled:1,tribes:1,origin:{x:bx,y:by},prevSeaLevel:0,stepCount:0};}
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
+frontier,landCount:lc,settled:origins.length,tribes:origins.length,origin:origins[0]||{x:0,y:0},stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+Math.pow(y1-y2,2));}
 // Distance from (x,y) to nearest center of a tribe; also returns the capital (index 0) distance
@@ -244,24 +235,13 @@ function transferTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert}=ter
 if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];}
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];}
 
-function stepTerritory(ter,w,climate){
-const{tempMod:tm,seaLevel:sl,wet}=climate;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
-// ── Sea level flooding ──
-if(sl!==ter.prevSeaLevel){
-// Flood tiles that went underwater
-for(let i=0;i<tw*th;i++){if(owner[i]>=0&&tElev[i]<=sl){
-tribeSizes[owner[i]]--;tribeStrength[owner[i]]-=tFert[i];owner[i]=-1;ter.tenure[i]=0;ter.settled--;ter.frontier.delete(i);}}
-// Re-add owned tiles adjacent to newly-changed coastline to frontier
-for(let i=0;i<tw*th;i++){if(owner[i]<0||tElev[i]<=sl)continue;
-const ty2=Math.floor(i/tw),tx2=i%tw;
-for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;
-if(owner[ny2*tw+nx2]<0){ter.frontier.add(i);break;}}}}
-ter.prevSeaLevel=sl;
+function stepTerritory(ter,w){
+const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // ── Expansion into empty land ──
 const nf=new Set();
 for(const fi of ter.frontier){if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;const ni=ny*tw+nx;if(owner[ni]>=0)continue;
-const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni]+tm;if(effT<0.02){room=true;continue;}
+const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni];if(effT<0.02){room=true;continue;}
 const diff=tDiff[ni],adjDiff=Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0));
 let chance;if(elev<=0&&elev>sl)chance=0.7*wet;else if(tCoast[ni])chance=0.9*wet;else chance=0.45*(1-adjDiff)*wet;
 if(effT<0.15)chance*=0.3;
@@ -290,7 +270,7 @@ else if(tFert[ni]>0.4&&distMin>20&&centers&&centers.length<8)
 centers.push({x:nx,y:ny,prestige:0.3,founded:ter.stepCount});
 claimTile(ter,ni,nw);nf.add(ni);}else room=true;}
 if((tCoast[fi]||(tElev[fi]<=0&&tElev[fi]>sl))&&wet>0.3){for(const[dx,dy]of LEAPS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;const ni=ny*tw+nx;
-if(owner[ni]>=0||tElev[ni]<=sl||tTemp[ni]+tm<0.05)continue;
+if(owner[ni]>=0||tElev[ni]<=sl||tTemp[ni]<0.05)continue;
 // Don't land on contested coast: skip if any neighbor is owned by a different tribe
 let contested=false;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny+dy2;
 if(ay>=0&&ay<th){const ao=owner[ay*tw+ax];if(ao>=0&&ao!==ow){contested=true;break;}}}
@@ -381,28 +361,28 @@ return ter;}
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
 const canvasRef=useRef(null);const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
-const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);const[simTime,setSimTime]=useState(0);
-const[climate,setClimate]=useState(()=>getClimate(0));const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
+const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
+const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState(null);
-const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),simTimeRef=useRef(0),speedRef=useRef(5),viewRef=useRef("terrain");
+const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 const presetRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
-const terrainCache=useRef(null),lastCacheTm=useRef(null),lastCacheSl=useRef(null);
+const terrainCache=useRef(null);
 const W=960,H=480;
 const generate=useCallback(s=>{const w=generateWorld(W,H,s,presetRef.current);setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
-simTimeRef.current=0;setSimTime(0);setClimate(getClimate(0));setCoverage(0);setTribeCount(1);setPlaying(false);playRef.current=false;
-terrainCache.current=null;lastCacheTm.current=null;lastCacheSl.current=null;},[]);
+setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
+terrainCache.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 
 // Build terrain RGB cache - renders at RES×RES blocks to match territory tile scale
-const updateTerrainCache=useCallback((w,cl)=>{
-const buf=new Uint8Array(W*H*3);const tm=cl.tempMod,sl=cl.seaLevel;
+const updateTerrainCache=useCallback((w)=>{
+const buf=new Uint8Array(W*H*3);const sl=0;
 // Sample at tile centers, fill RES×RES blocks
 const tw=Math.ceil(W/RES),th=Math.ceil(H/RES);
 for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
 const si=sy*W+sx;const e=w.elevation[si],m=w.moisture[si];
-const t=Math.max(0,Math.min(1,w.temperature[si]+tm));let r,g,b;
+const t=w.temperature[si];let r,g,b;
 if(e<=sl&&t<0.18){const lat=Math.abs(sy/H-0.5)*2;const iceStr=Math.min(1,(0.18-t)/0.18)*(0.3+lat*0.7);
 const df=Math.min(1,Math.max(0,(sl-e)/0.15));const or2=8+df*2,og2=18+df*5,ob2=52+df*15;const blend=Math.min(1,iceStr*1.8);
 r=Math.round(or2*(1-blend)+225*blend);g=Math.round(og2*(1-blend)+235*blend);b=Math.round(ob2*(1-blend)+248*blend);
@@ -421,9 +401,9 @@ buf[pi*3]=pr;buf[pi*3+1]=pg;buf[pi*3+2]=pb;}}}
 return buf;},[]);
 
 // Composite render: terrain + tribe overlay into single canvas
-const draw=useCallback((ter,cl)=>{
+const draw=useCallback((ter)=>{
 if(!canvasRef.current||!ter)return;const w=worldRef.current;if(!w)return;
-const tm=cl.tempMod,sl=cl.seaLevel,vm=viewRef.current;
+const sl=0,vm=viewRef.current;
 const ctx=canvasRef.current.getContext("2d");const img=ctx.createImageData(W,H);const d=img.data;
 if(vm==="depth"){
 // Depth/heightmap view: elevation as grayscale with color tinting
@@ -459,8 +439,7 @@ else if(w.river&&w.river[wi]){const a=0.5;pr=Math.round(r*(1-a)+12*a);pg=Math.ro
 d[pi]=pr;d[pi+1]=pg;d[pi+2]=pb;d[pi+3]=255;}}}
 }else{
 // Default terrain view with tribe overlay
-if(!terrainCache.current||lastCacheTm.current===null||Math.abs(tm-lastCacheTm.current)>0.006||Math.abs(sl-lastCacheSl.current)>0.0008){
-terrainCache.current=updateTerrainCache(w,cl);lastCacheTm.current=tm;lastCacheSl.current=sl;}
+if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
 const tc=terrainCache.current;
 for(let i=0;i<W*H;i++){
 let r=tc[i*3],g=tc[i*3+1],b=tc[i*3+2];
@@ -482,43 +461,35 @@ ctx.beginPath();ctx.arc(ox,oy,4,0,Math.PI*2);ctx.fillStyle="rgba(255,255,200,0.9
 ctx.beginPath();ctx.arc(ox,oy,6,0,Math.PI*2);ctx.strokeStyle="rgba(255,200,80,0.5)";ctx.lineWidth=1.5;ctx.stroke();
 },[updateTerrainCache]);
 
-useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current,climate);},[world,climate,draw,viewMode]);
+useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
 acc+=now-last;last=now;const iv=Math.max(16,100/speedRef.current);
-if(acc>=iv){acc=0;const dt=0.003*speedRef.current/5;simTimeRef.current=Math.min(1,simTimeRef.current+dt);
-const cl=getClimate(simTimeRef.current);const sub=Math.max(1,Math.ceil(speedRef.current/3));
-for(let s=0;s<sub;s++)terRef.current=stepTerritory(terRef.current,worldRef.current,cl);
-setSimTime(simTimeRef.current);setClimate(cl);setCoverage(Math.round(terRef.current.settled/terRef.current.landCount*100));
+if(acc>=iv){acc=0;const sub=Math.max(1,Math.ceil(speedRef.current/3));
+for(let s=0;s<sub;s++)terRef.current=stepTerritory(terRef.current,worldRef.current);
+setCoverage(Math.round(terRef.current.settled/terRef.current.landCount*100));
 let alive=0,bestId=-1,bestPow=0;const ter2=terRef.current;
 for(let i=0;i<ter2.tribeSizes.length;i++){if(ter2.tribeSizes[i]<=0)continue;alive++;
 const pw=tribePower(ter2,i);if(pw>bestPow){bestPow=pw;bestId=i;}}
 setTribeCount(alive);setDominant(bestId>=0?{id:bestId,power:bestPow,size:ter2.tribeSizes[bestId],
 strength:ter2.tribeStrength[bestId],density:ter2.tribeStrength[bestId]/ter2.tribeSizes[bestId]}:null);
-draw(terRef.current,cl);
-if(simTimeRef.current>=1){playRef.current=false;setPlaying(false);}}};
+draw(terRef.current);}};
 fid=requestAnimationFrame(loop);return()=>cancelAnimationFrame(fid);},[draw]);
 
-const togglePlay=()=>{if(simTime>=1){const t=createTerritory(worldRef.current);terRef.current=t;simTimeRef.current=0;setSimTime(0);
-const cl=getClimate(0);setClimate(cl);setTribeCount(1);setCoverage(0);setDominant(null);terrainCache.current=null;draw(t,cl);}
+const togglePlay=()=>{if(!playing&&terRef.current&&terRef.current.settled>=terRef.current.landCount){
+const t=createTerritory(worldRef.current);terRef.current=t;setTribeCount(t.tribes);setCoverage(0);setDominant(null);terrainCache.current=null;draw(t);}
 playRef.current=!playRef.current;setPlaying(p=>!p);};
-const yearStr=climate.yearsBP>1000?`${Math.round(climate.yearsBP/1000)}k BCE`:climate.yearsBP>0?`${Math.round(climate.yearsBP)} BCE`:"Present";
-const wetColor=climate.wet>0.7?"#6ae87a":climate.wet>0.4?"#b8b080":"#e8956a";const seaPct=Math.round(Math.abs(climate.seaLevel)*5000);
 return(
 <div style={{minHeight:"100vh",background:"linear-gradient(180deg,#060810 0%,#0a0e18 50%,#080a12 100%)",
 fontFamily:"'Palatino Linotype','Book Antiqua',Palatino,serif",color:"#ccc5b8",display:"flex",flexDirection:"column",alignItems:"center",padding:"16px 12px"}}>
 <div style={{textAlign:"center",marginBottom:14}}>
 <h1 style={{fontSize:26,fontWeight:400,letterSpacing:8,textTransform:"uppercase",color:"#c9b87a",margin:0,textShadow:"0 0 40px rgba(201,184,122,0.15)"}}>Terra Genesis</h1>
-<p style={{fontSize:10,letterSpacing:4,color:"#5a5448",margin:"4px 0 0",textTransform:"uppercase"}}>~42 km/pixel · Milankovitch Climate · Wrapping Globe</p></div>
+<p style={{fontSize:10,letterSpacing:4,color:"#5a5448",margin:"4px 0 0",textTransform:"uppercase"}}>~42 km/pixel · Wrapping Globe</p></div>
 <div style={{position:"relative",border:"1px solid rgba(201,184,122,0.12)",boxShadow:"0 4px 80px rgba(0,0,0,0.6),inset 0 0 30px rgba(0,0,0,0.4)",borderRadius:4,overflow:"hidden",width:Math.min(W*1.2,1200),maxWidth:"97vw"}}>
 <canvas ref={canvasRef} width={W} height={H} style={{width:"100%",display:"block",imageRendering:"pixelated"}} />
 <div style={{position:"absolute",top:0,left:0,bottom:14,width:2,background:"linear-gradient(180deg,transparent,rgba(201,184,122,0.12),transparent)",pointerEvents:"none"}} />
 <div style={{position:"absolute",top:0,right:0,bottom:14,width:2,background:"linear-gradient(180deg,transparent,rgba(201,184,122,0.12),transparent)",pointerEvents:"none"}} />
-<div style={{position:"absolute",top:8,left:8,background:"rgba(6,8,16,0.92)",border:"1px solid rgba(201,184,122,0.1)",borderRadius:3,padding:"8px 14px",maxWidth:260}}>
-<div style={{display:"flex",alignItems:"baseline",gap:8}}><span style={{fontSize:14,color:"#c9b87a",fontWeight:600,letterSpacing:1}}>{climate.eraName}</span>
-<span style={{fontSize:10,color:"#7a7468"}}>{yearStr}</span></div>
-<div style={{fontSize:10,color:"#6a6358",marginTop:3,lineHeight:1.5,fontStyle:"italic"}}>{climate.eraDesc}</div></div>
 <div style={{position:"absolute",top:8,right:8,background:"rgba(6,8,16,0.92)",border:"1px solid rgba(201,184,122,0.1)",borderRadius:3,padding:"8px 12px",display:"flex",gap:14,textAlign:"right"}}>
 <div><div style={{fontSize:8,color:"#5a5448",letterSpacing:1.5,textTransform:"uppercase"}}>Peoples</div><div style={{fontSize:20,color:"#c9b87a",fontWeight:300,lineHeight:1.2}}>{tribeCount}</div></div>
 <div><div style={{fontSize:8,color:"#5a5448",letterSpacing:1.5,textTransform:"uppercase"}}>Land Settled</div><div style={{fontSize:20,color:"#c9b87a",fontWeight:300,lineHeight:1.2}}>{coverage}%</div></div>
@@ -527,24 +498,11 @@ fontFamily:"'Palatino Linotype','Book Antiqua',Palatino,serif",color:"#ccc5b8",d
 <span style={{fontSize:11,color:"#c9b87a"}}>{dominant.size}t</span>
 <span style={{fontSize:9,color:"#6a6358"}}>Pop:{dominant.strength.toFixed(1)}</span>
 <span style={{fontSize:9,color:"#6a6358"}}>Mil:{dominant.power.toFixed(1)}</span></div></div>}</div>
-<div style={{position:"absolute",bottom:22,left:8,background:"rgba(6,8,16,0.82)",borderRadius:3,padding:"4px 10px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-<div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:7,color:"#5a5448",letterSpacing:1,textTransform:"uppercase"}}>Temp</span>
-<div style={{width:36,height:5,background:"rgba(255,255,255,0.06)",borderRadius:3,position:"relative"}}>
-<div style={{position:"absolute",top:-1,width:5,height:7,left:`${Math.max(2,Math.min(94,50+climate.tempMod*140))}%`,
-background:climate.tempMod<-.1?"#6ab0e8":climate.tempMod>0?"#e8956a":"#b8b080",borderRadius:2,transform:"translateX(-50%)",transition:"left 0.3s"}} /></div></div>
-<div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:7,color:"#5a5448",letterSpacing:1,textTransform:"uppercase"}}>Sea</span>
-<span style={{fontSize:8,color:climate.seaLevel<-.01?"#a8d4f0":"#7a8a9a"}}>{climate.seaLevel<-.005?`−${seaPct}m`:"Normal"}</span></div>
-<div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:7,color:"#5a5448",letterSpacing:1,textTransform:"uppercase"}}>Corridors</span>
-<div style={{width:32,height:5,background:"rgba(255,255,255,0.06)",borderRadius:3,overflow:"hidden"}}>
-<div style={{height:"100%",width:`${climate.wet*100}%`,background:wetColor,borderRadius:3,transition:"width 0.3s"}} /></div></div></div>
-<div style={{position:"absolute",bottom:0,left:0,right:0,height:14,background:"rgba(6,8,16,0.85)",display:"flex",alignItems:"center",padding:"0 4px"}}>
-<div style={{flex:1,height:4,background:"rgba(255,255,255,0.04)",borderRadius:2,position:"relative",overflow:"hidden"}}>
-<div style={{position:"absolute",top:0,left:0,bottom:0,width:`${simTime*100}%`,background:"linear-gradient(90deg,rgba(201,184,122,0.3),rgba(201,184,122,0.7))",borderRadius:2}} />
-<div style={{position:"absolute",top:-1,width:6,height:6,borderRadius:3,left:`${simTime*100}%`,transform:"translateX(-50%)",background:"#c9b87a",boxShadow:"0 0 6px rgba(201,184,122,0.6)"}} /></div></div></div>
+</div>
 <div style={{display:"flex",gap:10,marginTop:14,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
 <button onClick={togglePlay} style={{background:playing?"rgba(200,80,60,0.18)":"rgba(201,184,122,0.1)",border:`1px solid ${playing?"rgba(200,80,60,0.3)":"rgba(201,184,122,0.22)"}`,
 color:playing?"#e0a090":"#c9b87a",padding:"8px 28px",borderRadius:3,cursor:"pointer",fontSize:12,letterSpacing:2,textTransform:"uppercase",fontFamily:"inherit"}}>
-{playing?"❚❚ Pause":simTime>=1?"↺ Restart":"▶ Simulate"}</button>
+{playing?"❚❚ Pause":"▶ Simulate"}</button>
 <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:9,color:"#5a5448",letterSpacing:1,textTransform:"uppercase"}}>Speed</span>
 <input type="range" min={1} max={10} value={speed} onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value}} style={{width:70,accentColor:"#c9b87a"}} /></div>
 <button onClick={()=>{presetRef.current=null;setPreset(null);setSeed(Math.floor(Math.random()*999999));}} style={{background:"rgba(201,184,122,0.05)",border:"1px solid rgba(201,184,122,0.15)",
@@ -567,6 +525,5 @@ textTransform:"uppercase",fontFamily:"inherit",transition:"all 0.2s"}}>{label}</
 <span style={{fontSize:9,color:"#4a4438"}}>Peoples</span></div></div>
 <div style={{maxWidth:900,marginTop:14,fontSize:10,color:"#2e2a24",lineHeight:1.7,fontStyle:"italic",textAlign:"center"}}>
 Single-canvas compositing: terrain and tribe colors are blended per-pixel into one image.
-No scale mismatch possible. Terrain is cached and only recomputed when climate shifts.
-Beaches dynamically follow the current coastline as seas rise and fall.
+Terrain is cached once and tribe overlay is composited each frame.
 </div></div>);}
