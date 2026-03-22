@@ -159,7 +159,12 @@ splitChance=Math.max(0,(overext+barrier+ineq+distF)*(1-Math.min(0.9,dens*1.2)));
 if(splitChance>0&&Math.random()<splitChance)nw=newTribe(ter,nx,ny);
 claimTile(ter,ni,nw);nf.add(ni);}else room=true;}
 if((tCoast[fi]||(tElev[fi]<=0&&tElev[fi]>sl))&&wet>0.3){for(const[dx,dy]of LEAPS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;const ni=ny*tw+nx;
-if(owner[ni]>=0||tElev[ni]<=sl||tTemp[ni]+tm<0.05)continue;if(Math.random()<0.25*wet){let nw=ow;const tc=tribeCenters[ow];const dist=tc?tDistW(nx,ny,tc.x,tc.y,tw):0;
+if(owner[ni]>=0||tElev[ni]<=sl||tTemp[ni]+tm<0.05)continue;
+// Don't land on contested coast: skip if any neighbor is owned by a different tribe
+let contested=false;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny+dy2;
+if(ay>=0&&ay<th){const ao=owner[ay*tw+ax];if(ao>=0&&ao!==ow){contested=true;break;}}}
+if(contested)continue;
+if(Math.random()<0.25*wet){let nw=ow;const tc=tribeCenters[ow];const dist=tc?tDistW(nx,ny,tc.x,tc.y,tw):0;
 const sz=tribeSizes[ow],dens=sz>0?tribeStrength[ow]/sz:0;
 const overext=sz>40?Math.min(0.2,(sz-40)*0.002):0;
 if(dist>16&&Math.random()<overext+(dens<0.3?0.15:0))nw=newTribe(ter,nx,ny);
@@ -174,10 +179,10 @@ for(let i=0;i<tw*th;i++){const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]
 const ty2=Math.floor(i/tw),tx2=i%tw;const densA=tribeStrength[ow]/tribeSizes[ow];
 const def=1+Math.min(0.8,tenure[i]*0.004);// defender bonus: linear ramp to 1.8x at cap (200)
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<1)continue;
+const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<10)continue;// attacker needs ≥10 tiles
 const densB=tribeStrength[no]/tribeSizes[no];
 if(densB>densA*def){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(densB/(densA*def)-1)*0.4;
-const prize=0.5+tFert[i]*1.5;// fertile tiles are worth fighting for
+const prize=0.5+tFert[i]*1.5;
 if(Math.random()<Math.max(0.01,pressure*prize*(1-diff*0.7))){flips.push([i,no]);break;}}}}
 for(const[ti,to]of flips){if(owner[ti]===to)continue;claimTile(ter,ti,to);nf.add(ti);}}
 // ── Fragmentation: split disconnected tribe components (largest keeps original ID/color) ──
