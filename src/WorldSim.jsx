@@ -145,7 +145,7 @@ outer:for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const wx=((tx+dx)%ctw+c
 const npx=Math.min(W-1,wx*RES),npy=Math.min(H-1,wy*RES);
 if(elevation[npy*W+npx]<=0){coastal[ty*ctw+tx]=1;break outer;}}}}
 const rvr=generateRivers(elevation,moisture,W,H,mkRng(seed+777));
-return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,width:W,height:H};}
+return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,width:W,height:H,preset};}
 
 // ── River & lake generation: trace flow downhill from wet highlands ──
 function generateRivers(elev,moist,W,H,rng){
@@ -242,8 +242,15 @@ const wi=Math.min(w.height-1,py+dy)*w.width+Math.min(w.width-1,px+dx);
 if((w.river[wi]>0||w.lake[wi])&&e>0)hasWater=true;}
 if(hasWater){tMoist[ti]=Math.min(1,tMoist[ti]+0.2);tFert[ti]=Math.min(1,tFert[ti]+0.15);}}}
 let bx=0,by=0,bs=-999;
+if(w.preset==="earth"){// Cradle of mankind: East African Rift Valley (~x=0.51, y=0.47)
+const etx=Math.round(tw*0.51),ety=Math.round(th*0.47),R=Math.round(tw*0.04);
+for(let ty=Math.max(0,ety-R);ty<=Math.min(th-1,ety+R);ty++)for(let tx=etx-R;tx<=etx+R;tx++){
+const wx=((tx%tw)+tw)%tw,ti=ty*tw+wx;if(tElev[ti]<=0)continue;
+const d=Math.sqrt((tx-etx)**2+(ty-ety)**2);
+const s=tFert[ti]*2+tTemp[ti]-d*0.3-tDiff[ti];if(s>bs){bs=s;bx=wx;by=ty;}}
+}else{
 for(let ty=Math.floor(th*.3);ty<Math.floor(th*.7);ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;if(tElev[ti]<=0)continue;
-const s=tTemp[ti]*2+tMoist[ti]+(1-Math.abs(tElev[ti]-.12))-tDiff[ti]*2;if(s>bs){bs=s;bx=tx;by=ty;}}
+const s=tTemp[ti]*2+tMoist[ti]+(1-Math.abs(tElev[ti]-.12))-tDiff[ti]*2;if(s>bs){bs=s;bx=tx;by=ty;}}}
 const oi=by*tw+bx;owner[oi]=0;tribeSizes.push(1);tribeStrength.push(tFert[oi]);
 const tenure=new Uint16Array(tw*th);tenure[oi]=1;
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
