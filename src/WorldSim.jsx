@@ -364,7 +364,12 @@ tribeStrength[owner[i]]=Math.max(0.1,tribeStrength[owner[i]]-drain);}}}
 if(ter.stepCount%4===0){const flips=[];const{tenure,tRiver}=ter;
 for(let i=0;i<tw*th;i++){const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
 const ty2=Math.floor(i/tw),tx2=i%tw;
-const lpA=localPower(ter,ow,tx2,ty2);// defender's projected power here
+// Quick border check: skip interior tiles with no enemy neighbors
+let hasEnemy=false;
+for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
+const no=owner[ni];if(no>=0&&no!==ow&&tElev[ni]>sl&&tribeSizes[no]>=16){hasEnemy=true;break;}}
+if(!hasEnemy)continue;
+const lpA=localPower(ter,ow,tx2,ty2);// only computed for border tiles
 // Defender advantage: 3x base + tenure (up to +1.5x) + terrain (up to +1.4x) + river (up to +2x)
 let def=3+Math.min(1.5,tenure[i]*0.008)+tDiff[i]*1.4;
 if(tRiver[i])def+=2;// rivers are very hard to cross
@@ -462,6 +467,8 @@ const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=u
 const presetRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
+// Reuse ImageData between frames to avoid 7.3MB allocation per draw
+const imgRef=useRef(null);
 const W=1920,H=960;
 const generate=useCallback(s=>{const w=generateWorld(W,H,s,presetRef.current);setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
@@ -502,7 +509,12 @@ return buf;},[]);
 const draw=useCallback((ter)=>{
 if(!canvasRef.current||!ter)return;const w=worldRef.current;if(!w)return;
 const sl=0,vm=viewRef.current;
-const ctx=canvasRef.current.getContext("2d");const img=ctx.createImageData(W,H);const d=img.data;
+const ctx=canvasRef.current.getContext("2d");
+if(!imgRef.current)imgRef.current=ctx.createImageData(W,H);
+const img=imgRef.current;const d=img.data;
+// Pre-cache tribe colors (avoids HSL→RGB trig per pixel)
+const maxT=ter.tribeCenters.length;const tcR=new Uint8Array(maxT),tcG=new Uint8Array(maxT),tcB=new Uint8Array(maxT);
+for(let t2=0;t2<maxT;t2++){const c=tribeRGB(t2);tcR[t2]=c[0];tcG[t2]=c[1];tcB[t2]=c[2];}
 if(vm==="depth"){
 // Depth/heightmap view: elevation as grayscale with color tinting
 const tw=Math.ceil(W/RES),th=Math.ceil(H/RES);
@@ -530,7 +542,7 @@ for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const e=w.elevation[si],ti=ty*tw+tx,ow=ter.owner[ti];let r,g,b;
 if(e<=sl){r=4;g=5;b=12;}
-else if(ow>=0){const c=tribeRGB(ow);r=Math.round(c[0]*0.15+10);g=Math.round(c[1]*0.15+10);b=Math.round(c[2]*0.15+10);}
+else if(ow>=0){r=Math.round(tcR[ow]*0.15+10);g=Math.round(tcG[ow]*0.15+10);b=Math.round(tcB[ow]*0.15+10);}
 else{r=16;g=15;b=14;}
 for(let dy2=0;dy2<RES;dy2++){const py=ty*RES+dy2;if(py>=H)continue;
 for(let dx2=0;dx2<RES;dx2++){const px=tx*RES+dx2;if(px>=W)continue;
@@ -542,7 +554,7 @@ for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const e=w.elevation[si],ti=ty*tw+tx,ow=ter.owner[ti];let r,g,b;
 if(e<=sl){r=6;g=8;b=16;}
-else if(ow>=0){const c=tribeRGB(ow);r=c[0];g=c[1];b=c[2];}
+else if(ow>=0){r=tcR[ow];g=tcG[ow];b=tcB[ow];}
 else{r=22;g=20;b=18;}
 for(let dy2=0;dy2<RES;dy2++){const py=ty*RES+dy2;if(py>=H)continue;
 for(let dx2=0;dx2<RES;dx2++){const px=tx*RES+dx2;if(px>=W)continue;
@@ -555,26 +567,24 @@ else if(w.swamp&&w.swamp[wi]){const a=0.25;pr=Math.round(r*(1-a)+30*a);pg=Math.r
 else if(w.oasis&&w.oasis[wi]){const a=0.3;pr=Math.round(r*(1-a)+40*a);pg=Math.round(g*(1-a)+100*a);pb=Math.round(b*(1-a)+35*a);}}
 d[pi]=pr;d[pi+1]=pg;d[pi+2]=pb;d[pi+3]=255;}}}
 }else{
-// Default terrain view with tribe overlay
+// Default terrain view with tribe overlay — tile-level loop
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
-const tc=terrainCache.current;
-for(let i=0;i<W*H;i++){
-let r=tc[i*3],g=tc[i*3+1],b=tc[i*3+2];
-const px=i%W,py=Math.floor(i/W);
-const tx=Math.floor(px/RES),ty=Math.floor(py/RES);
-if(tx<ter.tw&&ty<ter.th){
-const ti=ty*ter.tw+tx,ow=ter.owner[ti];
-if(ow>=0&&ter.tElev[ti]>sl){
-const[tr2,tg,tb]=tribeRGB(ow);
-const alpha=ter.frontier.has(ti)?0.55:0.32;
-r=Math.round(r*(1-alpha)+tr2*alpha);
-g=Math.round(g*(1-alpha)+tg*alpha);
-b=Math.round(b*(1-alpha)+tb*alpha);}}
-d[i*4]=r;d[i*4+1]=g;d[i*4+2]=b;d[i*4+3]=255;}}
+const tc=terrainCache.current;const tw2=ter.tw,th2=ter.th;
+for(let ty=0;ty<th2;ty++)for(let tx=0;tx<tw2;tx++){
+const ti=ty*tw2+tx,ow=ter.owner[ti];
+const isOwned=ow>=0&&ter.tElev[ti]>sl;
+let cr=0,cg=0,cb=0,alpha=0,invA=1;
+if(isOwned){cr=tcR[ow];cg=tcG[ow];cb=tcB[ow];alpha=ter.frontier.has(ti)?0.55:0.32;invA=1-alpha;}
+for(let dy=0;dy<RES;dy++){const py=ty*RES+dy;if(py>=H)continue;
+for(let dx=0;dx<RES;dx++){const px=tx*RES+dx;if(px>=W)continue;
+const pi=py*W+px,pi4=pi<<2,pi3=pi*3;
+if(isOwned){d[pi4]=Math.round(tc[pi3]*invA+cr*alpha);d[pi4+1]=Math.round(tc[pi3+1]*invA+cg*alpha);d[pi4+2]=Math.round(tc[pi3+2]*invA+cb*alpha);}
+else{d[pi4]=tc[pi3];d[pi4+1]=tc[pi3+1];d[pi4+2]=tc[pi3+2];}
+d[pi4+3]=255;}}}}
 ctx.putImageData(img,0,0);
 // Draw all tribe centers
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
-if(!centers||ter.tribeSizes[st]<=0)continue;const[cr,cg,cb]=tribeRGB(st);
+if(!centers||ter.tribeSizes[st]<=0)continue;const cr=tcR[st],cg=tcG[st],cb=tcB[st];
 for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x*RES+1,cy2=centers[ci].y*RES+1;
 const isCapital=ci===0,r2=isCapital?4:3;
 ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
@@ -591,7 +601,7 @@ const pop=ter.tribeStrength[ow2];if(pop<0.01)continue;
 const lp=localPower(ter,ow2,tx2,ty2);
 const ratio=lp/pop;// 0.03 (far from center) to ~1.0 (at center)
 const intensity=(ratio-0.03)/0.97;// remap to 0-1
-const[cr,cg,cb]=tribeRGB(ow2);
+const cr=tcR[ow2],cg=tcG[ow2],cb=tcB[ow2];
 const px=tx2*RES,py=ty2*RES,sz=RES*2;
 // Hatching in tribe color; denser lines = stronger center influence
 const alpha=0.1+Math.pow(intensity,0.7)*0.85;// non-linear so centers pop
@@ -603,7 +613,7 @@ if(intensity>0.7){ctx.beginPath();ctx.moveTo(px,py+sz/2);ctx.lineTo(px+sz,py+sz/
 // Draw centers
 for(let st=0;st<ter.tribeSizes.length;st++){if(ter.tribeSizes[st]<=0)continue;
 const centers=ter.tribeCenters[st];if(!centers)continue;
-const[cr,cg,cb]=tribeRGB(st);
+const cr=tcR[st],cg=tcG[st],cb=tcB[st];
 for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x*RES+1,cy2=centers[ci].y*RES+1;
 const isCapital=ci===0,r2=isCapital?6:4;
 ctx.beginPath();ctx.arc(cx2,cy2,r2+4,0,Math.PI*2);
