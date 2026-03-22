@@ -449,7 +449,19 @@ const pi=(py*W+px)*4;let pr=r,pg=g,pb=b;
 if(e>sl){const wi=py*W+px;if(w.lake&&w.lake[wi]){pr=20;pg=45;pb=90;}
 else if(w.river&&w.river[wi]){pr=25;pg=55;pb=120;}}
 d[pi]=pr;d[pi+1]=pg;d[pi+2]=pb;d[pi+3]=255;}}}
-}else if(vm==="tribes"||vm==="power"){
+}else if(vm==="power"){
+// Power view: dark base with faint tribe tint, hatching provides the real info
+const tw=Math.ceil(W/RES),th=Math.ceil(H/RES);
+for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const e=w.elevation[si],ti=ty*tw+tx,ow=ter.owner[ti];let r,g,b;
+if(e<=sl){r=4;g=5;b=12;}
+else if(ow>=0){const c=tribeRGB(ow);r=Math.round(c[0]*0.15+10);g=Math.round(c[1]*0.15+10);b=Math.round(c[2]*0.15+10);}
+else{r=16;g=15;b=14;}
+for(let dy2=0;dy2<RES;dy2++){const py=ty*RES+dy2;if(py>=H)continue;
+for(let dx2=0;dx2<RES;dx2++){const px=tx*RES+dx2;if(px>=W)continue;
+const pi=(py*W+px)*4;d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;}}}
+}else if(vm==="tribes"){
 // Tribe-only view: solid tribe colors on land, dark water
 const tw=Math.ceil(W/RES),th=Math.ceil(H/RES);
 for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
