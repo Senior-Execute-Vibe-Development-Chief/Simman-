@@ -100,22 +100,23 @@ let bx=0,by=0,bs=-999;
 for(let ty=Math.floor(th*.3);ty<Math.floor(th*.7);ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;if(tElev[ti]<=0)continue;
 const s=tTemp[ti]*2+tMoist[ti]+(1-Math.abs(tElev[ti]-.12))-tDiff[ti]*2;if(s>bs){bs=s;bx=tx;by=ty;}}
 const oi=by*tw+bx;owner[oi]=0;tribeSizes.push(1);tribeStrength.push(tFert[oi]);
+const tenure=new Uint16Array(tw*th);tenure[oi]=1;
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,owner,tribeCenters:[{x:bx,y:by}],tribeSizes,tribeStrength,
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,owner,tenure,tribeCenters:[{x:bx,y:by}],tribeSizes,tribeStrength,
 frontier:new Set([oi]),landCount:lc,settled:1,tribes:1,origin:{x:bx,y:by},prevSeaLevel:0,stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+Math.pow(y1-y2,2));}
 
 function newTribe(ter,x,y){const id=ter.tribeCenters.length;ter.tribeCenters.push({x,y});ter.tribeSizes.push(0);ter.tribeStrength.push(0);ter.tribes=id+1;return id;}
-function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert}=ter;const ow=owner[ti];
+function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure}=ter;const ow=owner[ti];
 if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];}else{ter.settled++;}
-owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];}
+owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;}
 
 function stepTerritory(ter,w,climate){
 const{tempMod:tm,seaLevel:sl,wet}=climate;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // ── Sea level flooding ──
 if(sl>ter.prevSeaLevel){for(let i=0;i<tw*th;i++){if(owner[i]>=0&&tElev[i]<=sl){
-tribeSizes[owner[i]]--;tribeStrength[owner[i]]-=tFert[i];owner[i]=-1;ter.settled--;ter.frontier.delete(i);}}}
+tribeSizes[owner[i]]--;tribeStrength[owner[i]]-=tFert[i];owner[i]=-1;ter.tenure[i]=0;ter.settled--;ter.frontier.delete(i);}}}
 ter.prevSeaLevel=sl;
 // ── Expansion into empty land ──
 const nf=new Set();
@@ -137,15 +138,18 @@ if(dist>16&&(dens<0.3||Math.random()<0.15*(1-dens)))nw=newTribe(ter,nx,ny);
 claimTile(ter,ni,nw);nf.add(ni);}}}
 if(room)nf.add(fi);}
 ter.frontier=nf;
-// ── Border conflict: tiles change hands based on population pressure ──
-if(ter.stepCount%4===0){const flips=[];
+// ── Age tenure for all owned tiles (cap at 500) ──
+if(ter.stepCount%2===0){const{tenure}=ter;for(let i=0;i<tw*th;i++)if(owner[i]>=0&&tenure[i]<500)tenure[i]++;}
+// ── Border conflict: tiles change hands based on population pressure vs defensive tenure ──
+if(ter.stepCount%4===0){const flips=[];const{tenure}=ter;
 for(let i=0;i<tw*th;i++){const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
 const ty2=Math.floor(i/tw),tx2=i%tw;const densA=tribeStrength[ow]/tribeSizes[ow];
+const def=1+Math.min(2,Math.log(1+tenure[i])*0.3);// defender bonus: up to ~2.9x at max tenure
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<1)continue;
 const densB=tribeStrength[no]/tribeSizes[no];
-if(densB>densA*1.3){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(densB/densA-1.3)*0.5;
-if(Math.random()<Math.max(0.02,pressure*(1-diff*0.7))){flips.push([i,no]);break;}}}}
+if(densB>densA*def){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(densB/(densA*def)-1)*0.4;
+if(Math.random()<Math.max(0.01,pressure*(1-diff*0.7))){flips.push([i,no]);break;}}}}
 for(const[ti,to]of flips){if(owner[ti]===to)continue;claimTile(ter,ti,to);nf.add(ti);}}
 // ── Fragmentation: split disconnected tribe components (largest keeps original ID/color) ──
 if(ter.stepCount%16===0){const mark=new Int32Array(tw*th);let gen=0;
