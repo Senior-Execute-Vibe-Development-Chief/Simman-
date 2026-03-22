@@ -82,32 +82,43 @@ function tribeRGB(id){const h=((id*67+20)%360)/360,s=(60+((id*31)%25))/100,l=(45
 const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;const hr=(pp,qq,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return pp+(qq-pp)*6*t;if(t<1/2)return qq;if(t<2/3)return pp+(qq-pp)*(2/3-t)*6;return pp;};
 return[Math.round(hr(p,q,h+1/3)*255),Math.round(hr(p,q,h)*255),Math.round(hr(p,q,h-1/3)*255)];}
 
+function tileFert(t,m,e){if(e>0.45)return 0.05;const base=Math.min(1,t*1.2)*Math.min(1,m*1.3);return Math.max(0.05,base*(1-Math.max(0,e-0.15)*3));}
+
 const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
 const LEAPS=[];for(let r=3;r<=8;r++)for(let a=0;a<8;a++){const ang=a*Math.PI/4;LEAPS.push([Math.round(Math.cos(ang)*r),Math.round(Math.sin(ang)*r)]);}
 
 function createTerritory(w){
 const tw=Math.ceil(w.width/RES),th=Math.ceil(w.height/RES);
-const tElev=new Float32Array(tw*th),tTemp=new Float32Array(tw*th),tMoist=new Float32Array(tw*th);
-const tCoast=new Uint8Array(tw*th),tDiff=new Float32Array(tw*th),owner=new Int16Array(tw*th).fill(-1),tribeSizes=[];
+const tElev=new Float32Array(tw*th),tTemp=new Float32Array(tw*th),tMoist=new Float32Array(tw*th),tFert=new Float32Array(tw*th);
+const tCoast=new Uint8Array(tw*th),tDiff=new Float32Array(tw*th),owner=new Int16Array(tw*th).fill(-1),tribeSizes=[],tribeStrength=[];
 for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){const px=Math.min(w.width-1,tx*RES),py=Math.min(w.height-1,ty*RES),i=py*w.width+px;
-tElev[ty*tw+tx]=w.elevation[i];tTemp[ty*tw+tx]=w.temperature[i];tMoist[ty*tw+tx]=w.moisture[i];tCoast[ty*tw+tx]=w.coastal[ty*tw+tx];
+const ti=ty*tw+tx;tElev[ti]=w.elevation[i];tTemp[ti]=w.temperature[i];tMoist[ti]=w.moisture[i];tCoast[ti]=w.coastal[ti];
 const e=w.elevation[i],t=w.temperature[i],m=w.moisture[i];let diff=0;
 if(e>0.35)diff=Math.max(diff,Math.min(1,(e-0.35)*3));if(t>0.5&&m<0.2)diff=Math.max(diff,Math.min(0.85,(0.2-m)*3*(t-0.3)));
-if(t<0.2)diff=Math.max(diff,Math.min(0.9,(0.2-t)*4));tDiff[ty*tw+tx]=diff;}
+if(t<0.2)diff=Math.max(diff,Math.min(0.9,(0.2-t)*4));tDiff[ti]=diff;tFert[ti]=tileFert(t,m,e);}
 let bx=0,by=0,bs=-999;
 for(let ty=Math.floor(th*.3);ty<Math.floor(th*.7);ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;if(tElev[ti]<=0)continue;
 const s=tTemp[ti]*2+tMoist[ti]+(1-Math.abs(tElev[ti]-.12))-tDiff[ti]*2;if(s>bs){bs=s;bx=tx;by=ty;}}
-owner[by*tw+bx]=0;tribeSizes.push(1);
+const oi=by*tw+bx;owner[oi]=0;tribeSizes.push(1);tribeStrength.push(tFert[oi]);
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,owner,tribeCenters:[{x:bx,y:by}],tribeSizes,
-frontier:new Set([by*tw+bx]),landCount:lc,settled:1,tribes:1,origin:{x:bx,y:by},prevSeaLevel:0,stepCount:0};}
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,owner,tribeCenters:[{x:bx,y:by}],tribeSizes,tribeStrength,
+frontier:new Set([oi]),landCount:lc,settled:1,tribes:1,origin:{x:bx,y:by},prevSeaLevel:0,stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+Math.pow(y1-y2,2));}
 
+function newTribe(ter,x,y){const id=ter.tribeCenters.length;ter.tribeCenters.push({x,y});ter.tribeSizes.push(0);ter.tribeStrength.push(0);ter.tribes=id+1;return id;}
+function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert}=ter;const ow=owner[ti];
+if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];}else{ter.settled++;}
+owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];}
+
 function stepTerritory(ter,w,climate){
-const{tempMod:tm,seaLevel:sl,wet}=climate;const{tw,th,tElev,tTemp,tCoast,tDiff,owner,tribeCenters,tribeSizes}=ter;ter.stepCount++;
-if(sl>ter.prevSeaLevel){for(let i=0;i<tw*th;i++){if(owner[i]>=0&&tElev[i]<=sl){if(tribeSizes[owner[i]])tribeSizes[owner[i]]--;owner[i]=-1;ter.settled--;ter.frontier.delete(i);}}}
-ter.prevSeaLevel=sl;const nf=new Set();
+const{tempMod:tm,seaLevel:sl,wet}=climate;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
+// ── Sea level flooding ──
+if(sl>ter.prevSeaLevel){for(let i=0;i<tw*th;i++){if(owner[i]>=0&&tElev[i]<=sl){
+tribeSizes[owner[i]]--;tribeStrength[owner[i]]-=tFert[i];owner[i]=-1;ter.settled--;ter.frontier.delete(i);}}}
+ter.prevSeaLevel=sl;
+// ── Expansion into empty land ──
+const nf=new Set();
 for(const fi of ter.frontier){if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;const ni=ny*tw+nx;if(owner[ni]>=0)continue;
 const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni]+tm;if(effT<0.02){room=true;continue;}
@@ -115,22 +126,45 @@ const diff=tDiff[ni],adjDiff=Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0));
 let chance;if(elev<=0&&elev>sl)chance=0.7*wet;else if(tCoast[ni])chance=0.9*wet;else chance=0.45*(1-adjDiff)*wet;
 if(effT<0.15)chance*=0.3;
 if(Math.random()<chance){let nw=ow;const tc=tribeCenters[ow];const dist=tc?tDistW(nx,ny,tc.x,tc.y,tw):0;
-if(dist>20||(diff>0.5&&pDiff<0.3&&Math.random()<0.4)){nw=tribeCenters.length;tribeCenters.push({x:nx,y:ny});tribeSizes.push(0);ter.tribes=tribeCenters.length;}
-owner[ni]=nw;if(!tribeSizes[nw])tribeSizes[nw]=0;tribeSizes[nw]++;ter.settled++;nf.add(ni);}else room=true;}
+if(dist>20||(diff>0.5&&pDiff<0.3&&Math.random()<0.4))nw=newTribe(ter,nx,ny);
+claimTile(ter,ni,nw);nf.add(ni);}else room=true;}
 if((tCoast[fi]||(tElev[fi]<=0&&tElev[fi]>sl))&&wet>0.3){for(const[dx,dy]of LEAPS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;const ni=ny*tw+nx;
 if(owner[ni]>=0||tElev[ni]<=sl||tTemp[ni]+tm<0.05)continue;if(Math.random()<0.25*wet){let nw=ow;const tc=tribeCenters[ow];const dist=tc?tDistW(nx,ny,tc.x,tc.y,tw):0;
-if(dist>16){nw=tribeCenters.length;tribeCenters.push({x:nx,y:ny});tribeSizes.push(0);ter.tribes=tribeCenters.length;}
-owner[ni]=nw;if(!tribeSizes[nw])tribeSizes[nw]=0;tribeSizes[nw]++;ter.settled++;nf.add(ni);}}}
+if(dist>16)nw=newTribe(ter,nx,ny);
+claimTile(ter,ni,nw);nf.add(ni);}}}
 if(room)nf.add(fi);}
 ter.frontier=nf;
-if(ter.stepCount%8===0){const ABSORB_RATIO=3;
-for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0)continue;const nc=new Map();
-for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const ty2=Math.floor(i/tw),tx2=i%tw;
+// ── Border conflict: tiles change hands based on population pressure ──
+if(ter.stepCount%4===0){const flips=[];
+for(let i=0;i<tw*th;i++){const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
+const ty2=Math.floor(i/tw),tx2=i%tw;const densA=tribeStrength[ow]/tribeSizes[ow];
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-const no=owner[ni];if(no<0||no===st||tElev[ni]<=sl)continue;
-if(!nc.has(no))nc.set(no,0);nc.set(no,nc.get(no)+1);}}
-let bn=-1,bs2=0;for(const[n,b]of nc){const sz=tribeSizes[n];if(sz>bs2){bs2=sz;bn=n;}}
-if(bn>=0&&tribeSizes[bn]>=tribeSizes[st]*ABSORB_RATIO){for(let i=0;i<tw*th;i++)if(owner[i]===st){owner[i]=bn;tribeSizes[bn]++;}tribeSizes[st]=0;}}}
+const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<1)continue;
+const densB=tribeStrength[no]/tribeSizes[no];
+if(densB>densA*1.3){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(densB/densA-1.3)*0.5;
+if(Math.random()<Math.max(0.02,pressure*(1-diff*0.7))){flips.push([i,no]);break;}}}}
+for(const[ti,to]of flips){if(owner[ti]===to)continue;claimTile(ter,ti,to);nf.add(ti);}}
+// ── Fragmentation: split disconnected tribe components ──
+if(ter.stepCount%16===0){const mark=new Int32Array(tw*th);let gen=0;
+for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=1)continue;gen++;
+let first=-1;for(let i=0;i<tw*th;i++){if(owner[i]===st){first=i;break;}}if(first<0)continue;
+const stack=[first];mark[first]=gen;let filled=0;
+while(stack.length>0){const ci=stack.pop();filled++;const cy=Math.floor(ci/tw),cx=ci%tw;
+for(const[dx,dy]of DIRS){const nx2=((cx+dx)%tw+tw)%tw,ny2=cy+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
+if(mark[ni]!==gen&&owner[ni]===st){mark[ni]=gen;stack.push(ni);}}}
+if(filled>=tribeSizes[st])continue;
+// Split each disconnected component into its own tribe
+for(let i=0;i<tw*th;i++){if(owner[i]===st&&mark[i]!==gen){gen++;const sid=newTribe(ter,i%tw,Math.floor(i/tw));
+const s2=[i];mark[i]=gen;
+while(s2.length>0){const ci=s2.pop();claimTile(ter,ci,sid);const cy=Math.floor(ci/tw),cx=ci%tw;
+for(const[dx,dy]of DIRS){const nx2=((cx+dx)%tw+tw)%tw,ny2=cy+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
+if(mark[ni]!==gen&&owner[ni]===st){mark[ni]=gen;s2.push(ni);}}}}}}}
+// ── Remnant absorption: tiny tribes (<5 tiles) absorbed by any larger touching neighbor ──
+if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>5)continue;
+let bn=-1,bs2=0;for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const ty2=Math.floor(i/tw),tx2=i%tw;
+for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
+const no=owner[ni];if(no<0||no===st||tElev[ni]<=sl)continue;if(tribeSizes[no]>bs2){bs2=tribeSizes[no];bn=no;}}}
+if(bn>=0&&tribeSizes[bn]>tribeSizes[st]){for(let i=0;i<tw*th;i++)if(owner[i]===st)claimTile(ter,i,bn);}}}
 return ter;}
 
 // ── SINGLE CANVAS: terrain + overlay composited together ──
