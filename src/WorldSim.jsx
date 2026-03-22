@@ -6,6 +6,8 @@ function noise2D(x,y){const X=Math.floor(x)&255,Y=Math.floor(y)&255,xf=x-Math.fl
 function fbm(x,y,o,l,g){let v=0,a=1,f=1,m=0;for(let i=0;i<o;i++){v+=noise2D(x*f,y*f)*a;m+=a;a*=g;f*=l;}return v/m;}
 function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};}
 
+const RES=2;
+
 function getClimate(simTime){
 const yearsBP=300000*(1-simTime);
 let f=Math.sin(yearsBP/100000*Math.PI*2)*.4+Math.sin(yearsBP/41000*Math.PI*2)*.3+Math.sin(yearsBP/23000*Math.PI*2)*.2;
@@ -45,7 +47,7 @@ e+=fbm(nx*8+3.7,ny*8+3.7,5,2,.5)*.12+Math.pow(1-Math.abs(fbm(nx*4.5+30,ny*4.5+30
 rawElev[y*W+x]=e;}
 const sorted=Float32Array.from(rawElev).sort();const sl=sorted[Math.floor(W*H*.7)];
 const isLandArr=new Uint8Array(W*H);for(let i=0;i<W*H;i++)isLandArr[i]=rawElev[i]>sl?1:0;
-const DG=4,dw=Math.ceil(W/DG),dh=Math.ceil(H/DG);const dtl=new Float32Array(dw*dh).fill(9999);
+const DG=RES,dw=Math.ceil(W/DG),dh=Math.ceil(H/DG);const dtl=new Float32Array(dw*dh).fill(9999);
 for(let dy=0;dy<dh;dy++)for(let dx=0;dx<dw;dx++){if(isLandArr[Math.min(H-1,dy*DG)*W+Math.min(W-1,dx*DG)])dtl[dy*dw+dx]=0;}
 for(let p=0;p<2;p++){for(let dy=0;dy<dh;dy++)for(let dx=0;dx<dw;dx++){const i=dy*dw+dx;
 if(dx>0)dtl[i]=Math.min(dtl[i],dtl[i-1]+1);if(dx===0)dtl[i]=Math.min(dtl[i],dtl[dy*dw+dw-1]+1);
@@ -53,7 +55,6 @@ if(dy>0)dtl[i]=Math.min(dtl[i],dtl[(dy-1)*dw+dx]+1);}
 for(let dy=dh-1;dy>=0;dy--)for(let dx=dw-1;dx>=0;dx--){const i=dy*dw+dx;
 if(dx<dw-1)dtl[i]=Math.min(dtl[i],dtl[i+1]+1);if(dx===dw-1)dtl[i]=Math.min(dtl[i],dtl[dy*dw]+1);
 if(dy<dh-1)dtl[i]=Math.min(dtl[i],dtl[(dy+1)*dw+dx]+1);}}
-const coastal=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
 let e=rawElev[i]-sl;if(lat>.86)e=Math.max(e,(lat-.86)*2);
 if(e<0){const dgx=Math.min(dw-1,Math.floor(x/DG)),dgy=Math.min(dh-1,Math.floor(y/DG)),dist=dtl[dgy*dw+dgx];
@@ -63,9 +64,12 @@ const ridge=fbm(nx*3+seed*0.01,ny*3+seed*0.01,3,2.2,0.5);if(ridge>0.2)bd+=(ridge
 e=Math.min(e,bd);}e+=fbm(nx*12+40,ny*12+40,2,2,.4)*0.008;}
 elevation[i]=e;let m=fbm(nx*4+50,ny*4+50,4,2,.55)*.4+.35+(1-lat)*.2;if(e>-.05&&e<.03)m+=.15;
 moisture[i]=Math.max(0,Math.min(1,m));temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
-for(let y=1;y<H-1;y++)for(let x=0;x<W;x++){if(elevation[y*W+x]>0){
-outer:for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const wx=((x+dx)%W+W)%W;
-if(elevation[(y+dy)*W+wx]<=0){coastal[y*W+x]=1;break outer;}}}}
+const ctw=Math.ceil(W/RES),cth=Math.ceil(H/RES);const coastal=new Uint8Array(ctw*cth);
+for(let ty=1;ty<cth-1;ty++)for(let tx=0;tx<ctw;tx++){const px=Math.min(W-1,tx*RES),py=Math.min(H-1,ty*RES);
+if(elevation[py*W+px]>0){
+outer:for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const wx=((tx+dx)%ctw+ctw)%ctw,wy=ty+dy;if(wy<0||wy>=cth)continue;
+const npx=Math.min(W-1,wx*RES),npy=Math.min(H-1,wy*RES);
+if(elevation[npy*W+npx]<=0){coastal[ty*ctw+tx]=1;break outer;}}}}
 return{elevation,moisture,temperature,coastal,width:W,height:H};}
 
 const BC=[[8,18,52],[18,40,88],[32,72,120],[198,186,142],[230,238,245],[210,218,228],[140,132,115],[55,78,52],[110,100,90],[130,126,104],[10,80,22],[166,156,66],[202,176,112],[30,98,36],[118,160,52],[38,62,42],[150,146,104]];
@@ -78,7 +82,7 @@ function tribeRGB(id){const h=((id*67+20)%360)/360,s=(60+((id*31)%25))/100,l=(45
 const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;const hr=(pp,qq,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return pp+(qq-pp)*6*t;if(t<1/2)return qq;if(t<2/3)return pp+(qq-pp)*(2/3-t)*6;return pp;};
 return[Math.round(hr(p,q,h+1/3)*255),Math.round(hr(p,q,h)*255),Math.round(hr(p,q,h-1/3)*255)];}
 
-const RES=2,DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
+const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
 const LEAPS=[];for(let r=3;r<=8;r++)for(let a=0;a<8;a++){const ang=a*Math.PI/4;LEAPS.push([Math.round(Math.cos(ang)*r),Math.round(Math.sin(ang)*r)]);}
 
 function createTerritory(w){
@@ -86,7 +90,7 @@ const tw=Math.ceil(w.width/RES),th=Math.ceil(w.height/RES);
 const tElev=new Float32Array(tw*th),tTemp=new Float32Array(tw*th),tMoist=new Float32Array(tw*th);
 const tCoast=new Uint8Array(tw*th),tDiff=new Float32Array(tw*th),owner=new Int16Array(tw*th).fill(-1),tribeSizes=[];
 for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){const px=Math.min(w.width-1,tx*RES),py=Math.min(w.height-1,ty*RES),i=py*w.width+px;
-tElev[ty*tw+tx]=w.elevation[i];tTemp[ty*tw+tx]=w.temperature[i];tMoist[ty*tw+tx]=w.moisture[i];tCoast[ty*tw+tx]=w.coastal[i];
+tElev[ty*tw+tx]=w.elevation[i];tTemp[ty*tw+tx]=w.temperature[i];tMoist[ty*tw+tx]=w.moisture[i];tCoast[ty*tw+tx]=w.coastal[ty*tw+tx];
 const e=w.elevation[i],t=w.temperature[i],m=w.moisture[i];let diff=0;
 if(e>0.35)diff=Math.max(diff,Math.min(1,(e-0.35)*3));if(t>0.5&&m<0.2)diff=Math.max(diff,Math.min(0.85,(0.2-m)*3*(t-0.3)));
 if(t<0.2)diff=Math.max(diff,Math.min(0.9,(0.2-t)*4));tDiff[ty*tw+tx]=diff;}
