@@ -133,6 +133,7 @@ const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni]+tm;if
 const diff=tDiff[ni],adjDiff=Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0));
 let chance;if(elev<=0&&elev>sl)chance=0.7*wet;else if(tCoast[ni])chance=0.9*wet;else chance=0.45*(1-adjDiff)*wet;
 if(effT<0.15)chance*=0.3;
+chance*=0.5+tFert[ni]*1.5;// fertile tiles attract expansion (0.5x desert → 2x river valley)
 if(Math.random()<chance){let nw=ow;const tc=tribeCenters[ow];const dist=tc?tDistW(nx,ny,tc.x,tc.y,tw):0;
 // Count same-tribe neighbors: if tile is infill (≥3 same-tribe neighbors), never split
 let sameN=0;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny+dy2;
@@ -160,7 +161,8 @@ for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>
 const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<1)continue;
 const densB=tribeStrength[no]/tribeSizes[no];
 if(densB>densA*def){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(densB/(densA*def)-1)*0.4;
-if(Math.random()<Math.max(0.01,pressure*(1-diff*0.7))){flips.push([i,no]);break;}}}}
+const prize=0.5+tFert[i]*1.5;// fertile tiles are worth fighting for
+if(Math.random()<Math.max(0.01,pressure*prize*(1-diff*0.7))){flips.push([i,no]);break;}}}}
 for(const[ti,to]of flips){if(owner[ti]===to)continue;claimTile(ter,ti,to);nf.add(ti);}}
 // ── Fragmentation: split disconnected tribe components (largest keeps original ID/color) ──
 if(ter.stepCount%16===0){const mark=new Int32Array(tw*th);let gen=0;
