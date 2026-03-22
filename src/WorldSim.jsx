@@ -390,8 +390,8 @@ export default function WorldSim(){
 const canvasRef=useRef(null);const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
-const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState(null);
-const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
+const[viewMode,setViewMode]=useState("terrain");const[showPower,setShowPower]=useState(false);const[preset,setPreset]=useState(null);
+const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain"),showPowerRef=useRef(false);
 const presetRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
@@ -491,8 +491,8 @@ ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
 ctx.fillStyle=isCapital?`rgb(${cr},${cg},${cb})`:`rgba(${cr},${cg},${cb},0.7)`;ctx.fill();
 ctx.beginPath();ctx.arc(cx2,cy2,r2+2,0,Math.PI*2);
 ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?2:1;ctx.stroke();}}
-// Power projection overlay
-if(viewRef.current==="power"&&ter){const tw2=ter.tw,th2=ter.th;
+// Power projection overlay (toggled independently, rendered on tribes view)
+if(showPowerRef.current&&(viewRef.current==="tribes"||viewRef.current==="terrain")&&ter){const tw2=ter.tw,th2=ter.th;
 ctx.globalAlpha=0.5;
 for(let ty2=0;ty2<th2;ty2+=2)for(let tx2=0;tx2<tw2;tx2+=2){
 const ti=ty2*tw2+tx2;if(ter.tElev[ti]<=0)continue;
@@ -511,7 +511,7 @@ if(intensity>0.6){ctx.beginPath();ctx.moveTo(px+RES,py);ctx.lineTo(px+RES,py+RES
 ctx.globalAlpha=1.0;}
 },[updateTerrainCache]);
 
-useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode]);
+useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,showPower]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -560,10 +560,14 @@ color:"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,l
 <button onClick={()=>{presetRef.current="earth";setPreset("earth");setSeed(Math.floor(Math.random()*999999));}} style={{background:preset==="earth"?"rgba(100,160,220,0.18)":"rgba(201,184,122,0.05)",border:`1px solid ${preset==="earth"?"rgba(100,160,220,0.3)":"rgba(201,184,122,0.15)"}`,
 color:preset==="earth"?"#7ab8e0":"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,letterSpacing:1,fontFamily:"inherit"}}>🌎 Earth</button>
 <div style={{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:3,padding:2,border:"1px solid rgba(201,184,122,0.1)"}}>
-{[["terrain","Terrain"],["depth","Depth"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
+{[["terrain","Terrain"],["depth","Depth"],["tribes","Tribes"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}} style={{background:viewMode===k?"rgba(201,184,122,0.18)":"transparent",
 border:"none",color:viewMode===k?"#c9b87a":"#5a5448",padding:"5px 10px",borderRadius:2,cursor:"pointer",fontSize:9,letterSpacing:1,
 textTransform:"uppercase",fontFamily:"inherit",transition:"all 0.2s"}}>{label}</button>))}</div>
+<button onClick={()=>{const v=!showPower;setShowPower(v);showPowerRef.current=v;if(world&&terRef.current)draw(terRef.current);}}
+style={{background:showPower?"rgba(180,140,220,0.18)":"rgba(201,184,122,0.05)",border:`1px solid ${showPower?"rgba(180,140,220,0.3)":"rgba(201,184,122,0.15)"}`,
+color:showPower?"#c0a0e0":"#5a5448",padding:"5px 10px",borderRadius:2,cursor:"pointer",fontSize:9,letterSpacing:1,
+textTransform:"uppercase",fontFamily:"inherit"}}>Power</button>
 <span style={{fontSize:9,color:"#3a3530",fontFamily:"monospace"}}>seed:{seed}</span></div>
 <div style={{display:"flex",gap:10,marginTop:12,flexWrap:"wrap",justifyContent:"center"}}>
 {[["Deep ocean",[8,18,52]],["Shelf",[32,72,120]],["Sea ice",[225,235,248]],["Beach",[198,186,142]],["Tundra",[140,132,115]],
