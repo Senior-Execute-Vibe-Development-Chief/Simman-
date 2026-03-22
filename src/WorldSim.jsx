@@ -108,9 +108,20 @@ frontier:new Set([oi]),landCount:lc,settled:1,tribes:1,origin:{x:bx,y:by},prevSe
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+Math.pow(y1-y2,2));}
 
 function tribePower(ter,id){
-const sz=ter.tribeSizes[id],str=ter.tribeStrength[id];if(sz<=0)return 0;
-const dens=str/sz;// fertility density (economy per tile)
-return str*dens*0.5;// strength × density: big fertile tribes dominate, sprawling empires are weaker per-tile
+// Population = total fertility (what the land can sustain). Military = population.
+// Large fertile empires are genuinely powerful. Logistics penalty keeps it bounded.
+const sz=ter.tribeSizes[id],pop=ter.tribeStrength[id];if(sz<=0)return 0;
+const logistics=1/(1+Math.max(0,sz-30)*0.005);// slight penalty for overextension
+return pop*logistics;
+}
+// Local power projection at a border tile: total population scaled by distance from center
+function localPower(ter,tribeId,tx,ty){
+const pop=ter.tribeStrength[tribeId],sz=ter.tribeSizes[tribeId];if(sz<=0)return 0;
+const tc=ter.tribeCenters[tribeId];if(!tc)return pop;
+const dist=tDistW(tx,ty,tc.x,tc.y,ter.tw);
+// Core tiles get full population backing; distant frontiers get less (min 30%)
+const projection=Math.max(0.3,1-dist*0.015);
+return pop*projection;
 }
 function newTribe(ter,x,y){const id=ter.tribeCenters.length;ter.tribeCenters.push({x,y});ter.tribeSizes.push(0);ter.tribeStrength.push(0);ter.tribes=id+1;return id;}
 function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure}=ter;const ow=owner[ti];
@@ -173,15 +184,16 @@ if(room)nf.add(fi);}
 ter.frontier=nf;
 // ── Age tenure for all owned tiles (cap at 200) ──
 if(ter.stepCount%4===0){const{tenure}=ter;for(let i=0;i<tw*th;i++)if(owner[i]>=0&&tenure[i]<200)tenure[i]++;}
-// ── Border conflict: tiles change hands based on population pressure vs defensive tenure ──
+// ── Border conflict: local power projection determines tile flips ──
 if(ter.stepCount%4===0){const flips=[];const{tenure}=ter;
 for(let i=0;i<tw*th;i++){const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
-const ty2=Math.floor(i/tw),tx2=i%tw;const densA=tribeStrength[ow]/tribeSizes[ow];
-const def=1+Math.min(0.8,tenure[i]*0.004);// defender bonus: linear ramp to 1.8x at cap (200)
+const ty2=Math.floor(i/tw),tx2=i%tw;
+const lpA=localPower(ter,ow,tx2,ty2);// defender's projected power here
+const def=1+Math.min(0.8,tenure[i]*0.004);// tenure bonus
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<10)continue;// attacker needs ≥10 tiles
-const densB=tribeStrength[no]/tribeSizes[no];
-if(densB>densA*def){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(densB/(densA*def)-1)*0.4;
+const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<10)continue;
+const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
+if(lpB>lpA*def){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(lpB/(lpA*def)-1)*0.3;
 const prize=0.5+tFert[i]*1.5;
 if(Math.random()<Math.max(0.01,pressure*prize*(1-diff*0.7))){flips.push([i,no]);break;}}}}
 for(const[ti,to]of flips){if(owner[ti]===to)continue;claimTile(ter,ti,to);nf.add(ti);}}
@@ -342,7 +354,8 @@ fontFamily:"'Palatino Linotype','Book Antiqua',Palatino,serif",color:"#ccc5b8",d
 {dominant&&<div><div style={{fontSize:8,color:"#5a5448",letterSpacing:1.5,textTransform:"uppercase"}}>Dominant</div>
 <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:8,height:8,borderRadius:1,background:`rgb(${tribeRGB(dominant.id).join(",")})`}} />
 <span style={{fontSize:11,color:"#c9b87a"}}>{dominant.size}t</span>
-<span style={{fontSize:9,color:"#6a6358"}}>P:{Math.round(dominant.power)}</span></div></div>}</div>
+<span style={{fontSize:9,color:"#6a6358"}}>Pop:{dominant.strength.toFixed(1)}</span>
+<span style={{fontSize:9,color:"#6a6358"}}>Mil:{dominant.power.toFixed(1)}</span></div></div>}</div>
 <div style={{position:"absolute",bottom:22,left:8,background:"rgba(6,8,16,0.82)",borderRadius:3,padding:"4px 10px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
 <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:7,color:"#5a5448",letterSpacing:1,textTransform:"uppercase"}}>Temp</span>
 <div style={{width:36,height:5,background:"rgba(255,255,255,0.06)",borderRadius:3,position:"relative"}}>
