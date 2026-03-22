@@ -463,7 +463,7 @@ const ROMAN_MAP={"p":"p","b":"b","t":"t","d":"d","k":"k","g":"g","q":"q","ʔ":"'
 "x":"kh","h":"h","l":"l","r":"r","j":"y","w":"w",
 "i":"ee","e":"ay","ɛ":"eh","a":"a","ə":"u","u":"oo","o":"oh","ɔ":"aw",".":""};
 function romanize(ipa){let o="",i=0;while(i<ipa.length){if(i+1<ipa.length){const d=ipa.slice(i,i+2);if(ROMAN_MAP[d]!==undefined){o+=ROMAN_MAP[d];i+=2;continue;}}o+=ROMAN_MAP[ipa[i]]!==undefined?ROMAN_MAP[ipa[i]]:ipa[i];i++;}return o.replace(/([aeiou])\1{2,}/gi,(_,c)=>c+c);}
-function romanizeWord(sf){return romanize(sf.replace(/./g,""));}
+function romanizeWord(sf){return romanize(sf.replace(/\./g,""));}
 
 const IRREG_PAST={"see":"saw","eat":"ate","run":"ran","give":"gave","take":"took","sleep":"slept","sing":"sang","make":"made","fall":"fell","grow":"grew","fly":"flew","swim":"swam","break":"broke","hold":"held","throw":"threw","burn":"burnt","drink":"drank","know":"knew","cut":"cut","find":"found","dig":"dug","hide":"hid"};
 function englishTranslation(subj,verb,obj,adj,tense,subjPl,objPl,useDet){
@@ -819,10 +819,10 @@ const oW=buildWord(oUF,w);
 const hUF=inflN(L,headNoun,null,false);
 const hW=buildWord(hUF,w);
 
-const relPart={sf:relW.sf.replace(/./g,""),role:"rel",gloss:"REL"};
-const verbPart={sf:vW.sf.replace(/./g,""),role:"verb",gloss:verb.meaning+".PST"};
-const objPart={sf:oW.sf.replace(/./g,""),role:"noun",gloss:objNoun.meaning};
-const headPart={sf:hW.sf.replace(/./g,""),role:"noun",gloss:headNoun.meaning};
+const relPart={sf:relW.sf.replace(/\./g,""),role:"rel",gloss:"REL"};
+const verbPart={sf:vW.sf.replace(/\./g,""),role:"verb",gloss:verb.meaning+".PST"};
+const objPart={sf:oW.sf.replace(/\./g,""),role:"noun",gloss:objNoun.meaning};
+const headPart={sf:hW.sf.replace(/\./g,""),role:"noun",gloss:headNoun.meaning};
 
 let words;
 if(L.relStrategy==="prenominal"){
@@ -853,8 +853,8 @@ if(L.adpType==="post"){
 // Postposition: noun + adp
 return{
 words:[
-{sf:nW.sf.replace(/./g,""),role:"noun",gloss:noun.meaning,alts:nW.alts},
-{sf:adpW.sf.replace(/./g,""),role:"adp",gloss:adp,alts:adpW.alts}
+{sf:nW.sf.replace(/\./g,""),role:"noun",gloss:noun.meaning,alts:nW.alts},
+{sf:adpW.sf.replace(/\./g,""),role:"adp",gloss:adp,alts:adpW.alts}
 ],
 english:`${adp} the ${noun.meaning}`,
 morphs:[{label:noun.meaning,uf:nUF,sf:nW.sf,stem:noun.ipa,affixes:nUF.slice(noun.ipa.length),alts:nW.alts}]
@@ -863,8 +863,8 @@ morphs:[{label:noun.meaning,uf:nUF,sf:nW.sf,stem:noun.ipa,affixes:nUF.slice(noun
 // Preposition: adp + noun
 return{
 words:[
-{sf:adpW.sf.replace(/./g,""),role:"adp",gloss:adp,alts:adpW.alts},
-{sf:nW.sf.replace(/./g,""),role:"noun",gloss:noun.meaning,alts:nW.alts}
+{sf:adpW.sf.replace(/\./g,""),role:"adp",gloss:adp,alts:adpW.alts},
+{sf:nW.sf.replace(/\./g,""),role:"noun",gloss:noun.meaning,alts:nW.alts}
 ],
 english:`${adp} the ${noun.meaning}`,
 morphs:[{label:noun.meaning,uf:nUF,sf:nW.sf,stem:noun.ipa,affixes:nUF.slice(noun.ipa.length),alts:nW.alts}]
@@ -883,9 +883,9 @@ if(!ufSegs.length)return[];
 const tableau=evalUF(ufSegs,w);
 if(!tableau.length)return[];
 const winner=tableau[0];
-const ufIPA=uf;const sfIPA=sf.replace(/./g,"");
+const ufIPA=uf;const sfIPA=sf.replace(/\./g,"");
 if(ufIPA===sfIPA)return[];
-const faithful=tableau.find(c=>c.ipa.replace(/./g,"")===ufIPA);
+const faithful=tableau.find(c=>c.ipa.replace(/\./g,"")===ufIPA);
 if(!faithful)return[{type:"changed",from:ufIPA,to:sfIPA,reason:"phonological optimization"}];
 const alts=[];
 CON.forEach(c=>{
@@ -922,23 +922,23 @@ const proIPA=L.pronouns[person];let proUF=proIPA;
 if(L.cases&&cas&&L.cases[cas])proUF+=L.cases[cas];
 const proW=buildWord(proUF,w);
 morphBreakdown.push({label:EN_PRON[person],uf:proUF,sf:proW.sf,stem:proIPA,affixes:proUF.slice(proIPA.length),alts:proW.alts});
-return[{sf:proW.sf.replace(/./g,""),role:"pron",gloss:person,alts:proW.alts}];
+return[{sf:proW.sf.replace(/\./g,""),role:"pron",gloss:person,alts:proW.alts}];
 }
 const np=[];
-if(useDet&&L.hasDet){const di=classDet(L,subj.meaning);if(di){const dW=buildWord(di,w);np.push({sf:dW.sf.replace(/./g,""),role:"det",gloss:"the"});}}
+if(useDet&&L.hasDet){const di=classDet(L,subj.meaning);if(di){const dW=buildWord(di,w);np.push({sf:dW.sf.replace(/\./g,""),role:"det",gloss:"the"});}}
 const nUF=inflN(L,subj,cas,sp);const nW=buildWord(nUF,w);
 if(adj){
 const aUF=inflAdj(L,adj,subj.meaning);const aW=buildWord(aUF,w);
-if(L.adjBefore)np.push({sf:aW.sf.replace(/./g,""),role:"adj",gloss:adj.meaning+(L.nClassCount?".CL":""),alts:aW.alts});
-np.push({sf:nW.sf.replace(/./g,""),role:"noun",gloss:subj.meaning+(sp?".PL":"")+(cas?"."+cas:""),alts:nW.alts});
-if(!L.adjBefore)np.push({sf:aW.sf.replace(/./g,""),role:"adj",gloss:adj.meaning+(L.nClassCount?".CL":""),alts:aW.alts});
+if(L.adjBefore)np.push({sf:aW.sf.replace(/\./g,""),role:"adj",gloss:adj.meaning+(L.nClassCount?".CL":""),alts:aW.alts});
+np.push({sf:nW.sf.replace(/\./g,""),role:"noun",gloss:subj.meaning+(sp?".PL":"")+(cas?"."+cas:""),alts:nW.alts});
+if(!L.adjBefore)np.push({sf:aW.sf.replace(/\./g,""),role:"adj",gloss:adj.meaning+(L.nClassCount?".CL":""),alts:aW.alts});
 morphBreakdown.push({label:adj.meaning,uf:aUF,sf:aW.sf,stem:adj.ipa,affixes:aUF.slice(adj.ipa.length),alts:aW.alts});
-} else np.push({sf:nW.sf.replace(/./g,""),role:"noun",gloss:subj.meaning+(sp?".PL":"")+(cas?"."+cas:""),alts:nW.alts});
+} else np.push({sf:nW.sf.replace(/\./g,""),role:"noun",gloss:subj.meaning+(sp?".PL":"")+(cas?"."+cas:""),alts:nW.alts});
 morphBreakdown.push({label:subj.meaning,uf:nUF,sf:nW.sf,stem:subj.ipa,affixes:nUF.slice(subj.ipa.length),alts:nW.alts});
 return np;
 };
-const buildObj=(noun,cas)=>{const nUF=inflN(L,noun,cas,false);const nW=buildWord(nUF,w);morphBreakdown.push({label:noun.meaning,uf:nUF,sf:nW.sf,stem:noun.ipa,affixes:nUF.slice(noun.ipa.length),alts:nW.alts});return[{sf:nW.sf.replace(/./g,""),role:"noun",gloss:noun.meaning+(cas?"."+cas:""),alts:nW.alts}];};
-const buildVerb=(verb)=>{const vUF=inflV(L,verb,tense,person,aspect);const vW=buildWord(vUF,w);const ag=aspect?"."+aspect:"";morphBreakdown.push({label:verb.meaning,uf:vUF,sf:vW.sf,stem:verb.ipa,affixes:vUF.slice(verb.ipa.length),alts:vW.alts});return{sf:vW.sf.replace(/./g,""),role:"verb",gloss:verb.meaning+"."+tense+ag+(L.agreeType!=="none"?"."+person:""),alts:vW.alts};};
+const buildObj=(noun,cas)=>{const nUF=inflN(L,noun,cas,false);const nW=buildWord(nUF,w);morphBreakdown.push({label:noun.meaning,uf:nUF,sf:nW.sf,stem:noun.ipa,affixes:nUF.slice(noun.ipa.length),alts:nW.alts});return[{sf:nW.sf.replace(/\./g,""),role:"noun",gloss:noun.meaning+(cas?"."+cas:""),alts:nW.alts}];};
+const buildVerb=(verb)=>{const vUF=inflV(L,verb,tense,person,aspect);const vW=buildWord(vUF,w);const ag=aspect?"."+aspect:"";morphBreakdown.push({label:verb.meaning,uf:vUF,sf:vW.sf,stem:verb.ipa,affixes:vUF.slice(verb.ipa.length),alts:vW.alts});return{sf:vW.sf.replace(/\./g,""),role:"verb",gloss:verb.meaning+"."+tense+ag+(L.agreeType!=="none"?"."+person:""),alts:vW.alts};};
 const subjEn=usePronoun?EN_PRON[person]:(useDet?"the ":"")+(adj?adj.meaning+" ":"")+(sp?subj.meaning+"s":subj.meaning);
 const aspEn=aspect==="IPFV"?" (ongoing)":"";
 const verbEn=(verb,t)=>t==="FUT"?"will "+verb.meaning:t==="PST"?(IRREG_PAST[verb.meaning]||verb.meaning+"ed"):(person==="3sg"?(verb.meaning.endsWith("s")?verb.meaning+"es":verb.meaning+"s"):verb.meaning);
@@ -956,7 +956,7 @@ const predAdj=pick(L.lexicon.ADJ);const sNP=buildSubj(L.cases?"NOM":null);
 const copUF=inflV(L,{ipa:L.copula,meaning:"be"},tense,person,aspect);const copW=buildWord(copUF,w);
 morphBreakdown.push({label:"be",uf:copUF,sf:copW.sf,stem:L.copula,affixes:copUF.slice(L.copula.length),alts:copW.alts});
 const predW=buildWord(predAdj.ipa,w);
-words=[...sNP,{sf:copW.sf.replace(/./g,""),role:"verb",gloss:"be."+tense},{sf:predW.sf.replace(/./g,""),role:"adj",gloss:predAdj.meaning}];
+words=[...sNP,{sf:copW.sf.replace(/\./g,""),role:"verb",gloss:"be."+tense},{sf:predW.sf.replace(/\./g,""),role:"adj",gloss:predAdj.meaning}];
 const beEn=tense==="FUT"?"will be":tense==="PST"?(sp?"were":"was"):(person==="1sg"?"am":sp?"are":"is");
 english=`${subjEn} ${beEn} ${predAdj.meaning}.`;
 } else if(type==="possession"){
@@ -965,7 +965,7 @@ const pUF=possN(L,subj,L.cases?"NOM":null);const pW=buildWord(pUF,w);
 const dUF=inflN(L,possessed,L.cases?"ACC":null,false);const dW=buildWord(dUF,w);
 morphBreakdown.push({label:subj.meaning+".POSS",uf:pUF,sf:pW.sf,stem:subj.ipa,affixes:pUF.slice(subj.ipa.length),alts:pW.alts});
 morphBreakdown.push({label:possessed.meaning,uf:dUF,sf:dW.sf,stem:possessed.ipa,affixes:dUF.slice(possessed.ipa.length),alts:dW.alts});
-words=[{sf:pW.sf.replace(/./g,""),role:"noun",gloss:subj.meaning+".POSS"},{sf:dW.sf.replace(/./g,""),role:"noun",gloss:possessed.meaning}];
+words=[{sf:pW.sf.replace(/\./g,""),role:"noun",gloss:subj.meaning+".POSS"},{sf:dW.sf.replace(/\./g,""),role:"noun",gloss:possessed.meaning}];
 english=`${subj.meaning}'s ${possessed.meaning}`;
 } else if(type==="negated"){
 const verb=pick(L.lexicon.V);const obj=pick(L.lexicon.N.filter(n=>n!==subj))||pick(L.lexicon.N);
@@ -973,14 +973,14 @@ let vUF=inflV(L,verb,tense,person,aspect);vUF=negateV(L,vUF);const vW=buildWord(
 const sNP=buildSubj(L.cases?"NOM":null);
 morphBreakdown.push({label:"NEG."+verb.meaning,uf:vUF,sf:vW.sf,stem:verb.ipa,affixes:vUF.slice(verb.ipa.length),alts:vW.alts});
 const oNP=buildObj(obj,L.cases?"ACC":null);
-const verbWord={sf:vW.sf.replace(/./g,""),role:"verb",gloss:"NEG."+verb.meaning+"."+tense};
-if(L.negType==="particle"){const negW=buildWord(L.negWord,w);const negPart={sf:negW.sf.replace(/./g,""),role:"neg",gloss:"NEG"};words=L.wordOrder==="SVO"?[...sNP,negPart,verbWord,...oNP]:L.wordOrder==="SOV"?[...sNP,...oNP,negPart,verbWord]:[negPart,verbWord,...sNP,...oNP];}
+const verbWord={sf:vW.sf.replace(/\./g,""),role:"verb",gloss:"NEG."+verb.meaning+"."+tense};
+if(L.negType==="particle"){const negW=buildWord(L.negWord,w);const negPart={sf:negW.sf.replace(/\./g,""),role:"neg",gloss:"NEG"};words=L.wordOrder==="SVO"?[...sNP,negPart,verbWord,...oNP]:L.wordOrder==="SOV"?[...sNP,...oNP,negPart,verbWord]:[negPart,verbWord,...sNP,...oNP];}
 else words=order(sNP,verbWord,oNP);
 english=`${subjEn} does not ${verb.meaning} ${obj.meaning}.`;
 } else if(type==="question"){
 const verb=pick(L.lexicon.V);const obj=pick(L.lexicon.N.filter(n=>n!==subj))||pick(L.lexicon.N);
 const sNP=buildSubj(L.cases?"NOM":null);const vW=buildVerb(verb);const oNP=buildObj(obj,L.cases?"ACC":null);
-const qW=buildWord(L.qParticle,w);const qPart={sf:qW.sf.replace(/./g,""),role:"q",gloss:"Q"};
+const qW=buildWord(L.qParticle,w);const qPart={sf:qW.sf.replace(/\./g,""),role:"q",gloss:"Q"};
 const core=order(sNP,vW,oNP);words=L.qPosition==="initial"?[qPart,...core]:[...core,qPart];
 english=`Does ${subjEn.toLowerCase()} ${verb.meaning} ${obj.meaning}?`;
 } else if(type==="pp-trans"||type==="pp-intrans"){
@@ -1162,10 +1162,10 @@ return{noun,adj,pl,uf,sf,cas,person:pl?"3pl":"3sg",isPronoun:false};
 // Word-by-word fallback if no verb found
 if(verbIdx<0){
 const results=tokens.filter(t=>!SKIP_WORDS.has(t)).map(t=>{
-if(EN_TO_PERSON[t]){const p=EN_TO_PERSON[t];const sf=qe(L.pronouns[p]||"",w);return{sf:sf.replace(/./g,""),role:"pron",gloss:p,found:!!L.pronouns[p]};}
+if(EN_TO_PERSON[t]){const p=EN_TO_PERSON[t];const sf=qe(L.pronouns[p]||"",w);return{sf:sf.replace(/\./g,""),role:"pron",gloss:p,found:!!L.pronouns[p]};}
 const dp=depluralize(t);
 const item=findInLex(L.lexicon,"N",dp.base)||findInLex(L.lexicon,"V",t)||findInLex(L.lexicon,"ADJ",t)||findAnyLex(L.lexicon,dp.base)||findAnyLex(L.lexicon,t);
-if(item){const sf=qe(item.ipa,w);return{sf:sf.replace(/./g,""),role:"noun",gloss:item.meaning,found:true};}
+if(item){const sf=qe(item.ipa,w);return{sf:sf.replace(/\./g,""),role:"noun",gloss:item.meaning,found:true};}
 return{sf:"?",role:"?",gloss:t,found:false};
 });
 return{words:results,surfaceLine:results.map(r=>r.sf).join(" "),romanLine:results.map(r=>romanize(r.sf)).join(" "),glossLine:results.map(r=>r.gloss).join(" "),partial:true,morphBreakdown:[]};
@@ -1190,30 +1190,30 @@ const morphBreakdown=[];
 // Build subject words
 let sNPwords=[];
 if(subjNP.isPronoun){
-sNPwords.push({sf:subjNP.sf.replace(/./g,""),role:"pron",gloss:subjNP.person});
+sNPwords.push({sf:subjNP.sf.replace(/\./g,""),role:"pron",gloss:subjNP.person});
 morphBreakdown.push({label:subjNP.person,uf:subjNP.uf,sf:subjNP.sf,stem:subjNP.proIPA,affixes:subjNP.uf.slice(subjNP.proIPA.length)});
 } else {
 const detSF=hasDet&&L.hasDet?qe(L.detWord,w):null;
-if(detSF)sNPwords.push({sf:detSF.replace(/./g,""),role:"det",gloss:"the"});
+if(detSF)sNPwords.push({sf:detSF.replace(/\./g,""),role:"det",gloss:"the"});
 if(subjNP.adj){
 const aSF=qe(subjNP.adj.ipa,w);
-if(L.adjBefore)sNPwords.push({sf:aSF.replace(/./g,""),role:"adj",gloss:subjNP.adj.meaning});
-if(subjNP.sf)sNPwords.push({sf:subjNP.sf.replace(/./g,""),role:"noun",gloss:(subjNP.noun?.meaning||"?")+(subjNP.pl?".PL":"")});
-if(!L.adjBefore)sNPwords.push({sf:aSF.replace(/./g,""),role:"adj",gloss:subjNP.adj.meaning});
+if(L.adjBefore)sNPwords.push({sf:aSF.replace(/\./g,""),role:"adj",gloss:subjNP.adj.meaning});
+if(subjNP.sf)sNPwords.push({sf:subjNP.sf.replace(/\./g,""),role:"noun",gloss:(subjNP.noun?.meaning||"?")+(subjNP.pl?".PL":"")});
+if(!L.adjBefore)sNPwords.push({sf:aSF.replace(/\./g,""),role:"adj",gloss:subjNP.adj.meaning});
 } else if(subjNP.sf){
-sNPwords.push({sf:subjNP.sf.replace(/./g,""),role:"noun",gloss:(subjNP.noun?.meaning||"?")+(subjNP.pl?".PL":"")});
+sNPwords.push({sf:subjNP.sf.replace(/\./g,""),role:"noun",gloss:(subjNP.noun?.meaning||"?")+(subjNP.pl?".PL":"")});
 }
 if(subjNP.noun)morphBreakdown.push({label:subjNP.noun.meaning,uf:subjNP.uf,sf:subjNP.sf,stem:subjNP.noun.ipa,affixes:subjNP.uf.slice(subjNP.noun.ipa.length)});
 }
 
 // Verb word
-const verbWord={sf:vSF.replace(/./g,""),role:"verb",gloss:(verbItem?.meaning||"?")+"."+verbTense+(L.agreeType!=="none"?"."+person:"")};
+const verbWord={sf:vSF.replace(/\./g,""),role:"verb",gloss:(verbItem?.meaning||"?")+"."+verbTense+(L.agreeType!=="none"?"."+person:"")};
 if(verbItem)morphBreakdown.push({label:verbItem.meaning,uf:vUF,sf:vSF,stem:verbItem.ipa,affixes:vUF.slice(verbItem.ipa.length)});
 
 // Object words
 let oNPwords=[];
 if(objNP.sf){
-oNPwords.push({sf:objNP.sf.replace(/./g,""),role:"noun",gloss:(objNP.noun?.meaning||"?")+(objNP.pl?".PL":"")});
+oNPwords.push({sf:objNP.sf.replace(/\./g,""),role:"noun",gloss:(objNP.noun?.meaning||"?")+(objNP.pl?".PL":"")});
 if(objNP.noun)morphBreakdown.push({label:objNP.noun.meaning,uf:objNP.uf,sf:objNP.sf,stem:objNP.noun.ipa,affixes:objNP.uf.slice(objNP.noun.ipa.length)});
 }
 
@@ -1225,9 +1225,9 @@ const adpIPA=L.adpositions[ppAdp];
 const adpSF=qe(adpIPA,w);
 if(ppNP.sf){
 if(L.adpType==="post"){
-ppWords=[{sf:ppNP.sf.replace(/./g,""),role:"noun",gloss:ppNP.noun?.meaning||"?"},{sf:adpSF.replace(/./g,""),role:"adp",gloss:ppAdp}];
+ppWords=[{sf:ppNP.sf.replace(/\./g,""),role:"noun",gloss:ppNP.noun?.meaning||"?"},{sf:adpSF.replace(/\./g,""),role:"adp",gloss:ppAdp}];
 } else {
-ppWords=[{sf:adpSF.replace(/./g,""),role:"adp",gloss:ppAdp},{sf:ppNP.sf.replace(/./g,""),role:"noun",gloss:ppNP.noun?.meaning||"?"}];
+ppWords=[{sf:adpSF.replace(/\./g,""),role:"adp",gloss:ppAdp},{sf:ppNP.sf.replace(/\./g,""),role:"noun",gloss:ppNP.noun?.meaning||"?"}];
 }
 if(ppNP.noun)morphBreakdown.push({label:ppNP.noun.meaning,uf:ppNP.uf,sf:ppNP.sf,stem:ppNP.noun.ipa,affixes:ppNP.uf.slice(ppNP.noun.ipa.length)});
 }
