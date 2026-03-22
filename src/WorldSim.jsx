@@ -115,8 +115,15 @@ owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;}
 function stepTerritory(ter,w,climate){
 const{tempMod:tm,seaLevel:sl,wet}=climate;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // ── Sea level flooding ──
-if(sl>ter.prevSeaLevel){for(let i=0;i<tw*th;i++){if(owner[i]>=0&&tElev[i]<=sl){
-tribeSizes[owner[i]]--;tribeStrength[owner[i]]-=tFert[i];owner[i]=-1;ter.tenure[i]=0;ter.settled--;ter.frontier.delete(i);}}}
+if(sl!==ter.prevSeaLevel){
+// Flood tiles that went underwater
+for(let i=0;i<tw*th;i++){if(owner[i]>=0&&tElev[i]<=sl){
+tribeSizes[owner[i]]--;tribeStrength[owner[i]]-=tFert[i];owner[i]=-1;ter.tenure[i]=0;ter.settled--;ter.frontier.delete(i);}}
+// Re-add owned tiles adjacent to newly-changed coastline to frontier
+for(let i=0;i<tw*th;i++){if(owner[i]<0||tElev[i]<=sl)continue;
+const ty2=Math.floor(i/tw),tx2=i%tw;
+for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;
+if(owner[ny2*tw+nx2]<0){ter.frontier.add(i);break;}}}}
 ter.prevSeaLevel=sl;
 // ── Expansion into empty land ──
 const nf=new Set();
@@ -127,8 +134,12 @@ const diff=tDiff[ni],adjDiff=Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0));
 let chance;if(elev<=0&&elev>sl)chance=0.7*wet;else if(tCoast[ni])chance=0.9*wet;else chance=0.45*(1-adjDiff)*wet;
 if(effT<0.15)chance*=0.3;
 if(Math.random()<chance){let nw=ow;const tc=tribeCenters[ow];const dist=tc?tDistW(nx,ny,tc.x,tc.y,tw):0;
+// Count same-tribe neighbors: if tile is infill (≥3 same-tribe neighbors), never split
+let sameN=0;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny+dy2;
+if(ay>=0&&ay<th&&owner[ay*tw+ax]===ow)sameN++;}
 const dens=tribeSizes[ow]>0?tribeStrength[ow]/tribeSizes[ow]:0;
-const splitChance=diff>0.5&&pDiff<0.3?0.4*(1-dens):dist>20?(0.15+0.35*(1-dens))*(tFert[ni]>dens?1.5:0.3):0;
+let splitChance=0;
+if(sameN<3){splitChance=diff>0.5&&pDiff<0.3?0.4*(1-dens):dist>20?(0.15+0.35*(1-dens))*(tFert[ni]>dens?1.5:0.3):0;}
 if(splitChance>0&&Math.random()<splitChance)nw=newTribe(ter,nx,ny);
 claimTile(ter,ni,nw);nf.add(ni);}else room=true;}
 if((tCoast[fi]||(tElev[fi]<=0&&tElev[fi]>sl))&&wet>0.3){for(const[dx,dy]of LEAPS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;const ni=ny*tw+nx;
