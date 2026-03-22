@@ -43,12 +43,12 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.ab
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);// 0-255
 // Convert heightmap byte to elevation: 0=ocean, >0=land
 // Add subtle fbm noise for coastline variation and terrain detail
-const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.015+fbm(nx*40+7,ny*40+7,2,2,.4)*.008;
-if(he<5){// Ocean
+const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
+if(he<3){// Ocean
 const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
-elevation[i]=-0.03-Math.max(0,(1-he/5))*0.12+depth;
-}else{// Land: map 5-255 to ~0.005-0.6 elevation
-let e=(he-5)/250*0.55+0.005+noise;
+elevation[i]=-0.03-Math.max(0,(1-he/3))*0.12+depth;
+}else{// Land: map 3-255 to ~0.005-0.6 elevation
+let e=(he-3)/252*0.55+0.005+noise;
 elevation[i]=Math.max(0.001,e);}
 // Moisture from heightmap data
 const hm=sampleEarth(mData,EARTH_W,EARTH_H,x,y,W,H)/255;// 0-1
