@@ -32,12 +32,65 @@ else if(yearsBP>3000){eraName="Holocene";eraDesc="Agriculture - populations merg
 else{eraName="Modern Era";eraDesc="Humanity spans the globe";}
 return{tempMod,seaLevel,wet,yearsBP,eraName,eraDesc};}
 
-function generateWorld(W,H,seed){
+// Earth preset: hand-placed continent ellipses approximating real geography
+// Coordinates are normalized 0-1 (x wraps, y: 0=north pole, 1=south pole)
+function earthSpecs(rng){const s=[];const n=()=>rng()*100;
+// ── North America ──
+s.push({cx:.14,cy:.22,rx:.08,ry:.08,rot:-.2,no:n(),str:1.0});// Canada core
+s.push({cx:.10,cy:.28,rx:.06,ry:.10,rot:-.3,no:n(),str:.95});// West coast / Rockies
+s.push({cx:.17,cy:.32,rx:.05,ry:.07,rot:-.1,no:n(),str:.85});// Eastern seaboard
+s.push({cx:.12,cy:.38,rx:.04,ry:.03,rot:.2,no:n(),str:.80});// Gulf coast / Mexico
+s.push({cx:.08,cy:.20,rx:.05,ry:.04,rot:-.4,no:n(),str:.75});// Alaska
+s.push({cx:.14,cy:.42,rx:.025,ry:.025,rot:.3,no:n(),str:.65});// Central America
+// ── South America ──
+s.push({cx:.21,cy:.55,rx:.04,ry:.10,rot:.15,no:n(),str:.95});// Brazil / Amazon
+s.push({cx:.19,cy:.65,rx:.03,ry:.08,rot:.1,no:n(),str:.85});// Andes / west
+s.push({cx:.22,cy:.48,rx:.03,ry:.04,rot:-.1,no:n(),str:.75});// Venezuela/Colombia
+s.push({cx:.19,cy:.75,rx:.02,ry:.04,rot:.05,no:n(),str:.70});// Patagonia
+// ── Europe ──
+s.push({cx:.47,cy:.22,rx:.04,ry:.04,rot:.2,no:n(),str:.80});// Western Europe
+s.push({cx:.50,cy:.18,rx:.03,ry:.03,rot:.4,no:n(),str:.70});// Scandinavia
+s.push({cx:.44,cy:.26,rx:.03,ry:.02,rot:-.2,no:n(),str:.65});// Iberia/Italy
+s.push({cx:.52,cy:.23,rx:.03,ry:.03,rot:.1,no:n(),str:.70});// Eastern Europe
+// ── Africa ──
+s.push({cx:.49,cy:.42,rx:.05,ry:.10,rot:.05,no:n(),str:1.0});// Core Africa
+s.push({cx:.47,cy:.35,rx:.04,ry:.04,rot:-.1,no:n(),str:.85});// North Africa / Sahara
+s.push({cx:.51,cy:.52,rx:.03,ry:.06,rot:.15,no:n(),str:.80});// East Africa
+s.push({cx:.46,cy:.55,rx:.03,ry:.04,rot:-.1,no:n(),str:.70});// Congo basin
+s.push({cx:.50,cy:.62,rx:.02,ry:.03,rot:.0,no:n(),str:.65});// Southern Africa
+// ── Asia ──
+s.push({cx:.60,cy:.20,rx:.08,ry:.06,rot:.1,no:n(),str:1.0});// Siberia/Central
+s.push({cx:.68,cy:.30,rx:.06,ry:.06,rot:-.15,no:n(),str:.95});// China/East Asia
+s.push({cx:.55,cy:.30,rx:.05,ry:.05,rot:.2,no:n(),str:.85});// Middle East/India approach
+s.push({cx:.62,cy:.36,rx:.04,ry:.04,rot:.3,no:n(),str:.80});// India/SE Asia
+s.push({cx:.72,cy:.22,rx:.04,ry:.04,rot:-.1,no:n(),str:.75});// Japan/Korea area
+s.push({cx:.66,cy:.40,rx:.04,ry:.03,rot:.4,no:n(),str:.70});// SE Asia / Indonesia
+s.push({cx:.56,cy:.36,rx:.03,ry:.04,rot:.1,no:n(),str:.80});// Indian subcontinent
+// ── Australia ──
+s.push({cx:.78,cy:.60,rx:.05,ry:.04,rot:.1,no:n(),str:.90});// Australia main
+s.push({cx:.80,cy:.57,rx:.03,ry:.02,rot:-.2,no:n(),str:.65});// Northern Aus
+// ── Greenland ──
+s.push({cx:.30,cy:.12,rx:.03,ry:.04,rot:.1,no:n(),str:.75});
+// ── Antarctica (ring of blobs at south) ──
+s.push({cx:.50,cy:.92,rx:.12,ry:.04,rot:.0,no:n(),str:.80});
+s.push({cx:.30,cy:.93,rx:.08,ry:.03,rot:.2,no:n(),str:.70});
+s.push({cx:.70,cy:.93,rx:.08,ry:.03,rot:-.2,no:n(),str:.70});
+// ── Small island groups ──
+s.push({cx:.73,cy:.45,rx:.015,ry:.02,rot:.3,no:n(),str:.50});// Philippines
+s.push({cx:.76,cy:.50,rx:.02,ry:.015,rot:.5,no:n(),str:.45});// Indonesia east
+s.push({cx:.85,cy:.68,rx:.015,ry:.02,rot:.2,no:n(),str:.50});// New Zealand
+s.push({cx:.42,cy:.26,rx:.015,ry:.01,rot:.0,no:n(),str:.45});// British Isles
+s.push({cx:.60,cy:.44,rx:.02,ry:.01,rot:.5,no:n(),str:.45});// Sri Lanka
+return s;}
+
+function generateWorld(W,H,seed,preset){
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
 const specs=[];
+if(preset==="earth"){specs.push(...earthSpecs(rng));}
+else{
 for(let i=0;i<5+Math.floor(rng()*4);i++)specs.push({cx:rng(),cy:.06+rng()*.88,rx:.09+rng()*.2,ry:.07+rng()*.15,rot:rng()*Math.PI,no:rng()*100,str:.75+rng()*.5});
-for(let i=0;i<5+Math.floor(rng()*6);i++)specs.push({cx:rng(),cy:.1+rng()*.8,rx:.025+rng()*.05,ry:.015+rng()*.04,rot:rng()*Math.PI,no:rng()*100,str:.45+rng()*.35});
+for(let i=0;i<5+Math.floor(rng()*6);i++)specs.push({cx:rng(),cy:.1+rng()*.8,rx:.025+rng()*.05,ry:.015+rng()*.04,rot:rng()*Math.PI,no:rng()*100,str:.45+rng()*.35});}
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const nx=x/W,ny=y/H;let e=0;
 for(const c of specs){let dx=nx-c.cx;if(dx>.5)dx-=1;if(dx<-.5)dx+=1;let dy=ny-c.cy;
 dx+=fbm(nx*5+c.no,ny*5+c.no,4,2,.5)*.045;dy+=fbm(nx*5+c.no+30,ny*5+c.no+30,4,2,.5)*.045;
@@ -63,6 +116,27 @@ else{const dd=dist-3,df=Math.min(1,dd/12);let bd=-0.03-df*0.12;
 const ridge=fbm(nx*3+seed*0.01,ny*3+seed*0.01,3,2.2,0.5);if(ridge>0.2)bd+=(ridge-0.2)*0.08;
 e=Math.min(e,bd);}e+=fbm(nx*12+40,ny*12+40,2,2,.4)*0.008;}
 elevation[i]=e;let m=fbm(nx*4+50,ny*4+50,4,2,.55)*.4+.35+(1-lat)*.2;if(e>-.05&&e<.03)m+=.15;
+if(preset==="earth"&&e>0){// Earth moisture: desert belts at ~20-30° latitude, wet tropics, monsoon
+const tropdist=Math.abs(ny-.45);// tropics near equator
+m+=tropdist<.08?.15:0;// wet tropics
+// Sahara/Arabian desert band (north Africa ~y=0.33-0.40, x=0.42-0.58)
+const sahDx=Math.min(Math.abs(nx-.50),1-Math.abs(nx-.50)),sahDy=Math.abs(ny-.36);
+if(sahDx<.10&&sahDy<.05)m-=.35*(1-sahDx/.10)*(1-sahDy/.05);
+// Australian interior (x~0.78, y~0.60)
+const auDx=Math.min(Math.abs(nx-.78),1-Math.abs(nx-.78)),auDy=Math.abs(ny-.60);
+if(auDx<.04&&auDy<.03)m-=.25*(1-auDx/.04)*(1-auDy/.03);
+// Central Asian steppe (x~0.60, y~0.27)
+const caDx=Math.min(Math.abs(nx-.60),1-Math.abs(nx-.60)),caDy=Math.abs(ny-.27);
+if(caDx<.06&&caDy<.03)m-=.20*(1-caDx/.06)*(1-caDy/.03);
+// Amazon basin boost (x~0.21, y~0.52)
+const amDx=Math.min(Math.abs(nx-.21),1-Math.abs(nx-.21)),amDy=Math.abs(ny-.54);
+if(amDx<.05&&amDy<.06)m+=.20*(1-amDx/.05)*(1-amDy/.06);
+// Congo basin boost
+const coDx=Math.min(Math.abs(nx-.48),1-Math.abs(nx-.48)),coDy=Math.abs(ny-.48);
+if(coDx<.04&&coDy<.05)m+=.15*(1-coDx/.04)*(1-coDy/.05);
+// SE Asia monsoon boost
+const seDx=Math.min(Math.abs(nx-.66),1-Math.abs(nx-.66)),seDy=Math.abs(ny-.38);
+if(seDx<.06&&seDy<.04)m+=.15*(1-seDx/.06)*(1-seDy/.04);}
 moisture[i]=Math.max(0,Math.min(1,m));temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 const ctw=Math.ceil(W/RES),cth=Math.ceil(H/RES);const coastal=new Uint8Array(ctw*cth);
 for(let ty=1;ty<cth-1;ty++)for(let tx=0;tx<ctw;tx++){const px=Math.min(W-1,tx*RES),py=Math.min(H-1,ty*RES);
@@ -353,12 +427,13 @@ export default function WorldSim(){
 const canvasRef=useRef(null);const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);const[simTime,setSimTime]=useState(0);
 const[climate,setClimate]=useState(()=>getClimate(0));const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
-const[viewMode,setViewMode]=useState("terrain");
+const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState(null);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),simTimeRef=useRef(0),speedRef=useRef(5),viewRef=useRef("terrain");
+const presetRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null),lastCacheTm=useRef(null),lastCacheSl=useRef(null);
 const W=580,H=320;
-const generate=useCallback(s=>{const w=generateWorld(W,H,s);setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
+const generate=useCallback(s=>{const w=generateWorld(W,H,s,presetRef.current);setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 simTimeRef.current=0;setSimTime(0);setClimate(getClimate(0));setCoverage(0);setTribeCount(1);setPlaying(false);playRef.current=false;
 terrainCache.current=null;lastCacheTm.current=null;lastCacheSl.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
@@ -516,8 +591,10 @@ color:playing?"#e0a090":"#c9b87a",padding:"8px 28px",borderRadius:3,cursor:"poin
 {playing?"❚❚ Pause":simTime>=1?"↺ Restart":"▶ Simulate"}</button>
 <div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:9,color:"#5a5448",letterSpacing:1,textTransform:"uppercase"}}>Speed</span>
 <input type="range" min={1} max={10} value={speed} onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value}} style={{width:70,accentColor:"#c9b87a"}} /></div>
-<button onClick={()=>setSeed(Math.floor(Math.random()*999999))} style={{background:"rgba(201,184,122,0.05)",border:"1px solid rgba(201,184,122,0.15)",
+<button onClick={()=>{presetRef.current=null;setPreset(null);setSeed(Math.floor(Math.random()*999999));}} style={{background:"rgba(201,184,122,0.05)",border:"1px solid rgba(201,184,122,0.15)",
 color:"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,letterSpacing:1,fontFamily:"inherit"}}>🌍 New World</button>
+<button onClick={()=>{presetRef.current="earth";setPreset("earth");setSeed(Math.floor(Math.random()*999999));}} style={{background:preset==="earth"?"rgba(100,160,220,0.18)":"rgba(201,184,122,0.05)",border:`1px solid ${preset==="earth"?"rgba(100,160,220,0.3)":"rgba(201,184,122,0.15)"}`,
+color:preset==="earth"?"#7ab8e0":"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,letterSpacing:1,fontFamily:"inherit"}}>🌎 Earth</button>
 <div style={{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:3,padding:2,border:"1px solid rgba(201,184,122,0.1)"}}>
 {[["terrain","Terrain"],["depth","Depth"],["tribes","Tribes"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}} style={{background:viewMode===k?"rgba(201,184,122,0.18)":"transparent",
