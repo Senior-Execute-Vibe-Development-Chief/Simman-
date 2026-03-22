@@ -35,6 +35,25 @@ const mNoise=fbm(nx*6+50,ny*6+50,3,2,.5)*.08;
 moisture[i]=Math.max(0,Math.min(1,hm+mNoise));
 // Temperature: latitude + elevation based
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,elevation[i])*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.08));}
+}else if(preset==="pangaea"){
+// ── Pangaea mode: 100% land with mountains, valleys, climate ──
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
+// Base elevation: always land, varied terrain from fbm
+let e=0.08+fbm(nx*6+3.7,ny*6+3.7,5,2,.5)*.15
++Math.pow(Math.max(0,fbm(nx*3+20,ny*3+20,4,2.2,.5)),2)*.4// mountain ranges
++fbm(nx*14+7,ny*14+7,3,2,.4)*.06// fine detail
++Math.pow(1-Math.abs(fbm(nx*2.5+40,ny*2.5+40,3,2.1,.5)),4)*.25;// ridges
+// Polar highlands
+if(lat>.8)e+=Math.max(0,(lat-.8)*1.5);
+// Valley systems (subtract to create lowlands)
+e-=Math.pow(Math.max(0,fbm(nx*4+60,ny*4+60,3,2,.5)+.1),2)*.15;
+elevation[i]=Math.max(0.005,e);
+// Moisture: latitude + noise, valleys wetter, mountains drier
+let m=fbm(nx*4+50,ny*4+50,4,2,.55)*.35+.4+(1-lat)*.15;
+if(e<0.06)m+=.2;// valleys are wet
+if(e>0.3)m-=.15;// mountains are drier
+moisture[i]=Math.max(0.05,Math.min(1,m));
+temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 }else{
 // ── Random world mode: procedural ellipse generation ──
 const specs=[];
@@ -596,6 +615,8 @@ color:playing?"#e0a090":"#c9b87a",padding:"8px 28px",borderRadius:3,cursor:"poin
 color:"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,letterSpacing:1,fontFamily:"inherit"}}>🌍 New World</button>
 <button onClick={()=>{presetRef.current="earth";setPreset("earth");setSeed(Math.floor(Math.random()*999999));}} style={{background:preset==="earth"?"rgba(100,160,220,0.18)":"rgba(201,184,122,0.05)",border:`1px solid ${preset==="earth"?"rgba(100,160,220,0.3)":"rgba(201,184,122,0.15)"}`,
 color:preset==="earth"?"#7ab8e0":"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,letterSpacing:1,fontFamily:"inherit"}}>🌎 Earth</button>
+<button onClick={()=>{presetRef.current="pangaea";setPreset("pangaea");setSeed(Math.floor(Math.random()*999999));}} style={{background:preset==="pangaea"?"rgba(120,180,100,0.18)":"rgba(201,184,122,0.05)",border:`1px solid ${preset==="pangaea"?"rgba(120,180,100,0.3)":"rgba(201,184,122,0.15)"}`,
+color:preset==="pangaea"?"#90c870":"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,letterSpacing:1,fontFamily:"inherit"}}>🏔 Pangaea</button>
 <div style={{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:3,padding:2,border:"1px solid rgba(201,184,122,0.1)"}}>
 {[["terrain","Terrain"],["depth","Depth"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}} style={{background:viewMode===k?"rgba(201,184,122,0.18)":"transparent",
