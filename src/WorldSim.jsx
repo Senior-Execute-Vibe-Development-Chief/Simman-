@@ -218,13 +218,15 @@ return pop*logistics;
 // Local power projection at a border tile: nearest center projects its share of population
 function localPower(ter,tribeId,tx,ty){
 const pop=ter.tribeStrength[tribeId],sz=ter.tribeSizes[tribeId];if(sz<=0)return 0;
-const centers=ter.tribeCenters[tribeId];if(!centers||centers.length===0)return pop;
-let bestDist=Infinity;
-for(const c of centers){const d=tDistW(tx,ty,c.x,c.y,ter.tw);if(d<bestDist)bestDist=d;}
-// Steep exponential distance decay: power halves every ~20 tiles
-const projection=Math.max(0.05,Math.pow(0.97,bestDist));
-const share=pop/centers.length;
-return share*projection;
+const centers=ter.tribeCenters[tribeId];if(!centers||centers.length===0)return pop*0.05;
+// Sum contributions from ALL centers (not just nearest) — each radiates power
+let total=0;
+for(const c of centers){const d=tDistW(tx,ty,c.x,c.y,ter.tw);
+// Sharp gaussian falloff: power concentrated near center, negligible beyond ~15 tiles
+const contribution=Math.exp(-d*d/80)*c.prestige;// σ²≈80 → halves at ~7.5 tiles, 10% at ~13.5
+total+=contribution;}
+// Base influence without centers is very low (5% of pop)
+return pop*(0.05+0.95*Math.min(1,total));
 }
 function newTribe(ter,x,y){const id=ter.tribeCenters.length;ter.tribeCenters.push([{x,y,prestige:1.0,founded:ter.stepCount}]);ter.tribeSizes.push(0);ter.tribeStrength.push(0);ter.tribes=id+1;return id;}
 function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure}=ter;const ow=owner[ti];
