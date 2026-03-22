@@ -390,8 +390,8 @@ export default function WorldSim(){
 const canvasRef=useRef(null);const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
-const[viewMode,setViewMode]=useState("terrain");const[showPower,setShowPower]=useState(false);const[preset,setPreset]=useState(null);
-const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain"),showPowerRef=useRef(false);
+const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState(null);
+const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 const presetRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
@@ -449,7 +449,7 @@ const pi=(py*W+px)*4;let pr=r,pg=g,pb=b;
 if(e>sl){const wi=py*W+px;if(w.lake&&w.lake[wi]){pr=20;pg=45;pb=90;}
 else if(w.river&&w.river[wi]){pr=25;pg=55;pb=120;}}
 d[pi]=pr;d[pi+1]=pg;d[pi+2]=pb;d[pi+3]=255;}}}
-}else if(vm==="tribes"){
+}else if(vm==="tribes"||vm==="power"){
 // Tribe-only view: solid tribe colors on land, dark water
 const tw=Math.ceil(W/RES),th=Math.ceil(H/RES);
 for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
@@ -491,50 +491,45 @@ ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
 ctx.fillStyle=isCapital?`rgb(${cr},${cg},${cb})`:`rgba(${cr},${cg},${cb},0.7)`;ctx.fill();
 ctx.beginPath();ctx.arc(cx2,cy2,r2+2,0,Math.PI*2);
 ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?2:1;ctx.stroke();}}
-// Power projection overlay: show each tribe's power reach in their color
-if(showPowerRef.current&&(viewRef.current==="tribes"||viewRef.current==="terrain")&&ter){const tw2=ter.tw,th2=ter.th;
-// Collect alive tribes
-const alive=[];for(let st=0;st<ter.tribeSizes.length;st++)if(ter.tribeSizes[st]>0)alive.push(st);
-// Sample every 3 tiles for performance
-for(let ty2=0;ty2<th2;ty2+=3)for(let tx2=0;tx2<tw2;tx2+=3){
-const ti=ty2*tw2+tx2;if(ter.tElev[ti]<=0)continue;
-// Find dominant tribe and their power here
-let bestP=0,bestT=-1,secondP=0;
-for(const st of alive){const lp=localPower(ter,st,tx2,ty2);
-if(lp>bestP){secondP=bestP;bestP=lp;bestT=st;}else if(lp>secondP)secondP=lp;}
-if(bestT<0||bestP<0.01)continue;
-const[cr,cg,cb]=tribeRGB(bestT);
-// Intensity based on absolute power (fades at edges of projection)
-const intensity=Math.min(1,bestP*0.4);
-// Dominance: how much stronger than second place (contested vs secure)
-const dominance=secondP>0.001?Math.min(1,(bestP/secondP-1)*0.5):1;
-const px=tx2*RES,py=ty2*RES,sz=RES*3;
-const alpha=intensity*0.35*(0.3+dominance*0.7);
-if(alpha<0.02)continue;
-// Single diagonal hatch in tribe color; denser = more power
-ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;ctx.lineWidth=0.7;
+// Power projection view: its own view showing power gradient within tribe borders
+if(vm==="power"&&ter){const tw2=ter.tw,th2=ter.th;
+// Find max power for normalization
+let globalMax=0;
+for(let st=0;st<ter.tribeSizes.length;st++){if(ter.tribeSizes[st]>0)
+globalMax=Math.max(globalMax,ter.tribeStrength[st]);}
+if(globalMax<0.01)globalMax=1;
+// Draw power gradient within each tribe's territory
+for(let ty2=0;ty2<th2;ty2+=2)for(let tx2=0;tx2<tw2;tx2+=2){
+const ti=ty2*tw2+tx2;const ow2=ter.owner[ti];
+if(ow2<0||ter.tElev[ti]<=0)continue;
+const lp=localPower(ter,ow2,tx2,ty2);
+const intensity=Math.min(1,lp/globalMax*2.5);// normalized to global max
+const[cr,cg,cb]=tribeRGB(ow2);
+const px=tx2*RES,py=ty2*RES,sz=RES*2;
+// Hatching in tribe color; denser lines = more power projected here
+const alpha=0.15+intensity*0.7;
+ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;ctx.lineWidth=0.6;
 ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+sz,py+sz);ctx.stroke();
-if(intensity>0.3){ctx.beginPath();ctx.moveTo(px+sz,py);ctx.lineTo(px,py+sz);ctx.stroke();}
-if(intensity>0.6){ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(px+sz/2,py);ctx.lineTo(px+sz/2,py+sz);ctx.stroke();}}
-// Draw centers prominently when power overlay is on
-for(const st of alive){const centers=ter.tribeCenters[st];if(!centers)continue;
+if(intensity>0.25){ctx.beginPath();ctx.moveTo(px+sz,py);ctx.lineTo(px,py+sz);ctx.stroke();}
+if(intensity>0.5){ctx.lineWidth=0.8;ctx.beginPath();ctx.moveTo(px+sz/2,py);ctx.lineTo(px+sz/2,py+sz);ctx.stroke();}
+if(intensity>0.75){ctx.beginPath();ctx.moveTo(px,py+sz/2);ctx.lineTo(px+sz,py+sz/2);ctx.stroke();}}
+// Draw centers
+for(let st=0;st<ter.tribeSizes.length;st++){if(ter.tribeSizes[st]<=0)continue;
+const centers=ter.tribeCenters[st];if(!centers)continue;
 const[cr,cg,cb]=tribeRGB(st);
 for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x*RES+1,cy2=centers[ci].y*RES+1;
 const isCapital=ci===0,r2=isCapital?6:4;
-// Glow
 ctx.beginPath();ctx.arc(cx2,cy2,r2+4,0,Math.PI*2);
-ctx.fillStyle=`rgba(${cr},${cg},${cb},0.2)`;ctx.fill();
-// Solid center
+ctx.fillStyle=`rgba(${cr},${cg},${cb},0.25)`;ctx.fill();
 ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
-ctx.fillStyle=`rgba(${cr},${cg},${cb},0.9)`;ctx.fill();
+ctx.fillStyle=`rgba(${cr},${cg},${cb},0.95)`;ctx.fill();
 ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
 ctx.strokeStyle=isCapital?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.4)";ctx.lineWidth=isCapital?2:1;ctx.stroke();
-// Capital star marker
 if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 8px sans-serif";
-ctx.fillText("★",cx2-4,cy2+3);}}}}
+ctx.fillText("\u2605",cx2-4,cy2+3);}}}}
 },[updateTerrainCache]);
 
-useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,showPower]);
+useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -583,14 +578,10 @@ color:"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,l
 <button onClick={()=>{presetRef.current="earth";setPreset("earth");setSeed(Math.floor(Math.random()*999999));}} style={{background:preset==="earth"?"rgba(100,160,220,0.18)":"rgba(201,184,122,0.05)",border:`1px solid ${preset==="earth"?"rgba(100,160,220,0.3)":"rgba(201,184,122,0.15)"}`,
 color:preset==="earth"?"#7ab8e0":"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,letterSpacing:1,fontFamily:"inherit"}}>🌎 Earth</button>
 <div style={{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:3,padding:2,border:"1px solid rgba(201,184,122,0.1)"}}>
-{[["terrain","Terrain"],["depth","Depth"],["tribes","Tribes"]].map(([k,label])=>(
+{[["terrain","Terrain"],["depth","Depth"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}} style={{background:viewMode===k?"rgba(201,184,122,0.18)":"transparent",
 border:"none",color:viewMode===k?"#c9b87a":"#5a5448",padding:"5px 10px",borderRadius:2,cursor:"pointer",fontSize:9,letterSpacing:1,
 textTransform:"uppercase",fontFamily:"inherit",transition:"all 0.2s"}}>{label}</button>))}</div>
-<button onClick={()=>{const v=!showPower;setShowPower(v);showPowerRef.current=v;if(world&&terRef.current)draw(terRef.current);}}
-style={{background:showPower?"rgba(180,140,220,0.18)":"rgba(201,184,122,0.05)",border:`1px solid ${showPower?"rgba(180,140,220,0.3)":"rgba(201,184,122,0.15)"}`,
-color:showPower?"#c0a0e0":"#5a5448",padding:"5px 10px",borderRadius:2,cursor:"pointer",fontSize:9,letterSpacing:1,
-textTransform:"uppercase",fontFamily:"inherit"}}>Power</button>
 <span style={{fontSize:9,color:"#3a3530",fontFamily:"monospace"}}>seed:{seed}</span></div>
 <div style={{display:"flex",gap:10,marginTop:12,flexWrap:"wrap",justifyContent:"center"}}>
 {[["Deep ocean",[8,18,52]],["Shelf",[32,72,120]],["Sea ice",[225,235,248]],["Beach",[198,186,142]],["Tundra",[140,132,115]],
