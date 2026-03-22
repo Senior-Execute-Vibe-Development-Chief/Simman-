@@ -102,10 +102,19 @@ const s=tTemp[ti]*2+tMoist[ti]+(1-Math.abs(tElev[ti]-.12))-tDiff[ti]*2;if(s>bs){
 const oi=by*tw+bx;owner[oi]=0;tribeSizes.push(1);tribeStrength.push(tFert[oi]);
 const tenure=new Uint16Array(tw*th);tenure[oi]=1;
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,owner,tenure,tribeCenters:[{x:bx,y:by}],tribeSizes,tribeStrength,
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,owner,tenure,tribeCenters:[[{x:bx,y:by,prestige:1.0,founded:0}]],tribeSizes,tribeStrength,
 frontier:new Set([oi]),landCount:lc,settled:1,tribes:1,origin:{x:bx,y:by},prevSeaLevel:0,stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+Math.pow(y1-y2,2));}
+// Distance from (x,y) to nearest center of a tribe; also returns the capital (index 0) distance
+function nearestCenterDist(centers,x,y,tw){if(!centers||centers.length===0)return{min:0,cap:0};
+let mn=Infinity;const cap=tDistW(x,y,centers[0].x,centers[0].y,tw);
+for(const c of centers){mn=Math.min(mn,tDistW(x,y,c.x,c.y,tw));}return{min:mn,cap};}
+// Sum of fertility within radius R of a point, for tiles owned by tribeId
+function centerPower(ter,tribeId,cx,cy,R){const{tw,th,owner,tFert}=ter;let sum=0;
+for(let dy=-R;dy<=R;dy++){const ny=cy+dy;if(ny<0||ny>=th)continue;
+for(let dx=-R;dx<=R;dx++){const nx=((cx+dx)%tw+tw)%tw;const ni=ny*tw+nx;
+if(owner[ni]===tribeId){const d=tDistW(cx,cy,nx,ny,tw);if(d<=R)sum+=tFert[ni];}}}return sum;}
 
 function tribePower(ter,id){
 // Population = total fertility (what the land can sustain). Military = population.
@@ -114,16 +123,16 @@ const sz=ter.tribeSizes[id],pop=ter.tribeStrength[id];if(sz<=0)return 0;
 const logistics=1/(1+Math.max(0,sz-30)*0.005);// slight penalty for overextension
 return pop*logistics;
 }
-// Local power projection at a border tile: total population scaled by distance from center
+// Local power projection at a border tile: best projection from any center of the tribe
 function localPower(ter,tribeId,tx,ty){
 const pop=ter.tribeStrength[tribeId],sz=ter.tribeSizes[tribeId];if(sz<=0)return 0;
-const tc=ter.tribeCenters[tribeId];if(!tc)return pop;
-const dist=tDistW(tx,ty,tc.x,tc.y,ter.tw);
-// Core tiles get full population backing; distant frontiers get less (min 30%)
-const projection=Math.max(0.3,1-dist*0.015);
-return pop*projection;
+const centers=ter.tribeCenters[tribeId];if(!centers||centers.length===0)return pop;
+let best=0.3;
+for(const c of centers){const dist=tDistW(tx,ty,c.x,c.y,ter.tw);
+best=Math.max(best,Math.max(0.3,1-dist*0.015));}
+return pop*best;
 }
-function newTribe(ter,x,y){const id=ter.tribeCenters.length;ter.tribeCenters.push({x,y});ter.tribeSizes.push(0);ter.tribeStrength.push(0);ter.tribes=id+1;return id;}
+function newTribe(ter,x,y){const id=ter.tribeCenters.length;ter.tribeCenters.push([{x,y,prestige:1.0,founded:ter.stepCount}]);ter.tribeSizes.push(0);ter.tribeStrength.push(0);ter.tribes=id+1;return id;}
 function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure}=ter;const ow=owner[ti];
 if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];}else{ter.settled++;}
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;}
@@ -150,7 +159,8 @@ const diff=tDiff[ni],adjDiff=Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0));
 let chance;if(elev<=0&&elev>sl)chance=0.7*wet;else if(tCoast[ni])chance=0.9*wet;else chance=0.45*(1-adjDiff)*wet;
 if(effT<0.15)chance*=0.3;
 chance*=0.5+tFert[ni]*1.5;// fertile tiles attract expansion (0.5x desert → 2x river valley)
-if(Math.random()<chance){let nw=ow;const tc=tribeCenters[ow];const dist=tc?tDistW(nx,ny,tc.x,tc.y,tw):0;
+if(Math.random()<chance){let nw=ow;const centers=tribeCenters[ow];
+const{min:distMin,cap:distCap}=nearestCenterDist(centers,nx,ny,tw);
 // Count same-tribe neighbors: if tile is infill (≥3), never split
 let sameN=0;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny+dy2;
 if(ay>=0&&ay<th&&owner[ay*tw+ax]===ow)sameN++;}
@@ -163,11 +173,14 @@ const overext=sz>40?Math.min(0.3,(sz-40)*0.003):0;
 const barrier=diff>0.5&&pDiff<0.3?0.3:0;
 // Internal inequality: fertile frontier wants independence from poor core
 const ineq=dens>0&&tFert[ni]>dens*1.8?0.25*(tFert[ni]/dens-1):0;
-// Distance weakens central control
-const distF=dist>15?Math.min(0.25,(dist-15)*0.008):0;
+// Distance weakens central control (from nearest center, not just capital)
+const distF=distMin>15?Math.min(0.25,(distMin-15)*0.008):0;
 // Strong, dense tribes resist all splits
 splitChance=Math.max(0,(overext+barrier+ineq+distF)*(1-Math.min(0.9,dens*1.2)));}
 if(splitChance>0&&Math.random()<splitChance)nw=newTribe(ter,nx,ny);
+// Found a new center if fertile tile is far from all existing centers
+else if(tFert[ni]>0.4&&distMin>12&&centers&&centers.length<6)
+centers.push({x:nx,y:ny,prestige:0.3,founded:ter.stepCount});
 claimTile(ter,ni,nw);nf.add(ni);}else room=true;}
 if((tCoast[fi]||(tElev[fi]<=0&&tElev[fi]>sl))&&wet>0.3){for(const[dx,dy]of LEAPS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;const ni=ny*tw+nx;
 if(owner[ni]>=0||tElev[ni]<=sl||tTemp[ni]+tm<0.05)continue;
@@ -175,10 +188,13 @@ if(owner[ni]>=0||tElev[ni]<=sl||tTemp[ni]+tm<0.05)continue;
 let contested=false;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny+dy2;
 if(ay>=0&&ay<th){const ao=owner[ay*tw+ax];if(ao>=0&&ao!==ow){contested=true;break;}}}
 if(contested)continue;
-if(Math.random()<0.25*wet){let nw=ow;const tc=tribeCenters[ow];const dist=tc?tDistW(nx,ny,tc.x,tc.y,tw):0;
+if(Math.random()<0.25*wet){let nw=ow;const centers=tribeCenters[ow];
+const{min:distMin}=nearestCenterDist(centers,nx,ny,tw);
 const sz=tribeSizes[ow],dens=sz>0?tribeStrength[ow]/sz:0;
 const overext=sz>40?Math.min(0.2,(sz-40)*0.002):0;
-if(dist>16&&Math.random()<overext+(dens<0.3?0.15:0))nw=newTribe(ter,nx,ny);
+if(distMin>16&&Math.random()<overext+(dens<0.3?0.15:0))nw=newTribe(ter,nx,ny);
+else if(tFert[ni]>0.4&&distMin>12&&centers&&centers.length<6)
+centers.push({x:nx,y:ny,prestige:0.3,founded:ter.stepCount});
 claimTile(ter,ni,nw);nf.add(ni);}}}
 if(room)nf.add(fi);}
 ter.frontier=nf;
@@ -197,6 +213,42 @@ if(lpB>lpA*def){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(lpB/(lpA
 const prize=0.5+tFert[i]*1.5;
 if(Math.random()<Math.max(0.01,pressure*prize*(1-diff*0.7))){flips.push([i,no]);break;}}}}
 for(const[ti,to]of flips){if(owner[ti]===to)continue;claimTile(ter,ti,to);nf.add(ti);}}
+// ── Center dynamics: prestige growth, validation, capital challenge ──
+if(ter.stepCount%32===0){for(let st=0;st<tribeSizes.length;st++){
+const centers=tribeCenters[st];if(!centers||centers.length<=0||tribeSizes[st]<=0)continue;
+// Grow capital prestige (institutional inertia), decay secondary prestige slightly
+centers[0].prestige=Math.min(3.0,centers[0].prestige+0.05);
+for(let c=1;c<centers.length;c++)centers[c].prestige=Math.min(2.0,centers[c].prestige+0.02);
+// Validate centers: remove those no longer in tribe territory or no longer fertile
+for(let c=centers.length-1;c>=0;c--){const ci=centers[c].y*tw+centers[c].x;
+if(owner[ci]!==st||tFert[ci]<0.1){if(c===0&&centers.length>1){centers.shift();centers[0].prestige=Math.max(centers[0].prestige,1.5);}
+else if(c>0)centers.splice(c,1);}}
+if(centers.length<2||tribeSizes[st]<15)continue;
+// Compare each secondary center to capital
+const R=8;const capPow=centerPower(ter,st,centers[0].x,centers[0].y,R)*centers[0].prestige;
+for(let c=1;c<centers.length;c++){
+const secPow=centerPower(ter,st,centers[c].x,centers[c].y,R);
+if(secPow<=capPow*1.5)continue;// secondary must significantly exceed capital
+// Cohesion check: sample terrain difficulty along straight line between centers
+const dx=centers[c].x-centers[0].x,dy=centers[c].y-centers[0].y;
+const steps=Math.max(4,Math.floor(Math.sqrt(dx*dx+dy*dy)/2));
+let diffSum=0;for(let s=0;s<=steps;s++){const sx=((Math.round(centers[0].x+dx*s/steps)%tw)+tw)%tw;
+const sy=Math.round(centers[0].y+dy*s/steps);if(sy>=0&&sy<th)diffSum+=tDiff[sy*tw+sx];}
+const avgDiff=diffSum/steps;const dist=tDistW(centers[0].x,centers[0].y,centers[c].x,centers[c].y,tw);
+// Cohesion: close + easy terrain = high, far + mountains = low
+const cohesion=1/(1+dist*0.04+avgDiff*2);
+if(cohesion>0.4){// High cohesion → capital relocates peacefully
+const old=centers[0];centers[0]=centers[c];centers[0].prestige=Math.max(old.prestige,1.0);
+centers.splice(c,1);centers.push({x:old.x,y:old.y,prestige:old.prestige*0.5,founded:old.founded});
+}else{// Low cohesion → split: secondary center becomes a new tribe
+const sc=centers.splice(c,1)[0];const sid=newTribe(ter,sc.x,sc.y);
+// Transfer tiles closer to the breakaway center than to any remaining center
+for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const iy=Math.floor(i/tw),ix=i%tw;
+const dSec=tDistW(ix,iy,sc.x,sc.y,tw);
+let dNearest=Infinity;for(const rc of centers)dNearest=Math.min(dNearest,tDistW(ix,iy,rc.x,rc.y,tw));
+if(dSec<dNearest)claimTile(ter,i,sid);}}
+break;// only one challenge per step per tribe
+}}}
 // ── Fragmentation: split disconnected tribe components (largest keeps original ID/color) ──
 if(ter.stepCount%16===0){const mark=new Int32Array(tw*th);let gen=0;
 for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=1)continue;
