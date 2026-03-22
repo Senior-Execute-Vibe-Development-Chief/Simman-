@@ -120,22 +120,28 @@ function tribePower(ter,id){
 // Population = total fertility (what the land can sustain). Military = population.
 // Large fertile empires are genuinely powerful. Logistics penalty keeps it bounded.
 const sz=ter.tribeSizes[id],pop=ter.tribeStrength[id];if(sz<=0)return 0;
-const logistics=1/(1+Math.max(0,sz-30)*0.005);// slight penalty for overextension
+const logistics=1/(1+Math.max(0,sz-30)*0.012);// overextension penalty: 200 tiles → 67% loss
 return pop*logistics;
 }
-// Local power projection at a border tile: best projection from any center of the tribe
+// Local power projection at a border tile: nearest center projects its share of population
 function localPower(ter,tribeId,tx,ty){
 const pop=ter.tribeStrength[tribeId],sz=ter.tribeSizes[tribeId];if(sz<=0)return 0;
 const centers=ter.tribeCenters[tribeId];if(!centers||centers.length===0)return pop;
-let best=0.3;
-for(const c of centers){const dist=tDistW(tx,ty,c.x,c.y,ter.tw);
-best=Math.max(best,Math.max(0.3,1-dist*0.015));}
-return pop*best;
+// Each center projects pop/numCenters (approximate Voronoi share), nearest center used
+let bestDist=Infinity;
+for(const c of centers){const d=tDistW(tx,ty,c.x,c.y,ter.tw);if(d<bestDist)bestDist=d;}
+const projection=Math.max(0.2,1-bestDist*0.02);
+const share=pop/centers.length;
+return share*projection;
 }
 function newTribe(ter,x,y){const id=ter.tribeCenters.length;ter.tribeCenters.push([{x,y,prestige:1.0,founded:ter.stepCount}]);ter.tribeSizes.push(0);ter.tribeStrength.push(0);ter.tribes=id+1;return id;}
 function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure}=ter;const ow=owner[ti];
 if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];}else{ter.settled++;}
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;}
+// Transfer tile without resetting tenure (for splits/fragmentation — population stays, allegiance changes)
+function transferTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert}=ter;const ow=owner[ti];
+if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];}
+owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];}
 
 function stepTerritory(ter,w,climate){
 const{tempMod:tm,seaLevel:sl,wet}=climate;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
@@ -246,7 +252,7 @@ const sc=centers.splice(c,1)[0];const sid=newTribe(ter,sc.x,sc.y);
 for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const iy=Math.floor(i/tw),ix=i%tw;
 const dSec=tDistW(ix,iy,sc.x,sc.y,tw);
 let dNearest=Infinity;for(const rc of centers)dNearest=Math.min(dNearest,tDistW(ix,iy,rc.x,rc.y,tw));
-if(dSec<dNearest)claimTile(ter,i,sid);}}
+if(dSec<dNearest)transferTile(ter,i,sid);}}
 break;// only one challenge per step per tribe
 }}}
 // ── Fragmentation: split disconnected tribe components (largest keeps original ID/color) ──
@@ -262,7 +268,7 @@ comps.push(comp);}
 if(comps.length<=1)continue;
 comps.sort((a,b)=>b.length-a.length);
 for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor(comps[c][0]/tw));
-for(const ci of comps[c])claimTile(ter,ci,sid);}}}
+for(const ci of comps[c])transferTile(ter,ci,sid);}}}
 // ── Remnant absorption: tiny tribes (<5 tiles) absorbed by any larger touching neighbor ──
 if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>5)continue;
 let bn=-1,bs2=0;for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const ty2=Math.floor(i/tw),tx2=i%tw;
