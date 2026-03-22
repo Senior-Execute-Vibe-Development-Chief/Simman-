@@ -240,12 +240,16 @@ const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,tRiver,owner,tribe
 // ── Expansion into empty land ──
 const nf=new Set();
 for(const fi of ter.frontier){if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
+const owSz=tribeSizes[ow],owDens=owSz>0?tribeStrength[ow]/owSz:0;
+// Small tribes prioritize grabbing available land; large tribes are pickier about fertile tiles
+const smallBoost=owSz<30?1+((30-owSz)/30)*0.8:1;// up to +80% expansion for tiny tribes
+const largePrize=owSz>60?1+Math.min(1,(owSz-60)*0.01):1;// large tribes weight fertility more
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;const ni=ny*tw+nx;if(owner[ni]>=0)continue;
 const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni];if(effT<0.02){room=true;continue;}
 const diff=tDiff[ni],adjDiff=Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0));
 let chance;if(elev<=0&&elev>sl)chance=0.7*wet;else if(tCoast[ni])chance=0.9*wet;else chance=0.45*(1-adjDiff)*wet;
 if(effT<0.15)chance*=0.3;
-chance*=0.5+tFert[ni]*1.5;// fertile tiles attract expansion (0.5x desert → 2x river valley)
+chance*=(0.5+tFert[ni]*1.5*largePrize)*smallBoost;// small tribes grab anything; large tribes want fertile land
 if(Math.random()<chance){let nw=ow;const centers=tribeCenters[ow];
 const{min:distMin,cap:distCap}=nearestCenterDist(centers,nx,ny,tw);
 // Count same-tribe neighbors: if tile is infill (≥3), never split
@@ -275,7 +279,9 @@ if(owner[ni]>=0||tElev[ni]<=sl||tTemp[ni]<0.05)continue;
 let contested=false;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny+dy2;
 if(ay>=0&&ay<th){const ao=owner[ay*tw+ax];if(ao>=0&&ao!==ow){contested=true;break;}}}
 if(contested)continue;
-if(Math.random()<0.25*wet){let nw=ow;const centers=tribeCenters[ow];
+// Low density tribes explore more aggressively (searching for better land)
+const leapBoost=owDens<0.3?1+(0.3-owDens)*3:1;// up to 1.9x for poorest tribes
+if(Math.random()<0.25*wet*leapBoost){let nw=ow;const centers=tribeCenters[ow];
 const{min:distMin}=nearestCenterDist(centers,nx,ny,tw);
 const sz=tribeSizes[ow],dens=sz>0?tribeStrength[ow]/sz:0;
 const overext=sz>65?Math.min(0.2,(sz-65)*0.0012):0;
@@ -301,16 +307,24 @@ let def=3+Math.min(1.5,tenure[i]*0.008)+tDiff[i]*1.4;
 if(tRiver[i])def+=2;// rivers are very hard to cross
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<16)continue;
+// Avoid attacking tribes that are much larger (>3x your size)
+const atkSz=tribeSizes[no],defSz=tribeSizes[ow];
+if(defSz>0&&atkSz>0&&defSz/atkSz>3)continue;// don't poke the giant
+// Small tribes are less aggressive; large tribes more so
+const atkAggression=atkSz<25?0.4:atkSz>80?1.5:1.0;
 // River between attacker and defender tiles: additional crossing penalty
 let riverCross=0;if(tRiver[ni])riverCross+=1.5;
 const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
 const totalDef=def+riverCross;
-if(lpB>lpA*totalDef){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(lpB/(lpA*totalDef)-1)*0.2;
-const prize=0.5+tFert[i]*1.5;
-if(Math.random()<Math.max(0.005,pressure*prize*(1-diff*0.7))){flips.push([i,no]);break;}}}}
+if(lpB>lpA*totalDef){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(lpB/(lpA*totalDef)-1)*0.2*atkAggression;
+const prize=(0.5+tFert[i]*1.5)*(atkSz>60?1+Math.min(0.5,(atkSz-60)*0.005):1);// large tribes value fertile tiles more
+if(Math.random()<Math.max(0.005,pressure*prize*(1-diff*0.7))){flips.push([i,no,lpA,totalDef]);break;}}
+else{// Failed attack attempt: attacker pays a cost for trying
+const attemptCost=tFert[i]*0.08*atkAggression;// aggressive tribes waste more on failed attacks
+tribeStrength[no]=Math.max(0.1,tribeStrength[no]-attemptCost);}}}
 // Apply flips with attack cost: attacker loses strength proportional to conquest
 for(const[ti,to]of flips){if(owner[ti]===to)continue;
-const attackCost=tFert[ti]*0.5;// attacking costs half the tile's fertility from attacker's strength
+const attackCost=tFert[ti]*0.5;
 tribeStrength[to]=Math.max(0.1,tribeStrength[to]-attackCost);
 claimTile(ter,ti,to);nf.add(ti);}}
 // ── Center dynamics: prestige growth, validation, capital challenge ──
