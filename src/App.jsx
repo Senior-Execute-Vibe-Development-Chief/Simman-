@@ -1,7 +1,6 @@
-import { useState, lazy, Suspense } from "react";
-
-const LanguageGen = lazy(() => import("./LanguageGen.jsx"));
-const WorldSim = lazy(() => import("./WorldSim.jsx"));
+import { useState } from "react";
+import LanguageGen from "./LanguageGen.jsx";
+import WorldSim from "./WorldSim.jsx";
 
 const TABS = [
   { id: "language", label: "Language Generator" },
@@ -56,26 +55,7 @@ export default function App() {
           borderTop: "1px solid rgba(201,184,122,0.15)",
         }}
       >
-        <Suspense
-          fallback={
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                height: "60vh",
-                color: "#5a5448",
-                fontFamily: "'Palatino Linotype','Book Antiqua',Palatino,serif",
-                fontSize: 14,
-                letterSpacing: 2,
-              }}
-            >
-              Loading...
-            </div>
-          }
-        >
-          {tab === "language" ? <LanguageGen /> : <WorldSim />}
-        </Suspense>
+        {tab === "language" ? <LanguageGen /> : <WorldSim />}
       </div>
     </div>
   );
