@@ -144,21 +144,22 @@ const densB=tribeStrength[no]/tribeSizes[no];
 if(densB>densA*1.3){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(densB/densA-1.3)*0.5;
 if(Math.random()<Math.max(0.02,pressure*(1-diff*0.7))){flips.push([i,no]);break;}}}}
 for(const[ti,to]of flips){if(owner[ti]===to)continue;claimTile(ter,ti,to);nf.add(ti);}}
-// ── Fragmentation: split disconnected tribe components ──
+// ── Fragmentation: split disconnected tribe components (largest keeps original ID/color) ──
 if(ter.stepCount%16===0){const mark=new Int32Array(tw*th);let gen=0;
-for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=1)continue;gen++;
-let first=-1;for(let i=0;i<tw*th;i++){if(owner[i]===st){first=i;break;}}if(first<0)continue;
-const stack=[first];mark[first]=gen;let filled=0;
-while(stack.length>0){const ci=stack.pop();filled++;const cy=Math.floor(ci/tw),cx=ci%tw;
+for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=1)continue;
+// Find all connected components
+const comps=[];
+for(let i=0;i<tw*th;i++){if(owner[i]!==st||mark[i]>gen)continue;gen++;
+const stack=[i];mark[i]=gen;const comp=[];
+while(stack.length>0){const ci=stack.pop();comp.push(ci);const cy=Math.floor(ci/tw),cx=ci%tw;
 for(const[dx,dy]of DIRS){const nx2=((cx+dx)%tw+tw)%tw,ny2=cy+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 if(mark[ni]!==gen&&owner[ni]===st){mark[ni]=gen;stack.push(ni);}}}
-if(filled>=tribeSizes[st])continue;
-// Split each disconnected component into its own tribe
-for(let i=0;i<tw*th;i++){if(owner[i]===st&&mark[i]!==gen){gen++;const sid=newTribe(ter,i%tw,Math.floor(i/tw));
-const s2=[i];mark[i]=gen;
-while(s2.length>0){const ci=s2.pop();claimTile(ter,ci,sid);const cy=Math.floor(ci/tw),cx=ci%tw;
-for(const[dx,dy]of DIRS){const nx2=((cx+dx)%tw+tw)%tw,ny2=cy+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-if(mark[ni]!==gen&&owner[ni]===st){mark[ni]=gen;s2.push(ni);}}}}}}}
+comps.push(comp);}
+if(comps.length<=1)continue;
+// Largest component keeps original tribe ID; others become new tribes
+comps.sort((a,b)=>b.length-a.length);
+for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor(comps[c][0]/tw));
+for(const ci of comps[c])claimTile(ter,ci,sid);}}}
 // ── Remnant absorption: tiny tribes (<5 tiles) absorbed by any larger touching neighbor ──
 if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>5)continue;
 let bn=-1,bs2=0;for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const ty2=Math.floor(i/tw),tx2=i%tw;
