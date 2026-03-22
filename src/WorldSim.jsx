@@ -88,21 +88,31 @@ for(const c of cands){if(sources.length>=35)break;let ok=true;
 for(const s of sources){let dx=Math.abs(c.x-s.x);if(dx>W/2)dx=W-dx;
 if(dx*dx+(c.y-s.y)**2<25*25){ok=false;break;}}
 if(ok)sources.push(c);}
-// Trace each river downhill
+// Trace each river downhill with meandering
 for(const src of sources){let cx=src.x,cy=src.y,str=0.3+moist[src.y*W+src.x]*0.7;
 const path=new Set();
 for(let step=0;step<500;step++){const ci=cy*W+cx;if(path.has(ci))break;path.add(ci);
 flow[ci]+=str;str+=0.03;if(elev[ci]<=0)break;
-// Steepest descent among unvisited neighbors
-let bx=-1,by=-1,be=elev[ci];
+// Gather all downhill unvisited neighbors
+const downs=[];let be=elev[ci];
 for(const[dx,dy]of D8){const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
-if(!path.has(ny*W+nx)&&elev[ny*W+nx]<be){be=elev[ny*W+nx];bx=nx;by=ny;}}
-if(bx>=0){cx=bx;cy=by;continue;}
+const ni=ny*W+nx;if(!path.has(ni)&&elev[ni]<elev[ci]){downs.push({x:nx,y:ny,e:elev[ni]});
+if(elev[ni]<be)be=elev[ni];}}
+if(downs.length>0){const slope=elev[ci]-be;
+if(slope<0.006&&downs.length>1){
+// Flat terrain: meander using noise to pick among downhill options
+const nv=noise2D(cx*0.25+step*0.1,cy*0.25+step*0.1);
+const idx=Math.floor(((nv+1)/2)*downs.length)%downs.length;
+cx=downs[idx].x;cy=downs[idx].y;
+}else{// Steep terrain: follow steepest descent
+let bx=downs[0].x,by=downs[0].y;
+for(const d of downs)if(d.e<elev[by*W+bx]){bx=d.x;by=d.y;}
+cx=bx;cy=by;}continue;}
 // Depression: scan outward for an outlet lower than current elevation
 const ce=elev[ci];let found=false;
 for(let r=2;r<=12&&!found;r++){let bestD=Infinity,ox=-1,oy=-1;
 for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
-if(Math.abs(dx)!==r&&Math.abs(dy)!==r)continue;// perimeter only
+if(Math.abs(dx)!==r&&Math.abs(dy)!==r)continue;
 const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;if(elev[ni]<ce&&!path.has(ni)){const d2=dx*dx+dy*dy;
 if(d2<bestD){bestD=d2;ox=nx;oy=ny;}}}
@@ -112,10 +122,19 @@ const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
 if(dx*dx+dy*dy<=r*r&&elev[ny*W+nx]<=ce+0.008)lake[ny*W+nx]=1;}
 cx=ox;cy=oy;found=true;}}
 if(!found)break;}}
-// Normalize flow to 0-255 river strength
+// Normalize flow and expand width based on flow strength
 let mx=0;for(let i=0;i<W*H;i++)if(flow[i]>mx)mx=flow[i];
+const base=new Uint8Array(W*H);
+if(mx>0)for(let i=0;i<W*H;i++){if(flow[i]>0.2)base[i]=Math.min(255,Math.round(Math.sqrt(flow[i]/mx)*200)+55);}
+// Width expansion: strong rivers get 2-3px wide
 const river=new Uint8Array(W*H);
-if(mx>0)for(let i=0;i<W*H;i++){if(flow[i]>0.2)river[i]=Math.min(255,Math.round(Math.sqrt(flow[i]/mx)*200)+55);}
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(!base[i])continue;
+const r=base[i]>180?2:base[i]>100?1:0;
+for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+const nx=((x+dx)%W+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
+const ni=ny*W+nx;const d2=dx*dx+dy*dy;if(d2>r*r)continue;
+if(elev[ni]>0){const fade=Math.round(base[i]*(1-Math.sqrt(d2)/(r+1)*0.4));
+river[ni]=Math.max(river[ni],fade);}}}
 return{river,lake};}
 
 const BC=[[8,18,52],[18,40,88],[32,72,120],[198,186,142],[230,238,245],[210,218,228],[140,132,115],[55,78,52],[110,100,90],[130,126,104],[10,80,22],[166,156,66],[202,176,112],[30,98,36],[118,160,52],[38,62,42],[150,146,104]];
