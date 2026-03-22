@@ -282,7 +282,7 @@ if(ter.stepCount%4===0){const flips=[];const{tenure}=ter;
 for(let i=0;i<tw*th;i++){const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
 const ty2=Math.floor(i/tw),tx2=i%tw;
 const lpA=localPower(ter,ow,tx2,ty2);// defender's projected power here
-const def=1+Math.min(0.8,tenure[i]*0.004);// tenure bonus
+const def=1+Math.min(0.8,tenure[i]*0.004)+tDiff[i]*0.7;// tenure + terrain defense (mountains/snow/desert)
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<10)continue;
 const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
