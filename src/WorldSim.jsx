@@ -586,52 +586,37 @@ fid=requestAnimationFrame(loop);return()=>cancelAnimationFrame(fid);},[draw]);
 const togglePlay=()=>{if(!playing&&terRef.current&&terRef.current.settled>=terRef.current.landCount){
 const t=createTerritory(worldRef.current);terRef.current=t;setTribeCount(t.tribes);setCoverage(0);setDominant(null);terrainCache.current=null;draw(t);}
 playRef.current=!playRef.current;setPlaying(p=>!p);};
+const bs={background:"rgba(201,184,122,0.08)",border:"1px solid rgba(201,184,122,0.18)",color:"#8a8474",
+padding:"4px 10px",borderRadius:2,cursor:"pointer",fontSize:10,letterSpacing:1,fontFamily:"inherit"};
+const bsA=(active,color)=>({...bs,background:active?`rgba(${color},0.2)`:bs.background,
+border:`1px solid ${active?`rgba(${color},0.35)`:bs.border}`,color:active?`rgb(${color})`:"#8a8474"});
 return(
-<div style={{minHeight:"100vh",background:"linear-gradient(180deg,#060810 0%,#0a0e18 50%,#080a12 100%)",
-fontFamily:"'Palatino Linotype','Book Antiqua',Palatino,serif",color:"#ccc5b8",display:"flex",flexDirection:"column",alignItems:"center",padding:"16px 12px"}}>
-<div style={{textAlign:"center",marginBottom:14}}>
-<h1 style={{fontSize:26,fontWeight:400,letterSpacing:8,textTransform:"uppercase",color:"#c9b87a",margin:0,textShadow:"0 0 40px rgba(201,184,122,0.15)"}}>Terra Genesis</h1>
-<p style={{fontSize:10,letterSpacing:4,color:"#5a5448",margin:"4px 0 0",textTransform:"uppercase"}}>~42 km/pixel · Wrapping Globe</p></div>
-<div style={{position:"relative",border:"1px solid rgba(201,184,122,0.12)",boxShadow:"0 4px 80px rgba(0,0,0,0.6),inset 0 0 30px rgba(0,0,0,0.4)",borderRadius:4,overflow:"hidden",width:Math.min(W*1.2,1200),maxWidth:"97vw"}}>
-<canvas ref={canvasRef} width={W} height={H} style={{width:"100%",display:"block",imageRendering:"pixelated"}} />
-<div style={{position:"absolute",top:0,left:0,bottom:14,width:2,background:"linear-gradient(180deg,transparent,rgba(201,184,122,0.12),transparent)",pointerEvents:"none"}} />
-<div style={{position:"absolute",top:0,right:0,bottom:14,width:2,background:"linear-gradient(180deg,transparent,rgba(201,184,122,0.12),transparent)",pointerEvents:"none"}} />
-<div style={{position:"absolute",top:8,right:8,background:"rgba(6,8,16,0.92)",border:"1px solid rgba(201,184,122,0.1)",borderRadius:3,padding:"8px 12px",display:"flex",gap:14,textAlign:"right"}}>
-<div><div style={{fontSize:8,color:"#5a5448",letterSpacing:1.5,textTransform:"uppercase"}}>Peoples</div><div style={{fontSize:20,color:"#c9b87a",fontWeight:300,lineHeight:1.2}}>{tribeCount}</div></div>
-<div><div style={{fontSize:8,color:"#5a5448",letterSpacing:1.5,textTransform:"uppercase"}}>Land Settled</div><div style={{fontSize:20,color:"#c9b87a",fontWeight:300,lineHeight:1.2}}>{coverage}%</div></div>
-{dominant&&<div><div style={{fontSize:8,color:"#5a5448",letterSpacing:1.5,textTransform:"uppercase"}}>Dominant</div>
-<div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:8,height:8,borderRadius:1,background:`rgb(${tribeRGB(dominant.id).join(",")})`}} />
-<span style={{fontSize:11,color:"#c9b87a"}}>{dominant.size}t</span>
-<span style={{fontSize:9,color:"#6a6358"}}>Pop:{dominant.strength.toFixed(1)}</span>
-<span style={{fontSize:9,color:"#6a6358"}}>Mil:{dominant.power.toFixed(1)}</span></div></div>}</div>
-</div>
-<div style={{display:"flex",gap:10,marginTop:14,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-<button onClick={togglePlay} style={{background:playing?"rgba(200,80,60,0.18)":"rgba(201,184,122,0.1)",border:`1px solid ${playing?"rgba(200,80,60,0.3)":"rgba(201,184,122,0.22)"}`,
-color:playing?"#e0a090":"#c9b87a",padding:"8px 28px",borderRadius:3,cursor:"pointer",fontSize:12,letterSpacing:2,textTransform:"uppercase",fontFamily:"inherit"}}>
-{playing?"❚❚ Pause":"▶ Simulate"}</button>
-<div style={{display:"flex",alignItems:"center",gap:6}}><span style={{fontSize:9,color:"#5a5448",letterSpacing:1,textTransform:"uppercase"}}>Speed</span>
-<input type="range" min={1} max={10} value={speed} onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value}} style={{width:70,accentColor:"#c9b87a"}} /></div>
-<button onClick={()=>{presetRef.current=null;setPreset(null);setSeed(Math.floor(Math.random()*999999));}} style={{background:"rgba(201,184,122,0.05)",border:"1px solid rgba(201,184,122,0.15)",
-color:"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,letterSpacing:1,fontFamily:"inherit"}}>🌍 New World</button>
-<button onClick={()=>{presetRef.current="earth";setPreset("earth");setSeed(Math.floor(Math.random()*999999));}} style={{background:preset==="earth"?"rgba(100,160,220,0.18)":"rgba(201,184,122,0.05)",border:`1px solid ${preset==="earth"?"rgba(100,160,220,0.3)":"rgba(201,184,122,0.15)"}`,
-color:preset==="earth"?"#7ab8e0":"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,letterSpacing:1,fontFamily:"inherit"}}>🌎 Earth</button>
-<button onClick={()=>{presetRef.current="pangaea";setPreset("pangaea");setSeed(Math.floor(Math.random()*999999));}} style={{background:preset==="pangaea"?"rgba(120,180,100,0.18)":"rgba(201,184,122,0.05)",border:`1px solid ${preset==="pangaea"?"rgba(120,180,100,0.3)":"rgba(201,184,122,0.15)"}`,
-color:preset==="pangaea"?"#90c870":"#8a8474",padding:"8px 18px",borderRadius:3,cursor:"pointer",fontSize:11,letterSpacing:1,fontFamily:"inherit"}}>🏔 Pangaea</button>
-<div style={{display:"flex",gap:2,background:"rgba(255,255,255,0.03)",borderRadius:3,padding:2,border:"1px solid rgba(201,184,122,0.1)"}}>
-{[["terrain","Terrain"],["depth","Depth"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
-<button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}} style={{background:viewMode===k?"rgba(201,184,122,0.18)":"transparent",
-border:"none",color:viewMode===k?"#c9b87a":"#5a5448",padding:"5px 10px",borderRadius:2,cursor:"pointer",fontSize:9,letterSpacing:1,
-textTransform:"uppercase",fontFamily:"inherit",transition:"all 0.2s"}}>{label}</button>))}</div>
-<span style={{fontSize:9,color:"#3a3530",fontFamily:"monospace"}}>seed:{seed}</span></div>
-<div style={{display:"flex",gap:10,marginTop:12,flexWrap:"wrap",justifyContent:"center"}}>
-{[["Deep ocean",[8,18,52]],["Shelf",[32,72,120]],["Sea ice",[225,235,248]],["Beach",[198,186,142]],["Tundra",[140,132,115]],
-["Desert",[202,176,112]],["Grassland",[118,160,52]],["Forest",[30,98,36]],["Ice sheet",[230,238,245]],["Mountain",[110,100,90]]].map(([n,c])=>(
-<div key={n} style={{display:"flex",alignItems:"center",gap:3}}>
-<div style={{width:8,height:8,borderRadius:1,background:`rgb(${c})`,border:"1px solid rgba(255,255,255,0.04)"}} />
-<span style={{fontSize:9,color:"#4a4438"}}>{n}</span></div>))}
-<div style={{display:"flex",alignItems:"center",gap:3}}><div style={{width:14,height:8,borderRadius:1,background:"linear-gradient(90deg,hsl(20,60%,48%),hsl(120,55%,48%),hsl(220,60%,48%))",opacity:.75}} />
-<span style={{fontSize:9,color:"#4a4438"}}>Peoples</span></div></div>
-<div style={{maxWidth:900,marginTop:14,fontSize:10,color:"#2e2a24",lineHeight:1.7,fontStyle:"italic",textAlign:"center"}}>
-Single-canvas compositing: terrain and tribe colors are blended per-pixel into one image.
-Terrain is cached once and tribe overlay is composited each frame.
+<div style={{width:"100vw",height:"100vh",background:"#060810",overflow:"hidden",position:"relative"}}>
+<canvas ref={canvasRef} width={W} height={H} style={{width:"100%",height:"100%",display:"block",imageRendering:"pixelated",objectFit:"contain"}} />
+{/* Stats overlay — top right */}
+<div style={{position:"absolute",top:6,right:6,background:"rgba(6,8,16,0.85)",borderRadius:3,padding:"4px 10px",
+display:"flex",gap:12,fontSize:11,color:"#c9b87a",pointerEvents:"none"}}>
+<span>{tribeCount} tribes</span><span>{coverage}%</span>
+{dominant&&<><span style={{display:"inline-flex",alignItems:"center",gap:3}}>
+<span style={{width:7,height:7,borderRadius:1,background:`rgb(${tribeRGB(dominant.id).join(",")})`,display:"inline-block"}} />
+{dominant.size}t</span></>}</div>
+{/* Controls — bottom, overlaid on map */}
+<div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)",
+background:"rgba(6,8,16,0.85)",borderRadius:3,padding:"5px 8px",
+display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
+<button onClick={togglePlay} style={{...bs,color:playing?"#e0a090":"#c9b87a",
+background:playing?"rgba(200,80,60,0.15)":"rgba(201,184,122,0.1)",padding:"4px 16px"}}>
+{playing?"❚❚":"▶"}</button>
+<input type="range" min={1} max={10} value={speed} onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value}}
+style={{width:50,accentColor:"#c9b87a"}} />
+<button onClick={()=>{presetRef.current=null;setPreset(null);setSeed(Math.floor(Math.random()*999999));}} style={bs}>Random</button>
+<button onClick={()=>{presetRef.current="earth";setPreset("earth");setSeed(Math.floor(Math.random()*999999));}}
+style={bsA(preset==="earth","100,160,220")}>Earth</button>
+<button onClick={()=>{presetRef.current="pangaea";setPreset("pangaea");setSeed(Math.floor(Math.random()*999999));}}
+style={bsA(preset==="pangaea","120,180,100")}>Pangaea</button>
+<div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
+{[["terrain","Ter"],["depth","Dep"],["tribes","Tri"],["power","Pow"]].map(([k,label])=>(
+<button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
+style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
+color:viewMode===k?"#c9b87a":"#5a5448",padding:"3px 7px"}}>{label}</button>))}
 </div></div>);}
