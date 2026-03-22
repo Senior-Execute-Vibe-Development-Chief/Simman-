@@ -123,14 +123,14 @@ if(dist>16){nw=tribeCenters.length;tribeCenters.push({x:nx,y:ny});tribeSizes.pus
 owner[ni]=nw;if(!tribeSizes[nw])tribeSizes[nw]=0;tribeSizes[nw]++;ter.settled++;nf.add(ni);}}}
 if(room)nf.add(fi);}
 ter.frontier=nf;
-if(ter.stepCount%8===0){const small=[];for(let t=0;t<tribeSizes.length;t++)if(tribeSizes[t]>0&&tribeSizes[t]<15)small.push(t);
-for(const st of small){if(tribeSizes[st]===0)continue;const nc=new Map();
+if(ter.stepCount%8===0){const ABSORB_RATIO=3;
+for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0)continue;const nc=new Map();
 for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const ty2=Math.floor(i/tw),tx2=i%tw;
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===st||tElev[ni]<=sl)continue;
 if(!nc.has(no))nc.set(no,0);nc.set(no,nc.get(no)+1);}}
-let bn=-1,be=0;for(const[n,b]of nc)if(b>be){be=b;bn=n;}
-if(bn>=0&&tribeSizes[bn]>tribeSizes[st]){for(let i=0;i<tw*th;i++)if(owner[i]===st){owner[i]=bn;tribeSizes[bn]++;}tribeSizes[st]=0;}}}
+let bn=-1,bs2=0;for(const[n,b]of nc){const sz=tribeSizes[n];if(sz>bs2){bs2=sz;bn=n;}}
+if(bn>=0&&tribeSizes[bn]>=tribeSizes[st]*ABSORB_RATIO){for(let i=0;i<tw*th;i++)if(owner[i]===st){owner[i]=bn;tribeSizes[bn]++;}tribeSizes[st]=0;}}}
 return ter;}
 
 // ── SINGLE CANVAS: terrain + overlay composited together ──
