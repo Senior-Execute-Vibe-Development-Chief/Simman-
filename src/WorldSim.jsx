@@ -469,18 +469,16 @@ const presetRef=useRef(null);
 const terrainCache=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
 const imgRef=useRef(null);
-const W=1920,H=960;
+const W=1920,H=960,CW=Math.ceil(W/RES),CH=Math.ceil(H/RES);
 const generate=useCallback(s=>{const w=generateWorld(W,H,s,presetRef.current);setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
-terrainCache.current=null;},[]);
+terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 
-// Build terrain RGB cache - renders at RES×RES blocks to match territory tile scale
+// Build terrain RGB cache at tile resolution (one entry per tile)
 const updateTerrainCache=useCallback((w)=>{
-const buf=new Uint8Array(W*H*3);const sl=0;
-// Sample at tile centers, fill RES×RES blocks
-const tw=Math.ceil(W/RES),th=Math.ceil(H/RES);
-for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
+const buf=new Uint8Array(CW*CH*3);const sl=0;
+for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
 const si=sy*W+sx;const e=w.elevation[si],m=w.moisture[si];
 const t=w.temperature[si];let r,g,b;
@@ -490,19 +488,25 @@ r=Math.round(or2*(1-blend)+225*blend);g=Math.round(og2*(1-blend)+235*blend);b=Ma
 }else if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
-// Fill RES×RES block with per-pixel feature overlays
-for(let dy=0;dy<RES;dy++){const py=ty*RES+dy;if(py>=H)continue;
-for(let dx=0;dx<RES;dx++){const px=tx*RES+dx;if(px>=W)continue;
-const pi=py*W+px;let pr=r,pg=g,pb=b;const wi=py*W+px;
-if(w.delta&&w.delta[wi]){pr=30;pg=85;pb=55;}
-else if(w.lake&&w.lake[wi]&&e>sl){pr=28;pg=62;pb=112;}
-else if(w.river&&w.river[wi]&&e>sl){const a=0.45+w.river[wi]/255*0.45;
-pr=Math.round(r*(1-a)+22*a);pg=Math.round(g*(1-a)+52*a);pb=Math.round(b*(1-a)+132*a);}
-else if(e>sl){if(w.swamp&&w.swamp[wi]){pr=40;pg=58;pb=38;}
-else if(w.oasis&&w.oasis[wi]){pr=50;pg=120;pb=45;}
-else if(w.floodplain&&w.floodplain[wi]){const a=0.4;
-pr=Math.round(r*(1-a)+55*a);pg=Math.round(g*(1-a)+110*a);pb=Math.round(b*(1-a)+40*a);}}
-buf[pi*3]=pr;buf[pi*3+1]=pg;buf[pi*3+2]=pb;}}}
+// Scan tile block for most prominent feature overlay
+let hasDelta=false,hasLake=false,maxRiv=0,hasSwamp=false,hasOasis=false,hasFlood=false;
+for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
+const wi=Math.min(H-1,sy+dy)*W+Math.min(W-1,sx+dx);
+if(w.delta&&w.delta[wi])hasDelta=true;
+if(w.lake&&w.lake[wi]&&e>sl)hasLake=true;
+if(w.river&&w.river[wi]&&e>sl&&w.river[wi]>maxRiv)maxRiv=w.river[wi];
+if(w.swamp&&w.swamp[wi])hasSwamp=true;
+if(w.oasis&&w.oasis[wi])hasOasis=true;
+if(w.floodplain&&w.floodplain[wi])hasFlood=true;}
+let pr=r,pg=g,pb=b;
+if(hasDelta){pr=30;pg=85;pb=55;}
+else if(hasLake){pr=28;pg=62;pb=112;}
+else if(maxRiv>0){const a=0.45+maxRiv/255*0.45;
+pr=(r*(1-a)+22*a+.5)|0;pg=(g*(1-a)+52*a+.5)|0;pb=(b*(1-a)+132*a+.5)|0;}
+else if(e>sl){if(hasSwamp){pr=40;pg=58;pb=38;}
+else if(hasOasis){pr=50;pg=120;pb=45;}
+else if(hasFlood){const a=0.4;pr=(r*(1-a)+55*a+.5)|0;pg=(g*(1-a)+110*a+.5)|0;pb=(b*(1-a)+40*a+.5)|0;}}
+const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}
 return buf;},[]);
 
 // Composite render: terrain + tribe overlay into single canvas
@@ -510,120 +514,93 @@ const draw=useCallback((ter)=>{
 if(!canvasRef.current||!ter)return;const w=worldRef.current;if(!w)return;
 const sl=0,vm=viewRef.current;
 const ctx=canvasRef.current.getContext("2d");
-if(!imgRef.current)imgRef.current=ctx.createImageData(W,H);
+if(!imgRef.current)imgRef.current=ctx.createImageData(CW,CH);
 const img=imgRef.current;const d=img.data;
-// Pre-cache tribe colors (avoids HSL→RGB trig per pixel)
+// Pre-cache tribe colors (avoids HSL→RGB trig per tile)
 const maxT=ter.tribeCenters.length;const tcR=new Uint8Array(maxT),tcG=new Uint8Array(maxT),tcB=new Uint8Array(maxT);
 for(let t2=0;t2<maxT;t2++){const c=tribeRGB(t2);tcR[t2]=c[0];tcG[t2]=c[1];tcB[t2]=c[2];}
+const N=CW*CH;
 if(vm==="depth"){
-// Depth/heightmap view: elevation as grayscale with color tinting
-const tw=Math.ceil(W/RES),th=Math.ceil(H/RES);
-for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
+// Depth/heightmap view — one pixel per tile
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const e=w.elevation[si];let r,g,b;
-if(e<=sl){const depth=Math.min(1,Math.max(0,(sl-e)/0.2));r=Math.round(10-depth*8);g=Math.round(30+depth*10);b=Math.round(80+depth*60);}
-else{const h=Math.min(1,(e-sl)/0.6);if(h<0.05){r=Math.round(160+h*200);g=Math.round(155+h*200);b=Math.round(120+h*200);}
-else if(h<0.3){const t2=(h-0.05)/0.25;r=Math.round(60+t2*50);g=Math.round(100+t2*30);b=Math.round(40-t2*10);}
-else if(h<0.6){const t2=(h-0.3)/0.3;r=Math.round(110+t2*40);g=Math.round(130-t2*30);b=Math.round(30-t2*10);}
-else{const t2=(h-0.6)/0.4;r=Math.round(150+t2*80);g=Math.round(100-t2*40);b=Math.round(20+t2*10);}}
-for(let dy2=0;dy2<RES;dy2++){const py=ty*RES+dy2;if(py>=H)continue;
-for(let dx2=0;dx2<RES;dx2++){const px=tx*RES+dx2;if(px>=W)continue;
-const pi=(py*W+px)*4;let pr=r,pg=g,pb=b;
-{const wi=py*W+px;
-if(w.delta&&w.delta[wi]){pr=25;pg=75;pb=50;}
-else if(e>sl){if(w.lake&&w.lake[wi]){pr=20;pg=45;pb=90;}
-else if(w.river&&w.river[wi]){pr=25;pg=55;pb=120;}
-else if(w.swamp&&w.swamp[wi]){pr=35;pg=50;pb=35;}}}
-d[pi]=pr;d[pi+1]=pg;d[pi+2]=pb;d[pi+3]=255;}}}
+if(e<=sl){const depth=Math.min(1,Math.max(0,(sl-e)/0.2));r=(10-depth*8+.5)|0;g=(30+depth*10+.5)|0;b=(80+depth*60+.5)|0;}
+else{const h=Math.min(1,(e-sl)/0.6);if(h<0.05){r=(160+h*200+.5)|0;g=(155+h*200+.5)|0;b=(120+h*200+.5)|0;}
+else if(h<0.3){const t2=(h-0.05)/0.25;r=(60+t2*50+.5)|0;g=(100+t2*30+.5)|0;b=(40-t2*10+.5)|0;}
+else if(h<0.6){const t2=(h-0.3)/0.3;r=(110+t2*40+.5)|0;g=(130-t2*30+.5)|0;b=(30-t2*10+.5)|0;}
+else{const t2=(h-0.6)/0.4;r=(150+t2*80+.5)|0;g=(100-t2*40+.5)|0;b=(20+t2*10+.5)|0;}}
+// Check tile for feature overlay
+if(ter.tRiver[ti]&&e>sl){if(w.lake){let lk=false;for(let dy=0;dy<RES&&!lk;dy++)for(let dx=0;dx<RES&&!lk;dx++){
+const wi=Math.min(H-1,sy+dy)*W+Math.min(W-1,sx+dx);if(w.lake[wi])lk=true;}if(lk){r=20;g=45;b=90;}}
+if(r!==20){r=25;g=55;b=120;}}
+const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="power"){
-// Power view: dark base with faint tribe tint, hatching provides the real info
-const tw=Math.ceil(W/RES),th=Math.ceil(H/RES);
-for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
-const e=w.elevation[si],ti=ty*tw+tx,ow=ter.owner[ti];let r,g,b;
+// Power view — one pixel per tile
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
+const e=w.elevation[sy*W+sx],ow=ter.owner[ti];let r,g,b;
 if(e<=sl){r=4;g=5;b=12;}
-else if(ow>=0){r=Math.round(tcR[ow]*0.15+10);g=Math.round(tcG[ow]*0.15+10);b=Math.round(tcB[ow]*0.15+10);}
+else if(ow>=0){r=(tcR[ow]*0.15+10.5)|0;g=(tcG[ow]*0.15+10.5)|0;b=(tcB[ow]*0.15+10.5)|0;}
 else{r=16;g=15;b=14;}
-for(let dy2=0;dy2<RES;dy2++){const py=ty*RES+dy2;if(py>=H)continue;
-for(let dx2=0;dx2<RES;dx2++){const px=tx*RES+dx2;if(px>=W)continue;
-const pi=(py*W+px)*4;d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;}}}
+const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="tribes"){
-// Tribe-only view: solid tribe colors on land, dark water
-const tw=Math.ceil(W/RES),th=Math.ceil(H/RES);
-for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
-const e=w.elevation[si],ti=ty*tw+tx,ow=ter.owner[ti];let r,g,b;
+// Tribe-only view — one pixel per tile, feature tint from territory data
+for(let ti=0;ti<N;ti++){
+const e=ter.tElev[ti],ow=ter.owner[ti];let r,g,b;
 if(e<=sl){r=6;g=8;b=16;}
 else if(ow>=0){r=tcR[ow];g=tcG[ow];b=tcB[ow];}
 else{r=22;g=20;b=18;}
-for(let dy2=0;dy2<RES;dy2++){const py=ty*RES+dy2;if(py>=H)continue;
-for(let dx2=0;dx2<RES;dx2++){const px=tx*RES+dx2;if(px>=W)continue;
-const pi=(py*W+px)*4;let pr=r,pg=g,pb=b;
-const wi=py*W+px;
-if(w.delta&&w.delta[wi]){const a=0.35;pr=Math.round(r*(1-a)+25*a);pg=Math.round(g*(1-a)+70*a);pb=Math.round(b*(1-a)+45*a);}
-else if(e>sl){if(w.lake&&w.lake[wi]){pr=12;pg=20;pb=40;}
-else if(w.river&&w.river[wi]){const a=0.5;pr=Math.round(r*(1-a)+12*a);pg=Math.round(g*(1-a)+20*a);pb=Math.round(b*(1-a)+45*a);}
-else if(w.swamp&&w.swamp[wi]){const a=0.25;pr=Math.round(r*(1-a)+30*a);pg=Math.round(g*(1-a)+45*a);pb=Math.round(b*(1-a)+30*a);}
-else if(w.oasis&&w.oasis[wi]){const a=0.3;pr=Math.round(r*(1-a)+40*a);pg=Math.round(g*(1-a)+100*a);pb=Math.round(b*(1-a)+35*a);}}
-d[pi]=pr;d[pi+1]=pg;d[pi+2]=pb;d[pi+3]=255;}}}
+// River/lake tint on owned tiles
+if(e>sl&&ter.tRiver[ti]){const a=0.4;r=(r*(1-a)+12*a+.5)|0;g=(g*(1-a)+20*a+.5)|0;b=(b*(1-a)+45*a+.5)|0;}
+const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else{
-// Default terrain view with tribe overlay — tile-level loop
+// Default terrain view with tribe overlay — one pixel per tile
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
-const tc=terrainCache.current;const tw2=ter.tw,th2=ter.th;
-for(let ty=0;ty<th2;ty++)for(let tx=0;tx<tw2;tx++){
-const ti=ty*tw2+tx,ow=ter.owner[ti];
-const isOwned=ow>=0&&ter.tElev[ti]>sl;
-let cr=0,cg=0,cb=0,alpha=0,invA=1;
-if(isOwned){cr=tcR[ow];cg=tcG[ow];cb=tcB[ow];alpha=ter.frontier.has(ti)?0.55:0.32;invA=1-alpha;}
-for(let dy=0;dy<RES;dy++){const py=ty*RES+dy;if(py>=H)continue;
-for(let dx=0;dx<RES;dx++){const px=tx*RES+dx;if(px>=W)continue;
-const pi=py*W+px,pi4=pi<<2,pi3=pi*3;
-if(isOwned){d[pi4]=Math.round(tc[pi3]*invA+cr*alpha);d[pi4+1]=Math.round(tc[pi3+1]*invA+cg*alpha);d[pi4+2]=Math.round(tc[pi3+2]*invA+cb*alpha);}
-else{d[pi4]=tc[pi3];d[pi4+1]=tc[pi3+1];d[pi4+2]=tc[pi3+2];}
-d[pi4+3]=255;}}}}
+const tc=terrainCache.current;
+for(let ti=0;ti<N;ti++){const ow=ter.owner[ti];
+const pi4=ti<<2,ti3=ti*3;
+if(ow>=0&&ter.tElev[ti]>sl){const alpha=ter.frontier.has(ti)?0.55:0.32,invA=1-alpha;
+d[pi4]=(tc[ti3]*invA+tcR[ow]*alpha+.5)|0;d[pi4+1]=(tc[ti3+1]*invA+tcG[ow]*alpha+.5)|0;d[pi4+2]=(tc[ti3+2]*invA+tcB[ow]*alpha+.5)|0;
+}else{d[pi4]=tc[ti3];d[pi4+1]=tc[ti3+1];d[pi4+2]=tc[ti3+2];}
+d[pi4+3]=255;}}
 ctx.putImageData(img,0,0);
-// Draw all tribe centers
+// Draw all tribe centers (tile coords — canvas is CW×CH)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
 if(!centers||ter.tribeSizes[st]<=0)continue;const cr=tcR[st],cg=tcG[st],cb=tcB[st];
-for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x*RES+1,cy2=centers[ci].y*RES+1;
-const isCapital=ci===0,r2=isCapital?4:3;
+for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=centers[ci].y+0.5;
+const isCapital=ci===0,r2=isCapital?2.5:1.5;
 ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
 ctx.fillStyle=isCapital?`rgb(${cr},${cg},${cb})`:`rgba(${cr},${cg},${cb},0.7)`;ctx.fill();
-ctx.beginPath();ctx.arc(cx2,cy2,r2+2,0,Math.PI*2);
-ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?2:1;ctx.stroke();}}
-// Power projection view: shows center influence within each tribe's own territory
+ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
+ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();}}
+// Power projection view hatching
 if(vm==="power"&&ter){const tw2=ter.tw,th2=ter.th;
 for(let ty2=0;ty2<th2;ty2+=2)for(let tx2=0;tx2<tw2;tx2+=2){
 const ti=ty2*tw2+tx2;const ow2=ter.owner[ti];
 if(ow2<0||ter.tElev[ti]<=0)continue;
 const pop=ter.tribeStrength[ow2];if(pop<0.01)continue;
-// Normalize per-tribe: localPower/pop gives 0.03-1.0 regardless of tribe size
 const lp=localPower(ter,ow2,tx2,ty2);
-const ratio=lp/pop;// 0.03 (far from center) to ~1.0 (at center)
-const intensity=(ratio-0.03)/0.97;// remap to 0-1
+const ratio=lp/pop;const intensity=(ratio-0.03)/0.97;
 const cr=tcR[ow2],cg=tcG[ow2],cb=tcB[ow2];
-const px=tx2*RES,py=ty2*RES,sz=RES*2;
-// Hatching in tribe color; denser lines = stronger center influence
-const alpha=0.1+Math.pow(intensity,0.7)*0.85;// non-linear so centers pop
-ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;ctx.lineWidth=0.6+intensity*0.6;
-ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+sz,py+sz);ctx.stroke();
-if(intensity>0.2){ctx.beginPath();ctx.moveTo(px+sz,py);ctx.lineTo(px,py+sz);ctx.stroke();}
-if(intensity>0.45){ctx.lineWidth=0.8+intensity*0.4;ctx.beginPath();ctx.moveTo(px+sz/2,py);ctx.lineTo(px+sz/2,py+sz);ctx.stroke();}
-if(intensity>0.7){ctx.beginPath();ctx.moveTo(px,py+sz/2);ctx.lineTo(px+sz,py+sz/2);ctx.stroke();}}
-// Draw centers
+const alpha=0.1+Math.pow(intensity,0.7)*0.85;
+ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;ctx.lineWidth=0.4+intensity*0.4;
+ctx.beginPath();ctx.moveTo(tx2,ty2);ctx.lineTo(tx2+2,ty2+2);ctx.stroke();
+if(intensity>0.3){ctx.beginPath();ctx.moveTo(tx2+2,ty2);ctx.lineTo(tx2,ty2+2);ctx.stroke();}}
+// Draw power centers
 for(let st=0;st<ter.tribeSizes.length;st++){if(ter.tribeSizes[st]<=0)continue;
 const centers=ter.tribeCenters[st];if(!centers)continue;
 const cr=tcR[st],cg=tcG[st],cb=tcB[st];
-for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x*RES+1,cy2=centers[ci].y*RES+1;
-const isCapital=ci===0,r2=isCapital?6:4;
-ctx.beginPath();ctx.arc(cx2,cy2,r2+4,0,Math.PI*2);
+for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=centers[ci].y+0.5;
+const isCapital=ci===0,r2=isCapital?3:2;
+ctx.beginPath();ctx.arc(cx2,cy2,r2+2,0,Math.PI*2);
 ctx.fillStyle=`rgba(${cr},${cg},${cb},0.25)`;ctx.fill();
 ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
 ctx.fillStyle=`rgba(${cr},${cg},${cb},0.95)`;ctx.fill();
-ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
-ctx.strokeStyle=isCapital?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.4)";ctx.lineWidth=isCapital?2:1;ctx.stroke();
-if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 8px sans-serif";
-ctx.fillText("\u2605",cx2-4,cy2+3);}}}}
+ctx.beginPath();ctx.arc(cx2,cy2,r2+0.5,0,Math.PI*2);
+ctx.strokeStyle=isCapital?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.4)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();
+if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-serif";
+ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache]);
 
 useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode]);
@@ -651,7 +628,7 @@ const bsA=(active,color)=>({...bs,background:active?`rgba(${color},0.2)`:bs.back
 border:`1px solid ${active?`rgba(${color},0.35)`:bs.border}`,color:active?`rgb(${color})`:"#8a8474"});
 return(
 <div style={{width:"100vw",height:"100vh",background:"#060810",overflow:"hidden",position:"relative"}}>
-<canvas ref={canvasRef} width={W} height={H} style={{width:"100%",height:"100%",display:"block",imageRendering:"pixelated",objectFit:"contain"}} />
+<canvas ref={canvasRef} width={CW} height={CH} style={{width:"100%",height:"100%",display:"block",imageRendering:"pixelated",objectFit:"contain"}} />
 {/* Stats overlay — top right */}
 <div style={{position:"absolute",top:6,right:6,background:"rgba(6,8,16,0.85)",borderRadius:3,padding:"4px 10px",
 display:"flex",gap:12,fontSize:11,color:"#c9b87a",pointerEvents:"none"}}>
