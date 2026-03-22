@@ -491,24 +491,47 @@ ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
 ctx.fillStyle=isCapital?`rgb(${cr},${cg},${cb})`:`rgba(${cr},${cg},${cb},0.7)`;ctx.fill();
 ctx.beginPath();ctx.arc(cx2,cy2,r2+2,0,Math.PI*2);
 ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?2:1;ctx.stroke();}}
-// Power projection overlay (toggled independently, rendered on tribes view)
+// Power projection overlay: show each tribe's power reach in their color
 if(showPowerRef.current&&(viewRef.current==="tribes"||viewRef.current==="terrain")&&ter){const tw2=ter.tw,th2=ter.th;
-ctx.globalAlpha=0.5;
-for(let ty2=0;ty2<th2;ty2+=2)for(let tx2=0;tx2<tw2;tx2+=2){
+// Collect alive tribes
+const alive=[];for(let st=0;st<ter.tribeSizes.length;st++)if(ter.tribeSizes[st]>0)alive.push(st);
+// Sample every 3 tiles for performance
+for(let ty2=0;ty2<th2;ty2+=3)for(let tx2=0;tx2<tw2;tx2+=3){
 const ti=ty2*tw2+tx2;if(ter.tElev[ti]<=0)continue;
-// Find strongest tribe's local power here
-let maxP=0;for(let st=0;st<ter.tribeSizes.length;st++){if(ter.tribeSizes[st]<=0)continue;
-const lp=localPower(ter,st,tx2,ty2);if(lp>maxP)maxP=lp;}
-if(maxP<0.01)continue;
-// Draw density: more power = more opaque lines
-const intensity=Math.min(1,maxP*0.3);
-const px=tx2*RES,py=ty2*RES;
-// Hatching pattern: denser lines for stronger power
-if(intensity>0.05){ctx.strokeStyle=`rgba(255,255,255,${intensity*0.6})`;ctx.lineWidth=0.5;
-ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+RES*2,py+RES*2);ctx.stroke();}
-if(intensity>0.3){ctx.beginPath();ctx.moveTo(px+RES*2,py);ctx.lineTo(px,py+RES*2);ctx.stroke();}
-if(intensity>0.6){ctx.beginPath();ctx.moveTo(px+RES,py);ctx.lineTo(px+RES,py+RES*2);ctx.stroke();}}
-ctx.globalAlpha=1.0;}
+// Find dominant tribe and their power here
+let bestP=0,bestT=-1,secondP=0;
+for(const st of alive){const lp=localPower(ter,st,tx2,ty2);
+if(lp>bestP){secondP=bestP;bestP=lp;bestT=st;}else if(lp>secondP)secondP=lp;}
+if(bestT<0||bestP<0.01)continue;
+const[cr,cg,cb]=tribeRGB(bestT);
+// Intensity based on absolute power (fades at edges of projection)
+const intensity=Math.min(1,bestP*0.4);
+// Dominance: how much stronger than second place (contested vs secure)
+const dominance=secondP>0.001?Math.min(1,(bestP/secondP-1)*0.5):1;
+const px=tx2*RES,py=ty2*RES,sz=RES*3;
+const alpha=intensity*0.35*(0.3+dominance*0.7);
+if(alpha<0.02)continue;
+// Single diagonal hatch in tribe color; denser = more power
+ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;ctx.lineWidth=0.7;
+ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+sz,py+sz);ctx.stroke();
+if(intensity>0.3){ctx.beginPath();ctx.moveTo(px+sz,py);ctx.lineTo(px,py+sz);ctx.stroke();}
+if(intensity>0.6){ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(px+sz/2,py);ctx.lineTo(px+sz/2,py+sz);ctx.stroke();}}
+// Draw centers prominently when power overlay is on
+for(const st of alive){const centers=ter.tribeCenters[st];if(!centers)continue;
+const[cr,cg,cb]=tribeRGB(st);
+for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x*RES+1,cy2=centers[ci].y*RES+1;
+const isCapital=ci===0,r2=isCapital?6:4;
+// Glow
+ctx.beginPath();ctx.arc(cx2,cy2,r2+4,0,Math.PI*2);
+ctx.fillStyle=`rgba(${cr},${cg},${cb},0.2)`;ctx.fill();
+// Solid center
+ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
+ctx.fillStyle=`rgba(${cr},${cg},${cb},0.9)`;ctx.fill();
+ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
+ctx.strokeStyle=isCapital?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.4)";ctx.lineWidth=isCapital?2:1;ctx.stroke();
+// Capital star marker
+if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 8px sans-serif";
+ctx.fillText("★",cx2-4,cy2+3);}}}}
 },[updateTerrainCache]);
 
 useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,showPower]);
