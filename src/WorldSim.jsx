@@ -505,28 +505,25 @@ ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
 ctx.fillStyle=isCapital?`rgb(${cr},${cg},${cb})`:`rgba(${cr},${cg},${cb},0.7)`;ctx.fill();
 ctx.beginPath();ctx.arc(cx2,cy2,r2+2,0,Math.PI*2);
 ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?2:1;ctx.stroke();}}
-// Power projection view: its own view showing power gradient within tribe borders
+// Power projection view: shows center influence within each tribe's own territory
 if(vm==="power"&&ter){const tw2=ter.tw,th2=ter.th;
-// Find max power for normalization
-let globalMax=0;
-for(let st=0;st<ter.tribeSizes.length;st++){if(ter.tribeSizes[st]>0)
-globalMax=Math.max(globalMax,ter.tribeStrength[st]);}
-if(globalMax<0.01)globalMax=1;
-// Draw power gradient within each tribe's territory
 for(let ty2=0;ty2<th2;ty2+=2)for(let tx2=0;tx2<tw2;tx2+=2){
 const ti=ty2*tw2+tx2;const ow2=ter.owner[ti];
 if(ow2<0||ter.tElev[ti]<=0)continue;
+const pop=ter.tribeStrength[ow2];if(pop<0.01)continue;
+// Normalize per-tribe: localPower/pop gives 0.05-1.0 regardless of tribe size
 const lp=localPower(ter,ow2,tx2,ty2);
-const intensity=Math.min(1,lp/globalMax*2.5);// normalized to global max
+const ratio=lp/pop;// 0.05 (far from center) to ~1.0 (at center)
+const intensity=(ratio-0.05)/0.95;// remap to 0-1
 const[cr,cg,cb]=tribeRGB(ow2);
 const px=tx2*RES,py=ty2*RES,sz=RES*2;
-// Hatching in tribe color; denser lines = more power projected here
-const alpha=0.15+intensity*0.7;
-ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;ctx.lineWidth=0.6;
+// Hatching in tribe color; denser lines = stronger center influence
+const alpha=0.1+Math.pow(intensity,0.7)*0.85;// non-linear so centers pop
+ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;ctx.lineWidth=0.6+intensity*0.6;
 ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+sz,py+sz);ctx.stroke();
-if(intensity>0.25){ctx.beginPath();ctx.moveTo(px+sz,py);ctx.lineTo(px,py+sz);ctx.stroke();}
-if(intensity>0.5){ctx.lineWidth=0.8;ctx.beginPath();ctx.moveTo(px+sz/2,py);ctx.lineTo(px+sz/2,py+sz);ctx.stroke();}
-if(intensity>0.75){ctx.beginPath();ctx.moveTo(px,py+sz/2);ctx.lineTo(px+sz,py+sz/2);ctx.stroke();}}
+if(intensity>0.2){ctx.beginPath();ctx.moveTo(px+sz,py);ctx.lineTo(px,py+sz);ctx.stroke();}
+if(intensity>0.45){ctx.lineWidth=0.8+intensity*0.4;ctx.beginPath();ctx.moveTo(px+sz/2,py);ctx.lineTo(px+sz/2,py+sz);ctx.stroke();}
+if(intensity>0.7){ctx.beginPath();ctx.moveTo(px,py+sz/2);ctx.lineTo(px+sz,py+sz/2);ctx.stroke();}}
 // Draw centers
 for(let st=0;st<ter.tribeSizes.length;st++){if(ter.tribeSizes[st]<=0)continue;
 const centers=ter.tribeCenters[st];if(!centers)continue;
