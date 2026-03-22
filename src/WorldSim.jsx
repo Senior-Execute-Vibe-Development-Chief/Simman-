@@ -92,43 +92,66 @@ outer:for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const wx=((tx+dx)%ctw+c
 const npx=Math.min(W-1,wx*RES),npy=Math.min(H-1,wy*RES);
 if(elevation[npy*W+npx]<=0){coastal[ty*ctw+tx]=1;break outer;}}}}
 const rvr=generateRivers(elevation,moisture,W,H,mkRng(seed+777));
-return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,width:W,height:H,preset};}
+// Oases: small fertile pockets in deserts
+const oasis=new Uint8Array(W*H);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
+if(elevation[i]>0&&elevation[i]<0.3&&temperature[i]>0.5&&moisture[i]<0.2){
+const nv=fbm(x/W*50+200,y/H*50+200,3,2,.5);
+if(nv>0.3){oasis[i]=1;moisture[i]=Math.min(1,moisture[i]+0.4);}}}
+// Swamps: low-lying wet warm terrain
+const swamp=new Uint8Array(W*H);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
+if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
+const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
+if(nv>-0.1)swamp[i]=1;}}
+return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,oasis,swamp,width:W,height:H,preset};}
 
 // ── River & lake generation: trace flow downhill from wet highlands ──
 function generateRivers(elev,moist,W,H,rng){
-const flow=new Float32Array(W*H),lake=new Uint8Array(W*H);
+const flow=new Float32Array(W*H),lake=new Uint8Array(W*H),floodplain=new Uint8Array(W*H),delta=new Uint8Array(W*H);
 const D8=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
 // Collect source candidates: high elevation + wet
 const cands=[];
 for(let y=4;y<H-4;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elev[i]>0.1&&moist[i]>0.25)cands.push({x,y,score:elev[i]*0.6+moist[i]*0.4+rng()*0.15});}
 cands.sort((a,b)=>b.score-a.score);
-// Select spaced sources (min ~4% of width apart)
-const sources=[],minSp=Math.round(W*0.043);
-for(const c of cands){if(sources.length>=55)break;let ok=true;
+// Select spaced sources — denser network for larger maps
+const sources=[],minSp=Math.round(W*0.03);
+for(const c of cands){if(sources.length>=80)break;let ok=true;
 for(const s of sources){let dx=Math.abs(c.x-s.x);if(dx>W/2)dx=W-dx;
 if(dx*dx+(c.y-s.y)**2<minSp*minSp){ok=false;break;}}
 if(ok)sources.push(c);}
-// Trace each river downhill with meandering
+// Trace each river downhill with natural meandering
 for(const src of sources){let cx=src.x,cy=src.y,str=0.3+moist[src.y*W+src.x]*0.7;
+let prevDx=0,prevDy=0;// momentum for smooth curves
 const path=new Set();
-for(let step=0;step<800;step++){const ci=cy*W+cx;if(path.has(ci))break;path.add(ci);
-flow[ci]+=str;str+=0.03;if(elev[ci]<=0)break;
-// Gather all downhill unvisited neighbors
+for(let step=0;step<1200;step++){const ci=cy*W+cx;if(path.has(ci))break;path.add(ci);
+flow[ci]+=str;str+=0.025;
+if(elev[ci]<=0){// River reached ocean — create delta if strong enough
+if(str>4){const dR=Math.min(12,Math.round(2+str*0.4));
+for(let dy=-dR;dy<=dR;dy++)for(let dx=-dR;dx<=dR;dx++){
+const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
+const d2=dx*dx+dy*dy;if(d2>dR*dR)continue;
+const ni=ny*W+nx;if(elev[ni]>-0.02&&elev[ni]<0.025)delta[ni]=1;}}
+break;}
+// Gather downhill unvisited neighbors
 const downs=[];let be=elev[ci];
-for(const[dx,dy]of D8){const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;if(!path.has(ni)&&elev[ni]<elev[ci]){downs.push({x:nx,y:ny,e:elev[ni]});
+for(const[ddx,ddy]of D8){const nx=((cx+ddx)%W+W)%W,ny=cy+ddy;if(ny<0||ny>=H)continue;
+const ni=ny*W+nx;if(!path.has(ni)&&elev[ni]<elev[ci]){downs.push({x:nx,y:ny,e:elev[ni],dx:ddx,dy:ddy});
 if(elev[ni]<be)be=elev[ni];}}
 if(downs.length>0){const slope=elev[ci]-be;
-if(slope<0.006&&downs.length>1){
-// Flat terrain: meander using noise to pick among downhill options
-const nv=noise2D(cx*0.25+step*0.1,cy*0.25+step*0.1);
-const idx=Math.floor(((nv+1)/2)*downs.length)%downs.length;
-cx=downs[idx].x;cy=downs[idx].y;
-}else{// Steep terrain: follow steepest descent
-let bx=downs[0].x,by=downs[0].y;
-for(const d of downs)if(d.e<elev[by*W+bx]){bx=d.x;by=d.y;}
-cx=bx;cy=by;}continue;}
+// Natural meandering: blend steepest descent with momentum and noise
+const meanderStr=Math.min(1,0.012/(slope+0.003));
+const nv=noise2D(cx*0.12+step*0.06,cy*0.12)*Math.PI;
+let best=downs[0],bestScore=-Infinity;
+for(const d of downs){const steep=elev[ci]-d.e;
+const momScore=d.dx*prevDx+d.dy*prevDy;
+const angle=Math.atan2(d.dy,d.dx);
+const noiseScore=Math.cos(angle-nv)*meanderStr;
+const score=steep*(1-meanderStr*0.4)+momScore*0.15*meanderStr+noiseScore*0.3;
+if(score>bestScore){bestScore=score;best=d;}}
+prevDx=best.dx;prevDy=best.dy;
+cx=best.x;cy=best.y;continue;}
 // Depression: scan outward for an outlet lower than current elevation
 const ce=elev[ci];let found=false;
 for(let r=2;r<=20&&!found;r++){let bestD=Infinity,ox=-1,oy=-1;
@@ -137,8 +160,7 @@ if(Math.abs(dx)!==r&&Math.abs(dy)!==r)continue;
 const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;if(elev[ni]<ce&&!path.has(ni)){const d2=dx*dx+dy*dy;
 if(d2<bestD){bestD=d2;ox=nx;oy=ny;}}}
-if(ox>=0){// Mark depression area as lake
-for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+if(ox>=0){for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
 const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
 if(dx*dx+dy*dy<=r*r&&elev[ny*W+nx]<=ce+0.008)lake[ny*W+nx]=1;}
 cx=ox;cy=oy;found=true;}}
@@ -147,16 +169,23 @@ if(!found)break;}}
 let mx=0;for(let i=0;i<W*H;i++)if(flow[i]>mx)mx=flow[i];
 const base=new Uint8Array(W*H);
 if(mx>0)for(let i=0;i<W*H;i++){if(flow[i]>0.2)base[i]=Math.min(255,Math.round(Math.sqrt(flow[i]/mx)*200)+55);}
-// Width expansion: strong rivers get 2-3px wide
+// Width expansion: strong rivers get wider, gradual taper
 const river=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(!base[i])continue;
-const r=base[i]>180?2:base[i]>100?1:0;
+const r=base[i]>180?3:base[i]>120?2:base[i]>60?1:0;
 for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
 const nx=((x+dx)%W+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;const d2=dx*dx+dy*dy;if(d2>r*r)continue;
 if(elev[ni]>0){const fade=Math.round(base[i]*(1-Math.sqrt(d2)/(r+1)*0.4));
 river[ni]=Math.max(river[ni],fade);}}}
-return{river,lake};}
+// Floodplains: fertile bands adjacent to rivers
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(!river[i]||elev[i]<=0)continue;
+const fR=river[i]>150?5:river[i]>80?3:2;
+for(let dy=-fR;dy<=fR;dy++)for(let dx=-fR;dx<=fR;dx++){
+const nx=((x+dx)%W+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
+const ni=ny*W+nx;const d2=dx*dx+dy*dy;if(d2>fR*fR)continue;
+if(elev[ni]>0&&!river[ni]&&!lake[ni]&&Math.abs(elev[ni]-elev[i])<0.03)floodplain[ni]=1;}}
+return{river,lake,floodplain,delta};}
 
 const BC=[[8,18,52],[18,40,88],[32,72,120],[198,186,142],[230,238,245],[210,218,228],[140,132,115],[55,78,52],[110,100,90],[130,126,104],[10,80,22],[166,156,66],[202,176,112],[30,98,36],[118,160,52],[38,62,42],[150,146,104]];
 function getBiomeD(e,m,t,sl){if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;const a=e-sl;if(a<0.015)return 3;
@@ -182,12 +211,21 @@ const ti=ty*tw+tx;tElev[ti]=w.elevation[i];tTemp[ti]=w.temperature[i];tMoist[ti]
 const e=w.elevation[i],t=w.temperature[i],m=w.moisture[i];let diff=0;
 if(e>0.35)diff=Math.max(diff,Math.min(1,(e-0.35)*3));if(t>0.5&&m<0.2)diff=Math.max(diff,Math.min(0.85,(0.2-m)*3*(t-0.3)));
 if(t<0.2)diff=Math.max(diff,Math.min(0.9,(0.2-t)*4));tDiff[ti]=diff;tFert[ti]=tileFert(t,m,e);
-// River/lake fertility boost: check pixels in this tile's block
-if(w.river||w.lake){let hasWater=false;
-for(let dy=0;dy<RES&&!hasWater;dy++)for(let dx=0;dx<RES&&!hasWater;dx++){
+// Feature scan: check pixels in this tile's block for rivers, floodplains, deltas, oases, swamps
+{let hasWater=false,hasFlood=false,hasDelta=false,hasOasis=false,hasSwamp=false;
+for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
 const wi=Math.min(w.height-1,py+dy)*w.width+Math.min(w.width-1,px+dx);
-if((w.river[wi]>0||w.lake[wi])&&e>0)hasWater=true;}
-if(hasWater){tMoist[ti]=Math.min(1,tMoist[ti]+0.2);tFert[ti]=Math.min(1,tFert[ti]+0.15);tRiver[ti]=1;}}}
+if(w.river&&w.river[wi]>0&&e>0)hasWater=true;
+if(w.lake&&w.lake[wi]&&e>0)hasWater=true;
+if(w.floodplain&&w.floodplain[wi])hasFlood=true;
+if(w.delta&&w.delta[wi])hasDelta=true;
+if(w.oasis&&w.oasis[wi])hasOasis=true;
+if(w.swamp&&w.swamp[wi])hasSwamp=true;}
+if(hasWater){tMoist[ti]=Math.min(1,tMoist[ti]+0.2);tFert[ti]=Math.min(1,tFert[ti]+0.15);tRiver[ti]=1;}
+if(hasDelta){tFert[ti]=Math.min(1,tFert[ti]+0.35);tMoist[ti]=Math.min(1,tMoist[ti]+0.3);}
+else if(hasFlood){tFert[ti]=Math.min(1,tFert[ti]+0.25);tMoist[ti]=Math.min(1,tMoist[ti]+0.15);}
+if(hasOasis){tFert[ti]=Math.min(1,tFert[ti]+0.3);tDiff[ti]=Math.max(0,tDiff[ti]-0.3);}
+if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+0.25);}}}
 // Find multiple spread-out seed locations for starting tribes
 const NUM_TRIBES=w.preset==="earth"?8:6;const minSpacing=Math.round(tw*0.12);
 // Score all habitable tiles
@@ -445,14 +483,18 @@ r=Math.round(or2*(1-blend)+225*blend);g=Math.round(og2*(1-blend)+235*blend);b=Ma
 }else if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
-// Fill RES×RES block with per-pixel river/lake overlay
+// Fill RES×RES block with per-pixel feature overlays
 for(let dy=0;dy<RES;dy++){const py=ty*RES+dy;if(py>=H)continue;
 for(let dx=0;dx<RES;dx++){const px=tx*RES+dx;if(px>=W)continue;
-const pi=py*W+px;let pr=r,pg=g,pb=b;
-if(e>sl){const wi=py*W+px;
-if(w.lake&&w.lake[wi]){pr=28;pg=62;pb=112;}
-else if(w.river&&w.river[wi]){const a=0.45+w.river[wi]/255*0.45;
-pr=Math.round(r*(1-a)+22*a);pg=Math.round(g*(1-a)+52*a);pb=Math.round(b*(1-a)+132*a);}}
+const pi=py*W+px;let pr=r,pg=g,pb=b;const wi=py*W+px;
+if(w.delta&&w.delta[wi]){pr=30;pg=85;pb=55;}
+else if(w.lake&&w.lake[wi]&&e>sl){pr=28;pg=62;pb=112;}
+else if(w.river&&w.river[wi]&&e>sl){const a=0.45+w.river[wi]/255*0.45;
+pr=Math.round(r*(1-a)+22*a);pg=Math.round(g*(1-a)+52*a);pb=Math.round(b*(1-a)+132*a);}
+else if(e>sl){if(w.swamp&&w.swamp[wi]){pr=40;pg=58;pb=38;}
+else if(w.oasis&&w.oasis[wi]){pr=50;pg=120;pb=45;}
+else if(w.floodplain&&w.floodplain[wi]){const a=0.4;
+pr=Math.round(r*(1-a)+55*a);pg=Math.round(g*(1-a)+110*a);pb=Math.round(b*(1-a)+40*a);}}
 buf[pi*3]=pr;buf[pi*3+1]=pg;buf[pi*3+2]=pb;}}}
 return buf;},[]);
 
@@ -475,8 +517,11 @@ else{const t2=(h-0.6)/0.4;r=Math.round(150+t2*80);g=Math.round(100-t2*40);b=Math
 for(let dy2=0;dy2<RES;dy2++){const py=ty*RES+dy2;if(py>=H)continue;
 for(let dx2=0;dx2<RES;dx2++){const px=tx*RES+dx2;if(px>=W)continue;
 const pi=(py*W+px)*4;let pr=r,pg=g,pb=b;
-if(e>sl){const wi=py*W+px;if(w.lake&&w.lake[wi]){pr=20;pg=45;pb=90;}
-else if(w.river&&w.river[wi]){pr=25;pg=55;pb=120;}}
+{const wi=py*W+px;
+if(w.delta&&w.delta[wi]){pr=25;pg=75;pb=50;}
+else if(e>sl){if(w.lake&&w.lake[wi]){pr=20;pg=45;pb=90;}
+else if(w.river&&w.river[wi]){pr=25;pg=55;pb=120;}
+else if(w.swamp&&w.swamp[wi]){pr=35;pg=50;pb=35;}}}
 d[pi]=pr;d[pi+1]=pg;d[pi+2]=pb;d[pi+3]=255;}}}
 }else if(vm==="power"){
 // Power view: dark base with faint tribe tint, hatching provides the real info
@@ -502,8 +547,12 @@ else{r=22;g=20;b=18;}
 for(let dy2=0;dy2<RES;dy2++){const py=ty*RES+dy2;if(py>=H)continue;
 for(let dx2=0;dx2<RES;dx2++){const px=tx*RES+dx2;if(px>=W)continue;
 const pi=(py*W+px)*4;let pr=r,pg=g,pb=b;
-if(e>sl){const wi=py*W+px;if(w.lake&&w.lake[wi]){pr=12;pg=20;pb=40;}
-else if(w.river&&w.river[wi]){const a=0.5;pr=Math.round(r*(1-a)+12*a);pg=Math.round(g*(1-a)+20*a);pb=Math.round(b*(1-a)+45*a);}}
+const wi=py*W+px;
+if(w.delta&&w.delta[wi]){const a=0.35;pr=Math.round(r*(1-a)+25*a);pg=Math.round(g*(1-a)+70*a);pb=Math.round(b*(1-a)+45*a);}
+else if(e>sl){if(w.lake&&w.lake[wi]){pr=12;pg=20;pb=40;}
+else if(w.river&&w.river[wi]){const a=0.5;pr=Math.round(r*(1-a)+12*a);pg=Math.round(g*(1-a)+20*a);pb=Math.round(b*(1-a)+45*a);}
+else if(w.swamp&&w.swamp[wi]){const a=0.25;pr=Math.round(r*(1-a)+30*a);pg=Math.round(g*(1-a)+45*a);pb=Math.round(b*(1-a)+30*a);}
+else if(w.oasis&&w.oasis[wi]){const a=0.3;pr=Math.round(r*(1-a)+40*a);pg=Math.round(g*(1-a)+100*a);pb=Math.round(b*(1-a)+35*a);}}
 d[pi]=pr;d[pi+1]=pg;d[pi+2]=pb;d[pi+3]=255;}}}
 }else{
 // Default terrain view with tribe overlay
