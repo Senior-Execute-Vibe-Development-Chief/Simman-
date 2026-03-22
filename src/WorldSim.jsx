@@ -222,11 +222,11 @@ const centers=ter.tribeCenters[tribeId];if(!centers||centers.length===0)return p
 // Sum contributions from ALL centers (not just nearest) — each radiates power
 let total=0;
 for(const c of centers){const d=tDistW(tx,ty,c.x,c.y,ter.tw);
-// Sharp gaussian falloff: power concentrated near center, negligible beyond ~15 tiles
-const contribution=Math.exp(-d*d/80)*c.prestige;// σ²≈80 → halves at ~7.5 tiles, 10% at ~13.5
+// Gaussian falloff: halves at ~14 tiles, 10% at ~24, negligible beyond ~35
+const contribution=Math.exp(-d*d/280)*c.prestige;
 total+=contribution;}
-// Base influence without centers is very low (5% of pop)
-return pop*(0.05+0.95*Math.min(1,total));
+// Base influence without centers is very low (3% of pop)
+return pop*(0.03+0.97*Math.min(1,total));
 }
 function newTribe(ter,x,y){const id=ter.tribeCenters.length;ter.tribeCenters.push([{x,y,prestige:1.0,founded:ter.stepCount}]);ter.tribeSizes.push(0);ter.tribeStrength.push(0);ter.tribes=id+1;return id;}
 function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure}=ter;const ow=owner[ti];
@@ -251,9 +251,13 @@ const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni];if(ef
 const diff=tDiff[ni],adjDiff=Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0));
 let chance;if(elev<=0&&elev>sl)chance=0.7*wet;else if(tCoast[ni])chance=0.9*wet;else chance=0.45*(1-adjDiff)*wet;
 if(effT<0.15)chance*=0.3;
-chance*=(0.5+tFert[ni]*1.5*largePrize)*smallBoost;// small tribes grab anything; large tribes want fertile land
-if(Math.random()<chance){let nw=ow;const centers=tribeCenters[ow];
+chance*=(0.5+tFert[ni]*1.5*largePrize)*smallBoost;
+// Center proximity: expansion slows dramatically far from centers
+const centers=tribeCenters[ow];
 const{min:distMin,cap:distCap}=nearestCenterDist(centers,nx,ny,tw);
+const reach=Math.exp(-distMin*distMin/280);// same gaussian as power projection
+chance*=Math.max(0.05,reach);// 5% floor so frontier doesn't completely freeze
+if(Math.random()<chance){let nw=ow;
 // Count same-tribe neighbors: if tile is infill (≥3), never split
 let sameN=0;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny+dy2;
 if(ay>=0&&ay<th&&owner[ay*tw+ax]===ow)sameN++;}
@@ -511,10 +515,10 @@ for(let ty2=0;ty2<th2;ty2+=2)for(let tx2=0;tx2<tw2;tx2+=2){
 const ti=ty2*tw2+tx2;const ow2=ter.owner[ti];
 if(ow2<0||ter.tElev[ti]<=0)continue;
 const pop=ter.tribeStrength[ow2];if(pop<0.01)continue;
-// Normalize per-tribe: localPower/pop gives 0.05-1.0 regardless of tribe size
+// Normalize per-tribe: localPower/pop gives 0.03-1.0 regardless of tribe size
 const lp=localPower(ter,ow2,tx2,ty2);
-const ratio=lp/pop;// 0.05 (far from center) to ~1.0 (at center)
-const intensity=(ratio-0.05)/0.95;// remap to 0-1
+const ratio=lp/pop;// 0.03 (far from center) to ~1.0 (at center)
+const intensity=(ratio-0.03)/0.97;// remap to 0-1
 const[cr,cg,cb]=tribeRGB(ow2);
 const px=tx2*RES,py=ty2*RES,sz=RES*2;
 // Hatching in tribe color; denser lines = stronger center influence
