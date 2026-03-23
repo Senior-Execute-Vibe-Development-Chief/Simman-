@@ -51,12 +51,13 @@ const RES = 2;
 // ═══════════════════════════════════════════════════════
 // STEP 1: Generate tectonic plates
 // ═══════════════════════════════════════════════════════
-const numPlates = 12 + Math.floor(rng() * 6); // 12-17 plates
+// More plates = more varied continent shapes. Use 18-26 total plates.
+// More continental plates ensures 4-7 distinct landmasses.
+const numPlates = 18 + Math.floor(rng() * 9); // 18-26 plates
 const plates = [];
-// Guarantee ~30-40% continental plates by assigning first N as continental
-const numContinental = Math.floor(numPlates * (0.30 + rng() * 0.10));
+// 35-45% continental plates — enough for multiple continents without dominating the map
+const numContinental = Math.floor(numPlates * (0.35 + rng() * 0.10));
 const plateOrder = Array.from({length: numPlates}, (_, i) => i);
-// Shuffle to randomize which plates are continental
 for (let i = numPlates - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [plateOrder[i], plateOrder[j]] = [plateOrder[j], plateOrder[i]]; }
 const contSet = new Set(plateOrder.slice(0, numContinental));
 for (let i = 0; i < numPlates; i++) {
@@ -66,7 +67,8 @@ for (let i = 0; i < numPlates; i++) {
   const speed = 0.3 + rng() * 0.7;
   const vx = Math.cos(angle) * speed;
   const vy = Math.sin(angle) * speed;
-  const baseElev = continental ? 0.02 + rng() * 0.025 : -0.06 - rng() * 0.06;
+  // Varied base elevations: some continental plates are higher (plateaus), some lower (basins)
+  const baseElev = continental ? 0.015 + rng() * 0.035 : -0.05 - rng() * 0.07;
   plates.push({ cx, cy, vx, vy, continental, baseElev, id: i });
 }
 
@@ -243,19 +245,29 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     else if (bt === 3) e += fe * 0.3; // mid-ocean ridge
   }
 
-  // C) Continental interior noise dressing (gentle variation, NOT dome-shaped)
+  // C) Continental interior: varied terrain independent of plate boundaries
   if (plate.continental) {
-    // Plains texture: very low amplitude, makes flat land interesting
-    e += fbm(nx * 12 + s3, ny * 12 + s3, 3, 2, 0.5) * 0.012;
-    // Occasional interior hills (independent of coast distance)
-    const hillNoise = fbm(nx * 6 + s4, ny * 6 + s4, 4, 2, 0.5);
-    if (hillNoise > 0.2) e += (hillNoise - 0.2) * 0.04;
-    // Basin carving: some areas dip lower (river basin floors)
-    const basinNoise = fbm(nx * 3 + s1 + 50, ny * 3 + s1 + 50, 3, 2, 0.5);
-    if (basinNoise > 0.25) e -= (basinNoise - 0.25) * 0.02;
+    // Base terrain variation — broad undulations across the continent
+    e += fbm(nx * 5 + s3, ny * 5 + s3, 5, 2, 0.5) * 0.06;
+    // Interior highlands: ridged noise creates old mountain ranges (Appalachians, Urals)
+    // These are NOT at plate boundaries — they're ancient, independent features
+    const highlandVal = ridged(nx * 3.5 + s4 + 20, ny * 3.5 + s4 + 20, 4, 2.0, 1.8, 1.0);
+    // Only raise highlands where a separate noise field says so (patchy, not everywhere)
+    const highlandMask = fbm(nx * 2.5 + s1 + 80, ny * 2.5 + s1 + 80, 3, 2, 0.5);
+    if (highlandMask > 0.15) e += highlandVal * (highlandMask - 0.15) * 0.18;
+    // Plateaus: elevated flat areas (Ethiopian Highlands, Deccan Plateau)
+    const platNoise = fbm(nx * 3 + s2 + 40, ny * 3 + s2 + 40, 3, 2, 0.5);
+    if (platNoise > 0.35) e += (platNoise - 0.35) * 0.06;
+    // Rolling hills: medium-frequency variation
+    e += fbm(nx * 10 + s3 + 15, ny * 10 + s3 + 15, 3, 2, 0.5) * 0.025;
+    // Basin carving: river lowlands (Amazon, Congo, Mississippi basins)
+    const basinNoise = fbm(nx * 2.5 + s1 + 50, ny * 2.5 + s1 + 50, 3, 2, 0.5);
+    if (basinNoise > 0.2) e -= (basinNoise - 0.2) * 0.05;
+    // Fine texture
+    e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.008;
   } else {
-    // Ocean floor texture
-    e += fbm(nx * 8 + s3 + 30, ny * 8 + s3 + 30, 2, 2, 0.4) * 0.01;
+    // Ocean floor: abyssal plains + texture
+    e += fbm(nx * 8 + s3 + 30, ny * 8 + s3 + 30, 3, 2, 0.4) * 0.015;
   }
 
   // D) Polar reduction
