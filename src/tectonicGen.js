@@ -95,132 +95,212 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 5: Iterative plate simulation
-// Move plates, handle collisions/subduction/rifting.
+// STEP 5: Iterative plate simulation with merging,
+// consumption, and Wilson cycle restart.
 // ═══════════════════════════════════════════════════════
-const SIM_STEPS = 200;
-// Mutable velocities — plates slow down from collisions
-const plateVX = new Float32Array(numPlates);
-const plateVY = new Float32Array(numPlates);
-const plateCells = new Float32Array(numPlates); // cell count per plate
+const CYCLES = 2;
+const STEPS_PER_CYCLE = 100;
+// Max plate ID we'll ever use (original + new plates from re-splitting)
+let maxPlateId = numPlates;
+// Mutable velocities and cell counts
+let plateVX = new Float32Array(256);
+let plateVY = new Float32Array(256);
+let plateCells = new Float32Array(256);
+let plateAlive = new Uint8Array(256); // track which plates still exist
 for (let p = 0; p < numPlates; p++) {
   plateVX[p] = plates[p].vx;
   plateVY[p] = plates[p].vy;
+  plateAlive[p] = 1;
 }
-// Count initial cells per plate
 for (let i = 0; i < N; i++) plateCells[plateMap[i]]++;
+// Track overlap between plate pairs for merging
+const overlapCount = new Map(); // "p1,p2" → count
 
-for (let step = 0; step < SIM_STEPS; step++) {
-  const nextCrust = new Float32Array(N).fill(-0.15);
-  const nextOwner = new Int8Array(N).fill(-1);
-  // Track collisions per plate this step
-  const contCollisions = new Float32Array(numPlates); // continental collision count
-  const oceCollisions = new Float32Array(numPlates);  // oceanic/subduction collision count
+for (let cycle = 0; cycle < CYCLES; cycle++) {
 
-  // Move each cell by its plate's current velocity
-  for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
-    const si = ty * cw + tx;
-    const p = plateMap[si];
+  for (let step = 0; step < STEPS_PER_CYCLE; step++) {
+    const nextCrust = new Float32Array(N).fill(-0.15);
+    const nextOwner = new Int16Array(N).fill(-1);
+    const contCollisions = new Float32Array(256);
+    const oceCollisions = new Float32Array(256);
+    overlapCount.clear();
 
-    const ntx = Math.round(tx + plateVX[p] * 1.5);
-    const nty = Math.round(ty + plateVY[p] * 1.5);
-    const dtx = ((ntx % cw) + cw) % cw;
-    const dty = Math.max(0, Math.min(ch - 1, nty));
-    const di = dty * cw + dtx;
+    // Move each cell
+    for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
+      const si = ty * cw + tx;
+      const p = plateMap[si];
+      if (!plateAlive[p]) continue;
 
-    if (nextOwner[di] === -1) {
-      nextCrust[di] = crust[si];
-      nextOwner[di] = p;
-    } else if (nextOwner[di] !== p) {
-      const existingCrust = nextCrust[di];
-      const incomingCrust = crust[si];
-      const bothContinental = existingCrust > 0 && incomingCrust > 0;
-      const bothOceanic = existingCrust <= 0 && incomingCrust <= 0;
+      const ntx = Math.round(tx + plateVX[p] * 1.5);
+      const nty = Math.round(ty + plateVY[p] * 1.5);
+      const dtx = ((ntx % cw) + cw) % cw;
+      const dty = Math.max(0, Math.min(ch - 1, nty));
+      const di = dty * cw + dtx;
 
-      if (bothContinental) {
-        // Continental collision: fold upward, strong resistance
-        nextCrust[di] = existingCrust + incomingCrust * 0.8;
-        contCollisions[p]++;
-        contCollisions[nextOwner[di]]++;
-      } else if (bothOceanic) {
-        nextCrust[di] = Math.max(existingCrust, incomingCrust) + 0.01;
-        oceCollisions[p]++;
-      } else {
-        // Subduction: moderate resistance
-        const contVal = existingCrust > 0 ? existingCrust : incomingCrust;
-        const oceVal = existingCrust <= 0 ? existingCrust : incomingCrust;
-        nextCrust[di] = contVal + Math.abs(oceVal) * 0.5;
-        oceCollisions[p]++;
-        nextOwner[di] = existingCrust > 0 ? nextOwner[di] : p;
-      }
-    } else {
-      nextCrust[di] = Math.max(nextCrust[di], crust[si]);
-    }
-  }
+      if (nextOwner[di] === -1) {
+        nextCrust[di] = crust[si];
+        nextOwner[di] = p;
+      } else if (nextOwner[di] !== p) {
+        const existingCrust = nextCrust[di];
+        const incomingCrust = crust[si];
+        const ep = nextOwner[di];
+        const bothContinental = existingCrust > 0 && incomingCrust > 0;
+        const bothOceanic = existingCrust <= 0 && incomingCrust <= 0;
 
-  // Fill unclaimed cells with new oceanic crust
-  for (let i = 0; i < N; i++) {
-    if (nextOwner[i] === -1) {
-      nextCrust[i] = -0.06 + fbm((i % cw) / cw * 8 + step, Math.floor(i / cw) / ch * 8 + step, 2, 2, 0.5) * 0.01;
-      const tx = i % cw, ty = Math.floor(i / cw);
-      let bestD = 1e9, bestP = 0;
-      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
-        const nx2 = (tx + dx + cw) % cw, ny2 = ty + dy;
-        if (ny2 < 0 || ny2 >= ch) continue;
-        const ni = ny2 * cw + nx2;
-        if (nextOwner[ni] >= 0) {
-          const d = dx * dx + dy * dy;
-          if (d < bestD) { bestD = d; bestP = nextOwner[ni]; }
+        // Track overlap for merging
+        const key = Math.min(p, ep) + ',' + Math.max(p, ep);
+        overlapCount.set(key, (overlapCount.get(key) || 0) + 1);
+
+        if (bothContinental) {
+          // Continental collision: fold upward
+          nextCrust[di] = existingCrust + incomingCrust * 0.6;
+          contCollisions[p]++;
+          contCollisions[ep]++;
+          // Incoming continental crust is consumed (folded into existing)
+          // — the incoming plate loses this cell
+        } else if (bothOceanic) {
+          // Oceanic convergence: one subducts, slight island arc
+          nextCrust[di] = Math.max(existingCrust, incomingCrust) + 0.008;
+          oceCollisions[p]++;
+          // Subducted plate loses this cell
+        } else {
+          // Subduction: oceanic consumed under continental
+          const contVal = existingCrust > 0 ? existingCrust : incomingCrust;
+          const oceVal = existingCrust <= 0 ? existingCrust : incomingCrust;
+          nextCrust[di] = contVal + Math.abs(oceVal) * 0.3;
+          oceCollisions[p]++;
+          // Continental plate keeps ownership
+          nextOwner[di] = existingCrust > 0 ? ep : p;
         }
+      } else {
+        nextCrust[di] = Math.max(nextCrust[di], crust[si]);
       }
-      nextOwner[i] = bestP;
+    }
+
+    // Fill unclaimed cells with new oceanic crust (rifting/divergence)
+    for (let i = 0; i < N; i++) {
+      if (nextOwner[i] === -1) {
+        nextCrust[i] = -0.06 + fbm((i % cw) / cw * 8 + step + cycle * 100, Math.floor(i / cw) / ch * 8 + step, 2, 2, 0.5) * 0.01;
+        const tx = i % cw, ty = Math.floor(i / cw);
+        let bestD = 1e9, bestP = 0;
+        for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+          const nx2 = (tx + dx + cw) % cw, ny2 = ty + dy;
+          if (ny2 < 0 || ny2 >= ch) continue;
+          const ni = ny2 * cw + nx2;
+          if (nextOwner[ni] >= 0) {
+            const d = dx * dx + dy * dy;
+            if (d < bestD) { bestD = d; bestP = nextOwner[ni]; }
+          }
+        }
+        nextOwner[i] = bestP;
+      }
+    }
+
+    // Collision resistance
+    for (let p = 0; p < maxPlateId; p++) {
+      if (!plateAlive[p]) continue;
+      const cells = Math.max(1, plateCells[p]);
+      const contRatio = contCollisions[p] / cells;
+      const oceRatio = oceCollisions[p] / cells;
+      const drag = 1 - Math.min(0.95, contRatio * 8 + oceRatio * 2);
+      plateVX[p] *= drag;
+      plateVY[p] *= drag;
+      // Velocity death threshold
+      if (Math.abs(plateVX[p]) < 0.03 && Math.abs(plateVY[p]) < 0.03) {
+        plateVX[p] = 0; plateVY[p] = 0;
+      }
+    }
+
+    // Plate merging: if two plates overlap > 30% of the smaller plate, merge
+    for (const [key, count] of overlapCount) {
+      const [a, b] = key.split(',').map(Number);
+      if (!plateAlive[a] || !plateAlive[b]) continue;
+      const smaller = Math.min(plateCells[a], plateCells[b]);
+      if (count > smaller * 0.3) {
+        // Merge smaller into larger
+        const keep = plateCells[a] >= plateCells[b] ? a : b;
+        const remove = keep === a ? b : a;
+        for (let i = 0; i < N; i++) {
+          if (nextOwner[i] === remove) nextOwner[i] = keep;
+        }
+        plateAlive[remove] = 0;
+        plateVX[keep] = (plateVX[keep] * plateCells[keep] + plateVX[remove] * plateCells[remove])
+          / (plateCells[keep] + plateCells[remove]);
+        plateVY[keep] = (plateVY[keep] * plateCells[keep] + plateVY[remove] * plateCells[remove])
+          / (plateCells[keep] + plateCells[remove]);
+      }
+    }
+
+    // Copy back and recount
+    plateCells.fill(0);
+    for (let i = 0; i < N; i++) {
+      crust[i] = nextCrust[i];
+      plateMap[i] = nextOwner[i] >= 0 ? nextOwner[i] : plateMap[i];
+      plateCells[plateMap[i]]++;
     }
   }
 
-  // Apply collision resistance — slow plates based on collision ratio
-  for (let p = 0; p < numPlates; p++) {
-    const cells = Math.max(1, plateCells[p]);
-    // Continental collisions create strong resistance (can't subduct)
-    // Oceanic collisions create moderate resistance (friction from subduction)
-    const contRatio = contCollisions[p] / cells;
-    const oceRatio = oceCollisions[p] / cells;
-    // Strong drag from continental collision, moderate from subduction
-    const drag = 1 - Math.min(0.95, contRatio * 8 + oceRatio * 2);
-    plateVX[p] *= drag;
-    plateVY[p] *= drag;
-  }
-
-  // Copy back and recount cells
-  plateCells.fill(0);
-  for (let i = 0; i < N; i++) {
-    crust[i] = nextCrust[i];
-    plateMap[i] = nextOwner[i] >= 0 ? nextOwner[i] : plateMap[i];
-    plateCells[plateMap[i]]++;
+  // ── Wilson Cycle: re-split into new plates for next cycle ──
+  if (cycle < CYCLES - 1) {
+    // Generate new plate seeds using Voronoi on the existing terrain
+    const newNumPlates = 8 + Math.floor(rng() * 8); // 8-15 new plates
+    const newPlates = [];
+    for (let i = 0; i < newNumPlates; i++) {
+      const cx = rng(), cy = 0.05 + rng() * 0.9;
+      const angle = rng() * Math.PI * 2, speed = 0.3 + rng() * 0.7;
+      newPlates.push({ cx, cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed });
+    }
+    // Re-assign cells to new plates via Voronoi (with warping for organic boundaries)
+    const warpSeed2 = rng() * 100;
+    for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
+      const nx = tx / cw, ny = ty / ch;
+      const wx = nx + fbm(nx * 3 + warpSeed2, ny * 3 + warpSeed2, 3, 2, 0.5) * 0.08;
+      const wy = ny + fbm(nx * 3 + warpSeed2 + 50, ny * 3 + warpSeed2 + 50, 3, 2, 0.5) * 0.08;
+      let bestD = 1e9, bestP = 0;
+      for (let p = 0; p < newNumPlates; p++) {
+        let dx = wx - newPlates[p].cx;
+        if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
+        const dy = wy - newPlates[p].cy;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; bestP = p; }
+      }
+      plateMap[ty * cw + tx] = maxPlateId + bestP;
+    }
+    // Set up new plate velocities
+    for (let i = 0; i < newNumPlates; i++) {
+      const pid = maxPlateId + i;
+      plateVX[pid] = newPlates[i].vx;
+      plateVY[pid] = newPlates[i].vy;
+      plateAlive[pid] = 1;
+    }
+    maxPlateId += newNumPlates;
+    // Recount cells
+    plateCells.fill(0);
+    for (let i = 0; i < N; i++) plateCells[plateMap[i]]++;
   }
 }
 
-// One smoothing pass at the end to clean up blocky edges
-const smoothed = new Float32Array(N);
-for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
-  const i = ty * cw + tx;
-  let sum = crust[i] * 2, count = 2;
-  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-    if (!dx && !dy) continue;
-    const nx2 = (tx + dx + cw) % cw, ny2 = ty + dy;
-    if (ny2 < 0 || ny2 >= ch) continue;
-    sum += crust[ny2 * cw + nx2]; count++;
+// Smoothing passes to soften grid artifacts
+for (let pass = 0; pass < 3; pass++) {
+  const smoothed = new Float32Array(N);
+  for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
+    const i = ty * cw + tx;
+    let sum = crust[i] * 2, count = 2;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx2 = (tx + dx + cw) % cw, ny2 = ty + dy;
+      if (ny2 < 0 || ny2 >= ch) continue;
+      sum += crust[ny2 * cw + nx2]; count++;
+    }
+    smoothed[i] = sum / count;
   }
-  smoothed[i] = sum / count;
+  for (let i = 0; i < N; i++) crust[i] = smoothed[i];
 }
-for (let i = 0; i < N; i++) crust[i] = smoothed[i];
 
 // Update pixPlate from final coarse plateMap
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   pixPlate[y * W + x] = plateMap[Math.min(ch - 1, Math.floor(y / CG)) * cw + Math.min(cw - 1, Math.floor(x / CG))];
 }
-
-// pixPlate stays as the original warped Voronoi — organic plate shapes
-// The simulation reshapes crust but plate identity is cosmetic for overlay
 
 // ═══════════════════════════════════════════════════════
 // STEP 6: Build pixel-level elevation from simulated crust
