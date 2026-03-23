@@ -202,7 +202,7 @@ const ni=ny2*dw+nx2,nd=cd+1;const np=Math.min(W-1,nx2*DG),npy=Math.min(H-1,ny2*D
 if(nd<cdist2[ni]&&isLandArr[npy*W+np]){cdist2[ni]=nd;cdQ2.push(ni);}}}
 // Step 3: Final elevation — [2] SHALLOW COASTAL GRADIENTS + terrain shaping
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
-let e=rawElev[i]-sl;if(lat>.88)e-=(lat-.88)*3;
+let e=rawElev[i]-sl;
 if(e>0){// LAND
 if(preset==="continental"){// Continental: trust raw elevation, independent features
 e=e*0.3;
@@ -655,10 +655,7 @@ for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
 const si=sy*W+sx;const e=w.elevation[si],m=w.moisture[si];
 const t=w.temperature[si];let r,g,b;
-if(e<=sl&&t<0.18){const lat=Math.abs(sy/H-0.5)*2;const iceStr=Math.min(1,(0.18-t)/0.18)*(0.3+lat*0.7);
-const df=Math.min(1,Math.max(0,(sl-e)/0.15));const or2=8+df*2,og2=18+df*5,ob2=52+df*15;const blend=Math.min(1,iceStr*1.8);
-r=Math.round(or2*(1-blend)+225*blend);g=Math.round(og2*(1-blend)+235*blend);b=Math.round(ob2*(1-blend)+248*blend);
-}else if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
+if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
 // Scan tile block for most prominent feature overlay
