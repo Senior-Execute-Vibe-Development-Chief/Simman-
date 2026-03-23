@@ -237,16 +237,35 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 
   } else {
     // ── OCEAN ELEVATION ──
-    // Uniform base depth for all ocean
-    e = -0.08;
+    // Same noise layers as land, at ocean-appropriate scale
+    e = plate.baseElev;
 
-    // Continuous ocean floor texture (no plate-dependent variation)
-    e += fbm(nx * 8 + s3 + 30, ny * 8 + s3 + 30, 3, 2, 0.4) * 0.015;
+    // Broad ocean floor variation
+    e += fbm(nx * 5 + s3, ny * 5 + s3, 5, 2, 0.5) * 0.04;
 
-    // Oceanic fault features (mid-ocean ridges, trenches)
+    // Underwater ridges / seamount chains (like land highlands)
+    const seamountVal = ridged(nx * 3.5 + s4 + 20, ny * 3.5 + s4 + 20, 4, 2.0, 1.8, 1.0);
+    const seamountMask = fbm(nx * 2.5 + s1 + 80, ny * 2.5 + s1 + 80, 3, 2, 0.5);
+    if (seamountMask > 0.15) e += seamountVal * (seamountMask - 0.15) * 0.08;
+
+    // Abyssal plains (like land plateaus, but inverted — flat deep areas)
+    const abyssNoise = fbm(nx * 3 + s2 + 40, ny * 3 + s2 + 40, 3, 2, 0.5);
+    if (abyssNoise < -0.2) e += (abyssNoise + 0.2) * 0.04;
+
+    // Rolling ocean floor
+    e += fbm(nx * 10 + s3 + 15, ny * 10 + s3 + 15, 3, 2, 0.5) * 0.015;
+
+    // Basin carving
+    const basinNoise = fbm(nx * 2.5 + s1 + 50, ny * 2.5 + s1 + 50, 3, 2, 0.5);
+    if (basinNoise > 0.2) e -= (basinNoise - 0.2) * 0.03;
+
+    // Fine texture
+    e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.006;
+
+    // Tectonic features on top: trenches and mid-ocean ridges
     if (fe > 0) {
-      if (bt === 2) e -= fe * 0.4; // trench
-      else if (bt === 3) e += fe * 0.25; // mid-ocean ridge
+      if (bt === 2) e -= fe * 0.4;
+      else if (bt === 3) e += fe * 0.25;
     }
   }
 
