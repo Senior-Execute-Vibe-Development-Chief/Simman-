@@ -633,7 +633,9 @@ const canvasRef=useRef(null);const[seed,setSeed]=useState(8817);const[world,setW
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState(null);
+const[showOceanDepth,setShowOceanDepth]=useState(false);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
+const oceanDepthRef=useRef(false);
 const presetRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
@@ -695,7 +697,12 @@ if(vm==="depth"){
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const e=w.elevation[si];let r,g,b;
-if(e<=sl){const depth=Math.min(1,Math.max(0,(sl-e)/0.2));r=(10-depth*8+.5)|0;g=(30+depth*10+.5)|0;b=(80+depth*60+.5)|0;}
+if(e<=sl){if(oceanDepthRef.current){const depth=Math.min(1,Math.max(0,(sl-e)/0.2));
+if(depth<0.15){const t2=depth/0.15;r=(90-t2*40+.5)|0;g=(190-t2*60+.5)|0;b=(200-t2*30+.5)|0;}
+else if(depth<0.4){const t2=(depth-0.15)/0.25;r=(50-t2*30+.5)|0;g=(130-t2*70+.5)|0;b=(170-t2*40+.5)|0;}
+else if(depth<0.7){const t2=(depth-0.4)/0.3;r=(20-t2*12+.5)|0;g=(60-t2*35+.5)|0;b=(130-t2*50+.5)|0;}
+else{const t2=(depth-0.7)/0.3;r=(8-t2*5+.5)|0;g=(25-t2*18+.5)|0;b=(80-t2*45+.5)|0;}}
+else{const depth=Math.min(1,Math.max(0,(sl-e)/0.2));r=(10-depth*8+.5)|0;g=(30+depth*10+.5)|0;b=(80+depth*60+.5)|0;}}
 else{const h=Math.min(1,(e-sl)/0.6);if(h<0.05){r=(160+h*200+.5)|0;g=(155+h*200+.5)|0;b=(120+h*200+.5)|0;}
 else if(h<0.3){const t2=(h-0.05)/0.25;r=(60+t2*50+.5)|0;g=(100+t2*30+.5)|0;b=(40-t2*10+.5)|0;}
 else if(h<0.6){const t2=(h-0.3)/0.3;r=(110+t2*40+.5)|0;g=(130-t2*30+.5)|0;b=(30-t2*10+.5)|0;}
@@ -773,7 +780,7 @@ if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-seri
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache]);
 
-useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode]);
+useEffect(()=>{viewRef.current=viewMode;oceanDepthRef.current=showOceanDepth;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,showOceanDepth]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -827,4 +834,8 @@ style={bsA(preset==="tectonic","180,120,100")}>Tectonic</button>
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
 style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
 color:viewMode===k?"#c9b87a":"#5a5448",padding:"3px 7px"}}>{label}</button>))}
+{viewMode==="depth"&&<><div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
+<button onClick={()=>{setShowOceanDepth(v=>!v);oceanDepthRef.current=!oceanDepthRef.current;}}
+style={{...bs,background:showOceanDepth?"rgba(80,140,200,0.25)":"transparent",border:"none",
+color:showOceanDepth?"#6ab4e8":"#5a5448",padding:"3px 7px",fontSize:"10px"}}>Ocean</button></>}
 </div></div>);}
