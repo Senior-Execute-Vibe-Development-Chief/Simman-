@@ -80,13 +80,13 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 // Crust thickness field — independent of plates, like a fractal heightmap.
 // Positive = thick continental crust, negative = thin oceanic crust.
 // Uses low-frequency noise so continents are large coherent blobs.
-// Biased slightly negative so ~65-70% is ocean by default.
+// Biased slightly negative so ~60-70% is ocean by default.
 const crustCoarse = new Float32Array(cw * ch);
 for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
   const nx = tx / cw, ny = ty / ch;
-  crustCoarse[ty * cw + tx] = fbm(nx * 2.5 + crustSeed, ny * 2.5 + crustSeed, 5, 2, 0.5) * 0.16
-    + fbm(nx * 5 + crustSeed + 40, ny * 5 + crustSeed + 40, 3, 2, 0.5) * 0.05
-    - 0.03; // bias toward ocean
+  crustCoarse[ty * cw + tx] = fbm(nx * 1.8 + crustSeed, ny * 1.8 + crustSeed, 5, 2, 0.5) * 0.22
+    + fbm(nx * 4 + crustSeed + 40, ny * 4 + crustSeed + 40, 3, 2, 0.5) * 0.06
+    - 0.02;
 }
 
 // ═══════════════════════════════════════════════════════
