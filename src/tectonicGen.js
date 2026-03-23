@@ -181,7 +181,12 @@ for (let qi = 0; qi < faultQ.length; qi++) {
 // No blending across land/ocean boundaries — that causes rings.
 // Instead: hard plate type, smooth noise-based terrain on each side.
 // ═══════════════════════════════════════════════════════
-const s1 = rng() * 100, s2 = rng() * 100, s3 = rng() * 100, s4 = rng() * 100;
+const s1 = rng() * 100, s2 = rng() * 100, s3 = rng() * 100, s4 = rng() * 100, s5 = rng() * 100;
+// Domain warp helper — same as WorldSim's warp()
+const warp = (x, y, freq, oct, str, o1, o2) => [
+  x + fbm(x * freq + o1, y * freq + o1, oct, 2, 0.5) * str,
+  y + fbm(x * freq + o2, y * freq + o2, oct, 2, 0.5) * str
+];
 
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
@@ -196,38 +201,34 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   let e;
   if (plate.continental) {
     // ── LAND ELEVATION ──
-    // Start at base continental height
     e = plate.baseElev;
 
-    // Fault-line mountains (plate boundary features)
+    // Tectonic boundary mountains (plate collisions/subduction)
     if (fe > 0) {
-      const ridgeStr = fe * (fd < 3 ? 0.7 + 0.3 * ridged(nx * 5 + s1, ny * 5 + s1, 4, 2.2, 2.0, 1.0) : 1.0);
+      const [wmx, wmy] = warp(nx, ny, 3, 3, 0.08, s1, s1 + 40);
+      const ridgeStr = fe * (fd < 3 ? 0.7 + 0.3 * ridged(wmx * 5, wmy * 5, 4, 2.2, 2.0, 1.0) : 1.0);
       if (fd < 8) {
-        const rv = ridged(nx * 6 + s2, ny * 6 + s2, 5, 2.1, 2.0, 1.0);
+        const rv = ridged(wmx * 6 + s2, wmy * 6 + s2, 5, 2.1, 2.0, 1.0);
         e += ridgeStr * (0.5 + rv * 0.5);
       } else {
         e += ridgeStr * 0.6;
       }
     }
 
-    // Broad terrain variation — gives continents character
-    e += fbm(nx * 5 + s3, ny * 5 + s3, 5, 2, 0.5) * 0.08;
+    // Independent mountain ridges (old ranges, not tied to current boundaries)
+    const [wmx2, wmy2] = warp(nx, ny, 2, 3, 0.1, s4, s4 + 40);
+    e += ridged(wmx2 * 4 + s5, wmy2 * 4 + s5, 5, 2.2, 2.0, 1.0) * 0.20;
 
-    // Interior highlands (old mountain ranges, independent of plate boundaries)
-    const highlandVal = ridged(nx * 3.5 + s4 + 20, ny * 3.5 + s4 + 20, 4, 2.0, 1.8, 1.0);
-    const highlandMask = fbm(nx * 2.5 + s1 + 80, ny * 2.5 + s1 + 80, 3, 2, 0.5);
-    if (highlandMask > 0.1) e += highlandVal * (highlandMask - 0.1) * 0.22;
+    // Broad terrain variation (domain-warped for organic shapes)
+    const [wbx, wby] = warp(nx, ny, 2.5, 3, 0.06, s3 + 10, s3 + 60);
+    e += fbm(wbx * 5 + s3, wby * 5 + s3, 5, 2, 0.5) * 0.12;
 
-    // Plateaus
-    const platNoise = fbm(nx * 3 + s2 + 40, ny * 3 + s2 + 40, 3, 2, 0.5);
-    if (platNoise > 0.3) e += (platNoise - 0.3) * 0.08;
+    // Hills (domain-warped)
+    const [whx, why] = warp(nx, ny, 4, 3, 0.05, s3 + 20, s3 + 70);
+    e += Math.max(0, fbm(whx * 6 + s2, why * 6 + s2, 4, 2, 0.5)) * 0.06;
 
-    // Rolling hills
-    e += fbm(nx * 10 + s3 + 15, ny * 10 + s3 + 15, 3, 2, 0.5) * 0.03;
-
-    // Basin carving
-    const basinNoise = fbm(nx * 2.5 + s1 + 50, ny * 2.5 + s1 + 50, 3, 2, 0.5);
-    if (basinNoise > 0.2) e -= (basinNoise - 0.2) * 0.06;
+    // Valley carving
+    e -= Math.max(0, fbm(nx * 5 + s1 + 60, ny * 5 + s1 + 60, 3, 2, 0.5) + 0.15) * 0.05;
 
     // Fine texture
     e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.01;
@@ -328,5 +329,5 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   moisture[i] = Math.max(0.02, Math.min(1, m));
 }
 
-return { elevation, moisture, temperature };
+return { elevation, moisture, temperature, pixPlate };
 }

@@ -37,6 +37,7 @@ const CLIMATE={tempMod:0,seaLevel:0,wet:0.7};
 function generateWorld(W,H,seed,preset,oceanLevel){
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
+let tecPlates=null;
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
 const eData=decodeEarth(EARTH_ELEV);
@@ -106,6 +107,7 @@ temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*
 // ── Tectonic plate mode: separate module ──
 const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D});
 for(let i=0;i<W*H;i++){elevation[i]=tec.elevation[i];moisture[i]=tec.moisture[i];temperature[i]=tec.temperature[i];}
+tecPlates=tec.pixPlate;
 }else{
 // ── Random world mode: multi-stamp composition with advanced coastline shaping ──
 // [1] MULTI-STAMP COMPOSITION: 3-6 sub-ellipses per continent + negative stamps for bays
@@ -263,7 +265,7 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,oasis,swamp,width:W,height:H,preset};}
+return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,oasis,swamp,width:W,height:H,preset,pixPlate:tecPlates};}
 
 // ── River & lake generation: trace flow downhill from wet highlands ──
 function generateRivers(elev,moist,W,H,rng){
@@ -690,23 +692,20 @@ const maxT=ter.tribeCenters.length;const tcR=new Uint8Array(maxT),tcG=new Uint8A
 for(let t2=0;t2<maxT;t2++){const c=tribeRGB(t2);tcR[t2]=c[0];tcG[t2]=c[1];tcB[t2]=c[2];}
 const N=CW*CH;
 if(vm==="depth"){
-// Depth/heightmap view — one pixel per tile
+// Depth/heightmap view — flat black-to-white gradient
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
-const e=w.elevation[si];let r,g,b;
-// Unified elevation scale: ocean and land use the same continuous mapping
-{const h=Math.min(1,Math.max(-1,e/0.6));
-if(h<-0.5){const t2=(h+1)/0.5;r=(3+t2*5+.5)|0;g=(7+t2*18+.5)|0;b=(35+t2*45+.5)|0;}
-else if(h<-0.15){const t2=(h+0.5)/0.35;r=(8+t2*32+.5)|0;g=(25+t2*55+.5)|0;b=(80+t2*60+.5)|0;}
-else if(h<0){const t2=(h+0.15)/0.15;r=(40+t2*50+.5)|0;g=(80+t2*80+.5)|0;b=(140+t2*50+.5)|0;}
-else if(h<0.08){const t2=h/0.08;r=(160+t2*40+.5)|0;g=(155+t2*20+.5)|0;b=(120-t2*40+.5)|0;}
-else if(h<0.3){const t2=(h-0.08)/0.22;r=(60+t2*50+.5)|0;g=(100+t2*30+.5)|0;b=(40-t2*10+.5)|0;}
-else if(h<0.6){const t2=(h-0.3)/0.3;r=(110+t2*40+.5)|0;g=(130-t2*30+.5)|0;b=(30-t2*10+.5)|0;}
-else{const t2=(h-0.6)/0.4;r=(150+t2*80+.5)|0;g=(100-t2*40+.5)|0;b=(20+t2*10+.5)|0;}}
-// Check tile for feature overlay
-if(ter.tRiver[ti]&&e>sl){if(w.lake){let lk=false;for(let dy=0;dy<RES&&!lk;dy++)for(let dx=0;dx<RES&&!lk;dx++){
-const wi=Math.min(H-1,sy+dy)*W+Math.min(W-1,sx+dx);if(w.lake[wi])lk=true;}if(lk){r=20;g=45;b=90;}}
-if(r!==20){r=25;g=55;b=120;}}
+const e=w.elevation[si];
+// Map elevation to 0-255: black = deepest, white = highest
+const v=Math.min(255,Math.max(0,((e+0.2)/0.8)*255))|0;
+let r=v,g=v,b=v;
+// Plate boundary overlay for tectonic mode
+if(w.pixPlate){const myP=w.pixPlate[si];let boundary=false;
+for(let dy=-RES;dy<=RES&&!boundary;dy+=RES)for(let dx=-RES;dx<=RES&&!boundary;dx+=RES){
+if(!dx&&!dy)continue;
+const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
+if(w.pixPlate[ny2*W+nx2]!==myP)boundary=true;}
+if(boundary){r=200;g=60;b=40;}}
 const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="power"){
 // Power view — one pixel per tile
