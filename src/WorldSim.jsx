@@ -34,7 +34,7 @@ const RES=2;
 // Static climate: no ice ages or sea level changes
 const CLIMATE={tempMod:0,seaLevel:0,wet:0.7};
 
-function generateWorld(W,H,seed,preset){
+function generateWorld(W,H,seed,preset,oceanLevel){
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
 if(preset==="earth"){
@@ -172,7 +172,7 @@ e+=fbm(wnx*7+3.7,wny*7+3.7,4,2,.5)*.10;
 e+=fbm(nx*20+s3,ny*20+s3,2,2,.4)*.025;
 rawElev[y*W+x]=e;}
 // Step 2: Determine sea level at 70th percentile
-const sorted=Float32Array.from(rawElev).sort();const sl=sorted[Math.floor(W*H*.7)];
+const sorted=Float32Array.from(rawElev).sort();const sl=sorted[Math.floor(W*H*(oceanLevel||0.7))];
 const isLandArr=new Uint8Array(W*H);for(let i=0;i<W*H;i++)isLandArr[i]=rawElev[i]>sl?1:0;
 // Remove tiny isolated land clusters (< 20 pixels) via flood fill
 const visited=new Uint8Array(W*H);
@@ -633,16 +633,16 @@ const canvasRef=useRef(null);const[seed,setSeed]=useState(8817);const[world,setW
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState(null);
-const[showOceanDepth,setShowOceanDepth]=useState(false);
+const[oceanLevel,setOceanLevel]=useState(0.7);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
-const oceanDepthRef=useRef(false);
+const oceanLevelRef=useRef(0.7);
 const presetRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
 const imgRef=useRef(null);
 const W=1920,H=960,CW=Math.ceil(W/RES),CH=Math.ceil(H/RES);
-const generate=useCallback(s=>{const w=generateWorld(W,H,s,presetRef.current);setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
+const generate=useCallback((s,ol)=>{const w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current);setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
@@ -697,14 +697,13 @@ if(vm==="depth"){
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const e=w.elevation[si];let r,g,b;
-if(e<=sl){if(oceanDepthRef.current){const depth=Math.min(1,Math.max(0,(sl-e)/0.2));
-if(depth<0.15){const t2=depth/0.15;r=(90-t2*40+.5)|0;g=(190-t2*60+.5)|0;b=(200-t2*30+.5)|0;}
-else if(depth<0.4){const t2=(depth-0.15)/0.25;r=(50-t2*30+.5)|0;g=(130-t2*70+.5)|0;b=(170-t2*40+.5)|0;}
-else if(depth<0.7){const t2=(depth-0.4)/0.3;r=(20-t2*12+.5)|0;g=(60-t2*35+.5)|0;b=(130-t2*50+.5)|0;}
-else{const t2=(depth-0.7)/0.3;r=(8-t2*5+.5)|0;g=(25-t2*18+.5)|0;b=(80-t2*45+.5)|0;}}
-else{const depth=Math.min(1,Math.max(0,(sl-e)/0.2));r=(10-depth*8+.5)|0;g=(30+depth*10+.5)|0;b=(80+depth*60+.5)|0;}}
-else{const h=Math.min(1,(e-sl)/0.6);if(h<0.05){r=(160+h*200+.5)|0;g=(155+h*200+.5)|0;b=(120+h*200+.5)|0;}
-else if(h<0.3){const t2=(h-0.05)/0.25;r=(60+t2*50+.5)|0;g=(100+t2*30+.5)|0;b=(40-t2*10+.5)|0;}
+// Unified elevation scale: ocean and land use the same continuous mapping
+{const h=Math.min(1,Math.max(-1,e/0.6));
+if(h<-0.5){const t2=(h+1)/0.5;r=(3+t2*5+.5)|0;g=(7+t2*18+.5)|0;b=(35+t2*45+.5)|0;}
+else if(h<-0.15){const t2=(h+0.5)/0.35;r=(8+t2*32+.5)|0;g=(25+t2*55+.5)|0;b=(80+t2*60+.5)|0;}
+else if(h<0){const t2=(h+0.15)/0.15;r=(40+t2*50+.5)|0;g=(80+t2*80+.5)|0;b=(140+t2*50+.5)|0;}
+else if(h<0.08){const t2=h/0.08;r=(160+t2*40+.5)|0;g=(155+t2*20+.5)|0;b=(120-t2*40+.5)|0;}
+else if(h<0.3){const t2=(h-0.08)/0.22;r=(60+t2*50+.5)|0;g=(100+t2*30+.5)|0;b=(40-t2*10+.5)|0;}
 else if(h<0.6){const t2=(h-0.3)/0.3;r=(110+t2*40+.5)|0;g=(130-t2*30+.5)|0;b=(30-t2*10+.5)|0;}
 else{const t2=(h-0.6)/0.4;r=(150+t2*80+.5)|0;g=(100-t2*40+.5)|0;b=(20+t2*10+.5)|0;}}
 // Check tile for feature overlay
@@ -780,7 +779,7 @@ if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-seri
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache]);
 
-useEffect(()=>{viewRef.current=viewMode;oceanDepthRef.current=showOceanDepth;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,showOceanDepth]);
+useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -834,8 +833,11 @@ style={bsA(preset==="tectonic","180,120,100")}>Tectonic</button>
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
 style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
 color:viewMode===k?"#c9b87a":"#5a5448",padding:"3px 7px"}}>{label}</button>))}
-{viewMode==="depth"&&<><div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
-<button onClick={()=>{setShowOceanDepth(v=>!v);oceanDepthRef.current=!oceanDepthRef.current;}}
-style={{...bs,background:showOceanDepth?"rgba(80,140,200,0.25)":"transparent",border:"none",
-color:showOceanDepth?"#6ab4e8":"#5a5448",padding:"3px 7px",fontSize:"10px"}}>Ocean</button></>}
+<div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
+<span style={{color:"#8a8070",fontSize:"10px",marginRight:4}}>Sea</span>
+<input type="range" min="50" max="90" value={oceanLevel*100}
+onChange={e=>{const v=Number(e.target.value)/100;setOceanLevel(v);oceanLevelRef.current=v;}}
+onMouseUp={()=>generate(seed)}
+onTouchEnd={()=>generate(seed)}
+style={{width:60,accentColor:"#6ab4e8"}} />
 </div></div>);}
