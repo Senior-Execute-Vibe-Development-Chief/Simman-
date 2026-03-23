@@ -215,11 +215,11 @@ const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
 e+=Math.max(0,fbm(whx*6+s2,why*6+s2,4,2,.5))*.08*Math.sqrt(interior);
 e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.06*interior;
 e=Math.pow(Math.max(0,e),0.85)*1.2;e=Math.max(0.003,e);}
-}else{// Continental: same features everywhere
+}else{// Continental: same features everywhere, zero-centered
 const[wmx,wmy]=warp(nx,ny,2,3,0.1,s4,s4+40);
-e+=ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0)*0.25;
+e+=(ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0)-0.45)*0.30;
 const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
-e+=Math.max(0,fbm(whx*6+s2,why*6+s2,4,2,.5))*.06;
+e+=fbm(whx*6+s2,why*6+s2,4,2,.5)*.06;
 e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.05;}
 elevation[i]=e;temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 // Moisture with climate zones + continentality
