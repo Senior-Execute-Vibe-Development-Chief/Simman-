@@ -634,8 +634,9 @@ const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState(null);
 const[oceanLevel,setOceanLevel]=useState(0.7);
 const[depthFromSea,setDepthFromSea]=useState(false);
+const[showPlates,setShowPlates]=useState(false);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
-const oceanLevelRef=useRef(0.7);const depthFromSeaRef=useRef(false);
+const oceanLevelRef=useRef(0.7);const depthFromSeaRef=useRef(false);const showPlatesRef=useRef(false);
 const presetRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
@@ -707,15 +708,7 @@ for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const e=w.elevation[si];
 const v=Math.min(255,Math.max(0,((e-floor)/range)*255))|0;
-let r=v,g=v,b=v;
-// Plate boundary overlay for tectonic mode
-if(w.pixPlate){const myP=w.pixPlate[si];let boundary=false;
-for(let dy=-RES;dy<=RES&&!boundary;dy+=RES)for(let dx=-RES;dx<=RES&&!boundary;dx+=RES){
-if(!dx&&!dy)continue;
-const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
-if(w.pixPlate[ny2*W+nx2]!==myP)boundary=true;}
-if(boundary){r=200;g=60;b=40;}}
-const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
+const pi4=ti<<2;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=v;d[pi4+3]=255;}
 }else if(vm==="power"){
 // Power view — one pixel per tile
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
@@ -745,6 +738,16 @@ if(ow>=0&&ter.tElev[ti]>sl){const alpha=ter.frontier[ti]?0.55:0.32,invA=1-alpha;
 d[pi4]=(tc[ti3]*invA+tcR[ow]*alpha+.5)|0;d[pi4+1]=(tc[ti3+1]*invA+tcG[ow]*alpha+.5)|0;d[pi4+2]=(tc[ti3+2]*invA+tcB[ow]*alpha+.5)|0;
 }else{d[pi4]=tc[ti3];d[pi4+1]=tc[ti3+1];d[pi4+2]=tc[ti3+2];}
 d[pi4+3]=255;}}
+// Plate boundary overlay (works on any view mode)
+if(showPlatesRef.current&&w.pixPlate){
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const myP=w.pixPlate[si];let boundary=false;
+for(let dy=-RES;dy<=RES&&!boundary;dy+=RES)for(let dx=-RES;dx<=RES&&!boundary;dx+=RES){
+if(!dx&&!dy)continue;
+const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
+if(w.pixPlate[ny2*W+nx2]!==myP)boundary=true;}
+if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
 ctx.putImageData(img,0,0);
 // Draw all tribe centers (tile coords — canvas is CW×CH)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
@@ -784,7 +787,7 @@ if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-seri
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;showPlatesRef.current=showPlates;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,showPlates]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -844,6 +847,10 @@ color:viewMode===k?"#c9b87a":"#5a5448",padding:"3px 7px"}}>{label}</button>))}
 <button onClick={()=>{setDepthFromSea(v=>!v);depthFromSeaRef.current=!depthFromSeaRef.current;}}
 style={{...bs,background:depthFromSea?"rgba(80,140,200,0.25)":"transparent",border:"none",
 color:depthFromSea?"#6ab4e8":"#5a5448",padding:"3px 7px",fontSize:"10px"}}>{depthFromSea?"Sea":"Floor"}</button></>}
+{world&&world.pixPlate&&<><div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
+<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
+style={{...bs,background:showPlates?"rgba(200,80,60,0.25)":"transparent",border:"none",
+color:showPlates?"#e07050":"#5a5448",padding:"3px 7px",fontSize:"10px"}}>Plates</button></>}
 <div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
 <span style={{color:"#8a8070",fontSize:"10px",marginRight:4}}>Sea</span>
 <input type="range" min="50" max="90" value={oceanLevel*100}
