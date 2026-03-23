@@ -98,34 +98,44 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 // Move plates, handle collisions/subduction/rifting.
 // ═══════════════════════════════════════════════════════
 const SIM_STEPS = 40;
+// Track accumulated displacement per plate
+const plateDX = new Float32Array(numPlates);
+const plateDY = new Float32Array(numPlates);
+// Store original positions so we offset from the start
+const origCrust = new Float32Array(crust);
+const origOwner = new Uint8Array(plateMap);
 
 for (let step = 0; step < SIM_STEPS; step++) {
+  // Accumulate plate displacement
+  for (let p = 0; p < numPlates; p++) {
+    plateDX[p] += plates[p].vx * 1.2;
+    plateDY[p] += plates[p].vy * 1.2;
+  }
+
   // Build a "next" crust buffer. Start empty (-0.15 = deep unclaimed ocean).
   const nextCrust = new Float32Array(N).fill(-0.15);
-  const nextOwner = new Int8Array(N).fill(-1); // which plate claims this cell
+  const nextOwner = new Int8Array(N).fill(-1);
 
-  // Move each plate's crust to new positions
+  // Move each cell from its ORIGINAL position by accumulated plate offset
   for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
     const si = ty * cw + tx;
-    const p = plateMap[si];
-    const plate = plates[p];
+    const p = origOwner[si];
 
-    // New position after movement (fractional → round to nearest cell)
-    const ntx = Math.round(tx + plate.vx * 0.4);
-    const nty = Math.round(ty + plate.vy * 0.4);
+    // Offset from original position by accumulated plate movement
+    const ntx = Math.round(tx + plateDX[p]);
+    const nty = Math.round(ty + plateDY[p]);
     // Wrap horizontally, clamp vertically
     const dtx = ((ntx % cw) + cw) % cw;
     const dty = Math.max(0, Math.min(ch - 1, nty));
     const di = dty * cw + dtx;
 
     if (nextOwner[di] === -1) {
-      // Unclaimed — just move crust here
-      nextCrust[di] = crust[si];
+      nextCrust[di] = origCrust[si];
       nextOwner[di] = p;
     } else if (nextOwner[di] !== p) {
       // COLLISION — two plates' crust landing on same cell
       const existingCrust = nextCrust[di];
-      const incomingCrust = crust[si];
+      const incomingCrust = origCrust[si];
       const bothContinental = existingCrust > 0 && incomingCrust > 0;
       const bothOceanic = existingCrust <= 0 && incomingCrust <= 0;
 
@@ -147,7 +157,7 @@ for (let step = 0; step < SIM_STEPS; step++) {
     }
     // Same plate → keep higher value
     else {
-      nextCrust[di] = Math.max(nextCrust[di], crust[si]);
+      nextCrust[di] = Math.max(nextCrust[di], origCrust[si]);
     }
   }
 
@@ -172,27 +182,27 @@ for (let step = 0; step < SIM_STEPS; step++) {
     }
   }
 
-  // Copy back
+  // Copy result to crust for final output (only last step matters for rendering)
   for (let i = 0; i < N; i++) {
     crust[i] = nextCrust[i];
-    plateMap[i] = nextOwner[i];
+    plateMap[i] = nextOwner[i] >= 0 ? nextOwner[i] : plateMap[i];
   }
-
-  // Slight erosion: smooth toward neighbors to prevent spiky artifacts
-  const smoothed = new Float32Array(N);
-  for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
-    const i = ty * cw + tx;
-    let sum = crust[i] * 4, count = 4;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      if (!dx && !dy) continue;
-      const nx2 = (tx + dx + cw) % cw, ny2 = ty + dy;
-      if (ny2 < 0 || ny2 >= ch) continue;
-      sum += crust[ny2 * cw + nx2]; count++;
-    }
-    smoothed[i] = sum / count;
-  }
-  for (let i = 0; i < N; i++) crust[i] = smoothed[i];
 }
+
+// One smoothing pass at the end to clean up blocky edges
+const smoothed = new Float32Array(N);
+for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
+  const i = ty * cw + tx;
+  let sum = crust[i] * 2, count = 2;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    if (!dx && !dy) continue;
+    const nx2 = (tx + dx + cw) % cw, ny2 = ty + dy;
+    if (ny2 < 0 || ny2 >= ch) continue;
+    sum += crust[ny2 * cw + nx2]; count++;
+  }
+  smoothed[i] = sum / count;
+}
+for (let i = 0; i < N; i++) crust[i] = smoothed[i];
 
 // ═══════════════════════════════════════════════════════
 // STEP 6: Build pixel-level elevation from simulated crust
