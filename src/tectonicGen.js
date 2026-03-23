@@ -2,14 +2,13 @@
 // Standalone module: generates elevation, moisture, temperature arrays
 // using simplified plate tectonics simulation.
 //
-// Uses WorldSim's noise functions (passed in) to avoid PERM table conflicts.
+// Approach: independent noise-based crust field (PlaTec-style) defines
+// where continental vs oceanic crust exists. Plates define boundaries
+// where that crust interacts. Boundary effects modify the crust field.
 
-// ── Main generator ──
-// noiseFns: { initNoise, fbm, ridged, noise2D } from WorldSim
 export function generateTectonicWorld(W, H, seed, noiseFns) {
 const { initNoise, fbm, ridged } = noiseFns;
 initNoise(seed);
-// Seeded RNG
 let rngState = ((seed % 2147483647) + 2147483647) % 2147483647 || 1;
 const rng = () => { rngState = (rngState * 16807) % 2147483647; return (rngState - 1) / 2147483646; };
 const elevation = new Float32Array(W * H);
@@ -18,7 +17,7 @@ const temperature = new Float32Array(W * H);
 const RES = 2;
 
 // ═══════════════════════════════════════════════════════
-// STEP 1: Generate tectonic plates (just positions + velocities)
+// STEP 1: Generate plates (positions + velocities only)
 // ═══════════════════════════════════════════════════════
 const numMajor = 3 + Math.floor(rng() * 2);
 const numMinor = 5 + Math.floor(rng() * 3);
@@ -35,26 +34,24 @@ for (let i = 0; i < numPlates; i++) {
     cx = (i + 0.2 + rng() * 0.6) / numMajor;
     cy = 0.15 + rng() * 0.7;
   } else if (i < numMajor + numMinor) {
-    cx = rng();
-    cy = 0.08 + rng() * 0.84;
+    cx = rng(); cy = 0.08 + rng() * 0.84;
   } else {
     const cc = clusterCenters[Math.floor(rng() * clusterCenters.length)];
-    cx = cc.x + (rng() - 0.5) * 0.2;
-    cy = cc.y + (rng() - 0.5) * 0.15;
+    cx = cc.x + (rng() - 0.5) * 0.2; cy = cc.y + (rng() - 0.5) * 0.15;
   }
-  cx = ((cx % 1) + 1) % 1;
-  cy = Math.max(0.02, Math.min(0.98, cy));
-  const angle = rng() * Math.PI * 2;
-  const speed = 0.3 + rng() * 0.7;
+  cx = ((cx % 1) + 1) % 1; cy = Math.max(0.02, Math.min(0.98, cy));
+  const angle = rng() * Math.PI * 2, speed = 0.3 + rng() * 0.7;
   plates.push({ cx, cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, id: i });
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 2: Voronoi plate assignment at pixel level
+// STEP 2: Voronoi plate assignment + crust thickness field
 // ═══════════════════════════════════════════════════════
 const CG = 4;
 const cw = Math.ceil(W / CG), ch = Math.ceil(H / CG);
 const pixPlate = new Uint8Array(W * H);
+const crustSeed = rng() * 100;
+
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const nx = x / W, ny = y / H;
   const warpX = fbm(nx * 2 + 13.7, ny * 2 + 13.7, 5, 2, 0.5) * 0.14
@@ -63,8 +60,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const warpY = fbm(nx * 2 + 63.7, ny * 2 + 63.7, 5, 2, 0.5) * 0.14
               + fbm(nx * 6 + 87.1, ny * 6 + 87.1, 4, 2, 0.5) * 0.05
               + (1 - Math.abs(fbm(nx * 14 + 99.7, ny * 14 + 99.7, 3, 2.2, 0.5))) * 0.025;
-  const wnx = nx + warpX, wny = ny + warpY;
   let bestD = 1e9, bestP = 0;
+  const wnx = nx + warpX, wny = ny + warpY;
   for (let p = 0; p < numPlates; p++) {
     let dx = wnx - plates[p].cx;
     if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
@@ -74,18 +71,30 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   }
   pixPlate[y * W + x] = bestP;
 }
+
 const plateMap = new Uint8Array(cw * ch);
 for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
   plateMap[ty * cw + tx] = pixPlate[Math.min(H - 1, ty * CG) * W + Math.min(W - 1, tx * CG)];
 }
 
+// Crust thickness field — independent of plates, like a fractal heightmap.
+// Positive = thick continental crust, negative = thin oceanic crust.
+// Uses low-frequency noise so continents are large coherent blobs.
+// Biased slightly negative so ~65-70% is ocean by default.
+const crustCoarse = new Float32Array(cw * ch);
+for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
+  const nx = tx / cw, ny = ty / ch;
+  crustCoarse[ty * cw + tx] = fbm(nx * 2.5 + crustSeed, ny * 2.5 + crustSeed, 5, 2, 0.5) * 0.16
+    + fbm(nx * 5 + crustSeed + 40, ny * 5 + crustSeed + 40, 3, 2, 0.5) * 0.05
+    - 0.03; // bias toward ocean
+}
+
 // ═══════════════════════════════════════════════════════
-// STEP 3: Classify boundaries from velocity only
-// Store the boundary normal direction for asymmetric effects
+// STEP 3: Classify boundaries using velocity + local crust
 // ═══════════════════════════════════════════════════════
-const boundaryType = new Uint8Array(cw * ch);   // 1=strong convergence, 2=moderate convergence, 3=divergence, 4=transform
+const boundaryType = new Uint8Array(cw * ch);
 const boundaryStr = new Float32Array(cw * ch);
-const boundaryNX = new Float32Array(cw * ch);    // normal pointing toward "my" plate
+const boundaryNX = new Float32Array(cw * ch);
 const boundaryNY = new Float32Array(cw * ch);
 
 for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
@@ -99,17 +108,22 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
     const ni = ny2 * cw + nx2;
     if (plateMap[ni] === plateMap[ti]) continue;
     const otherPlate = plates[plateMap[ni]];
-    // Normal pointing from other toward me
     const bnx = (tx - nx2) / cw, bny = (ty - ny2) / ch;
     const bl = Math.sqrt(bnx * bnx + bny * bny) || 1;
     const nnx = bnx / bl, nny = bny / bl;
     const relV = (myPlate.vx - otherPlate.vx) * nnx + (myPlate.vy - otherPlate.vy) * nny;
     const tanV = Math.abs((myPlate.vx - otherPlate.vx) * (-nny) + (myPlate.vy - otherPlate.vy) * nnx);
     let type = 0, str = 0;
-    if (relV > 0.5) { type = 1; str = relV * 1.2; }         // strong convergence (collision)
-    else if (relV > 0.2) { type = 2; str = relV * 0.9; }     // moderate convergence (subduction)
-    else if (relV < -0.2) { type = 3; str = Math.abs(relV) * 0.6; }  // divergence (rift/ridge)
-    else if (tanV > 0.3) { type = 4; str = tanV * 0.3; }     // transform
+    const myCrust = crustCoarse[ti], otherCrust = crustCoarse[ni];
+    const myThick = myCrust > 0, otherThick = otherCrust > 0;
+    if (relV > 0.2) {
+      if (myThick && otherThick) { type = 1; str = relV * 1.2; }       // continent-continent collision
+      else if (myThick || otherThick) { type = 2; str = relV * 0.9; }   // subduction (oceanic under continental)
+      else { type = 5; str = relV * 0.5; }                              // oceanic-oceanic convergence
+    } else if (relV < -0.2) {
+      if (myThick) { type = 6; str = Math.abs(relV) * 0.7; }           // continental rift
+      else { type = 3; str = Math.abs(relV) * 0.5; }                    // oceanic divergence (mid-ocean ridge)
+    } else if (tanV > 0.3) { type = 4; str = tanV * 0.3; }             // transform
     if (str > maxStr) { maxStr = str; bestType = type; bestNX = nnx; bestNY = nny; }
   }
   boundaryType[ti] = bestType;
@@ -119,51 +133,33 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 4: BFS from boundaries — propagate CRUST THICKNESS
-// Each boundary type affects crust differently and asymmetrically.
-// The "normal" points from boundary toward the current plate side.
+// STEP 4: BFS — modify crust at boundaries asymmetrically
+// The base crust already defines continents. Boundaries sculpt edges.
 // ═══════════════════════════════════════════════════════
-const crust = new Float32Array(cw * ch).fill(-0.06); // default: thin oceanic crust
+const crustMod = new Float32Array(cw * ch); // additive modification to crust
 const faultDist = new Float32Array(cw * ch).fill(255);
 const faultQ = [];
 
-// Seed boundaries with crust values
 for (let i = 0; i < cw * ch; i++) {
   if (boundaryType[i] === 0) continue;
   faultDist[i] = 0;
   const bt = boundaryType[i], bs = boundaryStr[i];
-  if (bt === 1) {
-    // Strong convergence (continental collision): thick crust, tall mountains
-    // Both sides get pushed up — like Himalayas + Tibetan Plateau
-    crust[i] = 0.10 + bs * 0.15;
-  } else if (bt === 2) {
-    // Moderate convergence (subduction): this is the overriding side
-    // Overriding plate gets volcanic arc mountains + thickened crust
-    // The trench is on the other plate's side (handled by propagation direction)
-    crust[i] = 0.06 + bs * 0.10;
-  } else if (bt === 3) {
-    // Divergence: thin crust, slight ridge
-    crust[i] = -0.04 + bs * 0.02;
-  } else {
-    // Transform: minimal crust change
-    crust[i] = -0.02 + bs * 0.01;
-  }
+  // Seed the boundary cell with a crust modification
+  if (bt === 1) crustMod[i] = 0.12 + bs * 0.18;        // collision: massive uplift (Himalayas)
+  else if (bt === 2) crustMod[i] = 0.06 + bs * 0.10;    // subduction: volcanic arc on overriding side
+  else if (bt === 5) crustMod[i] = 0.02 + bs * 0.03;    // oceanic convergence: island arc
+  else if (bt === 3) crustMod[i] = 0.01;                 // mid-ocean ridge: slight uplift
+  else if (bt === 6) crustMod[i] = -0.03 - bs * 0.02;   // continental rift: pull apart, thin crust
+  else crustMod[i] = 0;                                   // transform: no mod
   faultQ.push(i);
 }
 
-// BFS propagation — spread crust thickness outward from boundaries
 for (let qi = 0; qi < faultQ.length; qi++) {
   const ci = faultQ[qi], cd = faultDist[ci];
   const cx2 = ci % cw, cy2 = (ci - cx2) / cw;
-  const bt = boundaryType[ci];
-  const srcCrust = crust[ci];
+  const bt = boundaryType[ci], srcMod = crustMod[ci];
   const bnx = boundaryNX[ci], bny = boundaryNY[ci];
-
-  // Spread distance depends on boundary type
-  // Collision: wide plateau (Tibetan Plateau extends far from Himalayas)
-  // Subduction: moderate spread on overriding side
-  // Divergence/transform: narrow
-  const maxSpread = bt === 1 ? 20 : bt === 2 ? 14 : 5;
+  const maxSpread = bt === 1 ? 18 : bt === 2 ? 12 : bt === 6 ? 8 : 4;
 
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
     if (!dx && !dy) continue;
@@ -172,38 +168,44 @@ for (let qi = 0; qi < faultQ.length; qi++) {
     const ni = ny2 * cw + nx2, nd = cd + 1;
     if (nd >= faultDist[ni] || nd > maxSpread) continue;
 
-    // Asymmetry: check if this neighbor is on the "my plate" side (along normal)
-    // or the "other plate" side (against normal)
     const propDX = (nx2 - cx2) / cw, propDY = (ny2 - cy2) / ch;
     const propL = Math.sqrt(propDX * propDX + propDY * propDY) || 1;
-    const dot = (propDX / propL) * bnx + (propDY / propL) * bny; // >0 = toward my plate
-
-    let newCrust;
+    const dot = (propDX / propL) * bnx + (propDY / propL) * bny;
     const decay = Math.exp(-(nd * nd) / (maxSpread * maxSpread * 0.25));
 
+    let newMod;
     if (bt === 1) {
-      // Collision: both sides get thick crust, broad plateau
-      newCrust = srcCrust * decay;
+      // Collision: both sides get broad uplift (Tibetan Plateau)
+      newMod = srcMod * decay;
     } else if (bt === 2) {
       if (dot > 0) {
-        // Overriding plate side: thick crust, volcanic arc, broad uplift
-        newCrust = srcCrust * decay;
+        // Overriding side: thick crust, volcanic mountains (Andes)
+        newMod = srcMod * decay;
       } else {
-        // Subducting plate side: trench → thin crust pulled down
-        newCrust = -0.08 - boundaryStr[ci] * 0.06 * decay;
+        // Subducting side: deep trench
+        newMod = -(0.06 + boundaryStr[ci] * 0.05) * decay;
       }
+    } else if (bt === 5) {
+      if (dot > 0) {
+        // Overriding side: island arc
+        newMod = srcMod * decay;
+      } else {
+        // Subducting side: trench
+        newMod = -(0.04 + boundaryStr[ci] * 0.03) * decay;
+      }
+    } else if (bt === 6) {
+      // Continental rift: both sides thin
+      newMod = srcMod * decay;
     } else if (bt === 3) {
-      // Divergence: thins crust on both sides
-      newCrust = srcCrust * decay;
+      // Mid-ocean ridge: slight symmetric uplift
+      newMod = srcMod * decay;
     } else {
-      // Transform: minimal effect
-      newCrust = srcCrust * decay * 0.5;
+      newMod = 0;
     }
 
-    // Only update if this gives thicker crust (convergence wins over default ocean)
-    if (newCrust > crust[ni] || (bt === 2 && dot <= 0 && newCrust < crust[ni])) {
+    if (Math.abs(newMod) > Math.abs(crustMod[ni])) {
       faultDist[ni] = nd;
-      crust[ni] = newCrust;
+      crustMod[ni] = newMod;
       boundaryType[ni] = bt;
       boundaryNX[ni] = bnx;
       boundaryNY[ni] = bny;
@@ -213,8 +215,7 @@ for (let qi = 0; qi < faultQ.length; qi++) {
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 5: Build pixel-level elevation from crust field
-// One unified block — same terrain layers everywhere
+// STEP 5: Build elevation from crust + boundary modifications
 // ═══════════════════════════════════════════════════════
 const s1 = rng() * 100, s2 = rng() * 100, s3 = rng() * 100, s4 = rng() * 100, s5 = rng() * 100;
 const warp = (x, y, freq, oct, str, o1, o2) => [
@@ -229,21 +230,21 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const ctx = Math.min(cw - 1, Math.floor(x / CG));
   const cty = Math.min(ch - 1, Math.floor(y / CG));
   const ci = cty * cw + ctx;
-  const crustVal = crust[ci];
 
-  // Base elevation from crust thickness
-  let e = crustVal;
+  // Base: crust field + tectonic modifications
+  let e = crustCoarse[ci] + crustMod[ci];
 
-  // Mountain ridges — scale by crust thickness (only on thick crust)
-  const crustW = Math.min(1, Math.max(0, crustVal * 6));
+  // Mountain ridges — scale by how thick the crust is locally
+  const localCrust = e;
+  const crustW = Math.min(1, Math.max(0, localCrust * 5));
   const [wmx2, wmy2] = warp(nx, ny, 2, 3, 0.1, s4, s4 + 40);
   e += ridged(wmx2 * 4 + s5, wmy2 * 4 + s5, 5, 2.2, 2.0, 1.0) * 0.12 * crustW;
 
-  // Broad terrain variation (domain-warped, zero-centered)
+  // Broad terrain variation (zero-centered)
   const [wbx, wby] = warp(nx, ny, 2.5, 3, 0.06, s3 + 10, s3 + 60);
   e += fbm(wbx * 5 + s3, wby * 5 + s3, 5, 2, 0.5) * 0.05;
 
-  // Hills (domain-warped, zero-centered)
+  // Hills (zero-centered)
   const [whx, why] = warp(nx, ny, 4, 3, 0.05, s3 + 20, s3 + 70);
   e += fbm(whx * 6 + s2, why * 6 + s2, 4, 2, 0.5) * 0.025;
 
@@ -291,7 +292,7 @@ for (let qi = 0; qi < cdQ.length; qi++) {
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 7: Moisture — same climate model as WorldSim
+// STEP 7: Moisture
 // ═══════════════════════════════════════════════════════
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x, nx = x / W, ny = y / H, lat = Math.abs(ny - 0.5) * 2;
