@@ -214,6 +214,11 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 }
 for (let i = 0; i < N; i++) crust[i] = smoothed[i];
 
+// Update pixPlate from final coarse plateMap
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  pixPlate[y * W + x] = plateMap[Math.min(ch - 1, Math.floor(y / CG)) * cw + Math.min(cw - 1, Math.floor(x / CG))];
+}
+
 // pixPlate stays as the original warped Voronoi — organic plate shapes
 // The simulation reshapes crust but plate identity is cosmetic for overlay
 
