@@ -99,7 +99,7 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 // consumption, and Wilson cycle restart.
 // ═══════════════════════════════════════════════════════
 const CYCLES = 2;
-const STEPS_PER_CYCLE = 100;
+const STEPS_PER_CYCLE = 40;
 // Max plate ID we'll ever use (original + new plates from re-splitting)
 let maxPlateId = numPlates;
 // Mutable velocities and cell counts
