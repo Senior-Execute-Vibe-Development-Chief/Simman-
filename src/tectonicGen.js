@@ -99,21 +99,31 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 // Move plates, handle collisions/subduction/rifting.
 // ═══════════════════════════════════════════════════════
 const SIM_STEPS = 200;
+// Mutable velocities — plates slow down from collisions
+const plateVX = new Float32Array(numPlates);
+const plateVY = new Float32Array(numPlates);
+const plateCells = new Float32Array(numPlates); // cell count per plate
+for (let p = 0; p < numPlates; p++) {
+  plateVX[p] = plates[p].vx;
+  plateVY[p] = plates[p].vy;
+}
+// Count initial cells per plate
+for (let i = 0; i < N; i++) plateCells[plateMap[i]]++;
 
 for (let step = 0; step < SIM_STEPS; step++) {
-  // Build a "next" crust buffer. Start empty (-0.15 = deep unclaimed ocean).
   const nextCrust = new Float32Array(N).fill(-0.15);
   const nextOwner = new Int8Array(N).fill(-1);
+  // Track collisions per plate this step
+  const contCollisions = new Float32Array(numPlates); // continental collision count
+  const oceCollisions = new Float32Array(numPlates);  // oceanic/subduction collision count
 
-  // Move each cell by its plate's velocity (one step at a time, truly iterative)
+  // Move each cell by its plate's current velocity
   for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
     const si = ty * cw + tx;
     const p = plateMap[si];
-    const plate = plates[p];
 
-    // Move by one step's worth of velocity
-    const ntx = Math.round(tx + plate.vx * 1.5);
-    const nty = Math.round(ty + plate.vy * 1.5);
+    const ntx = Math.round(tx + plateVX[p] * 1.5);
+    const nty = Math.round(ty + plateVY[p] * 1.5);
     const dtx = ((ntx % cw) + cw) % cw;
     const dty = Math.max(0, Math.min(ch - 1, nty));
     const di = dty * cw + dtx;
@@ -122,39 +132,36 @@ for (let step = 0; step < SIM_STEPS; step++) {
       nextCrust[di] = crust[si];
       nextOwner[di] = p;
     } else if (nextOwner[di] !== p) {
-      // COLLISION — two plates' crust landing on same cell
       const existingCrust = nextCrust[di];
       const incomingCrust = crust[si];
       const bothContinental = existingCrust > 0 && incomingCrust > 0;
       const bothOceanic = existingCrust <= 0 && incomingCrust <= 0;
 
       if (bothContinental) {
-        // Continental collision: fold upward (Himalayas)
+        // Continental collision: fold upward, strong resistance
         nextCrust[di] = existingCrust + incomingCrust * 0.8;
+        contCollisions[p]++;
+        contCollisions[nextOwner[di]]++;
       } else if (bothOceanic) {
-        // Oceanic convergence: denser subducts, builds island arc
         nextCrust[di] = Math.max(existingCrust, incomingCrust) + 0.01;
+        oceCollisions[p]++;
       } else {
-        // Subduction: oceanic goes under continental
-        // Continental side gets uplifted, oceanic consumed
+        // Subduction: moderate resistance
         const contVal = existingCrust > 0 ? existingCrust : incomingCrust;
         const oceVal = existingCrust <= 0 ? existingCrust : incomingCrust;
         nextCrust[di] = contVal + Math.abs(oceVal) * 0.5;
+        oceCollisions[p]++;
         nextOwner[di] = existingCrust > 0 ? nextOwner[di] : p;
       }
-    }
-    // Same plate → keep higher value
-    else {
+    } else {
       nextCrust[di] = Math.max(nextCrust[di], crust[si]);
     }
   }
 
-  // Fill unclaimed cells with new oceanic crust (divergent boundaries / rifts)
+  // Fill unclaimed cells with new oceanic crust
   for (let i = 0; i < N; i++) {
     if (nextOwner[i] === -1) {
-      // Gap left by plates pulling apart — new thin oceanic crust
       nextCrust[i] = -0.06 + fbm((i % cw) / cw * 8 + step, Math.floor(i / cw) / ch * 8 + step, 2, 2, 0.5) * 0.01;
-      // Assign to nearest plate
       const tx = i % cw, ty = Math.floor(i / cw);
       let bestD = 1e9, bestP = 0;
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
@@ -170,10 +177,25 @@ for (let step = 0; step < SIM_STEPS; step++) {
     }
   }
 
-  // Copy result to crust for final output (only last step matters for rendering)
+  // Apply collision resistance — slow plates based on collision ratio
+  for (let p = 0; p < numPlates; p++) {
+    const cells = Math.max(1, plateCells[p]);
+    // Continental collisions create strong resistance (can't subduct)
+    // Oceanic collisions create moderate resistance (friction from subduction)
+    const contRatio = contCollisions[p] / cells;
+    const oceRatio = oceCollisions[p] / cells;
+    // Strong drag from continental collision, moderate from subduction
+    const drag = 1 - Math.min(0.95, contRatio * 8 + oceRatio * 2);
+    plateVX[p] *= drag;
+    plateVY[p] *= drag;
+  }
+
+  // Copy back and recount cells
+  plateCells.fill(0);
   for (let i = 0; i < N; i++) {
     crust[i] = nextCrust[i];
     plateMap[i] = nextOwner[i] >= 0 ? nextOwner[i] : plateMap[i];
+    plateCells[plateMap[i]]++;
   }
 }
 
