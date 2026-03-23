@@ -253,12 +253,13 @@ e-=Math.max(0,valleyNoise+.15)*.06*interior;
 // Hypsometric redistribution
 e=Math.pow(Math.max(0,e),0.85)*1.2;
 e=Math.max(0.003,e);
-}else{// OCEAN
-const dgx=Math.min(dw-1,Math.floor(x/DG)),dgy=Math.min(dh-1,Math.floor(y/DG)),dist=dtl[dgy*dw+dgx];
-if(dist<=3)e=Math.max(e,-(dist/3)*0.025);
-else{const dd=dist-3,df=Math.min(1,dd/12);let bd=-0.03-df*0.12;
-const ridge2=fbm(nx*3+seed*0.01,ny*3+seed*0.01,3,2.2,0.5);if(ridge2>0.2)bd+=(ridge2-0.2)*0.08;
-e=Math.min(e,bd);}e+=fbm(nx*12+40,ny*12+40,2,2,.4)*0.008;}
+}else{// OCEAN — use raw elevation as natural bathymetry
+// e is already negative (rawElev - seaLevel); near-coast values are barely
+// negative (→ continental shelf), deep ocean gaps are very negative (→ abyss).
+// Power curve creates gradual shelf; clamp via min(1,...) caps max depth at 0.15.
+e=-Math.pow(Math.min(1,-e/0.4),0.7)*0.15;
+// Fine ocean-floor texture
+e+=fbm(nx*12+40,ny*12+40,2,2,.4)*0.008;}
 elevation[i]=e;temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 // Moisture with climate zones + continentality
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
