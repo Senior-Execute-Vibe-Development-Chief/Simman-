@@ -304,6 +304,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 
 // ═══════════════════════════════════════════════════════
 // STEP 6: Build pixel-level elevation from simulated crust
+// Bicubic interpolation + domain warping for smooth, organic sampling.
 // ═══════════════════════════════════════════════════════
 const s1 = rng() * 100, s2 = rng() * 100, s3 = rng() * 100, s4 = rng() * 100, s5 = rng() * 100;
 const warp = (x, y, freq, oct, str, o1, o2) => [
@@ -311,16 +312,49 @@ const warp = (x, y, freq, oct, str, o1, o2) => [
   y + fbm(x * freq + o2, y * freq + o2, oct, 2, 0.5) * str
 ];
 
+// Bicubic helper: sample crust grid with smooth interpolation
+const crustAt = (gx, gy) => {
+  const tx = ((Math.floor(gx) % cw) + cw) % cw;
+  const ty = Math.max(0, Math.min(ch - 1, Math.floor(gy)));
+  return crust[ty * cw + tx];
+};
+const cubicW = (t) => {
+  // Catmull-Rom weights
+  const t2 = t * t, t3 = t2 * t;
+  return [
+    -0.5 * t3 + t2 - 0.5 * t,
+    1.5 * t3 - 2.5 * t2 + 1,
+    -1.5 * t3 + 2 * t2 + 0.5 * t,
+    0.5 * t3 - 0.5 * t2
+  ];
+};
+const sampleCrust = (fx, fy) => {
+  const ix = Math.floor(fx), iy = Math.floor(fy);
+  const dx = fx - ix, dy = fy - iy;
+  const wx = cubicW(dx), wy = cubicW(dy);
+  let val = 0;
+  for (let jy = -1; jy <= 2; jy++) {
+    let rowVal = 0;
+    for (let jx = -1; jx <= 2; jx++) {
+      rowVal += crustAt(ix + jx, iy + jy) * wx[jx + 1];
+    }
+    val += rowVal * wy[jy + 1];
+  }
+  return val;
+};
+
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
   const nx = x / W, ny = y / H;
   const lat = Math.abs(ny - 0.5) * 2;
-  const ctx = Math.min(cw - 1, Math.floor(x / CG));
-  const cty = Math.min(ch - 1, Math.floor(y / CG));
-  const ci = cty * cw + ctx;
 
-  // Base from simulated crust
-  let e = crust[ci];
+  // Domain-warped sample coordinates — breaks up grid alignment
+  const warpStr = 1.5; // warp in coarse grid cells
+  const swx = x / CG + fbm(nx * 3 + s1 + 200, ny * 3 + s1 + 200, 3, 2, 0.5) * warpStr;
+  const swy = y / CG + fbm(nx * 3 + s1 + 250, ny * 3 + s1 + 250, 3, 2, 0.5) * warpStr;
+
+  // Bicubic interpolation of coarse crust grid
+  let e = sampleCrust(swx, swy);
 
   // Mountain ridges on thick crust
   const crustW = Math.min(1, Math.max(0, e * 5));
