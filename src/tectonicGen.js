@@ -2,47 +2,16 @@
 // Standalone module: generates elevation, moisture, temperature arrays
 // using simplified plate tectonics simulation.
 //
-// Architecture:
-//   1. Scatter plate centers, assign type (continental/oceanic) + movement vectors
-//   2. Voronoi assignment: each pixel belongs to nearest plate
-//   3. Classify boundaries: convergent, divergent, transform
-//   4. Fill continental interiors at flat base elevation
-//   5. Propagate mountain/trench features from boundaries inward via BFS
-//   6. Add noise dressing for local detail
-//   7. Climate (latitude + continentality) for moisture/temperature
-
-// Noise helpers — duplicated here so the module is fully standalone / removable.
-const PERM=new Uint8Array(512);
-const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
-
-function initNoise(seed){
-const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;
-for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}
-for(let i=0;i<512;i++)PERM[i]=p[i&255];}
-
-function noise2D(x,y){
-const X=Math.floor(x)&255,Y=Math.floor(y)&255,xf=x-Math.floor(x),yf=y-Math.floor(y),
-u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);
-const aa=PERM[PERM[X]+Y],ab=PERM[PERM[X]+Y+1],ba=PERM[PERM[X+1]+Y],bb=PERM[PERM[X+1]+Y+1];
-const d=(g,x2,y2)=>GRAD[g%8][0]*x2+GRAD[g%8][1]*y2;
-const l1=d(aa,xf,yf)+u*(d(ba,xf-1,yf)-d(aa,xf,yf)),
-      l2=d(ab,xf,yf-1)+u*(d(bb,xf-1,yf-1)-d(ab,xf,yf-1));
-return l1+v*(l2-l1);}
-
-function fbm(x,y,o,l,g){let v=0,a=1,f=1,m=0;for(let i=0;i<o;i++){v+=noise2D(x*f,y*f)*a;m+=a;a*=g;f*=l;}return v/m;}
-
-function ridged(x,y,oct,lac,gain,off){
-let v=0,a=1,f=1,w=1,m=0;
-for(let i=0;i<oct;i++){let s=off-Math.abs(noise2D(x*f,y*f));s*=s;s*=w;
-w=Math.min(1,Math.max(0,s*gain));v+=s*a;m+=a;a*=.5;f*=lac;}return v/m;}
-
-function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};}
+// Uses WorldSim's noise functions (passed in) to avoid PERM table conflicts.
 
 // ── Main generator ──
-// Returns { elevation, moisture, temperature } typed arrays, same contract as WorldSim random mode.
-export function generateTectonicWorld(W, H, seed) {
+// noiseFns: { initNoise, fbm, ridged, noise2D } from WorldSim
+export function generateTectonicWorld(W, H, seed, noiseFns) {
+const { initNoise, fbm, ridged } = noiseFns;
 initNoise(seed);
-const rng = mkRng(seed);
+// Seeded RNG
+let rngState = ((seed % 2147483647) + 2147483647) % 2147483647 || 1;
+const rng = () => { rngState = (rngState * 16807) % 2147483647; return (rngState - 1) / 2147483646; };
 const elevation = new Float32Array(W * H);
 const moisture = new Float32Array(W * H);
 const temperature = new Float32Array(W * H);
@@ -51,11 +20,8 @@ const RES = 2;
 // ═══════════════════════════════════════════════════════
 // STEP 1: Generate tectonic plates
 // ═══════════════════════════════════════════════════════
-// More plates = more varied continent shapes. Use 18-26 total plates.
-// More continental plates ensures 4-7 distinct landmasses.
 const numPlates = 18 + Math.floor(rng() * 9); // 18-26 plates
 const plates = [];
-// 35-45% continental plates — enough for multiple continents without dominating the map
 const numContinental = Math.floor(numPlates * (0.35 + rng() * 0.10));
 const plateOrder = Array.from({length: numPlates}, (_, i) => i);
 for (let i = numPlates - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [plateOrder[i], plateOrder[j]] = [plateOrder[j], plateOrder[i]]; }
@@ -67,100 +33,71 @@ for (let i = 0; i < numPlates; i++) {
   const speed = 0.3 + rng() * 0.7;
   const vx = Math.cos(angle) * speed;
   const vy = Math.sin(angle) * speed;
-  // Continental plates vary in base height; ocean plates all share a uniform depth
-  const baseElev = continental ? 0.015 + rng() * 0.035 : -0.08;
+  // All continental plates share similar base; variation comes from noise layers
+  const baseElev = continental ? 0.03 : -0.08;
   plates.push({ cx, cy, vx, vy, continental, baseElev, id: i });
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 2: Voronoi assignment — each pixel to nearest plate
-// Pixel-level for smooth coastlines, coarse grid for BFS
+// STEP 2: Voronoi plate assignment at pixel level
+// Strong domain warp for organic, non-geometric plate shapes
 // ═══════════════════════════════════════════════════════
-const CG = 4; // coarse grid for BFS operations
+const CG = 4;
 const cw = Math.ceil(W / CG), ch = Math.ceil(H / CG);
-// Pixel-level plate assignment with smooth coastlines
-// Two warp layers at different frequencies prevent directional shearing
 const pixPlate = new Uint8Array(W * H);
-const pixDist2 = new Float32Array(W * H); // distance² to nearest plate (for blending)
-const pixDist2nd = new Float32Array(W * H); // distance² to 2nd nearest (for boundary detection)
-const pixPlate2 = new Uint8Array(W * H); // 2nd nearest plate (for blending)
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const nx = x / W, ny = y / H;
-  // Two-layer warp: low freq for broad distortion, higher freq for local wobble
-  const warpX = fbm(nx * 3 + 13.7, ny * 3 + 13.7, 3, 2, 0.5) * 0.05
-              + fbm(nx * 10 + 37.1, ny * 10 + 37.1, 2, 2, 0.5) * 0.015;
-  const warpY = fbm(nx * 3 + 63.7, ny * 3 + 63.7, 3, 2, 0.5) * 0.05
-              + fbm(nx * 10 + 87.1, ny * 10 + 87.1, 2, 2, 0.5) * 0.015;
+  // Strong multi-scale warp to break up geometric Voronoi edges
+  const warpX = fbm(nx * 2.5 + 13.7, ny * 2.5 + 13.7, 4, 2, 0.5) * 0.10
+              + fbm(nx * 8 + 37.1, ny * 8 + 37.1, 3, 2, 0.5) * 0.03;
+  const warpY = fbm(nx * 2.5 + 63.7, ny * 2.5 + 63.7, 4, 2, 0.5) * 0.10
+              + fbm(nx * 8 + 87.1, ny * 8 + 87.1, 3, 2, 0.5) * 0.03;
   const wnx = nx + warpX, wny = ny + warpY;
-  let bestD = 1e9, bestP = 0, secD = 1e9, secP = 0;
+  let bestD = 1e9, bestP = 0;
   for (let p = 0; p < numPlates; p++) {
     let dx = wnx - plates[p].cx;
     if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
     const dy = wny - plates[p].cy;
     const d = dx * dx + dy * dy;
-    if (d < bestD) { secD = bestD; secP = bestP; bestD = d; bestP = p; }
-    else if (d < secD) { secD = d; secP = p; }
+    if (d < bestD) { bestD = d; bestP = p; }
   }
-  const idx = y * W + x;
-  pixPlate[idx] = bestP;
-  pixPlate2[idx] = secP;
-  pixDist2[idx] = bestD;
-  pixDist2nd[idx] = secD;
+  pixPlate[y * W + x] = bestP;
 }
-// Coarse plate map (for BFS — sample from pixel map)
+// Coarse plate map for BFS
 const plateMap = new Uint8Array(cw * ch);
 for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
   plateMap[ty * cw + tx] = pixPlate[Math.min(H - 1, ty * CG) * W + Math.min(W - 1, tx * CG)];
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 3: Classify plate boundaries
-// For each coarse cell, check if any neighbor belongs to a different plate.
-// If so, classify the boundary type based on relative plate movement.
+// STEP 3: Classify plate boundaries (coarse grid)
 // ═══════════════════════════════════════════════════════
-// Boundary types: 0=none, 1=convergent-continental (mountains),
-//   2=convergent-oceanic (trench+volcanic arc), 3=divergent (rift/ridge), 4=transform
 const boundaryType = new Uint8Array(cw * ch);
-const boundaryStr = new Float32Array(cw * ch); // strength of boundary feature
+const boundaryStr = new Float32Array(cw * ch);
 
 for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
   const ti = ty * cw + tx;
   const myPlate = plates[plateMap[ti]];
   let maxStr = 0, bestType = 0;
-
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
     if (!dx && !dy) continue;
     const nx2 = (tx + dx + cw) % cw, ny2 = ty + dy;
     if (ny2 < 0 || ny2 >= ch) continue;
     const ni = ny2 * cw + nx2;
-    if (plateMap[ni] === plateMap[ti]) continue; // same plate
-
+    if (plateMap[ni] === plateMap[ti]) continue;
     const otherPlate = plates[plateMap[ni]];
-    // Compute relative movement along the boundary normal
-    const bnx = (tx - nx2) / cw, bny = (ty - ny2) / ch; // boundary normal direction
+    const bnx = (tx - nx2) / cw, bny = (ty - ny2) / ch;
     const bl = Math.sqrt(bnx * bnx + bny * bny) || 1;
     const nnx = bnx / bl, nny = bny / bl;
-    // Relative velocity along normal: positive = convergent, negative = divergent
     const relV = (myPlate.vx - otherPlate.vx) * nnx + (myPlate.vy - otherPlate.vy) * nny;
-    // Tangential component
     const tanV = Math.abs((myPlate.vx - otherPlate.vx) * (-nny) + (myPlate.vy - otherPlate.vy) * nnx);
-
     let type = 0, str = 0;
     if (relV > 0.3) {
-      // Convergent
-      if (myPlate.continental && otherPlate.continental) {
-        type = 1; str = relV * 1.2; // continental collision (Himalayas)
-      } else if (myPlate.continental || otherPlate.continental) {
-        type = 2; str = relV * 0.9; // subduction (Andes)
-      } else {
-        type = 2; str = relV * 0.5; // oceanic-oceanic subduction (island arc)
-      }
-    } else if (relV < -0.3) {
-      type = 3; str = Math.abs(relV) * 0.6; // divergent (rift/mid-ocean ridge)
-    } else if (tanV > 0.4) {
-      type = 4; str = tanV * 0.3; // transform fault
-    }
-
+      if (myPlate.continental && otherPlate.continental) { type = 1; str = relV * 1.2; }
+      else if (myPlate.continental || otherPlate.continental) { type = 2; str = relV * 0.9; }
+      else { type = 2; str = relV * 0.5; }
+    } else if (relV < -0.3) { type = 3; str = Math.abs(relV) * 0.6; }
+    else if (tanV > 0.4) { type = 4; str = tanV * 0.3; }
     if (str > maxStr) { maxStr = str; bestType = type; }
   }
   boundaryType[ti] = bestType;
@@ -168,37 +105,28 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 4: BFS from boundaries — propagate mountain/feature elevation
-// Mountains decay with distance from boundary, creating foothills
+// STEP 4: BFS from boundaries — propagate mountain features
 // ═══════════════════════════════════════════════════════
-const faultDist = new Float32Array(cw * ch).fill(255); // distance from nearest fault
-const faultElev = new Float32Array(cw * ch); // elevation contribution from faults
+const faultDist = new Float32Array(cw * ch).fill(255);
+const faultElev = new Float32Array(cw * ch);
 const faultQ = [];
-
-// Seed BFS with boundary cells
 for (let i = 0; i < cw * ch; i++) {
   if (boundaryType[i] > 0) {
     faultDist[i] = 0;
-    // Set base fault elevation based on type
     const bt = boundaryType[i], bs = boundaryStr[i];
-    if (bt === 1) faultElev[i] = 0.25 + bs * 0.20; // continental collision: tall mountains
-    else if (bt === 2) faultElev[i] = 0.12 + bs * 0.15; // subduction: coastal mountains
-    else if (bt === 3) faultElev[i] = 0.03 + bs * 0.04; // divergent: moderate ridge or rift
-    else faultElev[i] = 0.01 + bs * 0.03; // transform: minor elevation
+    if (bt === 1) faultElev[i] = 0.25 + bs * 0.20;
+    else if (bt === 2) faultElev[i] = 0.12 + bs * 0.15;
+    else if (bt === 3) faultElev[i] = 0.03 + bs * 0.04;
+    else faultElev[i] = 0.01 + bs * 0.03;
     faultQ.push(i);
   }
 }
-
-// Propagate outward — elevation decays with distance
-// Mountain width: ~15-25 coarse cells depending on type
 for (let qi = 0; qi < faultQ.length; qi++) {
   const ci = faultQ[qi], cd = faultDist[ci];
   const cx = ci % cw, cy = (ci - cx) / cw;
   const srcElev = faultElev[ci];
   const bt = boundaryType[ci];
-  // Decay rate: continental collision spreads wider than subduction
   const maxSpread = bt === 1 ? 14 : bt === 2 ? 10 : 5;
-
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
     if (!dx && !dy) continue;
     const nx2 = (cx + dx + cw) % cw, ny2 = cy + dy;
@@ -206,10 +134,8 @@ for (let qi = 0; qi < faultQ.length; qi++) {
     const ni = ny2 * cw + nx2, nd = cd + 1;
     if (nd < faultDist[ni] && nd <= maxSpread) {
       faultDist[ni] = nd;
-      // Gaussian-ish decay from boundary
       const decay = Math.exp(-(nd * nd) / (maxSpread * maxSpread * 0.18));
       faultElev[ni] = Math.max(faultElev[ni], srcElev * decay);
-      // Propagate boundary type for context
       if (boundaryType[ni] === 0) boundaryType[ni] = bt;
       faultQ.push(ni);
     }
@@ -218,39 +144,10 @@ for (let qi = 0; qi < faultQ.length; qi++) {
 
 // ═══════════════════════════════════════════════════════
 // STEP 5: Build pixel-level elevation
-// Combine: plate base elevation + fault features + noise dressing
+// No blending across land/ocean boundaries — that causes rings.
+// Instead: hard plate type, smooth noise-based terrain on each side.
 // ═══════════════════════════════════════════════════════
 const s1 = rng() * 100, s2 = rng() * 100, s3 = rng() * 100, s4 = rng() * 100;
-
-// Helper: compute elevation for a given plate at a pixel
-function plateElev(plate, fe, fd, bt, nx, ny, s1, s2, s3, s4) {
-  let e = plate.baseElev;
-  // Fault features
-  if (fe > 0 && plate.continental) {
-    const ridgeStr = fe * (fd < 3 ? 0.7 + 0.3 * ridged(nx * 5 + s1, ny * 5 + s1, 4, 2.2, 2.0, 1.0) : 1.0);
-    if (fd < 8) { const rv = ridged(nx * 6 + s2, ny * 6 + s2, 5, 2.1, 2.0, 1.0); e += ridgeStr * (0.5 + rv * 0.5); }
-    else e += ridgeStr * 0.6;
-  } else if (fe > 0 && !plate.continental) {
-    if (bt === 2) e -= fe * 0.5;
-    else if (bt === 3) e += fe * 0.3;
-  }
-  // Interior terrain
-  if (plate.continental) {
-    e += fbm(nx * 5 + s3, ny * 5 + s3, 5, 2, 0.5) * 0.06;
-    const highlandVal = ridged(nx * 3.5 + s4 + 20, ny * 3.5 + s4 + 20, 4, 2.0, 1.8, 1.0);
-    const highlandMask = fbm(nx * 2.5 + s1 + 80, ny * 2.5 + s1 + 80, 3, 2, 0.5);
-    if (highlandMask > 0.15) e += highlandVal * (highlandMask - 0.15) * 0.18;
-    const platNoise = fbm(nx * 3 + s2 + 40, ny * 3 + s2 + 40, 3, 2, 0.5);
-    if (platNoise > 0.35) e += (platNoise - 0.35) * 0.06;
-    e += fbm(nx * 10 + s3 + 15, ny * 10 + s3 + 15, 3, 2, 0.5) * 0.025;
-    const basinNoise = fbm(nx * 2.5 + s1 + 50, ny * 2.5 + s1 + 50, 3, 2, 0.5);
-    if (basinNoise > 0.2) e -= (basinNoise - 0.2) * 0.05;
-    e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.008;
-  } else {
-    e += fbm(nx * 8 + s3 + 30, ny * 8 + s3 + 30, 3, 2, 0.4) * 0.015;
-  }
-  return e;
-}
 
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
@@ -259,27 +156,64 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const ctx = Math.min(cw - 1, Math.floor(x / CG));
   const cty = Math.min(ch - 1, Math.floor(y / CG));
   const ci = cty * cw + ctx;
+  const plate = plates[pixPlate[i]];
   const fe = faultElev[ci], fd = faultDist[ci], bt = boundaryType[ci];
 
-  // Compute elevation for primary plate
-  const p1 = plates[pixPlate[i]];
-  const e1 = plateElev(p1, fe, fd, bt, nx, ny, s1, s2, s3, s4);
-
-  // Blend near plate boundaries for smooth transitions
-  // blendZone: how close the two nearest plates are (0 = far from boundary, 1 = right on it)
-  const d1 = Math.sqrt(pixDist2[i]), d2 = Math.sqrt(pixDist2nd[i]);
-  const gap = d2 - d1; // small gap = near boundary
-  const blendWidth = 0.025; // normalized distance over which to blend
   let e;
-  if (gap < blendWidth && pixPlate[i] !== pixPlate2[i]) {
-    const p2 = plates[pixPlate2[i]];
-    const e2 = plateElev(p2, fe, fd, bt, nx, ny, s1, s2, s3, s4);
-    // Smooth hermite blend: 0 at boundary, 1 far from it
-    const t = gap / blendWidth;
-    const blend = t * t * (3 - 2 * t); // smoothstep
-    e = e1 * blend + e2 * (1 - blend);
+  if (plate.continental) {
+    // ── LAND ELEVATION ──
+    // Start at base continental height
+    e = plate.baseElev;
+
+    // Fault-line mountains (plate boundary features)
+    if (fe > 0) {
+      const ridgeStr = fe * (fd < 3 ? 0.7 + 0.3 * ridged(nx * 5 + s1, ny * 5 + s1, 4, 2.2, 2.0, 1.0) : 1.0);
+      if (fd < 8) {
+        const rv = ridged(nx * 6 + s2, ny * 6 + s2, 5, 2.1, 2.0, 1.0);
+        e += ridgeStr * (0.5 + rv * 0.5);
+      } else {
+        e += ridgeStr * 0.6;
+      }
+    }
+
+    // Broad terrain variation — gives continents character
+    e += fbm(nx * 5 + s3, ny * 5 + s3, 5, 2, 0.5) * 0.08;
+
+    // Interior highlands (old mountain ranges, independent of plate boundaries)
+    const highlandVal = ridged(nx * 3.5 + s4 + 20, ny * 3.5 + s4 + 20, 4, 2.0, 1.8, 1.0);
+    const highlandMask = fbm(nx * 2.5 + s1 + 80, ny * 2.5 + s1 + 80, 3, 2, 0.5);
+    if (highlandMask > 0.1) e += highlandVal * (highlandMask - 0.1) * 0.22;
+
+    // Plateaus
+    const platNoise = fbm(nx * 3 + s2 + 40, ny * 3 + s2 + 40, 3, 2, 0.5);
+    if (platNoise > 0.3) e += (platNoise - 0.3) * 0.08;
+
+    // Rolling hills
+    e += fbm(nx * 10 + s3 + 15, ny * 10 + s3 + 15, 3, 2, 0.5) * 0.03;
+
+    // Basin carving
+    const basinNoise = fbm(nx * 2.5 + s1 + 50, ny * 2.5 + s1 + 50, 3, 2, 0.5);
+    if (basinNoise > 0.2) e -= (basinNoise - 0.2) * 0.06;
+
+    // Fine texture
+    e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.01;
+
+    // Ensure land stays above sea level
+    e = Math.max(0.002, e);
+
   } else {
-    e = e1;
+    // ── OCEAN ELEVATION ──
+    // Uniform base depth for all ocean
+    e = -0.08;
+
+    // Continuous ocean floor texture (no plate-dependent variation)
+    e += fbm(nx * 8 + s3 + 30, ny * 8 + s3 + 30, 3, 2, 0.4) * 0.015;
+
+    // Oceanic fault features (mid-ocean ridges, trenches)
+    if (fe > 0) {
+      if (bt === 2) e -= fe * 0.4; // trench
+      else if (bt === 3) e += fe * 0.25; // mid-ocean ridge
+    }
   }
 
   // Polar reduction
@@ -291,12 +225,11 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 6: Coast-distance BFS for continentality (moisture calc)
+// STEP 6: Coast-distance BFS for continentality
 // ═══════════════════════════════════════════════════════
 const DG = RES, dw = Math.ceil(W / DG), dh = Math.ceil(H / DG);
 const cdist = new Uint8Array(dw * dh); cdist.fill(255);
 const cdQ = [];
-
 for (let ty = 0; ty < dh; ty++) for (let tx = 0; tx < dw; tx++) {
   const px = Math.min(W - 1, tx * DG), py = Math.min(H - 1, ty * DG), ti = ty * dw + tx;
   if (elevation[py * W + px] <= 0) continue;
