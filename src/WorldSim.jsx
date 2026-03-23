@@ -81,16 +81,32 @@ if(e>0.3)m-=.15;// mountains are drier
 moisture[i]=Math.max(.02,Math.min(1,m));
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 }else{
-// ── Random world mode: procedural ellipse generation ──
+// ── Random world mode: flat continents with edge mountain chains ──
 const specs=[];
-for(let i=0;i<5+Math.floor(rng()*4);i++)specs.push({cx:rng(),cy:.06+rng()*.88,rx:.09+rng()*.2,ry:.07+rng()*.15,rot:rng()*Math.PI,no:rng()*100,str:.75+rng()*.5});
-for(let i=0;i<5+Math.floor(rng()*6);i++)specs.push({cx:rng(),cy:.1+rng()*.8,rx:.025+rng()*.05,ry:.015+rng()*.04,rot:rng()*Math.PI,no:rng()*100,str:.45+rng()*.35});
+for(let i=0;i<5+Math.floor(rng()*4);i++)specs.push({cx:rng(),cy:.06+rng()*.88,rx:.09+rng()*.2,ry:.07+rng()*.15,rot:rng()*Math.PI,no:rng()*100,str:.75+rng()*.5,
+mArc:rng()*Math.PI*2,mSpan:.3+rng()*.7,mStr:.4+rng()*.5});// mountain arc: start angle, angular span (0.3-1.0 of PI), strength
+for(let i=0;i<5+Math.floor(rng()*6);i++)specs.push({cx:rng(),cy:.1+rng()*.8,rx:.025+rng()*.05,ry:.015+rng()*.04,rot:rng()*Math.PI,no:rng()*100,str:.45+rng()*.35,
+mArc:rng()*Math.PI*2,mSpan:.5+rng()*.5,mStr:.2+rng()*.3});
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const nx=x/W,ny=y/H;let e=0;
 for(const c of specs){let dx=nx-c.cx;if(dx>.5)dx-=1;if(dx<-.5)dx+=1;let dy=ny-c.cy;
 dx+=fbm(nx*5+c.no,ny*5+c.no,4,2,.5)*.045;dy+=fbm(nx*5+c.no+30,ny*5+c.no+30,4,2,.5)*.045;
-const cs=Math.cos(c.rot),sn=Math.sin(c.rot);let dd=Math.sqrt(Math.pow((dx*cs+dy*sn)/c.rx,2)+Math.pow((-dx*sn+dy*cs)/c.ry,2));
-dd+=fbm(nx*16+c.no+50,ny*16+c.no+50,3,2.3,.45)*.18;if(dd<1){const f2=1-dd;e+=f2*f2*c.str;}}
-e+=fbm(nx*8+3.7,ny*8+3.7,5,2,.5)*.12+Math.pow(1-Math.abs(fbm(nx*4.5+30,ny*4.5+30,4,2.2,.5)),3)*.15+fbm(nx*22+7,ny*22+7,2,2,.4)*.04;
+const cs=Math.cos(c.rot),sn=Math.sin(c.rot),rdx=dx*cs+dy*sn,rdy=-dx*sn+dy*cs;
+let dd=Math.sqrt(Math.pow(rdx/c.rx,2)+Math.pow(rdy/c.ry,2));
+dd+=fbm(nx*16+c.no+50,ny*16+c.no+50,3,2.3,.45)*.18;
+if(dd<1){// Flat continental base with sharp coastal falloff
+const t=Math.max(0,Math.min(1,(1-dd)/.15));// 1 in interior, ramps 0→1 over outer 15%
+e+=t*t*(3-2*t)*c.str*.45;// smoothstep * base strength → flat plains
+// Mountain chain along partial perimeter
+const ang=Math.atan2(rdy/c.ry,rdx/c.rx);// angle on ellipse
+let da=ang-c.mArc;da=da-Math.round(da/(Math.PI*2))*Math.PI*2;// wrap to [-PI,PI]
+const inArc=Math.max(0,1-Math.abs(da)/(c.mSpan*Math.PI));// 1 at arc center, 0 outside
+const ridgeDist=(dd-.78)/.07;// peak at dd=0.78 (near edge)
+const ridge=Math.exp(-ridgeDist*ridgeDist)*inArc*c.mStr;
+e+=ridge;
+// Low interior variation: gentle plains/plateaus
+e+=fbm(nx*10+c.no*2,ny*10+c.no*2,3,2,.5)*.025*t;}}
+// Global terrain noise (reduced amplitude for flatter continents)
+e+=fbm(nx*8+3.7,ny*8+3.7,5,2,.5)*.04+Math.pow(1-Math.abs(fbm(nx*4.5+30,ny*4.5+30,4,2.2,.5)),3)*.08+fbm(nx*22+7,ny*22+7,2,2,.4)*.02;
 rawElev[y*W+x]=e;}
 const sorted=Float32Array.from(rawElev).sort();const sl=sorted[Math.floor(W*H*.7)];
 const isLandArr=new Uint8Array(W*H);for(let i=0;i<W*H;i++)isLandArr[i]=rawElev[i]>sl?1:0;
@@ -243,7 +259,7 @@ if(elev[ni]>0&&!river[ni]&&!lake[ni]&&Math.abs(elev[ni]-elev[i])<0.03)floodplain
 return{river,lake,floodplain,delta};}
 
 const BC=[[8,18,52],[18,40,88],[32,72,120],[198,186,142],[230,238,245],[210,218,228],[140,132,115],[55,78,52],[110,100,90],[130,126,104],[10,80,22],[166,156,66],[202,176,112],[30,98,36],[118,160,52],[38,62,42],[150,146,104]];
-function getBiomeD(e,m,t,sl){if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;const a=e-sl;if(a<0.006)return 3;
+function getBiomeD(e,m,t,sl){if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
 if(t<.15)return 4;if(t<.25)return e>.35?5:6;if(t<.35)return e>.4?5:m>.45?7:6;if(e>.5)return 8;if(e>.38)return t>.55?9:8;
 if(t>.7)return m>.5?10:m>.25?11:12;if(t>.5)return m>.45?13:m>.2?14:12;return m>.4?15:m>.15?14:16;}
 function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
