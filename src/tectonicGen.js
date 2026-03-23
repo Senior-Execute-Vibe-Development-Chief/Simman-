@@ -20,20 +20,49 @@ const RES = 2;
 // ═══════════════════════════════════════════════════════
 // STEP 1: Generate tectonic plates
 // ═══════════════════════════════════════════════════════
-const numPlates = 18 + Math.floor(rng() * 9); // 18-26 plates
+// Plate count: 3-4 major + 5-7 minor + 8-14 micro ≈ 16-25 total
+const numMajor = 3 + Math.floor(rng() * 2); // 3-4 giant plates
+const numMinor = 5 + Math.floor(rng() * 3); // 5-7 medium plates
+const numMicro = 8 + Math.floor(rng() * 7); // 8-14 microplates
+const numPlates = numMajor + numMinor + numMicro;
 const plates = [];
-const numContinental = Math.floor(numPlates * (0.35 + rng() * 0.10));
+// Continental assignment: major plates are ~50% continental, minor ~40%, micro ~20%
+const numContinental = Math.floor(numMajor * (0.4 + rng() * 0.2))
+  + Math.floor(numMinor * (0.3 + rng() * 0.2))
+  + Math.floor(numMicro * (0.1 + rng() * 0.2));
 const plateOrder = Array.from({length: numPlates}, (_, i) => i);
 for (let i = numPlates - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [plateOrder[i], plateOrder[j]] = [plateOrder[j], plateOrder[i]]; }
 const contSet = new Set(plateOrder.slice(0, numContinental));
+// Seed placement: major plates get widely spaced seeds, micro plates cluster
+// near convergent-like zones (random cluster centers)
+const clusterCenters = [];
+for (let c = 0; c < 2 + Math.floor(rng() * 2); c++) {
+  clusterCenters.push({ x: rng(), y: 0.15 + rng() * 0.7 });
+}
 for (let i = 0; i < numPlates; i++) {
-  const cx = rng(), cy = 0.05 + rng() * 0.9;
+  let cx, cy;
+  if (i < numMajor) {
+    // Major plates: spread evenly with jitter to avoid clustering
+    cx = (i + 0.2 + rng() * 0.6) / numMajor;
+    cy = 0.15 + rng() * 0.7;
+  } else if (i < numMajor + numMinor) {
+    // Minor plates: random placement
+    cx = rng();
+    cy = 0.08 + rng() * 0.84;
+  } else {
+    // Microplates: cluster near random centers (like subduction zones)
+    const cc = clusterCenters[Math.floor(rng() * clusterCenters.length)];
+    cx = cc.x + (rng() - 0.5) * 0.2;
+    cy = cc.y + (rng() - 0.5) * 0.15;
+  }
+  // Wrap x
+  cx = ((cx % 1) + 1) % 1;
+  cy = Math.max(0.02, Math.min(0.98, cy));
   const continental = contSet.has(i);
   const angle = rng() * Math.PI * 2;
   const speed = 0.3 + rng() * 0.7;
   const vx = Math.cos(angle) * speed;
   const vy = Math.sin(angle) * speed;
-  // All continental plates share similar base; variation comes from noise layers
   const baseElev = continental ? 0.03 : -0.08;
   plates.push({ cx, cy, vx, vy, continental, baseElev, id: i });
 }
@@ -47,11 +76,16 @@ const cw = Math.ceil(W / CG), ch = Math.ceil(H / CG);
 const pixPlate = new Uint8Array(W * H);
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const nx = x / W, ny = y / H;
-  // Strong multi-scale warp to break up geometric Voronoi edges
-  const warpX = fbm(nx * 2.5 + 13.7, ny * 2.5 + 13.7, 4, 2, 0.5) * 0.10
-              + fbm(nx * 8 + 37.1, ny * 8 + 37.1, 3, 2, 0.5) * 0.03;
-  const warpY = fbm(nx * 2.5 + 63.7, ny * 2.5 + 63.7, 4, 2, 0.5) * 0.10
-              + fbm(nx * 8 + 87.1, ny * 8 + 87.1, 3, 2, 0.5) * 0.03;
+  // Aggressive multi-scale warp for organic, jagged plate boundaries
+  // Layer 1: broad continental-scale distortion
+  const warpX = fbm(nx * 2 + 13.7, ny * 2 + 13.7, 5, 2, 0.5) * 0.14
+  // Layer 2: medium-scale irregularity
+              + fbm(nx * 6 + 37.1, ny * 6 + 37.1, 4, 2, 0.5) * 0.05
+  // Layer 3: fine jagged edges via ridged noise
+              + (1 - Math.abs(fbm(nx * 14 + 51.3, ny * 14 + 51.3, 3, 2.2, 0.5))) * 0.025;
+  const warpY = fbm(nx * 2 + 63.7, ny * 2 + 63.7, 5, 2, 0.5) * 0.14
+              + fbm(nx * 6 + 87.1, ny * 6 + 87.1, 4, 2, 0.5) * 0.05
+              + (1 - Math.abs(fbm(nx * 14 + 99.7, ny * 14 + 99.7, 3, 2.2, 0.5))) * 0.025;
   const wnx = nx + warpX, wny = ny + warpY;
   let bestD = 1e9, bestP = 0;
   for (let p = 0; p < numPlates; p++) {
