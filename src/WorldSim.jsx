@@ -246,15 +246,19 @@ for(const c of scored){if(origins.length>=NUM_TRIBES)break;
 let ok=true;for(const o of origins){let dx=Math.abs(c.x-o.x);if(dx>tw/2)dx=tw-dx;
 if(dx*dx+(c.y-o.y)**2<minSpacing*minSpacing){ok=false;break;}}
 if(ok)origins.push(c);}
-const tenure=new Uint16Array(tw*th);const frontier=new Set();
+const tenure=new Uint16Array(tw*th);const frontier=new Uint8Array(tw*th);const frontierList=[];
 for(let i=0;i<origins.length;i++){const{x,y}=origins[i],ti=y*tw+x;
-owner[ti]=i;tribeSizes.push(1);tribeStrength.push(tFert[ti]);tenure[ti]=1;frontier.add(ti);
+owner[ti]=i;tribeSizes.push(1);tribeStrength.push(tFert[ti]);tenure[ti]=1;frontier[ti]=1;frontierList.push(ti);
 tribeCenters.push([{x,y,prestige:1.0,founded:0}]);}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tRiver,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
-frontier,landCount:lc,settled:origins.length,tribes:origins.length,origin:origins[0]||{x:0,y:0},stepCount:0};}
+frontier,frontierList,landCount:lc,settled:origins.length,tribes:origins.length,origin:origins[0]||{x:0,y:0},stepCount:0};}
 
-function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+Math.pow(y1-y2,2));}
+function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+(y1-y2)*(y1-y2));}
+// Precomputed exp(-d*d/280) lookup table — eliminates Math.exp in hot loops
+const EXP_LUT_SIZE=80;const EXP_LUT=new Float32Array(EXP_LUT_SIZE+1);
+for(let d=0;d<=EXP_LUT_SIZE;d++)EXP_LUT[d]=Math.exp(-d*d/280);
+function expFalloff(d){const di=d<0?0:d>EXP_LUT_SIZE?EXP_LUT_SIZE:d;const lo=di|0;if(lo>=EXP_LUT_SIZE)return EXP_LUT[EXP_LUT_SIZE];const hi=lo+1;const f=di-lo;return EXP_LUT[lo]*(1-f)+EXP_LUT[hi]*f;}
 // Distance from (x,y) to nearest center of a tribe; also returns the capital (index 0) distance
 function nearestCenterDist(centers,x,y,tw){if(!centers||centers.length===0)return{min:0,cap:0};
 let mn=Infinity;const cap=tDistW(x,y,centers[0].x,centers[0].y,tw);
@@ -280,7 +284,7 @@ const centers=ter.tribeCenters[tribeId];if(!centers||centers.length===0)return p
 let total=0;
 for(const c of centers){const d=tDistW(tx,ty,c.x,c.y,ter.tw);
 // Gaussian falloff: halves at ~14 tiles, 10% at ~24, negligible beyond ~35
-const contribution=Math.exp(-d*d/280)*c.prestige;
+const contribution=expFalloff(d)*c.prestige;
 total+=contribution;}
 // Base influence without centers is very low (3% of pop)
 return pop*(0.03+0.97*Math.min(1,total));
@@ -297,8 +301,8 @@ owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];}
 function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,tRiver,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // ── Expansion into empty land ──
-const nf=new Set();
-for(const fi of ter.frontier){if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
+const nf=new Uint8Array(tw*th);const nfl=[];
+for(let fj=0;fj<ter.frontierList.length;fj++){const fi=ter.frontierList[fj];if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
 const owSz=tribeSizes[ow],owDens=owSz>0?tribeStrength[ow]/owSz:0;
 // Small tribes prioritize grabbing available land; large tribes are pickier about fertile tiles
 const smallBoost=owSz<30?1+((30-owSz)/30)*0.8:1;// up to +80% expansion for tiny tribes
@@ -312,7 +316,7 @@ chance*=(0.5+tFert[ni]*1.5*largePrize)*smallBoost;
 // Center proximity: expansion slows dramatically far from centers
 const centers=tribeCenters[ow];
 const{min:distMin,cap:distCap}=nearestCenterDist(centers,nx,ny,tw);
-const reach=Math.exp(-distMin*distMin/280);// same gaussian as power projection
+const reach=expFalloff(distMin);// same gaussian as power projection
 chance*=Math.max(0.05,reach);// 5% floor so frontier doesn't completely freeze
 if(Math.random()<chance){let nw=ow;
 // Count same-tribe neighbors: if tile is infill (≥3), never split
@@ -335,7 +339,7 @@ if(splitChance>0&&Math.random()<splitChance)nw=newTribe(ter,nx,ny);
 // Found a new center if fertile tile is far from all existing centers
 else if(tFert[ni]>0.4&&distMin>20&&centers&&centers.length<8)
 centers.push({x:nx,y:ny,prestige:0.3,founded:ter.stepCount});
-claimTile(ter,ni,nw);nf.add(ni);}else room=true;}
+claimTile(ter,ni,nw);if(!nf[ni]){nf[ni]=1;nfl.push(ni);}}else room=true;}
 if((tCoast[fi]||(tElev[fi]<=0&&tElev[fi]>sl))&&wet>0.3){for(const[dx,dy]of LEAPS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;const ni=ny*tw+nx;
 if(owner[ni]>=0||tElev[ni]<=sl||tTemp[ni]<0.05)continue;
 // Don't land on contested coast: skip if any neighbor is owned by a different tribe
@@ -351,9 +355,9 @@ const overext=sz>65?Math.min(0.2,(sz-65)*0.0012):0;
 if(distMin>26&&Math.random()<overext+(dens<0.3?0.15:0))nw=newTribe(ter,nx,ny);
 else if(tFert[ni]>0.4&&distMin>20&&centers&&centers.length<8)
 centers.push({x:nx,y:ny,prestige:0.3,founded:ter.stepCount});
-claimTile(ter,ni,nw);nf.add(ni);}}}
-if(room)nf.add(fi);}
-ter.frontier=nf;
+claimTile(ter,ni,nw);if(!nf[ni]){nf[ni]=1;nfl.push(ni);}}}}
+if(room&&!nf[fi]){nf[fi]=1;nfl.push(fi);}}
+ter.frontier=nf;ter.frontierList=nfl;
 // ── Age tenure + occupation cost: newly conquered tiles drain strength ──
 if(ter.stepCount%4===0){const{tenure}=ter;for(let i=0;i<tw*th;i++){if(owner[i]<0)continue;
 if(tenure[i]<200)tenure[i]++;
@@ -398,7 +402,7 @@ tribeStrength[no]=Math.max(0.1,tribeStrength[no]-attemptCost);}}}
 for(const[ti,to]of flips){if(owner[ti]===to)continue;
 const attackCost=tFert[ti]*0.3;// conquest cost
 tribeStrength[to]=Math.max(0.1,tribeStrength[to]-attackCost);
-claimTile(ter,ti,to);nf.add(ti);}}
+claimTile(ter,ti,to);if(!nf[ti]){nf[ti]=1;nfl.push(ti);}}}
 // ── Center dynamics: prestige growth, validation, capital challenge ──
 if(ter.stepCount%32===0){for(let st=0;st<tribeSizes.length;st++){
 const centers=tribeCenters[st];if(!centers||centers.length<=0||tribeSizes[st]<=0)continue;
@@ -436,7 +440,7 @@ if(dSec<dNearest)transferTile(ter,i,sid);}}
 break;// only one challenge per step per tribe
 }}}
 // ── Fragmentation: split disconnected tribe components (largest keeps original ID/color) ──
-if(ter.stepCount%16===0){const mark=new Int32Array(tw*th);let gen=0;
+if(ter.stepCount%16===0){if(!ter._fragMark)ter._fragMark=new Int32Array(tw*th);const mark=ter._fragMark;let gen=ter._fragGen||0;
 for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=1)continue;
 const baseGen=gen;const comps=[];
 for(let i=0;i<tw*th;i++){if(owner[i]!==st||mark[i]>baseGen)continue;gen++;
@@ -448,7 +452,7 @@ comps.push(comp);}
 if(comps.length<=1)continue;
 comps.sort((a,b)=>b.length-a.length);
 for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor(comps[c][0]/tw));
-for(const ci of comps[c])transferTile(ter,ci,sid);}}}
+for(const ci of comps[c])transferTile(ter,ci,sid);}}ter._fragGen=gen;}
 // ── Remnant absorption: tiny tribes (<5 tiles) absorbed by any larger touching neighbor ──
 if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>5)continue;
 let bn=-1,bs2=0;for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const ty2=Math.floor(i/tw),tx2=i%tw;
@@ -560,7 +564,7 @@ if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
 const tc=terrainCache.current;
 for(let ti=0;ti<N;ti++){const ow=ter.owner[ti];
 const pi4=ti<<2,ti3=ti*3;
-if(ow>=0&&ter.tElev[ti]>sl){const alpha=ter.frontier.has(ti)?0.55:0.32,invA=1-alpha;
+if(ow>=0&&ter.tElev[ti]>sl){const alpha=ter.frontier[ti]?0.55:0.32,invA=1-alpha;
 d[pi4]=(tc[ti3]*invA+tcR[ow]*alpha+.5)|0;d[pi4+1]=(tc[ti3+1]*invA+tcG[ow]*alpha+.5)|0;d[pi4+2]=(tc[ti3+2]*invA+tcB[ow]*alpha+.5)|0;
 }else{d[pi4]=tc[ti3];d[pi4+1]=tc[ti3+1];d[pi4+2]=tc[ti3+2];}
 d[pi4+3]=255;}}
