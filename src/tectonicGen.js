@@ -99,44 +99,32 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 // Move plates, handle collisions/subduction/rifting.
 // ═══════════════════════════════════════════════════════
 const SIM_STEPS = 200;
-// Track accumulated displacement per plate
-const plateDX = new Float32Array(numPlates);
-const plateDY = new Float32Array(numPlates);
-// Store original positions so we offset from the start
-const origCrust = new Float32Array(crust);
-const origOwner = new Uint8Array(plateMap);
 
 for (let step = 0; step < SIM_STEPS; step++) {
-  // Accumulate plate displacement
-  for (let p = 0; p < numPlates; p++) {
-    plateDX[p] += plates[p].vx * 2.0;
-    plateDY[p] += plates[p].vy * 2.0;
-  }
-
   // Build a "next" crust buffer. Start empty (-0.15 = deep unclaimed ocean).
   const nextCrust = new Float32Array(N).fill(-0.15);
   const nextOwner = new Int8Array(N).fill(-1);
 
-  // Move each cell from its ORIGINAL position by accumulated plate offset
+  // Move each cell by its plate's velocity (one step at a time, truly iterative)
   for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
     const si = ty * cw + tx;
-    const p = origOwner[si];
+    const p = plateMap[si];
+    const plate = plates[p];
 
-    // Offset from original position by accumulated plate movement
-    const ntx = Math.round(tx + plateDX[p]);
-    const nty = Math.round(ty + plateDY[p]);
-    // Wrap horizontally, clamp vertically
+    // Move by one step's worth of velocity
+    const ntx = Math.round(tx + plate.vx * 1.5);
+    const nty = Math.round(ty + plate.vy * 1.5);
     const dtx = ((ntx % cw) + cw) % cw;
     const dty = Math.max(0, Math.min(ch - 1, nty));
     const di = dty * cw + dtx;
 
     if (nextOwner[di] === -1) {
-      nextCrust[di] = origCrust[si];
+      nextCrust[di] = crust[si];
       nextOwner[di] = p;
     } else if (nextOwner[di] !== p) {
       // COLLISION — two plates' crust landing on same cell
       const existingCrust = nextCrust[di];
-      const incomingCrust = origCrust[si];
+      const incomingCrust = crust[si];
       const bothContinental = existingCrust > 0 && incomingCrust > 0;
       const bothOceanic = existingCrust <= 0 && incomingCrust <= 0;
 
@@ -157,7 +145,7 @@ for (let step = 0; step < SIM_STEPS; step++) {
     }
     // Same plate → keep higher value
     else {
-      nextCrust[di] = Math.max(nextCrust[di], origCrust[si]);
+      nextCrust[di] = Math.max(nextCrust[di], crust[si]);
     }
   }
 
@@ -203,6 +191,15 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
   smoothed[i] = sum / count;
 }
 for (let i = 0; i < N; i++) crust[i] = smoothed[i];
+
+// Update pixPlate to reflect final plate ownership after simulation
+for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
+  const p = plateMap[ty * cw + tx];
+  for (let dy = 0; dy < CG; dy++) for (let dx = 0; dx < CG; dx++) {
+    const px = Math.min(W - 1, tx * CG + dx), py = Math.min(H - 1, ty * CG + dy);
+    pixPlate[py * W + px] = p;
+  }
+}
 
 // ═══════════════════════════════════════════════════════
 // STEP 6: Build pixel-level elevation from simulated crust
