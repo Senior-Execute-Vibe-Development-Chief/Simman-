@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
+import { generateTectonicWorld } from "./tectonicGen.js";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
 function initNoise(seed){const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)PERM[i]=p[i&255];}
@@ -90,6 +91,10 @@ if(e<0.06)m+=.15;// valleys are wet
 if(e>0.3)m-=.15;// mountains are drier
 moisture[i]=Math.max(.02,Math.min(1,m));
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
+}else if(preset==="tectonic"){
+// ── Tectonic plate mode: separate module ──
+const tec=generateTectonicWorld(W,H,seed);
+for(let i=0;i<W*H;i++){elevation[i]=tec.elevation[i];moisture[i]=tec.moisture[i];temperature[i]=tec.temperature[i];}
 }else{
 // ── Random world mode: domain-warped terrain with integrated mountains ──
 // Dome specs for continent shapes (same as before — these define land outlines)
@@ -762,6 +767,8 @@ style={{width:50,accentColor:"#c9b87a"}} />
 style={bsA(preset==="earth","100,160,220")}>Earth</button>
 <button onClick={()=>{presetRef.current="pangaea";setPreset("pangaea");setSeed(Math.floor(Math.random()*999999));}}
 style={bsA(preset==="pangaea","120,180,100")}>Pangaea</button>
+<button onClick={()=>{presetRef.current="tectonic";setPreset("tectonic");setSeed(Math.floor(Math.random()*999999));}}
+style={bsA(preset==="tectonic","180,120,100")}>Tectonic</button>
 <div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
 {[["terrain","Ter"],["depth","Dep"],["tribes","Tri"],["power","Pow"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
