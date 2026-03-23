@@ -203,38 +203,24 @@ if(nd<cdist2[ni]&&isLandArr[npy*W+np]){cdist2[ni]=nd;cdQ2.push(ni);}}}
 // Step 3: Final elevation — [2] SHALLOW COASTAL GRADIENTS + terrain shaping
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
 let e=rawElev[i]-sl;
-if(e>0){// LAND
-if(preset==="continental"){// Continental: trust raw elevation, independent features
+// Unified terrain — one continuous surface, no land/ocean split
 e=e*0.3;
-const[wmx,wmy]=warp(nx,ny,2,3,0.1,s4,s4+40);
-e+=ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0)*0.25;
-const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
-e+=Math.max(0,fbm(whx*6+s2,why*6+s2,4,2,.5))*.06;
-e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.05;
-}else{// Default: continentality-based shaping
-const raw=e,domeH=Math.min(1,raw/0.5);
+if(preset!=="continental"){// Default: continentality-based shaping (land only, ocean passes through)
+if(e>0){const raw=e,domeH=Math.min(1,raw/0.15);
 const cd=cdist2[Math.min(dh-1,Math.floor(y/DG))*dw+Math.min(dw-1,Math.floor(x/DG))];
 const interior=Math.min(1,cd/15);
-const coastalE=Math.pow(Math.min(raw,0.3)/0.3,0.4)*0.04;
-const interiorE=0.01+domeH*0.04+fbm(nx*10+s3,ny*10+s3,3,2,.5)*.02;
-e=coastalE*(1-interior)+interiorE*interior;
 const[wmx,wmy]=warp(nx,ny,2,3,0.1,s4,s4+40);
 e+=ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0)*interior*interior*domeH*0.45;
 const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
 e+=Math.max(0,fbm(whx*6+s2,why*6+s2,4,2,.5))*.08*Math.sqrt(interior);
 e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.06*interior;
-e=Math.pow(Math.max(0,e),0.85)*1.2;}
-e=Math.max(0.003,e);
-}else{// OCEAN — same magnitude as land, same terrain features
-e=e*0.3;
-// Underwater ridges (mid-ocean ridges, seamount chains)
+e=Math.pow(Math.max(0,e),0.85)*1.2;e=Math.max(0.003,e);}
+}else{// Continental: same features everywhere
 const[wmx,wmy]=warp(nx,ny,2,3,0.1,s4,s4+40);
-e-=ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0)*0.20;
-// Ocean floor variation
+e+=ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0)*0.25;
 const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
-e+=fbm(whx*6+s2,why*6+s2,4,2,.5)*.04;
-// Basin carving
-e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.04;}
+e+=Math.max(0,fbm(whx*6+s2,why*6+s2,4,2,.5))*.06;
+e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.05;}
 elevation[i]=e;temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 // Moisture with climate zones + continentality
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
