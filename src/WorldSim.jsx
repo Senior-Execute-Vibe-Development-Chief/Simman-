@@ -113,24 +113,28 @@ const continents=[];
 const numCont=3+Math.floor(rng()*4);// 3-6 continents
 for(let c=0;c<numCont;c++){
 const cx=rng(),cy=.08+rng()*.84,no=rng()*100;
-// Each continent: 2-5 overlapping positive stamps (peninsulas, landmass lobes)
+// Each continent: 2-5 overlapping stamps. First stamp is always the broad core (low aspect).
+// Later stamps can be peninsulas (higher aspect) but spread wider from center.
 const subs=[];const numSubs=2+Math.floor(rng()*4);
 for(let s=0;s<numSubs;s++){
-const ang=rng()*Math.PI*2,dist=rng()*.12;// offset from continent center
-const aspect=1+rng()*3;// 1=round, 4=elongated peninsula
-const baseR=.04+rng()*.12;
+const ang=rng()*Math.PI*2;
+// First stamp: centered core. Others: spread wider to avoid strip-piling
+const dist=s===0?0:.06+rng()*.12;
+// Aspect: core is broad (1-1.5), peninsulas are moderate (1-2.5), max one long one (up to 3)
+const aspect=s===0?1+rng()*.5:s===1&&rng()<.3?1.5+rng()*1.5:1+rng()*1.5;
+const baseR=s===0?.08+rng()*.1:.04+rng()*.08;
 subs.push({cx:cx+Math.cos(ang)*dist,cy:cy+Math.sin(ang)*dist,
-rx:baseR*aspect,ry:baseR/aspect,rot:rng()*Math.PI,str:.6+rng()*.5,no:no+s*17});}
-// 1-2 negative stamps carve bays/gulfs
-const negs=[];const numNegs=Math.floor(rng()*2)+1;
+rx:baseR*aspect,ry:baseR/aspect,rot:rng()*Math.PI,str:s===0?.8+rng()*.4:.5+rng()*.4,no:no+s*17});}
+// 0-2 negative stamps carve bays/gulfs
+const negs=[];const numNegs=Math.floor(rng()*2.5);
 for(let n=0;n<numNegs;n++){
-const ang=rng()*Math.PI*2,dist=.02+rng()*.08;
+const ang=rng()*Math.PI*2,dist=.02+rng()*.06;
 negs.push({cx:cx+Math.cos(ang)*dist,cy:cy+Math.sin(ang)*dist,
-rx:.02+rng()*.06,ry:.02+rng()*.04,rot:rng()*Math.PI,str:.3+rng()*.4,no:no+50+n*13});}
+rx:.02+rng()*.04,ry:.015+rng()*.03,rot:rng()*Math.PI,str:.25+rng()*.3,no:no+50+n*13});}
 continents.push({subs,negs});}
-// Small islands (independent of continents)
+// Small islands (fewer, slightly larger)
 const islandSpecs=[];
-for(let i=0;i<4+Math.floor(rng()*6);i++)islandSpecs.push({cx:rng(),cy:.1+rng()*.8,rx:.015+rng()*.03,ry:.01+rng()*.02,rot:rng()*Math.PI,no:rng()*100,str:.3+rng()*.3});
+for(let i=0;i<2+Math.floor(rng()*4);i++)islandSpecs.push({cx:rng(),cy:.1+rng()*.8,rx:.02+rng()*.03,ry:.015+rng()*.025,rot:rng()*Math.PI,no:rng()*100,str:.35+rng()*.25});
 const s1=rng()*100,s2=rng()*100,s3=rng()*100,s4=rng()*100,s5=rng()*100;
 // Flatten all stamps into single arrays for faster iteration
 const posStamps=[],negStamps=[];
@@ -158,14 +162,14 @@ for(const c of negStamps){let dx=wnx-c.cx+cnA;if(dx>.5)dx-=1;if(dx<-.5)dx+=1;let
 let dd=Math.sqrt(Math.pow((dx*c.cos+dy*c.sin)/c.rx,2)+Math.pow((-dx*c.sin+dy*c.cos)/c.ry,2));
 dd+=Math.abs(coastRidge+noise2D(wnx*5+c.no,wny*5+c.no)*.5)*.18;
 if(dd<1){const f2=1-dd;e-=f2*f2*c.str;}}
-// [5] MULTI-THRESHOLD NOISE STACKING: peninsula/bay features independent of stamps
-const penNoise=fbm(wnx*6+s3+90,wny*6+s3+90,3,2,.5);
-if(penNoise>.35)e+=(penNoise-.35)*.3;
-const bayNoise=fbm(wnx*5+s4+120,wny*5+s4+120,3,2,.5);
-if(bayNoise>.4)e-=(bayNoise-.4)*.25;
-// [4] WORLEY F2-F1 coastal modifier: angular fracturing
-const[wf1,wf2]=worley(wnx*6+s5,wny*6+s5);
-e+=(wf2-wf1)*.06-.03;
+// [5] MULTI-THRESHOLD NOISE STACKING: peninsula/bay features (gentler, lower freq)
+const penNoise=fbm(wnx*4+s3+90,wny*4+s3+90,3,2,.5);
+if(penNoise>.4)e+=(penNoise-.4)*.2;// higher threshold, lower strength
+const bayNoise=fbm(wnx*3.5+s4+120,wny*3.5+s4+120,3,2,.5);
+if(bayNoise>.45)e-=(bayNoise-.45)*.18;
+// [4] WORLEY F2-F1: only affects areas near existing land (not open ocean)
+const[wf1,wf2]=worley(wnx*5+s5,wny*5+s5);
+if(e>-.1)e+=(wf2-wf1)*.04-.02;// weaker, and only where there's already some elevation
 // Domain-warped base terrain
 e+=fbm(wnx*7+3.7,wny*7+3.7,4,2,.5)*.10;
 // Fine detail
@@ -174,6 +178,15 @@ rawElev[y*W+x]=e;}
 // Step 2: Determine sea level at 70th percentile
 const sorted=Float32Array.from(rawElev).sort();const sl=sorted[Math.floor(W*H*.7)];
 const isLandArr=new Uint8Array(W*H);for(let i=0;i<W*H;i++)isLandArr[i]=rawElev[i]>sl?1:0;
+// Remove tiny isolated land clusters (< 20 pixels) via flood fill
+const visited=new Uint8Array(W*H);
+for(let i=0;i<W*H;i++){if(!isLandArr[i]||visited[i])continue;
+const q=[i],cluster=[];visited[i]=1;
+while(q.length){const ci=q.pop();cluster.push(ci);const cx2=ci%W,cy2=(ci-cx2)/W;
+for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
+const nx2=(cx2+dx+W)%W,ny2=cy2+dy;if(ny2<0||ny2>=H)continue;
+const ni=ny2*W+nx2;if(isLandArr[ni]&&!visited[ni]){visited[ni]=1;q.push(ni);}}}
+if(cluster.length<20)for(const ci of cluster){isLandArr[ci]=0;rawElev[ci]=sl-.01;}}
 // [6] ARCHIPELAGO SCATTERING: detect land near ocean and scatter small islands
 const archElev=new Float32Array(W*H);
 // Distance-to-land grid for ocean depth shaping + archipelago detection
@@ -185,17 +198,17 @@ if(dy>0)dtl[i]=Math.min(dtl[i],dtl[(dy-1)*dw+dx]+1);}
 for(let dy=dh-1;dy>=0;dy--)for(let dx=dw-1;dx>=0;dx--){const i=dy*dw+dx;
 if(dx<dw-1)dtl[i]=Math.min(dtl[i],dtl[i+1]+1);if(dx===dw-1)dtl[i]=Math.min(dtl[i],dtl[dy*dw]+1);
 if(dy<dh-1)dtl[i]=Math.min(dtl[i],dtl[(dy+1)*dw+dx]+1);}}
-// Scatter archipelago islands near coastlines in ocean
+// Scatter archipelago islands — lower frequency noise = fewer, larger islands
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(isLandArr[i])continue;// skip land
+if(isLandArr[i])continue;
 const dgx=Math.min(dw-1,Math.floor(x/DG)),dgy=Math.min(dh-1,Math.floor(y/DG));
 const dist=dtl[dgy*dw+dgx];
-if(dist>1&&dist<12){// near-coast ocean only
+if(dist>2&&dist<10){// near-coast ocean, not right at shore
 const nx=x/W,ny=y/H;
-// High-frequency noise: many peaks in ocean near coast = island chain
-const islandN=fbm(nx*25+s1+200,ny*25+s1+200,4,2,.5);
-const prob=Math.max(0,1-dist/12);// denser near coast
-if(islandN>.3+prob*.15){archElev[i]=(islandN-.3)*prob*.4;}}}
+// Lower freq (15 instead of 25) = larger island blobs, fewer isolated pixels
+const islandN=fbm(nx*15+s1+200,ny*15+s1+200,3,2,.5);
+const prob=Math.max(0,1-dist/10)*.5;// weaker probability
+if(islandN>.4){archElev[i]=(islandN-.4)*prob*.3;}}}
 // Coast-distance BFS for continentality
 const cdist2=new Uint8Array(dw*dh);cdist2.fill(255);const cdQ2=[];
 for(let ty=0;ty<dh;ty++)for(let tx=0;tx<dw;tx++){
