@@ -636,7 +636,7 @@ const bsA=(active,color)=>({...bs,background:active?`rgba(${color},0.2)`:bs.back
 border:`1px solid ${active?`rgba(${color},0.35)`:bs.border}`,color:active?`rgb(${color})`:"#8a8474"});
 return(
 <div style={{width:"100vw",height:"100vh",background:"#060810",overflow:"hidden",position:"relative"}}>
-<canvas ref={canvasRef} width={CW} height={CH} style={{width:"100%",height:"100%",display:"block",imageRendering:"pixelated",objectFit:"contain"}} />
+<canvas ref={canvasRef} width={CW} height={CH} style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,margin:"auto",position:"absolute",inset:0}} />
 {/* Stats overlay — top right */}
 <div style={{position:"absolute",top:6,right:6,background:"rgba(6,8,16,0.85)",borderRadius:3,padding:"4px 10px",
 display:"flex",gap:12,fontSize:11,color:"#c9b87a",pointerEvents:"none"}}>
