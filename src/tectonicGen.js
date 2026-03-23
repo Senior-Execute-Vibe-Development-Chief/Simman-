@@ -85,19 +85,22 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 // Each cell gets a height. Above ~0 = continental, below = oceanic.
 // ═══════════════════════════════════════════════════════
 const crustSeed = rng() * 100;
+// Small scattered continental seeds — most of the world starts as ocean.
+// Continents will be built primarily by plate collisions.
 const crust = new Float32Array(N);
 for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
   const nx = tx / cw, ny = ty / ch;
-  crust[ty * cw + tx] = fbm(nx * 1.8 + crustSeed, ny * 1.8 + crustSeed, 5, 2, 0.5) * 0.22
-    + fbm(nx * 4 + crustSeed + 40, ny * 4 + crustSeed + 40, 3, 2, 0.5) * 0.06
-    - 0.02;
+  const noise = fbm(nx * 3 + crustSeed, ny * 3 + crustSeed, 4, 2, 0.5) * 0.12
+    + fbm(nx * 6 + crustSeed + 40, ny * 6 + crustSeed + 40, 3, 2, 0.5) * 0.04;
+  // Only keep the highest peaks as initial continental seeds, rest is ocean
+  crust[ty * cw + tx] = noise > 0.04 ? noise : -0.06 + noise * 0.3;
 }
 
 // ═══════════════════════════════════════════════════════
 // STEP 5: Iterative plate simulation
 // Move plates, handle collisions/subduction/rifting.
 // ═══════════════════════════════════════════════════════
-const SIM_STEPS = 40;
+const SIM_STEPS = 120;
 // Track accumulated displacement per plate
 const plateDX = new Float32Array(numPlates);
 const plateDY = new Float32Array(numPlates);
@@ -108,8 +111,8 @@ const origOwner = new Uint8Array(plateMap);
 for (let step = 0; step < SIM_STEPS; step++) {
   // Accumulate plate displacement
   for (let p = 0; p < numPlates; p++) {
-    plateDX[p] += plates[p].vx * 1.2;
-    plateDY[p] += plates[p].vy * 1.2;
+    plateDX[p] += plates[p].vx * 1.5;
+    plateDY[p] += plates[p].vy * 1.5;
   }
 
   // Build a "next" crust buffer. Start empty (-0.15 = deep unclaimed ocean).
@@ -141,17 +144,16 @@ for (let step = 0; step < SIM_STEPS; step++) {
 
       if (bothContinental) {
         // Continental collision: fold upward (Himalayas)
-        // Stack heights — both contribute
-        nextCrust[di] = existingCrust + incomingCrust * 0.6;
+        nextCrust[di] = existingCrust + incomingCrust * 0.8;
       } else if (bothOceanic) {
-        // Oceanic convergence: denser one subducts, slight island arc
-        nextCrust[di] = Math.max(existingCrust, incomingCrust) + 0.005;
+        // Oceanic convergence: denser subducts, builds island arc
+        nextCrust[di] = Math.max(existingCrust, incomingCrust) + 0.01;
       } else {
         // Subduction: oceanic goes under continental
-        // Continental side gets uplifted (volcanic arc), oceanic side consumed
+        // Continental side gets uplifted, oceanic consumed
         const contVal = existingCrust > 0 ? existingCrust : incomingCrust;
         const oceVal = existingCrust <= 0 ? existingCrust : incomingCrust;
-        nextCrust[di] = contVal + Math.abs(oceVal) * 0.3; // volcanic uplift
+        nextCrust[di] = contVal + Math.abs(oceVal) * 0.5;
         nextOwner[di] = existingCrust > 0 ? nextOwner[di] : p;
       }
     }
