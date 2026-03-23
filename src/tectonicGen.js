@@ -85,22 +85,20 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 // Each cell gets a height. Above ~0 = continental, below = oceanic.
 // ═══════════════════════════════════════════════════════
 const crustSeed = rng() * 100;
-// Small scattered continental seeds — most of the world starts as ocean.
-// Continents will be built primarily by plate collisions.
+// Initial continental crust — larger blobs, plates will reshape them
 const crust = new Float32Array(N);
 for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
   const nx = tx / cw, ny = ty / ch;
-  const noise = fbm(nx * 3 + crustSeed, ny * 3 + crustSeed, 4, 2, 0.5) * 0.12
-    + fbm(nx * 6 + crustSeed + 40, ny * 6 + crustSeed + 40, 3, 2, 0.5) * 0.04;
-  // Only keep the highest peaks as initial continental seeds, rest is ocean
-  crust[ty * cw + tx] = noise > 0.04 ? noise : -0.06 + noise * 0.3;
+  crust[ty * cw + tx] = fbm(nx * 1.8 + crustSeed, ny * 1.8 + crustSeed, 5, 2, 0.5) * 0.22
+    + fbm(nx * 4 + crustSeed + 40, ny * 4 + crustSeed + 40, 3, 2, 0.5) * 0.06
+    - 0.02;
 }
 
 // ═══════════════════════════════════════════════════════
 // STEP 5: Iterative plate simulation
 // Move plates, handle collisions/subduction/rifting.
 // ═══════════════════════════════════════════════════════
-const SIM_STEPS = 120;
+const SIM_STEPS = 200;
 // Track accumulated displacement per plate
 const plateDX = new Float32Array(numPlates);
 const plateDY = new Float32Array(numPlates);
@@ -111,8 +109,8 @@ const origOwner = new Uint8Array(plateMap);
 for (let step = 0; step < SIM_STEPS; step++) {
   // Accumulate plate displacement
   for (let p = 0; p < numPlates; p++) {
-    plateDX[p] += plates[p].vx * 1.5;
-    plateDY[p] += plates[p].vy * 1.5;
+    plateDX[p] += plates[p].vx * 2.0;
+    plateDY[p] += plates[p].vy * 2.0;
   }
 
   // Build a "next" crust buffer. Start empty (-0.15 = deep unclaimed ocean).
