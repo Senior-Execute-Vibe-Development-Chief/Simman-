@@ -202,29 +202,26 @@ if(nd<cdist2[ni]&&isLandArr[npy*W+np]){cdist2[ni]=nd;cdQ2.push(ni);}}}
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
 let e=rawElev[i]-sl;if(lat>.88)e-=(lat-.88)*3;
 if(e>0){// LAND
-// [2] SHALLOW COASTAL GRADIENT: use sqrt to flatten near-zero values
-// This makes the land/ocean boundary very gradual so noise has big horizontal effect
-const raw=e;
-const domeH=Math.min(1,raw/0.5);
+if(preset==="continental"){// Continental: trust raw elevation, independent features
+e=e*0.3;
+const[wmx,wmy]=warp(nx,ny,2,3,0.1,s4,s4+40);
+e+=ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0)*0.25;
+const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
+e+=Math.max(0,fbm(whx*6+s2,why*6+s2,4,2,.5))*.06;
+e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.05;
+}else{// Default: continentality-based shaping
+const raw=e,domeH=Math.min(1,raw/0.5);
 const cd=cdist2[Math.min(dh-1,Math.floor(y/DG))*dw+Math.min(dw-1,Math.floor(x/DG))];
 const interior=Math.min(1,cd/15);
-// Shallow coastal zone: very gradual rise from sea level
-const coastalE=Math.pow(Math.min(raw,0.3)/0.3,0.4)*0.04;// sqrt-like: 0→0.04 slowly
+const coastalE=Math.pow(Math.min(raw,0.3)/0.3,0.4)*0.04;
 const interiorE=0.01+domeH*0.04+fbm(nx*10+s3,ny*10+s3,3,2,.5)*.02;
 e=coastalE*(1-interior)+interiorE*interior;
-// Mountains
 const[wmx,wmy]=warp(nx,ny,2,3,0.1,s4,s4+40);
-const ridgeVal=ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0);
-const mtWeight=interior*interior*domeH;
-e+=ridgeVal*mtWeight*0.45;
-// Hills
+e+=ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0)*interior*interior*domeH*0.45;
 const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
 e+=Math.max(0,fbm(whx*6+s2,why*6+s2,4,2,.5))*.08*Math.sqrt(interior);
-// Valley carving
-const valleyNoise=fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5);
-e-=Math.max(0,valleyNoise+.15)*.06*interior;
-// Hypsometric redistribution
-e=Math.pow(Math.max(0,e),0.85)*1.2;
+e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.06*interior;
+e=Math.pow(Math.max(0,e),0.85)*1.2;}
 e=Math.max(0.003,e);
 }else{// OCEAN — raw elevation is the bathymetry
 // e is already negative (rawElev - seaLevel). Linear scale preserves natural
@@ -828,6 +825,8 @@ style={bsA(preset==="earth","100,160,220")}>Earth</button>
 style={bsA(preset==="pangaea","120,180,100")}>Pangaea</button>
 <button onClick={()=>{presetRef.current="tectonic";setPreset("tectonic");setSeed(Math.floor(Math.random()*999999));}}
 style={bsA(preset==="tectonic","180,120,100")}>Tectonic</button>
+<button onClick={()=>{presetRef.current="continental";setPreset("continental");setSeed(Math.floor(Math.random()*999999));}}
+style={bsA(preset==="continental","140,180,160")}>Continental</button>
 <div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
 {[["terrain","Ter"],["depth","Dep"],["tribes","Tri"],["power","Pow"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
