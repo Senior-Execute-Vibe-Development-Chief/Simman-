@@ -693,14 +693,20 @@ const maxT=ter.tribeCenters.length;const tcR=new Uint8Array(maxT),tcG=new Uint8A
 for(let t2=0;t2<maxT;t2++){const c=tribeRGB(t2);tcR[t2]=c[0];tcG[t2]=c[1];tcB[t2]=c[2];}
 const N=CW*CH;
 if(vm==="depth"){
-// Depth/heightmap view — flat black-to-white gradient
+// Depth/heightmap view — flat black-to-white gradient using actual data range
+// Find actual min/max elevation
+let eMin=Infinity,eMax=-Infinity;
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const si=Math.min(H-1,ty*RES)*W+Math.min(W-1,tx*RES);
+const e=w.elevation[si];if(e<eMin)eMin=e;if(e>eMax)eMax=e;}
+// Sea mode: floor is 0 (sea level), all ocean = black
+// Floor mode: floor is actual minimum, deepest trench = black
+const floor=depthFromSeaRef.current?0:eMin;
+const range=eMax-floor||1;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const e=w.elevation[si];
-// Map elevation to 0-255: black = deepest/sea level, white = highest
-const v=depthFromSeaRef.current
-?Math.min(255,Math.max(0,(e/0.6)*255))|0
-:Math.min(255,Math.max(0,((e+0.2)/0.8)*255))|0;
+const v=Math.min(255,Math.max(0,((e-floor)/range)*255))|0;
 let r=v,g=v,b=v;
 // Plate boundary overlay for tectonic mode
 if(w.pixPlate){const myP=w.pixPlate[si];let boundary=false;
