@@ -21,20 +21,12 @@ const RES = 2;
 // STEP 1: Generate tectonic plates
 // ═══════════════════════════════════════════════════════
 // Plate count: 3-4 major + 5-7 minor + 8-14 micro ≈ 16-25 total
-const numMajor = 3 + Math.floor(rng() * 2); // 3-4 giant plates
-const numMinor = 5 + Math.floor(rng() * 3); // 5-7 medium plates
-const numMicro = 8 + Math.floor(rng() * 7); // 8-14 microplates
+const numMajor = 3 + Math.floor(rng() * 2);
+const numMinor = 5 + Math.floor(rng() * 3);
+const numMicro = 8 + Math.floor(rng() * 7);
 const numPlates = numMajor + numMinor + numMicro;
 const plates = [];
-// Continental assignment: major plates are ~50% continental, minor ~40%, micro ~20%
-const numContinental = Math.floor(numMajor * (0.4 + rng() * 0.2))
-  + Math.floor(numMinor * (0.3 + rng() * 0.2))
-  + Math.floor(numMicro * (0.1 + rng() * 0.2));
-const plateOrder = Array.from({length: numPlates}, (_, i) => i);
-for (let i = numPlates - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [plateOrder[i], plateOrder[j]] = [plateOrder[j], plateOrder[i]]; }
-const contSet = new Set(plateOrder.slice(0, numContinental));
-// Seed placement: major plates get widely spaced seeds, micro plates cluster
-// near convergent-like zones (random cluster centers)
+// Seed placement: major plates spaced, micro plates cluster
 const clusterCenters = [];
 for (let c = 0; c < 2 + Math.floor(rng() * 2); c++) {
   clusterCenters.push({ x: rng(), y: 0.15 + rng() * 0.7 });
@@ -42,30 +34,27 @@ for (let c = 0; c < 2 + Math.floor(rng() * 2); c++) {
 for (let i = 0; i < numPlates; i++) {
   let cx, cy;
   if (i < numMajor) {
-    // Major plates: spread evenly with jitter to avoid clustering
     cx = (i + 0.2 + rng() * 0.6) / numMajor;
     cy = 0.15 + rng() * 0.7;
   } else if (i < numMajor + numMinor) {
-    // Minor plates: random placement
     cx = rng();
     cy = 0.08 + rng() * 0.84;
   } else {
-    // Microplates: cluster near random centers (like subduction zones)
     const cc = clusterCenters[Math.floor(rng() * clusterCenters.length)];
     cx = cc.x + (rng() - 0.5) * 0.2;
     cy = cc.y + (rng() - 0.5) * 0.15;
   }
-  // Wrap x
   cx = ((cx % 1) + 1) % 1;
   cy = Math.max(0.02, Math.min(0.98, cy));
-  const continental = contSet.has(i);
   const angle = rng() * Math.PI * 2;
   const speed = 0.3 + rng() * 0.7;
-  const vx = Math.cos(angle) * speed;
-  const vy = Math.sin(angle) * speed;
-  const baseElev = continental ? 0.03 : -0.08;
-  plates.push({ cx, cy, vx, vy, continental, baseElev, id: i });
+  plates.push({ cx, cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, id: i });
 }
+// Crust thickness field — continuous, independent of plates.
+// Large-scale noise blobs create continent-shaped regions of thick crust
+// (positive = continental, floats high) and thin crust (negative = oceanic, sits low).
+const crustSeed = rng() * 100;
+const crust = new Float32Array(W * H);
 
 // ═══════════════════════════════════════════════════════
 // STEP 2: Voronoi plate assignment at pixel level
@@ -104,7 +93,22 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 3: Classify plate boundaries (coarse grid)
+// STEP 2b: Generate crust thickness field (independent of plates)
+// ═══════════════════════════════════════════════════════
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  const nx = x / W, ny = y / H;
+  // Low-frequency blobs for continent shapes
+  crust[y * W + x] = fbm(nx * 2.5 + crustSeed, ny * 2.5 + crustSeed, 5, 2, 0.5) * 0.14
+    + fbm(nx * 5 + crustSeed + 40, ny * 5 + crustSeed + 40, 3, 2, 0.5) * 0.04;
+}
+// Coarse crust map for boundary classification
+const crustMap = new Float32Array(cw * ch);
+for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
+  crustMap[ty * cw + tx] = crust[Math.min(H - 1, ty * CG) * W + Math.min(W - 1, tx * CG)];
+}
+
+// ═══════════════════════════════════════════════════════
+// STEP 3: Classify plate boundaries using local crust thickness
 // ═══════════════════════════════════════════════════════
 const boundaryType = new Uint8Array(cw * ch);
 const boundaryStr = new Float32Array(cw * ch);
@@ -126,12 +130,15 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
     const relV = (myPlate.vx - otherPlate.vx) * nnx + (myPlate.vy - otherPlate.vy) * nny;
     const tanV = Math.abs((myPlate.vx - otherPlate.vx) * (-nny) + (myPlate.vy - otherPlate.vy) * nnx);
     let type = 0, str = 0;
+    // Use local crust thickness to classify boundary type
+    const myCrust = crustMap[ti], otherCrust = crustMap[ni];
+    const myThick = myCrust > 0.02, otherThick = otherCrust > 0.02;
     if (relV > 0.3) {
-      if (myPlate.continental && otherPlate.continental) { type = 1; str = relV * 1.2; }
-      else if (myPlate.continental || otherPlate.continental) { type = 2; str = relV * 0.9; }
-      else { type = 2; str = relV * 0.5; }
-    } else if (relV < -0.3) { type = 3; str = Math.abs(relV) * 0.6; }
-    else if (tanV > 0.4) { type = 4; str = tanV * 0.3; }
+      if (myThick && otherThick) { type = 1; str = relV * 1.2; } // continent-continent collision
+      else if (myThick || otherThick) { type = 2; str = relV * 0.9; } // subduction
+      else { type = 2; str = relV * 0.5; } // oceanic convergence
+    } else if (relV < -0.3) { type = 3; str = Math.abs(relV) * 0.6; } // divergence
+    else if (tanV > 0.4) { type = 4; str = tanV * 0.3; } // strike-slip
     if (str > maxStr) { maxStr = str; bestType = type; }
   }
   boundaryType[ti] = bestType;
@@ -177,12 +184,10 @@ for (let qi = 0; qi < faultQ.length; qi++) {
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 5: Build pixel-level elevation
-// No blending across land/ocean boundaries — that causes rings.
-// Instead: hard plate type, smooth noise-based terrain on each side.
+// STEP 5: Build pixel-level elevation — unified, no land/ocean split
+// Crust thickness drives base elevation; same terrain layers everywhere.
 // ═══════════════════════════════════════════════════════
 const s1 = rng() * 100, s2 = rng() * 100, s3 = rng() * 100, s4 = rng() * 100, s5 = rng() * 100;
-// Domain warp helper — same as WorldSim's warp()
 const warp = (x, y, freq, oct, str, o1, o2) => [
   x + fbm(x * freq + o1, y * freq + o1, oct, 2, 0.5) * str,
   y + fbm(x * freq + o2, y * freq + o2, oct, 2, 0.5) * str
@@ -195,16 +200,18 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const ctx = Math.min(cw - 1, Math.floor(x / CG));
   const cty = Math.min(ch - 1, Math.floor(y / CG));
   const ci = cty * cw + ctx;
-  const plate = plates[pixPlate[i]];
   const fe = faultElev[ci], fd = faultDist[ci], bt = boundaryType[ci];
 
-  let e;
-  if (plate.continental) {
-    // ── LAND ELEVATION ──
-    e = plate.baseElev;
+  // Base elevation from crust thickness (continuous: thick → high, thin → low)
+  let e = crust[i] * 0.8;
 
-    // Tectonic boundary mountains (plate collisions/subduction)
-    if (fe > 0) {
+  // Tectonic boundary features (mountains at collisions, trenches at subduction)
+  if (fe > 0) {
+    if (bt === 2 && crust[i] < 0.02) {
+      // Subduction trench on oceanic side
+      e -= fe * 0.4;
+    } else {
+      // Mountains / ridges
       const [wmx, wmy] = warp(nx, ny, 3, 3, 0.08, s1, s1 + 40);
       const ridgeStr = fe * (fd < 3 ? 0.7 + 0.3 * ridged(wmx * 5, wmy * 5, 4, 2.2, 2.0, 1.0) : 1.0);
       if (fd < 8) {
@@ -214,61 +221,25 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         e += ridgeStr * 0.6;
       }
     }
-
-    // Independent mountain ridges (old ranges, not tied to current boundaries)
-    const [wmx2, wmy2] = warp(nx, ny, 2, 3, 0.1, s4, s4 + 40);
-    e += ridged(wmx2 * 4 + s5, wmy2 * 4 + s5, 5, 2.2, 2.0, 1.0) * 0.20;
-
-    // Broad terrain variation (domain-warped for organic shapes)
-    const [wbx, wby] = warp(nx, ny, 2.5, 3, 0.06, s3 + 10, s3 + 60);
-    e += fbm(wbx * 5 + s3, wby * 5 + s3, 5, 2, 0.5) * 0.12;
-
-    // Hills (domain-warped)
-    const [whx, why] = warp(nx, ny, 4, 3, 0.05, s3 + 20, s3 + 70);
-    e += Math.max(0, fbm(whx * 6 + s2, why * 6 + s2, 4, 2, 0.5)) * 0.06;
-
-    // Valley carving
-    e -= Math.max(0, fbm(nx * 5 + s1 + 60, ny * 5 + s1 + 60, 3, 2, 0.5) + 0.15) * 0.05;
-
-    // Fine texture
-    e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.01;
-
-    // Ensure land stays above sea level
-    e = Math.max(0.002, e);
-
-  } else {
-    // ── OCEAN ELEVATION ──
-    // Same noise layers as land, at ocean-appropriate scale
-    e = plate.baseElev;
-
-    // Broad ocean floor variation
-    e += fbm(nx * 5 + s3, ny * 5 + s3, 5, 2, 0.5) * 0.04;
-
-    // Underwater ridges / seamount chains (like land highlands)
-    const seamountVal = ridged(nx * 3.5 + s4 + 20, ny * 3.5 + s4 + 20, 4, 2.0, 1.8, 1.0);
-    const seamountMask = fbm(nx * 2.5 + s1 + 80, ny * 2.5 + s1 + 80, 3, 2, 0.5);
-    if (seamountMask > 0.15) e += seamountVal * (seamountMask - 0.15) * 0.08;
-
-    // Abyssal plains (like land plateaus, but inverted — flat deep areas)
-    const abyssNoise = fbm(nx * 3 + s2 + 40, ny * 3 + s2 + 40, 3, 2, 0.5);
-    if (abyssNoise < -0.2) e += (abyssNoise + 0.2) * 0.04;
-
-    // Rolling ocean floor
-    e += fbm(nx * 10 + s3 + 15, ny * 10 + s3 + 15, 3, 2, 0.5) * 0.015;
-
-    // Basin carving
-    const basinNoise = fbm(nx * 2.5 + s1 + 50, ny * 2.5 + s1 + 50, 3, 2, 0.5);
-    if (basinNoise > 0.2) e -= (basinNoise - 0.2) * 0.03;
-
-    // Fine texture
-    e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.006;
-
-    // Tectonic features on top: trenches and mid-ocean ridges
-    if (fe > 0) {
-      if (bt === 2) e -= fe * 0.4;
-      else if (bt === 3) e += fe * 0.25;
-    }
   }
+
+  // Independent mountain ridges (old ranges, hotspot chains)
+  const [wmx2, wmy2] = warp(nx, ny, 2, 3, 0.1, s4, s4 + 40);
+  e += ridged(wmx2 * 4 + s5, wmy2 * 4 + s5, 5, 2.2, 2.0, 1.0) * 0.15;
+
+  // Broad terrain variation (domain-warped)
+  const [wbx, wby] = warp(nx, ny, 2.5, 3, 0.06, s3 + 10, s3 + 60);
+  e += fbm(wbx * 5 + s3, wby * 5 + s3, 5, 2, 0.5) * 0.10;
+
+  // Hills (domain-warped)
+  const [whx, why] = warp(nx, ny, 4, 3, 0.05, s3 + 20, s3 + 70);
+  e += Math.max(0, fbm(whx * 6 + s2, why * 6 + s2, 4, 2, 0.5)) * 0.05;
+
+  // Valley / basin carving
+  e -= Math.max(0, fbm(nx * 5 + s1 + 60, ny * 5 + s1 + 60, 3, 2, 0.5) + 0.15) * 0.04;
+
+  // Fine texture
+  e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.008;
 
   // Polar reduction
   if (lat > 0.88) e -= (lat - 0.88) * 2;
