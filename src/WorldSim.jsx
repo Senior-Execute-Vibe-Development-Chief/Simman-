@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { EARTH_ELEV, EARTH_MOIST, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
+import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
 function initNoise(seed){const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)PERM[i]=p[i&255];}
@@ -17,11 +17,9 @@ initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
-const eData=decodeEarth(EARTH_ELEV),mData=decodeEarth(EARTH_MOIST);
+const eData=decodeEarth(EARTH_ELEV);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);// 0-255
-// Convert heightmap byte to elevation: 0=ocean, >0=land
-// Add subtle fbm noise for coastline variation and terrain detail
 const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
 if(he<3){// Ocean
 const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
@@ -29,11 +27,17 @@ elevation[i]=-0.03-Math.max(0,(1-he/3))*0.12+depth;
 }else{// Land: map 3-255 to ~0.005-0.6 elevation
 let e=(he-3)/252*0.55+0.005+noise;
 elevation[i]=Math.max(0.001,e);}
-// Moisture from heightmap data
-const hm=sampleEarth(mData,EARTH_W,EARTH_H,x,y,W,H)/255;// 0-1
-const mNoise=fbm(nx*6+50,ny*6+50,3,2,.5)*.08;
-moisture[i]=Math.max(0,Math.min(1,hm+mNoise));
-// Temperature: latitude + elevation based
+// Procedural moisture: latitude bands + elevation + noise (no stored data)
+// Tropical belt (lat<0.3) wet, subtropical (0.3-0.5) dry, temperate (0.5-0.7) moderate, polar dry
+const tropWet=Math.max(0,1-lat*2.5);// 1 at equator, 0 at lat>0.4
+const subtropDry=Math.exp(-((lat-0.35)*(lat-0.35))/0.01)*0.4;// dry belt at ~20-25°
+const tempWet=Math.exp(-((lat-0.55)*(lat-0.55))/0.02)*0.25;// temperate rain
+let m=0.35+tropWet*0.45-subtropDry+tempWet+fbm(nx*4+50,ny*4+50,4,2,.55)*.2;
+if(elevation[i]>0){// Land: reduce moisture at high elevation, boost near coast
+if(elevation[i]>0.15)m-=Math.min(0.3,(elevation[i]-0.15)*1.5);// mountains are drier
+if(elevation[i]<0.02)m+=0.15;// coastal lowlands are wetter
+}else{m=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;}// ocean moisture ~0.5
+moisture[i]=Math.max(0.02,Math.min(1,m));
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,elevation[i])*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.08));}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
