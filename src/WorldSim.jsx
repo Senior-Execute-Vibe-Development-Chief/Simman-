@@ -70,11 +70,15 @@ if(lat>.85)e=Math.max(0.01,e*0.5);
 // Valley systems (subtract to create lowlands)
 e-=Math.pow(Math.max(0,fbm(nx*4+60,ny*4+60,3,2,.5)+.1),2)*.15;
 elevation[i]=Math.max(0.005,e);
-// Moisture: latitude + noise, valleys wetter, mountains drier
-let m=fbm(nx*4+50,ny*4+50,4,2,.55)*.35+.4+(1-lat)*.15;
-if(e<0.06)m+=.2;// valleys are wet
+// Moisture: climate zones + elevation effects
+const tropWet=Math.max(0,1-lat*2.5);
+const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.40;// subtropical HP belt
+const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.20;
+const polarDry=Math.max(0,(lat-.75))*.25;
+let m=.40+tropWet*.35-subtropDry+tempWet-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.15;
+if(e<0.06)m+=.15;// valleys are wet
 if(e>0.3)m-=.15;// mountains are drier
-moisture[i]=Math.max(0.05,Math.min(1,m));
+moisture[i]=Math.max(.02,Math.min(1,m));
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 }else{
 // ── Random world mode: procedural ellipse generation ──
@@ -98,15 +102,44 @@ if(dy>0)dtl[i]=Math.min(dtl[i],dtl[(dy-1)*dw+dx]+1);}
 for(let dy=dh-1;dy>=0;dy--)for(let dx=dw-1;dx>=0;dx--){const i=dy*dw+dx;
 if(dx<dw-1)dtl[i]=Math.min(dtl[i],dtl[i+1]+1);if(dx===dw-1)dtl[i]=Math.min(dtl[i],dtl[dy*dw]+1);
 if(dy<dh-1)dtl[i]=Math.min(dtl[i],dtl[(dy+1)*dw+dx]+1);}}
+// Pass 1: elevation + temperature
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
-let e=rawElev[i]-sl;if(lat>.88)e-=(lat-.88)*3;// push poles underwater
+let e=rawElev[i]-sl;if(lat>.88)e-=(lat-.88)*3;
 if(e<0){const dgx=Math.min(dw-1,Math.floor(x/DG)),dgy=Math.min(dh-1,Math.floor(y/DG)),dist=dtl[dgy*dw+dgx];
 if(dist<=3)e=Math.max(e,-(dist/3)*0.025);
 else{const dd=dist-3,df=Math.min(1,dd/12);let bd=-0.03-df*0.12;
 const ridge=fbm(nx*3+seed*0.01,ny*3+seed*0.01,3,2.2,0.5);if(ridge>0.2)bd+=(ridge-0.2)*0.08;
 e=Math.min(e,bd);}e+=fbm(nx*12+40,ny*12+40,2,2,.4)*0.008;}
-elevation[i]=e;let m=fbm(nx*4+50,ny*4+50,4,2,.55)*.4+.35+(1-lat)*.2;if(e>-.05&&e<.03)m+=.15;
-moisture[i]=Math.max(0,Math.min(1,m));temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}}
+elevation[i]=e;temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
+// Pass 2: coast-distance BFS for continentality
+const cdist2=new Uint8Array(dw*dh);cdist2.fill(255);const cdQ2=[];
+for(let ty=0;ty<dh;ty++)for(let tx=0;tx<dw;tx++){
+const px=Math.min(W-1,tx*DG),py=Math.min(H-1,ty*DG),ti=ty*dw+tx;
+if(elevation[py*W+px]<=0)continue;
+for(let ddy=-1;ddy<=1;ddy++)for(let ddx=-1;ddx<=1;ddx++){
+const nx2=(tx+ddx+dw)%dw,ny2=ty+ddy;if(ny2<0||ny2>=dh)continue;
+const np=Math.min(W-1,nx2*DG),npy=Math.min(H-1,ny2*DG);
+if(elevation[npy*W+np]<=0){cdist2[ti]=0;cdQ2.push(ti);break;}}}
+for(let qi=0;qi<cdQ2.length;qi++){const ci=cdQ2[qi],cd=cdist2[ci],cx=ci%dw,cy=(ci-cx)/dw;
+for(let ddy=-1;ddy<=1;ddy++)for(let ddx=-1;ddx<=1;ddx++){if(!ddx&&!ddy)continue;
+const nx2=(cx+ddx+dw)%dw,ny2=cy+ddy;if(ny2<0||ny2>=dh)continue;
+const ni=ny2*dw+nx2,nd=cd+1;if(nd<cdist2[ni]&&elevation[Math.min(H-1,ny2*DG)*W+Math.min(W-1,nx2*DG)]>0){cdist2[ni]=nd;cdQ2.push(ni);}}}
+// Pass 3: moisture with climate zones + continentality
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
+if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
+const cd=cdist2[Math.min(dh-1,Math.floor(y/DG))*dw+Math.min(dw-1,Math.floor(x/DG))];
+const coastProx=Math.max(0,1-cd/8);
+const tropWet=Math.max(0,1-lat*2.5);
+const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.50*(1-coastProx*.5);
+const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.22;
+const tropF=Math.max(0,1-lat*3);
+const contRate=.006+(1-tropF)*.014;
+const cont=Math.min(.28,cd*contRate);
+const polarDry=Math.max(0,(lat-.75))*.25;
+let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12;
+if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
+if(elevation[i]<.02)m+=.10;
+moisture[i]=Math.max(.02,Math.min(1,m));}}
 const ctw=Math.ceil(W/RES),cth=Math.ceil(H/RES);const coastal=new Uint8Array(ctw*cth);
 for(let ty=1;ty<cth-1;ty++)for(let tx=0;tx<ctw;tx++){const px=Math.min(W-1,tx*RES),py=Math.min(H-1,ty*RES);
 if(elevation[py*W+px]>0){
