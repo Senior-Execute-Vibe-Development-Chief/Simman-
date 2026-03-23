@@ -18,27 +18,45 @@ const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
 const eData=decodeEarth(EARTH_ELEV);
+// Pass 1: elevation + temperature
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);// 0-255
 const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
-if(he<3){// Ocean
-const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
+if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
 elevation[i]=-0.03-Math.max(0,(1-he/3))*0.12+depth;
-}else{// Land: map 3-255 to ~0.005-0.6 elevation
-let e=(he-3)/252*0.55+0.005+noise;
-elevation[i]=Math.max(0.001,e);}
-// Procedural moisture: latitude bands + elevation + noise (no stored data)
-// Tropical belt (lat<0.3) wet, subtropical (0.3-0.5) dry, temperate (0.5-0.7) moderate, polar dry
-const tropWet=Math.max(0,1-lat*2.5);// 1 at equator, 0 at lat>0.4
-const subtropDry=Math.exp(-((lat-0.35)*(lat-0.35))/0.01)*0.4;// dry belt at ~20-25°
-const tempWet=Math.exp(-((lat-0.55)*(lat-0.55))/0.02)*0.25;// temperate rain
-let m=0.35+tropWet*0.45-subtropDry+tempWet+fbm(nx*4+50,ny*4+50,4,2,.55)*.2;
-if(elevation[i]>0){// Land: reduce moisture at high elevation, boost near coast
-if(elevation[i]>0.15)m-=Math.min(0.3,(elevation[i]-0.15)*1.5);// mountains are drier
-if(elevation[i]<0.02)m+=0.15;// coastal lowlands are wetter
-}else{m=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;}// ocean moisture ~0.5
-moisture[i]=Math.max(0.02,Math.min(1,m));
+}else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,elevation[i])*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.08));}
+// Pass 2: coast-distance BFS at tile resolution for continentality
+const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
+const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);
+const cdQ=[];
+for(let ty=0;ty<CDH;ty++)for(let tx=0;tx<CDW;tx++){
+const px=Math.min(W-1,tx*CDT),py=Math.min(H-1,ty*CDT),ti=ty*CDW+tx;
+if(elevation[py*W+px]<=0)continue;// ocean tile
+for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+const nx2=(tx+dx+CDW)%CDW,ny2=ty+dy;if(ny2<0||ny2>=CDH)continue;
+const np=Math.min(W-1,nx2*CDT),npy=Math.min(H-1,ny2*CDT);
+if(elevation[npy*W+np]<=0){cdist[ti]=0;cdQ.push(ti);break;}}}
+for(let qi=0;qi<cdQ.length;qi++){const ci=cdQ[qi],cd=cdist[ci],cx=ci%CDW,cy=(ci-cx)/CDW;
+for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
+const nx2=(cx+dx+CDW)%CDW,ny2=cy+dy;if(ny2<0||ny2>=CDH)continue;
+const ni=ny2*CDW+nx2,nd=cd+1;if(nd<cdist[ni]&&elevation[Math.min(H-1,ny2*CDT)*W+Math.min(W-1,nx2*CDT)]>0){cdist[ni]=nd;cdQ.push(ni);}}}
+// Pass 3: moisture using ITCZ, subtropical HP belt, continentality, westerlies
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
+if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
+const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
+const coastProx=Math.max(0,1-cd/8);// 1 at coast, 0 inland
+const tropWet=Math.max(0,1-lat*2.5);// ITCZ: wet equator
+const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.50*(1-coastProx*.5);// subtropical HP, weakened near coast (monsoon)
+const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.22;// temperate westerlies
+const tropF=Math.max(0,1-lat*3);// tropical moisture recycling factor
+const contRate=.006+(1-tropF)*.014;// weak in tropics, stronger elsewhere
+const cont=Math.min(.28,cd*contRate);
+const polarDry=Math.max(0,(lat-.75))*.25;
+let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12;
+if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
+if(elevation[i]<.02)m+=.10;
+moisture[i]=Math.max(.02,Math.min(1,m));}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
@@ -192,7 +210,7 @@ if(elev[ni]>0&&!river[ni]&&!lake[ni]&&Math.abs(elev[ni]-elev[i])<0.03)floodplain
 return{river,lake,floodplain,delta};}
 
 const BC=[[8,18,52],[18,40,88],[32,72,120],[198,186,142],[230,238,245],[210,218,228],[140,132,115],[55,78,52],[110,100,90],[130,126,104],[10,80,22],[166,156,66],[202,176,112],[30,98,36],[118,160,52],[38,62,42],[150,146,104]];
-function getBiomeD(e,m,t,sl){if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;const a=e-sl;if(a<0.015)return 3;
+function getBiomeD(e,m,t,sl){if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;const a=e-sl;if(a<0.006)return 3;
 if(t<.15)return 4;if(t<.25)return e>.35?5:6;if(t<.35)return e>.4?5:m>.45?7:6;if(e>.5)return 8;if(e>.38)return t>.55?9:8;
 if(t>.7)return m>.5?10:m>.25?11:12;if(t>.5)return m>.45?13:m>.2?14:12;return m>.4?15:m>.15?14:16;}
 function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
