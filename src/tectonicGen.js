@@ -67,8 +67,8 @@ for (let i = 0; i < numPlates; i++) {
   const speed = 0.3 + rng() * 0.7;
   const vx = Math.cos(angle) * speed;
   const vy = Math.sin(angle) * speed;
-  // Varied base elevations: some continental plates are higher (plateaus), some lower (basins)
-  const baseElev = continental ? 0.015 + rng() * 0.035 : -0.05 - rng() * 0.07;
+  // Continental plates vary in base height; ocean plates all share a uniform depth
+  const baseElev = continental ? 0.015 + rng() * 0.035 : -0.08;
   plates.push({ cx, cy, vx, vy, continental, baseElev, id: i });
 }
 
@@ -78,24 +78,34 @@ for (let i = 0; i < numPlates; i++) {
 // ═══════════════════════════════════════════════════════
 const CG = 4; // coarse grid for BFS operations
 const cw = Math.ceil(W / CG), ch = Math.ceil(H / CG);
-// Pixel-level plate assignment (smooth coastlines)
-// Use shared warp field instead of per-plate warp (much faster)
+// Pixel-level plate assignment with smooth coastlines
+// Two warp layers at different frequencies prevent directional shearing
 const pixPlate = new Uint8Array(W * H);
+const pixDist2 = new Float32Array(W * H); // distance² to nearest plate (for blending)
+const pixDist2nd = new Float32Array(W * H); // distance² to 2nd nearest (for boundary detection)
+const pixPlate2 = new Uint8Array(W * H); // 2nd nearest plate (for blending)
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const nx = x / W, ny = y / H;
-  // Shared domain warp — distorts all plate boundaries equally
-  const warpX = fbm(nx * 6 + 13.7, ny * 6 + 13.7, 3, 2, 0.5) * 0.07;
-  const warpY = fbm(nx * 6 + 63.7, ny * 6 + 63.7, 3, 2, 0.5) * 0.07;
+  // Two-layer warp: low freq for broad distortion, higher freq for local wobble
+  const warpX = fbm(nx * 3 + 13.7, ny * 3 + 13.7, 3, 2, 0.5) * 0.05
+              + fbm(nx * 10 + 37.1, ny * 10 + 37.1, 2, 2, 0.5) * 0.015;
+  const warpY = fbm(nx * 3 + 63.7, ny * 3 + 63.7, 3, 2, 0.5) * 0.05
+              + fbm(nx * 10 + 87.1, ny * 10 + 87.1, 2, 2, 0.5) * 0.015;
   const wnx = nx + warpX, wny = ny + warpY;
-  let bestD = 1e9, bestP = 0;
+  let bestD = 1e9, bestP = 0, secD = 1e9, secP = 0;
   for (let p = 0; p < numPlates; p++) {
     let dx = wnx - plates[p].cx;
     if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
     const dy = wny - plates[p].cy;
-    const d = dx * dx + dy * dy; // skip sqrt for comparison
-    if (d < bestD) { bestD = d; bestP = p; }
+    const d = dx * dx + dy * dy;
+    if (d < bestD) { secD = bestD; secP = bestP; bestD = d; bestP = p; }
+    else if (d < secD) { secD = d; secP = p; }
   }
-  pixPlate[y * W + x] = bestP;
+  const idx = y * W + x;
+  pixPlate[idx] = bestP;
+  pixPlate2[idx] = secP;
+  pixDist2[idx] = bestD;
+  pixDist2nd[idx] = secD;
 }
 // Coarse plate map (for BFS — sample from pixel map)
 const plateMap = new Uint8Array(cw * ch);
@@ -212,6 +222,36 @@ for (let qi = 0; qi < faultQ.length; qi++) {
 // ═══════════════════════════════════════════════════════
 const s1 = rng() * 100, s2 = rng() * 100, s3 = rng() * 100, s4 = rng() * 100;
 
+// Helper: compute elevation for a given plate at a pixel
+function plateElev(plate, fe, fd, bt, nx, ny, s1, s2, s3, s4) {
+  let e = plate.baseElev;
+  // Fault features
+  if (fe > 0 && plate.continental) {
+    const ridgeStr = fe * (fd < 3 ? 0.7 + 0.3 * ridged(nx * 5 + s1, ny * 5 + s1, 4, 2.2, 2.0, 1.0) : 1.0);
+    if (fd < 8) { const rv = ridged(nx * 6 + s2, ny * 6 + s2, 5, 2.1, 2.0, 1.0); e += ridgeStr * (0.5 + rv * 0.5); }
+    else e += ridgeStr * 0.6;
+  } else if (fe > 0 && !plate.continental) {
+    if (bt === 2) e -= fe * 0.5;
+    else if (bt === 3) e += fe * 0.3;
+  }
+  // Interior terrain
+  if (plate.continental) {
+    e += fbm(nx * 5 + s3, ny * 5 + s3, 5, 2, 0.5) * 0.06;
+    const highlandVal = ridged(nx * 3.5 + s4 + 20, ny * 3.5 + s4 + 20, 4, 2.0, 1.8, 1.0);
+    const highlandMask = fbm(nx * 2.5 + s1 + 80, ny * 2.5 + s1 + 80, 3, 2, 0.5);
+    if (highlandMask > 0.15) e += highlandVal * (highlandMask - 0.15) * 0.18;
+    const platNoise = fbm(nx * 3 + s2 + 40, ny * 3 + s2 + 40, 3, 2, 0.5);
+    if (platNoise > 0.35) e += (platNoise - 0.35) * 0.06;
+    e += fbm(nx * 10 + s3 + 15, ny * 10 + s3 + 15, 3, 2, 0.5) * 0.025;
+    const basinNoise = fbm(nx * 2.5 + s1 + 50, ny * 2.5 + s1 + 50, 3, 2, 0.5);
+    if (basinNoise > 0.2) e -= (basinNoise - 0.2) * 0.05;
+    e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.008;
+  } else {
+    e += fbm(nx * 8 + s3 + 30, ny * 8 + s3 + 30, 3, 2, 0.4) * 0.015;
+  }
+  return e;
+}
+
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
   const nx = x / W, ny = y / H;
@@ -219,84 +259,33 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const ctx = Math.min(cw - 1, Math.floor(x / CG));
   const cty = Math.min(ch - 1, Math.floor(y / CG));
   const ci = cty * cw + ctx;
-  const plate = plates[pixPlate[i]]; // pixel-level plate for smooth coastlines
+  const fe = faultElev[ci], fd = faultDist[ci], bt = boundaryType[ci];
 
-  // A) Base plate elevation
-  let e = plate.baseElev;
+  // Compute elevation for primary plate
+  const p1 = plates[pixPlate[i]];
+  const e1 = plateElev(p1, fe, fd, bt, nx, ny, s1, s2, s3, s4);
 
-  // B) Fault feature elevation (mountains/ridges from boundaries)
-  const fe = faultElev[ci];
-  if (fe > 0 && plate.continental) {
-    // Add ridged multifractal along fault zones for realistic mountain texture
-    const fd = faultDist[ci];
-    const ridgeStr = fe * (fd < 3 ? 0.7 + 0.3 * ridged(nx * 5 + s1, ny * 5 + s1, 4, 2.2, 2.0, 1.0) : 1.0);
-    // Ridged detail for close-to-boundary areas
-    if (fd < 8) {
-      const rv = ridged(nx * 6 + s2, ny * 6 + s2, 5, 2.1, 2.0, 1.0);
-      e += ridgeStr * (0.5 + rv * 0.5);
-    } else {
-      // Foothills further from boundary: gentler
-      e += ridgeStr * 0.6;
-    }
-  } else if (fe > 0 && !plate.continental) {
-    // Oceanic plate features: mid-ocean ridges, trenches
-    const bt = boundaryType[ci];
-    if (bt === 2) e -= fe * 0.5; // trench at subduction zone
-    else if (bt === 3) e += fe * 0.3; // mid-ocean ridge
-  }
-
-  // C) Continental interior: varied terrain independent of plate boundaries
-  if (plate.continental) {
-    // Base terrain variation — broad undulations across the continent
-    e += fbm(nx * 5 + s3, ny * 5 + s3, 5, 2, 0.5) * 0.06;
-    // Interior highlands: ridged noise creates old mountain ranges (Appalachians, Urals)
-    // These are NOT at plate boundaries — they're ancient, independent features
-    const highlandVal = ridged(nx * 3.5 + s4 + 20, ny * 3.5 + s4 + 20, 4, 2.0, 1.8, 1.0);
-    // Only raise highlands where a separate noise field says so (patchy, not everywhere)
-    const highlandMask = fbm(nx * 2.5 + s1 + 80, ny * 2.5 + s1 + 80, 3, 2, 0.5);
-    if (highlandMask > 0.15) e += highlandVal * (highlandMask - 0.15) * 0.18;
-    // Plateaus: elevated flat areas (Ethiopian Highlands, Deccan Plateau)
-    const platNoise = fbm(nx * 3 + s2 + 40, ny * 3 + s2 + 40, 3, 2, 0.5);
-    if (platNoise > 0.35) e += (platNoise - 0.35) * 0.06;
-    // Rolling hills: medium-frequency variation
-    e += fbm(nx * 10 + s3 + 15, ny * 10 + s3 + 15, 3, 2, 0.5) * 0.025;
-    // Basin carving: river lowlands (Amazon, Congo, Mississippi basins)
-    const basinNoise = fbm(nx * 2.5 + s1 + 50, ny * 2.5 + s1 + 50, 3, 2, 0.5);
-    if (basinNoise > 0.2) e -= (basinNoise - 0.2) * 0.05;
-    // Fine texture
-    e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.008;
+  // Blend near plate boundaries for smooth transitions
+  // blendZone: how close the two nearest plates are (0 = far from boundary, 1 = right on it)
+  const d1 = Math.sqrt(pixDist2[i]), d2 = Math.sqrt(pixDist2nd[i]);
+  const gap = d2 - d1; // small gap = near boundary
+  const blendWidth = 0.025; // normalized distance over which to blend
+  let e;
+  if (gap < blendWidth && pixPlate[i] !== pixPlate2[i]) {
+    const p2 = plates[pixPlate2[i]];
+    const e2 = plateElev(p2, fe, fd, bt, nx, ny, s1, s2, s3, s4);
+    // Smooth hermite blend: 0 at boundary, 1 far from it
+    const t = gap / blendWidth;
+    const blend = t * t * (3 - 2 * t); // smoothstep
+    e = e1 * blend + e2 * (1 - blend);
   } else {
-    // Ocean floor: abyssal plains + texture
-    e += fbm(nx * 8 + s3 + 30, ny * 8 + s3 + 30, 3, 2, 0.4) * 0.015;
+    e = e1;
   }
 
-  // D) Polar reduction
+  // Polar reduction
   if (lat > 0.88) e -= (lat - 0.88) * 2;
 
-  // E) Coastal transition: smooth the land-ocean boundary
-  // Check if this cell is near a plate type change
-  let nearOcean = false, nearLand = false;
-  for (let dy2 = -2; dy2 <= 2; dy2++) for (let dx2 = -2; dx2 <= 2; dx2++) {
-    const nx3 = (ctx + dx2 + cw) % cw, ny3 = cty + dy2;
-    if (ny3 < 0 || ny3 >= ch) continue;
-    const np = plates[plateMap[ny3 * cw + nx3]];
-    if (np.continental) nearLand = true; else nearOcean = true;
-  }
-
-  // Continental shelf: smooth transition at continent edges
-  if (nearOcean && nearLand) {
-    // Perturb coastline with noise
-    const coastNoise = fbm(nx * 15 + s2 + 70, ny * 15 + s2 + 70, 3, 2.2, 0.45) * 0.015;
-    e += coastNoise;
-    // Shelf gradient
-    if (plate.continental && e > 0) {
-      e = Math.max(0.001, e * 0.7 + 0.003); // compress coastal land elevation
-    }
-  }
-
   elevation[i] = e;
-
-  // Temperature: latitude + elevation
   temperature[i] = Math.max(0, Math.min(1,
     1 - lat * 1.05 - Math.max(0, e) * 0.4 + fbm(nx * 3 + 80, ny * 3 + 80, 3, 2, 0.5) * 0.08));
 }
