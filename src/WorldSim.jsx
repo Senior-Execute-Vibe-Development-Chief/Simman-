@@ -132,15 +132,11 @@ const ang=rng()*Math.PI*2,dist=.02+rng()*.06;
 negs.push({cx:cx+Math.cos(ang)*dist,cy:cy+Math.sin(ang)*dist,
 rx:.02+rng()*.04,ry:.015+rng()*.03,rot:rng()*Math.PI,str:.25+rng()*.3,no:no+50+n*13});}
 continents.push({subs,negs});}
-// Small islands (fewer, slightly larger)
-const islandSpecs=[];
-for(let i=0;i<2+Math.floor(rng()*4);i++)islandSpecs.push({cx:rng(),cy:.1+rng()*.8,rx:.02+rng()*.03,ry:.015+rng()*.025,rot:rng()*Math.PI,no:rng()*100,str:.35+rng()*.25});
 const s1=rng()*100,s2=rng()*100,s3=rng()*100,s4=rng()*100,s5=rng()*100;
 // Flatten all stamps into single arrays for faster iteration
 const posStamps=[],negStamps=[];
 for(const cont of continents){for(const c of cont.subs){c.cos=Math.cos(c.rot);c.sin=Math.sin(c.rot);posStamps.push(c);}
 for(const c of cont.negs){c.cos=Math.cos(c.rot);c.sin=Math.sin(c.rot);negStamps.push(c);}}
-for(const c of islandSpecs){c.cos=Math.cos(c.rot);c.sin=Math.sin(c.rot);posStamps.push(c);}
 // Step 1: Generate raw elevation with all techniques
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const nx=x/W,ny=y/H;let e=0;
 // [7] ITERATIVE DOMAIN WARPING (double Quilez warp, reduced octaves for speed)
@@ -187,47 +183,24 @@ for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
 const nx2=(cx2+dx+W)%W,ny2=cy2+dy;if(ny2<0||ny2>=H)continue;
 const ni=ny2*W+nx2;if(isLandArr[ni]&&!visited[ni]){visited[ni]=1;q.push(ni);}}}
 if(cluster.length<20)for(const ci of cluster){isLandArr[ci]=0;rawElev[ci]=sl-.01;}}
-// [6] ARCHIPELAGO SCATTERING: detect land near ocean and scatter small islands
-const archElev=new Float32Array(W*H);
-// Distance-to-land grid for ocean depth shaping + archipelago detection
-const DG=RES,dw=Math.ceil(W/DG),dh=Math.ceil(H/DG);const dtl=new Float32Array(dw*dh).fill(9999);
-for(let dy=0;dy<dh;dy++)for(let dx=0;dx<dw;dx++){if(isLandArr[Math.min(H-1,dy*DG)*W+Math.min(W-1,dx*DG)])dtl[dy*dw+dx]=0;}
-for(let p=0;p<2;p++){for(let dy=0;dy<dh;dy++)for(let dx=0;dx<dw;dx++){const i=dy*dw+dx;
-if(dx>0)dtl[i]=Math.min(dtl[i],dtl[i-1]+1);if(dx===0)dtl[i]=Math.min(dtl[i],dtl[dy*dw+dw-1]+1);
-if(dy>0)dtl[i]=Math.min(dtl[i],dtl[(dy-1)*dw+dx]+1);}
-for(let dy=dh-1;dy>=0;dy--)for(let dx=dw-1;dx>=0;dx--){const i=dy*dw+dx;
-if(dx<dw-1)dtl[i]=Math.min(dtl[i],dtl[i+1]+1);if(dx===dw-1)dtl[i]=Math.min(dtl[i],dtl[dy*dw]+1);
-if(dy<dh-1)dtl[i]=Math.min(dtl[i],dtl[(dy+1)*dw+dx]+1);}}
-// Scatter archipelago islands — lower frequency noise = fewer, larger islands
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(isLandArr[i])continue;
-const dgx=Math.min(dw-1,Math.floor(x/DG)),dgy=Math.min(dh-1,Math.floor(y/DG));
-const dist=dtl[dgy*dw+dgx];
-if(dist>2&&dist<10){// near-coast ocean, not right at shore
-const nx=x/W,ny=y/H;
-// Lower freq (15 instead of 25) = larger island blobs, fewer isolated pixels
-const islandN=fbm(nx*15+s1+200,ny*15+s1+200,3,2,.5);
-const prob=Math.max(0,1-dist/10)*.5;// weaker probability
-if(islandN>.4){archElev[i]=(islandN-.4)*prob*.3;}}}
 // Coast-distance BFS for continentality
+const DG=RES,dw=Math.ceil(W/DG),dh=Math.ceil(H/DG);
 const cdist2=new Uint8Array(dw*dh);cdist2.fill(255);const cdQ2=[];
 for(let ty=0;ty<dh;ty++)for(let tx=0;tx<dw;tx++){
 const px=Math.min(W-1,tx*DG),py=Math.min(H-1,ty*DG),ti=ty*dw+tx;
-if(!isLandArr[py*W+px]&&archElev[py*W+px]<=0)continue;
+if(!isLandArr[py*W+px])continue;
 for(let ddy=-1;ddy<=1;ddy++)for(let ddx=-1;ddx<=1;ddx++){
 const nx2=(tx+ddx+dw)%dw,ny2=ty+ddy;if(ny2<0||ny2>=dh)continue;
 const np=Math.min(W-1,nx2*DG),npy=Math.min(H-1,ny2*DG);
-if(!isLandArr[npy*W+np]&&archElev[npy*W+np]<=0){cdist2[ti]=0;cdQ2.push(ti);break;}}}
+if(!isLandArr[npy*W+np]){cdist2[ti]=0;cdQ2.push(ti);break;}}}
 for(let qi=0;qi<cdQ2.length;qi++){const ci=cdQ2[qi],cd=cdist2[ci],cx2=ci%dw,cy2=(ci-cx2)/dw;
 for(let ddy=-1;ddy<=1;ddy++)for(let ddx=-1;ddx<=1;ddx++){if(!ddx&&!ddy)continue;
 const nx2=(cx2+ddx+dw)%dw,ny2=cy2+ddy;if(ny2<0||ny2>=dh)continue;
 const ni=ny2*dw+nx2,nd=cd+1;const np=Math.min(W-1,nx2*DG),npy=Math.min(H-1,ny2*DG);
-if(nd<cdist2[ni]&&(isLandArr[npy*W+np]||archElev[npy*W+np]>0)){cdist2[ni]=nd;cdQ2.push(ni);}}}
+if(nd<cdist2[ni]&&isLandArr[npy*W+np]){cdist2[ni]=nd;cdQ2.push(ni);}}}
 // Step 3: Final elevation — [2] SHALLOW COASTAL GRADIENTS + terrain shaping
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
 let e=rawElev[i]-sl;if(lat>.88)e-=(lat-.88)*3;
-// Add archipelago elevation
-if(archElev[i]>0)e=Math.max(e,archElev[i]);
 if(e>0){// LAND
 // [2] SHALLOW COASTAL GRADIENT: use sqrt to flatten near-zero values
 // This makes the land/ocean boundary very gradual so noise has big horizontal effect
@@ -253,13 +226,10 @@ e-=Math.max(0,valleyNoise+.15)*.06*interior;
 // Hypsometric redistribution
 e=Math.pow(Math.max(0,e),0.85)*1.2;
 e=Math.max(0.003,e);
-}else{// OCEAN — use raw elevation as natural bathymetry
-// e is already negative (rawElev - seaLevel); near-coast values are barely
-// negative (→ continental shelf), deep ocean gaps are very negative (→ abyss).
-// Power curve creates gradual shelf; clamp via min(1,...) caps max depth at 0.15.
-e=-Math.pow(Math.min(1,-e/0.4),0.7)*0.15;
-// Fine ocean-floor texture
-e+=fbm(nx*12+40,ny*12+40,2,2,.4)*0.008;}
+}else{// OCEAN — raw elevation is the bathymetry
+// e is already negative (rawElev - seaLevel). Linear scale preserves natural
+// variation: shallow shelves near coast, deep trenches between continents.
+e=Math.max(-0.20,e*0.5);}
 elevation[i]=e;temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 // Moisture with climate zones + continentality
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
