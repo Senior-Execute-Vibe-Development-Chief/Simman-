@@ -223,17 +223,18 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     }
   }
 
-  // Independent mountain ridges (old ranges, hotspot chains)
+  // Independent mountain ridges — only where crust is thick enough to support them
+  const crustW = Math.max(0, crust[i] * 5); // 0 in ocean, ramps up on land
   const [wmx2, wmy2] = warp(nx, ny, 2, 3, 0.1, s4, s4 + 40);
-  e += ridged(wmx2 * 4 + s5, wmy2 * 4 + s5, 5, 2.2, 2.0, 1.0) * 0.15;
+  e += ridged(wmx2 * 4 + s5, wmy2 * 4 + s5, 5, 2.2, 2.0, 1.0) * 0.15 * Math.min(1, crustW);
 
-  // Broad terrain variation (domain-warped)
+  // Broad terrain variation (domain-warped, zero-centered)
   const [wbx, wby] = warp(nx, ny, 2.5, 3, 0.06, s3 + 10, s3 + 60);
-  e += fbm(wbx * 5 + s3, wby * 5 + s3, 5, 2, 0.5) * 0.10;
+  e += fbm(wbx * 5 + s3, wby * 5 + s3, 5, 2, 0.5) * 0.06;
 
-  // Hills (domain-warped)
+  // Hills (domain-warped, zero-centered)
   const [whx, why] = warp(nx, ny, 4, 3, 0.05, s3 + 20, s3 + 70);
-  e += Math.max(0, fbm(whx * 6 + s2, why * 6 + s2, 4, 2, 0.5)) * 0.05;
+  e += fbm(whx * 6 + s2, why * 6 + s2, 4, 2, 0.5) * 0.03;
 
   // Valley / basin carving
   e -= Math.max(0, fbm(nx * 5 + s1 + 60, ny * 5 + s1 + 60, 3, 2, 0.5) + 0.15) * 0.04;
