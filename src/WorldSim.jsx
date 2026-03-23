@@ -16,6 +16,17 @@ function ridged(x,y,oct,lac,gain,off){
 let v=0,a=1,f=1,w=1,m=0;
 for(let i=0;i<oct;i++){let s=off-Math.abs(noise2D(x*f,y*f));s*=s;s*=w;w=Math.min(1,Math.max(0,s*gain));
 v+=s*a;m+=a;a*=.5;f*=lac;}return v/m;}
+// Worley (cellular) noise: returns [F1, F2] distances to nearest two seed points
+function worley(x,y){
+const ix=Math.floor(x),iy=Math.floor(y);let d1=9,d2=9;
+for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+const cx=ix+dx,cy=iy+dy;
+// Hash cell to get seed point position
+const h1=PERM[(PERM[(cx&255)]+((cy&255)))&511],h2=PERM[(h1+73)&511];
+const px=cx+(h1/255),py=cy+(h2/255);
+const dd=(x-px)*(x-px)+(y-py)*(y-py);
+if(dd<d1){d2=d1;d1=dd;}else if(dd<d2)d2=dd;}
+return[Math.sqrt(d1),Math.sqrt(d2)];}
 function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};}
 
 const RES=2;
@@ -96,31 +107,76 @@ temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*
 const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D});
 for(let i=0;i<W*H;i++){elevation[i]=tec.elevation[i];moisture[i]=tec.moisture[i];temperature[i]=tec.temperature[i];}
 }else{
-// ── Random world mode: domain-warped terrain with integrated mountains ──
-// Dome specs for continent shapes (same as before — these define land outlines)
-const specs=[];
-for(let i=0;i<5+Math.floor(rng()*4);i++)specs.push({cx:rng(),cy:.06+rng()*.88,rx:.09+rng()*.2,ry:.07+rng()*.15,rot:rng()*Math.PI,no:rng()*100,str:.75+rng()*.5});
-for(let i=0;i<5+Math.floor(rng()*6);i++)specs.push({cx:rng(),cy:.1+rng()*.8,rx:.025+rng()*.05,ry:.015+rng()*.04,rot:rng()*Math.PI,no:rng()*100,str:.45+rng()*.35});
-// Seed offsets for varied noise layers
+// ── Random world mode: multi-stamp composition with advanced coastline shaping ──
+// [1] MULTI-STAMP COMPOSITION: 3-6 sub-ellipses per continent + negative stamps for bays
+const continents=[];
+const numCont=3+Math.floor(rng()*4);// 3-6 continents
+for(let c=0;c<numCont;c++){
+const cx=rng(),cy=.08+rng()*.84,no=rng()*100;
+// Each continent: 2-5 overlapping positive stamps (peninsulas, landmass lobes)
+const subs=[];const numSubs=2+Math.floor(rng()*4);
+for(let s=0;s<numSubs;s++){
+const ang=rng()*Math.PI*2,dist=rng()*.12;// offset from continent center
+const aspect=1+rng()*3;// 1=round, 4=elongated peninsula
+const baseR=.04+rng()*.12;
+subs.push({cx:cx+Math.cos(ang)*dist,cy:cy+Math.sin(ang)*dist,
+rx:baseR*aspect,ry:baseR/aspect,rot:rng()*Math.PI,str:.6+rng()*.5,no:no+s*17});}
+// 1-2 negative stamps carve bays/gulfs
+const negs=[];const numNegs=Math.floor(rng()*2)+1;
+for(let n=0;n<numNegs;n++){
+const ang=rng()*Math.PI*2,dist=.02+rng()*.08;
+negs.push({cx:cx+Math.cos(ang)*dist,cy:cy+Math.sin(ang)*dist,
+rx:.02+rng()*.06,ry:.02+rng()*.04,rot:rng()*Math.PI,str:.3+rng()*.4,no:no+50+n*13});}
+continents.push({subs,negs});}
+// Small islands (independent of continents)
+const islandSpecs=[];
+for(let i=0;i<4+Math.floor(rng()*6);i++)islandSpecs.push({cx:rng(),cy:.1+rng()*.8,rx:.015+rng()*.03,ry:.01+rng()*.02,rot:rng()*Math.PI,no:rng()*100,str:.3+rng()*.3});
 const s1=rng()*100,s2=rng()*100,s3=rng()*100,s4=rng()*100,s5=rng()*100;
-// Step 1: Generate raw elevation with domes + domain-warped noise + ridged mountains
+// Flatten all stamps into single arrays for faster iteration
+const posStamps=[],negStamps=[];
+for(const cont of continents){for(const c of cont.subs){c.cos=Math.cos(c.rot);c.sin=Math.sin(c.rot);posStamps.push(c);}
+for(const c of cont.negs){c.cos=Math.cos(c.rot);c.sin=Math.sin(c.rot);negStamps.push(c);}}
+for(const c of islandSpecs){c.cos=Math.cos(c.rot);c.sin=Math.sin(c.rot);posStamps.push(c);}
+// Step 1: Generate raw elevation with all techniques
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const nx=x/W,ny=y/H;let e=0;
-// A) Dome shapes define continent outlines (domain-warped for organic coastlines)
-const[wnx,wny]=warp(nx,ny,3,.4,0.06,s1,s1+50);// warp the coastline sampling
-for(const c of specs){let dx=wnx-c.cx;if(dx>.5)dx-=1;if(dx<-.5)dx+=1;let dy=wny-c.cy;
-dx+=fbm(wnx*5+c.no,wny*5+c.no,4,2,.5)*.05;dy+=fbm(wnx*5+c.no+30,wny*5+c.no+30,4,2,.5)*.05;
-const cs=Math.cos(c.rot),sn=Math.sin(c.rot);let dd=Math.sqrt(Math.pow((dx*cs+dy*sn)/c.rx,2)+Math.pow((-dx*sn+dy*cs)/c.ry,2));
-dd+=fbm(wnx*14+c.no+50,wny*14+c.no+50,3,2.3,.45)*.2;if(dd<1){const f2=1-dd;e+=f2*f2*c.str;}}
-// B) Domain-warped base terrain (organic variation across landmass)
-const[wx2,wy2]=warp(nx,ny,2.5,3,0.08,s2,s2+60);
-e+=fbm(wx2*7+3.7,wy2*7+3.7,5,2,.5)*.14;
-// C) Fine detail
-e+=fbm(nx*20+s3,ny*20+s3,3,2,.4)*.03;
+// [7] ITERATIVE DOMAIN WARPING (double Quilez warp, reduced octaves for speed)
+const w1x=fbm(nx*2.5+s1,ny*2.5+s1,2,2,.5)*.08,w1y=fbm(nx*2.5+s1+50,ny*2.5+s1+50,2,2,.5)*.08;
+const wnx=nx+w1x+fbm((nx+w1x)*5+s2,(ny+w1y)*5+s2,2,2,.5)*.04;
+const wny=ny+w1y+fbm((nx+w1x)*5+s2+30,(ny+w1y)*5+s2+30,2,2,.5)*.04;
+// Positive stamps (landmass lobes + peninsulas + islands)
+// Shared coastline noise (computed once, not per-stamp)
+const cnA=noise2D(wnx*5+s1,wny*5+s1)*.04,cnB=noise2D(wnx*5+s1+30,wny*5+s1+30)*.04;
+const coastRidge=noise2D(wnx*14+s2+50,wny*14+s2+50);
+for(const c of posStamps){let dx=wnx-c.cx+cnA;if(dx>.5)dx-=1;if(dx<-.5)dx+=1;let dy=wny-c.cy+cnB;
+let dd=Math.sqrt(Math.pow((dx*c.cos+dy*c.sin)/c.rx,2)+Math.pow((-dx*c.sin+dy*c.cos)/c.ry,2));
+// [3] RIDGED NOISE AT COASTLINES — per-stamp offset varies the coastline noise
+dd+=Math.abs(coastRidge+noise2D(wnx*7+c.no,wny*7+c.no)*.5)*.2;
+if(dd>.7&&dd<1.3){const rn=1-Math.abs(noise2D(wnx*8+c.no+70,wny*8+c.no+70));dd+=rn*rn*.12;}
+if(dd<1){const f2=1-dd;e+=f2*f2*c.str;}}
+// Negative stamps (bays/gulfs — subtract from elevation)
+for(const c of negStamps){let dx=wnx-c.cx+cnA;if(dx>.5)dx-=1;if(dx<-.5)dx+=1;let dy=wny-c.cy+cnB;
+let dd=Math.sqrt(Math.pow((dx*c.cos+dy*c.sin)/c.rx,2)+Math.pow((-dx*c.sin+dy*c.cos)/c.ry,2));
+dd+=Math.abs(coastRidge+noise2D(wnx*5+c.no,wny*5+c.no)*.5)*.18;
+if(dd<1){const f2=1-dd;e-=f2*f2*c.str;}}
+// [5] MULTI-THRESHOLD NOISE STACKING: peninsula/bay features independent of stamps
+const penNoise=fbm(wnx*6+s3+90,wny*6+s3+90,3,2,.5);
+if(penNoise>.35)e+=(penNoise-.35)*.3;
+const bayNoise=fbm(wnx*5+s4+120,wny*5+s4+120,3,2,.5);
+if(bayNoise>.4)e-=(bayNoise-.4)*.25;
+// [4] WORLEY F2-F1 coastal modifier: angular fracturing
+const[wf1,wf2]=worley(wnx*6+s5,wny*6+s5);
+e+=(wf2-wf1)*.06-.03;
+// Domain-warped base terrain
+e+=fbm(wnx*7+3.7,wny*7+3.7,4,2,.5)*.10;
+// Fine detail
+e+=fbm(nx*20+s3,ny*20+s3,2,2,.4)*.025;
 rawElev[y*W+x]=e;}
 // Step 2: Determine sea level at 70th percentile
 const sorted=Float32Array.from(rawElev).sort();const sl=sorted[Math.floor(W*H*.7)];
 const isLandArr=new Uint8Array(W*H);for(let i=0;i<W*H;i++)isLandArr[i]=rawElev[i]>sl?1:0;
-// Distance-to-land grid for ocean depth shaping
+// [6] ARCHIPELAGO SCATTERING: detect land near ocean and scatter small islands
+const archElev=new Float32Array(W*H);
+// Distance-to-land grid for ocean depth shaping + archipelago detection
 const DG=RES,dw=Math.ceil(W/DG),dh=Math.ceil(H/DG);const dtl=new Float32Array(dw*dh).fill(9999);
 for(let dy=0;dy<dh;dy++)for(let dx=0;dx<dw;dx++){if(isLandArr[Math.min(H-1,dy*DG)*W+Math.min(W-1,dx*DG)])dtl[dy*dw+dx]=0;}
 for(let p=0;p<2;p++){for(let dy=0;dy<dh;dy++)for(let dx=0;dx<dw;dx++){const i=dy*dw+dx;
@@ -129,56 +185,69 @@ if(dy>0)dtl[i]=Math.min(dtl[i],dtl[(dy-1)*dw+dx]+1);}
 for(let dy=dh-1;dy>=0;dy--)for(let dx=dw-1;dx>=0;dx--){const i=dy*dw+dx;
 if(dx<dw-1)dtl[i]=Math.min(dtl[i],dtl[i+1]+1);if(dx===dw-1)dtl[i]=Math.min(dtl[i],dtl[dy*dw]+1);
 if(dy<dh-1)dtl[i]=Math.min(dtl[i],dtl[(dy+1)*dw+dx]+1);}}
-// Step 3: Coast-distance BFS (needed before elevation pass for interior weighting)
+// Scatter archipelago islands near coastlines in ocean
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
+if(isLandArr[i])continue;// skip land
+const dgx=Math.min(dw-1,Math.floor(x/DG)),dgy=Math.min(dh-1,Math.floor(y/DG));
+const dist=dtl[dgy*dw+dgx];
+if(dist>1&&dist<12){// near-coast ocean only
+const nx=x/W,ny=y/H;
+// High-frequency noise: many peaks in ocean near coast = island chain
+const islandN=fbm(nx*25+s1+200,ny*25+s1+200,4,2,.5);
+const prob=Math.max(0,1-dist/12);// denser near coast
+if(islandN>.3+prob*.15){archElev[i]=(islandN-.3)*prob*.4;}}}
+// Coast-distance BFS for continentality
 const cdist2=new Uint8Array(dw*dh);cdist2.fill(255);const cdQ2=[];
 for(let ty=0;ty<dh;ty++)for(let tx=0;tx<dw;tx++){
 const px=Math.min(W-1,tx*DG),py=Math.min(H-1,ty*DG),ti=ty*dw+tx;
-if(!isLandArr[py*W+px])continue;
+if(!isLandArr[py*W+px]&&archElev[py*W+px]<=0)continue;
 for(let ddy=-1;ddy<=1;ddy++)for(let ddx=-1;ddx<=1;ddx++){
 const nx2=(tx+ddx+dw)%dw,ny2=ty+ddy;if(ny2<0||ny2>=dh)continue;
 const np=Math.min(W-1,nx2*DG),npy=Math.min(H-1,ny2*DG);
-if(!isLandArr[npy*W+np]){cdist2[ti]=0;cdQ2.push(ti);break;}}}
+if(!isLandArr[npy*W+np]&&archElev[npy*W+np]<=0){cdist2[ti]=0;cdQ2.push(ti);break;}}}
 for(let qi=0;qi<cdQ2.length;qi++){const ci=cdQ2[qi],cd=cdist2[ci],cx2=ci%dw,cy2=(ci-cx2)/dw;
 for(let ddy=-1;ddy<=1;ddy++)for(let ddx=-1;ddx<=1;ddx++){if(!ddx&&!ddy)continue;
 const nx2=(cx2+ddx+dw)%dw,ny2=cy2+ddy;if(ny2<0||ny2>=dh)continue;
 const ni=ny2*dw+nx2,nd=cd+1;const np=Math.min(W-1,nx2*DG),npy=Math.min(H-1,ny2*DG);
-if(nd<cdist2[ni]&&isLandArr[npy*W+np]){cdist2[ni]=nd;cdQ2.push(ni);}}}
-// Step 4: Final elevation — integrated mountains emerge from terrain
+if(nd<cdist2[ni]&&(isLandArr[npy*W+np]||archElev[npy*W+np]>0)){cdist2[ni]=nd;cdQ2.push(ni);}}}
+// Step 3: Final elevation — [2] SHALLOW COASTAL GRADIENTS + terrain shaping
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
 let e=rawElev[i]-sl;if(lat>.88)e-=(lat-.88)*3;
-if(e>0){// LAND: shape terrain with integrated mountains
-// Normalized dome height: how far inland this point is (0 at coast, ~1 deep interior)
-const domeH=Math.min(1,e/0.5);// dome height above sea level, capped at 1
-// Coast distance for interior weighting
+// Add archipelago elevation
+if(archElev[i]>0)e=Math.max(e,archElev[i]);
+if(e>0){// LAND
+// [2] SHALLOW COASTAL GRADIENT: use sqrt to flatten near-zero values
+// This makes the land/ocean boundary very gradual so noise has big horizontal effect
+const raw=e;
+const domeH=Math.min(1,raw/0.5);
 const cd=cdist2[Math.min(dh-1,Math.floor(y/DG))*dw+Math.min(dw-1,Math.floor(x/DG))];
-const interior=Math.min(1,cd/15);// 0 at coast, 1 deep inland
-// A) Base lowland elevation: gentle plains near coasts
-const plains=0.01+domeH*0.04+fbm(nx*10+s3,ny*10+s3,3,2,.5)*.015;
-// B) Ridged mountains — weighted by interior distance so they emerge naturally inland
-const[wmx,wmy]=warp(nx,ny,2,3,0.1,s4,s4+40);// domain-warped mountain coordinates
+const interior=Math.min(1,cd/15);
+// Shallow coastal zone: very gradual rise from sea level
+const coastalE=Math.pow(Math.min(raw,0.3)/0.3,0.4)*0.04;// sqrt-like: 0→0.04 slowly
+const interiorE=0.01+domeH*0.04+fbm(nx*10+s3,ny*10+s3,3,2,.5)*.02;
+e=coastalE*(1-interior)+interiorE*interior;
+// Mountains
+const[wmx,wmy]=warp(nx,ny,2,3,0.1,s4,s4+40);
 const ridgeVal=ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0);
-const mtWeight=interior*interior*domeH;// mountains only deep inland on high dome areas
-const mountains=ridgeVal*mtWeight*0.45;
-// C) Medium-scale hills via domain-warped fbm (foothills, rolling terrain)
+const mtWeight=interior*interior*domeH;
+e+=ridgeVal*mtWeight*0.45;
+// Hills
 const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
-const hills=Math.max(0,fbm(whx*6+s2,why*6+s2,4,2,.5))*.08*Math.sqrt(interior);
-// D) Valley carving: subtract where noise is high (multiplicative erosion)
+e+=Math.max(0,fbm(whx*6+s2,why*6+s2,4,2,.5))*.08*Math.sqrt(interior);
+// Valley carving
 const valleyNoise=fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5);
-const valley=Math.max(0,valleyNoise+.15)*.06*interior;
-// Combine: plains + hills + mountains - valleys
-e=plains+hills+mountains-valley;
-// Hypsometric redistribution: most land should be low, peaks are rare
-// Apply power curve: raises lows, compresses highs
+e-=Math.max(0,valleyNoise+.15)*.06*interior;
+// Hypsometric redistribution
 e=Math.pow(Math.max(0,e),0.85)*1.2;
 e=Math.max(0.003,e);
-}else{// OCEAN: depth shaping with continental shelf + abyssal plains
+}else{// OCEAN
 const dgx=Math.min(dw-1,Math.floor(x/DG)),dgy=Math.min(dh-1,Math.floor(y/DG)),dist=dtl[dgy*dw+dgx];
 if(dist<=3)e=Math.max(e,-(dist/3)*0.025);
 else{const dd=dist-3,df=Math.min(1,dd/12);let bd=-0.03-df*0.12;
 const ridge2=fbm(nx*3+seed*0.01,ny*3+seed*0.01,3,2.2,0.5);if(ridge2>0.2)bd+=(ridge2-0.2)*0.08;
 e=Math.min(e,bd);}e+=fbm(nx*12+40,ny*12+40,2,2,.4)*0.008;}
 elevation[i]=e;temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
-// Step 5: moisture with climate zones + continentality
+// Moisture with climate zones + continentality
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
 if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
 const cd=cdist2[Math.min(dh-1,Math.floor(y/DG))*dw+Math.min(dw-1,Math.floor(x/DG))];
