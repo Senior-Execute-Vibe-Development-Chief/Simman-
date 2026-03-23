@@ -174,7 +174,7 @@ e+=fbm(wnx*7+3.7,wny*7+3.7,4,2,.5)*.10;
 e+=fbm(nx*20+s3,ny*20+s3,2,2,.4)*.025;
 rawElev[y*W+x]=e;}
 // Step 2: Determine sea level at 70th percentile
-const sorted=Float32Array.from(rawElev).sort();const sl=sorted[Math.floor(W*H*(oceanLevel||0.7))];
+const sorted=Float32Array.from(rawElev).sort();const sl=sorted[Math.floor(W*H*(oceanLevel||0.78))];
 const isLandArr=new Uint8Array(W*H);for(let i=0;i<W*H;i++)isLandArr[i]=rawElev[i]>sl?1:0;
 // Remove tiny isolated land clusters (< 20 pixels) via flood fill
 const visited=new Uint8Array(W*H);
@@ -624,11 +624,11 @@ const canvasRef=useRef(null);const[seed,setSeed]=useState(8817);const[world,setW
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState(null);
-const[oceanLevel,setOceanLevel]=useState(0.7);
+const[oceanLevel,setOceanLevel]=useState(0.78);
 const[depthFromSea,setDepthFromSea]=useState(false);
 const[showPlates,setShowPlates]=useState(false);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
-const oceanLevelRef=useRef(0.7);const depthFromSeaRef=useRef(false);const showPlatesRef=useRef(false);
+const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const showPlatesRef=useRef(false);
 const presetRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
