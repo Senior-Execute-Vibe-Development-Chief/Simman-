@@ -43,8 +43,8 @@ let e=0.08+fbm(nx*6+3.7,ny*6+3.7,5,2,.5)*.15
 +Math.pow(Math.max(0,fbm(nx*3+20,ny*3+20,4,2.2,.5)),2)*.4// mountain ranges
 +fbm(nx*14+7,ny*14+7,3,2,.4)*.06// fine detail
 +Math.pow(1-Math.abs(fbm(nx*2.5+40,ny*2.5+40,3,2.1,.5)),4)*.25;// ridges
-// Polar highlands
-if(lat>.8)e+=Math.max(0,(lat-.8)*1.5);
+// Polar tundra: slightly elevated but not dramatically
+if(lat>.85)e=Math.max(0.01,e*0.5);
 // Valley systems (subtract to create lowlands)
 e-=Math.pow(Math.max(0,fbm(nx*4+60,ny*4+60,3,2,.5)+.1),2)*.15;
 elevation[i]=Math.max(0.005,e);
@@ -77,7 +77,7 @@ for(let dy=dh-1;dy>=0;dy--)for(let dx=dw-1;dx>=0;dx--){const i=dy*dw+dx;
 if(dx<dw-1)dtl[i]=Math.min(dtl[i],dtl[i+1]+1);if(dx===dw-1)dtl[i]=Math.min(dtl[i],dtl[dy*dw]+1);
 if(dy<dh-1)dtl[i]=Math.min(dtl[i],dtl[(dy+1)*dw+dx]+1);}}
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
-let e=rawElev[i]-sl;if(lat>.86)e=Math.max(e,(lat-.86)*2);
+let e=rawElev[i]-sl;if(lat>.88)e-=(lat-.88)*3;// push poles underwater
 if(e<0){const dgx=Math.min(dw-1,Math.floor(x/DG)),dgy=Math.min(dh-1,Math.floor(y/DG)),dist=dtl[dgy*dw+dgx];
 if(dist<=3)e=Math.max(e,-(dist/3)*0.025);
 else{const dd=dist-3,df=Math.min(1,dd/12);let bd=-0.03-df*0.12;
@@ -324,15 +324,17 @@ let sameN=0;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny+dy2;
 if(ay>=0&&ay<th&&owner[ay*tw+ax]===ow)sameN++;}
 const sz=tribeSizes[ow],dens=sz>0?tribeStrength[ow]/sz:0;
 let splitChance=0;
-if(sameN<3){
+// Cap total tribes to prevent runaway proliferation (performance + gameplay)
+const MAX_TRIBES=40;let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
+if(sameN<3&&alive<MAX_TRIBES){
 // Overextension: large tribes are harder to hold together
-const overext=sz>65?Math.min(0.3,(sz-65)*0.002):0;
+const overext=sz>80?Math.min(0.15,(sz-80)*0.001):0;
 // Geographic barrier: mountains/deserts between parent and frontier
-const barrier=diff>0.5&&pDiff<0.3?0.3:0;
+const barrier=diff>0.6&&pDiff<0.3?0.2:0;
 // Internal inequality: fertile frontier wants independence from poor core
-const ineq=dens>0&&tFert[ni]>dens*1.8?0.25*(tFert[ni]/dens-1):0;
+const ineq=dens>0&&tFert[ni]>dens*2.0?0.15*(tFert[ni]/dens-1):0;
 // Distance weakens central control (from nearest center, not just capital)
-const distF=distMin>25?Math.min(0.25,(distMin-25)*0.005):0;
+const distF=distMin>30?Math.min(0.15,(distMin-30)*0.004):0;
 // Strong, dense tribes resist all splits
 splitChance=Math.max(0,(overext+barrier+ineq+distF)*(1-Math.min(0.9,dens*1.2)));}
 if(splitChance>0&&Math.random()<splitChance)nw=newTribe(ter,nx,ny);
@@ -351,8 +353,8 @@ const leapBoost=owDens<0.3?1+(0.3-owDens)*3:1;// up to 1.9x for poorest tribes
 if(Math.random()<0.25*wet*leapBoost){let nw=ow;const centers=tribeCenters[ow];
 const{min:distMin}=nearestCenterDist(centers,nx,ny,tw);
 const sz=tribeSizes[ow],dens=sz>0?tribeStrength[ow]/sz:0;
-const overext=sz>65?Math.min(0.2,(sz-65)*0.0012):0;
-if(distMin>26&&Math.random()<overext+(dens<0.3?0.15:0))nw=newTribe(ter,nx,ny);
+const overext=sz>80?Math.min(0.1,(sz-80)*0.001):0;
+if(distMin>30&&Math.random()<overext+(dens<0.3?0.08:0))nw=newTribe(ter,nx,ny);
 else if(tFert[ni]>0.4&&distMin>20&&centers&&centers.length<8)
 centers.push({x:nx,y:ny,prestige:0.3,founded:ter.stepCount});
 claimTile(ter,ni,nw);if(!nf[ni]){nf[ni]=1;nfl.push(ni);}}}}
@@ -430,7 +432,9 @@ const cohesion=1/(1+dist*0.04+avgDiff*2);
 if(cohesion>0.4){// High cohesion → capital relocates peacefully
 const old=centers[0];centers[0]=centers[c];centers[0].prestige=Math.max(old.prestige,1.0);
 centers.splice(c,1);centers.push({x:old.x,y:old.y,prestige:old.prestige*0.5,founded:old.founded});
-}else{// Low cohesion → split: secondary center becomes a new tribe
+}else{// Low cohesion → split: secondary center becomes a new tribe (if below cap)
+let aliveT=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)aliveT++;
+if(aliveT>=40){break;}// tribe cap reached
 const sc=centers.splice(c,1)[0];const sid=newTribe(ter,sc.x,sc.y);
 // Transfer tiles closer to the breakaway center than to any remaining center
 for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const iy=Math.floor(i/tw),ix=i%tw;
@@ -454,7 +458,7 @@ comps.sort((a,b)=>b.length-a.length);
 for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor(comps[c][0]/tw));
 for(const ci of comps[c])transferTile(ter,ci,sid);}}ter._fragGen=gen;}
 // ── Remnant absorption: tiny tribes (<5 tiles) absorbed by any larger touching neighbor ──
-if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>5)continue;
+if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>10)continue;
 let bn=-1,bs2=0;for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const ty2=Math.floor(i/tw),tx2=i%tw;
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===st||tElev[ni]<=sl)continue;if(tribeSizes[no]>bs2){bs2=tribeSizes[no];bn=no;}}}
