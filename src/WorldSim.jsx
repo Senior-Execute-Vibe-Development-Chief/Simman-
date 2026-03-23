@@ -633,8 +633,9 @@ const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState(null);
 const[oceanLevel,setOceanLevel]=useState(0.7);
+const[depthFromSea,setDepthFromSea]=useState(false);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
-const oceanLevelRef=useRef(0.7);
+const oceanLevelRef=useRef(0.7);const depthFromSeaRef=useRef(false);
 const presetRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
@@ -696,8 +697,10 @@ if(vm==="depth"){
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const e=w.elevation[si];
-// Map elevation to 0-255: black = deepest, white = highest
-const v=Math.min(255,Math.max(0,((e+0.2)/0.8)*255))|0;
+// Map elevation to 0-255: black = deepest/sea level, white = highest
+const v=depthFromSeaRef.current
+?Math.min(255,Math.max(0,(e/0.6)*255))|0
+:Math.min(255,Math.max(0,((e+0.2)/0.8)*255))|0;
 let r=v,g=v,b=v;
 // Plate boundary overlay for tectonic mode
 if(w.pixPlate){const myP=w.pixPlate[si];let boundary=false;
@@ -775,7 +778,7 @@ if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-seri
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache]);
 
-useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -831,6 +834,10 @@ style={bsA(preset==="continental","140,180,160")}>Continental</button>
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
 style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
 color:viewMode===k?"#c9b87a":"#5a5448",padding:"3px 7px"}}>{label}</button>))}
+{viewMode==="depth"&&<><div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
+<button onClick={()=>{setDepthFromSea(v=>!v);depthFromSeaRef.current=!depthFromSeaRef.current;}}
+style={{...bs,background:depthFromSea?"rgba(80,140,200,0.25)":"transparent",border:"none",
+color:depthFromSea?"#6ab4e8":"#5a5448",padding:"3px 7px",fontSize:"10px"}}>{depthFromSea?"Sea":"Floor"}</button></>}
 <div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
 <span style={{color:"#8a8070",fontSize:"10px",marginRight:4}}>Sea</span>
 <input type="range" min="50" max="90" value={oceanLevel*100}
