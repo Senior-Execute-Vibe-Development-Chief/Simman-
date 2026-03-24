@@ -554,10 +554,9 @@ const mtnBroad = new Float32Array(N);
     }
     mtnBroad[ty * cw + tx] = sum;
   }
-  // Zero out ocean cells — blur spreads signal into ocean, causing land halos
-  for (let i = 0; i < N; i++) {
-    if (crustType[i] !== 1) mtnBroad[i] = 0;
-  }
+  // Ocean pixels are already gated by isLandArr in Step 8 — no need to
+  // zero mtnBroad here. Letting the blur spread naturally into ocean cells
+  // preserves a smooth gradient on the land side of the coastline.
 }
 
 // ═══════════════════════════════════════════════════════
