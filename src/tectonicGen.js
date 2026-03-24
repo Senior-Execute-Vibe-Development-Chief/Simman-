@@ -35,6 +35,21 @@ const numMajor = 4 + Math.floor(rng() * 3);   // 4-6 major
 const numMinor = 4 + Math.floor(rng() * 4);   // 4-7 minor
 const numPlates = numMajor + numMinor;
 const plates = [];
+
+// Decide which plates are continental (~40-55% of major, ~15-25% of minor)
+const contFlags = [];
+let numCont = 0;
+for (let i = 0; i < numPlates; i++) {
+  const isMajor = i < numMajor;
+  const prob = isMajor ? 0.50 : 0.20;
+  const isCont = rng() < prob ? 1 : 0;
+  contFlags.push(isCont);
+  numCont += isCont;
+}
+// Guarantee at least 2 continental and 2 oceanic plates
+if (numCont < 2) { contFlags[0] = 1; contFlags[1] = 1; }
+if (numCont > numPlates - 2) { contFlags[numPlates - 1] = 0; contFlags[numPlates - 2] = 0; }
+
 for (let i = 0; i < numPlates; i++) {
   let cx, cy;
   if (i < numMajor) {
@@ -53,6 +68,7 @@ for (let i = 0; i < numPlates; i++) {
     vx: Math.cos(angle) * speed,
     vy: Math.sin(angle) * speed,
     id: i,
+    continental: contFlags[i],
   });
 }
 
@@ -86,8 +102,9 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 4: Initial continental crust distribution
-// Separate crust HEIGHT from crust TYPE
+// STEP 4: Initial crust from plate ownership
+// Continental plates → land, oceanic plates → ocean floor.
+// Noise adds variation within each plate and softens edges.
 // ═══════════════════════════════════════════════════════
 const crustSeed = rng() * 100;
 const crust = new Float32Array(N);      // height/thickness
@@ -96,17 +113,22 @@ const crustType = new Uint8Array(N);    // 0 = oceanic, 1 = continental
 for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
   const i = ty * cw + tx;
   const nx = tx / cw, ny = ty / ch;
-  // Low-frequency continental distribution
-  let c = fbm(nx * 1.2 + crustSeed, ny * 1.2 + crustSeed, 4, 2, 0.5) * 0.28
-    + fbm(nx * 2.5 + crustSeed + 40, ny * 2.5 + crustSeed + 40, 3, 2, 0.5) * 0.08
-    - 0.03;
+  const pid = plateMap[i];
+  const isCont = plates[pid].continental;
 
-  if (c > 0) {
-    crustType[i] = 1; // continental
-    crust[i] = 0.02 + c * 0.8; // land elevation: 0.02 to ~0.25
+  // Noise for intra-plate variation (shelves, basins, highlands)
+  const variation = fbm(nx * 3 + crustSeed, ny * 3 + crustSeed, 4, 2, 0.5) * 0.06
+    + fbm(nx * 6 + crustSeed + 40, ny * 6 + crustSeed + 40, 3, 2, 0.5) * 0.02;
+
+  if (isCont) {
+    crustType[i] = 1;
+    // Continental: base 0.04 + variation → mostly above sea level
+    // Some low areas near edges can be continental shelves
+    crust[i] = 0.04 + Math.abs(variation) * 1.5 + variation;
   } else {
-    crustType[i] = 0; // oceanic
-    crust[i] = -0.06 + c * 0.5; // ocean depth: ~ -0.06 to -0.20
+    crustType[i] = 0;
+    // Oceanic: base -0.08 + variation → below sea level
+    crust[i] = -0.08 + variation;
   }
 }
 
@@ -296,7 +318,7 @@ for (let epoch = 0; epoch < EPOCHS; epoch++) {
       const cx = rng(), cy = 0.05 + rng() * 0.9;
       const angle = rng() * Math.PI * 2;
       const speed = 0.3 + rng() * 0.8;
-      newPlates.push({ cx, cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, id: i });
+      newPlates.push({ cx, cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, id: i, continental: 0 });
     }
     // Re-assign coarse grid with warping
     const ws2 = rng() * 100;
