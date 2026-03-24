@@ -24,76 +24,98 @@ const N = cw * ch;
 
 // ═══════════════════════════════════════════════════════
 // STEP 2: Generate plates with velocities
+// Real plates have huge size variation (Pacific plate is ~30% of Earth's
+// surface, Juan de Fuca is tiny). Use weighted Voronoi (power diagram)
+// with log-normal-ish weight distribution for realistic size disparity.
 // ═══════════════════════════════════════════════════════
-const numMajor = 4 + Math.floor(rng() * 3);   // 4-6 major
-const numMinor = 4 + Math.floor(rng() * 4);   // 4-7 minor
+const numMajor = 5 + Math.floor(rng() * 3);   // 5-7 major
+const numMinor = 6 + Math.floor(rng() * 6);   // 6-11 minor
 const numPlates = numMajor + numMinor;
 const plates = [];
 
 for (let i = 0; i < numPlates; i++) {
+  const isMajor = i < numMajor;
   let cx, cy;
-  if (i < numMajor) {
-    cx = (i + 0.2 + rng() * 0.6) / numMajor;
-    cy = 0.12 + rng() * 0.76;
+  if (isMajor) {
+    // Spread major plates but with more randomness than before
+    cx = (i + 0.1 + rng() * 0.8) / numMajor;
+    cy = 0.10 + rng() * 0.80;
   } else {
     cx = rng();
-    cy = 0.08 + rng() * 0.84;
+    cy = 0.06 + rng() * 0.88;
   }
   cx = ((cx % 1) + 1) % 1;
   cy = Math.max(0.02, Math.min(0.98, cy));
   const angle = rng() * Math.PI * 2;
   const speed = 0.4 + rng() * 0.8;
 
-  const isMajor = i < numMajor;
-  const hasCont = isMajor ? rng() < 0.65 : rng() < 0.30;
+  // Power diagram weights: major plates get large weights (big territory),
+  // minor plates get small weights (tiny territory). Variance within each
+  // class adds further irregularity. Weight units are squared-distance offsets.
+  const weight = isMajor
+    ? 0.012 + rng() * 0.025   // major: 0.012-0.037
+    : 0.001 + rng() * 0.005;  // minor: 0.001-0.006
+
+  const hasCont = isMajor ? rng() < 0.70 : rng() < 0.20;
 
   const nucAngle = rng() * Math.PI * 2;
-  const nucOffset = 0.02 + rng() * 0.10;
+  const nucOffset = 0.02 + rng() * 0.08;
   const nucX = cx + Math.cos(nucAngle) * nucOffset;
   const nucY = cy + Math.sin(nucAngle) * nucOffset;
 
-  const contRadius = hasCont ? (isMajor ? 0.12 + rng() * 0.14 : 0.07 + rng() * 0.09) : 0;
+  // Larger continent radii for major plates → more cohesive landmasses
+  const contRadius = hasCont ? (isMajor ? 0.14 + rng() * 0.18 : 0.06 + rng() * 0.07) : 0;
 
   plates.push({
     cx, cy,
     vx: Math.cos(angle) * speed,
     vy: Math.sin(angle) * speed,
     id: i,
+    weight,
     hasCont,
     nucX, nucY,
     contRadius,
   });
 }
-// Guarantee at least 3 plates carry continental crust
+// Guarantee at least 3 major plates carry continental crust
 let numWithCont = plates.filter(p => p.hasCont).length;
 while (numWithCont < 3) {
   const idx = Math.floor(rng() * numMajor);
   if (!plates[idx].hasCont) {
     plates[idx].hasCont = true;
-    plates[idx].contRadius = 0.12 + rng() * 0.12;
+    plates[idx].contRadius = 0.14 + rng() * 0.16;
     numWithCont++;
   }
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 3: Voronoi plate assignment with domain warping
+// STEP 3: Weighted Voronoi (power diagram) with multi-scale warping
+// Power diagram: d_eff = d² - weight, so larger weights → larger plates.
+// Warping uses smooth fbm for large-scale shape + ridged/Worley noise
+// for jagged, irregular boundary details like real plate edges.
 // ═══════════════════════════════════════════════════════
 const plateMap = new Uint8Array(N);
 const pixPlate = new Uint8Array(W * H);
 
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const nx = x / W, ny = y / H;
+  // Large-scale organic shape warping
   const warpX = fbm(nx * 2 + 13.7, ny * 2 + 13.7, 5, 2, 0.5) * 0.14
     + fbm(nx * 6 + 37.1, ny * 6 + 37.1, 4, 2, 0.5) * 0.05;
   const warpY = fbm(nx * 2 + 63.7, ny * 2 + 63.7, 5, 2, 0.5) * 0.14
     + fbm(nx * 6 + 87.1, ny * 6 + 87.1, 4, 2, 0.5) * 0.05;
-  const wnx = nx + warpX, wny = ny + warpY;
+  // High-frequency jagged detail — ridged noise for sharp, bumpy edges
+  const jagX = ridged(nx * 12 + 41.3, ny * 12 + 41.3, 3, 2.2, 2.0, 1.0) * 0.025
+    - noise2D(nx * 18 + 55.1, ny * 18 + 55.1) * 0.012;
+  const jagY = ridged(nx * 12 + 91.3, ny * 12 + 91.3, 3, 2.2, 2.0, 1.0) * 0.025
+    - noise2D(nx * 18 + 105.1, ny * 18 + 105.1) * 0.012;
+  const wnx = nx + warpX + jagX, wny = ny + warpY + jagY;
   let bestD = 1e9, bestP = 0;
   for (let p = 0; p < numPlates; p++) {
     let dx = wnx - plates[p].cx;
     if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
     const dy = wny - plates[p].cy;
-    const d = dx * dx + dy * dy;
+    const d = dx * dx + dy * dy - plates[p].weight; // power diagram
     if (d < bestD) { bestD = d; bestP = p; }
   }
   pixPlate[y * W + x] = bestP;
@@ -104,8 +126,8 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 
 // ═══════════════════════════════════════════════════════
 // STEP 4: Multi-stamp land generation centered on plate nuclei
-// Each continental plate gets 2-5 overlapping sub-ellipses for organic
-// coastlines with peninsulas, bays, and irregular shapes.
+// Major continental plates get many tightly-clustered overlapping ellipses
+// for cohesive, bulky landmasses. Minor plates get fewer, smaller stamps.
 // ═══════════════════════════════════════════════════════
 const rawElev = new Float32Array(W * H);
 const posStamps = [], negStamps = [];
@@ -114,30 +136,42 @@ for (let p = 0; p < numPlates; p++) {
   const plate = plates[p];
   if (!plate.hasCont || plate.contRadius <= 0) continue;
 
+  const isMaj = p < numMajor;
   const cx = plate.nucX, cy = plate.nucY;
   const no = rng() * 100;
-  const numSubs = 2 + Math.floor(rng() * 4); // 2-5 sub-ellipses
-  const scale = plate.contRadius / 0.18; // scale stamps relative to continent size
+  const scale = plate.contRadius / 0.18;
+
+  // Major plates: 5-9 tightly packed stamps for cohesive bulk
+  // Minor plates: 2-4 stamps for small landmasses
+  const numSubs = isMaj ? 5 + Math.floor(rng() * 5) : 2 + Math.floor(rng() * 3);
 
   for (let s = 0; s < numSubs; s++) {
     const ang = rng() * Math.PI * 2;
-    const dist = s === 0 ? 0 : (0.06 + rng() * 0.12) * scale;
-    const aspect = s === 0 ? 1 + rng() * 0.5 : s === 1 && rng() < 0.3 ? 1.5 + rng() * 1.5 : 1 + rng() * 1.5;
-    const baseR = (s === 0 ? 0.08 + rng() * 0.1 : 0.04 + rng() * 0.08) * scale;
+    // Tighter clustering: stamps stay closer to nucleus (reduced max offset)
+    const dist = s === 0 ? 0 : (0.03 + rng() * 0.08) * scale;
+    const aspect = s === 0 ? 1 + rng() * 0.4
+      : s <= 2 && rng() < 0.35 ? 1.3 + rng() * 1.2  // some elongated sub-stamps
+      : 1 + rng() * 1.0;
+    // Larger base radii for major plates, especially the core stamp
+    const baseR = (s === 0
+      ? (isMaj ? 0.12 + rng() * 0.10 : 0.07 + rng() * 0.06)
+      : (isMaj ? 0.05 + rng() * 0.08 : 0.03 + rng() * 0.05)
+    ) * scale;
     const rot = rng() * Math.PI;
     posStamps.push({
       cx: cx + Math.cos(ang) * dist,
       cy: cy + Math.sin(ang) * dist,
       rx: baseR * aspect, ry: baseR / aspect,
       rot, cos: Math.cos(rot), sin: Math.sin(rot),
-      str: s === 0 ? 0.8 + rng() * 0.4 : 0.5 + rng() * 0.4,
+      str: s === 0 ? 0.9 + rng() * 0.3 : 0.5 + rng() * 0.4,
       no: no + s * 17,
-      plateId: p
+      plateId: p,
+      contRadius: plate.contRadius // for size-dependent cross-plate bleed
     });
   }
 
-  // 0-2 negative stamps for bays/gulfs
-  const numNegs = Math.floor(rng() * 2.5);
+  // 0-2 negative stamps for bays/gulfs (only on major plates)
+  const numNegs = isMaj ? Math.floor(rng() * 2.5) : Math.floor(rng() * 1.5);
   for (let n = 0; n < numNegs; n++) {
     const ang = rng() * Math.PI * 2;
     const dist = (0.02 + rng() * 0.06) * scale;
@@ -150,7 +184,8 @@ for (let p = 0; p < numPlates; p++) {
       rot, cos: Math.cos(rot), sin: Math.sin(rot),
       str: 0.25 + rng() * 0.3,
       no: no + 50 + n * 13,
-      plateId: p
+      plateId: p,
+      contRadius: plate.contRadius
     });
   }
 }
@@ -178,7 +213,9 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const cnB = noise2D(wnx * 5 + s1 + 30, wny * 5 + s1 + 30) * 0.04;
   const coastRidge = noise2D(wnx * 14 + s2 + 50, wny * 14 + s2 + 50);
 
-  // Positive stamps — attenuate when pixel is on a different plate
+  // Positive stamps — size-dependent cross-plate bleed
+  // Large continents (India-like, contRadius > 0.20) can push across plate
+  // boundaries with moderate strength. Small landmasses get near-zero bleed.
   const pxPlate = pixPlate[y * W + x];
   for (const c of posStamps) {
     let dx = wnx - c.cx + cnA; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
@@ -188,13 +225,15 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     if (dd > 0.7 && dd < 1.3) { const rn = 1 - Math.abs(noise2D(wnx * 8 + c.no + 70, wny * 8 + c.no + 70)); dd += rn * rn * 0.12; }
     if (dd < 1) {
       const f2 = 1 - dd;
-      // Stamps on foreign plates are strongly attenuated — only a slight bleed across boundaries
-      const plateFactor = pxPlate === c.plateId ? 1.0 : 0.15;
+      // Size-dependent bleed: large continents (r>0.20) bleed up to 0.35,
+      // small ones (r<0.10) bleed only 0.03 — physically unlikely to cross
+      const bleed = Math.min(0.35, Math.max(0.03, (c.contRadius - 0.08) * 1.8));
+      const plateFactor = pxPlate === c.plateId ? 1.0 : bleed;
       e += f2 * f2 * c.str * plateFactor;
     }
   }
 
-  // Negative stamps (bays/gulfs) — also plate-aware
+  // Negative stamps (bays/gulfs) — same size-dependent bleed
   for (const c of negStamps) {
     let dx = wnx - c.cx + cnA; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
     let dy = wny - c.cy + cnB;
@@ -202,7 +241,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     dd += Math.abs(coastRidge + noise2D(wnx * 5 + c.no, wny * 5 + c.no) * 0.5) * 0.18;
     if (dd < 1) {
       const f2 = 1 - dd;
-      const plateFactor = pxPlate === c.plateId ? 1.0 : 0.15;
+      const bleed = Math.min(0.35, Math.max(0.03, (c.contRadius - 0.08) * 1.8));
+      const plateFactor = pxPlate === c.plateId ? 1.0 : bleed;
       e -= f2 * f2 * c.str * plateFactor;
     }
   }
