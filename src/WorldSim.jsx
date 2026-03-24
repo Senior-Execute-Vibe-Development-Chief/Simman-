@@ -344,10 +344,44 @@ const ni=ny*W+nx;const d2=dx*dx+dy*dy;if(d2>fR*fR)continue;
 if(elev[ni]>0&&!river[ni]&&!lake[ni]&&Math.abs(elev[ni]-elev[i])<0.03)floodplain[ni]=1;}}
 return{river,lake,floodplain,delta};}
 
-const BC=[[8,18,52],[18,40,88],[32,72,120],[198,186,142],[230,238,245],[210,218,228],[140,132,115],[55,78,52],[110,100,90],[130,126,104],[10,80,22],[166,156,66],[202,176,112],[30,98,36],[118,160,52],[38,62,42],[150,146,104]];
-function getBiomeD(e,m,t,sl){if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
-if(t<.15)return 4;if(t<.25)return e>.35?5:6;if(t<.35)return e>.4?5:m>.45?7:6;if(e>.5)return 8;if(e>.38)return t>.55?9:8;
-if(t>.7)return m>.5?10:m>.25?11:12;if(t>.5)return m>.45?13:m>.2?14:12;return m>.4?15:m>.15?14:16;}
+const BC=[
+[10,22,56],      // 0  Deep Ocean
+[20,48,95],      // 1  Shallow Ocean
+[36,78,125],     // 2  Coastal Water
+[194,182,140],   // 3  Beach (unused)
+[170,178,168],   // 4  Tundra
+[232,238,245],   // 5  Snow / Ice
+[68,98,68],      // 6  Taiga
+[48,80,52],      // 7  Boreal Forest
+[58,125,48],     // 8  Temperate Forest
+[28,98,55],      // 9  Temperate Rainforest
+[16,74,30],      // 10 Tropical Rainforest
+[176,168,72],    // 11 Savanna
+[142,162,58],    // 12 Grassland
+[204,184,126],   // 13 Desert
+[132,140,72],    // 14 Shrubland
+[68,114,45],     // 15 Tropical Dry Forest
+[146,140,130]    // 16 Barren / Alpine
+];
+const BN=['Deep Ocean','Shallow Ocean','Coastal Water','Beach','Tundra','Snow / Ice','Taiga',
+'Boreal Forest','Temperate Forest','Temperate Rainforest','Tropical Rainforest','Savanna',
+'Grassland','Desert','Shrubland','Tropical Dry Forest','Barren / Alpine'];
+function getBiomeD(e,m,t,sl){
+  if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
+  // Alpine / montane (elevation overrides)
+  if(e>.55)return t<.3?5:16;
+  if(e>.42)return t<.25?5:t<.4?(m>.35?7:4):m>.4?8:16;
+  // Polar / subpolar
+  if(t<.15)return 4;
+  if(t<.25)return m>.35?6:4;
+  if(t<.38)return m>.45?7:m>.25?6:4;
+  // Temperate
+  if(t<.55)return m>.55?9:m>.35?8:m>.15?12:13;
+  // Warm
+  if(t<.72)return m>.5?8:m>.3?15:m>.15?14:13;
+  // Hot / tropical
+  return m>.5?10:m>.3?15:m>.18?11:m>.08?12:13;
+}
 function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
 function tribeRGB(id){const h=((id*67+20)%360)/360,s=(60+((id*31)%25))/100,l=(45+((id*17)%25))/100;
@@ -851,6 +885,14 @@ border:`1px solid ${active?`rgba(${color},0.35)`:bs.border}`,color:active?`rgb($
 return(
 <div style={{width:"100vw",height:"100vh",background:"#060810",overflow:"hidden",position:"relative"}}>
 <canvas ref={canvasRef} width={CW} height={CH} style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,margin:"auto",position:"absolute",inset:0}} />
+{/* Biome legend — left side, terrain view only */}
+{viewMode==="terrain"&&<div style={{position:"absolute",top:6,left:6,background:"rgba(6,8,16,0.82)",
+borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
+{[4,5,6,7,8,9,10,15,11,12,14,13,16].map(bi=>(
+<div key={bi} style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
+<span style={{display:"inline-block",width:10,height:8,borderRadius:1,flexShrink:0,
+background:`rgb(${BC[bi][0]},${BC[bi][1]},${BC[bi][2]})`}} />
+<span>{BN[bi]}</span></div>))}</div>}
 {/* Stats overlay — top right */}
 <div style={{position:"absolute",top:6,right:6,background:"rgba(6,8,16,0.85)",borderRadius:3,padding:"4px 10px",
 display:"flex",gap:12,fontSize:11,color:"#c9b87a",pointerEvents:"none"}}>
