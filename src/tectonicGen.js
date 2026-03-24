@@ -412,17 +412,17 @@ const riftEffect = new Float32Array(N);
         seedPlate[ni] = srcPlate;
         seedType[ni] = st;
         seedStr[ni] = seedStr[ci];
-        // Plateau-with-ramp falloff: flat top then Gaussian decay
-        // cont-cont: flat for 20 cells (~440km) like Tibet, then ramp over 18
-        // oce-cont: flat for 6 cells (~130km) like Altiplano, then ramp over 10
+        // Plateau-with-ramp falloff: small flat core then steeper Gaussian decay
+        // cont-cont: flat for 10 cells (~220km) then ramp sigma=10
+        // oce-cont: flat for 4 cells (~88km) then ramp sigma=8
         // oce-oce: pure Gaussian, sigma=5
         let falloff;
         if (st === 2) {
-          const d = Math.max(0, nd - 20);
-          falloff = Math.exp(-d * d / (2 * 18 * 18));
-        } else if (st === 1) {
-          const d = Math.max(0, nd - 6);
+          const d = Math.max(0, nd - 10);
           falloff = Math.exp(-d * d / (2 * 10 * 10));
+        } else if (st === 1) {
+          const d = Math.max(0, nd - 4);
+          falloff = Math.exp(-d * d / (2 * 8 * 8));
         } else {
           falloff = Math.exp(-nd * nd / (2 * 5 * 5));
         }
@@ -491,7 +491,7 @@ for (let i = 0; i < N; i++) {
 // ═══════════════════════════════════════════════════════
 const mtnBroad = new Float32Array(N);
 {
-  const sigma = 28; // coarse cells — very wide influence zone
+  const sigma = 14; // coarse cells — moderate influence for foothill spread
   const radius = Math.ceil(sigma * 2.5);
   const kernel = [];
   let kSum = 0;
@@ -669,21 +669,22 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const interior = Math.min(1, cd / 15);
 
     // ── Sample mountain fields ──
-    const sharpVal = sampleCoarse(mtnEffect, twx, twy);  // BFS plateau field (wide, flat-topped)
-    const broadVal = sampleCoarse(mtnBroad, twx, twy);    // blurred: extended foothills
+    const sharpVal = sampleCoarse(mtnEffect, twx, twy);  // BFS: ridge texture gate
+    const broadVal = sampleCoarse(mtnBroad, twx, twy);    // blurred: smooth plateau/foothills
 
-    // ── Three-component tectonic elevation ──
-    // 1. Plateau: BFS field directly — wide flat-topped zones (Tibet, Altiplano)
-    //    Noise-modulated for irregularity (some sections higher/wider)
+    // ── Tectonic elevation: plateau + ridgeline peaks ──
+    // Plateau base: from BLURRED field (smooth, no grid artifacts, natural gradient)
     const plateauNoise = 0.7 + 0.6 * fbm(nx * 3 + s1 + 50, ny * 3 + s1 + 50, 2, 2, 0.5);
-    const plateau = sharpVal * 3.0 * plateauNoise;
-    // 2. Foothills: blurred field extends beyond BFS range (steppe, piedmont)
-    const foothills = broadVal * 1.8;
-    // 3. Peaks: concentrated ridge at boundary from smoothed crust
-    const peaks = Math.max(0, tecMod) * 2.5;
+    const plateau = broadVal * 2.5 * plateauNoise;
 
-    // Wide tectonic lift: BFS plateau where strong, blur foothills beyond
-    const tecLift = Math.max(plateau, foothills) + peaks;
+    // Ridgeline peaks: concentrated at boundary from smoothed crust
+    const peaks = Math.max(0, tecMod) * 3.5;
+
+    // Bumpy mountain noise — irregular peaks/valleys within elevated areas
+    const mtnBump = fbm(nx * 8 + s2 + 30, ny * 8 + s2 + 30, 4, 2, 0.55)
+      * 0.08 * Math.min(1, (plateau + peaks) * 3);
+
+    const tecLift = plateau + peaks + mtnBump;
 
     // Coast blend — suppress where tectonic lift is strong
     const rawCoastBlend = smoothstep(1 - cd / 6);
@@ -712,7 +713,6 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const cratonE = baseE + regionalE + broadSwell + rolling + plateauBoost;
 
     // ── Combine: base + tectonic lift ──
-    // Low areas stay low, tectonic zones get lifted high
     e = cratonE + tecLift;
 
     // Amplify terrain texture in tectonic zones (so mountains aren't flat)
