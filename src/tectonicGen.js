@@ -512,8 +512,10 @@ const plateEdge = new Float32Array(N);
 }
 
 // Merge plate-edge proximity into mtnEffect so it feeds into the blur
+// Zero out ocean cells so the blur doesn't create land halos
 for (let i = 0; i < N; i++) {
   mtnEffect[i] = Math.max(mtnEffect[i], plateEdge[i]);
+  if (crustType[i] !== 1) mtnEffect[i] = 0;
 }
 
 // ═══════════════════════════════════════════════════════
