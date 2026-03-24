@@ -373,36 +373,43 @@ const mtnEffect = new Float32Array(N);
 const riftEffect = new Float32Array(N);
 
 // Mountain propagation (convergent effects)
-// BFS stays within the same plate — uplift doesn't bleed across boundaries
+// BFS stays within the same plate. Range scales by boundary type:
+// continent-continent: 60 cells (~1300km) for Tibet/Himalaya-scale plateaus
+// ocean-continent: 25 cells (~550km) for Andes/Altiplano-scale
+// ocean-ocean: 12 cells
 {
   const dist = new Float32Array(N).fill(1e9);
-  const seedPlate = new Uint8Array(N); // which plate seeded this cell
+  const seedPlate = new Uint8Array(N);
+  const seedType = new Uint8Array(N); // 2=cont-cont, 1=oce-cont, 0=oce-oce
   const queue = [];
   for (let i = 0; i < N; i++) {
     if (boundaryConv[i] > 0) {
       mtnEffect[i] = boundaryConv[i];
       dist[i] = 0;
       seedPlate[i] = plateMap[i];
+      seedType[i] = boundaryCont[i] ? 2 : (boundaryOceCont[i] ? 1 : 0);
       queue.push(i);
     }
   }
   for (let qi = 0; qi < queue.length; qi++) {
     const ci = queue[qi];
     const cd = dist[ci];
-    if (cd > 14) continue;
+    const st = seedType[ci];
+    const maxDist = st === 2 ? 60 : (st === 1 ? 25 : 12);
+    if (cd > maxDist) continue;
     const ty = Math.floor(ci / cw), tx = ci % cw;
     const srcPlate = seedPlate[ci];
     for (const [ddx, ddy] of D8) {
       const nx2 = (tx + ddx + cw) % cw, ny2 = ty + ddy;
       if (ny2 < 0 || ny2 >= ch) continue;
       const ni = ny2 * cw + nx2;
-      // Block propagation across plate boundaries
       if (plateMap[ni] !== srcPlate) continue;
       const nd = cd + (Math.abs(ddx) + Math.abs(ddy) > 1 ? 1.41 : 1);
       if (nd < dist[ni]) {
         dist[ni] = nd;
         seedPlate[ni] = srcPlate;
-        const spread = boundaryCont[ci] ? 10 : (boundaryOceCont[ci] ? 6 : 4);
+        seedType[ni] = st;
+        const spread = st === 2 ? 14 : (st === 1 ? 8 : 5);
         const falloff = Math.exp(-nd * nd / (2 * spread * spread));
         const effect = boundaryConv[ci] * falloff;
         if (effect > mtnEffect[ni]) {
@@ -450,6 +457,44 @@ const riftEffect = new Float32Array(N);
         }
       }
     }
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// STEP 5b: Wide plateau field via Gaussian blur of mtnEffect
+// mtnEffect (sharp) gates where ridge TEXTURE appears.
+// mtnBroad (blurred) creates wide plateau/foothill uplift (Tibet, Altiplano).
+// ═══════════════════════════════════════════════════════
+const mtnBroad = new Float32Array(N);
+{
+  const sigma = 15; // coarse cells — wide influence
+  const radius = Math.ceil(sigma * 2.5);
+  const kernel = [];
+  let kSum = 0;
+  for (let k = -radius; k <= radius; k++) {
+    const v = Math.exp(-k * k / (2 * sigma * sigma));
+    kernel.push(v); kSum += v;
+  }
+  for (let k = 0; k < kernel.length; k++) kernel[k] /= kSum;
+
+  // Horizontal pass
+  const tmp = new Float32Array(N);
+  for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
+    let sum = 0;
+    for (let k = -radius; k <= radius; k++) {
+      const sx = ((tx + k) % cw + cw) % cw;
+      sum += mtnEffect[ty * cw + sx] * kernel[k + radius];
+    }
+    tmp[ty * cw + tx] = sum;
+  }
+  // Vertical pass
+  for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
+    let sum = 0;
+    for (let k = -radius; k <= radius; k++) {
+      const sy = Math.max(0, Math.min(ch - 1, ty + k));
+      sum += tmp[sy * cw + tx] * kernel[k + radius];
+    }
+    mtnBroad[ty * cw + tx] = sum;
   }
 }
 
@@ -516,6 +561,24 @@ const sampleCrust = (fx, fy) => {
   return val;
 };
 
+// Bicubic sampler for coarse-grid fields (mtnEffect, mtnBroad)
+const sampleCoarse = (field, fx, fy) => {
+  const ix = Math.floor(fx), iy = Math.floor(fy);
+  const dx = fx - ix, dy = fy - iy;
+  const wx = cubicW(dx), wy = cubicW(dy);
+  let val = 0;
+  for (let jy = -1; jy <= 2; jy++) {
+    let rowVal = 0;
+    for (let jx = -1; jx <= 2; jx++) {
+      const tx = ((ix + jx) % cw + cw) % cw;
+      const ty = Math.max(0, Math.min(ch - 1, iy + jy));
+      rowVal += field[ty * cw + tx] * wx[jx + 1];
+    }
+    val += rowVal * wy[jy + 1];
+  }
+  return Math.max(0, val);
+};
+
 // ═══════════════════════════════════════════════════════
 // STEP 7b: Coast-distance BFS for continentality terrain
 // ═══════════════════════════════════════════════════════
@@ -571,62 +634,85 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const cd = cdist[Math.min(dh - 1, Math.floor(y / DG)) * dw + Math.min(dw - 1, Math.floor(x / DG))];
     const interior = Math.min(1, cd / 15);
 
-    // ── Plate-edge uplift: land near plate boundaries gets raised ──
-    // Where continents are blocked from bleeding across, the edge crumples up.
-    // Uses the mtnEffect from BFS (already computed) sampled at this pixel.
-    const cti = Math.min(ch - 1, Math.floor(y / CG)) * cw + Math.min(cw - 1, Math.floor(x / CG));
-    const edgeUplift = mtnEffect[cti];
+    // ── Sample both mountain fields (bicubic from coarse grid) ──
+    const cgx = x / CG, cgy = y / CG;
+    const sharpVal = sampleCoarse(mtnEffect, cgx, cgy);  // sharp: ridge texture mask
+    const broadVal = sampleCoarse(mtnBroad, cgx, cgy);    // broad: plateau/foothill uplift
 
-    // ── Regime blending via smoothstep (no hard cutoffs) ──
-    // tecBlend driven by BOTH tectonic modifier AND edge uplift
-    const tecSignal = Math.max(tecMod, edgeUplift * 0.8);
-    const tecBlend = smoothstep((tecSignal - 0.005) / 0.10);
-    // coastBlend: 1 = coast, 0 = inland
+    // ── Regime blending via smoothstep ──
+    const tecSignal = Math.max(tecMod, sharpVal * 0.8);
+    const tecBlend = smoothstep((sharpVal * 6.0 - 0.02) / 0.15);
     const coastBlend = smoothstep(1 - cd / 6);
 
     // ── Regime A: Coastal lowlands (very low, near sea level) ──
-    const coastE = 0.002 + (1 - coastBlend) * 0.008
-      + fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5) * 0.004;
+    const coastE = 0.002 + (1 - coastBlend) * 0.005
+      + fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5) * 0.003;
 
     // ── Regime B: Craton/shield interior (low rolling plains) ──
-    const broadSwell = fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6) * 0.02;
+    const broadSwell = fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6) * 0.012;
     const [rhx, rhy] = warp(nx, ny, 3, 2, 0.04, s2 + 10, s2 + 60);
-    const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.015;
-    // Stamp-derived plateau boost: thick crust = higher plateaus
-    const plateauBoost = Math.max(0, stampE) * 0.2 * interior;
-    const cratonE = 0.012 + interior * 0.02 + broadSwell + rolling + plateauBoost;
+    const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.010;
+    const plateauBoost = Math.max(0, stampE) * 0.15 * interior;
+    const cratonE = 0.006 + interior * 0.012 + broadSwell + rolling + plateauBoost;
 
-    // ── Regime C: Orogen / mountain belt ──
-    // Mountains avg ~5km (e≈0.45), peaks ~11km (e≈1.0)
-    const [wmx, wmy] = warp(nx, ny, 2, 3, 0.1, s4, s4 + 40);
-    const ridgeNoise = ridged(wmx * 4 + s5, wmy * 4 + s5, 5, 2.2, 2.0, 1.0);
-    const upliftStr = Math.max(tecMod, edgeUplift * 0.8);
-    const orogenE = cratonE + ridgeNoise * 0.50 + upliftStr * 2.0;
+    // ── Regime C: Orogen — Worley F2-F1 ridge spines + ridged texture ──
+    // Domain warp for Worley (large-scale bending of ridge network)
+    const warpFreq = 3.5, warpStr = 0.35;
+    const wox = fbm(nx * warpFreq + 77, ny * warpFreq + 77, 4, 2.0, 0.5) * warpStr;
+    const woy = fbm(nx * warpFreq + 133, ny * warpFreq + 133, 4, 2.0, 0.5) * warpStr;
 
-    // ── Foothill zone: peaks in transition band ──
-    const foothillZone = Math.max(0, 1 - Math.abs(tecSignal - 0.04) / 0.04);
+    // Primary Worley ridge network (freq 22 = mountain-scale spacing)
+    const SF = 22;
+    const [f1a, f2a] = worley((nx + wox) * SF + s5, (ny + woy) * SF + s5 + 40);
+    const rawSpine1 = 1.0 - Math.min(1, (f2a - f1a) * 2.5);
+    const spine1 = rawSpine1 * rawSpine1;
+
+    // Secondary ridge network (finer branches at 2× freq)
+    const [f1b, f2b] = worley((nx + wox * 0.7) * SF * 2.1 + s5 + 200, (ny + woy * 0.7) * SF * 2.1 + s5 + 240);
+    const rawSpine2 = 1.0 - Math.min(1, (f2b - f1b) * 3.0);
+    const spine2 = rawSpine2 * rawSpine2;
+
+    // Combined spine: primary ridges + subordinate branches
+    const spine = spine1 * 0.65 + spine2 * 0.35;
+
+    // Ridged fbm texture (high freq, only visible ON the spine)
+    const [rwx, rwy] = warp(nx, ny, 4, 3, 0.06, s4 + 10, s4 + 60);
+    const ridgeTex = ridged(rwx * 16 + s5 + 100, rwy * 16 + s5 + 100, 6, 2.15, 1.8, 1.0);
+
+    // Mountain surface: spine provides structure, ridged provides texture
+    const mtnSurface = spine * (0.55 + ridgeTex * 0.45);
+    const mtnStrength = Math.min(1.0, sharpVal * 6.0);
+    const peakE = mtnSurface * mtnStrength * 0.55;
+
+    // Wide plateau uplift from Gaussian-blurred field
+    const plateauE = broadVal * 0.08 * interior;
+
+    // ── Foothill zone: in the mtnSharp transition band ──
+    const foothillZone = smoothstep(sharpVal * 12.0) * (1 - smoothstep(sharpVal * 4.0 - 0.5));
     const [fhx, fhy] = warp(nx, ny, 3, 2, 0.06, s3 + 50, s3 + 80);
     const foothillNoise = Math.pow(Math.max(0, fbm(fhx * 5 + s4, fhy * 5 + s4, 4, 2, 0.5)), 1.5);
 
     // ── Blend regimes smoothly ──
-    e = cratonE * (1 - tecBlend) + orogenE * tecBlend;
+    e = cratonE * (1 - tecBlend) + (cratonE + peakE) * tecBlend;
     e = e * (1 - coastBlend) + coastE * coastBlend;
-    e += foothillNoise * foothillZone * 0.12;
+    e += plateauE;
+    e += foothillNoise * foothillZone * 0.08;
 
     // ── Valley carving: inverted ridged noise for dendritic valleys ──
-    const valleyNoise = 1 - ridged(nx * 3 + s1 + 80, ny * 3 + s1 + 80, 4, 2.1, 1.8, 1.0);
-    e -= valleyNoise * valleyNoise * 0.03 * interior;
+    if (tecBlend < 0.3) {
+      const valleyNoise = 1 - ridged(nx * 5 + s1 + 80, ny * 5 + s1 + 80, 4, 2.1, 1.8, 1.0);
+      e -= valleyNoise * valleyNoise * 0.015 * (1 - tecBlend) * interior;
+    }
 
-    // ── Hypsometric remap: skewed sigmoid ──
-    // Keeps most land low (avg ~0.04 ≈ 0.84km), mountains reach 0.5+ (5km+)
-    const skew = 0.08;
+    // ── Hypsometric remap: power curve ──
+    // pow(2.2) keeps plains very dark, mountains bright
     e = Math.max(0, e);
-    e = e / (e + skew) * (1 + skew);
-    e = Math.max(0.003, e);
+    e = Math.pow(e, 2.2) * 3.0;
+    e = Math.max(0.002, Math.min(1.0, e));
   }
 
   // Fine texture
-  e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.006;
+  e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.004;
 
   // Polar reduction
   if (lat > 0.88) e -= (lat - 0.88) * 2;
