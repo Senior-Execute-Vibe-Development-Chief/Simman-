@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
+import TuningPanel from "./TuningPanel.jsx";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
@@ -106,7 +107,7 @@ moisture[i]=Math.max(.02,Math.min(1,m));
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 }else if(preset==="tectonic"){
 // ── Tectonic plate mode: separate module ──
-const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D,worley});
+const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D,worley},tecParamsRef.current);
 for(let i=0;i<W*H;i++){elevation[i]=tec.elevation[i];moisture[i]=tec.moisture[i];temperature[i]=tec.temperature[i];}
 tecPlates=tec.pixPlate;
 }else{
@@ -671,6 +672,8 @@ const[showPlates,setShowPlates]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
 const[showRivers,setShowRivers]=useState(true);
 const[hoverInfo,setHoverInfo]=useState(null);
+const[showTuning,setShowTuning]=useState(false);
+const tecParamsRef=useRef({});
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const showPlatesRef=useRef(false);
 const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
@@ -935,6 +938,8 @@ style={bsA(preset==="pangaea","120,180,100")}>Pangaea</button>
 style={bsA(preset==="tectonic","180,120,100")}>Tectonic</button>
 <button onClick={()=>{presetRef.current="continental";setPreset("continental");setSeed(Math.floor(Math.random()*999999));}}
 style={bsA(preset==="continental","140,180,160")}>Continental</button>
+{preset==="tectonic"&&<button onClick={()=>setShowTuning(true)}
+style={{...bs,color:"#b8a060",border:"1px solid rgba(201,184,122,0.3)",padding:"4px 8px"}}>Tune</button>}
 <div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
 <input ref={fileRef} type="file" accept=".json,.map,.png,.jpg,.jpeg,.webp" style={{display:"none"}} onChange={handleImport} />
 <button onClick={()=>fileRef.current?.click()} style={bsA(preset==="import","180,140,200")}
@@ -964,4 +969,11 @@ style={{width:60,accentColor:"#6ab4e8"}} />
 <button onClick={()=>{const nv=!showRiversRef.current;showRiversRef.current=nv;setShowRivers(nv);generate(seed);}}
 style={{...bs,background:showRivers?"rgba(40,120,200,0.25)":"transparent",border:"none",
 color:showRivers?"#6ab4e8":"#5a5448",padding:"3px 7px",fontSize:"10px"}}>Rivers</button>
-</div></div>);}
+</div>
+{showTuning&&<TuningPanel
+  noiseFns={{initNoise,fbm,ridged,noise2D,worley}}
+  seed={seed}
+  onApply={(params)=>{tecParamsRef.current=params;generate(seed);}}
+  onClose={()=>setShowTuning(false)}
+/>}
+</div>);}
