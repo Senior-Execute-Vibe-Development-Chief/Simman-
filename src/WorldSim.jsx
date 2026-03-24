@@ -32,6 +32,7 @@ return[Math.sqrt(d1),Math.sqrt(d2)];}
 function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};}
 
 const RES=2;
+let _tecParams = {};
 
 // Static climate: no ice ages or sea level changes
 const CLIMATE={tempMod:0,seaLevel:0,wet:0.7};
@@ -107,7 +108,7 @@ moisture[i]=Math.max(.02,Math.min(1,m));
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 }else if(preset==="tectonic"){
 // ── Tectonic plate mode: separate module ──
-const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D,worley},tecParamsRef.current);
+const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D,worley},_tecParams);
 for(let i=0;i<W*H;i++){elevation[i]=tec.elevation[i];moisture[i]=tec.moisture[i];temperature[i]=tec.temperature[i];}
 tecPlates=tec.pixPlate;
 }else{
@@ -673,7 +674,6 @@ const[importStatus,setImportStatus]=useState(null);
 const[showRivers,setShowRivers]=useState(true);
 const[hoverInfo,setHoverInfo]=useState(null);
 const[showTuning,setShowTuning]=useState(false);
-const tecParamsRef=useRef({});
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const showPlatesRef=useRef(false);
 const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
@@ -973,7 +973,7 @@ color:showRivers?"#6ab4e8":"#5a5448",padding:"3px 7px",fontSize:"10px"}}>Rivers<
 {showTuning&&<TuningPanel
   noiseFns={{initNoise,fbm,ridged,noise2D,worley}}
   seed={seed}
-  onApply={(params)=>{tecParamsRef.current=params;generate(seed);}}
+  onApply={(params)=>{_tecParams=params;generate(seed);}}
   onClose={()=>setShowTuning(false)}
 />}
 </div>);}
