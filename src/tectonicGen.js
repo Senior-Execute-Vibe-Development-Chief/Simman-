@@ -103,11 +103,11 @@ const PS = 2;
 const ppW = Math.ceil(W / PS), ppH = Math.ceil(H / PS);
 const pixPlateCoarse = new Uint8Array(ppW * ppH);
 
+const _ws1 = p('warpStr1', 0.14), _ws2 = p('warpStr2', 0.05), _js = p('jagStr', 0.025);
+const _psx = p('plateStretchX', 1.3), _psy = p('plateStretchY', 0.8);
 for (let py = 0; py < ppH; py++) for (let px = 0; px < ppW; px++) {
   const x = px * PS, y = py * PS;
   const nx = x / W, ny = y / H;
-  // Large-scale organic shape warping (3 octaves — sufficient for smooth boundaries)
-  const _ws1 = p('warpStr1', 0.14), _ws2 = p('warpStr2', 0.05), _js = p('jagStr', 0.025);
   const warpX = fbm(nx * 2 + 13.7, ny * 2 + 13.7, 3, 2, 0.5) * _ws1
     + fbm(nx * 6 + 37.1, ny * 6 + 37.1, 3, 2, 0.5) * _ws2;
   const warpY = fbm(nx * 2 + 63.7, ny * 2 + 63.7, 3, 2, 0.5) * _ws1
@@ -118,12 +118,12 @@ for (let py = 0; py < ppH; py++) for (let px = 0; px < ppW; px++) {
     - noise2D(nx * 18 + 105.1, ny * 18 + 105.1) * 0.012;
   const wnx = nx + warpX + jagX, wny = ny + warpY + jagY;
   let bestD = 1e9, bestP = 0;
-  for (let p = 0; p < numPlates; p++) {
-    let dx = wnx - plates[p].cx;
+  for (let pi = 0; pi < numPlates; pi++) {
+    let dx = wnx - plates[pi].cx;
     if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
-    const dy = wny - plates[p].cy;
-    const d = dx * dx * p('plateStretchX', 1.3) + dy * dy * p('plateStretchY', 0.8) - plates[p].weight;
-    if (d < bestD) { bestD = d; bestP = p; }
+    const dy = wny - plates[pi].cy;
+    const d = dx * dx * _psx + dy * dy * _psy - plates[pi].weight;
+    if (d < bestD) { bestD = d; bestP = pi; }
   }
   pixPlateCoarse[py * ppW + px] = bestP;
 }
@@ -144,27 +144,23 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 const rawElev = new Float32Array(W * H);
 const posStamps = [], negStamps = [];
 
-for (let p = 0; p < numPlates; p++) {
-  const plate = plates[p];
+for (let pi = 0; pi < numPlates; pi++) {
+  const plate = plates[pi];
   if (!plate.hasCont || plate.contRadius <= 0) continue;
 
-  const isMaj = p < numMajor;
+  const isMaj = pi < numMajor;
   const cx = plate.nucX, cy = plate.nucY;
   const no = rng() * 100;
   const scale = plate.contRadius / 0.18;
 
-  // Major plates: 5-9 tightly packed stamps for cohesive bulk
-  // Minor plates: 2-4 stamps for small landmasses
   const numSubs = isMaj ? p('majorSubsBase', 5) + Math.floor(rng() * p('majorSubsRange', 5)) : p('minorSubsBase', 2) + Math.floor(rng() * p('minorSubsRange', 3));
 
   for (let s = 0; s < numSubs; s++) {
     const ang = rng() * Math.PI * 2;
-    // Tighter clustering: stamps stay closer to nucleus (reduced max offset)
     const dist = s === 0 ? 0 : (0.03 + rng() * 0.08) * scale;
     const aspect = s === 0 ? 1 + rng() * 0.4
-      : s <= 2 && rng() < 0.35 ? 1.3 + rng() * 1.2  // some elongated sub-stamps
+      : s <= 2 && rng() < 0.35 ? 1.3 + rng() * 1.2
       : 1 + rng() * 1.0;
-    // Larger base radii for major plates, especially the core stamp
     const baseR = (s === 0
       ? (isMaj ? p('majorCoreRadMin', 0.12) + rng() * p('majorCoreRadRange', 0.10) : p('minorCoreRadMin', 0.07) + rng() * p('minorCoreRadRange', 0.06))
       : (isMaj ? p('majorSubRadMin', 0.05) + rng() * p('majorSubRadRange', 0.08) : p('minorSubRadMin', 0.03) + rng() * p('minorSubRadRange', 0.05))
@@ -177,12 +173,11 @@ for (let p = 0; p < numPlates; p++) {
       rot, cos: Math.cos(rot), sin: Math.sin(rot),
       str: s === 0 ? 0.9 + rng() * 0.3 : 0.5 + rng() * 0.4,
       no: no + s * 17,
-      plateId: p,
-      contRadius: plate.contRadius // for size-dependent cross-plate bleed
+      plateId: pi,
+      contRadius: plate.contRadius
     });
   }
 
-  // 0-2 negative stamps for bays/gulfs (only on major plates)
   const numNegs = isMaj ? Math.floor(rng() * p('majorNegsMax', 2.5)) : Math.floor(rng() * p('minorNegsMax', 1.5));
   for (let n = 0; n < numNegs; n++) {
     const ang = rng() * Math.PI * 2;
@@ -196,7 +191,7 @@ for (let p = 0; p < numPlates; p++) {
       rot, cos: Math.cos(rot), sin: Math.sin(rot),
       str: 0.25 + rng() * 0.3,
       no: no + 50 + n * 13,
-      plateId: p,
+      plateId: pi,
       contRadius: plate.contRadius
     });
   }
