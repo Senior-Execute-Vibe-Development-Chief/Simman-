@@ -662,52 +662,53 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const cd = cdist[Math.min(dh - 1, Math.floor(y / DG)) * dw + Math.min(dw - 1, Math.floor(x / DG))];
     const interior = Math.min(1, cd / 15);
 
-    // ── Sample both mountain fields at WARPED coordinates (matching tecMod) ──
-    const sharpVal = sampleCoarse(mtnEffect, twx, twy);  // sharp: ridge texture mask
-    const broadVal = sampleCoarse(mtnBroad, twx, twy);    // broad: plateau/foothill uplift
+    // ── Sample mountain fields ──
+    const sharpVal = sampleCoarse(mtnEffect, twx, twy);  // BFS plateau field (wide, flat-topped)
+    const broadVal = sampleCoarse(mtnBroad, twx, twy);    // blurred for texture amplification
 
-    // ── Tectonic envelope (compute first — coastBlend needs it) ──
-    const tecEnv = Math.max(0, tecMod) * 3.5;
-    const blurEnv = broadVal * 3.0;
-    const envelope = Math.max(tecEnv, blurEnv);
+    // ── Two-component tectonic elevation ──
+    // Plateau: BFS field directly — maintains value far inland (Tibet, Altiplano)
+    // The flat-top BFS falloff naturally creates wide elevated zones.
+    const plateau = sharpVal * 3.0;
+    // Peaks: concentrated ridge at boundary from smoothed crust
+    const peaks = Math.max(0, tecMod) * 2.5;
 
-    // Coast blend — suppress it where tectonic envelope is strong
+    // Coast blend — suppress where tectonic lift is strong
     const rawCoastBlend = smoothstep(1 - cd / 6);
-    const tecStr = Math.min(1, envelope * 3);
+    const tecStr = Math.min(1, (plateau + peaks) * 2);
     const coastBlend = rawCoastBlend * (1 - tecStr * 0.85);
 
-    // ── Regime A: Coastal lowlands (~0-300m) ──
-    const coastE = 0.008 + (1 - coastBlend) * 0.015
-      + fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5) * 0.008;
+    // ── Regime A: Coastal lowlands (~0-100m) ──
+    const coastE = 0.003 + (1 - coastBlend) * 0.008
+      + fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5) * 0.004;
 
-    // ── Regime B: Continental interior ──
-    // Base elevation: interior plains at ~400-800m
-    const baseE = 0.025 + interior * 0.045;
+    // ── Regime B: Continental interior (low base — tectonics creates height) ──
+    const baseE = 0.006 + interior * 0.012;
 
-    // Large-scale highland/lowland regions within continents
-    // (e.g. Great Plains vs Colorado Plateau vs Appalachian highlands)
+    // Highland/lowland regions within continents (noise-driven)
     const continentNoise = fbm(nx * 2.2 + s1 + 30, ny * 2.2 + s1 + 30, 3, 2, 0.55);
     const highlandMask = smoothstep(continentNoise * 2 + 0.2);
-    const regionalE = highlandMask * 0.10 * interior;
+    const regionalE = highlandMask * 0.035 * interior;
 
     // Rolling terrain texture
-    const broadSwell = fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6) * 0.018;
+    const broadSwell = fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6) * 0.012;
     const [rhx, rhy] = warp(nx, ny, 3, 2, 0.04, s2 + 10, s2 + 60);
-    const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.015;
-    const plateauBoost = Math.max(0, stampE) * 0.3 * interior;
+    const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.010;
+    const plateauBoost = Math.max(0, stampE) * 0.15 * interior;
 
     const cratonE = baseE + regionalE + broadSwell + rolling + plateauBoost;
 
-    // Amplify craton terrain by tectonic envelope
-    e = cratonE * (1.0 + envelope * 12.0);
+    // ── Combine: base + tectonic plateau + peaks ──
+    // Low areas stay low, tectonic zones get lifted high
+    e = cratonE + plateau + peaks;
 
-    // Plateau base lift: convergent zones get substantial elevated terrain
-    e += envelope * 0.20;
+    // Amplify terrain texture in tectonic zones (so mountains aren't flat)
+    e += (broadSwell + rolling) * Math.max(plateau, peaks) * 6.0;
 
-    // Coast blend — mountains near coast stay elevated when tectonic is strong
+    // Coast blend
     e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
 
-    // ── Hypsometric remap: very gentle curve to preserve terrain variety ──
+    // ── Hypsometric remap: very gentle ──
     e = Math.max(0, e);
     e = Math.pow(e, 1.08) * 1.1;
     e = Math.max(0.002, Math.min(1.0, e));
