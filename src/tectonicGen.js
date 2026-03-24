@@ -36,20 +36,11 @@ const numMinor = 4 + Math.floor(rng() * 4);   // 4-7 minor
 const numPlates = numMajor + numMinor;
 const plates = [];
 
-// Decide which plates are continental (~40-55% of major, ~15-25% of minor)
-const contFlags = [];
-let numCont = 0;
-for (let i = 0; i < numPlates; i++) {
-  const isMajor = i < numMajor;
-  const prob = isMajor ? 0.50 : 0.20;
-  const isCont = rng() < prob ? 1 : 0;
-  contFlags.push(isCont);
-  numCont += isCont;
-}
-// Guarantee at least 2 continental and 2 oceanic plates
-if (numCont < 2) { contFlags[0] = 1; contFlags[1] = 1; }
-if (numCont > numPlates - 2) { contFlags[numPlates - 1] = 0; contFlags[numPlates - 2] = 0; }
-
+// Each plate gets a continental coverage fraction:
+//  - 0.0 = fully oceanic (e.g. Pacific plate)
+//  - 0.3-0.7 = mixed (e.g. African plate: continental core, oceanic edges)
+//  - 0.8-1.0 = mostly continental (rare, like a small craton)
+// Major plates are more likely to have continental cores.
 for (let i = 0; i < numPlates; i++) {
   let cx, cy;
   if (i < numMajor) {
@@ -63,13 +54,34 @@ for (let i = 0; i < numPlates; i++) {
   cy = Math.max(0.02, Math.min(0.98, cy));
   const angle = rng() * Math.PI * 2;
   const speed = 0.4 + rng() * 0.8;
+
+  // Continental coverage: how much of this plate's area is continental
+  const isMajor = i < numMajor;
+  let contCoverage;
+  if (isMajor) {
+    // Major plates: ~50% chance of having a continental core
+    contCoverage = rng() < 0.50 ? (0.25 + rng() * 0.45) : 0.0; // 0.25-0.70 or 0
+  } else {
+    // Minor plates: ~20% chance, smaller coverage
+    contCoverage = rng() < 0.20 ? (0.30 + rng() * 0.50) : 0.0; // 0.30-0.80 or 0
+  }
+
   plates.push({
     cx, cy,
     vx: Math.cos(angle) * speed,
     vy: Math.sin(angle) * speed,
     id: i,
-    continental: contFlags[i],
+    contCoverage,
   });
+}
+// Guarantee at least 2 plates have continental cores
+let numWithCont = plates.filter(p => p.contCoverage > 0).length;
+while (numWithCont < 2) {
+  const idx = Math.floor(rng() * numMajor);
+  if (plates[idx].contCoverage === 0) {
+    plates[idx].contCoverage = 0.30 + rng() * 0.35;
+    numWithCont++;
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -78,7 +90,14 @@ for (let i = 0; i < numPlates; i++) {
 const plateMap = new Uint8Array(N); // coarse grid plate ownership
 const pixPlate = new Uint8Array(W * H); // pixel-level plate ownership
 
+// For each plate, find the max Voronoi distance (to normalize distances later)
+// We do two passes: first assign plates, then compute max radii.
+const plateDist = new Float32Array(N); // normalized distance from plate center [0,1]
+
 // Assign at pixel level (for overlay), then downsample to coarse
+// Also track coarse-grid distances
+const coarseDist = new Float32Array(N); // raw squared distance
+
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const nx = x / W, ny = y / H;
   // Multi-scale warping for organic boundaries
@@ -98,13 +117,38 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   pixPlate[y * W + x] = bestP;
 }
 for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
-  plateMap[ty * cw + tx] = pixPlate[Math.min(H - 1, ty * CG) * W + Math.min(W - 1, tx * CG)];
+  const i = ty * cw + tx;
+  const px = Math.min(W - 1, tx * CG), py = Math.min(H - 1, ty * CG);
+  plateMap[i] = pixPlate[py * W + px];
+  // Compute warped distance for this coarse cell
+  const nx = tx / cw, ny = ty / ch;
+  const warpX = fbm(nx * 2 + 13.7, ny * 2 + 13.7, 5, 2, 0.5) * 0.14
+    + fbm(nx * 6 + 37.1, ny * 6 + 37.1, 4, 2, 0.5) * 0.05;
+  const warpY = fbm(nx * 2 + 63.7, ny * 2 + 63.7, 5, 2, 0.5) * 0.14
+    + fbm(nx * 6 + 87.1, ny * 6 + 87.1, 4, 2, 0.5) * 0.05;
+  const wnx = nx + warpX, wny = ny + warpY;
+  const p = plates[plateMap[i]];
+  let dx = wnx - p.cx;
+  if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
+  const dy = wny - p.cy;
+  coarseDist[i] = Math.sqrt(dx * dx + dy * dy);
+}
+// Find max distance per plate to normalize to [0,1]
+const plateMaxDist = new Float32Array(numPlates);
+for (let i = 0; i < N; i++) {
+  const pid = plateMap[i];
+  if (coarseDist[i] > plateMaxDist[pid]) plateMaxDist[pid] = coarseDist[i];
+}
+for (let i = 0; i < N; i++) {
+  const pid = plateMap[i];
+  plateDist[i] = plateMaxDist[pid] > 0 ? coarseDist[i] / plateMaxDist[pid] : 0;
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 4: Initial crust from plate ownership
-// Continental plates → land, oceanic plates → ocean floor.
-// Noise adds variation within each plate and softens edges.
+// STEP 4: Initial crust from plate ownership + distance from center
+// Plates with contCoverage > 0 have a continental core that transitions
+// to oceanic crust toward the edges. Like the African plate: continent
+// in the middle, ocean floor around it.
 // ═══════════════════════════════════════════════════════
 const crustSeed = rng() * 100;
 const crust = new Float32Array(N);      // height/thickness
@@ -114,20 +158,30 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
   const i = ty * cw + tx;
   const nx = tx / cw, ny = ty / ch;
   const pid = plateMap[i];
-  const isCont = plates[pid].continental;
+  const plate = plates[pid];
+  const coverage = plate.contCoverage; // 0 = fully oceanic, 0.3-0.7 = mixed
 
-  // Noise for intra-plate variation (shelves, basins, highlands)
-  const variation = fbm(nx * 3 + crustSeed, ny * 3 + crustSeed, 4, 2, 0.5) * 0.06
-    + fbm(nx * 6 + crustSeed + 40, ny * 6 + crustSeed + 40, 3, 2, 0.5) * 0.02;
+  // Noise for irregular continent edges and intra-plate variation
+  const edgeNoise = fbm(nx * 4 + crustSeed, ny * 4 + crustSeed, 4, 2, 0.5) * 0.20
+    + fbm(nx * 8 + crustSeed + 40, ny * 8 + crustSeed + 40, 3, 2, 0.5) * 0.08;
+  const variation = fbm(nx * 3 + crustSeed + 80, ny * 3 + crustSeed + 80, 3, 2, 0.5) * 0.05;
+
+  // Distance from plate center, normalized to [0,1]
+  const dist = plateDist[i];
+
+  // Continental threshold: cells closer than (coverage + noise) are continental
+  // This creates an irregular continental core that doesn't fill the whole plate
+  const contThreshold = coverage + edgeNoise;
+  const isCont = coverage > 0 && dist < contThreshold;
 
   if (isCont) {
     crustType[i] = 1;
-    // Continental: base 0.04 + variation → mostly above sea level
-    // Some low areas near edges can be continental shelves
-    crust[i] = 0.04 + Math.abs(variation) * 1.5 + variation;
+    // Height varies: higher in interior, lower near coast (continental shelf)
+    const interiorness = Math.max(0, 1 - dist / Math.max(0.01, contThreshold));
+    crust[i] = 0.02 + interiorness * 0.06 + Math.abs(variation) + variation;
   } else {
     crustType[i] = 0;
-    // Oceanic: base -0.08 + variation → below sea level
+    // Oceanic floor
     crust[i] = -0.08 + variation;
   }
 }
