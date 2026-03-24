@@ -564,31 +564,47 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   e += tecMod;
 
   if (e > 0) {
-    // Continentality-based interior terrain shaping
-    const raw = e;
-    const domeH = Math.min(1, raw / 0.15);
+    // Real Earth hypsometry: ~50% of land below 500m, median ~400m.
+    // Most land is low coastal plains and gentle interior shields/cratons.
+    // Mountains are rare — only at plate boundaries with strong tectonic uplift.
     const cd = cdist[Math.min(dh - 1, Math.floor(y / DG)) * dw + Math.min(dw - 1, Math.floor(x / DG))];
     const interior = Math.min(1, cd / 15);
+    const coastProx = Math.max(0, 1 - cd / 5); // 1 at coast, 0 inland
 
-    // Ridged mountains in interior (stronger where tectonic uplift exists)
-    const tecBoost = 1 + Math.max(0, tecMod) * 3; // tectonic uplift amplifies mountains
-    const [wmx, wmy] = warp(nx, ny, 2, 3, 0.1, s4, s4 + 40);
-    e += ridged(wmx * 4 + s5, wmy * 4 + s5, 5, 2.2, 2.0, 1.0) * interior * interior * domeH * 0.45 * tecBoost;
+    // Base land: low coastal plains (0.003-0.02) grading to gentle interior
+    // plains/shields (0.03-0.06). No mountains without tectonic cause.
+    const plainBase = 0.003 + interior * 0.04;
+    const plainNoise = fbm(nx * 8 + s3 + 40, ny * 8 + s3 + 40, 3, 2, 0.5) * 0.015
+      + fbm(nx * 16 + s4 + 20, ny * 16 + s4 + 20, 2, 2, 0.4) * 0.005;
+    e = plainBase + Math.abs(plainNoise);
 
-    // Hills
+    // Gentle hills in interior (not mountains — just rolling terrain)
     const [whx, why] = warp(nx, ny, 4, 3, 0.05, s3 + 20, s3 + 70);
-    e += Math.max(0, fbm(whx * 6 + s2, why * 6 + s2, 4, 2, 0.5)) * 0.08 * Math.sqrt(interior);
+    e += Math.max(0, fbm(whx * 6 + s2, why * 6 + s2, 4, 2, 0.5)) * 0.025 * interior;
 
-    // Valley carving
-    e -= Math.max(0, fbm(nx * 5 + s1 + 60, ny * 5 + s1 + 60, 3, 2, 0.5) + 0.15) * 0.06 * interior;
+    // Tectonic mountains: ONLY where tecMod > 0 (plate boundary uplift).
+    // This is the only source of major elevation. tecMod drives everything.
+    if (tecMod > 0.01) {
+      const tecStr = Math.min(1, tecMod / 0.15); // normalized tectonic strength
+      const [wmx, wmy] = warp(nx, ny, 2, 3, 0.1, s4, s4 + 40);
+      const ridgeNoise = ridged(wmx * 4 + s5, wmy * 4 + s5, 5, 2.2, 2.0, 1.0);
+      // Mountains scale with tectonic uplift — vast ranges at strong boundaries
+      e += ridgeNoise * tecStr * tecStr * 0.55;
+      // Foothills around mountains
+      e += Math.max(0, fbm(wmx * 8 + s2 + 10, wmy * 8 + s2 + 10, 3, 2, 0.5)) * tecStr * 0.08;
+    }
 
-    // Power curve for realistic elevation distribution
-    e = Math.pow(Math.max(0, e), 0.85) * 1.2;
+    // Valley carving (subtle, mostly in interior)
+    e -= Math.max(0, fbm(nx * 5 + s1 + 60, ny * 5 + s1 + 60, 3, 2, 0.5) + 0.2) * 0.02 * interior;
+
+    // Hypsometric power curve: skew distribution toward low elevations
+    // e^1.4 compresses low values (most land stays low) while preserving peaks
+    e = Math.pow(Math.max(0, e), 1.4) * 3.5;
     e = Math.max(0.003, e);
   }
 
   // Fine texture
-  e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.006;
+  e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.004;
 
   // Polar reduction
   if (lat > 0.88) e -= (lat - 0.88) * 2;
