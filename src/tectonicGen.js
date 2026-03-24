@@ -467,7 +467,7 @@ const riftEffect = new Float32Array(N);
 // ═══════════════════════════════════════════════════════
 const mtnBroad = new Float32Array(N);
 {
-  const sigma = 15; // coarse cells — wide influence
+  const sigma = 28; // coarse cells — very wide influence zone
   const radius = Math.ceil(sigma * 2.5);
   const kernel = [];
   let kSum = 0;
@@ -666,11 +666,11 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 
     // Amplify: multiply existing terrain height by (1 + envelope * boost)
     // At envelope=0 (plate interior): terrain unchanged
-    // At envelope=1 (strong convergence): terrain height × 8
-    e *= (1.0 + envelope * 7.0);
+    // At envelope=1 (strong convergence): terrain height × 14
+    e *= (1.0 + envelope * 13.0);
 
-    // Small plateau base lift so even flat areas near boundaries rise
-    e += envelope * 0.06;
+    // Plateau base lift so even flat areas near boundaries rise
+    e += envelope * 0.12;
 
     // ── Hypsometric remap: gentle power curve ──
     // pow(1.3) nudges distribution lower without crushing detail
