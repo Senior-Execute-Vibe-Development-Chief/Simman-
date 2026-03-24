@@ -86,12 +86,18 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 // ═══════════════════════════════════════════════════════
 const crustSeed = rng() * 100;
 // Initial continental crust — larger blobs, plates will reshape them
+// Lower frequencies + higher amplitude → fewer, bigger landmasses
 const crust = new Float32Array(N);
 for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
   const nx = tx / cw, ny = ty / ch;
-  crust[ty * cw + tx] = fbm(nx * 1.8 + crustSeed, ny * 1.8 + crustSeed, 5, 2, 0.5) * 0.22
-    + fbm(nx * 4 + crustSeed + 40, ny * 4 + crustSeed + 40, 3, 2, 0.5) * 0.06
-    - 0.02;
+  // Primary continental signal: very low frequency for large contiguous masses
+  let c = fbm(nx * 1.2 + crustSeed, ny * 1.2 + crustSeed, 4, 2, 0.5) * 0.30
+    + fbm(nx * 2.5 + crustSeed + 40, ny * 2.5 + crustSeed + 40, 3, 2, 0.5) * 0.08
+    - 0.04; // slight ocean bias
+  // Sharpen continent/ocean boundary: push values away from zero
+  if (c > 0) c = c * 1.3;
+  else c = c * 0.9;
+  crust[ty * cw + tx] = c;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -159,8 +165,11 @@ for (let cycle = 0; cycle < CYCLES; cycle++) {
           // Incoming continental crust is consumed (folded into existing)
           // — the incoming plate loses this cell
         } else if (bothOceanic) {
-          // Oceanic convergence: one subducts, slight island arc
-          nextCrust[di] = Math.max(existingCrust, incomingCrust) + 0.008;
+          // Oceanic convergence: one subducts, very rare island arc
+          // Only uplift if both plates already near sea level — deep ocean stays deep
+          const shallower = Math.max(existingCrust, incomingCrust);
+          const uplift = shallower > -0.04 ? 0.003 : 0.001; // much less uplift, especially in deep ocean
+          nextCrust[di] = shallower + uplift;
           oceCollisions[p]++;
           // Subducted plate loses this cell
         } else {
@@ -180,7 +189,7 @@ for (let cycle = 0; cycle < CYCLES; cycle++) {
     // Fill unclaimed cells with new oceanic crust (rifting/divergence)
     for (let i = 0; i < N; i++) {
       if (nextOwner[i] === -1) {
-        nextCrust[i] = -0.06 + fbm((i % cw) / cw * 8 + step + cycle * 100, Math.floor(i / cw) / ch * 8 + step, 2, 2, 0.5) * 0.01;
+        nextCrust[i] = -0.08 + fbm((i % cw) / cw * 8 + step + cycle * 100, Math.floor(i / cw) / ch * 8 + step, 2, 2, 0.5) * 0.01;
         const tx = i % cw, ty = Math.floor(i / cw);
         let bestD = 1e9, bestP = 0;
         for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
@@ -295,6 +304,25 @@ for (let pass = 0; pass < 3; pass++) {
     smoothed[i] = sum / count;
   }
   for (let i = 0; i < N; i++) crust[i] = smoothed[i];
+}
+
+// ── Post-smooth: suppress isolated ocean speckles that barely break sea level ──
+// If a cell is barely positive and most neighbors are ocean, push it back under
+for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
+  const i = ty * cw + tx;
+  if (crust[i] <= 0 || crust[i] > 0.03) continue; // only target barely-positive cells
+  let oceanN = 0, totalN = 0;
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    if (!dx && !dy) continue;
+    const nx2 = (tx + dx + cw) % cw, ny2 = ty + dy;
+    if (ny2 < 0 || ny2 >= ch) continue;
+    totalN++;
+    if (crust[ny2 * cw + nx2] <= 0) oceanN++;
+  }
+  // If >70% of neighbors are ocean, this is an isolated speck — sink it
+  if (totalN > 0 && oceanN / totalN > 0.7) {
+    crust[i] = Math.min(crust[i], -0.01);
+  }
 }
 
 // Update pixPlate from final coarse plateMap

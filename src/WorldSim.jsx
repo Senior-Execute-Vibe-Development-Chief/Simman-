@@ -35,7 +35,7 @@ const RES=2;
 // Static climate: no ice ages or sea level changes
 const CLIMATE={tempMod:0,seaLevel:0,wet:0.7};
 
-function generateWorld(W,H,seed,preset,oceanLevel){
+function generateWorld(W,H,seed,preset,oceanLevel,enableRivers=true){
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
 let tecPlates=null;
@@ -247,7 +247,8 @@ if(elevation[py*W+px]>0){
 outer:for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const wx=((tx+dx)%ctw+ctw)%ctw,wy=ty+dy;if(wy<0||wy>=cth)continue;
 const npx=Math.min(W-1,wx*RES),npy=Math.min(H-1,wy*RES);
 if(elevation[npy*W+npx]<=0){coastal[ty*ctw+tx]=1;break outer;}}}}
-const rvr=generateRivers(elevation,moisture,W,H,mkRng(seed+777));
+const emptyBuf=new Uint8Array(W*H);
+const rvr=enableRivers?generateRivers(elevation,moisture,W,H,mkRng(seed+777)):{river:emptyBuf,lake:emptyBuf,floodplain:emptyBuf,delta:emptyBuf};
 // Oases: small fertile pockets in deserts
 const oasis=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
@@ -634,9 +635,11 @@ const[oceanLevel,setOceanLevel]=useState(0.78);
 const[depthFromSea,setDepthFromSea]=useState(false);
 const[showPlates,setShowPlates]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
+const[showRivers,setShowRivers]=useState(true);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const showPlatesRef=useRef(false);
 const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
+const showRiversRef=useRef(true);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
@@ -645,7 +648,7 @@ const W=1920,H=960,CW=Math.ceil(W/RES),CH=Math.ceil(H/RES);
 const generate=useCallback((s,ol)=>{
 let w;
 if(presetRef.current==="import"&&importedWorldRef.current){w=importedWorldRef.current;importedWorldRef.current=null;}
-else{w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current);}
+else{w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,showRiversRef.current);}
 setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
@@ -819,7 +822,8 @@ const img=await loadImageFile(file);
 w=rasterizeHeightmap(img.data,img.width,img.height,W,H);
 setImportStatus(`Heightmap loaded (${img.width}\u00d7${img.height})`);
 }else{setImportStatus("Unsupported file type");return;}
-const rvr=generateRivers(w.elevation,w.moisture,W,H,mkRng(seed+777));
+const emptyArr=new Uint8Array(W*H);
+const rvr=showRiversRef.current?generateRivers(w.elevation,w.moisture,W,H,mkRng(seed+777)):{river:emptyArr,lake:emptyArr,floodplain:emptyArr,delta:emptyArr};
 w.river=rvr.river;w.lake=rvr.lake;w.floodplain=rvr.floodplain;w.delta=rvr.delta;
 const oasis=new Uint8Array(W*H),swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
@@ -890,4 +894,8 @@ onChange={e=>{const v=Number(e.target.value)/100;setOceanLevel(v);oceanLevelRef.
 onMouseUp={()=>generate(seed)}
 onTouchEnd={()=>generate(seed)}
 style={{width:60,accentColor:"#6ab4e8"}} />
+<div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
+<button onClick={()=>{const nv=!showRiversRef.current;showRiversRef.current=nv;setShowRivers(nv);generate(seed);}}
+style={{...bs,background:showRivers?"rgba(40,120,200,0.25)":"transparent",border:"none",
+color:showRivers?"#6ab4e8":"#5a5448",padding:"3px 7px",fontSize:"10px"}}>Rivers</button>
 </div></div>);}
