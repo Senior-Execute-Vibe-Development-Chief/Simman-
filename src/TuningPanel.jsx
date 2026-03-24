@@ -2,31 +2,52 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { generateTectonicWorld } from "./tectonicGen.js";
 import { PARAMS, generateCandidates, savePreset } from "./paramDefs.js";
 
-// ── Simple terrain coloring for previews ──
-function renderPreview(canvas, world, pw, ph) {
+// ── Preview rendering with multiple view modes ──
+function renderPreview(canvas, world, pw, ph, viewMode) {
   const ctx = canvas.getContext("2d");
   const img = ctx.createImageData(pw, ph);
   const d = img.data;
-  for (let i = 0; i < pw * ph; i++) {
-    const e = world.elevation[i], m = world.moisture[i], t = world.temperature[i];
-    let r, g, b;
-    if (e <= 0) {
-      const depth = Math.min(1, Math.max(0, -e * 8));
-      r = 18 - depth * 12 | 0; g = 42 - depth * 28 | 0; b = 80 - depth * 40 | 0;
-    } else {
-      const h = Math.min(1, e * 1.2);
-      if (h > 0.6) { const a = (h - 0.6) / 0.4; r = 140 + a * 115 | 0; g = 130 + a * 125 | 0; b = 120 + a * 135 | 0; }
-      else if (h > 0.25) { const a = (h - 0.25) / 0.35; r = 80 + a * 60 | 0; g = 110 - a * 20 | 0; b = 50 - a * 10 | 0; }
-      else {
-        const wet = Math.min(1, Math.max(0, m));
-        r = 60 + (1 - wet) * 50 | 0; g = 100 + wet * 40 | 0; b = 35 + wet * 20 | 0;
-        if (t > 0.6 && m < 0.2) {
-          const desert = Math.min(1, (t - 0.6) * 3 * (0.2 - m) * 8);
-          r = r * (1 - desert) + 180 * desert | 0; g = g * (1 - desert) + 160 * desert | 0; b = b * (1 - desert) + 100 * desert | 0;
+  const N = pw * ph;
+  const mode = viewMode || "terrain";
+
+  if (mode === "depth" || mode === "depth_sea") {
+    // Depth/heightmap: black-to-white gradient
+    const fromSea = mode === "depth_sea";
+    let eMin = Infinity, eMax = -Infinity;
+    for (let i = 0; i < N; i++) {
+      const e = world.elevation[i];
+      if (e < eMin) eMin = e; if (e > eMax) eMax = e;
+    }
+    const floor = fromSea ? 0 : eMin;
+    const range = eMax - floor || 1;
+    for (let i = 0; i < N; i++) {
+      const e = world.elevation[i];
+      const v = Math.min(255, Math.max(0, ((e - floor) / range) * 255)) | 0;
+      d[i * 4] = v; d[i * 4 + 1] = v; d[i * 4 + 2] = v; d[i * 4 + 3] = 255;
+    }
+  } else {
+    // Terrain view
+    for (let i = 0; i < N; i++) {
+      const e = world.elevation[i], m = world.moisture[i], t = world.temperature[i];
+      let r, g, b;
+      if (e <= 0) {
+        const depth = Math.min(1, Math.max(0, -e * 8));
+        r = 18 - depth * 12 | 0; g = 42 - depth * 28 | 0; b = 80 - depth * 40 | 0;
+      } else {
+        const h = Math.min(1, e * 1.2);
+        if (h > 0.6) { const a = (h - 0.6) / 0.4; r = 140 + a * 115 | 0; g = 130 + a * 125 | 0; b = 120 + a * 135 | 0; }
+        else if (h > 0.25) { const a = (h - 0.25) / 0.35; r = 80 + a * 60 | 0; g = 110 - a * 20 | 0; b = 50 - a * 10 | 0; }
+        else {
+          const wet = Math.min(1, Math.max(0, m));
+          r = 60 + (1 - wet) * 50 | 0; g = 100 + wet * 40 | 0; b = 35 + wet * 20 | 0;
+          if (t > 0.6 && m < 0.2) {
+            const desert = Math.min(1, (t - 0.6) * 3 * (0.2 - m) * 8);
+            r = r * (1 - desert) + 180 * desert | 0; g = g * (1 - desert) + 160 * desert | 0; b = b * (1 - desert) + 100 * desert | 0;
+          }
         }
       }
+      d[i * 4] = r; d[i * 4 + 1] = g; d[i * 4 + 2] = b; d[i * 4 + 3] = 255;
     }
-    d[i * 4] = r; d[i * 4 + 1] = g; d[i * 4 + 2] = b; d[i * 4 + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
 }
@@ -87,26 +108,41 @@ export default function TuningPanel({ noiseFns, seed, params, onParamsChange, on
   const [generating, setGenerating] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [candCount, setCandCount] = useState(4);
-  const [rightTab, setRightTab] = useState("params");
+  const [viewMode, setViewMode] = useState("terrain");  // "terrain" | "depth" | "depth_sea"
   const canvasRefs = useRef([]);
+  const worldsRef = useRef([]);
 
   useEffect(() => { setBaseParams(params || {}); }, [params]);
+
+  const viewModeRef = useRef(viewMode);
+  useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
 
   const doGenerate = useCallback((bp, grp, sp, count) => {
     setGenerating(true);
     const cands = generateCandidates(bp, grp, sp, count || candCount, Date.now());
     setCandidates(cands);
+    worldsRef.current = [];
     let idx = 0;
     const genNext = () => {
       if (idx >= cands.length) { setGenerating(false); return; }
       const world = generateTectonicWorld(PW, PH, seed, noiseFns, cands[idx]);
+      worldsRef.current[idx] = world;
       const canvas = canvasRefs.current[idx];
-      if (canvas) renderPreview(canvas, world, PW, PH);
+      if (canvas) renderPreview(canvas, world, PW, PH, viewModeRef.current);
       idx++;
       requestAnimationFrame(genNext);
     };
     requestAnimationFrame(genNext);
   }, [seed, noiseFns, candCount]);
+
+  // Re-render existing worlds when view mode changes (no regeneration needed)
+  const rerender = useCallback((mode) => {
+    for (let i = 0; i < worldsRef.current.length; i++) {
+      const canvas = canvasRefs.current[i];
+      const world = worldsRef.current[i];
+      if (canvas && world) renderPreview(canvas, world, PW, PH, mode);
+    }
+  }, []);
 
   useEffect(() => { doGenerate(baseParams, group, spread, candCount); }, []); // eslint-disable-line
 
@@ -204,6 +240,14 @@ export default function TuningPanel({ noiseFns, seed, params, onParamsChange, on
         {/* Bottom actions */}
         <div style={{ display: "flex", gap: 8, padding: "8px 12px", alignItems: "center",
           borderTop: "1px solid rgba(201,184,122,0.08)", flexWrap: "wrap" }}>
+          {/* View mode switcher */}
+          {[["terrain", "Terrain"], ["depth", "Depth (Floor)"], ["depth_sea", "Depth (Sea)"]].map(([k, label]) => (
+            <button key={k} onClick={() => { setViewMode(k); rerender(k); }}
+              style={{ ...btn, background: viewMode === k ? "rgba(201,184,122,0.2)" : btn.background,
+                color: viewMode === k ? "#c9b87a" : "#8a8474",
+                border: viewMode === k ? "1px solid rgba(201,184,122,0.35)" : btn.border }}>{label}</button>
+          ))}
+          <div style={{ width: 1, height: 16, background: "rgba(201,184,122,0.15)" }} />
           <button onClick={() => doGenerate(baseParams, group, spread)} style={btn}
             disabled={generating}>Reshuffle</button>
           <button onClick={() => {
