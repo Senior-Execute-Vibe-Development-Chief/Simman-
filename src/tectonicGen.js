@@ -56,18 +56,18 @@ for (let i = 0; i < numPlates; i++) {
 
   // Decide if this plate carries continental crust
   const isMajor = i < numMajor;
-  const hasCont = isMajor ? rng() < 0.50 : rng() < 0.20;
+  const hasCont = isMajor ? rng() < 0.65 : rng() < 0.30;
 
   // Nucleus: offset from plate center in a random direction
   // The offset can be large — continent sits near a plate edge
   const nucAngle = rng() * Math.PI * 2;
-  const nucOffset = 0.03 + rng() * 0.12; // significant offset from plate center
+  const nucOffset = 0.02 + rng() * 0.10; // significant offset from plate center
   const nucX = cx + Math.cos(nucAngle) * nucOffset;
   const nucY = cy + Math.sin(nucAngle) * nucOffset;
 
   // Continental radius: how far the continent extends from the nucleus
-  // Larger plates get bigger continents
-  const contRadius = hasCont ? (isMajor ? 0.06 + rng() * 0.10 : 0.04 + rng() * 0.06) : 0;
+  // These need to be large enough to create substantial landmasses
+  const contRadius = hasCont ? (isMajor ? 0.12 + rng() * 0.14 : 0.07 + rng() * 0.09) : 0;
 
   plates.push({
     cx, cy,
@@ -79,13 +79,13 @@ for (let i = 0; i < numPlates; i++) {
     contRadius,
   });
 }
-// Guarantee at least 2 plates carry continental crust
+// Guarantee at least 3 plates carry continental crust (for ~30% land)
 let numWithCont = plates.filter(p => p.hasCont).length;
-while (numWithCont < 2) {
+while (numWithCont < 3) {
   const idx = Math.floor(rng() * numMajor);
   if (!plates[idx].hasCont) {
     plates[idx].hasCont = true;
-    plates[idx].contRadius = 0.06 + rng() * 0.08;
+    plates[idx].contRadius = 0.12 + rng() * 0.12;
     numWithCont++;
   }
 }
@@ -183,206 +183,134 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 // rate from relative plate velocity, then propagate effects inward.
 // Run multiple epochs (with re-plating) for Wilson cycle.
 // ═══════════════════════════════════════════════════════
-const EPOCHS = 2;
 const D8 = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
 
-// Working arrays for boundary effects
-const mtnEffect = new Float32Array(N); // mountain building (positive)
-const riftEffect = new Float32Array(N); // rift/trench (negative)
+// ── Find boundary cells and compute interaction type ──
+// Same plates that define the continents also define the boundaries.
+const boundaryConv = new Float32Array(N);
+const boundaryDiv = new Float32Array(N);
+const boundaryCont = new Uint8Array(N);
+const boundaryOceCont = new Uint8Array(N);
 
-let curPlateMap = plateMap;
-let curPlates = plates;
-let curNumPlates = numPlates;
+for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
+  const i = ty * cw + tx;
+  const myPlate = plateMap[i];
 
-for (let epoch = 0; epoch < EPOCHS; epoch++) {
-  // ── Find boundary cells and compute interaction type ──
-  const boundaryConv = new Float32Array(N); // convergent rate at boundary
-  const boundaryDiv = new Float32Array(N);  // divergent rate at boundary
-  const boundaryCont = new Uint8Array(N);   // is this a continental boundary?
-  const boundaryOceCont = new Uint8Array(N); // oceanic-continental subduction?
-  const isBoundary = new Uint8Array(N);
+  for (const [ddx, ddy] of D8) {
+    const nx2 = (tx + ddx + cw) % cw, ny2 = ty + ddy;
+    if (ny2 < 0 || ny2 >= ch) continue;
+    const ni = ny2 * cw + nx2;
+    const neighborPlate = plateMap[ni];
+    if (neighborPlate === myPlate) continue;
 
-  for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
-    const i = ty * cw + tx;
-    const myPlate = curPlateMap[i];
+    const pA = plates[myPlate], pB = plates[neighborPlate];
+    if (!pA || !pB) continue;
 
+    // Boundary normal: points from this cell toward neighbor
+    let bnx = ddx, bny = ddy;
+    const bl = Math.sqrt(bnx * bnx + bny * bny) || 1;
+    bnx /= bl; bny /= bl;
+
+    // Convergent rate = dot(relVel, boundaryNormal)
+    const convRate = ((pB.vx - pA.vx) * bnx + (pB.vy - pA.vy) * bny);
+
+    const myType = crustType[i];
+    const neighborType = crustType[ni];
+
+    if (convRate > 0.05) {
+      const strength = Math.min(1.5, convRate);
+      if (myType === 1 && neighborType === 1) {
+        boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.18);
+        boundaryCont[i] = 1;
+      } else if (myType === 1 && neighborType === 0) {
+        boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.07);
+        boundaryOceCont[i] = 1;
+      } else if (myType === 0 && neighborType === 1) {
+        boundaryDiv[i] = Math.max(boundaryDiv[i], strength * 0.04);
+      } else {
+        boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.02);
+      }
+    } else if (convRate < -0.05) {
+      const divStrength = Math.min(1.5, -convRate);
+      if (myType === 1) {
+        boundaryDiv[i] = Math.max(boundaryDiv[i], divStrength * 0.06);
+      } else {
+        boundaryConv[i] = Math.max(boundaryConv[i], divStrength * 0.015);
+      }
+    }
+  }
+}
+
+// ── Propagate boundary effects inward via BFS ──
+const mtnEffect = new Float32Array(N);
+const riftEffect = new Float32Array(N);
+
+// Mountain propagation (convergent effects)
+{
+  const dist = new Float32Array(N).fill(1e9);
+  const queue = [];
+  for (let i = 0; i < N; i++) {
+    if (boundaryConv[i] > 0) {
+      mtnEffect[i] = boundaryConv[i];
+      dist[i] = 0;
+      queue.push(i);
+    }
+  }
+  for (let qi = 0; qi < queue.length; qi++) {
+    const ci = queue[qi];
+    const cd = dist[ci];
+    if (cd > 14) continue;
+    const ty = Math.floor(ci / cw), tx = ci % cw;
     for (const [ddx, ddy] of D8) {
       const nx2 = (tx + ddx + cw) % cw, ny2 = ty + ddy;
       if (ny2 < 0 || ny2 >= ch) continue;
       const ni = ny2 * cw + nx2;
-      const neighborPlate = curPlateMap[ni];
-      if (neighborPlate === myPlate) continue;
-
-      isBoundary[i] = 1;
-
-      // Relative velocity: how fast plates move toward each other
-      const pA = curPlates[myPlate], pB = curPlates[neighborPlate];
-      if (!pA || !pB) continue;
-
-      // Boundary normal: points from this cell toward neighbor
-      let bnx = ddx, bny = ddy;
-      const bl = Math.sqrt(bnx * bnx + bny * bny) || 1;
-      bnx /= bl; bny /= bl;
-
-      // Relative velocity of B w.r.t. A
-      const relVx = pB.vx - pA.vx;
-      const relVy = pB.vy - pA.vy;
-
-      // Convergent rate = dot(relVel, boundaryNormal)
-      // Positive = plates moving toward each other (convergent)
-      // Negative = plates moving apart (divergent)
-      const convRate = (relVx * bnx + relVy * bny);
-
-      // Classify crust types at boundary
-      const myType = crustType[i];
-      const neighborType = crustType[ni];
-
-      if (convRate > 0.05) {
-        // ── Convergent boundary ──
-        let strength = Math.min(1.5, convRate);
-
-        if (myType === 1 && neighborType === 1) {
-          // Continental-continental: strong mountain building
-          boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.18);
-          boundaryCont[i] = 1;
-        } else if (myType === 1 && neighborType === 0) {
-          // Oceanic subducting under this continental cell: volcanic arc
-          boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.07);
-          boundaryOceCont[i] = 1;
-        } else if (myType === 0 && neighborType === 1) {
-          // This oceanic cell subducts: trench forms here
-          boundaryDiv[i] = Math.max(boundaryDiv[i], strength * 0.04);
-        } else {
-          // Oceanic-oceanic: very minor island arc
-          boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.02);
-        }
-      } else if (convRate < -0.05) {
-        // ── Divergent boundary ──
-        const divStrength = Math.min(1.5, -convRate);
-
-        if (myType === 1) {
-          // Continental rift
-          boundaryDiv[i] = Math.max(boundaryDiv[i], divStrength * 0.06);
-        } else {
-          // Mid-ocean ridge: slightly elevated ocean floor
-          boundaryConv[i] = Math.max(boundaryConv[i], divStrength * 0.015);
-        }
-      }
-      // Transform (|convRate| < 0.05): minimal effect, intentionally ignored
-    }
-  }
-
-  // ── Propagate boundary effects inward via BFS ──
-  // Mountains spread ~8-12 cells from boundary, rifts ~3-5 cells
-  const epochMtn = new Float32Array(N);
-  const epochRift = new Float32Array(N);
-
-  // Mountain propagation (convergent effects)
-  {
-    const dist = new Float32Array(N).fill(1e9);
-    const queue = [];
-    for (let i = 0; i < N; i++) {
-      if (boundaryConv[i] > 0) {
-        epochMtn[i] = boundaryConv[i];
-        dist[i] = 0;
-        queue.push(i);
-      }
-    }
-    // BFS flood with decay
-    const mtnSpread = boundaryCont[0] ? 10 : 7; // continental collisions spread wider
-    for (let qi = 0; qi < queue.length; qi++) {
-      const ci = queue[qi];
-      const cd = dist[ci];
-      if (cd > 14) continue;
-      const ty = Math.floor(ci / cw), tx = ci % cw;
-      for (const [ddx, ddy] of D8) {
-        const nx2 = (tx + ddx + cw) % cw, ny2 = ty + ddy;
-        if (ny2 < 0 || ny2 >= ch) continue;
-        const ni = ny2 * cw + nx2;
-        const nd = cd + (Math.abs(ddx) + Math.abs(ddy) > 1 ? 1.41 : 1);
-        if (nd < dist[ni]) {
-          dist[ni] = nd;
-          // Gaussian-ish falloff: strongest at boundary, fading inward
-          const spread = boundaryCont[ci] ? 10 : (boundaryOceCont[ci] ? 6 : 4);
-          const falloff = Math.exp(-nd * nd / (2 * spread * spread));
-          const effect = boundaryConv[ci] * falloff;
-          if (effect > epochMtn[ni]) {
-            epochMtn[ni] = effect;
-            queue.push(ni);
-          }
+      const nd = cd + (Math.abs(ddx) + Math.abs(ddy) > 1 ? 1.41 : 1);
+      if (nd < dist[ni]) {
+        dist[ni] = nd;
+        const spread = boundaryCont[ci] ? 10 : (boundaryOceCont[ci] ? 6 : 4);
+        const falloff = Math.exp(-nd * nd / (2 * spread * spread));
+        const effect = boundaryConv[ci] * falloff;
+        if (effect > mtnEffect[ni]) {
+          mtnEffect[ni] = effect;
+          queue.push(ni);
         }
       }
     }
   }
+}
 
-  // Rift propagation (divergent effects) — narrower spread
-  {
-    const dist = new Float32Array(N).fill(1e9);
-    const queue = [];
-    for (let i = 0; i < N; i++) {
-      if (boundaryDiv[i] > 0) {
-        epochRift[i] = boundaryDiv[i];
-        dist[i] = 0;
-        queue.push(i);
-      }
-    }
-    for (let qi = 0; qi < queue.length; qi++) {
-      const ci = queue[qi];
-      const cd = dist[ci];
-      if (cd > 6) continue;
-      const ty = Math.floor(ci / cw), tx = ci % cw;
-      for (const [ddx, ddy] of D8) {
-        const nx2 = (tx + ddx + cw) % cw, ny2 = ty + ddy;
-        if (ny2 < 0 || ny2 >= ch) continue;
-        const ni = ny2 * cw + nx2;
-        const nd = cd + (Math.abs(ddx) + Math.abs(ddy) > 1 ? 1.41 : 1);
-        if (nd < dist[ni]) {
-          dist[ni] = nd;
-          const falloff = Math.exp(-nd * nd / 8);
-          const effect = boundaryDiv[ci] * falloff;
-          if (effect > epochRift[ni]) {
-            epochRift[ni] = effect;
-            queue.push(ni);
-          }
-        }
-      }
-    }
-  }
-
-  // Accumulate epoch effects
+// Rift propagation (divergent effects)
+{
+  const dist = new Float32Array(N).fill(1e9);
+  const queue = [];
   for (let i = 0; i < N; i++) {
-    mtnEffect[i] += epochMtn[i];
-    riftEffect[i] += epochRift[i];
+    if (boundaryDiv[i] > 0) {
+      riftEffect[i] = boundaryDiv[i];
+      dist[i] = 0;
+      queue.push(i);
+    }
   }
-
-  // ── Wilson Cycle: re-assign plates for next epoch ──
-  if (epoch < EPOCHS - 1) {
-    const newNum = 6 + Math.floor(rng() * 6); // 6-11 plates
-    const newPlates = [];
-    for (let i = 0; i < newNum; i++) {
-      const cx = rng(), cy = 0.05 + rng() * 0.9;
-      const angle = rng() * Math.PI * 2;
-      const speed = 0.3 + rng() * 0.8;
-      newPlates.push({ cx, cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, id: i, hasCont: false, nucX: cx, nucY: cy, contRadius: 0 });
-    }
-    // Re-assign coarse grid with warping
-    const ws2 = rng() * 100;
-    for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
-      const nx = tx / cw, ny = ty / ch;
-      const wx = nx + fbm(nx * 3 + ws2, ny * 3 + ws2, 3, 2, 0.5) * 0.10;
-      const wy = ny + fbm(nx * 3 + ws2 + 50, ny * 3 + ws2 + 50, 3, 2, 0.5) * 0.10;
-      let bestD = 1e9, bestP = 0;
-      for (let p = 0; p < newNum; p++) {
-        let dx = wx - newPlates[p].cx;
-        if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
-        const dy = wy - newPlates[p].cy;
-        const d = dx * dx + dy * dy;
-        if (d < bestD) { bestD = d; bestP = p; }
+  for (let qi = 0; qi < queue.length; qi++) {
+    const ci = queue[qi];
+    const cd = dist[ci];
+    if (cd > 6) continue;
+    const ty = Math.floor(ci / cw), tx = ci % cw;
+    for (const [ddx, ddy] of D8) {
+      const nx2 = (tx + ddx + cw) % cw, ny2 = ty + ddy;
+      if (ny2 < 0 || ny2 >= ch) continue;
+      const ni = ny2 * cw + nx2;
+      const nd = cd + (Math.abs(ddx) + Math.abs(ddy) > 1 ? 1.41 : 1);
+      if (nd < dist[ni]) {
+        dist[ni] = nd;
+        const falloff = Math.exp(-nd * nd / 8);
+        const effect = boundaryDiv[ci] * falloff;
+        if (effect > riftEffect[ni]) {
+          riftEffect[ni] = effect;
+          queue.push(ni);
+        }
       }
-      curPlateMap[ty * cw + tx] = bestP;
     }
-    curPlates = newPlates;
-    curNumPlates = newNum;
   }
 }
 
