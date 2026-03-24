@@ -131,14 +131,18 @@ for (let cycle = 0; cycle < CYCLES; cycle++) {
     const oceCollisions = new Float32Array(256);
     overlapCount.clear();
 
-    // Move each cell
+    // Move each cell — add per-cell noise to displacement so collision
+    // fronts aren't perfectly grid-aligned
     for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
       const si = ty * cw + tx;
       const p = plateMap[si];
       if (!plateAlive[p]) continue;
 
-      const ntx = Math.round(tx + plateVX[p] * 1.5);
-      const nty = Math.round(ty + plateVY[p] * 1.5);
+      // Per-cell jitter: hash position to get repeatable noise ±0.5 cells
+      const h1 = ((tx * 73 + ty * 137 + step * 31 + p * 17) & 0xFFFF) / 65536 - 0.5;
+      const h2 = ((tx * 137 + ty * 73 + step * 53 + p * 29) & 0xFFFF) / 65536 - 0.5;
+      const ntx = Math.round(tx + plateVX[p] * 1.5 + h1 * 0.8);
+      const nty = Math.round(ty + plateVY[p] * 1.5 + h2 * 0.8);
       const dtx = ((ntx % cw) + cw) % cw;
       const dty = Math.max(0, Math.min(ch - 1, nty));
       const di = dty * cw + dtx;
@@ -289,17 +293,20 @@ for (let cycle = 0; cycle < CYCLES; cycle++) {
   }
 }
 
-// Smoothing passes to soften grid artifacts
-for (let pass = 0; pass < 3; pass++) {
+// Smoothing passes to dissolve grid-aligned collision artifacts
+// 5 passes with radius-2 kernel for thorough smoothing
+for (let pass = 0; pass < 5; pass++) {
   const smoothed = new Float32Array(N);
+  const R = pass < 2 ? 2 : 1; // wider kernel first, then tighter to preserve detail
   for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
     const i = ty * cw + tx;
-    let sum = crust[i] * 2, count = 2;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    let sum = crust[i] * 3, count = 3; // center weight 3x
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
       if (!dx && !dy) continue;
       const nx2 = (tx + dx + cw) % cw, ny2 = ty + dy;
       if (ny2 < 0 || ny2 >= ch) continue;
-      sum += crust[ny2 * cw + nx2]; count++;
+      const w = 1 / (1 + Math.abs(dx) + Math.abs(dy)); // distance-weighted
+      sum += crust[ny2 * cw + nx2] * w; count += w;
     }
     smoothed[i] = sum / count;
   }
@@ -377,9 +384,15 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const lat = Math.abs(ny - 0.5) * 2;
 
   // Domain-warped sample coordinates — breaks up grid alignment
-  const warpStr = 1.5; // warp in coarse grid cells
-  const swx = x / CG + fbm(nx * 3 + s1 + 200, ny * 3 + s1 + 200, 3, 2, 0.5) * warpStr;
-  const swy = y / CG + fbm(nx * 3 + s1 + 250, ny * 3 + s1 + 250, 3, 2, 0.5) * warpStr;
+  // Multi-scale warping: large-scale bends + medium distortion + fine wrinkles
+  const swx = x / CG
+    + fbm(nx * 1.5 + s1 + 200, ny * 1.5 + s1 + 200, 4, 2, 0.5) * 3.0  // large-scale continent bending
+    + fbm(nx * 4 + s1 + 300, ny * 4 + s1 + 300, 3, 2, 0.5) * 1.2       // medium coastline distortion
+    + fbm(nx * 10 + s1 + 400, ny * 10 + s1 + 400, 2, 2, 0.5) * 0.4;    // fine wrinkles
+  const swy = y / CG
+    + fbm(nx * 1.5 + s1 + 250, ny * 1.5 + s1 + 250, 4, 2, 0.5) * 3.0
+    + fbm(nx * 4 + s1 + 350, ny * 4 + s1 + 350, 3, 2, 0.5) * 1.2
+    + fbm(nx * 10 + s1 + 450, ny * 10 + s1 + 450, 2, 2, 0.5) * 0.4;
 
   // Bicubic interpolation of coarse crust grid
   let e = sampleCrust(swx, swy);

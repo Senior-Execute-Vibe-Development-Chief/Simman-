@@ -741,15 +741,22 @@ if(ow>=0&&ter.tElev[ti]>sl){const alpha=ter.frontier[ti]?0.55:0.32,invA=1-alpha;
 d[pi4]=(tc[ti3]*invA+tcR[ow]*alpha+.5)|0;d[pi4+1]=(tc[ti3+1]*invA+tcG[ow]*alpha+.5)|0;d[pi4+2]=(tc[ti3+2]*invA+tcB[ow]*alpha+.5)|0;
 }else{d[pi4]=tc[ti3];d[pi4+1]=tc[ti3+1];d[pi4+2]=tc[ti3+2];}
 d[pi4+3]=255;}}
-// Plate boundary overlay (works on any view mode)
+// Plate boundary overlay — domain-warped lookup for organic boundaries
 if(showPlatesRef.current&&w.pixPlate){
+const plateAt=(px,py)=>{
+const nx=px/W,ny=py/H;
+// Same multi-scale warp as tectonicGen elevation sampling
+const wx=px+fbm(nx*1.5+200,ny*1.5+200,4,2,0.5)*12+fbm(nx*4+300,ny*4+300,3,2,0.5)*4.8+fbm(nx*10+400,ny*10+400,2,2,0.5)*1.6;
+const wy=py+fbm(nx*1.5+250,ny*1.5+250,4,2,0.5)*12+fbm(nx*4+350,ny*4+350,3,2,0.5)*4.8+fbm(nx*10+450,ny*10+450,2,2,0.5)*1.6;
+const sx2=Math.max(0,Math.min(W-1,Math.round(wx))),sy2=Math.max(0,Math.min(H-1,Math.round(wy)));
+return w.pixPlate[sy2*W+sx2];};
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
-const myP=w.pixPlate[si];let boundary=false;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
+const myP=plateAt(sx,sy);let boundary=false;
 for(let dy=-RES;dy<=RES&&!boundary;dy+=RES)for(let dx=-RES;dx<=RES&&!boundary;dx+=RES){
 if(!dx&&!dy)continue;
 const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
-if(w.pixPlate[ny2*W+nx2]!==myP)boundary=true;}
+if(plateAt(nx2,ny2)!==myP)boundary=true;}
 if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
 ctx.putImageData(img,0,0);
 // Draw all tribe centers (tile coords — canvas is CW×CH)
