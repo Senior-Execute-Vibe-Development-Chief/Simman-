@@ -344,28 +344,18 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
     const neighborType = crustType[ni];
 
     if (convRate > 0.05) {
+      // Uplift only on THIS cell's side (overriding plate). Never the neighbor.
       const strength = Math.min(1.5, convRate);
       if (myType === 1 && neighborType === 1) {
-        // Continent-continent: uplift on BOTH sides (Himalayas straddle boundary)
         boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.18);
-        boundaryConv[ni] = Math.max(boundaryConv[ni], strength * 0.14);
         boundaryCont[i] = 1;
-        boundaryCont[ni] = 1;
       } else if (myType === 1 && neighborType === 0) {
-        // Continent meets ocean: uplift on continent side, some on ocean side too
         boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.07);
-        boundaryConv[ni] = Math.max(boundaryConv[ni], strength * 0.03);
         boundaryOceCont[i] = 1;
       } else if (myType === 0 && neighborType === 1) {
-        // Ocean meets continent: uplift on BOTH sides (subduction creates
-        // volcanic arc on overriding plate + forearc uplift)
-        boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.03);
-        boundaryConv[ni] = Math.max(boundaryConv[ni], strength * 0.07);
-        boundaryOceCont[ni] = 1;
+        boundaryDiv[i] = Math.max(boundaryDiv[i], strength * 0.04);
       } else {
-        // Ocean-ocean: uplift on both sides (island arc straddles boundary)
         boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.02);
-        boundaryConv[ni] = Math.max(boundaryConv[ni], strength * 0.02);
       }
     } else if (convRate < -0.05) {
       const divStrength = Math.min(1.5, -convRate);
@@ -383,13 +373,16 @@ const mtnEffect = new Float32Array(N);
 const riftEffect = new Float32Array(N);
 
 // Mountain propagation (convergent effects)
+// BFS stays within the same plate — uplift doesn't bleed across boundaries
 {
   const dist = new Float32Array(N).fill(1e9);
+  const seedPlate = new Uint8Array(N); // which plate seeded this cell
   const queue = [];
   for (let i = 0; i < N; i++) {
     if (boundaryConv[i] > 0) {
       mtnEffect[i] = boundaryConv[i];
       dist[i] = 0;
+      seedPlate[i] = plateMap[i];
       queue.push(i);
     }
   }
@@ -398,13 +391,17 @@ const riftEffect = new Float32Array(N);
     const cd = dist[ci];
     if (cd > 14) continue;
     const ty = Math.floor(ci / cw), tx = ci % cw;
+    const srcPlate = seedPlate[ci];
     for (const [ddx, ddy] of D8) {
       const nx2 = (tx + ddx + cw) % cw, ny2 = ty + ddy;
       if (ny2 < 0 || ny2 >= ch) continue;
       const ni = ny2 * cw + nx2;
+      // Block propagation across plate boundaries
+      if (plateMap[ni] !== srcPlate) continue;
       const nd = cd + (Math.abs(ddx) + Math.abs(ddy) > 1 ? 1.41 : 1);
       if (nd < dist[ni]) {
         dist[ni] = nd;
+        seedPlate[ni] = srcPlate;
         const spread = boundaryCont[ci] ? 10 : (boundaryOceCont[ci] ? 6 : 4);
         const falloff = Math.exp(-nd * nd / (2 * spread * spread));
         const effect = boundaryConv[ci] * falloff;
@@ -417,14 +414,16 @@ const riftEffect = new Float32Array(N);
   }
 }
 
-// Rift propagation (divergent effects)
+// Rift propagation (divergent effects) — also plate-constrained
 {
   const dist = new Float32Array(N).fill(1e9);
+  const seedPlate = new Uint8Array(N);
   const queue = [];
   for (let i = 0; i < N; i++) {
     if (boundaryDiv[i] > 0) {
       riftEffect[i] = boundaryDiv[i];
       dist[i] = 0;
+      seedPlate[i] = plateMap[i];
       queue.push(i);
     }
   }
@@ -433,13 +432,16 @@ const riftEffect = new Float32Array(N);
     const cd = dist[ci];
     if (cd > 6) continue;
     const ty = Math.floor(ci / cw), tx = ci % cw;
+    const srcPlate = seedPlate[ci];
     for (const [ddx, ddy] of D8) {
       const nx2 = (tx + ddx + cw) % cw, ny2 = ty + ddy;
       if (ny2 < 0 || ny2 >= ch) continue;
       const ni = ny2 * cw + nx2;
+      if (plateMap[ni] !== srcPlate) continue;
       const nd = cd + (Math.abs(ddx) + Math.abs(ddy) > 1 ? 1.41 : 1);
       if (nd < dist[ni]) {
         dist[ni] = nd;
+        seedPlate[ni] = srcPlate;
         const falloff = Math.exp(-nd * nd / 8);
         const effect = boundaryDiv[ci] * falloff;
         if (effect > riftEffect[ni]) {
