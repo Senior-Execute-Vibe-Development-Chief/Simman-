@@ -259,7 +259,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   }
 
   // Peninsula/bay noise features — only on continental plates
-  const onContPlate = plates[pxPlate] && plates[pxPlate].hasCont ? 1.0 : 0.12;
+  const onContPlate = plates[pxPlateId] && plates[pxPlateId].hasCont ? 1.0 : 0.12;
   const penNoise = fbm(wnx * 4 + s3 + 90, wny * 4 + s3 + 90, 3, 2, 0.5);
   if (penNoise > 0.4) e += (penNoise - 0.4) * 0.2 * onContPlate;
   const bayNoise = fbm(wnx * 3.5 + s4 + 120, wny * 3.5 + s4 + 120, 3, 2, 0.5);
