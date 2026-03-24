@@ -670,6 +670,7 @@ const[depthFromSea,setDepthFromSea]=useState(false);
 const[showPlates,setShowPlates]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
 const[showRivers,setShowRivers]=useState(true);
+const[hoverInfo,setHoverInfo]=useState(null);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const showPlatesRef=useRef(false);
 const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
@@ -882,9 +883,25 @@ const bs={background:"rgba(201,184,122,0.08)",border:"1px solid rgba(201,184,122
 padding:"4px 10px",borderRadius:2,cursor:"pointer",fontSize:10,letterSpacing:1,fontFamily:"inherit"};
 const bsA=(active,color)=>({...bs,background:active?`rgba(${color},0.2)`:bs.background,
 border:`1px solid ${active?`rgba(${color},0.35)`:bs.border}`,color:active?`rgb(${color})`:"#8a8474"});
+const onCanvasMove=useCallback((ev)=>{
+const c=canvasRef.current;if(!c||!worldRef.current)return;
+const r=c.getBoundingClientRect();
+const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
+const wx=Math.floor(sx)*RES,wy=Math.floor(sy)*RES;
+const w=worldRef.current,i=wy*1920+wx;
+if(wx<0||wx>=1920||wy<0||wy>=960){setHoverInfo(null);return;}
+const elev=w.elevation[i]||0;
+const val=elev<=0?0:Math.round(elev*1000);
+setHoverInfo({x:ev.clientX,y:ev.clientY,val});
+},[CW,CH]);
+const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 return(
 <div style={{width:"100vw",height:"100vh",background:"#060810",overflow:"hidden",position:"relative"}}>
-<canvas ref={canvasRef} width={CW} height={CH} style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,margin:"auto",position:"absolute",inset:0}} />
+<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
+style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,margin:"auto",position:"absolute",inset:0}} />
+{hoverInfo&&<div style={{position:"fixed",left:hoverInfo.x+12,top:hoverInfo.y-8,
+background:"rgba(6,8,16,0.85)",color:"#c9b87a",fontSize:10,padding:"1px 5px",
+borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap"}}>{hoverInfo.val}</div>}
 {/* Biome legend — left side, terrain view only */}
 {viewMode==="terrain"&&<div style={{position:"absolute",top:6,left:6,background:"rgba(6,8,16,0.82)",
 borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
