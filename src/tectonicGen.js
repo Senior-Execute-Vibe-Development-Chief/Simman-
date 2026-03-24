@@ -217,8 +217,13 @@ const warp = (x, y, freq, oct, str, o1, o2) => [
   y + fbm(x * freq + o2, y * freq + o2, oct, 2, 0.5) * str
 ];
 
-// Generate raw elevation from stamps
-for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+// Generate raw elevation from stamps at half resolution (4x fewer noise calls)
+const ES = 2;
+const ewW = Math.ceil(W / ES), ewH = Math.ceil(H / ES);
+const rawElevCoarse = new Float32Array(ewW * ewH);
+
+for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
+  const x = ex * ES, y = ey * ES;
   const nx = x / W, ny = y / H;
   let e = 0;
 
@@ -233,9 +238,6 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const cnB = noise2D(wnx * 5 + s1 + 30, wny * 5 + s1 + 30) * 0.04;
   const coastRidge = noise2D(wnx * 14 + s2 + 50, wny * 14 + s2 + 50);
 
-  // Positive stamps — cross-plate bleed based on plate size ratio
-  // Large plates can spill onto SMALL plates (India pushing into smaller plate)
-  // but large-to-large spilling is nearly zero. Small plates never spill.
   const pxPlateId = pixPlate[y * W + x];
   const pxPlateW = plates[pxPlateId] ? plates[pxPlateId].weight : 0;
   for (const c of posStamps) {
@@ -251,9 +253,6 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       let plateFactor = 1.0;
       if (pxPlateId !== c.plateId) {
         const stampW = plates[c.plateId] ? plates[c.plateId].weight : 0;
-        // Ratio: how much bigger is the stamp's plate vs the pixel's plate?
-        // Large→small (ratio>3): allow some bleed (up to 0.18)
-        // Large→large (ratio~1): nearly zero bleed (0.02)
         const ratio = pxPlateW > 0.001 ? stampW / pxPlateW : 5;
         plateFactor = ratio > 2.5 ? Math.min(0.18, (ratio - 2.5) * 0.06) : 0.02;
       }
@@ -261,7 +260,6 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     }
   }
 
-  // Negative stamps (bays/gulfs) — same ratio-based bleed
   for (const c of negStamps) {
     let dx = wnx - c.cx; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
     const dy0 = wny - c.cy;
@@ -281,22 +279,28 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     }
   }
 
-  // Peninsula/bay noise features — only on continental plates
   const onContPlate = plates[pxPlateId] && plates[pxPlateId].hasCont ? 1.0 : 0.12;
   const penNoise = fbm(wnx * 4 + s3 + 90, wny * 4 + s3 + 90, 3, 2, 0.5);
   if (penNoise > 0.4) e += (penNoise - 0.4) * 0.2 * onContPlate;
   const bayNoise = fbm(wnx * 3.5 + s4 + 120, wny * 3.5 + s4 + 120, 3, 2, 0.5);
   if (bayNoise > 0.45) e -= (bayNoise - 0.45) * 0.18 * onContPlate;
 
-  // Worley F2-F1 near existing land
   const [wf1, wf2] = worley(wnx * 5 + s5, wny * 5 + s5);
   if (e > -0.1) e += (wf2 - wf1) * 0.04 - 0.02;
 
-  // Domain-warped base terrain + fine detail
   e += fbm(wnx * 7 + 3.7, wny * 7 + 3.7, 4, 2, 0.5) * 0.10;
   e += fbm(nx * 20 + s3, ny * 20 + s3, 2, 2, 0.4) * 0.025;
 
-  rawElev[y * W + x] = e;
+  rawElevCoarse[ey * ewW + ex] = e;
+}
+
+// Bilinear upsample to full resolution
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  const fx = x / ES, fy = y / ES;
+  const ix = Math.min(ewW - 2, fx | 0), iy = Math.min(ewH - 2, fy | 0);
+  const dx = fx - ix, dy = fy - iy;
+  rawElev[y * W + x] = (rawElevCoarse[iy * ewW + ix] * (1 - dx) + rawElevCoarse[iy * ewW + ix + 1] * dx) * (1 - dy)
+    + (rawElevCoarse[(iy + 1) * ewW + ix] * (1 - dx) + rawElevCoarse[(iy + 1) * ewW + ix + 1] * dx) * dy;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -643,106 +647,104 @@ for (let qi = 0; qi < cdQ.length; qi++) {
 // ═══════════════════════════════════════════════════════
 const smoothstep = (x) => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
 
+// Pre-compute low-frequency noise fields on coarse grid
+// Eliminates ~28 per-pixel fbm calls (replaced with cheap bilinear lookups)
+const NG = 4;
+const ngW = Math.ceil(W / NG) + 1, ngH = Math.ceil(H / NG) + 1;
+const precompute = (fn) => {
+  const d = new Float32Array(ngW * ngH);
+  for (let gy = 0; gy < ngH; gy++) for (let gx = 0; gx < ngW; gx++)
+    d[gy * ngW + gx] = fn(gx * NG / W, gy * NG / H);
+  return d;
+};
+const sg = (d, px, py) => {
+  const fx = px / NG, fy = py / NG;
+  const ix = Math.min(ngW - 2, fx | 0), iy = Math.min(ngH - 2, fy | 0);
+  const dx = fx - ix, dy = fy - iy;
+  return (d[iy * ngW + ix] * (1 - dx) + d[iy * ngW + ix + 1] * dx) * (1 - dy)
+    + (d[(iy + 1) * ngW + ix] * (1 - dx) + d[(iy + 1) * ngW + ix + 1] * dx) * dy;
+};
+const nfTecWX = precompute((nx, ny) => fbm(nx * 3 + 200, ny * 3 + 200, 3, 2, 0.5));
+const nfTecWY = precompute((nx, ny) => fbm(nx * 3 + 250, ny * 3 + 250, 3, 2, 0.5));
+const nfPlateau = precompute((nx, ny) => fbm(nx * 3 + s1 + 50, ny * 3 + s1 + 50, 2, 2, 0.5));
+const nfMtnBump = precompute((nx, ny) => fbm(nx * 8 + s2 + 30, ny * 8 + s2 + 30, 4, 2, 0.55));
+const nfCoastEN = precompute((nx, ny) => fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5));
+const nfContinent = precompute((nx, ny) => fbm(nx * 2.2 + s1 + 30, ny * 2.2 + s1 + 30, 3, 2, 0.55));
+const nfBroadSwell = precompute((nx, ny) => fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6));
+const nfTemp = precompute((nx, ny) => fbm(nx * 3 + 80, ny * 3 + 80, 3, 2, 0.5));
+const nfMoistOce = precompute((nx, ny) => fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.5));
+const nfMoistLand = precompute((nx, ny) => fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55));
+
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
   const nx = x / W, ny = y / H;
   const lat = Math.abs(ny - 0.5) * 2;
 
-  // Stamp elevation relative to sea level (continental thickness signal)
   const stampE = (rawElev[i] - sl) * 0.3;
 
-  // Tectonic modifier — warp the lookup so mountain belts curve naturally
   const tcx = x / CG, tcy = y / CG;
-  const twx = tcx + fbm(nx * 3 + 200, ny * 3 + 200, 3, 2, 0.5) * 3.0;
-  const twy = tcy + fbm(nx * 3 + 250, ny * 3 + 250, 3, 2, 0.5) * 3.0;
+  const twx = tcx + sg(nfTecWX, x, y) * 3.0;
+  const twy = tcy + sg(nfTecWY, x, y) * 3.0;
   const tecMod = sampleCrust(twx, twy);
   let e = stampE + tecMod;
 
-  // Ocean clamp: suppress weak tectonic bleed (halo) but allow strong
-  // convergent uplift to create coastal land (subduction zones, volcanic arcs)
   if (!isLandArr[i]) {
     if (tecMod < 0.03) e = Math.min(e, -0.001);
-    else e = Math.min(e, tecMod * 0.4 - 0.01); // graduated: only very strong tec can make land
+    else e = Math.min(e, tecMod * 0.4 - 0.01);
   }
 
   if (e > 0) {
-    const cd = cdist[Math.min(dh - 1, Math.floor(y / DG)) * dw + Math.min(dw - 1, Math.floor(x / DG))];
+    const cd = cdist[Math.min(dh - 1, (y / DG) | 0) * dw + Math.min(dw - 1, (x / DG) | 0)];
     const interior = Math.min(1, cd / 15);
 
-    // ── Sample mountain fields ──
-    const sharpVal = sampleCoarse(mtnEffect, twx, twy);  // BFS: ridge texture gate
-    const broadVal = sampleCoarse(mtnBroad, twx, twy);    // blurred: smooth plateau/foothills
+    const sharpVal = sampleCoarse(mtnEffect, twx, twy);
+    const broadVal = sampleCoarse(mtnBroad, twx, twy);
 
-    // ── Tectonic elevation: plateau + ridgeline peaks ──
-    // Plateau base: from BLURRED field (smooth, no grid artifacts)
-    // Where two convergent boundaries face the same plate, broadVal
-    // naturally doubles — that creates the highest plateaus (Tibet).
-    const plateauNoise = 0.7 + 0.6 * fbm(nx * 3 + s1 + 50, ny * 3 + s1 + 50, 2, 2, 0.5);
+    const plateauNoise = 0.7 + 0.6 * sg(nfPlateau, x, y);
     const plateau = broadVal * 1.5 * plateauNoise;
-
-    // Ridgeline peaks: concentrated at boundary from smoothed crust
     const peaks = Math.max(0, tecMod) * 2.0;
-
-    // Bumpy mountain noise — irregular peaks/valleys within elevated areas
-    const mtnBump = fbm(nx * 8 + s2 + 30, ny * 8 + s2 + 30, 4, 2, 0.55)
+    const mtnBump = sg(nfMtnBump, x, y)
       * 0.10 * Math.min(1, (plateau + peaks) * 3);
-
     const tecLift = plateau + peaks + mtnBump;
 
-    // Coast blend — suppress where tectonic lift is strong
     const rawCoastBlend = smoothstep(1 - cd / 6);
     const tecStr = Math.min(1, tecLift * 2);
     const coastBlend = rawCoastBlend * (1 - tecStr * 0.85);
 
-    // ── Regime A: Coastal lowlands (~0-100m) ──
     const coastE = 0.003 + (1 - coastBlend) * 0.008
-      + fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5) * 0.004;
+      + sg(nfCoastEN, x, y) * 0.004;
 
-    // ── Regime B: Continental interior (low base — tectonics creates height) ──
     const baseE = 0.006 + interior * 0.012;
-
-    // Highland/lowland regions within continents (noise-driven)
-    // e.g. Great Basin, Colorado Plateau — large, moderately elevated, non-tectonic
-    const continentNoise = fbm(nx * 2.2 + s1 + 30, ny * 2.2 + s1 + 30, 3, 2, 0.55);
+    const continentNoise = sg(nfContinent, x, y);
     const highlandMask = smoothstep(continentNoise * 2 + 0.2);
     const regionalE = highlandMask * 0.12 * interior;
 
-    // Rolling terrain texture
-    const broadSwell = fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6) * 0.012;
+    const broadSwell = sg(nfBroadSwell, x, y) * 0.012;
     const [rhx, rhy] = warp(nx, ny, 3, 2, 0.04, s2 + 10, s2 + 60);
     const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.010;
     const plateauBoost = Math.max(0, stampE) * 0.15 * interior;
 
     const cratonE = baseE + regionalE + broadSwell + rolling + plateauBoost;
-
-    // ── Combine: base + tectonic lift ──
     e = cratonE + tecLift;
-
-    // Amplify terrain texture in tectonic zones (so mountains aren't flat)
     e += (broadSwell + rolling) * tecLift * 5.0;
-
-    // Coast blend
     e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
 
-    // ── Hypsometric remap: very gentle ──
     e = Math.max(0, e);
     e = Math.pow(e, 1.08) * 1.1;
     e = Math.max(0.002, Math.min(1.0, e));
   }
 
-  // Fine texture
+  // Fine texture (high freq — must stay per-pixel)
   e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.004;
 
-  // Polar reduction
   if (lat > 0.88) e -= (lat - 0.88) * 2;
 
   elevation[i] = e;
   temperature[i] = Math.max(0, Math.min(1,
-    1 - lat * 1.05 - Math.max(0, e) * 0.4 + fbm(nx * 3 + 80, ny * 3 + 80, 3, 2, 0.5) * 0.08));
+    1 - lat * 1.05 - Math.max(0, e) * 0.4 + sg(nfTemp, x, y) * 0.08));
 
-  // ── Moisture (inline for cache locality) ──
   if (e <= 0) {
-    moisture[i] = 0.5 + fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.5) * 0.1;
+    moisture[i] = 0.5 + sg(nfMoistOce, x, y) * 0.1;
   } else {
     const cdm = cdist[Math.min(dh - 1, (y / DG) | 0) * dw + Math.min(dw - 1, (x / DG) | 0)];
     const coastProx = Math.max(0, 1 - cdm / 8);
@@ -754,7 +756,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const cont = Math.min(0.28, cdm * contRate);
     const polarDry = Math.max(0, (lat - 0.75)) * 0.25;
     let m = 0.42 + tropWet * 0.42 - subtropDry + tempWet - cont - polarDry
-      + fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55) * 0.12;
+      + sg(nfMoistLand, x, y) * 0.12;
     if (e > 0.15) m -= Math.min(0.2, (e - 0.15) * 1);
     if (e < 0.02) m += 0.10;
     moisture[i] = Math.max(0.02, Math.min(1, m));
