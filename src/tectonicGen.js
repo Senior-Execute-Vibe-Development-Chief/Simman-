@@ -639,9 +639,6 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const sharpVal = sampleCoarse(mtnEffect, cgx, cgy);  // sharp: ridge texture mask
     const broadVal = sampleCoarse(mtnBroad, cgx, cgy);    // broad: plateau/foothill uplift
 
-    // ── Regime blending via smoothstep ──
-    const tecSignal = Math.max(tecMod, sharpVal * 0.8);
-    const tecBlend = smoothstep((sharpVal * 6.0 - 0.02) / 0.15);
     const coastBlend = smoothstep(1 - cd / 6);
 
     // ── Regime A: Coastal lowlands (very low, near sea level) ──
@@ -655,53 +652,45 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const plateauBoost = Math.max(0, stampE) * 0.15 * interior;
     const cratonE = 0.006 + interior * 0.012 + broadSwell + rolling + plateauBoost;
 
-    // ── Regime C: Orogen — Worley F2-F1 ridge spines + ridged texture ──
-    // Domain warp for Worley (large-scale bending of ridge network)
-    const warpFreq = 3.5, warpStr = 0.35;
-    const wox = fbm(nx * warpFreq + 77, ny * warpFreq + 77, 4, 2.0, 0.5) * warpStr;
-    const woy = fbm(nx * warpFreq + 133, ny * warpFreq + 133, 4, 2.0, 0.5) * warpStr;
+    // ── Tectonic amplitude envelope ──
+    // The broad field IS the mountain range shape — wide, expansive uplift
+    // zones that create plateaus and raised terrain. The sharp field adds
+    // peak intensity near the actual boundary.
+    // broadVal is already smooth from Gaussian blur — it's the large-scale
+    // mountain/plateau envelope. sharpVal adds crispness near boundaries.
+    const envelope = Math.min(1.0, broadVal * 4.0 + sharpVal * 2.0);
 
-    // Primary Worley ridge network (freq 22 = mountain-scale spacing)
-    const SF = 22;
-    const [f1a, f2a] = worley((nx + wox) * SF + s5, (ny + woy) * SF + s5 + 40);
-    const rawSpine1 = 1.0 - Math.min(1, (f2a - f1a) * 2.5);
-    const spine1 = rawSpine1 * rawSpine1;
+    // ── Mountain terrain: envelope amplifies noise ──
+    // Low-frequency ridged noise (freq 3-5) for broad mountain ridges
+    // Domain-warped for natural curving ranges
+    const [wmx, wmy] = warp(nx, ny, 2, 3, 0.12, s4, s4 + 40);
+    const mtnRidge = ridged(wmx * 4 + s5, wmy * 4 + s5, 5, 2.2, 2.0, 1.0);
 
-    // Secondary ridge network (finer branches at 2× freq)
-    const [f1b, f2b] = worley((nx + wox * 0.7) * SF * 2.1 + s5 + 200, (ny + woy * 0.7) * SF * 2.1 + s5 + 240);
-    const rawSpine2 = 1.0 - Math.min(1, (f2b - f1b) * 3.0);
-    const spine2 = rawSpine2 * rawSpine2;
+    // Medium-frequency detail (freq 8) for individual peaks within ranges
+    const mtnDetail = ridged(wmx * 8 + s5 + 50, wmy * 8 + s5 + 50, 4, 2.1, 1.8, 1.0);
 
-    // Combined spine: primary ridges + subordinate branches
-    const spine = spine1 * 0.65 + spine2 * 0.35;
+    // Combined mountain noise, weighted toward broad ridges
+    const mtnNoise = mtnRidge * 0.7 + mtnDetail * 0.3;
 
-    // Ridged fbm texture (high freq, only visible ON the spine)
-    const [rwx, rwy] = warp(nx, ny, 4, 3, 0.06, s4 + 10, s4 + 60);
-    const ridgeTex = ridged(rwx * 16 + s5 + 100, rwy * 16 + s5 + 100, 6, 2.15, 1.8, 1.0);
+    // Mountains = envelope × noise. Envelope controls WHERE and HOW BIG.
+    // Strong convergent zone → envelope ≈ 1.0 → full mountain height
+    // Weak/distant zone → envelope ≈ 0.1 → gentle foothills
+    const peakE = mtnNoise * envelope * 0.45;
 
-    // Mountain surface: spine provides structure, ridged provides texture
-    const mtnSurface = spine * (0.55 + ridgeTex * 0.45);
-    const mtnStrength = Math.min(1.0, sharpVal * 6.0);
-    const peakE = mtnSurface * mtnStrength * 0.55;
+    // Plateau uplift: the envelope itself raises terrain broadly
+    // This is what creates Tibet/Altiplano — not noise, just smooth uplift
+    const plateauE = envelope * 0.15;
 
-    // Wide plateau uplift from Gaussian-blurred field
-    const plateauE = broadVal * 0.08 * interior;
-
-    // ── Foothill zone: in the mtnSharp transition band ──
-    const foothillZone = smoothstep(sharpVal * 12.0) * (1 - smoothstep(sharpVal * 4.0 - 0.5));
-    const [fhx, fhy] = warp(nx, ny, 3, 2, 0.06, s3 + 50, s3 + 80);
-    const foothillNoise = Math.pow(Math.max(0, fbm(fhx * 5 + s4, fhy * 5 + s4, 4, 2, 0.5)), 1.5);
-
-    // ── Blend regimes smoothly ──
-    e = cratonE * (1 - tecBlend) + (cratonE + peakE) * tecBlend;
+    // ── Blend: craton base + plateau lift + mountain peaks ──
+    e = cratonE;
     e = e * (1 - coastBlend) + coastE * coastBlend;
     e += plateauE;
-    e += foothillNoise * foothillZone * 0.08;
+    e += peakE;
 
-    // ── Valley carving: inverted ridged noise for dendritic valleys ──
-    if (tecBlend < 0.3) {
-      const valleyNoise = 1 - ridged(nx * 5 + s1 + 80, ny * 5 + s1 + 80, 4, 2.1, 1.8, 1.0);
-      e -= valleyNoise * valleyNoise * 0.015 * (1 - tecBlend) * interior;
+    // ── Valley carving in non-mountain areas ──
+    if (envelope < 0.2) {
+      const valleyNoise = 1 - ridged(nx * 3 + s1 + 80, ny * 3 + s1 + 80, 4, 2.1, 1.8, 1.0);
+      e -= valleyNoise * valleyNoise * 0.02 * (1 - envelope * 5) * interior;
     }
 
     // ── Hypsometric remap: gentle power curve ──
