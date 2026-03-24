@@ -350,7 +350,7 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
         boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.18);
         boundaryCont[i] = 1;
       } else if (myType === 1 && neighborType === 0) {
-        boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.07);
+        boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.13);
         boundaryOceCont[i] = 1;
       } else if (myType === 0 && neighborType === 1) {
         boundaryDiv[i] = Math.max(boundaryDiv[i], strength * 0.04);
@@ -409,8 +409,20 @@ const riftEffect = new Float32Array(N);
         dist[ni] = nd;
         seedPlate[ni] = srcPlate;
         seedType[ni] = st;
-        const spread = st === 2 ? 14 : (st === 1 ? 8 : 5);
-        const falloff = Math.exp(-nd * nd / (2 * spread * spread));
+        // Plateau-with-ramp falloff: flat top then Gaussian decay
+        // cont-cont: flat for 20 cells (~440km) like Tibet, then ramp over 18
+        // oce-cont: flat for 6 cells (~130km) like Altiplano, then ramp over 10
+        // oce-oce: pure Gaussian, sigma=5
+        let falloff;
+        if (st === 2) {
+          const d = Math.max(0, nd - 20);
+          falloff = Math.exp(-d * d / (2 * 18 * 18));
+        } else if (st === 1) {
+          const d = Math.max(0, nd - 6);
+          falloff = Math.exp(-d * d / (2 * 10 * 10));
+        } else {
+          falloff = Math.exp(-nd * nd / (2 * 5 * 5));
+        }
         const effect = boundaryConv[ci] * falloff;
         if (effect > mtnEffect[ni]) {
           mtnEffect[ni] = effect;
@@ -654,7 +666,19 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const sharpVal = sampleCoarse(mtnEffect, twx, twy);  // sharp: ridge texture mask
     const broadVal = sampleCoarse(mtnBroad, twx, twy);    // broad: plateau/foothill uplift
 
-    const coastBlend = smoothstep(1 - cd / 6);
+    // ── Tectonic envelope (compute first — coastBlend needs it) ──
+    // Blend broadVal (wide plateau swell) with tecMod (actual convergence magnitude).
+    // tecMod carries the real tectonic strength — without it, all boundaries
+    // produce the same elevation regardless of convergence rate.
+    const tecEnv = Math.max(0, tecMod) * 2.5;
+    const blurEnv = broadVal * 3.0;
+    const envelope = Math.max(tecEnv, blurEnv);
+
+    // Coast blend — suppress it where tectonic envelope is strong
+    // so Andes-type coastal mountains can reach the shore
+    const rawCoastBlend = smoothstep(1 - cd / 6);
+    const tecStr = Math.min(1, envelope * 3);
+    const coastBlend = rawCoastBlend * (1 - tecStr * 0.85);
 
     // ── Regime A: Coastal lowlands (very low, near sea level) ──
     const coastE = 0.002 + (1 - coastBlend) * 0.005
@@ -667,24 +691,13 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const plateauBoost = Math.max(0, stampE) * 0.15 * interior;
     const cratonE = 0.006 + interior * 0.012 + broadSwell + rolling + plateauBoost;
 
-    // ── Tectonic amplification ──
-    // Blend broadVal (wide plateau swell) with tecMod (actual convergence magnitude).
-    // tecMod carries the real tectonic strength — without it, all boundaries
-    // produce the same elevation regardless of convergence rate.
-    const tecEnv = Math.max(0, tecMod) * 2.5;
-    const blurEnv = broadVal * 3.0;
-    const envelope = Math.max(tecEnv, blurEnv);
-
-    // Amplify craton terrain FIRST (before coast blend).
-    // This way the gradient from interior terrain carries through
-    // to the coast, creating natural mountain-to-shore slopes.
+    // Amplify craton terrain by envelope
     e = cratonE * (1.0 + envelope * 10.0);
 
-    // Plateau base lift: smooth raised terrain near boundaries
+    // Plateau base lift: smooth raised terrain near convergent zones
     e += envelope * 0.10;
 
-    // THEN blend coast — mountains near coast stay elevated
-    // because e is already large before the blend pulls it down
+    // Coast blend — mountains near coast stay elevated when tectonic is strong
     e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
 
     // ── Hypsometric remap: gentle power curve ──
