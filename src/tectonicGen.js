@@ -115,7 +115,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     let dx = wnx - plates[p].cx;
     if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
     const dy = wny - plates[p].cy;
-    const d = dx * dx + dy * dy - plates[p].weight; // power diagram
+    // Stretch X distance slightly → plates become narrower and taller
+    const d = dx * dx * 1.3 + dy * dy * 0.8 - plates[p].weight;
     if (d < bestD) { bestD = d; bestP = p; }
   }
   pixPlate[y * W + x] = bestP;
@@ -213,10 +214,11 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const cnB = noise2D(wnx * 5 + s1 + 30, wny * 5 + s1 + 30) * 0.04;
   const coastRidge = noise2D(wnx * 14 + s2 + 50, wny * 14 + s2 + 50);
 
-  // Positive stamps — size-dependent cross-plate bleed
-  // Large continents (India-like, contRadius > 0.20) can push across plate
-  // boundaries with moderate strength. Small landmasses get near-zero bleed.
-  const pxPlate = pixPlate[y * W + x];
+  // Positive stamps — cross-plate bleed based on plate size ratio
+  // Large plates can spill onto SMALL plates (India pushing into smaller plate)
+  // but large-to-large spilling is nearly zero. Small plates never spill.
+  const pxPlateId = pixPlate[y * W + x];
+  const pxPlateW = plates[pxPlateId] ? plates[pxPlateId].weight : 0;
   for (const c of posStamps) {
     let dx = wnx - c.cx + cnA; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
     let dy = wny - c.cy + cnB;
@@ -225,15 +227,20 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     if (dd > 0.7 && dd < 1.3) { const rn = 1 - Math.abs(noise2D(wnx * 8 + c.no + 70, wny * 8 + c.no + 70)); dd += rn * rn * 0.12; }
     if (dd < 1) {
       const f2 = 1 - dd;
-      // Size-dependent bleed: large continents (r>0.20) bleed up to 0.35,
-      // small ones (r<0.10) bleed only 0.03 — physically unlikely to cross
-      const bleed = Math.min(0.35, Math.max(0.03, (c.contRadius - 0.08) * 1.8));
-      const plateFactor = pxPlate === c.plateId ? 1.0 : bleed;
+      let plateFactor = 1.0;
+      if (pxPlateId !== c.plateId) {
+        const stampW = plates[c.plateId] ? plates[c.plateId].weight : 0;
+        // Ratio: how much bigger is the stamp's plate vs the pixel's plate?
+        // Large→small (ratio>3): allow some bleed (up to 0.18)
+        // Large→large (ratio~1): nearly zero bleed (0.02)
+        const ratio = pxPlateW > 0.001 ? stampW / pxPlateW : 5;
+        plateFactor = ratio > 2.5 ? Math.min(0.18, (ratio - 2.5) * 0.06) : 0.02;
+      }
       e += f2 * f2 * c.str * plateFactor;
     }
   }
 
-  // Negative stamps (bays/gulfs) — same size-dependent bleed
+  // Negative stamps (bays/gulfs) — same ratio-based bleed
   for (const c of negStamps) {
     let dx = wnx - c.cx + cnA; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
     let dy = wny - c.cy + cnB;
@@ -241,8 +248,12 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     dd += Math.abs(coastRidge + noise2D(wnx * 5 + c.no, wny * 5 + c.no) * 0.5) * 0.18;
     if (dd < 1) {
       const f2 = 1 - dd;
-      const bleed = Math.min(0.35, Math.max(0.03, (c.contRadius - 0.08) * 1.8));
-      const plateFactor = pxPlate === c.plateId ? 1.0 : bleed;
+      let plateFactor = 1.0;
+      if (pxPlateId !== c.plateId) {
+        const stampW = plates[c.plateId] ? plates[c.plateId].weight : 0;
+        const ratio = pxPlateW > 0.001 ? stampW / pxPlateW : 5;
+        plateFactor = ratio > 2.5 ? Math.min(0.18, (ratio - 2.5) * 0.06) : 0.02;
+      }
       e -= f2 * f2 * c.str * plateFactor;
     }
   }
@@ -335,15 +346,26 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
     if (convRate > 0.05) {
       const strength = Math.min(1.5, convRate);
       if (myType === 1 && neighborType === 1) {
+        // Continent-continent: uplift on BOTH sides (Himalayas straddle boundary)
         boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.18);
+        boundaryConv[ni] = Math.max(boundaryConv[ni], strength * 0.14);
         boundaryCont[i] = 1;
+        boundaryCont[ni] = 1;
       } else if (myType === 1 && neighborType === 0) {
+        // Continent meets ocean: uplift on continent side, some on ocean side too
         boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.07);
+        boundaryConv[ni] = Math.max(boundaryConv[ni], strength * 0.03);
         boundaryOceCont[i] = 1;
       } else if (myType === 0 && neighborType === 1) {
-        boundaryDiv[i] = Math.max(boundaryDiv[i], strength * 0.04);
+        // Ocean meets continent: uplift on BOTH sides (subduction creates
+        // volcanic arc on overriding plate + forearc uplift)
+        boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.03);
+        boundaryConv[ni] = Math.max(boundaryConv[ni], strength * 0.07);
+        boundaryOceCont[ni] = 1;
       } else {
+        // Ocean-ocean: uplift on both sides (island arc straddles boundary)
         boundaryConv[i] = Math.max(boundaryConv[i], strength * 0.02);
+        boundaryConv[ni] = Math.max(boundaryConv[ni], strength * 0.02);
       }
     } else if (convRate < -0.05) {
       const divStrength = Math.min(1.5, -convRate);
