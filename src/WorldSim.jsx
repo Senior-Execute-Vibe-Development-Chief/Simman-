@@ -106,7 +106,7 @@ moisture[i]=Math.max(.02,Math.min(1,m));
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 }else if(preset==="tectonic"){
 // ── Tectonic plate mode: separate module ──
-const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D});
+const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D,worley});
 for(let i=0;i<W*H;i++){elevation[i]=tec.elevation[i];moisture[i]=tec.moisture[i];temperature[i]=tec.temperature[i];}
 tecPlates=tec.pixPlate;
 }else{
