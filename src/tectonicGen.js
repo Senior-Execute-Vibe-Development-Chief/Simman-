@@ -571,47 +571,55 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const cd = cdist[Math.min(dh - 1, Math.floor(y / DG)) * dw + Math.min(dw - 1, Math.floor(x / DG))];
     const interior = Math.min(1, cd / 15);
 
+    // ── Plate-edge uplift: land near plate boundaries gets raised ──
+    // Where continents are blocked from bleeding across, the edge crumples up.
+    // Uses the mtnEffect from BFS (already computed) sampled at this pixel.
+    const cti = Math.min(ch - 1, Math.floor(y / CG)) * cw + Math.min(cw - 1, Math.floor(x / CG));
+    const edgeUplift = mtnEffect[cti];
+
     // ── Regime blending via smoothstep (no hard cutoffs) ──
-    // tecBlend: 0 = plains/craton, 1 = full orogen (mountain belt)
-    const tecBlend = smoothstep((tecMod - 0.01) / 0.12);
+    // tecBlend driven by BOTH tectonic modifier AND edge uplift
+    const tecSignal = Math.max(tecMod, edgeUplift * 0.8);
+    const tecBlend = smoothstep((tecSignal - 0.005) / 0.10);
     // coastBlend: 1 = coast, 0 = inland
     const coastBlend = smoothstep(1 - cd / 6);
 
-    // ── Regime A: Coastal lowlands ──
-    const coastE = 0.003 + (1 - coastBlend) * 0.012
-      + fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5) * 0.006;
+    // ── Regime A: Coastal lowlands (very low, near sea level) ──
+    const coastE = 0.002 + (1 - coastBlend) * 0.008
+      + fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5) * 0.004;
 
-    // ── Regime B: Craton/shield interior (rolling plains) ──
-    // Broad continental undulation + rolling hills (symmetric — no max(0,...) clipping)
-    const broadSwell = fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6) * 0.03;
+    // ── Regime B: Craton/shield interior (low rolling plains) ──
+    const broadSwell = fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6) * 0.02;
     const [rhx, rhy] = warp(nx, ny, 3, 2, 0.04, s2 + 10, s2 + 60);
-    const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.02;
-    // Stamp-derived plateau boost: thick crust (overlapping stamps) = higher plateaus
-    const plateauBoost = Math.max(0, stampE) * 0.3 * interior;
-    const cratonE = 0.025 + interior * 0.03 + broadSwell + rolling + plateauBoost;
+    const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.015;
+    // Stamp-derived plateau boost: thick crust = higher plateaus
+    const plateauBoost = Math.max(0, stampE) * 0.2 * interior;
+    const cratonE = 0.012 + interior * 0.02 + broadSwell + rolling + plateauBoost;
 
-    // ── Regime C: Orogen / mountain belt (tectonic-driven) ──
+    // ── Regime C: Orogen / mountain belt ──
+    // Mountains avg ~5km (e≈0.45), peaks ~11km (e≈1.0)
     const [wmx, wmy] = warp(nx, ny, 2, 3, 0.1, s4, s4 + 40);
     const ridgeNoise = ridged(wmx * 4 + s5, wmy * 4 + s5, 5, 2.2, 2.0, 1.0);
-    const orogenE = cratonE + ridgeNoise * 0.45 + tecMod * 1.5;
+    const upliftStr = Math.max(tecMod, edgeUplift * 0.8);
+    const orogenE = cratonE + ridgeNoise * 0.50 + upliftStr * 2.0;
 
-    // ── Foothill zone: peaks in tecMod transition band (0.01-0.08) ──
-    const foothillZone = Math.max(0, 1 - Math.abs(tecMod - 0.04) / 0.04);
+    // ── Foothill zone: peaks in transition band ──
+    const foothillZone = Math.max(0, 1 - Math.abs(tecSignal - 0.04) / 0.04);
     const [fhx, fhy] = warp(nx, ny, 3, 2, 0.06, s3 + 50, s3 + 80);
     const foothillNoise = Math.pow(Math.max(0, fbm(fhx * 5 + s4, fhy * 5 + s4, 4, 2, 0.5)), 1.5);
 
     // ── Blend regimes smoothly ──
-    e = cratonE * (1 - tecBlend) + orogenE * tecBlend;  // craton ↔ mountain
-    e = e * (1 - coastBlend) + coastE * coastBlend;     // blend coastal
-    e += foothillNoise * foothillZone * 0.12;            // foothill transition
+    e = cratonE * (1 - tecBlend) + orogenE * tecBlend;
+    e = e * (1 - coastBlend) + coastE * coastBlend;
+    e += foothillNoise * foothillZone * 0.12;
 
     // ── Valley carving: inverted ridged noise for dendritic valleys ──
     const valleyNoise = 1 - ridged(nx * 3 + s1 + 80, ny * 3 + s1 + 80, 4, 2.1, 1.8, 1.0);
     e -= valleyNoise * valleyNoise * 0.03 * interior;
 
-    // ── Hypsometric remap: skewed sigmoid preserves low-elevation detail ──
-    // Compresses lows gently, preserves mountain peaks
-    const skew = 0.10;
+    // ── Hypsometric remap: skewed sigmoid ──
+    // Keeps most land low (avg ~0.04 ≈ 0.84km), mountains reach 0.5+ (5km+)
+    const skew = 0.08;
     e = Math.max(0, e);
     e = e / (e + skew) * (1 + skew);
     e = Math.max(0.003, e);
