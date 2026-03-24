@@ -652,46 +652,25 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const plateauBoost = Math.max(0, stampE) * 0.15 * interior;
     const cratonE = 0.006 + interior * 0.012 + broadSwell + rolling + plateauBoost;
 
-    // ── Tectonic amplitude envelope ──
-    // The broad field IS the mountain range shape — wide, expansive uplift
-    // zones that create plateaus and raised terrain. The sharp field adds
-    // peak intensity near the actual boundary.
-    // broadVal is already smooth from Gaussian blur — it's the large-scale
-    // mountain/plateau envelope. sharpVal adds crispness near boundaries.
+    // ── Tectonic amplification ──
+    // Just amplify the existing terrain near plate boundaries.
+    // The broad field gives a smooth gradient: strong at convergent
+    // boundaries, fading over hundreds of km. The existing craton
+    // terrain (broadSwell + rolling + plateauBoost) already looks
+    // natural — we just make it BIGGER near tectonic zones.
     const envelope = Math.min(1.0, broadVal * 4.0 + sharpVal * 2.0);
 
-    // ── Mountain terrain: envelope amplifies noise ──
-    // Low-frequency ridged noise (freq 3-5) for broad mountain ridges
-    // Domain-warped for natural curving ranges
-    const [wmx, wmy] = warp(nx, ny, 2, 3, 0.12, s4, s4 + 40);
-    const mtnRidge = ridged(wmx * 4 + s5, wmy * 4 + s5, 5, 2.2, 2.0, 1.0);
-
-    // Medium-frequency detail (freq 8) for individual peaks within ranges
-    const mtnDetail = ridged(wmx * 8 + s5 + 50, wmy * 8 + s5 + 50, 4, 2.1, 1.8, 1.0);
-
-    // Combined mountain noise, weighted toward broad ridges
-    const mtnNoise = mtnRidge * 0.7 + mtnDetail * 0.3;
-
-    // Mountains = envelope × noise. Envelope controls WHERE and HOW BIG.
-    // Strong convergent zone → envelope ≈ 1.0 → full mountain height
-    // Weak/distant zone → envelope ≈ 0.1 → gentle foothills
-    const peakE = mtnNoise * envelope * 0.45;
-
-    // Plateau uplift: the envelope itself raises terrain broadly
-    // This is what creates Tibet/Altiplano — not noise, just smooth uplift
-    const plateauE = envelope * 0.15;
-
-    // ── Blend: craton base + plateau lift + mountain peaks ──
+    // Build base terrain, blend coast
     e = cratonE;
     e = e * (1 - coastBlend) + coastE * coastBlend;
-    e += plateauE;
-    e += peakE;
 
-    // ── Valley carving in non-mountain areas ──
-    if (envelope < 0.2) {
-      const valleyNoise = 1 - ridged(nx * 3 + s1 + 80, ny * 3 + s1 + 80, 4, 2.1, 1.8, 1.0);
-      e -= valleyNoise * valleyNoise * 0.02 * (1 - envelope * 5) * interior;
-    }
+    // Amplify: multiply existing terrain height by (1 + envelope * boost)
+    // At envelope=0 (plate interior): terrain unchanged
+    // At envelope=1 (strong convergence): terrain height × 8
+    e *= (1.0 + envelope * 7.0);
+
+    // Small plateau base lift so even flat areas near boundaries rise
+    e += envelope * 0.06;
 
     // ── Hypsometric remap: gentle power curve ──
     // pow(1.3) nudges distribution lower without crushing detail
