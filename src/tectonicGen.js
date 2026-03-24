@@ -461,60 +461,8 @@ const riftEffect = new Float32Array(N);
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 5b: Plate-edge proximity field for ALL land near plate boundaries
-// Gives coastal mountains (like Andes) even without strong convergence.
-// Any continental cell adjacent to a different plate gets a base signal.
-// ═══════════════════════════════════════════════════════
-const plateEdge = new Float32Array(N);
-{
-  const dist = new Float32Array(N).fill(1e9);
-  const queue = [];
-  for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
-    const i = ty * cw + tx;
-    if (crustType[i] !== 1) continue; // only land cells
-    for (const [ddx, ddy] of D8) {
-      const nx2 = (tx + ddx + cw) % cw, ny2 = ty + ddy;
-      if (ny2 < 0 || ny2 >= ch) continue;
-      const ni = ny2 * cw + nx2;
-      if (plateMap[ni] !== plateMap[i]) {
-        // This land cell is right at a plate boundary
-        plateEdge[i] = 0.12;
-        dist[i] = 0;
-        queue.push(i);
-        break;
-      }
-    }
-  }
-  // BFS inward — stays within same plate, fades over ~20 cells
-  for (let qi = 0; qi < queue.length; qi++) {
-    const ci = queue[qi];
-    const cd = dist[ci];
-    if (cd > 20) continue;
-    const ty = Math.floor(ci / cw), tx = ci % cw;
-    for (const [ddx, ddy] of D8) {
-      const nx2 = (tx + ddx + cw) % cw, ny2 = ty + ddy;
-      if (ny2 < 0 || ny2 >= ch) continue;
-      const ni = ny2 * cw + nx2;
-      if (crustType[ni] !== 1) continue;
-      if (plateMap[ni] !== plateMap[ci]) continue;
-      const nd = cd + (Math.abs(ddx) + Math.abs(ddy) > 1 ? 1.41 : 1);
-      if (nd < dist[ni]) {
-        dist[ni] = nd;
-        const falloff = Math.exp(-nd * nd / (2 * 8 * 8));
-        const effect = 0.12 * falloff;
-        if (effect > plateEdge[ni]) {
-          plateEdge[ni] = effect;
-          queue.push(ni);
-        }
-      }
-    }
-  }
-}
-
-// Merge plate-edge proximity into mtnEffect so it feeds into the blur
 // Zero out ocean cells so the blur doesn't create land halos
 for (let i = 0; i < N; i++) {
-  mtnEffect[i] = Math.max(mtnEffect[i], plateEdge[i]);
   if (crustType[i] !== 1) mtnEffect[i] = 0;
 }
 
@@ -691,17 +639,20 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const tecMod = sampleCrust(twx, twy);
   let e = stampE + tecMod;
 
-  // Force ocean pixels to stay ocean — tecMod can push e>0 near mountains
-  if (!isLandArr[i]) e = Math.min(e, -0.001);
+  // Ocean clamp: suppress weak tectonic bleed (halo) but allow strong
+  // convergent uplift to create coastal land (subduction zones, volcanic arcs)
+  if (!isLandArr[i]) {
+    if (tecMod < 0.03) e = Math.min(e, -0.001);
+    else e = Math.min(e, tecMod * 0.4 - 0.01); // graduated: only very strong tec can make land
+  }
 
   if (e > 0) {
     const cd = cdist[Math.min(dh - 1, Math.floor(y / DG)) * dw + Math.min(dw - 1, Math.floor(x / DG))];
     const interior = Math.min(1, cd / 15);
 
-    // ── Sample both mountain fields (bicubic from coarse grid) ──
-    const cgx = x / CG, cgy = y / CG;
-    const sharpVal = sampleCoarse(mtnEffect, cgx, cgy);  // sharp: ridge texture mask
-    const broadVal = sampleCoarse(mtnBroad, cgx, cgy);    // broad: plateau/foothill uplift
+    // ── Sample both mountain fields at WARPED coordinates (matching tecMod) ──
+    const sharpVal = sampleCoarse(mtnEffect, twx, twy);  // sharp: ridge texture mask
+    const broadVal = sampleCoarse(mtnBroad, twx, twy);    // broad: plateau/foothill uplift
 
     const coastBlend = smoothstep(1 - cd / 6);
 
@@ -717,18 +668,20 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const cratonE = 0.006 + interior * 0.012 + broadSwell + rolling + plateauBoost;
 
     // ── Tectonic amplification ──
-    // Envelope from blurred field ONLY — smooth gradient, no jagged edges.
-    // broadVal is a Gaussian blur of mtnEffect so it's already smooth.
-    // sharpVal is NOT used here — it creates jagged coarse-grid artifacts.
-    const envelope = broadVal * 3.5;
+    // Blend broadVal (wide plateau swell) with tecMod (actual convergence magnitude).
+    // tecMod carries the real tectonic strength — without it, all boundaries
+    // produce the same elevation regardless of convergence rate.
+    const tecEnv = Math.max(0, tecMod) * 2.5;
+    const blurEnv = broadVal * 3.0;
+    const envelope = Math.max(tecEnv, blurEnv);
 
     // Amplify craton terrain FIRST (before coast blend).
     // This way the gradient from interior terrain carries through
     // to the coast, creating natural mountain-to-shore slopes.
-    e = cratonE * (1.0 + envelope * 13.0);
+    e = cratonE * (1.0 + envelope * 10.0);
 
     // Plateau base lift: smooth raised terrain near boundaries
-    e += envelope * 0.12;
+    e += envelope * 0.10;
 
     // THEN blend coast — mountains near coast stay elevated
     // because e is already large before the blend pulls it down
