@@ -691,7 +691,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const tecMod = sampleCrust(twx, twy);
   let e = stampE + tecMod;
 
-  if (e > 0 && isLandArr[i]) {
+  // Force ocean pixels to stay ocean — tecMod can push e>0 near mountains
+  if (!isLandArr[i]) e = Math.min(e, -0.001);
+
+  if (e > 0) {
     const cd = cdist[Math.min(dh - 1, Math.floor(y / DG)) * dw + Math.min(dw - 1, Math.floor(x / DG))];
     const interior = Math.min(1, cd / 15);
 
