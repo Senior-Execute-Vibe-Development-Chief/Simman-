@@ -1,10 +1,32 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { EARTH_ELEV, EARTH_MOIST, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
+import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
+import { generateTectonicWorld } from "./tectonicGen.js";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
 function initNoise(seed){const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)PERM[i]=p[i&255];}
 function noise2D(x,y){const X=Math.floor(x)&255,Y=Math.floor(y)&255,xf=x-Math.floor(x),yf=y-Math.floor(y),u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);const aa=PERM[PERM[X]+Y],ab=PERM[PERM[X]+Y+1],ba=PERM[PERM[X+1]+Y],bb=PERM[PERM[X+1]+Y+1];const d=(g,x2,y2)=>GRAD[g%8][0]*x2+GRAD[g%8][1]*y2;const l1=d(aa,xf,yf)+u*(d(ba,xf-1,yf)-d(aa,xf,yf)),l2=d(ab,xf,yf-1)+u*(d(bb,xf-1,yf-1)-d(ab,xf,yf-1));return l1+v*(l2-l1);}
 function fbm(x,y,o,l,g){let v=0,a=1,f=1,m=0;for(let i=0;i<o;i++){v+=noise2D(x*f,y*f)*a;m+=a;a*=g;f*=l;}return v/m;}
+// Domain warping: distort coordinates using noise for organic shapes (Inigo Quilez technique)
+function warp(x,y,freq,oct,str,off1,off2){
+const wx=x+fbm(x*freq+off1,y*freq+off1,oct,2,.5)*str;
+const wy=y+fbm(x*freq+off2,y*freq+off2,oct,2,.5)*str;
+return[wx,wy];}
+// Ridged multifractal noise: sharp ridges at zero-crossings, feedback-weighted
+function ridged(x,y,oct,lac,gain,off){
+let v=0,a=1,f=1,w=1,m=0;
+for(let i=0;i<oct;i++){let s=off-Math.abs(noise2D(x*f,y*f));s*=s;s*=w;w=Math.min(1,Math.max(0,s*gain));
+v+=s*a;m+=a;a*=.5;f*=lac;}return v/m;}
+// Worley (cellular) noise: returns [F1, F2] distances to nearest two seed points
+function worley(x,y){
+const ix=Math.floor(x),iy=Math.floor(y);let d1=9,d2=9;
+for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+const cx=ix+dx,cy=iy+dy;
+// Hash cell to get seed point position
+const h1=PERM[(PERM[(cx&255)]+((cy&255)))&511],h2=PERM[(h1+73)&511];
+const px=cx+(h1/255),py=cy+(h2/255);
+const dd=(x-px)*(x-px)+(y-py)*(y-py);
+if(dd<d1){d2=d1;d1=dd;}else if(dd<d2)d2=dd;}
+return[Math.sqrt(d1),Math.sqrt(d2)];}
 function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};}
 
 const RES=2;
@@ -12,29 +34,52 @@ const RES=2;
 // Static climate: no ice ages or sea level changes
 const CLIMATE={tempMod:0,seaLevel:0,wet:0.7};
 
-function generateWorld(W,H,seed,preset){
+function generateWorld(W,H,seed,preset,oceanLevel){
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
+let tecPlates=null;
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
-const eData=decodeEarth(EARTH_ELEV),mData=decodeEarth(EARTH_MOIST);
+const eData=decodeEarth(EARTH_ELEV);
+// Pass 1: elevation + temperature
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);// 0-255
-// Convert heightmap byte to elevation: 0=ocean, >0=land
-// Add subtle fbm noise for coastline variation and terrain detail
 const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
-if(he<3){// Ocean
-const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
+if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
 elevation[i]=-0.03-Math.max(0,(1-he/3))*0.12+depth;
-}else{// Land: map 3-255 to ~0.005-0.6 elevation
-let e=(he-3)/252*0.55+0.005+noise;
-elevation[i]=Math.max(0.001,e);}
-// Moisture from heightmap data
-const hm=sampleEarth(mData,EARTH_W,EARTH_H,x,y,W,H)/255;// 0-1
-const mNoise=fbm(nx*6+50,ny*6+50,3,2,.5)*.08;
-moisture[i]=Math.max(0,Math.min(1,hm+mNoise));
-// Temperature: latitude + elevation based
+}else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,elevation[i])*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.08));}
+// Pass 2: coast-distance BFS at tile resolution for continentality
+const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
+const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);
+const cdQ=[];
+for(let ty=0;ty<CDH;ty++)for(let tx=0;tx<CDW;tx++){
+const px=Math.min(W-1,tx*CDT),py=Math.min(H-1,ty*CDT),ti=ty*CDW+tx;
+if(elevation[py*W+px]<=0)continue;// ocean tile
+for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+const nx2=(tx+dx+CDW)%CDW,ny2=ty+dy;if(ny2<0||ny2>=CDH)continue;
+const np=Math.min(W-1,nx2*CDT),npy=Math.min(H-1,ny2*CDT);
+if(elevation[npy*W+np]<=0){cdist[ti]=0;cdQ.push(ti);break;}}}
+for(let qi=0;qi<cdQ.length;qi++){const ci=cdQ[qi],cd=cdist[ci],cx=ci%CDW,cy=(ci-cx)/CDW;
+for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
+const nx2=(cx+dx+CDW)%CDW,ny2=cy+dy;if(ny2<0||ny2>=CDH)continue;
+const ni=ny2*CDW+nx2,nd=cd+1;if(nd<cdist[ni]&&elevation[Math.min(H-1,ny2*CDT)*W+Math.min(W-1,nx2*CDT)]>0){cdist[ni]=nd;cdQ.push(ni);}}}
+// Pass 3: moisture using ITCZ, subtropical HP belt, continentality, westerlies
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
+if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
+const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
+const coastProx=Math.max(0,1-cd/8);// 1 at coast, 0 inland
+const tropWet=Math.max(0,1-lat*2.5);// ITCZ: wet equator
+const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.50*(1-coastProx*.5);// subtropical HP, weakened near coast (monsoon)
+const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.22;// temperate westerlies
+const tropF=Math.max(0,1-lat*3);// tropical moisture recycling factor
+const contRate=.006+(1-tropF)*.014;// weak in tropics, stronger elsewhere
+const cont=Math.min(.28,cd*contRate);
+const polarDry=Math.max(0,(lat-.75))*.25;
+let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12;
+if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
+if(elevation[i]<.02)m+=.10;
+moisture[i]=Math.max(.02,Math.min(1,m));}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
@@ -43,48 +88,158 @@ let e=0.08+fbm(nx*6+3.7,ny*6+3.7,5,2,.5)*.15
 +Math.pow(Math.max(0,fbm(nx*3+20,ny*3+20,4,2.2,.5)),2)*.4// mountain ranges
 +fbm(nx*14+7,ny*14+7,3,2,.4)*.06// fine detail
 +Math.pow(1-Math.abs(fbm(nx*2.5+40,ny*2.5+40,3,2.1,.5)),4)*.25;// ridges
-// Polar highlands
-if(lat>.8)e+=Math.max(0,(lat-.8)*1.5);
+// Polar tundra: slightly elevated but not dramatically
+if(lat>.85)e=Math.max(0.01,e*0.5);
 // Valley systems (subtract to create lowlands)
 e-=Math.pow(Math.max(0,fbm(nx*4+60,ny*4+60,3,2,.5)+.1),2)*.15;
 elevation[i]=Math.max(0.005,e);
-// Moisture: latitude + noise, valleys wetter, mountains drier
-let m=fbm(nx*4+50,ny*4+50,4,2,.55)*.35+.4+(1-lat)*.15;
-if(e<0.06)m+=.2;// valleys are wet
+// Moisture: climate zones + elevation effects
+const tropWet=Math.max(0,1-lat*2.5);
+const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.40;// subtropical HP belt
+const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.20;
+const polarDry=Math.max(0,(lat-.75))*.25;
+let m=.40+tropWet*.35-subtropDry+tempWet-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.15;
+if(e<0.06)m+=.15;// valleys are wet
 if(e>0.3)m-=.15;// mountains are drier
-moisture[i]=Math.max(0.05,Math.min(1,m));
+moisture[i]=Math.max(.02,Math.min(1,m));
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
+}else if(preset==="tectonic"){
+// ── Tectonic plate mode: separate module ──
+const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D});
+for(let i=0;i<W*H;i++){elevation[i]=tec.elevation[i];moisture[i]=tec.moisture[i];temperature[i]=tec.temperature[i];}
+tecPlates=tec.pixPlate;
 }else{
-// ── Random world mode: procedural ellipse generation ──
-const specs=[];
-for(let i=0;i<5+Math.floor(rng()*4);i++)specs.push({cx:rng(),cy:.06+rng()*.88,rx:.09+rng()*.2,ry:.07+rng()*.15,rot:rng()*Math.PI,no:rng()*100,str:.75+rng()*.5});
-for(let i=0;i<5+Math.floor(rng()*6);i++)specs.push({cx:rng(),cy:.1+rng()*.8,rx:.025+rng()*.05,ry:.015+rng()*.04,rot:rng()*Math.PI,no:rng()*100,str:.45+rng()*.35});
+// ── Random world mode: multi-stamp composition with advanced coastline shaping ──
+// [1] MULTI-STAMP COMPOSITION: 3-6 sub-ellipses per continent + negative stamps for bays
+const continents=[];
+const numCont=3+Math.floor(rng()*4);// 3-6 continents
+for(let c=0;c<numCont;c++){
+const cx=rng(),cy=.08+rng()*.84,no=rng()*100;
+// Each continent: 2-5 overlapping stamps. First stamp is always the broad core (low aspect).
+// Later stamps can be peninsulas (higher aspect) but spread wider from center.
+const subs=[];const numSubs=2+Math.floor(rng()*4);
+for(let s=0;s<numSubs;s++){
+const ang=rng()*Math.PI*2;
+// First stamp: centered core. Others: spread wider to avoid strip-piling
+const dist=s===0?0:.06+rng()*.12;
+// Aspect: core is broad (1-1.5), peninsulas are moderate (1-2.5), max one long one (up to 3)
+const aspect=s===0?1+rng()*.5:s===1&&rng()<.3?1.5+rng()*1.5:1+rng()*1.5;
+const baseR=s===0?.08+rng()*.1:.04+rng()*.08;
+subs.push({cx:cx+Math.cos(ang)*dist,cy:cy+Math.sin(ang)*dist,
+rx:baseR*aspect,ry:baseR/aspect,rot:rng()*Math.PI,str:s===0?.8+rng()*.4:.5+rng()*.4,no:no+s*17});}
+// 0-2 negative stamps carve bays/gulfs
+const negs=[];const numNegs=Math.floor(rng()*2.5);
+for(let n=0;n<numNegs;n++){
+const ang=rng()*Math.PI*2,dist=.02+rng()*.06;
+negs.push({cx:cx+Math.cos(ang)*dist,cy:cy+Math.sin(ang)*dist,
+rx:.02+rng()*.04,ry:.015+rng()*.03,rot:rng()*Math.PI,str:.25+rng()*.3,no:no+50+n*13});}
+continents.push({subs,negs});}
+const s1=rng()*100,s2=rng()*100,s3=rng()*100,s4=rng()*100,s5=rng()*100;
+// Flatten all stamps into single arrays for faster iteration
+const posStamps=[],negStamps=[];
+for(const cont of continents){for(const c of cont.subs){c.cos=Math.cos(c.rot);c.sin=Math.sin(c.rot);posStamps.push(c);}
+for(const c of cont.negs){c.cos=Math.cos(c.rot);c.sin=Math.sin(c.rot);negStamps.push(c);}}
+// Step 1: Generate raw elevation with all techniques
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const nx=x/W,ny=y/H;let e=0;
-for(const c of specs){let dx=nx-c.cx;if(dx>.5)dx-=1;if(dx<-.5)dx+=1;let dy=ny-c.cy;
-dx+=fbm(nx*5+c.no,ny*5+c.no,4,2,.5)*.045;dy+=fbm(nx*5+c.no+30,ny*5+c.no+30,4,2,.5)*.045;
-const cs=Math.cos(c.rot),sn=Math.sin(c.rot);let dd=Math.sqrt(Math.pow((dx*cs+dy*sn)/c.rx,2)+Math.pow((-dx*sn+dy*cs)/c.ry,2));
-dd+=fbm(nx*16+c.no+50,ny*16+c.no+50,3,2.3,.45)*.18;if(dd<1){const f2=1-dd;e+=f2*f2*c.str;}}
-e+=fbm(nx*8+3.7,ny*8+3.7,5,2,.5)*.12+Math.pow(1-Math.abs(fbm(nx*4.5+30,ny*4.5+30,4,2.2,.5)),3)*.15+fbm(nx*22+7,ny*22+7,2,2,.4)*.04;
+// [7] ITERATIVE DOMAIN WARPING (double Quilez warp, reduced octaves for speed)
+const w1x=fbm(nx*2.5+s1,ny*2.5+s1,2,2,.5)*.08,w1y=fbm(nx*2.5+s1+50,ny*2.5+s1+50,2,2,.5)*.08;
+const wnx=nx+w1x+fbm((nx+w1x)*5+s2,(ny+w1y)*5+s2,2,2,.5)*.04;
+const wny=ny+w1y+fbm((nx+w1x)*5+s2+30,(ny+w1y)*5+s2+30,2,2,.5)*.04;
+// Positive stamps (landmass lobes + peninsulas + islands)
+// Shared coastline noise (computed once, not per-stamp)
+const cnA=noise2D(wnx*5+s1,wny*5+s1)*.04,cnB=noise2D(wnx*5+s1+30,wny*5+s1+30)*.04;
+const coastRidge=noise2D(wnx*14+s2+50,wny*14+s2+50);
+for(const c of posStamps){let dx=wnx-c.cx+cnA;if(dx>.5)dx-=1;if(dx<-.5)dx+=1;let dy=wny-c.cy+cnB;
+let dd=Math.sqrt(Math.pow((dx*c.cos+dy*c.sin)/c.rx,2)+Math.pow((-dx*c.sin+dy*c.cos)/c.ry,2));
+// [3] RIDGED NOISE AT COASTLINES — per-stamp offset varies the coastline noise
+dd+=Math.abs(coastRidge+noise2D(wnx*7+c.no,wny*7+c.no)*.5)*.2;
+if(dd>.7&&dd<1.3){const rn=1-Math.abs(noise2D(wnx*8+c.no+70,wny*8+c.no+70));dd+=rn*rn*.12;}
+if(dd<1){const f2=1-dd;e+=f2*f2*c.str;}}
+// Negative stamps (bays/gulfs — subtract from elevation)
+for(const c of negStamps){let dx=wnx-c.cx+cnA;if(dx>.5)dx-=1;if(dx<-.5)dx+=1;let dy=wny-c.cy+cnB;
+let dd=Math.sqrt(Math.pow((dx*c.cos+dy*c.sin)/c.rx,2)+Math.pow((-dx*c.sin+dy*c.cos)/c.ry,2));
+dd+=Math.abs(coastRidge+noise2D(wnx*5+c.no,wny*5+c.no)*.5)*.18;
+if(dd<1){const f2=1-dd;e-=f2*f2*c.str;}}
+// [5] MULTI-THRESHOLD NOISE STACKING: peninsula/bay features (gentler, lower freq)
+const penNoise=fbm(wnx*4+s3+90,wny*4+s3+90,3,2,.5);
+if(penNoise>.4)e+=(penNoise-.4)*.2;// higher threshold, lower strength
+const bayNoise=fbm(wnx*3.5+s4+120,wny*3.5+s4+120,3,2,.5);
+if(bayNoise>.45)e-=(bayNoise-.45)*.18;
+// [4] WORLEY F2-F1: only affects areas near existing land (not open ocean)
+const[wf1,wf2]=worley(wnx*5+s5,wny*5+s5);
+if(e>-.1)e+=(wf2-wf1)*.04-.02;// weaker, and only where there's already some elevation
+// Domain-warped base terrain
+e+=fbm(wnx*7+3.7,wny*7+3.7,4,2,.5)*.10;
+// Fine detail
+e+=fbm(nx*20+s3,ny*20+s3,2,2,.4)*.025;
 rawElev[y*W+x]=e;}
-const sorted=Float32Array.from(rawElev).sort();const sl=sorted[Math.floor(W*H*.7)];
+// Step 2: Determine sea level at 70th percentile
+const sorted=Float32Array.from(rawElev).sort();const sl=sorted[Math.floor(W*H*(oceanLevel||0.78))];
 const isLandArr=new Uint8Array(W*H);for(let i=0;i<W*H;i++)isLandArr[i]=rawElev[i]>sl?1:0;
-const DG=RES,dw=Math.ceil(W/DG),dh=Math.ceil(H/DG);const dtl=new Float32Array(dw*dh).fill(9999);
-for(let dy=0;dy<dh;dy++)for(let dx=0;dx<dw;dx++){if(isLandArr[Math.min(H-1,dy*DG)*W+Math.min(W-1,dx*DG)])dtl[dy*dw+dx]=0;}
-for(let p=0;p<2;p++){for(let dy=0;dy<dh;dy++)for(let dx=0;dx<dw;dx++){const i=dy*dw+dx;
-if(dx>0)dtl[i]=Math.min(dtl[i],dtl[i-1]+1);if(dx===0)dtl[i]=Math.min(dtl[i],dtl[dy*dw+dw-1]+1);
-if(dy>0)dtl[i]=Math.min(dtl[i],dtl[(dy-1)*dw+dx]+1);}
-for(let dy=dh-1;dy>=0;dy--)for(let dx=dw-1;dx>=0;dx--){const i=dy*dw+dx;
-if(dx<dw-1)dtl[i]=Math.min(dtl[i],dtl[i+1]+1);if(dx===dw-1)dtl[i]=Math.min(dtl[i],dtl[dy*dw]+1);
-if(dy<dh-1)dtl[i]=Math.min(dtl[i],dtl[(dy+1)*dw+dx]+1);}}
+// Remove tiny isolated land clusters (< 20 pixels) via flood fill
+const visited=new Uint8Array(W*H);
+for(let i=0;i<W*H;i++){if(!isLandArr[i]||visited[i])continue;
+const q=[i],cluster=[];visited[i]=1;
+while(q.length){const ci=q.pop();cluster.push(ci);const cx2=ci%W,cy2=(ci-cx2)/W;
+for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
+const nx2=(cx2+dx+W)%W,ny2=cy2+dy;if(ny2<0||ny2>=H)continue;
+const ni=ny2*W+nx2;if(isLandArr[ni]&&!visited[ni]){visited[ni]=1;q.push(ni);}}}
+if(cluster.length<20)for(const ci of cluster){isLandArr[ci]=0;rawElev[ci]=sl-.01;}}
+// Coast-distance BFS for continentality
+const DG=RES,dw=Math.ceil(W/DG),dh=Math.ceil(H/DG);
+const cdist2=new Uint8Array(dw*dh);cdist2.fill(255);const cdQ2=[];
+for(let ty=0;ty<dh;ty++)for(let tx=0;tx<dw;tx++){
+const px=Math.min(W-1,tx*DG),py=Math.min(H-1,ty*DG),ti=ty*dw+tx;
+if(!isLandArr[py*W+px])continue;
+for(let ddy=-1;ddy<=1;ddy++)for(let ddx=-1;ddx<=1;ddx++){
+const nx2=(tx+ddx+dw)%dw,ny2=ty+ddy;if(ny2<0||ny2>=dh)continue;
+const np=Math.min(W-1,nx2*DG),npy=Math.min(H-1,ny2*DG);
+if(!isLandArr[npy*W+np]){cdist2[ti]=0;cdQ2.push(ti);break;}}}
+for(let qi=0;qi<cdQ2.length;qi++){const ci=cdQ2[qi],cd=cdist2[ci],cx2=ci%dw,cy2=(ci-cx2)/dw;
+for(let ddy=-1;ddy<=1;ddy++)for(let ddx=-1;ddx<=1;ddx++){if(!ddx&&!ddy)continue;
+const nx2=(cx2+ddx+dw)%dw,ny2=cy2+ddy;if(ny2<0||ny2>=dh)continue;
+const ni=ny2*dw+nx2,nd=cd+1;const np=Math.min(W-1,nx2*DG),npy=Math.min(H-1,ny2*DG);
+if(nd<cdist2[ni]&&isLandArr[npy*W+np]){cdist2[ni]=nd;cdQ2.push(ni);}}}
+// Step 3: Final elevation — [2] SHALLOW COASTAL GRADIENTS + terrain shaping
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
-let e=rawElev[i]-sl;if(lat>.86)e=Math.max(e,(lat-.86)*2);
-if(e<0){const dgx=Math.min(dw-1,Math.floor(x/DG)),dgy=Math.min(dh-1,Math.floor(y/DG)),dist=dtl[dgy*dw+dgx];
-if(dist<=3)e=Math.max(e,-(dist/3)*0.025);
-else{const dd=dist-3,df=Math.min(1,dd/12);let bd=-0.03-df*0.12;
-const ridge=fbm(nx*3+seed*0.01,ny*3+seed*0.01,3,2.2,0.5);if(ridge>0.2)bd+=(ridge-0.2)*0.08;
-e=Math.min(e,bd);}e+=fbm(nx*12+40,ny*12+40,2,2,.4)*0.008;}
-elevation[i]=e;let m=fbm(nx*4+50,ny*4+50,4,2,.55)*.4+.35+(1-lat)*.2;if(e>-.05&&e<.03)m+=.15;
-moisture[i]=Math.max(0,Math.min(1,m));temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}}
+let e=rawElev[i]-sl;
+// Unified terrain — one continuous surface, no land/ocean split
+e=e*0.3;
+if(preset!=="continental"){// Default: continentality-based shaping (land only, ocean passes through)
+if(e>0){const raw=e,domeH=Math.min(1,raw/0.15);
+const cd=cdist2[Math.min(dh-1,Math.floor(y/DG))*dw+Math.min(dw-1,Math.floor(x/DG))];
+const interior=Math.min(1,cd/15);
+const[wmx,wmy]=warp(nx,ny,2,3,0.1,s4,s4+40);
+e+=ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0)*interior*interior*domeH*0.45;
+const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
+e+=Math.max(0,fbm(whx*6+s2,why*6+s2,4,2,.5))*.08*Math.sqrt(interior);
+e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.06*interior;
+e=Math.pow(Math.max(0,e),0.85)*1.2;e=Math.max(0.003,e);}
+}else{// Continental: features scale by distance from sea level
+// Stronger features deep in ocean or high on land, weaker near coastline
+const featureStr=Math.min(1,Math.abs(e)*8);
+const[wmx,wmy]=warp(nx,ny,2,3,0.1,s4,s4+40);
+e+=(ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0)-0.45)*0.30*featureStr;
+const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
+e+=fbm(whx*6+s2,why*6+s2,4,2,.5)*.06*featureStr;
+e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.05*featureStr;}
+elevation[i]=e;temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
+// Moisture with climate zones + continentality
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
+if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
+const cd=cdist2[Math.min(dh-1,Math.floor(y/DG))*dw+Math.min(dw-1,Math.floor(x/DG))];
+const coastProx=Math.max(0,1-cd/8);
+const tropWet=Math.max(0,1-lat*2.5);
+const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.50*(1-coastProx*.5);
+const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.22;
+const tropF=Math.max(0,1-lat*3);
+const contRate=.006+(1-tropF)*.014;
+const cont=Math.min(.28,cd*contRate);
+const polarDry=Math.max(0,(lat-.75))*.25;
+let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12;
+if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
+if(elevation[i]<.02)m+=.10;
+moisture[i]=Math.max(.02,Math.min(1,m));}}
 const ctw=Math.ceil(W/RES),cth=Math.ceil(H/RES);const coastal=new Uint8Array(ctw*cth);
 for(let ty=1;ty<cth-1;ty++)for(let tx=0;tx<ctw;tx++){const px=Math.min(W-1,tx*RES),py=Math.min(H-1,ty*RES);
 if(elevation[py*W+px]>0){
@@ -104,7 +259,7 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,oasis,swamp,width:W,height:H,preset};}
+return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,oasis,swamp,width:W,height:H,preset,pixPlate:tecPlates};}
 
 // ── River & lake generation: trace flow downhill from wet highlands ──
 function generateRivers(elev,moist,W,H,rng){
@@ -188,7 +343,7 @@ if(elev[ni]>0&&!river[ni]&&!lake[ni]&&Math.abs(elev[ni]-elev[i])<0.03)floodplain
 return{river,lake,floodplain,delta};}
 
 const BC=[[8,18,52],[18,40,88],[32,72,120],[198,186,142],[230,238,245],[210,218,228],[140,132,115],[55,78,52],[110,100,90],[130,126,104],[10,80,22],[166,156,66],[202,176,112],[30,98,36],[118,160,52],[38,62,42],[150,146,104]];
-function getBiomeD(e,m,t,sl){if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;const a=e-sl;if(a<0.015)return 3;
+function getBiomeD(e,m,t,sl){if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
 if(t<.15)return 4;if(t<.25)return e>.35?5:6;if(t<.35)return e>.4?5:m>.45?7:6;if(e>.5)return 8;if(e>.38)return t>.55?9:8;
 if(t>.7)return m>.5?10:m>.25?11:12;if(t>.5)return m>.45?13:m>.2?14:12;return m>.4?15:m>.15?14:16;}
 function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
@@ -324,15 +479,17 @@ let sameN=0;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny+dy2;
 if(ay>=0&&ay<th&&owner[ay*tw+ax]===ow)sameN++;}
 const sz=tribeSizes[ow],dens=sz>0?tribeStrength[ow]/sz:0;
 let splitChance=0;
-if(sameN<3){
+// Cap total tribes to prevent runaway proliferation (performance + gameplay)
+const MAX_TRIBES=40;let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
+if(sameN<3&&alive<MAX_TRIBES){
 // Overextension: large tribes are harder to hold together
-const overext=sz>65?Math.min(0.3,(sz-65)*0.002):0;
+const overext=sz>80?Math.min(0.15,(sz-80)*0.001):0;
 // Geographic barrier: mountains/deserts between parent and frontier
-const barrier=diff>0.5&&pDiff<0.3?0.3:0;
+const barrier=diff>0.6&&pDiff<0.3?0.2:0;
 // Internal inequality: fertile frontier wants independence from poor core
-const ineq=dens>0&&tFert[ni]>dens*1.8?0.25*(tFert[ni]/dens-1):0;
+const ineq=dens>0&&tFert[ni]>dens*2.0?0.15*(tFert[ni]/dens-1):0;
 // Distance weakens central control (from nearest center, not just capital)
-const distF=distMin>25?Math.min(0.25,(distMin-25)*0.005):0;
+const distF=distMin>30?Math.min(0.15,(distMin-30)*0.004):0;
 // Strong, dense tribes resist all splits
 splitChance=Math.max(0,(overext+barrier+ineq+distF)*(1-Math.min(0.9,dens*1.2)));}
 if(splitChance>0&&Math.random()<splitChance)nw=newTribe(ter,nx,ny);
@@ -351,8 +508,8 @@ const leapBoost=owDens<0.3?1+(0.3-owDens)*3:1;// up to 1.9x for poorest tribes
 if(Math.random()<0.25*wet*leapBoost){let nw=ow;const centers=tribeCenters[ow];
 const{min:distMin}=nearestCenterDist(centers,nx,ny,tw);
 const sz=tribeSizes[ow],dens=sz>0?tribeStrength[ow]/sz:0;
-const overext=sz>65?Math.min(0.2,(sz-65)*0.0012):0;
-if(distMin>26&&Math.random()<overext+(dens<0.3?0.15:0))nw=newTribe(ter,nx,ny);
+const overext=sz>80?Math.min(0.1,(sz-80)*0.001):0;
+if(distMin>30&&Math.random()<overext+(dens<0.3?0.08:0))nw=newTribe(ter,nx,ny);
 else if(tFert[ni]>0.4&&distMin>20&&centers&&centers.length<8)
 centers.push({x:nx,y:ny,prestige:0.3,founded:ter.stepCount});
 claimTile(ter,ni,nw);if(!nf[ni]){nf[ni]=1;nfl.push(ni);}}}}
@@ -430,7 +587,9 @@ const cohesion=1/(1+dist*0.04+avgDiff*2);
 if(cohesion>0.4){// High cohesion → capital relocates peacefully
 const old=centers[0];centers[0]=centers[c];centers[0].prestige=Math.max(old.prestige,1.0);
 centers.splice(c,1);centers.push({x:old.x,y:old.y,prestige:old.prestige*0.5,founded:old.founded});
-}else{// Low cohesion → split: secondary center becomes a new tribe
+}else{// Low cohesion → split: secondary center becomes a new tribe (if below cap)
+let aliveT=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)aliveT++;
+if(aliveT>=40){break;}// tribe cap reached
 const sc=centers.splice(c,1)[0];const sid=newTribe(ter,sc.x,sc.y);
 // Transfer tiles closer to the breakaway center than to any remaining center
 for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const iy=Math.floor(i/tw),ix=i%tw;
@@ -454,7 +613,7 @@ comps.sort((a,b)=>b.length-a.length);
 for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor(comps[c][0]/tw));
 for(const ci of comps[c])transferTile(ter,ci,sid);}}ter._fragGen=gen;}
 // ── Remnant absorption: tiny tribes (<5 tiles) absorbed by any larger touching neighbor ──
-if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>5)continue;
+if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>10)continue;
 let bn=-1,bs2=0;for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const ty2=Math.floor(i/tw),tx2=i%tw;
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===st||tElev[ni]<=sl)continue;if(tribeSizes[no]>bs2){bs2=tribeSizes[no];bn=no;}}}
@@ -467,14 +626,18 @@ const canvasRef=useRef(null);const[seed,setSeed]=useState(8817);const[world,setW
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState(null);
+const[oceanLevel,setOceanLevel]=useState(0.78);
+const[depthFromSea,setDepthFromSea]=useState(false);
+const[showPlates,setShowPlates]=useState(false);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
+const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const showPlatesRef=useRef(false);
 const presetRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
 const imgRef=useRef(null);
 const W=1920,H=960,CW=Math.ceil(W/RES),CH=Math.ceil(H/RES);
-const generate=useCallback(s=>{const w=generateWorld(W,H,s,presetRef.current);setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
+const generate=useCallback((s,ol)=>{const w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current);setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
@@ -486,10 +649,7 @@ for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
 const si=sy*W+sx;const e=w.elevation[si],m=w.moisture[si];
 const t=w.temperature[si];let r,g,b;
-if(e<=sl&&t<0.18){const lat=Math.abs(sy/H-0.5)*2;const iceStr=Math.min(1,(0.18-t)/0.18)*(0.3+lat*0.7);
-const df=Math.min(1,Math.max(0,(sl-e)/0.15));const or2=8+df*2,og2=18+df*5,ob2=52+df*15;const blend=Math.min(1,iceStr*1.8);
-r=Math.round(or2*(1-blend)+225*blend);g=Math.round(og2*(1-blend)+235*blend);b=Math.round(ob2*(1-blend)+248*blend);
-}else if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
+if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
 // Scan tile block for most prominent feature overlay
@@ -525,20 +685,21 @@ const maxT=ter.tribeCenters.length;const tcR=new Uint8Array(maxT),tcG=new Uint8A
 for(let t2=0;t2<maxT;t2++){const c=tribeRGB(t2);tcR[t2]=c[0];tcG[t2]=c[1];tcB[t2]=c[2];}
 const N=CW*CH;
 if(vm==="depth"){
-// Depth/heightmap view — one pixel per tile
+// Depth/heightmap view — flat black-to-white gradient using actual data range
+// Find actual min/max elevation
+let eMin=Infinity,eMax=-Infinity;
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const si=Math.min(H-1,ty*RES)*W+Math.min(W-1,tx*RES);
+const e=w.elevation[si];if(e<eMin)eMin=e;if(e>eMax)eMax=e;}
+// Sea mode: floor is 0 (sea level), all ocean = black
+// Floor mode: floor is actual minimum, deepest trench = black
+const floor=depthFromSeaRef.current?0:eMin;
+const range=eMax-floor||1;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
-const e=w.elevation[si];let r,g,b;
-if(e<=sl){const depth=Math.min(1,Math.max(0,(sl-e)/0.2));r=(10-depth*8+.5)|0;g=(30+depth*10+.5)|0;b=(80+depth*60+.5)|0;}
-else{const h=Math.min(1,(e-sl)/0.6);if(h<0.05){r=(160+h*200+.5)|0;g=(155+h*200+.5)|0;b=(120+h*200+.5)|0;}
-else if(h<0.3){const t2=(h-0.05)/0.25;r=(60+t2*50+.5)|0;g=(100+t2*30+.5)|0;b=(40-t2*10+.5)|0;}
-else if(h<0.6){const t2=(h-0.3)/0.3;r=(110+t2*40+.5)|0;g=(130-t2*30+.5)|0;b=(30-t2*10+.5)|0;}
-else{const t2=(h-0.6)/0.4;r=(150+t2*80+.5)|0;g=(100-t2*40+.5)|0;b=(20+t2*10+.5)|0;}}
-// Check tile for feature overlay
-if(ter.tRiver[ti]&&e>sl){if(w.lake){let lk=false;for(let dy=0;dy<RES&&!lk;dy++)for(let dx=0;dx<RES&&!lk;dx++){
-const wi=Math.min(H-1,sy+dy)*W+Math.min(W-1,sx+dx);if(w.lake[wi])lk=true;}if(lk){r=20;g=45;b=90;}}
-if(r!==20){r=25;g=55;b=120;}}
-const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
+const e=w.elevation[si];
+const v=Math.min(255,Math.max(0,((e-floor)/range)*255))|0;
+const pi4=ti<<2;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=v;d[pi4+3]=255;}
 }else if(vm==="power"){
 // Power view — one pixel per tile
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
@@ -568,6 +729,16 @@ if(ow>=0&&ter.tElev[ti]>sl){const alpha=ter.frontier[ti]?0.55:0.32,invA=1-alpha;
 d[pi4]=(tc[ti3]*invA+tcR[ow]*alpha+.5)|0;d[pi4+1]=(tc[ti3+1]*invA+tcG[ow]*alpha+.5)|0;d[pi4+2]=(tc[ti3+2]*invA+tcB[ow]*alpha+.5)|0;
 }else{d[pi4]=tc[ti3];d[pi4+1]=tc[ti3+1];d[pi4+2]=tc[ti3+2];}
 d[pi4+3]=255;}}
+// Plate boundary overlay (works on any view mode)
+if(showPlatesRef.current&&w.pixPlate){
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const myP=w.pixPlate[si];let boundary=false;
+for(let dy=-RES;dy<=RES&&!boundary;dy+=RES)for(let dx=-RES;dx<=RES&&!boundary;dx+=RES){
+if(!dx&&!dy)continue;
+const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
+if(w.pixPlate[ny2*W+nx2]!==myP)boundary=true;}
+if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
 ctx.putImageData(img,0,0);
 // Draw all tribe centers (tile coords — canvas is CW×CH)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
@@ -607,7 +778,7 @@ if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-seri
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache]);
 
-useEffect(()=>{viewRef.current=viewMode;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;showPlatesRef.current=showPlates;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,showPlates]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -632,7 +803,7 @@ const bsA=(active,color)=>({...bs,background:active?`rgba(${color},0.2)`:bs.back
 border:`1px solid ${active?`rgba(${color},0.35)`:bs.border}`,color:active?`rgb(${color})`:"#8a8474"});
 return(
 <div style={{width:"100vw",height:"100vh",background:"#060810",overflow:"hidden",position:"relative"}}>
-<canvas ref={canvasRef} width={CW} height={CH} style={{width:"100%",height:"100%",display:"block",imageRendering:"pixelated",objectFit:"contain"}} />
+<canvas ref={canvasRef} width={CW} height={CH} style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,margin:"auto",position:"absolute",inset:0}} />
 {/* Stats overlay — top right */}
 <div style={{position:"absolute",top:6,right:6,background:"rgba(6,8,16,0.85)",borderRadius:3,padding:"4px 10px",
 display:"flex",gap:12,fontSize:11,color:"#c9b87a",pointerEvents:"none"}}>
@@ -654,9 +825,28 @@ style={{width:50,accentColor:"#c9b87a"}} />
 style={bsA(preset==="earth","100,160,220")}>Earth</button>
 <button onClick={()=>{presetRef.current="pangaea";setPreset("pangaea");setSeed(Math.floor(Math.random()*999999));}}
 style={bsA(preset==="pangaea","120,180,100")}>Pangaea</button>
+<button onClick={()=>{presetRef.current="tectonic";setPreset("tectonic");setSeed(Math.floor(Math.random()*999999));}}
+style={bsA(preset==="tectonic","180,120,100")}>Tectonic</button>
+<button onClick={()=>{presetRef.current="continental";setPreset("continental");setSeed(Math.floor(Math.random()*999999));}}
+style={bsA(preset==="continental","140,180,160")}>Continental</button>
 <div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
 {[["terrain","Ter"],["depth","Dep"],["tribes","Tri"],["power","Pow"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
 style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
 color:viewMode===k?"#c9b87a":"#5a5448",padding:"3px 7px"}}>{label}</button>))}
+{viewMode==="depth"&&<><div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
+<button onClick={()=>{setDepthFromSea(v=>!v);depthFromSeaRef.current=!depthFromSeaRef.current;}}
+style={{...bs,background:depthFromSea?"rgba(80,140,200,0.25)":"transparent",border:"none",
+color:depthFromSea?"#6ab4e8":"#5a5448",padding:"3px 7px",fontSize:"10px"}}>{depthFromSea?"Sea":"Floor"}</button></>}
+{world&&world.pixPlate&&<><div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
+<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
+style={{...bs,background:showPlates?"rgba(200,80,60,0.25)":"transparent",border:"none",
+color:showPlates?"#e07050":"#5a5448",padding:"3px 7px",fontSize:"10px"}}>Plates</button></>}
+<div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
+<span style={{color:"#8a8070",fontSize:"10px",marginRight:4}}>Sea</span>
+<input type="range" min="50" max="90" value={oceanLevel*100}
+onChange={e=>{const v=Number(e.target.value)/100;setOceanLevel(v);oceanLevelRef.current=v;}}
+onMouseUp={()=>generate(seed)}
+onTouchEnd={()=>generate(seed)}
+style={{width:60,accentColor:"#6ab4e8"}} />
 </div></div>);}
