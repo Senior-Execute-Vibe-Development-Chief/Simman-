@@ -381,6 +381,7 @@ const riftEffect = new Float32Array(N);
   const dist = new Float32Array(N).fill(1e9);
   const seedPlate = new Uint8Array(N);
   const seedType = new Uint8Array(N); // 2=cont-cont, 1=oce-cont, 0=oce-oce
+  const seedStr = new Float32Array(N); // original boundary strength for this seed
   const queue = [];
   for (let i = 0; i < N; i++) {
     if (boundaryConv[i] > 0) {
@@ -388,6 +389,7 @@ const riftEffect = new Float32Array(N);
       dist[i] = 0;
       seedPlate[i] = plateMap[i];
       seedType[i] = boundaryCont[i] ? 2 : (boundaryOceCont[i] ? 1 : 0);
+      seedStr[i] = boundaryConv[i];
       queue.push(i);
     }
   }
@@ -409,6 +411,7 @@ const riftEffect = new Float32Array(N);
         dist[ni] = nd;
         seedPlate[ni] = srcPlate;
         seedType[ni] = st;
+        seedStr[ni] = seedStr[ci];
         // Plateau-with-ramp falloff: flat top then Gaussian decay
         // cont-cont: flat for 20 cells (~440km) like Tibet, then ramp over 18
         // oce-cont: flat for 6 cells (~130km) like Altiplano, then ramp over 10
@@ -423,7 +426,7 @@ const riftEffect = new Float32Array(N);
         } else {
           falloff = Math.exp(-nd * nd / (2 * 5 * 5));
         }
-        const effect = boundaryConv[ci] * falloff;
+        const effect = seedStr[ci] * falloff;
         if (effect > mtnEffect[ni]) {
           mtnEffect[ni] = effect;
           queue.push(ni);
@@ -437,12 +440,14 @@ const riftEffect = new Float32Array(N);
 {
   const dist = new Float32Array(N).fill(1e9);
   const seedPlate = new Uint8Array(N);
+  const seedStr = new Float32Array(N);
   const queue = [];
   for (let i = 0; i < N; i++) {
     if (boundaryDiv[i] > 0) {
       riftEffect[i] = boundaryDiv[i];
       dist[i] = 0;
       seedPlate[i] = plateMap[i];
+      seedStr[i] = boundaryDiv[i];
       queue.push(i);
     }
   }
@@ -461,8 +466,9 @@ const riftEffect = new Float32Array(N);
       if (nd < dist[ni]) {
         dist[ni] = nd;
         seedPlate[ni] = srcPlate;
+        seedStr[ni] = seedStr[ci];
         const falloff = Math.exp(-nd * nd / 8);
-        const effect = boundaryDiv[ci] * falloff;
+        const effect = seedStr[ci] * falloff;
         if (effect > riftEffect[ni]) {
           riftEffect[ni] = effect;
           queue.push(ni);
@@ -664,18 +670,24 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 
     // ── Sample mountain fields ──
     const sharpVal = sampleCoarse(mtnEffect, twx, twy);  // BFS plateau field (wide, flat-topped)
-    const broadVal = sampleCoarse(mtnBroad, twx, twy);    // blurred for texture amplification
+    const broadVal = sampleCoarse(mtnBroad, twx, twy);    // blurred: extended foothills
 
-    // ── Two-component tectonic elevation ──
-    // Plateau: BFS field directly — maintains value far inland (Tibet, Altiplano)
-    // The flat-top BFS falloff naturally creates wide elevated zones.
-    const plateau = sharpVal * 3.0;
-    // Peaks: concentrated ridge at boundary from smoothed crust
+    // ── Three-component tectonic elevation ──
+    // 1. Plateau: BFS field directly — wide flat-topped zones (Tibet, Altiplano)
+    //    Noise-modulated for irregularity (some sections higher/wider)
+    const plateauNoise = 0.7 + 0.6 * fbm(nx * 3 + s1 + 50, ny * 3 + s1 + 50, 2, 2, 0.5);
+    const plateau = sharpVal * 3.0 * plateauNoise;
+    // 2. Foothills: blurred field extends beyond BFS range (steppe, piedmont)
+    const foothills = broadVal * 1.8;
+    // 3. Peaks: concentrated ridge at boundary from smoothed crust
     const peaks = Math.max(0, tecMod) * 2.5;
+
+    // Wide tectonic lift: BFS plateau where strong, blur foothills beyond
+    const tecLift = Math.max(plateau, foothills) + peaks;
 
     // Coast blend — suppress where tectonic lift is strong
     const rawCoastBlend = smoothstep(1 - cd / 6);
-    const tecStr = Math.min(1, (plateau + peaks) * 2);
+    const tecStr = Math.min(1, tecLift * 2);
     const coastBlend = rawCoastBlend * (1 - tecStr * 0.85);
 
     // ── Regime A: Coastal lowlands (~0-100m) ──
@@ -686,9 +698,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const baseE = 0.006 + interior * 0.012;
 
     // Highland/lowland regions within continents (noise-driven)
+    // e.g. Great Basin, Colorado Plateau — large, moderately elevated, non-tectonic
     const continentNoise = fbm(nx * 2.2 + s1 + 30, ny * 2.2 + s1 + 30, 3, 2, 0.55);
     const highlandMask = smoothstep(continentNoise * 2 + 0.2);
-    const regionalE = highlandMask * 0.035 * interior;
+    const regionalE = highlandMask * 0.12 * interior;
 
     // Rolling terrain texture
     const broadSwell = fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6) * 0.012;
@@ -698,12 +711,12 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 
     const cratonE = baseE + regionalE + broadSwell + rolling + plateauBoost;
 
-    // ── Combine: base + tectonic plateau + peaks ──
+    // ── Combine: base + tectonic lift ──
     // Low areas stay low, tectonic zones get lifted high
-    e = cratonE + plateau + peaks;
+    e = cratonE + tecLift;
 
     // Amplify terrain texture in tectonic zones (so mountains aren't flat)
-    e += (broadSwell + rolling) * Math.max(plateau, peaks) * 6.0;
+    e += (broadSwell + rolling) * tecLift * 5.0;
 
     // Coast blend
     e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
