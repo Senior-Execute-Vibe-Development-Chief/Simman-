@@ -714,10 +714,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const cratonE = 0.006 + interior * 0.012 + broadSwell + rolling + plateauBoost;
 
     // ── Tectonic amplification ──
-    // Smooth envelope from blurred field — no hard saturation.
-    // broadVal has a natural gradient from the Gaussian blur.
-    // sharpVal adds peak intensity right at the boundary.
-    const envelope = broadVal * 2.5 + sharpVal * 1.5;
+    // Envelope from blurred field ONLY — smooth gradient, no jagged edges.
+    // broadVal is a Gaussian blur of mtnEffect so it's already smooth.
+    // sharpVal is NOT used here — it creates jagged coarse-grid artifacts.
+    const envelope = broadVal * 3.5;
 
     // Amplify craton terrain FIRST (before coast blend).
     // This way the gradient from interior terrain carries through
