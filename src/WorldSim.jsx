@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
+import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
 function initNoise(seed){const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)PERM[i]=p[i&255];}
@@ -382,7 +383,7 @@ else if(hasFlood){tFert[ti]=Math.min(1,tFert[ti]+0.25);tMoist[ti]=Math.min(1,tMo
 if(hasOasis){tFert[ti]=Math.min(1,tFert[ti]+0.3);tDiff[ti]=Math.max(0,tDiff[ti]-0.3);}
 if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+0.25);}}}
 // Find multiple spread-out seed locations for starting tribes
-const NUM_TRIBES=w.preset==="earth"?8:6;const minSpacing=Math.round(tw*0.12);
+const NUM_TRIBES=w.preset==="earth"?8:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:6;const minSpacing=Math.round(tw*0.12);
 // Score all habitable tiles
 const scored=[];
 for(let ty=2;ty<th-2;ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;if(tElev[ti]<=0)continue;
@@ -391,7 +392,10 @@ scored.push({x:tx,y:ty,s});}
 scored.sort((a,b)=>b.s-a.s);
 // Pick well-spaced origins (greedy: best first, skip if too close to existing)
 const origins=[];
-if(w.preset==="earth"){// Seed East Africa first (cradle of mankind)
+if(w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0){// Imported map: use state positions as tribe seeds
+for(const ts of w.tribeSeeds){const tx=Math.min(tw-1,Math.max(0,Math.round(ts.x/RES))),ty2=Math.min(th-1,Math.max(0,Math.round(ts.y/RES)));
+if(tElev[ty2*tw+tx]>0)origins.push({x:tx,y:ty2,s:tFert[ty2*tw+tx]});}}
+else if(w.preset==="earth"){// Seed East Africa first (cradle of mankind)
 const etx=Math.round(tw*0.51),ety=Math.round(th*0.47);
 let best=null,bs2=-999;
 for(const c of scored){let dx=Math.abs(c.x-etx);if(dx>tw/2)dx=tw-dx;
@@ -629,15 +633,20 @@ const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState
 const[oceanLevel,setOceanLevel]=useState(0.78);
 const[depthFromSea,setDepthFromSea]=useState(false);
 const[showPlates,setShowPlates]=useState(false);
+const[importStatus,setImportStatus]=useState(null);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const showPlatesRef=useRef(false);
-const presetRef=useRef(null);
+const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
 const imgRef=useRef(null);
 const W=1920,H=960,CW=Math.ceil(W/RES),CH=Math.ceil(H/RES);
-const generate=useCallback((s,ol)=>{const w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current);setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
+const generate=useCallback((s,ol)=>{
+let w;
+if(presetRef.current==="import"&&importedWorldRef.current){w=importedWorldRef.current;importedWorldRef.current=null;}
+else{w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current);}
+setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
@@ -797,6 +806,33 @@ fid=requestAnimationFrame(loop);return()=>cancelAnimationFrame(fid);},[draw]);
 const togglePlay=()=>{if(!playing&&terRef.current&&terRef.current.settled>=terRef.current.landCount){
 const t=createTerritory(worldRef.current);terRef.current=t;setTribeCount(t.tribes);setCoverage(0);setDominant(null);terrainCache.current=null;draw(t);}
 playRef.current=!playRef.current;setPlaying(p=>!p);};
+const handleImport=useCallback(async(e)=>{const file=e.target.files?.[0];if(!file)return;
+e.target.value="";
+setImportStatus("Loading...");
+try{let w;
+if(file.name.endsWith(".json")||file.name.endsWith(".map")){
+const text=await file.text();const parsed=parseAzgaarJSON(text);
+w=rasterizeAzgaar(parsed,W,H);
+setImportStatus(`Azgaar map loaded (${parsed.n} cells, ${parsed.stateSet.size} states)`);
+}else if(file.type.startsWith("image/")){
+const img=await loadImageFile(file);
+w=rasterizeHeightmap(img.data,img.width,img.height,W,H);
+setImportStatus(`Heightmap loaded (${img.width}\u00d7${img.height})`);
+}else{setImportStatus("Unsupported file type");return;}
+const rvr=generateRivers(w.elevation,w.moisture,W,H,mkRng(seed+777));
+w.river=rvr.river;w.lake=rvr.lake;w.floodplain=rvr.floodplain;w.delta=rvr.delta;
+const oasis=new Uint8Array(W*H),swamp=new Uint8Array(W*H);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
+if(w.elevation[i]>0&&w.elevation[i]<0.3&&w.temperature[i]>0.5&&w.moisture[i]<0.2){
+const nv=fbm(x/W*50+200,y/H*50+200,3,2,.5);if(nv>0.3){oasis[i]=1;w.moisture[i]=Math.min(1,w.moisture[i]+0.4);}}
+if(w.elevation[i]>0&&w.elevation[i]<0.025&&w.moisture[i]>0.45&&w.temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
+const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);if(nv>-0.1)swamp[i]=1;}}
+w.oasis=oasis;w.swamp=swamp;
+importedWorldRef.current=w;presetRef.current="import";setPreset("import");
+setSeed(Math.floor(Math.random()*999999));
+setTimeout(()=>setImportStatus(null),4000);
+}catch(err){setImportStatus("Import failed: "+err.message);setTimeout(()=>setImportStatus(null),5000);}
+},[seed]);
 const bs={background:"rgba(201,184,122,0.08)",border:"1px solid rgba(201,184,122,0.18)",color:"#8a8474",
 padding:"4px 10px",borderRadius:2,cursor:"pointer",fontSize:10,letterSpacing:1,fontFamily:"inherit"};
 const bsA=(active,color)=>({...bs,background:active?`rgba(${color},0.2)`:bs.background,
@@ -829,6 +865,11 @@ style={bsA(preset==="pangaea","120,180,100")}>Pangaea</button>
 style={bsA(preset==="tectonic","180,120,100")}>Tectonic</button>
 <button onClick={()=>{presetRef.current="continental";setPreset("continental");setSeed(Math.floor(Math.random()*999999));}}
 style={bsA(preset==="continental","140,180,160")}>Continental</button>
+<div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
+<input ref={fileRef} type="file" accept=".json,.map,.png,.jpg,.jpeg,.webp" style={{display:"none"}} onChange={handleImport} />
+<button onClick={()=>fileRef.current?.click()} style={bsA(preset==="import","180,140,200")}
+title="Import Azgaar JSON or heightmap image">Import</button>
+{importStatus&&<span style={{fontSize:9,color:"#a99ed0",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{importStatus}</span>}
 <div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
 {[["terrain","Ter"],["depth","Dep"],["tribes","Tri"],["power","Pow"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
