@@ -36,11 +36,10 @@ const numMinor = 4 + Math.floor(rng() * 4);   // 4-7 minor
 const numPlates = numMajor + numMinor;
 const plates = [];
 
-// Each plate gets a continental coverage fraction:
-//  - 0.0 = fully oceanic (e.g. Pacific plate)
-//  - 0.3-0.7 = mixed (e.g. African plate: continental core, oceanic edges)
-//  - 0.8-1.0 = mostly continental (rare, like a small craton)
-// Major plates are more likely to have continental cores.
+// Each plate with continental crust gets a "nucleus" — the center of the
+// continent, which can sit anywhere in the plate (including near an edge,
+// like Africa on the African plate). contRadius controls how far the
+// continental crust extends from the nucleus.
 for (let i = 0; i < numPlates; i++) {
   let cx, cy;
   if (i < numMajor) {
@@ -55,31 +54,38 @@ for (let i = 0; i < numPlates; i++) {
   const angle = rng() * Math.PI * 2;
   const speed = 0.4 + rng() * 0.8;
 
-  // Continental coverage: how much of this plate's area is continental
+  // Decide if this plate carries continental crust
   const isMajor = i < numMajor;
-  let contCoverage;
-  if (isMajor) {
-    // Major plates: ~50% chance of having a continental core
-    contCoverage = rng() < 0.50 ? (0.25 + rng() * 0.45) : 0.0; // 0.25-0.70 or 0
-  } else {
-    // Minor plates: ~20% chance, smaller coverage
-    contCoverage = rng() < 0.20 ? (0.30 + rng() * 0.50) : 0.0; // 0.30-0.80 or 0
-  }
+  const hasCont = isMajor ? rng() < 0.50 : rng() < 0.20;
+
+  // Nucleus: offset from plate center in a random direction
+  // The offset can be large — continent sits near a plate edge
+  const nucAngle = rng() * Math.PI * 2;
+  const nucOffset = 0.03 + rng() * 0.12; // significant offset from plate center
+  const nucX = cx + Math.cos(nucAngle) * nucOffset;
+  const nucY = cy + Math.sin(nucAngle) * nucOffset;
+
+  // Continental radius: how far the continent extends from the nucleus
+  // Larger plates get bigger continents
+  const contRadius = hasCont ? (isMajor ? 0.06 + rng() * 0.10 : 0.04 + rng() * 0.06) : 0;
 
   plates.push({
     cx, cy,
     vx: Math.cos(angle) * speed,
     vy: Math.sin(angle) * speed,
     id: i,
-    contCoverage,
+    hasCont,
+    nucX, nucY,
+    contRadius,
   });
 }
-// Guarantee at least 2 plates have continental cores
-let numWithCont = plates.filter(p => p.contCoverage > 0).length;
+// Guarantee at least 2 plates carry continental crust
+let numWithCont = plates.filter(p => p.hasCont).length;
 while (numWithCont < 2) {
   const idx = Math.floor(rng() * numMajor);
-  if (plates[idx].contCoverage === 0) {
-    plates[idx].contCoverage = 0.30 + rng() * 0.35;
+  if (!plates[idx].hasCont) {
+    plates[idx].hasCont = true;
+    plates[idx].contRadius = 0.06 + rng() * 0.08;
     numWithCont++;
   }
 }
@@ -90,14 +96,7 @@ while (numWithCont < 2) {
 const plateMap = new Uint8Array(N); // coarse grid plate ownership
 const pixPlate = new Uint8Array(W * H); // pixel-level plate ownership
 
-// For each plate, find the max Voronoi distance (to normalize distances later)
-// We do two passes: first assign plates, then compute max radii.
-const plateDist = new Float32Array(N); // normalized distance from plate center [0,1]
-
 // Assign at pixel level (for overlay), then downsample to coarse
-// Also track coarse-grid distances
-const coarseDist = new Float32Array(N); // raw squared distance
-
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const nx = x / W, ny = y / H;
   // Multi-scale warping for organic boundaries
@@ -117,38 +116,15 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   pixPlate[y * W + x] = bestP;
 }
 for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
-  const i = ty * cw + tx;
-  const px = Math.min(W - 1, tx * CG), py = Math.min(H - 1, ty * CG);
-  plateMap[i] = pixPlate[py * W + px];
-  // Compute warped distance for this coarse cell
-  const nx = tx / cw, ny = ty / ch;
-  const warpX = fbm(nx * 2 + 13.7, ny * 2 + 13.7, 5, 2, 0.5) * 0.14
-    + fbm(nx * 6 + 37.1, ny * 6 + 37.1, 4, 2, 0.5) * 0.05;
-  const warpY = fbm(nx * 2 + 63.7, ny * 2 + 63.7, 5, 2, 0.5) * 0.14
-    + fbm(nx * 6 + 87.1, ny * 6 + 87.1, 4, 2, 0.5) * 0.05;
-  const wnx = nx + warpX, wny = ny + warpY;
-  const p = plates[plateMap[i]];
-  let dx = wnx - p.cx;
-  if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
-  const dy = wny - p.cy;
-  coarseDist[i] = Math.sqrt(dx * dx + dy * dy);
-}
-// Find max distance per plate to normalize to [0,1]
-const plateMaxDist = new Float32Array(numPlates);
-for (let i = 0; i < N; i++) {
-  const pid = plateMap[i];
-  if (coarseDist[i] > plateMaxDist[pid]) plateMaxDist[pid] = coarseDist[i];
-}
-for (let i = 0; i < N; i++) {
-  const pid = plateMap[i];
-  plateDist[i] = plateMaxDist[pid] > 0 ? coarseDist[i] / plateMaxDist[pid] : 0;
+  plateMap[ty * cw + tx] = pixPlate[Math.min(H - 1, ty * CG) * W + Math.min(W - 1, tx * CG)];
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 4: Initial crust from plate ownership + distance from center
-// Plates with contCoverage > 0 have a continental core that transitions
-// to oceanic crust toward the edges. Like the African plate: continent
-// in the middle, ocean floor around it.
+// STEP 4: Initial crust from continent nuclei
+// Each plate with hasCont has a nucleus (nucX, nucY) that can be anywhere
+// in the plate — often near an edge (like Africa on the African plate).
+// Continental crust radiates from the nucleus with noise-warped edges.
+// Cells on the same plate but far from the nucleus are oceanic.
 // ═══════════════════════════════════════════════════════
 const crustSeed = rng() * 100;
 const crust = new Float32Array(N);      // height/thickness
@@ -157,31 +133,46 @@ const crustType = new Uint8Array(N);    // 0 = oceanic, 1 = continental
 for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
   const i = ty * cw + tx;
   const nx = tx / cw, ny = ty / ch;
-  const pid = plateMap[i];
-  const plate = plates[pid];
-  const coverage = plate.contCoverage; // 0 = fully oceanic, 0.3-0.7 = mixed
 
   // Noise for irregular continent edges and intra-plate variation
-  const edgeNoise = fbm(nx * 4 + crustSeed, ny * 4 + crustSeed, 4, 2, 0.5) * 0.20
-    + fbm(nx * 8 + crustSeed + 40, ny * 8 + crustSeed + 40, 3, 2, 0.5) * 0.08;
+  const edgeNoise = fbm(nx * 4 + crustSeed, ny * 4 + crustSeed, 4, 2, 0.5) * 0.04
+    + fbm(nx * 8 + crustSeed + 40, ny * 8 + crustSeed + 40, 3, 2, 0.5) * 0.02;
   const variation = fbm(nx * 3 + crustSeed + 80, ny * 3 + crustSeed + 80, 3, 2, 0.5) * 0.05;
 
-  // Distance from plate center, normalized to [0,1]
-  const dist = plateDist[i];
+  // Check distance to ALL continental nuclei (not just this cell's plate).
+  // A cell is continental if it's close enough to any nucleus AND on the
+  // same plate as that nucleus. This lets continents sit anywhere in the plate.
+  let isCont = false;
+  let bestInteriorness = 0;
+  const pid = plateMap[i];
 
-  // Continental threshold: cells closer than (coverage + noise) are continental
-  // This creates an irregular continental core that doesn't fill the whole plate
-  const contThreshold = coverage + edgeNoise;
-  const isCont = coverage > 0 && dist < contThreshold;
+  for (let p = 0; p < numPlates; p++) {
+    const plate = plates[p];
+    if (!plate.hasCont || plate.contRadius <= 0) continue;
+    // Only affect cells on this plate
+    if (p !== pid) continue;
+
+    // Distance from this cell to the continent nucleus (wrapping X)
+    let dx = nx - plate.nucX;
+    if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
+    const dy = ny - plate.nucY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    // Continental if within radius + noise
+    const threshold = plate.contRadius + edgeNoise;
+    if (dist < threshold) {
+      isCont = true;
+      const interior = Math.max(0, 1 - dist / Math.max(0.01, threshold));
+      if (interior > bestInteriorness) bestInteriorness = interior;
+    }
+  }
 
   if (isCont) {
     crustType[i] = 1;
-    // Height varies: higher in interior, lower near coast (continental shelf)
-    const interiorness = Math.max(0, 1 - dist / Math.max(0.01, contThreshold));
-    crust[i] = 0.02 + interiorness * 0.06 + Math.abs(variation) + variation;
+    // Higher in interior, lower near coast (continental shelf effect)
+    crust[i] = 0.02 + bestInteriorness * 0.06 + Math.abs(variation) + variation;
   } else {
     crustType[i] = 0;
-    // Oceanic floor
     crust[i] = -0.08 + variation;
   }
 }
@@ -372,7 +363,7 @@ for (let epoch = 0; epoch < EPOCHS; epoch++) {
       const cx = rng(), cy = 0.05 + rng() * 0.9;
       const angle = rng() * Math.PI * 2;
       const speed = 0.3 + rng() * 0.8;
-      newPlates.push({ cx, cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, id: i, continental: 0 });
+      newPlates.push({ cx, cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, id: i, hasCont: false, nucX: cx, nucY: cy, contRadius: 0 });
     }
     // Re-assign coarse grid with warping
     const ws2 = rng() * 100;
