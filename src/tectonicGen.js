@@ -673,16 +673,18 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const broadVal = sampleCoarse(mtnBroad, twx, twy);    // blurred: smooth plateau/foothills
 
     // ── Tectonic elevation: plateau + ridgeline peaks ──
-    // Plateau base: from BLURRED field (smooth, no grid artifacts, natural gradient)
+    // Plateau base: from BLURRED field (smooth, no grid artifacts)
+    // Where two convergent boundaries face the same plate, broadVal
+    // naturally doubles — that creates the highest plateaus (Tibet).
     const plateauNoise = 0.7 + 0.6 * fbm(nx * 3 + s1 + 50, ny * 3 + s1 + 50, 2, 2, 0.5);
-    const plateau = broadVal * 2.5 * plateauNoise;
+    const plateau = broadVal * 1.5 * plateauNoise;
 
     // Ridgeline peaks: concentrated at boundary from smoothed crust
-    const peaks = Math.max(0, tecMod) * 3.5;
+    const peaks = Math.max(0, tecMod) * 2.0;
 
     // Bumpy mountain noise — irregular peaks/valleys within elevated areas
     const mtnBump = fbm(nx * 8 + s2 + 30, ny * 8 + s2 + 30, 4, 2, 0.55)
-      * 0.08 * Math.min(1, (plateau + peaks) * 3);
+      * 0.10 * Math.min(1, (plateau + peaks) * 3);
 
     const tecLift = plateau + peaks + mtnBump;
 
