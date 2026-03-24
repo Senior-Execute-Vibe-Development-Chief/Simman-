@@ -97,14 +97,19 @@ while (numWithCont < 3) {
 const plateMap = new Uint8Array(N);
 const pixPlate = new Uint8Array(W * H);
 
-for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+// Compute plate assignment at half resolution (4x fewer noise calls)
+const PS = 2;
+const ppW = Math.ceil(W / PS), ppH = Math.ceil(H / PS);
+const pixPlateCoarse = new Uint8Array(ppW * ppH);
+
+for (let py = 0; py < ppH; py++) for (let px = 0; px < ppW; px++) {
+  const x = px * PS, y = py * PS;
   const nx = x / W, ny = y / H;
-  // Large-scale organic shape warping
-  const warpX = fbm(nx * 2 + 13.7, ny * 2 + 13.7, 5, 2, 0.5) * 0.14
-    + fbm(nx * 6 + 37.1, ny * 6 + 37.1, 4, 2, 0.5) * 0.05;
-  const warpY = fbm(nx * 2 + 63.7, ny * 2 + 63.7, 5, 2, 0.5) * 0.14
-    + fbm(nx * 6 + 87.1, ny * 6 + 87.1, 4, 2, 0.5) * 0.05;
-  // High-frequency jagged detail — ridged noise for sharp, bumpy edges
+  // Large-scale organic shape warping (3 octaves — sufficient for smooth boundaries)
+  const warpX = fbm(nx * 2 + 13.7, ny * 2 + 13.7, 3, 2, 0.5) * 0.14
+    + fbm(nx * 6 + 37.1, ny * 6 + 37.1, 3, 2, 0.5) * 0.05;
+  const warpY = fbm(nx * 2 + 63.7, ny * 2 + 63.7, 3, 2, 0.5) * 0.14
+    + fbm(nx * 6 + 87.1, ny * 6 + 87.1, 3, 2, 0.5) * 0.05;
   const jagX = ridged(nx * 12 + 41.3, ny * 12 + 41.3, 3, 2.2, 2.0, 1.0) * 0.025
     - noise2D(nx * 18 + 55.1, ny * 18 + 55.1) * 0.012;
   const jagY = ridged(nx * 12 + 91.3, ny * 12 + 91.3, 3, 2.2, 2.0, 1.0) * 0.025
@@ -115,11 +120,15 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     let dx = wnx - plates[p].cx;
     if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
     const dy = wny - plates[p].cy;
-    // Stretch X distance slightly → plates become narrower and taller
     const d = dx * dx * 1.3 + dy * dy * 0.8 - plates[p].weight;
     if (d < bestD) { bestD = d; bestP = p; }
   }
-  pixPlate[y * W + x] = bestP;
+  pixPlateCoarse[py * ppW + px] = bestP;
+}
+
+// Nearest-neighbor upsample to full resolution
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  pixPlate[y * W + x] = pixPlateCoarse[Math.min(ppH - 1, (y / PS) | 0) * ppW + Math.min(ppW - 1, (x / PS) | 0)];
 }
 for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
   plateMap[ty * cw + tx] = pixPlate[Math.min(H - 1, ty * CG) * W + Math.min(W - 1, tx * CG)];
@@ -191,6 +200,16 @@ for (let p = 0; p < numPlates; p++) {
   }
 }
 
+// Pre-compute bounding radius for early-out in stamp loops
+for (const c of posStamps) {
+  const b = Math.max(c.rx, c.ry) + 0.08;
+  c.bound2 = b * b;
+}
+for (const c of negStamps) {
+  const b = Math.max(c.rx, c.ry) + 0.08;
+  c.bound2 = b * b;
+}
+
 const s1 = rng() * 100, s2 = rng() * 100, s3 = rng() * 100;
 const s4 = rng() * 100, s5 = rng() * 100;
 const warp = (x, y, freq, oct, str, o1, o2) => [
@@ -220,8 +239,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const pxPlateId = pixPlate[y * W + x];
   const pxPlateW = plates[pxPlateId] ? plates[pxPlateId].weight : 0;
   for (const c of posStamps) {
-    let dx = wnx - c.cx + cnA; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
-    let dy = wny - c.cy + cnB;
+    let dx = wnx - c.cx; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
+    const dy0 = wny - c.cy;
+    if (dx * dx + dy0 * dy0 > c.bound2) continue;
+    dx += cnA; let dy = dy0 + cnB;
     let dd = Math.sqrt(Math.pow((dx * c.cos + dy * c.sin) / c.rx, 2) + Math.pow((-dx * c.sin + dy * c.cos) / c.ry, 2));
     dd += Math.abs(coastRidge + noise2D(wnx * 7 + c.no, wny * 7 + c.no) * 0.5) * 0.2;
     if (dd > 0.7 && dd < 1.3) { const rn = 1 - Math.abs(noise2D(wnx * 8 + c.no + 70, wny * 8 + c.no + 70)); dd += rn * rn * 0.12; }
@@ -242,8 +263,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 
   // Negative stamps (bays/gulfs) — same ratio-based bleed
   for (const c of negStamps) {
-    let dx = wnx - c.cx + cnA; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
-    let dy = wny - c.cy + cnB;
+    let dx = wnx - c.cx; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
+    const dy0 = wny - c.cy;
+    if (dx * dx + dy0 * dy0 > c.bound2) continue;
+    dx += cnA; let dy = dy0 + cnB;
     let dd = Math.sqrt(Math.pow((dx * c.cos + dy * c.sin) / c.rx, 2) + Math.pow((-dx * c.sin + dy * c.cos) / c.ry, 2));
     dd += Math.abs(coastRidge + noise2D(wnx * 5 + c.no, wny * 5 + c.no) * 0.5) * 0.18;
     if (dd < 1) {
@@ -564,45 +587,23 @@ const crustAt = (gx, gy) => {
   const ty = Math.max(0, Math.min(ch - 1, Math.floor(gy)));
   return crust[ty * cw + tx];
 };
-const cubicW = (t) => {
-  const t2 = t * t, t3 = t2 * t;
-  return [
-    -0.5 * t3 + t2 - 0.5 * t,
-    1.5 * t3 - 2.5 * t2 + 1,
-    -1.5 * t3 + 2 * t2 + 0.5 * t,
-    0.5 * t3 - 0.5 * t2
-  ];
-};
+// Bilinear interpolation (4 lookups vs 16 for bicubic — coarse grid is
+// already smooth after 4 smoothing passes + sigma-14 blur)
 const sampleCrust = (fx, fy) => {
   const ix = Math.floor(fx), iy = Math.floor(fy);
   const dx = fx - ix, dy = fy - iy;
-  const wx = cubicW(dx), wy = cubicW(dy);
-  let val = 0;
-  for (let jy = -1; jy <= 2; jy++) {
-    let rowVal = 0;
-    for (let jx = -1; jx <= 2; jx++) {
-      rowVal += crustAt(ix + jx, iy + jy) * wx[jx + 1];
-    }
-    val += rowVal * wy[jy + 1];
-  }
-  return val;
+  const v00 = crustAt(ix, iy), v10 = crustAt(ix + 1, iy);
+  const v01 = crustAt(ix, iy + 1), v11 = crustAt(ix + 1, iy + 1);
+  return (v00 * (1 - dx) + v10 * dx) * (1 - dy) + (v01 * (1 - dx) + v11 * dx) * dy;
 };
 
-// Bicubic sampler for coarse-grid fields (mtnEffect, mtnBroad)
+// Bilinear sampler for coarse-grid fields (mtnEffect, mtnBroad)
 const sampleCoarse = (field, fx, fy) => {
   const ix = Math.floor(fx), iy = Math.floor(fy);
   const dx = fx - ix, dy = fy - iy;
-  const wx = cubicW(dx), wy = cubicW(dy);
-  let val = 0;
-  for (let jy = -1; jy <= 2; jy++) {
-    let rowVal = 0;
-    for (let jx = -1; jx <= 2; jx++) {
-      const tx = ((ix + jx) % cw + cw) % cw;
-      const ty = Math.max(0, Math.min(ch - 1, iy + jy));
-      rowVal += field[ty * cw + tx] * wx[jx + 1];
-    }
-    val += rowVal * wy[jy + 1];
-  }
+  const g = (gx, gy) => field[Math.max(0, Math.min(ch - 1, gy)) * cw + ((gx % cw) + cw) % cw];
+  const val = (g(ix, iy) * (1 - dx) + g(ix + 1, iy) * dx) * (1 - dy)
+    + (g(ix, iy + 1) * (1 - dx) + g(ix + 1, iy + 1) * dx) * dy;
   return Math.max(0, val);
 };
 
@@ -738,28 +739,26 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   elevation[i] = e;
   temperature[i] = Math.max(0, Math.min(1,
     1 - lat * 1.05 - Math.max(0, e) * 0.4 + fbm(nx * 3 + 80, ny * 3 + 80, 3, 2, 0.5) * 0.08));
-}
 
-// ═══════════════════════════════════════════════════════
-// STEP 9: Moisture (latitude zones + coast distance + noise)
-// ═══════════════════════════════════════════════════════
-for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-  const i = y * W + x, nx = x / W, ny = y / H, lat = Math.abs(ny - 0.5) * 2;
-  if (elevation[i] <= 0) { moisture[i] = 0.5 + fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.5) * 0.1; continue; }
-  const cd = cdist[Math.min(dh - 1, Math.floor(y / DG)) * dw + Math.min(dw - 1, Math.floor(x / DG))];
-  const coastProx = Math.max(0, 1 - cd / 8);
-  const tropWet = Math.max(0, 1 - lat * 2.5);
-  const subtropDry = Math.exp(-((lat - 0.28) ** 2) / (2 * 0.06 * 0.06)) * 0.50 * (1 - coastProx * 0.5);
-  const tempWet = Math.exp(-((lat - 0.55) ** 2) / 0.025) * 0.22;
-  const tropF = Math.max(0, 1 - lat * 3);
-  const contRate = 0.006 + (1 - tropF) * 0.014;
-  const cont = Math.min(0.28, cd * contRate);
-  const polarDry = Math.max(0, (lat - 0.75)) * 0.25;
-  let m = 0.42 + tropWet * 0.42 - subtropDry + tempWet - cont - polarDry
-    + fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55) * 0.12;
-  if (elevation[i] > 0.15) m -= Math.min(0.2, (elevation[i] - 0.15) * 1);
-  if (elevation[i] < 0.02) m += 0.10;
-  moisture[i] = Math.max(0.02, Math.min(1, m));
+  // ── Moisture (inline for cache locality) ──
+  if (e <= 0) {
+    moisture[i] = 0.5 + fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.5) * 0.1;
+  } else {
+    const cdm = cdist[Math.min(dh - 1, (y / DG) | 0) * dw + Math.min(dw - 1, (x / DG) | 0)];
+    const coastProx = Math.max(0, 1 - cdm / 8);
+    const tropWet = Math.max(0, 1 - lat * 2.5);
+    const subtropDry = Math.exp(-((lat - 0.28) ** 2) / (2 * 0.06 * 0.06)) * 0.50 * (1 - coastProx * 0.5);
+    const tempWet = Math.exp(-((lat - 0.55) ** 2) / 0.025) * 0.22;
+    const tropF = Math.max(0, 1 - lat * 3);
+    const contRate = 0.006 + (1 - tropF) * 0.014;
+    const cont = Math.min(0.28, cdm * contRate);
+    const polarDry = Math.max(0, (lat - 0.75)) * 0.25;
+    let m = 0.42 + tropWet * 0.42 - subtropDry + tempWet - cont - polarDry
+      + fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55) * 0.12;
+    if (e > 0.15) m -= Math.min(0.2, (e - 0.15) * 1);
+    if (e < 0.02) m += 0.10;
+    moisture[i] = Math.max(0.02, Math.min(1, m));
+  }
 }
 
 return { elevation, moisture, temperature, pixPlate };
