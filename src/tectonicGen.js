@@ -704,10 +704,11 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       e -= valleyNoise * valleyNoise * 0.015 * (1 - tecBlend) * interior;
     }
 
-    // ── Hypsometric remap: power curve ──
-    // pow(2.2) keeps plains very dark, mountains bright
+    // ── Hypsometric remap: gentle power curve ──
+    // pow(1.3) nudges distribution lower without crushing detail
+    // 0.03 → 0.017, 0.10 → 0.050, 0.30 → 0.21, 0.55 → 0.44
     e = Math.max(0, e);
-    e = Math.pow(e, 2.2) * 3.0;
+    e = Math.pow(e, 1.3) * 1.5;
     e = Math.max(0.002, Math.min(1.0, e));
   }
 
