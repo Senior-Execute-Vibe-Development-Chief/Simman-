@@ -667,44 +667,49 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const broadVal = sampleCoarse(mtnBroad, twx, twy);    // broad: plateau/foothill uplift
 
     // ── Tectonic envelope (compute first — coastBlend needs it) ──
-    // Blend broadVal (wide plateau swell) with tecMod (actual convergence magnitude).
-    // tecMod carries the real tectonic strength — without it, all boundaries
-    // produce the same elevation regardless of convergence rate.
-    const tecEnv = Math.max(0, tecMod) * 2.5;
+    const tecEnv = Math.max(0, tecMod) * 3.5;
     const blurEnv = broadVal * 3.0;
     const envelope = Math.max(tecEnv, blurEnv);
 
     // Coast blend — suppress it where tectonic envelope is strong
-    // so Andes-type coastal mountains can reach the shore
     const rawCoastBlend = smoothstep(1 - cd / 6);
     const tecStr = Math.min(1, envelope * 3);
     const coastBlend = rawCoastBlend * (1 - tecStr * 0.85);
 
-    // ── Regime A: Coastal lowlands (very low, near sea level) ──
-    const coastE = 0.002 + (1 - coastBlend) * 0.005
-      + fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5) * 0.003;
+    // ── Regime A: Coastal lowlands (~0-300m) ──
+    const coastE = 0.008 + (1 - coastBlend) * 0.015
+      + fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5) * 0.008;
 
-    // ── Regime B: Craton/shield interior (low rolling plains) ──
-    const broadSwell = fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6) * 0.012;
+    // ── Regime B: Continental interior ──
+    // Base elevation: interior plains at ~400-800m
+    const baseE = 0.025 + interior * 0.045;
+
+    // Large-scale highland/lowland regions within continents
+    // (e.g. Great Plains vs Colorado Plateau vs Appalachian highlands)
+    const continentNoise = fbm(nx * 2.2 + s1 + 30, ny * 2.2 + s1 + 30, 3, 2, 0.55);
+    const highlandMask = smoothstep(continentNoise * 2 + 0.2);
+    const regionalE = highlandMask * 0.10 * interior;
+
+    // Rolling terrain texture
+    const broadSwell = fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6) * 0.018;
     const [rhx, rhy] = warp(nx, ny, 3, 2, 0.04, s2 + 10, s2 + 60);
-    const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.010;
-    const plateauBoost = Math.max(0, stampE) * 0.15 * interior;
-    const cratonE = 0.006 + interior * 0.012 + broadSwell + rolling + plateauBoost;
+    const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.015;
+    const plateauBoost = Math.max(0, stampE) * 0.3 * interior;
 
-    // Amplify craton terrain by envelope
-    e = cratonE * (1.0 + envelope * 10.0);
+    const cratonE = baseE + regionalE + broadSwell + rolling + plateauBoost;
 
-    // Plateau base lift: smooth raised terrain near convergent zones
-    e += envelope * 0.10;
+    // Amplify craton terrain by tectonic envelope
+    e = cratonE * (1.0 + envelope * 12.0);
+
+    // Plateau base lift: convergent zones get substantial elevated terrain
+    e += envelope * 0.20;
 
     // Coast blend — mountains near coast stay elevated when tectonic is strong
     e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
 
-    // ── Hypsometric remap: gentle power curve ──
-    // pow(1.3) nudges distribution lower without crushing detail
-    // 0.03 → 0.017, 0.10 → 0.050, 0.30 → 0.21, 0.55 → 0.44
+    // ── Hypsometric remap: very gentle curve to preserve terrain variety ──
     e = Math.max(0, e);
-    e = Math.pow(e, 1.3) * 1.5;
+    e = Math.pow(e, 1.08) * 1.1;
     e = Math.max(0.002, Math.min(1.0, e));
   }
 
