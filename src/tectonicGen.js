@@ -550,61 +550,75 @@ for (let qi = 0; qi < cdQ.length; qi++) {
 // STEP 8: Build final pixel-level elevation
 // Stamp base + tectonic effects + continentality terrain
 // ═══════════════════════════════════════════════════════
+const smoothstep = (x) => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
+
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
   const nx = x / W, ny = y / H;
   const lat = Math.abs(ny - 0.5) * 2;
 
-  // Start with stamp elevation relative to sea level
-  let e = (rawElev[i] - sl) * 0.3;
+  // Stamp elevation relative to sea level (continental thickness signal)
+  const stampE = (rawElev[i] - sl) * 0.3;
 
-  // Add interpolated tectonic modifier (mountains/rifts from plate boundaries)
+  // Tectonic modifier — warp the lookup so mountain belts curve naturally
   const tcx = x / CG, tcy = y / CG;
-  const tecMod = sampleCrust(tcx, tcy);
-  e += tecMod;
+  const twx = tcx + fbm(nx * 3 + 200, ny * 3 + 200, 3, 2, 0.5) * 3.0;
+  const twy = tcy + fbm(nx * 3 + 250, ny * 3 + 250, 3, 2, 0.5) * 3.0;
+  const tecMod = sampleCrust(twx, twy);
+  let e = stampE + tecMod;
 
   if (e > 0) {
-    // Real Earth hypsometry: ~50% of land below 500m, median ~400m.
-    // Most land is low coastal plains and gentle interior shields/cratons.
-    // Mountains are rare — only at plate boundaries with strong tectonic uplift.
     const cd = cdist[Math.min(dh - 1, Math.floor(y / DG)) * dw + Math.min(dw - 1, Math.floor(x / DG))];
     const interior = Math.min(1, cd / 15);
-    const coastProx = Math.max(0, 1 - cd / 5); // 1 at coast, 0 inland
 
-    // Base land: low coastal plains (0.003-0.02) grading to gentle interior
-    // plains/shields (0.03-0.06). No mountains without tectonic cause.
-    const plainBase = 0.003 + interior * 0.04;
-    const plainNoise = fbm(nx * 8 + s3 + 40, ny * 8 + s3 + 40, 3, 2, 0.5) * 0.015
-      + fbm(nx * 16 + s4 + 20, ny * 16 + s4 + 20, 2, 2, 0.4) * 0.005;
-    e = plainBase + Math.abs(plainNoise);
+    // ── Regime blending via smoothstep (no hard cutoffs) ──
+    // tecBlend: 0 = plains/craton, 1 = full orogen (mountain belt)
+    const tecBlend = smoothstep((tecMod - 0.01) / 0.12);
+    // coastBlend: 1 = coast, 0 = inland
+    const coastBlend = smoothstep(1 - cd / 6);
 
-    // Gentle hills in interior (not mountains — just rolling terrain)
-    const [whx, why] = warp(nx, ny, 4, 3, 0.05, s3 + 20, s3 + 70);
-    e += Math.max(0, fbm(whx * 6 + s2, why * 6 + s2, 4, 2, 0.5)) * 0.025 * interior;
+    // ── Regime A: Coastal lowlands ──
+    const coastE = 0.003 + (1 - coastBlend) * 0.012
+      + fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5) * 0.006;
 
-    // Tectonic mountains: ONLY where tecMod > 0 (plate boundary uplift).
-    // This is the only source of major elevation. tecMod drives everything.
-    if (tecMod > 0.01) {
-      const tecStr = Math.min(1, tecMod / 0.15); // normalized tectonic strength
-      const [wmx, wmy] = warp(nx, ny, 2, 3, 0.1, s4, s4 + 40);
-      const ridgeNoise = ridged(wmx * 4 + s5, wmy * 4 + s5, 5, 2.2, 2.0, 1.0);
-      // Mountains scale with tectonic uplift — vast ranges at strong boundaries
-      e += ridgeNoise * tecStr * tecStr * 0.55;
-      // Foothills around mountains
-      e += Math.max(0, fbm(wmx * 8 + s2 + 10, wmy * 8 + s2 + 10, 3, 2, 0.5)) * tecStr * 0.08;
-    }
+    // ── Regime B: Craton/shield interior (rolling plains) ──
+    // Broad continental undulation + rolling hills (symmetric — no max(0,...) clipping)
+    const broadSwell = fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6) * 0.03;
+    const [rhx, rhy] = warp(nx, ny, 3, 2, 0.04, s2 + 10, s2 + 60);
+    const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.02;
+    // Stamp-derived plateau boost: thick crust (overlapping stamps) = higher plateaus
+    const plateauBoost = Math.max(0, stampE) * 0.3 * interior;
+    const cratonE = 0.025 + interior * 0.03 + broadSwell + rolling + plateauBoost;
 
-    // Valley carving (subtle, mostly in interior)
-    e -= Math.max(0, fbm(nx * 5 + s1 + 60, ny * 5 + s1 + 60, 3, 2, 0.5) + 0.2) * 0.02 * interior;
+    // ── Regime C: Orogen / mountain belt (tectonic-driven) ──
+    const [wmx, wmy] = warp(nx, ny, 2, 3, 0.1, s4, s4 + 40);
+    const ridgeNoise = ridged(wmx * 4 + s5, wmy * 4 + s5, 5, 2.2, 2.0, 1.0);
+    const orogenE = cratonE + ridgeNoise * 0.45 + tecMod * 1.5;
 
-    // Hypsometric power curve: skew distribution toward low elevations
-    // e^1.4 compresses low values (most land stays low) while preserving peaks
-    e = Math.pow(Math.max(0, e), 1.4) * 3.5;
+    // ── Foothill zone: peaks in tecMod transition band (0.01-0.08) ──
+    const foothillZone = Math.max(0, 1 - Math.abs(tecMod - 0.04) / 0.04);
+    const [fhx, fhy] = warp(nx, ny, 3, 2, 0.06, s3 + 50, s3 + 80);
+    const foothillNoise = Math.pow(Math.max(0, fbm(fhx * 5 + s4, fhy * 5 + s4, 4, 2, 0.5)), 1.5);
+
+    // ── Blend regimes smoothly ──
+    e = cratonE * (1 - tecBlend) + orogenE * tecBlend;  // craton ↔ mountain
+    e = e * (1 - coastBlend) + coastE * coastBlend;     // blend coastal
+    e += foothillNoise * foothillZone * 0.12;            // foothill transition
+
+    // ── Valley carving: inverted ridged noise for dendritic valleys ──
+    const valleyNoise = 1 - ridged(nx * 3 + s1 + 80, ny * 3 + s1 + 80, 4, 2.1, 1.8, 1.0);
+    e -= valleyNoise * valleyNoise * 0.03 * interior;
+
+    // ── Hypsometric remap: skewed sigmoid preserves low-elevation detail ──
+    // Compresses lows gently, preserves mountain peaks
+    const skew = 0.10;
+    e = Math.max(0, e);
+    e = e / (e + skew) * (1 + skew);
     e = Math.max(0.003, e);
   }
 
   // Fine texture
-  e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.004;
+  e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.006;
 
   // Polar reduction
   if (lat > 0.88) e -= (lat - 0.88) * 2;
