@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
-import TuningPanel from "./TuningPanel.jsx";
+import TuningPanel, { ParamEditor, renderPreview } from "./TuningPanel.jsx";
 import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
 
@@ -675,9 +675,11 @@ const[importStatus,setImportStatus]=useState(null);
 const[showRivers,setShowRivers]=useState(true);
 const[hoverInfo,setHoverInfo]=useState(null);
 const[tecPresetName,setTecPresetName]=useState("Default");
-const[rightPanel,setRightPanel]=useState("");  // "" | "params" | "tuning"
+const[rightPanel,setRightPanel]=useState("");  // "" | "params"
+const[showTuning,setShowTuning]=useState(false);
 const[mapCount,setMapCount]=useState(1);
-const[openGroup,setOpenGroup]=useState("");
+const extraCanvasRefs=useRef([]);
+const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const showPlatesRef=useRef(false);
 const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
@@ -695,6 +697,24 @@ setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
+
+// Generate extra seed preview maps (same params, different seeds)
+const PW=480,PH=240;
+const generateExtraMaps=useCallback(()=>{
+if(mapCount<=1||presetRef.current!=="tectonic")return;
+const nf={initNoise,fbm,ridged,noise2D,worley};
+let idx=0;
+const genNext=()=>{
+if(idx>=mapCount-1)return;
+const extraSeed=seed+idx+1;
+const world=generateTectonicWorld(PW,PH,extraSeed,nf,_tecParams);
+extraWorldsRef.current[idx]={seed:extraSeed,world};
+const canvas=extraCanvasRefs.current[idx];
+if(canvas)renderPreview(canvas,world,PW,PH);
+idx++;requestAnimationFrame(genNext);};
+requestAnimationFrame(genNext);
+},[seed,mapCount]);
+useEffect(()=>{generateExtraMaps();},[seed,mapCount,generateExtraMaps]);
 
 // Build terrain RGB cache at tile resolution (one entry per tile)
 const updateTerrainCache=useCallback((w)=>{
@@ -907,7 +927,6 @@ const lbs={...bs,width:"100%",textAlign:"left",padding:"4px 10px"};
 const sep=<div style={{height:1,background:"rgba(201,184,122,0.10)",margin:"2px 0"}} />;
 const rpW=rightPanel?300:0;
 const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
-const gridRows=Math.ceil(mapCount/gridCols);
 
 return(
 <div style={{width:"100vw",height:"100vh",background:"#060810",overflow:"hidden",display:"flex"}}>
@@ -964,17 +983,23 @@ style={{flex:1,accentColor:"#c9b87a"}} />
 <div style={{flex:1,position:"relative",display:"flex",flexDirection:"column"}}>
 
 {/* Map grid */}
-<div style={{flex:1,display:"grid",gridTemplateColumns:`repeat(${gridCols},1fr)`,gridTemplateRows:`repeat(${gridRows},1fr)`,gap:2,padding:2}}>
-{Array.from({length:mapCount}).map((_,mi)=>(
-<div key={mi} style={{position:"relative",overflow:"hidden",background:"#060810",display:"flex",alignItems:"center",justifyContent:"center"}}>
+<div style={{flex:1,display:"grid",gridTemplateColumns:`repeat(${gridCols},1fr)`,gap:2,padding:2}}>
+{Array.from({length:mapCount}).map((_,mi)=>{
+const extraSeed=seed+mi;
+return(
+<div key={mi} style={{position:"relative",overflow:"hidden",background:"#060810",display:"flex",
+alignItems:"center",justifyContent:"center",cursor:mi>0?"pointer":"default",
+border:mi===0?"2px solid rgba(201,184,122,0.25)":"2px solid transparent",borderRadius:3}}
+onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
 {mi===0?<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
 style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",
 aspectRatio:`${CW}/${CH}`}} />
-:<canvas width={CW} height={CH} style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",
-width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,opacity:0.4,filter:"grayscale(0.5)"}} />}
-{mi>0&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
-color:"#4a4438",fontSize:11,pointerEvents:"none"}}>Map {mi+1} (coming soon)</div>}
-</div>))}
+:<canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
+style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",
+width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
+{mi>0&&<div style={{position:"absolute",bottom:2,left:0,right:0,textAlign:"center",
+color:"#6a6458",fontSize:9,pointerEvents:"none"}}>Seed: {extraSeed}</div>}
+</div>);})}
 </div>
 
 {/* Hover tooltip */}
@@ -982,8 +1007,8 @@ color:"#4a4438",fontSize:11,pointerEvents:"none"}}>Map {mi+1} (coming soon)</div
 background:"rgba(6,8,16,0.85)",color:"#c9b87a",fontSize:10,padding:"1px 5px",
 borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap",zIndex:100}}>{hoverInfo.val}m</div>}
 
-{/* Biome legend */}
-{viewMode==="terrain"&&<div style={{position:"absolute",top:6,left:6,background:"rgba(6,8,16,0.82)",
+{/* Biome legend — BOTTOM LEFT */}
+{viewMode==="terrain"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.82)",
 borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
 {[4,5,6,7,8,9,10,15,11,12,14,13,16].map(bi=>(
 <div key={bi} style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
@@ -1027,70 +1052,31 @@ color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</bu
 <button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
 style={{...bs,color:rightPanel==="params"?"#c9b87a":"#5a5448",background:rightPanel==="params"?"rgba(201,184,122,0.15)":"transparent",
 border:"none",padding:"6px 12px",fontSize:12}}>Params</button>
-<button onClick={()=>setRightPanel(rightPanel==="tuning"?"":"tuning")}
-style={{...bs,color:rightPanel==="tuning"?"#b8a060":"#5a5448",background:rightPanel==="tuning"?"rgba(201,184,122,0.15)":"transparent",
-border:"none",padding:"6px 12px",fontSize:12}}>Tune</button>
+<button onClick={()=>setShowTuning(true)}
+style={{...bs,color:"#b8a060",border:"1px solid rgba(201,184,122,0.3)",padding:"6px 12px",fontSize:12}}>Tune</button>
 </>}
 </div>
 
 </div>{/* end center */}
 
-{/* ══ RIGHT PANEL ══ */}
-{rightPanel&&<div style={{width:rpW,minWidth:rpW,height:"100%",background:"rgba(6,8,16,0.92)",
+{/* ══ RIGHT PANEL: Parameters ══ */}
+{rightPanel==="params"&&preset==="tectonic"&&<div style={{width:rpW,minWidth:rpW,height:"100%",background:"rgba(6,8,16,0.92)",
 borderLeft:"1px solid rgba(201,184,122,0.08)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
 <div style={{padding:"8px 10px",fontSize:11,color:"#c9b87a",borderBottom:"1px solid rgba(201,184,122,0.08)",
-display:"flex",gap:8,alignItems:"center"}}>
-<span onClick={()=>setRightPanel("params")} style={{cursor:"pointer",
-color:rightPanel==="params"?"#c9b87a":"#6a6458",borderBottom:rightPanel==="params"?"1px solid #c9b87a":"none",
-paddingBottom:2}}>Parameters</span>
-<span onClick={()=>setRightPanel("tuning")} style={{cursor:"pointer",
-color:rightPanel==="tuning"?"#c9b87a":"#6a6458",borderBottom:rightPanel==="tuning"?"1px solid #c9b87a":"none",
-paddingBottom:2}}>Tuning</span>
+display:"flex",alignItems:"center"}}>
+<span>Parameters</span>
 <div style={{flex:1}} />
 <span onClick={()=>setRightPanel("")} style={{cursor:"pointer",color:"#6a6458",fontSize:14}}>✕</span>
 </div>
-
-{/* Parameters tab */}
-{rightPanel==="params"&&<div style={{flex:1,overflowY:"auto",padding:"6px 8px",fontSize:10}}>
-{Object.entries(PARAMS).map(([gk,gv])=>(
-<div key={gk} style={{marginBottom:6}}>
-<div onClick={()=>setOpenGroup(openGroup===gk?"":gk)} style={{cursor:"pointer",padding:"4px 6px",
-background:`rgba(${gv.color},0.1)`,borderRadius:2,color:`rgb(${gv.color})`,fontSize:11,
-display:"flex",alignItems:"center",gap:4}}>
-<span style={{fontSize:8}}>{openGroup===gk?"▼":"▶"}</span>
-{gv.label} <span style={{color:"#6a6458",fontSize:9}}>({gv.params.length})</span></div>
-{openGroup===gk&&<div style={{padding:"4px 0"}}>
-{gv.params.map(pd=>{
-const val=_tecParams[pd.key]!==undefined?_tecParams[pd.key]:pd.def;
-const step=pd.step||((pd.max-pd.min)/100);
-return(
-<div key={pd.key} style={{marginBottom:6,padding:"0 4px"}}>
-<div style={{display:"flex",alignItems:"center",gap:4,marginBottom:2}}>
-<span style={{color:"#b0a888",flex:1}}>{pd.label}</span>
-<span title={pd.desc} style={{cursor:"help",color:"#6a6458",fontSize:11,
-width:14,height:14,borderRadius:7,border:"1px solid rgba(201,184,122,0.2)",
-display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>?</span>
+<div style={{flex:1,overflowY:"auto",padding:"6px 8px"}}>
+<ParamEditor params={{..._tecParams}} onChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}} />
 </div>
-<div style={{display:"flex",alignItems:"center",gap:4}}>
-<input type="range" min={pd.min} max={pd.max} step={step} value={val}
-onChange={e=>{const v=Number(e.target.value);_tecParams={..._tecParams,[pd.key]:v};generate(seed);}}
-style={{flex:1,accentColor:`rgb(${gv.color})`}} />
-<span style={{color:"#8a8474",fontSize:9,minWidth:32,textAlign:"right"}}>
-{pd.step&&pd.step>=1?val:val.toFixed(3)}</span>
-</div>
-{pd.desc&&<div style={{fontSize:8,color:"#4a4438",lineHeight:"11px",marginTop:1}}>{pd.desc}</div>}
-</div>);})}
-</div>}
-</div>))}
 </div>}
 
-{/* Tuning tab */}
-{rightPanel==="tuning"&&<div style={{flex:1,overflowY:"auto",padding:"8px"}}>
-<TuningPanel noiseFns={{initNoise,fbm,ridged,noise2D,worley}} seed={seed}
+{/* ══ TUNING OVERLAY ══ */}
+{showTuning&&<TuningPanel noiseFns={{initNoise,fbm,ridged,noise2D,worley}} seed={seed}
   params={{..._tecParams}}
-  onParamsChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}} />
-</div>}
-
-</div>}
+  onParamsChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
+  onClose={()=>setShowTuning(false)} />}
 
 </div>);}

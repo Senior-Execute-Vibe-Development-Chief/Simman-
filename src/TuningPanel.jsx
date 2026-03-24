@@ -31,12 +31,54 @@ function renderPreview(canvas, world, pw, ph) {
   ctx.putImageData(img, 0, 0);
 }
 
-const PW = 320, PH = 160;
-const CANDIDATE_COUNT = 4;
+export { renderPreview };
+
+// ── Shared Parameter Editor component ──
+export function ParamEditor({ params, onChange }) {
+  const [openGroup, setOpenGroup] = useState("");
+  return (
+    <div style={{ fontSize: 10 }}>
+      {Object.entries(PARAMS).map(([gk, gv]) => (
+        <div key={gk} style={{ marginBottom: 6 }}>
+          <div onClick={() => setOpenGroup(openGroup === gk ? "" : gk)} style={{ cursor: "pointer", padding: "4px 6px",
+            background: `rgba(${gv.color},0.1)`, borderRadius: 2, color: `rgb(${gv.color})`, fontSize: 11,
+            display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 8 }}>{openGroup === gk ? "▼" : "▶"}</span>
+            {gv.label} <span style={{ color: "#6a6458", fontSize: 9 }}>({gv.params.length})</span>
+          </div>
+          {openGroup === gk && <div style={{ padding: "4px 0" }}>
+            {gv.params.map(pd => {
+              const val = params[pd.key] !== undefined ? params[pd.key] : pd.def;
+              const step = pd.step || ((pd.max - pd.min) / 100);
+              return (
+                <div key={pd.key} style={{ marginBottom: 6, padding: "0 4px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
+                    <span style={{ color: "#b0a888", flex: 1 }}>{pd.label}</span>
+                    <span title={pd.desc} style={{ cursor: "help", color: "#6a6458", fontSize: 11,
+                      width: 14, height: 14, borderRadius: 7, border: "1px solid rgba(201,184,122,0.2)",
+                      display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>?</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <input type="range" min={pd.min} max={pd.max} step={step} value={val}
+                      onChange={e => onChange({ ...params, [pd.key]: Number(e.target.value) })}
+                      style={{ flex: 1, accentColor: `rgb(${gv.color})` }} />
+                    <span style={{ color: "#8a8474", fontSize: 9, minWidth: 32, textAlign: "right" }}>
+                      {pd.step && pd.step >= 1 ? val : val.toFixed(3)}</span>
+                  </div>
+                  {pd.desc && <div style={{ fontSize: 8, color: "#4a4438", lineHeight: "11px", marginTop: 1 }}>{pd.desc}</div>}
+                </div>);
+            })}
+          </div>}
+        </div>))}
+    </div>
+  );
+}
+
+const PW = 480, PH = 240;
 const INITIAL_SPREAD = 0.35;
 const SPREAD_DECAY = 0.72;
 
-export default function TuningPanel({ noiseFns, seed, params, onParamsChange }) {
+export default function TuningPanel({ noiseFns, seed, params, onParamsChange, onClose }) {
   const [group, setGroup] = useState("continents");
   const [round, setRound] = useState(0);
   const [spread, setSpread] = useState(INITIAL_SPREAD);
@@ -44,14 +86,15 @@ export default function TuningPanel({ noiseFns, seed, params, onParamsChange }) 
   const [candidates, setCandidates] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [candCount, setCandCount] = useState(4);
+  const [rightTab, setRightTab] = useState("params");
   const canvasRefs = useRef([]);
 
-  // Sync external params changes
   useEffect(() => { setBaseParams(params || {}); }, [params]);
 
-  const doGenerate = useCallback((bp, grp, sp) => {
+  const doGenerate = useCallback((bp, grp, sp, count) => {
     setGenerating(true);
-    const cands = generateCandidates(bp, grp, sp, CANDIDATE_COUNT, Date.now());
+    const cands = generateCandidates(bp, grp, sp, count || candCount, Date.now());
     setCandidates(cands);
     let idx = 0;
     const genNext = () => {
@@ -63,9 +106,9 @@ export default function TuningPanel({ noiseFns, seed, params, onParamsChange }) 
       requestAnimationFrame(genNext);
     };
     requestAnimationFrame(genNext);
-  }, [seed, noiseFns]);
+  }, [seed, noiseFns, candCount]);
 
-  useEffect(() => { doGenerate(baseParams, group, spread); }, []); // eslint-disable-line
+  useEffect(() => { doGenerate(baseParams, group, spread, candCount); }, []); // eslint-disable-line
 
   const handleSelect = (idx) => {
     const newBase = { ...candidates[idx] };
@@ -78,85 +121,120 @@ export default function TuningPanel({ noiseFns, seed, params, onParamsChange }) 
   };
 
   const handleGroupChange = (grp) => {
-    setGroup(grp);
-    setRound(0);
-    setSpread(INITIAL_SPREAD);
+    setGroup(grp); setRound(0); setSpread(INITIAL_SPREAD);
     doGenerate(baseParams, grp, INITIAL_SPREAD);
+  };
+
+  const handleCandCountChange = (n) => {
+    setCandCount(n);
+    doGenerate(baseParams, group, spread, n);
+  };
+
+  const handleParamEdit = (newParams) => {
+    setBaseParams(newParams);
+    onParamsChange(newParams);
+    doGenerate(newParams, group, spread);
   };
 
   const btn = {
     background: "rgba(201,184,122,0.08)", border: "1px solid rgba(201,184,122,0.18)",
-    color: "#8a8474", padding: "3px 8px", borderRadius: 2, cursor: "pointer",
-    fontSize: 10, fontFamily: "inherit",
+    color: "#8a8474", padding: "4px 10px", borderRadius: 2, cursor: "pointer",
+    fontSize: 11, fontFamily: "inherit",
   };
   const btnA = (active, color) => ({
-    ...btn,
-    background: active ? `rgba(${color},0.2)` : btn.background,
+    ...btn, background: active ? `rgba(${color},0.2)` : btn.background,
     border: `1px solid ${active ? `rgba(${color},0.35)` : "rgba(201,184,122,0.18)"}`,
     color: active ? `rgb(${color})` : "#8a8474",
   });
 
   const groupKeys = [...Object.keys(PARAMS), "all"];
+  const gridCols = candCount <= 2 ? candCount : candCount <= 4 ? 2 : candCount <= 6 ? 3 : candCount <= 9 ? 3 : 5;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {/* Group selector */}
-      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-        {groupKeys.map(k => (
-          <button key={k} onClick={() => handleGroupChange(k)}
-            style={btnA(group === k, k === "all" ? "201,184,122" : PARAMS[k].color)}>
-            {k === "all" ? "All" : PARAMS[k].label}
-          </button>
-        ))}
-      </div>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(4,6,12,0.97)", zIndex: 9999,
+      display: "flex", fontFamily: "inherit", color: "#c9b87a" }}>
 
-      <div style={{ fontSize: 9, color: "#6a6458" }}>
-        Round {round} · Spread {(spread * 100).toFixed(0)}%
-      </div>
+      {/* ── LEFT: Tune controls + preview grid ── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
-      {/* Preview canvases */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-        {Array.from({ length: CANDIDATE_COUNT }).map((_, i) => (
-          <div key={i} style={{ cursor: "pointer", textAlign: "center" }}
-            onClick={() => !generating && handleSelect(i)}>
-            <canvas ref={el => canvasRefs.current[i] = el}
-              width={PW} height={PH}
-              style={{ width: "100%", display: "block", background: "#0a0c14",
-                border: "1px solid rgba(201,184,122,0.15)", borderRadius: 2 }} />
-            <span style={{ fontSize: 8, color: i === 0 ? "#c9b87a" : "#6a6458" }}>
-              {i === 0 ? "Current" : `Var ${i}`}
-            </span>
+        {/* Header bar */}
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap",
+          padding: "8px 12px", borderBottom: "1px solid rgba(201,184,122,0.08)" }}>
+          <span style={{ fontSize: 12, color: "#c9b87a", fontWeight: "bold" }}>TUNE</span>
+          <div style={{ width: 1, height: 16, background: "rgba(201,184,122,0.15)" }} />
+          {groupKeys.map(k => (
+            <button key={k} onClick={() => handleGroupChange(k)}
+              style={btnA(group === k, k === "all" ? "201,184,122" : PARAMS[k].color)}>
+              {k === "all" ? "Everything" : PARAMS[k].label}
+            </button>
+          ))}
+          <div style={{ width: 1, height: 16, background: "rgba(201,184,122,0.15)" }} />
+          <span style={{ fontSize: 10, color: "#6a6458" }}>Round {round} · Spread {(spread * 100).toFixed(0)}%</span>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 10, color: "#6a6458" }}>Candidates</span>
+          <input type="range" min={1} max={10} value={candCount}
+            onChange={e => handleCandCountChange(+e.target.value)}
+            style={{ width: 60, accentColor: "#c9b87a" }} />
+          <span style={{ fontSize: 10, color: "#8a8474", minWidth: 14 }}>{candCount}</span>
+          <div style={{ width: 1, height: 16, background: "rgba(201,184,122,0.15)" }} />
+          <button onClick={onClose} style={{ ...btn, color: "#c9b87a" }}>Close</button>
+        </div>
+
+        {/* Preview grid */}
+        <div style={{ flex: 1, overflow: "auto", padding: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${gridCols},1fr)`, gap: 6 }}>
+            {Array.from({ length: candCount }).map((_, i) => (
+              <div key={i} style={{ cursor: "pointer", textAlign: "center" }}
+                onClick={() => !generating && handleSelect(i)}>
+                <canvas ref={el => canvasRefs.current[i] = el}
+                  width={PW} height={PH}
+                  style={{ width: "100%", display: "block", background: "#0a0c14",
+                    border: "2px solid rgba(201,184,122,0.12)", borderRadius: 3,
+                    transition: "border-color 0.15s" }}
+                  onMouseEnter={e => e.target.style.borderColor = "rgba(201,184,122,0.5)"}
+                  onMouseLeave={e => e.target.style.borderColor = "rgba(201,184,122,0.12)"} />
+                <span style={{ fontSize: 9, color: i === 0 ? "#c9b87a" : "#6a6458" }}>
+                  {i === 0 ? "Current" : `Variant ${i}`}
+                </span>
+              </div>
+            ))}
           </div>
-        ))}
+        </div>
+
+        {/* Bottom actions */}
+        <div style={{ display: "flex", gap: 8, padding: "8px 12px", alignItems: "center",
+          borderTop: "1px solid rgba(201,184,122,0.08)", flexWrap: "wrap" }}>
+          <button onClick={() => doGenerate(baseParams, group, spread)} style={btn}
+            disabled={generating}>Reshuffle</button>
+          <button onClick={() => {
+            const empty = {};
+            setBaseParams(empty); onParamsChange(empty);
+            setRound(0); setSpread(INITIAL_SPREAD);
+            doGenerate(empty, group, INITIAL_SPREAD);
+          }} style={btn}>Reset All</button>
+          <div style={{ width: 1, height: 16, background: "rgba(201,184,122,0.15)" }} />
+          <input value={saveName} onChange={e => setSaveName(e.target.value)}
+            placeholder="Preset name..."
+            style={{ background: "rgba(201,184,122,0.06)", border: "1px solid rgba(201,184,122,0.18)",
+              color: "#c9b87a", padding: "4px 8px", borderRadius: 2, fontSize: 11,
+              fontFamily: "inherit", width: 130, outline: "none" }} />
+          <button onClick={() => {
+            if (!saveName.trim()) return;
+            savePreset(saveName.trim(), baseParams); setSaveName("");
+          }} style={btn} disabled={!saveName.trim()}>Save Preset</button>
+          {generating && <span style={{ fontSize: 10, color: "#6a6458" }}>Generating...</span>}
+        </div>
       </div>
 
-      {/* Actions */}
-      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={() => doGenerate(baseParams, group, spread)} style={btn}
-          disabled={generating}>Reshuffle</button>
-        <button onClick={() => {
-          const empty = {};
-          setBaseParams(empty); onParamsChange(empty);
-          setRound(0); setSpread(INITIAL_SPREAD);
-          doGenerate(empty, group, INITIAL_SPREAD);
-        }} style={btn}>Reset</button>
+      {/* ── RIGHT: Parameter editor ── */}
+      <div style={{ width: 300, minWidth: 300, borderLeft: "1px solid rgba(201,184,122,0.08)",
+        display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ padding: "8px 10px", fontSize: 11, color: "#c9b87a",
+          borderBottom: "1px solid rgba(201,184,122,0.08)" }}>Parameters</div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "6px 8px" }}>
+          <ParamEditor params={baseParams} onChange={handleParamEdit} />
+        </div>
       </div>
-
-      {/* Save preset */}
-      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-        <input value={saveName} onChange={e => setSaveName(e.target.value)}
-          placeholder="Preset name..."
-          style={{ background: "rgba(201,184,122,0.06)", border: "1px solid rgba(201,184,122,0.18)",
-            color: "#c9b87a", padding: "3px 6px", borderRadius: 2, fontSize: 10,
-            fontFamily: "inherit", flex: 1, outline: "none", minWidth: 0 }} />
-        <button onClick={() => {
-          if (!saveName.trim()) return;
-          savePreset(saveName.trim(), baseParams);
-          setSaveName("");
-        }} style={btn} disabled={!saveName.trim()}>Save</button>
-      </div>
-
-      {generating && <span style={{ fontSize: 9, color: "#6a6458" }}>Generating...</span>}
     </div>
   );
 }
