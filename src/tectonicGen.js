@@ -461,7 +461,63 @@ const riftEffect = new Float32Array(N);
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 5b: Wide plateau field via Gaussian blur of mtnEffect
+// STEP 5b: Plate-edge proximity field for ALL land near plate boundaries
+// Gives coastal mountains (like Andes) even without strong convergence.
+// Any continental cell adjacent to a different plate gets a base signal.
+// ═══════════════════════════════════════════════════════
+const plateEdge = new Float32Array(N);
+{
+  const dist = new Float32Array(N).fill(1e9);
+  const queue = [];
+  for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
+    const i = ty * cw + tx;
+    if (crustType[i] !== 1) continue; // only land cells
+    for (const [ddx, ddy] of D8) {
+      const nx2 = (tx + ddx + cw) % cw, ny2 = ty + ddy;
+      if (ny2 < 0 || ny2 >= ch) continue;
+      const ni = ny2 * cw + nx2;
+      if (plateMap[ni] !== plateMap[i]) {
+        // This land cell is right at a plate boundary
+        plateEdge[i] = 0.12;
+        dist[i] = 0;
+        queue.push(i);
+        break;
+      }
+    }
+  }
+  // BFS inward — stays within same plate, fades over ~20 cells
+  for (let qi = 0; qi < queue.length; qi++) {
+    const ci = queue[qi];
+    const cd = dist[ci];
+    if (cd > 20) continue;
+    const ty = Math.floor(ci / cw), tx = ci % cw;
+    for (const [ddx, ddy] of D8) {
+      const nx2 = (tx + ddx + cw) % cw, ny2 = ty + ddy;
+      if (ny2 < 0 || ny2 >= ch) continue;
+      const ni = ny2 * cw + nx2;
+      if (crustType[ni] !== 1) continue;
+      if (plateMap[ni] !== plateMap[ci]) continue;
+      const nd = cd + (Math.abs(ddx) + Math.abs(ddy) > 1 ? 1.41 : 1);
+      if (nd < dist[ni]) {
+        dist[ni] = nd;
+        const falloff = Math.exp(-nd * nd / (2 * 8 * 8));
+        const effect = 0.12 * falloff;
+        if (effect > plateEdge[ni]) {
+          plateEdge[ni] = effect;
+          queue.push(ni);
+        }
+      }
+    }
+  }
+}
+
+// Merge plate-edge proximity into mtnEffect so it feeds into the blur
+for (let i = 0; i < N; i++) {
+  mtnEffect[i] = Math.max(mtnEffect[i], plateEdge[i]);
+}
+
+// ═══════════════════════════════════════════════════════
+// STEP 5c: Wide plateau field via Gaussian blur of mtnEffect
 // mtnEffect (sharp) gates where ridge TEXTURE appears.
 // mtnBroad (blurred) creates wide plateau/foothill uplift (Tibet, Altiplano).
 // ═══════════════════════════════════════════════════════
@@ -653,24 +709,22 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const cratonE = 0.006 + interior * 0.012 + broadSwell + rolling + plateauBoost;
 
     // ── Tectonic amplification ──
-    // Just amplify the existing terrain near plate boundaries.
-    // The broad field gives a smooth gradient: strong at convergent
-    // boundaries, fading over hundreds of km. The existing craton
-    // terrain (broadSwell + rolling + plateauBoost) already looks
-    // natural — we just make it BIGGER near tectonic zones.
-    const envelope = Math.min(1.0, broadVal * 4.0 + sharpVal * 2.0);
+    // Smooth envelope from blurred field — no hard saturation.
+    // broadVal has a natural gradient from the Gaussian blur.
+    // sharpVal adds peak intensity right at the boundary.
+    const envelope = broadVal * 2.5 + sharpVal * 1.5;
 
-    // Build base terrain, blend coast
-    e = cratonE;
-    e = e * (1 - coastBlend) + coastE * coastBlend;
+    // Amplify craton terrain FIRST (before coast blend).
+    // This way the gradient from interior terrain carries through
+    // to the coast, creating natural mountain-to-shore slopes.
+    e = cratonE * (1.0 + envelope * 13.0);
 
-    // Amplify: multiply existing terrain height by (1 + envelope * boost)
-    // At envelope=0 (plate interior): terrain unchanged
-    // At envelope=1 (strong convergence): terrain height × 14
-    e *= (1.0 + envelope * 13.0);
-
-    // Plateau base lift so even flat areas near boundaries rise
+    // Plateau base lift: smooth raised terrain near boundaries
     e += envelope * 0.12;
+
+    // THEN blend coast — mountains near coast stay elevated
+    // because e is already large before the blend pulls it down
+    e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
 
     // ── Hypsometric remap: gentle power curve ──
     // pow(1.3) nudges distribution lower without crushing detail
