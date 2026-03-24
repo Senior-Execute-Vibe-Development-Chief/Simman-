@@ -1,6 +1,28 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { generateTectonicWorld } from "./tectonicGen.js";
 
+// ── localStorage preset management ──
+const STORAGE_KEY = "simman_tec_presets";
+
+export function loadPresets() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+export function savePreset(name, params) {
+  const presets = loadPresets();
+  presets[name] = params;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+}
+
+export function deletePreset(name) {
+  const presets = loadPresets();
+  delete presets[name];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+}
+
 // ── Parameter definitions with groups ──
 const PARAMS = {
   plates: {
@@ -154,14 +176,15 @@ const CANDIDATE_COUNT = 5;
 const INITIAL_SPREAD = 0.35;
 const SPREAD_DECAY = 0.72;
 
-export default function TuningPanel({ noiseFns, seed, onApply, onClose }) {
+export default function TuningPanel({ noiseFns, seed, initialParams, onApply, onClose }) {
   const [group, setGroup] = useState("continents");
   const [round, setRound] = useState(0);
   const [spread, setSpread] = useState(INITIAL_SPREAD);
-  const [baseParams, setBaseParams] = useState({});
+  const [baseParams, setBaseParams] = useState(initialParams || {});
   const [candidates, setCandidates] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [selected, setSelected] = useState(-1);
+  const [saveName, setSaveName] = useState("");
   const canvasRefs = useRef([]);
   const shuffleSeed = useRef(1);
 
@@ -296,10 +319,21 @@ export default function TuningPanel({ noiseFns, seed, onApply, onClose }) {
       </div>
 
       {/* Actions */}
-      <div style={{ display: "flex", gap: 10, padding: "12px 16px", alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 10, padding: "12px 16px", alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
         <button onClick={handleReshuffle} style={btnBase}
           disabled={generating}>Reshuffle</button>
         <button onClick={handleReset} style={btnBase}>Reset All</button>
+        <div style={{ width: 1, height: 16, background: "rgba(201,184,122,0.15)" }} />
+        <input value={saveName} onChange={e => setSaveName(e.target.value)}
+          placeholder="Preset name..."
+          style={{ background: "rgba(201,184,122,0.06)", border: "1px solid rgba(201,184,122,0.18)",
+            color: "#c9b87a", padding: "4px 8px", borderRadius: 2, fontSize: 11,
+            fontFamily: "inherit", width: 120, outline: "none" }} />
+        <button onClick={() => {
+          if (!saveName.trim()) return;
+          savePreset(saveName.trim(), baseParams);
+          setSaveName("");
+        }} style={btnBase} disabled={!saveName.trim()}>Save</button>
         <div style={{ width: 1, height: 16, background: "rgba(201,184,122,0.15)" }} />
         <button onClick={handleApply}
           style={{ ...btnBase, color: "#c9b87a", border: "1px solid rgba(201,184,122,0.4)" }}>
