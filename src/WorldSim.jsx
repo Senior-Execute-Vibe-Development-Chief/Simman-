@@ -891,7 +891,7 @@ const wx=Math.floor(sx)*RES,wy=Math.floor(sy)*RES;
 const w=worldRef.current,i=wy*1920+wx;
 if(wx<0||wx>=1920||wy<0||wy>=960){setHoverInfo(null);return;}
 const elev=w.elevation[i]||0;
-const val=elev<=0?0:Math.round(elev*1000);
+const val=elev<=0?0:Math.round(elev*8000);
 setHoverInfo({x:ev.clientX,y:ev.clientY,val});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
@@ -901,7 +901,7 @@ return(
 style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,margin:"auto",position:"absolute",inset:0}} />
 {hoverInfo&&<div style={{position:"fixed",left:hoverInfo.x+12,top:hoverInfo.y-8,
 background:"rgba(6,8,16,0.85)",color:"#c9b87a",fontSize:10,padding:"1px 5px",
-borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap"}}>{hoverInfo.val}</div>}
+borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap"}}>{hoverInfo.val}m</div>}
 {/* Biome legend — left side, terrain view only */}
 {viewMode==="terrain"&&<div style={{position:"absolute",top:6,left:6,background:"rgba(6,8,16,0.82)",
 borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
