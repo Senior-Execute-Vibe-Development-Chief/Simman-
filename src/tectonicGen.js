@@ -131,7 +131,8 @@ for (let p = 0; p < numPlates; p++) {
       rx: baseR * aspect, ry: baseR / aspect,
       rot, cos: Math.cos(rot), sin: Math.sin(rot),
       str: s === 0 ? 0.8 + rng() * 0.4 : 0.5 + rng() * 0.4,
-      no: no + s * 17
+      no: no + s * 17,
+      plateId: p
     });
   }
 
@@ -148,7 +149,8 @@ for (let p = 0; p < numPlates; p++) {
       ry: (0.015 + rng() * 0.03) * scale,
       rot, cos: Math.cos(rot), sin: Math.sin(rot),
       str: 0.25 + rng() * 0.3,
-      no: no + 50 + n * 13
+      no: no + 50 + n * 13,
+      plateId: p
     });
   }
 }
@@ -176,30 +178,41 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const cnB = noise2D(wnx * 5 + s1 + 30, wny * 5 + s1 + 30) * 0.04;
   const coastRidge = noise2D(wnx * 14 + s2 + 50, wny * 14 + s2 + 50);
 
-  // Positive stamps
+  // Positive stamps — attenuate when pixel is on a different plate
+  const pxPlate = pixPlate[y * W + x];
   for (const c of posStamps) {
     let dx = wnx - c.cx + cnA; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
     let dy = wny - c.cy + cnB;
     let dd = Math.sqrt(Math.pow((dx * c.cos + dy * c.sin) / c.rx, 2) + Math.pow((-dx * c.sin + dy * c.cos) / c.ry, 2));
     dd += Math.abs(coastRidge + noise2D(wnx * 7 + c.no, wny * 7 + c.no) * 0.5) * 0.2;
     if (dd > 0.7 && dd < 1.3) { const rn = 1 - Math.abs(noise2D(wnx * 8 + c.no + 70, wny * 8 + c.no + 70)); dd += rn * rn * 0.12; }
-    if (dd < 1) { const f2 = 1 - dd; e += f2 * f2 * c.str; }
+    if (dd < 1) {
+      const f2 = 1 - dd;
+      // Stamps on foreign plates are strongly attenuated — only a slight bleed across boundaries
+      const plateFactor = pxPlate === c.plateId ? 1.0 : 0.15;
+      e += f2 * f2 * c.str * plateFactor;
+    }
   }
 
-  // Negative stamps (bays/gulfs)
+  // Negative stamps (bays/gulfs) — also plate-aware
   for (const c of negStamps) {
     let dx = wnx - c.cx + cnA; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
     let dy = wny - c.cy + cnB;
     let dd = Math.sqrt(Math.pow((dx * c.cos + dy * c.sin) / c.rx, 2) + Math.pow((-dx * c.sin + dy * c.cos) / c.ry, 2));
     dd += Math.abs(coastRidge + noise2D(wnx * 5 + c.no, wny * 5 + c.no) * 0.5) * 0.18;
-    if (dd < 1) { const f2 = 1 - dd; e -= f2 * f2 * c.str; }
+    if (dd < 1) {
+      const f2 = 1 - dd;
+      const plateFactor = pxPlate === c.plateId ? 1.0 : 0.15;
+      e -= f2 * f2 * c.str * plateFactor;
+    }
   }
 
-  // Peninsula/bay noise features
+  // Peninsula/bay noise features — only on continental plates
+  const onContPlate = plates[pxPlate] && plates[pxPlate].hasCont ? 1.0 : 0.12;
   const penNoise = fbm(wnx * 4 + s3 + 90, wny * 4 + s3 + 90, 3, 2, 0.5);
-  if (penNoise > 0.4) e += (penNoise - 0.4) * 0.2;
+  if (penNoise > 0.4) e += (penNoise - 0.4) * 0.2 * onContPlate;
   const bayNoise = fbm(wnx * 3.5 + s4 + 120, wny * 3.5 + s4 + 120, 3, 2, 0.5);
-  if (bayNoise > 0.45) e -= (bayNoise - 0.45) * 0.18;
+  if (bayNoise > 0.45) e -= (bayNoise - 0.45) * 0.18 * onContPlate;
 
   // Worley F2-F1 near existing land
   const [wf1, wf2] = worley(wnx * 5 + s5, wny * 5 + s5);
