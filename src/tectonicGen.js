@@ -554,6 +554,10 @@ const mtnBroad = new Float32Array(N);
     }
     mtnBroad[ty * cw + tx] = sum;
   }
+  // Zero out ocean cells — blur spreads signal into ocean, causing land halos
+  for (let i = 0; i < N; i++) {
+    if (crustType[i] !== 1) mtnBroad[i] = 0;
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -688,7 +692,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const tecMod = sampleCrust(twx, twy);
   let e = stampE + tecMod;
 
-  if (e > 0) {
+  if (e > 0 && isLandArr[i]) {
     const cd = cdist[Math.min(dh - 1, Math.floor(y / DG)) * dw + Math.min(dw - 1, Math.floor(x / DG))];
     const interior = Math.min(1, cd / 15);
 
