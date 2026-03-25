@@ -862,30 +862,30 @@ ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
 ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();}}
 // Wind arrows — smooth Canvas2D rendering
 if(vm==="wind"&&w.windX&&w.windY){
-const step=16;const maxArrow=step*1.4;const minArrow=3;
+const step=16;const maxArrow=step*1.5;const minArrow=2;
 ctx.lineCap="round";ctx.lineJoin="round";
 for(let ty=step/2;ty<CH;ty+=step)for(let tx=step/2;tx<CW;tx+=step){
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const wx2=w.windX[si],wy2=w.windY[si];
 const spd=Math.sqrt(wx2*wx2+wy2*wy2);
-if(spd<0.02)continue;
+if(spd<0.008)continue;
 const dx2=wx2/spd,dy2=wy2/spd;
-// Arrow length scales with speed: longer = faster wind
-const t2=Math.min(1,spd*2.0);
+// Power curve: emphasizes difference between calm and strong
+const t2=Math.min(1,Math.pow(spd*3.5,0.65));
 const len=minArrow+t2*(maxArrow-minArrow);
-const headLen=2+t2*3;const headW=1.5+t2*2;
+const headLen=1.5+t2*3;const headW=1+t2*2;
 const ex=tx+dx2*len,ey=ty+dy2*len;
-// Speed color: blue (calm) → white (moderate) → red (strong)
+// Color: dark blue→cyan→white→orange→red
 let cr,cg,cb;
-if(t2<0.5){const s=t2*2;cr=Math.round(100+s*155);cg=Math.round(130+s*125);cb=255;}
-else{const s=(t2-0.5)*2;cr=255;cg=Math.round(255-s*200);cb=Math.round(255-s*220);}
-const alpha=0.55+t2*0.45;
+if(t2<0.25){const s=t2*4;cr=Math.round(40+s*60);cg=Math.round(60+s*120);cb=Math.round(140+s*115);}
+else if(t2<0.5){const s=(t2-0.25)*4;cr=Math.round(100+s*155);cg=Math.round(180+s*75);cb=255;}
+else if(t2<0.75){const s=(t2-0.5)*4;cr=255;cg=Math.round(255-s*105);cb=Math.round(255-s*175);}
+else{const s=(t2-0.75)*4;cr=255;cg=Math.round(150-s*110);cb=Math.round(80-s*60);}
+const alpha=0.3+t2*0.7;
 ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;
 ctx.fillStyle=`rgba(${cr},${cg},${cb},${alpha})`;
-ctx.lineWidth=1+t2*1.2;
-// Shaft
+ctx.lineWidth=0.5+t2*1.8;
 ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(ex,ey);ctx.stroke();
-// Arrowhead triangle
 const ax1=ex-dx2*headLen+dy2*headW,ay1=ey-dy2*headLen-dx2*headW;
 const ax2=ex-dx2*headLen-dy2*headW,ay2=ey-dy2*headLen+dx2*headW;
 ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(ax1,ay1);ctx.lineTo(ax2,ay2);ctx.closePath();ctx.fill();
