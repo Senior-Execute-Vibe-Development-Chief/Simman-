@@ -863,14 +863,14 @@ for (let wy = 1; wy < wH - 1; wy++) {
     const crossFrac = 0.20 + (1 - lat) * 0.15;
     let fx = geoX * (1 - crossFrac) + (-dpDx) * crossFrac;
     let fy = geoY * (1 - crossFrac) + (-dpDy) * crossFrac;
-    // Latitude-band background (weak)
+    // Latitude-band background (subtle nudge, not dominant)
     if (lat < 0.33) {
-      fx += -0.15; // trades
-      fy += -hemi * smoothstep(lat / 0.33) * 0.08;
+      fx += -0.04; // trades
+      fy += -hemi * smoothstep(lat / 0.33) * 0.03;
     } else if (lat < 0.67) {
-      fx += 0.18; // westerlies
+      fx += 0.06; // westerlies
     } else {
-      fx += -0.10; // polar easterlies
+      fx += -0.03; // polar easterlies
     }
     // ITCZ calm zone
     const itcz = Math.exp(-(lat * lat) / 0.004);
@@ -968,14 +968,29 @@ for (let iter = 0; iter < 25; iter++) {
   }
 }
 
-// Final wall enforcement
-for (let i = 0; i < wW * wH; i++) {
-  if (isWall[i]) { windX[i] = 0; windY[i] = 0; }
+// Final mountain enforcement: very weak residual wind (from neighbors)
+// Mountains aren't vacuum — thin air still moves, just very weakly
+for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+  const wi = wy * wW + wx;
+  if (!isWall[wi]) continue;
+  const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+  const nl = wy * wW + wl, nr = wy * wW + wr;
+  const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
+  let sx = 0, sy = 0, cnt = 0;
+  if (!isWall[nl]) { sx += windX[nl]; sy += windY[nl]; cnt++; }
+  if (!isWall[nr]) { sx += windX[nr]; sy += windY[nr]; cnt++; }
+  if (!isWall[nu]) { sx += windX[nu]; sy += windY[nu]; cnt++; }
+  if (!isWall[nd]) { sx += windX[nd]; sy += windY[nd]; cnt++; }
+  if (cnt > 0) {
+    // Very weak: 5-10% of neighbor average depending on elevation
+    const frac = 0.05 + (1 - Math.min(1, wElev[wi] * 2)) * 0.05;
+    windX[wi] = (sx / cnt) * frac;
+    windY[wi] = (sy / cnt) * frac;
+  }
 }
 
-// ── Percentile normalization: 75th percentile → 0.35 ──
-// This ensures most ocean is moderate (blue-green range), only
-// the fastest streams (channels, roaring 40s) reach yellow/red.
+// ── Percentile normalization: 60th percentile → 0.22 ──
+// Pushes majority of wind into blue-green, only fast jets reach yellow/red.
 {
   const speeds = [];
   for (let i = 0; i < wW * wH; i++) {
@@ -983,8 +998,8 @@ for (let i = 0; i < wW * wH; i++) {
     if (s > 0.001) speeds.push(s);
   }
   speeds.sort((a, b) => a - b);
-  const p75 = speeds[Math.min(speeds.length - 1, (speeds.length * 0.75) | 0)] || 1;
-  const scale = 0.35 / p75;
+  const p60 = speeds[Math.min(speeds.length - 1, (speeds.length * 0.60) | 0)] || 1;
+  const scale = 0.22 / p60;
   for (let i = 0; i < wW * wH; i++) {
     windX[i] *= scale;
     windY[i] *= scale;
