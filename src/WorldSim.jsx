@@ -774,6 +774,42 @@ const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const e=w.elevation[si];
 const v=Math.min(255,Math.max(0,((e-floor)/range)*255))|0;
 const pi4=ti<<2;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=v;d[pi4+3]=255;}
+}else if(vm==="wind"){
+// Wind view — arrows over terrain, color = speed
+if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
+const tc=terrainCache.current;
+// Dim terrain base
+for(let ti=0;ti<N;ti++){const pi4=ti<<2;
+d[pi4]=(tc[ti*3]*0.3)|0;d[pi4+1]=(tc[ti*3+1]*0.3)|0;d[pi4+2]=(tc[ti*3+2]*0.3)|0;d[pi4+3]=255;}
+// Draw wind arrows every 8 tiles
+if(w.windX&&w.windY){
+const step=8;
+for(let ty=step/2;ty<CH;ty+=step)for(let tx=step/2;tx<CW;tx+=step){
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const wx2=w.windX[si],wy2=w.windY[si];
+const spd=Math.sqrt(wx2*wx2+wy2*wy2);
+if(spd<0.02)continue;
+const len=Math.min(step*0.8,spd*step*1.2);
+const dx2=wx2/spd,dy2=wy2/spd;
+// Color: blue=slow, cyan=med, white=fast
+const t2=Math.min(1,spd*1.5);
+const cr=(t2*200)|0,cg=(100+t2*155)|0,cb=255;
+// Draw line from center
+const cx=tx,cy=ty;
+const ex2=cx+dx2*len,ey2=cy+dy2*len;
+const steps=Math.ceil(len);
+for(let s=0;s<=steps;s++){
+const f=s/steps;
+const px2=Math.round(cx+(ex2-cx)*f),py2=Math.round(cy+(ey2-cy)*f);
+if(px2>=0&&px2<CW&&py2>=0&&py2<CH){
+const pi4=(py2*CW+px2)<<2;d[pi4]=cr;d[pi4+1]=cg;d[pi4+2]=cb;}}
+// Arrowhead
+const ax1=Math.round(ex2-dx2*2+dy2*1.5),ay1=Math.round(ey2-dy2*2-dx2*1.5);
+const ax2=Math.round(ex2-dx2*2-dy2*1.5),ay2=Math.round(ey2-dy2*2+dx2*1.5);
+for(const[apx,apy]of[[ax1,ay1],[ax2,ay2]]){
+if(apx>=0&&apx<CW&&apy>=0&&apy<CH){
+const pi4=(apy*CW+apx)<<2;d[pi4]=cr;d[pi4+1]=cg;d[pi4+2]=cb;}}
+}}
 }else if(vm==="power"){
 // Power view — one pixel per tile
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
@@ -926,7 +962,12 @@ const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
 const tempC=Math.round(temp*50-10);
 const lat=Math.abs(wy/960-0.5)*2;
 const fertVal=elev>0?tileFert(temp,moist,elev):0;
-setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat});
+const wdx=w.windX?w.windX[i]:0,wdy=w.windY?w.windY[i]:0;
+const wspd=Math.sqrt(wdx*wdx+wdy*wdy);
+// +Y is south in screen coords, so negate wdy for compass direction
+const wdeg=((Math.atan2(-wdy,wdx)*180/Math.PI)+360)%360;
+const wdir=["E","NE","N","NW","W","SW","S","SE"][Math.round(wdeg/45)%8];
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
@@ -1019,6 +1060,7 @@ border:"1px solid rgba(201,184,122,0.15)"}}>
 <div><span style={{color:"#8a8474"}}>Temp:</span> {hoverInfo.tempC}°C</div>
 <div><span style={{color:"#8a8474"}}>Moist:</span> {(hoverInfo.moist*100).toFixed(0)}%</div>
 <div><span style={{color:"#8a8474"}}>Fert:</span> {(hoverInfo.fert*100).toFixed(0)}%</div>
+<div><span style={{color:"#8a8474"}}>Wind:</span> {hoverInfo.wdir} {(hoverInfo.wspd*100).toFixed(0)}%</div>
 <div><span style={{color:"#8a8474"}}>Lat:</span> {(hoverInfo.lat*90).toFixed(1)}°</div>
 </div>}
 
@@ -1043,7 +1085,7 @@ display:"flex",gap:12,fontSize:11,color:"#c9b87a",pointerEvents:"none"}}>
 <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",
 background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"6px 12px",
 display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-{[["terrain","Terrain"],["depth","Depth"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
+{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
 style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
 color:viewMode===k?"#c9b87a":"#5a5448",padding:"6px 14px",fontSize:13}}>{label}</button>))}

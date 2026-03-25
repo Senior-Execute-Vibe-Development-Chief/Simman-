@@ -742,57 +742,182 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 8b: Directional rain shadow (prevailing-wind moisture transport)
-// Wind blows west→east in temperate zones (westerlies), east→west in tropics (trades)
-// Moisture accumulates from ocean, blocked by mountains on leeward side
+// STEP 8b: 2D Wind Field — Atmospheric Circulation
+// Three-cell model: Hadley (0-30°), Ferrel (30-60°), Polar (60-90°)
+// with Coriolis deflection + terrain deflection via relaxation
 // ═══════════════════════════════════════════════════════
-const windMoisture = new Float32Array(W * H);
-// Scan each latitude row in the prevailing wind direction
-for (let y = 0; y < H; y++) {
-  const ny = y / H;
-  const lat = Math.abs(ny - 0.5) * 2;
-  // Tropical trades blow east→west (scan right to left), temperate westerlies blow west→east
-  // Blend zone between lat 0.25-0.35
-  const westerly = smoothstep((lat - 0.25) / 0.1); // 0=trades, 1=westerlies
-  // We do TWO passes per row (one for each wind component) and blend
-  const rowTrade = new Float32Array(W);
-  const rowWest = new Float32Array(W);
-  // Trade winds: east→west (scan from right)
-  let carry = 0;
-  for (let x2 = W - 1; x2 >= 0; x2--) {
-    const i2 = y * W + x2;
-    const e2 = elevation[i2];
-    if (e2 <= 0) { carry = 0.6; } // ocean recharges moisture
-    else {
-      // Mountains block: the higher, the more blocked
-      const block = Math.max(0, e2 - 0.08) * 3.5;
-      carry = Math.max(0, carry - block * 0.15);
-      // Also natural decay inland
-      carry *= 0.997;
-    }
-    rowTrade[x2] = carry;
+
+// Work on coarser grid for performance (4x downscale)
+const WG = 4, wW = Math.ceil(W / WG), wH = Math.ceil(H / WG);
+const windX = new Float32Array(wW * wH);
+const windY = new Float32Array(wW * wH);
+
+// Base wind from atmospheric cells
+for (let wy = 0; wy < wH; wy++) {
+  const ny = wy / wH;
+  const latSigned = (ny - 0.5) * 2;   // -1 (north pole) to +1 (south pole)
+  const lat = Math.abs(latSigned);     // 0 (equator) to 1 (pole)
+  const hemi = latSigned < 0 ? -1 : 1; // -1 = northern, +1 = southern
+
+  // Meridional (N-S) component from cell circulation
+  // Hadley: toward equator, Ferrel: toward poles, Polar: toward equator
+  let vy, vx;
+  if (lat < 0.33) {
+    // Hadley cell: surface winds toward equator
+    const str = smoothstep(lat / 0.33);
+    vy = -hemi * str * 0.5;     // toward equator
+    vx = -0.8;                   // trade winds: easterly (blowing westward)
+  } else if (lat < 0.67) {
+    // Ferrel cell: surface winds toward poles
+    const t = (lat - 0.33) / 0.34;
+    const str = Math.sin(t * Math.PI);
+    vy = hemi * str * 0.3;      // toward pole
+    vx = 0.9;                    // westerlies (blowing eastward)
+  } else {
+    // Polar cell: surface winds toward equator
+    const t = (lat - 0.67) / 0.33;
+    const str = smoothstep(t);
+    vy = -hemi * str * 0.4;     // toward equator
+    vx = -0.6;                   // polar easterlies
   }
-  // Westerlies: west→east (scan from left, wrapping)
-  carry = 0;
-  for (let x2 = 0; x2 < W; x2++) {
-    const i2 = y * W + x2;
-    const e2 = elevation[i2];
-    if (e2 <= 0) { carry = 0.6; }
-    else {
-      const block = Math.max(0, e2 - 0.08) * 3.5;
-      carry = Math.max(0, carry - block * 0.15);
-      carry *= 0.997;
-    }
-    rowWest[x2] = carry;
-  }
-  // Blend based on latitude
-  for (let x2 = 0; x2 < W; x2++) {
-    windMoisture[y * W + x2] = rowTrade[x2] * (1 - westerly) + rowWest[x2] * westerly;
+
+  // Smooth transitions between cells using gaussian blending at boundaries
+  // Hadley/Ferrel boundary (~30°, lat=0.33)
+  const hfBlend = Math.exp(-((lat - 0.33) ** 2) / 0.008);
+  // ITCZ convergence at equator (winds converge, slow down)
+  const itcz = Math.exp(-(lat * lat) / 0.005);
+  vx *= (1 - itcz * 0.7);
+  vy *= (1 - itcz * 0.7);
+  // Subtropical high pressure (divergence at ~30°)
+  const sthp = Math.exp(-((lat - 0.33) ** 2) / 0.006);
+  vx *= (1 - sthp * 0.3);
+
+  for (let wx = 0; wx < wW; wx++) {
+    const wi = wy * wW + wx;
+    windX[wi] = vx;
+    windY[wi] = vy;
   }
 }
 
+// Terrain deflection: iterative relaxation
+// Wind avoids high terrain (acts like a pressure barrier)
+// Build elevation on wind grid
+const wElev = new Float32Array(wW * wH);
+for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
+  const px = Math.min(W - 1, wx * WG), py = Math.min(H - 1, wy * WG);
+  wElev[wy * wW + wx] = Math.max(0, elevation[py * W + px]);
+}
+
+// Relaxation passes: wind flows around terrain obstacles
+for (let iter = 0; iter < 12; iter++) {
+  const tmpX = new Float32Array(windX);
+  const tmpY = new Float32Array(windY);
+  for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+    const wi = wy * wW + wx;
+    const e0 = wElev[wi];
+    // Check terrain gradient (pressure-like force pushing wind away from mountains)
+    const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+    const eL = wElev[wy * wW + wl], eR = wElev[wy * wW + wr];
+    const eU = wElev[(wy - 1) * wW + wx], eD = wElev[(wy + 1) * wW + wx];
+    // Terrain gradient pushes wind away from high terrain
+    const gx = (eL - eR) * 2.5;
+    const gy = (eU - eD) * 2.5;
+    // Blocking: high terrain reduces wind speed
+    const block = Math.min(0.95, e0 * 3);
+    // Neighbor averaging for smoothness
+    const avgX = (tmpX[wy * wW + wl] + tmpX[wy * wW + wr] +
+      tmpX[(wy - 1) * wW + wx] + tmpX[(wy + 1) * wW + wx]) * 0.25;
+    const avgY = (tmpY[wy * wW + wl] + tmpY[wy * wW + wr] +
+      tmpY[(wy - 1) * wW + wx] + tmpY[(wy + 1) * wW + wx]) * 0.25;
+    // Blend: original base + neighbor smoothing + terrain deflection
+    windX[wi] = (tmpX[wi] * 0.55 + avgX * 0.45 + gx) * (1 - block);
+    windY[wi] = (tmpY[wi] * 0.55 + avgY * 0.45 + gy) * (1 - block);
+  }
+}
+
+// Add noise variation for local gusts / weather patterns
+for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
+  const wi = wy * wW + wx;
+  const nx = wx / wW, ny = wy / wH;
+  windX[wi] += fbm(nx * 5 + s3 + 100, ny * 5 + s3 + 100, 2, 2, 0.5) * 0.15;
+  windY[wi] += fbm(nx * 5 + s3 + 150, ny * 5 + s3 + 150, 2, 2, 0.5) * 0.12;
+}
+
+// Upscale wind to full resolution for moisture advection + export
+const fullWindX = new Float32Array(W * H);
+const fullWindY = new Float32Array(W * H);
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  // Bilinear interpolation from wind grid
+  const fx = x / WG, fy = y / WG;
+  const ix = Math.min(wW - 2, fx | 0), iy = Math.min(wH - 2, fy | 0);
+  const dx = fx - ix, dy = fy - iy;
+  const i00 = iy * wW + ix, i10 = iy * wW + Math.min(wW - 1, ix + 1);
+  const i01 = Math.min(wH - 1, iy + 1) * wW + ix;
+  const i11 = Math.min(wH - 1, iy + 1) * wW + Math.min(wW - 1, ix + 1);
+  const fi = y * W + x;
+  fullWindX[fi] = (windX[i00] * (1 - dx) + windX[i10] * dx) * (1 - dy)
+    + (windX[i01] * (1 - dx) + windX[i11] * dx) * dy;
+  fullWindY[fi] = (windY[i00] * (1 - dx) + windY[i10] * dx) * (1 - dy)
+    + (windY[i01] * (1 - dx) + windY[i11] * dx) * dy;
+}
+
 // ═══════════════════════════════════════════════════════
-// STEP 8c: Temperature & Moisture (with wind shadow + maritime moderation)
+// STEP 8c: Wind-advected moisture transport
+// Moisture emitted by ocean, carried by wind, blocked by terrain
+// Multi-step particle advection on the wind grid
+// ═══════════════════════════════════════════════════════
+const windMoisture = new Float32Array(W * H);
+// Use coarse grid for advection (performance)
+const mW = Math.ceil(W / 2), mH = Math.ceil(H / 2);
+const mGrid = new Float32Array(mW * mH);
+// Seed ocean tiles with moisture
+for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
+  const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+  if (elevation[py * W + px] <= 0) mGrid[my * mW + mx] = 0.8;
+}
+// Advect moisture along wind vectors for several iterations
+for (let step = 0; step < 30; step++) {
+  const prev = new Float32Array(mGrid);
+  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
+    const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+    const fi = py * W + px;
+    const wx2 = fullWindX[fi], wy2 = fullWindY[fi];
+    // Sample upwind (where the wind is coming from)
+    const srcX = mx - wx2 * 1.8, srcY = my - wy2 * 1.8;
+    const sx = Math.min(mW - 2, Math.max(0, srcX | 0));
+    const sy = Math.min(mH - 2, Math.max(0, srcY | 0));
+    const fdx = srcX - sx, fdy = srcY - sy;
+    const fdx1 = Math.max(0, Math.min(1, fdx)), fdy1 = Math.max(0, Math.min(1, fdy));
+    const sxr = Math.min(mW - 1, sx + 1);
+    // Bilinear sample from previous state
+    const upwind = (prev[sy * mW + sx] * (1 - fdx1) + prev[sy * mW + sxr] * fdx1) * (1 - fdy1)
+      + (prev[(sy + 1) * mW + sx] * (1 - fdx1) + prev[(sy + 1) * mW + sxr] * fdx1) * fdy1;
+    const e2 = elevation[fi];
+    if (e2 <= 0) {
+      // Ocean: recharge moisture
+      mGrid[my * mW + mx] = Math.max(prev[my * mW + mx], 0.75);
+    } else {
+      // Land: carry upwind moisture, terrain blocks
+      const terrainBlock = Math.min(0.8, Math.max(0, e2 - 0.05) * 3);
+      // Orographic lift: dump extra moisture on windward slopes
+      const windSpeed = Math.sqrt(wx2 * wx2 + wy2 * wy2);
+      const lift = Math.min(0.15, e2 * windSpeed * 0.4);
+      const carried = upwind * (1 - terrainBlock * 0.3) * 0.96 - lift;
+      mGrid[my * mW + mx] = Math.max(0, carried);
+    }
+  }
+}
+// Upscale moisture advection result to full resolution
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  const fx = x / 2, fy = y / 2;
+  const ix = Math.min(mW - 2, fx | 0), iy = Math.min(mH - 2, fy | 0);
+  const dx = fx - ix, dy = fy - iy;
+  windMoisture[y * W + x] = (mGrid[iy * mW + ix] * (1 - dx) + mGrid[iy * mW + Math.min(mW - 1, ix + 1)] * dx) * (1 - dy)
+    + (mGrid[(iy + 1) * mW + ix] * (1 - dx) + mGrid[(iy + 1) * mW + Math.min(mW - 1, ix + 1)] * dx) * dy;
+}
+
+// ═══════════════════════════════════════════════════════
+// STEP 8d: Temperature & Moisture (final combination)
 // ═══════════════════════════════════════════════════════
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
@@ -820,12 +945,11 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const polarDry = Math.max(0, (lat - 0.75)) * 0.25;
     let m = 0.42 + tropWet * 0.42 - subtropDry + tempWet - cont - polarDry
       + sg(nfMoistLand, x, y) * 0.12;
-    // Directional rain shadow replaces old non-directional elevation penalty
-    // windMoisture is high on windward side, low on leeward
+    // Wind-advected moisture: high on windward coasts, low in rain shadow
     const wm = windMoisture[i];
-    const windBoost = (wm - 0.3) * 0.5; // positive on windward, negative in shadow
+    const windBoost = (wm - 0.3) * 0.6;
     m += windBoost;
-    // Orographic lift: windward side of mountains gets extra rain
+    // Orographic lift: windward slopes get extra precipitation
     if (e > 0.1 && wm > 0.35) m += Math.min(0.12, (e - 0.1) * wm * 0.5);
     // Lowland moisture accumulation
     if (e < 0.02) m += 0.10;
@@ -833,5 +957,5 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   }
 }
 
-return { elevation, moisture, temperature, pixPlate };
+return { elevation, moisture, temperature, pixPlate, windX: fullWindX, windY: fullWindY };
 }
