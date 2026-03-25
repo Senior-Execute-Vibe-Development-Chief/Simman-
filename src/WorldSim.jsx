@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
+import { solveWind } from "./windSolver.js";
+import TuningPanel, { ParamEditor, renderPreview } from "./TuningPanel.jsx";
+import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
+import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
 function initNoise(seed){const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)PERM[i]=p[i&255];}
@@ -30,14 +34,15 @@ return[Math.sqrt(d1),Math.sqrt(d2)];}
 function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};}
 
 const RES=2;
+let _tecParams = {};
 
 // Static climate: no ice ages or sea level changes
 const CLIMATE={tempMod:0,seaLevel:0,wet:0.7};
 
-function generateWorld(W,H,seed,preset,oceanLevel){
+function generateWorld(W,H,seed,preset,oceanLevel,enableRivers=true){
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
-let tecPlates=null;
+let tecPlates=null,tecWindX=null,tecWindY=null;
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
 const eData=decodeEarth(EARTH_ELEV);
@@ -80,6 +85,9 @@ let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.
 if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
 if(elevation[i]<.02)m+=.10;
 moisture[i]=Math.max(.02,Math.min(1,m));}
+// Run wind solver on Earth elevation data
+const earthWind=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137);
+tecWindX=earthWind.windX;tecWindY=earthWind.windY;
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
@@ -105,9 +113,9 @@ moisture[i]=Math.max(.02,Math.min(1,m));
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 }else if(preset==="tectonic"){
 // ── Tectonic plate mode: separate module ──
-const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D});
+const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D,worley},_tecParams);
 for(let i=0;i<W*H;i++){elevation[i]=tec.elevation[i];moisture[i]=tec.moisture[i];temperature[i]=tec.temperature[i];}
-tecPlates=tec.pixPlate;
+tecPlates=tec.pixPlate;tecWindX=tec.windX;tecWindY=tec.windY;
 }else{
 // ── Random world mode: multi-stamp composition with advanced coastline shaping ──
 // [1] MULTI-STAMP COMPOSITION: 3-6 sub-ellipses per continent + negative stamps for bays
@@ -246,7 +254,8 @@ if(elevation[py*W+px]>0){
 outer:for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const wx=((tx+dx)%ctw+ctw)%ctw,wy=ty+dy;if(wy<0||wy>=cth)continue;
 const npx=Math.min(W-1,wx*RES),npy=Math.min(H-1,wy*RES);
 if(elevation[npy*W+npx]<=0){coastal[ty*ctw+tx]=1;break outer;}}}}
-const rvr=generateRivers(elevation,moisture,W,H,mkRng(seed+777));
+const emptyBuf=new Uint8Array(W*H);
+const rvr=enableRivers?generateRivers(elevation,moisture,W,H,mkRng(seed+777)):{river:emptyBuf,lake:emptyBuf,floodplain:emptyBuf,delta:emptyBuf};
 // Oases: small fertile pockets in deserts
 const oasis=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
@@ -259,7 +268,7 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,oasis,swamp,width:W,height:H,preset,pixPlate:tecPlates};}
+return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,oasis,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
 
 // ── River & lake generation: trace flow downhill from wet highlands ──
 function generateRivers(elev,moist,W,H,rng){
@@ -342,10 +351,44 @@ const ni=ny*W+nx;const d2=dx*dx+dy*dy;if(d2>fR*fR)continue;
 if(elev[ni]>0&&!river[ni]&&!lake[ni]&&Math.abs(elev[ni]-elev[i])<0.03)floodplain[ni]=1;}}
 return{river,lake,floodplain,delta};}
 
-const BC=[[8,18,52],[18,40,88],[32,72,120],[198,186,142],[230,238,245],[210,218,228],[140,132,115],[55,78,52],[110,100,90],[130,126,104],[10,80,22],[166,156,66],[202,176,112],[30,98,36],[118,160,52],[38,62,42],[150,146,104]];
-function getBiomeD(e,m,t,sl){if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
-if(t<.15)return 4;if(t<.25)return e>.35?5:6;if(t<.35)return e>.4?5:m>.45?7:6;if(e>.5)return 8;if(e>.38)return t>.55?9:8;
-if(t>.7)return m>.5?10:m>.25?11:12;if(t>.5)return m>.45?13:m>.2?14:12;return m>.4?15:m>.15?14:16;}
+const BC=[
+[10,22,56],      // 0  Deep Ocean
+[20,48,95],      // 1  Shallow Ocean
+[36,78,125],     // 2  Coastal Water
+[194,182,140],   // 3  Beach (unused)
+[170,178,168],   // 4  Tundra
+[232,238,245],   // 5  Snow / Ice
+[68,98,68],      // 6  Taiga
+[48,80,52],      // 7  Boreal Forest
+[58,125,48],     // 8  Temperate Forest
+[28,98,55],      // 9  Temperate Rainforest
+[16,74,30],      // 10 Tropical Rainforest
+[176,168,72],    // 11 Savanna
+[142,162,58],    // 12 Grassland
+[204,184,126],   // 13 Desert
+[132,140,72],    // 14 Shrubland
+[68,114,45],     // 15 Tropical Dry Forest
+[146,140,130]    // 16 Barren / Alpine
+];
+const BN=['Deep Ocean','Shallow Ocean','Coastal Water','Beach','Tundra','Snow / Ice','Taiga',
+'Boreal Forest','Temperate Forest','Temperate Rainforest','Tropical Rainforest','Savanna',
+'Grassland','Desert','Shrubland','Tropical Dry Forest','Barren / Alpine'];
+function getBiomeD(e,m,t,sl){
+  if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
+  // Alpine / montane (elevation overrides)
+  if(e>.55)return t<.3?5:16;
+  if(e>.42)return t<.25?5:t<.4?(m>.35?7:4):m>.4?8:16;
+  // Polar / subpolar
+  if(t<.15)return 4;
+  if(t<.25)return m>.35?6:4;
+  if(t<.38)return m>.45?7:m>.25?6:4;
+  // Temperate
+  if(t<.55)return m>.55?9:m>.35?8:m>.15?12:13;
+  // Warm
+  if(t<.72)return m>.5?8:m>.3?15:m>.15?14:13;
+  // Hot / tropical
+  return m>.5?10:m>.3?15:m>.18?11:m>.08?12:13;
+}
 function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
 function tribeRGB(id){const h=((id*67+20)%360)/360,s=(60+((id*31)%25))/100,l=(45+((id*17)%25))/100;
@@ -382,7 +425,7 @@ else if(hasFlood){tFert[ti]=Math.min(1,tFert[ti]+0.25);tMoist[ti]=Math.min(1,tMo
 if(hasOasis){tFert[ti]=Math.min(1,tFert[ti]+0.3);tDiff[ti]=Math.max(0,tDiff[ti]-0.3);}
 if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+0.25);}}}
 // Find multiple spread-out seed locations for starting tribes
-const NUM_TRIBES=w.preset==="earth"?8:6;const minSpacing=Math.round(tw*0.12);
+const NUM_TRIBES=w.preset==="earth"?8:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:6;const minSpacing=Math.round(tw*0.12);
 // Score all habitable tiles
 const scored=[];
 for(let ty=2;ty<th-2;ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;if(tElev[ti]<=0)continue;
@@ -391,7 +434,10 @@ scored.push({x:tx,y:ty,s});}
 scored.sort((a,b)=>b.s-a.s);
 // Pick well-spaced origins (greedy: best first, skip if too close to existing)
 const origins=[];
-if(w.preset==="earth"){// Seed East Africa first (cradle of mankind)
+if(w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0){// Imported map: use state positions as tribe seeds
+for(const ts of w.tribeSeeds){const tx=Math.min(tw-1,Math.max(0,Math.round(ts.x/RES))),ty2=Math.min(th-1,Math.max(0,Math.round(ts.y/RES)));
+if(tElev[ty2*tw+tx]>0)origins.push({x:tx,y:ty2,s:tFert[ty2*tw+tx]});}}
+else if(w.preset==="earth"){// Seed East Africa first (cradle of mankind)
 const etx=Math.round(tw*0.51),ety=Math.round(th*0.47);
 let best=null,bs2=-999;
 for(const c of scored){let dx=Math.abs(c.x-etx);if(dx>tw/2)dx=tw-dx;
@@ -629,18 +675,53 @@ const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState
 const[oceanLevel,setOceanLevel]=useState(0.78);
 const[depthFromSea,setDepthFromSea]=useState(false);
 const[showPlates,setShowPlates]=useState(false);
+const[importStatus,setImportStatus]=useState(null);
+const[showRivers,setShowRivers]=useState(true);
+const[hoverInfo,setHoverInfo]=useState(null);
+const[tecPresetName,setTecPresetName]=useState("Default");
+const[rightPanel,setRightPanel]=useState("");  // "" | "params"
+const[showTuning,setShowTuning]=useState(false);
+const[mapCount,setMapCount]=useState(1);
+const extraCanvasRefs=useRef([]);
+const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const showPlatesRef=useRef(false);
-const presetRef=useRef(null);
+const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
+const showRiversRef=useRef(true);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
 const imgRef=useRef(null);
+// Wind particle animation state
+const windParticlesRef=useRef(null);
+const windAnimRef=useRef(null);
 const W=1920,H=960,CW=Math.ceil(W/RES),CH=Math.ceil(H/RES);
-const generate=useCallback((s,ol)=>{const w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current);setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
+const generate=useCallback((s,ol)=>{
+let w;
+if(presetRef.current==="import"&&importedWorldRef.current){w=importedWorldRef.current;importedWorldRef.current=null;}
+else{w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,showRiversRef.current);}
+setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
+
+// Generate extra seed preview maps (same params, different seeds)
+const PW=480,PH=240;
+const generateExtraMaps=useCallback(()=>{
+if(mapCount<=1||presetRef.current!=="tectonic")return;
+const nf={initNoise,fbm,ridged,noise2D,worley};
+let idx=0;
+const genNext=()=>{
+if(idx>=mapCount-1)return;
+const extraSeed=seed+idx+1;
+const world=generateTectonicWorld(PW,PH,extraSeed,nf,_tecParams);
+extraWorldsRef.current[idx]={seed:extraSeed,world};
+const canvas=extraCanvasRefs.current[idx];
+if(canvas)renderPreview(canvas,world,PW,PH);
+idx++;requestAnimationFrame(genNext);};
+requestAnimationFrame(genNext);
+},[seed,mapCount]);
+useEffect(()=>{generateExtraMaps();},[seed,mapCount,generateExtraMaps]);
 
 // Build terrain RGB cache at tile resolution (one entry per tile)
 const updateTerrainCache=useCallback((w)=>{
@@ -700,6 +781,35 @@ const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const e=w.elevation[si];
 const v=Math.min(255,Math.max(0,((e-floor)/range)*255))|0;
 const pi4=ti<<2;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=v;d[pi4+3]=255;}
+}else if(vm==="wind"){
+// Wind view — speed heatmap everywhere (land + ocean), like Windy.com
+const wX=w.windX,wY=w.windY;
+if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
+const tc=terrainCache.current;
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const pi4=ti<<2;
+const e=w.elevation[si];
+const vx=wX?wX[si]:0,vy=wY?wY[si]:0;
+const spd=Math.sqrt(vx*vx+vy*vy);
+const t=Math.min(1,Math.pow(spd*1.0,0.5));
+// Speed heatmap matched to Windy.com: navy→blue→teal→green→yellow→orange→red
+let r,g,b;
+if(t<0.08){const s=t/0.08;r=(3+s*5)|0;g=(4+s*15)|0;b=(40+s*60)|0;}
+else if(t<0.18){const s=(t-0.08)/0.10;r=(8+s*12)|0;g=(19+s*55)|0;b=(100+s*80)|0;}
+else if(t<0.30){const s=(t-0.18)/0.12;r=(20+s*5)|0;g=(74+s*80)|0;b=(180-s*40)|0;}
+else if(t<0.42){const s=(t-0.30)/0.12;r=(25-s*5)|0;g=(154+s*50)|0;b=(140-s*90)|0;}
+else if(t<0.55){const s=(t-0.42)/0.13;r=(20+s*130)|0;g=(204+s*46)|0;b=(50-s*20)|0;}
+else if(t<0.68){const s=(t-0.55)/0.13;r=(150+s*95)|0;g=(250-s*30)|0;b=(30-s*15)|0;}
+else if(t<0.82){const s=(t-0.68)/0.14;r=(245+s*10)|0;g=(220-s*100)|0;b=(15+s*10)|0;}
+else{const s=(t-0.82)/0.18;r=255;g=(120-s*80)|0;b=(25+s*15)|0;}
+// Blend with dim terrain on land for topographic context
+if(e>sl){
+const landDim=0.25;const heatW=0.65;
+const tr=(tc[ti*3]*landDim)|0,tg=(tc[ti*3+1]*landDim)|0,tb=(tc[ti*3+2]*landDim)|0;
+r=(r*heatW+tr*(1-heatW))|0;g=(g*heatW+tg*(1-heatW))|0;b=(b*heatW+tb*(1-heatW))|0;
+}
+d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="power"){
 // Power view — one pixel per tile
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
@@ -719,6 +829,30 @@ else{r=22;g=20;b=18;}
 // River/lake tint on owned tiles
 if(e>sl&&ter.tRiver[ti]){const a=0.4;r=(r*(1-a)+12*a+.5)|0;g=(g*(1-a)+20*a+.5)|0;b=(b*(1-a)+45*a+.5)|0;}
 const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
+}else if(vm==="value"){
+// Tile value overlay — green (high value) → yellow → red (low value)
+// Value = fertility + river bonus + coast bonus + moderate elevation bonus
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const e=w.elevation[si];const pi4=ti<<2;
+if(e<=sl){d[pi4]=8;d[pi4+1]=12;d[pi4+2]=22;d[pi4+3]=255;continue;}
+let v=ter.tFert[ti];
+// River/water bonus
+if(ter.tRiver[ti])v+=0.15;
+// Coast access bonus (trade, fishing)
+if(ter.tCoast&&ter.tCoast[ti])v+=0.08;
+// Moderate elevation sweet spot (defensible + habitable)
+if(e>0.05&&e<0.2)v+=0.05;
+// Extreme terrain penalty
+if(e>0.4)v-=0.15;
+v=Math.max(0,Math.min(1,v));
+// Green(1.0) → Yellow(0.5) → Red(0.0)
+let r,g,b;
+if(v>0.5){const t2=(v-0.5)*2;r=((1-t2)*255)|0;g=200;b=((t2)*40)|0;}
+else{const t2=v*2;r=220;g=(t2*200)|0;b=0;}
+// Darken slightly with elevation for depth
+const shade=1-Math.max(0,e-0.1)*0.5;
+d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else{
 // Default terrain view with tribe overlay — one pixel per tile
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
@@ -729,15 +863,22 @@ if(ow>=0&&ter.tElev[ti]>sl){const alpha=ter.frontier[ti]?0.55:0.32,invA=1-alpha;
 d[pi4]=(tc[ti3]*invA+tcR[ow]*alpha+.5)|0;d[pi4+1]=(tc[ti3+1]*invA+tcG[ow]*alpha+.5)|0;d[pi4+2]=(tc[ti3+2]*invA+tcB[ow]*alpha+.5)|0;
 }else{d[pi4]=tc[ti3];d[pi4+1]=tc[ti3+1];d[pi4+2]=tc[ti3+2];}
 d[pi4+3]=255;}}
-// Plate boundary overlay (works on any view mode)
+// Plate boundary overlay — domain-warped lookup for organic boundaries
 if(showPlatesRef.current&&w.pixPlate){
+const plateAt=(px,py)=>{
+const nx=px/W,ny=py/H;
+// Same multi-scale warp as tectonicGen elevation sampling
+const wx=px+fbm(nx*1.5+200,ny*1.5+200,4,2,0.5)*12+fbm(nx*4+300,ny*4+300,3,2,0.5)*4.8+fbm(nx*10+400,ny*10+400,2,2,0.5)*1.6;
+const wy=py+fbm(nx*1.5+250,ny*1.5+250,4,2,0.5)*12+fbm(nx*4+350,ny*4+350,3,2,0.5)*4.8+fbm(nx*10+450,ny*10+450,2,2,0.5)*1.6;
+const sx2=Math.max(0,Math.min(W-1,Math.round(wx))),sy2=Math.max(0,Math.min(H-1,Math.round(wy)));
+return w.pixPlate[sy2*W+sx2];};
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
-const myP=w.pixPlate[si];let boundary=false;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
+const myP=plateAt(sx,sy);let boundary=false;
 for(let dy=-RES;dy<=RES&&!boundary;dy+=RES)for(let dx=-RES;dx<=RES&&!boundary;dx+=RES){
 if(!dx&&!dy)continue;
 const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
-if(w.pixPlate[ny2*W+nx2]!==myP)boundary=true;}
+if(plateAt(nx2,ny2)!==myP)boundary=true;}
 if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
 ctx.putImageData(img,0,0);
 // Draw all tribe centers (tile coords — canvas is CW×CH)
@@ -749,6 +890,50 @@ ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
 ctx.fillStyle=isCapital?`rgb(${cr},${cg},${cb})`:`rgba(${cr},${cg},${cb},0.7)`;ctx.fill();
 ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
 ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();}}
+// Wind particles — animated white streaks that flow along wind vectors
+if(vm==="wind"&&w.windX&&w.windY){
+const NUM_PARTICLES=3000;const TRAIL_LEN=12;const MAX_AGE=80;
+// Initialize particles if needed
+if(!windParticlesRef.current||windParticlesRef.current.length!==NUM_PARTICLES){
+windParticlesRef.current=[];
+for(let i=0;i<NUM_PARTICLES;i++){
+windParticlesRef.current.push({x:Math.random()*CW,y:Math.random()*CH,
+age:Math.random()*MAX_AGE|0,trail:[]});}}
+const particles=windParticlesRef.current;
+const wX=w.windX,wY=w.windY;
+// Step + draw each particle
+ctx.lineCap="round";
+for(let i=0;i<particles.length;i++){
+const p=particles[i];
+// Sample wind at particle position
+const sx=Math.min(W-1,(p.x*RES)|0),sy=Math.min(H-1,(p.y*RES)|0),si=sy*W+sx;
+const vx=wX[si]||0,vy=wY[si]||0;
+const spd=Math.sqrt(vx*vx+vy*vy);
+// Move particle along wind (speed scaled for visual effect)
+const moveScale=5;
+p.trail.push({x:p.x,y:p.y});
+if(p.trail.length>TRAIL_LEN)p.trail.shift();
+p.x+=vx*moveScale;p.y+=vy*moveScale;
+p.age++;
+// Respawn if out of bounds, too old, or in dead air
+if(p.x<0||p.x>=CW||p.y<0||p.y>=CH||p.age>MAX_AGE||spd<0.002){
+p.x=Math.random()*CW;p.y=Math.random()*CH;p.age=0;p.trail.length=0;continue;}
+// Draw trail — fading white line
+if(p.trail.length<2)continue;
+const fadeIn=Math.min(1,p.age/8);const fadeOut=Math.max(0,1-(p.age-MAX_AGE+15)/15);
+const brightness=fadeIn*fadeOut;
+for(let j=1;j<p.trail.length;j++){
+const segAlpha=(j/p.trail.length)*brightness*0.7;
+if(segAlpha<0.02)continue;
+const lw=0.4+(j/p.trail.length)*1.0;
+ctx.strokeStyle=`rgba(255,255,255,${segAlpha.toFixed(2)})`;
+ctx.lineWidth=lw;
+ctx.beginPath();ctx.moveTo(p.trail[j-1].x,p.trail[j-1].y);ctx.lineTo(p.trail[j].x,p.trail[j].y);ctx.stroke();}
+// Draw head dot
+const headAlpha=brightness*0.9;
+ctx.fillStyle=`rgba(255,255,255,${headAlpha.toFixed(2)})`;
+ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
+}
 // Power projection view hatching
 if(vm==="power"&&ter){const tw2=ter.tw,th2=ter.th;
 for(let ty2=0;ty2<th2;ty2+=2)for(let tx2=0;tx2<tw2;tx2+=2){
@@ -794,59 +979,240 @@ strength:ter2.tribeStrength[bestId],density:ter2.tribeStrength[bestId]/ter2.trib
 draw(terRef.current);}};
 fid=requestAnimationFrame(loop);return()=>cancelAnimationFrame(fid);},[draw]);
 
+// Wind particle animation loop — redraws at ~30fps when in wind view
+useEffect(()=>{let wfid;
+const windLoop=()=>{wfid=requestAnimationFrame(windLoop);
+if(viewRef.current!=="wind"||!worldRef.current||!terRef.current)return;
+draw(terRef.current);};
+wfid=requestAnimationFrame(windLoop);
+return()=>cancelAnimationFrame(wfid);},[draw]);
+
 const togglePlay=()=>{if(!playing&&terRef.current&&terRef.current.settled>=terRef.current.landCount){
 const t=createTerritory(worldRef.current);terRef.current=t;setTribeCount(t.tribes);setCoverage(0);setDominant(null);terrainCache.current=null;draw(t);}
 playRef.current=!playRef.current;setPlaying(p=>!p);};
+const handleImport=useCallback(async(e)=>{const file=e.target.files?.[0];if(!file)return;
+e.target.value="";
+setImportStatus("Loading...");
+try{let w;
+if(file.name.endsWith(".json")||file.name.endsWith(".map")){
+const text=await file.text();const parsed=parseAzgaarJSON(text);
+w=rasterizeAzgaar(parsed,W,H);
+setImportStatus(`Azgaar map loaded (${parsed.n} cells, ${parsed.stateSet.size} states)`);
+}else if(file.type.startsWith("image/")){
+const img=await loadImageFile(file);
+w=rasterizeHeightmap(img.data,img.width,img.height,W,H);
+setImportStatus(`Heightmap loaded (${img.width}\u00d7${img.height})`);
+}else{setImportStatus("Unsupported file type");return;}
+const emptyArr=new Uint8Array(W*H);
+const rvr=showRiversRef.current?generateRivers(w.elevation,w.moisture,W,H,mkRng(seed+777)):{river:emptyArr,lake:emptyArr,floodplain:emptyArr,delta:emptyArr};
+w.river=rvr.river;w.lake=rvr.lake;w.floodplain=rvr.floodplain;w.delta=rvr.delta;
+const oasis=new Uint8Array(W*H),swamp=new Uint8Array(W*H);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
+if(w.elevation[i]>0&&w.elevation[i]<0.3&&w.temperature[i]>0.5&&w.moisture[i]<0.2){
+const nv=fbm(x/W*50+200,y/H*50+200,3,2,.5);if(nv>0.3){oasis[i]=1;w.moisture[i]=Math.min(1,w.moisture[i]+0.4);}}
+if(w.elevation[i]>0&&w.elevation[i]<0.025&&w.moisture[i]>0.45&&w.temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
+const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);if(nv>-0.1)swamp[i]=1;}}
+w.oasis=oasis;w.swamp=swamp;
+importedWorldRef.current=w;presetRef.current="import";setPreset("import");
+setSeed(Math.floor(Math.random()*999999));
+setTimeout(()=>setImportStatus(null),4000);
+}catch(err){setImportStatus("Import failed: "+err.message);setTimeout(()=>setImportStatus(null),5000);}
+},[seed]);
 const bs={background:"rgba(201,184,122,0.08)",border:"1px solid rgba(201,184,122,0.18)",color:"#8a8474",
 padding:"4px 10px",borderRadius:2,cursor:"pointer",fontSize:10,letterSpacing:1,fontFamily:"inherit"};
 const bsA=(active,color)=>({...bs,background:active?`rgba(${color},0.2)`:bs.background,
 border:`1px solid ${active?`rgba(${color},0.35)`:bs.border}`,color:active?`rgb(${color})`:"#8a8474"});
+const onCanvasMove=useCallback((ev)=>{
+const c=canvasRef.current;if(!c||!worldRef.current)return;
+const r=c.getBoundingClientRect();
+const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
+const wx=Math.floor(sx)*RES,wy=Math.floor(sy)*RES;
+const w=worldRef.current,i=wy*1920+wx;
+if(wx<0||wx>=1920||wy<0||wy>=960){setHoverInfo(null);return;}
+const elev=w.elevation[i]||0;
+const temp=w.temperature[i]||0;
+const moist=w.moisture[i]||0;
+const biome=getBiomeD(elev,moist,temp,0);
+const biomeName=BN[biome]||"Ocean";
+const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
+const tempC=Math.round(temp*50-10);
+const lat=Math.abs(wy/960-0.5)*2;
+const fertVal=elev>0?tileFert(temp,moist,elev):0;
+const wdx=w.windX?w.windX[i]:0,wdy=w.windY?w.windY[i]:0;
+const wspd=Math.sqrt(wdx*wdx+wdy*wdy);
+const wkmh=Math.round(wspd*100); // normalized → km/h (median ~18 km/h)
+// +Y is south in screen coords, so negate wdy for compass direction
+// Direction = where the wind is blowing TO
+const wdeg=((Math.atan2(-wdy,wdx)*180/Math.PI)+360)%360;
+const wdir=["E","NE","N","NW","W","SW","S","SE"][Math.round(wdeg/45)%8];
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh});
+},[CW,CH]);
+const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
+const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
+const lbs={...bs,width:"100%",textAlign:"left",padding:"4px 10px"};
+const sep=<div style={{height:1,background:"rgba(201,184,122,0.10)",margin:"2px 0"}} />;
+const rpW=rightPanel?300:0;
+const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
+
 return(
-<div style={{width:"100vw",height:"100vh",background:"#060810",overflow:"hidden",position:"relative"}}>
-<canvas ref={canvasRef} width={CW} height={CH} style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,margin:"auto",position:"absolute",inset:0}} />
-{/* Stats overlay — top right */}
+<div style={{width:"100vw",height:"100vh",background:"#060810",overflow:"hidden",display:"flex"}}>
+
+{/* ══ LEFT PANEL ══ */}
+<div style={{width:140,minWidth:140,height:"100%",background:"rgba(6,8,16,0.92)",borderRight:"1px solid rgba(201,184,122,0.08)",
+display:"flex",flexDirection:"column",gap:4,padding:"8px 6px",overflowY:"auto",fontSize:10}}>
+<button onClick={togglePlay} style={{...lbs,color:playing?"#e0a090":"#c9b87a",
+background:playing?"rgba(200,80,60,0.15)":"rgba(201,184,122,0.1)",padding:"6px 10px",fontSize:12,textAlign:"center"}}>
+{playing?"❚❚  Pause":"▶  Play"}</button>
+<div style={{display:"flex",alignItems:"center",gap:4}}>
+<span style={{color:"#6a6458",fontSize:9}}>Speed</span>
+<input type="range" min={1} max={10} value={speed} onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value}}
+style={{flex:1,accentColor:"#c9b87a"}} />
+</div>
+{sep}
+<button onClick={()=>setPresetAndGo(null)} style={{...lbs,color:preset===null?"#c9b87a":"#8a8474",
+background:preset===null?"rgba(201,184,122,0.15)":"transparent"}}>Random</button>
+<button onClick={()=>setPresetAndGo("earth")} style={{...lbs,...(preset==="earth"?{color:"rgb(100,160,220)",background:"rgba(100,160,220,0.15)"}:{})}}>Earth</button>
+<button onClick={()=>setPresetAndGo("pangaea")} style={{...lbs,...(preset==="pangaea"?{color:"rgb(120,180,100)",background:"rgba(120,180,100,0.15)"}:{})}}>Pangaea</button>
+<button onClick={()=>setPresetAndGo("tectonic")} style={{...lbs,...(preset==="tectonic"?{color:"rgb(180,120,100)",background:"rgba(180,120,100,0.15)"}:{})}}>Tectonic</button>
+<button onClick={()=>setPresetAndGo("continental")} style={{...lbs,...(preset==="continental"?{color:"rgb(140,180,160)",background:"rgba(140,180,160,0.15)"}:{})}}>Continental</button>
+{sep}
+{preset==="tectonic"&&<>
+<select value={tecPresetName} onChange={e=>{
+const name=e.target.value;setTecPresetName(name);
+if(name==="Default"){_tecParams={};generate(seed);}
+else{const presets=loadPresets();if(presets[name]){_tecParams=presets[name];generate(seed);}}
+}} style={{background:"rgba(201,184,122,0.06)",border:"1px solid rgba(201,184,122,0.18)",
+color:"#b8a060",padding:"3px 6px",borderRadius:2,fontSize:10,fontFamily:"inherit",cursor:"pointer",outline:"none",width:"100%"}}>
+<option value="Default" style={{background:"#0a0c14"}}>Default</option>
+{Object.keys(loadPresets()).map(name=><option key={name} value={name} style={{background:"#0a0c14"}}>{name}</option>)}
+</select>
+{tecPresetName!=="Default"&&<button onClick={()=>{if(confirm("Delete '"+tecPresetName+"'?")){
+deletePreset(tecPresetName);setTecPresetName("Default");_tecParams={};generate(seed);}}}
+style={{...lbs,color:"#a06060",fontSize:9,textAlign:"center"}}>Delete Preset</button>}
+{sep}
+</>}
+<input ref={fileRef} type="file" accept=".json,.map,.png,.jpg,.jpeg,.webp" style={{display:"none"}} onChange={handleImport} />
+<button onClick={()=>fileRef.current?.click()} style={{...lbs,...(preset==="import"?{color:"rgb(180,140,200)",background:"rgba(180,140,200,0.15)"}:{})}}>Import</button>
+{importStatus&&<span style={{fontSize:8,color:"#a99ed0",wordBreak:"break-all"}}>{importStatus}</span>}
+{sep}
+<div style={{display:"flex",alignItems:"center",gap:4}}>
+<span style={{color:"#6a6458",fontSize:9}}>Maps</span>
+<input type="range" min={1} max={10} value={mapCount} onChange={e=>setMapCount(+e.target.value)}
+style={{flex:1,accentColor:"#c9b87a"}} />
+<span style={{color:"#8a8474",fontSize:9,minWidth:12,textAlign:"right"}}>{mapCount}</span>
+</div>
+<div style={{flex:1}} />
+<span style={{color:"#4a4438",fontSize:8,textAlign:"center"}}>Seed: {seed}</span>
+</div>
+
+{/* ══ CENTER: MAP AREA ══ */}
+<div style={{flex:1,position:"relative",display:"flex",flexDirection:"column"}}>
+
+{/* Map grid */}
+<div style={{flex:1,display:"grid",gridTemplateColumns:`repeat(${gridCols},1fr)`,gap:2,padding:2}}>
+{Array.from({length:mapCount}).map((_,mi)=>{
+const extraSeed=seed+mi;
+return(
+<div key={mi} style={{position:"relative",overflow:"hidden",background:"#060810",display:"flex",
+alignItems:"center",justifyContent:"center",cursor:mi>0?"pointer":"default",
+border:mi===0?"2px solid rgba(201,184,122,0.25)":"2px solid transparent",borderRadius:3}}
+onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
+{mi===0?<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
+style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",
+aspectRatio:`${CW}/${CH}`}} />
+:<canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
+style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",
+width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
+{mi>0&&<div style={{position:"absolute",bottom:2,left:0,right:0,textAlign:"center",
+color:"#6a6458",fontSize:9,pointerEvents:"none"}}>Seed: {extraSeed}</div>}
+</div>);})}
+</div>
+
+{/* Hover tooltip */}
+{hoverInfo&&<div style={{position:"fixed",left:hoverInfo.x+14,top:hoverInfo.y-60,
+background:"rgba(6,8,16,0.92)",color:"#c9b87a",fontSize:10,padding:"6px 10px",
+borderRadius:3,pointerEvents:"none",whiteSpace:"nowrap",zIndex:100,lineHeight:"15px",
+border:"1px solid rgba(201,184,122,0.15)"}}>
+<div style={{fontWeight:"bold",marginBottom:2,color:hoverInfo.elevM<=0?"#4a6a8a":"#c9b87a"}}>{hoverInfo.biome}</div>
+<div><span style={{color:"#8a8474"}}>Elev:</span> {hoverInfo.elevM}m</div>
+<div><span style={{color:"#8a8474"}}>Temp:</span> {hoverInfo.tempC}°C</div>
+<div><span style={{color:"#8a8474"}}>Moist:</span> {(hoverInfo.moist*100).toFixed(0)}%</div>
+<div><span style={{color:"#8a8474"}}>Fert:</span> {(hoverInfo.fert*100).toFixed(0)}%</div>
+<div><span style={{color:"#8a8474"}}>Wind:</span> {hoverInfo.wkmh} km/h {hoverInfo.wdir}</div>
+<div><span style={{color:"#8a8474"}}>Lat:</span> {(hoverInfo.lat*90).toFixed(1)}°</div>
+</div>}
+
+{/* Biome legend — BOTTOM LEFT */}
+{viewMode==="terrain"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.82)",
+borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
+{[4,5,6,7,8,9,10,15,11,12,14,13,16].map(bi=>(
+<div key={bi} style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
+<span style={{display:"inline-block",width:10,height:8,borderRadius:1,flexShrink:0,
+background:`rgb(${BC[bi][0]},${BC[bi][1]},${BC[bi][2]})`}} />
+<span>{BN[bi]}</span></div>))}</div>}
+
+{/* Stats — top right of map area */}
 <div style={{position:"absolute",top:6,right:6,background:"rgba(6,8,16,0.85)",borderRadius:3,padding:"4px 10px",
 display:"flex",gap:12,fontSize:11,color:"#c9b87a",pointerEvents:"none"}}>
 <span>{tribeCount} tribes</span><span>{coverage}%</span>
-{dominant&&<><span style={{display:"inline-flex",alignItems:"center",gap:3}}>
+{dominant&&<span style={{display:"inline-flex",alignItems:"center",gap:3}}>
 <span style={{width:7,height:7,borderRadius:1,background:`rgb(${tribeRGB(dominant.id).join(",")})`,display:"inline-block"}} />
-{dominant.size}t</span></>}</div>
-{/* Controls — bottom, overlaid on map */}
-<div style={{position:"absolute",bottom:6,left:"50%",transform:"translateX(-50%)",
-background:"rgba(6,8,16,0.85)",borderRadius:3,padding:"5px 8px",
-display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-<button onClick={togglePlay} style={{...bs,color:playing?"#e0a090":"#c9b87a",
-background:playing?"rgba(200,80,60,0.15)":"rgba(201,184,122,0.1)",padding:"4px 16px"}}>
-{playing?"❚❚":"▶"}</button>
-<input type="range" min={1} max={10} value={speed} onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value}}
-style={{width:50,accentColor:"#c9b87a"}} />
-<button onClick={()=>{presetRef.current=null;setPreset(null);setSeed(Math.floor(Math.random()*999999));}} style={bs}>Random</button>
-<button onClick={()=>{presetRef.current="earth";setPreset("earth");setSeed(Math.floor(Math.random()*999999));}}
-style={bsA(preset==="earth","100,160,220")}>Earth</button>
-<button onClick={()=>{presetRef.current="pangaea";setPreset("pangaea");setSeed(Math.floor(Math.random()*999999));}}
-style={bsA(preset==="pangaea","120,180,100")}>Pangaea</button>
-<button onClick={()=>{presetRef.current="tectonic";setPreset("tectonic");setSeed(Math.floor(Math.random()*999999));}}
-style={bsA(preset==="tectonic","180,120,100")}>Tectonic</button>
-<button onClick={()=>{presetRef.current="continental";setPreset("continental");setSeed(Math.floor(Math.random()*999999));}}
-style={bsA(preset==="continental","140,180,160")}>Continental</button>
-<div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
-{[["terrain","Ter"],["depth","Dep"],["tribes","Tri"],["power","Pow"]].map(([k,label])=>(
+{dominant.size}t</span>}</div>
+
+{/* ══ BOTTOM CENTER: VIEW/OVERLAY OPTIONS (larger) ══ */}
+<div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",
+background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"6px 12px",
+display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
+{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["value","Value"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
 style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
-color:viewMode===k?"#c9b87a":"#5a5448",padding:"3px 7px"}}>{label}</button>))}
-{viewMode==="depth"&&<><div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
-<button onClick={()=>{setDepthFromSea(v=>!v);depthFromSeaRef.current=!depthFromSeaRef.current;}}
+color:viewMode===k?"#c9b87a":"#5a5448",padding:"6px 14px",fontSize:13}}>{label}</button>))}
+{viewMode==="depth"&&<button onClick={()=>{setDepthFromSea(v=>!v);depthFromSeaRef.current=!depthFromSeaRef.current;}}
 style={{...bs,background:depthFromSea?"rgba(80,140,200,0.25)":"transparent",border:"none",
-color:depthFromSea?"#6ab4e8":"#5a5448",padding:"3px 7px",fontSize:"10px"}}>{depthFromSea?"Sea":"Floor"}</button></>}
-{world&&world.pixPlate&&<><div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
-<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
+color:depthFromSea?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>{depthFromSea?"Sea":"Floor"}</button>}
+{world&&world.pixPlate&&<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
 style={{...bs,background:showPlates?"rgba(200,80,60,0.25)":"transparent",border:"none",
-color:showPlates?"#e07050":"#5a5448",padding:"3px 7px",fontSize:"10px"}}>Plates</button></>}
-<div style={{width:1,height:16,background:"rgba(201,184,122,0.15)"}} />
-<span style={{color:"#8a8070",fontSize:"10px",marginRight:4}}>Sea</span>
+color:showPlates?"#e07050":"#5a5448",padding:"6px 12px",fontSize:12}}>Plates</button>}
+<div style={{width:1,height:20,background:"rgba(201,184,122,0.15)"}} />
+<span style={{color:"#8a8070",fontSize:11}}>Sea</span>
 <input type="range" min="50" max="90" value={oceanLevel*100}
 onChange={e=>{const v=Number(e.target.value)/100;setOceanLevel(v);oceanLevelRef.current=v;}}
-onMouseUp={()=>generate(seed)}
-onTouchEnd={()=>generate(seed)}
-style={{width:60,accentColor:"#6ab4e8"}} />
-</div></div>);}
+onMouseUp={()=>generate(seed)} onTouchEnd={()=>generate(seed)}
+style={{width:80,accentColor:"#6ab4e8"}} />
+<button onClick={()=>{const nv=!showRiversRef.current;showRiversRef.current=nv;setShowRivers(nv);generate(seed);}}
+style={{...bs,background:showRivers?"rgba(40,120,200,0.25)":"transparent",border:"none",
+color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</button>
+{(preset==="tectonic"||preset==="earth")&&<>
+<div style={{width:1,height:20,background:"rgba(201,184,122,0.15)"}} />
+<button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
+style={{...bs,color:rightPanel==="params"?"#c9b87a":"#5a5448",background:rightPanel==="params"?"rgba(201,184,122,0.15)":"transparent",
+border:"none",padding:"6px 12px",fontSize:12}}>Params</button>
+{preset==="tectonic"&&<button onClick={()=>setShowTuning(true)}
+style={{...bs,color:"#b8a060",border:"1px solid rgba(201,184,122,0.3)",padding:"6px 12px",fontSize:12}}>Tune</button>}
+</>}
+</div>
+
+</div>{/* end center */}
+
+{/* ══ RIGHT PANEL: Parameters ══ */}
+{rightPanel==="params"&&(preset==="tectonic"||preset==="earth")&&<div style={{width:rpW,minWidth:rpW,height:"100%",background:"rgba(6,8,16,0.92)",
+borderLeft:"1px solid rgba(201,184,122,0.08)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+<div style={{padding:"8px 10px",fontSize:11,color:"#c9b87a",borderBottom:"1px solid rgba(201,184,122,0.08)",
+display:"flex",alignItems:"center"}}>
+<span>{preset==="earth"?"Wind Parameters":"Parameters"}</span>
+<div style={{flex:1}} />
+<span onClick={()=>setRightPanel("")} style={{cursor:"pointer",color:"#6a6458",fontSize:14}}>✕</span>
+</div>
+<div style={{flex:1,overflowY:"auto",padding:"6px 8px"}}>
+<ParamEditor params={{..._tecParams}} onChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
+  groups={preset==="earth"?["wind"]:undefined} />
+</div>
+</div>}
+
+{/* ══ TUNING OVERLAY ══ */}
+{showTuning&&<TuningPanel noiseFns={{initNoise,fbm,ridged,noise2D,worley}} seed={seed}
+  params={{..._tecParams}}
+  onParamsChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
+  onClose={()=>setShowTuning(false)} />}
+
+</div>);}
