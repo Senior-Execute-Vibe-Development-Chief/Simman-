@@ -775,41 +775,11 @@ const e=w.elevation[si];
 const v=Math.min(255,Math.max(0,((e-floor)/range)*255))|0;
 const pi4=ti<<2;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=v;d[pi4+3]=255;}
 }else if(vm==="wind"){
-// Wind view — arrows over terrain, color = speed
+// Wind view — dim terrain base (arrows drawn later via Canvas2D)
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
 const tc=terrainCache.current;
-// Dim terrain base
 for(let ti=0;ti<N;ti++){const pi4=ti<<2;
-d[pi4]=(tc[ti*3]*0.3)|0;d[pi4+1]=(tc[ti*3+1]*0.3)|0;d[pi4+2]=(tc[ti*3+2]*0.3)|0;d[pi4+3]=255;}
-// Draw wind arrows every 8 tiles
-if(w.windX&&w.windY){
-const step=8;
-for(let ty=step/2;ty<CH;ty+=step)for(let tx=step/2;tx<CW;tx+=step){
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
-const wx2=w.windX[si],wy2=w.windY[si];
-const spd=Math.sqrt(wx2*wx2+wy2*wy2);
-if(spd<0.02)continue;
-const len=Math.min(step*0.8,spd*step*1.2);
-const dx2=wx2/spd,dy2=wy2/spd;
-// Color: blue=slow, cyan=med, white=fast
-const t2=Math.min(1,spd*1.5);
-const cr=(t2*200)|0,cg=(100+t2*155)|0,cb=255;
-// Draw line from center
-const cx=tx,cy=ty;
-const ex2=cx+dx2*len,ey2=cy+dy2*len;
-const steps=Math.ceil(len);
-for(let s=0;s<=steps;s++){
-const f=s/steps;
-const px2=Math.round(cx+(ex2-cx)*f),py2=Math.round(cy+(ey2-cy)*f);
-if(px2>=0&&px2<CW&&py2>=0&&py2<CH){
-const pi4=(py2*CW+px2)<<2;d[pi4]=cr;d[pi4+1]=cg;d[pi4+2]=cb;}}
-// Arrowhead
-const ax1=Math.round(ex2-dx2*2+dy2*1.5),ay1=Math.round(ey2-dy2*2-dx2*1.5);
-const ax2=Math.round(ex2-dx2*2-dy2*1.5),ay2=Math.round(ey2-dy2*2+dx2*1.5);
-for(const[apx,apy]of[[ax1,ay1],[ax2,ay2]]){
-if(apx>=0&&apx<CW&&apy>=0&&apy<CH){
-const pi4=(apy*CW+apx)<<2;d[pi4]=cr;d[pi4+1]=cg;d[pi4+2]=cb;}}
-}}
+d[pi4]=(tc[ti*3]*0.25)|0;d[pi4+1]=(tc[ti*3+1]*0.25)|0;d[pi4+2]=(tc[ti*3+2]*0.25)|0;d[pi4+3]=255;}
 }else if(vm==="power"){
 // Power view — one pixel per tile
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
@@ -890,6 +860,32 @@ ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
 ctx.fillStyle=isCapital?`rgb(${cr},${cg},${cb})`:`rgba(${cr},${cg},${cb},0.7)`;ctx.fill();
 ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
 ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();}}
+// Wind arrows — smooth Canvas2D rendering
+if(vm==="wind"&&w.windX&&w.windY){
+const step=16;const arrowLen=12;const headLen=4;const headW=2.5;
+ctx.lineCap="round";ctx.lineJoin="round";
+for(let ty=step/2;ty<CH;ty+=step)for(let tx=step/2;tx<CW;tx+=step){
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const wx2=w.windX[si],wy2=w.windY[si];
+const spd=Math.sqrt(wx2*wx2+wy2*wy2);
+if(spd<0.03)continue;
+const dx2=wx2/spd,dy2=wy2/spd;
+const len=Math.min(arrowLen,spd*arrowLen*1.5);
+const ex=tx+dx2*len,ey=ty+dy2*len;
+// Speed color: dark blue → cyan → white
+const t2=Math.min(1,spd*1.2);
+const cr=Math.round(80+t2*175),cg=Math.round(140+t2*115),cb=255;
+const alpha=0.5+t2*0.5;
+ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;
+ctx.fillStyle=`rgba(${cr},${cg},${cb},${alpha})`;
+ctx.lineWidth=1+t2*0.8;
+// Shaft
+ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(ex,ey);ctx.stroke();
+// Arrowhead triangle
+const ax1=ex-dx2*headLen+dy2*headW,ay1=ey-dy2*headLen-dx2*headW;
+const ax2=ex-dx2*headLen-dy2*headW,ay2=ey-dy2*headLen+dx2*headW;
+ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(ax1,ay1);ctx.lineTo(ax2,ay2);ctx.closePath();ctx.fill();
+}}
 // Power projection view hatching
 if(vm==="power"&&ter){const tw2=ter.tw,th2=ter.th;
 for(let ty2=0;ty2<th2;ty2+=2)for(let tx2=0;tx2<tw2;tx2+=2){

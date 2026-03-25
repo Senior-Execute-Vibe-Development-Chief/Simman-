@@ -799,48 +799,100 @@ for (let wy = 0; wy < wH; wy++) {
   }
 }
 
-// Terrain deflection: iterative relaxation
-// Wind avoids high terrain (acts like a pressure barrier)
-// Build elevation on wind grid
+// Pressure field: seeded high/low pressure centers that drive cyclonic rotation
+// Low pressure → cyclonic (counterclockwise NH, clockwise SH)
+// High pressure → anticyclonic (clockwise NH, counterclockwise SH)
+const numPressure = 8 + Math.floor(rng() * 8);
+const pressureCenters = [];
+for (let pi = 0; pi < numPressure; pi++) {
+  const px = rng() * wW, py = 0.05 * wH + rng() * 0.9 * wH;
+  const lat2 = Math.abs(py / wH - 0.5) * 2;
+  // Subtropical highs more likely at ~30°, lows more likely at ~60° and equator
+  const highProb = Math.exp(-((lat2 - 0.33) ** 2) / 0.02);
+  const isHigh = rng() < 0.3 + highProb * 0.4;
+  const str = 0.3 + rng() * 0.7;
+  const rad = 15 + rng() * 30;
+  pressureCenters.push({ x: px, y: py, high: isHigh, str, rad });
+}
+
+// Build pressure field on wind grid
+const pressure = new Float32Array(wW * wH);
+for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
+  let p2 = 0;
+  for (const pc of pressureCenters) {
+    let ddx = wx - pc.x;
+    if (ddx > wW / 2) ddx -= wW; if (ddx < -wW / 2) ddx += wW;
+    const ddy = wy - pc.y;
+    const dist2 = ddx * ddx + ddy * ddy;
+    const r2 = pc.rad * pc.rad;
+    if (dist2 < r2 * 4) {
+      const falloff = Math.exp(-dist2 / (2 * r2));
+      p2 += (pc.high ? 1 : -1) * pc.str * falloff;
+    }
+  }
+  pressure[wy * wW + wx] = p2;
+}
+
+// Terrain deflection + Coriolis rotation from pressure
 const wElev = new Float32Array(wW * wH);
 for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const px = Math.min(W - 1, wx * WG), py = Math.min(H - 1, wy * WG);
   wElev[wy * wW + wx] = Math.max(0, elevation[py * W + px]);
 }
 
-// Relaxation passes: wind flows around terrain obstacles
-for (let iter = 0; iter < 12; iter++) {
+for (let iter = 0; iter < 16; iter++) {
   const tmpX = new Float32Array(windX);
   const tmpY = new Float32Array(windY);
-  for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
-    const wi = wy * wW + wx;
-    const e0 = wElev[wi];
-    // Check terrain gradient (pressure-like force pushing wind away from mountains)
-    const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-    const eL = wElev[wy * wW + wl], eR = wElev[wy * wW + wr];
-    const eU = wElev[(wy - 1) * wW + wx], eD = wElev[(wy + 1) * wW + wx];
-    // Terrain gradient pushes wind away from high terrain
-    const gx = (eL - eR) * 2.5;
-    const gy = (eU - eD) * 2.5;
-    // Blocking: high terrain reduces wind speed
-    const block = Math.min(0.95, e0 * 3);
-    // Neighbor averaging for smoothness
-    const avgX = (tmpX[wy * wW + wl] + tmpX[wy * wW + wr] +
-      tmpX[(wy - 1) * wW + wx] + tmpX[(wy + 1) * wW + wx]) * 0.25;
-    const avgY = (tmpY[wy * wW + wl] + tmpY[wy * wW + wr] +
-      tmpY[(wy - 1) * wW + wx] + tmpY[(wy + 1) * wW + wx]) * 0.25;
-    // Blend: original base + neighbor smoothing + terrain deflection
-    windX[wi] = (tmpX[wi] * 0.55 + avgX * 0.45 + gx) * (1 - block);
-    windY[wi] = (tmpY[wi] * 0.55 + avgY * 0.45 + gy) * (1 - block);
+  for (let wy = 1; wy < wH - 1; wy++) {
+    const latSigned2 = (wy / wH - 0.5) * 2;
+    const hemi2 = latSigned2 < 0 ? -1 : 1;
+    const coriolisStr = Math.abs(latSigned2) * 0.8; // stronger at poles
+    for (let wx = 0; wx < wW; wx++) {
+      const wi = wy * wW + wx;
+      const e0 = wElev[wi];
+      const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+      const eL = wElev[wy * wW + wl], eR = wElev[wy * wW + wr];
+      const eU = wElev[(wy - 1) * wW + wx], eD = wElev[(wy + 1) * wW + wx];
+      // Terrain gradient pushes wind away from mountains
+      const gx = (eL - eR) * 3.0;
+      const gy = (eU - eD) * 3.0;
+      // Pressure gradient force: wind from high→low pressure
+      const pL = pressure[wy * wW + wl], pR = pressure[wy * wW + wr];
+      const pU = pressure[(wy - 1) * wW + wx], pD = pressure[(wy + 1) * wW + wx];
+      let pgx = (pL - pR) * 0.5;
+      let pgy = (pU - pD) * 0.5;
+      // Coriolis: rotate pressure gradient force 90° → geostrophic wind
+      // NH: rotate right (CW), SH: rotate left (CCW)
+      const geoX = pgy * hemi2 * coriolisStr;
+      const geoY = -pgx * hemi2 * coriolisStr;
+      // Blend pressure gradient (toward low) + geostrophic (along isobars)
+      const pfx = pgx * 0.4 + geoX * 0.6;
+      const pfy = pgy * 0.4 + geoY * 0.6;
+      // Blocking from terrain
+      const block = Math.min(0.95, e0 * 3);
+      // Neighbor averaging
+      const avgX = (tmpX[wy * wW + wl] + tmpX[wy * wW + wr] +
+        tmpX[(wy - 1) * wW + wx] + tmpX[(wy + 1) * wW + wx]) * 0.25;
+      const avgY = (tmpY[wy * wW + wl] + tmpY[wy * wW + wr] +
+        tmpY[(wy - 1) * wW + wx] + tmpY[(wy + 1) * wW + wx]) * 0.25;
+      windX[wi] = (tmpX[wi] * 0.45 + avgX * 0.35 + gx + pfx * 0.2) * (1 - block);
+      windY[wi] = (tmpY[wi] * 0.45 + avgY * 0.35 + gy + pfy * 0.2) * (1 - block);
+    }
   }
 }
 
-// Add noise variation for local gusts / weather patterns
+// Local weather noise
 for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const wi = wy * wW + wx;
   const nx = wx / wW, ny = wy / wH;
-  windX[wi] += fbm(nx * 5 + s3 + 100, ny * 5 + s3 + 100, 2, 2, 0.5) * 0.15;
-  windY[wi] += fbm(nx * 5 + s3 + 150, ny * 5 + s3 + 150, 2, 2, 0.5) * 0.12;
+  // Curl noise for swirly patterns (take derivatives of a scalar field)
+  const eps = 0.002;
+  const n0 = fbm(nx * 6 + s3 + 100, ny * 6 + s3 + 100, 3, 2, 0.5);
+  const nDx = fbm((nx + eps) * 6 + s3 + 100, ny * 6 + s3 + 100, 3, 2, 0.5);
+  const nDy = fbm(nx * 6 + s3 + 100, (ny + eps) * 6 + s3 + 100, 3, 2, 0.5);
+  // Curl: perpendicular to gradient → naturally divergence-free (swirly)
+  windX[wi] += (nDy - n0) / eps * 0.04;
+  windY[wi] -= (nDx - n0) / eps * 0.04;
 }
 
 // Upscale wind to full resolution for moisture advection + export
