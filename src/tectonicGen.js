@@ -867,25 +867,29 @@ const layerP = new Array(NL);
 for (let l = 0; l < NL; l++) {
   layerP[l] = new Float32Array(cellN);
   for (let i = 0; i < cellN; i++) {
-    let pVal = -layerTemp[l][i] * _pScale;
-    if (l === 0) {
-      // Orographic pressure: mountains block airflow → effective pressure barrier.
-      // This is THE major source of longitude-varying pressure patterns.
-      // Mountains, plateaus, and ridges create windward highs that steer flow.
-      const e = wElev[i];
-      pVal += e * _oroP;
-      // Ocean pressure bias: marine boundary layer is slightly denser than
-      // continental air at the same temperature (humidity, thermal inertia).
-      // Small effect but helps differentiate ocean vs land wind speeds.
-      const lf = landFrac[i];
-      if (lf < 0.3) pVal += _oceanPBias * (1 - lf / 0.3);
-    }
-    layerP[l][i] = pVal;
+    layerP[l][i] = -layerTemp[l][i] * _pScale;
   }
-  // Smooth: 3 passes for surface (orographic features need blending), 2 for aloft
+  // Smooth thermal pressure: 2 passes, tight
   const ps = new Float32Array(cellN);
-  smoothField(layerP[l], ps, wW, wH, l === 0 ? 3 : 2, 2);
+  smoothField(layerP[l], ps, wW, wH, 2, 2);
   for (let i = 0; i < cellN; i++) layerP[l][i] = ps[i];
+}
+// Orographic + ocean bias: surface only, smoothed BROADLY so mountain
+// pressure extends far from the range (hundreds of km of influence).
+// This prevents sharp leeward pressure drops at coastlines.
+{
+  const oroField = new Float32Array(cellN);
+  for (let i = 0; i < cellN; i++) {
+    const e = wElev[i];
+    const lf = landFrac[i];
+    oroField[i] = e * _oroP + (lf < 0.3 ? _oceanPBias * (1 - lf / 0.3) : 0);
+  }
+  // Broad smooth: 6 passes radius 4 — mountain pressure extends ~16 cells
+  // (~1500km at typical resolution). This is physically correct: blocking
+  // effects propagate far upstream via pressure waves.
+  const oroSmooth = new Float32Array(cellN);
+  smoothField(oroField, oroSmooth, wW, wH, 6, 4);
+  for (let i = 0; i < cellN; i++) layerP[0][i] += oroSmooth[i];
 }
 
 // Per-layer wind arrays
@@ -1038,7 +1042,12 @@ for (let iter = 0; iter < _windIter; iter++) {
     }
 
     // Divergence correction (pressure projection, every other iteration)
+    // Surface layer: WEAK correction (0.3) — real surface wind IS convergent
+    // (cyclones) and divergent (anticyclones). Full correction kills the
+    // mechanism that creates stationary lows between continents and
+    // windward highs. Upper layers: full correction (mass continuity).
     if (iter % 2 === 0) {
+      const divStrength = l === 0 ? 0.3 : 1.0;
       const divP2 = new Float32Array(cellN);
       for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
         const wi = wy * wW + wx;
@@ -1060,8 +1069,8 @@ for (let iter = 0; iter < _windIter; iter++) {
       for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
         const wi = wy * wW + wx;
         const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
-        uX[wi] -= (pCorr[wy * wW + wr2] - pCorr[wy * wW + wl2]) * 0.5;
-        uY[wi] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5;
+        uX[wi] -= (pCorr[wy * wW + wr2] - pCorr[wy * wW + wl2]) * 0.5 * divStrength;
+        uY[wi] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5 * divStrength;
       }
     }
   } // end per-layer horizontal solver
@@ -1097,8 +1106,10 @@ if (_windScale !== 1.0 || _windContrast !== 1.0) {
 // Sub-grid turbulence: curl noise eddies (divergence-free perturbations).
 // The coarse solver can't resolve mesoscale eddies, frontal zones, or
 // local sea-breeze circulations. This parameterizes that variability.
+// Large-scale eddies should emerge naturally from the physics (orographic
+// pressure + weak surface divergence correction).
 const _eddyOcean = p("eddyStrength", 0.015);
-const _eddyLand = _eddyOcean * 0.4; // less turbulence over rough terrain
+const _eddyLand = _eddyOcean * 0.4;
 for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
   const wi = wy * wW + wx;
   const nx = wx / wW, ny = wy / wH;
