@@ -41,7 +41,7 @@ const CLIMATE={tempMod:0,seaLevel:0,wet:0.7};
 function generateWorld(W,H,seed,preset,oceanLevel,enableRivers=true){
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
-let tecPlates=null;
+let tecPlates=null,tecWindX=null,tecWindY=null;
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
 const eData=decodeEarth(EARTH_ELEV);
@@ -111,7 +111,7 @@ temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*
 // ── Tectonic plate mode: separate module ──
 const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D,worley},_tecParams);
 for(let i=0;i<W*H;i++){elevation[i]=tec.elevation[i];moisture[i]=tec.moisture[i];temperature[i]=tec.temperature[i];}
-tecPlates=tec.pixPlate;
+tecPlates=tec.pixPlate;tecWindX=tec.windX;tecWindY=tec.windY;
 }else{
 // ── Random world mode: multi-stamp composition with advanced coastline shaping ──
 // [1] MULTI-STAMP COMPOSITION: 3-6 sub-ellipses per continent + negative stamps for bays
@@ -264,7 +264,7 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,oasis,swamp,width:W,height:H,preset,pixPlate:tecPlates};}
+return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,oasis,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
 
 // ── River & lake generation: trace flow downhill from wet highlands ──
 function generateRivers(elev,moist,W,H,rng){
