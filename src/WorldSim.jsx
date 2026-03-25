@@ -862,23 +862,27 @@ ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
 ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();}}
 // Wind arrows — smooth Canvas2D rendering
 if(vm==="wind"&&w.windX&&w.windY){
-const step=16;const arrowLen=12;const headLen=4;const headW=2.5;
+const step=16;const maxArrow=step*1.4;const minArrow=3;
 ctx.lineCap="round";ctx.lineJoin="round";
 for(let ty=step/2;ty<CH;ty+=step)for(let tx=step/2;tx<CW;tx+=step){
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const wx2=w.windX[si],wy2=w.windY[si];
 const spd=Math.sqrt(wx2*wx2+wy2*wy2);
-if(spd<0.03)continue;
+if(spd<0.02)continue;
 const dx2=wx2/spd,dy2=wy2/spd;
-const len=Math.min(arrowLen,spd*arrowLen*1.5);
+// Arrow length scales with speed: longer = faster wind
+const t2=Math.min(1,spd*2.0);
+const len=minArrow+t2*(maxArrow-minArrow);
+const headLen=2+t2*3;const headW=1.5+t2*2;
 const ex=tx+dx2*len,ey=ty+dy2*len;
-// Speed color: dark blue → cyan → white
-const t2=Math.min(1,spd*1.2);
-const cr=Math.round(80+t2*175),cg=Math.round(140+t2*115),cb=255;
-const alpha=0.5+t2*0.5;
+// Speed color: blue (calm) → white (moderate) → red (strong)
+let cr,cg,cb;
+if(t2<0.5){const s=t2*2;cr=Math.round(100+s*155);cg=Math.round(130+s*125);cb=255;}
+else{const s=(t2-0.5)*2;cr=255;cg=Math.round(255-s*200);cb=Math.round(255-s*220);}
+const alpha=0.55+t2*0.45;
 ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;
 ctx.fillStyle=`rgba(${cr},${cg},${cb},${alpha})`;
-ctx.lineWidth=1+t2*0.8;
+ctx.lineWidth=1+t2*1.2;
 // Shaft
 ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(ex,ey);ctx.stroke();
 // Arrowhead triangle
