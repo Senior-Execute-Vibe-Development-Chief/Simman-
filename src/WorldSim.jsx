@@ -1034,10 +1034,12 @@ const lat=Math.abs(wy/960-0.5)*2;
 const fertVal=elev>0?tileFert(temp,moist,elev):0;
 const wdx=w.windX?w.windX[i]:0,wdy=w.windY?w.windY[i]:0;
 const wspd=Math.sqrt(wdx*wdx+wdy*wdy);
+const wkmh=Math.round(wspd*100); // normalized → km/h (median ~18 km/h)
 // +Y is south in screen coords, so negate wdy for compass direction
+// Direction = where the wind is blowing TO
 const wdeg=((Math.atan2(-wdy,wdx)*180/Math.PI)+360)%360;
 const wdir=["E","NE","N","NW","W","SW","S","SE"][Math.round(wdeg/45)%8];
-setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir});
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
@@ -1130,7 +1132,7 @@ border:"1px solid rgba(201,184,122,0.15)"}}>
 <div><span style={{color:"#8a8474"}}>Temp:</span> {hoverInfo.tempC}°C</div>
 <div><span style={{color:"#8a8474"}}>Moist:</span> {(hoverInfo.moist*100).toFixed(0)}%</div>
 <div><span style={{color:"#8a8474"}}>Fert:</span> {(hoverInfo.fert*100).toFixed(0)}%</div>
-<div><span style={{color:"#8a8474"}}>Wind:</span> {hoverInfo.wdir} {(hoverInfo.wspd*100).toFixed(0)}%</div>
+<div><span style={{color:"#8a8474"}}>Wind:</span> {hoverInfo.wkmh} km/h {hoverInfo.wdir}</div>
 <div><span style={{color:"#8a8474"}}>Lat:</span> {(hoverInfo.lat*90).toFixed(1)}°</div>
 </div>}
 
