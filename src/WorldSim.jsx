@@ -871,7 +871,7 @@ const spd=Math.sqrt(wx2*wx2+wy2*wy2);
 if(spd<0.008)continue;
 const dx2=wx2/spd,dy2=wy2/spd;
 // Power curve: emphasizes difference between calm and strong
-const t2=Math.min(1,Math.pow(spd*3.5,0.65));
+const t2=Math.min(1,Math.pow(spd*2.5,0.55));
 const len=minArrow+t2*(maxArrow-minArrow);
 const headLen=1.5+t2*3;const headW=1+t2*2;
 const ex=tx+dx2*len,ey=ty+dy2*len;

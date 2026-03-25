@@ -747,24 +747,28 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 // with Coriolis deflection + terrain deflection via relaxation
 // ═══════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════
+// Wind simulation using simplified shallow-fluid solver
+// Land = solid wall boundaries. Wind must flow AROUND land.
+// Divergence correction ensures mass conservation (Venturi/channeling).
+// ═══════════════════════════════════════════════════════
+
 // Work on coarser grid for performance (4x downscale)
 const WG = 4, wW = Math.ceil(W / WG), wH = Math.ceil(H / WG);
 const windX = new Float32Array(wW * wH);
 const windY = new Float32Array(wW * wH);
 
-// ── Build geography arrays on wind grid ──
-const wLand = new Float32Array(wW * wH);  // binary land mask
-const wElev = new Float32Array(wW * wH);  // raw elevation (0+ for land)
-const wOcean = new Float32Array(wW * wH); // 1=ocean, 0=land
+// ── Geography on wind grid ──
+const wElev = new Float32Array(wW * wH);
+const solid = new Uint8Array(wW * wH); // 1=land (wall), 0=ocean (fluid)
 for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const px = Math.min(W - 1, wx * WG), py = Math.min(H - 1, wy * WG);
   const e0 = elevation[py * W + px];
   wElev[wy * wW + wx] = Math.max(0, e0);
-  wLand[wy * wW + wx] = e0 > 0 ? 1 : 0;
-  wOcean[wy * wW + wx] = e0 <= 0 ? 1 : 0;
+  solid[wy * wW + wx] = e0 > 0 ? 1 : 0;
 }
 
-// Smooth land fraction (large kernel for continent-scale pressure patterns)
+// Smooth land fraction for pressure (continent-scale)
 const smoothField = (src, dst, w2, h2, passes, rad) => {
   const r = rad || 2;
   const tmp = new Float32Array(w2 * h2);
@@ -782,230 +786,203 @@ const smoothField = (src, dst, w2, h2, passes, rad) => {
     else { for (let i = 0; i < w2 * h2; i++) dst[i] = out[i]; }
   }
 };
+const landFracRaw = new Float32Array(wW * wH);
+for (let i = 0; i < solid.length; i++) landFracRaw[i] = solid[i];
 const landFrac = new Float32Array(wW * wH);
-smoothField(wLand, landFrac, wW, wH, 6, 3); // 6 passes, radius 3 = very smooth
+smoothField(landFracRaw, landFrac, wW, wH, 6, 3);
 
-// Distance-to-coast field: how far inland or out to sea each cell is
-// Positive = ocean cells away from coast, negative = land cells away from coast
-// This drives coastal effects (sea breeze, channeling)
-const coastDist = new Float32Array(wW * wH);
-{
-  // BFS from coast pixels
-  const queue = [];
-  const visited = new Uint8Array(wW * wH);
-  for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
-    const wi = wy * wW + wx;
-    const isLand = wLand[wi] > 0.5;
-    // Check if this is a coast cell (land adjacent to ocean or vice versa)
-    let isCoast = false;
-    for (let dy = -1; dy <= 1 && !isCoast; dy++) for (let dx = -1; dx <= 1 && !isCoast; dx++) {
-      if (dx === 0 && dy === 0) continue;
-      const nx2 = (wx + dx + wW) % wW, ny2 = wy + dy;
-      if (ny2 >= 0 && ny2 < wH) {
-        const ni = ny2 * wW + nx2;
-        if ((isLand && wLand[ni] < 0.5) || (!isLand && wLand[ni] > 0.5)) isCoast = true;
-      }
-    }
-    if (isCoast) {
-      coastDist[wi] = 0;
-      visited[wi] = 1;
-      queue.push(wi);
-    }
-  }
-  let qi = 0;
-  while (qi < queue.length) {
-    const wi = queue[qi++];
-    const wx = wi % wW, wy = (wi / wW) | 0;
-    const d = Math.abs(coastDist[wi]) + 1;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      if (dx === 0 && dy === 0) continue;
-      const nx2 = (wx + dx + wW) % wW, ny2 = wy + dy;
-      if (ny2 >= 0 && ny2 < wH) {
-        const ni = ny2 * wW + nx2;
-        if (!visited[ni]) {
-          visited[ni] = 1;
-          coastDist[ni] = wLand[ni] > 0.5 ? -d : d; // negative=inland, positive=offshore
-          queue.push(ni);
-        }
-      }
-    }
-  }
-}
-
-// ── Pressure field: geography-driven + synoptic centers ──
+// ── Pressure field ──
 const pressure = new Float32Array(wW * wH);
-
-// 1) Large-scale latitude+geography pressure
 for (let wy = 0; wy < wH; wy++) {
-  const latSigned = (wy / wH - 0.5) * 2;
-  const lat = Math.abs(latSigned);
+  const lat = Math.abs((wy / wH - 0.5) * 2);
   for (let wx = 0; wx < wW; wx++) {
     const wi = wy * wW + wx;
-    const lf = landFrac[wi];
-    const ocean = 1 - lf;
+    const lf = landFrac[wi], oc = 1 - lf;
     let p = 0;
-    // Subtropical highs: OCEAN at ~30° (Azores, Pacific, Indian Ocean highs)
-    p += Math.exp(-((lat - 0.33) ** 2) / 0.010) * ocean * 1.8;
-    // Thermal lows: HOT CONTINENTS near tropics (Sahara, Australia)
-    p -= Math.exp(-((lat - 0.22) ** 2) / 0.012) * lf * 1.4;
-    // Subpolar lows: OCEAN at ~60° (Icelandic, Aleutian lows)
-    p -= Math.exp(-((lat - 0.63) ** 2) / 0.008) * ocean * 1.2;
-    // Polar highs: cold continental interiors
-    p += Math.exp(-((lat - 0.85) ** 2) / 0.010) * lf * 0.7;
-    // ITCZ trough: low pressure band along equator
-    p -= Math.exp(-(lat * lat) / 0.004) * 0.6;
-    // Continental high at mid-latitudes
-    p += Math.exp(-((lat - 0.50) ** 2) / 0.015) * lf * 0.5;
+    p += Math.exp(-((lat - 0.33) ** 2) / 0.010) * oc * 1.5;  // subtropical ocean highs
+    p -= Math.exp(-((lat - 0.22) ** 2) / 0.012) * lf * 1.0;  // tropical continental lows
+    p -= Math.exp(-((lat - 0.63) ** 2) / 0.008) * oc * 1.0;  // subpolar ocean lows
+    p += Math.exp(-((lat - 0.85) ** 2) / 0.010) * lf * 0.5;  // polar continental highs
+    p -= Math.exp(-(lat * lat) / 0.004) * 0.5;                // ITCZ trough
+    p += Math.exp(-((lat - 0.50) ** 2) / 0.015) * lf * 0.4;  // mid-lat continental high
     pressure[wi] = p;
   }
 }
-
-// 2) Synoptic-scale pressure centers (weather systems, mostly over ocean)
-const numSynoptic = 10 + Math.floor(rng() * 10);
+// Synoptic weather systems
+const numSynoptic = 8 + Math.floor(rng() * 8);
 for (let pi = 0; pi < numSynoptic; pi++) {
-  const pcx = rng() * wW, pcy = 0.05 * wH + rng() * 0.9 * wH;
+  const pcx = rng() * wW, pcy = 0.08 * wH + rng() * 0.84 * wH;
   const lat = Math.abs(pcy / wH - 0.5) * 2;
   const wi0 = Math.min(wH - 1, pcy | 0) * wW + Math.min(wW - 1, pcx | 0);
-  const lf = landFrac[wi0];
-  const ocean = 1 - lf;
-  // Stronger systems over ocean; weaker over land
-  const oceanBoost = 0.5 + ocean * 1.0;
-  // Subtropical → highs, subpolar → lows, mid-lat → either
-  const highBias = Math.exp(-((lat - 0.33) ** 2) / 0.02) * 0.5;
-  const lowBias = Math.exp(-((lat - 0.55) ** 2) / 0.02) * 0.4;
-  const isHigh = rng() < 0.35 + highBias - lowBias;
-  const str = (0.3 + rng() * 0.8) * oceanBoost;
-  const rad = 10 + rng() * 30;
+  const lf = landFrac[wi0], oc = 1 - lf;
+  const isHigh = rng() < 0.35 + Math.exp(-((lat - 0.33) ** 2) / 0.02) * 0.4;
+  const str = (0.2 + rng() * 0.6) * (0.4 + oc * 0.8);
+  const rad = 12 + rng() * 25;
   for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
     let ddx = wx - pcx;
     if (ddx > wW / 2) ddx -= wW; if (ddx < -wW / 2) ddx += wW;
     const ddy = wy - pcy;
-    const dist2 = ddx * ddx + ddy * ddy;
-    const r2 = rad * rad;
-    if (dist2 < r2 * 4) {
-      pressure[wy * wW + wx] += (isHigh ? 1 : -1) * str * Math.exp(-dist2 / (2 * r2));
-    }
+    const d2 = ddx * ddx + ddy * ddy, r2 = rad * rad;
+    if (d2 < r2 * 4) pressure[wy * wW + wx] += (isHigh ? 1 : -1) * str * Math.exp(-d2 / (2 * r2));
   }
 }
+// Smooth pressure
+const pSmooth = new Float32Array(wW * wH);
+smoothField(pressure, pSmooth, wW, wH, 4, 3);
+for (let i = 0; i < pressure.length; i++) pressure[i] = pSmooth[i];
 
-// Smooth pressure field for broader gradients
-const pressureSmoothed = new Float32Array(wW * wH);
-smoothField(pressure, pressureSmoothed, wW, wH, 3, 2);
-for (let i = 0; i < pressure.length; i++) pressure[i] = pressureSmoothed[i];
-
-// ── Initialize wind from pressure gradients (not latitude bands) ──
-// Geostrophic wind: wind flows ALONG isobars, not across them
-// This creates the spiraling patterns seen in real weather maps
+// ── Driving force field: what the atmosphere "wants" to do ──
+// Geostrophic wind + latitude bands, computed once as the forcing term
+const forceX = new Float32Array(wW * wH);
+const forceY = new Float32Array(wW * wH);
 for (let wy = 1; wy < wH - 1; wy++) {
   const latSigned = (wy / wH - 0.5) * 2;
   const hemi = latSigned < 0 ? -1 : 1;
   const lat = Math.abs(latSigned);
-  // Coriolis parameter: zero at equator, max at poles
-  const f = Math.max(0.15, lat) * 1.2; // floor at 0.15 to avoid singularity at equator
+  const f = Math.max(0.12, lat) * 1.0;
   for (let wx = 0; wx < wW; wx++) {
     const wi = wy * wW + wx;
     const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-    // Pressure gradient
     const dpDx = (pressure[wy * wW + wr] - pressure[wy * wW + wl]) * 0.5;
     const dpDy = (pressure[(wy + 1) * wW + wx] - pressure[(wy - 1) * wW + wx]) * 0.5;
-    // Geostrophic balance: wind perpendicular to pressure gradient
-    // NH: high pressure on right of wind direction
-    // SH: high pressure on left of wind direction
+    // Geostrophic: perpendicular to pressure gradient
     const geoX = -dpDy * hemi / f;
     const geoY = dpDx * hemi / f;
-    // Add a cross-isobar component (friction drives wind toward low pressure)
-    // Stronger cross-isobar flow near equator (weak Coriolis)
-    const crossFrac = 0.25 + (1 - lat) * 0.15;
-    windX[wi] = geoX * (1 - crossFrac) + (-dpDx) * crossFrac;
-    windY[wi] = geoY * (1 - crossFrac) + (-dpDy) * crossFrac;
+    // Cross-isobar friction component (toward low pressure)
+    const crossFrac = 0.20 + (1 - lat) * 0.15;
+    let fx = geoX * (1 - crossFrac) + (-dpDx) * crossFrac;
+    let fy = geoY * (1 - crossFrac) + (-dpDy) * crossFrac;
+    // Latitude-band background (weak)
+    if (lat < 0.33) {
+      fx += -0.15; // trades
+      fy += -hemi * smoothstep(lat / 0.33) * 0.08;
+    } else if (lat < 0.67) {
+      fx += 0.18; // westerlies
+    } else {
+      fx += -0.10; // polar easterlies
+    }
+    // ITCZ calm zone
+    const itcz = Math.exp(-(lat * lat) / 0.004);
+    fx *= (1 - itcz * 0.8);
+    fy *= (1 - itcz * 0.8);
+    forceX[wi] = fx;
+    forceY[wi] = fy;
   }
 }
 
-// Add latitude-band base winds (trades, westerlies) as a weaker background
-for (let wy = 0; wy < wH; wy++) {
-  const lat = Math.abs((wy / wH - 0.5) * 2);
-  const hemi = (wy / wH - 0.5) < 0 ? -1 : 1;
-  let vx = 0, vy = 0;
-  if (lat < 0.33) {
-    const str = smoothstep(lat / 0.33);
-    vy = -hemi * str * 0.15;
-    vx = -0.3; // trades
-  } else if (lat < 0.67) {
-    const t = (lat - 0.33) / 0.34;
-    vy = hemi * Math.sin(t * Math.PI) * 0.08;
-    vx = 0.35; // westerlies
-  } else {
-    vx = -0.2; // polar easterlies
-  }
-  // ITCZ calm
-  const itcz = Math.exp(-(lat * lat) / 0.004);
-  vx *= (1 - itcz * 0.8);
-  vy *= (1 - itcz * 0.8);
-  for (let wx = 0; wx < wW; wx++) {
-    const wi = wy * wW + wx;
-    windX[wi] += vx;
-    windY[wi] += vy;
-  }
+// ── Fluid solver: iterative relaxation with solid walls ──
+// Each iteration: apply force, diffuse, enforce walls, correct divergence
+// Land cells are ALWAYS zero velocity — wind must flow around them
+// This creates: Coanda effect, channeling through gaps, lee-side calms
+
+// Initialize ocean cells from driving force, land = 0
+for (let i = 0; i < wW * wH; i++) {
+  if (!solid[i]) { windX[i] = forceX[i]; windY[i] = forceY[i]; }
 }
 
-// ── Relaxation: smooth wind field, apply terrain effects ──
-for (let iter = 0; iter < 8; iter++) {
+const divP = new Float32Array(wW * wH); // pressure correction for divergence
+
+for (let iter = 0; iter < 30; iter++) {
+  // 1) Enforce solid walls: land velocity = 0
+  for (let i = 0; i < wW * wH; i++) {
+    if (solid[i]) { windX[i] = 0; windY[i] = 0; }
+  }
+
+  // 2) Diffuse + nudge toward driving force
   const tmpX = new Float32Array(windX);
   const tmpY = new Float32Array(windY);
   for (let wy = 1; wy < wH - 1; wy++) {
     for (let wx = 0; wx < wW; wx++) {
       const wi = wy * wW + wx;
+      if (solid[wi]) continue;
       const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-      // Neighbor average (smoothing)
-      const avgX = (tmpX[wy * wW + wl] + tmpX[wy * wW + wr] +
-        tmpX[(wy - 1) * wW + wx] + tmpX[(wy + 1) * wW + wx]) * 0.25;
-      const avgY = (tmpY[wy * wW + wl] + tmpY[wy * wW + wr] +
-        tmpY[(wy - 1) * wW + wx] + tmpY[(wy + 1) * wW + wx]) * 0.25;
-      // Mountain deflection gradient
-      const e0 = wElev[wi];
-      const eL = wElev[wy * wW + wl], eR = wElev[wy * wW + wr];
-      const eU = wElev[(wy - 1) * wW + wx], eD = wElev[(wy + 1) * wW + wx];
-      const gx = (Math.max(0, eL - 0.12) - Math.max(0, eR - 0.12)) * 3.0;
-      const gy = (Math.max(0, eU - 0.12) - Math.max(0, eD - 0.12)) * 3.0;
-      // Blend: 60% current + 40% smoothed + terrain push
-      windX[wi] = tmpX[wi] * 0.6 + avgX * 0.4 + gx;
-      windY[wi] = tmpY[wi] * 0.6 + avgY * 0.4 + gy;
+      // Average only non-solid neighbors (free-slip at walls)
+      let sx = 0, sy = 0, cnt = 0;
+      const nl = wy * wW + wl, nr = wy * wW + wr;
+      const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
+      if (!solid[nl]) { sx += tmpX[nl]; sy += tmpY[nl]; cnt++; }
+      if (!solid[nr]) { sx += tmpX[nr]; sy += tmpY[nr]; cnt++; }
+      if (!solid[nu]) { sx += tmpX[nu]; sy += tmpY[nu]; cnt++; }
+      if (!solid[nd]) { sx += tmpX[nd]; sy += tmpY[nd]; cnt++; }
+      if (cnt > 0) { sx /= cnt; sy /= cnt; }
+      // Blend: 50% current, 30% diffused neighbors, 20% driving force
+      windX[wi] = tmpX[wi] * 0.50 + sx * 0.30 + forceX[wi] * 0.20;
+      windY[wi] = tmpY[wi] * 0.50 + sy * 0.30 + forceY[wi] * 0.20;
+    }
+  }
+
+  // 3) Divergence correction (simplified pressure projection)
+  // Compute divergence, then solve for pressure correction to remove it
+  // This is what makes wind flow AROUND obstacles instead of through them
+  if (iter % 3 === 0) { // every 3rd iteration for performance
+    // Compute divergence
+    for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+      const wi = wy * wW + wx;
+      if (solid[wi]) { divP[wi] = 0; continue; }
+      const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+      const div = (windX[wy * wW + wr] - windX[wy * wW + wl]
+        + windY[(wy + 1) * wW + wx] - windY[(wy - 1) * wW + wx]) * 0.5;
+      divP[wi] = div;
+    }
+    // Jacobi iterations to solve pressure correction
+    const pCorr = new Float32Array(wW * wH);
+    for (let ji = 0; ji < 8; ji++) {
+      const pTmp = new Float32Array(pCorr);
+      for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+        const wi = wy * wW + wx;
+        if (solid[wi]) continue;
+        const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+        pCorr[wi] = (pTmp[wy * wW + wl] + pTmp[wy * wW + wr]
+          + pTmp[(wy - 1) * wW + wx] + pTmp[(wy + 1) * wW + wx]
+          - divP[wi]) * 0.25;
+      }
+    }
+    // Subtract pressure gradient to make field more divergence-free
+    for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+      const wi = wy * wW + wx;
+      if (solid[wi]) continue;
+      const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+      windX[wi] -= (pCorr[wy * wW + wr] - pCorr[wy * wW + wl]) * 0.5;
+      windY[wi] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5;
     }
   }
 }
 
-// ── Land damping: wind dies dramatically over land ──
-// Real wind over continents is 70-90% weaker than over ocean
-// Only coasts and narrow channels retain some wind
-for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
-  const wi = wy * wW + wx;
-  const e0 = wElev[wi];
-  const cd = coastDist[wi]; // negative = inland, 0 = coast, positive = ocean
-  if (e0 > 0) {
-    // Land: heavy damping that increases with distance from coast
-    // Coast cells (cd ~ 0): 40% damping
-    // 5+ cells inland: 85% damping
-    // Mountains: up to 95% damping
-    const inlandDist = Math.min(8, Math.abs(cd));
-    const landDamp = 0.40 + inlandDist * 0.07; // 0.40 at coast → 0.96 deep inland
-    const mtnDamp = Math.min(0.95, Math.max(0, e0 - 0.10) * 3); // mountains extra
-    const totalDamp = Math.min(0.95, landDamp + mtnDamp * 0.3);
-    windX[wi] *= (1 - totalDamp);
-    windY[wi] *= (1 - totalDamp);
+// Final wall enforcement
+for (let i = 0; i < wW * wH; i++) {
+  if (solid[i]) { windX[i] = 0; windY[i] = 0; }
+}
+
+// ── Speed variation: not all ocean is same speed ──
+// Real wind speed is determined by pressure gradient magnitude
+// Tighter isobars = faster wind. Open ocean far from gradients = moderate
+// Normalize so max is ~0.6, with lots of variation
+{
+  let maxSpd = 0;
+  for (let i = 0; i < wW * wH; i++) {
+    const s = Math.sqrt(windX[i] * windX[i] + windY[i] * windY[i]);
+    if (s > maxSpd) maxSpd = s;
+  }
+  if (maxSpd > 0.01) {
+    const scale = 0.65 / maxSpd;
+    for (let i = 0; i < wW * wH; i++) {
+      windX[i] *= scale;
+      windY[i] *= scale;
+    }
   }
 }
 
-// ── Curl noise for mesoscale eddies (ocean only, adds swirl) ──
+// ── Curl noise for mesoscale ocean eddies ──
 for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const wi = wy * wW + wx;
-  if (wLand[wi] > 0.5) continue; // no curl noise over land
+  if (solid[wi]) continue;
   const nx = wx / wW, ny = wy / wH;
   const eps = 0.002;
   const n0 = fbm(nx * 8 + s3 + 100, ny * 8 + s3 + 100, 4, 2, 0.5);
   const nDx = fbm((nx + eps) * 8 + s3 + 100, ny * 8 + s3 + 100, 4, 2, 0.5);
   const nDy = fbm(nx * 8 + s3 + 100, (ny + eps) * 8 + s3 + 100, 4, 2, 0.5);
-  windX[wi] += (nDy - n0) / eps * 0.06;
-  windY[wi] -= (nDx - n0) / eps * 0.06;
+  windX[wi] += (nDy - n0) / eps * 0.04;
+  windY[wi] -= (nDx - n0) / eps * 0.04;
 }
 
 // Upscale wind to full resolution for moisture advection + export
