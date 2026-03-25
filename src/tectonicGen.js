@@ -820,16 +820,18 @@ for (let wy = 0; wy < wH; wy++) {
     pressure[wi] = p;
   }
 }
-// Synoptic weather systems
-const numSynoptic = 8 + Math.floor(rng() * 8);
+// Synoptic weather systems — these are the PRIMARY drivers of wind variation
+// More systems, larger, stronger — they break up any residual banding
+const numSynoptic = 15 + Math.floor(rng() * 12);
 for (let pi = 0; pi < numSynoptic; pi++) {
-  const pcx = rng() * wW, pcy = 0.08 * wH + rng() * 0.84 * wH;
+  const pcx = rng() * wW, pcy = 0.05 * wH + rng() * 0.90 * wH;
   const lat = Math.abs(pcy / wH - 0.5) * 2;
   const wi0 = Math.min(wH - 1, pcy | 0) * wW + Math.min(wW - 1, pcx | 0);
   const lf = landFrac[wi0], oc = 1 - lf;
-  const isHigh = rng() < 0.35 + Math.exp(-((lat - 0.33) ** 2) / 0.02) * 0.4;
-  const str = (0.2 + rng() * 0.6) * (0.4 + oc * 0.8);
-  const rad = 12 + rng() * 25;
+  // Subtropical lats favor highs, mid-lats favor lows
+  const isHigh = rng() < 0.30 + Math.exp(-((lat - 0.33) ** 2) / 0.03) * 0.45;
+  const str = (0.3 + rng() * 0.8) * (0.5 + oc * 0.6);
+  const rad = 15 + rng() * 35;
   for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
     let ddx = wx - pcx;
     if (ddx > wW / 2) ddx -= wW; if (ddx < -wW / 2) ddx += wW;
@@ -861,22 +863,14 @@ for (let wy = 1; wy < wH - 1; wy++) {
     const geoX = -dpDy * hemi / f;
     const geoY = dpDx * hemi / f;
     // Cross-isobar friction component (toward low pressure)
-    const crossFrac = 0.20 + (1 - lat) * 0.15;
+    // Higher near equator where Coriolis is weak
+    const crossFrac = 0.18 + (1 - lat) * 0.20;
     let fx = geoX * (1 - crossFrac) + (-dpDx) * crossFrac;
     let fy = geoY * (1 - crossFrac) + (-dpDy) * crossFrac;
-    // Latitude-band background (subtle nudge, not dominant)
-    if (lat < 0.33) {
-      fx += -0.04; // trades
-      fy += -hemi * smoothstep(lat / 0.33) * 0.03;
-    } else if (lat < 0.67) {
-      fx += 0.06; // westerlies
-    } else {
-      fx += -0.03; // polar easterlies
-    }
-    // ITCZ calm zone
-    const itcz = Math.exp(-(lat * lat) / 0.004);
-    fx *= (1 - itcz * 0.8);
-    fy *= (1 - itcz * 0.8);
+    // ITCZ: convergence zone damping (broad, not sharp)
+    const itcz = Math.exp(-(lat * lat) / 0.015);
+    fx *= (1 - itcz * 0.5);
+    fy *= (1 - itcz * 0.5);
     forceX[wi] = fx;
     forceY[wi] = fy;
   }
