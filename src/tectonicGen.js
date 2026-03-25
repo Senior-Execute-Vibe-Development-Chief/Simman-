@@ -800,163 +800,197 @@ for (let i = 0; i < wElev.length; i++) landFracRaw[i] = wElev[i] > 0 ? 1 : 0;
 const landFrac = new Float32Array(wW * wH);
 smoothField(landFracRaw, landFrac, wW, wH, 6, 3);
 
-// ── Pressure field — thermal + Hadley cell descent ──
-// Two physical components:
-// 1) Thermal: use the same temp formula as Step 8d (lat + elevation + coast).
-//    Hot → low pressure, cold → high pressure.
-// 2) Hadley cell descent: air rises at equator, flows poleward aloft, and
-//    DESCENDS at ~30° latitude. This piling-up of air creates a subtropical
-//    high-pressure ridge — a 3D effect we can't derive from surface temp.
-//    This ridge is what splits wind into trade winds (equatorward of 30°)
-//    and westerlies (poleward of 30°).
-const pressure = new Float32Array(wW * wH);
+// ══════════════════════════════════════════════════════════
+// 3D ATMOSPHERIC CIRCULATION — vertical layers let Hadley cells emerge naturally
+// ══════════════════════════════════════════════════════════
+// 4 altitude layers: surface(0), boundary(1), mid-level(2), upper(3)
+// Temperature drives vertical motion (buoyancy). Coriolis deflects horizontal flow.
+// Air rising at equator flows poleward aloft, cools, descends at ~30° — no artificial bands.
+const NL = 4; // number of altitude layers
+const cellN = wW * wH;
+
+// Temperature per layer: surface from real formula, lapse rate cooling above
+const layerTemp = new Array(NL);
+for (let l = 0; l < NL; l++) layerTemp[l] = new Float32Array(cellN);
 
 for (let wy = 0; wy < wH; wy++) {
-  const latN = wy / wH; // 0=north pole, 1=south pole
-  const lat = Math.abs(latN - 0.5) * 2; // 0=equator, 1=pole
+  const lat = Math.abs(wy / wH - 0.5) * 2;
   for (let wx = 0; wx < wW; wx++) {
     const wi = wy * wW + wx;
     const e = wElev[wi];
     const lf = landFrac[wi];
-    const coastProx = Math.max(0, 1 - lf * 2); // rough ocean proximity
-
-    // Surface temperature — same formula as Step 8d (line 1093)
+    const coastProx = Math.max(0, 1 - lf * 2);
+    // Surface temperature — same formula as Step 8d
     const baseTemp = 1 - lat * 1.05 - e * 0.4;
-    const moderated = baseTemp + (0.45 - baseTemp) * coastProx * 0.2;
-    const surfTemp = Math.max(0, Math.min(1, moderated));
-
-    // Thermal pressure: hot → low (negative), cold → high (positive)
-    const thermalP = -surfTemp * 0.45;
-
-    // Hadley cell descent: subtropical ridge at ~30° (lat ≈ 0.33)
-    // Gaussian bump representing air piling up from the upper-level Hadley outflow
-    const hadleyP = 0.25 * Math.exp(-(lat - 0.33) * (lat - 0.33) / (0.08 * 0.08));
-
-    // Weak polar high from cold dense air pooling at surface
-    const polarP = 0.08 * Math.exp(-(lat - 0.95) * (lat - 0.95) / (0.06 * 0.06));
-
-    pressure[wi] = thermalP + hadleyP + polarP;
+    const surfT = Math.max(0, Math.min(1, baseTemp + (0.45 - baseTemp) * coastProx * 0.2));
+    // Lapse rate: ~6.5°C/km, each layer ~3km apart → ~0.13 per layer (normalized)
+    const lapse = 0.13;
+    for (let l = 0; l < NL; l++) {
+      layerTemp[l][wi] = Math.max(0, surfT - l * lapse);
+    }
   }
 }
 
-// Gentle noise for mesoscale weather variability
-for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
-  const wi = wy * wW + wx;
-  pressure[wi] += fbm(wx / wW * 4 + s3 + 50, wy / wH * 4 + s3 + 50, 3, 2, 0.5) * 0.05;
-}
-
-// Smooth pressure — broad gradients, not sharp edges
-const pSmooth = new Float32Array(wW * wH);
-smoothField(pressure, pSmooth, wW, wH, 6, 5);
-for (let i = 0; i < pressure.length; i++) pressure[i] = pSmooth[i];
-
-// ── Driving force field ──
-// How real surface wind works on a rotating planet:
-// 1. Pressure gradient pushes air toward low pressure
-// 2. Coriolis deflects it RIGHT (NH) / LEFT (SH) — so strongly that
-//    wind ends up flowing nearly PARALLEL to isobars (geostrophic balance)
-// 3. Surface friction pulls it back ~15-25° across isobars toward low pressure
-// Result: wind spirals around pressure systems, not straight into them.
-//
-// We model this as: rotate the pressure-gradient vector by a large angle
-// (60-68° at mid-lats, 0° at equator) using tanh for smooth transition.
-const forceX = new Float32Array(wW * wH);
-const forceY = new Float32Array(wW * wH);
-for (let wy = 1; wy < wH - 1; wy++) {
-  const latSigned = (wy / wH - 0.5) * 2; // -1(north) to +1(south)
-  // Coriolis rotation: saturates at ~68° (1.18 rad) near poles,
-  // ~58° at mid-latitudes, 0 at equator. tanh prevents over-rotation.
-  // Sign: NH (latSigned<0) → positive rotation, SH → negative
-  // This creates: clockwise flow around NH highs, counter-clockwise around SH highs
-  const coriolisAngle = -Math.tanh(latSigned * p("coriolisSharpness", 2.5)) * p("coriolisMaxAngle", 1.2);
-  const cosA = Math.cos(coriolisAngle), sinA = Math.sin(coriolisAngle);
-  for (let wx = 0; wx < wW; wx++) {
+// Per-layer pressure: derived from temperature (hot → low, cold → high)
+const layerP = new Array(NL);
+for (let l = 0; l < NL; l++) {
+  layerP[l] = new Float32Array(cellN);
+  for (let i = 0; i < cellN; i++) layerP[l][i] = -layerTemp[l][i] * 0.45;
+  // Gentle noise
+  for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
     const wi = wy * wW + wx;
-    const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-    const dpDx = (pressure[wy * wW + wr] - pressure[wy * wW + wl]) * 0.5;
-    const dpDy = (pressure[(wy + 1) * wW + wx] - pressure[(wy - 1) * wW + wx]) * 0.5;
-    // Base flow: toward low pressure
-    const baseX = -dpDx, baseY = -dpDy;
-    // Rotate by Coriolis angle — at mid-lats this turns "toward low"
-    // into "mostly along isobars with slight inward spiral"
-    forceX[wi] = baseX * cosA - baseY * sinA;
-    forceY[wi] = baseX * sinA + baseY * cosA;
+    layerP[l][wi] += fbm(wx / wW * 4 + s3 + 50 + l * 17, wy / wH * 4 + s3 + 50 + l * 17, 2, 2, 0.5) * 0.03;
   }
+  // Smooth
+  const ps = new Float32Array(cellN);
+  smoothField(layerP[l], ps, wW, wH, 4, 4);
+  for (let i = 0; i < cellN; i++) layerP[l][i] = ps[i];
 }
 
-// ── Fluid solver with continuous drag ──
-// No hard walls. All cells participate.
-// Land drag always higher than ocean — terrain roughness slows surface wind.
-
-// Initialize from driving force
-for (let i = 0; i < wW * wH; i++) {
-  windX[i] = forceX[i];
-  windY[i] = forceY[i];
+// Per-layer horizontal wind arrays
+const lWindX = new Array(NL), lWindY = new Array(NL);
+for (let l = 0; l < NL; l++) {
+  lWindX[l] = new Float32Array(cellN);
+  lWindY[l] = new Float32Array(cellN);
 }
+// Vertical velocity (positive = rising)
+const vertW = new Float32Array(cellN);
 
-const divP = new Float32Array(wW * wH);
+// Buoyancy strength: how strongly temperature difference drives vertical motion
+const buoyancy = p("buoyancy", 0.6);
+// Vertical coupling: how much vertical motion feeds/drains horizontal layers
+const vertCoupling = p("vertCoupling", 0.15);
 
-const _windIter = p("windSolverIter", 25);
+// ── Main 3D solver ──
+const _windIter = p("windSolverIter", 20);
 for (let iter = 0; iter < _windIter; iter++) {
-  // 1) Diffuse + drag + driving force
-  const tmpX = new Float32Array(windX);
-  const tmpY = new Float32Array(windY);
-  for (let wy = 1; wy < wH - 1; wy++) {
-    for (let wx = 0; wx < wW; wx++) {
-      const wi = wy * wW + wx;
-      const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-      const nl = wy * wW + wl, nr = wy * wW + wr;
-      const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
 
-      // Neighbor average (all cells participate)
-      const sx = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25;
-      const sy = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25;
-
-      // Terrain gradient: deflects wind along contour lines
-      const eL = wElev[nl], eR = wElev[nr], eU = wElev[nu], eD = wElev[nd];
-      const gradX = (eR - eL) * 0.5, gradY = (eD - eU) * 0.5;
-      const gradMag = Math.sqrt(gradX * gradX + gradY * gradY);
-      // Deflection force perpendicular to slope (terrain steering)
-      const deflectStr = Math.min(0.8, gradMag * p("terrainDeflect", 4.0));
-      const dfx = -gradY * deflectStr, dfy = gradX * deflectStr;
-
-      // Blend: current + neighbors + force + deflection
-      let vx = tmpX[wi] * 0.45 + sx * 0.30 + forceX[wi] * 0.25 + dfx;
-      let vy = tmpY[wi] * 0.45 + sy * 0.30 + forceY[wi] * 0.25 + dfy;
-
-      // Apply drag per iteration
-      const d = drag[wi];
-      windX[wi] = vx * (1 - d * 0.25);
-      windY[wi] = vy * (1 - d * 0.25);
-    }
+  // 1) Compute vertical velocity from buoyancy
+  //    Hot columns (surface warmer than upper air) → strong rising
+  //    Cold columns → sinking
+  for (let i = 0; i < cellN; i++) {
+    // Buoyancy = temperature difference between surface and upper layers
+    // Large difference = unstable column = strong convection
+    const instability = layerTemp[0][i] - layerTemp[NL - 1][i];
+    // Average existing vertical motion with new buoyancy (smooth evolution)
+    vertW[i] = vertW[i] * 0.6 + instability * buoyancy * 0.4;
   }
+  // Smooth vertical velocity (convection is broad, not per-pixel)
+  const vSmooth = new Float32Array(cellN);
+  smoothField(vertW, vSmooth, wW, wH, 2, 3);
+  for (let i = 0; i < cellN; i++) vertW[i] = vSmooth[i];
 
-  // 2) Divergence correction every 2nd iteration
-  if (iter % 2 === 0) {
-    for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
-      const wi = wy * wW + wx;
-      const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-      divP[wi] = (windX[wy * wW + wr] - windX[wy * wW + wl]
-        + windY[(wy + 1) * wW + wx] - windY[(wy - 1) * wW + wx]) * 0.5;
-    }
-    const pCorr = new Float32Array(wW * wH);
-    for (let ji = 0; ji < 10; ji++) {
-      const pTmp = new Float32Array(pCorr);
-      for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
-        const wi = wy * wW + wx;
-        const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-        pCorr[wi] = (pTmp[wy * wW + wl] + pTmp[wy * wW + wr]
-          + pTmp[(wy - 1) * wW + wx] + pTmp[(wy + 1) * wW + wx]
-          - divP[wi]) * 0.25;
+  // 2) Vertical mass transfer: rising air removes from lower layers, adds to upper
+  //    Descending air does the reverse. This naturally creates the Hadley cell:
+  //    equator rises → upper layers gain mass → flows poleward → cools → descends at ~30°
+  for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+    const wi = wy * wW + wx;
+    const w3 = vertW[wi] * vertCoupling;
+    if (w3 > 0) {
+      // Rising: surface loses horizontal momentum, upper gains it
+      for (let l = 0; l < NL - 1; l++) {
+        const transfer = w3 * (1 - l / NL); // stronger at lower layers
+        lWindX[l + 1][wi] += lWindX[l][wi] * transfer;
+        lWindY[l + 1][wi] += lWindY[l][wi] * transfer;
+        lWindX[l][wi] *= (1 - transfer);
+        lWindY[l][wi] *= (1 - transfer);
+      }
+    } else {
+      // Sinking: upper loses, surface gains
+      const sink = -w3;
+      for (let l = NL - 1; l > 0; l--) {
+        const transfer = sink * (l / NL);
+        lWindX[l - 1][wi] += lWindX[l][wi] * transfer;
+        lWindY[l - 1][wi] += lWindY[l][wi] * transfer;
+        lWindX[l][wi] *= (1 - transfer);
+        lWindY[l][wi] *= (1 - transfer);
       }
     }
-    for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
-      const wi = wy * wW + wx;
-      const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-      windX[wi] -= (pCorr[wy * wW + wr] - pCorr[wy * wW + wl]) * 0.5;
-      windY[wi] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5;
-    }
   }
+
+  // 3) Horizontal solver per layer: pressure gradient + Coriolis + diffusion + drag
+  for (let l = 0; l < NL; l++) {
+    const pArr = layerP[l];
+    const uX = lWindX[l], uY = lWindY[l];
+    const tmpX = new Float32Array(uX);
+    const tmpY = new Float32Array(uY);
+
+    for (let wy = 1; wy < wH - 1; wy++) {
+      const latSigned = (wy / wH - 0.5) * 2;
+      const coriolisAngle = -Math.tanh(latSigned * p("coriolisSharpness", 2.5)) * p("coriolisMaxAngle", 1.2);
+      const cosA = Math.cos(coriolisAngle), sinA = Math.sin(coriolisAngle);
+      for (let wx = 0; wx < wW; wx++) {
+        const wi = wy * wW + wx;
+        const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+        const nl = wy * wW + wl, nr = wy * wW + wr;
+        const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
+
+        // Pressure gradient → driving force with Coriolis rotation
+        const dpDx = (pArr[nr] - pArr[nl]) * 0.5;
+        const dpDy = (pArr[nd] - pArr[nu]) * 0.5;
+        const bx = -dpDx, by = -dpDy;
+        const fx = bx * cosA - by * sinA;
+        const fy = bx * sinA + by * cosA;
+
+        // Neighbor diffusion
+        const sx = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25;
+        const sy = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25;
+
+        // Terrain deflection (surface layer only)
+        let dfx = 0, dfy = 0;
+        if (l === 0) {
+          const eL = wElev[nl], eR = wElev[nr], eU = wElev[nu], eD = wElev[nd];
+          const gradX = (eR - eL) * 0.5, gradY = (eD - eU) * 0.5;
+          const gradMag = Math.sqrt(gradX * gradX + gradY * gradY);
+          const deflectStr = Math.min(0.8, gradMag * p("terrainDeflect", 4.0));
+          dfx = -gradY * deflectStr; dfy = gradX * deflectStr;
+        }
+
+        // Blend
+        let vx = tmpX[wi] * 0.45 + sx * 0.30 + fx * 0.25 + dfx;
+        let vy = tmpY[wi] * 0.45 + sy * 0.30 + fy * 0.25 + dfy;
+
+        // Drag: surface layer uses terrain drag, upper layers nearly frictionless
+        const d = l === 0 ? drag[wi] : 0.005;
+        uX[wi] = vx * (1 - d * 0.25);
+        uY[wi] = vy * (1 - d * 0.25);
+      }
+    }
+
+    // Divergence correction (every other main iteration)
+    if (iter % 2 === 0) {
+      const divP2 = new Float32Array(cellN);
+      for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+        const wi = wy * wW + wx;
+        const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+        divP2[wi] = (uX[wy * wW + wr2] - uX[wy * wW + wl2]
+          + uY[(wy + 1) * wW + wx] - uY[(wy - 1) * wW + wx]) * 0.5;
+      }
+      const pCorr = new Float32Array(cellN);
+      for (let ji = 0; ji < 8; ji++) {
+        const pTmp = new Float32Array(pCorr);
+        for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+          const wi = wy * wW + wx;
+          const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+          pCorr[wi] = (pTmp[wy * wW + wl2] + pTmp[wy * wW + wr2]
+            + pTmp[(wy - 1) * wW + wx] + pTmp[(wy + 1) * wW + wx]
+            - divP2[wi]) * 0.25;
+        }
+      }
+      for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+        const wi = wy * wW + wx;
+        const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+        uX[wi] -= (pCorr[wy * wW + wr2] - pCorr[wy * wW + wl2]) * 0.5;
+        uY[wi] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5;
+      }
+    }
+  } // end per-layer horizontal solver
+} // end main iterations
+
+// Extract surface layer as the wind output
+for (let i = 0; i < cellN; i++) {
+  windX[i] = lWindX[0][i];
+  windY[i] = lWindY[0][i];
 }
 
 // ── Percentile normalization: median → 0.18 ──
