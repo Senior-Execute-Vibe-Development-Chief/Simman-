@@ -854,26 +854,15 @@ for (let wy = 0; wy < wH; wy++) {
 }
 
 // ── Pressure per layer ──
-// Hydrostatic: warm column → low surface pressure, cold → high
-// Land/ocean thermal contrast: land heats more than ocean at same latitude,
-// creating thermal lows over continents. This drives monsoon-like circulations
-// and is why wind patterns differ between ocean basins and around continents.
+// Hydrostatic: warm column → low surface pressure, cold → high.
+// NO static land/ocean bias — thermal lows are seasonal (cancel in annual mean).
+// Persistent pressure features (subtropical highs, equatorial low) emerge from
+// the Hadley cell vertical circulation applied each iteration.
 const _pScale = p("pressureScale", 4.0);
 const layerP = new Array(NL);
 for (let l = 0; l < NL; l++) {
   layerP[l] = new Float32Array(cellN);
-  for (let i = 0; i < cellN; i++) {
-    // Base: hydrostatic from temperature
-    let pVal = -layerTemp[l][i] * _pScale;
-    // Land/ocean contrast (surface layer): land is warmer → lower pressure
-    // This creates continent-scale thermal lows over land masses and highs over ocean.
-    // Effect strongest at surface, weakens with altitude.
-    if (l <= 1) {
-      const landEffect = landFrac[i] * 0.3 * _pScale * (1 - l * 0.5);
-      pVal -= landEffect; // lower pressure over land (thermal low)
-    }
-    layerP[l][i] = pVal;
-  }
+  for (let i = 0; i < cellN; i++) layerP[l][i] = -layerTemp[l][i] * _pScale;
   // Minimal smoothing: 2 passes to remove grid noise
   const ps = new Float32Array(cellN);
   smoothField(layerP[l], ps, wW, wH, 2, 2);
@@ -985,26 +974,32 @@ for (let iter = 0; iter < _windIter; iter++) {
         let vx = tmpX[wi] + dt * (pgfX + corX + drgX) + visc * lapX;
         let vy = tmpY[wi] + dt * (pgfY + corY + drgY) + visc * lapY;
 
-        // Terrain deflection (surface only): redirect wind along contours.
-        // Acts on ANY cell near terrain (including ocean next to coast).
-        // Wind hitting a slope gets redirected perpendicular to the gradient,
-        // conserving speed. This channels wind around mountains and through gaps.
+        // Terrain deflection (surface only): sample full-res elevation for sharp gradients.
+        // The coarse wind grid (4x downscale) smooths mountains too much.
+        // Sample elevation at full resolution, then compute gradient at wind-grid scale.
         if (l === 0) {
-          const eL = wElev[nl], eR = wElev[nr], eU = wElev[nu], eD = wElev[nd];
-          const gx = (eR - eL) * 0.5, gy = (eD - eU) * 0.5;
+          const px = Math.min(W - 1, wx * WG), py = Math.min(H - 1, wy * WG);
+          const pxL = (px - WG + W) % W, pxR = (px + WG) % W;
+          const pyU = Math.max(0, py - WG), pyD = Math.min(H - 1, py + WG);
+          const eC = Math.max(0, elevation[py * W + px]);
+          const eL2 = Math.max(0, elevation[py * W + pxL]);
+          const eR2 = Math.max(0, elevation[py * W + pxR]);
+          const eU2 = Math.max(0, elevation[pyU * W + px]);
+          const eD2 = Math.max(0, elevation[pyD * W + px]);
+          const gx = (eR2 - eL2) * 0.5, gy = (eD2 - eU2) * 0.5;
+          // Also factor in the cell's own elevation as a blocking strength
+          const blockStr = Math.min(1, eC * 3);
           const gm2 = gx * gx + gy * gy;
-          if (gm2 > 1e-6) {
+          if (gm2 > 1e-8) {
             const gm = Math.sqrt(gm2);
             const dot = vx * gx + vy * gy;
-            if (dot > 0) { // only when wind blows INTO the slope
-              const deflStr = Math.min(0.95, gm * p("terrainDeflect", 3.0));
-              // Remove the upslope component
+            if (dot > 0) {
+              const deflStr = Math.min(0.95, (gm * p("terrainDeflect", 3.0) + blockStr) * 0.5);
               const removeX = deflStr * dot * gx / gm2;
               const removeY = deflStr * dot * gy / gm2;
               vx -= removeX;
               vy -= removeY;
-              // Redirect removed energy along contour (perpendicular to gradient)
-              // Choose direction that aligns with existing tangential flow
+              // Redirect along contour (conserve ~70% of blocked energy)
               const perpX = -gy / gm, perpY = gx / gm;
               const tangent = vx * perpX + vy * perpY;
               const sign = tangent >= 0 ? 1 : -1;
@@ -1050,10 +1045,37 @@ for (let iter = 0; iter < _windIter; iter++) {
   } // end per-layer horizontal solver
 } // end main iterations
 
-// Extract surface layer as wind output — no normalization, no noise overlays
+// Extract surface layer as wind output
 for (let i = 0; i < cellN; i++) {
   windX[i] = lWindX[0][i];
   windY[i] = lWindY[0][i];
+}
+
+// Wind magnitude scale: user-tunable multiplier on final output.
+// Lets users control overall speed without changing physics balance.
+const _windScale = p("windScale", 1.0);
+if (_windScale !== 1.0) {
+  for (let i = 0; i < cellN; i++) {
+    windX[i] *= _windScale;
+    windY[i] *= _windScale;
+  }
+}
+
+// Sub-grid turbulence: curl noise eddies (divergence-free perturbations).
+// The coarse solver can't resolve mesoscale eddies, frontal zones, or
+// local sea-breeze circulations. This parameterizes that variability.
+const _eddyOcean = p("eddyStrength", 0.015);
+const _eddyLand = _eddyOcean * 0.4; // less turbulence over rough terrain
+for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+  const wi = wy * wW + wx;
+  const nx = wx / wW, ny = wy / wH;
+  const eps = 0.003;
+  const n0 = fbm(nx * 6 + s3 + 100, ny * 6 + s3 + 100, 3, 2, 0.5);
+  const nDx = fbm((nx + eps) * 6 + s3 + 100, ny * 6 + s3 + 100, 3, 2, 0.5);
+  const nDy = fbm(nx * 6 + s3 + 100, (ny + eps) * 6 + s3 + 100, 3, 2, 0.5);
+  const amp = wElev[wi] > 0 ? _eddyLand : _eddyOcean;
+  windX[wi] += (nDy - n0) / eps * amp;
+  windY[wi] -= (nDx - n0) / eps * amp;
 }
 
 // Upscale wind to full resolution for moisture advection + export
