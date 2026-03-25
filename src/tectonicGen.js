@@ -869,7 +869,7 @@ const _oceanPBias = p("oceanPressureBias", 0.15); // marine air slightly denser
 // mean — continents are roughly pressure-neutral. This parameter adds the
 // "missing winter high" to counteract the implicit thermal low, so wind flows
 // AROUND continents instead of being drawn through them.
-const _landPBias = p("landPressureBias", 0.5);
+const _landPBias = p("landPressureBias", 1.2);
 const layerP = new Array(NL);
 for (let l = 0; l < NL; l++) {
   layerP[l] = new Float32Array(cellN);
@@ -934,11 +934,15 @@ for (let iter = 0; iter < _windIter; iter++) {
 
   // Surface pressure tendency from vertical motion:
   // dp_s/dt ∝ -∫div(V_h)dz. Rising air = surface convergence = lower pressure.
-  // Stronger feedback (0.06) lets convergence/divergence actually modify pressure
-  // over 25 iterations, creating meaningful features like lee troughs and
-  // convergence zones (ITCZ). Without this, pressure stays as initialized.
+  // Over OCEAN: full feedback — creates ITCZ, lee troughs, convergence zones.
+  // Over LAND: heavily reduced — in annual mean, summer convective lows are
+  // cancelled by winter radiative cooling/subsidence. Without this reduction,
+  // the convective feedback loop erodes the land pressure barrier every
+  // iteration (25 × 0.06 × vertW ≈ -1.0), turning continents into pressure
+  // sinks that absorb wind instead of deflecting it.
   for (let i = 0; i < cellN; i++) {
-    layerP[0][i] += -vertW[i] * 0.06;
+    const landDamp = 1 - landFrac[i] * 0.85;
+    layerP[0][i] += -vertW[i] * 0.06 * landDamp;
   }
   // Light smooth to prevent checkerboard (1 pass, small radius)
   const pUpd = new Float32Array(cellN);

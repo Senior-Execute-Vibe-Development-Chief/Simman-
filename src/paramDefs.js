@@ -120,7 +120,7 @@ export const PARAMS = {
         desc: "Rayleigh drag over lowland terrain. Sets cross-isobar angle (~35° at default). Decreases with elevation (exposed peaks). Crank high to kill land wind." },
       { key: "terrainDeflect", def: 3.0, min: 0.5, max: 8.0, label: "Terrain deflection",
         desc: "How strongly mountains redirect wind along contour lines. Only removes the upslope component — doesn't add energy." },
-      { key: "landPressureBias", def: 0.5, min: 0.0, max: 2.0, label: "Land pressure barrier",
+      { key: "landPressureBias", def: 1.2, min: 0.0, max: 4.0, label: "Land pressure barrier",
         desc: "Pressure added over all land, counteracting the implicit thermal low. Makes wind flow AROUND continents instead of through them. Represents annual-mean cancellation of seasonal thermal effects." },
       { key: "orographicPressure", def: 2.5, min: 0.0, max: 8.0, label: "Orographic pressure",
         desc: "Extra pressure from mountains on top of land barrier. Creates windward highs and lee troughs around mountain ranges." },
