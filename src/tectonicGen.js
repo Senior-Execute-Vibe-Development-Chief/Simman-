@@ -932,17 +932,33 @@ for (let iter = 0; iter < _windIter; iter++) {
   smoothField(vertW, vSmooth, wW, wH, 1, 2);
   for (let i = 0; i < cellN; i++) vertW[i] = vSmooth[i];
 
-  // Surface pressure tendency from vertical motion:
-  // dp_s/dt ∝ -∫div(V_h)dz. Rising air = surface convergence = lower pressure.
-  // Over OCEAN: full feedback — creates ITCZ, lee troughs, convergence zones.
-  // Over LAND: heavily reduced — in annual mean, summer convective lows are
-  // cancelled by winter radiative cooling/subsidence. Without this reduction,
-  // the convective feedback loop erodes the land pressure barrier every
-  // iteration (25 × 0.06 × vertW ≈ -1.0), turning continents into pressure
-  // sinks that absorb wind instead of deflecting it.
+  // Surface pressure tendency from vertical motion and wind convergence:
+  // Over OCEAN: vertical motion feedback creates ITCZ, convergence zones.
+  // Over LAND: instead of convective feedback (which erodes the barrier),
+  // we compute actual wind convergence. When wind decelerates onto land
+  // (high friction), it converges, raising local pressure, which reduces
+  // the PGF driving more wind onto land. This is THE self-limiting
+  // mechanism that makes continents barriers in reality.
   for (let i = 0; i < cellN; i++) {
-    const landDamp = 1 - landFrac[i] * 0.85;
-    layerP[0][i] += -vertW[i] * 0.06 * landDamp;
+    const lf = landFrac[i];
+    // Ocean: vertical motion drives pressure (ITCZ, lee troughs)
+    layerP[0][i] += -vertW[i] * 0.06 * (1 - lf * 0.9);
+  }
+  // Compute surface wind divergence → pressure feedback (all surfaces,
+  // but especially important over land where friction creates convergence)
+  {
+    const uX0 = lWindX[0], uY0 = lWindY[0];
+    for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+      const wi = wy * wW + wx;
+      const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+      const divg = (uX0[wy * wW + wr2] - uX0[wy * wW + wl2]
+        + uY0[(wy + 1) * wW + wx] - uY0[(wy - 1) * wW + wx]) * 0.5;
+      // Convergence (divg < 0) raises pressure; divergence lowers it.
+      // Stronger over land where this is the primary mechanism.
+      const lf = landFrac[wi];
+      const strength = 0.03 + lf * 0.08;
+      layerP[0][wi] += -divg * strength;
+    }
   }
   // Light smooth to prevent checkerboard (1 pass, small radius)
   const pUpd = new Float32Array(cellN);
@@ -1060,12 +1076,11 @@ for (let iter = 0; iter < _windIter; iter++) {
     }
 
     // Divergence correction (pressure projection, every other iteration)
-    // Surface layer: WEAK correction (0.3) — real surface wind IS convergent
-    // (cyclones) and divergent (anticyclones). Full correction kills the
-    // mechanism that creates stationary lows between continents and
-    // windward highs. Upper layers: full correction (mass continuity).
+    // Per-cell strength: over LAND, convergence is real (friction slowing
+    // wind creates pileup that raises pressure → self-limiting barrier).
+    // Correcting it away destroys this mechanism. Over ocean and aloft,
+    // stronger correction maintains numerical stability.
     if (iter % 2 === 0) {
-      const divStrength = l === 0 ? 0.3 : 1.0;
       const divP2 = new Float32Array(cellN);
       for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
         const wi = wy * wW + wx;
@@ -1087,8 +1102,11 @@ for (let iter = 0; iter < _windIter; iter++) {
       for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
         const wi = wy * wW + wx;
         const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
-        uX[wi] -= (pCorr[wy * wW + wr2] - pCorr[wy * wW + wl2]) * 0.5 * divStrength;
-        uY[wi] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5 * divStrength;
+        // Surface: land gets minimal correction (0.1), ocean gets moderate (0.4)
+        // Aloft: full correction (1.0)
+        const ds = l === 0 ? (0.1 + 0.3 * (1 - landFrac[wi])) : 1.0;
+        uX[wi] -= (pCorr[wy * wW + wr2] - pCorr[wy * wW + wl2]) * 0.5 * ds;
+        uY[wi] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5 * ds;
       }
     }
   } // end per-layer horizontal solver
