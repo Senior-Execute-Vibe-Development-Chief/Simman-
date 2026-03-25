@@ -800,67 +800,49 @@ for (let i = 0; i < wElev.length; i++) landFracRaw[i] = wElev[i] > 0 ? 1 : 0;
 const landFrac = new Float32Array(wW * wH);
 smoothField(landFracRaw, landFrac, wW, wH, 6, 3);
 
-// ── Pressure field ──
-// Latitude-band zonal pressure (global circulation) + modest regional anomalies.
-// NO abs(lat) symmetry — each hemisphere gets its own independent systems.
+// ── Pressure field — derived from thermal physics ──
+// Real atmospheric pressure is driven by temperature:
+//   Hot air rises → low surface pressure.  Cold air sinks → high surface pressure.
+// We compute a simple surface temperature per cell from latitude + elevation +
+// land/ocean differential heating, then invert it to get pressure.
+// The Coriolis solver + fluid iteration handle the rest — trade winds, westerlies,
+// polar easterlies, and continental monsoon patterns all emerge naturally.
 const pressure = new Float32Array(wW * wH);
 
-// ── Latitude-band pressure (realistic global circulation) ──
-// ITCZ (equatorial low), subtropical highs (~30°), subpolar lows (~60°), polar highs
 for (let wy = 0; wy < wH; wy++) {
-  const latN = wy / wH; // 0=north pole, 1=south pole
-  const latAbs = Math.abs(latN - 0.5) * 2; // 0=equator, 1=pole
-  // Smooth zonal bands — positive = high pressure, negative = low
-  const itcz = -0.25 * Math.exp(-latAbs * latAbs / (0.08 * 0.08));          // equatorial low
-  const subHi = 0.30 * Math.exp(-(latAbs - 0.38) * (latAbs - 0.38) / (0.12 * 0.12)); // subtropical high
-  const subLo = -0.20 * Math.exp(-(latAbs - 0.70) * (latAbs - 0.70) / (0.10 * 0.10)); // subpolar low
-  const polar = 0.15 * Math.exp(-(latAbs - 0.95) * (latAbs - 0.95) / (0.08 * 0.08));  // polar high
-  const zonal = itcz + subHi + subLo + polar;
+  const latAbs = Math.abs(wy / wH - 0.5) * 2; // 0=equator, 1=pole
+  // Base temperature: hot at equator, cold at poles (cosine profile)
+  const solarTemp = 1.0 - latAbs * latAbs; // 1 at equator, 0 at poles
   for (let wx = 0; wx < wW; wx++) {
-    pressure[wy * wW + wx] += zonal;
+    const wi = wy * wW + wx;
+    const e = wElev[wi];
+    const lf = landFrac[wi];
+
+    // Land heats more than ocean in tropics, cools more at high latitudes
+    // (ocean has high thermal inertia — moderates temperature)
+    const landHeat = lf * (solarTemp - 0.45) * 0.4; // positive in tropics, negative at poles
+
+    // Elevation cooling: ~6.5°C per 1000m, normalized
+    const elevCool = e * 0.3;
+
+    // Surface temperature estimate (0-1 scale)
+    const surfTemp = solarTemp + landHeat - elevCool;
+
+    // Pressure = inverse of temperature (hot → low pressure, cold → high)
+    // Negate so hot = negative pressure (draws wind in)
+    pressure[wi] = -surfTemp * 0.5;
   }
 }
 
-// Place a modest number of regional pressure anomalies (continents, ocean basins)
-// Fewer, broader, and weaker than before to avoid artificial ocean vortexes
-const numSystems = p("numPressureSystems", 10) + Math.floor(rng() * p("pressureSystemRange", 6));
-for (let pi = 0; pi < numSystems; pi++) {
-  const pcx = rng() * wW;
-  const pcy = 0.05 * wH + rng() * 0.90 * wH;
-  const latN = pcy / wH;
-  const latAbs = Math.abs(latN - 0.5) * 2;
-  const wi0 = Math.min(wH - 1, pcy | 0) * wW + Math.min(wW - 1, pcx | 0);
-  const lf = landFrac[wi0], oc = 1 - lf;
-
-  // Continental thermal lows in tropics, continental highs in winter polar regions
-  let highProb = 0.45;
-  if (latAbs > 0.20 && latAbs < 0.45) highProb += oc * 0.25;
-  if (latAbs > 0.50 && latAbs < 0.80) highProb -= oc * 0.20;
-  if (latAbs < 0.30) highProb -= lf * 0.25;
-  if (latAbs > 0.75) highProb += lf * 0.15;
-  const isHigh = rng() < highProb;
-
-  // Weaker strength, larger radius — broad gentle anomalies, not tight vortexes
-  const str = (p("pressureStrength", 0.15) + rng() * p("pressureStrengthRange", 0.25)) * (0.5 + oc * 0.4);
-  const rad = p("pressureRadius", 25) + rng() * p("pressureRadiusRange", 30);
-  for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
-    let ddx = wx - pcx;
-    if (ddx > wW / 2) ddx -= wW; if (ddx < -wW / 2) ddx += wW;
-    const ddy = wy - pcy;
-    const d2 = ddx * ddx + ddy * ddy, r2 = rad * rad;
-    if (d2 < r2 * 4) pressure[wy * wW + wx] += (isHigh ? 1 : -1) * str * Math.exp(-d2 / (2 * r2));
-  }
-}
-
-// Add gentle large-scale noise to break any remaining regularity
+// Add gentle noise for mesoscale weather variability (NOT artificial vortexes)
 for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const wi = wy * wW + wx;
-  pressure[wi] += fbm(wx / wW * 3 + s3 + 50, wy / wH * 3 + s3 + 50, 2, 2, 0.5) * 0.15;
+  pressure[wi] += fbm(wx / wW * 4 + s3 + 50, wy / wH * 4 + s3 + 50, 3, 2, 0.5) * 0.06;
 }
 
-// Smooth pressure
+// Smooth pressure — broad gradients, not sharp edges
 const pSmooth = new Float32Array(wW * wH);
-smoothField(pressure, pSmooth, wW, wH, 5, 4);
+smoothField(pressure, pSmooth, wW, wH, 6, 5);
 for (let i = 0; i < pressure.length; i++) pressure[i] = pSmooth[i];
 
 // ── Driving force field ──
