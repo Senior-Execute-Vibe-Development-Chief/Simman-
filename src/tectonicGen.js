@@ -1004,9 +1004,10 @@ for (let i = 0; i < cellN; i++) {
   windY[i] = lWindY[0][i];
 }
 
-// ── Percentile normalization: median → 0.18 ──
-// Most area should be blue-green. Only the top ~20% reaches yellow/orange.
-// Red reserved for exceptional jets only.
+// ── Percentile normalization: median → 0.03 ──
+// With color mapping t = sqrt(spd * 2.8), median 0.03 → t ≈ 0.29 (blue-green).
+// p90 roughly 3× median → spd 0.09 → t ≈ 0.50 (green-yellow).
+// Only rare jets reach orange/red. Matches Windy.com distribution.
 {
   const speeds = [];
   for (let i = 0; i < wW * wH; i++) {
@@ -1015,7 +1016,7 @@ for (let i = 0; i < cellN; i++) {
   }
   speeds.sort((a, b) => a - b);
   const p50 = speeds[Math.min(speeds.length - 1, (speeds.length * 0.50) | 0)] || 1;
-  const scale = 0.18 / p50;
+  const scale = 0.03 / p50;
   for (let i = 0; i < wW * wH; i++) {
     windX[i] *= scale;
     windY[i] *= scale;
@@ -1023,19 +1024,19 @@ for (let i = 0; i < cellN; i++) {
 }
 
 // ── Post-normalization land dampening ──
-// Land wind always weaker than ocean, but higher elevations are windier than lowlands.
-// Lowlands ×0.35, hills ×0.45, peaks ×0.55. Cap at green-yellow on color scale.
+// Land wind always weaker than ocean. Higher elevations slightly windier (exposed).
+// Hard cap ensures mountains never exceed ~50 km/h equivalent (~green on color scale).
 for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const wi = wy * wW + wx;
   if (wElev[wi] > 0) {
-    // Higher land = less dampening (more exposed)
-    const landDamp = 0.35 + Math.min(0.20, wElev[wi] * 0.5);
+    // Lower land = more sheltered. Peaks slightly more exposed but still capped.
+    const landDamp = 0.30 + Math.min(0.15, wElev[wi] * 0.3);
     windX[wi] *= landDamp;
     windY[wi] *= landDamp;
-    // Hard cap: no land cell exceeds 0.14 (~green-yellow on color scale)
+    // Hard cap: ~50 km/h. With spd*2.8 mapping, 0.04 → t=0.33 (green range)
     const s = Math.sqrt(windX[wi] * windX[wi] + windY[wi] * windY[wi]);
-    if (s > 0.14) {
-      const clamp = 0.14 / s;
+    if (s > 0.04) {
+      const clamp = 0.04 / s;
       windX[wi] *= clamp;
       windY[wi] *= clamp;
     }
