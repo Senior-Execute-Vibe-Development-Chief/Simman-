@@ -1400,7 +1400,8 @@ for (let l = 0; l < NL; l++) {
     const latSigned = (wy / wH - 0.5) * 2;
     const f = -Math.sin(latSigned * Math.PI / 2) * _fMax;
     // Clamp |f| near equator — geostrophic approximation breaks down there
-    const fSafe = Math.sign(f) * Math.max(Math.abs(f), _fMax * 0.15);
+    const fSign = f >= 0 ? 1 : -1;
+    const fSafe = fSign * Math.max(Math.abs(f), _fMax * 0.15);
     const cosLat = Math.cos(Math.abs(latSigned) * Math.PI / 2);
     for (let wx = 0; wx < wW; wx++) {
       const wi = wy * wW + wx;
