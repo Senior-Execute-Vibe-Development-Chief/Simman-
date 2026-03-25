@@ -855,13 +855,26 @@ for (let wy = 0; wy < wH; wy++) {
 
 // ── Pressure per layer ──
 // Hydrostatic: warm column → low surface pressure, cold → high
-// P = -T * pressureScale. NO noise added — purely from temperature.
+// Land/ocean thermal contrast: land heats more than ocean at same latitude,
+// creating thermal lows over continents. This drives monsoon-like circulations
+// and is why wind patterns differ between ocean basins and around continents.
 const _pScale = p("pressureScale", 4.0);
 const layerP = new Array(NL);
 for (let l = 0; l < NL; l++) {
   layerP[l] = new Float32Array(cellN);
-  for (let i = 0; i < cellN; i++) layerP[l][i] = -layerTemp[l][i] * _pScale;
-  // Minimal smoothing: 2 passes just to remove grid-scale noise
+  for (let i = 0; i < cellN; i++) {
+    // Base: hydrostatic from temperature
+    let pVal = -layerTemp[l][i] * _pScale;
+    // Land/ocean contrast (surface layer): land is warmer → lower pressure
+    // This creates continent-scale thermal lows over land masses and highs over ocean.
+    // Effect strongest at surface, weakens with altitude.
+    if (l <= 1) {
+      const landEffect = landFrac[i] * 0.3 * _pScale * (1 - l * 0.5);
+      pVal -= landEffect; // lower pressure over land (thermal low)
+    }
+    layerP[l][i] = pVal;
+  }
+  // Minimal smoothing: 2 passes to remove grid noise
   const ps = new Float32Array(cellN);
   smoothField(layerP[l], ps, wW, wH, 2, 2);
   for (let i = 0; i < cellN; i++) layerP[l][i] = ps[i];
@@ -972,17 +985,32 @@ for (let iter = 0; iter < _windIter; iter++) {
         let vx = tmpX[wi] + dt * (pgfX + corX + drgX) + visc * lapX;
         let vy = tmpY[wi] + dt * (pgfY + corY + drgY) + visc * lapY;
 
-        // Terrain deflection (surface only): remove upslope component, redirect along contour
-        if (l === 0 && wElev[wi] > 0) {
+        // Terrain deflection (surface only): redirect wind along contours.
+        // Acts on ANY cell near terrain (including ocean next to coast).
+        // Wind hitting a slope gets redirected perpendicular to the gradient,
+        // conserving speed. This channels wind around mountains and through gaps.
+        if (l === 0) {
           const eL = wElev[nl], eR = wElev[nr], eU = wElev[nu], eD = wElev[nd];
           const gx = (eR - eL) * 0.5, gy = (eD - eU) * 0.5;
           const gm2 = gx * gx + gy * gy;
-          if (gm2 > 1e-8) {
+          if (gm2 > 1e-6) {
+            const gm = Math.sqrt(gm2);
             const dot = vx * gx + vy * gy;
-            if (dot > 0) { // only block wind going INTO the slope
-              const deflStr = Math.min(0.85, Math.sqrt(gm2) * p("terrainDeflect", 3.0));
-              vx -= deflStr * dot * gx / gm2;
-              vy -= deflStr * dot * gy / gm2;
+            if (dot > 0) { // only when wind blows INTO the slope
+              const deflStr = Math.min(0.95, gm * p("terrainDeflect", 3.0));
+              // Remove the upslope component
+              const removeX = deflStr * dot * gx / gm2;
+              const removeY = deflStr * dot * gy / gm2;
+              vx -= removeX;
+              vy -= removeY;
+              // Redirect removed energy along contour (perpendicular to gradient)
+              // Choose direction that aligns with existing tangential flow
+              const perpX = -gy / gm, perpY = gx / gm;
+              const tangent = vx * perpX + vy * perpY;
+              const sign = tangent >= 0 ? 1 : -1;
+              const redirectMag = Math.sqrt(removeX * removeX + removeY * removeY) * 0.7;
+              vx += sign * perpX * redirectMag;
+              vy += sign * perpY * redirectMag;
             }
           }
         }
