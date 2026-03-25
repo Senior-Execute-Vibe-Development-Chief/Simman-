@@ -760,8 +760,8 @@ const windY = new Float32Array(wW * wH);
 
 // ── Geography on wind grid ──
 const wElev = new Float32Array(wW * wH);
-// Drag: surface friction. Lowlands have HIGH drag (sheltered), peaks LOW drag (exposed)
-// This matches real-world: valleys ~2km/h, ridges/peaks ~15-40km/h
+// Drag: surface friction. Land always has MORE drag than ocean (terrain roughness).
+// Ocean is smooth; land has trees, buildings, mountains creating turbulent friction.
 const drag = new Float32Array(wW * wH);
 for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const px = Math.min(W - 1, wx * WG), py = Math.min(H - 1, wy * WG);
@@ -769,13 +769,10 @@ for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   wElev[wy * wW + wx] = Math.max(0, e0);
   if (e0 <= 0) {
     drag[wy * wW + wx] = p("oceanDrag", 0.02); // ocean: very low friction
-  } else if (e0 < 0.06) {
-    drag[wy * wW + wx] = 0.55 + e0 * 3; // coastal lowlands: high friction (sheltered)
-  } else if (e0 < 0.20) {
-    drag[wy * wW + wx] = 0.73 - (e0 - 0.06) * 1.5; // inland: decreasing as elevation rises
   } else {
-    // Mountains/peaks: LOW drag (exposed to upper winds), minimum 0.05
-    drag[wy * wW + wx] = Math.max(0.05, 0.52 - (e0 - 0.20) * 1.5);
+    // All land: high drag, increasing with elevation (rougher terrain)
+    // Coastal flats ~0.35, inland ~0.42, hills ~0.50, mountains ~0.60
+    drag[wy * wW + wx] = Math.min(0.65, 0.35 + e0 * 0.6);
   }
 }
 
@@ -798,37 +795,53 @@ const smoothField = (src, dst, w2, h2, passes, rad) => {
   }
 };
 const landFracRaw = new Float32Array(wW * wH);
-for (let i = 0; i < drag.length; i++) landFracRaw[i] = drag[i] > 0 ? 1 : 0;
+for (let i = 0; i < wElev.length; i++) landFracRaw[i] = wElev[i] > 0 ? 1 : 0;
 const landFrac = new Float32Array(wW * wH);
 smoothField(landFracRaw, landFrac, wW, wH, 6, 3);
 
 // ── Pressure field ──
-// Built from randomly placed highs and lows, biased by latitude and land/ocean.
+// Latitude-band zonal pressure (global circulation) + modest regional anomalies.
 // NO abs(lat) symmetry — each hemisphere gets its own independent systems.
 const pressure = new Float32Array(wW * wH);
 
-// Place semi-permanent pressure systems (the real drivers of global wind)
-// Subtropical highs, subpolar lows, thermal lows/highs over continents
-const numSystems = p("numPressureSystems", 20) + Math.floor(rng() * p("pressureSystemRange", 15));
+// ── Latitude-band pressure (realistic global circulation) ──
+// ITCZ (equatorial low), subtropical highs (~30°), subpolar lows (~60°), polar highs
+for (let wy = 0; wy < wH; wy++) {
+  const latN = wy / wH; // 0=north pole, 1=south pole
+  const latAbs = Math.abs(latN - 0.5) * 2; // 0=equator, 1=pole
+  // Smooth zonal bands — positive = high pressure, negative = low
+  const itcz = -0.25 * Math.exp(-latAbs * latAbs / (0.08 * 0.08));          // equatorial low
+  const subHi = 0.30 * Math.exp(-(latAbs - 0.38) * (latAbs - 0.38) / (0.12 * 0.12)); // subtropical high
+  const subLo = -0.20 * Math.exp(-(latAbs - 0.70) * (latAbs - 0.70) / (0.10 * 0.10)); // subpolar low
+  const polar = 0.15 * Math.exp(-(latAbs - 0.95) * (latAbs - 0.95) / (0.08 * 0.08));  // polar high
+  const zonal = itcz + subHi + subLo + polar;
+  for (let wx = 0; wx < wW; wx++) {
+    pressure[wy * wW + wx] += zonal;
+  }
+}
+
+// Place a modest number of regional pressure anomalies (continents, ocean basins)
+// Fewer, broader, and weaker than before to avoid artificial ocean vortexes
+const numSystems = p("numPressureSystems", 10) + Math.floor(rng() * p("pressureSystemRange", 6));
 for (let pi = 0; pi < numSystems; pi++) {
   const pcx = rng() * wW;
-  const pcy = 0.03 * wH + rng() * 0.94 * wH;
-  const latN = pcy / wH; // 0=top(north pole), 1=bottom(south pole)
-  const latAbs = Math.abs(latN - 0.5) * 2; // 0=equator, 1=pole
+  const pcy = 0.05 * wH + rng() * 0.90 * wH;
+  const latN = pcy / wH;
+  const latAbs = Math.abs(latN - 0.5) * 2;
   const wi0 = Math.min(wH - 1, pcy | 0) * wW + Math.min(wW - 1, pcx | 0);
   const lf = landFrac[wi0], oc = 1 - lf;
 
-  // Bias: subtropical ocean → high, mid-lat ocean → low,
-  // tropical land → low (thermal), polar land → high
-  let highProb = 0.40;
-  if (latAbs > 0.20 && latAbs < 0.45) highProb += oc * 0.35;  // subtropical ocean highs
-  if (latAbs > 0.50 && latAbs < 0.80) highProb -= oc * 0.25;  // subpolar ocean lows
-  if (latAbs < 0.30) highProb -= lf * 0.20;                     // tropical continental lows
-  if (latAbs > 0.75) highProb += lf * 0.15;                     // polar continental highs
+  // Continental thermal lows in tropics, continental highs in winter polar regions
+  let highProb = 0.45;
+  if (latAbs > 0.20 && latAbs < 0.45) highProb += oc * 0.25;
+  if (latAbs > 0.50 && latAbs < 0.80) highProb -= oc * 0.20;
+  if (latAbs < 0.30) highProb -= lf * 0.25;
+  if (latAbs > 0.75) highProb += lf * 0.15;
   const isHigh = rng() < highProb;
 
-  const str = (p("pressureStrength", 0.3) + rng() * p("pressureStrengthRange", 0.9)) * (0.4 + oc * 0.7);
-  const rad = p("pressureRadius", 12) + rng() * p("pressureRadiusRange", 40);
+  // Weaker strength, larger radius — broad gentle anomalies, not tight vortexes
+  const str = (p("pressureStrength", 0.15) + rng() * p("pressureStrengthRange", 0.25)) * (0.5 + oc * 0.4);
+  const rad = p("pressureRadius", 25) + rng() * p("pressureRadiusRange", 30);
   for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
     let ddx = wx - pcx;
     if (ddx > wW / 2) ddx -= wW; if (ddx < -wW / 2) ddx += wW;
@@ -885,7 +898,7 @@ for (let wy = 1; wy < wH - 1; wy++) {
 
 // ── Fluid solver with continuous drag ──
 // No hard walls. All cells participate.
-// Drag slows sheltered lowlands, mountains have low drag (exposed).
+// Land drag always higher than ocean — terrain roughness slows surface wind.
 
 // Initialize from driving force
 for (let i = 0; i < wW * wH; i++) {
@@ -973,6 +986,26 @@ for (let iter = 0; iter < _windIter; iter++) {
   for (let i = 0; i < wW * wH; i++) {
     windX[i] *= scale;
     windY[i] *= scale;
+  }
+}
+
+// ── Post-normalization land dampening ──
+// Land wind must always be visually weaker than ocean (surface drag absorbs energy).
+// Cap land speeds so even the windiest peaks stay in the green-yellow range.
+for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
+  const wi = wy * wW + wx;
+  if (wElev[wi] > 0) {
+    // Dampen land wind: flat land ×0.45, mountains ×0.35 (more terrain blockage)
+    const landDamp = 0.45 - Math.min(0.10, wElev[wi] * 0.3);
+    windX[wi] *= landDamp;
+    windY[wi] *= landDamp;
+    // Hard cap: no land cell exceeds 0.13 (~green-yellow on color scale)
+    const s = Math.sqrt(windX[wi] * windX[wi] + windY[wi] * windY[wi]);
+    if (s > 0.13) {
+      const clamp = 0.13 / s;
+      windX[wi] *= clamp;
+      windY[wi] *= clamp;
+    }
   }
 }
 
