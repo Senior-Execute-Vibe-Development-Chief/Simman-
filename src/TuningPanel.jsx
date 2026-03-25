@@ -55,11 +55,11 @@ function renderPreview(canvas, world, pw, ph, viewMode) {
 export { renderPreview };
 
 // ── Shared Parameter Editor component ──
-export function ParamEditor({ params, onChange }) {
+export function ParamEditor({ params, onChange, groups }) {
   const [openGroup, setOpenGroup] = useState("");
   return (
     <div style={{ fontSize: 10 }}>
-      {Object.entries(PARAMS).map(([gk, gv]) => (
+      {Object.entries(PARAMS).filter(([gk]) => !groups || groups.includes(gk)).map(([gk, gv]) => (
         <div key={gk} style={{ marginBottom: 6 }}>
           <div onClick={() => setOpenGroup(openGroup === gk ? "" : gk)} style={{ cursor: "pointer", padding: "4px 6px",
             background: `rgba(${gv.color},0.1)`, borderRadius: 2, color: `rgb(${gv.color})`, fontSize: 11,
