@@ -3,8 +3,10 @@
 // move plates, handle collisions/subduction/rifting over N steps,
 // then build final elevation from the accumulated crust.
 
+import { simulateWind } from "./windSim.js";
+
 export function generateTectonicWorld(W, H, seed, noiseFns) {
-const { initNoise, fbm, ridged } = noiseFns;
+const { initNoise, fbm, ridged, noise2D } = noiseFns;
 initNoise(seed);
 let rngState = ((seed % 2147483647) + 2147483647) % 2147483647 || 1;
 const rng = () => { rngState = (rngState * 16807) % 2147483647; return (rngState - 1) / 2147483646; };
@@ -384,53 +386,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 7: Coast-distance BFS for moisture
+// STEP 7: Physics-based wind simulation for moisture
 // ═══════════════════════════════════════════════════════
-const DG = RES, dw = Math.ceil(W / DG), dh = Math.ceil(H / DG);
-const cdist = new Uint8Array(dw * dh); cdist.fill(255);
-const cdQ = [];
-for (let ty = 0; ty < dh; ty++) for (let tx = 0; tx < dw; tx++) {
-  const px = Math.min(W - 1, tx * DG), py = Math.min(H - 1, ty * DG), ti = ty * dw + tx;
-  if (elevation[py * W + px] <= 0) continue;
-  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-    const nx2 = (tx + dx + dw) % dw, ny2 = ty + dy;
-    if (ny2 < 0 || ny2 >= dh) continue;
-    const np = Math.min(W - 1, nx2 * DG), npy = Math.min(H - 1, ny2 * DG);
-    if (elevation[npy * W + np] <= 0) { cdist[ti] = 0; cdQ.push(ti); break; }
-  }
-}
-for (let qi = 0; qi < cdQ.length; qi++) {
-  const ci = cdQ[qi], cd = cdist[ci], cx = ci % dw, cy2 = (ci - cx) / dw;
-  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-    if (!dx && !dy) continue;
-    const nx2 = (cx + dx + dw) % dw, ny2 = cy2 + dy;
-    if (ny2 < 0 || ny2 >= dh) continue;
-    const ni = ny2 * dw + nx2, nd = cd + 1;
-    if (nd < cdist[ni] && elevation[Math.min(H - 1, ny2 * DG) * W + Math.min(W - 1, nx2 * DG)] > 0) {
-      cdist[ni] = nd; cdQ.push(ni);
-    }
-  }
-}
-
-// Moisture
-for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-  const i = y * W + x, nx = x / W, ny = y / H, lat = Math.abs(ny - 0.5) * 2;
-  if (elevation[i] <= 0) { moisture[i] = 0.5 + fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.5) * 0.1; continue; }
-  const cd = cdist[Math.min(dh - 1, Math.floor(y / DG)) * dw + Math.min(dw - 1, Math.floor(x / DG))];
-  const coastProx = Math.max(0, 1 - cd / 8);
-  const tropWet = Math.max(0, 1 - lat * 2.5);
-  const subtropDry = Math.exp(-((lat - 0.28) ** 2) / (2 * 0.06 * 0.06)) * 0.50 * (1 - coastProx * 0.5);
-  const tempWet = Math.exp(-((lat - 0.55) ** 2) / 0.025) * 0.22;
-  const tropF = Math.max(0, 1 - lat * 3);
-  const contRate = 0.006 + (1 - tropF) * 0.014;
-  const cont = Math.min(0.28, cd * contRate);
-  const polarDry = Math.max(0, (lat - 0.75)) * 0.25;
-  let m = 0.42 + tropWet * 0.42 - subtropDry + tempWet - cont - polarDry
-    + fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55) * 0.12;
-  if (elevation[i] > 0.15) m -= Math.min(0.2, (elevation[i] - 0.15) * 1);
-  if (elevation[i] < 0.02) m += 0.10;
-  moisture[i] = Math.max(0.02, Math.min(1, m));
-}
+const windResult = simulateWind(elevation, temperature, W, H, { fbm, noise2D }, seed);
+for (let i = 0; i < W * H; i++) moisture[i] = windResult.moisture[i];
 
 return { elevation, moisture, temperature, pixPlate };
 }

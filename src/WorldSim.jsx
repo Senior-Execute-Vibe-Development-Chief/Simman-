@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
+import { simulateWind } from "./windSim.js";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
 function initNoise(seed){const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)PERM[i]=p[i&255];}
@@ -49,60 +50,24 @@ if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
 elevation[i]=-0.03-Math.max(0,(1-he/3))*0.12+depth;
 }else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,elevation[i])*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.08));}
-// Pass 2: coast-distance BFS at tile resolution for continentality
-const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
-const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);
-const cdQ=[];
-for(let ty=0;ty<CDH;ty++)for(let tx=0;tx<CDW;tx++){
-const px=Math.min(W-1,tx*CDT),py=Math.min(H-1,ty*CDT),ti=ty*CDW+tx;
-if(elevation[py*W+px]<=0)continue;// ocean tile
-for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-const nx2=(tx+dx+CDW)%CDW,ny2=ty+dy;if(ny2<0||ny2>=CDH)continue;
-const np=Math.min(W-1,nx2*CDT),npy=Math.min(H-1,ny2*CDT);
-if(elevation[npy*W+np]<=0){cdist[ti]=0;cdQ.push(ti);break;}}}
-for(let qi=0;qi<cdQ.length;qi++){const ci=cdQ[qi],cd=cdist[ci],cx=ci%CDW,cy=(ci-cx)/CDW;
-for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
-const nx2=(cx+dx+CDW)%CDW,ny2=cy+dy;if(ny2<0||ny2>=CDH)continue;
-const ni=ny2*CDW+nx2,nd=cd+1;if(nd<cdist[ni]&&elevation[Math.min(H-1,ny2*CDT)*W+Math.min(W-1,nx2*CDT)]>0){cdist[ni]=nd;cdQ.push(ni);}}}
-// Pass 3: moisture using ITCZ, subtropical HP belt, continentality, westerlies
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
-if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
-const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
-const coastProx=Math.max(0,1-cd/8);// 1 at coast, 0 inland
-const tropWet=Math.max(0,1-lat*2.5);// ITCZ: wet equator
-const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.50*(1-coastProx*.5);// subtropical HP, weakened near coast (monsoon)
-const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.22;// temperate westerlies
-const tropF=Math.max(0,1-lat*3);// tropical moisture recycling factor
-const contRate=.006+(1-tropF)*.014;// weak in tropics, stronger elsewhere
-const cont=Math.min(.28,cd*contRate);
-const polarDry=Math.max(0,(lat-.75))*.25;
-let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12;
-if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
-if(elevation[i]<.02)m+=.10;
-moisture[i]=Math.max(.02,Math.min(1,m));}
+// Pass 2+3: Physics-based wind simulation for moisture
+const windResult=simulateWind(elevation,temperature,W,H,{fbm,noise2D},seed);
+for(let i=0;i<W*H;i++)moisture[i]=windResult.moisture[i];
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
+// Pass 1: elevation + temperature
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
-// Base elevation: always land, varied terrain from fbm
 let e=0.08+fbm(nx*6+3.7,ny*6+3.7,5,2,.5)*.15
-+Math.pow(Math.max(0,fbm(nx*3+20,ny*3+20,4,2.2,.5)),2)*.4// mountain ranges
-+fbm(nx*14+7,ny*14+7,3,2,.4)*.06// fine detail
-+Math.pow(1-Math.abs(fbm(nx*2.5+40,ny*2.5+40,3,2.1,.5)),4)*.25;// ridges
-// Polar tundra: slightly elevated but not dramatically
++Math.pow(Math.max(0,fbm(nx*3+20,ny*3+20,4,2.2,.5)),2)*.4
++fbm(nx*14+7,ny*14+7,3,2,.4)*.06
++Math.pow(1-Math.abs(fbm(nx*2.5+40,ny*2.5+40,3,2.1,.5)),4)*.25;
 if(lat>.85)e=Math.max(0.01,e*0.5);
-// Valley systems (subtract to create lowlands)
 e-=Math.pow(Math.max(0,fbm(nx*4+60,ny*4+60,3,2,.5)+.1),2)*.15;
 elevation[i]=Math.max(0.005,e);
-// Moisture: climate zones + elevation effects
-const tropWet=Math.max(0,1-lat*2.5);
-const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.40;// subtropical HP belt
-const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.20;
-const polarDry=Math.max(0,(lat-.75))*.25;
-let m=.40+tropWet*.35-subtropDry+tempWet-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.15;
-if(e<0.06)m+=.15;// valleys are wet
-if(e>0.3)m-=.15;// mountains are drier
-moisture[i]=Math.max(.02,Math.min(1,m));
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
+// Pass 2: Physics-based wind simulation for moisture
+const pangWindResult=simulateWind(elevation,temperature,W,H,{fbm,noise2D},seed);
+for(let i=0;i<W*H;i++)moisture[i]=pangWindResult.moisture[i];
 }else if(preset==="tectonic"){
 // ── Tectonic plate mode: separate module ──
 const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D});
@@ -224,22 +189,9 @@ const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
 e+=fbm(whx*6+s2,why*6+s2,4,2,.5)*.06*featureStr;
 e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.05*featureStr;}
 elevation[i]=e;temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
-// Moisture with climate zones + continentality
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
-if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
-const cd=cdist2[Math.min(dh-1,Math.floor(y/DG))*dw+Math.min(dw-1,Math.floor(x/DG))];
-const coastProx=Math.max(0,1-cd/8);
-const tropWet=Math.max(0,1-lat*2.5);
-const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.50*(1-coastProx*.5);
-const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.22;
-const tropF=Math.max(0,1-lat*3);
-const contRate=.006+(1-tropF)*.014;
-const cont=Math.min(.28,cd*contRate);
-const polarDry=Math.max(0,(lat-.75))*.25;
-let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12;
-if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
-if(elevation[i]<.02)m+=.10;
-moisture[i]=Math.max(.02,Math.min(1,m));}}
+// Physics-based wind simulation for moisture
+{const randWindResult=simulateWind(elevation,temperature,W,H,{fbm,noise2D},seed);
+for(let i=0;i<W*H;i++)moisture[i]=randWindResult.moisture[i];}}
 const ctw=Math.ceil(W/RES),cth=Math.ceil(H/RES);const coastal=new Uint8Array(ctw*cth);
 for(let ty=1;ty<cth-1;ty++)for(let tx=0;tx<ctw;tx++){const px=Math.min(W-1,tx*RES),py=Math.min(H-1,ty*RES);
 if(elevation[py*W+px]>0){
