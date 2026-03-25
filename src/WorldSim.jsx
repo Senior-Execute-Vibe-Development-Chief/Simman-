@@ -788,14 +788,17 @@ const pi4=ti<<2;
 const e=w.elevation[si];
 const vx=wX?wX[si]:0,vy=wY?wY[si]:0;
 const spd=Math.sqrt(vx*vx+vy*vy);
-const t=Math.min(1.15,Math.pow(spd*2.8,0.5));
-// Speed heatmap: blue → green → yellow → red → black
+const t=Math.min(1,Math.pow(spd*2.8,0.5));
+// Speed heatmap matched to Windy.com: navy→blue→teal→green→yellow→orange→red
 let r,g,b;
-if(t<0.17){const s=t/0.17;r=(5+s*15)|0;g=(10+s*40)|0;b=(80+s*140)|0;}
-else if(t<0.33){const s=(t-0.17)/0.16;r=(20-s*10)|0;g=(50+s*180)|0;b=(220-s*180)|0;}
-else if(t<0.56){const s=(t-0.33)/0.23;r=(10+s*240)|0;g=(230+s*25)|0;b=(40-s*30)|0;}
-else if(t<1.0){const s=(t-0.56)/0.44;r=(250-s*20)|0;g=(255-s*220)|0;b=(10+s*5)|0;}
-else{const s=Math.min(1,(t-1.0)/0.15);r=(230-s*200)|0;g=(35-s*35)|0;b=(15-s*15)|0;}
+if(t<0.08){const s=t/0.08;r=(3+s*5)|0;g=(4+s*15)|0;b=(40+s*60)|0;}
+else if(t<0.18){const s=(t-0.08)/0.10;r=(8+s*12)|0;g=(19+s*55)|0;b=(100+s*80)|0;}
+else if(t<0.30){const s=(t-0.18)/0.12;r=(20+s*5)|0;g=(74+s*80)|0;b=(180-s*40)|0;}
+else if(t<0.42){const s=(t-0.30)/0.12;r=(25-s*5)|0;g=(154+s*50)|0;b=(140-s*90)|0;}
+else if(t<0.55){const s=(t-0.42)/0.13;r=(20+s*130)|0;g=(204+s*46)|0;b=(50-s*20)|0;}
+else if(t<0.68){const s=(t-0.55)/0.13;r=(150+s*95)|0;g=(250-s*30)|0;b=(30-s*15)|0;}
+else if(t<0.82){const s=(t-0.68)/0.14;r=(245+s*10)|0;g=(220-s*100)|0;b=(15+s*10)|0;}
+else{const s=(t-0.82)/0.18;r=255;g=(120-s*80)|0;b=(25+s*15)|0;}
 // Blend with dim terrain on land for topographic context
 if(e>sl){
 const landDim=0.25;const heatW=0.65;
