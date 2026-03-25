@@ -1372,9 +1372,21 @@ for (let l = 0; l < NL; l++) {
     const subpolarLow = -0.6 * Math.exp(-((latDeg - 60) * (latDeg - 60)) / (10 * 10));
     const itczLow = -0.4 * Math.exp(-((latDeg - 5) * (latDeg - 5)) / (8 * 8));
     const anomaly = (subtropHigh + subpolarLow + itczLow) * _threeCellStr * cellScale;
-    const latP = -latTemp * _pScale + anomaly * _pScale;
+    const baseP = -latTemp * _pScale;
     for (let wx = 0; wx < wW; wx++) {
-      layerP[l][wy * wW + wx] = latP;
+      const wi = wy * wW + wx;
+      // Subtropical highs are discrete ocean-basin centers, not a continuous
+      // band. Modulate belt anomaly by ocean fraction: full over ocean,
+      // weakened over land. This breaks latitude-only symmetry naturally.
+      const oceanMod = 0.4 + 0.6 * (1 - landFrac[wi]);
+      let pVal = baseP + anomaly * _pScale * oceanMod;
+      // Mesoscale pressure noise (surface only): creates natural speed
+      // variation along a latitude band instead of rigid uniform bands.
+      if (l === 0) {
+        const nx = wx / wW, ny = wy / wH;
+        pVal += fbm(nx * 4 + s3 + 300, ny * 4 + s3 + 300, 2, 2, 0.5) * 0.15 * _pScale;
+      }
+      layerP[l][wi] = pVal;
     }
   }
 }
@@ -1470,24 +1482,6 @@ for (let iter = 0; iter < _windIter; iter++) {
     const lf = landFrac[i];
     if (lf < 0.5) {
       layerP[0][i] += -vertW[i] * 0.06 * (1 - lf * 2);
-    }
-  }
-  // Wind convergence → pressure feedback (THE mechanism for land barriers).
-  // When wind decelerates onto land (friction), it converges, raising
-  // local pressure, which reduces the PGF driving more wind in.
-  // This must be strong enough to actually deflect incoming flow.
-  {
-    const _convStr = p("convergenceFeedback", 0.15);
-    const uX0 = lWindX[0], uY0 = lWindY[0];
-    for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
-      const wi = wy * wW + wx;
-      const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
-      const divg = (uX0[wy * wW + wr2] - uX0[wy * wW + wl2]
-        + uY0[(wy + 1) * wW + wx] - uY0[(wy - 1) * wW + wx]) * 0.5;
-      // Stronger over land (convergence is the barrier mechanism)
-      const lf = landFrac[wi];
-      const strength = _convStr * (0.3 + lf * 0.7);
-      layerP[0][wi] += -divg * strength;
     }
   }
   const pUpd = new Float32Array(cellN);
