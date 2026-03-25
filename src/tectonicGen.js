@@ -768,7 +768,7 @@ for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const e0 = elevation[py * W + px];
   wElev[wy * wW + wx] = Math.max(0, e0);
   if (e0 <= 0) {
-    drag[wy * wW + wx] = 0.02; // ocean: very low friction
+    drag[wy * wW + wx] = p("oceanDrag", 0.02); // ocean: very low friction
   } else if (e0 < 0.06) {
     drag[wy * wW + wx] = 0.55 + e0 * 3; // coastal lowlands: high friction (sheltered)
   } else if (e0 < 0.20) {
@@ -809,7 +809,7 @@ const pressure = new Float32Array(wW * wH);
 
 // Place semi-permanent pressure systems (the real drivers of global wind)
 // Subtropical highs, subpolar lows, thermal lows/highs over continents
-const numSystems = 20 + Math.floor(rng() * 15);
+const numSystems = p("numPressureSystems", 20) + Math.floor(rng() * p("pressureSystemRange", 15));
 for (let pi = 0; pi < numSystems; pi++) {
   const pcx = rng() * wW;
   const pcy = 0.03 * wH + rng() * 0.94 * wH;
@@ -827,8 +827,8 @@ for (let pi = 0; pi < numSystems; pi++) {
   if (latAbs > 0.75) highProb += lf * 0.15;                     // polar continental highs
   const isHigh = rng() < highProb;
 
-  const str = (0.3 + rng() * 0.9) * (0.4 + oc * 0.7);
-  const rad = 12 + rng() * 40;
+  const str = (p("pressureStrength", 0.3) + rng() * p("pressureStrengthRange", 0.9)) * (0.4 + oc * 0.7);
+  const rad = p("pressureRadius", 12) + rng() * p("pressureRadiusRange", 40);
   for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
     let ddx = wx - pcx;
     if (ddx > wW / 2) ddx -= wW; if (ddx < -wW / 2) ddx += wW;
@@ -867,7 +867,7 @@ for (let wy = 1; wy < wH - 1; wy++) {
   // ~58° at mid-latitudes, 0 at equator. tanh prevents over-rotation.
   // Sign: NH (latSigned<0) → positive rotation, SH → negative
   // This creates: clockwise flow around NH highs, counter-clockwise around SH highs
-  const coriolisAngle = -Math.tanh(latSigned * 2.5) * 1.2;
+  const coriolisAngle = -Math.tanh(latSigned * p("coriolisSharpness", 2.5)) * p("coriolisMaxAngle", 1.2);
   const cosA = Math.cos(coriolisAngle), sinA = Math.sin(coriolisAngle);
   for (let wx = 0; wx < wW; wx++) {
     const wi = wy * wW + wx;
@@ -895,7 +895,8 @@ for (let i = 0; i < wW * wH; i++) {
 
 const divP = new Float32Array(wW * wH);
 
-for (let iter = 0; iter < 25; iter++) {
+const _windIter = p("windSolverIter", 25);
+for (let iter = 0; iter < _windIter; iter++) {
   // 1) Diffuse + drag + driving force
   const tmpX = new Float32Array(windX);
   const tmpY = new Float32Array(windY);
@@ -915,7 +916,7 @@ for (let iter = 0; iter < 25; iter++) {
       const gradX = (eR - eL) * 0.5, gradY = (eD - eU) * 0.5;
       const gradMag = Math.sqrt(gradX * gradX + gradY * gradY);
       // Deflection force perpendicular to slope (terrain steering)
-      const deflectStr = Math.min(0.8, gradMag * 4);
+      const deflectStr = Math.min(0.8, gradMag * p("terrainDeflect", 4.0));
       const dfx = -gradY * deflectStr, dfy = gradX * deflectStr;
 
       // Blend: current + neighbors + force + deflection
@@ -983,7 +984,7 @@ for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
   const n0 = fbm(nx * 5 + s3 + 100, ny * 5 + s3 + 100, 3, 2, 0.5);
   const nDx = fbm((nx + eps) * 5 + s3 + 100, ny * 5 + s3 + 100, 3, 2, 0.5);
   const nDy = fbm(nx * 5 + s3 + 100, (ny + eps) * 5 + s3 + 100, 3, 2, 0.5);
-  const amp = wElev[wi] > 0 ? 0.008 : 0.015;
+  const amp = wElev[wi] > 0 ? p("windEddyLand", 0.008) : p("windEddyOcean", 0.015);
   windX[wi] += (nDy - n0) / eps * amp;
   windY[wi] -= (nDx - n0) / eps * amp;
 }

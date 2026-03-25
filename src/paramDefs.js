@@ -103,6 +103,37 @@ export const PARAMS = {
         desc: "Noisy texture within mountain zones. Higher = more variation between peaks and valleys." },
     ]
   },
+  wind: {
+    label: "Wind & Pressure", color: "130,190,210",
+    params: [
+      { key: "numPressureSystems", def: 20, min: 8, max: 50, step: 1, label: "Pressure systems (base)",
+        desc: "Base number of high/low pressure centers placed on the map. More = busier wind patterns." },
+      { key: "pressureSystemRange", def: 15, min: 0, max: 30, step: 1, label: "Pressure systems (variance)",
+        desc: "Random variation in number of pressure systems." },
+      { key: "pressureRadius", def: 12, min: 4, max: 30, step: 1, label: "System radius (min)",
+        desc: "Minimum radius of pressure system Gaussian blobs on the wind grid." },
+      { key: "pressureRadiusRange", def: 40, min: 10, max: 80, step: 1, label: "System radius (range)",
+        desc: "Random range added to min radius. Larger = some very wide systems." },
+      { key: "pressureStrength", def: 0.3, min: 0.1, max: 1.0, label: "System strength (min)",
+        desc: "Minimum intensity of each pressure system. Stronger = faster winds." },
+      { key: "pressureStrengthRange", def: 0.9, min: 0.1, max: 2.0, label: "System strength (range)",
+        desc: "Random range added to strength. Higher = more variation between strong and weak systems." },
+      { key: "coriolisMaxAngle", def: 1.2, min: 0.3, max: 1.5, label: "Coriolis max angle",
+        desc: "Maximum Coriolis rotation in radians at poles. 1.2≈68°. Lower = wind flows more toward low pressure. Higher = tighter spirals." },
+      { key: "coriolisSharpness", def: 2.5, min: 0.5, max: 5.0, label: "Coriolis equator sharpness",
+        desc: "How quickly Coriolis ramps up away from equator. Higher = narrower equatorial calm zone." },
+      { key: "windSolverIter", def: 25, min: 8, max: 60, step: 1, label: "Solver iterations",
+        desc: "Fluid solver iterations. More = smoother, more realistic flow but slower generation." },
+      { key: "terrainDeflect", def: 4.0, min: 0.5, max: 10.0, label: "Terrain deflection",
+        desc: "How strongly mountains steer wind along contour lines. Higher = wind flows around terrain more." },
+      { key: "oceanDrag", def: 0.02, min: 0.005, max: 0.10, label: "Ocean drag",
+        desc: "Surface friction over open ocean. Very low = fast ocean winds. Higher = calmer seas." },
+      { key: "windEddyOcean", def: 0.015, min: 0.0, max: 0.04, label: "Ocean eddy strength",
+        desc: "Curl noise amplitude over ocean. Adds small-scale swirls and turbulence." },
+      { key: "windEddyLand", def: 0.008, min: 0.0, max: 0.03, label: "Land eddy strength",
+        desc: "Curl noise amplitude over land. Adds local turbulence near terrain." },
+    ]
+  },
   ocean: {
     label: "Land / Ocean", color: "100,160,220",
     params: [
