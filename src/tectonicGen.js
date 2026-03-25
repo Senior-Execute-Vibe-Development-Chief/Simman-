@@ -855,17 +855,36 @@ for (let wy = 0; wy < wH; wy++) {
 
 // ── Pressure per layer ──
 // Hydrostatic: warm column → low surface pressure, cold → high.
-// NO static land/ocean bias — thermal lows are seasonal (cancel in annual mean).
-// Persistent pressure features (subtropical highs, equatorial low) emerge from
-// the Hadley cell vertical circulation applied each iteration.
+// Plus orographic pressure: elevated terrain creates mechanical blocking.
+// Real physics: surface pressure decreases with altitude (hydrostatic),
+// BUT wind hitting mountains piles up → dynamic high on windward side.
+// We model this as: high terrain = higher effective surface pressure.
+// The solver's convergence/divergence then creates lee troughs naturally.
 const _pScale = p("pressureScale", 4.0);
+const _oroP = p("orographicPressure", 2.5); // elevation → pressure contribution
+const _oceanPBias = p("oceanPressureBias", 0.15); // marine air slightly denser
 const layerP = new Array(NL);
 for (let l = 0; l < NL; l++) {
   layerP[l] = new Float32Array(cellN);
-  for (let i = 0; i < cellN; i++) layerP[l][i] = -layerTemp[l][i] * _pScale;
-  // Minimal smoothing: 2 passes to remove grid noise
+  for (let i = 0; i < cellN; i++) {
+    let pVal = -layerTemp[l][i] * _pScale;
+    if (l === 0) {
+      // Orographic pressure: mountains block airflow → effective pressure barrier.
+      // This is THE major source of longitude-varying pressure patterns.
+      // Mountains, plateaus, and ridges create windward highs that steer flow.
+      const e = wElev[i];
+      pVal += e * _oroP;
+      // Ocean pressure bias: marine boundary layer is slightly denser than
+      // continental air at the same temperature (humidity, thermal inertia).
+      // Small effect but helps differentiate ocean vs land wind speeds.
+      const lf = landFrac[i];
+      if (lf < 0.3) pVal += _oceanPBias * (1 - lf / 0.3);
+    }
+    layerP[l][i] = pVal;
+  }
+  // Smooth: 3 passes for surface (orographic features need blending), 2 for aloft
   const ps = new Float32Array(cellN);
-  smoothField(layerP[l], ps, wW, wH, 2, 2);
+  smoothField(layerP[l], ps, wW, wH, l === 0 ? 3 : 2, 2);
   for (let i = 0; i < cellN; i++) layerP[l][i] = ps[i];
 }
 
@@ -897,8 +916,11 @@ for (let iter = 0; iter < _windIter; iter++) {
 
   // Surface pressure tendency from vertical motion:
   // dp_s/dt ∝ -∫div(V_h)dz. Rising air = surface convergence = lower pressure.
+  // Stronger feedback (0.06) lets convergence/divergence actually modify pressure
+  // over 25 iterations, creating meaningful features like lee troughs and
+  // convergence zones (ITCZ). Without this, pressure stays as initialized.
   for (let i = 0; i < cellN; i++) {
-    layerP[0][i] += -vertW[i] * 0.02;
+    layerP[0][i] += -vertW[i] * 0.06;
   }
   // Light smooth to prevent checkerboard (1 pass, small radius)
   const pUpd = new Float32Array(cellN);
