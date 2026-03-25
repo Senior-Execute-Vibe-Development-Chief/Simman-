@@ -863,6 +863,13 @@ for (let wy = 0; wy < wH; wy++) {
 const _pScale = p("pressureScale", 4.0);
 const _oroP = p("orographicPressure", 2.5); // elevation → pressure contribution
 const _oceanPBias = p("oceanPressureBias", 0.15); // marine air slightly denser
+// Land pressure correction: the temperature field creates an implicit thermal
+// low over all land (land is warmer → lower pressure → sucks wind in).
+// In reality, summer thermal lows cancel with winter thermal highs in annual
+// mean — continents are roughly pressure-neutral. This parameter adds the
+// "missing winter high" to counteract the implicit thermal low, so wind flows
+// AROUND continents instead of being drawn through them.
+const _landPBias = p("landPressureBias", 0.5);
 const layerP = new Array(NL);
 for (let l = 0; l < NL; l++) {
   layerP[l] = new Float32Array(cellN);
@@ -874,22 +881,29 @@ for (let l = 0; l < NL; l++) {
   smoothField(layerP[l], ps, wW, wH, 2, 2);
   for (let i = 0; i < cellN; i++) layerP[l][i] = ps[i];
 }
-// Orographic + ocean bias: surface only, smoothed BROADLY so mountain
-// pressure extends far from the range (hundreds of km of influence).
-// This prevents sharp leeward pressure drops at coastlines.
+// Surface pressure corrections: land bias + orographic + ocean bias.
+// All smoothed BROADLY so pressure influence extends far from the source
+// (hundreds of km). This prevents sharp leeward speedup at coastlines and
+// makes continents act as broad pressure barriers that deflect flow.
 {
-  const oroField = new Float32Array(cellN);
+  const corrField = new Float32Array(cellN);
   for (let i = 0; i < cellN; i++) {
     const e = wElev[i];
     const lf = landFrac[i];
-    oroField[i] = e * _oroP + (lf < 0.3 ? _oceanPBias * (1 - lf / 0.3) : 0);
+    // Land pressure: counteract implicit thermal low. Proportional to land
+    // fraction so coasts transition smoothly. This is the main mechanism
+    // that makes wind flow AROUND continents instead of through them.
+    corrField[i] = lf * _landPBias;
+    // Orographic: mountains add further pressure barrier
+    corrField[i] += e * _oroP;
+    // Ocean bias: marine air slightly denser
+    if (lf < 0.3) corrField[i] += _oceanPBias * (1 - lf / 0.3);
   }
-  // Broad smooth: 6 passes radius 4 — mountain pressure extends ~16 cells
-  // (~1500km at typical resolution). This is physically correct: blocking
-  // effects propagate far upstream via pressure waves.
-  const oroSmooth = new Float32Array(cellN);
-  smoothField(oroField, oroSmooth, wW, wH, 6, 4);
-  for (let i = 0; i < cellN; i++) layerP[0][i] += oroSmooth[i];
+  // Broad smooth: 6 passes radius 4 — influence extends ~16 wind-grid cells
+  // (~1500km). Physically correct: blocking effects propagate far upstream.
+  const corrSmooth = new Float32Array(cellN);
+  smoothField(corrField, corrSmooth, wW, wH, 6, 4);
+  for (let i = 0; i < cellN; i++) layerP[0][i] += corrSmooth[i];
 }
 
 // Per-layer wind arrays
