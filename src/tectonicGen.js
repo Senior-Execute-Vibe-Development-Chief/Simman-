@@ -850,27 +850,27 @@ for (let i = 0; i < pressure.length; i++) pressure[i] = pSmooth[i];
 const forceX = new Float32Array(wW * wH);
 const forceY = new Float32Array(wW * wH);
 for (let wy = 1; wy < wH - 1; wy++) {
-  const latSigned = (wy / wH - 0.5) * 2;
-  const hemi = latSigned < 0 ? -1 : 1;
+  const latSigned = (wy / wH - 0.5) * 2; // -1 to +1
   const lat = Math.abs(latSigned);
-  const f = Math.max(0.12, lat) * 1.0;
+  // Smooth hemisphere factor: use tanh to transition gradually across equator
+  // instead of hard sign flip. This spreads the transition over ~10% of map height.
+  const hemi = Math.tanh(latSigned * 6);
+  // Coriolis parameter: smoothly approaches zero at equator
+  // Near equator, flow is pressure-driven (cross-isobar) not geostrophic
+  const f = Math.max(0.08, lat);
   for (let wx = 0; wx < wW; wx++) {
     const wi = wy * wW + wx;
     const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
     const dpDx = (pressure[wy * wW + wr] - pressure[wy * wW + wl]) * 0.5;
     const dpDy = (pressure[(wy + 1) * wW + wx] - pressure[(wy - 1) * wW + wx]) * 0.5;
-    // Geostrophic: perpendicular to pressure gradient
+    // Geostrophic: perpendicular to pressure gradient, scaled by Coriolis
     const geoX = -dpDy * hemi / f;
     const geoY = dpDx * hemi / f;
-    // Cross-isobar friction component (toward low pressure)
-    // Higher near equator where Coriolis is weak
-    const crossFrac = 0.18 + (1 - lat) * 0.20;
+    // Cross-isobar fraction: high near equator (mostly pressure-driven),
+    // low at mid-lats (mostly geostrophic)
+    const crossFrac = 0.15 + (1 - lat) * 0.50;
     let fx = geoX * (1 - crossFrac) + (-dpDx) * crossFrac;
     let fy = geoY * (1 - crossFrac) + (-dpDy) * crossFrac;
-    // ITCZ: convergence zone damping (broad, not sharp)
-    const itcz = Math.exp(-(lat * lat) / 0.015);
-    fx *= (1 - itcz * 0.5);
-    fy *= (1 - itcz * 0.5);
     forceX[wi] = fx;
     forceY[wi] = fy;
   }
