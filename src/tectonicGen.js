@@ -772,8 +772,8 @@ for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
     drag[wy * wW + wx] = p("oceanDrag", 0.02); // ocean: very low friction
   } else {
     // Land drag: lowlands highest (sheltered), decreasing with elevation (exposed)
-    // Coastal flats ~0.50, inland ~0.45, hills ~0.35, peaks ~0.20
-    drag[wy * wW + wx] = Math.max(0.18, 0.50 - e0 * 0.8);
+    const ldMax = p("landDragMax", 0.50);
+    drag[wy * wW + wx] = Math.max(0.18, ldMax - e0 * 0.8);
   }
 }
 
