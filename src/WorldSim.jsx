@@ -688,6 +688,9 @@ const showRiversRef=useRef(true);
 const terrainCache=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
 const imgRef=useRef(null);
+// Wind particle animation state
+const windParticlesRef=useRef(null);
+const windAnimRef=useRef(null);
 const W=1920,H=960,CW=Math.ceil(W/RES),CH=Math.ceil(H/RES);
 const generate=useCallback((s,ol)=>{
 let w;
@@ -775,11 +778,32 @@ const e=w.elevation[si];
 const v=Math.min(255,Math.max(0,((e-floor)/range)*255))|0;
 const pi4=ti<<2;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=v;d[pi4+3]=255;}
 }else if(vm==="wind"){
-// Wind view — dim terrain base (arrows drawn later via Canvas2D)
+// Wind view — speed heatmap background (like Windy.com)
+// Color ramp: dark purple(0) → blue → cyan → green → yellow → red(1)
+const wX=w.windX,wY=w.windY;
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
 const tc=terrainCache.current;
-for(let ti=0;ti<N;ti++){const pi4=ti<<2;
-d[pi4]=(tc[ti*3]*0.25)|0;d[pi4+1]=(tc[ti*3+1]*0.25)|0;d[pi4+2]=(tc[ti*3+2]*0.25)|0;d[pi4+3]=255;}
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const pi4=ti<<2;
+const e=w.elevation[si];
+if(e>sl){
+// Land: very dim terrain
+d[pi4]=(tc[ti*3]*0.18)|0;d[pi4+1]=(tc[ti*3+1]*0.18)|0;d[pi4+2]=(tc[ti*3+2]*0.18)|0;d[pi4+3]=255;
+}else{
+// Ocean: speed heatmap
+const vx=wX?wX[si]:0,vy=wY?wY[si]:0;
+const spd=Math.sqrt(vx*vx+vy*vy);
+const t=Math.min(1,Math.pow(spd*2.2,0.5));
+let r,g,b;
+if(t<0.15){const s=t/0.15;r=(10+s*20)|0;g=(8+s*15)|0;b=(30+s*60)|0;}       // dark purple→blue
+else if(t<0.30){const s=(t-0.15)/0.15;r=(30-s*10)|0;g=(23+s*80)|0;b=(90+s*50)|0;}  // blue→cyan
+else if(t<0.50){const s=(t-0.30)/0.20;r=(20+s*20)|0;g=(103+s*80)|0;b=(140-s*90)|0;} // cyan→green
+else if(t<0.70){const s=(t-0.50)/0.20;r=(40+s*180)|0;g=(183+s*50)|0;b=(50-s*30)|0;} // green→yellow
+else if(t<0.85){const s=(t-0.70)/0.15;r=(220+s*35)|0;g=(233-s*100)|0;b=(20-s*10)|0;} // yellow→orange
+else{const s=(t-0.85)/0.15;r=255;g=(133-s*90)|0;b=(10+s*5)|0;}                // orange→red
+d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;
+}}
 }else if(vm==="power"){
 // Power view — one pixel per tile
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
@@ -860,36 +884,50 @@ ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
 ctx.fillStyle=isCapital?`rgb(${cr},${cg},${cb})`:`rgba(${cr},${cg},${cb},0.7)`;ctx.fill();
 ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
 ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();}}
-// Wind arrows — smooth Canvas2D rendering
+// Wind particles — animated white streaks that flow along wind vectors
 if(vm==="wind"&&w.windX&&w.windY){
-const step=16;const maxArrow=step*1.5;const minArrow=2;
-ctx.lineCap="round";ctx.lineJoin="round";
-for(let ty=step/2;ty<CH;ty+=step)for(let tx=step/2;tx<CW;tx+=step){
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
-const wx2=w.windX[si],wy2=w.windY[si];
-const spd=Math.sqrt(wx2*wx2+wy2*wy2);
-if(spd<0.008)continue;
-const dx2=wx2/spd,dy2=wy2/spd;
-// Power curve: emphasizes difference between calm and strong
-const t2=Math.min(1,Math.pow(spd*2.5,0.55));
-const len=minArrow+t2*(maxArrow-minArrow);
-const headLen=1.5+t2*3;const headW=1+t2*2;
-const ex=tx+dx2*len,ey=ty+dy2*len;
-// Color: dark blue→cyan→white→orange→red
-let cr,cg,cb;
-if(t2<0.25){const s=t2*4;cr=Math.round(40+s*60);cg=Math.round(60+s*120);cb=Math.round(140+s*115);}
-else if(t2<0.5){const s=(t2-0.25)*4;cr=Math.round(100+s*155);cg=Math.round(180+s*75);cb=255;}
-else if(t2<0.75){const s=(t2-0.5)*4;cr=255;cg=Math.round(255-s*105);cb=Math.round(255-s*175);}
-else{const s=(t2-0.75)*4;cr=255;cg=Math.round(150-s*110);cb=Math.round(80-s*60);}
-const alpha=0.3+t2*0.7;
-ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;
-ctx.fillStyle=`rgba(${cr},${cg},${cb},${alpha})`;
-ctx.lineWidth=0.5+t2*1.8;
-ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(ex,ey);ctx.stroke();
-const ax1=ex-dx2*headLen+dy2*headW,ay1=ey-dy2*headLen-dx2*headW;
-const ax2=ex-dx2*headLen-dy2*headW,ay2=ey-dy2*headLen+dx2*headW;
-ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(ax1,ay1);ctx.lineTo(ax2,ay2);ctx.closePath();ctx.fill();
-}}
+const NUM_PARTICLES=3000;const TRAIL_LEN=12;const MAX_AGE=80;
+// Initialize particles if needed
+if(!windParticlesRef.current||windParticlesRef.current.length!==NUM_PARTICLES){
+windParticlesRef.current=[];
+for(let i=0;i<NUM_PARTICLES;i++){
+windParticlesRef.current.push({x:Math.random()*CW,y:Math.random()*CH,
+age:Math.random()*MAX_AGE|0,trail:[]});}}
+const particles=windParticlesRef.current;
+const wX=w.windX,wY=w.windY;
+// Step + draw each particle
+ctx.lineCap="round";
+for(let i=0;i<particles.length;i++){
+const p=particles[i];
+// Sample wind at particle position
+const sx=Math.min(W-1,(p.x*RES)|0),sy=Math.min(H-1,(p.y*RES)|0),si=sy*W+sx;
+const vx=wX[si]||0,vy=wY[si]||0;
+const spd=Math.sqrt(vx*vx+vy*vy);
+// Move particle along wind (speed scaled for visual effect)
+const moveScale=1.8;
+p.trail.push({x:p.x,y:p.y});
+if(p.trail.length>TRAIL_LEN)p.trail.shift();
+p.x+=vx*moveScale;p.y+=vy*moveScale;
+p.age++;
+// Respawn if out of bounds, too old, or in dead air
+if(p.x<0||p.x>=CW||p.y<0||p.y>=CH||p.age>MAX_AGE||spd<0.005){
+p.x=Math.random()*CW;p.y=Math.random()*CH;p.age=0;p.trail.length=0;continue;}
+// Draw trail — fading white line
+if(p.trail.length<2)continue;
+const fadeIn=Math.min(1,p.age/8);const fadeOut=Math.max(0,1-(p.age-MAX_AGE+15)/15);
+const brightness=fadeIn*fadeOut;
+for(let j=1;j<p.trail.length;j++){
+const segAlpha=(j/p.trail.length)*brightness*0.7;
+if(segAlpha<0.02)continue;
+const lw=0.4+(j/p.trail.length)*1.0;
+ctx.strokeStyle=`rgba(255,255,255,${segAlpha.toFixed(2)})`;
+ctx.lineWidth=lw;
+ctx.beginPath();ctx.moveTo(p.trail[j-1].x,p.trail[j-1].y);ctx.lineTo(p.trail[j].x,p.trail[j].y);ctx.stroke();}
+// Draw head dot
+const headAlpha=brightness*0.9;
+ctx.fillStyle=`rgba(255,255,255,${headAlpha.toFixed(2)})`;
+ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
+}
 // Power projection view hatching
 if(vm==="power"&&ter){const tw2=ter.tw,th2=ter.th;
 for(let ty2=0;ty2<th2;ty2+=2)for(let tx2=0;tx2<tw2;tx2+=2){
@@ -934,6 +972,14 @@ setTribeCount(alive);setDominant(bestId>=0?{id:bestId,power:bestPow,size:ter2.tr
 strength:ter2.tribeStrength[bestId],density:ter2.tribeStrength[bestId]/ter2.tribeSizes[bestId]}:null);
 draw(terRef.current);}};
 fid=requestAnimationFrame(loop);return()=>cancelAnimationFrame(fid);},[draw]);
+
+// Wind particle animation loop — redraws at ~30fps when in wind view
+useEffect(()=>{let wfid;
+const windLoop=()=>{wfid=requestAnimationFrame(windLoop);
+if(viewRef.current!=="wind"||!worldRef.current||!terRef.current)return;
+draw(terRef.current);};
+wfid=requestAnimationFrame(windLoop);
+return()=>cancelAnimationFrame(wfid);},[draw]);
 
 const togglePlay=()=>{if(!playing&&terRef.current&&terRef.current.settled>=terRef.current.landCount){
 const t=createTerritory(worldRef.current);terRef.current=t;setTribeCount(t.tribes);setCoverage(0);setDominant(null);terrainCache.current=null;draw(t);}

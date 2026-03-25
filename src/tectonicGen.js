@@ -953,22 +953,24 @@ for (let i = 0; i < wW * wH; i++) {
   if (solid[i]) { windX[i] = 0; windY[i] = 0; }
 }
 
-// ── Speed variation: not all ocean is same speed ──
-// Real wind speed is determined by pressure gradient magnitude
-// Tighter isobars = faster wind. Open ocean far from gradients = moderate
-// Normalize so max is ~0.6, with lots of variation
+// ── Percentile-based normalization for good speed variation ──
+// Max-based normalization compresses the range if outliers exist.
+// Instead, normalize to the 85th percentile so most wind is moderate,
+// with fast streams clearly standing out (they clip to ~1.0).
 {
-  let maxSpd = 0;
+  const speeds = [];
   for (let i = 0; i < wW * wH; i++) {
     const s = Math.sqrt(windX[i] * windX[i] + windY[i] * windY[i]);
-    if (s > maxSpd) maxSpd = s;
+    if (s > 0.001) speeds.push(s);
   }
-  if (maxSpd > 0.01) {
-    const scale = 0.65 / maxSpd;
-    for (let i = 0; i < wW * wH; i++) {
-      windX[i] *= scale;
-      windY[i] *= scale;
-    }
+  speeds.sort((a, b) => a - b);
+  const p85 = speeds[Math.min(speeds.length - 1, (speeds.length * 0.85) | 0)] || 1;
+  // Scale so 85th percentile maps to 0.45 (moderate on the color ramp)
+  // Fast winds (top 15%) will be 0.45-0.8+, giving real variation
+  const scale = 0.45 / p85;
+  for (let i = 0; i < wW * wH; i++) {
+    windX[i] *= scale;
+    windY[i] *= scale;
   }
 }
 
