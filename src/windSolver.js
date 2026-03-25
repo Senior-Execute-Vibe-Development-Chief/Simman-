@@ -70,8 +70,8 @@ for (let wy = 1; wy < wH - 1; wy++) {
     const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
     const dpdy = (pressure[(wy + 1) * wW + wx] - pressure[(wy - 1) * wW + wx]) * 0.5;
     const dpdx = (pressure[wy * wW + wr] - pressure[wy * wW + wl]) * 0.5;
-    windX[i] = -(1 / fSafe) * dpdy * 0.7;
-    windY[i] = (1 / fSafe) * dpdx * cosLat * 0.7;
+    windX[i] = -(1 / fSafe) * dpdy * 0.3;
+    windY[i] = (1 / fSafe) * dpdx * cosLat * 0.3;
   }
 }
 
@@ -175,8 +175,8 @@ for (let iter = 0; iter < _windIter; iter++) {
 } // end iterations
 
 // ── Post-processing ──
-const _windScale = p("windScale", 1.5);
-const _windContrast = p("windContrast", 1.3);
+const _windScale = p("windScale", 1.0);
+const _windContrast = p("windContrast", 1.0);
 if (_windScale !== 1.0 || _windContrast !== 1.0) {
   for (let i = 0; i < N; i++) {
     let vx = windX[i], vy = windY[i];
