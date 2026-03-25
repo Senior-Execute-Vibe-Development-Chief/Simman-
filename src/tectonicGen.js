@@ -1074,12 +1074,23 @@ for (let i = 0; i < cellN; i++) {
 }
 
 // Wind magnitude scale: user-tunable multiplier on final output.
-// Lets users control overall speed without changing physics balance.
 const _windScale = p("windScale", 1.0);
-if (_windScale !== 1.0) {
+// Wind contrast: power curve on magnitude. >1 amplifies fast spots, dampens slow.
+// Applies mag^contrast / mag to each component (preserves direction).
+const _windContrast = p("windContrast", 1.0);
+if (_windScale !== 1.0 || _windContrast !== 1.0) {
   for (let i = 0; i < cellN; i++) {
-    windX[i] *= _windScale;
-    windY[i] *= _windScale;
+    let vx = windX[i], vy = windY[i];
+    if (_windContrast !== 1.0) {
+      const mag = Math.sqrt(vx * vx + vy * vy);
+      if (mag > 1e-6) {
+        const scaled = Math.pow(mag, _windContrast) / mag;
+        vx *= scaled;
+        vy *= scaled;
+      }
+    }
+    windX[i] = vx * _windScale;
+    windY[i] = vy * _windScale;
   }
 }
 
