@@ -857,9 +857,9 @@ for (let l = 0; l < NL; l++) {
 const vertW = new Float32Array(cellN);
 
 // Buoyancy strength: how strongly temperature difference drives vertical motion
-const buoyancy = p("buoyancy", 1.2);
+const buoyancy = p("buoyancy", 0.8);
 // Vertical coupling: how much vertical motion feeds/drains horizontal layers
-const vertCoupling = p("vertCoupling", 0.30);
+const vertCoupling = p("vertCoupling", 0.22);
 
 // ── Main 3D solver ──
 const _windIter = p("windSolverIter", 20);
@@ -877,19 +877,18 @@ for (let iter = 0; iter < _windIter; iter++) {
   }
   // Smooth vertical velocity (convection is broad, not per-pixel)
   const vSmooth = new Float32Array(cellN);
-  smoothField(vertW, vSmooth, wW, wH, 2, 3);
+  smoothField(vertW, vSmooth, wW, wH, 4, 3);
   for (let i = 0; i < cellN; i++) vertW[i] = vSmooth[i];
 
-  // Update surface pressure from vertical motion:
-  // Rising air = air leaving surface = lower surface pressure
-  // Descending air = air piling up at surface = higher surface pressure
-  // This IS what creates the subtropical high and equatorial low dynamically.
+  // Update surface pressure from vertical motion (gentle nudge per iteration):
+  // Rising air lowers surface pressure, descending raises it.
+  // Kept weak so land masses and temperature patterns dominate the shape.
   for (let i = 0; i < cellN; i++) {
-    layerP[0][i] += -vertW[i] * 0.12;
+    layerP[0][i] += -vertW[i] * 0.03;
   }
-  // Re-smooth surface pressure so gradient is broad
+  // Broad smooth so pressure gradient is gentle and organic, not a sharp line
   const pUpd = new Float32Array(cellN);
-  smoothField(layerP[0], pUpd, wW, wH, 2, 3);
+  smoothField(layerP[0], pUpd, wW, wH, 5, 3);
   for (let i = 0; i < cellN; i++) layerP[0][i] = pUpd[i];
 
   // 2) Vertical mass transfer: rising air removes from lower layers, adds to upper
