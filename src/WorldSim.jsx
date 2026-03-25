@@ -829,6 +829,30 @@ else{r=22;g=20;b=18;}
 // River/lake tint on owned tiles
 if(e>sl&&ter.tRiver[ti]){const a=0.4;r=(r*(1-a)+12*a+.5)|0;g=(g*(1-a)+20*a+.5)|0;b=(b*(1-a)+45*a+.5)|0;}
 const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
+}else if(vm==="value"){
+// Tile value overlay — green (high value) → yellow → red (low value)
+// Value = fertility + river bonus + coast bonus + moderate elevation bonus
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const e=w.elevation[si];const pi4=ti<<2;
+if(e<=sl){d[pi4]=8;d[pi4+1]=12;d[pi4+2]=22;d[pi4+3]=255;continue;}
+let v=ter.tFert[ti];
+// River/water bonus
+if(ter.tRiver[ti])v+=0.15;
+// Coast access bonus (trade, fishing)
+if(ter.tCoast&&ter.tCoast[ti])v+=0.08;
+// Moderate elevation sweet spot (defensible + habitable)
+if(e>0.05&&e<0.2)v+=0.05;
+// Extreme terrain penalty
+if(e>0.4)v-=0.15;
+v=Math.max(0,Math.min(1,v));
+// Green(1.0) → Yellow(0.5) → Red(0.0)
+let r,g,b;
+if(v>0.5){const t2=(v-0.5)*2;r=((1-t2)*255)|0;g=200;b=((t2)*40)|0;}
+else{const t2=v*2;r=220;g=(t2*200)|0;b=0;}
+// Darken slightly with elevation for depth
+const shade=1-Math.max(0,e-0.1)*0.5;
+d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else{
 // Default terrain view with tribe overlay — one pixel per tile
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
@@ -1085,7 +1109,7 @@ display:"flex",gap:12,fontSize:11,color:"#c9b87a",pointerEvents:"none"}}>
 <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",
 background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"6px 12px",
 display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
+{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["value","Value"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
 style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
 color:viewMode===k?"#c9b87a":"#5a5448",padding:"6px 14px",fontSize:13}}>{label}</button>))}
