@@ -108,6 +108,8 @@ export const PARAMS = {
     params: [
       { key: "pressureScale", def: 4.0, min: 1.0, max: 10.0, label: "Pressure scale",
         desc: "How strongly temperature differences create pressure gradients. Directly controls overall wind speed. Higher = faster winds everywhere." },
+      { key: "threeCellStrength", def: 1.0, min: 0.0, max: 1.5, label: "Three-cell strength",
+        desc: "Strength of the Hadley/Ferrel/Polar cell pressure belts (subtropical highs at ~30°, subpolar lows at ~60°, ITCZ at equator). 0 = smooth gradient. 1 = realistic alternating belts giving trade winds + westerlies." },
       { key: "coriolisStrength", def: 0.25, min: 0.05, max: 0.50, label: "Coriolis strength",
         desc: "Planetary rotation effect (2Ω at poles). Uses real sin(φ) profile. Controls how much wind spirals vs flows straight toward low pressure." },
       { key: "buoyancy", def: 0.8, min: 0.1, max: 2.0, label: "Buoyancy",
@@ -128,7 +130,7 @@ export const PARAMS = {
         desc: "Linear multiplier on final wind output. Scales all speeds equally without changing patterns." },
       { key: "windContrast", def: 1.0, min: 0.5, max: 3.0, label: "Wind speed contrast",
         desc: "Power curve exponent on wind magnitude. >1 = fast winds get faster, slow winds stay slow (amplifies peaks). <1 = more uniform speeds." },
-      { key: "windSolverIter", def: 25, min: 8, max: 60, step: 1, label: "Solver iterations",
+      { key: "windSolverIter", def: 30, min: 8, max: 60, step: 1, label: "Solver iterations",
         desc: "Relaxation iterations. More = closer to steady-state equilibrium but slower generation." },
     ]
   },

@@ -1351,20 +1351,28 @@ for (let wy = 0; wy < wH; wy++) {
 }
 
 // ── Pressure per layer ──
-// Pressure from LATITUDE ONLY. No land/ocean contrast, no orographic
-// pressure. Mountains deflect wind physically (terrain deflection),
-// they don't create their own pressure fields.
+// Three-cell belt structure: ITCZ low, subtropical high, subpolar low,
+// polar high. These are the most robust features of planetary atmospheric
+// circulation — they exist on every planet with an atmosphere and rotation.
 const _pScale = p("pressureScale", 4.0);
+const _threeCellStr = p("threeCellStrength", 1.0);
 const layerP = new Array(NL);
 for (let l = 0; l < NL; l++) {
   layerP[l] = new Float32Array(cellN);
+  const cellScale = 1 - l * 0.3; // belts weaken with altitude
   for (let wy = 0; wy < wH; wy++) {
-    const latFrac = Math.abs(wy / wH - 0.5) * 2;
+    const latFrac = Math.abs(wy / wH - 0.5) * 2; // 0=equator, 1=pole
     const latRad = latFrac * Math.PI / 2;
     const sinLat = Math.sin(latRad);
     const sin2 = sinLat * sinLat, sin4 = sin2 * sin2;
     const latTemp = Math.max(0, (1 - 0.65 * sin2 - 0.35 * sin4) - l * 0.22);
-    const latP = -latTemp * _pScale;
+    // Base gradient + three-cell anomaly
+    const latDeg = latFrac * 90;
+    const subtropHigh = Math.exp(-((latDeg - 30) * (latDeg - 30)) / (12 * 12));
+    const subpolarLow = -0.6 * Math.exp(-((latDeg - 60) * (latDeg - 60)) / (10 * 10));
+    const itczLow = -0.4 * Math.exp(-((latDeg - 5) * (latDeg - 5)) / (8 * 8));
+    const anomaly = (subtropHigh + subpolarLow + itczLow) * _threeCellStr * cellScale;
+    const latP = -latTemp * _pScale + anomaly * _pScale;
     for (let wx = 0; wx < wW; wx++) {
       layerP[l][wy * wW + wx] = latP;
     }
@@ -1383,9 +1391,67 @@ const buoyancy = p("buoyancy", 0.8);
 const vertCoupling = p("vertCoupling", 0.22);
 const _fMax = p("coriolisStrength", 0.25);
 
+// ── Geostrophic wind initialization ──
+// Instead of starting from zero, initialize wind to the geostrophic balance:
+// u_g = -(1/f) * dp/dy,  v_g = (1/f) * dp/dx * cos(lat)
+// This immediately gives trade winds, westerlies, and polar easterlies.
+for (let l = 0; l < NL; l++) {
+  for (let wy = 1; wy < wH - 1; wy++) {
+    const latSigned = (wy / wH - 0.5) * 2;
+    const f = -Math.sin(latSigned * Math.PI / 2) * _fMax;
+    // Clamp |f| near equator — geostrophic approximation breaks down there
+    const fSafe = Math.sign(f) * Math.max(Math.abs(f), _fMax * 0.15);
+    const cosLat = Math.cos(Math.abs(latSigned) * Math.PI / 2);
+    for (let wx = 0; wx < wW; wx++) {
+      const wi = wy * wW + wx;
+      const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+      const dpdy = (layerP[l][(wy + 1) * wW + wx] - layerP[l][(wy - 1) * wW + wx]) * 0.5;
+      const dpdx = (layerP[l][wy * wW + wr2] - layerP[l][wy * wW + wl2]) * 0.5;
+      // Scale to 70% of geostrophic — let iterations converge to full value
+      lWindX[l][wi] = -(1 / fSafe) * dpdy * 0.7;
+      lWindY[l][wi] = (1 / fSafe) * dpdx * cosLat * 0.7;
+    }
+  }
+}
+
 // ── Main 3D solver ──
-const _windIter = p("windSolverIter", 25);
+const _windIter = p("windSolverIter", 30);
 for (let iter = 0; iter < _windIter; iter++) {
+
+  // 0) Semi-Lagrangian advection (surface only, skip iter 0).
+  // Propagates terrain deflection and wake patterns downstream.
+  // Without this, deflection only affects the cell where the mountain is.
+  if (iter > 0) {
+    const uX0 = lWindX[0], uY0 = lWindY[0];
+    const advX = new Float32Array(cellN);
+    const advY = new Float32Array(cellN);
+    const advDt = 0.8;
+    for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+      const wi = wy * wW + wx;
+      // Departure point (clamp displacement to ±2 cells for CFL safety)
+      const dx2 = Math.max(-2, Math.min(2, uX0[wi] * advDt));
+      const dy2 = Math.max(-2, Math.min(2, uY0[wi] * advDt));
+      const srcX = wx - dx2;
+      const srcY = wy - dy2;
+      // Bilinear interpolation (wrap X, clamp Y)
+      const sx = ((srcX % wW) + wW) % wW;
+      const sy = Math.max(1, Math.min(wH - 2, srcY));
+      const ix = Math.floor(sx), iy = Math.floor(sy);
+      const fx = sx - ix, fy = sy - iy;
+      const ix1 = (ix + 1) % wW;
+      const iy1 = Math.min(wH - 2, iy + 1);
+      advX[wi] = uX0[iy * wW + ix] * (1 - fx) * (1 - fy) + uX0[iy * wW + ix1] * fx * (1 - fy)
+               + uX0[iy1 * wW + ix] * (1 - fx) * fy + uX0[iy1 * wW + ix1] * fx * fy;
+      advY[wi] = uY0[iy * wW + ix] * (1 - fx) * (1 - fy) + uY0[iy * wW + ix1] * fx * (1 - fy)
+               + uY0[iy1 * wW + ix] * (1 - fx) * fy + uY0[iy1 * wW + ix1] * fx * fy;
+    }
+    // Blend: 60% advected + 40% original (keeps wind responsive to local forces)
+    for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+      const wi = wy * wW + wx;
+      lWindX[0][wi] = advX[wi] * 0.6 + uX0[wi] * 0.4;
+      lWindY[0][wi] = advY[wi] * 0.6 + uY0[wi] * 0.4;
+    }
+  }
 
   // 1) Vertical velocity from buoyancy
   for (let i = 0; i < cellN; i++) {
@@ -1463,13 +1529,17 @@ for (let iter = 0; iter < _windIter; iter++) {
     for (let wy = 1; wy < wH - 1; wy++) {
       const latSigned = (wy / wH - 0.5) * 2;
       const f = -Math.sin(latSigned * Math.PI / 2) * _fMax;
+      // cos(lat) correction: grid cells are narrower near poles in
+      // equirectangular projection. Without this, zonal PGF is
+      // overestimated at high latitudes by 1/cos(lat).
+      const cosLat = Math.cos(Math.abs(latSigned) * Math.PI / 2);
       for (let wx = 0; wx < wW; wx++) {
         const wi = wy * wW + wx;
         const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
         const nl = wy * wW + wl, nr = wy * wW + wr;
         const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
 
-        const pgfX = -(pArr[nr] - pArr[nl]) * 0.5;
+        const pgfX = -(pArr[nr] - pArr[nl]) * 0.5 * cosLat;
         const pgfY = -(pArr[nd] - pArr[nu]) * 0.5;
         const corX = -f * tmpY[wi];
         const corY = f * tmpX[wi];
@@ -1549,8 +1619,12 @@ for (let iter = 0; iter < _windIter; iter++) {
       }
     }
 
-    // Divergence correction (per-cell strength)
-    if (iter % 2 === 0) {
+    // Divergence correction (upper layers only).
+    // Surface wind is naturally convergent/divergent — the convergence
+    // feedback handles pressure adjustment. Correcting surface divergence
+    // away fights the land barrier mechanism. Upper layers should be
+    // approximately non-divergent (mass continuity).
+    if (iter % 2 === 0 && l > 0) {
       const divP2 = new Float32Array(cellN);
       for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
         const wi = wy * wW + wx;
@@ -1572,9 +1646,8 @@ for (let iter = 0; iter < _windIter; iter++) {
       for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
         const wi = wy * wW + wx;
         const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
-        const ds = l === 0 ? (0.1 + 0.3 * (1 - landFrac[wi])) : 1.0;
-        uX[wi] -= (pCorr[wy * wW + wr2] - pCorr[wy * wW + wl2]) * 0.5 * ds;
-        uY[wi] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5 * ds;
+        uX[wi] -= (pCorr[wy * wW + wr2] - pCorr[wy * wW + wl2]) * 0.5;
+        uY[wi] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5;
       }
     }
   } // end per-layer horizontal solver
