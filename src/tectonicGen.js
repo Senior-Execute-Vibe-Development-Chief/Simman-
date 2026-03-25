@@ -1375,11 +1375,7 @@ for (let l = 0; l < NL; l++) {
     const baseP = -latTemp * _pScale;
     for (let wx = 0; wx < wW; wx++) {
       const wi = wy * wW + wx;
-      // Subtropical highs are discrete ocean-basin centers, not a continuous
-      // band. Modulate belt anomaly by ocean fraction: full over ocean,
-      // weakened over land. This breaks latitude-only symmetry naturally.
-      const oceanMod = 0.4 + 0.6 * (1 - landFrac[wi]);
-      let pVal = baseP + anomaly * _pScale * oceanMod;
+      let pVal = baseP + anomaly * _pScale;
       // Mesoscale pressure noise (surface only): creates natural speed
       // variation along a latitude band instead of rigid uniform bands.
       if (l === 0) {
