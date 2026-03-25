@@ -128,7 +128,7 @@ export const PARAMS = {
         desc: "Linear multiplier on final wind output. Scales all speeds equally without changing patterns." },
       { key: "windContrast", def: 1.3, min: 0.5, max: 3.0, label: "Wind speed contrast",
         desc: "Power curve exponent on wind magnitude. >1 = fast winds get faster, slow winds stay slow (amplifies peaks). <1 = more uniform speeds." },
-      { key: "windSolverIter", def: 30, min: 8, max: 60, step: 1, label: "Solver iterations",
+      { key: "windSolverIter", def: 30, min: 8, max: 500, step: 1, label: "Solver iterations",
         desc: "Relaxation iterations. More = closer to steady-state equilibrium but slower generation." },
     ]
   },
