@@ -850,26 +850,34 @@ smoothField(pressure, pSmooth, wW, wH, 5, 4);
 for (let i = 0; i < pressure.length; i++) pressure[i] = pSmooth[i];
 
 // ── Driving force field ──
-// Surface wind = down the pressure gradient + subtle Coriolis deflection.
-// Coriolis deflects RIGHT in NH, LEFT in SH — this is what creates the
-// swirl patterns around pressure systems. It's a rotation, not a flip.
+// How real surface wind works on a rotating planet:
+// 1. Pressure gradient pushes air toward low pressure
+// 2. Coriolis deflects it RIGHT (NH) / LEFT (SH) — so strongly that
+//    wind ends up flowing nearly PARALLEL to isobars (geostrophic balance)
+// 3. Surface friction pulls it back ~15-25° across isobars toward low pressure
+// Result: wind spirals around pressure systems, not straight into them.
+//
+// We model this as: rotate the pressure-gradient vector by a large angle
+// (60-68° at mid-lats, 0° at equator) using tanh for smooth transition.
 const forceX = new Float32Array(wW * wH);
 const forceY = new Float32Array(wW * wH);
 for (let wy = 1; wy < wH - 1; wy++) {
   const latSigned = (wy / wH - 0.5) * 2; // -1(north) to +1(south)
-  const latAbs = Math.abs(latSigned);
-  // Coriolis deflection angle: 0 at equator, ~20-30° at mid-lats
-  // Positive = clockwise deflection (NH), negative = counter-clockwise (SH)
-  const coriolisAngle = latSigned * -0.45; // radians, smooth through equator
+  // Coriolis rotation: saturates at ~68° (1.18 rad) near poles,
+  // ~58° at mid-latitudes, 0 at equator. tanh prevents over-rotation.
+  // Sign: NH (latSigned<0) → positive rotation, SH → negative
+  // This creates: clockwise flow around NH highs, counter-clockwise around SH highs
+  const coriolisAngle = -Math.tanh(latSigned * 2.5) * 1.2;
   const cosA = Math.cos(coriolisAngle), sinA = Math.sin(coriolisAngle);
   for (let wx = 0; wx < wW; wx++) {
     const wi = wy * wW + wx;
     const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
     const dpDx = (pressure[wy * wW + wr] - pressure[wy * wW + wl]) * 0.5;
     const dpDy = (pressure[(wy + 1) * wW + wx] - pressure[(wy - 1) * wW + wx]) * 0.5;
-    // Base flow: down the pressure gradient (toward low pressure)
+    // Base flow: toward low pressure
     const baseX = -dpDx, baseY = -dpDy;
-    // Rotate by Coriolis angle (smooth, no discontinuity at equator)
+    // Rotate by Coriolis angle — at mid-lats this turns "toward low"
+    // into "mostly along isobars with slight inward spiral"
     forceX[wi] = baseX * cosA - baseY * sinA;
     forceY[wi] = baseX * sinA + baseY * cosA;
   }
