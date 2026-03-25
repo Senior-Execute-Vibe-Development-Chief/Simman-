@@ -760,8 +760,9 @@ const windY = new Float32Array(wW * wH);
 
 // ── Geography on wind grid ──
 const wElev = new Float32Array(wW * wH);
-// Drag: surface friction. Land always has MORE drag than ocean (terrain roughness).
-// Ocean is smooth; land has trees, buildings, mountains creating turbulent friction.
+// Drag: surface friction. Land always has MORE drag than ocean.
+// Lowlands have MOST drag (sheltered by trees/terrain), peaks have less (exposed).
+// But all land drag > ocean drag, so land wind is always weaker overall.
 const drag = new Float32Array(wW * wH);
 for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const px = Math.min(W - 1, wx * WG), py = Math.min(H - 1, wy * WG);
@@ -770,9 +771,9 @@ for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   if (e0 <= 0) {
     drag[wy * wW + wx] = p("oceanDrag", 0.02); // ocean: very low friction
   } else {
-    // All land: high drag, increasing with elevation (rougher terrain)
-    // Coastal flats ~0.35, inland ~0.42, hills ~0.50, mountains ~0.60
-    drag[wy * wW + wx] = Math.min(0.65, 0.35 + e0 * 0.6);
+    // Land drag: lowlands highest (sheltered), decreasing with elevation (exposed)
+    // Coastal flats ~0.50, inland ~0.45, hills ~0.35, peaks ~0.20
+    drag[wy * wW + wx] = Math.max(0.18, 0.50 - e0 * 0.8);
   }
 }
 
@@ -990,19 +991,19 @@ for (let iter = 0; iter < _windIter; iter++) {
 }
 
 // ── Post-normalization land dampening ──
-// Land wind must always be visually weaker than ocean (surface drag absorbs energy).
-// Cap land speeds so even the windiest peaks stay in the green-yellow range.
+// Land wind always weaker than ocean, but higher elevations are windier than lowlands.
+// Lowlands ×0.35, hills ×0.45, peaks ×0.55. Cap at green-yellow on color scale.
 for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const wi = wy * wW + wx;
   if (wElev[wi] > 0) {
-    // Dampen land wind: flat land ×0.45, mountains ×0.35 (more terrain blockage)
-    const landDamp = 0.45 - Math.min(0.10, wElev[wi] * 0.3);
+    // Higher land = less dampening (more exposed)
+    const landDamp = 0.35 + Math.min(0.20, wElev[wi] * 0.5);
     windX[wi] *= landDamp;
     windY[wi] *= landDamp;
-    // Hard cap: no land cell exceeds 0.13 (~green-yellow on color scale)
+    // Hard cap: no land cell exceeds 0.14 (~green-yellow on color scale)
     const s = Math.sqrt(windX[wi] * windX[wi] + windY[wi] * windY[wi]);
-    if (s > 0.13) {
-      const clamp = 0.13 / s;
+    if (s > 0.14) {
+      const clamp = 0.14 / s;
       windX[wi] *= clamp;
       windY[wi] *= clamp;
     }
