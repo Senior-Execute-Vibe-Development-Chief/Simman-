@@ -760,22 +760,22 @@ const windY = new Float32Array(wW * wH);
 
 // ── Geography on wind grid ──
 const wElev = new Float32Array(wW * wH);
-// Drag field: 0=ocean (free), 0.3-0.6=lowlands (friction), 1.0=mountains (wall)
+// Drag: surface friction. Lowlands have HIGH drag (sheltered), peaks LOW drag (exposed)
+// This matches real-world: valleys ~2km/h, ridges/peaks ~15-40km/h
 const drag = new Float32Array(wW * wH);
-const isWall = new Uint8Array(wW * wH); // only high mountains are true walls
 for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const px = Math.min(W - 1, wx * WG), py = Math.min(H - 1, wy * WG);
   const e0 = elevation[py * W + px];
   wElev[wy * wW + wx] = Math.max(0, e0);
   if (e0 <= 0) {
-    drag[wy * wW + wx] = 0; // ocean: no drag
-  } else if (e0 < 0.08) {
-    drag[wy * wW + wx] = 0.15 + e0 * 2; // coastal lowlands: light drag
-  } else if (e0 < 0.25) {
-    drag[wy * wW + wx] = 0.30 + (e0 - 0.08) * 2.5; // plains/hills: moderate
+    drag[wy * wW + wx] = 0.02; // ocean: very low friction
+  } else if (e0 < 0.06) {
+    drag[wy * wW + wx] = 0.55 + e0 * 3; // coastal lowlands: high friction (sheltered)
+  } else if (e0 < 0.20) {
+    drag[wy * wW + wx] = 0.73 - (e0 - 0.06) * 1.5; // inland: decreasing as elevation rises
   } else {
-    drag[wy * wW + wx] = 0.72 + Math.min(0.28, (e0 - 0.25) * 1.5); // mountains: heavy→wall
-    if (e0 > 0.35) isWall[wy * wW + wx] = 1;
+    // Mountains/peaks: LOW drag (exposed to upper winds), minimum 0.05
+    drag[wy * wW + wx] = Math.max(0.05, 0.52 - (e0 - 0.20) * 1.5);
   }
 }
 
@@ -803,6 +803,7 @@ const landFrac = new Float32Array(wW * wH);
 smoothField(landFracRaw, landFrac, wW, wH, 6, 3);
 
 // ── Pressure field ──
+// Wide Gaussians prevent sharp banding; continent/ocean contrast drives circulation
 const pressure = new Float32Array(wW * wH);
 for (let wy = 0; wy < wH; wy++) {
   const lat = Math.abs((wy / wH - 0.5) * 2);
@@ -810,12 +811,12 @@ for (let wy = 0; wy < wH; wy++) {
     const wi = wy * wW + wx;
     const lf = landFrac[wi], oc = 1 - lf;
     let p = 0;
-    p += Math.exp(-((lat - 0.33) ** 2) / 0.010) * oc * 1.5;  // subtropical ocean highs
-    p -= Math.exp(-((lat - 0.22) ** 2) / 0.012) * lf * 1.0;  // tropical continental lows
-    p -= Math.exp(-((lat - 0.63) ** 2) / 0.008) * oc * 1.0;  // subpolar ocean lows
-    p += Math.exp(-((lat - 0.85) ** 2) / 0.010) * lf * 0.5;  // polar continental highs
-    p -= Math.exp(-(lat * lat) / 0.004) * 0.5;                // ITCZ trough
-    p += Math.exp(-((lat - 0.50) ** 2) / 0.015) * lf * 0.4;  // mid-lat continental high
+    p += Math.exp(-((lat - 0.33) ** 2) / 0.040) * oc * 0.6;  // subtropical ocean highs (wider, weaker)
+    p -= Math.exp(-((lat - 0.22) ** 2) / 0.035) * lf * 0.4;  // tropical continental lows
+    p -= Math.exp(-((lat - 0.63) ** 2) / 0.030) * oc * 0.5;  // subpolar ocean lows
+    p += Math.exp(-((lat - 0.85) ** 2) / 0.025) * lf * 0.25; // polar continental highs
+    p -= Math.exp(-(lat * lat) / 0.012) * 0.3;                // ITCZ trough (wider)
+    p += Math.exp(-((lat - 0.50) ** 2) / 0.040) * lf * 0.2;  // mid-lat continental high
     pressure[wi] = p;
   }
 }
@@ -881,67 +882,56 @@ for (let wy = 1; wy < wH - 1; wy++) {
   }
 }
 
-// ── Fluid solver with drag field ──
-// Mountains (isWall) = hard wall, zero velocity
-// Lowlands = drag slows wind proportionally (wind penetrates but decays)
-// Ocean = free flow
-// Divergence correction forces wind around high-drag/wall areas
+// ── Fluid solver with continuous drag ──
+// No hard walls. All cells participate.
+// Drag slows sheltered lowlands, mountains have low drag (exposed).
 
-// Initialize all cells from driving force (including land — drag will slow them)
+// Initialize from driving force
 for (let i = 0; i < wW * wH; i++) {
-  windX[i] = forceX[i] * (1 - drag[i]);
-  windY[i] = forceY[i] * (1 - drag[i]);
+  windX[i] = forceX[i];
+  windY[i] = forceY[i];
 }
 
 const divP = new Float32Array(wW * wH);
 
 for (let iter = 0; iter < 25; iter++) {
-  // 1) Enforce hard walls: mountain cells = 0
-  for (let i = 0; i < wW * wH; i++) {
-    if (isWall[i]) { windX[i] = 0; windY[i] = 0; }
-  }
-
-  // 2) Diffuse + drag + driving force
+  // 1) Diffuse + drag + driving force
   const tmpX = new Float32Array(windX);
   const tmpY = new Float32Array(windY);
   for (let wy = 1; wy < wH - 1; wy++) {
     for (let wx = 0; wx < wW; wx++) {
       const wi = wy * wW + wx;
-      if (isWall[wi]) continue;
       const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
       const nl = wy * wW + wl, nr = wy * wW + wr;
       const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
 
-      // Average neighbors (skip walls, weight non-wall neighbors)
-      let sx = 0, sy = 0, cnt = 0;
-      if (!isWall[nl]) { sx += tmpX[nl]; sy += tmpY[nl]; cnt++; }
-      if (!isWall[nr]) { sx += tmpX[nr]; sy += tmpY[nr]; cnt++; }
-      if (!isWall[nu]) { sx += tmpX[nu]; sy += tmpY[nu]; cnt++; }
-      if (!isWall[nd]) { sx += tmpX[nd]; sy += tmpY[nd]; cnt++; }
-      if (cnt > 0) { sx /= cnt; sy /= cnt; }
+      // Neighbor average (all cells participate)
+      const sx = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25;
+      const sy = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25;
 
-      // Mountain elevation gradient: deflect wind around peaks
+      // Terrain gradient: deflects wind along contour lines
       const eL = wElev[nl], eR = wElev[nr], eU = wElev[nu], eD = wElev[nd];
-      const gx = (Math.max(0, eL - 0.10) - Math.max(0, eR - 0.10)) * 2.0;
-      const gy = (Math.max(0, eU - 0.10) - Math.max(0, eD - 0.10)) * 2.0;
+      const gradX = (eR - eL) * 0.5, gradY = (eD - eU) * 0.5;
+      const gradMag = Math.sqrt(gradX * gradX + gradY * gradY);
+      // Deflection force perpendicular to slope (terrain steering)
+      const deflectStr = Math.min(0.8, gradMag * 4);
+      const dfx = -gradY * deflectStr, dfy = gradX * deflectStr;
 
-      // Blend: current + neighbors + force + terrain deflection
-      let vx = tmpX[wi] * 0.50 + sx * 0.30 + forceX[wi] * 0.20 + gx;
-      let vy = tmpY[wi] * 0.50 + sy * 0.30 + forceY[wi] * 0.20 + gy;
+      // Blend: current + neighbors + force + deflection
+      let vx = tmpX[wi] * 0.45 + sx * 0.30 + forceX[wi] * 0.25 + dfx;
+      let vy = tmpY[wi] * 0.45 + sy * 0.30 + forceY[wi] * 0.25 + dfy;
 
-      // Apply drag: slows wind proportionally over land
+      // Apply drag per iteration
       const d = drag[wi];
-      const dragMult = 1 - d * 0.35; // per-iteration: 0.35 drag factor over land
-      windX[wi] = vx * dragMult;
-      windY[wi] = vy * dragMult;
+      windX[wi] = vx * (1 - d * 0.25);
+      windY[wi] = vy * (1 - d * 0.25);
     }
   }
 
-  // 3) Divergence correction every 2nd iteration
+  // 2) Divergence correction every 2nd iteration
   if (iter % 2 === 0) {
     for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
       const wi = wy * wW + wx;
-      if (isWall[wi]) { divP[wi] = 0; continue; }
       const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
       divP[wi] = (windX[wy * wW + wr] - windX[wy * wW + wl]
         + windY[(wy + 1) * wW + wx] - windY[(wy - 1) * wW + wx]) * 0.5;
@@ -951,7 +941,6 @@ for (let iter = 0; iter < 25; iter++) {
       const pTmp = new Float32Array(pCorr);
       for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
         const wi = wy * wW + wx;
-        if (isWall[wi]) continue;
         const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
         pCorr[wi] = (pTmp[wy * wW + wl] + pTmp[wy * wW + wr]
           + pTmp[(wy - 1) * wW + wx] + pTmp[(wy + 1) * wW + wx]
@@ -960,7 +949,6 @@ for (let iter = 0; iter < 25; iter++) {
     }
     for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
       const wi = wy * wW + wx;
-      if (isWall[wi]) continue;
       const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
       windX[wi] -= (pCorr[wy * wW + wr] - pCorr[wy * wW + wl]) * 0.5;
       windY[wi] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5;
@@ -968,29 +956,9 @@ for (let iter = 0; iter < 25; iter++) {
   }
 }
 
-// Final mountain enforcement: very weak residual wind (from neighbors)
-// Mountains aren't vacuum — thin air still moves, just very weakly
-for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
-  const wi = wy * wW + wx;
-  if (!isWall[wi]) continue;
-  const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-  const nl = wy * wW + wl, nr = wy * wW + wr;
-  const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
-  let sx = 0, sy = 0, cnt = 0;
-  if (!isWall[nl]) { sx += windX[nl]; sy += windY[nl]; cnt++; }
-  if (!isWall[nr]) { sx += windX[nr]; sy += windY[nr]; cnt++; }
-  if (!isWall[nu]) { sx += windX[nu]; sy += windY[nu]; cnt++; }
-  if (!isWall[nd]) { sx += windX[nd]; sy += windY[nd]; cnt++; }
-  if (cnt > 0) {
-    // Very weak: 5-10% of neighbor average depending on elevation
-    const frac = 0.05 + (1 - Math.min(1, wElev[wi] * 2)) * 0.05;
-    windX[wi] = (sx / cnt) * frac;
-    windY[wi] = (sy / cnt) * frac;
-  }
-}
-
-// ── Percentile normalization: 60th percentile → 0.22 ──
-// Pushes majority of wind into blue-green, only fast jets reach yellow/red.
+// ── Percentile normalization: median → 0.18 ──
+// Most area should be blue-green. Only the top ~20% reaches yellow/orange.
+// Red reserved for exceptional jets only.
 {
   const speeds = [];
   for (let i = 0; i < wW * wH; i++) {
@@ -998,8 +966,8 @@ for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
     if (s > 0.001) speeds.push(s);
   }
   speeds.sort((a, b) => a - b);
-  const p60 = speeds[Math.min(speeds.length - 1, (speeds.length * 0.60) | 0)] || 1;
-  const scale = 0.22 / p60;
+  const p50 = speeds[Math.min(speeds.length - 1, (speeds.length * 0.50) | 0)] || 1;
+  const scale = 0.18 / p50;
   for (let i = 0; i < wW * wH; i++) {
     windX[i] *= scale;
     windY[i] *= scale;
@@ -1009,14 +977,12 @@ for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
 // ── Subtle curl noise for mesoscale eddies (all cells, reduced amplitude) ──
 for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
   const wi = wy * wW + wx;
-  if (isWall[wi]) continue;
   const nx = wx / wW, ny = wy / wH;
   const eps = 0.003;
   const n0 = fbm(nx * 5 + s3 + 100, ny * 5 + s3 + 100, 3, 2, 0.5);
   const nDx = fbm((nx + eps) * 5 + s3 + 100, ny * 5 + s3 + 100, 3, 2, 0.5);
   const nDy = fbm(nx * 5 + s3 + 100, (ny + eps) * 5 + s3 + 100, 3, 2, 0.5);
-  // Much smaller amplitude, and even smaller over land
-  const amp = drag[wi] > 0 ? 0.008 : 0.02;
+  const amp = wElev[wi] > 0 ? 0.008 : 0.015;
   windX[wi] += (nDy - n0) / eps * amp;
   windY[wi] -= (nDx - n0) / eps * amp;
 }
