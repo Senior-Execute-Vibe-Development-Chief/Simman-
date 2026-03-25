@@ -803,35 +803,32 @@ const landFrac = new Float32Array(wW * wH);
 smoothField(landFracRaw, landFrac, wW, wH, 6, 3);
 
 // ── Pressure field ──
-// Wide Gaussians prevent sharp banding; continent/ocean contrast drives circulation
+// Built from randomly placed highs and lows, biased by latitude and land/ocean.
+// NO abs(lat) symmetry — each hemisphere gets its own independent systems.
 const pressure = new Float32Array(wW * wH);
-for (let wy = 0; wy < wH; wy++) {
-  const lat = Math.abs((wy / wH - 0.5) * 2);
-  for (let wx = 0; wx < wW; wx++) {
-    const wi = wy * wW + wx;
-    const lf = landFrac[wi], oc = 1 - lf;
-    let p = 0;
-    p += Math.exp(-((lat - 0.33) ** 2) / 0.040) * oc * 0.6;  // subtropical ocean highs (wider, weaker)
-    p -= Math.exp(-((lat - 0.22) ** 2) / 0.035) * lf * 0.4;  // tropical continental lows
-    p -= Math.exp(-((lat - 0.63) ** 2) / 0.030) * oc * 0.5;  // subpolar ocean lows
-    p += Math.exp(-((lat - 0.85) ** 2) / 0.025) * lf * 0.25; // polar continental highs
-    p -= Math.exp(-(lat * lat) / 0.012) * 0.3;                // ITCZ trough (wider)
-    p += Math.exp(-((lat - 0.50) ** 2) / 0.040) * lf * 0.2;  // mid-lat continental high
-    pressure[wi] = p;
-  }
-}
-// Synoptic weather systems — these are the PRIMARY drivers of wind variation
-// More systems, larger, stronger — they break up any residual banding
-const numSynoptic = 15 + Math.floor(rng() * 12);
-for (let pi = 0; pi < numSynoptic; pi++) {
-  const pcx = rng() * wW, pcy = 0.05 * wH + rng() * 0.90 * wH;
-  const lat = Math.abs(pcy / wH - 0.5) * 2;
+
+// Place semi-permanent pressure systems (the real drivers of global wind)
+// Subtropical highs, subpolar lows, thermal lows/highs over continents
+const numSystems = 20 + Math.floor(rng() * 15);
+for (let pi = 0; pi < numSystems; pi++) {
+  const pcx = rng() * wW;
+  const pcy = 0.03 * wH + rng() * 0.94 * wH;
+  const latN = pcy / wH; // 0=top(north pole), 1=bottom(south pole)
+  const latAbs = Math.abs(latN - 0.5) * 2; // 0=equator, 1=pole
   const wi0 = Math.min(wH - 1, pcy | 0) * wW + Math.min(wW - 1, pcx | 0);
   const lf = landFrac[wi0], oc = 1 - lf;
-  // Subtropical lats favor highs, mid-lats favor lows
-  const isHigh = rng() < 0.30 + Math.exp(-((lat - 0.33) ** 2) / 0.03) * 0.45;
-  const str = (0.3 + rng() * 0.8) * (0.5 + oc * 0.6);
-  const rad = 15 + rng() * 35;
+
+  // Bias: subtropical ocean → high, mid-lat ocean → low,
+  // tropical land → low (thermal), polar land → high
+  let highProb = 0.40;
+  if (latAbs > 0.20 && latAbs < 0.45) highProb += oc * 0.35;  // subtropical ocean highs
+  if (latAbs > 0.50 && latAbs < 0.80) highProb -= oc * 0.25;  // subpolar ocean lows
+  if (latAbs < 0.30) highProb -= lf * 0.20;                     // tropical continental lows
+  if (latAbs > 0.75) highProb += lf * 0.15;                     // polar continental highs
+  const isHigh = rng() < highProb;
+
+  const str = (0.3 + rng() * 0.9) * (0.4 + oc * 0.7);
+  const rad = 12 + rng() * 40;
   for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
     let ddx = wx - pcx;
     if (ddx > wW / 2) ddx -= wW; if (ddx < -wW / 2) ddx += wW;
@@ -840,39 +837,41 @@ for (let pi = 0; pi < numSynoptic; pi++) {
     if (d2 < r2 * 4) pressure[wy * wW + wx] += (isHigh ? 1 : -1) * str * Math.exp(-d2 / (2 * r2));
   }
 }
+
+// Add gentle large-scale noise to break any remaining regularity
+for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
+  const wi = wy * wW + wx;
+  pressure[wi] += fbm(wx / wW * 3 + s3 + 50, wy / wH * 3 + s3 + 50, 2, 2, 0.5) * 0.15;
+}
+
 // Smooth pressure
 const pSmooth = new Float32Array(wW * wH);
-smoothField(pressure, pSmooth, wW, wH, 4, 3);
+smoothField(pressure, pSmooth, wW, wH, 5, 4);
 for (let i = 0; i < pressure.length; i++) pressure[i] = pSmooth[i];
 
-// ── Driving force field: what the atmosphere "wants" to do ──
-// Geostrophic wind + latitude bands, computed once as the forcing term
+// ── Driving force field ──
+// Surface wind = down the pressure gradient + subtle Coriolis deflection.
+// Coriolis deflects RIGHT in NH, LEFT in SH — this is what creates the
+// swirl patterns around pressure systems. It's a rotation, not a flip.
 const forceX = new Float32Array(wW * wH);
 const forceY = new Float32Array(wW * wH);
 for (let wy = 1; wy < wH - 1; wy++) {
-  const latSigned = (wy / wH - 0.5) * 2; // -1 to +1
-  const lat = Math.abs(latSigned);
-  // Smooth hemisphere factor: use tanh to transition gradually across equator
-  // instead of hard sign flip. This spreads the transition over ~10% of map height.
-  const hemi = Math.tanh(latSigned * 6);
-  // Coriolis parameter: smoothly approaches zero at equator
-  // Near equator, flow is pressure-driven (cross-isobar) not geostrophic
-  const f = Math.max(0.08, lat);
+  const latSigned = (wy / wH - 0.5) * 2; // -1(north) to +1(south)
+  const latAbs = Math.abs(latSigned);
+  // Coriolis deflection angle: 0 at equator, ~20-30° at mid-lats
+  // Positive = clockwise deflection (NH), negative = counter-clockwise (SH)
+  const coriolisAngle = latSigned * -0.45; // radians, smooth through equator
+  const cosA = Math.cos(coriolisAngle), sinA = Math.sin(coriolisAngle);
   for (let wx = 0; wx < wW; wx++) {
     const wi = wy * wW + wx;
     const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
     const dpDx = (pressure[wy * wW + wr] - pressure[wy * wW + wl]) * 0.5;
     const dpDy = (pressure[(wy + 1) * wW + wx] - pressure[(wy - 1) * wW + wx]) * 0.5;
-    // Geostrophic: perpendicular to pressure gradient, scaled by Coriolis
-    const geoX = -dpDy * hemi / f;
-    const geoY = dpDx * hemi / f;
-    // Cross-isobar fraction: high near equator (mostly pressure-driven),
-    // low at mid-lats (mostly geostrophic)
-    const crossFrac = 0.15 + (1 - lat) * 0.50;
-    let fx = geoX * (1 - crossFrac) + (-dpDx) * crossFrac;
-    let fy = geoY * (1 - crossFrac) + (-dpDy) * crossFrac;
-    forceX[wi] = fx;
-    forceY[wi] = fy;
+    // Base flow: down the pressure gradient (toward low pressure)
+    const baseX = -dpDx, baseY = -dpDy;
+    // Rotate by Coriolis angle (smooth, no discontinuity at equator)
+    forceX[wi] = baseX * cosA - baseY * sinA;
+    forceY[wi] = baseX * sinA + baseY * cosA;
   }
 }
 
