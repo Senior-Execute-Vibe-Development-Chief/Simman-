@@ -778,8 +778,7 @@ const e=w.elevation[si];
 const v=Math.min(255,Math.max(0,((e-floor)/range)*255))|0;
 const pi4=ti<<2;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=v;d[pi4+3]=255;}
 }else if(vm==="wind"){
-// Wind view — speed heatmap background (like Windy.com)
-// Color ramp: dark purple(0) → blue → cyan → green → yellow → red(1)
+// Wind view — speed heatmap everywhere (land + ocean), like Windy.com
 const wX=w.windX,wY=w.windY;
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
 const tc=terrainCache.current;
@@ -787,23 +786,24 @@ for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const pi4=ti<<2;
 const e=w.elevation[si];
-if(e>sl){
-// Land: very dim terrain
-d[pi4]=(tc[ti*3]*0.18)|0;d[pi4+1]=(tc[ti*3+1]*0.18)|0;d[pi4+2]=(tc[ti*3+2]*0.18)|0;d[pi4+3]=255;
-}else{
-// Ocean: speed heatmap
 const vx=wX?wX[si]:0,vy=wY?wY[si]:0;
 const spd=Math.sqrt(vx*vx+vy*vy);
-const t=Math.min(1,Math.pow(spd*2.2,0.5));
+const t=Math.min(1,Math.pow(spd*2.8,0.5));
+// Speed heatmap: dark purple → blue → cyan → green → yellow → red
 let r,g,b;
-if(t<0.15){const s=t/0.15;r=(10+s*20)|0;g=(8+s*15)|0;b=(30+s*60)|0;}       // dark purple→blue
-else if(t<0.30){const s=(t-0.15)/0.15;r=(30-s*10)|0;g=(23+s*80)|0;b=(90+s*50)|0;}  // blue→cyan
-else if(t<0.50){const s=(t-0.30)/0.20;r=(20+s*20)|0;g=(103+s*80)|0;b=(140-s*90)|0;} // cyan→green
-else if(t<0.70){const s=(t-0.50)/0.20;r=(40+s*180)|0;g=(183+s*50)|0;b=(50-s*30)|0;} // green→yellow
-else if(t<0.85){const s=(t-0.70)/0.15;r=(220+s*35)|0;g=(233-s*100)|0;b=(20-s*10)|0;} // yellow→orange
-else{const s=(t-0.85)/0.15;r=255;g=(133-s*90)|0;b=(10+s*5)|0;}                // orange→red
-d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;
-}}
+if(t<0.12){const s=t/0.12;r=(8+s*17)|0;g=(6+s*14)|0;b=(25+s*55)|0;}
+else if(t<0.25){const s=(t-0.12)/0.13;r=(25-s*5)|0;g=(20+s*75)|0;b=(80+s*50)|0;}
+else if(t<0.45){const s=(t-0.25)/0.20;r=(20+s*15)|0;g=(95+s*85)|0;b=(130-s*85)|0;}
+else if(t<0.65){const s=(t-0.45)/0.20;r=(35+s*185)|0;g=(180+s*45)|0;b=(45-s*30)|0;}
+else if(t<0.82){const s=(t-0.65)/0.17;r=(220+s*35)|0;g=(225-s*100)|0;b=(15-s*5)|0;}
+else{const s=(t-0.82)/0.18;r=255;g=(125-s*85)|0;b=(10+s*5)|0;}
+// Blend with dim terrain on land for topographic context
+if(e>sl){
+const landDim=0.25;const heatW=0.65;
+const tr=(tc[ti*3]*landDim)|0,tg=(tc[ti*3+1]*landDim)|0,tb=(tc[ti*3+2]*landDim)|0;
+r=(r*heatW+tr*(1-heatW))|0;g=(g*heatW+tg*(1-heatW))|0;b=(b*heatW+tb*(1-heatW))|0;
+}
+d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="power"){
 // Power view — one pixel per tile
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;

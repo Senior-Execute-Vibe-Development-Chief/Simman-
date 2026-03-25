@@ -760,12 +760,23 @@ const windY = new Float32Array(wW * wH);
 
 // ── Geography on wind grid ──
 const wElev = new Float32Array(wW * wH);
-const solid = new Uint8Array(wW * wH); // 1=land (wall), 0=ocean (fluid)
+// Drag field: 0=ocean (free), 0.3-0.6=lowlands (friction), 1.0=mountains (wall)
+const drag = new Float32Array(wW * wH);
+const isWall = new Uint8Array(wW * wH); // only high mountains are true walls
 for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const px = Math.min(W - 1, wx * WG), py = Math.min(H - 1, wy * WG);
   const e0 = elevation[py * W + px];
   wElev[wy * wW + wx] = Math.max(0, e0);
-  solid[wy * wW + wx] = e0 > 0 ? 1 : 0;
+  if (e0 <= 0) {
+    drag[wy * wW + wx] = 0; // ocean: no drag
+  } else if (e0 < 0.08) {
+    drag[wy * wW + wx] = 0.15 + e0 * 2; // coastal lowlands: light drag
+  } else if (e0 < 0.25) {
+    drag[wy * wW + wx] = 0.30 + (e0 - 0.08) * 2.5; // plains/hills: moderate
+  } else {
+    drag[wy * wW + wx] = 0.72 + Math.min(0.28, (e0 - 0.25) * 1.5); // mountains: heavy→wall
+    if (e0 > 0.35) isWall[wy * wW + wx] = 1;
+  }
 }
 
 // Smooth land fraction for pressure (continent-scale)
@@ -787,7 +798,7 @@ const smoothField = (src, dst, w2, h2, passes, rad) => {
   }
 };
 const landFracRaw = new Float32Array(wW * wH);
-for (let i = 0; i < solid.length; i++) landFracRaw[i] = solid[i];
+for (let i = 0; i < drag.length; i++) landFracRaw[i] = drag[i] > 0 ? 1 : 0;
 const landFrac = new Float32Array(wW * wH);
 smoothField(landFracRaw, landFrac, wW, wH, 6, 3);
 
@@ -870,77 +881,86 @@ for (let wy = 1; wy < wH - 1; wy++) {
   }
 }
 
-// ── Fluid solver: iterative relaxation with solid walls ──
-// Each iteration: apply force, diffuse, enforce walls, correct divergence
-// Land cells are ALWAYS zero velocity — wind must flow around them
-// This creates: Coanda effect, channeling through gaps, lee-side calms
+// ── Fluid solver with drag field ──
+// Mountains (isWall) = hard wall, zero velocity
+// Lowlands = drag slows wind proportionally (wind penetrates but decays)
+// Ocean = free flow
+// Divergence correction forces wind around high-drag/wall areas
 
-// Initialize ocean cells from driving force, land = 0
+// Initialize all cells from driving force (including land — drag will slow them)
 for (let i = 0; i < wW * wH; i++) {
-  if (!solid[i]) { windX[i] = forceX[i]; windY[i] = forceY[i]; }
+  windX[i] = forceX[i] * (1 - drag[i]);
+  windY[i] = forceY[i] * (1 - drag[i]);
 }
 
-const divP = new Float32Array(wW * wH); // pressure correction for divergence
+const divP = new Float32Array(wW * wH);
 
-for (let iter = 0; iter < 30; iter++) {
-  // 1) Enforce solid walls: land velocity = 0
+for (let iter = 0; iter < 25; iter++) {
+  // 1) Enforce hard walls: mountain cells = 0
   for (let i = 0; i < wW * wH; i++) {
-    if (solid[i]) { windX[i] = 0; windY[i] = 0; }
+    if (isWall[i]) { windX[i] = 0; windY[i] = 0; }
   }
 
-  // 2) Diffuse + nudge toward driving force
+  // 2) Diffuse + drag + driving force
   const tmpX = new Float32Array(windX);
   const tmpY = new Float32Array(windY);
   for (let wy = 1; wy < wH - 1; wy++) {
     for (let wx = 0; wx < wW; wx++) {
       const wi = wy * wW + wx;
-      if (solid[wi]) continue;
+      if (isWall[wi]) continue;
       const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-      // Average only non-solid neighbors (free-slip at walls)
-      let sx = 0, sy = 0, cnt = 0;
       const nl = wy * wW + wl, nr = wy * wW + wr;
       const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
-      if (!solid[nl]) { sx += tmpX[nl]; sy += tmpY[nl]; cnt++; }
-      if (!solid[nr]) { sx += tmpX[nr]; sy += tmpY[nr]; cnt++; }
-      if (!solid[nu]) { sx += tmpX[nu]; sy += tmpY[nu]; cnt++; }
-      if (!solid[nd]) { sx += tmpX[nd]; sy += tmpY[nd]; cnt++; }
+
+      // Average neighbors (skip walls, weight non-wall neighbors)
+      let sx = 0, sy = 0, cnt = 0;
+      if (!isWall[nl]) { sx += tmpX[nl]; sy += tmpY[nl]; cnt++; }
+      if (!isWall[nr]) { sx += tmpX[nr]; sy += tmpY[nr]; cnt++; }
+      if (!isWall[nu]) { sx += tmpX[nu]; sy += tmpY[nu]; cnt++; }
+      if (!isWall[nd]) { sx += tmpX[nd]; sy += tmpY[nd]; cnt++; }
       if (cnt > 0) { sx /= cnt; sy /= cnt; }
-      // Blend: 50% current, 30% diffused neighbors, 20% driving force
-      windX[wi] = tmpX[wi] * 0.50 + sx * 0.30 + forceX[wi] * 0.20;
-      windY[wi] = tmpY[wi] * 0.50 + sy * 0.30 + forceY[wi] * 0.20;
+
+      // Mountain elevation gradient: deflect wind around peaks
+      const eL = wElev[nl], eR = wElev[nr], eU = wElev[nu], eD = wElev[nd];
+      const gx = (Math.max(0, eL - 0.10) - Math.max(0, eR - 0.10)) * 2.0;
+      const gy = (Math.max(0, eU - 0.10) - Math.max(0, eD - 0.10)) * 2.0;
+
+      // Blend: current + neighbors + force + terrain deflection
+      let vx = tmpX[wi] * 0.50 + sx * 0.30 + forceX[wi] * 0.20 + gx;
+      let vy = tmpY[wi] * 0.50 + sy * 0.30 + forceY[wi] * 0.20 + gy;
+
+      // Apply drag: slows wind proportionally over land
+      const d = drag[wi];
+      const dragMult = 1 - d * 0.35; // per-iteration: 0.35 drag factor over land
+      windX[wi] = vx * dragMult;
+      windY[wi] = vy * dragMult;
     }
   }
 
-  // 3) Divergence correction (simplified pressure projection)
-  // Compute divergence, then solve for pressure correction to remove it
-  // This is what makes wind flow AROUND obstacles instead of through them
-  if (iter % 3 === 0) { // every 3rd iteration for performance
-    // Compute divergence
+  // 3) Divergence correction every 2nd iteration
+  if (iter % 2 === 0) {
     for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
       const wi = wy * wW + wx;
-      if (solid[wi]) { divP[wi] = 0; continue; }
+      if (isWall[wi]) { divP[wi] = 0; continue; }
       const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-      const div = (windX[wy * wW + wr] - windX[wy * wW + wl]
+      divP[wi] = (windX[wy * wW + wr] - windX[wy * wW + wl]
         + windY[(wy + 1) * wW + wx] - windY[(wy - 1) * wW + wx]) * 0.5;
-      divP[wi] = div;
     }
-    // Jacobi iterations to solve pressure correction
     const pCorr = new Float32Array(wW * wH);
-    for (let ji = 0; ji < 8; ji++) {
+    for (let ji = 0; ji < 10; ji++) {
       const pTmp = new Float32Array(pCorr);
       for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
         const wi = wy * wW + wx;
-        if (solid[wi]) continue;
+        if (isWall[wi]) continue;
         const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
         pCorr[wi] = (pTmp[wy * wW + wl] + pTmp[wy * wW + wr]
           + pTmp[(wy - 1) * wW + wx] + pTmp[(wy + 1) * wW + wx]
           - divP[wi]) * 0.25;
       }
     }
-    // Subtract pressure gradient to make field more divergence-free
     for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
       const wi = wy * wW + wx;
-      if (solid[wi]) continue;
+      if (isWall[wi]) continue;
       const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
       windX[wi] -= (pCorr[wy * wW + wr] - pCorr[wy * wW + wl]) * 0.5;
       windY[wi] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5;
@@ -950,13 +970,12 @@ for (let iter = 0; iter < 30; iter++) {
 
 // Final wall enforcement
 for (let i = 0; i < wW * wH; i++) {
-  if (solid[i]) { windX[i] = 0; windY[i] = 0; }
+  if (isWall[i]) { windX[i] = 0; windY[i] = 0; }
 }
 
-// ── Percentile-based normalization for good speed variation ──
-// Max-based normalization compresses the range if outliers exist.
-// Instead, normalize to the 85th percentile so most wind is moderate,
-// with fast streams clearly standing out (they clip to ~1.0).
+// ── Percentile normalization: 75th percentile → 0.35 ──
+// This ensures most ocean is moderate (blue-green range), only
+// the fastest streams (channels, roaring 40s) reach yellow/red.
 {
   const speeds = [];
   for (let i = 0; i < wW * wH; i++) {
@@ -964,27 +983,27 @@ for (let i = 0; i < wW * wH; i++) {
     if (s > 0.001) speeds.push(s);
   }
   speeds.sort((a, b) => a - b);
-  const p85 = speeds[Math.min(speeds.length - 1, (speeds.length * 0.85) | 0)] || 1;
-  // Scale so 85th percentile maps to 0.45 (moderate on the color ramp)
-  // Fast winds (top 15%) will be 0.45-0.8+, giving real variation
-  const scale = 0.45 / p85;
+  const p75 = speeds[Math.min(speeds.length - 1, (speeds.length * 0.75) | 0)] || 1;
+  const scale = 0.35 / p75;
   for (let i = 0; i < wW * wH; i++) {
     windX[i] *= scale;
     windY[i] *= scale;
   }
 }
 
-// ── Curl noise for mesoscale ocean eddies ──
-for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
+// ── Subtle curl noise for mesoscale eddies (all cells, reduced amplitude) ──
+for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
   const wi = wy * wW + wx;
-  if (solid[wi]) continue;
+  if (isWall[wi]) continue;
   const nx = wx / wW, ny = wy / wH;
-  const eps = 0.002;
-  const n0 = fbm(nx * 8 + s3 + 100, ny * 8 + s3 + 100, 4, 2, 0.5);
-  const nDx = fbm((nx + eps) * 8 + s3 + 100, ny * 8 + s3 + 100, 4, 2, 0.5);
-  const nDy = fbm(nx * 8 + s3 + 100, (ny + eps) * 8 + s3 + 100, 4, 2, 0.5);
-  windX[wi] += (nDy - n0) / eps * 0.04;
-  windY[wi] -= (nDx - n0) / eps * 0.04;
+  const eps = 0.003;
+  const n0 = fbm(nx * 5 + s3 + 100, ny * 5 + s3 + 100, 3, 2, 0.5);
+  const nDx = fbm((nx + eps) * 5 + s3 + 100, ny * 5 + s3 + 100, 3, 2, 0.5);
+  const nDy = fbm(nx * 5 + s3 + 100, (ny + eps) * 5 + s3 + 100, 3, 2, 0.5);
+  // Much smaller amplitude, and even smaller over land
+  const amp = drag[wi] > 0 ? 0.008 : 0.02;
+  windX[wi] += (nDy - n0) / eps * amp;
+  windY[wi] -= (nDx - n0) / eps * amp;
 }
 
 // Upscale wind to full resolution for moisture advection + export
