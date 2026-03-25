@@ -800,44 +800,49 @@ for (let i = 0; i < wElev.length; i++) landFracRaw[i] = wElev[i] > 0 ? 1 : 0;
 const landFrac = new Float32Array(wW * wH);
 smoothField(landFracRaw, landFrac, wW, wH, 6, 3);
 
-// ── Pressure field — derived from thermal physics ──
-// Real atmospheric pressure is driven by temperature:
-//   Hot air rises → low surface pressure.  Cold air sinks → high surface pressure.
-// We compute a simple surface temperature per cell from latitude + elevation +
-// land/ocean differential heating, then invert it to get pressure.
-// The Coriolis solver + fluid iteration handle the rest — trade winds, westerlies,
-// polar easterlies, and continental monsoon patterns all emerge naturally.
+// ── Pressure field — thermal + Hadley cell descent ──
+// Two physical components:
+// 1) Thermal: use the same temp formula as Step 8d (lat + elevation + coast).
+//    Hot → low pressure, cold → high pressure.
+// 2) Hadley cell descent: air rises at equator, flows poleward aloft, and
+//    DESCENDS at ~30° latitude. This piling-up of air creates a subtropical
+//    high-pressure ridge — a 3D effect we can't derive from surface temp.
+//    This ridge is what splits wind into trade winds (equatorward of 30°)
+//    and westerlies (poleward of 30°).
 const pressure = new Float32Array(wW * wH);
 
 for (let wy = 0; wy < wH; wy++) {
-  const latAbs = Math.abs(wy / wH - 0.5) * 2; // 0=equator, 1=pole
-  // Base temperature: hot at equator, cold at poles (cosine profile)
-  const solarTemp = 1.0 - latAbs * latAbs; // 1 at equator, 0 at poles
+  const latN = wy / wH; // 0=north pole, 1=south pole
+  const lat = Math.abs(latN - 0.5) * 2; // 0=equator, 1=pole
   for (let wx = 0; wx < wW; wx++) {
     const wi = wy * wW + wx;
     const e = wElev[wi];
     const lf = landFrac[wi];
+    const coastProx = Math.max(0, 1 - lf * 2); // rough ocean proximity
 
-    // Land heats more than ocean in tropics, cools more at high latitudes
-    // (ocean has high thermal inertia — moderates temperature)
-    const landHeat = lf * (solarTemp - 0.45) * 0.4; // positive in tropics, negative at poles
+    // Surface temperature — same formula as Step 8d (line 1093)
+    const baseTemp = 1 - lat * 1.05 - e * 0.4;
+    const moderated = baseTemp + (0.45 - baseTemp) * coastProx * 0.2;
+    const surfTemp = Math.max(0, Math.min(1, moderated));
 
-    // Elevation cooling: ~6.5°C per 1000m, normalized
-    const elevCool = e * 0.3;
+    // Thermal pressure: hot → low (negative), cold → high (positive)
+    const thermalP = -surfTemp * 0.45;
 
-    // Surface temperature estimate (0-1 scale)
-    const surfTemp = solarTemp + landHeat - elevCool;
+    // Hadley cell descent: subtropical ridge at ~30° (lat ≈ 0.33)
+    // Gaussian bump representing air piling up from the upper-level Hadley outflow
+    const hadleyP = 0.25 * Math.exp(-(lat - 0.33) * (lat - 0.33) / (0.08 * 0.08));
 
-    // Pressure = inverse of temperature (hot → low pressure, cold → high)
-    // Negate so hot = negative pressure (draws wind in)
-    pressure[wi] = -surfTemp * 0.5;
+    // Weak polar high from cold dense air pooling at surface
+    const polarP = 0.08 * Math.exp(-(lat - 0.95) * (lat - 0.95) / (0.06 * 0.06));
+
+    pressure[wi] = thermalP + hadleyP + polarP;
   }
 }
 
-// Add gentle noise for mesoscale weather variability (NOT artificial vortexes)
+// Gentle noise for mesoscale weather variability
 for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const wi = wy * wW + wx;
-  pressure[wi] += fbm(wx / wW * 4 + s3 + 50, wy / wH * 4 + s3 + 50, 3, 2, 0.5) * 0.06;
+  pressure[wi] += fbm(wx / wW * 4 + s3 + 50, wy / wH * 4 + s3 + 50, 3, 2, 0.5) * 0.05;
 }
 
 // Smooth pressure — broad gradients, not sharp edges
