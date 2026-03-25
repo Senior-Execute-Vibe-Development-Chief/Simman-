@@ -919,7 +919,13 @@ for (let iter = 0; iter < _windIter; iter++) {
     }
   }
 
-  // 3) Horizontal solver per layer: pressure gradient + Coriolis + diffusion + drag
+  // 3) Horizontal solver per layer: proper momentum equation
+  //    dv/dt = -∇p + f×v - drag*|v|*v + diffusion + terrain_deflection
+  //    Coriolis acts on VELOCITY (f×v), not on pressure gradient.
+  //    Drag is quadratic (∝ speed²), matching real boundary layer physics.
+  //    Terrain deflection only REDIRECTS wind (conserves speed).
+  const dt = 0.45; // relaxation timestep
+  const diffusion = 0.06; // small numerical diffusion for stability
   for (let l = 0; l < NL; l++) {
     const pArr = layerP[l];
     const uX = lWindX[l], uY = lWindY[l];
@@ -928,43 +934,55 @@ for (let iter = 0; iter < _windIter; iter++) {
 
     for (let wy = 1; wy < wH - 1; wy++) {
       const latSigned = (wy / wH - 0.5) * 2;
-      const coriolisAngle = -Math.tanh(latSigned * p("coriolisSharpness", 2.5)) * p("coriolisMaxAngle", 1.2);
-      const cosA = Math.cos(coriolisAngle), sinA = Math.sin(coriolisAngle);
+      // Coriolis parameter: f = 2Ω sin(φ), normalized. Positive in NH, negative in SH.
+      const corF = Math.tanh(latSigned * p("coriolisSharpness", 2.5)) * p("coriolisMaxAngle", 1.2);
       for (let wx = 0; wx < wW; wx++) {
         const wi = wy * wW + wx;
         const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
         const nl = wy * wW + wl, nr = wy * wW + wr;
         const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
 
-        // Pressure gradient → driving force with Coriolis rotation
-        const dpDx = (pArr[nr] - pArr[nl]) * 0.5;
-        const dpDy = (pArr[nd] - pArr[nu]) * 0.5;
-        const bx = -dpDx, by = -dpDy;
-        const fx = bx * cosA - by * sinA;
-        const fy = bx * sinA + by * cosA;
+        // Pressure gradient force: F = -∇p
+        const pgfX = -(pArr[nr] - pArr[nl]) * 0.5;
+        const pgfY = -(pArr[nd] - pArr[nu]) * 0.5;
 
-        // Neighbor diffusion
-        const sx = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25;
-        const sy = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25;
+        // Coriolis acceleration: f × v (acts on existing velocity, perpendicular)
+        // In NH (corF > 0): deflects right. In SH (corF < 0): deflects left.
+        const corX = corF * tmpY[wi];
+        const corY = -corF * tmpX[wi];
 
-        // Terrain deflection (surface layer only)
-        let dfx = 0, dfy = 0;
-        if (l === 0) {
+        // Quadratic drag: -cd * |v| * v (stronger at high speeds)
+        const spd = Math.sqrt(tmpX[wi] * tmpX[wi] + tmpY[wi] * tmpY[wi]);
+        const d = l === 0 ? drag[wi] : 0.005;
+        const dragX = -d * spd * tmpX[wi];
+        const dragY = -d * spd * tmpY[wi];
+
+        // Diffusion: small Laplacian smoothing for numerical stability
+        const lapX = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25 - tmpX[wi];
+        const lapY = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25 - tmpY[wi];
+
+        // Terrain deflection (surface only): redirect wind along contours
+        // Projects velocity component hitting the slope onto the perpendicular direction
+        // This only TURNS the wind, doesn't add speed.
+        let vx = tmpX[wi] + dt * (pgfX + corX + dragX) + diffusion * lapX;
+        let vy = tmpY[wi] + dt * (pgfY + corY + dragY) + diffusion * lapY;
+
+        if (l === 0 && wElev[wi] > 0) {
           const eL = wElev[nl], eR = wElev[nr], eU = wElev[nu], eD = wElev[nd];
-          const gradX = (eR - eL) * 0.5, gradY = (eD - eU) * 0.5;
-          const gradMag = Math.sqrt(gradX * gradX + gradY * gradY);
-          const deflectStr = Math.min(0.8, gradMag * p("terrainDeflect", 4.0));
-          dfx = -gradY * deflectStr; dfy = gradX * deflectStr;
+          const gx = (eR - eL) * 0.5, gy = (eD - eU) * 0.5;
+          const gm2 = gx * gx + gy * gy;
+          if (gm2 > 1e-8) {
+            // Component of wind hitting the slope (dot product with gradient)
+            const dot = vx * gx + vy * gy;
+            const deflStr = Math.min(0.9, Math.sqrt(gm2) * p("terrainDeflect", 4.0));
+            // Remove the into-slope component and redirect it perpendicular
+            vx += deflStr * (-dot * gx / gm2 + (-gy) * Math.abs(dot) / Math.sqrt(gm2) * 0.3);
+            vy += deflStr * (-dot * gy / gm2 + ( gx) * Math.abs(dot) / Math.sqrt(gm2) * 0.3);
+          }
         }
 
-        // Blend
-        let vx = tmpX[wi] * 0.45 + sx * 0.30 + fx * 0.25 + dfx;
-        let vy = tmpY[wi] * 0.45 + sy * 0.30 + fy * 0.25 + dfy;
-
-        // Drag: surface layer uses terrain drag, upper layers nearly frictionless
-        const d = l === 0 ? drag[wi] : 0.005;
-        uX[wi] = vx * (1 - d * 0.25);
-        uY[wi] = vy * (1 - d * 0.25);
+        uX[wi] = vx;
+        uY[wi] = vy;
       }
     }
 
@@ -978,7 +996,7 @@ for (let iter = 0; iter < _windIter; iter++) {
           + uY[(wy + 1) * wW + wx] - uY[(wy - 1) * wW + wx]) * 0.5;
       }
       const pCorr = new Float32Array(cellN);
-      for (let ji = 0; ji < 8; ji++) {
+      for (let ji = 0; ji < 12; ji++) {
         const pTmp = new Float32Array(pCorr);
         for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
           const wi = wy * wW + wx;
@@ -1004,44 +1022,9 @@ for (let i = 0; i < cellN; i++) {
   windY[i] = lWindY[0][i];
 }
 
-// ── Percentile normalization: median → 0.10 ──
-// Color formula sqrt(spd * 1.0): median → t=0.32 (blue-green),
-// p90 (~0.30) → t=0.55 (green-yellow), top jets (~0.60) → t=0.77 (orange).
-// Particle moveScale 12 gives ~1.2 px/frame at median — good visual motion.
-{
-  const speeds = [];
-  for (let i = 0; i < wW * wH; i++) {
-    const s = Math.sqrt(windX[i] * windX[i] + windY[i] * windY[i]);
-    if (s > 0.001) speeds.push(s);
-  }
-  speeds.sort((a, b) => a - b);
-  const p50 = speeds[Math.min(speeds.length - 1, (speeds.length * 0.50) | 0)] || 1;
-  const scale = 0.10 / p50;
-  for (let i = 0; i < wW * wH; i++) {
-    windX[i] *= scale;
-    windY[i] *= scale;
-  }
-}
-
-// ── Post-normalization land dampening ──
-// Land wind always weaker than ocean. Higher elevations slightly windier (exposed).
-// Hard cap ensures mountains never exceed ~50 km/h equivalent (~green on color scale).
-for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
-  const wi = wy * wW + wx;
-  if (wElev[wi] > 0) {
-    // Lower land = more sheltered. Peaks slightly more exposed but still capped.
-    const landDamp = 0.30 + Math.min(0.15, wElev[wi] * 0.3);
-    windX[wi] *= landDamp;
-    windY[wi] *= landDamp;
-    // Hard cap: ~50 km/h. With sqrt(spd*1.0), 0.08 → t=0.28 (blue-green)
-    const s = Math.sqrt(windX[wi] * windX[wi] + windY[wi] * windY[wi]);
-    if (s > 0.08) {
-      const clamp = 0.08 / s;
-      windX[wi] *= clamp;
-      windY[wi] *= clamp;
-    }
-  }
-}
+// No percentile normalization — let the physics determine speeds.
+// Quadratic drag naturally limits speed: steady state ≈ sqrt(|∇p| / drag).
+// Ocean (drag 0.02) gets fast wind, land (drag 0.50) gets slow wind naturally.
 
 // ── Subtle curl noise for mesoscale eddies (all cells, reduced amplitude) ──
 for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {

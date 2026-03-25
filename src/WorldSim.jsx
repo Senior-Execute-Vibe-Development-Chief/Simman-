@@ -906,7 +906,7 @@ const sx=Math.min(W-1,(p.x*RES)|0),sy=Math.min(H-1,(p.y*RES)|0),si=sy*W+sx;
 const vx=wX[si]||0,vy=wY[si]||0;
 const spd=Math.sqrt(vx*vx+vy*vy);
 // Move particle along wind (speed scaled for visual effect)
-const moveScale=12;
+const moveScale=6;
 p.trail.push({x:p.x,y:p.y});
 if(p.trail.length>TRAIL_LEN)p.trail.shift();
 p.x+=vx*moveScale;p.y+=vy*moveScale;
