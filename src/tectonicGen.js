@@ -1351,19 +1351,14 @@ for (let wy = 0; wy < wH; wy++) {
 }
 
 // ── Pressure per layer ──
-// Pressure from LATITUDE ONLY — no land/ocean thermal contrast.
-// In annual mean, summer thermal lows and winter highs cancel, so
-// continents should not have their own pressure signature from temperature.
-// The only static longitude-varying pressure is orographic (mountains).
-// Dynamic pressure (convergence feedback) handles the rest.
+// Pressure from LATITUDE ONLY. No land/ocean contrast, no orographic
+// pressure. Mountains deflect wind physically (terrain deflection),
+// they don't create their own pressure fields.
 const _pScale = p("pressureScale", 4.0);
-const _oroP = p("orographicPressure", 2.5);
 const layerP = new Array(NL);
 for (let l = 0; l < NL; l++) {
   layerP[l] = new Float32Array(cellN);
   for (let wy = 0; wy < wH; wy++) {
-    // Pure latitude-based pressure: same at every longitude.
-    // Uses the latitude temperature profile WITHOUT land/ocean/elevation variation.
     const latFrac = Math.abs(wy / wH - 0.5) * 2;
     const latRad = latFrac * Math.PI / 2;
     const sinLat = Math.sin(latRad);
@@ -1374,14 +1369,6 @@ for (let l = 0; l < NL; l++) {
       layerP[l][wy * wW + wx] = latP;
     }
   }
-}
-// Orographic pressure: mountains are physical barriers (broadly smoothed)
-if (_oroP > 0) {
-  const oroField = new Float32Array(cellN);
-  for (let i = 0; i < cellN; i++) oroField[i] = wElev[i] * _oroP;
-  const oroSmooth = new Float32Array(cellN);
-  smoothField(oroField, oroSmooth, wW, wH, 6, 4);
-  for (let i = 0; i < cellN; i++) layerP[0][i] += oroSmooth[i];
 }
 
 // Per-layer wind arrays
@@ -1495,34 +1482,64 @@ for (let iter = 0; iter < _windIter; iter++) {
         let vx = tmpX[wi] + dt * (pgfX + corX + drgX) + visc * lapX;
         let vy = tmpY[wi] + dt * (pgfY + corY + drgY) + visc * lapY;
 
-        // Terrain deflection (surface only)
+        // Terrain deflection (surface only) — Froude number physics.
+        // Fr = U / (N × h): determines if flow goes over (Fr>1) or around (Fr<1).
+        // Real values: N ≈ 0.01 s⁻¹ (Brunt-Väisälä frequency).
+        // At 10 m/s: 500m hill → Fr=2 (goes over), 2000m mtn → Fr=0.5 (goes around).
+        // We model this as: blocking fraction = 1 - min(1, Fr).
+        // In our normalized units, elevation 0.1 ≈ 400m, 0.5 ≈ 2000m.
+        // The terrainDeflect parameter scales the effective N×h product.
         if (l === 0) {
           const px = Math.min(W - 1, wx * WG), py = Math.min(H - 1, wy * WG);
-          const pxL = (px - WG + W) % W, pxR = (px + WG) % W;
-          const pyU = Math.max(0, py - WG), pyD = Math.min(H - 1, py + WG);
           const eC = Math.max(0, elevation[py * W + px]);
-          const eL2 = Math.max(0, elevation[py * W + pxL]);
-          const eR2 = Math.max(0, elevation[py * W + pxR]);
-          const eU2 = Math.max(0, elevation[pyU * W + px]);
-          const eD2 = Math.max(0, elevation[pyD * W + px]);
-          const gx = (eR2 - eL2) * 0.5, gy = (eD2 - eU2) * 0.5;
-          const blockStr = Math.min(1, eC * 3);
-          const gm2 = gx * gx + gy * gy;
-          if (gm2 > 1e-8) {
-            const gm = Math.sqrt(gm2);
-            const dot = vx * gx + vy * gy;
-            if (dot > 0) {
-              const deflStr = Math.min(0.95, (gm * p("terrainDeflect", 3.0) + blockStr) * 0.5);
-              const removeX = deflStr * dot * gx / gm2;
-              const removeY = deflStr * dot * gy / gm2;
-              vx -= removeX;
-              vy -= removeY;
-              const perpX = -gy / gm, perpY = gx / gm;
-              const tangent = vx * perpX + vy * perpY;
-              const sign = tangent >= 0 ? 1 : -1;
-              const redirectMag = Math.sqrt(removeX * removeX + removeY * removeY) * 0.7;
-              vx += sign * perpX * redirectMag;
-              vy += sign * perpY * redirectMag;
+          if (eC > 0.01) {
+            const speed = Math.sqrt(vx * vx + vy * vy);
+            if (speed > 1e-6) {
+              // Froude number: Fr = speed / (N * h * scale)
+              // In our units: eC=0.1 is ~400m, eC=0.5 is ~2000m
+              // terrainDeflect scales how strongly terrain blocks.
+              // Default 5.0: a cell at eC=0.5 with speed 0.1 → Fr = 0.1/(0.5*5) = 0.04 → nearly full block
+              //               a cell at eC=0.05 with speed 0.1 → Fr = 0.1/(0.05*5) = 0.4 → strong block
+              //               a cell at eC=0.02 with speed 0.2 → Fr = 0.2/(0.02*5) = 2.0 → no block
+              const _tDefl = p("terrainDeflect", 5.0);
+              const Nh = eC * _tDefl;
+              const Fr = speed / Math.max(0.001, Nh);
+              const blockFrac = Math.max(0, Math.min(0.95, 1 - Fr));
+
+              if (blockFrac > 0.01) {
+                // Compute upslope gradient to determine deflection direction
+                const pxL = (px - WG + W) % W, pxR = (px + WG) % W;
+                const pyU = Math.max(0, py - WG), pyD = Math.min(H - 1, py + WG);
+                const eL2 = Math.max(0, elevation[py * W + pxL]);
+                const eR2 = Math.max(0, elevation[py * W + pxR]);
+                const eU2 = Math.max(0, elevation[pyU * W + px]);
+                const eD2 = Math.max(0, elevation[pyD * W + px]);
+                const gx = (eR2 - eL2) * 0.5, gy = (eD2 - eU2) * 0.5;
+                const gm2 = gx * gx + gy * gy;
+                if (gm2 > 1e-8) {
+                  const gm = Math.sqrt(gm2);
+                  const dot = vx * gx + vy * gy;
+                  if (dot > 0) {
+                    // Remove upslope component proportional to blocking
+                    const removeX = blockFrac * dot * gx / gm2;
+                    const removeY = blockFrac * dot * gy / gm2;
+                    vx -= removeX;
+                    vy -= removeY;
+                    // Redirect blocked energy along contour (70% conserved)
+                    const perpX = -gy / gm, perpY = gx / gm;
+                    const tangent = vx * perpX + vy * perpY;
+                    const sign = tangent >= 0 ? 1 : -1;
+                    const redirectMag = Math.sqrt(removeX * removeX + removeY * removeY) * 0.7;
+                    vx += sign * perpX * redirectMag;
+                    vy += sign * perpY * redirectMag;
+                  }
+                } else {
+                  // Flat elevated terrain (plateau): no gradient to deflect along,
+                  // but still blocks proportionally. Just damp the wind.
+                  vx *= (1 - blockFrac * 0.5);
+                  vy *= (1 - blockFrac * 0.5);
+                }
+              }
             }
           }
         }
