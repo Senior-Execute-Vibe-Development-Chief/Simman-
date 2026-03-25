@@ -753,6 +753,19 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 // Divergence correction ensures mass conservation (Venturi/channeling).
 // ═══════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════════
+// WIND PHYSICS — based on primitive equations of atmospheric motion
+//
+// Real physics chain: Temperature → Pressure → Wind
+//   Temperature: sin²(φ) profile (observed equator-to-pole gradient)
+//   Pressure: hydrostatic relation (hot column = low surface pressure)
+//   Wind: momentum equation dv/dt = -∇p + f×v - kf·v + ν∇²v
+//     Coriolis: f = 2Ω sin(φ), real sinusoidal profile
+//     Drag: LINEAR Rayleigh friction (Held-Suarez 1994 standard)
+//       Cross-isobar angle: ~15° ocean, ~35° land (from kf/f ratio)
+//     NO artificial noise, normalization, or curl overlays
+// ══════════════════════════════════════════════════════════════════
+
 // Work on coarser grid for performance (4x downscale)
 const WG = 4, wW = Math.ceil(W / WG), wH = Math.ceil(H / WG);
 const windX = new Float32Array(wW * wH);
@@ -760,24 +773,25 @@ const windY = new Float32Array(wW * wH);
 
 // ── Geography on wind grid ──
 const wElev = new Float32Array(wW * wH);
-// Drag: surface friction. Land always has MORE drag than ocean.
-// Lowlands have MOST drag (sheltered by trees/terrain), peaks have less (exposed).
-// But all land drag > ocean drag, so land wind is always weaker overall.
+// Linear drag coefficients (Rayleigh friction, Held-Suarez style)
+// Real Cd: ocean 0.001-0.003, grassland 0.005-0.008, forest 0.05-0.10
+// Here normalized for our solver's unit system.
+const _oceanDrag = p("oceanDrag", 0.04);
+const _landDrag = p("landDrag", 0.20);
 const drag = new Float32Array(wW * wH);
 for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
   const px = Math.min(W - 1, wx * WG), py = Math.min(H - 1, wy * WG);
   const e0 = elevation[py * W + px];
   wElev[wy * wW + wx] = Math.max(0, e0);
   if (e0 <= 0) {
-    drag[wy * wW + wx] = p("oceanDrag", 0.02); // ocean: very low friction
+    drag[wy * wW + wx] = _oceanDrag;
   } else {
-    // Land drag: lowlands highest (sheltered), decreasing with elevation (exposed)
-    const ldMax = p("landDragMax", 0.50);
-    drag[wy * wW + wx] = Math.max(0.18, ldMax - e0 * 0.8);
+    // Land: lowlands sheltered (high drag), peaks exposed (lower drag, but still > ocean)
+    drag[wy * wW + wx] = Math.max(_oceanDrag * 2, _landDrag - e0 * _landDrag * 0.5);
   }
 }
 
-// Smooth land fraction for pressure (continent-scale)
+// Smooth helper (box blur, wraps X)
 const smoothField = (src, dst, w2, h2, passes, rad) => {
   const r = rad || 2;
   const tmp = new Float32Array(w2 * h2);
@@ -795,119 +809,112 @@ const smoothField = (src, dst, w2, h2, passes, rad) => {
     else { for (let i = 0; i < w2 * h2; i++) dst[i] = out[i]; }
   }
 };
+// Land fraction (smoothed for continental-scale thermal effects)
 const landFracRaw = new Float32Array(wW * wH);
 for (let i = 0; i < wElev.length; i++) landFracRaw[i] = wElev[i] > 0 ? 1 : 0;
 const landFrac = new Float32Array(wW * wH);
-smoothField(landFracRaw, landFrac, wW, wH, 6, 3);
+smoothField(landFracRaw, landFrac, wW, wH, 4, 3);
 
 // ══════════════════════════════════════════════════════════
-// 3D ATMOSPHERIC CIRCULATION — vertical layers let Hadley cells emerge naturally
-// ══════════════════════════════════════════════════════════
+// 3D ATMOSPHERIC CIRCULATION
 // 4 altitude layers: surface(0), boundary(1), mid-level(2), upper(3)
-// Temperature drives vertical motion (buoyancy). Coriolis deflects horizontal flow.
-// Air rising at equator flows poleward aloft, cools, descends at ~30° — no artificial bands.
-const NL = 4; // number of altitude layers
+// ══════════════════════════════════════════════════════════
+const NL = 4;
 const cellN = wW * wH;
 
-// Temperature per layer: surface from real formula, lapse rate cooling above
+// ── Temperature per layer ──
+// Real profile: T = 288 - 32·sin²φ - 18·sin⁴φ (observed annual mean)
+// Normalized to 0-1 range. Steeper gradient in midlatitudes (baroclinic zone).
 const layerTemp = new Array(NL);
 for (let l = 0; l < NL; l++) layerTemp[l] = new Float32Array(cellN);
 
 for (let wy = 0; wy < wH; wy++) {
-  const lat = Math.abs(wy / wH - 0.5) * 2;
+  const latFrac = Math.abs(wy / wH - 0.5) * 2; // 0=equator, 1=pole
+  const latRad = latFrac * Math.PI / 2;
+  const sinLat = Math.sin(latRad);
+  const sin2 = sinLat * sinLat;
+  const sin4 = sin2 * sin2;
   for (let wx = 0; wx < wW; wx++) {
     const wi = wy * wW + wx;
     const e = wElev[wi];
     const lf = landFrac[wi];
-    const coastProx = Math.max(0, 1 - lf * 2);
-    // Surface temperature — same formula as Step 8d
-    const baseTemp = 1 - lat * 1.05 - e * 0.4;
-    const surfT = Math.max(0, Math.min(1, baseTemp + (0.45 - baseTemp) * coastProx * 0.2));
-    // Lapse rate: ~6.5°C/km, each layer ~3km apart → ~0.13 per layer (normalized)
-    const lapse = 0.13;
+    // sin² + sin⁴ gives observed concave profile: shallow tropics, steep midlats
+    const baseTemp = 1 - 0.65 * sin2 - 0.35 * sin4;
+    // Elevation: 6.5°C/km, normalized (elev 1.0 ≈ 4km → ~26°C cooling out of ~50°C range)
+    const elevCorr = e * 0.55;
+    // Maritime moderation: ocean buffers temperature toward ~0.5 (global mean)
+    const maritime = Math.max(0, 1 - lf * 2) * 0.15;
+    const surfT = Math.max(0, Math.min(1, baseTemp - elevCorr + (0.5 - baseTemp) * maritime));
+    // Lapse rate: 6.5°C/km, 4 layers spanning ~12km → 0.13 per layer
     for (let l = 0; l < NL; l++) {
-      layerTemp[l][wi] = Math.max(0, surfT - l * lapse);
+      layerTemp[l][wi] = Math.max(0, surfT - l * 0.13);
     }
   }
 }
 
-// Per-layer pressure: derived from temperature (hot → low, cold → high)
+// ── Pressure per layer ──
+// Hydrostatic: warm column → low surface pressure, cold → high
+// P = -T * pressureScale. NO noise added — purely from temperature.
+const _pScale = p("pressureScale", 4.0);
 const layerP = new Array(NL);
 for (let l = 0; l < NL; l++) {
   layerP[l] = new Float32Array(cellN);
-  for (let i = 0; i < cellN; i++) layerP[l][i] = -layerTemp[l][i] * 0.45;
-  // Gentle noise
-  for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
-    const wi = wy * wW + wx;
-    layerP[l][wi] += fbm(wx / wW * 4 + s3 + 50 + l * 17, wy / wH * 4 + s3 + 50 + l * 17, 2, 2, 0.5) * 0.03;
-  }
-  // Smooth
+  for (let i = 0; i < cellN; i++) layerP[l][i] = -layerTemp[l][i] * _pScale;
+  // Minimal smoothing: 2 passes just to remove grid-scale noise
   const ps = new Float32Array(cellN);
-  smoothField(layerP[l], ps, wW, wH, 4, 4);
+  smoothField(layerP[l], ps, wW, wH, 2, 2);
   for (let i = 0; i < cellN; i++) layerP[l][i] = ps[i];
 }
 
-// Per-layer horizontal wind arrays
+// Per-layer wind arrays
 const lWindX = new Array(NL), lWindY = new Array(NL);
 for (let l = 0; l < NL; l++) {
   lWindX[l] = new Float32Array(cellN);
   lWindY[l] = new Float32Array(cellN);
 }
-// Vertical velocity (positive = rising)
-const vertW = new Float32Array(cellN);
+const vertW = new Float32Array(cellN); // vertical velocity (positive = rising)
 
-// Buoyancy strength: how strongly temperature difference drives vertical motion
 const buoyancy = p("buoyancy", 0.8);
-// Vertical coupling: how much vertical motion feeds/drains horizontal layers
 const vertCoupling = p("vertCoupling", 0.22);
+const _fMax = p("coriolisStrength", 0.25); // Coriolis at poles (normalized 2Ω)
 
 // ── Main 3D solver ──
-const _windIter = p("windSolverIter", 20);
+const _windIter = p("windSolverIter", 25);
 for (let iter = 0; iter < _windIter; iter++) {
 
-  // 1) Compute vertical velocity from buoyancy
-  //    Hot columns (surface warmer than upper air) → strong rising
-  //    Cold columns → sinking
+  // 1) Vertical velocity from buoyancy (column instability)
   for (let i = 0; i < cellN; i++) {
-    // Buoyancy = temperature difference between surface and upper layers
-    // Large difference = unstable column = strong convection
     const instability = layerTemp[0][i] - layerTemp[NL - 1][i];
-    // Average existing vertical motion with new buoyancy (smooth evolution)
-    vertW[i] = vertW[i] * 0.6 + instability * buoyancy * 0.4;
+    vertW[i] = vertW[i] * 0.7 + instability * buoyancy * 0.3;
   }
-  // Smooth vertical velocity (convection is broad, not per-pixel)
+  // Smooth vertW: convection is broad-scale (1 pass, radius 2)
   const vSmooth = new Float32Array(cellN);
-  smoothField(vertW, vSmooth, wW, wH, 4, 3);
+  smoothField(vertW, vSmooth, wW, wH, 1, 2);
   for (let i = 0; i < cellN; i++) vertW[i] = vSmooth[i];
 
-  // Update surface pressure from vertical motion (gentle nudge per iteration):
-  // Rising air lowers surface pressure, descending raises it.
-  // Kept weak so land masses and temperature patterns dominate the shape.
+  // Surface pressure tendency from vertical motion:
+  // dp_s/dt ∝ -∫div(V_h)dz. Rising air = surface convergence = lower pressure.
   for (let i = 0; i < cellN; i++) {
-    layerP[0][i] += -vertW[i] * 0.03;
+    layerP[0][i] += -vertW[i] * 0.02;
   }
-  // Broad smooth so pressure gradient is gentle and organic, not a sharp line
+  // Light smooth to prevent checkerboard (1 pass, small radius)
   const pUpd = new Float32Array(cellN);
-  smoothField(layerP[0], pUpd, wW, wH, 5, 3);
+  smoothField(layerP[0], pUpd, wW, wH, 1, 2);
   for (let i = 0; i < cellN; i++) layerP[0][i] = pUpd[i];
 
-  // 2) Vertical mass transfer: rising air removes from lower layers, adds to upper
-  //    Descending air does the reverse. This naturally creates the Hadley cell:
-  //    equator rises → upper layers gain mass → flows poleward → cools → descends at ~30°
+  // 2) Vertical mass transfer (Hadley cell mechanism)
   for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
     const wi = wy * wW + wx;
     const w3 = vertW[wi] * vertCoupling;
     if (w3 > 0) {
-      // Rising: surface loses horizontal momentum, upper gains it
       for (let l = 0; l < NL - 1; l++) {
-        const transfer = w3 * (1 - l / NL); // stronger at lower layers
+        const transfer = w3 * (1 - l / NL);
         lWindX[l + 1][wi] += lWindX[l][wi] * transfer;
         lWindY[l + 1][wi] += lWindY[l][wi] * transfer;
         lWindX[l][wi] *= (1 - transfer);
         lWindY[l][wi] *= (1 - transfer);
       }
     } else {
-      // Sinking: upper loses, surface gains
       const sink = -w3;
       for (let l = NL - 1; l > 0; l--) {
         const transfer = sink * (l / NL);
@@ -919,13 +926,13 @@ for (let iter = 0; iter < _windIter; iter++) {
     }
   }
 
-  // 3) Horizontal solver per layer: proper momentum equation
-  //    dv/dt = -∇p + f×v - drag*|v|*v + diffusion + terrain_deflection
-  //    Coriolis acts on VELOCITY (f×v), not on pressure gradient.
-  //    Drag is quadratic (∝ speed²), matching real boundary layer physics.
-  //    Terrain deflection only REDIRECTS wind (conserves speed).
-  const dt = 0.45; // relaxation timestep
-  const diffusion = 0.06; // small numerical diffusion for stability
+  // 3) Horizontal solver: real momentum equation per layer
+  //    dv/dt = -∇p + f×v - kf·v + ν∇²v
+  //    f = -sin(latSigned · π/2) · fMax  (real Coriolis: 2Ω sin φ)
+  //    Drag is LINEAR (Held-Suarez): F = -kf · v
+  //    Cross-isobar angle = atan(kf/f): ~15° ocean, ~35° land
+  const dt = 0.5;
+  const visc = 0.04; // small viscous diffusion for numerical stability
   for (let l = 0; l < NL; l++) {
     const pArr = layerP[l];
     const uX = lWindX[l], uY = lWindY[l];
@@ -933,51 +940,49 @@ for (let iter = 0; iter < _windIter; iter++) {
     const tmpY = new Float32Array(uY);
 
     for (let wy = 1; wy < wH - 1; wy++) {
-      const latSigned = (wy / wH - 0.5) * 2;
-      // Coriolis parameter: f = 2Ω sin(φ), normalized. Positive in NH, negative in SH.
-      const corF = Math.tanh(latSigned * p("coriolisSharpness", 2.5)) * p("coriolisMaxAngle", 1.2);
+      const latSigned = (wy / wH - 0.5) * 2; // -1=north pole, +1=south pole
+      // f = 2Ω sin(latitude). sin(φ) profile, NOT tanh. Positive in NH.
+      const f = -Math.sin(latSigned * Math.PI / 2) * _fMax;
       for (let wx = 0; wx < wW; wx++) {
         const wi = wy * wW + wx;
         const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
         const nl = wy * wW + wl, nr = wy * wW + wr;
         const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
 
-        // Pressure gradient force: F = -∇p
+        // Pressure gradient force: F_pgf = -∇p (central difference)
         const pgfX = -(pArr[nr] - pArr[nl]) * 0.5;
         const pgfY = -(pArr[nd] - pArr[nu]) * 0.5;
 
-        // Coriolis acceleration: f × v (acts on existing velocity, perpendicular)
-        // In NH (corF > 0): deflects right. In SH (corF < 0): deflects left.
-        const corX = corF * tmpY[wi];
-        const corY = -corF * tmpX[wi];
+        // Coriolis: f × v (perpendicular to velocity)
+        // NH (f>0): deflects right. SH (f<0): deflects left.
+        const corX = -f * tmpY[wi];
+        const corY = f * tmpX[wi];
 
-        // Quadratic drag: -cd * |v| * v (stronger at high speeds)
-        const spd = Math.sqrt(tmpX[wi] * tmpX[wi] + tmpY[wi] * tmpY[wi]);
-        const d = l === 0 ? drag[wi] : 0.005;
-        const dragX = -d * spd * tmpX[wi];
-        const dragY = -d * spd * tmpY[wi];
+        // Linear drag (Rayleigh friction): F_drag = -kf · v
+        const kf = l === 0 ? drag[wi] : 0.005;
+        const drgX = -kf * tmpX[wi];
+        const drgY = -kf * tmpY[wi];
 
-        // Diffusion: small Laplacian smoothing for numerical stability
+        // Laplacian diffusion (numerical viscosity)
         const lapX = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25 - tmpX[wi];
         const lapY = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25 - tmpY[wi];
 
-        // Terrain deflection (surface only): redirect wind along contours
-        // Projects velocity component hitting the slope onto the perpendicular direction
-        // This only TURNS the wind, doesn't add speed.
-        let vx = tmpX[wi] + dt * (pgfX + corX + dragX) + diffusion * lapX;
-        let vy = tmpY[wi] + dt * (pgfY + corY + dragY) + diffusion * lapY;
+        // Update velocity: v += dt · (PGF + Coriolis + Drag) + ν · ∇²v
+        let vx = tmpX[wi] + dt * (pgfX + corX + drgX) + visc * lapX;
+        let vy = tmpY[wi] + dt * (pgfY + corY + drgY) + visc * lapY;
 
+        // Terrain deflection (surface only): remove upslope component, redirect along contour
         if (l === 0 && wElev[wi] > 0) {
           const eL = wElev[nl], eR = wElev[nr], eU = wElev[nu], eD = wElev[nd];
           const gx = (eR - eL) * 0.5, gy = (eD - eU) * 0.5;
           const gm2 = gx * gx + gy * gy;
           if (gm2 > 1e-8) {
-            // Component of wind hitting the slope (dot product with gradient)
             const dot = vx * gx + vy * gy;
-            const deflStr = Math.min(0.9, Math.sqrt(gm2) * p("terrainDeflect", 4.0));
-            // Remove the into-slope component and redirect it perpendicular
-            vx += deflStr * (-dot * gx / gm2 + (-gy) * Math.abs(dot) / Math.sqrt(gm2) * 0.3);
-            vy += deflStr * (-dot * gy / gm2 + ( gx) * Math.abs(dot) / Math.sqrt(gm2) * 0.3);
+            if (dot > 0) { // only block wind going INTO the slope
+              const deflStr = Math.min(0.85, Math.sqrt(gm2) * p("terrainDeflect", 3.0));
+              vx -= deflStr * dot * gx / gm2;
+              vy -= deflStr * dot * gy / gm2;
+            }
           }
         }
 
@@ -986,7 +991,7 @@ for (let iter = 0; iter < _windIter; iter++) {
       }
     }
 
-    // Divergence correction (every other main iteration)
+    // Divergence correction (pressure projection, every other iteration)
     if (iter % 2 === 0) {
       const divP2 = new Float32Array(cellN);
       for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
@@ -1016,27 +1021,10 @@ for (let iter = 0; iter < _windIter; iter++) {
   } // end per-layer horizontal solver
 } // end main iterations
 
-// Extract surface layer as the wind output
+// Extract surface layer as wind output — no normalization, no noise overlays
 for (let i = 0; i < cellN; i++) {
   windX[i] = lWindX[0][i];
   windY[i] = lWindY[0][i];
-}
-
-// No percentile normalization — let the physics determine speeds.
-// Quadratic drag naturally limits speed: steady state ≈ sqrt(|∇p| / drag).
-// Ocean (drag 0.02) gets fast wind, land (drag 0.50) gets slow wind naturally.
-
-// ── Subtle curl noise for mesoscale eddies (all cells, reduced amplitude) ──
-for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
-  const wi = wy * wW + wx;
-  const nx = wx / wW, ny = wy / wH;
-  const eps = 0.003;
-  const n0 = fbm(nx * 5 + s3 + 100, ny * 5 + s3 + 100, 3, 2, 0.5);
-  const nDx = fbm((nx + eps) * 5 + s3 + 100, ny * 5 + s3 + 100, 3, 2, 0.5);
-  const nDy = fbm(nx * 5 + s3 + 100, (ny + eps) * 5 + s3 + 100, 3, 2, 0.5);
-  const amp = wElev[wi] > 0 ? p("windEddyLand", 0.008) : p("windEddyOcean", 0.015);
-  windX[wi] += (nDy - n0) / eps * amp;
-  windY[wi] -= (nDx - n0) / eps * amp;
 }
 
 // Upscale wind to full resolution for moisture advection + export
