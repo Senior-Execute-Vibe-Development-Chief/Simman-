@@ -1004,10 +1004,10 @@ for (let i = 0; i < cellN; i++) {
   windY[i] = lWindY[0][i];
 }
 
-// ── Percentile normalization: median → 0.03 ──
-// With color mapping t = sqrt(spd * 2.8), median 0.03 → t ≈ 0.29 (blue-green).
-// p90 roughly 3× median → spd 0.09 → t ≈ 0.50 (green-yellow).
-// Only rare jets reach orange/red. Matches Windy.com distribution.
+// ── Percentile normalization: median → 0.10 ──
+// Color formula sqrt(spd * 1.0): median → t=0.32 (blue-green),
+// p90 (~0.30) → t=0.55 (green-yellow), top jets (~0.60) → t=0.77 (orange).
+// Particle moveScale 12 gives ~1.2 px/frame at median — good visual motion.
 {
   const speeds = [];
   for (let i = 0; i < wW * wH; i++) {
@@ -1016,7 +1016,7 @@ for (let i = 0; i < cellN; i++) {
   }
   speeds.sort((a, b) => a - b);
   const p50 = speeds[Math.min(speeds.length - 1, (speeds.length * 0.50) | 0)] || 1;
-  const scale = 0.03 / p50;
+  const scale = 0.10 / p50;
   for (let i = 0; i < wW * wH; i++) {
     windX[i] *= scale;
     windY[i] *= scale;
@@ -1033,10 +1033,10 @@ for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
     const landDamp = 0.30 + Math.min(0.15, wElev[wi] * 0.3);
     windX[wi] *= landDamp;
     windY[wi] *= landDamp;
-    // Hard cap: ~50 km/h. With spd*2.8 mapping, 0.04 → t=0.33 (green range)
+    // Hard cap: ~50 km/h. With sqrt(spd*1.0), 0.08 → t=0.28 (blue-green)
     const s = Math.sqrt(windX[wi] * windX[wi] + windY[wi] * windY[wi]);
-    if (s > 0.04) {
-      const clamp = 0.04 / s;
+    if (s > 0.08) {
+      const clamp = 0.08 / s;
       windX[wi] *= clamp;
       windY[wi] *= clamp;
     }

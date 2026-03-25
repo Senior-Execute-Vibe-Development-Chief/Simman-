@@ -788,7 +788,7 @@ const pi4=ti<<2;
 const e=w.elevation[si];
 const vx=wX?wX[si]:0,vy=wY?wY[si]:0;
 const spd=Math.sqrt(vx*vx+vy*vy);
-const t=Math.min(1,Math.pow(spd*2.8,0.5));
+const t=Math.min(1,Math.pow(spd*1.0,0.5));
 // Speed heatmap matched to Windy.com: navy→blue→teal→green→yellow→orange→red
 let r,g,b;
 if(t<0.08){const s=t/0.08;r=(3+s*5)|0;g=(4+s*15)|0;b=(40+s*60)|0;}
@@ -906,13 +906,13 @@ const sx=Math.min(W-1,(p.x*RES)|0),sy=Math.min(H-1,(p.y*RES)|0),si=sy*W+sx;
 const vx=wX[si]||0,vy=wY[si]||0;
 const spd=Math.sqrt(vx*vx+vy*vy);
 // Move particle along wind (speed scaled for visual effect)
-const moveScale=1.8;
+const moveScale=12;
 p.trail.push({x:p.x,y:p.y});
 if(p.trail.length>TRAIL_LEN)p.trail.shift();
 p.x+=vx*moveScale;p.y+=vy*moveScale;
 p.age++;
 // Respawn if out of bounds, too old, or in dead air
-if(p.x<0||p.x>=CW||p.y<0||p.y>=CH||p.age>MAX_AGE||spd<0.005){
+if(p.x<0||p.x>=CW||p.y<0||p.y>=CH||p.age>MAX_AGE||spd<0.002){
 p.x=Math.random()*CW;p.y=Math.random()*CH;p.age=0;p.trail.length=0;continue;}
 // Draw trail — fading white line
 if(p.trail.length<2)continue;
