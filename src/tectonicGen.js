@@ -754,19 +754,12 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 // ═══════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════
-// WIND PHYSICS — based on primitive equations of atmospheric motion
-//
-// Real physics chain: Temperature → Pressure → Wind
-//   Temperature: sin²(φ) profile (observed equator-to-pole gradient)
-//   Pressure: hydrostatic relation (hot column = low surface pressure)
-//   Wind: momentum equation dv/dt = -∇p + f×v - kf·v + ν∇²v
-//     Coriolis: f = 2Ω sin(φ), real sinusoidal profile
-//     Drag: LINEAR Rayleigh friction (Held-Suarez 1994 standard)
-//       Cross-isobar angle: ~15° ocean, ~35° land (from kf/f ratio)
-//     NO artificial noise, normalization, or curl overlays
+// WIND PHYSICS — delegated to standalone solveWind() function
 // ══════════════════════════════════════════════════════════════════
+const { windX: fullWindX, windY: fullWindY } = solveWind(W, H, elevation, fbm, params, s3);
 
-// Work on coarser grid for performance (4x downscale)
+/* DEAD CODE START — old inline wind solver, replaced by solveWind() call above
+   Keeping temporarily for reference during development. Will be removed.
 const WG = 4, wW = Math.ceil(W / WG), wH = Math.ceil(H / WG);
 const windX = new Float32Array(wW * wH);
 const windY = new Float32Array(wW * wH);
@@ -1175,6 +1168,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   fullWindY[fi] = (windY[i00] * (1 - dx) + windY[i10] * dx) * (1 - dy)
     + (windY[i01] * (1 - dx) + windY[i11] * dx) * dy;
 }
+DEAD CODE END */
 
 // ═══════════════════════════════════════════════════════
 // STEP 8c: Wind-advected moisture transport
@@ -1273,4 +1267,344 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 }
 
 return { elevation, moisture, temperature, pixPlate, windX: fullWindX, windY: fullWindY };
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Standalone wind solver — can be called from any preset that has
+// elevation data. Extracts the full atmospheric circulation solver
+// (3D multi-layer with Coriolis, drag, orographic pressure, etc.)
+// ══════════════════════════════════════════════════════════════════
+export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
+const p = (k, d) => params[k] !== undefined ? params[k] : d;
+const s3 = noiseSeed;
+
+// Work on coarser grid for performance (4x downscale)
+const WG = 4, wW = Math.ceil(W / WG), wH = Math.ceil(H / WG);
+const cellN = wW * wH;
+const windX = new Float32Array(cellN);
+const windY = new Float32Array(cellN);
+
+// ── Geography on wind grid ──
+const wElev = new Float32Array(cellN);
+const _oceanDrag = p("oceanDrag", 0.04);
+const _landDrag = p("landDrag", 0.35);
+const drag = new Float32Array(cellN);
+for (let wy = 0; wy < wH; wy++) for (let wx = 0; wx < wW; wx++) {
+  const px = Math.min(W - 1, wx * WG), py = Math.min(H - 1, wy * WG);
+  const e0 = elevation[py * W + px];
+  wElev[wy * wW + wx] = Math.max(0, e0);
+  if (e0 <= 0) {
+    drag[wy * wW + wx] = _oceanDrag;
+  } else {
+    drag[wy * wW + wx] = Math.max(_oceanDrag * 2, _landDrag - e0 * _landDrag * 0.5);
+  }
+}
+
+// Smooth helper (box blur, wraps X)
+const smoothField = (src, dst, w2, h2, passes, rad) => {
+  const r = rad || 2;
+  const tmp = new Float32Array(w2 * h2);
+  let inp = src, out = tmp;
+  for (let p2 = 0; p2 < passes; p2++) {
+    for (let y2 = 0; y2 < h2; y2++) for (let x2 = 0; x2 < w2; x2++) {
+      let sum = 0, cnt = 0;
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        const nx2 = (x2 + dx + w2) % w2, ny2 = y2 + dy;
+        if (ny2 >= 0 && ny2 < h2) { sum += inp[ny2 * w2 + nx2]; cnt++; }
+      }
+      out[y2 * w2 + x2] = sum / cnt;
+    }
+    if (p2 < passes - 1) { const sw = inp; inp = out; out = sw; }
+    else { for (let i = 0; i < w2 * h2; i++) dst[i] = out[i]; }
+  }
+};
+
+// Land fraction (smoothed for continental-scale effects)
+const landFracRaw = new Float32Array(cellN);
+for (let i = 0; i < cellN; i++) landFracRaw[i] = wElev[i] > 0 ? 1 : 0;
+const landFrac = new Float32Array(cellN);
+smoothField(landFracRaw, landFrac, wW, wH, 4, 3);
+
+// ── Temperature per layer ──
+const NL = 4;
+const layerTemp = new Array(NL);
+for (let l = 0; l < NL; l++) layerTemp[l] = new Float32Array(cellN);
+
+for (let wy = 0; wy < wH; wy++) {
+  const latFrac = Math.abs(wy / wH - 0.5) * 2;
+  const latRad = latFrac * Math.PI / 2;
+  const sinLat = Math.sin(latRad);
+  const sin2 = sinLat * sinLat;
+  const sin4 = sin2 * sin2;
+  for (let wx = 0; wx < wW; wx++) {
+    const wi = wy * wW + wx;
+    const e = wElev[wi];
+    const lf = landFrac[wi];
+    const baseTemp = 1 - 0.65 * sin2 - 0.35 * sin4;
+    const elevCorr = e * 0.55;
+    const maritime = Math.max(0, 1 - lf * 2) * 0.15;
+    const surfT = Math.max(0, Math.min(1, baseTemp - elevCorr + (0.5 - baseTemp) * maritime));
+    for (let l = 0; l < NL; l++) {
+      layerTemp[l][wi] = Math.max(0, surfT - l * 0.22);
+    }
+  }
+}
+
+// ── Pressure per layer ──
+const _pScale = p("pressureScale", 4.0);
+const _oroP = p("orographicPressure", 2.5);
+const _oceanPBias = p("oceanPressureBias", 0.15);
+const _landPBias = p("landPressureBias", 1.2);
+const layerP = new Array(NL);
+for (let l = 0; l < NL; l++) {
+  layerP[l] = new Float32Array(cellN);
+  for (let i = 0; i < cellN; i++) {
+    layerP[l][i] = -layerTemp[l][i] * _pScale;
+  }
+  const ps = new Float32Array(cellN);
+  smoothField(layerP[l], ps, wW, wH, 2, 2);
+  for (let i = 0; i < cellN; i++) layerP[l][i] = ps[i];
+}
+// Surface pressure corrections (broadly smoothed)
+{
+  const corrField = new Float32Array(cellN);
+  for (let i = 0; i < cellN; i++) {
+    const e = wElev[i];
+    const lf = landFrac[i];
+    corrField[i] = lf * _landPBias + e * _oroP;
+    if (lf < 0.3) corrField[i] += _oceanPBias * (1 - lf / 0.3);
+  }
+  const corrSmooth = new Float32Array(cellN);
+  smoothField(corrField, corrSmooth, wW, wH, 6, 4);
+  for (let i = 0; i < cellN; i++) layerP[0][i] += corrSmooth[i];
+}
+
+// Per-layer wind arrays
+const lWindX = new Array(NL), lWindY = new Array(NL);
+for (let l = 0; l < NL; l++) {
+  lWindX[l] = new Float32Array(cellN);
+  lWindY[l] = new Float32Array(cellN);
+}
+const vertW = new Float32Array(cellN);
+
+const buoyancy = p("buoyancy", 0.8);
+const vertCoupling = p("vertCoupling", 0.22);
+const _fMax = p("coriolisStrength", 0.25);
+
+// ── Main 3D solver ──
+const _windIter = p("windSolverIter", 25);
+for (let iter = 0; iter < _windIter; iter++) {
+
+  // 1) Vertical velocity from buoyancy
+  for (let i = 0; i < cellN; i++) {
+    const instability = layerTemp[0][i] - layerTemp[NL - 1][i];
+    vertW[i] = vertW[i] * 0.7 + instability * buoyancy * 0.3;
+  }
+  const vSmooth = new Float32Array(cellN);
+  smoothField(vertW, vSmooth, wW, wH, 1, 2);
+  for (let i = 0; i < cellN; i++) vertW[i] = vSmooth[i];
+
+  // Surface pressure tendency
+  for (let i = 0; i < cellN; i++) {
+    const lf = landFrac[i];
+    layerP[0][i] += -vertW[i] * 0.06 * (1 - lf * 0.9);
+  }
+  // Wind convergence → pressure feedback
+  {
+    const uX0 = lWindX[0], uY0 = lWindY[0];
+    for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+      const wi = wy * wW + wx;
+      const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+      const divg = (uX0[wy * wW + wr2] - uX0[wy * wW + wl2]
+        + uY0[(wy + 1) * wW + wx] - uY0[(wy - 1) * wW + wx]) * 0.5;
+      const lf = landFrac[wi];
+      const strength = 0.03 + lf * 0.08;
+      layerP[0][wi] += -divg * strength;
+    }
+  }
+  const pUpd = new Float32Array(cellN);
+  smoothField(layerP[0], pUpd, wW, wH, 1, 2);
+  for (let i = 0; i < cellN; i++) layerP[0][i] = pUpd[i];
+
+  // 2) Vertical mass transfer
+  for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+    const wi = wy * wW + wx;
+    const w3 = vertW[wi] * vertCoupling;
+    if (w3 > 0) {
+      for (let l = 0; l < NL - 1; l++) {
+        const transfer = w3 * (1 - l / NL);
+        lWindX[l + 1][wi] += lWindX[l][wi] * transfer;
+        lWindY[l + 1][wi] += lWindY[l][wi] * transfer;
+        lWindX[l][wi] *= (1 - transfer);
+        lWindY[l][wi] *= (1 - transfer);
+      }
+    } else {
+      const sink = -w3;
+      for (let l = NL - 1; l > 0; l--) {
+        const transfer = sink * (l / NL);
+        lWindX[l - 1][wi] += lWindX[l][wi] * transfer;
+        lWindY[l - 1][wi] += lWindY[l][wi] * transfer;
+        lWindX[l][wi] *= (1 - transfer);
+        lWindY[l][wi] *= (1 - transfer);
+      }
+    }
+  }
+
+  // 3) Horizontal solver per layer
+  const dt = 0.5;
+  const visc = 0.04;
+  for (let l = 0; l < NL; l++) {
+    const pArr = layerP[l];
+    const uX = lWindX[l], uY = lWindY[l];
+    const tmpX = new Float32Array(uX);
+    const tmpY = new Float32Array(uY);
+
+    for (let wy = 1; wy < wH - 1; wy++) {
+      const latSigned = (wy / wH - 0.5) * 2;
+      const f = -Math.sin(latSigned * Math.PI / 2) * _fMax;
+      for (let wx = 0; wx < wW; wx++) {
+        const wi = wy * wW + wx;
+        const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+        const nl = wy * wW + wl, nr = wy * wW + wr;
+        const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
+
+        const pgfX = -(pArr[nr] - pArr[nl]) * 0.5;
+        const pgfY = -(pArr[nd] - pArr[nu]) * 0.5;
+        const corX = -f * tmpY[wi];
+        const corY = f * tmpX[wi];
+        const kf = l === 0 ? drag[wi] : 0.005;
+        const drgX = -kf * tmpX[wi];
+        const drgY = -kf * tmpY[wi];
+        const lapX = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25 - tmpX[wi];
+        const lapY = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25 - tmpY[wi];
+
+        let vx = tmpX[wi] + dt * (pgfX + corX + drgX) + visc * lapX;
+        let vy = tmpY[wi] + dt * (pgfY + corY + drgY) + visc * lapY;
+
+        // Terrain deflection (surface only)
+        if (l === 0) {
+          const px = Math.min(W - 1, wx * WG), py = Math.min(H - 1, wy * WG);
+          const pxL = (px - WG + W) % W, pxR = (px + WG) % W;
+          const pyU = Math.max(0, py - WG), pyD = Math.min(H - 1, py + WG);
+          const eC = Math.max(0, elevation[py * W + px]);
+          const eL2 = Math.max(0, elevation[py * W + pxL]);
+          const eR2 = Math.max(0, elevation[py * W + pxR]);
+          const eU2 = Math.max(0, elevation[pyU * W + px]);
+          const eD2 = Math.max(0, elevation[pyD * W + px]);
+          const gx = (eR2 - eL2) * 0.5, gy = (eD2 - eU2) * 0.5;
+          const blockStr = Math.min(1, eC * 3);
+          const gm2 = gx * gx + gy * gy;
+          if (gm2 > 1e-8) {
+            const gm = Math.sqrt(gm2);
+            const dot = vx * gx + vy * gy;
+            if (dot > 0) {
+              const deflStr = Math.min(0.95, (gm * p("terrainDeflect", 3.0) + blockStr) * 0.5);
+              const removeX = deflStr * dot * gx / gm2;
+              const removeY = deflStr * dot * gy / gm2;
+              vx -= removeX;
+              vy -= removeY;
+              const perpX = -gy / gm, perpY = gx / gm;
+              const tangent = vx * perpX + vy * perpY;
+              const sign = tangent >= 0 ? 1 : -1;
+              const redirectMag = Math.sqrt(removeX * removeX + removeY * removeY) * 0.7;
+              vx += sign * perpX * redirectMag;
+              vy += sign * perpY * redirectMag;
+            }
+          }
+        }
+
+        uX[wi] = vx;
+        uY[wi] = vy;
+      }
+    }
+
+    // Divergence correction (per-cell strength)
+    if (iter % 2 === 0) {
+      const divP2 = new Float32Array(cellN);
+      for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+        const wi = wy * wW + wx;
+        const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+        divP2[wi] = (uX[wy * wW + wr2] - uX[wy * wW + wl2]
+          + uY[(wy + 1) * wW + wx] - uY[(wy - 1) * wW + wx]) * 0.5;
+      }
+      const pCorr = new Float32Array(cellN);
+      for (let ji = 0; ji < 12; ji++) {
+        const pTmp = new Float32Array(pCorr);
+        for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+          const wi = wy * wW + wx;
+          const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+          pCorr[wi] = (pTmp[wy * wW + wl2] + pTmp[wy * wW + wr2]
+            + pTmp[(wy - 1) * wW + wx] + pTmp[(wy + 1) * wW + wx]
+            - divP2[wi]) * 0.25;
+        }
+      }
+      for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+        const wi = wy * wW + wx;
+        const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+        const ds = l === 0 ? (0.1 + 0.3 * (1 - landFrac[wi])) : 1.0;
+        uX[wi] -= (pCorr[wy * wW + wr2] - pCorr[wy * wW + wl2]) * 0.5 * ds;
+        uY[wi] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5 * ds;
+      }
+    }
+  } // end per-layer horizontal solver
+} // end main iterations
+
+// Extract surface layer
+for (let i = 0; i < cellN; i++) {
+  windX[i] = lWindX[0][i];
+  windY[i] = lWindY[0][i];
+}
+
+// Wind scale + contrast
+const _windScale = p("windScale", 1.0);
+const _windContrast = p("windContrast", 1.0);
+if (_windScale !== 1.0 || _windContrast !== 1.0) {
+  for (let i = 0; i < cellN; i++) {
+    let vx = windX[i], vy = windY[i];
+    if (_windContrast !== 1.0) {
+      const mag = Math.sqrt(vx * vx + vy * vy);
+      if (mag > 1e-6) {
+        const scaled = Math.pow(mag, _windContrast) / mag;
+        vx *= scaled;
+        vy *= scaled;
+      }
+    }
+    windX[i] = vx * _windScale;
+    windY[i] = vy * _windScale;
+  }
+}
+
+// Sub-grid turbulence eddies
+const _eddyOcean = p("eddyStrength", 0.015);
+const _eddyLand = _eddyOcean * 0.4;
+for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
+  const wi = wy * wW + wx;
+  const nx = wx / wW, ny = wy / wH;
+  const eps = 0.003;
+  const n0 = fbm(nx * 6 + s3 + 100, ny * 6 + s3 + 100, 3, 2, 0.5);
+  const nDx = fbm((nx + eps) * 6 + s3 + 100, ny * 6 + s3 + 100, 3, 2, 0.5);
+  const nDy = fbm(nx * 6 + s3 + 100, (ny + eps) * 6 + s3 + 100, 3, 2, 0.5);
+  const amp = wElev[wi] > 0 ? _eddyLand : _eddyOcean;
+  windX[wi] += (nDy - n0) / eps * amp;
+  windY[wi] -= (nDx - n0) / eps * amp;
+}
+
+// Upscale to full resolution
+const fullWindX = new Float32Array(W * H);
+const fullWindY = new Float32Array(W * H);
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  const fx = x / WG, fy = y / WG;
+  const ix = Math.min(wW - 2, fx | 0), iy = Math.min(wH - 2, fy | 0);
+  const dx = fx - ix, dy = fy - iy;
+  const i00 = iy * wW + ix, i10 = iy * wW + Math.min(wW - 1, ix + 1);
+  const i01 = Math.min(wH - 1, iy + 1) * wW + ix;
+  const i11 = Math.min(wH - 1, iy + 1) * wW + Math.min(wW - 1, ix + 1);
+  const fi = y * W + x;
+  fullWindX[fi] = (windX[i00] * (1 - dx) + windX[i10] * dx) * (1 - dy)
+    + (windX[i01] * (1 - dx) + windX[i11] * dx) * dy;
+  fullWindY[fi] = (windY[i00] * (1 - dx) + windY[i10] * dx) * (1 - dy)
+    + (windY[i01] * (1 - dx) + windY[i11] * dx) * dy;
+}
+
+return { windX: fullWindX, windY: fullWindY };
 }

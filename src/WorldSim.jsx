@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
-import { generateTectonicWorld } from "./tectonicGen.js";
+import { generateTectonicWorld, solveWind } from "./tectonicGen.js";
 import TuningPanel, { ParamEditor, renderPreview } from "./TuningPanel.jsx";
 import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
@@ -84,6 +84,9 @@ let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.
 if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
 if(elevation[i]<.02)m+=.10;
 moisture[i]=Math.max(.02,Math.min(1,m));}
+// Run wind solver on Earth elevation data
+const earthWind=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137);
+tecWindX=earthWind.windX;tecWindY=earthWind.windY;
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
