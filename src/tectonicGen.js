@@ -1351,32 +1351,37 @@ for (let wy = 0; wy < wH; wy++) {
 }
 
 // ── Pressure per layer ──
+// Pressure from LATITUDE ONLY — no land/ocean thermal contrast.
+// In annual mean, summer thermal lows and winter highs cancel, so
+// continents should not have their own pressure signature from temperature.
+// The only static longitude-varying pressure is orographic (mountains).
+// Dynamic pressure (convergence feedback) handles the rest.
 const _pScale = p("pressureScale", 4.0);
 const _oroP = p("orographicPressure", 2.5);
-const _oceanPBias = p("oceanPressureBias", 0.15);
-const _landPBias = p("landPressureBias", 1.2);
 const layerP = new Array(NL);
 for (let l = 0; l < NL; l++) {
   layerP[l] = new Float32Array(cellN);
-  for (let i = 0; i < cellN; i++) {
-    layerP[l][i] = -layerTemp[l][i] * _pScale;
+  for (let wy = 0; wy < wH; wy++) {
+    // Pure latitude-based pressure: same at every longitude.
+    // Uses the latitude temperature profile WITHOUT land/ocean/elevation variation.
+    const latFrac = Math.abs(wy / wH - 0.5) * 2;
+    const latRad = latFrac * Math.PI / 2;
+    const sinLat = Math.sin(latRad);
+    const sin2 = sinLat * sinLat, sin4 = sin2 * sin2;
+    const latTemp = Math.max(0, (1 - 0.65 * sin2 - 0.35 * sin4) - l * 0.22);
+    const latP = -latTemp * _pScale;
+    for (let wx = 0; wx < wW; wx++) {
+      layerP[l][wy * wW + wx] = latP;
+    }
   }
-  const ps = new Float32Array(cellN);
-  smoothField(layerP[l], ps, wW, wH, 2, 2);
-  for (let i = 0; i < cellN; i++) layerP[l][i] = ps[i];
 }
-// Surface pressure corrections (broadly smoothed)
-{
-  const corrField = new Float32Array(cellN);
-  for (let i = 0; i < cellN; i++) {
-    const e = wElev[i];
-    const lf = landFrac[i];
-    corrField[i] = lf * _landPBias + e * _oroP;
-    if (lf < 0.3) corrField[i] += _oceanPBias * (1 - lf / 0.3);
-  }
-  const corrSmooth = new Float32Array(cellN);
-  smoothField(corrField, corrSmooth, wW, wH, 6, 4);
-  for (let i = 0; i < cellN; i++) layerP[0][i] += corrSmooth[i];
+// Orographic pressure: mountains are physical barriers (broadly smoothed)
+if (_oroP > 0) {
+  const oroField = new Float32Array(cellN);
+  for (let i = 0; i < cellN; i++) oroField[i] = wElev[i] * _oroP;
+  const oroSmooth = new Float32Array(cellN);
+  smoothField(oroField, oroSmooth, wW, wH, 6, 4);
+  for (let i = 0; i < cellN; i++) layerP[0][i] += oroSmooth[i];
 }
 
 // Per-layer wind arrays
@@ -1404,21 +1409,30 @@ for (let iter = 0; iter < _windIter; iter++) {
   smoothField(vertW, vSmooth, wW, wH, 1, 2);
   for (let i = 0; i < cellN; i++) vertW[i] = vSmooth[i];
 
-  // Surface pressure tendency
+  // Surface pressure tendency from vertical motion (OCEAN ONLY).
+  // Over land, vertical motion must not modify pressure — it creates
+  // thermal lows that suck wind in. Over ocean, it drives ITCZ etc.
   for (let i = 0; i < cellN; i++) {
     const lf = landFrac[i];
-    layerP[0][i] += -vertW[i] * 0.06 * (1 - lf * 0.9);
+    if (lf < 0.5) {
+      layerP[0][i] += -vertW[i] * 0.06 * (1 - lf * 2);
+    }
   }
-  // Wind convergence → pressure feedback
+  // Wind convergence → pressure feedback (THE mechanism for land barriers).
+  // When wind decelerates onto land (friction), it converges, raising
+  // local pressure, which reduces the PGF driving more wind in.
+  // This must be strong enough to actually deflect incoming flow.
   {
+    const _convStr = p("convergenceFeedback", 0.15);
     const uX0 = lWindX[0], uY0 = lWindY[0];
     for (let wy = 1; wy < wH - 1; wy++) for (let wx = 0; wx < wW; wx++) {
       const wi = wy * wW + wx;
       const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
       const divg = (uX0[wy * wW + wr2] - uX0[wy * wW + wl2]
         + uY0[(wy + 1) * wW + wx] - uY0[(wy - 1) * wW + wx]) * 0.5;
+      // Stronger over land (convergence is the barrier mechanism)
       const lf = landFrac[wi];
-      const strength = 0.03 + lf * 0.08;
+      const strength = _convStr * (0.3 + lf * 0.7);
       layerP[0][wi] += -divg * strength;
     }
   }
