@@ -1,6 +1,7 @@
 // ── Tectonic Plate Terrain Generator ──
 // Hybrid model: stamp-based land shapes + Voronoi plate boundaries.
 // Land shapes use multi-stamp composition (from Random mode) centered on
+import { solveWind } from "./windSolver.js";
 // continental plate nuclei, giving organic coastlines with peninsulas and bays.
 // Tectonic boundary effects (mountains, rifts) are layered on top.
 // Continentality-based interior terrain fills land interiors.
@@ -1269,12 +1270,9 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 return { elevation, moisture, temperature, pixPlate, windX: fullWindX, windY: fullWindY };
 }
 
-// ══════════════════════════════════════════════════════════════════
-// Standalone wind solver — can be called from any preset that has
-// elevation data. Extracts the full atmospheric circulation solver
-// (3D multi-layer with Coriolis, drag, orographic pressure, etc.)
-// ══════════════════════════════════════════════════════════════════
-export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
+// Old solveWind removed — now in windSolver.js
+if (false) { // dead code block for deletion
+function _oldSolveWind_DEAD(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
 const p = (k, d) => params[k] !== undefined ? params[k] : d;
 const s3 = noiseSeed;
 
@@ -1702,4 +1700,4 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 }
 
 return { windX: fullWindX, windY: fullWindY };
-}
+}} // end dead code block

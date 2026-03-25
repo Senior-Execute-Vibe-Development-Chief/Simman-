@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
-import { generateTectonicWorld, solveWind } from "./tectonicGen.js";
+import { generateTectonicWorld } from "./tectonicGen.js";
+import { solveWind } from "./windSolver.js";
 import TuningPanel, { ParamEditor, renderPreview } from "./TuningPanel.jsx";
 import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
