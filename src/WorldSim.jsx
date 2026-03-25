@@ -918,8 +918,15 @@ const wx=Math.floor(sx)*RES,wy=Math.floor(sy)*RES;
 const w=worldRef.current,i=wy*1920+wx;
 if(wx<0||wx>=1920||wy<0||wy>=960){setHoverInfo(null);return;}
 const elev=w.elevation[i]||0;
-const val=elev<=0?0:Math.round(elev*8000);
-setHoverInfo({x:ev.clientX,y:ev.clientY,val});
+const temp=w.temperature[i]||0;
+const moist=w.moisture[i]||0;
+const biome=getBiomeD(elev,moist,temp,0);
+const biomeName=BN[biome]||"Ocean";
+const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
+const tempC=Math.round(temp*50-10);
+const lat=Math.abs(wy/960-0.5)*2;
+const fertVal=elev>0?tileFert(temp,moist,elev):0;
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
@@ -1003,9 +1010,17 @@ color:"#6a6458",fontSize:9,pointerEvents:"none"}}>Seed: {extraSeed}</div>}
 </div>
 
 {/* Hover tooltip */}
-{hoverInfo&&<div style={{position:"fixed",left:hoverInfo.x+12,top:hoverInfo.y-8,
-background:"rgba(6,8,16,0.85)",color:"#c9b87a",fontSize:10,padding:"1px 5px",
-borderRadius:2,pointerEvents:"none",whiteSpace:"nowrap",zIndex:100}}>{hoverInfo.val}m</div>}
+{hoverInfo&&<div style={{position:"fixed",left:hoverInfo.x+14,top:hoverInfo.y-60,
+background:"rgba(6,8,16,0.92)",color:"#c9b87a",fontSize:10,padding:"6px 10px",
+borderRadius:3,pointerEvents:"none",whiteSpace:"nowrap",zIndex:100,lineHeight:"15px",
+border:"1px solid rgba(201,184,122,0.15)"}}>
+<div style={{fontWeight:"bold",marginBottom:2,color:hoverInfo.elevM<=0?"#4a6a8a":"#c9b87a"}}>{hoverInfo.biome}</div>
+<div><span style={{color:"#8a8474"}}>Elev:</span> {hoverInfo.elevM}m</div>
+<div><span style={{color:"#8a8474"}}>Temp:</span> {hoverInfo.tempC}°C</div>
+<div><span style={{color:"#8a8474"}}>Moist:</span> {(hoverInfo.moist*100).toFixed(0)}%</div>
+<div><span style={{color:"#8a8474"}}>Fert:</span> {(hoverInfo.fert*100).toFixed(0)}%</div>
+<div><span style={{color:"#8a8474"}}>Lat:</span> {(hoverInfo.lat*90).toFixed(1)}°</div>
+</div>}
 
 {/* Biome legend — BOTTOM LEFT */}
 {viewMode==="terrain"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.82)",

@@ -739,14 +739,78 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   if (lat > 0.88) e -= (lat - 0.88) * 2;
 
   elevation[i] = e;
-  temperature[i] = Math.max(0, Math.min(1,
-    1 - lat * 1.05 - Math.max(0, e) * 0.4 + sg(nfTemp, x, y) * 0.08));
+}
+
+// ═══════════════════════════════════════════════════════
+// STEP 8b: Directional rain shadow (prevailing-wind moisture transport)
+// Wind blows west→east in temperate zones (westerlies), east→west in tropics (trades)
+// Moisture accumulates from ocean, blocked by mountains on leeward side
+// ═══════════════════════════════════════════════════════
+const windMoisture = new Float32Array(W * H);
+// Scan each latitude row in the prevailing wind direction
+for (let y = 0; y < H; y++) {
+  const ny = y / H;
+  const lat = Math.abs(ny - 0.5) * 2;
+  // Tropical trades blow east→west (scan right to left), temperate westerlies blow west→east
+  // Blend zone between lat 0.25-0.35
+  const westerly = smoothstep((lat - 0.25) / 0.1); // 0=trades, 1=westerlies
+  // We do TWO passes per row (one for each wind component) and blend
+  const rowTrade = new Float32Array(W);
+  const rowWest = new Float32Array(W);
+  // Trade winds: east→west (scan from right)
+  let carry = 0;
+  for (let x2 = W - 1; x2 >= 0; x2--) {
+    const i2 = y * W + x2;
+    const e2 = elevation[i2];
+    if (e2 <= 0) { carry = 0.6; } // ocean recharges moisture
+    else {
+      // Mountains block: the higher, the more blocked
+      const block = Math.max(0, e2 - 0.08) * 3.5;
+      carry = Math.max(0, carry - block * 0.15);
+      // Also natural decay inland
+      carry *= 0.997;
+    }
+    rowTrade[x2] = carry;
+  }
+  // Westerlies: west→east (scan from left, wrapping)
+  carry = 0;
+  for (let x2 = 0; x2 < W; x2++) {
+    const i2 = y * W + x2;
+    const e2 = elevation[i2];
+    if (e2 <= 0) { carry = 0.6; }
+    else {
+      const block = Math.max(0, e2 - 0.08) * 3.5;
+      carry = Math.max(0, carry - block * 0.15);
+      carry *= 0.997;
+    }
+    rowWest[x2] = carry;
+  }
+  // Blend based on latitude
+  for (let x2 = 0; x2 < W; x2++) {
+    windMoisture[y * W + x2] = rowTrade[x2] * (1 - westerly) + rowWest[x2] * westerly;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// STEP 8c: Temperature & Moisture (with wind shadow + maritime moderation)
+// ═══════════════════════════════════════════════════════
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  const i = y * W + x;
+  const nx = x / W, ny = y / H;
+  const lat = Math.abs(ny - 0.5) * 2;
+  const e = elevation[i];
+
+  // Maritime temperature moderation: coast proximity → milder temps
+  const cdm = cdist[Math.min(dh - 1, (y / DG) | 0) * dw + Math.min(dw - 1, (x / DG) | 0)];
+  const coastProx = Math.max(0, 1 - cdm / 8);
+  const baseTemp = 1 - lat * 1.05 - Math.max(0, e) * 0.4 + sg(nfTemp, x, y) * 0.08;
+  // Pull extreme temps toward 0.45 (ocean moderating effect)
+  const moderated = baseTemp + (0.45 - baseTemp) * coastProx * 0.2;
+  temperature[i] = Math.max(0, Math.min(1, moderated));
 
   if (e <= 0) {
     moisture[i] = 0.5 + sg(nfMoistOce, x, y) * 0.1;
   } else {
-    const cdm = cdist[Math.min(dh - 1, (y / DG) | 0) * dw + Math.min(dw - 1, (x / DG) | 0)];
-    const coastProx = Math.max(0, 1 - cdm / 8);
     const tropWet = Math.max(0, 1 - lat * 2.5);
     const subtropDry = Math.exp(-((lat - 0.28) ** 2) / (2 * 0.06 * 0.06)) * 0.50 * (1 - coastProx * 0.5);
     const tempWet = Math.exp(-((lat - 0.55) ** 2) / 0.025) * 0.22;
@@ -756,7 +820,14 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const polarDry = Math.max(0, (lat - 0.75)) * 0.25;
     let m = 0.42 + tropWet * 0.42 - subtropDry + tempWet - cont - polarDry
       + sg(nfMoistLand, x, y) * 0.12;
-    if (e > 0.15) m -= Math.min(0.2, (e - 0.15) * 1);
+    // Directional rain shadow replaces old non-directional elevation penalty
+    // windMoisture is high on windward side, low on leeward
+    const wm = windMoisture[i];
+    const windBoost = (wm - 0.3) * 0.5; // positive on windward, negative in shadow
+    m += windBoost;
+    // Orographic lift: windward side of mountains gets extra rain
+    if (e > 0.1 && wm > 0.35) m += Math.min(0.12, (e - 0.1) * wm * 0.5);
+    // Lowland moisture accumulation
     if (e < 0.02) m += 0.10;
     moisture[i] = Math.max(0.02, Math.min(1, m));
   }
