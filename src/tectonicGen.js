@@ -845,9 +845,10 @@ for (let wy = 0; wy < wH; wy++) {
     // Maritime moderation: ocean buffers temperature toward ~0.5 (global mean)
     const maritime = Math.max(0, 1 - lf * 2) * 0.15;
     const surfT = Math.max(0, Math.min(1, baseTemp - elevCorr + (0.5 - baseTemp) * maritime));
-    // Lapse rate: 6.5°C/km, 4 layers spanning ~12km → 0.13 per layer
+    // Lapse rate: 6.5°C/km × 3km spacing = 19.5°C/layer. In normalized units
+    // (50K range → 0-1): 19.5/50 ≈ 0.22 per layer. Drives stronger buoyancy.
     for (let l = 0; l < NL; l++) {
-      layerTemp[l][wi] = Math.max(0, surfT - l * 0.13);
+      layerTemp[l][wi] = Math.max(0, surfT - l * 0.22);
     }
   }
 }
