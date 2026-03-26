@@ -27,6 +27,9 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _gapFunneling    = p("gapFunneling", 0.645);
   const _eddyStrength    = p("eddyStrength", 0.019);
   const _solverIter      = p("windSolverIter", 250);
+  const _coandaStr       = p("coandaStrength", 0.7);
+  const _gustThreshold   = p("gustThreshold", 0.15);
+  const _gustBoost       = p("gustBoost", 0.3);
   const _itczOffset      = p("itczOffset", 0.033);
 
   // ── Coarse grid (4x downscale) ──
@@ -345,7 +348,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
             // Redirect 70% of blocked energy along terrain contour
             const tangX = -ny, tangY = nx;
             const tangDot = vx * tangX + vy * tangY;
-            const redir = Math.sqrt(rmX * rmX + rmY * rmY) * 0.7;
+            const redir = Math.sqrt(rmX * rmX + rmY * rmY) * _coandaStr;
             vx += (tangDot >= 0 ? 1 : -1) * tangX * redir;
             vy += (tangDot >= 0 ? 1 : -1) * tangY * redir;
 
@@ -435,7 +438,26 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 7: Bilinear upscale to full resolution
+  // STEP 8: Gust boost — wind above threshold gets amplified
+  // ════════════════════════════════════════════════════════════════
+  // gustThreshold: speed above which wind gets boosted (in raw units)
+  // gustBoost: fractional boost applied to the excess speed
+  // e.g. threshold=0.15, boost=0.3: wind at 0.25 → excess=0.10 → 0.25 + 0.10*0.3 = 0.28
+  if (_gustBoost > 0 && _gustThreshold > 0) {
+    for (let i = 0; i < N; i++) {
+      const vx = windX[i], vy = windY[i];
+      const speed = Math.sqrt(vx * vx + vy * vy);
+      if (speed > _gustThreshold) {
+        const excess = speed - _gustThreshold;
+        const factor = (speed + excess * _gustBoost) / speed;
+        windX[i] *= factor;
+        windY[i] *= factor;
+      }
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // STEP 9: Bilinear upscale to full resolution
   // ════════════════════════════════════════════════════════════════
   const fullWindX = new Float32Array(W * H);
   const fullWindY = new Float32Array(W * H);
