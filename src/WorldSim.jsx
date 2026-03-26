@@ -861,6 +861,48 @@ else{const t2=v*2;r=220;g=(t2*200)|0;b=0;}
 // Darken slightly with elevation for depth
 const shade=1-Math.max(0,e-0.1)*0.5;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
+}else if(vm==="moisture"){
+// Moisture overlay — brown (dry) → yellow → green → teal → blue (wet)
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const e=w.elevation[si];const pi4=ti<<2;
+if(e<=sl){// Ocean: dim blue
+d[pi4]=8;d[pi4+1]=15;d[pi4+2]=35;d[pi4+3]=255;continue;}
+const m=w.moisture[si];let r,g,b;
+if(m<0.1){const s=m/0.1;r=(140+s*20)|0;g=(100+s*30)|0;b=(50+s*10)|0;}// brown (desert dry)
+else if(m<0.25){const s=(m-0.1)/0.15;r=(160-s*50)|0;g=(130+s*50)|0;b=(60+s*10)|0;}// brown→olive
+else if(m<0.4){const s=(m-0.25)/0.15;r=(110-s*60)|0;g=(180+s*20)|0;b=(70+s*20)|0;}// olive→green
+else if(m<0.55){const s=(m-0.4)/0.15;r=(50-s*30)|0;g=(200-s*10)|0;b=(90+s*60)|0;}// green→teal
+else if(m<0.7){const s=(m-0.55)/0.15;r=(20-s*10)|0;g=(190-s*40)|0;b=(150+s*50)|0;}// teal→blue-green
+else if(m<0.85){const s=(m-0.7)/0.15;r=(10)|0;g=(150-s*80)|0;b=(200+s*30)|0;}// blue
+else{const s=(m-0.85)/0.15;r=(10+s*20)|0;g=(70-s*30)|0;b=(230+s*25)|0;}// deep blue
+// Darken with elevation for topographic context
+const shade=1-Math.max(0,e-0.1)*0.4;
+d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
+}else if(vm==="temperature"){
+// Temperature overlay — blue (cold) → cyan → green → yellow → orange → red (hot)
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const e=w.elevation[si];const pi4=ti<<2;
+if(e<=sl){// Ocean: show temperature with slight blue tint
+const t=w.temperature[si];
+const ot=Math.max(0,Math.min(1,t));
+let r,g,b;
+if(ot<0.2){const s=ot/0.2;r=(10+s*5)|0;g=(15+s*25)|0;b=(60+s*50)|0;}
+else if(ot<0.5){const s=(ot-0.2)/0.3;r=(15+s*10)|0;g=(40+s*30)|0;b=(110-s*20)|0;}
+else{const s=(ot-0.5)/0.5;r=(25+s*15)|0;g=(70-s*20)|0;b=(90-s*30)|0;}
+d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;continue;}
+const t=w.temperature[si];let r,g,b;
+if(t<0.12){const s=t/0.12;r=(20+s*10)|0;g=(20+s*40)|0;b=(150+s*80)|0;}// deep blue (polar)
+else if(t<0.25){const s=(t-0.12)/0.13;r=(30+s*10)|0;g=(60+s*80)|0;b=(230-s*30)|0;}// blue→cyan
+else if(t<0.38){const s=(t-0.25)/0.13;r=(40-s*10)|0;g=(140+s*60)|0;b=(200-s*100)|0;}// cyan→green
+else if(t<0.52){const s=(t-0.38)/0.14;r=(30+s*120)|0;g=(200+s*40)|0;b=(100-s*70)|0;}// green→yellow
+else if(t<0.65){const s=(t-0.52)/0.13;r=(150+s*90)|0;g=(240-s*20)|0;b=(30-s*10)|0;}// yellow→orange
+else if(t<0.78){const s=(t-0.65)/0.13;r=(240+s*15)|0;g=(220-s*80)|0;b=(20-s*10)|0;}// orange
+else{const s=(t-0.78)/0.22;r=255;g=(140-s*100)|0;b=(10+s*5)|0;}// red (tropical)
+// Darken with elevation for topographic context
+const shade=1-Math.max(0,e-0.1)*0.4;
+d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else{
 // Default terrain view with tribe overlay — one pixel per tile
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
@@ -1179,7 +1221,7 @@ display:"flex",gap:12,fontSize:11,color:"#c9b87a",pointerEvents:"none"}}>
 <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",
 background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"6px 12px",
 display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["value","Value"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
+{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["value","Value"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
 style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
 color:viewMode===k?"#c9b87a":"#5a5448",padding:"6px 14px",fontSize:13}}>{label}</button>))}
