@@ -30,7 +30,6 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _coandaRedirect  = p("coandaRedirect", 0.7);
   const _coandaPull      = p("coandaPull", 0.003);
   const _itczOffset      = p("itczOffset", 0.033);
-  const _monsoonStr      = p("monsoonStrength", 0.0);
 
   // ── Coarse grid (4x downscale) ──
   const WG = 4;
@@ -160,7 +159,10 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       // ── C) Continental thermal anomaly ──
       // Warm continents → low pressure (thermal low, draws air onshore)
       // This is the monsoon driver
-      const thermalAnomaly = -(temperature[i] - zonalMeanT[wy]) * _monsoonStr;
+      // Thermal anomaly: deviation from zonal mean drives monsoon-like flows
+      // This emerges naturally from thermalContrast — warm continents create
+      // low pressure that draws in ocean air. No separate multiplier needed.
+      const thermalAnomaly = -(temperature[i] - zonalMeanT[wy]);
 
       // Base meridional pressure
       const meridionalP = -temperature[i] * _pressureScale;

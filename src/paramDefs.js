@@ -116,8 +116,6 @@ export const PARAMS = {
         desc: "Planetary rotation effect (2Ω·sin(φ)). Controls how much wind deflects (spirals) vs flowing straight toward low pressure. Higher = more geostrophic (parallel to isobars)." },
       { key: "itczOffset", def: 0.033, min: -0.10, max: 0.15, label: "ITCZ offset",
         desc: "North-south shift of the Intertropical Convergence Zone. Positive = ITCZ shifts north (boreal summer). Negative = shifts south. Affects trade wind asymmetry." },
-      { key: "monsoonStrength", def: 0.0, min: 0.0, max: 1.5, label: "Monsoon strength",
-        desc: "How strongly land-sea temperature anomalies create local pressure differences. Higher = stronger onshore/offshore flow near continents." },
       { key: "oceanDrag", def: 0.04, min: 0.01, max: 0.15, label: "Ocean friction",
         desc: "Surface drag over ocean. Sets the cross-isobar angle (~15° at default). Higher = wind crosses isobars more, slower flow." },
       { key: "landDrag", def: 1.901, min: 0.02, max: 3.0, label: "Land friction",
