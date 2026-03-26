@@ -1229,6 +1229,59 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 }
 
 // ═══════════════════════════════════════════════════════
+// STEP 8c2: Wind-advected temperature transport
+// Heat carried by wind — warm equatorial air pushed poleward by westerlies,
+// cold polar air pushed equatorward by easterlies. Same principle as moisture
+// advection but temperature relaxes toward local latitude value (thermal inertia).
+// ═══════════════════════════════════════════════════════
+const windTemp = new Float32Array(W * H);
+const tGrid = new Float32Array(mW * mH);
+// Seed with latitude-based temperature
+for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
+  const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+  const lat2 = Math.abs(py / H - 0.5) * 2;
+  const e2 = elevation[py * W + px];
+  tGrid[my * mW + mx] = Math.max(0, Math.min(1, 1 - lat2 * 1.05 - Math.max(0, e2) * 0.4));
+}
+// Advect temperature along wind vectors
+for (let step = 0; step < 25; step++) {
+  const prev = new Float32Array(tGrid);
+  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
+    const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+    const fi = py * W + px;
+    const wx2 = fullWindX[fi], wy2 = fullWindY[fi];
+    const srcX = mx - wx2 * 2.0, srcY = my - wy2 * 2.0;
+    const sx = Math.min(mW - 2, Math.max(0, srcX | 0));
+    const sy = Math.min(mH - 2, Math.max(0, srcY | 0));
+    const fdx = Math.max(0, Math.min(1, srcX - sx));
+    const fdy = Math.max(0, Math.min(1, srcY - sy));
+    const sxr = Math.min(mW - 1, sx + 1);
+    const upwindT = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
+      + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
+    const e2 = elevation[fi];
+    const lat2 = Math.abs(py / H - 0.5) * 2;
+    const localT = Math.max(0, Math.min(1, 1 - lat2 * 1.05 - Math.max(0, e2) * 0.4));
+    if (e2 <= 0) {
+      // Ocean: high thermal inertia, mostly local temp with slight wind influence
+      tGrid[my * mW + mx] = localT * 0.85 + upwindT * 0.15;
+    } else {
+      // Land: lower thermal inertia, wind carries heat more effectively
+      const terrainBlock = Math.min(0.8, Math.max(0, e2 - 0.05) * 3);
+      const windInf = (1 - terrainBlock * 0.5) * 0.3;
+      tGrid[my * mW + mx] = localT * (1 - windInf) + upwindT * windInf;
+    }
+  }
+}
+// Upscale wind temperature to full resolution
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  const fx = x / 2, fy = y / 2;
+  const ix = Math.min(mW - 2, fx | 0), iy = Math.min(mH - 2, fy | 0);
+  const dx2 = fx - ix, dy2 = fy - iy;
+  windTemp[y * W + x] = (tGrid[iy * mW + ix] * (1 - dx2) + tGrid[iy * mW + Math.min(mW - 1, ix + 1)] * dx2) * (1 - dy2)
+    + (tGrid[(iy + 1) * mW + ix] * (1 - dx2) + tGrid[(iy + 1) * mW + Math.min(mW - 1, ix + 1)] * dx2) * dy2;
+}
+
+// ═══════════════════════════════════════════════════════
 // STEP 8d: Temperature & Moisture (final combination)
 // ═══════════════════════════════════════════════════════
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -1241,19 +1294,14 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const cdm = cdist[Math.min(dh - 1, (y / DG) | 0) * dw + Math.min(dw - 1, (x / DG) | 0)];
   const coastProx = Math.max(0, 1 - cdm / 8);
   const baseTemp = 1 - lat * 1.05 - Math.max(0, e) * 0.4 + sg(nfTemp, x, y) * 0.08
-    + sg(nfTempBroad, x, y) * 0.10;  // continent-scale temperature variation to break bands
+    + sg(nfTempBroad, x, y) * 0.10;
   // Pull extreme temps toward 0.45 (ocean moderating effect)
-  let temp = baseTemp + (0.45 - baseTemp) * coastProx * 0.2;
-  // Wind-derived coastal current anomaly:
-  // Wind blowing poleward along coast → warm current (air from equator)
-  // Wind blowing equatorward along coast → cold current / upwelling
-  if (e > 0 && coastProx > 0.15) {
-    const wy = fullWindY[i];
-    const hemiSign = ny < 0.5 ? -1 : 1;
-    const polewardFlow = wy * hemiSign;
-    const anomaly = Math.max(-0.08, Math.min(0.08, polewardFlow * 0.15)) * coastProx;
-    temp += anomaly;
-  }
+  const modTemp = baseTemp + (0.45 - baseTemp) * coastProx * 0.2;
+  // Blend latitude-based temperature with wind-advected temperature.
+  // Wind transport carries warmth from equatorial regions poleward (westerlies)
+  // and cold air equatorward (easterlies/polar outbreaks).
+  const wt = windTemp[i];
+  const temp = modTemp * 0.6 + wt * 0.4;
   temperature[i] = Math.max(0, Math.min(1, temp));
 
   if (e <= 0) {
