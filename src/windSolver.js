@@ -17,21 +17,21 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const PI = Math.PI;
 
   // ── Tunable parameters ──
-  const _pressureScale   = p("pressureScale", 0.139);
-  const _thermalContrast = p("thermalContrast", 0.0);
+  const _pressureScale   = p("pressureScale", 0.433);
+  const _thermalContrast = p("thermalContrast", 1.40);
   const _hadleyStr       = p("hadleyStrength", 0.0);
-  const _coriolisStr     = p("coriolisStrength", 0.365);
-  const _oceanDrag       = p("oceanDrag", 0.01);
-  const _landDrag        = p("landDrag", 2.017);
-  const _terrainDeflect  = p("terrainDeflect", 20.0);
+  const _coriolisStr     = p("coriolisStrength", 0.50);
+  const _oceanDrag       = p("oceanDrag", 0.07);
+  const _landDrag        = p("landDrag", 3.0);
+  const _terrainDeflect  = p("terrainDeflect", 40.0);
   const _gapFunneling    = p("gapFunneling", 0.66);
-  const _eddyStrength    = p("eddyStrength", 0.009);
+  const _eddyStrength    = p("eddyStrength", 0.005);
   const _solverIter      = p("windSolverIter", 500);
-  const _coandaStr       = p("coandaStrength", 1.02);
-  const _gustThreshold   = p("gustThreshold", 0.075);
+  const _coandaStr       = p("coandaStrength", 0.12);
+  const _gustThreshold   = p("gustThreshold", 0.055);
   const _gustBoost       = p("gustBoost", 2.0);
   const _curlBoost       = p("curlBoost", 2.0);
-  const _itczOffset      = p("itczOffset", 0.033);
+  const _itczOffset      = p("itczOffset", 0.013);
 
   // ── Coarse grid (4x downscale) ──
   const WG = 4;
