@@ -677,6 +677,43 @@ const nfMoistOce = precompute((nx, ny) => fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.
 const nfMoistLand = precompute((nx, ny) => fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55));
 const nfMoistBroad = precompute((nx, ny) => fbm(nx * 1.5 + s2 + 90, ny * 1.5 + s2 + 90, 3, 2, 0.55));
 
+// ── Terrain-specific heightmap noise fields ──
+// Ridged multifractal for Himalaya-style mountain veining/ridgelines
+// Domain-warped to create realistic drainage-aligned ridge patterns
+const nfMtnRidge1 = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 6, 2, 0.06, s4 + 70, s4 + 120);
+  return ridged(wx * 14 + s4, wy * 14 + s4, 5, 2.1, 0.65, 1.0);
+});
+// Secondary ridge field at different angle/scale for cross-cutting veins
+const nfMtnRidge2 = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 5, 2, 0.05, s5 + 30, s5 + 80);
+  return ridged(wx * 20 + s5, wy * 20 + s5, 4, 2.3, 0.6, 1.0);
+});
+// Valley incision noise (Worley-based): carves V-shaped valleys between ridges
+const nfMtnValley = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 4, 2, 0.04, s3 + 90, s3 + 140);
+  const [f1] = worley(wx * 10 + s3 + 60, wy * 10 + s3 + 60);
+  return f1;
+});
+// Foothill texture: medium-frequency, gentler undulation
+const nfFoothillTex = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 3.5, 2, 0.03, s2 + 75, s2 + 125);
+  return fbm(wx * 9 + s2 + 50, wy * 9 + s2 + 50, 3, 2.0, 0.50);
+});
+// Lowland gentle terrain: very broad, low-amplitude undulation
+const nfLowlandBroad = precompute((nx, ny) =>
+  fbm(nx * 2.5 + s1 + 80, ny * 2.5 + s1 + 80, 2, 2.0, 0.6));
+// Lowland fine texture: subtle river-plain style variation
+const nfLowlandFine = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 2, 2, 0.025, s3 + 20, s3 + 70);
+  return fbm(wx * 7 + s3 + 10, wy * 7 + s3 + 10, 3, 2.0, 0.45);
+});
+// Plateau valley incision: inverted ridges that carve canyons into flat plateaus
+const nfPlateauIncise = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 5, 2, 0.05, s4 + 40, s4 + 90);
+  return ridged(wx * 8 + s4 + 20, wy * 8 + s4 + 20, 3, 2.0, 0.55, 1.0);
+});
+
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
   const nx = x / W, ny = y / H;
@@ -731,13 +768,63 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     e += (broadSwell + rolling) * tecLift * 5.0;
     e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
 
+    // ── Terrain-specific heightmap noise ──
+    // Classify terrain zone from tectonic context
+    const mtnStr = Math.min(1, tecLift * 3);           // 0=flat, 1=full mountain
+    const plateauStr = Math.min(1, broadVal * 4);       // broad uplift (Tibet-like)
+    const peakStr = Math.min(1, sharpVal * 5);          // sharp ridge proximity
+    const foothillStr = smoothstep(mtnStr * 2 - 0.15) * (1 - smoothstep(mtnStr * 2 - 0.7));
+    const lowlandStr = (1 - mtnStr) * (1 - coastBlend); // flat interior
+
+    // Mountain noise: Himalaya-style ridging + veining
+    // Primary ridgeline: sharp, high-amplitude veining aligned with domain warp
+    const ridge1 = sg(nfMtnRidge1, x, y);
+    // Secondary cross-cutting ridges at finer scale
+    const ridge2 = sg(nfMtnRidge2, x, y);
+    // Blend ridges: primary dominates, secondary adds cross-veins
+    const ridgeCombined = ridge1 * 0.7 + ridge2 * 0.3;
+    // Valley incision between ridges (Worley distance → V-shaped valleys)
+    const valleyDepth = sg(nfMtnValley, x, y);
+    // Mountain heightmap: ridges push up, valleys carve down
+    const mtnNoise = (ridgeCombined * p('mtnRidgeStr', 0.06)
+      - (1 - valleyDepth) * p('mtnValleyStr', 0.025))
+      * peakStr;
+    // Broader mountain texture for areas near but not at ridgeline
+    const mtnBroadNoise = ridgeCombined * p('mtnRidgeBroadStr', 0.03)
+      * mtnStr * (1 - peakStr * 0.5);
+
+    // Plateau noise: flat-topped with incised canyon valleys
+    const plateauIncise = sg(nfPlateauIncise, x, y);
+    // Invert ridged noise: high values become flat tops, zero-crossings become canyons
+    const plateauNoiseTex = (1 - plateauIncise) * p('plateauInciseStr', 0.02)
+      * plateauStr * (1 - peakStr);
+
+    // Foothill noise: moderate undulation, rounder features
+    const foothillNoise = sg(nfFoothillTex, x, y)
+      * p('foothillStr', 0.015) * foothillStr;
+
+    // Lowland noise: gentle, broad gradients (plains, river basins)
+    const lowBroad = sg(nfLowlandBroad, x, y) * p('lowlandBroadStr', 0.008);
+    const lowFine = sg(nfLowlandFine, x, y) * p('lowlandFineStr', 0.004);
+    const lowlandNoise = (lowBroad + lowFine) * lowlandStr * interior;
+
+    // Composite terrain noise, each zone contributes proportionally
+    e += mtnNoise + mtnBroadNoise - plateauNoiseTex + foothillNoise + lowlandNoise;
+
     e = Math.max(0, e);
     e = Math.pow(e, 1.08) * 1.1;
     e = Math.max(0.002, Math.min(1.0, e));
   }
 
-  // Fine texture (high freq — must stay per-pixel)
-  e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.004;
+  // Fine texture (high freq — must stay per-pixel, scaled by terrain type)
+  const baseFine = fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4);
+  if (e > 0.002) {
+    // Scale fine texture: stronger in mountains, subtle in lowlands
+    const fineMtnBoost = Math.min(1, Math.max(0, e - 0.05) * 8);
+    e += baseFine * (0.002 + fineMtnBoost * 0.006);
+  } else {
+    e += baseFine * 0.003;
+  }
 
   if (lat > 0.88) e -= (lat - 0.88) * 2;
 

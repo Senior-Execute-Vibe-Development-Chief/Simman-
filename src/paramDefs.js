@@ -103,6 +103,25 @@ export const PARAMS = {
         desc: "Noisy texture within mountain zones. Higher = more variation between peaks and valleys." },
     ]
   },
+  terrain_noise: {
+    label: "Terrain Noise", color: "140,170,130",
+    params: [
+      { key: "mtnRidgeStr", def: 0.06, min: 0.0, max: 0.15, label: "Mountain ridge strength",
+        desc: "Himalaya-style ridgeline veining in high mountain zones. Creates sharp, branching ridge patterns." },
+      { key: "mtnValleyStr", def: 0.025, min: 0.0, max: 0.06, label: "Mountain valley depth",
+        desc: "Depth of V-shaped valleys carved between mountain ridges. Higher = deeper, more dramatic valleys." },
+      { key: "mtnRidgeBroadStr", def: 0.03, min: 0.0, max: 0.08, label: "Mountain broad texture",
+        desc: "Broad ridging texture in mountain zones away from peak ridgelines. Gives foothills a rumpled quality." },
+      { key: "plateauInciseStr", def: 0.02, min: 0.0, max: 0.05, label: "Plateau canyon incision",
+        desc: "Canyon/valley incision into plateau surfaces. Creates Grand Canyon-style cuts in flat-topped plateaus." },
+      { key: "foothillStr", def: 0.015, min: 0.0, max: 0.04, label: "Foothill texture",
+        desc: "Rolling undulation in foothill transition zones between mountains and lowlands." },
+      { key: "lowlandBroadStr", def: 0.008, min: 0.0, max: 0.02, label: "Lowland broad gradient",
+        desc: "Very gentle, broad elevation variation across plains and lowlands. Gives subtle regional tilt." },
+      { key: "lowlandFineStr", def: 0.004, min: 0.0, max: 0.012, label: "Lowland fine texture",
+        desc: "Subtle fine-scale variation in lowlands. Creates gentle river-plain style undulation." },
+    ]
+  },
   wind: {
     label: "Wind & Pressure", color: "130,190,210",
     params: [
