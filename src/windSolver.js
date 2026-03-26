@@ -1,15 +1,14 @@
 // ══════════════════════════════════════════════════════════════════
-// Physically-based atmospheric wind solver
+// Physically-based atmospheric wind solver v3
 //
-// Approach:
-//   1. Compute surface temperature field (latitude + altitude + land/sea)
-//   2. Derive thermal pressure from temperature via hypsometric equation
-//   3. Add Hadley/Ferrel/Polar meridional overturning as direct forcing
-//   4. Land-sea thermal contrast → monsoon pressure anomalies
-//   5. Geostrophic + Ekman boundary layer solution
-//   6. Iterative pressure correction for mass conservation
-//   7. Terrain interaction: blocking, gap funneling, lee acceleration
-//   8. Sub-grid mesoscale turbulence
+// Key improvements over v2:
+//   - Subtropical anticyclonic gyres over each ocean basin
+//   - Much less land drag (land is NOT a dead zone)
+//   - Terrain blocking only for actual mountains, not all land
+//   - Synoptic-scale variability (baroclinic waves at mid-latitudes)
+//   - Stronger longitudinal pressure variation from continent geometry
+//   - No artificial speed-up artifacts at coastlines
+//   - Continental thermal lows that pull wind onshore (monsoons)
 // ══════════════════════════════════════════════════════════════════
 
 export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
@@ -23,7 +22,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _hadleyStr       = p("hadleyStrength", 1.0);
   const _coriolisStr     = p("coriolisStrength", 0.25);
   const _oceanDrag       = p("oceanDrag", 0.04);
-  const _landDrag        = p("landDrag", 0.35);
+  const _landDrag        = p("landDrag", 0.12);
   const _terrainDeflect  = p("terrainDeflect", 5.0);
   const _gapFunneling    = p("gapFunneling", 0.5);
   const _eddyStrength    = p("eddyStrength", 0.015);
@@ -38,35 +37,40 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const wW = Math.ceil(W / WG), wH = Math.ceil(H / WG);
   const N = wW * wH;
 
-  // ── Sample elevation onto coarse grid ──
+  // ── Sample elevation onto coarse grid (average, not point-sample) ──
   const wElev = new Float32Array(N);
   for (let wy = 0; wy < wH; wy++) {
     for (let wx = 0; wx < wW; wx++) {
-      const px = Math.min(W - 1, wx * WG), py = Math.min(H - 1, wy * WG);
-      wElev[wy * wW + wx] = Math.max(0, elevation[py * W + px]);
+      let sum = 0, cnt = 0;
+      for (let dy = 0; dy < WG; dy++) {
+        const py = Math.min(H - 1, wy * WG + dy);
+        for (let dx = 0; dx < WG; dx++) {
+          const px = Math.min(W - 1, wx * WG + dx);
+          sum += Math.max(0, elevation[py * W + px]);
+          cnt++;
+        }
+      }
+      wElev[wy * wW + wx] = sum / cnt;
     }
   }
 
-  // ── Compute smoothed land fraction for continental thermal effects ──
+  // ── Land mask and smoothed land fraction ──
   const landMask = new Float32Array(N);
-  for (let i = 0; i < N; i++) landMask[i] = wElev[i] > 0 ? 1 : 0;
+  for (let i = 0; i < N; i++) landMask[i] = wElev[i] > 0.005 ? 1 : 0;
 
-  // Box-blur land fraction (large radius for continental-scale thermal)
-  const landFrac = smoothField(landMask, wW, wH, 3, 4);
+  // Continental-scale land fraction (large blur for thermal effects)
+  const landFrac = smoothField(landMask, wW, wH, 4, 5);
+  // Medium-scale land fraction (for coastal pressure gradients)
+  const landFracMed = smoothField(landMask, wW, wH, 2, 3);
 
   // ════════════════════════════════════════════════════════════════
   // STEP 1: Surface temperature field
   // ════════════════════════════════════════════════════════════════
-  // Real physics: T decreases with latitude (equator ~300K, poles ~240K)
-  // Land heats more than ocean (lower heat capacity)
-  // Elevation cools at ~6.5K/km lapse rate (normalized)
   const temperature = new Float32Array(N);
   for (let wy = 0; wy < wH; wy++) {
-    const latFrac = (wy / wH - 0.5) * 2; // -1 (south pole) to +1 (north pole)
+    const latFrac = (wy / wH - 0.5) * 2; // -1 to +1
     const absLat = Math.abs(latFrac);
     const sinLat = Math.sin(absLat * PI / 2);
-    // Meridional temperature: warm equator, cold poles
-    // Uses 4th-order polynomial fit to observed zonally-averaged temperature
     const sin2 = sinLat * sinLat;
     const latTemp = 1.0 - 0.55 * sin2 - 0.45 * sin2 * sin2;
 
@@ -75,18 +79,17 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       const e = wElev[i];
       const lf = landFrac[i];
 
-      // Base temperature from latitude
       let T = latTemp;
 
-      // Land-sea thermal contrast: land is warmer in tropics, more extreme everywhere
-      // This creates the thermal lows over continents that drive monsoons
-      const tropicalBoost = Math.max(0, 1 - absLat * 2.5); // strongest near equator
-      T += lf * _thermalContrast * (0.12 * tropicalBoost + 0.04);
+      // Land-sea thermal contrast: strongest in subtropics/tropics
+      // Creates continental thermal lows (Saharan heat low, Asian heat low)
+      const subtropFactor = Math.exp(-((absLat * 90 - 25) * (absLat * 90 - 25)) / 600);
+      T += lf * _thermalContrast * (0.15 * subtropFactor + 0.03);
 
-      // Lapse rate: ~6.5K/km, normalized. Elevation of 1.0 ≈ 8000m → ΔT ≈ -0.65
+      // Lapse rate cooling
       T -= e * 0.65;
 
-      // Small noise for breaking symmetry
+      // Noise for symmetry breaking
       const nx = wx / wW, ny = wy / wH;
       T += fbm(nx * 3 + s3 + 500, ny * 3 + s3 + 500, 2, 2, 0.5) * 0.03;
 
@@ -95,14 +98,15 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 2: Pressure field from temperature (hypsometric)
+  // STEP 2: Pressure field
   // ════════════════════════════════════════════════════════════════
-  // In the real atmosphere, warm columns have lower surface pressure
-  // (thermal low) and cold columns have higher surface pressure.
-  // P ∝ -T (simplified hypsometric relation for surface pressure)
+  // Three components:
+  //   A) Zonal-mean cell structure (Hadley/Ferrel/Polar)
+  //   B) Continental thermal anomalies (monsoon + subtropical highs over ocean)
+  //   C) Synoptic-scale baroclinic waves (mid-latitude storms)
   const pressure = new Float32Array(N);
 
-  // First: compute zonal-mean temperature for anomaly calculation
+  // Zonal mean temperature for anomaly computation
   const zonalMeanT = new Float32Array(wH);
   for (let wy = 0; wy < wH; wy++) {
     let sum = 0;
@@ -110,113 +114,116 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     zonalMeanT[wy] = sum / wW;
   }
 
+  // Ocean basin detection: find connected ocean regions for gyre placement
+  // Simplified: use longitude sectors weighted by ocean fraction
+  const oceanFrac = new Float32Array(N);
+  for (let i = 0; i < N; i++) oceanFrac[i] = wElev[i] <= 0.005 ? 1 : 0;
+  const oceanFracSmooth = smoothField(oceanFrac, wW, wH, 3, 4);
+
   for (let wy = 0; wy < wH; wy++) {
     const latFrac = (wy / wH - 0.5) * 2;
-    const absLat = Math.abs(latFrac);
-    const latDeg = absLat * 90;
-
-    // ── Hadley/Ferrel/Polar cell pressure signature ──
-    // These arise from the meridional overturning circulation:
-    // - ITCZ (shifted slightly north): thermal low from deep convection
-    // - Subtropical high (~30°): descending branch of Hadley cell
-    // - Subpolar low (~60°): polar front convergence
-    // - Polar high (~85°): cold dense air
-    const itczLat = (5 + _itczOffset * 90); // ITCZ position in degrees
-    const isNorth = latFrac > 0 ? 1 : 0;
     const latDegSigned = latFrac * 90;
+    const absLat = Math.abs(latFrac);
 
-    // Each cell modeled as proper cosine-bell rather than thin Gaussians
-    const itcz = -0.5 * Math.exp(-((latDegSigned - itczLat) * (latDegSigned - itczLat)) / 200);
-    const subtropN = 0.7 * Math.exp(-((latDegSigned - 32) * (latDegSigned - 32)) / 180);
-    const subtropS = 0.7 * Math.exp(-((latDegSigned + 28) * (latDegSigned + 28)) / 180);
-    const subpolarN = -0.45 * Math.exp(-((latDegSigned - 58) * (latDegSigned - 58)) / 160);
-    const subpolarS = -0.45 * Math.exp(-((latDegSigned + 62) * (latDegSigned + 62)) / 160);
-    const polarN = 0.25 * Math.exp(-((latDegSigned - 85) * (latDegSigned - 85)) / 80);
-    const polarS = 0.25 * Math.exp(-((latDegSigned + 85) * (latDegSigned + 85)) / 80);
+    // ── A) Hadley/Ferrel/Polar cell pressure belts ──
+    const itczLat = 5 + _itczOffset * 90;
 
-    const cellPressure = (itcz + subtropN + subtropS + subpolarN + subpolarS + polarN + polarS) * _hadleyStr;
+    // Wider Gaussians for more realistic belt widths
+    const itcz = -0.5 * Math.exp(-((latDegSigned - itczLat) * (latDegSigned - itczLat)) / 250);
+
+    // Subtropical highs: these are the KEY feature for anticyclonic gyres
+    // They should be strong and broad
+    const subtropN = 0.8 * Math.exp(-((latDegSigned - 30) * (latDegSigned - 30)) / 200);
+    const subtropS = 0.8 * Math.exp(-((latDegSigned + 30) * (latDegSigned + 30)) / 200);
+
+    // Subpolar lows (Icelandic Low, Aleutian Low)
+    const subpolarN = -0.5 * Math.exp(-((latDegSigned - 60) * (latDegSigned - 60)) / 180);
+    const subpolarS = -0.5 * Math.exp(-((latDegSigned + 55) * (latDegSigned + 55)) / 180);
+
+    // Polar highs
+    const polarN = 0.2 * Math.exp(-((latDegSigned - 85) * (latDegSigned - 85)) / 100);
+    const polarS = 0.3 * Math.exp(-((latDegSigned + 85) * (latDegSigned + 85)) / 100);
+
+    const cellP = (itcz + subtropN + subtropS + subpolarN + subpolarS + polarN + polarS) * _hadleyStr;
 
     for (let wx = 0; wx < wW; wx++) {
       const i = wy * wW + wx;
       const nx = wx / wW, ny = wy / wH;
 
-      // Thermal pressure: deviation from zonal mean drives monsoons
+      // ── B) Subtropical high intensification over oceans ──
+      // In reality, subtropical highs are strongest over the EASTERN sides
+      // of ocean basins (cold upwelling reinforces subsidence)
+      // Ocean areas at subtropical latitudes get extra high pressure
+      const subtropWeight = Math.exp(-((absLat * 90 - 30) * (absLat * 90 - 30)) / 250);
+      const oceanHighBoost = oceanFracSmooth[i] * subtropWeight * 0.35 * _hadleyStr;
+
+      // ── C) Continental thermal anomaly ──
+      // Warm continents → low pressure (thermal low, draws air onshore)
+      // This is the monsoon driver
       const thermalAnomaly = -(temperature[i] - zonalMeanT[wy]) * _monsoonStr;
 
-      // Base meridional pressure gradient
+      // Base meridional pressure
       const meridionalP = -temperature[i] * _pressureScale;
 
-      // Combine: cell structure + thermal anomaly + noise
-      const synopticNoise = fbm(nx * 5 + s3 + 300, ny * 5 + s3 + 300, 3, 2, 0.5) * 0.12 * _pressureScale;
+      // ── D) Synoptic noise: larger scale for realistic weather patterns ──
+      // Two scales: large (basin-scale highs/lows) and medium (storm-scale)
+      const largeNoise = fbm(nx * 3 + s3 + 300, ny * 3 + s3 + 300, 2, 2, 0.5) * 0.08;
+      const stormNoise = fbm(nx * 8 + s3 + 700, ny * 8 + s3 + 700, 3, 2, 0.5) * 0.06;
+      // Storm noise stronger at mid-latitudes (baroclinic instability zone)
+      const stormBelt = Math.exp(-((absLat * 90 - 45) * (absLat * 90 - 45)) / 400);
+      const synopticNoise = (largeNoise + stormNoise * (0.3 + 0.7 * stormBelt)) * _pressureScale;
 
-      pressure[i] = meridionalP + cellPressure * _pressureScale + thermalAnomaly * _pressureScale + synopticNoise;
+      pressure[i] = meridionalP + cellP * _pressureScale + thermalAnomaly * _pressureScale
+        + oceanHighBoost * _pressureScale + synopticNoise;
     }
   }
 
-  // Smooth pressure to remove grid-scale noise (2 passes)
+  // Smooth pressure (gentle, preserve structure)
   const smoothP = smoothField(pressure, wW, wH, 2, 2);
   for (let i = 0; i < N; i++) pressure[i] = smoothP[i];
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 3: Drag field (surface friction)
+  // STEP 3: Drag field
   // ════════════════════════════════════════════════════════════════
+  // KEY CHANGE: Land drag should be moderate, NOT kill wind.
+  // Only mountains create strong drag. Flat land (deserts, plains) has
+  // modest friction — wind still blows across the Sahara, Great Plains, etc.
   const drag = new Float32Array(N);
   for (let i = 0; i < N; i++) {
-    if (wElev[i] <= 0) {
+    const e = wElev[i];
+    if (e <= 0.005) {
       drag[i] = _oceanDrag;
+    } else if (e > 0.25) {
+      // High mountains: strong drag (boundary layer disruption)
+      drag[i] = _landDrag + (e - 0.25) * 0.5;
     } else {
-      // Land: drag decreases with elevation (exposed ridges have less boundary layer friction)
-      // But stays above ocean drag
-      drag[i] = Math.max(_oceanDrag * 1.5, _landDrag * (1 - wElev[i] * 0.4));
+      // Low-to-moderate land: gentle friction increase over ocean
+      // Deserts, plains, low hills — wind still flows freely
+      drag[i] = _oceanDrag + (_landDrag - _oceanDrag) * (e / 0.25) * 0.6;
     }
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 4: Terrain analysis for gap detection & gradient field
+  // STEP 4: Terrain analysis
   // ════════════════════════════════════════════════════════════════
-  // Pre-compute elevation gradients and local terrain variance
-  // for gap funneling and terrain deflection
   const gradX = new Float32Array(N);
   const gradY = new Float32Array(N);
-  const terrainVar = new Float32Array(N); // local elevation variance → gap detection
   for (let wy = 1; wy < wH - 1; wy++) {
     for (let wx = 0; wx < wW; wx++) {
       const i = wy * wW + wx;
       const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
       gradX[i] = (wElev[wy * wW + wr] - wElev[wy * wW + wl]) * 0.5;
       gradY[i] = (wElev[(wy + 1) * wW + wx] - wElev[(wy - 1) * wW + wx]) * 0.5;
-
-      // Terrain variance in 3x3 neighborhood (for gap/valley detection)
-      let eSum = 0, e2Sum = 0, cnt = 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        const ny2 = wy + dy;
-        if (ny2 < 0 || ny2 >= wH) continue;
-        for (let dx = -1; dx <= 1; dx++) {
-          const nx2 = (wx + dx + wW) % wW;
-          const ev = wElev[ny2 * wW + nx2];
-          eSum += ev; e2Sum += ev * ev; cnt++;
-        }
-      }
-      const mean = eSum / cnt;
-      terrainVar[i] = e2Sum / cnt - mean * mean; // variance
     }
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 5: Wind solver — Ekman balance + iterative correction
+  // STEP 5: Wind solver
   // ════════════════════════════════════════════════════════════════
-  // Ekman balance: f×k̂×v = -(1/ρ)∇p - κv  (geostrophic + friction)
-  // Solved analytically for each cell, then iteratively corrected.
   const windX = new Float32Array(N);
   const windY = new Float32Array(N);
 
-  // ── Initialize with Ekman solution ──
-  // Analytical Ekman balance: given ∇p and f, solve for (u,v)
-  // The Ekman equations are:
-  //   -f*v = -dp/dx - κ*u
-  //    f*u = -dp/dy - κ*v
-  // Solution: u = (-κ*px - f*py) / (f² + κ²)
-  //           v = ( f*px - κ*py) / (f² + κ²)
+  // ── Initialize with Ekman analytical solution ──
   for (let wy = 1; wy < wH - 1; wy++) {
     const latSigned = (wy / wH - 0.5) * 2;
     const f = -Math.sin(latSigned * PI / 2) * _coriolisStr;
@@ -226,49 +233,42 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       const i = wy * wW + wx;
       const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
 
-      // Pressure gradients (cos(lat) correction on zonal)
       const dpdx = (pressure[wy * wW + wr] - pressure[wy * wW + wl]) * 0.5 * cosLat;
       const dpdy = (pressure[(wy + 1) * wW + wx] - pressure[(wy - 1) * wW + wx]) * 0.5;
 
       const kf = drag[i];
       const denom = f * f + kf * kf;
       if (denom > 1e-8) {
-        // Ekman analytical solution
         windX[i] = (-kf * dpdx - f * dpdy) / denom;
         windY[i] = (f * dpdx - kf * dpdy) / denom;
       } else {
-        // Near equator: pressure-driven flow with friction
-        windX[i] = -dpdx / Math.max(kf, 0.01);
-        windY[i] = -dpdy / Math.max(kf, 0.01);
+        windX[i] = -dpdx / Math.max(kf, 0.02);
+        windY[i] = -dpdy / Math.max(kf, 0.02);
       }
     }
   }
 
-  // ── Add Hadley cell meridional overturning (direct mass flux) ──
-  // The Hadley cell has a strong equatorward surface flow component
-  // that the pressure gradient alone doesn't fully capture.
+  // ── Hadley cell meridional overturning ──
   for (let wy = 1; wy < wH - 1; wy++) {
     const latSigned = (wy / wH - 0.5) * 2;
-    const latDeg = latSigned * 90;
     const absLat = Math.abs(latSigned);
 
-    // Hadley cell: equatorward flow 0-30°, strongest at ~15°
-    const hadleyMeridional = -Math.sign(latSigned) * Math.sin(absLat * PI * 3) *
-      Math.exp(-((absLat * 90 - 15) * (absLat * 90 - 15)) / 400) * 0.3 * _hadleyStr;
+    // Hadley: equatorward near surface, 0-30°
+    const hadleyMerid = -Math.sign(latSigned) *
+      Math.exp(-((absLat * 90 - 15) * (absLat * 90 - 15)) / 350) * 0.25 * _hadleyStr;
 
-    // Ferrel cell: poleward flow 30-60°, weaker
-    const ferrelMeridional = Math.sign(latSigned) *
-      Math.exp(-((absLat * 90 - 45) * (absLat * 90 - 45)) / 250) * 0.12 * _hadleyStr;
+    // Ferrel: poleward, 30-60° (weaker)
+    const ferrelMerid = Math.sign(latSigned) *
+      Math.exp(-((absLat * 90 - 45) * (absLat * 90 - 45)) / 300) * 0.1 * _hadleyStr;
 
     for (let wx = 0; wx < wW; wx++) {
-      const i = wy * wW + wx;
-      windY[i] += (hadleyMeridional + ferrelMeridional) * _pressureScale;
+      windY[wy * wW + wx] += (hadleyMerid + ferrelMerid) * _pressureScale;
     }
   }
 
-  // ── Iterative refinement: momentum equation with diffusion ──
-  const dt = 0.4;
-  const visc = 0.05;
+  // ── Iterative refinement ──
+  const dt = 0.35;
+  const visc = 0.06;
 
   for (let iter = 0; iter < _solverIter; iter++) {
     const tmpX = new Float32Array(windX);
@@ -298,24 +298,22 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         const drgX = -kf * tmpX[i];
         const drgY = -kf * tmpY[i];
 
-        // Laplacian diffusion (viscosity)
+        // Diffusion
         const lapX = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25 - tmpX[i];
         const lapY = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25 - tmpY[i];
 
-        // Semi-implicit update
         let vx = tmpX[i] + dt * (pgfX + corX + drgX) + visc * lapX;
         let vy = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
 
-        // ── Terrain interaction ──
+        // ── Terrain blocking (ONLY significant terrain, not all land) ──
         const eC = wElev[i];
-        if (eC > 0.01) {
+        if (eC > 0.08) {  // Only notable hills/mountains, not flat plains
           const speed = Math.sqrt(vx * vx + vy * vy);
           if (speed > 1e-6) {
-            // Froude number: Fr = U / (N*h), where N*h is parameterized
             const Fr = speed / Math.max(0.001, eC * _terrainDeflect);
-            const blockFrac = Math.max(0, Math.min(0.95, 1 - Fr));
+            const blockFrac = Math.max(0, Math.min(0.9, 1 - Fr));
 
-            if (blockFrac > 0.01) {
+            if (blockFrac > 0.02) {
               const gx = gradX[i], gy = gradY[i];
               const gm2 = gx * gx + gy * gy;
 
@@ -323,47 +321,35 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
                 const gm = Math.sqrt(gm2);
                 const dot = vx * gx + vy * gy;
                 if (dot > 0) {
-                  // Remove component flowing into terrain
                   const rmX = blockFrac * dot * gx / gm2;
                   const rmY = blockFrac * dot * gy / gm2;
                   vx -= rmX; vy -= rmY;
 
-                  // Redirect to perpendicular (flow around)
+                  // Redirect around terrain
                   const perpX = -gy / gm, perpY = gx / gm;
                   const tang = vx * perpX + vy * perpY;
-                  const redir = Math.sqrt(rmX * rmX + rmY * rmY) * 0.65;
-                  const sign = tang >= 0 ? 1 : -1;
-                  vx += sign * perpX * redir;
-                  vy += sign * perpY * redir;
+                  const redir = Math.sqrt(rmX * rmX + rmY * rmY) * 0.55;
+                  vx += (tang >= 0 ? 1 : -1) * perpX * redir;
+                  vy += (tang >= 0 ? 1 : -1) * perpY * redir;
                 }
               } else {
-                // Flat-top mountain: just reduce speed
-                vx *= (1 - blockFrac * 0.5);
-                vy *= (1 - blockFrac * 0.5);
+                vx *= (1 - blockFrac * 0.4);
+                vy *= (1 - blockFrac * 0.4);
               }
             }
 
-            // ── Gap funneling / Venturi effect ──
-            // Where terrain variance is high but local elevation is low
-            // (a valley between mountains), accelerate wind
-            if (terrainVar[i] > 0.002 && eC < 0.15) {
-              const funnelFactor = 1 + Math.min(0.8, terrainVar[i] * 40) * _gapFunneling;
-              vx *= funnelFactor;
-              vy *= funnelFactor;
-            }
-
-            // ── Lee-side acceleration ──
-            // Downwind of mountains, air descends and accelerates (foehn/chinook)
-            if (eC > 0.02 && eC < 0.2) {
-              const gx2 = gradX[i], gy2 = gradY[i];
-              const downslope = -(vx * gx2 + vy * gy2); // positive = descending
-              if (downslope > 0.001) {
-                const leeBoost = Math.min(0.3, downslope * 3);
-                const spd = Math.sqrt(vx * vx + vy * vy);
-                if (spd > 1e-6) {
-                  vx *= (1 + leeBoost);
-                  vy *= (1 + leeBoost);
-                }
+            // Gap funneling: low point between high neighbors
+            if (eC < 0.15) {
+              // Check if neighbors are significantly higher
+              const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+              const eL = wElev[wy * wW + wl2], eR = wElev[wy * wW + wr2];
+              const eU = wy > 0 ? wElev[(wy - 1) * wW + wx] : 0;
+              const eD = wy < wH - 1 ? wElev[(wy + 1) * wW + wx] : 0;
+              const maxNeighbor = Math.max(eL, eR, eU, eD);
+              if (maxNeighbor > eC + 0.1) {
+                const funnelFactor = 1 + Math.min(0.6, (maxNeighbor - eC) * 2) * _gapFunneling;
+                vx *= funnelFactor;
+                vy *= funnelFactor;
               }
             }
           }
@@ -374,10 +360,8 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       }
     }
 
-    // ── Mass conservation: divergence damping ──
-    // Compute divergence and apply pressure correction to reduce it.
-    // This ensures wind funnels through gaps rather than piling up.
-    if (iter % 4 === 3) {
+    // Divergence damping every 3rd iteration
+    if (iter % 3 === 2) {
       const div = new Float32Array(N);
       for (let wy = 1; wy < wH - 1; wy++) {
         for (let wx = 0; wx < wW; wx++) {
@@ -387,8 +371,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
                  + (windY[(wy + 1) * wW + wx] - windY[(wy - 1) * wW + wx]) * 0.5;
         }
       }
-      // Apply divergence damping (pseudo-pressure correction)
-      const dampStr = 0.15;
+      const dampStr = 0.12;
       for (let wy = 1; wy < wH - 1; wy++) {
         for (let wx = 0; wx < wW; wx++) {
           const i = wy * wW + wx;
@@ -398,29 +381,43 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         }
       }
     }
-  } // end iterations
+  }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 6: Sub-grid mesoscale turbulence (curl noise)
+  // STEP 6: Mesoscale turbulence (multi-scale curl noise)
   // ════════════════════════════════════════════════════════════════
-  const _eddyOcean = _eddyStrength;
-  const _eddyLand = _eddyStrength * 0.4;
+  // Two scales: large eddies (synoptic whorls) + small eddies (turbulence)
   for (let wy = 1; wy < wH - 1; wy++) {
+    const absLat = Math.abs((wy / wH - 0.5) * 2);
+    // Eddy activity stronger at mid-latitudes (baroclinic zone)
+    const latFactor = 0.5 + 0.5 * Math.exp(-((absLat * 90 - 45) * (absLat * 90 - 45)) / 500);
+
     for (let wx = 0; wx < wW; wx++) {
       const i = wy * wW + wx;
       const nx = wx / wW, ny = wy / wH;
+      const isOcean = wElev[i] <= 0.005;
+      const baseAmp = isOcean ? _eddyStrength : _eddyStrength * 0.5;
+      const amp = baseAmp * latFactor;
+
+      // Large-scale eddies (synoptic-ish, ~1000km)
       const eps = 0.003;
-      const n0  = fbm(nx * 6 + s3 + 100, ny * 6 + s3 + 100, 3, 2, 0.5);
-      const nDx = fbm((nx + eps) * 6 + s3 + 100, ny * 6 + s3 + 100, 3, 2, 0.5);
-      const nDy = fbm(nx * 6 + s3 + 100, (ny + eps) * 6 + s3 + 100, 3, 2, 0.5);
-      const amp = wElev[i] > 0 ? _eddyLand : _eddyOcean;
-      windX[i] += (nDy - n0) / eps * amp;
-      windY[i] -= (nDx - n0) / eps * amp;
+      const n0L = fbm(nx * 4 + s3 + 100, ny * 4 + s3 + 100, 2, 2, 0.5);
+      const nDxL = fbm((nx + eps) * 4 + s3 + 100, ny * 4 + s3 + 100, 2, 2, 0.5);
+      const nDyL = fbm(nx * 4 + s3 + 100, (ny + eps) * 4 + s3 + 100, 2, 2, 0.5);
+      windX[i] += (nDyL - n0L) / eps * amp * 1.5;
+      windY[i] -= (nDxL - n0L) / eps * amp * 1.5;
+
+      // Small-scale eddies (mesoscale)
+      const n0S = fbm(nx * 10 + s3 + 200, ny * 10 + s3 + 200, 2, 2, 0.5);
+      const nDxS = fbm((nx + eps) * 10 + s3 + 200, ny * 10 + s3 + 200, 2, 2, 0.5);
+      const nDyS = fbm(nx * 10 + s3 + 200, (ny + eps) * 10 + s3 + 200, 2, 2, 0.5);
+      windX[i] += (nDyS - n0S) / eps * amp * 0.5;
+      windY[i] -= (nDxS - n0S) / eps * amp * 0.5;
     }
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 7: Post-processing (contrast + scale)
+  // STEP 7: Post-processing
   // ════════════════════════════════════════════════════════════════
   if (_windScale !== 1.0 || _windContrast !== 1.0) {
     for (let i = 0; i < N; i++) {
