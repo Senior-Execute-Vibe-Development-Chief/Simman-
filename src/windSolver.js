@@ -27,9 +27,10 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _gapFunneling    = p("gapFunneling", 0.645);
   const _eddyStrength    = p("eddyStrength", 0.019);
   const _solverIter      = p("windSolverIter", 250);
-  const _coandaStr       = p("coandaStrength", 0.7);
+  const _coandaStr       = p("coandaStrength", 1.0);
   const _gustThreshold   = p("gustThreshold", 0.15);
   const _gustBoost       = p("gustBoost", 0.3);
+  const _curlBoost       = p("curlBoost", 0.5);
   const _itczOffset      = p("itczOffset", 0.033);
 
   // ── Coarse grid (4x downscale) ──
@@ -339,16 +340,17 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
 
           if (dot > 0) {
             const speed = Math.sqrt(vx * vx + vy * vy);
-            // deflect: stronger for tall terrain, slow wind, head-on approach
-            const deflect = Math.min(1, ti * _terrainDeflect * 0.12 / Math.max(0.01, speed));
+            // coandaStr controls the whole terrain interaction:
+            // blocking strength AND redirect amount
+            const deflect = Math.min(1, ti * _terrainDeflect * 0.12 * _coandaStr / Math.max(0.01, speed));
             const rmX = dot * nx * deflect;
             const rmY = dot * ny * deflect;
             vx -= rmX; vy -= rmY;
 
-            // Redirect 70% of blocked energy along terrain contour
+            // Redirect blocked energy along terrain contour (70% of blocked)
             const tangX = -ny, tangY = nx;
             const tangDot = vx * tangX + vy * tangY;
-            const redir = Math.sqrt(rmX * rmX + rmY * rmY) * _coandaStr;
+            const redir = Math.sqrt(rmX * rmX + rmY * rmY) * 0.7;
             vx += (tangDot >= 0 ? 1 : -1) * tangX * redir;
             vy += (tangDot >= 0 ? 1 : -1) * tangY * redir;
 
@@ -457,7 +459,43 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 9: Bilinear upscale to full resolution
+  // STEP 9: Curl boost — swirly areas get faster
+  // ════════════════════════════════════════════════════════════════
+  // Compute vorticity (curl = ∂v/∂x - ∂u/∂y). High curl = rotation.
+  // Boost wind speed where curl is strong — this is why cyclones have
+  // fast winds around their centers (tight rotation = fast flow).
+  if (_curlBoost > 0) {
+    const curl = new Float32Array(N);
+    for (let wy = 1; wy < wH - 1; wy++) {
+      for (let wx = 0; wx < wW; wx++) {
+        const i = wy * wW + wx;
+        const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+        // curl = dv/dx - du/dy
+        const dvdx = (windY[wy * wW + wr] - windY[wy * wW + wl]) * 0.5;
+        const dudy = (windX[(wy + 1) * wW + wx] - windX[(wy - 1) * wW + wx]) * 0.5;
+        curl[i] = Math.abs(dvdx - dudy);
+      }
+    }
+    // Smooth curl to avoid single-cell spikes
+    const smoothCurl = smoothField(curl, wW, wH, 1, 2);
+    for (let wy = 1; wy < wH - 1; wy++) {
+      for (let wx = 0; wx < wW; wx++) {
+        const i = wy * wW + wx;
+        const speed = Math.sqrt(windX[i] * windX[i] + windY[i] * windY[i]);
+        if (speed < 1e-6) continue;
+        // Normalize curl by speed to get rotation rate
+        const normCurl = smoothCurl[i] / speed;
+        // Boost proportional to rotation intensity
+        const boost = 1 + normCurl * _curlBoost * 5.0;
+        const factor = Math.min(3.0, boost);
+        windX[i] *= factor;
+        windY[i] *= factor;
+      }
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // STEP 10: Bilinear upscale to full resolution
   // ════════════════════════════════════════════════════════════════
   const fullWindX = new Float32Array(W * H);
   const fullWindY = new Float32Array(W * H);
