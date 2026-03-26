@@ -1222,7 +1222,14 @@ for (let step = 0; step < 50; step++) {
       // Faster wind carries moisture further (less decay per step)
       const speedDecay = 0.97 - Math.min(0.04, windSpeed * 0.06);
       const carried = upwind * (1 - terrainBlock * 0.35) * speedDecay - lift;
-      mGrid[my * mW + mx] = Math.max(0, carried);
+      // Moisture recycling: wet warm land (forests) evapotranspire water back
+      // into the atmosphere, allowing Amazon-like deep inland moisture.
+      // This is a positive feedback: existing wet zones sustain themselves.
+      const lat2 = Math.abs(py / H - 0.5) * 2;
+      const warmEnough = lat2 < 0.5 ? 1.0 : Math.max(0, 1 - (lat2 - 0.5) * 3);
+      const existingMoist = prev[my * mW + mx];
+      const recycling = existingMoist > 0.2 ? (existingMoist - 0.2) * 0.10 * warmEnough : 0;
+      mGrid[my * mW + mx] = Math.max(0, carried + recycling);
     }
   }
 }
