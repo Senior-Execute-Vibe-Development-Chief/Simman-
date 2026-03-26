@@ -31,7 +31,6 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _solverIter      = p("windSolverIter", 250);
   const _coandaRedirect  = p("coandaRedirect", 0.7);
   const _coandaPull      = p("coandaPull", 0.003);
-  const _advectionStr    = p("advectionStrength", 1.0);
   const _itczOffset      = p("itczOffset", 0.033);
   const _monsoonStr      = p("monsoonStrength", 0.0);
 
@@ -368,42 +367,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 5: Convergence acceleration (conservation of mass)
-  // ════════════════════════════════════════════════════════════════
-  // Where wind converges (negative divergence), air piles up and must
-  // speed up to conserve mass. Where it diverges, it spreads and slows.
-  // Divergence is normalized by local wind speed so the boost is
-  // proportional (not dependent on raw velocity magnitude).
-  if (_advectionStr > 0) {
-    const div = new Float32Array(N);
-    for (let wy = 1; wy < wH - 1; wy++) {
-      for (let wx = 0; wx < wW; wx++) {
-        const i = wy * wW + wx;
-        const wr = (wx + 1) % wW, wl = (wx - 1 + wW) % wW;
-        div[i] = (windX[wy * wW + wr] - windX[wy * wW + wl]) * 0.5
-               + (windY[(wy + 1) * wW + wx] - windY[(wy - 1) * wW + wx]) * 0.5;
-      }
-    }
-    // Smooth divergence to avoid single-cell spikes
-    const smoothDiv = smoothField(div, wW, wH, 1, 2);
-    for (let wy = 1; wy < wH - 1; wy++) {
-      for (let wx = 0; wx < wW; wx++) {
-        const i = wy * wW + wx;
-        const speed = Math.sqrt(windX[i] * windX[i] + windY[i] * windY[i]);
-        if (speed < 1e-6) continue;
-        // Normalize divergence by speed: gives fractional convergence rate
-        const normDiv = smoothDiv[i] / speed;
-        // Negative = convergence (speed up), positive = divergence (slow down)
-        const boost = 1 - normDiv * _advectionStr * 8.0;
-        const factor = Math.max(0.3, Math.min(3.0, boost));
-        windX[i] *= factor;
-        windY[i] *= factor;
-      }
-    }
-  }
-
-  // ════════════════════════════════════════════════════════════════
-  // STEP 6: Gap funneling (post-solve so it persists)
+  // STEP 5: Gap funneling (post-solve so it persists)
   // ════════════════════════════════════════════════════════════════
   // Wind accelerates through valleys/gaps between high terrain (Venturi)
   if (_gapFunneling > 0) {
