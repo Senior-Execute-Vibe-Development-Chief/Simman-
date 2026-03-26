@@ -17,21 +17,22 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const PI = Math.PI;
 
   // ── Tunable parameters ──
-  const _pressureScale   = p("pressureScale", 0.3);
-  const _thermalContrast = p("thermalContrast", 1.275);
-  const _hadleyStr       = p("hadleyStrength", 0.12);
-  const _coriolisStr     = p("coriolisStrength", 0.32);
-  const _oceanDrag       = p("oceanDrag", 0.04);
-  const _landDrag        = p("landDrag", 1.901);
-  const _terrainDeflect  = p("terrainDeflect", 20.0);
-  const _gapFunneling    = p("gapFunneling", 0.645);
-  const _eddyStrength    = p("eddyStrength", 0.019);
-  const _solverIter      = p("windSolverIter", 250);
-  const _coandaStr       = p("coandaStrength", 1.0);
-  const _gustThreshold   = p("gustThreshold", 0.15);
-  const _gustBoost       = p("gustBoost", 0.3);
-  const _curlBoost       = p("curlBoost", 0.5);
-  const _itczOffset      = p("itczOffset", 0.033);
+  const _pressureScale   = p("pressureScale", 0.433);
+  const _thermalContrast = p("thermalContrast", 0.14);
+  const _hadleyStr       = p("hadleyStrength", 0.0);
+  const _coriolisStr     = p("coriolisStrength", 0.50);
+  const _oceanDrag       = p("oceanDrag", 0.07);
+  const _landDrag        = p("landDrag", 3.0);
+  const _terrainDeflect  = p("terrainDeflect", 40.0);
+  const _gapFunneling    = p("gapFunneling", 0.66);
+  const _eddyStrength    = p("eddyStrength", 0.005);
+  const _solverIter      = p("windSolverIter", 500);
+  const _coandaStr       = p("coandaStrength", 0.12);
+  const _gustThreshold   = p("gustThreshold", 0.055);
+  const _gustBoost       = p("gustBoost", 2.0);
+  const _curlThreshold   = p("curlThreshold", 0.05);
+  const _curlBoost       = p("curlBoost", 2.0);
+  const _itczOffset      = p("itczOffset", 0.013);
 
   // ── Coarse grid (4x downscale) ──
   const WG = 4;
@@ -462,34 +463,32 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // STEP 9: Curl boost — swirly areas get faster
   // ════════════════════════════════════════════════════════════════
   // Compute vorticity (curl = ∂v/∂x - ∂u/∂y). High curl = rotation.
-  // Boost wind speed where curl is strong — this is why cyclones have
-  // fast winds around their centers (tight rotation = fast flow).
+  // Only boost above curlThreshold, with no cap limit.
   if (_curlBoost > 0) {
     const curl = new Float32Array(N);
     for (let wy = 1; wy < wH - 1; wy++) {
       for (let wx = 0; wx < wW; wx++) {
         const i = wy * wW + wx;
         const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-        // curl = dv/dx - du/dy
         const dvdx = (windY[wy * wW + wr] - windY[wy * wW + wl]) * 0.5;
         const dudy = (windX[(wy + 1) * wW + wx] - windX[(wy - 1) * wW + wx]) * 0.5;
         curl[i] = Math.abs(dvdx - dudy);
       }
     }
-    // Smooth curl to avoid single-cell spikes
     const smoothCurl = smoothField(curl, wW, wH, 1, 2);
     for (let wy = 1; wy < wH - 1; wy++) {
       for (let wx = 0; wx < wW; wx++) {
         const i = wy * wW + wx;
         const speed = Math.sqrt(windX[i] * windX[i] + windY[i] * windY[i]);
         if (speed < 1e-6) continue;
-        // Normalize curl by speed to get rotation rate
         const normCurl = smoothCurl[i] / speed;
-        // Boost proportional to rotation intensity
-        const boost = 1 + normCurl * _curlBoost * 5.0;
-        const factor = Math.min(3.0, boost);
-        windX[i] *= factor;
-        windY[i] *= factor;
+        // Only boost above threshold
+        if (normCurl > _curlThreshold) {
+          const excess = normCurl - _curlThreshold;
+          const boost = 1 + excess * _curlBoost * 8.0;
+          windX[i] *= boost;
+          windY[i] *= boost;
+        }
       }
     }
   }
