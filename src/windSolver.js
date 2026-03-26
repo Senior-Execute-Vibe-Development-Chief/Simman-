@@ -27,8 +27,6 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _gapFunneling    = p("gapFunneling", 0.645);
   const _eddyStrength    = p("eddyStrength", 0.019);
   const _solverIter      = p("windSolverIter", 250);
-  const _coandaRedirect  = p("coandaRedirect", 0.7);
-  const _coandaPull      = p("coandaPull", 0.003);
   const _itczOffset      = p("itczOffset", 0.033);
 
   // ── Coarse grid (4x downscale) ──
@@ -309,50 +307,52 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         let vx = tmpX[i] + dt * (pgfX + corX + drgX) + visc * lapX;
         let vy = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
 
-        // ── Terrain deflection + Coanda wrapping ──
-        // 1. Deflection: wind hitting terrain gets its into-terrain component
-        //    removed proportional to (elevation × strength / speed).
-        //    Head-on = strong deflection, glancing = weak, fast = resists.
-        // 2. Coanda: blocked energy redirects ALONG the terrain contour
-        //    (perpendicular to normal), wrapping around points and capes.
-        // 3. Near-terrain attraction: wind flowing past terrain gets pulled
-        //    slightly to follow the surface.
-        const eC = wElev[i];
-        if (_terrainDeflect > 0 && eC > 0.01) {
-          const tnx = normX[i], tny = normY[i];
-          if (tnx !== 0 || tny !== 0) {
-            const dot = vx * tnx + vy * tny;
-            const speed = Math.sqrt(vx * vx + vy * vy);
+        // ── Terrain deflection ──
+        // Applies at terrain cells AND at cells adjacent to terrain.
+        // Wind hitting terrain: remove into-terrain component, redirect along surface.
+        // Wind approaching terrain from nearby: start deflecting before contact.
+        // Single param controls everything — the physics is one process.
+        if (_terrainDeflect > 0) {
+          const eC = wElev[i];
+          // Find the highest neighboring elevation (for adjacent-cell deflection)
+          const eL = wElev[nl], eR = wElev[nr], eU = wElev[nu], eD = wElev[nd];
+          const maxNeighborElev = Math.max(eL, eR, eU, eD);
+          // Effective terrain height: this cell's own elevation, or nearby terrain
+          // if this cell is low but next to mountains (wind approaching coast)
+          const effectiveElev = Math.max(eC, maxNeighborElev * 0.6);
 
-            if (dot > 0) {
-              // Wind flowing INTO terrain — deflect and redirect
-              const deflect = Math.min(1, eC * _terrainDeflect * 0.1 / Math.max(0.01, speed));
-              const removedX = dot * tnx * deflect;
-              const removedY = dot * tny * deflect;
-              vx -= removedX;
-              vy -= removedY;
-
-              // Coanda: redirect blocked energy along terrain contour
-              // Tangent = perpendicular to normal (the "along the wall" direction)
-              const tangX = -tny, tangY = tnx;
-              // Which direction along the wall? Follow existing tangential flow
-              const tangDot = vx * tangX + vy * tangY;
-              const sign = tangDot >= 0 ? 1 : -1;
-              const redirected = Math.sqrt(removedX * removedX + removedY * removedY);
-              vx += sign * tangX * redirected * _coandaRedirect;
-              vy += sign * tangY * redirected * _coandaRedirect;
+          if (effectiveElev > 0.01) {
+            // Use the gradient of the effective terrain (including neighbors)
+            // For low cells near terrain, the gradient points toward the mountain
+            let tnx, tny;
+            if (eC > 0.01 && (normX[i] !== 0 || normY[i] !== 0)) {
+              tnx = normX[i]; tny = normY[i];
             } else {
-              // Wind flowing PAST terrain (not into it) — Coanda attraction
-              // Pull slightly toward following the terrain contour
-              // Stronger when closer to terrain (higher elevation = more surface contact)
-              const tangX = -tny, tangY = tnx;
-              const tangDot = vx * tangX + vy * tangY;
-              const coandaPull = eC * _terrainDeflect * _coandaPull;
-              // Add a slight nudge in the tangential direction wind is already going
-              if (Math.abs(tangDot) > 1e-6) {
-                const pullSign = tangDot >= 0 ? 1 : -1;
-                vx += pullSign * tangX * coandaPull;
-                vy += pullSign * tangY * coandaPull;
+              // Low cell: compute gradient toward highest neighbor
+              const gx2 = (eR - eL) * 0.5;
+              const gy2 = (eD - eU) * 0.5;
+              const gm2 = Math.sqrt(gx2 * gx2 + gy2 * gy2);
+              if (gm2 > 1e-6) { tnx = gx2 / gm2; tny = gy2 / gm2; }
+              else { tnx = 0; tny = 0; }
+            }
+
+            if (tnx !== 0 || tny !== 0) {
+              const dot = vx * tnx + vy * tny;
+              const speed = Math.sqrt(vx * vx + vy * vy);
+
+              if (dot > 0) {
+                // Wind flowing toward terrain — deflect and redirect along surface
+                const deflect = Math.min(1, effectiveElev * _terrainDeflect * 0.1 / Math.max(0.01, speed));
+                const rmX = dot * tnx * deflect;
+                const rmY = dot * tny * deflect;
+                vx -= rmX; vy -= rmY;
+
+                // Redirect blocked energy along terrain contour (tangent)
+                const tangX = -tny, tangY = tnx;
+                const tangDot = vx * tangX + vy * tangY;
+                const redirected = Math.sqrt(rmX * rmX + rmY * rmY) * 0.7;
+                vx += (tangDot >= 0 ? 1 : -1) * tangX * redirected;
+                vy += (tangDot >= 0 ? 1 : -1) * tangY * redirected;
               }
             }
           }
