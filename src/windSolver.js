@@ -31,6 +31,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _solverIter      = p("windSolverIter", 250);
   const _coandaRedirect  = p("coandaRedirect", 0.7);
   const _coandaPull      = p("coandaPull", 0.003);
+  const _advectionStr    = p("advectionStrength", 1.0);
   const _itczOffset      = p("itczOffset", 0.033);
   const _monsoonStr      = p("monsoonStrength", 0.0);
 
@@ -305,12 +306,17 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
                 + windY[i01] * (1 - fx) * fy + windY[i11] * fx * fy;
       }
     }
-    // Blend: advected + current momentum (prevents full replacement each step)
-    for (let wy = 1; wy < wH - 1; wy++) {
-      for (let wx = 0; wx < wW; wx++) {
-        const i = wy * wW + wx;
-        windX[i] = advX[i] * 0.5 + windX[i] * 0.5;
-        windY[i] = advY[i] * 0.5 + windY[i] * 0.5;
+    // Replace wind with advected velocity (full effect)
+    // _advectionStr controls blend: 1 = full advection, 0 = no advection
+    if (_advectionStr > 0) {
+      const a = Math.min(1, _advectionStr);
+      const b = 1 - a;
+      for (let wy = 1; wy < wH - 1; wy++) {
+        for (let wx = 0; wx < wW; wx++) {
+          const i = wy * wW + wx;
+          windX[i] = advX[i] * a + windX[i] * b;
+          windY[i] = advY[i] * a + windY[i] * b;
+        }
       }
     }
 

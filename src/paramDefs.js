@@ -124,6 +124,8 @@ export const PARAMS = {
         desc: "Surface drag over land. Mountains get extra drag automatically scaled by elevation. Higher = weaker winds over all land." },
       { key: "terrainDeflect", def: 20.0, min: 0.0, max: 40.0, label: "Terrain deflection",
         desc: "How much terrain deflects wind. Head-on wind gets deflected more than glancing wind. Fast wind keeps its trajectory, slow wind gets pushed around. Like water flowing around rocks." },
+      { key: "advectionStrength", def: 1.0, min: 0.0, max: 1.0, label: "Advection strength",
+        desc: "How much wind carries itself (u·∇u). 1 = full effect: converging winds speed up, opposing winds cancel. 0 = winds don't interact at all. This is what makes wind behave like a real fluid." },
       { key: "coandaRedirect", def: 0.7, min: 0.0, max: 1.5, label: "Coanda redirect",
         desc: "How much blocked wind energy gets redirected along the terrain surface. 0 = blocked energy disappears. 0.7 = 70% wraps around. >1 = wind accelerates around obstacles (unrealistic but fun)." },
       { key: "coandaPull", def: 0.003, min: 0.0, max: 0.02, label: "Coanda pull",
