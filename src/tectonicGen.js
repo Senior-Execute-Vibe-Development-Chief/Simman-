@@ -674,6 +674,7 @@ const nfBroadSwell = precompute((nx, ny) => fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2,
 const nfTemp = precompute((nx, ny) => fbm(nx * 3 + 80, ny * 3 + 80, 3, 2, 0.5));
 const nfMoistOce = precompute((nx, ny) => fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.5));
 const nfMoistLand = precompute((nx, ny) => fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55));
+const nfMoistBroad = precompute((nx, ny) => fbm(nx * 1.5 + s2 + 90, ny * 1.5 + s2 + 90, 3, 2, 0.55));
 
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
@@ -1240,27 +1241,46 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const coastProx = Math.max(0, 1 - cdm / 8);
   const baseTemp = 1 - lat * 1.05 - Math.max(0, e) * 0.4 + sg(nfTemp, x, y) * 0.08;
   // Pull extreme temps toward 0.45 (ocean moderating effect)
-  const moderated = baseTemp + (0.45 - baseTemp) * coastProx * 0.2;
-  temperature[i] = Math.max(0, Math.min(1, moderated));
+  let temp = baseTemp + (0.45 - baseTemp) * coastProx * 0.2;
+  // Wind-derived coastal current anomaly:
+  // Wind blowing poleward along coast → warm current (air from equator)
+  // Wind blowing equatorward along coast → cold current / upwelling
+  if (e > 0 && coastProx > 0.15) {
+    const wy = fullWindY[i];
+    const hemiSign = ny < 0.5 ? -1 : 1;
+    const polewardFlow = wy * hemiSign;
+    const anomaly = Math.max(-0.08, Math.min(0.08, polewardFlow * 0.15)) * coastProx;
+    temp += anomaly;
+  }
+  temperature[i] = Math.max(0, Math.min(1, temp));
 
   if (e <= 0) {
     moisture[i] = 0.5 + sg(nfMoistOce, x, y) * 0.1;
   } else {
+    // Latitude-based climate moisture (secondary signal)
     const tropWet = Math.max(0, 1 - lat * 2.5);
-    const subtropDry = Math.exp(-((lat - 0.28) ** 2) / (2 * 0.06 * 0.06)) * 0.50 * (1 - coastProx * 0.5);
+    const subtropDry = Math.exp(-((lat - 0.28) ** 2) / (2 * 0.08 * 0.08)) * 0.35 * (1 - coastProx * 0.5);
     const tempWet = Math.exp(-((lat - 0.55) ** 2) / 0.025) * 0.22;
     const tropF = Math.max(0, 1 - lat * 3);
     const contRate = 0.006 + (1 - tropF) * 0.014;
     const cont = Math.min(0.28, cdm * contRate);
     const polarDry = Math.max(0, (lat - 0.75)) * 0.25;
-    let m = 0.42 + tropWet * 0.42 - subtropDry + tempWet - cont - polarDry
-      + sg(nfMoistLand, x, y) * 0.12;
-    // Wind-advected moisture: high on windward coasts, low in rain shadow
+    const climateMoist = 0.42 + tropWet * 0.42 - subtropDry + tempWet - cont - polarDry
+      + sg(nfMoistLand, x, y) * 0.12
+      + sg(nfMoistBroad, x, y) * 0.15;  // continent-scale wet/dry regions that cut across bands
+    // Wind-advected moisture is the PRIMARY driver; latitude formulas are secondary.
+    // This breaks banding — wind creates asymmetric wet/dry patterns from terrain interaction.
     const wm = windMoisture[i];
-    const windBoost = (wm - 0.3) * 0.6;
-    m += windBoost;
+    let m = wm * 0.55 + climateMoist * 0.45;
     // Orographic lift: windward slopes get extra precipitation
     if (e > 0.1 && wm > 0.35) m += Math.min(0.12, (e - 0.1) * wm * 0.5);
+    // Cold current moisture suppression: equatorward coastal winds = upwelling = dry
+    if (coastProx > 0.15) {
+      const wy = fullWindY[i];
+      const hemiSign = ny < 0.5 ? -1 : 1;
+      const polewardFlow = wy * hemiSign;
+      if (polewardFlow < 0) m += Math.max(-0.15, polewardFlow * 0.12) * coastProx;
+    }
     // Lowland moisture accumulation
     if (e < 0.02) m += 0.10;
     moisture[i] = Math.max(0.02, Math.min(1, m));

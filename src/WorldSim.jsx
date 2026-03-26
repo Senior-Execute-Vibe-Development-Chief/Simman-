@@ -75,13 +75,14 @@ if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
 const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
 const coastProx=Math.max(0,1-cd/8);// 1 at coast, 0 inland
 const tropWet=Math.max(0,1-lat*2.5);// ITCZ: wet equator
-const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.50*(1-coastProx*.5);// subtropical HP, weakened near coast (monsoon)
+const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.08*.08))*.35*(1-coastProx*.5);// subtropical HP, softened + widened for realism
 const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.22;// temperate westerlies
 const tropF=Math.max(0,1-lat*3);// tropical moisture recycling factor
 const contRate=.006+(1-tropF)*.014;// weak in tropics, stronger elsewhere
 const cont=Math.min(.28,cd*contRate);
 const polarDry=Math.max(0,(lat-.75))*.25;
-let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12;
+let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12
++fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*.15;// continent-scale wet/dry to break banding
 if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
 if(elevation[i]<.02)m+=.10;
 moisture[i]=Math.max(.02,Math.min(1,m));}
@@ -103,10 +104,11 @@ e-=Math.pow(Math.max(0,fbm(nx*4+60,ny*4+60,3,2,.5)+.1),2)*.15;
 elevation[i]=Math.max(0.005,e);
 // Moisture: climate zones + elevation effects
 const tropWet=Math.max(0,1-lat*2.5);
-const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.40;// subtropical HP belt
+const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.08*.08))*.30;// subtropical HP belt, softened
 const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.20;
 const polarDry=Math.max(0,(lat-.75))*.25;
-let m=.40+tropWet*.35-subtropDry+tempWet-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.15;
+let m=.40+tropWet*.35-subtropDry+tempWet-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.15
++fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*.15;// continent-scale wet/dry to break banding
 if(e<0.06)m+=.15;// valleys are wet
 if(e>0.3)m-=.15;// mountains are drier
 moisture[i]=Math.max(.02,Math.min(1,m));
@@ -238,13 +240,14 @@ if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
 const cd=cdist2[Math.min(dh-1,Math.floor(y/DG))*dw+Math.min(dw-1,Math.floor(x/DG))];
 const coastProx=Math.max(0,1-cd/8);
 const tropWet=Math.max(0,1-lat*2.5);
-const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.50*(1-coastProx*.5);
+const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.08*.08))*.35*(1-coastProx*.5);
 const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.22;
 const tropF=Math.max(0,1-lat*3);
 const contRate=.006+(1-tropF)*.014;
 const cont=Math.min(.28,cd*contRate);
 const polarDry=Math.max(0,(lat-.75))*.25;
-let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12;
+let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12
++fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*.15;// continent-scale wet/dry to break banding
 if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
 if(elevation[i]<.02)m+=.10;
 moisture[i]=Math.max(.02,Math.min(1,m));}}
@@ -375,19 +378,24 @@ const BN=['Deep Ocean','Shallow Ocean','Coastal Water','Beach','Tundra','Snow / 
 'Grassland','Desert','Shrubland','Tropical Dry Forest','Barren / Alpine'];
 function getBiomeD(e,m,t,sl){
   if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
+  // Effective moisture: cold regions retain moisture (low evaporation),
+  // hot regions lose it to evaporation (Holdridge PET principle).
+  // This breaks the latitude-banding by letting cold+modest-rain → forest, not tundra.
+  const demand=.5+t*.5;// 0.5 at t=0 (cold), 1.0 at t=1 (hot)
+  const em=Math.min(1,m/demand);
   // Alpine / montane (elevation overrides)
   if(e>.55)return t<.3?5:16;
-  if(e>.42)return t<.25?5:t<.4?(m>.35?7:4):m>.4?8:16;
-  // Polar / subpolar
-  if(t<.15)return 4;
-  if(t<.25)return m>.35?6:4;
-  if(t<.38)return m>.45?7:m>.25?6:4;
+  if(e>.42)return t<.25?5:t<.4?(em>.35?7:4):em>.4?8:16;
+  // Polar / subpolar — allow taiga in wet polar areas
+  if(t<.15)return em>.5?6:4;
+  if(t<.25)return em>.35?6:4;
+  if(t<.38)return em>.45?7:em>.25?6:4;
   // Temperate
-  if(t<.55)return m>.55?9:m>.35?8:m>.15?12:13;
+  if(t<.55)return em>.55?9:em>.35?8:em>.15?12:13;
   // Warm
-  if(t<.72)return m>.5?8:m>.3?15:m>.15?14:13;
+  if(t<.72)return em>.5?8:em>.3?15:em>.15?14:13;
   // Hot / tropical
-  return m>.5?10:m>.3?15:m>.18?11:m>.08?12:13;
+  return em>.5?10:em>.3?15:em>.18?11:em>.08?12:13;
 }
 function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
