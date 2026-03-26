@@ -713,18 +713,18 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const tecStr = Math.min(1, tecLift * 2);
     const coastBlend = rawCoastBlend * (1 - tecStr * 0.85);
 
-    const coastE = 0.003 + (1 - coastBlend) * 0.008
-      + sg(nfCoastEN, x, y) * 0.004;
+    const coastE = 0.01 + (1 - coastBlend) * 0.02
+      + sg(nfCoastEN, x, y) * 0.008;
 
-    const baseE = 0.006 + interior * 0.012;
+    const baseE = 0.02 + interior * 0.04;
     const continentNoise = sg(nfContinent, x, y);
     const highlandMask = smoothstep(continentNoise * 2 + 0.2);
-    const regionalE = highlandMask * 0.12 * interior;
+    const regionalE = highlandMask * 0.22 * interior;
 
-    const broadSwell = sg(nfBroadSwell, x, y) * 0.012;
+    const broadSwell = sg(nfBroadSwell, x, y) * 0.035;
     const [rhx, rhy] = warp(nx, ny, 3, 2, 0.04, s2 + 10, s2 + 60);
-    const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.010;
-    const plateauBoost = Math.max(0, stampE) * 0.15 * interior;
+    const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.025;
+    const plateauBoost = Math.max(0, stampE) * 0.30 * interior;
 
     const cratonE = baseE + regionalE + broadSwell + rolling + plateauBoost;
     e = cratonE + tecLift;
@@ -737,7 +737,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   }
 
   // Fine texture (high freq — must stay per-pixel)
-  e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.004;
+  e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.008;
 
   if (lat > 0.88) e -= (lat - 0.88) * 2;
 
