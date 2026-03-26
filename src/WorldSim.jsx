@@ -123,29 +123,39 @@ const mGrid=new Float32Array(mW2*mH2);
 for(let my=0;my<mH2;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
 if(elevation[py*W+px]<=0)mGrid[my*mW2+mx]=0.8;}
-for(let step=0;step<50;step++){const prev=new Float32Array(mGrid);
+for(let step=0;step<40;step++){const prev=new Float32Array(mGrid);
 for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
 const wx2=fWX[fi],wy2=fWY[fi];
 const ws=Math.sqrt(wx2*wx2+wy2*wy2),inv=ws>0.02?1/ws:0;
-const dxW=wx2*inv,dyW=wy2*inv,reach=Math.min(3.5,2.0+ws*2.0);
+const dxW=wx2*inv,dyW=wy2*inv,reach=Math.min(2.5,1.5+ws*1.5);
 const srcX=mx-dxW*reach,srcY=my-dyW*reach;
 const sx=Math.min(mW2-2,Math.max(0,srcX|0)),sy=Math.min(mH2-2,Math.max(0,srcY|0));
 const fdx=Math.max(0,Math.min(1,srcX-sx)),fdy=Math.max(0,Math.min(1,srcY-sy));
 const sxr=Math.min(mW2-1,sx+1);
 const upwind=(prev[sy*mW2+sx]*(1-fdx)+prev[sy*mW2+sxr]*fdx)*(1-fdy)
 +(prev[(sy+1)*mW2+sx]*(1-fdx)+prev[(sy+1)*mW2+sxr]*fdx)*fdy;
+const mxL=(mx-1+mW2)%mW2,mxR=(mx+1)%mW2;
+const nAvg=(prev[my*mW2+mxL]+prev[my*mW2+mxR]+prev[(my-1)*mW2+mx]+prev[(my+1)*mW2+mx])*0.25;
 const e2=elevation[fi];
 if(e2<=0){mGrid[my*mW2+mx]=Math.max(prev[my*mW2+mx],0.75);}
 else{const tb=Math.min(0.9,Math.max(0,e2-0.03)*4);
-const lift=Math.min(0.18,e2*ws*0.5);
+const lift=Math.min(0.15,e2*ws*0.4);
 const sd=0.97-Math.min(0.04,ws*0.06);
 const carried=upwind*(1-tb*0.35)*sd-lift;
 const lat2=Math.abs(py/H-0.5)*2;
 const warm=lat2<0.5?1.0:Math.max(0,1-(lat2-0.5)*3);
 const em2=prev[my*mW2+mx];
 const recyc=em2>0.2?(em2-0.2)*0.10*warm:0;
-mGrid[my*mW2+mx]=Math.max(0,carried+recyc);}}}
+const adv=Math.max(0,carried+recyc);
+mGrid[my*mW2+mx]=adv*0.80+nAvg*0.20;}}}
+// Smoothing passes to eliminate wind-streamline artifacts
+for(let pass=0;pass<3;pass++){const prev=new Float32Array(mGrid);
+for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
+const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
+if(elevation[py*W+px]<=0)continue;
+const mxL=(mx-1+mW2)%mW2,mxR=(mx+1)%mW2,ci=my*mW2+mx;
+mGrid[ci]=prev[ci]*0.5+(prev[my*mW2+mxL]+prev[my*mW2+mxR]+prev[(my-1)*mW2+mx]+prev[(my+1)*mW2+mx])*0.125;}}
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){
 const fx=x/2,fy=y/2,ix=Math.min(mW2-2,fx|0),iy=Math.min(mH2-2,fy|0);
 const dx2=fx-ix,dy2=fy-iy;
