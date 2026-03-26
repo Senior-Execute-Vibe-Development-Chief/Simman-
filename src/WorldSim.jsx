@@ -533,14 +533,16 @@ function getBiomeD(e,m,t,sl){
   // hot regions lose it to evaporation (Holdridge PET principle).
   const demand=.5+t*.5;
   const em=Math.min(1,m/demand);
+  // Permanent ice: extremely cold → snow/ice regardless of elevation
+  // (Antarctica, high Arctic are flat but ice-covered)
+  if(t<.08)return 5;
   // Alpine / montane (elevation overrides)
   if(e>.55)return t<.3?5:16;
   if(e>.42)return t<.25?5:t<.4?(em>.35?7:4):em>.4?8:16;
   // Mid-elevation cold: barren/alpine or shrubland, NOT tundra.
-  // Tundra is a polar lowland biome, not a high-altitude biome.
   if(e>.25&&t<.38)return t<.15?16:t<.25?(em>.4?6:16):em>.45?7:em>.2?14:16;
-  // Polar / subpolar (low elevation only now)
-  if(t<.15)return em>.5?6:4;
+  // Polar / subpolar (low elevation only)
+  if(t<.15)return em>.4?6:4;
   if(t<.25)return em>.35?6:4;
   if(t<.38)return em>.45?7:em>.25?6:4;
   // Temperate

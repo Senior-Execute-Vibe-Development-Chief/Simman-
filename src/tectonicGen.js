@@ -1291,7 +1291,7 @@ const tGrid = new Float32Array(mW * mH);
 // Seed with latitude-based temperature
 for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
   const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-  const tLat2 = Math.abs(py / H - 0.42) * 2;  // thermal latitude, shifted north
+  const tLat2 = Math.abs(py / H - 0.5) * 2;  // thermal latitude, shifted north
   const e2 = elevation[py * W + px];
   tGrid[my * mW + mx] = Math.max(0, Math.min(1, 1 - Math.pow(tLat2, 1.35) * 1.15
     + Math.exp(-((tLat2 - 0.20) * (tLat2 - 0.20)) / (2 * 0.08 * 0.08)) * 0.06 - Math.max(0, e2) * 0.65));
@@ -1312,7 +1312,7 @@ for (let step = 0; step < 25; step++) {
     const upwindT = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
       + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
     const e2 = elevation[fi];
-    const tLat2 = Math.abs(py / H - 0.42) * 2;
+    const tLat2 = Math.abs(py / H - 0.5) * 2;
     const localT = Math.max(0, Math.min(1, 1 - Math.pow(tLat2, 1.35) * 1.15
       + Math.exp(-((tLat2 - 0.20) * (tLat2 - 0.20)) / (2 * 0.08 * 0.08)) * 0.06 - Math.max(0, e2) * 0.65));
     if (e2 <= 0) {
@@ -1351,9 +1351,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   // Maritime temperature moderation + continental heating
   const cdm = cdist[Math.min(dh - 1, (y / DG) | 0) * dw + Math.min(dw - 1, (x / DG) | 0)];
   const coastProx = Math.max(0, 1 - cdm / 8);
-  // Thermal latitude: shifted north (~15°N) — warm zone spans ~12°S to ~43°N
-  // matching real Earth where the hot band starts above Madagascar and ends above Spain.
-  const tLat = Math.abs(ny - 0.42) * 2;
+  // Thermal latitude centered for procedural worlds (Earth Sim uses 0.42 offset)
+  const tLat = Math.abs(ny - 0.5) * 2;
   const subtropHeat = Math.exp(-((tLat - 0.20) * (tLat - 0.20)) / (2 * 0.08 * 0.08)) * 0.06;
   const baseTemp = 1 - Math.pow(tLat, 1.35) * 1.15 + subtropHeat - Math.max(0, e) * 0.65 + sg(nfTemp, x, y) * 0.08
     + sg(nfTempBroad, x, y) * 0.10;
@@ -1396,7 +1395,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     // modest precipitation creates effective wetness. Siberia gets 300mm/yr but
     // stays moist because snow persists for months. This raises moisture at high lat.
     const t = temperature[i];
-    const coldPersist = t < 0.4 ? (0.4 - t) * 0.35 : 0;  // up to +0.14 at coldest
+    // Cold persistence tapers off at extreme cold (t<0.1) — permafrost is ice, not moisture
+    const coldPersist = t < 0.4 ? Math.min(0.10, (0.4 - t) * 0.28 * Math.min(1, t / 0.12)) : 0;
     // Wind-advected moisture is the PRIMARY driver; latitude formulas are secondary.
     const wm = windMoisture[i];
     let m = wm * 0.65 + climateMoist * 0.35 + coldPersist;
@@ -1420,6 +1420,19 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     if (e < 0.02) m += 0.10;
     moisture[i] = Math.max(0.02, Math.min(1, m));
   }
+}
+
+// Moisture→temperature feedback: dry areas heat up more (no evaporative cooling,
+// clear skies). Wet areas stay cooler (clouds, transpiration).
+// This makes dry subtropical continents (like Australia) hotter than wet ones.
+for (let i = 0; i < W * H; i++) {
+  if (elevation[i] <= 0) continue;
+  const m = moisture[i], t = temperature[i];
+  // Dry warming: less moisture = more heating (clear skies, no evaporation)
+  // Wet cooling: high moisture = slight cooling (cloud cover, transpiration)
+  const dryBoost = m < 0.3 ? (0.3 - m) * 0.15 : 0;         // up to +0.045
+  const wetCool = m > 0.5 ? (m - 0.5) * -0.08 : 0;          // up to -0.04
+  temperature[i] = Math.max(0, Math.min(1, t + dryBoost + wetCool));
 }
 
 return { elevation, moisture, temperature, pixPlate, windX: fullWindX, windY: fullWindY };
