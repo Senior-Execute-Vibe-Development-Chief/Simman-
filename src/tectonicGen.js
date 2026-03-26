@@ -672,8 +672,10 @@ const nfCoastEN = precompute((nx, ny) => fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 4
 const nfContinent = precompute((nx, ny) => fbm(nx * 2.2 + s1 + 30, ny * 2.2 + s1 + 30, 3, 2, 0.55));
 const nfBroadSwell = precompute((nx, ny) => fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6));
 const nfTemp = precompute((nx, ny) => fbm(nx * 3 + 80, ny * 3 + 80, 3, 2, 0.5));
+const nfTempBroad = precompute((nx, ny) => fbm(nx * 1.2 + s1 + 55, ny * 1.2 + s1 + 55, 3, 2, 0.55));
 const nfMoistOce = precompute((nx, ny) => fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.5));
 const nfMoistLand = precompute((nx, ny) => fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55));
+const nfMoistBroad = precompute((nx, ny) => fbm(nx * 1.5 + s2 + 90, ny * 1.5 + s2 + 90, 3, 2, 0.55));
 
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
@@ -1185,36 +1187,88 @@ for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
   const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
   if (elevation[py * W + px] <= 0) mGrid[my * mW + mx] = 0.8;
 }
-// Advect moisture along wind vectors for several iterations
-for (let step = 0; step < 30; step++) {
+// Advect moisture along wind vectors with lateral diffusion
+// Diffusion prevents narrow wind-streamline artifacts ("whippy" moisture trails)
+for (let step = 0; step < 40; step++) {
   const prev = new Float32Array(mGrid);
   for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
     const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
     const fi = py * W + px;
     const wx2 = fullWindX[fi], wy2 = fullWindY[fi];
-    // Sample upwind (where the wind is coming from)
-    const srcX = mx - wx2 * 1.8, srcY = my - wy2 * 1.8;
+    const windSpeed = Math.sqrt(wx2 * wx2 + wy2 * wy2);
+    const invSpd = windSpeed > 0.02 ? 1 / windSpeed : 0;
+    const dirX = wx2 * invSpd, dirY = wy2 * invSpd;
+    const reach = Math.min(2.5, 1.5 + windSpeed * 1.5);
+    const srcX = mx - dirX * reach, srcY = my - dirY * reach;
     const sx = Math.min(mW - 2, Math.max(0, srcX | 0));
     const sy = Math.min(mH - 2, Math.max(0, srcY | 0));
-    const fdx = srcX - sx, fdy = srcY - sy;
-    const fdx1 = Math.max(0, Math.min(1, fdx)), fdy1 = Math.max(0, Math.min(1, fdy));
+    const fdx = Math.max(0, Math.min(1, srcX - sx)), fdy = Math.max(0, Math.min(1, srcY - sy));
     const sxr = Math.min(mW - 1, sx + 1);
-    // Bilinear sample from previous state
-    const upwind = (prev[sy * mW + sx] * (1 - fdx1) + prev[sy * mW + sxr] * fdx1) * (1 - fdy1)
-      + (prev[(sy + 1) * mW + sx] * (1 - fdx1) + prev[(sy + 1) * mW + sxr] * fdx1) * fdy1;
+    const upwind = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
+      + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
+    // Lateral diffusion: blend with neighbors to simulate atmospheric mixing
+    // This prevents narrow streamline artifacts and creates broad wet regions
+    const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
+    const neighborAvg = (prev[my * mW + mxL] + prev[my * mW + mxR]
+      + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.25;
     const e2 = elevation[fi];
     if (e2 <= 0) {
-      // Ocean: recharge moisture
       mGrid[my * mW + mx] = Math.max(prev[my * mW + mx], 0.75);
     } else {
-      // Land: carry upwind moisture, terrain blocks
-      const terrainBlock = Math.min(0.8, Math.max(0, e2 - 0.05) * 3);
-      // Orographic lift: dump extra moisture on windward slopes
-      const windSpeed = Math.sqrt(wx2 * wx2 + wy2 * wy2);
+      const terrainBlock = Math.min(0.9, Math.max(0, e2 - 0.03) * 4);
       const lift = Math.min(0.15, e2 * windSpeed * 0.4);
-      const carried = upwind * (1 - terrainBlock * 0.3) * 0.96 - lift;
-      mGrid[my * mW + mx] = Math.max(0, carried);
+      const speedDecay = 0.97 - Math.min(0.04, windSpeed * 0.06);
+      const carried = upwind * (1 - terrainBlock * 0.35) * speedDecay - lift;
+      const lat2 = Math.abs(py / H - 0.5) * 2;
+      const warmEnough = lat2 < 0.5 ? 1.0 : Math.max(0, 1 - (lat2 - 0.5) * 3);
+      const existingMoist = prev[my * mW + mx];
+      const recycling = existingMoist > 0.2 ? (existingMoist - 0.2) * 0.10 * warmEnough : 0;
+      // Blend: 80% advected + 20% neighbor diffusion
+      const advected = Math.max(0, carried + recycling);
+      mGrid[my * mW + mx] = advected * 0.70 + neighborAvg * 0.30;
     }
+  }
+}
+// ═══════════════════════════════════════════════════════
+// Wind convergence/divergence → precipitation modifier
+// Compute divergence into a separate field, smooth it (turbulent mixing
+// means convergence effects spread over ~100km), then apply.
+// ═══════════════════════════════════════════════════════
+const divField = new Float32Array(mW * mH);
+for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
+  const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+  const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
+  const pxL = Math.min(W - 1, mxL * 2), pxR = Math.min(W - 1, mxR * 2);
+  const pyU = Math.min(H - 1, (my - 1) * 2), pyD = Math.min(H - 1, (my + 1) * 2);
+  divField[my * mW + mx] = (fullWindX[py * W + pxR] - fullWindX[py * W + pxL]
+    + fullWindY[pyD * W + px] - fullWindY[pyU * W + px]) * 0.5;
+}
+// Smooth divergence field (3 passes) — represents mesoscale turbulent mixing
+for (let pass = 0; pass < 3; pass++) {
+  const prev = new Float32Array(divField);
+  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
+    const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW, ci = my * mW + mx;
+    divField[ci] = prev[ci] * 0.4 + (prev[my * mW + mxL] + prev[my * mW + mxR]
+      + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.15;
+  }
+}
+// Apply smoothed convergence/divergence to moisture
+for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
+  const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+  if (elevation[py * W + px] <= 0) continue;
+  const div = divField[my * mW + mx], ci = my * mW + mx, q = mGrid[ci];
+  if (div < 0) mGrid[ci] = Math.min(1, mGrid[ci] + Math.min(0.12, -div * q * 1.0));
+  else mGrid[ci] = Math.max(0, mGrid[ci] - Math.min(0.06, div * 0.3));
+}
+// Final eddy diffusion smoothing (5 passes — turbulent atmospheric mixing)
+for (let pass = 0; pass < 5; pass++) {
+  const prev = new Float32Array(mGrid);
+  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
+    const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+    if (elevation[py * W + px] <= 0) continue;
+    const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW, ci = my * mW + mx;
+    mGrid[ci] = prev[ci] * 0.45 + (prev[my * mW + mxL] + prev[my * mW + mxR]
+      + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.1375;
   }
 }
 // Upscale moisture advection result to full resolution
@@ -1227,6 +1281,65 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 }
 
 // ═══════════════════════════════════════════════════════
+// STEP 8c2: Wind-advected temperature transport
+// Heat carried by wind — warm equatorial air pushed poleward by westerlies,
+// cold polar air pushed equatorward by easterlies. Same principle as moisture
+// advection but temperature relaxes toward local latitude value (thermal inertia).
+// ═══════════════════════════════════════════════════════
+const windTemp = new Float32Array(W * H);
+const tGrid = new Float32Array(mW * mH);
+// Seed with latitude-based temperature
+for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
+  const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+  const tLat2 = Math.abs(py / H - 0.5) * 2;  // thermal latitude, shifted north
+  const e2 = elevation[py * W + px];
+  tGrid[my * mW + mx] = Math.max(0, Math.min(1, 1 - Math.pow(tLat2, 1.35) * 1.15
+    + Math.exp(-((tLat2 - 0.20) * (tLat2 - 0.20)) / (2 * 0.08 * 0.08)) * 0.06 - Math.max(0, e2) * 0.65));
+}
+// Advect temperature along wind vectors
+for (let step = 0; step < 25; step++) {
+  const prev = new Float32Array(tGrid);
+  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
+    const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+    const fi = py * W + px;
+    const wx2 = fullWindX[fi], wy2 = fullWindY[fi];
+    const srcX = mx - wx2 * 2.0, srcY = my - wy2 * 2.0;
+    const sx = Math.min(mW - 2, Math.max(0, srcX | 0));
+    const sy = Math.min(mH - 2, Math.max(0, srcY | 0));
+    const fdx = Math.max(0, Math.min(1, srcX - sx));
+    const fdy = Math.max(0, Math.min(1, srcY - sy));
+    const sxr = Math.min(mW - 1, sx + 1);
+    const upwindT = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
+      + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
+    const e2 = elevation[fi];
+    const tLat2 = Math.abs(py / H - 0.5) * 2;
+    const localT = Math.max(0, Math.min(1, 1 - Math.pow(tLat2, 1.35) * 1.15
+      + Math.exp(-((tLat2 - 0.20) * (tLat2 - 0.20)) / (2 * 0.08 * 0.08)) * 0.06 - Math.max(0, e2) * 0.65));
+    if (e2 <= 0) {
+      // Ocean: high thermal inertia, mostly local temp with slight wind influence
+      tGrid[my * mW + mx] = localT * 0.88 + upwindT * 0.12;
+    } else {
+      // Land: wind carries heat — warming penetrates easier than cooling
+      // (warm air masses are more persistent than cold outbreaks)
+      const terrainBlock = Math.min(0.8, Math.max(0, e2 - 0.05) * 3);
+      const baseInf = (1 - terrainBlock * 0.5) * 0.22;
+      // Warm bias: upwind warmer than local → stronger influence
+      const warmBias = upwindT > localT ? 1.3 : 0.8;
+      const windInf = Math.min(0.35, baseInf * warmBias);
+      tGrid[my * mW + mx] = localT * (1 - windInf) + upwindT * windInf;
+    }
+  }
+}
+// Upscale wind temperature to full resolution
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  const fx = x / 2, fy = y / 2;
+  const ix = Math.min(mW - 2, fx | 0), iy = Math.min(mH - 2, fy | 0);
+  const dx2 = fx - ix, dy2 = fy - iy;
+  windTemp[y * W + x] = (tGrid[iy * mW + ix] * (1 - dx2) + tGrid[iy * mW + Math.min(mW - 1, ix + 1)] * dx2) * (1 - dy2)
+    + (tGrid[(iy + 1) * mW + ix] * (1 - dx2) + tGrid[(iy + 1) * mW + Math.min(mW - 1, ix + 1)] * dx2) * dy2;
+}
+
+// ═══════════════════════════════════════════════════════
 // STEP 8d: Temperature & Moisture (final combination)
 // ═══════════════════════════════════════════════════════
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -1235,36 +1348,91 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const lat = Math.abs(ny - 0.5) * 2;
   const e = elevation[i];
 
-  // Maritime temperature moderation: coast proximity → milder temps
+  // Maritime temperature moderation + continental heating
   const cdm = cdist[Math.min(dh - 1, (y / DG) | 0) * dw + Math.min(dw - 1, (x / DG) | 0)];
   const coastProx = Math.max(0, 1 - cdm / 8);
-  const baseTemp = 1 - lat * 1.05 - Math.max(0, e) * 0.4 + sg(nfTemp, x, y) * 0.08;
-  // Pull extreme temps toward 0.45 (ocean moderating effect)
-  const moderated = baseTemp + (0.45 - baseTemp) * coastProx * 0.2;
-  temperature[i] = Math.max(0, Math.min(1, moderated));
+  // Thermal latitude centered for procedural worlds (Earth Sim uses 0.42 offset)
+  const tLat = Math.abs(ny - 0.5) * 2;
+  const subtropHeat = Math.exp(-((tLat - 0.20) * (tLat - 0.20)) / (2 * 0.08 * 0.08)) * 0.06;
+  const baseTemp = 1 - Math.pow(tLat, 1.35) * 1.15 + subtropHeat - Math.max(0, e) * 0.65 + sg(nfTemp, x, y) * 0.08
+    + sg(nfTempBroad, x, y) * 0.10;
+  // Continental heating: interiors at low/mid latitudes get hotter (no ocean buffering).
+  // At high latitudes, interiors get colder (continental winters dominate).
+  const inland = Math.max(0, 1 - coastProx);  // 0 at coast, 1 deep inland
+  const contHeat = tLat < 0.5
+    ? inland * (0.5 - tLat) * 0.20
+    : inland * (tLat - 0.5) * -0.12;
+  // Maritime moderation: coasts pull toward moderate temp (0.45)
+  const modTemp = baseTemp + (0.45 - baseTemp) * coastProx * 0.2 + contHeat;
+  // Blend latitude-based temperature with wind-advected temperature.
+  // Wind transport carries warmth poleward (westerlies) and cold equatorward.
+  // Kept moderate (25%) to avoid false tundra at mid-latitudes from cold intrusions.
+  const wt = windTemp[i];
+  const temp = modTemp * 0.75 + wt * 0.25;
+  temperature[i] = Math.max(0, Math.min(1, temp));
 
   if (e <= 0) {
     moisture[i] = 0.5 + sg(nfMoistOce, x, y) * 0.1;
   } else {
+    // Latitude-based climate moisture (secondary signal)
     const tropWet = Math.max(0, 1 - lat * 2.5);
-    const subtropDry = Math.exp(-((lat - 0.28) ** 2) / (2 * 0.06 * 0.06)) * 0.50 * (1 - coastProx * 0.5);
-    const tempWet = Math.exp(-((lat - 0.55) ** 2) / 0.025) * 0.22;
+    const subtropDry = Math.exp(-((lat - 0.28) ** 2) / (2 * 0.08 * 0.08)) * 0.35 * (1 - coastProx * 0.5);
+    const tempWet = Math.exp(-((lat - 0.55) ** 2) / 0.035) * 0.28;
     const tropF = Math.max(0, 1 - lat * 3);
-    const contRate = 0.006 + (1 - tropF) * 0.014;
-    const cont = Math.min(0.28, cdm * contRate);
-    const polarDry = Math.max(0, (lat - 0.75)) * 0.25;
-    let m = 0.42 + tropWet * 0.42 - subtropDry + tempWet - cont - polarDry
-      + sg(nfMoistLand, x, y) * 0.12;
-    // Wind-advected moisture: high on windward coasts, low in rain shadow
+    // Reduced continentality: real mid/high latitude interiors stay moist because
+    // frontal systems (cyclones) penetrate deep inland via westerlies
+    const contRate = 0.004 + (1 - tropF) * 0.010;
+    const cont = Math.min(0.20, cdm * contRate);
+    const polarDry = Math.max(0, (lat - 0.80)) * 0.20;
+    // Base climate moisture without small-scale noise
+    const climateBase = 0.48 + tropWet * 0.40 - subtropDry + tempWet - cont - polarDry
+      + sg(nfMoistBroad, x, y) * 0.18;
+    // Small-scale noise amplitude scales with base moisture — prevents forest
+    // freckles in deserts (dry areas get tiny noise, wet areas get full variation)
+    const noiseAmp = Math.max(0.02, Math.min(0.12, climateBase * 0.20));
+    const climateMoist = climateBase + sg(nfMoistLand, x, y) * noiseAmp;
+    // Cold-latitude moisture persistence: cold air has low evaporation, so even
+    // modest precipitation creates effective wetness. Siberia gets 300mm/yr but
+    // stays moist because snow persists for months. This raises moisture at high lat.
+    const t = temperature[i];
+    // Cold persistence tapers off at extreme cold (t<0.1) — permafrost is ice, not moisture
+    const coldPersist = t < 0.4 ? Math.min(0.10, (0.4 - t) * 0.28 * Math.min(1, t / 0.12)) : 0;
+    // Wind-advected moisture is the PRIMARY driver; latitude formulas are secondary.
     const wm = windMoisture[i];
-    const windBoost = (wm - 0.3) * 0.6;
-    m += windBoost;
+    let m = wm * 0.65 + climateMoist * 0.35 + coldPersist;
+    // Tropical moisture floor: ITCZ convection guarantees minimum moisture near equator.
+    // Smooth Gaussian fade + noise to avoid hard equatorial band.
+    if (lat < 0.25) {
+      const tropFloor = 0.30 * Math.exp(-(lat * lat) / (2 * 0.08 * 0.08))
+        + sg(nfMoistBroad, x, y) * 0.06;  // noise breaks the uniformity
+      if (m < tropFloor) m = m * 0.4 + tropFloor * 0.6;  // soft blend, not hard max
+    }
     // Orographic lift: windward slopes get extra precipitation
     if (e > 0.1 && wm > 0.35) m += Math.min(0.12, (e - 0.1) * wm * 0.5);
+    // Cold current moisture suppression: equatorward coastal winds = upwelling = dry
+    if (coastProx > 0.15) {
+      const wy = fullWindY[i];
+      const hemiSign = ny < 0.5 ? -1 : 1;
+      const polewardFlow = wy * hemiSign;
+      if (polewardFlow < 0) m += Math.max(-0.15, polewardFlow * 0.12) * coastProx;
+    }
     // Lowland moisture accumulation
     if (e < 0.02) m += 0.10;
     moisture[i] = Math.max(0.02, Math.min(1, m));
   }
+}
+
+// Moisture→temperature feedback: dry areas heat up more (no evaporative cooling,
+// clear skies). Wet areas stay cooler (clouds, transpiration).
+// This makes dry subtropical continents (like Australia) hotter than wet ones.
+for (let i = 0; i < W * H; i++) {
+  if (elevation[i] <= 0) continue;
+  const m = moisture[i], t = temperature[i];
+  // Dry warming: less moisture = more heating (clear skies, no evaporation)
+  // Wet cooling: high moisture = slight cooling (cloud cover, transpiration)
+  const dryBoost = m < 0.3 ? (0.3 - m) * 0.15 : 0;         // up to +0.045
+  const wetCool = m > 0.5 ? (m - 0.5) * -0.08 : 0;          // up to -0.04
+  temperature[i] = Math.max(0, Math.min(1, t + dryBoost + wetCool));
 }
 
 return { elevation, moisture, temperature, pixPlate, windX: fullWindX, windY: fullWindY };

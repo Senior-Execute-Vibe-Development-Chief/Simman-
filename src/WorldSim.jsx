@@ -75,19 +75,171 @@ if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
 const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
 const coastProx=Math.max(0,1-cd/8);// 1 at coast, 0 inland
 const tropWet=Math.max(0,1-lat*2.5);// ITCZ: wet equator
-const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.50*(1-coastProx*.5);// subtropical HP, weakened near coast (monsoon)
+const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.08*.08))*.35*(1-coastProx*.5);// subtropical HP, softened + widened for realism
 const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.22;// temperate westerlies
 const tropF=Math.max(0,1-lat*3);// tropical moisture recycling factor
 const contRate=.006+(1-tropF)*.014;// weak in tropics, stronger elsewhere
 const cont=Math.min(.28,cd*contRate);
 const polarDry=Math.max(0,(lat-.75))*.25;
-let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12;
+let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12
++fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*.15;// continent-scale wet/dry to break banding
 if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
 if(elevation[i]<.02)m+=.10;
 moisture[i]=Math.max(.02,Math.min(1,m));}
 // Run wind solver on Earth elevation data
 const earthWind=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137);
 tecWindX=earthWind.windX;tecWindY=earthWind.windY;
+}else if(preset==="earth_sim"){
+// ── Earth (Sim) mode: real heightmap + full wind-based climate simulation ──
+// Uses same elevation as Earth mode but applies wind-advected moisture/temperature
+const eData=decodeEarth(EARTH_ELEV);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
+const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);
+const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
+if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
+elevation[i]=-0.03-Math.max(0,(1-he/3))*0.12+depth;
+}else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}}
+// Coast distance BFS
+const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
+const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);const cdQ=[];
+for(let ty=0;ty<CDH;ty++)for(let tx=0;tx<CDW;tx++){
+const px=Math.min(W-1,tx*CDT),py=Math.min(H-1,ty*CDT),ti2=ty*CDW+tx;
+if(elevation[py*W+px]<=0)continue;
+for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+const nx2=(tx+dx+CDW)%CDW,ny2=ty+dy;if(ny2<0||ny2>=CDH)continue;
+if(elevation[Math.min(H-1,ny2*CDT)*W+Math.min(W-1,nx2*CDT)]<=0){cdist[ti2]=0;cdQ.push(ti2);break;}}}
+for(let qi=0;qi<cdQ.length;qi++){const ci=cdQ[qi],cd=cdist[ci],cx=ci%CDW,cy=(ci-cx)/CDW;
+for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
+const nx2=(cx+dx+CDW)%CDW,ny2=cy+dy;if(ny2<0||ny2>=CDH)continue;
+const ni=ny2*CDW+nx2,nd=cd+1;if(nd<cdist[ni]&&elevation[Math.min(H-1,ny2*CDT)*W+Math.min(W-1,nx2*CDT)]>0){cdist[ni]=nd;cdQ.push(ni);}}}
+// Wind solver
+const esWind=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137);
+tecWindX=esWind.windX;tecWindY=esWind.windY;
+const fWX=tecWindX,fWY=tecWindY;
+// Wind-advected moisture (same as tectonic mode)
+const windMoisture=new Float32Array(W*H);
+const mW2=Math.ceil(W/2),mH2=Math.ceil(H/2);
+const mGrid=new Float32Array(mW2*mH2);
+for(let my=0;my<mH2;my++)for(let mx=0;mx<mW2;mx++){
+const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
+if(elevation[py*W+px]<=0)mGrid[my*mW2+mx]=0.8;}
+for(let step=0;step<40;step++){const prev=new Float32Array(mGrid);
+for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
+const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
+const wx2=fWX[fi],wy2=fWY[fi];
+const ws=Math.sqrt(wx2*wx2+wy2*wy2),inv=ws>0.02?1/ws:0;
+const dxW=wx2*inv,dyW=wy2*inv,reach=Math.min(2.5,1.5+ws*1.5);
+const srcX=mx-dxW*reach,srcY=my-dyW*reach;
+const sx=Math.min(mW2-2,Math.max(0,srcX|0)),sy=Math.min(mH2-2,Math.max(0,srcY|0));
+const fdx=Math.max(0,Math.min(1,srcX-sx)),fdy=Math.max(0,Math.min(1,srcY-sy));
+const sxr=Math.min(mW2-1,sx+1);
+const upwind=(prev[sy*mW2+sx]*(1-fdx)+prev[sy*mW2+sxr]*fdx)*(1-fdy)
++(prev[(sy+1)*mW2+sx]*(1-fdx)+prev[(sy+1)*mW2+sxr]*fdx)*fdy;
+const mxL=(mx-1+mW2)%mW2,mxR=(mx+1)%mW2;
+const nAvg=(prev[my*mW2+mxL]+prev[my*mW2+mxR]+prev[(my-1)*mW2+mx]+prev[(my+1)*mW2+mx])*0.25;
+const e2=elevation[fi];
+if(e2<=0){mGrid[my*mW2+mx]=Math.max(prev[my*mW2+mx],0.75);}
+else{const tb=Math.min(0.9,Math.max(0,e2-0.03)*4);
+const lift=Math.min(0.15,e2*ws*0.4);
+const sd=0.97-Math.min(0.04,ws*0.06);
+const carried=upwind*(1-tb*0.35)*sd-lift;
+const lat2=Math.abs(py/H-0.5)*2;
+const warm=lat2<0.5?1.0:Math.max(0,1-(lat2-0.5)*3);
+const em2=prev[my*mW2+mx];
+const recyc=em2>0.2?(em2-0.2)*0.10*warm:0;
+const adv=Math.max(0,carried+recyc);
+mGrid[my*mW2+mx]=adv*0.70+nAvg*0.30;}}}
+// Compute smoothed divergence field (avoids noisy derivatives creating sharp edges)
+const divF=new Float32Array(mW2*mH2);
+for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
+const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
+const mxL=(mx-1+mW2)%mW2,mxR=(mx+1)%mW2;
+const pxL=Math.min(W-1,mxL*2),pxR=Math.min(W-1,mxR*2);
+const pyU=Math.min(H-1,(my-1)*2),pyD=Math.min(H-1,(my+1)*2);
+divF[my*mW2+mx]=(fWX[py*W+pxR]-fWX[py*W+pxL]+fWY[pyD*W+px]-fWY[pyU*W+px])*0.5;}
+for(let pass=0;pass<3;pass++){const prev=new Float32Array(divF);
+for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
+const mxL=(mx-1+mW2)%mW2,mxR=(mx+1)%mW2,ci=my*mW2+mx;
+divF[ci]=prev[ci]*0.4+(prev[my*mW2+mxL]+prev[my*mW2+mxR]+prev[(my-1)*mW2+mx]+prev[(my+1)*mW2+mx])*0.15;}}
+// Apply smoothed convergence/divergence
+for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
+const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
+if(elevation[py*W+px]<=0)continue;
+const div=divF[my*mW2+mx],ci=my*mW2+mx,q=mGrid[ci];
+if(div<0)mGrid[ci]=Math.min(1,mGrid[ci]+Math.min(0.12,-div*q*1.0));
+else mGrid[ci]=Math.max(0,mGrid[ci]-Math.min(0.06,div*0.3));}
+// Final eddy diffusion (5 passes — turbulent atmospheric mixing)
+for(let pass=0;pass<5;pass++){const prev=new Float32Array(mGrid);
+for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
+const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
+if(elevation[py*W+px]<=0)continue;
+const mxL=(mx-1+mW2)%mW2,mxR=(mx+1)%mW2,ci=my*mW2+mx;
+mGrid[ci]=prev[ci]*0.45+(prev[my*mW2+mxL]+prev[my*mW2+mxR]+prev[(my-1)*mW2+mx]+prev[(my+1)*mW2+mx])*0.1375;}}
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+const fx=x/2,fy=y/2,ix=Math.min(mW2-2,fx|0),iy=Math.min(mH2-2,fy|0);
+const dx2=fx-ix,dy2=fy-iy;
+windMoisture[y*W+x]=(mGrid[iy*mW2+ix]*(1-dx2)+mGrid[iy*mW2+Math.min(mW2-1,ix+1)]*dx2)*(1-dy2)
++(mGrid[(iy+1)*mW2+ix]*(1-dx2)+mGrid[(iy+1)*mW2+Math.min(mW2-1,ix+1)]*dx2)*dy2;}
+// Wind-advected temperature
+const windTemp=new Float32Array(W*H);
+const tGrid=new Float32Array(mW2*mH2);
+for(let my=0;my<mH2;my++)for(let mx=0;mx<mW2;mx++){
+const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
+const lt=Math.abs(py/H-0.42)*2,e2=elevation[py*W+px];
+tGrid[my*mW2+mx]=Math.max(0,Math.min(1,1-Math.pow(lt,1.35)*1.15+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.65));}
+for(let step=0;step<25;step++){const prev=new Float32Array(tGrid);
+for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
+const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
+const wx2=fWX[fi],wy2=fWY[fi];
+const srcX=mx-wx2*2.0,srcY=my-wy2*2.0;
+const sx=Math.min(mW2-2,Math.max(0,srcX|0)),sy=Math.min(mH2-2,Math.max(0,srcY|0));
+const fdx=Math.max(0,Math.min(1,srcX-sx)),fdy=Math.max(0,Math.min(1,srcY-sy));
+const sxr=Math.min(mW2-1,sx+1);
+const upT=(prev[sy*mW2+sx]*(1-fdx)+prev[sy*mW2+sxr]*fdx)*(1-fdy)
++(prev[(sy+1)*mW2+sx]*(1-fdx)+prev[(sy+1)*mW2+sxr]*fdx)*fdy;
+const e2=elevation[fi],lt=Math.abs(py/H-0.42)*2;
+const locT=Math.max(0,Math.min(1,1-Math.pow(lt,1.35)*1.15+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.65));
+if(e2<=0){tGrid[my*mW2+mx]=locT*0.88+upT*0.12;}
+else{const tb=Math.min(0.8,Math.max(0,e2-0.05)*3);
+const bi=(1-tb*0.5)*0.22,wb=upT>locT?1.3:0.8;
+const wi=Math.min(0.35,bi*wb);
+tGrid[my*mW2+mx]=locT*(1-wi)+upT*wi;}}}
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+const fx=x/2,fy=y/2,ix=Math.min(mW2-2,fx|0),iy=Math.min(mH2-2,fy|0);
+const dx2=fx-ix,dy2=fy-iy;
+windTemp[y*W+x]=(tGrid[iy*mW2+ix]*(1-dx2)+tGrid[iy*mW2+Math.min(mW2-1,ix+1)]*dx2)*(1-dy2)
++(tGrid[(iy+1)*mW2+ix]*(1-dx2)+tGrid[(iy+1)*mW2+Math.min(mW2-1,ix+1)]*dx2)*dy2;}
+// Final temperature & moisture combination
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
+const e=elevation[i];
+const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
+const cp=Math.max(0,1-cd/8);
+const tLat=Math.abs(ny-0.42)*2;
+const shE=Math.exp(-((tLat-0.20)*(tLat-0.20))/(2*0.08*0.08))*0.06;
+const bt=1-Math.pow(tLat,1.35)*1.15+shE-Math.max(0,e)*0.65+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
+const inland=Math.max(0,1-cp);
+const ch=tLat<0.5?inland*(0.5-tLat)*0.20:inland*(tLat-0.5)*-0.12;
+const mt=bt+(0.45-bt)*cp*0.2+ch;
+const wt=windTemp[i];
+temperature[i]=Math.max(0,Math.min(1,mt*0.75+wt*0.25));
+if(e<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;}
+else{const tw=Math.max(0,1-lat*2.5);
+const sd2=Math.exp(-((lat-.28)*(lat-.28))/(2*.08*.08))*.35*(1-cp*.5);
+const tw2=Math.exp(-((lat-.55)*(lat-.55))/.035)*.28;
+const tf=Math.max(0,1-lat*3),cr=.004+(1-tf)*.010;
+const ct=Math.min(.20,cd*cr),pd=Math.max(0,(lat-.80))*.20;
+const cmBase=.48+tw*.40-sd2+tw2-ct-pd+fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*.18;
+const nAmp=Math.max(0.02,Math.min(0.12,cmBase*0.20));
+const cm=cmBase+fbm(nx*4+50,ny*4+50,4,2,.55)*nAmp;
+const t=temperature[i];
+const coldP=t<0.4?(0.4-t)*0.35:0;
+const wm=windMoisture[i];
+let m=wm*0.65+cm*0.35+coldP;
+if(lat<0.25){const tf2=0.30*Math.exp(-(lat*lat)/(2*0.08*0.08))+fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*0.06;
+if(m<tf2)m=m*0.4+tf2*0.6;}
+if(e>0.1&&wm>0.35)m+=Math.min(0.12,(e-0.1)*wm*0.5);
+if(e<0.02)m+=0.10;
+moisture[i]=Math.max(.02,Math.min(1,m));}}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
@@ -103,10 +255,11 @@ e-=Math.pow(Math.max(0,fbm(nx*4+60,ny*4+60,3,2,.5)+.1),2)*.15;
 elevation[i]=Math.max(0.005,e);
 // Moisture: climate zones + elevation effects
 const tropWet=Math.max(0,1-lat*2.5);
-const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.40;// subtropical HP belt
+const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.08*.08))*.30;// subtropical HP belt, softened
 const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.20;
 const polarDry=Math.max(0,(lat-.75))*.25;
-let m=.40+tropWet*.35-subtropDry+tempWet-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.15;
+let m=.40+tropWet*.35-subtropDry+tempWet-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.15
++fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*.15;// continent-scale wet/dry to break banding
 if(e<0.06)m+=.15;// valleys are wet
 if(e>0.3)m-=.15;// mountains are drier
 moisture[i]=Math.max(.02,Math.min(1,m));
@@ -238,13 +391,14 @@ if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
 const cd=cdist2[Math.min(dh-1,Math.floor(y/DG))*dw+Math.min(dw-1,Math.floor(x/DG))];
 const coastProx=Math.max(0,1-cd/8);
 const tropWet=Math.max(0,1-lat*2.5);
-const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.06*.06))*.50*(1-coastProx*.5);
+const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.08*.08))*.35*(1-coastProx*.5);
 const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.22;
 const tropF=Math.max(0,1-lat*3);
 const contRate=.006+(1-tropF)*.014;
 const cont=Math.min(.28,cd*contRate);
 const polarDry=Math.max(0,(lat-.75))*.25;
-let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12;
+let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12
++fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*.15;// continent-scale wet/dry to break banding
 if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
 if(elevation[i]<.02)m+=.10;
 moisture[i]=Math.max(.02,Math.min(1,m));}}
@@ -356,38 +510,47 @@ const BC=[
 [20,48,95],      // 1  Shallow Ocean
 [36,78,125],     // 2  Coastal Water
 [194,182,140],   // 3  Beach (unused)
-[170,178,168],   // 4  Tundra
-[232,238,245],   // 5  Snow / Ice
-[68,98,68],      // 6  Taiga
-[48,80,52],      // 7  Boreal Forest
-[58,125,48],     // 8  Temperate Forest
-[28,98,55],      // 9  Temperate Rainforest
-[16,74,30],      // 10 Tropical Rainforest
-[176,168,72],    // 11 Savanna
-[142,162,58],    // 12 Grassland
-[204,184,126],   // 13 Desert
-[132,140,72],    // 14 Shrubland
-[68,114,45],     // 15 Tropical Dry Forest
-[146,140,130]    // 16 Barren / Alpine
+[175,172,148],   // 4  Tundra — brownish-gray (lichen/permafrost)
+[235,240,248],   // 5  Snow / Ice
+[62,95,62],      // 6  Taiga — dark muted conifer green
+[45,78,48],      // 7  Boreal Forest — darker spruce green
+[56,128,46],     // 8  Temperate Forest — bright deciduous green
+[25,100,52],     // 9  Temperate Rainforest — deep emerald
+[14,72,28],      // 10 Tropical Rainforest — dark dense canopy
+[192,176,82],    // 11 Savanna — golden-tan with scattered green
+[178,165,68],    // 12 Grassland — golden-straw prairie
+[208,188,130],   // 13 Desert — sandy tan
+[140,135,78],    // 14 Shrubland — olive-brown chaparral
+[78,118,48],     // 15 Tropical Dry Forest — muted olive-green
+[152,145,135]    // 16 Barren / Alpine — gray-brown rock
 ];
 const BN=['Deep Ocean','Shallow Ocean','Coastal Water','Beach','Tundra','Snow / Ice','Taiga',
 'Boreal Forest','Temperate Forest','Temperate Rainforest','Tropical Rainforest','Savanna',
 'Grassland','Desert','Shrubland','Tropical Dry Forest','Barren / Alpine'];
 function getBiomeD(e,m,t,sl){
   if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
+  // Effective moisture: cold regions retain moisture (low evaporation),
+  // hot regions lose it to evaporation (Holdridge PET principle).
+  const demand=.5+t*.5;
+  const em=Math.min(1,m/demand);
+  // Permanent ice: extremely cold → snow/ice regardless of elevation
+  // (Antarctica, high Arctic are flat but ice-covered)
+  if(t<.08)return 5;
   // Alpine / montane (elevation overrides)
   if(e>.55)return t<.3?5:16;
-  if(e>.42)return t<.25?5:t<.4?(m>.35?7:4):m>.4?8:16;
-  // Polar / subpolar
-  if(t<.15)return 4;
-  if(t<.25)return m>.35?6:4;
-  if(t<.38)return m>.45?7:m>.25?6:4;
+  if(e>.42)return t<.25?5:t<.4?(em>.35?7:4):em>.4?8:16;
+  // Mid-elevation cold: barren/alpine or shrubland, NOT tundra.
+  if(e>.25&&t<.38)return t<.15?16:t<.25?(em>.4?6:16):em>.45?7:em>.2?14:16;
+  // Polar / subpolar (low elevation only)
+  if(t<.15)return em>.4?6:4;
+  if(t<.25)return em>.35?6:4;
+  if(t<.38)return em>.45?7:em>.25?6:4;
   // Temperate
-  if(t<.55)return m>.55?9:m>.35?8:m>.15?12:13;
+  if(t<.55)return em>.55?9:em>.35?8:em>.15?12:13;
   // Warm
-  if(t<.72)return m>.5?8:m>.3?15:m>.15?14:13;
+  if(t<.72)return em>.5?8:em>.3?15:em>.15?14:13;
   // Hot / tropical
-  return m>.5?10:m>.3?15:m>.18?11:m>.08?12:13;
+  return em>.5?10:em>.3?15:em>.18?11:em>.08?12:13;
 }
 function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
@@ -425,7 +588,7 @@ else if(hasFlood){tFert[ti]=Math.min(1,tFert[ti]+0.25);tMoist[ti]=Math.min(1,tMo
 if(hasOasis){tFert[ti]=Math.min(1,tFert[ti]+0.3);tDiff[ti]=Math.max(0,tDiff[ti]-0.3);}
 if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+0.25);}}}
 // Find multiple spread-out seed locations for starting tribes
-const NUM_TRIBES=w.preset==="earth"?8:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:6;const minSpacing=Math.round(tw*0.12);
+const NUM_TRIBES=(w.preset==="earth"||w.preset==="earth_sim")?8:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:6;const minSpacing=Math.round(tw*0.12);
 // Score all habitable tiles
 const scored=[];
 for(let ty=2;ty<th-2;ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;if(tElev[ti]<=0)continue;
@@ -437,7 +600,7 @@ const origins=[];
 if(w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0){// Imported map: use state positions as tribe seeds
 for(const ts of w.tribeSeeds){const tx=Math.min(tw-1,Math.max(0,Math.round(ts.x/RES))),ty2=Math.min(th-1,Math.max(0,Math.round(ts.y/RES)));
 if(tElev[ty2*tw+tx]>0)origins.push({x:tx,y:ty2,s:tFert[ty2*tw+tx]});}}
-else if(w.preset==="earth"){// Seed East Africa first (cradle of mankind)
+else if(w.preset==="earth"||w.preset==="earth_sim"){// Seed East Africa first (cradle of mankind)
 const etx=Math.round(tw*0.51),ety=Math.round(th*0.47);
 let best=null,bs2=-999;
 for(const c of scored){let dx=Math.abs(c.x-etx);if(dx>tw/2)dx=tw-dx;
@@ -853,6 +1016,48 @@ else{const t2=v*2;r=220;g=(t2*200)|0;b=0;}
 // Darken slightly with elevation for depth
 const shade=1-Math.max(0,e-0.1)*0.5;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
+}else if(vm==="moisture"){
+// Moisture overlay — brown (dry) → yellow → green → teal → blue (wet)
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const e=w.elevation[si];const pi4=ti<<2;
+if(e<=sl){// Ocean: dim blue
+d[pi4]=8;d[pi4+1]=15;d[pi4+2]=35;d[pi4+3]=255;continue;}
+const m=w.moisture[si];let r,g,b;
+if(m<0.1){const s=m/0.1;r=(140+s*20)|0;g=(100+s*30)|0;b=(50+s*10)|0;}// brown (desert dry)
+else if(m<0.25){const s=(m-0.1)/0.15;r=(160-s*50)|0;g=(130+s*50)|0;b=(60+s*10)|0;}// brown→olive
+else if(m<0.4){const s=(m-0.25)/0.15;r=(110-s*60)|0;g=(180+s*20)|0;b=(70+s*20)|0;}// olive→green
+else if(m<0.55){const s=(m-0.4)/0.15;r=(50-s*30)|0;g=(200-s*10)|0;b=(90+s*60)|0;}// green→teal
+else if(m<0.7){const s=(m-0.55)/0.15;r=(20-s*10)|0;g=(190-s*40)|0;b=(150+s*50)|0;}// teal→blue-green
+else if(m<0.85){const s=(m-0.7)/0.15;r=(10)|0;g=(150-s*80)|0;b=(200+s*30)|0;}// blue
+else{const s=(m-0.85)/0.15;r=(10+s*20)|0;g=(70-s*30)|0;b=(230+s*25)|0;}// deep blue
+// Darken with elevation for topographic context
+const shade=1-Math.max(0,e-0.1)*0.4;
+d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
+}else if(vm==="temperature"){
+// Temperature overlay — blue (cold) → cyan → green → yellow → orange → red (hot)
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const e=w.elevation[si];const pi4=ti<<2;
+if(e<=sl){// Ocean: show temperature with slight blue tint
+const t=w.temperature[si];
+const ot=Math.max(0,Math.min(1,t));
+let r,g,b;
+if(ot<0.2){const s=ot/0.2;r=(10+s*5)|0;g=(15+s*25)|0;b=(60+s*50)|0;}
+else if(ot<0.5){const s=(ot-0.2)/0.3;r=(15+s*10)|0;g=(40+s*30)|0;b=(110-s*20)|0;}
+else{const s=(ot-0.5)/0.5;r=(25+s*15)|0;g=(70-s*20)|0;b=(90-s*30)|0;}
+d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;continue;}
+const t=w.temperature[si];let r,g,b;
+if(t<0.12){const s=t/0.12;r=(20+s*10)|0;g=(20+s*40)|0;b=(150+s*80)|0;}// deep blue (polar)
+else if(t<0.25){const s=(t-0.12)/0.13;r=(30+s*10)|0;g=(60+s*80)|0;b=(230-s*30)|0;}// blue→cyan
+else if(t<0.38){const s=(t-0.25)/0.13;r=(40-s*10)|0;g=(140+s*60)|0;b=(200-s*100)|0;}// cyan→green
+else if(t<0.52){const s=(t-0.38)/0.14;r=(30+s*120)|0;g=(200+s*40)|0;b=(100-s*70)|0;}// green→yellow
+else if(t<0.65){const s=(t-0.52)/0.13;r=(150+s*90)|0;g=(240-s*20)|0;b=(30-s*10)|0;}// yellow→orange
+else if(t<0.78){const s=(t-0.65)/0.13;r=(240+s*15)|0;g=(220-s*80)|0;b=(20-s*10)|0;}// orange
+else{const s=(t-0.78)/0.22;r=255;g=(140-s*100)|0;b=(10+s*5)|0;}// red (tropical)
+// Darken with elevation for topographic context
+const shade=1-Math.max(0,e-0.1)*0.4;
+d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else{
 // Default terrain view with tribe overlay — one pixel per tile
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
@@ -1080,6 +1285,7 @@ style={{flex:1,accentColor:"#c9b87a"}} />
 <button onClick={()=>setPresetAndGo(null)} style={{...lbs,color:preset===null?"#c9b87a":"#8a8474",
 background:preset===null?"rgba(201,184,122,0.15)":"transparent"}}>Random</button>
 <button onClick={()=>setPresetAndGo("earth")} style={{...lbs,...(preset==="earth"?{color:"rgb(100,160,220)",background:"rgba(100,160,220,0.15)"}:{})}}>Earth</button>
+<button onClick={()=>setPresetAndGo("earth_sim")} style={{...lbs,...(preset==="earth_sim"?{color:"rgb(80,180,200)",background:"rgba(80,180,200,0.15)"}:{})}}>Earth (Sim)</button>
 <button onClick={()=>setPresetAndGo("pangaea")} style={{...lbs,...(preset==="pangaea"?{color:"rgb(120,180,100)",background:"rgba(120,180,100,0.15)"}:{})}}>Pangaea</button>
 <button onClick={()=>setPresetAndGo("tectonic")} style={{...lbs,...(preset==="tectonic"?{color:"rgb(180,120,100)",background:"rgba(180,120,100,0.15)"}:{})}}>Tectonic</button>
 <button onClick={()=>setPresetAndGo("continental")} style={{...lbs,...(preset==="continental"?{color:"rgb(140,180,160)",background:"rgba(140,180,160,0.15)"}:{})}}>Continental</button>
@@ -1171,7 +1377,7 @@ display:"flex",gap:12,fontSize:11,color:"#c9b87a",pointerEvents:"none"}}>
 <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",
 background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"6px 12px",
 display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["value","Value"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
+{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["value","Value"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
 style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
 color:viewMode===k?"#c9b87a":"#5a5448",padding:"6px 14px",fontSize:13}}>{label}</button>))}
