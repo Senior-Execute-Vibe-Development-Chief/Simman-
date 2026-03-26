@@ -335,17 +335,34 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
               const block = dot * solidity;
               vx -= block * nx;
               vy -= block * ny;
-              // Redirect blocked energy along terrain contour
+              // Redirect ALL blocked energy along terrain contour
               const tangX = -ny, tangY = nx;
               const tangDot = vx * tangX + vy * tangY;
-              const redir = block * 0.7 * _coandaStr;
-              vx += (tangDot >= 0 ? 1 : -1) * tangX * redir;
-              vy += (tangDot >= 0 ? 1 : -1) * tangY * redir;
+              vx += (tangDot >= 0 ? 1 : -1) * tangX * block;
+              vy += (tangDot >= 0 ? 1 : -1) * tangY * block;
             }
           } else {
-            // Interior cell (flat, no gradient): just reduce speed by solidity
-            vx *= (1 - solidity * 0.5);
-            vy *= (1 - solidity * 0.5);
+            // Interior cell (flat, no gradient): redirect toward nearest ocean
+            // Use the smoothed land fraction gradient — it points toward coast
+            const lfL = landFrac[wy * wW + ((wx - 1 + wW) % wW)];
+            const lfR = landFrac[wy * wW + ((wx + 1) % wW)];
+            const lfU = landFrac[(wy - 1) * wW + wx];
+            const lfD = landFrac[(wy + 1) * wW + wx];
+            // Gradient of land fraction points toward more land; negate to point toward ocean
+            const cgx = -(lfR - lfL) * 0.5;
+            const cgy = -(lfD - lfU) * 0.5;
+            const cgm = Math.sqrt(cgx * cgx + cgy * cgy);
+            if (cgm > 1e-6) {
+              // Redirect wind toward coast, keeping its speed
+              const speed = Math.sqrt(vx * vx + vy * vy);
+              const coastNx = cgx / cgm, coastNy = cgy / cgm;
+              vx = vx * (1 - solidity) + coastNx * speed * solidity;
+              vy = vy * (1 - solidity) + coastNy * speed * solidity;
+            } else {
+              // True center of large continent — slow down gently
+              vx *= (1 - solidity * 0.3);
+              vy *= (1 - solidity * 0.3);
+            }
           }
 
           windX[i] = vx;
