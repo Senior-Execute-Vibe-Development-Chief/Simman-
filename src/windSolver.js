@@ -263,9 +263,43 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const dt = 0.35;
   const visc = 0.06;
 
+  // Dynamic orographic pressure: updated each iteration based on wind hitting terrain.
+  // When wind hits a mountain, stagnation pressure builds on the windward side.
+  // This pressure feeds back into the solver, deflecting UPSTREAM flow.
+  const oroPressure = new Float32Array(N);
+
   for (let iter = 0; iter < _solverIter; iter++) {
     const tmpX = new Float32Array(windX);
     const tmpY = new Float32Array(windY);
+
+    // ── Update dynamic orographic pressure from current wind ──
+    // Where wind flows into terrain, add pressure proportional to wind·gradient × elevation
+    // This is Bernoulli stagnation: P_stag = ½ρv² projected onto terrain face
+    if (_terrainDeflect > 0) {
+      const oroScale = _terrainDeflect * 0.08;
+      for (let wy = 1; wy < wH - 1; wy++) {
+        for (let wx = 0; wx < wW; wx++) {
+          const i = wy * wW + wx;
+          const eC = wElev[i];
+          if (eC < 0.01) { oroPressure[i] = 0; continue; }
+
+          const gx = gradX[i], gy = gradY[i];
+          const gm2 = gx * gx + gy * gy;
+          if (gm2 < 1e-8) { oroPressure[i] = eC * oroScale * 0.3; continue; }
+
+          // How much wind is flowing into the terrain slope
+          const dot = tmpX[i] * gx + tmpY[i] * gy;
+          if (dot > 0) {
+            // Windward side: stagnation pressure builds
+            const speed = Math.sqrt(tmpX[i] * tmpX[i] + tmpY[i] * tmpY[i]);
+            oroPressure[i] = dot * eC * oroScale + eC * oroScale * 0.1;
+          } else {
+            // Leeward side: slight low pressure (wake)
+            oroPressure[i] = eC * oroScale * 0.05;
+          }
+        }
+      }
+    }
 
     for (let wy = 1; wy < wH - 1; wy++) {
       const latSigned = (wy / wH - 0.5) * 2;
@@ -278,9 +312,13 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         const nl = wy * wW + wl, nr = wy * wW + wr;
         const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
 
-        // Pressure gradient force
-        const pgfX = -(pressure[nr] - pressure[nl]) * 0.5 * cosLat;
-        const pgfY = -(pressure[nd] - pressure[nu]) * 0.5;
+        // Pressure gradient force (atmospheric + orographic)
+        const totalPR = pressure[nr] + oroPressure[nr];
+        const totalPL = pressure[nl] + oroPressure[nl];
+        const totalPD = pressure[nd] + oroPressure[nd];
+        const totalPU = pressure[nu] + oroPressure[nu];
+        const pgfX = -(totalPR - totalPL) * 0.5 * cosLat;
+        const pgfY = -(totalPD - totalPU) * 0.5;
 
         // Coriolis
         const corX = -f * tmpY[i];
@@ -297,60 +335,6 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
 
         windX[i] = tmpX[i] + dt * (pgfX + corX + drgX) + visc * lapX;
         windY[i] = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
-      }
-    }
-
-    // ── Froude terrain blocking (hard constraint, applied AFTER momentum) ──
-    // Like a solid wall: wind hitting terrain gets its into-terrain component
-    // removed and redirected around. Applied after PGF so it can't be overridden.
-    // Fr = speed / (N*h): fast wind (high Fr) flows over, slow wind (low Fr) deflects.
-    if (_terrainDeflect > 0) {
-      const froudeScale = _terrainDeflect * 0.4;
-      for (let wy = 1; wy < wH - 1; wy++) {
-        for (let wx = 0; wx < wW; wx++) {
-          const i = wy * wW + wx;
-          const eC = wElev[i];
-          if (eC < 0.02) continue;
-
-          let vx = windX[i], vy = windY[i];
-          const speed = Math.sqrt(vx * vx + vy * vy);
-          if (speed < 1e-6) continue;
-
-          // Froude number: high speed = flows over, low speed = blocked
-          const Fr = speed / (eC * froudeScale);
-          // blockFrac: 0 = no blocking (fast wind), 1 = full blocking (slow wind)
-          const blockFrac = Math.max(0, Math.min(0.95, 1 - Fr));
-          if (blockFrac < 0.01) continue;
-
-          const gx = gradX[i], gy = gradY[i];
-          const gm2 = gx * gx + gy * gy;
-
-          if (gm2 > 1e-8) {
-            // Wind component flowing INTO the terrain gradient
-            const dot = vx * gx + vy * gy;
-            if (dot > 0) {
-              // Remove the into-terrain component (proportional to blockFrac)
-              const rmX = blockFrac * dot * gx / gm2;
-              const rmY = blockFrac * dot * gy / gm2;
-              vx -= rmX; vy -= rmY;
-
-              // Redirect blocked energy perpendicular (flow around, like water)
-              const gm = Math.sqrt(gm2);
-              const perpX = -gy / gm, perpY = gx / gm;
-              const tang = vx * perpX + vy * perpY;
-              const redir = Math.sqrt(rmX * rmX + rmY * rmY) * 0.7;
-              vx += (tang >= 0 ? 1 : -1) * perpX * redir;
-              vy += (tang >= 0 ? 1 : -1) * perpY * redir;
-            }
-          } else {
-            // Flat-top terrain (no gradient): just slow down
-            vx *= (1 - blockFrac * 0.5);
-            vy *= (1 - blockFrac * 0.5);
-          }
-
-          windX[i] = vx;
-          windY[i] = vy;
-        }
       }
     }
 

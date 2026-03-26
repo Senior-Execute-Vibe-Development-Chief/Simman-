@@ -123,7 +123,7 @@ export const PARAMS = {
       { key: "landDrag", def: 1.901, min: 0.02, max: 3.0, label: "Land friction",
         desc: "Surface drag over land. Mountains get extra drag automatically scaled by elevation. Higher = weaker winds over all land." },
       { key: "terrainDeflect", def: 20.0, min: 0.0, max: 40.0, label: "Terrain deflection",
-        desc: "Orographic pressure — how much elevated terrain creates a high-pressure barrier that wind flows around like water around rocks. 0 = terrain is invisible to wind. Higher = stronger deflection. Fast winds carry over, slow winds warp around." },
+        desc: "Dynamic stagnation pressure — wind hitting terrain builds up pressure on the windward side, deflecting upstream flow around like water around rocks. 0 = terrain invisible. Higher = stronger deflection. Speed-dependent: fast winds push through, slow winds warp around." },
       { key: "gapFunneling", def: 0.645, min: 0.0, max: 1.5, label: "Gap funneling",
         desc: "Venturi effect through mountain passes and valleys. Wind accelerates through narrow gaps between terrain. Higher = stronger acceleration in gaps." },
       { key: "eddyStrength", def: 0.019, min: 0.0, max: 0.06, label: "Eddy strength",
