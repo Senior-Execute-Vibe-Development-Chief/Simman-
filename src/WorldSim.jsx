@@ -482,8 +482,8 @@ const BC=[
 [56,128,46],     // 8  Temperate Forest — bright deciduous green
 [25,100,52],     // 9  Temperate Rainforest — deep emerald
 [14,72,28],      // 10 Tropical Rainforest — dark dense canopy
-[188,175,78],    // 11 Savanna — golden-tan with grass tint
-[148,168,62],    // 12 Grassland — yellow-green prairie
+[192,176,82],    // 11 Savanna — golden-tan with scattered green
+[178,165,68],    // 12 Grassland — golden-straw prairie
 [208,188,130],   // 13 Desert — sandy tan
 [140,135,78],    // 14 Shrubland — olive-brown chaparral
 [78,118,48],     // 15 Tropical Dry Forest — muted olive-green
