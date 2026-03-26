@@ -685,8 +685,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const stampE = (rawElev[i] - sl) * 0.3;
 
   const tcx = x / CG, tcy = y / CG;
-  const twx = tcx + sg(nfTecWX, x, y) * 3.0;
-  const twy = tcy + sg(nfTecWY, x, y) * 3.0;
+  const twx = tcx + sg(nfTecWX, x, y) * 2.0;
+  const twy = tcy + sg(nfTecWY, x, y) * 2.0;
   const tecMod = sampleCrust(twx, twy);
   let e = stampE + tecMod;
 
@@ -709,9 +709,12 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       * p('mtnBumpStr', 0.10) * Math.min(1, (plateau + peaks) * 3);
     const tecLift = plateau + peaks + mtnBump;
 
+    // Coast blend: smoothly suppress elevation near the coast.
+    // tecStr can reduce coastBlend (mountains at coast, like Andes) but
+    // always keep a minimum blend so the very coastline stays low.
     const rawCoastBlend = smoothstep(1 - cd / 6);
     const tecStr = Math.min(1, tecLift * 2);
-    const coastBlend = rawCoastBlend * (1 - tecStr * 0.85);
+    const coastBlend = Math.max(rawCoastBlend * 0.3, rawCoastBlend * (1 - tecStr * 0.6));
 
     const coastE = 0.01 + (1 - coastBlend) * 0.02
       + sg(nfCoastEN, x, y) * 0.008;
@@ -726,9 +729,13 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.025;
     const plateauBoost = Math.max(0, stampE) * 0.30 * interior;
 
+    // Scale tectonic lift by coast distance so mountains ramp up inland,
+    // not spike at the coastline. Andes-style coastal mountains still
+    // rise steeply but start from a low coastal base, not full height at cd=0.
+    const tecCoastRamp = smoothstep(interior * 1.5);
     const cratonE = baseE + regionalE + broadSwell + rolling + plateauBoost;
-    e = cratonE + tecLift;
-    e += (broadSwell + rolling) * tecLift * 5.0;
+    e = cratonE + tecLift * tecCoastRamp;
+    e += (broadSwell + rolling) * tecLift * tecCoastRamp * 5.0;
     e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
 
     e = Math.max(0, e);
