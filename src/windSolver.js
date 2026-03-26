@@ -306,28 +306,51 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         let vx = tmpX[i] + dt * (pgfX + corX + drgX) + visc * lapX;
         let vy = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
 
-        // ── Terrain deflection ──
-        // Simple physics: check how head-on wind is hitting terrain.
-        //   angle = dot(wind, terrain_normal) / speed
-        // Head-on (harsh angle) → strong deflection
-        // Glancing (shallow angle) → minimal deflection
-        // Fast wind → keeps trajectory (resists deflection)
-        // Slow wind → gets pushed around easily
+        // ── Terrain deflection + Coanda wrapping ──
+        // 1. Deflection: wind hitting terrain gets its into-terrain component
+        //    removed proportional to (elevation × strength / speed).
+        //    Head-on = strong deflection, glancing = weak, fast = resists.
+        // 2. Coanda: blocked energy redirects ALONG the terrain contour
+        //    (perpendicular to normal), wrapping around points and capes.
+        // 3. Near-terrain attraction: wind flowing past terrain gets pulled
+        //    slightly to follow the surface.
         const eC = wElev[i];
         if (_terrainDeflect > 0 && eC > 0.01) {
-          const nx = normX[i], ny = normY[i];
-          if (nx !== 0 || ny !== 0) {
-            // dot = how much wind flows into the terrain face
-            const dot = vx * nx + vy * ny;
+          const tnx = normX[i], tny = normY[i];
+          if (tnx !== 0 || tny !== 0) {
+            const dot = vx * tnx + vy * tny;
+            const speed = Math.sqrt(vx * vx + vy * vy);
+
             if (dot > 0) {
-              // dot/speed = cosine of angle (1 = head-on, 0 = glancing)
-              const speed = Math.sqrt(vx * vx + vy * vy);
-              // deflectAmount: higher terrain + more head-on + slower wind = more deflection
-              // _terrainDeflect scales the overall strength
+              // Wind flowing INTO terrain — deflect and redirect
               const deflect = Math.min(1, eC * _terrainDeflect * 0.1 / Math.max(0.01, speed));
-              // Remove the into-terrain component
-              vx -= dot * nx * deflect;
-              vy -= dot * ny * deflect;
+              const removedX = dot * tnx * deflect;
+              const removedY = dot * tny * deflect;
+              vx -= removedX;
+              vy -= removedY;
+
+              // Coanda: redirect blocked energy along terrain contour
+              // Tangent = perpendicular to normal (the "along the wall" direction)
+              const tangX = -tny, tangY = tnx;
+              // Which direction along the wall? Follow existing tangential flow
+              const tangDot = vx * tangX + vy * tangY;
+              const sign = tangDot >= 0 ? 1 : -1;
+              const redirected = Math.sqrt(removedX * removedX + removedY * removedY);
+              vx += sign * tangX * redirected * 0.7;
+              vy += sign * tangY * redirected * 0.7;
+            } else {
+              // Wind flowing PAST terrain (not into it) — Coanda attraction
+              // Pull slightly toward following the terrain contour
+              // Stronger when closer to terrain (higher elevation = more surface contact)
+              const tangX = -tny, tangY = tnx;
+              const tangDot = vx * tangX + vy * tangY;
+              const coandaPull = eC * _terrainDeflect * 0.003;
+              // Add a slight nudge in the tangential direction wind is already going
+              if (Math.abs(tangDot) > 1e-6) {
+                const pullSign = tangDot >= 0 ? 1 : -1;
+                vx += pullSign * tangX * coandaPull;
+                vy += pullSign * tangY * coandaPull;
+              }
             }
           }
         }
