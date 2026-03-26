@@ -1188,14 +1188,20 @@ for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
   if (elevation[py * W + px] <= 0) mGrid[my * mW + mx] = 0.8;
 }
 // Advect moisture along wind vectors for several iterations
-for (let step = 0; step < 40; step++) {
+for (let step = 0; step < 50; step++) {
   const prev = new Float32Array(mGrid);
   for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
     const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
     const fi = py * W + px;
     const wx2 = fullWindX[fi], wy2 = fullWindY[fi];
-    // Sample upwind (where the wind is coming from) — stronger reach for directional effect
-    const srcX = mx - wx2 * 2.5, srcY = my - wy2 * 2.5;
+    // Normalize wind direction with minimum step size so even weak winds
+    // create directional bias. Speed affects decay rate, not reach.
+    const windSpeed = Math.sqrt(wx2 * wx2 + wy2 * wy2);
+    const invSpd = windSpeed > 0.02 ? 1 / windSpeed : 0;
+    const dirX = wx2 * invSpd, dirY = wy2 * invSpd;
+    // Fixed 2.5 coarse-cell reach per step in wind direction
+    const reach = Math.min(3.5, 2.0 + windSpeed * 2.0);
+    const srcX = mx - dirX * reach, srcY = my - dirY * reach;
     const sx = Math.min(mW - 2, Math.max(0, srcX | 0));
     const sy = Math.min(mH - 2, Math.max(0, srcY | 0));
     const fdx = srcX - sx, fdy = srcY - sy;
@@ -1212,10 +1218,10 @@ for (let step = 0; step < 40; step++) {
       // Land: carry upwind moisture, terrain blocks
       const terrainBlock = Math.min(0.9, Math.max(0, e2 - 0.03) * 4);
       // Orographic lift: dump extra moisture on windward slopes
-      const windSpeed = Math.sqrt(wx2 * wx2 + wy2 * wy2);
       const lift = Math.min(0.18, e2 * windSpeed * 0.5);
-      // Slower decay lets moisture penetrate further inland
-      const carried = upwind * (1 - terrainBlock * 0.35) * 0.95 - lift;
+      // Faster wind carries moisture further (less decay per step)
+      const speedDecay = 0.97 - Math.min(0.04, windSpeed * 0.06);
+      const carried = upwind * (1 - terrainBlock * 0.35) * speedDecay - lift;
       mGrid[my * mW + mx] = Math.max(0, carried);
     }
   }
@@ -1327,11 +1333,12 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     // This breaks banding — wind creates asymmetric wet/dry patterns from terrain interaction.
     const wm = windMoisture[i];
     let m = wm * 0.65 + climateMoist * 0.35;
-    // Tropical moisture floor: ITCZ convection guarantees minimum moisture near equator
-    // regardless of wind patterns — prevents false deserts at the equator
-    if (lat < 0.2) {
-      const tropFloor = 0.35 * (1 - lat * 5);  // 0.35 at equator, fades by lat 0.2
-      m = Math.max(m, tropFloor);
+    // Tropical moisture floor: ITCZ convection guarantees minimum moisture near equator.
+    // Smooth Gaussian fade + noise to avoid hard equatorial band.
+    if (lat < 0.25) {
+      const tropFloor = 0.30 * Math.exp(-(lat * lat) / (2 * 0.08 * 0.08))
+        + sg(nfMoistBroad, x, y) * 0.06;  // noise breaks the uniformity
+      if (m < tropFloor) m = m * 0.4 + tropFloor * 0.6;  // soft blend, not hard max
     }
     // Orographic lift: windward slopes get extra precipitation
     if (e > 0.1 && wm > 0.35) m += Math.min(0.12, (e - 0.1) * wm * 0.5);
