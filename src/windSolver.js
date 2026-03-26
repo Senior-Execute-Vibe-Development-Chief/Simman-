@@ -274,6 +274,46 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   for (let iter = 0; iter < _solverIter; iter++) {
+
+    // ── Semi-Lagrangian advection: velocity carries itself ──
+    // For each cell, trace backward along the wind to find where
+    // the air parcel came from, then pull that velocity forward.
+    // Converging winds → momentum concentrates → speeds up
+    // Opposing winds → momentum cancels → slows down
+    // This is how real fluids work (the u·∇u term in Navier-Stokes).
+    const advX = new Float32Array(N);
+    const advY = new Float32Array(N);
+    const advDt = 0.8; // advection timestep (cells per step)
+    for (let wy = 1; wy < wH - 1; wy++) {
+      for (let wx = 0; wx < wW; wx++) {
+        const i = wy * wW + wx;
+        // Trace backward: where was this air one step ago?
+        const backX = wx - windX[i] * advDt;
+        const backY = wy - windY[i] * advDt;
+        // Wrap X, clamp Y
+        const sx = ((backX % wW) + wW) % wW;
+        const sy = Math.max(1, Math.min(wH - 2, backY));
+        // Bilinear interpolation of upstream velocity
+        const ix = Math.floor(sx), iy = Math.floor(sy);
+        const fx = sx - ix, fy = sy - iy;
+        const ix1 = (ix + 1) % wW, iy1 = Math.min(wH - 2, iy + 1);
+        const i00 = iy * wW + ix, i10 = iy * wW + ix1;
+        const i01 = iy1 * wW + ix, i11 = iy1 * wW + ix1;
+        advX[i] = windX[i00] * (1 - fx) * (1 - fy) + windX[i10] * fx * (1 - fy)
+                + windX[i01] * (1 - fx) * fy + windX[i11] * fx * fy;
+        advY[i] = windY[i00] * (1 - fx) * (1 - fy) + windY[i10] * fx * (1 - fy)
+                + windY[i01] * (1 - fx) * fy + windY[i11] * fx * fy;
+      }
+    }
+    // Blend: advected + current momentum (prevents full replacement each step)
+    for (let wy = 1; wy < wH - 1; wy++) {
+      for (let wx = 0; wx < wW; wx++) {
+        const i = wy * wW + wx;
+        windX[i] = advX[i] * 0.5 + windX[i] * 0.5;
+        windY[i] = advY[i] * 0.5 + windY[i] * 0.5;
+      }
+    }
+
     const tmpX = new Float32Array(windX);
     const tmpY = new Float32Array(windY);
 
