@@ -43,6 +43,7 @@ function generateWorld(W,H,seed,preset,oceanLevel,enableRivers=true){
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
 let tecPlates=null,tecWindX=null,tecWindY=null;
+const windFrames=[]; // multiple wind fields for smooth weather cycling
 if(preset==="earth"){
 // ── Earth mode: use real heightmap data ──
 const eData=decodeEarth(EARTH_ELEV);
@@ -88,6 +89,10 @@ moisture[i]=Math.max(.02,Math.min(1,m));}
 // Run wind solver on Earth elevation data
 const earthWind=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137);
 tecWindX=earthWind.windX;tecWindY=earthWind.windY;
+// Compute extra wind frames for weather cycling
+for(let f=0;f<3;f++){
+const fw=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137+f*7.77);
+windFrames.push({windX:fw.windX,windY:fw.windY});}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
@@ -116,6 +121,10 @@ temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,e)*.4+fbm(nx*3+80,ny*
 const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D,worley},_tecParams);
 for(let i=0;i<W*H;i++){elevation[i]=tec.elevation[i];moisture[i]=tec.moisture[i];temperature[i]=tec.temperature[i];}
 tecPlates=tec.pixPlate;tecWindX=tec.windX;tecWindY=tec.windY;
+// Extra wind frames for weather cycling
+for(let f=0;f<3;f++){
+const fw=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137+f*7.77);
+windFrames.push({windX:fw.windX,windY:fw.windY});}
 }else{
 // ── Random world mode: multi-stamp composition with advanced coastline shaping ──
 // [1] MULTI-STAMP COMPOSITION: 3-6 sub-ellipses per continent + negative stamps for bays
@@ -268,7 +277,7 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,oasis,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
+return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,oasis,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,windFrames:windFrames.length?windFrames:null};}
 
 // ── River & lake generation: trace flow downhill from wet highlands ──
 function generateRivers(elev,moist,W,H,rng){
@@ -783,7 +792,23 @@ const v=Math.min(255,Math.max(0,((e-floor)/range)*255))|0;
 const pi4=ti<<2;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=v;d[pi4+3]=255;}
 }else if(vm==="wind"){
 // Wind view — speed heatmap everywhere (land + ocean), like Windy.com
-const wX=w.windX,wY=w.windY;
+// Interpolate between wind frames for smooth weather cycling
+let wX=w.windX,wY=w.windY;
+if(w.windFrames&&w.windFrames.length>=2){
+const t2=performance.now()*0.00003; // slow cycle ~33 seconds per frame
+const nf=w.windFrames.length;
+const fi=t2%nf;
+const f0=Math.floor(fi)%nf,f1=(f0+1)%nf;
+const frac=fi-Math.floor(fi);
+const W2=w.width,H2=w.height,sz=W2*H2;
+if(!w._interpWindX)w._interpWindX=new Float32Array(sz);
+if(!w._interpWindY)w._interpWindY=new Float32Array(sz);
+const a=w.windFrames[f0],b2=w.windFrames[f1];
+const inv=1-frac;
+for(let j=0;j<sz;j++){
+w._interpWindX[j]=a.windX[j]*inv+b2.windX[j]*frac;
+w._interpWindY[j]=a.windY[j]*inv+b2.windY[j]*frac;}
+wX=w._interpWindX;wY=w._interpWindY;}
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
 const tc=terrainCache.current;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
