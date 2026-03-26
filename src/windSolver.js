@@ -28,8 +28,8 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _eddyStrength    = p("eddyStrength", 0.006);
   const _solverIter      = p("windSolverIter", 500);
   const _coandaStr       = p("coandaStrength", 3.0);
-  const _gustThreshold   = p("gustThreshold", 0.06);
-  const _gustBoost       = p("gustBoost", 4.7);
+  const _gustThreshold   = p("gustThreshold", 0.055);
+  const _gustBoost       = p("gustBoost", 3.6);
   const _curlBoost       = p("curlBoost", 2.4);
   const _itczOffset      = p("itczOffset", 0.033);
 
