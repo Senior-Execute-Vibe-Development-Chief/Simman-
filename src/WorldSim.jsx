@@ -156,6 +156,18 @@ const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
 if(elevation[py*W+px]<=0)continue;
 const mxL=(mx-1+mW2)%mW2,mxR=(mx+1)%mW2,ci=my*mW2+mx;
 mGrid[ci]=prev[ci]*0.5+(prev[my*mW2+mxL]+prev[my*mW2+mxR]+prev[(my-1)*mW2+mx]+prev[(my+1)*mW2+mx])*0.125;}}
+// Wind convergence/divergence → precipitation modifier
+for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
+const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
+if(elevation[fi]<=0)continue;
+const mxL=(mx-1+mW2)%mW2,mxR=(mx+1)%mW2;
+const pxL=Math.min(W-1,mxL*2),pxR=Math.min(W-1,mxR*2);
+const pyU=Math.min(H-1,(my-1)*2),pyD=Math.min(H-1,(my+1)*2);
+const dudx=(fWX[py*W+pxR]-fWX[py*W+pxL])*0.5;
+const dvdy=(fWY[pyD*W+px]-fWY[pyU*W+px])*0.5;
+const div=dudx+dvdy,q=mGrid[my*mW2+mx],ci=my*mW2+mx;
+if(div<0){mGrid[ci]=Math.min(1,mGrid[ci]+Math.min(0.15,-div*q*1.2));}
+else{mGrid[ci]=Math.max(0,mGrid[ci]-Math.min(0.08,div*0.4));}}
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){
 const fx=x/2,fy=y/2,ix=Math.min(mW2-2,fx|0),iy=Math.min(mH2-2,fy|0);
 const dx2=fx-ix,dy2=fy-iy;

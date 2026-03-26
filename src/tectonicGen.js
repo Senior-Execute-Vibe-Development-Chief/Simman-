@@ -1242,6 +1242,37 @@ for (let pass = 0; pass < 3; pass++) {
          + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.125;
   }
 }
+// ═══════════════════════════════════════════════════════
+// Wind convergence/divergence → precipitation modifier
+// Convergence (winds flowing together) forces air upward → rain
+// Divergence (winds spreading apart) causes subsidence → dry
+// P ≈ -q × div(V), where div(V) = du/dx + dv/dy
+// ═══════════════════════════════════════════════════════
+for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
+  const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+  const fi = py * W + px;
+  if (elevation[fi] <= 0) continue;  // skip ocean
+  // Compute divergence from wind field neighbors
+  const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
+  const pxL = Math.min(W - 1, mxL * 2), pxR = Math.min(W - 1, mxR * 2);
+  const pyU = Math.min(H - 1, (my - 1) * 2), pyD = Math.min(H - 1, (my + 1) * 2);
+  const dudx = (fullWindX[py * W + pxR] - fullWindX[py * W + pxL]) * 0.5;
+  const dvdy = (fullWindY[pyD * W + px] - fullWindY[pyU * W + px]) * 0.5;
+  const div = dudx + dvdy;
+  // Local moisture content determines how much convergence matters
+  // (converging dry air doesn't produce rain)
+  const q = mGrid[my * mW + mx];
+  // Convergence (div < 0): uplift → precipitation boost, scaled by moisture
+  // Divergence (div > 0): subsidence → drying, but weaker effect
+  const ci = my * mW + mx;
+  if (div < 0) {
+    // Convergence: moisture flux convergence → precipitation boost
+    mGrid[ci] = Math.min(1, mGrid[ci] + Math.min(0.15, -div * q * 1.2));
+  } else {
+    // Divergence: subsidence suppresses moisture
+    mGrid[ci] = Math.max(0, mGrid[ci] - Math.min(0.08, div * 0.4));
+  }
+}
 // Upscale moisture advection result to full resolution
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const fx = x / 2, fy = y / 2;
