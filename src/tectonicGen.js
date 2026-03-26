@@ -672,6 +672,7 @@ const nfCoastEN = precompute((nx, ny) => fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 4
 const nfContinent = precompute((nx, ny) => fbm(nx * 2.2 + s1 + 30, ny * 2.2 + s1 + 30, 3, 2, 0.55));
 const nfBroadSwell = precompute((nx, ny) => fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6));
 const nfTemp = precompute((nx, ny) => fbm(nx * 3 + 80, ny * 3 + 80, 3, 2, 0.5));
+const nfTempBroad = precompute((nx, ny) => fbm(nx * 1.2 + s1 + 55, ny * 1.2 + s1 + 55, 3, 2, 0.55));
 const nfMoistOce = precompute((nx, ny) => fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.5));
 const nfMoistLand = precompute((nx, ny) => fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55));
 const nfMoistBroad = precompute((nx, ny) => fbm(nx * 1.5 + s2 + 90, ny * 1.5 + s2 + 90, 3, 2, 0.55));
@@ -1187,14 +1188,14 @@ for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
   if (elevation[py * W + px] <= 0) mGrid[my * mW + mx] = 0.8;
 }
 // Advect moisture along wind vectors for several iterations
-for (let step = 0; step < 30; step++) {
+for (let step = 0; step < 40; step++) {
   const prev = new Float32Array(mGrid);
   for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
     const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
     const fi = py * W + px;
     const wx2 = fullWindX[fi], wy2 = fullWindY[fi];
-    // Sample upwind (where the wind is coming from)
-    const srcX = mx - wx2 * 1.8, srcY = my - wy2 * 1.8;
+    // Sample upwind (where the wind is coming from) — stronger reach for directional effect
+    const srcX = mx - wx2 * 2.5, srcY = my - wy2 * 2.5;
     const sx = Math.min(mW - 2, Math.max(0, srcX | 0));
     const sy = Math.min(mH - 2, Math.max(0, srcY | 0));
     const fdx = srcX - sx, fdy = srcY - sy;
@@ -1208,12 +1209,12 @@ for (let step = 0; step < 30; step++) {
       // Ocean: recharge moisture
       mGrid[my * mW + mx] = Math.max(prev[my * mW + mx], 0.75);
     } else {
-      // Land: carry upwind moisture, terrain blocks
-      const terrainBlock = Math.min(0.8, Math.max(0, e2 - 0.05) * 3);
+      // Land: carry upwind moisture, terrain blocks — sharper decay for contrast
+      const terrainBlock = Math.min(0.9, Math.max(0, e2 - 0.03) * 4);
       // Orographic lift: dump extra moisture on windward slopes
       const windSpeed = Math.sqrt(wx2 * wx2 + wy2 * wy2);
-      const lift = Math.min(0.15, e2 * windSpeed * 0.4);
-      const carried = upwind * (1 - terrainBlock * 0.3) * 0.96 - lift;
+      const lift = Math.min(0.20, e2 * windSpeed * 0.6);
+      const carried = upwind * (1 - terrainBlock * 0.4) * 0.93 - lift;
       mGrid[my * mW + mx] = Math.max(0, carried);
     }
   }
@@ -1239,7 +1240,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   // Maritime temperature moderation: coast proximity → milder temps
   const cdm = cdist[Math.min(dh - 1, (y / DG) | 0) * dw + Math.min(dw - 1, (x / DG) | 0)];
   const coastProx = Math.max(0, 1 - cdm / 8);
-  const baseTemp = 1 - lat * 1.05 - Math.max(0, e) * 0.4 + sg(nfTemp, x, y) * 0.08;
+  const baseTemp = 1 - lat * 1.05 - Math.max(0, e) * 0.4 + sg(nfTemp, x, y) * 0.08
+    + sg(nfTempBroad, x, y) * 0.10;  // continent-scale temperature variation to break bands
   // Pull extreme temps toward 0.45 (ocean moderating effect)
   let temp = baseTemp + (0.45 - baseTemp) * coastProx * 0.2;
   // Wind-derived coastal current anomaly:
@@ -1267,11 +1269,11 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const polarDry = Math.max(0, (lat - 0.75)) * 0.25;
     const climateMoist = 0.42 + tropWet * 0.42 - subtropDry + tempWet - cont - polarDry
       + sg(nfMoistLand, x, y) * 0.12
-      + sg(nfMoistBroad, x, y) * 0.15;  // continent-scale wet/dry regions that cut across bands
+      + sg(nfMoistBroad, x, y) * 0.18;  // continent-scale wet/dry regions that cut across bands
     // Wind-advected moisture is the PRIMARY driver; latitude formulas are secondary.
     // This breaks banding — wind creates asymmetric wet/dry patterns from terrain interaction.
     const wm = windMoisture[i];
-    let m = wm * 0.55 + climateMoist * 0.45;
+    let m = wm * 0.65 + climateMoist * 0.35;
     // Orographic lift: windward slopes get extra precipitation
     if (e > 0.1 && wm > 0.35) m += Math.min(0.12, (e - 0.1) * wm * 0.5);
     // Cold current moisture suppression: equatorward coastal winds = upwelling = dry
