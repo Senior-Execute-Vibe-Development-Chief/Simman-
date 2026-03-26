@@ -90,7 +90,7 @@ moisture[i]=Math.max(.02,Math.min(1,m));}
 const earthWind=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137);
 tecWindX=earthWind.windX;tecWindY=earthWind.windY;
 // Compute extra wind frames for weather cycling
-for(let f=0;f<3;f++){
+for(let f=0;f<5;f++){
 const fw=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137+f*7.77);
 windFrames.push({windX:fw.windX,windY:fw.windY});}
 }else if(preset==="pangaea"){
@@ -122,7 +122,7 @@ const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D,worley},_
 for(let i=0;i<W*H;i++){elevation[i]=tec.elevation[i];moisture[i]=tec.moisture[i];temperature[i]=tec.temperature[i];}
 tecPlates=tec.pixPlate;tecWindX=tec.windX;tecWindY=tec.windY;
 // Extra wind frames for weather cycling
-for(let f=0;f<3;f++){
+for(let f=0;f<5;f++){
 const fw=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137+f*7.77);
 windFrames.push({windX:fw.windX,windY:fw.windY});}
 }else{
@@ -795,9 +795,12 @@ const pi4=ti<<2;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=v;d[pi4+3]=255;}
 // Interpolate between wind frames for smooth weather cycling
 let wX=w.windX,wY=w.windY;
 if(w.windFrames&&w.windFrames.length>=2){
-const t2=performance.now()*0.00003; // slow cycle ~33 seconds per frame
+// Cycle through wind frames tied to sim time (ter.stepCount)
+// Each frame lasts ~400 steps, full cycle of 5 frames = 2000 steps ≈ 10,000 years
+const stepsPerFrame=400;
+const simTime=(ter?ter.stepCount:0)/stepsPerFrame;
 const nf=w.windFrames.length;
-const fi=t2%nf;
+const fi=((simTime%nf)+nf)%nf;
 const f0=Math.floor(fi)%nf,f1=(f0+1)%nf;
 const frac=fi-Math.floor(fi);
 const W2=w.width,H2=w.height,sz=W2*H2;
