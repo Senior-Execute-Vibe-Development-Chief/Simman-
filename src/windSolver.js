@@ -276,50 +276,6 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
 
   for (let iter = 0; iter < _solverIter; iter++) {
 
-    // ── Semi-Lagrangian advection: velocity carries itself ──
-    // For each cell, trace backward along the wind to find where
-    // the air parcel came from, then pull that velocity forward.
-    // Converging winds → momentum concentrates → speeds up
-    // Opposing winds → momentum cancels → slows down
-    // This is how real fluids work (the u·∇u term in Navier-Stokes).
-    const advX = new Float32Array(N);
-    const advY = new Float32Array(N);
-    const advDt = 0.8; // advection timestep (cells per step)
-    for (let wy = 1; wy < wH - 1; wy++) {
-      for (let wx = 0; wx < wW; wx++) {
-        const i = wy * wW + wx;
-        // Trace backward: where was this air one step ago?
-        const backX = wx - windX[i] * advDt;
-        const backY = wy - windY[i] * advDt;
-        // Wrap X, clamp Y
-        const sx = ((backX % wW) + wW) % wW;
-        const sy = Math.max(1, Math.min(wH - 2, backY));
-        // Bilinear interpolation of upstream velocity
-        const ix = Math.floor(sx), iy = Math.floor(sy);
-        const fx = sx - ix, fy = sy - iy;
-        const ix1 = (ix + 1) % wW, iy1 = Math.min(wH - 2, iy + 1);
-        const i00 = iy * wW + ix, i10 = iy * wW + ix1;
-        const i01 = iy1 * wW + ix, i11 = iy1 * wW + ix1;
-        advX[i] = windX[i00] * (1 - fx) * (1 - fy) + windX[i10] * fx * (1 - fy)
-                + windX[i01] * (1 - fx) * fy + windX[i11] * fx * fy;
-        advY[i] = windY[i00] * (1 - fx) * (1 - fy) + windY[i10] * fx * (1 - fy)
-                + windY[i01] * (1 - fx) * fy + windY[i11] * fx * fy;
-      }
-    }
-    // Replace wind with advected velocity (full effect)
-    // _advectionStr controls blend: 1 = full advection, 0 = no advection
-    if (_advectionStr > 0) {
-      const a = Math.min(1, _advectionStr);
-      const b = 1 - a;
-      for (let wy = 1; wy < wH - 1; wy++) {
-        for (let wx = 0; wx < wW; wx++) {
-          const i = wy * wW + wx;
-          windX[i] = advX[i] * a + windX[i] * b;
-          windY[i] = advY[i] * a + windY[i] * b;
-        }
-      }
-    }
-
     const tmpX = new Float32Array(windX);
     const tmpY = new Float32Array(windY);
 
@@ -432,7 +388,38 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 5: Gap funneling (post-solve so it persists)
+  // STEP 5: Convergence acceleration (conservation of mass)
+  // ════════════════════════════════════════════════════════════════
+  // Where wind converges (negative divergence), air piles up and must
+  // speed up to conserve mass. Where it diverges, it spreads and slows.
+  // This is the core "additive" behavior: winds meeting = faster.
+  if (_advectionStr > 0) {
+    const div = new Float32Array(N);
+    for (let wy = 1; wy < wH - 1; wy++) {
+      for (let wx = 0; wx < wW; wx++) {
+        const i = wy * wW + wx;
+        const wr = (wx + 1) % wW, wl = (wx - 1 + wW) % wW;
+        div[i] = (windX[wy * wW + wr] - windX[wy * wW + wl]) * 0.5
+               + (windY[(wy + 1) * wW + wx] - windY[(wy - 1) * wW + wx]) * 0.5;
+      }
+    }
+    for (let wy = 1; wy < wH - 1; wy++) {
+      for (let wx = 0; wx < wW; wx++) {
+        const i = wy * wW + wx;
+        // Negative divergence = convergence = speed up
+        // Positive divergence = spreading = slow down
+        const convergence = -div[i];
+        const boost = 1 + convergence * _advectionStr * 3.0;
+        // Clamp to prevent runaway (0.3x to 3x speed)
+        const factor = Math.max(0.3, Math.min(3.0, boost));
+        windX[i] *= factor;
+        windY[i] *= factor;
+      }
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // STEP 6: Gap funneling (post-solve so it persists)
   // ════════════════════════════════════════════════════════════════
   // Wind accelerates through valleys/gaps between high terrain (Venturi)
   if (_gapFunneling > 0) {
