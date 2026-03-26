@@ -17,20 +17,20 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const PI = Math.PI;
 
   // ── Tunable parameters ──
-  const _pressureScale   = p("pressureScale", 0.3);
-  const _thermalContrast = p("thermalContrast", 1.275);
-  const _hadleyStr       = p("hadleyStrength", 0.12);
-  const _coriolisStr     = p("coriolisStrength", 0.32);
-  const _oceanDrag       = p("oceanDrag", 0.04);
-  const _landDrag        = p("landDrag", 1.901);
+  const _pressureScale   = p("pressureScale", 0.139);
+  const _thermalContrast = p("thermalContrast", 0.0);
+  const _hadleyStr       = p("hadleyStrength", 0.0);
+  const _coriolisStr     = p("coriolisStrength", 0.365);
+  const _oceanDrag       = p("oceanDrag", 0.01);
+  const _landDrag        = p("landDrag", 2.017);
   const _terrainDeflect  = p("terrainDeflect", 20.0);
-  const _gapFunneling    = p("gapFunneling", 0.645);
-  const _eddyStrength    = p("eddyStrength", 0.019);
-  const _solverIter      = p("windSolverIter", 250);
-  const _coandaStr       = p("coandaStrength", 1.0);
-  const _gustThreshold   = p("gustThreshold", 0.15);
-  const _gustBoost       = p("gustBoost", 0.3);
-  const _curlBoost       = p("curlBoost", 0.5);
+  const _gapFunneling    = p("gapFunneling", 0.66);
+  const _eddyStrength    = p("eddyStrength", 0.009);
+  const _solverIter      = p("windSolverIter", 500);
+  const _coandaStr       = p("coandaStrength", 1.02);
+  const _gustThreshold   = p("gustThreshold", 0.075);
+  const _gustBoost       = p("gustBoost", 2.0);
+  const _curlBoost       = p("curlBoost", 2.0);
   const _itczOffset      = p("itczOffset", 0.033);
 
   // ── Coarse grid (4x downscale) ──
@@ -189,15 +189,17 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // ════════════════════════════════════════════════════════════════
   // STEP 3: Drag field (surface friction)
   // ════════════════════════════════════════════════════════════════
+  // Uses smoothed land fraction so drag extends beyond coastlines
+  // (atmospheric boundary layer effect — land friction bleeds into
+  // nearby ocean cells, slowing coastal wind)
   const drag = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const e = wElev[i];
-    if (e <= 0.005) {
-      drag[i] = _oceanDrag;
-    } else {
-      // Land drag + extra friction scaled by elevation for mountains
-      drag[i] = _landDrag + _landDrag * Math.min(1, e * 2) * 0.5;
-    }
+    const lf = landFracMed[i]; // smoothed land fraction, extends past coast
+    // Blend ocean and land drag based on land influence
+    const baseDrag = _oceanDrag + (_landDrag - _oceanDrag) * lf;
+    // Mountains get extra drag on top
+    drag[i] = baseDrag + Math.max(0, e) * _landDrag * 0.5;
   }
 
   // ════════════════════════════════════════════════════════════════
