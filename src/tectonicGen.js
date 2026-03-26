@@ -691,8 +691,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   let e = stampE + tecMod;
 
   if (!isLandArr[i]) {
-    if (tecMod < 0.03) e = Math.min(e, -0.001);
-    else e = Math.min(e, tecMod * 0.4 - 0.01);
+    e = Math.min(e, -0.001);
   }
 
   if (e > 0) {
@@ -743,8 +742,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     e = Math.max(0.002, Math.min(1.0, e));
   }
 
-  // Fine texture (high freq — must stay per-pixel)
-  e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.008;
+  // Fine texture (high freq — must stay per-pixel, land only)
+  if (isLandArr[i]) e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.008;
 
   if (lat > 0.88) e -= (lat - 0.88) * 2;
 
