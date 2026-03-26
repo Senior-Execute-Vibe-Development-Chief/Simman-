@@ -917,7 +917,15 @@ p.x+=vx*moveScale;p.y+=vy*moveScale;
 p.age++;
 // Respawn if out of bounds, too old, or in dead air
 if(p.x<0||p.x>=CW||p.y<0||p.y>=CH||p.age>MAX_AGE||spd<0.002){
-p.x=Math.random()*CW;p.y=Math.random()*CH;p.age=0;p.trail.length=0;continue;}
+// Bias respawn toward faster wind areas: try a few random spots, keep the windiest
+let bestX=Math.random()*CW,bestY=Math.random()*CH,bestSpd=0;
+for(let t=0;t<3;t++){
+const cx=Math.random()*CW,cy=Math.random()*CH;
+const csx=Math.min(W-1,(cx*RES)|0),csy=Math.min(H-1,(cy*RES)|0);
+const cvx=wX[csy*W+csx]||0,cvy=wY[csy*W+csx]||0;
+const cs=cvx*cvx+cvy*cvy;
+if(cs>bestSpd){bestSpd=cs;bestX=cx;bestY=cy;}}
+p.x=bestX;p.y=bestY;p.age=0;p.trail.length=0;continue;}
 // Draw trail — fading white line
 if(p.trail.length<2)continue;
 const fadeIn=Math.min(1,p.age/8);const fadeOut=Math.max(0,1-(p.age-MAX_AGE+15)/15);
