@@ -263,43 +263,17 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const dt = 0.35;
   const visc = 0.06;
 
-  // Dynamic orographic pressure: updated each iteration based on wind hitting terrain.
-  // When wind hits a mountain, stagnation pressure builds on the windward side.
-  // This pressure feeds back into the solver, deflecting UPSTREAM flow.
-  const oroPressure = new Float32Array(N);
+  // Pre-compute terrain normals (normalized elevation gradient = surface normal)
+  const normX = new Float32Array(N);
+  const normY = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const gm = Math.sqrt(gradX[i] * gradX[i] + gradY[i] * gradY[i]);
+    if (gm > 1e-6) { normX[i] = gradX[i] / gm; normY[i] = gradY[i] / gm; }
+  }
 
   for (let iter = 0; iter < _solverIter; iter++) {
     const tmpX = new Float32Array(windX);
     const tmpY = new Float32Array(windY);
-
-    // ── Update dynamic orographic pressure from current wind ──
-    // Where wind flows into terrain, add pressure proportional to wind·gradient × elevation
-    // This is Bernoulli stagnation: P_stag = ½ρv² projected onto terrain face
-    if (_terrainDeflect > 0) {
-      const oroScale = _terrainDeflect * 0.08;
-      for (let wy = 1; wy < wH - 1; wy++) {
-        for (let wx = 0; wx < wW; wx++) {
-          const i = wy * wW + wx;
-          const eC = wElev[i];
-          if (eC < 0.01) { oroPressure[i] = 0; continue; }
-
-          const gx = gradX[i], gy = gradY[i];
-          const gm2 = gx * gx + gy * gy;
-          if (gm2 < 1e-8) { oroPressure[i] = eC * oroScale * 0.3; continue; }
-
-          // How much wind is flowing into the terrain slope
-          const dot = tmpX[i] * gx + tmpY[i] * gy;
-          if (dot > 0) {
-            // Windward side: stagnation pressure builds
-            const speed = Math.sqrt(tmpX[i] * tmpX[i] + tmpY[i] * tmpY[i]);
-            oroPressure[i] = dot * eC * oroScale + eC * oroScale * 0.1;
-          } else {
-            // Leeward side: slight low pressure (wake)
-            oroPressure[i] = eC * oroScale * 0.05;
-          }
-        }
-      }
-    }
 
     for (let wy = 1; wy < wH - 1; wy++) {
       const latSigned = (wy / wH - 0.5) * 2;
@@ -312,13 +286,9 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         const nl = wy * wW + wl, nr = wy * wW + wr;
         const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
 
-        // Pressure gradient force (atmospheric + orographic)
-        const totalPR = pressure[nr] + oroPressure[nr];
-        const totalPL = pressure[nl] + oroPressure[nl];
-        const totalPD = pressure[nd] + oroPressure[nd];
-        const totalPU = pressure[nu] + oroPressure[nu];
-        const pgfX = -(totalPR - totalPL) * 0.5 * cosLat;
-        const pgfY = -(totalPD - totalPU) * 0.5;
+        // Pressure gradient force
+        const pgfX = -(pressure[nr] - pressure[nl]) * 0.5 * cosLat;
+        const pgfY = -(pressure[nd] - pressure[nu]) * 0.5;
 
         // Coriolis
         const corX = -f * tmpY[i];
@@ -333,8 +303,37 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         const lapX = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25 - tmpX[i];
         const lapY = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25 - tmpY[i];
 
-        windX[i] = tmpX[i] + dt * (pgfX + corX + drgX) + visc * lapX;
-        windY[i] = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
+        let vx = tmpX[i] + dt * (pgfX + corX + drgX) + visc * lapX;
+        let vy = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
+
+        // ── Terrain deflection ──
+        // Simple physics: check how head-on wind is hitting terrain.
+        //   angle = dot(wind, terrain_normal) / speed
+        // Head-on (harsh angle) → strong deflection
+        // Glancing (shallow angle) → minimal deflection
+        // Fast wind → keeps trajectory (resists deflection)
+        // Slow wind → gets pushed around easily
+        const eC = wElev[i];
+        if (_terrainDeflect > 0 && eC > 0.01) {
+          const nx = normX[i], ny = normY[i];
+          if (nx !== 0 || ny !== 0) {
+            // dot = how much wind flows into the terrain face
+            const dot = vx * nx + vy * ny;
+            if (dot > 0) {
+              // dot/speed = cosine of angle (1 = head-on, 0 = glancing)
+              const speed = Math.sqrt(vx * vx + vy * vy);
+              // deflectAmount: higher terrain + more head-on + slower wind = more deflection
+              // _terrainDeflect scales the overall strength
+              const deflect = Math.min(1, eC * _terrainDeflect * 0.1 / Math.max(0.01, speed));
+              // Remove the into-terrain component
+              vx -= dot * nx * deflect;
+              vy -= dot * ny * deflect;
+            }
+          }
+        }
+
+        windX[i] = vx;
+        windY[i] = vy;
       }
     }
 
