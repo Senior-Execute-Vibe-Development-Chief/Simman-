@@ -867,10 +867,12 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const px = Math.min(W - 1, ex * EG), py = Math.min(H - 1, ey * EG);
     eDelta[ei] = eElev[ei] - elevation[py * W + px]; // change caused by erosion
   }
+  // Zero out delta on ocean coarse cells so bilinear doesn't bleed into ocean
+  for (let ei = 0; ei < eN; ei++) if (!eLand[ei]) eDelta[ei] = 0;
   const eDAt = (gx, gy) => eDelta[Math.max(0, Math.min(eH-1, gy)) * eW + ((gx % eW) + eW) % eW];
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = y * W + x;
-    if (elevation[i] <= 0) continue;
+    if (!isLandArr[i]) continue; // use original land mask, not elevation threshold
     const fx = x / EG, fy = y / EG;
     const ix = Math.min(eW - 2, fx | 0), iy = Math.min(eH - 2, fy | 0);
     const dx2 = fx - ix, dy2 = fy - iy;
