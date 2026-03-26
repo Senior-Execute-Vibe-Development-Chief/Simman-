@@ -1378,18 +1378,24 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     // Latitude-based climate moisture (secondary signal)
     const tropWet = Math.max(0, 1 - lat * 2.5);
     const subtropDry = Math.exp(-((lat - 0.28) ** 2) / (2 * 0.08 * 0.08)) * 0.35 * (1 - coastProx * 0.5);
-    const tempWet = Math.exp(-((lat - 0.55) ** 2) / 0.035) * 0.28;  // wider+stronger mid-latitude westerlies moisture
+    const tempWet = Math.exp(-((lat - 0.55) ** 2) / 0.035) * 0.28;
     const tropF = Math.max(0, 1 - lat * 3);
-    const contRate = 0.006 + (1 - tropF) * 0.014;
-    const cont = Math.min(0.28, cdm * contRate);
-    const polarDry = Math.max(0, (lat - 0.75)) * 0.25;
-    const climateMoist = 0.42 + tropWet * 0.42 - subtropDry + tempWet - cont - polarDry
+    // Reduced continentality: real mid/high latitude interiors stay moist because
+    // frontal systems (cyclones) penetrate deep inland via westerlies
+    const contRate = 0.004 + (1 - tropF) * 0.010;
+    const cont = Math.min(0.20, cdm * contRate);
+    const polarDry = Math.max(0, (lat - 0.80)) * 0.20;
+    const climateMoist = 0.48 + tropWet * 0.40 - subtropDry + tempWet - cont - polarDry
       + sg(nfMoistLand, x, y) * 0.12
-      + sg(nfMoistBroad, x, y) * 0.18;  // continent-scale wet/dry regions that cut across bands
+      + sg(nfMoistBroad, x, y) * 0.18;
+    // Cold-latitude moisture persistence: cold air has low evaporation, so even
+    // modest precipitation creates effective wetness. Siberia gets 300mm/yr but
+    // stays moist because snow persists for months. This raises moisture at high lat.
+    const t = temperature[i];
+    const coldPersist = t < 0.4 ? (0.4 - t) * 0.35 : 0;  // up to +0.14 at coldest
     // Wind-advected moisture is the PRIMARY driver; latitude formulas are secondary.
-    // This breaks banding — wind creates asymmetric wet/dry patterns from terrain interaction.
     const wm = windMoisture[i];
-    let m = wm * 0.65 + climateMoist * 0.35;
+    let m = wm * 0.65 + climateMoist * 0.35 + coldPersist;
     // Tropical moisture floor: ITCZ convection guarantees minimum moisture near equator.
     // Smooth Gaussian fade + noise to avoid hard equatorial band.
     if (lat < 0.25) {

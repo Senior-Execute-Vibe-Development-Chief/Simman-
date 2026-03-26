@@ -225,12 +225,14 @@ temperature[i]=Math.max(0,Math.min(1,mt*0.75+wt*0.25));
 if(e<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;}
 else{const tw=Math.max(0,1-lat*2.5);
 const sd2=Math.exp(-((lat-.28)*(lat-.28))/(2*.08*.08))*.35*(1-cp*.5);
-const tw2=Math.exp(-((lat-.55)*(lat-.55))/.025)*.22;
-const tf=Math.max(0,1-lat*3),cr=.006+(1-tf)*.014;
-const ct=Math.min(.28,cd*cr),pd=Math.max(0,(lat-.75))*.25;
-const cm=.42+tw*.42-sd2+tw2-ct-pd+fbm(nx*4+50,ny*4+50,4,2,.55)*.12+fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*.18;
+const tw2=Math.exp(-((lat-.55)*(lat-.55))/.035)*.28;
+const tf=Math.max(0,1-lat*3),cr=.004+(1-tf)*.010;
+const ct=Math.min(.20,cd*cr),pd=Math.max(0,(lat-.80))*.20;
+const cm=.48+tw*.40-sd2+tw2-ct-pd+fbm(nx*4+50,ny*4+50,4,2,.55)*.12+fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*.18;
+const t=temperature[i];
+const coldP=t<0.4?(0.4-t)*0.35:0;
 const wm=windMoisture[i];
-let m=wm*0.65+cm*0.35;
+let m=wm*0.65+cm*0.35+coldP;
 if(lat<0.25){const tf2=0.30*Math.exp(-(lat*lat)/(2*0.08*0.08))+fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*0.06;
 if(m<tf2)m=m*0.4+tf2*0.6;}
 if(e>0.1&&wm>0.35)m+=Math.min(0.12,(e-0.1)*wm*0.5);
