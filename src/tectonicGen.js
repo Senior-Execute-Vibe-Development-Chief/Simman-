@@ -1385,9 +1385,13 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const contRate = 0.004 + (1 - tropF) * 0.010;
     const cont = Math.min(0.20, cdm * contRate);
     const polarDry = Math.max(0, (lat - 0.80)) * 0.20;
-    const climateMoist = 0.48 + tropWet * 0.40 - subtropDry + tempWet - cont - polarDry
-      + sg(nfMoistLand, x, y) * 0.12
+    // Base climate moisture without small-scale noise
+    const climateBase = 0.48 + tropWet * 0.40 - subtropDry + tempWet - cont - polarDry
       + sg(nfMoistBroad, x, y) * 0.18;
+    // Small-scale noise amplitude scales with base moisture — prevents forest
+    // freckles in deserts (dry areas get tiny noise, wet areas get full variation)
+    const noiseAmp = Math.max(0.02, Math.min(0.12, climateBase * 0.20));
+    const climateMoist = climateBase + sg(nfMoistLand, x, y) * noiseAmp;
     // Cold-latitude moisture persistence: cold air has low evaporation, so even
     // modest precipitation creates effective wetness. Siberia gets 300mm/yr but
     // stays moist because snow persists for months. This raises moisture at high lat.
