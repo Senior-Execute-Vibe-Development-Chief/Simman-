@@ -166,7 +166,7 @@ const windTemp=new Float32Array(W*H);
 const tGrid=new Float32Array(mW2*mH2);
 for(let my=0;my<mH2;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
-const lt=Math.abs(py/H-0.5)*2,e2=elevation[py*W+px];
+const lt=Math.abs(py/H-0.42)*2,e2=elevation[py*W+px];
 tGrid[my*mW2+mx]=Math.max(0,Math.min(1,1-Math.pow(lt,1.35)*1.15+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.65));}
 for(let step=0;step<25;step++){const prev=new Float32Array(tGrid);
 for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
@@ -178,7 +178,7 @@ const fdx=Math.max(0,Math.min(1,srcX-sx)),fdy=Math.max(0,Math.min(1,srcY-sy));
 const sxr=Math.min(mW2-1,sx+1);
 const upT=(prev[sy*mW2+sx]*(1-fdx)+prev[sy*mW2+sxr]*fdx)*(1-fdy)
 +(prev[(sy+1)*mW2+sx]*(1-fdx)+prev[(sy+1)*mW2+sxr]*fdx)*fdy;
-const e2=elevation[fi],lt=Math.abs(py/H-0.5)*2;
+const e2=elevation[fi],lt=Math.abs(py/H-0.42)*2;
 const locT=Math.max(0,Math.min(1,1-Math.pow(lt,1.35)*1.15+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.65));
 if(e2<=0){tGrid[my*mW2+mx]=locT*0.88+upT*0.12;}
 else{const tb=Math.min(0.8,Math.max(0,e2-0.05)*3);
@@ -195,10 +195,11 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.ab
 const e=elevation[i];
 const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
 const cp=Math.max(0,1-cd/8);
-const shE=Math.exp(-((lat-0.20)*(lat-0.20))/(2*0.08*0.08))*0.06;
-const bt=1-Math.pow(lat,1.35)*1.15+shE-Math.max(0,e)*0.65+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
+const tLat=Math.abs(ny-0.42)*2;
+const shE=Math.exp(-((tLat-0.20)*(tLat-0.20))/(2*0.08*0.08))*0.06;
+const bt=1-Math.pow(tLat,1.35)*1.15+shE-Math.max(0,e)*0.65+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
 const inland=Math.max(0,1-cp);
-const ch=lat<0.5?inland*(0.5-lat)*0.20:inland*(lat-0.5)*-0.12;
+const ch=tLat<0.5?inland*(0.5-tLat)*0.20:inland*(tLat-0.5)*-0.12;
 const mt=bt+(0.45-bt)*cp*0.2+ch;
 const wt=windTemp[i];
 temperature[i]=Math.max(0,Math.min(1,mt*0.75+wt*0.25));

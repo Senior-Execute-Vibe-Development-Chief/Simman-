@@ -1262,10 +1262,10 @@ const tGrid = new Float32Array(mW * mH);
 // Seed with latitude-based temperature
 for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
   const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-  const lat2 = Math.abs(py / H - 0.5) * 2;
+  const tLat2 = Math.abs(py / H - 0.42) * 2;  // thermal latitude, shifted north
   const e2 = elevation[py * W + px];
-    tGrid[my * mW + mx] = Math.max(0, Math.min(1, 1 - Math.pow(lat2, 1.35) * 1.15
-    + Math.exp(-((lat2 - 0.20) * (lat2 - 0.20)) / (2 * 0.08 * 0.08)) * 0.06 - Math.max(0, e2) * 0.65));
+  tGrid[my * mW + mx] = Math.max(0, Math.min(1, 1 - Math.pow(tLat2, 1.35) * 1.15
+    + Math.exp(-((tLat2 - 0.20) * (tLat2 - 0.20)) / (2 * 0.08 * 0.08)) * 0.06 - Math.max(0, e2) * 0.65));
 }
 // Advect temperature along wind vectors
 for (let step = 0; step < 25; step++) {
@@ -1283,8 +1283,9 @@ for (let step = 0; step < 25; step++) {
     const upwindT = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
       + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
     const e2 = elevation[fi];
-    const lat2 = Math.abs(py / H - 0.5) * 2;
-    const localT = Math.max(0, Math.min(1, 1 - lat2 * 1.05 - Math.max(0, e2) * 0.4));
+    const tLat2 = Math.abs(py / H - 0.42) * 2;
+    const localT = Math.max(0, Math.min(1, 1 - Math.pow(tLat2, 1.35) * 1.15
+      + Math.exp(-((tLat2 - 0.20) * (tLat2 - 0.20)) / (2 * 0.08 * 0.08)) * 0.06 - Math.max(0, e2) * 0.65));
     if (e2 <= 0) {
       // Ocean: high thermal inertia, mostly local temp with slight wind influence
       tGrid[my * mW + mx] = localT * 0.88 + upwindT * 0.12;
@@ -1321,19 +1322,18 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   // Maritime temperature moderation + continental heating
   const cdm = cdist[Math.min(dh - 1, (y / DG) | 0) * dw + Math.min(dw - 1, (x / DG) | 0)];
   const coastProx = Math.max(0, 1 - cdm / 8);
-  // Non-linear temperature profile: stays warm longer through tropics/subtropics,
-  // then drops more steeply at mid-latitudes. Matches real Earth where the hot
-  // zone extends to ~30-35° before rapid cooling.
-  // Subtropical bump: Hadley cell clear skies make subtropical deserts hotter than equator.
-  const subtropHeat = Math.exp(-((lat - 0.20) * (lat - 0.20)) / (2 * 0.08 * 0.08)) * 0.06;
-  const baseTemp = 1 - Math.pow(lat, 1.35) * 1.15 + subtropHeat - Math.max(0, e) * 0.65 + sg(nfTemp, x, y) * 0.08
+  // Thermal latitude: shifted north (~15°N) — warm zone spans ~12°S to ~43°N
+  // matching real Earth where the hot band starts above Madagascar and ends above Spain.
+  const tLat = Math.abs(ny - 0.42) * 2;
+  const subtropHeat = Math.exp(-((tLat - 0.20) * (tLat - 0.20)) / (2 * 0.08 * 0.08)) * 0.06;
+  const baseTemp = 1 - Math.pow(tLat, 1.35) * 1.15 + subtropHeat - Math.max(0, e) * 0.65 + sg(nfTemp, x, y) * 0.08
     + sg(nfTempBroad, x, y) * 0.10;
   // Continental heating: interiors at low/mid latitudes get hotter (no ocean buffering).
   // At high latitudes, interiors get colder (continental winters dominate).
   const inland = Math.max(0, 1 - coastProx);  // 0 at coast, 1 deep inland
-  const contHeat = lat < 0.5
-    ? inland * (0.5 - lat) * 0.20   // +0.10 max warming at equatorial interior
-    : inland * (lat - 0.5) * -0.12; // -0.06 max cooling at polar interior
+  const contHeat = tLat < 0.5
+    ? inland * (0.5 - tLat) * 0.20
+    : inland * (tLat - 0.5) * -0.12;
   // Maritime moderation: coasts pull toward moderate temp (0.45)
   const modTemp = baseTemp + (0.45 - baseTemp) * coastProx * 0.2 + contHeat;
   // Blend latitude-based temperature with wind-advected temperature.
