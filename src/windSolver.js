@@ -373,7 +373,47 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 5: Terrain deflection (post-solve, multi-pass)
+  // STEP 5: Downstream momentum transport
+  // ════════════════════════════════════════════════════════════════
+  // Wind carries its own momentum. A slow parcel leaving land doesn't
+  // instantly speed up on ocean — it has to gradually accelerate.
+  // Trace each cell backward along the wind and blend with upstream velocity.
+  // Multiple passes propagate the effect further downstream.
+  {
+    const transportPasses = 8;
+    const advDt = 0.6;
+    const blendStr = 0.4; // 40% upstream influence
+    for (let pass = 0; pass < transportPasses; pass++) {
+      const prevX = new Float32Array(windX);
+      const prevY = new Float32Array(windY);
+      for (let wy = 1; wy < wH - 1; wy++) {
+        for (let wx = 0; wx < wW; wx++) {
+          const i = wy * wW + wx;
+          // Trace backward: where did this air come from?
+          const backX = wx - prevX[i] * advDt;
+          const backY = wy - prevY[i] * advDt;
+          const sx = ((backX % wW) + wW) % wW;
+          const sy = Math.max(1, Math.min(wH - 2, backY));
+          const ix = Math.floor(sx), iy = Math.floor(sy);
+          const fx = sx - ix, fy = sy - iy;
+          const ix1 = (ix + 1) % wW, iy1 = Math.min(wH - 2, iy + 1);
+          const i00 = iy * wW + ix, i10 = iy * wW + ix1;
+          const i01 = iy1 * wW + ix, i11 = iy1 * wW + ix1;
+          // Bilinear interpolation of upstream velocity
+          const upX = prevX[i00] * (1-fx)*(1-fy) + prevX[i10] * fx*(1-fy)
+                    + prevX[i01] * (1-fx)*fy + prevX[i11] * fx*fy;
+          const upY = prevY[i00] * (1-fx)*(1-fy) + prevY[i10] * fx*(1-fy)
+                    + prevY[i01] * (1-fx)*fy + prevY[i11] * fx*fy;
+          // Blend: current cell keeps (1-blend), upstream contributes blend
+          windX[i] = prevX[i] * (1 - blendStr) + upX * blendStr;
+          windY[i] = prevY[i] * (1 - blendStr) + upY * blendStr;
+        }
+      }
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // STEP 6: Terrain deflection (post-solve, multi-pass)
   // ════════════════════════════════════════════════════════════════
   // Run AFTER the atmospheric solver so PGF can't override it.
   // Multiple passes: each pass deflects at/near terrain, then smooths
