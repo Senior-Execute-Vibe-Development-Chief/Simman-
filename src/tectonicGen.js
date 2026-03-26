@@ -754,145 +754,129 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 //   - Canyon incision in plateaus
 // ═══════════════════════════════════════════════════════
 {
-  const dropCount = Math.round(W * H * p('erodeDropsPerPixel', 0.5));
-  const maxLifetime = 30;
+  // Run erosion on a 4x-downscaled grid for speed (~16x fewer pixels)
+  const EG = 4;
+  const eW = Math.ceil(W / EG), eH = Math.ceil(H / EG);
+  const eN = eW * eH;
+
+  // Downsample elevation to erosion grid
+  const eElev = new Float32Array(eN);
+  const eLand = new Uint8Array(eN);
+  for (let ey = 0; ey < eH; ey++) for (let ex = 0; ex < eW; ex++) {
+    const px = Math.min(W - 1, ex * EG), py = Math.min(H - 1, ey * EG);
+    const v = elevation[py * W + px];
+    eElev[ey * eW + ex] = v;
+    eLand[ey * eW + ex] = v > 0 ? 1 : 0;
+  }
+
+  const dropCount = Math.round(eN * p('erodeDropsPerPixel', 1.5));
+  const maxLife = 30;
   const inertia = p('erodeInertia', 0.3);
-  const capacity = p('erodeCapacity', 8.0);
+  const cap = p('erodeCapacity', 8.0);
   const minSlope = 0.005;
   const depositRate = p('erodeDeposit', 0.2);
   const erodeRate = p('erodeRate', 0.3);
   const evapRate = p('erodeEvaporate', 0.02);
-  const gravity = p('erodeGravity', 6.0);
-  const brushRadius = p('erodeBrushRadius', 2);
+  const grav = p('erodeGravity', 6.0);
+  const brushR = p('erodeBrushRadius', 2);
 
-  // Pre-compute erosion brush weights for the given radius
-  const brushOffsets = [], brushWeights = [];
-  let weightSum = 0;
-  for (let by = -brushRadius; by <= brushRadius; by++) {
-    for (let bx = -brushRadius; bx <= brushRadius; bx++) {
-      const d2 = bx * bx + by * by;
-      if (d2 > brushRadius * brushRadius) continue;
-      const w = Math.max(0, 1 - Math.sqrt(d2) / brushRadius);
-      brushOffsets.push(bx, by);
-      brushWeights.push(w);
-      weightSum += w;
-    }
+  // Pre-compute brush weights
+  const bOff = [], bWt = [];
+  let wSum = 0;
+  for (let by = -brushR; by <= brushR; by++) for (let bx = -brushR; bx <= brushR; bx++) {
+    const d2 = bx * bx + by * by;
+    if (d2 > brushR * brushR) continue;
+    bOff.push(bx, by);
+    const w = Math.max(0, 1 - Math.sqrt(d2) / brushR);
+    bWt.push(w); wSum += w;
   }
-  for (let k = 0; k < brushWeights.length; k++) brushWeights[k] /= weightSum;
+  for (let k = 0; k < bWt.length; k++) bWt[k] /= wSum;
 
-  // Bilinear height sample (wraps X, clamps Y)
-  const sampleH = (px, py) => {
-    const ix = Math.floor(px), iy = Math.floor(py);
-    const fx = px - ix, fy = py - iy;
-    const x0 = ((ix % W) + W) % W, x1 = ((ix + 1) % W + W) % W;
-    const y0 = Math.max(0, Math.min(H - 1, iy));
-    const y1 = Math.max(0, Math.min(H - 1, iy + 1));
-    return elevation[y0 * W + x0] * (1 - fx) * (1 - fy)
-      + elevation[y0 * W + x1] * fx * (1 - fy)
-      + elevation[y1 * W + x0] * (1 - fx) * fy
-      + elevation[y1 * W + x1] * fx * fy;
+  // Bilinear helpers on erosion grid (wraps X, clamps Y)
+  const eAt = (gx, gy) => eElev[Math.max(0, Math.min(eH - 1, gy)) * eW + ((gx % eW) + eW) % eW];
+  const eSample = (px, py) => {
+    const ix = Math.floor(px), iy = Math.floor(py), fx = px - ix, fy = py - iy;
+    return eAt(ix, iy) * (1-fx)*(1-fy) + eAt(ix+1, iy) * fx*(1-fy)
+      + eAt(ix, iy+1) * (1-fx)*fy + eAt(ix+1, iy+1) * fx*fy;
   };
-
-  // Bilinear gradient
-  const gradH = (px, py) => {
-    const ix = Math.floor(px), iy = Math.floor(py);
-    const fx = px - ix, fy = py - iy;
-    const x0 = ((ix % W) + W) % W, x1 = ((ix + 1) % W + W) % W;
-    const y0 = Math.max(0, Math.min(H - 1, iy));
-    const y1 = Math.max(0, Math.min(H - 1, iy + 1));
-    const h00 = elevation[y0 * W + x0], h10 = elevation[y0 * W + x1];
-    const h01 = elevation[y1 * W + x0], h11 = elevation[y1 * W + x1];
-    return [
-      (h10 - h00) * (1 - fy) + (h11 - h01) * fy,
-      (h01 - h00) * (1 - fx) + (h11 - h10) * fx
-    ];
+  const eGrad = (px, py) => {
+    const ix = Math.floor(px), iy = Math.floor(py), fx = px - ix, fy = py - iy;
+    const h00 = eAt(ix, iy), h10 = eAt(ix+1, iy), h01 = eAt(ix, iy+1), h11 = eAt(ix+1, iy+1);
+    return [(h10-h00)*(1-fy)+(h11-h01)*fy, (h01-h00)*(1-fx)+(h11-h10)*fx];
   };
-
-  // Snapshot which pixels are land before erosion (ocean must stay ocean)
-  const landMask = new Uint8Array(W * H);
-  for (let i = 0; i < W * H; i++) landMask[i] = elevation[i] > 0 ? 1 : 0;
 
   for (let drop = 0; drop < dropCount; drop++) {
-    // Only spawn drops on land
-    let px, py, attempts = 0;
-    do {
-      px = rng() * W; py = rng() * (H - 2) + 1;
-      attempts++;
-    } while (attempts < 8 && !landMask[Math.floor(py) * W + (Math.floor(px) % W)]);
-    if (!landMask[Math.floor(py) * W + (Math.floor(px) % W)]) continue;
+    // Spawn on land
+    let px, py, att = 0;
+    do { px = rng() * eW; py = rng() * (eH - 2) + 1; att++; }
+    while (att < 8 && !eLand[Math.floor(py) * eW + Math.floor(px) % eW]);
+    if (!eLand[Math.floor(py) * eW + Math.floor(px) % eW]) continue;
 
-    let dx = 0, dy = 0;
-    let speed = 1, water = 1, sediment = 0;
+    let ddx = 0, ddy = 0, speed = 1, water = 1, sed = 0;
+    for (let step = 0; step < maxLife; step++) {
+      const cx = Math.floor(px), cy = Math.floor(py);
+      if (!eLand[cy * eW + ((cx % eW + eW) % eW)]) break;
+      const oldH = eSample(px, py);
 
-    for (let step = 0; step < maxLifetime; step++) {
-      const cellX = Math.floor(px), cellY = Math.floor(py);
+      const [gx, gy] = eGrad(px, py);
+      ddx = ddx * inertia - gx * (1 - inertia);
+      ddy = ddy * inertia - gy * (1 - inertia);
+      const len = Math.sqrt(ddx * ddx + ddy * ddy);
+      if (len < 1e-6) { const a = rng() * 6.283; ddx = Math.cos(a); ddy = Math.sin(a); }
+      else { ddx /= len; ddy /= len; }
 
-      // Stop if we've reached ocean
-      const ci = cellY * W + ((cellX % W + W) % W);
-      if (!landMask[ci]) break;
+      const nx2 = px + ddx, ny2 = py + ddy;
+      if (ny2 < 1 || ny2 >= eH - 1) break;
+      const wx = ((nx2 % eW) + eW) % eW;
+      const newH = eSample(wx, ny2);
+      const dH = newH - oldH;
+      const c2 = Math.max(-dH, minSlope) * speed * water * cap;
 
-      const oldH = sampleH(px, py);
-
-      // Gradient with inertia blending
-      const [gx, gy] = gradH(px, py);
-      dx = dx * inertia - gx * (1 - inertia);
-      dy = dy * inertia - gy * (1 - inertia);
-
-      // Normalize direction
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len < 1e-6) {
-        const a = rng() * Math.PI * 2;
-        dx = Math.cos(a); dy = Math.sin(a);
+      if (dH > 0 || sed > c2) {
+        const amt = dH > 0 ? Math.min(dH, sed) : (sed - c2) * depositRate;
+        sed -= amt;
+        const fx = px - cx, fy = py - cy;
+        const x0 = ((cx % eW) + eW) % eW, x1 = ((cx + 1) % eW + eW) % eW;
+        const y0 = Math.max(0, Math.min(eH-1, cy)), y1 = Math.max(0, Math.min(eH-1, cy+1));
+        if (eLand[y0*eW+x0]) eElev[y0*eW+x0] += amt*(1-fx)*(1-fy);
+        if (eLand[y0*eW+x1]) eElev[y0*eW+x1] += amt*fx*(1-fy);
+        if (eLand[y1*eW+x0]) eElev[y1*eW+x0] += amt*(1-fx)*fy;
+        if (eLand[y1*eW+x1]) eElev[y1*eW+x1] += amt*fx*fy;
       } else {
-        dx /= len; dy /= len;
-      }
-
-      // Move particle
-      const newX = px + dx, newY = py + dy;
-      if (newY < 1 || newY >= H - 1) break;
-      const wrappedX = ((newX % W) + W) % W;
-
-      const newH = sampleH(wrappedX, newY);
-      const deltaH = newH - oldH;
-
-      // Carrying capacity: steeper slope + faster speed = more capacity
-      const c = Math.max(-deltaH, minSlope) * speed * water * capacity;
-
-      if (deltaH > 0 || sediment > c) {
-        // Going uphill or over capacity → deposit (only on land)
-        const amount = deltaH > 0
-          ? Math.min(deltaH, sediment)
-          : (sediment - c) * depositRate;
-        sediment -= amount;
-        const fx = px - cellX, fy = py - cellY;
-        const x0 = ((cellX % W) + W) % W, x1 = ((cellX + 1) % W + W) % W;
-        const y0 = Math.max(0, Math.min(H - 1, cellY));
-        const y1 = Math.max(0, Math.min(H - 1, cellY + 1));
-        if (landMask[y0 * W + x0]) elevation[y0 * W + x0] += amount * (1 - fx) * (1 - fy);
-        if (landMask[y0 * W + x1]) elevation[y0 * W + x1] += amount * fx * (1 - fy);
-        if (landMask[y1 * W + x0]) elevation[y1 * W + x0] += amount * (1 - fx) * fy;
-        if (landMask[y1 * W + x1]) elevation[y1 * W + x1] += amount * fx * fy;
-      } else {
-        // Going downhill and under capacity → erode
-        const amount = Math.min((c - sediment) * erodeRate, -deltaH + 0.002);
-        for (let k = 0; k < brushWeights.length; k++) {
-          const bx = brushOffsets[k * 2], by2 = brushOffsets[k * 2 + 1];
-          const ey = Math.max(0, Math.min(H - 1, cellY + by2));
-          const ex = ((cellX + bx) % W + W) % W;
-          const ei = ey * W + ex;
-          if (!landMask[ei]) continue; // Don't erode ocean
-          const eroded = amount * brushWeights[k];
-          elevation[ei] = Math.max(0.002, elevation[ei] - eroded);
+        const amt = Math.min((c2 - sed) * erodeRate, -dH + 0.002);
+        for (let k = 0; k < bWt.length; k++) {
+          const bx = bOff[k*2], by = bOff[k*2+1];
+          const ey = Math.max(0, Math.min(eH-1, cy + by));
+          const ex = ((cx + bx) % eW + eW) % eW;
+          const ei = ey * eW + ex;
+          if (!eLand[ei]) continue;
+          eElev[ei] = Math.max(0.002, eElev[ei] - amt * bWt[k]);
         }
-        sediment += amount;
+        sed += amt;
       }
-
-      // Update speed from height difference
-      speed = Math.sqrt(Math.max(0.001, speed * speed + deltaH * gravity));
+      speed = Math.sqrt(Math.max(0.001, speed * speed + dH * grav));
       water *= (1 - evapRate);
-      px = wrappedX;
-      py = newY;
+      px = wx; py = ny2;
     }
+  }
+
+  // Compute erosion delta (eroded - original) and apply to full-res via bilinear
+  const eDelta = new Float32Array(eN);
+  for (let ey = 0; ey < eH; ey++) for (let ex = 0; ex < eW; ex++) {
+    const ei = ey * eW + ex;
+    const px = Math.min(W - 1, ex * EG), py = Math.min(H - 1, ey * EG);
+    eDelta[ei] = eElev[ei] - elevation[py * W + px]; // change caused by erosion
+  }
+  const eDAt = (gx, gy) => eDelta[Math.max(0, Math.min(eH-1, gy)) * eW + ((gx % eW) + eW) % eW];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    if (elevation[i] <= 0) continue;
+    const fx = x / EG, fy = y / EG;
+    const ix = Math.min(eW - 2, fx | 0), iy = Math.min(eH - 2, fy | 0);
+    const dx2 = fx - ix, dy2 = fy - iy;
+    const delta = eDAt(ix,iy)*(1-dx2)*(1-dy2) + eDAt(ix+1,iy)*dx2*(1-dy2)
+      + eDAt(ix,iy+1)*(1-dx2)*dy2 + eDAt(ix+1,iy+1)*dx2*dy2;
+    elevation[i] = Math.max(0.002, elevation[i] + delta);
   }
 }
 

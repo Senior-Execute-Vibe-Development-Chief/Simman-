@@ -106,8 +106,8 @@ export const PARAMS = {
   erosion: {
     label: "Hydraulic Erosion", color: "140,170,130",
     params: [
-      { key: "erodeDropsPerPixel", def: 0.5, min: 0.0, max: 2.0, label: "Rain density",
-        desc: "Raindrops per pixel. More drops = stronger erosion effect. 0 = no erosion. 1.0 = heavy rainfall. Affects generation time." },
+      { key: "erodeDropsPerPixel", def: 1.5, min: 0.0, max: 6.0, label: "Rain density",
+        desc: "Raindrops per coarse cell. More drops = stronger erosion. 0 = no erosion. Runs on 4x-downscaled grid for speed." },
       { key: "erodeInertia", def: 0.3, min: 0.0, max: 0.9, label: "Flow inertia",
         desc: "How much water keeps its current direction vs following the slope. Low = water follows gradient exactly (sharp valleys). High = smoother, meandering paths." },
       { key: "erodeCapacity", def: 8.0, min: 1.0, max: 20.0, label: "Sediment capacity",
