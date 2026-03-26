@@ -189,17 +189,15 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // ════════════════════════════════════════════════════════════════
   // STEP 3: Drag field (surface friction)
   // ════════════════════════════════════════════════════════════════
-  // Uses smoothed land fraction so drag extends beyond coastlines
-  // (atmospheric boundary layer effect — land friction bleeds into
-  // nearby ocean cells, slowing coastal wind)
   const drag = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const e = wElev[i];
-    const lf = landFracMed[i]; // smoothed land fraction, extends past coast
-    // Blend ocean and land drag based on land influence
-    const baseDrag = _oceanDrag + (_landDrag - _oceanDrag) * lf;
-    // Mountains get extra drag on top
-    drag[i] = baseDrag + Math.max(0, e) * _landDrag * 0.5;
+    if (e <= 0.005) {
+      drag[i] = _oceanDrag;
+    } else {
+      // Land drag + extra friction scaled by elevation for mountains
+      drag[i] = _landDrag + _landDrag * Math.min(1, e * 2) * 0.5;
+    }
   }
 
   // ════════════════════════════════════════════════════════════════
