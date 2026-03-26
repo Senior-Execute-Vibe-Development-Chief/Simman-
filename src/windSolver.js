@@ -29,6 +29,8 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _windScale       = p("windScale", 0.295);
   const _windContrast    = p("windContrast", 0.825);
   const _solverIter      = p("windSolverIter", 250);
+  const _coandaRedirect  = p("coandaRedirect", 0.7);
+  const _coandaPull      = p("coandaPull", 0.003);
   const _itczOffset      = p("itczOffset", 0.033);
   const _monsoonStr      = p("monsoonStrength", 0.0);
 
@@ -336,15 +338,15 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
               const tangDot = vx * tangX + vy * tangY;
               const sign = tangDot >= 0 ? 1 : -1;
               const redirected = Math.sqrt(removedX * removedX + removedY * removedY);
-              vx += sign * tangX * redirected * 0.7;
-              vy += sign * tangY * redirected * 0.7;
+              vx += sign * tangX * redirected * _coandaRedirect;
+              vy += sign * tangY * redirected * _coandaRedirect;
             } else {
               // Wind flowing PAST terrain (not into it) — Coanda attraction
               // Pull slightly toward following the terrain contour
               // Stronger when closer to terrain (higher elevation = more surface contact)
               const tangX = -tny, tangY = tnx;
               const tangDot = vx * tangX + vy * tangY;
-              const coandaPull = eC * _terrainDeflect * 0.003;
+              const coandaPull = eC * _terrainDeflect * _coandaPull;
               // Add a slight nudge in the tangential direction wind is already going
               if (Math.abs(tangDot) > 1e-6) {
                 const pullSign = tangDot >= 0 ? 1 : -1;
