@@ -17,17 +17,16 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const PI = Math.PI;
 
   // ── Tunable parameters ──
-  const _pressureScale   = p("pressureScale", 1.45);
+  const _pressureScale   = p("pressureScale", 1.0);
   const _thermalContrast = p("thermalContrast", 1.275);
   const _hadleyStr       = p("hadleyStrength", 0.26);
   const _coriolisStr     = p("coriolisStrength", 0.32);
   const _oceanDrag       = p("oceanDrag", 0.04);
-  const _landDrag        = p("landDrag", 0.08);
-  const _mountainDrag    = p("mountainDrag", 0.6);
-  const _terrainDeflect  = p("terrainDeflect", 1.0);
+  const _landDrag        = p("landDrag", 0.80);
+  const _terrainDeflect  = p("terrainDeflect", 15.0);
   const _gapFunneling    = p("gapFunneling", 0.0);
-  const _eddyStrength    = p("eddyStrength", 0.015);
-  const _windScale       = p("windScale", 0.485);
+  const _eddyStrength    = p("eddyStrength", 0.04);
+  const _windScale       = p("windScale", 0.3);
   const _windContrast    = p("windContrast", 0.825);
   const _solverIter      = p("windSolverIter", 248);
   const _itczOffset      = p("itczOffset", 0.03);
@@ -184,20 +183,16 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   for (let i = 0; i < N; i++) pressure[i] = smoothP[i];
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 3: Drag field (split: flat land + mountain)
+  // STEP 3: Drag field (surface friction)
   // ════════════════════════════════════════════════════════════════
-  // landDrag = base friction for flat land (deserts, plains)
-  // mountainDrag = extra friction that scales with elevation
   const drag = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     const e = wElev[i];
     if (e <= 0.005) {
       drag[i] = _oceanDrag;
     } else {
-      // Base land friction + elevation-scaled mountain friction
-      // At e=0.5 (high mountain), full mountainDrag is added
-      // At e=0.05 (low plain), only 10% of mountainDrag is added
-      drag[i] = _landDrag + _mountainDrag * Math.min(1, e * 2);
+      // Land drag + extra friction scaled by elevation for mountains
+      drag[i] = _landDrag + _landDrag * Math.min(1, e * 2) * 0.5;
     }
   }
 
@@ -304,18 +299,15 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         let vy = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
 
         // ── Terrain deflection ──
-        // _terrainDeflect controls:
-        //   - elevation threshold: higher = even small hills deflect
-        //   - blocking strength via Froude number
-        // At 0: no deflection at all. At 1: mountains deflect. At 2: gentle hills deflect.
+        // _terrainDeflect controls both the elevation threshold and blocking strength.
+        // 0 = no deflection. ~5 = only big mountains. ~15 = moderate hills. ~20 = gentle terrain.
         const eC = wElev[i];
-        const deflectThreshold = Math.max(0.01, 0.35 - _terrainDeflect * 0.15);
+        const deflectThreshold = Math.max(0.005, 0.4 - _terrainDeflect * 0.02);
         if (_terrainDeflect > 0 && eC > deflectThreshold) {
           const speed = Math.sqrt(vx * vx + vy * vy);
           if (speed > 1e-6) {
-            // Froude blocking: how much terrain above threshold
             const effectiveHeight = eC - deflectThreshold;
-            const froudeScale = 3.0 + _terrainDeflect * 4.0;
+            const froudeScale = _terrainDeflect * 0.6;
             const Fr = speed / Math.max(0.001, effectiveHeight * froudeScale);
             const blockFrac = Math.max(0, Math.min(0.9, 1 - Fr));
 
@@ -345,7 +337,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
             }
 
             // Gap funneling: low point between high neighbors
-            if (_gapFunneling > 0 && eC < deflectThreshold + 0.1) {
+            if (_gapFunneling > 0 && eC < 0.15) {
               // Check if neighbors are significantly higher
               const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
               const eL = wElev[wy * wW + wl2], eR = wElev[wy * wW + wr2];
