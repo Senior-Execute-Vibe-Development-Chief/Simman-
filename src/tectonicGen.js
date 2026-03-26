@@ -1225,52 +1225,50 @@ for (let step = 0; step < 40; step++) {
       const recycling = existingMoist > 0.2 ? (existingMoist - 0.2) * 0.10 * warmEnough : 0;
       // Blend: 80% advected + 20% neighbor diffusion
       const advected = Math.max(0, carried + recycling);
-      mGrid[my * mW + mx] = advected * 0.80 + neighborAvg * 0.20;
+      mGrid[my * mW + mx] = advected * 0.70 + neighborAvg * 0.30;
     }
-  }
-}
-// Post-advection smoothing: 3 passes of box blur to eliminate remaining streaks
-for (let pass = 0; pass < 3; pass++) {
-  const prev = new Float32Array(mGrid);
-  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
-    const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-    if (elevation[py * W + px] <= 0) continue;  // don't blur ocean
-    const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
-    const ci = my * mW + mx;
-    mGrid[ci] = prev[ci] * 0.5
-      + (prev[my * mW + mxL] + prev[my * mW + mxR]
-         + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.125;
   }
 }
 // ═══════════════════════════════════════════════════════
 // Wind convergence/divergence → precipitation modifier
-// Convergence (winds flowing together) forces air upward → rain
-// Divergence (winds spreading apart) causes subsidence → dry
-// P ≈ -q × div(V), where div(V) = du/dx + dv/dy
+// Compute divergence into a separate field, smooth it (turbulent mixing
+// means convergence effects spread over ~100km), then apply.
 // ═══════════════════════════════════════════════════════
+const divField = new Float32Array(mW * mH);
 for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
   const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-  const fi = py * W + px;
-  if (elevation[fi] <= 0) continue;  // skip ocean
-  // Compute divergence from wind field neighbors
   const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
   const pxL = Math.min(W - 1, mxL * 2), pxR = Math.min(W - 1, mxR * 2);
   const pyU = Math.min(H - 1, (my - 1) * 2), pyD = Math.min(H - 1, (my + 1) * 2);
-  const dudx = (fullWindX[py * W + pxR] - fullWindX[py * W + pxL]) * 0.5;
-  const dvdy = (fullWindY[pyD * W + px] - fullWindY[pyU * W + px]) * 0.5;
-  const div = dudx + dvdy;
-  // Local moisture content determines how much convergence matters
-  // (converging dry air doesn't produce rain)
-  const q = mGrid[my * mW + mx];
-  // Convergence (div < 0): uplift → precipitation boost, scaled by moisture
-  // Divergence (div > 0): subsidence → drying, but weaker effect
-  const ci = my * mW + mx;
-  if (div < 0) {
-    // Convergence: moisture flux convergence → precipitation boost
-    mGrid[ci] = Math.min(1, mGrid[ci] + Math.min(0.15, -div * q * 1.2));
-  } else {
-    // Divergence: subsidence suppresses moisture
-    mGrid[ci] = Math.max(0, mGrid[ci] - Math.min(0.08, div * 0.4));
+  divField[my * mW + mx] = (fullWindX[py * W + pxR] - fullWindX[py * W + pxL]
+    + fullWindY[pyD * W + px] - fullWindY[pyU * W + px]) * 0.5;
+}
+// Smooth divergence field (3 passes) — represents mesoscale turbulent mixing
+for (let pass = 0; pass < 3; pass++) {
+  const prev = new Float32Array(divField);
+  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
+    const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW, ci = my * mW + mx;
+    divField[ci] = prev[ci] * 0.4 + (prev[my * mW + mxL] + prev[my * mW + mxR]
+      + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.15;
+  }
+}
+// Apply smoothed convergence/divergence to moisture
+for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
+  const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+  if (elevation[py * W + px] <= 0) continue;
+  const div = divField[my * mW + mx], ci = my * mW + mx, q = mGrid[ci];
+  if (div < 0) mGrid[ci] = Math.min(1, mGrid[ci] + Math.min(0.12, -div * q * 1.0));
+  else mGrid[ci] = Math.max(0, mGrid[ci] - Math.min(0.06, div * 0.3));
+}
+// Final eddy diffusion smoothing (5 passes — turbulent atmospheric mixing)
+for (let pass = 0; pass < 5; pass++) {
+  const prev = new Float32Array(mGrid);
+  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
+    const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+    if (elevation[py * W + px] <= 0) continue;
+    const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW, ci = my * mW + mx;
+    mGrid[ci] = prev[ci] * 0.45 + (prev[my * mW + mxL] + prev[my * mW + mxR]
+      + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.1375;
   }
 }
 // Upscale moisture advection result to full resolution
