@@ -1264,8 +1264,8 @@ for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
   const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
   const lat2 = Math.abs(py / H - 0.5) * 2;
   const e2 = elevation[py * W + px];
-  { const sh = Math.exp(-((lat2 - 0.20) * (lat2 - 0.20)) / (2 * 0.08 * 0.08)) * 0.07;
-    tGrid[my * mW + mx] = Math.max(0, Math.min(1, 1 - lat2 * 1.05 + sh - Math.max(0, e2) * 0.65)); }
+    tGrid[my * mW + mx] = Math.max(0, Math.min(1, 1 - Math.pow(lat2, 1.35) * 1.15
+    + Math.exp(-((lat2 - 0.20) * (lat2 - 0.20)) / (2 * 0.08 * 0.08)) * 0.06 - Math.max(0, e2) * 0.65));
 }
 // Advect temperature along wind vectors
 for (let step = 0; step < 25; step++) {
@@ -1321,11 +1321,12 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   // Maritime temperature moderation + continental heating
   const cdm = cdist[Math.min(dh - 1, (y / DG) | 0) * dw + Math.min(dw - 1, (x / DG) | 0)];
   const coastProx = Math.max(0, 1 - cdm / 8);
-  // Stronger elevation cooling (real lapse rate: ~6.5°C/km, our elev 0-1 ≈ 0-8km)
-  // Subtropical heating bump: Hadley cell descent at ~20-25° creates clear skies,
-  // making subtropical deserts hotter than the equator (which has cloud cover/rain)
-  const subtropHeat = Math.exp(-((lat - 0.20) * (lat - 0.20)) / (2 * 0.08 * 0.08)) * 0.07;
-  const baseTemp = 1 - lat * 1.05 + subtropHeat - Math.max(0, e) * 0.65 + sg(nfTemp, x, y) * 0.08
+  // Non-linear temperature profile: stays warm longer through tropics/subtropics,
+  // then drops more steeply at mid-latitudes. Matches real Earth where the hot
+  // zone extends to ~30-35° before rapid cooling.
+  // Subtropical bump: Hadley cell clear skies make subtropical deserts hotter than equator.
+  const subtropHeat = Math.exp(-((lat - 0.20) * (lat - 0.20)) / (2 * 0.08 * 0.08)) * 0.06;
+  const baseTemp = 1 - Math.pow(lat, 1.35) * 1.15 + subtropHeat - Math.max(0, e) * 0.65 + sg(nfTemp, x, y) * 0.08
     + sg(nfTempBroad, x, y) * 0.10;
   // Continental heating: interiors at low/mid latitudes get hotter (no ocean buffering).
   // At high latitudes, interiors get colder (continental winters dominate).
