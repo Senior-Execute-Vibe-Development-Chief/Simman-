@@ -808,13 +808,29 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     ];
   };
 
+  // Snapshot which pixels are land before erosion (ocean must stay ocean)
+  const landMask = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) landMask[i] = elevation[i] > 0 ? 1 : 0;
+
   for (let drop = 0; drop < dropCount; drop++) {
-    let px = rng() * W, py = rng() * (H - 2) + 1;
+    // Only spawn drops on land
+    let px, py, attempts = 0;
+    do {
+      px = rng() * W; py = rng() * (H - 2) + 1;
+      attempts++;
+    } while (attempts < 8 && !landMask[Math.floor(py) * W + (Math.floor(px) % W)]);
+    if (!landMask[Math.floor(py) * W + (Math.floor(px) % W)]) continue;
+
     let dx = 0, dy = 0;
     let speed = 1, water = 1, sediment = 0;
 
     for (let step = 0; step < maxLifetime; step++) {
       const cellX = Math.floor(px), cellY = Math.floor(py);
+
+      // Stop if we've reached ocean
+      const ci = cellY * W + ((cellX % W + W) % W);
+      if (!landMask[ci]) break;
+
       const oldH = sampleH(px, py);
 
       // Gradient with inertia blending
@@ -825,7 +841,6 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       // Normalize direction
       const len = Math.sqrt(dx * dx + dy * dy);
       if (len < 1e-6) {
-        // Random direction if flat
         const a = rng() * Math.PI * 2;
         dx = Math.cos(a); dy = Math.sin(a);
       } else {
@@ -844,32 +859,30 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const c = Math.max(-deltaH, minSlope) * speed * water * capacity;
 
       if (deltaH > 0 || sediment > c) {
-        // Going uphill or over capacity → deposit
+        // Going uphill or over capacity → deposit (only on land)
         const amount = deltaH > 0
           ? Math.min(deltaH, sediment)
           : (sediment - c) * depositRate;
         sediment -= amount;
-        // Deposit to bilinear neighborhood
         const fx = px - cellX, fy = py - cellY;
         const x0 = ((cellX % W) + W) % W, x1 = ((cellX + 1) % W + W) % W;
         const y0 = Math.max(0, Math.min(H - 1, cellY));
         const y1 = Math.max(0, Math.min(H - 1, cellY + 1));
-        elevation[y0 * W + x0] += amount * (1 - fx) * (1 - fy);
-        elevation[y0 * W + x1] += amount * fx * (1 - fy);
-        elevation[y1 * W + x0] += amount * (1 - fx) * fy;
-        elevation[y1 * W + x1] += amount * fx * fy;
+        if (landMask[y0 * W + x0]) elevation[y0 * W + x0] += amount * (1 - fx) * (1 - fy);
+        if (landMask[y0 * W + x1]) elevation[y0 * W + x1] += amount * fx * (1 - fy);
+        if (landMask[y1 * W + x0]) elevation[y1 * W + x0] += amount * (1 - fx) * fy;
+        if (landMask[y1 * W + x1]) elevation[y1 * W + x1] += amount * fx * fy;
       } else {
         // Going downhill and under capacity → erode
         const amount = Math.min((c - sediment) * erodeRate, -deltaH + 0.002);
-        // Erode from brush area around current position
         for (let k = 0; k < brushWeights.length; k++) {
           const bx = brushOffsets[k * 2], by2 = brushOffsets[k * 2 + 1];
           const ey = Math.max(0, Math.min(H - 1, cellY + by2));
           const ex = ((cellX + bx) % W + W) % W;
           const ei = ey * W + ex;
+          if (!landMask[ei]) continue; // Don't erode ocean
           const eroded = amount * brushWeights[k];
-          // Don't erode below sea level (0.001)
-          elevation[ei] = Math.max(0.001, elevation[ei] - eroded);
+          elevation[ei] = Math.max(0.002, elevation[ei] - eroded);
         }
         sediment += amount;
       }
