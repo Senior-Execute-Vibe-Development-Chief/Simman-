@@ -919,7 +919,7 @@ p.age++;
 if(p.x<0||p.x>=CW||p.y<0||p.y>=CH||p.age>MAX_AGE||spd<0.002){
 // Bias respawn toward faster wind areas: try a few random spots, keep the windiest
 let bestX=Math.random()*CW,bestY=Math.random()*CH,bestSpd=0;
-for(let t=0;t<5;t++){
+for(let t=0;t<3;t++){
 const cx=Math.random()*CW,cy=Math.random()*CH;
 const csx=Math.min(W-1,(cx*RES)|0),csy=Math.min(H-1,(cy*RES)|0);
 const cvx=wX[csy*W+csx]||0,cvy=wY[csy*W+csx]||0;
