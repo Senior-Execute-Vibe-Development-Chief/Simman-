@@ -669,13 +669,46 @@ const nfTecWY = precompute((nx, ny) => fbm(nx * 3 + 250, ny * 3 + 250, 3, 2, 0.5
 const nfPlateau = precompute((nx, ny) => fbm(nx * 3 + s1 + 50, ny * 3 + s1 + 50, 2, 2, 0.5));
 const nfMtnBump = precompute((nx, ny) => fbm(nx * 8 + s2 + 30, ny * 8 + s2 + 30, 4, 2, 0.55));
 const nfCoastEN = precompute((nx, ny) => fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5));
-const nfContinent = precompute((nx, ny) => fbm(nx * 2.2 + s1 + 30, ny * 2.2 + s1 + 30, 3, 2, 0.55));
-const nfBroadSwell = precompute((nx, ny) => fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6));
 const nfTemp = precompute((nx, ny) => fbm(nx * 3 + 80, ny * 3 + 80, 3, 2, 0.5));
 const nfTempBroad = precompute((nx, ny) => fbm(nx * 1.2 + s1 + 55, ny * 1.2 + s1 + 55, 3, 2, 0.55));
 const nfMoistOce = precompute((nx, ny) => fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.5));
 const nfMoistLand = precompute((nx, ny) => fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55));
 const nfMoistBroad = precompute((nx, ny) => fbm(nx * 1.5 + s2 + 90, ny * 1.5 + s2 + 90, 3, 2, 0.55));
+
+// ── Multi-scale continental interior terrain ──
+// Shield/craton: very large-scale continental elevation blocks (like African plateau, Canadian Shield)
+const nfShield = precompute((nx, ny) => fbm(nx * 1.4 + s1 + 30, ny * 1.4 + s1 + 30, 2, 2, 0.6));
+// Basin: medium-scale depressions and swells (like Congo Basin, Great Plains)
+const nfBasin = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 2, 2, 0.03, s2 + 40, s2 + 90);
+  return fbm(wx * 3.5 + s2 + 15, wy * 3.5 + s2 + 15, 3, 2, 0.55);
+});
+// Escarpment: ridged noise for sharp elevation breaks (like Great Escarpment, Western Ghats)
+const nfEscarpment = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 3, 2, 0.04, s3 + 55, s3 + 105);
+  return ridged(wx * 4 + s3 + 20, wy * 4 + s3 + 20, 3, 2.0, 0.6, 1.0);
+});
+// Medium terrain texture: rolling hills, ancient eroded ranges
+const nfMedTerrain = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 4, 2, 0.035, s1 + 65, s1 + 115);
+  return fbm(wx * 7 + s1 + 40, wy * 7 + s1 + 40, 4, 2.0, 0.5);
+});
+// Mountain ridgeline texture: sharp veining that only appears in mountain zones
+const nfMtnRidge = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 5, 2, 0.05, s4 + 70, s4 + 120);
+  return ridged(wx * 12 + s4, wy * 12 + s4, 4, 2.2, 0.6, 1.0);
+});
+// Mountain valley incision (Worley F1 distance creates drainage-aligned valleys)
+const nfMtnValley = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 4, 2, 0.04, s5 + 30, s5 + 80);
+  const [f1] = worley(wx * 8 + s5, wy * 8 + s5);
+  return f1;
+});
+// Fine-detail terrain: higher frequency for local variation everywhere
+const nfFineTerrain = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 5, 2, 0.025, s3 + 25, s3 + 75);
+  return fbm(wx * 14 + s3 + 35, wy * 14 + s3 + 35, 3, 2.0, 0.5);
+});
 
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
@@ -718,23 +751,45 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const coastE = 0.01 + (1 - coastBlend) * 0.02
       + sg(nfCoastEN, x, y) * 0.008;
 
-    const baseE = 0.02 + interior * 0.04;
-    const continentNoise = sg(nfContinent, x, y);
-    const highlandMask = smoothstep(continentNoise * 2 + 0.2);
-    const regionalE = highlandMask * 0.22 * interior;
+    // ── Multi-scale continental interior terrain ──
+    // Shield blocks: continent-scale elevated regions (African plateau, Canadian Shield)
+    const shieldVal = sg(nfShield, x, y);
+    const shieldE = smoothstep(shieldVal * 1.5 + 0.3) * 0.15 * interior;
 
-    const broadSwell = sg(nfBroadSwell, x, y) * 0.035;
-    const [rhx, rhy] = warp(nx, ny, 3, 2, 0.04, s2 + 10, s2 + 60);
-    const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.025;
-    const plateauBoost = Math.max(0, stampE) * 0.30 * interior;
+    // Basin: medium-scale depressions and swells
+    const basinVal = sg(nfBasin, x, y);
+    const basinE = basinVal * 0.06 * interior;
 
-    // Scale tectonic lift by coast distance so mountains ramp up inland,
-    // not spike at the coastline. Andes-style coastal mountains still
-    // rise steeply but start from a low coastal base, not full height at cd=0.
+    // Escarpment: sharp elevation breaks (Great Escarpment, Western Ghats)
+    // Only appears where shield transitions occur (gradient of shieldVal)
+    const escarpVal = sg(nfEscarpment, x, y);
+    const escarpE = escarpVal * 0.04 * interior * smoothstep(Math.abs(shieldVal) * 3);
+
+    // Medium terrain: rolling hills, ancient eroded ranges
+    const medTerrain = sg(nfMedTerrain, x, y) * 0.03 * interior;
+
+    // Fine local detail: small-scale undulation
+    const fineTerrain = sg(nfFineTerrain, x, y) * 0.015 * interior;
+
+    // Base elevation with multi-scale stacking
+    const baseE = 0.02 + interior * 0.03;
+    const plateauBoost = Math.max(0, stampE) * 0.25 * interior;
+    const cratonE = baseE + shieldE + basinE + escarpE + medTerrain
+      + fineTerrain + plateauBoost;
+
+    // ── Mountain-specific texture ──
+    // Ridgeline veining: sharp drainage-aligned ridges scaled by tectonic intensity
+    const mtnStr = smoothstep(tecLift * 2.5);
+    const ridgeVal = sg(nfMtnRidge, x, y);
+    const valleyVal = sg(nfMtnValley, x, y);
+    // Ridges push up, valleys carve down — amplitude scales with tectonic lift
+    const mtnTexture = (ridgeVal * 0.12 - (1 - valleyVal) * 0.05) * mtnStr;
+
+    // Scale tectonic lift by coast distance so mountains ramp up inland
     const tecCoastRamp = smoothstep(interior * 1.5);
-    const cratonE = baseE + regionalE + broadSwell + rolling + plateauBoost;
-    e = cratonE + tecLift * tecCoastRamp;
-    e += (broadSwell + rolling) * tecLift * tecCoastRamp * 5.0;
+    e = cratonE + tecLift * tecCoastRamp + mtnTexture * tecCoastRamp;
+    // Cross-term: terrain noise modulates mountain zones for more variation
+    e += (medTerrain + fineTerrain) * tecLift * tecCoastRamp * 4.0;
     e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
 
     e = Math.max(0, e);
@@ -742,8 +797,18 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     e = Math.max(0.002, Math.min(1.0, e));
   }
 
-  // Fine texture (high freq — must stay per-pixel, land only)
-  if (isLandArr[i]) e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.008;
+  // Per-pixel fine texture (land only) — adapts to terrain type
+  if (isLandArr[i] && e > 0) {
+    // High-frequency detail: stronger amplitude in high-elevation zones
+    const fineBase = fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4);
+    const elevBoost = Math.min(1, Math.max(0, e - 0.02) * 6);
+    e += fineBase * (0.004 + elevBoost * 0.012);
+    // Extra octave in mountain zones for sharp micro-ridges
+    if (e > 0.15) {
+      const microRidge = fbm(nx * 40 + s5 + 10, ny * 40 + s5 + 10, 2, 2.2, 0.45);
+      e += microRidge * 0.008 * Math.min(1, (e - 0.15) * 5);
+    }
+  }
 
   if (lat > 0.88) e -= (lat - 0.88) * 2;
 
