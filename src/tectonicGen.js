@@ -769,47 +769,49 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
 
     // ── Terrain-specific heightmap noise ──
-    // Classify terrain zone from tectonic context
-    const mtnStr = Math.min(1, tecLift * 3);           // 0=flat, 1=full mountain
-    const plateauStr = Math.min(1, broadVal * 4);       // broad uplift (Tibet-like)
-    const peakStr = Math.min(1, sharpVal * 5);          // sharp ridge proximity
-    const foothillStr = smoothstep(mtnStr * 2 - 0.15) * (1 - smoothstep(mtnStr * 2 - 0.7));
-    const lowlandStr = (1 - mtnStr) * (1 - coastBlend); // flat interior
+    // Classify terrain zone from tectonic context using smooth blending
+    // mtnStr: continuous 0-1, ramps in as tecLift increases
+    const mtnStr = smoothstep(tecLift * 2.5);
+    // plateauStr: broad uplift without sharp peaks (Tibet-like flats)
+    const plateauStr = smoothstep(broadVal * 3) * (1 - smoothstep(sharpVal * 8));
+    // ridgeStr: proximity to sharp tectonic ridgelines (for Himalaya veining)
+    // Uses mtnStr (overall mountain zone) not just sharpVal (too restrictive)
+    const ridgeStr = mtnStr;
+    // foothillStr: transition band between mountains and lowlands
+    const foothillStr2 = smoothstep(mtnStr * 3) * (1 - smoothstep(mtnStr * 3 - 1.5));
+    // lowlandStr: flat interior land, fades near coast AND near mountains
+    const lowlandStr = Math.max(0, (1 - mtnStr) * smoothstep(interior * 2));
 
     // Mountain noise: Himalaya-style ridging + veining
-    // Primary ridgeline: sharp, high-amplitude veining aligned with domain warp
     const ridge1 = sg(nfMtnRidge1, x, y);
-    // Secondary cross-cutting ridges at finer scale
     const ridge2 = sg(nfMtnRidge2, x, y);
     // Blend ridges: primary dominates, secondary adds cross-veins
-    const ridgeCombined = ridge1 * 0.7 + ridge2 * 0.3;
-    // Valley incision between ridges (Worley distance → V-shaped valleys)
+    const ridgeCombined = ridge1 * 0.65 + ridge2 * 0.35;
+    // Valley incision (Worley distance → V-shaped valleys)
     const valleyDepth = sg(nfMtnValley, x, y);
-    // Mountain heightmap: ridges push up, valleys carve down
-    const mtnNoise = (ridgeCombined * p('mtnRidgeStr', 0.06)
-      - (1 - valleyDepth) * p('mtnValleyStr', 0.025))
-      * peakStr;
-    // Broader mountain texture for areas near but not at ridgeline
-    const mtnBroadNoise = ridgeCombined * p('mtnRidgeBroadStr', 0.03)
-      * mtnStr * (1 - peakStr * 0.5);
+    // Ridge noise scales with elevation: taller mountains get more dramatic ridging
+    const ridgeScale = ridgeStr * (0.5 + Math.min(1, e * 4) * 0.5);
+    const mtnNoise = (ridgeCombined * p('mtnRidgeStr', 0.14)
+      - (1 - valleyDepth) * p('mtnValleyStr', 0.05))
+      * ridgeScale;
 
     // Plateau noise: flat-topped with incised canyon valleys
     const plateauIncise = sg(nfPlateauIncise, x, y);
-    // Invert ridged noise: high values become flat tops, zero-crossings become canyons
-    const plateauNoiseTex = (1 - plateauIncise) * p('plateauInciseStr', 0.02)
-      * plateauStr * (1 - peakStr);
+    // Invert: high ridged values = flat surface, low values = canyon cuts
+    const plateauNoiseTex = (1 - plateauIncise) * p('plateauInciseStr', 0.04)
+      * plateauStr;
 
     // Foothill noise: moderate undulation, rounder features
     const foothillNoise = sg(nfFoothillTex, x, y)
-      * p('foothillStr', 0.015) * foothillStr;
+      * p('foothillStr', 0.025) * foothillStr2;
 
     // Lowland noise: gentle, broad gradients (plains, river basins)
-    const lowBroad = sg(nfLowlandBroad, x, y) * p('lowlandBroadStr', 0.008);
-    const lowFine = sg(nfLowlandFine, x, y) * p('lowlandFineStr', 0.004);
-    const lowlandNoise = (lowBroad + lowFine) * lowlandStr * interior;
+    const lowBroad = sg(nfLowlandBroad, x, y) * p('lowlandBroadStr', 0.015);
+    const lowFine = sg(nfLowlandFine, x, y) * p('lowlandFineStr', 0.008);
+    const lowlandNoise = (lowBroad + lowFine) * lowlandStr;
 
-    // Composite terrain noise, each zone contributes proportionally
-    e += mtnNoise + mtnBroadNoise - plateauNoiseTex + foothillNoise + lowlandNoise;
+    // Composite: each zone contributes proportionally
+    e += mtnNoise - plateauNoiseTex + foothillNoise + lowlandNoise;
 
     e = Math.max(0, e);
     e = Math.pow(e, 1.08) * 1.1;
