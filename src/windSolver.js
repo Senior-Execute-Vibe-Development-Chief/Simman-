@@ -305,7 +305,54 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       }
     }
 
-    // (No divergence damping — convergence is preserved for mass-conservation boost)
+    // ── Solid wall boundary: land is a wall, wind can't flow through it ──
+    // For every land cell, zero out velocity component flowing into the terrain.
+    // The solver then has to route wind around. This runs EVERY iteration so
+    // PGF can never push wind through — the wall always wins.
+    if (_terrainDeflect > 0) {
+      for (let wy = 1; wy < wH - 1; wy++) {
+        for (let wx = 0; wx < wW; wx++) {
+          const i = wy * wW + wx;
+          const e = wElev[i];
+          if (e < 0.005) continue; // ocean cell, skip
+
+          // How solid is this cell (0-1). Low land = partial wall, mountains = full wall.
+          const solidity = Math.min(1, e * _terrainDeflect * 0.1);
+
+          // Compute terrain normal from elevation gradient
+          const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+          const gx = (wElev[wy * wW + wr] - wElev[wy * wW + wl]) * 0.5;
+          const gy = (wElev[(wy + 1) * wW + wx] - wElev[(wy - 1) * wW + wx]) * 0.5;
+          const gm = Math.sqrt(gx * gx + gy * gy);
+
+          let vx = windX[i], vy = windY[i];
+
+          if (gm > 1e-6) {
+            // Has a gradient: block into-terrain component, redirect along surface
+            const nx = gx / gm, ny = gy / gm;
+            const dot = vx * nx + vy * ny;
+            if (dot > 0) {
+              const block = dot * solidity;
+              vx -= block * nx;
+              vy -= block * ny;
+              // Redirect blocked energy along terrain contour
+              const tangX = -ny, tangY = nx;
+              const tangDot = vx * tangX + vy * tangY;
+              const redir = block * 0.7 * _coandaStr;
+              vx += (tangDot >= 0 ? 1 : -1) * tangX * redir;
+              vy += (tangDot >= 0 ? 1 : -1) * tangY * redir;
+            }
+          } else {
+            // Interior cell (flat, no gradient): just reduce speed by solidity
+            vx *= (1 - solidity * 0.5);
+            vy *= (1 - solidity * 0.5);
+          }
+
+          windX[i] = vx;
+          windY[i] = vy;
+        }
+      }
+    }
   }
 
   // ════════════════════════════════════════════════════════════════
