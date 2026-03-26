@@ -106,8 +106,8 @@ export const PARAMS = {
   wind: {
     label: "Wind & Pressure", color: "130,190,210",
     params: [
-      { key: "pressureScale", def: 1.0, min: 0.5, max: 10.0, label: "Pressure scale",
-        desc: "Controls the strength of temperature-driven pressure gradients. Directly scales overall wind speed. Higher = faster global winds." },
+      { key: "pressureScale", def: 0.3, min: 0.05, max: 3.0, label: "Pressure scale",
+        desc: "Strength of temperature-driven pressure gradients. This is the primary control for wind speed — higher pressure differences create faster wind. The physics (Coriolis, friction, terrain) handles the rest." },
       { key: "thermalContrast", def: 1.275, min: 0.0, max: 2.0, label: "Land-sea thermal contrast",
         desc: "How much land heats relative to ocean. Drives monsoon circulations and continental thermal lows. 0 = no land-sea difference. Higher = stronger monsoons and sea breezes." },
       { key: "hadleyStrength", def: 0.12, min: 0.0, max: 2.0, label: "Hadley cell strength",
@@ -132,10 +132,6 @@ export const PARAMS = {
         desc: "Venturi effect through mountain passes and valleys. Wind accelerates through narrow gaps between terrain. Higher = stronger acceleration in gaps." },
       { key: "eddyStrength", def: 0.019, min: 0.0, max: 0.06, label: "Eddy strength",
         desc: "Sub-grid mesoscale turbulence (curl noise). Ocean gets full value, land gets 50%. Adds realistic local variation." },
-      { key: "windScale", def: 0.295, min: 0.1, max: 4.0, label: "Wind speed scale",
-        desc: "Linear multiplier on final wind output. Scales all speeds equally without changing patterns." },
-      { key: "windContrast", def: 0.825, min: 0.3, max: 3.0, label: "Wind speed contrast",
-        desc: "Power curve exponent on wind magnitude. >1 = amplifies fast winds. <1 = more uniform speeds." },
       { key: "windSolverIter", def: 250, min: 8, max: 500, step: 1, label: "Solver iterations",
         desc: "Relaxation iterations for the momentum solver. More = closer to steady-state equilibrium but slower generation." },
     ]

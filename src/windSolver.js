@@ -17,7 +17,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const PI = Math.PI;
 
   // ── Tunable parameters ──
-  const _pressureScale   = p("pressureScale", 1.0);
+  const _pressureScale   = p("pressureScale", 0.3);
   const _thermalContrast = p("thermalContrast", 1.275);
   const _hadleyStr       = p("hadleyStrength", 0.12);
   const _coriolisStr     = p("coriolisStrength", 0.32);
@@ -26,8 +26,6 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _terrainDeflect  = p("terrainDeflect", 20.0);
   const _gapFunneling    = p("gapFunneling", 0.645);
   const _eddyStrength    = p("eddyStrength", 0.019);
-  const _windScale       = p("windScale", 0.295);
-  const _windContrast    = p("windContrast", 0.825);
   const _solverIter      = p("windSolverIter", 250);
   const _coandaRedirect  = p("coandaRedirect", 0.7);
   const _coandaPull      = p("coandaPull", 0.003);
@@ -424,25 +422,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 7: Post-processing
-  // ════════════════════════════════════════════════════════════════
-  if (_windScale !== 1.0 || _windContrast !== 1.0) {
-    for (let i = 0; i < N; i++) {
-      let vx = windX[i], vy = windY[i];
-      if (_windContrast !== 1.0) {
-        const mag = Math.sqrt(vx * vx + vy * vy);
-        if (mag > 1e-6) {
-          const s = Math.pow(mag, _windContrast) / mag;
-          vx *= s; vy *= s;
-        }
-      }
-      windX[i] = vx * _windScale;
-      windY[i] = vy * _windScale;
-    }
-  }
-
-  // ════════════════════════════════════════════════════════════════
-  // STEP 8: Bilinear upscale to full resolution
+  // STEP 7: Bilinear upscale to full resolution
   // ════════════════════════════════════════════════════════════════
   const fullWindX = new Float32Array(W * H);
   const fullWindY = new Float32Array(W * H);
