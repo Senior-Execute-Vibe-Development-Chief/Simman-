@@ -263,14 +263,6 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const dt = 0.35;
   const visc = 0.06;
 
-  // Pre-compute terrain normals (normalized elevation gradient = surface normal)
-  const normX = new Float32Array(N);
-  const normY = new Float32Array(N);
-  for (let i = 0; i < N; i++) {
-    const gm = Math.sqrt(gradX[i] * gradX[i] + gradY[i] * gradY[i]);
-    if (gm > 1e-6) { normX[i] = gradX[i] / gm; normY[i] = gradY[i] / gm; }
-  }
-
   for (let iter = 0; iter < _solverIter; iter++) {
 
     const tmpX = new Float32Array(windX);
@@ -304,62 +296,8 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         const lapX = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25 - tmpX[i];
         const lapY = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25 - tmpY[i];
 
-        let vx = tmpX[i] + dt * (pgfX + corX + drgX) + visc * lapX;
-        let vy = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
-
-        // ── Terrain deflection ──
-        // Applies at terrain cells AND at cells adjacent to terrain.
-        // Wind hitting terrain: remove into-terrain component, redirect along surface.
-        // Wind approaching terrain from nearby: start deflecting before contact.
-        // Single param controls everything — the physics is one process.
-        if (_terrainDeflect > 0) {
-          const eC = wElev[i];
-          // Find the highest neighboring elevation (for adjacent-cell deflection)
-          const eL = wElev[nl], eR = wElev[nr], eU = wElev[nu], eD = wElev[nd];
-          const maxNeighborElev = Math.max(eL, eR, eU, eD);
-          // Effective terrain height: this cell's own elevation, or nearby terrain
-          // if this cell is low but next to mountains (wind approaching coast)
-          const effectiveElev = Math.max(eC, maxNeighborElev * 0.6);
-
-          if (effectiveElev > 0.01) {
-            // Use the gradient of the effective terrain (including neighbors)
-            // For low cells near terrain, the gradient points toward the mountain
-            let tnx, tny;
-            if (eC > 0.01 && (normX[i] !== 0 || normY[i] !== 0)) {
-              tnx = normX[i]; tny = normY[i];
-            } else {
-              // Low cell: compute gradient toward highest neighbor
-              const gx2 = (eR - eL) * 0.5;
-              const gy2 = (eD - eU) * 0.5;
-              const gm2 = Math.sqrt(gx2 * gx2 + gy2 * gy2);
-              if (gm2 > 1e-6) { tnx = gx2 / gm2; tny = gy2 / gm2; }
-              else { tnx = 0; tny = 0; }
-            }
-
-            if (tnx !== 0 || tny !== 0) {
-              const dot = vx * tnx + vy * tny;
-              const speed = Math.sqrt(vx * vx + vy * vy);
-
-              if (dot > 0) {
-                // Wind flowing toward terrain — deflect and redirect along surface
-                const deflect = Math.min(1, effectiveElev * _terrainDeflect * 0.1 / Math.max(0.01, speed));
-                const rmX = dot * tnx * deflect;
-                const rmY = dot * tny * deflect;
-                vx -= rmX; vy -= rmY;
-
-                // Redirect blocked energy along terrain contour (tangent)
-                const tangX = -tny, tangY = tnx;
-                const tangDot = vx * tangX + vy * tangY;
-                const redirected = Math.sqrt(rmX * rmX + rmY * rmY) * 0.7;
-                vx += (tangDot >= 0 ? 1 : -1) * tangX * redirected;
-                vy += (tangDot >= 0 ? 1 : -1) * tangY * redirected;
-              }
-            }
-          }
-        }
-
-        windX[i] = vx;
-        windY[i] = vy;
+        windX[i] = tmpX[i] + dt * (pgfX + corX + drgX) + visc * lapX;
+        windY[i] = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
       }
     }
 
@@ -367,7 +305,80 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 5: Gap funneling (post-solve so it persists)
+  // STEP 5: Terrain deflection (post-solve, multi-pass)
+  // ════════════════════════════════════════════════════════════════
+  // Run AFTER the atmospheric solver so PGF can't override it.
+  // Multiple passes: each pass deflects at/near terrain, then smooths
+  // to propagate the deflection upstream. Like sculpting flow around rocks.
+  if (_terrainDeflect > 0) {
+    // Build a "terrain influence" field that extends beyond the terrain itself.
+    // Smooth the elevation so the deflection zone extends several cells out.
+    const terrainInfluence = smoothField(wElev, wW, wH, 3, 3);
+
+    const deflectPasses = 20;
+    for (let pass = 0; pass < deflectPasses; pass++) {
+      for (let wy = 1; wy < wH - 1; wy++) {
+        for (let wx = 0; wx < wW; wx++) {
+          const i = wy * wW + wx;
+          const ti = terrainInfluence[i];
+          if (ti < 0.005) continue;
+
+          const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+          // Gradient of the smoothed terrain influence (points uphill)
+          const gx = (terrainInfluence[wy * wW + wr] - terrainInfluence[wy * wW + wl]) * 0.5;
+          const gy = (terrainInfluence[(wy + 1) * wW + wx] - terrainInfluence[(wy - 1) * wW + wx]) * 0.5;
+          const gm = Math.sqrt(gx * gx + gy * gy);
+          if (gm < 1e-6) continue;
+
+          const nx = gx / gm, ny = gy / gm;
+          let vx = windX[i], vy = windY[i];
+          const dot = vx * nx + vy * ny;
+
+          if (dot > 0) {
+            const speed = Math.sqrt(vx * vx + vy * vy);
+            // deflect: stronger for tall terrain, slow wind, head-on approach
+            const deflect = Math.min(1, ti * _terrainDeflect * 0.12 / Math.max(0.01, speed));
+            const rmX = dot * nx * deflect;
+            const rmY = dot * ny * deflect;
+            vx -= rmX; vy -= rmY;
+
+            // Redirect 70% of blocked energy along terrain contour
+            const tangX = -ny, tangY = nx;
+            const tangDot = vx * tangX + vy * tangY;
+            const redir = Math.sqrt(rmX * rmX + rmY * rmY) * 0.7;
+            vx += (tangDot >= 0 ? 1 : -1) * tangX * redir;
+            vy += (tangDot >= 0 ? 1 : -1) * tangY * redir;
+
+            windX[i] = vx;
+            windY[i] = vy;
+          }
+        }
+      }
+
+      // Light smoothing between passes to propagate deflection upstream
+      if (pass < deflectPasses - 1 && pass % 2 === 0) {
+        const tmpWx = new Float32Array(windX);
+        const tmpWy = new Float32Array(windY);
+        const blend = 0.15; // subtle: 15% neighbor average, 85% current
+        for (let wy = 1; wy < wH - 1; wy++) {
+          for (let wx = 0; wx < wW; wx++) {
+            const i2 = wy * wW + wx;
+            if (terrainInfluence[i2] < 0.002) continue; // only smooth near terrain
+            const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+            const avgX = (tmpWx[wy * wW + wl2] + tmpWx[wy * wW + wr2]
+                        + tmpWx[(wy - 1) * wW + wx] + tmpWx[(wy + 1) * wW + wx]) * 0.25;
+            const avgY = (tmpWy[wy * wW + wl2] + tmpWy[wy * wW + wr2]
+                        + tmpWy[(wy - 1) * wW + wx] + tmpWy[(wy + 1) * wW + wx]) * 0.25;
+            windX[i2] = tmpWx[i2] * (1 - blend) + avgX * blend;
+            windY[i2] = tmpWy[i2] * (1 - blend) + avgY * blend;
+          }
+        }
+      }
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // STEP 6: Gap funneling (post-solve so it persists)
   // ════════════════════════════════════════════════════════════════
   // Wind accelerates through valleys/gaps between high terrain (Venturi)
   if (_gapFunneling > 0) {
