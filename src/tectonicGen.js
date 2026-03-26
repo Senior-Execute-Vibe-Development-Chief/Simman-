@@ -815,7 +815,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     let ddx = 0, ddy = 0, speed = 1, water = 1, sed = 0;
     for (let step = 0; step < maxLife; step++) {
       const cx = Math.floor(px), cy = Math.floor(py);
-      if (!eLand[cy * eW + ((cx % eW + eW) % eW)]) break;
+      if (!eLand[cy * eW + ((cx % eW + eW) % eW)]) break; // drop reached ocean, sediment lost to sea
       const oldH = eSample(px, py);
 
       const [gx, gy] = eGrad(px, py);
@@ -867,8 +867,21 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const px = Math.min(W - 1, ex * EG), py = Math.min(H - 1, ey * EG);
     eDelta[ei] = eElev[ei] - elevation[py * W + px]; // change caused by erosion
   }
-  // Zero out delta on ocean coarse cells so bilinear doesn't bleed into ocean
-  for (let ei = 0; ei < eN; ei++) if (!eLand[ei]) eDelta[ei] = 0;
+  // Zero out delta on ocean cells; clamp delta to non-positive on coastal land
+  // cells (prevents sediment deposition rim at coastlines)
+  for (let ey = 0; ey < eH; ey++) for (let ex = 0; ex < eW; ex++) {
+    const ei = ey * eW + ex;
+    if (!eLand[ei]) { eDelta[ei] = 0; continue; }
+    // Check if any neighbor is ocean → this is a coastal cell
+    let coastal = false;
+    for (let dy = -1; dy <= 1 && !coastal; dy++) for (let dx = -1; dx <= 1 && !coastal; dx++) {
+      if (!dx && !dy) continue;
+      const ny2 = ey + dy, nx2 = ((ex + dx) % eW + eW) % eW;
+      if (ny2 < 0 || ny2 >= eH) continue;
+      if (!eLand[ny2 * eW + nx2]) coastal = true;
+    }
+    if (coastal) eDelta[ei] = Math.min(0, eDelta[ei]); // only allow erosion at coast
+  }
   const eDAt = (gx, gy) => eDelta[Math.max(0, Math.min(eH-1, gy)) * eW + ((gx % eW) + eW) % eW];
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = y * W + x;
