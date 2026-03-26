@@ -178,20 +178,6 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     }
   }
 
-  // ── E) Orographic pressure (terrain deflection) ──
-  // Mountains act as high-pressure barriers. Wind flows around them
-  // like water around rocks. _terrainDeflect controls the strength.
-  // This is the physically correct way to make terrain steer wind:
-  // elevated terrain creates a pressure dome that the solver routes around.
-  if (_terrainDeflect > 0) {
-    // Smooth elevation slightly so pressure gradients aren't too spiky
-    const smoothElev = smoothField(wElev, wW, wH, 1, 2);
-    const oroScale = _terrainDeflect * 0.5 * _pressureScale;
-    for (let i = 0; i < N; i++) {
-      pressure[i] += smoothElev[i] * oroScale;
-    }
-  }
-
   // Smooth pressure (gentle, preserve structure)
   const smoothP = smoothField(pressure, wW, wH, 2, 2);
   for (let i = 0; i < N; i++) pressure[i] = smoothP[i];
@@ -211,7 +197,21 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 4: Wind solver
+  // STEP 4: Terrain gradients (for Froude blocking)
+  // ════════════════════════════════════════════════════════════════
+  const gradX = new Float32Array(N);
+  const gradY = new Float32Array(N);
+  for (let wy = 1; wy < wH - 1; wy++) {
+    for (let wx = 0; wx < wW; wx++) {
+      const i = wy * wW + wx;
+      const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+      gradX[i] = (wElev[wy * wW + wr] - wElev[wy * wW + wl]) * 0.5;
+      gradY[i] = (wElev[(wy + 1) * wW + wx] - wElev[(wy - 1) * wW + wx]) * 0.5;
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // STEP 5: Wind solver
   // ════════════════════════════════════════════════════════════════
   const windX = new Float32Array(N);
   const windY = new Float32Array(N);
@@ -297,6 +297,60 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
 
         windX[i] = tmpX[i] + dt * (pgfX + corX + drgX) + visc * lapX;
         windY[i] = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
+      }
+    }
+
+    // ── Froude terrain blocking (hard constraint, applied AFTER momentum) ──
+    // Like a solid wall: wind hitting terrain gets its into-terrain component
+    // removed and redirected around. Applied after PGF so it can't be overridden.
+    // Fr = speed / (N*h): fast wind (high Fr) flows over, slow wind (low Fr) deflects.
+    if (_terrainDeflect > 0) {
+      const froudeScale = _terrainDeflect * 0.4;
+      for (let wy = 1; wy < wH - 1; wy++) {
+        for (let wx = 0; wx < wW; wx++) {
+          const i = wy * wW + wx;
+          const eC = wElev[i];
+          if (eC < 0.02) continue;
+
+          let vx = windX[i], vy = windY[i];
+          const speed = Math.sqrt(vx * vx + vy * vy);
+          if (speed < 1e-6) continue;
+
+          // Froude number: high speed = flows over, low speed = blocked
+          const Fr = speed / (eC * froudeScale);
+          // blockFrac: 0 = no blocking (fast wind), 1 = full blocking (slow wind)
+          const blockFrac = Math.max(0, Math.min(0.95, 1 - Fr));
+          if (blockFrac < 0.01) continue;
+
+          const gx = gradX[i], gy = gradY[i];
+          const gm2 = gx * gx + gy * gy;
+
+          if (gm2 > 1e-8) {
+            // Wind component flowing INTO the terrain gradient
+            const dot = vx * gx + vy * gy;
+            if (dot > 0) {
+              // Remove the into-terrain component (proportional to blockFrac)
+              const rmX = blockFrac * dot * gx / gm2;
+              const rmY = blockFrac * dot * gy / gm2;
+              vx -= rmX; vy -= rmY;
+
+              // Redirect blocked energy perpendicular (flow around, like water)
+              const gm = Math.sqrt(gm2);
+              const perpX = -gy / gm, perpY = gx / gm;
+              const tang = vx * perpX + vy * perpY;
+              const redir = Math.sqrt(rmX * rmX + rmY * rmY) * 0.7;
+              vx += (tang >= 0 ? 1 : -1) * perpX * redir;
+              vy += (tang >= 0 ? 1 : -1) * perpY * redir;
+            }
+          } else {
+            // Flat-top terrain (no gradient): just slow down
+            vx *= (1 - blockFrac * 0.5);
+            vy *= (1 - blockFrac * 0.5);
+          }
+
+          windX[i] = vx;
+          windY[i] = vy;
+        }
       }
     }
 
