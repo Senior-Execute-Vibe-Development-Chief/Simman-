@@ -1209,12 +1209,13 @@ for (let step = 0; step < 40; step++) {
       // Ocean: recharge moisture
       mGrid[my * mW + mx] = Math.max(prev[my * mW + mx], 0.75);
     } else {
-      // Land: carry upwind moisture, terrain blocks — sharper decay for contrast
+      // Land: carry upwind moisture, terrain blocks
       const terrainBlock = Math.min(0.9, Math.max(0, e2 - 0.03) * 4);
       // Orographic lift: dump extra moisture on windward slopes
       const windSpeed = Math.sqrt(wx2 * wx2 + wy2 * wy2);
-      const lift = Math.min(0.20, e2 * windSpeed * 0.6);
-      const carried = upwind * (1 - terrainBlock * 0.4) * 0.93 - lift;
+      const lift = Math.min(0.18, e2 * windSpeed * 0.5);
+      // Slower decay lets moisture penetrate further inland
+      const carried = upwind * (1 - terrainBlock * 0.35) * 0.95 - lift;
       mGrid[my * mW + mx] = Math.max(0, carried);
     }
   }
@@ -1263,11 +1264,15 @@ for (let step = 0; step < 25; step++) {
     const localT = Math.max(0, Math.min(1, 1 - lat2 * 1.05 - Math.max(0, e2) * 0.4));
     if (e2 <= 0) {
       // Ocean: high thermal inertia, mostly local temp with slight wind influence
-      tGrid[my * mW + mx] = localT * 0.85 + upwindT * 0.15;
+      tGrid[my * mW + mx] = localT * 0.88 + upwindT * 0.12;
     } else {
-      // Land: lower thermal inertia, wind carries heat more effectively
+      // Land: wind carries heat — warming penetrates easier than cooling
+      // (warm air masses are more persistent than cold outbreaks)
       const terrainBlock = Math.min(0.8, Math.max(0, e2 - 0.05) * 3);
-      const windInf = (1 - terrainBlock * 0.5) * 0.3;
+      const baseInf = (1 - terrainBlock * 0.5) * 0.22;
+      // Warm bias: upwind warmer than local → stronger influence
+      const warmBias = upwindT > localT ? 1.3 : 0.8;
+      const windInf = Math.min(0.35, baseInf * warmBias);
       tGrid[my * mW + mx] = localT * (1 - windInf) + upwindT * windInf;
     }
   }
@@ -1298,10 +1303,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   // Pull extreme temps toward 0.45 (ocean moderating effect)
   const modTemp = baseTemp + (0.45 - baseTemp) * coastProx * 0.2;
   // Blend latitude-based temperature with wind-advected temperature.
-  // Wind transport carries warmth from equatorial regions poleward (westerlies)
-  // and cold air equatorward (easterlies/polar outbreaks).
+  // Wind transport carries warmth poleward (westerlies) and cold equatorward.
+  // Kept moderate (25%) to avoid false tundra at mid-latitudes from cold intrusions.
   const wt = windTemp[i];
-  const temp = modTemp * 0.6 + wt * 0.4;
+  const temp = modTemp * 0.75 + wt * 0.25;
   temperature[i] = Math.max(0, Math.min(1, temp));
 
   if (e <= 0) {
@@ -1322,6 +1327,12 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     // This breaks banding — wind creates asymmetric wet/dry patterns from terrain interaction.
     const wm = windMoisture[i];
     let m = wm * 0.65 + climateMoist * 0.35;
+    // Tropical moisture floor: ITCZ convection guarantees minimum moisture near equator
+    // regardless of wind patterns — prevents false deserts at the equator
+    if (lat < 0.2) {
+      const tropFloor = 0.35 * (1 - lat * 5);  // 0.35 at equator, fades by lat 0.2
+      m = Math.max(m, tropFloor);
+    }
     // Orographic lift: windward slopes get extra precipitation
     if (e > 0.1 && wm > 0.35) m += Math.min(0.12, (e - 0.1) * wm * 0.5);
     // Cold current moisture suppression: equatorward coastal winds = upwelling = dry
