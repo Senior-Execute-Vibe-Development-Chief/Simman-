@@ -19,17 +19,17 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // ── Tunable parameters ──
   const _pressureScale   = p("pressureScale", 1.0);
   const _thermalContrast = p("thermalContrast", 1.275);
-  const _hadleyStr       = p("hadleyStrength", 0.26);
+  const _hadleyStr       = p("hadleyStrength", 0.12);
   const _coriolisStr     = p("coriolisStrength", 0.32);
   const _oceanDrag       = p("oceanDrag", 0.04);
-  const _landDrag        = p("landDrag", 0.80);
-  const _terrainDeflect  = p("terrainDeflect", 15.0);
-  const _gapFunneling    = p("gapFunneling", 0.0);
-  const _eddyStrength    = p("eddyStrength", 0.04);
-  const _windScale       = p("windScale", 0.3);
+  const _landDrag        = p("landDrag", 1.901);
+  const _terrainDeflect  = p("terrainDeflect", 20.0);
+  const _gapFunneling    = p("gapFunneling", 0.645);
+  const _eddyStrength    = p("eddyStrength", 0.019);
+  const _windScale       = p("windScale", 0.295);
   const _windContrast    = p("windContrast", 0.825);
-  const _solverIter      = p("windSolverIter", 248);
-  const _itczOffset      = p("itczOffset", 0.03);
+  const _solverIter      = p("windSolverIter", 250);
+  const _itczOffset      = p("itczOffset", 0.033);
   const _monsoonStr      = p("monsoonStrength", 0.0);
 
   // ── Coarse grid (4x downscale) ──
@@ -178,6 +178,20 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     }
   }
 
+  // ── E) Orographic pressure (terrain deflection) ──
+  // Mountains act as high-pressure barriers. Wind flows around them
+  // like water around rocks. _terrainDeflect controls the strength.
+  // This is the physically correct way to make terrain steer wind:
+  // elevated terrain creates a pressure dome that the solver routes around.
+  if (_terrainDeflect > 0) {
+    // Smooth elevation slightly so pressure gradients aren't too spiky
+    const smoothElev = smoothField(wElev, wW, wH, 1, 2);
+    const oroScale = _terrainDeflect * 0.5 * _pressureScale;
+    for (let i = 0; i < N; i++) {
+      pressure[i] += smoothElev[i] * oroScale;
+    }
+  }
+
   // Smooth pressure (gentle, preserve structure)
   const smoothP = smoothField(pressure, wW, wH, 2, 2);
   for (let i = 0; i < N; i++) pressure[i] = smoothP[i];
@@ -197,21 +211,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 4: Terrain analysis
-  // ════════════════════════════════════════════════════════════════
-  const gradX = new Float32Array(N);
-  const gradY = new Float32Array(N);
-  for (let wy = 1; wy < wH - 1; wy++) {
-    for (let wx = 0; wx < wW; wx++) {
-      const i = wy * wW + wx;
-      const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-      gradX[i] = (wElev[wy * wW + wr] - wElev[wy * wW + wl]) * 0.5;
-      gradY[i] = (wElev[(wy + 1) * wW + wx] - wElev[(wy - 1) * wW + wx]) * 0.5;
-    }
-  }
-
-  // ════════════════════════════════════════════════════════════════
-  // STEP 5: Wind solver
+  // STEP 4: Wind solver
   // ════════════════════════════════════════════════════════════════
   const windX = new Float32Array(N);
   const windY = new Float32Array(N);
@@ -295,66 +295,8 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         const lapX = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25 - tmpX[i];
         const lapY = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25 - tmpY[i];
 
-        let vx = tmpX[i] + dt * (pgfX + corX + drgX) + visc * lapX;
-        let vy = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
-
-        // ── Terrain deflection ──
-        // _terrainDeflect controls both the elevation threshold and blocking strength.
-        // 0 = no deflection. ~5 = only big mountains. ~15 = moderate hills. ~20 = gentle terrain.
-        const eC = wElev[i];
-        const deflectThreshold = Math.max(0.005, 0.4 - _terrainDeflect * 0.02);
-        if (_terrainDeflect > 0 && eC > deflectThreshold) {
-          const speed = Math.sqrt(vx * vx + vy * vy);
-          if (speed > 1e-6) {
-            const effectiveHeight = eC - deflectThreshold;
-            const froudeScale = _terrainDeflect * 0.6;
-            const Fr = speed / Math.max(0.001, effectiveHeight * froudeScale);
-            const blockFrac = Math.max(0, Math.min(0.9, 1 - Fr));
-
-            if (blockFrac > 0.02) {
-              const gx = gradX[i], gy = gradY[i];
-              const gm2 = gx * gx + gy * gy;
-
-              if (gm2 > 1e-8) {
-                const gm = Math.sqrt(gm2);
-                const dot = vx * gx + vy * gy;
-                if (dot > 0) {
-                  const rmX = blockFrac * dot * gx / gm2;
-                  const rmY = blockFrac * dot * gy / gm2;
-                  vx -= rmX; vy -= rmY;
-
-                  // Redirect around terrain
-                  const perpX = -gy / gm, perpY = gx / gm;
-                  const tang = vx * perpX + vy * perpY;
-                  const redir = Math.sqrt(rmX * rmX + rmY * rmY) * 0.55;
-                  vx += (tang >= 0 ? 1 : -1) * perpX * redir;
-                  vy += (tang >= 0 ? 1 : -1) * perpY * redir;
-                }
-              } else {
-                vx *= (1 - blockFrac * 0.4);
-                vy *= (1 - blockFrac * 0.4);
-              }
-            }
-
-            // Gap funneling: low point between high neighbors
-            if (_gapFunneling > 0 && eC < 0.15) {
-              // Check if neighbors are significantly higher
-              const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
-              const eL = wElev[wy * wW + wl2], eR = wElev[wy * wW + wr2];
-              const eU = wy > 0 ? wElev[(wy - 1) * wW + wx] : 0;
-              const eD = wy < wH - 1 ? wElev[(wy + 1) * wW + wx] : 0;
-              const maxNeighbor = Math.max(eL, eR, eU, eD);
-              if (maxNeighbor > eC + 0.1) {
-                const funnelFactor = 1 + Math.min(0.6, (maxNeighbor - eC) * 2) * _gapFunneling;
-                vx *= funnelFactor;
-                vy *= funnelFactor;
-              }
-            }
-          }
-        }
-
-        windX[i] = vx;
-        windY[i] = vy;
+        windX[i] = tmpX[i] + dt * (pgfX + corX + drgX) + visc * lapX;
+        windY[i] = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
       }
     }
 
@@ -376,6 +318,30 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
           const wr = (wx + 1) % wW, wl = (wx - 1 + wW) % wW;
           windX[i] -= dampStr * (div[wy * wW + wr] - div[wy * wW + wl]) * 0.5;
           windY[i] -= dampStr * (div[(wy + 1) * wW + wx] - div[(wy - 1) * wW + wx]) * 0.5;
+        }
+      }
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // STEP 5: Gap funneling (post-solve so it persists)
+  // ════════════════════════════════════════════════════════════════
+  // Wind accelerates through valleys/gaps between high terrain (Venturi)
+  if (_gapFunneling > 0) {
+    for (let wy = 1; wy < wH - 1; wy++) {
+      for (let wx = 0; wx < wW; wx++) {
+        const i = wy * wW + wx;
+        const eC = wElev[i];
+        if (eC < 0.15 && eC > 0.001) {
+          const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+          const eL = wElev[wy * wW + wl], eR = wElev[wy * wW + wr];
+          const eU = wElev[(wy - 1) * wW + wx], eD = wElev[(wy + 1) * wW + wx];
+          const maxN = Math.max(eL, eR, eU, eD);
+          if (maxN > eC + 0.08) {
+            const factor = 1 + Math.min(0.8, (maxN - eC) * 3) * _gapFunneling;
+            windX[i] *= factor;
+            windY[i] *= factor;
+          }
         }
       }
     }
