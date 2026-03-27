@@ -535,7 +535,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   if (_terrainDeflect > 0) {
     const terrainInfluence = smoothField(wElev, wW, wH, 3, 3);
 
-    const deflectPasses = 40;
+    const deflectPasses = 80;
     for (let pass = 0; pass < deflectPasses; pass++) {
       for (let wy = 1; wy < wH - 1; wy++) {
         for (let wx = 0; wx < wW; wx++) {
@@ -575,7 +575,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       if (pass < deflectPasses - 1 && pass % 2 === 0) {
         const tmpWx = new Float32Array(windX);
         const tmpWy = new Float32Array(windY);
-        const blend = 0.15;
+        const blend = 0.25;
         for (let wy = 1; wy < wH - 1; wy++) {
           for (let wx = 0; wx < wW; wx++) {
             const i2 = wy * wW + wx;
