@@ -321,10 +321,13 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       }
     }
 
-    // ── Pressure projection: enforce mass continuity ──
-    // Run every 10th iteration to avoid over-correction.
-    // Uses a gentle correction factor (0.3) to prevent oscillation.
-    if (iter % 10 === 9) {
+    // ── Pressure-velocity feedback: enforce mass continuity ──
+    // Run every 5th iteration. Two effects:
+    // 1. Velocity correction (projection) — removes divergence from wind
+    // 2. Pressure feedback — convergence raises pressure, divergence lowers it
+    //    This creates the feedback loop that makes cyclones intensify:
+    //    convergence → higher pressure → steeper gradient → faster wind → more convergence
+    if (iter % 5 === 4) {
       const div = new Float32Array(N);
       for (let wy = 1; wy < wH - 1; wy++) {
         for (let wx = 0; wx < wW; wx++) {
@@ -336,6 +339,15 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         }
       }
 
+      // Feed divergence back into the driving pressure field.
+      // Convergence (div < 0) raises pressure, divergence (div > 0) lowers it.
+      // This accumulates over iterations, building up realistic pressure patterns.
+      const pressureFeedback = 0.08;
+      for (let i2 = 0; i2 < N; i2++) {
+        pressure[i2] -= div[i2] * pressureFeedback;
+      }
+
+      // Solve Poisson for velocity correction
       const pCorr = new Float32Array(N);
       const omega = 1.4;
       for (let pIter = 0; pIter < 20; pIter++) {
@@ -354,8 +366,8 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         }
       }
 
-      // Gentle correction (30% strength to prevent oscillation)
-      const corrStr = 0.3;
+      // Velocity correction (gentle to prevent oscillation)
+      const corrStr = 0.2;
       for (let wy = 1; wy < wH - 1; wy++) {
         for (let wx = 0; wx < wW; wx++) {
           const i2 = wy * wW + wx;
