@@ -41,7 +41,8 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const N = wW * wH;
 
   // ── Sample elevation onto coarse grid (average, not point-sample) ──
-  const wElev = new Float32Array(N);
+  const wElevRaw = new Float32Array(N); // true elevation (for land mask, drag, temperature)
+  const wElev = new Float32Array(N);    // altitude-adjusted (for deflection/blocking only)
   for (let wy = 0; wy < wH; wy++) {
     for (let wx = 0; wx < wW; wx++) {
       let sum = 0, cnt = 0;
@@ -53,13 +54,15 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
           cnt++;
         }
       }
-      wElev[wy * wW + wx] = Math.max(0, sum / cnt - _windAltitude);
+      const raw = sum / cnt;
+      wElevRaw[wy * wW + wx] = raw;
+      wElev[wy * wW + wx] = Math.max(0, raw - _windAltitude);
     }
   }
 
-  // ── Land mask and smoothed land fraction ──
+  // ── Land mask and smoothed land fraction (uses RAW elevation, not altitude-adjusted) ──
   const landMask = new Float32Array(N);
-  for (let i = 0; i < N; i++) landMask[i] = wElev[i] > 0.005 ? 1 : 0;
+  for (let i = 0; i < N; i++) landMask[i] = wElevRaw[i] > 0.005 ? 1 : 0;
 
   // Continental-scale land fraction (large blur for thermal effects)
   const landFrac = smoothField(landMask, wW, wH, 4, 5);
@@ -79,7 +82,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
 
     for (let wx = 0; wx < wW; wx++) {
       const i = wy * wW + wx;
-      const e = wElev[i];
+      const e = wElevRaw[i]; // temperature uses real elevation for lapse rate
       const lf = landFrac[i];
 
       let T = latTemp;
@@ -117,7 +120,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // Sea-level-equivalent temperature for pressure computation
   // (removes lapse rate cooling so mountains don't get artificial low/high pressure)
   const seaLevelTemp = new Float32Array(N);
-  for (let i = 0; i < N; i++) seaLevelTemp[i] = temperature[i] + wElev[i] * 0.65;
+  for (let i = 0; i < N; i++) seaLevelTemp[i] = temperature[i] + wElevRaw[i] * 0.65;
 
   // Zonal mean of sea-level temperature for anomaly computation
   const zonalMeanT = new Float32Array(wH);
@@ -130,7 +133,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // Ocean basin detection: find connected ocean regions for gyre placement
   // Simplified: use longitude sectors weighted by ocean fraction
   const oceanFrac = new Float32Array(N);
-  for (let i = 0; i < N; i++) oceanFrac[i] = wElev[i] <= 0.005 ? 1 : 0;
+  for (let i = 0; i < N; i++) oceanFrac[i] = wElevRaw[i] <= 0.005 ? 1 : 0;
   const oceanFracSmooth = smoothField(oceanFrac, wW, wH, 3, 4);
 
   for (let wy = 0; wy < wH; wy++) {
@@ -406,7 +409,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     for (let wx = 0; wx < wW; wx++) {
       const i = wy * wW + wx;
       const nx = wx / wW, ny = wy / wH;
-      const isLand = wElev[i] > 0.005;
+      const isLand = wElevRaw[i] > 0.005;
       const amp = (isLand ? _landEddyStr : _eddyStrength) * latFactor;
 
       // Large-scale eddies (synoptic-ish, ~1000km)
