@@ -141,7 +141,7 @@ export const PARAMS = {
         desc: "Surface drag over ocean. Sets the cross-isobar angle (~15° at default). Higher = wind crosses isobars more, slower flow." },
       { key: "landDrag", def: 0.568, min: 0.02, max: 5.0, label: "Land friction",
         desc: "Surface drag over land. Mountains get extra drag automatically scaled by elevation. Higher = weaker winds over all land." },
-      { key: "terrainDeflect", def: 0.0, min: 0.0, max: 80.0, label: "Terrain deflection",
+      { key: "terrainDeflect", def: 25.0, min: 0.0, max: 80.0, label: "Terrain deflection",
         desc: "How much terrain deflects wind. Affects wind ON terrain and APPROACHING terrain from nearby ocean/lowland. Head-on + slow = strong deflection. Glancing + fast = passes through. Blocked energy redirects along the surface (Coanda wrapping). Like water flowing around rocks." },
       { key: "coandaStrength", def: 3.0, min: 0.0, max: 3.0, label: "Coanda strength",
         desc: "Overall strength of terrain wind interaction — how much wind gets blocked and redirected around terrain. 0 = terrain is invisible. 1 = realistic. >1 = exaggerated deflection and wrapping." },

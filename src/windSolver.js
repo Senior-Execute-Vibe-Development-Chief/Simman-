@@ -23,7 +23,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _coriolisStr     = p("coriolisStrength", 0.365);
   const _oceanDrag       = p("oceanDrag", 0.018);
   const _landDrag        = p("landDrag", 0.568);
-  const _terrainDeflect  = p("terrainDeflect", 0.0);
+  const _terrainDeflect  = p("terrainDeflect", 25.0);
   const _gapFunneling    = p("gapFunneling", 0.66);
   const _eddyStrength    = p("eddyStrength", 0.006);
   const _solverIter      = p("windSolverIter", 500);
