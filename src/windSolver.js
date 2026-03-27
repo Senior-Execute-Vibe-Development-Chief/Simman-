@@ -533,7 +533,11 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // because those steps add noise and amplification that would drown out
   // the careful directional changes from terrain blocking.
   if (_terrainDeflect > 0) {
-    const terrainInfluence = smoothField(wElev, wW, wH, 3, 3);
+    // Light smooth (1 pass, radius 1) to remove pixel-scale noise but
+    // preserve actual mountain positions. Previous 3-pass radius-3 blur
+    // smeared mountains ~36 pixels in all directions, making the deflection
+    // field barely resemble actual terrain.
+    const terrainInfluence = smoothField(wElev, wW, wH, 1, 1);
 
     const deflectPasses = 80;
     for (let pass = 0; pass < deflectPasses; pass++) {
