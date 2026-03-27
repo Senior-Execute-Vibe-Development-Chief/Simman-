@@ -298,27 +298,33 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         const drgX = -kf * tmpX[i];
         const drgY = -kf * tmpY[i];
 
-        // Diffusion
+        // Diffusion — suppressed on elevated land (terrain blocks momentum transfer)
+        const elev = wElev[i];
+        const viscLocal = elev > 0.005 ? visc * Math.max(0, 1 - elev * 4) : visc;
         const lapX = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25 - tmpX[i];
         const lapY = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25 - tmpY[i];
 
-        windX[i] = tmpX[i] + dt * (pgfX + corX + drgX) + visc * lapX;
-        windY[i] = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
+        windX[i] = tmpX[i] + dt * (pgfX + corX + drgX) + viscLocal * lapX;
+        windY[i] = tmpY[i] + dt * (pgfY + corY + drgY) + viscLocal * lapY;
       }
     }
 
-    // ── Mountain wall: high terrain kills wind every iteration ──
-    // Mountains are impenetrable walls. Instead of partial blocking,
-    // simply scale wind down by (1 - solidity) each iteration.
-    // PGF and diffusion can't rebuild wind through a cell that gets
-    // zeroed every step. Low terrain keeps partial wind (land breeze).
+    // ── Terrain wall: ALL elevation blocks wind proportionally ──
+    // Every land cell with elevation reduces wind based on its height.
+    // Low plains (e=0.03) get mild reduction, mountains (e=0.5) get near-zero.
+    // This is physically correct: wind must go OVER or AROUND terrain,
+    // and surface wind at elevation is always weaker than at sea level.
     for (let wy = 1; wy < wH - 1; wy++) {
       for (let wx = 0; wx < wW; wx++) {
         const i = wy * wW + wx;
         const e = wElev[i];
-        if (e < 0.005) continue;
-        // solidity: 0 for low coast, 1 for mountains
-        const solidity = Math.min(1, e * _terrainDeflect * 0.15);
+        if (e < 0.003) continue;
+        // Continuous blocking: scales smoothly from 0 (ocean) to 1 (high mountain)
+        // e=0.03 (~265m): solidity ≈ 0.11 → keeps 89% of wind
+        // e=0.10 (~885m): solidity ≈ 0.34 → keeps 66% of wind
+        // e=0.25 (~2200m): solidity ≈ 0.73 → keeps 27% of wind
+        // e=0.50 (~4400m): solidity ≈ 1.0  → near zero wind
+        const solidity = Math.min(1, e * _terrainDeflect * 0.08);
         windX[i] *= (1 - solidity);
         windY[i] *= (1 - solidity);
       }
