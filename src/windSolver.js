@@ -113,11 +113,16 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   //   C) Synoptic-scale baroclinic waves (mid-latitude storms)
   const pressure = new Float32Array(N);
 
-  // Zonal mean temperature for anomaly computation
+  // Sea-level-equivalent temperature for pressure computation
+  // (removes lapse rate cooling so mountains don't get artificial low/high pressure)
+  const seaLevelTemp = new Float32Array(N);
+  for (let i = 0; i < N; i++) seaLevelTemp[i] = temperature[i] + wElev[i] * 0.65;
+
+  // Zonal mean of sea-level temperature for anomaly computation
   const zonalMeanT = new Float32Array(wH);
   for (let wy = 0; wy < wH; wy++) {
     let sum = 0;
-    for (let wx = 0; wx < wW; wx++) sum += temperature[wy * wW + wx];
+    for (let wx = 0; wx < wW; wx++) sum += seaLevelTemp[wy * wW + wx];
     zonalMeanT[wy] = sum / wW;
   }
 
@@ -165,20 +170,13 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       const oceanHighBoost = oceanFracSmooth[i] * subtropWeight * 0.35 * _hadleyStr;
 
       // ── C) Continental thermal anomaly ──
-      // Warm continents → low pressure (thermal low, draws air onshore)
-      // This is the monsoon driver
-      // Thermal anomaly: deviation from zonal mean drives monsoon-like flows
-      // This emerges naturally from thermalContrast — warm continents create
-      // low pressure that draws in ocean air. No separate multiplier needed.
-      const thermalAnomaly = -(temperature[i] - zonalMeanT[wy]);
+      // Warm land → low pressure (thermal low, draws air onshore = monsoons)
+      // Uses sea-level temperature so elevation doesn't create false pressure
+      const slt = seaLevelTemp[i];
+      const thermalAnomaly = -(slt - zonalMeanT[wy]);
 
-      // Base meridional pressure from surface temperature
-      // Use temperature WITHOUT lapse rate cooling for pressure computation.
-      // Lapse rate makes mountains cold, but cold dense air = HIGH surface
-      // pressure (katabatic winds flow downslope), not low pressure.
-      // Add the lapse cooling back to get the "sea-level equivalent" temperature.
-      const seaLevelT = temperature[i] + wElev[i] * 0.65;
-      const meridionalP = -seaLevelT * _pressureScale;
+      // Base meridional pressure from sea-level temperature
+      const meridionalP = -slt * _pressureScale;
 
       // ── D) Synoptic noise: larger scale for realistic weather patterns ──
       // Two scales: large (basin-scale highs/lows) and medium (storm-scale)
