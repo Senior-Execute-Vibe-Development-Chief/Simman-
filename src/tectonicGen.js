@@ -748,8 +748,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const tecStr = Math.min(1, tecLift * 2);
     const coastBlend = Math.max(rawCoastBlend * 0.3, rawCoastBlend * (1 - tecStr * 0.6));
 
-    const coastE = 0.01 + (1 - coastBlend) * 0.02
-      + sg(nfCoastEN, x, y) * 0.008;
+    const coastE = 0.015 + (1 - coastBlend) * 0.03
+      + sg(nfCoastEN, x, y) * 0.01;
 
     // ── Multi-scale continental interior terrain ──
     // tecZone: how much this pixel is in a tectonic mountain zone (0=craton, 1=mountains)
@@ -761,26 +761,27 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 
     // Shield blocks: continent-scale elevated regions — suppressed where plates collide
     const shieldVal = sg(nfShield, x, y);
-    const shieldE = smoothstep(shieldVal * 1.5 + 0.1) * 0.05 * interior * cratonZone;
+    const shieldE = smoothstep(shieldVal * 1.5 + 0.1) * 0.10 * interior * cratonZone;
 
     // Basin: medium-scale depressions and swells — only in stable interiors
     const basinVal = sg(nfBasin, x, y);
-    const basinE = basinVal * 0.02 * interior * cratonZone;
+    const basinE = basinVal * 0.04 * interior * cratonZone;
 
     // Escarpment: sharp elevation breaks — at shield edges in stable interiors
     const escarpVal = sg(nfEscarpment, x, y);
-    const escarpE = escarpVal * 0.015 * interior * cratonZone
+    const escarpE = escarpVal * 0.03 * interior * cratonZone
       * smoothstep(Math.abs(shieldVal) * 3);
 
     // Medium terrain: rolling hills — present everywhere but louder on plateaus
-    const medTerrain = sg(nfMedTerrain, x, y) * (0.012 + plateauZone * 0.02) * interior;
+    const medTerrain = sg(nfMedTerrain, x, y) * (0.02 + plateauZone * 0.03) * interior;
 
     // Fine local detail: small-scale undulation — present everywhere
-    const fineTerrain = sg(nfFineTerrain, x, y) * 0.008 * interior;
+    const fineTerrain = sg(nfFineTerrain, x, y) * 0.015 * interior;
 
-    // Base elevation with multi-scale stacking
-    const baseE = 0.015 + interior * 0.02;
-    const plateauBoost = Math.max(0, stampE) * 0.15 * interior;
+    // Base elevation: Earth average continental interior is ~340m.
+    // With 1.0 = 8849m, that's 0.038. Coast starts low, ramps to ~0.04-0.06.
+    const baseE = 0.025 + interior * 0.04;
+    const plateauBoost = Math.max(0, stampE) * 0.20 * interior;
     const cratonE = baseE + shieldE + basinE + escarpE + medTerrain
       + fineTerrain + plateauBoost;
 
