@@ -266,13 +266,6 @@ export function solveWindParticle(W, H, elevation, fbm, params = {}, noiseSeed =
         vy *= 0.05;
       }
 
-      // Speed cap — prevents runaway acceleration
-      const spd = Math.sqrt(vx * vx + vy * vy);
-      if (spd > 0.3) {
-        const sc = 0.3 / spd;
-        vx *= sc; vy *= sc;
-      }
-
       // Move particle (wrap X, clamp Y)
       px = ((px + vx * particleDt) % wW + wW) % wW;
       py = Math.max(1, Math.min(wH - 2, py + vy * particleDt));
