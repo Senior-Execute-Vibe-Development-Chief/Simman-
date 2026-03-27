@@ -841,13 +841,13 @@ if (p('erodeDropsPerPixel', 1.5) > 0) {
     eLand[ey * eW + ex] = v > 0 ? 1 : 0;
   }
 
-  const dropCount = Math.round(eN * p('erodeDropsPerPixel', 1.5));
+  const dropCount = Math.round(eN * p('erodeDropsPerPixel', 1.0));
   const maxLife = 30;
   const inertia = p('erodeInertia', 0.3);
-  const cap = p('erodeCapacity', 8.0);
+  const cap = p('erodeCapacity', 4.0);
   const minSlope = 0.005;
-  const depositRate = p('erodeDeposit', 0.2);
-  const erodeRate = p('erodeRate', 0.3);
+  const depositRate = p('erodeDeposit', 0.3);
+  const erodeRate = p('erodeRate', 0.15);
   const evapRate = p('erodeEvaporate', 0.02);
   const grav = p('erodeGravity', 6.0);
   const brushR = p('erodeBrushRadius', 2);
@@ -954,10 +954,21 @@ if (p('erodeDropsPerPixel', 1.5) > 0) {
     }
     if (coastal) eDelta[ei] = Math.min(0, eDelta[ei]); // only allow erosion at coast
   }
+  // Clamp delta magnitude so erosion reshapes but doesn't flatten.
+  // Max erosion = 30% of original elevation at that cell. This preserves
+  // the overall height distribution while carving realistic detail.
+  for (let ey = 0; ey < eH; ey++) for (let ex = 0; ex < eW; ex++) {
+    const ei = ey * eW + ex;
+    if (!eLand[ei]) continue;
+    const px = Math.min(W - 1, ex * EG), py = Math.min(H - 1, ey * EG);
+    const origE = elevation[py * W + px];
+    const maxDrop = origE * 0.3;
+    eDelta[ei] = Math.max(-maxDrop, eDelta[ei]);
+  }
   const eDAt = (gx, gy) => eDelta[Math.max(0, Math.min(eH-1, gy)) * eW + ((gx % eW) + eW) % eW];
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = y * W + x;
-    if (!isLandArr[i]) continue; // use original land mask, not elevation threshold
+    if (!isLandArr[i]) continue;
     const fx = x / EG, fy = y / EG;
     const ix = Math.min(eW - 2, fx | 0), iy = Math.min(eH - 2, fy | 0);
     const dx2 = fx - ix, dy2 = fy - iy;
