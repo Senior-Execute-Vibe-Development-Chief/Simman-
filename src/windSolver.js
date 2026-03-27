@@ -533,23 +533,17 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // because those steps add noise and amplification that would drown out
   // the careful directional changes from terrain blocking.
   if (_terrainDeflect > 0) {
-    // Light smooth (1 pass, radius 1) to remove pixel-scale noise but
-    // preserve actual mountain positions. Previous 3-pass radius-3 blur
-    // smeared mountains ~36 pixels in all directions, making the deflection
-    // field barely resemble actual terrain.
-    const terrainInfluence = smoothField(wElev, wW, wH, 1, 1);
-
     const deflectPasses = 80;
     for (let pass = 0; pass < deflectPasses; pass++) {
       for (let wy = 1; wy < wH - 1; wy++) {
         for (let wx = 0; wx < wW; wx++) {
           const i = wy * wW + wx;
-          const ti = terrainInfluence[i];
+          const ti = wElev[i];
           if (ti < 0.005) continue;
 
           const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-          const gx = (terrainInfluence[wy * wW + wr] - terrainInfluence[wy * wW + wl]) * 0.5;
-          const gy = (terrainInfluence[(wy + 1) * wW + wx] - terrainInfluence[(wy - 1) * wW + wx]) * 0.5;
+          const gx = (wElev[wy * wW + wr] - wElev[wy * wW + wl]) * 0.5;
+          const gy = (wElev[(wy + 1) * wW + wx] - wElev[(wy - 1) * wW + wx]) * 0.5;
           const gm = Math.sqrt(gx * gx + gy * gy);
           if (gm < 1e-6) continue;
 
@@ -583,7 +577,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         for (let wy = 1; wy < wH - 1; wy++) {
           for (let wx = 0; wx < wW; wx++) {
             const i2 = wy * wW + wx;
-            if (terrainInfluence[i2] < 0.002) continue;
+            if (wElev[i2] < 0.002) continue;
             const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
             const avgX = (tmpWx[wy * wW + wl2] + tmpWx[wy * wW + wr2]
                         + tmpWx[(wy - 1) * wW + wx] + tmpWx[(wy + 1) * wW + wx]) * 0.25;
