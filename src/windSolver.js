@@ -17,22 +17,22 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const PI = Math.PI;
 
   // ── Tunable parameters ──
-  const _pressureScale   = p("pressureScale", 0.139);
-  const _thermalContrast = p("thermalContrast", 0.82);
-  const _hadleyStr       = p("hadleyStrength", 0.06);
+  const _pressureScale   = p("pressureScale", 0.817);
+  const _thermalContrast = p("thermalContrast", 0.62);
+  const _hadleyStr       = p("hadleyStrength", 0.08);
   const _coriolisStr     = p("coriolisStrength", 0.365);
   const _oceanDrag       = p("oceanDrag", 0.018);
-  const _landDrag        = p("landDrag", 0.06);
-  const _absorption      = p("absorption", 0.5);
-  const _deflection      = p("deflection", 25.0);
-  const _windAltitude    = p("windAltitude", 0.02);
-  const _gapFunneling    = p("gapFunneling", 0.66);
-  const _eddyStrength    = p("eddyStrength", 0.006);
-  const _landEddyStr     = p("landEddyStrength", 0.002);
+  const _landDrag        = p("landDrag", 0.102);
+  const _absorption      = p("absorption", 0.23);
+  const _deflection      = p("deflection", 80.0);
+  const _windAltitude    = p("windAltitude", 0.045);
+  const _gapFunneling    = p("gapFunneling", 0.0);
+  const _eddyStrength    = p("eddyStrength", 0.01);
+  const _landEddyStr     = p("landEddyStrength", 0.0);
   const _solverIter      = p("windSolverIter", 500);
-  const _gustThreshold   = p("gustThreshold", 0.055);
-  const _gustBoost       = p("gustBoost", 3.6);
-  const _curlBoost       = p("curlBoost", 2.4);
+  const _gustThreshold   = p("gustThreshold", 0.095);
+  const _gustBoost       = p("gustBoost", 0.45);
+  const _curlBoost       = p("curlBoost", 0.0);
   const _itczOffset      = p("itczOffset", 0.033);
 
   // ── Coarse grid (4x downscale) ──
