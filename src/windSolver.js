@@ -415,80 +415,6 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 6: Terrain deflection (post-solve, multi-pass)
-  // ════════════════════════════════════════════════════════════════
-  // Run AFTER the atmospheric solver so PGF can't override it.
-  // Multiple passes: each pass deflects at/near terrain, then smooths
-  // to propagate the deflection upstream. Like sculpting flow around rocks.
-  if (_terrainDeflect > 0) {
-    // Build a "terrain influence" field that extends beyond the terrain itself.
-    // Smooth the elevation so the deflection zone extends several cells out.
-    const terrainInfluence = smoothField(wElev, wW, wH, 3, 3);
-
-    const deflectPasses = 40;
-    for (let pass = 0; pass < deflectPasses; pass++) {
-      for (let wy = 1; wy < wH - 1; wy++) {
-        for (let wx = 0; wx < wW; wx++) {
-          const i = wy * wW + wx;
-          const ti = terrainInfluence[i];
-          if (ti < 0.005) continue;
-
-          const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-          // Gradient of the smoothed terrain influence (points uphill)
-          const gx = (terrainInfluence[wy * wW + wr] - terrainInfluence[wy * wW + wl]) * 0.5;
-          const gy = (terrainInfluence[(wy + 1) * wW + wx] - terrainInfluence[(wy - 1) * wW + wx]) * 0.5;
-          const gm = Math.sqrt(gx * gx + gy * gy);
-          if (gm < 1e-6) continue;
-
-          const nx = gx / gm, ny = gy / gm;
-          let vx = windX[i], vy = windY[i];
-          const dot = vx * nx + vy * ny;
-
-          if (dot > 0) {
-            const speed = Math.sqrt(vx * vx + vy * vy);
-            // coandaStr controls the whole terrain interaction:
-            // blocking strength AND redirect amount
-            const deflect = Math.min(1, ti * _terrainDeflect * 0.12 * _coandaStr / Math.max(0.01, speed));
-            const rmX = dot * nx * deflect;
-            const rmY = dot * ny * deflect;
-            vx -= rmX; vy -= rmY;
-
-            // Redirect blocked energy along terrain contour (70% of blocked)
-            const tangX = -ny, tangY = nx;
-            const tangDot = vx * tangX + vy * tangY;
-            const redir = Math.sqrt(rmX * rmX + rmY * rmY) * 0.7;
-            vx += (tangDot >= 0 ? 1 : -1) * tangX * redir;
-            vy += (tangDot >= 0 ? 1 : -1) * tangY * redir;
-
-            windX[i] = vx;
-            windY[i] = vy;
-          }
-        }
-      }
-
-      // Light smoothing between passes to propagate deflection upstream
-      if (pass < deflectPasses - 1 && pass % 2 === 0) {
-        const tmpWx = new Float32Array(windX);
-        const tmpWy = new Float32Array(windY);
-        const blend = 0.15; // subtle: 15% neighbor average, 85% current
-        for (let wy = 1; wy < wH - 1; wy++) {
-          for (let wx = 0; wx < wW; wx++) {
-            const i2 = wy * wW + wx;
-            if (terrainInfluence[i2] < 0.002) continue; // only smooth near terrain
-            const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
-            const avgX = (tmpWx[wy * wW + wl2] + tmpWx[wy * wW + wr2]
-                        + tmpWx[(wy - 1) * wW + wx] + tmpWx[(wy + 1) * wW + wx]) * 0.25;
-            const avgY = (tmpWy[wy * wW + wl2] + tmpWy[wy * wW + wr2]
-                        + tmpWy[(wy - 1) * wW + wx] + tmpWy[(wy + 1) * wW + wx]) * 0.25;
-            windX[i2] = tmpWx[i2] * (1 - blend) + avgX * blend;
-            windY[i2] = tmpWy[i2] * (1 - blend) + avgY * blend;
-          }
-        }
-      }
-    }
-  }
-
-  // ════════════════════════════════════════════════════════════════
   // STEP 6: Gap funneling (post-solve so it persists)
   // ════════════════════════════════════════════════════════════════
   // Wind accelerates through valleys/gaps between high terrain (Venturi)
@@ -601,7 +527,74 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 10: Bilinear upscale to full resolution
+  // FINAL: Terrain deflection (runs LAST so nothing overwrites it)
+  // ════════════════════════════════════════════════════════════════
+  // Must run after all other post-processing (eddies, gusts, curl boost)
+  // because those steps add noise and amplification that would drown out
+  // the careful directional changes from terrain blocking.
+  if (_terrainDeflect > 0) {
+    const terrainInfluence = smoothField(wElev, wW, wH, 3, 3);
+
+    const deflectPasses = 40;
+    for (let pass = 0; pass < deflectPasses; pass++) {
+      for (let wy = 1; wy < wH - 1; wy++) {
+        for (let wx = 0; wx < wW; wx++) {
+          const i = wy * wW + wx;
+          const ti = terrainInfluence[i];
+          if (ti < 0.005) continue;
+
+          const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+          const gx = (terrainInfluence[wy * wW + wr] - terrainInfluence[wy * wW + wl]) * 0.5;
+          const gy = (terrainInfluence[(wy + 1) * wW + wx] - terrainInfluence[(wy - 1) * wW + wx]) * 0.5;
+          const gm = Math.sqrt(gx * gx + gy * gy);
+          if (gm < 1e-6) continue;
+
+          const nx = gx / gm, ny = gy / gm;
+          let vx = windX[i], vy = windY[i];
+          const dot = vx * nx + vy * ny;
+
+          if (dot > 0) {
+            const speed = Math.sqrt(vx * vx + vy * vy);
+            const deflect = Math.min(1, ti * _terrainDeflect * 0.12 * _coandaStr / Math.max(0.01, speed));
+            const rmX = dot * nx * deflect;
+            const rmY = dot * ny * deflect;
+            vx -= rmX; vy -= rmY;
+
+            const tangX = -ny, tangY = nx;
+            const tangDot = vx * tangX + vy * tangY;
+            const redir = Math.sqrt(rmX * rmX + rmY * rmY) * 0.7;
+            vx += (tangDot >= 0 ? 1 : -1) * tangX * redir;
+            vy += (tangDot >= 0 ? 1 : -1) * tangY * redir;
+
+            windX[i] = vx;
+            windY[i] = vy;
+          }
+        }
+      }
+
+      if (pass < deflectPasses - 1 && pass % 2 === 0) {
+        const tmpWx = new Float32Array(windX);
+        const tmpWy = new Float32Array(windY);
+        const blend = 0.15;
+        for (let wy = 1; wy < wH - 1; wy++) {
+          for (let wx = 0; wx < wW; wx++) {
+            const i2 = wy * wW + wx;
+            if (terrainInfluence[i2] < 0.002) continue;
+            const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+            const avgX = (tmpWx[wy * wW + wl2] + tmpWx[wy * wW + wr2]
+                        + tmpWx[(wy - 1) * wW + wx] + tmpWx[(wy + 1) * wW + wx]) * 0.25;
+            const avgY = (tmpWy[wy * wW + wl2] + tmpWy[wy * wW + wr2]
+                        + tmpWy[(wy - 1) * wW + wx] + tmpWy[(wy + 1) * wW + wx]) * 0.25;
+            windX[i2] = tmpWx[i2] * (1 - blend) + avgX * blend;
+            windY[i2] = tmpWy[i2] * (1 - blend) + avgY * blend;
+          }
+        }
+      }
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // Bilinear upscale to full resolution
   // ════════════════════════════════════════════════════════════════
   const fullWindX = new Float32Array(W * H);
   const fullWindY = new Float32Array(W * H);
