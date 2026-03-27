@@ -196,7 +196,9 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       drag[i] = _oceanDrag;
     } else {
       // Land drag + extra friction scaled by elevation for mountains
-      drag[i] = _landDrag + _landDrag * Math.min(1, e * 2) * 0.5;
+      // High terrain gets very high drag to prevent PGF pushing wind through
+      const mtnFactor = Math.min(1, e * 3);
+      drag[i] = _landDrag + _landDrag * mtnFactor * 3.0;
     }
   }
 
@@ -423,7 +425,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     // Smooth the elevation so the deflection zone extends several cells out.
     const terrainInfluence = smoothField(wElev, wW, wH, 3, 3);
 
-    const deflectPasses = 20;
+    const deflectPasses = 40;
     for (let pass = 0; pass < deflectPasses; pass++) {
       for (let wy = 1; wy < wH - 1; wy++) {
         for (let wx = 0; wx < wW; wx++) {
