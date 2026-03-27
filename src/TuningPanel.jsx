@@ -19,12 +19,10 @@ function renderPreview(canvas, world, pw, ph, viewMode, depthGamma) {
       if (e < eMin) eMin = e; if (e > eMax) eMax = e;
     }
     const floor = fromSea ? 0 : eMin;
-    const range = eMax - floor || 1;
-    const gamma = depthGamma || 0.45;
+    const range = (eMax - floor || 1) * (depthGamma || 1.0);
     for (let i = 0; i < N; i++) {
       const e = world.elevation[i];
-      const t = Math.min(1, Math.max(0, (e - floor) / range));
-      const v = Math.min(255, (Math.pow(t, gamma) * 255)) | 0;
+      const v = Math.min(255, Math.max(0, ((e - floor) / range) * 255)) | 0;
       d[i * 4] = v; d[i * 4 + 1] = v; d[i * 4 + 2] = v; d[i * 4 + 3] = 255;
     }
   } else {

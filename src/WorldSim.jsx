@@ -837,7 +837,7 @@ const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState(null);
 const[oceanLevel,setOceanLevel]=useState(0.78);
 const[depthFromSea,setDepthFromSea]=useState(false);
-const[depthGamma,setDepthGamma]=useState(0.45);
+const[depthCeil,setDepthCeil]=useState(1.0);
 const[showPlates,setShowPlates]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
 const[showRivers,setShowRivers]=useState(true);
@@ -849,7 +849,7 @@ const[mapCount,setMapCount]=useState(1);
 const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
-const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthGammaRef=useRef(0.45);const showPlatesRef=useRef(false);
+const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);
 const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
 const showRiversRef=useRef(true);
 // Cache terrain RGB to avoid recomputing every frame
@@ -939,13 +939,13 @@ const e=w.elevation[si];if(e<eMin)eMin=e;if(e>eMax)eMax=e;}
 // Sea mode: floor is 0 (sea level), all ocean = black
 // Floor mode: floor is actual minimum, deepest trench = black
 const floor=depthFromSeaRef.current?0:eMin;
-const range=eMax-floor||1;
-const gamma=depthGammaRef.current;
+const fullRange=eMax-floor||1;
+const ceil=depthCeilRef.current;
+const range=fullRange*ceil||1;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
 const e=w.elevation[si];
-const t=Math.min(1,Math.max(0,(e-floor)/range));
-const v=Math.min(255,(Math.pow(t,gamma)*255))|0;
+const v=Math.min(255,Math.max(0,((e-floor)/range)*255))|0;
 const pi4=ti<<2;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=v;d[pi4+3]=255;}
 }else if(vm==="wind"){
 // Wind view — speed heatmap everywhere (land + ocean), like Windy.com
@@ -1179,7 +1179,7 @@ if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-seri
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthGammaRef.current=depthGamma;showPlatesRef.current=showPlates;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthGamma,showPlates]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -1388,10 +1388,11 @@ color:viewMode===k?"#c9b87a":"#5a5448",padding:"6px 14px",fontSize:13}}>{label}<
 style={{...bs,background:depthFromSea?"rgba(80,140,200,0.25)":"transparent",border:"none",
 color:depthFromSea?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>{depthFromSea?"Sea":"Floor"}</button>
 <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"#8a8070",marginLeft:4}}>
-<span>Contrast</span>
-<input type="range" min="0.1" max="1.0" step="0.05" value={depthGamma}
-onChange={e=>{const v=parseFloat(e.target.value);setDepthGamma(v);depthGammaRef.current=v;}}
+<span>Range</span>
+<input type="range" min="0.05" max="1.0" step="0.05" value={depthCeil}
+onChange={e=>{const v=parseFloat(e.target.value);setDepthCeil(v);depthCeilRef.current=v;}}
 style={{width:80,accentColor:"#8a8070"}}/>
+<span>{Math.round(depthCeil*100)}%</span>
 </span></>}
 {world&&world.pixPlate&&<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
 style={{...bs,background:showPlates?"rgba(200,80,60,0.25)":"transparent",border:"none",
