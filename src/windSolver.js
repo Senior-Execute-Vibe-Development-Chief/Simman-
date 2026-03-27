@@ -25,6 +25,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _landDrag        = p("landDrag", 0.06);
   const _absorption      = p("absorption", 0.5);
   const _deflection      = p("deflection", 25.0);
+  const _windAltitude    = p("windAltitude", 0.02);
   const _gapFunneling    = p("gapFunneling", 0.66);
   const _eddyStrength    = p("eddyStrength", 0.006);
   const _landEddyStr     = p("landEddyStrength", 0.002);
@@ -52,7 +53,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
           cnt++;
         }
       }
-      wElev[wy * wW + wx] = sum / cnt;
+      wElev[wy * wW + wx] = Math.max(0, sum / cnt - _windAltitude);
     }
   }
 
