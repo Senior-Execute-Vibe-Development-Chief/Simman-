@@ -407,9 +407,8 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     for (let wx = 0; wx < wW; wx++) {
       const i = wy * wW + wx;
       const nx = wx / wW, ny = wy / wH;
-      const isOcean = wElev[i] <= 0.005;
-      const baseAmp = isOcean ? _eddyStrength : _eddyStrength * 0.5;
-      const amp = baseAmp * latFactor;
+      if (wElev[i] > 0.005) continue; // no eddy noise on land
+      const amp = _eddyStrength * latFactor;
 
       // Large-scale eddies (synoptic-ish, ~1000km)
       const eps = 0.003;
