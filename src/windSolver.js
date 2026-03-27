@@ -436,6 +436,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // e.g. threshold=0.15, boost=0.3: wind at 0.25 → excess=0.10 → 0.25 + 0.10*0.3 = 0.28
   if (_gustBoost > 0 && _gustThreshold > 0) {
     for (let i = 0; i < N; i++) {
+      if (wElev[i] > 0.02) continue; // no gust boost on elevated terrain
       const vx = windX[i], vy = windY[i];
       const speed = Math.sqrt(vx * vx + vy * vy);
       if (speed > _gustThreshold) {
@@ -470,11 +471,10 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     for (let wy = 1; wy < wH - 1; wy++) {
       for (let wx = 0; wx < wW; wx++) {
         const i = wy * wW + wx;
+        if (wElev[i] > 0.02) continue; // no curl boost on elevated terrain
         const speed = Math.sqrt(windX[i] * windX[i] + windY[i] * windY[i]);
         if (speed < 1e-6) continue;
-        // Normalize curl by speed to get rotation rate
         const normCurl = smoothCurl[i] / speed;
-        // Boost proportional to rotation intensity
         const boost = 1 + normCurl * _curlBoost * 5.0;
         const factor = Math.min(3.0, boost);
         windX[i] *= factor;
