@@ -343,8 +343,9 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     for (let wx = 0; wx < wW; wx++) {
       const i = wy * wW + wx;
       const nx = wx / wW, ny = wy / wH;
-      if (wElev[i] > 0.005) continue; // no eddy noise on land
-      const amp = _eddyStrength * latFactor;
+      // Eddies on ocean at full strength, on land at 50% (land boundary layer is turbulent)
+      const landAtten = wElev[i] > 0.005 ? 0.5 : 1.0;
+      const amp = _eddyStrength * latFactor * landAtten;
 
       // Large-scale eddies (synoptic-ish, ~1000km)
       const eps = 0.003;
@@ -371,7 +372,6 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // e.g. threshold=0.15, boost=0.3: wind at 0.25 → excess=0.10 → 0.25 + 0.10*0.3 = 0.28
   if (_gustBoost > 0 && _gustThreshold > 0) {
     for (let i = 0; i < N; i++) {
-      if (wElev[i] > 0.02) continue; // no gust boost on elevated terrain
       const vx = windX[i], vy = windY[i];
       const speed = Math.sqrt(vx * vx + vy * vy);
       if (speed > _gustThreshold) {
@@ -406,7 +406,6 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     for (let wy = 1; wy < wH - 1; wy++) {
       for (let wx = 0; wx < wW; wx++) {
         const i = wy * wW + wx;
-        if (wElev[i] > 0.02) continue; // no curl boost on elevated terrain
         const speed = Math.sqrt(windX[i] * windX[i] + windY[i] * windY[i]);
         if (speed < 1e-6) continue;
         const normCurl = smoothCurl[i] / speed;
