@@ -473,10 +473,11 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         if (speed < 1e-6) continue;
         const normCurl = smoothCurl[i] / speed;
         // Only boost above threshold — weak rotation is not a cyclone
+        // normCurl typical range: 0.01-0.5
         if (normCurl < _curlThreshold) continue;
         const excess = normCurl - _curlThreshold;
-        const boost = 1 + excess * _curlBoost * 5.0;
-        const factor = Math.min(3.0, boost);
+        const boost = 1 + excess * _curlBoost;
+        const factor = Math.min(2.0, boost);
         windX[i] *= factor;
         windY[i] *= factor;
       }
