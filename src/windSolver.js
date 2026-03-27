@@ -187,18 +187,43 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   for (let i = 0; i < N; i++) pressure[i] = smoothP[i];
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 3: Drag field (surface friction)
+  // STEP 3: Unified terrain wind interaction
   // ════════════════════════════════════════════════════════════════
+  // Compute per-cell: drag (friction), diffusion scale, and per-iteration
+  // damping factor. All derived from elevation so terrain affects wind
+  // through one coherent system.
+  //
+  // "retention" = what fraction of wind survives after all solver iterations.
+  //   ocean:        1.0 (no extra damping beyond ocean drag)
+  //   low plains:   0.7-0.9 (gentle slowing)
+  //   hills:        0.3-0.5 (significant blocking)
+  //   mountains:    0.0-0.05 (near-impenetrable wall)
+  //
+  // Per-iteration factor = retention^(1/iterations) so the compound
+  // effect over all iterations gives exactly the target retention.
   const drag = new Float32Array(N);
+  const terrainDamp = new Float32Array(N); // per-iteration multiplier
+  const viscScale = new Float32Array(N);   // diffusion multiplier (0-1)
   for (let i = 0; i < N; i++) {
     const e = wElev[i];
     if (e <= 0.005) {
       drag[i] = _oceanDrag;
+      terrainDamp[i] = 1.0;
+      viscScale[i] = 1.0;
     } else {
-      // Land drag + extra friction scaled by elevation for mountains
-      // High terrain gets very high drag to prevent PGF pushing wind through
-      const mtnFactor = Math.min(1, e * 3);
-      drag[i] = _landDrag + _landDrag * mtnFactor * 3.0;
+      // Drag: base land friction + elevation-scaled extra
+      drag[i] = _landDrag + _landDrag * Math.min(1, e * 3) * 1.5;
+
+      // Target retention after all iterations:
+      // Maps elevation through terrainDeflect to a 0-1 retention.
+      // At terrainDeflect=25: e=0.03→0.85, e=0.10→0.45, e=0.25→0.02, e=0.50→0.0
+      const blockStr = Math.min(1, e * _terrainDeflect * 0.08);
+      const retention = Math.max(0.001, 1 - blockStr);
+      // Per-iteration factor: retention = factor^iters → factor = retention^(1/iters)
+      terrainDamp[i] = Math.pow(retention, 1 / _solverIter);
+
+      // Diffusion: fully suppressed above e=0.20, proportional below
+      viscScale[i] = Math.max(0, 1 - e * 5);
     }
   }
 
@@ -298,34 +323,18 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         const drgX = -kf * tmpX[i];
         const drgY = -kf * tmpY[i];
 
-        // Diffusion — suppressed on elevated land (terrain blocks momentum transfer)
-        const elev = wElev[i];
-        const viscLocal = elev > 0.005 ? visc * Math.max(0, 1 - elev * 4) : visc;
+        // Diffusion — scaled by precomputed viscScale (suppressed on elevated land)
+        const viscLocal = visc * viscScale[i];
         const lapX = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25 - tmpX[i];
         const lapY = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25 - tmpY[i];
 
         windX[i] = tmpX[i] + dt * (pgfX + corX + drgX) + viscLocal * lapX;
         windY[i] = tmpY[i] + dt * (pgfY + corY + drgY) + viscLocal * lapY;
-      }
-    }
 
-    // ── Terrain wall: high terrain blocks wind each iteration ──
-    // Only significantly blocks elevated terrain (hills/mountains).
-    // Low plains get very mild reduction per step so wind can cross them.
-    // The solver's drag field already slows wind on all land.
-    for (let wy = 1; wy < wH - 1; wy++) {
-      for (let wx = 0; wx < wW; wx++) {
-        const i = wy * wW + wx;
-        const e = wElev[i];
-        if (e < 0.08) continue; // skip low terrain — drag handles it
-        // Only block terrain above ~700m. Runs per-iteration so must be mild:
-        // e=0.10 (885m):  solidity ≈ 0.02 → keeps 98%/iter, ~0.00004 after 500 → dead ✓
-        // e=0.08 (700m):  solidity ≈ 0.00 → no blocking, just drag
-        // This threshold means lowlands get normal wind (just friction),
-        // while mountains are impenetrable walls.
-        const solidity = Math.min(0.15, (e - 0.08) * _terrainDeflect * 0.04);
-        windX[i] *= (1 - solidity);
-        windY[i] *= (1 - solidity);
+        // Terrain damping — precomputed factor gives exact target retention
+        // after all iterations. No threshold, no cap — just multiply.
+        windX[i] *= terrainDamp[i];
+        windY[i] *= terrainDamp[i];
       }
     }
   }
