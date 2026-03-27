@@ -27,6 +27,7 @@ export function solveWindParticle(W, H, elevation, fbm, params = {}, noiseSeed =
   const _itczOffset      = p("itczOffset", 0.033);
   const _eddyStrength    = p("eddyStrength", 0.006);
   const _landEddyStr     = p("landEddyStrength", 0.002);
+  const _windAltitude    = p("windAltitude", 0.02);
 
   const particleCount    = p("particleCount", 80000);
   const particleSteps    = p("particleSteps", 120);
@@ -38,7 +39,8 @@ export function solveWindParticle(W, H, elevation, fbm, params = {}, noiseSeed =
   const N = wW * wH;
 
   // ── Sample elevation onto coarse grid ──
-  const wElev = new Float32Array(N);
+  const wElevRaw = new Float32Array(N); // true elevation (for land mask, drag, temperature)
+  const wElev = new Float32Array(N);    // altitude-adjusted (for deflection/blocking only)
   for (let wy = 0; wy < wH; wy++) {
     for (let wx = 0; wx < wW; wx++) {
       let sum = 0, cnt = 0;
@@ -50,13 +52,15 @@ export function solveWindParticle(W, H, elevation, fbm, params = {}, noiseSeed =
           cnt++;
         }
       }
-      wElev[wy * wW + wx] = sum / cnt;
+      const raw = sum / cnt;
+      wElevRaw[wy * wW + wx] = raw;
+      wElev[wy * wW + wx] = Math.max(0, raw - _windAltitude);
     }
   }
 
   // ── Land mask and fractions ──
   const landMask = new Float32Array(N);
-  for (let i = 0; i < N; i++) landMask[i] = wElev[i] > 0.005 ? 1 : 0;
+  for (let i = 0; i < N; i++) landMask[i] = wElevRaw[i] > 0.005 ? 1 : 0;
   const landFrac = smoothField(landMask, wW, wH, 4, 5);
 
   // ══════════════════════════════════════════════════════════════
@@ -73,7 +77,7 @@ export function solveWindParticle(W, H, elevation, fbm, params = {}, noiseSeed =
 
     for (let wx = 0; wx < wW; wx++) {
       const i = wy * wW + wx;
-      const e = wElev[i];
+      const e = wElevRaw[i]; // use real elevation for temperature
       const lf = landFrac[i];
       let T = latTemp;
       const subtropFactor = Math.exp(-((absLat * 90 - 25) * (absLat * 90 - 25)) / 600);
@@ -99,7 +103,7 @@ export function solveWindParticle(W, H, elevation, fbm, params = {}, noiseSeed =
   }
 
   const oceanFrac = new Float32Array(N);
-  for (let i = 0; i < N; i++) oceanFrac[i] = wElev[i] <= 0.005 ? 1 : 0;
+  for (let i = 0; i < N; i++) oceanFrac[i] = wElevRaw[i] <= 0.005 ? 1 : 0;
   const oceanFracSmooth = smoothField(oceanFrac, wW, wH, 3, 4);
 
   for (let wy = 0; wy < wH; wy++) {
@@ -169,7 +173,7 @@ export function solveWindParticle(W, H, elevation, fbm, params = {}, noiseSeed =
   // ── Drag field ──
   const drag = new Float32Array(N);
   for (let i = 0; i < N; i++) {
-    drag[i] = wElev[i] > 0.005 ? _landDrag : _oceanDrag;
+    drag[i] = wElevRaw[i] > 0.005 ? _landDrag : _oceanDrag;
   }
 
   // ── Elevation gradient for terrain deflection ──
