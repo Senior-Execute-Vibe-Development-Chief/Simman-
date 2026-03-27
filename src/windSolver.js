@@ -22,7 +22,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _hadleyStr       = p("hadleyStrength", 0.06);
   const _coriolisStr     = p("coriolisStrength", 0.365);
   const _oceanDrag       = p("oceanDrag", 0.018);
-  const _landDrag        = p("landDrag", 0.568);
+  const _landDrag        = p("landDrag", 0.06);
   const _absorption      = p("absorption", 0.5);
   const _deflection      = p("deflection", 25.0);
   const _gapFunneling    = p("gapFunneling", 0.66);
@@ -240,7 +240,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       const i = wy * wW + wx;
       const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
 
-      const dpdx = (pressure[wy * wW + wr] - pressure[wy * wW + wl]) * 0.5 * cosLat;
+      const dpdx = (pressure[wy * wW + wr] - pressure[wy * wW + wl]) * 0.5 / Math.max(0.15, cosLat);
       const dpdy = (pressure[(wy + 1) * wW + wx] - pressure[(wy - 1) * wW + wx]) * 0.5;
 
       const kf = drag[i];
@@ -294,7 +294,9 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
 
         // Pressure gradient force
-        const pgfX = -(pressure[nr] - pressure[nl]) * 0.5 * cosLat;
+        // Zonal: grid cells are closer together at high latitudes (convergence of
+        // meridians), so same grid-cell pressure difference = stronger physical gradient.
+        const pgfX = -(pressure[nr] - pressure[nl]) * 0.5 / Math.max(0.15, cosLat);
         const pgfY = -(pressure[nd] - pressure[nu]) * 0.5;
 
         // Coriolis
