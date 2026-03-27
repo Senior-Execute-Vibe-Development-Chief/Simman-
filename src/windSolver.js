@@ -316,6 +316,63 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         windY[i] = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
       }
     }
+
+    // ── Pressure projection: enforce mass continuity ──
+    // Compute divergence of the velocity field, solve a Poisson equation
+    // for a correction pressure, then adjust velocities to be divergence-free.
+    // This prevents air from piling up or vanishing — wind that converges
+    // creates high pressure that pushes air out, wind that diverges creates
+    // low pressure that pulls air in. Without this, coastal flow breaks.
+    {
+      // Compute divergence
+      const div = new Float32Array(N);
+      for (let wy = 1; wy < wH - 1; wy++) {
+        for (let wx = 0; wx < wW; wx++) {
+          const i2 = wy * wW + wx;
+          if (wElev[i2] > 0.3) continue; // skip solid mountain cells
+          const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+          div[i2] = (windX[wy * wW + wr2] - windX[wy * wW + wl2]) * 0.5
+                  + (windY[(wy + 1) * wW + wx] - windY[(wy - 1) * wW + wx]) * 0.5;
+        }
+      }
+
+      // Solve Poisson (SOR, 30 iterations — enough for coarse grid)
+      const pCorr = new Float32Array(N);
+      const omega = 1.6;
+      for (let pIter = 0; pIter < 30; pIter++) {
+        for (let wy = 1; wy < wH - 1; wy++) {
+          for (let wx = 0; wx < wW; wx++) {
+            const i2 = wy * wW + wx;
+            if (wElev[i2] > 0.3) continue;
+            const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+            // Neumann BC at terrain: mirror pressure
+            const pE = wElev[wy * wW + wr2] > 0.3 ? pCorr[i2] : pCorr[wy * wW + wr2];
+            const pW = wElev[wy * wW + wl2] > 0.3 ? pCorr[i2] : pCorr[wy * wW + wl2];
+            const pN = wElev[(wy + 1) * wW + wx] > 0.3 ? pCorr[i2] : pCorr[(wy + 1) * wW + wx];
+            const pS = wElev[(wy - 1) * wW + wx] > 0.3 ? pCorr[i2] : pCorr[(wy - 1) * wW + wx];
+            const jacobi = (pE + pW + pN + pS - div[i2]) * 0.25;
+            pCorr[i2] = (1 - omega) * pCorr[i2] + omega * jacobi;
+          }
+        }
+      }
+
+      // Correct velocities to remove divergence
+      for (let wy = 1; wy < wH - 1; wy++) {
+        for (let wx = 0; wx < wW; wx++) {
+          const i2 = wy * wW + wx;
+          if (wElev[i2] > 0.3) { windX[i2] = 0; windY[i2] = 0; continue; }
+          const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+          windX[i2] -= (pCorr[wy * wW + wr2] - pCorr[wy * wW + wl2]) * 0.5;
+          windY[i2] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5;
+        }
+      }
+
+      // Zero velocity at poles
+      for (let wx = 0; wx < wW; wx++) {
+        windY[wx] = 0;
+        windY[(wH - 1) * wW + wx] = 0;
+      }
+    }
   }
 
   // ════════════════════════════════════════════════════════════════
