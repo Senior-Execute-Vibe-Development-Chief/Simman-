@@ -249,28 +249,28 @@ export function solveWindParticle(W, H, elevation, fbm, params = {}, noiseSeed =
           if (dot > 0) {
             const speed = Math.sqrt(vx * vx + vy * vy);
             const block = Math.min(1, elev * _deflection * 0.36 / Math.max(0.01, speed));
-            // Remove uphill component
+            // Remove uphill component (energy-conserving: no redirect addition)
             vx -= dot * nx * block;
             vy -= dot * ny * block;
-            // Redirect along contour (tangent)
-            const tx = -ny, ty = nx;
-            const tangDot = vx * tx + vy * ty;
-            const redir = Math.abs(dot) * block * 0.7;
-            vx += (tangDot >= 0 ? 1 : -1) * tx * redir;
-            vy += (tangDot >= 0 ? 1 : -1) * ty * redir;
           }
         }
       }
 
       // ── Prevent particle from entering solid terrain ──
-      // If new position has much higher elevation, push back
       const newPx = ((px + vx * particleDt) % wW + wW) % wW;
       const newPy = Math.max(1, Math.min(wH - 2, py + vy * particleDt));
       const newElev = sample(wElev, newPx, newPy);
-      if (newElev > elev + 0.05 && newElev > 0.1) {
-        // Would climb significantly — reduce velocity toward that direction
-        vx *= 0.3;
-        vy *= 0.3;
+      if (newElev > elev + 0.03 && newElev > 0.05) {
+        // Would climb into terrain — kill velocity, particle stalls
+        vx *= 0.05;
+        vy *= 0.05;
+      }
+
+      // Speed cap — prevents runaway acceleration
+      const spd = Math.sqrt(vx * vx + vy * vy);
+      if (spd > 0.3) {
+        const sc = 0.3 / spd;
+        vx *= sc; vy *= sc;
       }
 
       // Move particle (wrap X, clamp Y)
