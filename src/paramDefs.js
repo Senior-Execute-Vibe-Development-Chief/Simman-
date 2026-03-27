@@ -157,8 +157,10 @@ export const PARAMS = {
         desc: "Sub-grid mesoscale turbulence (curl noise) over ocean. Adds realistic swirls and local variation to ocean wind." },
       { key: "landEddyStrength", def: 0.002, min: 0.0, max: 0.03, label: "Land eddy strength",
         desc: "Sub-grid turbulence over land. Lower than ocean. Too high obscures terrain detail in the wind view. 0 = no eddies on land." },
+      { key: "useParticleWind", def: 0, min: 0, max: 1, step: 1, label: "Particle wind solver",
+        desc: "0 = grid-based pressure solver (fast, 500 iterations). 1 = particle-based solver (80k air parcels, naturally flows around terrain). Particle solver is slower but handles terrain more physically." },
       { key: "windSolverIter", def: 500, min: 8, max: 500, step: 1, label: "Solver iterations",
-        desc: "Relaxation iterations for the momentum solver. More = closer to steady-state equilibrium but slower generation." },
+        desc: "Relaxation iterations for the grid-based momentum solver. More = closer to steady-state equilibrium but slower generation. Only used when particle solver is off." },
     ]
   },
   ocean: {

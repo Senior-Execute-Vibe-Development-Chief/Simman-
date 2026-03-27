@@ -2,6 +2,7 @@
 // Hybrid model: stamp-based land shapes + Voronoi plate boundaries.
 // Land shapes use multi-stamp composition (from Random mode) centered on
 import { solveWind } from "./windSolver.js";
+import { solveWindParticle } from "./windParticle.js";
 // continental plate nuclei, giving organic coastlines with peninsulas and bays.
 // Tectonic boundary effects (mountains, rifts) are layered on top.
 // Continentality-based interior terrain fills land interiors.
@@ -986,7 +987,10 @@ if (p('erodeDropsPerPixel', 1.5) > 0) {
 // ══════════════════════════════════════════════════════════════════
 // WIND PHYSICS — delegated to standalone solveWind() function
 // ══════════════════════════════════════════════════════════════════
-const { windX: fullWindX, windY: fullWindY } = solveWind(W, H, elevation, fbm, params, s3);
+const useParticleWind = p('useParticleWind', 0) > 0.5;
+const { windX: fullWindX, windY: fullWindY } = useParticleWind
+  ? solveWindParticle(W, H, elevation, fbm, params, s3)
+  : solveWind(W, H, elevation, fbm, params, s3);
 
 /* DEAD CODE START — old inline wind solver, replaced by solveWind() call above
    Keeping temporarily for reference during development. Will be removed.
