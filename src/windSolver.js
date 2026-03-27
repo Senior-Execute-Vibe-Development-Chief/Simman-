@@ -27,6 +27,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _deflection      = p("deflection", 25.0);
   const _gapFunneling    = p("gapFunneling", 0.66);
   const _eddyStrength    = p("eddyStrength", 0.006);
+  const _landEddyStr     = p("landEddyStrength", 0.002);
   const _solverIter      = p("windSolverIter", 500);
   const _gustThreshold   = p("gustThreshold", 0.055);
   const _gustBoost       = p("gustBoost", 3.6);
@@ -343,9 +344,8 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     for (let wx = 0; wx < wW; wx++) {
       const i = wy * wW + wx;
       const nx = wx / wW, ny = wy / wH;
-      // Eddies on ocean at full strength, on land at 50% (land boundary layer is turbulent)
-      const landAtten = wElev[i] > 0.005 ? 0.5 : 1.0;
-      const amp = _eddyStrength * latFactor * landAtten;
+      const isLand = wElev[i] > 0.005;
+      const amp = (isLand ? _landEddyStr : _eddyStrength) * latFactor;
 
       // Large-scale eddies (synoptic-ish, ~1000km)
       const eps = 0.003;

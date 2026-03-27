@@ -153,8 +153,10 @@ export const PARAMS = {
         desc: "Venturi effect through mountain passes and valleys. Wind accelerates through narrow gaps between terrain. Higher = stronger acceleration in gaps." },
       { key: "curlBoost", def: 2.4, min: 0.0, max: 10.0, label: "Curl boost",
         desc: "Speed boost in areas with high rotation (vorticity). Makes swirling/cyclonic areas have faster winds — like how cyclone winds are strongest where rotation is tightest. 0 = no effect." },
-      { key: "eddyStrength", def: 0.006, min: 0.0, max: 0.06, label: "Eddy strength",
-        desc: "Sub-grid mesoscale turbulence (curl noise). Ocean gets full value, land gets 50%. Adds realistic local variation." },
+      { key: "eddyStrength", def: 0.006, min: 0.0, max: 0.06, label: "Ocean eddy strength",
+        desc: "Sub-grid mesoscale turbulence (curl noise) over ocean. Adds realistic swirls and local variation to ocean wind." },
+      { key: "landEddyStrength", def: 0.002, min: 0.0, max: 0.03, label: "Land eddy strength",
+        desc: "Sub-grid turbulence over land. Lower than ocean. Too high obscures terrain detail in the wind view. 0 = no eddies on land." },
       { key: "windSolverIter", def: 500, min: 8, max: 500, step: 1, label: "Solver iterations",
         desc: "Relaxation iterations for the momentum solver. More = closer to steady-state equilibrium but slower generation." },
     ]
