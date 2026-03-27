@@ -307,69 +307,20 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       }
     }
 
-    // ── Solid wall boundary: land is a wall, wind can't flow through it ──
-    // For every land cell, zero out velocity component flowing into the terrain.
-    // The solver then has to route wind around. This runs EVERY iteration so
-    // PGF can never push wind through — the wall always wins.
-    if (_terrainDeflect > 0) {
-      for (let wy = 1; wy < wH - 1; wy++) {
-        for (let wx = 0; wx < wW; wx++) {
-          const i = wy * wW + wx;
-          const e = wElev[i];
-          if (e < 0.005) continue; // ocean cell, skip
-
-          // How solid is this cell (0-1). Low land = partial wall, mountains = full wall.
-          const solidity = Math.min(1, e * _terrainDeflect * 0.1);
-
-          // Compute terrain normal from elevation gradient
-          const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-          const gx = (wElev[wy * wW + wr] - wElev[wy * wW + wl]) * 0.5;
-          const gy = (wElev[(wy + 1) * wW + wx] - wElev[(wy - 1) * wW + wx]) * 0.5;
-          const gm = Math.sqrt(gx * gx + gy * gy);
-
-          let vx = windX[i], vy = windY[i];
-
-          if (gm > 1e-6) {
-            // Has a gradient: block into-terrain component, redirect along surface
-            const nx = gx / gm, ny = gy / gm;
-            const dot = vx * nx + vy * ny;
-            if (dot > 0) {
-              const block = dot * solidity;
-              vx -= block * nx;
-              vy -= block * ny;
-              // Redirect ALL blocked energy along terrain contour
-              const tangX = -ny, tangY = nx;
-              const tangDot = vx * tangX + vy * tangY;
-              vx += (tangDot >= 0 ? 1 : -1) * tangX * block;
-              vy += (tangDot >= 0 ? 1 : -1) * tangY * block;
-            }
-          } else {
-            // Interior cell (flat, no gradient): redirect toward nearest ocean
-            // Use the smoothed land fraction gradient — it points toward coast
-            const lfL = landFrac[wy * wW + ((wx - 1 + wW) % wW)];
-            const lfR = landFrac[wy * wW + ((wx + 1) % wW)];
-            const lfU = landFrac[(wy - 1) * wW + wx];
-            const lfD = landFrac[(wy + 1) * wW + wx];
-            // Gradient of land fraction points toward more land; negate to point toward ocean
-            const cgx = -(lfR - lfL) * 0.5;
-            const cgy = -(lfD - lfU) * 0.5;
-            const cgm = Math.sqrt(cgx * cgx + cgy * cgy);
-            if (cgm > 1e-6) {
-              // Redirect wind toward coast, keeping its speed
-              const speed = Math.sqrt(vx * vx + vy * vy);
-              const coastNx = cgx / cgm, coastNy = cgy / cgm;
-              vx = vx * (1 - solidity) + coastNx * speed * solidity;
-              vy = vy * (1 - solidity) + coastNy * speed * solidity;
-            } else {
-              // True center of large continent — slow down gently
-              vx *= (1 - solidity * 0.3);
-              vy *= (1 - solidity * 0.3);
-            }
-          }
-
-          windX[i] = vx;
-          windY[i] = vy;
-        }
+    // ── Mountain wall: high terrain kills wind every iteration ──
+    // Mountains are impenetrable walls. Instead of partial blocking,
+    // simply scale wind down by (1 - solidity) each iteration.
+    // PGF and diffusion can't rebuild wind through a cell that gets
+    // zeroed every step. Low terrain keeps partial wind (land breeze).
+    for (let wy = 1; wy < wH - 1; wy++) {
+      for (let wx = 0; wx < wW; wx++) {
+        const i = wy * wW + wx;
+        const e = wElev[i];
+        if (e < 0.005) continue;
+        // solidity: 0 for low coast, 1 for mountains
+        const solidity = Math.min(1, e * _terrainDeflect * 0.15);
+        windX[i] *= (1 - solidity);
+        windY[i] *= (1 - solidity);
       }
     }
   }
