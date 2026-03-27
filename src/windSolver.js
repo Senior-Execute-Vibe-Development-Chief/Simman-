@@ -187,44 +187,28 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   for (let i = 0; i < N; i++) pressure[i] = smoothP[i];
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 3: Unified terrain wind interaction
+  // STEP 3: Unified terrain friction
   // ════════════════════════════════════════════════════════════════
-  // Compute per-cell: drag (friction), diffusion scale, and per-iteration
-  // damping factor. All derived from elevation so terrain affects wind
-  // through one coherent system.
-  //
-  // "retention" = what fraction of wind survives after all solver iterations.
-  //   ocean:        1.0 (no extra damping beyond ocean drag)
-  //   low plains:   0.7-0.9 (gentle slowing)
-  //   hills:        0.3-0.5 (significant blocking)
-  //   mountains:    0.0-0.05 (near-impenetrable wall)
-  //
-  // Per-iteration factor = retention^(1/iterations) so the compound
-  // effect over all iterations gives exactly the target retention.
+  // One drag field handles everything: ocean friction, land friction,
+  // and elevation-based blocking. terrainDeflect controls how much
+  // extra drag elevation adds on top of landDrag.
+  //   drag = oceanDrag for ocean
+  //   drag = landDrag + elevation * terrainDeflect * scale for land
+  // This naturally makes mountains high-drag (wind dies) and plains
+  // low-drag (wind flows). The solver's own physics (PGF vs friction
+  // equilibrium) determines the final speed — no per-iteration hacks.
   const drag = new Float32Array(N);
-  const terrainDamp = new Float32Array(N); // per-iteration multiplier
-  const viscScale = new Float32Array(N);   // diffusion multiplier (0-1)
   for (let i = 0; i < N; i++) {
     const e = wElev[i];
     if (e <= 0.005) {
       drag[i] = _oceanDrag;
-      terrainDamp[i] = 1.0;
-      viscScale[i] = 1.0;
     } else {
-      // Drag: base land friction only (no elevation scaling — terrainDamp handles that)
-      drag[i] = _landDrag;
-
-      // Target retention after all iterations:
-      // Maps elevation through terrainDeflect to a 0-1 retention.
-      // terrainDeflect=0: all land keeps 100% wind (only drag slows it)
-      // terrainDeflect=25: e=0.03→94%, e=0.10→80%, e=0.25→50%, e=0.50→0%
-      const blockStr = _terrainDeflect > 0 ? Math.min(1, e * _terrainDeflect * 0.04) : 0;
-      const retention = Math.max(0.001, 1 - blockStr);
-      terrainDamp[i] = Math.pow(retention, 1 / _solverIter);
-
-      // Diffusion: suppressed proportional to terrain blocking
-      // When terrainDeflect=0, full diffusion on all land
-      viscScale[i] = Math.max(0, 1 - blockStr);
+      // Land drag + elevation-proportional extra from terrainDeflect
+      // terrainDeflect=0:  drag = landDrag (same as flat land, wind flows freely)
+      // terrainDeflect=25: e=0.03 plains → drag = landDrag + 0.075 (mild)
+      //                    e=0.10 hills  → drag = landDrag + 0.25 (moderate)
+      //                    e=0.50 mountains → drag = landDrag + 1.25 (near-wall)
+      drag[i] = _landDrag + e * _terrainDeflect * 0.1;
     }
   }
 
@@ -324,58 +308,12 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         const drgX = -kf * tmpX[i];
         const drgY = -kf * tmpY[i];
 
-        // Diffusion — scaled by precomputed viscScale (suppressed on elevated land)
-        const viscLocal = visc * viscScale[i];
+        // Diffusion
         const lapX = (tmpX[nl] + tmpX[nr] + tmpX[nu] + tmpX[nd]) * 0.25 - tmpX[i];
         const lapY = (tmpY[nl] + tmpY[nr] + tmpY[nu] + tmpY[nd]) * 0.25 - tmpY[i];
 
-        windX[i] = tmpX[i] + dt * (pgfX + corX + drgX) + viscLocal * lapX;
-        windY[i] = tmpY[i] + dt * (pgfY + corY + drgY) + viscLocal * lapY;
-
-        // Terrain damping — precomputed factor gives exact target retention
-        // after all iterations. No threshold, no cap — just multiply.
-        windX[i] *= terrainDamp[i];
-        windY[i] *= terrainDamp[i];
-      }
-    }
-  }
-
-  // ════════════════════════════════════════════════════════════════
-  // STEP 5: Downstream momentum transport
-  // ════════════════════════════════════════════════════════════════
-  // Wind carries its own momentum. A slow parcel leaving land doesn't
-  // instantly speed up on ocean — it has to gradually accelerate.
-  // Trace each cell backward along the wind and blend with upstream velocity.
-  // Multiple passes propagate the effect further downstream.
-  {
-    const transportPasses = 8;
-    const advDt = 0.6;
-    const blendStr = 0.4; // 40% upstream influence
-    for (let pass = 0; pass < transportPasses; pass++) {
-      const prevX = new Float32Array(windX);
-      const prevY = new Float32Array(windY);
-      for (let wy = 1; wy < wH - 1; wy++) {
-        for (let wx = 0; wx < wW; wx++) {
-          const i = wy * wW + wx;
-          // Trace backward: where did this air come from?
-          const backX = wx - prevX[i] * advDt;
-          const backY = wy - prevY[i] * advDt;
-          const sx = ((backX % wW) + wW) % wW;
-          const sy = Math.max(1, Math.min(wH - 2, backY));
-          const ix = Math.floor(sx), iy = Math.floor(sy);
-          const fx = sx - ix, fy = sy - iy;
-          const ix1 = (ix + 1) % wW, iy1 = Math.min(wH - 2, iy + 1);
-          const i00 = iy * wW + ix, i10 = iy * wW + ix1;
-          const i01 = iy1 * wW + ix, i11 = iy1 * wW + ix1;
-          // Bilinear interpolation of upstream velocity
-          const upX = prevX[i00] * (1-fx)*(1-fy) + prevX[i10] * fx*(1-fy)
-                    + prevX[i01] * (1-fx)*fy + prevX[i11] * fx*fy;
-          const upY = prevY[i00] * (1-fx)*(1-fy) + prevY[i10] * fx*(1-fy)
-                    + prevY[i01] * (1-fx)*fy + prevY[i11] * fx*fy;
-          // Blend: current cell keeps (1-blend), upstream contributes blend
-          windX[i] = prevX[i] * (1 - blendStr) + upX * blendStr;
-          windY[i] = prevY[i] * (1 - blendStr) + upY * blendStr;
-        }
+        windX[i] = tmpX[i] + dt * (pgfX + corX + drgX) + visc * lapX;
+        windY[i] = tmpY[i] + dt * (pgfY + corY + drgY) + visc * lapY;
       }
     }
   }
