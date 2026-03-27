@@ -309,22 +309,21 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       }
     }
 
-    // ── Terrain wall: ALL elevation blocks wind proportionally ──
-    // Every land cell with elevation reduces wind based on its height.
-    // Low plains (e=0.03) get mild reduction, mountains (e=0.5) get near-zero.
-    // This is physically correct: wind must go OVER or AROUND terrain,
-    // and surface wind at elevation is always weaker than at sea level.
+    // ── Terrain wall: high terrain blocks wind each iteration ──
+    // Only significantly blocks elevated terrain (hills/mountains).
+    // Low plains get very mild reduction per step so wind can cross them.
+    // The solver's drag field already slows wind on all land.
     for (let wy = 1; wy < wH - 1; wy++) {
       for (let wx = 0; wx < wW; wx++) {
         const i = wy * wW + wx;
         const e = wElev[i];
-        if (e < 0.003) continue;
-        // Continuous blocking: scales smoothly from 0 (ocean) to 1 (high mountain)
-        // e=0.03 (~265m): solidity ≈ 0.11 → keeps 89% of wind
-        // e=0.10 (~885m): solidity ≈ 0.34 → keeps 66% of wind
-        // e=0.25 (~2200m): solidity ≈ 0.73 → keeps 27% of wind
-        // e=0.50 (~4400m): solidity ≈ 1.0  → near zero wind
-        const solidity = Math.min(1, e * _terrainDeflect * 0.08);
+        if (e < 0.08) continue; // skip low terrain — drag handles it
+        // Only block terrain above ~700m. Runs per-iteration so must be mild:
+        // e=0.10 (885m):  solidity ≈ 0.02 → keeps 98%/iter, ~0.00004 after 500 → dead ✓
+        // e=0.08 (700m):  solidity ≈ 0.00 → no blocking, just drag
+        // This threshold means lowlands get normal wind (just friction),
+        // while mountains are impenetrable walls.
+        const solidity = Math.min(0.15, (e - 0.08) * _terrainDeflect * 0.04);
         windX[i] *= (1 - solidity);
         windY[i] *= (1 - solidity);
       }
