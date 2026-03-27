@@ -88,8 +88,13 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       const subtropFactor = Math.exp(-((absLat * 90 - 25) * (absLat * 90 - 25)) / 600);
       T += lf * _thermalContrast * (0.15 * subtropFactor + 0.03);
 
-      // Lapse rate cooling
+      // Lapse rate cooling — affects temperature but NOT pressure directly.
+      // In reality, cold high-altitude air is denser → higher surface pressure.
+      // The pressure effect is handled separately in STEP 2 so we don't
+      // accidentally create low pressure on mountains (which would suck
+      // wind inward rather than letting it flow over/around).
       T -= e * 0.65;
+
 
       // Noise for symmetry breaking
       const nx = wx / wW, ny = wy / wH;
@@ -167,8 +172,13 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       // low pressure that draws in ocean air. No separate multiplier needed.
       const thermalAnomaly = -(temperature[i] - zonalMeanT[wy]);
 
-      // Base meridional pressure
-      const meridionalP = -temperature[i] * _pressureScale;
+      // Base meridional pressure from surface temperature
+      // Use temperature WITHOUT lapse rate cooling for pressure computation.
+      // Lapse rate makes mountains cold, but cold dense air = HIGH surface
+      // pressure (katabatic winds flow downslope), not low pressure.
+      // Add the lapse cooling back to get the "sea-level equivalent" temperature.
+      const seaLevelT = temperature[i] + wElev[i] * 0.65;
+      const meridionalP = -seaLevelT * _pressureScale;
 
       // ── D) Synoptic noise: larger scale for realistic weather patterns ──
       // Two scales: large (basin-scale highs/lows) and medium (storm-scale)
