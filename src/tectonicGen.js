@@ -761,26 +761,26 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 
     // Shield blocks: continent-scale elevated regions — suppressed where plates collide
     const shieldVal = sg(nfShield, x, y);
-    const shieldE = smoothstep(shieldVal * 1.5 + 0.3) * 0.10 * interior * cratonZone;
+    const shieldE = smoothstep(shieldVal * 1.5 + 0.1) * 0.05 * interior * cratonZone;
 
     // Basin: medium-scale depressions and swells — only in stable interiors
     const basinVal = sg(nfBasin, x, y);
-    const basinE = basinVal * 0.04 * interior * cratonZone;
+    const basinE = basinVal * 0.02 * interior * cratonZone;
 
     // Escarpment: sharp elevation breaks — at shield edges in stable interiors
     const escarpVal = sg(nfEscarpment, x, y);
-    const escarpE = escarpVal * 0.025 * interior * cratonZone
+    const escarpE = escarpVal * 0.015 * interior * cratonZone
       * smoothstep(Math.abs(shieldVal) * 3);
 
     // Medium terrain: rolling hills — present everywhere but louder on plateaus
-    const medTerrain = sg(nfMedTerrain, x, y) * (0.02 + plateauZone * 0.03) * interior;
+    const medTerrain = sg(nfMedTerrain, x, y) * (0.012 + plateauZone * 0.02) * interior;
 
     // Fine local detail: small-scale undulation — present everywhere
-    const fineTerrain = sg(nfFineTerrain, x, y) * 0.012 * interior;
+    const fineTerrain = sg(nfFineTerrain, x, y) * 0.008 * interior;
 
     // Base elevation with multi-scale stacking
-    const baseE = 0.02 + interior * 0.03;
-    const plateauBoost = Math.max(0, stampE) * 0.25 * interior;
+    const baseE = 0.015 + interior * 0.02;
+    const plateauBoost = Math.max(0, stampE) * 0.15 * interior;
     const cratonE = baseE + shieldE + basinE + escarpE + medTerrain
       + fineTerrain + plateauBoost;
 
@@ -823,14 +823,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 
 // ═══════════════════════════════════════════════════════
 // STEP 8b: Hydraulic Erosion — physically-based terrain texturing
-// Particle-based: raindrops flow downhill, eroding steep slopes and
-// depositing sediment in valleys. Naturally creates:
-//   - Sharp ridgelines between drainage basins (mountains)
-//   - V-shaped valleys with branching river networks
-//   - Smooth alluvial plains in lowlands
-//   - Canyon incision in plateaus
 // ═══════════════════════════════════════════════════════
-{
+if (p('erodeDropsPerPixel', 1.5) > 0) {
   // Run erosion on a 4x-downscaled grid for speed (~16x fewer pixels)
   const EG = 4;
   const eW = Math.ceil(W / EG), eH = Math.ceil(H / EG);
