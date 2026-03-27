@@ -211,19 +211,20 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       terrainDamp[i] = 1.0;
       viscScale[i] = 1.0;
     } else {
-      // Drag: base land friction + elevation-scaled extra
-      drag[i] = _landDrag + _landDrag * Math.min(1, e * 3) * 1.5;
+      // Drag: base land friction only (no elevation scaling — terrainDamp handles that)
+      drag[i] = _landDrag;
 
       // Target retention after all iterations:
       // Maps elevation through terrainDeflect to a 0-1 retention.
-      // At terrainDeflect=25: e=0.03→0.85, e=0.10→0.45, e=0.25→0.02, e=0.50→0.0
-      const blockStr = Math.min(1, e * _terrainDeflect * 0.08);
+      // terrainDeflect=0: all land keeps 100% wind (only drag slows it)
+      // terrainDeflect=25: e=0.03→94%, e=0.10→80%, e=0.25→50%, e=0.50→0%
+      const blockStr = _terrainDeflect > 0 ? Math.min(1, e * _terrainDeflect * 0.04) : 0;
       const retention = Math.max(0.001, 1 - blockStr);
-      // Per-iteration factor: retention = factor^iters → factor = retention^(1/iters)
       terrainDamp[i] = Math.pow(retention, 1 / _solverIter);
 
-      // Diffusion: fully suppressed above e=0.20, proportional below
-      viscScale[i] = Math.max(0, 1 - e * 5);
+      // Diffusion: suppressed proportional to terrain blocking
+      // When terrainDeflect=0, full diffusion on all land
+      viscScale[i] = Math.max(0, 1 - blockStr);
     }
   }
 
