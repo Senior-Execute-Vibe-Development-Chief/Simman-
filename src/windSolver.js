@@ -23,11 +23,11 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _coriolisStr     = p("coriolisStrength", 0.365);
   const _oceanDrag       = p("oceanDrag", 0.018);
   const _landDrag        = p("landDrag", 0.568);
-  const _terrainDeflect  = p("terrainDeflect", 25.0);
+  const _absorption      = p("absorption", 0.5);
+  const _deflection      = p("deflection", 25.0);
   const _gapFunneling    = p("gapFunneling", 0.66);
   const _eddyStrength    = p("eddyStrength", 0.006);
   const _solverIter      = p("windSolverIter", 500);
-  const _coandaStr       = p("coandaStrength", 3.0);
   const _gustThreshold   = p("gustThreshold", 0.055);
   const _gustBoost       = p("gustBoost", 3.6);
   const _curlBoost       = p("curlBoost", 2.4);
@@ -187,29 +187,18 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   for (let i = 0; i < N; i++) pressure[i] = smoothP[i];
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 3: Unified terrain friction
+  // STEP 3: Surface drag (elevation-independent) + coastal absorption
   // ════════════════════════════════════════════════════════════════
-  // One drag field handles everything: ocean friction, land friction,
-  // and elevation-based blocking. terrainDeflect controls how much
-  // extra drag elevation adds on top of landDrag.
-  //   drag = oceanDrag for ocean
-  //   drag = landDrag + elevation * terrainDeflect * scale for land
-  // This naturally makes mountains high-drag (wind dies) and plains
-  // low-drag (wind flows). The solver's own physics (PGF vs friction
-  // equilibrium) determines the final speed — no per-iteration hacks.
+  // Drag = surface roughness friction. Same for plains, plateaus, mountains.
+  // Elevation only affects the post-solve deflection (Froude blocking).
+  // Absorption = extra drag at coastlines, smoothly ramping to 0 inland.
   const drag = new Float32Array(N);
   for (let i = 0; i < N; i++) {
-    const e = wElev[i];
-    if (e <= 0.005) {
-      drag[i] = _oceanDrag;
-    } else {
-      // Land drag + elevation-proportional extra from terrainDeflect
-      // terrainDeflect=0:  drag = landDrag (same as flat land, wind flows freely)
-      // terrainDeflect=25: e=0.03 plains → drag = landDrag + 0.075 (mild)
-      //                    e=0.10 hills  → drag = landDrag + 0.25 (moderate)
-      //                    e=0.50 mountains → drag = landDrag + 1.25 (near-wall)
-      drag[i] = _landDrag + e * _terrainDeflect * 0.1;
-    }
+    const isLand = landMask[i];
+    const baseDrag = _oceanDrag + (_landDrag - _oceanDrag) * isLand;
+    // Coastal absorption: peaks at shore (landFracMed ~ 0.3), fades inland (landFracMed ~ 1.0)
+    const coastalRamp = isLand * (1.0 - landFracMed[i]);
+    drag[i] = baseDrag + _absorption * coastalRamp * _landDrag;
   }
 
   // ════════════════════════════════════════════════════════════════
@@ -435,7 +424,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // Must run after all other post-processing (eddies, gusts, curl boost)
   // because those steps add noise and amplification that would drown out
   // the careful directional changes from terrain blocking.
-  if (_terrainDeflect > 0) {
+  if (_deflection > 0) {
     const deflectPasses = 80;
     for (let pass = 0; pass < deflectPasses; pass++) {
       for (let wy = 1; wy < wH - 1; wy++) {
@@ -456,7 +445,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
 
           if (dot > 0) {
             const speed = Math.sqrt(vx * vx + vy * vy);
-            const deflect = Math.min(1, ti * _terrainDeflect * 0.12 * _coandaStr / Math.max(0.01, speed));
+            const deflect = Math.min(1, ti * _deflection * 0.36 / Math.max(0.01, speed));
             const rmX = dot * nx * deflect;
             const rmY = dot * ny * deflect;
             vx -= rmX; vy -= rmY;
