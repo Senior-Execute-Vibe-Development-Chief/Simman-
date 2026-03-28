@@ -1417,16 +1417,13 @@ const _moistAdvW = p('moistAdvectWeight', 0.60);
 const _moistOcnW = p('moistOceanWeight', 0.20);
 const _moistTBlock = p('moistTerrainBlock', 0.4);
 const _moistElevDry = p('moistElevDry', 2.0);
-{
-  // Work on coarse grid
-  const MG = 2;
-  const mW = Math.ceil(W / MG), mH = Math.ceil(H / MG);
-  const mN = mW * mH;
-  const moist = new Float32Array(mN);
+// Coarse grid shared by moisture flood and temperature advection
+const mW = Math.ceil(W / 2), mH = Math.ceil(H / 2);
+const moist = new Float32Array(mW * mH);
 
   // Seed: ocean = 0.8, land = 0
   for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
-    const px = Math.min(W - 1, mx * MG), py = Math.min(H - 1, my * MG);
+    const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
     if (elevation[py * W + px] <= 0) moist[my * mW + mx] = 0.8;
   }
 
@@ -1436,7 +1433,7 @@ const _moistElevDry = p('moistElevDry', 2.0);
   for (let step = 0; step < 80; step++) {
     const prev = new Float32Array(moist);
     for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
-      const px = Math.min(W - 1, mx * MG), py = Math.min(H - 1, my * MG);
+      const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
       const fi = py * W + px;
       const e2 = elevation[fi];
       if (e2 <= 0) { moist[my * mW + mx] = 0.8; continue; } // ocean stays wet
@@ -1484,14 +1481,13 @@ const _moistElevDry = p('moistElevDry', 2.0);
 
   // Upscale to full resolution
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const fx = x / MG, fy = y / MG;
+    const fx = x / 2, fy = y / 2;
     const ix = Math.min(mW - 2, fx | 0), iy = Math.min(mH - 2, fy | 0);
     const dx2 = fx - ix, dy2 = fy - iy;
     const sxr = Math.min(mW - 1, ix + 1);
     windMoisture[y * W + x] = (moist[iy * mW + ix] * (1 - dx2) + moist[iy * mW + sxr] * dx2) * (1 - dy2)
       + (moist[(iy + 1) * mW + ix] * (1 - dx2) + moist[(iy + 1) * mW + sxr] * dx2) * dy2;
   }
-}
 
 // ═══════════════════════════════════════════════════════
 // STEP 8c2: Wind-advected temperature transport
