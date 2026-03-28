@@ -85,6 +85,17 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
     }
   }
 
+  // Precompute elevation gradient for orographic precipitation
+  // Dot product of wind with gradient detects upslope flow
+  const gradX = new Float32Array(mN);
+  const gradY = new Float32Array(mN);
+  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
+    const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
+    const ci = my * mW + mx;
+    gradX[ci] = (elev[my * mW + mxR] - elev[my * mW + mxL]) * 0.5;
+    gradY[ci] = (elev[(my + 1) * mW + mx] - elev[(my - 1) * mW + mx]) * 0.5;
+  }
+
   // Ocean evaporation: warm windy ocean produces more moisture
   for (let i = 0; i < mN; i++) {
     if (isOcean[i]) {
@@ -150,17 +161,18 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       // ── 5. Precipitation triggers ──
       let precip = 0;
 
-      // a) Orographic precipitation: wind hits rising terrain
-      // Compare elevation here vs upwind cell
-      const upwindMx = Math.min(mW - 1, Math.max(0, Math.round(mx - wxc * 1.5)));
-      const upwindMy = Math.min(mH - 1, Math.max(0, Math.round(my - wyc * 1.5)));
-      const upwindElev = elev[upwindMy * mW + upwindMx];
-      const elevGain = Math.max(0, elev[ci] - upwindElev);
-      if (elevGain > 0.001) {
-        const oroStrength = Math.min(0.65, elevGain * _moistTBlock * 8);
-        const oroPrecip = moist * oroStrength;
-        precip += oroPrecip;
-        moist -= oroPrecip;
+      // a) Orographic precipitation: dot product of wind with elevation gradient
+      // Positive = wind pushing uphill = forced ascent → precipitation
+      // Zero when wind parallel to ridge, maximum when hitting head-on
+      if (ws > 0.005) {
+        const windDirX = wxc / ws, windDirY = wyc / ws;
+        const upslope = windDirX * gradX[ci] + windDirY * gradY[ci];
+        if (upslope > 0) {
+          const oroRate = Math.min(0.5, upslope * ws * _moistTBlock * 15);
+          const oroPrecip = moist * oroRate;
+          precip += oroPrecip;
+          moist -= oroPrecip;
+        }
       }
 
       // b) Convective precipitation: hot land drives convective uplift
