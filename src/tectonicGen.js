@@ -1617,6 +1617,11 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     moisture[i] = 0.5 + sg(nfMoistOce, x, y) * 0.1;
   } else {
     const wm = windMoisture[i];
+    // DEBUG: if advection isn't working, fall back to coast distance
+    // This ensures SOME moisture inland regardless of advection
+    const cdFallback = Math.max(0, 1 - cdm / 25) * 0.5;
+    // Use whichever is higher — advected or coast-distance fallback
+    const wmEff = Math.max(wm, cdFallback);
 
     // ── Wind convergence/divergence at this pixel ──
     // Convergence (div < 0) = air rises = cooling = rain = WET
@@ -1688,7 +1693,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     }
 
     // ── Combine: wind advection dominates + supplementary factors ──
-    let m = wm * _moistAdvW              // advected moisture (primary driver)
+    let m = wmEff * _moistAdvW             // advected moisture (with coast fallback)
       + windOcean * _moistOcnW           // direct wind from ocean
       + convergeMoist                   // convergence zones = wet
       + oroBoost                        // windward mountain slopes = very wet
