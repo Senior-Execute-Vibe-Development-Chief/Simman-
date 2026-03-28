@@ -20,7 +20,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _pressureScale   = p("pressureScale", 0.817);
   const _thermalContrast = p("thermalContrast", 0.62);
   const _hadleyStr       = p("hadleyStrength", 0.08);
-  const _coriolisStr     = p("coriolisStrength", 0.365);
+  const _coriolisStr     = p("coriolisStrength", 0.406);
   const _oceanDrag       = p("oceanDrag", 0.018);
   const _landDrag        = p("landDrag", 0.102);
   const _absorption      = p("absorption", 0.23);

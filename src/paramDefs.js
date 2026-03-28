@@ -150,7 +150,7 @@ export const PARAMS = {
         desc: "How much land heats relative to ocean. Drives monsoon circulations and continental thermal lows. 0 = no land-sea difference. Higher = stronger monsoons and sea breezes." },
       { key: "hadleyStrength", def: 0.08, min: 0.0, max: 2.0, label: "Hadley cell strength",
         desc: "Strength of the global overturning circulation (Hadley, Ferrel, Polar cells). Controls trade winds, subtropical highs, and polar easterlies. 0 = no cells, pure thermal wind." },
-      { key: "coriolisStrength", def: 0.365, min: 0.05, max: 0.50, label: "Coriolis strength",
+      { key: "coriolisStrength", def: 0.406, min: 0.05, max: 0.50, label: "Coriolis strength",
         desc: "Planetary rotation effect (2Ω·sin(φ)). Controls how much wind deflects (spirals) vs flowing straight toward low pressure. Higher = more geostrophic (parallel to isobars)." },
       { key: "itczOffset", def: 0.033, min: -0.10, max: 0.15, label: "ITCZ offset",
         desc: "North-south shift of the Intertropical Convergence Zone. Positive = ITCZ shifts north (boreal summer). Negative = shifts south. Affects trade wind asymmetry." },
