@@ -452,8 +452,9 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // Compute vorticity (curl = ∂v/∂x - ∂u/∂y). High curl = rotation.
   // Boost wind speed where curl is strong — this is why cyclones have
   // fast winds around their centers (tight rotation = fast flow).
-  const _curlThreshold = p("curlThreshold", 0.3);
+  const _curlThreshold = p("curlThreshold", 0.08);
   if (_curlBoost > 0) {
+    // Compute raw vorticity
     const curl = new Float32Array(N);
     for (let wy = 1; wy < wH - 1; wy++) {
       for (let wx = 0; wx < wW; wx++) {
@@ -464,18 +465,22 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         curl[i] = Math.abs(dvdx - dudy);
       }
     }
-    const smoothCurl = smoothField(curl, wW, wH, 1, 2);
+    // Two smoothing scales: local (what we compare against) and broad (background)
+    const localCurl = smoothField(curl, wW, wH, 1, 1);
+    const bgCurl = smoothField(curl, wW, wH, 3, 4); // broad background rotation
+    // Anomaly: how much stronger is local rotation vs the regional average?
+    // This filters out uniform Coriolis-driven rotation and highlights
+    // actual cyclonic vortices where rotation is concentrated.
     for (let wy = 1; wy < wH - 1; wy++) {
       for (let wx = 0; wx < wW; wx++) {
         const i = wy * wW + wx;
-        if (wElevRaw[i] > 0.005) continue; // ocean only — cyclones don't intensify over land
+        if (wElevRaw[i] > 0.005) continue; // ocean only
         const speed = Math.sqrt(windX[i] * windX[i] + windY[i] * windY[i]);
         if (speed < 1e-6) continue;
-        const normCurl = smoothCurl[i] / speed;
-        // Only boost above threshold — weak rotation is not a cyclone
-        // normCurl typical range: 0.01-0.5
-        if (normCurl < _curlThreshold) continue;
-        const excess = normCurl - _curlThreshold;
+        // Anomaly: local curl minus background (both normalized by speed)
+        const anomaly = (localCurl[i] - bgCurl[i]) / speed;
+        if (anomaly < _curlThreshold) continue;
+        const excess = anomaly - _curlThreshold;
         const boost = 1 + excess * _curlBoost;
         const factor = Math.min(2.0, boost);
         windX[i] *= factor;
