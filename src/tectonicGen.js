@@ -1416,25 +1416,25 @@ for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
 }
 // Advect moisture along wind vectors with lateral diffusion
 // Diffusion prevents narrow wind-streamline artifacts ("whippy" moisture trails)
-for (let step = 0; step < 40; step++) {
+for (let step = 0; step < 60; step++) {
   const prev = new Float32Array(mGrid);
   for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
     const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
     const fi = py * W + px;
     const wx2 = fullWindX[fi], wy2 = fullWindY[fi];
     const windSpeed = Math.sqrt(wx2 * wx2 + wy2 * wy2);
-    const invSpd = windSpeed > 0.02 ? 1 / windSpeed : 0;
+    const invSpd = windSpeed > 0.005 ? 1 / windSpeed : 0;
     const dirX = wx2 * invSpd, dirY = wy2 * invSpd;
-    const reach = Math.min(2.5, 1.5 + windSpeed * 1.5);
+    const reach = Math.min(4.0, 2.0 + windSpeed * 3.0);
     const srcX = mx - dirX * reach, srcY = my - dirY * reach;
-    const sx = Math.min(mW - 2, Math.max(0, srcX | 0));
-    const sy = Math.min(mH - 2, Math.max(0, srcY | 0));
-    const fdx = Math.max(0, Math.min(1, srcX - sx)), fdy = Math.max(0, Math.min(1, srcY - sy));
-    const sxr = Math.min(mW - 1, sx + 1);
+    // Wrap X (cylindrical map), clamp Y
+    const sx = ((Math.floor(srcX) % mW) + mW) % mW;
+    const sy = Math.min(mH - 2, Math.max(0, Math.floor(srcY)));
+    const fdx = Math.max(0, Math.min(1, srcX - Math.floor(srcX)));
+    const fdy = Math.max(0, Math.min(1, srcY - Math.floor(srcY)));
+    const sxr = (sx + 1) % mW;
     const upwind = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
-      + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
-    // Lateral diffusion: blend with neighbors to simulate atmospheric mixing
-    // This prevents narrow streamline artifacts and creates broad wet regions
+      + (prev[Math.min(mH - 1, sy + 1) * mW + sx] * (1 - fdx) + prev[Math.min(mH - 1, sy + 1) * mW + sxr] * fdx) * fdy;
     const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
     const neighborAvg = (prev[my * mW + mxL] + prev[my * mW + mxR]
       + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.25;
@@ -1442,17 +1442,24 @@ for (let step = 0; step < 40; step++) {
     if (e2 <= 0) {
       mGrid[my * mW + mx] = Math.max(prev[my * mW + mx], 0.75);
     } else {
-      const terrainBlock = Math.min(0.9, Math.max(0, e2 - 0.03) * 4);
-      const lift = Math.min(0.15, e2 * windSpeed * 0.4);
-      const speedDecay = 0.97 - Math.min(0.04, windSpeed * 0.06);
-      const carried = upwind * (1 - terrainBlock * 0.35) * speedDecay - lift;
+      // Terrain strips moisture from air (blocking + orographic lift)
+      const terrainBlock = Math.min(0.85, Math.max(0, e2 - 0.02) * 3);
+      const lift = Math.min(0.12, e2 * windSpeed * 0.3);
+      // Orographic rain: moisture removed from air is deposited HERE as local rain
+      // This makes windward slopes WET while drying the air for leeward side
+      const oroRain = lift * upwind * 2.0;
+      // Constant decay — no penalty for fast wind (fast wind SHOULD carry further)
+      const speedDecay = 0.993;
+      // Temperature capacity: warm air carries more moisture (Clausius-Clapeyron)
+      const tCap = Math.min(1.0, temperature[fi] * 1.5);
+      const carried = upwind * (1 - terrainBlock * 0.4) * speedDecay * tCap - lift;
       const lat2 = Math.abs(py / H - 0.5) * 2;
       const warmEnough = lat2 < 0.5 ? 1.0 : Math.max(0, 1 - (lat2 - 0.5) * 3);
       const existingMoist = prev[my * mW + mx];
-      const recycling = existingMoist > 0.2 ? (existingMoist - 0.2) * 0.10 * warmEnough : 0;
-      // Blend: 80% advected + 20% neighbor diffusion
-      const advected = Math.max(0, carried + recycling);
-      mGrid[my * mW + mx] = advected * 0.70 + neighborAvg * 0.30;
+      // Tropical recycling: wet warm areas re-evaporate moisture (Amazon effect)
+      const recycling = existingMoist > 0.15 ? (existingMoist - 0.15) * 0.25 * warmEnough : 0;
+      const advected = Math.max(0, carried + recycling + oroRain);
+      mGrid[my * mW + mx] = advected * 0.85 + neighborAvg * 0.15;
     }
   }
 }
@@ -1655,15 +1662,33 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     // ── Latitude moisture capacity (cold air holds less) ──
     const latCap = Math.max(0.10, 1.0 - lat * 0.7);
 
-    // ── Combine: wind advection + convergence + ocean proximity + terrain effects ──
-    let m = wm * 0.50                  // advected moisture (base)
-      + windOcean * 0.30               // direct wind from ocean
+    // ── Orographic enhancement: windward slopes are among the wettest places ──
+    // Check if wind is blowing INTO a slope (elevation increases downwind)
+    let oroBoost = 0;
+    if (windSpd > 0.005 && e > 0.03) {
+      const invS = 1 / windSpd;
+      // Check downwind elevation
+      const dwX = x + wx2 * invS * 4;
+      const dwY = y + wy2 * invS * 4;
+      const dwx = Math.min(W - 1, Math.max(0, ((Math.round(dwX) % W) + W) % W));
+      const dwy = Math.min(H - 1, Math.max(0, Math.round(dwY)));
+      const downwindElev = elevation[dwy * W + dwx];
+      if (downwindElev > e) {
+        // Wind blows into rising terrain — strong orographic rain
+        oroBoost = Math.min(0.25, (downwindElev - e) * wm * 3);
+      }
+    }
+
+    // ── Combine: wind advection dominates + supplementary factors ──
+    let m = wm * 0.60                  // advected moisture (primary driver)
+      + windOcean * 0.20               // direct wind from ocean
       + convergeMoist                   // convergence zones = wet
-      + coastProx * 0.15               // coastal proximity
+      + oroBoost                        // windward mountain slopes = very wet
+      + coastProx * 0.10               // coastal proximity
       - divergeDry                      // divergence zones = dry
       - rainShadow                      // leeward of mountains = dry
       - elevDry                         // high altitude = dry
-      + sg(nfMoistLand, x, y) * 0.05   // natural variation
+      + sg(nfMoistLand, x, y) * 0.05
       + sg(nfMoistBroad, x, y) * 0.04;
 
     m = Math.min(m, latCap);
