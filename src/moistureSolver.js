@@ -218,8 +218,10 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       }
 
       // b) Convective: hot land, strong at ITCZ, suppressed at subtropics
+      // ITCZ width 8° — narrow band representing annual-mean position.
+      // IRL the ITCZ migrates seasonally but only brings sustained rain to ~±8°.
       if (temp[ci] > 0.45 && moist > 0.05) {
-        const itczFactor = Math.exp(-(latDeg * latDeg) / (2 * 12 * 12));
+        const itczFactor = Math.exp(-(latDeg * latDeg) / (2 * 8 * 8));
         const subtropSuppress = 1 - subsidenceFactor * 0.9;
         const midlatFactor = Math.exp(-((latDeg - 45) * (latDeg - 45)) / (2 * 12 * 12)) * 0.3;
         const convFactor = (itczFactor + midlatFactor) * subtropSuppress;
