@@ -987,7 +987,7 @@ if (p('erodeDropsPerPixel', 1.5) > 0) {
 // WIND PHYSICS — delegated to standalone solveWind() function
 // ══════════════════════════════════════════════════════════════════
 const windResult = solveWind(W, H, elevation, fbm, params, s3);
-const { windX: fullWindX, windY: fullWindY, pressure: windPressure, wW: windWW, wH: windWH } = windResult;
+const fullWindX = windResult.windX, fullWindY = windResult.windY;
 
 /* DEAD CODE START — old inline wind solver, replaced by solveWind() call above
    Keeping temporarily for reference during development. Will be removed.
