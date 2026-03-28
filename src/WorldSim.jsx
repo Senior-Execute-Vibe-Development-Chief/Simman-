@@ -1329,7 +1329,7 @@ style={{width:80,accentColor:"#6ab4e8"}} />
 <button onClick={()=>{const nv=!showRiversRef.current;showRiversRef.current=nv;setShowRivers(nv);generate(seed);}}
 style={{...bs,background:showRivers?"rgba(40,120,200,0.25)":"transparent",border:"none",
 color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</button>
-{(preset==="tectonic"||preset==="earth")&&<>
+{(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
 <div style={{width:1,height:20,background:"rgba(201,184,122,0.15)"}} />
 <button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
 style={{...bs,color:rightPanel==="params"?"#c9b87a":"#5a5448",background:rightPanel==="params"?"rgba(201,184,122,0.15)":"transparent",
@@ -1342,17 +1342,17 @@ style={{...bs,color:"#b8a060",border:"1px solid rgba(201,184,122,0.3)",padding:"
 </div>{/* end center */}
 
 {/* ══ RIGHT PANEL: Parameters ══ */}
-{rightPanel==="params"&&(preset==="tectonic"||preset==="earth")&&<div style={{width:rpW,minWidth:rpW,height:"100%",background:"rgba(6,8,16,0.92)",
+{rightPanel==="params"&&(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<div style={{width:rpW,minWidth:rpW,height:"100%",background:"rgba(6,8,16,0.92)",
 borderLeft:"1px solid rgba(201,184,122,0.08)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
 <div style={{padding:"8px 10px",fontSize:11,color:"#c9b87a",borderBottom:"1px solid rgba(201,184,122,0.08)",
 display:"flex",alignItems:"center"}}>
-<span>{preset==="earth"?"Wind Parameters":"Parameters"}</span>
+<span>{preset==="tectonic"?"Parameters":"Wind & Moisture"}</span>
 <div style={{flex:1}} />
 <span onClick={()=>setRightPanel("")} style={{cursor:"pointer",color:"#6a6458",fontSize:14}}>✕</span>
 </div>
 <div style={{flex:1,overflowY:"auto",padding:"6px 8px"}}>
 <ParamEditor params={{..._tecParams}} onChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
-  groups={preset==="earth"?["wind"]:undefined} />
+  groups={preset==="earth"?["wind"]:preset==="earth_sim"?["wind","moisture"]:undefined} />
 </div>
 </div>}
 
