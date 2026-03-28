@@ -161,8 +161,13 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       const fdx = srcXw - sx;
       const fdy = srcYc - sy;
       const sxr = (sx + 1) % mW;
-      const upwind = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
+      let upwind = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
         + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
+      // If upwind trace lands on ocean, use the ocean moisture but decay it —
+      // represents the coastal transition where oceanic moisture enters land.
+      // This prevents desert cells adjacent to narrow seas from getting full ocean moisture.
+      const srcIdx = sy * mW + sx;
+      if (isOcean[srcIdx]) upwind *= 0.5;
 
       // Moisture transport:
       // - Upwind (directional): full value from backward trace along mean wind
@@ -194,8 +199,13 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       const latDeg = lat * 90;
 
       // Subtropical subsidence: Hadley cell descent at ~20-35°
+      // Bimodal subsidence: sharp core (width 6°) for extreme deserts +
+      // gentle wide shoulder (width 14°) for semi-arid margins.
+      // Core dominates at 20-35°, shoulder extends to ~40° at reduced strength.
       const subtropDist = latDeg - _moistSubsidLat;
-      const subsidenceFactor = Math.exp(-(subtropDist * subtropDist) / (2 * 9 * 9));
+      const coreSubsidence = Math.exp(-(subtropDist * subtropDist) / (2 * 6 * 6));
+      const wideSubsidence = Math.exp(-(subtropDist * subtropDist) / (2 * 14 * 14));
+      const subsidenceFactor = coreSubsidence * 0.7 + wideSubsidence * 0.3;
 
       // a) Orographic: wind pushing uphill
       if (ws > 0.0005) {
@@ -235,9 +245,12 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       }
 
       // ── Subtropical subsidence drying ──
-      // Much more aggressive — this is the primary mechanism creating deserts
-      if (subsidenceFactor > 0.1) {
-        moist *= 1 - subsidenceFactor * _moistSubsidStr * 8;
+      // Per-step drain: moderate multiplier, sharp spatial focus.
+      // At center (28°, factor=1.0, str=0.03): drain=9% → 0.91^90 ≈ 0.0001
+      // At 34° (factor=0.41): drain=3.7% → 0.963^90 ≈ 0.034
+      // At 38° (factor=0.10): drain=0.9% → 0.991^90 ≈ 0.44 (barely affected)
+      if (subsidenceFactor > 0.05) {
+        moist *= 1 - subsidenceFactor * _moistSubsidStr * 5;
       }
 
       // ── Transpiration recycling ──
