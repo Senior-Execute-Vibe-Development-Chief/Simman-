@@ -122,6 +122,10 @@ export const PARAMS = {
         desc: "Number of advection iterations. More steps = moisture penetrates deeper inland from ocean sources. Also affects generation speed." },
       { key: "moistConvective", def: 0.04, min: 0.0, max: 0.15, label: "Convective rainfall",
         desc: "How strongly hot land triggers convective precipitation. Dominant in tropics (thunderstorms, ITCZ rainfall). Higher = wetter tropics, drier subtropics." },
+      { key: "moistSubsidenceLat", def: 28, min: 15, max: 40, label: "Desert belt latitude",
+        desc: "Center latitude of the subtropical dry belt (Hadley cell descent). Earth's deserts cluster at ~28°. Lower = deserts closer to equator. Higher = deserts at higher latitudes." },
+      { key: "moistSubsidenceStr", def: 0.03, min: 0.0, max: 0.08, label: "Desert belt strength",
+        desc: "How strongly the subtropical high suppresses moisture and precipitation. Higher = drier deserts, sharper wet/dry boundaries. 0 = no subtropical drying." },
     ]
   },
   erosion: {

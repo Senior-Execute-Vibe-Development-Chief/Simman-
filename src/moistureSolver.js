@@ -14,6 +14,8 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   const _moistOcnW       = p('moistOceanWeight', 0.20);
   const _moistSteps      = Math.round(p('moistSteps', 90));
   const _moistConvective = p('moistConvective', 0.04);
+  const _moistSubsidLat  = p('moistSubsidenceLat', 28);
+  const _moistSubsidStr  = p('moistSubsidenceStr', 0.03);
 
   // Work on 2x coarse grid for performance
   const mW = Math.ceil(W / 2), mH = Math.ceil(H / 2);
@@ -183,14 +185,14 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       // at ~20-35° latitude creates warm sinking air that suppresses precipitation
       // and actively dries the atmosphere. This is why all major deserts sit here.
       // Gaussian centered at ~28° latitude, width ~8°
-      const subtropDist = latDeg - 28;
+      const subtropDist = latDeg - _moistSubsidLat;
       const subsidenceFactor = Math.exp(-(subtropDist * subtropDist) / (2 * 8 * 8));
 
       // Subtropical subsidence: actively drain atmospheric moisture
       // Sinking air warms adiabatically, increasing capacity → prevents condensation
       // and pushes moisture away. Stronger over land (no ocean buffering).
       if (subsidenceFactor > 0.1) {
-        const subsidenceDrain = moist * subsidenceFactor * 0.03;
+        const subsidenceDrain = moist * subsidenceFactor * _moistSubsidStr;
         moist -= subsidenceDrain;
         // No precipitation from subsidence — the moisture just evaporates/disperses
       }
