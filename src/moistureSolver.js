@@ -12,6 +12,8 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   const _moistElevDry    = p('moistElevDry', 2.0);
   const _moistAdvW       = p('moistAdvectWeight', 0.60);
   const _moistOcnW       = p('moistOceanWeight', 0.20);
+  const _moistSteps      = Math.round(p('moistSteps', 90));
+  const _moistConvective = p('moistConvective', 0.04);
 
   // Work on 2x coarse grid for performance
   const mW = Math.ceil(W / 2), mH = Math.ceil(H / 2);
@@ -125,7 +127,7 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   // ═══════════════════════════════════════════════════════
   // Phase 2: Iterative transport with precipitation
   // ═══════════════════════════════════════════════════════
-  const STEPS = 90;
+  const STEPS = _moistSteps;
   const baseReach = 1.0 + _moistAdvW * 2.0; // 1.0 - 3.0 cells
 
   for (let step = 0; step < STEPS; step++) {
@@ -192,7 +194,7 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       // b) Convective: hot land triggers rainfall (especially tropics)
       if (temp[ci] > 0.45 && moist > 0.05) {
         const tropFactor = Math.max(0, 1 - lat * 2.5); // strong in tropics, zero by 40°
-        const convRate = (temp[ci] - 0.4) * 0.04 * (0.3 + tropFactor * 0.7);
+        const convRate = (temp[ci] - 0.4) * _moistConvective * (0.3 + tropFactor * 0.7);
         const convPrecip = moist * convRate;
         precip += convPrecip;
         moist -= convPrecip;

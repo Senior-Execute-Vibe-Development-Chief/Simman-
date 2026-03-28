@@ -118,6 +118,10 @@ export const PARAMS = {
         desc: "How strongly rising terrain forces precipitation. Higher = stronger rain shadows behind mountains. Controls windward rain vs leeward dryness." },
       { key: "moistElevDry", def: 2.0, min: 0.0, max: 5.0, label: "Elevation drying",
         desc: "How much altitude reduces air moisture capacity. Cold thin air at altitude holds less water. Higher = drier mountain tops." },
+      { key: "moistSteps", def: 90, min: 30, max: 150, label: "Transport steps",
+        desc: "Number of advection iterations. More steps = moisture penetrates deeper inland from ocean sources. Also affects generation speed." },
+      { key: "moistConvective", def: 0.04, min: 0.0, max: 0.15, label: "Convective rainfall",
+        desc: "How strongly hot land triggers convective precipitation. Dominant in tropics (thunderstorms, ITCZ rainfall). Higher = wetter tropics, drier subtropics." },
     ]
   },
   erosion: {
