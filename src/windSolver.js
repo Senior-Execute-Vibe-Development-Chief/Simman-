@@ -575,7 +575,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     }
   }
 
-  return { windX: fullWindX, windY: fullWindY };
+  return { windX: fullWindX, windY: fullWindY, pressure, wW, wH, wElev, wElevRaw };
 }
 
 // ── Helper: box blur with wrapping X, clamped Y ──

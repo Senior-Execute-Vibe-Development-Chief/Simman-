@@ -988,9 +988,10 @@ if (p('erodeDropsPerPixel', 1.5) > 0) {
 // WIND PHYSICS — delegated to standalone solveWind() function
 // ══════════════════════════════════════════════════════════════════
 const useParticleWind = p('useParticleWind', 0) > 0.5;
-const { windX: fullWindX, windY: fullWindY } = useParticleWind
+const windResult = useParticleWind
   ? solveWindParticle(W, H, elevation, fbm, params, s3)
   : solveWind(W, H, elevation, fbm, params, s3);
+const { windX: fullWindX, windY: fullWindY, pressure: windPressure, wW: windWW, wH: windWH } = windResult;
 
 /* DEAD CODE START — old inline wind solver, replaced by solveWind() call above
    Keeping temporarily for reference during development. Will be removed.
@@ -1405,128 +1406,145 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 DEAD CODE END */
 
 // ═══════════════════════════════════════════════════════
-// STEP 8c: Wind-advected moisture transport
-// Moisture emitted by ocean, carried by wind, blocked by terrain
-// Multi-step particle advection on the wind grid
+// STEP 8c: Pressure-based moisture computation
+// Instead of advecting moisture particles, derive moisture from the
+// physics we already have: pressure field, wind divergence, elevation,
+// and distance from ocean.
+//
+// Low pressure = rising air = cooling = condensation = rain (wet)
+// High pressure = sinking air = warming = evaporation = dry
+// Windward mountain slopes = forced lift = wet
+// Leeward slopes = descending air = rain shadow = dry
+// Convergence zones = air masses meeting = uplift = very wet
 // ═══════════════════════════════════════════════════════
 const windMoisture = new Float32Array(W * H);
-// Use coarse grid for advection (performance)
-const mW = Math.ceil(W / 2), mH = Math.ceil(H / 2);
-const mGrid = new Float32Array(mW * mH);
-// Seed ocean tiles with moisture
-for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
-  const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-  if (elevation[py * W + px] <= 0) mGrid[my * mW + mx] = 0.8;
-}
-// Advect moisture along wind vectors with lateral diffusion
-// Diffusion prevents narrow wind-streamline artifacts ("whippy" moisture trails)
-for (let step = 0; step < 60; step++) {
-  const prev = new Float32Array(mGrid);
-  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
-    const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-    const fi = py * W + px;
-    const wx2 = fullWindX[fi], wy2 = fullWindY[fi];
-    const windSpeed = Math.sqrt(wx2 * wx2 + wy2 * wy2);
-    // Even very light winds carry moisture — use a minimum reach so
-    // diffusion from ocean still propagates inland on calm days
-    let dirX, dirY;
-    if (windSpeed > 0.005) {
-      dirX = wx2 / windSpeed;
-      dirY = wy2 / windSpeed;
-    } else {
-      dirX = 0; dirY = 0;
-    }
-    // Reach further with stronger wind, but always have minimum reach of 1
-    // so even calm cells pull from their upwind neighbor
-    const reach = Math.max(1.0, Math.min(4.0, 2.0 + windSpeed * 3.0));
-    const srcX = mx - dirX * reach, srcY = my - dirY * reach;
-    // Wrap X (cylindrical map), clamp Y
-    const sx = ((Math.floor(srcX) % mW) + mW) % mW;
-    const sy = Math.min(mH - 2, Math.max(0, Math.floor(srcY)));
-    const fdx = Math.max(0, Math.min(1, srcX - Math.floor(srcX)));
-    const fdy = Math.max(0, Math.min(1, srcY - Math.floor(srcY)));
-    const sxr = (sx + 1) % mW;
-    const upwind = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
-      + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
-    // Lateral diffusion: blend with neighbors for broad wet regions
-    const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
-    const neighborAvg = (prev[my * mW + mxL] + prev[my * mW + mxR]
-      + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.25;
-    const e2 = elevation[fi];
-    if (e2 <= 0) {
-      // Ocean: maintain high moisture (evaporation source)
-      mGrid[my * mW + mx] = Math.max(prev[my * mW + mx], 0.75);
-    } else {
-      // Terrain blocking: mountains strip moisture from the airstream
-      const terrainBlock = Math.min(0.85, Math.max(0, e2 - 0.02) * 3);
-      const lift = Math.min(0.12, e2 * windSpeed * 0.3);
-      // Moisture retention per step — higher = carries further inland
-      // Independent of wind speed (fast wind carries further via reach, not retention)
-      const speedDecay = 0.993;
-      const carried = upwind * (1 - terrainBlock * 0.4) * speedDecay - lift;
-      const lat2 = Math.abs(py / H - 0.5) * 2;
-      const warmEnough = lat2 < 0.5 ? 1.0 : Math.max(0, 1 - (lat2 - 0.5) * 3);
-      const existingMoist = prev[my * mW + mx];
-      // Tropical recycling: warm wet areas re-evaporate moisture
-      const recycling = existingMoist > 0.15 ? (existingMoist - 0.15) * 0.30 * warmEnough : 0;
-      // More advection weight (85%), less neighbor dilution (15%)
-      const advected = Math.max(0, carried + recycling);
-      mGrid[my * mW + mx] = advected * 0.85 + neighborAvg * 0.15;
+{
+  const WG = 4; // match wind solver coarse grid
+
+  // Bilinear sampler for the wind solver's coarse pressure grid
+  const sampleP = (fx, fy) => {
+    if (!windPressure) return 0;
+    const ix = Math.min(windWW - 2, Math.max(0, fx | 0));
+    const iy = Math.min(windWH - 2, Math.max(0, fy | 0));
+    const dx2 = fx - ix, dy2 = fy - iy;
+    return (windPressure[iy * windWW + ix] * (1 - dx2) + windPressure[iy * windWW + ix + 1] * dx2) * (1 - dy2)
+      + (windPressure[(iy + 1) * windWW + ix] * (1 - dx2) + windPressure[(iy + 1) * windWW + ix + 1] * dx2) * dy2;
+  };
+
+  // Find pressure range for normalization
+  let pMin = Infinity, pMax = -Infinity;
+  if (windPressure) {
+    for (let i = 0; i < windPressure.length; i++) {
+      if (windPressure[i] < pMin) pMin = windPressure[i];
+      if (windPressure[i] > pMax) pMax = windPressure[i];
     }
   }
-}
-// ═══════════════════════════════════════════════════════
-// Wind convergence/divergence → precipitation modifier
-// Compute divergence into a separate field, smooth it (turbulent mixing
-// means convergence effects spread over ~100km), then apply.
-// ═══════════════════════════════════════════════════════
-const divField = new Float32Array(mW * mH);
-for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
-  const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-  const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
-  const pxL = Math.min(W - 1, mxL * 2), pxR = Math.min(W - 1, mxR * 2);
-  const pyU = Math.min(H - 1, (my - 1) * 2), pyD = Math.min(H - 1, (my + 1) * 2);
-  divField[my * mW + mx] = (fullWindX[py * W + pxR] - fullWindX[py * W + pxL]
-    + fullWindY[pyD * W + px] - fullWindY[pyU * W + px]) * 0.5;
-}
-// Smooth divergence field (3 passes) — represents mesoscale turbulent mixing
-for (let pass = 0; pass < 3; pass++) {
-  const prev = new Float32Array(divField);
-  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
-    const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW, ci = my * mW + mx;
-    divField[ci] = prev[ci] * 0.4 + (prev[my * mW + mxL] + prev[my * mW + mxR]
-      + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.15;
+  const pRange = pMax - pMin || 1;
+
+  // Compute coast distance on a coarse grid for ocean proximity
+  const cdW = Math.ceil(W / 4), cdH = Math.ceil(H / 4);
+  const oceanDist = new Float32Array(cdW * cdH);
+  oceanDist.fill(255);
+  const odQ = [];
+  for (let cy = 0; cy < cdH; cy++) for (let cx = 0; cx < cdW; cx++) {
+    const px = Math.min(W - 1, cx * 4), py = Math.min(H - 1, cy * 4);
+    if (elevation[py * W + px] <= 0) { oceanDist[cy * cdW + cx] = 0; odQ.push(cy * cdW + cx); }
   }
-}
-// Apply smoothed convergence/divergence to moisture
-for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
-  const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-  if (elevation[py * W + px] <= 0) continue;
-  const div = divField[my * mW + mx], ci = my * mW + mx, q = mGrid[ci];
-  // Convergence (div < 0): air rises → cools → rain. This is the primary
-  // rain mechanism for ITCZ, fronts, and monsoons. Strong effect.
-  // Divergence (div > 0): air sinks → warms → dries. Creates subtropical deserts.
-  if (div < 0) mGrid[ci] = Math.min(1, mGrid[ci] + Math.min(0.25, -div * q * 2.5));
-  else mGrid[ci] = Math.max(0, mGrid[ci] - Math.min(0.15, div * 0.8));
-}
-// Final eddy diffusion smoothing (5 passes — turbulent atmospheric mixing)
-for (let pass = 0; pass < 5; pass++) {
-  const prev = new Float32Array(mGrid);
-  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
-    const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-    if (elevation[py * W + px] <= 0) continue;
-    const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW, ci = my * mW + mx;
-    mGrid[ci] = prev[ci] * 0.45 + (prev[my * mW + mxL] + prev[my * mW + mxR]
-      + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.1375;
+  for (let qi = 0; qi < odQ.length; qi++) {
+    const ci = odQ[qi], cd2 = oceanDist[ci];
+    const cx = ci % cdW, cy2 = (ci - cx) / cdW;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx2 = (cx + dx + cdW) % cdW, ny2 = cy2 + dy;
+      if (ny2 < 0 || ny2 >= cdH) continue;
+      const ni = ny2 * cdW + nx2, nd = cd2 + 1;
+      if (nd < oceanDist[ni]) { oceanDist[ni] = nd; odQ.push(ni); }
+    }
   }
-}
-// Upscale moisture advection result to full resolution
-for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-  const fx = x / 2, fy = y / 2;
-  const ix = Math.min(mW - 2, fx | 0), iy = Math.min(mH - 2, fy | 0);
-  const dx = fx - ix, dy = fy - iy;
-  windMoisture[y * W + x] = (mGrid[iy * mW + ix] * (1 - dx) + mGrid[iy * mW + Math.min(mW - 1, ix + 1)] * dx) * (1 - dy)
-    + (mGrid[(iy + 1) * mW + ix] * (1 - dx) + mGrid[(iy + 1) * mW + Math.min(mW - 1, ix + 1)] * dx) * dy;
+
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    const e = elevation[i];
+    if (e <= 0) continue; // ocean moisture set later
+
+    const nx = x / W, ny = y / H;
+    const lat = Math.abs(ny - 0.5) * 2;
+
+    // ── 1. Pressure-based moisture (low pressure = wet) ──
+    const pVal = sampleP(x / WG, y / WG);
+    const pNorm = (pVal - pMin) / pRange; // 0 = lowest pressure, 1 = highest
+    // Invert: low pressure → high moisture
+    const pressureMoist = Math.max(0, 1 - pNorm * 1.5) * 0.6;
+
+    // ── 2. Ocean proximity (coastal areas get moisture from ocean evaporation) ──
+    const od = oceanDist[Math.min(cdH - 1, (y / 4) | 0) * cdW + Math.min(cdW - 1, (x / 4) | 0)];
+    const coastProx2 = Math.max(0, 1 - od / 12); // fades over ~12 cells (~48 pixels)
+    const coastMoist = coastProx2 * 0.4;
+
+    // ── 3. Wind-from-ocean: moisture carried by onshore wind ──
+    // Check if wind at this cell came from a direction that was ocean
+    const wx2 = fullWindX[i], wy2 = fullWindY[i];
+    const windSpd = Math.sqrt(wx2 * wx2 + wy2 * wy2);
+    // Trace backward along wind to see if source was ocean
+    let upwindOcean = 0;
+    if (windSpd > 0.005) {
+      const traceX = x - (wx2 / windSpd) * 20; // look 20 pixels upwind
+      const traceY = y - (wy2 / windSpd) * 20;
+      const tx = Math.min(W - 1, Math.max(0, ((Math.round(traceX) % W) + W) % W));
+      const ty = Math.min(H - 1, Math.max(0, Math.round(traceY)));
+      if (elevation[ty * W + tx] <= 0) upwindOcean = 1;
+      // Also check a shorter trace
+      const traceX2 = x - (wx2 / windSpd) * 8;
+      const traceY2 = y - (wy2 / windSpd) * 8;
+      const tx2 = Math.min(W - 1, Math.max(0, ((Math.round(traceX2) % W) + W) % W));
+      const ty2 = Math.min(H - 1, Math.max(0, Math.round(traceY2)));
+      if (elevation[ty2 * W + tx2] <= 0) upwindOcean = Math.max(upwindOcean, 0.7);
+    }
+    const windOceanMoist = upwindOcean * windSpd * 3.0; // stronger wind = more moisture
+
+    // ── 4. Wind convergence (rising air = rain) ──
+    const wxL = fullWindX[y * W + ((x - 2 + W) % W)];
+    const wxR = fullWindX[y * W + ((x + 2) % W)];
+    const wyU = y > 1 ? fullWindY[(y - 2) * W + x] : 0;
+    const wyD = y < H - 2 ? fullWindY[(y + 2) * W + x] : 0;
+    const divVal = (wxR - wxL + wyD - wyU) * 0.25;
+    // Convergence (negative div) = wet, divergence (positive) = dry
+    const convergeMoist = divVal < 0 ? Math.min(0.4, -divVal * 8) : 0;
+    const divergeDry = divVal > 0 ? Math.min(0.3, divVal * 6) : 0;
+
+    // ── 5. Rain shadow: leeward side of mountains is dry ──
+    // Check if upwind direction crosses higher terrain
+    let rainShadow = 0;
+    if (windSpd > 0.005 && e > 0.01) {
+      const upX = x - (wx2 / windSpd) * 6;
+      const upY = y - (wy2 / windSpd) * 6;
+      const ux = Math.min(W - 1, Math.max(0, ((Math.round(upX) % W) + W) % W));
+      const uy = Math.min(H - 1, Math.max(0, Math.round(upY)));
+      const upElev = elevation[uy * W + ux];
+      if (upElev > e + 0.05) {
+        // Upwind terrain is higher — we're in the rain shadow
+        rainShadow = Math.min(0.4, (upElev - e) * 3);
+      }
+    }
+
+    // ── 6. Elevation drying (thin cold air at altitude) ──
+    const elevDry = e > 0.04 ? Math.min(0.4, (e - 0.04) * 2.0) : 0;
+
+    // ── 7. Temperature-limited moisture capacity ──
+    const t = temperature[i];
+    const moistCap = Math.max(0.05, Math.min(1, t * 1.3));
+
+    // ── Combine all factors ──
+    let m = pressureMoist + coastMoist + windOceanMoist * 0.5 + convergeMoist
+      - divergeDry - rainShadow - elevDry;
+
+    // Add some noise for natural variation
+    m += sg(nfMoistLand, x, y) * 0.08 + sg(nfMoistBroad, x, y) * 0.05;
+
+    // Clamp by temperature capacity
+    m = Math.min(m, moistCap);
+    windMoisture[i] = Math.max(0.02, Math.min(1, m));
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1623,57 +1641,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   if (e <= 0) {
     moisture[i] = 0.5 + sg(nfMoistOce, x, y) * 0.1;
   } else {
-    // Wind-advected moisture is the PRIMARY driver (85%).
-    // Latitude climate provides a secondary baseline (15%) for stability.
-    const wm = windMoisture[i];
-    const t = temperature[i];
-
-    // ── Convergence-derived wetness ──
-    // Where winds converge, air rises, cools, and precipitates heavily.
-    // This is how the ITCZ, frontal zones, and monsoon troughs work —
-    // the convergence from the wind field already captures these patterns
-    // without needing hardcoded latitude bands.
-
-    // ── Latitude baseline (weak secondary signal) ──
-    // Only provides a gentle floor/ceiling, NOT the main driver.
-    // Tropical warmth allows more moisture in the air.
-    // Polar cold limits moisture capacity (Clausius-Clapeyron).
-    const moistureCapacity = Math.max(0.05, Math.min(1, t * 1.3));
-    // Gentle latitude modulation — tropics slightly wetter base, poles drier
-    const latBase = 0.35 + Math.max(0, 1 - lat * 2) * 0.15
-      - Math.max(0, lat - 0.75) * 0.3;
-    const climateMoist = latBase + sg(nfMoistBroad, x, y) * 0.10
-      + sg(nfMoistLand, x, y) * 0.05;
-
-    // ── Combine: wind dominates ──
-    let m = wm * 0.85 + climateMoist * 0.15;
-
-    // ── Clamp by moisture capacity (cold air holds less water) ──
-    m = Math.min(m, moistureCapacity);
-
-    // ── Elevation drying: thin cold air at altitude holds much less moisture ──
-    // Tibetan Plateau, Andes altiplano, Ethiopian Highlands are all arid.
-    // Air loses moisture climbing windward slopes, and what remains is limited
-    // by the low temperatures and thin atmosphere at altitude.
-    if (e > 0.04) {
-      const elevDry = Math.min(0.5, (e - 0.04) * 2.5);
-      m *= (1 - elevDry);
-    }
-
-    // ── Orographic lift: windward slopes get extra precipitation ──
-    // This happens on the way UP, before the elevation drying kicks in.
-    // The moisture is deposited on the slope, not carried to the top.
-    if (e > 0.08 && wm > 0.3) m += Math.min(0.15, (e - 0.08) * wm * 0.6);
-
-    // ── Cold current moisture suppression: equatorward coastal winds = upwelling = dry ──
-    if (coastProx > 0.15) {
-      const wy2 = fullWindY[i];
-      const hemiSign = ny < 0.5 ? -1 : 1;
-      const polewardFlow = wy2 * hemiSign;
-      if (polewardFlow < 0) m += Math.max(-0.15, polewardFlow * 0.15) * coastProx;
-    }
-
-    moisture[i] = Math.max(0.02, Math.min(1, m));
+    // Moisture already computed from pressure + wind + convergence + terrain
+    moisture[i] = windMoisture[i];
   }
 }
 
