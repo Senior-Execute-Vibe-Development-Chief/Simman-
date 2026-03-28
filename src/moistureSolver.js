@@ -190,7 +190,7 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
 
       // Subtropical subsidence: Hadley cell descent at ~20-35°
       const subtropDist = latDeg - _moistSubsidLat;
-      const subsidenceFactor = Math.exp(-(subtropDist * subtropDist) / (2 * 8 * 8));
+      const subsidenceFactor = Math.exp(-(subtropDist * subtropDist) / (2 * 9 * 9));
 
       // a) Orographic: wind pushing uphill
       if (ws > 0.0005) {
@@ -232,7 +232,7 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       // ── Subtropical subsidence drying ──
       // Much more aggressive — this is the primary mechanism creating deserts
       if (subsidenceFactor > 0.1) {
-        moist *= 1 - subsidenceFactor * _moistSubsidStr * 5;
+        moist *= 1 - subsidenceFactor * _moistSubsidStr * 8;
       }
 
       // ── Transpiration recycling ──
@@ -304,9 +304,9 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       let blend = aNorm * 0.3 + pNorm * 0.7;
 
       // Temperature capacity ceiling: cold areas can't be very wet regardless
-      // of how much precipitation accumulates at the coast
-      const py = Math.min(H - 1, (i / mW | 0) * 2);
-      const tCap = temp[i] > 0 ? Math.min(1, 0.1 + temp[i] * 1.2) : 0.1;
+      // of how much precipitation accumulates at the coast.
+      // Steeper curve: temp 0.0→0.05, 0.2→0.25, 0.5→0.65, 0.8→1.0
+      const tCap = Math.min(1, Math.pow(Math.max(0, temp[i]), 0.7) * 1.1 + 0.02);
       blend = Math.min(blend, tCap);
 
       normalized[i] = Math.max(0.02, Math.min(1, blend));
