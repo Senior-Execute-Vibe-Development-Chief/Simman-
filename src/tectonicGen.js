@@ -31,8 +31,8 @@ const N = cw * ch;
 // surface, Juan de Fuca is tiny). Use weighted Voronoi (power diagram)
 // with log-normal-ish weight distribution for realistic size disparity.
 // ═══════════════════════════════════════════════════════
-const numMajor = p('numMajorBase', 5) + Math.floor(rng() * p('numMajorRange', 3));
-const numMinor = p('numMinorBase', 6) + Math.floor(rng() * p('numMinorRange', 6));
+const numMajor = p('numMajorBase', 6) + Math.floor(rng() * p('numMajorRange', 3));
+const numMinor = p('numMinorBase', 8) + Math.floor(rng() * p('numMinorRange', 6));
 const numPlates = numMajor + numMinor;
 const plates = [];
 
@@ -56,10 +56,10 @@ for (let i = 0; i < numPlates; i++) {
   // minor plates get small weights (tiny territory). Variance within each
   // class adds further irregularity. Weight units are squared-distance offsets.
   const weight = isMajor
-    ? p('majorWeightMin', 0.012) + rng() * p('majorWeightRange', 0.025)
+    ? p('majorWeightMin', 0.012) + rng() * p('majorWeightRange', 0.020)
     : p('minorWeightMin', 0.001) + rng() * p('minorWeightRange', 0.005);
 
-  const hasCont = isMajor ? rng() < p('majorContProb', 0.70) : rng() < p('minorContProb', 0.20);
+  const hasCont = isMajor ? rng() < p('majorContProb', 0.70) : rng() < p('minorContProb', 0.40);
 
   const nucAngle = rng() * Math.PI * 2;
   const nucOffset = 0.02 + rng() * 0.08;
@@ -67,7 +67,7 @@ for (let i = 0; i < numPlates; i++) {
   const nucY = cy + Math.sin(nucAngle) * nucOffset;
 
   // Larger continent radii for major plates → more cohesive landmasses
-  const contRadius = hasCont ? (isMajor ? p('majorContRadMin', 0.14) + rng() * p('majorContRadRange', 0.18) : p('minorContRadMin', 0.06) + rng() * p('minorContRadRange', 0.07)) : 0;
+  const contRadius = hasCont ? (isMajor ? p('majorContRadMin', 0.14) + rng() * p('majorContRadRange', 0.18) : p('minorContRadMin', 0.07) + rng() * p('minorContRadRange', 0.08)) : 0;
 
   plates.push({
     cx, cy,
@@ -105,7 +105,7 @@ const PS = 2;
 const ppW = Math.ceil(W / PS), ppH = Math.ceil(H / PS);
 const pixPlateCoarse = new Uint8Array(ppW * ppH);
 
-const _ws1 = p('warpStr1', 0.14), _ws2 = p('warpStr2', 0.05), _js = p('jagStr', 0.025);
+const _ws1 = p('warpStr1', 0.18), _ws2 = p('warpStr2', 0.05), _js = p('jagStr', 0.04);
 const _psx = p('plateStretchX', 1.3), _psy = p('plateStretchY', 0.8);
 for (let py = 0; py < ppH; py++) for (let px = 0; px < ppW; px++) {
   const x = px * PS, y = py * PS;
@@ -155,7 +155,7 @@ for (let pi = 0; pi < numPlates; pi++) {
   const no = rng() * 100;
   const scale = plate.contRadius / 0.18;
 
-  const numSubs = isMaj ? p('majorSubsBase', 5) + Math.floor(rng() * p('majorSubsRange', 5)) : p('minorSubsBase', 2) + Math.floor(rng() * p('minorSubsRange', 3));
+  const numSubs = isMaj ? p('majorSubsBase', 7) + Math.floor(rng() * p('majorSubsRange', 5)) : p('minorSubsBase', 3) + Math.floor(rng() * p('minorSubsRange', 4));
 
   for (let s = 0; s < numSubs; s++) {
     const ang = rng() * Math.PI * 2;
@@ -180,7 +180,7 @@ for (let pi = 0; pi < numPlates; pi++) {
     });
   }
 
-  const numNegs = isMaj ? Math.floor(rng() * p('majorNegsMax', 2.5)) : Math.floor(rng() * p('minorNegsMax', 1.5));
+  const numNegs = isMaj ? Math.floor(rng() * p('majorNegsMax', 4)) : Math.floor(rng() * p('minorNegsMax', 1.5));
   for (let n = 0; n < numNegs; n++) {
     const ang = rng() * Math.PI * 2;
     const dist = (0.02 + rng() * 0.06) * scale;
@@ -280,9 +280,9 @@ for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
 
   const onContPlate = plates[pxPlateId] && plates[pxPlateId].hasCont ? 1.0 : 0.12;
   const penNoise = fbm(wnx * 4 + s3 + 90, wny * 4 + s3 + 90, 3, 2, 0.5);
-  if (penNoise > p('penThreshold', 0.4)) e += (penNoise - p('penThreshold', 0.4)) * p('penStrength', 0.2) * onContPlate;
+  if (penNoise > p('penThreshold', 0.4)) e += (penNoise - p('penThreshold', 0.4)) * p('penStrength', 0.3) * onContPlate;
   const bayNoise = fbm(wnx * 3.5 + s4 + 120, wny * 3.5 + s4 + 120, 3, 2, 0.5);
-  if (bayNoise > p('bayThreshold', 0.45)) e -= (bayNoise - p('bayThreshold', 0.45)) * p('bayStrength', 0.18) * onContPlate;
+  if (bayNoise > p('bayThreshold', 0.45)) e -= (bayNoise - p('bayThreshold', 0.45)) * p('bayStrength', 0.25) * onContPlate;
 
   const [wf1, wf2] = worley(wnx * 5 + s5, wny * 5 + s5);
   if (e > -0.1) e += (wf2 - wf1) * 0.04 - 0.02;
@@ -306,11 +306,27 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 // STEP 4b: Sea level + derive crustType from stamps
 // ═══════════════════════════════════════════════════════
 const sorted = Float32Array.from(rawElev).sort();
-const sl = sorted[Math.floor(W * H * p('seaLevel', 0.72))];
+const sl = sorted[Math.floor(W * H * p('seaLevel', 0.67))];
 const isLandArr = new Uint8Array(W * H);
 for (let i = 0; i < W * H; i++) isLandArr[i] = rawElev[i] > sl ? 1 : 0;
 
-// Remove tiny isolated land clusters (< 20 pixels)
+// Add coastline noise at full resolution to break up smooth bilinear edges
+// This creates fractal coastlines, fjords, and small offshore islands
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  const i = y * W + x;
+  const nx = x / W, ny = y / H;
+  // Only apply near the coastline (within ~0.03 of sea level)
+  const dist = rawElev[i] - sl;
+  if (Math.abs(dist) < 0.04) {
+    const coastNoise = fbm(nx * 30 + s2 + 200, ny * 30 + s2 + 200, 3, 2, 0.5) * 0.035
+      + fbm(nx * 60 + s3 + 300, ny * 60 + s3 + 300, 2, 2, 0.4) * 0.018
+      + fbm(nx * 120 + s4 + 400, ny * 120 + s4 + 400, 2, 2, 0.4) * 0.008;
+    rawElev[i] += coastNoise;
+    isLandArr[i] = rawElev[i] > sl ? 1 : 0;
+  }
+}
+
+// Remove tiny isolated land clusters (< 5 pixels)
 const visited = new Uint8Array(W * H);
 for (let i = 0; i < W * H; i++) {
   if (!isLandArr[i] || visited[i]) continue;
@@ -326,7 +342,7 @@ for (let i = 0; i < W * H; i++) {
       if (isLandArr[ni] && !visited[ni]) { visited[ni] = 1; q.push(ni); }
     }
   }
-  if (cluster.length < 20) for (const ci of cluster) { isLandArr[ci] = 0; rawElev[ci] = sl - 0.01; }
+  if (cluster.length < 5) for (const ci of cluster) { isLandArr[ci] = 0; rawElev[ci] = sl - 0.01; }
 }
 
 // Derive crustType on coarse grid from stamp land
@@ -373,10 +389,10 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
       // Uplift only on THIS cell's side (overriding plate). Never the neighbor.
       const strength = Math.min(1.5, convRate);
       if (myType === 1 && neighborType === 1) {
-        boundaryConv[i] = Math.max(boundaryConv[i], strength * p('contContUplift', 0.18));
+        boundaryConv[i] = Math.max(boundaryConv[i], strength * p('contContUplift', 0.20));
         boundaryCont[i] = 1;
       } else if (myType === 1 && neighborType === 0) {
-        boundaryConv[i] = Math.max(boundaryConv[i], strength * p('contOceanUplift', 0.13));
+        boundaryConv[i] = Math.max(boundaryConv[i], strength * p('contOceanUplift', 0.15));
         boundaryOceCont[i] = 1;
       } else if (myType === 0 && neighborType === 1) {
         boundaryDiv[i] = Math.max(boundaryDiv[i], strength * 0.04);
@@ -725,7 +741,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   let e = stampE + tecMod;
 
   if (!isLandArr[i]) {
-    e = Math.min(e, -0.001);
+    // Clamp ocean depth: prevent unrealistically deep ocean at poles
+    // where no continental stamps contribute elevation.
+    // Normal ocean: -0.005 to -0.015, deep trenches: up to -0.04
+    e = Math.max(-0.04, Math.min(e, -0.001));
   }
 
   if (e > 0) {
@@ -736,8 +755,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const broadVal = sampleCoarse(mtnBroad, twx, twy);
 
     const plateauNoise = 0.7 + 0.6 * sg(nfPlateau, x, y);
-    const plateau = broadVal * p('plateauMult', 1.5) * plateauNoise;
-    const peaks = Math.max(0, tecMod) * p('peaksMult', 2.0);
+    const plateau = broadVal * p('plateauMult', 1.65) * plateauNoise;
+    const peaks = Math.max(0, tecMod) * p('peaksMult', 2.2);
     const mtnBump = sg(nfMtnBump, x, y)
       * p('mtnBumpStr', 0.10) * Math.min(1, (plateau + peaks) * 3);
     const tecLift = plateau + peaks + mtnBump;

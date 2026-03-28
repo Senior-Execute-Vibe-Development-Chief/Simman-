@@ -6,13 +6,13 @@
 export function solveMoisture(W, H, elevation, windX, windY, temperature, params = {}) {
   const p = (k, d) => params[k] !== undefined ? params[k] : d;
 
-  const _moistDecay      = p('moistDecay', 0.993);
+  const _moistDecay      = p('moistDecay', 0.996);
   const _moistRecycling  = p('moistRecycling', 0.25);
   const _moistTBlock     = p('moistTerrainBlock', 0.4);
   const _moistElevDry    = p('moistElevDry', 2.0);
   const _moistAdvW       = p('moistAdvectWeight', 0.60);
   const _moistOcnW       = p('moistOceanWeight', 0.20);
-  const _moistSteps      = Math.round(p('moistSteps', 90));
+  const _moistSteps      = Math.round(p('moistSteps', 140));
   const _moistConvective = p('moistConvective', 0.04);
   const _moistSubsidLat  = p('moistSubsidenceLat', 28);
   const _moistSubsidStr  = p('moistSubsidenceStr', 0.03);
@@ -102,7 +102,7 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   for (let i = 0; i < mN; i++) {
     const s = Math.sqrt(wX[i] * wX[i] + wY[i] * wY[i]);
     wSpd[i] = s;
-    if (s > 0.005) {
+    if (s > 0.0005) {
       wDir[i * 2] = wX[i] / s;
       wDir[i * 2 + 1] = wY[i] / s;
     }
@@ -130,7 +130,7 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   // Phase 2: Iterative transport with precipitation
   // ═══════════════════════════════════════════════════════
   const STEPS = _moistSteps;
-  const baseReach = 1.0 + _moistAdvW * 2.0; // 1.0 - 3.0 cells
+  const baseReach = 1.5 + _moistAdvW * 3.0; // 1.5 - 4.5 cells
 
   for (let step = 0; step < STEPS; step++) {
     const prev = new Float32Array(atmos);
@@ -161,97 +161,106 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       const fdx = srcXw - sx;
       const fdy = srcYc - sy;
       const sxr = (sx + 1) % mW;
-      const upwind = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
+      let upwind = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
         + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
+      // If upwind trace lands on ocean, use the ocean moisture but decay it —
+      // represents the coastal transition where oceanic moisture enters land.
+      // This prevents desert cells adjacent to narrow seas from getting full ocean moisture.
+      const srcIdx = sy * mW + sx;
+      if (isOcean[srcIdx]) upwind *= 0.5;
 
-      // Small diffusion term for stability (mostly advection-driven)
+      // Moisture transport:
+      // - Upwind (directional): full value from backward trace along mean wind
+      // - Isotropic spread: represents seasonal/synoptic moisture transport that
+      //   the annual mean wind misses (e.g. summer Gulf moisture reaching Atlanta
+      //   despite annual mean wind being westerly). Decay is gentle so moisture
+      //   can spread deep inland from ocean sources.
+      // - Self-persistence: previous value decayed
+      // Neighbor spreading: only from LAND neighbors (skip ocean to prevent
+      // coastal flooding of cold polar areas adjacent to warm ocean)
       const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
-      const nAvg = (prev[my * mW + mxL] + prev[my * mW + mxR]
-        + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.25;
+      const iL = my * mW + mxL, iR = my * mW + mxR;
+      const iU = (my - 1) * mW + mx, iD = (my + 1) * mW + mx;
+      const nMax = Math.max(
+        isOcean[iL] ? 0 : prev[iL], isOcean[iR] ? 0 : prev[iR],
+        isOcean[iU] ? 0 : prev[iU], isOcean[iD] ? 0 : prev[iD]);
+      let moist = Math.max(upwind, nMax * _moistDecay, prev[ci] * _moistDecay);
 
-      // 85% advection, 15% neighbor diffusion
-      let moist = upwind * 0.85 + nAvg * 0.15;
-
-      // ── Continental decay ──
-      moist *= _moistDecay;
+      // ── Temperature capacity clamp ──
+      // Cold air can't hold much moisture (Clausius-Clapeyron)
+      const elevCool = Math.max(0, elev[ci]) * _moistElevDry * 0.12;
+      const tempCapacity = Math.max(0.02, 0.05 + temp[ci] * 0.95 - elevCool);
+      if (moist > tempCapacity) moist = tempCapacity;
 
       // ── Precipitation triggers ──
       let precip = 0;
       const py = Math.min(H - 1, my * 2);
       const lat = Math.abs(py / H - 0.5) * 2;
-      const latDeg = lat * 90; // 0° at equator, 90° at poles
+      const latDeg = lat * 90;
 
-      // Subtropical subsidence factor: the descending branch of the Hadley cell
-      // at ~20-35° latitude creates warm sinking air that suppresses precipitation
-      // and actively dries the atmosphere. This is why all major deserts sit here.
-      // Gaussian centered at ~28° latitude, width ~8°
+      // Subtropical subsidence: Hadley cell descent at ~20-35°
+      // Bimodal subsidence: sharp core (width 6°) for extreme deserts +
+      // gentle wide shoulder (width 14°) for semi-arid margins.
+      // Core dominates at 20-35°, shoulder extends to ~40° at reduced strength.
       const subtropDist = latDeg - _moistSubsidLat;
-      const subsidenceFactor = Math.exp(-(subtropDist * subtropDist) / (2 * 8 * 8));
+      const coreSubsidence = Math.exp(-(subtropDist * subtropDist) / (2 * 6 * 6));
+      const wideSubsidence = Math.exp(-(subtropDist * subtropDist) / (2 * 14 * 14));
+      const subsidenceFactor = coreSubsidence * 0.7 + wideSubsidence * 0.3;
 
-      // Subtropical subsidence: actively drain atmospheric moisture
-      // Sinking air warms adiabatically, increasing capacity → prevents condensation
-      // and pushes moisture away. Stronger over land (no ocean buffering).
-      if (subsidenceFactor > 0.1) {
-        const subsidenceDrain = moist * subsidenceFactor * _moistSubsidStr;
-        moist -= subsidenceDrain;
-        // No precipitation from subsidence — the moisture just evaporates/disperses
-      }
-
-      // a) Orographic: wind pushing uphill forces precipitation
-      if (ws > 0.005) {
+      // a) Orographic: wind pushing uphill
+      if (ws > 0.0005) {
         const upslope = dirX * gradX[ci] + dirY * gradY[ci];
         if (upslope > 0) {
-          const oroRate = Math.min(0.35, upslope * _moistTBlock * 4);
-          const oroPrecip = moist * oroRate;
-          precip += oroPrecip;
-          moist -= oroPrecip;
+          const oroRate = Math.min(0.3, upslope * _moistTBlock * 4);
+          precip += moist * oroRate;
+          moist *= (1 - oroRate);
         }
       }
 
-      // b) Convective: hot land triggers rainfall
-      // Strong at ITCZ (0-15°), SUPPRESSED at subtropical highs (20-35°),
-      // moderate at midlatitudes (35-55°)
+      // b) Convective: hot land, strong at ITCZ, suppressed at subtropics
+      // ITCZ width 8° — narrow band representing annual-mean position.
+      // IRL the ITCZ migrates seasonally but only brings sustained rain to ~±8°.
       if (temp[ci] > 0.45 && moist > 0.05) {
-        // ITCZ convergence zone: very strong convection near equator
-        const itczFactor = Math.exp(-(latDeg * latDeg) / (2 * 12 * 12));
-        // Subtropical suppression: Hadley cell descent inhibits convection
-        const subtropSuppress = 1 - subsidenceFactor * 0.85;
-        // Midlatitude frontal lifting (weaker than ITCZ but still present)
+        const itczFactor = Math.exp(-(latDeg * latDeg) / (2 * 8 * 8));
+        const subtropSuppress = 1 - subsidenceFactor * 0.9;
         const midlatFactor = Math.exp(-((latDeg - 45) * (latDeg - 45)) / (2 * 12 * 12)) * 0.3;
-
         const convFactor = (itczFactor + midlatFactor) * subtropSuppress;
         const convRate = (temp[ci] - 0.4) * _moistConvective * convFactor;
-        const convPrecip = moist * Math.max(0, convRate);
-        precip += convPrecip;
-        moist -= convPrecip;
+        const cp = moist * Math.max(0, convRate);
+        precip += cp;
+        moist -= cp;
       }
 
-      // c) Convergence: wind convergence forces uplift
-      // This drives ITCZ rainfall and midlatitude frontal precipitation
+      // c) Convergence precipitation (suppressed at subtropics)
       const div = divField[ci];
       if (div < -0.001 && moist > 0.02) {
-        // Convergence precipitation is suppressed in the subtropical belt
-        const convgSuppress = 1 - subsidenceFactor * 0.7;
-        const convgPrecip = moist * Math.min(0.12, -div * 2.5) * convgSuppress;
-        precip += convgPrecip;
-        moist -= convgPrecip;
+        const convgSuppress = 1 - subsidenceFactor * 0.8;
+        const cp = moist * Math.min(0.10, -div * 2.0) * convgSuppress;
+        precip += cp;
+        moist -= cp;
       }
 
-      // d) Capacity overflow: cold/high-altitude air can't hold moisture
-      const elevCool = Math.max(0, elev[ci]) * _moistElevDry * 0.12;
-      const capacity = Math.max(0.03, 0.06 + temp[ci] * 0.94 - elevCool);
-      if (moist > capacity) {
-        precip += moist - capacity;
-        moist = capacity;
+      // d) Capacity overflow — excess beyond what air can hold precipitates
+      if (moist > tempCapacity) {
+        precip += moist - tempCapacity;
+        moist = tempCapacity;
+      }
+
+      // ── Subtropical subsidence drying ──
+      // Per-step drain: moderate multiplier, sharp spatial focus.
+      // At center (28°, factor=1.0, str=0.03): drain=9% → 0.91^90 ≈ 0.0001
+      // At 34° (factor=0.41): drain=3.7% → 0.963^90 ≈ 0.034
+      // At 38° (factor=0.10): drain=0.9% → 0.991^90 ≈ 0.44 (barely affected)
+      if (subsidenceFactor > 0.05) {
+        moist *= 1 - subsidenceFactor * _moistSubsidStr * 5;
       }
 
       // ── Transpiration recycling ──
-      // Suppressed in subtropical belt (dry air inhibits transpiration)
-      if (precipAccum[ci] > 0.02 && temp[ci] > 0.25) {
+      if (precipAccum[ci] > 0.01 && temp[ci] > 0.2) {
         const warmFactor = lat < 0.5 ? 1.0 : Math.max(0, 1 - (lat - 0.5) * 3);
         const recycSuppress = 1 - subsidenceFactor * 0.6;
-        const recycled = Math.min(0.06, precipAccum[ci] * _moistRecycling * warmFactor * 0.04 * recycSuppress);
-        moist += recycled;
+        const recycled = precipAccum[ci] * _moistRecycling * warmFactor * 0.06 * recycSuppress;
+        moist += Math.min(0.08, recycled);
       }
 
       atmos[ci] = Math.max(0, moist);
@@ -276,26 +285,51 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   // Phase 3: Post-process and normalize
   // ═══════════════════════════════════════════════════════
 
-  // Use percentile-based normalization so a few ultra-wet coastal cells
-  // don't suppress everything else
-  const landValues = [];
-  for (let i = 0; i < mN; i++) {
-    if (!isOcean[i] && precipAccum[i] > 0) landValues.push(precipAccum[i]);
-  }
-  landValues.sort((a, b) => a - b);
+  // Combine atmospheric moisture (overall wetness) and precipitation accumulation
+  // (contrast / where rain actually falls). Both normalized independently then blended.
 
-  // Use 95th percentile as the "1.0" reference point
-  const p95 = landValues.length > 0 ? landValues[Math.floor(landValues.length * 0.95)] : 1;
-  const normScale = p95 > 0.001 ? 1 / p95 : 1;
+  // Normalize atmospheric moisture
+  const atmosLand = [];
+  const precipLand = [];
+  for (let i = 0; i < mN; i++) {
+    if (!isOcean[i]) {
+      if (atmos[i] > 0.001) atmosLand.push(atmos[i]);
+      if (precipAccum[i] > 0.001) precipLand.push(precipAccum[i]);
+    }
+  }
+  atmosLand.sort((a, b) => a - b);
+  precipLand.sort((a, b) => a - b);
+
+  const atmosP95 = atmosLand.length > 0 ? atmosLand[Math.floor(atmosLand.length * 0.95)] : 1;
+  const atmosP05 = atmosLand.length > 0 ? atmosLand[Math.floor(atmosLand.length * 0.05)] : 0;
+  const atmosRange = Math.max(0.01, atmosP95 - atmosP05);
+
+  const precipP95 = precipLand.length > 0 ? precipLand[Math.floor(precipLand.length * 0.95)] : 1;
+  const precipScale = precipP95 > 0.001 ? 1 / precipP95 : 1;
 
   const normalized = new Float32Array(mN);
   for (let i = 0; i < mN; i++) {
     if (isOcean[i]) {
       normalized[i] = 0.5;
     } else {
-      // Scale by 95th percentile, apply power curve for dynamic range
-      const raw = Math.min(1.3, precipAccum[i] * normScale); // allow slight overshoot
-      normalized[i] = Math.max(0.02, Math.min(1, Math.pow(raw, 0.7)));
+      // Atmospheric moisture: steady-state wetness (good for overall patterns)
+      const aRaw = Math.max(0, (atmos[i] - atmosP05) / atmosRange);
+      const aNorm = Math.pow(Math.min(1, aRaw), 0.7);
+
+      // Precipitation accumulation: where rain falls (good for contrast)
+      const pRaw = Math.min(1.3, precipAccum[i] * precipScale);
+      const pNorm = Math.pow(Math.min(1, pRaw), 0.6);
+
+      // Blend: 50% atmospheric (inland moisture penetration), 50% precip (contrast)
+      let blend = aNorm * 0.5 + pNorm * 0.5;
+
+      // Temperature capacity ceiling: cold areas can't be very wet regardless
+      // of how much precipitation accumulates at the coast.
+      // Steeper curve: temp 0.0→0.05, 0.2→0.25, 0.5→0.65, 0.8→1.0
+      const tCap = Math.min(1, Math.pow(Math.max(0, temp[i]), 0.7) * 1.1 + 0.02);
+      blend = Math.min(blend, tCap);
+
+      normalized[i] = Math.max(0.02, Math.min(1, blend));
     }
   }
 
