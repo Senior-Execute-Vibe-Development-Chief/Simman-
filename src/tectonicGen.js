@@ -1406,6 +1406,12 @@ DEAD CODE END */
 // Multi-step particle advection on the wind grid
 // ═══════════════════════════════════════════════════════
 const windMoisture = new Float32Array(W * H);
+const _moistDecay = p('moistDecay', 0.993);
+const _moistRecycling = p('moistRecycling', 0.25);
+const _moistAdvW = p('moistAdvectWeight', 0.60);
+const _moistOcnW = p('moistOceanWeight', 0.20);
+const _moistTBlock = p('moistTerrainBlock', 0.4);
+const _moistElevDry = p('moistElevDry', 2.0);
 // Use coarse grid for advection (performance)
 const mW = Math.ceil(W / 2), mH = Math.ceil(H / 2);
 const mGrid = new Float32Array(mW * mH);
@@ -1445,19 +1451,16 @@ for (let step = 0; step < 60; step++) {
       // Terrain strips moisture from air (blocking + orographic lift)
       const terrainBlock = Math.min(0.85, Math.max(0, e2 - 0.02) * 3);
       const lift = Math.min(0.12, e2 * windSpeed * 0.3);
-      // Orographic rain: moisture removed from air is deposited HERE as local rain
-      // This makes windward slopes WET while drying the air for leeward side
       const oroRain = lift * upwind * 2.0;
-      // Constant decay — no penalty for fast wind (fast wind SHOULD carry further)
-      const speedDecay = 0.993;
+      const speedDecay = _moistDecay;
       // Temperature capacity: warm air carries more moisture (Clausius-Clapeyron)
       const tCap = Math.min(1.0, temperature[fi] * 1.5);
-      const carried = upwind * (1 - terrainBlock * 0.4) * speedDecay * tCap - lift;
+      const carried = upwind * (1 - terrainBlock * _moistTBlock) * speedDecay * tCap - lift;
       const lat2 = Math.abs(py / H - 0.5) * 2;
       const warmEnough = lat2 < 0.5 ? 1.0 : Math.max(0, 1 - (lat2 - 0.5) * 3);
       const existingMoist = prev[my * mW + mx];
       // Tropical recycling: wet warm areas re-evaporate moisture (Amazon effect)
-      const recycling = existingMoist > 0.15 ? (existingMoist - 0.15) * 0.25 * warmEnough : 0;
+      const recycling = existingMoist > 0.15 ? (existingMoist - 0.15) * _moistRecycling * warmEnough : 0;
       const advected = Math.max(0, carried + recycling + oroRain);
       mGrid[my * mW + mx] = advected * 0.85 + neighborAvg * 0.15;
     }
@@ -1641,7 +1644,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     }
 
     // ── Elevation drying: high altitude = thin cold dry air ──
-    const elevDry = e > 0.04 ? Math.min(0.4, (e - 0.04) * 2.0) : 0;
+    const elevDry = e > 0.04 ? Math.min(0.4, (e - 0.04) * _moistElevDry) : 0;
 
     // ── Wind-from-ocean: trace back to check if moisture source is ocean ──
     let windOcean = 0;
@@ -1680,8 +1683,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     }
 
     // ── Combine: wind advection dominates + supplementary factors ──
-    let m = wm * 0.60                  // advected moisture (primary driver)
-      + windOcean * 0.20               // direct wind from ocean
+    let m = wm * _moistAdvW              // advected moisture (primary driver)
+      + windOcean * _moistOcnW           // direct wind from ocean
       + convergeMoist                   // convergence zones = wet
       + oroBoost                        // windward mountain slopes = very wet
       + coastProx * 0.10               // coastal proximity
