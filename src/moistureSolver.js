@@ -48,7 +48,6 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
     if (hasTemp) {
       temp[mi] = temperature[fi];
     } else {
-      // Latitude-based temperature estimate (same formula used by wind solver)
       const py = Math.min(H - 1, my * 2);
       const lat = Math.abs(py / H - 0.5) * 2;
       const e = Math.max(0, elevation[fi]);
@@ -60,12 +59,10 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   }
 
   // ═══════════════════════════════════════════════════════
-  // Phase 1: Initialize atmospheric moisture + precipitation accumulator
+  // Precompute fields
   // ═══════════════════════════════════════════════════════
-  const atmos = new Float32Array(mN);       // atmospheric moisture content
-  const precipAccum = new Float32Array(mN); // accumulated precipitation
 
-  // Precompute wind divergence for convergence precipitation
+  // Wind divergence for convergence precipitation
   const divField = new Float32Array(mN);
   for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
     const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
@@ -85,8 +82,7 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
     }
   }
 
-  // Precompute elevation gradient for orographic precipitation
-  // Dot product of wind with gradient detects upslope flow
+  // Elevation gradient for orographic precipitation
   const gradX = new Float32Array(mN);
   const gradY = new Float32Array(mN);
   for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
@@ -96,22 +92,41 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
     gradY[ci] = (elev[(my + 1) * mW + mx] - elev[(my - 1) * mW + mx]) * 0.5;
   }
 
-  // Ocean evaporation: warm windy ocean produces more moisture
-  // Wind speed values are typically 0.01-0.15 on the coarse grid
+  // Precompute wind direction + speed on coarse grid
+  const wDir = new Float32Array(mN * 2); // interleaved dirX, dirY
+  const wSpd = new Float32Array(mN);
+  for (let i = 0; i < mN; i++) {
+    const s = Math.sqrt(wX[i] * wX[i] + wY[i] * wY[i]);
+    wSpd[i] = s;
+    if (s > 0.005) {
+      wDir[i * 2] = wX[i] / s;
+      wDir[i * 2 + 1] = wY[i] / s;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // Phase 1: Initialize atmospheric moisture
+  // ═══════════════════════════════════════════════════════
+  const atmos = new Float32Array(mN);
+  const precipAccum = new Float32Array(mN);
+
+  // Ocean evaporation capacity — temperature-driven
+  const oceanMoist = new Float32Array(mN);
   for (let i = 0; i < mN; i++) {
     if (isOcean[i]) {
-      const ws = Math.sqrt(wX[i] * wX[i] + wY[i] * wY[i]);
-      const wsNorm = Math.min(1, ws * 10); // normalize to ~0-1 range
-      const evapBase = 0.3 + temp[i] * 0.5 * (_moistOcnW / 0.20);
-      atmos[i] = Math.min(0.95, Math.max(0.3, evapBase + wsNorm * 0.15));
+      const wsN = Math.min(1, wSpd[i] * 10);
+      // Hot ocean = lots of evaporation. Scale by ocean weight param.
+      const evap = (0.4 + temp[i] * 0.55) * (0.7 + 0.3 * wsN) * (0.5 + _moistOcnW * 2.5);
+      oceanMoist[i] = Math.min(0.95, Math.max(0.35, evap));
+      atmos[i] = oceanMoist[i];
     }
   }
 
   // ═══════════════════════════════════════════════════════
   // Phase 2: Iterative transport with precipitation
   // ═══════════════════════════════════════════════════════
-  const STEPS = 70;
-  const reach = 1.2 + _moistAdvW * 1.5; // advection reach scaled by param
+  const STEPS = 90;
+  const baseReach = 1.0 + _moistAdvW * 2.0; // 1.0 - 3.0 cells
 
   for (let step = 0; step < STEPS; step++) {
     const prev = new Float32Array(atmos);
@@ -119,101 +134,90 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
     for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
       const ci = my * mW + mx;
 
-      // ── 1. Ocean: replenish evaporation ──
+      // ── Ocean: reset to evaporation value ──
       if (isOcean[ci]) {
-        const ws = Math.sqrt(wX[ci] * wX[ci] + wY[ci] * wY[ci]);
-        const wsNorm = Math.min(1, ws * 10);
-        const evapBase = 0.3 + temp[ci] * 0.5 * (_moistOcnW / 0.20);
-        atmos[ci] = Math.min(0.95, Math.max(prev[ci], evapBase + wsNorm * 0.15));
+        atmos[ci] = oceanMoist[ci];
         continue;
       }
 
-      // ── 2. Transport: backward-trace advection ──
-      const wxc = wX[ci], wyc = wY[ci];
-      const ws = Math.sqrt(wxc * wxc + wyc * wyc);
+      // ── Transport: backward-trace advection ──
+      const dirX = wDir[ci * 2], dirY = wDir[ci * 2 + 1];
+      const ws = wSpd[ci];
 
-      // Normalize wind direction, then use fixed reach distance
-      // Wind values are small (0.01-0.15), so raw multiplication barely moves.
-      // Instead: trace 'reach' cells in the wind direction.
-      const inv = ws > 0.005 ? 1 / ws : 0;
-      const dirX = wxc * inv, dirY = wyc * inv;
-      const cellReach = Math.min(2.5, reach + ws * 3);
+      // Trace backward along normalized wind direction
+      const cellReach = baseReach;
       const srcX = mx - dirX * cellReach;
       const srcY = my - dirY * cellReach;
 
-      // Bilinear sample from previous step
-      const sx = Math.min(mW - 2, Math.max(0, srcX | 0));
-      const sy = Math.min(mH - 2, Math.max(0, srcY | 0));
-      const fdx = Math.max(0, Math.min(1, srcX - sx));
-      const fdy = Math.max(0, Math.min(1, srcY - sy));
-      const sxr = Math.min(mW - 1, sx + 1);
+      // Bilinear sample from previous step (with X wrapping)
+      let srcXw = ((srcX % mW) + mW) % mW; // wrap X
+      const srcYc = Math.max(0, Math.min(mH - 1.001, srcY)); // clamp Y
+      const sx = Math.min(mW - 2, srcXw | 0);
+      const sy = Math.min(mH - 2, srcYc | 0);
+      const fdx = srcXw - sx;
+      const fdy = srcYc - sy;
+      const sxr = (sx + 1) % mW;
       const upwind = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
         + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
 
-      // Neighbor average (handles offshore wind + diffusion)
+      // Small diffusion term for stability (mostly advection-driven)
       const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
       const nAvg = (prev[my * mW + mxL] + prev[my * mW + mxR]
         + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.25;
 
-      // Blend: mostly advected, partially diffused
-      let moist = upwind * 0.7 + nAvg * 0.3;
+      // 85% advection, 15% neighbor diffusion
+      let moist = upwind * 0.85 + nAvg * 0.15;
 
-      // ── 3. Continental decay ──
+      // ── Continental decay ──
       moist *= _moistDecay;
 
-      // ── 4. Clausius-Clapeyron: moisture capacity depends on temperature ──
-      // Warm air holds much more moisture. At altitude, air is thinner and colder.
-      const elevEffect = Math.max(0, elev[ci]) * _moistElevDry * 0.15;
-      const capacity = Math.max(0.05, 0.08 + temp[ci] * 0.92 - elevEffect);
-
-      // ── 5. Precipitation triggers ──
+      // ── Precipitation triggers ──
+      // Keep rates gentle so moisture can travel inland
       let precip = 0;
+      const py = Math.min(H - 1, my * 2);
+      const lat = Math.abs(py / H - 0.5) * 2;
 
-      // a) Orographic precipitation: dot product of wind direction with elevation gradient
-      // Positive = wind pushing uphill = forced ascent → precipitation
-      // Zero when wind parallel to ridge, maximum when hitting head-on
+      // a) Orographic: wind pushing uphill forces precipitation
       if (ws > 0.005) {
-        // Use normalized wind direction (not raw wind — values are too small)
         const upslope = dirX * gradX[ci] + dirY * gradY[ci];
         if (upslope > 0) {
-          const oroRate = Math.min(0.6, upslope * _moistTBlock * 6);
+          // Gentle rate — mountains shouldn't strip ALL moisture in one step
+          const oroRate = Math.min(0.35, upslope * _moistTBlock * 4);
           const oroPrecip = moist * oroRate;
           precip += oroPrecip;
           moist -= oroPrecip;
         }
       }
 
-      // b) Convective precipitation: hot land drives convective uplift
-      const py = Math.min(H - 1, my * 2);
-      const lat = Math.abs(py / H - 0.5) * 2;
-      if (temp[ci] > 0.55 && moist > 0.1) {
-        // Stronger in tropics (low latitude), weaker at high latitudes
-        const tropicalBoost = Math.max(0, 1 - lat * 2) * 0.5 + 0.5;
-        const convPrecip = moist * (temp[ci] - 0.5) * 0.10 * tropicalBoost;
+      // b) Convective: hot land triggers rainfall (especially tropics)
+      if (temp[ci] > 0.45 && moist > 0.05) {
+        const tropFactor = Math.max(0, 1 - lat * 2.5); // strong in tropics, zero by 40°
+        const convRate = (temp[ci] - 0.4) * 0.04 * (0.3 + tropFactor * 0.7);
+        const convPrecip = moist * convRate;
         precip += convPrecip;
         moist -= convPrecip;
       }
 
-      // c) Convergence precipitation: wind convergence forces air up
+      // c) Convergence: wind convergence forces uplift
       const div = divField[ci];
-      if (div < -0.001 && moist > 0.05) {
-        const convgPrecip = moist * Math.min(0.15, -div * 2.0);
+      if (div < -0.002 && moist > 0.03) {
+        const convgPrecip = moist * Math.min(0.08, -div * 1.5);
         precip += convgPrecip;
         moist -= convgPrecip;
       }
 
-      // d) Capacity overflow: if moisture exceeds what air can hold, it precipitates
+      // d) Capacity overflow: cold/high-altitude air can't hold moisture
+      const elevCool = Math.max(0, elev[ci]) * _moistElevDry * 0.12;
+      const capacity = Math.max(0.03, 0.06 + temp[ci] * 0.94 - elevCool);
       if (moist > capacity) {
         precip += moist - capacity;
         moist = capacity;
       }
 
-      // ── 6. Transpiration recycling ──
-      // Wet warm land re-evaporates moisture back into the atmosphere
-      // Requires accumulated precipitation (there must be water on the ground)
-      if (precipAccum[ci] > 0.05 && temp[ci] > 0.3) {
+      // ── Transpiration recycling ──
+      if (precipAccum[ci] > 0.02 && temp[ci] > 0.25) {
         const warmFactor = lat < 0.5 ? 1.0 : Math.max(0, 1 - (lat - 0.5) * 3);
-        const recycled = precipAccum[ci] * _moistRecycling * warmFactor * 0.04;
+        const recycled = Math.min(0.05, precipAccum[ci] * _moistRecycling * warmFactor * 0.03);
         moist += recycled;
       }
 
@@ -221,16 +225,16 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       precipAccum[ci] += precip;
     }
 
-    // Diffusion pass every 5 steps (turbulent mixing)
-    if (step % 5 === 4) {
+    // Light diffusion every 8 steps
+    if (step % 8 === 7) {
       const dPrev = new Float32Array(atmos);
       for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
         if (isOcean[my * mW + mx]) continue;
         const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
         const ci = my * mW + mx;
-        atmos[ci] = dPrev[ci] * 0.55
+        atmos[ci] = dPrev[ci] * 0.6
           + (dPrev[my * mW + mxL] + dPrev[my * mW + mxR]
-            + dPrev[(my - 1) * mW + mx] + dPrev[(my + 1) * mW + mx]) * 0.1125;
+            + dPrev[(my - 1) * mW + mx] + dPrev[(my + 1) * mW + mx]) * 0.1;
       }
     }
   }
@@ -239,26 +243,30 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   // Phase 3: Post-process and normalize
   // ═══════════════════════════════════════════════════════
 
-  // Find max precipitation for normalization (land only)
-  let maxPrecip = 0;
+  // Use percentile-based normalization so a few ultra-wet coastal cells
+  // don't suppress everything else
+  const landValues = [];
   for (let i = 0; i < mN; i++) {
-    if (!isOcean[i] && precipAccum[i] > maxPrecip) maxPrecip = precipAccum[i];
+    if (!isOcean[i] && precipAccum[i] > 0) landValues.push(precipAccum[i]);
   }
-  if (maxPrecip < 0.001) maxPrecip = 1; // avoid division by zero
+  landValues.sort((a, b) => a - b);
 
-  // Normalize with a soft curve to spread values across [0,1]
-  // Use sqrt to give more dynamic range in the low end
+  // Use 95th percentile as the "1.0" reference point
+  const p95 = landValues.length > 0 ? landValues[Math.floor(landValues.length * 0.95)] : 1;
+  const normScale = p95 > 0.001 ? 1 / p95 : 1;
+
   const normalized = new Float32Array(mN);
   for (let i = 0; i < mN; i++) {
     if (isOcean[i]) {
       normalized[i] = 0.5;
     } else {
-      const raw = precipAccum[i] / maxPrecip;
-      normalized[i] = Math.max(0.02, Math.min(1, Math.sqrt(raw)));
+      // Scale by 95th percentile, apply power curve for dynamic range
+      const raw = Math.min(1.3, precipAccum[i] * normScale); // allow slight overshoot
+      normalized[i] = Math.max(0.02, Math.min(1, Math.pow(raw, 0.7)));
     }
   }
 
-  // Smooth precipitation (3 passes to remove advection artifacts)
+  // Smooth (3 passes)
   for (let pass = 0; pass < 3; pass++) {
     const prev = new Float32Array(normalized);
     for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
@@ -276,11 +284,10 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
     const ci = my * mW + mx;
     if (isOcean[ci]) continue;
     if (elev[ci] < 0.03) {
-      // Check if any neighbor is ocean
       const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
       if (isOcean[my * mW + mxL] || isOcean[my * mW + mxR]
         || isOcean[(my - 1) * mW + mx] || isOcean[(my + 1) * mW + mx]) {
-        normalized[ci] = Math.min(1, normalized[ci] + 0.08);
+        normalized[ci] = Math.min(1, normalized[ci] + 0.06);
       }
     }
   }
