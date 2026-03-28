@@ -53,7 +53,7 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.ab
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);// 0-255
 const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
 if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
-elevation[i]=-0.03-Math.max(0,(1-he/3))*0.12+depth;
+elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
 }else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,elevation[i])*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.08));}
 // Pass 2: coast-distance BFS at tile resolution for continentality
@@ -99,7 +99,7 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.ab
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);
 const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
 if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
-elevation[i]=-0.03-Math.max(0,(1-he/3))*0.12+depth;
+elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
 }else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}}
 // Coast distance BFS
 const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
@@ -510,9 +510,9 @@ if(w.floodplain&&w.floodplain[wi])hasFlood=true;
 if(w.delta&&w.delta[wi])hasDelta=true;
 if(w.oasis&&w.oasis[wi])hasOasis=true;
 if(w.swamp&&w.swamp[wi])hasSwamp=true;}
-if(hasWater){tMoist[ti]=Math.min(1,tMoist[ti]+0.2);tFert[ti]=Math.min(1,tFert[ti]+0.15);tRiver[ti]=1;}
-if(hasDelta){tFert[ti]=Math.min(1,tFert[ti]+0.35);tMoist[ti]=Math.min(1,tMoist[ti]+0.3);}
-else if(hasFlood){tFert[ti]=Math.min(1,tFert[ti]+0.25);tMoist[ti]=Math.min(1,tMoist[ti]+0.15);}
+if(hasWater){tFert[ti]=Math.min(1,tFert[ti]+0.15);tRiver[ti]=1;}
+if(hasDelta){tFert[ti]=Math.min(1,tFert[ti]+0.35);}
+else if(hasFlood){tFert[ti]=Math.min(1,tFert[ti]+0.25);}
 if(hasOasis){tFert[ti]=Math.min(1,tFert[ti]+0.3);tDiff[ti]=Math.max(0,tDiff[ti]-0.3);}
 if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+0.25);}}}
 // Find multiple spread-out seed locations for starting tribes
@@ -1155,7 +1155,7 @@ w.river=rvr.river;w.lake=rvr.lake;w.floodplain=rvr.floodplain;w.delta=rvr.delta;
 const oasis=new Uint8Array(W*H),swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(w.elevation[i]>0&&w.elevation[i]<0.3&&w.temperature[i]>0.5&&w.moisture[i]<0.2){
-const nv=fbm(x/W*50+200,y/H*50+200,3,2,.5);if(nv>0.3){oasis[i]=1;w.moisture[i]=Math.min(1,w.moisture[i]+0.4);}}
+const nv=fbm(x/W*50+200,y/H*50+200,3,2,.5);if(nv>0.3){oasis[i]=1;}}
 if(w.elevation[i]>0&&w.elevation[i]<0.025&&w.moisture[i]>0.45&&w.temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);if(nv>-0.1)swamp[i]=1;}}
 w.oasis=oasis;w.swamp=swamp;
