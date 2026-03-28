@@ -67,8 +67,10 @@ export function sampleRealWind(x, y, W, H, month) {
   // Convert pixel to lat/lon
   // Map: y=0 → 90°N, y=H-1 → 90°S (equirectangular)
   const lat = 90 - (y / (H - 1)) * 180;
-  // Map: x=0 → 0°E, x=W-1 → 360°E
-  const lon = (x / W) * 360;
+  // Map: x=0 → 180°W (dateline), x=W/2 → 0°E (Greenwich), x=W → 180°E
+  // Earth heightmap starts at the International Date Line, but NCEP wind
+  // data starts at Greenwich (0°E). Offset by 180°.
+  const lon = ((x / W) * 360 + 180) % 360;
 
   // Find bounding lat indices (lats may be descending: 90 to -90)
   let latIdx0 = 0;
