@@ -103,6 +103,23 @@ export const PARAMS = {
         desc: "Noisy texture within mountain zones. Higher = more variation between peaks and valleys." },
     ]
   },
+  moisture: {
+    label: "Moisture", color: "100,160,180",
+    params: [
+      { key: "moistDecay", def: 0.993, min: 0.95, max: 1.0, label: "Inland retention",
+        desc: "How much moisture survives per advection step. Lower = moisture dies faster over land. Higher = penetrates deeper inland. At 0.993, 66% survives 60 steps." },
+      { key: "moistRecycling", def: 0.25, min: 0.0, max: 0.5, label: "Transpiration recycling",
+        desc: "How much moisture wet warm land re-evaporates back into the air. Amazon recycles ~40% of its rainfall. Higher = wetter continental interiors." },
+      { key: "moistAdvectWeight", def: 0.60, min: 0.2, max: 1.0, label: "Advection weight",
+        desc: "How much the wind-carried moisture contributes to final moisture. The rest comes from wind-from-ocean, convergence, and other factors." },
+      { key: "moistOceanWeight", def: 0.20, min: 0.0, max: 0.5, label: "Wind-from-ocean weight",
+        desc: "Bonus moisture when wind traces back to ocean. Higher = stronger coastal wetting that follows wind direction." },
+      { key: "moistTerrainBlock", def: 0.4, min: 0.0, max: 0.9, label: "Terrain blocking",
+        desc: "How much mountains strip moisture from the airstream. Higher = stronger rain shadows. 0 = mountains don't block moisture at all." },
+      { key: "moistElevDry", def: 2.0, min: 0.0, max: 5.0, label: "Elevation drying",
+        desc: "How much high altitude dries the air. Thin cold air at altitude holds less moisture. Higher = drier mountain tops." },
+    ]
+  },
   erosion: {
     label: "Hydraulic Erosion", color: "140,170,130",
     params: [
@@ -133,7 +150,7 @@ export const PARAMS = {
         desc: "How much land heats relative to ocean. Drives monsoon circulations and continental thermal lows. 0 = no land-sea difference. Higher = stronger monsoons and sea breezes." },
       { key: "hadleyStrength", def: 0.08, min: 0.0, max: 2.0, label: "Hadley cell strength",
         desc: "Strength of the global overturning circulation (Hadley, Ferrel, Polar cells). Controls trade winds, subtropical highs, and polar easterlies. 0 = no cells, pure thermal wind." },
-      { key: "coriolisStrength", def: 0.365, min: 0.05, max: 0.50, label: "Coriolis strength",
+      { key: "coriolisStrength", def: 0.406, min: 0.05, max: 0.50, label: "Coriolis strength",
         desc: "Planetary rotation effect (2Ω·sin(φ)). Controls how much wind deflects (spirals) vs flowing straight toward low pressure. Higher = more geostrophic (parallel to isobars)." },
       { key: "itczOffset", def: 0.033, min: -0.10, max: 0.15, label: "ITCZ offset",
         desc: "North-south shift of the Intertropical Convergence Zone. Positive = ITCZ shifts north (boreal summer). Negative = shifts south. Affects trade wind asymmetry." },

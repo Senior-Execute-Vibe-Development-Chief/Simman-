@@ -986,8 +986,7 @@ if (p('erodeDropsPerPixel', 1.5) > 0) {
 // ══════════════════════════════════════════════════════════════════
 // WIND PHYSICS — delegated to standalone solveWind() function
 // ══════════════════════════════════════════════════════════════════
-const windResult = solveWind(W, H, elevation, fbm, params, s3);
-const { windX: fullWindX, windY: fullWindY, pressure: windPressure, wW: windWW, wH: windWH } = windResult;
+const { windX: fullWindX, windY: fullWindY } = solveWind(W, H, elevation, fbm, params, s3);
 
 /* DEAD CODE START — old inline wind solver, replaced by solveWind() call above
    Keeping temporarily for reference during development. Will be removed.
@@ -1402,130 +1401,93 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 DEAD CODE END */
 
 // ═══════════════════════════════════════════════════════
-// STEP 8c: Pressure-based moisture computation
-// Instead of advecting moisture particles, derive moisture from the
-// physics we already have: pressure field, wind divergence, elevation,
-// and distance from ocean.
-//
-// Low pressure = rising air = cooling = condensation = rain (wet)
-// High pressure = sinking air = warming = evaporation = dry
-// Windward mountain slopes = forced lift = wet
-// Leeward slopes = descending air = rain shadow = dry
-// Convergence zones = air masses meeting = uplift = very wet
+// STEP 8c: Wind-advected moisture transport
+// Moisture emitted by ocean, carried by wind, blocked by terrain
+// ═══════════════════════════════════════════════════════
+// STEP 8c: Moisture transport — BFS flood from ocean
+// Instead of backward-trace advection (which fails when wind blows
+// offshore), flood moisture outward from ocean. Each cell receives
+// moisture from its wettest neighbor, decayed by distance and terrain.
+// Wind direction biases which neighbors contribute more.
 // ═══════════════════════════════════════════════════════
 const windMoisture = new Float32Array(W * H);
-{
-  const WG2 = 4;
+const _moistDecay = p('moistDecay', 0.993);
+const _moistRecycling = p('moistRecycling', 0.25);
+const _moistAdvW = p('moistAdvectWeight', 0.60);
+const _moistOcnW = p('moistOceanWeight', 0.20);
+const _moistTBlock = p('moistTerrainBlock', 0.4);
+const _moistElevDry = p('moistElevDry', 2.0);
+// Coarse grid shared by moisture flood and temperature advection
+const mW = Math.ceil(W / 2), mH = Math.ceil(H / 2);
+const moist = new Float32Array(mW * mH);
 
-  // Bilinear sampler for wind pressure (coarse grid)
-  const sampleP = (fx, fy) => {
-    if (!windPressure || !windWW) return 0;
-    const ix = Math.min(windWW - 2, Math.max(0, fx | 0));
-    const iy = Math.min(windWH - 2, Math.max(0, fy | 0));
-    const dx2 = Math.max(0, Math.min(1, fx - ix)), dy2 = Math.max(0, Math.min(1, fy - iy));
-    const i00 = iy * windWW + ix, i10 = iy * windWW + Math.min(windWW - 1, ix + 1);
-    const i01 = Math.min(windWH - 1, iy + 1) * windWW + ix;
-    const i11 = Math.min(windWH - 1, iy + 1) * windWW + Math.min(windWW - 1, ix + 1);
-    return windPressure[i00] * (1 - dx2) * (1 - dy2) + windPressure[i10] * dx2 * (1 - dy2)
-      + windPressure[i01] * (1 - dx2) * dy2 + windPressure[i11] * dx2 * dy2;
-  };
-
-  // Find pressure range
-  let pMin = 0, pMax = 1;
-  if (windPressure) {
-    pMin = Infinity; pMax = -Infinity;
-    for (let i = 0; i < windWW * windWH; i++) {
-      if (windPressure[i] < pMin) pMin = windPressure[i];
-      if (windPressure[i] > pMax) pMax = windPressure[i];
-    }
-  }
-  const pRange = (pMax - pMin) || 1;
-
-  // Coast distance BFS
-  const cdW2 = Math.ceil(W / 4), cdH2 = Math.ceil(H / 4);
-  const oceanDist = new Float32Array(cdW2 * cdH2);
-  oceanDist.fill(255);
-  const odQ = [];
-  for (let cy = 0; cy < cdH2; cy++) for (let cx = 0; cx < cdW2; cx++) {
-    const px = Math.min(W - 1, cx * 4), py = Math.min(H - 1, cy * 4);
-    if (elevation[py * W + px] <= 0) { oceanDist[cy * cdW2 + cx] = 0; odQ.push(cy * cdW2 + cx); }
-  }
-  for (let qi = 0; qi < odQ.length; qi++) {
-    const ci = odQ[qi], cd2 = oceanDist[ci];
-    const cx = ci % cdW2, cy2 = (ci - cx) / cdW2;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      if (!dx && !dy) continue;
-      const nx2 = (cx + dx + cdW2) % cdW2, ny2 = cy2 + dy;
-      if (ny2 < 0 || ny2 >= cdH2) continue;
-      const ni = ny2 * cdW2 + nx2, nd = cd2 + 1;
-      if (nd < oceanDist[ni]) { oceanDist[ni] = nd; odQ.push(ni); }
-    }
+  // Seed: ocean = 0.8, land = 0
+  for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
+    const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+    if (elevation[py * W + px] <= 0) moist[my * mW + mx] = 0.8;
   }
 
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const i = y * W + x;
-    const e = elevation[i];
-    if (e <= 0) continue;
+  // Iterative flood: each step, each land cell pulls moisture from its
+  // wettest neighbor (preferring the upwind direction). Moisture decays
+  // with each step and gets stripped by terrain.
+  for (let step = 0; step < 80; step++) {
+    const prev = new Float32Array(moist);
+    for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
+      const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
+      const fi = py * W + px;
+      const e2 = elevation[fi];
+      if (e2 <= 0) { moist[my * mW + mx] = 0.8; continue; } // ocean stays wet
 
-    const lat = Math.abs(y / H - 0.5) * 2;
+      // Get wind direction at this cell
+      const wx2 = fullWindX[fi], wy2 = fullWindY[fi];
+      const windSpd = Math.sqrt(wx2 * wx2 + wy2 * wy2);
 
-    // 1. Pressure moisture (low pressure = wet)
-    const pVal = sampleP(x / WG2, y / WG2);
-    const pNorm = (pVal - pMin) / pRange;
-    const pressureMoist = Math.max(0, 1 - pNorm * 1.5) * 0.5;
+      // Sample all 4 neighbors
+      const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
+      const nL = prev[my * mW + mxL], nR = prev[my * mW + mxR];
+      const nU = prev[(my - 1) * mW + mx], nD = prev[(my + 1) * mW + mx];
 
-    // 2. Coast proximity
-    const od = oceanDist[Math.min(cdH2 - 1, (y / 4) | 0) * cdW2 + Math.min(cdW2 - 1, (x / 4) | 0)];
-    const coastMoist = Math.max(0, 1 - od / 15) * 0.35;
-
-    // 3. Wind from ocean
-    const wx2 = fullWindX[i], wy2 = fullWindY[i];
-    const windSpd = Math.sqrt(wx2 * wx2 + wy2 * wy2);
-    let windOceanMoist = 0;
-    if (windSpd > 0.005) {
-      for (const dist of [8, 20]) {
-        const trX = x - (wx2 / windSpd) * dist;
-        const trY = y - (wy2 / windSpd) * dist;
-        const tx = Math.min(W - 1, Math.max(0, ((Math.round(trX) % W) + W) % W));
-        const ty = Math.min(H - 1, Math.max(0, Math.round(trY)));
-        if (elevation[ty * W + tx] <= 0) windOceanMoist = Math.max(windOceanMoist, windSpd * 2.5);
+      // Wind-weighted neighbor blend: upwind neighbors contribute more
+      // This makes moisture follow wind direction preferentially
+      let wL = 1, wR = 1, wU = 1, wD = 1;
+      if (windSpd > 0.003) {
+        const invS = 1 / windSpd;
+        const dx2 = wx2 * invS, dy2 = wy2 * invS;
+        // Wind blowing right (+x) means moisture comes from LEFT
+        wL += Math.max(0, dx2) * 3; // upwind = left when wind blows right
+        wR += Math.max(0, -dx2) * 3;
+        wU += Math.max(0, dy2) * 3; // upwind = up when wind blows down
+        wD += Math.max(0, -dy2) * 3;
       }
+      const wSum = wL + wR + wU + wD;
+      const weightedNeighbor = (nL * wL + nR * wR + nU * wU + nD * wD) / wSum;
+
+      // Terrain blocking: mountains strip moisture
+      const terrainBlock = Math.min(0.8, Math.max(0, e2 - 0.02) * 3);
+      const decay = _moistDecay * (1 - terrainBlock * _moistTBlock);
+
+      // Take the maximum of wind-weighted neighbor (decayed) or existing moisture
+      const incoming = weightedNeighbor * decay;
+
+      // Recycling: existing wet warm land re-evaporates
+      const lat2 = Math.abs(py / H - 0.5) * 2;
+      const warmEnough = lat2 < 0.5 ? 1.0 : Math.max(0, 1 - (lat2 - 0.5) * 3);
+      const existing = prev[my * mW + mx];
+      const recycled = existing > 0.1 ? existing * _moistRecycling * warmEnough * 0.1 : 0;
+
+      moist[my * mW + mx] = Math.max(incoming + recycled, existing * 0.99);
     }
-
-    // 4. Convergence/divergence
-    const wxL = fullWindX[y * W + ((x - 2 + W) % W)];
-    const wxR = fullWindX[y * W + ((x + 2) % W)];
-    const wyU = y > 1 ? fullWindY[(y - 2) * W + x] : 0;
-    const wyD = y < H - 2 ? fullWindY[(y + 2) * W + x] : 0;
-    const divVal = (wxR - wxL + wyD - wyU) * 0.25;
-    const convergeMoist = divVal < 0 ? Math.min(0.35, -divVal * 6) : 0;
-    const divergeDry = divVal > 0 ? Math.min(0.25, divVal * 5) : 0;
-
-    // 5. Rain shadow
-    let rainShadow = 0;
-    if (windSpd > 0.005) {
-      const upX = x - (wx2 / windSpd) * 6;
-      const upY = y - (wy2 / windSpd) * 6;
-      const ux = Math.min(W - 1, Math.max(0, ((Math.round(upX) % W) + W) % W));
-      const uy = Math.min(H - 1, Math.max(0, Math.round(upY)));
-      const upElev = elevation[uy * W + ux];
-      if (upElev > e + 0.03) rainShadow = Math.min(0.35, (upElev - e) * 2.5);
-    }
-
-    // 6. Elevation drying
-    const elevDry = e > 0.04 ? Math.min(0.4, (e - 0.04) * 2.0) : 0;
-
-    // 7. Latitude cap
-    const latCap = Math.max(0.10, 1.0 - lat * 0.7);
-
-    // Combine
-    let m = pressureMoist + coastMoist + windOceanMoist * 0.4 + convergeMoist
-      - divergeDry - rainShadow - elevDry
-      + sg(nfMoistLand, x, y) * 0.06 + sg(nfMoistBroad, x, y) * 0.04;
-
-    windMoisture[i] = Math.max(0.02, Math.min(latCap, m));
   }
-}
+
+  // Upscale to full resolution
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const fx = x / 2, fy = y / 2;
+    const ix = Math.min(mW - 2, fx | 0), iy = Math.min(mH - 2, fy | 0);
+    const dx2 = fx - ix, dy2 = fy - iy;
+    const sxr = Math.min(mW - 1, ix + 1);
+    windMoisture[y * W + x] = (moist[iy * mW + ix] * (1 - dx2) + moist[iy * mW + sxr] * dx2) * (1 - dy2)
+      + (moist[(iy + 1) * mW + ix] * (1 - dx2) + moist[(iy + 1) * mW + sxr] * dx2) * dy2;
+  }
 
 // ═══════════════════════════════════════════════════════
 // STEP 8c2: Wind-advected temperature transport
@@ -1618,12 +1580,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const temp = modTemp * 0.75 + wt * 0.25;
   temperature[i] = Math.max(0, Math.min(1, temp));
 
-  if (e <= 0) {
-    moisture[i] = 0.5 + sg(nfMoistOce, x, y) * 0.1;
-  } else {
-    // Moisture already computed from pressure + wind + convergence + terrain
-    moisture[i] = windMoisture[i];
-  }
+  // DEBUG: show ONLY raw advection output — no composition at all
+  // If this shows moisture inland, the advection works and composition kills it.
+  // If this shows nothing inland, the advection itself is broken.
+  moisture[i] = e <= 0 ? 0.5 : Math.max(0.02, windMoisture[i]);
 }
 
 // Moisture→temperature feedback: dry areas heat up more (no evaporative cooling,
