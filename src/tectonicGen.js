@@ -1453,7 +1453,9 @@ for (let step = 0; step < 40; step++) {
       const lat2 = Math.abs(py / H - 0.5) * 2;
       const warmEnough = lat2 < 0.5 ? 1.0 : Math.max(0, 1 - (lat2 - 0.5) * 3);
       const existingMoist = prev[my * mW + mx];
-      const recycling = existingMoist > 0.2 ? (existingMoist - 0.2) * 0.10 * warmEnough : 0;
+      // Tropical recycling: Amazon/Congo recycle ~40% of rainfall via evapotranspiration.
+      // Warm wet areas re-evaporate moisture, sustaining rainfall deep inland.
+      const recycling = existingMoist > 0.15 ? (existingMoist - 0.15) * 0.30 * warmEnough : 0;
       // Blend: 80% advected + 20% neighbor diffusion
       const advected = Math.max(0, carried + recycling);
       mGrid[my * mW + mx] = advected * 0.70 + neighborAvg * 0.30;
@@ -1488,8 +1490,11 @@ for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
   const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
   if (elevation[py * W + px] <= 0) continue;
   const div = divField[my * mW + mx], ci = my * mW + mx, q = mGrid[ci];
-  if (div < 0) mGrid[ci] = Math.min(1, mGrid[ci] + Math.min(0.12, -div * q * 1.0));
-  else mGrid[ci] = Math.max(0, mGrid[ci] - Math.min(0.06, div * 0.3));
+  // Convergence (div < 0): air rises → cools → rain. This is the primary
+  // rain mechanism for ITCZ, fronts, and monsoons. Strong effect.
+  // Divergence (div > 0): air sinks → warms → dries. Creates subtropical deserts.
+  if (div < 0) mGrid[ci] = Math.min(1, mGrid[ci] + Math.min(0.25, -div * q * 2.5));
+  else mGrid[ci] = Math.max(0, mGrid[ci] - Math.min(0.15, div * 0.8));
 }
 // Final eddy diffusion smoothing (5 passes — turbulent atmospheric mixing)
 for (let pass = 0; pass < 5; pass++) {
@@ -1605,50 +1610,45 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   if (e <= 0) {
     moisture[i] = 0.5 + sg(nfMoistOce, x, y) * 0.1;
   } else {
-    // Latitude-based climate moisture (secondary signal)
-    const tropWet = Math.max(0, 1 - lat * 2.5);
-    const subtropDry = Math.exp(-((lat - 0.28) ** 2) / (2 * 0.08 * 0.08)) * 0.35 * (1 - coastProx * 0.5);
-    const tempWet = Math.exp(-((lat - 0.55) ** 2) / 0.035) * 0.28;
-    const tropF = Math.max(0, 1 - lat * 3);
-    // Reduced continentality: real mid/high latitude interiors stay moist because
-    // frontal systems (cyclones) penetrate deep inland via westerlies
-    const contRate = 0.004 + (1 - tropF) * 0.010;
-    const cont = Math.min(0.20, cdm * contRate);
-    const polarDry = Math.max(0, (lat - 0.80)) * 0.20;
-    // Base climate moisture without small-scale noise
-    const climateBase = 0.48 + tropWet * 0.40 - subtropDry + tempWet - cont - polarDry
-      + sg(nfMoistBroad, x, y) * 0.18;
-    // Small-scale noise amplitude scales with base moisture — prevents forest
-    // freckles in deserts (dry areas get tiny noise, wet areas get full variation)
-    const noiseAmp = Math.max(0.02, Math.min(0.12, climateBase * 0.20));
-    const climateMoist = climateBase + sg(nfMoistLand, x, y) * noiseAmp;
-    // Cold-latitude moisture persistence: cold air has low evaporation, so even
-    // modest precipitation creates effective wetness. Siberia gets 300mm/yr but
-    // stays moist because snow persists for months. This raises moisture at high lat.
-    const t = temperature[i];
-    // Cold persistence tapers off at extreme cold (t<0.1) — permafrost is ice, not moisture
-    const coldPersist = t < 0.4 ? Math.min(0.10, (0.4 - t) * 0.28 * Math.min(1, t / 0.12)) : 0;
-    // Wind-advected moisture is the PRIMARY driver; latitude formulas are secondary.
+    // Wind-advected moisture is the PRIMARY driver (85%).
+    // Latitude climate provides a secondary baseline (15%) for stability.
     const wm = windMoisture[i];
-    let m = wm * 0.65 + climateMoist * 0.35 + coldPersist;
-    // Tropical moisture floor: ITCZ convection guarantees minimum moisture near equator.
-    // Smooth Gaussian fade + noise to avoid hard equatorial band.
-    if (lat < 0.25) {
-      const tropFloor = 0.30 * Math.exp(-(lat * lat) / (2 * 0.08 * 0.08))
-        + sg(nfMoistBroad, x, y) * 0.06;  // noise breaks the uniformity
-      if (m < tropFloor) m = m * 0.4 + tropFloor * 0.6;  // soft blend, not hard max
-    }
-    // Orographic lift: windward slopes get extra precipitation
-    if (e > 0.1 && wm > 0.35) m += Math.min(0.12, (e - 0.1) * wm * 0.5);
-    // Cold current moisture suppression: equatorward coastal winds = upwelling = dry
+    const t = temperature[i];
+
+    // ── Convergence-derived wetness ──
+    // Where winds converge, air rises, cools, and precipitates heavily.
+    // This is how the ITCZ, frontal zones, and monsoon troughs work —
+    // the convergence from the wind field already captures these patterns
+    // without needing hardcoded latitude bands.
+
+    // ── Latitude baseline (weak secondary signal) ──
+    // Only provides a gentle floor/ceiling, NOT the main driver.
+    // Tropical warmth allows more moisture in the air.
+    // Polar cold limits moisture capacity (Clausius-Clapeyron).
+    const moistureCapacity = Math.max(0.05, Math.min(1, t * 1.3));
+    // Gentle latitude modulation — tropics slightly wetter base, poles drier
+    const latBase = 0.35 + Math.max(0, 1 - lat * 2) * 0.15
+      - Math.max(0, lat - 0.75) * 0.3;
+    const climateMoist = latBase + sg(nfMoistBroad, x, y) * 0.10
+      + sg(nfMoistLand, x, y) * 0.05;
+
+    // ── Combine: wind dominates ──
+    let m = wm * 0.85 + climateMoist * 0.15;
+
+    // ── Clamp by moisture capacity (cold air holds less water) ──
+    m = Math.min(m, moistureCapacity);
+
+    // ── Orographic lift: windward slopes get extra precipitation ──
+    if (e > 0.08 && wm > 0.3) m += Math.min(0.15, (e - 0.08) * wm * 0.6);
+
+    // ── Cold current moisture suppression: equatorward coastal winds = upwelling = dry ──
     if (coastProx > 0.15) {
-      const wy = fullWindY[i];
+      const wy2 = fullWindY[i];
       const hemiSign = ny < 0.5 ? -1 : 1;
-      const polewardFlow = wy * hemiSign;
-      if (polewardFlow < 0) m += Math.max(-0.15, polewardFlow * 0.12) * coastProx;
+      const polewardFlow = wy2 * hemiSign;
+      if (polewardFlow < 0) m += Math.max(-0.15, polewardFlow * 0.15) * coastProx;
     }
-    // Lowland moisture accumulation
-    if (e < 0.02) m += 0.10;
+
     moisture[i] = Math.max(0.02, Math.min(1, m));
   }
 }
