@@ -1427,10 +1427,18 @@ for (let step = 0; step < 60; step++) {
     const fi = py * W + px;
     const wx2 = fullWindX[fi], wy2 = fullWindY[fi];
     const windSpeed = Math.sqrt(wx2 * wx2 + wy2 * wy2);
-    const invSpd = windSpeed > 0.01 ? 1 / windSpeed : 0;
-    const dirX = wx2 * invSpd, dirY = wy2 * invSpd;
-    // Reach further: faster wind carries moisture from further upwind
-    const reach = Math.min(4.0, 2.0 + windSpeed * 3.0);
+    // Even very light winds carry moisture — use a minimum reach so
+    // diffusion from ocean still propagates inland on calm days
+    let dirX, dirY;
+    if (windSpeed > 0.005) {
+      dirX = wx2 / windSpeed;
+      dirY = wy2 / windSpeed;
+    } else {
+      dirX = 0; dirY = 0;
+    }
+    // Reach further with stronger wind, but always have minimum reach of 1
+    // so even calm cells pull from their upwind neighbor
+    const reach = Math.max(1.0, Math.min(4.0, 2.0 + windSpeed * 3.0));
     const srcX = mx - dirX * reach, srcY = my - dirY * reach;
     // Wrap X (cylindrical map), clamp Y
     const sx = ((Math.floor(srcX) % mW) + mW) % mW;
@@ -1452,8 +1460,9 @@ for (let step = 0; step < 60; step++) {
       // Terrain blocking: mountains strip moisture from the airstream
       const terrainBlock = Math.min(0.85, Math.max(0, e2 - 0.02) * 3);
       const lift = Math.min(0.12, e2 * windSpeed * 0.3);
-      // Less decay per step so moisture reaches further inland
-      const speedDecay = 0.99 - Math.min(0.03, windSpeed * 0.04);
+      // Moisture retention per step — higher = carries further inland
+      // Independent of wind speed (fast wind carries further via reach, not retention)
+      const speedDecay = 0.993;
       const carried = upwind * (1 - terrainBlock * 0.4) * speedDecay - lift;
       const lat2 = Math.abs(py / H - 0.5) * 2;
       const warmEnough = lat2 < 0.5 ? 1.0 : Math.max(0, 1 - (lat2 - 0.5) * 3);
