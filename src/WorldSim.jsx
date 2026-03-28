@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
+import { solveMoisture } from "./moistureSolver.js";
 import TuningPanel, { ParamEditor, renderPreview } from "./TuningPanel.jsx";
 import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
@@ -116,71 +117,10 @@ const ni=ny2*CDW+nx2,nd=cd+1;if(nd<cdist[ni]&&elevation[Math.min(H-1,ny2*CDT)*W+
 const esWind=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137);
 tecWindX=esWind.windX;tecWindY=esWind.windY;
 const fWX=tecWindX,fWY=tecWindY;
-// Wind-advected moisture (same as tectonic mode)
-const windMoisture=new Float32Array(W*H);
-const mW2=Math.ceil(W/2),mH2=Math.ceil(H/2);
-const mGrid=new Float32Array(mW2*mH2);
-for(let my=0;my<mH2;my++)for(let mx=0;mx<mW2;mx++){
-const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
-if(elevation[py*W+px]<=0)mGrid[my*mW2+mx]=0.8;}
-for(let step=0;step<40;step++){const prev=new Float32Array(mGrid);
-for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
-const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
-const wx2=fWX[fi],wy2=fWY[fi];
-const ws=Math.sqrt(wx2*wx2+wy2*wy2),inv=ws>0.02?1/ws:0;
-const dxW=wx2*inv,dyW=wy2*inv,reach=Math.min(2.5,1.5+ws*1.5);
-const srcX=mx-dxW*reach,srcY=my-dyW*reach;
-const sx=Math.min(mW2-2,Math.max(0,srcX|0)),sy=Math.min(mH2-2,Math.max(0,srcY|0));
-const fdx=Math.max(0,Math.min(1,srcX-sx)),fdy=Math.max(0,Math.min(1,srcY-sy));
-const sxr=Math.min(mW2-1,sx+1);
-const upwind=(prev[sy*mW2+sx]*(1-fdx)+prev[sy*mW2+sxr]*fdx)*(1-fdy)
-+(prev[(sy+1)*mW2+sx]*(1-fdx)+prev[(sy+1)*mW2+sxr]*fdx)*fdy;
-const mxL=(mx-1+mW2)%mW2,mxR=(mx+1)%mW2;
-const nAvg=(prev[my*mW2+mxL]+prev[my*mW2+mxR]+prev[(my-1)*mW2+mx]+prev[(my+1)*mW2+mx])*0.25;
-const e2=elevation[fi];
-if(e2<=0){mGrid[my*mW2+mx]=Math.max(prev[my*mW2+mx],0.75);}
-else{const tb=Math.min(0.9,Math.max(0,e2-0.03)*4);
-const lift=Math.min(0.15,e2*ws*0.4);
-const sd=0.97-Math.min(0.04,ws*0.06);
-const carried=upwind*(1-tb*0.35)*sd-lift;
-const lat2=Math.abs(py/H-0.5)*2;
-const warm=lat2<0.5?1.0:Math.max(0,1-(lat2-0.5)*3);
-const em2=prev[my*mW2+mx];
-const recyc=em2>0.2?(em2-0.2)*0.10*warm:0;
-const adv=Math.max(0,carried+recyc);
-mGrid[my*mW2+mx]=adv*0.70+nAvg*0.30;}}}
-// Compute smoothed divergence field (avoids noisy derivatives creating sharp edges)
-const divF=new Float32Array(mW2*mH2);
-for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
-const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
-const mxL=(mx-1+mW2)%mW2,mxR=(mx+1)%mW2;
-const pxL=Math.min(W-1,mxL*2),pxR=Math.min(W-1,mxR*2);
-const pyU=Math.min(H-1,(my-1)*2),pyD=Math.min(H-1,(my+1)*2);
-divF[my*mW2+mx]=(fWX[py*W+pxR]-fWX[py*W+pxL]+fWY[pyD*W+px]-fWY[pyU*W+px])*0.5;}
-for(let pass=0;pass<3;pass++){const prev=new Float32Array(divF);
-for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
-const mxL=(mx-1+mW2)%mW2,mxR=(mx+1)%mW2,ci=my*mW2+mx;
-divF[ci]=prev[ci]*0.4+(prev[my*mW2+mxL]+prev[my*mW2+mxR]+prev[(my-1)*mW2+mx]+prev[(my+1)*mW2+mx])*0.15;}}
-// Apply smoothed convergence/divergence
-for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
-const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
-if(elevation[py*W+px]<=0)continue;
-const div=divF[my*mW2+mx],ci=my*mW2+mx,q=mGrid[ci];
-if(div<0)mGrid[ci]=Math.min(1,mGrid[ci]+Math.min(0.12,-div*q*1.0));
-else mGrid[ci]=Math.max(0,mGrid[ci]-Math.min(0.06,div*0.3));}
-// Final eddy diffusion (5 passes — turbulent atmospheric mixing)
-for(let pass=0;pass<5;pass++){const prev=new Float32Array(mGrid);
-for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
-const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
-if(elevation[py*W+px]<=0)continue;
-const mxL=(mx-1+mW2)%mW2,mxR=(mx+1)%mW2,ci=my*mW2+mx;
-mGrid[ci]=prev[ci]*0.45+(prev[my*mW2+mxL]+prev[my*mW2+mxR]+prev[(my-1)*mW2+mx]+prev[(my+1)*mW2+mx])*0.1375;}}
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-const fx=x/2,fy=y/2,ix=Math.min(mW2-2,fx|0),iy=Math.min(mH2-2,fy|0);
-const dx2=fx-ix,dy2=fy-iy;
-windMoisture[y*W+x]=(mGrid[iy*mW2+ix]*(1-dx2)+mGrid[iy*mW2+Math.min(mW2-1,ix+1)]*dx2)*(1-dy2)
-+(mGrid[(iy+1)*mW2+ix]*(1-dx2)+mGrid[(iy+1)*mW2+Math.min(mW2-1,ix+1)]*dx2)*dy2;}
+// Moisture solver — physically-grounded evaporation → transport → precipitation
+const windMoisture=solveMoisture(W,H,elevation,fWX,fWY,temperature,_tecParams);
 // Wind-advected temperature
+const mW2=Math.ceil(W/2),mH2=Math.ceil(H/2);
 const windTemp=new Float32Array(W*H);
 const tGrid=new Float32Array(mW2*mH2);
 for(let my=0;my<mH2;my++)for(let mx=0;mx<mW2;mx++){
@@ -210,7 +150,7 @@ const dx2=fx-ix,dy2=fy-iy;
 windTemp[y*W+x]=(tGrid[iy*mW2+ix]*(1-dx2)+tGrid[iy*mW2+Math.min(mW2-1,ix+1)]*dx2)*(1-dy2)
 +(tGrid[(iy+1)*mW2+ix]*(1-dx2)+tGrid[(iy+1)*mW2+Math.min(mW2-1,ix+1)]*dx2)*dy2;}
 // Final temperature & moisture combination
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H;
 const e=elevation[i];
 const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
 const cp=Math.max(0,1-cd/8);
@@ -222,24 +162,7 @@ const ch=tLat<0.5?inland*(0.5-tLat)*0.20:inland*(tLat-0.5)*-0.12;
 const mt=bt+(0.45-bt)*cp*0.2+ch;
 const wt=windTemp[i];
 temperature[i]=Math.max(0,Math.min(1,mt*0.75+wt*0.25));
-if(e<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;}
-else{const tw=Math.max(0,1-lat*2.5);
-const sd2=Math.exp(-((lat-.28)*(lat-.28))/(2*.08*.08))*.35*(1-cp*.5);
-const tw2=Math.exp(-((lat-.55)*(lat-.55))/.035)*.28;
-const tf=Math.max(0,1-lat*3),cr=.004+(1-tf)*.010;
-const ct=Math.min(.20,cd*cr),pd=Math.max(0,(lat-.80))*.20;
-const cmBase=.48+tw*.40-sd2+tw2-ct-pd+fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*.18;
-const nAmp=Math.max(0.02,Math.min(0.12,cmBase*0.20));
-const cm=cmBase+fbm(nx*4+50,ny*4+50,4,2,.55)*nAmp;
-const t=temperature[i];
-const coldP=t<0.4?(0.4-t)*0.35:0;
-const wm=windMoisture[i];
-let m=wm*0.65+cm*0.35+coldP;
-if(lat<0.25){const tf2=0.30*Math.exp(-(lat*lat)/(2*0.08*0.08))+fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*0.06;
-if(m<tf2)m=m*0.4+tf2*0.6;}
-if(e>0.1&&wm>0.35)m+=Math.min(0.12,(e-0.1)*wm*0.5);
-if(e<0.02)m+=0.10;
-moisture[i]=Math.max(.02,Math.min(1,m));}}
+moisture[i]=windMoisture[i];}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
