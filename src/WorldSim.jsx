@@ -3,6 +3,7 @@ import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthD
 import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
 import { solveMoisture } from "./moistureSolver.js";
+import { isRealWindAvailable, fillRealWind } from "./realWindData.js";
 import TuningPanel, { ParamEditor, renderPreview } from "./TuningPanel.jsx";
 import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
@@ -40,7 +41,7 @@ let _tecParams = {};
 // Static climate: no ice ages or sea level changes
 const CLIMATE={tempMod:0,seaLevel:0,wet:0.7};
 
-function generateWorld(W,H,seed,preset,oceanLevel,enableRivers=true){
+function generateWorld(W,H,seed,preset,oceanLevel,enableRivers=true,realWind=false){
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
 let tecPlates=null,tecWindX=null,tecWindY=null;
@@ -113,9 +114,15 @@ for(let qi=0;qi<cdQ.length;qi++){const ci=cdQ[qi],cd=cdist[ci],cx=ci%CDW,cy=(ci-
 for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
 const nx2=(cx+dx+CDW)%CDW,ny2=cy+dy;if(ny2<0||ny2>=CDH)continue;
 const ni=ny2*CDW+nx2,nd=cd+1;if(nd<cdist[ni]&&elevation[Math.min(H-1,ny2*CDT)*W+Math.min(W-1,nx2*CDT)]>0){cdist[ni]=nd;cdQ.push(ni);}}}
-// Wind solver
+// Wind: use real NCEP/NCAR data if available and toggled, otherwise solver
+if(realWind&&isRealWindAvailable()){
+tecWindX=new Float32Array(W*H);tecWindY=new Float32Array(W*H);
+fillRealWind(W,H,tecWindX,tecWindY);
+console.log("Earth (Sim): using real NCEP/NCAR wind data");
+}else{
 const esWind=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137);
 tecWindX=esWind.windX;tecWindY=esWind.windY;
+}
 const fWX=tecWindX,fWY=tecWindY;
 // Moisture solver — physically-grounded evaporation → transport → precipitation
 const windMoisture=solveMoisture(W,H,elevation,fWX,fWY,temperature,_tecParams);
@@ -768,6 +775,7 @@ const[hoverInfo,setHoverInfo]=useState(null);
 const[tecPresetName,setTecPresetName]=useState("Default");
 const[rightPanel,setRightPanel]=useState("");  // "" | "params"
 const[showTuning,setShowTuning]=useState(false);
+const[useRealWind,setUseRealWind]=useState(false);
 const[mapCount,setMapCount]=useState(1);
 const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
@@ -775,6 +783,7 @@ const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=u
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);
 const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
 const showRiversRef=useRef(true);
+const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
@@ -786,7 +795,7 @@ const W=1920,H=960,CW=Math.ceil(W/RES),CH=Math.ceil(H/RES);
 const generate=useCallback((s,ol)=>{
 let w;
 if(presetRef.current==="import"&&importedWorldRef.current){w=importedWorldRef.current;importedWorldRef.current=null;}
-else{w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,showRiversRef.current);}
+else{w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,showRiversRef.current,useRealWindRef.current);}
 setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
@@ -1212,6 +1221,9 @@ style={{flex:1,accentColor:"#c9b87a"}} />
 background:preset===null?"rgba(201,184,122,0.15)":"transparent"}}>Random</button>
 <button onClick={()=>setPresetAndGo("earth")} style={{...lbs,...(preset==="earth"?{color:"rgb(100,160,220)",background:"rgba(100,160,220,0.15)"}:{})}}>Earth</button>
 <button onClick={()=>setPresetAndGo("earth_sim")} style={{...lbs,...(preset==="earth_sim"?{color:"rgb(80,180,200)",background:"rgba(80,180,200,0.15)"}:{})}}>Earth (Sim)</button>
+{preset==="earth_sim"&&<label style={{fontSize:10,color:useRealWind?"#6be":"#6a6458",cursor:"pointer",display:"flex",alignItems:"center",gap:3,padding:"0 4px"}}>
+<input type="checkbox" checked={useRealWind} onChange={e=>{setUseRealWind(e.target.checked);useRealWindRef.current=e.target.checked;generate(seed)}}
+style={{accentColor:"#6be",width:12,height:12}} />{isRealWindAvailable()?"Real Winds":"Real Winds (no data)"}</label>}
 <button onClick={()=>setPresetAndGo("pangaea")} style={{...lbs,...(preset==="pangaea"?{color:"rgb(120,180,100)",background:"rgba(120,180,100,0.15)"}:{})}}>Pangaea</button>
 <button onClick={()=>setPresetAndGo("tectonic")} style={{...lbs,...(preset==="tectonic"?{color:"rgb(180,120,100)",background:"rgba(180,120,100,0.15)"}:{})}}>Tectonic</button>
 <button onClick={()=>setPresetAndGo("continental")} style={{...lbs,...(preset==="continental"?{color:"rgb(140,180,160)",background:"rgba(140,180,160,0.15)"}:{})}}>Continental</button>
