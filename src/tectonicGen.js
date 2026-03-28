@@ -2,7 +2,6 @@
 // Hybrid model: stamp-based land shapes + Voronoi plate boundaries.
 // Land shapes use multi-stamp composition (from Random mode) centered on
 import { solveWind } from "./windSolver.js";
-import { solveWindParticle } from "./windParticle.js";
 // continental plate nuclei, giving organic coastlines with peninsulas and bays.
 // Tectonic boundary effects (mountains, rifts) are layered on top.
 // Continentality-based interior terrain fills land interiors.
@@ -987,10 +986,7 @@ if (p('erodeDropsPerPixel', 1.5) > 0) {
 // ══════════════════════════════════════════════════════════════════
 // WIND PHYSICS — delegated to standalone solveWind() function
 // ══════════════════════════════════════════════════════════════════
-const useParticleWind = p('useParticleWind', 0) > 0.5;
-const windResult = useParticleWind
-  ? solveWindParticle(W, H, elevation, fbm, params, s3)
-  : solveWind(W, H, elevation, fbm, params, s3);
+const windResult = solveWind(W, H, elevation, fbm, params, s3);
 const { windX: fullWindX, windY: fullWindY, pressure: windPressure, wW: windWW, wH: windWH } = windResult;
 
 /* DEAD CODE START — old inline wind solver, replaced by solveWind() call above
@@ -1533,8 +1529,9 @@ const windMoisture = new Float32Array(W * H);
     const elevDry = e > 0.04 ? Math.min(0.4, (e - 0.04) * 2.0) : 0;
 
     // ── 7. Temperature-limited moisture capacity ──
-    const t = temperature[i];
-    const moistCap = Math.max(0.05, Math.min(1, t * 1.3));
+    // Use latitude as proxy since temperature isn't computed yet at this point.
+    // Cold regions (high latitude) hold less moisture (Clausius-Clapeyron).
+    const latCap = Math.max(0.10, 1.0 - lat * 0.8);
 
     // ── Combine all factors ──
     let m = pressureMoist + coastMoist + windOceanMoist * 0.5 + convergeMoist
@@ -1543,9 +1540,8 @@ const windMoisture = new Float32Array(W * H);
     // Add some noise for natural variation
     m += sg(nfMoistLand, x, y) * 0.08 + sg(nfMoistBroad, x, y) * 0.05;
 
-    // Clamp by temperature capacity
-    m = Math.min(m, moistCap);
-    windMoisture[i] = Math.max(0.02, Math.min(1, m));
+    m = Math.min(m, latCap);
+    windMoisture[i] = Math.max(0.02, Math.min(1, isNaN(m) ? 0.1 : m));
   }
 }
 
