@@ -97,11 +97,13 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   }
 
   // Ocean evaporation: warm windy ocean produces more moisture
+  // Wind speed values are typically 0.01-0.15 on the coarse grid
   for (let i = 0; i < mN; i++) {
     if (isOcean[i]) {
       const ws = Math.sqrt(wX[i] * wX[i] + wY[i] * wY[i]);
-      atmos[i] = Math.min(0.95, Math.max(0.3,
-        0.3 + temp[i] * 0.5 * _moistOcnW / 0.20 + Math.min(0.2, ws * 0.4)));
+      const wsNorm = Math.min(1, ws * 10); // normalize to ~0-1 range
+      const evapBase = 0.3 + temp[i] * 0.5 * (_moistOcnW / 0.20);
+      atmos[i] = Math.min(0.95, Math.max(0.3, evapBase + wsNorm * 0.15));
     }
   }
 
@@ -120,8 +122,9 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       // ── 1. Ocean: replenish evaporation ──
       if (isOcean[ci]) {
         const ws = Math.sqrt(wX[ci] * wX[ci] + wY[ci] * wY[ci]);
-        atmos[ci] = Math.min(0.95, Math.max(prev[ci],
-          0.3 + temp[ci] * 0.5 * _moistOcnW / 0.20 + Math.min(0.2, ws * 0.4)));
+        const wsNorm = Math.min(1, ws * 10);
+        const evapBase = 0.3 + temp[ci] * 0.5 * (_moistOcnW / 0.20);
+        atmos[ci] = Math.min(0.95, Math.max(prev[ci], evapBase + wsNorm * 0.15));
         continue;
       }
 
@@ -129,9 +132,14 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       const wxc = wX[ci], wyc = wY[ci];
       const ws = Math.sqrt(wxc * wxc + wyc * wyc);
 
-      // Backward trace: where did this air come from?
-      const srcX = mx - wxc * reach;
-      const srcY = my - wyc * reach;
+      // Normalize wind direction, then use fixed reach distance
+      // Wind values are small (0.01-0.15), so raw multiplication barely moves.
+      // Instead: trace 'reach' cells in the wind direction.
+      const inv = ws > 0.005 ? 1 / ws : 0;
+      const dirX = wxc * inv, dirY = wyc * inv;
+      const cellReach = Math.min(2.5, reach + ws * 3);
+      const srcX = mx - dirX * cellReach;
+      const srcY = my - dirY * cellReach;
 
       // Bilinear sample from previous step
       const sx = Math.min(mW - 2, Math.max(0, srcX | 0));
@@ -161,14 +169,14 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       // ── 5. Precipitation triggers ──
       let precip = 0;
 
-      // a) Orographic precipitation: dot product of wind with elevation gradient
+      // a) Orographic precipitation: dot product of wind direction with elevation gradient
       // Positive = wind pushing uphill = forced ascent → precipitation
       // Zero when wind parallel to ridge, maximum when hitting head-on
       if (ws > 0.005) {
-        const windDirX = wxc / ws, windDirY = wyc / ws;
-        const upslope = windDirX * gradX[ci] + windDirY * gradY[ci];
+        // Use normalized wind direction (not raw wind — values are too small)
+        const upslope = dirX * gradX[ci] + dirY * gradY[ci];
         if (upslope > 0) {
-          const oroRate = Math.min(0.5, upslope * ws * _moistTBlock * 15);
+          const oroRate = Math.min(0.6, upslope * _moistTBlock * 6);
           const oroPrecip = moist * oroRate;
           precip += oroPrecip;
           moist -= oroPrecip;
