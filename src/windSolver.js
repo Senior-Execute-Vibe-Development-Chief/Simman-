@@ -17,20 +17,22 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const PI = Math.PI;
 
   // ── Tunable parameters ──
-  const _pressureScale   = p("pressureScale", 0.139);
-  const _thermalContrast = p("thermalContrast", 0.82);
-  const _hadleyStr       = p("hadleyStrength", 0.06);
+  const _pressureScale   = p("pressureScale", 0.817);
+  const _thermalContrast = p("thermalContrast", 0.62);
+  const _hadleyStr       = p("hadleyStrength", 0.08);
   const _coriolisStr     = p("coriolisStrength", 0.365);
   const _oceanDrag       = p("oceanDrag", 0.018);
-  const _landDrag        = p("landDrag", 0.568);
-  const _terrainDeflect  = p("terrainDeflect", 0.0);
-  const _gapFunneling    = p("gapFunneling", 0.66);
-  const _eddyStrength    = p("eddyStrength", 0.006);
+  const _landDrag        = p("landDrag", 0.102);
+  const _absorption      = p("absorption", 0.23);
+  const _deflection      = p("deflection", 80.0);
+  const _windAltitude    = p("windAltitude", 0.045);
+  const _gapFunneling    = p("gapFunneling", 0.0);
+  const _eddyStrength    = p("eddyStrength", 0.01);
+  const _landEddyStr     = p("landEddyStrength", 0.0);
   const _solverIter      = p("windSolverIter", 500);
-  const _coandaStr       = p("coandaStrength", 3.0);
-  const _gustThreshold   = p("gustThreshold", 0.055);
-  const _gustBoost       = p("gustBoost", 3.6);
-  const _curlBoost       = p("curlBoost", 2.4);
+  const _gustThreshold   = p("gustThreshold", 0.095);
+  const _gustBoost       = p("gustBoost", 0.45);
+  const _curlBoost       = p("curlBoost", 0.0);
   const _itczOffset      = p("itczOffset", 0.033);
 
   // ── Coarse grid (4x downscale) ──
@@ -39,7 +41,8 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const N = wW * wH;
 
   // ── Sample elevation onto coarse grid (average, not point-sample) ──
-  const wElev = new Float32Array(N);
+  const wElevRaw = new Float32Array(N); // true elevation (for land mask, drag, temperature)
+  const wElev = new Float32Array(N);    // altitude-adjusted (for deflection/blocking only)
   for (let wy = 0; wy < wH; wy++) {
     for (let wx = 0; wx < wW; wx++) {
       let sum = 0, cnt = 0;
@@ -51,13 +54,15 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
           cnt++;
         }
       }
-      wElev[wy * wW + wx] = sum / cnt;
+      const raw = sum / cnt;
+      wElevRaw[wy * wW + wx] = raw;
+      wElev[wy * wW + wx] = Math.max(0, raw - _windAltitude);
     }
   }
 
-  // ── Land mask and smoothed land fraction ──
+  // ── Land mask and smoothed land fraction (uses RAW elevation, not altitude-adjusted) ──
   const landMask = new Float32Array(N);
-  for (let i = 0; i < N; i++) landMask[i] = wElev[i] > 0.005 ? 1 : 0;
+  for (let i = 0; i < N; i++) landMask[i] = wElevRaw[i] > 0.005 ? 1 : 0;
 
   // Continental-scale land fraction (large blur for thermal effects)
   const landFrac = smoothField(landMask, wW, wH, 4, 5);
@@ -77,7 +82,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
 
     for (let wx = 0; wx < wW; wx++) {
       const i = wy * wW + wx;
-      const e = wElev[i];
+      const e = wElevRaw[i]; // temperature uses real elevation for lapse rate
       const lf = landFrac[i];
 
       let T = latTemp;
@@ -87,8 +92,13 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       const subtropFactor = Math.exp(-((absLat * 90 - 25) * (absLat * 90 - 25)) / 600);
       T += lf * _thermalContrast * (0.15 * subtropFactor + 0.03);
 
-      // Lapse rate cooling
+      // Lapse rate cooling — affects temperature but NOT pressure directly.
+      // In reality, cold high-altitude air is denser → higher surface pressure.
+      // The pressure effect is handled separately in STEP 2 so we don't
+      // accidentally create low pressure on mountains (which would suck
+      // wind inward rather than letting it flow over/around).
       T -= e * 0.65;
+
 
       // Noise for symmetry breaking
       const nx = wx / wW, ny = wy / wH;
@@ -107,18 +117,23 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   //   C) Synoptic-scale baroclinic waves (mid-latitude storms)
   const pressure = new Float32Array(N);
 
-  // Zonal mean temperature for anomaly computation
+  // Sea-level-equivalent temperature for pressure computation
+  // (removes lapse rate cooling so mountains don't get artificial low/high pressure)
+  const seaLevelTemp = new Float32Array(N);
+  for (let i = 0; i < N; i++) seaLevelTemp[i] = temperature[i] + wElevRaw[i] * 0.65;
+
+  // Zonal mean of sea-level temperature for anomaly computation
   const zonalMeanT = new Float32Array(wH);
   for (let wy = 0; wy < wH; wy++) {
     let sum = 0;
-    for (let wx = 0; wx < wW; wx++) sum += temperature[wy * wW + wx];
+    for (let wx = 0; wx < wW; wx++) sum += seaLevelTemp[wy * wW + wx];
     zonalMeanT[wy] = sum / wW;
   }
 
   // Ocean basin detection: find connected ocean regions for gyre placement
   // Simplified: use longitude sectors weighted by ocean fraction
   const oceanFrac = new Float32Array(N);
-  for (let i = 0; i < N; i++) oceanFrac[i] = wElev[i] <= 0.005 ? 1 : 0;
+  for (let i = 0; i < N; i++) oceanFrac[i] = wElevRaw[i] <= 0.005 ? 1 : 0;
   const oceanFracSmooth = smoothField(oceanFrac, wW, wH, 3, 4);
 
   for (let wy = 0; wy < wH; wy++) {
@@ -159,15 +174,13 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       const oceanHighBoost = oceanFracSmooth[i] * subtropWeight * 0.35 * _hadleyStr;
 
       // ── C) Continental thermal anomaly ──
-      // Warm continents → low pressure (thermal low, draws air onshore)
-      // This is the monsoon driver
-      // Thermal anomaly: deviation from zonal mean drives monsoon-like flows
-      // This emerges naturally from thermalContrast — warm continents create
-      // low pressure that draws in ocean air. No separate multiplier needed.
-      const thermalAnomaly = -(temperature[i] - zonalMeanT[wy]);
+      // Warm land → low pressure (thermal low, draws air onshore = monsoons)
+      // Uses sea-level temperature so elevation doesn't create false pressure
+      const slt = seaLevelTemp[i];
+      const thermalAnomaly = -(slt - zonalMeanT[wy]);
 
-      // Base meridional pressure
-      const meridionalP = -temperature[i] * _pressureScale;
+      // Base meridional pressure from sea-level temperature
+      const meridionalP = -slt * _pressureScale;
 
       // ── D) Synoptic noise: larger scale for realistic weather patterns ──
       // Two scales: large (basin-scale highs/lows) and medium (storm-scale)
@@ -187,17 +200,18 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   for (let i = 0; i < N; i++) pressure[i] = smoothP[i];
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 3: Drag field (surface friction)
+  // STEP 3: Surface drag (elevation-independent) + coastal absorption
   // ════════════════════════════════════════════════════════════════
+  // Drag = surface roughness friction. Same for plains, plateaus, mountains.
+  // Elevation only affects the post-solve deflection (Froude blocking).
+  // Absorption = extra drag at coastlines, smoothly ramping to 0 inland.
   const drag = new Float32Array(N);
   for (let i = 0; i < N; i++) {
-    const e = wElev[i];
-    if (e <= 0.005) {
-      drag[i] = _oceanDrag;
-    } else {
-      // Land drag + extra friction scaled by elevation for mountains
-      drag[i] = _landDrag + _landDrag * Math.min(1, e * 2) * 0.5;
-    }
+    const isLand = landMask[i];
+    const baseDrag = _oceanDrag + (_landDrag - _oceanDrag) * isLand;
+    // Coastal absorption: peaks at shore (landFracMed ~ 0.3), fades inland (landFracMed ~ 1.0)
+    const coastalRamp = isLand * (1.0 - landFracMed[i]);
+    drag[i] = baseDrag + _absorption * coastalRamp * _landDrag;
   }
 
   // ════════════════════════════════════════════════════════════════
@@ -230,7 +244,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       const i = wy * wW + wx;
       const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
 
-      const dpdx = (pressure[wy * wW + wr] - pressure[wy * wW + wl]) * 0.5 * cosLat;
+      const dpdx = (pressure[wy * wW + wr] - pressure[wy * wW + wl]) * 0.5 / Math.max(0.15, cosLat);
       const dpdy = (pressure[(wy + 1) * wW + wx] - pressure[(wy - 1) * wW + wx]) * 0.5;
 
       const kf = drag[i];
@@ -284,7 +298,9 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
         const nu = (wy - 1) * wW + wx, nd = (wy + 1) * wW + wx;
 
         // Pressure gradient force
-        const pgfX = -(pressure[nr] - pressure[nl]) * 0.5 * cosLat;
+        // Zonal: grid cells are closer together at high latitudes (convergence of
+        // meridians), so same grid-cell pressure difference = stronger physical gradient.
+        const pgfX = -(pressure[nr] - pressure[nl]) * 0.5 / Math.max(0.15, cosLat);
         const pgfY = -(pressure[nd] - pressure[nu]) * 0.5;
 
         // Coriolis
@@ -305,183 +321,52 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       }
     }
 
-    // ── Solid wall boundary: land is a wall, wind can't flow through it ──
-    // For every land cell, zero out velocity component flowing into the terrain.
-    // The solver then has to route wind around. This runs EVERY iteration so
-    // PGF can never push wind through — the wall always wins.
-    if (_terrainDeflect > 0) {
+    // ── Mass continuity: velocity projection ──
+    // Removes divergence from the wind field so air can't pile up or vanish.
+    if (iter % 10 === 9) {
+      const div = new Float32Array(N);
       for (let wy = 1; wy < wH - 1; wy++) {
         for (let wx = 0; wx < wW; wx++) {
-          const i = wy * wW + wx;
-          const e = wElev[i];
-          if (e < 0.005) continue; // ocean cell, skip
-
-          // How solid is this cell (0-1). Low land = partial wall, mountains = full wall.
-          const solidity = Math.min(1, e * _terrainDeflect * 0.1);
-
-          // Compute terrain normal from elevation gradient
-          const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-          const gx = (wElev[wy * wW + wr] - wElev[wy * wW + wl]) * 0.5;
-          const gy = (wElev[(wy + 1) * wW + wx] - wElev[(wy - 1) * wW + wx]) * 0.5;
-          const gm = Math.sqrt(gx * gx + gy * gy);
-
-          let vx = windX[i], vy = windY[i];
-
-          if (gm > 1e-6) {
-            // Has a gradient: block into-terrain component, redirect along surface
-            const nx = gx / gm, ny = gy / gm;
-            const dot = vx * nx + vy * ny;
-            if (dot > 0) {
-              const block = dot * solidity;
-              vx -= block * nx;
-              vy -= block * ny;
-              // Redirect ALL blocked energy along terrain contour
-              const tangX = -ny, tangY = nx;
-              const tangDot = vx * tangX + vy * tangY;
-              vx += (tangDot >= 0 ? 1 : -1) * tangX * block;
-              vy += (tangDot >= 0 ? 1 : -1) * tangY * block;
-            }
-          } else {
-            // Interior cell (flat, no gradient): redirect toward nearest ocean
-            // Use the smoothed land fraction gradient — it points toward coast
-            const lfL = landFrac[wy * wW + ((wx - 1 + wW) % wW)];
-            const lfR = landFrac[wy * wW + ((wx + 1) % wW)];
-            const lfU = landFrac[(wy - 1) * wW + wx];
-            const lfD = landFrac[(wy + 1) * wW + wx];
-            // Gradient of land fraction points toward more land; negate to point toward ocean
-            const cgx = -(lfR - lfL) * 0.5;
-            const cgy = -(lfD - lfU) * 0.5;
-            const cgm = Math.sqrt(cgx * cgx + cgy * cgy);
-            if (cgm > 1e-6) {
-              // Redirect wind toward coast, keeping its speed
-              const speed = Math.sqrt(vx * vx + vy * vy);
-              const coastNx = cgx / cgm, coastNy = cgy / cgm;
-              vx = vx * (1 - solidity) + coastNx * speed * solidity;
-              vy = vy * (1 - solidity) + coastNy * speed * solidity;
-            } else {
-              // True center of large continent — slow down gently
-              vx *= (1 - solidity * 0.3);
-              vy *= (1 - solidity * 0.3);
-            }
-          }
-
-          windX[i] = vx;
-          windY[i] = vy;
-        }
-      }
-    }
-  }
-
-  // ════════════════════════════════════════════════════════════════
-  // STEP 5: Downstream momentum transport
-  // ════════════════════════════════════════════════════════════════
-  // Wind carries its own momentum. A slow parcel leaving land doesn't
-  // instantly speed up on ocean — it has to gradually accelerate.
-  // Trace each cell backward along the wind and blend with upstream velocity.
-  // Multiple passes propagate the effect further downstream.
-  {
-    const transportPasses = 8;
-    const advDt = 0.6;
-    const blendStr = 0.4; // 40% upstream influence
-    for (let pass = 0; pass < transportPasses; pass++) {
-      const prevX = new Float32Array(windX);
-      const prevY = new Float32Array(windY);
-      for (let wy = 1; wy < wH - 1; wy++) {
-        for (let wx = 0; wx < wW; wx++) {
-          const i = wy * wW + wx;
-          // Trace backward: where did this air come from?
-          const backX = wx - prevX[i] * advDt;
-          const backY = wy - prevY[i] * advDt;
-          const sx = ((backX % wW) + wW) % wW;
-          const sy = Math.max(1, Math.min(wH - 2, backY));
-          const ix = Math.floor(sx), iy = Math.floor(sy);
-          const fx = sx - ix, fy = sy - iy;
-          const ix1 = (ix + 1) % wW, iy1 = Math.min(wH - 2, iy + 1);
-          const i00 = iy * wW + ix, i10 = iy * wW + ix1;
-          const i01 = iy1 * wW + ix, i11 = iy1 * wW + ix1;
-          // Bilinear interpolation of upstream velocity
-          const upX = prevX[i00] * (1-fx)*(1-fy) + prevX[i10] * fx*(1-fy)
-                    + prevX[i01] * (1-fx)*fy + prevX[i11] * fx*fy;
-          const upY = prevY[i00] * (1-fx)*(1-fy) + prevY[i10] * fx*(1-fy)
-                    + prevY[i01] * (1-fx)*fy + prevY[i11] * fx*fy;
-          // Blend: current cell keeps (1-blend), upstream contributes blend
-          windX[i] = prevX[i] * (1 - blendStr) + upX * blendStr;
-          windY[i] = prevY[i] * (1 - blendStr) + upY * blendStr;
-        }
-      }
-    }
-  }
-
-  // ════════════════════════════════════════════════════════════════
-  // STEP 6: Terrain deflection (post-solve, multi-pass)
-  // ════════════════════════════════════════════════════════════════
-  // Run AFTER the atmospheric solver so PGF can't override it.
-  // Multiple passes: each pass deflects at/near terrain, then smooths
-  // to propagate the deflection upstream. Like sculpting flow around rocks.
-  if (_terrainDeflect > 0) {
-    // Build a "terrain influence" field that extends beyond the terrain itself.
-    // Smooth the elevation so the deflection zone extends several cells out.
-    const terrainInfluence = smoothField(wElev, wW, wH, 3, 3);
-
-    const deflectPasses = 20;
-    for (let pass = 0; pass < deflectPasses; pass++) {
-      for (let wy = 1; wy < wH - 1; wy++) {
-        for (let wx = 0; wx < wW; wx++) {
-          const i = wy * wW + wx;
-          const ti = terrainInfluence[i];
-          if (ti < 0.005) continue;
-
-          const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-          // Gradient of the smoothed terrain influence (points uphill)
-          const gx = (terrainInfluence[wy * wW + wr] - terrainInfluence[wy * wW + wl]) * 0.5;
-          const gy = (terrainInfluence[(wy + 1) * wW + wx] - terrainInfluence[(wy - 1) * wW + wx]) * 0.5;
-          const gm = Math.sqrt(gx * gx + gy * gy);
-          if (gm < 1e-6) continue;
-
-          const nx = gx / gm, ny = gy / gm;
-          let vx = windX[i], vy = windY[i];
-          const dot = vx * nx + vy * ny;
-
-          if (dot > 0) {
-            const speed = Math.sqrt(vx * vx + vy * vy);
-            // coandaStr controls the whole terrain interaction:
-            // blocking strength AND redirect amount
-            const deflect = Math.min(1, ti * _terrainDeflect * 0.12 * _coandaStr / Math.max(0.01, speed));
-            const rmX = dot * nx * deflect;
-            const rmY = dot * ny * deflect;
-            vx -= rmX; vy -= rmY;
-
-            // Redirect blocked energy along terrain contour (70% of blocked)
-            const tangX = -ny, tangY = nx;
-            const tangDot = vx * tangX + vy * tangY;
-            const redir = Math.sqrt(rmX * rmX + rmY * rmY) * 0.7;
-            vx += (tangDot >= 0 ? 1 : -1) * tangX * redir;
-            vy += (tangDot >= 0 ? 1 : -1) * tangY * redir;
-
-            windX[i] = vx;
-            windY[i] = vy;
-          }
+          const i2 = wy * wW + wx;
+          if (wElev[i2] > 0.3) continue;
+          const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+          div[i2] = (windX[wy * wW + wr2] - windX[wy * wW + wl2]) * 0.5
+                  + (windY[(wy + 1) * wW + wx] - windY[(wy - 1) * wW + wx]) * 0.5;
         }
       }
 
-      // Light smoothing between passes to propagate deflection upstream
-      if (pass < deflectPasses - 1 && pass % 2 === 0) {
-        const tmpWx = new Float32Array(windX);
-        const tmpWy = new Float32Array(windY);
-        const blend = 0.15; // subtle: 15% neighbor average, 85% current
+      const pCorr = new Float32Array(N);
+      const omega = 1.4;
+      for (let pIter = 0; pIter < 20; pIter++) {
         for (let wy = 1; wy < wH - 1; wy++) {
           for (let wx = 0; wx < wW; wx++) {
             const i2 = wy * wW + wx;
-            if (terrainInfluence[i2] < 0.002) continue; // only smooth near terrain
+            if (wElev[i2] > 0.3) continue;
             const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
-            const avgX = (tmpWx[wy * wW + wl2] + tmpWx[wy * wW + wr2]
-                        + tmpWx[(wy - 1) * wW + wx] + tmpWx[(wy + 1) * wW + wx]) * 0.25;
-            const avgY = (tmpWy[wy * wW + wl2] + tmpWy[wy * wW + wr2]
-                        + tmpWy[(wy - 1) * wW + wx] + tmpWy[(wy + 1) * wW + wx]) * 0.25;
-            windX[i2] = tmpWx[i2] * (1 - blend) + avgX * blend;
-            windY[i2] = tmpWy[i2] * (1 - blend) + avgY * blend;
+            const pE = wElev[wy * wW + wr2] > 0.3 ? pCorr[i2] : pCorr[wy * wW + wr2];
+            const pW = wElev[wy * wW + wl2] > 0.3 ? pCorr[i2] : pCorr[wy * wW + wl2];
+            const pN = (wy < wH - 2 && wElev[(wy+1)*wW+wx] <= 0.3) ? pCorr[(wy+1)*wW+wx] : pCorr[i2];
+            const pS = (wy > 1 && wElev[(wy-1)*wW+wx] <= 0.3) ? pCorr[(wy-1)*wW+wx] : pCorr[i2];
+            const jacobi = (pE + pW + pN + pS - div[i2]) * 0.25;
+            pCorr[i2] = (1 - omega) * pCorr[i2] + omega * jacobi;
           }
         }
+      }
+
+      const corrStr = 0.2;
+      for (let wy = 1; wy < wH - 1; wy++) {
+        for (let wx = 0; wx < wW; wx++) {
+          const i2 = wy * wW + wx;
+          if (wElev[i2] > 0.3) { windX[i2] = 0; windY[i2] = 0; continue; }
+          const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+          windX[i2] -= (pCorr[wy * wW + wr2] - pCorr[wy * wW + wl2]) * 0.5 * corrStr;
+          windY[i2] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5 * corrStr;
+        }
+      }
+
+      for (let wx = 0; wx < wW; wx++) {
+        windY[wx] = 0;
+        windY[(wH - 1) * wW + wx] = 0;
       }
     }
   }
@@ -522,9 +407,8 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     for (let wx = 0; wx < wW; wx++) {
       const i = wy * wW + wx;
       const nx = wx / wW, ny = wy / wH;
-      const isOcean = wElev[i] <= 0.005;
-      const baseAmp = isOcean ? _eddyStrength : _eddyStrength * 0.5;
-      const amp = baseAmp * latFactor;
+      const isLand = wElevRaw[i] > 0.005;
+      const amp = (isLand ? _landEddyStr : _eddyStrength) * latFactor;
 
       // Large-scale eddies (synoptic-ish, ~1000km)
       const eps = 0.003;
@@ -568,30 +452,37 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // Compute vorticity (curl = ∂v/∂x - ∂u/∂y). High curl = rotation.
   // Boost wind speed where curl is strong — this is why cyclones have
   // fast winds around their centers (tight rotation = fast flow).
+  const _curlThreshold = p("curlThreshold", 0.08);
   if (_curlBoost > 0) {
+    // Compute raw vorticity
     const curl = new Float32Array(N);
     for (let wy = 1; wy < wH - 1; wy++) {
       for (let wx = 0; wx < wW; wx++) {
         const i = wy * wW + wx;
         const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
-        // curl = dv/dx - du/dy
         const dvdx = (windY[wy * wW + wr] - windY[wy * wW + wl]) * 0.5;
         const dudy = (windX[(wy + 1) * wW + wx] - windX[(wy - 1) * wW + wx]) * 0.5;
         curl[i] = Math.abs(dvdx - dudy);
       }
     }
-    // Smooth curl to avoid single-cell spikes
-    const smoothCurl = smoothField(curl, wW, wH, 1, 2);
+    // Two smoothing scales: local (what we compare against) and broad (background)
+    const localCurl = smoothField(curl, wW, wH, 1, 1);
+    const bgCurl = smoothField(curl, wW, wH, 3, 4); // broad background rotation
+    // Anomaly: how much stronger is local rotation vs the regional average?
+    // This filters out uniform Coriolis-driven rotation and highlights
+    // actual cyclonic vortices where rotation is concentrated.
     for (let wy = 1; wy < wH - 1; wy++) {
       for (let wx = 0; wx < wW; wx++) {
         const i = wy * wW + wx;
+        if (wElevRaw[i] > 0.005) continue; // ocean only
         const speed = Math.sqrt(windX[i] * windX[i] + windY[i] * windY[i]);
         if (speed < 1e-6) continue;
-        // Normalize curl by speed to get rotation rate
-        const normCurl = smoothCurl[i] / speed;
-        // Boost proportional to rotation intensity
-        const boost = 1 + normCurl * _curlBoost * 5.0;
-        const factor = Math.min(3.0, boost);
+        // Anomaly: local curl minus background (both normalized by speed)
+        const anomaly = (localCurl[i] - bgCurl[i]) / speed;
+        if (anomaly < _curlThreshold) continue;
+        const excess = anomaly - _curlThreshold;
+        const boost = 1 + excess * _curlBoost;
+        const factor = Math.min(2.0, boost);
         windX[i] *= factor;
         windY[i] *= factor;
       }
@@ -599,7 +490,72 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // STEP 10: Bilinear upscale to full resolution
+  // FINAL: Terrain deflection (runs LAST so nothing overwrites it)
+  // ════════════════════════════════════════════════════════════════
+  // Must run after all other post-processing (eddies, gusts, curl boost)
+  // because those steps add noise and amplification that would drown out
+  // the careful directional changes from terrain blocking.
+  if (_deflection > 0) {
+    const deflectPasses = 80;
+    for (let pass = 0; pass < deflectPasses; pass++) {
+      for (let wy = 1; wy < wH - 1; wy++) {
+        for (let wx = 0; wx < wW; wx++) {
+          const i = wy * wW + wx;
+          const ti = wElev[i];
+          if (ti < 0.005) continue;
+
+          const wl = (wx - 1 + wW) % wW, wr = (wx + 1) % wW;
+          const gx = (wElev[wy * wW + wr] - wElev[wy * wW + wl]) * 0.5;
+          const gy = (wElev[(wy + 1) * wW + wx] - wElev[(wy - 1) * wW + wx]) * 0.5;
+          const gm = Math.sqrt(gx * gx + gy * gy);
+          if (gm < 1e-6) continue;
+
+          const nx = gx / gm, ny = gy / gm;
+          let vx = windX[i], vy = windY[i];
+          const dot = vx * nx + vy * ny;
+
+          if (dot > 0) {
+            const speed = Math.sqrt(vx * vx + vy * vy);
+            const deflect = Math.min(1, ti * _deflection * 0.36 / Math.max(0.01, speed));
+            const rmX = dot * nx * deflect;
+            const rmY = dot * ny * deflect;
+            vx -= rmX; vy -= rmY;
+
+            const tangX = -ny, tangY = nx;
+            const tangDot = vx * tangX + vy * tangY;
+            const redir = Math.sqrt(rmX * rmX + rmY * rmY) * 0.7;
+            vx += (tangDot >= 0 ? 1 : -1) * tangX * redir;
+            vy += (tangDot >= 0 ? 1 : -1) * tangY * redir;
+
+            windX[i] = vx;
+            windY[i] = vy;
+          }
+        }
+      }
+
+      if (pass < deflectPasses - 1 && pass % 2 === 0) {
+        const tmpWx = new Float32Array(windX);
+        const tmpWy = new Float32Array(windY);
+        const blend = 0.25;
+        for (let wy = 1; wy < wH - 1; wy++) {
+          for (let wx = 0; wx < wW; wx++) {
+            const i2 = wy * wW + wx;
+            if (wElev[i2] < 0.002) continue;
+            const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
+            const avgX = (tmpWx[wy * wW + wl2] + tmpWx[wy * wW + wr2]
+                        + tmpWx[(wy - 1) * wW + wx] + tmpWx[(wy + 1) * wW + wx]) * 0.25;
+            const avgY = (tmpWy[wy * wW + wl2] + tmpWy[wy * wW + wr2]
+                        + tmpWy[(wy - 1) * wW + wx] + tmpWy[(wy + 1) * wW + wx]) * 0.25;
+            windX[i2] = tmpWx[i2] * (1 - blend) + avgX * blend;
+            windY[i2] = tmpWy[i2] * (1 - blend) + avgY * blend;
+          }
+        }
+      }
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  // Bilinear upscale to full resolution
   // ════════════════════════════════════════════════════════════════
   const fullWindX = new Float32Array(W * H);
   const fullWindY = new Float32Array(W * H);
@@ -619,7 +575,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     }
   }
 
-  return { windX: fullWindX, windY: fullWindY };
+  return { windX: fullWindX, windY: fullWindY, pressure, wW, wH, wElev, wElevRaw };
 }
 
 // ── Helper: box blur with wrapping X, clamped Y ──

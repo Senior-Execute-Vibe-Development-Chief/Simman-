@@ -669,13 +669,46 @@ const nfTecWY = precompute((nx, ny) => fbm(nx * 3 + 250, ny * 3 + 250, 3, 2, 0.5
 const nfPlateau = precompute((nx, ny) => fbm(nx * 3 + s1 + 50, ny * 3 + s1 + 50, 2, 2, 0.5));
 const nfMtnBump = precompute((nx, ny) => fbm(nx * 8 + s2 + 30, ny * 8 + s2 + 30, 4, 2, 0.55));
 const nfCoastEN = precompute((nx, ny) => fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5));
-const nfContinent = precompute((nx, ny) => fbm(nx * 2.2 + s1 + 30, ny * 2.2 + s1 + 30, 3, 2, 0.55));
-const nfBroadSwell = precompute((nx, ny) => fbm(nx * 1.8 + s1, ny * 1.8 + s1, 2, 2, 0.6));
 const nfTemp = precompute((nx, ny) => fbm(nx * 3 + 80, ny * 3 + 80, 3, 2, 0.5));
 const nfTempBroad = precompute((nx, ny) => fbm(nx * 1.2 + s1 + 55, ny * 1.2 + s1 + 55, 3, 2, 0.55));
 const nfMoistOce = precompute((nx, ny) => fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.5));
 const nfMoistLand = precompute((nx, ny) => fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55));
 const nfMoistBroad = precompute((nx, ny) => fbm(nx * 1.5 + s2 + 90, ny * 1.5 + s2 + 90, 3, 2, 0.55));
+
+// ── Multi-scale continental interior terrain ──
+// Shield/craton: very large-scale continental elevation blocks (like African plateau, Canadian Shield)
+const nfShield = precompute((nx, ny) => fbm(nx * 1.4 + s1 + 30, ny * 1.4 + s1 + 30, 2, 2, 0.6));
+// Basin: medium-scale depressions and swells (like Congo Basin, Great Plains)
+const nfBasin = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 2, 2, 0.03, s2 + 40, s2 + 90);
+  return fbm(wx * 3.5 + s2 + 15, wy * 3.5 + s2 + 15, 3, 2, 0.55);
+});
+// Escarpment: ridged noise for sharp elevation breaks (like Great Escarpment, Western Ghats)
+const nfEscarpment = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 3, 2, 0.04, s3 + 55, s3 + 105);
+  return ridged(wx * 4 + s3 + 20, wy * 4 + s3 + 20, 3, 2.0, 0.6, 1.0);
+});
+// Medium terrain texture: rolling hills, ancient eroded ranges
+const nfMedTerrain = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 4, 2, 0.035, s1 + 65, s1 + 115);
+  return fbm(wx * 7 + s1 + 40, wy * 7 + s1 + 40, 4, 2.0, 0.5);
+});
+// Mountain ridgeline texture: sharp veining that only appears in mountain zones
+const nfMtnRidge = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 5, 2, 0.05, s4 + 70, s4 + 120);
+  return ridged(wx * 12 + s4, wy * 12 + s4, 4, 2.2, 0.6, 1.0);
+});
+// Mountain valley incision (Worley F1 distance creates drainage-aligned valleys)
+const nfMtnValley = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 4, 2, 0.04, s5 + 30, s5 + 80);
+  const [f1] = worley(wx * 8 + s5, wy * 8 + s5);
+  return f1;
+});
+// Fine-detail terrain: higher frequency for local variation everywhere
+const nfFineTerrain = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 5, 2, 0.025, s3 + 25, s3 + 75);
+  return fbm(wx * 14 + s3 + 35, wy * 14 + s3 + 35, 3, 2.0, 0.5);
+});
 
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
@@ -685,14 +718,13 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const stampE = (rawElev[i] - sl) * 0.3;
 
   const tcx = x / CG, tcy = y / CG;
-  const twx = tcx + sg(nfTecWX, x, y) * 3.0;
-  const twy = tcy + sg(nfTecWY, x, y) * 3.0;
+  const twx = tcx + sg(nfTecWX, x, y) * 2.0;
+  const twy = tcy + sg(nfTecWY, x, y) * 2.0;
   const tecMod = sampleCrust(twx, twy);
   let e = stampE + tecMod;
 
   if (!isLandArr[i]) {
-    if (tecMod < 0.03) e = Math.min(e, -0.001);
-    else e = Math.min(e, tecMod * 0.4 - 0.01);
+    e = Math.min(e, -0.001);
   }
 
   if (e > 0) {
@@ -709,26 +741,63 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       * p('mtnBumpStr', 0.10) * Math.min(1, (plateau + peaks) * 3);
     const tecLift = plateau + peaks + mtnBump;
 
+    // Coast blend: smoothly suppress elevation near the coast.
+    // tecStr can reduce coastBlend (mountains at coast, like Andes) but
+    // always keep a minimum blend so the very coastline stays low.
     const rawCoastBlend = smoothstep(1 - cd / 6);
     const tecStr = Math.min(1, tecLift * 2);
-    const coastBlend = rawCoastBlend * (1 - tecStr * 0.85);
+    const coastBlend = Math.max(rawCoastBlend * 0.3, rawCoastBlend * (1 - tecStr * 0.6));
 
-    const coastE = 0.003 + (1 - coastBlend) * 0.008
+    const coastE = 0.005 + (1 - coastBlend) * 0.01
       + sg(nfCoastEN, x, y) * 0.004;
 
-    const baseE = 0.006 + interior * 0.012;
-    const continentNoise = sg(nfContinent, x, y);
-    const highlandMask = smoothstep(continentNoise * 2 + 0.2);
-    const regionalE = highlandMask * 0.12 * interior;
+    // ── Multi-scale continental interior terrain ──
+    // tecZone: how much this pixel is in a tectonic mountain zone (0=craton, 1=mountains)
+    // Interior noise is SUPPRESSED in mountain zones (different geology)
+    // and AMPLIFIED near broad tectonic uplift (plateau texture)
+    const tecZone = smoothstep(tecLift * 2.5);
+    const cratonZone = (1 - tecZone); // weight for stable interior noise
+    const plateauZone = smoothstep(broadVal * 3); // broad tectonic uplift (Tibet-like)
 
-    const broadSwell = sg(nfBroadSwell, x, y) * 0.012;
-    const [rhx, rhy] = warp(nx, ny, 3, 2, 0.04, s2 + 10, s2 + 60);
-    const rolling = fbm(rhx * 6 + s2, rhy * 6 + s2, 3, 2, 0.5) * 0.010;
-    const plateauBoost = Math.max(0, stampE) * 0.15 * interior;
+    // Shield blocks: continent-scale elevated regions — suppressed where plates collide
+    // Real shields: Canadian Shield ~300m, African Plateau ~1000m (but that's tectonic)
+    const shieldVal = sg(nfShield, x, y);
+    const shieldE = smoothstep(shieldVal * 1.5 + 0.1) * 0.04 * interior * cratonZone;
 
-    const cratonE = baseE + regionalE + broadSwell + rolling + plateauBoost;
-    e = cratonE + tecLift;
-    e += (broadSwell + rolling) * tecLift * 5.0;
+    // Basin: medium-scale depressions and swells — only in stable interiors
+    const basinVal = sg(nfBasin, x, y);
+    const basinE = basinVal * 0.015 * interior * cratonZone;
+
+    // Escarpment: sharp elevation breaks — at shield edges in stable interiors
+    const escarpVal = sg(nfEscarpment, x, y);
+    const escarpE = escarpVal * 0.012 * interior * cratonZone
+      * smoothstep(Math.abs(shieldVal) * 3);
+
+    // Medium terrain: rolling hills — present everywhere but louder on plateaus
+    const medTerrain = sg(nfMedTerrain, x, y) * (0.008 + plateauZone * 0.02) * interior;
+
+    // Fine local detail: small-scale undulation — present everywhere
+    const fineTerrain = sg(nfFineTerrain, x, y) * 0.006 * interior;
+
+    // Base elevation: most flat continental land is 50-200m (0.006-0.023).
+    // Coast near sea level, ramps gently inland.
+    const baseE = 0.008 + interior * 0.015;
+    const plateauBoost = Math.max(0, stampE) * 0.10 * interior;
+    const cratonE = baseE + shieldE + basinE + escarpE + medTerrain
+      + fineTerrain + plateauBoost;
+
+    // ── Mountain-specific texture ──
+    // Ridgeline veining: sharp drainage-aligned ridges, amplitude scales with tecLift
+    const ridgeVal = sg(nfMtnRidge, x, y);
+    const valleyVal = sg(nfMtnValley, x, y);
+    // Ridges push up, valleys carve down — only in tectonic mountain zones
+    const mtnTexture = (ridgeVal * 0.15 - (1 - valleyVal) * 0.06) * tecZone;
+
+    // Scale tectonic lift by coast distance so mountains ramp up inland
+    const tecCoastRamp = smoothstep(interior * 1.5);
+    e = cratonE + tecLift * tecCoastRamp + mtnTexture * tecCoastRamp;
+    // Cross-term: terrain noise modulates mountain zones for local variation
+    e += medTerrain * tecLift * tecCoastRamp * 3.0;
     e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
 
     e = Math.max(0, e);
@@ -736,8 +805,18 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     e = Math.max(0.002, Math.min(1.0, e));
   }
 
-  // Fine texture (high freq — must stay per-pixel)
-  e += fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4) * 0.004;
+  // Per-pixel fine texture (land only) — adapts to terrain type
+  if (isLandArr[i] && e > 0) {
+    // High-frequency detail: stronger amplitude in high-elevation zones
+    const fineBase = fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4);
+    const elevBoost = Math.min(1, Math.max(0, e - 0.02) * 6);
+    e += fineBase * (0.004 + elevBoost * 0.012);
+    // Extra octave in mountain zones for sharp micro-ridges
+    if (e > 0.15) {
+      const microRidge = fbm(nx * 40 + s5 + 10, ny * 40 + s5 + 10, 2, 2.2, 0.45);
+      e += microRidge * 0.008 * Math.min(1, (e - 0.15) * 5);
+    }
+  }
 
   if (lat > 0.88) e -= (lat - 0.88) * 2;
 
@@ -745,21 +824,170 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 }
 
 // ═══════════════════════════════════════════════════════
-// STEP 8b: 2D Wind Field — Atmospheric Circulation
-// Three-cell model: Hadley (0-30°), Ferrel (30-60°), Polar (60-90°)
-// with Coriolis deflection + terrain deflection via relaxation
+// STEP 8b: Hydraulic Erosion — physically-based terrain texturing
 // ═══════════════════════════════════════════════════════
+if (p('erodeDropsPerPixel', 1.5) > 0) {
+  // Run erosion on a 4x-downscaled grid for speed (~16x fewer pixels)
+  const EG = 4;
+  const eW = Math.ceil(W / EG), eH = Math.ceil(H / EG);
+  const eN = eW * eH;
+
+  // Downsample elevation to erosion grid
+  const eElev = new Float32Array(eN);
+  const eLand = new Uint8Array(eN);
+  for (let ey = 0; ey < eH; ey++) for (let ex = 0; ex < eW; ex++) {
+    const px = Math.min(W - 1, ex * EG), py = Math.min(H - 1, ey * EG);
+    const v = elevation[py * W + px];
+    eElev[ey * eW + ex] = v;
+    eLand[ey * eW + ex] = v > 0 ? 1 : 0;
+  }
+
+  const dropCount = Math.round(eN * p('erodeDropsPerPixel', 1.0));
+  const maxLife = 30;
+  const inertia = p('erodeInertia', 0.3);
+  const cap = p('erodeCapacity', 4.0);
+  const minSlope = 0.005;
+  const depositRate = p('erodeDeposit', 0.3);
+  const erodeRate = p('erodeRate', 0.15);
+  const evapRate = p('erodeEvaporate', 0.02);
+  const grav = p('erodeGravity', 6.0);
+  const brushR = p('erodeBrushRadius', 2);
+
+  // Pre-compute brush weights
+  const bOff = [], bWt = [];
+  let wSum = 0;
+  for (let by = -brushR; by <= brushR; by++) for (let bx = -brushR; bx <= brushR; bx++) {
+    const d2 = bx * bx + by * by;
+    if (d2 > brushR * brushR) continue;
+    bOff.push(bx, by);
+    const w = Math.max(0, 1 - Math.sqrt(d2) / brushR);
+    bWt.push(w); wSum += w;
+  }
+  for (let k = 0; k < bWt.length; k++) bWt[k] /= wSum;
+
+  // Bilinear helpers on erosion grid (wraps X, clamps Y)
+  const eAt = (gx, gy) => eElev[Math.max(0, Math.min(eH - 1, gy)) * eW + ((gx % eW) + eW) % eW];
+  const eSample = (px, py) => {
+    const ix = Math.floor(px), iy = Math.floor(py), fx = px - ix, fy = py - iy;
+    return eAt(ix, iy) * (1-fx)*(1-fy) + eAt(ix+1, iy) * fx*(1-fy)
+      + eAt(ix, iy+1) * (1-fx)*fy + eAt(ix+1, iy+1) * fx*fy;
+  };
+  const eGrad = (px, py) => {
+    const ix = Math.floor(px), iy = Math.floor(py), fx = px - ix, fy = py - iy;
+    const h00 = eAt(ix, iy), h10 = eAt(ix+1, iy), h01 = eAt(ix, iy+1), h11 = eAt(ix+1, iy+1);
+    return [(h10-h00)*(1-fy)+(h11-h01)*fy, (h01-h00)*(1-fx)+(h11-h10)*fx];
+  };
+
+  for (let drop = 0; drop < dropCount; drop++) {
+    // Spawn on land
+    let px, py, att = 0;
+    do { px = rng() * eW; py = rng() * (eH - 2) + 1; att++; }
+    while (att < 8 && !eLand[Math.floor(py) * eW + Math.floor(px) % eW]);
+    if (!eLand[Math.floor(py) * eW + Math.floor(px) % eW]) continue;
+
+    let ddx = 0, ddy = 0, speed = 1, water = 1, sed = 0;
+    for (let step = 0; step < maxLife; step++) {
+      const cx = Math.floor(px), cy = Math.floor(py);
+      if (!eLand[cy * eW + ((cx % eW + eW) % eW)]) break; // drop reached ocean, sediment lost to sea
+      const oldH = eSample(px, py);
+
+      const [gx, gy] = eGrad(px, py);
+      ddx = ddx * inertia - gx * (1 - inertia);
+      ddy = ddy * inertia - gy * (1 - inertia);
+      const len = Math.sqrt(ddx * ddx + ddy * ddy);
+      if (len < 1e-6) { const a = rng() * 6.283; ddx = Math.cos(a); ddy = Math.sin(a); }
+      else { ddx /= len; ddy /= len; }
+
+      const nx2 = px + ddx, ny2 = py + ddy;
+      if (ny2 < 1 || ny2 >= eH - 1) break;
+      const wx = ((nx2 % eW) + eW) % eW;
+      const newH = eSample(wx, ny2);
+      const dH = newH - oldH;
+      const c2 = Math.max(-dH, minSlope) * speed * water * cap;
+
+      if (dH > 0 || sed > c2) {
+        const amt = dH > 0 ? Math.min(dH, sed) : (sed - c2) * depositRate;
+        sed -= amt;
+        const fx = px - cx, fy = py - cy;
+        const x0 = ((cx % eW) + eW) % eW, x1 = ((cx + 1) % eW + eW) % eW;
+        const y0 = Math.max(0, Math.min(eH-1, cy)), y1 = Math.max(0, Math.min(eH-1, cy+1));
+        if (eLand[y0*eW+x0]) eElev[y0*eW+x0] += amt*(1-fx)*(1-fy);
+        if (eLand[y0*eW+x1]) eElev[y0*eW+x1] += amt*fx*(1-fy);
+        if (eLand[y1*eW+x0]) eElev[y1*eW+x0] += amt*(1-fx)*fy;
+        if (eLand[y1*eW+x1]) eElev[y1*eW+x1] += amt*fx*fy;
+      } else {
+        const amt = Math.min((c2 - sed) * erodeRate, -dH + 0.002);
+        for (let k = 0; k < bWt.length; k++) {
+          const bx = bOff[k*2], by = bOff[k*2+1];
+          const ey = Math.max(0, Math.min(eH-1, cy + by));
+          const ex = ((cx + bx) % eW + eW) % eW;
+          const ei = ey * eW + ex;
+          if (!eLand[ei]) continue;
+          eElev[ei] = Math.max(0.002, eElev[ei] - amt * bWt[k]);
+        }
+        sed += amt;
+      }
+      speed = Math.sqrt(Math.max(0.001, speed * speed + dH * grav));
+      water *= (1 - evapRate);
+      px = wx; py = ny2;
+    }
+  }
+
+  // Compute erosion delta (eroded - original) and apply to full-res via bilinear
+  const eDelta = new Float32Array(eN);
+  for (let ey = 0; ey < eH; ey++) for (let ex = 0; ex < eW; ex++) {
+    const ei = ey * eW + ex;
+    const px = Math.min(W - 1, ex * EG), py = Math.min(H - 1, ey * EG);
+    eDelta[ei] = eElev[ei] - elevation[py * W + px]; // change caused by erosion
+  }
+  // Zero out delta on ocean cells; clamp delta to non-positive on coastal land
+  // cells (prevents sediment deposition rim at coastlines)
+  for (let ey = 0; ey < eH; ey++) for (let ex = 0; ex < eW; ex++) {
+    const ei = ey * eW + ex;
+    if (!eLand[ei]) { eDelta[ei] = 0; continue; }
+    // Check if any neighbor is ocean → this is a coastal cell
+    let coastal = false;
+    for (let dy = -1; dy <= 1 && !coastal; dy++) for (let dx = -1; dx <= 1 && !coastal; dx++) {
+      if (!dx && !dy) continue;
+      const ny2 = ey + dy, nx2 = ((ex + dx) % eW + eW) % eW;
+      if (ny2 < 0 || ny2 >= eH) continue;
+      if (!eLand[ny2 * eW + nx2]) coastal = true;
+    }
+    if (coastal) eDelta[ei] = Math.min(0, eDelta[ei]); // only allow erosion at coast
+  }
+  // Clamp delta magnitude so erosion reshapes but doesn't flatten.
+  // Max erosion = 30% of original elevation at that cell. This preserves
+  // the overall height distribution while carving realistic detail.
+  for (let ey = 0; ey < eH; ey++) for (let ex = 0; ex < eW; ex++) {
+    const ei = ey * eW + ex;
+    if (!eLand[ei]) continue;
+    const px = Math.min(W - 1, ex * EG), py = Math.min(H - 1, ey * EG);
+    const origE = elevation[py * W + px];
+    const maxDrop = origE * 0.3;
+    eDelta[ei] = Math.max(-maxDrop, eDelta[ei]);
+  }
+  const eDAt = (gx, gy) => eDelta[Math.max(0, Math.min(eH-1, gy)) * eW + ((gx % eW) + eW) % eW];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    if (!isLandArr[i]) continue;
+    const fx = x / EG, fy = y / EG;
+    const ix = Math.min(eW - 2, fx | 0), iy = Math.min(eH - 2, fy | 0);
+    const dx2 = fx - ix, dy2 = fy - iy;
+    const delta = eDAt(ix,iy)*(1-dx2)*(1-dy2) + eDAt(ix+1,iy)*dx2*(1-dy2)
+      + eDAt(ix,iy+1)*(1-dx2)*dy2 + eDAt(ix+1,iy+1)*dx2*dy2;
+    elevation[i] = Math.max(0.002, elevation[i] + delta);
+  }
+}
 
 // ═══════════════════════════════════════════════════════
-// Wind simulation using simplified shallow-fluid solver
-// Land = solid wall boundaries. Wind must flow AROUND land.
-// Divergence correction ensures mass conservation (Venturi/channeling).
+// STEP 8c: 2D Wind Field — Atmospheric Circulation
 // ═══════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════
 // WIND PHYSICS — delegated to standalone solveWind() function
 // ══════════════════════════════════════════════════════════════════
-const { windX: fullWindX, windY: fullWindY } = solveWind(W, H, elevation, fbm, params, s3);
+const windResult = solveWind(W, H, elevation, fbm, params, s3);
+const { windX: fullWindX, windY: fullWindY, pressure: windPressure, wW: windWW, wH: windWH } = windResult;
 
 /* DEAD CODE START — old inline wind solver, replaced by solveWind() call above
    Keeping temporarily for reference during development. Will be removed.
@@ -1174,110 +1402,129 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 DEAD CODE END */
 
 // ═══════════════════════════════════════════════════════
-// STEP 8c: Wind-advected moisture transport
-// Moisture emitted by ocean, carried by wind, blocked by terrain
-// Multi-step particle advection on the wind grid
+// STEP 8c: Pressure-based moisture computation
+// Instead of advecting moisture particles, derive moisture from the
+// physics we already have: pressure field, wind divergence, elevation,
+// and distance from ocean.
+//
+// Low pressure = rising air = cooling = condensation = rain (wet)
+// High pressure = sinking air = warming = evaporation = dry
+// Windward mountain slopes = forced lift = wet
+// Leeward slopes = descending air = rain shadow = dry
+// Convergence zones = air masses meeting = uplift = very wet
 // ═══════════════════════════════════════════════════════
 const windMoisture = new Float32Array(W * H);
-// Use coarse grid for advection (performance)
-const mW = Math.ceil(W / 2), mH = Math.ceil(H / 2);
-const mGrid = new Float32Array(mW * mH);
-// Seed ocean tiles with moisture
-for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
-  const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-  if (elevation[py * W + px] <= 0) mGrid[my * mW + mx] = 0.8;
-}
-// Advect moisture along wind vectors with lateral diffusion
-// Diffusion prevents narrow wind-streamline artifacts ("whippy" moisture trails)
-for (let step = 0; step < 40; step++) {
-  const prev = new Float32Array(mGrid);
-  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
-    const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-    const fi = py * W + px;
-    const wx2 = fullWindX[fi], wy2 = fullWindY[fi];
-    const windSpeed = Math.sqrt(wx2 * wx2 + wy2 * wy2);
-    const invSpd = windSpeed > 0.02 ? 1 / windSpeed : 0;
-    const dirX = wx2 * invSpd, dirY = wy2 * invSpd;
-    const reach = Math.min(2.5, 1.5 + windSpeed * 1.5);
-    const srcX = mx - dirX * reach, srcY = my - dirY * reach;
-    const sx = Math.min(mW - 2, Math.max(0, srcX | 0));
-    const sy = Math.min(mH - 2, Math.max(0, srcY | 0));
-    const fdx = Math.max(0, Math.min(1, srcX - sx)), fdy = Math.max(0, Math.min(1, srcY - sy));
-    const sxr = Math.min(mW - 1, sx + 1);
-    const upwind = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
-      + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
-    // Lateral diffusion: blend with neighbors to simulate atmospheric mixing
-    // This prevents narrow streamline artifacts and creates broad wet regions
-    const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
-    const neighborAvg = (prev[my * mW + mxL] + prev[my * mW + mxR]
-      + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.25;
-    const e2 = elevation[fi];
-    if (e2 <= 0) {
-      mGrid[my * mW + mx] = Math.max(prev[my * mW + mx], 0.75);
-    } else {
-      const terrainBlock = Math.min(0.9, Math.max(0, e2 - 0.03) * 4);
-      const lift = Math.min(0.15, e2 * windSpeed * 0.4);
-      const speedDecay = 0.97 - Math.min(0.04, windSpeed * 0.06);
-      const carried = upwind * (1 - terrainBlock * 0.35) * speedDecay - lift;
-      const lat2 = Math.abs(py / H - 0.5) * 2;
-      const warmEnough = lat2 < 0.5 ? 1.0 : Math.max(0, 1 - (lat2 - 0.5) * 3);
-      const existingMoist = prev[my * mW + mx];
-      const recycling = existingMoist > 0.2 ? (existingMoist - 0.2) * 0.10 * warmEnough : 0;
-      // Blend: 80% advected + 20% neighbor diffusion
-      const advected = Math.max(0, carried + recycling);
-      mGrid[my * mW + mx] = advected * 0.70 + neighborAvg * 0.30;
+{
+  const WG2 = 4;
+
+  // Bilinear sampler for wind pressure (coarse grid)
+  const sampleP = (fx, fy) => {
+    if (!windPressure || !windWW) return 0;
+    const ix = Math.min(windWW - 2, Math.max(0, fx | 0));
+    const iy = Math.min(windWH - 2, Math.max(0, fy | 0));
+    const dx2 = Math.max(0, Math.min(1, fx - ix)), dy2 = Math.max(0, Math.min(1, fy - iy));
+    const i00 = iy * windWW + ix, i10 = iy * windWW + Math.min(windWW - 1, ix + 1);
+    const i01 = Math.min(windWH - 1, iy + 1) * windWW + ix;
+    const i11 = Math.min(windWH - 1, iy + 1) * windWW + Math.min(windWW - 1, ix + 1);
+    return windPressure[i00] * (1 - dx2) * (1 - dy2) + windPressure[i10] * dx2 * (1 - dy2)
+      + windPressure[i01] * (1 - dx2) * dy2 + windPressure[i11] * dx2 * dy2;
+  };
+
+  // Find pressure range
+  let pMin = 0, pMax = 1;
+  if (windPressure) {
+    pMin = Infinity; pMax = -Infinity;
+    for (let i = 0; i < windWW * windWH; i++) {
+      if (windPressure[i] < pMin) pMin = windPressure[i];
+      if (windPressure[i] > pMax) pMax = windPressure[i];
     }
   }
-}
-// ═══════════════════════════════════════════════════════
-// Wind convergence/divergence → precipitation modifier
-// Compute divergence into a separate field, smooth it (turbulent mixing
-// means convergence effects spread over ~100km), then apply.
-// ═══════════════════════════════════════════════════════
-const divField = new Float32Array(mW * mH);
-for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
-  const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-  const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
-  const pxL = Math.min(W - 1, mxL * 2), pxR = Math.min(W - 1, mxR * 2);
-  const pyU = Math.min(H - 1, (my - 1) * 2), pyD = Math.min(H - 1, (my + 1) * 2);
-  divField[my * mW + mx] = (fullWindX[py * W + pxR] - fullWindX[py * W + pxL]
-    + fullWindY[pyD * W + px] - fullWindY[pyU * W + px]) * 0.5;
-}
-// Smooth divergence field (3 passes) — represents mesoscale turbulent mixing
-for (let pass = 0; pass < 3; pass++) {
-  const prev = new Float32Array(divField);
-  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
-    const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW, ci = my * mW + mx;
-    divField[ci] = prev[ci] * 0.4 + (prev[my * mW + mxL] + prev[my * mW + mxR]
-      + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.15;
+  const pRange = (pMax - pMin) || 1;
+
+  // Coast distance BFS
+  const cdW2 = Math.ceil(W / 4), cdH2 = Math.ceil(H / 4);
+  const oceanDist = new Float32Array(cdW2 * cdH2);
+  oceanDist.fill(255);
+  const odQ = [];
+  for (let cy = 0; cy < cdH2; cy++) for (let cx = 0; cx < cdW2; cx++) {
+    const px = Math.min(W - 1, cx * 4), py = Math.min(H - 1, cy * 4);
+    if (elevation[py * W + px] <= 0) { oceanDist[cy * cdW2 + cx] = 0; odQ.push(cy * cdW2 + cx); }
   }
-}
-// Apply smoothed convergence/divergence to moisture
-for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
-  const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-  if (elevation[py * W + px] <= 0) continue;
-  const div = divField[my * mW + mx], ci = my * mW + mx, q = mGrid[ci];
-  if (div < 0) mGrid[ci] = Math.min(1, mGrid[ci] + Math.min(0.12, -div * q * 1.0));
-  else mGrid[ci] = Math.max(0, mGrid[ci] - Math.min(0.06, div * 0.3));
-}
-// Final eddy diffusion smoothing (5 passes — turbulent atmospheric mixing)
-for (let pass = 0; pass < 5; pass++) {
-  const prev = new Float32Array(mGrid);
-  for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
-    const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
-    if (elevation[py * W + px] <= 0) continue;
-    const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW, ci = my * mW + mx;
-    mGrid[ci] = prev[ci] * 0.45 + (prev[my * mW + mxL] + prev[my * mW + mxR]
-      + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.1375;
+  for (let qi = 0; qi < odQ.length; qi++) {
+    const ci = odQ[qi], cd2 = oceanDist[ci];
+    const cx = ci % cdW2, cy2 = (ci - cx) / cdW2;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx2 = (cx + dx + cdW2) % cdW2, ny2 = cy2 + dy;
+      if (ny2 < 0 || ny2 >= cdH2) continue;
+      const ni = ny2 * cdW2 + nx2, nd = cd2 + 1;
+      if (nd < oceanDist[ni]) { oceanDist[ni] = nd; odQ.push(ni); }
+    }
   }
-}
-// Upscale moisture advection result to full resolution
-for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-  const fx = x / 2, fy = y / 2;
-  const ix = Math.min(mW - 2, fx | 0), iy = Math.min(mH - 2, fy | 0);
-  const dx = fx - ix, dy = fy - iy;
-  windMoisture[y * W + x] = (mGrid[iy * mW + ix] * (1 - dx) + mGrid[iy * mW + Math.min(mW - 1, ix + 1)] * dx) * (1 - dy)
-    + (mGrid[(iy + 1) * mW + ix] * (1 - dx) + mGrid[(iy + 1) * mW + Math.min(mW - 1, ix + 1)] * dx) * dy;
+
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    const e = elevation[i];
+    if (e <= 0) continue;
+
+    const lat = Math.abs(y / H - 0.5) * 2;
+
+    // 1. Pressure moisture (low pressure = wet)
+    const pVal = sampleP(x / WG2, y / WG2);
+    const pNorm = (pVal - pMin) / pRange;
+    const pressureMoist = Math.max(0, 1 - pNorm * 1.5) * 0.5;
+
+    // 2. Coast proximity
+    const od = oceanDist[Math.min(cdH2 - 1, (y / 4) | 0) * cdW2 + Math.min(cdW2 - 1, (x / 4) | 0)];
+    const coastMoist = Math.max(0, 1 - od / 15) * 0.35;
+
+    // 3. Wind from ocean
+    const wx2 = fullWindX[i], wy2 = fullWindY[i];
+    const windSpd = Math.sqrt(wx2 * wx2 + wy2 * wy2);
+    let windOceanMoist = 0;
+    if (windSpd > 0.005) {
+      for (const dist of [8, 20]) {
+        const trX = x - (wx2 / windSpd) * dist;
+        const trY = y - (wy2 / windSpd) * dist;
+        const tx = Math.min(W - 1, Math.max(0, ((Math.round(trX) % W) + W) % W));
+        const ty = Math.min(H - 1, Math.max(0, Math.round(trY)));
+        if (elevation[ty * W + tx] <= 0) windOceanMoist = Math.max(windOceanMoist, windSpd * 2.5);
+      }
+    }
+
+    // 4. Convergence/divergence
+    const wxL = fullWindX[y * W + ((x - 2 + W) % W)];
+    const wxR = fullWindX[y * W + ((x + 2) % W)];
+    const wyU = y > 1 ? fullWindY[(y - 2) * W + x] : 0;
+    const wyD = y < H - 2 ? fullWindY[(y + 2) * W + x] : 0;
+    const divVal = (wxR - wxL + wyD - wyU) * 0.25;
+    const convergeMoist = divVal < 0 ? Math.min(0.35, -divVal * 6) : 0;
+    const divergeDry = divVal > 0 ? Math.min(0.25, divVal * 5) : 0;
+
+    // 5. Rain shadow
+    let rainShadow = 0;
+    if (windSpd > 0.005) {
+      const upX = x - (wx2 / windSpd) * 6;
+      const upY = y - (wy2 / windSpd) * 6;
+      const ux = Math.min(W - 1, Math.max(0, ((Math.round(upX) % W) + W) % W));
+      const uy = Math.min(H - 1, Math.max(0, Math.round(upY)));
+      const upElev = elevation[uy * W + ux];
+      if (upElev > e + 0.03) rainShadow = Math.min(0.35, (upElev - e) * 2.5);
+    }
+
+    // 6. Elevation drying
+    const elevDry = e > 0.04 ? Math.min(0.4, (e - 0.04) * 2.0) : 0;
+
+    // 7. Latitude cap
+    const latCap = Math.max(0.10, 1.0 - lat * 0.7);
+
+    // Combine
+    let m = pressureMoist + coastMoist + windOceanMoist * 0.4 + convergeMoist
+      - divergeDry - rainShadow - elevDry
+      + sg(nfMoistLand, x, y) * 0.06 + sg(nfMoistBroad, x, y) * 0.04;
+
+    windMoisture[i] = Math.max(0.02, Math.min(latCap, m));
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1374,51 +1621,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   if (e <= 0) {
     moisture[i] = 0.5 + sg(nfMoistOce, x, y) * 0.1;
   } else {
-    // Latitude-based climate moisture (secondary signal)
-    const tropWet = Math.max(0, 1 - lat * 2.5);
-    const subtropDry = Math.exp(-((lat - 0.28) ** 2) / (2 * 0.08 * 0.08)) * 0.35 * (1 - coastProx * 0.5);
-    const tempWet = Math.exp(-((lat - 0.55) ** 2) / 0.035) * 0.28;
-    const tropF = Math.max(0, 1 - lat * 3);
-    // Reduced continentality: real mid/high latitude interiors stay moist because
-    // frontal systems (cyclones) penetrate deep inland via westerlies
-    const contRate = 0.004 + (1 - tropF) * 0.010;
-    const cont = Math.min(0.20, cdm * contRate);
-    const polarDry = Math.max(0, (lat - 0.80)) * 0.20;
-    // Base climate moisture without small-scale noise
-    const climateBase = 0.48 + tropWet * 0.40 - subtropDry + tempWet - cont - polarDry
-      + sg(nfMoistBroad, x, y) * 0.18;
-    // Small-scale noise amplitude scales with base moisture — prevents forest
-    // freckles in deserts (dry areas get tiny noise, wet areas get full variation)
-    const noiseAmp = Math.max(0.02, Math.min(0.12, climateBase * 0.20));
-    const climateMoist = climateBase + sg(nfMoistLand, x, y) * noiseAmp;
-    // Cold-latitude moisture persistence: cold air has low evaporation, so even
-    // modest precipitation creates effective wetness. Siberia gets 300mm/yr but
-    // stays moist because snow persists for months. This raises moisture at high lat.
-    const t = temperature[i];
-    // Cold persistence tapers off at extreme cold (t<0.1) — permafrost is ice, not moisture
-    const coldPersist = t < 0.4 ? Math.min(0.10, (0.4 - t) * 0.28 * Math.min(1, t / 0.12)) : 0;
-    // Wind-advected moisture is the PRIMARY driver; latitude formulas are secondary.
-    const wm = windMoisture[i];
-    let m = wm * 0.65 + climateMoist * 0.35 + coldPersist;
-    // Tropical moisture floor: ITCZ convection guarantees minimum moisture near equator.
-    // Smooth Gaussian fade + noise to avoid hard equatorial band.
-    if (lat < 0.25) {
-      const tropFloor = 0.30 * Math.exp(-(lat * lat) / (2 * 0.08 * 0.08))
-        + sg(nfMoistBroad, x, y) * 0.06;  // noise breaks the uniformity
-      if (m < tropFloor) m = m * 0.4 + tropFloor * 0.6;  // soft blend, not hard max
-    }
-    // Orographic lift: windward slopes get extra precipitation
-    if (e > 0.1 && wm > 0.35) m += Math.min(0.12, (e - 0.1) * wm * 0.5);
-    // Cold current moisture suppression: equatorward coastal winds = upwelling = dry
-    if (coastProx > 0.15) {
-      const wy = fullWindY[i];
-      const hemiSign = ny < 0.5 ? -1 : 1;
-      const polewardFlow = wy * hemiSign;
-      if (polewardFlow < 0) m += Math.max(-0.15, polewardFlow * 0.12) * coastProx;
-    }
-    // Lowland moisture accumulation
-    if (e < 0.02) m += 0.10;
-    moisture[i] = Math.max(0.02, Math.min(1, m));
+    // Moisture already computed from pressure + wind + convergence + terrain
+    moisture[i] = windMoisture[i];
   }
 }
 

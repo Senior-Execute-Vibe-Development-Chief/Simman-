@@ -3,7 +3,7 @@ import { generateTectonicWorld } from "./tectonicGen.js";
 import { PARAMS, generateCandidates, savePreset } from "./paramDefs.js";
 
 // ── Preview rendering with multiple view modes ──
-function renderPreview(canvas, world, pw, ph, viewMode) {
+function renderPreview(canvas, world, pw, ph, viewMode, depthGamma) {
   const ctx = canvas.getContext("2d");
   const img = ctx.createImageData(pw, ph);
   const d = img.data;
@@ -19,7 +19,7 @@ function renderPreview(canvas, world, pw, ph, viewMode) {
       if (e < eMin) eMin = e; if (e > eMax) eMax = e;
     }
     const floor = fromSea ? 0 : eMin;
-    const range = eMax - floor || 1;
+    const range = (eMax - floor || 1) * (depthGamma || 1.0);
     for (let i = 0; i < N; i++) {
       const e = world.elevation[i];
       const v = Math.min(255, Math.max(0, ((e - floor) / range) * 255)) | 0;
