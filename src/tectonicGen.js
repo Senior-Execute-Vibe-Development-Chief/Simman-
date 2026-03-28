@@ -1420,45 +1420,49 @@ for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
 }
 // Advect moisture along wind vectors with lateral diffusion
 // Diffusion prevents narrow wind-streamline artifacts ("whippy" moisture trails)
-for (let step = 0; step < 40; step++) {
+for (let step = 0; step < 60; step++) {
   const prev = new Float32Array(mGrid);
   for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
     const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
     const fi = py * W + px;
     const wx2 = fullWindX[fi], wy2 = fullWindY[fi];
     const windSpeed = Math.sqrt(wx2 * wx2 + wy2 * wy2);
-    const invSpd = windSpeed > 0.02 ? 1 / windSpeed : 0;
+    const invSpd = windSpeed > 0.01 ? 1 / windSpeed : 0;
     const dirX = wx2 * invSpd, dirY = wy2 * invSpd;
-    const reach = Math.min(2.5, 1.5 + windSpeed * 1.5);
+    // Reach further: faster wind carries moisture from further upwind
+    const reach = Math.min(4.0, 2.0 + windSpeed * 3.0);
     const srcX = mx - dirX * reach, srcY = my - dirY * reach;
-    const sx = Math.min(mW - 2, Math.max(0, srcX | 0));
-    const sy = Math.min(mH - 2, Math.max(0, srcY | 0));
-    const fdx = Math.max(0, Math.min(1, srcX - sx)), fdy = Math.max(0, Math.min(1, srcY - sy));
-    const sxr = Math.min(mW - 1, sx + 1);
+    // Wrap X (cylindrical map), clamp Y
+    const sx = ((Math.floor(srcX) % mW) + mW) % mW;
+    const sy = Math.min(mH - 2, Math.max(0, Math.floor(srcY)));
+    const fdx = Math.max(0, Math.min(1, srcX - Math.floor(srcX)));
+    const fdy = Math.max(0, Math.min(1, srcY - Math.floor(srcY)));
+    const sxr = (sx + 1) % mW;
     const upwind = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
       + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
-    // Lateral diffusion: blend with neighbors to simulate atmospheric mixing
-    // This prevents narrow streamline artifacts and creates broad wet regions
+    // Lateral diffusion: blend with neighbors for broad wet regions
     const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
     const neighborAvg = (prev[my * mW + mxL] + prev[my * mW + mxR]
       + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.25;
     const e2 = elevation[fi];
     if (e2 <= 0) {
+      // Ocean: maintain high moisture (evaporation source)
       mGrid[my * mW + mx] = Math.max(prev[my * mW + mx], 0.75);
     } else {
-      const terrainBlock = Math.min(0.9, Math.max(0, e2 - 0.03) * 4);
-      const lift = Math.min(0.15, e2 * windSpeed * 0.4);
-      const speedDecay = 0.97 - Math.min(0.04, windSpeed * 0.06);
-      const carried = upwind * (1 - terrainBlock * 0.35) * speedDecay - lift;
+      // Terrain blocking: mountains strip moisture from the airstream
+      const terrainBlock = Math.min(0.85, Math.max(0, e2 - 0.02) * 3);
+      const lift = Math.min(0.12, e2 * windSpeed * 0.3);
+      // Less decay per step so moisture reaches further inland
+      const speedDecay = 0.99 - Math.min(0.03, windSpeed * 0.04);
+      const carried = upwind * (1 - terrainBlock * 0.4) * speedDecay - lift;
       const lat2 = Math.abs(py / H - 0.5) * 2;
       const warmEnough = lat2 < 0.5 ? 1.0 : Math.max(0, 1 - (lat2 - 0.5) * 3);
       const existingMoist = prev[my * mW + mx];
-      // Tropical recycling: Amazon/Congo recycle ~40% of rainfall via evapotranspiration.
-      // Warm wet areas re-evaporate moisture, sustaining rainfall deep inland.
+      // Tropical recycling: warm wet areas re-evaporate moisture
       const recycling = existingMoist > 0.15 ? (existingMoist - 0.15) * 0.30 * warmEnough : 0;
-      // Blend: 80% advected + 20% neighbor diffusion
+      // More advection weight (85%), less neighbor dilution (15%)
       const advected = Math.max(0, carried + recycling);
-      mGrid[my * mW + mx] = advected * 0.70 + neighborAvg * 0.30;
+      mGrid[my * mW + mx] = advected * 0.85 + neighborAvg * 0.15;
     }
   }
 }
