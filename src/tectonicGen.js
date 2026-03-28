@@ -32,7 +32,7 @@ const N = cw * ch;
 // with log-normal-ish weight distribution for realistic size disparity.
 // ═══════════════════════════════════════════════════════
 const numMajor = p('numMajorBase', 6) + Math.floor(rng() * p('numMajorRange', 3));
-const numMinor = p('numMinorBase', 6) + Math.floor(rng() * p('numMinorRange', 6));
+const numMinor = p('numMinorBase', 8) + Math.floor(rng() * p('numMinorRange', 6));
 const numPlates = numMajor + numMinor;
 const plates = [];
 
@@ -67,7 +67,7 @@ for (let i = 0; i < numPlates; i++) {
   const nucY = cy + Math.sin(nucAngle) * nucOffset;
 
   // Larger continent radii for major plates → more cohesive landmasses
-  const contRadius = hasCont ? (isMajor ? p('majorContRadMin', 0.14) + rng() * p('majorContRadRange', 0.18) : p('minorContRadMin', 0.06) + rng() * p('minorContRadRange', 0.07)) : 0;
+  const contRadius = hasCont ? (isMajor ? p('majorContRadMin', 0.14) + rng() * p('majorContRadRange', 0.18) : p('minorContRadMin', 0.07) + rng() * p('minorContRadRange', 0.08)) : 0;
 
   plates.push({
     cx, cy,
@@ -155,7 +155,7 @@ for (let pi = 0; pi < numPlates; pi++) {
   const no = rng() * 100;
   const scale = plate.contRadius / 0.18;
 
-  const numSubs = isMaj ? p('majorSubsBase', 7) + Math.floor(rng() * p('majorSubsRange', 5)) : p('minorSubsBase', 2) + Math.floor(rng() * p('minorSubsRange', 3));
+  const numSubs = isMaj ? p('majorSubsBase', 7) + Math.floor(rng() * p('majorSubsRange', 5)) : p('minorSubsBase', 3) + Math.floor(rng() * p('minorSubsRange', 4));
 
   for (let s = 0; s < numSubs; s++) {
     const ang = rng() * Math.PI * 2;
@@ -310,7 +310,23 @@ const sl = sorted[Math.floor(W * H * p('seaLevel', 0.67))];
 const isLandArr = new Uint8Array(W * H);
 for (let i = 0; i < W * H; i++) isLandArr[i] = rawElev[i] > sl ? 1 : 0;
 
-// Remove tiny isolated land clusters (< 20 pixels)
+// Add coastline noise at full resolution to break up smooth bilinear edges
+// This creates fractal coastlines, fjords, and small offshore islands
+for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+  const i = y * W + x;
+  const nx = x / W, ny = y / H;
+  // Only apply near the coastline (within ~0.03 of sea level)
+  const dist = rawElev[i] - sl;
+  if (Math.abs(dist) < 0.04) {
+    const coastNoise = fbm(nx * 30 + s2 + 200, ny * 30 + s2 + 200, 3, 2, 0.5) * 0.035
+      + fbm(nx * 60 + s3 + 300, ny * 60 + s3 + 300, 2, 2, 0.4) * 0.018
+      + fbm(nx * 120 + s4 + 400, ny * 120 + s4 + 400, 2, 2, 0.4) * 0.008;
+    rawElev[i] += coastNoise;
+    isLandArr[i] = rawElev[i] > sl ? 1 : 0;
+  }
+}
+
+// Remove tiny isolated land clusters (< 5 pixels)
 const visited = new Uint8Array(W * H);
 for (let i = 0; i < W * H; i++) {
   if (!isLandArr[i] || visited[i]) continue;
@@ -326,7 +342,7 @@ for (let i = 0; i < W * H; i++) {
       if (isLandArr[ni] && !visited[ni]) { visited[ni] = 1; q.push(ni); }
     }
   }
-  if (cluster.length < 20) for (const ci of cluster) { isLandArr[ci] = 0; rawElev[ci] = sl - 0.01; }
+  if (cluster.length < 5) for (const ci of cluster) { isLandArr[ci] = 0; rawElev[ci] = sl - 0.01; }
 }
 
 // Derive crustType on coarse grid from stamp land
