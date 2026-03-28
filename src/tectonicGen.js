@@ -1415,47 +1415,49 @@ DEAD CODE END */
 // ═══════════════════════════════════════════════════════
 const windMoisture = new Float32Array(W * H);
 {
-  const WG = 4; // match wind solver coarse grid
+  const WG2 = 4;
 
-  // Bilinear sampler for the wind solver's coarse pressure grid
-  const hasP = windPressure && windWW > 0 && windWH > 0;
+  // Bilinear sampler for wind pressure (coarse grid)
   const sampleP = (fx, fy) => {
-    if (!hasP) return 0;
+    if (!windPressure || !windWW) return 0;
     const ix = Math.min(windWW - 2, Math.max(0, fx | 0));
     const iy = Math.min(windWH - 2, Math.max(0, fy | 0));
-    const dx2 = fx - ix, dy2 = fy - iy;
-    return (windPressure[iy * windWW + ix] * (1 - dx2) + windPressure[iy * windWW + ix + 1] * dx2) * (1 - dy2)
-      + (windPressure[(iy + 1) * windWW + ix] * (1 - dx2) + windPressure[(iy + 1) * windWW + ix + 1] * dx2) * dy2;
+    const dx2 = Math.max(0, Math.min(1, fx - ix)), dy2 = Math.max(0, Math.min(1, fy - iy));
+    const i00 = iy * windWW + ix, i10 = iy * windWW + Math.min(windWW - 1, ix + 1);
+    const i01 = Math.min(windWH - 1, iy + 1) * windWW + ix;
+    const i11 = Math.min(windWH - 1, iy + 1) * windWW + Math.min(windWW - 1, ix + 1);
+    return windPressure[i00] * (1 - dx2) * (1 - dy2) + windPressure[i10] * dx2 * (1 - dy2)
+      + windPressure[i01] * (1 - dx2) * dy2 + windPressure[i11] * dx2 * dy2;
   };
 
-  // Find pressure range for normalization
+  // Find pressure range
   let pMin = 0, pMax = 1;
-  if (hasP) {
+  if (windPressure) {
     pMin = Infinity; pMax = -Infinity;
-    for (let i = 0; i < windPressure.length; i++) {
+    for (let i = 0; i < windWW * windWH; i++) {
       if (windPressure[i] < pMin) pMin = windPressure[i];
       if (windPressure[i] > pMax) pMax = windPressure[i];
     }
   }
   const pRange = (pMax - pMin) || 1;
 
-  // Compute coast distance on a coarse grid for ocean proximity
-  const cdW = Math.ceil(W / 4), cdH = Math.ceil(H / 4);
-  const oceanDist = new Float32Array(cdW * cdH);
+  // Coast distance BFS
+  const cdW2 = Math.ceil(W / 4), cdH2 = Math.ceil(H / 4);
+  const oceanDist = new Float32Array(cdW2 * cdH2);
   oceanDist.fill(255);
   const odQ = [];
-  for (let cy = 0; cy < cdH; cy++) for (let cx = 0; cx < cdW; cx++) {
+  for (let cy = 0; cy < cdH2; cy++) for (let cx = 0; cx < cdW2; cx++) {
     const px = Math.min(W - 1, cx * 4), py = Math.min(H - 1, cy * 4);
-    if (elevation[py * W + px] <= 0) { oceanDist[cy * cdW + cx] = 0; odQ.push(cy * cdW + cx); }
+    if (elevation[py * W + px] <= 0) { oceanDist[cy * cdW2 + cx] = 0; odQ.push(cy * cdW2 + cx); }
   }
   for (let qi = 0; qi < odQ.length; qi++) {
     const ci = odQ[qi], cd2 = oceanDist[ci];
-    const cx = ci % cdW, cy2 = (ci - cx) / cdW;
+    const cx = ci % cdW2, cy2 = (ci - cx) / cdW2;
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
       if (!dx && !dy) continue;
-      const nx2 = (cx + dx + cdW) % cdW, ny2 = cy2 + dy;
-      if (ny2 < 0 || ny2 >= cdH) continue;
-      const ni = ny2 * cdW + nx2, nd = cd2 + 1;
+      const nx2 = (cx + dx + cdW2) % cdW2, ny2 = cy2 + dy;
+      if (ny2 < 0 || ny2 >= cdH2) continue;
+      const ni = ny2 * cdW2 + nx2, nd = cd2 + 1;
       if (nd < oceanDist[ni]) { oceanDist[ni] = nd; odQ.push(ni); }
     }
   }
@@ -1463,85 +1465,65 @@ const windMoisture = new Float32Array(W * H);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = y * W + x;
     const e = elevation[i];
-    if (e <= 0) continue; // ocean moisture set later
+    if (e <= 0) continue;
 
-    const nx = x / W, ny = y / H;
-    const lat = Math.abs(ny - 0.5) * 2;
+    const lat = Math.abs(y / H - 0.5) * 2;
 
-    // ── 1. Pressure-based moisture (low pressure = wet) ──
-    const pVal = sampleP(x / WG, y / WG);
-    const pNorm = (pVal - pMin) / pRange; // 0 = lowest pressure, 1 = highest
-    // Invert: low pressure → high moisture
-    const pressureMoist = Math.max(0, 1 - pNorm * 1.5) * 0.6;
+    // 1. Pressure moisture (low pressure = wet)
+    const pVal = sampleP(x / WG2, y / WG2);
+    const pNorm = (pVal - pMin) / pRange;
+    const pressureMoist = Math.max(0, 1 - pNorm * 1.5) * 0.5;
 
-    // ── 2. Ocean proximity (coastal areas get moisture from ocean evaporation) ──
-    const od = oceanDist[Math.min(cdH - 1, (y / 4) | 0) * cdW + Math.min(cdW - 1, (x / 4) | 0)];
-    const coastProx2 = Math.max(0, 1 - od / 12); // fades over ~12 cells (~48 pixels)
-    const coastMoist = coastProx2 * 0.4;
+    // 2. Coast proximity
+    const od = oceanDist[Math.min(cdH2 - 1, (y / 4) | 0) * cdW2 + Math.min(cdW2 - 1, (x / 4) | 0)];
+    const coastMoist = Math.max(0, 1 - od / 15) * 0.35;
 
-    // ── 3. Wind-from-ocean: moisture carried by onshore wind ──
-    // Check if wind at this cell came from a direction that was ocean
+    // 3. Wind from ocean
     const wx2 = fullWindX[i], wy2 = fullWindY[i];
     const windSpd = Math.sqrt(wx2 * wx2 + wy2 * wy2);
-    // Trace backward along wind to see if source was ocean
-    let upwindOcean = 0;
+    let windOceanMoist = 0;
     if (windSpd > 0.005) {
-      const traceX = x - (wx2 / windSpd) * 20; // look 20 pixels upwind
-      const traceY = y - (wy2 / windSpd) * 20;
-      const tx = Math.min(W - 1, Math.max(0, ((Math.round(traceX) % W) + W) % W));
-      const ty = Math.min(H - 1, Math.max(0, Math.round(traceY)));
-      if (elevation[ty * W + tx] <= 0) upwindOcean = 1;
-      // Also check a shorter trace
-      const traceX2 = x - (wx2 / windSpd) * 8;
-      const traceY2 = y - (wy2 / windSpd) * 8;
-      const tx2 = Math.min(W - 1, Math.max(0, ((Math.round(traceX2) % W) + W) % W));
-      const ty2 = Math.min(H - 1, Math.max(0, Math.round(traceY2)));
-      if (elevation[ty2 * W + tx2] <= 0) upwindOcean = Math.max(upwindOcean, 0.7);
+      for (const dist of [8, 20]) {
+        const trX = x - (wx2 / windSpd) * dist;
+        const trY = y - (wy2 / windSpd) * dist;
+        const tx = Math.min(W - 1, Math.max(0, ((Math.round(trX) % W) + W) % W));
+        const ty = Math.min(H - 1, Math.max(0, Math.round(trY)));
+        if (elevation[ty * W + tx] <= 0) windOceanMoist = Math.max(windOceanMoist, windSpd * 2.5);
+      }
     }
-    const windOceanMoist = upwindOcean * windSpd * 3.0; // stronger wind = more moisture
 
-    // ── 4. Wind convergence (rising air = rain) ──
+    // 4. Convergence/divergence
     const wxL = fullWindX[y * W + ((x - 2 + W) % W)];
     const wxR = fullWindX[y * W + ((x + 2) % W)];
     const wyU = y > 1 ? fullWindY[(y - 2) * W + x] : 0;
     const wyD = y < H - 2 ? fullWindY[(y + 2) * W + x] : 0;
     const divVal = (wxR - wxL + wyD - wyU) * 0.25;
-    // Convergence (negative div) = wet, divergence (positive) = dry
-    const convergeMoist = divVal < 0 ? Math.min(0.4, -divVal * 8) : 0;
-    const divergeDry = divVal > 0 ? Math.min(0.3, divVal * 6) : 0;
+    const convergeMoist = divVal < 0 ? Math.min(0.35, -divVal * 6) : 0;
+    const divergeDry = divVal > 0 ? Math.min(0.25, divVal * 5) : 0;
 
-    // ── 5. Rain shadow: leeward side of mountains is dry ──
-    // Check if upwind direction crosses higher terrain
+    // 5. Rain shadow
     let rainShadow = 0;
-    if (windSpd > 0.005 && e > 0.01) {
+    if (windSpd > 0.005) {
       const upX = x - (wx2 / windSpd) * 6;
       const upY = y - (wy2 / windSpd) * 6;
       const ux = Math.min(W - 1, Math.max(0, ((Math.round(upX) % W) + W) % W));
       const uy = Math.min(H - 1, Math.max(0, Math.round(upY)));
       const upElev = elevation[uy * W + ux];
-      if (upElev > e + 0.05) {
-        // Upwind terrain is higher — we're in the rain shadow
-        rainShadow = Math.min(0.4, (upElev - e) * 3);
-      }
+      if (upElev > e + 0.03) rainShadow = Math.min(0.35, (upElev - e) * 2.5);
     }
 
-    // ── 6. Elevation drying (thin cold air at altitude) ──
+    // 6. Elevation drying
     const elevDry = e > 0.04 ? Math.min(0.4, (e - 0.04) * 2.0) : 0;
 
-    // ── 7. Temperature-limited moisture capacity ──
-    // Use latitude as proxy since temperature isn't computed yet at this point.
-    // Cold regions (high latitude) hold less moisture (Clausius-Clapeyron).
-    const latCap = Math.max(0.10, 1.0 - lat * 0.8);
+    // 7. Latitude cap
+    const latCap = Math.max(0.10, 1.0 - lat * 0.7);
 
-    // ── Combine all factors ──
-    let m = pressureMoist + coastMoist + windOceanMoist * 0.5 + convergeMoist
-      - divergeDry - rainShadow - elevDry;
+    // Combine
+    let m = pressureMoist + coastMoist + windOceanMoist * 0.4 + convergeMoist
+      - divergeDry - rainShadow - elevDry
+      + sg(nfMoistLand, x, y) * 0.06 + sg(nfMoistBroad, x, y) * 0.04;
 
-    // Add some noise for natural variation
-    m += sg(nfMoistLand, x, y) * 0.08 + sg(nfMoistBroad, x, y) * 0.05;
-
-    m = Math.min(m, latCap);
-    windMoisture[i] = Math.max(0.02, Math.min(1, isNaN(m) ? 0.1 : m));
+    windMoisture[i] = Math.max(0.02, Math.min(latCap, m));
   }
 }
 
