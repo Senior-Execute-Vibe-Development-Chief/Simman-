@@ -440,16 +440,16 @@ const BC=[
 [20,48,95],      // 1  Shallow Ocean
 [36,78,125],     // 2  Coastal Water
 [194,182,140],   // 3  Beach (unused)
-[175,172,148],   // 4  Tundra — brownish-gray (lichen/permafrost)
+[168,158,130],   // 4  Tundra — brown-tan (lichen/permafrost, satellite)
 [235,240,248],   // 5  Snow / Ice
-[62,95,62],      // 6  Taiga — dark muted conifer green
+[50,80,58],      // 6  Taiga — dark blue-green (spruce canopy from satellite)
 [45,78,48],      // 7  Boreal Forest — darker spruce green
-[56,128,46],     // 8  Temperate Forest — bright deciduous green
+[50,105,45],     // 8  Temperate Forest — muted deciduous green (satellite)
 [25,100,52],     // 9  Temperate Rainforest — deep emerald
 [14,72,28],      // 10 Tropical Rainforest — dark dense canopy
 [192,176,82],    // 11 Savanna — golden-tan with scattered green
-[178,165,68],    // 12 Grassland — golden-straw prairie
-[208,188,130],   // 13 Desert — sandy tan
+[158,165,78],    // 12 Grassland — tan-green prairie (more green than pure golden)
+[210,185,140],   // 13 Desert — warm sandy tan (slight orange like Sahara satellite)
 [140,135,78],    // 14 Shrubland — olive-brown chaparral
 [78,118,48],     // 15 Tropical Dry Forest — muted olive-green
 [152,145,135]    // 16 Barren / Alpine — gray-brown rock
