@@ -6,13 +6,13 @@
 export function solveMoisture(W, H, elevation, windX, windY, temperature, params = {}) {
   const p = (k, d) => params[k] !== undefined ? params[k] : d;
 
-  const _moistDecay      = p('moistDecay', 0.993);
+  const _moistDecay      = p('moistDecay', 0.996);
   const _moistRecycling  = p('moistRecycling', 0.25);
   const _moistTBlock     = p('moistTerrainBlock', 0.4);
   const _moistElevDry    = p('moistElevDry', 2.0);
   const _moistAdvW       = p('moistAdvectWeight', 0.60);
   const _moistOcnW       = p('moistOceanWeight', 0.20);
-  const _moistSteps      = Math.round(p('moistSteps', 90));
+  const _moistSteps      = Math.round(p('moistSteps', 140));
   const _moistConvective = p('moistConvective', 0.04);
   const _moistSubsidLat  = p('moistSubsidenceLat', 28);
   const _moistSubsidStr  = p('moistSubsidenceStr', 0.03);
@@ -318,8 +318,8 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       const pRaw = Math.min(1.3, precipAccum[i] * precipScale);
       const pNorm = Math.pow(Math.min(1, pRaw), 0.6);
 
-      // Blend: 30% atmospheric (overall wetness), 70% precipitation (contrast)
-      let blend = aNorm * 0.3 + pNorm * 0.7;
+      // Blend: 50% atmospheric (inland moisture penetration), 50% precip (contrast)
+      let blend = aNorm * 0.5 + pNorm * 0.5;
 
       // Temperature capacity ceiling: cold areas can't be very wet regardless
       // of how much precipitation accumulates at the coast.

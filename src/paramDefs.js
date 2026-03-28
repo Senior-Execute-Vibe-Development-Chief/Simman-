@@ -106,7 +106,7 @@ export const PARAMS = {
   moisture: {
     label: "Moisture", color: "100,160,180",
     params: [
-      { key: "moistDecay", def: 0.993, min: 0.95, max: 1.0, label: "Inland retention",
+      { key: "moistDecay", def: 0.996, min: 0.95, max: 1.0, label: "Inland retention",
         desc: "How much atmospheric moisture survives per transport step over land. Lower = faster continental drying. Higher = moisture penetrates deeper inland." },
       { key: "moistRecycling", def: 0.25, min: 0.0, max: 0.5, label: "Transpiration recycling",
         desc: "How much precipitation on warm land re-evaporates back into the atmosphere. Amazon recycles ~40% of its rainfall. Higher = wetter continental interiors." },
@@ -118,7 +118,7 @@ export const PARAMS = {
         desc: "How strongly rising terrain forces precipitation. Higher = stronger rain shadows behind mountains. Controls windward rain vs leeward dryness." },
       { key: "moistElevDry", def: 2.0, min: 0.0, max: 5.0, label: "Elevation drying",
         desc: "How much altitude reduces air moisture capacity. Cold thin air at altitude holds less water. Higher = drier mountain tops." },
-      { key: "moistSteps", def: 90, min: 30, max: 150, label: "Transport steps",
+      { key: "moistSteps", def: 140, min: 30, max: 200, label: "Transport steps",
         desc: "Number of advection iterations. More steps = moisture penetrates deeper inland from ocean sources. Also affects generation speed." },
       { key: "moistConvective", def: 0.04, min: 0.0, max: 0.15, label: "Convective rainfall",
         desc: "How strongly hot land triggers convective precipitation. Dominant in tropics (thunderstorms, ITCZ rainfall). Higher = wetter tropics, drier subtropics." },
