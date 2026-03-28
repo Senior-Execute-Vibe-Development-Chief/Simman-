@@ -1422,8 +1422,9 @@ const windMoisture = new Float32Array(W * H);
   const WG = 4; // match wind solver coarse grid
 
   // Bilinear sampler for the wind solver's coarse pressure grid
+  const hasP = windPressure && windWW > 0 && windWH > 0;
   const sampleP = (fx, fy) => {
-    if (!windPressure) return 0;
+    if (!hasP) return 0;
     const ix = Math.min(windWW - 2, Math.max(0, fx | 0));
     const iy = Math.min(windWH - 2, Math.max(0, fy | 0));
     const dx2 = fx - ix, dy2 = fy - iy;
@@ -1432,14 +1433,15 @@ const windMoisture = new Float32Array(W * H);
   };
 
   // Find pressure range for normalization
-  let pMin = Infinity, pMax = -Infinity;
-  if (windPressure) {
+  let pMin = 0, pMax = 1;
+  if (hasP) {
+    pMin = Infinity; pMax = -Infinity;
     for (let i = 0; i < windPressure.length; i++) {
       if (windPressure[i] < pMin) pMin = windPressure[i];
       if (windPressure[i] > pMax) pMax = windPressure[i];
     }
   }
-  const pRange = pMax - pMin || 1;
+  const pRange = (pMax - pMin) || 1;
 
   // Compute coast distance on a coarse grid for ocean proximity
   const cdW = Math.ceil(W / 4), cdH = Math.ceil(H / 4);
