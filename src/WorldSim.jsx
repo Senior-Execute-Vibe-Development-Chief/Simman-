@@ -345,7 +345,7 @@ const oasis=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.3&&temperature[i]>0.5&&moisture[i]<0.2){
 const nv=fbm(x/W*50+200,y/H*50+200,3,2,.5);
-if(nv>0.3){oasis[i]=1;moisture[i]=Math.min(1,moisture[i]+0.4);}}}
+if(nv>0.3){oasis[i]=1;}}}
 // Swamps: low-lying wet warm terrain
 const swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
