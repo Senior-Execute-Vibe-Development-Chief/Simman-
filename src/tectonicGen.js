@@ -1462,11 +1462,16 @@ for (let step = 0; step < 60; step++) {
       // Tropical recycling: wet warm areas re-evaporate moisture (Amazon effect)
       const recycling = existingMoist > 0.15 ? (existingMoist - 0.15) * _moistRecycling * warmEnough : 0;
       const advected = Math.max(0, carried + recycling + oroRain);
-      // When wind is strong, trust advection. When calm, rely more on
-      // neighbor diffusion so moisture can still spread from nearby wet areas.
-      const windConf = Math.min(1, windSpeed * 10); // 0=calm, 1=windy
-      const advW = 0.65 + windConf * 0.20; // 0.65 calm → 0.85 windy
-      mGrid[my * mW + mx] = advected * advW + neighborAvg * (1 - advW);
+      // Wind-adaptive blend: strong wind = trust advection direction.
+      // Weak/offshore wind = rely on diffusion from wet neighbors.
+      // This is critical: if wind blows offshore, backward trace goes
+      // inland (dry). Diffusion from wet coast neighbors is the only
+      // way moisture reaches these cells.
+      const windConf = Math.min(1, windSpeed * 8);
+      // Check if advected value is actually better than neighbor average
+      // If not (offshore wind tracing to dry interior), use neighbors
+      const useAdvect = advected > neighborAvg ? 0.5 + windConf * 0.3 : 0.2;
+      mGrid[my * mW + mx] = advected * useAdvect + neighborAvg * (1 - useAdvect);
     }
   }
 }
@@ -1501,16 +1506,18 @@ for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
   if (div < 0) mGrid[ci] = Math.min(1, mGrid[ci] + Math.min(0.12, -div * q * 1.0));
   else mGrid[ci] = Math.max(0, mGrid[ci] - Math.min(0.06, div * 0.3));
 }
-// Final diffusion smoothing (20 passes — spreads moisture from wet coasts
-// into dry interiors via atmospheric mixing, even where wind is calm)
-for (let pass = 0; pass < 20; pass++) {
+// Heavy diffusion: spreads moisture inland from coasts via atmospheric mixing.
+// 40 passes at strong blend — this is the main mechanism for getting moisture
+// past the first few coastal cells when wind blows offshore.
+for (let pass = 0; pass < 40; pass++) {
   const prev = new Float32Array(mGrid);
   for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
     const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
     if (elevation[py * W + px] <= 0) continue;
     const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW, ci = my * mW + mx;
-    mGrid[ci] = prev[ci] * 0.45 + (prev[my * mW + mxL] + prev[my * mW + mxR]
-      + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.1375;
+    // Strong diffusion: 35% self + 65% from neighbors (4 × 16.25%)
+    mGrid[ci] = prev[ci] * 0.35 + (prev[my * mW + mxL] + prev[my * mW + mxR]
+      + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.1625;
   }
 }
 // Upscale moisture advection result to full resolution
