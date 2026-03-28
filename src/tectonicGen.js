@@ -1613,100 +1613,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const temp = modTemp * 0.75 + wt * 0.25;
   temperature[i] = Math.max(0, Math.min(1, temp));
 
-  if (e <= 0) {
-    moisture[i] = 0.5 + sg(nfMoistOce, x, y) * 0.1;
-  } else {
-    const wm = windMoisture[i];
-    // DEBUG: if advection isn't working, fall back to coast distance
-    // This ensures SOME moisture inland regardless of advection
-    const cdFallback = Math.max(0, 1 - cdm / 25) * 0.5;
-    // Use whichever is higher — advected or coast-distance fallback
-    const wmEff = Math.max(wm, cdFallback);
-
-    // ── Wind convergence/divergence at this pixel ──
-    // Convergence (div < 0) = air rises = cooling = rain = WET
-    // Divergence (div > 0) = air sinks = warming = DRY (subtropical deserts)
-    const wxL = fullWindX[y * W + ((x - 3 + W) % W)];
-    const wxR = fullWindX[y * W + ((x + 3) % W)];
-    const wyU = y > 2 ? fullWindY[(y - 3) * W + x] : 0;
-    const wyD = y < H - 3 ? fullWindY[(y + 3) * W + x] : 0;
-    const divVal = (wxR - wxL + wyD - wyU) * 0.167; // /6 for spacing of 3
-    const convergeMoist = divVal < 0 ? Math.min(0.35, -divVal * 6) : 0;
-    const divergeDry = divVal > 0 ? Math.min(0.25, divVal * 5) : 0;
-
-    // ── Rain shadow: if upwind terrain is higher, we're in the lee ──
-    const wx2 = fullWindX[i], wy2 = fullWindY[i];
-    const windSpd = Math.sqrt(wx2 * wx2 + wy2 * wy2);
-    let rainShadow = 0;
-    if (windSpd > 0.005) {
-      const invS = 1 / windSpd;
-      // Check upwind at multiple distances
-      for (const dist of [4, 8, 14]) {
-        const upX = x - wx2 * invS * dist;
-        const upY = y - wy2 * invS * dist;
-        const ux = Math.min(W - 1, Math.max(0, ((Math.round(upX) % W) + W) % W));
-        const uy = Math.min(H - 1, Math.max(0, Math.round(upY)));
-        const upElev = elevation[uy * W + ux];
-        if (upElev > e + 0.02) {
-          rainShadow = Math.max(rainShadow, Math.min(0.35, (upElev - e) * 2.5));
-        }
-      }
-    }
-
-    // ── Elevation drying: high altitude = thin cold dry air ──
-    const elevDry = e > 0.04 ? Math.min(0.4, (e - 0.04) * _moistElevDry) : 0;
-
-    // ── Wind-from-ocean: trace back to check if moisture source is ocean ──
-    let windOcean = 0;
-    if (windSpd > 0.005) {
-      const invS = 1 / windSpd;
-      for (const dist of [6, 15, 30]) {
-        const trX = x - wx2 * invS * dist;
-        const trY = y - wy2 * invS * dist;
-        const tx = Math.min(W - 1, Math.max(0, ((Math.round(trX) % W) + W) % W));
-        const ty = Math.min(H - 1, Math.max(0, Math.round(trY)));
-        if (elevation[ty * W + tx] <= 0) {
-          windOcean = Math.min(1, windSpd * 3);
-          break;
-        }
-      }
-    }
-
-    // ── Latitude moisture capacity (cold air holds less) ──
-    const latCap = Math.max(0.10, 1.0 - lat * 0.7);
-
-    // ── Orographic enhancement: windward slopes are among the wettest places ──
-    // Check if wind is blowing INTO a slope (elevation increases downwind)
-    let oroBoost = 0;
-    if (windSpd > 0.005 && e > 0.03) {
-      const invS = 1 / windSpd;
-      // Check downwind elevation
-      const dwX = x + wx2 * invS * 4;
-      const dwY = y + wy2 * invS * 4;
-      const dwx = Math.min(W - 1, Math.max(0, ((Math.round(dwX) % W) + W) % W));
-      const dwy = Math.min(H - 1, Math.max(0, Math.round(dwY)));
-      const downwindElev = elevation[dwy * W + dwx];
-      if (downwindElev > e) {
-        // Wind blows into rising terrain — strong orographic rain
-        oroBoost = Math.min(0.25, (downwindElev - e) * wm * 3);
-      }
-    }
-
-    // ── Combine: wind advection dominates + supplementary factors ──
-    let m = wmEff * _moistAdvW             // advected moisture (with coast fallback)
-      + windOcean * _moistOcnW           // direct wind from ocean
-      + convergeMoist                   // convergence zones = wet
-      + oroBoost                        // windward mountain slopes = very wet
-      + coastProx * 0.10               // coastal proximity
-      - divergeDry                      // divergence zones = dry
-      - rainShadow                      // leeward of mountains = dry
-      - elevDry                         // high altitude = dry
-      + sg(nfMoistLand, x, y) * 0.05
-      + sg(nfMoistBroad, x, y) * 0.04;
-
-    m = Math.min(m, latCap);
-    moisture[i] = Math.max(0.02, Math.min(1, m));
-  }
+  // DEBUG: show ONLY raw advection output — no composition at all
+  // If this shows moisture inland, the advection works and composition kills it.
+  // If this shows nothing inland, the advection itself is broken.
+  moisture[i] = e <= 0 ? 0.5 : Math.max(0.02, windMoisture[i]);
 }
 
 // Moisture→temperature feedback: dry areas heat up more (no evaporative cooling,
