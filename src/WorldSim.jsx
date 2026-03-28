@@ -452,11 +452,14 @@ const BC=[
 [210,185,140],   // 13 Desert — warm sandy tan (slight orange like Sahara satellite)
 [140,135,78],    // 14 Shrubland — olive-brown chaparral
 [78,118,48],     // 15 Tropical Dry Forest — muted olive-green
-[152,145,135]    // 16 Barren / Alpine — gray-brown rock
+[152,145,135],   // 16 Barren / Alpine — gray-brown rock
+[42,110,38],     // 17 Subtropical Forest — warm humid (SE US, S China, SE Brazil)
+[195,190,180]    // 18 Cold Desert / Polar Desert — pale gray-tan
 ];
 const BN=['Deep Ocean','Shallow Ocean','Coastal Water','Beach','Tundra','Snow / Ice','Taiga',
 'Boreal Forest','Temperate Forest','Temperate Rainforest','Tropical Rainforest','Savanna',
-'Grassland','Desert','Shrubland','Tropical Dry Forest','Barren / Alpine'];
+'Grassland','Desert','Shrubland','Tropical Dry Forest','Barren / Alpine',
+'Subtropical Forest','Cold Desert'];
 function getBiomeD(e,m,t,sl){
   if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
   // Effective moisture: cold regions retain moisture (low evaporation),
@@ -464,23 +467,22 @@ function getBiomeD(e,m,t,sl){
   const demand=.5+t*.5;
   const em=Math.min(1,m/demand);
   // Permanent ice: extremely cold → snow/ice regardless of elevation
-  // (Antarctica, high Arctic are flat but ice-covered)
-  if(t<.08)return 5;
+  if(t<.08)return em<.1?18:5; // Very dry polar → Cold Desert; else Snow/Ice
   // Alpine / montane (elevation overrides)
   if(e>.55)return t<.3?5:16;
   if(e>.42)return t<.25?5:t<.4?(em>.35?7:4):em>.4?8:16;
-  // Mid-elevation cold: barren/alpine or shrubland, NOT tundra.
+  // Mid-elevation cold: barren/alpine or shrubland
   if(e>.25&&t<.38)return t<.15?16:t<.25?(em>.4?6:16):em>.45?7:em>.2?14:16;
   // Polar / subpolar (low elevation only)
-  if(t<.15)return em>.4?6:4;
-  if(t<.25)return em>.35?6:4;
-  if(t<.38)return em>.45?7:em>.25?6:4;
-  // Temperate
+  if(t<.15)return em>.4?6:em>.15?4:18; // Very dry cold → Cold Desert
+  if(t<.25)return em>.35?6:em>.1?4:18;
+  if(t<.38)return em>.45?7:em>.25?6:em>.1?4:18;
+  // Temperate (cool-moderate)
   if(t<.55)return em>.55?9:em>.35?8:em>.15?12:13;
-  // Warm
-  if(t<.72)return em>.5?8:em>.3?15:em>.15?14:13;
+  // Warm / subtropical
+  if(t<.72)return em>.5?17:em>.3?15:em>.18?11:em>.1?14:13;
   // Hot / tropical
-  return em>.5?10:em>.3?15:em>.18?11:em>.08?12:13;
+  return em>.5?10:em>.3?15:em>.18?11:em>.1?12:13;
 }
 function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
