@@ -1601,50 +1601,72 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   if (e <= 0) {
     moisture[i] = 0.5 + sg(nfMoistOce, x, y) * 0.1;
   } else {
-    // Latitude-based climate moisture (secondary signal)
-    const tropWet = Math.max(0, 1 - lat * 2.5);
-    const subtropDry = Math.exp(-((lat - 0.28) ** 2) / (2 * 0.08 * 0.08)) * 0.35 * (1 - coastProx * 0.5);
-    const tempWet = Math.exp(-((lat - 0.55) ** 2) / 0.035) * 0.28;
-    const tropF = Math.max(0, 1 - lat * 3);
-    // Reduced continentality: real mid/high latitude interiors stay moist because
-    // frontal systems (cyclones) penetrate deep inland via westerlies
-    const contRate = 0.004 + (1 - tropF) * 0.010;
-    const cont = Math.min(0.20, cdm * contRate);
-    const polarDry = Math.max(0, (lat - 0.80)) * 0.20;
-    // Base climate moisture without small-scale noise
-    const climateBase = 0.48 + tropWet * 0.40 - subtropDry + tempWet - cont - polarDry
-      + sg(nfMoistBroad, x, y) * 0.18;
-    // Small-scale noise amplitude scales with base moisture — prevents forest
-    // freckles in deserts (dry areas get tiny noise, wet areas get full variation)
-    const noiseAmp = Math.max(0.02, Math.min(0.12, climateBase * 0.20));
-    const climateMoist = climateBase + sg(nfMoistLand, x, y) * noiseAmp;
-    // Cold-latitude moisture persistence: cold air has low evaporation, so even
-    // modest precipitation creates effective wetness. Siberia gets 300mm/yr but
-    // stays moist because snow persists for months. This raises moisture at high lat.
-    const t = temperature[i];
-    // Cold persistence tapers off at extreme cold (t<0.1) — permafrost is ice, not moisture
-    const coldPersist = t < 0.4 ? Math.min(0.10, (0.4 - t) * 0.28 * Math.min(1, t / 0.12)) : 0;
-    // Wind-advected moisture is the PRIMARY driver; latitude formulas are secondary.
     const wm = windMoisture[i];
-    let m = wm * 0.65 + climateMoist * 0.35 + coldPersist;
-    // Tropical moisture floor: ITCZ convection guarantees minimum moisture near equator.
-    // Smooth Gaussian fade + noise to avoid hard equatorial band.
-    if (lat < 0.25) {
-      const tropFloor = 0.30 * Math.exp(-(lat * lat) / (2 * 0.08 * 0.08))
-        + sg(nfMoistBroad, x, y) * 0.06;  // noise breaks the uniformity
-      if (m < tropFloor) m = m * 0.4 + tropFloor * 0.6;  // soft blend, not hard max
+
+    // ── Wind convergence/divergence at this pixel ──
+    // Convergence (div < 0) = air rises = cooling = rain = WET
+    // Divergence (div > 0) = air sinks = warming = DRY (subtropical deserts)
+    const wxL = fullWindX[y * W + ((x - 3 + W) % W)];
+    const wxR = fullWindX[y * W + ((x + 3) % W)];
+    const wyU = y > 2 ? fullWindY[(y - 3) * W + x] : 0;
+    const wyD = y < H - 3 ? fullWindY[(y + 3) * W + x] : 0;
+    const divVal = (wxR - wxL + wyD - wyU) * 0.167; // /6 for spacing of 3
+    const convergeMoist = divVal < 0 ? Math.min(0.35, -divVal * 6) : 0;
+    const divergeDry = divVal > 0 ? Math.min(0.25, divVal * 5) : 0;
+
+    // ── Rain shadow: if upwind terrain is higher, we're in the lee ──
+    const wx2 = fullWindX[i], wy2 = fullWindY[i];
+    const windSpd = Math.sqrt(wx2 * wx2 + wy2 * wy2);
+    let rainShadow = 0;
+    if (windSpd > 0.005) {
+      const invS = 1 / windSpd;
+      // Check upwind at multiple distances
+      for (const dist of [4, 8, 14]) {
+        const upX = x - wx2 * invS * dist;
+        const upY = y - wy2 * invS * dist;
+        const ux = Math.min(W - 1, Math.max(0, ((Math.round(upX) % W) + W) % W));
+        const uy = Math.min(H - 1, Math.max(0, Math.round(upY)));
+        const upElev = elevation[uy * W + ux];
+        if (upElev > e + 0.02) {
+          rainShadow = Math.max(rainShadow, Math.min(0.35, (upElev - e) * 2.5));
+        }
+      }
     }
-    // Orographic lift: windward slopes get extra precipitation
-    if (e > 0.1 && wm > 0.35) m += Math.min(0.12, (e - 0.1) * wm * 0.5);
-    // Cold current moisture suppression: equatorward coastal winds = upwelling = dry
-    if (coastProx > 0.15) {
-      const wy = fullWindY[i];
-      const hemiSign = ny < 0.5 ? -1 : 1;
-      const polewardFlow = wy * hemiSign;
-      if (polewardFlow < 0) m += Math.max(-0.15, polewardFlow * 0.12) * coastProx;
+
+    // ── Elevation drying: high altitude = thin cold dry air ──
+    const elevDry = e > 0.04 ? Math.min(0.4, (e - 0.04) * 2.0) : 0;
+
+    // ── Wind-from-ocean: trace back to check if moisture source is ocean ──
+    let windOcean = 0;
+    if (windSpd > 0.005) {
+      const invS = 1 / windSpd;
+      for (const dist of [6, 15, 30]) {
+        const trX = x - wx2 * invS * dist;
+        const trY = y - wy2 * invS * dist;
+        const tx = Math.min(W - 1, Math.max(0, ((Math.round(trX) % W) + W) % W));
+        const ty = Math.min(H - 1, Math.max(0, Math.round(trY)));
+        if (elevation[ty * W + tx] <= 0) {
+          windOcean = Math.min(1, windSpd * 3);
+          break;
+        }
+      }
     }
-    // Lowland moisture accumulation
-    if (e < 0.02) m += 0.10;
+
+    // ── Latitude moisture capacity (cold air holds less) ──
+    const latCap = Math.max(0.10, 1.0 - lat * 0.7);
+
+    // ── Combine: wind advection + convergence + ocean proximity + terrain effects ──
+    let m = wm * 0.50                  // advected moisture (base)
+      + windOcean * 0.30               // direct wind from ocean
+      + convergeMoist                   // convergence zones = wet
+      + coastProx * 0.15               // coastal proximity
+      - divergeDry                      // divergence zones = dry
+      - rainShadow                      // leeward of mountains = dry
+      - elevDry                         // high altitude = dry
+      + sg(nfMoistLand, x, y) * 0.05   // natural variation
+      + sg(nfMoistBroad, x, y) * 0.04;
+
+    m = Math.min(m, latCap);
     moisture[i] = Math.max(0.02, Math.min(1, m));
   }
 }
