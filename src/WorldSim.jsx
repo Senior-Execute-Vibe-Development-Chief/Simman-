@@ -466,17 +466,13 @@ function getBiomeD(e,m,t,sl){
   // hot regions lose it to evaporation (Holdridge PET principle).
   const demand=.5+t*.5;
   const em=Math.min(1,m/demand);
-  // Permanent ice: extremely cold → snow/ice regardless of elevation
-  if(t<.08)return em<.1?18:5; // Very dry polar → Cold Desert; else Snow/Ice
-  // Alpine / montane (elevation overrides)
-  if(e>.55)return t<.3?5:16;
-  if(e>.42)return t<.25?5:t<.4?(em>.35?7:4):em>.4?8:16;
-  // Mid-elevation cold: barren/alpine or shrubland
-  if(e>.25&&t<.38)return t<.15?16:t<.25?(em>.4?6:16):em>.45?7:em>.2?14:16;
+  // Permanent ice: extremely cold → snow/ice (Arctic, Antarctic, glaciers)
+  if(t<.08)return 5;
   // Polar / subpolar (low elevation only)
-  if(t<.15)return em>.4?6:em>.15?4:18; // Very dry cold → Cold Desert
-  if(t<.25)return em>.35?6:em>.1?4:18;
-  if(t<.38)return em>.45?7:em>.25?6:em>.1?4:18;
+  // Cold desert only where it's cold but not freezing AND very dry
+  if(t<.15)return em>.4?6:em>.08?4:18; // Taiga / Tundra / Cold Desert
+  if(t<.25)return em>.35?6:em>.08?4:18;
+  if(t<.38)return em>.45?7:em>.25?6:em>.08?4:18;
   // Temperate (cool-moderate)
   if(t<.55)return em>.55?9:em>.35?8:em>.15?12:13;
   // Warm / subtropical
