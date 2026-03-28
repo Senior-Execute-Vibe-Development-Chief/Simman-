@@ -164,14 +164,23 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       const upwind = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
         + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
 
-      // Moisture transport: take the MAXIMUM of upwind trace, neighbors (decayed),
-      // and previous value (decayed). This prevents compounding loss — moisture
-      // only decreases via explicit precipitation triggers, not transport artifacts.
+      // Moisture transport:
+      // - Upwind (directional): full value from backward trace
+      // - Isotropic spread: neighbors decayed more aggressively (squared decay)
+      //   to prevent uniform flooding from coastlines
+      // - Self-persistence: previous value decayed, keeps moisture from vanishing
       const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
       const nMax = Math.max(
         prev[my * mW + mxL], prev[my * mW + mxR],
         prev[(my - 1) * mW + mx], prev[(my + 1) * mW + mx]);
-      let moist = Math.max(upwind, nMax * _moistDecay, prev[ci] * _moistDecay);
+      const isoDecay = _moistDecay * _moistDecay; // ~0.986 — faster decay for isotropic spread
+      let moist = Math.max(upwind, nMax * isoDecay, prev[ci] * _moistDecay);
+
+      // ── Temperature capacity clamp ──
+      // Cold air can't hold much moisture (Clausius-Clapeyron)
+      const elevCool = Math.max(0, elev[ci]) * _moistElevDry * 0.12;
+      const tempCapacity = Math.max(0.02, 0.05 + temp[ci] * 0.95 - elevCool);
+      if (moist > tempCapacity) moist = tempCapacity;
 
       // ── Precipitation triggers ──
       let precip = 0;
@@ -214,12 +223,10 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
         moist -= cp;
       }
 
-      // d) Capacity overflow at cold/high altitude
-      const elevCool = Math.max(0, elev[ci]) * _moistElevDry * 0.12;
-      const capacity = Math.max(0.05, 0.08 + temp[ci] * 0.92 - elevCool);
-      if (moist > capacity) {
-        precip += moist - capacity;
-        moist = capacity;
+      // d) Capacity overflow — excess beyond what air can hold precipitates
+      if (moist > tempCapacity) {
+        precip += moist - tempCapacity;
+        moist = tempCapacity;
       }
 
       // ── Subtropical subsidence drying ──
@@ -294,7 +301,15 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       const pNorm = Math.pow(Math.min(1, pRaw), 0.6);
 
       // Blend: 30% atmospheric (overall wetness), 70% precipitation (contrast)
-      normalized[i] = Math.max(0.02, Math.min(1, aNorm * 0.3 + pNorm * 0.7));
+      let blend = aNorm * 0.3 + pNorm * 0.7;
+
+      // Temperature capacity ceiling: cold areas can't be very wet regardless
+      // of how much precipitation accumulates at the coast
+      const py = Math.min(H - 1, (i / mW | 0) * 2);
+      const tCap = temp[i] > 0 ? Math.min(1, 0.1 + temp[i] * 1.2) : 0.1;
+      blend = Math.min(blend, tCap);
+
+      normalized[i] = Math.max(0.02, Math.min(1, blend));
     }
   }
 

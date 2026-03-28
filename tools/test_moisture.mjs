@@ -165,78 +165,120 @@ function sample(lat, lon) {
   };
 }
 
-// Known locations with expected moisture levels
+// Known locations with expected moisture levels (based on real climate data)
+// Ranges: 0 = extreme desert, 0.5 = moderate, 1.0 = extreme rainforest
 const locations = [
-  // Very wet (should be > 0.7)
-  { name: 'Amazon (Manaus)',       lat: -3.1,  lon: -60.0,  expected: 'very wet (>0.7)' },
-  { name: 'Congo Basin',          lat: 0.5,   lon: 21.0,   expected: 'very wet (>0.7)' },
-  { name: 'Indonesia (Borneo)',   lat: 0.0,   lon: 115.0,  expected: 'very wet (>0.7)' },
-  { name: 'SE Asia (Myanmar)',    lat: 18.0,  lon: 97.0,   expected: 'wet (>0.5)' },
+  // ═══ TROPICAL WET (>0.7) — ITCZ convergence, trade wind moisture ═══
+  { name: 'Amazon (Manaus)',       lat: -3.1,  lon: -60.0,  min: 0.7, max: 1.0 },
+  { name: 'Amazon (Belem)',        lat: -1.4,  lon: -48.5,  min: 0.7, max: 1.0 },
+  { name: 'Congo Basin',           lat: 0.5,   lon: 21.0,   min: 0.7, max: 1.0 },
+  { name: 'Indonesia (Borneo)',    lat: 1.1,   lon: 113.8,  min: 0.7, max: 1.0 },
+  { name: 'West Colombia',         lat: 5.6,   lon: -76.9,  min: 0.7, max: 1.0 },
+  { name: 'Papua New Guinea',      lat: -5.1,  lon: 145.5,  min: 0.6, max: 1.0 },
+  { name: 'Central Africa',        lat: 3.0,   lon: 28.0,   min: 0.6, max: 0.9 },
 
-  // Wet (should be 0.4-0.7)
-  { name: 'Eastern US (Atlanta)', lat: 33.7,  lon: -84.4,  expected: 'wet (0.4-0.7)' },
-  { name: 'Western Europe (Paris)', lat: 48.8, lon: 2.3,   expected: 'moderate (0.3-0.6)' },
-  { name: 'Japan (Tokyo)',        lat: 35.7,  lon: 139.7,  expected: 'wet (0.4-0.7)' },
-  { name: 'Eastern China',        lat: 30.0,  lon: 118.0,  expected: 'wet (0.4-0.7)' },
+  // ═══ MONSOON / TROPICAL WET (0.5-0.8) ═══
+  { name: 'SE Asia (Myanmar)',      lat: 18.0,  lon: 97.0,   min: 0.5, max: 0.8 },
+  { name: 'Southern India',         lat: 13.1,  lon: 76.9,   min: 0.5, max: 0.8 },
+  { name: 'Bangladesh',             lat: 23.0,  lon: 90.0,   min: 0.6, max: 0.9 },
+  { name: 'Vietnam',                lat: 18.0,  lon: 105.9,  min: 0.5, max: 0.8 },
+  { name: 'West Africa (Nigeria)',  lat: 7.0,   lon: 4.0,    min: 0.5, max: 0.8 },
+  { name: 'Madagascar (east)',      lat: -16.5, lon: 47.4,   min: 0.5, max: 0.8 },
 
-  // Moderate (should be 0.2-0.5)
-  { name: 'US Great Plains',      lat: 40.0,  lon: -100.0, expected: 'moderate (0.2-0.5)' },
-  { name: 'Southern Russia',      lat: 55.0,  lon: 50.0,   expected: 'moderate (0.2-0.5)' },
-  { name: 'Southern India',       lat: 12.0,  lon: 78.0,   expected: 'wet (0.4-0.7)' },
-  { name: 'Argentina (Pampas)',   lat: -35.0, lon: -60.0,  expected: 'moderate (0.3-0.5)' },
+  // ═══ TEMPERATE WET (0.4-0.7) — westerlies bring oceanic moisture ═══
+  { name: 'Eastern US (Atlanta)',   lat: 33.7,  lon: -84.4,  min: 0.4, max: 0.7 },
+  { name: 'Eastern US (New York)',  lat: 40.7,  lon: -74.0,  min: 0.4, max: 0.7 },
+  { name: 'US Southeast (Florida)', lat: 27.0,  lon: -81.0,  min: 0.5, max: 0.8 },
+  { name: 'Japan (Honshu)',         lat: 38.1,  lon: 137.3,  min: 0.4, max: 0.7 },
+  { name: 'Eastern China',          lat: 30.0,  lon: 118.0,  min: 0.4, max: 0.7 },
+  { name: 'UK (London)',            lat: 51.5,  lon: -0.1,   min: 0.4, max: 0.7 },
+  { name: 'Pacific NW (Seattle)',   lat: 47.6,  lon: -122.3, min: 0.5, max: 0.8 },
+  { name: 'Norway (Bergen)',        lat: 60.4,  lon: 5.3,    min: 0.5, max: 0.8 },
+  { name: 'New Zealand',            lat: -38.8, lon: 172.7,  min: 0.5, max: 0.8 },
+  { name: 'Southern Chile',         lat: -45.0, lon: -72.0,  min: 0.5, max: 0.8 },
+  { name: 'SE Brazil (Sao Paulo)',  lat: -23.5, lon: -46.6,  min: 0.4, max: 0.7 },
 
-  // Dry (should be < 0.2)
-  { name: 'Sahara (center)',      lat: 23.0,  lon: 10.0,   expected: 'very dry (<0.1)' },
-  { name: 'Arabian Desert',       lat: 23.0,  lon: 46.0,   expected: 'very dry (<0.1)' },
-  { name: 'Australian Outback',   lat: -25.0, lon: 135.0,  expected: 'dry (<0.2)' },
-  { name: 'Atacama (Chile)',      lat: -24.0, lon: -70.0,  expected: 'very dry (<0.1)' },
-  { name: 'Gobi Desert',         lat: 43.0,  lon: 105.0,  expected: 'dry (<0.15)' },
-  { name: 'Namibia',             lat: -23.0, lon: 17.0,   expected: 'dry (<0.15)' },
+  // ═══ MODERATE (0.3-0.6) — continental interiors with some moisture ═══
+  { name: 'Western Europe (Paris)', lat: 48.8,  lon: 2.3,    min: 0.3, max: 0.6 },
+  { name: 'Germany (Berlin)',       lat: 52.5,  lon: 13.4,   min: 0.3, max: 0.6 },
+  { name: 'US Great Plains',        lat: 40.0,  lon: -100.0, min: 0.2, max: 0.5 },
+  { name: 'US Midwest (Chicago)',   lat: 41.9,  lon: -87.6,  min: 0.3, max: 0.6 },
+  { name: 'Argentina (Pampas)',     lat: -35.0, lon: -60.0,  min: 0.3, max: 0.5 },
+  { name: 'Uruguay',                lat: -34.5, lon: -56.0,  min: 0.3, max: 0.6 },
+  { name: 'South Africa (east)',    lat: -29.4, lon: 29.4,   min: 0.3, max: 0.5 },
+  { name: 'Turkey (Ankara)',        lat: 39.9,  lon: 32.9,   min: 0.2, max: 0.4 },
+  { name: 'Northern India',         lat: 28.0,  lon: 80.0,   min: 0.3, max: 0.6 },
 
-  // Cold/polar (should be low-moderate)
-  { name: 'Siberia (Yakutsk)',   lat: 62.0,  lon: 130.0,  expected: 'low (0.15-0.35)' },
-  { name: 'Greenland coast',     lat: 65.0,  lon: -45.0,  expected: 'low (0.1-0.3)' },
-  { name: 'Antarctica',          lat: -80.0, lon: 0.0,    expected: 'very dry (<0.1)' },
+  // ═══ RUSSIA / HIGH-LATITUDE CONTINENTAL (0.15-0.45) ═══
+  { name: 'Moscow',                 lat: 55.8,  lon: 37.6,   min: 0.25, max: 0.5 },
+  { name: 'Southern Russia (Volga)',lat: 55.0,  lon: 50.0,   min: 0.2, max: 0.45 },
+  { name: 'W Siberia (Novosibirsk)',lat: 55.0,  lon: 83.0,   min: 0.2, max: 0.4 },
+  { name: 'E Siberia (Yakutsk)',    lat: 62.0,  lon: 130.0,  min: 0.15, max: 0.35 },
+  { name: 'NE Siberia (Magadan)',   lat: 59.6,  lon: 150.0,  min: 0.15, max: 0.35 },
+  { name: 'Far East (Vladivostok)', lat: 43.7,  lon: 131.4,  min: 0.3, max: 0.6 },
+  { name: 'Scandinavia (Stockholm)',lat: 60.6,  lon: 19.5,   min: 0.3, max: 0.55 },
+  { name: 'Finland (Helsinki)',     lat: 60.2,  lon: 25.0,   min: 0.3, max: 0.5 },
+  { name: 'Iceland (Reykjavik)',    lat: 64.1,  lon: -22.0,  min: 0.35, max: 0.6 },
+  { name: 'Alaska (Anchorage)',     lat: 61.2,  lon: -150.0, min: 0.2, max: 0.5 },
+  { name: 'Canada (Winnipeg)',      lat: 49.9,  lon: -97.1,  min: 0.2, max: 0.45 },
+  { name: 'Canada (Vancouver)',     lat: 49.3,  lon: -123.1, min: 0.5, max: 0.8 },
 
-  // Coastal wet
-  { name: 'Pacific NW (Seattle)', lat: 47.6, lon: -122.3, expected: 'wet (0.5-0.8)' },
-  { name: 'Norway (Bergen)',      lat: 60.4,  lon: 5.3,   expected: 'wet (0.5-0.8)' },
-  { name: 'West Colombia',       lat: 5.0,   lon: -77.0,  expected: 'very wet (>0.7)' },
+  // ═══ SEMI-ARID (0.1-0.25) ═══
+  { name: 'Central Asia (Kazakh)',  lat: 48.0,  lon: 68.0,   min: 0.1, max: 0.25 },
+  { name: 'Iran (Tehran)',          lat: 35.7,  lon: 51.4,   min: 0.1, max: 0.25 },
+  { name: 'Spain (Madrid)',         lat: 40.4,  lon: -3.7,   min: 0.2, max: 0.4 },
+  { name: 'US Southwest (Phoenix)', lat: 33.4,  lon: -112.0, min: 0.05, max: 0.2 },
+  { name: 'Patagonia (dry)',        lat: -45.0, lon: -69.0,  min: 0.1, max: 0.25 },
+  { name: 'Mongolia',               lat: 47.0,  lon: 107.0,  min: 0.1, max: 0.2 },
+
+  // ═══ DESERT / VERY DRY (<0.15) ═══
+  { name: 'Sahara (center)',        lat: 23.0,  lon: 10.0,   min: 0.0, max: 0.08 },
+  { name: 'Sahara (west)',          lat: 24.0,  lon: -5.0,   min: 0.0, max: 0.08 },
+  { name: 'Sahara (east/Libya)',    lat: 25.0,  lon: 20.0,   min: 0.0, max: 0.08 },
+  { name: 'Arabian Desert',         lat: 23.0,  lon: 46.0,   min: 0.0, max: 0.08 },
+  { name: 'Arabian (Empty Quarter)',lat: 20.0,  lon: 50.0,   min: 0.0, max: 0.08 },
+  { name: 'Australian Outback',     lat: -25.0, lon: 135.0,  min: 0.0, max: 0.15 },
+  { name: 'Atacama (Chile)',         lat: -24.0, lon: -70.0,  min: 0.0, max: 0.08 },
+  { name: 'Gobi Desert',            lat: 43.0,  lon: 105.0,  min: 0.0, max: 0.15 },
+  { name: 'Namibia (Namib)',         lat: -23.0, lon: 15.0,   min: 0.0, max: 0.1 },
+  { name: 'Kalahari',               lat: -24.0, lon: 23.0,   min: 0.05, max: 0.2 },
+  { name: 'Thar Desert (India)',     lat: 27.0,  lon: 71.0,   min: 0.0, max: 0.15 },
+  { name: 'Taklamakan',              lat: 39.0,  lon: 83.0,   min: 0.0, max: 0.1 },
+
+  // ═══ COLD/POLAR (<0.15) ═══
+  { name: 'Greenland (inland)',     lat: 72.0,  lon: -40.0,  min: 0.0, max: 0.1 },
+  { name: 'Greenland (coast)',      lat: 65.0,  lon: -45.0,  min: 0.1, max: 0.3 },
+  { name: 'N Canada (Arctic)',      lat: 72.6,  lon: -94.9,  min: 0.0, max: 0.15 },
+  { name: 'Antarctica (inland)',    lat: -80.0, lon: 0.0,    min: 0.0, max: 0.05 },
+  { name: 'Antarctica (coast)',     lat: -68.6, lon: 69.4,   min: 0.0, max: 0.15 },
+  { name: 'Svalbard',               lat: 78.0,  lon: 16.0,   min: 0.0, max: 0.2 },
 ];
 
 console.log('Location Moisture Check:');
-console.log('='.repeat(85));
-console.log(`${'Location'.padEnd(28)} ${'Moisture'.padStart(8)} ${'Elev'.padStart(6)} ${'WindU'.padStart(6)} ${'WindV'.padStart(6)}  Expected`);
-console.log('-'.repeat(85));
+console.log('='.repeat(90));
+console.log(`${'Location'.padEnd(28)} ${'Moist'.padStart(6)} ${'Target'.padStart(12)} ${'Elev'.padStart(6)} ${'Wind'.padStart(10)}`);
+console.log('-'.repeat(90));
 
-let good = 0, bad = 0;
+let good = 0, bad = 0, close = 0;
+let lastSection = '';
 for (const loc of locations) {
   const s = sample(loc.lat, loc.lon);
-  const mStr = s.moisture.toFixed(3).padStart(8);
+  const m = s.moisture;
+  const mStr = m.toFixed(3).padStart(6);
   const eStr = s.elevation.toFixed(3).padStart(6);
-  const uStr = s.windU.toFixed(1).padStart(6);
-  const vStr = s.windV.toFixed(1).padStart(6);
+  const wStr = `${s.windU.toFixed(1)},${s.windV.toFixed(1)}`.padStart(10);
+  const rangeStr = `${loc.min.toFixed(2)}-${loc.max.toFixed(2)}`.padStart(12);
 
-  // Simple check: is the value roughly in the expected range?
-  let ok = '?';
-  if (loc.expected.includes('>0.7') && s.moisture > 0.6) ok = '✓';
-  else if (loc.expected.includes('>0.7') && s.moisture <= 0.6) ok = '✗';
-  else if (loc.expected.includes('<0.1') && s.moisture < 0.15) ok = '✓';
-  else if (loc.expected.includes('<0.1') && s.moisture >= 0.15) ok = '✗';
-  else if (loc.expected.includes('<0.15') && s.moisture < 0.2) ok = '✓';
-  else if (loc.expected.includes('<0.15') && s.moisture >= 0.2) ok = '✗';
-  else if (loc.expected.includes('<0.2') && s.moisture < 0.25) ok = '✓';
-  else if (loc.expected.includes('<0.2') && s.moisture >= 0.25) ok = '✗';
-  else ok = '~';
+  let ok;
+  if (m >= loc.min && m <= loc.max) { ok = '✓'; good++; }
+  else if (m >= loc.min - 0.1 && m <= loc.max + 0.1) { ok = '~'; close++; }
+  else { ok = '✗'; bad++; }
 
-  if (ok === '✓') good++;
-  else if (ok === '✗') bad++;
-
-  console.log(`${ok} ${loc.name.padEnd(26)} ${mStr} ${eStr} ${uStr} ${vStr}  ${loc.expected}`);
+  console.log(`${ok} ${loc.name.padEnd(26)} ${mStr} ${rangeStr} ${eStr} ${wStr}`);
 }
 
-console.log('-'.repeat(85));
-console.log(`Score: ${good} correct, ${bad} wrong, ${locations.length - good - bad} unchecked`);
+console.log('-'.repeat(90));
+console.log(`Score: ${good}/${locations.length} in range, ${close} close, ${bad} wrong`);
 
 // ── Summary statistics ──
 let landCount = 0, landSum = 0, minM = 1, maxM = 0;
