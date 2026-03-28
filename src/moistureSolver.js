@@ -174,16 +174,31 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       moist *= _moistDecay;
 
       // ── Precipitation triggers ──
-      // Keep rates gentle so moisture can travel inland
       let precip = 0;
       const py = Math.min(H - 1, my * 2);
       const lat = Math.abs(py / H - 0.5) * 2;
+      const latDeg = lat * 90; // 0° at equator, 90° at poles
+
+      // Subtropical subsidence factor: the descending branch of the Hadley cell
+      // at ~20-35° latitude creates warm sinking air that suppresses precipitation
+      // and actively dries the atmosphere. This is why all major deserts sit here.
+      // Gaussian centered at ~28° latitude, width ~8°
+      const subtropDist = latDeg - 28;
+      const subsidenceFactor = Math.exp(-(subtropDist * subtropDist) / (2 * 8 * 8));
+
+      // Subtropical subsidence: actively drain atmospheric moisture
+      // Sinking air warms adiabatically, increasing capacity → prevents condensation
+      // and pushes moisture away. Stronger over land (no ocean buffering).
+      if (subsidenceFactor > 0.1) {
+        const subsidenceDrain = moist * subsidenceFactor * 0.03;
+        moist -= subsidenceDrain;
+        // No precipitation from subsidence — the moisture just evaporates/disperses
+      }
 
       // a) Orographic: wind pushing uphill forces precipitation
       if (ws > 0.005) {
         const upslope = dirX * gradX[ci] + dirY * gradY[ci];
         if (upslope > 0) {
-          // Gentle rate — mountains shouldn't strip ALL moisture in one step
           const oroRate = Math.min(0.35, upslope * _moistTBlock * 4);
           const oroPrecip = moist * oroRate;
           precip += oroPrecip;
@@ -191,19 +206,31 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
         }
       }
 
-      // b) Convective: hot land triggers rainfall (especially tropics)
+      // b) Convective: hot land triggers rainfall
+      // Strong at ITCZ (0-15°), SUPPRESSED at subtropical highs (20-35°),
+      // moderate at midlatitudes (35-55°)
       if (temp[ci] > 0.45 && moist > 0.05) {
-        const tropFactor = Math.max(0, 1 - lat * 2.5); // strong in tropics, zero by 40°
-        const convRate = (temp[ci] - 0.4) * _moistConvective * (0.3 + tropFactor * 0.7);
-        const convPrecip = moist * convRate;
+        // ITCZ convergence zone: very strong convection near equator
+        const itczFactor = Math.exp(-(latDeg * latDeg) / (2 * 12 * 12));
+        // Subtropical suppression: Hadley cell descent inhibits convection
+        const subtropSuppress = 1 - subsidenceFactor * 0.85;
+        // Midlatitude frontal lifting (weaker than ITCZ but still present)
+        const midlatFactor = Math.exp(-((latDeg - 45) * (latDeg - 45)) / (2 * 12 * 12)) * 0.3;
+
+        const convFactor = (itczFactor + midlatFactor) * subtropSuppress;
+        const convRate = (temp[ci] - 0.4) * _moistConvective * convFactor;
+        const convPrecip = moist * Math.max(0, convRate);
         precip += convPrecip;
         moist -= convPrecip;
       }
 
       // c) Convergence: wind convergence forces uplift
+      // This drives ITCZ rainfall and midlatitude frontal precipitation
       const div = divField[ci];
-      if (div < -0.002 && moist > 0.03) {
-        const convgPrecip = moist * Math.min(0.08, -div * 1.5);
+      if (div < -0.001 && moist > 0.02) {
+        // Convergence precipitation is suppressed in the subtropical belt
+        const convgSuppress = 1 - subsidenceFactor * 0.7;
+        const convgPrecip = moist * Math.min(0.12, -div * 2.5) * convgSuppress;
         precip += convgPrecip;
         moist -= convgPrecip;
       }
@@ -217,9 +244,11 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       }
 
       // ── Transpiration recycling ──
+      // Suppressed in subtropical belt (dry air inhibits transpiration)
       if (precipAccum[ci] > 0.02 && temp[ci] > 0.25) {
         const warmFactor = lat < 0.5 ? 1.0 : Math.max(0, 1 - (lat - 0.5) * 3);
-        const recycled = Math.min(0.05, precipAccum[ci] * _moistRecycling * warmFactor * 0.03);
+        const recycSuppress = 1 - subsidenceFactor * 0.6;
+        const recycled = Math.min(0.06, precipAccum[ci] * _moistRecycling * warmFactor * 0.04 * recycSuppress);
         moist += recycled;
       }
 
