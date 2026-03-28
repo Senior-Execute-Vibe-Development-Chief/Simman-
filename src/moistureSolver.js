@@ -165,16 +165,21 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
         + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
 
       // Moisture transport:
-      // - Upwind (directional): full value from backward trace
-      // - Isotropic spread: neighbors decayed more aggressively (squared decay)
-      //   to prevent uniform flooding from coastlines
-      // - Self-persistence: previous value decayed, keeps moisture from vanishing
+      // - Upwind (directional): full value from backward trace along mean wind
+      // - Isotropic spread: represents seasonal/synoptic moisture transport that
+      //   the annual mean wind misses (e.g. summer Gulf moisture reaching Atlanta
+      //   despite annual mean wind being westerly). Decay is gentle so moisture
+      //   can spread deep inland from ocean sources.
+      // - Self-persistence: previous value decayed
+      // Neighbor spreading: only from LAND neighbors (skip ocean to prevent
+      // coastal flooding of cold polar areas adjacent to warm ocean)
       const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
+      const iL = my * mW + mxL, iR = my * mW + mxR;
+      const iU = (my - 1) * mW + mx, iD = (my + 1) * mW + mx;
       const nMax = Math.max(
-        prev[my * mW + mxL], prev[my * mW + mxR],
-        prev[(my - 1) * mW + mx], prev[(my + 1) * mW + mx]);
-      const isoDecay = _moistDecay * _moistDecay; // ~0.986 — faster decay for isotropic spread
-      let moist = Math.max(upwind, nMax * isoDecay, prev[ci] * _moistDecay);
+        isOcean[iL] ? 0 : prev[iL], isOcean[iR] ? 0 : prev[iR],
+        isOcean[iU] ? 0 : prev[iU], isOcean[iD] ? 0 : prev[iD]);
+      let moist = Math.max(upwind, nMax * _moistDecay, prev[ci] * _moistDecay);
 
       // ── Temperature capacity clamp ──
       // Cold air can't hold much moisture (Clausius-Clapeyron)
