@@ -1638,7 +1638,18 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     // ── Clamp by moisture capacity (cold air holds less water) ──
     m = Math.min(m, moistureCapacity);
 
+    // ── Elevation drying: thin cold air at altitude holds much less moisture ──
+    // Tibetan Plateau, Andes altiplano, Ethiopian Highlands are all arid.
+    // Air loses moisture climbing windward slopes, and what remains is limited
+    // by the low temperatures and thin atmosphere at altitude.
+    if (e > 0.04) {
+      const elevDry = Math.min(0.5, (e - 0.04) * 2.5);
+      m *= (1 - elevDry);
+    }
+
     // ── Orographic lift: windward slopes get extra precipitation ──
+    // This happens on the way UP, before the elevation drying kicks in.
+    // The moisture is deposited on the slope, not carried to the top.
     if (e > 0.08 && wm > 0.3) m += Math.min(0.15, (e - 0.08) * wm * 0.6);
 
     // ── Cold current moisture suppression: equatorward coastal winds = upwelling = dry ──
