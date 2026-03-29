@@ -160,41 +160,30 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
 
   // ── Point deposit placement for rare minerals ──
   // Scatters N mine sites across valid terrain, each radiating influence.
-  // Guarantees distribution across all landmasses.
-  function scatterMines(resourceId, count, radius, peakRichness, candidateTest) {
-    // Collect candidates
+  // No spacing constraint — mines naturally cluster in the best terrain.
+  // scoreFn(ti) returns 0-1 suitability; higher = more likely to be picked.
+  function scatterMines(resourceId, count, radius, peakRichness, candidateTest, scoreFn) {
+    // Collect and score candidates
     const candidates = [];
     for (let ti = 0; ti < N; ti++) {
       if (tElev[ti] <= 0) continue;
-      if (candidateTest(ti)) candidates.push(ti);
+      if (candidateTest(ti)) {
+        const tx2 = ti % tw, ty2 = (ti - tx2) / tw;
+        // Combine terrain suitability with noise for natural variation
+        const suitability = scoreFn ? scoreFn(ti) : 0.5;
+        const noise = resHash(tx2, ty2, s0 + resourceId.length * 7717);
+        // Weight: 60% suitability + 40% noise — good terrain clusters, noise breaks uniformity
+        candidates.push({ ti, score: suitability * 0.6 + noise * 0.4 });
+      }
     }
     if (candidates.length === 0) return;
+    candidates.sort((a, b) => b.score - a.score);
 
-    // Seeded shuffle for deterministic placement
-    let rngState = s0 + resHash(count, radius, resourceId.length * 9973) * 2147483647 | 0;
-    const rng = () => { rngState = (rngState * 16807 + 1) % 2147483647; return (rngState & 0x7fffffff) / 0x7fffffff; };
-
-    // Score candidates by suitability (hash-based, deterministic)
-    const scored = candidates.map(ti => {
-      const tx2 = ti % tw, ty2 = (ti - tx2) / tw;
-      return { ti, score: resHash(tx2, ty2, s0 + resourceId.length * 7717) };
-    });
-    scored.sort((a, b) => b.score - a.score);
-
-    // Greedy selection: pick highest-scoring candidates with minimum spacing
-    const minSpacing = Math.max(radius * 2, Math.round(tw * 0.06));
+    // Just take the top N — no spacing constraint. Natural clustering happens
+    // because the best terrain (high suitability) is geographically clustered.
     const selected = [];
-    for (const c of scored) {
-      if (selected.length >= count) break;
-      const cx = c.ti % tw, cy = (c.ti - cx) / tw;
-      let tooClose = false;
-      for (const s of selected) {
-        const sx = s % tw, sy = (s - sx) / tw;
-        let dx = Math.abs(cx - sx); if (dx > tw / 2) dx = tw - dx;
-        const dy = cy - sy;
-        if (dx * dx + dy * dy < minSpacing * minSpacing) { tooClose = true; break; }
-      }
-      if (!tooClose) selected.push(c.ti);
+    for (let i = 0; i < Math.min(count, candidates.length); i++) {
+      selected.push(candidates[i].ti);
     }
 
     // Radiate influence from each mine site
@@ -383,26 +372,48 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
   // ── Point deposits: copper, tin, precious metals, gems ──
   // These are scattered as individual mine sites across valid terrain.
 
-  // COPPER: ~80 mines, mountains and highlands
-  scatterMines('copper', 80, 4, 0.9, (ti) => {
-    return tElev[ti] > 0.10;
-  });
+  // COPPER: ~80 mines, prefer mountains/highlands near plate boundaries
+  scatterMines('copper', 80, 4, 0.9,
+    (ti) => tElev[ti] > 0.10,
+    (ti) => {
+      let s = Math.min(1, (tElev[ti] - 0.10) * 4); // higher = better
+      if (boundDist[ti] < 12) s += (1 - boundDist[ti] / 12) * 0.5; // near boundaries
+      return Math.min(1, s);
+    });
 
-  // TIN: ~40 mines, rarer, highlands + alluvial lowlands
-  scatterMines('tin', 40, 3, 0.85, (ti) => {
-    const e = tElev[ti];
-    return e > 0.08 || (e < 0.08 && e > 0 && tMoist[ti] > 0.25);
-  });
+  // TIN: ~40 mines, highlands + alluvial lowlands near highlands
+  scatterMines('tin', 40, 3, 0.85,
+    (ti) => {
+      const e = tElev[ti];
+      return e > 0.08 || (e < 0.08 && e > 0 && tMoist[ti] > 0.25);
+    },
+    (ti) => {
+      const e = tElev[ti];
+      if (e > 0.12) return 0.4 + Math.min(0.6, (e - 0.12) * 3); // highland veins
+      return 0.3 + tMoist[ti] * 0.4; // alluvial: wetter = better
+    });
 
-  // PRECIOUS METALS: ~70 gold/silver sites, prefer highlands but anywhere on land
-  scatterMines('precious', 70, 4, 0.95, (ti) => {
-    return tElev[ti] > 0.02;
-  });
+  // PRECIOUS METALS: ~70 gold/silver sites, prefer highlands + plate boundaries
+  scatterMines('precious', 70, 4, 0.95,
+    (ti) => tElev[ti] > 0.02,
+    (ti) => {
+      let s = Math.min(1, tElev[ti] * 3); // higher terrain = better
+      if (boundDist[ti] < 12) s += (1 - boundDist[ti] / 12) * 0.4;
+      // Alluvial gold: wet lowlands get a boost too
+      if (tElev[ti] < 0.08 && tMoist[ti] > 0.3) s += 0.3;
+      return Math.min(1, s);
+    });
 
-  // GEMS: ~50 sites, any land
-  scatterMines('gems', 50, 3, 0.8, (ti) => {
-    return tElev[ti] > 0.03;
-  });
+  // GEMS: ~50 sites, prefer highlands + tropical zones
+  scatterMines('gems', 50, 3, 0.8,
+    (ti) => tElev[ti] > 0.03,
+    (ti) => {
+      let s = 0.2;
+      if (tElev[ti] > 0.15) s += 0.4; // highland gems
+      if (tTemp[ti] > 0.45) s += 0.3; // tropical gems
+      if (boundDist[ti] < 12) s += 0.2; // kimberlite near boundaries
+      return Math.min(1, s);
+    });
 
   return deposits;
 }
