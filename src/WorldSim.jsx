@@ -823,18 +823,26 @@ setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
-// Build globe texture (always equirectangular, CH_FLAT) when globe visible
+// Build globe texture at full resolution with polar blending
 useEffect(()=>{if(showGlobe&&worldRef.current){
-const w=worldRef.current,sl=0,gCH=CH_FLAT;
-const buf=new Uint8Array(CW*gCH*3);
-for(let ty=0;ty<gCH;ty++)for(let tx=0;tx<CW;tx++){
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
-const si=sy*W+sx;const e=w.elevation[si],m=w.moisture[si],t=w.temperature[si];
+const w=worldRef.current,sl=0,gW=W,gH=H;
+const buf=new Uint8Array(gW*gH*3);
+for(let ty=0;ty<gH;ty++){
+const lat=Math.abs(ty/gH-0.5)*2; // 0 at equator, 1 at poles
+// Polar blend: fade toward average polar color near poles to hide UV pinching
+const polarBlend=Math.max(0,Math.min(1,(lat-0.88)/0.12)); // starts at ~79°
+for(let tx=0;tx<gW;tx++){
+const si=ty*gW+tx;const e=w.elevation[si],m=w.moisture[si],t=w.temperature[si];
 let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
-const ti3=(ty*CW+tx)*3;buf[ti3]=r;buf[ti3+1]=g;buf[ti3+2]=b;}
+// Blend toward ice/ocean at extreme poles
+if(polarBlend>0){const pr=e>0?230:20,pg=e>0?235:40,pb=e>0?240:80;
+r=Math.round(r*(1-polarBlend)+pr*polarBlend);
+g=Math.round(g*(1-polarBlend)+pg*polarBlend);
+b=Math.round(b*(1-polarBlend)+pb*polarBlend);}
+const ti3=(ty*gW+tx)*3;buf[ti3]=r;buf[ti3+1]=g;buf[ti3+2]=b;}}
 setGlobeBuf(buf);
 }},[showGlobe,world]);
 // Re-render when projection changes (canvas size changes)
@@ -1307,7 +1315,7 @@ border:mi===0?"2px solid rgba(201,184,122,0.25)":"2px solid transparent",borderR
 onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
 {mi===0?(showGlobe?<div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
 <GlobeView terrainBuf={globeBuf} world={world}
-show3D={show3DTerrain} CW={CW} CH={CH_FLAT} /></div>
+show3D={show3DTerrain} CW={W} CH={H} /></div>
 :<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
 style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",
 aspectRatio:`${CW}/${CH}`}} />)

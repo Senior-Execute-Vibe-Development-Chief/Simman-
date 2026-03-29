@@ -35,6 +35,9 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
     texCanvas.height = CH;
     const texCtx = texCanvas.getContext("2d");
     const texture = new CanvasTexture(texCanvas);
+    // Anisotropic filtering for sharper texture at oblique angles
+    const maxAniso = renderer.capabilities.getMaxAnisotropy();
+    texture.anisotropy = maxAniso;
 
     // Specular map: ocean is reflective, land is matte
     const specCanvas = document.createElement("canvas");
