@@ -850,9 +850,10 @@ b=Math.round(b*(1-polarBlend)+pb*polarBlend);}
 const ti3=(ty*gW+tx)*3;buf[ti3]=r;buf[ti3+1]=g;buf[ti3+2]=b;}}
 setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});
 }},[showGlobe,world]);
-// Re-render when projection changes (canvas size changes)
+// Re-render when projection changes or globe toggled off
 useEffect(()=>{terrainCache.current=null;imgRef.current=null;windParticlesRef.current=null;
-if(terRef.current)draw(terRef.current);},[useMercator]);
+if(!showGlobe&&terRef.current) setTimeout(()=>draw(terRef.current),50);
+},[useMercator,showGlobe]);
 
 // Generate extra seed preview maps (same params, different seeds)
 const PW=480,PH=240;
