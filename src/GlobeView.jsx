@@ -65,27 +65,38 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
 
     // Atmospheric scattering overlay — blue haze ON the globe surface
     // Thicker at steep viewing angles (edges), thinner looking straight down
+    // Suppressed on the dark/shadow side
     const scatterGeo = new SphereGeometry(1.001, 128, 64);
     const scatterMat = new ShaderMaterial({
+      uniforms: {
+        sunDir: { value: sun.position.clone().normalize() }
+      },
       vertexShader: `
         varying vec3 vViewPos;
         varying vec3 vNormal;
+        varying vec3 vWorldNormal;
         void main() {
           vNormal = normalize(normalMatrix * normal);
+          vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
           vViewPos = (modelViewMatrix * vec4(position, 1.0)).xyz;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
       fragmentShader: `
+        uniform vec3 sunDir;
         varying vec3 vViewPos;
         varying vec3 vNormal;
+        varying vec3 vWorldNormal;
         void main() {
           vec3 viewDir = normalize(-vViewPos);
           float NdotV = max(0.0, dot(vNormal, viewDir));
           // Fresnel: more atmosphere at grazing angles
           float scatter = pow(1.0 - NdotV, 2.5) * 0.45;
-          // Subtle blue tint even at center (thin atmosphere everywhere)
           scatter += 0.03;
+          // Suppress on shadow side: haze only where sun illuminates
+          float sunFacing = dot(vWorldNormal, sunDir);
+          float sunMask = smoothstep(-0.1, 0.3, sunFacing);
+          scatter *= sunMask;
           gl_FragColor = vec4(0.45, 0.65, 1.0, scatter);
         }
       `,
@@ -110,7 +121,7 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
       if (!dragging) return;
       const dx = e.clientX - prevX, dy = e.clientY - prevY;
       rotY += dx * 0.005;
-      rotX += dy * 0.005;
+      rotX -= dy * 0.005;
       rotX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotX));
       prevX = e.clientX; prevY = e.clientY;
     };
