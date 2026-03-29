@@ -8,6 +8,7 @@ import GlobeView from "./GlobeView.jsx";
 import TuningPanel, { ParamEditor, renderPreview } from "./TuningPanel.jsx";
 import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
+import { generateResources, tileResourceSummary, dominantResource, RESOURCES, RES_BY_ID } from "./resourceGen.js";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
 function initNoise(seed){const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)PERM[i]=p[i&255];}
@@ -391,7 +392,7 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
+return{elevation,moisture,temperature,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,_seed:seed};}
 
 const BC=[
 [10,22,56],      // 0  Deep Ocean
@@ -552,6 +553,8 @@ tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}}
 // 2e: Coastal fertility bonus — fishing, salt, trade access.
 for(let ti=0;ti<tw*th;ti++){
 if(tCoast[ti]&&tElev[ti]>0)tFert[ti]=Math.min(1,tFert[ti]+0.06);}
+// ── Natural resource deposits ──
+const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0);
 // Find multiple spread-out seed locations for starting tribes
 const NUM_TRIBES=(w.preset==="earth"||w.preset==="earth_sim")?8:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:6;const minSpacing=Math.round(tw*0.12);
 // Score all habitable tiles
@@ -580,7 +583,7 @@ for(let i=0;i<origins.length;i++){const{x,y}=origins[i],ti=y*tw+x;
 owner[ti]=i;tribeSizes.push(1);tribeStrength.push(tFert[ti]);tenure[ti]=1;frontier[ti]=1;frontierList.push(ti);
 tribeCenters.push([{x,y,prestige:1.0,founded:0}]);}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
 frontier,frontierList,landCount:lc,settled:origins.length,tribes:origins.length,origin:origins[0]||{x:0,y:0},stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+(y1-y2)*(y1-y2));}
@@ -1006,6 +1009,27 @@ else{const t2=v*2;r=220;g=(t2*200)|0;b=0;}
 // Darken slightly with elevation for depth
 const shade=1-Math.max(0,e-0.1)*0.5;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
+}else if(vm==="resources"){
+// Resource overlay — shows dominant resource at each tile with its color
+if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
+const tc=terrainCache.current;
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
+const e=w.elevation[si];const pi4=ti<<2;
+if(e<=sl){d[pi4]=6;d[pi4+1]=8;d[pi4+2]=16;d[pi4+3]=255;continue;}
+// Dim terrain base
+const landDim=0.22;
+let br=(tc[ti*3]*landDim)|0,bg=(tc[ti*3+1]*landDim)|0,bb=(tc[ti*3+2]*landDim)|0;
+if(ter.deposits){
+const dom=dominantResource(ter.deposits,ti);
+if(dom){
+const rich=ter.deposits[dom.id][ti];
+const alpha=Math.min(0.85,rich*0.9+0.15);
+const invA=1-alpha;
+br=(br*invA+dom.color[0]*alpha)|0;
+bg=(bg*invA+dom.color[1]*alpha)|0;
+bb=(bb*invA+dom.color[2]*alpha)|0;}}
+d[pi4]=br;d[pi4+1]=bg;d[pi4+2]=bb;d[pi4+3]=255;}
 }else if(vm==="moisture"){
 // Moisture overlay — brown (dry) → yellow → green → teal → blue (wet)
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
@@ -1245,7 +1269,9 @@ const wkmh=Math.round(wspd*100); // normalized → km/h (median ~18 km/h)
 // Direction = where the wind is blowing TO
 const wdeg=((Math.atan2(-wdy,wdx)*180/Math.PI)+360)%360;
 const wdir=["E","NE","N","NW","W","SW","S","SE"][Math.round(wdeg/45)%8];
-setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh});
+// Resource info at this tile
+const tileRes=terTi>=0&&terRef.current&&terRef.current.deposits?tileResourceSummary(terRef.current.deposits,terTi):[];
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
@@ -1347,6 +1373,15 @@ border:"1px solid rgba(201,184,122,0.15)"}}>
 <div><span style={{color:"#8a8474"}}>Fert:</span> {(hoverInfo.fert*100).toFixed(0)}%</div>
 <div><span style={{color:"#8a8474"}}>Wind:</span> {hoverInfo.wkmh} km/h {hoverInfo.wdir}</div>
 <div><span style={{color:"#8a8474"}}>Lat:</span> {(hoverInfo.lat*90).toFixed(1)}°</div>
+{hoverInfo.resources&&hoverInfo.resources.length>0&&<>
+<div style={{height:1,background:"rgba(201,184,122,0.12)",margin:"3px 0"}} />
+{hoverInfo.resources.slice(0,4).map(r=>(
+<div key={r.id} style={{display:"flex",alignItems:"center",gap:4}}>
+<span style={{display:"inline-block",width:7,height:7,borderRadius:1,background:`rgb(${r.color.join(",")})`}} />
+<span style={{color:`rgb(${r.color.map(c=>Math.min(255,c+40)).join(",")})`}}>{r.label}</span>
+<span style={{color:"#6a6458",fontSize:9}}>{(r.richness*100).toFixed(0)}%</span>
+</div>))}
+</>}
 </div>}
 
 {/* Biome legend — BOTTOM LEFT */}
@@ -1357,6 +1392,17 @@ borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14p
 <span style={{display:"inline-block",width:10,height:8,borderRadius:1,flexShrink:0,
 background:`rgb(${BC[bi][0]},${BC[bi][1]},${BC[bi][2]})`}} />
 <span>{BN[bi]}</span></div>))}</div>}
+
+{/* Resource legend — BOTTOM LEFT */}
+{viewMode==="resources"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.82)",
+borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
+{RESOURCES.map(r=>(
+<div key={r.id} style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
+<span style={{display:"inline-block",width:10,height:8,borderRadius:1,flexShrink:0,
+background:`rgb(${r.color.join(",")})`}} />
+<span>{r.label}</span>
+<span style={{color:"#5a5448",fontSize:8,marginLeft:2}}>{r.era}</span>
+</div>))}</div>}
 
 {/* Stats — top right of map area */}
 <div style={{position:"absolute",top:6,right:6,background:"rgba(6,8,16,0.85)",borderRadius:3,padding:"4px 10px",
@@ -1370,7 +1416,7 @@ display:"flex",gap:12,fontSize:11,color:"#c9b87a",pointerEvents:"none"}}>
 <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",
 background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"6px 12px",
 display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["value","Value"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
+{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["value","Value"],["resources","Resources"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
 style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
 color:viewMode===k?"#c9b87a":"#5a5448",padding:"6px 14px",fontSize:13}}>{label}</button>))}
