@@ -36,6 +36,37 @@ return[Math.sqrt(d1),Math.sqrt(d2)];}
 function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};}
 
 const RES=2;
+// ── Mercator projection helpers ──
+// Map cuts off at ±MAX_LAT (standard Web Mercator uses 85.051°)
+const MAX_LAT_DEG = 85;
+const MAX_LAT = MAX_LAT_DEG * Math.PI / 180;
+const MERC_MAX = Math.log(Math.tan(Math.PI / 4 + MAX_LAT / 2)); // ~3.13
+
+// Screen tile Y → data Y (inverse Mercator: screen space → equirectangular)
+// sy: screen tile row (0=north, CH-1=south), returns data pixel row (0-H)
+function screenYtoDataY(sy, CH, H) {
+  // Map screen Y to Mercator range [-MERC_MAX, +MERC_MAX]
+  const mercY = MERC_MAX - (sy / CH) * 2 * MERC_MAX; // north=+MERC_MAX, south=-MERC_MAX
+  // Inverse Mercator: mercY → latitude in radians
+  const latRad = 2 * Math.atan(Math.exp(mercY)) - Math.PI / 2;
+  // Latitude → data Y (equirectangular: lat +90°=row0, lat -90°=rowH)
+  const latDeg = latRad * 180 / Math.PI;
+  return Math.max(0, Math.min(H - 1, ((90 - latDeg) / 180) * H));
+}
+
+// Data Y → screen tile Y (forward Mercator: equirectangular → screen space)
+// dy: data pixel row (0=north, H=south), returns screen tile row (0-CH)
+function dataYtoScreenY(dy, H, CH) {
+  // Data Y → latitude in degrees
+  const latDeg = 90 - (dy / H) * 180;
+  const latClamped = Math.max(-MAX_LAT_DEG, Math.min(MAX_LAT_DEG, latDeg));
+  const latRad = latClamped * Math.PI / 180;
+  // Forward Mercator: lat → mercY
+  const mercY = Math.log(Math.tan(Math.PI / 4 + latRad / 2));
+  // MercY → screen Y
+  return Math.max(0, Math.min(CH - 1, ((MERC_MAX - mercY) / (2 * MERC_MAX)) * CH));
+}
+
 let _tecParams = {};
 
 // Static climate: no ice ages or sea level changes
@@ -812,8 +843,10 @@ useEffect(()=>{generateExtraMaps();},[seed,mapCount,generateExtraMaps]);
 // Build terrain RGB cache at tile resolution (one entry per tile)
 const updateTerrainCache=useCallback((w)=>{
 const buf=new Uint8Array(CW*CH*3);const sl=0;
-for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
+for(let ty=0;ty<CH;ty++){
+const dataY=Math.round(screenYtoDataY(ty,CH,H));
+for(let tx=0;tx<CW;tx++){
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,dataY);
 const si=sy*W+sx;const e=w.elevation[si],m=w.moisture[si];
 const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
@@ -835,7 +868,7 @@ else if(maxRiv>0){const a=0.45+maxRiv/255*0.45;
 pr=(r*(1-a)+22*a+.5)|0;pg=(g*(1-a)+52*a+.5)|0;pb=(b*(1-a)+132*a+.5)|0;}
 else if(e>sl){if(hasSwamp){pr=40;pg=58;pb=38;}
 else if(hasFlood){const a=0.4;pr=(r*(1-a)+55*a+.5)|0;pg=(g*(1-a)+110*a+.5)|0;pb=(b*(1-a)+40*a+.5)|0;}}
-const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}
+const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}}
 return buf;},[]);
 
 // Composite render: terrain + tribe overlay into single canvas
@@ -854,16 +887,14 @@ if(vm==="depth"){
 // Find actual min/max elevation
 let eMin=Infinity,eMax=-Infinity;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const si=Math.min(H-1,ty*RES)*W+Math.min(W-1,tx*RES);
+const si=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)))*W+Math.min(W-1,tx*RES);
 const e=w.elevation[si];if(e<eMin)eMin=e;if(e>eMax)eMax=e;}
-// Sea mode: floor is 0 (sea level), all ocean = black
-// Floor mode: floor is actual minimum, deepest trench = black
 const floor=depthFromSeaRef.current?0:eMin;
 const fullRange=eMax-floor||1;
 const ceil=depthCeilRef.current;
 const range=fullRange*ceil||1;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];
 const v=Math.min(255,Math.max(0,((e-floor)/range)*255))|0;
 const pi4=ti<<2;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=v;d[pi4+3]=255;}
@@ -873,7 +904,7 @@ const wX=w.windX,wY=w.windY;
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
 const tc=terrainCache.current;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const pi4=ti<<2;
 const e=w.elevation[si];
 const vx=wX?wX[si]:0,vy=wY?wY[si]:0;
@@ -899,7 +930,7 @@ d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="power"){
 // Power view — one pixel per tile
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
 const e=w.elevation[sy*W+sx],ow=ter.owner[ti];let r,g,b;
 if(e<=sl){r=4;g=5;b=12;}
 else if(ow>=0){r=(tcR[ow]*0.15+10.5)|0;g=(tcG[ow]*0.15+10.5)|0;b=(tcB[ow]*0.15+10.5)|0;}
@@ -919,7 +950,7 @@ const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 // Tile value overlay — green (high value) → yellow → red (low value)
 // Value = fertility + river bonus + coast bonus + moderate elevation bonus
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
 if(e<=sl){d[pi4]=8;d[pi4+1]=12;d[pi4+2]=22;d[pi4+3]=255;continue;}
 let v=ter.tFert[ti];
@@ -942,7 +973,7 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else if(vm==="moisture"){
 // Moisture overlay — brown (dry) → yellow → green → teal → blue (wet)
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
 if(e<=sl){// Ocean: dim blue
 d[pi4]=8;d[pi4+1]=15;d[pi4+2]=35;d[pi4+3]=255;continue;}
@@ -960,7 +991,7 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else if(vm==="temperature"){
 // Temperature overlay — blue (cold) → cyan → green → yellow → orange → red (hot)
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
 if(e<=sl){// Ocean: show temperature with slight blue tint
 const t=w.temperature[si];
@@ -1001,7 +1032,7 @@ const wy=py+fbm(nx*1.5+250,ny*1.5+250,4,2,0.5)*12+fbm(nx*4+350,ny*4+350,3,2,0.5)
 const sx2=Math.max(0,Math.min(W-1,Math.round(wx))),sy2=Math.max(0,Math.min(H-1,Math.round(wy)));
 return w.pixPlate[sy2*W+sx2];};
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
 const myP=plateAt(sx,sy);let boundary=false;
 for(let dy=-RES;dy<=RES&&!boundary;dy+=RES)for(let dx=-RES;dx<=RES&&!boundary;dx+=RES){
 if(!dx&&!dy)continue;
@@ -1012,7 +1043,7 @@ ctx.putImageData(img,0,0);
 // Draw all tribe centers (tile coords — canvas is CW×CH)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
 if(!centers||ter.tribeSizes[st]<=0)continue;const cr=tcR[st],cg=tcG[st],cb=tcB[st];
-for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=centers[ci].y+0.5;
+for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=dataYtoScreenY(centers[ci].y*RES,H,CH)+0.5;
 const isCapital=ci===0,r2=isCapital?2.5:1.5;
 ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
 ctx.fillStyle=isCapital?`rgb(${cr},${cg},${cb})`:`rgba(${cr},${cg},${cb},0.7)`;ctx.fill();
@@ -1033,8 +1064,8 @@ const wX=w.windX,wY=w.windY;
 ctx.lineCap="round";
 for(let i=0;i<particles.length;i++){
 const p=particles[i];
-// Sample wind at particle position
-const sx=Math.min(W-1,(p.x*RES)|0),sy=Math.min(H-1,(p.y*RES)|0),si=sy*W+sx;
+// Sample wind at particle position (screen → data via Mercator)
+const sx=Math.min(W-1,(p.x*RES)|0),sy=Math.min(H-1,Math.round(screenYtoDataY(p.y,CH,H))),si=sy*W+sx;
 const vx=wX[si]||0,vy=wY[si]||0;
 const spd=Math.sqrt(vx*vx+vy*vy);
 // Move particle along wind (speed scaled for visual effect)
@@ -1049,7 +1080,7 @@ if(p.x<0||p.x>=CW||p.y<0||p.y>=CH||p.age>MAX_AGE||spd<0.002){
 let bestX=Math.random()*CW,bestY=Math.random()*CH,bestSpd=0;
 for(let t=0;t<3;t++){
 const cx=Math.random()*CW,cy=Math.random()*CH;
-const csx=Math.min(W-1,(cx*RES)|0),csy=Math.min(H-1,(cy*RES)|0);
+const csx=Math.min(W-1,(cx*RES)|0),csy=Math.min(H-1,Math.round(screenYtoDataY(cy,CH,H)));
 const cvx=wX[csy*W+csx]||0,cvy=wY[csy*W+csx]||0;
 const cs=cvx*cvx+cvy*cvy;
 if(cs>bestSpd){bestSpd=cs;bestX=cx;bestY=cy;}}
@@ -1087,7 +1118,7 @@ if(intensity>0.3){ctx.beginPath();ctx.moveTo(tx2+2,ty2);ctx.lineTo(tx2,ty2+2);ct
 for(let st=0;st<ter.tribeSizes.length;st++){if(ter.tribeSizes[st]<=0)continue;
 const centers=ter.tribeCenters[st];if(!centers)continue;
 const cr=tcR[st],cg=tcG[st],cb=tcB[st];
-for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=centers[ci].y+0.5;
+for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=dataYtoScreenY(centers[ci].y*RES,H,CH)+0.5;
 const isCapital=ci===0,r2=isCapital?3:2;
 ctx.beginPath();ctx.arc(cx2,cy2,r2+2,0,Math.PI*2);
 ctx.fillStyle=`rgba(${cr},${cg},${cb},0.25)`;ctx.fill();
@@ -1160,7 +1191,7 @@ const onCanvasMove=useCallback((ev)=>{
 const c=canvasRef.current;if(!c||!worldRef.current)return;
 const r=c.getBoundingClientRect();
 const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
-const wx=Math.floor(sx)*RES,wy=Math.floor(sy)*RES;
+const wx=Math.floor(sx)*RES,wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const w=worldRef.current,i=wy*1920+wx;
 if(wx<0||wx>=1920||wy<0||wy>=960){setHoverInfo(null);return;}
 const elev=w.elevation[i]||0;
