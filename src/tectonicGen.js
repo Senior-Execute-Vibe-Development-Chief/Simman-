@@ -309,9 +309,10 @@ for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const fx = x / ES, fy = y / ES;
   const ix = Math.min(ewW - 2, fx | 0), iy = Math.min(ewH - 2, fy | 0);
+  const ixr = (ix + 1) % ewW; // wrap X
   const dx = fx - ix, dy = fy - iy;
-  rawElev[y * W + x] = (rawElevCoarse[iy * ewW + ix] * (1 - dx) + rawElevCoarse[iy * ewW + ix + 1] * dx) * (1 - dy)
-    + (rawElevCoarse[(iy + 1) * ewW + ix] * (1 - dx) + rawElevCoarse[(iy + 1) * ewW + ix + 1] * dx) * dy;
+  rawElev[y * W + x] = (rawElevCoarse[iy * ewW + ix] * (1 - dx) + rawElevCoarse[iy * ewW + ixr] * dx) * (1 - dy)
+    + (rawElevCoarse[(iy + 1) * ewW + ix] * (1 - dx) + rawElevCoarse[(iy + 1) * ewW + ixr] * dx) * dy;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -684,14 +685,18 @@ const precompute = (fn) => {
   const d = new Float32Array(ngW * ngH);
   for (let gy = 0; gy < ngH; gy++) for (let gx = 0; gx < ngW; gx++)
     d[gy * ngW + gx] = fn(gx * NG / W, gy * NG / H);
+  // Copy first column to last for seamless X wrapping
+  for (let gy = 0; gy < ngH; gy++)
+    d[gy * ngW + (ngW - 1)] = d[gy * ngW + 0];
   return d;
 };
 const sg = (d, px, py) => {
   const fx = px / NG, fy = py / NG;
   const ix = Math.min(ngW - 2, fx | 0), iy = Math.min(ngH - 2, fy | 0);
+  const ixr = (ix + 1) % ngW; // wrap X for seamless globe
   const dx = fx - ix, dy = fy - iy;
-  return (d[iy * ngW + ix] * (1 - dx) + d[iy * ngW + ix + 1] * dx) * (1 - dy)
-    + (d[(iy + 1) * ngW + ix] * (1 - dx) + d[(iy + 1) * ngW + ix + 1] * dx) * dy;
+  return (d[iy * ngW + ix] * (1 - dx) + d[iy * ngW + ixr] * dx) * (1 - dy)
+    + (d[(iy + 1) * ngW + ix] * (1 - dx) + d[(iy + 1) * ngW + ixr] * dx) * dy;
 };
 const nfTecWX = precompute((nx, ny) => fbm(nx * 3 + 200, ny * 3 + 200, 3, 2, 0.5));
 const nfTecWY = precompute((nx, ny) => fbm(nx * 3 + 250, ny * 3 + 250, 3, 2, 0.5));
@@ -1407,9 +1412,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const fx = x / WG, fy = y / WG;
   const ix = Math.min(wW - 2, fx | 0), iy = Math.min(wH - 2, fy | 0);
   const dx = fx - ix, dy = fy - iy;
-  const i00 = iy * wW + ix, i10 = iy * wW + Math.min(wW - 1, ix + 1);
-  const i01 = Math.min(wH - 1, iy + 1) * wW + ix;
-  const i11 = Math.min(wH - 1, iy + 1) * wW + Math.min(wW - 1, ix + 1);
+  const ixr = (ix + 1) % wW;
+  const iy1 = Math.min(wH - 1, iy + 1);
+  const i00 = iy * wW + ix, i10 = iy * wW + ixr;
+  const i01 = iy1 * wW + ix, i11 = iy1 * wW + ixr;
   const fi = y * W + x;
   fullWindX[fi] = (windX[i00] * (1 - dx) + windX[i10] * dx) * (1 - dy)
     + (windX[i01] * (1 - dx) + windX[i11] * dx) * dy;
@@ -1482,8 +1488,9 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const fx = x / 2, fy = y / 2;
   const ix = Math.min(mW - 2, fx | 0), iy = Math.min(mH - 2, fy | 0);
   const dx2 = fx - ix, dy2 = fy - iy;
-  windTemp[y * W + x] = (tGrid[iy * mW + ix] * (1 - dx2) + tGrid[iy * mW + Math.min(mW - 1, ix + 1)] * dx2) * (1 - dy2)
-    + (tGrid[(iy + 1) * mW + ix] * (1 - dx2) + tGrid[(iy + 1) * mW + Math.min(mW - 1, ix + 1)] * dx2) * dy2;
+  const ixr2 = (ix + 1) % mW;
+  windTemp[y * W + x] = (tGrid[iy * mW + ix] * (1 - dx2) + tGrid[iy * mW + ixr2] * dx2) * (1 - dy2)
+    + (tGrid[(iy + 1) * mW + ix] * (1 - dx2) + tGrid[(iy + 1) * mW + ixr2] * dx2) * dy2;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1956,9 +1963,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const fx = x / WG, fy = y / WG;
   const ix = Math.min(wW - 2, fx | 0), iy = Math.min(wH - 2, fy | 0);
   const dx = fx - ix, dy = fy - iy;
-  const i00 = iy * wW + ix, i10 = iy * wW + Math.min(wW - 1, ix + 1);
-  const i01 = Math.min(wH - 1, iy + 1) * wW + ix;
-  const i11 = Math.min(wH - 1, iy + 1) * wW + Math.min(wW - 1, ix + 1);
+  const ixr = (ix + 1) % wW;
+  const iy1 = Math.min(wH - 1, iy + 1);
+  const i00 = iy * wW + ix, i10 = iy * wW + ixr;
+  const i01 = iy1 * wW + ix, i11 = iy1 * wW + ixr;
   const fi = y * W + x;
   fullWindX[fi] = (windX[i00] * (1 - dx) + windX[i10] * dx) * (1 - dy)
     + (windX[i01] * (1 - dx) + windX[i11] * dx) * dy;

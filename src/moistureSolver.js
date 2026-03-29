@@ -367,7 +367,7 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
     const fx = x / 2, fy = y / 2;
     const ix = Math.min(mW - 2, fx | 0), iy = Math.min(mH - 2, fy | 0);
     const dx = fx - ix, dy = fy - iy;
-    const sxr = Math.min(mW - 1, ix + 1);
+    const sxr = (ix + 1) % mW; // wrap X for seamless globe
     const fi = y * W + x;
     if (elevation[fi] <= 0) {
       result[fi] = 0.5;
