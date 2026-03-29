@@ -37,11 +37,11 @@ function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16
 
 const RES=2;
 // ── Mercator projection helpers ──
-const MAX_LAT_DEG = 88;
+const MAX_LAT_DEG = 82;
 const MAX_LAT = MAX_LAT_DEG * Math.PI / 180;
 const MERC_MAX = Math.log(Math.tan(Math.PI / 4 + MAX_LAT / 2));
 const CW_FLAT = 960, CH_FLAT = 480; // equirectangular canvas
-const CH_MERC = Math.round(CW_FLAT * MERC_MAX / Math.PI); // Mercator canvas height (~960)
+const CH_MERC = 620; // Mercator canvas height — slightly horizontal rectangle
 let _mercator = false; // module-level flag for projection functions
 
 function screenYtoDataY(sy, ch, H) {
