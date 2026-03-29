@@ -93,6 +93,40 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     const atmosMesh = new Mesh(atmosGeo, atmosMat);
     scene.add(atmosMesh);
 
+    // Atmospheric scattering overlay — blue haze ON the globe surface
+    // Thicker at steep viewing angles (edges), thinner looking straight down
+    const scatterGeo = new SphereGeometry(1.001, 128, 64);
+    const scatterMat = new ShaderMaterial({
+      vertexShader: `
+        varying vec3 vViewPos;
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vViewPos = (modelViewMatrix * vec4(position, 1.0)).xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vViewPos;
+        varying vec3 vNormal;
+        void main() {
+          vec3 viewDir = normalize(-vViewPos);
+          float NdotV = max(0.0, dot(vNormal, viewDir));
+          // Fresnel: more atmosphere at grazing angles
+          float scatter = pow(1.0 - NdotV, 2.5) * 0.45;
+          // Subtle blue tint even at center (thin atmosphere everywhere)
+          scatter += 0.03;
+          gl_FragColor = vec4(0.45, 0.65, 1.0, scatter);
+        }
+      `,
+      blending: AdditiveBlending,
+      transparent: true,
+      depthWrite: false,
+    });
+    const scatterMesh = new Mesh(scatterGeo, scatterMat);
+    scatterMesh.renderOrder = 1; // render after globe
+    scene.add(scatterMesh);
+
     // Camera orbit state — camera moves around fixed globe + sun
     let dragging = false, prevX = 0, prevY = 0;
     let camTheta = 0; // horizontal angle (longitude)
