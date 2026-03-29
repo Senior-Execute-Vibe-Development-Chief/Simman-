@@ -168,6 +168,7 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
     const candidates = [];
     for (let ti = 0; ti < N; ti++) {
       if (tElev[ti] <= 0) continue;
+      if (tTemp[ti] < 0.10) continue; // exclude polar ice / permafrost
       if (candidateTest(ti)) {
         const tx2 = ti % tw, ty2 = (ti - tx2) / tw;
         const suitability = scoreFn ? scoreFn(ti) : 0.5;
