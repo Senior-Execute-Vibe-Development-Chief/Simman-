@@ -375,22 +375,19 @@ const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
 return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
 
-// ── River generation: priority-flood depression fill + D8 flow accumulation ──
-// This produces realistic dendritic river networks where tributaries merge naturally.
-// Only the largest rivers (by total upstream catchment area) are displayed.
+// ── River generation: priority-flood + D8 flow accumulation ──
+// Rivers are invisible at global scale — only lakes, deltas, and floodplains render.
+// The river/accumulation data is kept for gameplay (fertility, defense).
 function generateRivers(elev,moist,W,H,rng){
 const N=W*H;
-const lake=new Uint8Array(N),floodplain=new Uint8Array(N),delta=new Uint8Array(N);
+const rawLake=new Uint8Array(N),floodplain=new Uint8Array(N),delta=new Uint8Array(N);
 const D8X=[-1,0,1,-1,1,-1,0,1],D8Y=[-1,-1,-1,0,0,1,1,1];
 
 // ── Phase 1: Priority-flood depression filling ──
-// Fill internal depressions so every land pixel can drain to ocean.
-// Uses a min-heap on elevation to propagate from ocean boundary inward.
 const filled=new Float32Array(N);filled.set(elev);
-const INF=1e9;
 const visited=new Uint8Array(N);
 
-// Simple binary min-heap keyed on elevation
+// Min-heap keyed on elevation
 const heapIdx=new Int32Array(N+1);let heapN=0;
 function heapUp(k){const v=heapIdx[k],ve=filled[v];
 while(k>1){const p=k>>1;if(filled[heapIdx[p]]<=ve)break;
@@ -401,22 +398,18 @@ if(filled[heapIdx[c]]>=ve)break;heapIdx[k]=heapIdx[c];k=c;}heapIdx[k]=v;}
 function heapPush(i){heapIdx[++heapN]=i;heapUp(heapN);}
 function heapPop(){const v=heapIdx[1];heapIdx[1]=heapIdx[heapN--];if(heapN>0)heapDown(1);return v;}
 
-// Seed heap with ocean pixels and map edges (they drain freely)
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elev[i]<=0||y===0||y===H-1){visited[i]=1;heapPush(i);}
-else filled[i]=INF;}
-// Flood inward: each unvisited neighbor gets max(own elevation, parent's filled level)
+else filled[i]=1e9;}
 while(heapN>0){const ci=heapPop();const cx=ci%W,cy=(ci/W)|0;
 for(let d=0;d<8;d++){
 const nx=(cx+D8X[d]+W)%W,ny=cy+D8Y[d];if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;if(visited[ni])continue;visited[ni]=1;
 const ne=elev[ni]>filled[ci]?elev[ni]:filled[ci]+1e-5;
 filled[ni]=ne;heapPush(ni);
-// Mark filled depressions as lakes
-if(ne>elev[ni]+0.005&&elev[ni]>0)lake[ni]=1;}}
+if(ne>elev[ni]+0.004&&elev[ni]>0)rawLake[ni]=1;}}
 
 // ── Phase 2: D8 flow direction on filled DEM ──
-// For each land pixel, find steepest downhill neighbor.
 const flowDir=new Int8Array(N).fill(-1);
 for(let y=1;y<H-1;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(filled[i]<=0)continue;
@@ -429,19 +422,14 @@ const drop=(filled[i]-filled[ni])/dist;
 if(drop>bestDrop){bestDrop=drop;bestD=d;}}
 flowDir[i]=bestD;}
 
-// ── Phase 3: Flow accumulation ──
-// Each pixel accumulates the count of all upstream pixels draining through it.
-// Weight by moisture so wet regions produce stronger rivers.
+// ── Phase 3: Flow accumulation (topological BFS) ──
 const accum=new Float32Array(N);
-// Count incoming edges to do topological sort
 const inDeg=new Uint8Array(N);
 for(let i=0;i<N;i++){if(flowDir[i]<0)continue;
 const x=i%W,y=(i/W)|0,d=flowDir[i];
 const nx=(x+D8X[d]+W)%W,ny=y+D8Y[d];if(ny<0||ny>=H)continue;
 inDeg[ny*W+nx]++;}
-// Initialize accumulation with moisture-weighted area (wetter = more runoff)
 for(let i=0;i<N;i++){if(filled[i]>0)accum[i]=0.3+moist[i]*0.7;}
-// Topological BFS: process pixels with no remaining upstream first
 const queue=new Int32Array(N);let qHead=0,qTail=0;
 for(let i=0;i<N;i++)if(filled[i]>0&&inDeg[i]===0)queue[qTail++]=i;
 while(qHead<qTail){const ci=queue[qHead++];
@@ -451,45 +439,67 @@ const nx=(cx+D8X[d]+W)%W,ny=cy+D8Y[d];if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;accum[ni]+=accum[ci];
 if(--inDeg[ni]===0)queue[qTail++]=ni;}
 
-// ── Phase 4: Threshold & render ──
-// Only show pixels above a flow threshold — this naturally selects major rivers.
-// The threshold is adaptive: show roughly the top rivers by accumulated flow.
+// ── Phase 4: River threshold (for gameplay data, NOT rendering) ──
 let mx=0;for(let i=0;i<N;i++)if(accum[i]>mx)mx=accum[i];
-// Adaptive threshold: target ~0.15% of land pixels as river pixels for global-scale view
+// Rivers at ~0.2% of land area for gameplay mechanics
 let landCount=0;for(let i=0;i<N;i++)if(elev[i]>0)landCount++;
-const targetRiverPx=Math.max(800,landCount*0.0015);
-// Find threshold by sampling the accumulation distribution
+const targetPx=Math.max(600,landCount*0.002);
 const sampleBins=1000;const binCounts=new Uint32Array(sampleBins);
 for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<1)continue;
 const b=Math.min(sampleBins-1,(Math.sqrt(accum[i]/mx)*sampleBins)|0);binCounts[b]++;}
 let cumul=0,thresh=mx;
 for(let b=sampleBins-1;b>=0;b--){cumul+=binCounts[b];
-if(cumul>=targetRiverPx){thresh=(b/sampleBins)**2*mx;break;}}
-thresh=Math.max(thresh,mx*0.002);// absolute minimum
-
-const base=new Uint8Array(N);
-for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<thresh)continue;
-const norm=Math.sqrt(accum[i]/mx);
-base[i]=Math.min(255,Math.round(norm*200)+55);}
-
-// Width expansion: strong rivers get wider (2-3px for major rivers)
+if(cumul>=targetPx){thresh=(b/sampleBins)**2*mx;break;}}
+thresh=Math.max(thresh,mx*0.001);
+// River buffer: gameplay only (not rendered on map)
 const river=new Uint8Array(N);
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(!base[i])continue;
-const r=base[i]>200?3:base[i]>140?2:base[i]>80?1:0;
-for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
-const nx=((x+dx)%W+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;const d2=dx*dx+dy*dy;if(d2>r*r)continue;
-if(elev[ni]>0){const fade=Math.round(base[i]*(1-Math.sqrt(d2)/(r+1)*0.35));
-river[ni]=Math.max(river[ni],fade);}}}
+for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<thresh)continue;
+river[i]=Math.min(255,Math.round(Math.sqrt(accum[i]/mx)*200)+55);}
 
-// ── Phase 5: Deltas at river mouths ──
-// Where a strong river pixel flows into ocean, stamp a delta
+// ── Phase 5: Accumulation-based lakes ──
+// Where rivers carry massive flow across flat terrain, water pools into lakes.
+// This creates the Great Lakes, Lake Victoria, Caspian-type features.
+const lakeThresh=mx*0.08;// top 8% of max flow = big rivers that form lakes
+for(let y=2;y<H-2;y++)for(let x=0;x<W;x++){const i=y*W+x;
+if(elev[i]<=0||accum[i]<lakeThresh)continue;
+// Check local flatness: if terrain is very flat around a high-flow pixel, it pools
+let flatCount=0;const R=3;
+for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){
+const nx=(x+dx+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
+if(Math.abs(elev[ny*W+nx]-elev[i])<0.012)flatCount++;}
+if(flatCount>((2*R+1)**2)*0.6){// >60% of surrounding area is flat
+const lR=Math.min(6,Math.max(2,Math.round(Math.sqrt(accum[i]/mx)*5)));
+for(let dy=-lR;dy<=lR;dy++)for(let dx=-lR;dx<=lR;dx++){
+const nx=(x+dx+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
+const ni=ny*W+nx;if(dx*dx+dy*dy>lR*lR)continue;
+if(elev[ni]>0&&Math.abs(elev[ni]-elev[i])<0.015)rawLake[ni]=1;}}}
+
+// ── Phase 6: Filter tiny lake clusters (remove < MIN_LAKE_SIZE pixels) ──
+const MIN_LAKE_SIZE=12;
+const lake=new Uint8Array(N);
+const lakeLabel=new Int32Array(N);// connected component labels
+let nextLabel=1;
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
+if(!rawLake[i]||lakeLabel[i])continue;
+// BFS flood fill to find connected component
+const comp=[];const bfs=[i];lakeLabel[i]=nextLabel;
+let head=0;
+while(head<bfs.length){const ci=bfs[head++];comp.push(ci);
+const cx=ci%W,cy=(ci/W)|0;
+for(let d=0;d<8;d++){
+const nx=(cx+D8X[d]+W)%W,ny=cy+D8Y[d];if(ny<0||ny>=H)continue;
+const ni=ny*W+nx;if(rawLake[ni]&&!lakeLabel[ni]){lakeLabel[ni]=nextLabel;bfs.push(ni);}}}
+// Keep only if large enough
+if(comp.length>=MIN_LAKE_SIZE)for(const ci of comp)lake[ci]=1;
+nextLabel++;}
+
+// ── Phase 7: Deltas at river mouths ──
 for(let y=1;y<H-1;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(elev[i]<=0||accum[i]<thresh*4)continue;
+if(elev[i]<=0||accum[i]<thresh*6)continue;
 if(flowDir[i]<0)continue;
-const d=flowDir[i],nx=(x+D8X[d]+W)%W,ny=y+D8Y[d];
-if(ny<0||ny>=H)continue;
-if(elev[ny*W+nx]<=0){// flows into ocean — delta
+const d=flowDir[i],nx2=(x+D8X[d]+W)%W,ny2=y+D8Y[d];
+if(ny2<0||ny2>=H)continue;
+if(elev[ny2*W+nx2]<=0){
 const str=Math.sqrt(accum[i]/mx);
 const dR=Math.min(10,Math.max(2,Math.round(str*8)));
 for(let dy2=-dR;dy2<=dR;dy2++)for(let dx2=-dR;dx2<=dR;dx2++){
@@ -497,7 +507,7 @@ const mx2=((x+dx2)%W+W)%W,my2=y+dy2;if(my2<0||my2>=H)continue;
 if(dx2*dx2+dy2*dy2>dR*dR)continue;
 const mi=my2*W+mx2;if(elev[mi]>-0.02&&elev[mi]<0.025)delta[mi]=1;}}}
 
-// ── Phase 6: Floodplains adjacent to rivers on flat terrain ──
+// ── Phase 8: Floodplains (gameplay only, not rendered) ──
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(!river[i]||elev[i]<=0)continue;
 const fR=river[i]>150?5:river[i]>80?3:2;
 for(let dy=-fR;dy<=fR;dy++)for(let dx=-fR;dx<=fR;dx++){
@@ -893,14 +903,11 @@ let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
-// River/delta/lake overlay on globe (nearest-neighbor sample)
+// Lake/delta/swamp overlay on globe (rivers invisible at global scale)
 if(e>sl){const si=sy0*W+sx0;
 if(w.delta&&w.delta[si]){r=30;g=85;b=55;}
 else if(w.lake&&w.lake[si]){r=28;g=62;b=112;}
-else if(w.river&&w.river[si]){const a=0.45+w.river[si]/255*0.45;
-r=(r*(1-a)+22*a+.5)|0;g=(g*(1-a)+52*a+.5)|0;b=(b*(1-a)+132*a+.5)|0;}
-else if(w.swamp&&w.swamp[si]){r=40;g=58;b=38;}
-else if(w.floodplain&&w.floodplain[si]){const a=0.4;r=(r*(1-a)+55*a+.5)|0;g=(g*(1-a)+110*a+.5)|0;b=(b*(1-a)+40*a+.5)|0;}}
+else if(w.swamp&&w.swamp[si]){r=40;g=58;b=38;}}
 if(polarBlend>0){const pr=e>0?230:20,pg=e>0?235:40,pb=e>0?240:80;
 r=Math.round(r*(1-polarBlend)+pr*polarBlend);
 g=Math.round(g*(1-polarBlend)+pg*polarBlend);
@@ -943,22 +950,17 @@ const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
-// Scan tile block for most prominent feature overlay
-let hasDelta=false,hasLake=false,maxRiv=0,hasSwamp=false,hasFlood=false;
+// Scan tile block for visible water features (lakes, deltas, swamps only — rivers invisible at global scale)
+let hasDelta=false,hasLake=false,hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
 const wi=Math.min(H-1,sy+dy)*W+Math.min(W-1,sx+dx);
 if(w.delta&&w.delta[wi])hasDelta=true;
 if(w.lake&&w.lake[wi]&&e>sl)hasLake=true;
-if(w.river&&w.river[wi]&&e>sl&&w.river[wi]>maxRiv)maxRiv=w.river[wi];
-if(w.swamp&&w.swamp[wi])hasSwamp=true;
-if(w.floodplain&&w.floodplain[wi])hasFlood=true;}
+if(w.swamp&&w.swamp[wi])hasSwamp=true;}
 let pr=r,pg=g,pb=b;
 if(hasDelta){pr=30;pg=85;pb=55;}
 else if(hasLake){pr=28;pg=62;pb=112;}
-else if(maxRiv>0){const a=0.45+maxRiv/255*0.45;
-pr=(r*(1-a)+22*a+.5)|0;pg=(g*(1-a)+52*a+.5)|0;pb=(b*(1-a)+132*a+.5)|0;}
-else if(e>sl){if(hasSwamp){pr=40;pg=58;pb=38;}
-else if(hasFlood){const a=0.4;pr=(r*(1-a)+55*a+.5)|0;pg=(g*(1-a)+110*a+.5)|0;pb=(b*(1-a)+40*a+.5)|0;}}
+else if(e>sl&&hasSwamp){pr=40;pg=58;pb=38;}
 const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}}
 return buf;},[CH]);
 
@@ -1034,8 +1036,12 @@ const e=ter.tElev[ti],ow=ter.owner[ti];let r,g,b;
 if(e<=sl){r=6;g=8;b=16;}
 else if(ow>=0){r=tcR[ow];g=tcG[ow];b=tcB[ow];}
 else{r=22;g=20;b=18;}
-// River/lake tint on owned tiles
-if(e>sl&&ter.tRiver[ti]){const a=0.4;r=(r*(1-a)+12*a+.5)|0;g=(g*(1-a)+20*a+.5)|0;b=(b*(1-a)+45*a+.5)|0;}
+// Lake tint on owned tiles (rivers invisible at global scale)
+if(e>sl&&ter.tRiver[ti]&&w.lake){
+let tileLake=false;const px=Math.min(W-1,(ti%CW)*RES),py=Math.min(H-1,((ti/CW)|0)*RES);
+for(let dy=0;dy<RES&&!tileLake;dy++)for(let dx=0;dx<RES&&!tileLake;dx++){
+const wi=Math.min(H-1,py+dy)*W+Math.min(W-1,px+dx);if(w.lake[wi])tileLake=true;}
+if(tileLake){const a=0.4;r=(r*(1-a)+12*a+.5)|0;g=(g*(1-a)+20*a+.5)|0;b=(b*(1-a)+45*a+.5)|0;}}
 const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="value"){
 // Tile value overlay — green (high value) → yellow → red (low value)
