@@ -4,6 +4,7 @@ import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
 import { solveMoisture } from "./moistureSolver.js";
 import { isRealWindAvailable, fillRealWind } from "./realWindData.js";
+import GlobeView from "./GlobeView.jsx";
 import TuningPanel, { ParamEditor, renderPreview } from "./TuningPanel.jsx";
 import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
@@ -793,6 +794,8 @@ const[rightPanel,setRightPanel]=useState("");  // "" | "params"
 const[showTuning,setShowTuning]=useState(false);
 const[useRealWind,setUseRealWind]=useState(false);
 const[useMercator,setUseMercator]=useState(false);
+const[showGlobe,setShowGlobe]=useState(false);
+const[show3DTerrain,setShow3DTerrain]=useState(false);
 const CH=useMercator?CH_MERC:CH_FLAT;
 _mercator=useMercator;
 const[mapCount,setMapCount]=useState(1);
@@ -819,6 +822,9 @@ setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
+// Build terrain cache for globe when entering globe mode
+useEffect(()=>{if(showGlobe&&!terrainCache.current&&worldRef.current){
+terrainCache.current=updateTerrainCache(worldRef.current);}},[showGlobe,updateTerrainCache]);
 // Re-render when projection changes (canvas size changes)
 useEffect(()=>{terrainCache.current=null;imgRef.current=null;windParticlesRef.current=null;
 if(terRef.current)draw(terRef.current);},[useMercator]);
@@ -1287,9 +1293,12 @@ return(
 alignItems:"center",justifyContent:"center",cursor:mi>0?"pointer":"default",
 border:mi===0?"2px solid rgba(201,184,122,0.25)":"2px solid transparent",borderRadius:3}}
 onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
-{mi===0?<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
+{mi===0?(showGlobe?<div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
+<GlobeView terrainBuf={terrainCache.current} world={world}
+show3D={show3DTerrain} CW={CW} CH={CH_FLAT} /></div>
+:<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
 style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",
-aspectRatio:`${CW}/${CH}`}} />
+aspectRatio:`${CW}/${CH}`}} />)
 :<canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
 style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",
 width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
@@ -1362,6 +1371,12 @@ color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</bu
 <button onClick={()=>setUseMercator(!useMercator)}
 style={{...bs,background:useMercator?"rgba(180,160,100,0.25)":"transparent",border:"none",
 color:useMercator?"#c9b87a":"#5a5448",padding:"6px 12px",fontSize:12}}>{useMercator?"Mercator":"Flat"}</button>
+<button onClick={()=>setShowGlobe(!showGlobe)}
+style={{...bs,background:showGlobe?"rgba(120,180,220,0.25)":"transparent",border:"none",
+color:showGlobe?"#78b4dc":"#5a5448",padding:"6px 12px",fontSize:12}}>Globe</button>
+{showGlobe&&<label style={{fontSize:10,color:show3DTerrain?"#78b4dc":"#6a6458",cursor:"pointer",display:"flex",alignItems:"center",gap:3,padding:"0 4px"}}>
+<input type="checkbox" checked={show3DTerrain} onChange={e=>setShow3DTerrain(e.target.checked)}
+style={{accentColor:"#78b4dc",width:12,height:12}} />3D</label>}
 {(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
 <div style={{width:1,height:20,background:"rgba(201,184,122,0.15)"}} />
 <button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
