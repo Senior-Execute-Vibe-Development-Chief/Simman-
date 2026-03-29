@@ -838,11 +838,6 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     }
   }
 
-  // Suppress land at extreme polar edges (prevent wrapping artifacts)
-  if (lat > 0.88) e -= (lat - 0.88) * 2;
-  // Re-clamp ocean floor after polar suppression
-  if (e <= 0) e = Math.max(-0.04, e);
-
   elevation[i] = e;
 }
 
