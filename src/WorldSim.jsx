@@ -340,19 +340,13 @@ const npx=Math.min(W-1,wx*RES),npy=Math.min(H-1,wy*RES);
 if(elevation[npy*W+npx]<=0){coastal[ty*ctw+tx]=1;break outer;}}}}
 const emptyBuf=new Uint8Array(W*H);
 const rvr=enableRivers?generateRivers(elevation,moisture,W,H,mkRng(seed+777)):{river:emptyBuf,lake:emptyBuf,floodplain:emptyBuf,delta:emptyBuf};
-// Oases: small fertile pockets in deserts
-const oasis=new Uint8Array(W*H);
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(elevation[i]>0&&elevation[i]<0.3&&temperature[i]>0.5&&moisture[i]<0.2){
-const nv=fbm(x/W*50+200,y/H*50+200,3,2,.5);
-if(nv>0.3){oasis[i]=1;}}}
 // Swamps: low-lying wet warm terrain
 const swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,oasis,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
+return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
 
 // ── River & lake generation: trace flow downhill from wet highlands ──
 function generateRivers(elev,moist,W,H,rng){
@@ -501,19 +495,17 @@ const e=w.elevation[i],t=w.temperature[i],m=w.moisture[i];let diff=0;
 if(e>0.35)diff=Math.max(diff,Math.min(1,(e-0.35)*3));if(t>0.5&&m<0.2)diff=Math.max(diff,Math.min(0.85,(0.2-m)*3*(t-0.3)));
 if(t<0.2)diff=Math.max(diff,Math.min(0.9,(0.2-t)*4));tDiff[ti]=diff;tFert[ti]=tileFert(t,m,e);
 // Feature scan: check pixels in this tile's block for rivers, floodplains, deltas, oases, swamps
-{let hasWater=false,hasFlood=false,hasDelta=false,hasOasis=false,hasSwamp=false;
+{let hasWater=false,hasFlood=false,hasDelta=false,hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
 const wi=Math.min(w.height-1,py+dy)*w.width+Math.min(w.width-1,px+dx);
 if(w.river&&w.river[wi]>0&&e>0)hasWater=true;
 if(w.lake&&w.lake[wi]&&e>0)hasWater=true;
 if(w.floodplain&&w.floodplain[wi])hasFlood=true;
 if(w.delta&&w.delta[wi])hasDelta=true;
-if(w.oasis&&w.oasis[wi])hasOasis=true;
 if(w.swamp&&w.swamp[wi])hasSwamp=true;}
 if(hasWater){tFert[ti]=Math.min(1,tFert[ti]+0.15);tRiver[ti]=1;}
 if(hasDelta){tFert[ti]=Math.min(1,tFert[ti]+0.35);}
 else if(hasFlood){tFert[ti]=Math.min(1,tFert[ti]+0.25);}
-if(hasOasis){tFert[ti]=Math.min(1,tFert[ti]+0.3);tDiff[ti]=Math.max(0,tDiff[ti]-0.3);}
 if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+0.25);}}}
 // Find multiple spread-out seed locations for starting tribes
 const NUM_TRIBES=(w.preset==="earth"||w.preset==="earth_sim")?8:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:6;const minSpacing=Math.round(tw*0.12);
@@ -828,14 +820,13 @@ if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
 // Scan tile block for most prominent feature overlay
-let hasDelta=false,hasLake=false,maxRiv=0,hasSwamp=false,hasOasis=false,hasFlood=false;
+let hasDelta=false,hasLake=false,maxRiv=0,hasSwamp=false,hasFlood=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
 const wi=Math.min(H-1,sy+dy)*W+Math.min(W-1,sx+dx);
 if(w.delta&&w.delta[wi])hasDelta=true;
 if(w.lake&&w.lake[wi]&&e>sl)hasLake=true;
 if(w.river&&w.river[wi]&&e>sl&&w.river[wi]>maxRiv)maxRiv=w.river[wi];
 if(w.swamp&&w.swamp[wi])hasSwamp=true;
-if(w.oasis&&w.oasis[wi])hasOasis=true;
 if(w.floodplain&&w.floodplain[wi])hasFlood=true;}
 let pr=r,pg=g,pb=b;
 if(hasDelta){pr=30;pg=85;pb=55;}
@@ -843,7 +834,6 @@ else if(hasLake){pr=28;pg=62;pb=112;}
 else if(maxRiv>0){const a=0.45+maxRiv/255*0.45;
 pr=(r*(1-a)+22*a+.5)|0;pg=(g*(1-a)+52*a+.5)|0;pb=(b*(1-a)+132*a+.5)|0;}
 else if(e>sl){if(hasSwamp){pr=40;pg=58;pb=38;}
-else if(hasOasis){pr=50;pg=120;pb=45;}
 else if(hasFlood){const a=0.4;pr=(r*(1-a)+55*a+.5)|0;pg=(g*(1-a)+110*a+.5)|0;pb=(b*(1-a)+40*a+.5)|0;}}
 const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}
 return buf;},[]);
@@ -1152,13 +1142,11 @@ setImportStatus(`Heightmap loaded (${img.width}\u00d7${img.height})`);
 const emptyArr=new Uint8Array(W*H);
 const rvr=showRiversRef.current?generateRivers(w.elevation,w.moisture,W,H,mkRng(seed+777)):{river:emptyArr,lake:emptyArr,floodplain:emptyArr,delta:emptyArr};
 w.river=rvr.river;w.lake=rvr.lake;w.floodplain=rvr.floodplain;w.delta=rvr.delta;
-const oasis=new Uint8Array(W*H),swamp=new Uint8Array(W*H);
+const swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(w.elevation[i]>0&&w.elevation[i]<0.3&&w.temperature[i]>0.5&&w.moisture[i]<0.2){
-const nv=fbm(x/W*50+200,y/H*50+200,3,2,.5);if(nv>0.3){oasis[i]=1;}}
 if(w.elevation[i]>0&&w.elevation[i]<0.025&&w.moisture[i]>0.45&&w.temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);if(nv>-0.1)swamp[i]=1;}}
-w.oasis=oasis;w.swamp=swamp;
+w.swamp=swamp;
 importedWorldRef.current=w;presetRef.current="import";setPreset("import");
 setSeed(Math.floor(Math.random()*999999));
 setTimeout(()=>setImportStatus(null),4000);
