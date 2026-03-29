@@ -314,6 +314,24 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   rawElev[y * W + x] = (rawElevCoarse[iy * ewW + ix] * (1 - dx) + rawElevCoarse[iy * ewW + ixr] * dx) * (1 - dy)
     + (rawElevCoarse[(iy + 1) * ewW + ix] * (1 - dx) + rawElevCoarse[(iy + 1) * ewW + ixr] * dx) * dy;
 }
+// Blend seam: cross-fade a strip at the antimeridian so left/right edges match
+{
+  const blendW = Math.round(W * 0.03); // ~3% of map width = ~58 pixels
+  for (let y = 0; y < H; y++) {
+    for (let bx = 0; bx < blendW; bx++) {
+      const t = bx / blendW; // 0 at edge, 1 at blend boundary
+      // Left edge pixel and its mirror on the right
+      const iL = y * W + bx;
+      const iR = y * W + (W - 1 - bx);
+      // Average of both sides at the seam
+      const avg = (rawElev[iL] + rawElev[iR]) * 0.5;
+      // Blend toward average near the edge, keep original further in
+      const s = 0.5 * (1 - t); // blend strength: 0.5 at edge, 0 at boundary
+      rawElev[iL] = rawElev[iL] * (1 - s) + avg * s;
+      rawElev[iR] = rawElev[iR] * (1 - s) + avg * s;
+    }
+  }
+}
 
 // ═══════════════════════════════════════════════════════
 // STEP 4b: Sea level + derive crustType from stamps
@@ -999,6 +1017,21 @@ if (p('erodeDropsPerPixel', 1.5) > 0) {
     const delta = eDAt(ix,iy)*(1-dx2)*(1-dy2) + eDAt(ix+1,iy)*dx2*(1-dy2)
       + eDAt(ix,iy+1)*(1-dx2)*dy2 + eDAt(ix+1,iy+1)*dx2*dy2;
     elevation[i] = Math.max(0.002, elevation[i] + delta);
+  }
+}
+
+// Blend final elevation seam at antimeridian
+{
+  const blendW = Math.round(W * 0.025);
+  for (let y = 0; y < H; y++) {
+    for (let bx = 0; bx < blendW; bx++) {
+      const t = bx / blendW;
+      const iL = y * W + bx, iR = y * W + (W - 1 - bx);
+      const avg = (elevation[iL] + elevation[iR]) * 0.5;
+      const s = 0.5 * (1 - t);
+      elevation[iL] = elevation[iL] * (1 - s) + avg * s;
+      elevation[iR] = elevation[iR] * (1 - s) + avg * s;
+    }
   }
 }
 
