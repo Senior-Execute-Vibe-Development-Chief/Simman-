@@ -1577,6 +1577,7 @@ for (let i = 0; i < W * H; i++) {
 return { elevation, moisture, temperature, pixPlate, windX: fullWindX, windY: fullWindY };
 }
 
+
 // Old solveWind removed — now in windSolver.js
 if (false) { // dead code block for deletion
 function _oldSolveWind_DEAD(W, H, elevation, fbm, params = {}, noiseSeed = 42) {

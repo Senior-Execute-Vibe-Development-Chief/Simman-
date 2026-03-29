@@ -68,7 +68,7 @@ let _tecParams = {};
 // Static climate: no ice ages or sea level changes
 const CLIMATE={tempMod:0,seaLevel:0,wet:0.7};
 
-function generateWorld(W,H,seed,preset,oceanLevel,enableRivers=true,realWind=false){
+function generateWorld(W,H,seed,preset,oceanLevel,_unused=true,realWind=false){
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
 let tecPlates=null,tecWindX=null,tecWindY=null;
@@ -359,102 +359,39 @@ let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.
 if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
 if(elevation[i]<.02)m+=.10;
 moisture[i]=Math.max(.02,Math.min(1,m));}}
+// ── Inland sea detection: flood-fill from equatorial ocean to find connected ocean. ──
+// Any ocean pixel NOT connected to the main body (e.g. enclosed by polar land) becomes land/ice.
+{const oceanConn=new Uint8Array(W*H);
+// Seed BFS from ocean pixels in the middle third of the map (guaranteed open ocean)
+const bfs=[];
+for(let y=Math.floor(H*0.3);y<Math.floor(H*0.7);y++)for(let x=0;x<W;x++){
+const i=y*W+x;if(elevation[i]<=0&&!oceanConn[i]){oceanConn[i]=1;bfs.push(i);}}
+// Flood-fill: connected ocean pixels (8-direction, wrapping X)
+let head=0;
+while(head<bfs.length){const ci=bfs[head++];const cx=ci%W,cy=(ci/W)|0;
+for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
+const nx=(cx+dx+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
+const ni=ny*W+nx;if(oceanConn[ni]||elevation[ni]>0)continue;
+oceanConn[ni]=1;bfs.push(ni);}}
+// Convert unconnected ocean to polar ice/land
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
+if(elevation[i]<=0&&!oceanConn[i]){
+elevation[i]=0.003;// just above sea level — will render as snow/ice at poles
+temperature[i]=Math.min(temperature[i],0.08);// ensure cold
+moisture[i]=Math.max(moisture[i],0.1);}}}
 const ctw=Math.ceil(W/RES),cth=Math.ceil(H/RES);const coastal=new Uint8Array(ctw*cth);
 for(let ty=1;ty<cth-1;ty++)for(let tx=0;tx<ctw;tx++){const px=Math.min(W-1,tx*RES),py=Math.min(H-1,ty*RES);
 if(elevation[py*W+px]>0){
 outer:for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const wx=((tx+dx)%ctw+ctw)%ctw,wy=ty+dy;if(wy<0||wy>=cth)continue;
 const npx=Math.min(W-1,wx*RES),npy=Math.min(H-1,wy*RES);
 if(elevation[npy*W+npx]<=0){coastal[ty*ctw+tx]=1;break outer;}}}}
-const emptyBuf=new Uint8Array(W*H);
-const rvr=enableRivers?generateRivers(elevation,moisture,W,H,mkRng(seed+777)):{river:emptyBuf,lake:emptyBuf,floodplain:emptyBuf,delta:emptyBuf};
 // Swamps: low-lying wet warm terrain
 const swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
+if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
-
-// ── River & lake generation: trace flow downhill from wet highlands ──
-function generateRivers(elev,moist,W,H,rng){
-const flow=new Float32Array(W*H),lake=new Uint8Array(W*H),floodplain=new Uint8Array(W*H),delta=new Uint8Array(W*H);
-const D8=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
-// Collect source candidates: high elevation + wet
-const cands=[];
-for(let y=4;y<H-4;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(elev[i]>0.1&&moist[i]>0.25)cands.push({x,y,score:elev[i]*0.6+moist[i]*0.4+rng()*0.15});}
-cands.sort((a,b)=>b.score-a.score);
-// Select spaced sources — denser network for larger maps
-const sources=[],minSp=Math.round(W*0.03);
-for(const c of cands){if(sources.length>=80)break;let ok=true;
-for(const s of sources){let dx=Math.abs(c.x-s.x);if(dx>W/2)dx=W-dx;
-if(dx*dx+(c.y-s.y)**2<minSp*minSp){ok=false;break;}}
-if(ok)sources.push(c);}
-// Trace each river downhill with natural meandering
-for(const src of sources){let cx=src.x,cy=src.y,str=0.3+moist[src.y*W+src.x]*0.7;
-let prevDx=0,prevDy=0;// momentum for smooth curves
-const path=new Set();
-for(let step=0;step<1200;step++){const ci=cy*W+cx;if(path.has(ci))break;path.add(ci);
-flow[ci]+=str;str+=0.025;
-if(elev[ci]<=0){// River reached ocean — create delta if strong enough
-if(str>4){const dR=Math.min(12,Math.round(2+str*0.4));
-for(let dy=-dR;dy<=dR;dy++)for(let dx=-dR;dx<=dR;dx++){
-const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
-const d2=dx*dx+dy*dy;if(d2>dR*dR)continue;
-const ni=ny*W+nx;if(elev[ni]>-0.02&&elev[ni]<0.025)delta[ni]=1;}}
-break;}
-// Gather downhill unvisited neighbors
-const downs=[];let be=elev[ci];
-for(const[ddx,ddy]of D8){const nx=((cx+ddx)%W+W)%W,ny=cy+ddy;if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;if(!path.has(ni)&&elev[ni]<elev[ci]){downs.push({x:nx,y:ny,e:elev[ni],dx:ddx,dy:ddy});
-if(elev[ni]<be)be=elev[ni];}}
-if(downs.length>0){const slope=elev[ci]-be;
-// Natural meandering: blend steepest descent with momentum and noise
-const meanderStr=Math.min(1,0.012/(slope+0.003));
-const nv=noise2D(cx*0.12+step*0.06,cy*0.12)*Math.PI;
-let best=downs[0],bestScore=-Infinity;
-for(const d of downs){const steep=elev[ci]-d.e;
-const momScore=d.dx*prevDx+d.dy*prevDy;
-const angle=Math.atan2(d.dy,d.dx);
-const noiseScore=Math.cos(angle-nv)*meanderStr;
-const score=steep*(1-meanderStr*0.4)+momScore*0.15*meanderStr+noiseScore*0.3;
-if(score>bestScore){bestScore=score;best=d;}}
-prevDx=best.dx;prevDy=best.dy;
-cx=best.x;cy=best.y;continue;}
-// Depression: scan outward for an outlet lower than current elevation
-const ce=elev[ci];let found=false;
-for(let r=2;r<=20&&!found;r++){let bestD=Infinity,ox=-1,oy=-1;
-for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
-if(Math.abs(dx)!==r&&Math.abs(dy)!==r)continue;
-const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;if(elev[ni]<ce&&!path.has(ni)){const d2=dx*dx+dy*dy;
-if(d2<bestD){bestD=d2;ox=nx;oy=ny;}}}
-if(ox>=0){for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
-const nx=((cx+dx)%W+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
-if(dx*dx+dy*dy<=r*r&&elev[ny*W+nx]<=ce+0.008)lake[ny*W+nx]=1;}
-cx=ox;cy=oy;found=true;}}
-if(!found)break;}}
-// Normalize flow and expand width based on flow strength
-let mx=0;for(let i=0;i<W*H;i++)if(flow[i]>mx)mx=flow[i];
-const base=new Uint8Array(W*H);
-if(mx>0)for(let i=0;i<W*H;i++){if(flow[i]>0.2)base[i]=Math.min(255,Math.round(Math.sqrt(flow[i]/mx)*200)+55);}
-// Width expansion: strong rivers get wider, gradual taper
-const river=new Uint8Array(W*H);
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(!base[i])continue;
-const r=base[i]>180?3:base[i]>120?2:base[i]>60?1:0;
-for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
-const nx=((x+dx)%W+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;const d2=dx*dx+dy*dy;if(d2>r*r)continue;
-if(elev[ni]>0){const fade=Math.round(base[i]*(1-Math.sqrt(d2)/(r+1)*0.4));
-river[ni]=Math.max(river[ni],fade);}}}
-// Floodplains: fertile bands adjacent to rivers
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(!river[i]||elev[i]<=0)continue;
-const fR=river[i]>150?5:river[i]>80?3:2;
-for(let dy=-fR;dy<=fR;dy++)for(let dx=-fR;dx<=fR;dx++){
-const nx=((x+dx)%W+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;const d2=dx*dx+dy*dy;if(d2>fR*fR)continue;
-if(elev[ni]>0&&!river[ni]&&!lake[ni]&&Math.abs(elev[ni]-elev[i])<0.03)floodplain[ni]=1;}}
-return{river,lake,floodplain,delta};}
+return{elevation,moisture,temperature,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
 
 const BC=[
 [10,22,56],      // 0  Deep Ocean
@@ -507,6 +444,7 @@ function tribeRGB(id){const h=((id*67+20)%360)/360,s=(60+((id*31)%25))/100,l=(45
 const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;const hr=(pp,qq,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return pp+(qq-pp)*6*t;if(t<1/2)return qq;if(t<2/3)return pp+(qq-pp)*(2/3-t)*6;return pp;};
 return[Math.round(hr(p,q,h+1/3)*255),Math.round(hr(p,q,h)*255),Math.round(hr(p,q,h-1/3)*255)];}
 
+// Base climate fertility: temperature × moisture, penalized by elevation
 function tileFert(t,m,e){if(e>0.45)return 0.05;const base=Math.min(1,t*1.2)*Math.min(1,m*1.3);return Math.max(0.05,base*(1-Math.max(0,e-0.15)*3));}
 
 const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
@@ -515,25 +453,105 @@ const LEAPS=[];for(let r=5;r<=13;r++)for(let a=0;a<8;a++){const ang=a*Math.PI/4;
 function createTerritory(w){
 const tw=Math.ceil(w.width/RES),th=Math.ceil(w.height/RES);
 const tElev=new Float32Array(tw*th),tTemp=new Float32Array(tw*th),tMoist=new Float32Array(tw*th),tFert=new Float32Array(tw*th);
-const tCoast=new Uint8Array(tw*th),tDiff=new Float32Array(tw*th),tRiver=new Uint8Array(tw*th),owner=new Int16Array(tw*th).fill(-1),tribeSizes=[],tribeStrength=[],tribeCenters=[];
+const tCoast=new Uint8Array(tw*th),tDiff=new Float32Array(tw*th),owner=new Int16Array(tw*th).fill(-1),tribeSizes=[],tribeStrength=[],tribeCenters=[];
+// Pass 1: base tile data + climate fertility
 for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){const px=Math.min(w.width-1,tx*RES),py=Math.min(w.height-1,ty*RES),i=py*w.width+px;
 const ti=ty*tw+tx;tElev[ti]=w.elevation[i];tTemp[ti]=w.temperature[i];tMoist[ti]=w.moisture[i];tCoast[ti]=w.coastal[ti];
 const e=w.elevation[i],t=w.temperature[i],m=w.moisture[i];let diff=0;
 if(e>0.35)diff=Math.max(diff,Math.min(1,(e-0.35)*3));if(t>0.5&&m<0.2)diff=Math.max(diff,Math.min(0.85,(0.2-m)*3*(t-0.3)));
 if(t<0.2)diff=Math.max(diff,Math.min(0.9,(0.2-t)*4));tDiff[ti]=diff;tFert[ti]=tileFert(t,m,e);
-// Feature scan: check pixels in this tile's block for rivers, floodplains, deltas, oases, swamps
-{let hasWater=false,hasFlood=false,hasDelta=false,hasSwamp=false;
+// Swamp bonus
+{let hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
 const wi=Math.min(w.height-1,py+dy)*w.width+Math.min(w.width-1,px+dx);
-if(w.river&&w.river[wi]>0&&e>0)hasWater=true;
-if(w.lake&&w.lake[wi]&&e>0)hasWater=true;
-if(w.floodplain&&w.floodplain[wi])hasFlood=true;
-if(w.delta&&w.delta[wi])hasDelta=true;
 if(w.swamp&&w.swamp[wi])hasSwamp=true;}
-if(hasWater){tFert[ti]=Math.min(1,tFert[ti]+0.15);tRiver[ti]=1;}
-if(hasDelta){tFert[ti]=Math.min(1,tFert[ti]+0.35);}
-else if(hasFlood){tFert[ti]=Math.min(1,tFert[ti]+0.25);}
 if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+0.25);}}}
+
+// ── Pass 2: Geological fertility modifiers ──
+// These require neighbor access so run after base pass.
+
+// 2a: Tropical soil penalty — laterite soils in hot wet regions are nutrient-poor.
+// The Amazon/Congo paradox: lush forest but terrible soil for agriculture.
+for(let ti=0;ti<tw*th;ti++){
+const t=tTemp[ti],m=tMoist[ti],e=tElev[ti];
+if(e<=0)continue;
+if(t>0.65&&m>0.50){
+// Penalty scales with how tropical+wet the tile is
+const tropicality=Math.min(1,(t-0.65)/0.25)*Math.min(1,(m-0.50)/0.35);
+tFert[ti]*=(1-tropicality*0.55);// up to -55% for deep tropical rainforest
+}}
+
+// 2b: Alluvial lowland bonus — proxy for river valleys/floodplains.
+// Low elevation + flat + wet + moisture gradient (wet spot surrounded by drier land).
+// This is the #1 factor for where civilizations actually formed.
+for(let ty=1;ty<th-1;ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;
+const e=tElev[ti],m=tMoist[ti],t=tTemp[ti];
+if(e<=0||e>0.08)continue;// only low-lying land
+if(m<0.30)continue;// needs meaningful moisture
+// Check flatness: average absolute elevation difference with neighbors
+let elevDiffSum=0,moistSum=0,cnt=0;
+for(const[dx,dy]of DIRS){const nx=(tx+dx+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;
+const ni=ny*tw+nx;if(tElev[ni]<=0)continue;
+elevDiffSum+=Math.abs(tElev[ni]-e);moistSum+=tMoist[ni];cnt++;}
+if(cnt<3)continue;
+const avgElevDiff=elevDiffSum/cnt;
+const avgNeighborMoist=moistSum/cnt;
+const flatness=Math.max(0,1-avgElevDiff*40);// 1.0 if very flat, 0 if rugged
+// Moisture gradient: how much wetter is this tile than neighbors?
+// High gradient = moisture concentrates here (river-like)
+const moistGradient=Math.max(0,m-avgNeighborMoist);
+// Alluvial score: flat + low + wet + concentrated moisture
+const alluvialScore=flatness*Math.min(1,moistGradient*6)*Math.min(1,(0.08-e)*20);
+// Temperature sweet spot: best for agriculture at 0.35-0.65 (temperate/subtropical)
+const tempFit=t>0.30&&t<0.70?1.0:t>0.20&&t<0.80?0.6:0.3;
+const bonus=alluvialScore*tempFit*0.8;// up to +80% fertility
+if(bonus>0.02)tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}
+
+// 2c: Temperate grassland bonus — chernozem/mollisol deep topsoil.
+// Moderate temp, moderate moisture, low elevation = breadbasket zones.
+for(let ti=0;ti<tw*th;ti++){
+const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
+if(e<=0||e>0.15)continue;
+// Temperate sweet spot: not too hot, not too cold
+const tempFit=Math.exp(-((t-0.45)*(t-0.45))/(2*0.10*0.10));// peak at t=0.45
+// Semi-arid to moderate moisture: grassland/steppe zone (not forest, not desert)
+const moistFit=Math.exp(-((m-0.28)*(m-0.28))/(2*0.10*0.10));// peak at m=0.28
+const bonus=tempFit*moistFit*0.30;// up to +30%
+if(bonus>0.02)tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}
+
+// 2d: Volcanic soil bonus — near plate boundaries in tectonic mode.
+// Andisols from volcanic ash are mineral-rich, excellent for agriculture.
+if(w.pixPlate){const W=w.width,H=w.height;
+// Build a plate-boundary distance map at tile resolution
+const plateBound=new Uint8Array(tw*th);
+for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
+const px=Math.min(W-1,tx*RES),py=Math.min(H-1,ty*RES);
+const myP=w.pixPlate[py*W+px];let isBoundary=false;
+for(const[dx,dy]of DIRS){const nx2=Math.min(W-1,Math.max(0,px+dx*RES)),ny2=Math.min(H-1,Math.max(0,py+dy*RES));
+if(w.pixPlate[ny2*W+nx2]!==myP){isBoundary=true;break;}}
+if(isBoundary)plateBound[ty*tw+tx]=1;}
+// Expand boundary influence: BFS to get distance from plate boundaries
+const bDist=new Uint8Array(tw*th);bDist.fill(255);
+const bdQ=[];
+for(let i=0;i<tw*th;i++)if(plateBound[i]&&tElev[i]>0){bDist[i]=0;bdQ.push(i);}
+for(let qi=0;qi<bdQ.length;qi++){const ci=bdQ[qi],cd=bDist[ci],cx=ci%tw,cy=(ci-cx)/tw;
+if(cd>=6)continue;// max 6-tile influence radius (~12 pixels, ~100km at 1920px=40000km)
+for(const[dx,dy]of DIRS){const nx=(cx+dx+tw)%tw,ny=cy+dy;if(ny<0||ny>=th)continue;
+const ni=ny*tw+nx;if(bDist[ni]<=cd+1||tElev[ni]<=0)continue;
+bDist[ni]=cd+1;bdQ.push(ni);}}
+// Apply volcanic bonus: strongest at boundary, decays with distance
+for(let ti=0;ti<tw*th;ti++){if(bDist[ti]>=7||tElev[ti]<=0)continue;
+// Only apply where there's enough moisture for agriculture
+if(tMoist[ti]<0.15)continue;
+const proximity=1-bDist[ti]/7;// 1.0 at boundary, 0 at distance 7
+// Mountains near boundaries get less bonus (already high elevation)
+const elevPenalty=tElev[ti]>0.25?Math.max(0,1-(tElev[ti]-0.25)*4):1;
+const bonus=proximity*elevPenalty*0.40;// up to +40%
+tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}}
+
+// 2e: Coastal fertility bonus — fishing, salt, trade access.
+for(let ti=0;ti<tw*th;ti++){
+if(tCoast[ti]&&tElev[ti]>0)tFert[ti]=Math.min(1,tFert[ti]+0.06);}
 // Find multiple spread-out seed locations for starting tribes
 const NUM_TRIBES=(w.preset==="earth"||w.preset==="earth_sim")?8:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:6;const minSpacing=Math.round(tw*0.12);
 // Score all habitable tiles
@@ -562,7 +580,7 @@ for(let i=0;i<origins.length;i++){const{x,y}=origins[i],ti=y*tw+x;
 owner[ti]=i;tribeSizes.push(1);tribeStrength.push(tFert[ti]);tenure[ti]=1;frontier[ti]=1;frontierList.push(ti);
 tribeCenters.push([{x,y,prestige:1.0,founded:0}]);}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tRiver,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
 frontier,frontierList,landCount:lc,settled:origins.length,tribes:origins.length,origin:origins[0]||{x:0,y:0},stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+(y1-y2)*(y1-y2));}
@@ -610,7 +628,7 @@ if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];}
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];}
 
 function stepTerritory(ter,w){
-const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,tRiver,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
+const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // ── Expansion into empty land ──
 const nf=new Uint8Array(tw*th);const nfl=[];
 for(let fj=0;fj<ter.frontierList.length;fj++){const fi=ter.frontierList[fj];if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
@@ -678,7 +696,7 @@ if(tenure[i]<200)tenure[i]++;
 if(tenure[i]<15){const drain=tFert[i]*0.015*(1-tenure[i]/15);// decays as tenure grows
 tribeStrength[owner[i]]=Math.max(0.1,tribeStrength[owner[i]]-drain);}}}
 // ── Border conflict: local power projection determines tile flips ──
-if(ter.stepCount%4===0){const flips=[];const{tenure,tRiver}=ter;
+if(ter.stepCount%4===0){const flips=[];const{tenure}=ter;
 for(let i=0;i<tw*th;i++){const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
 const ty2=Math.floor(i/tw),tx2=i%tw;
 // Quick border check: skip interior tiles with no enemy neighbors
@@ -689,7 +707,6 @@ if(!hasEnemy)continue;
 const lpA=localPower(ter,ow,tx2,ty2);// only computed for border tiles
 // Defender advantage: 3x base + tenure (up to +1.5x) + terrain (up to +1.4x) + river (up to +2x)
 let def=3+Math.min(1.5,tenure[i]*0.008)+tDiff[i]*1.4;
-if(tRiver[i])def+=2;// rivers are very hard to cross
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<16)continue;
 // Avoid attacking tribes that are much larger (>3x your size)
@@ -698,9 +715,8 @@ if(defSz>0&&atkSz>0&&defSz/atkSz>3)continue;// don't poke the giant
 // Small tribes are less aggressive; large tribes more so
 const atkAggression=atkSz<25?0.4:atkSz>80?1.5:1.0;
 // River between attacker and defender tiles: additional crossing penalty
-let riverCross=0;if(tRiver[ni])riverCross+=1.5;
 const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
-const totalDef=def+riverCross;
+const totalDef=def;
 // Recently flipped tiles (tenure < 5) can't flip again — prevents ping-pong
 if(tenure[i]<5)continue;
 if(lpB>lpA*totalDef){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(lpB/(lpA*totalDef)-1)*0.2*atkAggression;
@@ -787,7 +803,6 @@ const[depthFromSea,setDepthFromSea]=useState(false);
 const[depthCeil,setDepthCeil]=useState(1.0);
 const[showPlates,setShowPlates]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
-const[showRivers,setShowRivers]=useState(true);
 const[hoverInfo,setHoverInfo]=useState(null);
 const[tecPresetName,setTecPresetName]=useState("Default");
 const[rightPanel,setRightPanel]=useState("");  // "" | "params"
@@ -805,7 +820,6 @@ const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);
 const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
-const showRiversRef=useRef(true);
 const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
@@ -818,7 +832,7 @@ const W=1920,H=960,CW=CW_FLAT;
 const generate=useCallback((s,ol)=>{
 let w;
 if(presetRef.current==="import"&&importedWorldRef.current){w=importedWorldRef.current;importedWorldRef.current=null;}
-else{w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,showRiversRef.current,useRealWindRef.current);}
+else{w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,true,useRealWindRef.current);}
 setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
@@ -843,6 +857,8 @@ let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
+// Swamp overlay on globe
+if(e>sl&&w.swamp&&w.swamp[sy0*W+sx0]){r=40;g=58;b=38;}
 if(polarBlend>0){const pr=e>0?230:20,pg=e>0?235:40,pb=e>0?240:80;
 r=Math.round(r*(1-polarBlend)+pr*polarBlend);
 g=Math.round(g*(1-polarBlend)+pg*polarBlend);
@@ -885,22 +901,13 @@ const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
-// Scan tile block for most prominent feature overlay
-let hasDelta=false,hasLake=false,maxRiv=0,hasSwamp=false,hasFlood=false;
+// Swamp overlay
+let hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
 const wi=Math.min(H-1,sy+dy)*W+Math.min(W-1,sx+dx);
-if(w.delta&&w.delta[wi])hasDelta=true;
-if(w.lake&&w.lake[wi]&&e>sl)hasLake=true;
-if(w.river&&w.river[wi]&&e>sl&&w.river[wi]>maxRiv)maxRiv=w.river[wi];
-if(w.swamp&&w.swamp[wi])hasSwamp=true;
-if(w.floodplain&&w.floodplain[wi])hasFlood=true;}
+if(w.swamp&&w.swamp[wi])hasSwamp=true;}
 let pr=r,pg=g,pb=b;
-if(hasDelta){pr=30;pg=85;pb=55;}
-else if(hasLake){pr=28;pg=62;pb=112;}
-else if(maxRiv>0){const a=0.45+maxRiv/255*0.45;
-pr=(r*(1-a)+22*a+.5)|0;pg=(g*(1-a)+52*a+.5)|0;pb=(b*(1-a)+132*a+.5)|0;}
-else if(e>sl){if(hasSwamp){pr=40;pg=58;pb=38;}
-else if(hasFlood){const a=0.4;pr=(r*(1-a)+55*a+.5)|0;pg=(g*(1-a)+110*a+.5)|0;pb=(b*(1-a)+40*a+.5)|0;}}
+if(e>sl&&hasSwamp){pr=40;pg=58;pb=38;}
 const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}}
 return buf;},[CH]);
 
@@ -976,19 +983,15 @@ const e=ter.tElev[ti],ow=ter.owner[ti];let r,g,b;
 if(e<=sl){r=6;g=8;b=16;}
 else if(ow>=0){r=tcR[ow];g=tcG[ow];b=tcB[ow];}
 else{r=22;g=20;b=18;}
-// River/lake tint on owned tiles
-if(e>sl&&ter.tRiver[ti]){const a=0.4;r=(r*(1-a)+12*a+.5)|0;g=(g*(1-a)+20*a+.5)|0;b=(b*(1-a)+45*a+.5)|0;}
 const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="value"){
 // Tile value overlay — green (high value) → yellow → red (low value)
-// Value = fertility + river bonus + coast bonus + moderate elevation bonus
+// Value = fertility + coast bonus + moderate elevation bonus
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
 if(e<=sl){d[pi4]=8;d[pi4+1]=12;d[pi4+2]=22;d[pi4+3]=255;continue;}
 let v=ter.tFert[ti];
-// River/water bonus
-if(ter.tRiver[ti])v+=0.15;
 // Coast access bonus (trade, fishing)
 if(ter.tCoast&&ter.tCoast[ti])v+=0.08;
 // Moderate elevation sweet spot (defensible + habitable)
@@ -1203,12 +1206,9 @@ const img=await loadImageFile(file);
 w=rasterizeHeightmap(img.data,img.width,img.height,W,H);
 setImportStatus(`Heightmap loaded (${img.width}\u00d7${img.height})`);
 }else{setImportStatus("Unsupported file type");return;}
-const emptyArr=new Uint8Array(W*H);
-const rvr=showRiversRef.current?generateRivers(w.elevation,w.moisture,W,H,mkRng(seed+777)):{river:emptyArr,lake:emptyArr,floodplain:emptyArr,delta:emptyArr};
-w.river=rvr.river;w.lake=rvr.lake;w.floodplain=rvr.floodplain;w.delta=rvr.delta;
 const swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(w.elevation[i]>0&&w.elevation[i]<0.025&&w.moisture[i]>0.45&&w.temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
+if(w.elevation[i]>0&&w.elevation[i]<0.025&&w.moisture[i]>0.45&&w.temperature[i]>0.35){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);if(nv>-0.1)swamp[i]=1;}}
 w.swamp=swamp;
 importedWorldRef.current=w;presetRef.current="import";setPreset("import");
@@ -1235,7 +1235,9 @@ const biomeName=BN[biome]||"Ocean";
 const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
 const tempC=Math.round(temp*50-10);
 const lat=Math.abs(wy/960-0.5)*2;
-const fertVal=elev>0?tileFert(temp,moist,elev):0;
+// Use territory fertility (includes geological modifiers) if available, else raw climate
+const terTi=terRef.current?Math.min(terRef.current.th-1,(wy/RES)|0)*terRef.current.tw+Math.min(terRef.current.tw-1,(wx/RES)|0):-1;
+const fertVal=elev>0?(terTi>=0&&terRef.current?terRef.current.tFert[terTi]:tileFert(temp,moist,elev)):0;
 const wdx=w.windX?w.windX[i]:0,wdy=w.windY?w.windY[i]:0;
 const wspd=Math.sqrt(wdx*wdx+wdy*wdy);
 const wkmh=Math.round(wspd*100); // normalized → km/h (median ~18 km/h)
@@ -1391,9 +1393,6 @@ color:showPlates?"#e07050":"#5a5448",padding:"6px 12px",fontSize:12}}>Plates</bu
 onChange={e=>{const v=Number(e.target.value)/100;setOceanLevel(v);oceanLevelRef.current=v;}}
 onMouseUp={()=>generate(seed)} onTouchEnd={()=>generate(seed)}
 style={{width:80,accentColor:"#6ab4e8"}} />
-<button onClick={()=>{const nv=!showRiversRef.current;showRiversRef.current=nv;setShowRivers(nv);generate(seed);}}
-style={{...bs,background:showRivers?"rgba(40,120,200,0.25)":"transparent",border:"none",
-color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</button>
 <button onClick={()=>setUseMercator(!useMercator)}
 style={{...bs,background:useMercator?"rgba(180,160,100,0.25)":"transparent",border:"none",
 color:useMercator?"#c9b87a":"#5a5448",padding:"6px 12px",fontSize:12}}>{useMercator?"Mercator":"Flat"}</button>
