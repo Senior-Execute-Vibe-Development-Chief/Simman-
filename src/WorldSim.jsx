@@ -37,34 +37,27 @@ function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16
 
 const RES=2;
 // ── Mercator projection helpers ──
-// Map cuts off at ±MAX_LAT (standard Web Mercator uses 85.051°)
-const MAX_LAT_DEG = 85;
+const MAX_LAT_DEG = 88;
 const MAX_LAT = MAX_LAT_DEG * Math.PI / 180;
-const MERC_MAX = Math.log(Math.tan(Math.PI / 4 + MAX_LAT / 2)); // ~3.13
+const MERC_MAX = Math.log(Math.tan(Math.PI / 4 + MAX_LAT / 2));
+const CW_FLAT = 960, CH_FLAT = 480; // equirectangular canvas
+const CH_MERC = Math.round(CW_FLAT * MERC_MAX / Math.PI); // Mercator canvas height (~960)
+let _mercator = false; // module-level flag for projection functions
 
-// Screen tile Y → data Y (inverse Mercator: screen space → equirectangular)
-// sy: screen tile row (0=north, CH-1=south), returns data pixel row (0-H)
-function screenYtoDataY(sy, CH, H) {
-  // Map screen Y to Mercator range [-MERC_MAX, +MERC_MAX]
-  const mercY = MERC_MAX - (sy / CH) * 2 * MERC_MAX; // north=+MERC_MAX, south=-MERC_MAX
-  // Inverse Mercator: mercY → latitude in radians
+function screenYtoDataY(sy, ch, H) {
+  if (!_mercator) return Math.min(H - 1, sy * RES);
+  const mercY = MERC_MAX - (sy / ch) * 2 * MERC_MAX;
   const latRad = 2 * Math.atan(Math.exp(mercY)) - Math.PI / 2;
-  // Latitude → data Y (equirectangular: lat +90°=row0, lat -90°=rowH)
-  const latDeg = latRad * 180 / Math.PI;
-  return Math.max(0, Math.min(H - 1, ((90 - latDeg) / 180) * H));
+  return Math.max(0, Math.min(H - 1, ((90 - latRad * 180 / Math.PI) / 180) * H));
 }
 
-// Data Y → screen tile Y (forward Mercator: equirectangular → screen space)
-// dy: data pixel row (0=north, H=south), returns screen tile row (0-CH)
-function dataYtoScreenY(dy, H, CH) {
-  // Data Y → latitude in degrees
+function dataYtoScreenY(dy, H, ch) {
+  if (!_mercator) return Math.min(ch - 1, dy / RES);
   const latDeg = 90 - (dy / H) * 180;
   const latClamped = Math.max(-MAX_LAT_DEG, Math.min(MAX_LAT_DEG, latDeg));
   const latRad = latClamped * Math.PI / 180;
-  // Forward Mercator: lat → mercY
   const mercY = Math.log(Math.tan(Math.PI / 4 + latRad / 2));
-  // MercY → screen Y
-  return Math.max(0, Math.min(CH - 1, ((MERC_MAX - mercY) / (2 * MERC_MAX)) * CH));
+  return Math.max(0, Math.min(ch - 1, ((MERC_MAX - mercY) / (2 * MERC_MAX)) * ch));
 }
 
 let _tecParams = {};
@@ -797,6 +790,9 @@ const[tecPresetName,setTecPresetName]=useState("Default");
 const[rightPanel,setRightPanel]=useState("");  // "" | "params"
 const[showTuning,setShowTuning]=useState(false);
 const[useRealWind,setUseRealWind]=useState(false);
+const[useMercator,setUseMercator]=useState(false);
+const CH=useMercator?CH_MERC:CH_FLAT;
+_mercator=useMercator;
 const[mapCount,setMapCount]=useState(1);
 const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
@@ -812,7 +808,7 @@ const imgRef=useRef(null);
 // Wind particle animation state
 const windParticlesRef=useRef(null);
 const windAnimRef=useRef(null);
-const W=1920,H=960,CW=Math.ceil(W/RES),CH=Math.ceil(H/RES);
+const W=1920,H=960,CW=CW_FLAT;
 const generate=useCallback((s,ol)=>{
 let w;
 if(presetRef.current==="import"&&importedWorldRef.current){w=importedWorldRef.current;importedWorldRef.current=null;}
@@ -821,6 +817,9 @@ setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
+// Re-render when projection changes (canvas size changes)
+useEffect(()=>{terrainCache.current=null;imgRef.current=null;windParticlesRef.current=null;
+if(terRef.current)draw(terRef.current);},[useMercator]);
 
 // Generate extra seed preview maps (same params, different seeds)
 const PW=480,PH=240;
@@ -869,7 +868,7 @@ pr=(r*(1-a)+22*a+.5)|0;pg=(g*(1-a)+52*a+.5)|0;pb=(b*(1-a)+132*a+.5)|0;}
 else if(e>sl){if(hasSwamp){pr=40;pg=58;pb=38;}
 else if(hasFlood){const a=0.4;pr=(r*(1-a)+55*a+.5)|0;pg=(g*(1-a)+110*a+.5)|0;pb=(b*(1-a)+40*a+.5)|0;}}
 const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}}
-return buf;},[]);
+return buf;},[CH]);
 
 // Composite render: terrain + tribe overlay into single canvas
 const draw=useCallback((ter)=>{
@@ -1128,7 +1127,7 @@ ctx.beginPath();ctx.arc(cx2,cy2,r2+0.5,0,Math.PI*2);
 ctx.strokeStyle=isCapital?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.4)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();
 if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-serif";
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
-},[updateTerrainCache]);
+},[updateTerrainCache,CH]);
 
 useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates]);
 
@@ -1358,6 +1357,9 @@ style={{width:80,accentColor:"#6ab4e8"}} />
 <button onClick={()=>{const nv=!showRiversRef.current;showRiversRef.current=nv;setShowRivers(nv);generate(seed);}}
 style={{...bs,background:showRivers?"rgba(40,120,200,0.25)":"transparent",border:"none",
 color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</button>
+<button onClick={()=>setUseMercator(!useMercator)}
+style={{...bs,background:useMercator?"rgba(180,160,100,0.25)":"transparent",border:"none",
+color:useMercator?"#c9b87a":"#5a5448",padding:"6px 12px",fontSize:12}}>{useMercator?"Mercator":"Flat"}</button>
 {(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
 <div style={{width:1,height:20,background:"rgba(201,184,122,0.15)"}} />
 <button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
