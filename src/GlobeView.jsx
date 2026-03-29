@@ -58,17 +58,22 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
     const atmosGeo = new SphereGeometry(1.015, 64, 32);
     const atmosMat = new ShaderMaterial({
       vertexShader: `
+        varying vec3 vWorldPos;
         varying vec3 vNormal;
         void main() {
           vNormal = normalize(normalMatrix * normal);
+          vWorldPos = (modelViewMatrix * vec4(position, 1.0)).xyz;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
       fragmentShader: `
+        varying vec3 vWorldPos;
         varying vec3 vNormal;
         void main() {
-          float intensity = pow(0.65 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.5);
-          gl_FragColor = vec4(0.4, 0.6, 1.0, intensity * 0.6);
+          vec3 viewDir = normalize(-vWorldPos);
+          float rim = 1.0 - max(0.0, dot(vNormal, viewDir));
+          float intensity = pow(rim, 2.0);
+          gl_FragColor = vec4(0.35, 0.55, 1.0, intensity * 0.55);
         }
       `,
       blending: AdditiveBlending,
