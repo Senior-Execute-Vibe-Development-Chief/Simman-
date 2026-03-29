@@ -372,7 +372,7 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
+return{elevation,moisture,temperature,coastal,river:rvr.river,riverOverlay:rvr.riverOverlay,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
 
 // ── River generation: priority-flood + D8 flow accumulation ──
 // Rivers are invisible at global scale — only lakes, deltas, and floodplains render.
@@ -454,33 +454,31 @@ thresh=Math.max(thresh,mx*0.001);
 const river=new Uint8Array(N);
 for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<thresh)continue;
 river[i]=Math.min(255,Math.round(Math.sqrt(accum[i]/mx)*200)+55);}
-// River overlay buffer: thin single-pixel paths traced along flow direction.
-// Walk downstream from every cell above threshold; only mark the exact path pixel.
+// River overlay: thin paths for the toggle overlay.
+// To avoid wide bands at confluences, only mark pixels that are the
+// unique flow-target of their upstream neighbor (the "trunk" of each river).
+// We trace upstream from ocean mouths along the highest-accumulation incoming edge.
 const riverOverlay=new Uint8Array(N);
-{const overlayThresh=thresh*1.5;// slightly higher threshold for overlay clarity
-const marked=new Uint8Array(N);
-// Find headwater cells: cells above threshold with no upstream cell above threshold
-for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<overlayThresh)continue;
-let isHead=true;
-for(let d=0;d<8;d++){const x=i%W,y=(i/W)|0;
+{// Build reverse graph: for each pixel, find highest-accumulation upstream neighbor
+const bestUp=new Int32Array(N).fill(-1);
+for(let i=0;i<N;i++){if(flowDir[i]<0||accum[i]<thresh)continue;
+const x=i%W,y=(i/W)|0,d=flowDir[i];
 const nx=(x+D8X[d]+W)%W,ny=y+D8Y[d];if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;if(flowDir[ni]>=0&&accum[ni]>=overlayThresh){
-// Check if ni flows toward i
-const fd=flowDir[ni],fnx=(nx+D8X[fd]+W)%W,fny=ny+D8Y[fd];
-if(fny*W+fnx===i){isHead=false;break;}}}
-if(isHead)marked[i]=1;}
-// Trace downstream from each headwater, marking exactly one pixel per step
-for(let i=0;i<N;i++){if(!marked[i])continue;
-let ci=i;
-for(let step=0;step<4000;step++){
-if(ci<0||ci>=N||elev[ci]<=0||accum[ci]<overlayThresh)break;
-if(riverOverlay[ci])break;// merged into existing path
+const ni=ny*W+nx;
+if(bestUp[ni]<0||accum[i]>accum[bestUp[ni]])bestUp[ni]=i;}
+// Find river mouths: pixels above threshold that flow into ocean
+const mouths=[];
+for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<thresh||flowDir[i]<0)continue;
+const x=i%W,y=(i/W)|0,d=flowDir[i];
+const nx=(x+D8X[d]+W)%W,ny=y+D8Y[d];if(ny<0||ny>=H)continue;
+if(elev[ny*W+nx]<=0)mouths.push(i);}
+// Trace upstream from each mouth along the strongest incoming branch
+for(const mouth of mouths){let ci=mouth;
+for(let step=0;step<3000;step++){
+if(ci<0||riverOverlay[ci])break;
 const norm=Math.sqrt(accum[ci]/mx);
 riverOverlay[ci]=Math.min(255,Math.round(norm*180)+60);
-const d=flowDir[ci];if(d<0)break;
-const cx=ci%W,cy=(ci/W)|0;
-const nx=(cx+D8X[d]+W)%W,ny=cy+D8Y[d];if(ny<0||ny>=H)break;
-ci=ny*W+nx;}}}
+ci=bestUp[ci];}}}
 
 // ── Phase 5: Accumulation-based lakes ──
 // Only the very highest flow on very flat terrain pools into lakes.
@@ -872,7 +870,7 @@ const[depthFromSea,setDepthFromSea]=useState(false);
 const[depthCeil,setDepthCeil]=useState(1.0);
 const[showPlates,setShowPlates]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
-const[showRivers,setShowRivers]=useState(true);
+const[showRivers,setShowRivers]=useState(false);
 const[hoverInfo,setHoverInfo]=useState(null);
 const[tecPresetName,setTecPresetName]=useState("Default");
 const[rightPanel,setRightPanel]=useState("");  // "" | "params"
@@ -890,7 +888,7 @@ const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);
 const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
-const showRiversRef=useRef(true);
+const showRiversRef=useRef(false);
 const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
@@ -1303,7 +1301,7 @@ w=rasterizeHeightmap(img.data,img.width,img.height,W,H);
 setImportStatus(`Heightmap loaded (${img.width}\u00d7${img.height})`);
 }else{setImportStatus("Unsupported file type");return;}
 const rvr=generateRivers(w.elevation,w.moisture,W,H,mkRng(seed+777));
-w.river=rvr.river;w.lake=rvr.lake;w.floodplain=rvr.floodplain;w.delta=rvr.delta;
+w.river=rvr.river;w.riverOverlay=rvr.riverOverlay;w.lake=rvr.lake;w.floodplain=rvr.floodplain;w.delta=rvr.delta;
 const swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(w.elevation[i]>0&&w.elevation[i]<0.025&&w.moisture[i]>0.45&&w.temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
