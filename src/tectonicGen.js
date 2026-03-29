@@ -741,10 +741,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   let e = stampE + tecMod;
 
   if (!isLandArr[i]) {
-    // Clamp ocean depth: prevent unrealistically deep ocean at poles
-    // where no continental stamps contribute elevation.
-    // Normal ocean: -0.005 to -0.015, deep trenches: up to -0.04
-    e = Math.max(-0.04, Math.min(e, -0.001));
+    e = Math.min(e, -0.001);
   }
 
   if (e > 0) {
