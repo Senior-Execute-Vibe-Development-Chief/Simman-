@@ -68,7 +68,7 @@ let _tecParams = {};
 // Static climate: no ice ages or sea level changes
 const CLIMATE={tempMod:0,seaLevel:0,wet:0.7};
 
-function generateWorld(W,H,seed,preset,oceanLevel,enableRivers=true,realWind=false){
+function generateWorld(W,H,seed,preset,oceanLevel,_unused=true,realWind=false){
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
 let tecPlates=null,tecWindX=null,tecWindY=null;
@@ -365,8 +365,7 @@ if(elevation[py*W+px]>0){
 outer:for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const wx=((tx+dx)%ctw+ctw)%ctw,wy=ty+dy;if(wy<0||wy>=cth)continue;
 const npx=Math.min(W-1,wx*RES),npy=Math.min(H-1,wy*RES);
 if(elevation[npy*W+npx]<=0){coastal[ty*ctw+tx]=1;break outer;}}}}
-const emptyBuf=new Uint8Array(W*H);
-const rvr=enableRivers?generateRivers(elevation,moisture,W,H,mkRng(seed+777)):{river:emptyBuf,lake:emptyBuf,floodplain:emptyBuf,delta:emptyBuf};
+const rvr=generateRivers(elevation,moisture,W,H,mkRng(seed+777));
 // Swamps: low-lying wet warm terrain
 const swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
@@ -1136,6 +1135,20 @@ if(!dx&&!dy)continue;
 const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
 if(plateAt(nx2,ny2)!==myP)boundary=true;}
 if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
+// River overlay — thin blue lines showing flow network when toggled on
+if(showRiversRef.current&&w.river){
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
+// Sample river data from pixel grid
+let maxRiv=0;
+for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
+const wi=Math.min(H-1,sy+dy)*W+Math.min(W-1,sx+dx);
+if(w.river[wi]>maxRiv)maxRiv=w.river[wi];}
+if(maxRiv>0){const pi4=ti<<2;
+const a=0.35+maxRiv/255*0.45;
+d[pi4]=(d[pi4]*(1-a)+40*a+.5)|0;
+d[pi4+1]=(d[pi4+1]*(1-a)+120*a+.5)|0;
+d[pi4+2]=(d[pi4+2]*(1-a)+220*a+.5)|0;}}}
 ctx.putImageData(img,0,0);
 // Draw all tribe centers (tile coords — canvas is CW×CH)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
@@ -1227,7 +1240,7 @@ if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-seri
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache,CH]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -1267,8 +1280,7 @@ const img=await loadImageFile(file);
 w=rasterizeHeightmap(img.data,img.width,img.height,W,H);
 setImportStatus(`Heightmap loaded (${img.width}\u00d7${img.height})`);
 }else{setImportStatus("Unsupported file type");return;}
-const emptyArr=new Uint8Array(W*H);
-const rvr=showRiversRef.current?generateRivers(w.elevation,w.moisture,W,H,mkRng(seed+777)):{river:emptyArr,lake:emptyArr,floodplain:emptyArr,delta:emptyArr};
+const rvr=generateRivers(w.elevation,w.moisture,W,H,mkRng(seed+777));
 w.river=rvr.river;w.lake=rvr.lake;w.floodplain=rvr.floodplain;w.delta=rvr.delta;
 const swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
@@ -1455,7 +1467,7 @@ color:showPlates?"#e07050":"#5a5448",padding:"6px 12px",fontSize:12}}>Plates</bu
 onChange={e=>{const v=Number(e.target.value)/100;setOceanLevel(v);oceanLevelRef.current=v;}}
 onMouseUp={()=>generate(seed)} onTouchEnd={()=>generate(seed)}
 style={{width:80,accentColor:"#6ab4e8"}} />
-<button onClick={()=>{const nv=!showRiversRef.current;showRiversRef.current=nv;setShowRivers(nv);generate(seed);}}
+<button onClick={()=>{const nv=!showRiversRef.current;showRiversRef.current=nv;setShowRivers(nv);}}
 style={{...bs,background:showRivers?"rgba(40,120,200,0.25)":"transparent",border:"none",
 color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</button>
 <button onClick={()=>setUseMercator(!useMercator)}
