@@ -796,6 +796,7 @@ const[useRealWind,setUseRealWind]=useState(false);
 const[useMercator,setUseMercator]=useState(false);
 const[showGlobe,setShowGlobe]=useState(false);
 const[show3DTerrain,setShow3DTerrain]=useState(false);
+const[globeBuf,setGlobeBuf]=useState(null);
 const CH=useMercator?CH_MERC:CH_FLAT;
 _mercator=useMercator;
 const[mapCount,setMapCount]=useState(1);
@@ -822,9 +823,20 @@ setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
-// Build terrain cache for globe when entering globe mode
-useEffect(()=>{if(showGlobe&&!terrainCache.current&&worldRef.current){
-terrainCache.current=updateTerrainCache(worldRef.current);}},[showGlobe,updateTerrainCache]);
+// Build globe texture (always equirectangular, CH_FLAT) when globe visible
+useEffect(()=>{if(showGlobe&&worldRef.current){
+const w=worldRef.current,sl=0,gCH=CH_FLAT;
+const buf=new Uint8Array(CW*gCH*3);
+for(let ty=0;ty<gCH;ty++)for(let tx=0;tx<CW;tx++){
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
+const si=sy*W+sx;const e=w.elevation[si],m=w.moisture[si],t=w.temperature[si];
+let r,g,b;
+if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
+r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
+}else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
+const ti3=(ty*CW+tx)*3;buf[ti3]=r;buf[ti3+1]=g;buf[ti3+2]=b;}
+setGlobeBuf(buf);
+}},[showGlobe,world]);
 // Re-render when projection changes (canvas size changes)
 useEffect(()=>{terrainCache.current=null;imgRef.current=null;windParticlesRef.current=null;
 if(terRef.current)draw(terRef.current);},[useMercator]);
@@ -1294,7 +1306,7 @@ alignItems:"center",justifyContent:"center",cursor:mi>0?"pointer":"default",
 border:mi===0?"2px solid rgba(201,184,122,0.25)":"2px solid transparent",borderRadius:3}}
 onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
 {mi===0?(showGlobe?<div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
-<GlobeView terrainBuf={terrainCache.current} world={world}
+<GlobeView terrainBuf={globeBuf} world={world}
 show3D={show3DTerrain} CW={CW} CH={CH_FLAT} /></div>
 :<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
 style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",
