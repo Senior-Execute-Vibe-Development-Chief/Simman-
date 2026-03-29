@@ -171,9 +171,14 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
       if (tTemp[ti] < 0.10) continue; // exclude polar ice / permafrost
       if (candidateTest(ti)) {
         const tx2 = ti % tw, ty2 = (ti - tx2) / tw;
-        const suitability = scoreFn ? scoreFn(ti) : 0.5;
+        // Suitability boosts probability but doesn't monopolize.
+        // Noise is the primary driver — suitability acts as a multiplier.
+        // A tile with 0.2 suitability still has decent odds vs 1.0 suitability.
+        const suit = scoreFn ? scoreFn(ti) : 0.5;
         const noise = resHash(tx2, ty2, s0 + resourceId.length * 7717);
-        candidates.push({ ti, score: suitability * 0.6 + noise * 0.4 });
+        // sqrt flattens the suitability curve: 0.25 → 0.5, 0.5 → 0.7, 1.0 → 1.0
+        // so moderate terrain keeps reasonable odds against the best terrain
+        candidates.push({ ti, score: noise * (0.3 + Math.sqrt(suit) * 0.7) });
       }
     }
     if (candidates.length === 0) return;
