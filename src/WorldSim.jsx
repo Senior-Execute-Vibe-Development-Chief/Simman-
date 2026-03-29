@@ -407,8 +407,6 @@ const ni=ny*W+nx;if(visited[ni])continue;visited[ni]=1;
 const ne=elev[ni]>filled[ci]?elev[ni]:filled[ci]+1e-5;
 filled[ni]=ne;heapPush(ni);
 if(ne>elev[ni]+0.01&&elev[ni]>0)rawLake[ni]=1;}}
-// Remove depression-fill lake marks from river channels (high flow = drainage, not lake)
-for(let i=0;i<N;i++)if(rawLake[i]&&accum[i]>thresh*0.5)rawLake[i]=0;
 
 // ── Phase 2: D8 flow direction on filled DEM ──
 const flowDir=new Int8Array(N).fill(-1);
@@ -452,6 +450,8 @@ let cumul=0,thresh=mx;
 for(let b=sampleBins-1;b>=0;b--){cumul+=binCounts[b];
 if(cumul>=targetPx){thresh=(b/sampleBins)**2*mx;break;}}
 thresh=Math.max(thresh,mx*0.001);
+// Remove depression-fill lake marks from river channels (high flow = drainage, not lake)
+for(let i=0;i<N;i++)if(rawLake[i]&&accum[i]>thresh*0.5)rawLake[i]=0;
 // River gameplay buffer: marks tiles with significant flow for territory mechanics
 const river=new Uint8Array(N);
 for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<thresh)continue;
