@@ -4,7 +4,7 @@ import {
   SphereGeometry, MeshPhongMaterial, Mesh,
   CanvasTexture, AmbientLight, DirectionalLight, Color,
   BackSide, ShaderMaterial, AdditiveBlending,
-  NearestFilter
+  NearestFilter, Quaternion, Vector3
 } from "three";
 
 export default function GlobeView({ terrainBuf, world, CW, CH }) {
@@ -108,21 +108,26 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     scatterMesh.renderOrder = 1; // render after globe
     scene.add(scatterMesh);
 
-    // Globe rotation state — rotate the globe, camera stays fixed
-    // Sun stays fixed so dark side remains bottom-right
+    // Free rotation via quaternion — dragging rotates the globe freely
+    // in any direction, no axis locking or gimbal lock
     let dragging = false, prevX = 0, prevY = 0;
-    let rotX = 0.3, rotY = 0; // slight tilt to show northern hemisphere
+    const rotQuat = new Quaternion();
+    // Start with slight tilt to show northern hemisphere
+    const initTilt = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), 0.3);
+    rotQuat.multiply(initTilt);
     let zoom = 2.6;
     let autoRot = true;
+    const autoRotQuat = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 0.003);
 
     const onDown = (e) => { dragging = true; autoRot = false; prevX = e.clientX; prevY = e.clientY; };
     const onUp = () => { dragging = false; };
     const onMove = (e) => {
       if (!dragging) return;
       const dx = e.clientX - prevX, dy = e.clientY - prevY;
-      rotY += dx * 0.005;
-      rotX -= dy * 0.005;
-      rotX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotX));
+      // Rotate around screen-space axes (up = camera up, right = camera right)
+      const qY = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), dx * 0.005);
+      const qX = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -dy * 0.005);
+      rotQuat.premultiply(qY).premultiply(qX);
       prevX = e.clientX; prevY = e.clientY;
     };
     const onWheel = (e) => {
@@ -148,9 +153,9 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     let animId;
     const loop = () => {
       animId = requestAnimationFrame(loop);
-      if (autoRot) rotY += 0.003;
-      mesh.rotation.set(rotX, rotY, 0, "YXZ");
-      scatterMesh.rotation.set(rotX, rotY, 0, "YXZ");
+      if (autoRot) rotQuat.premultiply(autoRotQuat);
+      mesh.quaternion.copy(rotQuat);
+      scatterMesh.quaternion.copy(rotQuat);
       camera.position.set(0, 0, zoom);
       renderer.render(scene, camera);
     };
