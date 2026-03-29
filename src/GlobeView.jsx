@@ -36,10 +36,18 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
     const texCtx = texCanvas.getContext("2d");
     const texture = new CanvasTexture(texCanvas);
 
+    // Specular map: ocean is reflective, land is matte
+    const specCanvas = document.createElement("canvas");
+    specCanvas.width = CW;
+    specCanvas.height = CH;
+    const specCtx = specCanvas.getContext("2d");
+    const specTexture = new CanvasTexture(specCanvas);
+
     const mat = new MeshPhongMaterial({
       map: texture,
-      shininess: 45, // tight specular spot (sun glint on ocean)
-      specular: new Color(0x111115),
+      specularMap: specTexture,
+      shininess: 25,
+      specular: new Color(0x444448),
     });
     const mesh = new Mesh(geo, mat);
     scene.add(mesh);
@@ -81,10 +89,11 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
     const atmosMesh = new Mesh(atmosGeo, atmosMat);
     scene.add(atmosMesh);
 
-    // Interaction state
+    // Camera orbit state — camera moves around fixed globe + sun
     let dragging = false, prevX = 0, prevY = 0;
-    let rotX = 0.3, rotY = 0; // slight tilt to show northern hemisphere
-    let zoom = 2.6;
+    let camTheta = 0; // horizontal angle (longitude)
+    let camPhi = 0.3; // vertical angle (latitude), slight tilt
+    let camDist = 2.6;
     let autoRot = true;
 
     const onDown = (e) => { dragging = true; autoRot = false; prevX = e.clientX; prevY = e.clientY; };
@@ -92,14 +101,14 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
     const onMove = (e) => {
       if (!dragging) return;
       const dx = e.clientX - prevX, dy = e.clientY - prevY;
-      rotY += dx * 0.005;
-      rotX += dy * 0.005;
-      rotX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotX));
+      camTheta -= dx * 0.005;
+      camPhi += dy * 0.005;
+      camPhi = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, camPhi));
       prevX = e.clientX; prevY = e.clientY;
     };
     const onWheel = (e) => {
       e.preventDefault();
-      zoom = Math.max(1.4, Math.min(5, zoom + e.deltaY * 0.002));
+      camDist = Math.max(1.4, Math.min(5, camDist + e.deltaY * 0.002));
     };
 
     renderer.domElement.addEventListener("pointerdown", onDown);
@@ -120,15 +129,17 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
     let animId;
     const loop = () => {
       animId = requestAnimationFrame(loop);
-      if (autoRot) rotY += 0.003;
-      mesh.rotation.set(rotX, rotY, 0, "YXZ");
-      atmosMesh.rotation.set(rotX, rotY, 0, "YXZ");
-      camera.position.z = zoom;
+      if (autoRot) camTheta += 0.003;
+      // Orbit camera around the globe (globe + sun stay fixed)
+      camera.position.x = camDist * Math.sin(camTheta) * Math.cos(camPhi);
+      camera.position.y = camDist * Math.sin(camPhi);
+      camera.position.z = camDist * Math.cos(camTheta) * Math.cos(camPhi);
+      camera.lookAt(0, 0, 0);
       renderer.render(scene, camera);
     };
     animId = requestAnimationFrame(loop);
 
-    stateRef.current = { scene, camera, renderer, mesh, geo, baseGeo, texture, texCanvas, texCtx, mat };
+    stateRef.current = { scene, camera, renderer, mesh, geo, baseGeo, texture, texCanvas, texCtx, specTexture, specCanvas, specCtx, mat };
 
     return () => {
       cancelAnimationFrame(animId);
@@ -142,6 +153,7 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
       baseGeo.dispose();
       mat.dispose();
       texture.dispose();
+      specTexture.dispose();
       if (el.contains(renderer.domElement)) el.removeChild(renderer.domElement);
     };
   }, []);
@@ -171,7 +183,24 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
     }
     texCtx.putImageData(img, 0, 0);
     texture.needsUpdate = true;
-  }, [terrainBuf, CW, CH]);
+
+    // Build specular map: ocean = white (reflective), land = black (matte)
+    if (world && world.elevation) {
+      const { specCtx, specCanvas, specTexture } = s;
+      const specImg = specCtx.createImageData(CW, CH);
+      const sd = specImg.data;
+      const W2 = world.width || 1920, H2 = world.height || 960;
+      for (let ty = 0; ty < CH; ty++) for (let tx = 0; tx < CW; tx++) {
+        const si = Math.min(H2 - 1, ty * 2) * W2 + Math.min(W2 - 1, tx * 2);
+        const isOcean = world.elevation[si] <= 0;
+        const v = isOcean ? 180 : 0; // ocean gets specular, land doesn't
+        const i4 = (ty * CW + tx) * 4;
+        sd[i4] = v; sd[i4 + 1] = v; sd[i4 + 2] = v; sd[i4 + 3] = 255;
+      }
+      specCtx.putImageData(specImg, 0, 0);
+      specTexture.needsUpdate = true;
+    }
+  }, [terrainBuf, CW, CH, world]);
 
   // Update vertex displacement when world or show3D changes
   useEffect(() => {
