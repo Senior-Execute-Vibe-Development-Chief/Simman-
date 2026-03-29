@@ -830,7 +830,7 @@ const buf=new Uint8Array(gW*gH*3);
 for(let ty=0;ty<gH;ty++){
 const lat=Math.abs(ty/gH-0.5)*2; // 0 at equator, 1 at poles
 // Polar blend: fade toward average polar color near poles to hide UV pinching
-const polarBlend=Math.max(0,Math.min(1,(lat-0.88)/0.12)); // starts at ~79°
+const polarBlend=Math.max(0,Math.min(1,(lat-0.83)/0.17)); // starts at ~75°, gradual
 for(let tx=0;tx<gW;tx++){
 const si=ty*gW+tx;const e=w.elevation[si],m=w.moisture[si],t=w.temperature[si];
 let r,g,b;

@@ -26,7 +26,7 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
     el.appendChild(renderer.domElement);
 
     // Sphere geometry — high enough segments for visible terrain
-    const baseGeo = new SphereGeometry(1, 256, 128);
+    const baseGeo = new SphereGeometry(1, 512, 256);
     const geo = baseGeo.clone();
 
     // Offscreen canvas for texture
@@ -189,14 +189,19 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
 
     // Build specular map: ocean = white (reflective), land = black (matte)
     if (world && world.elevation) {
-      const { specCtx, specCanvas, specTexture } = s;
+      const { specCtx, specTexture } = s;
+      const W2 = world.width || 1920, H2 = world.height || 960;
+      // Resize specular canvas to match texture size
+      s.specCanvas.width = CW;
+      s.specCanvas.height = CH;
       const specImg = specCtx.createImageData(CW, CH);
       const sd = specImg.data;
-      const W2 = world.width || 1920, H2 = world.height || 960;
       for (let ty = 0; ty < CH; ty++) for (let tx = 0; tx < CW; tx++) {
-        const si = Math.min(H2 - 1, ty * 2) * W2 + Math.min(W2 - 1, tx * 2);
-        const isOcean = world.elevation[si] <= 0;
-        const v = isOcean ? 180 : 0; // ocean gets specular, land doesn't
+        // Map texture pixel to world data (may need scaling if sizes differ)
+        const wx = Math.min(W2 - 1, Math.round(tx / CW * W2));
+        const wy = Math.min(H2 - 1, Math.round(ty / CH * H2));
+        const isOcean = world.elevation[wy * W2 + wx] <= 0;
+        const v = isOcean ? 180 : 0;
         const i4 = (ty * CW + tx) * 4;
         sd[i4] = v; sd[i4 + 1] = v; sd[i4 + 2] = v; sd[i4 + 3] = 255;
       }
