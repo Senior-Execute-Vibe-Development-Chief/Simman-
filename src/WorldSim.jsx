@@ -797,6 +797,7 @@ const[useMercator,setUseMercator]=useState(false);
 const[showGlobe,setShowGlobe]=useState(false);
 const[show3DTerrain,setShow3DTerrain]=useState(false);
 const[globeBuf,setGlobeBuf]=useState(null);
+const[globeTexSize,setGlobeTexSize]=useState({w:W*2,h:H*2});
 const CH=useMercator?CH_MERC:CH_FLAT;
 _mercator=useMercator;
 const[mapCount,setMapCount]=useState(1);
@@ -823,27 +824,33 @@ setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
-// Build globe texture at full resolution with polar blending
+// Build globe texture at 2x resolution with polar blending
 useEffect(()=>{if(showGlobe&&worldRef.current){
-const w=worldRef.current,sl=0,gW=W,gH=H;
+const w=worldRef.current,sl=0,gW=W*2,gH=H*2;
 const buf=new Uint8Array(gW*gH*3);
 for(let ty=0;ty<gH;ty++){
-const lat=Math.abs(ty/gH-0.5)*2; // 0 at equator, 1 at poles
-// Polar blend: fade toward average polar color near poles to hide UV pinching
-const polarBlend=Math.max(0,Math.min(1,(lat-0.83)/0.17)); // starts at ~75°, gradual
+const lat=Math.abs(ty/gH-0.5)*2;
+const polarBlend=Math.max(0,Math.min(1,(lat-0.83)/0.17));
+const srcY=ty/2; // fractional source Y for bilinear
+const sy0=Math.min(H-2,srcY|0),sy1=sy0+1,fy=srcY-sy0;
 for(let tx=0;tx<gW;tx++){
-const si=ty*gW+tx;const e=w.elevation[si],m=w.moisture[si],t=w.temperature[si];
+const srcX=tx/2;
+const sx0=Math.min(W-2,srcX|0),sx1=sx0+1,fx=srcX-sx0;
+// Bilinear sample elevation, moisture, temperature
+const i00=sy0*W+sx0,i10=sy0*W+sx1,i01=sy1*W+sx0,i11=sy1*W+sx1;
+const e=w.elevation[i00]*(1-fx)*(1-fy)+w.elevation[i10]*fx*(1-fy)+w.elevation[i01]*(1-fx)*fy+w.elevation[i11]*fx*fy;
+const m=w.moisture[i00]*(1-fx)*(1-fy)+w.moisture[i10]*fx*(1-fy)+w.moisture[i01]*(1-fx)*fy+w.moisture[i11]*fx*fy;
+const t=w.temperature[i00]*(1-fx)*(1-fy)+w.temperature[i10]*fx*(1-fy)+w.temperature[i01]*(1-fx)*fy+w.temperature[i11]*fx*fy;
 let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
-// Blend toward ice/ocean at extreme poles
 if(polarBlend>0){const pr=e>0?230:20,pg=e>0?235:40,pb=e>0?240:80;
 r=Math.round(r*(1-polarBlend)+pr*polarBlend);
 g=Math.round(g*(1-polarBlend)+pg*polarBlend);
 b=Math.round(b*(1-polarBlend)+pb*polarBlend);}
 const ti3=(ty*gW+tx)*3;buf[ti3]=r;buf[ti3+1]=g;buf[ti3+2]=b;}}
-setGlobeBuf(buf);
+setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});
 }},[showGlobe,world]);
 // Re-render when projection changes (canvas size changes)
 useEffect(()=>{terrainCache.current=null;imgRef.current=null;windParticlesRef.current=null;
@@ -1315,7 +1322,7 @@ border:mi===0?"2px solid rgba(201,184,122,0.25)":"2px solid transparent",borderR
 onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
 {mi===0?(showGlobe?<div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
 <GlobeView terrainBuf={globeBuf} world={world}
-show3D={show3DTerrain} CW={W} CH={H} /></div>
+show3D={show3DTerrain} CW={globeTexSize.w} CH={globeTexSize.h} /></div>
 :<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
 style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",
 aspectRatio:`${CW}/${CH}`}} />)

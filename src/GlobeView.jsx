@@ -22,7 +22,7 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
 
     const renderer = new WebGLRenderer({ antialias: true });
     renderer.setSize(el.clientWidth, el.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(window.devicePixelRatio);
     el.appendChild(renderer.domElement);
 
     // Sphere geometry — high enough segments for visible terrain
