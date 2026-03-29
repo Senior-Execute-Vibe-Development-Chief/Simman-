@@ -406,7 +406,7 @@ const nx=(cx+D8X[d]+W)%W,ny=cy+D8Y[d];if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;if(visited[ni])continue;visited[ni]=1;
 const ne=elev[ni]>filled[ci]?elev[ni]:filled[ci]+1e-5;
 filled[ni]=ne;heapPush(ni);
-if(ne>elev[ni]+0.01&&elev[ni]>0)rawLake[ni]=1;}}
+if(ne>elev[ni]+0.04&&elev[ni]>0.005)rawLake[ni]=1;}}
 
 // ── Phase 2: D8 flow direction on filled DEM ──
 const flowDir=new Int8Array(N).fill(-1);
@@ -450,8 +450,8 @@ let cumul=0,thresh=mx;
 for(let b=sampleBins-1;b>=0;b--){cumul+=binCounts[b];
 if(cumul>=targetPx){thresh=(b/sampleBins)**2*mx;break;}}
 thresh=Math.max(thresh,mx*0.001);
-// Remove depression-fill lake marks from river channels (high flow = drainage, not lake)
-for(let i=0;i<N;i++)if(rawLake[i]&&accum[i]>thresh*0.5)rawLake[i]=0;
+// Remove depression-fill lake marks from anything on a drainage path
+for(let i=0;i<N;i++)if(rawLake[i]&&accum[i]>thresh*0.1)rawLake[i]=0;
 // River gameplay buffer: marks tiles with significant flow for territory mechanics
 const river=new Uint8Array(N);
 for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<thresh)continue;
@@ -481,25 +481,10 @@ if(accum[ci]>=thresh){const norm=Math.sqrt(accum[ci]/mx);
 riverOverlay[ci]=Math.min(255,Math.round(norm*180)+60);}
 ci=bestUp[ci];}}}
 
-// ── Phase 5: Accumulation-based lakes ──
-// Only the very highest flow on very flat terrain pools into lakes.
-const lakeThresh=mx*0.25;// top 25% of max flow — only the biggest rivers
-for(let y=2;y<H-2;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(elev[i]<=0||accum[i]<lakeThresh)continue;
-// Strict flatness check: nearly all surrounding area must be flat
-let flatCount=0;const R=4;
-for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){
-const nx=(x+dx+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
-if(Math.abs(elev[ny*W+nx]-elev[i])<0.008)flatCount++;}
-if(flatCount>((2*R+1)**2)*0.75){// >75% of surrounding area is flat
-const lR=Math.min(5,Math.max(2,Math.round(Math.sqrt(accum[i]/mx)*4)));
-for(let dy=-lR;dy<=lR;dy++)for(let dx=-lR;dx<=lR;dx++){
-const nx=(x+dx+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;if(dx*dx+dy*dy>lR*lR)continue;
-if(elev[ni]>0&&Math.abs(elev[ni]-elev[i])<0.01&&accum[ni]<thresh*0.5)rawLake[ni]=1;}}}
+// (Accumulation-based lakes removed — they created river-shaped streaks on the map)
 
 // ── Phase 6: Filter small lake clusters ──
-const MIN_LAKE_SIZE=40;
+const MIN_LAKE_SIZE=60;
 const lake=new Uint8Array(N);
 const lakeLabel=new Int32Array(N);// connected component labels
 let nextLabel=1;
@@ -513,8 +498,14 @@ const cx=ci%W,cy=(ci/W)|0;
 for(let d=0;d<8;d++){
 const nx=(cx+D8X[d]+W)%W,ny=cy+D8Y[d];if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;if(rawLake[ni]&&!lakeLabel[ni]){lakeLabel[ni]=nextLabel;bfs.push(ni);}}}
-// Keep only if large enough
-if(comp.length>=MIN_LAKE_SIZE)for(const ci of comp)lake[ci]=1;
+// Keep only if large enough AND roughly compact (not elongated like a river)
+if(comp.length>=MIN_LAKE_SIZE){
+let minX=W,maxX=0,minY=H,maxY=0;
+for(const ci of comp){const cx=ci%W,cy=(ci/W)|0;
+if(cx<minX)minX=cx;if(cx>maxX)maxX=cx;if(cy<minY)minY=cy;if(cy>maxY)maxY=cy;}
+const bboxArea=Math.max(1,(maxX-minX+1)*(maxY-minY+1));
+const compactness=comp.length/bboxArea;// 1.0=fills bbox, low=elongated
+if(compactness>0.15)for(const ci of comp)lake[ci]=1;}
 nextLabel++;}
 
 // ── Phase 7: Deltas at river mouths ──
