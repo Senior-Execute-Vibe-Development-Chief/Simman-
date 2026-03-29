@@ -55,8 +55,13 @@ if(elevation[py*W+px]>0){outer:for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++
 const wx=((tx+dx)%ctw+ctw)%ctw,wy=ty+dy;if(wy<0||wy>=cth)continue;
 if(elevation[Math.min(H-1,wy*RES)*W+Math.min(W-1,wx*RES)]<=0){coastal[ty*ctw+tx]=1;break outer;}}}}
 
-// tileFert function
-function tileFert(t,m,e){if(e>0.45)return 0.05;const base=Math.min(1,t*1.2)*Math.min(1,m*1.3);return Math.max(0.05,base*(1-Math.max(0,e-0.15)*3));}
+// tileFert function — bell curve on moisture, diminishing returns on temperature
+function tileFert(t,m,e){
+if(e>0.45)return 0.05;
+const tFactor=Math.min(1,t*1.5)*Math.min(1,1.2-t*0.4);
+const mFactor=Math.exp(-((m-0.45)*(m-0.45))/(2*0.22*0.22));
+const base=tFactor*mFactor;
+return Math.max(0.05,base*(1-Math.max(0,e-0.15)*3));}
 
 // Build territory-like tile arrays
 console.log('Computing fertility with geological modifiers...');
