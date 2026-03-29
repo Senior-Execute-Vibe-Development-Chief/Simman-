@@ -162,25 +162,24 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
   // Scatters N mine sites across valid terrain, each radiating influence.
   // No spacing constraint — mines naturally cluster in the best terrain.
   // scoreFn(ti) returns 0-1 suitability; higher = more likely to be picked.
-  function scatterMines(resourceId, count, radius, peakRichness, candidateTest, scoreFn) {
+  // density: fraction of valid candidate tiles that become mine sites
+  function scatterMines(resourceId, density, radius, peakRichness, candidateTest, scoreFn) {
     // Collect and score candidates
     const candidates = [];
     for (let ti = 0; ti < N; ti++) {
       if (tElev[ti] <= 0) continue;
       if (candidateTest(ti)) {
         const tx2 = ti % tw, ty2 = (ti - tx2) / tw;
-        // Combine terrain suitability with noise for natural variation
         const suitability = scoreFn ? scoreFn(ti) : 0.5;
         const noise = resHash(tx2, ty2, s0 + resourceId.length * 7717);
-        // Weight: 60% suitability + 40% noise — good terrain clusters, noise breaks uniformity
         candidates.push({ ti, score: suitability * 0.6 + noise * 0.4 });
       }
     }
     if (candidates.length === 0) return;
     candidates.sort((a, b) => b.score - a.score);
 
-    // Just take the top N — no spacing constraint. Natural clustering happens
-    // because the best terrain (high suitability) is geographically clustered.
+    // Mine count scales with available candidate terrain
+    const count = Math.max(1, Math.round(candidates.length * density));
     const selected = [];
     for (let i = 0; i < Math.min(count, candidates.length); i++) {
       selected.push(candidates[i].ti);
@@ -372,46 +371,45 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
   // ── Point deposits: copper, tin, precious metals, gems ──
   // These are scattered as individual mine sites across valid terrain.
 
-  // COPPER: ~80 mines, prefer mountains/highlands near plate boundaries
-  scatterMines('copper', 80, 4, 0.9,
+  // COPPER: highlands/mountains, ~0.15% of candidates become mines
+  scatterMines('copper', 0.0015, 4, 0.9,
     (ti) => tElev[ti] > 0.10,
     (ti) => {
-      let s = Math.min(1, (tElev[ti] - 0.10) * 4); // higher = better
-      if (boundDist[ti] < 12) s += (1 - boundDist[ti] / 12) * 0.5; // near boundaries
+      let s = Math.min(1, (tElev[ti] - 0.10) * 4);
+      if (boundDist[ti] < 12) s += (1 - boundDist[ti] / 12) * 0.5;
       return Math.min(1, s);
     });
 
-  // TIN: ~40 mines, highlands + alluvial lowlands near highlands
-  scatterMines('tin', 40, 3, 0.85,
+  // TIN: highlands + alluvial, ~0.05% — rarest mined resource
+  scatterMines('tin', 0.0005, 3, 0.85,
     (ti) => {
       const e = tElev[ti];
       return e > 0.08 || (e < 0.08 && e > 0 && tMoist[ti] > 0.25);
     },
     (ti) => {
       const e = tElev[ti];
-      if (e > 0.12) return 0.4 + Math.min(0.6, (e - 0.12) * 3); // highland veins
-      return 0.3 + tMoist[ti] * 0.4; // alluvial: wetter = better
+      if (e > 0.12) return 0.4 + Math.min(0.6, (e - 0.12) * 3);
+      return 0.3 + tMoist[ti] * 0.4;
     });
 
-  // PRECIOUS METALS: ~70 gold/silver sites, prefer highlands + plate boundaries
-  scatterMines('precious', 70, 4, 0.95,
+  // PRECIOUS METALS: any land, ~0.04% — rare but broadly distributed
+  scatterMines('precious', 0.0004, 4, 0.95,
     (ti) => tElev[ti] > 0.02,
     (ti) => {
-      let s = Math.min(1, tElev[ti] * 3); // higher terrain = better
+      let s = Math.min(1, tElev[ti] * 3);
       if (boundDist[ti] < 12) s += (1 - boundDist[ti] / 12) * 0.4;
-      // Alluvial gold: wet lowlands get a boost too
       if (tElev[ti] < 0.08 && tMoist[ti] > 0.3) s += 0.3;
       return Math.min(1, s);
     });
 
-  // GEMS: ~50 sites, prefer highlands + tropical zones
-  scatterMines('gems', 50, 3, 0.8,
+  // GEMS: any land, ~0.03% — very rare, trade luxury
+  scatterMines('gems', 0.0003, 3, 0.8,
     (ti) => tElev[ti] > 0.03,
     (ti) => {
       let s = 0.2;
-      if (tElev[ti] > 0.15) s += 0.4; // highland gems
-      if (tTemp[ti] > 0.45) s += 0.3; // tropical gems
-      if (boundDist[ti] < 12) s += 0.2; // kimberlite near boundaries
+      if (tElev[ti] > 0.15) s += 0.4;
+      if (tTemp[ti] > 0.45) s += 0.3;
+      if (boundDist[ti] < 12) s += 0.2;
       return Math.min(1, s);
     });
 
