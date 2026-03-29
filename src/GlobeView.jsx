@@ -108,20 +108,19 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     scatterMesh.renderOrder = 1; // render after globe
     scene.add(scatterMesh);
 
-    // Google Earth-style rotation: grabbed point stays under cursor
-    // Uses raycasting to find the point on the sphere, then computes
-    // the rotation that maps the grabbed point to the current cursor position
+    // Google Earth-style rotation: grabbed point stays under cursor.
+    // When cursor moves off the globe, continues spinning via screen-space fallback.
     const raycaster = new Raycaster();
     const rotQuat = new Quaternion();
-    const initTilt = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), 0.3);
-    rotQuat.multiply(initTilt);
+    rotQuat.multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), 0.3));
     let dragging = false;
-    let grabPoint = null; // the 3D point on the sphere where the user grabbed
+    let grabPoint = null;    // local-space point on sphere where user grabbed
+    let grabQuat = null;     // rotation state at moment of grab
+    let prevX = 0, prevY = 0; // fallback screen coords when off-sphere
     let zoom = 2.6;
     let autoRot = true;
     const autoRotQuat = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 0.003);
 
-    // Convert mouse event to normalized device coords (-1 to 1)
     const getNDC = (e) => {
       const rect = renderer.domElement.getBoundingClientRect();
       return new Vector2(
@@ -130,13 +129,10 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
       );
     };
 
-    // Raycast to find point on the unit sphere surface
     const getSpherePoint = (ndc) => {
       raycaster.setFromCamera(ndc, camera);
-      // Intersect with a unit sphere at origin (using mesh's current rotation)
       const hits = raycaster.intersectObject(mesh);
       if (hits.length > 0) {
-        // Get the hit point in the mesh's LOCAL space (undo rotation)
         const localPt = hits[0].point.clone();
         localPt.applyQuaternion(rotQuat.clone().invert());
         return localPt.normalize();
@@ -146,25 +142,37 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
 
     const onDown = (e) => {
       autoRot = false;
+      dragging = true;
+      prevX = e.clientX; prevY = e.clientY;
       const ndc = getNDC(e);
       grabPoint = getSpherePoint(ndc);
-      if (grabPoint) dragging = true;
+      grabQuat = rotQuat.clone();
     };
-    const onUp = () => { dragging = false; grabPoint = null; };
+    const onUp = () => { dragging = false; grabPoint = null; grabQuat = null; };
     const onMove = (e) => {
-      if (!dragging || !grabPoint) return;
+      if (!dragging) return;
       const ndc = getNDC(e);
       const currentPoint = getSpherePoint(ndc);
-      if (!currentPoint) return;
-      // Compute rotation that maps grabPoint to currentPoint
-      // Using the shortest arc quaternion between two unit vectors
-      const dot = grabPoint.dot(currentPoint);
-      if (Math.abs(dot) > 0.9999) return; // too close, skip
-      const cross = new Vector3().crossVectors(grabPoint, currentPoint);
-      const q = new Quaternion(cross.x, cross.y, cross.z, 1 + dot).normalize();
-      rotQuat.premultiply(q);
-      // Update grab point to current so incremental rotations accumulate smoothly
-      grabPoint = currentPoint;
+
+      if (grabPoint && currentPoint) {
+        // Arcball: compute full rotation from original grab to current position
+        // Applied to the grab-time quaternion (not incremental — no drift)
+        const dot = Math.max(-1, Math.min(1, grabPoint.dot(currentPoint)));
+        if (Math.abs(dot) < 0.9999) {
+          const cross = new Vector3().crossVectors(grabPoint, currentPoint);
+          const q = new Quaternion(cross.x, cross.y, cross.z, 1 + dot).normalize();
+          rotQuat.copy(grabQuat).premultiply(q);
+        }
+      } else {
+        // Fallback: cursor is off the sphere — use screen-space rotation
+        const dx = e.clientX - prevX, dy = e.clientY - prevY;
+        const qY = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), dx * 0.006);
+        const qX = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), dy * 0.006);
+        rotQuat.premultiply(qY).premultiply(qX);
+        // Reset grab reference so re-entering the sphere starts fresh
+        grabPoint = null; grabQuat = null;
+      }
+      prevX = e.clientX; prevY = e.clientY;
     };
     const onWheel = (e) => {
       e.preventDefault();
