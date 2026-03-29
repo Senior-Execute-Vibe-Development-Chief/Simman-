@@ -407,6 +407,8 @@ const ni=ny*W+nx;if(visited[ni])continue;visited[ni]=1;
 const ne=elev[ni]>filled[ci]?elev[ni]:filled[ci]+1e-5;
 filled[ni]=ne;heapPush(ni);
 if(ne>elev[ni]+0.01&&elev[ni]>0)rawLake[ni]=1;}}
+// Remove depression-fill lake marks from river channels (high flow = drainage, not lake)
+for(let i=0;i<N;i++)if(rawLake[i]&&accum[i]>thresh*0.5)rawLake[i]=0;
 
 // ── Phase 2: D8 flow direction on filled DEM ──
 const flowDir=new Int8Array(N).fill(-1);
@@ -454,30 +456,29 @@ thresh=Math.max(thresh,mx*0.001);
 const river=new Uint8Array(N);
 for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<thresh)continue;
 river[i]=Math.min(255,Math.round(Math.sqrt(accum[i]/mx)*200)+55);}
-// River overlay: thin paths for the toggle overlay.
-// To avoid wide bands at confluences, only mark pixels that are the
-// unique flow-target of their upstream neighbor (the "trunk" of each river).
-// We trace upstream from ocean mouths along the highest-accumulation incoming edge.
+// River overlay: 1px-wide paths for the toggle overlay.
+// Build reverse graph for ALL land pixels (not just above thresh),
+// then trace upstream from mouths and internal sinks.
 const riverOverlay=new Uint8Array(N);
-{// Build reverse graph: for each pixel, find highest-accumulation upstream neighbor
-const bestUp=new Int32Array(N).fill(-1);
-for(let i=0;i<N;i++){if(flowDir[i]<0||accum[i]<thresh)continue;
+{const bestUp=new Int32Array(N).fill(-1);
+for(let i=0;i<N;i++){if(flowDir[i]<0||elev[i]<=0)continue;
 const x=i%W,y=(i/W)|0,d=flowDir[i];
 const nx=(x+D8X[d]+W)%W,ny=y+D8Y[d];if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;
 if(bestUp[ni]<0||accum[i]>accum[bestUp[ni]])bestUp[ni]=i;}
-// Find river mouths: pixels above threshold that flow into ocean
-const mouths=[];
-for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<thresh||flowDir[i]<0)continue;
+// Find trace start points: mouths (flow into ocean) + internal sinks (no outflow)
+const starts=[];
+for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<thresh)continue;
+if(flowDir[i]<0){starts.push(i);continue;}
 const x=i%W,y=(i/W)|0,d=flowDir[i];
-const nx=(x+D8X[d]+W)%W,ny=y+D8Y[d];if(ny<0||ny>=H)continue;
-if(elev[ny*W+nx]<=0)mouths.push(i);}
-// Trace upstream from each mouth along the strongest incoming branch
-for(const mouth of mouths){let ci=mouth;
-for(let step=0;step<3000;step++){
+const nx=(x+D8X[d]+W)%W,ny=y+D8Y[d];if(ny<0||ny>=H){starts.push(i);continue;}
+if(elev[ny*W+nx]<=0)starts.push(i);}
+// Trace upstream from each start along the strongest incoming branch
+for(const s of starts){let ci=s;
+for(let step=0;step<5000;step++){
 if(ci<0||riverOverlay[ci])break;
-const norm=Math.sqrt(accum[ci]/mx);
-riverOverlay[ci]=Math.min(255,Math.round(norm*180)+60);
+if(accum[ci]>=thresh){const norm=Math.sqrt(accum[ci]/mx);
+riverOverlay[ci]=Math.min(255,Math.round(norm*180)+60);}
 ci=bestUp[ci];}}}
 
 // ── Phase 5: Accumulation-based lakes ──
@@ -495,7 +496,7 @@ const lR=Math.min(5,Math.max(2,Math.round(Math.sqrt(accum[i]/mx)*4)));
 for(let dy=-lR;dy<=lR;dy++)for(let dx=-lR;dx<=lR;dx++){
 const nx=(x+dx+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;if(dx*dx+dy*dy>lR*lR)continue;
-if(elev[ni]>0&&Math.abs(elev[ni]-elev[i])<0.01)rawLake[ni]=1;}}}
+if(elev[ni]>0&&Math.abs(elev[ni]-elev[i])<0.01&&accum[ni]<thresh*0.5)rawLake[ni]=1;}}}
 
 // ── Phase 6: Filter small lake clusters ──
 const MIN_LAKE_SIZE=40;
