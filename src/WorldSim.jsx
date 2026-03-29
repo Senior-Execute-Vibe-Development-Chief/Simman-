@@ -197,40 +197,6 @@ const mt=bt+(0.45-bt)*cp*0.2+ch;
 const wt=windTemp[i];
 temperature[i]=Math.max(0,Math.min(1,mt*0.75+wt*0.25));
 moisture[i]=windMoisture[i];}
-// Ocean current coastal temperature modification (Ekman transport)
-for(let y=2;y<H-2;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(elevation[i]<=0)continue;
-const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
-if(cd>10)continue;
-let normX=0,normY=0;const scanR=8;
-for(let dy=-scanR;dy<=scanR;dy++)for(let dx=-scanR;dx<=scanR;dx++){
-if(!dx&&!dy)continue;const nx2=(x+dx+W)%W,ny2=y+dy;
-if(ny2<0||ny2>=H)continue;
-if(elevation[ny2*W+nx2]<=0){const d=Math.sqrt(dx*dx+dy*dy);normX+=dx/d;normY+=dy/d;}}
-const normLen=Math.sqrt(normX*normX+normY*normY);if(normLen<0.1)continue;
-normX/=normLen;normY/=normLen;
-let owx=0,owy=0,found=false;
-for(let step=1;step<=15;step++){const ox=(x+Math.round(normX*step)+W)%W,oy=y+Math.round(normY*step);
-if(oy<0||oy>=H)continue;if(elevation[oy*W+ox]<=0){owx=fWX[oy*W+ox];owy=fWY[oy*W+ox];found=true;break;}}
-if(!found)continue;
-const lat2=y/H-0.5,hemi=lat2>=0?1:-1;
-const ekmanX=hemi*owy,ekmanY=-hemi*owx;
-const ekmanDot=ekmanX*normX+ekmanY*normY;
-const absLat2=Math.abs(lat2)*2;
-// Broad latitude window: effect from 15° to 65° latitude, peak at 40°
-const latF=Math.exp(-((absLat2-0.45)*(absLat2-0.45))/(2*0.25*0.25));
-const windSpd=Math.sqrt(owx*owx+owy*owy);
-const decay=Math.exp(-cd*0.15);
-// Normalize ekmanDot by wind speed to get a -1 to +1 direction signal
-const ekmanNorm=windSpd>0.001?ekmanDot/windSpd:0;
-// Effect strength scales with wind speed (stronger wind = stronger current)
-const strength=Math.min(1,windSpd*60)*latF*decay;
-if(ekmanNorm>0.1){// upwelling coast: cool + dry
-temperature[i]=Math.max(0,temperature[i]-Math.min(0.15,ekmanNorm*strength*0.18));
-moisture[i]=Math.max(0.02,moisture[i]-Math.min(0.12,ekmanNorm*strength*0.12));}
-else if(ekmanNorm<-0.1){// warm current coast: warm + slightly moister
-temperature[i]=Math.min(1,temperature[i]+Math.min(0.12,-ekmanNorm*strength*0.15));
-moisture[i]=Math.min(1,moisture[i]+Math.min(0.04,-ekmanNorm*strength*0.04));}}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
