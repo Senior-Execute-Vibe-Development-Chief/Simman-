@@ -445,8 +445,13 @@ function tribeRGB(id){const h=((id*67+20)%360)/360,s=(60+((id*31)%25))/100,l=(45
 const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;const hr=(pp,qq,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return pp+(qq-pp)*6*t;if(t<1/2)return qq;if(t<2/3)return pp+(qq-pp)*(2/3-t)*6;return pp;};
 return[Math.round(hr(p,q,h+1/3)*255),Math.round(hr(p,q,h)*255),Math.round(hr(p,q,h-1/3)*255)];}
 
-// Base climate fertility: temperature × moisture, penalized by elevation
-function tileFert(t,m,e){if(e>0.45)return 0.05;const base=Math.min(1,t*1.2)*Math.min(1,m*1.3);return Math.max(0.05,base*(1-Math.max(0,e-0.15)*3));}
+// Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
+// Agriculture needs adequate moisture (not maximum) — bell curve peaks at 0.45 (temperate optimum)
+function tileFert(t,m,e){if(e>0.45)return 0.05;
+const tFactor=Math.min(1,t*1.5)*Math.min(1,1-Math.pow(Math.max(0,t-0.7),2)*4);
+const mFactor=Math.exp(-((m-0.45)*(m-0.45))/(2*0.22*0.22));
+const base=tFactor*mFactor;
+return Math.max(0.05,base*(1-Math.max(0,e-0.15)*3));}
 
 const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
 const LEAPS=[];for(let r=5;r<=13;r++)for(let a=0;a<8;a++){const ang=a*Math.PI/4;LEAPS.push([Math.round(Math.cos(ang)*r),Math.round(Math.sin(ang)*r)]);}
