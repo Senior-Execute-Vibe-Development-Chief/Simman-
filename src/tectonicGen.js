@@ -119,10 +119,13 @@ for (let py = 0; py < ppH; py++) for (let px = 0; px < ppW; px++) {
   const jagY = ridged(nx * 12 + 91.3, ny * 12 + 91.3, 3, 2.2, 2.0, 1.0) * _js
     - noise2D(nx * 18 + 105.1, ny * 18 + 105.1) * 0.012;
   const wnx = nx + warpX + jagX, wny = ny + warpY + jagY;
+  const plateLat = (ny - 0.5) * Math.PI;
+  const plateCosLat = Math.max(0.15, Math.cos(plateLat));
   let bestD = 1e9, bestP = 0;
   for (let pi = 0; pi < numPlates; pi++) {
     let dx = wnx - plates[pi].cx;
     if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
+    dx *= plateCosLat; // correct for longitude convergence at poles
     const dy = wny - plates[pi].cy;
     const d = dx * dx * _psx + dy * dy * _psy - plates[pi].weight;
     if (d < bestD) { bestD = d; bestP = pi; }
@@ -239,8 +242,13 @@ for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
 
   const pxPlateId = pixPlate[y * W + x];
   const pxPlateW = plates[pxPlateId] ? plates[pxPlateId].weight : 0;
+  // Latitude correction: scale X distance by cos(lat) so stamps
+  // are physically round on the sphere, not stretched at poles
+  const lat = (ny - 0.5) * Math.PI; // -π/2 to π/2
+  const cosLat = Math.max(0.15, Math.cos(lat)); // clamp to prevent infinity at poles
   for (const c of posStamps) {
     let dx = wnx - c.cx; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
+    dx *= cosLat; // correct for longitude convergence
     const dy0 = wny - c.cy;
     if (dx * dx + dy0 * dy0 > c.bound2) continue;
     dx += cnA; let dy = dy0 + cnB;
@@ -261,6 +269,7 @@ for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
 
   for (const c of negStamps) {
     let dx = wnx - c.cx; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
+    dx *= cosLat;
     const dy0 = wny - c.cy;
     if (dx * dx + dy0 * dy0 > c.bound2) continue;
     dx += cnA; let dy = dy0 + cnB;
