@@ -795,9 +795,8 @@ const[showTuning,setShowTuning]=useState(false);
 const[useRealWind,setUseRealWind]=useState(false);
 const[useMercator,setUseMercator]=useState(false);
 const[showGlobe,setShowGlobe]=useState(false);
-const[show3DTerrain,setShow3DTerrain]=useState(false);
 const[globeBuf,setGlobeBuf]=useState(null);
-const[globeTexSize,setGlobeTexSize]=useState({w:2048,h:1024});
+const[globeTexSize,setGlobeTexSize]=useState({w:4096,h:2048});
 const CH=useMercator?CH_MERC:CH_FLAT;
 _mercator=useMercator;
 const[mapCount,setMapCount]=useState(1);
@@ -826,7 +825,7 @@ terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 useEffect(()=>{if(showGlobe&&worldRef.current){
-const w=worldRef.current,sl=0,gW=2048,gH=1024;
+const w=worldRef.current,sl=0,gW=4096,gH=2048;
 const buf=new Uint8Array(gW*gH*3);
 for(let ty=0;ty<gH;ty++){
 const lat=Math.abs(ty/gH-0.5)*2;
@@ -1321,7 +1320,7 @@ border:mi===0?"2px solid rgba(201,184,122,0.25)":"2px solid transparent",borderR
 onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
 {mi===0?(showGlobe?<div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
 <GlobeView terrainBuf={globeBuf} world={world}
-show3D={show3DTerrain} CW={globeTexSize.w} CH={globeTexSize.h} /></div>
+CW={globeTexSize.w} CH={globeTexSize.h} /></div>
 :<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
 style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",
 aspectRatio:`${CW}/${CH}`}} />)
@@ -1400,9 +1399,6 @@ color:useMercator?"#c9b87a":"#5a5448",padding:"6px 12px",fontSize:12}}>{useMerca
 <button onClick={()=>setShowGlobe(!showGlobe)}
 style={{...bs,background:showGlobe?"rgba(120,180,220,0.25)":"transparent",border:"none",
 color:showGlobe?"#78b4dc":"#5a5448",padding:"6px 12px",fontSize:12}}>Globe</button>
-{showGlobe&&<label style={{fontSize:10,color:show3DTerrain?"#78b4dc":"#6a6458",cursor:"pointer",display:"flex",alignItems:"center",gap:3,padding:"0 4px"}}>
-<input type="checkbox" checked={show3DTerrain} onChange={e=>setShow3DTerrain(e.target.checked)}
-style={{accentColor:"#78b4dc",width:12,height:12}} />3D</label>}
 {(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
 <div style={{width:1,height:20,background:"rgba(201,184,122,0.15)"}} />
 <button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}

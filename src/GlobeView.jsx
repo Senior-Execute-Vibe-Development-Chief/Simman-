@@ -6,7 +6,7 @@ import {
   BackSide, ShaderMaterial, AdditiveBlending
 } from "three";
 
-export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
+export default function GlobeView({ terrainBuf, world, CW, CH }) {
   const containerRef = useRef(null);
   const stateRef = useRef(null);
 
@@ -26,8 +26,7 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
     el.appendChild(renderer.domElement);
 
     // Sphere geometry — high enough segments for visible terrain
-    const baseGeo = new SphereGeometry(1, 200, 100);
-    const geo = baseGeo.clone();
+    const geo = new SphereGeometry(1, 128, 64);
 
     // Offscreen canvas for texture
     const texCanvas = document.createElement("canvas");
@@ -142,7 +141,7 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
     };
     animId = requestAnimationFrame(loop);
 
-    stateRef.current = { scene, camera, renderer, mesh, geo, baseGeo, texture, texCanvas, texCtx, specTexture, specCanvas, specCtx, mat };
+    stateRef.current = { scene, camera, renderer, mesh, geo, texture, texCanvas, texCtx, specTexture, specCanvas, specCtx, mat };
 
     return () => {
       cancelAnimationFrame(animId);
@@ -153,7 +152,6 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
       window.removeEventListener("resize", onResize);
       renderer.dispose();
       geo.dispose();
-      baseGeo.dispose();
       mat.dispose();
       texture.dispose();
       specTexture.dispose();
@@ -209,49 +207,6 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
       specTexture.needsUpdate = true;
     }
   }, [terrainBuf, CW, CH, world]);
-
-  // Update vertex displacement when world or show3D changes
-  useEffect(() => {
-    const s = stateRef.current;
-    if (!s || !world) return;
-    const { geo, baseGeo } = s;
-    const W = world.width || 1920, H = world.height || 960;
-    const elev = world.elevation;
-
-    // Reset to base positions
-    const basePos = baseGeo.attributes.position;
-    const pos = geo.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      pos.setXYZ(i, basePos.getX(i), basePos.getY(i), basePos.getZ(i));
-    }
-
-    if (show3D && elev) {
-      const exaggeration = 0.08; // height scale relative to radius=1
-      for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-        const r = Math.sqrt(x * x + y * y + z * z);
-        if (r < 0.001) continue;
-        // Spherical to UV
-        const theta = Math.atan2(x, z); // longitude
-        const phi = Math.asin(Math.max(-1, Math.min(1, y / r))); // latitude
-        const u = (theta / (2 * Math.PI) + 0.5) % 1;
-        const v = 0.5 - phi / Math.PI; // v=0 at north pole, v=1 at south
-        // Sample elevation
-        const ex = Math.floor(u * W) % W;
-        const ey = Math.max(0, Math.min(H - 1, Math.floor(v * H)));
-        const e = elev[ey * W + ex];
-        const disp = Math.max(0, e) * exaggeration;
-        // Push outward along normal (which is just the normalized position for a sphere)
-        const invR = 1 / r;
-        pos.setX(i, x + x * invR * disp);
-        pos.setY(i, y + y * invR * disp);
-        pos.setZ(i, z + z * invR * disp);
-      }
-    }
-
-    pos.needsUpdate = true;
-    geo.computeVertexNormals();
-  }, [world, show3D]);
 
   return (
     <div ref={containerRef} style={{
