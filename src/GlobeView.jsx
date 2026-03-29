@@ -38,24 +38,21 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
 
     const mat = new MeshPhongMaterial({
       map: texture,
-      shininess: 8,
-      specular: new Color(0x222222),
+      shininess: 45, // tight specular spot (sun glint on ocean)
+      specular: new Color(0x111115),
     });
     const mesh = new Mesh(geo, mat);
     scene.add(mesh);
 
-    // Lighting — warm sun + cool fill for depth and contrast
-    const ambient = new AmbientLight(0x8090b0, 0.5); // cool blue-ish fill
+    // Lighting — low ambient for dark terminator, strong sun for contrast
+    const ambient = new AmbientLight(0x606878, 0.25); // very dim cool fill
     scene.add(ambient);
-    const sun = new DirectionalLight(0xfff0e0, 1.2); // warm sunlight, strong
-    sun.position.set(3, 2, 4);
+    const sun = new DirectionalLight(0xfff5e8, 1.4); // strong warm sunlight
+    sun.position.set(3, 1.5, 4);
     scene.add(sun);
-    const fill = new DirectionalLight(0x4060a0, 0.3); // cool blue rim
-    fill.position.set(-3, -1, -2);
-    scene.add(fill);
 
-    // Atmosphere glow — a slightly larger sphere with a rim-light shader
-    const atmosGeo = new SphereGeometry(1.015, 64, 32);
+    // Atmosphere — thin subtle whitish-blue haze at the limb
+    const atmosGeo = new SphereGeometry(1.012, 64, 32);
     const atmosMat = new ShaderMaterial({
       vertexShader: `
         varying vec3 vWorldPos;
@@ -72,8 +69,8 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
         void main() {
           vec3 viewDir = normalize(-vWorldPos);
           float rim = 1.0 - max(0.0, dot(vNormal, viewDir));
-          float intensity = pow(rim, 2.0);
-          gl_FragColor = vec4(0.35, 0.55, 1.0, intensity * 0.55);
+          float intensity = pow(rim, 3.5);
+          gl_FragColor = vec4(0.55, 0.7, 1.0, intensity * 0.35);
         }
       `,
       blending: AdditiveBlending,
@@ -162,14 +159,14 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
       let r = terrainBuf[i3], g = terrainBuf[i3 + 1], b = terrainBuf[i3 + 2];
       // Saturation boost: push channels away from gray
       const gray = (r + g + b) / 3;
-      const sat = 1.3; // 30% more saturated
+      const sat = 1.1; // subtle saturation boost (not too vivid)
       r = Math.max(0, Math.min(255, gray + (r - gray) * sat));
       g = Math.max(0, Math.min(255, gray + (g - gray) * sat));
       b = Math.max(0, Math.min(255, gray + (b - gray) * sat));
       // Slight contrast boost
-      r = Math.max(0, Math.min(255, (r - 128) * 1.1 + 128));
-      g = Math.max(0, Math.min(255, (g - 128) * 1.1 + 128));
-      b = Math.max(0, Math.min(255, (b - 128) * 1.1 + 128));
+      r = Math.max(0, Math.min(255, (r - 128) * 1.05 + 128));
+      g = Math.max(0, Math.min(255, (g - 128) * 1.05 + 128));
+      b = Math.max(0, Math.min(255, (b - 128) * 1.05 + 128));
       d[i4] = r; d[i4 + 1] = g; d[i4 + 2] = b; d[i4 + 3] = 255;
     }
     texCtx.putImageData(img, 0, 0);
