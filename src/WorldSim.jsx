@@ -365,180 +365,13 @@ if(elevation[py*W+px]>0){
 outer:for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const wx=((tx+dx)%ctw+ctw)%ctw,wy=ty+dy;if(wy<0||wy>=cth)continue;
 const npx=Math.min(W-1,wx*RES),npy=Math.min(H-1,wy*RES);
 if(elevation[npy*W+npx]<=0){coastal[ty*ctw+tx]=1;break outer;}}}}
-const rvr=generateRivers(elevation,moisture,W,H,mkRng(seed+777));
 // Swamps: low-lying wet warm terrain
 const swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
+if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,river:rvr.river,riverOverlay:rvr.riverOverlay,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
-
-// ── River generation: priority-flood + D8 flow accumulation ──
-// Rivers are invisible at global scale — only lakes, deltas, and floodplains render.
-// The river/accumulation data is kept for gameplay (fertility, defense).
-function generateRivers(elev,moist,W,H,rng){
-const N=W*H;
-const floodplain=new Uint8Array(N),delta=new Uint8Array(N);
-const D8X=[-1,0,1,-1,1,-1,0,1],D8Y=[-1,-1,-1,0,0,1,1,1];
-
-// ── Phase 1: Priority-flood depression filling ──
-// Record fill depth per pixel (how much it was raised) for later lake detection.
-const filled=new Float32Array(N);filled.set(elev);
-const fillDepth=new Float32Array(N);
-const visited=new Uint8Array(N);
-
-const heapIdx=new Int32Array(N+1);let heapN=0;
-function heapUp(k){const v=heapIdx[k],ve=filled[v];
-while(k>1){const p=k>>1;if(filled[heapIdx[p]]<=ve)break;
-heapIdx[k]=heapIdx[p];k=p;}heapIdx[k]=v;}
-function heapDown(k){const v=heapIdx[k],ve=filled[v];
-while(k*2<=heapN){let c=k*2;if(c+1<=heapN&&filled[heapIdx[c+1]]<filled[heapIdx[c]])c++;
-if(filled[heapIdx[c]]>=ve)break;heapIdx[k]=heapIdx[c];k=c;}heapIdx[k]=v;}
-function heapPush(i){heapIdx[++heapN]=i;heapUp(heapN);}
-function heapPop(){const v=heapIdx[1];heapIdx[1]=heapIdx[heapN--];if(heapN>0)heapDown(1);return v;}
-
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(elev[i]<=0||y===0||y===H-1){visited[i]=1;heapPush(i);}
-else filled[i]=1e9;}
-while(heapN>0){const ci=heapPop();const cx=ci%W,cy=(ci/W)|0;
-for(let d=0;d<8;d++){
-const nx=(cx+D8X[d]+W)%W,ny=cy+D8Y[d];if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;if(visited[ni])continue;visited[ni]=1;
-const ne=elev[ni]>filled[ci]?elev[ni]:filled[ci]+1e-5;
-filled[ni]=ne;heapPush(ni);
-if(elev[ni]>0)fillDepth[ni]=ne-elev[ni];}}
-
-// ── Phase 2: D8 flow direction on filled DEM ──
-const flowDir=new Int8Array(N).fill(-1);
-for(let y=1;y<H-1;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(filled[i]<=0)continue;
-let bestD=-1,bestDrop=-1e-9;
-for(let d=0;d<8;d++){
-const nx=(x+D8X[d]+W)%W,ny=y+D8Y[d];if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;
-const dist=D8X[d]&&D8Y[d]?1.414:1;
-const drop=(filled[i]-filled[ni])/dist;
-if(drop>bestDrop){bestDrop=drop;bestD=d;}}
-flowDir[i]=bestD;}
-
-// ── Phase 3: Flow accumulation (topological BFS) ──
-const accum=new Float32Array(N);
-const inDeg=new Uint8Array(N);
-for(let i=0;i<N;i++){if(flowDir[i]<0)continue;
-const x=i%W,y=(i/W)|0,d=flowDir[i];
-const nx=(x+D8X[d]+W)%W,ny=y+D8Y[d];if(ny<0||ny>=H)continue;
-inDeg[ny*W+nx]++;}
-for(let i=0;i<N;i++){if(filled[i]>0)accum[i]=0.3+moist[i]*0.7;}
-const queue=new Int32Array(N);let qHead=0,qTail=0;
-for(let i=0;i<N;i++)if(filled[i]>0&&inDeg[i]===0)queue[qTail++]=i;
-while(qHead<qTail){const ci=queue[qHead++];
-if(flowDir[ci]<0)continue;
-const cx=ci%W,cy=(ci/W)|0,d=flowDir[ci];
-const nx=(cx+D8X[d]+W)%W,ny=cy+D8Y[d];if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;accum[ni]+=accum[ci];
-if(--inDeg[ni]===0)queue[qTail++]=ni;}
-
-// ── Phase 4: River threshold (for gameplay data, NOT rendering) ──
-let mx=0;for(let i=0;i<N;i++)if(accum[i]>mx)mx=accum[i];
-// Rivers at ~0.2% of land area for gameplay mechanics
-let landCount=0;for(let i=0;i<N;i++)if(elev[i]>0)landCount++;
-const targetPx=Math.max(600,landCount*0.002);
-const sampleBins=1000;const binCounts=new Uint32Array(sampleBins);
-for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<1)continue;
-const b=Math.min(sampleBins-1,(Math.sqrt(accum[i]/mx)*sampleBins)|0);binCounts[b]++;}
-let cumul=0,thresh=mx;
-for(let b=sampleBins-1;b>=0;b--){cumul+=binCounts[b];
-if(cumul>=targetPx){thresh=(b/sampleBins)**2*mx;break;}}
-thresh=Math.max(thresh,mx*0.001);
-// River gameplay buffer: marks tiles with significant flow for territory mechanics
-const river=new Uint8Array(N);
-for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<thresh)continue;
-river[i]=Math.min(255,Math.round(Math.sqrt(accum[i]/mx)*200)+55);}
-// River overlay: 1px-wide paths for the toggle overlay.
-// Build reverse graph for ALL land pixels (not just above thresh),
-// then trace upstream from mouths and internal sinks.
-const riverOverlay=new Uint8Array(N);
-{const bestUp=new Int32Array(N).fill(-1);
-for(let i=0;i<N;i++){if(flowDir[i]<0||elev[i]<=0)continue;
-const x=i%W,y=(i/W)|0,d=flowDir[i];
-const nx=(x+D8X[d]+W)%W,ny=y+D8Y[d];if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;
-if(bestUp[ni]<0||accum[i]>accum[bestUp[ni]])bestUp[ni]=i;}
-// Find trace start points: mouths (flow into ocean) + internal sinks (no outflow)
-const starts=[];
-for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<thresh)continue;
-if(flowDir[i]<0){starts.push(i);continue;}
-const x=i%W,y=(i/W)|0,d=flowDir[i];
-const nx=(x+D8X[d]+W)%W,ny=y+D8Y[d];if(ny<0||ny>=H){starts.push(i);continue;}
-if(elev[ny*W+nx]<=0)starts.push(i);}
-// Trace upstream from each start along the strongest incoming branch
-for(const s of starts){let ci=s;
-for(let step=0;step<5000;step++){
-if(ci<0||riverOverlay[ci])break;
-if(accum[ci]>=thresh){const norm=Math.sqrt(accum[ci]/mx);
-riverOverlay[ci]=Math.min(255,Math.round(norm*180)+60);}
-ci=bestUp[ci];}}}
-
-// ── Phase 5: Lakes — generated AFTER rivers, excluding river pixels ──
-const rawLake=new Uint8Array(N);
-// 5a: Depression-fill lakes: pixels that were raised significantly, but not on a river
-for(let i=0;i<N;i++){
-if(fillDepth[i]>0.005&&elev[i]>0&&!river[i])rawLake[i]=1;}
-// 5b: Accumulation-based lakes: high flow on flat terrain, excluding river pixels
-const lakeThresh=mx*0.08;
-for(let y=2;y<H-2;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(elev[i]<=0||accum[i]<lakeThresh||river[i])continue;
-let flatCount=0;const R=3;
-for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){
-const nx2=(x+dx+W)%W,ny2=y+dy;if(ny2<0||ny2>=H)continue;
-if(Math.abs(elev[ny2*W+nx2]-elev[i])<0.012)flatCount++;}
-if(flatCount>((2*R+1)**2)*0.6){
-const lR=Math.min(6,Math.max(2,Math.round(Math.sqrt(accum[i]/mx)*5)));
-for(let dy=-lR;dy<=lR;dy++)for(let dx=-lR;dx<=lR;dx++){
-const nx2=(x+dx+W)%W,ny2=y+dy;if(ny2<0||ny2>=H)continue;
-const ni=ny2*W+nx2;if(dx*dx+dy*dy>lR*lR)continue;
-if(elev[ni]>0&&!river[ni]&&Math.abs(elev[ni]-elev[i])<0.015)rawLake[ni]=1;}}}
-
-// ── Phase 6: Filter lake clusters by minimum size ──
-const MIN_LAKE_SIZE=12;
-const lake=new Uint8Array(N);
-const lakeLabel=new Int32Array(N);
-let nextLabel=1;
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(!rawLake[i]||lakeLabel[i])continue;
-const comp=[];const bfs=[i];lakeLabel[i]=nextLabel;
-let head=0;
-while(head<bfs.length){const ci=bfs[head++];comp.push(ci);
-const cx=ci%W,cy=(ci/W)|0;
-for(let d=0;d<8;d++){
-const nx=(cx+D8X[d]+W)%W,ny=cy+D8Y[d];if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;if(rawLake[ni]&&!lakeLabel[ni]){lakeLabel[ni]=nextLabel;bfs.push(ni);}}}
-if(comp.length>=MIN_LAKE_SIZE)for(const ci of comp)lake[ci]=1;
-nextLabel++;}
-
-// ── Phase 7: Deltas at river mouths ──
-for(let y=1;y<H-1;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(elev[i]<=0||accum[i]<thresh*6)continue;
-if(flowDir[i]<0)continue;
-const d=flowDir[i],nx2=(x+D8X[d]+W)%W,ny2=y+D8Y[d];
-if(ny2<0||ny2>=H)continue;
-if(elev[ny2*W+nx2]<=0){
-const str=Math.sqrt(accum[i]/mx);
-const dR=Math.min(10,Math.max(2,Math.round(str*8)));
-for(let dy2=-dR;dy2<=dR;dy2++)for(let dx2=-dR;dx2<=dR;dx2++){
-const mx2=((x+dx2)%W+W)%W,my2=y+dy2;if(my2<0||my2>=H)continue;
-if(dx2*dx2+dy2*dy2>dR*dR)continue;
-const mi=my2*W+mx2;if(elev[mi]>-0.02&&elev[mi]<0.025)delta[mi]=1;}}}
-
-// ── Phase 8: Floodplains (gameplay only, not rendered) ──
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(!river[i]||elev[i]<=0)continue;
-const fR=river[i]>150?5:river[i]>80?3:2;
-for(let dy=-fR;dy<=fR;dy++)for(let dx=-fR;dx<=fR;dx++){
-const nx=((x+dx)%W+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;const d2=dx*dx+dy*dy;if(d2>fR*fR)continue;
-if(elev[ni]>0&&!river[ni]&&!lake[ni]&&Math.abs(elev[ni]-elev[i])<0.03)floodplain[ni]=1;}}
-return{river,riverOverlay,lake,floodplain,delta};}
+return{elevation,moisture,temperature,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
 
 const BC=[
 [10,22,56],      // 0  Deep Ocean
@@ -599,24 +432,17 @@ const LEAPS=[];for(let r=5;r<=13;r++)for(let a=0;a<8;a++){const ang=a*Math.PI/4;
 function createTerritory(w){
 const tw=Math.ceil(w.width/RES),th=Math.ceil(w.height/RES);
 const tElev=new Float32Array(tw*th),tTemp=new Float32Array(tw*th),tMoist=new Float32Array(tw*th),tFert=new Float32Array(tw*th);
-const tCoast=new Uint8Array(tw*th),tDiff=new Float32Array(tw*th),tRiver=new Uint8Array(tw*th),owner=new Int16Array(tw*th).fill(-1),tribeSizes=[],tribeStrength=[],tribeCenters=[];
+const tCoast=new Uint8Array(tw*th),tDiff=new Float32Array(tw*th),owner=new Int16Array(tw*th).fill(-1),tribeSizes=[],tribeStrength=[],tribeCenters=[];
 for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){const px=Math.min(w.width-1,tx*RES),py=Math.min(w.height-1,ty*RES),i=py*w.width+px;
 const ti=ty*tw+tx;tElev[ti]=w.elevation[i];tTemp[ti]=w.temperature[i];tMoist[ti]=w.moisture[i];tCoast[ti]=w.coastal[ti];
 const e=w.elevation[i],t=w.temperature[i],m=w.moisture[i];let diff=0;
 if(e>0.35)diff=Math.max(diff,Math.min(1,(e-0.35)*3));if(t>0.5&&m<0.2)diff=Math.max(diff,Math.min(0.85,(0.2-m)*3*(t-0.3)));
 if(t<0.2)diff=Math.max(diff,Math.min(0.9,(0.2-t)*4));tDiff[ti]=diff;tFert[ti]=tileFert(t,m,e);
-// Feature scan: check pixels in this tile's block for rivers, floodplains, deltas, oases, swamps
-{let hasWater=false,hasFlood=false,hasDelta=false,hasSwamp=false;
+// Feature scan: swamps
+{let hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
 const wi=Math.min(w.height-1,py+dy)*w.width+Math.min(w.width-1,px+dx);
-if(w.river&&w.river[wi]>0&&e>0)hasWater=true;
-if(w.lake&&w.lake[wi]&&e>0)hasWater=true;
-if(w.floodplain&&w.floodplain[wi])hasFlood=true;
-if(w.delta&&w.delta[wi])hasDelta=true;
 if(w.swamp&&w.swamp[wi])hasSwamp=true;}
-if(hasWater){tFert[ti]=Math.min(1,tFert[ti]+0.15);tRiver[ti]=1;}
-if(hasDelta){tFert[ti]=Math.min(1,tFert[ti]+0.35);}
-else if(hasFlood){tFert[ti]=Math.min(1,tFert[ti]+0.25);}
 if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+0.25);}}}
 // Find multiple spread-out seed locations for starting tribes
 const NUM_TRIBES=(w.preset==="earth"||w.preset==="earth_sim")?8:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:6;const minSpacing=Math.round(tw*0.12);
@@ -646,7 +472,7 @@ for(let i=0;i<origins.length;i++){const{x,y}=origins[i],ti=y*tw+x;
 owner[ti]=i;tribeSizes.push(1);tribeStrength.push(tFert[ti]);tenure[ti]=1;frontier[ti]=1;frontierList.push(ti);
 tribeCenters.push([{x,y,prestige:1.0,founded:0}]);}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tRiver,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
 frontier,frontierList,landCount:lc,settled:origins.length,tribes:origins.length,origin:origins[0]||{x:0,y:0},stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+(y1-y2)*(y1-y2));}
@@ -694,7 +520,7 @@ if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];}
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];}
 
 function stepTerritory(ter,w){
-const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,tRiver,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
+const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // ── Expansion into empty land ──
 const nf=new Uint8Array(tw*th);const nfl=[];
 for(let fj=0;fj<ter.frontierList.length;fj++){const fi=ter.frontierList[fj];if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
@@ -762,7 +588,7 @@ if(tenure[i]<200)tenure[i]++;
 if(tenure[i]<15){const drain=tFert[i]*0.015*(1-tenure[i]/15);// decays as tenure grows
 tribeStrength[owner[i]]=Math.max(0.1,tribeStrength[owner[i]]-drain);}}}
 // ── Border conflict: local power projection determines tile flips ──
-if(ter.stepCount%4===0){const flips=[];const{tenure,tRiver}=ter;
+if(ter.stepCount%4===0){const flips=[];const{tenure}=ter;
 for(let i=0;i<tw*th;i++){const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
 const ty2=Math.floor(i/tw),tx2=i%tw;
 // Quick border check: skip interior tiles with no enemy neighbors
@@ -773,7 +599,6 @@ if(!hasEnemy)continue;
 const lpA=localPower(ter,ow,tx2,ty2);// only computed for border tiles
 // Defender advantage: 3x base + tenure (up to +1.5x) + terrain (up to +1.4x) + river (up to +2x)
 let def=3+Math.min(1.5,tenure[i]*0.008)+tDiff[i]*1.4;
-if(tRiver[i])def+=2;// rivers are very hard to cross
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<16)continue;
 // Avoid attacking tribes that are much larger (>3x your size)
@@ -782,9 +607,8 @@ if(defSz>0&&atkSz>0&&defSz/atkSz>3)continue;// don't poke the giant
 // Small tribes are less aggressive; large tribes more so
 const atkAggression=atkSz<25?0.4:atkSz>80?1.5:1.0;
 // River between attacker and defender tiles: additional crossing penalty
-let riverCross=0;if(tRiver[ni])riverCross+=1.5;
 const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
-const totalDef=def+riverCross;
+const totalDef=def;
 // Recently flipped tiles (tenure < 5) can't flip again — prevents ping-pong
 if(tenure[i]<5)continue;
 if(lpB>lpA*totalDef){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(lpB/(lpA*totalDef)-1)*0.2*atkAggression;
@@ -871,7 +695,6 @@ const[depthFromSea,setDepthFromSea]=useState(false);
 const[depthCeil,setDepthCeil]=useState(1.0);
 const[showPlates,setShowPlates]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
-const[showRivers,setShowRivers]=useState(false);
 const[hoverInfo,setHoverInfo]=useState(null);
 const[tecPresetName,setTecPresetName]=useState("Default");
 const[rightPanel,setRightPanel]=useState("");  // "" | "params"
@@ -889,7 +712,6 @@ const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);
 const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
-const showRiversRef=useRef(false);
 const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
@@ -902,7 +724,7 @@ const W=1920,H=960,CW=CW_FLAT;
 const generate=useCallback((s,ol)=>{
 let w;
 if(presetRef.current==="import"&&importedWorldRef.current){w=importedWorldRef.current;importedWorldRef.current=null;}
-else{w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,showRiversRef.current,useRealWindRef.current);}
+else{w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,true,useRealWindRef.current);}
 setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
@@ -927,11 +749,8 @@ let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
-// Lake/delta/swamp overlay on globe (rivers invisible at global scale)
-if(e>sl){const si=sy0*W+sx0;
-if(w.delta&&w.delta[si]){r=30;g=85;b=55;}
-else if(w.lake&&w.lake[si]){r=28;g=62;b=112;}
-else if(w.swamp&&w.swamp[si]){r=40;g=58;b=38;}}
+// Swamp overlay on globe
+if(e>sl&&w.swamp&&w.swamp[sy0*W+sx0]){r=40;g=58;b=38;}
 if(polarBlend>0){const pr=e>0?230:20,pg=e>0?235:40,pb=e>0?240:80;
 r=Math.round(r*(1-polarBlend)+pr*polarBlend);
 g=Math.round(g*(1-polarBlend)+pg*polarBlend);
@@ -974,17 +793,13 @@ const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
-// Scan tile block for visible water features (lakes, deltas, swamps only — rivers invisible at global scale)
-let hasDelta=false,hasLake=false,hasSwamp=false;
+// Swamp overlay
+let hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
 const wi=Math.min(H-1,sy+dy)*W+Math.min(W-1,sx+dx);
-if(w.delta&&w.delta[wi])hasDelta=true;
-if(w.lake&&w.lake[wi]&&e>sl)hasLake=true;
 if(w.swamp&&w.swamp[wi])hasSwamp=true;}
 let pr=r,pg=g,pb=b;
-if(hasDelta){pr=30;pg=85;pb=55;}
-else if(hasLake){pr=28;pg=62;pb=112;}
-else if(e>sl&&hasSwamp){pr=40;pg=58;pb=38;}
+if(e>sl&&hasSwamp){pr=40;pg=58;pb=38;}
 const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}}
 return buf;},[CH]);
 
@@ -1060,23 +875,15 @@ const e=ter.tElev[ti],ow=ter.owner[ti];let r,g,b;
 if(e<=sl){r=6;g=8;b=16;}
 else if(ow>=0){r=tcR[ow];g=tcG[ow];b=tcB[ow];}
 else{r=22;g=20;b=18;}
-// Lake tint on owned tiles (rivers invisible at global scale)
-if(e>sl&&ter.tRiver[ti]&&w.lake){
-let tileLake=false;const px=Math.min(W-1,(ti%CW)*RES),py=Math.min(H-1,((ti/CW)|0)*RES);
-for(let dy=0;dy<RES&&!tileLake;dy++)for(let dx=0;dx<RES&&!tileLake;dx++){
-const wi=Math.min(H-1,py+dy)*W+Math.min(W-1,px+dx);if(w.lake[wi])tileLake=true;}
-if(tileLake){const a=0.4;r=(r*(1-a)+12*a+.5)|0;g=(g*(1-a)+20*a+.5)|0;b=(b*(1-a)+45*a+.5)|0;}}
 const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="value"){
 // Tile value overlay — green (high value) → yellow → red (low value)
-// Value = fertility + river bonus + coast bonus + moderate elevation bonus
+// Value = fertility + coast bonus + moderate elevation bonus
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
 if(e<=sl){d[pi4]=8;d[pi4+1]=12;d[pi4+2]=22;d[pi4+3]=255;continue;}
 let v=ter.tFert[ti];
-// River/water bonus
-if(ter.tRiver[ti])v+=0.15;
 // Coast access bonus (trade, fishing)
 if(ter.tCoast&&ter.tCoast[ti])v+=0.08;
 // Moderate elevation sweet spot (defensible + habitable)
@@ -1160,16 +967,6 @@ if(!dx&&!dy)continue;
 const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
 if(plateAt(nx2,ny2)!==myP)boundary=true;}
 if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
-// River overlay — thin blue lines showing flow network when toggled on
-if(showRiversRef.current&&w.riverOverlay){
-for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
-const rv=w.riverOverlay[sy*W+sx];
-if(rv>0){const pi4=ti<<2;
-const a=0.3+rv/255*0.35;
-d[pi4]=(d[pi4]*(1-a)+30*a+.5)|0;
-d[pi4+1]=(d[pi4+1]*(1-a)+90*a+.5)|0;
-d[pi4+2]=(d[pi4+2]*(1-a)+200*a+.5)|0;}}}
 ctx.putImageData(img,0,0);
 // Draw all tribe centers (tile coords — canvas is CW×CH)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
@@ -1261,7 +1058,7 @@ if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-seri
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache,CH]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -1301,11 +1098,9 @@ const img=await loadImageFile(file);
 w=rasterizeHeightmap(img.data,img.width,img.height,W,H);
 setImportStatus(`Heightmap loaded (${img.width}\u00d7${img.height})`);
 }else{setImportStatus("Unsupported file type");return;}
-const rvr=generateRivers(w.elevation,w.moisture,W,H,mkRng(seed+777));
-w.river=rvr.river;w.riverOverlay=rvr.riverOverlay;w.lake=rvr.lake;w.floodplain=rvr.floodplain;w.delta=rvr.delta;
 const swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(w.elevation[i]>0&&w.elevation[i]<0.025&&w.moisture[i]>0.45&&w.temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
+if(w.elevation[i]>0&&w.elevation[i]<0.025&&w.moisture[i]>0.45&&w.temperature[i]>0.35){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);if(nv>-0.1)swamp[i]=1;}}
 w.swamp=swamp;
 importedWorldRef.current=w;presetRef.current="import";setPreset("import");
@@ -1488,9 +1283,6 @@ color:showPlates?"#e07050":"#5a5448",padding:"6px 12px",fontSize:12}}>Plates</bu
 onChange={e=>{const v=Number(e.target.value)/100;setOceanLevel(v);oceanLevelRef.current=v;}}
 onMouseUp={()=>generate(seed)} onTouchEnd={()=>generate(seed)}
 style={{width:80,accentColor:"#6ab4e8"}} />
-<button onClick={()=>{const nv=!showRiversRef.current;showRiversRef.current=nv;setShowRivers(nv);}}
-style={{...bs,background:showRivers?"rgba(40,120,200,0.25)":"transparent",border:"none",
-color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</button>
 <button onClick={()=>setUseMercator(!useMercator)}
 style={{...bs,background:useMercator?"rgba(180,160,100,0.25)":"transparent",border:"none",
 color:useMercator?"#c9b87a":"#5a5448",padding:"6px 12px",fontSize:12}}>{useMercator?"Mercator":"Flat"}</button>
