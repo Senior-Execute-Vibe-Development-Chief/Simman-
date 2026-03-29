@@ -14,8 +14,8 @@ export const RESOURCES = [
   { id: 'salt',      label: 'Salt',            color: [230, 225, 210], era: 'all',   icon: 'Na' },
   { id: 'horses',    label: 'Horses',          color: [170, 130, 80],  era: 'mid',   icon: 'H' },
   { id: 'precious',  label: 'Precious Metals', color: [220, 195, 60],  era: 'all',   icon: 'Au' },
-  { id: 'coal',      label: 'Coal',            color: [50, 45, 40],    era: 'late',  icon: 'C' },
-  { id: 'oil',       label: 'Oil',             color: [30, 30, 30],    era: 'late',  icon: 'O' },
+  { id: 'coal',      label: 'Coal',            color: [90, 70, 45],    era: 'late',  icon: 'C' },
+  { id: 'oil',       label: 'Oil',             color: [60, 90, 110],   era: 'late',  icon: 'O' },
   { id: 'gems',      label: 'Gems / Luxury',   color: [160, 60, 180],  era: 'all',   icon: 'G' },
 ];
 

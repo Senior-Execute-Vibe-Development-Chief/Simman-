@@ -823,6 +823,8 @@ const[globeTexSize,setGlobeTexSize]=useState({w:4096,h:2048});
 const CH=useMercator?CH_MERC:CH_FLAT;
 _mercator=useMercator;
 const[mapCount,setMapCount]=useState(1);
+const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
+const activeResRef=useRef(null);activeResRef.current=activeRes;
 const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
@@ -1015,21 +1017,22 @@ else{const t2=v*2;r=220;g=(t2*200)|0;b=0;}
 const shade=1-Math.max(0,e-0.1)*0.5;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else if(vm==="resources"){
-// Resource overlay — shows dominant resource at each tile with its color
+// Resource overlay — blend all active resource layers per tile
+const ar=activeResRef.current;
+const activeList=RESOURCES.filter(r=>ar[r.id]);
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
 if(e<=sl){d[pi4]=6;d[pi4+1]=8;d[pi4+2]=16;d[pi4+3]=255;continue;}
-let br=18,bg=16,bb=14;
+let br=0,bg=0,bb=0,totalW=0;
 if(ter.deposits){
-const dom=dominantResource(ter.deposits,ti);
-if(dom){
-const rich=ter.deposits[dom.id][ti];
-const alpha=Math.min(0.95,rich*0.9+0.2);
-const invA=1-alpha;
-br=(br*invA+dom.color[0]*alpha)|0;
-bg=(bg*invA+dom.color[1]*alpha)|0;
-bb=(bb*invA+dom.color[2]*alpha)|0;}}
+for(const r of activeList){
+const v=ter.deposits[r.id][ti];
+if(v>0.05){const w2=v*v;br+=r.color[0]*w2;bg+=r.color[1]*w2;bb+=r.color[2]*w2;totalW+=w2;}}}
+if(totalW>0.001){const inv=1/totalW;br=(br*inv)|0;bg=(bg*inv)|0;bb=(bb*inv)|0;
+const alpha=Math.min(0.95,Math.sqrt(totalW)*0.8+0.15);const invA=1-alpha;
+br=(12*invA+br*alpha)|0;bg=(11*invA+bg*alpha)|0;bb=(10*invA+bb*alpha)|0;
+}else{br=12;bg=11;bb=10;}
 d[pi4]=br;d[pi4+1]=bg;d[pi4+2]=bb;d[pi4+3]=255;}
 }else if(vm==="moisture"){
 // Moisture overlay — brown (dry) → yellow → green → teal → blue (wet)
@@ -1191,7 +1194,7 @@ if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-seri
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache,CH]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,activeRes]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -1394,16 +1397,25 @@ borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14p
 background:`rgb(${BC[bi][0]},${BC[bi][1]},${BC[bi][2]})`}} />
 <span>{BN[bi]}</span></div>))}</div>}
 
-{/* Resource legend — BOTTOM LEFT */}
-{viewMode==="resources"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.82)",
-borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
-{RESOURCES.map(r=>(
-<div key={r.id} style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
+{/* Resource toggles — BOTTOM LEFT */}
+{viewMode==="resources"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.88)",
+borderRadius:3,padding:"6px 8px",fontSize:9,lineHeight:"16px",color:"#b0a888",userSelect:"none"}}>
+{RESOURCES.map(r=>{const on=activeRes[r.id];return(
+<div key={r.id} onClick={()=>{setActiveRes(prev=>{const next={...prev};next[r.id]=!prev[r.id];return next;});}}
+style={{display:"flex",alignItems:"center",gap:5,marginBottom:1,cursor:"pointer",
+opacity:on?1:0.3,transition:"opacity 0.15s"}}>
 <span style={{display:"inline-block",width:10,height:8,borderRadius:1,flexShrink:0,
-background:`rgb(${r.color.join(",")})`}} />
+background:on?`rgb(${r.color.join(",")})`:"#333"}} />
 <span>{r.label}</span>
 <span style={{color:"#5a5448",fontSize:8,marginLeft:2}}>{r.era}</span>
-</div>))}</div>}
+</div>);})}
+<div style={{height:1,background:"rgba(201,184,122,0.10)",margin:"4px 0"}} />
+<div style={{display:"flex",gap:6}}>
+<span onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=true;setActiveRes(s);}}
+style={{cursor:"pointer",color:"#8a8474",fontSize:8}}>All</span>
+<span onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=false;setActiveRes(s);}}
+style={{cursor:"pointer",color:"#8a8474",fontSize:8}}>None</span>
+</div></div>}
 
 {/* Stats — top right of map area */}
 <div style={{position:"absolute",top:6,right:6,background:"rgba(6,8,16,0.85)",borderRadius:3,padding:"4px 10px",
