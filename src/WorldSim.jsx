@@ -444,6 +444,7 @@ function tribeRGB(id){const h=((id*67+20)%360)/360,s=(60+((id*31)%25))/100,l=(45
 const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;const hr=(pp,qq,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return pp+(qq-pp)*6*t;if(t<1/2)return qq;if(t<2/3)return pp+(qq-pp)*(2/3-t)*6;return pp;};
 return[Math.round(hr(p,q,h+1/3)*255),Math.round(hr(p,q,h)*255),Math.round(hr(p,q,h-1/3)*255)];}
 
+// Base climate fertility: temperature × moisture, penalized by elevation
 function tileFert(t,m,e){if(e>0.45)return 0.05;const base=Math.min(1,t*1.2)*Math.min(1,m*1.3);return Math.max(0.05,base*(1-Math.max(0,e-0.15)*3));}
 
 const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
@@ -453,17 +454,104 @@ function createTerritory(w){
 const tw=Math.ceil(w.width/RES),th=Math.ceil(w.height/RES);
 const tElev=new Float32Array(tw*th),tTemp=new Float32Array(tw*th),tMoist=new Float32Array(tw*th),tFert=new Float32Array(tw*th);
 const tCoast=new Uint8Array(tw*th),tDiff=new Float32Array(tw*th),owner=new Int16Array(tw*th).fill(-1),tribeSizes=[],tribeStrength=[],tribeCenters=[];
+// Pass 1: base tile data + climate fertility
 for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){const px=Math.min(w.width-1,tx*RES),py=Math.min(w.height-1,ty*RES),i=py*w.width+px;
 const ti=ty*tw+tx;tElev[ti]=w.elevation[i];tTemp[ti]=w.temperature[i];tMoist[ti]=w.moisture[i];tCoast[ti]=w.coastal[ti];
 const e=w.elevation[i],t=w.temperature[i],m=w.moisture[i];let diff=0;
 if(e>0.35)diff=Math.max(diff,Math.min(1,(e-0.35)*3));if(t>0.5&&m<0.2)diff=Math.max(diff,Math.min(0.85,(0.2-m)*3*(t-0.3)));
 if(t<0.2)diff=Math.max(diff,Math.min(0.9,(0.2-t)*4));tDiff[ti]=diff;tFert[ti]=tileFert(t,m,e);
-// Feature scan: swamps
+// Swamp bonus
 {let hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
 const wi=Math.min(w.height-1,py+dy)*w.width+Math.min(w.width-1,px+dx);
 if(w.swamp&&w.swamp[wi])hasSwamp=true;}
 if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+0.25);}}}
+
+// ── Pass 2: Geological fertility modifiers ──
+// These require neighbor access so run after base pass.
+
+// 2a: Tropical soil penalty — laterite soils in hot wet regions are nutrient-poor.
+// The Amazon/Congo paradox: lush forest but terrible soil for agriculture.
+for(let ti=0;ti<tw*th;ti++){
+const t=tTemp[ti],m=tMoist[ti],e=tElev[ti];
+if(e<=0)continue;
+if(t>0.65&&m>0.50){
+// Penalty scales with how tropical+wet the tile is
+const tropicality=Math.min(1,(t-0.65)/0.25)*Math.min(1,(m-0.50)/0.35);
+tFert[ti]*=(1-tropicality*0.55);// up to -55% for deep tropical rainforest
+}}
+
+// 2b: Alluvial lowland bonus — proxy for river valleys/floodplains.
+// Low elevation + flat + wet + moisture gradient (wet spot surrounded by drier land).
+// This is the #1 factor for where civilizations actually formed.
+for(let ty=1;ty<th-1;ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;
+const e=tElev[ti],m=tMoist[ti],t=tTemp[ti];
+if(e<=0||e>0.08)continue;// only low-lying land
+if(m<0.30)continue;// needs meaningful moisture
+// Check flatness: average absolute elevation difference with neighbors
+let elevDiffSum=0,moistSum=0,cnt=0;
+for(const[dx,dy]of DIRS){const nx=(tx+dx+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;
+const ni=ny*tw+nx;if(tElev[ni]<=0)continue;
+elevDiffSum+=Math.abs(tElev[ni]-e);moistSum+=tMoist[ni];cnt++;}
+if(cnt<3)continue;
+const avgElevDiff=elevDiffSum/cnt;
+const avgNeighborMoist=moistSum/cnt;
+const flatness=Math.max(0,1-avgElevDiff*40);// 1.0 if very flat, 0 if rugged
+// Moisture gradient: how much wetter is this tile than neighbors?
+// High gradient = moisture concentrates here (river-like)
+const moistGradient=Math.max(0,m-avgNeighborMoist);
+// Alluvial score: flat + low + wet + concentrated moisture
+const alluvialScore=flatness*Math.min(1,moistGradient*6)*Math.min(1,(0.08-e)*20);
+// Temperature sweet spot: best for agriculture at 0.35-0.65 (temperate/subtropical)
+const tempFit=t>0.30&&t<0.70?1.0:t>0.20&&t<0.80?0.6:0.3;
+const bonus=alluvialScore*tempFit*0.8;// up to +80% fertility
+if(bonus>0.02)tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}
+
+// 2c: Temperate grassland bonus — chernozem/mollisol deep topsoil.
+// Moderate temp, moderate moisture, low elevation = breadbasket zones.
+for(let ti=0;ti<tw*th;ti++){
+const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
+if(e<=0||e>0.15)continue;
+// Temperate sweet spot: not too hot, not too cold
+const tempFit=Math.exp(-((t-0.45)*(t-0.45))/(2*0.10*0.10));// peak at t=0.45
+// Semi-arid to moderate moisture: grassland/steppe zone (not forest, not desert)
+const moistFit=Math.exp(-((m-0.28)*(m-0.28))/(2*0.10*0.10));// peak at m=0.28
+const bonus=tempFit*moistFit*0.30;// up to +30%
+if(bonus>0.02)tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}
+
+// 2d: Volcanic soil bonus — near plate boundaries in tectonic mode.
+// Andisols from volcanic ash are mineral-rich, excellent for agriculture.
+if(w.pixPlate){const W=w.width,H=w.height;
+// Build a plate-boundary distance map at tile resolution
+const plateBound=new Uint8Array(tw*th);
+for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
+const px=Math.min(W-1,tx*RES),py=Math.min(H-1,ty*RES);
+const myP=w.pixPlate[py*W+px];let isBoundary=false;
+for(const[dx,dy]of DIRS){const nx2=Math.min(W-1,Math.max(0,px+dx*RES)),ny2=Math.min(H-1,Math.max(0,py+dy*RES));
+if(w.pixPlate[ny2*W+nx2]!==myP){isBoundary=true;break;}}
+if(isBoundary)plateBound[ty*tw+tx]=1;}
+// Expand boundary influence: BFS to get distance from plate boundaries
+const bDist=new Uint8Array(tw*th);bDist.fill(255);
+const bdQ=[];
+for(let i=0;i<tw*th;i++)if(plateBound[i]&&tElev[i]>0){bDist[i]=0;bdQ.push(i);}
+for(let qi=0;qi<bdQ.length;qi++){const ci=bdQ[qi],cd=bDist[ci],cx=ci%tw,cy=(ci-cx)/tw;
+if(cd>=6)continue;// max 6-tile influence radius (~12 pixels, ~100km at 1920px=40000km)
+for(const[dx,dy]of DIRS){const nx=(cx+dx+tw)%tw,ny=cy+dy;if(ny<0||ny>=th)continue;
+const ni=ny*tw+nx;if(bDist[ni]<=cd+1||tElev[ni]<=0)continue;
+bDist[ni]=cd+1;bdQ.push(ni);}}
+// Apply volcanic bonus: strongest at boundary, decays with distance
+for(let ti=0;ti<tw*th;ti++){if(bDist[ti]>=7||tElev[ti]<=0)continue;
+// Only apply where there's enough moisture for agriculture
+if(tMoist[ti]<0.15)continue;
+const proximity=1-bDist[ti]/7;// 1.0 at boundary, 0 at distance 7
+// Mountains near boundaries get less bonus (already high elevation)
+const elevPenalty=tElev[ti]>0.25?Math.max(0,1-(tElev[ti]-0.25)*4):1;
+const bonus=proximity*elevPenalty*0.40;// up to +40%
+tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}}
+
+// 2e: Coastal fertility bonus — fishing, salt, trade access.
+for(let ti=0;ti<tw*th;ti++){
+if(tCoast[ti]&&tElev[ti]>0)tFert[ti]=Math.min(1,tFert[ti]+0.06);}
 // Find multiple spread-out seed locations for starting tribes
 const NUM_TRIBES=(w.preset==="earth"||w.preset==="earth_sim")?8:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:6;const minSpacing=Math.round(tw*0.12);
 // Score all habitable tiles
@@ -1147,7 +1235,9 @@ const biomeName=BN[biome]||"Ocean";
 const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
 const tempC=Math.round(temp*50-10);
 const lat=Math.abs(wy/960-0.5)*2;
-const fertVal=elev>0?tileFert(temp,moist,elev):0;
+// Use territory fertility (includes geological modifiers) if available, else raw climate
+const terTi=terRef.current?Math.min(terRef.current.th-1,(wy/RES)|0)*terRef.current.tw+Math.min(terRef.current.tw-1,(wx/RES)|0):-1;
+const fertVal=elev>0?(terTi>=0&&terRef.current?terRef.current.tFert[terTi]:tileFert(temp,moist,elev)):0;
 const wdx=w.windX?w.windX[i]:0,wdy=w.windY?w.windY[i]:0;
 const wspd=Math.sqrt(wdx*wdx+wdy*wdy);
 const wkmh=Math.round(wspd*100); // normalized → km/h (median ~18 km/h)
