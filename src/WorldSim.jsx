@@ -406,7 +406,7 @@ const nx=(cx+D8X[d]+W)%W,ny=cy+D8Y[d];if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;if(visited[ni])continue;visited[ni]=1;
 const ne=elev[ni]>filled[ci]?elev[ni]:filled[ci]+1e-5;
 filled[ni]=ne;heapPush(ni);
-if(ne>elev[ni]+0.004&&elev[ni]>0)rawLake[ni]=1;}}
+if(ne>elev[ni]+0.01&&elev[ni]>0)rawLake[ni]=1;}}
 
 // ── Phase 2: D8 flow direction on filled DEM ──
 const flowDir=new Int8Array(N).fill(-1);
@@ -450,31 +450,30 @@ let cumul=0,thresh=mx;
 for(let b=sampleBins-1;b>=0;b--){cumul+=binCounts[b];
 if(cumul>=targetPx){thresh=(b/sampleBins)**2*mx;break;}}
 thresh=Math.max(thresh,mx*0.001);
-// River buffer: gameplay only (not rendered on map)
+// River buffer: single-pixel width, gameplay + overlay data
 const river=new Uint8Array(N);
 for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<thresh)continue;
 river[i]=Math.min(255,Math.round(Math.sqrt(accum[i]/mx)*200)+55);}
 
 // ── Phase 5: Accumulation-based lakes ──
-// Where rivers carry massive flow across flat terrain, water pools into lakes.
-// This creates the Great Lakes, Lake Victoria, Caspian-type features.
-const lakeThresh=mx*0.08;// top 8% of max flow = big rivers that form lakes
+// Only the very highest flow on very flat terrain pools into lakes.
+const lakeThresh=mx*0.25;// top 25% of max flow — only the biggest rivers
 for(let y=2;y<H-2;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elev[i]<=0||accum[i]<lakeThresh)continue;
-// Check local flatness: if terrain is very flat around a high-flow pixel, it pools
-let flatCount=0;const R=3;
+// Strict flatness check: nearly all surrounding area must be flat
+let flatCount=0;const R=4;
 for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){
 const nx=(x+dx+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
-if(Math.abs(elev[ny*W+nx]-elev[i])<0.012)flatCount++;}
-if(flatCount>((2*R+1)**2)*0.6){// >60% of surrounding area is flat
-const lR=Math.min(6,Math.max(2,Math.round(Math.sqrt(accum[i]/mx)*5)));
+if(Math.abs(elev[ny*W+nx]-elev[i])<0.008)flatCount++;}
+if(flatCount>((2*R+1)**2)*0.75){// >75% of surrounding area is flat
+const lR=Math.min(5,Math.max(2,Math.round(Math.sqrt(accum[i]/mx)*4)));
 for(let dy=-lR;dy<=lR;dy++)for(let dx=-lR;dx<=lR;dx++){
 const nx=(x+dx+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;if(dx*dx+dy*dy>lR*lR)continue;
-if(elev[ni]>0&&Math.abs(elev[ni]-elev[i])<0.015)rawLake[ni]=1;}}}
+if(elev[ni]>0&&Math.abs(elev[ni]-elev[i])<0.01)rawLake[ni]=1;}}}
 
-// ── Phase 6: Filter tiny lake clusters (remove < MIN_LAKE_SIZE pixels) ──
-const MIN_LAKE_SIZE=12;
+// ── Phase 6: Filter small lake clusters ──
+const MIN_LAKE_SIZE=40;
 const lake=new Uint8Array(N);
 const lakeLabel=new Int32Array(N);// connected component labels
 let nextLabel=1;
@@ -1139,16 +1138,12 @@ if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
 if(showRiversRef.current&&w.river){
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
-// Sample river data from pixel grid
-let maxRiv=0;
-for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
-const wi=Math.min(H-1,sy+dy)*W+Math.min(W-1,sx+dx);
-if(w.river[wi]>maxRiv)maxRiv=w.river[wi];}
-if(maxRiv>0){const pi4=ti<<2;
-const a=0.35+maxRiv/255*0.45;
-d[pi4]=(d[pi4]*(1-a)+40*a+.5)|0;
-d[pi4+1]=(d[pi4+1]*(1-a)+120*a+.5)|0;
-d[pi4+2]=(d[pi4+2]*(1-a)+220*a+.5)|0;}}}
+const rv=w.river[sy*W+sx];// single pixel sample — thin lines
+if(rv>0){const pi4=ti<<2;
+const a=0.3+rv/255*0.35;
+d[pi4]=(d[pi4]*(1-a)+30*a+.5)|0;
+d[pi4+1]=(d[pi4+1]*(1-a)+90*a+.5)|0;
+d[pi4+2]=(d[pi4+2]*(1-a)+200*a+.5)|0;}}}
 ctx.putImageData(img,0,0);
 // Draw all tribe centers (tile coords — canvas is CW×CH)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
