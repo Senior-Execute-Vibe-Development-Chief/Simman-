@@ -3,7 +3,8 @@ import {
   Scene, PerspectiveCamera, WebGLRenderer,
   SphereGeometry, MeshPhongMaterial, Mesh,
   CanvasTexture, AmbientLight, DirectionalLight, Color,
-  BackSide, ShaderMaterial, AdditiveBlending
+  BackSide, ShaderMaterial, AdditiveBlending,
+  LinearFilter, LinearMipmapLinearFilter
 } from "three";
 
 export default function GlobeView({ terrainBuf, world, CW, CH }) {
@@ -34,7 +35,9 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     texCanvas.height = CH;
     const texCtx = texCanvas.getContext("2d");
     const texture = new CanvasTexture(texCanvas);
-    // Anisotropic filtering for sharper texture at oblique angles
+    texture.minFilter = LinearMipmapLinearFilter;
+    texture.magFilter = LinearFilter;
+    texture.generateMipmaps = true;
     const maxAniso = renderer.capabilities.getMaxAnisotropy();
     texture.anisotropy = maxAniso;
 
@@ -110,7 +113,7 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     };
     const onWheel = (e) => {
       e.preventDefault();
-      camDist = Math.max(1.4, Math.min(5, camDist + e.deltaY * 0.002));
+      camDist = Math.max(1.15, Math.min(5, camDist + e.deltaY * 0.002));
     };
 
     renderer.domElement.addEventListener("pointerdown", onDown);
@@ -132,7 +135,6 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     const loop = () => {
       animId = requestAnimationFrame(loop);
       if (autoRot) camTheta += 0.003;
-      // Orbit camera around the globe (globe + sun stay fixed)
       camera.position.x = camDist * Math.sin(camTheta) * Math.cos(camPhi);
       camera.position.y = camDist * Math.sin(camPhi);
       camera.position.z = camDist * Math.cos(camTheta) * Math.cos(camPhi);
