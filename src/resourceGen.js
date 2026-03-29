@@ -158,6 +158,70 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
   // Salt offset for seed variation
   const s0 = ((seed * 16807 + 31337) % 99991) | 0;
 
+  // ── Point deposit placement for rare minerals ──
+  // Scatters N mine sites across valid terrain, each radiating influence.
+  // Guarantees distribution across all landmasses.
+  function scatterMines(resourceId, count, radius, peakRichness, candidateTest) {
+    // Collect candidates
+    const candidates = [];
+    for (let ti = 0; ti < N; ti++) {
+      if (tElev[ti] <= 0) continue;
+      if (candidateTest(ti)) candidates.push(ti);
+    }
+    if (candidates.length === 0) return;
+
+    // Seeded shuffle for deterministic placement
+    let rngState = s0 + resHash(count, radius, resourceId.length * 9973) * 2147483647 | 0;
+    const rng = () => { rngState = (rngState * 16807 + 1) % 2147483647; return (rngState & 0x7fffffff) / 0x7fffffff; };
+
+    // Score candidates by suitability (hash-based, deterministic)
+    const scored = candidates.map(ti => {
+      const tx2 = ti % tw, ty2 = (ti - tx2) / tw;
+      return { ti, score: resHash(tx2, ty2, s0 + resourceId.length * 7717) };
+    });
+    scored.sort((a, b) => b.score - a.score);
+
+    // Greedy selection: pick highest-scoring candidates with minimum spacing
+    const minSpacing = Math.max(radius * 2, Math.round(tw * 0.06));
+    const selected = [];
+    for (const c of scored) {
+      if (selected.length >= count) break;
+      const cx = c.ti % tw, cy = (c.ti - cx) / tw;
+      let tooClose = false;
+      for (const s of selected) {
+        const sx = s % tw, sy = (s - sx) / tw;
+        let dx = Math.abs(cx - sx); if (dx > tw / 2) dx = tw - dx;
+        const dy = cy - sy;
+        if (dx * dx + dy * dy < minSpacing * minSpacing) { tooClose = true; break; }
+      }
+      if (!tooClose) selected.push(c.ti);
+    }
+
+    // Radiate influence from each mine site
+    const arr = deposits[resourceId];
+    for (const site of selected) {
+      const sx = site % tw, sy = (site - sx) / tw;
+      const siteRichness = 0.5 + resHash(sx, sy, s0 + 8888) * 0.5; // 0.5-1.0 variation per site
+      for (let dy = -radius; dy <= radius; dy++) {
+        const ny = sy + dy;
+        if (ny < 0 || ny >= th) continue;
+        for (let dx = -radius; dx <= radius; dx++) {
+          const nx = (sx + dx + tw) % tw;
+          const ni = ny * tw + nx;
+          if (tElev[ni] <= 0) continue;
+          let ddx = Math.abs(dx); if (ddx > tw / 2) ddx = tw - ddx;
+          const dist = Math.sqrt(ddx * ddx + dy * dy);
+          if (dist > radius) continue;
+          // Smooth falloff: 1 at center, 0 at edge
+          const falloff = 1 - (dist / radius);
+          const v = falloff * falloff * siteRichness * peakRichness;
+          arr[ni] = Math.min(1, Math.max(arr[ni], v));
+        }
+      }
+    }
+  }
+
+  // ── Per-tile loop for regional resources ──
   for (let ti = 0; ti < N; ti++) {
     const e = tElev[ti], t = tTemp[ti], m = tMoist[ti];
     if (e <= 0) continue;
@@ -204,47 +268,6 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
       if (score > 0) deposits.stone[ti] = Math.min(1, score);
     }
 
-    // ── COPPER ──
-    // Highland/mountain copper belts + scattered mountain deposits
-    {
-      let score = 0;
-      // Large copper provinces (like Andes belt, African Copperbelt)
-      const province = depositField(tx, ty, tw, th, s0 + 300, 5, 0.60);
-      if (province > 0 && (isMountain || isHighland)) {
-        score = province * 0.7;
-        if (hasBoundary) score += (1 - bd / 12) * 0.3;
-      }
-      // Smaller scattered deposits in any mountain area
-      if (score === 0 && isMountain) {
-        const spot = depositField(tx, ty, tw, th, s0 + 301, 16, 0.78);
-        if (spot > 0) score = spot * 0.45;
-      }
-      // Highland deposits outside major belts
-      if (score === 0 && isHighland) {
-        const minor = depositField(tx, ty, tw, th, s0 + 302, 14, 0.82);
-        if (minor > 0) score = minor * 0.3;
-      }
-      if (score > 0) deposits.copper[ti] = Math.min(1, score);
-    }
-
-    // ── TIN ──
-    // Rare. Concentrated belts + alluvial deposits near highlands.
-    {
-      let score = 0;
-      // Tin belts: rare large-scale provinces
-      const belt = depositField(tx, ty, tw, th, s0 + 400, 5, 0.72);
-      if (belt > 0) {
-        if (isHighland || isMountain) score = belt * 0.6;
-        else if (isLowland && m > 0.25) score = belt * 0.45; // alluvial
-      }
-      // Tropical tin (SE Asia, Nigeria, Bolivia analogs)
-      if (score === 0 && t > 0.45 && (isHighland || isLowland)) {
-        const tropBelt = depositField(tx, ty, tw, th, s0 + 401, 7, 0.75);
-        if (tropBelt > 0) score = tropBelt * 0.45;
-      }
-      if (score > 0) deposits.tin[ti] = Math.min(1, score);
-    }
-
     // ── IRON ──
     // Common mineral. Shield deposits + mountain veins + bog iron.
     {
@@ -276,7 +299,7 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
         const saltCoast = depositField(tx, ty, tw, th, s0 + 600, 10, 0.50);
         if (saltCoast > 0) {
           score = saltCoast * 0.5;
-          if (t > 0.40 && m < 0.50) score += 0.2; // warm dry coasts better
+          if (t > 0.40 && m < 0.50) score += 0.2;
         }
       }
       // Desert evaporite basins
@@ -284,7 +307,7 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
         const evap = depositField(tx, ty, tw, th, s0 + 601, 7, 0.45);
         if (evap > 0) score = Math.max(score, evap * 0.8);
       }
-      // Inland rock salt domes (any climate, rarer)
+      // Inland rock salt domes
       {
         const dome = depositField(tx, ty, tw, th, s0 + 602, 16, 0.82);
         if (dome > 0 && e > 0) score = Math.max(score, dome * 0.5);
@@ -299,7 +322,6 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
       const isSteppe = biome === B_GRASSLAND || biome === B_SHRUBLAND;
       const isSavanna = biome === B_SAVANNA;
       if (isSteppe && t > 0.20 && t < 0.65 && e < 0.25) {
-        // Low threshold = large contiguous horse country
         const field = depositField(tx, ty, tw, th, s0 + 700, 5, 0.25);
         if (field > 0) {
           score = 0.25 + field * 0.45;
@@ -314,32 +336,11 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
       if (score > 0) deposits.horses[ti] = Math.min(1, score);
     }
 
-    // ── PRECIOUS METALS (Gold/Silver) ──
-    // Clustered gold/silver belts + alluvial + isolated veins.
-    {
-      let score = 0;
-      // Major gold provinces
-      const belt = depositField(tx, ty, tw, th, s0 + 800, 5, 0.73);
-      if (belt > 0) {
-        if (isMountain || isHighland) score = belt * 0.75;
-        else if (isLowland && m > 0.25) score = belt * 0.4; // alluvial
-        else if (e > 0.02) score = belt * 0.2; // traces
-      }
-      if (hasBoundary && score > 0) score = Math.min(1, score + (1 - bd / 12) * 0.2);
-      // Isolated vein deposits
-      if (score === 0 && (isMountain || isHighland)) {
-        const vein = depositField(tx, ty, tw, th, s0 + 801, 18, 0.82);
-        if (vein > 0) score = vein * 0.4;
-      }
-      if (score > 0) deposits.precious[ti] = Math.min(1, score);
-    }
-
     // ── COAL ──
     // Temperate sedimentary basins. Multiple overlapping noise fields for coverage.
     {
       let score = 0;
       const isCoalClimate = t > 0.25 && t < 0.65 && m > 0.22;
-      // Primary coalfields
       if (isCoalClimate && e < 0.25) {
         const field = depositField(tx, ty, tw, th, s0 + 900, 6, 0.55);
         if (field > 0) {
@@ -348,12 +349,10 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
           if (e < 0.12) score += 0.10;
         }
       }
-      // Secondary coalfields (different noise = different locations)
       if (isCoalClimate && e < 0.20) {
         const field2 = depositField(tx, ty, tw, th, s0 + 902, 8, 0.60);
         if (field2 > 0) score = Math.max(score, field2 * 0.55 + (m > 0.35 ? 0.1 : 0));
       }
-      // Highland coal seams
       if (isHighland && !isMountain && t > 0.22) {
         const seam = depositField(tx, ty, tw, th, s0 + 901, 12, 0.68);
         if (seam > 0) score = Math.max(score, seam * 0.5);
@@ -365,54 +364,45 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
     // Sedimentary basins with multiple province noise fields.
     {
       let score = 0;
-      // Desert/arid basins (Middle East, N.Africa, Central Asia)
       if ((biome === B_DESERT || biome === B_SHRUBLAND || biome === B_SAVANNA) && e < 0.18) {
         const basin = depositField(tx, ty, tw, th, s0 + 1000, 5, 0.52);
         if (basin > 0) score = basin * 0.8;
       }
-      // Coastal/deltaic basins (Niger Delta, Gulf of Mexico, North Sea)
       if (cd <= 5 && e < 0.10) {
         const coastal = depositField(tx, ty, tw, th, s0 + 1001, 8, 0.60);
         if (coastal > 0) score = Math.max(score, coastal * 0.65);
       }
-      // Interior basins (West Texas, Siberian, Permian)
       if (e < 0.12 && m < 0.45) {
         const interior = depositField(tx, ty, tw, th, s0 + 1002, 7, 0.62);
         if (interior > 0) score = Math.max(score, interior * 0.55);
       }
       if (score > 0) deposits.oil[ti] = Math.min(1, score);
     }
-
-    // ── GEMS / LUXURY ──
-    // Rare. Multiple small deposit types.
-    {
-      let score = 0;
-      // Diamond provinces (kimberlite — cratonic interiors)
-      {
-        const pipe = depositField(tx, ty, tw, th, s0 + 1100, 5, 0.72);
-        if (pipe > 0 && e > 0.02) {
-          score = pipe * 0.6;
-          if (hasBoundary) score += 0.15;
-        }
-      }
-      // Highland gem belts (rubies, emeralds, sapphires)
-      if (t > 0.35 && isHighland) {
-        const gemBelt = depositField(tx, ty, tw, th, s0 + 1101, 6, 0.68);
-        if (gemBelt > 0) score = Math.max(score, gemBelt * 0.55);
-      }
-      // Alluvial gemstones (tropical lowlands)
-      if (t > 0.40 && isLowland && m > 0.30) {
-        const alluvial = depositField(tx, ty, tw, th, s0 + 1103, 10, 0.72);
-        if (alluvial > 0) score = Math.max(score, alluvial * 0.4);
-      }
-      // Coastal amber
-      if ((biome === B_TEMP_FOREST || biome === B_BOREAL) && cd <= 5) {
-        const amber = depositField(tx, ty, tw, th, s0 + 1102, 12, 0.78);
-        if (amber > 0) score = Math.max(score, amber * 0.35);
-      }
-      if (score > 0) deposits.gems[ti] = Math.min(1, score);
-    }
   }
+
+  // ── Point deposits: copper, tin, precious metals, gems ──
+  // These are scattered as individual mine sites across valid terrain.
+
+  // COPPER: ~80 mines, mountains and highlands
+  scatterMines('copper', 80, 4, 0.9, (ti) => {
+    return tElev[ti] > 0.10;
+  });
+
+  // TIN: ~40 mines, rarer, highlands + alluvial lowlands
+  scatterMines('tin', 40, 3, 0.85, (ti) => {
+    const e = tElev[ti];
+    return e > 0.08 || (e < 0.08 && e > 0 && tMoist[ti] > 0.25);
+  });
+
+  // PRECIOUS METALS: ~70 gold/silver sites, prefer highlands but anywhere on land
+  scatterMines('precious', 70, 4, 0.95, (ti) => {
+    return tElev[ti] > 0.02;
+  });
+
+  // GEMS: ~50 sites, any land
+  scatterMines('gems', 50, 3, 0.8, (ti) => {
+    return tElev[ti] > 0.03;
+  });
 
   return deposits;
 }
