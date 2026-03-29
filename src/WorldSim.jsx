@@ -1016,20 +1016,16 @@ const shade=1-Math.max(0,e-0.1)*0.5;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else if(vm==="resources"){
 // Resource overlay — shows dominant resource at each tile with its color
-if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
-const tc=terrainCache.current;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
 if(e<=sl){d[pi4]=6;d[pi4+1]=8;d[pi4+2]=16;d[pi4+3]=255;continue;}
-// Dim terrain base
-const landDim=0.22;
-let br=(tc[ti*3]*landDim)|0,bg=(tc[ti*3+1]*landDim)|0,bb=(tc[ti*3+2]*landDim)|0;
+let br=18,bg=16,bb=14;
 if(ter.deposits){
 const dom=dominantResource(ter.deposits,ti);
 if(dom){
 const rich=ter.deposits[dom.id][ti];
-const alpha=Math.min(0.85,rich*0.9+0.15);
+const alpha=Math.min(0.95,rich*0.9+0.2);
 const invA=1-alpha;
 br=(br*invA+dom.color[0]*alpha)|0;
 bg=(bg*invA+dom.color[1]*alpha)|0;
