@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import {
   Scene, PerspectiveCamera, WebGLRenderer,
-  SphereGeometry, MeshStandardMaterial, Mesh,
-  CanvasTexture, AmbientLight, DirectionalLight, Color
+  SphereGeometry, MeshPhongMaterial, Mesh,
+  CanvasTexture, AmbientLight, DirectionalLight, Color,
+  BackSide, ShaderMaterial, AdditiveBlending
 } from "three";
 
 export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
@@ -35,16 +36,48 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
     const texCtx = texCanvas.getContext("2d");
     const texture = new CanvasTexture(texCanvas);
 
-    const mat = new MeshStandardMaterial({ map: texture });
+    const mat = new MeshPhongMaterial({
+      map: texture,
+      shininess: 8,
+      specular: new Color(0x222222),
+    });
     const mesh = new Mesh(geo, mat);
     scene.add(mesh);
 
-    // Lighting
-    const ambient = new AmbientLight(0xffffff, 0.65);
+    // Lighting — warm sun + cool fill for depth and contrast
+    const ambient = new AmbientLight(0x8090b0, 0.5); // cool blue-ish fill
     scene.add(ambient);
-    const sun = new DirectionalLight(0xffffff, 0.85);
+    const sun = new DirectionalLight(0xfff0e0, 1.2); // warm sunlight, strong
     sun.position.set(3, 2, 4);
     scene.add(sun);
+    const fill = new DirectionalLight(0x4060a0, 0.3); // cool blue rim
+    fill.position.set(-3, -1, -2);
+    scene.add(fill);
+
+    // Atmosphere glow — a slightly larger sphere with a rim-light shader
+    const atmosGeo = new SphereGeometry(1.015, 64, 32);
+    const atmosMat = new ShaderMaterial({
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal;
+        void main() {
+          float intensity = pow(0.65 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.5);
+          gl_FragColor = vec4(0.4, 0.6, 1.0, intensity * 0.6);
+        }
+      `,
+      blending: AdditiveBlending,
+      side: BackSide,
+      transparent: true,
+      depthWrite: false,
+    });
+    const atmosMesh = new Mesh(atmosGeo, atmosMat);
+    scene.add(atmosMesh);
 
     // Interaction state
     let dragging = false, prevX = 0, prevY = 0;
@@ -87,6 +120,7 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
       animId = requestAnimationFrame(loop);
       if (autoRot) rotY += 0.003;
       mesh.rotation.set(rotX, rotY, 0, "YXZ");
+      atmosMesh.rotation.set(rotX, rotY, 0, "YXZ");
       camera.position.z = zoom;
       renderer.render(scene, camera);
     };
@@ -117,12 +151,21 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
     const { texCtx, texCanvas, texture } = s;
     const img = texCtx.createImageData(CW, CH);
     const d = img.data;
+    // Boost saturation + contrast for 3D rendering (lighting washes out flat colors)
     for (let i = 0; i < CW * CH; i++) {
       const i3 = i * 3, i4 = i * 4;
-      d[i4] = terrainBuf[i3];
-      d[i4 + 1] = terrainBuf[i3 + 1];
-      d[i4 + 2] = terrainBuf[i3 + 2];
-      d[i4 + 3] = 255;
+      let r = terrainBuf[i3], g = terrainBuf[i3 + 1], b = terrainBuf[i3 + 2];
+      // Saturation boost: push channels away from gray
+      const gray = (r + g + b) / 3;
+      const sat = 1.3; // 30% more saturated
+      r = Math.max(0, Math.min(255, gray + (r - gray) * sat));
+      g = Math.max(0, Math.min(255, gray + (g - gray) * sat));
+      b = Math.max(0, Math.min(255, gray + (b - gray) * sat));
+      // Slight contrast boost
+      r = Math.max(0, Math.min(255, (r - 128) * 1.1 + 128));
+      g = Math.max(0, Math.min(255, (g - 128) * 1.1 + 128));
+      b = Math.max(0, Math.min(255, (b - 128) * 1.1 + 128));
+      d[i4] = r; d[i4 + 1] = g; d[i4 + 2] = b; d[i4 + 3] = 255;
     }
     texCtx.putImageData(img, 0, 0);
     texture.needsUpdate = true;
