@@ -56,42 +56,12 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     const mesh = new Mesh(geo, mat);
     scene.add(mesh);
 
-    // Lighting — low ambient for dark terminator, strong sun for contrast
-    const ambient = new AmbientLight(0x606878, 0.25); // very dim cool fill
+    // Lighting — sun from upper-left so dark side is bottom-right
+    const ambient = new AmbientLight(0x606878, 0.25);
     scene.add(ambient);
-    const sun = new DirectionalLight(0xfff5e8, 1.4); // strong warm sunlight
-    sun.position.set(3, 1.5, 4);
+    const sun = new DirectionalLight(0xfff5e8, 1.4);
+    sun.position.set(-3, 2, 4); // upper-left → dark bottom-right
     scene.add(sun);
-
-    // Atmosphere — thin subtle whitish-blue haze at the limb
-    const atmosGeo = new SphereGeometry(1.012, 64, 32);
-    const atmosMat = new ShaderMaterial({
-      vertexShader: `
-        varying vec3 vWorldPos;
-        varying vec3 vNormal;
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          vWorldPos = (modelViewMatrix * vec4(position, 1.0)).xyz;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        varying vec3 vWorldPos;
-        varying vec3 vNormal;
-        void main() {
-          vec3 viewDir = normalize(-vWorldPos);
-          float rim = 1.0 - max(0.0, dot(vNormal, viewDir));
-          float intensity = pow(rim, 3.5);
-          gl_FragColor = vec4(0.55, 0.7, 1.0, intensity * 0.35);
-        }
-      `,
-      blending: AdditiveBlending,
-      side: BackSide,
-      transparent: true,
-      depthWrite: false,
-    });
-    const atmosMesh = new Mesh(atmosGeo, atmosMat);
-    scene.add(atmosMesh);
 
     // Atmospheric scattering overlay — blue haze ON the globe surface
     // Thicker at steep viewing angles (edges), thinner looking straight down
@@ -127,11 +97,11 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     scatterMesh.renderOrder = 1; // render after globe
     scene.add(scatterMesh);
 
-    // Camera orbit state — camera moves around fixed globe + sun
+    // Globe rotation state — rotate the globe, camera stays fixed
+    // Sun stays fixed so dark side remains bottom-right
     let dragging = false, prevX = 0, prevY = 0;
-    let camTheta = 0; // horizontal angle (longitude)
-    let camPhi = 0.3; // vertical angle (latitude), slight tilt
-    let camDist = 2.6;
+    let rotX = 0.3, rotY = 0; // slight tilt to show northern hemisphere
+    let zoom = 2.6;
     let autoRot = true;
 
     const onDown = (e) => { dragging = true; autoRot = false; prevX = e.clientX; prevY = e.clientY; };
@@ -139,14 +109,14 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     const onMove = (e) => {
       if (!dragging) return;
       const dx = e.clientX - prevX, dy = e.clientY - prevY;
-      camTheta -= dx * 0.005;
-      camPhi += dy * 0.005;
-      camPhi = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, camPhi));
+      rotY += dx * 0.005;
+      rotX += dy * 0.005;
+      rotX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotX));
       prevX = e.clientX; prevY = e.clientY;
     };
     const onWheel = (e) => {
       e.preventDefault();
-      camDist = Math.max(1.15, Math.min(5, camDist + e.deltaY * 0.002));
+      zoom = Math.max(1.15, Math.min(5, zoom + e.deltaY * 0.002));
     };
 
     renderer.domElement.addEventListener("pointerdown", onDown);
@@ -167,11 +137,10 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     let animId;
     const loop = () => {
       animId = requestAnimationFrame(loop);
-      if (autoRot) camTheta += 0.003;
-      camera.position.x = camDist * Math.sin(camTheta) * Math.cos(camPhi);
-      camera.position.y = camDist * Math.sin(camPhi);
-      camera.position.z = camDist * Math.cos(camTheta) * Math.cos(camPhi);
-      camera.lookAt(0, 0, 0);
+      if (autoRot) rotY += 0.003;
+      mesh.rotation.set(rotX, rotY, 0, "YXZ");
+      scatterMesh.rotation.set(rotX, rotY, 0, "YXZ");
+      camera.position.set(0, 0, zoom);
       renderer.render(scene, camera);
     };
     animId = requestAnimationFrame(loop);
