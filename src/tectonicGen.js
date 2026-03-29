@@ -110,17 +110,16 @@ const _psx = p('plateStretchX', 1.3), _psy = p('plateStretchY', 0.8);
 for (let py = 0; py < ppH; py++) for (let px = 0; px < ppW; px++) {
   const x = px * PS, y = py * PS;
   const nx = x / W, ny = y / H;
-  // Latitude correction: scale X frequency by cos(lat) so noise is spherically uniform
+  // Latitude correction for plate distance (geometry), not noise
   const cL = Math.max(0.15, Math.cos((ny - 0.5) * Math.PI));
-  const cnx = nx * cL; // corrected nx for noise sampling
-  const warpX = fbm(cnx * 2 + 13.7, ny * 2 + 13.7, 3, 2, 0.5) * _ws1
-    + fbm(cnx * 6 + 37.1, ny * 6 + 37.1, 3, 2, 0.5) * _ws2;
-  const warpY = fbm(cnx * 2 + 63.7, ny * 2 + 63.7, 3, 2, 0.5) * _ws1
-    + fbm(cnx * 6 + 87.1, ny * 6 + 87.1, 3, 2, 0.5) * _ws2;
-  const jagX = ridged(cnx * 12 + 41.3, ny * 12 + 41.3, 3, 2.2, 2.0, 1.0) * _js
-    - noise2D(cnx * 18 + 55.1, ny * 18 + 55.1) * 0.012;
-  const jagY = ridged(cnx * 12 + 91.3, ny * 12 + 91.3, 3, 2.2, 2.0, 1.0) * _js
-    - noise2D(cnx * 18 + 105.1, ny * 18 + 105.1) * 0.012;
+  const warpX = fbm(nx * 2 + 13.7, ny * 2 + 13.7, 3, 2, 0.5) * _ws1
+    + fbm(nx * 6 + 37.1, ny * 6 + 37.1, 3, 2, 0.5) * _ws2;
+  const warpY = fbm(nx * 2 + 63.7, ny * 2 + 63.7, 3, 2, 0.5) * _ws1
+    + fbm(nx * 6 + 87.1, ny * 6 + 87.1, 3, 2, 0.5) * _ws2;
+  const jagX = ridged(nx * 12 + 41.3, ny * 12 + 41.3, 3, 2.2, 2.0, 1.0) * _js
+    - noise2D(nx * 18 + 55.1, ny * 18 + 55.1) * 0.012;
+  const jagY = ridged(nx * 12 + 91.3, ny * 12 + 91.3, 3, 2.2, 2.0, 1.0) * _js
+    - noise2D(nx * 18 + 105.1, ny * 18 + 105.1) * 0.012;
   const wnx = nx + warpX + jagX, wny = ny + warpY + jagY;
   const plateLat = (ny - 0.5) * Math.PI;
   const plateCosLat = Math.max(0.15, Math.cos(plateLat));
@@ -231,20 +230,18 @@ for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
   const x = ex * ES, y = ey * ES;
   const nx = x / W, ny = y / H;
   const cL = Math.max(0.15, Math.cos((ny - 0.5) * Math.PI));
-  const cnx = nx * cL;
   let e = 0;
 
   // Iterative domain warping (double Quilez warp)
-  const w1x = fbm(cnx * 2.5 + s1, ny * 2.5 + s1, 2, 2, 0.5) * 0.08;
-  const w1y = fbm(cnx * 2.5 + s1 + 50, ny * 2.5 + s1 + 50, 2, 2, 0.5) * 0.08;
-  const wnx = nx + w1x + fbm((cnx + w1x) * 5 + s2, (ny + w1y) * 5 + s2, 2, 2, 0.5) * 0.04;
-  const wny = ny + w1y + fbm((cnx + w1x) * 5 + s2 + 30, (ny + w1y) * 5 + s2 + 30, 2, 2, 0.5) * 0.04;
-  const cwnx = wnx * cL; // corrected warped x for noise
+  const w1x = fbm(nx * 2.5 + s1, ny * 2.5 + s1, 2, 2, 0.5) * 0.08;
+  const w1y = fbm(nx * 2.5 + s1 + 50, ny * 2.5 + s1 + 50, 2, 2, 0.5) * 0.08;
+  const wnx = nx + w1x + fbm((nx + w1x) * 5 + s2, (ny + w1y) * 5 + s2, 2, 2, 0.5) * 0.04;
+  const wny = ny + w1y + fbm((nx + w1x) * 5 + s2 + 30, (ny + w1y) * 5 + s2 + 30, 2, 2, 0.5) * 0.04;
 
   // Shared coastline noise
-  const cnA = noise2D(cwnx * 5 + s1, wny * 5 + s1) * 0.04;
-  const cnB = noise2D(cwnx * 5 + s1 + 30, wny * 5 + s1 + 30) * 0.04;
-  const coastRidge = noise2D(cwnx * 14 + s2 + 50, wny * 14 + s2 + 50);
+  const cnA = noise2D(wnx * 5 + s1, wny * 5 + s1) * 0.04;
+  const cnB = noise2D(wnx * 5 + s1 + 30, wny * 5 + s1 + 30) * 0.04;
+  const coastRidge = noise2D(wnx * 14 + s2 + 50, wny * 14 + s2 + 50);
 
   const pxPlateId = pixPlate[y * W + x];
   const pxPlateW = plates[pxPlateId] ? plates[pxPlateId].weight : 0;
@@ -259,8 +256,8 @@ for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
     if (dx * dx + dy0 * dy0 > c.bound2) continue;
     dx += cnA; let dy = dy0 + cnB;
     let dd = Math.sqrt(Math.pow((dx * c.cos + dy * c.sin) / c.rx, 2) + Math.pow((-dx * c.sin + dy * c.cos) / c.ry, 2));
-    dd += Math.abs(coastRidge + noise2D(cwnx * 7 + c.no, wny * 7 + c.no) * 0.5) * 0.2;
-    if (dd > 0.7 && dd < 1.3) { const rn = 1 - Math.abs(noise2D(cwnx * 8 + c.no + 70, wny * 8 + c.no + 70)); dd += rn * rn * 0.12; }
+    dd += Math.abs(coastRidge + noise2D(wnx * 7 + c.no, wny * 7 + c.no) * 0.5) * 0.2;
+    if (dd > 0.7 && dd < 1.3) { const rn = 1 - Math.abs(noise2D(wnx * 8 + c.no + 70, wny * 8 + c.no + 70)); dd += rn * rn * 0.12; }
     if (dd < 1) {
       const f2 = 1 - dd;
       let plateFactor = 1.0;
@@ -280,7 +277,7 @@ for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
     if (dx * dx + dy0 * dy0 > c.bound2) continue;
     dx += cnA; let dy = dy0 + cnB;
     let dd = Math.sqrt(Math.pow((dx * c.cos + dy * c.sin) / c.rx, 2) + Math.pow((-dx * c.sin + dy * c.cos) / c.ry, 2));
-    dd += Math.abs(coastRidge + noise2D(cwnx * 5 + c.no, wny * 5 + c.no) * 0.5) * 0.18;
+    dd += Math.abs(coastRidge + noise2D(wnx * 5 + c.no, wny * 5 + c.no) * 0.5) * 0.18;
     if (dd < 1) {
       const f2 = 1 - dd;
       let plateFactor = 1.0;
@@ -294,16 +291,16 @@ for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
   }
 
   const onContPlate = plates[pxPlateId] && plates[pxPlateId].hasCont ? 1.0 : 0.12;
-  const penNoise = fbm(cwnx * 4 + s3 + 90, wny * 4 + s3 + 90, 3, 2, 0.5);
+  const penNoise = fbm(wnx * 4 + s3 + 90, wny * 4 + s3 + 90, 3, 2, 0.5);
   if (penNoise > p('penThreshold', 0.4)) e += (penNoise - p('penThreshold', 0.4)) * p('penStrength', 0.3) * onContPlate;
-  const bayNoise = fbm(cwnx * 3.5 + s4 + 120, wny * 3.5 + s4 + 120, 3, 2, 0.5);
+  const bayNoise = fbm(wnx * 3.5 + s4 + 120, wny * 3.5 + s4 + 120, 3, 2, 0.5);
   if (bayNoise > p('bayThreshold', 0.45)) e -= (bayNoise - p('bayThreshold', 0.45)) * p('bayStrength', 0.25) * onContPlate;
 
-  const [wf1, wf2] = worley(cwnx * 5 + s5, wny * 5 + s5);
+  const [wf1, wf2] = worley(wnx * 5 + s5, wny * 5 + s5);
   if (e > -0.1) e += (wf2 - wf1) * 0.04 - 0.02;
 
-  e += fbm(cwnx * 7 + 3.7, wny * 7 + 3.7, 4, 2, 0.5) * 0.10;
-  e += fbm(cnx * 20 + s3, ny * 20 + s3, 2, 2, 0.4) * 0.025;
+  e += fbm(wnx * 7 + 3.7, wny * 7 + 3.7, 4, 2, 0.5) * 0.10;
+  e += fbm(nx * 20 + s3, ny * 20 + s3, 2, 2, 0.4) * 0.025;
 
   rawElevCoarse[ey * ewW + ex] = e;
 }
@@ -333,11 +330,9 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   // Only apply near the coastline (within ~0.03 of sea level)
   const dist = rawElev[i] - sl;
   if (Math.abs(dist) < 0.04) {
-    const cL2 = Math.max(0.15, Math.cos((ny - 0.5) * Math.PI));
-    const cnx2 = nx * cL2;
-    const coastNoise = fbm(cnx2 * 30 + s2 + 200, ny * 30 + s2 + 200, 3, 2, 0.5) * 0.035
-      + fbm(cnx2 * 60 + s3 + 300, ny * 60 + s3 + 300, 2, 2, 0.4) * 0.018
-      + fbm(cnx2 * 120 + s4 + 400, ny * 120 + s4 + 400, 2, 2, 0.4) * 0.008;
+    const coastNoise = fbm(nx * 30 + s2 + 200, ny * 30 + s2 + 200, 3, 2, 0.5) * 0.035
+      + fbm(nx * 60 + s3 + 300, ny * 60 + s3 + 300, 2, 2, 0.4) * 0.018
+      + fbm(nx * 120 + s4 + 400, ny * 120 + s4 + 400, 2, 2, 0.4) * 0.008;
     rawElev[i] += coastNoise;
     isLandArr[i] = rawElev[i] > sl ? 1 : 0;
   }
@@ -698,44 +693,35 @@ const sg = (d, px, py) => {
   return (d[iy * ngW + ix] * (1 - dx) + d[iy * ngW + ix + 1] * dx) * (1 - dy)
     + (d[(iy + 1) * ngW + ix] * (1 - dx) + d[(iy + 1) * ngW + ix + 1] * dx) * dy;
 };
-// cosLat-corrected precompute helper
-const cpc = (fn) => precompute((nx, ny) => {
-  const cl = Math.max(0.15, Math.cos((ny - 0.5) * Math.PI));
-  return fn(nx * cl, ny);
-});
-const nfTecWX = cpc((cx, ny) => fbm(cx * 3 + 200, ny * 3 + 200, 3, 2, 0.5));
-const nfTecWY = cpc((cx, ny) => fbm(cx * 3 + 250, ny * 3 + 250, 3, 2, 0.5));
-const nfPlateau = cpc((cx, ny) => fbm(cx * 3 + s1 + 50, ny * 3 + s1 + 50, 2, 2, 0.5));
-const nfMtnBump = cpc((cx, ny) => fbm(cx * 8 + s2 + 30, ny * 8 + s2 + 30, 4, 2, 0.55));
-const nfCoastEN = cpc((cx, ny) => fbm(cx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5));
-const nfTemp = cpc((cx, ny) => fbm(cx * 3 + 80, ny * 3 + 80, 3, 2, 0.5));
-const nfTempBroad = cpc((cx, ny) => fbm(cx * 1.2 + s1 + 55, ny * 1.2 + s1 + 55, 3, 2, 0.55));
-const nfMoistOce = cpc((cx, ny) => fbm(cx * 3 + 30, ny * 3 + 30, 2, 2, 0.5));
-const nfMoistLand = cpc((cx, ny) => fbm(cx * 4 + 50, ny * 4 + 50, 4, 2, 0.55));
-const nfMoistBroad = cpc((cx, ny) => fbm(cx * 1.5 + s2 + 90, ny * 1.5 + s2 + 90, 3, 2, 0.55));
-
-// ── Multi-scale continental interior terrain ──
-const nfShield = cpc((cx, ny) => fbm(cx * 1.4 + s1 + 30, ny * 1.4 + s1 + 30, 2, 2, 0.6));
-// Basin: medium-scale depressions and swells (like Congo Basin, Great Plains)
-const nfBasin = cpc((cx, ny) => {
-  const [wx, wy] = warp(cx, ny, 2, 2, 0.03, s2 + 40, s2 + 90);
+const nfTecWX = precompute((nx, ny) => fbm(nx * 3 + 200, ny * 3 + 200, 3, 2, 0.5));
+const nfTecWY = precompute((nx, ny) => fbm(nx * 3 + 250, ny * 3 + 250, 3, 2, 0.5));
+const nfPlateau = precompute((nx, ny) => fbm(nx * 3 + s1 + 50, ny * 3 + s1 + 50, 2, 2, 0.5));
+const nfMtnBump = precompute((nx, ny) => fbm(nx * 8 + s2 + 30, ny * 8 + s2 + 30, 4, 2, 0.55));
+const nfCoastEN = precompute((nx, ny) => fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5));
+const nfTemp = precompute((nx, ny) => fbm(nx * 3 + 80, ny * 3 + 80, 3, 2, 0.5));
+const nfTempBroad = precompute((nx, ny) => fbm(nx * 1.2 + s1 + 55, ny * 1.2 + s1 + 55, 3, 2, 0.55));
+const nfMoistOce = precompute((nx, ny) => fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.5));
+const nfMoistLand = precompute((nx, ny) => fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55));
+const nfMoistBroad = precompute((nx, ny) => fbm(nx * 1.5 + s2 + 90, ny * 1.5 + s2 + 90, 3, 2, 0.55));
+const nfShield = precompute((nx, ny) => fbm(nx * 1.4 + s1 + 30, ny * 1.4 + s1 + 30, 2, 2, 0.6));
+const nfBasin = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 2, 2, 0.03, s2 + 40, s2 + 90);
   return fbm(wx * 3.5 + s2 + 15, wy * 3.5 + s2 + 15, 3, 2, 0.55);
 });
-const nfEscarpment = cpc((cx, ny) => {
-  const [wx, wy] = warp(cx, ny, 3, 2, 0.04, s3 + 55, s3 + 105);
+const nfEscarpment = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 3, 2, 0.04, s3 + 55, s3 + 105);
   return ridged(wx * 4 + s3 + 20, wy * 4 + s3 + 20, 3, 2.0, 0.6, 1.0);
 });
-const nfMedTerrain = cpc((cx, ny) => {
-  const [wx, wy] = warp(cx, ny, 4, 2, 0.035, s1 + 65, s1 + 115);
+const nfMedTerrain = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 4, 2, 0.035, s1 + 65, s1 + 115);
   return fbm(wx * 7 + s1 + 40, wy * 7 + s1 + 40, 4, 2.0, 0.5);
 });
-// Mountain ridgeline texture: sharp veining that only appears in mountain zones
-const nfMtnRidge = cpc((cx, ny) => {
-  const [wx, wy] = warp(cx, ny, 5, 2, 0.05, s4 + 70, s4 + 120);
+const nfMtnRidge = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 5, 2, 0.05, s4 + 70, s4 + 120);
   return ridged(wx * 12 + s4, wy * 12 + s4, 4, 2.2, 0.6, 1.0);
 });
-const nfMtnValley = cpc((cx, ny) => {
-  const [wx, wy] = warp(cx, ny, 4, 2, 0.04, s5 + 30, s5 + 80);
+const nfMtnValley = precompute((nx, ny) => {
+  const [wx, wy] = warp(nx, ny, 4, 2, 0.04, s5 + 30, s5 + 80);
   const [f1] = worley(wx * 8 + s5, wy * 8 + s5);
   return f1;
 });
@@ -843,12 +829,11 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   // Per-pixel fine texture (land only) — adapts to terrain type
   if (isLandArr[i] && e > 0) {
     // High-frequency detail: stronger amplitude in high-elevation zones
-    const cLf = Math.max(0.15, Math.cos((ny - 0.5) * Math.PI));
-    const fineBase = fbm(nx * cLf * 20 + s4, ny * 20 + s4, 2, 2, 0.4);
+    const fineBase = fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4);
     const elevBoost = Math.min(1, Math.max(0, e - 0.02) * 6);
     e += fineBase * (0.004 + elevBoost * 0.012);
     if (e > 0.15) {
-      const microRidge = fbm(nx * cLf * 40 + s5 + 10, ny * 40 + s5 + 10, 2, 2.2, 0.45);
+      const microRidge = fbm(nx * 40 + s5 + 10, ny * 40 + s5 + 10, 2, 2.2, 0.45);
       e += microRidge * 0.008 * Math.min(1, (e - 0.15) * 5);
     }
   }
