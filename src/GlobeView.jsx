@@ -4,7 +4,7 @@ import {
   SphereGeometry, MeshPhongMaterial, Mesh,
   CanvasTexture, AmbientLight, DirectionalLight, Color,
   BackSide, ShaderMaterial, AdditiveBlending,
-  NearestFilter, Quaternion, Vector3
+  NearestFilter, Quaternion, Vector3, Raycaster, Vector2
 } from "three";
 
 export default function GlobeView({ terrainBuf, world, CW, CH }) {
@@ -108,27 +108,63 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     scatterMesh.renderOrder = 1; // render after globe
     scene.add(scatterMesh);
 
-    // Free rotation via quaternion — dragging rotates the globe freely
-    // in any direction, no axis locking or gimbal lock
-    let dragging = false, prevX = 0, prevY = 0;
+    // Google Earth-style rotation: grabbed point stays under cursor
+    // Uses raycasting to find the point on the sphere, then computes
+    // the rotation that maps the grabbed point to the current cursor position
+    const raycaster = new Raycaster();
     const rotQuat = new Quaternion();
-    // Start with slight tilt to show northern hemisphere
     const initTilt = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), 0.3);
     rotQuat.multiply(initTilt);
+    let dragging = false;
+    let grabPoint = null; // the 3D point on the sphere where the user grabbed
     let zoom = 2.6;
     let autoRot = true;
     const autoRotQuat = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 0.003);
 
-    const onDown = (e) => { dragging = true; autoRot = false; prevX = e.clientX; prevY = e.clientY; };
-    const onUp = () => { dragging = false; };
+    // Convert mouse event to normalized device coords (-1 to 1)
+    const getNDC = (e) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      return new Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+    };
+
+    // Raycast to find point on the unit sphere surface
+    const getSpherePoint = (ndc) => {
+      raycaster.setFromCamera(ndc, camera);
+      // Intersect with a unit sphere at origin (using mesh's current rotation)
+      const hits = raycaster.intersectObject(mesh);
+      if (hits.length > 0) {
+        // Get the hit point in the mesh's LOCAL space (undo rotation)
+        const localPt = hits[0].point.clone();
+        localPt.applyQuaternion(rotQuat.clone().invert());
+        return localPt.normalize();
+      }
+      return null;
+    };
+
+    const onDown = (e) => {
+      autoRot = false;
+      const ndc = getNDC(e);
+      grabPoint = getSpherePoint(ndc);
+      if (grabPoint) dragging = true;
+    };
+    const onUp = () => { dragging = false; grabPoint = null; };
     const onMove = (e) => {
-      if (!dragging) return;
-      const dx = e.clientX - prevX, dy = e.clientY - prevY;
-      // Rotate around screen-space axes (up = camera up, right = camera right)
-      const qY = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), dx * 0.005);
-      const qX = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -dy * 0.005);
-      rotQuat.premultiply(qY).premultiply(qX);
-      prevX = e.clientX; prevY = e.clientY;
+      if (!dragging || !grabPoint) return;
+      const ndc = getNDC(e);
+      const currentPoint = getSpherePoint(ndc);
+      if (!currentPoint) return;
+      // Compute rotation that maps grabPoint to currentPoint
+      // Using the shortest arc quaternion between two unit vectors
+      const dot = grabPoint.dot(currentPoint);
+      if (Math.abs(dot) > 0.9999) return; // too close, skip
+      const cross = new Vector3().crossVectors(grabPoint, currentPoint);
+      const q = new Quaternion(cross.x, cross.y, cross.z, 1 + dot).normalize();
+      rotQuat.premultiply(q);
+      // Update grab point to current so incremental rotations accumulate smoothly
+      grabPoint = currentPoint;
     };
     const onWheel = (e) => {
       e.preventDefault();
