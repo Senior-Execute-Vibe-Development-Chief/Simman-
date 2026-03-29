@@ -110,6 +110,8 @@ const _psx = p('plateStretchX', 1.3), _psy = p('plateStretchY', 0.8);
 for (let py = 0; py < ppH; py++) for (let px = 0; px < ppW; px++) {
   const x = px * PS, y = py * PS;
   const nx = x / W, ny = y / H;
+  // Latitude correction for plate distance (geometry), not noise
+  const cL = Math.max(0.15, Math.cos((ny - 0.5) * Math.PI));
   const warpX = fbm(nx * 2 + 13.7, ny * 2 + 13.7, 3, 2, 0.5) * _ws1
     + fbm(nx * 6 + 37.1, ny * 6 + 37.1, 3, 2, 0.5) * _ws2;
   const warpY = fbm(nx * 2 + 63.7, ny * 2 + 63.7, 3, 2, 0.5) * _ws1
@@ -119,10 +121,13 @@ for (let py = 0; py < ppH; py++) for (let px = 0; px < ppW; px++) {
   const jagY = ridged(nx * 12 + 91.3, ny * 12 + 91.3, 3, 2.2, 2.0, 1.0) * _js
     - noise2D(nx * 18 + 105.1, ny * 18 + 105.1) * 0.012;
   const wnx = nx + warpX + jagX, wny = ny + warpY + jagY;
+  const plateLat = (ny - 0.5) * Math.PI;
+  const plateCosLat = Math.max(0.15, Math.cos(plateLat));
   let bestD = 1e9, bestP = 0;
   for (let pi = 0; pi < numPlates; pi++) {
     let dx = wnx - plates[pi].cx;
     if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
+    dx *= plateCosLat; // correct for longitude convergence at poles
     const dy = wny - plates[pi].cy;
     const d = dx * dx * _psx + dy * dy * _psy - plates[pi].weight;
     if (d < bestD) { bestD = d; bestP = pi; }
@@ -224,6 +229,7 @@ const rawElevCoarse = new Float32Array(ewW * ewH);
 for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
   const x = ex * ES, y = ey * ES;
   const nx = x / W, ny = y / H;
+  const cL = Math.max(0.15, Math.cos((ny - 0.5) * Math.PI));
   let e = 0;
 
   // Iterative domain warping (double Quilez warp)
@@ -239,8 +245,13 @@ for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
 
   const pxPlateId = pixPlate[y * W + x];
   const pxPlateW = plates[pxPlateId] ? plates[pxPlateId].weight : 0;
+  // Latitude correction: scale X distance by cos(lat) so stamps
+  // are physically round on the sphere, not stretched at poles
+  const lat = (ny - 0.5) * Math.PI; // -π/2 to π/2
+  const cosLat = Math.max(0.15, Math.cos(lat)); // clamp to prevent infinity at poles
   for (const c of posStamps) {
     let dx = wnx - c.cx; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
+    dx *= cosLat; // correct for longitude convergence
     const dy0 = wny - c.cy;
     if (dx * dx + dy0 * dy0 > c.bound2) continue;
     dx += cnA; let dy = dy0 + cnB;
@@ -261,6 +272,7 @@ for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
 
   for (const c of negStamps) {
     let dx = wnx - c.cx; if (dx > 0.5) dx -= 1; if (dx < -0.5) dx += 1;
+    dx *= cosLat;
     const dy0 = wny - c.cy;
     if (dx * dx + dy0 * dy0 > c.bound2) continue;
     dx += cnA; let dy = dy0 + cnB;
@@ -297,9 +309,28 @@ for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const fx = x / ES, fy = y / ES;
   const ix = Math.min(ewW - 2, fx | 0), iy = Math.min(ewH - 2, fy | 0);
+  const ixr = (ix + 1) % ewW; // wrap X
   const dx = fx - ix, dy = fy - iy;
-  rawElev[y * W + x] = (rawElevCoarse[iy * ewW + ix] * (1 - dx) + rawElevCoarse[iy * ewW + ix + 1] * dx) * (1 - dy)
-    + (rawElevCoarse[(iy + 1) * ewW + ix] * (1 - dx) + rawElevCoarse[(iy + 1) * ewW + ix + 1] * dx) * dy;
+  rawElev[y * W + x] = (rawElevCoarse[iy * ewW + ix] * (1 - dx) + rawElevCoarse[iy * ewW + ixr] * dx) * (1 - dy)
+    + (rawElevCoarse[(iy + 1) * ewW + ix] * (1 - dx) + rawElevCoarse[(iy + 1) * ewW + ixr] * dx) * dy;
+}
+// Blend seam: cross-fade a strip at the antimeridian so left/right edges match
+{
+  const blendW = Math.round(W * 0.03); // ~3% of map width = ~58 pixels
+  for (let y = 0; y < H; y++) {
+    for (let bx = 0; bx < blendW; bx++) {
+      const t = bx / blendW; // 0 at edge, 1 at blend boundary
+      // Left edge pixel and its mirror on the right
+      const iL = y * W + bx;
+      const iR = y * W + (W - 1 - bx);
+      // Average of both sides at the seam
+      const avg = (rawElev[iL] + rawElev[iR]) * 0.5;
+      // Blend toward average near the edge, keep original further in
+      const s = 0.5 * (1 - t); // blend strength: 0.5 at edge, 0 at boundary
+      rawElev[iL] = rawElev[iL] * (1 - s) + avg * s;
+      rawElev[iR] = rawElev[iR] * (1 - s) + avg * s;
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -672,14 +703,18 @@ const precompute = (fn) => {
   const d = new Float32Array(ngW * ngH);
   for (let gy = 0; gy < ngH; gy++) for (let gx = 0; gx < ngW; gx++)
     d[gy * ngW + gx] = fn(gx * NG / W, gy * NG / H);
+  // Copy first column to last for seamless X wrapping
+  for (let gy = 0; gy < ngH; gy++)
+    d[gy * ngW + (ngW - 1)] = d[gy * ngW + 0];
   return d;
 };
 const sg = (d, px, py) => {
   const fx = px / NG, fy = py / NG;
   const ix = Math.min(ngW - 2, fx | 0), iy = Math.min(ngH - 2, fy | 0);
+  const ixr = (ix + 1) % ngW; // wrap X for seamless globe
   const dx = fx - ix, dy = fy - iy;
-  return (d[iy * ngW + ix] * (1 - dx) + d[iy * ngW + ix + 1] * dx) * (1 - dy)
-    + (d[(iy + 1) * ngW + ix] * (1 - dx) + d[(iy + 1) * ngW + ix + 1] * dx) * dy;
+  return (d[iy * ngW + ix] * (1 - dx) + d[iy * ngW + ixr] * dx) * (1 - dy)
+    + (d[(iy + 1) * ngW + ix] * (1 - dx) + d[(iy + 1) * ngW + ixr] * dx) * dy;
 };
 const nfTecWX = precompute((nx, ny) => fbm(nx * 3 + 200, ny * 3 + 200, 3, 2, 0.5));
 const nfTecWY = precompute((nx, ny) => fbm(nx * 3 + 250, ny * 3 + 250, 3, 2, 0.5));
@@ -691,31 +726,23 @@ const nfTempBroad = precompute((nx, ny) => fbm(nx * 1.2 + s1 + 55, ny * 1.2 + s1
 const nfMoistOce = precompute((nx, ny) => fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.5));
 const nfMoistLand = precompute((nx, ny) => fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55));
 const nfMoistBroad = precompute((nx, ny) => fbm(nx * 1.5 + s2 + 90, ny * 1.5 + s2 + 90, 3, 2, 0.55));
-
-// ── Multi-scale continental interior terrain ──
-// Shield/craton: very large-scale continental elevation blocks (like African plateau, Canadian Shield)
 const nfShield = precompute((nx, ny) => fbm(nx * 1.4 + s1 + 30, ny * 1.4 + s1 + 30, 2, 2, 0.6));
-// Basin: medium-scale depressions and swells (like Congo Basin, Great Plains)
 const nfBasin = precompute((nx, ny) => {
   const [wx, wy] = warp(nx, ny, 2, 2, 0.03, s2 + 40, s2 + 90);
   return fbm(wx * 3.5 + s2 + 15, wy * 3.5 + s2 + 15, 3, 2, 0.55);
 });
-// Escarpment: ridged noise for sharp elevation breaks (like Great Escarpment, Western Ghats)
 const nfEscarpment = precompute((nx, ny) => {
   const [wx, wy] = warp(nx, ny, 3, 2, 0.04, s3 + 55, s3 + 105);
   return ridged(wx * 4 + s3 + 20, wy * 4 + s3 + 20, 3, 2.0, 0.6, 1.0);
 });
-// Medium terrain texture: rolling hills, ancient eroded ranges
 const nfMedTerrain = precompute((nx, ny) => {
   const [wx, wy] = warp(nx, ny, 4, 2, 0.035, s1 + 65, s1 + 115);
   return fbm(wx * 7 + s1 + 40, wy * 7 + s1 + 40, 4, 2.0, 0.5);
 });
-// Mountain ridgeline texture: sharp veining that only appears in mountain zones
 const nfMtnRidge = precompute((nx, ny) => {
   const [wx, wy] = warp(nx, ny, 5, 2, 0.05, s4 + 70, s4 + 120);
   return ridged(wx * 12 + s4, wy * 12 + s4, 4, 2.2, 0.6, 1.0);
 });
-// Mountain valley incision (Worley F1 distance creates drainage-aligned valleys)
 const nfMtnValley = precompute((nx, ny) => {
   const [wx, wy] = warp(nx, ny, 4, 2, 0.04, s5 + 30, s5 + 80);
   const [f1] = worley(wx * 8 + s5, wy * 8 + s5);
@@ -741,10 +768,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   let e = stampE + tecMod;
 
   if (!isLandArr[i]) {
-    // Clamp ocean depth: prevent unrealistically deep ocean at poles
-    // where no continental stamps contribute elevation.
-    // Normal ocean: -0.005 to -0.015, deep trenches: up to -0.04
-    e = Math.max(-0.04, Math.min(e, -0.001));
+    e = Math.min(e, -0.001);
   }
 
   if (e > 0) {
@@ -831,14 +855,11 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const fineBase = fbm(nx * 20 + s4, ny * 20 + s4, 2, 2, 0.4);
     const elevBoost = Math.min(1, Math.max(0, e - 0.02) * 6);
     e += fineBase * (0.004 + elevBoost * 0.012);
-    // Extra octave in mountain zones for sharp micro-ridges
     if (e > 0.15) {
       const microRidge = fbm(nx * 40 + s5 + 10, ny * 40 + s5 + 10, 2, 2.2, 0.45);
       e += microRidge * 0.008 * Math.min(1, (e - 0.15) * 5);
     }
   }
-
-  if (lat > 0.88) e -= (lat - 0.88) * 2;
 
   elevation[i] = e;
 }
@@ -996,6 +1017,21 @@ if (p('erodeDropsPerPixel', 1.5) > 0) {
     const delta = eDAt(ix,iy)*(1-dx2)*(1-dy2) + eDAt(ix+1,iy)*dx2*(1-dy2)
       + eDAt(ix,iy+1)*(1-dx2)*dy2 + eDAt(ix+1,iy+1)*dx2*dy2;
     elevation[i] = Math.max(0.002, elevation[i] + delta);
+  }
+}
+
+// Blend final elevation seam at antimeridian
+{
+  const blendW = Math.round(W * 0.025);
+  for (let y = 0; y < H; y++) {
+    for (let bx = 0; bx < blendW; bx++) {
+      const t = bx / blendW;
+      const iL = y * W + bx, iR = y * W + (W - 1 - bx);
+      const avg = (elevation[iL] + elevation[iR]) * 0.5;
+      const s = 0.5 * (1 - t);
+      elevation[iL] = elevation[iL] * (1 - s) + avg * s;
+      elevation[iR] = elevation[iR] * (1 - s) + avg * s;
+    }
   }
 }
 
@@ -1409,9 +1445,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const fx = x / WG, fy = y / WG;
   const ix = Math.min(wW - 2, fx | 0), iy = Math.min(wH - 2, fy | 0);
   const dx = fx - ix, dy = fy - iy;
-  const i00 = iy * wW + ix, i10 = iy * wW + Math.min(wW - 1, ix + 1);
-  const i01 = Math.min(wH - 1, iy + 1) * wW + ix;
-  const i11 = Math.min(wH - 1, iy + 1) * wW + Math.min(wW - 1, ix + 1);
+  const ixr = (ix + 1) % wW;
+  const iy1 = Math.min(wH - 1, iy + 1);
+  const i00 = iy * wW + ix, i10 = iy * wW + ixr;
+  const i01 = iy1 * wW + ix, i11 = iy1 * wW + ixr;
   const fi = y * W + x;
   fullWindX[fi] = (windX[i00] * (1 - dx) + windX[i10] * dx) * (1 - dy)
     + (windX[i01] * (1 - dx) + windX[i11] * dx) * dy;
@@ -1484,8 +1521,9 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const fx = x / 2, fy = y / 2;
   const ix = Math.min(mW - 2, fx | 0), iy = Math.min(mH - 2, fy | 0);
   const dx2 = fx - ix, dy2 = fy - iy;
-  windTemp[y * W + x] = (tGrid[iy * mW + ix] * (1 - dx2) + tGrid[iy * mW + Math.min(mW - 1, ix + 1)] * dx2) * (1 - dy2)
-    + (tGrid[(iy + 1) * mW + ix] * (1 - dx2) + tGrid[(iy + 1) * mW + Math.min(mW - 1, ix + 1)] * dx2) * dy2;
+  const ixr2 = (ix + 1) % mW;
+  windTemp[y * W + x] = (tGrid[iy * mW + ix] * (1 - dx2) + tGrid[iy * mW + ixr2] * dx2) * (1 - dy2)
+    + (tGrid[(iy + 1) * mW + ix] * (1 - dx2) + tGrid[(iy + 1) * mW + ixr2] * dx2) * dy2;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1958,9 +1996,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const fx = x / WG, fy = y / WG;
   const ix = Math.min(wW - 2, fx | 0), iy = Math.min(wH - 2, fy | 0);
   const dx = fx - ix, dy = fy - iy;
-  const i00 = iy * wW + ix, i10 = iy * wW + Math.min(wW - 1, ix + 1);
-  const i01 = Math.min(wH - 1, iy + 1) * wW + ix;
-  const i11 = Math.min(wH - 1, iy + 1) * wW + Math.min(wW - 1, ix + 1);
+  const ixr = (ix + 1) % wW;
+  const iy1 = Math.min(wH - 1, iy + 1);
+  const i00 = iy * wW + ix, i10 = iy * wW + ixr;
+  const i01 = iy1 * wW + ix, i11 = iy1 * wW + ixr;
   const fi = y * W + x;
   fullWindX[fi] = (windX[i00] * (1 - dx) + windX[i10] * dx) * (1 - dy)
     + (windX[i01] * (1 - dx) + windX[i11] * dx) * dy;

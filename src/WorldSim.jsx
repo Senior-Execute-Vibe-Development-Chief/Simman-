@@ -4,6 +4,7 @@ import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
 import { solveMoisture } from "./moistureSolver.js";
 import { isRealWindAvailable, fillRealWind } from "./realWindData.js";
+import GlobeView from "./GlobeView.jsx";
 import TuningPanel, { ParamEditor, renderPreview } from "./TuningPanel.jsx";
 import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
@@ -36,6 +37,32 @@ return[Math.sqrt(d1),Math.sqrt(d2)];}
 function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};}
 
 const RES=2;
+// ── Mercator projection helpers ──
+const MAX_LAT_DEG = 78;
+const MAX_LAT = MAX_LAT_DEG * Math.PI / 180;
+const MERC_MAX = Math.log(Math.tan(Math.PI / 4 + MAX_LAT / 2));
+const CW_FLAT = 960, CH_FLAT = 480; // equirectangular canvas
+// Mercator height: match equator pixel scale to flat mode, then add space for polar stretch
+// Formula: CH = 2 * MERC_MAX * (CH_FLAT / π) — equator stays same size as flat mode
+const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688
+let _mercator = false; // module-level flag for projection functions
+
+function screenYtoDataY(sy, ch, H) {
+  if (!_mercator) return Math.min(H - 1, sy * RES);
+  const mercY = MERC_MAX - (sy / ch) * 2 * MERC_MAX;
+  const latRad = 2 * Math.atan(Math.exp(mercY)) - Math.PI / 2;
+  return Math.max(0, Math.min(H - 1, ((90 - latRad * 180 / Math.PI) / 180) * H));
+}
+
+function dataYtoScreenY(dy, H, ch) {
+  if (!_mercator) return Math.min(ch - 1, dy / RES);
+  const latDeg = 90 - (dy / H) * 180;
+  const latClamped = Math.max(-MAX_LAT_DEG, Math.min(MAX_LAT_DEG, latDeg));
+  const latRad = latClamped * Math.PI / 180;
+  const mercY = Math.log(Math.tan(Math.PI / 4 + latRad / 2));
+  return Math.max(0, Math.min(ch - 1, ((MERC_MAX - mercY) / (2 * MERC_MAX)) * ch));
+}
+
 let _tecParams = {};
 
 // Static climate: no ice ages or sea level changes
@@ -53,7 +80,7 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.ab
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);// 0-255
 const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
 if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
-elevation[i]=-0.03-Math.max(0,(1-he/3))*0.12+depth;
+elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
 }else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}
 temperature[i]=Math.max(0,Math.min(1,1-lat*1.05-Math.max(0,elevation[i])*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.08));}
 // Pass 2: coast-distance BFS at tile resolution for continentality
@@ -99,7 +126,7 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.ab
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);
 const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
 if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
-elevation[i]=-0.03-Math.max(0,(1-he/3))*0.12+depth;
+elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
 }else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}}
 // Coast distance BFS
 const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
@@ -340,19 +367,13 @@ const npx=Math.min(W-1,wx*RES),npy=Math.min(H-1,wy*RES);
 if(elevation[npy*W+npx]<=0){coastal[ty*ctw+tx]=1;break outer;}}}}
 const emptyBuf=new Uint8Array(W*H);
 const rvr=enableRivers?generateRivers(elevation,moisture,W,H,mkRng(seed+777)):{river:emptyBuf,lake:emptyBuf,floodplain:emptyBuf,delta:emptyBuf};
-// Oases: small fertile pockets in deserts
-const oasis=new Uint8Array(W*H);
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(elevation[i]>0&&elevation[i]<0.3&&temperature[i]>0.5&&moisture[i]<0.2){
-const nv=fbm(x/W*50+200,y/H*50+200,3,2,.5);
-if(nv>0.3){oasis[i]=1;}}}
 // Swamps: low-lying wet warm terrain
 const swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
 if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,oasis,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
+return{elevation,moisture,temperature,coastal,river:rvr.river,lake:rvr.lake,floodplain:rvr.floodplain,delta:rvr.delta,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null};}
 
 // ── River & lake generation: trace flow downhill from wet highlands ──
 function generateRivers(elev,moist,W,H,rng){
@@ -440,47 +461,45 @@ const BC=[
 [20,48,95],      // 1  Shallow Ocean
 [36,78,125],     // 2  Coastal Water
 [194,182,140],   // 3  Beach (unused)
-[175,172,148],   // 4  Tundra — brownish-gray (lichen/permafrost)
+[168,158,130],   // 4  Tundra — brown-tan (lichen/permafrost, satellite)
 [235,240,248],   // 5  Snow / Ice
-[62,95,62],      // 6  Taiga — dark muted conifer green
+[50,80,58],      // 6  Taiga — dark blue-green (spruce canopy from satellite)
 [45,78,48],      // 7  Boreal Forest — darker spruce green
-[56,128,46],     // 8  Temperate Forest — bright deciduous green
+[50,105,45],     // 8  Temperate Forest — muted deciduous green (satellite)
 [25,100,52],     // 9  Temperate Rainforest — deep emerald
 [14,72,28],      // 10 Tropical Rainforest — dark dense canopy
 [192,176,82],    // 11 Savanna — golden-tan with scattered green
-[178,165,68],    // 12 Grassland — golden-straw prairie
-[208,188,130],   // 13 Desert — sandy tan
+[158,165,78],    // 12 Grassland — tan-green prairie (more green than pure golden)
+[210,185,140],   // 13 Desert — warm sandy tan (slight orange like Sahara satellite)
 [140,135,78],    // 14 Shrubland — olive-brown chaparral
 [78,118,48],     // 15 Tropical Dry Forest — muted olive-green
-[152,145,135]    // 16 Barren / Alpine — gray-brown rock
+[152,145,135],   // 16 Barren / Alpine — gray-brown rock
+[42,110,38],     // 17 Subtropical Forest — warm humid (SE US, S China, SE Brazil)
+[195,190,180]    // 18 Cold Desert / Polar Desert — pale gray-tan
 ];
 const BN=['Deep Ocean','Shallow Ocean','Coastal Water','Beach','Tundra','Snow / Ice','Taiga',
 'Boreal Forest','Temperate Forest','Temperate Rainforest','Tropical Rainforest','Savanna',
-'Grassland','Desert','Shrubland','Tropical Dry Forest','Barren / Alpine'];
+'Grassland','Desert','Shrubland','Tropical Dry Forest','Barren / Alpine',
+'Subtropical Forest','Cold Desert'];
 function getBiomeD(e,m,t,sl){
   if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
   // Effective moisture: cold regions retain moisture (low evaporation),
   // hot regions lose it to evaporation (Holdridge PET principle).
   const demand=.5+t*.5;
   const em=Math.min(1,m/demand);
-  // Permanent ice: extremely cold → snow/ice regardless of elevation
-  // (Antarctica, high Arctic are flat but ice-covered)
+  // Permanent ice: extremely cold → snow/ice (Arctic, Antarctic, glaciers)
   if(t<.08)return 5;
-  // Alpine / montane (elevation overrides)
-  if(e>.55)return t<.3?5:16;
-  if(e>.42)return t<.25?5:t<.4?(em>.35?7:4):em>.4?8:16;
-  // Mid-elevation cold: barren/alpine or shrubland, NOT tundra.
-  if(e>.25&&t<.38)return t<.15?16:t<.25?(em>.4?6:16):em>.45?7:em>.2?14:16;
   // Polar / subpolar (low elevation only)
-  if(t<.15)return em>.4?6:4;
-  if(t<.25)return em>.35?6:4;
-  if(t<.38)return em>.45?7:em>.25?6:4;
-  // Temperate
+  // Cold desert only where it's cold but not freezing AND very dry
+  if(t<.15)return em>.4?6:em>.08?4:18; // Taiga / Tundra / Cold Desert
+  if(t<.25)return em>.35?6:em>.08?4:18;
+  if(t<.38)return em>.45?7:em>.25?6:em>.08?4:18;
+  // Temperate (cool-moderate)
   if(t<.55)return em>.55?9:em>.35?8:em>.15?12:13;
-  // Warm
-  if(t<.72)return em>.5?8:em>.3?15:em>.15?14:13;
+  // Warm / subtropical
+  if(t<.72)return em>.5?17:em>.3?15:em>.18?11:em>.1?14:13;
   // Hot / tropical
-  return em>.5?10:em>.3?15:em>.18?11:em>.08?12:13;
+  return em>.5?10:em>.3?15:em>.18?11:em>.1?12:13;
 }
 function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
@@ -503,19 +522,17 @@ const e=w.elevation[i],t=w.temperature[i],m=w.moisture[i];let diff=0;
 if(e>0.35)diff=Math.max(diff,Math.min(1,(e-0.35)*3));if(t>0.5&&m<0.2)diff=Math.max(diff,Math.min(0.85,(0.2-m)*3*(t-0.3)));
 if(t<0.2)diff=Math.max(diff,Math.min(0.9,(0.2-t)*4));tDiff[ti]=diff;tFert[ti]=tileFert(t,m,e);
 // Feature scan: check pixels in this tile's block for rivers, floodplains, deltas, oases, swamps
-{let hasWater=false,hasFlood=false,hasDelta=false,hasOasis=false,hasSwamp=false;
+{let hasWater=false,hasFlood=false,hasDelta=false,hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
 const wi=Math.min(w.height-1,py+dy)*w.width+Math.min(w.width-1,px+dx);
 if(w.river&&w.river[wi]>0&&e>0)hasWater=true;
 if(w.lake&&w.lake[wi]&&e>0)hasWater=true;
 if(w.floodplain&&w.floodplain[wi])hasFlood=true;
 if(w.delta&&w.delta[wi])hasDelta=true;
-if(w.oasis&&w.oasis[wi])hasOasis=true;
 if(w.swamp&&w.swamp[wi])hasSwamp=true;}
-if(hasWater){tMoist[ti]=Math.min(1,tMoist[ti]+0.2);tFert[ti]=Math.min(1,tFert[ti]+0.15);tRiver[ti]=1;}
-if(hasDelta){tFert[ti]=Math.min(1,tFert[ti]+0.35);tMoist[ti]=Math.min(1,tMoist[ti]+0.3);}
-else if(hasFlood){tFert[ti]=Math.min(1,tFert[ti]+0.25);tMoist[ti]=Math.min(1,tMoist[ti]+0.15);}
-if(hasOasis){tFert[ti]=Math.min(1,tFert[ti]+0.3);tDiff[ti]=Math.max(0,tDiff[ti]-0.3);}
+if(hasWater){tFert[ti]=Math.min(1,tFert[ti]+0.15);tRiver[ti]=1;}
+if(hasDelta){tFert[ti]=Math.min(1,tFert[ti]+0.35);}
+else if(hasFlood){tFert[ti]=Math.min(1,tFert[ti]+0.25);}
 if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+0.25);}}}
 // Find multiple spread-out seed locations for starting tribes
 const NUM_TRIBES=(w.preset==="earth"||w.preset==="earth_sim")?8:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:6;const minSpacing=Math.round(tw*0.12);
@@ -776,6 +793,12 @@ const[tecPresetName,setTecPresetName]=useState("Default");
 const[rightPanel,setRightPanel]=useState("");  // "" | "params"
 const[showTuning,setShowTuning]=useState(false);
 const[useRealWind,setUseRealWind]=useState(false);
+const[useMercator,setUseMercator]=useState(false);
+const[showGlobe,setShowGlobe]=useState(false);
+const[globeBuf,setGlobeBuf]=useState(null);
+const[globeTexSize,setGlobeTexSize]=useState({w:4096,h:2048});
+const CH=useMercator?CH_MERC:CH_FLAT;
+_mercator=useMercator;
 const[mapCount,setMapCount]=useState(1);
 const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
@@ -791,7 +814,7 @@ const imgRef=useRef(null);
 // Wind particle animation state
 const windParticlesRef=useRef(null);
 const windAnimRef=useRef(null);
-const W=1920,H=960,CW=Math.ceil(W/RES),CH=Math.ceil(H/RES);
+const W=1920,H=960,CW=CW_FLAT;
 const generate=useCallback((s,ol)=>{
 let w;
 if(presetRef.current==="import"&&importedWorldRef.current){w=importedWorldRef.current;importedWorldRef.current=null;}
@@ -800,6 +823,37 @@ setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
+// Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
+useEffect(()=>{if(showGlobe&&worldRef.current){
+const w=worldRef.current,sl=0,gW=4096,gH=2048;
+const buf=new Uint8Array(gW*gH*3);
+for(let ty=0;ty<gH;ty++){
+const lat=Math.abs(ty/gH-0.5)*2;
+const polarBlend=Math.max(0,Math.min(1,(lat-0.83)/0.17));
+for(let tx=0;tx<gW;tx++){
+// Bilinear sample from world data
+const srcX=tx/gW*W,srcY=ty/gH*H;
+const sx0=Math.min(W-2,srcX|0),sy0=Math.min(H-2,srcY|0);
+const fx=srcX-sx0,fy=srcY-sy0;
+const i00=sy0*W+sx0,i10=sy0*W+sx0+1,i01=(sy0+1)*W+sx0,i11=(sy0+1)*W+sx0+1;
+const e=w.elevation[i00]*(1-fx)*(1-fy)+w.elevation[i10]*fx*(1-fy)+w.elevation[i01]*(1-fx)*fy+w.elevation[i11]*fx*fy;
+const m=w.moisture[i00]*(1-fx)*(1-fy)+w.moisture[i10]*fx*(1-fy)+w.moisture[i01]*(1-fx)*fy+w.moisture[i11]*fx*fy;
+const t=w.temperature[i00]*(1-fx)*(1-fy)+w.temperature[i10]*fx*(1-fy)+w.temperature[i01]*(1-fx)*fy+w.temperature[i11]*fx*fy;
+let r,g,b;
+if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
+r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
+}else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
+if(polarBlend>0){const pr=e>0?230:20,pg=e>0?235:40,pb=e>0?240:80;
+r=Math.round(r*(1-polarBlend)+pr*polarBlend);
+g=Math.round(g*(1-polarBlend)+pg*polarBlend);
+b=Math.round(b*(1-polarBlend)+pb*polarBlend);}
+const ti3=(ty*gW+tx)*3;buf[ti3]=r;buf[ti3+1]=g;buf[ti3+2]=b;}}
+setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});
+}},[showGlobe,world]);
+// Re-render when projection changes or globe toggled off
+useEffect(()=>{terrainCache.current=null;imgRef.current=null;windParticlesRef.current=null;
+if(!showGlobe&&terRef.current) setTimeout(()=>draw(terRef.current),50);
+},[useMercator,showGlobe]);
 
 // Generate extra seed preview maps (same params, different seeds)
 const PW=480,PH=240;
@@ -822,22 +876,23 @@ useEffect(()=>{generateExtraMaps();},[seed,mapCount,generateExtraMaps]);
 // Build terrain RGB cache at tile resolution (one entry per tile)
 const updateTerrainCache=useCallback((w)=>{
 const buf=new Uint8Array(CW*CH*3);const sl=0;
-for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
+for(let ty=0;ty<CH;ty++){
+const dataY=Math.round(screenYtoDataY(ty,CH,H));
+for(let tx=0;tx<CW;tx++){
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,dataY);
 const si=sy*W+sx;const e=w.elevation[si],m=w.moisture[si];
 const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
 }else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
 // Scan tile block for most prominent feature overlay
-let hasDelta=false,hasLake=false,maxRiv=0,hasSwamp=false,hasOasis=false,hasFlood=false;
+let hasDelta=false,hasLake=false,maxRiv=0,hasSwamp=false,hasFlood=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
 const wi=Math.min(H-1,sy+dy)*W+Math.min(W-1,sx+dx);
 if(w.delta&&w.delta[wi])hasDelta=true;
 if(w.lake&&w.lake[wi]&&e>sl)hasLake=true;
 if(w.river&&w.river[wi]&&e>sl&&w.river[wi]>maxRiv)maxRiv=w.river[wi];
 if(w.swamp&&w.swamp[wi])hasSwamp=true;
-if(w.oasis&&w.oasis[wi])hasOasis=true;
 if(w.floodplain&&w.floodplain[wi])hasFlood=true;}
 let pr=r,pg=g,pb=b;
 if(hasDelta){pr=30;pg=85;pb=55;}
@@ -845,10 +900,9 @@ else if(hasLake){pr=28;pg=62;pb=112;}
 else if(maxRiv>0){const a=0.45+maxRiv/255*0.45;
 pr=(r*(1-a)+22*a+.5)|0;pg=(g*(1-a)+52*a+.5)|0;pb=(b*(1-a)+132*a+.5)|0;}
 else if(e>sl){if(hasSwamp){pr=40;pg=58;pb=38;}
-else if(hasOasis){pr=50;pg=120;pb=45;}
 else if(hasFlood){const a=0.4;pr=(r*(1-a)+55*a+.5)|0;pg=(g*(1-a)+110*a+.5)|0;pb=(b*(1-a)+40*a+.5)|0;}}
-const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}
-return buf;},[]);
+const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}}
+return buf;},[CH]);
 
 // Composite render: terrain + tribe overlay into single canvas
 const draw=useCallback((ter)=>{
@@ -866,16 +920,14 @@ if(vm==="depth"){
 // Find actual min/max elevation
 let eMin=Infinity,eMax=-Infinity;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const si=Math.min(H-1,ty*RES)*W+Math.min(W-1,tx*RES);
+const si=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)))*W+Math.min(W-1,tx*RES);
 const e=w.elevation[si];if(e<eMin)eMin=e;if(e>eMax)eMax=e;}
-// Sea mode: floor is 0 (sea level), all ocean = black
-// Floor mode: floor is actual minimum, deepest trench = black
 const floor=depthFromSeaRef.current?0:eMin;
 const fullRange=eMax-floor||1;
 const ceil=depthCeilRef.current;
 const range=fullRange*ceil||1;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];
 const v=Math.min(255,Math.max(0,((e-floor)/range)*255))|0;
 const pi4=ti<<2;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=v;d[pi4+3]=255;}
@@ -885,7 +937,7 @@ const wX=w.windX,wY=w.windY;
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
 const tc=terrainCache.current;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const pi4=ti<<2;
 const e=w.elevation[si];
 const vx=wX?wX[si]:0,vy=wY?wY[si]:0;
@@ -911,7 +963,7 @@ d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="power"){
 // Power view — one pixel per tile
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
 const e=w.elevation[sy*W+sx],ow=ter.owner[ti];let r,g,b;
 if(e<=sl){r=4;g=5;b=12;}
 else if(ow>=0){r=(tcR[ow]*0.15+10.5)|0;g=(tcG[ow]*0.15+10.5)|0;b=(tcB[ow]*0.15+10.5)|0;}
@@ -931,7 +983,7 @@ const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 // Tile value overlay — green (high value) → yellow → red (low value)
 // Value = fertility + river bonus + coast bonus + moderate elevation bonus
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
 if(e<=sl){d[pi4]=8;d[pi4+1]=12;d[pi4+2]=22;d[pi4+3]=255;continue;}
 let v=ter.tFert[ti];
@@ -954,7 +1006,7 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else if(vm==="moisture"){
 // Moisture overlay — brown (dry) → yellow → green → teal → blue (wet)
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
 if(e<=sl){// Ocean: dim blue
 d[pi4]=8;d[pi4+1]=15;d[pi4+2]=35;d[pi4+3]=255;continue;}
@@ -972,7 +1024,7 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else if(vm==="temperature"){
 // Temperature overlay — blue (cold) → cyan → green → yellow → orange → red (hot)
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES),si=sy*W+sx;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
 if(e<=sl){// Ocean: show temperature with slight blue tint
 const t=w.temperature[si];
@@ -1013,7 +1065,7 @@ const wy=py+fbm(nx*1.5+250,ny*1.5+250,4,2,0.5)*12+fbm(nx*4+350,ny*4+350,3,2,0.5)
 const sx2=Math.max(0,Math.min(W-1,Math.round(wx))),sy2=Math.max(0,Math.min(H-1,Math.round(wy)));
 return w.pixPlate[sy2*W+sx2];};
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,ty*RES);
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
 const myP=plateAt(sx,sy);let boundary=false;
 for(let dy=-RES;dy<=RES&&!boundary;dy+=RES)for(let dx=-RES;dx<=RES&&!boundary;dx+=RES){
 if(!dx&&!dy)continue;
@@ -1024,7 +1076,7 @@ ctx.putImageData(img,0,0);
 // Draw all tribe centers (tile coords — canvas is CW×CH)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
 if(!centers||ter.tribeSizes[st]<=0)continue;const cr=tcR[st],cg=tcG[st],cb=tcB[st];
-for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=centers[ci].y+0.5;
+for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=dataYtoScreenY(centers[ci].y*RES,H,CH)+0.5;
 const isCapital=ci===0,r2=isCapital?2.5:1.5;
 ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
 ctx.fillStyle=isCapital?`rgb(${cr},${cg},${cb})`:`rgba(${cr},${cg},${cb},0.7)`;ctx.fill();
@@ -1045,8 +1097,8 @@ const wX=w.windX,wY=w.windY;
 ctx.lineCap="round";
 for(let i=0;i<particles.length;i++){
 const p=particles[i];
-// Sample wind at particle position
-const sx=Math.min(W-1,(p.x*RES)|0),sy=Math.min(H-1,(p.y*RES)|0),si=sy*W+sx;
+// Sample wind at particle position (screen → data via Mercator)
+const sx=Math.min(W-1,(p.x*RES)|0),sy=Math.min(H-1,Math.round(screenYtoDataY(p.y,CH,H))),si=sy*W+sx;
 const vx=wX[si]||0,vy=wY[si]||0;
 const spd=Math.sqrt(vx*vx+vy*vy);
 // Move particle along wind (speed scaled for visual effect)
@@ -1061,7 +1113,7 @@ if(p.x<0||p.x>=CW||p.y<0||p.y>=CH||p.age>MAX_AGE||spd<0.002){
 let bestX=Math.random()*CW,bestY=Math.random()*CH,bestSpd=0;
 for(let t=0;t<3;t++){
 const cx=Math.random()*CW,cy=Math.random()*CH;
-const csx=Math.min(W-1,(cx*RES)|0),csy=Math.min(H-1,(cy*RES)|0);
+const csx=Math.min(W-1,(cx*RES)|0),csy=Math.min(H-1,Math.round(screenYtoDataY(cy,CH,H)));
 const cvx=wX[csy*W+csx]||0,cvy=wY[csy*W+csx]||0;
 const cs=cvx*cvx+cvy*cvy;
 if(cs>bestSpd){bestSpd=cs;bestX=cx;bestY=cy;}}
@@ -1099,7 +1151,7 @@ if(intensity>0.3){ctx.beginPath();ctx.moveTo(tx2+2,ty2);ctx.lineTo(tx2,ty2+2);ct
 for(let st=0;st<ter.tribeSizes.length;st++){if(ter.tribeSizes[st]<=0)continue;
 const centers=ter.tribeCenters[st];if(!centers)continue;
 const cr=tcR[st],cg=tcG[st],cb=tcB[st];
-for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=centers[ci].y+0.5;
+for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=dataYtoScreenY(centers[ci].y*RES,H,CH)+0.5;
 const isCapital=ci===0,r2=isCapital?3:2;
 ctx.beginPath();ctx.arc(cx2,cy2,r2+2,0,Math.PI*2);
 ctx.fillStyle=`rgba(${cr},${cg},${cb},0.25)`;ctx.fill();
@@ -1109,7 +1161,7 @@ ctx.beginPath();ctx.arc(cx2,cy2,r2+0.5,0,Math.PI*2);
 ctx.strokeStyle=isCapital?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.4)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();
 if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-serif";
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
-},[updateTerrainCache]);
+},[updateTerrainCache,CH]);
 
 useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates]);
 
@@ -1154,13 +1206,11 @@ setImportStatus(`Heightmap loaded (${img.width}\u00d7${img.height})`);
 const emptyArr=new Uint8Array(W*H);
 const rvr=showRiversRef.current?generateRivers(w.elevation,w.moisture,W,H,mkRng(seed+777)):{river:emptyArr,lake:emptyArr,floodplain:emptyArr,delta:emptyArr};
 w.river=rvr.river;w.lake=rvr.lake;w.floodplain=rvr.floodplain;w.delta=rvr.delta;
-const oasis=new Uint8Array(W*H),swamp=new Uint8Array(W*H);
+const swamp=new Uint8Array(W*H);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(w.elevation[i]>0&&w.elevation[i]<0.3&&w.temperature[i]>0.5&&w.moisture[i]<0.2){
-const nv=fbm(x/W*50+200,y/H*50+200,3,2,.5);if(nv>0.3){oasis[i]=1;w.moisture[i]=Math.min(1,w.moisture[i]+0.4);}}
 if(w.elevation[i]>0&&w.elevation[i]<0.025&&w.moisture[i]>0.45&&w.temperature[i]>0.35&&!rvr.river[i]&&!rvr.lake[i]){
 const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);if(nv>-0.1)swamp[i]=1;}}
-w.oasis=oasis;w.swamp=swamp;
+w.swamp=swamp;
 importedWorldRef.current=w;presetRef.current="import";setPreset("import");
 setSeed(Math.floor(Math.random()*999999));
 setTimeout(()=>setImportStatus(null),4000);
@@ -1174,7 +1224,7 @@ const onCanvasMove=useCallback((ev)=>{
 const c=canvasRef.current;if(!c||!worldRef.current)return;
 const r=c.getBoundingClientRect();
 const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
-const wx=Math.floor(sx)*RES,wy=Math.floor(sy)*RES;
+const wx=Math.floor(sx)*RES,wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const w=worldRef.current,i=wy*1920+wx;
 if(wx<0||wx>=1920||wy<0||wy>=960){setHoverInfo(null);return;}
 const elev=w.elevation[i]||0;
@@ -1269,9 +1319,12 @@ return(
 alignItems:"center",justifyContent:"center",cursor:mi>0?"pointer":"default",
 border:mi===0?"2px solid rgba(201,184,122,0.25)":"2px solid transparent",borderRadius:3}}
 onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
-{mi===0?<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
+{mi===0?(showGlobe?<div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
+<GlobeView terrainBuf={globeBuf} world={world}
+CW={globeTexSize.w} CH={globeTexSize.h} /></div>
+:<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
 style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",
-aspectRatio:`${CW}/${CH}`}} />
+aspectRatio:`${CW}/${CH}`}} />)
 :<canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
 style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",
 width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
@@ -1341,6 +1394,12 @@ style={{width:80,accentColor:"#6ab4e8"}} />
 <button onClick={()=>{const nv=!showRiversRef.current;showRiversRef.current=nv;setShowRivers(nv);generate(seed);}}
 style={{...bs,background:showRivers?"rgba(40,120,200,0.25)":"transparent",border:"none",
 color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</button>
+<button onClick={()=>setUseMercator(!useMercator)}
+style={{...bs,background:useMercator?"rgba(180,160,100,0.25)":"transparent",border:"none",
+color:useMercator?"#c9b87a":"#5a5448",padding:"6px 12px",fontSize:12}}>{useMercator?"Mercator":"Flat"}</button>
+<button onClick={()=>setShowGlobe(!showGlobe)}
+style={{...bs,background:showGlobe?"rgba(120,180,220,0.25)":"transparent",border:"none",
+color:showGlobe?"#78b4dc":"#5a5448",padding:"6px 12px",fontSize:12}}>Globe</button>
 {(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
 <div style={{width:1,height:20,background:"rgba(201,184,122,0.15)"}} />
 <button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
