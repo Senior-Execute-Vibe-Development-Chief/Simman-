@@ -1574,6 +1574,106 @@ for (let i = 0; i < W * H; i++) {
   temperature[i] = Math.max(0, Math.min(1, t + dryBoost + wetCool));
 }
 
+// ═══════════════════════════════════════════════════════
+// STEP 8e: Ocean current coastal temperature modification
+// ═══════════════════════════════════════════════════════
+// Wind-driven surface currents create warm western ocean boundaries
+// (Gulf Stream, Kuroshio) and cold eastern boundaries with upwelling
+// (California, Benguela, Humboldt). This is the #1 driver of
+// east-west coastal temperature asymmetry at the same latitude.
+//
+// Algorithm: for each coastal land pixel, compute Ekman transport
+// direction (wind rotated 90° by hemisphere), dot with coast normal.
+// Positive = offshore transport = upwelling = cooling + drying.
+// Negative = onshore transport = warm current = warming.
+{
+const coastMod = new Float32Array(W * H); // temperature modification per pixel
+const moistMod = new Float32Array(W * H); // moisture modification (upwelling dries)
+
+// For each land pixel near coast, find coast normal (direction toward ocean)
+// and sample wind from nearest ocean pixel
+for (let y = 2; y < H - 2; y++) for (let x = 0; x < W; x++) {
+  const i = y * W + x;
+  if (elevation[i] <= 0) continue; // skip ocean
+  const cd = cdist[Math.min(dh - 1, (y / DG) | 0) * dw + Math.min(dw - 1, (x / DG) | 0)];
+  if (cd > 10) continue; // skip deep inland (effect decays within ~10 tiles)
+
+  // Find coast normal: average direction toward nearby ocean pixels
+  let normX = 0, normY = 0;
+  const scanR = 8;
+  for (let dy = -scanR; dy <= scanR; dy++) for (let dx = -scanR; dx <= scanR; dx++) {
+    if (!dx && !dy) continue;
+    const nx2 = (x + dx + W) % W, ny2 = y + dy;
+    if (ny2 < 0 || ny2 >= H) continue;
+    if (elevation[ny2 * W + nx2] <= 0) { // ocean pixel
+      const d = Math.sqrt(dx * dx + dy * dy);
+      normX += dx / d; normY += dy / d;
+    }
+  }
+  const normLen = Math.sqrt(normX * normX + normY * normY);
+  if (normLen < 0.1) continue; // no ocean nearby
+  normX /= normLen; normY /= normLen;
+
+  // Sample wind from nearest ocean pixel (follow coast normal outward)
+  let owx = 0, owy = 0, found = false;
+  for (let step = 1; step <= 15; step++) {
+    const ox = (x + Math.round(normX * step) + W) % W;
+    const oy = y + Math.round(normY * step);
+    if (oy < 0 || oy >= H) continue;
+    if (elevation[oy * W + ox] <= 0) {
+      owx = fullWindX[oy * W + ox];
+      owy = fullWindY[oy * W + ox];
+      found = true;
+      break;
+    }
+  }
+  if (!found) continue;
+
+  // Compute Ekman transport direction: rotate wind 90° CW in NH, 90° CCW in SH
+  const lat = y / H - 0.5; // negative = SH, positive = NH
+  const hemisphere = lat >= 0 ? 1 : -1;
+  // Rotate 90°: CW = (wy, -wx), CCW = (-wy, wx)
+  const ekmanX = hemisphere * owy;
+  const ekmanY = -hemisphere * owx;
+
+  // Dot Ekman transport with coast normal (pointing seaward)
+  // Positive = Ekman pushes water offshore = upwelling = COOLING
+  // Negative = Ekman pushes water onshore = warm current = WARMING
+  const ekmanDot = ekmanX * normX + ekmanY * normY;
+
+  // Latitude modulation: broad window 15°-65°, peak at ~40°
+  const absLat = Math.abs(lat) * 2; // 0-1
+  const latFactor = Math.exp(-((absLat - 0.45) * (absLat - 0.45)) / (2 * 0.25 * 0.25));
+
+  const windSpd = Math.sqrt(owx * owx + owy * owy);
+  const decay = Math.exp(-cd * 0.15);
+  // Normalize ekmanDot by wind speed to get -1 to +1 direction signal
+  const ekmanNorm = windSpd > 0.001 ? ekmanDot / windSpd : 0;
+  // Strength scales with wind speed (stronger wind = stronger current)
+  const strength = Math.min(1, windSpd * 60) * latFactor * decay;
+
+  let tempChange = 0;
+  let moistChange = 0;
+
+  if (ekmanNorm > 0.1) {
+    tempChange = -Math.min(0.15, ekmanNorm * strength * 0.18);
+    moistChange = -Math.min(0.12, ekmanNorm * strength * 0.12);
+  } else if (ekmanNorm < -0.1) {
+    tempChange = Math.min(0.12, -ekmanNorm * strength * 0.15);
+    moistChange = Math.min(0.04, -ekmanNorm * strength * 0.04);
+  }
+
+  coastMod[i] = tempChange;
+  moistMod[i] = moistChange;
+}
+
+// Apply modifications
+for (let i = 0; i < W * H; i++) {
+  if (coastMod[i]) temperature[i] = Math.max(0, Math.min(1, temperature[i] + coastMod[i]));
+  if (moistMod[i]) moisture[i] = Math.max(0.02, Math.min(1, moisture[i] + moistMod[i]));
+}
+}
+
 return { elevation, moisture, temperature, pixPlate, windX: fullWindX, windY: fullWindY };
 }
 
