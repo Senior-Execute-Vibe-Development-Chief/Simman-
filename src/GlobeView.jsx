@@ -4,7 +4,7 @@ import {
   SphereGeometry, MeshPhongMaterial, Mesh,
   CanvasTexture, AmbientLight, DirectionalLight, Color,
   BackSide, ShaderMaterial, AdditiveBlending,
-  NearestFilter, Quaternion, Vector3, Raycaster, Vector2
+  NearestFilter, Quaternion, Vector3
 } from "three";
 
 export default function GlobeView({ terrainBuf, world, CW, CH }) {
@@ -108,72 +108,27 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     scatterMesh.renderOrder = 1; // render after globe
     scene.add(scatterMesh);
 
-    // Google Earth-style rotation: grabbed point stays under cursor.
-    // When cursor moves off the globe, continues spinning via screen-space fallback.
-    const raycaster = new Raycaster();
+    // Simple unclamped rotation: each mouse drag applies incremental rotation
+    // around the camera's up and right axes. No raycasting, no arcball math,
+    // no edge cases at poles or off-sphere. Works everywhere, always.
     const rotQuat = new Quaternion();
-    rotQuat.multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), 0.3));
+    rotQuat.premultiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), 0.3));
     let dragging = false;
-    let grabPoint = null;    // local-space point on sphere where user grabbed
-    let grabQuat = null;     // rotation state at moment of grab
-    let prevX = 0, prevY = 0; // fallback screen coords when off-sphere
+    let prevX = 0, prevY = 0;
     let zoom = 2.6;
     let autoRot = true;
     const autoRotQuat = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 0.003);
 
-    const getNDC = (e) => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      return new Vector2(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1
-      );
-    };
-
-    // Raycast to find point on unit sphere, converted to grab-time local space
-    const getSpherePointWithQuat = (ndc, q) => {
-      raycaster.setFromCamera(ndc, camera);
-      const hits = raycaster.intersectObject(mesh);
-      if (hits.length > 0) {
-        const localPt = hits[0].point.clone();
-        localPt.applyQuaternion(q.clone().invert());
-        return localPt.normalize();
-      }
-      return null;
-    };
-
-    const onDown = (e) => {
-      autoRot = false;
-      dragging = true;
-      prevX = e.clientX; prevY = e.clientY;
-      grabQuat = rotQuat.clone();
-      grabPoint = getSpherePointWithQuat(getNDC(e), grabQuat);
-    };
-    const onUp = () => { dragging = false; grabPoint = null; grabQuat = null; };
+    const onDown = (e) => { autoRot = false; dragging = true; prevX = e.clientX; prevY = e.clientY; };
+    const onUp = () => { dragging = false; };
     const onMove = (e) => {
       if (!dragging) return;
-      const ndc = getNDC(e);
-
-      if (grabPoint && grabQuat) {
-        // Use grabQuat for conversion so both points are in the same local space
-        const currentPoint = getSpherePointWithQuat(ndc, grabQuat);
-
-        if (currentPoint) {
-          // Arcball rotation from grab point to current point
-          const cross = new Vector3().crossVectors(grabPoint, currentPoint);
-          const dot = grabPoint.dot(currentPoint);
-          const q = new Quaternion(cross.x, cross.y, cross.z, 1 + dot).normalize();
-          rotQuat.copy(grabQuat).premultiply(q);
-          prevX = e.clientX; prevY = e.clientY;
-          return;
-        }
-      }
-
-      // Fallback: cursor off sphere or no grab point — screen-space rotation
       const dx = e.clientX - prevX, dy = e.clientY - prevY;
-      const qY = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), dx * 0.006);
-      const qX = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), dy * 0.006);
-      rotQuat.premultiply(qY).premultiply(qX);
-      grabPoint = null; grabQuat = null;
+      // Scale rotation speed by zoom level (closer = slower, more precise)
+      const speed = 0.003 + 0.003 * (zoom / 2.6);
+      const qY = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), dx * speed);
+      const qX = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), dy * speed);
+      rotQuat.premultiply(qX).premultiply(qY);
       prevX = e.clientX; prevY = e.clientY;
     };
     const onWheel = (e) => {
