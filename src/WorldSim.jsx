@@ -379,14 +379,15 @@ return{elevation,moisture,temperature,coastal,river:rvr.river,riverOverlay:rvr.r
 // The river/accumulation data is kept for gameplay (fertility, defense).
 function generateRivers(elev,moist,W,H,rng){
 const N=W*H;
-const rawLake=new Uint8Array(N),floodplain=new Uint8Array(N),delta=new Uint8Array(N);
+const floodplain=new Uint8Array(N),delta=new Uint8Array(N);
 const D8X=[-1,0,1,-1,1,-1,0,1],D8Y=[-1,-1,-1,0,0,1,1,1];
 
 // ── Phase 1: Priority-flood depression filling ──
+// Record fill depth per pixel (how much it was raised) for later lake detection.
 const filled=new Float32Array(N);filled.set(elev);
+const fillDepth=new Float32Array(N);
 const visited=new Uint8Array(N);
 
-// Min-heap keyed on elevation
 const heapIdx=new Int32Array(N+1);let heapN=0;
 function heapUp(k){const v=heapIdx[k],ve=filled[v];
 while(k>1){const p=k>>1;if(filled[heapIdx[p]]<=ve)break;
@@ -406,7 +407,7 @@ const nx=(cx+D8X[d]+W)%W,ny=cy+D8Y[d];if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;if(visited[ni])continue;visited[ni]=1;
 const ne=elev[ni]>filled[ci]?elev[ni]:filled[ci]+1e-5;
 filled[ni]=ne;heapPush(ni);
-if(ne>elev[ni]+0.005&&elev[ni]>0)rawLake[ni]=1;}}
+if(elev[ni]>0)fillDepth[ni]=ne-elev[ni];}}
 
 // ── Phase 2: D8 flow direction on filled DEM ──
 const flowDir=new Int8Array(N).fill(-1);
@@ -479,30 +480,33 @@ if(accum[ci]>=thresh){const norm=Math.sqrt(accum[ci]/mx);
 riverOverlay[ci]=Math.min(255,Math.round(norm*180)+60);}
 ci=bestUp[ci];}}}
 
-// ── Phase 5: Accumulation-based lakes ──
-// Where rivers carry massive flow across flat terrain, water pools into lakes.
+// ── Phase 5: Lakes — generated AFTER rivers, excluding river pixels ──
+const rawLake=new Uint8Array(N);
+// 5a: Depression-fill lakes: pixels that were raised significantly, but not on a river
+for(let i=0;i<N;i++){
+if(fillDepth[i]>0.005&&elev[i]>0&&!river[i])rawLake[i]=1;}
+// 5b: Accumulation-based lakes: high flow on flat terrain, excluding river pixels
 const lakeThresh=mx*0.08;
 for(let y=2;y<H-2;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(elev[i]<=0||accum[i]<lakeThresh)continue;
+if(elev[i]<=0||accum[i]<lakeThresh||river[i])continue;
 let flatCount=0;const R=3;
 for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){
-const nx=(x+dx+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
-if(Math.abs(elev[ny*W+nx]-elev[i])<0.012)flatCount++;}
+const nx2=(x+dx+W)%W,ny2=y+dy;if(ny2<0||ny2>=H)continue;
+if(Math.abs(elev[ny2*W+nx2]-elev[i])<0.012)flatCount++;}
 if(flatCount>((2*R+1)**2)*0.6){
 const lR=Math.min(6,Math.max(2,Math.round(Math.sqrt(accum[i]/mx)*5)));
 for(let dy=-lR;dy<=lR;dy++)for(let dx=-lR;dx<=lR;dx++){
-const nx=(x+dx+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
-const ni=ny*W+nx;if(dx*dx+dy*dy>lR*lR)continue;
-if(elev[ni]>0&&Math.abs(elev[ni]-elev[i])<0.015)rawLake[ni]=1;}}}
+const nx2=(x+dx+W)%W,ny2=y+dy;if(ny2<0||ny2>=H)continue;
+const ni=ny2*W+nx2;if(dx*dx+dy*dy>lR*lR)continue;
+if(elev[ni]>0&&!river[ni]&&Math.abs(elev[ni]-elev[i])<0.015)rawLake[ni]=1;}}}
 
-// ── Phase 6: Filter lake clusters — remove small ones and elongated river-valley shapes ──
+// ── Phase 6: Filter lake clusters by minimum size ──
 const MIN_LAKE_SIZE=12;
 const lake=new Uint8Array(N);
-const lakeLabel=new Int32Array(N);// connected component labels
+const lakeLabel=new Int32Array(N);
 let nextLabel=1;
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
 if(!rawLake[i]||lakeLabel[i])continue;
-// BFS flood fill to find connected component
 const comp=[];const bfs=[i];lakeLabel[i]=nextLabel;
 let head=0;
 while(head<bfs.length){const ci=bfs[head++];comp.push(ci);
@@ -510,14 +514,7 @@ const cx=ci%W,cy=(ci/W)|0;
 for(let d=0;d<8;d++){
 const nx=(cx+D8X[d]+W)%W,ny=cy+D8Y[d];if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;if(rawLake[ni]&&!lakeLabel[ni]){lakeLabel[ni]=nextLabel;bfs.push(ni);}}}
-// Keep only if large enough AND roughly compact (not elongated like a river)
-if(comp.length>=MIN_LAKE_SIZE){
-let minX=W,maxX=0,minY=H,maxY=0;
-for(const ci of comp){const cx=ci%W,cy=(ci/W)|0;
-if(cx<minX)minX=cx;if(cx>maxX)maxX=cx;if(cy<minY)minY=cy;if(cy>maxY)maxY=cy;}
-const bboxArea=Math.max(1,(maxX-minX+1)*(maxY-minY+1));
-const compactness=comp.length/bboxArea;// 1.0=fills bbox, low=elongated
-if(compactness>0.15)for(const ci of comp)lake[ci]=1;}
+if(comp.length>=MIN_LAKE_SIZE)for(const ci of comp)lake[ci]=1;
 nextLabel++;}
 
 // ── Phase 7: Deltas at river mouths ──
