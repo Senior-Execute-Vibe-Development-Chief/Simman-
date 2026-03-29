@@ -450,10 +450,37 @@ let cumul=0,thresh=mx;
 for(let b=sampleBins-1;b>=0;b--){cumul+=binCounts[b];
 if(cumul>=targetPx){thresh=(b/sampleBins)**2*mx;break;}}
 thresh=Math.max(thresh,mx*0.001);
-// River buffer: single-pixel width, gameplay + overlay data
+// River gameplay buffer: marks tiles with significant flow for territory mechanics
 const river=new Uint8Array(N);
 for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<thresh)continue;
 river[i]=Math.min(255,Math.round(Math.sqrt(accum[i]/mx)*200)+55);}
+// River overlay buffer: thin single-pixel paths traced along flow direction.
+// Walk downstream from every cell above threshold; only mark the exact path pixel.
+const riverOverlay=new Uint8Array(N);
+{const overlayThresh=thresh*1.5;// slightly higher threshold for overlay clarity
+const marked=new Uint8Array(N);
+// Find headwater cells: cells above threshold with no upstream cell above threshold
+for(let i=0;i<N;i++){if(elev[i]<=0||accum[i]<overlayThresh)continue;
+let isHead=true;
+for(let d=0;d<8;d++){const x=i%W,y=(i/W)|0;
+const nx=(x+D8X[d]+W)%W,ny=y+D8Y[d];if(ny<0||ny>=H)continue;
+const ni=ny*W+nx;if(flowDir[ni]>=0&&accum[ni]>=overlayThresh){
+// Check if ni flows toward i
+const fd=flowDir[ni],fnx=(nx+D8X[fd]+W)%W,fny=ny+D8Y[fd];
+if(fny*W+fnx===i){isHead=false;break;}}}
+if(isHead)marked[i]=1;}
+// Trace downstream from each headwater, marking exactly one pixel per step
+for(let i=0;i<N;i++){if(!marked[i])continue;
+let ci=i;
+for(let step=0;step<4000;step++){
+if(ci<0||ci>=N||elev[ci]<=0||accum[ci]<overlayThresh)break;
+if(riverOverlay[ci])break;// merged into existing path
+const norm=Math.sqrt(accum[ci]/mx);
+riverOverlay[ci]=Math.min(255,Math.round(norm*180)+60);
+const d=flowDir[ci];if(d<0)break;
+const cx=ci%W,cy=(ci/W)|0;
+const nx=(cx+D8X[d]+W)%W,ny=cy+D8Y[d];if(ny<0||ny>=H)break;
+ci=ny*W+nx;}}}
 
 // ── Phase 5: Accumulation-based lakes ──
 // Only the very highest flow on very flat terrain pools into lakes.
@@ -512,7 +539,7 @@ for(let dy=-fR;dy<=fR;dy++)for(let dx=-fR;dx<=fR;dx++){
 const nx=((x+dx)%W+W)%W,ny=y+dy;if(ny<0||ny>=H)continue;
 const ni=ny*W+nx;const d2=dx*dx+dy*dy;if(d2>fR*fR)continue;
 if(elev[ni]>0&&!river[ni]&&!lake[ni]&&Math.abs(elev[ni]-elev[i])<0.03)floodplain[ni]=1;}}
-return{river,lake,floodplain,delta};}
+return{river,riverOverlay,lake,floodplain,delta};}
 
 const BC=[
 [10,22,56],      // 0  Deep Ocean
@@ -1135,10 +1162,10 @@ const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
 if(plateAt(nx2,ny2)!==myP)boundary=true;}
 if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
 // River overlay — thin blue lines showing flow network when toggled on
-if(showRiversRef.current&&w.river){
+if(showRiversRef.current&&w.riverOverlay){
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
-const rv=w.river[sy*W+sx];// single pixel sample — thin lines
+const rv=w.riverOverlay[sy*W+sx];
 if(rv>0){const pi4=ti<<2;
 const a=0.3+rv/255*0.35;
 d[pi4]=(d[pi4]*(1-a)+30*a+.5)|0;
