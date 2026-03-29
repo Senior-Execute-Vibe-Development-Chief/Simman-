@@ -4,7 +4,7 @@ import {
   SphereGeometry, MeshPhongMaterial, Mesh,
   CanvasTexture, AmbientLight, DirectionalLight, Color,
   BackSide, ShaderMaterial, AdditiveBlending,
-  LinearFilter, LinearMipmapLinearFilter
+  NearestFilter
 } from "three";
 
 export default function GlobeView({ terrainBuf, world, CW, CH }) {
@@ -35,11 +35,10 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
     texCanvas.height = CH;
     const texCtx = texCanvas.getContext("2d");
     const texture = new CanvasTexture(texCanvas);
-    texture.minFilter = LinearMipmapLinearFilter;
-    texture.magFilter = LinearFilter;
-    texture.generateMipmaps = true;
-    const maxAniso = renderer.capabilities.getMaxAnisotropy();
-    texture.anisotropy = maxAniso;
+    // Nearest-neighbor filtering: sharp pixelated look matching the flat map
+    texture.minFilter = NearestFilter;
+    texture.magFilter = NearestFilter;
+    texture.generateMipmaps = false;
 
     // Specular map: ocean is reflective, land is matte
     const specCanvas = document.createElement("canvas");
