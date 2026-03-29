@@ -26,7 +26,7 @@ export default function GlobeView({ terrainBuf, world, show3D, CW, CH }) {
     el.appendChild(renderer.domElement);
 
     // Sphere geometry — high enough segments for visible terrain
-    const baseGeo = new SphereGeometry(1, 512, 256);
+    const baseGeo = new SphereGeometry(1, 200, 100);
     const geo = baseGeo.clone();
 
     // Offscreen canvas for texture

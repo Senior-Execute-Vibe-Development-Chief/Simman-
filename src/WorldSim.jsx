@@ -797,7 +797,7 @@ const[useMercator,setUseMercator]=useState(false);
 const[showGlobe,setShowGlobe]=useState(false);
 const[show3DTerrain,setShow3DTerrain]=useState(false);
 const[globeBuf,setGlobeBuf]=useState(null);
-const[globeTexSize,setGlobeTexSize]=useState({w:W,h:H});
+const[globeTexSize,setGlobeTexSize]=useState({w:2048,h:1024});
 const CH=useMercator?CH_MERC:CH_FLAT;
 _mercator=useMercator;
 const[mapCount,setMapCount]=useState(1);
@@ -824,15 +824,22 @@ setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
-// Build globe texture at full resolution with polar blending
+// Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 useEffect(()=>{if(showGlobe&&worldRef.current){
-const w=worldRef.current,sl=0,gW=W,gH=H;
+const w=worldRef.current,sl=0,gW=2048,gH=1024;
 const buf=new Uint8Array(gW*gH*3);
 for(let ty=0;ty<gH;ty++){
 const lat=Math.abs(ty/gH-0.5)*2;
 const polarBlend=Math.max(0,Math.min(1,(lat-0.83)/0.17));
 for(let tx=0;tx<gW;tx++){
-const si=ty*gW+tx;const e=w.elevation[si],m=w.moisture[si],t=w.temperature[si];
+// Bilinear sample from world data
+const srcX=tx/gW*W,srcY=ty/gH*H;
+const sx0=Math.min(W-2,srcX|0),sy0=Math.min(H-2,srcY|0);
+const fx=srcX-sx0,fy=srcY-sy0;
+const i00=sy0*W+sx0,i10=sy0*W+sx0+1,i01=(sy0+1)*W+sx0,i11=(sy0+1)*W+sx0+1;
+const e=w.elevation[i00]*(1-fx)*(1-fy)+w.elevation[i10]*fx*(1-fy)+w.elevation[i01]*(1-fx)*fy+w.elevation[i11]*fx*fy;
+const m=w.moisture[i00]*(1-fx)*(1-fy)+w.moisture[i10]*fx*(1-fy)+w.moisture[i01]*(1-fx)*fy+w.moisture[i11]*fx*fy;
+const t=w.temperature[i00]*(1-fx)*(1-fy)+w.temperature[i10]*fx*(1-fy)+w.temperature[i01]*(1-fx)*fy+w.temperature[i11]*fx*fy;
 let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
