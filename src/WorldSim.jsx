@@ -37,11 +37,13 @@ function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16
 
 const RES=2;
 // ── Mercator projection helpers ──
-const MAX_LAT_DEG = 82;
+const MAX_LAT_DEG = 78;
 const MAX_LAT = MAX_LAT_DEG * Math.PI / 180;
 const MERC_MAX = Math.log(Math.tan(Math.PI / 4 + MAX_LAT / 2));
 const CW_FLAT = 960, CH_FLAT = 480; // equirectangular canvas
-const CH_MERC = 620; // Mercator canvas height — slightly horizontal rectangle
+// Mercator height: match equator pixel scale to flat mode, then add space for polar stretch
+// Formula: CH = 2 * MERC_MAX * (CH_FLAT / π) — equator stays same size as flat mode
+const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688
 let _mercator = false; // module-level flag for projection functions
 
 function screenYtoDataY(sy, ch, H) {
