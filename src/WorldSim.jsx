@@ -359,6 +359,26 @@ let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.
 if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
 if(elevation[i]<.02)m+=.10;
 moisture[i]=Math.max(.02,Math.min(1,m));}}
+// ── Inland sea detection: flood-fill from equatorial ocean to find connected ocean. ──
+// Any ocean pixel NOT connected to the main body (e.g. enclosed by polar land) becomes land/ice.
+{const oceanConn=new Uint8Array(W*H);
+// Seed BFS from ocean pixels in the middle third of the map (guaranteed open ocean)
+const bfs=[];
+for(let y=Math.floor(H*0.3);y<Math.floor(H*0.7);y++)for(let x=0;x<W;x++){
+const i=y*W+x;if(elevation[i]<=0&&!oceanConn[i]){oceanConn[i]=1;bfs.push(i);}}
+// Flood-fill: connected ocean pixels (8-direction, wrapping X)
+let head=0;
+while(head<bfs.length){const ci=bfs[head++];const cx=ci%W,cy=(ci/W)|0;
+for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
+const nx=(cx+dx+W)%W,ny=cy+dy;if(ny<0||ny>=H)continue;
+const ni=ny*W+nx;if(oceanConn[ni]||elevation[ni]>0)continue;
+oceanConn[ni]=1;bfs.push(ni);}}
+// Convert unconnected ocean to polar ice/land
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
+if(elevation[i]<=0&&!oceanConn[i]){
+elevation[i]=0.003;// just above sea level — will render as snow/ice at poles
+temperature[i]=Math.min(temperature[i],0.08);// ensure cold
+moisture[i]=Math.max(moisture[i],0.1);}}}
 const ctw=Math.ceil(W/RES),cth=Math.ceil(H/RES);const coastal=new Uint8Array(ctw*cth);
 for(let ty=1;ty<cth-1;ty++)for(let tx=0;tx<ctw;tx++){const px=Math.min(W-1,tx*RES),py=Math.min(H-1,ty*RES);
 if(elevation[py*W+px]>0){
