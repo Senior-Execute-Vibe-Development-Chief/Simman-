@@ -609,9 +609,10 @@ for(let i=0;i<pop.length;i++){if(tribeSizes[i]<=0){pop[i]=0;continue;}
 const agMult=1+know[i].agriculture*2.5;
 const capacity=tribeStrength[i]*agMult;// effective carrying capacity
 if(capacity<=0){pop[i]=Math.max(0,pop[i]*0.95);continue;}
-// Logistic growth: slow, realistic. 1% base rate (doubles every ~70 steps = 700 years)
+// Logistic growth: 2% base rate (doubles every ~35 steps = 350 years). Realistic for
+// pre-modern populations on good land with room to grow.
 const ratio=pop[i]/capacity;
-const growthRate=0.01*(1-ratio);// 1% at low pop, 0% at capacity
+const growthRate=0.02*(1-ratio);// 2% at low pop, 0% at capacity
 pop[i]=Math.max(1,pop[i]+pop[i]*growthRate);
 // Famine: above capacity, harsh decline. Overshoot hurts.
 if(ratio>1.0)pop[i]=Math.max(1,pop[i]*(0.98-Math.min(0.05,(ratio-1)*0.1)));// 2-7% decline
@@ -633,7 +634,7 @@ const fert=tFert[ti];
 const cap=fert*fert*0.8*(1-tDiff[ti]*0.8);// quadratic: fert 0.5→0.2, fert 0.1→0.008
 if(cap<=0.001)continue;
 const ratio=bgPop[ti]/cap;
-bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*0.005*(1-ratio));// 0.5% growth (very slow)
+bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*0.008*(1-ratio));// 0.8% growth — slow but not glacial
 // Diffusion: only from near-capacity tiles, slow, difficulty-blocked
 if(bgPop[ti]>cap*0.7){const tx=ti%tw,ty=(ti-tx)/tw;
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;
@@ -1054,31 +1055,31 @@ const owKnow=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:n
 const agMult=owKnow?1+owKnow.agriculture*2.5:1;
 const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow];
 const owCap=tribeStrength[ow]*agMult;
-// Population pressure: MUST exceed 70% capacity to expand at all. Below that, consolidate.
+// Population pressure drives expansion. Tribes need pop > 40% capacity to start expanding,
+// but early small tribes get a natural boost (few tiles = high density = high pressure fast).
 const popRatio=owCap>0?owPop/owCap:0;
-const popPressure=Math.max(0,(popRatio-0.7)*3.33);// 0 below 70%, 1 at 100%
-// Small tribes get a survival boost only if they're very tiny (< 8 tiles)
-const smallBoost=owSz<8?1+((8-owSz)/8)*0.5:1;
+const popPressure=Math.max(0,(popRatio-0.4)*1.67);// 0 below 40%, 1 at 100%
+// Small tribes expand more readily — a band of 50 people on 3 tiles IS at pressure
+const smallBoost=owSz<15?1+((15-owSz)/15)*1.0:1;// up to 2x for tiny tribes
 const largePrize=owSz>40?1+Math.min(1,(owSz-40)*0.01):1;
 // Score all candidate neighbor tiles, then claim the best
 const candidates=[];
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny2=ty+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx;if(owner[ni]>=0)continue;
 const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni];if(effT<0.02){room=true;continue;}
 const diff=tDiff[ni],adjDiff=Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0));
-// Base chance: MUCH lower than before. Expansion is rare without population pressure.
-let chance;if(elev<=0&&elev>sl)chance=0.15*wet;else if(tCoast[ni])chance=0.2*wet;else chance=0.12*(1-adjDiff)*wet;
+// Expansion chance: moderate base, strongly shaped by fertility and population pressure
+let chance;if(elev<=0&&elev>sl)chance=0.2*wet;else if(tCoast[ni])chance=0.25*wet;else chance=0.18*(1-adjDiff)*wet;
 if(effT<0.15)chance*=0.15;// cold is brutal
-// Fertility matters A LOT: poor land (fert<0.1) nearly impossible to expand into
-// Using fertility cubed so the curve is extremely steep
-const fertCubed=tFert[ni]*tFert[ni]*tFert[ni];
-chance*=(0.1+fertCubed*12*largePrize)*smallBoost;// fert 0.5→0.85, fert 0.1→0.11, fert 0.01→0.1
-// Population pressure GATES expansion: no pressure = almost no expansion
-chance*=Math.max(0.05,popPressure);// 5% trickle at low pop, full speed at capacity
-// Center proximity: sharper falloff
+// Fertility matters enormously: quadratic curve makes rich land 25x better than wasteland
+const fertSq=tFert[ni]*tFert[ni];
+chance*=(0.05+fertSq*4.0*largePrize)*smallBoost;// fert 0.5→1.05, fert 0.1→0.09, fert 0.01→0.05
+// Population pressure gates expansion: need people to push outward
+chance*=Math.max(0.08,popPressure);// 8% trickle, ramps to 100% at capacity
+// Center proximity: expansion weakens far from centers
 const centers=tribeCenters[ow];
 const{min:distMin}=nearestCenterDist(centers,nx,ny2,tw);
 const reach=expFalloff(distMin);
-chance*=Math.max(0.02,reach);// 2% floor (very hard to expand far from centers)
+chance*=Math.max(0.03,reach);// 3% floor far from centers
 // ── Directional scoring: strongly pull toward valuable targets ──
 let score=tFert[ni]*tFert[ni]*agMult*3;// quadratic fertility — rich land MUCH more attractive
 // Resource pull: STRONG pull once metallurgy develops
@@ -1096,19 +1097,22 @@ candidates.push({ni,nx,ny:ny2,chance,score,diff,distMin});}
 candidates.sort((a,b)=>b.score-a.score);
 for(const cand of candidates){const{ni,nx,ny:ny2,chance,diff,distMin}=cand;
 if(Math.random()<chance){let nw=ow;
-// Split logic (same as before but organization resists splits)
-let sameN=0;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny2+dy2;
-if(ay>=0&&ay<th&&owner[ay*tw+ax]===ow)sameN++;}
+// Splits from expansion should be RARE and only for LARGE tribes.
+// Small/medium tribes (< 50 tiles) should NEVER split during expansion.
+// IRL, new civilizations formed from background population concentration,
+// not by randomly budding off a 15-tile tribe. Only empires fragment.
 const sz=tribeSizes[ow],dens=sz>0?tribeStrength[ow]/sz:0;
 let splitChance=0;
 const MAX_TRIBES=80;let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
-if(sameN<3&&alive<MAX_TRIBES){
-const orgResist=owKnow?owKnow.organization*0.5:0;// organization resists splitting
-const overext=sz>80?Math.min(0.15,(sz-80)*0.001):0;
-const barrier=diff>0.6&&pDiff<0.3?0.2:0;
-const ineq=dens>0&&tFert[ni]>dens*2.0?0.15*(tFert[ni]/dens-1):0;
-const distF=distMin>30?Math.min(0.15,(distMin-30)*0.004):0;
-splitChance=Math.max(0,(overext+barrier+ineq+distF-orgResist)*(1-Math.min(0.9,dens*1.2)));}
+if(sz>50&&alive<MAX_TRIBES){// ONLY tribes >50 tiles can split from expansion
+let sameN=0;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny2+dy2;
+if(ay>=0&&ay<th&&owner[ay*tw+ax]===ow)sameN++;}
+if(sameN<3){// frontier tile, not infill
+const orgResist=owKnow?owKnow.organization*0.6:0;// org strongly resists
+const overext=sz>100?Math.min(0.12,(sz-100)*0.0008):0;// only at 100+ tiles
+const barrier=diff>0.6&&pDiff<0.3?0.15:0;// geographic barrier
+const distF=distMin>35?Math.min(0.12,(distMin-35)*0.003):0;// very far from center
+splitChance=Math.max(0,(overext+barrier+distF-orgResist)*(1-Math.min(0.9,dens*1.5)));}}
 if(splitChance>0&&Math.random()<splitChance)nw=newTribe(ter,nx,ny2,ow);
 else if(distMin>18&&tribeCenters[ow]&&tribeCenters[ow].length<10){
 // Geographic center scoring: rivers, harbors, passes, resources attract settlements
