@@ -662,7 +662,7 @@ const sampleCoarse = (field, fx, fy) => {
 // ═══════════════════════════════════════════════════════
 // STEP 7b: Coast-distance BFS for continentality terrain
 // ═══════════════════════════════════════════════════════
-const DG = RES, dw = Math.ceil(W / DG), dh = Math.ceil(H / DG);
+const DG = 1, dw = Math.ceil(W / DG), dh = Math.ceil(H / DG);
 const cdist = new Uint8Array(dw * dh); cdist.fill(255);
 const cdQ = [];
 for (let ty = 0; ty < dh; ty++) for (let tx = 0; tx < dw; tx++) {
@@ -844,9 +844,9 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 
     // Per-pixel micro-terrain: bypasses precompute grid for true pixel-level roughness
     // Simulates local geology — ridges, gullies, rock outcrops at 1-2km scale
-    // Direct fBm micro-terrain — adds hills and roughness, suppressed near coast
-    const microTerrain = fbm(nx * 20 + s1 + 200, ny * 20 + s1 + 200, 4, 2.0, 0.5)
-      * 0.014 * Math.min(1, interior * 2) * (0.6 + tecZone * 0.5);
+    // Direct fBm micro-terrain — adds hills and roughness, killed near coast
+    const microTerrain = interior > 0.3 ? fbm(nx * 20 + s1 + 200, ny * 20 + s1 + 200, 4, 2.0, 0.5)
+      * 0.014 * (0.6 + tecZone * 0.5) : 0;
 
     // Scale tectonic lift by coast distance so mountains ramp up inland
     const tecCoastRamp = smoothstep(interior * 1.5);
