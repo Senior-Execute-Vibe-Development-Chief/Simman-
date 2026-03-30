@@ -937,53 +937,66 @@ for(let ti=0;ti<tw*th;ti++){
 if(tCoast[ti]&&tElev[ti]>0)tFert[ti]=Math.min(1,tFert[ti]+0.06);}
 // ── Natural resource deposits ──
 const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,rivers);
-// Find seed locations: fewer tribes, closer spacing, resource-aware scoring
-const NUM_TRIBES=(w.preset==="earth"||w.preset==="earth_sim")?4:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:3;
-const minSpacing=Math.round(tw*0.06);// 6% — allows clustering in fertile regions
-// Score tiles: fertility dominates, rivers and resources give bonus
+// ── 3000 BC START: seed civilizations at the best river valley / fertile locations ──
+// By 3000 BC: Egypt unified, Sumer city-states, Indus emerging, farming everywhere fertile.
+const NUM_CIVS=(w.preset==="earth"||w.preset==="earth_sim")?5:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:4;
+const minSpacing=Math.round(tw*0.08);
+// Score tiles for civ seeds: rivers + fertility + resources
 const scored=[];
-for(let ty=2;ty<th-2;ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;if(tElev[ti]<=0)continue;
-let s=tFert[ti]*3-tDiff[ti]*3;// fertility strongly favored, difficulty strongly penalized
-// River bonus — early civilizations cluster along rivers
-if(rivers&&rivers.riverMag[ti]>=2)s+=0.5;
-if(rivers&&rivers.riverMag[ti]>=3)s+=0.5;
-// Coastal bonus
-if(tCoast[ti])s+=0.2;
-// Resource proximity bonus
-if(deposits){s+=(deposits.copper[ti]+deposits.tin[ti])*0.3+deposits.salt[ti]*0.1;}
-if(s>0)scored.push({x:tx,y:ty,s});}
+for(let ty2=2;ty2<th-2;ty2++)for(let tx=0;tx<tw;tx++){const ti=ty2*tw+tx;if(tElev[ti]<=0)continue;
+let s=tFert[ti]*4-tDiff[ti]*4;
+if(rivers&&rivers.riverMag[ti]>=2)s+=1.0;
+if(rivers&&rivers.riverMag[ti]>=3)s+=1.0;
+if(tCoast[ti])s+=0.3;
+if(deposits){s+=(deposits.copper[ti]+deposits.tin[ti])*0.5+deposits.salt[ti]*0.2;}
+if(s>0.5)scored.push({x:tx,y:ty2,s});}
 scored.sort((a,b)=>b.s-a.s);
-// Pick well-spaced origins (greedy: best first, skip if too close to existing)
 const origins=[];
-if(w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0){// Imported map: use state positions as tribe seeds
+if(w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0){
 for(const ts of w.tribeSeeds){const tx=Math.min(tw-1,Math.max(0,Math.round(ts.x/RES))),ty2=Math.min(th-1,Math.max(0,Math.round(ts.y/RES)));
 if(tElev[ty2*tw+tx]>0)origins.push({x:tx,y:ty2,s:tFert[ty2*tw+tx]});}}
-else if(w.preset==="earth"||w.preset==="earth_sim"){// Seed East Africa first (cradle of mankind)
-const etx=Math.round(tw*0.51),ety=Math.round(th*0.47);
-let best=null,bs2=-999;
-for(const c of scored){let dx=Math.abs(c.x-etx);if(dx>tw/2)dx=tw-dx;
-if(dx*dx+(c.y-ety)**2<(tw*0.04)**2&&c.s>bs2){bs2=c.s;best=c;}}
-if(best)origins.push(best);}
-for(const c of scored){if(origins.length>=NUM_TRIBES)break;
+else{for(const c of scored){if(origins.length>=NUM_CIVS)break;
 let ok=true;for(const o of origins){let dx=Math.abs(c.x-o.x);if(dx>tw/2)dx=tw-dx;
 if(dx*dx+(c.y-o.y)**2<minSpacing*minSpacing){ok=false;break;}}
-if(ok)origins.push(c);}
+if(ok)origins.push(c);}}
 const tenure=new Uint16Array(tw*th);const frontier=new Uint8Array(tw*th);const frontierList=[];
 const tribeKnowledge=[],tribePopulation=[];const tribeKnownCoasts=[];const tribePorts2=[];
-for(let i=0;i<origins.length;i++){const{x,y}=origins[i],ti=y*tw+x;
-owner[ti]=i;tribeSizes.push(1);tribeStrength.push(tFert[ti]);tenure[ti]=1;frontier[ti]=1;frontierList.push(ti);
-tribeCenters.push([{x,y,prestige:1.0,founded:0}]);
-tribeKnowledge.push(initKnowledge());tribePopulation.push(tFert[ti]);tribeKnownCoasts.push([]);tribePorts2.push([]);}
+// Flood-fill each starting civ to ~25 tiles along fertile corridors
+for(let i=0;i<origins.length;i++){const{x,y}=origins[i];
+tribeSizes.push(0);tribeStrength.push(0);
+tribeCenters.push([{x,y,prestige:1.5,founded:0}]);
+// 3000 BC knowledge: agriculture established, early copper/bronze
+const k=initKnowledge();
+k.agriculture=0.35+Math.random()*0.15;// 0.35-0.50
+k.metallurgy=0.10+Math.random()*0.10;// 0.10-0.20 (copper → early bronze)
+k.construction=0.10+Math.random()*0.10;
+k.organization=0.08+Math.random()*0.08;
+k.trade=0.05+Math.random()*0.05;
+tribeKnowledge.push(k);tribePopulation.push(0);tribeKnownCoasts.push([]);tribePorts2.push([]);
+// Priority flood-fill: claim best connected fertile tiles
+const visited=new Uint8Array(tw*th);const startTi=y*tw+x;
+const pq=[{ti:startTi,f:tFert[startTi]}];visited[startTi]=1;
+let claimed=0;const maxClaim=20+Math.floor(Math.random()*10);
+while(pq.length>0&&claimed<maxClaim){
+pq.sort((a,b)=>b.f-a.f);
+const{ti}=pq.shift();
+if(owner[ti]>=0||tElev[ti]<=0)continue;
+owner[ti]=i;tribeSizes[i]++;tribeStrength[i]+=tFert[ti];
+tenure[ti]=100;// well-established
+frontier[ti]=1;frontierList.push(ti);claimed++;
+const cx=ti%tw,cy2=(ti-cx)/tw;
+for(const[ddx,ddy]of DIRS){const nnx=((cx+ddx)%tw+tw)%tw,nny=cy2+ddy;
+if(nny<0||nny>=th)continue;const nni=nny*tw+nnx;
+if(visited[nni]||owner[nni]>=0||tElev[nni]<=0)continue;visited[nni]=1;
+if(tFert[nni]>0.08){pq.push({ti:nni,f:tFert[nni]});}}}
+tribePopulation[i]=tribeStrength[i]*(1+k.agriculture*2.5)*0.8;}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-// ── Background humanity: thin hunter-gatherer presence across all habitable land ──
-// By 8000 BC, humans occupied every habitable continent. Our "tribes" are just the bands
-// that crossed a density/organization threshold. This layer represents everyone else.
+// ── Background population at 3000 BC: mature ──
+// 5000 years of pre-history already happened. Fertile areas have dense farming villages.
 const bgPop=new Float32Array(tw*th);
-for(let ti=0;ti<tw*th;ti++){if(tElev[ti]<=0||tTemp[ti]<0.05)continue;// no people in ocean or permafrost
-// Initial background population scales with habitability (fertility - difficulty)
-// Quadratic fertility — marginal land starts with almost zero background pop
-bgPop[ti]=Math.max(0,tFert[ti]*tFert[ti]*0.5*(1-tDiff[ti]));}// fert 0.5→0.125, fert 0.1→0.005
-// Zero out tiles owned by initial tribes (they're tracked separately)
+for(let ti=0;ti<tw*th;ti++){if(tElev[ti]<=0||tTemp[ti]<0.05)continue;
+const fert=tFert[ti];const diff=tDiff[ti];
+bgPop[ti]=Math.max(0,fert*fert*1.5*(1-diff));}// fert 0.5→0.375, fert 0.1→0.015
 for(let ti=0;ti<tw*th;ti++){if(owner[ti]>=0)bgPop[ti]=0;}
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
 tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,bgPop,
@@ -1296,15 +1309,17 @@ const no=owner[ni];if(no<0||no===st||tElev[ni]<=sl)continue;if(tribeSizes[no]>bs
 if(bn>=0&&tribeSizes[bn]>tribeSizes[st]*3){for(let i=0;i<tw*th;i++)if(owner[i]===st)claimTile(ter,i,bn);}}}
 return ter;}
 
-// ── Non-linear time: early steps cover centuries, late steps cover decades ──
-// 1000 steps spans 8000 BC → 2025 AD (10,025 years total)
-// Early game (step 0-200): ~30 yr/step (6000 years in 200 steps: 8000→2000 BC)
-// Mid game (step 200-600): ~8 yr/step (3200 years in 400 steps: 2000 BC → 1200 AD)
-// Late game (step 600-1000): ~2 yr/step (825 years in 400 steps: 1200→2025 AD)
+// ── Non-linear time: starts at 3000 BC, accelerates into modernity ──
+// ~1000 steps spans 3000 BC → 2025 AD (5025 years)
+// Early game (step 0-200): ~12 yr/step (3000 BC → 600 BC: Bronze → Iron Age)
+// Mid game (step 200-500): ~5 yr/step (600 BC → 900 AD: Classical → Medieval)
+// Late game (step 500-800): ~2.5 yr/step (900 AD → 1650 AD: Medieval → Early Modern)
+// Modern (step 800-1000): ~1.9 yr/step (1650 → 2025 AD)
 function stepToYear(step){
-if(step<=200)return 8000-step*30;// 8000 BC → 2000 BC
-if(step<=600)return 2000-(step-200)*8;// 2000 BC → 1200 AD (negative = AD)
-return -(1200+(step-600)*2.06);// 1200 AD → 2025 AD
+if(step<=200)return 3000-step*12;// 3000 BC → 600 BC
+if(step<=500)return 600-(step-200)*5;// 600 BC → 900 AD (negative = AD)
+if(step<=800)return -(900+(step-500)*2.5);// 900 AD → 1650 AD
+return -(1650+(step-800)*1.875);// 1650 AD → 2025 AD
 }
 function yearStr(step){const y=stepToYear(step);
 return y>0?`${Math.round(y)} BC`:`${Math.round(Math.abs(y))} AD`;}
@@ -1834,7 +1849,8 @@ if(acc>=iv){acc=0;
 const curStep=terRef.current.stepCount;
 // Early game (<200 steps = pre-agriculture): fast. Late game (>800): slow.
 // Scaled by user speed setting.
-const eraFactor=curStep<100?4:curStep<300?3:curStep<500?2:curStep<800?1.5:1;
+// Early Bronze Age runs faster, modern era slower
+const eraFactor=curStep<100?3:curStep<200?2:curStep<500?1.5:1;
 const sub=Math.max(1,Math.ceil(speedRef.current/3*eraFactor));
 for(let s=0;s<sub;s++)terRef.current=stepTerritory(terRef.current,worldRef.current);
 setCoverage(Math.round(terRef.current.settled/terRef.current.landCount*100));
