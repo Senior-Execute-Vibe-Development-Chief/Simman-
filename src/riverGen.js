@@ -1,72 +1,121 @@
 // ── River Hydrology: Conceptual River Network ──
-// Computes D8 flow direction and flow accumulation on the territory grid.
-// Rivers are DATA, not visual features — they're sub-pixel at this resolution.
-// Output feeds into fertility (alluvial bonus), resources (alluvial deposits),
-// and future systems (trade routes, settlement placement).
+// D8 flow direction + priority-flood pit filling + flow accumulation.
+// Produces continent-scale rivers (Congo, Nile, Amazon scale).
 
-// D8 direction offsets: 0=E, 1=SE, 2=S, 3=SW, 4=W, 5=NW, 6=N, 7=NE, 255=sink/ocean
 const D8_DX = [1, 1, 0, -1, -1, -1, 0, 1];
 const D8_DY = [0, 1, 1, 1, 0, -1, -1, -1];
+const D8_DIST = [1, 1.414, 1, 1.414, 1, 1.414, 1, 1.414];
 
-// River magnitude categories based on flow accumulation
 export const RIVER_NONE = 0;
-export const RIVER_STREAM = 1;     // small streams, creeks
-export const RIVER_TRIBUTARY = 2;  // significant tributaries
-export const RIVER_MAJOR = 3;      // major rivers (Danube, Ganges scale)
-export const RIVER_GREAT = 4;      // great rivers (Amazon, Nile, Mississippi scale)
+export const RIVER_STREAM = 1;
+export const RIVER_TRIBUTARY = 2;
+export const RIVER_MAJOR = 3;      // Danube, Ganges scale
+export const RIVER_GREAT = 4;      // Amazon, Nile, Congo scale
 
 export const RIVER_NAMES = ['', 'Stream', 'Tributary', 'Major River', 'Great River'];
 
-// Compute the full river network for a territory grid.
-// Returns: { flowDir, flowAccum, riverMag, maxAccum }
-//   flowDir:    Uint8Array(tw*th) — D8 direction (0-7) or 255 for sinks
-//   flowAccum:  Float32Array(tw*th) — upstream drainage area (moisture-weighted)
-//   riverMag:   Uint8Array(tw*th) — RIVER_NONE..RIVER_GREAT classification
-//   maxAccum:   number — highest accumulation value (for normalization)
 export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   const N = tw * th;
-  const flowDir = new Uint8Array(N);
-  flowDir.fill(255);
-  const flowAccum = new Float32Array(N);
 
-  // ── Step 1: D8 flow direction ──
-  // Each land tile flows to its lowest neighbor. Ocean tiles are sinks.
-  // Flat areas (no lower neighbor) also become sinks.
-  for (let ty = 0; ty < th; ty++) {
-    for (let tx = 0; tx < tw; tx++) {
-      const ti = ty * tw + tx;
-      const e = tElev[ti];
-      if (e <= 0) continue; // ocean = sink
+  // ── Step 1: Priority-flood pit filling ──
+  // Fills depressions so every land tile can drain to the ocean.
+  // Uses a min-heap (priority queue) seeded from ocean/edge tiles.
+  // This is the standard Planchon-Darboux / priority-flood approach.
+  const filled = new Float32Array(N);
+  for (let i = 0; i < N; i++) filled[i] = tElev[i];
 
-      let minElev = e;
-      let minDir = 255; // sink by default
-      let minDrop = 0;
+  // Simple binary min-heap on elevation
+  const heap = [];
+  const inHeap = new Uint8Array(N);
 
-      for (let d = 0; d < 8; d++) {
-        const nx = (tx + D8_DX[d] + tw) % tw; // wrap X
-        const ny = ty + D8_DY[d];
-        if (ny < 0 || ny >= th) continue;
-        const ni = ny * tw + nx;
-        const ne = tElev[ni];
-
-        // Diagonal distance is sqrt(2), cardinal is 1
-        const dist = (d % 2 === 0) ? 1 : 1.414;
-        const drop = (e - ne) / dist; // steepest descent
-
-        if (drop > minDrop) {
-          minDrop = drop;
-          minElev = ne;
-          minDir = d;
-        }
+  function heapPush(ti) {
+    heap.push(ti);
+    let i = heap.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (filled[heap[p]] <= filled[heap[i]]) break;
+      [heap[i], heap[p]] = [heap[p], heap[i]];
+      i = p;
+    }
+  }
+  function heapPop() {
+    const top = heap[0];
+    const last = heap.pop();
+    if (heap.length > 0) {
+      heap[0] = last;
+      let i = 0;
+      while (true) {
+        let smallest = i;
+        const l = 2 * i + 1, r = 2 * i + 2;
+        if (l < heap.length && filled[heap[l]] < filled[heap[smallest]]) smallest = l;
+        if (r < heap.length && filled[heap[r]] < filled[heap[smallest]]) smallest = r;
+        if (smallest === i) break;
+        [heap[i], heap[smallest]] = [heap[smallest], heap[i]];
+        i = smallest;
       }
+    }
+    return top;
+  }
 
-      flowDir[ti] = minDir;
+  // Seed: ocean tiles and map edges (top/bottom rows)
+  for (let ti = 0; ti < N; ti++) {
+    const tx = ti % tw, ty = (ti - tx) / tw;
+    if (tElev[ti] <= 0 || ty === 0 || ty === th - 1) {
+      inHeap[ti] = 1;
+      heapPush(ti);
     }
   }
 
-  // ── Step 2: Topological sort for accumulation ──
-  // Count how many tiles flow into each tile (in-degree).
-  // Process tiles with zero in-degree first, propagating accumulation downstream.
+  // Process: flood inward from ocean/edges
+  while (heap.length > 0) {
+    const ti = heapPop();
+    const tx = ti % tw, ty = (ti - tx) / tw;
+
+    for (let d = 0; d < 8; d++) {
+      const nx = (tx + D8_DX[d] + tw) % tw;
+      const ny = ty + D8_DY[d];
+      if (ny < 0 || ny >= th) continue;
+      const ni = ny * tw + nx;
+      if (inHeap[ni]) continue;
+      inHeap[ni] = 1;
+
+      // If neighbor is lower than current, it's in a pit — raise it
+      if (filled[ni] <= filled[ti] && tElev[ni] > 0) {
+        filled[ni] = filled[ti] + 0.00001; // tiny epsilon to ensure downhill flow
+      }
+      heapPush(ni);
+    }
+  }
+
+  // ── Step 2: D8 flow direction on filled surface ──
+  const flowDir = new Uint8Array(N);
+  flowDir.fill(255);
+
+  for (let ty = 0; ty < th; ty++) {
+    for (let tx = 0; tx < tw; tx++) {
+      const ti = ty * tw + tx;
+      if (tElev[ti] <= 0) continue; // ocean = sink
+
+      let bestDir = 255;
+      let bestDrop = 0;
+
+      for (let d = 0; d < 8; d++) {
+        const nx = (tx + D8_DX[d] + tw) % tw;
+        const ny = ty + D8_DY[d];
+        if (ny < 0 || ny >= th) continue;
+        const ni = ny * tw + nx;
+        const drop = (filled[ti] - filled[ni]) / D8_DIST[d];
+        if (drop > bestDrop) {
+          bestDrop = drop;
+          bestDir = d;
+        }
+      }
+
+      flowDir[ti] = bestDir;
+    }
+  }
+
+  // ── Step 3: Flow accumulation (topological sort) ──
   const inDegree = new Uint16Array(N);
   for (let ti = 0; ti < N; ti++) {
     const d = flowDir[ti];
@@ -78,55 +127,60 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     inDegree[ny * tw + nx]++;
   }
 
-  // Initialize accumulation: each land tile contributes its local moisture
-  // (wetter areas generate more runoff → bigger rivers)
+  // Each land tile contributes runoff = moisture minus evaporation
+  const flowAccum = new Float32Array(N);
   for (let ti = 0; ti < N; ti++) {
     if (tElev[ti] > 0) {
-      // Runoff = moisture minus evaporation loss (hot = more evaporation)
-      const evapLoss = Math.max(0, tTemp[ti] - 0.3) * 0.4;
+      const evapLoss = Math.max(0, tTemp[ti] - 0.3) * 0.3;
       flowAccum[ti] = Math.max(0.05, tMoist[ti] - evapLoss);
     }
   }
 
-  // Queue: start with tiles that have no upstream contributors
   const queue = [];
   for (let ti = 0; ti < N; ti++) {
     if (tElev[ti] > 0 && inDegree[ti] === 0) queue.push(ti);
   }
 
-  // Process in topological order: headwaters first, mouths last
   let head = 0;
   while (head < queue.length) {
     const ti = queue[head++];
     const d = flowDir[ti];
     if (d === 255) continue;
-
     const tx = ti % tw, ty = (ti - tx) / tw;
     const nx = (tx + D8_DX[d] + tw) % tw;
     const ny = ty + D8_DY[d];
     if (ny < 0 || ny >= th) continue;
     const ni = ny * tw + nx;
-
-    // Pass accumulated flow downstream
     flowAccum[ni] += flowAccum[ti];
     inDegree[ni]--;
     if (inDegree[ni] === 0) queue.push(ni);
   }
 
-  // ── Step 3: Classify river magnitude ──
-  // Find max accumulation for adaptive thresholds
+  // ── Step 4: Classify river magnitude ──
+  // Use absolute thresholds based on drainage area, not relative to max.
+  // At territory resolution (~40km/tile), thresholds in "tile-equivalents of runoff":
+  //   Stream:     ~50 tiles upstream   (small catchment, ~80k km²)
+  //   Tributary: ~200 tiles upstream   (~320k km², Lualaba/Ob scale)
+  //   Major:     ~500 tiles            (~800k km², Danube/Ganges)
+  //   Great:    ~1500 tiles            (~2.4M km², Congo/Nile/Amazon)
+  // Moisture-weighted so actual thresholds are lower (avg moisture ~0.3)
   let maxAccum = 0;
   for (let ti = 0; ti < N; ti++) {
     if (tElev[ti] > 0 && flowAccum[ti] > maxAccum) maxAccum = flowAccum[ti];
   }
 
   const riverMag = new Uint8Array(N);
+  // Scale thresholds to map: use fraction of total land tiles for portability
+  let landCount = 0;
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0) landCount++;
+  const avgMoist = landCount > 0 ? (() => { let s = 0; for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0) s += flowAccum[ti] > 0.05 ? flowAccum[ti] : 0; return s / landCount; })() : 0.2;
+
   if (maxAccum > 0) {
-    // Thresholds as fraction of max — adapts to map size and moisture
-    const tStream = maxAccum * 0.005;
-    const tTributary = maxAccum * 0.02;
-    const tMajor = maxAccum * 0.08;
-    const tGreat = maxAccum * 0.25;
+    // Thresholds: multiples of average per-tile runoff × drainage tiles
+    const tStream = avgMoist * 80;
+    const tTributary = avgMoist * 300;
+    const tMajor = avgMoist * 800;
+    const tGreat = avgMoist * 2500;
 
     for (let ti = 0; ti < N; ti++) {
       if (tElev[ti] <= 0) continue;
@@ -141,12 +195,10 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   return { flowDir, flowAccum, riverMag, maxAccum };
 }
 
-// Get river magnitude name for a tile
 export function riverName(riverMag, ti) {
   return RIVER_NAMES[riverMag[ti]] || '';
 }
 
-// Check if a tile is on a navigable river (major or great)
 export function isNavigable(riverMag, ti) {
   return riverMag[ti] >= RIVER_MAJOR;
 }
