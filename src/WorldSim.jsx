@@ -950,17 +950,24 @@ const R_VALLEY=6;
 const valleyScore=new Float32Array(tw*th);
 for(let ty2=R_VALLEY;ty2<th-R_VALLEY;ty2++)for(let tx=0;tx<tw;tx++){
 const ti=ty2*tw+tx;if(tElev[ti]<=0)continue;
-let riverCount=0,fertSum=0,majorRiver=0;
+let riverCount=0,fertSum=0,majorRiver=0,lakeCount=0;
 for(let dy=-R_VALLEY;dy<=R_VALLEY;dy++){const ny=ty2+dy;if(ny<0||ny>=th)continue;
 for(let dx=-R_VALLEY;dx<=R_VALLEY;dx++){
 if(dx*dx+dy*dy>R_VALLEY*R_VALLEY)continue;// circular area
 const nx=((tx+dx)%tw+tw)%tw;const ni=ny*tw+nx;
 if(tElev[ni]<=0)continue;
 fertSum+=tFert[ni];
+// Tributaries+ count as river presence (streams too small for civ support)
 if(rivers&&rivers.riverMag[ni]>=2)riverCount++;
-if(rivers&&rivers.riverMag[ni]>=3)majorRiver++;}}
-// Valley score: river density × fertility density. Both must be present.
-valleyScore[ti]=riverCount*majorRiver*0.01*fertSum*0.02;}
+// Major/Great rivers are the real civ drivers (Nile, Euphrates scale)
+if(rivers&&rivers.riverMag[ni]>=3)majorRiver++;
+// Lakes count as water sources (Lake Chad, Sea of Galilee, Titicaca)
+if(rivers&&rivers.lake&&rivers.lake[ni]>=0)lakeCount++;}}
+// Water score: rivers + lakes. Both contribute to freshwater access.
+const waterCount=riverCount+lakeCount*0.5;// lakes count at half weight (less transport value)
+const majorWater=majorRiver+Math.min(3,lakeCount*0.3);// large lakes add some "major" score
+// Valley score: water density × fertility density. Both must be present.
+valleyScore[ti]=waterCount*majorWater*0.01*fertSum*0.02;}
 // Score tiles: valley density is the dominant factor
 const scored=[];
 for(let ty2=2;ty2<th-2;ty2++)for(let tx=0;tx<tw;tx++){const ti=ty2*tw+tx;if(tElev[ti]<=0)continue;
