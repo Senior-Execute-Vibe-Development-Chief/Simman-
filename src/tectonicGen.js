@@ -529,7 +529,7 @@ const riftEffect = new Float32Array(N);
   for (let qi = 0; qi < queue.length; qi++) {
     const ci = queue[qi];
     const cd = dist[ci];
-    if (cd > 6) continue;
+    if (cd > 10) continue;
     const ty = Math.floor(ci / cw), tx = ci % cw;
     const srcPlate = seedPlate[ci];
     for (const [ddx, ddy] of D8) {
@@ -542,7 +542,7 @@ const riftEffect = new Float32Array(N);
         dist[ni] = nd;
         seedPlate[ni] = srcPlate;
         seedStr[ni] = seedStr[ci];
-        const falloff = Math.exp(-nd * nd / 8);
+        const falloff = Math.exp(-nd * nd / 18);
         const effect = seedStr[ci] * falloff;
         if (effect > riftEffect[ni]) {
           riftEffect[ni] = effect;
@@ -810,7 +810,11 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 
     // Basin: medium-scale depressions and swells — only in stable interiors
     const basinVal = sg(nfBasin, x, y);
-    const basinE = basinVal * 0.015 * interior * cratonZone;
+    const basinE = basinVal * 0.03 * interior * cratonZone;
+    // Endorheic depressions: large-scale deep basins that collect water into lakes
+    // These create Caspian/Great Lakes/Chad-scale inland basins
+    const endorheicVal = sg(nfBasin, x * 0.4, y * 0.4);
+    const endorheicE = Math.min(0, endorheicVal) * 0.04 * interior * cratonZone;
 
     // Escarpment: sharp elevation breaks — at shield edges in stable interiors
     const escarpVal = sg(nfEscarpment, x, y);
@@ -827,7 +831,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     // Coast near sea level, ramps gently inland.
     const baseE = 0.008 + interior * 0.015;
     const plateauBoost = Math.max(0, stampE) * 0.10 * interior;
-    const cratonE = baseE + shieldE + basinE + escarpE + medTerrain
+    const cratonE = baseE + shieldE + basinE + endorheicE + escarpE + medTerrain
       + fineTerrain + plateauBoost;
 
     // ── Mountain-specific texture ──
