@@ -428,11 +428,11 @@ return[Math.round(hr(p,q,h+1/3)*255),Math.round(hr(p,q,h)*255),Math.round(hr(p,q
 
 // Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
 // Agriculture needs adequate moisture (not maximum) — bell curve peaks at 0.45 (temperate optimum)
-function tileFert(t,m,e){if(e>0.45)return 0.05;
+function tileFert(t,m,e){if(e>0.45)return 0.01;
 const tFactor=Math.min(1,t*1.5)*Math.min(1,1-Math.pow(Math.max(0,t-0.7),2)*4);
 const mFactor=Math.exp(-((m-0.45)*(m-0.45))/(2*0.22*0.22));
 const base=tFactor*mFactor;
-return Math.max(0.05,base*(1-Math.max(0,e-0.15)*3));}
+return Math.max(0.01,base*(1-Math.max(0,e-0.15)*3));}
 
 const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
 // LEAPS kept as fallback geometry for voyage pathing
@@ -587,7 +587,7 @@ for(const nid in myContacts){const j=parseInt(nid);if(tribeSizes[j]<=0)continue;
 const kj=know[j];
 const contactStrength=Math.min(1,myContacts[nid]*0.01);// normalized border contact
 const tradeMult=1+ki.trade*2+kj.trade*2;// trade amplifies diffusion
-const rate=0.004*contactStrength*tradeMult;
+const rate=0.0015*contactStrength*tradeMult;// slower diffusion — advantages persist longer
 for(const d of KNOW_DOMAINS){
 if(kj[d]>ki[d]){ki[d]=Math.min(1,ki[d]+rate*(kj[d]-ki[d]));}}}
 // Maritime diffusion: if tribe knows ports of another tribe, diffuse via trade
@@ -609,12 +609,13 @@ for(let i=0;i<pop.length;i++){if(tribeSizes[i]<=0){pop[i]=0;continue;}
 const agMult=1+know[i].agriculture*2.5;
 const capacity=tribeStrength[i]*agMult;// effective carrying capacity
 if(capacity<=0){pop[i]=Math.max(0,pop[i]*0.95);continue;}
-// Logistic growth: fast below capacity, zero at capacity, negative above
+// Logistic growth: slow, realistic. 1% base rate (doubles every ~70 steps = 700 years)
 const ratio=pop[i]/capacity;
-const growthRate=0.03*(1-ratio);// ~3% per step at low pop, 0% at capacity
+const growthRate=0.01*(1-ratio);// 1% at low pop, 0% at capacity
 pop[i]=Math.max(1,pop[i]+pop[i]*growthRate);
-// Famine: above capacity, population declines
-if(pop[i]>capacity*1.2)pop[i]=Math.max(1,pop[i]*0.97);}}
+// Famine: above capacity, harsh decline. Overshoot hurts.
+if(ratio>1.0)pop[i]=Math.max(1,pop[i]*(0.98-Math.min(0.05,(ratio-1)*0.1)));// 2-7% decline
+}}
 
 // ── Background population: thin hunter-gatherer layer across all unowned habitable land ──
 // Grows slowly. When local density crosses a threshold, a new tribe crystallizes.
@@ -623,64 +624,64 @@ if(pop[i]>capacity*1.2)pop[i]=Math.max(1,pop[i]*0.97);}}
 function stepBackgroundPop(ter){
 const{tw,th,tElev,tTemp,tFert,tDiff,tCoast,owner,bgPop,tribeSizes}=ter;
 if(!bgPop)return;
-// Grow background population on unowned habitable tiles
+// Grow background population on unowned habitable tiles — VERY slow (hunter-gatherer bands)
 for(let ti=0;ti<tw*th;ti++){
-if(owner[ti]>=0){bgPop[ti]=0;continue;}// owned tiles are tracked by tribe system
+if(owner[ti]>=0){bgPop[ti]=0;continue;}// owned tiles tracked by tribe system
 if(tElev[ti]<=0||tTemp[ti]<0.05)continue;// ocean or permafrost
-// Slow logistic growth based on local fertility
-const cap=tFert[ti]*0.5*(1-tDiff[ti]*0.6);// carrying capacity for hunter-gatherers (low)
-if(cap<=0)continue;
+// Carrying capacity proportional to fertility squared — marginal land supports almost nobody
+const fert=tFert[ti];
+const cap=fert*fert*0.8*(1-tDiff[ti]*0.8);// quadratic: fert 0.5→0.2, fert 0.1→0.008
+if(cap<=0.001)continue;
 const ratio=bgPop[ti]/cap;
-bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*0.02*(1-ratio));// ~2% growth per step
-// Diffusion: spread to adjacent unowned tiles (people migrate)
-if(bgPop[ti]>cap*0.5){const tx=ti%tw,ty=(ti-tx)/tw;
+bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*0.005*(1-ratio));// 0.5% growth (very slow)
+// Diffusion: only from near-capacity tiles, slow, difficulty-blocked
+if(bgPop[ti]>cap*0.7){const tx=ti%tw,ty=(ti-tx)/tw;
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;if(tElev[ni]<=0||owner[ni]>=0)continue;
-if(bgPop[ni]<bgPop[ti]*0.3){// flow toward lower density
-const flow=bgPop[ti]*0.01*(1-tDiff[ni]);// difficulty slows migration
+if(bgPop[ni]<bgPop[ti]*0.2){
+const flow=bgPop[ti]*0.003*(1-tDiff[ni])*(1-tDiff[ni]);// difficulty squared — mountains nearly impassable
 bgPop[ti]-=flow;bgPop[ni]+=Math.max(0,flow);}}}}
-// ── Tribe crystallization: when background pop in an area is dense enough, spawn a tribe ──
-// Check every 16 steps for performance (not every tick)
-if(ter.stepCount%16!==0)return;
+// ── Tribe crystallization: rare, fertility-weighted, requires dense local cluster ──
+if(ter.stepCount%32!==0)return;// check every 32 steps (less frequent)
 let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
-if(alive>=80)return;// tribe cap
-// Scan for crystallization sites: tiles with high background pop + good conditions
-const CRYSTAL_THRESHOLD=0.15;// background pop must exceed this to crystallize
-const MIN_SPACING=Math.round(tw*0.06);// minimum distance from existing tribes
+if(alive>=80)return;
+// Much higher bar: need real fertility concentration, not just any habitable tile
+const CRYSTAL_THRESHOLD=0.25;// higher threshold — only genuinely populated areas
+const MIN_SPACING=Math.round(tw*0.04);// smaller spacing — allows clustering near good areas
+// Find best crystallization candidate (not first-found — best fertility)
+let bestTi=-1,bestScore=-1;
 for(let ti=0;ti<tw*th;ti++){
 if(bgPop[ti]<CRYSTAL_THRESHOLD)continue;
-if(tFert[ti]<0.15)continue;// need decent land
+if(tFert[ti]<0.25)continue;// need genuinely fertile land (river valleys, coasts)
 const tx=ti%tw,ty=(ti-tx)/tw;
-// Check spacing from all existing tribe centers
 let tooClose=false;
 for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0)continue;
 for(const c of ter.tribeCenters[t]){const d=tDistW(tx,ty,c.x,c.y,tw);
 if(d<MIN_SPACING){tooClose=true;break;}}if(tooClose)break;}
 if(tooClose)continue;
-// Also check no owned tiles nearby (not just centers — avoid spawning inside someone's territory)
 let nearOwned=false;
-for(let dy=-3;dy<=3&&!nearOwned;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
-for(let dx=-3;dx<=3;dx++){const nx=((tx+dx)%tw+tw)%tw;
+for(let dy=-4;dy<=4&&!nearOwned;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
+for(let dx=-4;dx<=4;dx++){const nx=((tx+dx)%tw+tw)%tw;
 if(owner[ny*tw+nx]>=0){nearOwned=true;break;}}}
 if(nearOwned)continue;
-// Sum background pop in local area (radius 4) — need a cluster, not just one tile
-let localPop=0;
+// Score by local population density + fertility (rivers/coasts naturally win)
+let localPop=0,localFert=0;
 for(let dy=-4;dy<=4;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
 for(let dx=-4;dx<=4;dx++){const nx=((tx+dx)%tw+tw)%tw;
-const ni=ny*tw+nx;if(tElev[ni]>0&&owner[ni]<0)localPop+=bgPop[ni];}}
-if(localPop<1.0)continue;// need substantial local population cluster
-// Random chance so not all valid sites crystallize at once
-if(Math.random()>0.08)continue;
-// Crystallize! New tribe emerges from background population
-const nid=newTribe(ter,tx,ty,-1);// parentId=-1: independent origin
-claimTile(ter,ti,nid);
-if(!ter.frontier[ti]){ter.frontier[ti]=1;ter.frontierList.push(ti);}
-// Clear background pop in the area (absorbed into the new tribe)
-for(let dy=-3;dy<=3;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
-for(let dx=-3;dx<=3;dx++){const nx=((tx+dx)%tw+tw)%tw;
+const ni=ny*tw+nx;if(tElev[ni]>0&&owner[ni]<0){localPop+=bgPop[ni];localFert+=tFert[ni];}}}
+if(localPop<2.0)continue;// need substantial cluster (doubled from 1.0)
+const score=localPop*localFert*tFert[ti];// heavily favor fertile hotspots
+if(score>bestScore){bestScore=score;bestTi=ti;}}
+// Only spawn 1 tribe per check (at the BEST location)
+if(bestTi>=0&&Math.random()<0.15){// 15% chance per 32-step check
+const tx=bestTi%tw,ty=(bestTi-tx)/tw;
+const nid=newTribe(ter,tx,ty,-1);
+claimTile(ter,bestTi,nid);
+if(!ter.frontier[bestTi]){ter.frontier[bestTi]=1;ter.frontierList.push(bestTi);}
+for(let dy=-4;dy<=4;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
+for(let dx=-4;dx<=4;dx++){const nx=((tx+dx)%tw+tw)%tw;
 bgPop[ny*tw+nx]=0;}}
-// Recheck alive count
-alive++;if(alive>=80)return;}}
+}}
 
 // Port computation: find best coastal settlement tiles for a tribe
 function computeTribePorts(ter,tribeId){
@@ -915,13 +916,21 @@ for(let ti=0;ti<tw*th;ti++){
 if(tCoast[ti]&&tElev[ti]>0)tFert[ti]=Math.min(1,tFert[ti]+0.06);}
 // ── Natural resource deposits ──
 const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,rivers);
-// Find multiple spread-out seed locations for starting tribes
-const NUM_TRIBES=(w.preset==="earth"||w.preset==="earth_sim")?8:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:6;const minSpacing=Math.round(tw*0.12);
-// Score all habitable tiles
+// Find seed locations: fewer tribes, closer spacing, resource-aware scoring
+const NUM_TRIBES=(w.preset==="earth"||w.preset==="earth_sim")?4:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:3;
+const minSpacing=Math.round(tw*0.06);// 6% — allows clustering in fertile regions
+// Score tiles: fertility dominates, rivers and resources give bonus
 const scored=[];
 for(let ty=2;ty<th-2;ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;if(tElev[ti]<=0)continue;
-const s=tFert[ti]*2+tTemp[ti]+tMoist[ti]-tDiff[ti]*2;
-scored.push({x:tx,y:ty,s});}
+let s=tFert[ti]*3-tDiff[ti]*3;// fertility strongly favored, difficulty strongly penalized
+// River bonus — early civilizations cluster along rivers
+if(rivers&&rivers.riverMag[ti]>=2)s+=0.5;
+if(rivers&&rivers.riverMag[ti]>=3)s+=0.5;
+// Coastal bonus
+if(tCoast[ti])s+=0.2;
+// Resource proximity bonus
+if(deposits){s+=(deposits.copper[ti]+deposits.tin[ti])*0.3+deposits.salt[ti]*0.1;}
+if(s>0)scored.push({x:tx,y:ty,s});}
 scored.sort((a,b)=>b.s-a.s);
 // Pick well-spaced origins (greedy: best first, skip if too close to existing)
 const origins=[];
@@ -951,7 +960,8 @@ let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
 const bgPop=new Float32Array(tw*th);
 for(let ti=0;ti<tw*th;ti++){if(tElev[ti]<=0||tTemp[ti]<0.05)continue;// no people in ocean or permafrost
 // Initial background population scales with habitability (fertility - difficulty)
-bgPop[ti]=Math.max(0,tFert[ti]*0.3*(1-tDiff[ti]*0.8));}
+// Quadratic fertility — marginal land starts with almost zero background pop
+bgPop[ti]=Math.max(0,tFert[ti]*tFert[ti]*0.5*(1-tDiff[ti]));}// fert 0.5→0.125, fert 0.1→0.005
 // Zero out tiles owned by initial tribes (they're tracked separately)
 for(let ti=0;ti<tw*th;ti++){if(owner[ti]>=0)bgPop[ti]=0;}
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
@@ -1041,40 +1051,45 @@ const nf=new Uint8Array(tw*th);const nfl=[];
 for(let fj=0;fj<ter.frontierList.length;fj++){const fi=ter.frontierList[fj];if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
 const owSz=tribeSizes[ow],owDens=owSz>0?tribeStrength[ow]/owSz:0;
 const owKnow=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
-const agMult=owKnow?1+owKnow.agriculture*2.5:1;// agriculture multiplies effective fertility
+const agMult=owKnow?1+owKnow.agriculture*2.5:1;
 const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow];
 const owCap=tribeStrength[ow]*agMult;
-const popPressure=owCap>0?Math.max(0,owPop/owCap-0.5)*2:0;// 0 when below 50% capacity, 1 at 100%
-// Small tribes prioritize grabbing available land; large tribes are pickier about fertile tiles
-const smallBoost=owSz<30?1+((30-owSz)/30)*0.8:1;
-const largePrize=owSz>60?1+Math.min(1,(owSz-60)*0.01):1;
-// Score all candidate neighbor tiles, then claim the best ones
-let bestNi=-1,bestScore=-1;const candidates=[];
+// Population pressure: MUST exceed 70% capacity to expand at all. Below that, consolidate.
+const popRatio=owCap>0?owPop/owCap:0;
+const popPressure=Math.max(0,(popRatio-0.7)*3.33);// 0 below 70%, 1 at 100%
+// Small tribes get a survival boost only if they're very tiny (< 8 tiles)
+const smallBoost=owSz<8?1+((8-owSz)/8)*0.5:1;
+const largePrize=owSz>40?1+Math.min(1,(owSz-40)*0.01):1;
+// Score all candidate neighbor tiles, then claim the best
+const candidates=[];
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny2=ty+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx;if(owner[ni]>=0)continue;
 const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni];if(effT<0.02){room=true;continue;}
 const diff=tDiff[ni],adjDiff=Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0));
-// Base chance (path of least resistance)
-let chance;if(elev<=0&&elev>sl)chance=0.7*wet;else if(tCoast[ni])chance=0.9*wet;else chance=0.45*(1-adjDiff)*wet;
-if(effT<0.15)chance*=0.3;
-chance*=(0.5+tFert[ni]*1.5*largePrize)*smallBoost;
-// Population pressure drives expansion rate
-chance*=Math.max(0.3,0.3+popPressure*0.7);// 30% base, 100% at full pressure
-// Center proximity: expansion slows far from centers
+// Base chance: MUCH lower than before. Expansion is rare without population pressure.
+let chance;if(elev<=0&&elev>sl)chance=0.15*wet;else if(tCoast[ni])chance=0.2*wet;else chance=0.12*(1-adjDiff)*wet;
+if(effT<0.15)chance*=0.15;// cold is brutal
+// Fertility matters A LOT: poor land (fert<0.1) nearly impossible to expand into
+// Using fertility cubed so the curve is extremely steep
+const fertCubed=tFert[ni]*tFert[ni]*tFert[ni];
+chance*=(0.1+fertCubed*12*largePrize)*smallBoost;// fert 0.5→0.85, fert 0.1→0.11, fert 0.01→0.1
+// Population pressure GATES expansion: no pressure = almost no expansion
+chance*=Math.max(0.05,popPressure);// 5% trickle at low pop, full speed at capacity
+// Center proximity: sharper falloff
 const centers=tribeCenters[ow];
 const{min:distMin}=nearestCenterDist(centers,nx,ny2,tw);
 const reach=expFalloff(distMin);
-chance*=Math.max(0.05,reach);
-// ── Directional scoring: pull toward valuable targets ──
-let score=tFert[ni]*agMult;// base: effective fertility of target
-// Resource pull: once metallurgy develops, ore tiles become high-value targets
+chance*=Math.max(0.02,reach);// 2% floor (very hard to expand far from centers)
+// ── Directional scoring: strongly pull toward valuable targets ──
+let score=tFert[ni]*tFert[ni]*agMult*3;// quadratic fertility — rich land MUCH more attractive
+// Resource pull: STRONG pull once metallurgy develops
 if(owKnow&&owKnow.metallurgy>0.1&&ter.deposits){
-const resPull=(ter.deposits.copper[ni]+ter.deposits.tin[ni]+ter.deposits.iron[ni])*owKnow.metallurgy*0.5;
-score+=resPull;}
-// Strategic pull: agriculture→rivers, navigation→coast, trade→neighbor borders
+const resPull=(ter.deposits.copper[ni]+ter.deposits.tin[ni]+ter.deposits.iron[ni])*owKnow.metallurgy*2.0;
+score+=resPull;}// 4x stronger than before
+// Strategic pull: agriculture→rivers, navigation→coast
 if(owKnow){
-if(owKnow.agriculture>0.2&&ter.rivers&&ter.rivers.riverMag[ni]>=2)score+=0.3*owKnow.agriculture;
-if(owKnow.navigation>0.1&&tCoast[ni])score+=0.2*owKnow.navigation;
-if(owKnow.organization>0.3&&tDiff[ni]>0.5)score+=0.15*owKnow.organization;}// chokepoints
+if(owKnow.agriculture>0.15&&ter.rivers&&ter.rivers.riverMag[ni]>=2)score+=0.8*owKnow.agriculture;// rivers are prime real estate
+if(owKnow.navigation>0.1&&tCoast[ni])score+=0.4*owKnow.navigation;
+if(owKnow.organization>0.3&&tDiff[ni]>0.5)score+=0.3*owKnow.organization;}
 score+=Math.random()*0.1;// small noise to break ties
 candidates.push({ni,nx,ny:ny2,chance,score,diff,distMin});}
 // Sort candidates by score descending — claim best tiles first
