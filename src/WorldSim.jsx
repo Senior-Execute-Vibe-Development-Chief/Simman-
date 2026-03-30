@@ -939,7 +939,9 @@ if(tCoast[ti]&&tElev[ti]>0)tFert[ti]=Math.min(1,tFert[ti]+0.06);}
 const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,rivers);
 // ── 3000 BC START: seed civilizations at the best river valley / fertile locations ──
 // By 3000 BC: Egypt unified, Sumer city-states, Indus emerging, farming everywhere fertile.
-const NUM_CIVS=(w.preset==="earth"||w.preset==="earth_sim")?5:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:4;
+// 3000 BC: only Egypt and Sumer exist as organized states.
+// Everything else crystallizes naturally from background farming villages.
+const NUM_CIVS=(w.preset==="earth"||w.preset==="earth_sim")?2:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:2;
 const minSpacing=Math.round(tw*0.08);
 // Score tiles for civ seeds: rivers + fertility + resources
 const scored=[];
