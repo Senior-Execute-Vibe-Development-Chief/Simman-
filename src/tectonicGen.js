@@ -779,8 +779,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const broadVal = sampleCoarse(mtnBroad, twx, twy);
 
     const plateauNoise = 0.7 + 0.6 * sg(nfPlateau, x, y);
-    const plateau = broadVal * p('plateauMult', 1.65) * plateauNoise;
-    const peaks = Math.max(0, tecMod) * p('peaksMult', 2.2);
+    const plateau = broadVal * p('plateauMult', 1.5) * plateauNoise;
+    const peaks = Math.max(0, tecMod) * p('peaksMult', 1.9);
     const mtnBump = sg(nfMtnBump, x, y)
       * p('mtnBumpStr', 0.10) * Math.min(1, (plateau + peaks) * 3);
     const tecLift = plateau + peaks + mtnBump;
@@ -844,9 +844,9 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 
     // Per-pixel micro-terrain: bypasses precompute grid for true pixel-level roughness
     // Simulates local geology — ridges, gullies, rock outcrops at 1-2km scale
-    // Direct fBm micro-terrain — adds hills and roughness at all scales
+    // Direct fBm micro-terrain — adds hills and roughness, suppressed near coast
     const microTerrain = fbm(nx * 20 + s1 + 200, ny * 20 + s1 + 200, 4, 2.0, 0.5)
-      * 0.018 * (0.6 + tecZone * 0.5);
+      * 0.014 * Math.min(1, interior * 2) * (0.6 + tecZone * 0.5);
 
     // Scale tectonic lift by coast distance so mountains ramp up inland
     const tecCoastRamp = smoothstep(interior * 1.5);
