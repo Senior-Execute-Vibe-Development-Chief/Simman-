@@ -461,8 +461,8 @@ const rivers=computeRivers(tw,th,tElev,tMoist,tTemp);
 // This is the physically correct approach: rivers bring water → soil moisture rises →
 // fertility formula (bell curve) naturally produces good values.
 // Biome classification, resources, and all downstream systems react correctly.
-{const riverMoist=new Float32Array(tw*th);
-// Tributary+ rivers get moisture gradient. Streams are too small for map-scale effect.
+const riverMoist=new Float32Array(tw*th);
+{// Tributary+ rivers get moisture gradient. Streams are too small for map-scale effect.
 const riverRadius=[0,0,3,4,6];// NONE,STREAM,TRIB,MAJOR,GREAT
 const riverMoistPeak=[0,0,0.25,0.40,0.55];
 for(let ti=0;ti<tw*th;ti++){
@@ -477,8 +477,9 @@ if(tElev[ni]<=0)continue;
 let ddx=Math.abs(dx);if(ddx>tw/2)ddx=tw-ddx;
 const dist=Math.sqrt(ddx*ddx+dy*dy);
 if(dist>R)continue;
-// Smooth falloff: cosine-based for gentler gradient than quadratic
-const t2=dist/R;const falloff=0.5+0.5*Math.cos(t2*Math.PI);
+// Clamp minimum distance so center tile blends with surroundings (no biome spike)
+const effDist=Math.max(dist,0.8);
+const t2=effDist/R;const falloff=0.5+0.5*Math.cos(t2*Math.PI);
 const v=peak*falloff;
 riverMoist[ni]=Math.max(riverMoist[ni],v);}}}
 // Apply moisture boost and recompute fertility
@@ -486,35 +487,30 @@ for(let ti=0;ti<tw*th;ti++){
 if(riverMoist[ti]<0.01)continue;
 const rm=riverMoist[ti];
 const oldMoist=tMoist[ti];
-// In dry areas: river adds water → moisture rises toward bell curve peak (0.45)
-// In wet areas: river adds sediment/nutrients, not more water — cap moisture at peak
-// and add a direct fertility bonus for alluvial silt instead
+// Cap moisture boost so it approaches but doesn't overshoot the bell curve peak.
+// In dry areas: full boost toward 0.50 (near peak).
+// In wet areas: minimal boost (land already has water, river just levels terrain).
 if(oldMoist<0.45){
-// Dry: add moisture but don't overshoot the fertility peak
-tMoist[ti]=Math.min(0.50,oldMoist+rm);// slight overshoot OK (0.50 still near peak)
+tMoist[ti]=Math.min(0.50,oldMoist+rm);
 }else{
-// Already wet enough: minimal moisture change (slight leveling of floodplain)
-tMoist[ti]=Math.min(1,oldMoist+rm*0.1);
+tMoist[ti]=Math.min(1,oldMoist+rm*0.08);
 }
-// Recompute fertility with updated moisture
-tFert[ti]=tileFert(tTemp[ti],tMoist[ti],tElev[ti]);
-// Alluvial sediment bonus: applies everywhere, but most impactful in wet biomes
-// where moisture boost alone doesn't help. River floodplains get richer soil
-// from annual silt deposits regardless of how wet the land already is.
-const sedimentBonus=rm*0.35;// up to ~0.19 for great river
-tFert[ti]=Math.min(1,tFert[ti]+sedimentBonus);}}
+tFert[ti]=tileFert(tTemp[ti],tMoist[ti],tElev[ti]);}}
 
 // ── Pass 2: Geological fertility modifiers ──
 // These require neighbor access so run after base pass.
 
 // 2a: Tropical soil penalty — laterite soils in hot wet regions are nutrient-poor.
 // The Amazon/Congo paradox: lush forest but terrible soil for agriculture.
+// Exception: river floodplains have fresh alluvial silt, not leached laterite.
 for(let ti=0;ti<tw*th;ti++){
 const t=tTemp[ti],m=tMoist[ti],e=tElev[ti];
 if(e<=0)continue;
 if(t>0.65&&m>0.50){
 const tropicality=Math.min(1,(t-0.65)/0.25)*Math.min(1,(m-0.50)/0.35);
-tFert[ti]*=(1-tropicality*0.55);}}
+// River floodplains resist laterization: fresh silt replaces leached soil annually
+const riverProtect=riverMoist[ti]>0.01?Math.min(0.8,riverMoist[ti]*2.5):0;
+tFert[ti]*=(1-tropicality*0.55*(1-riverProtect));}}
 
 // 2b: Temperate grassland bonus — chernozem/mollisol deep topsoil.
 // Moderate temp, moderate moisture, low elevation = breadbasket zones.
