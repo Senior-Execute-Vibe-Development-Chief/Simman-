@@ -377,45 +377,48 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
   // ── Point deposits: copper, tin, precious metals, gems ──
   // These are scattered as individual mine sites across valid terrain.
 
-  // COPPER: highlands/mountains, ~0.5% of candidates become mines
+  // COPPER: any land above sea level, mild preference for elevation + boundaries
   scatterMines('copper', 0.005, 4, 0.9,
-    (ti) => tElev[ti] > 0.10,
+    (ti) => tElev[ti] > 0.02,
     (ti) => {
-      let s = Math.min(1, (tElev[ti] - 0.10) * 4);
-      if (boundDist[ti] < 12) s += (1 - boundDist[ti] / 12) * 0.5;
+      // Flat score: just a mild nudge for highlands, not a steep gradient
+      let s = 0.4;
+      if (tElev[ti] > 0.10) s += 0.15;
+      if (tElev[ti] > 0.20) s += 0.10;
+      if (boundDist[ti] < 12) s += 0.15;
       return Math.min(1, s);
     });
 
-  // TIN: highlands + alluvial, ~0.2% — rarest mined resource
+  // TIN: any land, mild preference for highlands + wet lowlands (alluvial)
   scatterMines('tin', 0.002, 3, 0.85,
+    (ti) => tElev[ti] > 0.02,
     (ti) => {
-      const e = tElev[ti];
-      return e > 0.08 || (e < 0.08 && e > 0 && tMoist[ti] > 0.25);
-    },
-    (ti) => {
-      const e = tElev[ti];
-      if (e > 0.12) return 0.4 + Math.min(0.6, (e - 0.12) * 3);
-      return 0.3 + tMoist[ti] * 0.4;
+      let s = 0.4;
+      if (tElev[ti] > 0.10) s += 0.15;
+      if (tElev[ti] < 0.08 && tMoist[ti] > 0.3) s += 0.2; // alluvial
+      if (tTemp[ti] > 0.45) s += 0.1; // tropical tin belts
+      return Math.min(1, s);
     });
 
-  // PRECIOUS METALS: any land, ~0.15% — rare but broadly distributed
+  // PRECIOUS METALS: any land, mild preference for varied terrain
   scatterMines('precious', 0.0015, 4, 0.95,
     (ti) => tElev[ti] > 0.02,
     (ti) => {
-      let s = Math.min(1, tElev[ti] * 3);
-      if (boundDist[ti] < 12) s += (1 - boundDist[ti] / 12) * 0.4;
-      if (tElev[ti] < 0.08 && tMoist[ti] > 0.3) s += 0.3;
+      let s = 0.4;
+      if (tElev[ti] > 0.12) s += 0.15; // mountain veins
+      if (tElev[ti] < 0.08 && tMoist[ti] > 0.3) s += 0.15; // alluvial gold
+      if (boundDist[ti] < 12) s += 0.1;
       return Math.min(1, s);
     });
 
-  // GEMS: any land, ~0.1% — rare, trade luxury
+  // GEMS: any land, multi-factor (already works well)
   scatterMines('gems', 0.001, 3, 0.8,
     (ti) => tElev[ti] > 0.03,
     (ti) => {
-      let s = 0.2;
-      if (tElev[ti] > 0.15) s += 0.4;
-      if (tTemp[ti] > 0.45) s += 0.3;
-      if (boundDist[ti] < 12) s += 0.2;
+      let s = 0.3;
+      if (tElev[ti] > 0.15) s += 0.2;
+      if (tTemp[ti] > 0.45) s += 0.25;
+      if (boundDist[ti] < 12) s += 0.15;
       return Math.min(1, s);
     });
 
