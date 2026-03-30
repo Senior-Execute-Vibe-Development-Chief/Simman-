@@ -457,6 +457,35 @@ if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+
 // ── River hydrology ──
 const rivers=computeRivers(tw,th,tElev,tMoist,tTemp);
 
+// ── River moisture boost: rivers raise local moisture, then fertility recalculates ──
+// This is the physically correct approach: rivers bring water → soil moisture rises →
+// fertility formula (bell curve) naturally produces good values.
+// Biome classification, resources, and all downstream systems react correctly.
+{const riverMoist=new Float32Array(tw*th);
+const riverRadius=[0,1,2,3,4];// NONE,STREAM,TRIB,MAJOR,GREAT
+// Peak moisture contribution: how much a river raises nearby moisture
+// Great river in desert: 0 + 0.50 = 0.50 moisture → near the 0.45 fertility peak
+const riverMoistPeak=[0,0.10,0.20,0.35,0.50];
+for(let ti=0;ti<tw*th;ti++){
+const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;
+const R=riverRadius[mag],peak=riverMoistPeak[mag];
+const sx=ti%tw,sy=(ti-sx)/tw;
+for(let dy=-R;dy<=R;dy++){const ny=sy+dy;if(ny<0||ny>=th)continue;
+for(let dx=-R;dx<=R;dx++){const nx=(sx+dx+tw)%tw;
+const ni=ny*tw+nx;
+if(tElev[ni]<=0)continue;
+let ddx=Math.abs(dx);if(ddx>tw/2)ddx=tw-ddx;
+const dist=Math.sqrt(ddx*ddx+dy*dy);
+if(dist>R)continue;
+const falloff=(1-dist/R);const v=peak*falloff*falloff;
+riverMoist[ni]=Math.max(riverMoist[ni],v);}}}
+// Apply moisture boost and recompute fertility
+for(let ti=0;ti<tw*th;ti++){
+if(riverMoist[ti]<0.01)continue;
+tMoist[ti]=Math.min(1,tMoist[ti]+riverMoist[ti]);
+// Recompute fertility with updated moisture
+tFert[ti]=tileFert(tTemp[ti],tMoist[ti],tElev[ti]);}}
+
 // ── Pass 2: Geological fertility modifiers ──
 // These require neighbor access so run after base pass.
 
@@ -469,49 +498,7 @@ if(t>0.65&&m>0.50){
 const tropicality=Math.min(1,(t-0.65)/0.25)*Math.min(1,(m-0.50)/0.35);
 tFert[ti]*=(1-tropicality*0.55);}}
 
-// 2b: River valley alluvial bonus — radial floodplain fertility.
-// Rivers create fertile corridors: great rivers affect 4 tiles out,
-// major 3, tributary 2, stream 1. Bonus decays with distance.
-{const riverFert=new Float32Array(tw*th);
-// Radius and peak bonus per magnitude
-const riverRadius=[0,1,2,3,4];// NONE,STREAM,TRIB,MAJOR,GREAT
-const riverPeak=[0,0.15,0.30,0.55,0.85];
-for(let ti=0;ti<tw*th;ti++){
-const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;
-const R=riverRadius[mag],peak=riverPeak[mag];
-const sx=ti%tw,sy=(ti-sx)/tw;
-for(let dy=-R;dy<=R;dy++){const ny=sy+dy;if(ny<0||ny>=th)continue;
-for(let dx=-R;dx<=R;dx++){const nx=(sx+dx+tw)%tw;
-const ni=ny*tw+nx;
-if(tElev[ni]<=0)continue;
-let ddx=Math.abs(dx);if(ddx>tw/2)ddx=tw-ddx;
-const dist=Math.sqrt(ddx*ddx+dy*dy);
-if(dist>R)continue;
-// Quadratic falloff: full at center, zero at edge
-const falloff=(1-dist/R);const v=peak*falloff*falloff;
-riverFert[ni]=Math.max(riverFert[ni],v);}}}
-// Apply bonus — gated by temperature fitness and elevation
-for(let ti=0;ti<tw*th;ti++){
-const rf=riverFert[ti];if(rf<0.01)continue;
-const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
-if(e<=0)continue;
-// Temperature fitness for agriculture — rivers mitigate heat penalty
-// Hot irrigated land is extremely productive (Egypt, Mesopotamia, Indus)
-const baseTempFit=t>0.30&&t<0.70?1.0:t>0.20&&t<0.80?0.6:0.3;
-// With river water, hot climates are fine — only freezing is a problem
-const riverTempFit=t>0.20?1.0:t>0.12?0.5:0.2;
-// Blend: stronger rivers override climate more
-const tempFit=baseTempFit+(riverTempFit-baseTempFit)*Math.min(1,rf*1.5);
-// Elevation: full in lowlands, gentle reduction, only mountains get zero
-const elevFit=e<0.08?1.0:e<0.30?1.0-(e-0.08)*2.5:e<0.40?0.45-(e-0.30)*3:0;
-const bonus=rf*tempFit*Math.max(elevFit,0);
-// Arid boost: in dry regions, rivers ARE the fertility — much stronger floor.
-// The drier the land, the more the river dominates (Nile, Tigris, Indus, Colorado).
-const aridity=Math.max(0,1-m*2.5);// 1.0 at m=0, 0.6 at m=0.15, 0 at m=0.40
-const floor=rf*tempFit*Math.max(elevFit,0)*(0.55+aridity*0.40);
-tFert[ti]=Math.min(1,Math.max(tFert[ti]+tFert[ti]*bonus,floor));}}
-
-// 2c: Temperate grassland bonus — chernozem/mollisol deep topsoil.
+// 2b: Temperate grassland bonus — chernozem/mollisol deep topsoil.
 // Moderate temp, moderate moisture, low elevation = breadbasket zones.
 for(let ti=0;ti<tw*th;ti++){
 const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
