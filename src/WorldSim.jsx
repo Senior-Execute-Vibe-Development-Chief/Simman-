@@ -38,12 +38,12 @@ if(dd<d1){d2=d1;d1=dd;}else if(dd<d2)d2=dd;}
 return[Math.sqrt(d1),Math.sqrt(d2)];}
 function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};}
 
-const RES=2;
+const RES=1;
 // ── Mercator projection helpers ──
 const MAX_LAT_DEG = 78;
 const MAX_LAT = MAX_LAT_DEG * Math.PI / 180;
 const MERC_MAX = Math.log(Math.tan(Math.PI / 4 + MAX_LAT / 2));
-const CW_FLAT = 960, CH_FLAT = 480; // equirectangular canvas
+const CW_FLAT = 1920, CH_FLAT = 960; // equirectangular canvas (matches world at RES=1)
 // Mercator height: match equator pixel scale to flat mode, then add space for polar stretch
 // Formula: CH = 2 * MERC_MAX * (CH_FLAT / π) — equator stays same size as flat mode
 const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688

@@ -87,7 +87,7 @@ function getBiome(e, m, t) {
 
 export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, seed, rivers) {
   const N = tw * th;
-  const RES = 2;
+  const RES = world.width ? Math.round(world.width / tw) : 1;
 
   // Pre-compute biome per tile
   const tileBiome = new Int8Array(N);
