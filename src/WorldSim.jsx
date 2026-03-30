@@ -616,6 +616,72 @@ pop[i]=Math.max(1,pop[i]+pop[i]*growthRate);
 // Famine: above capacity, population declines
 if(pop[i]>capacity*1.2)pop[i]=Math.max(1,pop[i]*0.97);}}
 
+// ── Background population: thin hunter-gatherer layer across all unowned habitable land ──
+// Grows slowly. When local density crosses a threshold, a new tribe crystallizes.
+// This means every continent gets tribes independently — agriculture can be independently
+// invented in the Fertile Crescent, China, Mesoamerica, Andes, New Guinea, etc.
+function stepBackgroundPop(ter){
+const{tw,th,tElev,tTemp,tFert,tDiff,tCoast,owner,bgPop,tribeSizes}=ter;
+if(!bgPop)return;
+// Grow background population on unowned habitable tiles
+for(let ti=0;ti<tw*th;ti++){
+if(owner[ti]>=0){bgPop[ti]=0;continue;}// owned tiles are tracked by tribe system
+if(tElev[ti]<=0||tTemp[ti]<0.05)continue;// ocean or permafrost
+// Slow logistic growth based on local fertility
+const cap=tFert[ti]*0.5*(1-tDiff[ti]*0.6);// carrying capacity for hunter-gatherers (low)
+if(cap<=0)continue;
+const ratio=bgPop[ti]/cap;
+bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*0.02*(1-ratio));// ~2% growth per step
+// Diffusion: spread to adjacent unowned tiles (people migrate)
+if(bgPop[ti]>cap*0.5){const tx=ti%tw,ty=(ti-tx)/tw;
+for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;
+const ni=ny*tw+nx;if(tElev[ni]<=0||owner[ni]>=0)continue;
+if(bgPop[ni]<bgPop[ti]*0.3){// flow toward lower density
+const flow=bgPop[ti]*0.01*(1-tDiff[ni]);// difficulty slows migration
+bgPop[ti]-=flow;bgPop[ni]+=Math.max(0,flow);}}}}
+// ── Tribe crystallization: when background pop in an area is dense enough, spawn a tribe ──
+// Check every 16 steps for performance (not every tick)
+if(ter.stepCount%16!==0)return;
+let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
+if(alive>=80)return;// tribe cap
+// Scan for crystallization sites: tiles with high background pop + good conditions
+const CRYSTAL_THRESHOLD=0.15;// background pop must exceed this to crystallize
+const MIN_SPACING=Math.round(tw*0.06);// minimum distance from existing tribes
+for(let ti=0;ti<tw*th;ti++){
+if(bgPop[ti]<CRYSTAL_THRESHOLD)continue;
+if(tFert[ti]<0.15)continue;// need decent land
+const tx=ti%tw,ty=(ti-tx)/tw;
+// Check spacing from all existing tribe centers
+let tooClose=false;
+for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0)continue;
+for(const c of ter.tribeCenters[t]){const d=tDistW(tx,ty,c.x,c.y,tw);
+if(d<MIN_SPACING){tooClose=true;break;}}if(tooClose)break;}
+if(tooClose)continue;
+// Also check no owned tiles nearby (not just centers — avoid spawning inside someone's territory)
+let nearOwned=false;
+for(let dy=-3;dy<=3&&!nearOwned;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
+for(let dx=-3;dx<=3;dx++){const nx=((tx+dx)%tw+tw)%tw;
+if(owner[ny*tw+nx]>=0){nearOwned=true;break;}}}
+if(nearOwned)continue;
+// Sum background pop in local area (radius 4) — need a cluster, not just one tile
+let localPop=0;
+for(let dy=-4;dy<=4;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
+for(let dx=-4;dx<=4;dx++){const nx=((tx+dx)%tw+tw)%tw;
+const ni=ny*tw+nx;if(tElev[ni]>0&&owner[ni]<0)localPop+=bgPop[ni];}}
+if(localPop<1.0)continue;// need substantial local population cluster
+// Random chance so not all valid sites crystallize at once
+if(Math.random()>0.08)continue;
+// Crystallize! New tribe emerges from background population
+const nid=newTribe(ter,tx,ty,-1);// parentId=-1: independent origin
+claimTile(ter,ti,nid);
+if(!ter.frontier[ti]){ter.frontier[ti]=1;ter.frontierList.push(ti);}
+// Clear background pop in the area (absorbed into the new tribe)
+for(let dy=-3;dy<=3;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
+for(let dx=-3;dx<=3;dx++){const nx=((tx+dx)%tw+tw)%tw;
+bgPop[ny*tw+nx]=0;}}
+// Recheck alive count
+alive++;if(alive>=80)return;}}
+
 // Port computation: find best coastal settlement tiles for a tribe
 function computeTribePorts(ter,tribeId){
 const{tw,th,owner,tFert,tCoast,tenure,rivers}=ter;
@@ -879,8 +945,17 @@ owner[ti]=i;tribeSizes.push(1);tribeStrength.push(tFert[ti]);tenure[ti]=1;fronti
 tribeCenters.push([{x,y,prestige:1.0,founded:0}]);
 tribeKnowledge.push(initKnowledge());tribePopulation.push(tFert[ti]);tribeKnownCoasts.push([]);tribePorts2.push([]);}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
+// ── Background humanity: thin hunter-gatherer presence across all habitable land ──
+// By 8000 BC, humans occupied every habitable continent. Our "tribes" are just the bands
+// that crossed a density/organization threshold. This layer represents everyone else.
+const bgPop=new Float32Array(tw*th);
+for(let ti=0;ti<tw*th;ti++){if(tElev[ti]<=0||tTemp[ti]<0.05)continue;// no people in ocean or permafrost
+// Initial background population scales with habitability (fertility - difficulty)
+bgPop[ti]=Math.max(0,tFert[ti]*0.3*(1-tDiff[ti]*0.8));}
+// Zero out tiles owned by initial tribes (they're tracked separately)
+for(let ti=0;ti<tw*th;ti++){if(owner[ti]>=0)bgPop[ti]=0;}
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
-tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,
+tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,bgPop,
 frontier,frontierList,landCount:lc,settled:origins.length,tribes:origins.length,origin:origins[0]||{x:0,y:0},stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+(y1-y2)*(y1-y2));}
@@ -942,7 +1017,10 @@ if(ow>=0){const owSzBefore=tribeSizes[ow];tribeSizes[ow]--;tribeStrength[ow]-=tF
 // Small population loss for conquered tile (some flee, some die)
 if(ter.tribePopulation&&owSzBefore>0){const popLoss=ter.tribePopulation[ow]/owSzBefore*0.5;
 ter.tribePopulation[ow]=Math.max(0,ter.tribePopulation[ow]-popLoss);}}else{ter.settled++;}
-owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;}
+owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;
+// Absorb background population into the tribe
+if(ter.bgPop&&ter.bgPop[ti]>0){if(ter.tribePopulation)ter.tribePopulation[nw]+=ter.bgPop[ti]*10;// bg pop → tribe pop (scaled up)
+ter.bgPop[ti]=0;}}
 // Transfer tile without resetting tenure (for splits/fragmentation — population stays, allegiance changes)
 function transferTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert}=ter;const ow=owner[ti];
 if(ow>=0){const owSzBefore=tribeSizes[ow];tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];
@@ -955,7 +1033,7 @@ owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];}
 function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // ── Knowledge & population step (every 8 ticks) ──
-if(ter.stepCount%8===0&&ter.tribeKnowledge){stepKnowledge(ter);stepPopulation(ter);
+if(ter.stepCount%8===0&&ter.tribeKnowledge){stepKnowledge(ter);stepPopulation(ter);stepBackgroundPop(ter);
 // Recompute ports periodically
 for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}
 // ── Expansion into empty land (directional, pressure-driven) ──
