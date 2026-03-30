@@ -684,7 +684,7 @@ const nid=newTribe(ter,tx,ty,-1);
 const claimThreshold=0.05;// tiles above this bgPop get absorbed into the new tribe
 const visited=new Uint8Array(tw*th);
 const stack=[bestTi];visited[bestTi]=1;
-let claimed=0;const maxClaim=60;// cap initial size so tribes don't start enormous
+let claimed=0;const maxClaim=15;// hunter-gatherer bands: small initial territory (~15 tiles)
 while(stack.length>0&&claimed<maxClaim){
 const ci=stack.pop();
 if(owner[ci]>=0)continue;// already owned
@@ -1072,15 +1072,19 @@ const nf=new Uint8Array(tw*th);const nfl=[];
 for(let fj=0;fj<ter.frontierList.length;fj++){const fi=ter.frontierList[fj];if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
 const owSz=tribeSizes[ow],owDens=owSz>0?tribeStrength[ow]/owSz:0;
 const owKnow=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
-const agMult=owKnow?1+owKnow.agriculture*2.5:1;
+const agLevel=owKnow?owKnow.agriculture:0;
+const agMult=1+agLevel*2.5;
 const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow];
 const owCap=tribeStrength[ow]*agMult;
-// Population pressure drives expansion. Tribes need pop > 40% capacity to start expanding,
-// but early small tribes get a natural boost (few tiles = high density = high pressure fast).
+// Agriculture fundamentally gates expansion. Hunter-gatherers (ag<0.1) can barely
+// sustain 15-20 tiles. Early farmers (ag~0.3) can hold 50+. Advanced (ag>0.6) unlimited.
+// This is THE key constraint that keeps pre-farming tribes small.
+const agExpansionCap=Math.floor(10+agLevel*200);// ag=0→10 tiles, ag=0.3→70, ag=1.0→210
+if(owSz>=agExpansionCap){continue;}// tribe is at its agricultural capacity — cannot expand
 const popRatio=owCap>0?owPop/owCap:0;
-const popPressure=Math.max(0,(popRatio-0.4)*1.67);// 0 below 40%, 1 at 100%
-// Small tribes expand more readily — a band of 50 people on 3 tiles IS at pressure
-const smallBoost=owSz<15?1+((15-owSz)/15)*1.0:1;// up to 2x for tiny tribes
+const popPressure=Math.max(0,(popRatio-0.5)*2.0);// 0 below 50%, 1 at 100%
+// Small boost only for very tiny tribes (< 5 tiles) and only if they have room under ag cap
+const smallBoost=owSz<5?1.5:1;
 const largePrize=owSz>40?1+Math.min(1,(owSz-40)*0.01):1;
 // Score all candidate neighbor tiles, then claim the best
 const candidates=[];
@@ -1134,7 +1138,7 @@ const barrier=diff>0.6&&pDiff<0.3?0.15:0;// geographic barrier
 const distF=distMin>35?Math.min(0.12,(distMin-35)*0.003):0;// very far from center
 splitChance=Math.max(0,(overext+barrier+distF-orgResist)*(1-Math.min(0.9,dens*1.5)));}}
 if(splitChance>0&&Math.random()<splitChance)nw=newTribe(ter,nx,ny2,ow);
-else if(distMin>18&&tribeCenters[ow]&&tribeCenters[ow].length<10){
+else if(distMin>18&&agLevel>0.15&&tribeCenters[ow]&&tribeCenters[ow].length<10){// need basic agriculture for secondary settlements
 // Geographic center scoring: rivers, harbors, passes, resources attract settlements
 let centerScore=tFert[ni]*2;
 if(ter.rivers&&ter.rivers.riverMag[ni]>=3)centerScore+=0.6;// river confluence / major river
@@ -1241,7 +1245,7 @@ for(let c=1;c<centers.length;c++)centers[c].prestige=Math.min(2.0,centers[c].pre
 for(let c=centers.length-1;c>=0;c--){const ci=centers[c].y*tw+centers[c].x;
 if(owner[ci]!==st||tFert[ci]<0.1){if(c===0&&centers.length>1){centers.shift();centers[0].prestige=Math.max(centers[0].prestige,1.5);}
 else if(c>0)centers.splice(c,1);}}
-if(centers.length<2||tribeSizes[st]<15)continue;
+if(centers.length<2||tribeSizes[st]<40)continue;// need substantial polity for center challenges
 // Compare each secondary center to capital
 const R=8;const capPow=centerPower(ter,st,centers[0].x,centers[0].y,R)*centers[0].prestige;
 for(let c=1;c<centers.length;c++){
@@ -1283,12 +1287,13 @@ if(comps.length<=1)continue;
 comps.sort((a,b)=>b.length-a.length);
 for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor(comps[c][0]/tw),st);
 for(const ci of comps[c])transferTile(ter,ci,sid);}}ter._fragGen=gen;}
-// ── Remnant absorption: tiny tribes (<5 tiles) absorbed by any larger touching neighbor ──
-if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>10)continue;
+// ── Remnant absorption: tiny fragments absorbed by larger neighbors ──
+// Only absorb if the neighbor is substantially larger (3x+) — prevents early bands being eaten
+if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>5)continue;
 let bn=-1,bs2=0;for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const ty2=Math.floor(i/tw),tx2=i%tw;
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===st||tElev[ni]<=sl)continue;if(tribeSizes[no]>bs2){bs2=tribeSizes[no];bn=no;}}}
-if(bn>=0&&tribeSizes[bn]>tribeSizes[st]){for(let i=0;i<tw*th;i++)if(owner[i]===st)claimTile(ter,i,bn);}}}
+if(bn>=0&&tribeSizes[bn]>tribeSizes[st]*3){for(let i=0;i<tw*th;i++)if(owner[i]===st)claimTile(ter,i,bn);}}}
 return ter;}
 
 // ── Non-linear time: early steps cover centuries, late steps cover decades ──
