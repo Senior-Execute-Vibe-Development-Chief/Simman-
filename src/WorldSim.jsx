@@ -797,6 +797,7 @@ const[depthFromSea,setDepthFromSea]=useState(false);
 const[depthCeil,setDepthCeil]=useState(1.0);
 const[showPlates,setShowPlates]=useState(false);
 const[showRivers,setShowRivers]=useState(false);
+const[showStreams,setShowStreams]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
 const[hoverInfo,setHoverInfo]=useState(null);
 const[tecPresetName,setTecPresetName]=useState("Default");
@@ -815,7 +816,7 @@ const activeResRef=useRef(null);activeResRef.current=activeRes;
 const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
-const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);
+const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);
 const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
 const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
@@ -1092,14 +1093,15 @@ if(!dx&&!dy)continue;
 const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
 if(plateAt(nx2,ny2)!==myP)boundary=true;}
 if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
-// River overlay — stream+ scale, brighter for larger rivers
-if(showRiversRef.current&&ter.rivers){const rm=ter.rivers.riverMag;
-for(let ti=0;ti<N;ti++){const mag=rm[ti];if(mag<1)continue;
+// River overlay — Rivers: tributary+. Streams: streams only (separate toggle).
+if(ter.rivers){const rm=ter.rivers.riverMag;
+const rivers=showRiversRef.current,streams=showStreamsRef.current;
+if(rivers||streams)for(let ti=0;ti<N;ti++){const mag=rm[ti];if(mag<1)continue;
 const pi4=ti<<2;
-if(mag>=4){d[pi4]=55;d[pi4+1]=150;d[pi4+2]=245;}
-else if(mag>=3){d[pi4]=45;d[pi4+1]=120;d[pi4+2]=220;}
-else if(mag>=2){d[pi4]=35;d[pi4+1]=95;d[pi4+2]=190;}
-else{const a=0.5;d[pi4]=(d[pi4]*(1-a)+28*a)|0;d[pi4+1]=(d[pi4+1]*(1-a)+70*a)|0;d[pi4+2]=(d[pi4+2]*(1-a)+155*a)|0;}}}
+if(mag>=4&&rivers){d[pi4]=55;d[pi4+1]=150;d[pi4+2]=245;}
+else if(mag>=3&&rivers){d[pi4]=45;d[pi4+1]=120;d[pi4+2]=220;}
+else if(mag>=2&&rivers){d[pi4]=35;d[pi4+1]=95;d[pi4+2]=190;}
+else if(mag===1&&streams){const a=0.45;d[pi4]=(d[pi4]*(1-a)+25*a)|0;d[pi4+1]=(d[pi4+1]*(1-a)+65*a)|0;d[pi4+2]=(d[pi4+2]*(1-a)+150*a)|0;}}}
 ctx.putImageData(img,0,0);
 // Draw all tribe centers (tile coords — canvas is CW×CH)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
@@ -1191,7 +1193,7 @@ if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-seri
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache,CH]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,activeRes]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,activeRes]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -1448,6 +1450,9 @@ color:showPlates?"#e07050":"#5a5448",padding:"6px 12px",fontSize:12}}>Plates</bu
 <button onClick={()=>{setShowRivers(v=>!v);showRiversRef.current=!showRiversRef.current;}}
 style={{...bs,background:showRivers?"rgba(60,140,220,0.25)":"transparent",border:"none",
 color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</button>
+<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
+style={{...bs,background:showStreams?"rgba(60,120,180,0.25)":"transparent",border:"none",
+color:showStreams?"#5a9aca":"#5a5448",padding:"6px 12px",fontSize:12}}>Streams</button>
 <div style={{width:1,height:20,background:"rgba(201,184,122,0.15)"}} />
 <span style={{color:"#8a8070",fontSize:11}}>Sea</span>
 <input type="range" min="50" max="90" value={oceanLevel*100}
