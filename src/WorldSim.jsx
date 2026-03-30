@@ -462,10 +462,9 @@ const rivers=computeRivers(tw,th,tElev,tMoist,tTemp);
 // fertility formula (bell curve) naturally produces good values.
 // Biome classification, resources, and all downstream systems react correctly.
 {const riverMoist=new Float32Array(tw*th);
-// All rivers get a gradient area. Radius and peak scale with magnitude.
-// Even streams irrigate ~2 tiles out; great rivers affect 6 tiles (~240km floodplain).
-const riverRadius=[0,2,3,4,6];// NONE,STREAM,TRIB,MAJOR,GREAT
-const riverMoistPeak=[0,0.15,0.25,0.40,0.55];
+// Tributary+ rivers get moisture gradient. Streams are too small for map-scale effect.
+const riverRadius=[0,0,3,4,6];// NONE,STREAM,TRIB,MAJOR,GREAT
+const riverMoistPeak=[0,0,0.25,0.40,0.55];
 for(let ti=0;ti<tw*th;ti++){
 const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;
 const R=riverRadius[mag],peak=riverMoistPeak[mag];
