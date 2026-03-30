@@ -462,10 +462,10 @@ const rivers=computeRivers(tw,th,tElev,tMoist,tTemp);
 // fertility formula (bell curve) naturally produces good values.
 // Biome classification, resources, and all downstream systems react correctly.
 {const riverMoist=new Float32Array(tw*th);
-const riverRadius=[0,1,2,3,4];// NONE,STREAM,TRIB,MAJOR,GREAT
-// Peak moisture contribution: how much a river raises nearby moisture
-// Great river in desert: 0 + 0.50 = 0.50 moisture → near the 0.45 fertility peak
-const riverMoistPeak=[0,0.10,0.20,0.35,0.50];
+// All rivers get a gradient area. Radius and peak scale with magnitude.
+// Even streams irrigate ~2 tiles out; great rivers affect 6 tiles (~240km floodplain).
+const riverRadius=[0,2,3,4,6];// NONE,STREAM,TRIB,MAJOR,GREAT
+const riverMoistPeak=[0,0.15,0.25,0.40,0.55];
 for(let ti=0;ti<tw*th;ti++){
 const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;
 const R=riverRadius[mag],peak=riverMoistPeak[mag];
@@ -477,7 +477,9 @@ if(tElev[ni]<=0)continue;
 let ddx=Math.abs(dx);if(ddx>tw/2)ddx=tw-ddx;
 const dist=Math.sqrt(ddx*ddx+dy*dy);
 if(dist>R)continue;
-const falloff=(1-dist/R);const v=peak*falloff*falloff;
+// Smooth falloff: cosine-based for gentler gradient than quadratic
+const t2=dist/R;const falloff=0.5+0.5*Math.cos(t2*Math.PI);
+const v=peak*falloff;
 riverMoist[ni]=Math.max(riverMoist[ni],v);}}}
 // Apply moisture boost and recompute fertility
 for(let ti=0;ti<tw*th;ti++){
@@ -1251,14 +1253,13 @@ const w=worldRef.current,i=wy*1920+wx;
 if(wx<0||wx>=1920||wy<0||wy>=960){setHoverInfo(null);return;}
 const elev=w.elevation[i]||0;
 const temp=w.temperature[i]||0;
+const terTi=terRef.current?Math.min(terRef.current.th-1,(wy/RES)|0)*terRef.current.tw+Math.min(terRef.current.tw-1,(wx/RES)|0):-1;
 const moist=terTi>=0&&terRef.current?terRef.current.tMoist[terTi]:(w.moisture[i]||0);
 const biome=getBiomeD(elev,moist,temp,0);
 const biomeName=BN[biome]||"Ocean";
 const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
 const tempC=Math.round(temp*50-10);
 const lat=Math.abs(wy/960-0.5)*2;
-// Use territory fertility (includes geological modifiers) if available, else raw climate
-const terTi=terRef.current?Math.min(terRef.current.th-1,(wy/RES)|0)*terRef.current.tw+Math.min(terRef.current.tw-1,(wx/RES)|0):-1;
 const fertVal=elev>0?(terTi>=0&&terRef.current?terRef.current.tFert[terTi]:tileFert(temp,moist,elev)):0;
 const wdx=w.windX?w.windX[i]:0,wdy=w.windY?w.windY[i]:0;
 const wspd=Math.sqrt(wdx*wdx+wdy*wdy);
