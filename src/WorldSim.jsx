@@ -804,20 +804,21 @@ export default function WorldSim(){
 const canvasRef=useRef(null);const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
-const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState(null);
+const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("tectonic");
 const[oceanLevel,setOceanLevel]=useState(0.78);
 const[depthFromSea,setDepthFromSea]=useState(false);
 const[depthCeil,setDepthCeil]=useState(1.0);
 const[showPlates,setShowPlates]=useState(false);
 const[showRivers,setShowRivers]=useState(false);
 const[showStreams,setShowStreams]=useState(false);
+const[showPower,setShowPower]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
 const[hoverInfo,setHoverInfo]=useState(null);
 const[tecPresetName,setTecPresetName]=useState("Default");
 const[rightPanel,setRightPanel]=useState("");  // "" | "params"
 const[showTuning,setShowTuning]=useState(false);
 const[useRealWind,setUseRealWind]=useState(false);
-const[useMercator,setUseMercator]=useState(false);
+const useMercator=false;
 const[showGlobe,setShowGlobe]=useState(false);
 const[globeBuf,setGlobeBuf]=useState(null);
 const[globeTexSize,setGlobeTexSize]=useState({w:4096,h:2048});
@@ -830,7 +831,7 @@ const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);
-const presetRef=useRef(null);const fileRef=useRef(null);const importedWorldRef=useRef(null);
+const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
 const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
@@ -980,43 +981,26 @@ const tr=(tc[ti*3]*landDim)|0,tg=(tc[ti*3+1]*landDim)|0,tb=(tc[ti*3+2]*landDim)|
 r=(r*heatW+tr*(1-heatW))|0;g=(g*heatW+tg*(1-heatW))|0;b=(b*heatW+tb*(1-heatW))|0;
 }
 d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
-}else if(vm==="power"){
-// Power view — one pixel per tile
-for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
-const e=w.elevation[sy*W+sx],ow=ter.owner[ti];let r,g,b;
-if(e<=sl){r=4;g=5;b=12;}
-else if(ow>=0){r=(tcR[ow]*0.15+10.5)|0;g=(tcG[ow]*0.15+10.5)|0;b=(tcB[ow]*0.15+10.5)|0;}
-else{r=16;g=15;b=14;}
-const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="tribes"){
-// Tribe-only view — one pixel per tile, feature tint from territory data
+// Tribe view — full color or dimmed power mode
+const pw=showPower;
 for(let ti=0;ti<N;ti++){
 const e=ter.tElev[ti],ow=ter.owner[ti];let r,g,b;
-if(e<=sl){r=6;g=8;b=16;}
-else if(ow>=0){r=tcR[ow];g=tcG[ow];b=tcB[ow];}
-else{r=22;g=20;b=18;}
+if(e<=sl){r=pw?4:6;g=pw?5:8;b=pw?12:16;}
+else if(ow>=0){if(pw){r=(tcR[ow]*0.15+10.5)|0;g=(tcG[ow]*0.15+10.5)|0;b=(tcB[ow]*0.15+10.5)|0;}
+else{r=tcR[ow];g=tcG[ow];b=tcB[ow];}}
+else{r=pw?16:22;g=pw?15:20;b=pw?14:18;}
 const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
-}else if(vm==="value"){
-// Tile value overlay — green (high value) → yellow → red (low value)
-// Value = fertility + coast bonus + moderate elevation bonus
+}else if(vm==="fertility"){
+// Fertility overlay — green (high) → yellow → red (low)
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
 if(e<=sl){d[pi4]=8;d[pi4+1]=12;d[pi4+2]=22;d[pi4+3]=255;continue;}
-let v=ter.tFert[ti];
-// Coast access bonus (trade, fishing)
-if(ter.tCoast&&ter.tCoast[ti])v+=0.08;
-// Moderate elevation sweet spot (defensible + habitable)
-if(e>0.05&&e<0.2)v+=0.05;
-// Extreme terrain penalty
-if(e>0.4)v-=0.15;
-v=Math.max(0,Math.min(1,v));
-// Green(1.0) → Yellow(0.5) → Red(0.0)
+const v=Math.max(0,Math.min(1,ter.tFert[ti]));
 let r,g,b;
 if(v>0.5){const t2=(v-0.5)*2;r=((1-t2)*255)|0;g=200;b=((t2)*40)|0;}
 else{const t2=v*2;r=220;g=(t2*200)|0;b=0;}
-// Darken slightly with elevation for depth
 const shade=1-Math.max(0,e-0.1)*0.5;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else if(vm==="resources"){
@@ -1178,7 +1162,7 @@ ctx.fillStyle=`rgba(255,255,255,${headAlpha.toFixed(2)})`;
 ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
 }
 // Power projection view hatching
-if(vm==="power"&&ter){const tw2=ter.tw,th2=ter.th;
+if(vm==="tribes"&&showPower&&ter){const tw2=ter.tw,th2=ter.th;
 for(let ty2=0;ty2<th2;ty2+=2)for(let tx2=0;tx2<tw2;tx2+=2){
 const ti=ty2*tw2+tx2;const ow2=ter.owner[ti];
 if(ow2<0||ter.tElev[ti]<=0)continue;
@@ -1206,7 +1190,7 @@ if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-seri
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache,CH]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,activeRes]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showPower,activeRes]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -1312,16 +1296,11 @@ background:playing?"rgba(200,80,60,0.15)":"rgba(201,184,122,0.1)",padding:"6px 1
 style={{flex:1,accentColor:"#c9b87a"}} />
 </div>
 {sep}
-<button onClick={()=>setPresetAndGo(null)} style={{...lbs,color:preset===null?"#c9b87a":"#8a8474",
-background:preset===null?"rgba(201,184,122,0.15)":"transparent"}}>Random</button>
-<button onClick={()=>setPresetAndGo("earth")} style={{...lbs,...(preset==="earth"?{color:"rgb(100,160,220)",background:"rgba(100,160,220,0.15)"}:{})}}>Earth</button>
 <button onClick={()=>setPresetAndGo("earth_sim")} style={{...lbs,...(preset==="earth_sim"?{color:"rgb(80,180,200)",background:"rgba(80,180,200,0.15)"}:{})}}>Earth (Sim)</button>
 {preset==="earth_sim"&&<label style={{fontSize:10,color:useRealWind?"#6be":"#6a6458",cursor:"pointer",display:"flex",alignItems:"center",gap:3,padding:"0 4px"}}>
 <input type="checkbox" checked={useRealWind} onChange={e=>{setUseRealWind(e.target.checked);useRealWindRef.current=e.target.checked;generate(seed)}}
 style={{accentColor:"#6be",width:12,height:12}} />{isRealWindAvailable()?"Real Winds":"Real Winds (no data)"}</label>}
-<button onClick={()=>setPresetAndGo("pangaea")} style={{...lbs,...(preset==="pangaea"?{color:"rgb(120,180,100)",background:"rgba(120,180,100,0.15)"}:{})}}>Pangaea</button>
 <button onClick={()=>setPresetAndGo("tectonic")} style={{...lbs,...(preset==="tectonic"?{color:"rgb(180,120,100)",background:"rgba(180,120,100,0.15)"}:{})}}>Tectonic</button>
-<button onClick={()=>setPresetAndGo("continental")} style={{...lbs,...(preset==="continental"?{color:"rgb(140,180,160)",background:"rgba(140,180,160,0.15)"}:{})}}>Continental</button>
 {sep}
 {preset==="tectonic"&&<>
 <select value={tecPresetName} onChange={e=>{
@@ -1342,12 +1321,6 @@ style={{...lbs,color:"#a06060",fontSize:9,textAlign:"center"}}>Delete Preset</bu
 <button onClick={()=>fileRef.current?.click()} style={{...lbs,...(preset==="import"?{color:"rgb(180,140,200)",background:"rgba(180,140,200,0.15)"}:{})}}>Import</button>
 {importStatus&&<span style={{fontSize:8,color:"#a99ed0",wordBreak:"break-all"}}>{importStatus}</span>}
 {sep}
-<div style={{display:"flex",alignItems:"center",gap:4}}>
-<span style={{color:"#6a6458",fontSize:9}}>Maps</span>
-<input type="range" min={1} max={10} value={mapCount} onChange={e=>setMapCount(+e.target.value)}
-style={{flex:1,accentColor:"#c9b87a"}} />
-<span style={{color:"#8a8474",fontSize:9,minWidth:12,textAlign:"right"}}>{mapCount}</span>
-</div>
 <div style={{flex:1}} />
 <span style={{color:"#4a4438",fontSize:8,textAlign:"center"}}>Seed: {seed}</span>
 </div>
@@ -1443,7 +1416,7 @@ display:"flex",gap:12,fontSize:11,color:"#c9b87a",pointerEvents:"none"}}>
 <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",
 background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"6px 12px",
 display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["value","Value"],["resources","Resources"],["tribes","Tribes"],["power","Power"]].map(([k,label])=>(
+{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],["resources","Resources"],["tribes","Tribes"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
 style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
 color:viewMode===k?"#c9b87a":"#5a5448",padding:"6px 14px",fontSize:13}}>{label}</button>))}
@@ -1457,24 +1430,18 @@ onChange={e=>{const v=parseFloat(e.target.value);setDepthCeil(v);depthCeilRef.cu
 style={{width:80,accentColor:"#8a8070"}}/>
 <span>{Math.round(depthCeil*100)}%</span>
 </span></>}
+{viewMode==="tribes"&&<button onClick={()=>setShowPower(v=>!v)}
+style={{...bs,background:showPower?"rgba(180,120,200,0.20)":"transparent",border:"none",
+color:showPower?"#b090d0":"#5a5448",padding:"4px 8px",fontSize:10}}>Power</button>}
 {world&&world.pixPlate&&<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
 style={{...bs,background:showPlates?"rgba(200,80,60,0.25)":"transparent",border:"none",
 color:showPlates?"#e07050":"#5a5448",padding:"6px 12px",fontSize:12}}>Plates</button>}
 <button onClick={()=>{setShowRivers(v=>!v);showRiversRef.current=!showRiversRef.current;}}
 style={{...bs,background:showRivers?"rgba(60,140,220,0.25)":"transparent",border:"none",
 color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</button>
-<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
-style={{...bs,background:showStreams?"rgba(60,120,180,0.25)":"transparent",border:"none",
-color:showStreams?"#5a9aca":"#5a5448",padding:"6px 12px",fontSize:12}}>Streams</button>
-<div style={{width:1,height:20,background:"rgba(201,184,122,0.15)"}} />
-<span style={{color:"#8a8070",fontSize:11}}>Sea</span>
-<input type="range" min="50" max="90" value={oceanLevel*100}
-onChange={e=>{const v=Number(e.target.value)/100;setOceanLevel(v);oceanLevelRef.current=v;}}
-onMouseUp={()=>generate(seed)} onTouchEnd={()=>generate(seed)}
-style={{width:80,accentColor:"#6ab4e8"}} />
-<button onClick={()=>setUseMercator(!useMercator)}
-style={{...bs,background:useMercator?"rgba(180,160,100,0.25)":"transparent",border:"none",
-color:useMercator?"#c9b87a":"#5a5448",padding:"6px 12px",fontSize:12}}>{useMercator?"Mercator":"Flat"}</button>
+{showRivers&&<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
+style={{...bs,background:showStreams?"rgba(60,120,180,0.20)":"transparent",border:"none",
+color:showStreams?"#5a9aca":"#4a4a40",padding:"4px 8px",fontSize:10}}>Streams</button>}
 <button onClick={()=>setShowGlobe(!showGlobe)}
 style={{...bs,background:showGlobe?"rgba(120,180,220,0.25)":"transparent",border:"none",
 color:showGlobe?"#78b4dc":"#5a5448",padding:"6px 12px",fontSize:12}}>Globe</button>

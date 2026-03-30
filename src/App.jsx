@@ -8,7 +8,7 @@ const TABS = [
 ];
 
 export default function App() {
-  const [tab, setTab] = useState("language");
+  const [tab, setTab] = useState("world");
 
   return (
     <div style={{ minHeight: "100vh", background: "#060810" }}>
