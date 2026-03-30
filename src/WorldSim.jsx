@@ -830,7 +830,7 @@ const activeResRef=useRef(null);activeResRef.current=activeRes;
 const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
-const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);
+const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showGlobeRef=useRef(false);
 const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
 const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
@@ -850,34 +850,9 @@ setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
-useEffect(()=>{if(showGlobe&&worldRef.current){
-const w=worldRef.current,sl=0,gW=4096,gH=2048;
-const buf=new Uint8Array(gW*gH*3);
-for(let ty=0;ty<gH;ty++){
-const lat=Math.abs(ty/gH-0.5)*2;
-const polarBlend=Math.max(0,Math.min(1,(lat-0.83)/0.17));
-for(let tx=0;tx<gW;tx++){
-// Bilinear sample from world data
-const srcX=tx/gW*W,srcY=ty/gH*H;
-const sx0=Math.min(W-2,srcX|0),sy0=Math.min(H-2,srcY|0);
-const fx=srcX-sx0,fy=srcY-sy0;
-const i00=sy0*W+sx0,i10=sy0*W+sx0+1,i01=(sy0+1)*W+sx0,i11=(sy0+1)*W+sx0+1;
-const e=w.elevation[i00]*(1-fx)*(1-fy)+w.elevation[i10]*fx*(1-fy)+w.elevation[i01]*(1-fx)*fy+w.elevation[i11]*fx*fy;
-const m=w.moisture[i00]*(1-fx)*(1-fy)+w.moisture[i10]*fx*(1-fy)+w.moisture[i01]*(1-fx)*fy+w.moisture[i11]*fx*fy;
-const t=w.temperature[i00]*(1-fx)*(1-fy)+w.temperature[i10]*fx*(1-fy)+w.temperature[i01]*(1-fx)*fy+w.temperature[i11]*fx*fy;
-let r,g,b;
-if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
-r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
-}else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
-// Swamp overlay on globe
-if(e>sl&&w.swamp&&w.swamp[sy0*W+sx0]){r=40;g=58;b=38;}
-if(polarBlend>0){const pr=e>0?230:20,pg=e>0?235:40,pb=e>0?240:80;
-r=Math.round(r*(1-polarBlend)+pr*polarBlend);
-g=Math.round(g*(1-polarBlend)+pg*polarBlend);
-b=Math.round(b*(1-polarBlend)+pb*polarBlend);}
-const ti3=(ty*gW+tx)*3;buf[ti3]=r;buf[ti3+1]=g;buf[ti3+2]=b;}}
-setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});
-}},[showGlobe,world]);
+// When globe is toggled on, trigger a redraw to build the texture
+useEffect(()=>{if(showGlobe&&worldRef.current&&terRef.current)draw(terRef.current);
+},[showGlobe]);
 // Re-render when projection changes or globe toggled off
 useEffect(()=>{terrainCache.current=null;imgRef.current=null;windParticlesRef.current=null;
 if(!showGlobe&&terRef.current) setTimeout(()=>draw(terRef.current),50);
@@ -1100,6 +1075,28 @@ else if(mag>=3&&rivers){d[pi4]=45;d[pi4+1]=120;d[pi4+2]=220;}
 else if(mag>=2&&rivers){d[pi4]=35;d[pi4+1]=95;d[pi4+2]=190;}
 else if(mag===1&&streams){const a=0.45;d[pi4]=(d[pi4]*(1-a)+25*a)|0;d[pi4+1]=(d[pi4+1]*(1-a)+65*a)|0;d[pi4+2]=(d[pi4+2]*(1-a)+150*a)|0;}}}
 ctx.putImageData(img,0,0);
+// Update globe texture from rendered canvas data (supports all view modes)
+if(showGlobeRef.current){
+const gW=4096,gH=2048;
+const buf=new Uint8Array(gW*gH*3);
+for(let gy=0;gy<gH;gy++){
+const lat=Math.abs(gy/gH-0.5)*2;
+const polarBlend=Math.max(0,Math.min(1,(lat-0.83)/0.17));
+const sy=gy/gH*CH;
+const sy0=Math.min(CH-2,sy|0),fy=sy-sy0;
+for(let gx=0;gx<gW;gx++){
+const sx=gx/gW*CW;
+const sx0=Math.min(CW-2,sx|0),fx=sx-sx0;
+// Bilinear sample from canvas ImageData
+const p00=(sy0*CW+sx0)*4,p10=(sy0*CW+sx0+1)*4;
+const p01=((sy0+1)*CW+sx0)*4,p11=((sy0+1)*CW+sx0+1)*4;
+let r=(d[p00]*(1-fx)+d[p10]*fx)*(1-fy)+(d[p01]*(1-fx)+d[p11]*fx)*fy;
+let g=(d[p00+1]*(1-fx)+d[p10+1]*fx)*(1-fy)+(d[p01+1]*(1-fx)+d[p11+1]*fx)*fy;
+let b=(d[p00+2]*(1-fx)+d[p10+2]*fx)*(1-fy)+(d[p01+2]*(1-fx)+d[p11+2]*fx)*fy;
+if(polarBlend>0){const pr=220,pg=225,pb=235;
+r=r*(1-polarBlend)+pr*polarBlend;g=g*(1-polarBlend)+pg*polarBlend;b=b*(1-polarBlend)+pb*polarBlend;}
+const ti3=(gy*gW+gx)*3;buf[ti3]=r|0;buf[ti3+1]=g|0;buf[ti3+2]=b|0;}}
+setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});}
 // Draw all tribe centers (tile coords — canvas is CW×CH)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
 if(!centers||ter.tribeSizes[st]<=0)continue;const cr=tcR[st],cg=tcG[st],cb=tcB[st];
@@ -1190,7 +1187,7 @@ if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-seri
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache,CH]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showPower,activeRes]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showPower,showGlobe,activeRes]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
