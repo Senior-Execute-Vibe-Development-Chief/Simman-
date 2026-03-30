@@ -493,16 +493,17 @@ riverFert[ni]=Math.max(riverFert[ni],v);}}}
 // Apply bonus — gated by temperature fitness and elevation
 for(let ti=0;ti<tw*th;ti++){
 const rf=riverFert[ti];if(rf<0.01)continue;
-const e=tElev[ti],t=tTemp[ti];
+const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
 if(e<=0)continue;
 // Temperature fitness for agriculture
 const tempFit=t>0.30&&t<0.70?1.0:t>0.20&&t<0.80?0.6:0.3;
 // Elevation: full bonus in lowlands, reduced in highlands, none in mountains
 const elevFit=e<0.06?1.0:e<0.18?1.0-(e-0.06)/0.12:0;
 const bonus=rf*tempFit*elevFit;
-// River water overrides local aridity — set a fertility floor.
-// A great river through desert creates an oasis corridor (Nile, Tigris, Indus).
-const floor=rf*tempFit*elevFit*0.55;// up to 0.47 for great river in warm lowland
+// Arid boost: in dry regions, rivers ARE the fertility — much stronger floor.
+// The drier the land, the more the river dominates (Nile, Tigris, Indus, Colorado).
+const aridity=Math.max(0,1-m*2.5);// 1.0 at m=0, 0.6 at m=0.15, 0 at m=0.40
+const floor=rf*tempFit*elevFit*(0.55+aridity*0.40);// up to 0.95x of rf in pure desert
 tFert[ti]=Math.min(1,Math.max(tFert[ti]+tFert[ti]*bonus,floor));}}
 
 // 2c: Temperate grassland bonus — chernozem/mollisol deep topsoil.
