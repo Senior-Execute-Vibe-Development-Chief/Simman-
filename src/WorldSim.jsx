@@ -497,13 +497,13 @@ const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
 if(e<=0)continue;
 // Temperature fitness for agriculture
 const tempFit=t>0.30&&t<0.70?1.0:t>0.20&&t<0.80?0.6:0.3;
-// Elevation: full bonus in lowlands, reduced in highlands, none in mountains
-const elevFit=e<0.06?1.0:e<0.18?1.0-(e-0.06)/0.12:0;
-const bonus=rf*tempFit*elevFit;
+// Elevation: full in lowlands, gentle reduction, only mountains get zero
+const elevFit=e<0.08?1.0:e<0.30?1.0-(e-0.08)*2.5:e<0.40?0.45-(e-0.30)*3:0;
+const bonus=rf*tempFit*Math.max(elevFit,0);
 // Arid boost: in dry regions, rivers ARE the fertility — much stronger floor.
 // The drier the land, the more the river dominates (Nile, Tigris, Indus, Colorado).
 const aridity=Math.max(0,1-m*2.5);// 1.0 at m=0, 0.6 at m=0.15, 0 at m=0.40
-const floor=rf*tempFit*elevFit*(0.55+aridity*0.40);// up to 0.95x of rf in pure desert
+const floor=rf*tempFit*Math.max(elevFit,0)*(0.55+aridity*0.40);
 tFert[ti]=Math.min(1,Math.max(tFert[ti]+tFert[ti]*bonus,floor));}}
 
 // 2c: Temperate grassland bonus — chernozem/mollisol deep topsoil.
