@@ -468,6 +468,7 @@ const riverMoistPeak=[0,0,0.25,0.40,0.55];
 for(let ti=0;ti<tw*th;ti++){
 const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;
 const R=riverRadius[mag],peak=riverMoistPeak[mag];
+if(R<1)continue;
 const sx=ti%tw,sy=(ti-sx)/tw;
 for(let dy=-R;dy<=R;dy++){const ny=sy+dy;if(ny<0||ny>=th)continue;
 for(let dx=-R;dx<=R;dx++){const nx=(sx+dx+tw)%tw;
@@ -895,10 +896,7 @@ const dataY=Math.round(screenYtoDataY(ty,CH,H));
 for(let tx=0;tx<CW;tx++){
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,dataY);
 const si=sy*W+sx;const e=w.elevation[si];
-// Use territory moisture (includes river boost) when available and in bounds
-const tty=Math.min(ter?ter.th-1:0,(sy/RES)|0),ttx=Math.min(ter?ter.tw-1:0,(sx/RES)|0);
-const tti=ter?tty*ter.tw+ttx:-1;
-const m=tti>=0&&ter&&ter.tMoist&&tti<ter.tw*ter.th?ter.tMoist[tti]:w.moisture[si];
+const m=w.moisture[si];
 const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
