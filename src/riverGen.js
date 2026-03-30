@@ -94,21 +94,25 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   // Filter out tiny puddles (< minLakeSize tiles).
   const lake = new Int16Array(N); // lake ID per tile, -1 = no lake
   lake.fill(-1);
-  const lakeInfo = []; // { id, size, tiles[] }
-  const minLakeSize = 40; // ~850km² minimum (Great Salt Lake scale at RES=1)
+  const lakeInfo = []; // { id, size, depth }
+  const minLakeSize = 20; // ~420km² minimum at RES=1
+  const minLakeDepth = 0.003; // minimum depression depth (~24m) to qualify as lake
   {
     const visited = new Uint8Array(N);
     for (let ti = 0; ti < N; ti++) {
       if (!isRaised[ti] || visited[ti] || tElev[ti] <= 0) continue;
-      if (tTemp[ti] < 0.12) continue; // skip ice sheets
-      // BFS flood fill this depression
+      if (tTemp[ti] < 0.12) continue;
       const q = [ti];
       visited[ti] = 1;
       const tiles = [];
+      let maxDepth = 0;
       let head = 0;
       while (head < q.length) {
         const ci = q[head++];
         tiles.push(ci);
+        // Track how deep the depression is (how much this tile was raised)
+        const depth = filled[ci] - tElev[ci];
+        if (depth > maxDepth) maxDepth = depth;
         const cx = ci % tw, cy = (ci - cx) / tw;
         for (let d = 0; d < 8; d++) {
           const nx2 = (cx + D8_DX[d] + tw) % tw;
@@ -121,10 +125,11 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
           q.push(ni);
         }
       }
-      if (tiles.length >= minLakeSize) {
+      // Must be large enough AND deep enough (filters shallow noise depressions)
+      if (tiles.length >= minLakeSize && maxDepth >= minLakeDepth) {
         const id = lakeInfo.length;
         for (const t of tiles) lake[t] = id;
-        lakeInfo.push({ id, size: tiles.length });
+        lakeInfo.push({ id, size: tiles.length, depth: maxDepth });
       }
     }
   }
