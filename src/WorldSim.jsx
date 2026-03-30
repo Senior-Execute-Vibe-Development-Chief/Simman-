@@ -943,14 +943,33 @@ const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,ri
 // concentrate along major rivers in fertile lowlands. A world with one great
 // river valley gets 1 civ. A world with five scattered fertile crescents gets 5.
 const minSpacing=Math.round(tw*0.08);
-// Score tiles: major rivers + high fertility + low difficulty + resources
+// Pre-compute river valley density: how many river tiles + fertile tiles in radius 6.
+// A single river tile in desert scores low. A 30-tile stretch of major river through
+// fertile lowland scores high. This is what makes Nile/Euphrates/Indus stand out.
+const R_VALLEY=6;
+const valleyScore=new Float32Array(tw*th);
+for(let ty2=R_VALLEY;ty2<th-R_VALLEY;ty2++)for(let tx=0;tx<tw;tx++){
+const ti=ty2*tw+tx;if(tElev[ti]<=0)continue;
+let riverCount=0,fertSum=0,majorRiver=0;
+for(let dy=-R_VALLEY;dy<=R_VALLEY;dy++){const ny=ty2+dy;if(ny<0||ny>=th)continue;
+for(let dx=-R_VALLEY;dx<=R_VALLEY;dx++){
+if(dx*dx+dy*dy>R_VALLEY*R_VALLEY)continue;// circular area
+const nx=((tx+dx)%tw+tw)%tw;const ni=ny*tw+nx;
+if(tElev[ni]<=0)continue;
+fertSum+=tFert[ni];
+if(rivers&&rivers.riverMag[ni]>=2)riverCount++;
+if(rivers&&rivers.riverMag[ni]>=3)majorRiver++;}}
+// Valley score: river density × fertility density. Both must be present.
+valleyScore[ti]=riverCount*majorRiver*0.01*fertSum*0.02;}
+// Score tiles: valley density is the dominant factor
 const scored=[];
 for(let ty2=2;ty2<th-2;ty2++)for(let tx=0;tx<tw;tx++){const ti=ty2*tw+tx;if(tElev[ti]<=0)continue;
-let s=tFert[ti]*4-tDiff[ti]*4;
-if(rivers&&rivers.riverMag[ti]>=2)s+=1.0;
-if(rivers&&rivers.riverMag[ti]>=3)s+=1.5;// major rivers strongly favored
-if(tCoast[ti])s+=0.3;
-if(deposits){s+=(deposits.copper[ti]+deposits.tin[ti])*0.5+deposits.salt[ti]*0.2;}
+let s=valleyScore[ti]*3;// river valley cluster is the primary signal
+s+=tFert[ti]*2-tDiff[ti]*3;// local tile quality
+if(rivers&&rivers.riverMag[ti]>=2)s+=0.5;// bonus if this specific tile is on a river
+if(rivers&&rivers.riverMag[ti]>=3)s+=0.5;
+if(tCoast[ti])s+=0.2;
+if(deposits){s+=(deposits.copper[ti]+deposits.tin[ti])*0.3+deposits.salt[ti]*0.1;}
 if(s>0.5)scored.push({x:tx,y:ty2,s});}
 scored.sort((a,b)=>b.s-a.s);
 // Pick all candidates above a quality threshold (55% of best spot), spaced apart.
