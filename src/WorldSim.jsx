@@ -850,13 +850,9 @@ setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
-// When globe is toggled on, trigger a redraw to build the texture
-useEffect(()=>{if(showGlobe&&worldRef.current&&terRef.current)draw(terRef.current);
+// Clear caches when globe toggled off (canvas remounts)
+useEffect(()=>{if(!showGlobe){terrainCache.current=null;imgRef.current=null;windParticlesRef.current=null;}
 },[showGlobe]);
-// Re-render when projection changes or globe toggled off
-useEffect(()=>{terrainCache.current=null;imgRef.current=null;windParticlesRef.current=null;
-if(!showGlobe&&terRef.current) setTimeout(()=>draw(terRef.current),50);
-},[useMercator,showGlobe]);
 
 // Generate extra seed preview maps (same params, different seeds)
 const PW=480,PH=240;
@@ -902,10 +898,13 @@ return buf;},[CH]);
 
 // Composite render: terrain + tribe overlay into single canvas
 const draw=useCallback((ter)=>{
-if(!canvasRef.current||!ter)return;const w=worldRef.current;if(!w)return;
+if(!ter)return;const w=worldRef.current;if(!w)return;
 const sl=0,vm=viewRef.current;
-const ctx=canvasRef.current.getContext("2d");
-if(!imgRef.current)imgRef.current=ctx.createImageData(CW,CH);
+const isGlobe=showGlobeRef.current;
+// Use onscreen canvas if available, otherwise create offscreen for globe
+let ctx=canvasRef.current?canvasRef.current.getContext("2d"):null;
+if(!ctx&&!isGlobe)return;
+if(!imgRef.current)imgRef.current=new ImageData(CW,CH);
 const img=imgRef.current;const d=img.data;
 // Pre-cache tribe colors (avoids HSL→RGB trig per tile)
 const maxT=ter.tribeCenters.length;const tcR=new Uint8Array(maxT),tcG=new Uint8Array(maxT),tcB=new Uint8Array(maxT);
@@ -1074,7 +1073,6 @@ if(mag>=4&&rivers){d[pi4]=55;d[pi4+1]=150;d[pi4+2]=245;}
 else if(mag>=3&&rivers){d[pi4]=45;d[pi4+1]=120;d[pi4+2]=220;}
 else if(mag>=2&&rivers){d[pi4]=35;d[pi4+1]=95;d[pi4+2]=190;}
 else if(mag===1&&streams){const a=0.45;d[pi4]=(d[pi4]*(1-a)+25*a)|0;d[pi4+1]=(d[pi4+1]*(1-a)+65*a)|0;d[pi4+2]=(d[pi4+2]*(1-a)+150*a)|0;}}}
-ctx.putImageData(img,0,0);
 // Update globe texture from rendered canvas data (supports all view modes)
 if(showGlobeRef.current){
 const gW=4096,gH=2048;
@@ -1097,6 +1095,8 @@ if(polarBlend>0){const pr=220,pg=225,pb=235;
 r=r*(1-polarBlend)+pr*polarBlend;g=g*(1-polarBlend)+pg*polarBlend;b=b*(1-polarBlend)+pb*polarBlend;}
 const ti3=(gy*gW+gx)*3;buf[ti3]=r|0;buf[ti3+1]=g|0;buf[ti3+2]=b|0;}}
 setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});}
+if(!ctx)return;
+ctx.putImageData(img,0,0);
 // Draw all tribe centers (tile coords — canvas is CW×CH)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
 if(!centers||ter.tribeSizes[st]<=0)continue;const cr=tcR[st],cg=tcG[st],cb=tcB[st];
