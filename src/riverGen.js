@@ -298,9 +298,15 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     // Use the stream threshold from percentile classification
     const minInflow = accums ? accums[Math.min(accums.length - 1, Math.floor(accums.length * 0.96))] : 5;
     if (maxInflow >= minInflow) {
-      const id = lakeInfo.length;
-      for (const t of candidate.tiles) lake[t] = id;
-      lakeInfo.push({ id, size: candidate.tiles.length, depth: candidate.maxDepth });
+      // Only keep the deep core of the depression, not shallow margins
+      // Tiles must be raised by at least 40% of the max depth
+      const depthCutoff = candidate.maxDepth * 0.4;
+      const coreTiles = candidate.tiles.filter(t => (filled[t] - tElev[t]) >= depthCutoff);
+      if (coreTiles.length >= 5) {
+        const id = lakeInfo.length;
+        for (const t of coreTiles) lake[t] = id;
+        lakeInfo.push({ id, size: coreTiles.length, depth: candidate.maxDepth });
+      }
     }
   }
 
