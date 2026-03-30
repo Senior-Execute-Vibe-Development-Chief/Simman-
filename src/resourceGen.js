@@ -377,8 +377,8 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
   // ── Point deposits: copper, tin, precious metals, gems ──
   // These are scattered as individual mine sites across valid terrain.
 
-  // COPPER: highlands/mountains, ~0.15% of candidates become mines
-  scatterMines('copper', 0.0015, 4, 0.9,
+  // COPPER: highlands/mountains, ~0.5% of candidates become mines
+  scatterMines('copper', 0.005, 4, 0.9,
     (ti) => tElev[ti] > 0.10,
     (ti) => {
       let s = Math.min(1, (tElev[ti] - 0.10) * 4);
@@ -386,8 +386,8 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
       return Math.min(1, s);
     });
 
-  // TIN: highlands + alluvial, ~0.05% — rarest mined resource
-  scatterMines('tin', 0.0005, 3, 0.85,
+  // TIN: highlands + alluvial, ~0.2% — rarest mined resource
+  scatterMines('tin', 0.002, 3, 0.85,
     (ti) => {
       const e = tElev[ti];
       return e > 0.08 || (e < 0.08 && e > 0 && tMoist[ti] > 0.25);
@@ -398,8 +398,8 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
       return 0.3 + tMoist[ti] * 0.4;
     });
 
-  // PRECIOUS METALS: any land, ~0.04% — rare but broadly distributed
-  scatterMines('precious', 0.0004, 4, 0.95,
+  // PRECIOUS METALS: any land, ~0.15% — rare but broadly distributed
+  scatterMines('precious', 0.0015, 4, 0.95,
     (ti) => tElev[ti] > 0.02,
     (ti) => {
       let s = Math.min(1, tElev[ti] * 3);
@@ -408,8 +408,8 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
       return Math.min(1, s);
     });
 
-  // GEMS: any land, ~0.03% — very rare, trade luxury
-  scatterMines('gems', 0.0003, 3, 0.8,
+  // GEMS: any land, ~0.1% — rare, trade luxury
+  scatterMines('gems', 0.001, 3, 0.8,
     (ti) => tElev[ti] > 0.03,
     (ti) => {
       let s = 0.2;
