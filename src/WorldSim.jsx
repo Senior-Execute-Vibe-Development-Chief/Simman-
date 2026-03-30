@@ -888,13 +888,15 @@ requestAnimationFrame(genNext);
 useEffect(()=>{generateExtraMaps();},[seed,mapCount,generateExtraMaps]);
 
 // Build terrain RGB cache at tile resolution (one entry per tile)
-const updateTerrainCache=useCallback((w)=>{
+const updateTerrainCache=useCallback((w,ter)=>{
 const buf=new Uint8Array(CW*CH*3);const sl=0;
 for(let ty=0;ty<CH;ty++){
 const dataY=Math.round(screenYtoDataY(ty,CH,H));
 for(let tx=0;tx<CW;tx++){
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,dataY);
-const si=sy*W+sx;const e=w.elevation[si],m=w.moisture[si];
+const si=sy*W+sx;const e=w.elevation[si];
+const ti=ty*CW+tx;
+const m=ter&&ter.tMoist?ter.tMoist[ti]:w.moisture[si];
 const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
@@ -939,7 +941,7 @@ const pi4=ti<<2;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=v;d[pi4+3]=255;}
 }else if(vm==="wind"){
 // Wind view — speed heatmap everywhere (land + ocean), like Windy.com
 const wX=w.windX,wY=w.windY;
-if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
+if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
 const tc=terrainCache.current;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
@@ -1066,7 +1068,7 @@ const shade=1-Math.max(0,e-0.1)*0.4;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else{
 // Default terrain view with tribe overlay — one pixel per tile
-if(!terrainCache.current){terrainCache.current=updateTerrainCache(w);}
+if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
 const tc=terrainCache.current;
 for(let ti=0;ti<N;ti++){const ow=ter.owner[ti];
 const pi4=ti<<2,ti3=ti*3;
