@@ -529,7 +529,7 @@ const riftEffect = new Float32Array(N);
   for (let qi = 0; qi < queue.length; qi++) {
     const ci = queue[qi];
     const cd = dist[ci];
-    if (cd > 6) continue;
+    if (cd > 10) continue;
     const ty = Math.floor(ci / cw), tx = ci % cw;
     const srcPlate = seedPlate[ci];
     for (const [ddx, ddy] of D8) {
@@ -542,7 +542,7 @@ const riftEffect = new Float32Array(N);
         dist[ni] = nd;
         seedPlate[ni] = srcPlate;
         seedStr[ni] = seedStr[ci];
-        const falloff = Math.exp(-nd * nd / 8);
+        const falloff = Math.exp(-nd * nd / 18);
         const effect = seedStr[ci] * falloff;
         if (effect > riftEffect[ni]) {
           riftEffect[ni] = effect;
@@ -662,7 +662,7 @@ const sampleCoarse = (field, fx, fy) => {
 // ═══════════════════════════════════════════════════════
 // STEP 7b: Coast-distance BFS for continentality terrain
 // ═══════════════════════════════════════════════════════
-const DG = RES, dw = Math.ceil(W / DG), dh = Math.ceil(H / DG);
+const DG = 1, dw = Math.ceil(W / DG), dh = Math.ceil(H / DG);
 const cdist = new Uint8Array(dw * dh); cdist.fill(255);
 const cdQ = [];
 for (let ty = 0; ty < dh; ty++) for (let tx = 0; tx < dw; tx++) {
@@ -779,8 +779,8 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const broadVal = sampleCoarse(mtnBroad, twx, twy);
 
     const plateauNoise = 0.7 + 0.6 * sg(nfPlateau, x, y);
-    const plateau = broadVal * p('plateauMult', 1.65) * plateauNoise;
-    const peaks = Math.max(0, tecMod) * p('peaksMult', 2.2);
+    const plateau = broadVal * p('plateauMult', 1.5) * plateauNoise;
+    const peaks = Math.max(0, tecMod) * p('peaksMult', 1.9);
     const mtnBump = sg(nfMtnBump, x, y)
       * p('mtnBumpStr', 0.10) * Math.min(1, (plateau + peaks) * 3);
     const tecLift = plateau + peaks + mtnBump;
@@ -804,30 +804,35 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const plateauZone = smoothstep(broadVal * 3); // broad tectonic uplift (Tibet-like)
 
     // Shield blocks: continent-scale elevated regions — suppressed where plates collide
-    // Real shields: Canadian Shield ~300m, African Plateau ~1000m (but that's tectonic)
+    // Real shields: Canadian Shield ~300m, African Plateau ~1000m
     const shieldVal = sg(nfShield, x, y);
-    const shieldE = smoothstep(shieldVal * 1.5 + 0.1) * 0.04 * interior * cratonZone;
+    const shieldE = smoothstep(shieldVal * 1.5 + 0.1) * 0.07 * interior * cratonZone;
 
     // Basin: medium-scale depressions and swells — only in stable interiors
     const basinVal = sg(nfBasin, x, y);
-    const basinE = basinVal * 0.015 * interior * cratonZone;
+    const basinE = basinVal * 0.04 * interior * cratonZone;
+    // Endorheic depressions: use Worley noise to create isolated lake basins.
+    // Worley F1 creates natural circular/elliptical cells — perfect for isolated basins.
+    // Only the deepest part of each cell (near the seed point) becomes a depression.
+    const [wF1] = worley(nx * 10 + 500, ny * 10 + 500);
+    const endorheicE = wF1 < 0.18 ? -(0.18 - wF1) * 0.35 * interior * cratonZone : 0;
 
     // Escarpment: sharp elevation breaks — at shield edges in stable interiors
     const escarpVal = sg(nfEscarpment, x, y);
-    const escarpE = escarpVal * 0.012 * interior * cratonZone
+    const escarpE = escarpVal * 0.025 * interior * cratonZone
       * smoothstep(Math.abs(shieldVal) * 3);
 
     // Medium terrain: rolling hills — present everywhere but louder on plateaus
-    const medTerrain = sg(nfMedTerrain, x, y) * (0.008 + plateauZone * 0.02) * interior;
+    const medTerrain = sg(nfMedTerrain, x, y) * (0.018 + plateauZone * 0.035) * interior;
 
-    // Fine local detail: small-scale undulation — present everywhere
-    const fineTerrain = sg(nfFineTerrain, x, y) * 0.006 * interior;
+    // Fine local detail: small-scale undulation — present everywhere on land
+    const fineTerrain = sg(nfFineTerrain, x, y) * 0.014;
 
     // Base elevation: most flat continental land is 50-200m (0.006-0.023).
     // Coast near sea level, ramps gently inland.
-    const baseE = 0.008 + interior * 0.015;
+    const baseE = 0.010 + interior * 0.020;
     const plateauBoost = Math.max(0, stampE) * 0.10 * interior;
-    const cratonE = baseE + shieldE + basinE + escarpE + medTerrain
+    const cratonE = baseE + shieldE + basinE + endorheicE + escarpE + medTerrain
       + fineTerrain + plateauBoost;
 
     // ── Mountain-specific texture ──
@@ -835,11 +840,17 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const ridgeVal = sg(nfMtnRidge, x, y);
     const valleyVal = sg(nfMtnValley, x, y);
     // Ridges push up, valleys carve down — only in tectonic mountain zones
-    const mtnTexture = (ridgeVal * 0.15 - (1 - valleyVal) * 0.06) * tecZone;
+    const mtnTexture = (ridgeVal * 0.18 - (1 - valleyVal) * 0.10) * tecZone;
+
+    // Per-pixel micro-terrain: bypasses precompute grid for true pixel-level roughness
+    // Simulates local geology — ridges, gullies, rock outcrops at 1-2km scale
+    // Direct fBm micro-terrain — adds hills and roughness, killed near coast
+    const microTerrain = interior > 0.3 ? fbm(nx * 20 + s1 + 200, ny * 20 + s1 + 200, 4, 2.0, 0.5)
+      * 0.014 * (0.6 + tecZone * 0.5) : 0;
 
     // Scale tectonic lift by coast distance so mountains ramp up inland
     const tecCoastRamp = smoothstep(interior * 1.5);
-    e = cratonE + tecLift * tecCoastRamp + mtnTexture * tecCoastRamp;
+    e = cratonE + tecLift * tecCoastRamp + mtnTexture * tecCoastRamp + microTerrain;
     // Cross-term: terrain noise modulates mountain zones for local variation
     e += medTerrain * tecLift * tecCoastRamp * 3.0;
     e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
