@@ -95,7 +95,7 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   const lake = new Int16Array(N); // lake ID per tile, -1 = no lake
   lake.fill(-1);
   const lakeInfo = []; // { id, size, tiles[] }
-  const minLakeSize = 3; // minimum tiles to count as a lake
+  const minLakeSize = 12; // ~250km² minimum (Lake Geneva scale at RES=1)
   {
     const visited = new Uint8Array(N);
     for (let ti = 0; ti < N; ti++) {
