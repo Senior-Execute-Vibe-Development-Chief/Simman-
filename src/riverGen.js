@@ -95,8 +95,8 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   const lake = new Int16Array(N); // lake ID per tile, -1 = no lake
   lake.fill(-1);
   const lakeInfo = []; // { id, size, depth }
-  const minLakeSize = 20; // ~420km² minimum at RES=1
-  const minLakeDepth = 0.003; // minimum depression depth (~24m) to qualify as lake
+  const minLakeSize = 40; // ~850km² minimum at RES=1
+  const minLakeDepth = 0.015; // minimum depression depth (~120m) to qualify as lake
   {
     const visited = new Uint8Array(N);
     for (let ti = 0; ti < N; ti++) {
