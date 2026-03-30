@@ -495,8 +495,13 @@ for(let ti=0;ti<tw*th;ti++){
 const rf=riverFert[ti];if(rf<0.01)continue;
 const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
 if(e<=0)continue;
-// Temperature fitness for agriculture
-const tempFit=t>0.30&&t<0.70?1.0:t>0.20&&t<0.80?0.6:0.3;
+// Temperature fitness for agriculture — rivers mitigate heat penalty
+// Hot irrigated land is extremely productive (Egypt, Mesopotamia, Indus)
+const baseTempFit=t>0.30&&t<0.70?1.0:t>0.20&&t<0.80?0.6:0.3;
+// With river water, hot climates are fine — only freezing is a problem
+const riverTempFit=t>0.20?1.0:t>0.12?0.5:0.2;
+// Blend: stronger rivers override climate more
+const tempFit=baseTempFit+(riverTempFit-baseTempFit)*Math.min(1,rf*1.5);
 // Elevation: full in lowlands, gentle reduction, only mountains get zero
 const elevFit=e<0.08?1.0:e<0.30?1.0-(e-0.08)*2.5:e<0.40?0.45-(e-0.30)*3:0;
 const bonus=rf*tempFit*Math.max(elevFit,0);
