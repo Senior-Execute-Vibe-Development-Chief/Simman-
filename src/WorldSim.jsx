@@ -937,27 +937,31 @@ for(let ti=0;ti<tw*th;ti++){
 if(tCoast[ti]&&tElev[ti]>0)tFert[ti]=Math.min(1,tFert[ti]+0.06);}
 // ── Natural resource deposits ──
 const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,rivers);
-// ── 3000 BC START: seed civilizations at the best river valley / fertile locations ──
-// By 3000 BC: Egypt unified, Sumer city-states, Indus emerging, farming everywhere fertile.
-// 3000 BC: only Egypt and Sumer exist as organized states.
-// Everything else crystallizes naturally from background farming villages.
-const NUM_CIVS=(w.preset==="earth"||w.preset==="earth_sim")?2:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:2;
+// ── 3000 BC START: seed civilizations at the world's best river valley locations ──
+// Number of starting civs emerges from geography, not hardcoded.
+// Principle: state-level organization appears wherever dense farming populations
+// concentrate along major rivers in fertile lowlands. A world with one great
+// river valley gets 1 civ. A world with five scattered fertile crescents gets 5.
 const minSpacing=Math.round(tw*0.08);
-// Score tiles for civ seeds: rivers + fertility + resources
+// Score tiles: major rivers + high fertility + low difficulty + resources
 const scored=[];
 for(let ty2=2;ty2<th-2;ty2++)for(let tx=0;tx<tw;tx++){const ti=ty2*tw+tx;if(tElev[ti]<=0)continue;
 let s=tFert[ti]*4-tDiff[ti]*4;
 if(rivers&&rivers.riverMag[ti]>=2)s+=1.0;
-if(rivers&&rivers.riverMag[ti]>=3)s+=1.0;
+if(rivers&&rivers.riverMag[ti]>=3)s+=1.5;// major rivers strongly favored
 if(tCoast[ti])s+=0.3;
 if(deposits){s+=(deposits.copper[ti]+deposits.tin[ti])*0.5+deposits.salt[ti]*0.2;}
 if(s>0.5)scored.push({x:tx,y:ty2,s});}
 scored.sort((a,b)=>b.s-a.s);
+// Pick all candidates above a quality threshold (55% of best spot), spaced apart.
+// This naturally yields 1-5 civs depending on how many great river valleys exist.
+const qualityThreshold=scored.length>0?scored[0].s*0.55:0;
 const origins=[];
 if(w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0){
 for(const ts of w.tribeSeeds){const tx=Math.min(tw-1,Math.max(0,Math.round(ts.x/RES))),ty2=Math.min(th-1,Math.max(0,Math.round(ts.y/RES)));
 if(tElev[ty2*tw+tx]>0)origins.push({x:tx,y:ty2,s:tFert[ty2*tw+tx]});}}
-else{for(const c of scored){if(origins.length>=NUM_CIVS)break;
+else{for(const c of scored){if(origins.length>=5)break;// hard max 5
+if(c.s<qualityThreshold)break;// below quality floor — stop
 let ok=true;for(const o of origins){let dx=Math.abs(c.x-o.x);if(dx>tw/2)dx=tw-dx;
 if(dx*dx+(c.y-o.y)**2<minSpacing*minSpacing){ok=false;break;}}
 if(ok)origins.push(c);}}
