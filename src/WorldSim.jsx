@@ -1269,8 +1269,9 @@ const[showPower,setShowPower]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
 const[hoverInfo,setHoverInfo]=useState(null);
 const[tecPresetName,setTecPresetName]=useState("Default");
-const[rightPanel,setRightPanel]=useState("");  // "" | "params"
+const[rightPanel,setRightPanel]=useState("");  // "" | "params" | "tribes"
 const[showTuning,setShowTuning]=useState(false);
+const[selectedTribe,setSelectedTribe]=useState(-1);
 const[useRealWind,setUseRealWind]=useState(false);
 const useMercator=false;
 const[showGlobe,setShowGlobe]=useState(false);
@@ -1566,6 +1567,54 @@ ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
 ctx.fillStyle=isCapital?`rgb(${cr},${cg},${cb})`:`rgba(${cr},${cg},${cb},0.7)`;ctx.fill();
 ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
 ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();}}
+// ── Draw ports as small diamonds ──
+if(ter.tribePorts){
+for(let st=0;st<ter.tribePorts.length;st++){
+if(!ter.tribePorts[st]||ter.tribeSizes[st]<=0)continue;
+const cr=tcR[st],cg=tcG[st],cb=tcB[st];
+for(const port of ter.tribePorts[st]){
+const px=port.x+0.5,py=dataYtoScreenY(port.y*RES,H,CH)+0.5;
+ctx.save();ctx.translate(px,py);ctx.rotate(Math.PI/4);
+ctx.fillStyle=`rgba(${cr},${cg},${cb},0.9)`;
+ctx.fillRect(-1.5,-1.5,3,3);
+ctx.strokeStyle="rgba(200,220,255,0.6)";ctx.lineWidth=0.5;
+ctx.strokeRect(-2,-2,4,4);
+ctx.restore();}}}
+// ── Draw maritime trade connections ──
+if(ter.tribeKnownCoasts&&ter.tribePorts){
+ctx.lineWidth=0.4;ctx.setLineDash([2,3]);
+for(let st=0;st<ter.tribeKnownCoasts.length;st++){
+if(!ter.tribeKnownCoasts[st]||ter.tribeSizes[st]<=0)continue;
+const ports=ter.tribePorts[st];if(!ports||ports.length===0)continue;
+const know=ter.tribeKnowledge&&ter.tribeKnowledge[st]?ter.tribeKnowledge[st]:null;
+if(!know||know.trade<0.1||know.navigation<0.1)continue;
+const cr=tcR[st],cg=tcG[st],cb=tcB[st];
+// Draw lines from nearest port to each known coast of another tribe
+const knownCoasts=ter.tribeKnownCoasts[st];const drawn=new Set();
+for(const kc of knownCoasts){
+if(kc.owner<0||kc.owner===st||ter.tribeSizes[kc.owner]<=0)continue;
+const key=Math.min(st,kc.owner)*10000+Math.max(st,kc.owner);
+if(drawn.has(key))continue;drawn.add(key);
+// Find nearest port to this known coast
+let nearPort=ports[0],nearDist=Infinity;
+for(const p of ports){const d=tDistW(p.x,p.y,kc.x,kc.y,ter.tw);if(d<nearDist){nearDist=d;nearPort=p;}}
+const x1=nearPort.x+0.5,y1=dataYtoScreenY(nearPort.y*RES,H,CH)+0.5;
+const x2=kc.x+0.5,y2=dataYtoScreenY(kc.y*RES,H,CH)+0.5;
+const alpha=Math.min(0.5,know.trade*0.8);
+ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;
+ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}}
+ctx.setLineDash([]);}
+// ── Highlight selected tribe ──
+if(ter._selectedTribe>=0&&ter.tribeSizes[ter._selectedTribe]>0){
+const sel=ter._selectedTribe;const cr=tcR[sel],cg=tcG[sel],cb=tcB[sel];
+// Draw border highlight around selected tribe territory
+for(let ti=0;ti<N;ti++){if(ter.owner[ti]!==sel)continue;
+const tx3=ti%ter.tw,ty3=(ti-tx3)/ter.tw;
+for(const[dx,dy]of DIRS){const nx=((tx3+dx)%ter.tw+ter.tw)%ter.tw,ny3=ty3+dy;
+if(ny3<0||ny3>=ter.th)continue;
+if(ter.owner[ny3*ter.tw+nx]!==sel){
+const sx2=tx3+0.5,sy2=dataYtoScreenY(ty3*RES,H,CH)+0.5;
+ctx.fillStyle=`rgba(255,255,255,0.35)`;ctx.fillRect(tx3,dataYtoScreenY(ty3*RES,H,CH),1,1);break;}}}}
 // Wind particles — animated white streaks that flow along wind vectors
 if(vm==="wind"&&w.windX&&w.windY){
 const NUM_PARTICLES=3000;const TRAIL_LEN=12;const MAX_AGE=80;
@@ -1672,7 +1721,7 @@ wfid=requestAnimationFrame(windLoop);
 return()=>cancelAnimationFrame(wfid);},[draw]);
 
 const togglePlay=()=>{if(!playing&&terRef.current&&terRef.current.settled>=terRef.current.landCount){
-const t=createTerritory(worldRef.current);terRef.current=t;setTribeCount(t.tribes);setCoverage(0);setDominant(null);terrainCache.current=null;draw(t);}
+const t=createTerritory(worldRef.current);terRef.current=t;setTribeCount(t.tribes);setCoverage(0);setDominant(null);setSelectedTribe(-1);terrainCache.current=null;draw(t);}
 playRef.current=!playRef.current;setPlaying(p=>!p);};
 const handleImport=useCallback(async(e)=>{const file=e.target.files?.[0];if(!file)return;
 e.target.value="";
@@ -1743,6 +1792,19 @@ knowledge:k?{ag:k.agriculture,mt:k.metallurgy,nv:k.navigation,cn:k.construction,
 setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,tribeInfo});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
+const onCanvasClick=useCallback((ev)=>{
+const c=canvasRef.current;if(!c||!terRef.current)return;
+const r=c.getBoundingClientRect();
+const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
+const wx=Math.floor(sx),wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
+const ter=terRef.current;if(!ter)return;
+const ttx=Math.min(ter.tw-1,(wx/RES)|0),tty=Math.min(ter.th-1,(wy/RES)|0);
+const tileOwner=ter.owner[tty*ter.tw+ttx];
+if(tileOwner>=0&&ter.tribeSizes[tileOwner]>0){
+setSelectedTribe(tileOwner);ter._selectedTribe=tileOwner;
+setRightPanel("tribes");draw(ter);
+}else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}
+},[CW,CH,draw]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
 const lbs={...bs,width:"100%",textAlign:"left",padding:"4px 10px"};
 const sep=<div style={{height:1,background:"rgba(201,184,122,0.10)",margin:"2px 0"}} />;
@@ -1808,7 +1870,7 @@ onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
 {mi===0?(showGlobe?<div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
 <GlobeView terrainBuf={globeBuf} world={world}
 CW={globeTexSize.w} CH={globeTexSize.h} /></div>
-:<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
+:<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
 style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",
 aspectRatio:`${CW}/${CH}`}} />)
 :<canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
@@ -1885,12 +1947,29 @@ style={{cursor:"pointer",color:"#8a8474",fontSize:8}}>None</span>
 </div></div>}
 
 {/* Stats — top right of map area */}
-<div style={{position:"absolute",top:6,right:6,background:"rgba(6,8,16,0.85)",borderRadius:3,padding:"4px 10px",
-display:"flex",gap:12,fontSize:11,color:"#c9b87a",pointerEvents:"none"}}>
-<span>{tribeCount} tribes</span><span>{coverage}%</span>
+{(()=>{const ter=terRef.current;
+const step=ter?ter.stepCount:0;
+const year=8000-step*10;// 1 step = 10 years, starting 8000 BC
+const yearStr=year>0?`${year} BC`:`${Math.abs(year)} AD`;
+// Compute average knowledge across alive tribes for era label
+let avgAg=0,avgMet=0,avgNav=0,avgOrg=0,aliveK=0;
+if(ter&&ter.tribeKnowledge){for(let i=0;i<ter.tribeKnowledge.length;i++){
+if(ter.tribeSizes[i]<=0)continue;aliveK++;const k=ter.tribeKnowledge[i];
+avgAg+=k.agriculture;avgMet+=k.metallurgy;avgNav+=k.navigation;avgOrg+=k.organization;}
+if(aliveK>0){avgAg/=aliveK;avgMet/=aliveK;avgNav/=aliveK;avgOrg/=aliveK;}}
+return <div style={{position:"absolute",top:6,right:6,background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"5px 12px",
+display:"flex",gap:14,fontSize:11,color:"#c9b87a",pointerEvents:"none",alignItems:"center",
+border:"1px solid rgba(201,184,122,0.1)"}}>
+<span style={{fontWeight:"bold",fontSize:13,color:"#e0d4a8",letterSpacing:0.5}}>{yearStr}</span>
+<span style={{color:"#8a8474"}}>Step {step}</span>
+<span>{tribeCount} tribes</span>
+<span>{coverage}% settled</span>
 {dominant&&<span style={{display:"inline-flex",alignItems:"center",gap:3}}>
-<span style={{width:7,height:7,borderRadius:1,background:`rgb(${tribeRGB(dominant.id).join(",")})`,display:"inline-block"}} />
-{dominant.size}t</span>}</div>
+<span style={{width:8,height:8,borderRadius:2,background:`rgb(${tribeRGB(dominant.id).join(",")})`,display:"inline-block",border:"1px solid rgba(255,255,255,0.3)"}} />
+<span style={{color:"#c9b87a"}}>{dominant.size}t</span></span>}
+{aliveK>0&&<span style={{fontSize:9,color:"#6a6458"}}>
+Ag {(avgAg*100|0)} Mt {(avgMet*100|0)} Nv {(avgNav*100|0)} Og {(avgOrg*100|0)}</span>}
+</div>;})()}
 
 {/* ══ BOTTOM CENTER: VIEW/OVERLAY OPTIONS (larger) ══ */}
 <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",
@@ -1930,6 +2009,9 @@ style={{...bs,background:showGlobe?"rgba(120,180,220,0.25)":"transparent",border
 color:showGlobe?"#78b4dc":"#5a5448",padding:"6px 12px",fontSize:12}}>Globe</button>
 {(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
 <div style={{width:1,height:20,background:"rgba(201,184,122,0.15)"}} />
+<button onClick={()=>setRightPanel(rightPanel==="tribes"?"":"tribes")}
+style={{...bs,color:rightPanel==="tribes"?"#c9b87a":"#5a5448",background:rightPanel==="tribes"?"rgba(201,184,122,0.15)":"transparent",
+border:"none",padding:"6px 12px",fontSize:12}}>Tribes</button>
 <button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
 style={{...bs,color:rightPanel==="params"?"#c9b87a":"#5a5448",background:rightPanel==="params"?"rgba(201,184,122,0.15)":"transparent",
 border:"none",padding:"6px 12px",fontSize:12}}>Params</button>
@@ -1952,6 +2034,107 @@ display:"flex",alignItems:"center"}}>
 <div style={{flex:1,overflowY:"auto",padding:"6px 8px"}}>
 <ParamEditor params={{..._tecParams}} onChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
   groups={preset==="earth"?["wind"]:preset==="earth_sim"?["wind","moisture"]:undefined} />
+</div>
+</div>}
+
+{/* ══ RIGHT PANEL: Tribes ══ */}
+{rightPanel==="tribes"&&<div style={{width:rpW,minWidth:rpW,height:"100%",background:"rgba(6,8,16,0.92)",
+borderLeft:"1px solid rgba(201,184,122,0.08)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+<div style={{padding:"8px 10px",fontSize:11,color:"#c9b87a",borderBottom:"1px solid rgba(201,184,122,0.08)",
+display:"flex",alignItems:"center"}}>
+<span style={{fontWeight:"bold"}}>Tribes</span>
+<div style={{flex:1}} />
+<span onClick={()=>setRightPanel("")} style={{cursor:"pointer",color:"#6a6458",fontSize:14}}>x</span>
+</div>
+<div style={{flex:1,overflowY:"auto",padding:"4px 0"}}>
+{(()=>{const ter=terRef.current;if(!ter)return <div style={{color:"#5a5448",padding:10,fontSize:10}}>No simulation running</div>;
+const step=ter.stepCount;const year=8000-step*10;const yearStr=year>0?`${year} BC`:`${Math.abs(year)} AD`;
+// Build sorted tribe list
+const tribes=[];
+for(let i=0;i<ter.tribeSizes.length;i++){if(ter.tribeSizes[i]<=0)continue;
+const k=ter.tribeKnowledge&&ter.tribeKnowledge[i]?ter.tribeKnowledge[i]:null;
+const pop=ter.tribePopulation?ter.tribePopulation[i]:0;
+const ports=ter.tribePorts&&ter.tribePorts[i]?ter.tribePorts[i].length:0;
+const centers=ter.tribeCenters[i]?ter.tribeCenters[i].length:0;
+const knownCoasts=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
+const power=tribePower(ter,i);
+tribes.push({id:i,size:ter.tribeSizes[i],pop:Math.round(pop),power,ports,centers,knownCoasts,k});}
+tribes.sort((a,b)=>b.power-a.power);
+// Selected tribe detail
+const sel=selectedTribe>=0&&ter.tribeSizes[selectedTribe]>0?selectedTribe:-1;
+const selData=sel>=0?tribes.find(t=>t.id===sel):null;
+return <>
+{/* Selected tribe detail */}
+{selData&&<div style={{padding:"8px 10px",borderBottom:"1px solid rgba(201,184,122,0.12)",background:"rgba(201,184,122,0.04)"}}>
+<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+<span style={{width:12,height:12,borderRadius:3,background:`rgb(${tribeRGB(selData.id).join(",")})`,display:"inline-block",border:"1px solid rgba(255,255,255,0.3)"}} />
+<span style={{fontWeight:"bold",fontSize:13,color:"#e0d4a8"}}>Tribe #{selData.id}</span>
+<span style={{color:"#6a6458",fontSize:9,marginLeft:"auto"}} onClick={()=>{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}}>(deselect)</span>
+</div>
+<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 10px",fontSize:10,color:"#b0a888"}}>
+<div><span style={{color:"#7a7464"}}>Territory:</span> {selData.size} tiles</div>
+<div><span style={{color:"#7a7464"}}>Population:</span> {selData.pop}</div>
+<div><span style={{color:"#7a7464"}}>Power:</span> {selData.power.toFixed(1)}</div>
+<div><span style={{color:"#7a7464"}}>Centers:</span> {selData.centers}</div>
+<div><span style={{color:"#7a7464"}}>Ports:</span> {selData.ports}</div>
+<div><span style={{color:"#7a7464"}}>Known coasts:</span> {selData.knownCoasts}</div>
+</div>
+{selData.k&&<div style={{marginTop:6}}>
+<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Knowledge</div>
+{[["agriculture","Ag","#8ab870"],["metallurgy","Mt","#c8946a"],["navigation","Nv","#6a9ec8"],
+["construction","Cn","#a89878"],["organization","Og","#b88ac8"],["trade","Tr","#c8b84a"]].map(([key,label,col])=>{
+const v=selData.k[key];return <div key={key} style={{display:"flex",alignItems:"center",gap:4,marginBottom:1}}>
+<span style={{width:22,fontSize:9,color:v>0.2?col:"#4a4438"}}>{label}</span>
+<div style={{flex:1,height:6,background:"rgba(255,255,255,0.05)",borderRadius:2,overflow:"hidden"}}>
+<div style={{width:`${v*100}%`,height:"100%",background:col,borderRadius:2,transition:"width 0.3s"}} /></div>
+<span style={{width:28,fontSize:8,color:"#6a6458",textAlign:"right"}}>{(v*100|0)}%</span>
+</div>;})}
+</div>}
+{/* Neighbor relationships */}
+{(()=>{if(!ter._borderContacts||!ter._borderContacts[sel])return null;
+const contacts=ter._borderContacts[sel];
+const neighbors=Object.keys(contacts).map(nid=>{const n=parseInt(nid);
+return{id:n,contact:contacts[nid],size:ter.tribeSizes[n]};}).filter(n=>n.size>0).sort((a,b)=>b.contact-a.contact).slice(0,6);
+if(neighbors.length===0)return null;
+return <div style={{marginTop:6}}>
+<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Neighbors</div>
+{neighbors.map(n=><div key={n.id} style={{display:"flex",alignItems:"center",gap:4,fontSize:9,marginBottom:1,cursor:"pointer"}}
+onClick={()=>{setSelectedTribe(n.id);ter._selectedTribe=n.id;draw(ter);}}>
+<span style={{width:8,height:8,borderRadius:2,background:`rgb(${tribeRGB(n.id).join(",")})`,display:"inline-block"}} />
+<span style={{color:"#b0a888"}}>#{n.id}</span>
+<span style={{color:"#6a6458"}}>{ter.tribeSizes[n.id]}t</span>
+<span style={{color:"#4a4438",fontSize:8}}>{n.contact} border</span>
+</div>)}
+</div>;})()}
+</div>}
+{/* Tribe list */}
+<div style={{padding:"4px 6px"}}>
+<div style={{fontSize:9,color:"#6a6458",marginBottom:4,padding:"0 4px"}}>{tribes.length} tribes (by power)</div>
+{tribes.map(t=>{const isSel=t.id===sel;
+return <div key={t.id} onClick={()=>{setSelectedTribe(t.id);if(ter)ter._selectedTribe=t.id;draw(ter);}}
+style={{display:"flex",alignItems:"center",gap:5,padding:"3px 6px",cursor:"pointer",
+borderRadius:2,background:isSel?"rgba(201,184,122,0.12)":"transparent",
+borderLeft:isSel?`2px solid rgb(${tribeRGB(t.id).join(",")})`:"2px solid transparent"}}>
+<span style={{width:8,height:8,borderRadius:2,flexShrink:0,
+background:`rgb(${tribeRGB(t.id).join(",")})`,display:"inline-block"}} />
+<div style={{flex:1,minWidth:0}}>
+<div style={{fontSize:10,color:isSel?"#e0d4a8":"#b0a888",display:"flex",gap:6}}>
+<span>#{t.id}</span>
+<span style={{color:"#7a7464"}}>{t.size}t</span>
+<span style={{color:"#6a6458",fontSize:9}}>pop {t.pop}</span>
+</div>
+{t.k&&<div style={{fontSize:8,color:"#5a5448",display:"flex",gap:3,flexWrap:"wrap"}}>
+{t.k.agriculture>0.05&&<span style={{color:"#6a8a50"}}>Ag{(t.k.agriculture*100|0)}</span>}
+{t.k.metallurgy>0.05&&<span style={{color:"#a07050"}}>Mt{(t.k.metallurgy*100|0)}</span>}
+{t.k.navigation>0.05&&<span style={{color:"#5080a0"}}>Nv{(t.k.navigation*100|0)}</span>}
+{t.k.organization>0.05&&<span style={{color:"#9070a0"}}>Og{(t.k.organization*100|0)}</span>}
+{t.k.trade>0.05&&<span style={{color:"#a09030"}}>Tr{(t.k.trade*100|0)}</span>}
+</div>}
+</div>
+<span style={{fontSize:8,color:"#5a5448",flexShrink:0}}>{t.power.toFixed(0)}pw</span>
+</div>;})}
+</div>
+</>; })()}
 </div>
 </div>}
 
