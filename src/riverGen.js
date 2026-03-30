@@ -89,14 +89,15 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     }
   }
 
-  // ── Step 1b: Detect lakes from raised tiles ──
-  // Cluster contiguous raised land tiles into lake bodies.
-  // Filter out tiny puddles (< minLakeSize tiles).
-  const lake = new Int16Array(N); // lake ID per tile, -1 = no lake
+  // ── Step 1b: Detect candidate lake depressions ──
+  // Cluster contiguous raised tiles. Final validation happens after flow accumulation
+  // to ensure lakes are actually fed by rivers.
+  const lake = new Int16Array(N);
   lake.fill(-1);
-  const lakeInfo = []; // { id, size, depth }
-  const minLakeSize = 40; // ~850km² minimum at RES=1
-  const minLakeDepth = 0.015; // minimum depression depth (~120m) to qualify as lake
+  const lakeInfo = [];
+  const minLakeSize = 30;
+  const minLakeDepth = 0.012; // ~96m
+  const candidateLakes = []; // {tiles[], maxDepth}
   {
     const visited = new Uint8Array(N);
     for (let ti = 0; ti < N; ti++) {
@@ -110,7 +111,6 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
       while (head < q.length) {
         const ci = q[head++];
         tiles.push(ci);
-        // Track how deep the depression is (how much this tile was raised)
         const depth = filled[ci] - tElev[ci];
         if (depth > maxDepth) maxDepth = depth;
         const cx = ci % tw, cy = (ci - cx) / tw;
@@ -125,11 +125,8 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
           q.push(ni);
         }
       }
-      // Must be large enough AND deep enough (filters shallow noise depressions)
       if (tiles.length >= minLakeSize && maxDepth >= minLakeDepth) {
-        const id = lakeInfo.length;
-        for (const t of tiles) lake[t] = id;
-        lakeInfo.push({ id, size: tiles.length, depth: maxDepth });
+        candidateLakes.push({ tiles, maxDepth });
       }
     }
   }
@@ -219,16 +216,15 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
 
   const riverMag = new Uint8Array(N);
 
-  if (maxAccum > 0) {
-    // Use percentile-based thresholds — adapts to any map/moisture
-    // Collect all land accumulation values and sort
-    const accums = [];
-    for (let ti = 0; ti < N; ti++) {
-      if (tElev[ti] > 0 && flowAccum[ti] > 0.1) accums.push(flowAccum[ti]);
-    }
-    accums.sort((a, b) => a - b);
-    const pct = (p) => accums[Math.min(accums.length - 1, Math.floor(accums.length * p / 100))];
+  // Collect all land accumulation values for percentile thresholds
+  const accums = [];
+  for (let ti = 0; ti < N; ti++) {
+    if (tElev[ti] > 0 && flowAccum[ti] > 0.1) accums.push(flowAccum[ti]);
+  }
+  accums.sort((a, b) => a - b);
+  const pct = (p) => accums[Math.min(accums.length - 1, Math.floor(accums.length * p / 100))];
 
+  if (maxAccum > 0 && accums.length > 0) {
     // Top 5% = stream, 1% = tributary, 0.2% = major, 0.02% = great
     const tStream = pct(95);
     const tTributary = pct(99);
@@ -265,6 +261,46 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
         riverMag[ni] = mag; // propagate magnitude downstream
         ci = ni;
       }
+    }
+  }
+
+  // ── Step 5: Validate candidate lakes against river inflow ──
+  // A depression only becomes a lake if rivers actually feed it.
+  // Check flow accumulation at tiles bordering each candidate — if significant
+  // flow enters the depression, it's a real lake.
+  for (const candidate of candidateLakes) {
+    // Build a set of candidate tiles for fast lookup
+    const tileSet = new Set(candidate.tiles);
+    // Find max flow accumulation at the border of this depression
+    // (tiles adjacent to the depression that flow INTO it)
+    let maxInflow = 0;
+    for (const ti of candidate.tiles) {
+      const tx = ti % tw, ty2 = (ti - tx) / tw;
+      for (let d = 0; d < 8; d++) {
+        const nx = (tx + D8_DX[d] + tw) % tw;
+        const ny = ty2 + D8_DY[d];
+        if (ny < 0 || ny >= th) continue;
+        const ni = ny * tw + nx;
+        if (tileSet.has(ni)) continue; // skip tiles within the depression
+        if (tElev[ni] <= 0) continue;
+        // Check if this neighbor flows into the depression
+        const nd = flowDir[ni];
+        if (nd === 255) continue;
+        const fdx = D8_DX[nd], fdy = D8_DY[nd];
+        const fnx = (ni % tw + fdx + tw) % tw;
+        const fny = ((ni - ni % tw) / tw) + fdy;
+        if (fny >= 0 && fny < th && tileSet.has(fny * tw + fnx)) {
+          maxInflow = Math.max(maxInflow, flowAccum[ni]);
+        }
+      }
+    }
+    // Lake needs meaningful river inflow — at least stream-level accumulation
+    // Use the stream threshold from percentile classification
+    const minInflow = accums ? accums[Math.min(accums.length - 1, Math.floor(accums.length * 0.96))] : 5;
+    if (maxInflow >= minInflow) {
+      const id = lakeInfo.length;
+      for (const t of candidate.tiles) lake[t] = id;
+      lakeInfo.push({ id, size: candidate.tiles.length, depth: candidate.maxDepth });
     }
   }
 
