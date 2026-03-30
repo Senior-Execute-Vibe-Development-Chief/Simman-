@@ -811,10 +811,11 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     // Basin: medium-scale depressions and swells — only in stable interiors
     const basinVal = sg(nfBasin, x, y);
     const basinE = basinVal * 0.03 * interior * cratonZone;
-    // Endorheic depressions: large-scale deep basins that collect water into lakes
-    // These create Caspian/Great Lakes/Chad-scale inland basins
-    const endorheicVal = sg(nfBasin, x * 0.4, y * 0.4);
-    const endorheicE = Math.min(0, endorheicVal) * 0.04 * interior * cratonZone;
+    // Endorheic depressions: use Worley noise to create isolated lake basins.
+    // Worley F1 creates natural circular/elliptical cells — perfect for isolated basins.
+    // Only the deepest part of each cell (near the seed point) becomes a depression.
+    const [wF1] = worley(nx * 10 + 500, ny * 10 + 500);
+    const endorheicE = wF1 < 0.18 ? -(0.18 - wF1) * 0.35 * interior * cratonZone : 0;
 
     // Escarpment: sharp elevation breaks — at shield edges in stable interiors
     const escarpVal = sg(nfEscarpment, x, y);

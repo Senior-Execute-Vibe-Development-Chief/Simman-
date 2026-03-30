@@ -95,8 +95,8 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   const lake = new Int16Array(N);
   lake.fill(-1);
   const lakeInfo = [];
-  const minLakeSize = 30;
-  const minLakeDepth = 0.012; // ~96m
+  const minLakeSize = 15; // ~315km² at RES=1
+  const minLakeDepth = 0.005; // ~40m — lower threshold OK because river-inflow check filters noise
   const candidateLakes = []; // {tiles[], maxDepth}
   {
     const visited = new Uint8Array(N);
@@ -296,12 +296,20 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     }
     // Lake needs meaningful river inflow — at least stream-level accumulation
     // Use the stream threshold from percentile classification
-    const minInflow = accums ? accums[Math.min(accums.length - 1, Math.floor(accums.length * 0.96))] : 5;
+    // Require at least some river flow entering the basin (90th percentile = modest stream)
+    const minInflow = accums.length > 0 ? accums[Math.min(accums.length - 1, Math.floor(accums.length * 0.93))] : 1;
     if (maxInflow >= minInflow) {
       // Only keep the deep core of the depression, not shallow margins
       // Tiles must be raised by at least 40% of the max depth
-      const depthCutoff = candidate.maxDepth * 0.4;
-      const coreTiles = candidate.tiles.filter(t => (filled[t] - tElev[t]) >= depthCutoff);
+      const depthCutoff = candidate.maxDepth * 0.3;
+      let coreTiles = candidate.tiles.filter(t => (filled[t] - tElev[t]) >= depthCutoff);
+      // Cap lake size — largest real lake (Caspian) is ~370k km² ≈ ~840 tiles at 21km
+      const maxLakeTiles = 800;
+      if (coreTiles.length > maxLakeTiles) {
+        // Keep only the deepest tiles
+        coreTiles.sort((a, b) => (filled[b] - tElev[b]) - (filled[a] - tElev[a]));
+        coreTiles = coreTiles.slice(0, maxLakeTiles);
+      }
       if (coreTiles.length >= 5) {
         const id = lakeInfo.length;
         for (const t of coreTiles) lake[t] = id;
