@@ -66,7 +66,8 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     }
   }
 
-  // Process: flood inward from ocean/edges
+  // Process: flood inward from ocean/edges — track raised tiles (= lake beds)
+  const isRaised = new Uint8Array(N); // 1 if tile was raised during pit fill
   while (heap.length > 0) {
     const ti = heapPop();
     const tx = ti % tw, ty = (ti - tx) / tw;
@@ -81,9 +82,50 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
 
       // If neighbor is lower than current, it's in a pit — raise it
       if (filled[ni] <= filled[ti] && tElev[ni] > 0) {
-        filled[ni] = filled[ti] + 0.00001; // tiny epsilon to ensure downhill flow
+        filled[ni] = filled[ti] + 0.00001;
+        isRaised[ni] = 1; // this tile is in a natural depression
       }
       heapPush(ni);
+    }
+  }
+
+  // ── Step 1b: Detect lakes from raised tiles ──
+  // Cluster contiguous raised land tiles into lake bodies.
+  // Filter out tiny puddles (< minLakeSize tiles).
+  const lake = new Int16Array(N); // lake ID per tile, -1 = no lake
+  lake.fill(-1);
+  const lakeInfo = []; // { id, size, tiles[] }
+  const minLakeSize = 3; // minimum tiles to count as a lake
+  {
+    const visited = new Uint8Array(N);
+    for (let ti = 0; ti < N; ti++) {
+      if (!isRaised[ti] || visited[ti] || tElev[ti] <= 0) continue;
+      if (tTemp[ti] < 0.12) continue; // skip ice sheets
+      // BFS flood fill this depression
+      const q = [ti];
+      visited[ti] = 1;
+      const tiles = [];
+      let head = 0;
+      while (head < q.length) {
+        const ci = q[head++];
+        tiles.push(ci);
+        const cx = ci % tw, cy = (ci - cx) / tw;
+        for (let d = 0; d < 8; d++) {
+          const nx2 = (cx + D8_DX[d] + tw) % tw;
+          const ny2 = cy + D8_DY[d];
+          if (ny2 < 0 || ny2 >= th) continue;
+          const ni = ny2 * tw + nx2;
+          if (visited[ni] || !isRaised[ni] || tElev[ni] <= 0) continue;
+          if (tTemp[ni] < 0.12) continue;
+          visited[ni] = 1;
+          q.push(ni);
+        }
+      }
+      if (tiles.length >= minLakeSize) {
+        const id = lakeInfo.length;
+        for (const t of tiles) lake[t] = id;
+        lakeInfo.push({ id, size: tiles.length });
+      }
     }
   }
 
@@ -221,7 +263,7 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     }
   }
 
-  return { flowDir, flowAccum, riverMag, maxAccum };
+  return { flowDir, flowAccum, riverMag, maxAccum, lake, lakeInfo };
 }
 
 export function riverName(riverMag, ti) {

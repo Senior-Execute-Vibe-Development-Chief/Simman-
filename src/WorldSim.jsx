@@ -497,6 +497,30 @@ tMoist[ti]=Math.min(1,oldMoist+rm*0.08);
 }
 tFert[ti]=tileFert(tTemp[ti],tMoist[ti],tElev[ti]);}}
 
+// ── Lake moisture boost: lakes act as local moisture sources ──
+if(rivers.lake){
+const lakeRadius=3;const lakeMoistPeak=0.20;
+for(let ti=0;ti<tw*th;ti++){
+if(rivers.lake[ti]<0)continue;
+const sx=ti%tw,sy=(ti-sx)/tw;
+for(let dy=-lakeRadius;dy<=lakeRadius;dy++){const ny=sy+dy;if(ny<0||ny>=th)continue;
+for(let dx=-lakeRadius;dx<=lakeRadius;dx++){const nx=(sx+dx+tw)%tw;
+const ni=ny*tw+nx;
+if(tElev[ni]<=0||rivers.lake[ni]>=0)continue;// skip ocean and other lake tiles
+let ddx=Math.abs(dx);if(ddx>tw/2)ddx=tw-ddx;
+const dist=Math.sqrt(ddx*ddx+dy*dy);
+if(dist>lakeRadius)continue;
+const effDist=Math.max(dist,0.8);
+const falloff=0.5+0.5*Math.cos(effDist/lakeRadius*Math.PI);
+const boost=lakeMoistPeak*falloff;
+const oldM=tMoist[ni];
+if(oldM<0.45){tMoist[ni]=Math.min(0.50,oldM+boost);}
+else{tMoist[ni]=Math.min(1,oldM+boost*0.08);}
+tFert[ni]=tileFert(tTemp[ni],tMoist[ni],tElev[ni]);}}}
+// Lake tiles themselves: water, not land — zero fertility, impassable
+for(let ti=0;ti<tw*th;ti++){
+if(rivers.lake[ti]>=0){tMoist[ti]=0.8;tFert[ti]=0;tDiff[ti]=1.0;}}}
+
 // ── Pass 2: Geological fertility modifiers ──
 // These require neighbor access so run after base pass.
 
@@ -893,6 +917,9 @@ const wi=Math.min(H-1,sy+dy)*W+Math.min(W-1,sx+dx);
 if(w.swamp&&w.swamp[wi])hasSwamp=true;}
 let pr=r,pg=g,pb=b;
 if(e>sl&&hasSwamp){pr=40;pg=58;pb=38;}
+// Lake tiles render as freshwater blue
+if(ter&&ter.rivers&&ter.rivers.lake){const tti=Math.min(ter.th-1,(sy/RES)|0)*ter.tw+Math.min(ter.tw-1,(sx/RES)|0);
+if(ter.rivers.lake[tti]>=0){pr=25;pg=60;pb=105;}}
 const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}}
 return buf;},[CH]);
 
@@ -906,6 +933,8 @@ let ctx=canvasRef.current?canvasRef.current.getContext("2d"):null;
 if(!ctx&&!isGlobe)return;
 if(!imgRef.current)imgRef.current=new ImageData(CW,CH);
 const img=imgRef.current;const d=img.data;
+// Lake lookup for rendering
+const lk=ter.rivers&&ter.rivers.lake?ter.rivers.lake:null;
 // Pre-cache tribe colors (avoids HSL→RGB trig per tile)
 const maxT=ter.tribeCenters.length;const tcR=new Uint8Array(maxT),tcG=new Uint8Array(maxT),tcB=new Uint8Array(maxT);
 for(let t2=0;t2<maxT;t2++){const c=tribeRGB(t2);tcR[t2]=c[0];tcG[t2]=c[1];tcB[t2]=c[2];}
@@ -1047,6 +1076,9 @@ if(ow>=0&&ter.tElev[ti]>sl){const alpha=ter.frontier[ti]?0.55:0.32,invA=1-alpha;
 d[pi4]=(tc[ti3]*invA+tcR[ow]*alpha+.5)|0;d[pi4+1]=(tc[ti3+1]*invA+tcG[ow]*alpha+.5)|0;d[pi4+2]=(tc[ti3+2]*invA+tcB[ow]*alpha+.5)|0;
 }else{d[pi4]=tc[ti3];d[pi4+1]=tc[ti3+1];d[pi4+2]=tc[ti3+2];}
 d[pi4+3]=255;}}
+// Lake overlay — render lake tiles as freshwater blue in all view modes
+if(lk){for(let ti=0;ti<N;ti++){if(lk[ti]<0)continue;
+const pi4=ti<<2;d[pi4]=25;d[pi4+1]=60;d[pi4+2]=105;d[pi4+3]=255;}}
 // Plate boundary overlay — domain-warped lookup for organic boundaries
 if(showPlatesRef.current&&w.pixPlate){
 const plateAt=(px,py)=>{
@@ -1269,7 +1301,9 @@ const wdir=["E","NE","N","NW","W","SW","S","SE"][Math.round(wdeg/45)%8];
 const tileRes=terTi>=0&&terRef.current&&terRef.current.deposits?tileResourceSummary(terRef.current.deposits,terTi):[];
 const riverMag=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.riverMag[terTi]:0;
 const riverAccum=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.flowAccum[terTi]:0;
-setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum});
+const isLake=terTi>=0&&terRef.current&&terRef.current.rivers&&terRef.current.rivers.lake?terRef.current.rivers.lake[terTi]>=0:false;
+const lakeSize=isLake?terRef.current.rivers.lakeInfo[terRef.current.rivers.lake[terTi]].size:0;
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
@@ -1353,7 +1387,7 @@ color:"#6a6458",fontSize:9,pointerEvents:"none"}}>Seed: {extraSeed}</div>}
 background:"rgba(6,8,16,0.92)",color:"#c9b87a",fontSize:10,padding:"6px 10px",
 borderRadius:3,pointerEvents:"none",whiteSpace:"nowrap",zIndex:100,lineHeight:"15px",
 border:"1px solid rgba(201,184,122,0.15)"}}>
-<div style={{fontWeight:"bold",marginBottom:2,color:hoverInfo.elevM<=0?"#4a6a8a":"#c9b87a"}}>{hoverInfo.biome}</div>
+<div style={{fontWeight:"bold",marginBottom:2,color:hoverInfo.isLake?"#4a8aaa":hoverInfo.elevM<=0?"#4a6a8a":"#c9b87a"}}>{hoverInfo.isLake?`Lake (${hoverInfo.lakeSize} tiles)`:hoverInfo.biome}</div>
 <div><span style={{color:"#8a8474"}}>Elev:</span> {hoverInfo.elevM}m</div>
 <div><span style={{color:"#8a8474"}}>Temp:</span> {hoverInfo.tempC}°C</div>
 <div><span style={{color:"#8a8474"}}>Moist:</span> {(hoverInfo.moist*100).toFixed(0)}%</div>
