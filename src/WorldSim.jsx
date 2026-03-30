@@ -500,7 +500,10 @@ const tempFit=t>0.30&&t<0.70?1.0:t>0.20&&t<0.80?0.6:0.3;
 // Elevation: full bonus in lowlands, reduced in highlands, none in mountains
 const elevFit=e<0.06?1.0:e<0.18?1.0-(e-0.06)/0.12:0;
 const bonus=rf*tempFit*elevFit;
-if(bonus>0.01)tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}}
+// River water overrides local aridity — set a fertility floor.
+// A great river through desert creates an oasis corridor (Nile, Tigris, Indus).
+const floor=rf*tempFit*elevFit*0.55;// up to 0.47 for great river in warm lowland
+tFert[ti]=Math.min(1,Math.max(tFert[ti]+tFert[ti]*bonus,floor));}}
 
 // 2c: Temperate grassland bonus — chernozem/mollisol deep topsoil.
 // Moderate temp, moderate moisture, low elevation = breadbasket zones.
