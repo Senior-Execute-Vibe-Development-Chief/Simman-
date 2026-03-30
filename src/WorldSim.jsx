@@ -917,9 +917,6 @@ const wi=Math.min(H-1,sy+dy)*W+Math.min(W-1,sx+dx);
 if(w.swamp&&w.swamp[wi])hasSwamp=true;}
 let pr=r,pg=g,pb=b;
 if(e>sl&&hasSwamp){pr=40;pg=58;pb=38;}
-// Lake tiles render as freshwater blue
-if(ter&&ter.rivers&&ter.rivers.lake){const tti=Math.min(ter.th-1,(sy/RES)|0)*ter.tw+Math.min(ter.tw-1,(sx/RES)|0);
-if(ter.rivers.lake[tti]>=0){pr=25;pg=60;pb=105;}}
 const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}}
 return buf;},[CH]);
 
@@ -1076,9 +1073,6 @@ if(ow>=0&&ter.tElev[ti]>sl){const alpha=ter.frontier[ti]?0.55:0.32,invA=1-alpha;
 d[pi4]=(tc[ti3]*invA+tcR[ow]*alpha+.5)|0;d[pi4+1]=(tc[ti3+1]*invA+tcG[ow]*alpha+.5)|0;d[pi4+2]=(tc[ti3+2]*invA+tcB[ow]*alpha+.5)|0;
 }else{d[pi4]=tc[ti3];d[pi4+1]=tc[ti3+1];d[pi4+2]=tc[ti3+2];}
 d[pi4+3]=255;}}
-// Lake overlay — render lake tiles as freshwater blue in all view modes
-if(lk){for(let ti=0;ti<N;ti++){if(lk[ti]<0)continue;
-const pi4=ti<<2;d[pi4]=25;d[pi4+1]=60;d[pi4+2]=105;d[pi4+3]=255;}}
 // Plate boundary overlay — domain-warped lookup for organic boundaries
 if(showPlatesRef.current&&w.pixPlate){
 const plateAt=(px,py)=>{
@@ -1096,15 +1090,19 @@ if(!dx&&!dy)continue;
 const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
 if(plateAt(nx2,ny2)!==myP)boundary=true;}
 if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
-// River overlay — Rivers: tributary+. Streams: streams only (separate toggle).
+// River + lake overlay — Rivers: tributary+ and lakes. Streams: streams only.
 if(ter.rivers){const rm=ter.rivers.riverMag;
 const rivers=showRiversRef.current,streams=showStreamsRef.current;
-if(rivers||streams)for(let ti=0;ti<N;ti++){const mag=rm[ti];if(mag<1)continue;
+if(rivers||streams){
+// Lakes render with the Rivers toggle
+if(rivers&&lk){for(let ti=0;ti<N;ti++){if(lk[ti]<0)continue;
+const pi4=ti<<2;d[pi4]=25;d[pi4+1]=60;d[pi4+2]=105;d[pi4+3]=255;}}
+for(let ti=0;ti<N;ti++){const mag=rm[ti];if(mag<1)continue;
 const pi4=ti<<2;
 if(mag>=4&&rivers){d[pi4]=55;d[pi4+1]=150;d[pi4+2]=245;}
 else if(mag>=3&&rivers){d[pi4]=45;d[pi4+1]=120;d[pi4+2]=220;}
 else if(mag>=2&&rivers){d[pi4]=35;d[pi4+1]=95;d[pi4+2]=190;}
-else if(mag===1&&streams){const a=0.45;d[pi4]=(d[pi4]*(1-a)+25*a)|0;d[pi4+1]=(d[pi4+1]*(1-a)+65*a)|0;d[pi4+2]=(d[pi4+2]*(1-a)+150*a)|0;}}}
+else if(mag===1&&streams){const a=0.45;d[pi4]=(d[pi4]*(1-a)+25*a)|0;d[pi4+1]=(d[pi4+1]*(1-a)+65*a)|0;d[pi4+2]=(d[pi4+2]*(1-a)+150*a)|0;}}}}
 // Update globe texture from rendered canvas data (supports all view modes)
 if(showGlobeRef.current){
 const gW=4096,gH=2048;
