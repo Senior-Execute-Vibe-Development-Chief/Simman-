@@ -835,6 +835,7 @@ const[depthCeil,setDepthCeil]=useState(1.0);
 const[showPlates,setShowPlates]=useState(false);
 const[showRivers,setShowRivers]=useState(false);
 const[showStreams,setShowStreams]=useState(false);
+const[showLakes,setShowLakes]=useState(false);
 const[showPower,setShowPower]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
 const[hoverInfo,setHoverInfo]=useState(null);
@@ -854,7 +855,7 @@ const activeResRef=useRef(null);activeResRef.current=activeRes;
 const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
-const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showGlobeRef=useRef(false);
+const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
 const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
 const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
@@ -1090,13 +1091,13 @@ if(!dx&&!dy)continue;
 const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
 if(plateAt(nx2,ny2)!==myP)boundary=true;}
 if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
-// River + lake overlay — Rivers: tributary+ and lakes. Streams: streams only.
+// Lake overlay
+if(showLakesRef.current&&lk){for(let ti=0;ti<N;ti++){if(lk[ti]<0)continue;
+const pi4=ti<<2;d[pi4]=25;d[pi4+1]=60;d[pi4+2]=105;d[pi4+3]=255;}}
+// River overlay — Rivers: tributary+. Streams: streams only.
 if(ter.rivers){const rm=ter.rivers.riverMag;
 const rivers=showRiversRef.current,streams=showStreamsRef.current;
 if(rivers||streams){
-// Lakes render with the Rivers toggle
-if(rivers&&lk){for(let ti=0;ti<N;ti++){if(lk[ti]<0)continue;
-const pi4=ti<<2;d[pi4]=25;d[pi4+1]=60;d[pi4+2]=105;d[pi4+3]=255;}}
 for(let ti=0;ti<N;ti++){const mag=rm[ti];if(mag<1)continue;
 const pi4=ti<<2;
 if(mag>=4&&rivers){d[pi4]=55;d[pi4+1]=150;d[pi4+2]=245;}
@@ -1217,7 +1218,7 @@ if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-seri
 ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
 },[updateTerrainCache,CH]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showPower,showGlobe,activeRes]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showPower,showGlobe,activeRes]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -1471,6 +1472,9 @@ color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</bu
 {showRivers&&<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
 style={{...bs,background:showStreams?"rgba(60,120,180,0.20)":"transparent",border:"none",
 color:showStreams?"#5a9aca":"#4a4a40",padding:"4px 8px",fontSize:10}}>Streams</button>}
+<button onClick={()=>{setShowLakes(v=>!v);showLakesRef.current=!showLakesRef.current;}}
+style={{...bs,background:showLakes?"rgba(40,80,140,0.25)":"transparent",border:"none",
+color:showLakes?"#4a80b8":"#5a5448",padding:"6px 12px",fontSize:12}}>Lakes</button>
 <button onClick={()=>setShowGlobe(!showGlobe)}
 style={{...bs,background:showGlobe?"rgba(120,180,220,0.25)":"transparent",border:"none",
 color:showGlobe?"#78b4dc":"#5a5448",padding:"6px 12px",fontSize:12}}>Globe</button>
