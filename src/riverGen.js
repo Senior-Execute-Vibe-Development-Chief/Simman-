@@ -170,17 +170,22 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   }
 
   const riverMag = new Uint8Array(N);
-  // Scale thresholds to map: use fraction of total land tiles for portability
-  let landCount = 0;
-  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0) landCount++;
-  const avgMoist = landCount > 0 ? (() => { let s = 0; for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0) s += flowAccum[ti] > 0.05 ? flowAccum[ti] : 0; return s / landCount; })() : 0.2;
 
   if (maxAccum > 0) {
-    // Thresholds: multiples of average per-tile runoff × drainage tiles
-    const tStream = avgMoist * 80;
-    const tTributary = avgMoist * 300;
-    const tMajor = avgMoist * 800;
-    const tGreat = avgMoist * 2500;
+    // Use percentile-based thresholds — adapts to any map/moisture
+    // Collect all land accumulation values and sort
+    const accums = [];
+    for (let ti = 0; ti < N; ti++) {
+      if (tElev[ti] > 0 && flowAccum[ti] > 0.1) accums.push(flowAccum[ti]);
+    }
+    accums.sort((a, b) => a - b);
+    const pct = (p) => accums[Math.min(accums.length - 1, Math.floor(accums.length * p / 100))];
+
+    // Top 5% = stream, 1% = tributary, 0.2% = major, 0.02% = great
+    const tStream = pct(95);
+    const tTributary = pct(99);
+    const tMajor = pct(99.8);
+    const tGreat = pct(99.98);
 
     for (let ti = 0; ti < N; ti++) {
       if (tElev[ti] <= 0) continue;

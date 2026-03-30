@@ -1076,13 +1076,14 @@ if(!dx&&!dy)continue;
 const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
 if(plateAt(nx2,ny2)!==myP)boundary=true;}
 if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
-// River overlay — only show tributary+ scale rivers (global perspective)
+// River overlay — stream+ scale, brighter for larger rivers
 if(showRiversRef.current&&ter.rivers){const rm=ter.rivers.riverMag;
-for(let ti=0;ti<N;ti++){const mag=rm[ti];if(mag<2)continue;
+for(let ti=0;ti<N;ti++){const mag=rm[ti];if(mag<1)continue;
 const pi4=ti<<2;
-if(mag>=4){d[pi4]=50;d[pi4+1]=140;d[pi4+2]=240;}
-else if(mag>=3){d[pi4]=40;d[pi4+1]=110;d[pi4+2]=210;}
-else{d[pi4]=30;d[pi4+1]=85;d[pi4+2]=180;}}}
+if(mag>=4){d[pi4]=55;d[pi4+1]=150;d[pi4+2]=245;}
+else if(mag>=3){d[pi4]=45;d[pi4+1]=120;d[pi4+2]=220;}
+else if(mag>=2){d[pi4]=35;d[pi4+1]=95;d[pi4+2]=190;}
+else{const a=0.5;d[pi4]=(d[pi4]*(1-a)+28*a)|0;d[pi4+1]=(d[pi4+1]*(1-a)+70*a)|0;d[pi4+2]=(d[pi4+2]*(1-a)+155*a)|0;}}}
 ctx.putImageData(img,0,0);
 // Draw all tribe centers (tile coords — canvas is CW×CH)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
