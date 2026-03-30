@@ -673,15 +673,34 @@ const ni=ny*tw+nx;if(tElev[ni]>0&&owner[ni]<0){localPop+=bgPop[ni];localFert+=tF
 if(localPop<2.0)continue;// need substantial cluster (doubled from 1.0)
 const score=localPop*localFert*tFert[ti];// heavily favor fertile hotspots
 if(score>bestScore){bestScore=score;bestTi=ti;}}
-// Only spawn 1 tribe per check (at the BEST location)
-if(bestTi>=0&&Math.random()<0.15){// 15% chance per 32-step check
+// Crystallize: claim the ENTIRE populated region at once.
+// IRL Egypt didn't expand from tile #1 — hundreds of Nile villages unified into one polity.
+// The tribe forms by absorbing all nearby background-populated tiles above a density threshold.
+if(bestTi>=0&&Math.random()<0.15){
 const tx=bestTi%tw,ty=(bestTi-tx)/tw;
 const nid=newTribe(ter,tx,ty,-1);
-claimTile(ter,bestTi,nid);
-if(!ter.frontier[bestTi]){ter.frontier[bestTi]=1;ter.frontierList.push(bestTi);}
-for(let dy=-4;dy<=4;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
-for(let dx=-4;dx<=4;dx++){const nx=((tx+dx)%tw+tw)%tw;
-bgPop[ny*tw+nx]=0;}}
+// Flood-fill from best tile: claim all connected tiles with significant bgPop
+const claimThreshold=0.05;// tiles above this bgPop get absorbed into the new tribe
+const visited=new Uint8Array(tw*th);
+const stack=[bestTi];visited[bestTi]=1;
+let claimed=0;const maxClaim=60;// cap initial size so tribes don't start enormous
+while(stack.length>0&&claimed<maxClaim){
+const ci=stack.pop();
+if(owner[ci]>=0)continue;// already owned
+if(tElev[ci]<=0)continue;
+claimTile(ter,ci,nid);
+if(!ter.frontier[ci]){ter.frontier[ci]=1;ter.frontierList.push(ci);}
+bgPop[ci]=0;claimed++;
+// Expand to neighbors with sufficient background pop
+const cx=ci%tw,cy2=(ci-cx)/tw;
+for(const[ddx,ddy]of DIRS){const nnx=((cx+ddx)%tw+tw)%tw,nny=cy2+ddy;
+if(nny<0||nny>=th)continue;const nni=nny*tw+nnx;
+if(visited[nni]||owner[nni]>=0)continue;visited[nni]=1;
+if(bgPop[nni]>=claimThreshold&&tElev[nni]>0){stack.push(nni);}}}
+// Clear remaining bgPop in wider area (people absorbed or displaced)
+for(let dy=-6;dy<=6;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
+for(let dx=-6;dx<=6;dx++){const nx=((tx+dx)%tw+tw)%tw;
+bgPop[ny*tw+nx]*=0.3;}}// reduce, don't zero (some people remain)
 }}
 
 // Port computation: find best coastal settlement tiles for a tribe
@@ -1432,45 +1451,37 @@ r=(r*heatW+tr*(1-heatW))|0;g=(g*heatW+tg*(1-heatW))|0;b=(b*heatW+tb*(1-heatW))|0
 }
 d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="tribes"){
-// Tribe view — era-colored fill with tribe-colored borders
-// Era palette: knowledge levels determine color (stone→copper→bronze→iron→classical→industrial)
-const eraColor=(k)=>{if(!k)return[45,40,35];// stone age (dark brown)
-const ag=k.agriculture,mt=k.metallurgy,org=k.organization,nav=k.navigation;
-// Determine dominant era from knowledge mix
-if(mt>0.7&&org>0.5)return[80,70,90];// industrial (slate purple)
-if(org>0.5&&mt>0.4)return[120,50,50];// empire/classical (deep red)
-if(mt>0.5)return[90,90,100];// iron age (cool grey)
-if(mt>0.3)return[140,110,50];// bronze age (warm bronze)
-if(mt>0.15)return[160,100,50];// copper age (copper orange)
-if(ag>0.3)return[80,100,45];// agricultural (olive green)
-if(ag>0.1)return[70,75,40];// early farming (dark olive)
-return[50,45,35];};// hunter-gatherer (earth brown)
+// Tribe view — pure era-colored fill with WHITE borders, no per-tribe coloring
+const eraColor=(k)=>{if(!k)return[55,48,38];// stone age (warm brown)
+const ag=k.agriculture,mt=k.metallurgy,org=k.organization;
+if(mt>0.7&&org>0.5)return[90,75,100];// industrial (muted purple)
+if(org>0.5&&mt>0.4)return[130,55,55];// empire/classical (burgundy)
+if(mt>0.5)return[100,100,110];// iron age (blue-grey steel)
+if(mt>0.3)return[155,120,55];// bronze age (warm bronze)
+if(mt>0.15)return[170,110,55];// copper age (copper)
+if(ag>0.3)return[90,110,50];// farming (olive)
+if(ag>0.1)return[75,82,45];// neolithic (dark olive)
+return[55,48,38];};// hunter-gatherer
 // Pre-compute era colors per tribe
 const eraR=new Uint8Array(ter.tribeCenters.length),eraG=new Uint8Array(ter.tribeCenters.length),eraB=new Uint8Array(ter.tribeCenters.length);
 for(let t=0;t<ter.tribeCenters.length;t++){
 const k=ter.tribeKnowledge&&ter.tribeKnowledge[t]?ter.tribeKnowledge[t]:null;
 const[er,eg,eb]=eraColor(k);eraR[t]=er;eraG[t]=eg;eraB[t]=eb;}
-const pw=showPower;
 for(let ti=0;ti<N;ti++){
 const e=ter.tElev[ti],ow=ter.owner[ti];let r,g,b;
 if(e<=sl){r=6;g=8;b=16;}
-else if(ow<0){r=22;g=20;b=18;}
+else if(ow<0){r=25;g=23;b=20;}
 else{
-// Check if this is a border tile (any neighbor is different owner)
+// Check if border (any cardinal neighbor is different owner or unowned)
 const tx3=ti%ter.tw,ty3=(ti-tx3)/ter.tw;let isBorder=false;
-for(let di=0;di<4;di++){// only check 4 cardinal dirs for perf
+for(let di=0;di<4;di++){
 const dnx=((tx3+DIRS[di][0])%ter.tw+ter.tw)%ter.tw,dny=ty3+DIRS[di][1];
 if(dny<0||dny>=ter.th){isBorder=true;break;}
 if(ter.owner[dny*ter.tw+dnx]!==ow){isBorder=true;break;}}
-if(isBorder){// Border: bright tribe color
-r=tcR[ow];g=tcG[ow];b=tcB[ow];
-}else if(pw){// Power mode: dimmed
-r=(eraR[ow]*0.3+8)|0;g=(eraG[ow]*0.3+8)|0;b=(eraB[ow]*0.3+8)|0;
-}else{// Interior: era-colored fill with slight tribe tint
-const tint=0.15;// subtle tribe color mixed in
-r=(eraR[ow]*(1-tint)+tcR[ow]*tint)|0;
-g=(eraG[ow]*(1-tint)+tcG[ow]*tint)|0;
-b=(eraB[ow]*(1-tint)+tcB[ow]*tint)|0;}}
+if(isBorder){// White/light border — universal, no tribe color
+r=200;g=195;b=185;
+}else{// Pure era color — no tribe tint at all
+r=eraR[ow];g=eraG[ow];b=eraB[ow];}}
 const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="fertility"){
 // Fertility overlay — green (high) → yellow → red (low)
@@ -1545,25 +1556,21 @@ else{const s=(t-0.78)/0.22;r=255;g=(140-s*100)|0;b=(10+s*5)|0;}// red (tropical)
 const shade=1-Math.max(0,e-0.1)*0.4;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else{
-// Default terrain view with tribe borders — terrain shows through, colored borders define territory
+// Default terrain view with white tribe borders
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
 const tc=terrainCache.current;
 for(let ti=0;ti<N;ti++){const ow=ter.owner[ti];
 const pi4=ti<<2,ti3=ti*3;
 const tr=tc[ti3],tg=tc[ti3+1],tb=tc[ti3+2];
 if(ow>=0&&ter.tElev[ti]>sl){
-// Check if border tile
 const tx3=ti%ter.tw,ty3=(ti-tx3)/ter.tw;let isBorder=false;
 for(let di=0;di<4;di++){
 const dnx=((tx3+DIRS[di][0])%ter.tw+ter.tw)%ter.tw,dny=ty3+DIRS[di][1];
 if(dny<0||dny>=ter.th){isBorder=true;break;}
 if(ter.owner[dny*ter.tw+dnx]!==ow){isBorder=true;break;}}
-if(isBorder){// Border: strong tribe color over terrain
-const alpha=0.65,invA=1-alpha;
-d[pi4]=(tr*invA+tcR[ow]*alpha+.5)|0;d[pi4+1]=(tg*invA+tcG[ow]*alpha+.5)|0;d[pi4+2]=(tb*invA+tcB[ow]*alpha+.5)|0;
-}else{// Interior: very subtle tint (terrain dominates)
-const alpha=0.12,invA=1-alpha;
-d[pi4]=(tr*invA+tcR[ow]*alpha+.5)|0;d[pi4+1]=(tg*invA+tcG[ow]*alpha+.5)|0;d[pi4+2]=(tb*invA+tcB[ow]*alpha+.5)|0;}
+if(isBorder){// White border over terrain
+d[pi4]=(tr*0.4+200*0.6+.5)|0;d[pi4+1]=(tg*0.4+195*0.6+.5)|0;d[pi4+2]=(tb*0.4+185*0.6+.5)|0;
+}else{d[pi4]=tr;d[pi4+1]=tg;d[pi4+2]=tb;}// pure terrain inside
 }else{d[pi4]=tr;d[pi4+1]=tg;d[pi4+2]=tb;}
 d[pi4+3]=255;}}
 // Plate boundary overlay — domain-warped lookup for organic boundaries
@@ -1622,19 +1629,20 @@ if(!ctx)return;
 ctx.putImageData(img,0,0);
 // Draw all tribe centers (tile coords — canvas is CW×CH)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
-if(!centers||ter.tribeSizes[st]<=0)continue;const cr=tcR[st],cg=tcG[st],cb=tcB[st];
+if(!centers||ter.tribeSizes[st]<=0)continue;
 for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=dataYtoScreenY(centers[ci].y*RES,H,CH)+0.5;
-const isCapital=ci===0,r2=isCapital?2.5:1.5;
+const isCapital=ci===0,r2=isCapital?3:1.5;
 ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
-ctx.fillStyle=isCapital?`rgb(${cr},${cg},${cb})`:`rgba(${cr},${cg},${cb},0.7)`;ctx.fill();
-ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
-ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.3)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();}
-// ── Info label at capital for tribes with enough territory to show ──
-if(ter.tribeSizes[st]>=6){
+ctx.fillStyle=isCapital?"rgba(240,235,220,0.95)":"rgba(200,195,180,0.6)";ctx.fill();
+if(isCapital){ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
+ctx.strokeStyle="rgba(60,55,45,0.6)";ctx.lineWidth=0.8;ctx.stroke();}}
+// ── Info label at capital ──
+if(ter.tribeSizes[st]>=4){
 const cap=centers[0];const cx2=cap.x+0.5,cy2=dataYtoScreenY(cap.y*RES,H,CH)+0.5;
 const k=ter.tribeKnowledge&&ter.tribeKnowledge[st]?ter.tribeKnowledge[st]:null;
 const pop=ter.tribePopulation?Math.round(ter.tribePopulation[st]):0;
-// Era label from knowledge
+const sz=ter.tribeSizes[st];
+// Era label
 let era="Stone";
 if(k){if(k.metallurgy>0.7&&k.organization>0.5)era="Industrial";
 else if(k.organization>0.5&&k.metallurgy>0.4)era="Empire";
@@ -1643,30 +1651,44 @@ else if(k.metallurgy>0.3)era="Bronze";
 else if(k.metallurgy>0.15)era="Copper";
 else if(k.agriculture>0.3)era="Farming";
 else if(k.agriculture>0.1)era="Neolithic";}
-// Compose label: pop + era + area
-const sz=ter.tribeSizes[st];
-const label=`${pop} | ${era} | ${sz}t`;
-ctx.font="bold 4px sans-serif";
-const textW=ctx.measureText(label).width;
-// Background pill
-ctx.fillStyle=`rgba(6,8,16,0.7)`;
-ctx.fillRect(cx2-textW/2-2,cy2+4,textW+4,7);
-// Text
-ctx.fillStyle=`rgb(${cr},${cg},${cb})`;
-ctx.fillText(label,cx2-textW/2,cy2+9.5);
+// Format population nicely
+const popStr=pop>=1000?(pop/1000).toFixed(1)+'k':pop.toString();
+// Two-line label
+const line1=era;
+const line2=`${popStr} pop  ${sz}t`;
+ctx.font="bold 6px sans-serif";
+const w1=ctx.measureText(line1).width;
+ctx.font="5px sans-serif";
+const w2=ctx.measureText(line2).width;
+const boxW=Math.max(w1,w2)+6;
+const boxH=15;
+const bx=cx2-boxW/2,by=cy2+5;
+// Background box
+ctx.fillStyle="rgba(6,8,16,0.8)";
+ctx.beginPath();
+ctx.roundRect(bx,by,boxW,boxH,2);ctx.fill();
+ctx.strokeStyle="rgba(200,195,185,0.3)";ctx.lineWidth=0.5;
+ctx.beginPath();ctx.roundRect(bx,by,boxW,boxH,2);ctx.stroke();
+// Era name (bold, white)
+ctx.font="bold 6px sans-serif";
+ctx.fillStyle="rgba(220,215,200,0.95)";
+ctx.fillText(line1,cx2-w1/2,by+6.5);
+// Stats line (smaller, dimmer)
+ctx.font="5px sans-serif";
+ctx.fillStyle="rgba(180,175,160,0.75)";
+ctx.fillText(line2,cx2-w2/2,by+12.5);
 }}
 // ── Draw ports as small diamonds ──
 if(ter.tribePorts){
 for(let st=0;st<ter.tribePorts.length;st++){
 if(!ter.tribePorts[st]||ter.tribeSizes[st]<=0)continue;
-const cr=tcR[st],cg=tcG[st],cb=tcB[st];
 for(const port of ter.tribePorts[st]){
 const px=port.x+0.5,py=dataYtoScreenY(port.y*RES,H,CH)+0.5;
 ctx.save();ctx.translate(px,py);ctx.rotate(Math.PI/4);
-ctx.fillStyle=`rgba(${cr},${cg},${cb},0.9)`;
-ctx.fillRect(-1.5,-1.5,3,3);
-ctx.strokeStyle="rgba(200,220,255,0.6)";ctx.lineWidth=0.5;
-ctx.strokeRect(-2,-2,4,4);
+ctx.fillStyle="rgba(100,160,220,0.8)";
+ctx.fillRect(-1.2,-1.2,2.4,2.4);
+ctx.strokeStyle="rgba(180,210,240,0.5)";ctx.lineWidth=0.4;
+ctx.strokeRect(-1.8,-1.8,3.6,3.6);
 ctx.restore();}}}
 // ── Draw maritime trade connections ──
 if(ter.tribeKnownCoasts&&ter.tribePorts){
@@ -1676,7 +1698,6 @@ if(!ter.tribeKnownCoasts[st]||ter.tribeSizes[st]<=0)continue;
 const ports=ter.tribePorts[st];if(!ports||ports.length===0)continue;
 const know=ter.tribeKnowledge&&ter.tribeKnowledge[st]?ter.tribeKnowledge[st]:null;
 if(!know||know.trade<0.1||know.navigation<0.1)continue;
-const cr=tcR[st],cg=tcG[st],cb=tcB[st];
 // Draw lines from nearest port to each known coast of another tribe
 const knownCoasts=ter.tribeKnownCoasts[st];const drawn=new Set();
 for(const kc of knownCoasts){
@@ -1688,21 +1709,20 @@ let nearPort=ports[0],nearDist=Infinity;
 for(const p of ports){const d=tDistW(p.x,p.y,kc.x,kc.y,ter.tw);if(d<nearDist){nearDist=d;nearPort=p;}}
 const x1=nearPort.x+0.5,y1=dataYtoScreenY(nearPort.y*RES,H,CH)+0.5;
 const x2=kc.x+0.5,y2=dataYtoScreenY(kc.y*RES,H,CH)+0.5;
-const alpha=Math.min(0.5,know.trade*0.8);
-ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;
+const alpha=Math.min(0.4,know.trade*0.6);
+ctx.strokeStyle=`rgba(100,160,220,${alpha})`;// neutral blue for all trade routes
 ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}}
 ctx.setLineDash([]);}
 // ── Highlight selected tribe ──
 if(ter._selectedTribe>=0&&ter.tribeSizes[ter._selectedTribe]>0){
-const sel=ter._selectedTribe;const cr=tcR[sel],cg=tcG[sel],cb=tcB[sel];
-// Draw border highlight around selected tribe territory
+const sel=ter._selectedTribe;
+// Draw bright yellow highlight border for selected tribe
 for(let ti=0;ti<N;ti++){if(ter.owner[ti]!==sel)continue;
 const tx3=ti%ter.tw,ty3=(ti-tx3)/ter.tw;
 for(const[dx,dy]of DIRS){const nx=((tx3+dx)%ter.tw+ter.tw)%ter.tw,ny3=ty3+dy;
 if(ny3<0||ny3>=ter.th)continue;
 if(ter.owner[ny3*ter.tw+nx]!==sel){
-const sx2=tx3+0.5,sy2=dataYtoScreenY(ty3*RES,H,CH)+0.5;
-ctx.fillStyle=`rgba(255,255,255,0.35)`;ctx.fillRect(tx3,dataYtoScreenY(ty3*RES,H,CH),1,1);break;}}}}
+ctx.fillStyle="rgba(255,230,100,0.6)";ctx.fillRect(tx3,dataYtoScreenY(ty3*RES,H,CH),1,1);break;}}}}
 // Wind particles — animated white streaks that flow along wind vectors
 if(vm==="wind"&&w.windX&&w.windY){
 const NUM_PARTICLES=3000;const TRAIL_LEN=12;const MAX_AGE=80;
