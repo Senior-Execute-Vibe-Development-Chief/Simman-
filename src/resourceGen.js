@@ -85,7 +85,7 @@ function getBiome(e, m, t) {
   return em > 0.5 ? B_TROP_RAIN : em > 0.3 ? B_TROP_DRY : em > 0.18 ? B_SAVANNA : em > 0.1 ? B_GRASSLAND : B_DESERT;
 }
 
-export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, seed) {
+export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, seed, rivers) {
   const N = tw * th;
   const RES = 2;
 
@@ -389,24 +389,26 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
       return Math.min(1, s);
     });
 
-  // TIN: any land, mild preference for highlands + wet lowlands (alluvial)
+  // TIN: highlands + river valleys (alluvial tin washes downstream)
   scatterMines('tin', 0.002, 3, 0.85,
     (ti) => tElev[ti] > 0.02,
     (ti) => {
       let s = 0.4;
       if (tElev[ti] > 0.10) s += 0.15;
-      if (tElev[ti] < 0.08 && tMoist[ti] > 0.3) s += 0.2; // alluvial
-      if (tTemp[ti] > 0.45) s += 0.1; // tropical tin belts
+      // Alluvial tin: real river flow data instead of moisture proxy
+      if (rivers && rivers.riverMag[ti] >= 2) s += 0.2;
+      if (tTemp[ti] > 0.45) s += 0.1;
       return Math.min(1, s);
     });
 
-  // PRECIOUS METALS: any land, mild preference for varied terrain
+  // PRECIOUS METALS: highlands + river valleys (alluvial gold)
   scatterMines('precious', 0.0015, 4, 0.95,
     (ti) => tElev[ti] > 0.02,
     (ti) => {
       let s = 0.4;
-      if (tElev[ti] > 0.12) s += 0.15; // mountain veins
-      if (tElev[ti] < 0.08 && tMoist[ti] > 0.3) s += 0.15; // alluvial gold
+      if (tElev[ti] > 0.12) s += 0.15;
+      // Alluvial gold: rivers carry gold downstream from mountain sources
+      if (rivers && rivers.riverMag[ti] >= 2) s += 0.2;
       if (boundDist[ti] < 12) s += 0.1;
       return Math.min(1, s);
     });

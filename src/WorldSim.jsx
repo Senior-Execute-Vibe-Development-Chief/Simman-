@@ -9,6 +9,7 @@ import TuningPanel, { ParamEditor, renderPreview } from "./TuningPanel.jsx";
 import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
 import { generateResources, tileResourceSummary, dominantResource, RESOURCES, RES_BY_ID } from "./resourceGen.js";
+import { computeRivers, riverName, RIVER_NAMES, RIVER_NONE, RIVER_STREAM, RIVER_TRIBUTARY, RIVER_MAJOR, RIVER_GREAT } from "./riverGen.js";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
 function initNoise(seed){const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)PERM[i]=p[i&255];}
@@ -453,6 +454,9 @@ const wi=Math.min(w.height-1,py+dy)*w.width+Math.min(w.width-1,px+dx);
 if(w.swamp&&w.swamp[wi])hasSwamp=true;}
 if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+0.25);}}}
 
+// ── River hydrology ──
+const rivers=computeRivers(tw,th,tElev,tMoist,tTemp);
+
 // ── Pass 2: Geological fertility modifiers ──
 // These require neighbor access so run after base pass.
 
@@ -462,35 +466,23 @@ for(let ti=0;ti<tw*th;ti++){
 const t=tTemp[ti],m=tMoist[ti],e=tElev[ti];
 if(e<=0)continue;
 if(t>0.65&&m>0.50){
-// Penalty scales with how tropical+wet the tile is
 const tropicality=Math.min(1,(t-0.65)/0.25)*Math.min(1,(m-0.50)/0.35);
-tFert[ti]*=(1-tropicality*0.55);// up to -55% for deep tropical rainforest
-}}
+tFert[ti]*=(1-tropicality*0.55);}}
 
-// 2b: Alluvial lowland bonus — proxy for river valleys/floodplains.
-// Low elevation + flat + wet + moisture gradient (wet spot surrounded by drier land).
-// This is the #1 factor for where civilizations actually formed.
-for(let ty=1;ty<th-1;ty++)for(let tx=0;tx<tw;tx++){const ti=ty*tw+tx;
-const e=tElev[ti],m=tMoist[ti],t=tTemp[ti];
-if(e<=0||e>0.08)continue;// only low-lying land
-if(m<0.30)continue;// needs meaningful moisture
-// Check flatness: average absolute elevation difference with neighbors
-let elevDiffSum=0,moistSum=0,cnt=0;
-for(const[dx,dy]of DIRS){const nx=(tx+dx+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;
-const ni=ny*tw+nx;if(tElev[ni]<=0)continue;
-elevDiffSum+=Math.abs(tElev[ni]-e);moistSum+=tMoist[ni];cnt++;}
-if(cnt<3)continue;
-const avgElevDiff=elevDiffSum/cnt;
-const avgNeighborMoist=moistSum/cnt;
-const flatness=Math.max(0,1-avgElevDiff*40);// 1.0 if very flat, 0 if rugged
-// Moisture gradient: how much wetter is this tile than neighbors?
-// High gradient = moisture concentrates here (river-like)
-const moistGradient=Math.max(0,m-avgNeighborMoist);
-// Alluvial score: flat + low + wet + concentrated moisture
-const alluvialScore=flatness*Math.min(1,moistGradient*6)*Math.min(1,(0.08-e)*20);
-// Temperature sweet spot: best for agriculture at 0.35-0.65 (temperate/subtropical)
+// 2b: River valley alluvial bonus — uses real flow accumulation data.
+// High flow + low elevation + good temperature = prime agricultural land.
+for(let ti=0;ti<tw*th;ti++){
+const e=tElev[ti],t=tTemp[ti];
+if(e<=0||e>0.12)continue;
+const mag=rivers.riverMag[ti];
+if(mag<RIVER_TRIBUTARY)continue;
+// River magnitude determines bonus strength
+const riverBonus=mag===RIVER_GREAT?0.8:mag===RIVER_MAJOR?0.5:0.25;
+// Temperature fitness for agriculture
 const tempFit=t>0.30&&t<0.70?1.0:t>0.20&&t<0.80?0.6:0.3;
-const bonus=alluvialScore*tempFit*0.8;// up to +80% fertility
+// Low elevation bonus (floodplains)
+const lowBonus=e<0.05?1.0:1.0-(e-0.05)/0.07;
+const bonus=riverBonus*tempFit*lowBonus;
 if(bonus>0.02)tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}
 
 // 2c: Temperate grassland bonus — chernozem/mollisol deep topsoil.
@@ -539,7 +531,7 @@ tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}}
 for(let ti=0;ti<tw*th;ti++){
 if(tCoast[ti]&&tElev[ti]>0)tFert[ti]=Math.min(1,tFert[ti]+0.06);}
 // ── Natural resource deposits ──
-const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0);
+const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,rivers);
 // Find multiple spread-out seed locations for starting tribes
 const NUM_TRIBES=(w.preset==="earth"||w.preset==="earth_sim")?8:w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0?w.tribeSeeds.length:6;const minSpacing=Math.round(tw*0.12);
 // Score all habitable tiles
@@ -568,7 +560,7 @@ for(let i=0;i<origins.length;i++){const{x,y}=origins[i],ti=y*tw+x;
 owner[ti]=i;tribeSizes.push(1);tribeStrength.push(tFert[ti]);tenure[ti]=1;frontier[ti]=1;frontierList.push(ti);
 tribeCenters.push([{x,y,prestige:1.0,founded:0}]);}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
 frontier,frontierList,landCount:lc,settled:origins.length,tribes:origins.length,origin:origins[0]||{x:0,y:0},stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+(y1-y2)*(y1-y2));}
@@ -1255,7 +1247,8 @@ const wdeg=((Math.atan2(-wdy,wdx)*180/Math.PI)+360)%360;
 const wdir=["E","NE","N","NW","W","SW","S","SE"][Math.round(wdeg/45)%8];
 // Resource info at this tile
 const tileRes=terTi>=0&&terRef.current&&terRef.current.deposits?tileResourceSummary(terRef.current.deposits,terTi):[];
-setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes});
+const riverMag=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.riverMag[terTi]:0;
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
@@ -1357,6 +1350,7 @@ border:"1px solid rgba(201,184,122,0.15)"}}>
 <div><span style={{color:"#8a8474"}}>Fert:</span> {(hoverInfo.fert*100).toFixed(0)}%</div>
 <div><span style={{color:"#8a8474"}}>Wind:</span> {hoverInfo.wkmh} km/h {hoverInfo.wdir}</div>
 <div><span style={{color:"#8a8474"}}>Lat:</span> {(hoverInfo.lat*90).toFixed(1)}°</div>
+{hoverInfo.river>0&&<div><span style={{color:"#8a8474"}}>River:</span> <span style={{color:"#6ab4e8"}}>{RIVER_NAMES[hoverInfo.river]}</span></div>}
 {hoverInfo.resources&&hoverInfo.resources.length>0&&<>
 <div style={{height:1,background:"rgba(201,184,122,0.12)",margin:"3px 0"}} />
 {hoverInfo.resources.slice(0,4).map(r=>(
