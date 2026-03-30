@@ -95,6 +95,7 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     for (let tx = 0; tx < tw; tx++) {
       const ti = ty * tw + tx;
       if (tElev[ti] <= 0) continue; // ocean = sink
+      if (tTemp[ti] < 0.12) continue; // permanent ice / ice sheet — no surface rivers
 
       let bestDir = 255;
       let bestDrop = 0;
@@ -130,7 +131,7 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   // Each land tile contributes runoff = moisture minus evaporation
   const flowAccum = new Float32Array(N);
   for (let ti = 0; ti < N; ti++) {
-    if (tElev[ti] > 0) {
+    if (tElev[ti] > 0 && tTemp[ti] >= 0.12) {
       const evapLoss = Math.max(0, tTemp[ti] - 0.3) * 0.3;
       flowAccum[ti] = Math.max(0.05, tMoist[ti] - evapLoss);
     }
