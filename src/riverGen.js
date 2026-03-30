@@ -196,6 +196,29 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
       else if (a >= tTributary) riverMag[ti] = RIVER_TRIBUTARY;
       else if (a >= tStream) riverMag[ti] = RIVER_STREAM;
     }
+
+    // ── Downstream consistency: a river can never shrink along its flow path ──
+    // Follow each flow path from high-magnitude tiles downstream and ensure
+    // magnitude never drops. Fixes D8 zigzag artifacts where the flow path
+    // alternates tiles and some mid-stream tiles appear to lose magnitude.
+    for (let ti = 0; ti < N; ti++) {
+      if (riverMag[ti] < RIVER_TRIBUTARY) continue; // start from significant rivers
+      let ci = ti;
+      const mag = riverMag[ci];
+      for (let steps = 0; steps < 500; steps++) {
+        const d = flowDir[ci];
+        if (d === 255) break;
+        const cx = ci % tw, cy = (ci - cx) / tw;
+        const nx = (cx + D8_DX[d] + tw) % tw;
+        const ny = cy + D8_DY[d];
+        if (ny < 0 || ny >= th) break;
+        const ni = ny * tw + nx;
+        if (tElev[ni] <= 0) break; // reached ocean
+        if (riverMag[ni] >= mag) break; // downstream already same or bigger
+        riverMag[ni] = mag; // propagate magnitude downstream
+        ci = ni;
+      }
+    }
   }
 
   return { flowDir, flowAccum, riverMag, maxAccum };
