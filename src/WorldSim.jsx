@@ -469,21 +469,38 @@ if(t>0.65&&m>0.50){
 const tropicality=Math.min(1,(t-0.65)/0.25)*Math.min(1,(m-0.50)/0.35);
 tFert[ti]*=(1-tropicality*0.55);}}
 
-// 2b: River valley alluvial bonus — uses real flow accumulation data.
-// High flow + low elevation + good temperature = prime agricultural land.
+// 2b: River valley alluvial bonus — radial floodplain fertility.
+// Rivers create fertile corridors: great rivers affect 4 tiles out,
+// major 3, tributary 2, stream 1. Bonus decays with distance.
+{const riverFert=new Float32Array(tw*th);
+// Radius and peak bonus per magnitude
+const riverRadius=[0,1,2,3,4];// NONE,STREAM,TRIB,MAJOR,GREAT
+const riverPeak=[0,0.15,0.30,0.55,0.85];
 for(let ti=0;ti<tw*th;ti++){
+const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;
+const R=riverRadius[mag],peak=riverPeak[mag];
+const sx=ti%tw,sy=(ti-sx)/tw;
+for(let dy=-R;dy<=R;dy++){const ny=sy+dy;if(ny<0||ny>=th)continue;
+for(let dx=-R;dx<=R;dx++){const nx=(sx+dx+tw)%tw;
+const ni=ny*tw+nx;
+if(tElev[ni]<=0)continue;
+let ddx=Math.abs(dx);if(ddx>tw/2)ddx=tw-ddx;
+const dist=Math.sqrt(ddx*ddx+dy*dy);
+if(dist>R)continue;
+// Quadratic falloff: full at center, zero at edge
+const falloff=(1-dist/R);const v=peak*falloff*falloff;
+riverFert[ni]=Math.max(riverFert[ni],v);}}}
+// Apply bonus — gated by temperature fitness and elevation
+for(let ti=0;ti<tw*th;ti++){
+const rf=riverFert[ti];if(rf<0.01)continue;
 const e=tElev[ti],t=tTemp[ti];
-if(e<=0||e>0.12)continue;
-const mag=rivers.riverMag[ti];
-if(mag<RIVER_TRIBUTARY)continue;
-// River magnitude determines bonus strength
-const riverBonus=mag===RIVER_GREAT?0.8:mag===RIVER_MAJOR?0.5:0.25;
+if(e<=0)continue;
 // Temperature fitness for agriculture
 const tempFit=t>0.30&&t<0.70?1.0:t>0.20&&t<0.80?0.6:0.3;
-// Low elevation bonus (floodplains)
-const lowBonus=e<0.05?1.0:1.0-(e-0.05)/0.07;
-const bonus=riverBonus*tempFit*lowBonus;
-if(bonus>0.02)tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}
+// Elevation: full bonus in lowlands, reduced in highlands, none in mountains
+const elevFit=e<0.06?1.0:e<0.18?1.0-(e-0.06)/0.12:0;
+const bonus=rf*tempFit*elevFit;
+if(bonus>0.01)tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}}
 
 // 2c: Temperate grassland bonus — chernozem/mollisol deep topsoil.
 // Moderate temp, moderate moisture, low elevation = breadbasket zones.
