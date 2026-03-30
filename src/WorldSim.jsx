@@ -503,76 +503,77 @@ if(!ter._resCache||ter.stepCount%16===0)ter._resCache=computeTribeResources(ter)
 const tRes=ter._resCache;
 
 // ── Discovery: knowledge grows from local conditions ──
+// Growth rates tuned so that with good conditions:
+//   Agriculture: 0→0.3 in ~80 steps (~800yr), 0.3→0.7 in ~200 steps
+//   Metallurgy: 0→0.3 in ~120 steps (with ore), 0.3→0.7 in ~300 steps
+//   Others scale similarly. Diminishing returns (1-k) slow late-game naturally.
 for(let i=0;i<n;i++){if(tribeSizes[i]<=0)continue;
 const k=know[i],r=tRes[i],sz=tribeSizes[i],pop=ter.tribePopulation[i];
 const dens=sz>0?tribeStrength[i]/sz:0;
-const popRatio=pop/(Math.max(1,tribeStrength[i]*(1+k.agriculture*2.5)));// population pressure
 
 // Agriculture: fertility + rivers + density + sedentary time
 {let score=0;
-score+=dens*0.5;// fertile land drives experimentation
-score+=Math.min(0.3,r.riverTiles*0.02);// river access (irrigation potential)
-score+=Math.min(0.2,pop*0.001);// more minds = more innovation
-// Sedentary bonus: compute from average tenure (approximated by tribe age)
+score+=dens*0.8;// fertile land drives experimentation
+score+=Math.min(0.4,r.riverTiles*0.04);// river access (irrigation potential)
+score+=Math.min(0.3,pop*0.003);// more minds = more innovation
 const age=ter.stepCount-(tribeCenters[i][0]?tribeCenters[i][0].founded:0);
-score+=Math.min(0.2,age*0.002);
-score+=Math.random()*0.05;// lucky accidents
-const growth=0.003*score*(1-k.agriculture);
+score+=Math.min(0.3,age*0.004);// sedentary bonus
+score+=Math.random()*0.08;
+const growth=0.012*score*(1-k.agriculture);// ~5x faster than before
 k.agriculture=Math.min(1,k.agriculture+Math.max(0,growth));}
 
-// Metallurgy: ore access + agriculture surplus + fire knowledge
+// Metallurgy: ore access + agriculture surplus + existing knowledge feedback
 {let score=0;
-const oreRichness=Math.min(1,(r.copper+r.tin+r.iron+r.coal)*0.05);
-score+=oreRichness*0.6;// can't smelt without ore
-score+=k.agriculture*0.3;// surplus labor enables specialization
-score+=Math.min(0.1,k.agriculture*0.2);// cooking→kilns→smelting
-if(oreRichness<0.05)score*=0.1;// near-zero without any ore
-const growth=0.002*score*(1-k.metallurgy);
+const oreRichness=Math.min(1,(r.copper+r.tin+r.iron+r.coal)*0.08);
+score+=oreRichness*0.7;// can't smelt without ore
+score+=k.agriculture*0.4;// surplus labor
+score+=k.metallurgy*0.15;// existing metalwork knowledge accelerates (positive feedback)
+if(oreRichness<0.05)score*=0.08;// near-zero without ore
+const growth=0.008*score*(1-k.metallurgy);// ~4x faster
 k.metallurgy=Math.min(1,k.metallurgy+Math.max(0,growth));}
 
 // Navigation: coast + timber + need + trade
 {let score=0;
-score+=Math.min(0.3,r.coastTiles*0.01);// ocean exposure
-score+=Math.min(0.2,r.timber*0.02);// ship timber
-// Island pressure: high coast-to-land ratio = sea-dependent culture
+score+=Math.min(0.4,r.coastTiles*0.015);
+score+=Math.min(0.3,r.timber*0.03);
 const coastRatio=sz>0?r.coastTiles/sz:0;
-if(coastRatio>0.3)score+=0.25*(coastRatio-0.3)/0.7;
-score+=k.trade*0.15;// mercantile pressure
-// Successful voyage feedback (stored as known coast count)
+if(coastRatio>0.3)score+=0.3*(coastRatio-0.3)/0.7;
+score+=k.trade*0.25;// mercantile pressure
 const knownCount=ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
-score+=Math.min(0.15,knownCount*0.02);
-if(r.coastTiles<1)score*=0.05;// near-zero for landlocked tribes
-const growth=0.002*score*(1-k.navigation);
+score+=Math.min(0.2,knownCount*0.03);
+if(r.coastTiles<1)score*=0.05;
+const growth=0.008*score*(1-k.navigation);
 k.navigation=Math.min(1,k.navigation+Math.max(0,growth));}
 
-// Construction: stone + density + agriculture
+// Construction: stone + density + agriculture + metallurgy
 {let score=0;
-score+=Math.min(0.3,r.stone*0.03);// building material
-score+=Math.min(0.2,pop*0.001);// labor force
-score+=k.agriculture*0.3;// surplus enables projects
-const growth=0.002*score*(1-k.construction);
+score+=Math.min(0.4,r.stone*0.04);
+score+=Math.min(0.3,pop*0.002);
+score+=k.agriculture*0.35;
+score+=k.metallurgy*0.15;// metal tools help build
+const growth=0.008*score*(1-k.construction);
 k.construction=Math.min(1,k.construction+Math.max(0,growth));}
 
-// Organization: population size + centers + construction
+// Organization: population size + centers + construction + trade
 {let score=0;
-score+=Math.min(0.3,sz*0.003);// large groups need governance
+score+=Math.min(0.4,sz*0.005);// large groups need governance
 const centerCount=tribeCenters[i]?tribeCenters[i].length:1;
-score+=Math.min(0.2,centerCount*0.05);// multi-center polities need admin
-score+=k.construction*0.2;// infrastructure enables governance
-// Fragmentation pressure: if tribe has been split recently, org pressure rises
-score+=Math.min(0.1,sz>60?(sz-60)*0.001:0);
-const growth=0.002*score*(1-k.organization);
+score+=Math.min(0.3,centerCount*0.07);// multi-center polities
+score+=k.construction*0.25;// infrastructure enables governance
+score+=k.trade*0.15;// trade networks need admin
+score+=Math.min(0.15,sz>40?(sz-40)*0.002:0);
+const growth=0.008*score*(1-k.organization);
 k.organization=Math.min(1,k.organization+Math.max(0,growth));}
 
 // Trade: neighbors + resource diversity + coast + navigation
 {let score=0;
 const contacts=ter._borderContacts;
 let neighborCount=0;if(contacts&&contacts[i])neighborCount=Object.keys(contacts[i]).length;
-score+=Math.min(0.3,neighborCount*0.06);// contact drives exchange
-score+=Math.min(0.2,r.resourceTypes*0.03);// having things others want
-score+=Math.min(0.15,r.coastTiles*0.005);// port access
-score+=k.navigation*0.15;// maritime trade
-const growth=0.002*score*(1-k.trade);
+score+=Math.min(0.4,neighborCount*0.08);
+score+=Math.min(0.3,r.resourceTypes*0.04);
+score+=Math.min(0.2,r.coastTiles*0.008);
+score+=k.navigation*0.2;
+const growth=0.008*score*(1-k.trade);
 k.trade=Math.min(1,k.trade+Math.max(0,growth));}}
 
 // ── Diffusion: knowledge flows across borders from high to low ──
@@ -587,7 +588,7 @@ for(const nid in myContacts){const j=parseInt(nid);if(tribeSizes[j]<=0)continue;
 const kj=know[j];
 const contactStrength=Math.min(1,myContacts[nid]*0.01);// normalized border contact
 const tradeMult=1+ki.trade*2+kj.trade*2;// trade amplifies diffusion
-const rate=0.0015*contactStrength*tradeMult;// slower diffusion — advantages persist longer
+const rate=0.003*contactStrength*tradeMult;// diffusion: meaningful but slower than discovery
 for(const d of KNOW_DOMAINS){
 if(kj[d]>ki[d]){ki[d]=Math.min(1,ki[d]+rate*(kj[d]-ki[d]));}}}
 // Maritime diffusion: if tribe knows ports of another tribe, diffuse via trade
@@ -1290,6 +1291,19 @@ const no=owner[ni];if(no<0||no===st||tElev[ni]<=sl)continue;if(tribeSizes[no]>bs
 if(bn>=0&&tribeSizes[bn]>tribeSizes[st]){for(let i=0;i<tw*th;i++)if(owner[i]===st)claimTile(ter,i,bn);}}}
 return ter;}
 
+// ── Non-linear time: early steps cover centuries, late steps cover decades ──
+// 1000 steps spans 8000 BC → 2025 AD (10,025 years total)
+// Early game (step 0-200): ~30 yr/step (6000 years in 200 steps: 8000→2000 BC)
+// Mid game (step 200-600): ~8 yr/step (3200 years in 400 steps: 2000 BC → 1200 AD)
+// Late game (step 600-1000): ~2 yr/step (825 years in 400 steps: 1200→2025 AD)
+function stepToYear(step){
+if(step<=200)return 8000-step*30;// 8000 BC → 2000 BC
+if(step<=600)return 2000-(step-200)*8;// 2000 BC → 1200 AD (negative = AD)
+return -(1200+(step-600)*2.06);// 1200 AD → 2025 AD
+}
+function yearStr(step){const y=stepToYear(step);
+return y>0?`${Math.round(y)} BC`:`${Math.round(Math.abs(y))} AD`;}
+
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
 const canvasRef=useRef(null);const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
@@ -1809,7 +1823,14 @@ useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;dep
 useEffect(()=>{let fid,acc=0,last=performance.now();
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
 acc+=now-last;last=now;const iv=Math.max(16,100/speedRef.current);
-if(acc>=iv){acc=0;const sub=Math.max(1,Math.ceil(speedRef.current/3));
+if(acc>=iv){acc=0;
+// Adaptive step rate: early history flies by, modern era slows down.
+// Uses current step count to determine how many sim steps per frame.
+const curStep=terRef.current.stepCount;
+// Early game (<200 steps = pre-agriculture): fast. Late game (>800): slow.
+// Scaled by user speed setting.
+const eraFactor=curStep<100?4:curStep<300?3:curStep<500?2:curStep<800?1.5:1;
+const sub=Math.max(1,Math.ceil(speedRef.current/3*eraFactor));
 for(let s=0;s<sub;s++)terRef.current=stepTerritory(terRef.current,worldRef.current);
 setCoverage(Math.round(terRef.current.settled/terRef.current.landCount*100));
 let alive=0,bestId=-1,bestPow=0;const ter2=terRef.current;
@@ -2067,8 +2088,8 @@ style={{cursor:"pointer",color:"#8a8474",fontSize:8}}>None</span>
 {/* Stats — top right of map area */}
 {(()=>{const ter=terRef.current;
 const step=ter?ter.stepCount:0;
-const year=8000-step*10;// 1 step = 10 years, starting 8000 BC
-const yearStr=year>0?`${year} BC`:`${Math.abs(year)} AD`;
+const year=stepToYear(step);
+const ys=yearStr(step);
 // Compute average knowledge across alive tribes for era label
 let avgAg=0,avgMet=0,avgNav=0,avgOrg=0,aliveK=0;
 if(ter&&ter.tribeKnowledge){for(let i=0;i<ter.tribeKnowledge.length;i++){
@@ -2078,7 +2099,7 @@ if(aliveK>0){avgAg/=aliveK;avgMet/=aliveK;avgNav/=aliveK;avgOrg/=aliveK;}}
 return <div style={{position:"absolute",top:6,right:6,background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"5px 12px",
 display:"flex",gap:14,fontSize:11,color:"#c9b87a",pointerEvents:"none",alignItems:"center",
 border:"1px solid rgba(201,184,122,0.1)"}}>
-<span style={{fontWeight:"bold",fontSize:13,color:"#e0d4a8",letterSpacing:0.5}}>{yearStr}</span>
+<span style={{fontWeight:"bold",fontSize:13,color:"#e0d4a8",letterSpacing:0.5}}>{ys}</span>
 <span style={{color:"#8a8474"}}>Step {step}</span>
 <span>{tribeCount} tribes</span>
 <span>{coverage}% settled</span>
@@ -2166,7 +2187,7 @@ display:"flex",alignItems:"center"}}>
 </div>
 <div style={{flex:1,overflowY:"auto",padding:"4px 0"}}>
 {(()=>{const ter=terRef.current;if(!ter)return <div style={{color:"#5a5448",padding:10,fontSize:10}}>No simulation running</div>;
-const step=ter.stepCount;const year=8000-step*10;const yearStr=year>0?`${year} BC`:`${Math.abs(year)} AD`;
+const step=ter.stepCount;
 // Build sorted tribe list
 const tribes=[];
 for(let i=0;i<ter.tribeSizes.length;i++){if(ter.tribeSizes[i]<=0)continue;
