@@ -484,9 +484,25 @@ riverMoist[ni]=Math.max(riverMoist[ni],v);}}}
 // Apply moisture boost and recompute fertility
 for(let ti=0;ti<tw*th;ti++){
 if(riverMoist[ti]<0.01)continue;
-tMoist[ti]=Math.min(1,tMoist[ti]+riverMoist[ti]);
+const rm=riverMoist[ti];
+const oldMoist=tMoist[ti];
+// In dry areas: river adds water → moisture rises toward bell curve peak (0.45)
+// In wet areas: river adds sediment/nutrients, not more water — cap moisture at peak
+// and add a direct fertility bonus for alluvial silt instead
+if(oldMoist<0.45){
+// Dry: add moisture but don't overshoot the fertility peak
+tMoist[ti]=Math.min(0.50,oldMoist+rm);// slight overshoot OK (0.50 still near peak)
+}else{
+// Already wet enough: minimal moisture change (slight leveling of floodplain)
+tMoist[ti]=Math.min(1,oldMoist+rm*0.1);
+}
 // Recompute fertility with updated moisture
-tFert[ti]=tileFert(tTemp[ti],tMoist[ti],tElev[ti]);}}
+tFert[ti]=tileFert(tTemp[ti],tMoist[ti],tElev[ti]);
+// Alluvial sediment bonus: applies everywhere, but most impactful in wet biomes
+// where moisture boost alone doesn't help. River floodplains get richer soil
+// from annual silt deposits regardless of how wet the land already is.
+const sedimentBonus=rm*0.35;// up to ~0.19 for great river
+tFert[ti]=Math.min(1,tFert[ti]+sedimentBonus);}}
 
 // ── Pass 2: Geological fertility modifiers ──
 // These require neighbor access so run after base pass.
