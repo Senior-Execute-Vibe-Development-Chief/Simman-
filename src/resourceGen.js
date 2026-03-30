@@ -168,7 +168,7 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
     const candidates = [];
     for (let ti = 0; ti < N; ti++) {
       if (tElev[ti] <= 0) continue;
-      if (tTemp[ti] < 0.10) continue; // exclude polar ice / permafrost
+      if (tTemp[ti] < 0.22) continue; // exclude ice, permafrost, and deep tundra — not mineable pre-modern
       if (candidateTest(ti)) {
         const tx2 = ti % tw, ty2 = (ti - tx2) / tw;
         // Suitability boosts probability but doesn't monopolize.
