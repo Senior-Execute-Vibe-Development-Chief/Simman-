@@ -463,7 +463,7 @@ const rivers=computeRivers(tw,th,tElev,tMoist,tTemp);
 // Biome classification, resources, and all downstream systems react correctly.
 const riverMoist=new Float32Array(tw*th);
 {// Tributary+ rivers get moisture gradient. Streams are too small for map-scale effect.
-const riverRadius=[0,0,3,4,6];// NONE,STREAM,TRIB,MAJOR,GREAT
+const riverRadius=[0,0,1,2,3];// NONE,STREAM,TRIB,MAJOR,GREAT (~21km/tile)
 const riverMoistPeak=[0,0,0.25,0.40,0.55];
 for(let ti=0;ti<tw*th;ti++){
 const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;
