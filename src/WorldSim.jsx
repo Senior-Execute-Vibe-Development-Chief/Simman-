@@ -1278,7 +1278,8 @@ const wdir=["E","NE","N","NW","W","SW","S","SE"][Math.round(wdeg/45)%8];
 // Resource info at this tile
 const tileRes=terTi>=0&&terRef.current&&terRef.current.deposits?tileResourceSummary(terRef.current.deposits,terTi):[];
 const riverMag=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.riverMag[terTi]:0;
-setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag});
+const riverAccum=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.flowAccum[terTi]:0;
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
@@ -1380,7 +1381,7 @@ border:"1px solid rgba(201,184,122,0.15)"}}>
 <div><span style={{color:"#8a8474"}}>Fert:</span> {(hoverInfo.fert*100).toFixed(0)}%</div>
 <div><span style={{color:"#8a8474"}}>Wind:</span> {hoverInfo.wkmh} km/h {hoverInfo.wdir}</div>
 <div><span style={{color:"#8a8474"}}>Lat:</span> {(hoverInfo.lat*90).toFixed(1)}°</div>
-{hoverInfo.river>0&&<div><span style={{color:"#8a8474"}}>River:</span> <span style={{color:"#6ab4e8"}}>{RIVER_NAMES[hoverInfo.river]}</span></div>}
+{hoverInfo.river>0&&<div><span style={{color:"#8a8474"}}>River:</span> <span style={{color:"#6ab4e8"}}>{RIVER_NAMES[hoverInfo.river]}</span> <span style={{color:"#5a5448",fontSize:9}}>({hoverInfo.riverAccum.toFixed(1)})</span></div>}
 {hoverInfo.resources&&hoverInfo.resources.length>0&&<>
 <div style={{height:1,background:"rgba(201,184,122,0.12)",margin:"3px 0"}} />
 {hoverInfo.resources.slice(0,4).map(r=>(
