@@ -610,13 +610,19 @@ for(let i=0;i<pop.length;i++){if(tribeSizes[i]<=0){pop[i]=0;continue;}
 const agMult=1+know[i].agriculture*2.5;
 const capacity=tribeStrength[i]*agMult;// effective carrying capacity
 if(capacity<=0){pop[i]=Math.max(0,pop[i]*0.95);continue;}
-// Logistic growth: 2% base rate (doubles every ~35 steps = 350 years). Realistic for
-// pre-modern populations on good land with room to grow.
+// Population growth: logistic with overshoot allowed.
+// Key insight: population should be able to EXCEED capacity slightly — this creates
+// the pressure that drives expansion. Without overshoot, pop→capacity→growth stops→
+// no expansion pressure→deadlock.
 const ratio=pop[i]/capacity;
-const growthRate=0.02*(1-ratio);// 2% at low pop, 0% at capacity
+// Base growth rate scales with agriculture (farmers grow faster than foragers)
+const baseGrowth=0.015+know[i].agriculture*0.015;// 1.5% at ag=0, 3% at ag=1
+// Growth continues even slightly above capacity (overshoot up to 120%)
+// This overshoot is what creates sustained expansion pressure.
+const growthRate=ratio<1.2?baseGrowth*(1-ratio*0.7):0;// slows but doesn't stop until 120%
 pop[i]=Math.max(1,pop[i]+pop[i]*growthRate);
-// Famine: above capacity, harsh decline. Overshoot hurts.
-if(ratio>1.0)pop[i]=Math.max(1,pop[i]*(0.98-Math.min(0.05,(ratio-1)*0.1)));// 2-7% decline
+// Harsh famine above 130% — hard ceiling on overshoot
+if(ratio>1.3)pop[i]=Math.max(1,pop[i]*(0.96-Math.min(0.06,(ratio-1.3)*0.15)));
 }}
 
 // ── Background population: thin hunter-gatherer layer across all unowned habitable land ──
@@ -1151,36 +1157,47 @@ const effThreshold=Math.max(0.1,pressureThreshold);
 const popPressure=Math.max(0,(popRatio-effThreshold)/(1-effThreshold));// 0→1 normalized
 const smallBoost=owSz<5?1.5:1;
 const largePrize=owSz>40?1+Math.min(1,(owSz-40)*0.008):1;
-// Score all candidate neighbor tiles, then claim the best
+// Score and evaluate all candidate neighbor tiles
+const agBoost=1+agLevel*2;// ag=0→1x, ag=0.5→2x
 const candidates=[];
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny2=ty+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx;if(owner[ni]>=0)continue;
 const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni];if(effT<0.02){room=true;continue;}
 const diff=tDiff[ni],adjDiff=Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0));
-// Expansion chance: agricultural civs expand confidently into good land
-const agBoost=1+agLevel*2;// ag=0→1x, ag=0.3→1.6x, ag=0.5→2x
-let chance;if(elev<=0&&elev>sl)chance=0.25*wet;else if(tCoast[ni])chance=0.3*wet;else chance=0.22*(1-adjDiff)*wet;
-if(effT<0.15)chance*=0.15;
-// Fertility: quadratic. Rich land is much more attractive.
-const fertSq=tFert[ni]*tFert[ni];
-chance*=(0.08+fertSq*5.0*largePrize)*smallBoost*agBoost;
-// Population pressure still gates, but agricultural civs have lower threshold
-chance*=Math.max(0.1,popPressure);
-// Center proximity: expansion weakens far from centers
+const fert=tFert[ni];
+// ── Directional score: what makes this tile VALUABLE to expand into ──
+let score=fert*fert*agMult*3;// quadratic fertility × agriculture tech
+// Resource pull: strong once metallurgy develops
+if(owKnow&&owKnow.metallurgy>0.1&&ter.deposits){
+score+=(ter.deposits.copper[ni]+ter.deposits.tin[ni]+ter.deposits.iron[ni])*owKnow.metallurgy*2.5;}
+// Strategic knowledge-driven pull
+if(owKnow){
+if(owKnow.agriculture>0.1&&ter.rivers&&ter.rivers.riverMag[ni]>=2)score+=1.0*owKnow.agriculture;
+if(owKnow.agriculture>0.1&&ter.rivers&&ter.rivers.riverMag[ni]>=3)score+=0.5*owKnow.agriculture;
+if(owKnow.navigation>0.1&&tCoast[ni])score+=0.5*owKnow.navigation;
+if(owKnow.organization>0.2&&tDiff[ni]>0.5)score+=0.4*owKnow.organization;// strategic chokepoints
+if(owKnow.trade>0.1){// push toward neighbors (trade contact)
+for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny2+dy2;
+if(ay>=0&&ay<th){const ao=owner[ay*tw+ax];
+if(ao>=0&&ao!==ow){score+=0.3*owKnow.trade;break;}}}}}
+// ── Expansion chance: how EASY is it to take this tile ──
+// Fertile, flat land with low difficulty = easy. Mountains, desert = hard.
+// Score feeds into chance — valuable targets are pursued more aggressively.
+let chance=0.25*wet*agBoost*smallBoost;// base
+// Difficulty is a MAJOR reducer — mountains/desert dramatically harder
+chance*=Math.max(0.02,(1-adjDiff)*(1-adjDiff));// quadratic: diff 0.5→0.25x, diff 0.8→0.04x
+// Fertility makes it easier (fertile land is inviting, easy to settle)
+chance*=0.15+fert*2.0*largePrize;// fert 0.5→1.15, fert 0.1→0.35, fert 0.01→0.17
+// Cold penalty
+if(effT<0.15)chance*=0.12;
+// Population pressure drives the push
+chance*=Math.max(0.08,popPressure);
+// High-value targets get a chance bonus (desire drives effort)
+chance*=1+Math.min(1.5,score*0.3);// score 0→1x, score 5→2.5x
+// Center proximity
 const centers=tribeCenters[ow];
 const{min:distMin}=nearestCenterDist(centers,nx,ny2,tw);
 const reach=expFalloff(distMin);
-chance*=Math.max(0.03,reach);// 3% floor far from centers
-// ── Directional scoring: strongly pull toward valuable targets ──
-let score=tFert[ni]*tFert[ni]*agMult*3;// quadratic fertility — rich land MUCH more attractive
-// Resource pull: STRONG pull once metallurgy develops
-if(owKnow&&owKnow.metallurgy>0.1&&ter.deposits){
-const resPull=(ter.deposits.copper[ni]+ter.deposits.tin[ni]+ter.deposits.iron[ni])*owKnow.metallurgy*2.0;
-score+=resPull;}// 4x stronger than before
-// Strategic pull: agriculture→rivers, navigation→coast
-if(owKnow){
-if(owKnow.agriculture>0.15&&ter.rivers&&ter.rivers.riverMag[ni]>=2)score+=0.8*owKnow.agriculture;// rivers are prime real estate
-if(owKnow.navigation>0.1&&tCoast[ni])score+=0.4*owKnow.navigation;
-if(owKnow.organization>0.3&&tDiff[ni]>0.5)score+=0.3*owKnow.organization;}
+chance*=Math.max(0.03,reach);
 score+=Math.random()*0.1;// small noise to break ties
 candidates.push({ni,nx,ny:ny2,chance,score,diff,distMin});}
 // Sort candidates by score descending — claim best tiles first
