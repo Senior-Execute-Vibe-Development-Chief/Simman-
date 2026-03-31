@@ -677,7 +677,9 @@ const MIN_SPACING=Math.round(tw*0.04);// smaller spacing — allows clustering n
 let bestTi=-1,bestScore=-1;
 for(let ti=0;ti<tw*th;ti++){
 if(bgPop[ti]<CRYSTAL_THRESHOLD)continue;
-if(tFert[ti]<0.25)continue;// need genuinely fertile land (river valleys, coasts)
+// Fertility requirement decreases over time as agriculture tech matures globally
+const fertReq=Math.max(0.08,0.25-ter.stepCount*0.0003);// 0.25 at start, 0.10 by step 500
+if(tFert[ti]<fertReq)continue;
 const tx=ti%tw,ty=(ti-tx)/tw;
 let tooClose=false;
 for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0)continue;
@@ -702,7 +704,21 @@ if(score>bestScore){bestScore=score;bestTi=ti;}}
 // The tribe forms by absorbing all nearby background-populated tiles above a density threshold.
 if(bestTi>=0&&Math.random()<0.15){
 const tx=bestTi%tw,ty=(bestTi-tx)/tw;
+// Before creating tribe, check nearby civs to inherit knowledge.
+// A new civilization forming in 1500 AD near iron-age neighbors doesn't start from stone age.
+// It inherits roughly 60% of the average knowledge of civs within range 20.
+let nearKnow=null;let nearCount=0;
+for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0)continue;
+for(const c of ter.tribeCenters[t]){const d=tDistW(tx,ty,c.x,c.y,tw);
+if(d<25){// within cultural influence range
+if(!nearKnow)nearKnow={agriculture:0,metallurgy:0,navigation:0,construction:0,organization:0,trade:0};
+const nk=ter.tribeKnowledge[t];
+for(const dom of KNOW_DOMAINS)nearKnow[dom]+=nk[dom];
+nearCount++;break;}}}// only count each tribe once
 const nid=newTribe(ter,tx,ty,-1);
+// Override the zero knowledge with inherited knowledge from neighbors
+if(nearKnow&&nearCount>0){const k=ter.tribeKnowledge[nid];
+for(const dom of KNOW_DOMAINS)k[dom]=Math.min(0.9,(nearKnow[dom]/nearCount)*0.6);}// 60% of neighbor average
 // Flood-fill from best tile: claim all connected tiles with significant bgPop
 const claimThreshold=0.05;// tiles above this bgPop get absorbed into the new tribe
 const visited=new Uint8Array(tw*th);
@@ -1140,7 +1156,12 @@ if(ter.tribePopulation&&owSzBefore>0){const popLoss=ter.tribePopulation[ow]/owSz
 ter.tribePopulation[ow]=Math.max(0,ter.tribePopulation[ow]-popLoss);}}else{ter.settled++;}
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;
 // Absorb background population into the tribe
-if(ter.bgPop&&ter.bgPop[ti]>0){if(ter.tribePopulation)ter.tribePopulation[nw]+=ter.bgPop[ti]*5;// bg pop → tribe pop (thousands)
+if(ter.bgPop&&ter.bgPop[ti]>0){
+// Absorb background population. Scale depends on the claiming tribe's tech level —
+// advanced civs organize the local population more effectively.
+const claimEraMult=ter.tribeKnowledge&&ter.tribeKnowledge[nw]?
+15+ter.tribeKnowledge[nw].agriculture*60+ter.tribeKnowledge[nw].metallurgy*40:15;
+if(ter.tribePopulation)ter.tribePopulation[nw]+=ter.bgPop[ti]*claimEraMult*0.5;
 ter.bgPop[ti]=0;}}
 // Transfer tile without resetting tenure (for splits/fragmentation — population stays, allegiance changes)
 function transferTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert}=ter;const ow=owner[ti];
@@ -1226,11 +1247,13 @@ if(ao>=0&&ao!==ow){score+=0.3*owKnow.trade;break;}}}}}
 let chance=0.20*wet*smallBoost;// base (lower, ag doesn't boost base)
 // Difficulty: CUBIC penalty. Even moderate difficulty is very hard early on.
 chance*=Math.max(0.01,(1-adjDiff)*(1-adjDiff)*(1-adjDiff));// diff 0.3→0.34x, diff 0.5→0.125x, diff 0.8→0.008x
-// Fertility: CUBIC. Only truly fertile land is easy. Poor land is nearly impossible.
-// fert=0.5→0.375, fert=0.3→0.081, fert=0.1→0.003, fert=0.01→virtually 0
+// Fertility: cubic base, but tech provides a rising floor.
+// Early civs: only prime land. Industrial civs: can settle anywhere habitable.
 const fertCube=fert*fert*fert;
-chance*=fertCube*8*largePrize;// no floor — bad land is genuinely near-zero
-// Agriculture tech makes ALL land somewhat easier (farming knowledge transfers)
+// Tech floor: knowledge makes even poor land claimable (irrigation, greenhouses, mining towns)
+const techFloor=(agLevel*0.03+owMt*0.02+owCn*0.02);// ag=0.8,mt=0.7,cn=0.6→0.05
+chance*=Math.max(techFloor,fertCube*8)*largePrize;
+// Agriculture boost
 chance*=agBoost;
 // Cold: brutal without tech
 if(effT<0.15){const coldResist=owKnow?Math.min(0.7,owKnow.construction*0.4+owKnow.agriculture*0.3):0;
