@@ -673,14 +673,13 @@ k.agriculture=Math.min(1,k.agriculture+Math.max(0,growth));}
 {let score=0;
 const metRv=resourceValues(k);
 // Having the RIGHT ores at the RIGHT time matters most (tin in bronze age, iron in iron age)
-const oreRichness=Math.min(1,metRv.copper*(r.copper||0)*0.05+metRv.tin*(r.tin||0)*0.08+metRv.iron*(r.iron||0)*0.06+metRv.coal*(r.coal||0)*0.04);
-score+=oreRichness*0.8;
+// Era-weighted: the RIGHT ore at the RIGHT time drives metallurgy hard
+const oreRichness=Math.min(1,metRv.copper*(r.copper||0)*0.12+metRv.tin*(r.tin||0)*0.15+metRv.iron*(r.iron||0)*0.12+metRv.coal*(r.coal||0)*0.10);
+score+=oreRichness*1.0;// ore is the primary driver
 score+=k.agriculture*0.5;// surplus labor
-score+=k.metallurgy*0.3;// strong positive feedback — metalwork enables better metalwork
-if(oreRichness<0.05)score*=0.08;
-// Softer diminishing returns: sqrt(1-k) instead of (1-k). Much less punishing at high levels.
-// (1-k) at k=0.5 → 0.5. sqrt(1-k) at k=0.5 → 0.71. At k=0.8 → 0.45 vs 0.2.
-const growth=0.012*score*Math.sqrt(1-k.metallurgy);
+score+=k.metallurgy*0.4;// strong positive feedback
+if(oreRichness<0.05)score*=0.15;// harsh but not as deadly as before
+const growth=0.015*score*Math.sqrt(1-k.metallurgy);// faster base rate
 k.metallurgy=Math.min(1,k.metallurgy+Math.max(0,growth));}
 
 // Navigation: coast + timber + need + trade
@@ -693,7 +692,7 @@ score+=k.trade*0.25;// mercantile pressure
 const knownCount=ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
 score+=Math.min(0.2,knownCount*0.03);
 if(r.coastTiles<1)score*=0.05;
-const growth=0.012*score*Math.sqrt(1-k.navigation);
+const growth=0.015*score*Math.sqrt(1-k.navigation);
 k.navigation=Math.min(1,k.navigation+Math.max(0,growth));}
 
 // Construction: stone + density + agriculture + metallurgy
@@ -702,7 +701,7 @@ score+=Math.min(0.4,r.stone*0.04);
 score+=Math.min(0.3,pop*0.002);
 score+=k.agriculture*0.35;
 score+=k.metallurgy*0.15;// metal tools help build
-const growth=0.012*score*Math.sqrt(1-k.construction);
+const growth=0.015*score*Math.sqrt(1-k.construction);
 k.construction=Math.min(1,k.construction+Math.max(0,growth));}
 
 // Organization: population size + centers + construction + trade
@@ -713,7 +712,7 @@ score+=Math.min(0.3,centerCount*0.07);// multi-center polities
 score+=k.construction*0.25;// infrastructure enables governance
 score+=k.trade*0.15;// trade networks need admin
 score+=Math.min(0.15,sz>40?(sz-40)*0.002:0);
-const growth=0.012*score*Math.sqrt(1-k.organization);
+const growth=0.015*score*Math.sqrt(1-k.organization);
 k.organization=Math.min(1,k.organization+Math.max(0,growth));}
 
 // Trade: neighbors + resource diversity + coast + navigation
@@ -724,7 +723,7 @@ score+=Math.min(0.4,neighborCount*0.08);
 score+=Math.min(0.3,r.resourceTypes*0.04);
 score+=Math.min(0.2,r.coastTiles*0.008);
 score+=k.navigation*0.2;
-const growth=0.012*score*Math.sqrt(1-k.trade);
+const growth=0.015*score*Math.sqrt(1-k.trade);
 k.trade=Math.min(1,k.trade+Math.max(0,growth));}}
 
 // ── Diffusion: knowledge flows across borders from high to low ──
@@ -825,14 +824,14 @@ if(bgPop[ni]<bgPop[ti]*0.2){
 const flow=bgPop[ti]*0.003*(1-tDiff[ni])*(1-tDiff[ni]);// difficulty squared — mountains nearly impassable
 bgPop[ti]-=flow;bgPop[ni]+=Math.max(0,flow);}}}}
 // ── Tribe crystallization: rare, fertility-weighted, requires dense local cluster ──
-if(ter.stepCount%32!==0)return;// check every 32 steps (less frequent)
+if(ter.stepCount%16!==0)return;// check every 16 steps
 let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
 if(alive>=80)return;
 // Much higher bar: need real fertility concentration, not just any habitable tile
 const CRYSTAL_THRESHOLD=0.20;// lowered — more civs emerge, matching historical density
 const MIN_SPACING=Math.round(tw*0.04);// smaller spacing — allows clustering near good areas
-// Find best crystallization candidate (not first-found — best fertility)
-let bestTi=-1,bestScore=-1;
+// Find multiple crystallization candidates — spawn up to 3 per check
+const crystalCandidates=[];
 for(let ti=0;ti<tw*th;ti++){
 if(bgPop[ti]<CRYSTAL_THRESHOLD)continue;
 // Fertility requirement decreases over time as agriculture tech matures globally
@@ -844,11 +843,8 @@ for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0)continue;
 for(const c of ter.tribeCenters[t]){const d=tDistW(tx,ty,c.x,c.y,tw);
 if(d<MIN_SPACING){tooClose=true;break;}}if(tooClose)break;}
 if(tooClose)continue;
-let nearOwned=false;
-for(let dy=-4;dy<=4&&!nearOwned;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
-for(let dx=-4;dx<=4;dx++){const nx=((tx+dx)%tw+tw)%tw;
-if(owner[ny*tw+nx]>=0){nearOwned=true;break;}}}
-if(nearOwned)continue;
+// Don't spawn ON owned tiles, but allow spawning near them (removes the 4-tile buffer)
+if(owner[ti]>=0)continue;
 // Score by local population density + fertility (rivers/coasts naturally win)
 let localPop=0,localFert=0;
 for(let dy=-4;dy<=4;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
@@ -867,12 +863,16 @@ const crRv=resourceValues(regionKnow);
 // Resource value at this tile: valuable resources attract settlement
 let resScore=0;if(ter.deposits){for(const rk of RES_KEYS){
 const dep=ter.deposits[rk];if(dep&&dep[ti]>0.1)resScore+=crRv[rk]*dep[ti];}}
-const score=localPop*localFert*tFert[ti]+resScore*3;// resources strongly attract crystallization
-if(score>bestScore){bestScore=score;bestTi=ti;}}
+const score=localPop*localFert*tFert[ti]+resScore*3;
+if(score>0.5)crystalCandidates.push({ti,tx,ty,score});}
+// Sort by score, spawn up to 3 per check
+crystalCandidates.sort((a,b)=>b.score-a.score);
+for(let cc=0;cc<Math.min(3,crystalCandidates.length);cc++){
+const bestTi=crystalCandidates[cc].ti;
 // Crystallize: claim the ENTIRE populated region at once.
 // IRL Egypt didn't expand from tile #1 — hundreds of Nile villages unified into one polity.
 // The tribe forms by absorbing all nearby background-populated tiles above a density threshold.
-if(bestTi>=0&&Math.random()<0.25){// 25% chance, checked every 32 steps
+if(Math.random()<0.4){// 40% chance per candidate
 const tx=bestTi%tw,ty=(bestTi-tx)/tw;
 // Before creating tribe, check nearby civs to inherit knowledge.
 // A new civilization forming in 1500 AD near iron-age neighbors doesn't start from stone age.
@@ -911,7 +911,9 @@ if(bgPop[nni]>=claimThreshold&&tElev[nni]>0){stack.push(nni);}}}
 for(let dy=-6;dy<=6;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
 for(let dx=-6;dx<=6;dx++){const nx=((tx+dx)%tw+tw)%tw;
 bgPop[ny*tw+nx]*=0.3;}}// reduce, don't zero (some people remain)
-}}
+alive++;if(alive>=80)break;
+}}// end if(random) + for cc (candidates loop)
+}// end stepBackgroundPop
 
 // Port computation: find best coastal settlement tiles for a tribe
 function computeTribePorts(ter,tribeId){
