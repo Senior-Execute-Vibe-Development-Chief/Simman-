@@ -1013,25 +1013,24 @@ k.construction=0.10+Math.random()*0.10;
 k.organization=0.08+Math.random()*0.08;
 k.trade=0.05+Math.random()*0.05;
 tribeKnowledge.push(k);tribePopulation.push(0);tribeKnownCoasts.push([]);tribePorts2.push([]);
-// Priority flood-fill: claim best connected fertile tiles
-const visited=new Uint8Array(tw*th);const startTi=y*tw+x;
-const pq=[{ti:startTi,f:tFert[startTi]}];visited[startTi]=1;
-let claimed=0;const maxClaim=20+Math.floor(Math.random()*10);
-while(pq.length>0&&claimed<maxClaim){
-pq.sort((a,b)=>b.f-a.f);
-const{ti}=pq.shift();
-if(owner[ti]>=0||tElev[ti]<=0)continue;
-owner[ti]=i;tribeSizes[i]++;tribeStrength[i]+=tFert[ti];
-tenure[ti]=100;// well-established
-frontier[ti]=1;frontierList.push(ti);claimed++;
-const cx=ti%tw,cy2=(ti-cx)/tw;
-for(const[ddx,ddy]of DIRS){const nnx=((cx+ddx)%tw+tw)%tw,nny=cy2+ddy;
+// Start with just the capital + immediate fertile neighbors (3-5 tiles).
+// The sim grows them organically from there — no artificial blob.
+const startTi=y*tw+x;
+owner[startTi]=i;tribeSizes[i]++;tribeStrength[i]+=tFert[startTi];
+tenure[startTi]=200;frontier[startTi]=1;frontierList.push(startTi);
+// Claim best 2-4 immediate neighbors so the civ has a tiny foothold
+const startNeighbors=[];
+for(const[ddx,ddy]of DIRS){const nnx=((x+ddx)%tw+tw)%tw,nny=y+ddy;
 if(nny<0||nny>=th)continue;const nni=nny*tw+nnx;
-if(visited[nni]||owner[nni]>=0||tElev[nni]<=0)continue;visited[nni]=1;
-if(tFert[nni]>0.08){pq.push({ti:nni,f:tFert[nni]});}}}
-// Population in thousands. A 25-tile fertile civ at 3000 BC ≈ 500k-1M people.
-// Scale: tribeStrength (~10 for 25 tiles) × agMult (~2) × 50 = ~1000 (= 1M people)
-tribePopulation[i]=tribeStrength[i]*(1+k.agriculture*2.5)*50*0.8;}
+if(owner[nni]>=0||tElev[nni]<=0)continue;
+startNeighbors.push({ti:nni,f:tFert[nni]});}
+startNeighbors.sort((a,b)=>b.f-a.f);
+for(let sn=0;sn<Math.min(3,startNeighbors.length);sn++){
+const{ti}=startNeighbors[sn];
+owner[ti]=i;tribeSizes[i]++;tribeStrength[i]+=tFert[ti];
+tenure[ti]=200;frontier[ti]=1;frontierList.push(ti);}
+// Population: start at capacity — these are established 3000 BC states
+tribePopulation[i]=tribeStrength[i]*(1+k.agriculture*2.5)*50;}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
 // ── Background population at 3000 BC: graduated by valley quality ──
 // The best river valleys are already taken by starting civs. The NEXT best
