@@ -806,6 +806,7 @@ if(ratio>1.2)pop[i]=Math.max(1,pop[i]*(0.97-Math.min(0.05,(ratio-1.2)*0.15)));
 function stepBackgroundPop(ter){
 const{tw,th,tElev,tTemp,tFert,tDiff,tCoast,owner,bgPop,tribeSizes}=ter;
 if(!bgPop)return;
+ter._dbgBgCalls=(ter._dbgBgCalls||0)+1;// count how many times this function runs
 // Grow bgPop on ALL habitable tiles — including owned ones.
 // bgPop represents general population density of the land, independent of political control.
 // Owned tiles grow bgPop too (the farmers are there regardless of who rules them).
@@ -1560,6 +1561,9 @@ tribeStrength[owner[i]]=Math.max(0.1,tribeStrength[owner[i]]-drain);}}}
 // ── Border conflict: local power projection determines tile flips ──
 if(ter.stepCount%4===0){const flips=[];const{tenure}=ter;
 for(let i=0;i<tw*th;i++){const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
+// New tribes get 80 steps of protection from border conflict (establishment period)
+const owAge=ter.stepCount-(tribeCenters[ow][0]?tribeCenters[ow][0].founded:0);
+if(owAge<80)continue;// can't lose tiles while establishing
 const ty2=Math.floor(i/tw),tx2=i%tw;
 // Quick border check: skip interior tiles with no enemy neighbors
 let hasEnemy=false;
@@ -2492,7 +2496,7 @@ border:"1px solid rgba(201,184,122,0.1)"}}>
 <span style={{color:"#c9b87a"}}>{dominant.size}t</span></span>}
 {aliveK>0&&<span style={{fontSize:9,color:"#6a6458"}}>
 Ag {(avgAg*100|0)} Mt {(avgMet*100|0)} Nv {(avgNav*100|0)} Og {(avgOrg*100|0)}</span>}
-{ter&&<span style={{fontSize:9,color:"#886644"}}>bg:{ter._dbgMaxBgPop?.toFixed(2)} abv:{ter._dbgBgAboveThresh} cc:{ter._dbgCrystalCandidates} sp:{ter._dbgCrystalSpawned||0}</span>}
+{ter&&<span style={{fontSize:9,color:"#886644"}}>bg:{ter._dbgMaxBgPop?.toFixed(2)} call:{ter._dbgBgCalls||0} abv:{ter._dbgBgAboveThresh} cc:{ter._dbgCrystalCandidates} sp:{ter._dbgCrystalSpawned||0}</span>}
 </div>;})()}
 
 {/* ══ BOTTOM CENTER: VIEW/OVERLAY OPTIONS (larger) ══ */}
