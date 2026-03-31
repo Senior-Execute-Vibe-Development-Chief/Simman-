@@ -177,10 +177,10 @@ const upT=(prev[sy*mW2+sx]*(1-fdx)+prev[sy*mW2+sxr]*fdx)*(1-fdy)
 const e2=elevation[fi],lt=Math.abs(py/H-0.42)*2;
 const locT=Math.max(0,Math.min(1,1-Math.pow(lt,2.0)*1.1-lt*lt*lt*0.1+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.55));
 // Ocean: wind drives currents strongly (Gulf Stream = warm water pushed by wind)
-if(e2<=0){tGrid[my*mW2+mx]=locT*0.65+upT*0.35;}// 35% wind influence (was 12%)
+if(e2<=0){tGrid[my*mW2+mx]=locT*0.45+upT*0.55;}// 55% wind influence — strong ocean currents
 else{const tb=Math.min(0.8,Math.max(0,e2-0.05)*3);
-const bi=(1-tb*0.5)*0.22,wb=upT>locT?1.3:0.8;
-const wi=Math.min(0.35,bi*wb);
+const bi=(1-tb*0.5)*0.35,wb=upT>locT?1.3:0.8;// stronger land advection
+const wi=Math.min(0.50,bi*wb);
 tGrid[my*mW2+mx]=locT*(1-wi)+upT*wi;}}}
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){
 const fx=x/2,fy=y/2,ix=Math.min(mW2-2,fx|0),iy=Math.min(mH2-2,fy|0);
@@ -203,7 +203,7 @@ const mt=bt+(0.45-bt)*cp*0.2+ch;
 const wt=windTemp[i];
 // Ocean tiles get more wind influence (ocean currents = wind-driven)
 const isOcean=e<=0;
-temperature[i]=Math.max(0,Math.min(1,isOcean?mt*0.55+wt*0.45:mt*0.70+wt*0.30));
+temperature[i]=Math.max(0,Math.min(1,isOcean?mt*0.35+wt*0.65:mt*0.60+wt*0.40));
 moisture[i]=windMoisture[i];}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
