@@ -596,6 +596,20 @@ oil:     Math.min(1,Math.max(0,mt-0.7)*Math.max(0,cn-0.6)*5),
 gems:    Math.min(1,tr*0.5+og*0.3)};}
 const RES_KEYS=['copper','tin','iron','coal','stone','timber','salt','horses','precious','oil','gems'];
 
+// Compute relationship between two tribes: 'fight','trade','friendly','neutral'
+function tribeRelation(ter,a,b){
+if(a===b||!ter._borderContacts)return'neutral';
+const key=Math.min(a,b)+','+Math.max(a,b);
+if(ter._recentConflicts&&ter._recentConflicts[key]&&ter.stepCount-ter._recentConflicts[key]<50)return'fight';
+const ka=ter.tribeKnowledge[a],kb=ter.tribeKnowledge[b];
+const contactsA=ter._borderContacts[a];
+const hasBorder=contactsA&&contactsA[b]>0;
+let hasMaritimeLink=false;
+if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[a]){for(const kc of ter.tribeKnownCoasts[a]){if(kc.owner===b){hasMaritimeLink=true;break;}}}
+if((hasBorder||hasMaritimeLink)&&ka&&kb&&ka.trade>0.15&&kb.trade>0.15)return'trade';
+if(hasBorder)return'friendly';
+return'neutral';}
+
 function computeTribeResources(ter){
 const{tw,th,owner,deposits,tCoast,tribeStrength}=ter;
 const n=ter.tribeCenters.length;
@@ -1647,8 +1661,13 @@ else if(lpB>lpA*totalDef*0.5&&Math.random()<0.1){
 const attemptCost=tFert[i]*0.04*atkAggression;
 tribeStrength[no]=Math.max(0.1,tribeStrength[no]-attemptCost);}}}
 // Apply flips with attack cost
+// Track recent conflicts for relationship display
+if(!ter._recentConflicts)ter._recentConflicts={};
 for(const[ti,to]of flips){if(owner[ti]===to)continue;
-const attackCost=tFert[ti]*0.3;// conquest cost
+const from=owner[ti];// who lost the tile
+if(from>=0){const key=Math.min(from,to)+','+Math.max(from,to);
+ter._recentConflicts[key]=ter.stepCount;}// record latest conflict step
+const attackCost=tFert[ti]*0.3;
 tribeStrength[to]=Math.max(0.1,tribeStrength[to]-attackCost);
 claimTile(ter,ti,to);if(!nf[ti]){nf[ti]=1;nfl.push(ti);}}}
 // ── Center dynamics: prestige growth, validation, capital challenge ──
@@ -1891,37 +1910,76 @@ r=(r*heatW+tr*(1-heatW))|0;g=(g*heatW+tg*(1-heatW))|0;b=(b*heatW+tb*(1-heatW))|0
 }
 d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="tribes"){
-// Tribe view — pure era-colored fill with WHITE borders, no per-tribe coloring
-const eraColor=(k)=>{if(!k)return[55,48,38];// stone age (warm brown)
+const eraColor=(k)=>{if(!k)return[55,48,38];
 const ag=k.agriculture,mt=k.metallurgy,org=k.organization;
-if(mt>0.83&&org>0.55)return[90,75,100];// industrial (muted purple)
-if(org>0.5&&mt>0.4)return[130,55,55];// empire/classical (burgundy)
-if(mt>0.5)return[100,100,110];// iron age (blue-grey steel)
-if(mt>0.3)return[155,120,55];// bronze age (warm bronze)
-if(mt>0.15)return[170,110,55];// copper age (copper)
-if(ag>0.3)return[90,110,50];// farming (olive)
-if(ag>0.1)return[75,82,45];// neolithic (dark olive)
-return[55,48,38];};// hunter-gatherer
-// Pre-compute era colors per tribe
+if(mt>0.83&&org>0.55)return[90,75,100];
+if(org>0.5&&mt>0.4)return[130,55,55];
+if(mt>0.5)return[100,100,110];
+if(mt>0.3)return[155,120,55];
+if(mt>0.15)return[170,110,55];
+if(ag>0.3)return[90,110,50];
+if(ag>0.1)return[75,82,45];
+return[55,48,38];};
 const eraR=new Uint8Array(ter.tribeCenters.length),eraG=new Uint8Array(ter.tribeCenters.length),eraB=new Uint8Array(ter.tribeCenters.length);
-for(let t=0;t<ter.tribeCenters.length;t++){
-const k=ter.tribeKnowledge&&ter.tribeKnowledge[t]?ter.tribeKnowledge[t]:null;
-const[er,eg,eb]=eraColor(k);eraR[t]=er;eraG[t]=eg;eraB[t]=eb;}
+for(let t2=0;t2<ter.tribeCenters.length;t2++){
+const k2=ter.tribeKnowledge&&ter.tribeKnowledge[t2]?ter.tribeKnowledge[t2]:null;
+const[er2,eg2,eb2]=eraColor(k2);eraR[t2]=er2;eraG[t2]=eg2;eraB[t2]=eb2;}
+// ── FOCUSED TRIBE VIEW: when a tribe is selected ──
+const sel=ter._selectedTribe;
+const focused=sel>=0&&ter.tribeSizes[sel]>0;
+// Pre-compute relationships and awareness for focused tribe
+let knownTribes=null,relColors=null;
+if(focused){
+knownTribes=new Set();knownTribes.add(sel);relColors={};
+// Known via border contact
+if(ter._borderContacts&&ter._borderContacts[sel]){
+for(const nid in ter._borderContacts[sel]){const j=parseInt(nid);
+if(ter.tribeSizes[j]>0){knownTribes.add(j);relColors[j]=tribeRelation(ter,sel,j);}}}
+// Known via maritime (known coasts)
+if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[sel]){
+for(const kc of ter.tribeKnownCoasts[sel]){
+if(kc.owner>=0&&ter.tribeSizes[kc.owner]>0){knownTribes.add(kc.owner);
+if(!relColors[kc.owner])relColors[kc.owner]=tribeRelation(ter,sel,kc.owner);}}}}
 for(let ti=0;ti<N;ti++){
 const e=ter.tElev[ti],ow=ter.owner[ti];let r,g,b;
 if(e<=sl){r=6;g=8;b=16;}
-else if(ow<0){r=25;g=23;b=20;}
+else if(ow<0){r=focused?15:25;g=focused?14:23;b=focused?13:20;}// darker unowned in focused
 else{
-// Check if border (any cardinal neighbor is different owner or unowned)
-const tx3=ti%ter.tw,ty3=(ti-tx3)/ter.tw;let isBorder=false;
+const tx3=ti%ter.tw,ty3=(ti-tx3)/ter.tw;let isBorder=false;let borderNeighbor=-1;
 for(let di=0;di<4;di++){
 const dnx=((tx3+DIRS[di][0])%ter.tw+ter.tw)%ter.tw,dny=ty3+DIRS[di][1];
 if(dny<0||dny>=ter.th){isBorder=true;break;}
-if(ter.owner[dny*ter.tw+dnx]!==ow){isBorder=true;break;}}
-if(isBorder){// White/light border — universal, no tribe color
-r=200;g=195;b=185;
-}else{// Pure era color — no tribe tint at all
-r=eraR[ow];g=eraG[ow];b=eraB[ow];}}
+const nOwner=ter.owner[dny*ter.tw+dnx];
+if(nOwner!==ow){isBorder=true;if(nOwner>=0)borderNeighbor=nOwner;break;}}
+if(focused){
+// Selected tribe: bright era color, relationship-colored borders
+if(ow===sel){
+if(isBorder){
+// Border color based on who's on the other side
+if(borderNeighbor>=0&&relColors[borderNeighbor]){
+const rel=relColors[borderNeighbor];
+if(rel==='fight'){r=220;g=60;b=50;}// RED — at war
+else if(rel==='trade'){r=220;g=190;b=60;}// GOLD — trading
+else if(rel==='friendly'){r=80;g=180;b=80;}// GREEN — friendly
+else{r=200;g=195;b=185;}// white — neutral border
+}else{r=200;g=195;b=185;}// unowned border — white
+}else{r=eraR[ow];g=eraG[ow];b=eraB[ow];}// interior — bright era color
+}else if(knownTribes&&knownTribes.has(ow)){
+// Known tribe: dimmed era color, relationship-colored border
+const dim=0.5;// 50% brightness
+if(isBorder&&borderNeighbor===sel){
+const rel=relColors[ow]||'neutral';
+if(rel==='fight'){r=180;g=50;b=40;}
+else if(rel==='trade'){r=180;g=160;b=50;}
+else if(rel==='friendly'){r=60;g=140;b=60;}
+else{r=150;g=145;b=135;}
+}else{r=(eraR[ow]*dim)|0;g=(eraG[ow]*dim)|0;b=(eraB[ow]*dim)|0;}
+}else{
+// Unknown tribe: very dark — the selected tribe doesn't know about them
+r=20;g=18;b=16;}}
+else{// Normal (no focus): white borders, era fill
+if(isBorder){r=200;g=195;b=185;}
+else{r=eraR[ow];g=eraG[ow];b=eraB[ow];}}}
 const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="fertility"){
 // Fertility overlay — green (high) → yellow → red (low)
@@ -2120,45 +2178,58 @@ ctx.font="5px sans-serif";
 ctx.fillStyle="rgba(180,175,160,0.75)";
 ctx.fillText(line2,cx2-w2/2,by+12.5);
 }}
-// ── Draw ports as small diamonds ──
+// ── Draw ports (enhanced in focused mode) ──
+{const focSel=ter._selectedTribe;const isFocused=focSel>=0&&ter.tribeSizes[focSel]>0&&vm==="tribes";
 if(ter.tribePorts){
 for(let st=0;st<ter.tribePorts.length;st++){
 if(!ter.tribePorts[st]||ter.tribeSizes[st]<=0)continue;
+// In focused mode: only show selected tribe's ports (large) and known tribe ports (small)
+if(isFocused&&st!==focSel){
+const fKnown=ter._borderContacts&&ter._borderContacts[focSel]&&ter._borderContacts[focSel][st];
+const fMaritime=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[focSel]&&ter.tribeKnownCoasts[focSel].some(kc=>kc.owner===st);
+if(!fKnown&&!fMaritime)continue;}// skip unknown tribe's ports
+const isSelected=st===focSel;
 for(const port of ter.tribePorts[st]){
 const px=port.x+0.5,py=dataYtoScreenY(port.y*RES,H,CH)+0.5;
+const sz2=isSelected&&isFocused?2.5:1.2;// bigger ports for selected tribe
 ctx.save();ctx.translate(px,py);ctx.rotate(Math.PI/4);
-ctx.fillStyle="rgba(100,160,220,0.8)";
-ctx.fillRect(-1.2,-1.2,2.4,2.4);
-ctx.strokeStyle="rgba(180,210,240,0.5)";ctx.lineWidth=0.4;
-ctx.strokeRect(-1.8,-1.8,3.6,3.6);
-ctx.restore();}}}
-// ── Draw maritime trade connections ──
+ctx.fillStyle=isSelected?"rgba(60,160,255,0.95)":"rgba(100,160,220,0.6)";
+ctx.fillRect(-sz2,-sz2,sz2*2,sz2*2);
+if(isSelected&&isFocused){ctx.strokeStyle="rgba(200,230,255,0.8)";ctx.lineWidth=0.6;
+ctx.strokeRect(-sz2-0.5,-sz2-0.5,sz2*2+1,sz2*2+1);}
+ctx.restore();}}}}
+// ── Draw maritime routes (enhanced in focused mode) ──
+{const focSel2=ter._selectedTribe;const isFocused2=focSel2>=0&&ter.tribeSizes[focSel2]>0&&vm==="tribes";
 if(ter.tribeKnownCoasts&&ter.tribePorts){
-ctx.lineWidth=0.4;ctx.setLineDash([2,3]);
 for(let st=0;st<ter.tribeKnownCoasts.length;st++){
 if(!ter.tribeKnownCoasts[st]||ter.tribeSizes[st]<=0)continue;
+// In focused mode: only show selected tribe's routes
+if(isFocused2&&st!==focSel2)continue;
 const ports=ter.tribePorts[st];if(!ports||ports.length===0)continue;
 const know=ter.tribeKnowledge&&ter.tribeKnowledge[st]?ter.tribeKnowledge[st]:null;
 if(!know||know.trade<0.1||know.navigation<0.1)continue;
-// Draw lines from nearest port to each known coast of another tribe
 const knownCoasts=ter.tribeKnownCoasts[st];const drawn=new Set();
 for(const kc of knownCoasts){
 if(kc.owner<0||kc.owner===st||ter.tribeSizes[kc.owner]<=0)continue;
 const key=Math.min(st,kc.owner)*10000+Math.max(st,kc.owner);
 if(drawn.has(key))continue;drawn.add(key);
-// Find nearest port to this known coast
 let nearPort=ports[0],nearDist=Infinity;
-for(const p of ports){const d=tDistW(p.x,p.y,kc.x,kc.y,ter.tw);if(d<nearDist){nearDist=d;nearPort=p;}}
+for(const p of ports){const dd=tDistW(p.x,p.y,kc.x,kc.y,ter.tw);if(dd<nearDist){nearDist=dd;nearPort=p;}}
 const x1=nearPort.x+0.5,y1=dataYtoScreenY(nearPort.y*RES,H,CH)+0.5;
 const x2=kc.x+0.5,y2=dataYtoScreenY(kc.y*RES,H,CH)+0.5;
-const alpha=Math.min(0.4,know.trade*0.6);
-ctx.strokeStyle=`rgba(100,160,220,${alpha})`;// neutral blue for all trade routes
+// In focused mode: thick colored routes based on relationship
+if(isFocused2){
+const rel=tribeRelation(ter,st,kc.owner);
+const col=rel==='fight'?'220,80,60':rel==='trade'?'220,200,80':'100,180,220';
+ctx.lineWidth=1.2;ctx.setLineDash([4,4]);
+ctx.strokeStyle=`rgba(${col},0.7)`;
+}else{ctx.lineWidth=0.4;ctx.setLineDash([2,3]);
+ctx.strokeStyle=`rgba(100,160,220,${Math.min(0.4,know.trade*0.6)})`;}
 ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}}
-ctx.setLineDash([]);}
-// ── Highlight selected tribe ──
-if(ter._selectedTribe>=0&&ter.tribeSizes[ter._selectedTribe]>0){
+ctx.setLineDash([]);}}
+// ── Highlight selected tribe (only when NOT in focused tribes view — focused view handles it inline) ──
+if(ter._selectedTribe>=0&&ter.tribeSizes[ter._selectedTribe]>0&&vm!=="tribes"){
 const sel=ter._selectedTribe;
-// Draw bright yellow highlight border for selected tribe
 for(let ti=0;ti<N;ti++){if(ter.owner[ti]!==sel)continue;
 const tx3=ti%ter.tw,ty3=(ti-tx3)/ter.tw;
 for(const[dx,dy]of DIRS){const nx=((tx3+dx)%ter.tw+ter.tw)%ter.tw,ny3=ty3+dy;
@@ -2346,9 +2417,17 @@ const ow2=ter.owner[terTi];
 const k=ter.tribeKnowledge&&ter.tribeKnowledge[ow2]?ter.tribeKnowledge[ow2]:null;
 const pop2=ter.tribePopulation?ter.tribePopulation[ow2]:0;
 const bud2=ter.tribeBudget&&ter.tribeBudget[ow2]?ter.tribeBudget[ow2]:null;
+// Compute relationship with selected tribe if any
+const selT=selectedTribe;
+let relation='';
+if(selT>=0&&selT!==ow2&&ter.tribeSizes[selT]>0)relation=tribeRelation(ter,selT,ow2);
+const centers2=ter.tribeCenters[ow2]?ter.tribeCenters[ow2].length:0;
+const ports2=ter.tribePorts&&ter.tribePorts[ow2]?ter.tribePorts[ow2].length:0;
+const kc2=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[ow2]?ter.tribeKnownCoasts[ow2].length:0;
 tribeInfo={id:ow2,size:ter.tribeSizes[ow2],pop:Math.round(pop2),
 knowledge:k?{ag:k.agriculture,mt:k.metallurgy,nv:k.navigation,cn:k.construction,og:k.organization,tr:k.trade}:null,
-personality:bud2?bud2.personality:"",budget:bud2?{mil:bud2.military,gro:bud2.growth,com:bud2.commerce,exp:bud2.exploration,sur:bud2.survival}:null};}
+personality:bud2?bud2.personality:"",budget:bud2?{mil:bud2.military,gro:bud2.growth,com:bud2.commerce,exp:bud2.exploration,sur:bud2.survival}:null,
+relation,centers:centers2,ports:ports2,knownCoasts:kc2};}
 setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,tribeInfo});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
@@ -2471,6 +2550,12 @@ border:"1px solid rgba(201,184,122,0.15)"}}>
 <span style={{color:hoverInfo.tribeInfo.knowledge.cn>0.3?"#a89878":"#5a5448"}}>Cn {(hoverInfo.tribeInfo.knowledge.cn*100|0)}%</span>{" "}
 <span style={{color:hoverInfo.tribeInfo.knowledge.og>0.3?"#b88ac8":"#5a5448"}}>Og {(hoverInfo.tribeInfo.knowledge.og*100|0)}%</span>{" "}
 <span style={{color:hoverInfo.tribeInfo.knowledge.tr>0.3?"#c8b84a":"#5a5448"}}>Tr {(hoverInfo.tribeInfo.knowledge.tr*100|0)}%</span>
+</div>}
+{(hoverInfo.tribeInfo.centers>0||hoverInfo.tribeInfo.ports>0)&&<div style={{fontSize:8,color:"#6a6458"}}>
+{hoverInfo.tribeInfo.centers} cities {hoverInfo.tribeInfo.ports} ports {hoverInfo.tribeInfo.knownCoasts} discovered</div>}
+{hoverInfo.tribeInfo.relation&&<div style={{fontSize:9,fontWeight:"bold",
+color:hoverInfo.tribeInfo.relation==='fight'?'#e06050':hoverInfo.tribeInfo.relation==='trade'?'#d0b040':hoverInfo.tribeInfo.relation==='friendly'?'#60b060':'#8a8474'}}>
+{hoverInfo.tribeInfo.relation==='fight'?'AT WAR with selected':hoverInfo.tribeInfo.relation==='trade'?'TRADING with selected':hoverInfo.tribeInfo.relation==='friendly'?'FRIENDLY with selected':''}
 </div>}
 </>}
 {hoverInfo.resources&&hoverInfo.resources.length>0&&<>
@@ -2689,21 +2774,39 @@ const v=selData.k[key];return <div key={key} style={{display:"flex",alignItems:"
 <span style={{color:"#808080"}}>{(selData.budget.sur*100|0)}%sur</span>
 </div>
 </div>}
-{/* Neighbor relationships */}
-{(()=>{if(!ter._borderContacts||!ter._borderContacts[sel])return null;
-const contacts=ter._borderContacts[sel];
-const neighbors=Object.keys(contacts).map(nid=>{const n=parseInt(nid);
-return{id:n,contact:contacts[nid],size:ter.tribeSizes[n]};}).filter(n=>n.size>0).sort((a,b)=>b.contact-a.contact).slice(0,6);
-if(neighbors.length===0)return null;
+{/* Relationships (neighbors + maritime contacts) */}
+{(()=>{
+// Gather all known tribes: border contacts + maritime
+const allRelations=[];const seen=new Set();
+if(ter._borderContacts&&ter._borderContacts[sel]){
+for(const nid in ter._borderContacts[sel]){const n=parseInt(nid);
+if(ter.tribeSizes[n]<=0)continue;seen.add(n);
+allRelations.push({id:n,contact:ter._borderContacts[sel][nid],size:ter.tribeSizes[n],
+rel:tribeRelation(ter,sel,n),via:'border'});}}
+// Maritime contacts
+if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[sel]){
+for(const kc of ter.tribeKnownCoasts[sel]){
+if(kc.owner>=0&&!seen.has(kc.owner)&&ter.tribeSizes[kc.owner]>0){
+seen.add(kc.owner);
+allRelations.push({id:kc.owner,contact:0,size:ter.tribeSizes[kc.owner],
+rel:tribeRelation(ter,sel,kc.owner),via:'maritime'});}}}
+allRelations.sort((a,b)=>b.size-a.size);
+if(allRelations.length===0)return null;
+const relCol={fight:'#e06050',trade:'#d0b040',friendly:'#60b060',neutral:'#8a8474'};
+const relLabel={fight:'War',trade:'Trade',friendly:'Peace',neutral:''};
 return <div style={{marginTop:6}}>
-<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Neighbors</div>
-{neighbors.map(n=><div key={n.id} style={{display:"flex",alignItems:"center",gap:4,fontSize:9,marginBottom:1,cursor:"pointer"}}
+<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Known Nations ({allRelations.length})</div>
+{allRelations.slice(0,10).map(n=>{const pers=ter.tribeBudget&&ter.tribeBudget[n.id]?ter.tribeBudget[n.id].personality:'';
+return <div key={n.id} style={{display:"flex",alignItems:"center",gap:4,fontSize:9,marginBottom:2,cursor:"pointer",
+padding:"1px 3px",borderRadius:2,background:n.rel==='fight'?'rgba(220,80,60,0.1)':n.rel==='trade'?'rgba(200,180,60,0.1)':'transparent'}}
 onClick={()=>{setSelectedTribe(n.id);ter._selectedTribe=n.id;draw(ter);}}>
-<span style={{width:8,height:8,borderRadius:2,background:`rgb(${tribeRGB(n.id).join(",")})`,display:"inline-block"}} />
+<span style={{width:6,height:6,borderRadius:6,background:relCol[n.rel],display:"inline-block",flexShrink:0}} />
 <span style={{color:"#b0a888"}}>#{n.id}</span>
+{pers&&<span style={{color:"#8a7a5a",fontSize:8}}>{pers}</span>}
 <span style={{color:"#6a6458"}}>{ter.tribeSizes[n.id]}t</span>
-<span style={{color:"#4a4438",fontSize:8}}>{n.contact} border</span>
-</div>)}
+{n.via==='maritime'&&<span style={{color:"#5a8aaa",fontSize:7}}>sea</span>}
+{relLabel[n.rel]&&<span style={{color:relCol[n.rel],fontSize:8,fontWeight:"bold",marginLeft:"auto"}}>{relLabel[n.rel]}</span>}
+</div>;})}
 </div>;})()}
 </div>}
 {/* Tribe list */}
