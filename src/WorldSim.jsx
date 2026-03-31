@@ -1141,26 +1141,30 @@ const owCap=tribeStrength[ow]*agMult;
 // Agriculture fundamentally gates expansion. Hunter-gatherers (ag<0.1) can barely
 // sustain 15-20 tiles. Early farmers (ag~0.3) can hold 50+. Advanced (ag>0.6) unlimited.
 // This is THE key constraint that keeps pre-farming tribes small.
-const agExpansionCap=Math.floor(10+agLevel*200);// ag=0→10 tiles, ag=0.3→70, ag=1.0→210
-if(owSz>=agExpansionCap){continue;}// tribe is at its agricultural capacity — cannot expand
+const agExpansionCap=Math.floor(10+agLevel*300);// ag=0→10, ag=0.3→100, ag=0.5→160, ag=1.0→310
+if(owSz>=agExpansionCap){continue;}
 const popRatio=owCap>0?owPop/owCap:0;
-const popPressure=Math.max(0,(popRatio-0.5)*2.0);// 0 below 50%, 1 at 100%
-// Small boost only for very tiny tribes (< 5 tiles) and only if they have room under ag cap
+// Agricultural civs expand proactively (they know they can farm new land).
+// Hunter-gatherers need real pressure. Threshold: 30% for ag>0.3, 60% for ag=0
+const pressureThreshold=0.6-agLevel*1.0;// ag=0→0.6, ag=0.3→0.3, ag=0.5+→clamped to 0.1
+const effThreshold=Math.max(0.1,pressureThreshold);
+const popPressure=Math.max(0,(popRatio-effThreshold)/(1-effThreshold));// 0→1 normalized
 const smallBoost=owSz<5?1.5:1;
-const largePrize=owSz>40?1+Math.min(1,(owSz-40)*0.01):1;
+const largePrize=owSz>40?1+Math.min(1,(owSz-40)*0.008):1;
 // Score all candidate neighbor tiles, then claim the best
 const candidates=[];
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny2=ty+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx;if(owner[ni]>=0)continue;
 const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni];if(effT<0.02){room=true;continue;}
 const diff=tDiff[ni],adjDiff=Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0));
-// Expansion chance: moderate base, strongly shaped by fertility and population pressure
-let chance;if(elev<=0&&elev>sl)chance=0.2*wet;else if(tCoast[ni])chance=0.25*wet;else chance=0.18*(1-adjDiff)*wet;
-if(effT<0.15)chance*=0.15;// cold is brutal
-// Fertility matters enormously: quadratic curve makes rich land 25x better than wasteland
+// Expansion chance: agricultural civs expand confidently into good land
+const agBoost=1+agLevel*2;// ag=0→1x, ag=0.3→1.6x, ag=0.5→2x
+let chance;if(elev<=0&&elev>sl)chance=0.25*wet;else if(tCoast[ni])chance=0.3*wet;else chance=0.22*(1-adjDiff)*wet;
+if(effT<0.15)chance*=0.15;
+// Fertility: quadratic. Rich land is much more attractive.
 const fertSq=tFert[ni]*tFert[ni];
-chance*=(0.05+fertSq*4.0*largePrize)*smallBoost;// fert 0.5→1.05, fert 0.1→0.09, fert 0.01→0.05
-// Population pressure gates expansion: need people to push outward
-chance*=Math.max(0.08,popPressure);// 8% trickle, ramps to 100% at capacity
+chance*=(0.08+fertSq*5.0*largePrize)*smallBoost*agBoost;
+// Population pressure still gates, but agricultural civs have lower threshold
+chance*=Math.max(0.1,popPressure);
 // Center proximity: expansion weakens far from centers
 const centers=tribeCenters[ow];
 const{min:distMin}=nearestCenterDist(centers,nx,ny2,tw);
@@ -1210,7 +1214,9 @@ if(tDiff[ni]>0.4&&tFert[ni]>0.2)centerScore+=0.3;// mountain pass exit
 if(ter.deposits){const depScore=(ter.deposits.copper[ni]+ter.deposits.tin[ni]+ter.deposits.iron[ni]+ter.deposits.salt[ni])*0.3;
 centerScore+=depScore;}// resource concentration
 if(centerScore>0.8)tribeCenters[ow].push({x:nx,y:ny2,prestige:0.3,founded:ter.stepCount});}
-claimTile(ter,ni,nw);if(!nf[ni]){nf[ni]=1;nfl.push(ni);}break;}// claim best candidate (directed)
+claimTile(ter,ni,nw);if(!nf[ni]){nf[ni]=1;nfl.push(ni);}
+// Hunter-gatherers: claim only best candidate. Agricultural civs: can claim multiple.
+if(agLevel<0.2)break;}
 else room=true;}
 // ── Maritime voyages (replaces LEAPS): port-based exploration ──
 if(owKnow&&owKnow.navigation>0.05&&ter.tribePorts&&ter.tribePorts[ow]&&ter.tribePorts[ow].length>0){
