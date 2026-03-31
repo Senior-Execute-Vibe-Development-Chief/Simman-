@@ -806,22 +806,25 @@ if(ratio>1.2)pop[i]=Math.max(1,pop[i]*(0.97-Math.min(0.05,(ratio-1.2)*0.15)));
 function stepBackgroundPop(ter){
 const{tw,th,tElev,tTemp,tFert,tDiff,tCoast,owner,bgPop,tribeSizes}=ter;
 if(!bgPop)return;
-// Grow background population on unowned habitable tiles — VERY slow (hunter-gatherer bands)
+// Grow bgPop on ALL habitable tiles — including owned ones.
+// bgPop represents general population density of the land, independent of political control.
+// Owned tiles grow bgPop too (the farmers are there regardless of who rules them).
+// Only UNOWNED tiles with high bgPop can crystallize into new tribes.
 for(let ti=0;ti<tw*th;ti++){
-if(owner[ti]>=0){bgPop[ti]=0;continue;}// owned tiles tracked by tribe system
-if(tElev[ti]<=0||tTemp[ti]<0.05)continue;// ocean or permafrost
-// Carrying capacity proportional to fertility squared — marginal land supports almost nobody
+if(tElev[ti]<=0||tTemp[ti]<0.05)continue;
 const fert=tFert[ti];
-const cap=fert*fert*0.8*(1-tDiff[ti]*0.8);// quadratic: fert 0.5→0.2, fert 0.1→0.008
+// Owned tiles get capacity boost (organized farming is more productive)
+const orgBoost=owner[ti]>=0?1.5:1.0;
+const cap=fert*fert*0.8*(1-tDiff[ti]*0.8)*orgBoost;
 if(cap<=0.001)continue;
 const ratio=bgPop[ti]/cap;
-bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*0.012*(1-ratio));// 1.2% growth
-// Diffusion: only from near-capacity tiles, slow, difficulty-blocked
-if(bgPop[ti]>cap*0.7){const tx=ti%tw,ty=(ti-tx)/tw;
-for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;
-const ni=ny*tw+nx;if(tElev[ni]<=0||owner[ni]>=0)continue;
-if(bgPop[ni]<bgPop[ti]*0.2){
-const flow=bgPop[ti]*0.003*(1-tDiff[ni])*(1-tDiff[ni]);// difficulty squared — mountains nearly impassable
+bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*0.015*(1-ratio));// 1.5% growth everywhere
+// Diffusion to adjacent tiles (including into owned territory)
+if(bgPop[ti]>cap*0.6){const tx2=ti%tw,ty2=(ti-tx2)/tw;
+for(const[dx,dy]of DIRS){const nx=((tx2+dx)%tw+tw)%tw,ny=ty2+dy;if(ny<0||ny>=th)continue;
+const ni=ny*tw+nx;if(tElev[ni]<=0)continue;
+if(bgPop[ni]<bgPop[ti]*0.3){
+const flow=bgPop[ti]*0.005*(1-tDiff[ni]);
 bgPop[ti]-=flow;bgPop[ni]+=Math.max(0,flow);}}}}
 // ── Tribe crystallization: rare, fertility-weighted, requires dense local cluster ──
 if(ter.stepCount%16!==0)return;// check every 16 steps
@@ -1262,7 +1265,7 @@ const vRatio=bestValley>0?valleyScore[ti]/bestValley:0;
 // Low valleys (<0.2): barely populated, crystallize very late or never
 bp+=vRatio*vRatio*0.18;// quadratic — only top valleys get meaningful boost
 bgPop[ti]=Math.max(0,bp);}
-for(let ti=0;ti<tw*th;ti++){if(owner[ti]>=0)bgPop[ti]=0;}
+// bgPop persists on owned tiles — don't zero it. It represents general population density.
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
 tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudget:tribeBudgets,bgPop,
 frontier,frontierList,landCount:lc,settled:origins.length,tribes:origins.length,origin:origins[0]||{x:0,y:0},stepCount:0};}
@@ -1351,7 +1354,8 @@ if(ter.bgPop&&ter.bgPop[ti]>0){
 const claimEraMult=ter.tribeKnowledge&&ter.tribeKnowledge[nw]?
 15+ter.tribeKnowledge[nw].agriculture*60+ter.tribeKnowledge[nw].metallurgy*40:15;
 if(ter.tribePopulation)ter.tribePopulation[nw]+=ter.bgPop[ti]*claimEraMult*0.5;
-ter.bgPop[ti]=0;}}
+// Don't zero bgPop — it persists and keeps growing independently of ownership
+}}
 // Transfer tile without resetting tenure (for splits/fragmentation — population stays, allegiance changes)
 function transferTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert}=ter;const ow=owner[ti];
 if(ow>=0){const owSzBefore=tribeSizes[ow];tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];
