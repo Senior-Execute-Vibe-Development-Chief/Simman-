@@ -445,7 +445,125 @@ const KNOW_DOMAINS=['agriculture','metallurgy','navigation','construction','orga
 function initKnowledge(){return{agriculture:0,metallurgy:0,navigation:0,construction:0,organization:0,trade:0};}
 function cloneKnowledge(k){return{agriculture:k.agriculture,metallurgy:k.metallurgy,navigation:k.navigation,construction:k.construction,organization:k.organization,trade:k.trade};}
 
-// Compute per-tribe resource totals (expensive — cache and call infrequently)
+// ── Budget + Personality System ──
+// Each tribe allocates capacity across military/growth/commerce/exploration/survival.
+// Allocation is driven by geography + situation + a random temperament factor.
+function initBudget(){
+// Temperament: random biases that make each tribe unique (Sparta, Venice, Mongols)
+// Range -0.3 to +0.3 per category. These are permanent cultural DNA.
+const r=()=>(Math.random()-0.5)*0.6;
+return{military:0.2,growth:0.3,commerce:0.2,exploration:0.15,survival:0.15,
+total:0,personality:"",
+// Temperament: permanent random bias per tribe (cultural DNA)
+tMil:r(),tGro:r(),tCom:r(),tExp:r()};}
+function cloneBudget(b){return{military:b.military,growth:b.growth,commerce:b.commerce,
+exploration:b.exploration,survival:b.survival,total:b.total,personality:b.personality,
+tMil:b.tMil+(Math.random()-0.5)*0.1,// child tribes inherit with slight drift
+tGro:b.tGro+(Math.random()-0.5)*0.1,
+tCom:b.tCom+(Math.random()-0.5)*0.1,
+tExp:b.tExp+(Math.random()-0.5)*0.1};}
+
+// Budget step: compute allocation for all tribes
+function stepBudget(ter){
+const{tribeSizes,tribeStrength,tribeCenters,tribePopulation,tribeKnowledge}=ter;
+const budgets=ter.tribeBudget;if(!budgets)return;
+const n=tribeCenters.length;
+// Need border contacts and resource cache
+if(!ter._borderContacts)return;
+const contacts=ter._borderContacts;
+if(!ter._resCache)return;
+const res=ter._resCache;
+
+for(let i=0;i<n;i++){if(tribeSizes[i]<=0)continue;
+const b=budgets[i];const k=tribeKnowledge[i];const r=res[i];
+const pop=tribePopulation[i];const sz=tribeSizes[i];
+// Total budget capacity: population × trade wealth × organizational efficiency
+b.total=pop*(1+k.trade*0.3)*(0.5+k.organization*0.5);
+
+// ── Survival floor: mandatory, scales with threats ──
+let borderThreat=0;const myContacts=contacts[i];
+for(const nid in myContacts){const j=parseInt(nid);if(tribeSizes[j]<=0)continue;
+const theirPop=tribePopulation[j];if(theirPop>pop*1.5)borderThreat+=0.2;
+if(theirPop>pop*3)borderThreat+=0.3;}
+const eraMult=15+k.agriculture*60+k.metallurgy*40+k.construction*30+k.organization*25;
+const capacity=tribeStrength[i]*eraMult;
+const faminePressure=capacity>0?Math.max(0,(pop/capacity)-1)*2:0;
+const survivalFloor=Math.max(0.08,Math.min(0.55,borderThreat*0.3+faminePressure*0.3));
+const available=1-survivalFloor;
+
+// ── Score each category based on geography + situation + temperament ──
+// Scores are 0+ (higher = more desirable). Temperament adds permanent bias.
+let milScore=0.5+b.tMil;// base + temperament
+let groScore=0.5+b.tGro;
+let comScore=0.5+b.tCom;
+let expScore=0.5+b.tExp;
+
+// Military: border pressure, recent losses, weak neighbors to exploit
+milScore+=borderThreat*2;
+let hasWeakNeighbor=false;
+for(const nid in myContacts){const j=parseInt(nid);if(tribeSizes[j]<=0)continue;
+if(tribePopulation[j]<pop*0.5&&tribeSizes[j]>10){hasWeakNeighbor=true;break;}}
+if(hasWeakNeighbor)milScore+=0.5;
+// Steppe/grassland bonus: horses make military natural (Mongol pattern)
+if(r.horses>2)milScore+=0.4;
+
+// Growth: fertile land available, low population ratio, agriculture potential
+const fertAvg=sz>0?tribeStrength[i]/sz:0;
+groScore+=fertAvg*2;// fertile territory rewards growth investment
+if(capacity>0&&pop/capacity<0.7)groScore+=0.8;// underpopulated — invest in growth
+if(k.agriculture<0.6)groScore+=0.3;// room to improve farming
+
+// Commerce: coastal tiles, neighbor count, resource diversity
+comScore+=Math.min(0.6,r.coastTiles*0.02);// ports enable trade
+const neighborCount=Object.keys(myContacts).length;
+comScore+=Math.min(0.5,neighborCount*0.1);// more neighbors = more trade partners
+comScore+=Math.min(0.4,r.resourceTypes*0.06);// resource diversity = things to trade
+// Phoenician pattern: small coastal tribe with good ports → trade focus
+if(r.coastTiles>sz*0.3&&sz<50)comScore+=0.5;
+
+// Exploration: coast ratio, pop pressure, unknown world, navigation potential
+const coastRatio=sz>0?r.coastTiles/sz:0;
+expScore+=coastRatio*1.5;// coastal tribes explore
+const popRatio=capacity>0?pop/capacity:0;
+if(popRatio>0.9)expScore+=0.5;// overpopulation drives exploration
+const knownCoasts=ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
+if(knownCoasts>0)expScore+=0.3;// success breeds more exploration
+if(r.timber>2)expScore+=0.2;// shipbuilding timber
+// Island/small coastal pattern: exploration is survival
+if(coastRatio>0.5&&sz<30)expScore+=0.8;
+
+// Floor all scores at 0.1 (everyone does a little of everything)
+milScore=Math.max(0.1,milScore);
+groScore=Math.max(0.1,groScore);
+comScore=Math.max(0.1,comScore);
+expScore=Math.max(0.1,expScore);
+
+// Normalize to fill available budget
+const totalScore=milScore+groScore+comScore+expScore;
+const targetMil=milScore/totalScore*available;
+const targetGro=groScore/totalScore*available;
+const targetCom=comScore/totalScore*available;
+const targetExp=expScore/totalScore*available;
+
+// Smooth blending (30% toward target per step — personality shifts gradually)
+const blend=0.3;
+b.military=b.military*(1-blend)+targetMil*blend;
+b.growth=b.growth*(1-blend)+targetGro*blend;
+b.commerce=b.commerce*(1-blend)+targetCom*blend;
+b.exploration=b.exploration*(1-blend)+targetExp*blend;
+b.survival=survivalFloor;
+
+// ── Personality label from dominant allocation ──
+const mil=b.military,gro=b.growth,com=b.commerce,exp=b.exploration,sur=b.survival;
+if(sur>0.40)b.personality="Besieged";
+else if(mil+exp>0.55&&mil>0.25&&exp>0.2)b.personality="Imperial";
+else if(com+exp>0.50&&com>0.25&&exp>0.15)b.personality="Maritime";
+else if(mil>0.35)b.personality="Militant";
+else if(com>0.30)b.personality="Mercantile";
+else if(gro>0.35)b.personality="Agricultural";
+else if(exp>0.28)b.personality="Expansionist";
+else b.personality="Balanced";}
+}
 function computeTribeResources(ter){
 const{tw,th,owner,deposits,tCoast,tribeStrength}=ter;
 const n=ter.tribeCenters.length;
@@ -588,7 +706,9 @@ for(const nid in myContacts){const j=parseInt(nid);if(tribeSizes[j]<=0)continue;
 const kj=know[j];
 const contactStrength=Math.min(1,myContacts[nid]*0.01);// normalized border contact
 const tradeMult=1+ki.trade*2+kj.trade*2;// trade amplifies diffusion
-const rate=0.003*contactStrength*tradeMult;// diffusion: meaningful but slower than discovery
+// Commerce budget amplifies knowledge diffusion (Mercantile tribes are knowledge highways)
+const comB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].commerce:0.2;
+const rate=0.003*contactStrength*tradeMult*(0.5+comB*2.5);
 for(const d of KNOW_DOMAINS){
 if(kj[d]>ki[d]){ki[d]=Math.min(1,ki[d]+rate*(kj[d]-ki[d]));}}}
 // Maritime diffusion: if tribe knows ports of another tribe, diffuse via trade
@@ -634,7 +754,8 @@ const ratio=pop[i]/capacity;
 // IRL pre-1800 growth ≈ 0.04%/year. At 12yr/step early, that's ~0.5%/step.
 // Post-industrial: ~1-2%/year = much faster.
 const industrialFactor=Math.max(0,mt-0.6)*3+Math.max(0,cn-0.5)*2;// 0 until ~iron age, then ramps
-const baseGrowth=0.004+ag*0.004+industrialFactor*0.01;// 0.4-0.8% pre-industrial, up to 3%+ industrial
+const groB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].growth:0.25;
+const baseGrowth=(0.004+ag*0.004+industrialFactor*0.01)*(0.5+groB*2.0);// growth budget amplifies pop growth
 // Logistic: growth slows as pop approaches capacity. Overshoots slightly for expansion pressure.
 const growthRate=ratio<1.15?baseGrowth*(1-ratio*0.85):0;// stops growing at ~118% capacity
 pop[i]=Math.max(1,pop[i]+pop[i]*growthRate);
@@ -1031,7 +1152,7 @@ let ok=true;for(const o of origins){let dx=Math.abs(c.x-o.x);if(dx>tw/2)dx=tw-dx
 if(dx*dx+(c.y-o.y)**2<minSpacing*minSpacing){ok=false;break;}}
 if(ok)origins.push(c);}}
 const tenure=new Uint16Array(tw*th);const frontier=new Uint8Array(tw*th);const frontierList=[];
-const tribeKnowledge=[],tribePopulation=[];const tribeKnownCoasts=[];const tribePorts2=[];
+const tribeKnowledge=[],tribePopulation=[];const tribeKnownCoasts=[];const tribePorts2=[];const tribeBudgets=[];
 // Flood-fill each starting civ to ~25 tiles along fertile corridors
 for(let i=0;i<origins.length;i++){const{x,y}=origins[i];
 tribeSizes.push(0);tribeStrength.push(0);
@@ -1043,7 +1164,7 @@ k.metallurgy=0.10+Math.random()*0.10;// 0.10-0.20 (copper → early bronze)
 k.construction=0.10+Math.random()*0.10;
 k.organization=0.08+Math.random()*0.08;
 k.trade=0.05+Math.random()*0.05;
-tribeKnowledge.push(k);tribePopulation.push(0);tribeKnownCoasts.push([]);tribePorts2.push([]);
+tribeKnowledge.push(k);tribePopulation.push(0);tribeKnownCoasts.push([]);tribePorts2.push([]);tribeBudgets.push(initBudget());
 // Start with just the capital + immediate fertile neighbors (3-5 tiles).
 // The sim grows them organically from there — no artificial blob.
 const startTi=y*tw+x;
@@ -1092,7 +1213,7 @@ bp+=vRatio*vRatio*0.18;// quadratic — only top valleys get meaningful boost
 bgPop[ti]=Math.max(0,bp);}
 for(let ti=0;ti<tw*th;ti++){if(owner[ti]>=0)bgPop[ti]=0;}
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
-tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,bgPop,
+tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudget:tribeBudgets,bgPop,
 frontier,frontierList,landCount:lc,settled:origins.length,tribes:origins.length,origin:origins[0]||{x:0,y:0},stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+(y1-y2)*(y1-y2));}
@@ -1111,15 +1232,22 @@ for(let dx=-R;dx<=R;dx++){const nx=((cx+dx)%tw+tw)%tw;const ni=ny*tw+nx;
 if(owner[ni]===tribeId){const d=tDistW(cx,cy,nx,ny,tw);if(d<=R)sum+=tFert[ni];}}}return sum;}
 
 function tribePower(ter,id){
-// Population = total fertility (what the land can sustain). Military = population.
-// Organization knowledge shifts the logistics threshold: well-governed empires hold more territory.
-const sz=ter.tribeSizes[id],pop=ter.tribeStrength[id];if(sz<=0)return 0;
-const org=ter.tribeKnowledge&&ter.tribeKnowledge[id]?ter.tribeKnowledge[id].organization:0;
-const logThreshold=40+org*260;// 40 tiles (tribal band) → 300 tiles (nation-state)
+// Power = population × military tech × organization × military investment × trade wealth
+const sz=ter.tribeSizes[id];if(sz<=0)return 0;
+const pop=ter.tribePopulation&&ter.tribePopulation[id]?ter.tribePopulation[id]:ter.tribeStrength[id]*10;
+const k=ter.tribeKnowledge&&ter.tribeKnowledge[id]?ter.tribeKnowledge[id]:null;
+const org=k?k.organization:0;
+const logThreshold=40+org*260;
 const logistics=1/(1+Math.max(0,sz-logThreshold)*0.015);
-// Agriculture multiplier on effective population (more food = more soldiers)
-const agMult=ter.tribeKnowledge&&ter.tribeKnowledge[id]?1+ter.tribeKnowledge[id].agriculture*1.5:1;
-return pop*agMult*logistics;
+// Military tech from metallurgy + ore
+let milTech=1;
+if(k&&ter._resCache&&ter._resCache[id]){milTech=1+tribeOreAccess(ter._resCache[id],k.metallurgy)*1.5;}
+// Budget: military investment amplifies power
+const milB=ter.tribeBudget&&ter.tribeBudget[id]?ter.tribeBudget[id].military:0.2;
+const milFocus=0.5+milB*2.5;
+// Trade wealth adds soft power
+const tradeWealth=k?1+k.trade*0.3:1;
+return pop*0.01*milTech*logistics*milFocus*tradeWealth;
 }
 // Local power projection at a border tile: nearest center projects its share of population
 function localPower(ter,tribeId,tx,ty){
@@ -1137,7 +1265,10 @@ let base=pop*(0.03+0.97*Math.min(1,total));
 if(ter.tribeKnowledge&&ter.tribeKnowledge[tribeId]&&ter._resCache&&ter._resCache[tribeId]){
 const met=ter.tribeKnowledge[tribeId].metallurgy;
 const ore=tribeOreAccess(ter._resCache[tribeId],met);
-base*=(1+ore*1.5);}// up to ~2.95x for high metallurgy + iron+coal
+base*=(1+ore*1.5);}
+// Military budget multiplier: Sparta (mil=0.5) hits 50% harder than a balanced tribe
+const milB=ter.tribeBudget&&ter.tribeBudget[tribeId]?ter.tribeBudget[tribeId].military:0.2;
+base*=(0.5+milB*2.5);// mil=0.1→0.75x, mil=0.2→1.0x, mil=0.4→1.5x, mil=0.5→1.75x
 return base;
 }
 function newTribe(ter,x,y,parentId){const id=ter.tribeCenters.length;ter.tribeCenters.push([{x,y,prestige:1.0,founded:ter.stepCount}]);ter.tribeSizes.push(0);ter.tribeStrength.push(0);
@@ -1148,6 +1279,9 @@ ter.tribePopulation.push(0);
 // Inherit known coasts from parent (maritime memory carries over)
 ter.tribeKnownCoasts.push(parentKnow&&ter.tribeKnownCoasts[parentId]?ter.tribeKnownCoasts[parentId].map(c=>({...c})):[]);
 ter.tribePorts.push([]);
+// Inherit budget personality from parent (with drift) or fresh random
+const parentBudget=parentId>=0&&ter.tribeBudget&&ter.tribeBudget[parentId]?ter.tribeBudget[parentId]:null;
+if(ter.tribeBudget)ter.tribeBudget.push(parentBudget?cloneBudget(parentBudget):initBudget());
 ter.tribes=id+1;return id;}
 function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure}=ter;const ow=owner[ti];
 if(ow>=0){const owSzBefore=tribeSizes[ow];tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];
@@ -1179,7 +1313,7 @@ owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];}
 function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // ── Knowledge & population step (every 8 ticks) ──
-if(ter.stepCount%8===0&&ter.tribeKnowledge){stepKnowledge(ter);stepPopulation(ter);stepBackgroundPop(ter);
+if(ter.stepCount%8===0&&ter.tribeKnowledge){stepBudget(ter);stepKnowledge(ter);stepPopulation(ter);stepBackgroundPop(ter);
 // Recompute ports periodically
 for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}
 // ── Expansion into empty land (directional, pressure-driven) ──
@@ -1257,8 +1391,12 @@ const fertCube=fert*fert*fert;
 // Tech floor: knowledge makes even poor land claimable (irrigation, greenhouses, mining towns)
 const techFloor=(agLevel*0.03+owMt*0.02+owCn*0.02);// ag=0.8,mt=0.7,cn=0.6→0.05
 chance*=Math.max(techFloor,fertCube*8)*largePrize;
-// Agriculture boost
+// Agriculture tech boost
 chance*=agBoost;
+// Budget: growth + exploration investment drives expansion
+const groB=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].growth:0.25;
+const expB=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].exploration:0.15;
+chance*=(0.3+groB*1.8+expB*1.8);// balanced→1.0x, growth-focused→1.0+, exploration-focused→same
 // Cold: brutal without tech
 if(effT<0.15){const coldResist=owKnow?Math.min(0.7,owKnow.construction*0.4+owKnow.agriculture*0.3):0;
 chance*=0.08+coldResist;}
@@ -1307,7 +1445,9 @@ if(owKnow&&owKnow.navigation>0.05&&ter.tribePorts&&ter.tribePorts[ow]&&ter.tribe
 const nav=owKnow.navigation;const maxRange=Math.floor(3+nav*50);
 // Each port has a chance to launch a voyage per step
 for(const port of ter.tribePorts[ow]){
-const voyageChance=0.02*nav*(0.5+popPressure*0.5);// rare early, more frequent with pressure
+// Exploration budget dramatically increases voyage frequency (Maritime/Expansionist tribes explore more)
+const expB2=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].exploration:0.15;
+const voyageChance=0.02*nav*(0.5+popPressure*0.5)*(0.3+expB2*4.0);// exp=0.15→0.9x, exp=0.3→1.5x
 if(Math.random()>voyageChance)continue;
 const result=launchVoyage(ter,ow,port,maxRange);
 if(!result)continue;
@@ -1361,14 +1501,16 @@ if(!hasEnemy)continue;
 const lpA=localPower(ter,ow,tx2,ty2);// only computed for border tiles
 // Defender advantage: 3x base + tenure + terrain + construction knowledge
 const defConst=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].construction:0;
-let def=3+Math.min(1.5,tenure[i]*0.008)+tDiff[i]*1.4+defConst*2.5;
+const defMilB=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].military:0.2;
+let def=3+Math.min(1.5,tenure[i]*0.008)+tDiff[i]*1.4+defConst*2.5+defMilB*2.0;// military budget boosts defense
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<16)continue;
 // Avoid attacking tribes that are much larger (>3x your size)
 const atkSz=tribeSizes[no],defSz=tribeSizes[ow];
 if(defSz>0&&atkSz>0&&defSz/atkSz>3)continue;// don't poke the giant
 // Small tribes are less aggressive; large tribes more so
-const atkAggression=atkSz<25?0.4:atkSz>80?1.5:1.0;
+const atkMilB=ter.tribeBudget&&ter.tribeBudget[no]?ter.tribeBudget[no].military:0.2;
+const atkAggression=(atkSz<25?0.4:atkSz>80?1.5:1.0)*(0.5+atkMilB*2.5);// militant tribes attack harder
 // River between attacker and defender tiles: additional crossing penalty
 const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
 const totalDef=def;
@@ -1827,9 +1969,10 @@ else if(k.agriculture>0.1)era="Neolithic";}
 // Format population nicely
 // Pop is in thousands. Display as "800k" or "1.2M" or "12M"
 const popStr=pop>=10000?(pop/1000).toFixed(1)+'M':pop>=1000?(pop/1000|0)+'M':pop>=1?pop.toFixed(0)+'k':'<1k';
-// Two-line label
-const line1=era;
-const line2=`${popStr} pop  ${sz}t`;
+// Two-line label: era + personality | pop + tiles
+const pers=ter.tribeBudget&&ter.tribeBudget[st]?ter.tribeBudget[st].personality:"";
+const line1=pers?`${era} ${pers}`:era;
+const line2=`${popStr}  ${sz}t`;
 ctx.font="bold 6px sans-serif";
 const w1=ctx.measureText(line1).width;
 ctx.font="5px sans-serif";
@@ -2077,8 +2220,10 @@ if(ter&&terTi>=0&&ter.owner[terTi]>=0){
 const ow2=ter.owner[terTi];
 const k=ter.tribeKnowledge&&ter.tribeKnowledge[ow2]?ter.tribeKnowledge[ow2]:null;
 const pop2=ter.tribePopulation?ter.tribePopulation[ow2]:0;
+const bud2=ter.tribeBudget&&ter.tribeBudget[ow2]?ter.tribeBudget[ow2]:null;
 tribeInfo={id:ow2,size:ter.tribeSizes[ow2],pop:Math.round(pop2),
-knowledge:k?{ag:k.agriculture,mt:k.metallurgy,nv:k.navigation,cn:k.construction,og:k.organization,tr:k.trade}:null};}
+knowledge:k?{ag:k.agriculture,mt:k.metallurgy,nv:k.navigation,cn:k.construction,og:k.organization,tr:k.trade}:null,
+personality:bud2?bud2.personality:"",budget:bud2?{mil:bud2.military,gro:bud2.growth,com:bud2.commerce,exp:bud2.exploration,sur:bud2.survival}:null};}
 setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,tribeInfo});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
@@ -2186,7 +2331,14 @@ border:"1px solid rgba(201,184,122,0.15)"}}>
 {hoverInfo.river>0&&<div><span style={{color:"#8a8474"}}>River:</span> <span style={{color:"#6ab4e8"}}>{RIVER_NAMES[hoverInfo.river]}</span> <span style={{color:"#5a5448",fontSize:9}}>({hoverInfo.riverAccum.toFixed(1)})</span></div>}
 {hoverInfo.tribeInfo&&<>
 <div style={{height:1,background:"rgba(201,184,122,0.12)",margin:"3px 0"}} />
-<div><span style={{color:"#8a8474"}}>Tribe #{hoverInfo.tribeInfo.id}</span> <span style={{color:"#c9b87a"}}>{hoverInfo.tribeInfo.size} tiles</span> <span style={{color:"#7a7464"}}>{hoverInfo.tribeInfo.pop>=10000?(hoverInfo.tribeInfo.pop/1000).toFixed(1)+'M':hoverInfo.tribeInfo.pop>=1000?(hoverInfo.tribeInfo.pop/1000|0)+'M':hoverInfo.tribeInfo.pop>=1?hoverInfo.tribeInfo.pop.toFixed(0)+'k':'<1k'}</span></div>
+<div><span style={{color:"#8a8474"}}>Tribe #{hoverInfo.tribeInfo.id}</span>{hoverInfo.tribeInfo.personality&&<span style={{color:"#b0a070"}}> {hoverInfo.tribeInfo.personality}</span>} <span style={{color:"#c9b87a"}}>{hoverInfo.tribeInfo.size}t</span> <span style={{color:"#7a7464"}}>{hoverInfo.tribeInfo.pop>=10000?(hoverInfo.tribeInfo.pop/1000).toFixed(1)+'M':hoverInfo.tribeInfo.pop>=1000?(hoverInfo.tribeInfo.pop/1000|0)+'M':hoverInfo.tribeInfo.pop>=1?hoverInfo.tribeInfo.pop.toFixed(0)+'k':'<1k'}</span></div>
+{hoverInfo.tribeInfo.budget&&<div style={{fontSize:8,color:"#6a6458"}}>
+<span style={{color:"#c06050"}}>{(hoverInfo.tribeInfo.budget.mil*100|0)}mil</span>{" "}
+<span style={{color:"#60a050"}}>{(hoverInfo.tribeInfo.budget.gro*100|0)}gro</span>{" "}
+<span style={{color:"#5080c0"}}>{(hoverInfo.tribeInfo.budget.com*100|0)}com</span>{" "}
+<span style={{color:"#c09030"}}>{(hoverInfo.tribeInfo.budget.exp*100|0)}exp</span>{" "}
+<span style={{color:"#808080"}}>{(hoverInfo.tribeInfo.budget.sur*100|0)}sur</span>
+</div>}
 {hoverInfo.tribeInfo.knowledge&&<div style={{fontSize:9,color:"#7a7464",lineHeight:"12px"}}>
 <span style={{color:hoverInfo.tribeInfo.knowledge.ag>0.3?"#8ab870":"#5a5448"}}>Ag {(hoverInfo.tribeInfo.knowledge.ag*100|0)}%</span>{" "}
 <span style={{color:hoverInfo.tribeInfo.knowledge.mt>0.3?"#c8946a":"#5a5448"}}>Mt {(hoverInfo.tribeInfo.knowledge.mt*100|0)}%</span>{" "}
@@ -2358,7 +2510,9 @@ const ports=ter.tribePorts&&ter.tribePorts[i]?ter.tribePorts[i].length:0;
 const centers=ter.tribeCenters[i]?ter.tribeCenters[i].length:0;
 const knownCoasts=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
 const power=tribePower(ter,i);
-tribes.push({id:i,size:ter.tribeSizes[i],pop:Math.round(pop),power,ports,centers,knownCoasts,k});}
+const bud=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i]:null;
+tribes.push({id:i,size:ter.tribeSizes[i],pop:Math.round(pop),power,ports,centers,knownCoasts,k,
+personality:bud?bud.personality:"",budget:bud?{mil:bud.military,gro:bud.growth,com:bud.commerce,exp:bud.exploration,sur:bud.survival}:null});}
 tribes.sort((a,b)=>b.power-a.power);
 // Selected tribe detail
 const sel=selectedTribe>=0&&ter.tribeSizes[selectedTribe]>0?selectedTribe:-1;
@@ -2369,6 +2523,7 @@ return <>
 <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
 <span style={{width:12,height:12,borderRadius:3,background:`rgb(${tribeRGB(selData.id).join(",")})`,display:"inline-block",border:"1px solid rgba(255,255,255,0.3)"}} />
 <span style={{fontWeight:"bold",fontSize:13,color:"#e0d4a8"}}>Tribe #{selData.id}</span>
+{selData.personality&&<span style={{color:"#b0a070",fontSize:10}}>{selData.personality}</span>}
 <span style={{color:"#6a6458",fontSize:9,marginLeft:"auto"}} onClick={()=>{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}}>(deselect)</span>
 </div>
 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 10px",fontSize:10,color:"#b0a888"}}>
@@ -2389,6 +2544,24 @@ const v=selData.k[key];return <div key={key} style={{display:"flex",alignItems:"
 <div style={{width:`${v*100}%`,height:"100%",background:col,borderRadius:2,transition:"width 0.3s"}} /></div>
 <span style={{width:28,fontSize:8,color:"#6a6458",textAlign:"right"}}>{(v*100|0)}%</span>
 </div>;})}
+</div>}
+{/* Budget allocation */}
+{selData.budget&&<div style={{marginTop:6}}>
+<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Budget</div>
+<div style={{display:"flex",height:8,borderRadius:2,overflow:"hidden",background:"rgba(255,255,255,0.05)"}}>
+<div style={{width:`${selData.budget.mil*100}%`,background:"#c06050"}} title={`Military ${(selData.budget.mil*100|0)}%`} />
+<div style={{width:`${selData.budget.gro*100}%`,background:"#60a050"}} title={`Growth ${(selData.budget.gro*100|0)}%`} />
+<div style={{width:`${selData.budget.com*100}%`,background:"#5080c0"}} title={`Commerce ${(selData.budget.com*100|0)}%`} />
+<div style={{width:`${selData.budget.exp*100}%`,background:"#c09030"}} title={`Exploration ${(selData.budget.exp*100|0)}%`} />
+<div style={{width:`${selData.budget.sur*100}%`,background:"#606060"}} title={`Survival ${(selData.budget.sur*100|0)}%`} />
+</div>
+<div style={{display:"flex",gap:6,fontSize:8,color:"#6a6458",marginTop:2}}>
+<span style={{color:"#c06050"}}>{(selData.budget.mil*100|0)}%mil</span>
+<span style={{color:"#60a050"}}>{(selData.budget.gro*100|0)}%gro</span>
+<span style={{color:"#5080c0"}}>{(selData.budget.com*100|0)}%com</span>
+<span style={{color:"#c09030"}}>{(selData.budget.exp*100|0)}%exp</span>
+<span style={{color:"#808080"}}>{(selData.budget.sur*100|0)}%sur</span>
+</div>
 </div>}
 {/* Neighbor relationships */}
 {(()=>{if(!ter._borderContacts||!ter._borderContacts[sel])return null;
