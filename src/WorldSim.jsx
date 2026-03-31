@@ -704,7 +704,9 @@ score+=k.agriculture*0.2;// food surplus enables sailors
 const knownCount=ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
 score+=Math.min(0.3,knownCount*0.05);// discovery breeds more exploration
 if(r.coastTiles<1)score*=0.03;// landlocked: near zero
-const growth=0.010*score*Math.sqrt(1-k.navigation);// faster rate
+// Slow early (boats are hard to invent), faster once basics are learned
+const navDim=k.navigation<0.3?Math.pow(1-k.navigation,0.6):Math.sqrt(1-k.navigation);
+const growth=0.008*score*navDim;
 k.navigation=Math.min(1,k.navigation+Math.max(0,growth));}
 
 // Construction: stone + density + agriculture + metallurgy
@@ -790,7 +792,7 @@ const ag=know[i].agriculture,mt=know[i].metallurgy,cn=know[i].construction,og=kn
 let eraMult=1+ag*2+mt*1.5+cn*1+og*0.8;// stone~1, bronze~3, iron~5, classical~6
 // Industrial revolution: when metallurgy+construction both high, population explodes
 // (mechanized farming, medicine, sanitation, urbanization)
-const industrialBonus=(Math.max(0,mt-0.7))*(Math.max(0,cn-0.5))*200;// industrial pop explosion
+const industrialBonus=(Math.max(0,mt-0.7))*(Math.max(0,cn-0.5))*800;// industrial pop explosion — 1B→8B scale
 eraMult+=industrialBonus;
 // Resources that directly support population: salt preserves food, coal/oil power industry
 const rv=resourceValues(know[i]);const rr=ter._resCache&&ter._resCache[i]?ter._resCache[i]:null;
@@ -804,9 +806,11 @@ const ratio=pop[i]/capacity;
 // Post-industrial: ~1-2%/year = much faster.
 const industrialFactor=Math.max(0,mt-0.6)*3+Math.max(0,cn-0.5)*2;// 0 until ~iron age, then ramps
 const groB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].growth:0.25;
-const baseGrowth=(0.001+ag*0.001+industrialFactor*0.004)*(0.5+groB*2.0);// very slow pre-industrial
+const baseGrowth=(0.001+ag*0.001+industrialFactor*0.02)*(0.5+groB*2.0);// slow pre-industrial, VERY fast industrial
 // Logistic: growth slows as pop approaches capacity. Overshoots slightly for expansion pressure.
-const growthRate=ratio<1.08?baseGrowth*(1-ratio*0.92):0;// stops at ~108% — tighter cap
+// Industrial civs can overshoot more (medicine, sanitation extend capacity dynamically)
+const maxRatio=1.05+industrialFactor*0.15;// pre-industrial: 1.05, industrial: ~1.25
+const growthRate=ratio<maxRatio?baseGrowth*(1-ratio/(maxRatio*1.1)):0;
 pop[i]=Math.max(1,pop[i]+pop[i]*growthRate);
 // Famine above 120%
 if(ratio>1.2)pop[i]=Math.max(1,pop[i]*(0.97-Math.min(0.05,(ratio-1.2)*0.15)));
@@ -1407,7 +1411,7 @@ const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow]*10;
 // Match stepPopulation capacity formula
 const owOrg=owKnow?owKnow.organization:0,owMt=owKnow?owKnow.metallurgy:0,owCn=owKnow?owKnow.construction:0;
 let owEraMult=1+agLevel*2+owMt*1.5+owCn*1+owOrg*0.8;
-owEraMult+=(Math.max(0,owMt-0.7))*(Math.max(0,owCn-0.5))*200;
+owEraMult+=(Math.max(0,owMt-0.7))*(Math.max(0,owCn-0.5))*800;
 const owCap=tribeStrength[ow]*owEraMult;
 // No hard tile cap. Expansion is limited by real constraints:
 // - Center distance falloff (power projection decays with distance)
@@ -1465,14 +1469,17 @@ if(ao>=0&&ao!==ow){score+=0.3*owKnow.trade;break;}}}}}
 // IRL: Egypt stayed on the Nile for centuries. Sumer stayed in river valleys.
 // They didn't casually expand into every adjacent grassland.
 // Large tribes slow down but not as drastically (scaled for large maps)
-const sizeSlowdown=owSz>200?1/(1+(owSz-200)*0.001):1;// 500t→0.77x, 1000t→0.56x, 5000t→0.17x
+// Size slowdown reduced by organization (well-governed empires maintain expansion)
+const orgReduction=owKnow?owKnow.organization*0.5:0;// org reduces the penalty
+const sizeSlowdown=owSz>200?1/(1+(owSz-200)*Math.max(0.0003,0.001-orgReduction*0.001)):1;
 let chance=0.18*wet*smallBoost*sizeSlowdown;
 // Difficulty: CUBIC penalty. Even moderate difficulty is very hard early on.
 chance*=Math.max(0.02,(1-adjDiff)*(1-adjDiff));// quadratic: diff 0.3→0.49x, diff 0.5→0.25x, diff 0.8→0.04x
 // Fertility: quadratic with tech floor. Prime land is easy, poor land is hard but not impossible.
 const fertSq=fert*fert;
 // Tech floor rises with knowledge — advanced civs can settle anywhere
-const techFloor=(agLevel*0.05+owMt*0.03+owCn*0.03);// ag=0.8,mt=0.7,cn=0.6→0.079
+// Advanced civs can settle anywhere: ag=1,mt=0.8,cn=0.8 → floor=0.34 (meaningful chance on any land)
+const techFloor=(agLevel*0.15+owMt*0.10+owCn*0.08+owOrg*0.05);
 chance*=Math.max(techFloor,fertSq*4)*largePrize;// fert 0.5→1.0, fert 0.3→0.36, fert 0.1→0.04
 // Agriculture tech boost
 chance*=agBoost;
