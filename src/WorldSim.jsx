@@ -478,7 +478,10 @@ for(let i=0;i<n;i++){if(tribeSizes[i]<=0)continue;
 const b=budgets[i];const k=tribeKnowledge[i];const r=res[i];
 const pop=tribePopulation[i];const sz=tribeSizes[i];
 // Total budget capacity: population × trade wealth × organizational efficiency
-b.total=pop*(1+k.trade*0.3)*(0.5+k.organization*0.5);
+// Resource wealth: valuable resources increase budget capacity
+const rv=resourceValues(k);
+let resWealth=0;for(const rk of RES_KEYS)resWealth+=rv[rk]*(r[rk]||0)*0.01;
+b.total=pop*(1+k.trade*0.3)*(0.5+k.organization*0.5)*(1+Math.min(1.5,resWealth));
 
 // ── Survival floor: mandatory, scales with threats ──
 let borderThreat=0;const myContacts=contacts[i];
@@ -520,8 +523,10 @@ groScore+=Math.min(1.0,r.riverTiles*0.05);// river tiles → irrigation potentia
 // Commerce: coast, neighbors, wealth resources, crossroads position
 comScore+=Math.min(1.5,r.coastTiles*0.04);// ports → trade
 comScore+=Math.min(1.0,neighborCount*0.2);// more neighbors = more trade
-comScore+=Math.min(1.0,r.resourceTypes*0.1);// diversity → things to trade
-comScore+=Math.min(0.8,(r.precious+r.gems+r.salt)*0.1);// luxury goods → commerce
+comScore+=Math.min(1.0,r.resourceTypes*0.1);
+// Era-weighted tradeable wealth: valuable resources drive commerce
+let tradeWealth=0;for(const rk of RES_KEYS)tradeWealth+=rv[rk]*(r[rk]||0)*0.015;
+comScore+=Math.min(2.0,tradeWealth);// gold-rich trade tribes get strong commerce
 if(r.coastTiles>sz*0.25&&sz<60)comScore+=1.5;// Phoenician: small coastal → trade
 if(neighborCount>=4)comScore+=0.5;// crossroads position
 
@@ -567,6 +572,23 @@ else if(gro>0.35)b.personality="Agricultural";
 else if(exp>0.28)b.personality="Expansionist";
 else b.personality="Balanced";}
 }
+// ── Era-dependent resource values: what each resource is WORTH at this knowledge level ──
+function resourceValues(k){if(!k)return{timber:0.3,stone:0.1,copper:0,tin:0,iron:0,salt:0.3,horses:0,precious:0,coal:0,oil:0,gems:0};
+const mt=k.metallurgy,ag=k.agriculture,nv=k.navigation,cn=k.construction,og=k.organization,tr=k.trade;
+return{
+timber:  Math.min(1,0.3+ag*0.2+nv*0.4+cn*0.1),
+stone:   Math.min(1,0.1+cn*0.6+og*0.2),
+copper:  Math.min(1,mt<0.5?mt*1.5:0.75-(mt-0.5)*0.5),
+tin:     Math.min(1,mt>0.1&&mt<0.6?(mt-0.1)*2.0:mt>=0.6?0.3:0),
+iron:    Math.min(1,Math.max(0,mt-0.2)*1.2),
+salt:    Math.min(1,0.3+ag*0.3+og*0.2+nv*0.1),
+horses:  Math.min(1,og*0.5+mt*0.3),
+precious:Math.min(1,tr*0.8+og*0.2),
+coal:    Math.min(1,Math.max(0,mt-0.5)*Math.max(0,cn-0.4)*4),
+oil:     Math.min(1,Math.max(0,mt-0.7)*Math.max(0,cn-0.6)*5),
+gems:    Math.min(1,tr*0.5+og*0.3)};}
+const RES_KEYS=['copper','tin','iron','coal','stone','timber','salt','horses','precious','oil','gems'];
+
 function computeTribeResources(ter){
 const{tw,th,owner,deposits,tCoast,tribeStrength}=ter;
 const n=ter.tribeCenters.length;
@@ -643,9 +665,11 @@ score+=Math.random()*0.08;
 const growth=0.015*score*Math.sqrt(1-k.agriculture);// ~5x faster than before
 k.agriculture=Math.min(1,k.agriculture+Math.max(0,growth));}
 
-// Metallurgy: ore access + agriculture surplus + positive feedback loop
+// Metallurgy: era-weighted ore value + agriculture surplus + positive feedback
 {let score=0;
-const oreRichness=Math.min(1,(r.copper+r.tin+r.iron+r.coal)*0.08);
+const metRv=resourceValues(k);
+// Having the RIGHT ores at the RIGHT time matters most (tin in bronze age, iron in iron age)
+const oreRichness=Math.min(1,metRv.copper*(r.copper||0)*0.05+metRv.tin*(r.tin||0)*0.08+metRv.iron*(r.iron||0)*0.06+metRv.coal*(r.coal||0)*0.04);
 score+=oreRichness*0.8;
 score+=k.agriculture*0.5;// surplus labor
 score+=k.metallurgy*0.3;// strong positive feedback — metalwork enables better metalwork
@@ -751,7 +775,11 @@ let eraMult=15+ag*60+mt*40+cn*30+og*25;// stone~15, bronze~60, iron~100, classic
 // Industrial revolution: when metallurgy+construction both high, population explodes
 // (mechanized farming, medicine, sanitation, urbanization)
 const industrialBonus=(Math.max(0,mt-0.6))*(Math.max(0,cn-0.5))*2000;// 0 until iron+, then explodes
-eraMult+=industrialBonus;// at mt=0.9,cn=0.8: bonus=0.3*0.3*2000=180, total~350
+eraMult+=industrialBonus;
+// Resources that directly support population: salt preserves food, coal/oil power industry
+const rv=resourceValues(know[i]);const rr=ter._resCache&&ter._resCache[i]?ter._resCache[i]:null;
+if(rr){const resPop=rv.salt*(rr.salt||0)*0.02+rv.coal*(rr.coal||0)*0.05+rv.oil*(rr.oil||0)*0.08;
+eraMult*=(1+Math.min(0.5,resPop));}// up to 50% pop boost from resources
 const capacity=tribeStrength[i]*eraMult;
 if(capacity<=0){pop[i]=Math.max(0,pop[i]*0.95);continue;}
 const ratio=pop[i]/capacity;
@@ -822,8 +850,20 @@ let localPop=0,localFert=0;
 for(let dy=-4;dy<=4;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
 for(let dx=-4;dx<=4;dx++){const nx=((tx+dx)%tw+tw)%tw;
 const ni=ny*tw+nx;if(tElev[ni]>0&&owner[ni]<0){localPop+=bgPop[ni];localFert+=tFert[ni];}}}
-if(localPop<1.5)continue;// need local population cluster
-const score=localPop*localFert*tFert[ti];// heavily favor fertile hotspots
+if(localPop<1.5)continue;
+// Score: population × fertility + era-valuable resources at this site
+// Compute regional knowledge average for resource valuation
+let regionKnow=null;let rkCount=0;
+for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0)continue;
+for(const c of ter.tribeCenters[t]){if(tDistW(tx,ty,c.x,c.y,tw)<30){
+if(!regionKnow)regionKnow={agriculture:0,metallurgy:0,navigation:0,construction:0,organization:0,trade:0};
+const nk=ter.tribeKnowledge[t];for(const dom of KNOW_DOMAINS)regionKnow[dom]+=nk[dom];rkCount++;break;}}}
+if(regionKnow&&rkCount>0)for(const dom of KNOW_DOMAINS)regionKnow[dom]/=rkCount;
+const crRv=resourceValues(regionKnow);
+// Resource value at this tile: valuable resources attract settlement
+let resScore=0;if(ter.deposits){for(const rk of RES_KEYS){
+const dep=ter.deposits[rk];if(dep&&dep[ti]>0.1)resScore+=crRv[rk]*dep[ti];}}
+const score=localPop*localFert*tFert[ti]+resScore*3;// resources strongly attract crystallization
 if(score>bestScore){bestScore=score;bestTi=ti;}}
 // Crystallize: claim the ENTIRE populated region at once.
 // IRL Egypt didn't expand from tile #1 — hundreds of Nile villages unified into one polity.
@@ -1369,9 +1409,9 @@ const adjDiff=Math.max(0.02,Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0)-kn
 const fert=tFert[ni];
 // ── Directional score: what makes this tile VALUABLE to expand into ──
 let score=fert*fert*agMult*3;// quadratic fertility × agriculture tech
-// Resource pull: strong once metallurgy develops
-if(owKnow&&owKnow.metallurgy>0.1&&ter.deposits){
-score+=(ter.deposits.copper[ni]+ter.deposits.tin[ni]+ter.deposits.iron[ni])*owKnow.metallurgy*2.5;}
+// Resource pull: era-weighted. Bronze-age tribe → pulled to tin. Industrial → pulled to coal.
+if(owKnow&&ter.deposits){const owRv=resourceValues(owKnow);
+for(const rk of RES_KEYS){const dep=ter.deposits[rk];if(dep&&dep[ni]>0.1)score+=owRv[rk]*dep[ni]*2.0;}}
 // Strategic knowledge-driven pull
 if(owKnow){
 if(owKnow.agriculture>0.1&&ter.rivers&&ter.rivers.riverMag[ni]>=2)score+=1.0*owKnow.agriculture;
@@ -1437,7 +1477,8 @@ if(ter.rivers&&ter.rivers.riverMag[ni]>=3)centerScore+=0.6;// river confluence /
 if(ter.rivers&&ter.rivers.riverMag[ni]>=2)centerScore+=0.3;
 if(tCoast[ni])centerScore+=0.4;// natural harbor
 if(tDiff[ni]>0.4&&tFert[ni]>0.2)centerScore+=0.3;// mountain pass exit
-if(ter.deposits){const depScore=(ter.deposits.copper[ni]+ter.deposits.tin[ni]+ter.deposits.iron[ni]+ter.deposits.salt[ni])*0.3;
+if(ter.deposits&&owKnow){const cRv=resourceValues(owKnow);let depScore=0;
+for(const rk of RES_KEYS){const dep=ter.deposits[rk];if(dep&&dep[ni]>0.1)depScore+=cRv[rk]*dep[ni]*0.3;}
 centerScore+=depScore;}// resource concentration
 if(centerScore>0.5)tribeCenters[ow].push({x:nx,y:ny2,prestige:0.3,founded:ter.stepCount});}
 claimTile(ter,ni,nw);if(!nf[ni]){nf[ni]=1;nfl.push(ni);}
