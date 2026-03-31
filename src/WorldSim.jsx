@@ -1757,14 +1757,14 @@ const tgtX2=targetIdx%tw,tgtY2=(targetIdx-tgtX2)/tw;
 let already2=false;
 for(const kc2 of kcList){if(Math.abs(kc2.x-tgtX2)<=3&&Math.abs(kc2.y-tgtY2)<=3){already2=true;break;}}
 if(already2)continue;
-kcList.push({x:tgtX2,y:tgtY2,owner:owner[targetIdx],lastSeen:ter.stepCount});
+kcList.push({x:tgtX2,y:tgtY2,owner:owner[targetIdx],lastSeen:ter.stepCount,fromX:src.x,fromY:src.y});
 ter._dbgDiscSuccess=(ter._dbgDiscSuccess||0)+1;
 if(owner[targetIdx]>=0&&owner[targetIdx]!==st){
 // Discovered an inhabited coast — mutual awareness
 if(ter.tribeKnownCoasts[owner[targetIdx]]){
 const oKc=ter.tribeKnownCoasts[owner[targetIdx]];
 let oKnows=false;for(const ok2 of oKc){if(ok2.owner===st){oKnows=true;break;}}
-if(!oKnows){const sp=stPorts[0];oKc.push({x:sp.x,y:sp.y,owner:st,lastSeen:ter.stepCount});}}
+if(!oKnows){const sp=stPorts[0];oKc.push({x:sp.x,y:sp.y,owner:st,lastSeen:ter.stepCount,fromX:tgtX2,fromY:tgtY2});}}
 // Naval invasion: if we're much stronger (tech advantage), try to take the coast
 // Cortez vs Aztecs, British in India, Portuguese in East Africa
 const defender=owner[targetIdx];
@@ -2394,35 +2394,41 @@ ctx.fillRect(-sz2,-sz2,sz2*2,sz2*2);
 if(isSelected&&isFocused){ctx.strokeStyle="rgba(200,230,255,0.8)";ctx.lineWidth=0.6;
 ctx.strokeRect(-sz2-0.5,-sz2-0.5,sz2*2+1,sz2*2+1);}
 ctx.restore();}}}}
-// ── Draw maritime routes (enhanced in focused mode) ──
+// ── Draw maritime routes: follow discovery chain (navigable path, not straight lines) ──
 {const focSel2=ter._selectedTribe;const isFocused2=focSel2>=0&&ter.tribeSizes[focSel2]>0&&vm==="tribes";
 if(ter.tribeKnownCoasts&&ter.tribePorts){
 for(let st=0;st<ter.tribeKnownCoasts.length;st++){
 if(!ter.tribeKnownCoasts[st]||ter.tribeSizes[st]<=0)continue;
-// In focused mode: only show selected tribe's routes
 if(isFocused2&&st!==focSel2)continue;
 const ports=ter.tribePorts[st];if(!ports||ports.length===0)continue;
 const know=ter.tribeKnowledge&&ter.tribeKnowledge[st]?ter.tribeKnowledge[st]:null;
-if(!know||know.trade<0.1||know.navigation<0.1)continue;
-const knownCoasts=ter.tribeKnownCoasts[st];const drawn=new Set();
+if(!know||know.navigation<0.1)continue;
+const knownCoasts=ter.tribeKnownCoasts[st];
+// In focused mode with trade: draw chains to trade/war partners
+// In normal mode: draw all known coast chains lightly
+const drawnSegs=new Set();
+// Draw each known coast's discovery chain back to its source
 for(const kc of knownCoasts){
-if(kc.owner<0||kc.owner===st||ter.tribeSizes[kc.owner]<=0)continue;
-const key=Math.min(st,kc.owner)*10000+Math.max(st,kc.owner);
-if(drawn.has(key))continue;drawn.add(key);
-let nearPort=ports[0],nearDist=Infinity;
-for(const p of ports){const dd=tDistW(p.x,p.y,kc.x,kc.y,ter.tw);if(dd<nearDist){nearDist=dd;nearPort=p;}}
-const x1=nearPort.x+0.5,y1=dataYtoScreenY(nearPort.y*RES,H,CH)+0.5;
-const x2=kc.x+0.5,y2=dataYtoScreenY(kc.y*RES,H,CH)+0.5;
-// In focused mode: thick colored routes based on relationship
+if(!kc.fromX&&kc.fromX!==0)continue;// no chain info
+// Color based on relationship with the coast's owner
+let col='100,160,220';let alpha=0.3;let lw=0.4;
 if(isFocused2){
+if(kc.owner>=0&&kc.owner!==st){
 const rel=tribeRelation(ter,st,kc.owner);
-const col=rel==='fight'?'220,80,60':rel==='trade'?'220,200,80':'100,180,220';
-ctx.lineWidth=1.2;ctx.setLineDash([4,4]);
-ctx.strokeStyle=`rgba(${col},0.7)`;
-}else{ctx.lineWidth=0.4;ctx.setLineDash([2,3]);
-ctx.strokeStyle=`rgba(100,160,220,${Math.min(0.4,know.trade*0.6)})`;}
-ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}}
-ctx.setLineDash([]);}}
+col=rel==='fight'?'220,80,60':rel==='trade'?'220,200,80':rel==='friendly'?'80,180,80':'100,160,220';
+alpha=0.6;lw=1.0;}else{alpha=0.25;lw=0.3;}}
+// Draw segment from this coast back to where it was discovered from
+const x1=kc.fromX+0.5,y1=dataYtoScreenY(kc.fromY*RES,H,CH)+0.5;
+const x2=kc.x+0.5,y2=dataYtoScreenY(kc.y*RES,H,CH)+0.5;
+// Skip very short segments (clutter) and deduplicate
+const segKey=(Math.round(x1)*10000+Math.round(y1))+','+(Math.round(x2)*10000+Math.round(y2));
+if(drawnSegs.has(segKey))continue;drawnSegs.add(segKey);
+const segDist=Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
+if(segDist<3)continue;
+ctx.strokeStyle=`rgba(${col},${alpha})`;ctx.lineWidth=lw;
+ctx.setLineDash(isFocused2?[3,3]:[2,4]);
+ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
+ctx.setLineDash([]);}}}
 // ── Highlight selected tribe (only when NOT in focused tribes view — focused view handles it inline) ──
 if(ter._selectedTribe>=0&&ter.tribeSizes[ter._selectedTribe]>0&&vm!=="tribes"){
 const sel=ter._selectedTribe;
