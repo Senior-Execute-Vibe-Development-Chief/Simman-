@@ -163,7 +163,7 @@ const tGrid=new Float32Array(mW2*mH2);
 for(let my=0;my<mH2;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
 const lt=Math.abs(py/H-0.42)*2,e2=elevation[py*W+px];
-tGrid[my*mW2+mx]=Math.max(0,Math.min(1,1-Math.pow(lt,1.35)*1.15+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.65));}
+tGrid[my*mW2+mx]=Math.max(0,Math.min(1,1-Math.pow(lt,1.1)*1.0-lt*lt*0.35+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.65));}
 for(let step=0;step<25;step++){const prev=new Float32Array(tGrid);
 for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
@@ -175,8 +175,9 @@ const sxr=Math.min(mW2-1,sx+1);
 const upT=(prev[sy*mW2+sx]*(1-fdx)+prev[sy*mW2+sxr]*fdx)*(1-fdy)
 +(prev[(sy+1)*mW2+sx]*(1-fdx)+prev[(sy+1)*mW2+sxr]*fdx)*fdy;
 const e2=elevation[fi],lt=Math.abs(py/H-0.42)*2;
-const locT=Math.max(0,Math.min(1,1-Math.pow(lt,1.35)*1.15+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.65));
-if(e2<=0){tGrid[my*mW2+mx]=locT*0.88+upT*0.12;}
+const locT=Math.max(0,Math.min(1,1-Math.pow(lt,1.1)*1.0-lt*lt*0.35+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.65));
+// Ocean: wind drives currents strongly (Gulf Stream = warm water pushed by wind)
+if(e2<=0){tGrid[my*mW2+mx]=locT*0.65+upT*0.35;}// 35% wind influence (was 12%)
 else{const tb=Math.min(0.8,Math.max(0,e2-0.05)*3);
 const bi=(1-tb*0.5)*0.22,wb=upT>locT?1.3:0.8;
 const wi=Math.min(0.35,bi*wb);
@@ -200,7 +201,9 @@ const inland=Math.max(0,1-cp);
 const ch=tLat<0.5?inland*(0.5-tLat)*0.20:inland*(tLat-0.5)*-0.12;
 const mt=bt+(0.45-bt)*cp*0.2+ch;
 const wt=windTemp[i];
-temperature[i]=Math.max(0,Math.min(1,mt*0.75+wt*0.25));
+// Ocean tiles get more wind influence (ocean currents = wind-driven)
+const isOcean=e<=0;
+temperature[i]=Math.max(0,Math.min(1,isOcean?mt*0.55+wt*0.45:mt*0.70+wt*0.30));
 moisture[i]=windMoisture[i];}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
