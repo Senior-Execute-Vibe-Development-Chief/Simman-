@@ -1162,7 +1162,19 @@ const agBoost=1+agLevel*2;// ag=0→1x, ag=0.5→2x
 const candidates=[];
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny2=ty+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx;if(owner[ni]>=0)continue;
 const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni];if(effT<0.02){room=true;continue;}
-const diff=tDiff[ni],adjDiff=Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0));
+const diff=tDiff[ni];
+// Knowledge reduces effective difficulty. Advanced civs conquer hard terrain:
+// Construction: roads, terracing, tunnels (biggest impact on mountains)
+// Organization: logistics to supply remote areas
+// Agriculture: irrigation turns desert farmable
+// Metallurgy: tools to clear forest, mine mountains
+const knowledgeReduction=owKnow?(
+owKnow.construction*0.25+// roads through mountains, aqueducts through desert
+owKnow.organization*0.15+// logistics for remote garrisons
+owKnow.agriculture*0.10+// irrigation (desert), crop adaptation (cold)
+owKnow.metallurgy*0.10// iron tools clear forest, mine rock
+):0;// total up to 0.6 reduction at max knowledge
+const adjDiff=Math.max(0.02,Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0)-knowledgeReduction));
 const fert=tFert[ni];
 // ── Directional score: what makes this tile VALUABLE to expand into ──
 let score=fert*fert*agMult*3;// quadratic fertility × agriculture tech
@@ -1187,8 +1199,9 @@ let chance=0.25*wet*agBoost*smallBoost;// base
 chance*=Math.max(0.02,(1-adjDiff)*(1-adjDiff));// quadratic: diff 0.5→0.25x, diff 0.8→0.04x
 // Fertility makes it easier (fertile land is inviting, easy to settle)
 chance*=0.15+fert*2.0*largePrize;// fert 0.5→1.15, fert 0.1→0.35, fert 0.01→0.17
-// Cold penalty
-if(effT<0.15)chance*=0.12;
+// Cold penalty — reduced by construction+agriculture (heated buildings, hardy crops)
+if(effT<0.15){const coldResist=owKnow?Math.min(0.7,owKnow.construction*0.4+owKnow.agriculture*0.3):0;
+chance*=0.12+coldResist;}
 // Population pressure drives the push
 chance*=Math.max(0.08,popPressure);
 // High-value targets get a chance bonus (desire drives effort)
