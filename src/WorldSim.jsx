@@ -2409,17 +2409,23 @@ const knownCoasts=ter.tribeKnownCoasts[st];
 const drawnSegs=new Set();
 // Draw each known coast's discovery chain back to its source
 for(const kc of knownCoasts){
-if(!kc.fromX&&kc.fromX!==0)continue;// no chain info
-// Color based on relationship with the coast's owner
+// Chain route: draw from discovery source to this coast
+let x1,y1,x2,y2;
+x2=kc.x+0.5;y2=dataYtoScreenY(kc.y*RES,H,CH)+0.5;
+if(kc.fromX!==undefined&&kc.fromX!==null){
+x1=kc.fromX+0.5;y1=dataYtoScreenY(kc.fromY*RES,H,CH)+0.5;
+}else{
+// No chain info — draw from nearest port
+let np=ports[0],nd=Infinity;
+for(const p of ports){const dd=tDistW(p.x,p.y,kc.x,kc.y,ter.tw);if(dd<nd){nd=dd;np=p;}}
+x1=np.x+0.5;y1=dataYtoScreenY(np.y*RES,H,CH)+0.5;}
+// Color based on relationship
 let col='100,160,220';let alpha=0.3;let lw=0.4;
 if(isFocused2){
 if(kc.owner>=0&&kc.owner!==st){
 const rel=tribeRelation(ter,st,kc.owner);
 col=rel==='fight'?'220,80,60':rel==='trade'?'220,200,80':rel==='friendly'?'80,180,80':'100,160,220';
 alpha=0.6;lw=1.0;}else{alpha=0.25;lw=0.3;}}
-// Draw segment from this coast back to where it was discovered from
-const x1=kc.fromX+0.5,y1=dataYtoScreenY(kc.fromY*RES,H,CH)+0.5;
-const x2=kc.x+0.5,y2=dataYtoScreenY(kc.y*RES,H,CH)+0.5;
 // Skip very short segments (clutter) and deduplicate
 const segKey=(Math.round(x1)*10000+Math.round(y1))+','+(Math.round(x2)*10000+Math.round(y2));
 if(drawnSegs.has(segKey))continue;drawnSegs.add(segKey);
@@ -2427,7 +2433,13 @@ const segDist=Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
 if(segDist<3)continue;
 ctx.strokeStyle=`rgba(${col},${alpha})`;ctx.lineWidth=lw;
 ctx.setLineDash(isFocused2?[3,3]:[2,4]);
-ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
+// Draw curved line that bows toward the ocean (away from land midpoint)
+// This gives the visual impression of sailing around coastlines
+const mx=(x1+x2)/2,my=(y1+y2)/2;
+// Bow toward the equator (center of map) — a rough approximation of "toward ocean"
+const bowStrength=segDist*0.3;
+const bowY=my<CH/2?my+bowStrength:my-bowStrength;// bow away from nearest pole
+ctx.beginPath();ctx.moveTo(x1,y1);ctx.quadraticCurveTo(mx,bowY,x2,y2);ctx.stroke();}
 ctx.setLineDash([]);}}}
 // ── Highlight selected tribe (only when NOT in focused tribes view — focused view handles it inline) ──
 if(ter._selectedTribe>=0&&ter.tribeSizes[ter._selectedTribe]>0&&vm!=="tribes"){
