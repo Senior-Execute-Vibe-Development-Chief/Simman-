@@ -815,7 +815,8 @@ if(tElev[ti]<=0||tTemp[ti]<0.05)continue;
 const fert=tFert[ti];
 // Owned tiles get capacity boost (organized farming is more productive)
 const orgBoost=owner[ti]>=0?2.0:1.0;// organized land supports much more
-const cap=fert*fert*2.0*(1-tDiff[ti]*0.6)*orgBoost;// fert 0.5→0.5, fert 0.3→0.18 (unowned), ×2 if owned
+// Cap must be above crystal threshold (0.20) for moderate land so new tribes can form there
+const cap=fert*3.0*(1-tDiff[ti]*0.5)*orgBoost;// LINEAR not quadratic: fert 0.5→1.5, fert 0.3→0.9, fert 0.1→0.3 (unowned)
 if(cap<=0.001)continue;
 const ratio=bgPop[ti]/cap;
 bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*0.02*(1-ratio));// 2% growth
@@ -834,7 +835,7 @@ if(ter.stepCount%16!==0)return;// check every 16 steps
 let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
 if(alive>=80)return;
 // Much higher bar: need real fertility concentration, not just any habitable tile
-const CRYSTAL_THRESHOLD=0.20;// lowered — more civs emerge, matching historical density
+const CRYSTAL_THRESHOLD=0.12;// low enough for moderate fertility land to crystallize
 const MIN_SPACING=Math.round(tw*0.02);// very close spacing allowed — tribes form in gaps between empires
 // Find multiple crystallization candidates — spawn up to 3 per check
 const crystalCandidates=[];
@@ -1419,12 +1420,14 @@ const diff=tDiff[ni];
 // Organization: logistics to supply remote areas
 // Agriculture: irrigation turns desert farmable
 // Metallurgy: tools to clear forest, mine mountains
+// Knowledge reduces difficulty — but only for HARD terrain. Easy terrain should stay easy.
+// Scale: up to 0.3 reduction at max knowledge (was 0.6 — too strong, making everything trivial)
 const knowledgeReduction=owKnow?(
-owKnow.construction*0.25+// roads through mountains, aqueducts through desert
-owKnow.organization*0.15+// logistics for remote garrisons
-owKnow.agriculture*0.10+// irrigation (desert), crop adaptation (cold)
-owKnow.metallurgy*0.10// iron tools clear forest, mine rock
-):0;// total up to 0.6 reduction at max knowledge
+owKnow.construction*0.12+// roads, terracing
+owKnow.organization*0.08+// logistics
+owKnow.agriculture*0.05+// irrigation
+owKnow.metallurgy*0.05// tools
+):0;// total up to 0.3 at max
 const adjDiff=Math.max(0.02,Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0)-knowledgeReduction));
 const fert=tFert[ni];
 // ── Directional score: what makes this tile VALUABLE to expand into ──
