@@ -728,47 +728,52 @@ oil:     Math.min(1,Math.max(0,mt-0.7)*Math.max(0,cn-0.6)*5),
 gems:    Math.min(1,tr*0.5+og*0.3)};}
 const RES_KEYS=['copper','tin','iron','coal','stone','timber','salt','horses','precious','oil','gems'];
 
-// Ocean route: sample points along path, snap each to nearest ocean tile.
-// For short routes, uses BFS. For long routes, uses greedy snapping.
-// Handles X-axis wrapping. Returns waypoints in tile coords.
+// BFS ocean pathfinder for short hops (within discovery range).
+// Finds an actual ocean-tile path from coastal point A to coastal point B.
+// Returns simplified waypoints. Step size 4 for speed. Max 5000 nodes.
 function computeOceanRoute(ter,x1,y1,x2,y2,numPts){
 const{tw,th,tElev}=ter;
-const pts=[];
 let wrDx=x2-x1;if(Math.abs(wrDx)>tw/2)wrDx=wrDx>0?wrDx-tw:wrDx+tw;
-const dy=y2-y1;
-const dist=Math.sqrt(wrDx*wrDx+dy*dy);
-if(dist<5)return pts;
-// Sample N+2 points along the straight line, snap each to nearest ocean
-// Use enough points that the maximum segment length is ~30 tiles
-const N=Math.max(numPts,Math.ceil(dist/25));
-for(let i=1;i<=N;i++){
-const t=i/(N+1);
-let sx=x1+wrDx*t,sy=y1+dy*t;
-let tx=((Math.round(sx)%tw)+tw)%tw;
-let ty=Math.max(0,Math.min(th-1,Math.round(sy)));
-// If on land, find nearest ocean tile (expanding spiral search)
-if(tElev[ty*tw+tx]>0){
-let bestD=Infinity,bestX=tx,bestY=ty;
-// Search expanding rings until we find ocean
-for(let r=1;r<=40&&bestD===Infinity;r++){
-for(let sdy=-r;sdy<=r;sdy++){
-const ny=ty+sdy;if(ny<0||ny>=th)continue;
-for(let sdx=-r;sdx<=r;sdx++){
-if(Math.abs(sdx)<r&&Math.abs(sdy)<r)continue;// only ring edge
-const nx=((tx+sdx)%tw+tw)%tw;
-if(tElev[ny*tw+nx]<=0){
-const dd=sdx*sdx+sdy*sdy;
-if(dd<bestD){bestD=dd;bestX=nx;bestY=ny;}}}}}
-tx=bestX;ty=bestY;}
-// Skip if this point is same as previous (avoid clutter)
-if(pts.length>0&&Math.abs(pts[pts.length-1].x-tx)<3&&Math.abs(pts[pts.length-1].y-ty)<3)continue;
-pts.push({x:tx,y:ty});}
-const result=pts;
-if(result.length>numPts*3){
-const simplified=[];const step3=Math.floor(result.length/numPts);
-for(let i=0;i<result.length;i+=step3)simplified.push(result[i]);
-return simplified;}
+const totalDist=Math.sqrt(wrDx*wrDx+(y2-y1)*(y2-y1));
+if(totalDist<8)return[];
+// BFS through ocean tiles
+const STEP=3;// tile step size
+const MAX=15000;
+const visited=new Uint8Array(tw*th);// fast visited array
+const queue=[];const parentOf=[];
+// Seed: ocean tiles near source
+for(let dy=-6;dy<=6;dy++){for(let dx=-6;dx<=6;dx++){
+const nx=((x1+dx)%tw+tw)%tw,ny=Math.max(0,Math.min(th-1,y1+dy));
+const ni=ny*tw+nx;
+if(tElev[ni]<=0&&!visited[ni]){visited[ni]=1;queue.push(ni);parentOf.push(-1);}}}
+let found=-1,qi=0;
+while(qi<queue.length&&qi<MAX){
+const ci=queue[qi];qi++;
+const cx=ci%tw,cy=(ci-cx)/tw;
+// Check target reached
+let ddx2=Math.abs(cx-x2);if(ddx2>tw/2)ddx2=tw-ddx2;
+if(ddx2<=6&&Math.abs(cy-y2)<=6){found=qi-1;break;}
+// Expand 8 directions with STEP size
+for(let ddir=0;ddir<8;ddir++){
+const sdx=[0,STEP,STEP,STEP,0,-STEP,-STEP,-STEP][ddir];
+const sdy=[-STEP,-STEP,0,STEP,STEP,STEP,0,-STEP][ddir];
+const nx=((cx+sdx)%tw+tw)%tw,ny=cy+sdy;
+if(ny<1||ny>=th-1)continue;
+const ni=ny*tw+nx;
+if(visited[ni]||tElev[ni]>0)continue;
+visited[ni]=1;queue.push(ni);parentOf.push(qi-1);}}
+if(found>=0){
+// Trace back
+const path=[];let idx=found;
+while(idx>=0){const ti2=queue[idx];path.push({x:ti2%tw,y:(ti2-ti2%tw)/tw});idx=parentOf[idx];}
+path.reverse();
+// Simplify to numPts
+if(path.length<=numPts)return path;
+const step2=Math.floor(path.length/numPts);
+const result=[];for(let i=0;i<path.length;i+=step2){if(result.length<numPts)result.push(path[i]);}
 return result;}
+return[];// no path found
+}
 
 // Compute relationship between two tribes: 'fight','trade','friendly','neutral'
 function tribeRelation(ter,a,b){
@@ -2438,58 +2443,28 @@ ctx.fillRect(-sz2,-sz2,sz2*2,sz2*2);
 if(isSelected&&isFocused){ctx.strokeStyle="rgba(200,230,255,0.8)";ctx.lineWidth=0.6;
 ctx.strokeRect(-sz2-0.5,-sz2-0.5,sz2*2+1,sz2*2+1);}
 ctx.restore();}}}}
-// ── Draw maritime routes: follow discovery chain (navigable path, not straight lines) ──
+// ── Draw maritime discovery markers: dots at each known coast location ──
+// No lines — just markers at discovered coastal locations. Each marker is on a real coast tile.
+// The chain of markers shows the exploration route without any land-crossing artifacts.
 {const focSel2=ter._selectedTribe;const isFocused2=focSel2>=0&&ter.tribeSizes[focSel2]>0&&vm==="tribes";
-if(ter.tribeKnownCoasts&&ter.tribePorts){
+if(ter.tribeKnownCoasts){
 for(let st=0;st<ter.tribeKnownCoasts.length;st++){
 if(!ter.tribeKnownCoasts[st]||ter.tribeSizes[st]<=0)continue;
 if(isFocused2&&st!==focSel2)continue;
-const ports=ter.tribePorts[st];if(!ports||ports.length===0)continue;
 const know=ter.tribeKnowledge&&ter.tribeKnowledge[st]?ter.tribeKnowledge[st]:null;
 if(!know||know.navigation<0.1)continue;
-const knownCoasts=ter.tribeKnownCoasts[st];
-// In focused mode with trade: draw chains to trade/war partners
-// In normal mode: draw all known coast chains lightly
-const drawnSegs=new Set();
-// Draw each known coast's discovery chain back to its source
-for(const kc of knownCoasts){
-// Chain route: draw from discovery source to this coast
-let x1,y1,x2,y2;
-x2=kc.x+0.5;y2=dataYtoScreenY(kc.y*RES,H,CH)+0.5;
-if(kc.fromX!==undefined&&kc.fromX!==null){
-x1=kc.fromX+0.5;y1=dataYtoScreenY(kc.fromY*RES,H,CH)+0.5;
-}else continue;// skip entries without chain data (old format, would draw through land)
-// Color based on relationship
-let col='100,160,220';let alpha=0.3;let lw=0.4;
-if(isFocused2){
-if(kc.owner>=0&&kc.owner!==st){
-const rel=tribeRelation(ter,st,kc.owner);
-col=rel==='fight'?'220,80,60':rel==='trade'?'220,200,80':rel==='friendly'?'80,180,80':'100,160,220';
-alpha=0.6;lw=1.0;}else{alpha=0.25;lw=0.3;}}
-// Skip very short segments (clutter) and deduplicate
-const segKey=(Math.round(x1)*10000+Math.round(y1))+','+(Math.round(x2)*10000+Math.round(y2));
-if(drawnSegs.has(segKey))continue;drawnSegs.add(segKey);
-const segDist=Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
-if(segDist<3)continue;
+for(const kc of ter.tribeKnownCoasts[st]){
+const sx=kc.x+0.5,sy=dataYtoScreenY(kc.y*RES,H,CH)+0.5;
+let col='100,160,220';let alpha=0.5;let dotR=0.8;
+if(isFocused2){dotR=2.0;alpha=0.85;
+if(kc.owner>=0&&kc.owner!==st){const rel=tribeRelation(ter,st,kc.owner);
+col=rel==='fight'?'220,80,60':rel==='trade'?'220,200,80':rel==='friendly'?'80,180,80':'100,160,220';}
+else if(kc.owner<0){col='180,230,255';alpha=0.7;}}// unowned — light blue
 ctx.fillStyle=`rgba(${col},${alpha})`;
-// Draw route as dots along ocean waypoints — no lines that could cross land
-if(!ter._routeCache)ter._routeCache=new Map();
-const routeKey=st+':'+kc.x+','+kc.y;
-let drawRoute=ter._routeCache.get(routeKey);
-if(!drawRoute){
-const sx=kc.fromX;const sy=kc.fromY;
-drawRoute=computeOceanRoute(ter,sx,sy,kc.x,kc.y,20);// more points for smoother dot trail
-ter._routeCache.set(routeKey,drawRoute);}
-// Draw dots: small circles at each waypoint
-const dotR=isFocused2?1.2:0.6;
-// Source dot
-ctx.beginPath();ctx.arc(x1,y1,dotR+0.3,0,Math.PI*2);ctx.fill();
-for(const wp of drawRoute){
-const wx=wp.x+0.5,wy=dataYtoScreenY(wp.y*RES,H,CH)+0.5;
-ctx.beginPath();ctx.arc(wx,wy,dotR,0,Math.PI*2);ctx.fill();}
-// Destination dot (slightly larger)
-ctx.beginPath();ctx.arc(x2,y2,dotR+0.5,0,Math.PI*2);ctx.fill();}
-ctx.setLineDash([]);}}}
+ctx.beginPath();ctx.arc(sx,sy,dotR,0,Math.PI*2);ctx.fill();
+// In focused mode, draw a ring around the dot for visibility
+if(isFocused2){ctx.strokeStyle=`rgba(${col},${alpha*0.5})`;ctx.lineWidth=0.5;
+ctx.beginPath();ctx.arc(sx,sy,dotR+1,0,Math.PI*2);ctx.stroke();}}}}}
 // ── Highlight selected tribe (only when NOT in focused tribes view — focused view handles it inline) ──
 if(ter._selectedTribe>=0&&ter.tribeSizes[ter._selectedTribe]>0&&vm!=="tribes"){
 const sel=ter._selectedTribe;
