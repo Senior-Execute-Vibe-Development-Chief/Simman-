@@ -450,18 +450,18 @@ function cloneKnowledge(k){return{agriculture:k.agriculture,metallurgy:k.metallu
 // Allocation is driven by geography + situation + a random temperament factor.
 function initBudget(){
 // Temperament: random biases that make each tribe unique (Sparta, Venice, Mongols)
-// Range -0.3 to +0.3 per category. These are permanent cultural DNA.
-const r=()=>(Math.random()-0.5)*0.6;
+// Range -0.8 to +0.8 per category. Large enough to create outliers (Sparta, Venice).
+const r=()=>(Math.random()-0.5)*1.6;
 return{military:0.2,growth:0.3,commerce:0.2,exploration:0.15,survival:0.15,
 total:0,personality:"",
 // Temperament: permanent random bias per tribe (cultural DNA)
 tMil:r(),tGro:r(),tCom:r(),tExp:r()};}
 function cloneBudget(b){return{military:b.military,growth:b.growth,commerce:b.commerce,
 exploration:b.exploration,survival:b.survival,total:b.total,personality:b.personality,
-tMil:b.tMil+(Math.random()-0.5)*0.1,// child tribes inherit with slight drift
-tGro:b.tGro+(Math.random()-0.5)*0.1,
-tCom:b.tCom+(Math.random()-0.5)*0.1,
-tExp:b.tExp+(Math.random()-0.5)*0.1};}
+tMil:b.tMil+(Math.random()-0.5)*0.4,// child tribes inherit with meaningful drift
+tGro:b.tGro+(Math.random()-0.5)*0.4,
+tCom:b.tCom+(Math.random()-0.5)*0.4,
+tExp:b.tExp+(Math.random()-0.5)*0.4};}
 
 // Budget step: compute allocation for all tribes
 function stepBudget(ter){
@@ -491,46 +491,49 @@ const faminePressure=capacity>0?Math.max(0,(pop/capacity)-1)*2:0;
 const survivalFloor=Math.max(0.08,Math.min(0.55,borderThreat*0.3+faminePressure*0.3));
 const available=1-survivalFloor;
 
-// ── Score each category based on geography + situation + temperament ──
-// Scores are 0+ (higher = more desirable). Temperament adds permanent bias.
-let milScore=0.5+b.tMil;// base + temperament
-let groScore=0.5+b.tGro;
-let comScore=0.5+b.tCom;
-let expScore=0.5+b.tExp;
+// ── Score each category: geography + situation + temperament ──
+// Wider ranges (0-5+) so geography creates dramatic differences.
+let milScore=1.0+b.tMil;// base 1.0 + temperament (can be -0.8 to +0.8)
+let groScore=1.0+b.tGro;
+let comScore=1.0+b.tCom;
+let expScore=1.0+b.tExp;
 
-// Military: border pressure, recent losses, weak neighbors to exploit
-milScore+=borderThreat*2;
+// Military: many neighbors, threats, horses, iron/weapons access
+const neighborCount=Object.keys(myContacts).length;
+milScore+=borderThreat*3;// strong enemies → military
+milScore+=Math.min(1.0,neighborCount*0.25);// many borders = more conflict
 let hasWeakNeighbor=false;
 for(const nid in myContacts){const j=parseInt(nid);if(tribeSizes[j]<=0)continue;
 if(tribePopulation[j]<pop*0.5&&tribeSizes[j]>10){hasWeakNeighbor=true;break;}}
-if(hasWeakNeighbor)milScore+=0.5;
-// Steppe/grassland bonus: horses make military natural (Mongol pattern)
-if(r.horses>2)milScore+=0.4;
+if(hasWeakNeighbor)milScore+=1.0;// exploitable weakness nearby
+if(r.horses>2)milScore+=1.0;// Mongol pattern: steppe cavalry
+if(r.iron>3)milScore+=0.5;// iron = weapons
+if(k.metallurgy>0.3)milScore+=0.5;// armed tribes fight more
 
-// Growth: fertile land available, low population ratio, agriculture potential
+// Growth: fertile land, underpopulation, agriculture room
 const fertAvg=sz>0?tribeStrength[i]/sz:0;
-groScore+=fertAvg*2;// fertile territory rewards growth investment
-if(capacity>0&&pop/capacity<0.7)groScore+=0.8;// underpopulated — invest in growth
-if(k.agriculture<0.6)groScore+=0.3;// room to improve farming
+groScore+=fertAvg*3;// very fertile territory → invest in farming
+if(capacity>0&&pop/capacity<0.7)groScore+=1.5;// underpopulated → grow
+if(k.agriculture<0.5)groScore+=0.5;// room to improve farming
+groScore+=Math.min(1.0,r.riverTiles*0.05);// river tiles → irrigation potential
 
-// Commerce: coastal tiles, neighbor count, resource diversity
-comScore+=Math.min(0.6,r.coastTiles*0.02);// ports enable trade
-const neighborCount=Object.keys(myContacts).length;
-comScore+=Math.min(0.5,neighborCount*0.1);// more neighbors = more trade partners
-comScore+=Math.min(0.4,r.resourceTypes*0.06);// resource diversity = things to trade
-// Phoenician pattern: small coastal tribe with good ports → trade focus
-if(r.coastTiles>sz*0.3&&sz<50)comScore+=0.5;
+// Commerce: coast, neighbors, wealth resources, crossroads position
+comScore+=Math.min(1.5,r.coastTiles*0.04);// ports → trade
+comScore+=Math.min(1.0,neighborCount*0.2);// more neighbors = more trade
+comScore+=Math.min(1.0,r.resourceTypes*0.1);// diversity → things to trade
+comScore+=Math.min(0.8,(r.precious+r.gems+r.salt)*0.1);// luxury goods → commerce
+if(r.coastTiles>sz*0.25&&sz<60)comScore+=1.5;// Phoenician: small coastal → trade
+if(neighborCount>=4)comScore+=0.5;// crossroads position
 
-// Exploration: coast ratio, pop pressure, unknown world, navigation potential
+// Exploration: coast ratio, overpopulation, timber, discoveries, island pressure
 const coastRatio=sz>0?r.coastTiles/sz:0;
-expScore+=coastRatio*1.5;// coastal tribes explore
+expScore+=coastRatio*2.5;// coastal → explore
 const popRatio=capacity>0?pop/capacity:0;
-if(popRatio>0.9)expScore+=0.5;// overpopulation drives exploration
+if(popRatio>0.9)expScore+=1.0;// overpop → find new land
 const knownCoasts=ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
-if(knownCoasts>0)expScore+=0.3;// success breeds more exploration
-if(r.timber>2)expScore+=0.2;// shipbuilding timber
-// Island/small coastal pattern: exploration is survival
-if(coastRatio>0.5&&sz<30)expScore+=0.8;
+if(knownCoasts>0)expScore+=0.5;// success → more exploration
+if(r.timber>2)expScore+=0.5;// shipbuilding
+if(coastRatio>0.4&&sz<30)expScore+=2.0;// island survival → explore or die
 
 // Floor all scores at 0.1 (everyone does a little of everything)
 milScore=Math.max(0.1,milScore);
@@ -637,17 +640,19 @@ score+=Math.min(0.3,pop*0.003);// more minds = more innovation
 const age=ter.stepCount-(tribeCenters[i][0]?tribeCenters[i][0].founded:0);
 score+=Math.min(0.3,age*0.004);// sedentary bonus
 score+=Math.random()*0.08;
-const growth=0.012*score*(1-k.agriculture);// ~5x faster than before
+const growth=0.015*score*Math.sqrt(1-k.agriculture);// ~5x faster than before
 k.agriculture=Math.min(1,k.agriculture+Math.max(0,growth));}
 
-// Metallurgy: ore access + agriculture surplus + existing knowledge feedback
+// Metallurgy: ore access + agriculture surplus + positive feedback loop
 {let score=0;
 const oreRichness=Math.min(1,(r.copper+r.tin+r.iron+r.coal)*0.08);
-score+=oreRichness*0.7;// can't smelt without ore
-score+=k.agriculture*0.4;// surplus labor
-score+=k.metallurgy*0.15;// existing metalwork knowledge accelerates (positive feedback)
-if(oreRichness<0.05)score*=0.08;// near-zero without ore
-const growth=0.008*score*(1-k.metallurgy);// ~4x faster
+score+=oreRichness*0.8;
+score+=k.agriculture*0.5;// surplus labor
+score+=k.metallurgy*0.3;// strong positive feedback — metalwork enables better metalwork
+if(oreRichness<0.05)score*=0.08;
+// Softer diminishing returns: sqrt(1-k) instead of (1-k). Much less punishing at high levels.
+// (1-k) at k=0.5 → 0.5. sqrt(1-k) at k=0.5 → 0.71. At k=0.8 → 0.45 vs 0.2.
+const growth=0.012*score*Math.sqrt(1-k.metallurgy);
 k.metallurgy=Math.min(1,k.metallurgy+Math.max(0,growth));}
 
 // Navigation: coast + timber + need + trade
@@ -660,7 +665,7 @@ score+=k.trade*0.25;// mercantile pressure
 const knownCount=ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
 score+=Math.min(0.2,knownCount*0.03);
 if(r.coastTiles<1)score*=0.05;
-const growth=0.008*score*(1-k.navigation);
+const growth=0.012*score*Math.sqrt(1-k.navigation);
 k.navigation=Math.min(1,k.navigation+Math.max(0,growth));}
 
 // Construction: stone + density + agriculture + metallurgy
@@ -669,7 +674,7 @@ score+=Math.min(0.4,r.stone*0.04);
 score+=Math.min(0.3,pop*0.002);
 score+=k.agriculture*0.35;
 score+=k.metallurgy*0.15;// metal tools help build
-const growth=0.008*score*(1-k.construction);
+const growth=0.012*score*Math.sqrt(1-k.construction);
 k.construction=Math.min(1,k.construction+Math.max(0,growth));}
 
 // Organization: population size + centers + construction + trade
@@ -680,7 +685,7 @@ score+=Math.min(0.3,centerCount*0.07);// multi-center polities
 score+=k.construction*0.25;// infrastructure enables governance
 score+=k.trade*0.15;// trade networks need admin
 score+=Math.min(0.15,sz>40?(sz-40)*0.002:0);
-const growth=0.008*score*(1-k.organization);
+const growth=0.012*score*Math.sqrt(1-k.organization);
 k.organization=Math.min(1,k.organization+Math.max(0,growth));}
 
 // Trade: neighbors + resource diversity + coast + navigation
@@ -691,7 +696,7 @@ score+=Math.min(0.4,neighborCount*0.08);
 score+=Math.min(0.3,r.resourceTypes*0.04);
 score+=Math.min(0.2,r.coastTiles*0.008);
 score+=k.navigation*0.2;
-const growth=0.008*score*(1-k.trade);
+const growth=0.012*score*Math.sqrt(1-k.trade);
 k.trade=Math.min(1,k.trade+Math.max(0,growth));}}
 
 // ── Diffusion: knowledge flows across borders from high to low ──
@@ -779,7 +784,7 @@ const fert=tFert[ti];
 const cap=fert*fert*0.8*(1-tDiff[ti]*0.8);// quadratic: fert 0.5→0.2, fert 0.1→0.008
 if(cap<=0.001)continue;
 const ratio=bgPop[ti]/cap;
-bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*0.008*(1-ratio));// 0.8% growth — slow but not glacial
+bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*0.012*(1-ratio));// 1.2% growth
 // Diffusion: only from near-capacity tiles, slow, difficulty-blocked
 if(bgPop[ti]>cap*0.7){const tx=ti%tw,ty=(ti-tx)/tw;
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;
@@ -792,7 +797,7 @@ if(ter.stepCount%32!==0)return;// check every 32 steps (less frequent)
 let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
 if(alive>=80)return;
 // Much higher bar: need real fertility concentration, not just any habitable tile
-const CRYSTAL_THRESHOLD=0.28;// must grow above this — top valleys start at ~0.22, need ~30+ steps
+const CRYSTAL_THRESHOLD=0.20;// lowered — more civs emerge, matching historical density
 const MIN_SPACING=Math.round(tw*0.04);// smaller spacing — allows clustering near good areas
 // Find best crystallization candidate (not first-found — best fertility)
 let bestTi=-1,bestScore=-1;
@@ -817,13 +822,13 @@ let localPop=0,localFert=0;
 for(let dy=-4;dy<=4;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
 for(let dx=-4;dx<=4;dx++){const nx=((tx+dx)%tw+tw)%tw;
 const ni=ny*tw+nx;if(tElev[ni]>0&&owner[ni]<0){localPop+=bgPop[ni];localFert+=tFert[ni];}}}
-if(localPop<3.0)continue;// need dense cluster — river valley with many populated tiles
+if(localPop<1.5)continue;// need local population cluster
 const score=localPop*localFert*tFert[ti];// heavily favor fertile hotspots
 if(score>bestScore){bestScore=score;bestTi=ti;}}
 // Crystallize: claim the ENTIRE populated region at once.
 // IRL Egypt didn't expand from tile #1 — hundreds of Nile villages unified into one polity.
 // The tribe forms by absorbing all nearby background-populated tiles above a density threshold.
-if(bestTi>=0&&Math.random()<0.15){
+if(bestTi>=0&&Math.random()<0.25){// 25% chance, checked every 32 steps
 const tx=bestTi%tw,ty=(bestTi-tx)/tw;
 // Before creating tribe, check nearby civs to inherit knowledge.
 // A new civilization forming in 1500 AD near iron-age neighbors doesn't start from stone age.
@@ -1382,21 +1387,20 @@ if(ao>=0&&ao!==ow){score+=0.3*owKnow.trade;break;}}}}}
 // almost impossible until population pressure is extreme or tech improves.
 // IRL: Egypt stayed on the Nile for centuries. Sumer stayed in river valleys.
 // They didn't casually expand into every adjacent grassland.
-let chance=0.20*wet*smallBoost;// base (lower, ag doesn't boost base)
+let chance=0.30*wet*smallBoost;// base
 // Difficulty: CUBIC penalty. Even moderate difficulty is very hard early on.
 chance*=Math.max(0.01,(1-adjDiff)*(1-adjDiff)*(1-adjDiff));// diff 0.3→0.34x, diff 0.5→0.125x, diff 0.8→0.008x
-// Fertility: cubic base, but tech provides a rising floor.
-// Early civs: only prime land. Industrial civs: can settle anywhere habitable.
-const fertCube=fert*fert*fert;
-// Tech floor: knowledge makes even poor land claimable (irrigation, greenhouses, mining towns)
-const techFloor=(agLevel*0.03+owMt*0.02+owCn*0.02);// ag=0.8,mt=0.7,cn=0.6→0.05
-chance*=Math.max(techFloor,fertCube*8)*largePrize;
+// Fertility: quadratic with tech floor. Prime land is easy, poor land is hard but not impossible.
+const fertSq=fert*fert;
+// Tech floor rises with knowledge — advanced civs can settle anywhere
+const techFloor=(agLevel*0.05+owMt*0.03+owCn*0.03);// ag=0.8,mt=0.7,cn=0.6→0.079
+chance*=Math.max(techFloor,fertSq*4)*largePrize;// fert 0.5→1.0, fert 0.3→0.36, fert 0.1→0.04
 // Agriculture tech boost
 chance*=agBoost;
-// Budget: growth + exploration investment drives expansion
+// Budget: growth + exploration investment strongly drives expansion
 const groB=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].growth:0.25;
 const expB=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].exploration:0.15;
-chance*=(0.3+groB*1.8+expB*1.8);// balanced→1.0x, growth-focused→1.0+, exploration-focused→same
+chance*=(0.4+groB*3.0+expB*2.5);// balanced→1.25x, growth-focused→2.0x, both high→3x
 // Cold: brutal without tech
 if(effT<0.15){const coldResist=owKnow?Math.min(0.7,owKnow.construction*0.4+owKnow.agriculture*0.3):0;
 chance*=0.08+coldResist;}
