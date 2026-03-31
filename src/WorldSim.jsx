@@ -608,7 +608,9 @@ const know=ter.tribeKnowledge;const pop=ter.tribePopulation;
 const{tribeSizes,tribeStrength}=ter;
 for(let i=0;i<pop.length;i++){if(tribeSizes[i]<=0){pop[i]=0;continue;}
 const agMult=1+know[i].agriculture*2.5;
-const capacity=tribeStrength[i]*agMult;// effective carrying capacity
+// Population in thousands. Capacity scales with territory fertility × agriculture tech.
+// 25 fertile tiles (strength~10) at ag=0.4: capacity = 10 * 2.0 * 50 = 1000 (= 1M people)
+const capacity=tribeStrength[i]*agMult*50;
 if(capacity<=0){pop[i]=Math.max(0,pop[i]*0.95);continue;}
 // Population growth: logistic with overshoot allowed.
 // Key insight: population should be able to EXCEED capacity slightly — this creates
@@ -781,7 +783,7 @@ const met=ter.tribeKnowledge[tribeId].metallurgy;
 if(nav>0.5&&met>0.4&&owner[ti]!==tribeId){
 // Naval invasion: check if we can beat the defender
 const defPow=localPower(ter,owner[ti],tx,ty);
-const atkPow=ter.tribePopulation[tribeId]*0.01*met*nav;
+const atkPow=ter.tribePopulation[tribeId]*0.0002*met*nav;// scaled for pop in thousands
 if(atkPow>defPow*2){// need overwhelming force for amphibious landing
 return{x:tx,y:ty,ti,type:'invade'};}
 }
@@ -1027,7 +1029,9 @@ for(const[ddx,ddy]of DIRS){const nnx=((cx+ddx)%tw+tw)%tw,nny=cy2+ddy;
 if(nny<0||nny>=th)continue;const nni=nny*tw+nnx;
 if(visited[nni]||owner[nni]>=0||tElev[nni]<=0)continue;visited[nni]=1;
 if(tFert[nni]>0.08){pq.push({ti:nni,f:tFert[nni]});}}}
-tribePopulation[i]=tribeStrength[i]*(1+k.agriculture*2.5)*0.8;}
+// Population in thousands. A 25-tile fertile civ at 3000 BC ≈ 500k-1M people.
+// Scale: tribeStrength (~10 for 25 tiles) × agMult (~2) × 50 = ~1000 (= 1M people)
+tribePopulation[i]=tribeStrength[i]*(1+k.agriculture*2.5)*50*0.8;}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
 // ── Background population at 3000 BC: graduated by valley quality ──
 // The best river valleys are already taken by starting civs. The NEXT best
@@ -1118,7 +1122,7 @@ if(ter.tribePopulation&&owSzBefore>0){const popLoss=ter.tribePopulation[ow]/owSz
 ter.tribePopulation[ow]=Math.max(0,ter.tribePopulation[ow]-popLoss);}}else{ter.settled++;}
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;
 // Absorb background population into the tribe
-if(ter.bgPop&&ter.bgPop[ti]>0){if(ter.tribePopulation)ter.tribePopulation[nw]+=ter.bgPop[ti]*10;// bg pop → tribe pop (scaled up)
+if(ter.bgPop&&ter.bgPop[ti]>0){if(ter.tribePopulation)ter.tribePopulation[nw]+=ter.bgPop[ti]*500;// bg pop → tribe pop (thousands scale)
 ter.bgPop[ti]=0;}}
 // Transfer tile without resetting tenure (for splits/fragmentation — population stays, allegiance changes)
 function transferTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert}=ter;const ow=owner[ti];
@@ -1142,8 +1146,8 @@ const owSz=tribeSizes[ow],owDens=owSz>0?tribeStrength[ow]/owSz:0;
 const owKnow=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
 const agLevel=owKnow?owKnow.agriculture:0;
 const agMult=1+agLevel*2.5;
-const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow];
-const owCap=tribeStrength[ow]*agMult;
+const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow]*50;
+const owCap=tribeStrength[ow]*agMult*50;
 // Agriculture fundamentally gates expansion. Hunter-gatherers (ag<0.1) can barely
 // sustain 15-20 tiles. Early farmers (ag~0.3) can hold 50+. Advanced (ag>0.6) unlimited.
 // This is THE key constraint that keeps pre-farming tribes small.
@@ -1771,7 +1775,8 @@ else if(k.metallurgy>0.15)era="Copper";
 else if(k.agriculture>0.3)era="Farming";
 else if(k.agriculture>0.1)era="Neolithic";}
 // Format population nicely
-const popStr=pop>=1000?(pop/1000).toFixed(1)+'k':pop.toString();
+// Pop is in thousands. Display as "800k" or "1.2M" or "12M"
+const popStr=pop>=10000?(pop/1000).toFixed(1)+'M':pop>=1000?(pop/1000|0)+'M':pop>=1?pop.toFixed(0)+'k':'<1k';
 // Two-line label
 const line1=era;
 const line2=`${popStr} pop  ${sz}t`;
@@ -2131,7 +2136,7 @@ border:"1px solid rgba(201,184,122,0.15)"}}>
 {hoverInfo.river>0&&<div><span style={{color:"#8a8474"}}>River:</span> <span style={{color:"#6ab4e8"}}>{RIVER_NAMES[hoverInfo.river]}</span> <span style={{color:"#5a5448",fontSize:9}}>({hoverInfo.riverAccum.toFixed(1)})</span></div>}
 {hoverInfo.tribeInfo&&<>
 <div style={{height:1,background:"rgba(201,184,122,0.12)",margin:"3px 0"}} />
-<div><span style={{color:"#8a8474"}}>Tribe #{hoverInfo.tribeInfo.id}</span> <span style={{color:"#c9b87a"}}>{hoverInfo.tribeInfo.size} tiles</span> <span style={{color:"#7a7464"}}>pop {hoverInfo.tribeInfo.pop}</span></div>
+<div><span style={{color:"#8a8474"}}>Tribe #{hoverInfo.tribeInfo.id}</span> <span style={{color:"#c9b87a"}}>{hoverInfo.tribeInfo.size} tiles</span> <span style={{color:"#7a7464"}}>{hoverInfo.tribeInfo.pop>=10000?(hoverInfo.tribeInfo.pop/1000).toFixed(1)+'M':hoverInfo.tribeInfo.pop>=1000?(hoverInfo.tribeInfo.pop/1000|0)+'M':hoverInfo.tribeInfo.pop>=1?hoverInfo.tribeInfo.pop.toFixed(0)+'k':'<1k'}</span></div>
 {hoverInfo.tribeInfo.knowledge&&<div style={{fontSize:9,color:"#7a7464",lineHeight:"12px"}}>
 <span style={{color:hoverInfo.tribeInfo.knowledge.ag>0.3?"#8ab870":"#5a5448"}}>Ag {(hoverInfo.tribeInfo.knowledge.ag*100|0)}%</span>{" "}
 <span style={{color:hoverInfo.tribeInfo.knowledge.mt>0.3?"#c8946a":"#5a5448"}}>Mt {(hoverInfo.tribeInfo.knowledge.mt*100|0)}%</span>{" "}
@@ -2318,7 +2323,7 @@ return <>
 </div>
 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 10px",fontSize:10,color:"#b0a888"}}>
 <div><span style={{color:"#7a7464"}}>Territory:</span> {selData.size} tiles</div>
-<div><span style={{color:"#7a7464"}}>Population:</span> {selData.pop}</div>
+<div><span style={{color:"#7a7464"}}>Population:</span> {selData.pop>=10000?(selData.pop/1000).toFixed(1)+'M':selData.pop>=1000?(selData.pop/1000|0)+'M':selData.pop>=1?selData.pop.toFixed(0)+'k':'<1k'}</div>
 <div><span style={{color:"#7a7464"}}>Power:</span> {selData.power.toFixed(1)}</div>
 <div><span style={{color:"#7a7464"}}>Centers:</span> {selData.centers}</div>
 <div><span style={{color:"#7a7464"}}>Ports:</span> {selData.ports}</div>
@@ -2366,7 +2371,7 @@ background:`rgb(${tribeRGB(t.id).join(",")})`,display:"inline-block"}} />
 <div style={{fontSize:10,color:isSel?"#e0d4a8":"#b0a888",display:"flex",gap:6}}>
 <span>#{t.id}</span>
 <span style={{color:"#7a7464"}}>{t.size}t</span>
-<span style={{color:"#6a6458",fontSize:9}}>pop {t.pop}</span>
+<span style={{color:"#6a6458",fontSize:9}}>{t.pop>=10000?(t.pop/1000).toFixed(1)+'M':t.pop>=1000?(t.pop/1000|0)+'M':t.pop>=1?t.pop.toFixed(0)+'k':'<1k'}</span>
 </div>
 {t.k&&<div style={{fontSize:8,color:"#5a5448",display:"flex",gap:3,flexWrap:"wrap"}}>
 {t.k.agriculture>0.05&&<span style={{color:"#6a8a50"}}>Ag{(t.k.agriculture*100|0)}</span>}
