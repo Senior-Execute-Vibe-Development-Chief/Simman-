@@ -1669,9 +1669,14 @@ const sizeSlowdown=owSz>200?1/(1+(owSz-200)*Math.max(0.0003,0.001-orgReduction*0
 // Base chance rises with organization (modern nation-states expand bureaucratically)
 const lateBoost=owKnow?1+owKnow.organization*0.5:1;// org=0.8→1.4x
 let chance=0.22*wet*smallBoost*sizeSlowdown*lateBoost;
-// Difficulty: CUBIC penalty. Even moderate difficulty is very hard early on.
-// Quadratic difficulty but with knowledge-raised floor for advanced civs
-const diffFloor=owKnow?(owKnow.construction*0.06+owKnow.organization*0.04):0;// up to 0.1 floor at max
+// Flat terrain bonus: steppe/grassland enables RAPID expansion (Mongol pattern)
+// diff<0.05 (flat plains): 1.8x. diff=0.1 (gentle hills): 1.3x. diff>0.2: 1.0x
+const flatBonus=adjDiff<0.05?1.8:adjDiff<0.1?1.3+0.5*(0.1-adjDiff)/0.05:1.0;
+// Horses amplify flat-terrain expansion (cavalry covers ground fast)
+const horseBoost=ter._resCache&&ter._resCache[ow]&&ter._resCache[ow].horses>1?1+Math.min(0.5,ter._resCache[ow].horses*0.05):1;
+chance*=flatBonus*horseBoost;
+// Difficulty: quadratic penalty with knowledge floor
+const diffFloor=owKnow?(owKnow.construction*0.06+owKnow.organization*0.04):0;
 chance*=Math.max(diffFloor+0.02,(1-adjDiff)*(1-adjDiff));
 // Fertility: quadratic with tech floor. Prime land is easy, poor land is hard but not impossible.
 const fertSq=fert*fert;
@@ -1863,7 +1868,9 @@ const lpA=localPower(ter,ow,tx2,ty2);// only computed for border tiles
 // Defender advantage: 3x base + tenure + terrain + construction knowledge
 const defConst=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].construction:0;
 const defMilB=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].military:0.2;
-let def=3+Math.min(1.5,tenure[i]*0.008)+tDiff[i]*1.4+defConst*2.5+defMilB*2.0;// military budget boosts defense
+// Mountains make defense MUCH stronger: diff=0.5→+3.75, diff=0.8→+9.6 (fortress)
+// Combined with construction: a mountain kingdom with walls is nearly invincible
+let def=3+Math.min(1.5,tenure[i]*0.008)+tDiff[i]*tDiff[i]*15+defConst*3.0+defMilB*2.0;
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<16)continue;
 // Avoid attacking tribes that are much larger (>3x your size)
@@ -1917,8 +1924,11 @@ const steps=Math.max(4,Math.floor(Math.sqrt(dx*dx+dy*dy)/2));
 let diffSum=0;for(let s=0;s<=steps;s++){const sx=((Math.round(centers[0].x+dx*s/steps)%tw)+tw)%tw;
 const sy=Math.round(centers[0].y+dy*s/steps);if(sy>=0&&sy<th)diffSum+=tDiff[sy*tw+sx];}
 const avgDiff=diffSum/steps;const dist=tDistW(centers[0].x,centers[0].y,centers[c].x,centers[c].y,tw);
-// Cohesion: close + easy terrain = high, far + mountains = low
-const cohesion=1/(1+dist*0.04+avgDiff*2);
+// Cohesion: mountains STRONGLY fragment. Flat terrain holds together.
+// Europe (avgDiff~0.3-0.5) fragments easily. Russian steppe (avgDiff~0.05) holds.
+// Organization knowledge helps maintain cohesion across difficult terrain.
+const orgCoh=ter.tribeKnowledge[st]?ter.tribeKnowledge[st].organization:0;
+const cohesion=1/(1+dist*0.05+avgDiff*avgDiff*15-orgCoh*0.3);
 if(cohesion>0.4){// High cohesion → capital relocates peacefully
 const old=centers[0];centers[0]=centers[c];centers[0].prestige=Math.max(old.prestige,1.0);
 centers.splice(c,1);centers.push({x:old.x,y:old.y,prestige:old.prestige*0.5,founded:old.founded});
@@ -1933,6 +1943,30 @@ let dNearest=Infinity;for(const rc of centers)dNearest=Math.min(dNearest,tDistW(
 if(dSec<dNearest)transferTile(ter,i,sid);}}
 break;// only one challenge per step per tribe
 }}}
+// ── Terrain-based fragmentation: large tribes in rough terrain tend to split ──
+if(ter.stepCount%32===0){
+for(let st=0;st<tribeSizes.length;st++){
+if(tribeSizes[st]<=40)continue;
+const stK=ter.tribeKnowledge[st];const stOrg=stK?stK.organization:0;
+let totalDiff2=0,tileCount2=0;
+for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;totalDiff2+=tDiff[i];tileCount2++;}
+if(tileCount2<20)continue;
+const avgTribeDiff=totalDiff2/tileCount2;
+// Split pressure: high for mountainous (Europe), near-zero for flat (Russia)
+const splitPressure=avgTribeDiff*avgTribeDiff*0.3-stOrg*0.05;
+if(splitPressure>0&&Math.random()<splitPressure){
+const cap=tribeCenters[st][0];
+let worstTi=-1,worstScore=-1;
+for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;
+const ix=i%tw,iy=(i-ix)/tw;
+const score=tDistW(ix,iy,cap.x,cap.y,tw)*tDiff[i];
+if(score>worstScore){worstScore=score;worstTi=i;}}
+if(worstTi>=0){const wx=worstTi%tw,wy=(worstTi-wx)/tw;
+let aliveT=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)aliveT++;
+if(aliveT<80){const sid=newTribe(ter,wx,wy,st);
+for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;
+const ix2=i%tw,iy2=(i-ix2)/tw;
+if(tDistW(ix2,iy2,wx,wy,tw)<tDistW(ix2,iy2,cap.x,cap.y,tw))transferTile(ter,i,sid);}}}}}}
 // ── Fragmentation: split disconnected tribe components (largest keeps original ID/color) ──
 if(ter.stepCount%16===0){if(!ter._fragMark)ter._fragMark=new Int32Array(tw*th);const mark=ter._fragMark;let gen=ter._fragGen||0;
 for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=1)continue;
