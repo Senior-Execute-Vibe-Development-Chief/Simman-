@@ -2294,11 +2294,12 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
-if(e<=sl){// Ocean: same palette as land but temperature shifted ~5-10°C cooler (IRL ocean is cooler)
-// Equatorial ocean ~28°C vs land ~38°C. Mid-lat ocean ~15°C vs land ~20°C. Polar ~-2°C.
+if(e<=sl){// Ocean temp: cooler than land in tropics, warmer than land at poles (water moderates)
 const t=w.temperature[si];
-// Shift ocean temp down by ~0.08 in t-space (~8°C) — water is cooler than adjacent land
-const ot=Math.max(0,Math.min(1,t-0.08));
+// Variable shift: tropics -8°C, mid-lat -3°C, polar +5°C (ocean never below -2°C / t≈0.58)
+// Water's heat capacity: hot land → cool ocean, cold land → warm ocean
+const shift=t>0.7?-0.08:t>0.5?-0.03:t>0.3?0.02:0.08;// warm→cool, cold→warm
+const ot=Math.max(0.58,Math.min(1,t+shift));// floor at ~-2°C (saltwater freezing)
 let r,g,b;
 if(ot<0.20){const s=ot/0.20;r=(230-s*130)|0;g=(225-s*185)|0;b=(240-s*40)|0;}
 else if(ot<0.40){const s=(ot-0.20)/0.20;r=(100-s*70)|0;g=(40-s*10)|0;b=(200-s*10)|0;}
