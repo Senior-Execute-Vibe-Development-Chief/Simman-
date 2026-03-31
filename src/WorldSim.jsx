@@ -2535,33 +2535,8 @@ const headAlpha=brightness*0.9;
 ctx.fillStyle=`rgba(255,255,255,${headAlpha.toFixed(2)})`;
 ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
 }
-// Power projection view hatching
-if(vm==="tribes"&&showPower&&ter){const tw2=ter.tw,th2=ter.th;
-for(let ty2=0;ty2<th2;ty2+=2)for(let tx2=0;tx2<tw2;tx2+=2){
-const ti=ty2*tw2+tx2;const ow2=ter.owner[ti];
-if(ow2<0||ter.tElev[ti]<=0)continue;
-const pop=ter.tribeStrength[ow2];if(pop<0.01)continue;
-const lp=localPower(ter,ow2,tx2,ty2);
-const ratio=lp/pop;const intensity=(ratio-0.03)/0.97;
-const cr=tcR[ow2],cg=tcG[ow2],cb=tcB[ow2];
-const alpha=0.1+Math.pow(intensity,0.7)*0.85;
-ctx.strokeStyle=`rgba(${cr},${cg},${cb},${alpha})`;ctx.lineWidth=0.4+intensity*0.4;
-ctx.beginPath();ctx.moveTo(tx2,ty2);ctx.lineTo(tx2+2,ty2+2);ctx.stroke();
-if(intensity>0.3){ctx.beginPath();ctx.moveTo(tx2+2,ty2);ctx.lineTo(tx2,ty2+2);ctx.stroke();}}
-// Draw power centers
-for(let st=0;st<ter.tribeSizes.length;st++){if(ter.tribeSizes[st]<=0)continue;
-const centers=ter.tribeCenters[st];if(!centers)continue;
-const cr=tcR[st],cg=tcG[st],cb=tcB[st];
-for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=dataYtoScreenY(centers[ci].y*RES,H,CH)+0.5;
-const isCapital=ci===0,r2=isCapital?3:2;
-ctx.beginPath();ctx.arc(cx2,cy2,r2+2,0,Math.PI*2);
-ctx.fillStyle=`rgba(${cr},${cg},${cb},0.25)`;ctx.fill();
-ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
-ctx.fillStyle=`rgba(${cr},${cg},${cb},0.95)`;ctx.fill();
-ctx.beginPath();ctx.arc(cx2,cy2,r2+0.5,0,Math.PI*2);
-ctx.strokeStyle=isCapital?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.4)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();
-if(isCapital){ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 5px sans-serif";
-ctx.fillText("\u2605",cx2-2.5,cy2+1.5);}}}}
+// Power view removed — replaced by era-based rendering and focused view
+// Power centers removed — centers already drawn in main center loop above}
 },[updateTerrainCache,CH]);
 
 useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showPower,showGlobe,activeRes]);
