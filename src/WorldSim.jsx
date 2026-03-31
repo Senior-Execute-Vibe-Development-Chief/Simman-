@@ -481,7 +481,11 @@ const pop=tribePopulation[i];const sz=tribeSizes[i];
 // Resource wealth: valuable resources increase budget capacity
 const rv=resourceValues(k);
 let resWealth=0;for(const rk of RES_KEYS)resWealth+=rv[rk]*(r[rk]||0)*0.01;
-b.total=pop*(1+k.trade*0.3)*(0.5+k.organization*0.5)*(1+Math.min(1.5,resWealth));
+// Budget = population base + resource wealth (additive, not just multiplier).
+// A tiny tribe on gold can rival a large tribe with no resources (Phoenicia, Qatar).
+const popBase=pop*(1+k.trade*0.3)*(0.5+k.organization*0.5);
+const resBase=resWealth*pop*0.5;// resource wealth scales with pop but is ADDITIVE
+b.total=popBase+resBase;// resources can BE the majority of budget for resource-rich tribes
 
 // ── Survival floor: mandatory, scales with threats ──
 let borderThreat=0;const myContacts=contacts[i];
