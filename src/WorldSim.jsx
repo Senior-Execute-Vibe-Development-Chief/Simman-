@@ -1196,20 +1196,26 @@ for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny2+dy2;
 if(ay>=0&&ay<th){const ao=owner[ay*tw+ax];
 if(ao>=0&&ao!==ow){score+=0.3*owKnow.trade;break;}}}}}
 // ── Expansion chance: how EASY is it to take this tile ──
-// Fertile, flat land with low difficulty = easy. Mountains, desert = hard.
-// Score feeds into chance — valuable targets are pursued more aggressively.
-let chance=0.25*wet*agBoost*smallBoost;// base
-// Difficulty is a MAJOR reducer — mountains/desert dramatically harder
-chance*=Math.max(0.02,(1-adjDiff)*(1-adjDiff));// quadratic: diff 0.5→0.25x, diff 0.8→0.04x
-// Fertility makes it easier (fertile land is inviting, easy to settle)
-chance*=0.15+fert*2.0*largePrize;// fert 0.5→1.15, fert 0.1→0.35, fert 0.01→0.17
-// Cold penalty — reduced by construction+agriculture (heated buildings, hardy crops)
+// Early civs should ONLY expand into prime land. Mediocre land should be
+// almost impossible until population pressure is extreme or tech improves.
+// IRL: Egypt stayed on the Nile for centuries. Sumer stayed in river valleys.
+// They didn't casually expand into every adjacent grassland.
+let chance=0.20*wet*smallBoost;// base (lower, ag doesn't boost base)
+// Difficulty: CUBIC penalty. Even moderate difficulty is very hard early on.
+chance*=Math.max(0.01,(1-adjDiff)*(1-adjDiff)*(1-adjDiff));// diff 0.3→0.34x, diff 0.5→0.125x, diff 0.8→0.008x
+// Fertility: CUBIC. Only truly fertile land is easy. Poor land is nearly impossible.
+// fert=0.5→0.375, fert=0.3→0.081, fert=0.1→0.003, fert=0.01→virtually 0
+const fertCube=fert*fert*fert;
+chance*=fertCube*8*largePrize;// no floor — bad land is genuinely near-zero
+// Agriculture tech makes ALL land somewhat easier (farming knowledge transfers)
+chance*=agBoost;
+// Cold: brutal without tech
 if(effT<0.15){const coldResist=owKnow?Math.min(0.7,owKnow.construction*0.4+owKnow.agriculture*0.3):0;
-chance*=0.12+coldResist;}
-// Population pressure drives the push
-chance*=Math.max(0.08,popPressure);
-// High-value targets get a chance bonus (desire drives effort)
-chance*=1+Math.min(1.5,score*0.3);// score 0→1x, score 5→2.5x
+chance*=0.08+coldResist;}
+// Population pressure: critical driver. Low pressure = barely expand.
+chance*=Math.max(0.05,popPressure);
+// High-value targets pursued more aggressively
+chance*=1+Math.min(2.0,score*0.5);// stronger score feedback// score 0→1x, score 5→2.5x
 // Center proximity — organization extends effective reach
 // Base Gaussian exp(-d²/280) halves at ~14 tiles. Organization stretches this.
 const orgReach=owKnow?1+owKnow.organization*1.5:1;// org=0→1x, org=0.5→1.75x, org=1→2.5x
