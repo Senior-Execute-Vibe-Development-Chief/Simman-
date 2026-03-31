@@ -1108,7 +1108,8 @@ if(d<nearestCivDist)nearestCivDist=d;}}
 // Proximity multiplier: 1.0 within 50 tiles, drops sharply with distance
 // At 100 tiles: 0.25x. At 200 tiles: 0.06x. At 400+ tiles: basically 0.
 // This means Americas/Australia only get tribes via maritime colonization, not spontaneous.
-const proxMult=nearestCivDist<50?1.0:1.0/(1+(nearestCivDist-50)*0.03);
+// If NO tribes exist yet, skip proximity check (first civ emerges at best location)
+const proxMult=alive===0?1.0:(nearestCivDist<50?1.0:1.0/(1+(nearestCivDist-50)*0.03));
 const score=(localPop*localFert*tFert[ti]+resScore*3)*proxMult;
 if(score>0.5)crystalCandidates.push({ti,tx,ty,score});}
 // Sort by score, spawn up to 3 per check
@@ -1135,8 +1136,12 @@ for(const dom of KNOW_DOMAINS)nearKnow[dom]+=nk[dom];
 nearCount++;break;}}}// only count each tribe once
 const nid=newTribe(ter,tx,ty,-1);
 // Override the zero knowledge with inherited knowledge from neighbors
-if(nearKnow&&nearCount>0){const k=ter.tribeKnowledge[nid];
-for(const dom of KNOW_DOMAINS)k[dom]=Math.min(0.9,(nearKnow[dom]/nearCount)*0.6);}// 60% of neighbor average
+const newK=ter.tribeKnowledge[nid];
+if(nearKnow&&nearCount>0){// inherit 60% of neighbor average
+for(const dom of KNOW_DOMAINS)newK[dom]=Math.min(0.9,(nearKnow[dom]/nearCount)*0.6);}
+// Baseline: all new tribes get minimum agriculture (farming exists everywhere by 3000 BC)
+// + slight metallurgy if near an existing bronze-age civ
+newK.agriculture=Math.max(newK.agriculture,0.25+Math.random()*0.15);// 0.25-0.40 farming baseline
 // Flood-fill from best tile: claim all connected tiles with significant bgPop
 // Claim tiles: first unowned, then secede from neighbors if needed
 // A new tribe forming inside an empire represents rebellion/secession
@@ -1438,65 +1443,25 @@ const waterCount=riverCount+lakeCount*0.5;// lakes count at half weight (less tr
 const majorWater=majorRiver+Math.min(3,lakeCount*0.3);// large lakes add some "major" score
 // Valley score: water density × fertility density. Both must be present.
 valleyScore[ti]=waterCount*majorWater*0.01*fertSum*0.02;}
-// Score tiles: valley density is the dominant factor
-const scored=[];
-for(let ty2=2;ty2<th-2;ty2++)for(let tx=0;tx<tw;tx++){const ti=ty2*tw+tx;if(tElev[ti]<=0)continue;
-let s=valleyScore[ti]*3;// river valley cluster is the primary signal
-s+=tFert[ti]*2-tDiff[ti]*3;// local tile quality
-if(rivers&&rivers.riverMag[ti]>=2)s+=0.5;// bonus if this specific tile is on a river
-if(rivers&&rivers.riverMag[ti]>=3)s+=0.5;
-if(tCoast[ti])s+=0.2;
-if(deposits){s+=(deposits.copper[ti]+deposits.tin[ti])*0.3+deposits.salt[ti]*0.1;}
-if(s>0.5)scored.push({x:tx,y:ty2,s});}
-scored.sort((a,b)=>b.s-a.s);
-// Pick all candidates above a quality threshold (55% of best spot), spaced apart.
-// This naturally yields 1-5 civs depending on how many great river valleys exist.
-const qualityThreshold=scored.length>0?scored[0].s*0.55:0;
-const origins=[];
-if(w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0){
-for(const ts of w.tribeSeeds){const tx=Math.min(tw-1,Math.max(0,Math.round(ts.x/RES))),ty2=Math.min(th-1,Math.max(0,Math.round(ts.y/RES)));
-if(tElev[ty2*tw+tx]>0)origins.push({x:tx,y:ty2,s:tFert[ty2*tw+tx]});}}
-else{for(const c of scored){if(origins.length>=5)break;// hard max 5
-if(c.s<qualityThreshold)break;// below quality floor — stop
-let ok=true;for(const o of origins){let dx=Math.abs(c.x-o.x);if(dx>tw/2)dx=tw-dx;
-if(dx*dx+(c.y-o.y)**2<minSpacing*minSpacing){ok=false;break;}}
-if(ok)origins.push(c);}}
+// ── NO SEED CIVILIZATIONS ──
+// All tribes emerge naturally via crystallization from background population.
+// The first civs will crystallize at the highest-scoring river valley locations
+// (Nile, Euphrates, etc.) within the first few simulation steps.
+// Imported maps can still specify tribe seeds.
 const tenure=new Uint16Array(tw*th);const frontier=new Uint8Array(tw*th);const frontierList=[];
 const tribeKnowledge=[],tribePopulation=[];const tribeKnownCoasts=[];const tribePorts2=[];const tribeBudgets=[];
-// Flood-fill each starting civ to ~25 tiles along fertile corridors
-for(let i=0;i<origins.length;i++){const{x,y}=origins[i];
-tribeSizes.push(0);tribeStrength.push(0);
-tribeCenters.push([{x,y,prestige:1.5,founded:0}]);
-// 3000 BC knowledge: agriculture established, early copper/bronze
-const k=initKnowledge();
-k.agriculture=0.35+Math.random()*0.15;// 0.35-0.50
-k.metallurgy=0.20+Math.random()*0.10;// 0.20-0.30 (late copper → entering bronze)
-k.construction=0.10+Math.random()*0.10;
-k.organization=0.08+Math.random()*0.08;
-k.trade=0.05+Math.random()*0.05;
-tribeKnowledge.push(k);tribePopulation.push(0);tribeKnownCoasts.push([]);tribePorts2.push([]);tribeBudgets.push(initBudget());
-// Start with just the capital + immediate fertile neighbors (3-5 tiles).
-// The sim grows them organically from there — no artificial blob.
-const startTi=y*tw+x;
-owner[startTi]=i;tribeSizes[i]++;tribeStrength[i]+=tFert[startTi];
-tenure[startTi]=200;frontier[startTi]=1;frontierList.push(startTi);
-// Claim best 2-4 immediate neighbors so the civ has a tiny foothold
-const startNeighbors=[];
-for(const[ddx,ddy]of DIRS){const nnx=((x+ddx)%tw+tw)%tw,nny=y+ddy;
-if(nny<0||nny>=th)continue;const nni=nny*tw+nnx;
-if(owner[nni]>=0||tElev[nni]<=0)continue;
-startNeighbors.push({ti:nni,f:tFert[nni]});}
-startNeighbors.sort((a,b)=>b.f-a.f);
-for(let sn=0;sn<Math.min(3,startNeighbors.length);sn++){
-const{ti}=startNeighbors[sn];
-owner[ti]=i;tribeSizes[i]++;tribeStrength[i]+=tFert[ti];
-tenure[ti]=200;frontier[ti]=1;frontierList.push(ti);}
-// Population: start at capacity — these are established 3000 BC states
-// Starting pop matches era capacity formula: eraMult ≈ 2+0.4*8+0.15*5+0.1*4+0.08*3 ≈ 6.4
-// 4 tiles, avg fert 0.4, strength~1.6: capacity = 1.6*6.4 ≈ 10 (= 10k people)
-let startEraMult=(0.2+k.agriculture*0.4+k.metallurgy*0.25+k.construction*0.15+k.organization*0.1)*10;
-startEraMult+=(Math.max(0,k.metallurgy-0.6))*(Math.max(0,k.construction-0.5))*80;
-tribePopulation[i]=tribeStrength[i]*startEraMult;}
+if(w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0){
+for(let i=0;i<w.tribeSeeds.length;i++){
+const ts=w.tribeSeeds[i];
+const tx=Math.min(tw-1,Math.max(0,Math.round(ts.x/RES))),ty2=Math.min(th-1,Math.max(0,Math.round(ts.y/RES)));
+if(tElev[ty2*tw+tx]<=0)continue;
+const ti=ty2*tw+tx;
+tribeSizes.push(1);tribeStrength.push(tFert[ti]);
+tribeCenters.push([{x:tx,y:ty2,prestige:1.0,founded:0}]);
+owner[ti]=i;tenure[ti]=100;frontier[ti]=1;frontierList.push(ti);
+const k=initKnowledge();k.agriculture=0.4;k.metallurgy=0.15;
+tribeKnowledge.push(k);tribePopulation.push(tFert[ti]*5);
+tribeKnownCoasts.push([]);tribePorts2.push([]);tribeBudgets.push(initBudget());}}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
 // ── Background population at 3000 BC: graduated by valley quality ──
 // The best river valleys are already taken by starting civs. The NEXT best
@@ -1524,7 +1489,7 @@ bgPop[ti]=Math.max(0,bp);}
 // bgPop persists on owned tiles — don't zero it. It represents general population density.
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
 tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudget:tribeBudgets,bgPop,
-frontier,frontierList,landCount:lc,settled:origins.length,tribes:origins.length,origin:origins[0]||{x:0,y:0},stepCount:0};}
+frontier,frontierList,landCount:lc,settled:tribeSizes.length,tribes:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+(y1-y2)*(y1-y2));}
 // Precomputed exp(-d*d/280) lookup table — eliminates Math.exp in hot loops
