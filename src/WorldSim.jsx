@@ -477,8 +477,7 @@ const res=ter._resCache;
 for(let i=0;i<n;i++){if(tribeSizes[i]<=0)continue;
 const b=budgets[i];const k=tribeKnowledge[i];const r=res[i];
 const pop=tribePopulation[i];const sz=tribeSizes[i];
-// Total budget capacity: population × trade wealth × organizational efficiency
-// Resource wealth: valuable resources increase budget capacity
+if(!r)continue;// resource cache not ready yet for this tribe
 const rv=resourceValues(k);
 let resWealth=0;for(const rk of RES_KEYS)resWealth+=rv[rk]*(r[rk]||0)*0.01;
 // Budget = population base + resource wealth (additive, not just multiplier).
@@ -656,6 +655,7 @@ const tRes=ter._resCache;
 //   Others scale similarly. Diminishing returns (1-k) slow late-game naturally.
 for(let i=0;i<n;i++){if(tribeSizes[i]<=0)continue;
 const k=know[i],r=tRes[i],sz=tribeSizes[i],pop=ter.tribePopulation[i];
+if(!r)continue;// resource cache not ready for this tribe yet
 const dens=sz>0?tribeStrength[i]/sz:0;
 
 // Agriculture: fertility + rivers + density + sedentary time
@@ -666,7 +666,7 @@ score+=Math.min(0.3,pop*0.003);// more minds = more innovation
 const age=ter.stepCount-(tribeCenters[i][0]?tribeCenters[i][0].founded:0);
 score+=Math.min(0.3,age*0.004);// sedentary bonus
 score+=Math.random()*0.08;
-const growth=0.015*score*Math.sqrt(1-k.agriculture);// ~5x faster than before
+const growth=0.010*score*Math.sqrt(1-k.agriculture);// ~5x faster than before
 k.agriculture=Math.min(1,k.agriculture+Math.max(0,growth));}
 
 // Metallurgy: era-weighted ore value + agriculture surplus + positive feedback
@@ -679,7 +679,9 @@ score+=oreRichness*1.0;// ore is the primary driver
 score+=k.agriculture*0.5;// surplus labor
 score+=k.metallurgy*0.4;// strong positive feedback
 if(oreRichness<0.05)score*=0.15;// harsh but not as deadly as before
-const growth=0.015*score*Math.sqrt(1-k.metallurgy);// faster base rate
+// sqrt diminishing returns for early progress, linear for high levels (industrial is HARD)
+const dimRet=k.metallurgy<0.5?Math.sqrt(1-k.metallurgy):(1-k.metallurgy)*1.4;
+const growth=0.010*score*dimRet;
 k.metallurgy=Math.min(1,k.metallurgy+Math.max(0,growth));}
 
 // Navigation: coast + timber + need + trade
@@ -692,7 +694,7 @@ score+=k.trade*0.25;// mercantile pressure
 const knownCount=ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
 score+=Math.min(0.2,knownCount*0.03);
 if(r.coastTiles<1)score*=0.05;
-const growth=0.015*score*Math.sqrt(1-k.navigation);
+const growth=0.007*score*Math.sqrt(1-k.navigation);
 k.navigation=Math.min(1,k.navigation+Math.max(0,growth));}
 
 // Construction: stone + density + agriculture + metallurgy
@@ -701,7 +703,7 @@ score+=Math.min(0.4,r.stone*0.04);
 score+=Math.min(0.3,pop*0.002);
 score+=k.agriculture*0.35;
 score+=k.metallurgy*0.15;// metal tools help build
-const growth=0.015*score*Math.sqrt(1-k.construction);
+const growth=0.007*score*Math.sqrt(1-k.construction);
 k.construction=Math.min(1,k.construction+Math.max(0,growth));}
 
 // Organization: population size + centers + construction + trade
@@ -712,7 +714,7 @@ score+=Math.min(0.3,centerCount*0.07);// multi-center polities
 score+=k.construction*0.25;// infrastructure enables governance
 score+=k.trade*0.15;// trade networks need admin
 score+=Math.min(0.15,sz>40?(sz-40)*0.002:0);
-const growth=0.015*score*Math.sqrt(1-k.organization);
+const growth=0.007*score*Math.sqrt(1-k.organization);
 k.organization=Math.min(1,k.organization+Math.max(0,growth));}
 
 // Trade: neighbors + resource diversity + coast + navigation
@@ -723,7 +725,7 @@ score+=Math.min(0.4,neighborCount*0.08);
 score+=Math.min(0.3,r.resourceTypes*0.04);
 score+=Math.min(0.2,r.coastTiles*0.008);
 score+=k.navigation*0.2;
-const growth=0.015*score*Math.sqrt(1-k.trade);
+const growth=0.007*score*Math.sqrt(1-k.trade);
 k.trade=Math.min(1,k.trade+Math.max(0,growth));}}
 
 // ── Diffusion: knowledge flows across borders from high to low ──
@@ -1451,7 +1453,9 @@ if(ao>=0&&ao!==ow){score+=0.3*owKnow.trade;break;}}}}}
 // almost impossible until population pressure is extreme or tech improves.
 // IRL: Egypt stayed on the Nile for centuries. Sumer stayed in river valleys.
 // They didn't casually expand into every adjacent grassland.
-let chance=0.30*wet*smallBoost;// base
+// Large tribes expand SLOWER per frontier tile (diminishing returns on expansion)
+const sizeSlowdown=owSz>50?1/(1+(owSz-50)*0.005):1;// 100t→0.8x, 200t→0.57x, 500t→0.31x
+let chance=0.12*wet*smallBoost*sizeSlowdown;
 // Difficulty: CUBIC penalty. Even moderate difficulty is very hard early on.
 chance*=Math.max(0.01,(1-adjDiff)*(1-adjDiff)*(1-adjDiff));// diff 0.3→0.34x, diff 0.5→0.125x, diff 0.8→0.008x
 // Fertility: quadratic with tech floor. Prime land is easy, poor land is hard but not impossible.
@@ -1486,8 +1490,8 @@ candidates.push({ni,nx,ny:ny2,chance,score,diff,distMin});}
 candidates.sort((a,b)=>b.score-a.score);
 let claimedThisTile=0;
 for(let ci2=0;ci2<candidates.length;ci2++){const cand=candidates[ci2];const{ni,nx,ny:ny2,chance,diff,distMin}=cand;
-// Each subsequent candidate is 40% as likely as the previous (steep falloff)
-const rankPenalty=Math.pow(0.4,claimedThisTile);
+// Each subsequent candidate is 20% as likely (very steep — usually only best gets claimed)
+const rankPenalty=Math.pow(0.2,claimedThisTile);
 if(Math.random()<chance*rankPenalty){let nw=ow;claimedThisTile++;
 // NO expansion splits. New civs come ONLY from:
 // 1. Background population crystallization (stepBackgroundPop)
