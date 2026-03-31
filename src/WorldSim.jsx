@@ -763,12 +763,12 @@ tx=bestX;ty=bestY;}
 // Skip if this point is same as previous (avoid clutter)
 if(pts.length>0&&Math.abs(pts[pts.length-1].x-tx)<3&&Math.abs(pts[pts.length-1].y-ty)<3)continue;
 pts.push({x:tx,y:ty});}
-// Simplify if too many points
-if(pts.length>numPts*2){
-const simplified=[];const step=Math.floor(pts.length/numPts);
-for(let i=0;i<pts.length;i+=step)simplified.push(pts[i]);
+const result=pts;
+if(result.length>numPts*3){
+const simplified=[];const step3=Math.floor(result.length/numPts);
+for(let i=0;i<result.length;i+=step3)simplified.push(result[i]);
 return simplified;}
-return pts;}
+return result;}
 
 // Compute relationship between two tribes: 'fight','trade','friendly','neutral'
 function tribeRelation(ter,a,b){
@@ -2458,11 +2458,7 @@ let x1,y1,x2,y2;
 x2=kc.x+0.5;y2=dataYtoScreenY(kc.y*RES,H,CH)+0.5;
 if(kc.fromX!==undefined&&kc.fromX!==null){
 x1=kc.fromX+0.5;y1=dataYtoScreenY(kc.fromY*RES,H,CH)+0.5;
-}else{
-// No chain info — draw from nearest port
-let np=ports[0],nd=Infinity;
-for(const p of ports){const dd=tDistW(p.x,p.y,kc.x,kc.y,ter.tw);if(dd<nd){nd=dd;np=p;}}
-x1=np.x+0.5;y1=dataYtoScreenY(np.y*RES,H,CH)+0.5;}
+}else continue;// skip entries without chain data (old format, would draw through land)
 // Color based on relationship
 let col='100,160,220';let alpha=0.3;let lw=0.4;
 if(isFocused2){
