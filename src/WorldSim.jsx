@@ -2621,7 +2621,7 @@ const moist=terTi>=0&&terRef.current?terRef.current.tMoist[terTi]:(w.moisture[i]
 const biome=getBiomeD(elev,moist,temp,0);
 const biomeName=BN[biome]||"Ocean";
 const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
-const tempC=Math.round(temp*70-30);// range: -30°C to +40°C
+const tempC=Math.round(temp*100-60);// range: -60°C to +40°C
 const lat=Math.abs(wy/960-0.5)*2;
 const fertVal=elev>0?(terTi>=0&&terRef.current?terRef.current.tFert[terTi]:tileFert(temp,moist,elev)):0;
 const wdx=w.windX?w.windX[i]:0,wdy=w.windY?w.windY[i]:0;
