@@ -497,51 +497,53 @@ const faminePressure=capacity>0?Math.max(0,(pop/capacity)-1)*2:0;
 const survivalFloor=Math.max(0.08,Math.min(0.55,borderThreat*0.3+faminePressure*0.3));
 const available=1-survivalFloor;
 
-// ── Score each category: geography + situation + temperament ──
-// Wider ranges (0-5+) so geography creates dramatic differences.
-let milScore=1.0+b.tMil;// base 1.0 + temperament (can be -0.8 to +0.8)
-let groScore=1.0+b.tGro;
-let comScore=1.0+b.tCom;
-let expScore=1.0+b.tExp;
-
-// Military: many neighbors, threats, horses, iron/weapons access
+// ── Score each category: resources + geography + situation + temperament ──
+// Resources are the PRIMARY driver of personality, not just a modifier.
 const neighborCount=Object.keys(myContacts).length;
-milScore+=borderThreat*3;// strong enemies → military
-milScore+=Math.min(1.0,neighborCount*0.25);// many borders = more conflict
 let hasWeakNeighbor=false;
 for(const nid in myContacts){const j=parseInt(nid);if(tribeSizes[j]<=0)continue;
 if(tribePopulation[j]<pop*0.5&&tribeSizes[j]>10){hasWeakNeighbor=true;break;}}
-if(hasWeakNeighbor)milScore+=1.0;// exploitable weakness nearby
-if(r.horses>2)milScore+=1.0;// Mongol pattern: steppe cavalry
-if(r.iron>3)milScore+=0.5;// iron = weapons
-if(k.metallurgy>0.3)milScore+=0.5;// armed tribes fight more
-
-// Growth: fertile land, underpopulation, agriculture room
 const fertAvg=sz>0?tribeStrength[i]/sz:0;
-groScore+=fertAvg*3;// very fertile territory → invest in farming
-if(capacity>0&&pop/capacity<0.7)groScore+=1.5;// underpopulated → grow
-if(k.agriculture<0.5)groScore+=0.5;// room to improve farming
-groScore+=Math.min(1.0,r.riverTiles*0.05);// river tiles → irrigation potential
-
-// Commerce: coast, neighbors, wealth resources, crossroads position
-comScore+=Math.min(1.5,r.coastTiles*0.04);// ports → trade
-comScore+=Math.min(1.0,neighborCount*0.2);// more neighbors = more trade
-comScore+=Math.min(1.0,r.resourceTypes*0.1);
-// Era-weighted tradeable wealth: valuable resources drive commerce
 let tradeWealth=0;for(const rk of RES_KEYS)tradeWealth+=rv[rk]*(r[rk]||0)*0.015;
-comScore+=Math.min(2.0,tradeWealth);// gold-rich trade tribes get strong commerce
-if(r.coastTiles>sz*0.25&&sz<60)comScore+=1.5;// Phoenician: small coastal → trade
-if(neighborCount>=4)comScore+=0.5;// crossroads position
-
-// Exploration: coast ratio, overpopulation, timber, discoveries, island pressure
-const coastRatio=sz>0?r.coastTiles/sz:0;
-expScore+=coastRatio*2.5;// coastal → explore
+const coastRatio=sz>0?(r.coastTiles||0)/sz:0;
 const popRatio=capacity>0?pop/capacity:0;
-if(popRatio>0.9)expScore+=1.0;// overpop → find new land
 const knownCoasts=ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
-if(knownCoasts>0)expScore+=0.5;// success → more exploration
-if(r.timber>2)expScore+=0.5;// shipbuilding
-if(coastRatio>0.4&&sz<30)expScore+=2.0;// island survival → explore or die
+
+let milScore=0.5+b.tMil;// lower base — resources/situation drive the score
+let groScore=0.5+b.tGro;
+let comScore=0.5+b.tCom;
+let expScore=0.5+b.tExp;
+
+// Military: HORSES are the main driver, plus threats and iron
+milScore+=Math.min(3.0,(r.horses||0)*0.4);// horses: up to +3.0 (Mongols, cavalry empires)
+milScore+=Math.min(1.5,(r.iron||0)*0.15);// iron weapons
+milScore+=borderThreat*3;// under attack → military
+milScore+=Math.min(0.5,neighborCount*0.1);// many borders
+if(hasWeakNeighbor)milScore+=1.0;
+if(k.metallurgy>0.3)milScore+=0.5;// armed and dangerous
+
+// Growth: fertile land is the main driver
+groScore+=fertAvg*5;// fertile territory → invest in farming (up to ~2.5)
+groScore+=Math.min(1.5,(r.riverTiles||0)*0.08);// rivers → irrigation
+if(capacity>0&&pop/capacity<0.7)groScore+=1.5;// underpopulated
+if(k.agriculture<0.5)groScore+=0.5;
+groScore+=Math.min(1.0,(r.salt||0)*0.1);// salt → food preservation → growth
+
+// Commerce: GOLD and GEMS are the main driver, plus trade position
+comScore+=Math.min(3.0,((r.precious||0)+(r.gems||0))*0.3);// gold/gems → trade empire
+comScore+=Math.min(2.0,tradeWealth);// era-weighted resource wealth
+comScore+=Math.min(0.8,neighborCount*0.15);// trade partners
+if(r.coastTiles>sz*0.25&&sz<60)comScore+=1.5;// Phoenician
+if(neighborCount>=4)comScore+=0.5;// crossroads
+// Don't double-count coast in both commerce and exploration
+comScore+=Math.min(0.5,r.coastTiles*0.01);// modest port bonus
+
+// Exploration: coast + timber + population pressure
+expScore+=coastRatio*3.0;// coastal → explore
+expScore+=Math.min(1.0,(r.timber||0)*0.08);// shipbuilding
+if(popRatio>0.9)expScore+=1.5;// overpopulated → must explore
+if(knownCoasts>0)expScore+=0.5;
+if(coastRatio>0.4&&sz<30)expScore+=2.0;// island survival
 
 // Floor all scores at 0.1 (everyone does a little of everything)
 milScore=Math.max(0.1,milScore);
@@ -566,13 +568,15 @@ b.survival=survivalFloor;
 
 // ── Personality label from dominant allocation ──
 const mil=b.military,gro=b.growth,com=b.commerce,exp=b.exploration,sur=b.survival;
-if(sur>0.40)b.personality="Besieged";
-else if(mil+exp>0.55&&mil>0.25&&exp>0.2)b.personality="Imperial";
-else if(com+exp>0.50&&com>0.25&&exp>0.15)b.personality="Maritime";
-else if(mil>0.35)b.personality="Militant";
-else if(com>0.30)b.personality="Mercantile";
-else if(gro>0.35)b.personality="Agricultural";
-else if(exp>0.28)b.personality="Expansionist";
+// Find the dominant category
+const maxCat=Math.max(mil,gro,com,exp);
+if(sur>0.35)b.personality="Besieged";
+else if(mil+exp>0.50&&mil>0.20&&exp>0.15)b.personality="Imperial";
+else if(com+exp>0.45&&com>0.20&&exp>0.15)b.personality="Maritime";
+else if(mil===maxCat&&mil>0.25)b.personality="Militant";
+else if(com===maxCat&&com>0.22)b.personality="Mercantile";
+else if(gro===maxCat&&gro>0.25)b.personality="Agricultural";
+else if(exp===maxCat&&exp>0.22)b.personality="Expansionist";
 else b.personality="Balanced";}
 }
 // ── Era-dependent resource values: what each resource is WORTH at this knowledge level ──
