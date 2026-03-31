@@ -879,7 +879,8 @@ const bestTi=crystalCandidates[cc].ti;
 // Crystallize: claim the ENTIRE populated region at once.
 // IRL Egypt didn't expand from tile #1 — hundreds of Nile villages unified into one polity.
 // The tribe forms by absorbing all nearby background-populated tiles above a density threshold.
-if(Math.random()<0.4){// 40% chance per candidate
+if(Math.random()<0.4){
+ter._dbgCrystalSpawned=(ter._dbgCrystalSpawned||0)+1;
 const tx=bestTi%tw,ty=(bestTi-tx)/tw;
 // Before creating tribe, check nearby civs to inherit knowledge.
 // A new civilization forming in 1500 AD near iron-age neighbors doesn't start from stone age.
@@ -897,23 +898,28 @@ const nid=newTribe(ter,tx,ty,-1);
 if(nearKnow&&nearCount>0){const k=ter.tribeKnowledge[nid];
 for(const dom of KNOW_DOMAINS)k[dom]=Math.min(0.9,(nearKnow[dom]/nearCount)*0.6);}// 60% of neighbor average
 // Flood-fill from best tile: claim all connected tiles with significant bgPop
-const claimThreshold=0.05;// tiles above this bgPop get absorbed into the new tribe
+// Claim tiles: first unowned, then secede from neighbors if needed
+// A new tribe forming inside an empire represents rebellion/secession
 const visited=new Uint8Array(tw*th);
 const stack=[bestTi];visited[bestTi]=1;
-let claimed=0;const maxClaim=15;// hunter-gatherer bands: small initial territory (~15 tiles)
+let claimed=0;const maxClaim=12;
 while(stack.length>0&&claimed<maxClaim){
 const ci=stack.pop();
-if(owner[ci]>=0)continue;// already owned
 if(tElev[ci]<=0)continue;
+// Can claim unowned tiles freely, or SECEDE from another tribe's territory
+// (represents local population organizing independently)
+if(owner[ci]>=0&&owner[ci]!==nid){
+// Only secede if we haven't claimed enough tiles yet (need minimum viable size)
+if(claimed>=6)continue;// already big enough, stop taking from others
+}
 claimTile(ter,ci,nid);
 if(!ter.frontier[ci]){ter.frontier[ci]=1;ter.frontierList.push(ci);}
-bgPop[ci]=0;claimed++;
-// Expand to neighbors with sufficient background pop
+claimed++;
 const cx=ci%tw,cy2=(ci-cx)/tw;
 for(const[ddx,ddy]of DIRS){const nnx=((cx+ddx)%tw+tw)%tw,nny=cy2+ddy;
 if(nny<0||nny>=th)continue;const nni=nny*tw+nnx;
-if(visited[nni]||owner[nni]>=0)continue;visited[nni]=1;
-if(bgPop[nni]>=claimThreshold&&tElev[nni]>0){stack.push(nni);}}}
+if(visited[nni])continue;visited[nni]=1;
+if(tElev[nni]>0&&bgPop[nni]>=0.05){stack.push(nni);}}}
 // Clear remaining bgPop in wider area (people absorbed or displaced)
 for(let dy=-6;dy<=6;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
 for(let dx=-6;dx<=6;dx++){const nx=((tx+dx)%tw+tw)%tw;
@@ -1641,8 +1647,11 @@ comps.sort((a,b)=>b.length-a.length);
 for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor(comps[c][0]/tw),st);
 for(const ci of comps[c])transferTile(ter,ci,sid);}}ter._fragGen=gen;}
 // ── Remnant absorption: tiny fragments absorbed by larger neighbors ──
-// Only absorb if the neighbor is substantially larger (3x+) — prevents early bands being eaten
+// Only absorb old tiny tribes — new tribes get 100 steps of immunity to establish themselves
 if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>5)continue;
+// Immunity: don't absorb tribes younger than 100 steps (let them grow)
+const stAge=ter.stepCount-(tribeCenters[st][0]?tribeCenters[st][0].founded:0);
+if(stAge<100)continue;
 let bn=-1,bs2=0;for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const ty2=Math.floor(i/tw),tx2=i%tw;
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===st||tElev[ni]<=sl)continue;if(tribeSizes[no]>bs2){bs2=tribeSizes[no];bn=no;}}}
@@ -2480,7 +2489,7 @@ border:"1px solid rgba(201,184,122,0.1)"}}>
 <span style={{color:"#c9b87a"}}>{dominant.size}t</span></span>}
 {aliveK>0&&<span style={{fontSize:9,color:"#6a6458"}}>
 Ag {(avgAg*100|0)} Mt {(avgMet*100|0)} Nv {(avgNav*100|0)} Og {(avgOrg*100|0)}</span>}
-{ter&&<span style={{fontSize:9,color:"#886644"}}>bg:{ter._dbgMaxBgPop?.toFixed(2)} abv:{ter._dbgBgAboveThresh} cc:{ter._dbgCrystalCandidates}</span>}
+{ter&&<span style={{fontSize:9,color:"#886644"}}>bg:{ter._dbgMaxBgPop?.toFixed(2)} abv:{ter._dbgBgAboveThresh} cc:{ter._dbgCrystalCandidates} sp:{ter._dbgCrystalSpawned||0}</span>}
 </div>;})()}
 
 {/* ══ BOTTOM CENTER: VIEW/OVERLAY OPTIONS (larger) ══ */}
