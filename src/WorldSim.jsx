@@ -1218,30 +1218,22 @@ const centers=tribeCenters[ow];
 const{min:distMin}=nearestCenterDist(centers,nx,ny2,tw);
 const reach=expFalloff(distMin/orgReach);// org stretches effective distance
 chance*=Math.max(0.03,reach);
-score+=Math.random()*0.1;// small noise to break ties
+score+=Math.random()*0.1;
 candidates.push({ni,nx,ny:ny2,chance,score,diff,distMin});}
-// Sort candidates by score descending — claim best tiles first
+// Sort by score — best tiles first. Each subsequent candidate gets reduced chance
+// so growth strongly follows fertile corridors, not uniform bubbles.
 candidates.sort((a,b)=>b.score-a.score);
-for(const cand of candidates){const{ni,nx,ny:ny2,chance,diff,distMin}=cand;
-if(Math.random()<chance){let nw=ow;
-// Splits from expansion should be RARE and only for LARGE tribes.
-// Small/medium tribes (< 50 tiles) should NEVER split during expansion.
-// IRL, new civilizations formed from background population concentration,
-// not by randomly budding off a 15-tile tribe. Only empires fragment.
-const sz=tribeSizes[ow],dens=sz>0?tribeStrength[ow]/sz:0;
-let splitChance=0;
-const MAX_TRIBES=80;let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
-if(sz>50&&alive<MAX_TRIBES){// ONLY tribes >50 tiles can split from expansion
-let sameN=0;for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny2+dy2;
-if(ay>=0&&ay<th&&owner[ay*tw+ax]===ow)sameN++;}
-if(sameN<3){// frontier tile, not infill
-const orgResist=owKnow?owKnow.organization*0.6:0;// org strongly resists
-const overext=sz>100?Math.min(0.12,(sz-100)*0.0008):0;// only at 100+ tiles
-const barrier=diff>0.6&&pDiff<0.3?0.15:0;// geographic barrier
-const distF=distMin>35?Math.min(0.12,(distMin-35)*0.003):0;// very far from center
-splitChance=Math.max(0,(overext+barrier+distF-orgResist)*(1-Math.min(0.9,dens*1.5)));}}
-if(splitChance>0&&Math.random()<splitChance)nw=newTribe(ter,nx,ny2,ow);
-else if(distMin>12&&agLevel>0.15&&tribeCenters[ow]&&tribeCenters[ow].length<12){// new settlements form at moderate distance
+let claimedThisTile=0;
+for(let ci2=0;ci2<candidates.length;ci2++){const cand=candidates[ci2];const{ni,nx,ny:ny2,chance,diff,distMin}=cand;
+// Each subsequent candidate is 40% as likely as the previous (steep falloff)
+const rankPenalty=Math.pow(0.4,claimedThisTile);
+if(Math.random()<chance*rankPenalty){let nw=ow;claimedThisTile++;
+// NO expansion splits. New civs come ONLY from:
+// 1. Background population crystallization (stepBackgroundPop)
+// 2. Center challenge splits (large empires with low cohesion)
+// 3. Disconnected component fragmentation (structural)
+// 4. Overseas colony splits (maritime voyages)
+if(distMin>12&&agLevel>0.15&&tribeCenters[ow]&&tribeCenters[ow].length<12){
 // Geographic center scoring: rivers, harbors, passes, resources attract settlements
 let centerScore=tFert[ni]*2;
 if(ter.rivers&&ter.rivers.riverMag[ni]>=3)centerScore+=0.6;// river confluence / major river
