@@ -1158,7 +1158,8 @@ const dist=Math.sqrt(wrappedDx*wrappedDx+dy*dy);
 if(dist<2)return null;
 const stepX=wrappedDx/dist,stepY=dy/dist;
 let cx=port.x+0.5,cy=port.y+0.5;
-for(let s=1;s<=Math.min(maxRange,Math.ceil(dist));s++){
+const maxSteps=Math.min(300,maxRange,Math.ceil(dist));// cap iterations for performance
+for(let s=1;s<=maxSteps;s++){
 cx+=stepX;cy+=stepY;
 const tx=((Math.round(cx)%tw)+tw)%tw,ty=Math.round(cy);
 if(ty<0||ty>=th)break;
@@ -1183,17 +1184,14 @@ const myPort=ter.tribePorts[tribeId][0];
 otherKc.push({x:myPort.x,y:myPort.y,owner:tribeId,lastSeen:ter.stepCount});}}
 // Can we land?
 if(owner[ti]>=0){
-// Owned — check for naval invasion possibility
-const nav=ter.tribeKnowledge[tribeId].navigation;
+// Owned coast — try invasion, otherwise skip past and keep looking for unowned land
+const navV=ter.tribeKnowledge[tribeId].navigation;
 const met=ter.tribeKnowledge[tribeId].metallurgy;
-if(nav>0.5&&met>0.4&&owner[ti]!==tribeId){
-// Naval invasion: check if we can beat the defender
+if(navV>0.5&&met>0.4&&owner[ti]!==tribeId){
 const defPow=localPower(ter,owner[ti],tx,ty);
-const atkPow=ter.tribePopulation[tribeId]*0.0002*met*nav;// scaled for pop in thousands
-if(atkPow>defPow*2){// need overwhelming force for amphibious landing
-return{x:tx,y:ty,ti,type:'invade'};}
-}
-return null;}// owned but can't invade
+const atkPow=ter.tribePopulation[tribeId]*0.0002*met*navV;
+if(atkPow>defPow*2)return{x:tx,y:ty,ti,type:'invade'};}
+continue;}// skip past owned land — keep looking for unowned coast
 // Check contested coast
 let contested=false;
 for(const[ddx,ddy]of DIRS){const nx=((tx+ddx)%tw+tw)%tw,ny2=ty+ddy;
@@ -1710,32 +1708,53 @@ claimTile(ter,ni,nw);if(!nf[ni]){nf[ni]=1;nfl.push(ni);}
 // Hunter-gatherers: claim only best candidate. Agricultural civs: can claim multiple.
 if(agLevel<0.2)break;}
 else room=true;}
-// ── Maritime voyages (replaces LEAPS): port-based exploration ──
-if(owKnow&&owKnow.navigation>0.05&&ter.tribePorts&&ter.tribePorts[ow]&&ter.tribePorts[ow].length>0){
-const nav=owKnow.navigation;const maxRange=Math.floor(3+nav*50);
-// Each port has a chance to launch a voyage per step
-for(const port of ter.tribePorts[ow]){
-// Exploration budget dramatically increases voyage frequency (Maritime/Expansionist tribes explore more)
-const expB2=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].exploration:0.15;
-const voyageChance=0.02*nav*(0.5+popPressure*0.5)*(0.3+expB2*4.0);// exp=0.15→0.9x, exp=0.3→1.5x
-if(Math.random()>voyageChance)continue;
-const result=launchVoyage(ter,ow,port,maxRange);
-if(!result)continue;
-if(result.type==='land'){
-let nw2=ow;const{min:vDist}=nearestCenterDist(tribeCenters[ow],result.x,result.y,tw);
-// Far colonies may split (distance + low organization)
-const orgResist2=owKnow.organization*0.4;
-if(vDist>25&&Math.random()<0.3-orgResist2)nw2=newTribe(ter,result.x,result.y,ow);
-else if(vDist>20&&tribeCenters[ow].length<8)
-tribeCenters[ow].push({x:result.x,y:result.y,prestige:0.3,founded:ter.stepCount});
-claimTile(ter,result.ti,nw2);if(!nf[result.ti]){nf[result.ti]=1;nfl.push(result.ti);}
-}else if(result.type==='invade'){
-// Naval invasion: claim tile from defender
-claimTile(ter,result.ti,ow);if(!nf[result.ti]){nf[result.ti]=1;nfl.push(result.ti);}
-}
-break;// one voyage attempt per frontier tile per step
-}}
+// Maritime discovery moved to separate per-tribe pass below
 if(room&&!nf[fi]){nf[fi]=1;nfl.push(fi);}}
+// ── Maritime discovery: per-tribe probability-based (NOT per frontier tile) ──
+// Each coastal tribe gets ONE discovery attempt per 8 steps. Fast and scalable.
+if(ter.stepCount%8===0){
+// Pre-compute a list of all coastal tiles for random target selection
+if(!ter._coastalTiles){ter._coastalTiles=[];
+for(let cti=0;cti<tw*th;cti++){if(tElev[cti]>0&&tCoast[cti])ter._coastalTiles.push(cti);}}
+const coastList=ter._coastalTiles;
+for(let st=0;st<tribeCenters.length;st++){
+if(tribeSizes[st]<=0)continue;
+const stK=ter.tribeKnowledge[st];if(!stK||stK.navigation<0.1)continue;
+const stPorts=ter.tribePorts[st];if(!stPorts||stPorts.length===0)continue;
+const nav2=stK.navigation;
+const expB3=ter.tribeBudget&&ter.tribeBudget[st]?ter.tribeBudget[st].exploration:0.15;
+const discRange=Math.floor(10+nav2*nav2*tw*0.3);
+const discChance=0.02*nav2*(0.3+expB3*3);
+if(Math.random()>discChance)continue;
+// Pick a random coastal tile anywhere on the map within range of any of our ports
+const srcPort=stPorts[Math.floor(Math.random()*stPorts.length)];
+const attempts=5;// try a few random coastal tiles
+for(let att=0;att<attempts;att++){
+const targetIdx=coastList[Math.floor(Math.random()*coastList.length)];
+const tgtX=targetIdx%tw,tgtY=(targetIdx-tgtX)/tw;
+// Check distance from our port
+const d=tDistW(srcPort.x,srcPort.y,tgtX,tgtY,tw);
+if(d>discRange||d<5)continue;// too far or too close
+// Found a distant coast! Record discovery
+const kcList=ter.tribeKnownCoasts[st];
+let already2=false;
+for(const kc2 of kcList){if(Math.abs(kc2.x-tgtX)<=3&&Math.abs(kc2.y-tgtY)<=3){already2=true;break;}}
+if(already2)continue;
+kcList.push({x:tgtX,y:tgtY,owner:owner[targetIdx],lastSeen:ter.stepCount});
+// Mutual awareness
+if(owner[targetIdx]>=0&&owner[targetIdx]!==st&&ter.tribeKnownCoasts[owner[targetIdx]]){
+const oKc=ter.tribeKnownCoasts[owner[targetIdx]];
+let oKnows=false;for(const ok2 of oKc){if(ok2.owner===st){oKnows=true;break;}}
+if(!oKnows)oKc.push({x:srcPort.x,y:srcPort.y,owner:st,lastSeen:ter.stepCount});}
+// If unowned, claim it (colony!)
+if(owner[targetIdx]<0&&tFert[targetIdx]>0.03){
+let nw3=st;const{min:vDist2}=nearestCenterDist(tribeCenters[st],tgtX,tgtY,tw);
+if(vDist2>30&&Math.random()<0.3-stK.organization*0.3)nw3=newTribe(ter,tgtX,tgtY,st);
+else if(vDist2>20&&tribeCenters[st].length<10)
+tribeCenters[st].push({x:tgtX,y:tgtY,prestige:0.3,founded:ter.stepCount});
+claimTile(ter,targetIdx,nw3);if(!nf[targetIdx]){nf[targetIdx]=1;nfl.push(targetIdx);}}
+break;// one discovery per tribe per step
+}}}
 // ── Sovereignty expansion: advanced tribes claim adjacent unclaimed land automatically ──
 // Modern nations claim deserts, tundra, mountains by drawing borders, not settling.
 if(ter.stepCount%4===0){
