@@ -2294,11 +2294,12 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
-if(e<=sl){// Ocean: same temperature palette as land, slightly darkened
+if(e<=sl){// Ocean: same palette as land but temperature shifted ~5-10°C cooler (IRL ocean is cooler)
+// Equatorial ocean ~28°C vs land ~38°C. Mid-lat ocean ~15°C vs land ~20°C. Polar ~-2°C.
 const t=w.temperature[si];
-const ot=Math.max(0,Math.min(1,t));
+// Shift ocean temp down by ~0.08 in t-space (~8°C) — water is cooler than adjacent land
+const ot=Math.max(0,Math.min(1,t-0.08));
 let r,g,b;
-// Use the exact same gradient as land
 if(ot<0.20){const s=ot/0.20;r=(230-s*130)|0;g=(225-s*185)|0;b=(240-s*40)|0;}
 else if(ot<0.40){const s=(ot-0.20)/0.20;r=(100-s*70)|0;g=(40-s*10)|0;b=(200-s*10)|0;}
 else if(ot<0.50){const s=(ot-0.40)/0.10;r=(30+s*10)|0;g=(30+s*20)|0;b=(190-s*40)|0;}
@@ -2307,8 +2308,6 @@ else if(ot<0.70){const s=(ot-0.60)/0.10;r=(100-s*30)|0;g=(180+s*40)|0;b=(200-s*1
 else if(ot<0.80){const s=(ot-0.70)/0.10;r=(70+s*160)|0;g=(220+s*30)|0;b=(50-s*30)|0;}
 else if(ot<0.90){const s=(ot-0.80)/0.10;r=(230+s*25)|0;g=(250-s*100)|0;b=(20-s*10)|0;}
 else{const s=(ot-0.90)/0.10;r=255;g=(150-s*110)|0;b=(10+s*5)|0;}
-// Darken slightly to distinguish ocean from land
-r=(r*0.75)|0;g=(g*0.75)|0;b=(b*0.75)|0;
 d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;continue;}
 const t=w.temperature[si];let r,g,b;
 // Palette: white(-60°C) → purple(-20°C) → dark blue(-10°C) → light blue(0°C) → light green(10°C) → yellow(20°C) → orange(30°C) → red(40°C)
