@@ -193,7 +193,9 @@ const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x
 const cp=Math.max(0,1-cd/8);
 const tLat=Math.abs(ny-0.42)*2;
 const shE=Math.exp(-((tLat-0.20)*(tLat-0.20))/(2*0.08*0.08))*0.06;
-const bt=1-Math.pow(tLat,1.35)*1.15+shE-Math.max(0,e)*0.65+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
+// Steeper cold: pow 1.7 makes high latitudes drop faster (tundra extends further south)
+// Cold extends further: lower exponent = steeper drop at mid-latitudes
+const bt=1-Math.pow(tLat,1.1)*1.15-tLat*tLat*0.15+shE-Math.max(0,e)*0.65+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
 const inland=Math.max(0,1-cp);
 const ch=tLat<0.5?inland*(0.5-tLat)*0.20:inland*(tLat-0.5)*-0.12;
 const mt=bt+(0.45-bt)*cp*0.2+ch;
