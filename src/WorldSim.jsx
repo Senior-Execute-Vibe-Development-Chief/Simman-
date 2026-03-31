@@ -826,13 +826,16 @@ const ni=ny*tw+nx;if(tElev[ni]<=0)continue;
 if(bgPop[ni]<bgPop[ti]*0.3){
 const flow=bgPop[ti]*0.005*(1-tDiff[ni]);
 bgPop[ti]-=flow;bgPop[ni]+=Math.max(0,flow);}}}}
-// ── Tribe crystallization: rare, fertility-weighted, requires dense local cluster ──
+// Debug: track max bgPop for diagnostics
+let maxBg=0,bgAboveThresh=0;for(let ti=0;ti<tw*th;ti++){if(bgPop[ti]>maxBg)maxBg=bgPop[ti];if(owner[ti]<0&&bgPop[ti]>0.20)bgAboveThresh++;}
+ter._dbgMaxBgPop=maxBg;ter._dbgBgAboveThresh=bgAboveThresh;
+// ── Tribe crystallization ──
 if(ter.stepCount%16!==0)return;// check every 16 steps
 let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
 if(alive>=80)return;
 // Much higher bar: need real fertility concentration, not just any habitable tile
 const CRYSTAL_THRESHOLD=0.20;// lowered — more civs emerge, matching historical density
-const MIN_SPACING=Math.round(tw*0.04);// smaller spacing — allows clustering near good areas
+const MIN_SPACING=Math.round(tw*0.02);// very close spacing allowed — tribes form in gaps between empires
 // Find multiple crystallization candidates — spawn up to 3 per check
 const crystalCandidates=[];
 for(let ti=0;ti<tw*th;ti++){
@@ -852,8 +855,8 @@ if(owner[ti]>=0)continue;
 let localPop=0,localFert=0;
 for(let dy=-4;dy<=4;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
 for(let dx=-4;dx<=4;dx++){const nx=((tx+dx)%tw+tw)%tw;
-const ni=ny*tw+nx;if(tElev[ni]>0&&owner[ni]<0){localPop+=bgPop[ni];localFert+=tFert[ni];}}}
-if(localPop<1.5)continue;
+const ni=ny*tw+nx;if(tElev[ni]>0){localPop+=bgPop[ni];localFert+=tFert[ni];}}}// count ALL tiles, not just unowned
+if(localPop<1.0)continue;// lowered threshold
 // Score: population × fertility + era-valuable resources at this site
 // Compute regional knowledge average for resource valuation
 let regionKnow=null;let rkCount=0;
@@ -870,6 +873,7 @@ const score=localPop*localFert*tFert[ti]+resScore*3;
 if(score>0.5)crystalCandidates.push({ti,tx,ty,score});}
 // Sort by score, spawn up to 3 per check
 crystalCandidates.sort((a,b)=>b.score-a.score);
+ter._dbgCrystalCandidates=crystalCandidates.length;// debug: how many candidates found
 for(let cc=0;cc<Math.min(3,crystalCandidates.length);cc++){
 const bestTi=crystalCandidates[cc].ti;
 // Crystallize: claim the ENTIRE populated region at once.
@@ -2476,6 +2480,7 @@ border:"1px solid rgba(201,184,122,0.1)"}}>
 <span style={{color:"#c9b87a"}}>{dominant.size}t</span></span>}
 {aliveK>0&&<span style={{fontSize:9,color:"#6a6458"}}>
 Ag {(avgAg*100|0)} Mt {(avgMet*100|0)} Nv {(avgNav*100|0)} Og {(avgOrg*100|0)}</span>}
+{ter&&<span style={{fontSize:9,color:"#886644"}}>bg:{ter._dbgMaxBgPop?.toFixed(2)} abv:{ter._dbgBgAboveThresh} cc:{ter._dbgCrystalCandidates}</span>}
 </div>;})()}
 
 {/* ══ BOTTOM CENTER: VIEW/OVERLAY OPTIONS (larger) ══ */}
