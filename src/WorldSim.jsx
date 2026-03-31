@@ -1710,51 +1710,64 @@ if(agLevel<0.2)break;}
 else room=true;}
 // Maritime discovery moved to separate per-tribe pass below
 if(room&&!nf[fi]){nf[fi]=1;nfl.push(fi);}}
-// ── Maritime discovery: per-tribe probability-based (NOT per frontier tile) ──
-// Each coastal tribe gets ONE discovery attempt per 8 steps. Fast and scalable.
+// ── Maritime discovery: hop-based exploration chains ──
+// Discoveries expand from KNOWN coasts, not just home ports.
+// Lisbon→W.Africa→Cape→E.Africa→India→Indonesia (each hop within range)
 if(ter.stepCount%8===0){
-// Pre-compute a list of all coastal tiles for random target selection
 if(!ter._coastalTiles){ter._coastalTiles=[];
 for(let cti=0;cti<tw*th;cti++){if(tElev[cti]>0&&tCoast[cti])ter._coastalTiles.push(cti);}}
 const coastList=ter._coastalTiles;
 for(let st=0;st<tribeCenters.length;st++){
 if(tribeSizes[st]<=0)continue;
-const stK=ter.tribeKnowledge[st];if(!stK||stK.navigation<0.1)continue;
+const stK=ter.tribeKnowledge[st];if(!stK||stK.navigation<0.05)continue;// lower threshold
 const stPorts=ter.tribePorts[st];if(!stPorts||stPorts.length===0)continue;
 const nav2=stK.navigation;
 const expB3=ter.tribeBudget&&ter.tribeBudget[st]?ter.tribeBudget[st].exploration:0.15;
-const discRange=Math.floor(10+nav2*nav2*tw*0.3);
-const discChance=0.02*nav2*(0.3+expB3*3);
+// Hop range: how far a single voyage can go from any known point
+const hopRange=Math.floor(10+nav2*tw*0.08);// nav=0.3→56, nav=0.5→82, nav=0.8→164, nav=1.0→200
+const discChance=0.3*nav2*(0.3+expB3*3);// nav=0.1→2%, nav=0.3→7%, nav=0.5→12%, nav=0.8→18%
 if(Math.random()>discChance)continue;
-// Pick a random coastal tile anywhere on the map within range of any of our ports
-const srcPort=stPorts[Math.floor(Math.random()*stPorts.length)];
-const attempts=5;// try a few random coastal tiles
-for(let att=0;att<attempts;att++){
-const targetIdx=coastList[Math.floor(Math.random()*coastList.length)];
-const tgtX=targetIdx%tw,tgtY=(targetIdx-tgtX)/tw;
-// Check distance from our port
-const d=tDistW(srcPort.x,srcPort.y,tgtX,tgtY,tw);
-if(d>discRange||d<5)continue;// too far or too close
-// Found a distant coast! Record discovery
+ter._dbgDiscAttempts=(ter._dbgDiscAttempts||0)+1;
+// Build list of ALL known points: own ports + all known coasts
+// This is the "frontier of exploration" — discoveries hop from here
+const knownPoints=[];
+for(const p of stPorts)knownPoints.push({x:p.x,y:p.y});
 const kcList=ter.tribeKnownCoasts[st];
+for(const kc of kcList)knownPoints.push({x:kc.x,y:kc.y});
+if(knownPoints.length===0)continue;
+// Pick a random known point as the SOURCE of this voyage
+const src=knownPoints[Math.floor(Math.random()*knownPoints.length)];
+// Pick a random direction + distance within hopRange, then search nearby for coast
+const attempts=3;
+for(let att=0;att<attempts;att++){
+const ang=Math.random()*Math.PI*2;
+const dist3=hopRange*(0.2+Math.random()*0.8);// 20-100% of range
+const tgtX=((src.x+Math.round(Math.cos(ang)*dist3))%tw+tw)%tw;
+const tgtY=Math.max(2,Math.min(th-3,src.y+Math.round(Math.sin(ang)*dist3)));
+// Search 11×11 area around target for any coastal tile
+let targetIdx=-1;
+for(let sdy=-10;sdy<=10&&targetIdx<0;sdy++){const sny=tgtY+sdy;if(sny<0||sny>=th)continue;
+for(let sdx=-10;sdx<=10;sdx++){const snx=((tgtX+sdx)%tw+tw)%tw;
+const sni=sny*tw+snx;if(tElev[sni]>0&&tCoast[sni]){targetIdx=sni;break;}}}
+if(targetIdx<0)continue;// no coast found near target
+const tgtX2=targetIdx%tw,tgtY2=(targetIdx-tgtX2)/tw;
+// Check not already known
 let already2=false;
-for(const kc2 of kcList){if(Math.abs(kc2.x-tgtX)<=3&&Math.abs(kc2.y-tgtY)<=3){already2=true;break;}}
+for(const kc2 of kcList){if(Math.abs(kc2.x-tgtX2)<=3&&Math.abs(kc2.y-tgtY2)<=3){already2=true;break;}}
 if(already2)continue;
-kcList.push({x:tgtX,y:tgtY,owner:owner[targetIdx],lastSeen:ter.stepCount});
-// Mutual awareness
+kcList.push({x:tgtX2,y:tgtY2,owner:owner[targetIdx],lastSeen:ter.stepCount});
+ter._dbgDiscSuccess=(ter._dbgDiscSuccess||0)+1;
 if(owner[targetIdx]>=0&&owner[targetIdx]!==st&&ter.tribeKnownCoasts[owner[targetIdx]]){
 const oKc=ter.tribeKnownCoasts[owner[targetIdx]];
 let oKnows=false;for(const ok2 of oKc){if(ok2.owner===st){oKnows=true;break;}}
-if(!oKnows)oKc.push({x:srcPort.x,y:srcPort.y,owner:st,lastSeen:ter.stepCount});}
-// If unowned, claim it (colony!)
+if(!oKnows){const sp=stPorts[0];oKc.push({x:sp.x,y:sp.y,owner:st,lastSeen:ter.stepCount});}}
 if(owner[targetIdx]<0&&tFert[targetIdx]>0.03){
-let nw3=st;const{min:vDist2}=nearestCenterDist(tribeCenters[st],tgtX,tgtY,tw);
-if(vDist2>30&&Math.random()<0.3-stK.organization*0.3)nw3=newTribe(ter,tgtX,tgtY,st);
+let nw3=st;const{min:vDist2}=nearestCenterDist(tribeCenters[st],tgtX2,tgtY2,tw);
+if(vDist2>30&&Math.random()<0.3-stK.organization*0.3)nw3=newTribe(ter,tgtX2,tgtY2,st);
 else if(vDist2>20&&tribeCenters[st].length<10)
 tribeCenters[st].push({x:tgtX,y:tgtY,prestige:0.3,founded:ter.stepCount});
 claimTile(ter,targetIdx,nw3);if(!nf[targetIdx]){nf[targetIdx]=1;nfl.push(targetIdx);}}
-break;// one discovery per tribe per step
-}}}
+break;}}}
 // ── Sovereignty expansion: advanced tribes claim adjacent unclaimed land automatically ──
 // Modern nations claim deserts, tundra, mountains by drawing borders, not settling.
 if(ter.stepCount%4===0){
