@@ -648,7 +648,7 @@ if(ter.stepCount%32!==0)return;// check every 32 steps (less frequent)
 let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
 if(alive>=80)return;
 // Much higher bar: need real fertility concentration, not just any habitable tile
-const CRYSTAL_THRESHOLD=0.25;// higher threshold — only genuinely populated areas
+const CRYSTAL_THRESHOLD=0.28;// must grow above this — top valleys start at ~0.22, need ~30+ steps
 const MIN_SPACING=Math.round(tw*0.04);// smaller spacing — allows clustering near good areas
 // Find best crystallization candidate (not first-found — best fertility)
 let bestTi=-1,bestScore=-1;
@@ -671,7 +671,7 @@ let localPop=0,localFert=0;
 for(let dy=-4;dy<=4;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
 for(let dx=-4;dx<=4;dx++){const nx=((tx+dx)%tw+tw)%tw;
 const ni=ny*tw+nx;if(tElev[ni]>0&&owner[ni]<0){localPop+=bgPop[ni];localFert+=tFert[ni];}}}
-if(localPop<2.0)continue;// need substantial cluster (doubled from 1.0)
+if(localPop<3.0)continue;// need dense cluster — river valley with many populated tiles
 const score=localPop*localFert*tFert[ti];// heavily favor fertile hotspots
 if(score>bestScore){bestScore=score;bestTi=ti;}}
 // Crystallize: claim the ENTIRE populated region at once.
@@ -1023,12 +1023,29 @@ if(visited[nni]||owner[nni]>=0||tElev[nni]<=0)continue;visited[nni]=1;
 if(tFert[nni]>0.08){pq.push({ti:nni,f:tFert[nni]});}}}
 tribePopulation[i]=tribeStrength[i]*(1+k.agriculture*2.5)*0.8;}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-// ── Background population at 3000 BC: mature ──
-// 5000 years of pre-history already happened. Fertile areas have dense farming villages.
+// ── Background population at 3000 BC: graduated by valley quality ──
+// The best river valleys are already taken by starting civs. The NEXT best
+// valleys start just below crystallization threshold and grow into it over
+// 50-200 steps — matching the staggered appearance of real civilizations:
+//   ~2600 BC (step ~30): Indus (next-best valley) crystallizes
+//   ~2000 BC (step ~80): Minoan, early Hittites, Xia starting
+//   ~1500 BC (step ~125): acceleration — Shang, Mycenaean, etc.
+//
+// bgPop is scaled relative to the best valley score so only the very top
+// areas are near-threshold, and everything else needs time to grow.
 const bgPop=new Float32Array(tw*th);
+const bestValley=Math.max(0.01,...Array.from(valleyScore).filter(v=>v>0));
 for(let ti=0;ti<tw*th;ti++){if(tElev[ti]<=0||tTemp[ti]<0.05)continue;
 const fert=tFert[ti];const diff=tDiff[ti];
-bgPop[ti]=Math.max(0,fert*fert*1.5*(1-diff));}// fert 0.5→0.375, fert 0.1→0.015
+// Base pop from fertility (everyone farms by 3000 BC in good areas)
+let bp=fert*fert*0.4*(1-diff);// lower base than before
+// Valley bonus: areas with river valley clusters get extra pop, scaled to best
+const vRatio=bestValley>0?valleyScore[ti]/bestValley:0;
+// Top valleys (vRatio>0.5): start near crystallization threshold (~0.2-0.24)
+// Medium valleys (0.2-0.5): start well below (~0.08-0.15), crystallize in 100-300 steps
+// Low valleys (<0.2): barely populated, crystallize very late or never
+bp+=vRatio*vRatio*0.18;// quadratic — only top valleys get meaningful boost
+bgPop[ti]=Math.max(0,bp);}
 for(let ti=0;ti<tw*th;ti++){if(owner[ti]>=0)bgPop[ti]=0;}
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
 tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,bgPop,
