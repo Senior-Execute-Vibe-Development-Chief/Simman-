@@ -728,6 +728,33 @@ oil:     Math.min(1,Math.max(0,mt-0.7)*Math.max(0,cn-0.6)*5),
 gems:    Math.min(1,tr*0.5+og*0.3)};}
 const RES_KEYS=['copper','tin','iron','coal','stone','timber','salt','horses','precious','oil','gems'];
 
+// Compute a few ocean waypoints between two coastal points (for route drawing).
+// Uses greedy walk: step toward target, but if on land, deflect toward nearest ocean.
+// Returns array of {x,y} waypoints (in tile coords). Cached on known coast entries.
+function computeOceanRoute(ter,x1,y1,x2,y2,maxWaypoints){
+const{tw,th,tElev}=ter;
+const pts=[];
+let wrappedDx=x2-x1;if(Math.abs(wrappedDx)>tw/2)wrappedDx=wrappedDx>0?wrappedDx-tw:wrappedDx+tw;
+const dy=y2-y1;
+const dist=Math.sqrt(wrappedDx*wrappedDx+dy*dy);
+if(dist<5)return pts;
+const step=Math.max(3,Math.floor(dist/maxWaypoints));
+let cx=x1,cy=y1;
+for(let i=0;i<maxWaypoints;i++){
+cx+=wrappedDx/maxWaypoints;cy+=dy/maxWaypoints;
+let tx=((Math.round(cx)%tw)+tw)%tw;let ty=Math.max(0,Math.min(th-1,Math.round(cy)));
+let ti=ty*tw+tx;
+// If on land, search nearby for ocean tile (deflect the route)
+if(tElev[ti]>0){
+let bestD=Infinity,bestTx=tx,bestTy=ty;
+for(let sdy=-8;sdy<=8;sdy++){const ny=ty+sdy;if(ny<0||ny>=th)continue;
+for(let sdx=-8;sdx<=8;sdx++){const nx=((tx+sdx)%tw+tw)%tw;
+if(tElev[ny*tw+nx]<=0){// ocean
+const dd=sdx*sdx+sdy*sdy;if(dd<bestD){bestD=dd;bestTx=nx;bestTy=ny;}}}}
+if(bestD<Infinity){tx=bestTx;ty=bestTy;cx=tx;cy=ty;}}
+pts.push({x:tx,y:ty});}
+return pts;}
+
 // Compute relationship between two tribes: 'fight','trade','friendly','neutral'
 function tribeRelation(ter,a,b){
 if(a===b||!ter._borderContacts)return'neutral';
@@ -1757,7 +1784,9 @@ const tgtX2=targetIdx%tw,tgtY2=(targetIdx-tgtX2)/tw;
 let already2=false;
 for(const kc2 of kcList){if(Math.abs(kc2.x-tgtX2)<=3&&Math.abs(kc2.y-tgtY2)<=3){already2=true;break;}}
 if(already2)continue;
-kcList.push({x:tgtX2,y:tgtY2,owner:owner[targetIdx],lastSeen:ter.stepCount,fromX:src.x,fromY:src.y});
+// Compute cached ocean route from source to this discovery
+const route=computeOceanRoute(ter,src.x,src.y,tgtX2,tgtY2,8);
+kcList.push({x:tgtX2,y:tgtY2,owner:owner[targetIdx],lastSeen:ter.stepCount,fromX:src.x,fromY:src.y,route});
 ter._dbgDiscSuccess=(ter._dbgDiscSuccess||0)+1;
 if(owner[targetIdx]>=0&&owner[targetIdx]!==st){
 // Discovered an inhabited coast — mutual awareness
@@ -2433,13 +2462,15 @@ const segDist=Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
 if(segDist<3)continue;
 ctx.strokeStyle=`rgba(${col},${alpha})`;ctx.lineWidth=lw;
 ctx.setLineDash(isFocused2?[3,3]:[2,4]);
-// Draw curved line that bows toward the ocean (away from land midpoint)
-// This gives the visual impression of sailing around coastlines
-const mx=(x1+x2)/2,my=(y1+y2)/2;
-// Bow toward the equator (center of map) — a rough approximation of "toward ocean"
-const bowStrength=segDist*0.3;
-const bowY=my<CH/2?my+bowStrength:my-bowStrength;// bow away from nearest pole
-ctx.beginPath();ctx.moveTo(x1,y1);ctx.quadraticCurveTo(mx,bowY,x2,y2);ctx.stroke();}
+// Draw route: use cached ocean waypoints if available, otherwise straight line
+ctx.beginPath();ctx.moveTo(x1,y1);
+if(kc.route&&kc.route.length>0){
+// Follow the cached ocean waypoints — route avoids land
+for(const wp of kc.route){
+const wx=wp.x+0.5,wy=dataYtoScreenY(wp.y*RES,H,CH)+0.5;
+ctx.lineTo(wx,wy);}
+}
+ctx.lineTo(x2,y2);ctx.stroke();}
 ctx.setLineDash([]);}}}
 // ── Highlight selected tribe (only when NOT in focused tribes view — focused view handles it inline) ──
 if(ter._selectedTribe>=0&&ter.tribeSizes[ter._selectedTribe]>0&&vm!=="tribes"){
