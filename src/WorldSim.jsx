@@ -789,10 +789,17 @@ const ag=know[i].agriculture,mt=know[i].metallurgy,cn=know[i].construction,og=kn
 // capacity per tile = 0.3*40 = 12k people = ~7 ppl/km² (bronze age density)
 // At eraMult=150 (classical): 0.3*150 = 45k = ~26 ppl/km² (Roman density)
 // At eraMult=500+ (industrial): 0.3*500 = 150k = ~86 ppl/km²
-let eraMult=1+ag*2+mt*1.5+cn*1+og*0.8;// stone~1, bronze~3, iron~5, classical~6
+// Calibrated to Earth: 235 km² per tile, fert 0.3 avg
+// Bronze: ~0.7k/tile, Iron: ~1.3k, Classical: ~2.3k, Colonial: ~4.8k
+// eraMult in thousands per unit strength. Scale factor 10 converts to meaningful pop numbers.
+// Bronze: 0.5*10=5k/str, Iron: 0.8*10=8k, Classical: 1.1*10=11k
+let eraMult=(0.2+ag*0.4+mt*0.25+cn*0.15+og*0.1)*10;
 // Industrial revolution: when metallurgy+construction both high, population explodes
 // (mechanized farming, medicine, sanitation, urbanization)
-const industrialBonus=(Math.max(0,mt-0.7))*(Math.max(0,cn-0.5))*800;// industrial pop explosion — 1B→8B scale
+// Industrial bonus: needs BOTH high metallurgy AND high construction
+// mt=0.85,cn=0.8: (0.85-0.75)*(0.8-0.65)*1800 = 0.10*0.15*1800 = 27 → total ~28
+// mt=0.90,cn=0.90: (0.90-0.75)*(0.9-0.65)*1800 = 0.15*0.25*1800 = 67.5 → total ~69
+const industrialBonus=(Math.max(0,mt-0.75))*(Math.max(0,cn-0.60))*2500;
 eraMult+=industrialBonus;
 // Resources that directly support population: salt preserves food, coal/oil power industry
 const rv=resourceValues(know[i]);const rr=ter._resCache&&ter._resCache[i]?ter._resCache[i]:null;
@@ -806,7 +813,7 @@ const ratio=pop[i]/capacity;
 // Post-industrial: ~1-2%/year = much faster.
 const industrialFactor=Math.max(0,mt-0.6)*3+Math.max(0,cn-0.5)*2;// 0 until ~iron age, then ramps
 const groB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].growth:0.25;
-const baseGrowth=(0.001+ag*0.001+industrialFactor*0.02)*(0.5+groB*2.0);// slow pre-industrial, VERY fast industrial
+const baseGrowth=(0.001+ag*0.001+industrialFactor*0.04)*(0.5+groB*2.0);// pre-industrial ~0.2%, industrial ~5%
 // Logistic: growth slows as pop approaches capacity. Overshoots slightly for expansion pressure.
 // Industrial civs can overshoot more (medicine, sanitation extend capacity dynamically)
 const maxRatio=1.05+industrialFactor*0.15;// pre-industrial: 1.05, industrial: ~1.25
@@ -1267,7 +1274,7 @@ tenure[ti]=200;frontier[ti]=1;frontierList.push(ti);}
 // Population: start at capacity — these are established 3000 BC states
 // Starting pop matches era capacity formula: eraMult ≈ 2+0.4*8+0.15*5+0.1*4+0.08*3 ≈ 6.4
 // 4 tiles, avg fert 0.4, strength~1.6: capacity = 1.6*6.4 ≈ 10 (= 10k people)
-let startEraMult=1+k.agriculture*2+k.metallurgy*1.5+k.construction*1+k.organization*0.8;
+let startEraMult=(0.2+k.agriculture*0.4+k.metallurgy*0.25+k.construction*0.15+k.organization*0.1)*10;
 startEraMult+=(Math.max(0,k.metallurgy-0.6))*(Math.max(0,k.construction-0.5))*80;
 tribePopulation[i]=tribeStrength[i]*startEraMult;}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
@@ -1380,9 +1387,10 @@ owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;
 if(ter.bgPop&&ter.bgPop[ti]>0){
 // Absorb background population. Scale depends on the claiming tribe's tech level —
 // advanced civs organize the local population more effectively.
-const claimEraMult=ter.tribeKnowledge&&ter.tribeKnowledge[nw]?
-15+ter.tribeKnowledge[nw].agriculture*60+ter.tribeKnowledge[nw].metallurgy*40:15;
-if(ter.tribePopulation)ter.tribePopulation[nw]+=ter.bgPop[ti]*claimEraMult*0.5;
+// Absorb bgPop using the same eraMult as stepPopulation (consistent capacity)
+const ck=ter.tribeKnowledge&&ter.tribeKnowledge[nw]?ter.tribeKnowledge[nw]:null;
+const claimEra=ck?0.2+ck.agriculture*0.4+ck.metallurgy*0.25+ck.construction*0.15+ck.organization*0.1:0.2;
+if(ter.tribePopulation)ter.tribePopulation[nw]+=ter.bgPop[ti]*claimEra*10;
 // Don't zero bgPop — it persists and keeps growing independently of ownership
 }}
 // Transfer tile without resetting tenure (for splits/fragmentation — population stays, allegiance changes)
@@ -1410,8 +1418,8 @@ const agMult=1+agLevel*2.5;
 const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow]*10;
 // Match stepPopulation capacity formula
 const owOrg=owKnow?owKnow.organization:0,owMt=owKnow?owKnow.metallurgy:0,owCn=owKnow?owKnow.construction:0;
-let owEraMult=1+agLevel*2+owMt*1.5+owCn*1+owOrg*0.8;
-owEraMult+=(Math.max(0,owMt-0.7))*(Math.max(0,owCn-0.5))*800;
+let owEraMult=(0.2+agLevel*0.4+owMt*0.25+owCn*0.15+owOrg*0.1)*10;
+owEraMult+=(Math.max(0,owMt-0.75))*(Math.max(0,owCn-0.60))*2500;
 const owCap=tribeStrength[ow]*owEraMult;
 // No hard tile cap. Expansion is limited by real constraints:
 // - Center distance falloff (power projection decays with distance)
@@ -1472,14 +1480,19 @@ if(ao>=0&&ao!==ow){score+=0.3*owKnow.trade;break;}}}}}
 // Size slowdown reduced by organization (well-governed empires maintain expansion)
 const orgReduction=owKnow?owKnow.organization*0.5:0;// org reduces the penalty
 const sizeSlowdown=owSz>200?1/(1+(owSz-200)*Math.max(0.0003,0.001-orgReduction*0.001)):1;
-let chance=0.18*wet*smallBoost*sizeSlowdown;
+// Base chance rises with organization (modern nation-states expand bureaucratically)
+const lateBoost=owKnow?1+owKnow.organization*0.5:1;// org=0.8→1.4x
+let chance=0.22*wet*smallBoost*sizeSlowdown*lateBoost;
 // Difficulty: CUBIC penalty. Even moderate difficulty is very hard early on.
-chance*=Math.max(0.02,(1-adjDiff)*(1-adjDiff));// quadratic: diff 0.3→0.49x, diff 0.5→0.25x, diff 0.8→0.04x
+// Quadratic difficulty but with knowledge-raised floor for advanced civs
+const diffFloor=owKnow?(owKnow.construction*0.06+owKnow.organization*0.04):0;// up to 0.1 floor at max
+chance*=Math.max(diffFloor+0.02,(1-adjDiff)*(1-adjDiff));
 // Fertility: quadratic with tech floor. Prime land is easy, poor land is hard but not impossible.
 const fertSq=fert*fert;
 // Tech floor rises with knowledge — advanced civs can settle anywhere
-// Advanced civs can settle anywhere: ag=1,mt=0.8,cn=0.8 → floor=0.34 (meaningful chance on any land)
-const techFloor=(agLevel*0.15+owMt*0.10+owCn*0.08+owOrg*0.05);
+// Tech floor: advanced civs can claim even barren land (sovereignty, not habitation)
+// At max knowledge: floor=0.50 — enough to claim any land tile regardless of fertility
+const techFloor=(agLevel*0.15+owMt*0.12+owCn*0.10+owOrg*0.08)+Math.min(0.05,ter.stepCount*0.00005);
 chance*=Math.max(techFloor,fertSq*4)*largePrize;// fert 0.5→1.0, fert 0.3→0.36, fert 0.1→0.04
 // Agriculture tech boost
 chance*=agBoost;
@@ -1557,6 +1570,17 @@ claimTile(ter,result.ti,ow);if(!nf[result.ti]){nf[result.ti]=1;nfl.push(result.t
 break;// one voyage attempt per frontier tile per step
 }}
 if(room&&!nf[fi]){nf[fi]=1;nfl.push(fi);}}
+// ── Sovereignty expansion: advanced tribes claim adjacent unclaimed land automatically ──
+// Modern nations claim deserts, tundra, mountains by drawing borders, not settling.
+if(ter.stepCount%4===0){
+for(let fj=0;fj<nfl.length;fj++){const fi=nfl[fj];const ow=owner[fi];if(ow<0)continue;
+const owK=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
+if(!owK||owK.organization<0.4)continue;// need meaningful organization
+const sovChance=owK.organization*0.08;// org=0.5→4%, org=0.8→6.4%, org=1.0→8%
+const ty4=Math.floor(fi/tw),tx4=fi%tw;
+for(const[dx,dy]of DIRS){const nx=((tx4+dx)%tw+tw)%tw,ny=ty4+dy;if(ny<0||ny>=th)continue;
+const ni=ny*tw+nx;if(owner[ni]>=0||tElev[ni]<=0)continue;
+if(Math.random()<sovChance){claimTile(ter,ni,ow);if(!nf[ni]){nf[ni]=1;nfl.push(ni);}break;}}}}
 // ── Migration: small nomadic tribes abandon worst tiles, push toward best direction ──
 if(ter.stepCount%8===0){
 for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>15)continue;

@@ -76,3 +76,17 @@ for(let step=0;step<=1000;step++){
     console.log();
   }
 }
+
+// Debug: check pop vs capacity for largest tribe
+const largest = [...Array(cur.tribeSizes.length).keys()].filter(i=>cur.tribeSizes[i]>0).sort((a,b)=>cur.tribeSizes[b]-cur.tribeSizes[a])[0];
+if(largest!==undefined){
+  const k=cur.tribeKnowledge[largest];
+  const str=cur.tribeStrength[largest];
+  const ag=k.agriculture,mt=k.metallurgy,cn=k.construction,og=k.organization;
+  let em=0.2+ag*0.4+mt*0.25+cn*0.15+og*0.1;
+  em+=(Math.max(0,mt-0.7))*(Math.max(0,cn-0.5))*1600;
+  const cap=str*em;
+  const pop=cur.tribePopulation[largest];
+  console.log(`\nDEBUG largest tribe #${largest}: ${cur.tribeSizes[largest]}t str=${str.toFixed(1)} em=${em.toFixed(2)} cap=${cap.toFixed(0)}k pop=${pop.toFixed(0)}k ratio=${(pop/cap).toFixed(2)}`);
+  console.log(`  Knowledge: ag=${ag.toFixed(2)} mt=${mt.toFixed(2)} cn=${cn.toFixed(2)} og=${og.toFixed(2)}`);
+}
