@@ -1724,7 +1724,9 @@ const stPorts=ter.tribePorts[st];if(!stPorts||stPorts.length===0)continue;
 const nav2=stK.navigation;
 const expB3=ter.tribeBudget&&ter.tribeBudget[st]?ter.tribeBudget[st].exploration:0.15;
 // Hop range: how far a single voyage can go from any known point
-const hopRange=Math.floor(10+nav2*tw*0.08);// nav=0.3→56, nav=0.5→82, nav=0.8→164, nav=1.0→200
+// Hop range: short coastal hops early, ocean crossing at high nav
+// nav=0.3→46 (Mediterranean), nav=0.5→100 (along Africa), nav=0.7→250 (Atlantic!), nav=0.9→420 (Pacific)
+const hopRange=Math.floor(10+nav2*nav2*tw*0.25);
 const discChance=0.3*nav2*(0.3+expB3*3);// nav=0.1→2%, nav=0.3→7%, nav=0.5→12%, nav=0.8→18%
 if(Math.random()>discChance)continue;
 ter._dbgDiscAttempts=(ter._dbgDiscAttempts||0)+1;
