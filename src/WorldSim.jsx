@@ -453,10 +453,10 @@ function initBudget(){
 // Range -0.8 to +0.8 per category. Large enough to create outliers (Sparta, Venice).
 const r=()=>(Math.random()-0.5)*1.6;
 return{military:0.2,growth:0.3,commerce:0.2,exploration:0.15,survival:0.15,
-total:0,personality:"",
+total:0,wealth:0,personality:"",
 // Temperament: permanent random bias per tribe (cultural DNA)
 tMil:r(),tGro:r(),tCom:r(),tExp:r()};}
-function cloneBudget(b){return{military:b.military,growth:b.growth,commerce:b.commerce,
+function cloneBudget(b){return{military:b.military,growth:b.growth,commerce:b.commerce,wealth:b.wealth*0.3,// child tribes get 30% of parent's wealth
 exploration:b.exploration,survival:b.survival,total:b.total,personality:b.personality,
 tMil:b.tMil+(Math.random()-0.5)*0.4,// child tribes inherit with meaningful drift
 tGro:b.tGro+(Math.random()-0.5)*0.4,
@@ -604,9 +604,19 @@ let resWealth=0;for(const rk of RES_KEYS)resWealth+=rv[rk]*(r[rk]||0)*0.01;
 // A tiny tribe on gold can rival a large tribe with no resources (Phoenicia, Qatar).
 const popBase=pop*(1+k.trade*0.3)*(0.5+k.organization*0.5);
 const resBase=resWealth*pop*0.5;// resource wealth scales with pop but is ADDITIVE
-// Trade income: selling surplus generates wealth (Netherlands, Phoenicia)
-const tradeIncome=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].income*pop*0.001:0;
-b.total=popBase+resBase+tradeIncome;
+// Budget = action capacity (what the tribe can DO per step)
+b.total=popBase+resBase;
+
+// Wealth = accumulated treasury in gold. Grows from:
+// - Tax revenue (population × organization)
+// - Trade income (selling surplus resources)
+// - Resource value (precious metals directly add to treasury)
+// Decays slightly each step (maintenance, corruption)
+const taxRevenue=pop*(0.5+k.organization*0.5)*0.001;// organized states collect more tax
+const tradeIncome=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].income:0;
+const goldIncome=rv.precious*(r.precious||0)*0.01+rv.gems*(r.gems||0)*0.005;// gold/gems → direct wealth
+const decay=b.wealth*0.02;// 2% decay (maintenance, corruption, waste)
+b.wealth=Math.max(0,b.wealth+taxRevenue+tradeIncome+goldIncome-decay);
 
 // ── Survival floor: mandatory, scales with threats ──
 let borderThreat=0;const myContacts=contacts[i];
@@ -1491,7 +1501,9 @@ const milB=ter.tribeBudget&&ter.tribeBudget[id]?ter.tribeBudget[id].military:0.2
 const milFocus=0.5+milB*2.5;
 // Trade wealth adds soft power
 const tradeWealth=k?1+k.trade*0.3:1;
-return pop*0.01*milTech*logistics*milFocus*tradeWealth;
+// Wealth amplifies power (rich nations hire mercenaries, buy allies, fund wars)
+const wealthBonus=ter.tribeBudget&&ter.tribeBudget[id]?1+Math.min(0.5,ter.tribeBudget[id].wealth*0.001):1;
+return pop*0.01*milTech*logistics*milFocus*tradeWealth*wealthBonus;
 }
 // Local power projection at a border tile: nearest center projects its share of population
 function localPower(ter,tribeId,tx,ty){
@@ -2854,7 +2866,7 @@ const knownCoasts=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i]?ter.tribeKnownCo
 const power=tribePower(ter,i);
 const bud=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i]:null;
 tribes.push({id:i,size:ter.tribeSizes[i],pop:Math.round(pop),power,ports,centers,knownCoasts,k,
-personality:bud?bud.personality:"",budget:bud?{mil:bud.military,gro:bud.growth,com:bud.commerce,exp:bud.exploration,sur:bud.survival}:null});}
+personality:bud?bud.personality:"",wealth:bud?bud.wealth:0,budget:bud?{mil:bud.military,gro:bud.growth,com:bud.commerce,exp:bud.exploration,sur:bud.survival}:null});}
 tribes.sort((a,b)=>b.power-a.power);
 // Selected tribe detail
 const sel=selectedTribe>=0&&ter.tribeSizes[selectedTribe]>0?selectedTribe:-1;
@@ -2872,6 +2884,7 @@ return <>
 <div><span style={{color:"#7a7464"}}>Territory:</span> {selData.size} tiles</div>
 <div><span style={{color:"#7a7464"}}>Population:</span> {selData.pop>=10000?(selData.pop/1000).toFixed(1)+'M':selData.pop>=1000?(selData.pop/1000|0)+'M':selData.pop>=1?selData.pop.toFixed(0)+'k':'<1k'}</div>
 <div><span style={{color:"#7a7464"}}>Power:</span> {selData.power.toFixed(1)}</div>
+<div><span style={{color:"#d0b040"}}>Wealth:</span> <span style={{color:"#d0b040"}}>{selData.wealth>=1000?(selData.wealth/1000).toFixed(1)+'k':selData.wealth.toFixed(0)} gold</span></div>
 <div><span style={{color:"#7a7464"}}>Centers:</span> {selData.centers}</div>
 <div><span style={{color:"#7a7464"}}>Ports:</span> {selData.ports}</div>
 <div><span style={{color:"#7a7464"}}>Known coasts:</span> {selData.knownCoasts}</div>
@@ -2980,6 +2993,7 @@ background:`rgb(${tribeRGB(t.id).join(",")})`,display:"inline-block"}} />
 </div>}
 </div>
 <span style={{fontSize:8,color:"#5a5448",flexShrink:0}}>{t.power.toFixed(0)}pw</span>
+{t.wealth>1&&<span style={{fontSize:7,color:"#b09830",flexShrink:0}}>{t.wealth>=1000?(t.wealth/1000|0)+'k':t.wealth.toFixed(0)}g</span>}
 </div>;})}
 </div>
 </>; })()}
