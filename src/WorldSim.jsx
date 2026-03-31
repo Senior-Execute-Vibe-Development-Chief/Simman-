@@ -2471,22 +2471,24 @@ const segKey=(Math.round(x1)*10000+Math.round(y1))+','+(Math.round(x2)*10000+Mat
 if(drawnSegs.has(segKey))continue;drawnSegs.add(segKey);
 const segDist=Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
 if(segDist<3)continue;
-ctx.strokeStyle=`rgba(${col},${alpha})`;ctx.lineWidth=lw;
-ctx.setLineDash(isFocused2?[3,3]:[2,4]);
-// Route cache (per-draw, lives on ter object)
+ctx.fillStyle=`rgba(${col},${alpha})`;
+// Draw route as dots along ocean waypoints — no lines that could cross land
 if(!ter._routeCache)ter._routeCache=new Map();
 const routeKey=st+':'+kc.x+','+kc.y;
 let drawRoute=ter._routeCache.get(routeKey);
 if(!drawRoute){
-const sx=kc.fromX!==undefined?kc.fromX:Math.round(x1);
-const sy=kc.fromY!==undefined?kc.fromY:Math.round(y1/CH*ter.th);
-drawRoute=computeOceanRoute(ter,sx,sy,kc.x,kc.y,12);
+const sx=kc.fromX;const sy=kc.fromY;
+drawRoute=computeOceanRoute(ter,sx,sy,kc.x,kc.y,20);// more points for smoother dot trail
 ter._routeCache.set(routeKey,drawRoute);}
-ctx.beginPath();ctx.moveTo(x1,y1);
-if(drawRoute&&drawRoute.length>0){
+// Draw dots: small circles at each waypoint
+const dotR=isFocused2?1.2:0.6;
+// Source dot
+ctx.beginPath();ctx.arc(x1,y1,dotR+0.3,0,Math.PI*2);ctx.fill();
 for(const wp of drawRoute){
-ctx.lineTo(wp.x+0.5,dataYtoScreenY(wp.y*RES,H,CH)+0.5);}}
-ctx.lineTo(x2,y2);ctx.stroke();}
+const wx=wp.x+0.5,wy=dataYtoScreenY(wp.y*RES,H,CH)+0.5;
+ctx.beginPath();ctx.arc(wx,wy,dotR,0,Math.PI*2);ctx.fill();}
+// Destination dot (slightly larger)
+ctx.beginPath();ctx.arc(x2,y2,dotR+0.5,0,Math.PI*2);ctx.fill();}
 ctx.setLineDash([]);}}}
 // ── Highlight selected tribe (only when NOT in focused tribes view — focused view handles it inline) ──
 if(ter._selectedTribe>=0&&ter.tribeSizes[ter._selectedTribe]>0&&vm!=="tribes"){
