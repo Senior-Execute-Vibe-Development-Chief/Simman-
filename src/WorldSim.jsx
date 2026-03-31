@@ -957,8 +957,8 @@ if(dx*dx+dy*dy>R_VALLEY*R_VALLEY)continue;// circular area
 const nx=((tx+dx)%tw+tw)%tw;const ni=ny*tw+nx;
 if(tElev[ni]<=0)continue;
 fertSum+=tFert[ni];
-// Tributaries+ count as river presence (streams too small for civ support)
-if(rivers&&rivers.riverMag[ni]>=2)riverCount++;
+// Streams count slightly (small water source), tributaries+ full weight
+if(rivers&&rivers.riverMag[ni]>=1)riverCount+=rivers.riverMag[ni]>=2?1:0.3;// streams=0.3, trib+=1.0
 // Major/Great rivers are the real civ drivers (Nile, Euphrates scale)
 if(rivers&&rivers.riverMag[ni]>=3)majorRiver++;
 // Lakes count as water sources (Lake Chad, Sea of Galilee, Titicaca)
