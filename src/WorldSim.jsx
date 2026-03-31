@@ -684,24 +684,27 @@ score+=k.metallurgy*0.5;// positive feedback
 if(oreRichness<0.05)score*=0.25;// reduced penalty (was 0.15)
 // Fast early, very slow late: (1-k)^0.3 for early, (1-k)^2 for late
 // This makes bronze (0.3) fast but industrial (0.7+) very slow
-// Very fast to bronze (0.3), moderate to iron (0.5), glacial to industrial (0.7+)
-const dimRet=k.metallurgy<0.35?Math.pow(1-k.metallurgy,0.3):
-k.metallurgy<0.55?Math.pow(1-k.metallurgy,1.0)*1.5:
-Math.pow(1-k.metallurgy,2.5)*3;
+// Fast to bronze, moderate to iron, slow to industrial — but always progressing
+// Fast to bronze, moderate to iron, very slow to industrial
+const dimRet=k.metallurgy<0.35?Math.pow(1-k.metallurgy,0.3):// fast early
+k.metallurgy<0.50?Math.pow(1-k.metallurgy,1.0)*1.5:// moderate mid
+k.metallurgy<0.70?Math.pow(1-k.metallurgy,1.5)*1.8:// slow late
+Math.max(0.02,Math.pow(1-k.metallurgy,2.5)*3);// glacial industrial
 const growth=0.012*score*dimRet;
 k.metallurgy=Math.min(1,k.metallurgy+Math.max(0,growth));}
 
-// Navigation: coast + timber + need + trade
+// Navigation: coast is the key driver — coastal tribes MUST develop sailing
 {let score=0;
-score+=Math.min(0.4,r.coastTiles*0.015);
-score+=Math.min(0.3,r.timber*0.03);
+score+=Math.min(1.0,r.coastTiles*0.05);// much higher cap and rate
+score+=Math.min(0.5,r.timber*0.05);// timber essential for ships
 const coastRatio=sz>0?r.coastTiles/sz:0;
-if(coastRatio>0.3)score+=0.3*(coastRatio-0.3)/0.7;
-score+=k.trade*0.25;// mercantile pressure
+if(coastRatio>0.2)score+=0.8*Math.min(1,(coastRatio-0.2)/0.5);// strong island/coastal pressure
+score+=k.trade*0.4;// trade drives maritime expansion
+score+=k.agriculture*0.2;// food surplus enables sailors
 const knownCount=ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
-score+=Math.min(0.2,knownCount*0.03);
-if(r.coastTiles<1)score*=0.05;
-const growth=0.007*score*Math.sqrt(1-k.navigation);
+score+=Math.min(0.3,knownCount*0.05);// discovery breeds more exploration
+if(r.coastTiles<1)score*=0.03;// landlocked: near zero
+const growth=0.010*score*Math.sqrt(1-k.navigation);// faster rate
 k.navigation=Math.min(1,k.navigation+Math.max(0,growth));}
 
 // Construction: stone + density + agriculture + metallurgy
@@ -710,7 +713,7 @@ score+=Math.min(0.4,r.stone*0.04);
 score+=Math.min(0.3,pop*0.002);
 score+=k.agriculture*0.35;
 score+=k.metallurgy*0.15;// metal tools help build
-const growth=0.007*score*Math.sqrt(1-k.construction);
+const growth=0.009*score*Math.sqrt(1-k.construction);
 k.construction=Math.min(1,k.construction+Math.max(0,growth));}
 
 // Organization: population size + centers + construction + trade
@@ -721,18 +724,19 @@ score+=Math.min(0.3,centerCount*0.07);// multi-center polities
 score+=k.construction*0.25;// infrastructure enables governance
 score+=k.trade*0.15;// trade networks need admin
 score+=Math.min(0.15,sz>40?(sz-40)*0.002:0);
-const growth=0.007*score*Math.sqrt(1-k.organization);
+const growth=0.009*score*Math.sqrt(1-k.organization);
 k.organization=Math.min(1,k.organization+Math.max(0,growth));}
 
-// Trade: neighbors + resource diversity + coast + navigation
+// Trade: contact with neighbors + resources + maritime access
 {let score=0;
 const contacts=ter._borderContacts;
 let neighborCount=0;if(contacts&&contacts[i])neighborCount=Object.keys(contacts[i]).length;
-score+=Math.min(0.4,neighborCount*0.08);
-score+=Math.min(0.3,r.resourceTypes*0.04);
-score+=Math.min(0.2,r.coastTiles*0.008);
-score+=k.navigation*0.2;
-const growth=0.007*score*Math.sqrt(1-k.trade);
+score+=Math.min(0.8,neighborCount*0.15);// more neighbors = more trade (higher cap)
+score+=Math.min(0.5,r.resourceTypes*0.07);// resource diversity
+score+=Math.min(0.4,r.coastTiles*0.02);// ports
+score+=k.navigation*0.4;// maritime trade
+score+=k.organization*0.2;// organized states trade better
+const growth=0.010*score*Math.sqrt(1-k.trade);// faster rate
 k.trade=Math.min(1,k.trade+Math.max(0,growth));}}
 
 // ── Diffusion: knowledge flows across borders from high to low ──
@@ -786,7 +790,7 @@ const ag=know[i].agriculture,mt=know[i].metallurgy,cn=know[i].construction,og=kn
 let eraMult=1+ag*2+mt*1.5+cn*1+og*0.8;// stone~1, bronze~3, iron~5, classical~6
 // Industrial revolution: when metallurgy+construction both high, population explodes
 // (mechanized farming, medicine, sanitation, urbanization)
-const industrialBonus=(Math.max(0,mt-0.75))*(Math.max(0,cn-0.6))*200;// industrial pop explosion
+const industrialBonus=(Math.max(0,mt-0.7))*(Math.max(0,cn-0.5))*200;// industrial pop explosion
 eraMult+=industrialBonus;
 // Resources that directly support population: salt preserves food, coal/oil power industry
 const rv=resourceValues(know[i]);const rr=ter._resCache&&ter._resCache[i]?ter._resCache[i]:null;
@@ -1403,7 +1407,7 @@ const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow]*10;
 // Match stepPopulation capacity formula
 const owOrg=owKnow?owKnow.organization:0,owMt=owKnow?owKnow.metallurgy:0,owCn=owKnow?owKnow.construction:0;
 let owEraMult=1+agLevel*2+owMt*1.5+owCn*1+owOrg*0.8;
-owEraMult+=(Math.max(0,owMt-0.75))*(Math.max(0,owCn-0.6))*200;
+owEraMult+=(Math.max(0,owMt-0.7))*(Math.max(0,owCn-0.5))*200;
 const owCap=tribeStrength[ow]*owEraMult;
 // No hard tile cap. Expansion is limited by real constraints:
 // - Center distance falloff (power projection decays with distance)
@@ -1855,7 +1859,7 @@ d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 // Tribe view — pure era-colored fill with WHITE borders, no per-tribe coloring
 const eraColor=(k)=>{if(!k)return[55,48,38];// stone age (warm brown)
 const ag=k.agriculture,mt=k.metallurgy,org=k.organization;
-if(mt>0.85&&org>0.6)return[90,75,100];// industrial (muted purple)
+if(mt>0.83&&org>0.55)return[90,75,100];// industrial (muted purple)
 if(org>0.5&&mt>0.4)return[130,55,55];// empire/classical (burgundy)
 if(mt>0.5)return[100,100,110];// iron age (blue-grey steel)
 if(mt>0.3)return[155,120,55];// bronze age (warm bronze)
