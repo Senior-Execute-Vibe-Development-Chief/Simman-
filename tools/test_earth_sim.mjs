@@ -119,7 +119,7 @@ for (let step = 0; step <= 800; step++) {
     }
 
     const yr = yearStr(step);
-    const era = maxMet > 0.7 ? 'Industrial' : maxMet > 0.5 ? 'Iron' : maxMet > 0.3 ? 'Bronze' : maxMet > 0.15 ? 'Copper' : 'Stone';
+    const era = maxMet > 0.85 ? 'Industrial' : maxMet > 0.5 ? 'Iron' : maxMet > 0.3 ? 'Bronze' : maxMet > 0.15 ? 'Copper' : 'Stone';
     const elapsed = ((performance.now()-t1)/1000).toFixed(1);
     console.log(`Step ${String(step).padStart(3)} (${yr.padStart(8)}) | ${String(alive).padStart(2)} tribes | ${totalTiles}/${cur.landCount}t (${(totalTiles/cur.landCount*100).toFixed(0)}%) | pop ${(totalPop/1000).toFixed(0)}M | Ag${(maxAg*100).toFixed(0)} Mt${(maxMet*100).toFixed(0)} Og${(maxOrg*100).toFixed(0)} [${era}] | top3: ${top3} | bg:${maxBg.toFixed(2)} free:${unowned} bgAbv:${bgAbove} sp:${cur._dbgCrystalSpawned||0} | ${elapsed}s`);
   }

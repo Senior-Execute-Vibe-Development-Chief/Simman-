@@ -666,7 +666,9 @@ score+=Math.min(0.3,pop*0.003);// more minds = more innovation
 const age=ter.stepCount-(tribeCenters[i][0]?tribeCenters[i][0].founded:0);
 score+=Math.min(0.3,age*0.004);// sedentary bonus
 score+=Math.random()*0.08;
-const growth=0.010*score*Math.sqrt(1-k.agriculture);// ~5x faster than before
+// Fast early progress (pow 0.4), moderate late
+const agDim=k.agriculture<0.5?Math.pow(1-k.agriculture,0.4):Math.sqrt(1-k.agriculture);
+const growth=0.012*score*agDim;// ~5x faster than before
 k.agriculture=Math.min(1,k.agriculture+Math.max(0,growth));}
 
 // Metallurgy: era-weighted ore value + agriculture surplus + positive feedback
@@ -675,13 +677,18 @@ const metRv=resourceValues(k);
 // Having the RIGHT ores at the RIGHT time matters most (tin in bronze age, iron in iron age)
 // Era-weighted: the RIGHT ore at the RIGHT time drives metallurgy hard
 const oreRichness=Math.min(1,metRv.copper*(r.copper||0)*0.12+metRv.tin*(r.tin||0)*0.15+metRv.iron*(r.iron||0)*0.12+metRv.coal*(r.coal||0)*0.10);
-score+=oreRichness*1.0;// ore is the primary driver
-score+=k.agriculture*0.5;// surplus labor
-score+=k.metallurgy*0.4;// strong positive feedback
-if(oreRichness<0.05)score*=0.15;// harsh but not as deadly as before
-// sqrt diminishing returns for early progress, linear for high levels (industrial is HARD)
-const dimRet=k.metallurgy<0.5?Math.sqrt(1-k.metallurgy):(1-k.metallurgy)*1.4;
-const growth=0.010*score*dimRet;
+score+=oreRichness*1.2;// ore is the primary driver
+score+=k.agriculture*0.6;// surplus labor — agriculture alone enables SOME metalwork
+score+=k.metallurgy*0.5;// positive feedback
+// Without ore: slow but not zero. Agriculture alone should reach copper age (~0.15) eventually.
+if(oreRichness<0.05)score*=0.25;// reduced penalty (was 0.15)
+// Fast early, very slow late: (1-k)^0.3 for early, (1-k)^2 for late
+// This makes bronze (0.3) fast but industrial (0.7+) very slow
+// Very fast to bronze (0.3), moderate to iron (0.5), glacial to industrial (0.7+)
+const dimRet=k.metallurgy<0.35?Math.pow(1-k.metallurgy,0.3):
+k.metallurgy<0.55?Math.pow(1-k.metallurgy,1.0)*1.5:
+Math.pow(1-k.metallurgy,2.5)*3;
+const growth=0.012*score*dimRet;
 k.metallurgy=Math.min(1,k.metallurgy+Math.max(0,growth));}
 
 // Navigation: coast + timber + need + trade
@@ -742,7 +749,7 @@ const contactStrength=Math.min(1,myContacts[nid]*0.01);// normalized border cont
 const tradeMult=1+ki.trade*2+kj.trade*2;// trade amplifies diffusion
 // Commerce budget amplifies knowledge diffusion (Mercantile tribes are knowledge highways)
 const comB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].commerce:0.2;
-const rate=0.003*contactStrength*tradeMult*(0.5+comB*2.5);
+const rate=0.005*contactStrength*tradeMult*(0.5+comB*2.5);// faster diffusion
 for(const d of KNOW_DOMAINS){
 if(kj[d]>ki[d]){ki[d]=Math.min(1,ki[d]+rate*(kj[d]-ki[d]));}}}
 // Maritime diffusion: if tribe knows ports of another tribe, diffuse via trade
@@ -779,7 +786,7 @@ const ag=know[i].agriculture,mt=know[i].metallurgy,cn=know[i].construction,og=kn
 let eraMult=1+ag*2+mt*1.5+cn*1+og*0.8;// stone~1, bronze~3, iron~5, classical~6
 // Industrial revolution: when metallurgy+construction both high, population explodes
 // (mechanized farming, medicine, sanitation, urbanization)
-const industrialBonus=(Math.max(0,mt-0.6))*(Math.max(0,cn-0.5))*80;// industrial pop explosion
+const industrialBonus=(Math.max(0,mt-0.75))*(Math.max(0,cn-0.6))*200;// industrial pop explosion
 eraMult+=industrialBonus;
 // Resources that directly support population: salt preserves food, coal/oil power industry
 const rv=resourceValues(know[i]);const rr=ter._resCache&&ter._resCache[i]?ter._resCache[i]:null;
@@ -795,7 +802,7 @@ const industrialFactor=Math.max(0,mt-0.6)*3+Math.max(0,cn-0.5)*2;// 0 until ~iro
 const groB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].growth:0.25;
 const baseGrowth=(0.001+ag*0.001+industrialFactor*0.004)*(0.5+groB*2.0);// very slow pre-industrial
 // Logistic: growth slows as pop approaches capacity. Overshoots slightly for expansion pressure.
-const growthRate=ratio<1.15?baseGrowth*(1-ratio*0.85):0;// stops growing at ~118% capacity
+const growthRate=ratio<1.08?baseGrowth*(1-ratio*0.92):0;// stops at ~108% — tighter cap
 pop[i]=Math.max(1,pop[i]+pop[i]*growthRate);
 // Famine above 120%
 if(ratio>1.2)pop[i]=Math.max(1,pop[i]*(0.97-Math.min(0.05,(ratio-1.2)*0.15)));
@@ -1228,7 +1235,7 @@ tribeCenters.push([{x,y,prestige:1.5,founded:0}]);
 // 3000 BC knowledge: agriculture established, early copper/bronze
 const k=initKnowledge();
 k.agriculture=0.35+Math.random()*0.15;// 0.35-0.50
-k.metallurgy=0.10+Math.random()*0.10;// 0.10-0.20 (copper → early bronze)
+k.metallurgy=0.20+Math.random()*0.10;// 0.20-0.30 (late copper → entering bronze)
 k.construction=0.10+Math.random()*0.10;
 k.organization=0.08+Math.random()*0.08;
 k.trade=0.05+Math.random()*0.05;
@@ -1396,7 +1403,7 @@ const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow]*10;
 // Match stepPopulation capacity formula
 const owOrg=owKnow?owKnow.organization:0,owMt=owKnow?owKnow.metallurgy:0,owCn=owKnow?owKnow.construction:0;
 let owEraMult=1+agLevel*2+owMt*1.5+owCn*1+owOrg*0.8;
-owEraMult+=(Math.max(0,owMt-0.6))*(Math.max(0,owCn-0.5))*80;
+owEraMult+=(Math.max(0,owMt-0.75))*(Math.max(0,owCn-0.6))*200;
 const owCap=tribeStrength[ow]*owEraMult;
 // No hard tile cap. Expansion is limited by real constraints:
 // - Center distance falloff (power projection decays with distance)
@@ -1848,7 +1855,7 @@ d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 // Tribe view — pure era-colored fill with WHITE borders, no per-tribe coloring
 const eraColor=(k)=>{if(!k)return[55,48,38];// stone age (warm brown)
 const ag=k.agriculture,mt=k.metallurgy,org=k.organization;
-if(mt>0.7&&org>0.5)return[90,75,100];// industrial (muted purple)
+if(mt>0.85&&org>0.6)return[90,75,100];// industrial (muted purple)
 if(org>0.5&&mt>0.4)return[130,55,55];// empire/classical (burgundy)
 if(mt>0.5)return[100,100,110];// iron age (blue-grey steel)
 if(mt>0.3)return[155,120,55];// bronze age (warm bronze)
@@ -2038,7 +2045,7 @@ const pop=ter.tribePopulation?Math.round(ter.tribePopulation[st]):0;
 const sz=ter.tribeSizes[st];
 // Era label
 let era="Stone";
-if(k){if(k.metallurgy>0.7&&k.organization>0.5)era="Industrial";
+if(k){if(k.metallurgy>0.85&&k.organization>0.6)era="Industrial";
 else if(k.organization>0.5&&k.metallurgy>0.4)era="Empire";
 else if(k.metallurgy>0.5)era="Iron";
 else if(k.metallurgy>0.3)era="Bronze";
