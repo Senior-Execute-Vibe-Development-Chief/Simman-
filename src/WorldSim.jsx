@@ -607,24 +607,39 @@ function stepPopulation(ter){
 const know=ter.tribeKnowledge;const pop=ter.tribePopulation;
 const{tribeSizes,tribeStrength}=ter;
 for(let i=0;i<pop.length;i++){if(tribeSizes[i]<=0){pop[i]=0;continue;}
-const agMult=1+know[i].agriculture*2.5;
-// Population in thousands. Capacity scales with territory fertility × agriculture tech.
-// 25 fertile tiles (strength~10) at ag=0.4: capacity = 10 * 2.0 * 50 = 1000 (= 1M people)
-const capacity=tribeStrength[i]*agMult*50;
+// ── Population capacity: scales with era, matching real history ──
+// Real world: ~14M at 3000BC, ~300M at 1AD, ~450M at 1500, ~1B at 1800, ~8B at 2024
+// Capacity per tile scales with knowledge era, not just agriculture:
+//   Stone/Copper age: ~5k per fertile tile (subsistence farming, low density)
+//   Bronze/Iron age: ~15k (irrigation, crop rotation, cities)
+//   Classical/Medieval: ~30k (advanced agriculture, infrastructure)
+//   Early Modern: ~50k (new world crops, better farming)
+//   Industrial+: ~200k+ (mechanized farming, medicine, sanitation)
+const ag=know[i].agriculture,mt=know[i].metallurgy,cn=know[i].construction,og=know[i].organization;
+// Era multiplier: slow climb until industrial revolution, then explosion
+// eraMult: people (in thousands) supportable per unit of fertility
+// Each tile is ~42km wide (~1750 km²). fert=0.3 tile at eraMult=40:
+// capacity per tile = 0.3*40 = 12k people = ~7 ppl/km² (bronze age density)
+// At eraMult=150 (classical): 0.3*150 = 45k = ~26 ppl/km² (Roman density)
+// At eraMult=500+ (industrial): 0.3*500 = 150k = ~86 ppl/km²
+let eraMult=15+ag*60+mt*40+cn*30+og*25;// stone~15, bronze~60, iron~100, classical~150
+// Industrial revolution: when metallurgy+construction both high, population explodes
+// (mechanized farming, medicine, sanitation, urbanization)
+const industrialBonus=(Math.max(0,mt-0.6))*(Math.max(0,cn-0.5))*2000;// 0 until iron+, then explodes
+eraMult+=industrialBonus;// at mt=0.9,cn=0.8: bonus=0.3*0.3*2000=180, total~350
+const capacity=tribeStrength[i]*eraMult;
 if(capacity<=0){pop[i]=Math.max(0,pop[i]*0.95);continue;}
-// Population growth: logistic with overshoot allowed.
-// Key insight: population should be able to EXCEED capacity slightly — this creates
-// the pressure that drives expansion. Without overshoot, pop→capacity→growth stops→
-// no expansion pressure→deadlock.
 const ratio=pop[i]/capacity;
-// Base growth rate scales with agriculture (farmers grow faster than foragers)
-const baseGrowth=0.015+know[i].agriculture*0.015;// 1.5% at ag=0, 3% at ag=1
-// Growth continues even slightly above capacity (overshoot up to 120%)
-// This overshoot is what creates sustained expansion pressure.
-const growthRate=ratio<1.2?baseGrowth*(1-ratio*0.7):0;// slows but doesn't stop until 120%
+// Growth rate: very slow pre-industrial (~0.1%/step), faster post-industrial
+// IRL pre-1800 growth ≈ 0.04%/year. At 12yr/step early, that's ~0.5%/step.
+// Post-industrial: ~1-2%/year = much faster.
+const industrialFactor=Math.max(0,mt-0.6)*3+Math.max(0,cn-0.5)*2;// 0 until ~iron age, then ramps
+const baseGrowth=0.004+ag*0.004+industrialFactor*0.01;// 0.4-0.8% pre-industrial, up to 3%+ industrial
+// Logistic: growth slows as pop approaches capacity. Overshoots slightly for expansion pressure.
+const growthRate=ratio<1.15?baseGrowth*(1-ratio*0.85):0;// stops growing at ~118% capacity
 pop[i]=Math.max(1,pop[i]+pop[i]*growthRate);
-// Harsh famine above 130% — hard ceiling on overshoot
-if(ratio>1.3)pop[i]=Math.max(1,pop[i]*(0.96-Math.min(0.06,(ratio-1.3)*0.15)));
+// Famine above 120%
+if(ratio>1.2)pop[i]=Math.max(1,pop[i]*(0.97-Math.min(0.05,(ratio-1.2)*0.15)));
 }}
 
 // ── Background population: thin hunter-gatherer layer across all unowned habitable land ──
@@ -1030,7 +1045,11 @@ const{ti}=startNeighbors[sn];
 owner[ti]=i;tribeSizes[i]++;tribeStrength[i]+=tFert[ti];
 tenure[ti]=200;frontier[ti]=1;frontierList.push(ti);}
 // Population: start at capacity — these are established 3000 BC states
-tribePopulation[i]=tribeStrength[i]*(1+k.agriculture*2.5)*50;}
+// Starting pop matches era capacity formula: eraMult ≈ 2+0.4*8+0.15*5+0.1*4+0.08*3 ≈ 6.4
+// 4 tiles, avg fert 0.4, strength~1.6: capacity = 1.6*6.4 ≈ 10 (= 10k people)
+let startEraMult=15+k.agriculture*60+k.metallurgy*40+k.construction*30+k.organization*25;
+startEraMult+=(Math.max(0,k.metallurgy-0.6))*(Math.max(0,k.construction-0.5))*2000;
+tribePopulation[i]=tribeStrength[i]*startEraMult;}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
 // ── Background population at 3000 BC: graduated by valley quality ──
 // The best river valleys are already taken by starting civs. The NEXT best
@@ -1121,7 +1140,7 @@ if(ter.tribePopulation&&owSzBefore>0){const popLoss=ter.tribePopulation[ow]/owSz
 ter.tribePopulation[ow]=Math.max(0,ter.tribePopulation[ow]-popLoss);}}else{ter.settled++;}
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;
 // Absorb background population into the tribe
-if(ter.bgPop&&ter.bgPop[ti]>0){if(ter.tribePopulation)ter.tribePopulation[nw]+=ter.bgPop[ti]*500;// bg pop → tribe pop (thousands scale)
+if(ter.bgPop&&ter.bgPop[ti]>0){if(ter.tribePopulation)ter.tribePopulation[nw]+=ter.bgPop[ti]*5;// bg pop → tribe pop (thousands)
 ter.bgPop[ti]=0;}}
 // Transfer tile without resetting tenure (for splits/fragmentation — population stays, allegiance changes)
 function transferTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert}=ter;const ow=owner[ti];
@@ -1145,8 +1164,12 @@ const owSz=tribeSizes[ow],owDens=owSz>0?tribeStrength[ow]/owSz:0;
 const owKnow=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
 const agLevel=owKnow?owKnow.agriculture:0;
 const agMult=1+agLevel*2.5;
-const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow]*50;
-const owCap=tribeStrength[ow]*agMult*50;
+const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow]*10;
+// Match stepPopulation capacity formula
+const owOrg=owKnow?owKnow.organization:0,owMt=owKnow?owKnow.metallurgy:0,owCn=owKnow?owKnow.construction:0;
+let owEraMult=15+agLevel*60+owMt*40+owCn*30+owOrg*25;
+owEraMult+=(Math.max(0,owMt-0.6))*(Math.max(0,owCn-0.5))*2000;
+const owCap=tribeStrength[ow]*owEraMult;
 // No hard tile cap. Expansion is limited by real constraints:
 // - Center distance falloff (power projection decays with distance)
 // - Logistics penalty (tribePower scales with organization)
