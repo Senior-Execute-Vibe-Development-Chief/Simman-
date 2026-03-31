@@ -463,6 +463,126 @@ tGro:b.tGro+(Math.random()-0.5)*0.4,
 tCom:b.tCom+(Math.random()-0.5)*0.4,
 tExp:b.tExp+(Math.random()-0.5)*0.4};}
 
+// ── Resource Trade System ──
+// Each tribe has production (from tiles), demand (from pop+knowledge), surplus/deficit.
+// Surplus flows to trade partners. Trade generates income and enables interdependence.
+function stepTrade(ter){
+const{tribeSizes,tribeStrength,tribePopulation,tribeKnowledge,tribeCenters}=ter;
+const n=tribeCenters.length;
+if(!ter._resCache)return;
+// Initialize trade data
+if(!ter.tradeData)ter.tradeData=[];
+while(ter.tradeData.length<n)ter.tradeData.push({imports:{},exports:{},income:0,foodImports:0,foodExports:0,partners:0});
+
+for(let i=0;i<n;i++){
+if(tribeSizes[i]<=0){ter.tradeData[i]={imports:{},exports:{},income:0,foodImports:0,foodExports:0,partners:0};continue;}
+const k=tribeKnowledge[i];const r=ter._resCache[i];const pop=tribePopulation[i];
+if(!r)continue;// resource cache not ready
+const td=ter.tradeData[i];
+// Reset
+td.income=0;td.foodImports=0;td.foodExports=0;td.partners=0;
+for(const rk of RES_KEYS){td.imports[rk]=0;td.exports[rk]=0;}
+
+// ── Production: what this tribe's tiles generate ──
+// Food production = tribeStrength (sum of tile fertility)
+const foodProd=tribeStrength[i];
+// Resource production = from _resCache (already aggregated)
+
+// ── Demand: what this tribe's population+knowledge needs ──
+const popK=pop/1000;// population in millions for scaling
+const foodDemand=popK*0.8;// ~0.8 strength units per million people
+const demand={};
+demand.timber=popK*0.3+k.navigation*3;// building + ships
+demand.stone=k.construction*popK*0.2;// construction scales with tech
+demand.iron=k.metallurgy*popK*0.15;// weapons and tools
+demand.salt=popK*0.2;// food preservation
+demand.copper=k.metallurgy<0.5?k.metallurgy*popK*0.1:0;// early metallurgy
+demand.tin=k.metallurgy>0.1&&k.metallurgy<0.6?k.metallurgy*popK*0.08:0;// bronze age
+demand.coal=Math.max(0,k.metallurgy-0.6)*popK*0.5;// industrial
+demand.oil=Math.max(0,k.metallurgy-0.8)*popK*0.3;// late industrial
+demand.horses=k.organization*popK*0.05;// cavalry + logistics
+demand.precious=k.trade*popK*0.1;// currency
+demand.gems=k.trade*popK*0.03;// luxury
+
+// ── Surplus/deficit per resource ──
+const surplus={},deficit={};
+for(const rk of RES_KEYS){
+const prod=r[rk]||0;const dem=demand[rk]||0;
+surplus[rk]=Math.max(0,prod-dem);
+deficit[rk]=Math.max(0,dem-prod);}
+// Food surplus/deficit
+const foodSurplus=Math.max(0,foodProd-foodDemand);
+const foodDeficit=Math.max(0,foodDemand-foodProd);
+
+// ── Find trade partners and exchange ──
+// Partners: border contacts + maritime contacts
+const partners=new Set();
+if(ter._borderContacts&&ter._borderContacts[i]){
+for(const nid in ter._borderContacts[i]){const j=parseInt(nid);
+if(tribeSizes[j]>0)partners.add(j);}}
+// Maritime partners (long-distance trade!)
+if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i]){
+for(const kc of ter.tribeKnownCoasts[i]){
+if(kc.owner>=0&&kc.owner!==i&&tribeSizes[kc.owner]>0)partners.add(kc.owner);}}
+td.partners=partners.size;
+
+// ── Trade flow: surplus → deficit between partners ──
+// Trade efficiency scales with both parties' trade knowledge + commerce budget
+const myTrade=k.trade;
+const myComB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].commerce:0.2;
+const myEff=myTrade*0.5+myComB*0.3+0.1;// base 10% + trade knowledge + commerce budget
+
+for(const j of partners){
+if(tribeSizes[j]<=0)continue;
+const kj=tribeKnowledge[j];const rj=ter._resCache[j];
+if(!rj)continue;
+const theirTrade=kj?kj.trade:0;
+const theirComB=ter.tribeBudget&&ter.tribeBudget[j]?ter.tribeBudget[j].commerce:0.2;
+const theirEff=theirTrade*0.5+theirComB*0.3+0.1;
+// Trade efficiency is the MINIMUM of both parties (weakest link)
+const tradeEff=Math.min(myEff,theirEff);
+// Check relationship — war kills trade
+const rel=tribeRelation(ter,i,j);
+if(rel==='fight')continue;// no trade during war
+const relBonus=rel==='trade'?1.5:1.0;// established trade routes are more efficient
+
+// Check their surplus/deficit
+const theirFoodProd=tribeStrength[j];
+const theirPopK=tribePopulation[j]/1000;
+const theirFoodDemand=theirPopK*0.8;
+const theirFoodSurplus=Math.max(0,theirFoodProd-theirFoodDemand);
+
+// Food trade: if I have deficit and they have surplus (or vice versa)
+if(foodDeficit>0&&theirFoodSurplus>0){
+const flow=Math.min(foodDeficit*0.3,theirFoodSurplus*0.3)*tradeEff*relBonus;
+td.foodImports+=flow;// I import food
+if(ter.tradeData[j])ter.tradeData[j].foodExports+=flow;}
+if(foodSurplus>0&&theirFoodDemand>theirFoodProd){
+const flow2=Math.min(foodSurplus*0.3,(theirFoodDemand-theirFoodProd)*0.3)*tradeEff*relBonus;
+td.foodExports+=flow2;td.income+=flow2*2;// exporting food generates income
+}
+
+// Resource trade: for each resource, flow surplus→deficit
+for(const rk of RES_KEYS){
+const theirDem=demand[rk]||0;// approximate their demand similarly
+const theirProd=rj[rk]||0;
+const theirSurp=Math.max(0,theirProd-theirDem);
+const theirDef=Math.max(0,theirDem-theirProd);
+// I buy their surplus to fill my deficit
+if(deficit[rk]>0&&theirSurp>0){
+const flow=Math.min(deficit[rk]*0.3,theirSurp*0.3)*tradeEff*relBonus;
+td.imports[rk]+=flow;deficit[rk]-=flow;}
+// I sell my surplus to fill their deficit
+if(surplus[rk]>0&&theirDef>0){
+const flow2=Math.min(surplus[rk]*0.3,theirDef*0.3)*tradeEff*relBonus;
+td.exports[rk]+=flow2;
+// Income from selling: value-weighted by era demand
+const rv=resourceValues(k);
+td.income+=flow2*rv[rk]*3;// valuable resources generate more income
+}}}
+}// end per-tribe loop
+}
+
 // Budget step: compute allocation for all tribes
 function stepBudget(ter){
 const{tribeSizes,tribeStrength,tribeCenters,tribePopulation,tribeKnowledge}=ter;
@@ -484,7 +604,9 @@ let resWealth=0;for(const rk of RES_KEYS)resWealth+=rv[rk]*(r[rk]||0)*0.01;
 // A tiny tribe on gold can rival a large tribe with no resources (Phoenicia, Qatar).
 const popBase=pop*(1+k.trade*0.3)*(0.5+k.organization*0.5);
 const resBase=resWealth*pop*0.5;// resource wealth scales with pop but is ADDITIVE
-b.total=popBase+resBase;// resources can BE the majority of budget for resource-rich tribes
+// Trade income: selling surplus generates wealth (Netherlands, Phoenicia)
+const tradeIncome=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].income*pop*0.001:0;
+b.total=popBase+resBase+tradeIncome;
 
 // ── Survival floor: mandatory, scales with threats ──
 let borderThreat=0;const myContacts=contacts[i];
@@ -672,8 +794,12 @@ const tRes=ter._resCache;
 //   Metallurgy: 0→0.3 in ~120 steps (with ore), 0.3→0.7 in ~300 steps
 //   Others scale similarly. Diminishing returns (1-k) slow late-game naturally.
 for(let i=0;i<n;i++){if(tribeSizes[i]<=0)continue;
-const k=know[i],r=tRes[i],sz=tribeSizes[i],pop=ter.tribePopulation[i];
-if(!r)continue;// resource cache not ready for this tribe yet
+const k=know[i],rRaw=tRes[i],sz=tribeSizes[i],pop=ter.tribePopulation[i];
+if(!rRaw)continue;
+// Effective resources: own production + imports from trade
+const ti2=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].imports:{};
+const r={};for(const rk of RES_KEYS)r[rk]=(rRaw[rk]||0)+(ti2[rk]||0)*0.5;// imports count at 50% (less efficient than owning)
+r.coastTiles=rRaw.coastTiles||0;r.riverTiles=rRaw.riverTiles||0;r.resourceTypes=rRaw.resourceTypes;
 const dens=sz>0?tribeStrength[i]/sz:0;
 
 // Agriculture: fertility + rivers + density + sedentary time
@@ -823,7 +949,9 @@ eraMult+=industrialBonus;
 const rv=resourceValues(know[i]);const rr=ter._resCache&&ter._resCache[i]?ter._resCache[i]:null;
 if(rr){const resPop=rv.salt*(rr.salt||0)*0.02+rv.coal*(rr.coal||0)*0.05+rv.oil*(rr.oil||0)*0.08;
 eraMult*=(1+Math.min(0.5,resPop));}// up to 50% pop boost from resources
-const capacity=tribeStrength[i]*eraMult;
+// Food imports increase carrying capacity — Japan can import food for huge population
+const foodImport=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].foodImports:0;
+const capacity=(tribeStrength[i]+foodImport)*eraMult;
 if(capacity<=0){pop[i]=Math.max(0,pop[i]*0.95);continue;}
 const ratio=pop[i]/capacity;
 // Growth rate: very slow pre-industrial (~0.1%/step), faster post-industrial
@@ -1431,7 +1559,7 @@ owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];}
 function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // ── Knowledge & population step (every 8 ticks) ──
-if(ter.stepCount%8===0&&ter.tribeKnowledge){stepBudget(ter);stepKnowledge(ter);stepPopulation(ter);stepBackgroundPop(ter);
+if(ter.stepCount%8===0&&ter.tribeKnowledge){stepTrade(ter);stepBudget(ter);stepKnowledge(ter);stepPopulation(ter);stepBackgroundPop(ter);
 // Recompute ports periodically
 for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}
 // ── Expansion into empty land (directional, pressure-driven) ──
@@ -2759,6 +2887,21 @@ const v=selData.k[key];return <div key={key} style={{display:"flex",alignItems:"
 <span style={{width:28,fontSize:8,color:"#6a6458",textAlign:"right"}}>{(v*100|0)}%</span>
 </div>;})}
 </div>}
+{/* Trade */}
+{(()=>{const td=ter.tradeData&&ter.tradeData[sel]?ter.tradeData[sel]:null;
+if(!td||td.partners===0)return null;
+const fmtR=(v)=>v>=1?v.toFixed(1):v>=0.01?v.toFixed(2):'0';
+return <div style={{marginTop:6}}>
+<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Trade ({td.partners} partners)</div>
+{td.foodImports>0&&<div style={{fontSize:8,color:"#60a050"}}>Importing {fmtR(td.foodImports)} food</div>}
+{td.foodExports>0&&<div style={{fontSize:8,color:"#c09030"}}>Exporting {fmtR(td.foodExports)} food</div>}
+{RES_KEYS.filter(rk=>td.imports[rk]>0.01||td.exports[rk]>0.01).slice(0,6).map(rk=>
+<div key={rk} style={{fontSize:8,color:"#8a8474"}}>
+{td.imports[rk]>0.01&&<span style={{color:"#6a9ec8"}}>{rk}: +{fmtR(td.imports[rk])} </span>}
+{td.exports[rk]>0.01&&<span style={{color:"#c09030"}}>{rk}: -{fmtR(td.exports[rk])} </span>}
+</div>)}
+{td.income>0.01&&<div style={{fontSize:8,color:"#d0b040",fontWeight:"bold"}}>Trade income: {fmtR(td.income)}</div>}
+</div>;})()}
 {/* Budget allocation */}
 {selData.budget&&<div style={{marginTop:6}}>
 <div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Budget</div>
