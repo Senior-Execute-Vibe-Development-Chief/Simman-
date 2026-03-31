@@ -776,10 +776,10 @@ const ag=know[i].agriculture,mt=know[i].metallurgy,cn=know[i].construction,og=kn
 // capacity per tile = 0.3*40 = 12k people = ~7 ppl/km² (bronze age density)
 // At eraMult=150 (classical): 0.3*150 = 45k = ~26 ppl/km² (Roman density)
 // At eraMult=500+ (industrial): 0.3*500 = 150k = ~86 ppl/km²
-let eraMult=15+ag*60+mt*40+cn*30+og*25;// stone~15, bronze~60, iron~100, classical~150
+let eraMult=1+ag*2+mt*1.5+cn*1+og*0.8;// stone~1, bronze~3, iron~5, classical~6
 // Industrial revolution: when metallurgy+construction both high, population explodes
 // (mechanized farming, medicine, sanitation, urbanization)
-const industrialBonus=(Math.max(0,mt-0.6))*(Math.max(0,cn-0.5))*2000;// 0 until iron+, then explodes
+const industrialBonus=(Math.max(0,mt-0.6))*(Math.max(0,cn-0.5))*80;// industrial pop explosion
 eraMult+=industrialBonus;
 // Resources that directly support population: salt preserves food, coal/oil power industry
 const rv=resourceValues(know[i]);const rr=ter._resCache&&ter._resCache[i]?ter._resCache[i]:null;
@@ -793,7 +793,7 @@ const ratio=pop[i]/capacity;
 // Post-industrial: ~1-2%/year = much faster.
 const industrialFactor=Math.max(0,mt-0.6)*3+Math.max(0,cn-0.5)*2;// 0 until ~iron age, then ramps
 const groB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].growth:0.25;
-const baseGrowth=(0.004+ag*0.004+industrialFactor*0.01)*(0.5+groB*2.0);// growth budget amplifies pop growth
+const baseGrowth=(0.001+ag*0.001+industrialFactor*0.004)*(0.5+groB*2.0);// very slow pre-industrial
 // Logistic: growth slows as pop approaches capacity. Overshoots slightly for expansion pressure.
 const growthRate=ratio<1.15?baseGrowth*(1-ratio*0.85):0;// stops growing at ~118% capacity
 pop[i]=Math.max(1,pop[i]+pop[i]*growthRate);
@@ -1252,8 +1252,8 @@ tenure[ti]=200;frontier[ti]=1;frontierList.push(ti);}
 // Population: start at capacity — these are established 3000 BC states
 // Starting pop matches era capacity formula: eraMult ≈ 2+0.4*8+0.15*5+0.1*4+0.08*3 ≈ 6.4
 // 4 tiles, avg fert 0.4, strength~1.6: capacity = 1.6*6.4 ≈ 10 (= 10k people)
-let startEraMult=15+k.agriculture*60+k.metallurgy*40+k.construction*30+k.organization*25;
-startEraMult+=(Math.max(0,k.metallurgy-0.6))*(Math.max(0,k.construction-0.5))*2000;
+let startEraMult=1+k.agriculture*2+k.metallurgy*1.5+k.construction*1+k.organization*0.8;
+startEraMult+=(Math.max(0,k.metallurgy-0.6))*(Math.max(0,k.construction-0.5))*80;
 tribePopulation[i]=tribeStrength[i]*startEraMult;}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
 // ── Background population at 3000 BC: graduated by valley quality ──
@@ -1395,8 +1395,8 @@ const agMult=1+agLevel*2.5;
 const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow]*10;
 // Match stepPopulation capacity formula
 const owOrg=owKnow?owKnow.organization:0,owMt=owKnow?owKnow.metallurgy:0,owCn=owKnow?owKnow.construction:0;
-let owEraMult=15+agLevel*60+owMt*40+owCn*30+owOrg*25;
-owEraMult+=(Math.max(0,owMt-0.6))*(Math.max(0,owCn-0.5))*2000;
+let owEraMult=1+agLevel*2+owMt*1.5+owCn*1+owOrg*0.8;
+owEraMult+=(Math.max(0,owMt-0.6))*(Math.max(0,owCn-0.5))*80;
 const owCap=tribeStrength[ow]*owEraMult;
 // No hard tile cap. Expansion is limited by real constraints:
 // - Center distance falloff (power projection decays with distance)
@@ -1453,11 +1453,11 @@ if(ao>=0&&ao!==ow){score+=0.3*owKnow.trade;break;}}}}}
 // almost impossible until population pressure is extreme or tech improves.
 // IRL: Egypt stayed on the Nile for centuries. Sumer stayed in river valleys.
 // They didn't casually expand into every adjacent grassland.
-// Large tribes expand SLOWER per frontier tile (diminishing returns on expansion)
-const sizeSlowdown=owSz>50?1/(1+(owSz-50)*0.005):1;// 100t→0.8x, 200t→0.57x, 500t→0.31x
-let chance=0.12*wet*smallBoost*sizeSlowdown;
+// Large tribes slow down but not as drastically (scaled for large maps)
+const sizeSlowdown=owSz>200?1/(1+(owSz-200)*0.001):1;// 500t→0.77x, 1000t→0.56x, 5000t→0.17x
+let chance=0.18*wet*smallBoost*sizeSlowdown;
 // Difficulty: CUBIC penalty. Even moderate difficulty is very hard early on.
-chance*=Math.max(0.01,(1-adjDiff)*(1-adjDiff)*(1-adjDiff));// diff 0.3→0.34x, diff 0.5→0.125x, diff 0.8→0.008x
+chance*=Math.max(0.02,(1-adjDiff)*(1-adjDiff));// quadratic: diff 0.3→0.49x, diff 0.5→0.25x, diff 0.8→0.04x
 // Fertility: quadratic with tech floor. Prime land is easy, poor land is hard but not impossible.
 const fertSq=fert*fert;
 // Tech floor rises with knowledge — advanced civs can settle anywhere
