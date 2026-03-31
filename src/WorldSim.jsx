@@ -85,7 +85,7 @@ if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
 elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
 }else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}
 // Steeper cold curve: lat² term makes high latitudes drop faster (Moscow at 56°N IS cold)
-temperature[i]=Math.max(0,Math.min(1,1-Math.pow(lat,1.4)*0.95-lat*lat*0.15-Math.max(0,elevation[i])*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.08));}
+temperature[i]=Math.max(0,Math.min(1,1-Math.pow(lat,2.0)*1.1-lat*lat*lat*0.1-Math.max(0,elevation[i])*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.08));}
 // Pass 2: coast-distance BFS at tile resolution for continentality
 const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
 const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);
@@ -163,7 +163,7 @@ const tGrid=new Float32Array(mW2*mH2);
 for(let my=0;my<mH2;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
 const lt=Math.abs(py/H-0.42)*2,e2=elevation[py*W+px];
-tGrid[my*mW2+mx]=Math.max(0,Math.min(1,1-Math.pow(lt,1.4)*0.95-lt*lt*0.15+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.65));}
+tGrid[my*mW2+mx]=Math.max(0,Math.min(1,1-Math.pow(lt,2.0)*1.1-lt*lt*lt*0.1+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.55));}
 for(let step=0;step<25;step++){const prev=new Float32Array(tGrid);
 for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
@@ -175,7 +175,7 @@ const sxr=Math.min(mW2-1,sx+1);
 const upT=(prev[sy*mW2+sx]*(1-fdx)+prev[sy*mW2+sxr]*fdx)*(1-fdy)
 +(prev[(sy+1)*mW2+sx]*(1-fdx)+prev[(sy+1)*mW2+sxr]*fdx)*fdy;
 const e2=elevation[fi],lt=Math.abs(py/H-0.42)*2;
-const locT=Math.max(0,Math.min(1,1-Math.pow(lt,1.4)*0.95-lt*lt*0.15+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.65));
+const locT=Math.max(0,Math.min(1,1-Math.pow(lt,2.0)*1.1-lt*lt*lt*0.1+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.55));
 // Ocean: wind drives currents strongly (Gulf Stream = warm water pushed by wind)
 if(e2<=0){tGrid[my*mW2+mx]=locT*0.65+upT*0.35;}// 35% wind influence (was 12%)
 else{const tb=Math.min(0.8,Math.max(0,e2-0.05)*3);
@@ -194,10 +194,9 @@ const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x
 const cp=Math.max(0,1-cd/8);
 const tLat=Math.abs(ny-0.42)*2;
 const shE=Math.exp(-((tLat-0.20)*(tLat-0.20))/(2*0.08*0.08))*0.06;
-// Steeper cold: pow 1.7 makes high latitudes drop faster (tundra extends further south)
-// Temperature targets: equator=1.0(40°C), 45°≈0.55(−5°C), Antarctic coast≈0.5(−10°C),
-// Greenland south≈0.6(0°C), central Greenland≈0.2(−40°C), Antarctic center≈0.0(−60°C)
-const bt=1-Math.pow(tLat,1.4)*0.95-tLat*tLat*0.15+shE-Math.max(0,e)*0.65+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
+// IRL temperature: red extends to ~30° lat, yellow to ~45°, blue at ~60°, purple at ~75°+
+// Higher exponent (2.0) keeps temp warm longer, then drops steeply at high latitudes
+const bt=1-Math.pow(tLat,2.0)*1.1-tLat*tLat*tLat*0.1+shE-Math.max(0,e)*0.55+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
 const inland=Math.max(0,1-cp);
 const ch=tLat<0.5?inland*(0.5-tLat)*0.20:inland*(tLat-0.5)*-0.12;
 const mt=bt+(0.45-bt)*cp*0.2+ch;
@@ -229,7 +228,7 @@ let m=.40+tropWet*.35-subtropDry+tempWet-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.
 if(e<0.06)m+=.15;// valleys are wet
 if(e>0.3)m-=.15;// mountains are drier
 moisture[i]=Math.max(.02,Math.min(1,m));
-temperature[i]=Math.max(0,Math.min(1,1-Math.pow(lat,1.4)*0.95-lat*lat*0.15-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
+temperature[i]=Math.max(0,Math.min(1,1-Math.pow(lat,2.0)*1.1-lat*lat*lat*0.1-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 }else if(preset==="tectonic"){
 // ── Tectonic plate mode: separate module ──
 const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D,worley},_tecParams);
@@ -350,7 +349,7 @@ e+=(ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0)-0.45)*0.30*featureStr;
 const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
 e+=fbm(whx*6+s2,why*6+s2,4,2,.5)*.06*featureStr;
 e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.05*featureStr;}
-elevation[i]=e;temperature[i]=Math.max(0,Math.min(1,1-Math.pow(lat,1.4)*0.95-lat*lat*0.15-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
+elevation[i]=e;temperature[i]=Math.max(0,Math.min(1,1-Math.pow(lat,2.0)*1.1-lat*lat*lat*0.1-Math.max(0,e)*.4+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
 // Moisture with climate zones + continentality
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
 if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
