@@ -1757,10 +1757,29 @@ for(const kc2 of kcList){if(Math.abs(kc2.x-tgtX2)<=3&&Math.abs(kc2.y-tgtY2)<=3){
 if(already2)continue;
 kcList.push({x:tgtX2,y:tgtY2,owner:owner[targetIdx],lastSeen:ter.stepCount});
 ter._dbgDiscSuccess=(ter._dbgDiscSuccess||0)+1;
-if(owner[targetIdx]>=0&&owner[targetIdx]!==st&&ter.tribeKnownCoasts[owner[targetIdx]]){
+if(owner[targetIdx]>=0&&owner[targetIdx]!==st){
+// Discovered an inhabited coast — mutual awareness
+if(ter.tribeKnownCoasts[owner[targetIdx]]){
 const oKc=ter.tribeKnownCoasts[owner[targetIdx]];
 let oKnows=false;for(const ok2 of oKc){if(ok2.owner===st){oKnows=true;break;}}
 if(!oKnows){const sp=stPorts[0];oKc.push({x:sp.x,y:sp.y,owner:st,lastSeen:ter.stepCount});}}
+// Naval invasion: if we're much stronger (tech advantage), try to take the coast
+// Cortez vs Aztecs, British in India, Portuguese in East Africa
+const defender=owner[targetIdx];
+const myPow=tribePower(ter,st);
+const theirPow=tribePower(ter,defender);
+const techGap=(stK.metallurgy+stK.navigation)-(ter.tribeKnowledge[defender]?ter.tribeKnowledge[defender].metallurgy+ter.tribeKnowledge[defender].navigation:0);
+// Need significant tech advantage AND military superiority to invade by sea
+if(myPow>theirPow*0.5&&techGap>0.3&&stK.navigation>0.4){
+const milB=ter.tribeBudget&&ter.tribeBudget[st]?ter.tribeBudget[st].military:0.2;
+const invadeChance=0.1*milB*techGap;// ~3% for a militant power with big tech gap
+if(Math.random()<invadeChance){
+claimTile(ter,targetIdx,st);
+if(!nf[targetIdx]){nf[targetIdx]=1;nfl.push(targetIdx);}
+// Establish beachhead center if far from home
+if(tribeCenters[st].length<10){const{min:vD}=nearestCenterDist(tribeCenters[st],tgtX2,tgtY2,tw);
+if(vD>25)tribeCenters[st].push({x:tgtX2,y:tgtY2,prestige:0.3,founded:ter.stepCount});}
+}}}
 if(owner[targetIdx]<0&&tFert[targetIdx]>0.03){
 let nw3=st;const{min:vDist2}=nearestCenterDist(tribeCenters[st],tgtX2,tgtY2,tw);
 if(vDist2>30&&Math.random()<0.3-stK.organization*0.3)nw3=newTribe(ter,tgtX2,tgtY2,st);
