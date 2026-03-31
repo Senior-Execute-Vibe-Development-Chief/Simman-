@@ -728,31 +728,46 @@ oil:     Math.min(1,Math.max(0,mt-0.7)*Math.max(0,cn-0.6)*5),
 gems:    Math.min(1,tr*0.5+og*0.3)};}
 const RES_KEYS=['copper','tin','iron','coal','stone','timber','salt','horses','precious','oil','gems'];
 
-// Compute a few ocean waypoints between two coastal points (for route drawing).
-// Uses greedy walk: step toward target, but if on land, deflect toward nearest ocean.
-// Returns array of {x,y} waypoints (in tile coords). Cached on known coast entries.
-function computeOceanRoute(ter,x1,y1,x2,y2,maxWaypoints){
+// Ocean route: sample points along path, snap each to nearest ocean tile.
+// For short routes, uses BFS. For long routes, uses greedy snapping.
+// Handles X-axis wrapping. Returns waypoints in tile coords.
+function computeOceanRoute(ter,x1,y1,x2,y2,numPts){
 const{tw,th,tElev}=ter;
 const pts=[];
-let wrappedDx=x2-x1;if(Math.abs(wrappedDx)>tw/2)wrappedDx=wrappedDx>0?wrappedDx-tw:wrappedDx+tw;
+let wrDx=x2-x1;if(Math.abs(wrDx)>tw/2)wrDx=wrDx>0?wrDx-tw:wrDx+tw;
 const dy=y2-y1;
-const dist=Math.sqrt(wrappedDx*wrappedDx+dy*dy);
+const dist=Math.sqrt(wrDx*wrDx+dy*dy);
 if(dist<5)return pts;
-const step=Math.max(3,Math.floor(dist/maxWaypoints));
-let cx=x1,cy=y1;
-for(let i=0;i<maxWaypoints;i++){
-cx+=wrappedDx/maxWaypoints;cy+=dy/maxWaypoints;
-let tx=((Math.round(cx)%tw)+tw)%tw;let ty=Math.max(0,Math.min(th-1,Math.round(cy)));
-let ti=ty*tw+tx;
-// If on land, search nearby for ocean tile (deflect the route)
-if(tElev[ti]>0){
-let bestD=Infinity,bestTx=tx,bestTy=ty;
-for(let sdy=-20;sdy<=20;sdy++){const ny=ty+sdy;if(ny<0||ny>=th)continue;
-for(let sdx=-20;sdx<=20;sdx++){const nx=((tx+sdx)%tw+tw)%tw;
+// Sample N+2 points along the straight line, snap each to nearest ocean
+// Use enough points that the maximum segment length is ~30 tiles
+const N=Math.max(numPts,Math.ceil(dist/25));
+for(let i=1;i<=N;i++){
+const t=i/(N+1);
+let sx=x1+wrDx*t,sy=y1+dy*t;
+let tx=((Math.round(sx)%tw)+tw)%tw;
+let ty=Math.max(0,Math.min(th-1,Math.round(sy)));
+// If on land, find nearest ocean tile (expanding spiral search)
+if(tElev[ty*tw+tx]>0){
+let bestD=Infinity,bestX=tx,bestY=ty;
+// Search expanding rings until we find ocean
+for(let r=1;r<=40&&bestD===Infinity;r++){
+for(let sdy=-r;sdy<=r;sdy++){
+const ny=ty+sdy;if(ny<0||ny>=th)continue;
+for(let sdx=-r;sdx<=r;sdx++){
+if(Math.abs(sdx)<r&&Math.abs(sdy)<r)continue;// only ring edge
+const nx=((tx+sdx)%tw+tw)%tw;
 if(tElev[ny*tw+nx]<=0){
-const dd=sdx*sdx+sdy*sdy;if(dd<bestD){bestD=dd;bestTx=nx;bestTy=ny;}}}}
-if(bestD<Infinity){tx=bestTx;ty=bestTy;cx=tx;cy=ty;}}
+const dd=sdx*sdx+sdy*sdy;
+if(dd<bestD){bestD=dd;bestX=nx;bestY=ny;}}}}}
+tx=bestX;ty=bestY;}
+// Skip if this point is same as previous (avoid clutter)
+if(pts.length>0&&Math.abs(pts[pts.length-1].x-tx)<3&&Math.abs(pts[pts.length-1].y-ty)<3)continue;
 pts.push({x:tx,y:ty});}
+// Simplify if too many points
+if(pts.length>numPts*2){
+const simplified=[];const step=Math.floor(pts.length/numPts);
+for(let i=0;i<pts.length;i+=step)simplified.push(pts[i]);
+return simplified;}
 return pts;}
 
 // Compute relationship between two tribes: 'fight','trade','friendly','neutral'
