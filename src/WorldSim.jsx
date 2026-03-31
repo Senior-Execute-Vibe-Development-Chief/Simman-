@@ -1035,6 +1035,14 @@ const kc=ter.tribeKnownCoasts[tribeId];
 let alreadyKnown=false;
 for(const k of kc){if(Math.abs(k.x-tx)<=2&&Math.abs(k.y-ty)<=2){k.owner=owner[ti];k.lastSeen=ter.stepCount;alreadyKnown=true;break;}}
 if(!alreadyKnown)kc.push({x:tx,y:ty,owner:owner[ti],lastSeen:ter.stepCount});
+// Mutual awareness: the discovered tribe also learns about the voyager
+if(owner[ti]>=0&&owner[ti]!==tribeId&&ter.tribeKnownCoasts[owner[ti]]){
+const otherKc=ter.tribeKnownCoasts[owner[ti]];
+let otherKnows=false;
+for(const ok of otherKc){if(ok.owner===tribeId){otherKnows=true;break;}}
+if(!otherKnows&&ter.tribePorts[tribeId]&&ter.tribePorts[tribeId].length>0){
+const myPort=ter.tribePorts[tribeId][0];
+otherKc.push({x:myPort.x,y:myPort.y,owner:tribeId,lastSeen:ter.stepCount});}}
 // Can we land?
 if(owner[ti]>=0){
 // Owned — check for naval invasion possibility
@@ -1952,31 +1960,25 @@ if(dny<0||dny>=ter.th){isBorder=true;break;}
 const nOwner=ter.owner[dny*ter.tw+dnx];
 if(nOwner!==ow){isBorder=true;if(nOwner>=0)borderNeighbor=nOwner;break;}}
 if(focused){
-// Selected tribe: bright era color, relationship-colored borders
+// FOCUSED VIEW: no era colors — pure relationship-based coloring
 if(ow===sel){
-if(isBorder){
-// Border color based on who's on the other side
-if(borderNeighbor>=0&&relColors[borderNeighbor]){
-const rel=relColors[borderNeighbor];
-if(rel==='fight'){r=220;g=60;b=50;}// RED — at war
-else if(rel==='trade'){r=220;g=190;b=60;}// GOLD — trading
-else if(rel==='friendly'){r=80;g=180;b=80;}// GREEN — friendly
-else{r=200;g=195;b=185;}// white — neutral border
-}else{r=200;g=195;b=185;}// unowned border — white
-}else{r=eraR[ow];g=eraG[ow];b=eraB[ow];}// interior — bright era color
+// Selected tribe: light cream fill, white borders
+if(isBorder){r=220;g=215;b=200;}
+else{r=180;g=175;b=160;}
 }else if(knownTribes&&knownTribes.has(ow)){
-// Known tribe: dimmed era color, relationship-colored border
-const dim=0.5;// 50% brightness
-if(isBorder&&borderNeighbor===sel){
+// Known tribe: FULL relationship color fill (not just borders)
 const rel=relColors[ow]||'neutral';
-if(rel==='fight'){r=180;g=50;b=40;}
-else if(rel==='trade'){r=180;g=160;b=50;}
-else if(rel==='friendly'){r=60;g=140;b=60;}
-else{r=150;g=145;b=135;}
-}else{r=(eraR[ow]*dim)|0;g=(eraG[ow]*dim)|0;b=(eraB[ow]*dim)|0;}
+if(rel==='fight'){// Red — at war
+if(isBorder){r=200;g=50;b=40;}else{r=140;g=40;b=35;}}
+else if(rel==='trade'){// Gold — trading
+if(isBorder){r=200;g=180;b=50;}else{r=140;g=125;b=40;}}
+else if(rel==='friendly'){// Green — friendly
+if(isBorder){r=60;g=160;b=60;}else{r=45;g=110;b=45;}}
+else{// Neutral (known but no relationship)
+if(isBorder){r=120;g=115;b=105;}else{r=70;g=68;b=62;}}
 }else{
-// Unknown tribe: very dark — the selected tribe doesn't know about them
-r=20;g=18;b=16;}}
+// Unknown: fog of war
+r=18;g=16;b=14;}}
 else{// Normal (no focus): white borders, era fill
 if(isBorder){r=200;g=195;b=185;}
 else{r=eraR[ow];g=eraG[ow];b=eraB[ow];}}}
@@ -2134,8 +2136,9 @@ ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
 ctx.fillStyle=isCapital?"rgba(240,235,220,0.95)":"rgba(200,195,180,0.6)";ctx.fill();
 if(isCapital){ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
 ctx.strokeStyle="rgba(60,55,45,0.6)";ctx.lineWidth=0.8;ctx.stroke();}}
-// ── Info label at capital ──
-if(ter.tribeSizes[st]>=4){
+// ── Info label at capital (skip in focused mode — too cluttered) ──
+const focusedMode=ter._selectedTribe>=0&&ter.tribeSizes[ter._selectedTribe]>0&&vm==="tribes";
+if(!focusedMode&&ter.tribeSizes[st]>=4){
 const cap=centers[0];const cx2=cap.x+0.5,cy2=dataYtoScreenY(cap.y*RES,H,CH)+0.5;
 const k=ter.tribeKnowledge&&ter.tribeKnowledge[st]?ter.tribeKnowledge[st]:null;
 const pop=ter.tribePopulation?Math.round(ter.tribePopulation[st]):0;
