@@ -2294,13 +2294,21 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
-if(e<=sl){// Ocean: show temperature with slight blue tint
+if(e<=sl){// Ocean: same temperature palette as land, slightly darkened
 const t=w.temperature[si];
 const ot=Math.max(0,Math.min(1,t));
 let r,g,b;
-if(ot<0.20){const s=ot/0.20;r=(100-s*70)|0;g=(95-s*70)|0;b=(110-s*20)|0;}// white-purple (arctic)
-else if(ot<0.50){const s=(ot-0.20)/0.30;r=(30-s*10)|0;g=(25+s*15)|0;b=(90+s*30)|0;}// purple→dark blue
-else{const s=(ot-0.50)/0.50;r=(20+s*15)|0;g=(40+s*20)|0;b=(120-s*50)|0;}// dark blue→blue-green
+// Use the exact same gradient as land
+if(ot<0.20){const s=ot/0.20;r=(230-s*130)|0;g=(225-s*185)|0;b=(240-s*40)|0;}
+else if(ot<0.40){const s=(ot-0.20)/0.20;r=(100-s*70)|0;g=(40-s*10)|0;b=(200-s*10)|0;}
+else if(ot<0.50){const s=(ot-0.40)/0.10;r=(30+s*10)|0;g=(30+s*20)|0;b=(190-s*40)|0;}
+else if(ot<0.60){const s=(ot-0.50)/0.10;r=(40+s*60)|0;g=(50+s*130)|0;b=(150+s*50)|0;}
+else if(ot<0.70){const s=(ot-0.60)/0.10;r=(100-s*30)|0;g=(180+s*40)|0;b=(200-s*150)|0;}
+else if(ot<0.80){const s=(ot-0.70)/0.10;r=(70+s*160)|0;g=(220+s*30)|0;b=(50-s*30)|0;}
+else if(ot<0.90){const s=(ot-0.80)/0.10;r=(230+s*25)|0;g=(250-s*100)|0;b=(20-s*10)|0;}
+else{const s=(ot-0.90)/0.10;r=255;g=(150-s*110)|0;b=(10+s*5)|0;}
+// Darken slightly to distinguish ocean from land
+r=(r*0.75)|0;g=(g*0.75)|0;b=(b*0.75)|0;
 d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;continue;}
 const t=w.temperature[si];let r,g,b;
 // Palette: white(-60°C) → purple(-20°C) → dark blue(-10°C) → light blue(0°C) → light green(10°C) → yellow(20°C) → orange(30°C) → red(40°C)
