@@ -1151,9 +1151,13 @@ ter.tribePorts.push([]);
 ter.tribes=id+1;return id;}
 function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure}=ter;const ow=owner[ti];
 if(ow>=0){const owSzBefore=tribeSizes[ow];tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];
-// Small population loss for conquered tile (some flee, some die)
-if(ter.tribePopulation&&owSzBefore>0){const popLoss=ter.tribePopulation[ow]/owSzBefore*0.5;
-ter.tribePopulation[ow]=Math.max(0,ter.tribePopulation[ow]-popLoss);}}else{ter.settled++;}
+// Conquest: most population stays (they become subjects), small loss from war
+if(ter.tribePopulation&&owSzBefore>0){
+const tileShare=ter.tribePopulation[ow]/owSzBefore;
+const warLoss=tileShare*0.15;// 15% die or flee from the fighting
+ter.tribePopulation[ow]=Math.max(0,ter.tribePopulation[ow]-tileShare);// loser loses tile's pop
+ter.tribePopulation[nw]+=tileShare-warLoss;// winner absorbs 85% of the population
+}}else{ter.settled++;}
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;
 // Absorb background population into the tribe
 if(ter.bgPop&&ter.bgPop[ti]>0){
