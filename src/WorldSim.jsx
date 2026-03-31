@@ -1098,19 +1098,18 @@ const crRv=resourceValues(regionKnow);
 // Resource value at this tile: valuable resources attract settlement
 let resScore=0;if(ter.deposits){for(const rk of RES_KEYS){
 const dep=ter.deposits[rk];if(dep&&dep[ti]>0.1)resScore+=crRv[rk]*dep[ti];}}
-// Proximity to existing civilization: STRONGLY favor areas near existing tribes.
-// IRL, new states emerged from cultural radiation of existing ones, not spontaneously.
-// Distant continents stay as background pop until maritime discovery brings contact.
+// Proximity to existing civilization affects KNOWLEDGE INHERITANCE, not crystallization.
+// China, Egypt, Indus, Mesoamerica all developed independently — the best river valleys
+// crystallize based on their OWN quality, not proximity to other civs.
+// However, nearby civs DO make it slightly easier (cultural stimulation, trade contact).
 let nearestCivDist=Infinity;
 for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0)continue;
 for(const c of ter.tribeCenters[t]){const d=tDistW(tx,ty,c.x,c.y,tw);
 if(d<nearestCivDist)nearestCivDist=d;}}
-// Proximity multiplier: 1.0 within 50 tiles, drops sharply with distance
-// At 100 tiles: 0.25x. At 200 tiles: 0.06x. At 400+ tiles: basically 0.
-// This means Americas/Australia only get tribes via maritime colonization, not spontaneous.
-// If NO tribes exist yet, skip proximity check (first civ emerges at best location)
-const proxMult=alive===0?1.0:(nearestCivDist<50?1.0:1.0/(1+(nearestCivDist-50)*0.03));
-const score=(localPop*localFert*tFert[ti]+resScore*3)*proxMult;
+// Mild proximity bonus: nearby civs give +50% score boost, not a hard gate.
+// Distant locations still crystallize if their valley quality is high enough.
+const proxBonus=nearestCivDist<80?1.5:nearestCivDist<200?1.2:1.0;
+const score=(localPop*localFert*tFert[ti]+resScore*3)*proxBonus;
 if(score>0.5)crystalCandidates.push({ti,tx,ty,score});}
 // Sort by score, spawn up to 3 per check
 crystalCandidates.sort((a,b)=>b.score-a.score);
