@@ -814,11 +814,11 @@ for(let ti=0;ti<tw*th;ti++){
 if(tElev[ti]<=0||tTemp[ti]<0.05)continue;
 const fert=tFert[ti];
 // Owned tiles get capacity boost (organized farming is more productive)
-const orgBoost=owner[ti]>=0?1.5:1.0;
-const cap=fert*fert*0.8*(1-tDiff[ti]*0.8)*orgBoost;
+const orgBoost=owner[ti]>=0?2.0:1.0;// organized land supports much more
+const cap=fert*fert*2.0*(1-tDiff[ti]*0.6)*orgBoost;// fert 0.5→0.5, fert 0.3→0.18 (unowned), ×2 if owned
 if(cap<=0.001)continue;
 const ratio=bgPop[ti]/cap;
-bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*0.015*(1-ratio));// 1.5% growth everywhere
+bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*0.02*(1-ratio));// 2% growth
 // Diffusion to adjacent tiles (including into owned territory)
 if(bgPop[ti]>cap*0.6){const tx2=ti%tw,ty2=(ti-tx2)/tw;
 for(const[dx,dy]of DIRS){const nx=((tx2+dx)%tw+tw)%tw,ny=ty2+dy;if(ny<0||ny>=th)continue;
