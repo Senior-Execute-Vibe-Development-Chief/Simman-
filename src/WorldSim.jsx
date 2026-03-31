@@ -1148,11 +1148,12 @@ const agLevel=owKnow?owKnow.agriculture:0;
 const agMult=1+agLevel*2.5;
 const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow]*50;
 const owCap=tribeStrength[ow]*agMult*50;
-// Agriculture fundamentally gates expansion. Hunter-gatherers (ag<0.1) can barely
-// sustain 15-20 tiles. Early farmers (ag~0.3) can hold 50+. Advanced (ag>0.6) unlimited.
-// This is THE key constraint that keeps pre-farming tribes small.
-const agExpansionCap=Math.floor(10+agLevel*300);// ag=0→10, ag=0.3→100, ag=0.5→160, ag=1.0→310
-if(owSz>=agExpansionCap){continue;}
+// No hard tile cap. Expansion is limited by real constraints:
+// - Center distance falloff (power projection decays with distance)
+// - Logistics penalty (tribePower scales with organization)
+// - Terrain difficulty (mountains/desert/cold block low-tech civs)
+// - Population pressure (need people to push outward)
+// Hunter-gatherers stay small naturally: low pop growth, low pressure, no ag boost.
 const popRatio=owCap>0?owPop/owCap:0;
 // Agricultural civs expand proactively (they know they can farm new land).
 // Hunter-gatherers need real pressure. Threshold: 30% for ag>0.3, 60% for ag=0
@@ -1210,10 +1211,12 @@ chance*=0.12+coldResist;}
 chance*=Math.max(0.08,popPressure);
 // High-value targets get a chance bonus (desire drives effort)
 chance*=1+Math.min(1.5,score*0.3);// score 0→1x, score 5→2.5x
-// Center proximity
+// Center proximity — organization extends effective reach
+// Base Gaussian exp(-d²/280) halves at ~14 tiles. Organization stretches this.
+const orgReach=owKnow?1+owKnow.organization*1.5:1;// org=0→1x, org=0.5→1.75x, org=1→2.5x
 const centers=tribeCenters[ow];
 const{min:distMin}=nearestCenterDist(centers,nx,ny2,tw);
-const reach=expFalloff(distMin);
+const reach=expFalloff(distMin/orgReach);// org stretches effective distance
 chance*=Math.max(0.03,reach);
 score+=Math.random()*0.1;// small noise to break ties
 candidates.push({ni,nx,ny:ny2,chance,score,diff,distMin});}
@@ -1238,7 +1241,7 @@ const barrier=diff>0.6&&pDiff<0.3?0.15:0;// geographic barrier
 const distF=distMin>35?Math.min(0.12,(distMin-35)*0.003):0;// very far from center
 splitChance=Math.max(0,(overext+barrier+distF-orgResist)*(1-Math.min(0.9,dens*1.5)));}}
 if(splitChance>0&&Math.random()<splitChance)nw=newTribe(ter,nx,ny2,ow);
-else if(distMin>18&&agLevel>0.15&&tribeCenters[ow]&&tribeCenters[ow].length<10){// need basic agriculture for secondary settlements
+else if(distMin>12&&agLevel>0.15&&tribeCenters[ow]&&tribeCenters[ow].length<12){// new settlements form at moderate distance
 // Geographic center scoring: rivers, harbors, passes, resources attract settlements
 let centerScore=tFert[ni]*2;
 if(ter.rivers&&ter.rivers.riverMag[ni]>=3)centerScore+=0.6;// river confluence / major river
@@ -1247,7 +1250,7 @@ if(tCoast[ni])centerScore+=0.4;// natural harbor
 if(tDiff[ni]>0.4&&tFert[ni]>0.2)centerScore+=0.3;// mountain pass exit
 if(ter.deposits){const depScore=(ter.deposits.copper[ni]+ter.deposits.tin[ni]+ter.deposits.iron[ni]+ter.deposits.salt[ni])*0.3;
 centerScore+=depScore;}// resource concentration
-if(centerScore>0.8)tribeCenters[ow].push({x:nx,y:ny2,prestige:0.3,founded:ter.stepCount});}
+if(centerScore>0.5)tribeCenters[ow].push({x:nx,y:ny2,prestige:0.3,founded:ter.stepCount});}
 claimTile(ter,ni,nw);if(!nf[ni]){nf[ni]=1;nfl.push(ni);}
 // Hunter-gatherers: claim only best candidate. Agricultural civs: can claim multiple.
 if(agLevel<0.2)break;}
