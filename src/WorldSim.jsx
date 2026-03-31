@@ -2294,21 +2294,20 @@ if(e<=sl){// Ocean: show temperature with slight blue tint
 const t=w.temperature[si];
 const ot=Math.max(0,Math.min(1,t));
 let r,g,b;
-if(ot<0.08){const s=ot/0.08;r=(80-s*50)|0;g=(70-s*50)|0;b=(100+s*10)|0;}// purple-white (arctic ocean)
-else if(ot<0.2){const s=(ot-0.08)/0.12;r=(30-s*15)|0;g=(20+s*20)|0;b=(110-s*30)|0;}
-else if(ot<0.5){const s=(ot-0.2)/0.3;r=(15+s*10)|0;g=(40+s*30)|0;b=(110-s*20)|0;}
-else{const s=(ot-0.5)/0.5;r=(25+s*15)|0;g=(70-s*20)|0;b=(90-s*30)|0;}
+if(ot<0.20){const s=ot/0.20;r=(100-s*70)|0;g=(95-s*70)|0;b=(110-s*20)|0;}// white-purple (arctic)
+else if(ot<0.50){const s=(ot-0.20)/0.30;r=(30-s*10)|0;g=(25+s*15)|0;b=(90+s*30)|0;}// purple→dark blue
+else{const s=(ot-0.50)/0.50;r=(20+s*15)|0;g=(40+s*20)|0;b=(120-s*50)|0;}// dark blue→blue-green
 d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;continue;}
 const t=w.temperature[si];let r,g,b;
-if(t<0.04){const s=t/0.04;r=(200-s*100)|0;g=(190-s*150)|0;b=(220-s*40)|0;}// white→purple (extreme cold, -30 to -27°C)
-else if(t<0.08){const s=(t-0.04)/0.04;r=(100-s*60)|0;g=(40-s*10)|0;b=(180-s*20)|0;}// purple→deep indigo
-else if(t<0.15){const s=(t-0.08)/0.07;r=(40-s*15)|0;g=(30+s*30)|0;b=(160+s*60)|0;}// indigo→deep blue (polar)
-else if(t<0.25){const s=(t-0.15)/0.10;r=(25+s*15)|0;g=(60+s*80)|0;b=(220-s*20)|0;}// blue→cyan
-else if(t<0.38){const s=(t-0.25)/0.13;r=(40-s*10)|0;g=(140+s*60)|0;b=(200-s*100)|0;}// cyan→green
-else if(t<0.52){const s=(t-0.38)/0.14;r=(30+s*120)|0;g=(200+s*40)|0;b=(100-s*70)|0;}// green→yellow
-else if(t<0.65){const s=(t-0.52)/0.13;r=(150+s*90)|0;g=(240-s*20)|0;b=(30-s*10)|0;}// yellow→orange
-else if(t<0.78){const s=(t-0.65)/0.13;r=(240+s*15)|0;g=(220-s*80)|0;b=(20-s*10)|0;}// orange
-else{const s=(t-0.78)/0.22;r=255;g=(140-s*100)|0;b=(10+s*5)|0;}// red (tropical)
+// Palette: white(-60°C) → purple(-20°C) → dark blue(-10°C) → light blue(0°C) → light green(10°C) → yellow(20°C) → orange(30°C) → red(40°C)
+if(t<0.20){const s=t/0.20;r=(230-s*130)|0;g=(225-s*185)|0;b=(240-s*40)|0;}// white→purple (-60→-20°C)
+else if(t<0.40){const s=(t-0.20)/0.20;r=(100-s*70)|0;g=(40-s*10)|0;b=(200-s*10)|0;}// purple→purple-blue (-20→-12°C) WIDER PURPLE
+else if(t<0.50){const s=(t-0.40)/0.10;r=(30+s*10)|0;g=(30+s*20)|0;b=(190-s*40)|0;}// purple-blue→dark blue (-12→-10°C)
+else if(t<0.60){const s=(t-0.50)/0.10;r=(40+s*60)|0;g=(50+s*130)|0;b=(150+s*50)|0;}// dark blue→light blue (-10→0°C)
+else if(t<0.70){const s=(t-0.60)/0.10;r=(100-s*30)|0;g=(180+s*40)|0;b=(200-s*150)|0;}// light blue→light green (0→10°C)
+else if(t<0.80){const s=(t-0.70)/0.10;r=(70+s*160)|0;g=(220+s*30)|0;b=(50-s*30)|0;}// light green→yellow (10→20°C)
+else if(t<0.90){const s=(t-0.80)/0.10;r=(230+s*25)|0;g=(250-s*100)|0;b=(20-s*10)|0;}// yellow→orange (20→30°C)
+else{const s=(t-0.90)/0.10;r=255;g=(150-s*110)|0;b=(10+s*5)|0;}// orange→red (30→40°C)
 // Darken with elevation for topographic context
 const shade=1-Math.max(0,e-0.1)*0.4;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
