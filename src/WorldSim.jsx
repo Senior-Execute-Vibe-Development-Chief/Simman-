@@ -747,9 +747,9 @@ let ti=ty*tw+tx;
 // If on land, search nearby for ocean tile (deflect the route)
 if(tElev[ti]>0){
 let bestD=Infinity,bestTx=tx,bestTy=ty;
-for(let sdy=-8;sdy<=8;sdy++){const ny=ty+sdy;if(ny<0||ny>=th)continue;
-for(let sdx=-8;sdx<=8;sdx++){const nx=((tx+sdx)%tw+tw)%tw;
-if(tElev[ny*tw+nx]<=0){// ocean
+for(let sdy=-20;sdy<=20;sdy++){const ny=ty+sdy;if(ny<0||ny>=th)continue;
+for(let sdx=-20;sdx<=20;sdx++){const nx=((tx+sdx)%tw+tw)%tw;
+if(tElev[ny*tw+nx]<=0){
 const dd=sdx*sdx+sdy*sdy;if(dd<bestD){bestD=dd;bestTx=nx;bestTy=ny;}}}}
 if(bestD<Infinity){tx=bestTx;ty=bestTy;cx=tx;cy=ty;}}
 pts.push({x:tx,y:ty});}
@@ -2462,14 +2462,19 @@ const segDist=Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
 if(segDist<3)continue;
 ctx.strokeStyle=`rgba(${col},${alpha})`;ctx.lineWidth=lw;
 ctx.setLineDash(isFocused2?[3,3]:[2,4]);
-// Draw route: use cached ocean waypoints if available, otherwise straight line
+// Route cache (per-draw, lives on ter object)
+if(!ter._routeCache)ter._routeCache=new Map();
+const routeKey=st+':'+kc.x+','+kc.y;
+let drawRoute=ter._routeCache.get(routeKey);
+if(!drawRoute){
+const sx=kc.fromX!==undefined?kc.fromX:Math.round(x1);
+const sy=kc.fromY!==undefined?kc.fromY:Math.round(y1/CH*ter.th);
+drawRoute=computeOceanRoute(ter,sx,sy,kc.x,kc.y,12);
+ter._routeCache.set(routeKey,drawRoute);}
 ctx.beginPath();ctx.moveTo(x1,y1);
-if(kc.route&&kc.route.length>0){
-// Follow the cached ocean waypoints — route avoids land
-for(const wp of kc.route){
-const wx=wp.x+0.5,wy=dataYtoScreenY(wp.y*RES,H,CH)+0.5;
-ctx.lineTo(wx,wy);}
-}
+if(drawRoute&&drawRoute.length>0){
+for(const wp of drawRoute){
+ctx.lineTo(wp.x+0.5,dataYtoScreenY(wp.y*RES,H,CH)+0.5);}}
 ctx.lineTo(x2,y2);ctx.stroke();}
 ctx.setLineDash([]);}}}
 // ── Highlight selected tribe (only when NOT in focused tribes view — focused view handles it inline) ──
