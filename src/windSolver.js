@@ -11,6 +11,11 @@
 //   - Continental thermal lows that pull wind onshore (monsoons)
 // ══════════════════════════════════════════════════════════════════
 
+import { initGPUWindSolver, solveWindGPU } from './gpuWindSolver.js';
+
+// GPU solver instance (lazy-initialized on first call)
+let _gpuSolver = undefined; // undefined = not yet tried, null = not available
+
 export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const p = (k, d) => params[k] !== undefined ? params[k] : d;
   const s3 = noiseSeed;
@@ -278,6 +283,34 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   }
 
   // ── Iterative refinement ──
+  // Try GPU acceleration first (10-50x faster for 500 iterations)
+  let usedGPU = false;
+  if (_gpuSolver === undefined) {
+    try {
+      _gpuSolver = initGPUWindSolver();
+      if (_gpuSolver) console.log('[Wind] GPU solver initialized');
+      else console.log('[Wind] GPU not available, using CPU');
+    } catch (e) { _gpuSolver = null; }
+  }
+  if (_gpuSolver) {
+    try {
+      const t0 = performance.now();
+      const gpuResult = solveWindGPU(_gpuSolver, wW, wH, windX, windY, pressure, drag, wElev, {
+        windSolverIter: _solverIter, coriolisStrength: _coriolisStr
+      });
+      // Copy GPU results back
+      windX.set(gpuResult.windX);
+      windY.set(gpuResult.windY);
+      usedGPU = true;
+      console.log(`[Wind] GPU solver: ${(performance.now()-t0).toFixed(0)}ms (${_solverIter} iterations)`);
+    } catch (e) {
+      console.warn('[Wind] GPU solver failed, falling back to CPU:', e.message);
+      _gpuSolver = null;
+    }
+  }
+
+  if (!usedGPU) {
+  // CPU fallback
   const dt = 0.35;
   const visc = 0.06;
   // Pre-allocate scratch buffers for solver loop (avoids 500× Float32Array allocs)
@@ -376,6 +409,7 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       }
     }
   }
+  } // end if (!usedGPU)
 
   // ════════════════════════════════════════════════════════════════
   // STEP 6: Gap funneling (post-solve so it persists)
@@ -503,6 +537,9 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // the careful directional changes from terrain blocking.
   if (_deflection > 0) {
     const deflectPasses = 80;
+    // Pre-allocate smoothing buffers for deflection pass (avoids 40× allocs)
+    const _deflTmpX = new Float32Array(N);
+    const _deflTmpY = new Float32Array(N);
     for (let pass = 0; pass < deflectPasses; pass++) {
       for (let wy = 1; wy < wH - 1; wy++) {
         for (let wx = 0; wx < wW; wx++) {
@@ -540,8 +577,10 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       }
 
       if (pass < deflectPasses - 1 && pass % 2 === 0) {
-        const tmpWx = new Float32Array(windX);
-        const tmpWy = new Float32Array(windY);
+        _deflTmpX.set(windX);
+        _deflTmpY.set(windY);
+        const tmpWx = _deflTmpX;
+        const tmpWy = _deflTmpY;
         const blend = 0.25;
         for (let wy = 1; wy < wH - 1; wy++) {
           for (let wx = 0; wx < wW; wx++) {
