@@ -1009,12 +1009,12 @@ if(kj[d]>ki[d]){ki[d]=Math.min(1,ki[d]+maritimeRate*(kj[d]-ki[d]));}}}}}
 // ── Settlement tier thresholds (cityPop in thousands) ──
 // Tech gates max city size; tier is just a reading of how many people are there
 const SETTLE_TIERS=[
-{name:'village',  min:0.3,  icon:1},  //  300+ people
-{name:'town',     min:2,    icon:1.5},//  2k+ people
-{name:'small',    min:10,   icon:2},  //  10k+ (Ur, early Memphis)
-{name:'medium',   min:50,   icon:2.5},//  50k+ (classical Athens)
-{name:'large',    min:200,  icon:3},  //  200k+ (Rome, Chang'an)
-{name:'mega',     min:1000, icon:3.5},//  1M+ (industrial London)
+{name:'village',  min:0.05, icon:1},  //  50+ people gathering
+{name:'town',     min:0.5,  icon:1.5},//  500+ people
+{name:'small',    min:3,    icon:2},  //  3k+ (Ur, early Memphis)
+{name:'medium',   min:20,   icon:2.5},//  20k+ (classical Athens)
+{name:'large',    min:100,  icon:3},  //  100k+ (Rome, Chang'an)
+{name:'mega',     min:500,  icon:3.5},//  500k+ (industrial London)
 ];
 function settleTier(cityPop){
 for(let i=SETTLE_TIERS.length-1;i>=0;i--)if(cityPop>=SETTLE_TIERS[i].min)return SETTLE_TIERS[i];
@@ -1034,9 +1034,13 @@ if(cn>0.6&&og>0.5)cap+=500;// advanced infrastructure → +500k
 const indust=(Math.max(0,mt-0.75))*(Math.max(0,cn-0.60));
 cap+=indust*20000;// mt=0.85,cn=0.7: 0.10*0.10*20000 = 200. mt=0.95,cn=0.9: 0.20*0.30*20000 = 1200
 return cap;}
-// Rural cap: how many people (thousands) a tile supports as dispersed countryside
-// Much lower than city cap — this is farming/herding density
-function ruralCap(fert,diff,em){return fert*em*0.15*(1-diff*0.3);}// ~15% of full era capacity
+// Rural cap: dispersed countryside population per tile (before urbanizing).
+// Intentionally LOW — represents the point at which people start concentrating
+// into villages and towns rather than staying dispersed.
+// At bronze (em~4): fert=0.3 → 0.3*4*0.25*0.97 = 0.29 (290 people then urbanize)
+// At classical (em~11): fert=0.3 → 0.3*11*0.25*0.97 = 0.80
+// Overflow above 80% of this cap flows into cityPop (settlement formation).
+function ruralCap(fert,diff,em){return fert*em*0.25*(1-diff*0.3);}
 
 // ── Era multiplier for tile carrying capacity (shared by population + bgPop systems) ──
 // Returns people (in thousands) supportable per unit of tile fertility.
@@ -1085,7 +1089,10 @@ tribeMaxCity[i]=maxCityPop(k);
 const mt=k.metallurgy,cn=k.construction,ag=k.agriculture;
 const industrialFactor=Math.max(0,mt-0.6)*3+Math.max(0,cn-0.5)*2;
 const groB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].growth:0.25;
-tribeGrowth[i]=(0.001+ag*0.001+industrialFactor*0.04)*(0.5+groB*2.0);}
+// Rural growth: 1-3% per step, scaling with agriculture + growth budget.
+// Pre-industrial ~1.5%, industrial ~3%. Much faster than old tribal growth
+// because these are farmers on fertile land, not total civilization capacity.
+tribeGrowth[i]=(0.01+ag*0.005+industrialFactor*0.015)*(0.5+groB*1.5);}
 
 // ── Food imports ──
 const foodImportPerTile=new Float32Array(n);
@@ -1113,7 +1120,7 @@ if(dep&&dep[ti]>0.1)rb+=rv[rk]*dep[ti]*0.03;}
 rCap*=(1+Math.min(0.3,rb));}}
 growthRate=tribeGrowth[ow];
 }else{
-rCap=fert*3.0*(1-tDiff[ti]*0.5)*0.15;// unowned: very low rural cap
+rCap=fert*3.0*(1-tDiff[ti]*0.5);// unowned: hunter-gatherer cap (original scale)
 growthRate=0.02;
 }
 if(rCap<=0.001&&cityPop[ti]<=0)continue;
@@ -1132,10 +1139,10 @@ if(ow>=0&&bgPop[ti]>rCap*0.8){
 const mxCity=tribeMaxCity[ow];
 if(cityPop[ti]<mxCity){
 // Transfer excess rural pop into settlement
-const excess=bgPop[ti]-rCap*0.7;// drain down to 70% rural cap
+const excess=bgPop[ti]-rCap*0.6;// drain down to 60% rural cap
 const room=mxCity-cityPop[ti];
-const transfer=Math.min(excess*0.3,room);// 30% of excess per step
-if(transfer>0.01){bgPop[ti]-=transfer;cityPop[ti]+=transfer;}}}
+const transfer=Math.min(excess*0.5,room);// 50% of excess per step
+if(transfer>0.001){bgPop[ti]-=transfer;cityPop[ti]+=transfer;}}}
 
 // ── City growth: settlements drain surrounding rural pop (urbanization pull) ──
 if(cityPop[ti]>0.1&&ow>=0){
@@ -1227,13 +1234,28 @@ const pull=(nOpportunity-myOpportunity)/(myOpportunity+0.05);
 const flow=Math.min(bgPop[ti]*0.1,baseFlow*pull*(1-tDiff[ni]));
 if(flow>0.001){bgPop[ti]-=flow;bgPop[ni]+=flow;}}}}}
 
-// Debug
-let maxBg=0,maxCity=0,bgAboveThresh=0;
+// Debug: detailed settlement diagnostics
+let maxBg=0,maxCity=0,bgAboveThresh=0,tilesAboveRCap=0,totalCityPop=0,settlementCount=0;
+let maxRCap=0,sampleBgPop=0,sampleRCap=0,sampleEra=0;
 for(let ti=0;ti<tw*th;ti++){
 if(bgPop[ti]>maxBg)maxBg=bgPop[ti];
 if(cityPop[ti]>maxCity)maxCity=cityPop[ti];
-if(owner[ti]<0&&bgPop[ti]>0.20)bgAboveThresh++;}
+if(cityPop[ti]>SETTLE_TIERS[0].min)settlementCount++;
+if(cityPop[ti]>0)totalCityPop+=cityPop[ti];
+if(owner[ti]<0&&bgPop[ti]>0.20)bgAboveThresh++;
+// Track tiles where bgPop exceeds rural cap (settlement formation should trigger)
+if(owner[ti]>=0&&tribeSizes[owner[ti]]>0){
+const owK=ter.tribeKnowledge[owner[ti]];
+if(owK){const em=tileEraMult(owK);
+const rc=ruralCap(tFert[ti],tDiff[ti],em);
+if(rc>maxRCap)maxRCap=rc;
+if(bgPop[ti]>rc*0.8)tilesAboveRCap++;
+// Sample a high-pop owned tile for diagnostics
+if(bgPop[ti]>sampleBgPop){sampleBgPop=bgPop[ti];sampleRCap=rc;sampleEra=em;}}}}
 ter._dbgMaxBgPop=maxBg;ter._dbgBgAboveThresh=bgAboveThresh;ter._dbgMaxCity=maxCity;
+ter._dbgTilesAboveRCap=tilesAboveRCap;ter._dbgSettlementCount=settlementCount;
+ter._dbgTotalCityPop=totalCityPop;ter._dbgMaxRCap=maxRCap;
+ter._dbgSampleBgPop=sampleBgPop;ter._dbgSampleRCap=sampleRCap;ter._dbgSampleEra=sampleEra;
 
 // ── Rebuild tribeCenters from cityPop peaks ──
 // Centers ARE the settlements. Capital = largest city. No separate spawning logic.
@@ -3079,7 +3101,7 @@ border:"1px solid rgba(201,184,122,0.1)"}}>
 <span style={{color:"#c9b87a"}}>{dominant.size}t</span></span>}
 {aliveK>0&&<span style={{fontSize:9,color:"#6a6458"}}>
 Ag {(avgAg*100|0)} Mt {(avgMet*100|0)} Nv {(avgNav*100|0)} Og {(avgOrg*100|0)}</span>}
-{ter&&<span style={{fontSize:9,color:"#886644"}}>bg:{ter._dbgMaxBgPop?.toFixed(2)} call:{ter._dbgBgCalls||0} abv:{ter._dbgBgAboveThresh} cc:{ter._dbgCrystalCandidates} sp:{ter._dbgCrystalSpawned||0}</span>}
+{ter&&<span style={{fontSize:9,color:"#886644"}}>bg:{ter._dbgMaxBgPop?.toFixed(2)} rcap:{ter._dbgMaxRCap?.toFixed(3)} era:{ter._dbgSampleEra?.toFixed(1)} abvRC:{ter._dbgTilesAboveRCap} city:{ter._dbgMaxCity?.toFixed(2)} stl:{ter._dbgSettlementCount} totC:{ter._dbgTotalCityPop?.toFixed(1)} | sample bg:{ter._dbgSampleBgPop?.toFixed(3)} rc:{ter._dbgSampleRCap?.toFixed(3)}</span>}
 </div>;})()}
 
 {/* ══ BOTTOM CENTER: VIEW/OVERLAY OPTIONS (larger) ══ */}
