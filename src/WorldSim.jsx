@@ -171,13 +171,20 @@ const wx2=fWX[fi],wy2=fWY[fi];
 // Wind vectors are small (max ~0.25) — amplify strongly for temperature transport
 // Target: Gulf Stream should push warm water ~500 pixels over 25 iterations
 const srcX=mx-wx2*60.0,srcY=my-wy2*60.0;
-const sx=Math.min(mW2-2,Math.max(0,srcX|0)),sy=Math.min(mH2-2,Math.max(0,srcY|0));
-const fdx=Math.max(0,Math.min(1,srcX-sx)),fdy=Math.max(0,Math.min(1,srcY-sy));
-const sxr=Math.min(mW2-1,sx+1);
-const upT=(prev[sy*mW2+sx]*(1-fdx)+prev[sy*mW2+sxr]*fdx)*(1-fdy)
-+(prev[(sy+1)*mW2+sx]*(1-fdx)+prev[(sy+1)*mW2+sxr]*fdx)*fdy;
+// Wrap X for toroidal map
+const sx=((Math.floor(srcX)%mW2)+mW2)%mW2,sy=Math.min(mH2-2,Math.max(0,srcX|0));
+const syC=Math.min(mH2-2,Math.max(0,Math.floor(srcY)));
+const fdx=Math.max(0,Math.min(1,srcX-Math.floor(srcX))),fdy=Math.max(0,Math.min(1,srcY-syC));
+const sxr=(sx+1)%mW2;
+let upT=(prev[syC*mW2+sx]*(1-fdx)+prev[syC*mW2+sxr]*fdx)*(1-fdy)
++(prev[Math.min(mH2-1,syC+1)*mW2+sx]*(1-fdx)+prev[Math.min(mH2-1,syC+1)*mW2+sxr]*fdx)*fdy;
+// Prevent ocean tiles from pulling hot land temps (causes coast shearing)
+// If this is ocean but the source sample is very different from local, dampen it
 const e2=elevation[fi],lt=Math.abs(py/H-0.5)*2;
 const locT=Math.max(0,Math.min(1,1-Math.pow(lt,2.0)*1.15-lt*lt*lt*0.1+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.45));
+if(e2<=0&&Math.abs(upT-prev[my*mW2+mx])>0.15){
+// Dampen extreme jumps at coast boundaries
+upT=prev[my*mW2+mx]*0.7+upT*0.3;}
 // Ocean base temp is cooler than land (water absorbs more solar energy as latent heat)
 // Ocean: slightly cooler in tropics (water buffers heat), slightly warmer at poles
 // Ocean is MUCH cooler in tropics (water has huge heat capacity), warmer at poles
@@ -192,7 +199,15 @@ else{const tb=Math.min(0.8,Math.max(0,e2-0.05)*3);
 // Land: warm advection penetrates more (0.45 base), cold less (0.25)
 const bi=(1-tb*0.5)*0.45,wb=upT>locT?1.4:0.7;
 const wi=Math.min(0.60,bi*wb);
-tGrid[my*mW2+mx]=locT*(1-wi)+upT*wi;}}}
+tGrid[my*mW2+mx]=locT*(1-wi)+upT*wi;}}
+// Smooth pass: 3x3 box blur on ocean tiles to remove coast shearing artifacts
+if(step%3===0){const sm=new Float32Array(tGrid);
+for(let sy2=1;sy2<mH2-1;sy2++)for(let sx2=0;sx2<mW2;sx2++){
+const si2=sy2*mW2+sx2;const e3=elevation[Math.min(H-1,sy2*2)*W+Math.min(W-1,sx2*2)];
+if(e3>0)continue;// only smooth ocean
+const l=(sx2-1+mW2)%mW2,r2=(sx2+1)%mW2;
+tGrid[si2]=(sm[si2]*4+sm[si2-mW2]+sm[si2+mW2]+sm[sy2*mW2+l]+sm[sy2*mW2+r2])/8;}}
+}
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){
 const fx=x/2,fy=y/2,ix=Math.min(mW2-2,fx|0),iy=Math.min(mH2-2,fy|0);
 const dx2=fx-ix,dy2=fy-iy;
