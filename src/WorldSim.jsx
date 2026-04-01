@@ -11,8 +11,6 @@ import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
 import { generateResources, tileResourceSummary, dominantResource, RESOURCES, RES_BY_ID } from "./resourceGen.js";
 import { computeRivers, riverName, RIVER_NAMES, RIVER_NONE, RIVER_STREAM, RIVER_TRIBUTARY, RIVER_MAJOR, RIVER_GREAT } from "./riverGen.js";
-// Web Worker for world generation - inline URL approach for singlefile compatibility
-import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 import { initGPUPopSolver, stepPopGPU } from "./gpuPopSolver.js";
 
 // GPU population solver (lazy-initialized)
@@ -2516,42 +2514,9 @@ const imgRef=useRef(null);
 const windParticlesRef=useRef(null);
 const windAnimRef=useRef(null);
 const W=1920,H=960,CW=CW_FLAT;
-const workerRef=useRef(null);
 const generate=useCallback((s,ol)=>{
 let w;
 if(presetRef.current==="import"&&importedWorldRef.current){w=importedWorldRef.current;importedWorldRef.current=null;}
-else if(presetRef.current==="tectonic"){
-// Tectonic mode: try Web Worker for off-main-thread generation
-try{
-if(workerRef.current){workerRef.current.terminate();}
-const worker=new WorldGenWorker();
-workerRef.current=worker;
-worker.onmessage=(e)=>{
-if(e.data.type==='result'){
-const wData=e.data.world;
-// Reconstruct Float32Arrays from transferred buffers
-const w2={...wData,width:W,height:H,preset:'tectonic',_seed:s};
-setWorld(w2);worldRef.current=w2;
-const t=createTerritory(w2);terRef.current=t;
-setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
-terrainCache.current=null;imgRef.current=null;
-console.log(`[Worker] World gen complete in ${e.data.time?.toFixed(0)}ms`);
-}else if(e.data.type==='fallback'||e.data.type==='error'){
-// Fall back to main thread
-if(e.data.type==='error')console.warn('[Worker] Error:',e.data.message);
-const w3=generateWorld(W,H,s,'tectonic',ol!==undefined?ol:oceanLevelRef.current,true,false);
-setWorld(w3);worldRef.current=w3;const t=createTerritory(w3);terRef.current=t;
-setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
-terrainCache.current=null;imgRef.current=null;}};
-worker.onerror=(err)=>{
-console.warn('[Worker] Failed:',err.message);
-const w3=generateWorld(W,H,s,'tectonic',ol!==undefined?ol:oceanLevelRef.current,true,false);
-setWorld(w3);worldRef.current=w3;const t=createTerritory(w3);terRef.current=t;
-setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
-terrainCache.current=null;imgRef.current=null;};
-worker.postMessage({type:'generate',W,H,seed:s,preset:'tectonic',oceanLevel:ol!==undefined?ol:oceanLevelRef.current,realWind:false,tecParams:_tecParams});
-return;}catch(e){console.warn('[Worker] Init failed:',e);}}
-// Non-tectonic presets or worker failure: run on main thread
 if(!w){w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,true,useRealWindRef.current);}
 setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
