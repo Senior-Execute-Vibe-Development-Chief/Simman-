@@ -1313,9 +1313,7 @@ growthRate=0.02;
 }
 if(farmCap<=0.001&&cp<=0)continue;
 if(farmCap>0.001&&bp<farmCap){
-bgPop[ti]=bp+bp*growthRate*(1-bp/farmCap);
-// Track tiles crossing crystallization threshold for fast candidate scan
-if(bp<0.12&&bgPop[ti]>=0.12&&ow<0&&ter._crystalCandidateList)ter._crystalCandidateList.push(ti);}
+bgPop[ti]=bp+bp*growthRate*(1-bp/farmCap);}
 
 // ── Urbanization ──
 // Cities form for NON-FOOD reasons (geography). Food arriving = carrying capacity.
@@ -1959,6 +1957,8 @@ function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // Clear per-step caches
 if(!_resValCache)_resValCache=new Map();else _resValCache.clear();
+// ── Per-section timing (logged every 64 steps) ──
+const _prof=ter.stepCount%64===0;const _ts=_prof?[performance.now()]:null;
 // ── Knowledge & population step (every 8 ticks) ──
 if(ter.stepCount%8===0&&ter.tribeKnowledge){
 // Transport network: recompute every 32 steps (staggered to avoid spike)
@@ -1972,6 +1972,7 @@ ter._dbgTimeBgPop=(_t1-_t0).toFixed(1);ter._dbgTimeRest=(_t2-_t1).toFixed(1);
 // Recompute ports periodically
 // Recompute ports — staggered +8 from transport to spread load
 if(ter.stepCount%32===8){for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}}
+if(_prof)_ts.push(performance.now());// [1] after knowledge/pop block
 const _tExpStart=performance.now();
 // ── Expansion into empty land (directional, pressure-driven) ──
 // Reuse frontier marker array across frames (avoids 1.8MB alloc per frame)
@@ -2400,6 +2401,9 @@ const tilesToClaim=stTiles?[...stTiles]:[];
 if(!stTiles){for(let i=0;i<tw*th;i++)if(owner[i]===st)tilesToClaim.push(i);}
 for(const i of tilesToClaim)claimTile(ter,i,bn);}}}
 ter._dbgTimeExpansion=(performance.now()-_tExpStart).toFixed(1);
+if(_prof){_ts.push(performance.now());// [2] after all expansion+conflict+frag
+const t0=_ts[0],t1=_ts[1]||t0,t2=_ts[2];
+console.log(`[PROF step ${ter.stepCount}] pop/know:${(t1-t0).toFixed(1)}ms exp+conflict+frag:${(t2-t1).toFixed(1)}ms TOTAL:${(t2-t0).toFixed(1)}ms frontier:${ter.frontierList.length} tribes:${tribeSizes.filter(s=>s>0).length}`);}
 return ter;}
 
 // ── Non-linear time: starts at 3000 BC, accelerates into modernity ──
@@ -3080,7 +3084,12 @@ const curStep=terRef.current.stepCount;
 // Early Bronze Age runs faster, modern era slower
 const eraFactor=curStep<100?3:curStep<200?2:curStep<500?1.5:1;
 const sub=Math.min(3,Math.max(1,Math.ceil(speedRef.current/3*eraFactor)));// cap at 3 steps/frame to prevent freezing
-for(let s=0;s<sub;s++)terRef.current=stepTerritory(terRef.current,worldRef.current);
+// Time-budgeted sim: stop stepping if we've used >8ms this frame
+const _simStart=performance.now();
+for(let s=0;s<sub;s++){
+terRef.current=stepTerritory(terRef.current,worldRef.current);
+if(performance.now()-_simStart>8)break;// yield to renderer
+}
 setCoverage(Math.round(terRef.current.settled/terRef.current.landCount*100));
 let alive=0,bestId=-1,bestPow=0;const ter2=terRef.current;
 for(let i=0;i<ter2.tribeSizes.length;i++){if(ter2.tribeSizes[i]<=0)continue;alive++;
