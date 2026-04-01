@@ -1957,7 +1957,15 @@ function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // Clear per-step caches
 if(!_resValCache)_resValCache=new Map();else _resValCache.clear();
-// ── Per-section timing (logged every 64 steps) ──
+// ── Per-step timing + size monitoring ──
+const _stepT0=performance.now();
+// Log sizes every 8 steps to catch runaway growth
+if(ter.stepCount%8===0){
+const nTribes=tribeSizes.filter(s=>s>0).length;
+const fl=ter.frontierList?ter.frontierList.length:0;
+const maxTribeSz=Math.max(...tribeSizes);
+const totalCenters=tribeCenters.reduce((s,c)=>s+(c?c.length:0),0);
+console.log(`[SIM ${ter.stepCount}] tribes:${nTribes} frontier:${fl} maxTribeSz:${maxTribeSz} totalCenters:${totalCenters} settled:${ter.settled}/${ter.landCount}`);}
 const _prof=ter.stepCount%64===0;const _ts=_prof?[performance.now()]:null;
 // ── Knowledge & population step (every 8 ticks) ──
 if(ter.stepCount%8===0&&ter.tribeKnowledge){
@@ -2401,9 +2409,9 @@ const tilesToClaim=stTiles?[...stTiles]:[];
 if(!stTiles){for(let i=0;i<tw*th;i++)if(owner[i]===st)tilesToClaim.push(i);}
 for(const i of tilesToClaim)claimTile(ter,i,bn);}}}
 ter._dbgTimeExpansion=(performance.now()-_tExpStart).toFixed(1);
-if(_prof){_ts.push(performance.now());// [2] after all expansion+conflict+frag
-const t0=_ts[0],t1=_ts[1]||t0,t2=_ts[2];
-console.log(`[PROF step ${ter.stepCount}] pop/know:${(t1-t0).toFixed(1)}ms exp+conflict+frag:${(t2-t1).toFixed(1)}ms TOTAL:${(t2-t0).toFixed(1)}ms frontier:${ter.frontierList.length} tribes:${tribeSizes.filter(s=>s>0).length}`);}
+const _stepTotal=performance.now()-_stepT0;
+if(_stepTotal>5){// log any step that takes >5ms
+console.warn(`[SLOW step ${ter.stepCount}] ${_stepTotal.toFixed(1)}ms frontier:${nfl.length} tribes:${tribeSizes.filter(s=>s>0).length} settled:${ter.settled}`);}
 return ter;}
 
 // ── Non-linear time: starts at 3000 BC, accelerates into modernity ──
