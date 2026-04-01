@@ -40,7 +40,7 @@ if(dd<d1){d2=d1;d1=dd;}else if(dd<d2)d2=dd;}
 return[Math.sqrt(d1),Math.sqrt(d2)];}
 function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};}
 
-const RES=1;
+const RES=2; // Sim tile resolution: 2 = each sim tile covers 2×2 pixels (960×480 = 460K tiles)
 // ── Mercator projection helpers ──
 const MAX_LAT_DEG = 78;
 const MAX_LAT = MAX_LAT_DEG * Math.PI / 180;
@@ -1445,65 +1445,32 @@ for(let c=1;c<nc.length;c++)nc[c].prestige=Math.min(2.0,nc[c].prestige+0.02);}}}
 if(ter.stepCount%16!==0)return;// check every 16 steps
 let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
 if(alive>=80)return;
-// Much higher bar: need real fertility concentration, not just any habitable tile
-const CRYSTAL_THRESHOLD=0.12;// low enough for moderate fertility land to crystallize
-const MIN_SPACING=Math.round(tw*0.02);// very close spacing allowed — tribes form in gaps between empires
-// Find multiple crystallization candidates — spawn up to 3 per check
-// Use high-pop unowned tile list instead of full 1.8M scan (300-600× faster)
-if(!ter._crystalCandidateList){
-// Build initial list on first call
-const cl=[];for(let ti=0;ti<tw*th;ti++){
-if(bgPop[ti]>=CRYSTAL_THRESHOLD&&owner[ti]<0&&tElev[ti]>0)cl.push(ti);}
-ter._crystalCandidateList=cl;}
+const CRYSTAL_THRESHOLD=0.12;
+const MIN_SPACING=Math.round(tw*0.02);
+// Sample a small random subset of unowned high-pop tiles instead of scanning all.
+// By 1500 BC there can be 100K+ qualifying tiles — scanning all is O(n × tribes × centers) = freeze.
+// Random sampling finds the best candidates probabilistically without exhaustive search.
 const crystalCandidates=[];
-for(let ci=0;ci<ter._crystalCandidateList.length;ci++){
-const ti=ter._crystalCandidateList[ci];
-// Remove tiles that no longer qualify (owned or pop dropped)
-if(owner[ti]>=0||bgPop[ti]<CRYSTAL_THRESHOLD){
-ter._crystalCandidateList[ci]=ter._crystalCandidateList[ter._crystalCandidateList.length-1];
-ter._crystalCandidateList.pop();ci--;continue;}
-// Also add newly qualifying tiles from recent bgPop growth (done lazily below)
-// Fertility requirement decreases over time as agriculture tech matures globally
-const fertReq=Math.max(0.08,0.25-ter.stepCount*0.0003);// 0.25 at start, 0.10 by step 500
-if(tFert[ti]<fertReq)continue;
+const sampleSize=Math.min(500,tw*th);// check at most 500 random tiles
+const fertReq=Math.max(0.08,0.25-ter.stepCount*0.0003);
+for(let si=0;si<sampleSize;si++){
+const ti=Math.floor(Math.random()*tw*th);
+if(bgPop[ti]<CRYSTAL_THRESHOLD||owner[ti]>=0||tElev[ti]<=0||tFert[ti]<fertReq)continue;
 const tx=ti%tw,ty=(ti-tx)/tw;
 let tooClose=false;
 for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0)continue;
 for(const c of ter.tribeCenters[t]){const d=tDistW(tx,ty,c.x,c.y,tw);
 if(d<MIN_SPACING){tooClose=true;break;}}if(tooClose)break;}
 if(tooClose)continue;
-// Don't spawn ON owned tiles, but allow spawning near them (removes the 4-tile buffer)
-if(owner[ti]>=0)continue;
-// Score by local population density + fertility (rivers/coasts naturally win)
+// Quick score: local pop density in 4-tile radius (cheaper than 9×9)
 let localPop=0,localFert=0;
-for(let dy=-4;dy<=4;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
-for(let dx=-4;dx<=4;dx++){const nx=((tx+dx)%tw+tw)%tw;
-const ni=ny*tw+nx;if(tElev[ni]>0){localPop+=bgPop[ni];localFert+=tFert[ni];}}}// count ALL tiles, not just unowned
-if(localPop<1.0)continue;// lowered threshold
-// Score: population × fertility + era-valuable resources at this site
-// Compute regional knowledge average for resource valuation
-let regionKnow=null;let rkCount=0;
-for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0)continue;
-for(const c of ter.tribeCenters[t]){if(tDistW(tx,ty,c.x,c.y,tw)<30){
-if(!regionKnow)regionKnow={agriculture:0,metallurgy:0,navigation:0,construction:0,organization:0,trade:0};
-const nk=ter.tribeKnowledge[t];for(const dom of KNOW_DOMAINS)regionKnow[dom]+=nk[dom];rkCount++;break;}}}
-if(regionKnow&&rkCount>0)for(const dom of KNOW_DOMAINS)regionKnow[dom]/=rkCount;
-const crRv=resourceValues(regionKnow);
-// Resource value at this tile: valuable resources attract settlement
-let resScore=0;if(ter.deposits){for(const rk of RES_KEYS){
-const dep=ter.deposits[rk];if(dep&&dep[ti]>0.1)resScore+=crRv[rk]*dep[ti];}}
-// Proximity to existing civilization affects KNOWLEDGE INHERITANCE, not crystallization.
-// China, Egypt, Indus, Mesoamerica all developed independently — the best river valleys
-// crystallize based on their OWN quality, not proximity to other civs.
-// However, nearby civs DO make it slightly easier (cultural stimulation, trade contact).
-let nearestCivDist=Infinity;
-for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0)continue;
-for(const c of ter.tribeCenters[t]){const d=tDistW(tx,ty,c.x,c.y,tw);
-if(d<nearestCivDist)nearestCivDist=d;}}
-// Mild proximity bonus: nearby civs give +50% score boost, not a hard gate.
-// Distant locations still crystallize if their valley quality is high enough.
-const proxBonus=nearestCivDist<80?1.5:nearestCivDist<200?1.2:1.0;
-const score=(localPop*localFert*tFert[ti]+resScore*3)*proxBonus;
+for(let dy=-3;dy<=3;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
+for(let dx=-3;dx<=3;dx++){const nx=((tx+dx)%tw+tw)%tw;
+const ni=ny*tw+nx;if(tElev[ni]>0){localPop+=bgPop[ni];localFert+=tFert[ni];}}}
+if(localPop<1.0)continue;
+// Skip the expensive per-tribe-center regional knowledge and proximity loops.
+// Use a simple score: local fertility density × pop density
+const score=localPop*localFert*tFert[ti];
 if(score>0.5)crystalCandidates.push({ti,tx,ty,score});}
 // Sort by score, spawn up to 3 per check
 crystalCandidates.sort((a,b)=>b.score-a.score);
@@ -1519,45 +1486,40 @@ const tx=bestTi%tw,ty=(bestTi-tx)/tw;
 // Before creating tribe, check nearby civs to inherit knowledge.
 // A new civilization forming in 1500 AD near iron-age neighbors doesn't start from stone age.
 // It inherits roughly 60% of the average knowledge of civs within range 20.
+// Inherit knowledge from nearby tribes (check capitals only, not all centers)
 let nearKnow=null;let nearCount=0;
-for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0)continue;
-for(const c of ter.tribeCenters[t]){const d=tDistW(tx,ty,c.x,c.y,tw);
-if(d<25){// within cultural influence range
+for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0||!ter.tribeCenters[t][0])continue;
+const c=ter.tribeCenters[t][0];// capital only
+const d=tDistW(tx,ty,c.x,c.y,tw);
+if(d<25){
 if(!nearKnow)nearKnow={agriculture:0,metallurgy:0,navigation:0,construction:0,organization:0,trade:0};
-const nk=ter.tribeKnowledge[t];
-for(const dom of KNOW_DOMAINS)nearKnow[dom]+=nk[dom];
-nearCount++;break;}}}// only count each tribe once
+const nk=ter.tribeKnowledge[t];for(const dom of KNOW_DOMAINS)nearKnow[dom]+=nk[dom];nearCount++;}}
 const nid=newTribe(ter,tx,ty,-1);
-// Override the zero knowledge with inherited knowledge from neighbors
 const newK=ter.tribeKnowledge[nid];
-if(nearKnow&&nearCount>0){// inherit 60% of neighbor average
-for(const dom of KNOW_DOMAINS)newK[dom]=Math.min(0.9,(nearKnow[dom]/nearCount)*0.6);}
-// Baseline: all new tribes get minimum agriculture (farming exists everywhere by 3000 BC)
-// + slight metallurgy if near an existing bronze-age civ
-newK.agriculture=Math.max(newK.agriculture,0.25+Math.random()*0.15);// 0.25-0.40 farming baseline
-// Flood-fill from best tile: claim all connected tiles with significant bgPop
-// Claim tiles: first unowned, then secede from neighbors if needed
-// A new tribe forming inside an empire represents rebellion/secession
-const visited=new Uint8Array(tw*th);
+if(nearKnow&&nearCount>0){for(const dom of KNOW_DOMAINS)newK[dom]=Math.min(0.9,(nearKnow[dom]/nearCount)*0.6);}
+newK.agriculture=Math.max(newK.agriculture,0.25+Math.random()*0.15);
+// Flood-fill to claim nearby populated tiles (reuse shared visited buffer)
+if(!ter._crystalVisited)ter._crystalVisited=new Uint8Array(tw*th);
+const visited=ter._crystalVisited;
+// Clear only the tiles we visit (not the whole array)
 const stack=[bestTi];visited[bestTi]=1;
+const visitedTiles=[bestTi];// track for cleanup
 let claimed=0;const maxClaim=12;
 while(stack.length>0&&claimed<maxClaim){
 const ci=stack.pop();
 if(tElev[ci]<=0)continue;
-// Can claim unowned tiles freely, or SECEDE from another tribe's territory
-// (represents local population organizing independently)
 if(owner[ci]>=0&&owner[ci]!==nid){
-// Only secede if we haven't claimed enough tiles yet (need minimum viable size)
-if(claimed>=6)continue;// already big enough, stop taking from others
-}
+if(claimed>=6)continue;}
 claimTile(ter,ci,nid);
 if(!ter.frontier[ci]){ter.frontier[ci]=1;ter.frontierList.push(ci);}
 claimed++;
 const cx=ci%tw,cy2=(ci-cx)/tw;
 for(const[ddx,ddy]of DIRS){const nnx=((cx+ddx)%tw+tw)%tw,nny=cy2+ddy;
 if(nny<0||nny>=th)continue;const nni=nny*tw+nnx;
-if(visited[nni])continue;visited[nni]=1;
+if(visited[nni])continue;visited[nni]=1;visitedTiles.push(nni);
 if(tElev[nni]>0&&bgPop[nni]>=0.05){stack.push(nni);}}}
+// Clear visited buffer (only the tiles we touched, not the whole array)
+for(const vt of visitedTiles)visited[vt]=0;
 // Clear remaining bgPop in wider area (people absorbed or displaced)
 for(let dy=-6;dy<=6;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
 for(let dx=-6;dx<=6;dx++){const nx=((tx+dx)%tw+tw)%tw;
@@ -3117,7 +3079,7 @@ const curStep=terRef.current.stepCount;
 // Scaled by user speed setting.
 // Early Bronze Age runs faster, modern era slower
 const eraFactor=curStep<100?3:curStep<200?2:curStep<500?1.5:1;
-const sub=Math.max(1,Math.ceil(speedRef.current/3*eraFactor));
+const sub=Math.min(3,Math.max(1,Math.ceil(speedRef.current/3*eraFactor)));// cap at 3 steps/frame to prevent freezing
 for(let s=0;s<sub;s++)terRef.current=stepTerritory(terRef.current,worldRef.current);
 setCoverage(Math.round(terRef.current.settled/terRef.current.landCount*100));
 let alive=0,bestId=-1,bestPow=0;const ter2=terRef.current;
