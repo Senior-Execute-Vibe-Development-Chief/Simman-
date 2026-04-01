@@ -1297,8 +1297,31 @@ if(farmCap<=0.001&&cp<=0)continue;
 // Logistic growth: farmers grow to fill farmland
 if(farmCap>0.001&&bp<farmCap*1.05){
 bgPop[ti]=bp+bp*growthRate*(1-bp/(farmCap*1.05));}
-// Slight decay if over cap (natural attrition)
-if(bp>farmCap*1.2)bgPop[ti]=Math.max(0.01,bp*0.99);
+
+// ── Excess farmers → nearest city ──
+// When a farm tile is full, surplus kids leave for the nearest city.
+// Historically: ~50% went to nearest market town, ~15% to frontier.
+// This is the PRIMARY driver of city growth — not internal reproduction.
+if(bgPop[ti]>farmCap*0.9&&ow>=0){
+const excess=bgPop[ti]-farmCap*0.85;// people above 85% capacity want to leave
+if(excess>0.001){
+// Find nearest city tile in 4-neighborhood (short-range migration)
+const tx2=ti%tw,ty2=(ti-tx2)/tw;
+let bestCity=-1,bestPull=0;
+for(let d=0;d<4;d++){
+const nx=((tx2+DX[d])%tw+tw)%tw,ny=ty2+DY[d];if(ny<0||ny>=th)continue;
+const ni=ny*tw+nx;
+if(owner[ni]===ow&&cityPop[ni]>0.01){
+// Pull proportional to city size (big cities attract more)
+const pull=Math.sqrt(cityPop[ni]);
+if(pull>bestPull){bestPull=pull;bestCity=ni;}}}
+if(bestCity>=0){
+// Move excess farmers to city
+const flow=Math.min(excess*0.3,bgPop[ti]*0.05);// 30% of excess per step, max 5% of tile
+bgPop[ti]-=flow;cityPop[bestCity]+=flow;
+}else{
+// No nearby city: slight natural attrition (or they migrate via normal flow)
+if(bgPop[ti]>farmCap*1.2)bgPop[ti]*=0.99;}}}
 
 // ── Urbanization: surplus food → city growth ──
 if(ow>=0&&tribeSizes[ow]>0){
@@ -1308,12 +1331,20 @@ const tCostHere=hasTrans?tCost[ti]:10;
 const transportFactor=1/(1+tCostHere*0.1);
 const localMaxCity=mxCity*transportFactor;
 
-// City growth from food surplus
-if(surplus>1.1&&cp>0&&cp<localMaxCity){
-// Growth rate: slow. Cities grow from rural migration, not reproduction.
-// Cities had negative natural growth until ~1800 (disease, crowding).
-const growthPot=Math.min(0.02,(surplus-1.0)*0.01)*transportFactor;
-cityPop[ti]+=growthPot*cp;}
+// City growth: absorb tribal food surplus as population.
+// The surplus represents excess food that can feed non-farmers.
+// Cities grow by receiving rural migrants (surplus kids who can't inherit land).
+// Growth is proportional to SURPLUS (not city size) — a small market town
+// with massive food surplus grows fast. A big city with tight food grows slow.
+// Transport access determines how much surplus this city can access.
+if(surplus>1.05&&cp>0&&cp<localMaxCity){
+// Available surplus per city: total tribal surplus / number of cities,
+// weighted by transport access (well-connected cities get more)
+const surplusPool=tribeFoodSurplus[ow]*transportFactor;
+const cityCount=Math.max(1,tribeTotalCity[ow]);
+const myShare=surplusPool/(cityCount+1)*0.01;// small fraction per step
+const growth=Math.min(myShare,localMaxCity-cp,0.5);// cap growth per step
+if(growth>0.001)cityPop[ti]+=growth;}
 
 // New settlement: needs geographic/strategic reason + food surplus
 // Historical drivers: river trade nexus, natural harbor, resource deposit,
