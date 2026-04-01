@@ -1296,30 +1296,17 @@ ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]/tribeTotalCity[i];}
 // ── Debug counters ──
 let maxBg=0,maxCity=0,settlementCount=0;
 
-// ── PASS 2: Per-tile growth + urbanization + migration ──
-// Split into fast path (unowned: simple growth only) and full path (owned: full sim).
-// Early game most tiles are unowned with tiny pop — fast path skips urbanization+migration.
-for(let li=0;li<landCount;li++){
-const ti=landTiles[li];
-const fert=tFert[ti];const ow=owner[ti];
+// ── PASS 2A: Owned tiles only — full growth + urbanization + migration ──
+// Uses tribeTiles index: iterates ONLY tiles owned by active tribes.
+// With 2000 settled tiles out of 609K, this is 300x fewer iterations.
+const n2=ter.tribeCenters.length;
+for(let tid=0;tid<n2;tid++){
+if(tribeSizes[tid]<=0)continue;
+const tileSet=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
+if(!tileSet||tileSet.size===0)continue;
+for(const ti of tileSet){
+const fert=tFert[ti];const ow=tid;
 const bp=bgPop[ti];const cp=cityPop[ti];
-
-if(bp<0.001&&cp<=0&&ow<0)continue;// truly empty
-
-// ── FAST PATH: unowned tiles — simple logistic growth, no migration/cities ──
-// Only run every 4th bgPop call (every 64 steps) with 4x growth to compensate.
-// This reduces 609K iterations to every 64 steps instead of every 16.
-if(ow<0){
-if(!_doFastPath)continue;// skip unowned tiles on 3 out of 4 bgPop calls
-if(cp<=0&&bp>0.001){
-const farmCap=fert*2.0*(1-tDiff[ti]*0.5);
-if(bp>=farmCap*0.9)continue;// at equilibrium
-if(farmCap>0.001)bgPop[ti]=Math.min(farmCap,bp+bp*0.08*(1-bp/farmCap));}// 4x growth rate
-if(cp>0){cityPop[ti]=Math.max(0,cp*0.88);bgPop[ti]+=cp*0.036;}// 4x decay
-continue;}
-
-// ── FULL PATH: owned tiles — growth + urbanization + migration ──
-if(tribeSizes[ow]<=0)continue;
 {const farmCap=fert*(1+tribeSurplusFrac[ow]*3)*(1-tDiff[ti]*0.4);
 if(farmCap>0.001&&bp<farmCap)bgPop[ti]=bp+bp*tribeGrowth[ow]*(1-bp/farmCap);}
 
