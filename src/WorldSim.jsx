@@ -170,7 +170,7 @@ const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
 const wx2=fWX[fi],wy2=fWY[fi];
 // Wind vectors are small (max ~0.25) — amplify strongly for temperature transport
 // Target: Gulf Stream should push warm water ~500 pixels over 25 iterations
-const srcX=mx-wx2*45.0,srcY=my-wy2*45.0;
+const srcX=mx-wx2*60.0,srcY=my-wy2*60.0;
 const sx=Math.min(mW2-2,Math.max(0,srcX|0)),sy=Math.min(mH2-2,Math.max(0,srcY|0));
 const fdx=Math.max(0,Math.min(1,srcX-sx)),fdy=Math.max(0,Math.min(1,srcY-sy));
 const sxr=Math.min(mW2-1,sx+1);
@@ -183,12 +183,15 @@ const locT=Math.max(0,Math.min(1,1-Math.pow(lt,2.0)*1.15-lt*lt*lt*0.1+Math.exp(-
 // Ocean is MUCH cooler in tropics (water has huge heat capacity), warmer at poles
 const oceanAdj=e2<=0?(lt<0.3?0.78:lt<0.5?0.85:lt<0.7?0.95:1.1):1.0;
 const adjLocT=locT*oceanAdj;
-// Tropical ocean: less wind mixing (cooling must stick). Polar: more wind mixing.
-if(e2<=0){const wMix=lt<0.3?0.30:lt<0.6?0.45:0.55;
-tGrid[my*mW2+mx]=adjLocT*(1-wMix)+upT*wMix;}// 55% wind influence — strong ocean currents
+// Ocean: wind transport dominates — once ocean picks up warm/cold water, it persists
+// Use PREVIOUS value (which already has transport) blended with new transport, not base temp
+if(e2<=0){const wMix=lt<0.3?0.30:lt<0.6?0.50:0.60;
+// Blend previous temp (momentum) with wind-advected — base temp only pulls weakly
+tGrid[my*mW2+mx]=prev[my*mW2+mx]*0.7+upT*0.25+adjLocT*0.05;}// 55% wind influence — strong ocean currents
 else{const tb=Math.min(0.8,Math.max(0,e2-0.05)*3);
-const bi=(1-tb*0.5)*0.35,wb=upT>locT?1.3:0.8;// stronger land advection
-const wi=Math.min(0.50,bi*wb);
+// Land: warm advection penetrates more (0.45 base), cold less (0.25)
+const bi=(1-tb*0.5)*0.45,wb=upT>locT?1.4:0.7;
+const wi=Math.min(0.60,bi*wb);
 tGrid[my*mW2+mx]=locT*(1-wi)+upT*wi;}}}
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){
 const fx=x/2,fy=y/2,ix=Math.min(mW2-2,fx|0),iy=Math.min(mH2-2,fy|0);
