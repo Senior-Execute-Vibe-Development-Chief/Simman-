@@ -1294,36 +1294,14 @@ growthRate=0.02;
 }
 if(farmCap<=0.001&&cp<=0)continue;
 
-// Logistic growth: farmers grow to fill farmland
-if(farmCap>0.001&&bp<farmCap*1.05){
-bgPop[ti]=bp+bp*growthRate*(1-bp/(farmCap*1.05));}
-
-// ── Excess farmers → nearest city ──
-// When a farm tile is full, surplus kids leave for the nearest city.
-// Historically: ~50% went to nearest market town, ~15% to frontier.
-// This is the PRIMARY driver of city growth — not internal reproduction.
-if(bgPop[ti]>farmCap*0.9&&ow>=0){
-const excess=bgPop[ti]-farmCap*0.85;// people above 85% capacity want to leave
-if(excess>0.001){
-// Find nearest city tile in 4-neighborhood (short-range migration)
-const tx2=ti%tw,ty2=(ti-tx2)/tw;
-let bestCity=-1,bestPull=0;
-for(let d=0;d<4;d++){
-const nx=((tx2+DX[d])%tw+tw)%tw,ny=ty2+DY[d];if(ny<0||ny>=th)continue;
-const ni=ny*tw+nx;
-if(owner[ni]===ow&&cityPop[ni]>0.01){
-// Pull proportional to city size (big cities attract more)
-const pull=Math.sqrt(cityPop[ni]);
-if(pull>bestPull){bestPull=pull;bestCity=ni;}}}
-if(bestCity>=0){
-// Move excess farmers to city
-const flow=Math.min(excess*0.3,bgPop[ti]*0.05);// 30% of excess per step, max 5% of tile
-bgPop[ti]-=flow;cityPop[bestCity]+=flow;
-}else{
-// No nearby city: slight natural attrition (or they migrate via normal flow)
-if(bgPop[ti]>farmCap*1.2)bgPop[ti]*=0.99;}}}
+// Logistic growth: farmers grow to fill farmland, then stop.
+// Farm tiles maintain their ideal population. No overflow, no depopulation.
+if(farmCap>0.001&&bp<farmCap){
+bgPop[ti]=bp+bp*growthRate*(1-bp/farmCap);}
 
 // ── Urbanization ──
+// Cities form for NON-FOOD reasons (geography). Food arriving = carrying capacity.
+// City pop is simply: how much food reaches this city via transport.
 if(ow>=0&&tribeSizes[ow]>0){
 const surplus=ter._tribeFoodSurplus[ow];
 const mxCity=tribeMaxCity[ow];
@@ -1331,52 +1309,41 @@ const tCostHere=hasTrans?tCost[ti]:10;
 const transportFactor=1/(1+tCostHere*0.1);
 const localMaxCity=mxCity*transportFactor;
 
-// ── SEEDING: cities form for NON-FOOD reasons ──
-// A shrine, a trade crossing, a harbor, a mine, a fort.
-// Food surplus PERMITS growth but doesn't CAUSE the city.
-// The seed can form even without current surplus — it just won't grow.
+// ── SEEDING: cities form for non-food reasons ──
+// River confluence, harbor, mine, defensive hill, trade crossing.
+// Just needs SOME nearby population. Seed is tiny — won't grow without food.
 if(cp<0.01){
 let siteQuality=0;
-// Rivers: trade nexus, water access, transport hub
 if(riverMag){const rm=riverMag[ti];
-if(rm>=4)siteQuality+=3.0;// great river = near-certain settlement
-else if(rm>=3)siteQuality+=2.0;// major river
-else if(rm>=2)siteQuality+=0.5;}// tributary
-// Coast: harbor, fishing, maritime trade
+if(rm>=4)siteQuality+=3.0;
+else if(rm>=3)siteQuality+=2.0;
+else if(rm>=2)siteQuality+=0.5;}
 if(tCoast[ti])siteQuality+=1.5;
-// Transport crossroads
 siteQuality+=transportFactor*0.4;
-// Resources: mines attract craftsmen
 if(ter.deposits){for(let ri=0;ri<3;ri++){
 const rk2=['copper','iron','salt'][ri];const dep=ter.deposits[rk2];
 if(dep&&dep[ti]>0.2)siteQuality+=0.5;}}
-// Defensive position
 if(tDiff[ti]>0.3&&fert>0.15)siteQuality+=0.3;
-// Need SOME people nearby (can't build a city in empty wilderness)
-// But don't need food SURPLUS — just population
-if(siteQuality>0.8&&bgPop[ti]>0.05){
-// Tiny seed: a few families settle at the crossroads/harbor/mine
-cityPop[ti]=0.01;// 10 people, basically a campsite
-}}
+if(siteQuality>0.8&&bgPop[ti]>0.05)cityPop[ti]=0.01;}
 
-// ── GROWTH: cities grow ONLY when food can reach them ──
-// Food surplus is the PERMIT. Transport access is the GATE.
-// No surplus = city stays a hamlet. Good surplus + river = Rome.
-if(cp>0&&cp<localMaxCity&&surplus>1.05){
-// Growth from tribal surplus, weighted by transport access
-const surplusPool=tribeFoodSurplus[ow]*transportFactor;
-const cityCount=Math.max(1,tribeTotalCity[ow]);
-const myShare=surplusPool/(cityCount+1)*0.01;
-const growth=Math.min(myShare,localMaxCity-cp,0.5);
-if(growth>0.001)cityPop[ti]+=growth;}
-
-// ── SHRINK: food deficit or lost transport ──
-if(cp>0.01){
-if(surplus<0.8){
-const shrink=cp*Math.min(0.04,(1.0-surplus)*0.03);
-cityPop[ti]=Math.max(0,cp-shrink);bgPop[ti]+=shrink*0.7;}
-if(cp>localMaxCity*1.1){
-const shrink2=cp*0.02;cityPop[ti]-=shrink2;bgPop[ti]+=shrink2*0.5;}}
+// ── GROWTH: food arriving = people ──
+// City carrying capacity = food surplus reachable via transport.
+// Population grows toward that capacity. No food = no growth.
+// Food surplus is shared across tribe's cities, weighted by transport access.
+if(cp>0){
+const foodReaching=surplus>0.01?tribeFoodSurplus[ow]*transportFactor/(Math.max(1,tribeTotalCity[ow])+1):0;
+// City capacity = min(tech max, food supply, transport max)
+const foodCap=Math.min(localMaxCity,foodReaching);
+if(cp<foodCap&&surplus>1.0){
+// Grow toward food-determined capacity. Slow — cities take decades to fill.
+const growRate=Math.min(0.03,(foodCap-cp)*0.02);
+cityPop[ti]+=growRate;}
+// Shrink if over capacity (food cut off, transport lost, tech regressed)
+if(cp>foodCap*1.1&&foodCap>0){
+cityPop[ti]=Math.max(0.01,cp*0.97);}// 3% decay per step
+if(surplus<0.7&&cp>0.01){
+cityPop[ti]=Math.max(0.01,cp*(0.96+surplus*0.02));}// famine: 2-4% loss
+}
 }
 
 // Unowned city decay
