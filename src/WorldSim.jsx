@@ -40,7 +40,7 @@ if(dd<d1){d2=d1;d1=dd;}else if(dd<d2)d2=dd;}
 return[Math.sqrt(d1),Math.sqrt(d2)];}
 function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};}
 
-const RES=2; // Sim tile resolution: 2 = each sim tile covers 2×2 pixels (960×480 = 460K tiles)
+const RES=1;
 // ── Mercator projection helpers ──
 const MAX_LAT_DEG = 78;
 const MAX_LAT = MAX_LAT_DEG * Math.PI / 180;
