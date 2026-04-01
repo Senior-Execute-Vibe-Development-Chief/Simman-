@@ -3090,8 +3090,9 @@ const sub=Math.min(3,Math.max(1,Math.ceil(speedRef.current/3*eraFactor)));// cap
 // Time-budgeted sim: stop stepping if we've used >8ms this frame
 const _simStart=performance.now();
 for(let s=0;s<sub;s++){
-terRef.current=stepTerritory(terRef.current,worldRef.current);
-if(performance.now()-_simStart>8)break;// yield to renderer
+try{terRef.current=stepTerritory(terRef.current,worldRef.current);}
+catch(e){console.error('[SIM CRASH]',e.message,e.stack);playRef.current=false;return;}
+if(performance.now()-_simStart>8)break;
 }
 setCoverage(Math.round(terRef.current.settled/terRef.current.landCount*100));
 let alive=0,bestId=-1,bestPow=0;const ter2=terRef.current;
@@ -3099,7 +3100,7 @@ for(let i=0;i<ter2.tribeSizes.length;i++){if(ter2.tribeSizes[i]<=0)continue;aliv
 const pw=tribePower(ter2,i);if(pw>bestPow){bestPow=pw;bestId=i;}}
 setTribeCount(alive);setDominant(bestId>=0?{id:bestId,power:bestPow,size:ter2.tribeSizes[bestId],
 strength:ter2.tribeStrength[bestId],density:ter2.tribeStrength[bestId]/ter2.tribeSizes[bestId]}:null);
-draw(terRef.current);}};
+try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);playRef.current=false;}}};
 fid=requestAnimationFrame(loop);return()=>cancelAnimationFrame(fid);},[draw]);
 
 // Wind particle animation loop — redraws at ~30fps when in wind view
