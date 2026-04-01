@@ -1006,6 +1006,38 @@ for(const d of KNOW_DOMAINS){
 if(kj[d]>ki[d]){ki[d]=Math.min(1,ki[d]+maritimeRate*(kj[d]-ki[d]));}}}}}
 }
 
+// ── Settlement tier thresholds (cityPop in thousands) ──
+// Tech gates max city size; tier is just a reading of how many people are there
+const SETTLE_TIERS=[
+{name:'village',  min:0.3,  icon:1},  //  300+ people
+{name:'town',     min:2,    icon:1.5},//  2k+ people
+{name:'small',    min:10,   icon:2},  //  10k+ (Ur, early Memphis)
+{name:'medium',   min:50,   icon:2.5},//  50k+ (classical Athens)
+{name:'large',    min:200,  icon:3},  //  200k+ (Rome, Chang'an)
+{name:'mega',     min:1000, icon:3.5},//  1M+ (industrial London)
+];
+function settleTier(cityPop){
+for(let i=SETTLE_TIERS.length-1;i>=0;i--)if(cityPop>=SETTLE_TIERS[i].min)return SETTLE_TIERS[i];
+return null;}
+// Max city population (thousands) gated by technology
+function maxCityPop(k){if(!k)return 1;
+const ag=k.agriculture,mt=k.metallurgy,cn=k.construction,og=k.organization;
+// Neolithic village: ~2k. Bronze city: ~30k. Iron: ~100k. Classical: ~500k. Industrial: ~5M+
+let cap=1+ag*5;// agriculture alone: up to ~6k (large village)
+if(mt>0.15)cap+=15;// copper/early bronze: +15k
+if(mt>0.3)cap+=30;// bronze: +30k (Ur, Memphis scale)
+if(mt>0.5)cap+=60;// iron: +60k (Athens, Babylon)
+if(cn>0.4)cap+=100;// construction: aqueducts, walls → +100k
+if(og>0.4)cap+=200;// organization: bureaucracy → +200k (Rome)
+if(cn>0.6&&og>0.5)cap+=500;// advanced infrastructure → +500k
+// Industrial explosion
+const indust=(Math.max(0,mt-0.75))*(Math.max(0,cn-0.60));
+cap+=indust*20000;// mt=0.85,cn=0.7: 0.10*0.10*20000 = 200. mt=0.95,cn=0.9: 0.20*0.30*20000 = 1200
+return cap;}
+// Rural cap: how many people (thousands) a tile supports as dispersed countryside
+// Much lower than city cap — this is farming/herding density
+function ruralCap(fert,diff,em){return fert*em*0.15*(1-diff*0.3);}// ~15% of full era capacity
+
 // ── Era multiplier for tile carrying capacity (shared by population + bgPop systems) ──
 // Returns people (in thousands) supportable per unit of tile fertility.
 // Bronze: ~5k/str, Iron: ~8k, Classical: ~11k, Industrial: ~100k+
@@ -1016,188 +1048,214 @@ em+=(Math.max(0,mt-0.75))*(Math.max(0,cn-0.60))*2500;// industrial explosion
 return em;}
 
 // Population step: derive tribePopulation from per-tile bgPop sums.
-// bgPop is the single source of truth for where people live.
+// Population = bgPop (rural) + cityPop (urban) summed per tribe.
 function stepPopulation(ter){
-const pop=ter.tribePopulation;const{tribeSizes,bgPop,owner,tw,th}=ter;
+const pop=ter.tribePopulation;const{tribeSizes,bgPop,cityPop,owner,tw,th}=ter;
 if(!bgPop)return;
-// Sum bgPop per tribe — this IS the population now
 const n=pop.length;
 for(let i=0;i<n;i++)pop[i]=0;
 for(let ti=0;ti<tw*th;ti++){
 const ow=owner[ti];if(ow<0||ow>=n)continue;
-pop[ow]+=bgPop[ti];}
-// Dead tribes stay at 0
+pop[ow]+=bgPop[ti]+(cityPop?cityPop[ti]:0);}
 for(let i=0;i<n;i++){if(tribeSizes[i]<=0)pop[i]=0;}
 }
 
-// ── Per-tile population system: bgPop is THE population, not a background layer ──
-// On unowned tiles: hunter-gatherer growth (low cap). Crystallizes into tribes.
-// On owned tiles: cap scales with owning tribe's technology. People migrate toward
-// high-value tiles (rivers, coast, resources, centers) creating cities organically.
+// ── Per-tile population system ──
+// bgPop = rural/dispersed population (low cap per tile: countryside density)
+// cityPop = urban population stored in settlements (high cap, tech-gated)
+// Settlements form when bgPop crosses a threshold. Cities drain surrounding bgPop.
+// tribeCenters is rebuilt from the top cityPop tiles per tribe.
 function stepBackgroundPop(ter){
 const{tw,th,tElev,tTemp,tFert,tDiff,tCoast,owner,bgPop,tribeSizes}=ter;
 if(!bgPop)return;
+if(!ter.cityPop)ter.cityPop=new Float32Array(tw*th);
+const cityPop=ter.cityPop;
 ter._dbgBgCalls=(ter._dbgBgCalls||0)+1;
 
-// ── Precompute per-tribe era multiplier (shared across all their tiles) ──
+// ── Precompute per-tribe stats ──
 const n=ter.tribeCenters.length;
 const tribeEra=new Float32Array(n);
-const tribeGrowth=new Float32Array(n);// growth rate per tribe
+const tribeMaxCity=new Float32Array(n);// max city pop for this tribe's tech
+const tribeGrowth=new Float32Array(n);
 for(let i=0;i<n;i++){
 if(tribeSizes[i]<=0)continue;
 const k=ter.tribeKnowledge[i];if(!k)continue;
 tribeEra[i]=tileEraMult(k);
-// Growth rate: slow pre-industrial, fast post-industrial
+tribeMaxCity[i]=maxCityPop(k);
 const mt=k.metallurgy,cn=k.construction,ag=k.agriculture;
 const industrialFactor=Math.max(0,mt-0.6)*3+Math.max(0,cn-0.5)*2;
 const groB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].growth:0.25;
 tribeGrowth[i]=(0.001+ag*0.001+industrialFactor*0.04)*(0.5+groB*2.0);}
 
-// ── Precompute center attractors: mark center tiles for migration pull ──
-if(!ter._centerMap||ter.stepCount%32===0){
-ter._centerMap=new Float32Array(tw*th);// 0 = not center, >0 = center pull strength
-for(let i=0;i<n;i++){if(tribeSizes[i]<=0)continue;
-const centers=ter.tribeCenters[i];if(!centers)continue;
-for(let ci=0;ci<centers.length;ci++){
-const cti=centers[ci].y*tw+centers[ci].x;
-if(cti>=0&&cti<tw*th)ter._centerMap[cti]=ci===0?3.0:1.5+centers[ci].prestige;}}}
-
-// ── Growth + migration pass ──
-// Food imports distribute evenly across tribe as extra capacity
+// ── Food imports ──
 const foodImportPerTile=new Float32Array(n);
 for(let i=0;i<n;i++){
 if(tribeSizes[i]<=0)continue;
 const fi=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].foodImports:0;
 foodImportPerTile[i]=tribeSizes[i]>0?fi/tribeSizes[i]:0;}
 
+// ── Main per-tile loop: growth + settlement formation + migration ──
 for(let ti=0;ti<tw*th;ti++){
 if(tElev[ti]<=0||tTemp[ti]<0.05)continue;
 const fert=tFert[ti];const ow=owner[ti];
+const tx2=ti%tw,ty2=(ti-tx2)/tw;
 
-// ── Carrying capacity depends on ownership ──
-let cap,growthRate;
+// ── Rural carrying capacity ──
+let rCap,growthRate;
 if(ow>=0&&tribeSizes[ow]>0){
-// Owned tile: capacity scales with tribe's technology
-// eraMult is in thousands per fertility unit
-// fert=0.3, eraMult=10 (bronze) → cap = 3.0 (represents 3k people on this tile)
-// fert=0.3, eraMult=50 (classical) → cap = 15.0
-// fert=0.3, eraMult=500 (industrial) → cap = 150.0
 const em=tribeEra[ow];
-cap=fert*em*(1-tDiff[ti]*0.3)+foodImportPerTile[ow]*em*0.5;
-// Resources boost local capacity (mining towns, oil towns)
+rCap=ruralCap(fert,tDiff[ti],em)+foodImportPerTile[ow]*em*0.02;
+// Resources boost local rural capacity slightly
 if(ter.deposits){const k=ter.tribeKnowledge[ow];
-if(k){const rv=resourceValues(k);
-let resBoost=0;
+if(k){const rv=resourceValues(k);let rb=0;
 for(const rk of RES_KEYS){const dep=ter.deposits[rk];
-if(dep&&dep[ti]>0.1)resBoost+=rv[rk]*dep[ti]*0.05;}
-cap*=(1+Math.min(0.5,resBoost));}}// up to 50% local boost
+if(dep&&dep[ti]>0.1)rb+=rv[rk]*dep[ti]*0.03;}
+rCap*=(1+Math.min(0.3,rb));}}
 growthRate=tribeGrowth[ow];
 }else{
-// Unowned tile: hunter-gatherer cap (low)
-// Must be above crystal threshold (0.12) for moderate land
-cap=fert*3.0*(1-tDiff[ti]*0.5);
-growthRate=0.02;// 2% base growth for hunter-gatherers
+rCap=fert*3.0*(1-tDiff[ti]*0.5)*0.15;// unowned: very low rural cap
+growthRate=0.02;
 }
-if(cap<=0.001)continue;
+if(rCap<=0.001&&cityPop[ti]<=0)continue;
 
-// ── Logistic growth ──
-const ratio=bgPop[ti]/cap;
-const maxRatio=ow>=0?1.1:1.0;// owned tiles slightly overshoot (expansion pressure)
-if(ratio<maxRatio){
-bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*growthRate*(1-ratio/maxRatio));}
-// Famine: overpopulated tiles lose people
-if(ratio>1.2){bgPop[ti]=Math.max(0.01,bgPop[ti]*(0.97-Math.min(0.05,(ratio-1.2)*0.15)));}
+// ── Rural growth (logistic) ──
+if(rCap>0.001){
+const ratio=bgPop[ti]/rCap;
+const maxRatio=ow>=0?1.1:1.0;
+if(ratio<maxRatio)bgPop[ti]=Math.max(0,bgPop[ti]+bgPop[ti]*growthRate*(1-ratio/maxRatio));
+if(ratio>1.3)bgPop[ti]=Math.max(0.01,bgPop[ti]*(0.97-Math.min(0.05,(ratio-1.3)*0.15)));}
 
-// ── Migration: people move to adjacent tiles with more opportunity ──
-// On owned tiles: move toward centers, rivers, coast, resources (urbanization)
-// On unowned tiles: simple diffusion to adjacent habitable land
-const tx2=ti%tw,ty2=(ti-tx2)/tw;
-if(bgPop[ti]>cap*0.3){
+// ── Settlement formation: bgPop overflow → cityPop ──
+// When rural pop exceeds cap, excess flows into the local settlement.
+// This is how villages/towns/cities form organically.
+if(ow>=0&&bgPop[ti]>rCap*0.8){
+const mxCity=tribeMaxCity[ow];
+if(cityPop[ti]<mxCity){
+// Transfer excess rural pop into settlement
+const excess=bgPop[ti]-rCap*0.7;// drain down to 70% rural cap
+const room=mxCity-cityPop[ti];
+const transfer=Math.min(excess*0.3,room);// 30% of excess per step
+if(transfer>0.01){bgPop[ti]-=transfer;cityPop[ti]+=transfer;}}}
+
+// ── City growth: settlements drain surrounding rural pop (urbanization pull) ──
+if(cityPop[ti]>0.1&&ow>=0){
+const k=ter.tribeKnowledge[ow];
+const mxCity=tribeMaxCity[ow];
+const cityRatio=cityPop[ti]/mxCity;
+// Pull strength: bigger cities pull harder, but saturate near max
+const infraSpeed=k?1+k.construction*1.5+k.organization:1;
+const pullStr=Math.min(1,cityPop[ti]*0.02)*infraSpeed*(1-cityRatio*0.8);
+if(pullStr>0.001){
+const R=Math.min(6,2+Math.floor(cityPop[ti]*0.005));// drain radius grows with city size
+for(let dy=-R;dy<=R;dy++){const ny=ty2+dy;if(ny<0||ny>=th)continue;
+for(let dx=-R;dx<=R;dx++){if(!dx&&!dy)continue;
+const nx=((tx2+dx)%tw+tw)%tw;const ni=ny*tw+nx;
+if(owner[ni]!==ow||tElev[ni]<=0)continue;
+// Don't drain from other settlements (they keep their own people)
+if(cityPop[ni]>cityPop[ti]*0.5)continue;
+const dist=Math.sqrt(dx*dx+dy*dy);if(dist>R)continue;
+const drain=bgPop[ni]*0.005*pullStr*(1-dist/R)/(1+tDiff[ni]*2);
+if(drain>0.001&&bgPop[ni]>rCap*0.1){// leave minimum rural pop
+const actual=Math.min(drain,bgPop[ni]*0.1,mxCity-cityPop[ti]);
+if(actual>0){bgPop[ni]-=actual;cityPop[ti]+=actual;}}}}}
+// City natural growth (internal: births in the city)
+if(cityRatio<0.95){
+cityPop[ti]+=cityPop[ti]*growthRate*0.5*(1-cityRatio);// slower than rural (disease, crowding)
+}
+// City decay: if owner lost or tech dropped, city can't sustain peak
+if(cityPop[ti]>mxCity*1.1){
+const decay=cityPop[ti]*0.02;// 2% decay back to rural
+cityPop[ti]-=decay;bgPop[ti]+=decay*0.5;// half return to countryside, half die
+}}
+
+// ── Unowned city decay: cities without tribal support crumble ──
+if(ow<0&&cityPop[ti]>0){
+const decay=cityPop[ti]*0.03;// 3% decay per step
+cityPop[ti]=Math.max(0,cityPop[ti]-decay);
+bgPop[ti]+=decay*0.3;// some people scatter to countryside
+}
+
+// ── Migration: rural people move to adjacent tiles ──
+if(bgPop[ti]>rCap*0.2){
 const isOwned=ow>=0;
 const k=isOwned&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
-// Infrastructure speed: how fast people can migrate (roads, boats)
 const infraSpeed=k?1+k.construction*1.5+k.organization*1.0:1;
 const baseFlow=bgPop[ti]*0.003*infraSpeed;
 
 for(const[dx,dy]of DIRS){const nx=((tx2+dx)%tw+tw)%tw,ny=ty2+dy;if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;if(tElev[ni]<=0)continue;
-// Only migrate within same tribe or into unowned land
 const nOw=owner[ni];
-if(isOwned&&nOw!==ow)continue;// don't leak population across tribe borders
-if(!isOwned&&nOw>=0)continue;// unowned can't flow into owned (that's absorption on claim)
+if(isOwned&&nOw!==ow)continue;
+if(!isOwned&&nOw>=0)continue;
 
-// Attractiveness comparison: pull toward better tiles
 let myAttract=fert;
 let nAttract=tFert[ni];
 
 if(isOwned){
-// Centers pull strongly (markets, administration, jobs, protection)
-if(ter._centerMap[ni]>0)nAttract+=ter._centerMap[ni]*0.8;
-if(ter._centerMap[ti]>0)myAttract+=ter._centerMap[ti]*0.8;
-// Rivers pull (transport, irrigation, water access)
+// Cities pull rural pop (jobs, safety, markets)
+if(cityPop[ni]>0.3)nAttract+=Math.min(3,cityPop[ni]*0.1);
+if(cityPop[ti]>0.3)myAttract+=Math.min(3,cityPop[ti]*0.1);
+// Saturation: very large nearby cities push people elsewhere
+// (already crowded → opportunities are elsewhere)
+if(cityPop[ni]>tribeMaxCity[ow]*0.7)nAttract-=1.0;
+// Rivers, coast, resources still pull
 if(ter.rivers){
 if(ter.rivers.riverMag[ni]>=3)nAttract+=0.6;
 else if(ter.rivers.riverMag[ni]>=2)nAttract+=0.3;
 if(ter.rivers.riverMag[ti]>=3)myAttract+=0.6;
 else if(ter.rivers.riverMag[ti]>=2)myAttract+=0.3;}
-// Coast pulls (fishing, trade, ports)
-if(tCoast[ni])nAttract+=0.3;
-if(tCoast[ti])myAttract+=0.3;
-// Era-valuable resources pull (mining towns, oil towns)
+if(tCoast[ni])nAttract+=0.3;if(tCoast[ti])myAttract+=0.3;
 if(ter.deposits&&k){const rv=resourceValues(k);
 for(const rk of RES_KEYS){const dep=ter.deposits[rk];
-if(dep){
-if(dep[ni]>0.1)nAttract+=rv[rk]*dep[ni]*0.3;
+if(dep){if(dep[ni]>0.1)nAttract+=rv[rk]*dep[ni]*0.3;
 if(dep[ti]>0.1)myAttract+=rv[rk]*dep[ti]*0.3;}}}}
 
-// Flow toward more attractive tiles (net migration)
 if(nAttract>myAttract&&bgPop[ni]<bgPop[ti]*1.5){
 const pull=(nAttract-myAttract)/(myAttract+0.1);
 const flow=Math.min(bgPop[ti]*0.1,baseFlow*pull*(1-tDiff[ni]));
 if(flow>0.001){bgPop[ti]-=flow;bgPop[ni]+=flow;}}
-// Pressure diffusion: overcrowded tiles push outward regardless of attraction
-else if(ratio>0.8&&bgPop[ni]<bgPop[ti]*0.5){
+else if(rCap>0&&bgPop[ti]/rCap>0.8&&bgPop[ni]<bgPop[ti]*0.5){
 const flow=bgPop[ti]*0.002*(1-tDiff[ni]);
 if(flow>0.001){bgPop[ti]-=flow;bgPop[ni]+=flow;}}}}}
 
-// Debug: track max bgPop for diagnostics
-let maxBg=0,bgAboveThresh=0;for(let ti=0;ti<tw*th;ti++){if(bgPop[ti]>maxBg)maxBg=bgPop[ti];if(owner[ti]<0&&bgPop[ti]>0.20)bgAboveThresh++;}
-ter._dbgMaxBgPop=maxBg;ter._dbgBgAboveThresh=bgAboveThresh;
-
-// ── Density-based center spawning: cities emerge from population peaks ──
-if(ter.stepCount%32===0){
-for(let st=0;st<n;st++){
-if(tribeSizes[st]<10)continue;
-const centers=ter.tribeCenters[st];if(!centers||centers.length>=12)continue;
-const k=ter.tribeKnowledge[st];if(!k)continue;
-// Find highest-population tile that's far enough from existing centers
-let bestTi=-1,bestScore=-1;
+// Debug
+let maxBg=0,maxCity=0,bgAboveThresh=0;
 for(let ti=0;ti<tw*th;ti++){
-if(owner[ti]!==st||bgPop[ti]<1.0)continue;// need meaningful population
-const tx3=ti%tw,ty3=(ti-tx3)/tw;
-const{min:dMin}=nearestCenterDist(centers,tx3,ty3,tw);
-if(dMin<6)continue;// minimum spacing between centers
-// Score = local population cluster × distance need
-let localPop=0;const R=5;
-for(let dy=-R;dy<=R;dy++){const ny=ty3+dy;if(ny<0||ny>=th)continue;
-for(let dx=-R;dx<=R;dx++){const nx=((tx3+dx)%tw+tw)%tw;
-const ni=ny*tw+nx;if(owner[ni]===st)localPop+=bgPop[ni];}}
-// Geographic bonuses (natural city sites)
-let geoBonus=0;
-if(ter.rivers&&ter.rivers.riverMag[ti]>=3)geoBonus+=1.0;
-else if(ter.rivers&&ter.rivers.riverMag[ti]>=2)geoBonus+=0.4;
-if(tCoast[ti])geoBonus+=0.6;
-// Resources nearby boost center value
-if(ter.deposits){const rv=resourceValues(k);
-for(const rk of RES_KEYS){const dep=ter.deposits[rk];
-if(dep&&dep[ti]>0.1)geoBonus+=rv[rk]*dep[ti]*0.5;}}
-const score=(localPop+geoBonus*5)*(1+dMin*0.03);
-if(score>bestScore){bestScore=score;bestTi=ti;}}
-// Threshold scales with existing centers (harder to justify each new one)
-const threshold=20+centers.length*10;
-if(bestTi>=0&&bestScore>threshold){
-const bx=bestTi%tw,by=(bestTi-bx)/tw;
-centers.push({x:bx,y:by,prestige:0.3,founded:ter.stepCount});}}}
+if(bgPop[ti]>maxBg)maxBg=bgPop[ti];
+if(cityPop[ti]>maxCity)maxCity=cityPop[ti];
+if(owner[ti]<0&&bgPop[ti]>0.20)bgAboveThresh++;}
+ter._dbgMaxBgPop=maxBg;ter._dbgBgAboveThresh=bgAboveThresh;ter._dbgMaxCity=maxCity;
+
+// ── Rebuild tribeCenters from cityPop peaks ──
+// Centers ARE the settlements. Capital = largest city. No separate spawning logic.
+if(ter.stepCount%16===0){
+for(let st=0;st<n;st++){
+if(tribeSizes[st]<=0)continue;
+// Collect all settlement tiles for this tribe
+const settlements=[];
+for(let ti=0;ti<tw*th;ti++){
+if(owner[ti]!==st||cityPop[ti]<SETTLE_TIERS[0].min)continue;
+settlements.push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cityPop[ti],ti});}
+// Sort by population (largest first = capital)
+settlements.sort((a,b)=>b.pop-a.pop);
+// Rebuild centers array: capital first, then secondary cities
+// Keep prestige/founded from existing centers where possible
+const oldCenters=ter.tribeCenters[st]||[];
+const newCenters=[];
+for(let si=0;si<Math.min(settlements.length,20);si++){
+const s=settlements[si];
+// Try to find matching old center (preserve prestige/founded)
+let matched=null;
+for(const oc of oldCenters){if(oc.x===s.x&&oc.y===s.y){matched=oc;break;}}
+if(matched)newCenters.push(matched);
+else newCenters.push({x:s.x,y:s.y,prestige:si===0?1.0:0.3,founded:ter.stepCount});}
+// If no settlements yet, keep existing centers (tribe still needs at least one)
+if(newCenters.length>0)ter.tribeCenters[st]=newCenters;
+// Grow capital prestige, decay secondary
+if(ter.tribeCenters[st].length>0){
+ter.tribeCenters[st][0].prestige=Math.min(3.0,ter.tribeCenters[st][0].prestige+0.05);
+for(let c=1;c<ter.tribeCenters[st].length;c++)
+ter.tribeCenters[st][c].prestige=Math.min(2.0,ter.tribeCenters[st][c].prestige+0.02);}}}
 // ── Tribe crystallization ──
 if(ter.stepCount%16!==0)return;// check every 16 steps
 let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
@@ -1625,9 +1683,11 @@ const vRatio=bestValley>0?valleyScore[ti]/bestValley:0;
 // Low valleys (<0.2): barely populated, crystallize very late or never
 bp+=vRatio*vRatio*0.18;// quadratic — only top valleys get meaningful boost
 bgPop[ti]=Math.max(0,bp);}
-// bgPop persists on owned tiles — don't zero it. It represents general population density.
+// bgPop persists on owned tiles — don't zero it. It represents rural population density.
+// cityPop: urban population stored in settlements (separate from bgPop)
+const cityPop=new Float32Array(tw*th);
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
-tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudget:tribeBudgets,bgPop,
+tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudget:tribeBudgets,bgPop,cityPop,
 frontier,frontierList,landCount:lc,settled:tribeSizes.length,tribes:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+(y1-y2)*(y1-y2));}
@@ -1701,12 +1761,11 @@ if(ter.tribeBudget)ter.tribeBudget.push(parentBudget?cloneBudget(parentBudget):i
 ter.tribes=id+1;return id;}
 function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure}=ter;const ow=owner[ti];
 if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];
-// Conquest: bgPop stays on the tile (people don't vanish when borders change).
-// Small war loss: 15% of tile population dies or flees
-if(ter.bgPop&&ter.bgPop[ti]>0){ter.bgPop[ti]*=0.85;}
+// Conquest: people stay. Small war loss (15% of rural + 10% of urban).
+if(ter.bgPop&&ter.bgPop[ti]>0)ter.bgPop[ti]*=0.85;
+if(ter.cityPop&&ter.cityPop[ti]>0)ter.cityPop[ti]*=0.90;// cities mostly survive conquest
 }else{ter.settled++;}
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;
-// bgPop persists — it IS the population. No separate absorption needed.
 }
 // Transfer tile without resetting tenure (for splits/fragmentation — population stays, allegiance changes)
 function transferTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert}=ter;const ow=owner[ti];
@@ -1918,15 +1977,14 @@ const invadeChance=0.1*milB*techGap;// ~3% for a militant power with big tech ga
 if(Math.random()<invadeChance){
 claimTile(ter,targetIdx,st);
 if(!nf[targetIdx]){nf[targetIdx]=1;nfl.push(targetIdx);}
-// Establish beachhead center if far from home
-if(tribeCenters[st].length<10){const{min:vD}=nearestCenterDist(tribeCenters[st],tgtX2,tgtY2,tw);
-if(vD>25)tribeCenters[st].push({x:tgtX2,y:tgtY2,prestige:0.3,founded:ter.stepCount});}
+// Seed colonial settlement at beachhead
+if(ter.cityPop)ter.cityPop[targetIdx]=Math.max(ter.cityPop[targetIdx],1.0);// small colonial town
 }}}
 if(owner[targetIdx]<0&&tFert[targetIdx]>0.03){
 let nw3=st;const{min:vDist2}=nearestCenterDist(tribeCenters[st],tgtX2,tgtY2,tw);
 if(vDist2>30&&Math.random()<0.3-stK.organization*0.3)nw3=newTribe(ter,tgtX2,tgtY2,st);
-else if(vDist2>20&&tribeCenters[st].length<10)
-tribeCenters[st].push({x:tgtX,y:tgtY,prestige:0.3,founded:ter.stepCount});
+else if(vDist2>20&&ter.cityPop)
+ter.cityPop[targetIdx]=Math.max(ter.cityPop[targetIdx],0.5);// seed a small colonial village
 claimTile(ter,targetIdx,nw3);if(!nf[targetIdx]){nf[targetIdx]=1;nfl.push(targetIdx);}}
 break;}}}
 // ── Sovereignty expansion: advanced tribes claim adjacent unclaimed land automatically ──
@@ -2013,47 +2071,36 @@ ter._recentConflicts[key]=ter.stepCount;}// record latest conflict step
 const attackCost=tFert[ti]*0.3;
 tribeStrength[to]=Math.max(0.1,tribeStrength[to]-attackCost);
 claimTile(ter,ti,to);if(!nf[ti]){nf[ti]=1;nfl.push(ti);}}}
-// ── Center dynamics: prestige growth, validation, capital challenge ──
+// ── City-based cohesion challenge: when a secondary city outgrows the capital ──
+// Centers are derived from cityPop in stepBackgroundPop. Here we check if a
+// rival city challenges the capital — potentially splitting the empire.
 if(ter.stepCount%32===0){for(let st=0;st<tribeSizes.length;st++){
-const centers=tribeCenters[st];if(!centers||centers.length<=0||tribeSizes[st]<=0)continue;
-// Grow capital prestige (institutional inertia), decay secondary prestige slightly
-centers[0].prestige=Math.min(3.0,centers[0].prestige+0.05);
-for(let c=1;c<centers.length;c++)centers[c].prestige=Math.min(2.0,centers[c].prestige+0.02);
-// Validate centers: remove those no longer in tribe territory or no longer fertile
-for(let c=centers.length-1;c>=0;c--){const ci=centers[c].y*tw+centers[c].x;
-if(owner[ci]!==st||tFert[ci]<0.1){if(c===0&&centers.length>1){centers.shift();centers[0].prestige=Math.max(centers[0].prestige,1.5);}
-else if(c>0)centers.splice(c,1);}}
-if(centers.length<2||tribeSizes[st]<40)continue;// need substantial polity for center challenges
-// Compare each secondary center to capital
-const R=8;const capPow=centerPower(ter,st,centers[0].x,centers[0].y,R)*centers[0].prestige;
+const centers=tribeCenters[st];if(!centers||centers.length<2||tribeSizes[st]<40)continue;
+// Capital = centers[0] (largest city). Check if any secondary rivals it.
+const capTi=centers[0].y*tw+centers[0].x;
+const capCity=ter.cityPop?ter.cityPop[capTi]:0;
 for(let c=1;c<centers.length;c++){
-const secPow=centerPower(ter,st,centers[c].x,centers[c].y,R);
-if(secPow<=capPow*1.5)continue;// secondary must significantly exceed capital
-// Cohesion check: sample terrain difficulty along straight line between centers
+const secTi=centers[c].y*tw+centers[c].x;
+const secCity=ter.cityPop?ter.cityPop[secTi]:0;
+if(secCity<=capCity*1.3)continue;// secondary must significantly exceed capital
+// Cohesion check: terrain difficulty between the two cities
 const dx=centers[c].x-centers[0].x,dy=centers[c].y-centers[0].y;
 const steps=Math.max(4,Math.floor(Math.sqrt(dx*dx+dy*dy)/2));
 let diffSum=0;for(let s=0;s<=steps;s++){const sx=((Math.round(centers[0].x+dx*s/steps)%tw)+tw)%tw;
 const sy=Math.round(centers[0].y+dy*s/steps);if(sy>=0&&sy<th)diffSum+=tDiff[sy*tw+sx];}
 const avgDiff=diffSum/steps;const dist=tDistW(centers[0].x,centers[0].y,centers[c].x,centers[c].y,tw);
-// Cohesion: mountains STRONGLY fragment. Flat terrain holds together.
-// Europe (avgDiff~0.3-0.5) fragments easily. Russian steppe (avgDiff~0.05) holds.
-// Organization knowledge helps maintain cohesion across difficult terrain.
 const orgCoh=ter.tribeKnowledge[st]?ter.tribeKnowledge[st].organization:0;
 const cohesion=1/(1+dist*0.05+avgDiff*avgDiff*15-orgCoh*0.3);
-if(cohesion>0.4){// High cohesion → capital relocates peacefully
-const old=centers[0];centers[0]=centers[c];centers[0].prestige=Math.max(old.prestige,1.0);
-centers.splice(c,1);centers.push({x:old.x,y:old.y,prestige:old.prestige*0.5,founded:old.founded});
-}else{// Low cohesion → split: secondary center becomes a new tribe (if below cap)
+if(cohesion>0.4)continue;// cohesive enough — no split
+// Low cohesion + rival city → split
 let aliveT=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)aliveT++;
-if(aliveT>=80){break;}// tribe cap reached
-const sc=centers.splice(c,1)[0];const sid=newTribe(ter,sc.x,sc.y,st);
-// Transfer tiles closer to the breakaway center than to any remaining center
+if(aliveT>=80)break;
+const sc=centers[c];const sid=newTribe(ter,sc.x,sc.y,st);
 for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const iy=Math.floor(i/tw),ix=i%tw;
 const dSec=tDistW(ix,iy,sc.x,sc.y,tw);
-let dNearest=Infinity;for(const rc of centers)dNearest=Math.min(dNearest,tDistW(ix,iy,rc.x,rc.y,tw));
-if(dSec<dNearest)transferTile(ter,i,sid);}}
-break;// only one challenge per step per tribe
-}}}
+let dNearest=Infinity;for(const rc of centers){if(rc===sc)continue;dNearest=Math.min(dNearest,tDistW(ix,iy,rc.x,rc.y,tw));}
+if(dSec<dNearest)transferTile(ter,i,sid);}
+break;}}}
 // ── Terrain-based fragmentation: large tribes in rough terrain tend to split ──
 if(ter.stepCount%32===0){
 for(let st=0;st<tribeSizes.length;st++){
@@ -2281,12 +2328,13 @@ r=(r*heatW+tr*(1-heatW))|0;g=(g*heatW+tg*(1-heatW))|0;b=(b*heatW+tb*(1-heatW))|0
 d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="population"){
 // Population density heatmap: dark→blue→cyan→green→yellow→orange→red→white
-// Uses bgPop per tile. Log scale so villages and cities both visible.
+// Uses bgPop + cityPop per tile. Log scale so villages and cities both visible.
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
 const tc=terrainCache.current;
-const ptw=ter.tw,pth=ter.th;
-// Find max bgPop for normalization (log scale)
-let maxPop=1;for(let pti=0;pti<ptw*pth;pti++){if(ter.bgPop[pti]>maxPop)maxPop=ter.bgPop[pti];}
+const ptw=ter.tw,pth=ter.th;const pCityPop=ter.cityPop;
+// Find max total pop for normalization (log scale)
+let maxPop=1;for(let pti=0;pti<ptw*pth;pti++){
+const tp=ter.bgPop[pti]+(pCityPop?pCityPop[pti]:0);if(tp>maxPop)maxPop=tp;}
 const logMax=Math.log(maxPop+1);
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty2=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty2,CH,H))),si=sy*W+sx;
@@ -2295,7 +2343,7 @@ if(e<=sl){d[pi4]=4;d[pi4+1]=5;d[pi4+2]=12;d[pi4+3]=255;continue;}
 // Map to tile coords
 const ttx=Math.min(ptw-1,tx),tty=Math.min(pth-1,Math.round(screenYtoDataY(ty2,CH,H)/RES));
 const tti=tty*ptw+ttx;
-const pop=ter.bgPop[tti]||0;
+const pop=(ter.bgPop[tti]||0)+(pCityPop?pCityPop[tti]:0);
 if(pop<0.01){// empty land — dim terrain
 const tr2=(tc[ti*3]*0.2)|0,tg2=(tc[ti*3+1]*0.2)|0,tb2=(tc[ti*3+2]*0.2)|0;
 d[pi4]=tr2;d[pi4+1]=tg2;d[pi4+2]=tb2;d[pi4+3]=255;continue;}
@@ -2536,15 +2584,26 @@ const ti3=(gy*gW+gx)*3;buf[ti3]=r|0;buf[ti3+1]=g|0;buf[ti3+2]=b|0;}}
 setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});}
 if(!ctx)return;
 ctx.putImageData(img,0,0);
-// Draw all tribe centers (tile coords — canvas is CW×CH)
+// Draw settlements sized by tier (village=tiny, capital=large)
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
 if(!centers||ter.tribeSizes[st]<=0)continue;
 for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=dataYtoScreenY(centers[ci].y*RES,H,CH)+0.5;
-const isCapital=ci===0,r2=isCapital?3:1.5;
+const isCapital=ci===0;
+// Get settlement population for sizing
+const cti=centers[ci].y*ter.tw+centers[ci].x;
+const cPop=ter.cityPop?ter.cityPop[cti]:0;
+const tier=settleTier(cPop);
+const r2=tier?tier.icon:1;// size from tier, default tiny
 ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
-ctx.fillStyle=isCapital?"rgba(240,235,220,0.95)":"rgba(200,195,180,0.6)";ctx.fill();
-if(isCapital){ctx.beginPath();ctx.arc(cx2,cy2,r2+1,0,Math.PI*2);
-ctx.strokeStyle="rgba(60,55,45,0.6)";ctx.lineWidth=0.8;ctx.stroke();}}
+// Color: capital=bright white, large=warm, small=dim
+const alpha=isCapital?0.95:Math.min(0.9,0.3+r2*0.15);
+if(isCapital)ctx.fillStyle=`rgba(240,235,220,${alpha})`;
+else if(r2>=2.5)ctx.fillStyle=`rgba(220,200,160,${alpha})`;// medium+ city: warm
+else if(r2>=1.5)ctx.fillStyle=`rgba(200,195,180,${alpha})`;// town: neutral
+else ctx.fillStyle=`rgba(170,165,155,${alpha})`;// village: dim
+ctx.fill();
+if(isCapital||r2>=2.5){ctx.beginPath();ctx.arc(cx2,cy2,r2+0.8,0,Math.PI*2);
+ctx.strokeStyle=isCapital?"rgba(60,55,45,0.7)":"rgba(80,75,65,0.4)";ctx.lineWidth=isCapital?0.8:0.5;ctx.stroke();}}
 // ── Info label at capital (skip in focused mode — too cluttered) ──
 const focusedMode=ter._selectedTribe>=0&&ter.tribeSizes[ter._selectedTribe]>0&&vm==="tribes";
 if(!focusedMode&&ter.tribeSizes[st]>=4){
