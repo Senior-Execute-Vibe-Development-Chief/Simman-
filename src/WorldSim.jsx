@@ -1418,7 +1418,8 @@ if(bgPop[ti]>=0.3)sc.villages++;
 const cp=cityPop[ti];if(cp<SETTLE_TIERS[1].min)continue;// 0.5 = town threshold
 const tier=settleTier(cp);
 if(tier){
-if(tier.name==='town'){sc.towns++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}
+const MAX_SETT=200;// cap settlement tracking to avoid massive arrays
+if(tier.name==='town'){sc.towns++;if(tribeSett[ow2].length<MAX_SETT)tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}
 else if(tier.name==='small'||tier.name==='medium'){sc.cities++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}
 else{sc.large++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}}}
 for(let st=0;st<n;st++){
@@ -1426,11 +1427,14 @@ if(tribeSizes[st]<=0)continue;
 const sett=tribeSett[st];
 if(sett.length===0)continue;
 sett.sort((a,b)=>b.pop-a.pop);
+// Cap centers per tribe to prevent unbounded growth (largest cities only)
+const MAX_CENTERS=60;
 const oldMap=new Map();
 const old=ter.tribeCenters[st]||[];
 for(const oc of old)oldMap.set(oc.x+','+oc.y,oc);
 const nc=[];
-for(let si=0;si<sett.length;si++){
+const limit=Math.min(sett.length,MAX_CENTERS);
+for(let si=0;si<limit;si++){
 const s=sett[si];const key=s.x+','+s.y;
 const oc=oldMap.get(key);
 if(oc){oc.pop=s.pop;nc.push(oc);}
@@ -1455,10 +1459,11 @@ for(let si=0;si<sampleSize;si++){
 const ti=Math.floor(Math.random()*tw*th);
 if(bgPop[ti]<CRYSTAL_THRESHOLD||owner[ti]>=0||tElev[ti]<=0||tFert[ti]<fertReq)continue;
 const tx=ti%tw,ty=(ti-tx)/tw;
+// Check spacing against tribe capitals only (not all centers — that's O(thousands))
 let tooClose=false;
-for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0)continue;
-for(const c of ter.tribeCenters[t]){const d=tDistW(tx,ty,c.x,c.y,tw);
-if(d<MIN_SPACING){tooClose=true;break;}}if(tooClose)break;}
+for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0||!ter.tribeCenters[t][0])continue;
+const c=ter.tribeCenters[t][0];
+if(tDistW(tx,ty,c.x,c.y,tw)<MIN_SPACING){tooClose=true;break;}}
 if(tooClose)continue;
 // Quick score: local pop density in 4-tile radius (cheaper than 9×9)
 let localPop=0,localFert=0;
