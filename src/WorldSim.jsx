@@ -1359,8 +1359,8 @@ cityPop[ti]=Math.max(0.01,cp*(0.96+surplus*0.02));}
 // Unowned city decay
 if(ow<0&&cp>0){cityPop[ti]=Math.max(0,cp*0.97);bgPop[ti]+=cp*0.009;}
 
-// ── Rural migration ──
-if(bgPop[ti]>0.01){
+// ── Rural migration (skip low-pop tiles — they barely move) ──
+if(bgPop[ti]>0.05){
 const isOwned=ow>=0;
 const baseFlow=bgPop[ti]*0.003*(isOwned?tribeInfra[ow]:1);
 const myDensity=bgPop[ti]+cityPop[ti];
@@ -1972,8 +1972,8 @@ const maxTribeSz=Math.max(...tribeSizes);
 const totalCenters=tribeCenters.reduce((s,c)=>s+(c?c.length:0),0);
 console.log(`[SIM ${ter.stepCount}] tribes:${nTribes} frontier:${fl} maxTribeSz:${maxTribeSz} totalCenters:${totalCenters} settled:${ter.settled}/${ter.landCount}`);}
 const _prof=ter.stepCount%64===0;const _ts=_prof?[performance.now()]:null;
-// ── Knowledge & population step (every 8 ticks) ──
-if(ter.stepCount%8===0&&ter.tribeKnowledge){
+// ── Knowledge & population step (every 16 ticks — was 8, reduced for performance) ──
+if(ter.stepCount%16===0&&ter.tribeKnowledge){
 // Transport network: recompute every 32 steps (staggered to avoid spike)
 if(ter.stepCount%32===0)computeTransport(ter);
 const _t0=performance.now();
