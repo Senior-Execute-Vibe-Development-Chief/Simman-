@@ -13,8 +13,9 @@
 
 import { initGPUWindSolver, solveWindGPU } from './gpuWindSolver.js';
 
-// GPU solver instance (lazy-initialized on first call, falls back to CPU on failure)
-let _gpuSolver = undefined; // undefined = not yet tried, null = not available
+// GPU solver disabled — readPixels gl.RG on RG32F framebuffer not supported
+// on all platforms. CPU path with pre-allocated buffers is used instead.
+let _gpuSolver = null;
 
 export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const p = (k, d) => params[k] !== undefined ? params[k] : d;

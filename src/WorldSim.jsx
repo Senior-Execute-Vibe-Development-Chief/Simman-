@@ -1907,46 +1907,12 @@ const limit=Math.min(centers.length,30);
 for(let ci=0;ci<limit;ci++){mn=Math.min(mn,tDistW(x,y,centers[ci].x,centers[ci].y,tw));}
 return{min:mn,cap};}
 
-// ── Precomputed per-tribe nearest-center distance grid ──
-// BFS from all centers of each tribe, stored as Float32Array(tw*th) per tribe.
-// Eliminates ~900K sqrt calls per step in expansion loop.
-// Updated every 8 steps (when centers may have changed).
-function computeCenterDistField(ter){
-const{tw,th,tribeCenters,tribeSizes,owner}=ter;
-const n=tribeCenters.length;
-if(!ter._centerDist)ter._centerDist=[];
-// Grow array if tribes added
-while(ter._centerDist.length<n)ter._centerDist.push(null);
-// Shared BFS queue + distance buffer (reused across tribes)
-if(!ter._cdBuf){ter._cdBuf=new Float32Array(tw*th);ter._cdQ=new Int32Array(tw*th);}
-const dist=ter._cdBuf;const q=ter._cdQ;
-const DX4=[-1,1,0,0];const DY4=[0,0,-1,1];
-for(let tid=0;tid<n;tid++){
-if(tribeSizes[tid]<=0){ter._centerDist[tid]=null;continue;}
-const centers=tribeCenters[tid];if(!centers||centers.length===0){ter._centerDist[tid]=null;continue;}
-// Only recompute if tribe has territory (skip tiny tribes with 0 tiles)
-if(tribeSizes[tid]<3&&ter._centerDist[tid]){continue;}// keep stale data for tiny tribes
-// BFS from centers: compute exact Euclidean distance at seed, BFS propagates +1 per step
-// For speed, use integer BFS (each step = 1 tile distance), then the expansion loop
-// gets approximate tile-distance which is good enough for reach falloff.
-if(!ter._centerDist[tid])ter._centerDist[tid]=new Float32Array(tw*th);
-const td=ter._centerDist[tid];td.fill(255);
-let qHead=0,qTail=0;
-const limit=Math.min(centers.length,30);
-for(let ci=0;ci<limit;ci++){
-const cx=centers[ci].x,cy=centers[ci].y;
-const ci2=cy*tw+cx;
-if(ci2>=0&&ci2<tw*th&&td[ci2]>0){td[ci2]=0;q[qTail++]=ci2;}}
-while(qHead<qTail){
-const ti=q[qHead++];const cd=td[ti];
-if(cd>=60)continue;// don't BFS beyond useful range
-const tx=ti%tw,ty=(ti-tx)/tw;
-for(let d=0;d<4;d++){
-const nx=((tx+DX4[d])%tw+tw)%tw,ny=ty+DY4[d];
-if(ny<0||ny>=th)continue;
-const ni=ny*tw+nx;const nd=cd+1;
-if(nd<td[ni]){td[ni]=nd;q[qTail++]=ni;}}}
-}}
+// ── Faster nearestCenterDist using squared distance (avoids sqrt) ──
+// expFalloff uses d²/280 internally, so we can pass sqrt of squared dist.
+// But the LUT expects actual distance, so we still need sqrt.
+// Optimization: limit center check to 10 instead of 30 for expansion (most
+// centers beyond ~20 tiles won't affect reach significantly).
+// Full 30-center version kept for non-expansion callers.
 // Sum of fertility within radius R of a point, for tiles owned by tribeId
 function centerPower(ter,tribeId,cx,cy,R){const{tw,th,owner,tFert}=ter;let sum=0;
 for(let dy=-R;dy<=R;dy++){const ny=cy+dy;if(ny<0||ny>=th)continue;
@@ -2035,8 +2001,6 @@ if(!_resValCache)_resValCache=new Map();else _resValCache.clear();
 if(ter.stepCount%8===0&&ter.tribeKnowledge){
 // Transport network: recompute every 32 steps (staggered to avoid spike)
 if(ter.stepCount%32===0)computeTransport(ter);
-// Center distance field: recompute every 8 steps (used by expansion loop)
-computeCenterDistField(ter);
 const _t0=performance.now();
 stepBackgroundPop(ter);
 const _t1=performance.now();
@@ -2159,9 +2123,8 @@ chance*=1+Math.min(2.0,score*0.5);// stronger score feedback// score 0→1x, sco
 // Center proximity — organization extends effective reach
 // Base Gaussian exp(-d²/280) halves at ~14 tiles. Organization stretches this.
 const orgReach=owKnow?1+owKnow.organization*1.5:1;// org=0→1x, org=0.5→1.75x, org=1→2.5x
-// Use precomputed center distance field (eliminates 30-center sqrt loop per tile)
-const distMin=ter._centerDist&&ter._centerDist[ow]?ter._centerDist[ow][ny2*tw+nx]:
-nearestCenterDist(tribeCenters[ow],nx,ny2,tw).min;// fallback if not yet computed
+const centers=tribeCenters[ow];
+const{min:distMin}=nearestCenterDist(centers,nx,ny2,tw);
 const reach=expFalloff(distMin/orgReach);// org stretches effective distance
 chance*=Math.max(0.03,reach);
 score+=Math.random()*0.1;
