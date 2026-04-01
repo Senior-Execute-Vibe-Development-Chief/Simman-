@@ -1216,6 +1216,8 @@ if(ts.connected>0)ts.avgCost/=ts.connected;}
 function stepBackgroundPop(ter){
 const{tw,th,tElev,tTemp,tFert,tDiff,tCoast,owner,bgPop,tribeSizes}=ter;
 if(!bgPop)return;
+// Run unowned fast-path every 4th call (64 steps) with compensated growth rate
+const _doFastPath=ter.stepCount%64===0;
 if(!ter.cityPop)ter.cityPop=new Float32Array(tw*th);
 const cityPop=ter.cityPop;
 
@@ -1260,7 +1262,9 @@ const tCost=ter.transportCost;
 const hasTrans=tCost&&tCost.length>=tw*th;
 
 // ── PASS 1: Food production and surplus accounting ──
-{
+// Skip entirely if no tribes have settled (nothing to account)
+const hasTribes=ter.settled>0;
+if(hasTribes){
 // Each farmer on a tile produces: fert * (1 + ag*2) food units
 // They consume 1.0 per unit of bgPop (self-consumption)
 // Surplus = production - consumption = what's available to feed cities
@@ -1303,14 +1307,15 @@ const bp=bgPop[ti];const cp=cityPop[ti];
 if(bp<0.001&&cp<=0&&ow<0)continue;// truly empty
 
 // ── FAST PATH: unowned tiles — simple logistic growth, no migration/cities ──
+// Only run every 4th bgPop call (every 64 steps) with 4x growth to compensate.
+// This reduces 609K iterations to every 64 steps instead of every 16.
 if(ow<0){
-// Skip tiles near equilibrium (>90% of cap) — they barely grow
-// This eliminates ~80-95% of fast-path iterations after initial growth phase
+if(!_doFastPath)continue;// skip unowned tiles on 3 out of 4 bgPop calls
 if(cp<=0&&bp>0.001){
 const farmCap=fert*2.0*(1-tDiff[ti]*0.5);
-if(bp>=farmCap*0.9)continue;// at equilibrium, skip entirely
-if(farmCap>0.001)bgPop[ti]=bp+bp*0.02*(1-bp/farmCap);}
-if(cp>0){cityPop[ti]=Math.max(0,cp*0.97);bgPop[ti]+=cp*0.009;}
+if(bp>=farmCap*0.9)continue;// at equilibrium
+if(farmCap>0.001)bgPop[ti]=Math.min(farmCap,bp+bp*0.08*(1-bp/farmCap));}// 4x growth rate
+if(cp>0){cityPop[ti]=Math.max(0,cp*0.88);bgPop[ti]+=cp*0.036;}// 4x decay
 continue;}
 
 // ── FULL PATH: owned tiles — growth + urbanization + migration ──
@@ -1975,11 +1980,12 @@ const _prof=ter.stepCount%64===0;const _ts=_prof?[performance.now()]:null;
 // ── Knowledge & population step (every 16 ticks — was 8, reduced for performance) ──
 if(ter.stepCount%16===0&&ter.tribeKnowledge){
 // Transport network: recompute every 32 steps (staggered to avoid spike)
-if(ter.stepCount%32===0)computeTransport(ter);
+// Skip transport if no tribes have settled (nothing to transport)
+if(ter.stepCount%32===0&&ter.settled>0)computeTransport(ter);
 const _t0=performance.now();
 stepBackgroundPop(ter);
 const _t1=performance.now();
-stepPopulation(ter);stepTrade(ter);stepBudget(ter);stepKnowledge(ter);
+if(ter.settled>0){stepPopulation(ter);stepTrade(ter);stepBudget(ter);stepKnowledge(ter);}
 const _t2=performance.now();
 ter._dbgTimeBgPop=(_t1-_t0).toFixed(1);ter._dbgTimeRest=(_t2-_t1).toFixed(1);
 // Recompute ports periodically
