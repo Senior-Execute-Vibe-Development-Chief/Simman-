@@ -1097,14 +1097,14 @@ const{tw,th,tElev,tDiff,tCoast,owner,tribeSizes,cityPop,bgPop}=ter;
 if(!ter.transportCost)ter.transportCost=new Float32Array(tw*th);
 if(!ter.transportOwner)ter.transportOwner=new Int16Array(tw*th);// which city feeds this tile
 const cost=ter.transportCost;const tOwner=ter.transportOwner;
+const riverMag=ter.rivers?ter.rivers.riverMag:null;
+const n=ter.tribeCenters.length;
 // Only reset owned tiles (not all 1.84M) — saves ~5ms of memset per call
 for(let tid=0;tid<n;tid++){
 if(tribeSizes[tid]<=0)continue;
 const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
 if(!ts)continue;
 for(const ti of ts){cost[ti]=999;tOwner[ti]=-1;}}
-const riverMag=ter.rivers?ter.rivers.riverMag:null;
-const n=ter.tribeCenters.length;
 
 // Per-tribe transport tech: construction reduces cost, navigation enables sea routes
 const tribeCn=new Float32Array(n);
