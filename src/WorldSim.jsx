@@ -3,6 +3,7 @@ import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthD
 import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
 import { solveMoisture } from "./moistureSolver.js";
+import { initGL, uploadTileData, renderGL } from "./glRenderer.js";
 import { isRealWindAvailable, fillRealWind } from "./realWindData.js";
 import GlobeView from "./GlobeView.jsx";
 import TuningPanel, { ParamEditor, renderPreview } from "./TuningPanel.jsx";
@@ -1788,7 +1789,13 @@ owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];}
 function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // ── Knowledge & population step (every 8 ticks) ──
-if(ter.stepCount%8===0&&ter.tribeKnowledge){stepBackgroundPop(ter);stepPopulation(ter);stepTrade(ter);stepBudget(ter);stepKnowledge(ter);
+if(ter.stepCount%8===0&&ter.tribeKnowledge){
+const _t0=performance.now();
+stepBackgroundPop(ter);
+const _t1=performance.now();
+stepPopulation(ter);stepTrade(ter);stepBudget(ter);stepKnowledge(ter);
+const _t2=performance.now();
+ter._dbgTimeBgPop=(_t1-_t0).toFixed(1);ter._dbgTimeRest=(_t2-_t1).toFixed(1);
 // Recompute ports periodically
 for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}
 // ── Expansion into empty land (directional, pressure-driven) ──
@@ -2180,7 +2187,8 @@ return y>0?`${Math.round(y)} BC`:`${Math.round(Math.abs(y))} AD`;}
 
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
-const canvasRef=useRef(null);const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
+const canvasRef=useRef(null);const glCanvasRef=useRef(null);const glStateRef=useRef(null);
+const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("tectonic");
@@ -3105,7 +3113,7 @@ border:"1px solid rgba(201,184,122,0.1)"}}>
 <span style={{color:"#c9b87a"}}>{dominant.size}t</span></span>}
 {aliveK>0&&<span style={{fontSize:9,color:"#6a6458"}}>
 Ag {(avgAg*100|0)} Mt {(avgMet*100|0)} Nv {(avgNav*100|0)} Og {(avgOrg*100|0)}</span>}
-{ter&&<span style={{fontSize:9,color:"#886644"}}>bg:{ter._dbgMaxBgPop?.toFixed(2)} rcap:{ter._dbgMaxRCap?.toFixed(3)} era:{ter._dbgSampleEra?.toFixed(1)} abvRC:{ter._dbgTilesAboveRCap} city:{ter._dbgMaxCity?.toFixed(2)} stl:{ter._dbgSettlementCount} totC:{ter._dbgTotalCityPop?.toFixed(1)} | sample bg:{ter._dbgSampleBgPop?.toFixed(3)} rc:{ter._dbgSampleRCap?.toFixed(3)}</span>}
+{ter&&<span style={{fontSize:9,color:"#886644"}}>bgPop:{ter._dbgTimeBgPop||'-'}ms rest:{ter._dbgTimeRest||'-'}ms | bg:{ter._dbgMaxBgPop?.toFixed(2)} stl:{ter._dbgSettlementCount} city:{ter._dbgMaxCity?.toFixed(1)} abvRC:{ter._dbgTilesAboveRCap}</span>}
 </div>;})()}
 
 {/* ══ BOTTOM CENTER: VIEW/OVERLAY OPTIONS (larger) ══ */}
