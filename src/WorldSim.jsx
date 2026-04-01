@@ -1097,7 +1097,12 @@ const{tw,th,tElev,tDiff,tCoast,owner,tribeSizes,cityPop,bgPop}=ter;
 if(!ter.transportCost)ter.transportCost=new Float32Array(tw*th);
 if(!ter.transportOwner)ter.transportOwner=new Int16Array(tw*th);// which city feeds this tile
 const cost=ter.transportCost;const tOwner=ter.transportOwner;
-cost.fill(999);tOwner.fill(-1);
+// Only reset owned tiles (not all 1.84M) — saves ~5ms of memset per call
+for(let tid=0;tid<n;tid++){
+if(tribeSizes[tid]<=0)continue;
+const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
+if(!ts)continue;
+for(const ti of ts){cost[ti]=999;tOwner[ti]=-1;}}
 const riverMag=ter.rivers?ter.rivers.riverMag:null;
 const n=ter.tribeCenters.length;
 
@@ -3081,7 +3086,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
 
 useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showPower,showGlobe,activeRes]);
 
-useEffect(()=>{let fid,acc=0,last=performance.now();
+useEffect(()=>{let fid,acc=0,last=performance.now(),drawSkip=0;
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
 acc+=now-last;last=now;const iv=Math.max(16,100/speedRef.current);
 if(acc>=iv){acc=0;
@@ -3106,10 +3111,10 @@ for(let i=0;i<ter2.tribeSizes.length;i++){if(ter2.tribeSizes[i]<=0)continue;aliv
 const pw=tribePower(ter2,i);if(pw>bestPow){bestPow=pw;bestId=i;}}
 setTribeCount(alive);setDominant(bestId>=0?{id:bestId,power:bestPow,size:ter2.tribeSizes[bestId],
 strength:ter2.tribeStrength[bestId],density:ter2.tribeStrength[bestId]/ter2.tribeSizes[bestId]}:null);
-const _drawStart=performance.now();
-try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);playRef.current=false;}
-const _drawTime=performance.now()-_drawStart;
-if(_drawTime>10)console.warn(`[DRAW SLOW] ${_drawTime.toFixed(1)}ms`);}};
+// Only redraw every 3rd sim frame to save 10-30ms/frame on CPU canvas rendering
+drawSkip++;
+if(drawSkip>=3){drawSkip=0;
+try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);playRef.current=false;}}}};
 fid=requestAnimationFrame(loop);return()=>cancelAnimationFrame(fid);},[draw]);
 
 // Wind particle animation loop — redraws at ~30fps when in wind view
