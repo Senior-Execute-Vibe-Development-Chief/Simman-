@@ -163,7 +163,7 @@ const tGrid=new Float32Array(mW2*mH2);
 for(let my=0;my<mH2;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
 const lt=Math.abs(py/H-0.42)*2,e2=elevation[py*W+px];
-tGrid[my*mW2+mx]=Math.max(0,Math.min(1,1-Math.pow(lt,2.0)*1.35-lt*lt*lt*0.1+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.55));}
+tGrid[my*mW2+mx]=Math.max(0,Math.min(1,1-Math.pow(lt,2.0)*1.35-lt*lt*lt*0.1+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.45));}
 for(let step=0;step<25;step++){const prev=new Float32Array(tGrid);
 for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
@@ -177,11 +177,15 @@ const sxr=Math.min(mW2-1,sx+1);
 const upT=(prev[sy*mW2+sx]*(1-fdx)+prev[sy*mW2+sxr]*fdx)*(1-fdy)
 +(prev[(sy+1)*mW2+sx]*(1-fdx)+prev[(sy+1)*mW2+sxr]*fdx)*fdy;
 const e2=elevation[fi],lt=Math.abs(py/H-0.42)*2;
-const locT=Math.max(0,Math.min(1,1-Math.pow(lt,2.0)*1.35-lt*lt*lt*0.1+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.55));
+const locT=Math.max(0,Math.min(1,1-Math.pow(lt,2.0)*1.35-lt*lt*lt*0.1+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.45));
 // Ocean base temp is cooler than land (water absorbs more solar energy as latent heat)
-const adjLocT=e2<=0?locT*0.82:locT;// ocean 18% cooler → equatorial ocean ~33°C vs land ~40°C
-// Ocean: wind drives currents strongly (Gulf Stream = warm water pushed by wind)
-if(e2<=0){tGrid[my*mW2+mx]=adjLocT*0.45+upT*0.55;}// 55% wind influence — strong ocean currents
+// Ocean: slightly cooler in tropics (water buffers heat), slightly warmer at poles
+// Ocean is MUCH cooler in tropics (water has huge heat capacity), warmer at poles
+const oceanAdj=e2<=0?(lt<0.3?0.78:lt<0.5?0.85:lt<0.7?0.95:1.1):1.0;
+const adjLocT=locT*oceanAdj;
+// Tropical ocean: less wind mixing (cooling must stick). Polar: more wind mixing.
+if(e2<=0){const wMix=lt<0.3?0.30:lt<0.6?0.45:0.55;
+tGrid[my*mW2+mx]=adjLocT*(1-wMix)+upT*wMix;}// 55% wind influence — strong ocean currents
 else{const tb=Math.min(0.8,Math.max(0,e2-0.05)*3);
 const bi=(1-tb*0.5)*0.35,wb=upT>locT?1.3:0.8;// stronger land advection
 const wi=Math.min(0.50,bi*wb);
@@ -199,7 +203,7 @@ const cp=Math.max(0,1-cd/8);
 const tLat=Math.abs(ny-0.42)*2;
 const shE=Math.exp(-((tLat-0.20)*(tLat-0.20))/(2*0.08*0.08))*0.06;
 // Steeper curve: pow(2.0)*1.35 drops faster at mid-latitudes
-const bt=1-Math.pow(tLat,2.0)*1.35-tLat*tLat*tLat*0.1+shE-Math.max(0,e)*0.55+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
+const bt=1-Math.pow(tLat,2.0)*1.35-tLat*tLat*tLat*0.1+shE-Math.max(0,e)*0.45+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
 const inland=Math.max(0,1-cp);
 const ch=tLat<0.5?inland*(0.5-tLat)*0.20:inland*(tLat-0.5)*-0.12;
 const mt=bt+(0.45-bt)*cp*0.2+ch;
@@ -2298,10 +2302,10 @@ const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)
 const e=w.elevation[si];const pi4=ti<<2;
 if(e<=sl){// Ocean temp: cooler than land in tropics, warmer than land at poles (water moderates)
 const t=w.temperature[si];
-// Variable shift: tropics -8°C, mid-lat -3°C, polar +5°C (ocean never below -2°C / t≈0.58)
-// Water's heat capacity: hot land → cool ocean, cold land → warm ocean
-const shift=t>0.7?-0.08:t>0.5?-0.03:t>0.3?0.02:0.08;// warm→cool, cold→warm
-const ot=Math.max(0.58,Math.min(1,t+shift));// floor at ~-2°C (saltwater freezing)
+// Ocean temp already adjusted in world gen. Just small display tweak:
+// Warm ocean slightly cooler than raw value, cold ocean slightly warmer (water moderates)
+const shift=t>0.8?-0.03:t>0.5?0:t>0.3?0.02:0.05;// warm→cool, cold→warm
+const ot=Math.max(0.52,Math.min(1,t+shift));// floor at ~-8°C (near sea ice)
 let r,g,b;
 if(ot<0.20){const s=ot/0.20;r=(230-s*130)|0;g=(225-s*185)|0;b=(240-s*40)|0;}
 else if(ot<0.40){const s=(ot-0.20)/0.20;r=(100-s*70)|0;g=(40-s*10)|0;b=(200-s*10)|0;}
