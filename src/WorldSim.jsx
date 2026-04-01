@@ -1315,15 +1315,28 @@ if(surplus>1.1&&cp>0&&cp<localMaxCity){
 const growthPot=Math.min(0.02,(surplus-1.0)*0.01)*transportFactor;
 cityPop[ti]+=growthPot*cp;}
 
-// New settlement: needs river/coast/resources AND food surplus
-// Only forms where there's a non-farming reason for people to gather
+// New settlement: needs geographic/strategic reason + food surplus
+// Historical drivers: river trade nexus, natural harbor, resource deposit,
+// transport crossroads, defensive position, biome transition zone
 if(surplus>1.2&&cp<0.01&&bgPop[ti]>farmCap*0.5){
 let siteQuality=0;
-if(riverMag){const rm=riverMag[ti];if(rm>=3)siteQuality+=2.0;else if(rm>=2)siteQuality+=0.5;}
+// Rivers: THE primary city driver throughout history
+if(riverMag){const rm=riverMag[ti];
+if(rm>=4)siteQuality+=3.0;// great river (Nile) = near certain city
+else if(rm>=3)siteQuality+=2.0;// major river (Danube)
+else if(rm>=2)siteQuality+=0.5;}// tributary
+// Coast/harbor: maritime trade
 if(tCoast[ti])siteQuality+=1.5;
-siteQuality+=transportFactor*0.3;
+// Transport crossroads: well-connected = natural market
+siteQuality+=transportFactor*0.4;
+// Resource deposits: mining/craft towns
+if(ter.deposits){for(let ri=0;ri<3;ri++){
+const rk2=['copper','iron','salt'][ri];const dep=ter.deposits[rk2];
+if(dep&&dep[ti]>0.2)siteQuality+=0.5;}}
+// Defensive terrain: settlements behind natural barriers
+if(tDiff[ti]>0.3&&fert>0.15)siteQuality+=0.3;
 if(siteQuality>0.8){
-const seed=0.02;// tiny seed: 20 people start a market
+const seed=0.02;// 20 people seed a market
 bgPop[ti]-=Math.min(seed,bgPop[ti]*0.05);
 cityPop[ti]+=seed;}}
 
