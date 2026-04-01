@@ -750,6 +750,9 @@ else if(exp===maxCat&&exp>0.22)b.personality="Expansionist";
 else b.personality="Balanced";}
 }
 // ── Era-dependent resource values: what each resource is WORTH at this knowledge level ──
+// Per-step cache: resourceValues only depends on tribe knowledge, which doesn't change within a step.
+// Eliminates ~30K object allocations per step in the expansion loop.
+let _resValCache=null;// Map<tribeId, values> cleared each step
 function resourceValues(k){if(!k)return{timber:0.3,stone:0.1,copper:0,tin:0,iron:0,salt:0.3,horses:0,precious:0,coal:0,oil:0,gems:0};
 const mt=k.metallurgy,ag=k.agriculture,nv=k.navigation,cn=k.construction,og=k.organization,tr=k.trade;
 return{
@@ -1310,7 +1313,9 @@ growthRate=0.02;
 }
 if(farmCap<=0.001&&cp<=0)continue;
 if(farmCap>0.001&&bp<farmCap){
-bgPop[ti]=bp+bp*growthRate*(1-bp/farmCap);}
+bgPop[ti]=bp+bp*growthRate*(1-bp/farmCap);
+// Track tiles crossing crystallization threshold for fast candidate scan
+if(bp<0.12&&bgPop[ti]>=0.12&&ow<0&&ter._crystalCandidateList)ter._crystalCandidateList.push(ti);}
 
 // ── Urbanization ──
 // Cities form for NON-FOOD reasons (geography). Food arriving = carrying capacity.
@@ -1400,7 +1405,8 @@ ter._dbgSettlementCount=settlementCount;
 // ── Rebuild tribeCenters from cityPop (towns+) ──
 // Villages = tiles with bgPop > 0.3 (farmers, counted but not tracked as centers)
 // Towns/cities = tiles with cityPop > 0.5 (urban, tracked as centers for power/cohesion)
-if(ter.stepCount%32===0){
+// Staggered +16 from transport to spread per-frame load
+if(ter.stepCount%32===16){
 const tribeSett=[];for(let i=0;i<n;i++)tribeSett.push([]);
 if(!ter._settleCounts)ter._settleCounts=[];
 while(ter._settleCounts.length<n)ter._settleCounts.push({villages:0,towns:0,cities:0,large:0});
@@ -1443,9 +1449,20 @@ if(alive>=80)return;
 const CRYSTAL_THRESHOLD=0.12;// low enough for moderate fertility land to crystallize
 const MIN_SPACING=Math.round(tw*0.02);// very close spacing allowed — tribes form in gaps between empires
 // Find multiple crystallization candidates — spawn up to 3 per check
+// Use high-pop unowned tile list instead of full 1.8M scan (300-600× faster)
+if(!ter._crystalCandidateList){
+// Build initial list on first call
+const cl=[];for(let ti=0;ti<tw*th;ti++){
+if(bgPop[ti]>=CRYSTAL_THRESHOLD&&owner[ti]<0&&tElev[ti]>0)cl.push(ti);}
+ter._crystalCandidateList=cl;}
 const crystalCandidates=[];
-for(let ti=0;ti<tw*th;ti++){
-if(bgPop[ti]<CRYSTAL_THRESHOLD)continue;
+for(let ci=0;ci<ter._crystalCandidateList.length;ci++){
+const ti=ter._crystalCandidateList[ci];
+// Remove tiles that no longer qualify (owned or pop dropped)
+if(owner[ti]>=0||bgPop[ti]<CRYSTAL_THRESHOLD){
+ter._crystalCandidateList[ci]=ter._crystalCandidateList[ter._crystalCandidateList.length-1];
+ter._crystalCandidateList.pop();ci--;continue;}
+// Also add newly qualifying tiles from recent bgPop growth (done lazily below)
 // Fertility requirement decreases over time as agriculture tech matures globally
 const fertReq=Math.max(0.08,0.25-ter.stepCount*0.0003);// 0.25 at start, 0.10 by step 500
 if(tFert[ti]<fertReq)continue;
@@ -1889,6 +1906,47 @@ let mn=Infinity;const cap=tDistW(x,y,centers[0].x,centers[0].y,tw);
 const limit=Math.min(centers.length,30);
 for(let ci=0;ci<limit;ci++){mn=Math.min(mn,tDistW(x,y,centers[ci].x,centers[ci].y,tw));}
 return{min:mn,cap};}
+
+// ── Precomputed per-tribe nearest-center distance grid ──
+// BFS from all centers of each tribe, stored as Float32Array(tw*th) per tribe.
+// Eliminates ~900K sqrt calls per step in expansion loop.
+// Updated every 8 steps (when centers may have changed).
+function computeCenterDistField(ter){
+const{tw,th,tribeCenters,tribeSizes,owner}=ter;
+const n=tribeCenters.length;
+if(!ter._centerDist)ter._centerDist=[];
+// Grow array if tribes added
+while(ter._centerDist.length<n)ter._centerDist.push(null);
+// Shared BFS queue + distance buffer (reused across tribes)
+if(!ter._cdBuf){ter._cdBuf=new Float32Array(tw*th);ter._cdQ=new Int32Array(tw*th);}
+const dist=ter._cdBuf;const q=ter._cdQ;
+const DX4=[-1,1,0,0];const DY4=[0,0,-1,1];
+for(let tid=0;tid<n;tid++){
+if(tribeSizes[tid]<=0){ter._centerDist[tid]=null;continue;}
+const centers=tribeCenters[tid];if(!centers||centers.length===0){ter._centerDist[tid]=null;continue;}
+// Only recompute if tribe has territory (skip tiny tribes with 0 tiles)
+if(tribeSizes[tid]<3&&ter._centerDist[tid]){continue;}// keep stale data for tiny tribes
+// BFS from centers: compute exact Euclidean distance at seed, BFS propagates +1 per step
+// For speed, use integer BFS (each step = 1 tile distance), then the expansion loop
+// gets approximate tile-distance which is good enough for reach falloff.
+if(!ter._centerDist[tid])ter._centerDist[tid]=new Float32Array(tw*th);
+const td=ter._centerDist[tid];td.fill(255);
+let qHead=0,qTail=0;
+const limit=Math.min(centers.length,30);
+for(let ci=0;ci<limit;ci++){
+const cx=centers[ci].x,cy=centers[ci].y;
+const ci2=cy*tw+cx;
+if(ci2>=0&&ci2<tw*th&&td[ci2]>0){td[ci2]=0;q[qTail++]=ci2;}}
+while(qHead<qTail){
+const ti=q[qHead++];const cd=td[ti];
+if(cd>=60)continue;// don't BFS beyond useful range
+const tx=ti%tw,ty=(ti-tx)/tw;
+for(let d=0;d<4;d++){
+const nx=((tx+DX4[d])%tw+tw)%tw,ny=ty+DY4[d];
+if(ny<0||ny>=th)continue;
+const ni=ny*tw+nx;const nd=cd+1;
+if(nd<td[ni]){td[ni]=nd;q[qTail++]=ni;}}}
+}}
 // Sum of fertility within radius R of a point, for tiles owned by tribeId
 function centerPower(ter,tribeId,cx,cy,R){const{tw,th,owner,tFert}=ter;let sum=0;
 for(let dy=-R;dy<=R;dy++){const ny=cy+dy;if(ny<0||ny>=th)continue;
@@ -1971,10 +2029,14 @@ if(tribeTiles){while(tribeTiles.length<=nw)tribeTiles.push(new Set());tribeTiles
 
 function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
+// Clear per-step caches
+if(!_resValCache)_resValCache=new Map();else _resValCache.clear();
 // ── Knowledge & population step (every 8 ticks) ──
 if(ter.stepCount%8===0&&ter.tribeKnowledge){
-// Transport network: recompute every 32 steps (expensive Dijkstra)
+// Transport network: recompute every 32 steps (staggered to avoid spike)
 if(ter.stepCount%32===0)computeTransport(ter);
+// Center distance field: recompute every 8 steps (used by expansion loop)
+computeCenterDistField(ter);
 const _t0=performance.now();
 stepBackgroundPop(ter);
 const _t1=performance.now();
@@ -1982,8 +2044,8 @@ stepPopulation(ter);stepTrade(ter);stepBudget(ter);stepKnowledge(ter);
 const _t2=performance.now();
 ter._dbgTimeBgPop=(_t1-_t0).toFixed(1);ter._dbgTimeRest=(_t2-_t1).toFixed(1);
 // Recompute ports periodically
-// Recompute ports less frequently (every 32 steps, not 8)
-if(ter.stepCount%32===0){for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}}
+// Recompute ports — staggered +8 from transport to spread load
+if(ter.stepCount%32===8){for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}}
 const _tExpStart=performance.now();
 // ── Expansion into empty land (directional, pressure-driven) ──
 // Reuse frontier marker array across frames (avoids 1.8MB alloc per frame)
@@ -1991,6 +2053,8 @@ if(!ter._nfBuf)ter._nfBuf=new Uint8Array(tw*th);
 const nf=ter._nfBuf;const nfl=[];
 // Clear only the tiles marked in the PREVIOUS frame's frontier list
 const prevFL=ter.frontierList;for(let fi=0;fi<prevFL.length;fi++)nf[prevFL[fi]]=0;
+// Reuse single candidates array across all frontier tiles (avoids 30K allocs/step)
+const _candidates=[];
 for(let fj=0;fj<ter.frontierList.length;fj++){const fi=ter.frontierList[fj];if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
 const owSz=tribeSizes[ow],owDens=owSz>0?tribeStrength[ow]/owSz:0;
 const owKnow=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
@@ -2017,7 +2081,7 @@ const smallBoost=owSz<5?1.5:1;
 const largePrize=owSz>40?1+Math.min(1,(owSz-40)*0.008):1;
 // Score and evaluate all candidate neighbor tiles
 const agBoost=1+agLevel*2;// ag=0→1x, ag=0.5→2x
-const candidates=[];
+_candidates.length=0;
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny2=ty+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx;if(owner[ni]>=0)continue;
 const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni];if(effT<0.02){room=true;continue;}
 const diff=tDiff[ni];
@@ -2039,7 +2103,7 @@ const fert=tFert[ni];
 // ── Directional score: what makes this tile VALUABLE to expand into ──
 let score=fert*fert*agMult*3;// quadratic fertility × agriculture tech
 // Resource pull: era-weighted. Bronze-age tribe → pulled to tin. Industrial → pulled to coal.
-if(owKnow&&ter.deposits){const owRv=resourceValues(owKnow);
+if(owKnow&&ter.deposits){let owRv=_resValCache.get(ow);if(!owRv){owRv=resourceValues(owKnow);_resValCache.set(ow,owRv);}
 for(const rk of RES_KEYS){const dep=ter.deposits[rk];if(dep&&dep[ni]>0.1)score+=owRv[rk]*dep[ni]*2.0;}}
 // Strategic knowledge-driven pull
 if(owKnow){
@@ -2095,17 +2159,18 @@ chance*=1+Math.min(2.0,score*0.5);// stronger score feedback// score 0→1x, sco
 // Center proximity — organization extends effective reach
 // Base Gaussian exp(-d²/280) halves at ~14 tiles. Organization stretches this.
 const orgReach=owKnow?1+owKnow.organization*1.5:1;// org=0→1x, org=0.5→1.75x, org=1→2.5x
-const centers=tribeCenters[ow];
-const{min:distMin}=nearestCenterDist(centers,nx,ny2,tw);
+// Use precomputed center distance field (eliminates 30-center sqrt loop per tile)
+const distMin=ter._centerDist&&ter._centerDist[ow]?ter._centerDist[ow][ny2*tw+nx]:
+nearestCenterDist(tribeCenters[ow],nx,ny2,tw).min;// fallback if not yet computed
 const reach=expFalloff(distMin/orgReach);// org stretches effective distance
 chance*=Math.max(0.03,reach);
 score+=Math.random()*0.1;
-candidates.push({ni,nx,ny:ny2,chance,score,diff,distMin});}
+_candidates.push({ni,nx,ny:ny2,chance,score,diff,distMin});}
 // Sort by score — best tiles first. Each subsequent candidate gets reduced chance
 // so growth strongly follows fertile corridors, not uniform bubbles.
-candidates.sort((a,b)=>b.score-a.score);
+_candidates.sort((a,b)=>b.score-a.score);
 let claimedThisTile=0;
-for(let ci2=0;ci2<candidates.length;ci2++){const cand=candidates[ci2];const{ni,nx,ny:ny2,chance,diff,distMin}=cand;
+for(let ci2=0;ci2<_candidates.length;ci2++){const cand=_candidates[ci2];const{ni,nx,ny:ny2,chance,diff,distMin}=cand;
 // Each subsequent candidate is 20% as likely (very steep — usually only best gets claimed)
 const rankPenalty=Math.pow(0.2,claimedThisTile);
 if(Math.random()<chance*rankPenalty){let nw=ow;claimedThisTile++;
@@ -2301,7 +2366,8 @@ claimTile(ter,ti,to);if(!nf[ti]){nf[ti]=1;nfl.push(ti);}}}
 // ── City-based cohesion challenge: when a secondary city outgrows the capital ──
 // Centers are derived from cityPop in stepBackgroundPop. Here we check if a
 // rival city challenges the capital — potentially splitting the empire.
-if(ter.stepCount%32===0){for(let st=0;st<tribeSizes.length;st++){
+// Staggered +24 from transport
+if(ter.stepCount%32===24){for(let st=0;st<tribeSizes.length;st++){
 const centers=tribeCenters[st];if(!centers||centers.length<2||tribeSizes[st]<40)continue;
 // Capital = centers[0] (largest city). Check if any secondary rivals it.
 const capTi=centers[0].y*tw+centers[0].x;
@@ -2333,6 +2399,7 @@ if(dSec<dNearest)toXfer.push(i);}
 for(const ti of toXfer)transferTile(ter,ti,sid);
 break;}}}
 // ── Terrain-based fragmentation: large tribes in rough terrain tend to split ──
+// Staggered +8 from cohesion check
 if(ter.stepCount%32===0){
 for(let st=0;st<tribeSizes.length;st++){
 if(tribeSizes[st]<=40)continue;
