@@ -1132,9 +1132,12 @@ const roadReduction=cn*0.5;// construction halves cost at max
 const industrialReduction=Math.max(0,ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].metallurgy-0.75:0)*3;// rail
 return Math.max(0.2,base*(1-roadReduction)-industrialReduction);}
 
-// Priority queue (simple binary heap for Dijkstra)
-const heapTi=[];const heapCost=[];let heapSize=0;
+// Priority queue (binary heap — reuse cached arrays)
+if(!ter._heapTi){ter._heapTi=new Int32Array(tw*th);ter._heapCost=new Float32Array(tw*th);}
+const heapTi=ter._heapTi;const heapCost=ter._heapCost;let heapSize=0;
+const HEAP_MAX=heapTi.length;
 function heapPush(ti2,c){
+if(heapSize>=HEAP_MAX)return;// overflow guard
 let i=heapSize++;heapTi[i]=ti2;heapCost[i]=c;
 while(i>0){const p=(i-1)>>1;if(heapCost[p]<=heapCost[i])break;
 const tt=heapTi[p],tc=heapCost[p];heapTi[p]=heapTi[i];heapCost[p]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=p;}}
@@ -1196,7 +1199,7 @@ ts.connected++;ts.avgCost+=c;
 if(c>ts.maxCost)ts.maxCost=c;}
 for(let i=0;i<n;i++){const ts=ter._tribeTransport[i];
 if(ts.connected>0)ts.avgCost/=ts.connected;}
-}catch(e){console.error('[computeTransport CRASH]',e.message,'step:',ter.stepCount);throw e;}
+}catch(e){console.error('[computeTransport CRASH]',e.message,'step:',ter.stepCount,'n:',ter.tribeCenters.length,'tw:',ter.tw,'th:',ter.th,'cityPop?:',!!ter.cityPop,'settled:',ter.settled);throw e;}
 }
 
 // ── Per-tile population with FOOD ECONOMY ──
