@@ -1211,20 +1211,31 @@ ter._dbgMaxBgPop=maxBg;ter._dbgBgAboveThresh=bgAboveThresh;ter._dbgMaxCity=maxCi
 ter._dbgTilesAboveRCap=tilesAboveRCap;ter._dbgSettlementCount=settlementCount;
 
 // ── Rebuild tribeCenters from cityPop peaks ──
-// Single pass over all tiles: bucket settlements by owner, then sort per tribe.
+// Only towns+ (cityPop >= 0.5) become centers. Villages are too small to matter
+// for power projection, cohesion, etc. This keeps tribeCenters small.
+// Also count settlement tiers per tribe for display.
 if(ter.stepCount%32===0){
-// Single pass: collect settlements per tribe
 const tribeSett=[];for(let i=0;i<n;i++)tribeSett.push([]);
-const minPop=SETTLE_TIERS[0].min;
+const minCenterPop=SETTLE_TIERS[1].min;// towns+ only (0.5)
+if(!ter._settleCounts)ter._settleCounts=[];
+while(ter._settleCounts.length<n)ter._settleCounts.push({villages:0,towns:0,cities:0,large:0});
+for(let i=0;i<n;i++){ter._settleCounts[i].villages=0;ter._settleCounts[i].towns=0;ter._settleCounts[i].cities=0;ter._settleCounts[i].large=0;}
 for(let ti=0;ti<tw*th;ti++){
-const ow2=owner[ti];if(ow2<0||cityPop[ti]<minPop)continue;
-tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cityPop[ti]});}
+const ow2=owner[ti];if(ow2<0)continue;
+const cp=cityPop[ti];if(cp<SETTLE_TIERS[0].min)continue;
+// Count all settlement tiers for display
+const sc=ter._settleCounts[ow2];
+const tier=settleTier(cp);
+if(tier){
+if(tier.name==='village')sc.villages++;
+else if(tier.name==='town'){sc.towns++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}
+else if(tier.name==='small'||tier.name==='medium'){sc.cities++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}
+else{sc.large++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}}}
 for(let st=0;st<n;st++){
 if(tribeSizes[st]<=0)continue;
 const sett=tribeSett[st];
 if(sett.length===0)continue;
 sett.sort((a,b)=>b.pop-a.pop);
-// Rebuild centers: try to match existing for prestige/founded continuity
 const oldMap=new Map();
 const old=ter.tribeCenters[st]||[];
 for(const oc of old)oldMap.set(oc.x+','+oc.y,oc);
@@ -1680,7 +1691,10 @@ function expFalloff(d){const di=d<0?0:d>EXP_LUT_SIZE?EXP_LUT_SIZE:d;const lo=di|
 // Distance from (x,y) to nearest center of a tribe; also returns the capital (index 0) distance
 function nearestCenterDist(centers,x,y,tw){if(!centers||centers.length===0)return{min:0,cap:0};
 let mn=Infinity;const cap=tDistW(x,y,centers[0].x,centers[0].y,tw);
-for(const c of centers){mn=Math.min(mn,tDistW(x,y,c.x,c.y,tw));}return{min:mn,cap};}
+// Only check first 30 centers (sorted by pop, largest first) for perf
+const limit=Math.min(centers.length,30);
+for(let ci=0;ci<limit;ci++){mn=Math.min(mn,tDistW(x,y,centers[ci].x,centers[ci].y,tw));}
+return{min:mn,cap};}
 // Sum of fertility within radius R of a point, for tiles owned by tribeId
 function centerPower(ter,tribeId,cx,cy,R){const{tw,th,owner,tFert}=ter;let sum=0;
 for(let dy=-R;dy<=R;dy++){const ny=cy+dy;if(ny<0||ny>=th)continue;
@@ -1707,16 +1721,18 @@ const tradeWealth=k?1+k.trade*0.3:1;
 const wealthBonus=ter.tribeBudget&&ter.tribeBudget[id]?1+Math.min(0.5,ter.tribeBudget[id].wealth*0.001):1;
 return pop*0.01*milTech*logistics*milFocus*tradeWealth*wealthBonus;
 }
-// Local power projection at a border tile: nearest center projects its share of population
+// Local power projection at a border tile: sum contributions from nearby centers.
+// Only considers centers within range 40 (beyond that, expFalloff is ~0).
 function localPower(ter,tribeId,tx,ty){
 const pop=ter.tribeStrength[tribeId],sz=ter.tribeSizes[tribeId];if(sz<=0)return 0;
 const centers=ter.tribeCenters[tribeId];if(!centers||centers.length===0)return pop*0.05;
-// Sum contributions from ALL centers (not just nearest) — each radiates power
 let total=0;
-for(const c of centers){const d=tDistW(tx,ty,c.x,c.y,ter.tw);
-// Gaussian falloff: halves at ~14 tiles, 10% at ~24, negligible beyond ~35
-const contribution=expFalloff(d)*c.prestige;
-total+=contribution;}
+// Limit scan: first 30 centers (sorted by pop = largest cities) contribute most
+const limit=Math.min(centers.length,30);
+for(let ci=0;ci<limit;ci++){const c=centers[ci];
+const d=tDistW(tx,ty,c.x,c.y,ter.tw);
+if(d>40)continue;// beyond expFalloff range
+total+=expFalloff(d)*c.prestige;}
 // Base influence without centers is very low (3% of pop)
 let base=pop*(0.03+0.97*Math.min(1,total));
 // Metallurgy + ore access multiplies combat effectiveness
@@ -1766,7 +1782,9 @@ stepPopulation(ter);stepTrade(ter);stepBudget(ter);stepKnowledge(ter);
 const _t2=performance.now();
 ter._dbgTimeBgPop=(_t1-_t0).toFixed(1);ter._dbgTimeRest=(_t2-_t1).toFixed(1);
 // Recompute ports periodically
-for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}
+// Recompute ports less frequently (every 32 steps, not 8)
+if(ter.stepCount%32===0){for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}}
+const _tExpStart=performance.now();
 // ── Expansion into empty land (directional, pressure-driven) ──
 const nf=new Uint8Array(tw*th);const nfl=[];
 for(let fj=0;fj<ter.frontierList.length;fj++){const fi=ter.frontierList[fj];if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
@@ -2137,6 +2155,7 @@ let bn=-1,bs2=0;for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const ty2=Mat
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===st||tElev[ni]<=sl)continue;if(tribeSizes[no]>bs2){bs2=tribeSizes[no];bn=no;}}}
 if(bn>=0&&tribeSizes[bn]>tribeSizes[st]*3){for(let i=0;i<tw*th;i++)if(owner[i]===st)claimTile(ter,i,bn);}}}
+ter._dbgTimeExpansion=(performance.now()-_tExpStart).toFixed(1);
 return ter;}
 
 // ── Non-linear time: starts at 3000 BC, accelerates into modernity ──
@@ -2579,7 +2598,9 @@ for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st]
 if(!centers||ter.tribeSizes[st]<=0)continue;
 const isSelected=st===selSt;
 const dimmed=hasSel&&!isSelected;
-for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=dataYtoScreenY(centers[ci].y*RES,H,CH)+0.5;
+// Render top 100 centers max per tribe (sorted by pop, largest first)
+const drawLimit=isSelected?200:(dimmed?20:100);
+for(let ci=0;ci<Math.min(centers.length,drawLimit);ci++){const cx2=centers[ci].x+0.5,cy2=dataYtoScreenY(centers[ci].y*RES,H,CH)+0.5;
 const isCapital=ci===0;
 const cPop=centers[ci].pop||0;
 // Radius: log scale. village(0.05)→0.7, town(0.5)→1.3, city(3)→1.8, large(100)→3.7
@@ -2863,13 +2884,7 @@ const bud2=ter.tribeBudget&&ter.tribeBudget[ow2]?ter.tribeBudget[ow2]:null;
 const selT=selectedTribe;
 let relation='';
 if(selT>=0&&selT!==ow2&&ter.tribeSizes[selT]>0)relation=tribeRelation(ter,selT,ow2);
-const ctrs2=ter.tribeCenters[ow2]||[];
-const stCounts2={villages:0,towns:0,cities:0,large:0};
-for(const c of ctrs2){const t=settleTier(c.pop||0);if(!t)continue;
-if(t.name==='village')stCounts2.villages++;
-else if(t.name==='town')stCounts2.towns++;
-else if(t.name==='small'||t.name==='medium')stCounts2.cities++;
-else stCounts2.large++;}
+const stCounts2=ter._settleCounts&&ter._settleCounts[ow2]?ter._settleCounts[ow2]:{villages:0,towns:0,cities:0,large:0};
 const ports2=ter.tribePorts&&ter.tribePorts[ow2]?ter.tribePorts[ow2].length:0;
 const kc2=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[ow2]?ter.tribeKnownCoasts[ow2].length:0;
 tribeInfo={id:ow2,size:ter.tribeSizes[ow2],pop:Math.round(pop2),
@@ -3082,7 +3097,7 @@ border:"1px solid rgba(201,184,122,0.1)"}}>
 <span style={{color:"#c9b87a"}}>{dominant.size}t</span></span>}
 {aliveK>0&&<span style={{fontSize:9,color:"#6a6458"}}>
 Ag {(avgAg*100|0)} Mt {(avgMet*100|0)} Nv {(avgNav*100|0)} Og {(avgOrg*100|0)}</span>}
-{ter&&<span style={{fontSize:9,color:"#886644"}}>bgPop:{ter._dbgTimeBgPop||'-'}ms rest:{ter._dbgTimeRest||'-'}ms | bg:{ter._dbgMaxBgPop?.toFixed(2)} stl:{ter._dbgSettlementCount} city:{ter._dbgMaxCity?.toFixed(1)} abvRC:{ter._dbgTilesAboveRCap}</span>}
+{ter&&<span style={{fontSize:9,color:"#886644"}}>pop:{ter._dbgTimeBgPop||'-'}ms rest:{ter._dbgTimeRest||'-'}ms exp:{ter._dbgTimeExpansion||'-'}ms | stl:{ter._dbgSettlementCount} city:{ter._dbgMaxCity?.toFixed(1)} ctr:{ter.tribeCenters?.reduce((s,c)=>s+(c?c.length:0),0)}</span>}
 </div>;})()}
 
 {/* ══ BOTTOM CENTER: VIEW/OVERLAY OPTIONS (larger) ══ */}
@@ -3169,13 +3184,7 @@ for(let i=0;i<ter.tribeSizes.length;i++){if(ter.tribeSizes[i]<=0)continue;
 const k=ter.tribeKnowledge&&ter.tribeKnowledge[i]?ter.tribeKnowledge[i]:null;
 const pop=ter.tribePopulation?ter.tribePopulation[i]:0;
 const ports=ter.tribePorts&&ter.tribePorts[i]?ter.tribePorts[i].length:0;
-const ctrs=ter.tribeCenters[i]||[];
-const stCounts={villages:0,towns:0,cities:0,large:0};
-for(const c of ctrs){const t2=settleTier(c.pop||0);if(!t2)continue;
-if(t2.name==='village')stCounts.villages++;
-else if(t2.name==='town')stCounts.towns++;
-else if(t2.name==='small'||t2.name==='medium')stCounts.cities++;
-else stCounts.large++;}
+const stCounts=ter._settleCounts&&ter._settleCounts[i]?ter._settleCounts[i]:{villages:0,towns:0,cities:0,large:0};
 const knownCoasts=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
 const power=tribePower(ter,i);
 const bud=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i]:null;
