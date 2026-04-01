@@ -168,7 +168,9 @@ for(let step=0;step<25;step++){const prev=new Float32Array(tGrid);
 for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
 const wx2=fWX[fi],wy2=fWY[fi];
-const srcX=mx-wx2*2.0,srcY=my-wy2*2.0;
+// Wind vectors are small (max ~0.25) — amplify strongly for temperature transport
+// Target: Gulf Stream should push warm water ~500 pixels over 25 iterations
+const srcX=mx-wx2*25.0,srcY=my-wy2*25.0;
 const sx=Math.min(mW2-2,Math.max(0,srcX|0)),sy=Math.min(mH2-2,Math.max(0,srcY|0));
 const fdx=Math.max(0,Math.min(1,srcX-sx)),fdy=Math.max(0,Math.min(1,srcY-sy));
 const sxr=Math.min(mW2-1,sx+1);
