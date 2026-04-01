@@ -3106,7 +3106,10 @@ for(let i=0;i<ter2.tribeSizes.length;i++){if(ter2.tribeSizes[i]<=0)continue;aliv
 const pw=tribePower(ter2,i);if(pw>bestPow){bestPow=pw;bestId=i;}}
 setTribeCount(alive);setDominant(bestId>=0?{id:bestId,power:bestPow,size:ter2.tribeSizes[bestId],
 strength:ter2.tribeStrength[bestId],density:ter2.tribeStrength[bestId]/ter2.tribeSizes[bestId]}:null);
-try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);playRef.current=false;}}};
+const _drawStart=performance.now();
+try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);playRef.current=false;}
+const _drawTime=performance.now()-_drawStart;
+if(_drawTime>10)console.warn(`[DRAW SLOW] ${_drawTime.toFixed(1)}ms`);}};
 fid=requestAnimationFrame(loop);return()=>cancelAnimationFrame(fid);},[draw]);
 
 // Wind particle animation loop — redraws at ~30fps when in wind view
