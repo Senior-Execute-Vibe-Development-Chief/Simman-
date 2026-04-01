@@ -1151,18 +1151,17 @@ if(s===i)break;
 const tt=heapTi[s],tc=heapCost[s];heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=s;}}
 return{ti:ti2,cost:c};}
 
-// Seed: all city tiles (cityPop > 0.1) start at cost 0
-for(let ti=0;ti<tw*th;ti++){
-if(cityPop[ti]>0.1&&owner[ti]>=0){
-cost[ti]=0;tOwner[ti]=ti;heapPush(ti,0);}}
+// Seed: use tribeTiles to find city/market tiles (not full grid scan)
+for(let tid=0;tid<n;tid++){
+if(tribeSizes[tid]<=0)continue;
+const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
+if(!ts)continue;
+for(const ti of ts){
+if(cityPop&&cityPop[ti]>0.1){cost[ti]=0;tOwner[ti]=ti;heapPush(ti,0);}
+else if(bgPop[ti]>0.2&&(tCoast[ti]||(riverMag&&riverMag[ti]>=2))){
+if(cost[ti]>1){cost[ti]=1;tOwner[ti]=ti;heapPush(ti,1);}}}}
 
-// Also seed from tiles with significant bgPop on rivers/coast (market towns)
-for(let ti=0;ti<tw*th;ti++){
-if(owner[ti]<0)continue;
-if(bgPop[ti]>0.2&&(tCoast[ti]||(riverMag&&riverMag[ti]>=2))){
-if(cost[ti]>1){cost[ti]=1;tOwner[ti]=ti;heapPush(ti,1);}}}
-
-// Dijkstra: expand from cities outward
+// Dijkstra: expand from cities through OWNED territory only
 const DX4=[-1,1,0,0];const DY4=[0,0,-1,1];
 while(heapSize>0){
 const{ti:ci,cost:cc}=heapPop();
@@ -1170,18 +1169,17 @@ if(cc>cost[ci])continue;// stale entry
 if(cc>100)continue;// don't explore beyond reasonable transport range
 const cx=ci%tw,cy=(ci-cx)/tw;
 const ow=owner[ci];
-const cn=ow>=0?tribeCn[ow]:0;
-const nv=ow>=0?tribeNv[ow]:0;
+if(ow<0)continue;// skip unowned tiles entirely
+const cn=tribeCn[ow];
+const nv=tribeNv[ow];
 for(let d=0;d<4;d++){
 const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
 if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;
-// Can traverse: own territory, OR ocean (if navigation), OR unowned coast
+// Only traverse own territory (skip ocean, skip enemy territory)
 const nOw=owner[ni];
-const isOcean=tElev[ni]<=0;
-if(!isOcean&&nOw>=0&&nOw!==ow)continue;// can't go through enemy territory
-if(isOcean&&nv<0.1)continue;// can't cross ocean without navigation
-const moveCost=tileCost(ni,cn,nv,ow>=0?ow:0);
+if(nOw!==ow)continue;// only traverse own territory
+const moveCost=tileCost(ni,cn,nv,ow);
 const newCost=cc+moveCost;
 if(newCost<cost[ni]){
 cost[ni]=newCost;tOwner[ni]=tOwner[ci];// inherit source city
@@ -1191,12 +1189,13 @@ heapPush(ni,newCost);}}}
 if(!ter._tribeTransport)ter._tribeTransport=[];
 while(ter._tribeTransport.length<n)ter._tribeTransport.push({maxCost:0,avgCost:0,connected:0});
 for(let i=0;i<n;i++){ter._tribeTransport[i].maxCost=0;ter._tribeTransport[i].avgCost=0;ter._tribeTransport[i].connected=0;}
-for(let ti=0;ti<tw*th;ti++){
-const ow=owner[ti];if(ow<0||tElev[ti]<=0)continue;
-const c=cost[ti];if(c>=999)continue;
-const ts=ter._tribeTransport[ow];
-ts.connected++;ts.avgCost+=c;
-if(c>ts.maxCost)ts.maxCost=c;}
+// Stats: use tribeTiles instead of full grid scan
+for(let tid=0;tid<n;tid++){
+if(tribeSizes[tid]<=0)continue;
+const ts2=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
+if(!ts2)continue;const ts=ter._tribeTransport[tid];
+for(const ti of ts2){const c=cost[ti];if(c>=999)continue;
+ts.connected++;ts.avgCost+=c;if(c>ts.maxCost)ts.maxCost=c;}}
 for(let i=0;i<n;i++){const ts=ter._tribeTransport[i];
 if(ts.connected>0)ts.avgCost/=ts.connected;}
 }catch(e){console.error('[computeTransport CRASH]',e.message,'step:',ter.stepCount,'n:',ter.tribeCenters.length,'tw:',ter.tw,'th:',ter.th,'cityPop?:',!!ter.cityPop,'settled:',ter.settled);throw e;}
