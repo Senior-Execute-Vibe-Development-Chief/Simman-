@@ -400,17 +400,17 @@ export function solveWindGPU(state, wW, wH, windX, windY, pressure, drag, elevat
     }
   }
 
-  // Read back results
+  // Read back results — must use gl.RG to match RG32F framebuffer format
   gl.bindFramebuffer(gl.FRAMEBUFFER, src.fbo);
-  const result = new Float32Array(wW * wH * 4);
-  gl.readPixels(0, 0, wW, wH, gl.RGBA, gl.FLOAT, result);
+  const result = new Float32Array(wW * wH * 2);
+  gl.readPixels(0, 0, wW, wH, gl.RG, gl.FLOAT, result);
 
   // Extract windX, windY from RG channels
   const outX = new Float32Array(N);
   const outY = new Float32Array(N);
   for (let i = 0; i < N; i++) {
-    outX[i] = result[i * 4];
-    outY[i] = result[i * 4 + 1];
+    outX[i] = result[i * 2];
+    outY[i] = result[i * 2 + 1];
   }
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);

@@ -83,37 +83,56 @@ self.onmessage = function(e) {
       const t0 = performance.now();
       initNoise(seed);
 
-      let world;
-      if (preset === 'tectonic') {
-        const nf = { initNoise, fbm, ridged, noise2D, worley };
-        world = generateTectonicWorld(W, H, seed, nf, tecParams || {});
-        // Wind + moisture are already computed inside generateTectonicWorld
-      } else {
-        // For earth/earth_sim/pangaea, we can't easily replicate the full
-        // generateWorld logic here without duplicating 500+ lines.
-        // Signal back that this preset should fall back to main thread.
+      if (preset !== 'tectonic') {
         self.postMessage({ type: 'fallback', preset });
         return;
       }
 
+      const nf = { initNoise, fbm, ridged, noise2D, worley };
+      const tec = generateTectonicWorld(W, H, seed, nf, tecParams || {});
+      const { elevation, moisture, temperature } = tec;
+
+      // ── Post-processing: coastal detection (matches generateWorld lines 407-412) ──
+      const RES = 1;
+      const ctw = Math.ceil(W / RES), cth = Math.ceil(H / RES);
+      const coastal = new Uint8Array(ctw * cth);
+      for (let ty = 1; ty < cth - 1; ty++) for (let tx = 0; tx < ctw; tx++) {
+        const px = Math.min(W - 1, tx * RES), py = Math.min(H - 1, ty * RES);
+        if (elevation[py * W + px] > 0) {
+          outer: for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const wx = ((tx + dx) % ctw + ctw) % ctw, wy = ty + dy;
+            if (wy < 0 || wy >= cth) continue;
+            const npx = Math.min(W - 1, wx * RES), npy = Math.min(H - 1, wy * RES);
+            if (elevation[npy * W + npx] <= 0) { coastal[ty * ctw + tx] = 1; break outer; }
+          }
+        }
+      }
+
+      // ── Post-processing: swamp detection (matches generateWorld lines 414-418) ──
+      const swamp = new Uint8Array(W * H);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        if (elevation[i] > 0 && elevation[i] < 0.025 && moisture[i] > 0.45 && temperature[i] > 0.35) {
+          const nv = fbm(x / W * 20 + 300, y / H * 20 + 300, 2, 2, 0.5);
+          if (nv > -0.1) swamp[i] = 1;
+        }
+      }
+
       const dt = performance.now() - t0;
-      console.log(`[Worker] World gen complete in ${dt.toFixed(0)}ms`);
+      console.log(`[Worker] Tectonic world gen complete in ${dt.toFixed(0)}ms`);
+
+      // Build complete world object matching generateWorld return signature
+      const result = {
+        elevation, moisture, temperature, coastal, swamp,
+        pixPlate: tec.pixPlate, windX: tec.windX, windY: tec.windY,
+        width: W, height: H, preset: 'tectonic', _seed: seed
+      };
 
       // Transfer typed arrays (zero-copy) back to main thread
       const transferables = [];
-      const result = {};
-      for (const key of Object.keys(world)) {
-        const val = world[key];
-        if (val instanceof Float32Array || val instanceof Int32Array ||
-            val instanceof Uint8Array || val instanceof Int16Array ||
-            val instanceof Uint16Array || val instanceof Int8Array) {
-          result[key] = val;
+      for (const val of Object.values(result)) {
+        if (val && val.buffer instanceof ArrayBuffer) {
           transferables.push(val.buffer);
-        } else if (val instanceof ArrayBuffer) {
-          result[key] = val;
-          transferables.push(val);
-        } else {
-          result[key] = val;
         }
       }
 

@@ -11,12 +11,7 @@ import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
 import { generateResources, tileResourceSummary, dominantResource, RESOURCES, RES_BY_ID } from "./resourceGen.js";
 import { computeRivers, riverName, RIVER_NAMES, RIVER_NONE, RIVER_STREAM, RIVER_TRIBUTARY, RIVER_MAJOR, RIVER_GREAT } from "./riverGen.js";
-import { initGPUPopSolver, stepPopGPU } from "./gpuPopSolver.js";
-
-// GPU population solver — DISABLED pending shader validation.
-// The CPU path with cached arrays and tribeTiles index is used instead.
-// To re-enable: change _gpuPopSolver = null to _gpuPopSolver = undefined
-let _gpuPopSolver = null; // null = skip GPU entirely
+import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
 function initNoise(seed){const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)PERM[i]=p[i&255];}
@@ -1261,45 +1256,8 @@ const riverMag=ter.rivers?ter.rivers.riverMag:null;
 const tCost=ter.transportCost;
 const hasTrans=tCost&&tCost.length>=tw*th;
 
-// ── GPU-accelerated growth + migration ──
-// Pack tribe stats for GPU: [surplusFrac, growthRate, maxCity, infra] per tribe
-if(_gpuPopSolver===undefined){try{_gpuPopSolver=initGPUPopSolver();}catch(e){_gpuPopSolver=null;}}
-let usedGPUPop=false;
-if(_gpuPopSolver&&n<=256){
-try{
-const tribeStatsBuf=new Float32Array(256*4);
-for(let i=0;i<n;i++){
-tribeStatsBuf[i*4]=tribeSurplusFrac[i];
-tribeStatsBuf[i*4+1]=tribeGrowth[i];
-tribeStatsBuf[i*4+2]=tribeMaxCity[i];
-// Pack food surplus ratio + infra into alpha
-// We'll compute food surplus on CPU first, then pass it
-tribeStatsBuf[i*4+3]=tribeInfra[i];}
-// Run food accounting on CPU first (needed for city growth in GPU shader)
-for(let li=0;li<landCount;li++){
-const ti=landTiles[li];const ow=owner[ti];
-if(ow<0||tribeSizes[ow]<=0)continue;
-const production=bgPop[ti]*tFert[ti]*(1+tribeSurplusFrac[ow]*3);
-const selfConsumption=bgPop[ti];
-tribeFoodProd[ow]+=production;
-tribeFoodSurplus[ow]+=Math.max(0,production-selfConsumption);
-tribeTotalCity[ow]+=cityPop[ti];}
-for(let i=0;i<n;i++){const fi=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].foodImports:0;tribeFoodSurplus[i]+=fi;}
-if(!ter._tribeFoodSurplus)ter._tribeFoodSurplus=new Float32Array(n);
-for(let i=0;i<n;i++){
-if(tribeSizes[i]<=0){ter._tribeFoodSurplus[i]=2.0;continue;}
-if(tribeTotalCity[i]<0.01){ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]>0.01?5.0:0.5;continue;}
-ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]/tribeTotalCity[i];}
-// Update tribe stats with food surplus for GPU
-for(let i=0;i<n;i++)tribeStatsBuf[i*4+2]=ter._tribeFoodSurplus[i];// reuse maxCity slot for surplus ratio
-stepPopGPU(_gpuPopSolver,tw,th,bgPop,cityPop,owner,tFert,tDiff,tElev,
-  tCoast,riverMag,hasTrans?tCost:null,tribeStatsBuf,n);
-usedGPUPop=true;
-}catch(e){console.warn('[GPUPop] Failed, using CPU:',e.message);_gpuPopSolver=null;}}
-
 // ── PASS 1: Food production and surplus accounting ──
-// (Skip if GPU already computed growth + migration + food accounting above)
-if(!usedGPUPop){
+{
 // Each farmer on a tile produces: fert * (1 + ag*2) food units
 // They consume 1.0 per unit of bgPop (self-consumption)
 // Surplus = production - consumption = what's available to feed cities
@@ -1326,7 +1284,7 @@ if(tribeSizes[i]<=0){ter._tribeFoodSurplus[i]=2.0;continue;}
 if(tribeTotalCity[i]<0.01){ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]>0.01?5.0:0.5;continue;}
 ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]/tribeTotalCity[i];}
 
-} // end if(!usedGPUPop) — CPU PASS 1 + food accounting
+} // end PASS 1 food accounting
 
 // ── Debug counters ──
 let maxBg=0,maxCity=0,settlementCount=0;
@@ -1341,8 +1299,7 @@ const bp=bgPop[ti];const cp=cityPop[ti];
 
 if(ow<0&&bp<0.001&&cp<=0)continue;
 
-// ── Farmer growth (CPU path — skipped when GPU handled it) ──
-if(!usedGPUPop){
+// ── Farmer growth: logistic toward farmland capacity ──
 let farmCap,growthRate;
 if(ow>=0&&tribeSizes[ow]>0){
 farmCap=fert*(1+tribeSurplusFrac[ow]*3)*(1-tDiff[ti]*0.4);
@@ -1354,7 +1311,6 @@ growthRate=0.02;
 if(farmCap<=0.001&&cp<=0)continue;
 if(farmCap>0.001&&bp<farmCap){
 bgPop[ti]=bp+bp*growthRate*(1-bp/farmCap);}
-}
 
 // ── Urbanization ──
 // Cities form for NON-FOOD reasons (geography). Food arriving = carrying capacity.
@@ -1383,8 +1339,7 @@ if(dep&&dep[ti]>0.2)siteQuality+=0.5;}}
 if(tDiff[ti]>0.3&&fert>0.15)siteQuality+=0.3;
 if(siteQuality>0.8&&bgPop[ti]>0.05)cityPop[ti]=0.01;}
 
-// ── GROWTH: food arriving = people (CPU path) ──
-if(!usedGPUPop){
+// ── GROWTH: food arriving = people ──
 if(cp>0){
 const foodReaching=surplus>0.01?tribeFoodSurplus[ow]*transportFactor/(Math.max(1,tribeTotalCity[ow])+1):0;
 const foodCap=Math.min(localMaxCity,foodReaching);
@@ -1397,13 +1352,12 @@ if(surplus<0.7&&cp>0.01){
 cityPop[ti]=Math.max(0.01,cp*(0.96+surplus*0.02));}
 }
 }
-} // end if(ow>=0 && tribeSizes[ow]>0)
 
-// Unowned city decay (always runs — GPU doesn't handle this)
-if(!usedGPUPop&&ow<0&&cp>0){cityPop[ti]=Math.max(0,cp*0.97);bgPop[ti]+=cp*0.009;}
+// Unowned city decay
+if(ow<0&&cp>0){cityPop[ti]=Math.max(0,cp*0.97);bgPop[ti]+=cp*0.009;}
 
-// ── Rural migration (CPU path — GPU handles this via diffusion shader) ──
-if(!usedGPUPop&&bgPop[ti]>0.01){
+// ── Rural migration ──
+if(bgPop[ti]>0.01){
 const isOwned=ow>=0;
 const baseFlow=bgPop[ti]*0.003*(isOwned?tribeInfra[ow]:1);
 const myDensity=bgPop[ti]+cityPop[ti];
@@ -2516,13 +2470,31 @@ const imgRef=useRef(null);
 const windParticlesRef=useRef(null);
 const windAnimRef=useRef(null);
 const W=1920,H=960,CW=CW_FLAT;
-const generate=useCallback((s,ol)=>{
-let w;
-if(presetRef.current==="import"&&importedWorldRef.current){w=importedWorldRef.current;importedWorldRef.current=null;}
-if(!w){w=generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,true,useRealWindRef.current);}
+const workerRef=useRef(null);
+// Helper: finalize a generated world (shared by worker + main thread paths)
+const finalizeWorld=useCallback((w)=>{
 setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
 terrainCache.current=null;imgRef.current=null;},[]);
+const generate=useCallback((s,ol)=>{
+// Import path
+if(presetRef.current==="import"&&importedWorldRef.current){
+const w=importedWorldRef.current;importedWorldRef.current=null;finalizeWorld(w);return;}
+// Tectonic: use Web Worker for off-main-thread generation
+if(presetRef.current==="tectonic"){
+try{
+if(workerRef.current)workerRef.current.terminate();
+const worker=new WorldGenWorker();workerRef.current=worker;
+worker.onmessage=(e)=>{
+if(e.data.type==='result'){console.log(`[Worker] Done in ${e.data.time?.toFixed(0)}ms`);finalizeWorld(e.data.world);}
+else{console.warn('[Worker]',e.data.type,e.data.message||'');
+finalizeWorld(generateWorld(W,H,s,'tectonic',ol!==undefined?ol:oceanLevelRef.current,true,false));}};
+worker.onerror=(err)=>{console.warn('[Worker] Error:',err.message);
+finalizeWorld(generateWorld(W,H,s,'tectonic',ol!==undefined?ol:oceanLevelRef.current,true,false));};
+worker.postMessage({type:'generate',W,H,seed:s,preset:'tectonic',oceanLevel:ol!==undefined?ol:oceanLevelRef.current,tecParams:_tecParams});
+return;}catch(e){console.warn('[Worker] Init failed:',e);}}
+// All other presets: main thread
+finalizeWorld(generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,true,useRealWindRef.current));},[finalizeWorld]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 // Clear caches when globe toggled off (canvas remounts)
