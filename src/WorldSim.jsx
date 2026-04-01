@@ -1323,7 +1323,7 @@ bgPop[ti]-=flow;cityPop[bestCity]+=flow;
 // No nearby city: slight natural attrition (or they migrate via normal flow)
 if(bgPop[ti]>farmCap*1.2)bgPop[ti]*=0.99;}}}
 
-// ── Urbanization: surplus food → city growth ──
+// ── Urbanization ──
 if(ow>=0&&tribeSizes[ow]>0){
 const surplus=ter._tribeFoodSurplus[ow];
 const mxCity=tribeMaxCity[ow];
@@ -1331,47 +1331,46 @@ const tCostHere=hasTrans?tCost[ti]:10;
 const transportFactor=1/(1+tCostHere*0.1);
 const localMaxCity=mxCity*transportFactor;
 
-// City growth: absorb tribal food surplus as population.
-// The surplus represents excess food that can feed non-farmers.
-// Cities grow by receiving rural migrants (surplus kids who can't inherit land).
-// Growth is proportional to SURPLUS (not city size) — a small market town
-// with massive food surplus grows fast. A big city with tight food grows slow.
-// Transport access determines how much surplus this city can access.
-if(surplus>1.05&&cp>0&&cp<localMaxCity){
-// Available surplus per city: total tribal surplus / number of cities,
-// weighted by transport access (well-connected cities get more)
-const surplusPool=tribeFoodSurplus[ow]*transportFactor;
-const cityCount=Math.max(1,tribeTotalCity[ow]);
-const myShare=surplusPool/(cityCount+1)*0.01;// small fraction per step
-const growth=Math.min(myShare,localMaxCity-cp,0.5);// cap growth per step
-if(growth>0.001)cityPop[ti]+=growth;}
-
-// New settlement: needs geographic/strategic reason + food surplus
-// Historical drivers: river trade nexus, natural harbor, resource deposit,
-// transport crossroads, defensive position, biome transition zone
-if(surplus>1.2&&cp<0.01&&bgPop[ti]>farmCap*0.5){
+// ── SEEDING: cities form for NON-FOOD reasons ──
+// A shrine, a trade crossing, a harbor, a mine, a fort.
+// Food surplus PERMITS growth but doesn't CAUSE the city.
+// The seed can form even without current surplus — it just won't grow.
+if(cp<0.01){
 let siteQuality=0;
-// Rivers: THE primary city driver throughout history
+// Rivers: trade nexus, water access, transport hub
 if(riverMag){const rm=riverMag[ti];
-if(rm>=4)siteQuality+=3.0;// great river (Nile) = near certain city
-else if(rm>=3)siteQuality+=2.0;// major river (Danube)
+if(rm>=4)siteQuality+=3.0;// great river = near-certain settlement
+else if(rm>=3)siteQuality+=2.0;// major river
 else if(rm>=2)siteQuality+=0.5;}// tributary
-// Coast/harbor: maritime trade
+// Coast: harbor, fishing, maritime trade
 if(tCoast[ti])siteQuality+=1.5;
-// Transport crossroads: well-connected = natural market
+// Transport crossroads
 siteQuality+=transportFactor*0.4;
-// Resource deposits: mining/craft towns
+// Resources: mines attract craftsmen
 if(ter.deposits){for(let ri=0;ri<3;ri++){
 const rk2=['copper','iron','salt'][ri];const dep=ter.deposits[rk2];
 if(dep&&dep[ti]>0.2)siteQuality+=0.5;}}
-// Defensive terrain: settlements behind natural barriers
+// Defensive position
 if(tDiff[ti]>0.3&&fert>0.15)siteQuality+=0.3;
-if(siteQuality>0.8){
-const seed=0.02;// 20 people seed a market
-bgPop[ti]-=Math.min(seed,bgPop[ti]*0.05);
-cityPop[ti]+=seed;}}
+// Need SOME people nearby (can't build a city in empty wilderness)
+// But don't need food SURPLUS — just population
+if(siteQuality>0.8&&bgPop[ti]>0.05){
+// Tiny seed: a few families settle at the crossroads/harbor/mine
+cityPop[ti]=0.01;// 10 people, basically a campsite
+}}
 
-// City shrink: food deficit, or over transport-adjusted cap
+// ── GROWTH: cities grow ONLY when food can reach them ──
+// Food surplus is the PERMIT. Transport access is the GATE.
+// No surplus = city stays a hamlet. Good surplus + river = Rome.
+if(cp>0&&cp<localMaxCity&&surplus>1.05){
+// Growth from tribal surplus, weighted by transport access
+const surplusPool=tribeFoodSurplus[ow]*transportFactor;
+const cityCount=Math.max(1,tribeTotalCity[ow]);
+const myShare=surplusPool/(cityCount+1)*0.01;
+const growth=Math.min(myShare,localMaxCity-cp,0.5);
+if(growth>0.001)cityPop[ti]+=growth;}
+
+// ── SHRINK: food deficit or lost transport ──
 if(cp>0.01){
 if(surplus<0.8){
 const shrink=cp*Math.min(0.04,(1.0-surplus)*0.03);
