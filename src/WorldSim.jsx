@@ -1175,12 +1175,16 @@ cityPop[ti]=Math.max(0,cityPop[ti]-decay);
 bgPop[ti]+=decay*0.3;// some people scatter to countryside
 }
 
-// ── Migration: rural people move to adjacent tiles ──
-if(bgPop[ti]>rCap*0.2){
+// ── Migration: people move toward better opportunity (value / density) ──
+// High-value areas pull. High-density areas push. The ratio determines flow.
+// A packed fertile valley is LESS attractive than a decent empty one.
+if(bgPop[ti]>rCap*0.1){
 const isOwned=ow>=0;
 const k=isOwned&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
 const infraSpeed=k?1+k.construction*1.5+k.organization*1.0:1;
 const baseFlow=bgPop[ti]*0.003*infraSpeed;
+// My tile's total density (rural + urban)
+const myDensity=bgPop[ti]+(cityPop[ti]||0);
 
 for(const[dx,dy]of DIRS){const nx=((tx2+dx)%tw+tw)%tw,ny=ty2+dy;if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;if(tElev[ni]<=0)continue;
@@ -1188,34 +1192,39 @@ const nOw=owner[ni];
 if(isOwned&&nOw!==ow)continue;
 if(!isOwned&&nOw>=0)continue;
 
-let myAttract=fert;
-let nAttract=tFert[ni];
+// ── Raw value of each tile (what makes it desirable) ──
+let myValue=fert;
+let nValue=tFert[ni];
 
 if(isOwned){
-// Cities pull rural pop (jobs, safety, markets)
-if(cityPop[ni]>0.3)nAttract+=Math.min(3,cityPop[ni]*0.1);
-if(cityPop[ti]>0.3)myAttract+=Math.min(3,cityPop[ti]*0.1);
-// Saturation: very large nearby cities push people elsewhere
-// (already crowded → opportunities are elsewhere)
-if(cityPop[ni]>tribeMaxCity[ow]*0.7)nAttract-=1.0;
-// Rivers, coast, resources still pull
+// Cities add value (jobs, markets, safety) — but NOT linearly.
+// A small city is very attractive. A huge city less so per-capita.
+if(cityPop[ni]>0.1)nValue+=Math.sqrt(cityPop[ni])*0.3;
+if(cityPop[ti]>0.1)myValue+=Math.sqrt(cityPop[ti])*0.3;
+// Rivers (transport, water, irrigation)
 if(ter.rivers){
-if(ter.rivers.riverMag[ni]>=3)nAttract+=0.6;
-else if(ter.rivers.riverMag[ni]>=2)nAttract+=0.3;
-if(ter.rivers.riverMag[ti]>=3)myAttract+=0.6;
-else if(ter.rivers.riverMag[ti]>=2)myAttract+=0.3;}
-if(tCoast[ni])nAttract+=0.3;if(tCoast[ti])myAttract+=0.3;
+if(ter.rivers.riverMag[ni]>=3)nValue+=0.6;
+else if(ter.rivers.riverMag[ni]>=2)nValue+=0.3;
+if(ter.rivers.riverMag[ti]>=3)myValue+=0.6;
+else if(ter.rivers.riverMag[ti]>=2)myValue+=0.3;}
+// Coast (fishing, trade, ports)
+if(tCoast[ni])nValue+=0.3;if(tCoast[ti])myValue+=0.3;
+// Resources (mining, industry)
 if(ter.deposits&&k){const rv=resourceValues(k);
 for(const rk of RES_KEYS){const dep=ter.deposits[rk];
-if(dep){if(dep[ni]>0.1)nAttract+=rv[rk]*dep[ni]*0.3;
-if(dep[ti]>0.1)myAttract+=rv[rk]*dep[ti]*0.3;}}}}
+if(dep){if(dep[ni]>0.1)nValue+=rv[rk]*dep[ni]*0.3;
+if(dep[ti]>0.1)myValue+=rv[rk]*dep[ti]*0.3;}}}}
 
-if(nAttract>myAttract&&bgPop[ni]<bgPop[ti]*1.5){
-const pull=(nAttract-myAttract)/(myAttract+0.1);
+// ── Opportunity = value / (density + baseline) ──
+// Dense areas have low opportunity (crowded). Empty valuable areas have high opportunity.
+const nDensity=bgPop[ni]+(cityPop[ni]||0);
+const myOpportunity=myValue/(myDensity+0.3);
+const nOpportunity=nValue/(nDensity+0.3);
+
+// Flow toward higher opportunity
+if(nOpportunity>myOpportunity){
+const pull=(nOpportunity-myOpportunity)/(myOpportunity+0.05);
 const flow=Math.min(bgPop[ti]*0.1,baseFlow*pull*(1-tDiff[ni]));
-if(flow>0.001){bgPop[ti]-=flow;bgPop[ni]+=flow;}}
-else if(rCap>0&&bgPop[ti]/rCap>0.8&&bgPop[ni]<bgPop[ti]*0.5){
-const flow=bgPop[ti]*0.002*(1-tDiff[ni]);
 if(flow>0.001){bgPop[ti]-=flow;bgPop[ni]+=flow;}}}}}
 
 // Debug
