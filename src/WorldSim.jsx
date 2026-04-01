@@ -1258,7 +1258,7 @@ ter._dbgTotalCityPop=totalCityPop;ter._dbgMaxRCap=maxRCap;
 ter._dbgSampleBgPop=sampleBgPop;ter._dbgSampleRCap=sampleRCap;ter._dbgSampleEra=sampleEra;
 
 // ── Rebuild tribeCenters from cityPop peaks ──
-// Centers ARE the settlements. Capital = largest city. No separate spawning logic.
+// Centers ARE the settlements. Capital = largest city. No cap on count.
 if(ter.stepCount%16===0){
 for(let st=0;st<n;st++){
 if(tribeSizes[st]<=0)continue;
@@ -1269,20 +1269,17 @@ if(owner[ti]!==st||cityPop[ti]<SETTLE_TIERS[0].min)continue;
 settlements.push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cityPop[ti],ti});}
 // Sort by population (largest first = capital)
 settlements.sort((a,b)=>b.pop-a.pop);
-// Rebuild centers array: capital first, then secondary cities
-// Keep prestige/founded from existing centers where possible
+// Rebuild centers array from ALL settlements
 const oldCenters=ter.tribeCenters[st]||[];
 const newCenters=[];
-for(let si=0;si<Math.min(settlements.length,20);si++){
+for(let si=0;si<settlements.length;si++){
 const s=settlements[si];
-// Try to find matching old center (preserve prestige/founded)
 let matched=null;
 for(const oc of oldCenters){if(oc.x===s.x&&oc.y===s.y){matched=oc;break;}}
-if(matched)newCenters.push(matched);
-else newCenters.push({x:s.x,y:s.y,prestige:si===0?1.0:0.3,founded:ter.stepCount});}
-// If no settlements yet, keep existing centers (tribe still needs at least one)
+if(matched){matched.pop=s.pop;newCenters.push(matched);}
+else newCenters.push({x:s.x,y:s.y,prestige:si===0?1.0:0.3,founded:ter.stepCount,pop:s.pop});}
 if(newCenters.length>0)ter.tribeCenters[st]=newCenters;
-// Grow capital prestige, decay secondary
+// Grow capital prestige
 if(ter.tribeCenters[st].length>0){
 ter.tribeCenters[st][0].prestige=Math.min(3.0,ter.tribeCenters[st][0].prestige+0.05);
 for(let c=1;c<ter.tribeCenters[st].length;c++)
@@ -2615,28 +2612,41 @@ const ti3=(gy*gW+gx)*3;buf[ti3]=r|0;buf[ti3+1]=g|0;buf[ti3+2]=b|0;}}
 setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});}
 if(!ctx)return;
 ctx.putImageData(img,0,0);
-// Draw settlements sized by tier (village=tiny, capital=large)
+// Draw settlements — size scales continuously with log(population)
+{const selSt=ter._selectedTribe;const hasSel=selSt>=0&&ter.tribeSizes[selSt]>0&&vm==="tribes";
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
 if(!centers||ter.tribeSizes[st]<=0)continue;
+const isSelected=st===selSt;
+const dimmed=hasSel&&!isSelected;
 for(let ci=0;ci<centers.length;ci++){const cx2=centers[ci].x+0.5,cy2=dataYtoScreenY(centers[ci].y*RES,H,CH)+0.5;
 const isCapital=ci===0;
-// Get settlement population for sizing
-const cti=centers[ci].y*ter.tw+centers[ci].x;
-const cPop=ter.cityPop?ter.cityPop[cti]:0;
-const tier=settleTier(cPop);
-const r2=tier?tier.icon:1;// size from tier, default tiny
-ctx.beginPath();ctx.arc(cx2,cy2,r2,0,Math.PI*2);
-// Color: capital=bright white, large=warm, small=dim
-const alpha=isCapital?0.95:Math.min(0.9,0.3+r2*0.15);
-if(isCapital)ctx.fillStyle=`rgba(240,235,220,${alpha})`;
-else if(r2>=2.5)ctx.fillStyle=`rgba(220,200,160,${alpha})`;// medium+ city: warm
-else if(r2>=1.5)ctx.fillStyle=`rgba(200,195,180,${alpha})`;// town: neutral
-else ctx.fillStyle=`rgba(170,165,155,${alpha})`;// village: dim
+const cPop=centers[ci].pop||0;
+// Radius: log scale. village(0.05)→0.7, town(0.5)→1.3, city(3)→1.8, large(100)→3.7
+const r2=cPop>0?Math.max(0.5,Math.min(5,0.5+Math.log(cPop+1)*0.7)):0.5;
+if(dimmed&&r2<1.0)continue;// skip tiny settlements of other tribes in focused mode
+ctx.beginPath();ctx.arc(cx2,cy2,dimmed?r2*0.5:r2,0,Math.PI*2);
+if(dimmed){ctx.fillStyle="rgba(120,115,105,0.2)";ctx.fill();}
+else if(isSelected){
+const tc2=tribeRGB(st);const bri=isCapital?1.3:1.0;
+ctx.fillStyle=`rgba(${Math.min(255,tc2[0]*bri|0)},${Math.min(255,tc2[1]*bri|0)},${Math.min(255,tc2[2]*bri|0)},0.95)`;
 ctx.fill();
-if(isCapital||r2>=2.5){ctx.beginPath();ctx.arc(cx2,cy2,r2+0.8,0,Math.PI*2);
-ctx.strokeStyle=isCapital?"rgba(60,55,45,0.7)":"rgba(80,75,65,0.4)";ctx.lineWidth=isCapital?0.8:0.5;ctx.stroke();}}
+if(r2>=0.8){ctx.beginPath();ctx.arc(cx2,cy2,r2+0.7,0,Math.PI*2);
+ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.35)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();}
+if(isCapital&&r2>=1){ctx.beginPath();ctx.arc(cx2,cy2,r2+1.8,0,Math.PI*2);
+ctx.strokeStyle="rgba(255,255,220,0.3)";ctx.lineWidth=0.5;ctx.stroke();}
+}else{
+const tier=settleTier(cPop);const tn=tier?tier.name:'';
+const alpha=isCapital?0.9:Math.max(0.25,Math.min(0.85,0.15+r2*0.18));
+if(isCapital)ctx.fillStyle=`rgba(240,235,220,${alpha})`;
+else if(tn==='large'||tn==='mega')ctx.fillStyle=`rgba(220,200,160,${alpha})`;
+else if(tn==='medium'||tn==='small')ctx.fillStyle=`rgba(195,190,175,${alpha})`;
+else ctx.fillStyle=`rgba(160,155,145,${alpha})`;
+ctx.fill();
+if(isCapital||r2>=1.8){ctx.beginPath();ctx.arc(cx2,cy2,r2+0.7,0,Math.PI*2);
+ctx.strokeStyle=isCapital?"rgba(60,55,45,0.6)":"rgba(80,75,65,0.3)";ctx.lineWidth=isCapital?0.8:0.5;ctx.stroke();}
+}}// end else, for(ci)
 // ── Info label at capital (skip in focused mode — too cluttered) ──
-const focusedMode=ter._selectedTribe>=0&&ter.tribeSizes[ter._selectedTribe]>0&&vm==="tribes";
+const focusedMode=hasSel;
 if(!focusedMode&&ter.tribeSizes[st]>=4){
 const cap=centers[0];const cx2=cap.x+0.5,cy2=dataYtoScreenY(cap.y*RES,H,CH)+0.5;
 const k=ter.tribeKnowledge&&ter.tribeKnowledge[st]?ter.tribeKnowledge[st]:null;
@@ -2679,7 +2689,8 @@ ctx.fillText(line1,cx2-w1/2,by+6.5);
 ctx.font="5px sans-serif";
 ctx.fillStyle="rgba(180,175,160,0.75)";
 ctx.fillText(line2,cx2-w2/2,by+12.5);
-}}
+}}// end if(!focusedMode), for(st)
+}// end block scope for settlement drawing
 // ── Draw ports (enhanced in focused mode) ──
 {const focSel=ter._selectedTribe;const isFocused=focSel>=0&&ter.tribeSizes[focSel]>0&&vm==="tribes";
 if(ter.tribePorts){
@@ -2891,13 +2902,19 @@ const bud2=ter.tribeBudget&&ter.tribeBudget[ow2]?ter.tribeBudget[ow2]:null;
 const selT=selectedTribe;
 let relation='';
 if(selT>=0&&selT!==ow2&&ter.tribeSizes[selT]>0)relation=tribeRelation(ter,selT,ow2);
-const centers2=ter.tribeCenters[ow2]?ter.tribeCenters[ow2].length:0;
+const ctrs2=ter.tribeCenters[ow2]||[];
+const stCounts2={villages:0,towns:0,cities:0,large:0};
+for(const c of ctrs2){const t=settleTier(c.pop||0);if(!t)continue;
+if(t.name==='village')stCounts2.villages++;
+else if(t.name==='town')stCounts2.towns++;
+else if(t.name==='small'||t.name==='medium')stCounts2.cities++;
+else stCounts2.large++;}
 const ports2=ter.tribePorts&&ter.tribePorts[ow2]?ter.tribePorts[ow2].length:0;
 const kc2=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[ow2]?ter.tribeKnownCoasts[ow2].length:0;
 tribeInfo={id:ow2,size:ter.tribeSizes[ow2],pop:Math.round(pop2),
 knowledge:k?{ag:k.agriculture,mt:k.metallurgy,nv:k.navigation,cn:k.construction,og:k.organization,tr:k.trade}:null,
 personality:bud2?bud2.personality:"",budget:bud2?{mil:bud2.military,gro:bud2.growth,com:bud2.commerce,exp:bud2.exploration,sur:bud2.survival}:null,
-relation,centers:centers2,ports:ports2,knownCoasts:kc2};}
+relation,settlements:stCounts2,ports:ports2,knownCoasts:kc2};}
 setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,tribeInfo});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
@@ -3021,8 +3038,11 @@ border:"1px solid rgba(201,184,122,0.15)"}}>
 <span style={{color:hoverInfo.tribeInfo.knowledge.og>0.3?"#b88ac8":"#5a5448"}}>Og {(hoverInfo.tribeInfo.knowledge.og*100|0)}%</span>{" "}
 <span style={{color:hoverInfo.tribeInfo.knowledge.tr>0.3?"#c8b84a":"#5a5448"}}>Tr {(hoverInfo.tribeInfo.knowledge.tr*100|0)}%</span>
 </div>}
-{(hoverInfo.tribeInfo.centers>0||hoverInfo.tribeInfo.ports>0)&&<div style={{fontSize:8,color:"#6a6458"}}>
-{hoverInfo.tribeInfo.centers} cities {hoverInfo.tribeInfo.ports} ports {hoverInfo.tribeInfo.knownCoasts} discovered</div>}
+{hoverInfo.tribeInfo.settlements&&<div style={{fontSize:8,color:"#6a6458"}}>
+{(()=>{const s=hoverInfo.tribeInfo.settlements;const parts=[];
+if(s.large>0)parts.push(s.large+'C');if(s.cities>0)parts.push(s.cities+'c');
+if(s.towns>0)parts.push(s.towns+'t');if(s.villages>0)parts.push(s.villages+'v');
+return parts.join(' ')||'no settlements';})()}{' '}{hoverInfo.tribeInfo.ports}p {hoverInfo.tribeInfo.knownCoasts}disc</div>}
 {hoverInfo.tribeInfo.relation&&<div style={{fontSize:9,fontWeight:"bold",
 color:hoverInfo.tribeInfo.relation==='fight'?'#e06050':hoverInfo.tribeInfo.relation==='trade'?'#d0b040':hoverInfo.tribeInfo.relation==='friendly'?'#60b060':'#8a8474'}}>
 {hoverInfo.tribeInfo.relation==='fight'?'AT WAR with selected':hoverInfo.tribeInfo.relation==='trade'?'TRADING with selected':hoverInfo.tribeInfo.relation==='friendly'?'FRIENDLY with selected':''}
@@ -3188,11 +3208,17 @@ for(let i=0;i<ter.tribeSizes.length;i++){if(ter.tribeSizes[i]<=0)continue;
 const k=ter.tribeKnowledge&&ter.tribeKnowledge[i]?ter.tribeKnowledge[i]:null;
 const pop=ter.tribePopulation?ter.tribePopulation[i]:0;
 const ports=ter.tribePorts&&ter.tribePorts[i]?ter.tribePorts[i].length:0;
-const centers=ter.tribeCenters[i]?ter.tribeCenters[i].length:0;
+const ctrs=ter.tribeCenters[i]||[];
+const stCounts={villages:0,towns:0,cities:0,large:0};
+for(const c of ctrs){const t2=settleTier(c.pop||0);if(!t2)continue;
+if(t2.name==='village')stCounts.villages++;
+else if(t2.name==='town')stCounts.towns++;
+else if(t2.name==='small'||t2.name==='medium')stCounts.cities++;
+else stCounts.large++;}
 const knownCoasts=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
 const power=tribePower(ter,i);
 const bud=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i]:null;
-tribes.push({id:i,size:ter.tribeSizes[i],pop:Math.round(pop),power,ports,centers,knownCoasts,k,
+tribes.push({id:i,size:ter.tribeSizes[i],pop:Math.round(pop),power,ports,settlements:stCounts,knownCoasts,k,
 personality:bud?bud.personality:"",wealth:bud?bud.wealth:0,budget:bud?{mil:bud.military,gro:bud.growth,com:bud.commerce,exp:bud.exploration,sur:bud.survival}:null});}
 tribes.sort((a,b)=>b.power-a.power);
 // Selected tribe detail
@@ -3212,7 +3238,14 @@ return <>
 <div><span style={{color:"#7a7464"}}>Population:</span> {selData.pop>=10000?(selData.pop/1000).toFixed(1)+'M':selData.pop>=1000?(selData.pop/1000|0)+'M':selData.pop>=1?selData.pop.toFixed(0)+'k':'<1k'}</div>
 <div><span style={{color:"#7a7464"}}>Power:</span> {selData.power.toFixed(1)}</div>
 <div><span style={{color:"#d0b040"}}>Wealth:</span> <span style={{color:"#d0b040"}}>{selData.wealth>=1000?(selData.wealth/1000).toFixed(1)+'k':selData.wealth.toFixed(0)} gold</span></div>
-<div><span style={{color:"#7a7464"}}>Centers:</span> {selData.centers}</div>
+{selData.settlements&&<div style={{gridColumn:"1/3"}}>
+<span style={{color:"#7a7464"}}>Settlements: </span>
+{selData.settlements.large>0&&<span style={{color:"#e0c870"}}>{selData.settlements.large} {selData.settlements.large===1?'city':'cities'} </span>}
+{selData.settlements.cities>0&&<span style={{color:"#c0b080"}}>{selData.settlements.cities} {selData.settlements.cities===1?'town':'towns'} </span>}
+{selData.settlements.towns>0&&<span style={{color:"#a09878"}}>{selData.settlements.towns} sm.towns </span>}
+{selData.settlements.villages>0&&<span style={{color:"#808068"}}>{selData.settlements.villages} villages</span>}
+{(selData.settlements.large+selData.settlements.cities+selData.settlements.towns+selData.settlements.villages)===0&&<span style={{color:"#605848"}}>none</span>}
+</div>}
 <div><span style={{color:"#7a7464"}}>Ports:</span> {selData.ports}</div>
 <div><span style={{color:"#7a7464"}}>Known coasts:</span> {selData.knownCoasts}</div>
 </div>
