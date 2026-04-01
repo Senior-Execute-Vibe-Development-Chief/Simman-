@@ -13,8 +13,10 @@ import { generateResources, tileResourceSummary, dominantResource, RESOURCES, RE
 import { computeRivers, riverName, RIVER_NAMES, RIVER_NONE, RIVER_STREAM, RIVER_TRIBUTARY, RIVER_MAJOR, RIVER_GREAT } from "./riverGen.js";
 import { initGPUPopSolver, stepPopGPU } from "./gpuPopSolver.js";
 
-// GPU population solver (lazy-initialized)
-let _gpuPopSolver = undefined;
+// GPU population solver — DISABLED pending shader validation.
+// The CPU path with cached arrays and tribeTiles index is used instead.
+// To re-enable: change _gpuPopSolver = null to _gpuPopSolver = undefined
+let _gpuPopSolver = null; // null = skip GPU entirely
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
 function initNoise(seed){const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)PERM[i]=p[i&255];}

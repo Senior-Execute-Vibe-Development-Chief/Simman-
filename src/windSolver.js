@@ -13,8 +13,10 @@
 
 import { initGPUWindSolver, solveWindGPU } from './gpuWindSolver.js';
 
-// GPU solver instance (lazy-initialized on first call)
-let _gpuSolver = undefined; // undefined = not yet tried, null = not available
+// GPU solver instance — DISABLED pending shader validation.
+// The CPU path with pre-allocated buffers is used instead.
+// To re-enable: change _gpuSolver = null to _gpuSolver = undefined
+let _gpuSolver = null; // null = skip GPU entirely
 
 export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const p = (k, d) => params[k] !== undefined ? params[k] : d;
