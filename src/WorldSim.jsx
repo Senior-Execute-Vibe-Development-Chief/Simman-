@@ -1065,6 +1065,117 @@ pop[ow]+=bgPop[ti]+(cityPop?cityPop[ti]:0);}
 for(let i=0;i<n;i++){if(tribeSizes[i]<=0)pop[i]=0;}
 }
 
+// ── Transport / Communication Network ──
+// Dijkstra from each tribe's cities outward through owned territory.
+// Produces per-tile transport cost = cheapest path from nearest city.
+// Rivers are highways (0.4 cost), coast is cheap (0.5), mountains expensive (8+).
+// Used for: food catchment, cohesion, religion spread, trade efficiency.
+function computeTransport(ter){
+const{tw,th,tElev,tDiff,tCoast,owner,tribeSizes,cityPop,bgPop}=ter;
+if(!ter.transportCost)ter.transportCost=new Float32Array(tw*th);
+if(!ter.transportOwner)ter.transportOwner=new Int16Array(tw*th);// which city feeds this tile
+const cost=ter.transportCost;const tOwner=ter.transportOwner;
+cost.fill(999);tOwner.fill(-1);
+const riverMag=ter.rivers?ter.rivers.riverMag:null;
+const n=ter.tribeCenters.length;
+
+// Per-tribe transport tech: construction reduces cost, navigation enables sea routes
+const tribeCn=new Float32Array(n);
+const tribeNv=new Float32Array(n);
+for(let i=0;i<n;i++){
+if(tribeSizes[i]<=0)continue;
+const k=ter.tribeKnowledge[i];if(!k)continue;
+tribeCn[i]=k.construction;tribeNv[i]=k.navigation;}
+
+// Tile movement cost (how hard it is to move goods THROUGH this tile)
+// Returns cost for a tribe with given construction/navigation tech
+function tileCost(ti,cn,nv,ow){
+const e=tElev[ti];
+// Ocean: cheap by sea, requires navigation
+if(e<=0)return nv>0.1?0.5/(0.5+nv):50;// nv=0.3→0.6, nv=0.7→0.4, nv=0→impassable
+const diff=tDiff[ti];
+// River tiles: barges are cheap! The bigger the river, the cheaper.
+if(riverMag){const rm=riverMag[ti];
+if(rm>=4)return 0.3-cn*0.1;// great river (Nile): 0.3→0.2
+if(rm>=3)return 0.4-cn*0.1;// major river: 0.4→0.3
+if(rm>=2)return 0.7-cn*0.2;}// tributary: 0.7→0.5
+// Coast: cheaper than inland (coastal shipping)
+if(tCoast[ti])return 0.8-cn*0.2-nv*0.2;// 0.8→0.4 with tech
+// Land: terrain difficulty drives cost. Construction (roads) reduces it.
+// Plains (diff~0.05): 1.5→0.7 with roads
+// Hills (diff~0.3): 3→1.5
+// Mountains (diff~0.7): 8→3
+const base=1.5+diff*diff*12;// quadratic difficulty penalty
+const roadReduction=cn*0.5;// construction halves cost at max
+const industrialReduction=Math.max(0,ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].metallurgy-0.75:0)*3;// rail
+return Math.max(0.2,base*(1-roadReduction)-industrialReduction);}
+
+// Priority queue (simple binary heap for Dijkstra)
+const heapTi=[];const heapCost=[];let heapSize=0;
+function heapPush(ti2,c){
+let i=heapSize++;heapTi[i]=ti2;heapCost[i]=c;
+while(i>0){const p=(i-1)>>1;if(heapCost[p]<=heapCost[i])break;
+const tt=heapTi[p],tc=heapCost[p];heapTi[p]=heapTi[i];heapCost[p]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=p;}}
+function heapPop(){
+const ti2=heapTi[0],c=heapCost[0];heapSize--;
+if(heapSize>0){heapTi[0]=heapTi[heapSize];heapCost[0]=heapCost[heapSize];
+let i=0;while(true){const l=2*i+1,r=2*i+2;let s=i;
+if(l<heapSize&&heapCost[l]<heapCost[s])s=l;
+if(r<heapSize&&heapCost[r]<heapCost[s])s=r;
+if(s===i)break;
+const tt=heapTi[s],tc=heapCost[s];heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=s;}}
+return{ti:ti2,cost:c};}
+
+// Seed: all city tiles (cityPop > 0.1) start at cost 0
+for(let ti=0;ti<tw*th;ti++){
+if(cityPop[ti]>0.1&&owner[ti]>=0){
+cost[ti]=0;tOwner[ti]=ti;heapPush(ti,0);}}
+
+// Also seed from tiles with significant bgPop on rivers/coast (market towns)
+for(let ti=0;ti<tw*th;ti++){
+if(owner[ti]<0)continue;
+if(bgPop[ti]>0.2&&(tCoast[ti]||(riverMag&&riverMag[ti]>=2))){
+if(cost[ti]>1){cost[ti]=1;tOwner[ti]=ti;heapPush(ti,1);}}}
+
+// Dijkstra: expand from cities outward
+const DX4=[-1,1,0,0];const DY4=[0,0,-1,1];
+while(heapSize>0){
+const{ti:ci,cost:cc}=heapPop();
+if(cc>cost[ci])continue;// stale entry
+if(cc>100)continue;// don't explore beyond reasonable transport range
+const cx=ci%tw,cy=(ci-cx)/tw;
+const ow=owner[ci];
+const cn=ow>=0?tribeCn[ow]:0;
+const nv=ow>=0?tribeNv[ow]:0;
+for(let d=0;d<4;d++){
+const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
+if(ny<0||ny>=th)continue;
+const ni=ny*tw+nx;
+// Can traverse: own territory, OR ocean (if navigation), OR unowned coast
+const nOw=owner[ni];
+const isOcean=tElev[ni]<=0;
+if(!isOcean&&nOw>=0&&nOw!==ow)continue;// can't go through enemy territory
+if(isOcean&&nv<0.1)continue;// can't cross ocean without navigation
+const moveCost=tileCost(ni,cn,nv,ow>=0?ow:0);
+const newCost=cc+moveCost;
+if(newCost<cost[ni]){
+cost[ni]=newCost;tOwner[ni]=tOwner[ci];// inherit source city
+heapPush(ni,newCost);}}}
+
+// ── Per-tribe transport stats ──
+if(!ter._tribeTransport)ter._tribeTransport=[];
+while(ter._tribeTransport.length<n)ter._tribeTransport.push({maxCost:0,avgCost:0,connected:0});
+for(let i=0;i<n;i++){ter._tribeTransport[i].maxCost=0;ter._tribeTransport[i].avgCost=0;ter._tribeTransport[i].connected=0;}
+for(let ti=0;ti<tw*th;ti++){
+const ow=owner[ti];if(ow<0||tElev[ti]<=0)continue;
+const c=cost[ti];if(c>=999)continue;
+const ts=ter._tribeTransport[ow];
+ts.connected++;ts.avgCost+=c;
+if(c>ts.maxCost)ts.maxCost=c;}
+for(let i=0;i<n;i++){const ts=ter._tribeTransport[i];
+if(ts.connected>0)ts.avgCost/=ts.connected;}
+}
+
 // ── Per-tile population with FOOD ECONOMY ──
 // bgPop = farmers on land. They produce food = bgPop * fert * agTech.
 // cityPop = urban population. They consume food but don't produce it.
@@ -1119,24 +1230,22 @@ tribeSurplusRate[i]=0.05+ag*1.0+industrialFactor*2.0;}
 // ── Cache river ref ──
 const riverMag=ter.rivers?ter.rivers.riverMag:null;
 
-// ── PASS 1: Food accounting — sum production and consumption per tribe ──
+// ── PASS 1: Food accounting — transport-based, not tribe-level ──
+// Each tile's food production is weighted by transport access.
+// Food reachable by a city = sum of (farmProd / transportCost) within catchment.
+// Cities on rivers/coasts access distant food cheaply. Landlocked cities cap small.
+const tCost=ter.transportCost;// per-tile transport cost from nearest city
+const hasTrans=tCost&&tCost.length>=tw*th;
+// Still compute tribe-level surplus as fallback and for display
 for(let li=0;li<landCount;li++){
 const ti=landTiles[li];const ow=owner[ti];
-if(ow<0)continue;
-if(tribeSizes[ow]<=0)continue;
-// Farmers produce food: bgPop * fertility * (1 + agTech)
-// This IS the food supply. More farmers on fertile land = more food.
+if(ow<0||tribeSizes[ow]<=0)continue;
 tribeFoodProd[ow]+=bgPop[ti]*tFert[ti]*(1+tribeSurplusRate[ow]);
-// Cities consume food: cityPop * consumption rate (1.0 per unit)
 tribeFoodCons[ow]+=cityPop[ti];
 tribeTotalCity[ow]+=cityPop[ti];}
-// Food imports boost production
 for(let i=0;i<n;i++){
 const fi=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].foodImports:0;
 tribeFoodProd[i]+=fi;}
-
-// Compute surplus ratio: >1 means surplus, <1 means deficit
-// This determines whether cities can grow or must shrink
 if(!ter._tribeFoodSurplus)ter._tribeFoodSurplus=new Float32Array(n);
 for(let i=0;i<n;i++){
 if(tribeSizes[i]<=0||tribeFoodCons[i]<0.01){ter._tribeFoodSurplus[i]=2.0;continue;}
@@ -1180,41 +1289,50 @@ bgPop[ti]=bp+bp*growthRate*(1-bp/(laborDemand*1.1));}
 if(bp>laborDemand*1.3){
 bgPop[ti]=Math.max(0.01,bp*0.98);}// 2% leave per step
 
-// ── Urbanization: surplus food → city growth ──
+// ── Urbanization: transport-based food access determines city growth ──
 if(ow>=0&&tribeSizes[ow]>0){
-const surplus=ter._tribeFoodSurplus[ow];
+const tribeSurplus=ter._tribeFoodSurplus[ow];
 const mxCity=tribeMaxCity[ow];
+// Transport access: how well-connected is this tile to the food network?
+// Low transportCost = good access (river/coast city). High = isolated.
+// Max city size scales with transport access:
+//   River/coast (cost 0-2): can grow to full maxCityPop
+//   Inland with roads (cost 3-10): medium city
+//   Remote (cost 10+): village/small town only
+const tCostHere=hasTrans?tCost[ti]:5;
+// Transport-adjusted max city: cities without good transport can't grow large
+// Cost 0-1: 100% of max. Cost 5: 50%. Cost 15: 20%. Cost 30+: 10%.
+const transportFactor=1/(1+tCostHere*0.1);
+const localMaxCity=mxCity*transportFactor;
 
-if(surplus>1.1&&cp>0){
-// Food surplus: existing cities grow by pulling from nearby farmers
-// Growth rate proportional to surplus magnitude
-const cityGrowth=Math.min(0.03,(surplus-1.0)*0.02)*cp;
-if(cp+cityGrowth<=mxCity){
-// Pull workers from this tile's farmers to feed city growth
-const pullFromFarm=cityGrowth*0.5;// half comes from local farmers
-if(bgPop[ti]>laborDemand*0.5){// don't drain below half labor demand
+if(tribeSurplus>1.05&&cp>0&&cp<localMaxCity){
+// City growth: proportional to surplus AND transport access
+const growthPotential=Math.min(0.03,(tribeSurplus-1.0)*0.02)*transportFactor;
+const cityGrowth=growthPotential*cp;
+const pullFromFarm=cityGrowth*0.5;
+if(bgPop[ti]>laborDemand*0.3){
 cityPop[ti]+=cityGrowth;
-bgPop[ti]-=Math.min(pullFromFarm,bgPop[ti]*0.05);}}}
+bgPop[ti]-=Math.min(pullFromFarm,bgPop[ti]*0.05);}}
 
-// Food surplus + no city yet: settlement formation
-// Only forms where there's a geographic reason (river, coast, resources)
-if(surplus>1.2&&cp<0.01&&bgPop[ti]>laborDemand*0.7){
+// Settlement formation: needs geographic reason + food surplus + transport access
+if(tribeSurplus>1.1&&cp<0.01&&bgPop[ti]>laborDemand*0.5){
 let siteQuality=0;
-if(riverMag){const rm=riverMag[ti];if(rm>=3)siteQuality+=1.0;else if(rm>=2)siteQuality+=0.4;}
-if(tCoast[ti])siteQuality+=0.5;
-if(fert>0.3)siteQuality+=0.3;
-// New settlements need a reason to exist — not every tile gets one
-if(siteQuality>0.3){
-const seed=Math.min(bgPop[ti]*0.1,0.1);// small seed from local farmers
+if(riverMag){const rm=riverMag[ti];if(rm>=3)siteQuality+=1.5;else if(rm>=2)siteQuality+=0.5;}
+if(tCoast[ti])siteQuality+=1.0;
+// Transport access bonus: well-connected sites form settlements easier
+siteQuality+=transportFactor*0.5;
+// Only forms at meaningful locations — crossroads, harbors, river confluences
+if(siteQuality>0.5){
+const seed=Math.min(bgPop[ti]*0.1,0.05);
 bgPop[ti]-=seed;cityPop[ti]+=seed;}}
 
-// Food DEFICIT: cities shrink — people return to farmland
-if(surplus<0.9&&cp>0.01){
-const shrinkRate=Math.min(0.05,(1.0-surplus)*0.03);
-const returnToFarm=cp*shrinkRate;
+// City shrink: food deficit OR lost transport access
+if((tribeSurplus<0.9||cp>localMaxCity*1.2)&&cp>0.01){
+const shrinkRate=Math.min(0.05,Math.max((1.0-tribeSurplus)*0.03,(cp/localMaxCity-1.0)*0.02));
+const returnToFarm=cp*Math.max(0.001,shrinkRate);
 cityPop[ti]=Math.max(0,cp-returnToFarm);
-bgPop[ti]+=returnToFarm*0.8;// 80% return to farming, 20% die/flee
-}}
+bgPop[ti]+=returnToFarm*0.8;}
+}
 
 // ── Unowned city decay ──
 if(ow<0&&cp>0){cityPop[ti]=Math.max(0,cp*0.97);bgPop[ti]+=cp*0.009;}
@@ -1823,6 +1941,8 @@ function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // ── Knowledge & population step (every 8 ticks) ──
 if(ter.stepCount%8===0&&ter.tribeKnowledge){
+// Transport network: recompute every 32 steps (expensive Dijkstra)
+if(ter.stepCount%32===0)computeTransport(ter);
 const _t0=performance.now();
 stepBackgroundPop(ter);
 const _t1=performance.now();
@@ -2419,6 +2539,30 @@ else{const s=(t-0.90)/0.10;r=(250+s*5)|0;g=(50+s*150)|0;b=(30+s*180)|0;}// white
 const landDim=0.15;const heatW=0.80;
 const tr=(tc[ti*3]*landDim)|0,tg=(tc[ti*3+1]*landDim)|0,tb=(tc[ti*3+2]*landDim)|0;
 r=(r*heatW+tr*(1-heatW))|0;g=(g*heatW+tg*(1-heatW))|0;b=(b*heatW+tb*(1-heatW))|0;
+d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
+}else if(vm==="transport"){
+// Transport cost heatmap: green(cheap/connected) → yellow → red(expensive) → black(unreachable)
+if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
+const tc=terrainCache.current;const ptw=ter.tw,pth=ter.th;
+const trc=ter.transportCost;
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty2=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty2,CH,H))),si=sy*W+sx;
+const e=w.elevation[si];const pi4=ti<<2;
+if(e<=0){d[pi4]=4;d[pi4+1]=5;d[pi4+2]=12;d[pi4+3]=255;continue;}
+const ttx=Math.min(ptw-1,tx),tty=Math.min(pth-1,Math.round(screenYtoDataY(ty2,CH,H)/RES));
+const tti=tty*ptw+ttx;
+const cost2=trc?trc[tti]:999;
+if(cost2>=999){// unreachable
+d[pi4]=(tc[ti*3]*0.15)|0;d[pi4+1]=(tc[ti*3+1]*0.15)|0;d[pi4+2]=(tc[ti*3+2]*0.15)|0;d[pi4+3]=255;continue;}
+// Normalize: 0→green, 10→yellow, 30→red, 50+→dark
+const t=Math.min(1,cost2/50);let r,g,b;
+if(t<0.2){const s=t/0.2;r=(20+s*30)|0;g=(180-s*20)|0;b=(40-s*20)|0;}
+else if(t<0.5){const s=(t-0.2)/0.3;r=(50+s*180)|0;g=(160-s*60)|0;b=(20+s*10)|0;}
+else if(t<0.8){const s=(t-0.5)/0.3;r=(230-s*80)|0;g=(100-s*70)|0;b=(30-s*10)|0;}
+else{const s=(t-0.8)/0.2;r=(150-s*100)|0;g=(30-s*20)|0;b=(20-s*10)|0;}
+const landDim=0.15;const heatW=0.80;
+const tr2=(tc[ti*3]*landDim)|0,tg2=(tc[ti*3+1]*landDim)|0,tb2=(tc[ti*3+2]*landDim)|0;
+r=(r*heatW+tr2*(1-heatW))|0;g=(g*heatW+tg2*(1-heatW))|0;b=(b*heatW+tb2*(1-heatW))|0;
 d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="tribes"){
 const eraColor=(k)=>{if(!k)return[55,48,38];
@@ -3152,7 +3296,7 @@ Ag {(avgAg*100|0)} Mt {(avgMet*100|0)} Nv {(avgNav*100|0)} Og {(avgOrg*100|0)}</
 <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",
 background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"6px 12px",
 display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],["resources","Resources"],["population","Pop"],["tribes","Tribes"]].map(([k,label])=>(
+{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],["resources","Resources"],["population","Pop"],["transport","Transport"],["tribes","Tribes"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
 style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
 color:viewMode===k?"#c9b87a":"#5a5448",padding:"6px 14px",fontSize:13}}>{label}</button>))}
