@@ -164,7 +164,7 @@ for(let my=0;my<mH2;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
 const lt=Math.abs(py/H-0.5)*2,e2=elevation[py*W+px];
 tGrid[my*mW2+mx]=Math.max(0,Math.min(1,1-Math.pow(lt,2.0)*1.15-lt*lt*lt*0.1+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*0.45));}
-for(let step=0;step<25;step++){const prev=new Float32Array(tGrid);
+for(let step=0;step<60;step++){const prev=new Float32Array(tGrid);// 60 iterations for deep heat transport
 for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
 const wx2=fWX[fi],wy2=fWY[fi];
@@ -205,8 +205,13 @@ const shE=Math.exp(-((tLat-0.20)*(tLat-0.20))/(2*0.08*0.08))*0.06;
 // Steeper curve: pow(2.0)*1.35 drops faster at mid-latitudes
 const bt=1-Math.pow(tLat,2.0)*1.15-tLat*tLat*tLat*0.1+shE-Math.max(0,e)*0.45+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
 const inland=Math.max(0,1-cp);
-const ch=tLat<0.5?inland*(0.5-tLat)*0.20:inland*(tLat-0.5)*-0.12;
-const mt=bt+(0.45-bt)*cp*0.2+ch;
+// Maritime effect: coasts are WARMER at high latitudes (Gulf Stream, ocean heat release)
+// and slightly COOLER in tropics (sea breeze). Inland is MORE extreme (hot summers, cold winters).
+// At 40-65° lat: coastal areas up to +10°C warmer than inland (London vs Moscow)
+const maritimeWarm=tLat>0.3?Math.min(0.12,((tLat-0.3)*0.4))*cp:0;// warming from ocean proximity at high lat
+const tropicalCool=tLat<0.3?cp*0.05:0;// slight coastal cooling in tropics (sea breeze)
+const continentality=inland*tLat*0.08;// inland areas are colder at high lat (Yakutsk vs Anchorage)
+const mt=bt+maritimeWarm-tropicalCool-continentality+(0.45-bt)*cp*0.15;
 const wt=windTemp[i];
 // Ocean tiles get more wind influence (ocean currents = wind-driven)
 const isOcean=e<=0;
