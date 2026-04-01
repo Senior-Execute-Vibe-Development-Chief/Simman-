@@ -827,10 +827,11 @@ if(hasBorder)return'friendly';
 return'neutral';}
 
 function computeTribeResources(ter){
-const{tw,th,owner,deposits,tCoast,tribeStrength}=ter;
+const{tw,th,owner,deposits,tCoast,tribeStrength,tribeTiles}=ter;
 const n=ter.tribeCenters.length;
 const res=[];for(let i=0;i<n;i++)res.push({copper:0,tin:0,iron:0,coal:0,stone:0,timber:0,salt:0,horses:0,precious:0,oil:0,gems:0,coastTiles:0,riverTiles:0,resourceTypes:0});
-for(let ti=0;ti<tw*th;ti++){const ow=owner[ti];if(ow<0)continue;const r=res[ow];
+// Accumulate resources per tile — shared logic for both paths
+function accumTile(r,ti){
 if(deposits){
 if(deposits.copper[ti]>0.1)r.copper+=deposits.copper[ti];
 if(deposits.tin[ti]>0.1)r.tin+=deposits.tin[ti];
@@ -845,6 +846,10 @@ if(deposits.oil[ti]>0.1)r.oil+=deposits.oil[ti];
 if(deposits.gems[ti]>0.1)r.gems+=deposits.gems[ti];}
 if(tCoast[ti])r.coastTiles++;
 if(ter.rivers&&ter.rivers.riverMag[ti]>=2)r.riverTiles++;}
+// Use per-tribe tile index (O(settled) vs O(tw*th))
+if(tribeTiles){for(let tid=0;tid<n;tid++){if(ter.tribeSizes[tid]<=0||!tribeTiles[tid])continue;
+const r=res[tid];for(const ti of tribeTiles[tid])accumTile(r,ti);}}
+else{for(let ti=0;ti<tw*th;ti++){const ow=owner[ti];if(ow<0)continue;accumTile(res[ow],ti);}}
 // Count distinct resource types per tribe
 for(let i=0;i<n;i++){const r=res[i];let ct=0;
 if(r.copper>0.5)ct++;if(r.tin>0.5)ct++;if(r.iron>0.5)ct++;if(r.coal>0.5)ct++;
@@ -853,14 +858,21 @@ if(r.precious>0.5)ct++;if(r.oil>0.5)ct++;if(r.gems>0.5)ct++;r.resourceTypes=ct;}
 return res;}
 
 // Compute border contact: for each tribe, count tiles touching each neighbor tribe
+// Optimized: only check frontier tiles (tiles on territory borders)
 function computeBorderContact(ter){
-const{tw,th,owner,tribeSizes}=ter;const n=ter.tribeCenters.length;
+const{tw,th,owner,tribeSizes,frontierList}=ter;const n=ter.tribeCenters.length;
 // Map: tribeId → {neighborId: contactCount}
 const contacts=[];for(let i=0;i<n;i++)contacts.push({});
-for(let ti=0;ti<tw*th;ti++){const ow=owner[ti];if(ow<0)continue;
+// Frontier list contains all border tiles — only these can have cross-tribe neighbors
+const list=frontierList&&frontierList.length>0?frontierList:null;
+if(list){for(let fi=0;fi<list.length;fi++){const ti=list[fi];const ow=owner[ti];if(ow<0)continue;
 const tx=ti%tw,ty=(ti-tx)/tw;
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;
-const no=owner[ny*tw+nx];if(no>=0&&no!==ow){contacts[ow][no]=(contacts[ow][no]||0)+1;}}}
+const no=owner[ny*tw+nx];if(no>=0&&no!==ow){contacts[ow][no]=(contacts[ow][no]||0)+1;}}}}
+else{for(let ti=0;ti<tw*th;ti++){const ow=owner[ti];if(ow<0)continue;
+const tx=ti%tw,ty=(ti-tx)/tw;
+for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;
+const no=owner[ny*tw+nx];if(no>=0&&no!==ow){contacts[ow][no]=(contacts[ow][no]||0)+1;}}}}
 return contacts;}
 
 // Ore access multiplier for metallurgy combat effect
@@ -1055,14 +1067,19 @@ return em;}
 // Population step: derive tribePopulation from per-tile bgPop sums.
 // Population = bgPop (rural) + cityPop (urban) summed per tribe.
 function stepPopulation(ter){
-const pop=ter.tribePopulation;const{tribeSizes,bgPop,cityPop,owner,tw,th}=ter;
+const pop=ter.tribePopulation;const{tribeSizes,bgPop,cityPop,owner,tw,th,tribeTiles}=ter;
 if(!bgPop)return;
 const n=pop.length;
 for(let i=0;i<n;i++)pop[i]=0;
-for(let ti=0;ti<tw*th;ti++){
+// Use per-tribe tile index when available (O(settled) vs O(tw*th))
+if(tribeTiles){
+for(let tid=0;tid<n;tid++){if(tribeSizes[tid]<=0||!tribeTiles[tid])continue;
+let sum=0;for(const ti of tribeTiles[tid])sum+=bgPop[ti]+(cityPop?cityPop[ti]:0);
+pop[tid]=sum;}}
+else{for(let ti=0;ti<tw*th;ti++){
 const ow=owner[ti];if(ow<0||ow>=n)continue;
 pop[ow]+=bgPop[ti]+(cityPop?cityPop[ti]:0);}
-for(let i=0;i<n;i++){if(tribeSizes[i]<=0)pop[i]=0;}
+for(let i=0;i<n;i++){if(tribeSizes[i]<=0)pop[i]=0;}}
 }
 
 // ── Transport / Communication Network ──
@@ -1546,10 +1563,13 @@ alive++;if(alive>=80)break;
 
 // Port computation: find best coastal settlement tiles for a tribe
 function computeTribePorts(ter,tribeId){
-const{tw,th,owner,tFert,tCoast,tenure,rivers}=ter;
+const{tw,th,owner,tFert,tCoast,tenure,rivers,tribeTiles}=ter;
 const ports=[];const orgLevel=ter.tribeKnowledge[tribeId]?ter.tribeKnowledge[tribeId].organization:0;
 const maxPorts=Math.max(2,Math.floor(3+orgLevel*7));// 3-10 ports based on organization
-for(let ti=0;ti<tw*th;ti++){if(owner[ti]!==tribeId||!tCoast[ti])continue;
+// Use tribeTiles index to avoid full grid scan
+const tiles=tribeTiles&&tribeTiles[tribeId]?tribeTiles[tribeId]:null;
+const portSource=tiles||{[Symbol.iterator]:function*(){for(let ti=0;ti<tw*th;ti++)if(owner[ti]===tribeId)yield ti;}};
+for(const ti of portSource){if(!tCoast[ti])continue;
 if(tenure[ti]<10)continue;// must be established
 let score=tFert[ti]*2;
 // River mouth bonus
@@ -1860,9 +1880,14 @@ bgPop[ti]=Math.max(0,bp);}
 // bgPop persists on owned tiles — don't zero it. It represents rural population density.
 // cityPop: urban population stored in settlements (separate from bgPop)
 const cityPop=new Float32Array(tw*th);
+// Per-tribe tile index: tribeTiles[id] = Set of tile indices owned by tribe id
+// Eliminates O(tw*th) full-grid scans in fragmentation, migration, split, absorption
+const tribeTiles=[];
+for(let i=0;i<tribeSizes.length;i++)tribeTiles.push(new Set());
+for(let ti=0;ti<tw*th;ti++){if(owner[ti]>=0)tribeTiles[owner[ti]].add(ti);}
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
 tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudget:tribeBudgets,bgPop,cityPop,
-frontier,frontierList,landCount:lc,settled:tribeSizes.length,tribes:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
+tribeTiles,frontier,frontierList,landCount:lc,settled:tribeSizes.length,tribes:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+(y1-y2)*(y1-y2));}
 // Precomputed exp(-d*d/280) lookup table — eliminates Math.exp in hot loops
@@ -1927,6 +1952,7 @@ base*=(0.5+milB*2.5);// mil=0.1→0.75x, mil=0.2→1.0x, mil=0.4→1.5x, mil=0.5
 return base;
 }
 function newTribe(ter,x,y,parentId){const id=ter.tribeCenters.length;ter.tribeCenters.push([{x,y,prestige:1.0,founded:ter.stepCount}]);ter.tribeSizes.push(0);ter.tribeStrength.push(0);
+if(ter.tribeTiles)ter.tribeTiles.push(new Set());
 // Inherit knowledge from parent tribe (splits carry culture); new independent tribes start at zero
 const parentKnow=parentId>=0&&ter.tribeKnowledge[parentId]?ter.tribeKnowledge[parentId]:null;
 ter.tribeKnowledge.push(parentKnow?cloneKnowledge(parentKnow):initKnowledge());
@@ -1938,19 +1964,22 @@ ter.tribePorts.push([]);
 const parentBudget=parentId>=0&&ter.tribeBudget&&ter.tribeBudget[parentId]?ter.tribeBudget[parentId]:null;
 if(ter.tribeBudget)ter.tribeBudget.push(parentBudget?cloneBudget(parentBudget):initBudget());
 ter.tribes=id+1;return id;}
-function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure}=ter;const ow=owner[ti];
+function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure,tribeTiles}=ter;const ow=owner[ti];
 if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];
+if(tribeTiles&&tribeTiles[ow])tribeTiles[ow].delete(ti);
 // Conquest: people stay. Small war loss (15% of rural + 10% of urban).
 if(ter.bgPop&&ter.bgPop[ti]>0)ter.bgPop[ti]*=0.85;
 if(ter.cityPop&&ter.cityPop[ti]>0)ter.cityPop[ti]*=0.90;// cities mostly survive conquest
 }else{ter.settled++;}
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;
+if(tribeTiles){while(tribeTiles.length<=nw)tribeTiles.push(new Set());tribeTiles[nw].add(ti);}
 }
 // Transfer tile without resetting tenure (for splits/fragmentation — population stays, allegiance changes)
-function transferTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert}=ter;const ow=owner[ti];
-if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];}
+function transferTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tribeTiles}=ter;const ow=owner[ti];
+if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];if(tribeTiles&&tribeTiles[ow])tribeTiles[ow].delete(ti);}
 // bgPop stays untouched — people remain, only political control changes
-owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];}
+owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];
+if(tribeTiles){while(tribeTiles.length<=nw)tribeTiles.push(new Set());tribeTiles[nw].add(ti);}}
 
 function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
@@ -2196,23 +2225,40 @@ const stPop=ter.tribePopulation?ter.tribePopulation[st]:tribeStrength[st];
 const stCap=tribeStrength[st]*(stKnow?1+stKnow.agriculture*2.5:1);
 const pressure=stCap>0?stPop/stCap:0;
 if(pressure<0.5)continue;// not enough pressure to migrate
-// Find worst tile (lowest fertility, highest difficulty)
+// Find worst tile (lowest fertility, highest difficulty) — use tribeTiles index
 let worstTi=-1,worstScore=Infinity;
-for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;
-const sc=tFert[i]-tDiff[i]*0.5;if(sc<worstScore){worstScore=sc;worstTi=i;}}
+const migTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
+if(migTiles){for(const i of migTiles){
+const sc=tFert[i]-tDiff[i]*0.5;if(sc<worstScore){worstScore=sc;worstTi=i;}}}
+else{for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;
+const sc=tFert[i]-tDiff[i]*0.5;if(sc<worstScore){worstScore=sc;worstTi=i;}}}
 if(worstTi>=0&&tribeSizes[st]>3){
 // Abandon worst tile
 owner[worstTi]=-1;tribeSizes[st]--;tribeStrength[st]-=tFert[worstTi];ter.tenure[worstTi]=0;ter.settled--;}}}
 ter.frontier=nf;ter.frontierList=nfl;
 // ── Age tenure + occupation cost: newly conquered tiles drain strength ──
-if(ter.stepCount%4===0){const{tenure}=ter;for(let i=0;i<tw*th;i++){if(owner[i]<0)continue;
+if(ter.stepCount%4===0){const{tenure}=ter;
+// Use frontier list for young tiles (tenure<200), skip settled interior
+// Most tiles have tenure=200 and need no update — frontier list covers active zones
+for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];if(owner[i]<0)continue;
 if(tenure[i]<200)tenure[i]++;
-// Occupation cost: tiles with tenure < 20 drain tribe strength (garrisons, resistance)
-if(tenure[i]<15){const drain=tFert[i]*0.015*(1-tenure[i]/15);// decays as tenure grows
+if(tenure[i]<15){const drain=tFert[i]*0.015*(1-tenure[i]/15);
+tribeStrength[owner[i]]=Math.max(0.1,tribeStrength[owner[i]]-drain);}}
+// Bulk tenure aging for interior: only tiles with tenure<200 need incrementing
+// Use a lazy counter — most tiles hit 200 quickly and stop being relevant
+if(!ter._youngTiles){ter._youngTiles=[];for(let i=0;i<tw*th;i++)if(owner[i]>=0&&tenure[i]<200)ter._youngTiles.push(i);}
+const young=ter._youngTiles;let j=0;
+for(let k=0;k<young.length;k++){const i=young[k];if(owner[i]<0)continue;
+if(tenure[i]<200){tenure[i]++;young[j++]=i;
+if(tenure[i]<15){const drain=tFert[i]*0.015*(1-tenure[i]/15);
 tribeStrength[owner[i]]=Math.max(0.1,tribeStrength[owner[i]]-drain);}}}
+young.length=j;// compact: remove tiles that aged out or lost ownership
+// Add newly claimed frontier tiles to young list
+for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];if(owner[i]>=0&&tenure[i]<200)young.push(i);}}
 // ── Border conflict: local power projection determines tile flips ──
+// Only check frontier tiles (tiles with at least one unowned/enemy neighbor)
 if(ter.stepCount%4===0){const flips=[];const{tenure}=ter;
-for(let i=0;i<tw*th;i++){const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
+for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
 // New tribes get 80 steps of protection from border conflict (establishment period)
 const owAge=ter.stepCount-(tribeCenters[ow][0]?tribeCenters[ow][0].founded:0);
 if(owAge<80)continue;// can't lose tiles while establishing
@@ -2285,18 +2331,24 @@ if(cohesion>0.4)continue;// cohesive enough — no split
 let aliveT=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)aliveT++;
 if(aliveT>=80)break;
 const sc=centers[c];const sid=newTribe(ter,sc.x,sc.y,st);
-for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const iy=Math.floor(i/tw),ix=i%tw;
+const cohTiles=ter.tribeTiles&&ter.tribeTiles[st]?[...ter.tribeTiles[st]]:null;
+const cohSource=cohTiles||{[Symbol.iterator]:function*(){for(let i=0;i<tw*th;i++)if(owner[i]===st)yield i;}};
+const toXfer=[];
+for(const i of cohSource){const iy=Math.floor(i/tw),ix=i%tw;
 const dSec=tDistW(ix,iy,sc.x,sc.y,tw);
 let dNearest=Infinity;for(const rc of centers){if(rc===sc)continue;dNearest=Math.min(dNearest,tDistW(ix,iy,rc.x,rc.y,tw));}
-if(dSec<dNearest)transferTile(ter,i,sid);}
+if(dSec<dNearest)toXfer.push(i);}
+for(const ti of toXfer)transferTile(ter,ti,sid);
 break;}}}
 // ── Terrain-based fragmentation: large tribes in rough terrain tend to split ──
 if(ter.stepCount%32===0){
 for(let st=0;st<tribeSizes.length;st++){
 if(tribeSizes[st]<=40)continue;
 const stK=ter.tribeKnowledge[st];const stOrg=stK?stK.organization:0;
+const stTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
 let totalDiff2=0,tileCount2=0;
-for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;totalDiff2+=tDiff[i];tileCount2++;}
+if(stTiles){for(const i of stTiles){totalDiff2+=tDiff[i];tileCount2++;}}
+else{for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;totalDiff2+=tDiff[i];tileCount2++;}}
 if(tileCount2<20)continue;
 const avgTribeDiff=totalDiff2/tileCount2;
 // Split pressure: high for mountainous (Europe), near-zero for flat (Russia)
@@ -2304,26 +2356,45 @@ const splitPressure=avgTribeDiff*avgTribeDiff*0.3-stOrg*0.05;
 if(splitPressure>0&&Math.random()<splitPressure){
 const cap=tribeCenters[st][0];
 let worstTi=-1,worstScore=-1;
-for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;
+if(stTiles){for(const i of stTiles){
 const ix=i%tw,iy=(i-ix)/tw;
 const score=tDistW(ix,iy,cap.x,cap.y,tw)*tDiff[i];
-if(score>worstScore){worstScore=score;worstTi=i;}}
+if(score>worstScore){worstScore=score;worstTi=i;}}}
+else{for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;
+const ix=i%tw,iy=(i-ix)/tw;
+const score=tDistW(ix,iy,cap.x,cap.y,tw)*tDiff[i];
+if(score>worstScore){worstScore=score;worstTi=i;}}}
 if(worstTi>=0){const wx=worstTi%tw,wy=(worstTi-wx)/tw;
 let aliveT=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)aliveT++;
 if(aliveT<80){const sid=newTribe(ter,wx,wy,st);
-for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;
+const toTransfer=[];
+if(stTiles){for(const i of stTiles){
 const ix2=i%tw,iy2=(i-ix2)/tw;
-if(tDistW(ix2,iy2,wx,wy,tw)<tDistW(ix2,iy2,cap.x,cap.y,tw))transferTile(ter,i,sid);}}}}}}
+if(tDistW(ix2,iy2,wx,wy,tw)<tDistW(ix2,iy2,cap.x,cap.y,tw))toTransfer.push(i);}}
+else{for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;
+const ix2=i%tw,iy2=(i-ix2)/tw;
+if(tDistW(ix2,iy2,wx,wy,tw)<tDistW(ix2,iy2,cap.x,cap.y,tw))toTransfer.push(i);}}
+for(const ti of toTransfer)transferTile(ter,ti,sid);}}}}
+}
 // ── Fragmentation: split disconnected tribe components (largest keeps original ID/color) ──
 if(ter.stepCount%16===0){if(!ter._fragMark)ter._fragMark=new Int32Array(tw*th);const mark=ter._fragMark;let gen=ter._fragGen||0;
 for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=1)continue;
 const baseGen=gen;const comps=[];
-for(let i=0;i<tw*th;i++){if(owner[i]!==st||mark[i]>baseGen)continue;gen++;
+// Use tribeTiles index to iterate only over this tribe's tiles (not full grid)
+const stTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
+const tileSource=stTiles?stTiles:null;
+if(tileSource){for(const i of tileSource){if(mark[i]>baseGen)continue;gen++;
 const stack=[i];mark[i]=gen;const comp=[];
 while(stack.length>0){const ci=stack.pop();comp.push(ci);const cy=Math.floor(ci/tw),cx=ci%tw;
 for(const[dx,dy]of DIRS){const nx2=((cx+dx)%tw+tw)%tw,ny2=cy+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 if(mark[ni]<=baseGen&&owner[ni]===st){mark[ni]=gen;stack.push(ni);}}}
-comps.push(comp);}
+comps.push(comp);}}
+else{for(let i=0;i<tw*th;i++){if(owner[i]!==st||mark[i]>baseGen)continue;gen++;
+const stack=[i];mark[i]=gen;const comp=[];
+while(stack.length>0){const ci=stack.pop();comp.push(ci);const cy=Math.floor(ci/tw),cx=ci%tw;
+for(const[dx,dy]of DIRS){const nx2=((cx+dx)%tw+tw)%tw,ny2=cy+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
+if(mark[ni]<=baseGen&&owner[ni]===st){mark[ni]=gen;stack.push(ni);}}}
+comps.push(comp);}}
 if(comps.length<=1)continue;
 comps.sort((a,b)=>b.length-a.length);
 for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor(comps[c][0]/tw),st);
@@ -2334,10 +2405,16 @@ if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st
 // Immunity: don't absorb tribes younger than 100 steps (let them grow)
 const stAge=ter.stepCount-(tribeCenters[st][0]?tribeCenters[st][0].founded:0);
 if(stAge<100)continue;
-let bn=-1,bs2=0;for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;const ty2=Math.floor(i/tw),tx2=i%tw;
+const stTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
+let bn=-1,bs2=0;
+const iterTiles=stTiles?stTiles:{[Symbol.iterator]:function*(){for(let i=0;i<tw*th;i++)if(owner[i]===st)yield i;}};
+for(const i of iterTiles){const ty2=Math.floor(i/tw),tx2=i%tw;
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===st||tElev[ni]<=sl)continue;if(tribeSizes[no]>bs2){bs2=tribeSizes[no];bn=no;}}}
-if(bn>=0&&tribeSizes[bn]>tribeSizes[st]*3){for(let i=0;i<tw*th;i++)if(owner[i]===st)claimTile(ter,i,bn);}}}
+if(bn>=0&&tribeSizes[bn]>tribeSizes[st]*3){
+const tilesToClaim=stTiles?[...stTiles]:[];
+if(!stTiles){for(let i=0;i<tw*th;i++)if(owner[i]===st)tilesToClaim.push(i);}
+for(const i of tilesToClaim)claimTile(ter,i,bn);}}}
 ter._dbgTimeExpansion=(performance.now()-_tExpStart).toFixed(1);
 return ter;}
 

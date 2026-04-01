@@ -280,11 +280,17 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   // ── Iterative refinement ──
   const dt = 0.35;
   const visc = 0.06;
+  // Pre-allocate scratch buffers for solver loop (avoids 500× Float32Array allocs)
+  const tmpX = new Float32Array(N);
+  const tmpY = new Float32Array(N);
+  // Pre-allocate divergence projection buffers (reused every 10 iterations)
+  const _divBuf = new Float32Array(N);
+  const _pCorr = new Float32Array(N);
 
   for (let iter = 0; iter < _solverIter; iter++) {
 
-    const tmpX = new Float32Array(windX);
-    const tmpY = new Float32Array(windY);
+    tmpX.set(windX);
+    tmpY.set(windY);
 
     for (let wy = 1; wy < wH - 1; wy++) {
       const latSigned = (wy / wH - 0.5) * 2;
@@ -324,18 +330,18 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     // ── Mass continuity: velocity projection ──
     // Removes divergence from the wind field so air can't pile up or vanish.
     if (iter % 10 === 9) {
-      const div = new Float32Array(N);
+      _divBuf.fill(0);
       for (let wy = 1; wy < wH - 1; wy++) {
         for (let wx = 0; wx < wW; wx++) {
           const i2 = wy * wW + wx;
           if (wElev[i2] > 0.3) continue;
           const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
-          div[i2] = (windX[wy * wW + wr2] - windX[wy * wW + wl2]) * 0.5
+          _divBuf[i2] = (windX[wy * wW + wr2] - windX[wy * wW + wl2]) * 0.5
                   + (windY[(wy + 1) * wW + wx] - windY[(wy - 1) * wW + wx]) * 0.5;
         }
       }
 
-      const pCorr = new Float32Array(N);
+      _pCorr.fill(0);
       const omega = 1.4;
       for (let pIter = 0; pIter < 20; pIter++) {
         for (let wy = 1; wy < wH - 1; wy++) {
@@ -343,12 +349,12 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
             const i2 = wy * wW + wx;
             if (wElev[i2] > 0.3) continue;
             const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
-            const pE = wElev[wy * wW + wr2] > 0.3 ? pCorr[i2] : pCorr[wy * wW + wr2];
-            const pW = wElev[wy * wW + wl2] > 0.3 ? pCorr[i2] : pCorr[wy * wW + wl2];
-            const pN = (wy < wH - 2 && wElev[(wy+1)*wW+wx] <= 0.3) ? pCorr[(wy+1)*wW+wx] : pCorr[i2];
-            const pS = (wy > 1 && wElev[(wy-1)*wW+wx] <= 0.3) ? pCorr[(wy-1)*wW+wx] : pCorr[i2];
-            const jacobi = (pE + pW + pN + pS - div[i2]) * 0.25;
-            pCorr[i2] = (1 - omega) * pCorr[i2] + omega * jacobi;
+            const pE = wElev[wy * wW + wr2] > 0.3 ? _pCorr[i2] : _pCorr[wy * wW + wr2];
+            const pW = wElev[wy * wW + wl2] > 0.3 ? _pCorr[i2] : _pCorr[wy * wW + wl2];
+            const pN = (wy < wH - 2 && wElev[(wy+1)*wW+wx] <= 0.3) ? _pCorr[(wy+1)*wW+wx] : _pCorr[i2];
+            const pS = (wy > 1 && wElev[(wy-1)*wW+wx] <= 0.3) ? _pCorr[(wy-1)*wW+wx] : _pCorr[i2];
+            const jacobi = (pE + pW + pN + pS - _divBuf[i2]) * 0.25;
+            _pCorr[i2] = (1 - omega) * _pCorr[i2] + omega * jacobi;
           }
         }
       }
@@ -359,8 +365,8 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
           const i2 = wy * wW + wx;
           if (wElev[i2] > 0.3) { windX[i2] = 0; windY[i2] = 0; continue; }
           const wl2 = (wx - 1 + wW) % wW, wr2 = (wx + 1) % wW;
-          windX[i2] -= (pCorr[wy * wW + wr2] - pCorr[wy * wW + wl2]) * 0.5 * corrStr;
-          windY[i2] -= (pCorr[(wy + 1) * wW + wx] - pCorr[(wy - 1) * wW + wx]) * 0.5 * corrStr;
+          windX[i2] -= (_pCorr[wy * wW + wr2] - _pCorr[wy * wW + wl2]) * 0.5 * corrStr;
+          windY[i2] -= (_pCorr[(wy + 1) * wW + wx] - _pCorr[(wy - 1) * wW + wx]) * 0.5 * corrStr;
         }
       }
 

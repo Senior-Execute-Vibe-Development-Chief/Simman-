@@ -74,15 +74,16 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
     divField[ci] = (wX[my * mW + mxR] - wX[my * mW + mxL]
       + wY[(my + 1) * mW + mx] - wY[(my - 1) * mW + mx]) * 0.5;
   }
-  // Smooth divergence (3 passes)
+  // Smooth divergence (3 passes) — reuse single temp buffer
+  const _smoothBuf = new Float32Array(mN);
   for (let pass = 0; pass < 3; pass++) {
-    const prev = new Float32Array(divField);
+    _smoothBuf.set(divField);
     for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
       const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
       const ci = my * mW + mx;
-      divField[ci] = prev[ci] * 0.4
-        + (prev[my * mW + mxL] + prev[my * mW + mxR]
-          + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.15;
+      divField[ci] = _smoothBuf[ci] * 0.4
+        + (_smoothBuf[my * mW + mxL] + _smoothBuf[my * mW + mxR]
+          + _smoothBuf[(my - 1) * mW + mx] + _smoothBuf[(my + 1) * mW + mx]) * 0.15;
     }
   }
 
@@ -111,7 +112,9 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   // ═══════════════════════════════════════════════════════
   // Phase 1: Initialize atmospheric moisture
   // ═══════════════════════════════════════════════════════
+  // Double-buffer to avoid per-step Float32Array allocation
   const atmos = new Float32Array(mN);
+  const atmosPrev = new Float32Array(mN);
   const precipAccum = new Float32Array(mN);
 
   // Ocean evaporation capacity — temperature-driven
@@ -133,7 +136,8 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   const baseReach = 1.5 + _moistAdvW * 3.0; // 1.5 - 4.5 cells
 
   for (let step = 0; step < STEPS; step++) {
-    const prev = new Float32Array(atmos);
+    atmosPrev.set(atmos);
+    const prev = atmosPrev;
 
     for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
       const ci = my * mW + mx;
@@ -269,7 +273,8 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
 
     // Light diffusion every 8 steps
     if (step % 8 === 7) {
-      const dPrev = new Float32Array(atmos);
+      atmosPrev.set(atmos);
+      const dPrev = atmosPrev;
       for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
         if (isOcean[my * mW + mx]) continue;
         const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
@@ -333,16 +338,17 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
     }
   }
 
-  // Smooth (3 passes)
+  // Smooth (3 passes) — reuse temp buffer
+  const _normBuf = new Float32Array(mN);
   for (let pass = 0; pass < 3; pass++) {
-    const prev = new Float32Array(normalized);
+    _normBuf.set(normalized);
     for (let my = 1; my < mH - 1; my++) for (let mx = 0; mx < mW; mx++) {
       if (isOcean[my * mW + mx]) continue;
       const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
       const ci = my * mW + mx;
-      normalized[ci] = prev[ci] * 0.5
-        + (prev[my * mW + mxL] + prev[my * mW + mxR]
-          + prev[(my - 1) * mW + mx] + prev[(my + 1) * mW + mx]) * 0.125;
+      normalized[ci] = _normBuf[ci] * 0.5
+        + (_normBuf[my * mW + mxL] + _normBuf[my * mW + mxR]
+          + _normBuf[(my - 1) * mW + mx] + _normBuf[(my + 1) * mW + mx]) * 0.125;
     }
   }
 
