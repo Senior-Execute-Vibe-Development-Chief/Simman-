@@ -889,7 +889,7 @@ if(tRes.iron>0.5&&tRes.coal>0.5)access=Math.max(access,1.3);
 return access*metallurgy;}
 
 // Main knowledge step: discovery + diffusion. Called every 8 sim steps.
-function stepKnowledge(ter){
+function stepKnowledge(ter){try{
 const{tw,th,owner,tribeCenters,tribeSizes,tribeStrength,tFert,tCoast,tenure}=ter;
 const know=ter.tribeKnowledge;const n=tribeCenters.length;
 if(!know||know.length===0)return;
@@ -1021,7 +1021,7 @@ const maritimeRate=0.002*Math.min(ki.navigation,kj.navigation)*Math.min(ki.trade
 if(maritimeRate<0.0001)continue;
 for(const d of KNOW_DOMAINS){
 if(kj[d]>ki[d]){ki[d]=Math.min(1,ki[d]+maritimeRate*(kj[d]-ki[d]));}}}}}
-}
+}catch(e){console.error('[stepKnowledge CRASH]',e.message,'step:',ter.stepCount);throw e;}}
 
 // ── Settlement tier thresholds (cityPop in thousands) ──
 // Tech gates max city size; tier is just a reading of how many people are there
@@ -1092,6 +1092,7 @@ for(let i=0;i<n;i++){if(tribeSizes[i]<=0)pop[i]=0;}}
 // Rivers are highways (0.4 cost), coast is cheap (0.5), mountains expensive (8+).
 // Used for: food catchment, cohesion, religion spread, trade efficiency.
 function computeTransport(ter){
+try{
 const{tw,th,tElev,tDiff,tCoast,owner,tribeSizes,cityPop,bgPop}=ter;
 if(!ter.transportCost)ter.transportCost=new Float32Array(tw*th);
 if(!ter.transportOwner)ter.transportOwner=new Int16Array(tw*th);// which city feeds this tile
@@ -1195,6 +1196,7 @@ ts.connected++;ts.avgCost+=c;
 if(c>ts.maxCost)ts.maxCost=c;}
 for(let i=0;i<n;i++){const ts=ter._tribeTransport[i];
 if(ts.connected>0)ts.avgCost/=ts.connected;}
+}catch(e){console.error('[computeTransport CRASH]',e.message,'step:',ter.stepCount);throw e;}
 }
 
 // ── Per-tile population with FOOD ECONOMY ──
@@ -1214,6 +1216,7 @@ if(ts.connected>0)ts.avgCost/=ts.connected;}
 //   cityPop grows from tribal surplus, capped by transport access + tech.
 //   Excess rural pop (above labor demand) migrates to nearest city tile or frontier.
 function stepBackgroundPop(ter){
+try{
 const{tw,th,tElev,tTemp,tFert,tDiff,tCoast,owner,bgPop,tribeSizes}=ter;
 if(!bgPop)return;
 if(!ter.cityPop)ter.cityPop=new Float32Array(tw*th);
@@ -1504,6 +1507,7 @@ for(let dx=-6;dx<=6;dx++){const nx=((tx+dx)%tw+tw)%tw;
 bgPop[ny*tw+nx]*=0.3;}}// reduce, don't zero (some people remain)
 alive++;if(alive>=80)break;
 }}// end if(random) + for cc (candidates loop)
+}catch(e){console.error('[stepBackgroundPop CRASH]',e.message,'step:',ter.stepCount,'tribes:',ter.tribeSizes.filter(s=>s>0).length,'settled:',ter.settled);throw e;}
 }// end stepBackgroundPop
 
 // Port computation: find best coastal settlement tiles for a tribe
