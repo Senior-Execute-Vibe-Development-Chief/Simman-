@@ -1065,9 +1065,12 @@ pop[ow]+=bgPop[ti]+(cityPop?cityPop[ti]:0);}
 for(let i=0;i<n;i++){if(tribeSizes[i]<=0)pop[i]=0;}
 }
 
-// ── Per-tile population system (OPTIMIZED) ──
-// Uses precomputed land tile index to skip ~70% ocean tiles.
-// Migration uses flat direction arrays to avoid destructuring overhead.
+// ── Per-tile population with FOOD ECONOMY ──
+// bgPop = farmers on land. They produce food = bgPop * fert * agTech.
+// cityPop = urban population. They consume food but don't produce it.
+// Cities can only grow when tribal food surplus > 0.
+// When surplus is negative, cities shrink — people return to farmland.
+// This naturally limits urbanization to what the food supply can support.
 function stepBackgroundPop(ter){
 const{tw,th,tElev,tTemp,tFert,tDiff,tCoast,owner,bgPop,tribeSizes}=ter;
 if(!bgPop)return;
@@ -1080,95 +1083,143 @@ const lt=[];for(let ti=0;ti<tw*th;ti++){if(tElev[ti]>0&&tTemp[ti]>=0.05)lt.push(
 ter._landTiles=new Int32Array(lt);}
 const landTiles=ter._landTiles;const landCount=landTiles.length;
 
-// ── Flat direction offsets (avoid destructuring DIRS per tile) ──
-const DX=[-1,1,0,0,-1,1,-1,1];
-const DY=[0,0,-1,1,-1,-1,1,1];
+const DX=[-1,1,0,0];const DY=[0,0,-1,1];// 4 cardinal directions
 
 // ── Precompute per-tribe stats ──
 const n=ter.tribeCenters.length;
 const tribeEra=new Float32Array(n);
 const tribeMaxCity=new Float32Array(n);
 const tribeGrowth=new Float32Array(n);
+const tribeInfra=new Float32Array(n);
+// Food economy: surplus per farmer scales with agriculture tech
+// At ag=0.3 (bronze): farmer produces 1.3x their own needs → 0.3 surplus
+// At ag=0.6 (classical): 1.6x → 0.6 surplus
+// At ag=0.9 (industrial): 1.9x + industrial bonus → feeds many city dwellers
+const tribeSurplusRate=new Float32Array(n);// food surplus per unit of bgPop*fert
+const tribeFoodProd=new Float32Array(n);// total food produced
+const tribeFoodCons=new Float32Array(n);// total food consumed by cities
+const tribeTotalCity=new Float32Array(n);// total cityPop
 for(let i=0;i<n;i++){
 if(tribeSizes[i]<=0)continue;
 const k=ter.tribeKnowledge[i];if(!k)continue;
-const ag=k.agriculture,mt=k.metallurgy,cn=k.construction;
-tribeEra[i]=(0.2+ag*0.4+mt*0.25+cn*0.15+k.organization*0.1)*10+(Math.max(0,mt-0.75))*(Math.max(0,cn-0.60))*2500;// inlined tileEraMult
+const ag=k.agriculture,mt=k.metallurgy,cn=k.construction,og=k.organization;
+tribeEra[i]=(0.2+ag*0.4+mt*0.25+cn*0.15+og*0.1)*10+(Math.max(0,mt-0.75))*(Math.max(0,cn-0.60))*2500;
 tribeMaxCity[i]=maxCityPop(k);
+tribeInfra[i]=1+cn*1.5+og;
 const industrialFactor=Math.max(0,mt-0.6)*3+Math.max(0,cn-0.5)*2;
 const groB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].growth:0.25;
-tribeGrowth[i]=(0.01+ag*0.005+industrialFactor*0.015)*(0.5+groB*1.5);}
+tribeGrowth[i]=(0.01+ag*0.005+industrialFactor*0.015)*(0.5+groB*1.5);
+// Surplus rate: how much food 1 unit of bgPop*fert produces beyond self-consumption
+// ag=0: 0.05 (bare subsistence, tiny surplus)
+// ag=0.3: 0.35 (bronze age, ~1 city dweller per 3 farmers on good land)
+// ag=0.6: 0.8 (classical, efficient farming)
+// ag=0.9+industrial: 5+ (modern, one farmer feeds many)
+tribeSurplusRate[i]=0.05+ag*1.0+industrialFactor*2.0;}
 
-// ── Precompute per-tribe infra speed for migration ──
-const tribeInfra=new Float32Array(n);
-for(let i=0;i<n;i++){
-if(tribeSizes[i]<=0)continue;
-const k=ter.tribeKnowledge[i];
-tribeInfra[i]=k?1+k.construction*1.5+k.organization:1;}
-
-// ── Cache river magnitude array ref ──
+// ── Cache river ref ──
 const riverMag=ter.rivers?ter.rivers.riverMag:null;
 
-// ── Debug counters ──
-let maxBg=0,maxCity=0,bgAboveThresh=0,tilesAboveRCap=0,settlementCount=0;
+// ── PASS 1: Food accounting — sum production and consumption per tribe ──
+for(let li=0;li<landCount;li++){
+const ti=landTiles[li];const ow=owner[ti];
+if(ow<0)continue;
+if(tribeSizes[ow]<=0)continue;
+// Farmers produce food: bgPop * fertility * (1 + agTech)
+// This IS the food supply. More farmers on fertile land = more food.
+tribeFoodProd[ow]+=bgPop[ti]*tFert[ti]*(1+tribeSurplusRate[ow]);
+// Cities consume food: cityPop * consumption rate (1.0 per unit)
+tribeFoodCons[ow]+=cityPop[ti];
+tribeTotalCity[ow]+=cityPop[ti];}
+// Food imports boost production
+for(let i=0;i<n;i++){
+const fi=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].foodImports:0;
+tribeFoodProd[i]+=fi;}
 
-// ── Main loop: iterate ONLY land tiles ──
+// Compute surplus ratio: >1 means surplus, <1 means deficit
+// This determines whether cities can grow or must shrink
+if(!ter._tribeFoodSurplus)ter._tribeFoodSurplus=new Float32Array(n);
+for(let i=0;i<n;i++){
+if(tribeSizes[i]<=0||tribeFoodCons[i]<0.01){ter._tribeFoodSurplus[i]=2.0;continue;}
+ter._tribeFoodSurplus[i]=tribeFoodProd[i]/tribeFoodCons[i];}
+
+// ── Debug counters ──
+let maxBg=0,maxCity=0,settlementCount=0;
+
+// ── PASS 2: Per-tile growth, urbanization, migration ──
 for(let li=0;li<landCount;li++){
 const ti=landTiles[li];
 const fert=tFert[ti];const ow=owner[ti];
 const bp=bgPop[ti];const cp=cityPop[ti];
 
-// Skip empty unowned tiles (no population, nothing to do)
 if(ow<0&&bp<0.001&&cp<=0)continue;
 
-// ── Rural carrying capacity (inlined) ──
-let rCap,growthRate;
+// ── bgPop (farmer) growth ──
+// Farmers grow logistically toward a labor demand cap.
+// Labor demand = how many farmers this tile needs for full production.
+// NOT a population cap — it's "how many workers does this land need?"
+let laborDemand,growthRate;
 if(ow>=0&&tribeSizes[ow]>0){
-rCap=fert*tribeEra[ow]*0.25*(1-tDiff[ti]*0.3);// inlined ruralCap
+// Labor demand scales with fertility and era.
+// Better tech = each farmer more productive = FEWER needed per tile.
+// Bronze: demand ~0.5 per fert=0.3 tile. Classical: ~0.3. Industrial: ~0.05.
+// This means industrial tiles need very few farmers → most people urbanize.
+const em=tribeEra[ow];
+const productivity=1+tribeSurplusRate[ow]*2;// how productive each farmer is
+laborDemand=fert*em*0.3/productivity*(1-tDiff[ti]*0.3);
 growthRate=tribeGrowth[ow];
 }else{
-rCap=fert*3.0*(1-tDiff[ti]*0.5);
+laborDemand=fert*2.0*(1-tDiff[ti]*0.5);// unowned: hunter-gatherer
 growthRate=0.02;
 }
-if(rCap<=0.001&&cp<=0)continue;
+if(laborDemand<=0.001&&cp<=0)continue;
 
-// ── Rural growth (logistic) ──
-if(rCap>0.001){
-const ratio=bp/rCap;
-if(ratio<1.1)bgPop[ti]=bp+bp*growthRate*(1-ratio/1.1);
-else if(ratio>1.3)bgPop[ti]=Math.max(0.01,bp*(0.97-Math.min(0.05,(ratio-1.3)*0.15)));}
+// Grow toward labor demand (farmers fill available farmland)
+if(laborDemand>0.001&&bp<laborDemand*1.1){
+bgPop[ti]=bp+bp*growthRate*(1-bp/(laborDemand*1.1));}
+// Over-farmed: excess farmers leave (toward cities or other land)
+if(bp>laborDemand*1.3){
+bgPop[ti]=Math.max(0.01,bp*0.98);}// 2% leave per step
 
-// ── Settlement formation: overflow → cityPop ──
-if(ow>=0&&bgPop[ti]>rCap*0.8){
+// ── Urbanization: surplus food → city growth ──
+if(ow>=0&&tribeSizes[ow]>0){
+const surplus=ter._tribeFoodSurplus[ow];
 const mxCity=tribeMaxCity[ow];
-if(cp<mxCity){
-const excess=bgPop[ti]-rCap*0.6;
-const transfer=Math.min(excess*0.5,mxCity-cp);
-if(transfer>0.001){bgPop[ti]-=transfer;cityPop[ti]+=transfer;}}}
 
-// ── City drain + growth (towns+ only) ──
-if(cp>0.5&&ow>=0){
-const mxCity=tribeMaxCity[ow];
-const cityRatio=cp/mxCity;
-// Drain from immediate 4-neighbors only (not 8, not radius)
-const pullStr=Math.min(1,cp*0.02)*tribeInfra[ow]*(1-cityRatio*0.8);
-if(pullStr>0.001){
-const tx2=ti%tw,ty2=(ti-tx2)/tw;
-for(let d=0;d<4;d++){// only 4 cardinal dirs for drain
-const nx=((tx2+DX[d])%tw+tw)%tw,ny=ty2+DY[d];if(ny<0||ny>=th)continue;
-const ni=ny*tw+nx;
-if(owner[ni]!==ow||tElev[ni]<=0||cityPop[ni]>cp*0.5)continue;
-const drain=bgPop[ni]*0.008*pullStr;
-if(drain>0.001&&bgPop[ni]>0.01){
-const actual=Math.min(drain,bgPop[ni]*0.15,mxCity-cityPop[ti]);
-if(actual>0){bgPop[ni]-=actual;cityPop[ti]+=actual;}}}}
-if(cityRatio<0.95)cityPop[ti]+=cp*growthRate*0.5*(1-cityRatio);
-if(cityPop[ti]>mxCity*1.1){const decay=cityPop[ti]*0.02;cityPop[ti]-=decay;bgPop[ti]+=decay*0.5;}}
+if(surplus>1.1&&cp>0){
+// Food surplus: existing cities grow by pulling from nearby farmers
+// Growth rate proportional to surplus magnitude
+const cityGrowth=Math.min(0.03,(surplus-1.0)*0.02)*cp;
+if(cp+cityGrowth<=mxCity){
+// Pull workers from this tile's farmers to feed city growth
+const pullFromFarm=cityGrowth*0.5;// half comes from local farmers
+if(bgPop[ti]>laborDemand*0.5){// don't drain below half labor demand
+cityPop[ti]+=cityGrowth;
+bgPop[ti]-=Math.min(pullFromFarm,bgPop[ti]*0.05);}}}
+
+// Food surplus + no city yet: settlement formation
+// Only forms where there's a geographic reason (river, coast, resources)
+if(surplus>1.2&&cp<0.01&&bgPop[ti]>laborDemand*0.7){
+let siteQuality=0;
+if(riverMag){const rm=riverMag[ti];if(rm>=3)siteQuality+=1.0;else if(rm>=2)siteQuality+=0.4;}
+if(tCoast[ti])siteQuality+=0.5;
+if(fert>0.3)siteQuality+=0.3;
+// New settlements need a reason to exist — not every tile gets one
+if(siteQuality>0.3){
+const seed=Math.min(bgPop[ti]*0.1,0.1);// small seed from local farmers
+bgPop[ti]-=seed;cityPop[ti]+=seed;}}
+
+// Food DEFICIT: cities shrink — people return to farmland
+if(surplus<0.9&&cp>0.01){
+const shrinkRate=Math.min(0.05,(1.0-surplus)*0.03);
+const returnToFarm=cp*shrinkRate;
+cityPop[ti]=Math.max(0,cp-returnToFarm);
+bgPop[ti]+=returnToFarm*0.8;// 80% return to farming, 20% die/flee
+}}
 
 // ── Unowned city decay ──
 if(ow<0&&cp>0){cityPop[ti]=Math.max(0,cp*0.97);bgPop[ti]+=cp*0.009;}
 
-// ── Migration (opportunity-based, 4 cardinal directions only) ──
+// ── Migration (opportunity-based, rural only) ──
 if(bgPop[ti]>0.01){
 const isOwned=ow>=0;
 const baseFlow=bgPop[ti]*0.003*(isOwned?tribeInfra[ow]:1);
@@ -1181,7 +1232,7 @@ if(tCoast[ti])myValue+=0.3;}
 const myOpp=myValue/(myDensity+0.3);
 
 const tx2=ti%tw,ty2=(ti-tx2)/tw;
-for(let d=0;d<4;d++){// 4 cardinal only — 50% less work than 8
+for(let d=0;d<4;d++){
 const nx=((tx2+DX[d])%tw+tw)%tw,ny=ty2+DY[d];if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;if(tElev[ni]<=0)continue;
 const nOw=owner[ni];
@@ -1199,36 +1250,33 @@ const pull=(nOpp-myOpp)/(myOpp+0.05);
 const flow=Math.min(bgPop[ti]*0.1,baseFlow*pull*(1-tDiff[ni]));
 if(flow>0.001){bgPop[ti]-=flow;bgPop[ni]+=flow;}}}}
 
-// ── Inline debug tracking (no separate loop) ──
+// ── Debug ──
 if(bgPop[ti]>maxBg)maxBg=bgPop[ti];
 if(cityPop[ti]>maxCity)maxCity=cityPop[ti];
 if(cityPop[ti]>SETTLE_TIERS[0].min)settlementCount++;
-if(ow<0&&bgPop[ti]>0.20)bgAboveThresh++;
-if(ow>=0&&bgPop[ti]>rCap*0.8)tilesAboveRCap++;
 }// end land tile loop
 
-ter._dbgMaxBgPop=maxBg;ter._dbgBgAboveThresh=bgAboveThresh;ter._dbgMaxCity=maxCity;
-ter._dbgTilesAboveRCap=tilesAboveRCap;ter._dbgSettlementCount=settlementCount;
+ter._dbgMaxBgPop=maxBg;ter._dbgMaxCity=maxCity;
+ter._dbgSettlementCount=settlementCount;
 
-// ── Rebuild tribeCenters from cityPop peaks ──
-// Only towns+ (cityPop >= 0.5) become centers. Villages are too small to matter
-// for power projection, cohesion, etc. This keeps tribeCenters small.
-// Also count settlement tiers per tribe for display.
+// ── Rebuild tribeCenters from cityPop (towns+) ──
+// Villages = tiles with bgPop > 0.3 (farmers, counted but not tracked as centers)
+// Towns/cities = tiles with cityPop > 0.5 (urban, tracked as centers for power/cohesion)
 if(ter.stepCount%32===0){
 const tribeSett=[];for(let i=0;i<n;i++)tribeSett.push([]);
-const minCenterPop=SETTLE_TIERS[1].min;// towns+ only (0.5)
 if(!ter._settleCounts)ter._settleCounts=[];
 while(ter._settleCounts.length<n)ter._settleCounts.push({villages:0,towns:0,cities:0,large:0});
 for(let i=0;i<n;i++){ter._settleCounts[i].villages=0;ter._settleCounts[i].towns=0;ter._settleCounts[i].cities=0;ter._settleCounts[i].large=0;}
-for(let ti=0;ti<tw*th;ti++){
-const ow2=owner[ti];if(ow2<0)continue;
-const cp=cityPop[ti];if(cp<SETTLE_TIERS[0].min)continue;
-// Count all settlement tiers for display
+for(let li=0;li<landCount;li++){
+const ti=landTiles[li];const ow2=owner[ti];if(ow2<0)continue;
 const sc=ter._settleCounts[ow2];
+// Villages = farming communities (bgPop-based, not cityPop)
+if(bgPop[ti]>=0.3)sc.villages++;
+// Towns/cities = urban (cityPop-based, become centers)
+const cp=cityPop[ti];if(cp<SETTLE_TIERS[1].min)continue;// 0.5 = town threshold
 const tier=settleTier(cp);
 if(tier){
-if(tier.name==='village')sc.villages++;
-else if(tier.name==='town'){sc.towns++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}
+if(tier.name==='town'){sc.towns++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}
 else if(tier.name==='small'||tier.name==='medium'){sc.cities++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}
 else{sc.large++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}}}
 for(let st=0;st<n;st++){
@@ -3097,7 +3145,7 @@ border:"1px solid rgba(201,184,122,0.1)"}}>
 <span style={{color:"#c9b87a"}}>{dominant.size}t</span></span>}
 {aliveK>0&&<span style={{fontSize:9,color:"#6a6458"}}>
 Ag {(avgAg*100|0)} Mt {(avgMet*100|0)} Nv {(avgNav*100|0)} Og {(avgOrg*100|0)}</span>}
-{ter&&<span style={{fontSize:9,color:"#886644"}}>pop:{ter._dbgTimeBgPop||'-'}ms rest:{ter._dbgTimeRest||'-'}ms exp:{ter._dbgTimeExpansion||'-'}ms | stl:{ter._dbgSettlementCount} city:{ter._dbgMaxCity?.toFixed(1)} ctr:{ter.tribeCenters?.reduce((s,c)=>s+(c?c.length:0),0)}</span>}
+{ter&&<span style={{fontSize:9,color:"#886644"}}>pop:{ter._dbgTimeBgPop||'-'}ms exp:{ter._dbgTimeExpansion||'-'}ms | stl:{ter._dbgSettlementCount} city:{ter._dbgMaxCity?.toFixed(1)} ctr:{ter.tribeCenters?.reduce((s,c)=>s+(c?c.length:0),0)} {ter._tribeFoodSurplus?`food:${(ter._tribeFoodSurplus.reduce((a,b)=>a+b,0)/Math.max(1,ter.tribeCenters?.filter((_,i)=>ter.tribeSizes[i]>0).length||1)).toFixed(1)}x`:''}</span>}
 </div>;})()}
 
 {/* ══ BOTTOM CENTER: VIEW/OVERLAY OPTIONS (larger) ══ */}
