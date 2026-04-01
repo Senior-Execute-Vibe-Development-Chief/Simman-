@@ -1293,27 +1293,27 @@ ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]/tribeTotalCity[i];}
 let maxBg=0,maxCity=0,settlementCount=0;
 
 // ── PASS 2: Per-tile growth + urbanization + migration ──
-// When GPU handled growth+migration, this pass only does city seeding + debug counting.
-// When CPU, it does everything.
+// Split into fast path (unowned: simple growth only) and full path (owned: full sim).
+// Early game most tiles are unowned with tiny pop — fast path skips urbanization+migration.
 for(let li=0;li<landCount;li++){
 const ti=landTiles[li];
 const fert=tFert[ti];const ow=owner[ti];
 const bp=bgPop[ti];const cp=cityPop[ti];
 
-if(ow<0&&bp<0.001&&cp<=0)continue;
+if(bp<0.001&&cp<=0&&ow<0)continue;// truly empty
 
-// ── Farmer growth: logistic toward farmland capacity ──
-let farmCap,growthRate;
-if(ow>=0&&tribeSizes[ow]>0){
-farmCap=fert*(1+tribeSurplusFrac[ow]*3)*(1-tDiff[ti]*0.4);
-growthRate=tribeGrowth[ow];
-}else{
-farmCap=fert*2.0*(1-tDiff[ti]*0.5);
-growthRate=0.02;
-}
-if(farmCap<=0.001&&cp<=0)continue;
-if(farmCap>0.001&&bp<farmCap){
-bgPop[ti]=bp+bp*growthRate*(1-bp/farmCap);}
+// ── FAST PATH: unowned tiles — simple logistic growth, no migration/cities ──
+if(ow<0){
+const farmCap=fert*2.0*(1-tDiff[ti]*0.5);
+if(farmCap>0.001&&bp<farmCap)bgPop[ti]=bp+bp*0.02*(1-bp/farmCap);
+if(cp>0){cityPop[ti]=Math.max(0,cp*0.97);bgPop[ti]+=cp*0.009;}// unowned city decay
+if(bgPop[ti]>maxBg)maxBg=bgPop[ti];
+continue;}
+
+// ── FULL PATH: owned tiles — growth + urbanization + migration ──
+if(tribeSizes[ow]<=0)continue;
+{const farmCap=fert*(1+tribeSurplusFrac[ow]*3)*(1-tDiff[ti]*0.4);
+if(farmCap>0.001&&bp<farmCap)bgPop[ti]=bp+bp*tribeGrowth[ow]*(1-bp/farmCap);}
 
 // ── Urbanization ──
 // Cities form for NON-FOOD reasons (geography). Food arriving = carrying capacity.
@@ -1355,9 +1355,6 @@ if(surplus<0.7&&cp>0.01){
 cityPop[ti]=Math.max(0.01,cp*(0.96+surplus*0.02));}
 }
 }
-
-// Unowned city decay
-if(ow<0&&cp>0){cityPop[ti]=Math.max(0,cp*0.97);bgPop[ti]+=cp*0.009;}
 
 // ── Rural migration (skip low-pop tiles — they barely move) ──
 if(bgPop[ti]>0.05){
