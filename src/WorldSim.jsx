@@ -1855,14 +1855,22 @@ bgPop[ti]=Math.max(0,bp);}
 // bgPop persists on owned tiles — don't zero it. It represents rural population density.
 // cityPop: urban population stored in settlements (separate from bgPop)
 const cityPop=new Float32Array(tw*th);
+// Pre-build expensive indices during createTerritory (not lazily during sim)
+const _landTiles_arr=[];const _coastalTiles_arr=[];
+for(let ti=0;ti<tw*th;ti++){
+if(tElev[ti]>0&&tTemp[ti]>=0.05)_landTiles_arr.push(ti);
+if(tElev[ti]>0&&tCoast[ti])_coastalTiles_arr.push(ti);}
+const _landTiles=new Int32Array(_landTiles_arr);
+const _coastalTiles=_coastalTiles_arr;
+const _nfBuf=new Uint8Array(tw*th);
 // Per-tribe tile index: tribeTiles[id] = Set of tile indices owned by tribe id
-// Eliminates O(tw*th) full-grid scans in fragmentation, migration, split, absorption
 const tribeTiles=[];
 for(let i=0;i<tribeSizes.length;i++)tribeTiles.push(new Set());
 for(let ti=0;ti<tw*th;ti++){if(owner[ti]>=0)tribeTiles[owner[ti]].add(ti);}
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
 tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudget:tribeBudgets,bgPop,cityPop,
-tribeTiles,frontier,frontierList,landCount:lc,settled:tribeSizes.length,tribes:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
+tribeTiles,frontier,frontierList,_landTiles,_coastalTiles,_nfBuf,_youngTiles:[],
+landCount:lc,settled:tribeSizes.length,tribes:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
 
 function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+(y1-y2)*(y1-y2));}
 // Precomputed exp(-d*d/280) lookup table — eliminates Math.exp in hot loops
@@ -1995,7 +2003,6 @@ if(_prof)_ts.push(performance.now());// [1] after knowledge/pop block
 const _tExpStart=performance.now();
 // ── Expansion into empty land (directional, pressure-driven) ──
 // Reuse frontier marker array across frames (avoids 1.8MB alloc per frame)
-if(!ter._nfBuf)ter._nfBuf=new Uint8Array(tw*th);
 const nf=ter._nfBuf;const nfl=[];
 // Clear only the tiles marked in the PREVIOUS frame's frontier list
 const prevFL=ter.frontierList;for(let fi=0;fi<prevFL.length;fi++)nf[prevFL[fi]]=0;
@@ -2248,7 +2255,7 @@ if(tenure[i]<15){const drain=tFert[i]*0.015*(1-tenure[i]/15);
 tribeStrength[owner[i]]=Math.max(0.1,tribeStrength[owner[i]]-drain);}}
 // Bulk tenure aging for interior: only tiles with tenure<200 need incrementing
 // Use a lazy counter — most tiles hit 200 quickly and stop being relevant
-if(!ter._youngTiles){ter._youngTiles=[];for(let i=0;i<tw*th;i++)if(owner[i]>=0&&tenure[i]<200)ter._youngTiles.push(i);}
+if(!ter._youngTiles)ter._youngTiles=[];// lazy init, populated as tiles are claimed
 const young=ter._youngTiles;let j=0;
 for(let k=0;k<young.length;k++){const i=young[k];if(owner[i]<0)continue;
 if(tenure[i]<200){tenure[i]++;young[j++]=i;
