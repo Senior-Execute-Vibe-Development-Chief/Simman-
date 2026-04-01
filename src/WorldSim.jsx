@@ -1094,12 +1094,14 @@ const groB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].growth:0.25;
 // because these are farmers on fertile land, not total civilization capacity.
 tribeGrowth[i]=(0.01+ag*0.005+industrialFactor*0.015)*(0.5+groB*1.5);}
 
-// ── Food imports ──
+// ── Food imports + precompute resource values per tribe (avoid per-tile allocation) ──
 const foodImportPerTile=new Float32Array(n);
+const tribeResVal=[];// cached resourceValues per tribe
 for(let i=0;i<n;i++){
-if(tribeSizes[i]<=0)continue;
+if(tribeSizes[i]<=0){tribeResVal.push(null);continue;}
 const fi=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].foodImports:0;
-foodImportPerTile[i]=tribeSizes[i]>0?fi/tribeSizes[i]:0;}
+foodImportPerTile[i]=tribeSizes[i]>0?fi/tribeSizes[i]:0;
+tribeResVal.push(ter.tribeKnowledge[i]?resourceValues(ter.tribeKnowledge[i]):null);}
 
 // ── Main per-tile loop: growth + settlement formation + migration ──
 for(let ti=0;ti<tw*th;ti++){
@@ -1113,11 +1115,10 @@ if(ow>=0&&tribeSizes[ow]>0){
 const em=tribeEra[ow];
 rCap=ruralCap(fert,tDiff[ti],em)+foodImportPerTile[ow]*em*0.02;
 // Resources boost local rural capacity slightly
-if(ter.deposits){const k=ter.tribeKnowledge[ow];
-if(k){const rv=resourceValues(k);let rb=0;
+if(ter.deposits&&tribeResVal[ow]){const rv=tribeResVal[ow];let rb=0;
 for(const rk of RES_KEYS){const dep=ter.deposits[rk];
 if(dep&&dep[ti]>0.1)rb+=rv[rk]*dep[ti]*0.03;}
-rCap*=(1+Math.min(0.3,rb));}}
+rCap*=(1+Math.min(0.3,rb));}
 growthRate=tribeGrowth[ow];
 }else{
 rCap=fert*3.0*(1-tDiff[ti]*0.5);// unowned: hunter-gatherer cap (original scale)
@@ -1144,36 +1145,32 @@ const room=mxCity-cityPop[ti];
 const transfer=Math.min(excess*0.5,room);// 50% of excess per step
 if(transfer>0.001){bgPop[ti]-=transfer;cityPop[ti]+=transfer;}}}
 
-// ── City growth: settlements drain surrounding rural pop (urbanization pull) ──
-if(cityPop[ti]>0.1&&ow>=0){
-const k=ter.tribeKnowledge[ow];
+// ── City growth: towns+ drain surrounding rural pop (urbanization pull) ──
+// Only drain for towns+ (cityPop>0.5) to avoid expensive loop for tiny villages
+if(cityPop[ti]>0.5&&ow>=0){
 const mxCity=tribeMaxCity[ow];
 const cityRatio=cityPop[ti]/mxCity;
-// Pull strength: bigger cities pull harder, but saturate near max
-const infraSpeed=k?1+k.construction*1.5+k.organization:1;
+const k2=ter.tribeKnowledge[ow];
+const infraSpeed=k2?1+k2.construction*1.5+k2.organization:1;
 const pullStr=Math.min(1,cityPop[ti]*0.02)*infraSpeed*(1-cityRatio*0.8);
 if(pullStr>0.001){
-const R=Math.min(6,2+Math.floor(cityPop[ti]*0.005));// drain radius grows with city size
+// Only drain from immediate neighbors (R=2-3), not huge radius
+const R=Math.min(3,1+Math.floor(cityPop[ti]*0.01));
 for(let dy=-R;dy<=R;dy++){const ny=ty2+dy;if(ny<0||ny>=th)continue;
 for(let dx=-R;dx<=R;dx++){if(!dx&&!dy)continue;
 const nx=((tx2+dx)%tw+tw)%tw;const ni=ny*tw+nx;
 if(owner[ni]!==ow||tElev[ni]<=0)continue;
-// Don't drain from other settlements (they keep their own people)
 if(cityPop[ni]>cityPop[ti]*0.5)continue;
-const dist=Math.sqrt(dx*dx+dy*dy);if(dist>R)continue;
-const drain=bgPop[ni]*0.005*pullStr*(1-dist/R)/(1+tDiff[ni]*2);
-if(drain>0.001&&bgPop[ni]>rCap*0.1){// leave minimum rural pop
+const drain=bgPop[ni]*0.005*pullStr/(1+tDiff[ni]*2);
+if(drain>0.001&&bgPop[ni]>0.01){
 const actual=Math.min(drain,bgPop[ni]*0.1,mxCity-cityPop[ti]);
 if(actual>0){bgPop[ni]-=actual;cityPop[ti]+=actual;}}}}}
-// City natural growth (internal: births in the city)
-if(cityRatio<0.95){
-cityPop[ti]+=cityPop[ti]*growthRate*0.5*(1-cityRatio);// slower than rural (disease, crowding)
-}
-// City decay: if owner lost or tech dropped, city can't sustain peak
+// City natural growth
+if(cityRatio<0.95)cityPop[ti]+=cityPop[ti]*growthRate*0.5*(1-cityRatio);
+// City decay above max
 if(cityPop[ti]>mxCity*1.1){
-const decay=cityPop[ti]*0.02;// 2% decay back to rural
-cityPop[ti]-=decay;bgPop[ti]+=decay*0.5;// half return to countryside, half die
-}}
+const decay=cityPop[ti]*0.02;
+cityPop[ti]-=decay;bgPop[ti]+=decay*0.5;}}
 
 // ── Unowned city decay: cities without tribal support crumble ──
 if(ow<0&&cityPop[ti]>0){
@@ -1184,14 +1181,19 @@ bgPop[ti]+=decay*0.3;// some people scatter to countryside
 
 // ── Migration: people move toward better opportunity (value / density) ──
 // High-value areas pull. High-density areas push. The ratio determines flow.
-// A packed fertile valley is LESS attractive than a decent empty one.
 if(bgPop[ti]>rCap*0.1){
 const isOwned=ow>=0;
 const k=isOwned&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
 const infraSpeed=k?1+k.construction*1.5+k.organization*1.0:1;
 const baseFlow=bgPop[ti]*0.003*infraSpeed;
-// My tile's total density (rural + urban)
 const myDensity=bgPop[ti]+(cityPop[ti]||0);
+// Pre-compute my tile's value ONCE (not per-direction)
+let myValue=fert;
+if(isOwned){
+if(cityPop[ti]>0.1)myValue+=Math.sqrt(cityPop[ti])*0.3;
+if(ter.rivers){if(ter.rivers.riverMag[ti]>=3)myValue+=0.6;
+else if(ter.rivers.riverMag[ti]>=2)myValue+=0.3;}
+if(tCoast[ti])myValue+=0.3;}
 
 for(const[dx,dy]of DIRS){const nx=((tx2+dx)%tw+tw)%tw,ny=ty2+dy;if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;if(tElev[ni]<=0)continue;
@@ -1199,38 +1201,19 @@ const nOw=owner[ni];
 if(isOwned&&nOw!==ow)continue;
 if(!isOwned&&nOw>=0)continue;
 
-// ── Raw value of each tile (what makes it desirable) ──
-let myValue=fert;
 let nValue=tFert[ni];
-
 if(isOwned){
-// Cities add value (jobs, markets, safety) — but NOT linearly.
-// A small city is very attractive. A huge city less so per-capita.
 if(cityPop[ni]>0.1)nValue+=Math.sqrt(cityPop[ni])*0.3;
-if(cityPop[ti]>0.1)myValue+=Math.sqrt(cityPop[ti])*0.3;
-// Rivers (transport, water, irrigation)
-if(ter.rivers){
-if(ter.rivers.riverMag[ni]>=3)nValue+=0.6;
-else if(ter.rivers.riverMag[ni]>=2)nValue+=0.3;
-if(ter.rivers.riverMag[ti]>=3)myValue+=0.6;
-else if(ter.rivers.riverMag[ti]>=2)myValue+=0.3;}
-// Coast (fishing, trade, ports)
-if(tCoast[ni])nValue+=0.3;if(tCoast[ti])myValue+=0.3;
-// Resources (mining, industry)
-if(ter.deposits&&k){const rv=resourceValues(k);
-for(const rk of RES_KEYS){const dep=ter.deposits[rk];
-if(dep){if(dep[ni]>0.1)nValue+=rv[rk]*dep[ni]*0.3;
-if(dep[ti]>0.1)myValue+=rv[rk]*dep[ti]*0.3;}}}}
+if(ter.rivers){if(ter.rivers.riverMag[ni]>=3)nValue+=0.6;
+else if(ter.rivers.riverMag[ni]>=2)nValue+=0.3;}
+if(tCoast[ni])nValue+=0.3;}
 
-// ── Opportunity = value / (density + baseline) ──
-// Dense areas have low opportunity (crowded). Empty valuable areas have high opportunity.
 const nDensity=bgPop[ni]+(cityPop[ni]||0);
-const myOpportunity=myValue/(myDensity+0.3);
-const nOpportunity=nValue/(nDensity+0.3);
+const myOpp=myValue/(myDensity+0.3);
+const nOpp=nValue/(nDensity+0.3);
 
-// Flow toward higher opportunity
-if(nOpportunity>myOpportunity){
-const pull=(nOpportunity-myOpportunity)/(myOpportunity+0.05);
+if(nOpp>myOpp){
+const pull=(nOpp-myOpp)/(myOpp+0.05);
 const flow=Math.min(bgPop[ti]*0.1,baseFlow*pull*(1-tDiff[ni]));
 if(flow>0.001){bgPop[ti]-=flow;bgPop[ni]+=flow;}}}}}
 
@@ -1258,32 +1241,33 @@ ter._dbgTotalCityPop=totalCityPop;ter._dbgMaxRCap=maxRCap;
 ter._dbgSampleBgPop=sampleBgPop;ter._dbgSampleRCap=sampleRCap;ter._dbgSampleEra=sampleEra;
 
 // ── Rebuild tribeCenters from cityPop peaks ──
-// Centers ARE the settlements. Capital = largest city. No cap on count.
-if(ter.stepCount%16===0){
+// Single pass over all tiles: bucket settlements by owner, then sort per tribe.
+if(ter.stepCount%32===0){
+// Single pass: collect settlements per tribe
+const tribeSett=[];for(let i=0;i<n;i++)tribeSett.push([]);
+const minPop=SETTLE_TIERS[0].min;
+for(let ti=0;ti<tw*th;ti++){
+const ow2=owner[ti];if(ow2<0||cityPop[ti]<minPop)continue;
+tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cityPop[ti]});}
 for(let st=0;st<n;st++){
 if(tribeSizes[st]<=0)continue;
-// Collect all settlement tiles for this tribe
-const settlements=[];
-for(let ti=0;ti<tw*th;ti++){
-if(owner[ti]!==st||cityPop[ti]<SETTLE_TIERS[0].min)continue;
-settlements.push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cityPop[ti],ti});}
-// Sort by population (largest first = capital)
-settlements.sort((a,b)=>b.pop-a.pop);
-// Rebuild centers array from ALL settlements
-const oldCenters=ter.tribeCenters[st]||[];
-const newCenters=[];
-for(let si=0;si<settlements.length;si++){
-const s=settlements[si];
-let matched=null;
-for(const oc of oldCenters){if(oc.x===s.x&&oc.y===s.y){matched=oc;break;}}
-if(matched){matched.pop=s.pop;newCenters.push(matched);}
-else newCenters.push({x:s.x,y:s.y,prestige:si===0?1.0:0.3,founded:ter.stepCount,pop:s.pop});}
-if(newCenters.length>0)ter.tribeCenters[st]=newCenters;
-// Grow capital prestige
-if(ter.tribeCenters[st].length>0){
-ter.tribeCenters[st][0].prestige=Math.min(3.0,ter.tribeCenters[st][0].prestige+0.05);
-for(let c=1;c<ter.tribeCenters[st].length;c++)
-ter.tribeCenters[st][c].prestige=Math.min(2.0,ter.tribeCenters[st][c].prestige+0.02);}}}
+const sett=tribeSett[st];
+if(sett.length===0)continue;
+sett.sort((a,b)=>b.pop-a.pop);
+// Rebuild centers: try to match existing for prestige/founded continuity
+const oldMap=new Map();
+const old=ter.tribeCenters[st]||[];
+for(const oc of old)oldMap.set(oc.x+','+oc.y,oc);
+const nc=[];
+for(let si=0;si<sett.length;si++){
+const s=sett[si];const key=s.x+','+s.y;
+const oc=oldMap.get(key);
+if(oc){oc.pop=s.pop;nc.push(oc);}
+else nc.push({x:s.x,y:s.y,prestige:si===0?1.0:0.3,founded:ter.stepCount,pop:s.pop});}
+ter.tribeCenters[st]=nc;
+if(nc.length>0){
+nc[0].prestige=Math.min(3.0,nc[0].prestige+0.05);
+for(let c=1;c<nc.length;c++)nc[c].prestige=Math.min(2.0,nc[c].prestige+0.02);}}}
 // ── Tribe crystallization ──
 if(ter.stepCount%16!==0)return;// check every 16 steps
 let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
