@@ -13,6 +13,10 @@ import { generateResources, tileResourceSummary, dominantResource, RESOURCES, RE
 import { computeRivers, riverName, RIVER_NAMES, RIVER_NONE, RIVER_STREAM, RIVER_TRIBUTARY, RIVER_MAJOR, RIVER_GREAT } from "./riverGen.js";
 // Web Worker for world generation - inline URL approach for singlefile compatibility
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
+import { initGPUPopSolver, stepPopGPU } from "./gpuPopSolver.js";
+
+// GPU population solver (lazy-initialized)
+let _gpuPopSolver = undefined;
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
 function initNoise(seed){const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)PERM[i]=p[i&255];}
@@ -1223,21 +1227,21 @@ ter._landTiles=new Int32Array(lt);}
 const landTiles=ter._landTiles;const landCount=landTiles.length;
 const DX=[-1,1,0,0];const DY=[0,0,-1,1];
 
-// ── Precompute per-tribe stats ──
+// ── Precompute per-tribe stats (cached arrays, grown as needed) ──
 const n=ter.tribeCenters.length;
-const tribeMaxCity=new Float32Array(n);
-const tribeGrowth=new Float32Array(n);
-const tribeInfra=new Float32Array(n);
-// Surplus ratio: what fraction of a farmer's output is surplus (not self-consumed)
-// ag=0: 0.05 (5% surplus — bare subsistence)
-// ag=0.3: 0.20 (20% — bronze age, 5 farmers feed 1 city dweller)
-// ag=0.5: 0.30 (30% — classical, ~3 farmers per city dweller)
-// ag=0.8: 0.50 (50% — early modern, 2 farmers per city dweller)
-// ag=1.0+industrial: 0.98 (98% — modern, 1 farmer feeds 50)
-const tribeSurplusFrac=new Float32Array(n);
-const tribeFoodProd=new Float32Array(n);
-const tribeFoodSurplus=new Float32Array(n);// actual surplus after farmer self-consumption
-const tribeTotalCity=new Float32Array(n);
+if(!ter._bgPopBufs||ter._bgPopBufs.n<n){
+ter._bgPopBufs={n:Math.max(n,80),
+maxCity:new Float32Array(Math.max(n,80)),growth:new Float32Array(Math.max(n,80)),
+infra:new Float32Array(Math.max(n,80)),surplusFrac:new Float32Array(Math.max(n,80)),
+foodProd:new Float32Array(Math.max(n,80)),foodSurplus:new Float32Array(Math.max(n,80)),
+totalCity:new Float32Array(Math.max(n,80))};}
+const b=ter._bgPopBufs;
+const tribeMaxCity=b.maxCity;const tribeGrowth=b.growth;
+const tribeInfra=b.infra;const tribeSurplusFrac=b.surplusFrac;
+const tribeFoodProd=b.foodProd;const tribeFoodSurplus=b.foodSurplus;
+const tribeTotalCity=b.totalCity;
+// Zero the accumulators (only the used range)
+for(let i=0;i<n;i++){tribeMaxCity[i]=0;tribeGrowth[i]=0;tribeInfra[i]=0;tribeSurplusFrac[i]=0;tribeFoodProd[i]=0;tribeFoodSurplus[i]=0;tribeTotalCity[i]=0;}
 for(let i=0;i<n;i++){
 if(tribeSizes[i]<=0)continue;
 const k=ter.tribeKnowledge[i];if(!k)continue;
@@ -1257,7 +1261,45 @@ const riverMag=ter.rivers?ter.rivers.riverMag:null;
 const tCost=ter.transportCost;
 const hasTrans=tCost&&tCost.length>=tw*th;
 
+// ── GPU-accelerated growth + migration ──
+// Pack tribe stats for GPU: [surplusFrac, growthRate, maxCity, infra] per tribe
+if(_gpuPopSolver===undefined){try{_gpuPopSolver=initGPUPopSolver();}catch(e){_gpuPopSolver=null;}}
+let usedGPUPop=false;
+if(_gpuPopSolver&&n<=256){
+try{
+const tribeStatsBuf=new Float32Array(256*4);
+for(let i=0;i<n;i++){
+tribeStatsBuf[i*4]=tribeSurplusFrac[i];
+tribeStatsBuf[i*4+1]=tribeGrowth[i];
+tribeStatsBuf[i*4+2]=tribeMaxCity[i];
+// Pack food surplus ratio + infra into alpha
+// We'll compute food surplus on CPU first, then pass it
+tribeStatsBuf[i*4+3]=tribeInfra[i];}
+// Run food accounting on CPU first (needed for city growth in GPU shader)
+for(let li=0;li<landCount;li++){
+const ti=landTiles[li];const ow=owner[ti];
+if(ow<0||tribeSizes[ow]<=0)continue;
+const production=bgPop[ti]*tFert[ti]*(1+tribeSurplusFrac[ow]*3);
+const selfConsumption=bgPop[ti];
+tribeFoodProd[ow]+=production;
+tribeFoodSurplus[ow]+=Math.max(0,production-selfConsumption);
+tribeTotalCity[ow]+=cityPop[ti];}
+for(let i=0;i<n;i++){const fi=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].foodImports:0;tribeFoodSurplus[i]+=fi;}
+if(!ter._tribeFoodSurplus)ter._tribeFoodSurplus=new Float32Array(n);
+for(let i=0;i<n;i++){
+if(tribeSizes[i]<=0){ter._tribeFoodSurplus[i]=2.0;continue;}
+if(tribeTotalCity[i]<0.01){ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]>0.01?5.0:0.5;continue;}
+ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]/tribeTotalCity[i];}
+// Update tribe stats with food surplus for GPU
+for(let i=0;i<n;i++)tribeStatsBuf[i*4+2]=ter._tribeFoodSurplus[i];// reuse maxCity slot for surplus ratio
+stepPopGPU(_gpuPopSolver,tw,th,bgPop,cityPop,owner,tFert,tDiff,tElev,
+  tCoast,riverMag,hasTrans?tCost:null,tribeStatsBuf,n);
+usedGPUPop=true;
+}catch(e){console.warn('[GPUPop] Failed, using CPU:',e.message);_gpuPopSolver=null;}}
+
 // ── PASS 1: Food production and surplus accounting ──
+// (Skip if GPU already computed growth + migration + food accounting above)
+if(!usedGPUPop){
 // Each farmer on a tile produces: fert * (1 + ag*2) food units
 // They consume 1.0 per unit of bgPop (self-consumption)
 // Surplus = production - consumption = what's available to feed cities
@@ -1284,10 +1326,14 @@ if(tribeSizes[i]<=0){ter._tribeFoodSurplus[i]=2.0;continue;}
 if(tribeTotalCity[i]<0.01){ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]>0.01?5.0:0.5;continue;}
 ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]/tribeTotalCity[i];}
 
+} // end if(!usedGPUPop) — CPU PASS 1 + food accounting
+
 // ── Debug counters ──
 let maxBg=0,maxCity=0,settlementCount=0;
 
 // ── PASS 2: Per-tile growth + urbanization + migration ──
+// When GPU handled growth+migration, this pass only does city seeding + debug counting.
+// When CPU, it does everything.
 for(let li=0;li<landCount;li++){
 const ti=landTiles[li];
 const fert=tFert[ti];const ow=owner[ti];
@@ -1295,28 +1341,20 @@ const bp=bgPop[ti];const cp=cityPop[ti];
 
 if(ow<0&&bp<0.001&&cp<=0)continue;
 
-// ── Farmer growth: logistic toward farmland capacity ──
-// Capacity = how many farmers this tile supports at current tech
-// More fertile land + better tech = more productive farmers = fewer needed
-// BUT more people can survive on the land total
+// ── Farmer growth (CPU path — skipped when GPU handled it) ──
+if(!usedGPUPop){
 let farmCap,growthRate;
 if(ow>=0&&tribeSizes[ow]>0){
-// Farm capacity: fertile land supports more farmers.
-// Tech increases output per farmer, so fewer farmers are NEEDED,
-// but the land can still SUPPORT more (they just have surplus).
-// This is the Malthusian cap: pop grows to match food supply.
 farmCap=fert*(1+tribeSurplusFrac[ow]*3)*(1-tDiff[ti]*0.4);
 growthRate=tribeGrowth[ow];
 }else{
-farmCap=fert*2.0*(1-tDiff[ti]*0.5);// hunter-gatherer
+farmCap=fert*2.0*(1-tDiff[ti]*0.5);
 growthRate=0.02;
 }
 if(farmCap<=0.001&&cp<=0)continue;
-
-// Logistic growth: farmers grow to fill farmland, then stop.
-// Farm tiles maintain their ideal population. No overflow, no depopulation.
 if(farmCap>0.001&&bp<farmCap){
 bgPop[ti]=bp+bp*growthRate*(1-bp/farmCap);}
+}
 
 // ── Urbanization ──
 // Cities form for NON-FOOD reasons (geography). Food arriving = carrying capacity.
@@ -1345,33 +1383,27 @@ if(dep&&dep[ti]>0.2)siteQuality+=0.5;}}
 if(tDiff[ti]>0.3&&fert>0.15)siteQuality+=0.3;
 if(siteQuality>0.8&&bgPop[ti]>0.05)cityPop[ti]=0.01;}
 
-// ── GROWTH: food arriving = people ──
-// City carrying capacity = food surplus reachable via transport.
-// Population grows toward that capacity. No food = no growth.
-// Food surplus is shared across tribe's cities, weighted by transport access.
+// ── GROWTH: food arriving = people (CPU path) ──
+if(!usedGPUPop){
 if(cp>0){
 const foodReaching=surplus>0.01?tribeFoodSurplus[ow]*transportFactor/(Math.max(1,tribeTotalCity[ow])+1):0;
-// City capacity = min(tech max, food supply, transport max)
 const foodCap=Math.min(localMaxCity,foodReaching);
 if(cp<foodCap&&surplus>1.0){
-// Grow toward food-determined capacity. Slow — cities take decades to fill.
 const growRate=Math.min(0.03,(foodCap-cp)*0.02);
 cityPop[ti]+=growRate;}
-// Shrink if over capacity (food cut off, transport lost, tech regressed)
 if(cp>foodCap*1.1&&foodCap>0){
-cityPop[ti]=Math.max(0.01,cp*0.97);}// 3% decay per step
+cityPop[ti]=Math.max(0.01,cp*0.97);}
 if(surplus<0.7&&cp>0.01){
-cityPop[ti]=Math.max(0.01,cp*(0.96+surplus*0.02));}// famine: 2-4% loss
+cityPop[ti]=Math.max(0.01,cp*(0.96+surplus*0.02));}
 }
 }
+} // end if(ow>=0 && tribeSizes[ow]>0)
 
-// Unowned city decay
-if(ow<0&&cp>0){cityPop[ti]=Math.max(0,cp*0.97);bgPop[ti]+=cp*0.009;}
+// Unowned city decay (always runs — GPU doesn't handle this)
+if(!usedGPUPop&&ow<0&&cp>0){cityPop[ti]=Math.max(0,cp*0.97);bgPop[ti]+=cp*0.009;}
 
-// ── Rural migration: excess farmers move toward opportunity ──
-// Historically: surplus kids go to nearest market town (50%), frontier (15%)
-// Migration is SHORT range — under 30 miles. Modeled as neighbor flow.
-if(bgPop[ti]>0.01){
+// ── Rural migration (CPU path — GPU handles this via diffusion shader) ──
+if(!usedGPUPop&&bgPop[ti]>0.01){
 const isOwned=ow>=0;
 const baseFlow=bgPop[ti]*0.003*(isOwned?tribeInfra[ow]:1);
 const myDensity=bgPop[ti]+cityPop[ti];
@@ -2000,7 +2032,11 @@ ter._dbgTimeBgPop=(_t1-_t0).toFixed(1);ter._dbgTimeRest=(_t2-_t1).toFixed(1);
 if(ter.stepCount%32===0){for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}}
 const _tExpStart=performance.now();
 // ── Expansion into empty land (directional, pressure-driven) ──
-const nf=new Uint8Array(tw*th);const nfl=[];
+// Reuse frontier marker array across frames (avoids 1.8MB alloc per frame)
+if(!ter._nfBuf)ter._nfBuf=new Uint8Array(tw*th);
+const nf=ter._nfBuf;const nfl=[];
+// Clear only the tiles marked in the PREVIOUS frame's frontier list
+const prevFL=ter.frontierList;for(let fi=0;fi<prevFL.length;fi++)nf[prevFL[fi]]=0;
 for(let fj=0;fj<ter.frontierList.length;fj++){const fi=ter.frontierList[fj];if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
 const owSz=tribeSizes[ow],owDens=owSz>0?tribeStrength[ow]/owSz:0;
 const owKnow=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
