@@ -1284,32 +1284,43 @@ const transportFactor=1/(1+tCostHere*0.1);
 const localMaxCity=mxCity*transportFactor;
 
 // City seeding: geographic attractors create settlement sites.
-// Organization lowers the threshold (organized states build administrative towns).
-if(cp<0.01){
+// SPACING: cities can't form too close to each other.
+// RATE: max 1 new city per tribe per step.
+if(cp<0.01&&surplus>1.1){
+// Check minimum spacing from existing cities (no carpet-bombing)
+let tooClose=false;const minSpacing=8;// ~8 tiles apart minimum
+const tx3=ti%tw,ty3=(ti-tx3)/tw;
+const centers=ter.tribeCenters[ow];
+if(centers){for(let ci2=0;ci2<Math.min(centers.length,30);ci2++){
+const dx2=Math.abs(centers[ci2].x-tx3),dy2=Math.abs(centers[ci2].y-ty3);
+const wdx=dx2>tw/2?tw-dx2:dx2;
+if(wdx*wdx+dy2*dy2<minSpacing*minSpacing){tooClose=true;break;}}}
+if(!tooClose){
 let siteQuality=0;
 if(riverMag){const rm=riverMag[ti];
 if(rm>=4)siteQuality+=3.0;else if(rm>=3)siteQuality+=2.0;else if(rm>=2)siteQuality+=0.5;}
-if(tCoast[ti])siteQuality+=1.5;
-siteQuality+=transportFactor*0.4;
+if(tCoast[ti])siteQuality+=1.0;
 if(ter.deposits){for(let ri=0;ri<3;ri++){
 const rk2=['copper','iron','salt'][ri];const dep=ter.deposits[rk2];
-if(dep&&dep[ti]>0.2)siteQuality+=0.5;}}
-if(tDiff[ti]>0.3&&fert>0.15)siteQuality+=0.3;
-// Organization: organized states create administrative centers even without rivers
-const orgBonus=ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].organization*0.5:0;
-// Fertile crossroads: high fertility + good connectivity = natural market
-if(fert>0.3)siteQuality+=0.2;
-// Threshold: 0.6 base, lowered by organization (Rome built towns everywhere)
-const threshold=Math.max(0.3,0.6-orgBonus);
-if(siteQuality>threshold&&bgPop[ti]>0.03)cityPop[ti]=0.01;}
+if(dep&&dep[ti]>0.2)siteQuality+=0.4;}}
+if(tDiff[ti]>0.3&&fert>0.15)siteQuality+=0.2;
+// Threshold: 0.8 base. Org reduces it slightly (not drastically).
+// River or coast is basically required early game. Org enables inland cities later.
+const orgBonus=ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].organization*0.2:0;
+const threshold=Math.max(0.5,0.8-orgBonus);
+if(siteQuality>threshold&&bgPop[ti]>0.05)cityPop[ti]=0.01;}
+}
 
 // City growth/shrink from food surplus
 if(cp>0){
 const foodReaching=surplus>0.01?tribeFoodSurplus[ow]*transportFactor/(Math.max(1,tribeTotalCity[ow])+1):0;
 const foodCap=Math.min(localMaxCity,foodReaching);
 if(cp<foodCap&&surplus>1.0){cityPop[ti]+=Math.min(0.03,(foodCap-cp)*0.02);}
-if(cp>foodCap*1.1&&foodCap>0){cityPop[ti]=Math.max(0.01,cp*0.97);}
-if(surplus<0.7&&cp>0.01){cityPop[ti]=Math.max(0.01,cp*(0.96+surplus*0.02));}}
+if(cp>foodCap*1.1&&foodCap>0){cityPop[ti]=Math.max(0,cp*0.97);}
+if(surplus<0.8&&cp>0.01){cityPop[ti]=Math.max(0,cp*(0.96+surplus*0.02));}
+// Tiny seeds that can't grow decay away (prevents 9000 dormant seeds)
+if(cp<0.05&&cp<foodCap*0.1){cityPop[ti]=Math.max(0,cp*0.95);}
+}
 
 // Rural migration: 4-neighbor flow toward higher opportunity
 if(bgPop[ti]>0.05){
