@@ -1979,8 +1979,8 @@ if(_t1-_t0>5)console.warn(`[BGPOP] ${(_t1-_t0).toFixed(1)}ms`);
 if(_t2-_t1>5)console.warn(`[POP+TRADE+BUDGET+KNOW] ${(_t2-_t1).toFixed(1)}ms`);
 ter._dbgTimeBgPop=(_t1-_t0).toFixed(1);ter._dbgTimeRest=(_t2-_t1).toFixed(1);
 // Recompute ports periodically
-// Recompute ports — staggered +8 from transport to spread load
-if(ter.stepCount%32===8){for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}}
+// Recompute ports — must align with %16===0 schedule (use %32===0)
+if(ter.stepCount%32===0){for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}}
 if(_prof)_ts.push(performance.now());// [1] after knowledge/pop block
 const _tExpStart=performance.now();
 // ── Expansion into empty land (directional, pressure-driven) ──
@@ -2394,7 +2394,8 @@ for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor
 for(const ci of comps[c])transferTile(ter,ci,sid);}}ter._fragGen=gen;}
 // ── Remnant absorption: tiny fragments absorbed by larger neighbors ──
 // Only absorb old tiny tribes — new tribes get 100 steps of immunity to establish themselves
-if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>5)continue;
+// Absorb tribes that are tiny RELATIVE to their neighbors (not just <5 tiles)
+if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>50)continue;
 // Immunity: don't absorb tribes younger than 100 steps (let them grow)
 const stAge=ter.stepCount-(tribeCenters[st][0]?tribeCenters[st][0].founded:0);
 if(stAge<100)continue;
