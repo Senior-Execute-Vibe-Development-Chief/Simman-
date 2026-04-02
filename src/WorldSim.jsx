@@ -1977,12 +1977,14 @@ const _prof=ter.stepCount%64===0;const _ts=_prof?[performance.now()]:null;
 if(ter.stepCount%16===0&&ter.tribeKnowledge){
 // Transport network: recompute every 32 steps (staggered to avoid spike)
 // Skip transport if no tribes have settled (nothing to transport)
-if(ter.stepCount%32===0&&ter.settled>0)computeTransport(ter);
+if(ter.stepCount%32===0&&ter.settled>0){const _tt0=performance.now();computeTransport(ter);const _tt1=performance.now();if(_tt1-_tt0>5)console.warn(`[TRANSPORT] ${(_tt1-_tt0).toFixed(1)}ms`);}
 const _t0=performance.now();
 stepBackgroundPop(ter);
 const _t1=performance.now();
 if(ter.settled>0){stepPopulation(ter);stepTrade(ter);stepBudget(ter);stepKnowledge(ter);}
 const _t2=performance.now();
+if(_t1-_t0>5)console.warn(`[BGPOP] ${(_t1-_t0).toFixed(1)}ms`);
+if(_t2-_t1>5)console.warn(`[POP+TRADE+BUDGET+KNOW] ${(_t2-_t1).toFixed(1)}ms`);
 ter._dbgTimeBgPop=(_t1-_t0).toFixed(1);ter._dbgTimeRest=(_t2-_t1).toFixed(1);
 // Recompute ports periodically
 // Recompute ports — staggered +8 from transport to spread load
