@@ -1235,43 +1235,63 @@ const tCost=ter.transportCost;
 const hasTrans=tCost&&tCost.length>=tw*th;
 
 // ── PASS 1: Food production and surplus accounting ──
-// Skip entirely if no tribes have settled (nothing to account)
+// Food range scales with ORGANIZATION:
+//   org=0: food only travels ~3 tiles (village feeds itself)
+//   org=0.2: ~8 tiles (local chieftain redistributes)
+//   org=0.5: transport-network range (bureaucratic grain collection, Rome's annona)
+//   org=0.8+: tribe-wide pool (industrial logistics)
+// This is the key mechanic: early Egypt can feed Memphis from nearby Nile farms,
+// but can't feed a city 500km away until the bureaucracy exists.
 const hasTribes=ter.settled>0;
 if(hasTribes){
+// Compute per-tribe food range (max transport cost food can travel)
+const tribeFoodRange=new Float32Array(n);
+for(let i=0;i<n;i++){
+if(tribeSizes[i]<=0)continue;
+const k=ter.tribeKnowledge[i];if(!k)continue;
+const og=k.organization;
+// Food range in transport cost units:
+// org=0: range=2 (adjacent tiles only, ~80km)
+// org=0.1: range=4 (~160km, local chieftain)
+// org=0.3: range=10 (~400km, early kingdom along river)
+// org=0.5: range=25 (~1000km, empire with roads, Rome→Egypt grain)
+// org=0.8+: range=100 (effectively unlimited, industrial)
+tribeFoodRange[i]=2+og*og*120;// quadratic: slow start, fast ramp at high org
+}
+
 // Food accounting: iterate only owned tiles via tribeTiles
+// Now track food production with LOCALITY — food further from cities counts less
 for(let tid=0;tid<n;tid++){
 if(tribeSizes[tid]<=0)continue;
 const ts1=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
 if(!ts1)continue;
 const ow=tid;
 for(const ti of ts1){
-// Production = what the land yields with this many farmers
 const production=bgPop[ti]*fert_factor(tFert[ti]);
-// Farmers consume a fixed portion of production (historically ~80% pre-industrial)
-// surplusFrac = fraction that's SURPLUS beyond what farmers eat
-// ag=0.3: 20% surplus → 80% eaten. ag=0.5: 30% surplus. Industrial: 98% surplus.
 const surplus=production*tribeSurplusFrac[ow];
 tribeFoodProd[ow]+=production;
-tribeFoodSurplus[ow]+=surplus;
+// Food surplus is DISCOUNTED by transport distance at low org.
+// At high org, all food counts fully (bureaucracy redistributes).
+// At low org, only local food counts (no way to move it far).
+const tCostHere=hasTrans?tCost[ti]:5;
+const foodRange=tribeFoodRange[ow];
+// Discount: food within range counts fully, beyond range decays rapidly
+const distDiscount=tCostHere<foodRange?1.0:Math.max(0,1-(tCostHere-foodRange)/(foodRange*0.5));
+tribeFoodSurplus[ow]+=surplus*distDiscount;
 tribeTotalCity[ow]+=cityPop[ti];}}
 // Food imports add to surplus
 for(let i=0;i<n;i++){
 const fi=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].foodImports:0;
 tribeFoodSurplus[i]+=fi;}
 
-// Surplus ratio: NET surplus after feeding existing cities.
-// gross surplus = food production × surplusFrac (what farmers don't eat)
-// net surplus = gross surplus - cityPop consumption
-// If net > 0: cities can grow. If net < 0: cities must shrink.
+// Surplus ratio
 if(!ter._tribeFoodSurplus)ter._tribeFoodSurplus=new Float32Array(n);
 if(!ter._tribeMaxUrban)ter._tribeMaxUrban=new Float32Array(n);
+if(!ter._tribeFoodRange)ter._tribeFoodRange=new Float32Array(n);
 for(let i=0;i<n;i++){
 if(tribeSizes[i]<=0){ter._tribeFoodSurplus[i]=2.0;ter._tribeMaxUrban[i]=0;continue;}
-// Max urban pop = gross surplus (if ALL surplus went to cities)
 ter._tribeMaxUrban[i]=tribeFoodSurplus[i];
-// Net surplus ratio = gross surplus / city consumption
-// >1 means cities can grow (more food than cities need)
-// <1 means cities starving (not enough food for current cities)
+ter._tribeFoodRange[i]=tribeFoodRange[i];
 if(tribeTotalCity[i]<0.01){
 ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]>0.01?5.0:0.5;continue;}
 ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]/tribeTotalCity[i];}
@@ -1305,7 +1325,11 @@ if(farmCap>0.001&&bp<farmCap)bgPop[ti]=bp+bp*tribeGrowth[ow]*(1-bp/farmCap);}
 const surplus=ter._tribeFoodSurplus[ow]||0;
 const mxCity=tribeMaxCity[ow];
 const tCostHere=hasTrans?tCost[ti]:10;
-const transportFactor=1/(1+tCostHere*0.1);
+const foodRange=ter._tribeFoodRange?ter._tribeFoodRange[ow]:5;
+// City can only access food within the tribe's food range (org-gated).
+// A city far from food sources (high transport cost) in a low-org tribe starves.
+const foodAccess=tCostHere<foodRange?1.0:Math.max(0,1-(tCostHere-foodRange)/(foodRange*0.5));
+const transportFactor=foodAccess;
 const localMaxCity=mxCity*transportFactor;
 
 // City seeding: geographic attractors + food budget check.
@@ -1453,10 +1477,10 @@ if(ter.rivers&&ter.rivers.riverMag){const rm=ter.rivers.riverMag[ti];
 if(rm>=4)riverBonus=3;else if(rm>=3)riverBonus=2;else if(rm>=2)riverBonus=0.5;}
 const score=localFert*tFert[ti]*(1+riverBonus);
 if(score>0.5)crystalCandidates.push({ti,tx,ty,score});}
-// Sort by score, spawn up to 3 per check
+// Sort by score, spawn only 1 per check (early game should be slow emergence)
 crystalCandidates.sort((a,b)=>b.score-a.score);
 ter._dbgCrystalCandidates=crystalCandidates.length;// debug: how many candidates found
-for(let cc=0;cc<Math.min(3,crystalCandidates.length);cc++){
+for(let cc=0;cc<Math.min(1,crystalCandidates.length);cc++){
 const bestTi=crystalCandidates[cc].ti;
 // Crystallize: claim the ENTIRE populated region at once.
 // IRL Egypt didn't expand from tile #1 — hundreds of Nile villages unified into one polity.
@@ -2076,7 +2100,10 @@ const fertSq=fert*fert;
 // Tech floor rises with knowledge — advanced civs can settle anywhere
 // Tech floor: advanced civs can claim even barren land (sovereignty, not habitation)
 // At max knowledge: floor=0.50 — enough to claim any land tile regardless of fertility
-const techFloor=(agLevel*0.15+owMt*0.12+owCn*0.10+owOrg*0.08)+Math.min(0.05,ter.stepCount*0.00005);
+// Tech floor: ZERO in early game. Only org+construction enable claiming barren land.
+// Early tribes can ONLY expand into fertile tiles. Desert/tundra is impassable.
+// org=0.3,cn=0.2: floor=0.04 (barely anything). org=0.6,cn=0.5: floor=0.15 (can claim hills).
+const techFloor=owOrg>0.2?(owOrg-0.2)*0.3+(owCn>0.2?(owCn-0.2)*0.2:0):0;
 chance*=Math.max(techFloor,fertSq*4)*largePrize;// fert 0.5→1.0, fert 0.3→0.36, fert 0.1→0.04
 // Agriculture tech boost
 chance*=agBoost;
