@@ -1975,9 +1975,9 @@ console.log(`[SIM ${ter.stepCount}] tribes:${nTribes} frontier:${fl} maxTribeSz:
 const _prof=ter.stepCount%64===0;const _ts=_prof?[performance.now()]:null;
 // ── Knowledge & population step (every 16 ticks — was 8, reduced for performance) ──
 if(ter.stepCount%16===0&&ter.tribeKnowledge){
-// Transport network: recompute every 32 steps (staggered to avoid spike)
-// Skip transport if no tribes have settled (nothing to transport)
-if(ter.stepCount%32===0&&ter.settled>0){const _tt0=performance.now();computeTransport(ter);const _tt1=performance.now();if(_tt1-_tt0>5)console.warn(`[TRANSPORT] ${(_tt1-_tt0).toFixed(1)}ms`);}
+// Transport network: DISABLED — Dijkstra too expensive even on owned tiles
+// (2.6s at step 128 with 8K tiles due to heap operations on 1.84M typed array)
+// if(ter.stepCount%32===0&&ter.settled>0){...computeTransport...}
 const _t0=performance.now();
 stepBackgroundPop(ter);
 const _t1=performance.now();
