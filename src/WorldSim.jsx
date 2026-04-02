@@ -1034,8 +1034,15 @@ if(cp>=20)return{name:'medium'};
 if(cp>=3)return{name:'small'};
 if(cp>=CITY_MIN)return{name:'city'};
 return null;}
-// Food production from fertility: how much a farmer produces on this land
-function fert_factor(f){return 0.5+f*2;}// fert=0.1→0.7, fert=0.3→1.1, fert=0.5→1.5, fert=0.7→1.9
+// Food production factor from fertility.
+// Spread: desert=nearly zero, grassland=moderate, river valley=excellent.
+// Using power curve so bad land is much worse than good land (historically accurate).
+// fert=0.01 (desert): 0.01  — basically nothing
+// fert=0.1 (scrubland): 0.18 — marginal
+// fert=0.3 (grassland): 0.72 — decent
+// fert=0.5 (good farmland): 1.5 — productive
+// fert=0.7 (river valley): 2.4 — excellent (Nile, Ganges)
+function fert_factor(f){return Math.pow(f,0.7)*3;}// power curve, 0→0, 0.5→1.5, 0.7→2.4
 // Max city population (thousands) gated by technology
 function maxCityPop(k){if(!k)return 1;
 const ag=k.agriculture,mt=k.metallurgy,cn=k.construction,og=k.organization;
@@ -1288,8 +1295,10 @@ for(const ti of tileSet){
 const fert=tFert[ti];const ow=tid;
 const bp=bgPop[ti];const cp=cityPop[ti];
 
-// Farmer growth: logistic toward farmland capacity
-{const farmCap=fert*(1+tribeSurplusFrac[ow]*3)*(1-tDiff[ti]*0.4);
+// Farmer capacity: how many farmers this tile can sustain.
+// = food production of the tile (from fert_factor) scaled by difficulty.
+// More fertile tiles support more farmers. Difficult terrain reduces capacity.
+{const farmCap=fert_factor(fert)*(1-tDiff[ti]*0.4)*0.5;// 0.5 scaling: farmers eat most of what they produce
 if(farmCap>0.001&&bp<farmCap)bgPop[ti]=bp+bp*tribeGrowth[ow]*(1-bp/farmCap);}
 
 // Urbanization: cities form for geographic reasons, grow from food surplus
