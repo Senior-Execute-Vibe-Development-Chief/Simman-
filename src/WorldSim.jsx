@@ -2036,7 +2036,7 @@ const popRatio=owCap>0?owPop/owCap:0;
 const pressureThreshold=0.6-agLevel*1.0;// ag=0→0.6, ag=0.3→0.3, ag=0.5+→clamped to 0.1
 const effThreshold=Math.max(0.1,pressureThreshold);
 const popPressure=Math.max(0,(popRatio-effThreshold)/(1-effThreshold));// 0→1 normalized
-const smallBoost=owSz<5?1.5:1;
+const smallBoost=1;// no artificial early boost
 const largePrize=owSz>40?1+Math.min(1,(owSz-40)*0.008):1;
 // Score and evaluate all candidate neighbor tiles
 const agBoost=1+agLevel*2;// ag=0→1x, ag=0.5→2x
@@ -2085,7 +2085,13 @@ const orgReduction=owKnow?owKnow.organization*0.5:0;// org reduces the penalty
 const sizeSlowdown=owSz>200?1/(1+(owSz-200)*Math.max(0.0003,0.001-orgReduction*0.001)):1;
 // Base chance rises with organization (modern nation-states expand bureaucratically)
 const lateBoost=owKnow?1+owKnow.organization*0.5:1;// org=0.8→1.4x
-let chance=0.22*wet*smallBoost*sizeSlowdown*lateBoost;
+// Base expansion chance scales with organization:
+// org=0: 0.04 (farmers slowly spreading to adjacent fertile tiles)
+// org=0.3: 0.10 (organized settlement, deliberate expansion)
+// org=0.5: 0.22 (imperial expansion, roads, administration)
+// org=1.0: 0.40 (modern bureaucratic expansion)
+const orgExpansion=0.04+owOrg*0.36;
+let chance=orgExpansion*wet*smallBoost*sizeSlowdown*lateBoost;
 // Flat terrain bonus: steppe/grassland enables RAPID expansion (Mongol pattern)
 // diff<0.05 (flat plains): 1.8x. diff=0.1 (gentle hills): 1.3x. diff>0.2: 1.0x
 const flatBonus=adjDiff<0.05?1.8:adjDiff<0.1?1.3+0.5*(0.1-adjDiff)/0.05:1.0;
@@ -2460,9 +2466,6 @@ return y>0?`${Math.round(y)} BC`:`${Math.round(Math.abs(y))} AD`;}
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
 const canvasRef=useRef(null);const glCanvasRef=useRef(null);const glStateRef=useRef(null);
-// Zoom/pan state
-const[viewZoom,setViewZoom]=useState(1);const[viewPan,setViewPan]=useState({x:0,y:0});
-const zoomRef=useRef(1);const panRef=useRef({x:0,y:0});const isDragging=useRef(false);const dragStart=useRef({x:0,y:0,px:0,py:0});
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
@@ -3146,9 +3149,7 @@ border:`1px solid ${active?`rgba(${color},0.35)`:bs.border}`,color:active?`rgb($
 const onCanvasMove=useCallback((ev)=>{
 const c=canvasRef.current;if(!c||!worldRef.current)return;
 const r=c.getBoundingClientRect();
-const z=zoomRef.current,px=panRef.current.x,py=panRef.current.y;
-const rawX=(ev.clientX-r.left)/r.width*CW,rawY=(ev.clientY-r.top)/r.height*CH;
-const sx=(rawX-px)/z,sy=(rawY-py)/z;// account for zoom+pan
+const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
 const wx=Math.floor(sx)*RES,wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const w=worldRef.current,i=wy*1920+wx;
 if(wx<0||wx>=1920||wy<0||wy>=960){setHoverInfo(null);return;}
@@ -3198,53 +3199,17 @@ setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:f
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const onCanvasClick=useCallback((ev)=>{
-if(isDragging.current)return;// don't click when finishing a drag
 const c=canvasRef.current;if(!c||!terRef.current)return;
 const r=c.getBoundingClientRect();
-const z=zoomRef.current,px=panRef.current.x,py=panRef.current.y;
-// Convert screen coords to canvas coords (accounting for zoom+pan)
-const sx=((ev.clientX-r.left)/r.width*CW-px)/z;
-const sy=((ev.clientY-r.top)/r.height*CH-py)/z;
+const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
 const wx=Math.floor(sx),wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const ter=terRef.current;if(!ter)return;
-const ttx=Math.min(ter.tw-1,Math.max(0,(wx/RES)|0)),tty=Math.min(ter.th-1,Math.max(0,(wy/RES)|0));
+const ttx=Math.min(ter.tw-1,(wx/RES)|0),tty=Math.min(ter.th-1,(wy/RES)|0);
 const tileOwner=ter.owner[tty*ter.tw+ttx];
 if(tileOwner>=0&&ter.tribeSizes[tileOwner]>0){
 setSelectedTribe(tileOwner);ter._selectedTribe=tileOwner;
 setRightPanel("tribes");draw(ter);
 }else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}
-},[CW,CH,draw]);
-// Zoom with scroll wheel
-const onCanvasWheel=useCallback((ev)=>{
-ev.preventDefault();
-const c=canvasRef.current;if(!c)return;
-const r=c.getBoundingClientRect();
-const mx=(ev.clientX-r.left)/r.width*CW,my=(ev.clientY-r.top)/r.height*CH;
-const oldZ=zoomRef.current;
-const newZ=Math.max(1,Math.min(20,oldZ*(ev.deltaY<0?1.15:1/1.15)));
-// Zoom toward mouse position
-const px=panRef.current.x,py=panRef.current.y;
-const newPan={x:mx-(mx-px)*(newZ/oldZ),y:my-(my-py)*(newZ/oldZ)};
-zoomRef.current=newZ;panRef.current=newPan;
-setViewZoom(newZ);setViewPan(newPan);
-if(terRef.current)draw(terRef.current);
-},[CW,CH,draw]);
-// Pan with mouse drag
-const onCanvasMouseDown=useCallback((ev)=>{
-if(ev.button!==0)return;
-isDragging.current=false;
-dragStart.current={x:ev.clientX,y:ev.clientY,px:panRef.current.x,py:panRef.current.y};
-const onMove=(e)=>{
-const dx=e.clientX-dragStart.current.x,dy=e.clientY-dragStart.current.y;
-if(Math.abs(dx)+Math.abs(dy)>3)isDragging.current=true;
-const c=canvasRef.current;if(!c)return;const r=c.getBoundingClientRect();
-const scaleX=CW/r.width,scaleY=CH/r.height;
-panRef.current={x:dragStart.current.px+dx*scaleX,y:dragStart.current.py+dy*scaleY};
-setViewPan({...panRef.current});
-if(terRef.current)draw(terRef.current);};
-const onUp=()=>{window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);
-setTimeout(()=>{isDragging.current=false;},50);};
-window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp);
 },[CW,CH,draw]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
 const lbs={...bs,width:"100%",textAlign:"left",padding:"4px 10px"};
@@ -3311,17 +3276,9 @@ onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
 {mi===0?(showGlobe?<div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
 <GlobeView terrainBuf={globeBuf} world={world}
 CW={globeTexSize.w} CH={globeTexSize.h} /></div>
-:<div style={{overflow:"hidden",width:"100%",maxHeight:"100%",aspectRatio:`${CW}/${CH}`,position:"relative"}}>
-<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
-onClick={onCanvasClick} onWheel={onCanvasWheel} onMouseDown={onCanvasMouseDown}
-style={{display:"block",imageRendering:"pixelated",width:`${CW}px`,height:`${CH}px`,
-transformOrigin:"0 0",transform:`translate(${viewPan.x}px,${viewPan.y}px) scale(${viewZoom})`,
-cursor:viewZoom>1?"grab":"default"}} />
-{viewZoom>1&&<button onClick={()=>{zoomRef.current=1;panRef.current={x:0,y:0};setViewZoom(1);setViewPan({x:0,y:0});
-setSelectedTribe(-1);if(terRef.current){terRef.current._selectedTribe=-1;draw(terRef.current);}}}
-style={{position:"absolute",top:4,right:4,background:"rgba(6,8,16,0.8)",border:"1px solid rgba(201,184,122,0.3)",
-color:"#c9b87a",padding:"3px 8px",fontSize:11,borderRadius:3,cursor:"pointer",zIndex:10}}>Reset Zoom</button>}
-</div>)
+:<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
+style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",
+aspectRatio:`${CW}/${CH}`}} />)
 :<canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
 style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",
 width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
