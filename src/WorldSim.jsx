@@ -1034,6 +1034,8 @@ if(cp>=20)return{name:'medium'};
 if(cp>=3)return{name:'small'};
 if(cp>=CITY_MIN)return{name:'city'};
 return null;}
+// Food production from fertility: how much a farmer produces on this land
+function fert_factor(f){return 0.5+f*2;}// fert=0.1→0.7, fert=0.3→1.1, fert=0.5→1.5, fert=0.7→1.9
 // Max city population (thousands) gated by technology
 function maxCityPop(k){if(!k)return 1;
 const ag=k.agriculture,mt=k.metallurgy,cn=k.construction,og=k.organization;
@@ -1233,9 +1235,12 @@ const ts1=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
 if(!ts1)continue;
 const ow=tid;
 for(const ti of ts1){
-const production=bgPop[ti]*tFert[ti]*(1+tribeSurplusFrac[ow]*3);
-const selfConsumption=bgPop[ti];// farmers eat
-const surplus=Math.max(0,production-selfConsumption);
+// Production = what the land yields with this many farmers
+const production=bgPop[ti]*fert_factor(tFert[ti]);
+// Farmers consume a fixed portion of production (historically ~80% pre-industrial)
+// surplusFrac = fraction that's SURPLUS beyond what farmers eat
+// ag=0.3: 20% surplus → 80% eaten. ag=0.5: 30% surplus. Industrial: 98% surplus.
+const surplus=production*tribeSurplusFrac[ow];
 tribeFoodProd[ow]+=production;
 tribeFoodSurplus[ow]+=surplus;
 tribeTotalCity[ow]+=cityPop[ti];}}
@@ -1306,19 +1311,24 @@ if(siteQuality>threshold&&bgPop[ti]>0.05){
 cityPop[ti]=0.1;tribeTotalCity[ow]+=0.1;}
 }
 
-// City growth/shrink: food surplus is the ONLY driver.
-// Each city gets a share of tribal surplus proportional to transport access.
+// City growth/shrink: COMPETITIVE food allocation.
+// Bigger cities with better transport get more food → grow faster.
+// This naturally produces Zipf/rank-size distribution (capital >> regional >> towns).
 if(cp>0){
-// This city's food share = tribal surplus × transport access / total cities
-const cityShare=tribeFoodSurplus[ow]*transportFactor/Math.max(1,tribeTotalCity[ow]);
-const foodCap=Math.min(localMaxCity,cityShare);
+// City's weight = existing size × transport access (bigger cities attract more food)
+const myWeight=(cp+0.1)*transportFactor;
+// Total weight across all cities would need a separate pass — approximate:
+// assume this city's share ∝ its weight relative to total cityPop
+const totalWeight=Math.max(0.1,tribeTotalCity[ow]);
+const myFoodShare=tribeFoodSurplus[ow]*(myWeight/totalWeight);
+const foodCap=Math.min(localMaxCity,myFoodShare);
 // Grow toward food-determined capacity
-if(cp<foodCap&&surplus>1.0)cityPop[ti]+=Math.min(0.05,(foodCap-cp)*0.03);
-// Shrink when over capacity (food supply dropped or transport lost)
-if(cp>foodCap*1.2)cityPop[ti]=cp*0.96;// 4% decay
+if(cp<foodCap&&surplus>1.0)cityPop[ti]+=Math.min(0.1,(foodCap-cp)*0.03);
+// Shrink when over capacity
+if(cp>foodCap*1.2)cityPop[ti]=cp*0.97;
 // Famine: tribe-wide food shortage
-if(surplus<0.8)cityPop[ti]=cp*(0.95+surplus*0.03);// 2-5% loss
-// Kill cities that shrink below minimum
+if(surplus<0.8)cityPop[ti]=cp*(0.95+surplus*0.03);
+// Kill tiny dying cities
 if(cityPop[ti]<0.05)cityPop[ti]=0;
 }
 
