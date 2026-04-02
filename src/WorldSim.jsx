@@ -3184,27 +3184,8 @@ const ttx=Math.min(ter.tw-1,Math.max(0,(wx/RES)|0)),tty=Math.min(ter.th-1,Math.m
 const tileOwner=ter.owner[tty*ter.tw+ttx];
 if(tileOwner>=0&&ter.tribeSizes[tileOwner]>0){
 setSelectedTribe(tileOwner);ter._selectedTribe=tileOwner;
-setRightPanel("tribes");
-// Zoom to tribe bounds
-const ts=ter.tribeTiles&&ter.tribeTiles[tileOwner]?ter.tribeTiles[tileOwner]:null;
-if(ts&&ts.size>5){
-let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
-for(const ti of ts){const tx2=ti%ter.tw,ty2=(ti-tx2)/ter.tw;
-if(tx2<minX)minX=tx2;if(tx2>maxX)maxX=tx2;if(ty2<minY)minY=ty2;if(ty2>maxY)maxY=ty2;}
-const bw=maxX-minX+1,bh=maxY-minY+1;
-// Handle wrap-around (tribe spans map edge)
-const effectiveW=bw>ter.tw*0.7?ter.tw:bw;// if spans >70% of map, don't zoom
-const zx=CW/(effectiveW+20),zy=CH/(bh+20);// padding
-const newZoom=Math.min(Math.max(1,Math.min(zx,zy)),12);
-const cx2=minX+bw/2,cy2=dataYtoScreenY((minY+bh/2)*RES,H,CH);
-const newPan={x:CW/2-cx2*newZoom,y:CH/2-cy2*newZoom};
-zoomRef.current=newZoom;panRef.current=newPan;
-setViewZoom(newZoom);setViewPan(newPan);}
-draw(ter);
-}else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;
-// Reset zoom on deselect
-zoomRef.current=1;panRef.current={x:0,y:0};setViewZoom(1);setViewPan({x:0,y:0});
-draw(ter);}
+setRightPanel("tribes");draw(ter);
+}else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}
 },[CW,CH,draw]);
 // Zoom with scroll wheel
 const onCanvasWheel=useCallback((ev)=>{
