@@ -2924,9 +2924,8 @@ const ti3=(gy*gW+gx)*3;buf[ti3]=r|0;buf[ti3+1]=g|0;buf[ti3+2]=b|0;}}
 setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});}
 if(!ctx)return;
 ctx.putImageData(img,0,0);
-// Draw settlements — size scales with log(population), labels at zoom
+// Draw settlements — size scales with log(population)
 {const selSt=ter._selectedTribe;const hasSel=selSt>=0&&ter.tribeSizes[selSt]>0&&vm==="tribes";
-const zm=zoomRef.current||1;
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
 if(!centers||ter.tribeSizes[st]<=0)continue;
 const isSelected=st===selSt;
@@ -2952,13 +2951,6 @@ ctx.lineWidth=isCapital?1.2:0.6;ctx.stroke();
 // Capital: outer glow ring
 if(isCapital){ctx.beginPath();ctx.arc(cx2,cy2,r2+2.5,0,Math.PI*2);
 ctx.strokeStyle="rgba(255,255,200,0.25)";ctx.lineWidth=0.5;ctx.stroke();}
-// City label when zoomed in (show pop for selected tribe's cities)
-if(zm>=3&&cPop>=0.5){
-const popStr=cPop>=1000?(cPop/1000).toFixed(0)+'M':cPop>=1?(cPop|0)+'k':((cPop*1000)|0);
-ctx.font=`${isCapital?'bold ':''}${Math.max(3,5/zm*2)}px sans-serif`;
-ctx.fillStyle=isCapital?"rgba(255,255,230,0.95)":"rgba(220,215,200,0.8)";
-ctx.fillText(popStr,cx2+r2+1.5,cy2+1.5);
-if(isCapital){ctx.fillText('CAPITAL',cx2+r2+1.5,cy2-r2);}}
 }else{
 const alpha=isCapital?0.9:Math.max(0.3,Math.min(0.85,r2*0.18));
 ctx.fillStyle=isCapital?`rgba(240,235,220,${alpha})`:`rgba(180,175,165,${alpha})`;
