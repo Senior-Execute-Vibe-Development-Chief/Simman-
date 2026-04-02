@@ -1023,18 +1023,16 @@ for(const d of KNOW_DOMAINS){
 if(kj[d]>ki[d]){ki[d]=Math.min(1,ki[d]+maritimeRate*(kj[d]-ki[d]));}}}}}
 }catch(e){console.error('[stepKnowledge CRASH]',e.message,'step:',ter.stepCount);throw e;}}
 
-// ── Settlement tier thresholds (cityPop in thousands) ──
-// Tech gates max city size; tier is just a reading of how many people are there
-const SETTLE_TIERS=[
-{name:'village',  min:0.05, icon:1},  //  50+ people gathering
-{name:'town',     min:0.5,  icon:1.5},//  500+ people
-{name:'small',    min:3,    icon:2},  //  3k+ (Ur, early Memphis)
-{name:'medium',   min:20,   icon:2.5},//  20k+ (classical Athens)
-{name:'large',    min:100,  icon:3},  //  100k+ (Rome, Chang'an)
-{name:'mega',     min:500,  icon:3.5},//  500k+ (industrial London)
-];
-function settleTier(cityPop){
-for(let i=SETTLE_TIERS.length-1;i>=0;i--)if(cityPop>=SETTLE_TIERS[i].min)return SETTLE_TIERS[i];
+// ── City threshold: minimum cityPop to count as a settlement ──
+// No village/town distinction — bgPop on farmland IS the villages.
+// cityPop = urban non-farmers. Anything above 0.5 (500 people) is a city.
+const CITY_MIN=0.5;// 500 people = smallest meaningful city (market town)
+function settleTier(cp){
+if(cp>=500)return{name:'mega'};
+if(cp>=100)return{name:'large'};
+if(cp>=20)return{name:'medium'};
+if(cp>=3)return{name:'small'};
+if(cp>=CITY_MIN)return{name:'city'};
 return null;}
 // Max city population (thousands) gated by technology
 function maxCityPop(k){if(!k)return 1;
@@ -1091,119 +1089,79 @@ for(let i=0;i<n;i++){if(tribeSizes[i]<=0)pop[i]=0;}}
 // Produces per-tile transport cost = cheapest path from nearest city.
 // Rivers are highways (0.4 cost), coast is cheap (0.5), mountains expensive (8+).
 // Used for: food catchment, cohesion, religion spread, trade efficiency.
+// ── Transport network: lightweight Dijkstra on OWNED tiles only ──
+// Uses small JS arrays instead of 1.84M typed arrays. Runs per-tribe.
+// Cost: rivers cheap (0.3-0.7), coast cheap (0.5-0.8), plains moderate (1.5), mountains expensive (8+).
 function computeTransport(ter){
-try{
-const{tw,th,tElev,tDiff,tCoast,owner,tribeSizes,cityPop,bgPop}=ter;
+const{tw,th,tElev,tDiff,tCoast,owner,tribeSizes}=ter;
 if(!ter.transportCost)ter.transportCost=new Float32Array(tw*th);
-if(!ter.transportOwner)ter.transportOwner=new Int16Array(tw*th);// which city feeds this tile
-const cost=ter.transportCost;const tOwner=ter.transportOwner;
+const cost=ter.transportCost;
 const riverMag=ter.rivers?ter.rivers.riverMag:null;
 const n=ter.tribeCenters.length;
-// Only reset owned tiles (not all 1.84M) — saves ~5ms of memset per call
-for(let tid=0;tid<n;tid++){
-if(tribeSizes[tid]<=0)continue;
-const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
-if(!ts)continue;
-for(const ti of ts){cost[ti]=999;tOwner[ti]=-1;}}
-
-// Per-tribe transport tech: construction reduces cost, navigation enables sea routes
-const tribeCn=new Float32Array(n);
-const tribeNv=new Float32Array(n);
-for(let i=0;i<n;i++){
-if(tribeSizes[i]<=0)continue;
-const k=ter.tribeKnowledge[i];if(!k)continue;
-tribeCn[i]=k.construction;tribeNv[i]=k.navigation;}
-
-// Tile movement cost (how hard it is to move goods THROUGH this tile)
-// Returns cost for a tribe with given construction/navigation tech
-function tileCost(ti,cn,nv,ow){
-const e=tElev[ti];
-// Ocean: cheap by sea, requires navigation
-if(e<=0)return nv>0.1?0.5/(0.5+nv):50;// nv=0.3→0.6, nv=0.7→0.4, nv=0→impassable
-const diff=tDiff[ti];
-// River tiles: barges are cheap! The bigger the river, the cheaper.
-if(riverMag){const rm=riverMag[ti];
-if(rm>=4)return 0.3-cn*0.1;// great river (Nile): 0.3→0.2
-if(rm>=3)return 0.4-cn*0.1;// major river: 0.4→0.3
-if(rm>=2)return 0.7-cn*0.2;}// tributary: 0.7→0.5
-// Coast: cheaper than inland (coastal shipping)
-if(tCoast[ti])return 0.8-cn*0.2-nv*0.2;// 0.8→0.4 with tech
-// Land: terrain difficulty drives cost. Construction (roads) reduces it.
-// Plains (diff~0.05): 1.5→0.7 with roads
-// Hills (diff~0.3): 3→1.5
-// Mountains (diff~0.7): 8→3
-const base=1.5+diff*diff*12;// quadratic difficulty penalty
-const roadReduction=cn*0.5;// construction halves cost at max
-const industrialReduction=Math.max(0,ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].metallurgy-0.75:0)*3;// rail
-return Math.max(0.2,base*(1-roadReduction)-industrialReduction);}
-
-// Priority queue (binary heap — reuse cached arrays)
-if(!ter._heapTi){ter._heapTi=new Int32Array(tw*th);ter._heapCost=new Float32Array(tw*th);}
-const heapTi=ter._heapTi;const heapCost=ter._heapCost;let heapSize=0;
-const HEAP_MAX=heapTi.length;
-function heapPush(ti2,c){
-if(heapSize>=HEAP_MAX)return;// overflow guard
-let i=heapSize++;heapTi[i]=ti2;heapCost[i]=c;
-while(i>0){const p=(i-1)>>1;if(heapCost[p]<=heapCost[i])break;
-const tt=heapTi[p],tc=heapCost[p];heapTi[p]=heapTi[i];heapCost[p]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=p;}}
-function heapPop(){
-const ti2=heapTi[0],c=heapCost[0];heapSize--;
-if(heapSize>0){heapTi[0]=heapTi[heapSize];heapCost[0]=heapCost[heapSize];
-let i=0;while(true){const l=2*i+1,r=2*i+2;let s=i;
-if(l<heapSize&&heapCost[l]<heapCost[s])s=l;
-if(r<heapSize&&heapCost[r]<heapCost[s])s=r;
-if(s===i)break;
-const tt=heapTi[s],tc=heapCost[s];heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=s;}}
-return{ti:ti2,cost:c};}
-
-// Seed: use tribeTiles to find city/market tiles (not full grid scan)
-for(let tid=0;tid<n;tid++){
-if(tribeSizes[tid]<=0)continue;
-const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
-if(!ts)continue;
-for(const ti of ts){
-if(cityPop&&cityPop[ti]>0.1){cost[ti]=0;tOwner[ti]=ti;heapPush(ti,0);}
-else if(bgPop[ti]>0.2&&(tCoast[ti]||(riverMag&&riverMag[ti]>=2))){
-if(cost[ti]>1){cost[ti]=1;tOwner[ti]=ti;heapPush(ti,1);}}}}
-
-// Dijkstra: expand from cities through OWNED territory only
+const cityPop=ter.cityPop;
 const DX4=[-1,1,0,0];const DY4=[0,0,-1,1];
-while(heapSize>0){
-const{ti:ci,cost:cc}=heapPop();
-if(cc>cost[ci])continue;// stale entry
-if(cc>100)continue;// don't explore beyond reasonable transport range
+
+// Reset only owned tiles
+for(let tid=0;tid<n;tid++){
+if(tribeSizes[tid]<=0)continue;
+const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
+if(!ts)continue;for(const ti of ts)cost[ti]=999;}
+
+// Run Dijkstra per tribe (small heaps, no cross-tribe bleeding)
+for(let tid=0;tid<n;tid++){
+if(tribeSizes[tid]<=0)continue;
+const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
+if(!ts||ts.size<2)continue;
+const k=ter.tribeKnowledge[tid];if(!k)continue;
+const cn=k.construction,nv=k.navigation;
+const mt=k.metallurgy;
+const indust=Math.max(0,mt-0.75)*3;// rail bonus
+
+// Small heap: just JS arrays (no 1.84M typed array)
+const heap=[];// [{ti, cost}] — binary min-heap
+function push(ti2,c){let i=heap.length;heap.push({ti:ti2,c});
+while(i>0){const p=(i-1)>>1;if(heap[p].c<=heap[i].c)break;
+const t=heap[p];heap[p]=heap[i];heap[i]=t;i=p;}}
+function pop(){const top=heap[0];const last=heap.pop();
+if(heap.length>0){heap[0]=last;let i=0;
+while(true){const l=2*i+1,r=2*i+2;let s=i;
+if(l<heap.length&&heap[l].c<heap[s].c)s=l;
+if(r<heap.length&&heap[r].c<heap[s].c)s=r;
+if(s===i)break;const t=heap[s];heap[s]=heap[i];heap[i]=t;i=s;}}
+return top;}
+
+// Seed from cities in this tribe
+for(const ti of ts){
+if(cityPop&&cityPop[ti]>0.05){cost[ti]=0;push(ti,0);}
+else if(tCoast[ti]||(riverMag&&riverMag[ti]>=2)){
+if(cost[ti]>0.5){cost[ti]=0.5;push(ti,0.5);}}}
+
+// Dijkstra: expand through this tribe's territory only
+let iters=0;const maxIters=ts.size*3;// cap iterations
+while(heap.length>0&&iters<maxIters){
+iters++;const{ti:ci,c:cc}=pop();
+if(cc>cost[ci]+0.01)continue;// stale
+if(cc>50)continue;// beyond useful range
 const cx=ci%tw,cy=(ci-cx)/tw;
-const ow=owner[ci];
-if(ow<0)continue;// skip unowned tiles entirely
-const cn=tribeCn[ow];
-const nv=tribeNv[ow];
 for(let d=0;d<4;d++){
 const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
 if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;
-// Only traverse own territory (skip ocean, skip enemy territory)
-const nOw=owner[ni];
-if(nOw!==ow)continue;// only traverse own territory
-const moveCost=tileCost(ni,cn,nv,ow);
-const newCost=cc+moveCost;
-if(newCost<cost[ni]){
-cost[ni]=newCost;tOwner[ni]=tOwner[ci];// inherit source city
-heapPush(ni,newCost);}}}
-
-// ── Per-tribe transport stats ──
-if(!ter._tribeTransport)ter._tribeTransport=[];
-while(ter._tribeTransport.length<n)ter._tribeTransport.push({maxCost:0,avgCost:0,connected:0});
-for(let i=0;i<n;i++){ter._tribeTransport[i].maxCost=0;ter._tribeTransport[i].avgCost=0;ter._tribeTransport[i].connected=0;}
-// Stats: use tribeTiles instead of full grid scan
-for(let tid=0;tid<n;tid++){
-if(tribeSizes[tid]<=0)continue;
-const ts2=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
-if(!ts2)continue;const ts=ter._tribeTransport[tid];
-for(const ti of ts2){const c=cost[ti];if(c>=999)continue;
-ts.connected++;ts.avgCost+=c;if(c>ts.maxCost)ts.maxCost=c;}}
-for(let i=0;i<n;i++){const ts=ter._tribeTransport[i];
-if(ts.connected>0)ts.avgCost/=ts.connected;}
-}catch(e){console.error('[computeTransport CRASH]',e.message,'step:',ter.stepCount,'n:',ter.tribeCenters.length,'tw:',ter.tw,'th:',ter.th,'cityPop?:',!!ter.cityPop,'settled:',ter.settled);throw e;}
+if(owner[ni]!==tid)continue;// own territory only
+// Movement cost through this tile
+let mc;const e=tElev[ni];
+if(e<=0){mc=nv>0.1?0.5/(0.5+nv):50;}
+else{const diff=tDiff[ni];
+if(riverMag){const rm=riverMag[ni];
+if(rm>=4)mc=Math.max(0.2,0.3-cn*0.1);
+else if(rm>=3)mc=Math.max(0.2,0.4-cn*0.1);
+else if(rm>=2){mc=Math.max(0.3,0.7-cn*0.2);}}
+if(mc===undefined){
+if(tCoast[ni])mc=Math.max(0.2,0.8-cn*0.2-nv*0.2);
+else mc=Math.max(0.2,(1.5+diff*diff*12)*(1-cn*0.5)-indust);}}
+const nc=cc+mc;
+if(nc<cost[ni]){cost[ni]=nc;push(ni,nc);}}}
+}// end per-tribe
 }
 
 // ── Per-tile population with FOOD ECONOMY ──
@@ -1325,7 +1283,8 @@ const tCostHere=hasTrans?tCost[ti]:10;
 const transportFactor=1/(1+tCostHere*0.1);
 const localMaxCity=mxCity*transportFactor;
 
-// City seeding: river confluence, harbor, mine, defensive hill
+// City seeding: geographic attractors create settlement sites.
+// Organization lowers the threshold (organized states build administrative towns).
 if(cp<0.01){
 let siteQuality=0;
 if(riverMag){const rm=riverMag[ti];
@@ -1336,7 +1295,13 @@ if(ter.deposits){for(let ri=0;ri<3;ri++){
 const rk2=['copper','iron','salt'][ri];const dep=ter.deposits[rk2];
 if(dep&&dep[ti]>0.2)siteQuality+=0.5;}}
 if(tDiff[ti]>0.3&&fert>0.15)siteQuality+=0.3;
-if(siteQuality>0.8&&bgPop[ti]>0.05)cityPop[ti]=0.01;}
+// Organization: organized states create administrative centers even without rivers
+const orgBonus=ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].organization*0.5:0;
+// Fertile crossroads: high fertility + good connectivity = natural market
+if(fert>0.3)siteQuality+=0.2;
+// Threshold: 0.6 base, lowered by organization (Rome built towns everywhere)
+const threshold=Math.max(0.3,0.6-orgBonus);
+if(siteQuality>threshold&&bgPop[ti]>0.03)cityPop[ti]=0.01;}
 
 // City growth/shrink from food surplus
 if(cp>0){
@@ -1372,37 +1337,28 @@ if(flow>0.001){bgPop[ti]-=flow;bgPop[ni]+=flow;}}}}
 // Debug
 if(bgPop[ti]>maxBg)maxBg=bgPop[ti];
 if(cityPop[ti]>maxCity)maxCity=cityPop[ti];
-if(cityPop[ti]>SETTLE_TIERS[0].min)settlementCount++;
+if(cityPop[ti]>CITY_MIN)settlementCount++;
 }} // end per-tribe, per-tile loop
 
 ter._dbgMaxBgPop=maxBg;ter._dbgMaxCity=maxCity;
 ter._dbgSettlementCount=settlementCount;
 
 // ── Rebuild tribeCenters from cityPop (towns+) ──
-// Villages = tiles with bgPop > 0.3 (farmers, counted but not tracked as centers)
-// Towns/cities = tiles with cityPop > 0.5 (urban, tracked as centers for power/cohesion)
-// Staggered +16 from transport to spread per-frame load
+// Cities = tiles with cityPop >= CITY_MIN (0.5 = 500+ people, urban non-farmers)
+// bgPop on farmland IS the villages — no need to track them separately.
 if(ter.stepCount%32===16){
 const tribeSett=[];for(let i=0;i<n;i++)tribeSett.push([]);
 if(!ter._settleCounts)ter._settleCounts=[];
-while(ter._settleCounts.length<n)ter._settleCounts.push({villages:0,towns:0,cities:0,large:0});
-for(let i=0;i<n;i++){ter._settleCounts[i].villages=0;ter._settleCounts[i].towns=0;ter._settleCounts[i].cities=0;ter._settleCounts[i].large=0;}
-// Use tribeTiles to iterate only owned tiles (not all 609K land tiles)
+while(ter._settleCounts.length<n)ter._settleCounts.push({cities:0});
+for(let i=0;i<n;i++)ter._settleCounts[i].cities=0;
 for(let tid2=0;tid2<n;tid2++){
 if(tribeSizes[tid2]<=0)continue;
 const ts2=ter.tribeTiles&&ter.tribeTiles[tid2]?ter.tribeTiles[tid2]:null;
-if(!ts2)continue;const sc=ter._settleCounts[tid2];const ow2=tid2;
+if(!ts2)continue;
 for(const ti of ts2){
-// Villages = farming communities (bgPop-based, not cityPop)
-if(bgPop[ti]>=0.3)sc.villages++;
-// Towns/cities = urban (cityPop-based, become centers)
-const cp=cityPop[ti];if(cp<SETTLE_TIERS[1].min)continue;// 0.5 = town threshold
-const tier=settleTier(cp);
-if(tier){
-const MAX_SETT=200;// cap settlement tracking to avoid massive arrays
-if(tier.name==='town'){sc.towns++;if(tribeSett[ow2].length<MAX_SETT)tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}
-else if(tier.name==='small'||tier.name==='medium'){sc.cities++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}
-else{sc.large++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}}}}
+const cp=cityPop[ti];if(cp<CITY_MIN)continue;
+ter._settleCounts[tid2].cities++;
+if(tribeSett[tid2].length<200)tribeSett[tid2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}}
 for(let st=0;st<n;st++){
 if(tribeSizes[st]<=0)continue;
 const sett=tribeSett[st];
@@ -1975,9 +1931,8 @@ console.log(`[SIM ${ter.stepCount}] tribes:${nTribes} frontier:${fl} maxTribeSz:
 const _prof=ter.stepCount%64===0;const _ts=_prof?[performance.now()]:null;
 // ── Knowledge & population step (every 16 ticks — was 8, reduced for performance) ──
 if(ter.stepCount%16===0&&ter.tribeKnowledge){
-// Transport network: DISABLED — Dijkstra too expensive even on owned tiles
-// (2.6s at step 128 with 8K tiles due to heap operations on 1.84M typed array)
-// if(ter.stepCount%32===0&&ter.settled>0){...computeTransport...}
+// Transport network: per-tribe Dijkstra on owned tiles only (fast)
+if(ter.stepCount%32===0&&ter.settled>0)computeTransport(ter);
 const _t0=performance.now();
 stepBackgroundPop(ter);
 const _t1=performance.now();
@@ -3199,7 +3154,7 @@ const bud2=ter.tribeBudget&&ter.tribeBudget[ow2]?ter.tribeBudget[ow2]:null;
 const selT=selectedTribe;
 let relation='';
 if(selT>=0&&selT!==ow2&&ter.tribeSizes[selT]>0)relation=tribeRelation(ter,selT,ow2);
-const stCounts2=ter._settleCounts&&ter._settleCounts[ow2]?ter._settleCounts[ow2]:{villages:0,towns:0,cities:0,large:0};
+const stCounts2=ter._settleCounts&&ter._settleCounts[ow2]?ter._settleCounts[ow2]:{cities:0};
 const ports2=ter.tribePorts&&ter.tribePorts[ow2]?ter.tribePorts[ow2].length:0;
 const kc2=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[ow2]?ter.tribeKnownCoasts[ow2].length:0;
 tribeInfo={id:ow2,size:ter.tribeSizes[ow2],pop:Math.round(pop2),
@@ -3330,10 +3285,7 @@ border:"1px solid rgba(201,184,122,0.15)"}}>
 <span style={{color:hoverInfo.tribeInfo.knowledge.tr>0.3?"#c8b84a":"#5a5448"}}>Tr {(hoverInfo.tribeInfo.knowledge.tr*100|0)}%</span>
 </div>}
 {hoverInfo.tribeInfo.settlements&&<div style={{fontSize:8,color:"#6a6458"}}>
-{(()=>{const s=hoverInfo.tribeInfo.settlements;const parts=[];
-if(s.large>0)parts.push(s.large+'C');if(s.cities>0)parts.push(s.cities+'c');
-if(s.towns>0)parts.push(s.towns+'t');if(s.villages>0)parts.push(s.villages+'v');
-return parts.join(' ')||'no settlements';})()}{' '}{hoverInfo.tribeInfo.ports}p {hoverInfo.tribeInfo.knownCoasts}disc</div>}
+{hoverInfo.tribeInfo.settlements.cities||0} cities {hoverInfo.tribeInfo.ports}p {hoverInfo.tribeInfo.knownCoasts}disc</div>}
 {hoverInfo.tribeInfo.relation&&<div style={{fontSize:9,fontWeight:"bold",
 color:hoverInfo.tribeInfo.relation==='fight'?'#e06050':hoverInfo.tribeInfo.relation==='trade'?'#d0b040':hoverInfo.tribeInfo.relation==='friendly'?'#60b060':'#8a8474'}}>
 {hoverInfo.tribeInfo.relation==='fight'?'AT WAR with selected':hoverInfo.tribeInfo.relation==='trade'?'TRADING with selected':hoverInfo.tribeInfo.relation==='friendly'?'FRIENDLY with selected':''}
@@ -3499,7 +3451,7 @@ for(let i=0;i<ter.tribeSizes.length;i++){if(ter.tribeSizes[i]<=0)continue;
 const k=ter.tribeKnowledge&&ter.tribeKnowledge[i]?ter.tribeKnowledge[i]:null;
 const pop=ter.tribePopulation?ter.tribePopulation[i]:0;
 const ports=ter.tribePorts&&ter.tribePorts[i]?ter.tribePorts[i].length:0;
-const stCounts=ter._settleCounts&&ter._settleCounts[i]?ter._settleCounts[i]:{villages:0,towns:0,cities:0,large:0};
+const stCounts=ter._settleCounts&&ter._settleCounts[i]?ter._settleCounts[i]:{cities:0};
 const knownCoasts=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
 const power=tribePower(ter,i);
 const bud=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i]:null;
@@ -3524,12 +3476,8 @@ return <>
 <div><span style={{color:"#7a7464"}}>Power:</span> {selData.power.toFixed(1)}</div>
 <div><span style={{color:"#d0b040"}}>Wealth:</span> <span style={{color:"#d0b040"}}>{selData.wealth>=1000?(selData.wealth/1000).toFixed(1)+'k':selData.wealth.toFixed(0)} gold</span></div>
 {selData.settlements&&<div style={{gridColumn:"1/3"}}>
-<span style={{color:"#7a7464"}}>Settlements: </span>
-{selData.settlements.large>0&&<span style={{color:"#e0c870"}}>{selData.settlements.large} {selData.settlements.large===1?'city':'cities'} </span>}
-{selData.settlements.cities>0&&<span style={{color:"#c0b080"}}>{selData.settlements.cities} {selData.settlements.cities===1?'town':'towns'} </span>}
-{selData.settlements.towns>0&&<span style={{color:"#a09878"}}>{selData.settlements.towns} sm.towns </span>}
-{selData.settlements.villages>0&&<span style={{color:"#808068"}}>{selData.settlements.villages} villages</span>}
-{(selData.settlements.large+selData.settlements.cities+selData.settlements.towns+selData.settlements.villages)===0&&<span style={{color:"#605848"}}>none</span>}
+<span style={{color:"#7a7464"}}>Cities: </span>
+{selData.settlements.cities>0?<span style={{color:"#e0c870"}}>{selData.settlements.cities}</span>:<span style={{color:"#605848"}}>none</span>}
 </div>}
 <div><span style={{color:"#7a7464"}}>Ports:</span> {selData.ports}</div>
 <div><span style={{color:"#7a7464"}}>Known coasts:</span> {selData.knownCoasts}</div>
