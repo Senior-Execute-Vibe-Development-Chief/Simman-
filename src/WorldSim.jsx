@@ -1214,11 +1214,14 @@ tribeInfra[i]=1+cn*1.5+og;
 const industrialFactor=Math.max(0,mt-0.6)*3+Math.max(0,cn-0.5)*2;
 const groB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].growth:0.25;
 tribeGrowth[i]=(0.01+ag*0.005+industrialFactor*0.015)*(0.5+groB*1.5);
-// Surplus fraction: matches historical ratios
-// Bronze (ag=0.3): 0.20 → 5 farmers:1 city → ~10% urban
-// Classical (ag=0.5): 0.30 → 3:1 → ~15% urban
-// Industrial: 0.95+ → 1:50 → ~80% urban
-tribeSurplusFrac[i]=Math.min(0.98,0.05+ag*0.5+industrialFactor*0.4);}
+// Surplus fraction: what % of food production is surplus (feeds cities)
+// Calibrated to historical farmer:city-dweller ratios:
+//   ag=0.0: 3% → 30 farmers per 1 city dweller → ~3% urban (neolithic)
+//   ag=0.3: 10% → 10:1 → ~9% urban (bronze age Egypt/Mesopotamia)
+//   ag=0.5: 15% → 7:1 → ~13% urban (classical Rome)
+//   ag=0.8: 25% → 4:1 → ~20% urban (early modern)
+//   industrial: 95% → 1:20+ → ~80% urban (modern)
+tribeSurplusFrac[i]=Math.min(0.95,0.03+ag*0.25+industrialFactor*0.6);}
 
 const riverMag=ter.rivers?ter.rivers.riverMag:null;
 const tCost=ter.transportCost;
@@ -1249,17 +1252,21 @@ for(let i=0;i<n;i++){
 const fi=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].foodImports:0;
 tribeFoodSurplus[i]+=fi;}
 
-// Surplus ratio + max supportable urban population
+// Surplus ratio: NET surplus after feeding existing cities.
+// gross surplus = food production × surplusFrac (what farmers don't eat)
+// net surplus = gross surplus - cityPop consumption
+// If net > 0: cities can grow. If net < 0: cities must shrink.
 if(!ter._tribeFoodSurplus)ter._tribeFoodSurplus=new Float32Array(n);
 if(!ter._tribeMaxUrban)ter._tribeMaxUrban=new Float32Array(n);
 for(let i=0;i<n;i++){
 if(tribeSizes[i]<=0){ter._tribeFoodSurplus[i]=2.0;ter._tribeMaxUrban[i]=0;continue;}
-// Max urban pop this tribe's food surplus can sustain
-// surplus = total food beyond farmer self-consumption
-// Each unit of cityPop consumes ~1 unit of food
-// So max urban = total surplus (simple and clean)
+// Max urban pop = gross surplus (if ALL surplus went to cities)
 ter._tribeMaxUrban[i]=tribeFoodSurplus[i];
-if(tribeTotalCity[i]<0.01){ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]>0.01?5.0:0.5;continue;}
+// Net surplus ratio = gross surplus / city consumption
+// >1 means cities can grow (more food than cities need)
+// <1 means cities starving (not enough food for current cities)
+if(tribeTotalCity[i]<0.01){
+ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]>0.01?5.0:0.5;continue;}
 ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]/tribeTotalCity[i];}
 
 } // end PASS 1 food accounting
