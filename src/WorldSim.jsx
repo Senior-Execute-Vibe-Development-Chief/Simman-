@@ -2433,6 +2433,9 @@ return y>0?`${Math.round(y)} BC`:`${Math.round(Math.abs(y))} AD`;}
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
 const canvasRef=useRef(null);const glCanvasRef=useRef(null);const glStateRef=useRef(null);
+// Zoom/pan state
+const[viewZoom,setViewZoom]=useState(1);const[viewPan,setViewPan]=useState({x:0,y:0});
+const zoomRef=useRef(1);const panRef=useRef({x:0,y:0});const isDragging=useRef(false);const dragStart=useRef({x:0,y:0,px:0,py:0});
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
@@ -2891,87 +2894,50 @@ const ti3=(gy*gW+gx)*3;buf[ti3]=r|0;buf[ti3+1]=g|0;buf[ti3+2]=b|0;}}
 setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});}
 if(!ctx)return;
 ctx.putImageData(img,0,0);
-// Draw settlements — size scales continuously with log(population)
+// Draw settlements — size scales with log(population), labels at zoom
 {const selSt=ter._selectedTribe;const hasSel=selSt>=0&&ter.tribeSizes[selSt]>0&&vm==="tribes";
+const zm=zoomRef.current||1;
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
 if(!centers||ter.tribeSizes[st]<=0)continue;
 const isSelected=st===selSt;
 const dimmed=hasSel&&!isSelected;
-// Render top 100 centers max per tribe (sorted by pop, largest first)
-const drawLimit=isSelected?200:(dimmed?20:100);
+const drawLimit=isSelected?200:(dimmed?20:60);
 for(let ci=0;ci<Math.min(centers.length,drawLimit);ci++){const cx2=centers[ci].x+0.5,cy2=dataYtoScreenY(centers[ci].y*RES,H,CH)+0.5;
 const isCapital=ci===0;
 const cPop=centers[ci].pop||0;
-// Radius: log scale. village(0.05)→0.7, town(0.5)→1.3, city(3)→1.8, large(100)→3.7
-const r2=cPop>0?Math.max(0.5,Math.min(5,0.5+Math.log(cPop+1)*0.7)):0.5;
-if(dimmed&&r2<1.0)continue;// skip tiny settlements of other tribes in focused mode
-ctx.beginPath();ctx.arc(cx2,cy2,dimmed?r2*0.5:r2,0,Math.PI*2);
-if(dimmed){ctx.fillStyle="rgba(120,115,105,0.2)";ctx.fill();}
+// Radius: bigger base, log scale. Minimum visible even unzoomed.
+const r2=cPop>0?Math.max(0.8,Math.min(6,0.8+Math.log(cPop+1)*0.8)):0.8;
+if(dimmed&&r2<1.2)continue;
+// Draw filled circle
+ctx.beginPath();ctx.arc(cx2,cy2,dimmed?r2*0.4:r2,0,Math.PI*2);
+if(dimmed){ctx.fillStyle="rgba(100,95,85,0.15)";ctx.fill();}
 else if(isSelected){
-const tc2=tribeRGB(st);const bri=isCapital?1.3:1.0;
+const tc2=tribeRGB(st);const bri=isCapital?1.4:1.0;
 ctx.fillStyle=`rgba(${Math.min(255,tc2[0]*bri|0)},${Math.min(255,tc2[1]*bri|0)},${Math.min(255,tc2[2]*bri|0)},0.95)`;
 ctx.fill();
-if(r2>=0.8){ctx.beginPath();ctx.arc(cx2,cy2,r2+0.7,0,Math.PI*2);
-ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.35)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();}
-if(isCapital&&r2>=1){ctx.beginPath();ctx.arc(cx2,cy2,r2+1.8,0,Math.PI*2);
-ctx.strokeStyle="rgba(255,255,220,0.3)";ctx.lineWidth=0.5;ctx.stroke();}
+// White ring
+ctx.beginPath();ctx.arc(cx2,cy2,r2+0.8,0,Math.PI*2);
+ctx.strokeStyle=isCapital?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.4)";
+ctx.lineWidth=isCapital?1.2:0.6;ctx.stroke();
+// Capital: outer glow ring
+if(isCapital){ctx.beginPath();ctx.arc(cx2,cy2,r2+2.5,0,Math.PI*2);
+ctx.strokeStyle="rgba(255,255,200,0.25)";ctx.lineWidth=0.5;ctx.stroke();}
+// City label when zoomed in (show pop for selected tribe's cities)
+if(zm>=3&&cPop>=0.5){
+const popStr=cPop>=1000?(cPop/1000).toFixed(0)+'M':cPop>=1?(cPop|0)+'k':((cPop*1000)|0);
+ctx.font=`${isCapital?'bold ':''}${Math.max(3,5/zm*2)}px sans-serif`;
+ctx.fillStyle=isCapital?"rgba(255,255,230,0.95)":"rgba(220,215,200,0.8)";
+ctx.fillText(popStr,cx2+r2+1.5,cy2+1.5);
+if(isCapital){ctx.fillText('CAPITAL',cx2+r2+1.5,cy2-r2);}}
 }else{
-const tier=settleTier(cPop);const tn=tier?tier.name:'';
-const alpha=isCapital?0.9:Math.max(0.25,Math.min(0.85,0.15+r2*0.18));
-if(isCapital)ctx.fillStyle=`rgba(240,235,220,${alpha})`;
-else if(tn==='large'||tn==='mega')ctx.fillStyle=`rgba(220,200,160,${alpha})`;
-else if(tn==='medium'||tn==='small')ctx.fillStyle=`rgba(195,190,175,${alpha})`;
-else ctx.fillStyle=`rgba(160,155,145,${alpha})`;
+const alpha=isCapital?0.9:Math.max(0.3,Math.min(0.85,r2*0.18));
+ctx.fillStyle=isCapital?`rgba(240,235,220,${alpha})`:`rgba(180,175,165,${alpha})`;
 ctx.fill();
-if(isCapital||r2>=1.8){ctx.beginPath();ctx.arc(cx2,cy2,r2+0.7,0,Math.PI*2);
-ctx.strokeStyle=isCapital?"rgba(60,55,45,0.6)":"rgba(80,75,65,0.3)";ctx.lineWidth=isCapital?0.8:0.5;ctx.stroke();}
-}}// end else, for(ci)
-// ── Info label at capital (skip in focused mode — too cluttered) ──
-const focusedMode=hasSel;
-if(!focusedMode&&ter.tribeSizes[st]>=4){
-const cap=centers[0];const cx2=cap.x+0.5,cy2=dataYtoScreenY(cap.y*RES,H,CH)+0.5;
-const k=ter.tribeKnowledge&&ter.tribeKnowledge[st]?ter.tribeKnowledge[st]:null;
-const pop=ter.tribePopulation?Math.round(ter.tribePopulation[st]):0;
-const sz=ter.tribeSizes[st];
-// Era label
-let era="Stone";
-if(k){if(k.metallurgy>0.85&&k.organization>0.6)era="Industrial";
-else if(k.organization>0.5&&k.metallurgy>0.4)era="Empire";
-else if(k.metallurgy>0.5)era="Iron";
-else if(k.metallurgy>0.3)era="Bronze";
-else if(k.metallurgy>0.15)era="Copper";
-else if(k.agriculture>0.3)era="Farming";
-else if(k.agriculture>0.1)era="Neolithic";}
-// Format population nicely
-// Pop is in thousands. Display as "800k" or "1.2M" or "12M"
-const popStr=pop>=10000?(pop/1000).toFixed(1)+'M':pop>=1000?(pop/1000|0)+'M':pop>=1?pop.toFixed(0)+'k':'<1k';
-// Two-line label: era + personality | pop + tiles
-const pers=ter.tribeBudget&&ter.tribeBudget[st]?ter.tribeBudget[st].personality:"";
-const line1=pers?`${era} ${pers}`:era;
-const line2=`${popStr}  ${sz}t`;
-ctx.font="bold 6px sans-serif";
-const w1=ctx.measureText(line1).width;
-ctx.font="5px sans-serif";
-const w2=ctx.measureText(line2).width;
-const boxW=Math.max(w1,w2)+6;
-const boxH=15;
-const bx=cx2-boxW/2,by=cy2+5;
-// Background box
-ctx.fillStyle="rgba(6,8,16,0.8)";
-ctx.beginPath();
-ctx.roundRect(bx,by,boxW,boxH,2);ctx.fill();
-ctx.strokeStyle="rgba(200,195,185,0.3)";ctx.lineWidth=0.5;
-ctx.beginPath();ctx.roundRect(bx,by,boxW,boxH,2);ctx.stroke();
-// Era name (bold, white)
-ctx.font="bold 6px sans-serif";
-ctx.fillStyle="rgba(220,215,200,0.95)";
-ctx.fillText(line1,cx2-w1/2,by+6.5);
-// Stats line (smaller, dimmer)
-ctx.font="5px sans-serif";
-ctx.fillStyle="rgba(180,175,160,0.75)";
-ctx.fillText(line2,cx2-w2/2,by+12.5);
-}}// end if(!focusedMode), for(st)
-}// end block scope for settlement drawing
+if(isCapital||r2>=2){ctx.beginPath();ctx.arc(cx2,cy2,r2+0.7,0,Math.PI*2);
+ctx.strokeStyle=isCapital?"rgba(60,55,45,0.6)":"rgba(80,75,65,0.3)";ctx.lineWidth=0.6;ctx.stroke();}
+}}
+}// end for(st)
+}// end settlement drawing
 // ── Draw ports (enhanced in focused mode) ──
 {const focSel=ter._selectedTribe;const isFocused=focSel>=0&&ter.tribeSizes[focSel]>0&&vm==="tribes";
 if(ter.tribePorts){
@@ -3153,7 +3119,9 @@ border:`1px solid ${active?`rgba(${color},0.35)`:bs.border}`,color:active?`rgb($
 const onCanvasMove=useCallback((ev)=>{
 const c=canvasRef.current;if(!c||!worldRef.current)return;
 const r=c.getBoundingClientRect();
-const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
+const z=zoomRef.current,px=panRef.current.x,py=panRef.current.y;
+const rawX=(ev.clientX-r.left)/r.width*CW,rawY=(ev.clientY-r.top)/r.height*CH;
+const sx=(rawX-px)/z,sy=(rawY-py)/z;// account for zoom+pan
 const wx=Math.floor(sx)*RES,wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const w=worldRef.current,i=wy*1920+wx;
 if(wx<0||wx>=1920||wy<0||wy>=960){setHoverInfo(null);return;}
@@ -3203,17 +3171,72 @@ setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:f
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const onCanvasClick=useCallback((ev)=>{
+if(isDragging.current)return;// don't click when finishing a drag
 const c=canvasRef.current;if(!c||!terRef.current)return;
 const r=c.getBoundingClientRect();
-const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
+const z=zoomRef.current,px=panRef.current.x,py=panRef.current.y;
+// Convert screen coords to canvas coords (accounting for zoom+pan)
+const sx=((ev.clientX-r.left)/r.width*CW-px)/z;
+const sy=((ev.clientY-r.top)/r.height*CH-py)/z;
 const wx=Math.floor(sx),wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const ter=terRef.current;if(!ter)return;
-const ttx=Math.min(ter.tw-1,(wx/RES)|0),tty=Math.min(ter.th-1,(wy/RES)|0);
+const ttx=Math.min(ter.tw-1,Math.max(0,(wx/RES)|0)),tty=Math.min(ter.th-1,Math.max(0,(wy/RES)|0));
 const tileOwner=ter.owner[tty*ter.tw+ttx];
 if(tileOwner>=0&&ter.tribeSizes[tileOwner]>0){
 setSelectedTribe(tileOwner);ter._selectedTribe=tileOwner;
-setRightPanel("tribes");draw(ter);
-}else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}
+setRightPanel("tribes");
+// Zoom to tribe bounds
+const ts=ter.tribeTiles&&ter.tribeTiles[tileOwner]?ter.tribeTiles[tileOwner]:null;
+if(ts&&ts.size>5){
+let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+for(const ti of ts){const tx2=ti%ter.tw,ty2=(ti-tx2)/ter.tw;
+if(tx2<minX)minX=tx2;if(tx2>maxX)maxX=tx2;if(ty2<minY)minY=ty2;if(ty2>maxY)maxY=ty2;}
+const bw=maxX-minX+1,bh=maxY-minY+1;
+// Handle wrap-around (tribe spans map edge)
+const effectiveW=bw>ter.tw*0.7?ter.tw:bw;// if spans >70% of map, don't zoom
+const zx=CW/(effectiveW+20),zy=CH/(bh+20);// padding
+const newZoom=Math.min(Math.max(1,Math.min(zx,zy)),12);
+const cx2=minX+bw/2,cy2=dataYtoScreenY((minY+bh/2)*RES,H,CH);
+const newPan={x:CW/2-cx2*newZoom,y:CH/2-cy2*newZoom};
+zoomRef.current=newZoom;panRef.current=newPan;
+setViewZoom(newZoom);setViewPan(newPan);}
+draw(ter);
+}else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;
+// Reset zoom on deselect
+zoomRef.current=1;panRef.current={x:0,y:0};setViewZoom(1);setViewPan({x:0,y:0});
+draw(ter);}
+},[CW,CH,draw]);
+// Zoom with scroll wheel
+const onCanvasWheel=useCallback((ev)=>{
+ev.preventDefault();
+const c=canvasRef.current;if(!c)return;
+const r=c.getBoundingClientRect();
+const mx=(ev.clientX-r.left)/r.width*CW,my=(ev.clientY-r.top)/r.height*CH;
+const oldZ=zoomRef.current;
+const newZ=Math.max(1,Math.min(20,oldZ*(ev.deltaY<0?1.15:1/1.15)));
+// Zoom toward mouse position
+const px=panRef.current.x,py=panRef.current.y;
+const newPan={x:mx-(mx-px)*(newZ/oldZ),y:my-(my-py)*(newZ/oldZ)};
+zoomRef.current=newZ;panRef.current=newPan;
+setViewZoom(newZ);setViewPan(newPan);
+if(terRef.current)draw(terRef.current);
+},[CW,CH,draw]);
+// Pan with mouse drag
+const onCanvasMouseDown=useCallback((ev)=>{
+if(ev.button!==0)return;
+isDragging.current=false;
+dragStart.current={x:ev.clientX,y:ev.clientY,px:panRef.current.x,py:panRef.current.y};
+const onMove=(e)=>{
+const dx=e.clientX-dragStart.current.x,dy=e.clientY-dragStart.current.y;
+if(Math.abs(dx)+Math.abs(dy)>3)isDragging.current=true;
+const c=canvasRef.current;if(!c)return;const r=c.getBoundingClientRect();
+const scaleX=CW/r.width,scaleY=CH/r.height;
+panRef.current={x:dragStart.current.px+dx*scaleX,y:dragStart.current.py+dy*scaleY};
+setViewPan({...panRef.current});
+if(terRef.current)draw(terRef.current);};
+const onUp=()=>{window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);
+setTimeout(()=>{isDragging.current=false;},50);};
+window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp);
 },[CW,CH,draw]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
 const lbs={...bs,width:"100%",textAlign:"left",padding:"4px 10px"};
@@ -3280,9 +3303,17 @@ onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
 {mi===0?(showGlobe?<div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
 <GlobeView terrainBuf={globeBuf} world={world}
 CW={globeTexSize.w} CH={globeTexSize.h} /></div>
-:<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
-style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",
-aspectRatio:`${CW}/${CH}`}} />)
+:<div style={{overflow:"hidden",width:"100%",maxHeight:"100%",aspectRatio:`${CW}/${CH}`,position:"relative"}}>
+<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave}
+onClick={onCanvasClick} onWheel={onCanvasWheel} onMouseDown={onCanvasMouseDown}
+style={{display:"block",imageRendering:"pixelated",width:`${CW}px`,height:`${CH}px`,
+transformOrigin:"0 0",transform:`translate(${viewPan.x}px,${viewPan.y}px) scale(${viewZoom})`,
+cursor:viewZoom>1?"grab":"default"}} />
+{viewZoom>1&&<button onClick={()=>{zoomRef.current=1;panRef.current={x:0,y:0};setViewZoom(1);setViewPan({x:0,y:0});
+setSelectedTribe(-1);if(terRef.current){terRef.current._selectedTribe=-1;draw(terRef.current);}}}
+style={{position:"absolute",top:4,right:4,background:"rgba(6,8,16,0.8)",border:"1px solid rgba(201,184,122,0.3)",
+color:"#c9b87a",padding:"3px 8px",fontSize:11,borderRadius:3,cursor:"pointer",zIndex:10}}>Reset Zoom</button>}
+</div>)
 :<canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
 style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",
 width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
