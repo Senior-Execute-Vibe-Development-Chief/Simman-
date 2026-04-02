@@ -1244,12 +1244,16 @@ for(let i=0;i<n;i++){
 const fi=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].foodImports:0;
 tribeFoodSurplus[i]+=fi;}
 
-// Surplus ratio: how much surplus per unit of cityPop needed
-// >1 means cities can grow. <1 means cities must shrink.
+// Surplus ratio + max supportable urban population
 if(!ter._tribeFoodSurplus)ter._tribeFoodSurplus=new Float32Array(n);
+if(!ter._tribeMaxUrban)ter._tribeMaxUrban=new Float32Array(n);
 for(let i=0;i<n;i++){
-if(tribeSizes[i]<=0){ter._tribeFoodSurplus[i]=2.0;continue;}
-// If no cities yet, surplus is infinite (plenty of food, just no cities)
+if(tribeSizes[i]<=0){ter._tribeFoodSurplus[i]=2.0;ter._tribeMaxUrban[i]=0;continue;}
+// Max urban pop this tribe's food surplus can sustain
+// surplus = total food beyond farmer self-consumption
+// Each unit of cityPop consumes ~1 unit of food
+// So max urban = total surplus (simple and clean)
+ter._tribeMaxUrban[i]=tribeFoodSurplus[i];
 if(tribeTotalCity[i]<0.01){ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]>0.01?5.0:0.5;continue;}
 ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]/tribeTotalCity[i];}
 
@@ -1283,19 +1287,9 @@ const tCostHere=hasTrans?tCost[ti]:10;
 const transportFactor=1/(1+tCostHere*0.1);
 const localMaxCity=mxCity*transportFactor;
 
-// City seeding: geographic attractors create settlement sites.
-// SPACING: cities can't form too close to each other.
-// RATE: max 1 new city per tribe per step.
-if(cp<0.01&&surplus>1.1){
-// Check minimum spacing from existing cities (no carpet-bombing)
-let tooClose=false;const minSpacing=8;// ~8 tiles apart minimum
-const tx3=ti%tw,ty3=(ti-tx3)/tw;
-const centers=ter.tribeCenters[ow];
-if(centers){for(let ci2=0;ci2<Math.min(centers.length,30);ci2++){
-const dx2=Math.abs(centers[ci2].x-tx3),dy2=Math.abs(centers[ci2].y-ty3);
-const wdx=dx2>tw/2?tw-dx2:dx2;
-if(wdx*wdx+dy2*dy2<minSpacing*minSpacing){tooClose=true;break;}}}
-if(!tooClose){
+// City seeding: geographic attractors + food budget check.
+// Can't seed if tribe's total cityPop already exceeds food surplus capacity.
+if(cp<0.01&&tribeTotalCity[ow]<ter._tribeMaxUrban[ow]*0.8){
 let siteQuality=0;
 if(riverMag){const rm=riverMag[ti];
 if(rm>=4)siteQuality+=3.0;else if(rm>=3)siteQuality+=2.0;else if(rm>=2)siteQuality+=0.5;}
@@ -1304,22 +1298,28 @@ if(ter.deposits){for(let ri=0;ri<3;ri++){
 const rk2=['copper','iron','salt'][ri];const dep=ter.deposits[rk2];
 if(dep&&dep[ti]>0.2)siteQuality+=0.4;}}
 if(tDiff[ti]>0.3&&fert>0.15)siteQuality+=0.2;
-// Threshold: 0.8 base. Org reduces it slightly (not drastically).
-// River or coast is basically required early game. Org enables inland cities later.
 const orgBonus=ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].organization*0.2:0;
 const threshold=Math.max(0.5,0.8-orgBonus);
-if(siteQuality>threshold&&bgPop[ti]>0.05)cityPop[ti]=0.01;}
+if(siteQuality>threshold&&bgPop[ti]>0.05){
+// Seed size = meaningful (0.1 = 100 people), not tiny.
+// This way seeds actually consume food from the budget.
+cityPop[ti]=0.1;tribeTotalCity[ow]+=0.1;}
 }
 
-// City growth/shrink from food surplus
+// City growth/shrink: food surplus is the ONLY driver.
+// Each city gets a share of tribal surplus proportional to transport access.
 if(cp>0){
-const foodReaching=surplus>0.01?tribeFoodSurplus[ow]*transportFactor/(Math.max(1,tribeTotalCity[ow])+1):0;
-const foodCap=Math.min(localMaxCity,foodReaching);
-if(cp<foodCap&&surplus>1.0){cityPop[ti]+=Math.min(0.03,(foodCap-cp)*0.02);}
-if(cp>foodCap*1.1&&foodCap>0){cityPop[ti]=Math.max(0,cp*0.97);}
-if(surplus<0.8&&cp>0.01){cityPop[ti]=Math.max(0,cp*(0.96+surplus*0.02));}
-// Tiny seeds that can't grow decay away (prevents 9000 dormant seeds)
-if(cp<0.05&&cp<foodCap*0.1){cityPop[ti]=Math.max(0,cp*0.95);}
+// This city's food share = tribal surplus × transport access / total cities
+const cityShare=tribeFoodSurplus[ow]*transportFactor/Math.max(1,tribeTotalCity[ow]);
+const foodCap=Math.min(localMaxCity,cityShare);
+// Grow toward food-determined capacity
+if(cp<foodCap&&surplus>1.0)cityPop[ti]+=Math.min(0.05,(foodCap-cp)*0.03);
+// Shrink when over capacity (food supply dropped or transport lost)
+if(cp>foodCap*1.2)cityPop[ti]=cp*0.96;// 4% decay
+// Famine: tribe-wide food shortage
+if(surplus<0.8)cityPop[ti]=cp*(0.95+surplus*0.03);// 2-5% loss
+// Kill cities that shrink below minimum
+if(cityPop[ti]<0.05)cityPop[ti]=0;
 }
 
 // Rural migration: 4-neighbor flow toward higher opportunity
