@@ -464,6 +464,32 @@ function tribeRGB(id){const h=((id*67+20)%360)/360,s=(60+((id*31)%25))/100,l=(45
 const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;const hr=(pp,qq,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return pp+(qq-pp)*6*t;if(t<1/2)return qq;if(t<2/3)return pp+(qq-pp)*(2/3-t)*6;return pp;};
 return[Math.round(hr(p,q,h+1/3)*255),Math.round(hr(p,q,h)*255),Math.round(hr(p,q,h-1/3)*255)];}
 
+// ── Atlas (olde-map) cartographic symbols — hand-drawn map iconography ──
+function atlasHash(a,b){let h=(a*374761393+b*668265263)>>>0;h=((h^(h>>>13))*1274126177)>>>0;return((h^(h>>>16))>>>0)/4294967296;}
+function atlasMountain(c,x,y,s,snow){
+const h=s,wd=s*0.92;
+c.beginPath();c.moveTo(x,y-h);c.lineTo(x-wd,y+h*0.66);c.lineTo(x+wd,y+h*0.66);c.closePath();
+c.fillStyle='#dccb9c';c.fill();
+c.beginPath();c.moveTo(x,y-h);c.lineTo(x+wd,y+h*0.66);c.lineTo(x,y+h*0.66);c.closePath();
+c.fillStyle='rgba(72,56,36,0.42)';c.fill();
+if(snow){c.beginPath();c.moveTo(x,y-h);c.lineTo(x-s*0.34,y-h*0.34);c.lineTo(x-s*0.10,y-h*0.50);
+c.lineTo(x+s*0.14,y-h*0.32);c.lineTo(x+s*0.34,y-h*0.44);c.closePath();c.fillStyle='#f1ead8';c.fill();}
+c.strokeStyle='#3a2e1f';c.lineWidth=Math.max(0.55,s*0.15);
+c.beginPath();c.moveTo(x-wd,y+h*0.66);c.lineTo(x,y-h);c.lineTo(x+wd,y+h*0.66);c.stroke();}
+function atlasHill(c,x,y,s){
+c.strokeStyle='#4a3c28';c.lineWidth=Math.max(0.5,s*0.28);
+c.beginPath();c.arc(x,y+s*0.5,s,Math.PI,2*Math.PI);c.stroke();}
+function atlasConifer(c,x,y,s){
+c.fillStyle='#5a4327';c.fillRect(x-s*0.11,y+s*0.08,s*0.22,s*0.52);
+c.beginPath();c.moveTo(x,y-s);c.lineTo(x+s*0.62,y+s*0.24);c.lineTo(x-s*0.62,y+s*0.24);c.closePath();
+c.fillStyle='#566139';c.fill();
+c.strokeStyle='#2e3420';c.lineWidth=Math.max(0.4,s*0.12);c.stroke();}
+function atlasBroadleaf(c,x,y,s){
+c.fillStyle='#5a4327';c.fillRect(x-s*0.10,y-s*0.05,s*0.20,s*0.60);
+c.beginPath();c.arc(x,y-s*0.22,s*0.55,0,6.2832);
+c.fillStyle='#65713f';c.fill();
+c.strokeStyle='#323920';c.lineWidth=Math.max(0.4,s*0.12);c.stroke();}
+
 // Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
 // Agriculture needs adequate moisture (not maximum) — bell curve peaks at 0.45 (temperate optimum)
 function tileFert(t,m,e){if(e>0.45)return 0.01;
@@ -2476,6 +2502,7 @@ const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorl
 const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
+const atlasCache=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
 const imgRef=useRef(null);
 // Wind particle animation state
@@ -2487,7 +2514,7 @@ const workerRef=useRef(null);
 const finalizeWorld=useCallback((w)=>{
 setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
 setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
-terrainCache.current=null;imgRef.current=null;},[]);
+terrainCache.current=null;atlasCache.current=null;imgRef.current=null;},[]);
 const generate=useCallback((s,ol)=>{
 // Import path
 if(presetRef.current==="import"&&importedWorldRef.current){
@@ -2554,6 +2581,128 @@ let pr=r,pg=g,pb=b;
 if(e>sl&&hasSwamp){pr=40;pg=58;pb=38;}
 const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}}
 return buf;},[CH]);
+
+// ── Atlas (olde-map) renderer: stained parchment land, dark seas, cartographic symbols ──
+// Heavy build; runs once per world (cached as ImageData), reused each frame.
+const buildAtlas=useCallback((w,ter)=>{
+const cv=document.createElement("canvas");cv.width=CW;cv.height=CH;
+const octx=cv.getContext("2d");
+const img=new ImageData(CW,CH);const d=img.data;
+const N=CW*CH,tw=ter.tw,th=ter.th;
+const rm=ter.rivers?ter.rivers.riverMag:null;
+const lk=ter.rivers&&ter.rivers.lake?ter.rivers.lake:null;
+// Per-screen-pixel data index + water mask; find land elevation ceiling
+const dataIdx=new Int32Array(N),water=new Uint8Array(N);
+let landEMax=0.001;
+for(let ty=0;ty<CH;ty++){
+const dy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
+const tyTile=Math.min(th-1,(dy/RES)|0);
+for(let tx=0;tx<CW;tx++){
+const sx=Math.min(W-1,tx*RES),si=dy*W+sx,i=ty*CW+tx;
+dataIdx[i]=si;const e=w.elevation[si];
+const isLake=lk?lk[tyTile*tw+Math.min(tw-1,(sx/RES)|0)]>=0:false;
+water[i]=(e<=0||isLake)?1:0;
+if(e>landEMax)landEMax=e;}}
+const mtnHi=landEMax*0.55,mtnLo=landEMax*0.34,hillLo=landEMax*0.19;
+// Downsampled fbm fields — mottling is low-frequency, so 4× downsample is invisible (~16× fewer fbm calls)
+const QW=(CW>>2)+2,QH=(CH>>2)+2;
+const mkField=(fx,fy,oct,ox,oy)=>{const f=new Float32Array(QW*QH);
+for(let j=0;j<QH;j++)for(let k=0;k<QW;k++)f[j*QW+k]=fbm(k*4/CW*fx+ox,j*4/CH*fy+oy,oct,2,0.5);
+return f;};
+const m1F=mkField(5,5,4,11,11),m2F=mkField(34,34,2,40,40),oA=mkField(7,7,3,3,3),oB=mkField(26,26,2,9,9);
+const samp=(f,x,y)=>{const fx=x*0.25,fy=y*0.25,x0=fx|0,y0=fy|0,dx=fx-x0,dy=fy-y0,
+a=f[y0*QW+x0],b=f[y0*QW+x0+1],cc=f[(y0+1)*QW+x0],dd=f[(y0+1)*QW+x0+1];
+return a*(1-dx)*(1-dy)+b*dx*(1-dy)+cc*(1-dx)*dy+dd*dx*dy;};
+// Base layer — parchment land + dark seas
+for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
+const i=ty*CW+tx,si=dataIdx[i],pi=i<<2,e=w.elevation[si];
+if(water[i]){
+const depth=Math.min(1,Math.max(0,-e)*2.2);
+const n=samp(oA,tx,ty),n2=samp(oB,tx,ty);
+d[pi]=17-depth*7+n*5+n2*2;
+d[pi+1]=21-depth*9+n*5+n2*2;
+d[pi+2]=34-depth*12+n*6+n2*3;
+d[pi+3]=255;continue;}
+const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);
+const m1=samp(m1F,tx,ty),m2=samp(m2F,tx,ty);
+let r=229+m1*-22+m2*7,g=215+m1*-21+m2*6,b=172+m1*-18+m2*5;
+if(m1>0.22){const s=m1-0.22;r-=s*15;g-=s*21;b-=s*27;}
+if(biome===13){r+=16;g-=4;b-=40;}           // desert — warm orange discolouring
+else if(biome===14){r+=9;b-=23;}            // shrubland — mild tan
+else if(biome===11){r+=10;g+=2;b-=20;}      // savanna — golden
+else if(biome===5){r+=20;g+=26;b+=46;}      // snow / ice — white
+else if(biome===4||biome===18){r+=11;g+=15;b+=27;} // tundra / cold desert — pale wash
+else if(biome===6||biome===7){r-=14;g-=6;b-=14;}   // taiga / boreal — cool shade
+else if(biome===8||biome===9||biome===10||biome===15||biome===17){r-=8;g-=2;b-=12;} // forest — faint green
+if(e>mtnLo){const s=Math.min(1,(e-mtnLo)/(landEMax-mtnLo+1e-3));r-=s*14;g-=s*10;b-=s*2;}
+if(rm){const txT=Math.min(tw-1,(si%W)/RES|0),tyT=Math.min(th-1,((si/W)|0)/RES|0),mag=rm[tyT*tw+txT];
+if(mag>=2){const a=mag>=4?0.78:mag>=3?0.62:0.46;
+r=r*(1-a)+44*a;g=g*(1-a)+58*a;b=b*(1-a)+78*a;}}
+d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;}
+// Coastline ink — land pixels touching water
+for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
+const i=ty*CW+tx;if(water[i])continue;
+if((tx>0&&water[i-1])||(tx<CW-1&&water[i+1])||(ty>0&&water[i-CW])||(ty<CH-1&&water[i+CW])){
+const pi=i<<2;d[pi]=48;d[pi+1]=40;d[pi+2]=29;}}
+octx.putImageData(img,0,0);
+// ── Cartographic symbols ──
+octx.lineJoin="round";octx.lineCap="round";
+// Mountains (triangles) + hills (humps)
+for(let gy=6;gy<CH-6;gy+=11)for(let gx=6;gx<CW-6;gx+=11){
+const px=(gx+(atlasHash(gx,gy)-0.5)*8)|0,py=(gy+(atlasHash(gx+7,gy+3)-0.5)*8)|0;
+if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
+const i=py*CW+px;if(water[i])continue;
+const e=w.elevation[dataIdx[i]];
+if(e>=mtnLo){
+const dens=(e-mtnLo)/(landEMax-mtnLo+1e-3);
+if(atlasHash(gx+11,gy+19)>0.4+dens*0.55)continue;
+const big=e>mtnHi,size=(big?5.0:3.2)+dens*3.6+atlasHash(gx+3,gy+9)*1.4;
+atlasMountain(octx,px,py,size,big);
+}else if(e>=hillLo){
+if(atlasHash(gx+5,gy+8)>0.22)continue;
+atlasHill(octx,px,py,1.7+atlasHash(gx+2,gy+6)*1.3);}}
+// Forests (trees) — sparse scatter so the parchment reads through
+for(let gy=6;gy<CH-6;gy+=13)for(let gx=6;gx<CW-6;gx+=13){
+const px=(gx+(atlasHash(gx+1,gy+2)-0.5)*10)|0,py=(gy+(atlasHash(gx+4,gy+8)-0.5)*10)|0;
+if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
+const i=py*CW+px;if(water[i])continue;
+const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
+const biome=getBiomeD(e,w.moisture[si],w.temperature[si],0);
+let cover=0,conifer=false;
+if(biome===10||biome===9)cover=0.62;
+else if(biome===8||biome===17)cover=0.44;
+else if(biome===15)cover=0.30;
+else if(biome===6||biome===7){cover=0.48;conifer=true;}
+else continue;
+if(atlasHash(gx+13,gy+5)>cover)continue;
+const size=3.6+atlasHash(gx+9,gy+1)*2.6;
+if(conifer)atlasConifer(octx,px,py,size);else atlasBroadleaf(octx,px,py,size);}
+// Desert stipple (dune dots)
+for(let gy=4;gy<CH-4;gy+=7)for(let gx=4;gx<CW-4;gx+=7){
+const px=(gx+(atlasHash(gx+6,gy+1)-0.5)*6)|0,py=(gy+(atlasHash(gx+2,gy+9)-0.5)*6)|0;
+if(px<1||px>=CW-1||py<1||py>=CH-1)continue;
+const i=py*CW+px;if(water[i])continue;
+const si=dataIdx[i],e=w.elevation[si];
+if(getBiomeD(e,w.moisture[si],w.temperature[si],0)!==13)continue;
+if(atlasHash(gx+3,gy+7)>0.5)continue;
+octx.fillStyle="rgba(120,84,38,0.5)";
+octx.beginPath();octx.arc(px,py,0.7,0,6.2832);octx.fill();}
+// Swamp reeds
+if(w.swamp){
+for(let gy=5;gy<CH-5;gy+=10)for(let gx=5;gx<CW-5;gx+=10){
+const px=(gx+(atlasHash(gx+8,gy+4)-0.5)*7)|0,py=(gy+(atlasHash(gx+5,gy+2)-0.5)*7)|0;
+if(px<1||px>=CW-1||py<1||py>=CH-1)continue;
+const i=py*CW+px;if(water[i])continue;
+const si=dataIdx[i];if(!w.swamp[si])continue;
+octx.strokeStyle="rgba(64,72,48,0.75)";octx.lineWidth=0.7;
+octx.beginPath();
+octx.moveTo(px-2.4,py+1);octx.lineTo(px+2.4,py+1);
+octx.moveTo(px-1.4,py+1);octx.lineTo(px-1.4,py-2);
+octx.moveTo(px,py+1);octx.lineTo(px,py-2.6);
+octx.moveTo(px+1.4,py+1);octx.lineTo(px+1.4,py-2);
+octx.stroke();}}
+return octx.getImageData(0,0,CW,CH);
+},[CH]);
 
 // Composite render: terrain + tribe overlay into single canvas
 const draw=useCallback((ter)=>{
@@ -2826,6 +2975,11 @@ else{const s=(t-0.90)/0.10;r=255;g=(150-s*110)|0;b=(10+s*5)|0;}// orange→red (
 // Darken with elevation for topographic context
 const shade=1-Math.max(0,e-0.1)*0.4;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
+}else if(vm==="atlas"){
+// Olde-map "Atlas" view — cached parchment render, rebuilt only when world/projection changes
+if(!atlasCache.current||atlasCache.current.seed!==w._seed||atlasCache.current.ch!==CH){
+atlasCache.current={img:buildAtlas(w,ter),seed:w._seed,ch:CH};}
+d.set(atlasCache.current.img.data);
 }else{
 // Default terrain view with white tribe borders
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
@@ -2845,7 +2999,7 @@ d[pi4]=(tr*0.4+200*0.6+.5)|0;d[pi4+1]=(tg*0.4+195*0.6+.5)|0;d[pi4+2]=(tb*0.4+185
 }else{d[pi4]=tr;d[pi4+1]=tg;d[pi4+2]=tb;}
 d[pi4+3]=255;}}
 // Plate boundary overlay — domain-warped lookup for organic boundaries
-if(showPlatesRef.current&&w.pixPlate){
+if(showPlatesRef.current&&w.pixPlate&&vm!=="atlas"){
 const plateAt=(px,py)=>{
 const nx=px/W,ny=py/H;
 // Same multi-scale warp as tectonicGen elevation sampling
@@ -2862,10 +3016,10 @@ const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
 if(plateAt(nx2,ny2)!==myP)boundary=true;}
 if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
 // Lake overlay
-if(showLakesRef.current&&lk){for(let ti=0;ti<N;ti++){if(lk[ti]<0)continue;
+if(showLakesRef.current&&lk&&vm!=="atlas"){for(let ti=0;ti<N;ti++){if(lk[ti]<0)continue;
 const pi4=ti<<2;d[pi4]=25;d[pi4+1]=60;d[pi4+2]=105;d[pi4+3]=255;}}
 // River overlay — Rivers: tributary+. Streams: streams only.
-if(ter.rivers){const rm=ter.rivers.riverMag;
+if(ter.rivers&&vm!=="atlas"){const rm=ter.rivers.riverMag;
 const rivers=showRiversRef.current,streams=showStreamsRef.current;
 if(rivers||streams){
 for(let ti=0;ti<N;ti++){const mag=rm[ti];if(mag<1)continue;
@@ -3084,7 +3238,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
 }
 // Power view removed — replaced by era-based rendering and focused view
 // Power centers removed — centers already drawn in main center loop above}
-},[updateTerrainCache,CH]);
+},[updateTerrainCache,buildAtlas,CH]);
 
 useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showPower,showGlobe,activeRes]);
 
@@ -3128,7 +3282,7 @@ wfid=requestAnimationFrame(windLoop);
 return()=>cancelAnimationFrame(wfid);},[draw]);
 
 const togglePlay=()=>{if(!playing&&terRef.current&&terRef.current.settled>=terRef.current.landCount){
-const t=createTerritory(worldRef.current);terRef.current=t;setTribeCount(t.tribes);setCoverage(0);setDominant(null);setSelectedTribe(-1);terrainCache.current=null;draw(t);}
+const t=createTerritory(worldRef.current);terRef.current=t;setTribeCount(t.tribes);setCoverage(0);setDominant(null);setSelectedTribe(-1);terrainCache.current=null;atlasCache.current=null;draw(t);}
 playRef.current=!playRef.current;setPlaying(p=>!p);};
 const handleImport=useCallback(async(e)=>{const file=e.target.files?.[0];if(!file)return;
 e.target.value="";
@@ -3359,6 +3513,15 @@ borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14p
 background:`rgb(${BC[bi][0]},${BC[bi][1]},${BC[bi][2]})`}} />
 <span>{BN[bi]}</span></div>))}</div>}
 
+{/* Atlas legend — BOTTOM LEFT */}
+{viewMode==="atlas"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.82)",
+borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
+{[["#e6d8ad","Lowland"],["#e3bd83","Desert"],["#ede7e1","Snow / tundra"],["#586139","Forest"],["#cabd8f","Mountains"],["#101522","Sea"]].map(([c,l])=>(
+<div key={l} style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
+<span style={{display:"inline-block",width:10,height:8,borderRadius:1,flexShrink:0,
+background:c}} />
+<span>{l}</span></div>))}</div>}
+
 {/* Era legend — BOTTOM LEFT (tribes view) */}
 {viewMode==="tribes"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.82)",
 borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
@@ -3419,7 +3582,7 @@ Ag {(avgAg*100|0)} Mt {(avgMet*100|0)} Nv {(avgNav*100|0)} Og {(avgOrg*100|0)}</
 <div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",
 background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"6px 12px",
 display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],["resources","Resources"],["population","Pop"],["transport","Transport"],["tribes","Tribes"]].map(([k,label])=>(
+{[["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],["resources","Resources"],["population","Pop"],["transport","Transport"],["tribes","Tribes"]].map(([k,label])=>(
 <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
 style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
 color:viewMode===k?"#c9b87a":"#5a5448",padding:"6px 14px",fontSize:13}}>{label}</button>))}
