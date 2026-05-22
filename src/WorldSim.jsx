@@ -2742,10 +2742,6 @@ if(e>mtnLo){const s=Math.min(1,(e-mtnLo)/(landEMax-mtnLo+1e-3));r-=s*16;g-=s*12;
 // shoreline: broad gradient to a darker tea-stained discolour
 if(coastDist[i]<COAST){const tt=1-coastDist[i]/COAST,t2=tt*(0.45+tt*0.55);
 r-=t2*36;g-=t2*44;b-=t2*47;r+=tt*9;g+=tt*3;}
-// river ink
-if(rm){const txT=Math.min(tw-1,(si%W)/RES|0),tyT=Math.min(th-1,((si/W)|0)/RES|0),mag=rm[tyT*tw+txT];
-if(mag>=2){const a=mag>=4?0.8:mag>=3?0.64:0.48;
-r=r*(1-a)+38*a;g=g*(1-a)+50*a;b=b*(1-a)+66*a;}}
 // hand-inked coastline — darkness varied so it reads as worn ink, not a clean vector line
 if(coastDist[i]<=1.7){const ink=0.6+atlasHash(tx,ty)*0.34;
 r=r*(1-ink)+34*ink;g=g*(1-ink)+27*ink;b=b*(1-ink)+18*ink;}
@@ -2906,6 +2902,42 @@ octx.moveTo(px-1.4,py+1);octx.lineTo(px-1.4,py-2);
 octx.moveTo(px,py+1);octx.lineTo(px,py-2.6);
 octx.moveTo(px+1.4,py+1);octx.lineTo(px+1.4,py-2);
 octx.stroke();}}
+// Rivers — traced from the flow network, drawn as smooth meandering ink
+// (the raw D8 flow is 8-directional/blocky; tracing + curve smoothing +
+// a perpendicular meander turns it into natural winding rivers)
+if(ter.rivers&&ter.rivers.flowDir){
+const rmg=ter.rivers.riverMag,fd=ter.rivers.flowDir,RN=tw*th;
+const DDX=[1,1,0,-1,-1,-1,0,1],DDY=[0,1,1,1,0,-1,-1,-1];
+const hasUp=new Uint8Array(RN),drawn=new Uint8Array(RN);
+for(let ti=0;ti<RN;ti++){if(rmg[ti]<2)continue;const d=fd[ti];if(d===255)continue;
+const nx=((ti%tw)+DDX[d]+tw)%tw,ny=((ti/tw)|0)+DDY[d];if(ny<0||ny>=th)continue;hasUp[ny*tw+nx]=1;}
+octx.lineCap="round";octx.lineJoin="round";octx.strokeStyle="rgba(42,58,78,0.92)";
+const wOf=(m)=>m>=4?2.2:m>=3?1.5:0.95;
+const drawSeg=(pts,a,b,lw)=>{if(b<=a)return;octx.lineWidth=lw;octx.beginPath();
+octx.moveTo(pts[a].x,pts[a].y);
+for(let k=a+1;k<b;k++)octx.quadraticCurveTo(pts[k].x,pts[k].y,(pts[k].x+pts[k+1].x)*0.5,(pts[k].y+pts[k+1].y)*0.5);
+octx.lineTo(pts[b].x,pts[b].y);octx.stroke();};
+for(let ti=0;ti<RN;ti++){
+if(rmg[ti]<2||hasUp[ti])continue;
+const pts=[];let ci=ti,guard=0;
+for(;;){if(guard++>6000)break;
+drawn[ci]=1;pts.push({x:ci%tw,y:(ci/tw)|0,m:rmg[ci]});
+const d=fd[ci];if(d===255)break;
+const cx=ci%tw,cy=(ci/tw)|0,nx=((cx+DDX[d])%tw+tw)%tw,ny=cy+DDY[d];
+if(ny<0||ny>=th)break;const nci=ny*tw+nx;
+if(rmg[nci]<2||drawn[nci]){pts.push({x:nx,y:ny,m:rmg[nci]>=2?rmg[nci]:pts[pts.length-1].m});break;}
+ci=nci;}
+const n=pts.length;if(n<2)continue;
+for(let k=1;k<n-1;k++){
+let dx=pts[k+1].x-pts[k-1].x,dy=pts[k+1].y-pts[k-1].y;const dl=Math.sqrt(dx*dx+dy*dy)||1;dx/=dl;dy/=dl;
+const taper=Math.min(1,k/3.5,(n-1-k)/3.5);
+const wig=Math.sin(k*0.5+ti*0.017)*0.8+Math.sin(k*0.19+ti*0.053)*1.15+(atlasHash(pts[k].x,pts[k].y)-0.5)*0.9;
+const amp=wig*taper*(1.0+pts[k].m*0.35);
+pts[k].x+=-dy*amp;pts[k].y+=dx*amp;}
+let a=0;
+for(let k=1;k<n;k++){if(wOf(pts[k].m)!==wOf(pts[a].m)){drawSeg(pts,a,k,wOf(pts[a].m));a=k;}}
+drawSeg(pts,a,n-1,wOf(pts[a].m));}
+}
 return octx.getImageData(0,0,CW,CH);
 },[CH]);
 
