@@ -2647,9 +2647,12 @@ const i=ty*CW+tx,si=dataIdx[i],pi=i<<2,e=w.elevation[si];
 if(water[i]){
 const depth=Math.min(1,Math.max(0,-e)*2.2);
 const n=samp(oA,tx,ty),n2=samp(oB,tx,ty),gr=atlasHash(tx,ty)-0.5;
-d[pi]=17-depth*8+n*4+n2*2+gr*5;
-d[pi+1]=21-depth*10+n*4+n2*2+gr*5;
-d[pi+2]=34-depth*13+n*5+n2*3+gr*6;
+// gentle, softly-swirling current bands
+const cur=Math.sin(tx*0.045+ty*0.02+samp(warpF,tx,ty)*7);
+const cl=Math.max(0,cur)*Math.max(0,cur)*2;
+d[pi]=17-depth*8+n*4+n2*2+gr*3+cl;
+d[pi+1]=21-depth*10+n*4+n2*2+gr*3+cl;
+d[pi+2]=34-depth*13+n*5+n2*3+gr*4+cl*1.3;
 d[pi+3]=255;continue;}
 const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);
 const big=samp(bigF,tx,ty),mid=samp(midF,tx,ty),fine=samp(fineF,tx,ty);
@@ -2687,19 +2690,18 @@ d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;}
 octx.putImageData(img,0,0);
 // ── Cartographic symbols ──
 octx.lineJoin="round";octx.lineCap="round";
-// Ocean scratches — dense, irregular hand-inked hatch strokes
-for(let gy=3;gy<CH-3;gy+=5)for(let gx=3;gx<CW-3;gx+=5){
-const h1=atlasHash(gx,gy);if(h1>0.74)continue;
-const px=gx+(atlasHash(gx+5,gy+2)-0.5)*6,py=gy+(atlasHash(gx+2,gy+7)-0.5)*6;
+// Ocean current lines — sparse, soft hand-inked strokes that follow the flow
+for(let gy=4;gy<CH-4;gy+=11)for(let gx=4;gx<CW-4;gx+=11){
+const h1=atlasHash(gx,gy);if(h1>0.34)continue;
+const px=gx+(atlasHash(gx+5,gy+2)-0.5)*9,py=gy+(atlasHash(gx+2,gy+7)-0.5)*9;
 const ix=px|0,iy=py|0;
 if(ix<1||ix>=CW-1||iy<1||iy>=CH-1||!water[iy*CW+ix])continue;
 const h2=atlasHash(gx+9,gy+4),h3=atlasHash(gx+3,gy+11);
-// loosely-biased direction with heavy per-stroke jitter — random, not wavy
-const ang=samp(warpF,px,py)*1.8+(h2-0.5)*3.6;
-const len=2.8+h3*7,dx=Math.cos(ang),dy=Math.sin(ang),cv=(h1-0.37)*len*0.7;
-if(h2>0.74)octx.strokeStyle=`rgba(8,11,19,${0.25+h3*0.35})`;
-else octx.strokeStyle=`rgba(${92+(h3*55|0)},${106+(h3*52|0)},${136+(h3*46|0)},${0.07+h2*0.22})`;
-octx.lineWidth=0.35+h3*0.6;
+// follow the current with only mild jitter — wavy, not chaotic
+const ang=samp(warpF,px,py)*5+(h2-0.5)*0.9;
+const len=4+h3*7,dx=Math.cos(ang),dy=Math.sin(ang),cv=(h1-0.17)*len*0.8;
+octx.strokeStyle=`rgba(108,124,156,${0.035+h3*0.07})`;
+octx.lineWidth=0.4+h3*0.4;
 octx.beginPath();
 octx.moveTo(px-dx*len*0.5,py-dy*len*0.5);
 octx.quadraticCurveTo(px-dy*cv,py+dx*cv,px+dx*len*0.5,py+dy*len*0.5);
