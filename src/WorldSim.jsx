@@ -2699,7 +2699,7 @@ const samp=(f,x,y)=>{const fx=x*0.25,fy=y*0.25,x0=fx|0,y0=fy|0,dx=fx-x0,dy=fy-y0
 a=f[y0*QW+x0],b=f[y0*QW+x0+1],cc=f[(y0+1)*QW+x0],dd=f[(y0+1)*QW+x0+1];
 return a*(1-dx)*(1-dy)+b*dx*(1-dy)+cc*(1-dx)*dy+dd*dx*dy;};
 // Base layer — stained, worn parchment land + dark, textured seas
-const COAST=34;
+const COAST=58;
 for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
 const i=ty*CW+tx,si=dataIdx[i],pi=i<<2,e=w.elevation[si];
 const big=samp(bigF,tx,ty),mid=samp(midF,tx,ty),fine=samp(fineF,tx,ty),stn=samp(stnF,tx,ty);
@@ -2732,9 +2732,9 @@ else if(biome===4||biome===18){r+=11;g+=14;b+=22;} // tundra / cold desert — p
 else if(biome===6||biome===7){r-=14;g-=7;b-=14;}   // taiga / boreal — cool shade
 else if(biome===8||biome===9||biome===10||biome===15||biome===17){r-=9;g-=3;b-=13;} // forest — faint green
 if(e>mtnLo){const s=Math.min(1,(e-mtnLo)/(landEMax-mtnLo+1e-3));r-=s*16;g-=s*12;b-=s*4;}
-// shoreline: gradient to a darker tea-stained discolour
-if(coastDist[i]<COAST){const tt=1-coastDist[i]/COAST,t2=tt*tt;
-r-=t2*36;g-=t2*44;b-=t2*47;r+=tt*10;g+=tt*3;}
+// shoreline: broad gradient to a darker tea-stained discolour
+if(coastDist[i]<COAST){const tt=1-coastDist[i]/COAST,t2=tt*(0.45+tt*0.55);
+r-=t2*36;g-=t2*44;b-=t2*47;r+=tt*9;g+=tt*3;}
 // river ink
 if(rm){const txT=Math.min(tw-1,(si%W)/RES|0),tyT=Math.min(th-1,((si/W)|0)/RES|0),mag=rm[tyT*tw+txT];
 if(mag>=2){const a=mag>=4?0.8:mag>=3?0.64:0.48;
@@ -2769,7 +2769,7 @@ const onWater=water[iy*CW+ix];
 const h2=atlasHash(gx+1,gy+4),h3=atlasHash(gx+6,gy+2);
 const rad=1.7+h2*4.8;
 let cr,cg,cb,ca;
-if(onWater){cr=182;cg=170;cb=140;ca=0.04+h*0.18;}      // pale, faint over the sea
+if(onWater){cr=164;cg=142;cb=102;ca=0.10+h*0.36;}      // paler tan over the sea
 else{cr=(98+h*94)|0;cg=(76+h*52)|0;cb=42;ca=0.05+h*0.36;} // brown on land
 octx.save();octx.translate(px,py);octx.rotate(h2*6.283);octx.scale(1,0.5+h3*0.8);
 const blobs=h<0.15?2:1;
