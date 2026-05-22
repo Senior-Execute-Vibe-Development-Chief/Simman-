@@ -32,7 +32,7 @@ const N = cw * ch;
 // with log-normal-ish weight distribution for realistic size disparity.
 // ═══════════════════════════════════════════════════════
 const numMajor = p('numMajorBase', 6) + Math.floor(rng() * p('numMajorRange', 3));
-const numMinor = p('numMinorBase', 8) + Math.floor(rng() * p('numMinorRange', 6));
+const numMinor = p('numMinorBase', 5) + Math.floor(rng() * p('numMinorRange', 4));
 const numPlates = numMajor + numMinor;
 const plates = [];
 
@@ -57,7 +57,7 @@ for (let i = 0; i < numPlates; i++) {
   // class adds further irregularity. Weight units are squared-distance offsets.
   const weight = isMajor
     ? p('majorWeightMin', 0.012) + rng() * p('majorWeightRange', 0.020)
-    : p('minorWeightMin', 0.001) + rng() * p('minorWeightRange', 0.005);
+    : p('minorWeightMin', 0.003) + rng() * p('minorWeightRange', 0.005);
 
   const hasCont = isMajor ? rng() < p('majorContProb', 0.70) : rng() < p('minorContProb', 0.40);
 
@@ -67,7 +67,7 @@ for (let i = 0; i < numPlates; i++) {
   const nucY = cy + Math.sin(nucAngle) * nucOffset;
 
   // Larger continent radii for major plates → more cohesive landmasses
-  const contRadius = hasCont ? (isMajor ? p('majorContRadMin', 0.14) + rng() * p('majorContRadRange', 0.18) : p('minorContRadMin', 0.07) + rng() * p('minorContRadRange', 0.08)) : 0;
+  const contRadius = hasCont ? (isMajor ? p('majorContRadMin', 0.10) + rng() * p('majorContRadRange', 0.10) : p('minorContRadMin', 0.05) + rng() * p('minorContRadRange', 0.06)) : 0;
 
   plates.push({
     cx, cy,
@@ -86,7 +86,7 @@ while (numWithCont < 3) {
   const idx = Math.floor(rng() * numMajor);
   if (!plates[idx].hasCont) {
     plates[idx].hasCont = true;
-    plates[idx].contRadius = 0.14 + rng() * 0.16;
+    plates[idx].contRadius = 0.10 + rng() * 0.10;
     numWithCont++;
   }
 }
@@ -105,7 +105,7 @@ const PS = 2;
 const ppW = Math.ceil(W / PS), ppH = Math.ceil(H / PS);
 const pixPlateCoarse = new Uint8Array(ppW * ppH);
 
-const _ws1 = p('warpStr1', 0.18), _ws2 = p('warpStr2', 0.05), _js = p('jagStr', 0.04);
+const _ws1 = p('warpStr1', 0.11), _ws2 = p('warpStr2', 0.05), _js = p('jagStr', 0.04);
 const _psx = p('plateStretchX', 1.3), _psy = p('plateStretchY', 0.8);
 for (let py = 0; py < ppH; py++) for (let px = 0; px < ppW; px++) {
   const x = px * PS, y = py * PS;
