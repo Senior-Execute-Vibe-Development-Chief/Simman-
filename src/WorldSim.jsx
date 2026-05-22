@@ -2615,28 +2615,31 @@ const isLake=lk?lk[tyTile*tw+Math.min(tw-1,(sx/RES)|0)]>=0:false;
 water[i]=(e<=0||isLake)?1:0;
 if(e>landEMax)landEMax=e;}}
 const mtnHi=landEMax*0.55,mtnLo=landEMax*0.34,hillLo=landEMax*0.19;
-// Distance-to-coast (chamfer transform) — drives the worn, tea-stained shoreline band
-const coastDist=new Float32Array(N);
-for(let i=0;i<N;i++)coastDist[i]=water[i]?0:1e9;
-for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){const i=ty*CW+tx;let dd=coastDist[i];
-if(tx>0){const v=coastDist[i-1]+1;if(v<dd)dd=v;}
-if(ty>0){const v=coastDist[i-CW]+1;if(v<dd)dd=v;}
-if(tx>0&&ty>0){const v=coastDist[i-CW-1]+1.4142;if(v<dd)dd=v;}
-if(tx<CW-1&&ty>0){const v=coastDist[i-CW+1]+1.4142;if(v<dd)dd=v;}
-coastDist[i]=dd;}
-for(let ty=CH-1;ty>=0;ty--)for(let tx=CW-1;tx>=0;tx--){const i=ty*CW+tx;let dd=coastDist[i];
-if(tx<CW-1){const v=coastDist[i+1]+1;if(v<dd)dd=v;}
-if(ty<CH-1){const v=coastDist[i+CW]+1;if(v<dd)dd=v;}
-if(tx<CW-1&&ty<CH-1){const v=coastDist[i+CW+1]+1.4142;if(v<dd)dd=v;}
-if(tx>0&&ty<CH-1){const v=coastDist[i+CW-1]+1.4142;if(v<dd)dd=v;}
-coastDist[i]=dd;}
+// Chamfer distance transforms — coastDist drives the worn shoreline; seaDist bends waves round land
+const chamfer=(f)=>{
+for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){const i=ty*CW+tx;let dd=f[i];
+if(tx>0){const v=f[i-1]+1;if(v<dd)dd=v;}
+if(ty>0){const v=f[i-CW]+1;if(v<dd)dd=v;}
+if(tx>0&&ty>0){const v=f[i-CW-1]+1.4142;if(v<dd)dd=v;}
+if(tx<CW-1&&ty>0){const v=f[i-CW+1]+1.4142;if(v<dd)dd=v;}
+f[i]=dd;}
+for(let ty=CH-1;ty>=0;ty--)for(let tx=CW-1;tx>=0;tx--){const i=ty*CW+tx;let dd=f[i];
+if(tx<CW-1){const v=f[i+1]+1;if(v<dd)dd=v;}
+if(ty<CH-1){const v=f[i+CW]+1;if(v<dd)dd=v;}
+if(tx<CW-1&&ty<CH-1){const v=f[i+CW+1]+1.4142;if(v<dd)dd=v;}
+if(tx>0&&ty<CH-1){const v=f[i+CW-1]+1.4142;if(v<dd)dd=v;}
+f[i]=dd;}};
+const coastDist=new Float32Array(N),seaDist=new Float32Array(N);
+for(let i=0;i<N;i++){coastDist[i]=water[i]?0:1e9;seaDist[i]=water[i]?1e9:0;}
+chamfer(coastDist);chamfer(seaDist);
 // Downsampled fbm fields — staining is low-frequency, so 4× downsample is invisible (~16× fewer fbm calls)
 const QW=(CW>>2)+2,QH=(CH>>2)+2;
 const mkField=(fx,fy,oct,ox,oy)=>{const f=new Float32Array(QW*QH);
 for(let j=0;j<QH;j++)for(let k=0;k<QW;k++)f[j*QW+k]=fbm(k*4/CW*fx+ox,j*4/CH*fy+oy,oct,2,0.5);
 return f;};
 const bigF=mkField(3.0,3.0,3,11,11),stnF=mkField(4.6,4.6,3,93,93),midF=mkField(8,8,3,40,40),
-fineF=mkField(27,27,2,71,71),oA=mkField(6,6,3,3,3),oB=mkField(19,19,2,9,9),warpF=mkField(3.5,3.5,2,55,55);
+fineF=mkField(27,27,2,71,71),oA=mkField(6,6,3,3,3),oB=mkField(19,19,2,9,9),warpF=mkField(3.5,3.5,2,55,55),
+oC=mkField(4.5,4.5,2,121,121),oD=mkField(2.8,2.8,2,151,151);
 const samp=(f,x,y)=>{const fx=x*0.25,fy=y*0.25,x0=fx|0,y0=fy|0,dx=fx-x0,dy=fy-y0,
 a=f[y0*QW+x0],b=f[y0*QW+x0+1],cc=f[(y0+1)*QW+x0],dd=f[(y0+1)*QW+x0+1];
 return a*(1-dx)*(1-dy)+b*dx*(1-dy)+cc*(1-dx)*dy+dd*dx*dy;};
@@ -2647,12 +2650,22 @@ const i=ty*CW+tx,si=dataIdx[i],pi=i<<2,e=w.elevation[si];
 if(water[i]){
 const depth=Math.min(1,Math.max(0,-e)*2.2);
 const n=samp(oA,tx,ty),n2=samp(oB,tx,ty),gr=atlasHash(tx,ty)-0.5;
-// gentle, softly-swirling current bands
-const cur=Math.sin(tx*0.045+ty*0.02+samp(warpF,tx,ty)*7);
-const cl=Math.max(0,cur)*Math.max(0,cur)*2;
-d[pi]=17-depth*8+n*4+n2*2+gr*3+cl;
-d[pi+1]=21-depth*10+n*4+n2*2+gr*3+cl;
-d[pi+2]=34-depth*13+n*5+n2*3+gr*4+cl*1.3;
+const warp=samp(warpF,tx,ty),wa=samp(oC,tx,ty),wb=samp(oD,tx,ty);
+// Swells: warped open-ocean bands that blend into shore-hugging bands near land
+const cd=seaDist[i],cw=Math.min(1,cd/120);
+const fmod=0.74+(wb+0.7)*0.7;                           // band spacing wanders region to region
+const gPhase=(tx*0.045+ty*0.028)*fmod+warp*11+wa*7;     // open-water swell
+const cPhase=cd*(0.1+wb*0.045)+warp*4;                  // bands running parallel to the coast
+const phase=cPhase+(gPhase-cPhase)*cw;
+// two harmonics → irregular, unpredictable crest shapes
+const cur=Math.sin(phase)*0.72+Math.sin(phase*2.27+warp*6)*0.28;
+const expo=0.9+(n+0.5)*0.8;                             // crest width varies region to region
+const amp=3.0+wa*2.4;                                   // wave strength varies region to region
+const wave=(cur>=0?1:-1)*Math.pow(Math.abs(cur),expo)*amp; // crests lighten, troughs darken
+// crest hue varies bluer↔greyer; base hue drifts with the broad fields
+d[pi]=15-depth*8+n2*3+wb*2+gr*3+wave*(0.6+wb*0.5);
+d[pi+1]=19-depth*10+n2*3+wb*2+gr*3+wave*(0.85+wb*0.2);
+d[pi+2]=32-depth*13+n2*5-wb*2+gr*4+wave*(1.3-wb*0.45);
 d[pi+3]=255;continue;}
 const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);
 const big=samp(bigF,tx,ty),mid=samp(midF,tx,ty),fine=samp(fineF,tx,ty);
@@ -2690,22 +2703,6 @@ d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;}
 octx.putImageData(img,0,0);
 // ── Cartographic symbols ──
 octx.lineJoin="round";octx.lineCap="round";
-// Ocean current lines — sparse, soft hand-inked strokes that follow the flow
-for(let gy=4;gy<CH-4;gy+=11)for(let gx=4;gx<CW-4;gx+=11){
-const h1=atlasHash(gx,gy);if(h1>0.34)continue;
-const px=gx+(atlasHash(gx+5,gy+2)-0.5)*9,py=gy+(atlasHash(gx+2,gy+7)-0.5)*9;
-const ix=px|0,iy=py|0;
-if(ix<1||ix>=CW-1||iy<1||iy>=CH-1||!water[iy*CW+ix])continue;
-const h2=atlasHash(gx+9,gy+4),h3=atlasHash(gx+3,gy+11);
-// follow the current with only mild jitter — wavy, not chaotic
-const ang=samp(warpF,px,py)*5+(h2-0.5)*0.9;
-const len=4+h3*7,dx=Math.cos(ang),dy=Math.sin(ang),cv=(h1-0.17)*len*0.8;
-octx.strokeStyle=`rgba(108,124,156,${0.035+h3*0.07})`;
-octx.lineWidth=0.4+h3*0.4;
-octx.beginPath();
-octx.moveTo(px-dx*len*0.5,py-dy*len*0.5);
-octx.quadraticCurveTo(px-dy*cv,py+dx*cv,px+dx*len*0.5,py+dy*len*0.5);
-octx.stroke();}
 // Foxing — scattered small age-spots on the paper
 for(let gy=4;gy<CH-4;gy+=9)for(let gx=4;gx<CW-4;gx+=9){
 const px=(gx+(atlasHash(gx+3,gy+5)-0.5)*8)|0,py=(gy+(atlasHash(gx+7,gy+1)-0.5)*8)|0;
