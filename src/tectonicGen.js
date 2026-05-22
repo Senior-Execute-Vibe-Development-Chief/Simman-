@@ -162,23 +162,38 @@ for (let pi = 0; pi < numPlates; pi++) {
 
   const numSubs = isMaj ? p('majorSubsBase', 7) + Math.floor(rng() * p('majorSubsRange', 5)) : p('minorSubsBase', 3) + Math.floor(rng() * p('minorSubsRange', 4));
 
+  // Grow the continent as a branching, curling walk of overlapping stamps —
+  // elongated and irregular rather than a round cluster around the nucleus.
+  const growAngle = rng() * Math.PI * 2;
+  const elong = 0.4 + rng() * 0.5;
+  const maxExtent = plate.contRadius * (1.4 + rng() * 1.0);
+  const placed = [];
   for (let s = 0; s < numSubs; s++) {
-    const ang = rng() * Math.PI * 2;
-    const dist = s === 0 ? 0 : (0.03 + rng() * 0.08) * scale;
-    const aspect = s === 0 ? 1 + rng() * 0.4
-      : s <= 2 && rng() < 0.35 ? 1.3 + rng() * 1.2
-      : 1 + rng() * 1.0;
     const baseR = (s === 0
       ? (isMaj ? p('majorCoreRadMin', 0.12) + rng() * p('majorCoreRadRange', 0.10) : p('minorCoreRadMin', 0.07) + rng() * p('minorCoreRadRange', 0.06))
       : (isMaj ? p('majorSubRadMin', 0.05) + rng() * p('majorSubRadRange', 0.08) : p('minorSubRadMin', 0.03) + rng() * p('minorSubRadRange', 0.05))
     ) * scale;
-    const rot = rng() * Math.PI;
+    let sx, sy;
+    if (s === 0) { sx = cx; sy = cy; }
+    else {
+      const parent = rng() < 0.62 ? placed[placed.length - 1] : placed[Math.floor(rng() * placed.length)];
+      const pd = Math.sqrt((parent.x - cx) * (parent.x - cx) + (parent.y - cy) * (parent.y - cy));
+      const pull = Math.min(1, pd / maxExtent);
+      let ang;
+      if (rng() < pull * 0.85) ang = Math.atan2(cy - parent.y, cx - parent.x) + (rng() - 0.5) * 2.0;
+      else ang = (rng() < elong) ? growAngle + (rng() - 0.5) * 1.7 : rng() * Math.PI * 2;
+      const step = (parent.r + baseR) * (0.5 + rng() * 0.32);
+      sx = parent.x + Math.cos(ang) * step;
+      sy = parent.y + Math.sin(ang) * step;
+    }
+    placed.push({ x: sx, y: sy, r: baseR });
+    const aspect = s === 0 ? 1 + rng() * 0.5 : 1.2 + rng() * rng() * 2.2;
+    const rot = rng() < 0.55 ? growAngle + (rng() - 0.5) * 0.9 : rng() * Math.PI;
     posStamps.push({
-      cx: cx + Math.cos(ang) * dist,
-      cy: cy + Math.sin(ang) * dist,
+      cx: sx, cy: sy,
       rx: baseR * aspect, ry: baseR / aspect,
       rot, cos: Math.cos(rot), sin: Math.sin(rot),
-      str: s === 0 ? 0.9 + rng() * 0.3 : 0.5 + rng() * 0.4,
+      str: s === 0 ? 0.9 + rng() * 0.3 : 0.55 + rng() * 0.4,
       no: no + s * 17,
       plateId: pi,
       contRadius: plate.contRadius
@@ -187,14 +202,15 @@ for (let pi = 0; pi < numPlates; pi++) {
 
   const numNegs = isMaj ? Math.floor(rng() * p('majorNegsMax', 4)) : Math.floor(rng() * p('minorNegsMax', 1.5));
   for (let n = 0; n < numNegs; n++) {
+    const anchor = placed[Math.floor(rng() * placed.length)];
     const ang = rng() * Math.PI * 2;
-    const dist = (0.02 + rng() * 0.06) * scale;
+    const dist = anchor.r * (0.55 + rng() * 0.85);
     const rot = rng() * Math.PI;
     negStamps.push({
-      cx: cx + Math.cos(ang) * dist,
-      cy: cy + Math.sin(ang) * dist,
-      rx: (0.02 + rng() * 0.04) * scale,
-      ry: (0.015 + rng() * 0.03) * scale,
+      cx: anchor.x + Math.cos(ang) * dist,
+      cy: anchor.y + Math.sin(ang) * dist,
+      rx: (0.02 + rng() * 0.05) * scale,
+      ry: (0.015 + rng() * 0.035) * scale,
       rot, cos: Math.cos(rot), sin: Math.sin(rot),
       str: 0.25 + rng() * 0.3,
       no: no + 50 + n * 13,
