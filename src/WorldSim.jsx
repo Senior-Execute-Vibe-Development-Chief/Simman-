@@ -2654,12 +2654,12 @@ const warp=samp(warpF,tx,ty),wa=samp(oC,tx,ty),wb=samp(oD,tx,ty);
 // Swells: warped open-ocean bands that blend into shore-hugging bands near land
 const cd=seaDist[i],cw=Math.min(1,cd/120);
 const fmod=0.74+(wb+0.7)*0.7;                           // band spacing wanders region to region
-const gPhase=(tx*0.045+ty*0.028)*fmod+warp*11+wa*7;     // open-water swell
-const cPhase=cd*(0.1+wb*0.045)+warp*4;                  // bands running parallel to the coast
+const gPhase=(tx*0.043+ty*0.027)*fmod+warp*12+wa*7+n*5;     // open-water swell
+const cPhase=cd*(0.1+wb*0.045)+warp*5+n*3;                  // bands running parallel to the coast
 const phase=cPhase+(gPhase-cPhase)*cw;
 // two harmonics → irregular, unpredictable crest shapes
-const cur=Math.sin(phase)*0.72+Math.sin(phase*2.27+warp*6)*0.28;
-const expo=0.9+(n+0.5)*0.8;                             // crest width varies region to region
+const cur=Math.sin(phase)*0.7+Math.sin(phase*2.27+warp*6)*0.3;
+const expo=0.9+(n2+0.5)*0.8;                             // crest width varies region to region
 const amp=3.0+wa*2.4;                                   // wave strength varies region to region
 const wave=(cur>=0?1:-1)*Math.pow(Math.abs(cur),expo)*amp; // crests lighten, troughs darken
 // crest hue varies bluer↔greyer; base hue drifts with the broad fields
@@ -2700,6 +2700,20 @@ r=r*(1-a)+38*a;g=g*(1-a)+50*a;b=b*(1-a)+66*a;}}
 if(coastDist[i]<=1.7){const ink=0.6+atlasHash(tx,ty)*0.34;
 r=r*(1-ink)+34*ink;g=g*(1-ink)+27*ink;b=b*(1-ink)+18*ink;}
 d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;}
+// Smudge the sea — water-only separable box blur so the swells read soft and natural
+{const BR=3,tmp=new Float32Array(N*3);
+for(let ty=0;ty<CH;ty++){const row=ty*CW;
+for(let tx=0;tx<CW;tx++){const i=row+tx;if(!water[i])continue;
+let sr=0,sg=0,sb=0,c=0;const x0=tx-BR<0?0:tx-BR,x1=tx+BR>=CW?CW-1:tx+BR;
+for(let x2=x0;x2<=x1;x2++){const j=row+x2;if(!water[j])continue;
+const pj=j<<2;sr+=d[pj];sg+=d[pj+1];sb+=d[pj+2];c++;}
+const p3=i*3;tmp[p3]=sr/c;tmp[p3+1]=sg/c;tmp[p3+2]=sb/c;}}
+for(let tx=0;tx<CW;tx++){
+for(let ty=0;ty<CH;ty++){const i=ty*CW+tx;if(!water[i])continue;
+let sr=0,sg=0,sb=0,c=0;const y0=ty-BR<0?0:ty-BR,y1=ty+BR>=CH?CH-1:ty+BR;
+for(let y2=y0;y2<=y1;y2++){const j=y2*CW+tx;if(!water[j])continue;
+const pj=j*3;sr+=tmp[pj];sg+=tmp[pj+1];sb+=tmp[pj+2];c++;}
+const pi=i<<2;d[pi]=sr/c;d[pi+1]=sg/c;d[pi+2]=sb/c;}}}
 octx.putImageData(img,0,0);
 // ── Cartographic symbols ──
 octx.lineJoin="round";octx.lineCap="round";
