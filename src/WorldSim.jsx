@@ -2713,7 +2713,7 @@ r+=grain*9;g+=grain*9;b+=grain*8;
 r+=(246-r)*0.2;g+=(242-g)*0.2;b+=(234-b)*0.2;
 // broad darkened halo hugging every coastline, fading out to open sea
 const sd=seaDist[i];
-if(sd<HALO){const hh=1-sd/HALO,f=Math.min(1,hh*4),hk=f*f*(3-2*f);
+if(sd<HALO){const hh=1-sd/HALO,hk=hh*hh;
 r-=hk*86;g-=hk*87;b-=hk*79;}
 d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;continue;}
 const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);
