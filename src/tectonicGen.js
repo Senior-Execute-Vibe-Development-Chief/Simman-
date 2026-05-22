@@ -150,6 +150,9 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 // ═══════════════════════════════════════════════════════
 const rawElev = new Float32Array(W * H);
 const posStamps = [], negStamps = [];
+// Map is 2:1 (equirectangular). Continent gen works in normalized 1x1 space,
+// so a y-step must be AR* longer to cover the same display pixels as an x-step.
+const AR = W / H;
 
 for (let pi = 0; pi < numPlates; pi++) {
   const plate = plates[pi];
@@ -177,21 +180,21 @@ for (let pi = 0; pi < numPlates; pi++) {
     if (s === 0) { sx = cx; sy = cy; }
     else {
       const parent = rng() < 0.62 ? placed[placed.length - 1] : placed[Math.floor(rng() * placed.length)];
-      const pd = Math.sqrt((parent.x - cx) * (parent.x - cx) + (parent.y - cy) * (parent.y - cy));
-      const pull = Math.min(1, pd / maxExtent);
+      const pdx = parent.x - cx, pdy = (parent.y - cy) / AR;
+      const pull = Math.min(1, Math.sqrt(pdx * pdx + pdy * pdy) / maxExtent);
       let ang;
-      if (rng() < pull * 0.85) ang = Math.atan2(cy - parent.y, cx - parent.x) + (rng() - 0.5) * 2.0;
+      if (rng() < pull * 0.85) ang = Math.atan2((cy - parent.y) / AR, cx - parent.x) + (rng() - 0.5) * 2.0;
       else ang = (rng() < elong) ? growAngle + (rng() - 0.5) * 1.7 : rng() * Math.PI * 2;
       const step = (parent.r + baseR) * (0.5 + rng() * 0.32);
       sx = parent.x + Math.cos(ang) * step;
-      sy = parent.y + Math.sin(ang) * step;
+      sy = parent.y + Math.sin(ang) * step * AR;
     }
     placed.push({ x: sx, y: sy, r: baseR });
     const aspect = s === 0 ? 1 + rng() * 0.5 : 1.2 + rng() * rng() * 2.2;
     const rot = rng() < 0.55 ? growAngle + (rng() - 0.5) * 0.9 : rng() * Math.PI;
     posStamps.push({
       cx: sx, cy: sy,
-      rx: baseR * aspect, ry: baseR / aspect,
+      rx: baseR * aspect, ry: baseR / aspect * AR,
       rot, cos: Math.cos(rot), sin: Math.sin(rot),
       str: s === 0 ? 0.9 + rng() * 0.3 : 0.55 + rng() * 0.4,
       no: no + s * 17,
@@ -210,7 +213,7 @@ for (let pi = 0; pi < numPlates; pi++) {
       cx: anchor.x + Math.cos(ang) * dist,
       cy: anchor.y + Math.sin(ang) * dist,
       rx: (0.02 + rng() * 0.05) * scale,
-      ry: (0.015 + rng() * 0.035) * scale,
+      ry: (0.015 + rng() * 0.035) * scale * AR,
       rot, cos: Math.cos(rot), sin: Math.sin(rot),
       str: 0.25 + rng() * 0.3,
       no: no + 50 + n * 13,
