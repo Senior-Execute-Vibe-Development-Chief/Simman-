@@ -2705,17 +2705,15 @@ const i=ty*CW+tx,si=dataIdx[i],pi=i<<2,e=w.elevation[si];
 const big=samp(bigF,tx,ty),mid=samp(midF,tx,ty),fine=samp(fineF,tx,ty),stn=samp(stnF,tx,ty);
 const grain=atlasHash(tx,ty)-0.5;
 if(water[i]){
-// Sea: identical to the land parchment, just lifted a touch paler
-let r=205,g=187,b=146;
-r+=big*40;g+=big*37;b+=big*31;
-const stain=Math.max(0,mid+0.15)+Math.max(0,stn-0.05)*0.65;
-r-=stain*36;g-=stain*44;b-=stain*49;
-if(mid>0.30){const s=(mid-0.30)*1.6;r-=s*36;g-=s*40;b-=s*40;}
-r+=fine*17+grain*12;g+=fine*16+grain*12;b+=fine*13+grain*11;
-r+=(245-r)*0.2;g+=(241-g)*0.2;b+=(233-b)*0.2;
+// Sea: the same parchment, calmed down — only a soft broad tone and fine
+// per-pixel grain (the higher-frequency fields cause hatching on flat areas)
+let r=197,g=174,b=126;
+r+=big*16;g+=big*15;b+=big*13;
+r+=grain*9;g+=grain*9;b+=grain*8;
+r+=(246-r)*0.2;g+=(242-g)*0.2;b+=(234-b)*0.2;
 d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;continue;}
 const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);
-let r=205,g=187,b=146;
+let r=197,g=174,b=126;
 // broad uneven aged tone
 r+=big*40;g+=big*37;b+=big*31;
 // blotchy brown stains at two scales — worn discolouring
