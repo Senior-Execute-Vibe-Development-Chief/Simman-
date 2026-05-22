@@ -2705,12 +2705,13 @@ const i=ty*CW+tx,si=dataIdx[i],pi=i<<2,e=w.elevation[si];
 const big=samp(bigF,tx,ty),mid=samp(midF,tx,ty),fine=samp(fineF,tx,ty),stn=samp(stnF,tx,ty);
 const grain=atlasHash(tx,ty)-0.5;
 if(water[i]){
-// Sea: pale parchment with broad-scale aged discolouration. Only the
-// low-frequency fields (big, stn) — the higher ones hatch on flat water.
+// Sea: pale parchment, broadly discoloured by the wind field —
+// windier water reads as darker, more weathered staining
 let r=197,g=174,b=126;
-r+=big*28;g+=big*26;b+=big*22;
-const seaStain=Math.max(0,stn-0.05);
-r-=seaStain*26;g-=seaStain*30;b-=seaStain*33;
+let wd=0;
+if(w.windX){const vx=w.windX[si],vy=w.windY[si];wd=Math.min(1,Math.pow(vx*vx+vy*vy,0.25));}
+r-=wd*42;g-=wd*48;b-=wd*54;
+r+=big*12;g+=big*11;b+=big*9;
 r+=grain*9;g+=grain*9;b+=grain*8;
 r+=(246-r)*0.2;g+=(242-g)*0.2;b+=(234-b)*0.2;
 // broad darkened halo hugging every coastline, fading out to open sea
