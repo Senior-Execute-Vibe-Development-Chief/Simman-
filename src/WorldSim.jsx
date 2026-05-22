@@ -483,23 +483,62 @@ function atlasHill(c,x,y,s){
 c.strokeStyle='rgba(74,58,36,0.78)';c.lineWidth=Math.max(0.5,s*0.32);
 c.beginPath();c.arc(x,y+s*0.45,s,Math.PI,2*Math.PI);c.stroke();}
 // Tree — same hand-inked style as the mountains: tall, pointy, shaded, with a trunk stump
-function atlasTree(c,x,y,s,broad,tone){
-const wd=s*(broad?0.40:0.28);
-const baseY=y+s*0.42,apexY=y-s*0.58;
-const tw=Math.max(0.9,s*0.16),thh=s*0.30;
+// ── Atlas tree silhouettes — one distinct shape per forest type ──
+// Conifer/fir — tall narrow spire with tier hatching (taiga, boreal)
+function atlasConifer(c,x,y,s,tone){
+const wd=s*0.30,baseY=y+s*0.42,apexY=y-s*0.60;
+const tw=Math.max(0.9,s*0.15),thh=s*0.30;
 c.fillStyle='#43331d';c.fillRect(x-tw/2,baseY-0.6,tw,thh);
 c.strokeStyle='rgba(32,23,11,0.85)';c.lineWidth=Math.max(0.4,s*0.08);
 c.strokeRect(x-tw/2,baseY-0.6,tw,thh);
 const lum=0.80+tone*0.40;
 c.beginPath();c.moveTo(x,apexY);c.lineTo(x-wd,baseY);c.lineTo(x+wd,baseY);c.closePath();
-c.fillStyle=`rgb(${(112*lum)|0},${(123*lum)|0},${(72*lum)|0})`;c.fill();
+c.fillStyle=`rgb(${(88*lum)|0},${(112*lum)|0},${(78*lum)|0})`;c.fill();
 c.beginPath();c.moveTo(x,apexY);c.lineTo(x+wd,baseY);c.lineTo(x,baseY);c.closePath();
-c.fillStyle='rgba(22,30,12,0.46)';c.fill();
-if(!broad){c.strokeStyle='rgba(26,33,15,0.5)';c.lineWidth=Math.max(0.35,s*0.09);
+c.fillStyle='rgba(20,28,12,0.46)';c.fill();
+c.strokeStyle='rgba(24,32,15,0.5)';c.lineWidth=Math.max(0.35,s*0.09);
 c.beginPath();c.moveTo(x-wd*0.62,baseY-s*0.30);c.lineTo(x+wd*0.62,baseY-s*0.30);
-c.moveTo(x-wd*0.32,baseY-s*0.62);c.lineTo(x+wd*0.32,baseY-s*0.62);c.stroke();}
-c.strokeStyle='rgba(28,35,16,0.92)';c.lineWidth=Math.max(0.5,s*0.13);
+c.moveTo(x-wd*0.32,baseY-s*0.62);c.lineTo(x+wd*0.32,baseY-s*0.62);c.stroke();
+c.strokeStyle='rgba(26,34,16,0.92)';c.lineWidth=Math.max(0.5,s*0.13);
 c.beginPath();c.moveTo(x-wd,baseY);c.lineTo(x,apexY);c.lineTo(x+wd,baseY);c.stroke();}
+// Deciduous — round lumpy canopy (temperate, subtropical broadleaf)
+function atlasRoundTree(c,x,y,s,tone){
+const rad=s*0.58,cy=y-s*0.10;
+const tw=Math.max(0.8,s*0.15),thh=s*0.34;
+c.fillStyle='#4a3820';c.fillRect(x-tw/2,cy+rad*0.5,tw,thh);
+c.strokeStyle='rgba(32,23,11,0.8)';c.lineWidth=Math.max(0.4,s*0.08);
+c.strokeRect(x-tw/2,cy+rad*0.5,tw,thh);
+const lum=0.82+tone*0.36;
+c.beginPath();
+c.arc(x-rad*0.46,cy+rad*0.14,rad*0.62,0,6.2832);
+c.arc(x+rad*0.46,cy+rad*0.18,rad*0.58,0,6.2832);
+c.arc(x-rad*0.04,cy-rad*0.40,rad*0.66,0,6.2832);
+c.arc(x+rad*0.22,cy+rad*0.04,rad*0.60,0,6.2832);
+c.fillStyle=`rgb(${(128*lum)|0},${(142*lum)|0},${(74*lum)|0})`;c.fill();
+c.strokeStyle='rgba(40,46,22,0.9)';c.lineWidth=Math.max(0.5,s*0.12);c.stroke();}
+// Jungle — broad, dark, low spreading canopy (rainforest)
+function atlasJungleTree(c,x,y,s,tone){
+const tw=Math.max(0.7,s*0.12);
+c.fillStyle='#3a2c18';c.fillRect(x-tw/2,y-s*0.04,tw,s*0.44);
+const lum=0.72+tone*0.34,cy=y-s*0.30;
+c.beginPath();
+c.arc(x-s*0.62,cy+s*0.08,s*0.42,0,6.2832);
+c.arc(x+s*0.62,cy+s*0.08,s*0.40,0,6.2832);
+c.arc(x-s*0.24,cy-s*0.10,s*0.47,0,6.2832);
+c.arc(x+s*0.26,cy-s*0.08,s*0.46,0,6.2832);
+c.arc(x,cy+s*0.04,s*0.44,0,6.2832);
+c.fillStyle=`rgb(${(70*lum)|0},${(94*lum)|0},${(50*lum)|0})`;c.fill();
+c.strokeStyle='rgba(18,26,11,0.92)';c.lineWidth=Math.max(0.45,s*0.1);c.stroke();}
+// Acacia — flat-topped crown on a tall trunk (tropical dry forest, savanna)
+function atlasAcacia(c,x,y,s,tone){
+const tw=Math.max(0.7,s*0.12),topY=y-s*0.46;
+c.fillStyle='#4a3820';c.fillRect(x-tw/2,topY+s*0.06,tw,s*0.58);
+c.strokeStyle='rgba(32,23,11,0.8)';c.lineWidth=Math.max(0.35,s*0.07);
+c.strokeRect(x-tw/2,topY+s*0.06,tw,s*0.58);
+const lum=0.80+tone*0.34;
+c.beginPath();c.ellipse(x,topY,s*0.78,s*0.27,0,0,6.2832);
+c.fillStyle=`rgb(${(122*lum)|0},${(130*lum)|0},${(70*lum)|0})`;c.fill();
+c.strokeStyle='rgba(40,44,22,0.88)';c.lineWidth=Math.max(0.45,s*0.1);c.stroke();}
 // Grass tuft — a small fan of curved blades
 function atlasTuft(c,x,y,s,tone){
 c.strokeStyle=`rgba(${(94+tone*46)|0},${(104+tone*30)|0},${(58+tone*22)|0},0.82)`;
@@ -2784,7 +2823,7 @@ const m=w.moisture[si],biome=getBiomeD(e,m,w.temperature[si],0);
 const h=atlasHash(gx+11,gy+4),tone=atlasHash(gx+3,gy+9);
 if(biome===12){if(h>0.42+m*0.5)continue;atlasTuft(octx,px,py,2.6+tone*2.1,tone);}
 else if(biome===11){if(h>0.4)continue;
-if(atlasHash(gx+7,gy+1)<0.1)atlasTree(octx,px,py,4.4+tone*2.1,true,tone);
+if(atlasHash(gx+7,gy+1)<0.1)atlasAcacia(octx,px,py,4.4+tone*2.1,tone);
 else atlasTuft(octx,px,py,2.2+tone*1.8,tone);}
 else if(biome===14){if(h>0.5)continue;atlasShrub(octx,px,py,1.9+tone*1.3,tone);}
 else if(biome===4){if(h>0.34)continue;
@@ -2810,32 +2849,35 @@ atlasHill(octx,px,py,1.7+atlasHash(gx+2,gy+6)*1.3);
 }else if(e>=footLo){
 if(atlasHash(gx+5,gy+8)>0.06)continue;
 atlasHill(octx,px,py,0.85+atlasHash(gx+2,gy+6)*0.6);}}
-// Ordinary forests — moderate scatter so the parchment reads through
+// Ordinary forests — moderate scatter; tree silhouette varies by biome
 for(let gy=4;gy<CH-4;gy+=6)for(let gx=4;gx<CW-4;gx+=6){
 const px=(gx+(atlasHash(gx+1,gy+2)-0.5)*5)|0,py=(gy+(atlasHash(gx+4,gy+8)-0.5)*5)|0;
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
 const biome=getBiomeD(e,w.moisture[si],w.temperature[si],0);
-let conifer=false,cover=0;
-if(biome===8||biome===17)cover=0.15;         // temperate / subtropical forest
-else if(biome===15)cover=0.10;               // tropical dry forest — sparse
-else if(biome===6||biome===7){cover=0.16;conifer=true;} // taiga / boreal
+let cover=0,kind=0;                          // kind: 0 conifer, 1 deciduous, 2 acacia
+if(biome===6){cover=0.17;kind=0;}            // taiga — fir
+else if(biome===8||biome===17){cover=0.16;kind=1;} // temperate / subtropical — broadleaf
+else if(biome===15){cover=0.11;kind=2;}      // tropical dry forest — acacia
 else continue;
 if(atlasHash(gx+13,gy+5)>cover)continue;
-const size=4.2+atlasHash(gx+9,gy+1)*2.8;
-atlasTree(octx,px,py,size,!conifer,atlasHash(gx+2,gy+11));}
-// Rainforest — packed, overlapping thicket on a tight grid (temperate + tropical rainforest)
+const tone=atlasHash(gx+2,gy+11),size=4.2+atlasHash(gx+9,gy+1)*2.8;
+if(kind===0)atlasConifer(octx,px,py,size,tone);
+else if(kind===1)atlasRoundTree(octx,px,py,size,tone);
+else atlasAcacia(octx,px,py,size,tone);}
+// Dense forest — packed, overlapping thicket: rainforests (jungle) + boreal (fir)
 for(let gy=3;gy<CH-3;gy+=4)for(let gx=3;gx<CW-3;gx+=4){
 const px=(gx+(atlasHash(gx+1,gy+5)-0.5)*4)|0,py=(gy+(atlasHash(gx+6,gy+2)-0.5)*4)|0;
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
 const bm=getBiomeD(e,w.moisture[si],w.temperature[si],0);
-if(bm!==9&&bm!==10)continue;
+if(bm!==9&&bm!==10&&bm!==7)continue;
 if(atlasHash(gx+7,gy+9)>0.95)continue;
-const size=5.0+atlasHash(gx+9,gy+1)*2.4;
-atlasTree(octx,px,py,size,true,atlasHash(gx+2,gy+11));}
+const tone=atlasHash(gx+2,gy+11);
+if(bm===7)atlasConifer(octx,px,py,4.4+atlasHash(gx+9,gy+1)*2.3,tone);
+else atlasJungleTree(octx,px,py,5.0+atlasHash(gx+9,gy+1)*2.4,tone);}
 // Desert stipple (dune dots)
 for(let gy=4;gy<CH-4;gy+=7)for(let gx=4;gx<CW-4;gx+=7){
 const px=(gx+(atlasHash(gx+6,gy+1)-0.5)*6)|0,py=(gy+(atlasHash(gx+2,gy+9)-0.5)*6)|0;
