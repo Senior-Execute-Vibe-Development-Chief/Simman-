@@ -2649,14 +2649,16 @@ for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
 const i=ty*CW+tx,si=dataIdx[i],pi=i<<2,e=w.elevation[si];
 if(water[i]){
 const depth=Math.min(1,Math.max(0,-e)*2.2);
-const n=samp(oA,tx,ty),n2=samp(oB,tx,ty),gr=atlasHash(tx,ty)-0.5;
-const warp=samp(warpF,tx,ty),wa=samp(oC,tx,ty),wb=samp(oD,tx,ty);
-// Swells: warped open-ocean bands that blend into shore-hugging bands near land
-const cd=seaDist[i],cw=Math.min(1,cd/120);
-const fmod=0.74+(wb+0.7)*0.7;                           // band spacing wanders region to region
-const gPhase=(tx*0.043+ty*0.027)*fmod+warp*12+wa*7+n*5;     // open-water swell
-const cPhase=cd*(0.1+wb*0.045)+warp*5+n*3;                  // bands running parallel to the coast
-const phase=cPhase+(gPhase-cPhase)*cw;
+const n2=samp(oB,tx,ty),gr=atlasHash(tx,ty)-0.5,wa=samp(oC,tx,ty),wb=samp(oD,tx,ty);
+// One continuous swell field; near land it is gently deflected — not replaced
+const cd=seaDist[i];let sx2=tx,sy2=ty;
+if(cd<78&&tx>0&&tx<CW-1&&ty>0&&ty<CH-1){
+const gx=seaDist[i+1]-seaDist[i-1],gy=seaDist[i+CW]-seaDist[i-CW],gl=Math.sqrt(gx*gx+gy*gy)||1;
+const fall=1-cd/78,push=fall*fall*15;                   // subtle: bends the swell near coasts
+sx2=tx+gx/gl*push;sy2=ty+gy/gl*push;}
+const n=samp(oA,sx2,sy2),warp=samp(warpF,sx2,sy2);
+const fmod=0.74+(wb+0.7)*0.7;
+const phase=(sx2*0.043+sy2*0.027)*fmod+warp*12+wa*7+n*5;
 // two harmonics → irregular, unpredictable crest shapes
 const cur=Math.sin(phase)*0.7+Math.sin(phase*2.27+warp*6)*0.3;
 const expo=0.9+(n2+0.5)*0.8;                             // crest width varies region to region
