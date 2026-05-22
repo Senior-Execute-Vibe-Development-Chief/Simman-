@@ -2714,9 +2714,10 @@ r-=wd*42;g-=wd*48;b-=wd*54;
 r+=big*12;g+=big*11;b+=big*9;
 r+=grain*9;g+=grain*9;b+=grain*8;
 r+=(246-r)*0.2;g+=(242-g)*0.2;b+=(234-b)*0.2;
-// broad darkened halo hugging every coastline, fading out to open sea
+// broad darkened halo hugging every ocean coastline (skip lakes — too small,
+// the halo would swallow them into dark blobs; their ink shore defines them)
 const sd=seaDist[i];
-if(sd<HALO){const hh=1-sd/HALO,hk=hh*hh;
+if(sd<HALO&&!(lk&&lk[si]>=0)){const hh=1-sd/HALO,hk=hh*hh;
 r-=hk*86;g-=hk*87;b-=hk*79;}
 d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;continue;}
 const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);

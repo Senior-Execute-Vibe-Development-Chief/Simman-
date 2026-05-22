@@ -830,11 +830,16 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     // Basin: medium-scale depressions and swells — only in stable interiors
     const basinVal = sg(nfBasin, x, y);
     const basinE = basinVal * 0.04 * interior * cratonZone;
-    // Endorheic depressions: use Worley noise to create isolated lake basins.
-    // Worley F1 creates natural circular/elliptical cells — perfect for isolated basins.
-    // Only the deepest part of each cell (near the seed point) becomes a depression.
-    const [wF1] = worley(nx * 10 + 500, ny * 10 + 500);
-    const endorheicE = wF1 < 0.18 ? -(0.18 - wF1) * 0.35 * interior * cratonZone : 0;
+    // Endorheic depressions → isolated lake basins. The Worley input is
+    // domain-warped (so basins are irregular blobs, not perfect circles), its
+    // edge is roughened, and the threshold varies by region so basin sizes
+    // differ widely and many areas have none at all.
+    const ebwx = fbm(nx * 7 + 711, ny * 7 + 711, 3, 2, 0.5) * 0.05;
+    const ebwy = fbm(nx * 7 + 811, ny * 7 + 811, 3, 2, 0.5) * 0.05;
+    let [wF1] = worley((nx + ebwx) * 10 + 500, (ny + ebwy) * 10 + 500);
+    wF1 += noise2D(nx * 46 + 33, ny * 46 + 33) * 0.022;
+    const ebThresh = Math.max(0, fbm(nx * 2.2 + 901, ny * 2.2 + 901, 2, 2, 0.5) * 0.30 + 0.03);
+    const endorheicE = wF1 < ebThresh ? -(ebThresh - wF1) * 0.34 * interior * cratonZone : 0;
 
     // Escarpment: sharp elevation breaks — at shield edges in stable interiors
     const escarpVal = sg(nfEscarpment, x, y);
