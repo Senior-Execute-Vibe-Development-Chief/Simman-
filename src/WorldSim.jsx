@@ -500,6 +500,23 @@ c.beginPath();c.moveTo(x-wd*0.62,baseY-s*0.30);c.lineTo(x+wd*0.62,baseY-s*0.30);
 c.moveTo(x-wd*0.32,baseY-s*0.62);c.lineTo(x+wd*0.32,baseY-s*0.62);c.stroke();}
 c.strokeStyle='rgba(28,35,16,0.92)';c.lineWidth=Math.max(0.5,s*0.13);
 c.beginPath();c.moveTo(x-wd,baseY);c.lineTo(x,apexY);c.lineTo(x+wd,baseY);c.stroke();}
+// Grass tuft — a small fan of curved blades
+function atlasTuft(c,x,y,s,tone){
+c.strokeStyle=`rgba(${(94+tone*46)|0},${(104+tone*30)|0},${(58+tone*22)|0},0.82)`;
+c.lineWidth=Math.max(0.34,s*0.16);
+c.beginPath();
+c.moveTo(x,y);c.quadraticCurveTo(x-s*0.55,y-s*0.5,x-s*0.78,y-s*1.05);
+c.moveTo(x,y);c.quadraticCurveTo(x-s*0.05,y-s*0.7,x+s*0.04,y-s*1.32);
+c.moveTo(x,y);c.quadraticCurveTo(x+s*0.5,y-s*0.5,x+s*0.74,y-s*1.0);
+c.stroke();}
+// Shrub — a small lumpy bush
+function atlasShrub(c,x,y,s,tone){
+c.beginPath();
+c.arc(x-s*0.42,y,s*0.5,0,6.2832);
+c.arc(x+s*0.42,y+s*0.05,s*0.46,0,6.2832);
+c.arc(x,y-s*0.4,s*0.54,0,6.2832);
+c.fillStyle=`rgba(${(84+tone*34)|0},${(96+tone*26)|0},${(56+tone*20)|0},0.72)`;c.fill();
+c.strokeStyle='rgba(42,48,28,0.6)';c.lineWidth=Math.max(0.3,s*0.12);c.stroke();}
 
 // Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
 // Agriculture needs adequate moisture (not maximum) — bell curve peaks at 0.45 (temperate optimum)
@@ -2614,7 +2631,7 @@ dataIdx[i]=si;const e=w.elevation[si];
 const isLake=lk?lk[tyTile*tw+Math.min(tw-1,(sx/RES)|0)]>=0:false;
 water[i]=(e<=0||isLake)?1:0;
 if(e>landEMax)landEMax=e;}}
-const mtnHi=landEMax*0.55,mtnLo=landEMax*0.34,hillLo=landEMax*0.19;
+const mtnHi=landEMax*0.55,mtnLo=landEMax*0.34,hillLo=landEMax*0.19,footLo=landEMax*0.10;
 // Chamfer distance transforms — coastDist drives the worn shoreline; seaDist bends waves round land
 const chamfer=(f)=>{
 for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){const i=ty*CW+tx;let dd=f[i];
@@ -2728,6 +2745,54 @@ const h=atlasHash(gx+9,gy+9);if(h>0.24)continue;
 const rad=0.6+atlasHash(gx+1,gy+4)*1.9;
 octx.fillStyle=`rgba(${78+(h*150|0)},${56+(h*90|0)},30,${0.08+h*1.7})`;
 octx.beginPath();octx.arc(px,py,rad,0,6.2832);octx.fill();}
+// Hachures — short downhill strokes shading steep ground (escarpments, hill flanks)
+for(let gy=6;gy<CH-6;gy+=7)for(let gx=6;gx<CW-6;gx+=7){
+const px=(gx+(atlasHash(gx+3,gy+1)-0.5)*5)|0,py=(gy+(atlasHash(gx+1,gy+5)-0.5)*5)|0;
+if(px<4||px>=CW-4||py<4||py>=CH-4)continue;
+const i=py*CW+px;if(water[i]||coastDist[i]<5)continue;
+const si=dataIdx[i],e=w.elevation[si];if(e<=0||e>=mtnLo)continue;
+const gX=w.elevation[si+3]-w.elevation[si-3],gY=w.elevation[si+3*W]-w.elevation[si-3*W];
+const slope=Math.sqrt(gX*gX+gY*gY),steep=slope/(landEMax+1e-3);
+if(steep<0.04)continue;
+if(atlasHash(gx+9,gy+7)>Math.min(0.9,0.15+steep*8))continue;
+const dl=slope||1,dx=-gX/dl,dy=-gY/dl,len=1.8+Math.min(3.2,steep*30);
+octx.strokeStyle=`rgba(60,48,32,${0.26+Math.min(0.34,steep*5)})`;
+octx.lineWidth=0.4+Math.min(0.5,steep*5);
+octx.beginPath();octx.moveTo(px-dx*len*0.5,py-dy*len*0.5);octx.lineTo(px+dx*len*0.5,py+dy*len*0.5);octx.stroke();}
+// Coastlines — hatched cliffs on steep shores, pale sand flecks on gentle ones
+for(let gy=5;gy<CH-5;gy+=6)for(let gx=5;gx<CW-5;gx+=6){
+const i0=gy*CW+gx;if(water[i0]||coastDist[i0]>5)continue;
+const si=dataIdx[i0],e=w.elevation[si];if(e<=0)continue;
+const gX=w.elevation[si+3]-w.elevation[si-3],gY=w.elevation[si+3*W]-w.elevation[si-3*W];
+const slope=Math.sqrt(gX*gX+gY*gY),steep=slope/(landEMax+1e-3);
+if(steep>0.05){
+const dl=slope||1,dx=-gX/dl,dy=-gY/dl;
+octx.strokeStyle='rgba(50,40,26,0.62)';octx.lineWidth=0.5;octx.beginPath();
+for(let tk=-1;tk<=1;tk++){const ox=-dy*tk*1.7,oy=dx*tk*1.7;
+octx.moveTo(gx+ox,gy+oy);octx.lineTo(gx+ox+dx*2.6,gy+oy+dy*2.6);}
+octx.stroke();
+}else if(atlasHash(gx+2,gy+8)<0.4){
+octx.fillStyle='rgba(234,222,178,0.5)';
+octx.beginPath();octx.arc(gx+(atlasHash(gx,gy)-0.5)*4,gy+(atlasHash(gx+4,gy)-0.5)*4,0.95,0,6.2832);octx.fill();}}
+// Ground cover — grass, scrub and barren speckle for the open biomes
+for(let gy=5;gy<CH-5;gy+=9)for(let gx=5;gx<CW-5;gx+=9){
+const px=(gx+(atlasHash(gx+2,gy+3)-0.5)*8)|0,py=(gy+(atlasHash(gx+5,gy+7)-0.5)*8)|0;
+if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
+const i=py*CW+px;if(water[i])continue;
+const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
+const m=w.moisture[si],biome=getBiomeD(e,m,w.temperature[si],0);
+const h=atlasHash(gx+11,gy+4),tone=atlasHash(gx+3,gy+9);
+if(biome===12){if(h>0.42+m*0.5)continue;atlasTuft(octx,px,py,2.6+tone*2.1,tone);}
+else if(biome===11){if(h>0.4)continue;
+if(atlasHash(gx+7,gy+1)<0.1)atlasTree(octx,px,py,4.4+tone*2.1,true,tone);
+else atlasTuft(octx,px,py,2.2+tone*1.8,tone);}
+else if(biome===14){if(h>0.5)continue;atlasShrub(octx,px,py,1.9+tone*1.3,tone);}
+else if(biome===4){if(h>0.34)continue;
+octx.fillStyle=`rgba(${(112+tone*40)|0},${(114+tone*34)|0},${(106+tone*28)|0},0.5)`;
+octx.beginPath();octx.arc(px,py,0.7+tone*0.6,0,6.2832);octx.fill();}
+else if(biome===18){if(h>0.3)continue;
+octx.fillStyle='rgba(120,110,92,0.45)';
+octx.beginPath();octx.arc(px,py,0.6+tone*0.5,0,6.2832);octx.fill();}}
 // Mountains — dense & overlapping so high ground forms continuous ranges; hills below
 for(let gy=5;gy<CH-5;gy+=8)for(let gx=5;gx<CW-5;gx+=8){
 const px=(gx+(atlasHash(gx,gy)-0.5)*6)|0,py=(gy+(atlasHash(gx+7,gy+3)-0.5)*6)|0;
@@ -2741,7 +2806,10 @@ const big=e>mtnHi,size=(big?5.4:3.6)+dens*3.8+atlasHash(gx+3,gy+9)*1.5;
 atlasMountain(octx,px,py,size,big,atlasHash(gx+6,gy+2));
 }else if(e>=hillLo){
 if(atlasHash(gx+5,gy+8)>0.13)continue;
-atlasHill(octx,px,py,1.7+atlasHash(gx+2,gy+6)*1.3);}}
+atlasHill(octx,px,py,1.7+atlasHash(gx+2,gy+6)*1.3);
+}else if(e>=footLo){
+if(atlasHash(gx+5,gy+8)>0.06)continue;
+atlasHill(octx,px,py,0.85+atlasHash(gx+2,gy+6)*0.6);}}
 // Ordinary forests — moderate scatter so the parchment reads through
 for(let gy=4;gy<CH-4;gy+=6)for(let gx=4;gx<CW-4;gx+=6){
 const px=(gx+(atlasHash(gx+1,gy+2)-0.5)*5)|0,py=(gy+(atlasHash(gx+4,gy+8)-0.5)*5)|0;
@@ -2773,9 +2841,9 @@ for(let gy=4;gy<CH-4;gy+=7)for(let gx=4;gx<CW-4;gx+=7){
 const px=(gx+(atlasHash(gx+6,gy+1)-0.5)*6)|0,py=(gy+(atlasHash(gx+2,gy+9)-0.5)*6)|0;
 if(px<1||px>=CW-1||py<1||py>=CH-1)continue;
 const i=py*CW+px;if(water[i])continue;
-const si=dataIdx[i],e=w.elevation[si];
-if(getBiomeD(e,w.moisture[si],w.temperature[si],0)!==13)continue;
-if(atlasHash(gx+3,gy+7)>0.5)continue;
+const si=dataIdx[i],e=w.elevation[si],dm=w.moisture[si];
+if(getBiomeD(e,dm,w.temperature[si],0)!==13)continue;
+if(atlasHash(gx+3,gy+7)>0.62-dm*1.6)continue;
 octx.fillStyle="rgba(120,84,38,0.5)";
 octx.beginPath();octx.arc(px,py,0.7,0,6.2832);octx.fill();}
 // Swamp reeds
