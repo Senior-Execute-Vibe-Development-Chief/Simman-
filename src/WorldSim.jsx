@@ -2742,6 +2742,7 @@ r+=fine*17+grain*12;g+=fine*16+grain*12;b+=fine*13+grain*11;
 if(biome===13){r+=15;g-=3;b-=36;}           // desert — warm orange
 else if(biome===14){r+=8;b-=21;}            // shrubland — mild tan
 else if(biome===11){r+=9;g+=2;b-=18;}       // savanna — golden
+else if(biome===12){r-=14;g+=4;b-=26;}      // grassland — soft green
 else if(biome===5){r+=24;g+=27;b+=39;}      // snow / ice — aged white
 else if(biome===4||biome===18){r+=11;g+=14;b+=22;} // tundra / cold desert — pale wash
 else if(biome===6||biome===7){r-=14;g-=7;b-=14;}   // taiga / boreal — cool shade
@@ -2857,9 +2858,9 @@ const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
 const biome=getBiomeD(e,w.moisture[si],w.temperature[si],0);
 let cover=0,kind=0;                          // kind: 0 conifer, 1 deciduous, 2 acacia
-if(biome===6){cover=0.17;kind=0;}            // taiga — fir
-else if(biome===8||biome===17){cover=0.16;kind=1;} // temperate / subtropical — broadleaf
-else if(biome===15){cover=0.11;kind=2;}      // tropical dry forest — acacia
+if(biome===6){cover=0.40;kind=0;}            // taiga — fir, closed forest
+else if(biome===8||biome===17){cover=0.42;kind=1;} // temperate / subtropical — broadleaf
+else if(biome===15){cover=0.16;kind=2;}      // tropical dry forest — open acacia woodland
 else continue;
 if(atlasHash(gx+13,gy+5)>cover)continue;
 const tone=atlasHash(gx+2,gy+11),size=4.2+atlasHash(gx+9,gy+1)*2.8;
