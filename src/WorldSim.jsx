@@ -2671,7 +2671,7 @@ const isLake=lk?lk[tyTile*tw+Math.min(tw-1,(sx/RES)|0)]>=0:false;
 water[i]=(e<=0||isLake)?1:0;
 if(e>landEMax)landEMax=e;}}
 const mtnHi=landEMax*0.55,mtnLo=landEMax*0.34,hillLo=landEMax*0.19,footLo=landEMax*0.10;
-// Chamfer distance transforms — coastDist drives the worn shoreline; seaDist bends waves round land
+// Chamfer distance transform — coastDist drives the worn, inked shoreline
 const chamfer=(f)=>{
 for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){const i=ty*CW+tx;let dd=f[i];
 if(tx>0){const v=f[i-1]+1;if(v<dd)dd=v;}
@@ -2685,17 +2685,16 @@ if(ty<CH-1){const v=f[i+CW]+1;if(v<dd)dd=v;}
 if(tx<CW-1&&ty<CH-1){const v=f[i+CW+1]+1.4142;if(v<dd)dd=v;}
 if(tx>0&&ty<CH-1){const v=f[i+CW-1]+1.4142;if(v<dd)dd=v;}
 f[i]=dd;}};
-const coastDist=new Float32Array(N),seaDist=new Float32Array(N);
-for(let i=0;i<N;i++){coastDist[i]=water[i]?0:1e9;seaDist[i]=water[i]?1e9:0;}
-chamfer(coastDist);chamfer(seaDist);
+const coastDist=new Float32Array(N);
+for(let i=0;i<N;i++)coastDist[i]=water[i]?0:1e9;
+chamfer(coastDist);
 // Downsampled fbm fields — staining is low-frequency, so 4× downsample is invisible (~16× fewer fbm calls)
 const QW=(CW>>2)+2,QH=(CH>>2)+2;
 const mkField=(fx,fy,oct,ox,oy)=>{const f=new Float32Array(QW*QH);
 for(let j=0;j<QH;j++)for(let k=0;k<QW;k++)f[j*QW+k]=fbm(k*4/CW*fx+ox,j*4/CH*fy+oy,oct,2,0.5);
 return f;};
 const bigF=mkField(3.0,3.0,3,11,11),stnF=mkField(4.6,4.6,3,93,93),midF=mkField(8,8,3,40,40),
-fineF=mkField(27,27,2,71,71),oA=mkField(6,6,3,3,3),oB=mkField(19,19,2,9,9),warpF=mkField(3.5,3.5,2,55,55),
-oC=mkField(4.5,4.5,2,121,121),oD=mkField(2.8,2.8,2,151,151);
+fineF=mkField(27,27,2,71,71);
 const samp=(f,x,y)=>{const fx=x*0.25,fy=y*0.25,x0=fx|0,y0=fy|0,dx=fx-x0,dy=fy-y0,
 a=f[y0*QW+x0],b=f[y0*QW+x0+1],cc=f[(y0+1)*QW+x0],dd=f[(y0+1)*QW+x0+1];
 return a*(1-dx)*(1-dy)+b*dx*(1-dy)+cc*(1-dx)*dy+dd*dx*dy;};
@@ -2703,36 +2702,23 @@ return a*(1-dx)*(1-dy)+b*dx*(1-dy)+cc*(1-dx)*dy+dd*dx*dy;};
 const COAST=34;
 for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
 const i=ty*CW+tx,si=dataIdx[i],pi=i<<2,e=w.elevation[si];
+const big=samp(bigF,tx,ty),mid=samp(midF,tx,ty),fine=samp(fineF,tx,ty),stn=samp(stnF,tx,ty);
+const grain=atlasHash(tx,ty)-0.5;
 if(water[i]){
 const depth=Math.min(1,Math.max(0,-e)*2.2);
-const n2=samp(oB,tx,ty),gr=atlasHash(tx,ty)-0.5,wa=samp(oC,tx,ty),wb=samp(oD,tx,ty);
-// One continuous swell field; near land it is gently deflected — not replaced
-const cd=seaDist[i];let sx2=tx,sy2=ty;
-if(cd<78&&tx>0&&tx<CW-1&&ty>0&&ty<CH-1){
-const gx=seaDist[i+1]-seaDist[i-1],gy=seaDist[i+CW]-seaDist[i-CW],gl=Math.sqrt(gx*gx+gy*gy)||1;
-const fall=1-cd/78,push=fall*fall*15;                   // subtle: bends the swell near coasts
-sx2=tx+gx/gl*push;sy2=ty+gy/gl*push;}
-const n=samp(oA,sx2,sy2),warp=samp(warpF,sx2,sy2);
-const fmod=0.74+(wb+0.7)*0.7;
-const phase=(sx2*0.043+sy2*0.027)*fmod+warp*12+wa*7+n*5;
-// two harmonics → irregular, unpredictable crest shapes
-const cur=Math.sin(phase)*0.7+Math.sin(phase*2.27+warp*6)*0.3;
-const expo=0.9+(n2+0.5)*0.8;                             // crest width varies region to region
-const amp=3.0+wa*2.4;                                   // wave strength varies region to region
-const wave=(cur>=0?1:-1)*Math.pow(Math.abs(cur),expo)*amp; // crests lighten, troughs darken
-// crest hue varies bluer↔greyer; base hue drifts with the broad fields
-d[pi]=15-depth*8+n2*3+wb*2+gr*3+wave*(0.6+wb*0.5);
-d[pi+1]=19-depth*10+n2*3+wb*2+gr*3+wave*(0.85+wb*0.2);
-d[pi+2]=32-depth*13+n2*5-wb*2+gr*4+wave*(1.3-wb*0.45);
-d[pi+3]=255;continue;}
+// Dark sea, textured with the same stained-parchment fields as the land
+let r=17-depth*7,g=21-depth*9,b=34-depth*12;
+r+=big*22;g+=big*22;b+=big*26;
+const stain=Math.max(0,mid+0.15)+Math.max(0,stn-0.05)*0.65;
+r-=stain*13;g-=stain*15;b-=stain*18;
+if(mid>0.30){const s=(mid-0.30)*1.6;r-=s*10;g-=s*11;b-=s*12;}
+r+=fine*11+grain*9;g+=fine*11+grain*9;b+=fine*13+grain*10;
+d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;continue;}
 const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);
-const big=samp(bigF,tx,ty),mid=samp(midF,tx,ty),fine=samp(fineF,tx,ty);
-const grain=atlasHash(tx,ty)-0.5;
 let r=205,g=187,b=146;
 // broad uneven aged tone
 r+=big*40;g+=big*37;b+=big*31;
 // blotchy brown stains at two scales — worn discolouring
-const stn=samp(stnF,tx,ty);
 const stain=Math.max(0,mid+0.15)+Math.max(0,stn-0.05)*0.65;
 r-=stain*36;g-=stain*44;b-=stain*49;
 if(mid>0.30){const s=(mid-0.30)*1.6;r-=s*36;g-=s*40;b-=s*40;}
@@ -2776,11 +2762,10 @@ const pi=i<<2;d[pi]=sr/c;d[pi+1]=sg/c;d[pi+2]=sb/c;}}}
 octx.putImageData(img,0,0);
 // ── Cartographic symbols ──
 octx.lineJoin="round";octx.lineCap="round";
-// Foxing — scattered small age-spots on the paper
+// Foxing — scattered small age-spots, over the whole sheet (land and sea)
 for(let gy=4;gy<CH-4;gy+=9)for(let gx=4;gx<CW-4;gx+=9){
 const px=(gx+(atlasHash(gx+3,gy+5)-0.5)*8)|0,py=(gy+(atlasHash(gx+7,gy+1)-0.5)*8)|0;
 if(px<1||px>=CW-1||py<1||py>=CH-1)continue;
-const i=px+py*CW;if(water[i])continue;
 const h=atlasHash(gx+9,gy+9);if(h>0.24)continue;
 const rad=0.6+atlasHash(gx+1,gy+4)*1.9;
 octx.fillStyle=`rgba(${78+(h*150|0)},${56+(h*90|0)},30,${0.08+h*1.7})`;
