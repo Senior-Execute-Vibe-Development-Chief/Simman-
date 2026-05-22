@@ -2928,15 +2928,15 @@ if(ny<0||ny>=th)break;const nci=ny*tw+nx;
 if(rmg[nci]<2||drawn[nci]){pts.push({x:nx,y:ny,m:rmg[nci]>=2?rmg[nci]:pts[pts.length-1].m});break;}
 ci=nci;}
 const n=pts.length;if(n<2)continue;
-for(let k=1;k<n-1;k++){
-let dx=pts[k+1].x-pts[k-1].x,dy=pts[k+1].y-pts[k-1].y;const dl=Math.sqrt(dx*dx+dy*dy)||1;dx/=dl;dy/=dl;
-const taper=Math.min(1,k/3.5,(n-1-k)/3.5);
-const wig=Math.sin(k*0.5+ti*0.017)*0.8+Math.sin(k*0.19+ti*0.053)*1.15+(atlasHash(pts[k].x,pts[k].y)-0.5)*0.9;
-const amp=wig*taper*(1.0+pts[k].m*0.35);
-pts[k].x+=-dy*amp;pts[k].y+=dx*amp;}
+// decimate to ~every 4th tile, then the quadratic curve smooths out the
+// D8 stair-steps — the path already wanders (jittered flow in riverGen)
+const dp=[pts[0]];
+for(let k=4;k<n-1;k+=4)dp.push(pts[k]);
+dp.push(pts[n-1]);
+const dn=dp.length;
 let a=0;
-for(let k=1;k<n;k++){if(wOf(pts[k].m)!==wOf(pts[a].m)){drawSeg(pts,a,k,wOf(pts[a].m));a=k;}}
-drawSeg(pts,a,n-1,wOf(pts[a].m));}
+for(let k=1;k<dn;k++){if(wOf(dp[k].m)!==wOf(dp[a].m)){drawSeg(dp,a,k,wOf(dp[a].m));a=k;}}
+drawSeg(dp,a,dn-1,wOf(dp[a].m));}
 }
 return octx.getImageData(0,0,CW,CH);
 },[CH]);
