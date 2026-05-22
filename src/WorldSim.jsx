@@ -2699,7 +2699,7 @@ const samp=(f,x,y)=>{const fx=x*0.25,fy=y*0.25,x0=fx|0,y0=fy|0,dx=fx-x0,dy=fy-y0
 a=f[y0*QW+x0],b=f[y0*QW+x0+1],cc=f[(y0+1)*QW+x0],dd=f[(y0+1)*QW+x0+1];
 return a*(1-dx)*(1-dy)+b*dx*(1-dy)+cc*(1-dx)*dy+dd*dx*dy;};
 // Base layer — stained, worn parchment land + dark, textured seas
-const COAST=58,HALO=23;
+const COAST=58,HALO=12;
 for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
 const i=ty*CW+tx,si=dataIdx[i],pi=i<<2,e=w.elevation[si];
 const big=samp(bigF,tx,ty),mid=samp(midF,tx,ty),fine=samp(fineF,tx,ty),stn=samp(stnF,tx,ty);
@@ -2713,7 +2713,7 @@ r+=grain*9;g+=grain*9;b+=grain*8;
 r+=(246-r)*0.2;g+=(242-g)*0.2;b+=(234-b)*0.2;
 // broad darkened halo hugging every coastline, fading out to open sea
 const sd=seaDist[i];
-if(sd<HALO){const hh=1-sd/HALO,hk=hh*hh*(3-2*hh);
+if(sd<HALO){const hh=1-sd/HALO,f=Math.min(1,hh*4),hk=f*f*(3-2*f);
 r-=hk*86;g-=hk*87;b-=hk*79;}
 d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;continue;}
 const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);
