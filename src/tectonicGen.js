@@ -856,7 +856,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
 
     e = Math.max(0, e);
-    e = Math.pow(e, 1.08) * 1.1;
+    // Hypsometric redistribution: gamma > 1 pushes the bulk of land down toward
+    // low plains while the rescale keeps peak height, so mountains read as a tall
+    // minority above broad lowlands (Earth-like) rather than a high rolling mass.
+    e = Math.pow(e, 1.38) * 1.23;
     e = Math.max(0.002, Math.min(1.0, e));
   }
 
