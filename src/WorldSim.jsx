@@ -2760,14 +2760,27 @@ const pi=i<<2;d[pi]=sr/c;d[pi+1]=sg/c;d[pi+2]=sb/c;}}}
 octx.putImageData(img,0,0);
 // ── Cartographic symbols ──
 octx.lineJoin="round";octx.lineCap="round";
-// Foxing — scattered small age-spots, over the whole sheet (land and sea)
-for(let gy=4;gy<CH-4;gy+=9)for(let gx=4;gx<CW-4;gx+=9){
-const px=(gx+(atlasHash(gx+3,gy+5)-0.5)*8)|0,py=(gy+(atlasHash(gx+7,gy+1)-0.5)*8)|0;
-if(px<1||px>=CW-1||py<1||py>=CH-1)continue;
-const h=atlasHash(gx+9,gy+9);if(h>0.24)continue;
-const rad=0.6+atlasHash(gx+1,gy+4)*1.9;
-octx.fillStyle=`rgba(${78+(h*150|0)},${56+(h*90|0)},30,${0.08+h*1.7})`;
-octx.beginPath();octx.arc(px,py,rad,0,6.2832);octx.fill();}
+// Foxing — soft, irregular age-blooms across the whole sheet
+for(let gy=5;gy<CH-5;gy+=11)for(let gx=5;gx<CW-5;gx+=11){
+const h=atlasHash(gx+9,gy+9);if(h>0.34)continue;
+const px=gx+(atlasHash(gx+3,gy+5)-0.5)*10,py=gy+(atlasHash(gx+7,gy+1)-0.5)*10;
+const ix=px|0,iy=py|0;if(ix<2||ix>=CW-2||iy<2||iy>=CH-2)continue;
+const onWater=water[iy*CW+ix];
+const h2=atlasHash(gx+1,gy+4),h3=atlasHash(gx+6,gy+2);
+const rad=1.7+h2*4.8;
+let cr,cg,cb,ca;
+if(onWater){cr=182;cg=170;cb=140;ca=0.04+h*0.18;}      // pale, faint over the sea
+else{cr=(98+h*94)|0;cg=(76+h*52)|0;cb=42;ca=0.05+h*0.36;} // brown on land
+octx.save();octx.translate(px,py);octx.rotate(h2*6.283);octx.scale(1,0.5+h3*0.8);
+const blobs=h<0.15?2:1;
+for(let bi=0;bi<blobs;bi++){
+const ox=bi?(h3-0.5)*rad*1.5:0,oy=bi?(h2-0.5)*rad*1.1:0,rr=bi?rad*(0.45+h3*0.4):rad;
+const g=octx.createRadialGradient(ox,oy,0,ox,oy,rr);
+g.addColorStop(0,`rgba(${cr},${cg},${cb},${ca})`);
+g.addColorStop(0.5,`rgba(${cr},${cg},${cb},${ca*0.5})`);
+g.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+octx.fillStyle=g;octx.beginPath();octx.arc(ox,oy,rr,0,6.2832);octx.fill();}
+octx.restore();}
 // Hachures — short downhill strokes shading steep ground (escarpments, hill flanks)
 for(let gy=6;gy<CH-6;gy+=7)for(let gx=6;gx<CW-6;gx+=7){
 const px=(gx+(atlasHash(gx+3,gy+1)-0.5)*5)|0,py=(gy+(atlasHash(gx+1,gy+5)-0.5)*5)|0;
