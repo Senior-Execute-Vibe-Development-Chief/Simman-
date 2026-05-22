@@ -2621,7 +2621,7 @@ const rm=ter.rivers?ter.rivers.riverMag:null;
 const lk=ter.rivers&&ter.rivers.lake?ter.rivers.lake:null;
 // Per-screen-pixel data index + water mask; find land elevation ceiling
 const dataIdx=new Int32Array(N),water=new Uint8Array(N);
-let landEMax=0.001,landN=0;const eHist=new Int32Array(256);
+let landEMax=0.001;
 for(let ty=0;ty<CH;ty++){
 const dy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
 const tyTile=Math.min(th-1,(dy/RES)|0);
@@ -2630,11 +2630,8 @@ const sx=Math.min(W-1,tx*RES),si=dy*W+sx,i=ty*CW+tx;
 dataIdx[i]=si;const e=w.elevation[si];
 const isLake=lk?lk[tyTile*tw+Math.min(tw-1,(sx/RES)|0)]>=0:false;
 water[i]=(e<=0||isLake)?1:0;
-if(!water[i]){if(e>landEMax)landEMax=e;eHist[Math.min(255,(e*256)|0)]++;landN++;}}}
-// Relief thresholds ranked by percentile of the actual land-elevation distribution,
-// so mountains stay a tight top slice whether the world is peaky or a broad shield.
-const ePct=(f)=>{let t=landN*f,a=0;for(let b=0;b<256;b++){a+=eHist[b];if(a>=t)return(b+0.5)/256;}return 1;};
-const mtnLo=ePct(0.955),mtnHi=ePct(0.992),hillLo=ePct(0.875),footLo=ePct(0.78);
+if(e>landEMax)landEMax=e;}}
+const mtnHi=landEMax*0.55,mtnLo=landEMax*0.34,hillLo=landEMax*0.19,footLo=landEMax*0.10;
 // Chamfer distance transforms — coastDist drives the worn shoreline; seaDist bends waves round land
 const chamfer=(f)=>{
 for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){const i=ty*CW+tx;let dd=f[i];
