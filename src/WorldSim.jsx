@@ -2728,36 +2728,46 @@ const h=atlasHash(gx+9,gy+9);if(h>0.24)continue;
 const rad=0.6+atlasHash(gx+1,gy+4)*1.9;
 octx.fillStyle=`rgba(${78+(h*150|0)},${56+(h*90|0)},30,${0.08+h*1.7})`;
 octx.beginPath();octx.arc(px,py,rad,0,6.2832);octx.fill();}
-// Mountains (triangles) + hills (humps)
-for(let gy=6;gy<CH-6;gy+=11)for(let gx=6;gx<CW-6;gx+=11){
-const px=(gx+(atlasHash(gx,gy)-0.5)*8)|0,py=(gy+(atlasHash(gx+7,gy+3)-0.5)*8)|0;
+// Mountains — dense & overlapping so high ground forms continuous ranges; hills below
+for(let gy=5;gy<CH-5;gy+=8)for(let gx=5;gx<CW-5;gx+=8){
+const px=(gx+(atlasHash(gx,gy)-0.5)*6)|0,py=(gy+(atlasHash(gx+7,gy+3)-0.5)*6)|0;
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const e=w.elevation[dataIdx[i]];
 if(e>=mtnLo){
 const dens=(e-mtnLo)/(landEMax-mtnLo+1e-3);
-if(atlasHash(gx+11,gy+19)>0.4+dens*0.55)continue;
-const big=e>mtnHi,size=(big?5.0:3.2)+dens*3.6+atlasHash(gx+3,gy+9)*1.4;
+if(atlasHash(gx+11,gy+19)>0.62+dens*0.36)continue;
+const big=e>mtnHi,size=(big?5.4:3.6)+dens*3.8+atlasHash(gx+3,gy+9)*1.5;
 atlasMountain(octx,px,py,size,big,atlasHash(gx+6,gy+2));
 }else if(e>=hillLo){
-if(atlasHash(gx+5,gy+8)>0.22)continue;
+if(atlasHash(gx+5,gy+8)>0.13)continue;
 atlasHill(octx,px,py,1.7+atlasHash(gx+2,gy+6)*1.3);}}
-// Forests (trees) — sparse scatter so the parchment reads through
-for(let gy=6;gy<CH-6;gy+=13)for(let gx=6;gx<CW-6;gx+=13){
-const px=(gx+(atlasHash(gx+1,gy+2)-0.5)*10)|0,py=(gy+(atlasHash(gx+4,gy+8)-0.5)*10)|0;
+// Ordinary forests — moderate scatter so the parchment reads through
+for(let gy=4;gy<CH-4;gy+=6)for(let gx=4;gx<CW-4;gx+=6){
+const px=(gx+(atlasHash(gx+1,gy+2)-0.5)*5)|0,py=(gy+(atlasHash(gx+4,gy+8)-0.5)*5)|0;
 if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
 const i=py*CW+px;if(water[i])continue;
 const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
 const biome=getBiomeD(e,w.moisture[si],w.temperature[si],0);
-let cover=0,conifer=false;
-if(biome===10||biome===9)cover=0.62;
-else if(biome===8||biome===17)cover=0.44;
-else if(biome===15)cover=0.30;
-else if(biome===6||biome===7){cover=0.48;conifer=true;}
+let conifer=false,cover=0;
+if(biome===8||biome===17)cover=0.15;         // temperate / subtropical forest
+else if(biome===15)cover=0.10;               // tropical dry forest — sparse
+else if(biome===6||biome===7){cover=0.16;conifer=true;} // taiga / boreal
 else continue;
 if(atlasHash(gx+13,gy+5)>cover)continue;
-const size=4.4+atlasHash(gx+9,gy+1)*3.0;
+const size=4.2+atlasHash(gx+9,gy+1)*2.8;
 atlasTree(octx,px,py,size,!conifer,atlasHash(gx+2,gy+11));}
+// Rainforest — packed, overlapping thicket on a tight grid (temperate + tropical rainforest)
+for(let gy=3;gy<CH-3;gy+=4)for(let gx=3;gx<CW-3;gx+=4){
+const px=(gx+(atlasHash(gx+1,gy+5)-0.5)*4)|0,py=(gy+(atlasHash(gx+6,gy+2)-0.5)*4)|0;
+if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
+const i=py*CW+px;if(water[i])continue;
+const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
+const bm=getBiomeD(e,w.moisture[si],w.temperature[si],0);
+if(bm!==9&&bm!==10)continue;
+if(atlasHash(gx+7,gy+9)>0.95)continue;
+const size=5.0+atlasHash(gx+9,gy+1)*2.4;
+atlasTree(octx,px,py,size,true,atlasHash(gx+2,gy+11));}
 // Desert stipple (dune dots)
 for(let gy=4;gy<CH-4;gy+=7)for(let gx=4;gx<CW-4;gx+=7){
 const px=(gx+(atlasHash(gx+6,gy+1)-0.5)*6)|0,py=(gy+(atlasHash(gx+2,gy+9)-0.5)*6)|0;
