@@ -2705,14 +2705,14 @@ const i=ty*CW+tx,si=dataIdx[i],pi=i<<2,e=w.elevation[si];
 const big=samp(bigF,tx,ty),mid=samp(midF,tx,ty),fine=samp(fineF,tx,ty),stn=samp(stnF,tx,ty);
 const grain=atlasHash(tx,ty)-0.5;
 if(water[i]){
-const depth=Math.min(1,Math.max(0,-e)*2.2);
-// Dark sea, textured with the same stained-parchment fields as the land
-let r=17-depth*7,g=21-depth*9,b=34-depth*12;
-r+=big*22;g+=big*22;b+=big*26;
+// Sea: identical to the land parchment, just lifted a touch paler
+let r=205,g=187,b=146;
+r+=big*40;g+=big*37;b+=big*31;
 const stain=Math.max(0,mid+0.15)+Math.max(0,stn-0.05)*0.65;
-r-=stain*13;g-=stain*15;b-=stain*18;
-if(mid>0.30){const s=(mid-0.30)*1.6;r-=s*10;g-=s*11;b-=s*12;}
-r+=fine*11+grain*9;g+=fine*11+grain*9;b+=fine*13+grain*10;
+r-=stain*36;g-=stain*44;b-=stain*49;
+if(mid>0.30){const s=(mid-0.30)*1.6;r-=s*36;g-=s*40;b-=s*40;}
+r+=fine*17+grain*12;g+=fine*16+grain*12;b+=fine*13+grain*11;
+r+=(245-r)*0.2;g+=(241-g)*0.2;b+=(233-b)*0.2;
 d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;continue;}
 const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);
 let r=205,g=187,b=146;
