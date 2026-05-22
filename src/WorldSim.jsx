@@ -2685,9 +2685,9 @@ if(ty<CH-1){const v=f[i+CW]+1;if(v<dd)dd=v;}
 if(tx<CW-1&&ty<CH-1){const v=f[i+CW+1]+1.4142;if(v<dd)dd=v;}
 if(tx>0&&ty<CH-1){const v=f[i+CW-1]+1.4142;if(v<dd)dd=v;}
 f[i]=dd;}};
-const coastDist=new Float32Array(N);
-for(let i=0;i<N;i++)coastDist[i]=water[i]?0:1e9;
-chamfer(coastDist);
+const coastDist=new Float32Array(N),seaDist=new Float32Array(N);
+for(let i=0;i<N;i++){coastDist[i]=water[i]?0:1e9;seaDist[i]=water[i]?1e9:0;}
+chamfer(coastDist);chamfer(seaDist);
 // Downsampled fbm fields — staining is low-frequency, so 4× downsample is invisible (~16× fewer fbm calls)
 const QW=(CW>>2)+2,QH=(CH>>2)+2;
 const mkField=(fx,fy,oct,ox,oy)=>{const f=new Float32Array(QW*QH);
@@ -2699,7 +2699,7 @@ const samp=(f,x,y)=>{const fx=x*0.25,fy=y*0.25,x0=fx|0,y0=fy|0,dx=fx-x0,dy=fy-y0
 a=f[y0*QW+x0],b=f[y0*QW+x0+1],cc=f[(y0+1)*QW+x0],dd=f[(y0+1)*QW+x0+1];
 return a*(1-dx)*(1-dy)+b*dx*(1-dy)+cc*(1-dx)*dy+dd*dx*dy;};
 // Base layer — stained, worn parchment land + dark, textured seas
-const COAST=58;
+const COAST=58,HALO=140;
 for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
 const i=ty*CW+tx,si=dataIdx[i],pi=i<<2,e=w.elevation[si];
 const big=samp(bigF,tx,ty),mid=samp(midF,tx,ty),fine=samp(fineF,tx,ty),stn=samp(stnF,tx,ty);
@@ -2711,6 +2711,10 @@ let r=197,g=174,b=126;
 r+=big*16;g+=big*15;b+=big*13;
 r+=grain*9;g+=grain*9;b+=grain*8;
 r+=(246-r)*0.2;g+=(242-g)*0.2;b+=(234-b)*0.2;
+// broad darkened halo hugging every coastline, fading out to open sea
+const sd=seaDist[i];
+if(sd<HALO){const hh=1-sd/HALO,hk=hh*hh*(3-2*hh);
+r-=hk*44;g-=hk*45;b-=hk*40;}
 d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;continue;}
 const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);
 let r=197,g=174,b=126;
