@@ -1053,6 +1053,35 @@ if (p('erodeDropsPerPixel', 1.5) > 0) {
   }
 }
 
+// ── Rotate the map so its wraparound seam lands on the emptiest ocean ──
+// Pick the column band with the least land and cyclically shift the world
+// so that band sits on the x=0 / x=W edge (and the wind/moisture solved
+// below run on the already-shifted elevation, staying consistent).
+{
+  const colLand = new Float32Array(W);
+  for (let x = 0; x < W; x++) {
+    let c = 0;
+    for (let y = 0; y < H; y++) if (elevation[y * W + x] > 0) c++;
+    colLand[x] = c;
+  }
+  const HW = 40; // band half-width — keeps the seam clear of nearby coasts
+  let bestX = 0, bestSum = Infinity;
+  for (let x = 0; x < W; x++) {
+    let s = 0;
+    for (let k = -HW; k <= HW; k++) s += colLand[((x + k) % W + W) % W];
+    if (s < bestSum) { bestSum = s; bestX = x; }
+  }
+  if (bestX !== 0) {
+    const shiftField = (arr) => {
+      const tmp = arr.slice();
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++)
+        arr[y * W + x] = tmp[y * W + ((x + bestX) % W)];
+    };
+    shiftField(elevation);
+    shiftField(pixPlate);
+  }
+}
+
 // Blend final elevation seam at antimeridian
 {
   const blendW = Math.round(W * 0.025);
