@@ -466,29 +466,40 @@ return[Math.round(hr(p,q,h+1/3)*255),Math.round(hr(p,q,h)*255),Math.round(hr(p,q
 
 // ── Atlas (olde-map) cartographic symbols — hand-drawn map iconography ──
 function atlasHash(a,b){let h=(a*374761393+b*668265263)>>>0;h=((h^(h>>>13))*1274126177)>>>0;return((h^(h>>>16))>>>0)/4294967296;}
-function atlasMountain(c,x,y,s,snow){
-const h=s,wd=s*0.92;
+function atlasMountain(c,x,y,s,snow,tone){
+const h=s,wd=s*0.86;
+const lum=0.82+tone*0.32;
 c.beginPath();c.moveTo(x,y-h);c.lineTo(x-wd,y+h*0.66);c.lineTo(x+wd,y+h*0.66);c.closePath();
-c.fillStyle='#dccb9c';c.fill();
+c.fillStyle=`rgb(${(176*lum)|0},${(160*lum)|0},${(120*lum)|0})`;c.fill();
 c.beginPath();c.moveTo(x,y-h);c.lineTo(x+wd,y+h*0.66);c.lineTo(x,y+h*0.66);c.closePath();
-c.fillStyle='rgba(72,56,36,0.42)';c.fill();
-if(snow){c.beginPath();c.moveTo(x,y-h);c.lineTo(x-s*0.34,y-h*0.34);c.lineTo(x-s*0.10,y-h*0.50);
-c.lineTo(x+s*0.14,y-h*0.32);c.lineTo(x+s*0.34,y-h*0.44);c.closePath();c.fillStyle='#f1ead8';c.fill();}
-c.strokeStyle='#3a2e1f';c.lineWidth=Math.max(0.55,s*0.15);
+c.fillStyle='rgba(44,32,18,0.5)';c.fill();
+c.strokeStyle='rgba(46,34,20,0.4)';c.lineWidth=Math.max(0.4,s*0.1);
+c.beginPath();c.moveTo(x,y-h*0.18);c.lineTo(x+wd*0.5,y+h*0.5);c.stroke();
+if(snow){c.beginPath();c.moveTo(x,y-h);c.lineTo(x-s*0.30,y-h*0.40);c.lineTo(x-s*0.08,y-h*0.56);
+c.lineTo(x+s*0.13,y-h*0.38);c.lineTo(x+s*0.30,y-h*0.48);c.closePath();c.fillStyle='rgba(236,229,212,0.9)';c.fill();}
+c.strokeStyle='rgba(38,28,15,0.9)';c.lineWidth=Math.max(0.55,s*0.15);
 c.beginPath();c.moveTo(x-wd,y+h*0.66);c.lineTo(x,y-h);c.lineTo(x+wd,y+h*0.66);c.stroke();}
 function atlasHill(c,x,y,s){
-c.strokeStyle='#4a3c28';c.lineWidth=Math.max(0.5,s*0.28);
-c.beginPath();c.arc(x,y+s*0.5,s,Math.PI,2*Math.PI);c.stroke();}
-function atlasConifer(c,x,y,s){
-c.fillStyle='#5a4327';c.fillRect(x-s*0.11,y+s*0.08,s*0.22,s*0.52);
-c.beginPath();c.moveTo(x,y-s);c.lineTo(x+s*0.62,y+s*0.24);c.lineTo(x-s*0.62,y+s*0.24);c.closePath();
-c.fillStyle='#566139';c.fill();
-c.strokeStyle='#2e3420';c.lineWidth=Math.max(0.4,s*0.12);c.stroke();}
-function atlasBroadleaf(c,x,y,s){
-c.fillStyle='#5a4327';c.fillRect(x-s*0.10,y-s*0.05,s*0.20,s*0.60);
-c.beginPath();c.arc(x,y-s*0.22,s*0.55,0,6.2832);
-c.fillStyle='#65713f';c.fill();
-c.strokeStyle='#323920';c.lineWidth=Math.max(0.4,s*0.12);c.stroke();}
+c.strokeStyle='rgba(74,58,36,0.78)';c.lineWidth=Math.max(0.5,s*0.32);
+c.beginPath();c.arc(x,y+s*0.45,s,Math.PI,2*Math.PI);c.stroke();}
+// Tree — same hand-inked style as the mountains: tall, pointy, shaded, with a trunk stump
+function atlasTree(c,x,y,s,broad,tone){
+const wd=s*(broad?0.40:0.28);
+const baseY=y+s*0.42,apexY=y-s*0.58;
+const tw=Math.max(0.9,s*0.16),thh=s*0.30;
+c.fillStyle='#43331d';c.fillRect(x-tw/2,baseY-0.6,tw,thh);
+c.strokeStyle='rgba(32,23,11,0.85)';c.lineWidth=Math.max(0.4,s*0.08);
+c.strokeRect(x-tw/2,baseY-0.6,tw,thh);
+const lum=0.80+tone*0.40;
+c.beginPath();c.moveTo(x,apexY);c.lineTo(x-wd,baseY);c.lineTo(x+wd,baseY);c.closePath();
+c.fillStyle=`rgb(${(112*lum)|0},${(123*lum)|0},${(72*lum)|0})`;c.fill();
+c.beginPath();c.moveTo(x,apexY);c.lineTo(x+wd,baseY);c.lineTo(x,baseY);c.closePath();
+c.fillStyle='rgba(22,30,12,0.46)';c.fill();
+if(!broad){c.strokeStyle='rgba(26,33,15,0.5)';c.lineWidth=Math.max(0.35,s*0.09);
+c.beginPath();c.moveTo(x-wd*0.62,baseY-s*0.30);c.lineTo(x+wd*0.62,baseY-s*0.30);
+c.moveTo(x-wd*0.32,baseY-s*0.62);c.lineTo(x+wd*0.32,baseY-s*0.62);c.stroke();}
+c.strokeStyle='rgba(28,35,16,0.92)';c.lineWidth=Math.max(0.5,s*0.13);
+c.beginPath();c.moveTo(x-wd,baseY);c.lineTo(x,apexY);c.lineTo(x+wd,baseY);c.stroke();}
 
 // Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
 // Agriculture needs adequate moisture (not maximum) — bell curve peaks at 0.45 (temperate optimum)
@@ -2604,49 +2615,89 @@ const isLake=lk?lk[tyTile*tw+Math.min(tw-1,(sx/RES)|0)]>=0:false;
 water[i]=(e<=0||isLake)?1:0;
 if(e>landEMax)landEMax=e;}}
 const mtnHi=landEMax*0.55,mtnLo=landEMax*0.34,hillLo=landEMax*0.19;
-// Downsampled fbm fields — mottling is low-frequency, so 4× downsample is invisible (~16× fewer fbm calls)
+// Distance-to-coast (chamfer transform) — drives the worn, tea-stained shoreline band
+const coastDist=new Float32Array(N);
+for(let i=0;i<N;i++)coastDist[i]=water[i]?0:1e9;
+for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){const i=ty*CW+tx;let dd=coastDist[i];
+if(tx>0){const v=coastDist[i-1]+1;if(v<dd)dd=v;}
+if(ty>0){const v=coastDist[i-CW]+1;if(v<dd)dd=v;}
+if(tx>0&&ty>0){const v=coastDist[i-CW-1]+1.4142;if(v<dd)dd=v;}
+if(tx<CW-1&&ty>0){const v=coastDist[i-CW+1]+1.4142;if(v<dd)dd=v;}
+coastDist[i]=dd;}
+for(let ty=CH-1;ty>=0;ty--)for(let tx=CW-1;tx>=0;tx--){const i=ty*CW+tx;let dd=coastDist[i];
+if(tx<CW-1){const v=coastDist[i+1]+1;if(v<dd)dd=v;}
+if(ty<CH-1){const v=coastDist[i+CW]+1;if(v<dd)dd=v;}
+if(tx<CW-1&&ty<CH-1){const v=coastDist[i+CW+1]+1.4142;if(v<dd)dd=v;}
+if(tx>0&&ty<CH-1){const v=coastDist[i+CW-1]+1.4142;if(v<dd)dd=v;}
+coastDist[i]=dd;}
+// Downsampled fbm fields — staining is low-frequency, so 4× downsample is invisible (~16× fewer fbm calls)
 const QW=(CW>>2)+2,QH=(CH>>2)+2;
 const mkField=(fx,fy,oct,ox,oy)=>{const f=new Float32Array(QW*QH);
 for(let j=0;j<QH;j++)for(let k=0;k<QW;k++)f[j*QW+k]=fbm(k*4/CW*fx+ox,j*4/CH*fy+oy,oct,2,0.5);
 return f;};
-const m1F=mkField(5,5,4,11,11),m2F=mkField(34,34,2,40,40),oA=mkField(7,7,3,3,3),oB=mkField(26,26,2,9,9);
+const bigF=mkField(3.0,3.0,3,11,11),stnF=mkField(4.6,4.6,3,93,93),midF=mkField(8,8,3,40,40),
+fineF=mkField(27,27,2,71,71),oA=mkField(6,6,3,3,3),oB=mkField(19,19,2,9,9),warpF=mkField(3.5,3.5,2,55,55);
 const samp=(f,x,y)=>{const fx=x*0.25,fy=y*0.25,x0=fx|0,y0=fy|0,dx=fx-x0,dy=fy-y0,
 a=f[y0*QW+x0],b=f[y0*QW+x0+1],cc=f[(y0+1)*QW+x0],dd=f[(y0+1)*QW+x0+1];
 return a*(1-dx)*(1-dy)+b*dx*(1-dy)+cc*(1-dx)*dy+dd*dx*dy;};
-// Base layer — parchment land + dark seas
+// Base layer — stained, worn parchment land + dark, textured seas
+const COAST=34;
 for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
 const i=ty*CW+tx,si=dataIdx[i],pi=i<<2,e=w.elevation[si];
 if(water[i]){
 const depth=Math.min(1,Math.max(0,-e)*2.2);
 const n=samp(oA,tx,ty),n2=samp(oB,tx,ty);
-d[pi]=17-depth*7+n*5+n2*2;
-d[pi+1]=21-depth*9+n*5+n2*2;
-d[pi+2]=34-depth*12+n*6+n2*3;
+const cur=Math.sin(tx*0.045+ty*0.018+samp(warpF,tx,ty)*7);
+const cl=Math.max(0,cur)*Math.max(0,cur)*3;
+d[pi]=18-depth*8+n*5+n2*2+cl;
+d[pi+1]=22-depth*10+n*5+n2*2+cl;
+d[pi+2]=35-depth*13+n*6+n2*3+cl*1.3;
 d[pi+3]=255;continue;}
 const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);
-const m1=samp(m1F,tx,ty),m2=samp(m2F,tx,ty);
-let r=229+m1*-22+m2*7,g=215+m1*-21+m2*6,b=172+m1*-18+m2*5;
-if(m1>0.22){const s=m1-0.22;r-=s*15;g-=s*21;b-=s*27;}
-if(biome===13){r+=16;g-=4;b-=40;}           // desert — warm orange discolouring
-else if(biome===14){r+=9;b-=23;}            // shrubland — mild tan
-else if(biome===11){r+=10;g+=2;b-=20;}      // savanna — golden
-else if(biome===5){r+=20;g+=26;b+=46;}      // snow / ice — white
-else if(biome===4||biome===18){r+=11;g+=15;b+=27;} // tundra / cold desert — pale wash
-else if(biome===6||biome===7){r-=14;g-=6;b-=14;}   // taiga / boreal — cool shade
-else if(biome===8||biome===9||biome===10||biome===15||biome===17){r-=8;g-=2;b-=12;} // forest — faint green
-if(e>mtnLo){const s=Math.min(1,(e-mtnLo)/(landEMax-mtnLo+1e-3));r-=s*14;g-=s*10;b-=s*2;}
+const big=samp(bigF,tx,ty),mid=samp(midF,tx,ty),fine=samp(fineF,tx,ty);
+const grain=atlasHash(tx,ty)-0.5;
+let r=205,g=187,b=146;
+// broad uneven aged tone
+r+=big*40;g+=big*37;b+=big*31;
+// blotchy brown stains at two scales — worn discolouring
+const stn=samp(stnF,tx,ty);
+const stain=Math.max(0,mid+0.15)+Math.max(0,stn-0.05)*0.65;
+r-=stain*36;g-=stain*44;b-=stain*49;
+if(mid>0.30){const s=(mid-0.30)*1.6;r-=s*36;g-=s*40;b-=s*40;}
+// finer mottle + per-pixel paper grain (fibres)
+r+=fine*17+grain*12;g+=fine*16+grain*12;b+=fine*13+grain*11;
+// biome discolouration
+if(biome===13){r+=15;g-=3;b-=36;}           // desert — warm orange
+else if(biome===14){r+=8;b-=21;}            // shrubland — mild tan
+else if(biome===11){r+=9;g+=2;b-=18;}       // savanna — golden
+else if(biome===5){r+=24;g+=27;b+=39;}      // snow / ice — aged white
+else if(biome===4||biome===18){r+=11;g+=14;b+=22;} // tundra / cold desert — pale wash
+else if(biome===6||biome===7){r-=14;g-=7;b-=14;}   // taiga / boreal — cool shade
+else if(biome===8||biome===9||biome===10||biome===15||biome===17){r-=9;g-=3;b-=13;} // forest — faint green
+if(e>mtnLo){const s=Math.min(1,(e-mtnLo)/(landEMax-mtnLo+1e-3));r-=s*16;g-=s*12;b-=s*4;}
+// shoreline: gradient to a darker tea-stained discolour
+if(coastDist[i]<COAST){const tt=1-coastDist[i]/COAST,t2=tt*tt;
+r-=t2*36;g-=t2*44;b-=t2*47;r+=tt*10;g+=tt*3;}
+// river ink
 if(rm){const txT=Math.min(tw-1,(si%W)/RES|0),tyT=Math.min(th-1,((si/W)|0)/RES|0),mag=rm[tyT*tw+txT];
-if(mag>=2){const a=mag>=4?0.78:mag>=3?0.62:0.46;
-r=r*(1-a)+44*a;g=g*(1-a)+58*a;b=b*(1-a)+78*a;}}
+if(mag>=2){const a=mag>=4?0.8:mag>=3?0.64:0.48;
+r=r*(1-a)+38*a;g=g*(1-a)+50*a;b=b*(1-a)+66*a;}}
+// hand-inked coastline — darkness varied so it reads as worn ink, not a clean vector line
+if(coastDist[i]<=1.7){const ink=0.6+atlasHash(tx,ty)*0.34;
+r=r*(1-ink)+34*ink;g=g*(1-ink)+27*ink;b=b*(1-ink)+18*ink;}
 d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;}
-// Coastline ink — land pixels touching water
-for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
-const i=ty*CW+tx;if(water[i])continue;
-if((tx>0&&water[i-1])||(tx<CW-1&&water[i+1])||(ty>0&&water[i-CW])||(ty<CH-1&&water[i+CW])){
-const pi=i<<2;d[pi]=48;d[pi+1]=40;d[pi+2]=29;}}
 octx.putImageData(img,0,0);
 // ── Cartographic symbols ──
 octx.lineJoin="round";octx.lineCap="round";
+// Foxing — scattered small age-spots on the paper
+for(let gy=4;gy<CH-4;gy+=9)for(let gx=4;gx<CW-4;gx+=9){
+const px=(gx+(atlasHash(gx+3,gy+5)-0.5)*8)|0,py=(gy+(atlasHash(gx+7,gy+1)-0.5)*8)|0;
+if(px<1||px>=CW-1||py<1||py>=CH-1)continue;
+const i=px+py*CW;if(water[i])continue;
+const h=atlasHash(gx+9,gy+9);if(h>0.24)continue;
+const rad=0.6+atlasHash(gx+1,gy+4)*1.9;
+octx.fillStyle=`rgba(${78+(h*150|0)},${56+(h*90|0)},30,${0.08+h*1.7})`;
+octx.beginPath();octx.arc(px,py,rad,0,6.2832);octx.fill();}
 // Mountains (triangles) + hills (humps)
 for(let gy=6;gy<CH-6;gy+=11)for(let gx=6;gx<CW-6;gx+=11){
 const px=(gx+(atlasHash(gx,gy)-0.5)*8)|0,py=(gy+(atlasHash(gx+7,gy+3)-0.5)*8)|0;
@@ -2657,7 +2708,7 @@ if(e>=mtnLo){
 const dens=(e-mtnLo)/(landEMax-mtnLo+1e-3);
 if(atlasHash(gx+11,gy+19)>0.4+dens*0.55)continue;
 const big=e>mtnHi,size=(big?5.0:3.2)+dens*3.6+atlasHash(gx+3,gy+9)*1.4;
-atlasMountain(octx,px,py,size,big);
+atlasMountain(octx,px,py,size,big,atlasHash(gx+6,gy+2));
 }else if(e>=hillLo){
 if(atlasHash(gx+5,gy+8)>0.22)continue;
 atlasHill(octx,px,py,1.7+atlasHash(gx+2,gy+6)*1.3);}}
@@ -2675,8 +2726,8 @@ else if(biome===15)cover=0.30;
 else if(biome===6||biome===7){cover=0.48;conifer=true;}
 else continue;
 if(atlasHash(gx+13,gy+5)>cover)continue;
-const size=3.6+atlasHash(gx+9,gy+1)*2.6;
-if(conifer)atlasConifer(octx,px,py,size);else atlasBroadleaf(octx,px,py,size);}
+const size=4.4+atlasHash(gx+9,gy+1)*3.0;
+atlasTree(octx,px,py,size,!conifer,atlasHash(gx+2,gy+11));}
 // Desert stipple (dune dots)
 for(let gy=4;gy<CH-4;gy+=7)for(let gx=4;gx<CW-4;gx+=7){
 const px=(gx+(atlasHash(gx+6,gy+1)-0.5)*6)|0,py=(gy+(atlasHash(gx+2,gy+9)-0.5)*6)|0;
