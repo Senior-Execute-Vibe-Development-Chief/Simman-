@@ -2903,14 +2903,27 @@ octx.moveTo(px-1.4,py+1);octx.lineTo(px-1.4,py-2);
 octx.moveTo(px,py+1);octx.lineTo(px,py-2.6);
 octx.moveTo(px+1.4,py+1);octx.lineTo(px+1.4,py-2);
 octx.stroke();}}
+// Re-stamp lake water over the symbol layer. Tree canopies from shoreline
+// trees overhang small lakes and would otherwise bury them; the base layer
+// (d) still holds the clean water colour, so copy it back for lake tiles
+// only — land symbols are left untouched.
+if(lk){const cur=octx.getImageData(0,0,CW,CH),cd=cur.data;
+for(let i=0;i<N;i++){if(lk[i]<0)continue;
+const pi=i<<2;cd[pi]=d[pi];cd[pi+1]=d[pi+1];cd[pi+2]=d[pi+2];cd[pi+3]=255;}
+octx.putImageData(cur,0,0);}
 // Rivers — traced from the flow network, drawn as smooth meandering ink
-// (the raw D8 flow is 8-directional/blocky; tracing + curve smoothing +
-// a perpendicular meander turns it into natural winding rivers)
+// (the raw D8 flow is 8-directional/blocky; tracing + curve smoothing
+// turns it into natural winding rivers). Lakes break the trace: a river
+// ends at the lake shore, and the lake's outflow is drawn as its own
+// river from the outlet — so rivers visibly enter and leave lakes.
 if(ter.rivers&&ter.rivers.flowDir){
 const rmg=ter.rivers.riverMag,fd=ter.rivers.flowDir,RN=tw*th;
 const DDX=[1,1,0,-1,-1,-1,0,1],DDY=[0,1,1,1,0,-1,-1,-1];
+const isLk=(t)=>!!(lk&&lk[t]>=0);
 const hasUp=new Uint8Array(RN),drawn=new Uint8Array(RN);
-for(let ti=0;ti<RN;ti++){if(rmg[ti]<2)continue;const d=fd[ti];if(d===255)continue;
+// Upstream flag ignores lake tiles, so a tile fed only by a lake's outlet
+// counts as a river source — that becomes the lake's outflow head.
+for(let ti=0;ti<RN;ti++){if(rmg[ti]<2||isLk(ti))continue;const d=fd[ti];if(d===255)continue;
 const nx=((ti%tw)+DDX[d]+tw)%tw,ny=((ti/tw)|0)+DDY[d];if(ny<0||ny>=th)continue;hasUp[ny*tw+nx]=1;}
 octx.lineCap="round";octx.lineJoin="round";octx.strokeStyle="rgba(42,58,78,0.92)";
 const wOf=(m)=>m>=4?2.2:m>=3?1.5:0.95;
@@ -2919,13 +2932,24 @@ octx.moveTo(pts[a].x,pts[a].y);
 for(let k=a+1;k<b;k++)octx.quadraticCurveTo(pts[k].x,pts[k].y,(pts[k].x+pts[k+1].x)*0.5,(pts[k].y+pts[k+1].y)*0.5);
 octx.lineTo(pts[b].x,pts[b].y);octx.stroke();};
 for(let ti=0;ti<RN;ti++){
-if(rmg[ti]<2||hasUp[ti])continue;
+if(rmg[ti]<2||hasUp[ti]||isLk(ti))continue;
 const pts=[];let ci=ti,guard=0;
+// If this head is fed by a lake outlet, prepend that outlet tile so the
+// river visibly emerges from the water rather than starting beside it.
+if(lk){const sx=ti%tw,sy=(ti/tw)|0;
+for(let d=0;d<8;d++){const lx=((sx+DDX[d])%tw+tw)%tw,ly=sy+DDY[d];
+if(ly<0||ly>=th)continue;const lci=ly*tw+lx;
+if(lk[lci]>=0&&fd[lci]!==255){
+const ld=fd[lci],fx2=((lx+DDX[ld])%tw+tw)%tw,fy2=ly+DDY[ld];
+if(fx2===sx&&fy2===sy){pts.push({x:lx,y:ly,m:rmg[ti]});break;}}}}
 for(;;){if(guard++>6000)break;
 drawn[ci]=1;pts.push({x:ci%tw,y:(ci/tw)|0,m:rmg[ci]});
 const d=fd[ci];if(d===255)break;
 const cx=ci%tw,cy=(ci/tw)|0,nx=((cx+DDX[d])%tw+tw)%tw,ny=cy+DDY[d];
 if(ny<0||ny>=th)break;const nci=ny*tw+nx;
+// Reaching a lake: end the river at the shore (the lake tile is the
+// terminal point so the line just touches the water).
+if(isLk(nci)){pts.push({x:nx,y:ny,m:pts[pts.length-1].m});break;}
 if(rmg[nci]<2||drawn[nci]){pts.push({x:nx,y:ny,m:rmg[nci]>=2?rmg[nci]:pts[pts.length-1].m});break;}
 ci=nci;}
 const n=pts.length;if(n<2)continue;
