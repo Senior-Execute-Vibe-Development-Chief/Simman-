@@ -23,6 +23,16 @@ pureCode = pureCode.replace(
   'for(const[ti,to]of flips){if(owner[ti]===to)continue;',
   'if(!ter._dbgFlips)ter._dbgFlips=0; ter._dbgFlips+=flips.length;\nfor(const[ti,to]of flips){if(owner[ti]===to)continue;'
 );
+// Count cascade and capital-fall results
+pureCode = pureCode.replace(
+  'const cascadeTiles=conquestCascade(ter,ti,to,from,nf,nfl);',
+  'const cascadeTiles=conquestCascade(ter,ti,to,from,nf,nfl); if(!ter._dbgCascade)ter._dbgCascade=0; ter._dbgCascade+=cascadeTiles.length;'
+);
+// Hook capitalFall to count tiles transferred
+pureCode = pureCode.replace(
+  'for(const mi of moved){',
+  'if(!ter._dbgCapitalCascade)ter._dbgCapitalCascade=0; ter._dbgCapitalCascade+=moved.length; for(const mi of moved){'
+);
 // Sample the ratio distribution for any qualifying border attack
 pureCode = pureCode.replace(
   'const ratio=lpB/Math.max(0.001,lpA*totalDef);',
@@ -152,7 +162,10 @@ for (let step = 1; step <= STEPS; step++) {
 }
 
 console.log('\n=== SUMMARY ===');
-console.log(`Total flips: ${ter._dbgFlips || 0}`);
+console.log(`Normal flips:     ${ter._dbgFlips || 0}`);
+console.log(`Cascade flips:    ${ter._dbgCascade || 0}`);
+console.log(`Capital cascades: ${ter._dbgCapitalCascade || 0} tiles transferred`);
+console.log(`Total territorial changes: ${(ter._dbgFlips||0)+(ter._dbgCascade||0)+(ter._dbgCapitalCascade||0)}`);
 if (ter._dbgRatios) {
   console.log('Ratio histogram (lpB / (lpA*totalDef), bucket size 0.25):');
   for (let b = 0; b < 20; b++) {

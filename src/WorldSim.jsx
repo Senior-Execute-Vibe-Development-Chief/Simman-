@@ -937,6 +937,12 @@ function declareWar(ter,aggressor,defender,reason){
   if(!ter._warEvents)ter._warEvents=[];
   ter._warEvents.push({step:ter.stepCount,type:'declared',aggressor,defender,reason:w.reason});
   if(ter._warEvents.length>200)ter._warEvents.shift();
+  // One-time visibility log so the user can confirm the new war system
+  // is actually running in their build (vs a stale cache).
+  if(typeof console!=='undefined'&&!ter._warLogShown){
+    ter._warLogShown=true;
+    console.log(`[WarSystem v2] First war declared at step ${ter.stepCount}: tribe ${aggressor} -> tribe ${defender} (reason: ${reason||'border'})`);
+  }
   return w;
 }
 function recordFlip(ter,attacker,defender,ti){
@@ -2245,9 +2251,19 @@ function conquestCascade(ter,ti,attacker,defender,nf,nfl){
   if(Math.abs(dxRaw)>Math.abs(dyRaw)){stepX=dxRaw>0?1:dxRaw<0?-1:0;}
   else{stepY=dyRaw>0?1:dyRaw<0?-1:0;}
   if(stepX===0&&stepY===0)return captured;
-  // Try up to 2 cascade steps with decreasing probability
+  // Cascade depth + reliability scaled by war intensity. A long war with
+  // many flips means an army actively in the field — pushes much deeper.
+  // Real conquest is decisive: a Persian sweep, a Mongol push. Single
+  // breaches becoming whole-province changes hands is the goal here.
+  const wr=getWar(ter,attacker,defender);
+  const intensity=wr?Math.min(1,((wr.flipsAtoB||0)+(wr.flipsBtoA||0))/40):0;
+  // Base: 5-deep cascade, probabilities boosted by intensity
+  const probs=[0.90+intensity*0.08,
+               0.80+intensity*0.10,
+               0.70+intensity*0.12,
+               0.55+intensity*0.15,
+               0.40+intensity*0.20];
   let cx=sx,cy=sy;
-  const probs=[0.6,0.4];
   for(let s=0;s<probs.length;s++){
     cx=((cx+stepX)%tw+tw)%tw;cy=cy+stepY;
     if(cy<0||cy>=th)break;
@@ -2255,14 +2271,18 @@ function conquestCascade(ter,ti,attacker,defender,nf,nfl){
     if(owner[ni]!==defender)break;          // hit unowned or third tribe — stop
     if(tElev[ni]<=sl)break;                  // hit water
     if(Math.random()>=probs[s])break;        // failed roll
-    const attackCost=tFert[ni]*0.2;          // smaller cost than a regular flip
+    const attackCost=tFert[ni]*0.15;          // smaller cost than a regular flip
     tribeStrength[attacker]=Math.max(0.1,tribeStrength[attacker]-attackCost);
-    if(ter.bgPop&&ter.bgPop[ni]>0)ter.bgPop[ni]*=0.85;
-    if(ter.cityPop&&ter.cityPop[ni]>0)ter.cityPop[ni]*=0.90;
+    if(ter.bgPop&&ter.bgPop[ni]>0)ter.bgPop[ni]*=0.88;
+    if(ter.cityPop&&ter.cityPop[ni]>0)ter.cityPop[ni]*=0.92;
     const wasCityHere=isCityTile(ter,defender,ni);
     claimTile(ter,ni,attacker);
     if(nf&&!nf[ni]){nf[ni]=1;nfl.push(ni);}
     captured.push(ni);
+    // Spread campaign momentum to the cascade tile so subsequent passes
+    // continue from the new furthest point of the salient.
+    if(!ter._campaign[attacker])ter._campaign[attacker]={};
+    const cm=ter._campaign[attacker];cm[ni]=Math.min(1.0,(cm[ni]||0)+0.7);
     if(wasCityHere){capitalFall(ter,ni,attacker,defender,nf,nfl);break;}
   }
   return captured;
@@ -2289,8 +2309,9 @@ function capitalFall(ter,ti,attacker,defender,nf,nfl){
     tribeCenters[attacker]=aCenters;
   }
   // Cascade: transfer tiles within R that were closer to this lost city
-  // than to any other surviving defender city.
-  const R=wasCapital?8:5;
+  // than to any other surviving defender city. Big radius — taking the
+  // capital should be a generational-scale event in the sim's narrative.
+  const R=wasCapital?14:9;
   const R2=R*R;
   const survivingCenters=tribeCenters[defender]||[];
   const moved=[];
@@ -2688,6 +2709,69 @@ if(ter.stepCount%16===0&&ter._borderContacts){
     if(bestTarget>=0){declareWar(ter,i,bestTarget,'decided');}
   }
 }
+// ── Siege: cities surrounded by enemy territory eventually fall ──────
+// Per-tile power calculations make city tiles essentially unconquerable
+// (defender's max strength is right at the city). Real cities fell to
+// sieges — sustained encirclement, not momentary power exchange. Each
+// city tracks a per-enemy siege counter (`ter._sieges[cityTi][enemyId]`)
+// that increments when most surrounding tiles are enemy-held. When it
+// crosses a threshold, the city falls via capitalFall — bypassing the
+// normal probability roll.
+if(ter.stepCount%4===0){
+  if(!ter._sieges)ter._sieges={};
+  const n=ter.tribeCenters.length;
+  // Build set of currently-besieged cities
+  const cityFalls=[];
+  for(let tid=0;tid<n;tid++){
+    if(tribeSizes[tid]<=0)continue;
+    const centers=ter.tribeCenters[tid];if(!centers)continue;
+    for(let ci=0;ci<centers.length;ci++){
+      const c=centers[ci];const cti=c.y*tw+c.x;
+      // Count surrounding tiles by owner within R=2 (the city's immediate hinterland)
+      const enemyCounts={};let ownTiles=0,total=0;
+      for(let dy=-2;dy<=2;dy++){
+        const ny=c.y+dy;if(ny<0||ny>=th)continue;
+        for(let dx=-2;dx<=2;dx++){
+          const nx=((c.x+dx)%tw+tw)%tw;
+          const ni=ny*tw+nx;
+          if(tElev[ni]<=sl)continue;
+          total++;
+          const o=owner[ni];
+          if(o===tid)ownTiles++;
+          else if(o>=0&&atWar(ter,tid,o))enemyCounts[o]=(enemyCounts[o]||0)+1;
+        }
+      }
+      if(total===0)continue;
+      // Find dominant enemy
+      let bestE=-1,bestC=0;
+      for(const eid in enemyCounts){if(enemyCounts[eid]>bestC){bestC=enemyCounts[eid];bestE=parseInt(eid);}}
+      // Threshold: enemy holds at least 50% of city's hinterland AND defender holds <30%
+      const enemyFrac=bestC/total,ownFrac=ownTiles/total;
+      if(!ter._sieges[cti])ter._sieges[cti]={};
+      const siege=ter._sieges[cti];
+      if(bestE>=0&&enemyFrac>0.5&&ownFrac<0.3){
+        siege[bestE]=(siege[bestE]||0)+1;
+        // Falls after ~6 ticks of effective siege (at %4===0, so ~24 sim steps)
+        if(siege[bestE]>=6){cityFalls.push([cti,bestE,tid]);delete siege[bestE];}
+      }else if(siege[bestE]){
+        // Siege lifted — decay quickly
+        siege[bestE]=Math.max(0,siege[bestE]-1);
+        if(siege[bestE]===0)delete siege[bestE];
+      }
+    }
+  }
+  // Apply siege-driven city falls
+  for(const[cti,attacker,defender]of cityFalls){
+    if(owner[cti]!==defender)continue;// city already gone
+    // Direct city capture via siege
+    if(ter.bgPop&&ter.bgPop[cti]>0)ter.bgPop[cti]*=0.70;// siege starvation
+    if(ter.cityPop&&ter.cityPop[cti]>0)ter.cityPop[cti]*=0.60;
+    claimTile(ter,cti,attacker);
+    recordFlip(ter,attacker,defender,cti);
+    capitalFall(ter,cti,attacker,defender,nf,nfl);
+    if(nf&&!nf[cti]){nf[cti]=1;nfl.push(cti);}
+  }
+}
 // ── Border conflict: local power projection determines tile flips ──
 // Only check frontier tiles (tiles with at least one unowned/enemy neighbor)
 if(ter.stepCount%2===0){const flips=[];const{tenure}=ter;
@@ -2735,8 +2819,11 @@ let lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
 const mom=ter._campaign[no]?(ter._campaign[no][i]||0):0;
 if(mom>0)lpB*=(1+mom*1.2);// up to 2.2x at full momentum
 const totalDef=def;
-// Recently flipped tiles (tenure < 5) can't flip again — prevents ping-pong
-if(tenure[i]<5)continue;
+// Recently flipped tiles can't flip again — prevents ping-pong. Wartime
+// flips get a longer protection window (the new owner garrisons the tile
+// and the defender can't immediately retake it).
+const tProt=atWar(ter,no,ow)?12:5;
+if(tenure[i]<tProt)continue;
 // Probabilistic flip: ratio of attacker:defender drives chance, no hard gate.
 // At ratio=1.0 (parity) → small flip chance; ratio>>1 → near-certain attempt.
 // Below 0.5 ratio the attempt is hopeless (no roll). This lets close
