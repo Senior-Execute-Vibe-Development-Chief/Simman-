@@ -2380,6 +2380,15 @@ for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];if(owner[i]>=0&&tenure[i]<200)y
 // ── Border conflict: local power projection determines tile flips ──
 // Only check frontier tiles (tiles with at least one unowned/enemy neighbor)
 if(ter.stepCount%2===0){const flips=[];const{tenure}=ter;
+// Decay campaign momentum each pass (per-tribe sparse map of tile→momentum).
+// Momentum represents an army actively in the field at a recent breach;
+// it lets attackers concentrate force at the point of attack while defenders
+// are spread along the whole border. Without this, symmetric borders never
+// resolve (ratio ~0.33 at parity, just below the 0.35 attempt threshold) —
+// which produced the observed 1-5-tile back-and-forth without cascading.
+if(!ter._campaign)ter._campaign={};
+for(const tid in ter._campaign){const m=ter._campaign[tid];
+for(const t in m){m[t]*=0.7;if(m[t]<0.05)delete m[t];}}
 for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
 // New tribes get 80 steps of protection from border conflict (establishment period)
 const owAge=ter.stepCount-(tribeCenters[ow][0]?tribeCenters[ow][0].founded:0);
@@ -2410,7 +2419,10 @@ const lastG=ter.tribeLastGrowth&&ter.tribeLastGrowth[no]!=null?ter.tribeLastGrow
 const stagBonus=1+Math.min(1.0,Math.max(0,ter.stepCount-lastG-200)/300);
 const atkAggression=(atkSz<25?0.4:atkSz>80?1.5:1.0)*(0.5+atkMilB*2.5)*stagBonus;
 // River between attacker and defender tiles: additional crossing penalty
-const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
+let lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
+// Campaign momentum: armies concentrate at recent breaches
+const mom=ter._campaign[no]?(ter._campaign[no][i]||0):0;
+if(mom>0)lpB*=(1+mom*1.2);// up to 2.2x at full momentum
 const totalDef=def;
 // Recently flipped tiles (tenure < 5) can't flip again — prevents ping-pong
 if(tenure[i]<5)continue;
@@ -2436,7 +2448,15 @@ if(from>=0){const key=Math.min(from,to)+','+Math.max(from,to);
 ter._recentConflicts[key]=ter.stepCount;}// record latest conflict step
 const attackCost=tFert[ti]*0.3;
 tribeStrength[to]=Math.max(0.1,tribeStrength[to]-attackCost);
-claimTile(ter,ti,to);if(!nf[ti]){nf[ti]=1;nfl.push(ti);}}}
+claimTile(ter,ti,to);if(!nf[ti]){nf[ti]=1;nfl.push(ti);}
+// Spread campaign momentum to the flipped tile + neighbours so the
+// attacker can push deeper next pass instead of stopping at one tile.
+if(!ter._campaign[to])ter._campaign[to]={};
+const cm=ter._campaign[to];cm[ti]=Math.min(1.0,(cm[ti]||0)+0.8);
+const fy=Math.floor(ti/tw),fx=ti%tw;
+for(const[dx,dy]of DIRS){const nx2=((fx+dx)%tw+tw)%tw,ny2=fy+dy;
+if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
+if(owner[ni]===from)cm[ni]=Math.min(1.0,(cm[ni]||0)+0.6);}}}
 // ── City-based cohesion challenge: when a secondary city outgrows the capital ──
 // Centers are derived from cityPop in stepBackgroundPop. Here we check if a
 // rival city challenges the capital — potentially splitting the empire.
