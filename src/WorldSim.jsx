@@ -1584,8 +1584,10 @@ let claimed=0;const maxClaim=12;
 while(stack.length>0&&claimed<maxClaim){
 const ci=stack.pop();
 if(tElev[ci]<=0)continue;
-if(owner[ci]>=0&&owner[ci]!==nid){
-if(claimed>=6)continue;}
+// Crystallising tribes claim only unowned land — no free annexation of
+// existing tribes' tiles (audit flaw #8). Bordering tribes can be
+// challenged later through normal expansion / war.
+if(owner[ci]>=0&&owner[ci]!==nid)continue;
 claimTile(ter,ci,nid);
 if(!ter.frontier[ci]){ter.frontier[ci]=1;ter.frontierList.push(ci);}
 claimed++;
@@ -1997,6 +1999,15 @@ if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];if(tribeTiles&&tribeTile
 // bgPop stays untouched — people remain, only political control changes
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];
 if(tribeTiles){while(tribeTiles.length<=nw)tribeTiles.push(new Set());tribeTiles[nw].add(ti);}}
+// Canonical "abandon tile" writer: tile becomes unowned and the former
+// owner's tribeTiles index is kept consistent. Used by migration when a
+// nomadic tribe gives up its worst tile.
+function abandonTile(ter,ti){const{owner,tribeSizes,tribeStrength,tFert,tribeTiles,tenure}=ter;const ow=owner[ti];
+if(ow<0)return;
+tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];
+if(tribeTiles&&tribeTiles[ow])tribeTiles[ow].delete(ti);
+owner[ti]=-1;tenure[ti]=0;
+if(typeof ter.settled==='number')ter.settled--;}
 
 function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
@@ -2271,8 +2282,8 @@ const sc=tFert[i]-tDiff[i]*0.5;if(sc<worstScore){worstScore=sc;worstTi=i;}}}
 else{for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;
 const sc=tFert[i]-tDiff[i]*0.5;if(sc<worstScore){worstScore=sc;worstTi=i;}}}
 if(worstTi>=0&&tribeSizes[st]>3){
-// Abandon worst tile
-owner[worstTi]=-1;tribeSizes[st]--;tribeStrength[st]-=tFert[worstTi];ter.tenure[worstTi]=0;ter.settled--;}}}
+// Abandon worst tile via canonical writer (keeps tribeTiles index consistent)
+abandonTile(ter,worstTi);}}}
 ter.frontier=nf;ter.frontierList=nfl;
 // ── Age tenure + occupation cost: newly conquered tiles drain strength ──
 if(ter.stepCount%4===0){const{tenure}=ter;
