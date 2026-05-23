@@ -1022,6 +1022,43 @@ function stepMilitary(ter){
   }
 }
 
+// ── Tile weakness ─────────────────────────────────────────────────────
+// How weak is the *individual* tile, not the tribe overall? A long
+// thin tendril through wilderness is mighty empire's claim on paper
+// but the actual tiles are isolated, far from supply, and unpopulated
+// — IRL neighbours would nibble them off opportunistically. We score
+// each contested tile and amplify peacetime flip chance accordingly,
+// so tendrils get cut by passing neighbours without needing a formal
+// war declaration.
+function tileWeakness(ter,ti,ow){
+  const{tw,th,owner,tribeCenters,bgPop,cityPop}=ter;
+  const tx=ti%tw,ty=(ti-tx)/tw;
+  // Isolation: 0..1 where 0 = fully embedded interior, 1 = lonely tip
+  let ownN=0;
+  for(const[dx,dy]of DIRS){
+    const ny=ty+dy;if(ny<0||ny>=th)continue;
+    const nx=((tx+dx)%tw+tw)%tw;
+    if(owner[ny*tw+nx]===ow)ownN++;
+  }
+  const isolation=(4-ownN)/4;
+  // Distance to nearest city
+  const centers=tribeCenters[ow];
+  let minD=Infinity;
+  if(centers){
+    const lim=Math.min(centers.length,12);
+    for(let ci=0;ci<lim;ci++){const c=centers[ci];
+      const d=tDistW(tx,ty,c.x,c.y,tw);if(d<minD)minD=d;}}
+  // Saturate at ~25 tiles. Tribes pre-modern couldn't reliably govern
+  // beyond that without administrative infrastructure.
+  const distFactor=minD<Infinity?Math.min(1,minD/25):1;
+  // Population dryness — unpopulated tiles are a paper claim only
+  const pop=(bgPop?bgPop[ti]:0)+(cityPop?cityPop[ti]:0);
+  const popDry=Math.max(0,1-pop/0.4);
+  // Weighted aggregate. Isolation is the dominant signal (it's geometric
+  // and unambiguous), distance and population reinforce.
+  return isolation*0.45+distFactor*0.35+popDry*0.20;
+}
+
 // ── War desire score ──────────────────────────────────────────────────
 // Heuristic: how much does tribe `a` want to fight tribe `b` right now?
 // Returns a scalar. >1.0 means strong enough to declare war. Negative
@@ -3080,12 +3117,21 @@ const ratio=lpB/Math.max(0.001,lpA*totalDef);
 if(ratio>0.35){const diff=Math.max(tDiff[i],tDiff[ni]);
 const pressure=Math.min(1.2,Math.max(0,ratio-0.35))*0.4*atkAggression;
 const prize=(0.5+tFert[i]*1.5)*(atkSz>60?1+Math.min(0.5,(atkSz-60)*0.005):1);
-// Peacetime gating: borders that aren't part of an active war flip much
-// less often. Tribes need to actually be at war (declared by the war
-// decider or auto-declared on a first strike) for serious territorial
-// movement. Without this, every adjacent enemy is constantly engaged.
+// Peacetime gating: most borders sit quiet, but individual *weak* tiles
+// (tendril tips, isolated outposts, depopulated frontier scraps) are
+// opportunistically nibbled even without a war declared. This is what
+// stops long tendrils — they're paper claims, and neighbours pick them
+// off whenever they're adjacent. A formal war still amplifies everything,
+// but tile-level weakness now matters in its own right.
 const isWar=atWar(ter,no,ow);
-const peaceMult=isWar?1.0:0.08;
+let peaceMult;
+if(isWar){peaceMult=1.0;}
+else{
+  // Weak tiles (weakness ~1) reach ~0.85 of wartime; strong embedded
+  // tiles (weakness ~0) stay at 0.05 — most peacetime borders quiet.
+  const tw_=tileWeakness(ter,i,ow);
+  peaceMult=0.05+tw_*0.85;
+}
 let flipP=Math.max(0.003,pressure*prize*(1-diff*0.7))*peaceMult;
 if(Math.random()<flipP){flips.push([i,no]);break;}
 if(ratio<1.0&&Math.random()<0.1){
