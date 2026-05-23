@@ -92,12 +92,14 @@ const fns = factory(
 
 const { createTerritory, stepTerritory } = fns;
 
-const W = 200, H = 100;
+const W = parseInt(process.env.W || '600', 10), H = parseInt(process.env.H || '300', 10);
 const world = createMockWorld(W, H);
 const ter = createTerritory(world);
 
+// Report tribe spacing + border-contact stats
 const initialTribes = (() => { let n=0; for (let i=0;i<ter.tribeSizes.length;i++) if (ter.tribeSizes[i]>0) n++; return n; })();
 console.log(`World ${W}x${H}, seed=${SEED}, initial tribes=${initialTribes}`);
+console.log(`MIN_SPACING for world width ${W}: ${Math.round(W*0.02)}`);
 
 let totalFlips = 0, totalCredible = 0;
 let prevFlips = 0, prevCredible = 0;
@@ -128,8 +130,14 @@ for (let step = 1; step <= STEPS; step++) {
       return c;
     })();
 
-    samples.push({step, alive, totalTiles, unclaimedLand, dFlips, dCred, largestTribe, totalPop});
-    console.log(`Step ${String(step).padStart(4)} | ${String(alive).padStart(3)} tribes | tiles=${String(totalTiles).padStart(5)} unclaimed=${String(unclaimedLand).padStart(4)} | biggest=${largestTribe} | flips(50s)=${dFlips} credible(50s)=${dCred} | pop=${(totalPop/1000).toFixed(0)}K`);
+    // Count tribes with any border contact
+    let withContact = 0;
+    if (ter._borderContacts) for (let i=0;i<ter._borderContacts.length;i++) {
+      if (ter.tribeSizes[i]<=0) continue;
+      if (Object.keys(ter._borderContacts[i]).length>0) withContact++;
+    }
+    samples.push({step, alive, totalTiles, unclaimedLand, dFlips, dCred, largestTribe, totalPop, withContact});
+    console.log(`Step ${String(step).padStart(4)} | ${String(alive).padStart(3)} tribes (${withContact} touch others) | tiles=${String(totalTiles).padStart(5)} unclaimed=${String(unclaimedLand).padStart(5)} | biggest=${largestTribe} | flips(50s)=${dFlips}`);
   }
 }
 

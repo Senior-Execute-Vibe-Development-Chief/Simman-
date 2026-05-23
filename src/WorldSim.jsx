@@ -966,6 +966,28 @@ else{for(let ti=0;ti<tw*th;ti++){const ow=owner[ti];if(ow<0)continue;
 const tx=ti%tw,ty=(ti-tx)/tw;
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;
 const no=owner[ny*tw+nx];if(no>=0&&no!==ow){contacts[ow][no]=(contacts[ow][no]||0)+1;}}}}
+// ── Proximity-based discovery ──
+// Inland tribes separated by wilderness never appear in each other's
+// border contacts via direct adjacency. In reality, neighbouring polities
+// know about each other through traders, scouts, refugees. Add a
+// proximity pass: tribes whose centers are within DISCOVERY_R tiles of
+// each other get a low-weight contact entry (via='proximity').
+// Walks tribeCenters[] only — O(tribes²) but tribes << tiles.
+const DISCOVERY_R=Math.max(40,Math.round(tw*0.07));// scales with world size
+const R2=DISCOVERY_R*DISCOVERY_R;
+const centers=ter.tribeCenters;
+for(let i=0;i<n;i++){if(tribeSizes[i]<=0||!centers[i]||centers[i].length===0)continue;
+const ci=centers[i][0];const cix=ci.x,ciy=ci.y;
+for(let j=i+1;j<n;j++){if(tribeSizes[j]<=0||!centers[j]||centers[j].length===0)continue;
+if(contacts[i][j])continue;// already known via direct adjacency
+const cj=centers[j][0];
+// Wrap-aware x distance
+let ddx=Math.abs(cj.x-cix);if(ddx>tw/2)ddx=tw-ddx;
+const ddy=cj.y-ciy;
+const d2=ddx*ddx+ddy*ddy;
+if(d2<=R2){
+// Low-weight contact (1 vs adjacent-tile contacts which sum across border length)
+contacts[i][j]=1;contacts[j][i]=1;}}}
 return contacts;}
 
 // Ore access multiplier for metallurgy combat effect
