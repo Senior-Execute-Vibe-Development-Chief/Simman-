@@ -1041,16 +1041,26 @@ function tileWeakness(ter,ti,ow){
     if(owner[ny*tw+nx]===ow)ownN++;
   }
   const isolation=(4-ownN)/4;
-  // Distance to nearest city
-  const centers=tribeCenters[ow];
-  let minD=Infinity;
-  if(centers){
-    const lim=Math.min(centers.length,12);
-    for(let ci=0;ci<lim;ci++){const c=centers[ci];
-      const d=tDistW(tx,ty,c.x,c.y,tw);if(d<minD)minD=d;}}
-  // Saturate at ~25 tiles. Tribes pre-modern couldn't reliably govern
-  // beyond that without administrative infrastructure.
-  const distFactor=minD<Infinity?Math.min(1,minD/25):1;
+  // Reach: prefer real transport cost (Dijkstra through owned tiles,
+  // weighted by terrain — rivers cheap, mountains expensive) when it
+  // exists. This naturally penalises tendrils: a 1-tile-wide thread
+  // forces the path through that bottleneck and accumulates huge cost.
+  // Fall back to euclidean if transport hasn't run yet (early game).
+  let distFactor;
+  const tCost=ter.transportCost?ter.transportCost[ti]:0;
+  if(tCost>0&&tCost<900){
+    // Saturate at cost ~40 — that's a long expensive trek IRL terms
+    distFactor=Math.min(1,tCost/40);
+  }else{
+    // Fallback: straight-line distance to nearest center
+    const centers=tribeCenters[ow];
+    let minD=Infinity;
+    if(centers){
+      const lim=Math.min(centers.length,12);
+      for(let ci=0;ci<lim;ci++){const c=centers[ci];
+        const d=tDistW(tx,ty,c.x,c.y,tw);if(d<minD)minD=d;}}
+    distFactor=minD<Infinity?Math.min(1,minD/25):1;
+  }
   // Population dryness — unpopulated tiles are a paper claim only
   const pop=(bgPop?bgPop[ti]:0)+(cityPop?cityPop[ti]:0);
   const popDry=Math.max(0,1-pop/0.4);
