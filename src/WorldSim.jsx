@@ -2007,6 +2007,7 @@ for(let dx=-R;dx<=R;dx++){const nx=((cx+dx)%tw+tw)%tw;const ni=ny*tw+nx;
 if(owner[ni]===tribeId){const d=tDistW(cx,cy,nx,ny,tw);if(d<=R)sum+=tFert[ni];}}}return sum;}
 
 function newTribe(ter,x,y,parentId){const id=ter.tribeCenters.length;ter.tribeCenters.push([{x,y,prestige:1.0,founded:ter.stepCount}]);ter.tribeSizes.push(0);ter.tribeStrength.push(0);
+if(!ter.tribeLastGrowth)ter.tribeLastGrowth=[];ter.tribeLastGrowth.push(ter.stepCount);
 if(ter.tribeTiles)ter.tribeTiles.push(new Set());
 // Inherit knowledge from parent tribe (splits carry culture); new independent tribes start at zero
 const parentKnow=parentId>=0&&ter.tribeKnowledge[parentId]?ter.tribeKnowledge[parentId]:null;
@@ -2025,7 +2026,9 @@ if(tribeTiles&&tribeTiles[ow])tribeTiles[ow].delete(ti);
 // Conquest: people stay. Small war loss (15% of rural + 10% of urban).
 if(ter.bgPop&&ter.bgPop[ti]>0)ter.bgPop[ti]*=0.85;
 if(ter.cityPop&&ter.cityPop[ti]>0)ter.cityPop[ti]*=0.90;
+if(ter.tribeLastGrowth)ter.tribeLastGrowth[nw]=ter.stepCount;
 }else{
+if(ter.tribeLastGrowth)ter.tribeLastGrowth[nw]=ter.stepCount;
 ter.settled++;
 // Claiming unclaimed land: set bgPop based on fertility (people were already there)
 // No need to have simulated their growth — it's implicit from the terrain quality
@@ -2354,7 +2357,7 @@ young.length=j;// compact: remove tiles that aged out or lost ownership
 for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];if(owner[i]>=0&&tenure[i]<200)young.push(i);}}
 // ── Border conflict: local power projection determines tile flips ──
 // Only check frontier tiles (tiles with at least one unowned/enemy neighbor)
-if(ter.stepCount%4===0){const flips=[];const{tenure}=ter;
+if(ter.stepCount%2===0){const flips=[];const{tenure}=ter;
 for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
 // New tribes get 80 steps of protection from border conflict (establishment period)
 const owAge=ter.stepCount-(tribeCenters[ow][0]?tribeCenters[ow][0].founded:0);
@@ -2369,9 +2372,9 @@ const lpA=localPower(ter,ow,tx2,ty2);// only computed for border tiles
 // Defender advantage: 3x base + tenure + terrain + construction knowledge
 const defConst=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].construction:0;
 const defMilB=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].military:0.2;
-// Mountains make defense MUCH stronger: diff=0.5→+3.75, diff=0.8→+9.6 (fortress)
-// Combined with construction: a mountain kingdom with walls is nearly invincible
-let def=3+Math.min(1.5,tenure[i]*0.008)+tDiff[i]*tDiff[i]*15+defConst*3.0+defMilB*2.0;
+// Terrain still matters but capped so even mountain kingdoms can fall.
+// Base 1.5 (was 3) so realistic conquest is achievable with a power edge.
+let def=1.5+Math.min(1.5,tenure[i]*0.008)+Math.min(4,tDiff[i]*tDiff[i]*15)+defConst*3.0+defMilB*2.0;
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<16)continue;
 // Avoid attacking tribes that are much larger (>3x your size)
@@ -2379,7 +2382,11 @@ const atkSz=tribeSizes[no],defSz=tribeSizes[ow];
 if(defSz>0&&atkSz>0&&defSz/atkSz>3)continue;// don't poke the giant
 // Small tribes are less aggressive; large tribes more so
 const atkMilB=ter.tribeBudget&&ter.tribeBudget[no]?ter.tribeBudget[no].military:0.2;
-const atkAggression=(atkSz<25?0.4:atkSz>80?1.5:1.0)*(0.5+atkMilB*2.5);// militant tribes attack harder
+// Stagnation pressure: tribes that haven't grown in 200+ steps get restless
+// and push harder on neighbours (caps at +1.0 after 500 steps of no growth)
+const lastG=ter.tribeLastGrowth&&ter.tribeLastGrowth[no]!=null?ter.tribeLastGrowth[no]:ter.stepCount;
+const stagBonus=1+Math.min(1.0,Math.max(0,ter.stepCount-lastG-200)/300);
+const atkAggression=(atkSz<25?0.4:atkSz>80?1.5:1.0)*(0.5+atkMilB*2.5)*stagBonus;
 // River between attacker and defender tiles: additional crossing penalty
 const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
 const totalDef=def;
