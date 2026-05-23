@@ -621,21 +621,24 @@ for(let i=0;i<n;i++){
   for(const rk of RES_KEYS){td.imports[rk]=0;td.exports[rk]=0;}
   const k=tribeKnowledge[i];const r=ter._resCache[i];const pop=tribePopulation[i];
   if(!r||!k){stats[i]=null;partnersOf[i]=null;continue;}
-  const popK=pop/1000;
-  const foodProd=tribeStrength[i];
-  const foodDemand=popK*0.8;
+  // Food balance — uses the unit-coherent values computed by
+  // stepBackgroundPop (audit #3 fix: was popK/1000 which gave
+  // microscopic deficits no matter how many people starved).
+  const foodSupply=ter._tribeFoodSupply?ter._tribeFoodSupply[i]:0;
+  const foodNeed=ter._tribeFoodNeed?ter._tribeFoodNeed[i]:0;
+  // Resource demand scales with absolute population (was popK).
   const demand={
-    timber:popK*0.3+k.navigation*3,
-    stone:k.construction*popK*0.2,
-    iron:k.metallurgy*popK*0.15,
-    salt:popK*0.2,
-    copper:k.metallurgy<0.5?k.metallurgy*popK*0.1:0,
-    tin:k.metallurgy>0.1&&k.metallurgy<0.6?k.metallurgy*popK*0.08:0,
-    coal:Math.max(0,k.metallurgy-0.6)*popK*0.5,
-    oil:Math.max(0,k.metallurgy-0.8)*popK*0.3,
-    horses:k.organization*popK*0.05,
-    precious:k.trade*popK*0.1,
-    gems:k.trade*popK*0.03,
+    timber:pop*0.3+k.navigation*3,
+    stone:k.construction*pop*0.2,
+    iron:k.metallurgy*pop*0.15,
+    salt:pop*0.2,
+    copper:k.metallurgy<0.5?k.metallurgy*pop*0.1:0,
+    tin:k.metallurgy>0.1&&k.metallurgy<0.6?k.metallurgy*pop*0.08:0,
+    coal:Math.max(0,k.metallurgy-0.6)*pop*0.5,
+    oil:Math.max(0,k.metallurgy-0.8)*pop*0.3,
+    horses:k.organization*pop*0.05,
+    precious:k.trade*pop*0.1,
+    gems:k.trade*pop*0.03,
   };
   const surplus={},deficit={};
   for(const rk of RES_KEYS){
@@ -654,8 +657,8 @@ for(let i=0;i<n;i++){
   partnersOf[i]=part;
   const eff=k.trade*0.5+(ter.tribeBudget?.[i]?.commerce??0.2)*0.3+0.1;
   stats[i]={k,r,
-    foodSurplus:Math.max(0,foodProd-foodDemand),
-    foodDeficit:Math.max(0,foodDemand-foodProd),
+    foodSurplus:Math.max(0,foodSupply-foodNeed),
+    foodDeficit:Math.max(0,foodNeed-foodSupply),
     surplus,deficit,eff,rv:resourceValues(k)};
 }
 
@@ -1349,34 +1352,58 @@ const riverMag=ter.rivers?ter.rivers.riverMag:null;
 const tCost=ter.transportCost;
 const hasTrans=tCost&&tCost.length>=tw*th;
 
-// ── PASS 1: Food production and surplus accounting ──
-// Skip entirely if no tribes have settled (nothing to account)
+// ── PASS 1: Food production & consumption accounting ──
+// Per tile: production = bgPop × fert × (1 + ag-derived multiplier).
+// Per tribe: foodSupply (production sum), foodNeed (rural + urban eaters),
+// foodNet (supply − need). All quantities are in the same per-tile-pop
+// units so they're directly comparable. stepTrade reads these.
 const hasTribes=ter.settled>0;
+if(!ter._tribeFoodSupply)ter._tribeFoodSupply=new Float32Array(Math.max(n,80));
+if(!ter._tribeFoodNeed)ter._tribeFoodNeed=new Float32Array(Math.max(n,80));
+if(!ter._tribeFoodNet)ter._tribeFoodNet=new Float32Array(Math.max(n,80));
+// Grow accumulators if tribe count exceeded
+if(ter._tribeFoodSupply.length<n){
+  const sz=Math.max(n,ter._tribeFoodSupply.length*2);
+  ter._tribeFoodSupply=new Float32Array(sz);
+  ter._tribeFoodNeed=new Float32Array(sz);
+  ter._tribeFoodNet=new Float32Array(sz);
+}
+const tribeFoodSupply=ter._tribeFoodSupply;
+const tribeFoodNeed=ter._tribeFoodNeed;
+const tribeFoodNet=ter._tribeFoodNet;
+for(let i=0;i<n;i++){tribeFoodSupply[i]=0;tribeFoodNeed[i]=0;tribeFoodNet[i]=0;}
 if(hasTribes){
-// Food accounting: iterate only owned tiles via tribeTiles
 for(let tid=0;tid<n;tid++){
 if(tribeSizes[tid]<=0)continue;
 const ts1=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
 if(!ts1)continue;
 const ow=tid;
+// surplusFrac already scales with ag; don't double-multiply (a 4x agMult
+// here made supply 5x need across the board → no tribe ever went hungry).
 for(const ti of ts1){
 const production=bgPop[ti]*tFert[ti]*(1+tribeSurplusFrac[ow]*3);
-const selfConsumption=bgPop[ti];// farmers eat
+const selfConsumption=bgPop[ti];// rural eaters
+const cityConsumption=cityPop[ti];// urban eaters consume food (was implicit; now explicit)
 const surplus=Math.max(0,production-selfConsumption);
 tribeFoodProd[ow]+=production;
 tribeFoodSurplus[ow]+=surplus;
-tribeTotalCity[ow]+=cityPop[ti];}}
-// Food imports add to surplus
+tribeTotalCity[ow]+=cityPop[ti];
+tribeFoodSupply[ow]+=production;
+tribeFoodNeed[ow]+=selfConsumption+cityConsumption;}}
+// Food imports/exports adjust the available pool (in same units now —
+// stepTrade computes flows from these very fields, so the loop converges)
 for(let i=0;i<n;i++){
-const fi=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].foodImports:0;
-tribeFoodSurplus[i]+=fi;}
+const td=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i]:null;
+const fi=td?td.foodImports:0;const fe=td?td.foodExports:0;
+tribeFoodSurplus[i]+=fi;
+tribeFoodSupply[i]+=fi;
+tribeFoodNeed[i]+=fe;
+tribeFoodNet[i]=tribeFoodSupply[i]-tribeFoodNeed[i];}
 
-// Surplus ratio: how much surplus per unit of cityPop needed
-// >1 means cities can grow. <1 means cities must shrink.
+// Surplus-per-city ratio for the urbanisation pass (existing behaviour)
 if(!ter._tribeFoodSurplus)ter._tribeFoodSurplus=new Float32Array(n);
 for(let i=0;i<n;i++){
 if(tribeSizes[i]<=0){ter._tribeFoodSurplus[i]=2.0;continue;}
-// If no cities yet, surplus is infinite (plenty of food, just no cities)
 if(tribeTotalCity[i]<0.01){ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]>0.01?5.0:0.5;continue;}
 ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]/tribeTotalCity[i];}
 
@@ -1399,9 +1426,24 @@ for(const ti of tileSet){
 const fert=tFert[ti];const ow=tid;
 const bp=bgPop[ti];const cp=cityPop[ti];
 
-// Farmer growth: logistic toward farmland capacity
-{const farmCap=fert*(1+tribeSurplusFrac[ow]*3)*(1-tDiff[ti]*0.4);
-if(farmCap>0.001&&bp<farmCap)bgPop[ti]=bp+bp*tribeGrowth[ow]*(1-bp/farmCap);}
+// Farmer growth / famine.
+//   - farmCap raised by ag tech directly (audit #4 — previously the cap
+//     only saw ag through surplusFrac which was too weak).
+//   - shrink when the tribe-wide food balance is negative (audit #5 —
+//     was only cities that reacted; rural pop ignored shortage).
+{const ag=ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].agriculture:0;
+const techCap=1+ag*1.5;// ag=0→1x, ag=1→2.5x — moderate, not industrial
+const farmCap=fert*(1+tribeSurplusFrac[ow]*3)*(1-tDiff[ti]*0.4)*techCap;
+const net=tribeFoodNet[ow];
+if(net<0&&bp>0.005){
+  // Famine: shrink rural pop by a fraction of the deficit ratio. Mirrors
+  // the urban shrink magnitude at ~line 1437 (a few percent per call).
+  const need=tribeFoodNeed[ow]||1;
+  const deficitFrac=Math.min(0.5,-net/need);
+  bgPop[ti]=Math.max(0.005,bp*(1-deficitFrac*0.08));
+}else if(farmCap>0.001&&bp<farmCap){
+  bgPop[ti]=bp+bp*tribeGrowth[ow]*(1-bp/farmCap);
+}}
 
 // Urbanization: cities form for geographic reasons, grow from food surplus
 const surplus=ter._tribeFoodSurplus[ow]||0;
