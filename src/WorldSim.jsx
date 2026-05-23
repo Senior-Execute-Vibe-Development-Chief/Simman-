@@ -2288,6 +2288,95 @@ function conquestCascade(ter,ti,attacker,defender,nf,nfl){
   return captured;
 }
 
+// Launch a concerted invasion from `attacker` into `defender`. Models a
+// real military campaign: a chunk of military might converted into a
+// directional push toward the defender's nearest city. Flips a chain of
+// tiles in one event, with force decay from attrition and supply lines.
+// This is the "Hannibal crosses the Alps" / "Cyrus sweeps to Babylon"
+// event — not a probability gradient, but a deliberate state change.
+function launchInvasion(ter,attacker,defender){
+  const{tw,th,owner,tElev,tribeCenters,tribeSizes,tribeStrength,tFert}=ter;
+  const sl=0;
+  if(tribeSizes[attacker]<=0||tribeSizes[defender]<=0)return[];
+  const aCenters=tribeCenters[attacker]||[];const dCenters=tribeCenters[defender]||[];
+  if(aCenters.length===0||dCenters.length===0)return[];
+  // ── Pick attack axis: closest attacker-city -> closest defender-city pair
+  let bestPair=null,bestD=Infinity;
+  for(const ac of aCenters){
+    for(const dc of dCenters){
+      const d=tDistW(ac.x,ac.y,dc.x,dc.y,tw);
+      if(d<bestD){bestD=d;bestPair={ac,dc};}
+    }
+  }
+  if(!bestPair)return[];
+  // ── Force budget: how much push can the attacker deliver?
+  // Drawn from tribePopulation × militaryBudget × tech bonus. Each tile
+  // captured consumes from this budget; the campaign ends when it runs
+  // out. Stronger tribes push deeper.
+  const aPop=ter.tribePopulation&&ter.tribePopulation[attacker]?ter.tribePopulation[attacker]:tribeStrength[attacker]*10;
+  const aBud=ter.tribeBudget&&ter.tribeBudget[attacker]?ter.tribeBudget[attacker]:null;
+  const milB=aBud?aBud.military:0.2;
+  const aK=ter.tribeKnowledge&&ter.tribeKnowledge[attacker]?ter.tribeKnowledge[attacker]:null;
+  const milTech=aK?(1+aK.metallurgy*0.7+(aK.military||0)*0.5):1;
+  let force=aPop*0.04*milB*milTech;// arbitrary scale — tuned below
+  if(force<5)return[];// not enough to mount a campaign
+  const ac=bestPair.ac,dc=bestPair.dc;
+  // ── Bresenham-ish march from attacker city toward defender city
+  // Find the *frontier* tile on the attacker's side that's furthest in
+  // the direction of the target — that's where the army crosses.
+  let dxRaw=dc.x-ac.x,dyRaw=dc.y-ac.y;
+  if(dxRaw>tw/2)dxRaw-=tw;else if(dxRaw<-tw/2)dxRaw+=tw;
+  const dist=Math.max(1,Math.sqrt(dxRaw*dxRaw+dyRaw*dyRaw));
+  const ux=dxRaw/dist,uy=dyRaw/dist;
+  // Walk along the line, capturing tiles. Skip own territory (free passage),
+  // start consuming force on defender territory, stop on third-party.
+  const captured=[];
+  let cx=ac.x,cy=ac.y;
+  const maxSteps=Math.min(40,Math.floor(dist*1.5)+8);
+  for(let s=0;s<maxSteps;s++){
+    cx+=ux;cy+=uy;
+    const ix=((Math.round(cx)%tw)+tw)%tw;const iy=Math.round(cy);
+    if(iy<0||iy>=th)break;
+    const ni=iy*tw+ix;
+    if(tElev[ni]<=sl)break;// hit water
+    const o=owner[ni];
+    if(o===attacker)continue;// own land — march through freely
+    if(o>=0&&o!==defender)break;// third party — stop, don't get drawn in
+    // o is either defender or unowned
+    // Cost: a tile capture costs proportional to terrain difficulty + fertility
+    const diff=ter.tDiff?ter.tDiff[ni]:0;
+    const cost=(0.5+tFert[ni])*(1+diff*3);
+    if(force<cost)break;
+    // For defender tiles: high probability flip with force-driven roll
+    if(o===defender){
+      // Probability degrades as we push deeper (supply lines stretch)
+      const depthFactor=1-(s/maxSteps)*0.4;
+      if(Math.random()>0.85*depthFactor)break;// occasional repulse
+      const wasCity=isCityTile(ter,defender,ni);
+      if(ter.bgPop&&ter.bgPop[ni]>0)ter.bgPop[ni]*=0.85;
+      if(ter.cityPop&&ter.cityPop[ni]>0)ter.cityPop[ni]*=0.90;
+      claimTile(ter,ni,attacker);
+      // Wartime tenure boost so the captured tile holds
+      if(ter.tenure)ter.tenure[ni]=10;
+      captured.push(ni);
+      recordFlip(ter,attacker,defender,ni);
+      force-=cost;
+      if(wasCity){capitalFall(ter,ni,attacker,defender,null,null);break;}
+    }else{
+      // Unowned tile crossed — claim it for free (army occupies)
+      claimTile(ter,ni,attacker);
+      if(ter.tenure)ter.tenure[ni]=10;
+      force-=cost*0.3;
+    }
+  }
+  if(captured.length>0){
+    if(!ter._warEvents)ter._warEvents=[];
+    ter._warEvents.push({step:ter.stepCount,type:'invasion',attacker,defender,tiles:captured.length,from:[ac.x,ac.y],toward:[dc.x,dc.y]});
+    if(ter._warEvents.length>200)ter._warEvents.shift();
+  }
+  return captured;
+}
+
 // Capital-fall cascade: when a city tile flips, the city changes hands
 // (added to attacker's centers at reduced prestige, removed from
 // defender's) and surrounding tiles administered from that city
@@ -2706,7 +2795,30 @@ if(ter.stepCount%16===0&&ter._borderContacts){
       const desire=warDesire(ter,i,j);
       if(desire>bestDesire){bestDesire=desire;bestTarget=j;}
     }
-    if(bestTarget>=0){declareWar(ter,i,bestTarget,'decided');}
+    if(bestTarget>=0){
+      declareWar(ter,i,bestTarget,'decided');
+      // Concerted offensive — the aggressor commits military might to a
+      // single deep push toward the defender's nearest city. This is the
+      // dramatic event that makes a war declaration *visible* on the map,
+      // instead of just relabelling the existing border for slow churn.
+      launchInvasion(ter,i,bestTarget);
+    }
+  }
+  // ── Sustained offensives: active wars launch follow-up campaigns ──
+  // Every 16-step decider tick, each active war's aggressor has a chance
+  // to mount another push. Models the rhythm of historical campaigns —
+  // a war isn't constant grinding, it's seasonal offensives separated by
+  // recovery.
+  if(ter.wars){
+    for(const k in ter.wars){const wr=ter.wars[k];if(!wr||!wr.active)continue;
+      const aggressor=wr.aggressor;
+      const defender=aggressor===wr.a?wr.b:wr.a;
+      if(ter.tribeSizes[aggressor]>0&&ter.tribeSizes[defender]>0){
+        if(Math.random()<0.5)launchInvasion(ter,aggressor,defender);
+        const counterDesire=warDesire(ter,defender,aggressor);
+        if(counterDesire>0.5&&Math.random()<0.25)launchInvasion(ter,defender,aggressor);
+      }
+    }
   }
 }
 // ── Siege: cities surrounded by enemy territory eventually fall ──────
