@@ -905,9 +905,136 @@ return result;}
 return[];// no path found
 }
 
+// ── War state ─────────────────────────────────────────────────────────
+// `ter.wars` is a sparse map keyed by "min(a,b),max(a,b)". Each entry
+// records who started the war, when, and a running tally of flips. This
+// replaces _recentConflicts as the source of truth for 'at war' status
+// (the recency map is still updated as a back-compat shim).
+//
+// War flow:
+//   1. War decider declares a war (or first hostile flip auto-declares).
+//   2. While the war is live, the per-tile conflict block runs at full
+//      probability between these two and conquest cascades fire on flips.
+//   3. War expires when nothing fires for ~60 steps (mutual exhaustion)
+//      or when the war-ending logic forces peace / total conquest.
+function warKey(a,b){return a<b?a+","+b:b+","+a;}
+function getWar(ter,a,b){return ter.wars?ter.wars[warKey(a,b)]:null;}
+function atWar(ter,a,b){
+  if(a===b||!ter.wars)return false;
+  const w=ter.wars[warKey(a,b)];return !!w&&w.active;
+}
+function declareWar(ter,aggressor,defender,reason){
+  if(aggressor===defender)return null;
+  if(!ter.wars)ter.wars={};
+  const k=warKey(aggressor,defender);
+  let w=ter.wars[k];
+  if(w&&w.active){w.lastFlip=ter.stepCount;return w;}
+  w={a:Math.min(aggressor,defender),b:Math.max(aggressor,defender),
+     aggressor,declared:ter.stepCount,lastFlip:ter.stepCount,
+     flipsAtoB:0,flipsBtoA:0,capitalsTaken:0,reason:reason||'border',active:true,
+     startSizeAgg:ter.tribeSizes[aggressor]||0,startSizeDef:ter.tribeSizes[defender]||0};
+  ter.wars[k]=w;
+  if(!ter._warEvents)ter._warEvents=[];
+  ter._warEvents.push({step:ter.stepCount,type:'declared',aggressor,defender,reason:w.reason});
+  if(ter._warEvents.length>200)ter._warEvents.shift();
+  return w;
+}
+function recordFlip(ter,attacker,defender,ti){
+  const w=declareWar(ter,attacker,defender,'first-strike');// auto-declare on first flip
+  if(!w)return;
+  w.lastFlip=ter.stepCount;
+  if(attacker===w.aggressor)w.flipsAtoB++; else w.flipsBtoA++;
+}
+function endWar(ter,a,b,outcome){
+  if(!ter.wars)return;
+  const k=warKey(a,b);const w=ter.wars[k];if(!w||!w.active)return;
+  w.active=false;w.endedAt=ter.stepCount;w.outcome=outcome||'expired';
+  if(!ter._warHistory)ter._warHistory={};
+  ter._warHistory[k]=w;
+  delete ter.wars[k];
+  if(!ter._warEvents)ter._warEvents=[];
+  ter._warEvents.push({step:ter.stepCount,type:'ended',a:w.a,b:w.b,outcome:w.outcome});
+  if(ter._warEvents.length>200)ter._warEvents.shift();
+}
+
+// ── War desire score ──────────────────────────────────────────────────
+// Heuristic: how much does tribe `a` want to fight tribe `b` right now?
+// Returns a scalar. >1.0 means strong enough to declare war. Negative
+// means actively don't want to. Aggregates several historically-motivated
+// factors so wars are *legible* — a militant tribe attacks a weaker
+// neighbour with key resources is a recognisable pattern.
+function warDesire(ter,a,b){
+  if(a===b)return -10;
+  const sA=ter.tribeSizes[a]||0,sB=ter.tribeSizes[b]||0;
+  if(sA<8||sB<8)return -10;
+  let d=0;
+  // ── Power asymmetry (weight ~1.0) ──
+  // Use tribeStrength as a cheap proxy; tribePower would be ideal but
+  // requires the full per-tribe calc each tick. Strength tracks land
+  // quality which correlates strongly enough.
+  const pA=Math.max(0.1,ter.tribeStrength[a]||0);
+  const pB=Math.max(0.1,ter.tribeStrength[b]||0);
+  const ratio=pB/pA;
+  if(ratio<=0.3)d+=1.5;
+  else if(ratio<=0.6)d+=0.7;
+  else if(ratio<=1.2)d+=0.0;
+  else if(ratio<=2.0)d-=0.6;
+  else d-=1.5;
+  // ── Personality / military budget (weight 0.8) ──
+  const bud=ter.tribeBudget&&ter.tribeBudget[a]?ter.tribeBudget[a]:null;
+  if(bud){d+=(bud.military-0.2)*0.8;}
+  // ── Stagnation (weight 0.6) ──
+  if(ter.tribeLastGrowth){
+    const stag=Math.max(0,ter.stepCount-(ter.tribeLastGrowth[a]||ter.stepCount));
+    d+=Math.min(1,stag/300)*0.6;
+  }
+  // ── Resource jealousy (weight 0.5) ──
+  // If b has resources a is short on, motivation rises. Era-weighted:
+  // metallurgy makes ore matter; navigation makes salt+coast matter.
+  if(ter._resCache&&ter._resCache[a]&&ter._resCache[b]){
+    const ra=ter._resCache[a],rb=ter._resCache[b];
+    const ka=ter.tribeKnowledge?ter.tribeKnowledge[a]:null;
+    const met=ka?ka.metallurgy:0;
+    let jealousy=0;
+    // Iron-age weighting
+    if(met>0.3){
+      if((ra.iron||0)<2&&(rb.iron||0)>5)jealousy+=0.4;
+      if((ra.copper||0)<2&&(rb.copper||0)>5)jealousy+=0.2;
+    }
+    if((ra.horses||0)<1&&(rb.horses||0)>3)jealousy+=0.3;
+    if((ra.salt||0)<1&&(rb.salt||0)>3)jealousy+=0.2;
+    if((ra.timber||0)<2&&(rb.timber||0)>5)jealousy+=0.15;
+    d+=jealousy*0.5;
+  }
+  // ── Tech gap (weight 0.4) ──
+  if(ter.tribeKnowledge&&ter.tribeKnowledge[a]&&ter.tribeKnowledge[b]){
+    const ka=ter.tribeKnowledge[a],kb=ter.tribeKnowledge[b];
+    const gapMet=(ka.metallurgy-kb.metallurgy);
+    const gapMil=(ka.military||0)-(kb.military||0);
+    d+=(gapMet*1.5+gapMil)*0.4;
+  }
+  // ── Border friction (weight 0.3, capped) ──
+  const contacts=ter._borderContacts&&ter._borderContacts[a]?ter._borderContacts[a]:null;
+  if(contacts){const border=contacts[b]||0;d+=Math.min(0.5,border*0.02)*0.3;}
+  // ── Grudges from past wars (weight 0.3) ──
+  if(ter._warHistory){
+    const hist=ter._warHistory[warKey(a,b)];
+    if(hist&&ter.stepCount-hist.endedAt<200){
+      const isA=a===hist.a;
+      const myLosses=isA?hist.flipsBtoA:hist.flipsAtoB;
+      const theirLosses=isA?hist.flipsAtoB:hist.flipsBtoA;
+      if(myLosses>theirLosses)d+=0.4*0.3;// revenge motive
+    }
+  }
+  // ── Noise (so ties don't always resolve the same way) ──
+  d+=(Math.random()-0.5)*0.3;
+  return d;
+}
+
 // Compute relationship between two tribes: 'fight','trade','friendly','neutral'
 function tribeRelation(ter,a,b){
 if(a===b||!ter._borderContacts)return'neutral';
+if(atWar(ter,a,b))return'fight';
 const key=Math.min(a,b)+','+Math.max(a,b);
 if(ter._recentConflicts&&ter._recentConflicts[key]&&ter.stepCount-ter._recentConflicts[key]<50)return'fight';
 const ka=ter.tribeKnowledge[a],kb=ter.tribeKnowledge[b];
@@ -2077,6 +2204,132 @@ if(tribeTiles&&tribeTiles[ow])tribeTiles[ow].delete(ti);
 owner[ti]=-1;tenure[ti]=0;
 if(typeof ter.settled==='number')ter.settled--;}
 
+// True if this tile is in tribe `tid`'s tribeCenters[] (i.e. a city).
+function isCityTile(ter,tid,ti){
+  const centers=ter.tribeCenters[tid];if(!centers||centers.length===0)return false;
+  const tx=ti%ter.tw,ty=(ti-tx)/ter.tw;
+  for(let ci=0;ci<centers.length;ci++){const c=centers[ci];if(c.x===tx&&c.y===ty)return true;}
+  return false;
+}
+
+// Remove a center from a tribe by tile coordinates. Returns the removed
+// center object (or null). Used when a city falls to a conqueror.
+function removeCenter(ter,tid,ti){
+  const centers=ter.tribeCenters[tid];if(!centers)return null;
+  const tx=ti%ter.tw,ty=(ti-tx)/ter.tw;
+  for(let ci=0;ci<centers.length;ci++){
+    if(centers[ci].x===tx&&centers[ci].y===ty){return centers.splice(ci,1)[0];}}
+  return null;
+}
+
+// Conquest cascade: after a successful in-wartime flip, push the salient
+// 1-2 more tiles in the direction of the defender's nearest surviving
+// city. Each cascade flip uses `claimTile` directly (skipping ratio
+// checks). Returns the tile indices of cascaded captures so the caller
+// can update the war record.
+function conquestCascade(ter,ti,attacker,defender,nf,nfl){
+  const{tw,th,owner,tElev,tribeCenters,tFert,tribeStrength}=ter;
+  const sl=0;const captured=[];
+  // Find defender's nearest surviving city
+  const dCenters=tribeCenters[defender];
+  if(!dCenters||dCenters.length===0)return captured;
+  const sx=ti%tw,sy=(ti-sx)/tw;
+  let bestD=Infinity,bx=sx,by=sy;
+  for(let ci=0;ci<dCenters.length;ci++){const c=dCenters[ci];
+    const d=tDistW(sx,sy,c.x,c.y,tw);if(d<bestD){bestD=d;bx=c.x;by=c.y;}}
+  // Dominant cardinal direction from (sx,sy) toward (bx,by)
+  let dxRaw=bx-sx,dyRaw=by-sy;
+  // Wrap for x: choose shorter route
+  if(dxRaw>tw/2)dxRaw-=tw;else if(dxRaw<-tw/2)dxRaw+=tw;
+  let stepX=0,stepY=0;
+  if(Math.abs(dxRaw)>Math.abs(dyRaw)){stepX=dxRaw>0?1:dxRaw<0?-1:0;}
+  else{stepY=dyRaw>0?1:dyRaw<0?-1:0;}
+  if(stepX===0&&stepY===0)return captured;
+  // Try up to 2 cascade steps with decreasing probability
+  let cx=sx,cy=sy;
+  const probs=[0.6,0.4];
+  for(let s=0;s<probs.length;s++){
+    cx=((cx+stepX)%tw+tw)%tw;cy=cy+stepY;
+    if(cy<0||cy>=th)break;
+    const ni=cy*tw+cx;
+    if(owner[ni]!==defender)break;          // hit unowned or third tribe — stop
+    if(tElev[ni]<=sl)break;                  // hit water
+    if(Math.random()>=probs[s])break;        // failed roll
+    const attackCost=tFert[ni]*0.2;          // smaller cost than a regular flip
+    tribeStrength[attacker]=Math.max(0.1,tribeStrength[attacker]-attackCost);
+    if(ter.bgPop&&ter.bgPop[ni]>0)ter.bgPop[ni]*=0.85;
+    if(ter.cityPop&&ter.cityPop[ni]>0)ter.cityPop[ni]*=0.90;
+    const wasCityHere=isCityTile(ter,defender,ni);
+    claimTile(ter,ni,attacker);
+    if(nf&&!nf[ni]){nf[ni]=1;nfl.push(ni);}
+    captured.push(ni);
+    if(wasCityHere){capitalFall(ter,ni,attacker,defender,nf,nfl);break;}
+  }
+  return captured;
+}
+
+// Capital-fall cascade: when a city tile flips, the city changes hands
+// (added to attacker's centers at reduced prestige, removed from
+// defender's) and surrounding tiles administered from that city
+// transfer to the attacker. R is larger for the actual capital
+// (centers[0]) than for secondary cities.
+function capitalFall(ter,ti,attacker,defender,nf,nfl){
+  const{tw,th,owner,tElev,tribeCenters,tribeSizes}=ter;
+  // Identify whether the lost center was the capital BEFORE removal
+  const dCenters=tribeCenters[defender]||[];
+  const tx=ti%tw,ty=(ti-tx)/tw;
+  let wasCapital=false;
+  if(dCenters.length>0&&dCenters[0].x===tx&&dCenters[0].y===ty)wasCapital=true;
+  // Move the center from defender to attacker
+  const removed=removeCenter(ter,defender,ti);
+  if(removed){
+    const aCenters=tribeCenters[attacker]||[];
+    // Captured city has reduced prestige — it's an occupation, not a hometown
+    aCenters.push({x:removed.x,y:removed.y,prestige:Math.max(0.3,(removed.prestige||1.0)*0.5),founded:ter.stepCount,captured:true});
+    tribeCenters[attacker]=aCenters;
+  }
+  // Cascade: transfer tiles within R that were closer to this lost city
+  // than to any other surviving defender city.
+  const R=wasCapital?8:5;
+  const R2=R*R;
+  const survivingCenters=tribeCenters[defender]||[];
+  const moved=[];
+  for(let dy=-R;dy<=R;dy++){
+    const ny=ty+dy;if(ny<0||ny>=th)continue;
+    for(let dx=-R;dx<=R;dx++){
+      if(dx*dx+dy*dy>R2)continue;
+      const nx=((tx+dx)%tw+tw)%tw;
+      const ni=ny*tw+nx;
+      if(owner[ni]!==defender)continue;
+      if(tElev[ni]<=0)continue;
+      const dLost=tDistW(nx,ny,tx,ty,tw);
+      let dSurv=Infinity;
+      for(let ci=0;ci<survivingCenters.length;ci++){const c=survivingCenters[ci];
+        const dd=tDistW(nx,ny,c.x,c.y,tw);if(dd<dSurv)dSurv=dd;}
+      if(dLost<dSurv){moved.push(ni);}
+    }
+  }
+  // Use transferTile so population is preserved (these are administered
+  // tiles changing flag — not battlefields).
+  for(const mi of moved){
+    transferTile(ter,mi,attacker);
+    if(nf&&!nf[mi]){nf[mi]=1;nfl.push(mi);}
+  }
+  // Record the event
+  if(!ter._warEvents)ter._warEvents=[];
+  ter._warEvents.push({step:ter.stepCount,type:wasCapital?'capital-fall':'city-fall',attacker,defender,ti,cascadedTiles:moved.length});
+  if(ter._warEvents.length>200)ter._warEvents.shift();
+  // Update the war record
+  const w=getWar(ter,attacker,defender);
+  if(w){w.capitalsTaken++;w.lastFlip=ter.stepCount;}
+  // Post-conquest fragmentation immunity for both sides for ~64 steps:
+  // the defender shouldn't immediately implode; the attacker's new
+  // region shouldn't immediately split off.
+  if(!ter.tribeProtectFragUntil)ter.tribeProtectFragUntil=[];
+  ter.tribeProtectFragUntil[attacker]=Math.max(ter.tribeProtectFragUntil[attacker]||0,ter.stepCount+64);
+  ter.tribeProtectFragUntil[defender]=Math.max(ter.tribeProtectFragUntil[defender]||0,ter.stepCount+64);
+}
+
 function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // Clear per-step caches
@@ -2377,6 +2630,64 @@ tribeStrength[owner[i]]=Math.max(0.1,tribeStrength[owner[i]]-drain);}}}
 young.length=j;// compact: remove tiles that aged out or lost ownership
 // Add newly claimed frontier tiles to young list
 for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];if(owner[i]>=0&&tenure[i]<200)young.push(i);}}
+// ── War decider: each tribe periodically considers declaring war ──
+// Runs every 16 steps (matches _borderContacts refresh). For each tribe,
+// score every known neighbour by warDesire() and declare on the best
+// target if it exceeds the threshold. Also ends expired/exhausted wars.
+if(ter.stepCount%16===0&&ter._borderContacts){
+  const n=ter.tribeCenters.length;
+  // ── End wars first ──
+  if(ter.wars){
+    const keysToEnd=[];
+    for(const k in ter.wars){const wr=ter.wars[k];if(!wr.active)continue;
+      const ageSinceFlip=ter.stepCount-wr.lastFlip;
+      // Mutual exhaustion: no flip for 60+ steps, low residual hostility
+      if(ageSinceFlip>60){
+        const aAlive=ter.tribeSizes[wr.a]>0,bAlive=ter.tribeSizes[wr.b]>0;
+        if(!aAlive||!bAlive){keysToEnd.push([k,'conquest']);continue;}
+        const d1=warDesire(ter,wr.a,wr.b),d2=warDesire(ter,wr.b,wr.a);
+        if(d1<0.5&&d2<0.5){keysToEnd.push([k,'exhaustion']);continue;}
+      }
+      // One-sided exhaustion: defender lost >30% of starting tiles
+      const aSz=ter.tribeSizes[wr.a]||0,bSz=ter.tribeSizes[wr.b]||0;
+      if(wr.startSizeAgg>0&&wr.startSizeDef>0){
+        const aLossRatio=1-aSz/wr.startSizeAgg,bLossRatio=1-bSz/wr.startSizeDef;
+        if(bLossRatio>0.3){
+          // Defender wants peace. Aggressor accepts unless still hungry.
+          const d=warDesire(ter,wr.aggressor,wr.aggressor===wr.a?wr.b:wr.a);
+          if(d<1.2){keysToEnd.push([k,'defender-surrender']);continue;}}
+        if(aLossRatio>0.3){
+          const d=warDesire(ter,wr.aggressor===wr.a?wr.b:wr.a,wr.aggressor);
+          if(d<1.2){keysToEnd.push([k,'aggressor-surrender']);continue;}}
+      }
+    }
+    for(const[k,outcome]of keysToEnd){
+      const wr=ter.wars[k];if(!wr)continue;
+      endWar(ter,wr.a,wr.b,outcome);
+    }
+  }
+  // ── Declare new wars ──
+  // Count active wars per tribe to avoid overextension explosion
+  const activeWarsCount=new Int32Array(n);
+  if(ter.wars){for(const k in ter.wars){const wr=ter.wars[k];if(!wr.active)continue;
+    activeWarsCount[wr.a]++;activeWarsCount[wr.b]++;}}
+  for(let i=0;i<n;i++){
+    if(ter.tribeSizes[i]<8)continue;// vestigial
+    const owAge=ter.stepCount-(ter.tribeCenters[i][0]?ter.tribeCenters[i][0].founded:0);
+    if(owAge<80)continue;// establishment grace
+    if(activeWarsCount[i]>=3)continue;// already overstretched
+    const myContacts=ter._borderContacts[i];if(!myContacts)continue;
+    let bestTarget=-1,bestDesire=1.0;// must exceed 1.0 threshold to declare
+    for(const nid in myContacts){
+      const j=parseInt(nid);
+      if(j===i||ter.tribeSizes[j]<8)continue;
+      if(atWar(ter,i,j))continue;
+      const desire=warDesire(ter,i,j);
+      if(desire>bestDesire){bestDesire=desire;bestTarget=j;}
+    }
+    if(bestTarget>=0){declareWar(ter,i,bestTarget,'decided');}
+  }
+}
 // ── Border conflict: local power projection determines tile flips ──
 // Only check frontier tiles (tiles with at least one unowned/enemy neighbor)
 if(ter.stepCount%2===0){const flips=[];const{tenure}=ter;
@@ -2434,7 +2745,14 @@ const ratio=lpB/Math.max(0.001,lpA*totalDef);
 if(ratio>0.35){const diff=Math.max(tDiff[i],tDiff[ni]);
 const pressure=Math.min(1.2,Math.max(0,ratio-0.35))*0.4*atkAggression;
 const prize=(0.5+tFert[i]*1.5)*(atkSz>60?1+Math.min(0.5,(atkSz-60)*0.005):1);
-if(Math.random()<Math.max(0.003,pressure*prize*(1-diff*0.7))){flips.push([i,no]);break;}
+// Peacetime gating: borders that aren't part of an active war flip much
+// less often. Tribes need to actually be at war (declared by the war
+// decider or auto-declared on a first strike) for serious territorial
+// movement. Without this, every adjacent enemy is constantly engaged.
+const isWar=atWar(ter,no,ow);
+const peaceMult=isWar?1.0:0.08;
+let flipP=Math.max(0.003,pressure*prize*(1-diff*0.7))*peaceMult;
+if(Math.random()<flipP){flips.push([i,no]);break;}
 if(ratio<1.0&&Math.random()<0.1){
 // Failed/abortive attack still costs the attacker some strength
 const attemptCost=tFert[i]*0.04*atkAggression;
@@ -2448,7 +2766,11 @@ if(from>=0){const key=Math.min(from,to)+','+Math.max(from,to);
 ter._recentConflicts[key]=ter.stepCount;}// record latest conflict step
 const attackCost=tFert[ti]*0.3;
 tribeStrength[to]=Math.max(0.1,tribeStrength[to]-attackCost);
+// Check if this tile was one of the defender's cities BEFORE we claim it
+const wasCity=from>=0&&isCityTile(ter,from,ti);
 claimTile(ter,ti,to);if(!nf[ti]){nf[ti]=1;nfl.push(ti);}
+// Record in war state (auto-declares if not already at war)
+if(from>=0)recordFlip(ter,to,from,ti);
 // Spread campaign momentum to the flipped tile + neighbours so the
 // attacker can push deeper next pass instead of stopping at one tile.
 if(!ter._campaign[to])ter._campaign[to]={};
@@ -2456,13 +2778,26 @@ const cm=ter._campaign[to];cm[ti]=Math.min(1.0,(cm[ti]||0)+0.8);
 const fy=Math.floor(ti/tw),fx=ti%tw;
 for(const[dx,dy]of DIRS){const nx2=((fx+dx)%tw+tw)%tw,ny2=fy+dy;
 if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-if(owner[ni]===from)cm[ni]=Math.min(1.0,(cm[ni]||0)+0.6);}}}
+if(owner[ni]===from)cm[ni]=Math.min(1.0,(cm[ni]||0)+0.6);}
+// Conquest cascade: in a war, a successful flip means the army pours
+// through. Try to flip 1-2 more tiles in the direction of defender's
+// nearest surviving city. Skips ratio/terrain checks (this is the
+// breach, not a fresh combat).
+if(from>=0&&atWar(ter,to,from)){
+  const cascadeTiles=conquestCascade(ter,ti,to,from,nf,nfl);
+  for(const cti of cascadeTiles){recordFlip(ter,to,from,cti);}
+}
+// Capital fall: if the flipped tile was a city, transfer it as a center
+// and cascade the surrounding region (tiles administered from that city)
+if(wasCity&&from>=0){capitalFall(ter,ti,to,from,nf,nfl);}}}
 // ── City-based cohesion challenge: when a secondary city outgrows the capital ──
 // Centers are derived from cityPop in stepBackgroundPop. Here we check if a
 // rival city challenges the capital — potentially splitting the empire.
 // Staggered +24 from transport
 if(ter.stepCount%32===24){for(let st=0;st<tribeSizes.length;st++){
 const centers=tribeCenters[st];if(!centers||centers.length<2||tribeSizes[st]<40)continue;
+// Skip if tribe is in post-conquest fragmentation immunity window
+if(ter.tribeProtectFragUntil&&ter.tribeProtectFragUntil[st]>ter.stepCount)continue;
 // Capital = centers[0] (largest city). Check if any secondary rivals it.
 const capTi=centers[0].y*tw+centers[0].x;
 const capCity=ter.cityPop?ter.cityPop[capTi]:0;
@@ -2497,6 +2832,8 @@ break;}}}
 if(ter.stepCount%32===0){
 for(let st=0;st<tribeSizes.length;st++){
 if(tribeSizes[st]<=40)continue;
+// Skip if tribe is in post-conquest fragmentation immunity window
+if(ter.tribeProtectFragUntil&&ter.tribeProtectFragUntil[st]>ter.stepCount)continue;
 const stK=ter.tribeKnowledge[st];const stOrg=stK?stK.organization:0;
 const stTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
 let totalDiff2=0,tileCount2=0;

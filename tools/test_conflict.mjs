@@ -136,8 +136,18 @@ for (let step = 1; step <= STEPS; step++) {
       if (ter.tribeSizes[i]<=0) continue;
       if (Object.keys(ter._borderContacts[i]).length>0) withContact++;
     }
-    samples.push({step, alive, totalTiles, unclaimedLand, dFlips, dCred, largestTribe, totalPop, withContact});
-    console.log(`Step ${String(step).padStart(4)} | ${String(alive).padStart(3)} tribes (${withContact} touch others) | tiles=${String(totalTiles).padStart(5)} unclaimed=${String(unclaimedLand).padStart(5)} | biggest=${largestTribe} | flips(50s)=${dFlips}`);
+    let activeWars = 0, recentDeclared = 0, recentEnded = 0, capitalsTaken = 0;
+    if (ter.wars) for (const k in ter.wars) if (ter.wars[k].active) activeWars++;
+    if (ter._warEvents) {
+      for (const e of ter._warEvents) {
+        if (ter.stepCount - e.step > 50) continue;
+        if (e.type === 'declared') recentDeclared++;
+        else if (e.type === 'ended') recentEnded++;
+        else if (e.type === 'capital-fall' || e.type === 'city-fall') capitalsTaken++;
+      }
+    }
+    samples.push({step, alive, totalTiles, unclaimedLand, dFlips, dCred, largestTribe, totalPop, withContact, activeWars});
+    console.log(`Step ${String(step).padStart(4)} | ${String(alive).padStart(3)} tribes (${withContact} touch others) | tiles=${String(totalTiles).padStart(5)} | biggest=${largestTribe} | flips/50=${dFlips} | wars: ${activeWars} active, ${recentDeclared} new, ${recentEnded} ended, ${capitalsTaken} cities fell`);
   }
 }
 
