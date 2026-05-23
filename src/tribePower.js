@@ -120,13 +120,16 @@ export function tribePower(ter, id) {
 // gaussian distance falloff (range ~40 tiles). Used by per-tile border
 // combat to decide who wins a single contested tile.
 //
-// NB: this currently uses `tribeStrength` as the base pop figure,
-// which is the fertility sum, not population (audit finding #6).
-// Fixed in phase 2; the structure stays so the formula migration is
-// localised here.
+// Uses tribePopulation as the pop figure (audit #6 fix — was
+// tribeStrength, the fertility sum, which silently meant a fertile-
+// but-empty colony beat a populous-but-barren empire). Falls back to
+// tribeStrength × 10 only for fresh tribes whose stepPopulation hasn't
+// run yet so the first-tick combat doesn't return 0.
 
 export function localPower(ter, tribeId, tx, ty) {
-  const pop = ter.tribeStrength[tribeId];
+  const pop = (ter.tribePopulation && ter.tribePopulation[tribeId])
+    ? ter.tribePopulation[tribeId]
+    : ter.tribeStrength[tribeId] * 10;
   const sz = ter.tribeSizes[tribeId];
   if (sz <= 0) return 0;
 
