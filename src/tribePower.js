@@ -145,6 +145,38 @@ export function localPower(ter, tribeId, tx, ty) {
     total += expFalloff(d) * c.prestige;
   }
 
+  // ── Local mass contribution ──
+  // Without this, a frontier tile far from any city sees `total ≈ 0`
+  // and base collapses to 3 % of population. Conquerors then can't hold
+  // captured territory because the SAME calculation makes them weak the
+  // moment they own the tile, so it flips back next tick (visible as
+  // single-pixel ping-pong at borders).
+  // The fix: owned tiles in a small box around (tx,ty) represent local
+  // levies / garrisons / armies in the field. Each contributes a small
+  // amount proportional to its fertility (which already encodes
+  // population capacity). Attackers get a small contribution from their
+  // adjacent tiles; defenders get a big contribution from being deep
+  // in their territory. Both can hold ground at the frontier.
+  if (ter.owner && ter.tFert) {
+    const tw = ter.tw, th = ter.th, owner = ter.owner, tFert = ter.tFert;
+    const R = 4;
+    let mass = 0;
+    const txi = tx | 0, tyi = ty | 0;
+    for (let dy = -R; dy <= R; dy++) {
+      const ny = tyi + dy;
+      if (ny < 0 || ny >= th) continue;
+      for (let dx = -R; dx <= R; dx++) {
+        const nx = ((txi + dx) % tw + tw) % tw;
+        const ni = ny * tw + nx;
+        if (owner[ni] === tribeId) mass += tFert[ni];
+      }
+    }
+    // Scale: a fully-owned R=4 box (~80 tiles) at fertility 0.5 gives
+    // mass≈40; we want this to amount to ~half of the centers-based
+    // contribution at full saturation. So scale down by ~0.015.
+    total += mass * 0.015;
+  }
+
   let base = pop * (0.03 + 0.97 * Math.min(1, total));
 
   // Metallurgy + ore access multiplies combat effectiveness
