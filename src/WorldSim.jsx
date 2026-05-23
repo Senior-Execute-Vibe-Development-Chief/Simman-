@@ -600,121 +600,111 @@ tExp:b.tExp+(Math.random()-0.5)*0.4};}
 // ── Resource Trade System ──
 // Each tribe has production (from tiles), demand (from pop+knowledge), surplus/deficit.
 // Surplus flows to trade partners. Trade generates income and enables interdependence.
+function _emptyTradeData(){return{imports:{},exports:{},income:0,foodImports:0,foodExports:0,partners:0};}
 function stepTrade(ter){
 const{tribeSizes,tribeStrength,tribePopulation,tribeKnowledge,tribeCenters}=ter;
 const n=tribeCenters.length;
 if(!ter._resCache)return;
-// Initialize trade data
 if(!ter.tradeData)ter.tradeData=[];
-while(ter.tradeData.length<n)ter.tradeData.push({imports:{},exports:{},income:0,foodImports:0,foodExports:0,partners:0});
+while(ter.tradeData.length<n)ter.tradeData.push(_emptyTradeData());
 
+// ── PASS 1: per-tribe stats + partner sets, output zeroed once ──
+// Each pair (i,j) is processed exactly once in PASS 2 with i<j and
+// writes atomically to BOTH tradeData[i] and tradeData[j]. This kills
+// the audit's #2 double-count + foodExports-wipe bug.
+const stats=new Array(n);
+const partnersOf=new Array(n);
 for(let i=0;i<n;i++){
-if(tribeSizes[i]<=0){ter.tradeData[i]={imports:{},exports:{},income:0,foodImports:0,foodExports:0,partners:0};continue;}
-const k=tribeKnowledge[i];const r=ter._resCache[i];const pop=tribePopulation[i];
-if(!r)continue;// resource cache not ready
-const td=ter.tradeData[i];
-// Reset
-td.income=0;td.foodImports=0;td.foodExports=0;td.partners=0;
-for(const rk of RES_KEYS){td.imports[rk]=0;td.exports[rk]=0;}
-
-// ── Production: what this tribe's tiles generate ──
-// Food production = tribeStrength (sum of tile fertility)
-const foodProd=tribeStrength[i];
-// Resource production = from _resCache (already aggregated)
-
-// ── Demand: what this tribe's population+knowledge needs ──
-const popK=pop/1000;// population in millions for scaling
-const foodDemand=popK*0.8;// ~0.8 strength units per million people
-const demand={};
-demand.timber=popK*0.3+k.navigation*3;// building + ships
-demand.stone=k.construction*popK*0.2;// construction scales with tech
-demand.iron=k.metallurgy*popK*0.15;// weapons and tools
-demand.salt=popK*0.2;// food preservation
-demand.copper=k.metallurgy<0.5?k.metallurgy*popK*0.1:0;// early metallurgy
-demand.tin=k.metallurgy>0.1&&k.metallurgy<0.6?k.metallurgy*popK*0.08:0;// bronze age
-demand.coal=Math.max(0,k.metallurgy-0.6)*popK*0.5;// industrial
-demand.oil=Math.max(0,k.metallurgy-0.8)*popK*0.3;// late industrial
-demand.horses=k.organization*popK*0.05;// cavalry + logistics
-demand.precious=k.trade*popK*0.1;// currency
-demand.gems=k.trade*popK*0.03;// luxury
-
-// ── Surplus/deficit per resource ──
-const surplus={},deficit={};
-for(const rk of RES_KEYS){
-const prod=r[rk]||0;const dem=demand[rk]||0;
-surplus[rk]=Math.max(0,prod-dem);
-deficit[rk]=Math.max(0,dem-prod);}
-// Food surplus/deficit
-const foodSurplus=Math.max(0,foodProd-foodDemand);
-const foodDeficit=Math.max(0,foodDemand-foodProd);
-
-// ── Find trade partners and exchange ──
-// Partners: border contacts + maritime contacts
-const partners=new Set();
-if(ter._borderContacts&&ter._borderContacts[i]){
-for(const nid in ter._borderContacts[i]){const j=parseInt(nid);
-if(tribeSizes[j]>0)partners.add(j);}}
-// Maritime partners (long-distance trade!)
-if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i]){
-for(const kc of ter.tribeKnownCoasts[i]){
-if(kc.owner>=0&&kc.owner!==i&&tribeSizes[kc.owner]>0)partners.add(kc.owner);}}
-td.partners=partners.size;
-
-// ── Trade flow: surplus → deficit between partners ──
-// Trade efficiency scales with both parties' trade knowledge + commerce budget
-const myTrade=k.trade;
-const myComB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].commerce:0.2;
-const myEff=myTrade*0.5+myComB*0.3+0.1;// base 10% + trade knowledge + commerce budget
-
-for(const j of partners){
-if(tribeSizes[j]<=0)continue;
-const kj=tribeKnowledge[j];const rj=ter._resCache[j];
-if(!rj)continue;
-const theirTrade=kj?kj.trade:0;
-const theirComB=ter.tribeBudget&&ter.tribeBudget[j]?ter.tribeBudget[j].commerce:0.2;
-const theirEff=theirTrade*0.5+theirComB*0.3+0.1;
-// Trade efficiency is the MINIMUM of both parties (weakest link)
-const tradeEff=Math.min(myEff,theirEff);
-// Check relationship — war kills trade
-const rel=tribeRelation(ter,i,j);
-if(rel==='fight')continue;// no trade during war
-const relBonus=rel==='trade'?1.5:1.0;// established trade routes are more efficient
-
-// Check their surplus/deficit
-const theirFoodProd=tribeStrength[j];
-const theirPopK=tribePopulation[j]/1000;
-const theirFoodDemand=theirPopK*0.8;
-const theirFoodSurplus=Math.max(0,theirFoodProd-theirFoodDemand);
-
-// Food trade: if I have deficit and they have surplus (or vice versa)
-if(foodDeficit>0&&theirFoodSurplus>0){
-const flow=Math.min(foodDeficit*0.3,theirFoodSurplus*0.3)*tradeEff*relBonus;
-td.foodImports+=flow;// I import food
-if(ter.tradeData[j])ter.tradeData[j].foodExports+=flow;}
-if(foodSurplus>0&&theirFoodDemand>theirFoodProd){
-const flow2=Math.min(foodSurplus*0.3,(theirFoodDemand-theirFoodProd)*0.3)*tradeEff*relBonus;
-td.foodExports+=flow2;td.income+=flow2*2;// exporting food generates income
+  if(tribeSizes[i]<=0){ter.tradeData[i]=_emptyTradeData();stats[i]=null;partnersOf[i]=null;continue;}
+  const td=ter.tradeData[i];
+  td.income=0;td.foodImports=0;td.foodExports=0;td.partners=0;
+  for(const rk of RES_KEYS){td.imports[rk]=0;td.exports[rk]=0;}
+  const k=tribeKnowledge[i];const r=ter._resCache[i];const pop=tribePopulation[i];
+  if(!r||!k){stats[i]=null;partnersOf[i]=null;continue;}
+  const popK=pop/1000;
+  const foodProd=tribeStrength[i];
+  const foodDemand=popK*0.8;
+  const demand={
+    timber:popK*0.3+k.navigation*3,
+    stone:k.construction*popK*0.2,
+    iron:k.metallurgy*popK*0.15,
+    salt:popK*0.2,
+    copper:k.metallurgy<0.5?k.metallurgy*popK*0.1:0,
+    tin:k.metallurgy>0.1&&k.metallurgy<0.6?k.metallurgy*popK*0.08:0,
+    coal:Math.max(0,k.metallurgy-0.6)*popK*0.5,
+    oil:Math.max(0,k.metallurgy-0.8)*popK*0.3,
+    horses:k.organization*popK*0.05,
+    precious:k.trade*popK*0.1,
+    gems:k.trade*popK*0.03,
+  };
+  const surplus={},deficit={};
+  for(const rk of RES_KEYS){
+    const prod=r[rk]||0;const dem=demand[rk]||0;
+    surplus[rk]=Math.max(0,prod-dem);
+    deficit[rk]=Math.max(0,dem-prod);
+  }
+  // Partners: border + maritime
+  const part=new Set();
+  if(ter._borderContacts&&ter._borderContacts[i])
+    for(const nid in ter._borderContacts[i]){const j=parseInt(nid);if(tribeSizes[j]>0)part.add(j);}
+  if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i])
+    for(const kc of ter.tribeKnownCoasts[i])
+      if(kc.owner>=0&&kc.owner!==i&&tribeSizes[kc.owner]>0)part.add(kc.owner);
+  td.partners=part.size;
+  partnersOf[i]=part;
+  const eff=k.trade*0.5+(ter.tribeBudget?.[i]?.commerce??0.2)*0.3+0.1;
+  stats[i]={k,r,
+    foodSurplus:Math.max(0,foodProd-foodDemand),
+    foodDeficit:Math.max(0,foodDemand-foodProd),
+    surplus,deficit,eff,rv:resourceValues(k)};
 }
 
-// Resource trade: for each resource, flow surplus→deficit
-for(const rk of RES_KEYS){
-const theirDem=demand[rk]||0;// approximate their demand similarly
-const theirProd=rj[rk]||0;
-const theirSurp=Math.max(0,theirProd-theirDem);
-const theirDef=Math.max(0,theirDem-theirProd);
-// I buy their surplus to fill my deficit
-if(deficit[rk]>0&&theirSurp>0){
-const flow=Math.min(deficit[rk]*0.3,theirSurp*0.3)*tradeEff*relBonus;
-td.imports[rk]+=flow;deficit[rk]-=flow;}
-// I sell my surplus to fill their deficit
-if(surplus[rk]>0&&theirDef>0){
-const flow2=Math.min(surplus[rk]*0.3,theirDef*0.3)*tradeEff*relBonus;
-td.exports[rk]+=flow2;
-// Income from selling: value-weighted by era demand
-const rv=resourceValues(k);
-td.income+=flow2*rv[rk]*3;// valuable resources generate more income
-}}}
-}// end per-tribe loop
+// ── PASS 2: pair-wise trade (i<j only), atomic two-sided writes ──
+// Surplus/deficit are decremented as we go so a tribe with N partners
+// cannot export the same surplus N times (also fixes infinite-trade).
+for(let i=0;i<n;i++){
+  const si=stats[i];if(!si)continue;
+  const part=partnersOf[i];if(!part)continue;
+  const tdI=ter.tradeData[i];
+  for(const j of part){
+    if(j<=i)continue;
+    const sj=stats[j];if(!sj)continue;
+    const tdJ=ter.tradeData[j];
+    const rel=tribeRelation(ter,i,j);
+    if(rel==='fight')continue;
+    const relBonus=rel==='trade'?1.5:1.0;
+    const eff=Math.min(si.eff,sj.eff);
+    // Food: i→j
+    if(si.foodSurplus>0&&sj.foodDeficit>0){
+      const flow=Math.min(si.foodSurplus*0.3,sj.foodDeficit*0.3)*eff*relBonus;
+      tdI.foodExports+=flow;tdI.income+=flow*2;
+      tdJ.foodImports+=flow;
+      si.foodSurplus-=flow;sj.foodDeficit-=flow;
+    }
+    // Food: j→i
+    if(sj.foodSurplus>0&&si.foodDeficit>0){
+      const flow=Math.min(sj.foodSurplus*0.3,si.foodDeficit*0.3)*eff*relBonus;
+      tdJ.foodExports+=flow;tdJ.income+=flow*2;
+      tdI.foodImports+=flow;
+      sj.foodSurplus-=flow;si.foodDeficit-=flow;
+    }
+    // Resources, both directions
+    for(const rk of RES_KEYS){
+      if(si.surplus[rk]>0&&sj.deficit[rk]>0){
+        const flow=Math.min(si.surplus[rk]*0.3,sj.deficit[rk]*0.3)*eff*relBonus;
+        tdI.exports[rk]+=flow;tdI.income+=flow*si.rv[rk]*3;
+        tdJ.imports[rk]+=flow;
+        si.surplus[rk]-=flow;sj.deficit[rk]-=flow;
+      }
+      if(sj.surplus[rk]>0&&si.deficit[rk]>0){
+        const flow=Math.min(sj.surplus[rk]*0.3,si.deficit[rk]*0.3)*eff*relBonus;
+        tdJ.exports[rk]+=flow;tdJ.income+=flow*sj.rv[rk]*3;
+        tdI.imports[rk]+=flow;
+        sj.surplus[rk]-=flow;si.deficit[rk]-=flow;
+      }
+    }
+  }
+}
 }
 
 // Budget step: compute allocation for all tribes
