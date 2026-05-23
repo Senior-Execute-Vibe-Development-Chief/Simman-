@@ -963,6 +963,58 @@ function endWar(ter,a,b,outcome){
   if(ter._warEvents.length>200)ter._warEvents.shift();
 }
 
+// ── Military reserve (troops) ────────────────────────────────────────
+// Each tribe has a stored military strength in `ter.tribeMilitary[id]`,
+// a single scalar representing standing troops. It depletes when used
+// (invasions, flips, sieges) and regenerates each tick from population
+// + military budget — the OpenFront / Civ / Risk pattern.
+//
+// Cap = population × militaryBudget × (1 + organization*0.5 + metallurgy*0.3)
+// Regen = (cap - troops) × 0.04, asymptotic refill toward cap
+//
+// Wars now have a natural rhythm: launch offensive → drained → recover
+// → next offensive. A depleted tribe can't pick new fights even if its
+// war desire is high (gated in the decider).
+function militaryCap(ter,id){
+  if(!ter.tribePopulation||!ter.tribeSizes||ter.tribeSizes[id]<=0)return 0;
+  const pop=ter.tribePopulation[id]||0;
+  const bud=ter.tribeBudget&&ter.tribeBudget[id];
+  const milB=bud?bud.military:0.2;
+  const k=ter.tribeKnowledge&&ter.tribeKnowledge[id];
+  const org=k?k.organization:0;
+  const met=k?k.metallurgy:0;
+  return pop*milB*(1+org*0.5+met*0.3);
+}
+function militaryReadiness(ter,id){
+  if(!ter.tribeMilitary)return 0.5;
+  const cur=ter.tribeMilitary[id]||0;
+  const cap=militaryCap(ter,id);
+  if(cap<=0)return 0;
+  return Math.min(1,cur/cap);
+}
+function spendMilitary(ter,id,amount){
+  if(!ter.tribeMilitary)ter.tribeMilitary=[];
+  while(ter.tribeMilitary.length<=id)ter.tribeMilitary.push(0);
+  ter.tribeMilitary[id]=Math.max(0,(ter.tribeMilitary[id]||0)-amount);
+}
+function stepMilitary(ter){
+  if(!ter.tribeMilitary)ter.tribeMilitary=[];
+  const n=ter.tribeSizes.length;
+  while(ter.tribeMilitary.length<n)ter.tribeMilitary.push(0);
+  for(let i=0;i<n;i++){
+    if(ter.tribeSizes[i]<=0){ter.tribeMilitary[i]=0;continue;}
+    const cap=militaryCap(ter,i);
+    const cur=ter.tribeMilitary[i]||0;
+    // Asymptotic regen — 4% per tick toward cap. Slightly slower if at
+    // war (mobilisation costs, casualties).
+    let rate=0.04;
+    if(ter.wars){for(const k in ter.wars){const wr=ter.wars[k];
+      if(wr.active&&(wr.a===i||wr.b===i)){rate=0.025;break;}}}
+    const next=cur+(cap-cur)*rate;
+    ter.tribeMilitary[i]=Math.max(0,Math.min(cap,next));
+  }
+}
+
 // ── War desire score ──────────────────────────────────────────────────
 // Heuristic: how much does tribe `a` want to fight tribe `b` right now?
 // Returns a scalar. >1.0 means strong enough to declare war. Negative
@@ -2273,6 +2325,10 @@ function conquestCascade(ter,ti,attacker,defender,nf,nfl){
     if(Math.random()>=probs[s])break;        // failed roll
     const attackCost=tFert[ni]*0.15;          // smaller cost than a regular flip
     tribeStrength[attacker]=Math.max(0.1,tribeStrength[attacker]-attackCost);
+    // Cascade flips also spend troops, but somewhat less than a regular
+    // flip (the army is already in motion at the breach).
+    spendMilitary(ter,attacker,40);
+    spendMilitary(ter,defender,20);
     if(ter.bgPop&&ter.bgPop[ni]>0)ter.bgPop[ni]*=0.88;
     if(ter.cityPop&&ter.cityPop[ni]>0)ter.cityPop[ni]*=0.92;
     const wasCityHere=isCityTile(ter,defender,ni);
@@ -2309,17 +2365,22 @@ function launchInvasion(ter,attacker,defender){
     }
   }
   if(!bestPair)return[];
-  // ── Force budget: how much push can the attacker deliver?
-  // Drawn from tribePopulation × militaryBudget × tech bonus. Each tile
-  // captured consumes from this budget; the campaign ends when it runs
-  // out. Stronger tribes push deeper.
-  const aPop=ter.tribePopulation&&ter.tribePopulation[attacker]?ter.tribePopulation[attacker]:tribeStrength[attacker]*10;
-  const aBud=ter.tribeBudget&&ter.tribeBudget[attacker]?ter.tribeBudget[attacker]:null;
-  const milB=aBud?aBud.military:0.2;
+  // ── Force budget: pulled from the attacker's stored military reserve.
+  // An invasion commits ~55 % of standing troops to a single push. When
+  // troops run out the campaign halts. After the push, the spent troops
+  // are gone — the attacker must rebuild before they can mount another
+  // serious offensive.
+  if(!ter.tribeMilitary)ter.tribeMilitary=[];
+  while(ter.tribeMilitary.length<=Math.max(attacker,defender))ter.tribeMilitary.push(0);
+  const standing=ter.tribeMilitary[attacker]||0;
+  if(standing<50)return[];// armies smaller than this can't mount a march
+  let force=standing*0.55;// commit ~half — leave reserves at home
+  const initialForce=force;
   const aK=ter.tribeKnowledge&&ter.tribeKnowledge[attacker]?ter.tribeKnowledge[attacker]:null;
-  const milTech=aK?(1+aK.metallurgy*0.7+(aK.military||0)*0.5):1;
-  let force=aPop*0.04*milB*milTech;// arbitrary scale — tuned below
-  if(force<5)return[];// not enough to mount a campaign
+  // Tech multiplier: more efficient armies get more reach per troop.
+  // This applies to the *cost*, not the troop count, so a 1000-troop
+  // iron-age force pushes deeper than a 1000-troop bronze-age force.
+  const techEfficiency=aK?(1+aK.metallurgy*0.5+(aK.military||0)*0.4):1;
   const ac=bestPair.ac,dc=bestPair.dc;
   // ── Bresenham-ish march from attacker city toward defender city
   // Find the *frontier* tile on the attacker's side that's furthest in
@@ -2343,35 +2404,49 @@ function launchInvasion(ter,attacker,defender){
     if(o===attacker)continue;// own land — march through freely
     if(o>=0&&o!==defender)break;// third party — stop, don't get drawn in
     // o is either defender or unowned
-    // Cost: a tile capture costs proportional to terrain difficulty + fertility
+    // Cost: each tile captured costs troops. Defender tiles cost
+    // 80-200 troops depending on terrain; defender's own readiness
+    // (their standing army) makes them more expensive to capture.
     const diff=ter.tDiff?ter.tDiff[ni]:0;
-    const cost=(0.5+tFert[ni])*(1+diff*3);
+    const defReadiness=militaryReadiness(ter,defender);
+    const baseCost=80*(0.5+tFert[ni])*(1+diff*2)/techEfficiency;
+    const cost=baseCost*(0.7+defReadiness*1.0);// 0.7x for unmanned, 1.7x for fully manned
     if(force<cost)break;
-    // For defender tiles: high probability flip with force-driven roll
+    // For defender tiles: probabilistic flip with force-driven roll
     if(o===defender){
-      // Probability degrades as we push deeper (supply lines stretch)
       const depthFactor=1-(s/maxSteps)*0.4;
-      if(Math.random()>0.85*depthFactor)break;// occasional repulse
+      if(Math.random()>0.85*depthFactor){
+        // Repulsed — still cost some troops to the engagement
+        force-=cost*0.3;
+        spendMilitary(ter,defender,cost*0.15);// defender also bleeds
+        break;
+      }
       const wasCity=isCityTile(ter,defender,ni);
       if(ter.bgPop&&ter.bgPop[ni]>0)ter.bgPop[ni]*=0.85;
       if(ter.cityPop&&ter.cityPop[ni]>0)ter.cityPop[ni]*=0.90;
       claimTile(ter,ni,attacker);
-      // Wartime tenure boost so the captured tile holds
       if(ter.tenure)ter.tenure[ni]=10;
       captured.push(ni);
       recordFlip(ter,attacker,defender,ni);
       force-=cost;
+      // Defender bleeds ~30 % of attacker's cost in defending
+      spendMilitary(ter,defender,cost*0.3);
       if(wasCity){capitalFall(ter,ni,attacker,defender,null,null);break;}
     }else{
-      // Unowned tile crossed — claim it for free (army occupies)
+      // Unowned tile crossed — claim it for low cost (army occupies)
+      const unclaimedCost=20*(1+diff)/techEfficiency;
+      if(force<unclaimedCost)break;
       claimTile(ter,ni,attacker);
       if(ter.tenure)ter.tenure[ni]=10;
-      force-=cost*0.3;
+      force-=unclaimedCost;
     }
   }
+  // Deduct what was actually spent from attacker's stored military
+  const spent=initialForce-force;
+  spendMilitary(ter,attacker,spent);
   if(captured.length>0){
     if(!ter._warEvents)ter._warEvents=[];
-    ter._warEvents.push({step:ter.stepCount,type:'invasion',attacker,defender,tiles:captured.length,from:[ac.x,ac.y],toward:[dc.x,dc.y]});
+    ter._warEvents.push({step:ter.stepCount,type:'invasion',attacker,defender,tiles:captured.length,from:[ac.x,ac.y],toward:[dc.x,dc.y],troopsCommitted:Math.round(initialForce),troopsLost:Math.round(spent)});
     if(ter._warEvents.length>200)ter._warEvents.shift();
   }
   return captured;
@@ -2396,6 +2471,23 @@ function capitalFall(ter,ti,attacker,defender,nf,nfl){
     // Captured city has reduced prestige — it's an occupation, not a hometown
     aCenters.push({x:removed.x,y:removed.y,prestige:Math.max(0.3,(removed.prestige||1.0)*0.5),founded:ter.stepCount,captured:true});
     tribeCenters[attacker]=aCenters;
+  }
+  // If the defender just lost their LAST city, promote their largest
+  // remaining settlement to a new capital (or, if no settlements,
+  // any owned tile — that's the survivors regrouping). If they have
+  // zero tiles, they're effectively dead and skip the cascade.
+  if(tribeCenters[defender]&&tribeCenters[defender].length===0){
+    if(tribeSizes[defender]>0&&ter.tribeTiles&&ter.tribeTiles[defender]&&ter.tribeTiles[defender].size>0){
+      // Pick highest-cityPop tile, or first tile if none
+      let bestTi=-1,bestPop=-1;
+      for(const ti2 of ter.tribeTiles[defender]){
+        const cp=ter.cityPop?ter.cityPop[ti2]:0;
+        if(cp>bestPop){bestPop=cp;bestTi=ti2;}
+      }
+      if(bestTi<0){bestTi=ter.tribeTiles[defender].values().next().value;}
+      const nx2=bestTi%tw,ny2=(bestTi-nx2)/tw;
+      tribeCenters[defender].push({x:nx2,y:ny2,prestige:0.4,founded:ter.stepCount,refugee:true});
+    }
   }
   // Cascade: transfer tiles within R that were closer to this lost city
   // than to any other surviving defender city. Big radius — taking the
@@ -2467,7 +2559,7 @@ ter._dbgTimeTransport=(_tt1-_tt0).toFixed(1);
 const _t0=performance.now();
 stepBackgroundPop(ter);
 const _t1=performance.now();
-if(ter.settled>0){stepPopulation(ter);stepTrade(ter);stepBudget(ter);stepKnowledge(ter);}
+if(ter.settled>0){stepPopulation(ter);stepTrade(ter);stepBudget(ter);stepKnowledge(ter);stepMilitary(ter);}
 const _t2=performance.now();
 if(_t1-_t0>5)console.warn(`[BGPOP] ${(_t1-_t0).toFixed(1)}ms`);
 if(_t2-_t1>5)console.warn(`[POP+TRADE+BUDGET+KNOW] ${(_t2-_t1).toFixed(1)}ms`);
@@ -2786,6 +2878,11 @@ if(ter.stepCount%16===0&&ter._borderContacts){
     const owAge=ter.stepCount-(ter.tribeCenters[i][0]?ter.tribeCenters[i][0].founded:0);
     if(owAge<80)continue;// establishment grace
     if(activeWarsCount[i]>=3)continue;// already overstretched
+    // Stored military gate: a tribe with depleted standing troops can't
+    // pick new fights, even if it wants to. War costs men, and broken
+    // armies need rebuilding.
+    const readiness=militaryReadiness(ter,i);
+    if(readiness<0.35)continue;
     const myContacts=ter._borderContacts[i];if(!myContacts)continue;
     let bestTarget=-1,bestDesire=1.0;// must exceed 1.0 threshold to declare
     for(const nid in myContacts){
@@ -2862,9 +2959,21 @@ if(ter.stepCount%4===0){
       if(!ter._sieges[cti])ter._sieges[cti]={};
       const siege=ter._sieges[cti];
       if(bestE>=0&&enemyFrac>0.5&&ownFrac<0.3){
-        siege[bestE]=(siege[bestE]||0)+1;
-        // Falls after ~6 ticks of effective siege (at %4===0, so ~24 sim steps)
-        if(siege[bestE]>=6){cityFalls.push([cti,bestE,tid]);delete siege[bestE];}
+        // Siege requires troops to maintain — besieger spends 80 per tick.
+        // If besieger is too depleted, the siege stalls (counter does not
+        // advance, so the city has time to recover).
+        const besiegerTroops=(ter.tribeMilitary&&ter.tribeMilitary[bestE])||0;
+        if(besiegerTroops>=80){
+          spendMilitary(ter,bestE,80);
+          spendMilitary(ter,tid,30);// defender bleeds too from city defence
+          siege[bestE]=(siege[bestE]||0)+1;
+          // Falls after ~6 ticks of effective siege (at %4===0, so ~24 sim steps)
+          if(siege[bestE]>=6){cityFalls.push([cti,bestE,tid]);delete siege[bestE];}
+        }else{
+          // Not enough troops to sustain — siege weakens
+          siege[bestE]=Math.max(0,(siege[bestE]||0)-1);
+          if(siege[bestE]===0)delete siege[bestE];
+        }
       }else if(siege[bestE]){
         // Siege lifted — decay quickly
         siege[bestE]=Math.max(0,siege[bestE]-1);
@@ -2965,6 +3074,11 @@ if(from>=0){const key=Math.min(from,to)+','+Math.max(from,to);
 ter._recentConflicts[key]=ter.stepCount;}// record latest conflict step
 const attackCost=tFert[ti]*0.3;
 tribeStrength[to]=Math.max(0.1,tribeStrength[to]-attackCost);
+// Military deduction: each successful flip costs ~60 troops from
+// attacker, ~30 from defender. Connects per-tile fighting to the
+// stored reserve so chains of flips actually deplete an army.
+spendMilitary(ter,to,60);
+if(from>=0)spendMilitary(ter,from,30);
 // Check if this tile was one of the defender's cities BEFORE we claim it
 const wasCity=from>=0&&isCityTile(ter,from,ti);
 claimTile(ter,ti,to);if(!nf[ti]){nf[ti]=1;nfl.push(ti);}
@@ -3043,7 +3157,8 @@ const avgTribeDiff=totalDiff2/tileCount2;
 // Split pressure: high for mountainous (Europe), near-zero for flat (Russia)
 const splitPressure=avgTribeDiff*avgTribeDiff*0.3-stOrg*0.05;
 if(splitPressure>0&&Math.random()<splitPressure){
-const cap=tribeCenters[st][0];
+const cap=tribeCenters[st]&&tribeCenters[st][0];
+if(!cap)continue;// tribe lost all cities to conquest — skip frag
 let worstTi=-1,worstScore=-1;
 if(stTiles){for(const i of stTiles){
 const ix=i%tw,iy=(i-ix)/tw;
