@@ -11,6 +11,9 @@ import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
 import { generateResources, tileResourceSummary, dominantResource, RESOURCES, RES_BY_ID } from "./resourceGen.js";
 import { computeRivers, riverName, RIVER_NAMES, RIVER_NONE, RIVER_STREAM, RIVER_TRIBUTARY, RIVER_MAJOR, RIVER_GREAT } from "./riverGen.js";
+import { ensureTribeViews, attachRegistries } from "./tribeModel.js";
+import { runTribeStep, resetInvariantState } from "./tribeStep.js";
+import { tribePower, localPower, tribeOreAccess, tDistW, expFalloff } from "./tribePower.js";
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
@@ -464,6 +467,99 @@ function tribeRGB(id){const h=((id*67+20)%360)/360,s=(60+((id*31)%25))/100,l=(45
 const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;const hr=(pp,qq,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return pp+(qq-pp)*6*t;if(t<1/2)return qq;if(t<2/3)return pp+(qq-pp)*(2/3-t)*6;return pp;};
 return[Math.round(hr(p,q,h+1/3)*255),Math.round(hr(p,q,h)*255),Math.round(hr(p,q,h-1/3)*255)];}
 
+// ── Atlas (olde-map) cartographic symbols — hand-drawn map iconography ──
+function atlasHash(a,b){let h=(a*374761393+b*668265263)>>>0;h=((h^(h>>>13))*1274126177)>>>0;return((h^(h>>>16))>>>0)/4294967296;}
+function atlasMountain(c,x,y,s,snow,tone){
+const h=s,wd=s*0.86;
+const lum=0.82+tone*0.32;
+c.beginPath();c.moveTo(x,y-h);c.lineTo(x-wd,y+h*0.66);c.lineTo(x+wd,y+h*0.66);c.closePath();
+c.fillStyle=`rgb(${(176*lum)|0},${(160*lum)|0},${(120*lum)|0})`;c.fill();
+c.beginPath();c.moveTo(x,y-h);c.lineTo(x+wd,y+h*0.66);c.lineTo(x,y+h*0.66);c.closePath();
+c.fillStyle='rgba(44,32,18,0.5)';c.fill();
+c.strokeStyle='rgba(46,34,20,0.4)';c.lineWidth=Math.max(0.4,s*0.1);
+c.beginPath();c.moveTo(x,y-h*0.18);c.lineTo(x+wd*0.5,y+h*0.5);c.stroke();
+if(snow){c.beginPath();c.moveTo(x,y-h);c.lineTo(x-s*0.30,y-h*0.40);c.lineTo(x-s*0.08,y-h*0.56);
+c.lineTo(x+s*0.13,y-h*0.38);c.lineTo(x+s*0.30,y-h*0.48);c.closePath();c.fillStyle='rgba(236,229,212,0.9)';c.fill();}
+c.strokeStyle='rgba(38,28,15,0.9)';c.lineWidth=Math.max(0.55,s*0.15);
+c.beginPath();c.moveTo(x-wd,y+h*0.66);c.lineTo(x,y-h);c.lineTo(x+wd,y+h*0.66);c.stroke();}
+function atlasHill(c,x,y,s){
+c.strokeStyle='rgba(74,58,36,0.78)';c.lineWidth=Math.max(0.5,s*0.32);
+c.beginPath();c.arc(x,y+s*0.45,s,Math.PI,2*Math.PI);c.stroke();}
+// Tree — same hand-inked style as the mountains: tall, pointy, shaded, with a trunk stump
+// ── Atlas tree silhouettes — one distinct shape per forest type ──
+// Conifer/fir — tall narrow spire with tier hatching (taiga, boreal)
+function atlasConifer(c,x,y,s,tone){
+const wd=s*0.30,baseY=y+s*0.42,apexY=y-s*0.60;
+const tw=Math.max(0.9,s*0.15),thh=s*0.30;
+c.fillStyle='#43331d';c.fillRect(x-tw/2,baseY-0.6,tw,thh);
+c.strokeStyle='rgba(32,23,11,0.85)';c.lineWidth=Math.max(0.4,s*0.08);
+c.strokeRect(x-tw/2,baseY-0.6,tw,thh);
+const lum=0.80+tone*0.40;
+c.beginPath();c.moveTo(x,apexY);c.lineTo(x-wd,baseY);c.lineTo(x+wd,baseY);c.closePath();
+c.fillStyle=`rgb(${(88*lum)|0},${(112*lum)|0},${(78*lum)|0})`;c.fill();
+c.beginPath();c.moveTo(x,apexY);c.lineTo(x+wd,baseY);c.lineTo(x,baseY);c.closePath();
+c.fillStyle='rgba(20,28,12,0.46)';c.fill();
+c.strokeStyle='rgba(24,32,15,0.5)';c.lineWidth=Math.max(0.35,s*0.09);
+c.beginPath();c.moveTo(x-wd*0.62,baseY-s*0.30);c.lineTo(x+wd*0.62,baseY-s*0.30);
+c.moveTo(x-wd*0.32,baseY-s*0.62);c.lineTo(x+wd*0.32,baseY-s*0.62);c.stroke();
+c.strokeStyle='rgba(26,34,16,0.92)';c.lineWidth=Math.max(0.5,s*0.13);
+c.beginPath();c.moveTo(x-wd,baseY);c.lineTo(x,apexY);c.lineTo(x+wd,baseY);c.stroke();}
+// Deciduous — round lumpy canopy (temperate, subtropical broadleaf)
+function atlasRoundTree(c,x,y,s,tone){
+const rad=s*0.58,cy=y-s*0.10;
+const tw=Math.max(0.8,s*0.15),thh=s*0.34;
+c.fillStyle='#4a3820';c.fillRect(x-tw/2,cy+rad*0.5,tw,thh);
+c.strokeStyle='rgba(32,23,11,0.8)';c.lineWidth=Math.max(0.4,s*0.08);
+c.strokeRect(x-tw/2,cy+rad*0.5,tw,thh);
+const lum=0.82+tone*0.36;
+c.beginPath();
+c.arc(x-rad*0.46,cy+rad*0.14,rad*0.62,0,6.2832);
+c.arc(x+rad*0.46,cy+rad*0.18,rad*0.58,0,6.2832);
+c.arc(x-rad*0.04,cy-rad*0.40,rad*0.66,0,6.2832);
+c.arc(x+rad*0.22,cy+rad*0.04,rad*0.60,0,6.2832);
+c.fillStyle=`rgb(${(128*lum)|0},${(142*lum)|0},${(74*lum)|0})`;c.fill();
+c.strokeStyle='rgba(40,46,22,0.9)';c.lineWidth=Math.max(0.5,s*0.12);c.stroke();}
+// Jungle — broad, dark, low spreading canopy (rainforest)
+function atlasJungleTree(c,x,y,s,tone){
+const tw=Math.max(0.7,s*0.12);
+c.fillStyle='#3a2c18';c.fillRect(x-tw/2,y-s*0.04,tw,s*0.44);
+const lum=0.72+tone*0.34,cy=y-s*0.30;
+c.beginPath();
+c.arc(x-s*0.62,cy+s*0.08,s*0.42,0,6.2832);
+c.arc(x+s*0.62,cy+s*0.08,s*0.40,0,6.2832);
+c.arc(x-s*0.24,cy-s*0.10,s*0.47,0,6.2832);
+c.arc(x+s*0.26,cy-s*0.08,s*0.46,0,6.2832);
+c.arc(x,cy+s*0.04,s*0.44,0,6.2832);
+c.fillStyle=`rgb(${(70*lum)|0},${(94*lum)|0},${(50*lum)|0})`;c.fill();
+c.strokeStyle='rgba(18,26,11,0.92)';c.lineWidth=Math.max(0.45,s*0.1);c.stroke();}
+// Acacia — flat-topped crown on a tall trunk (tropical dry forest, savanna)
+function atlasAcacia(c,x,y,s,tone){
+const tw=Math.max(0.7,s*0.12),topY=y-s*0.46;
+c.fillStyle='#4a3820';c.fillRect(x-tw/2,topY+s*0.06,tw,s*0.58);
+c.strokeStyle='rgba(32,23,11,0.8)';c.lineWidth=Math.max(0.35,s*0.07);
+c.strokeRect(x-tw/2,topY+s*0.06,tw,s*0.58);
+const lum=0.80+tone*0.34;
+c.beginPath();c.ellipse(x,topY,s*0.78,s*0.27,0,0,6.2832);
+c.fillStyle=`rgb(${(122*lum)|0},${(130*lum)|0},${(70*lum)|0})`;c.fill();
+c.strokeStyle='rgba(40,44,22,0.88)';c.lineWidth=Math.max(0.45,s*0.1);c.stroke();}
+// Grass tuft — a small fan of curved blades
+function atlasTuft(c,x,y,s,tone){
+c.strokeStyle=`rgba(${(94+tone*46)|0},${(104+tone*30)|0},${(58+tone*22)|0},0.82)`;
+c.lineWidth=Math.max(0.34,s*0.16);
+c.beginPath();
+c.moveTo(x,y);c.quadraticCurveTo(x-s*0.55,y-s*0.5,x-s*0.78,y-s*1.05);
+c.moveTo(x,y);c.quadraticCurveTo(x-s*0.05,y-s*0.7,x+s*0.04,y-s*1.32);
+c.moveTo(x,y);c.quadraticCurveTo(x+s*0.5,y-s*0.5,x+s*0.74,y-s*1.0);
+c.stroke();}
+// Shrub — a small lumpy bush
+function atlasShrub(c,x,y,s,tone){
+c.beginPath();
+c.arc(x-s*0.42,y,s*0.5,0,6.2832);
+c.arc(x+s*0.42,y+s*0.05,s*0.46,0,6.2832);
+c.arc(x,y-s*0.4,s*0.54,0,6.2832);
+c.fillStyle=`rgba(${(84+tone*34)|0},${(96+tone*26)|0},${(56+tone*20)|0},0.72)`;c.fill();
+c.strokeStyle='rgba(42,48,28,0.6)';c.lineWidth=Math.max(0.3,s*0.12);c.stroke();}
+
 // Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
 // Agriculture needs adequate moisture (not maximum) — bell curve peaks at 0.45 (temperate optimum)
 function tileFert(t,m,e){if(e>0.45)return 0.01;
@@ -504,121 +600,114 @@ tExp:b.tExp+(Math.random()-0.5)*0.4};}
 // ── Resource Trade System ──
 // Each tribe has production (from tiles), demand (from pop+knowledge), surplus/deficit.
 // Surplus flows to trade partners. Trade generates income and enables interdependence.
+function _emptyTradeData(){return{imports:{},exports:{},income:0,foodImports:0,foodExports:0,partners:0};}
 function stepTrade(ter){
 const{tribeSizes,tribeStrength,tribePopulation,tribeKnowledge,tribeCenters}=ter;
 const n=tribeCenters.length;
 if(!ter._resCache)return;
-// Initialize trade data
 if(!ter.tradeData)ter.tradeData=[];
-while(ter.tradeData.length<n)ter.tradeData.push({imports:{},exports:{},income:0,foodImports:0,foodExports:0,partners:0});
+while(ter.tradeData.length<n)ter.tradeData.push(_emptyTradeData());
 
+// ── PASS 1: per-tribe stats + partner sets, output zeroed once ──
+// Each pair (i,j) is processed exactly once in PASS 2 with i<j and
+// writes atomically to BOTH tradeData[i] and tradeData[j]. This kills
+// the audit's #2 double-count + foodExports-wipe bug.
+const stats=new Array(n);
+const partnersOf=new Array(n);
 for(let i=0;i<n;i++){
-if(tribeSizes[i]<=0){ter.tradeData[i]={imports:{},exports:{},income:0,foodImports:0,foodExports:0,partners:0};continue;}
-const k=tribeKnowledge[i];const r=ter._resCache[i];const pop=tribePopulation[i];
-if(!r)continue;// resource cache not ready
-const td=ter.tradeData[i];
-// Reset
-td.income=0;td.foodImports=0;td.foodExports=0;td.partners=0;
-for(const rk of RES_KEYS){td.imports[rk]=0;td.exports[rk]=0;}
-
-// ── Production: what this tribe's tiles generate ──
-// Food production = tribeStrength (sum of tile fertility)
-const foodProd=tribeStrength[i];
-// Resource production = from _resCache (already aggregated)
-
-// ── Demand: what this tribe's population+knowledge needs ──
-const popK=pop/1000;// population in millions for scaling
-const foodDemand=popK*0.8;// ~0.8 strength units per million people
-const demand={};
-demand.timber=popK*0.3+k.navigation*3;// building + ships
-demand.stone=k.construction*popK*0.2;// construction scales with tech
-demand.iron=k.metallurgy*popK*0.15;// weapons and tools
-demand.salt=popK*0.2;// food preservation
-demand.copper=k.metallurgy<0.5?k.metallurgy*popK*0.1:0;// early metallurgy
-demand.tin=k.metallurgy>0.1&&k.metallurgy<0.6?k.metallurgy*popK*0.08:0;// bronze age
-demand.coal=Math.max(0,k.metallurgy-0.6)*popK*0.5;// industrial
-demand.oil=Math.max(0,k.metallurgy-0.8)*popK*0.3;// late industrial
-demand.horses=k.organization*popK*0.05;// cavalry + logistics
-demand.precious=k.trade*popK*0.1;// currency
-demand.gems=k.trade*popK*0.03;// luxury
-
-// ── Surplus/deficit per resource ──
-const surplus={},deficit={};
-for(const rk of RES_KEYS){
-const prod=r[rk]||0;const dem=demand[rk]||0;
-surplus[rk]=Math.max(0,prod-dem);
-deficit[rk]=Math.max(0,dem-prod);}
-// Food surplus/deficit
-const foodSurplus=Math.max(0,foodProd-foodDemand);
-const foodDeficit=Math.max(0,foodDemand-foodProd);
-
-// ── Find trade partners and exchange ──
-// Partners: border contacts + maritime contacts
-const partners=new Set();
-if(ter._borderContacts&&ter._borderContacts[i]){
-for(const nid in ter._borderContacts[i]){const j=parseInt(nid);
-if(tribeSizes[j]>0)partners.add(j);}}
-// Maritime partners (long-distance trade!)
-if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i]){
-for(const kc of ter.tribeKnownCoasts[i]){
-if(kc.owner>=0&&kc.owner!==i&&tribeSizes[kc.owner]>0)partners.add(kc.owner);}}
-td.partners=partners.size;
-
-// ── Trade flow: surplus → deficit between partners ──
-// Trade efficiency scales with both parties' trade knowledge + commerce budget
-const myTrade=k.trade;
-const myComB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].commerce:0.2;
-const myEff=myTrade*0.5+myComB*0.3+0.1;// base 10% + trade knowledge + commerce budget
-
-for(const j of partners){
-if(tribeSizes[j]<=0)continue;
-const kj=tribeKnowledge[j];const rj=ter._resCache[j];
-if(!rj)continue;
-const theirTrade=kj?kj.trade:0;
-const theirComB=ter.tribeBudget&&ter.tribeBudget[j]?ter.tribeBudget[j].commerce:0.2;
-const theirEff=theirTrade*0.5+theirComB*0.3+0.1;
-// Trade efficiency is the MINIMUM of both parties (weakest link)
-const tradeEff=Math.min(myEff,theirEff);
-// Check relationship — war kills trade
-const rel=tribeRelation(ter,i,j);
-if(rel==='fight')continue;// no trade during war
-const relBonus=rel==='trade'?1.5:1.0;// established trade routes are more efficient
-
-// Check their surplus/deficit
-const theirFoodProd=tribeStrength[j];
-const theirPopK=tribePopulation[j]/1000;
-const theirFoodDemand=theirPopK*0.8;
-const theirFoodSurplus=Math.max(0,theirFoodProd-theirFoodDemand);
-
-// Food trade: if I have deficit and they have surplus (or vice versa)
-if(foodDeficit>0&&theirFoodSurplus>0){
-const flow=Math.min(foodDeficit*0.3,theirFoodSurplus*0.3)*tradeEff*relBonus;
-td.foodImports+=flow;// I import food
-if(ter.tradeData[j])ter.tradeData[j].foodExports+=flow;}
-if(foodSurplus>0&&theirFoodDemand>theirFoodProd){
-const flow2=Math.min(foodSurplus*0.3,(theirFoodDemand-theirFoodProd)*0.3)*tradeEff*relBonus;
-td.foodExports+=flow2;td.income+=flow2*2;// exporting food generates income
+  if(tribeSizes[i]<=0){ter.tradeData[i]=_emptyTradeData();stats[i]=null;partnersOf[i]=null;continue;}
+  const td=ter.tradeData[i];
+  td.income=0;td.foodImports=0;td.foodExports=0;td.partners=0;
+  for(const rk of RES_KEYS){td.imports[rk]=0;td.exports[rk]=0;}
+  const k=tribeKnowledge[i];const r=ter._resCache[i];const pop=tribePopulation[i];
+  if(!r||!k){stats[i]=null;partnersOf[i]=null;continue;}
+  // Food balance — uses the unit-coherent values computed by
+  // stepBackgroundPop (audit #3 fix: was popK/1000 which gave
+  // microscopic deficits no matter how many people starved).
+  const foodSupply=ter._tribeFoodSupply?ter._tribeFoodSupply[i]:0;
+  const foodNeed=ter._tribeFoodNeed?ter._tribeFoodNeed[i]:0;
+  // Resource demand scales with absolute population (was popK).
+  const demand={
+    timber:pop*0.3+k.navigation*3,
+    stone:k.construction*pop*0.2,
+    iron:k.metallurgy*pop*0.15,
+    salt:pop*0.2,
+    copper:k.metallurgy<0.5?k.metallurgy*pop*0.1:0,
+    tin:k.metallurgy>0.1&&k.metallurgy<0.6?k.metallurgy*pop*0.08:0,
+    coal:Math.max(0,k.metallurgy-0.6)*pop*0.5,
+    oil:Math.max(0,k.metallurgy-0.8)*pop*0.3,
+    horses:k.organization*pop*0.05,
+    precious:k.trade*pop*0.1,
+    gems:k.trade*pop*0.03,
+  };
+  const surplus={},deficit={};
+  for(const rk of RES_KEYS){
+    const prod=r[rk]||0;const dem=demand[rk]||0;
+    surplus[rk]=Math.max(0,prod-dem);
+    deficit[rk]=Math.max(0,dem-prod);
+  }
+  // Partners: border + maritime
+  const part=new Set();
+  if(ter._borderContacts&&ter._borderContacts[i])
+    for(const nid in ter._borderContacts[i]){const j=parseInt(nid);if(tribeSizes[j]>0)part.add(j);}
+  if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i])
+    for(const kc of ter.tribeKnownCoasts[i])
+      if(kc.owner>=0&&kc.owner!==i&&tribeSizes[kc.owner]>0)part.add(kc.owner);
+  td.partners=part.size;
+  partnersOf[i]=part;
+  const eff=k.trade*0.5+(ter.tribeBudget?.[i]?.commerce??0.2)*0.3+0.1;
+  stats[i]={k,r,
+    foodSurplus:Math.max(0,foodSupply-foodNeed),
+    foodDeficit:Math.max(0,foodNeed-foodSupply),
+    surplus,deficit,eff,rv:resourceValues(k)};
 }
 
-// Resource trade: for each resource, flow surplus→deficit
-for(const rk of RES_KEYS){
-const theirDem=demand[rk]||0;// approximate their demand similarly
-const theirProd=rj[rk]||0;
-const theirSurp=Math.max(0,theirProd-theirDem);
-const theirDef=Math.max(0,theirDem-theirProd);
-// I buy their surplus to fill my deficit
-if(deficit[rk]>0&&theirSurp>0){
-const flow=Math.min(deficit[rk]*0.3,theirSurp*0.3)*tradeEff*relBonus;
-td.imports[rk]+=flow;deficit[rk]-=flow;}
-// I sell my surplus to fill their deficit
-if(surplus[rk]>0&&theirDef>0){
-const flow2=Math.min(surplus[rk]*0.3,theirDef*0.3)*tradeEff*relBonus;
-td.exports[rk]+=flow2;
-// Income from selling: value-weighted by era demand
-const rv=resourceValues(k);
-td.income+=flow2*rv[rk]*3;// valuable resources generate more income
-}}}
-}// end per-tribe loop
+// ── PASS 2: pair-wise trade (i<j only), atomic two-sided writes ──
+// Surplus/deficit are decremented as we go so a tribe with N partners
+// cannot export the same surplus N times (also fixes infinite-trade).
+for(let i=0;i<n;i++){
+  const si=stats[i];if(!si)continue;
+  const part=partnersOf[i];if(!part)continue;
+  const tdI=ter.tradeData[i];
+  for(const j of part){
+    if(j<=i)continue;
+    const sj=stats[j];if(!sj)continue;
+    const tdJ=ter.tradeData[j];
+    const rel=tribeRelation(ter,i,j);
+    if(rel==='fight')continue;
+    const relBonus=rel==='trade'?1.5:1.0;
+    const eff=Math.min(si.eff,sj.eff);
+    // Food: i→j
+    if(si.foodSurplus>0&&sj.foodDeficit>0){
+      const flow=Math.min(si.foodSurplus*0.3,sj.foodDeficit*0.3)*eff*relBonus;
+      tdI.foodExports+=flow;tdI.income+=flow*2;
+      tdJ.foodImports+=flow;
+      si.foodSurplus-=flow;sj.foodDeficit-=flow;
+    }
+    // Food: j→i
+    if(sj.foodSurplus>0&&si.foodDeficit>0){
+      const flow=Math.min(sj.foodSurplus*0.3,si.foodDeficit*0.3)*eff*relBonus;
+      tdJ.foodExports+=flow;tdJ.income+=flow*2;
+      tdI.foodImports+=flow;
+      sj.foodSurplus-=flow;si.foodDeficit-=flow;
+    }
+    // Resources, both directions
+    for(const rk of RES_KEYS){
+      if(si.surplus[rk]>0&&sj.deficit[rk]>0){
+        const flow=Math.min(si.surplus[rk]*0.3,sj.deficit[rk]*0.3)*eff*relBonus;
+        tdI.exports[rk]+=flow;tdI.income+=flow*si.rv[rk]*3;
+        tdJ.imports[rk]+=flow;
+        si.surplus[rk]-=flow;sj.deficit[rk]-=flow;
+      }
+      if(sj.surplus[rk]>0&&si.deficit[rk]>0){
+        const flow=Math.min(sj.surplus[rk]*0.3,si.deficit[rk]*0.3)*eff*relBonus;
+        tdJ.exports[rk]+=flow;tdJ.income+=flow*sj.rv[rk]*3;
+        tdI.imports[rk]+=flow;
+        sj.surplus[rk]-=flow;si.deficit[rk]-=flow;
+      }
+    }
+  }
+}
 }
 
 // Budget step: compute allocation for all tribes
@@ -880,14 +969,6 @@ const no=owner[ny*tw+nx];if(no>=0&&no!==ow){contacts[ow][no]=(contacts[ow][no]||
 return contacts;}
 
 // Ore access multiplier for metallurgy combat effect
-function tribeOreAccess(tRes,metallurgy){
-let access=0;
-if(tRes.copper>0.5)access=Math.max(access,0.4);
-if(tRes.copper>0.5&&tRes.tin>0.5)access=Math.max(access,0.8);
-if(tRes.iron>0.5)access=Math.max(access,1.0);
-if(tRes.iron>0.5&&tRes.coal>0.5)access=Math.max(access,1.3);
-return access*metallurgy;}
-
 // Main knowledge step: discovery + diffusion. Called every 8 sim steps.
 function stepKnowledge(ter){try{
 const{tw,th,owner,tribeCenters,tribeSizes,tribeStrength,tFert,tCoast,tenure}=ter;
@@ -1096,7 +1177,8 @@ try{
 const{tw,th,tElev,tDiff,tCoast,owner,tribeSizes,cityPop,bgPop}=ter;
 if(!ter.transportCost)ter.transportCost=new Float32Array(tw*th);
 if(!ter.transportOwner)ter.transportOwner=new Int16Array(tw*th);// which city feeds this tile
-const cost=ter.transportCost;const tOwner=ter.transportOwner;
+if(!ter._transVisited)ter._transVisited=new Uint8Array(tw*th);
+const cost=ter.transportCost;const tOwner=ter.transportOwner;const visited=ter._transVisited;
 const riverMag=ter.rivers?ter.rivers.riverMag:null;
 const n=ter.tribeCenters.length;
 // Only reset owned tiles (not all 1.84M) — saves ~5ms of memset per call
@@ -1104,7 +1186,7 @@ for(let tid=0;tid<n;tid++){
 if(tribeSizes[tid]<=0)continue;
 const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
 if(!ts)continue;
-for(const ti of ts){cost[ti]=999;tOwner[ti]=-1;}}
+for(const ti of ts){cost[ti]=999;tOwner[ti]=-1;visited[ti]=0;}}
 
 // Per-tribe transport tech: construction reduces cost, navigation enables sea routes
 const tribeCn=new Float32Array(n);
@@ -1137,57 +1219,63 @@ const roadReduction=cn*0.5;// construction halves cost at max
 const industrialReduction=Math.max(0,ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].metallurgy-0.75:0)*3;// rail
 return Math.max(0.2,base*(1-roadReduction)-industrialReduction);}
 
-// Priority queue (binary heap — reuse cached arrays)
+// Priority queue (binary heap — reuse cached arrays).
+// heapPop writes the popped value into module-scope scratch (no per-call
+// object allocation — 30k+ allocs per Dijkstra was the GC hot spot).
 if(!ter._heapTi){ter._heapTi=new Int32Array(tw*th);ter._heapCost=new Float32Array(tw*th);}
 const heapTi=ter._heapTi;const heapCost=ter._heapCost;let heapSize=0;
 const HEAP_MAX=heapTi.length;
+let _popTi=0,_popCost=0;
 function heapPush(ti2,c){
-if(heapSize>=HEAP_MAX)return;// overflow guard
+if(heapSize>=HEAP_MAX)return;
 let i=heapSize++;heapTi[i]=ti2;heapCost[i]=c;
 while(i>0){const p=(i-1)>>1;if(heapCost[p]<=heapCost[i])break;
 const tt=heapTi[p],tc=heapCost[p];heapTi[p]=heapTi[i];heapCost[p]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=p;}}
 function heapPop(){
-const ti2=heapTi[0],c=heapCost[0];heapSize--;
+_popTi=heapTi[0];_popCost=heapCost[0];heapSize--;
 if(heapSize>0){heapTi[0]=heapTi[heapSize];heapCost[0]=heapCost[heapSize];
 let i=0;while(true){const l=2*i+1,r=2*i+2;let s=i;
 if(l<heapSize&&heapCost[l]<heapCost[s])s=l;
 if(r<heapSize&&heapCost[r]<heapCost[s])s=r;
 if(s===i)break;
-const tt=heapTi[s],tc=heapCost[s];heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=s;}}
-return{ti:ti2,cost:c};}
+const tt=heapTi[s],tc=heapCost[s];heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=s;}}}
 
-// Seed: use tribeTiles to find city/market tiles (not full grid scan)
+// Seed: cities only (cityPop > 0.1). Trade-route water tiles were tried
+// as cheap-1 seeds too, but on big civs that flooded the heap with 1000s
+// of seeds (transport time spiked to seconds). Cities-only is bounded.
 for(let tid=0;tid<n;tid++){
 if(tribeSizes[tid]<=0)continue;
 const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
 if(!ts)continue;
 for(const ti of ts){
-if(cityPop&&cityPop[ti]>0.1){cost[ti]=0;tOwner[ti]=ti;heapPush(ti,0);}
-else if(bgPop[ti]>0.2&&(tCoast[ti]||(riverMag&&riverMag[ti]>=2))){
-if(cost[ti]>1){cost[ti]=1;tOwner[ti]=ti;heapPush(ti,1);}}}}
+if(cityPop&&cityPop[ti]>0.1){cost[ti]=0;tOwner[ti]=ti;heapPush(ti,0);}}}
 
 // Dijkstra: expand from cities through OWNED territory only
 const DX4=[-1,1,0,0];const DY4=[0,0,-1,1];
+// Standard Dijkstra with visited[] — once popped, never re-process.
+// Without visited[], a multi-source run thrashed (15M pushes for 50k tiles)
+// because every cheaper-path improvement re-pushed the tile.
 while(heapSize>0){
-const{ti:ci,cost:cc}=heapPop();
-if(cc>cost[ci])continue;// stale entry
-if(cc>100)continue;// don't explore beyond reasonable transport range
+heapPop();const ci=_popTi,cc=_popCost;
+if(visited[ci])continue;
+visited[ci]=1;
+if(cc>100)continue;
 const cx=ci%tw,cy=(ci-cx)/tw;
 const ow=owner[ci];
-if(ow<0)continue;// skip unowned tiles entirely
+if(ow<0)continue;
 const cn=tribeCn[ow];
 const nv=tribeNv[ow];
+const src=tOwner[ci];
 for(let d=0;d<4;d++){
 const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
 if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;
-// Only traverse own territory (skip ocean, skip enemy territory)
-const nOw=owner[ni];
-if(nOw!==ow)continue;// only traverse own territory
+if(visited[ni])continue;
+if(owner[ni]!==ow)continue;
 const moveCost=tileCost(ni,cn,nv,ow);
 const newCost=cc+moveCost;
 if(newCost<cost[ni]){
-cost[ni]=newCost;tOwner[ni]=tOwner[ci];// inherit source city
+cost[ni]=newCost;tOwner[ni]=src;
 heapPush(ni,newCost);}}}
 
 // ── Per-tribe transport stats ──
@@ -1264,34 +1352,58 @@ const riverMag=ter.rivers?ter.rivers.riverMag:null;
 const tCost=ter.transportCost;
 const hasTrans=tCost&&tCost.length>=tw*th;
 
-// ── PASS 1: Food production and surplus accounting ──
-// Skip entirely if no tribes have settled (nothing to account)
+// ── PASS 1: Food production & consumption accounting ──
+// Per tile: production = bgPop × fert × (1 + ag-derived multiplier).
+// Per tribe: foodSupply (production sum), foodNeed (rural + urban eaters),
+// foodNet (supply − need). All quantities are in the same per-tile-pop
+// units so they're directly comparable. stepTrade reads these.
 const hasTribes=ter.settled>0;
+if(!ter._tribeFoodSupply)ter._tribeFoodSupply=new Float32Array(Math.max(n,80));
+if(!ter._tribeFoodNeed)ter._tribeFoodNeed=new Float32Array(Math.max(n,80));
+if(!ter._tribeFoodNet)ter._tribeFoodNet=new Float32Array(Math.max(n,80));
+// Grow accumulators if tribe count exceeded
+if(ter._tribeFoodSupply.length<n){
+  const sz=Math.max(n,ter._tribeFoodSupply.length*2);
+  ter._tribeFoodSupply=new Float32Array(sz);
+  ter._tribeFoodNeed=new Float32Array(sz);
+  ter._tribeFoodNet=new Float32Array(sz);
+}
+const tribeFoodSupply=ter._tribeFoodSupply;
+const tribeFoodNeed=ter._tribeFoodNeed;
+const tribeFoodNet=ter._tribeFoodNet;
+for(let i=0;i<n;i++){tribeFoodSupply[i]=0;tribeFoodNeed[i]=0;tribeFoodNet[i]=0;}
 if(hasTribes){
-// Food accounting: iterate only owned tiles via tribeTiles
 for(let tid=0;tid<n;tid++){
 if(tribeSizes[tid]<=0)continue;
 const ts1=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
 if(!ts1)continue;
 const ow=tid;
+// surplusFrac already scales with ag; don't double-multiply (a 4x agMult
+// here made supply 5x need across the board → no tribe ever went hungry).
 for(const ti of ts1){
 const production=bgPop[ti]*tFert[ti]*(1+tribeSurplusFrac[ow]*3);
-const selfConsumption=bgPop[ti];// farmers eat
+const selfConsumption=bgPop[ti];// rural eaters
+const cityConsumption=cityPop[ti];// urban eaters consume food (was implicit; now explicit)
 const surplus=Math.max(0,production-selfConsumption);
 tribeFoodProd[ow]+=production;
 tribeFoodSurplus[ow]+=surplus;
-tribeTotalCity[ow]+=cityPop[ti];}}
-// Food imports add to surplus
+tribeTotalCity[ow]+=cityPop[ti];
+tribeFoodSupply[ow]+=production;
+tribeFoodNeed[ow]+=selfConsumption+cityConsumption;}}
+// Food imports/exports adjust the available pool (in same units now —
+// stepTrade computes flows from these very fields, so the loop converges)
 for(let i=0;i<n;i++){
-const fi=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].foodImports:0;
-tribeFoodSurplus[i]+=fi;}
+const td=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i]:null;
+const fi=td?td.foodImports:0;const fe=td?td.foodExports:0;
+tribeFoodSurplus[i]+=fi;
+tribeFoodSupply[i]+=fi;
+tribeFoodNeed[i]+=fe;
+tribeFoodNet[i]=tribeFoodSupply[i]-tribeFoodNeed[i];}
 
-// Surplus ratio: how much surplus per unit of cityPop needed
-// >1 means cities can grow. <1 means cities must shrink.
+// Surplus-per-city ratio for the urbanisation pass (existing behaviour)
 if(!ter._tribeFoodSurplus)ter._tribeFoodSurplus=new Float32Array(n);
 for(let i=0;i<n;i++){
 if(tribeSizes[i]<=0){ter._tribeFoodSurplus[i]=2.0;continue;}
-// If no cities yet, surplus is infinite (plenty of food, just no cities)
 if(tribeTotalCity[i]<0.01){ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]>0.01?5.0:0.5;continue;}
 ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]/tribeTotalCity[i];}
 
@@ -1314,14 +1426,33 @@ for(const ti of tileSet){
 const fert=tFert[ti];const ow=tid;
 const bp=bgPop[ti];const cp=cityPop[ti];
 
-// Farmer growth: logistic toward farmland capacity
-{const farmCap=fert*(1+tribeSurplusFrac[ow]*3)*(1-tDiff[ti]*0.4);
-if(farmCap>0.001&&bp<farmCap)bgPop[ti]=bp+bp*tribeGrowth[ow]*(1-bp/farmCap);}
+// Farmer growth / famine.
+//   - farmCap raised by ag tech directly (audit #4 — previously the cap
+//     only saw ag through surplusFrac which was too weak).
+//   - shrink when the tribe-wide food balance is negative (audit #5 —
+//     was only cities that reacted; rural pop ignored shortage).
+{const ag=ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].agriculture:0;
+const techCap=1+ag*1.5;// ag=0→1x, ag=1→2.5x — moderate, not industrial
+const farmCap=fert*(1+tribeSurplusFrac[ow]*3)*(1-tDiff[ti]*0.4)*techCap;
+const net=tribeFoodNet[ow];
+if(net<0&&bp>0.005){
+  // Famine: shrink rural pop by a fraction of the deficit ratio. Mirrors
+  // the urban shrink magnitude at ~line 1437 (a few percent per call).
+  const need=tribeFoodNeed[ow]||1;
+  const deficitFrac=Math.min(0.5,-net/need);
+  bgPop[ti]=Math.max(0.005,bp*(1-deficitFrac*0.08));
+}else if(farmCap>0.001&&bp<farmCap){
+  bgPop[ti]=bp+bp*tribeGrowth[ow]*(1-bp/farmCap);
+}}
 
 // Urbanization: cities form for geographic reasons, grow from food surplus
 const surplus=ter._tribeFoodSurplus[ow]||0;
 const mxCity=tribeMaxCity[ow];
-const tCostHere=hasTrans?tCost[ti]:10;
+// Use real transport cost where Dijkstra reached this tile; fall back
+// to the uniform value (10) for isolated tiles and pre-city tribes so
+// new tribes can still seed their first city.
+const _raw=hasTrans?tCost[ti]:999;
+const tCostHere=(_raw>=500)?10:_raw;
 const transportFactor=1/(1+tCostHere*0.1);
 const localMaxCity=mxCity*transportFactor;
 
@@ -1496,8 +1627,10 @@ let claimed=0;const maxClaim=12;
 while(stack.length>0&&claimed<maxClaim){
 const ci=stack.pop();
 if(tElev[ci]<=0)continue;
-if(owner[ci]>=0&&owner[ci]!==nid){
-if(claimed>=6)continue;}
+// Crystallising tribes claim only unowned land — no free annexation of
+// existing tribes' tiles (audit flaw #8). Bordering tribes can be
+// challenged later through normal expansion / war.
+if(owner[ci]>=0&&owner[ci]!==nid)continue;
 claimTile(ter,ci,nid);
 if(!ter.frontier[ci]){ter.frontier[ci]=1;ter.frontierList.push(ci);}
 claimed++;
@@ -1851,13 +1984,8 @@ for(let ti=0;ti<tw*th;ti++){if(owner[ti]>=0)tribeTiles[owner[ti]].add(ti);}
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
 tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudget:tribeBudgets,bgPop,cityPop,
 tribeTiles,frontier,frontierList,_landTiles,_coastalTiles,_nfBuf,_youngTiles:[],
-landCount:lc,settled:tribeSizes.length,tribes:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
+landCount:lc,settled:tribeSizes.length,tribeCount:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
 
-function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+(y1-y2)*(y1-y2));}
-// Precomputed exp(-d*d/280) lookup table — eliminates Math.exp in hot loops
-const EXP_LUT_SIZE=80;const EXP_LUT=new Float32Array(EXP_LUT_SIZE+1);
-for(let d=0;d<=EXP_LUT_SIZE;d++)EXP_LUT[d]=Math.exp(-d*d/280);
-function expFalloff(d){const di=d<0?0:d>EXP_LUT_SIZE?EXP_LUT_SIZE:d;const lo=di|0;if(lo>=EXP_LUT_SIZE)return EXP_LUT[EXP_LUT_SIZE];const hi=lo+1;const f=di-lo;return EXP_LUT[lo]*(1-f)+EXP_LUT[hi]*f;}
 // Distance from (x,y) to nearest center of a tribe; also returns the capital (index 0) distance
 function nearestCenterDist(centers,x,y,tw){if(!centers||centers.length===0)return{min:0,cap:0};
 let mn=Infinity;const cap=tDistW(x,y,centers[0].x,centers[0].y,tw);
@@ -1878,50 +2006,6 @@ for(let dy=-R;dy<=R;dy++){const ny=cy+dy;if(ny<0||ny>=th)continue;
 for(let dx=-R;dx<=R;dx++){const nx=((cx+dx)%tw+tw)%tw;const ni=ny*tw+nx;
 if(owner[ni]===tribeId){const d=tDistW(cx,cy,nx,ny,tw);if(d<=R)sum+=tFert[ni];}}}return sum;}
 
-function tribePower(ter,id){
-// Power = population × military tech × organization × military investment × trade wealth
-const sz=ter.tribeSizes[id];if(sz<=0)return 0;
-const pop=ter.tribePopulation&&ter.tribePopulation[id]?ter.tribePopulation[id]:ter.tribeStrength[id]*10;
-const k=ter.tribeKnowledge&&ter.tribeKnowledge[id]?ter.tribeKnowledge[id]:null;
-const org=k?k.organization:0;
-const logThreshold=40+org*260;
-const logistics=1/(1+Math.max(0,sz-logThreshold)*0.015);
-// Military tech from metallurgy + ore
-let milTech=1;
-if(k&&ter._resCache&&ter._resCache[id]){milTech=1+tribeOreAccess(ter._resCache[id],k.metallurgy)*1.5;}
-// Budget: military investment amplifies power
-const milB=ter.tribeBudget&&ter.tribeBudget[id]?ter.tribeBudget[id].military:0.2;
-const milFocus=0.5+milB*2.5;
-// Trade wealth adds soft power
-const tradeWealth=k?1+k.trade*0.3:1;
-// Wealth amplifies power (rich nations hire mercenaries, buy allies, fund wars)
-const wealthBonus=ter.tribeBudget&&ter.tribeBudget[id]?1+Math.min(0.5,ter.tribeBudget[id].wealth*0.001):1;
-return pop*0.01*milTech*logistics*milFocus*tradeWealth*wealthBonus;
-}
-// Local power projection at a border tile: sum contributions from nearby centers.
-// Only considers centers within range 40 (beyond that, expFalloff is ~0).
-function localPower(ter,tribeId,tx,ty){
-const pop=ter.tribeStrength[tribeId],sz=ter.tribeSizes[tribeId];if(sz<=0)return 0;
-const centers=ter.tribeCenters[tribeId];if(!centers||centers.length===0)return pop*0.05;
-let total=0;
-// Limit scan: first 30 centers (sorted by pop = largest cities) contribute most
-const limit=Math.min(centers.length,30);
-for(let ci=0;ci<limit;ci++){const c=centers[ci];
-const d=tDistW(tx,ty,c.x,c.y,ter.tw);
-if(d>40)continue;// beyond expFalloff range
-total+=expFalloff(d)*c.prestige;}
-// Base influence without centers is very low (3% of pop)
-let base=pop*(0.03+0.97*Math.min(1,total));
-// Metallurgy + ore access multiplies combat effectiveness
-if(ter.tribeKnowledge&&ter.tribeKnowledge[tribeId]&&ter._resCache&&ter._resCache[tribeId]){
-const met=ter.tribeKnowledge[tribeId].metallurgy;
-const ore=tribeOreAccess(ter._resCache[tribeId],met);
-base*=(1+ore*1.5);}
-// Military budget multiplier: Sparta (mil=0.5) hits 50% harder than a balanced tribe
-const milB=ter.tribeBudget&&ter.tribeBudget[tribeId]?ter.tribeBudget[tribeId].military:0.2;
-base*=(0.5+milB*2.5);// mil=0.1→0.75x, mil=0.2→1.0x, mil=0.4→1.5x, mil=0.5→1.75x
-return base;
-}
 function newTribe(ter,x,y,parentId){const id=ter.tribeCenters.length;ter.tribeCenters.push([{x,y,prestige:1.0,founded:ter.stepCount}]);ter.tribeSizes.push(0);ter.tribeStrength.push(0);
 if(ter.tribeTiles)ter.tribeTiles.push(new Set());
 // Inherit knowledge from parent tribe (splits carry culture); new independent tribes start at zero
@@ -1934,7 +2018,7 @@ ter.tribePorts.push([]);
 // Inherit budget personality from parent (with drift) or fresh random
 const parentBudget=parentId>=0&&ter.tribeBudget&&ter.tribeBudget[parentId]?ter.tribeBudget[parentId]:null;
 if(ter.tribeBudget)ter.tribeBudget.push(parentBudget?cloneBudget(parentBudget):initBudget());
-ter.tribes=id+1;return id;}
+ter.tribeCount=id+1;ensureTribeViews(ter);return id;}
 function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure,tribeTiles,tDiff}=ter;const ow=owner[ti];
 if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];
 if(tribeTiles&&tribeTiles[ow])tribeTiles[ow].delete(ti);
@@ -1958,6 +2042,15 @@ if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];if(tribeTiles&&tribeTile
 // bgPop stays untouched — people remain, only political control changes
 owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];
 if(tribeTiles){while(tribeTiles.length<=nw)tribeTiles.push(new Set());tribeTiles[nw].add(ti);}}
+// Canonical "abandon tile" writer: tile becomes unowned and the former
+// owner's tribeTiles index is kept consistent. Used by migration when a
+// nomadic tribe gives up its worst tile.
+function abandonTile(ter,ti){const{owner,tribeSizes,tribeStrength,tFert,tribeTiles,tenure}=ter;const ow=owner[ti];
+if(ow<0)return;
+tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];
+if(tribeTiles&&tribeTiles[ow])tribeTiles[ow].delete(ti);
+owner[ti]=-1;tenure[ti]=0;
+if(typeof ter.settled==='number')ter.settled--;}
 
 function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
@@ -1975,9 +2068,14 @@ console.log(`[SIM ${ter.stepCount}] tribes:${nTribes} frontier:${fl} maxTribeSz:
 const _prof=ter.stepCount%64===0;const _ts=_prof?[performance.now()]:null;
 // ── Knowledge & population step (every 16 ticks — was 8, reduced for performance) ──
 if(ter.stepCount%16===0&&ter.tribeKnowledge){
-// Transport network: DISABLED — Dijkstra too expensive even on owned tiles
-// (2.6s at step 128 with 8K tiles due to heap operations on 1.84M typed array)
-// if(ter.stepCount%32===0&&ter.settled>0){...computeTransport...}
+// Transport network — Dijkstra from cities through owned tiles. Re-enabled
+// in phase 2c (audit #1). Run every 32 ticks; expanded heap operates only
+// on owned tiles so cost scales with settled-tile count, not world size.
+const _tt0=performance.now();
+if(ter.stepCount%32===0&&ter.settled>0)computeTransport(ter);
+const _tt1=performance.now();
+if(_tt1-_tt0>15)console.warn(`[TRANSPORT] ${(_tt1-_tt0).toFixed(1)}ms`);
+ter._dbgTimeTransport=(_tt1-_tt0).toFixed(1);
 const _t0=performance.now();
 stepBackgroundPop(ter);
 const _t1=performance.now();
@@ -2232,8 +2330,8 @@ const sc=tFert[i]-tDiff[i]*0.5;if(sc<worstScore){worstScore=sc;worstTi=i;}}}
 else{for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;
 const sc=tFert[i]-tDiff[i]*0.5;if(sc<worstScore){worstScore=sc;worstTi=i;}}}
 if(worstTi>=0&&tribeSizes[st]>3){
-// Abandon worst tile
-owner[worstTi]=-1;tribeSizes[st]--;tribeStrength[st]-=tFert[worstTi];ter.tenure[worstTi]=0;ter.settled--;}}}
+// Abandon worst tile via canonical writer (keeps tribeTiles index consistent)
+abandonTile(ter,worstTi);}}}
 ter.frontier=nf;ter.frontierList=nfl;
 // ── Age tenure + occupation cost: newly conquered tiles drain strength ──
 if(ter.stepCount%4===0){const{tenure}=ter;
@@ -2400,22 +2498,65 @@ if(comps.length<=1)continue;
 comps.sort((a,b)=>b.length-a.length);
 for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor(comps[c][0]/tw),st);
 for(const ci of comps[c])transferTile(ter,ci,sid);}}ter._fragGen=gen;}
-// ── Remnant absorption: tiny fragments absorbed by larger neighbors ──
-// Only absorb old tiny tribes — new tribes get 100 steps of immunity to establish themselves
-if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>5)continue;
-// Immunity: don't absorb tribes younger than 100 steps (let them grow)
-const stAge=ter.stepCount-(tribeCenters[st][0]?tribeCenters[st][0].founded:0);
-if(stAge<100)continue;
-const stTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
-let bn=-1,bs2=0;
-const iterTiles=stTiles?stTiles:{[Symbol.iterator]:function*(){for(let i=0;i<tw*th;i++)if(owner[i]===st)yield i;}};
-for(const i of iterTiles){const ty2=Math.floor(i/tw),tx2=i%tw;
-for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-const no=owner[ni];if(no<0||no===st||tElev[ni]<=sl)continue;if(tribeSizes[no]>bs2){bs2=tribeSizes[no];bn=no;}}}
-if(bn>=0&&tribeSizes[bn]>tribeSizes[st]*3){
-const tilesToClaim=stTiles?[...stTiles]:[];
-if(!stTiles){for(let i=0;i<tw*th;i++)if(owner[i]===st)tilesToClaim.push(i);}
-for(const i of tilesToClaim)claimTile(ter,i,bn);}}}
+// ── Tiered absorption: vestigial tribes absorbed by a much larger neighbour ──
+// Real-world precedent: minor polities (Bavaria→Germany, Etruscan city-states
+// →Rome, princely states→Raj) usually vanished through annexation, dynastic
+// union, or vassalisation — not 500-year border slogs. This pass scales the
+// thresholds with defender size so 50- and 200-tile vestiges can be absorbed
+// too, not only 5-tile fragments.
+//
+//   defender ≤ 10 tiles  → any larger neighbour      after  50 steps
+//   defender ≤ 30 tiles  → neighbour ×  4 larger     after 150 steps
+//   defender ≤ 100 tiles → neighbour ×  6 larger     after 300 steps
+//   defender ≤ 300 tiles → neighbour × 10 larger     after 500 steps
+//
+// Sanity gates: real shared border (≥ 2 tiles touching), no fresh conflict
+// (last 50 steps), and the defender's pop-per-tile must be lower than the
+// absorber's — otherwise it's a thriving city-state we're trying not to
+// annex. Annexed tiles transfer (not claimTile) so population is preserved:
+// this is a peaceful absorption, not a sacking.
+if(ter.stepCount%8===0){
+const ABSORB_TIERS=[
+  {maxSize: 10,  ratio: 1.0, minAge:  30},
+  {maxSize: 30,  ratio: 2.0, minAge:  80},
+  {maxSize: 100, ratio: 3.0, minAge: 150},
+  {maxSize: 300, ratio: 5.0, minAge: 200},
+];
+if(!ter._absorbStats)ter._absorbStats={annexed:0,lastStep:-1};
+for(let st=0;st<tribeSizes.length;st++){
+  const sz=tribeSizes[st];
+  if(sz<=0||sz>300)continue;
+  let tier=null;
+  for(const t of ABSORB_TIERS){if(sz<=t.maxSize){tier=t;break;}}
+  if(!tier)continue;
+  const stAge=ter.stepCount-(tribeCenters[st][0]?tribeCenters[st][0].founded:0);
+  if(stAge<tier.minAge)continue;
+  const stTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
+  if(!stTiles||stTiles.size===0)continue;
+  // Count shared-border tiles per candidate absorber. The natural absorber
+  // is the neighbour with the most contact area, not just the largest.
+  const borderCount={};
+  for(const i of stTiles){
+    const ty2=Math.floor(i/tw),tx2=i%tw;
+    for(const[dx,dy]of DIRS){
+      const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;
+      if(ny2<0||ny2>=th)continue;
+      const ni=ny2*tw+nx2;
+      const no=owner[ni];
+      if(no<0||no===st||tElev[ni]<=sl)continue;
+      if(tribeSizes[no]<sz*tier.ratio)continue;// neighbour not large enough for this tier
+      borderCount[no]=(borderCount[no]||0)+1;
+    }
+  }
+  let bn=-1,bestBorder=0;
+  for(const nid in borderCount){if(borderCount[nid]>bestBorder){bestBorder=borderCount[nid];bn=parseInt(nid);}}
+  if(bn<0||bestBorder<2)continue;
+  // Peaceful absorption — transferTile preserves population.
+  const tilesToClaim=[...stTiles];
+  for(const i of tilesToClaim)transferTile(ter,i,bn);
+  ter._absorbStats.annexed++;
+  ter._absorbStats.lastStep=ter.stepCount;
+}}
 ter._dbgTimeExpansion=(performance.now()-_tExpStart).toFixed(1);
 const _stepTotal=performance.now()-_stepT0;
 if(_stepTotal>5){// log any step that takes >5ms
@@ -2436,6 +2577,53 @@ return -(1650+(step-800)*1.875);// 1650 AD → 2025 AD
 }
 function yearStr(step){const y=stepToYear(step);
 return y>0?`${Math.round(y)} BC`:`${Math.round(Math.abs(y))} AD`;}
+
+// ── Cultural era derived from average tribe knowledge ──
+function deriveEra(aAg,aMt,aNv,aOg){
+  if(aMt>=0.65&&aOg>=0.55)return"Industrial Age";
+  if(aMt>=0.50&&aOg>=0.42)return"Age of Empires";
+  if(aMt>=0.38)return"Iron Age";
+  if(aMt>=0.22)return"Bronze Age";
+  if(aMt>=0.08)return"Copper Age";
+  if(aAg>=0.30)return"Agrarian Age";
+  if(aAg>=0.12)return"Neolithic";
+  return"Stone Age";
+}
+function fmtPop(p){
+  if(p>=1_000_000)return(p/1_000_000).toFixed(1)+"M";
+  if(p>=1000)return(p/1000).toFixed(p>=10000?0:1)+"k";
+  if(p>=1)return p.toFixed(0);
+  return"<1";
+}
+function fmtGold(g){
+  if(g>=10000)return(g/1000).toFixed(0)+"k";
+  if(g>=1000)return(g/1000).toFixed(1)+"k";
+  return g.toFixed(0);
+}
+
+// ── Hexagonal knowledge radar (SVG) ──
+function KnowledgeRadar({k,size=140}){
+  if(!k)return null;
+  const axes=[
+    ["agriculture","Ag"],["metallurgy","Mt"],["navigation","Nv"],
+    ["construction","Cn"],["organization","Og"],["trade","Tr"]
+  ];
+  const cx=size/2,cy=size/2,R=size*0.36;
+  const angleAt=(i)=>(-Math.PI/2)+(i/axes.length)*Math.PI*2;
+  const pt=(i,r)=>{const a=angleAt(i);return[cx+Math.cos(a)*r,cy+Math.sin(a)*r];};
+  const ringPath=(r)=>axes.map((_,i)=>{const[x,y]=pt(i,r);return(i?"L":"M")+x.toFixed(1)+","+y.toFixed(1);}).join(" ")+" Z";
+  const valuePath=axes.map(([key],i)=>{const v=Math.max(0,Math.min(1,k[key]||0));const[x,y]=pt(i,R*v);return(i?"L":"M")+x.toFixed(1)+","+y.toFixed(1);}).join(" ")+" Z";
+  return(
+    <svg width={size} height={size} style={{flexShrink:0}}>
+      {[0.25,0.5,0.75,1].map(t=>(<path key={t} d={ringPath(R*t)} className="au-radar-grid" />))}
+      {axes.map((_,i)=>{const[x,y]=pt(i,R);return<line key={i} x1={cx} y1={cy} x2={x} y2={y} className="au-radar-axis" />;})}
+      <path d={valuePath} className="au-radar-fill" />
+      {axes.map(([key,label],i)=>{const[x,y]=pt(i,R+13);const v=k[key]||0;
+        return<g key={key}><text x={x} y={y} textAnchor="middle" dominantBaseline="middle" className="au-radar-label">{label}</text><text x={x} y={y+11} textAnchor="middle" dominantBaseline="middle" className="au-radar-value">{(v*100|0)}</text></g>;
+      })}
+    </svg>
+  );
+}
 
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
@@ -2467,6 +2655,21 @@ const CH=useMercator?CH_MERC:CH_FLAT;
 _mercator=useMercator;
 const[mapCount,setMapCount]=useState(1);
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
+const[tribeTab,setTribeTab]=useState("overview");
+const[cardPos,setCardPos]=useState(()=>({
+  x:typeof window!=="undefined"?Math.max(20,window.innerWidth-290-360):520,
+  y:64
+}));
+const[keyOpen,setKeyOpen]=useState(true);
+const[showTribeList,setShowTribeList]=useState(false);
+const cardDragRef=useRef(null);
+useEffect(()=>{
+  const move=(e)=>{if(!cardDragRef.current)return;const d=cardDragRef.current;
+    setCardPos({x:Math.max(4,d.x+(e.clientX-d.mx)),y:Math.max(4,d.y+(e.clientY-d.my))});};
+  const up=()=>{cardDragRef.current=null;};
+  window.addEventListener("mousemove",move);window.addEventListener("mouseup",up);
+  return()=>{window.removeEventListener("mousemove",move);window.removeEventListener("mouseup",up);};
+},[]);
 const activeResRef=useRef(null);activeResRef.current=activeRes;
 const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
@@ -2476,6 +2679,7 @@ const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorl
 const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
+const atlasCache=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
 const imgRef=useRef(null);
 // Wind particle animation state
@@ -2485,9 +2689,9 @@ const W=1920,H=960,CW=CW_FLAT;
 const workerRef=useRef(null);
 // Helper: finalize a generated world (shared by worker + main thread paths)
 const finalizeWorld=useCallback((w)=>{
-setWorld(w);worldRef.current=w;const t=createTerritory(w);terRef.current=t;
-setCoverage(0);setTribeCount(t.tribes);setPlaying(false);playRef.current=false;
-terrainCache.current=null;imgRef.current=null;},[]);
+setWorld(w);worldRef.current=w;const t=createTerritory(w);attachRegistries(t);ensureTribeViews(t);resetInvariantState(t);terRef.current=t;
+setCoverage(0);setTribeCount(t.tribeCount);setPlaying(false);playRef.current=false;
+terrainCache.current=null;atlasCache.current=null;imgRef.current=null;},[]);
 const generate=useCallback((s,ol)=>{
 // Import path
 if(presetRef.current==="import"&&importedWorldRef.current){
@@ -2555,9 +2759,327 @@ if(e>sl&&hasSwamp){pr=40;pg=58;pb=38;}
 const ti3=(ty*CW+tx)*3;buf[ti3]=pr;buf[ti3+1]=pg;buf[ti3+2]=pb;}}
 return buf;},[CH]);
 
+// ── Atlas (olde-map) renderer: stained parchment land, dark seas, cartographic symbols ──
+// Heavy build; runs once per world (cached as ImageData), reused each frame.
+const buildAtlas=useCallback((w,ter)=>{
+const cv=document.createElement("canvas");cv.width=CW;cv.height=CH;
+const octx=cv.getContext("2d");
+const img=new ImageData(CW,CH);const d=img.data;
+const N=CW*CH,tw=ter.tw,th=ter.th;
+const rm=ter.rivers?ter.rivers.riverMag:null;
+const lk=ter.rivers&&ter.rivers.lake?ter.rivers.lake:null;
+// Per-screen-pixel data index + water mask; find land elevation ceiling
+const dataIdx=new Int32Array(N),water=new Uint8Array(N);
+let landEMax=0.001;
+for(let ty=0;ty<CH;ty++){
+const dy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
+const tyTile=Math.min(th-1,(dy/RES)|0);
+for(let tx=0;tx<CW;tx++){
+const sx=Math.min(W-1,tx*RES),si=dy*W+sx,i=ty*CW+tx;
+dataIdx[i]=si;const e=w.elevation[si];
+const isLake=lk?lk[tyTile*tw+Math.min(tw-1,(sx/RES)|0)]>=0:false;
+water[i]=(e<=0||isLake)?1:0;
+if(e>landEMax)landEMax=e;}}
+const mtnHi=landEMax*0.55,mtnLo=landEMax*0.34,hillLo=landEMax*0.19,footLo=landEMax*0.10;
+// Chamfer distance transform — coastDist drives the worn, inked shoreline
+const chamfer=(f)=>{
+for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){const i=ty*CW+tx;let dd=f[i];
+if(tx>0){const v=f[i-1]+1;if(v<dd)dd=v;}
+if(ty>0){const v=f[i-CW]+1;if(v<dd)dd=v;}
+if(tx>0&&ty>0){const v=f[i-CW-1]+1.4142;if(v<dd)dd=v;}
+if(tx<CW-1&&ty>0){const v=f[i-CW+1]+1.4142;if(v<dd)dd=v;}
+f[i]=dd;}
+for(let ty=CH-1;ty>=0;ty--)for(let tx=CW-1;tx>=0;tx--){const i=ty*CW+tx;let dd=f[i];
+if(tx<CW-1){const v=f[i+1]+1;if(v<dd)dd=v;}
+if(ty<CH-1){const v=f[i+CW]+1;if(v<dd)dd=v;}
+if(tx<CW-1&&ty<CH-1){const v=f[i+CW+1]+1.4142;if(v<dd)dd=v;}
+if(tx>0&&ty<CH-1){const v=f[i+CW-1]+1.4142;if(v<dd)dd=v;}
+f[i]=dd;}};
+const coastDist=new Float32Array(N),seaDist=new Float32Array(N);
+for(let i=0;i<N;i++){coastDist[i]=water[i]?0:1e9;seaDist[i]=water[i]?1e9:0;}
+chamfer(coastDist);chamfer(seaDist);
+// Downsampled fbm fields — staining is low-frequency, so 4× downsample is invisible (~16× fewer fbm calls)
+const QW=(CW>>2)+2,QH=(CH>>2)+2;
+const mkField=(fx,fy,oct,ox,oy)=>{const f=new Float32Array(QW*QH);
+for(let j=0;j<QH;j++)for(let k=0;k<QW;k++)f[j*QW+k]=fbm(k*4/CW*fx+ox,j*4/CH*fy+oy,oct,2,0.5);
+return f;};
+const bigF=mkField(3.0,3.0,3,11,11),stnF=mkField(4.6,4.6,3,93,93),midF=mkField(8,8,3,40,40),
+fineF=mkField(27,27,2,71,71);
+const samp=(f,x,y)=>{const fx=x*0.25,fy=y*0.25,x0=fx|0,y0=fy|0,dx=fx-x0,dy=fy-y0,
+a=f[y0*QW+x0],b=f[y0*QW+x0+1],cc=f[(y0+1)*QW+x0],dd=f[(y0+1)*QW+x0+1];
+return a*(1-dx)*(1-dy)+b*dx*(1-dy)+cc*(1-dx)*dy+dd*dx*dy;};
+// Base layer — stained, worn parchment land + dark, textured seas
+const COAST=58,HALO=12;
+for(let ty=0;ty<CH;ty++)for(let tx=0;tx<CW;tx++){
+const i=ty*CW+tx,si=dataIdx[i],pi=i<<2,e=w.elevation[si];
+const big=samp(bigF,tx,ty),mid=samp(midF,tx,ty),fine=samp(fineF,tx,ty),stn=samp(stnF,tx,ty);
+const grain=atlasHash(tx,ty)-0.5;
+if(water[i]){
+// Sea: pale parchment, broadly discoloured by the wind field —
+// windier water reads as darker, more weathered staining
+let r=197,g=174,b=126;
+let wd=0;
+if(w.windX){const vx=w.windX[si],vy=w.windY[si];wd=Math.min(1,Math.pow(vx*vx+vy*vy,0.25));}
+r-=wd*42;g-=wd*48;b-=wd*54;
+r+=big*12;g+=big*11;b+=big*9;
+r+=grain*9;g+=grain*9;b+=grain*8;
+r+=(246-r)*0.2;g+=(242-g)*0.2;b+=(234-b)*0.2;
+// broad darkened halo hugging every ocean coastline (skip lakes — too small,
+// the halo would swallow them into dark blobs; their ink shore defines them)
+const sd=seaDist[i];
+if(sd<HALO&&!(lk&&lk[si]>=0)){const hh=1-sd/HALO,hk=hh*hh;
+r-=hk*86;g-=hk*87;b-=hk*79;}
+d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;continue;}
+const m=w.moisture[si],t=w.temperature[si],biome=getBiomeD(e,m,t,0);
+let r=197,g=174,b=126;
+// broad uneven aged tone
+r+=big*40;g+=big*37;b+=big*31;
+// blotchy brown stains at two scales — worn discolouring
+const stain=Math.max(0,mid+0.15)+Math.max(0,stn-0.05)*0.65;
+r-=stain*36;g-=stain*44;b-=stain*49;
+if(mid>0.30){const s=(mid-0.30)*1.6;r-=s*36;g-=s*40;b-=s*40;}
+// finer mottle + per-pixel paper grain (fibres)
+r+=fine*17+grain*12;g+=fine*16+grain*12;b+=fine*13+grain*11;
+// biome discolouration
+if(biome===13){r+=15;g-=3;b-=36;}           // desert — warm orange
+else if(biome===14){r+=8;b-=21;}            // shrubland — mild tan
+else if(biome===11){r+=9;g+=2;b-=18;}       // savanna — golden
+else if(biome===12){r-=14;g+=4;b-=26;}      // grassland — soft green
+else if(biome===5){r+=24;g+=27;b+=39;}      // snow / ice — aged white
+else if(biome===4||biome===18){r+=11;g+=14;b+=22;} // tundra / cold desert — pale wash
+else if(biome===6||biome===7){r-=14;g-=7;b-=14;}   // taiga / boreal — cool shade
+else if(biome===8||biome===9||biome===10||biome===15||biome===17){r-=9;g-=3;b-=13;} // forest — faint green
+if(e>mtnLo){const s=Math.min(1,(e-mtnLo)/(landEMax-mtnLo+1e-3));r-=s*16;g-=s*12;b-=s*4;}
+// shoreline: broad gradient to a darker tea-stained discolour
+if(coastDist[i]<COAST){const tt=1-coastDist[i]/COAST,t2=tt*(0.45+tt*0.55);
+r-=t2*36;g-=t2*44;b-=t2*47;r+=tt*9;g+=tt*3;}
+// hand-inked coastline — darkness varied so it reads as worn ink, not a clean vector line
+if(coastDist[i]<=1.7){const ink=0.6+atlasHash(tx,ty)*0.34;
+r=r*(1-ink)+34*ink;g=g*(1-ink)+27*ink;b=b*(1-ink)+18*ink;}
+d[pi]=r;d[pi+1]=g;d[pi+2]=b;d[pi+3]=255;}
+// Smudge the sea — water-only separable box blur so the swells read soft and natural
+{const BR=3,tmp=new Float32Array(N*3);
+for(let ty=0;ty<CH;ty++){const row=ty*CW;
+for(let tx=0;tx<CW;tx++){const i=row+tx;if(!water[i])continue;
+let sr=0,sg=0,sb=0,c=0;const x0=tx-BR<0?0:tx-BR,x1=tx+BR>=CW?CW-1:tx+BR;
+for(let x2=x0;x2<=x1;x2++){const j=row+x2;if(!water[j])continue;
+const pj=j<<2;sr+=d[pj];sg+=d[pj+1];sb+=d[pj+2];c++;}
+const p3=i*3;tmp[p3]=sr/c;tmp[p3+1]=sg/c;tmp[p3+2]=sb/c;}}
+for(let tx=0;tx<CW;tx++){
+for(let ty=0;ty<CH;ty++){const i=ty*CW+tx;if(!water[i])continue;
+let sr=0,sg=0,sb=0,c=0;const y0=ty-BR<0?0:ty-BR,y1=ty+BR>=CH?CH-1:ty+BR;
+for(let y2=y0;y2<=y1;y2++){const j=y2*CW+tx;if(!water[j])continue;
+const pj=j*3;sr+=tmp[pj];sg+=tmp[pj+1];sb+=tmp[pj+2];c++;}
+const pi=i<<2;d[pi]=sr/c;d[pi+1]=sg/c;d[pi+2]=sb/c;}}}
+octx.putImageData(img,0,0);
+// ── Cartographic symbols ──
+octx.lineJoin="round";octx.lineCap="round";
+// Foxing — soft, irregular age-blooms across the whole sheet
+for(let gy=5;gy<CH-5;gy+=11)for(let gx=5;gx<CW-5;gx+=11){
+const h=atlasHash(gx+9,gy+9);if(h>0.34)continue;
+const px=gx+(atlasHash(gx+3,gy+5)-0.5)*10,py=gy+(atlasHash(gx+7,gy+1)-0.5)*10;
+const ix=px|0,iy=py|0;if(ix<2||ix>=CW-2||iy<2||iy>=CH-2)continue;
+const onWater=water[iy*CW+ix];
+const h2=atlasHash(gx+1,gy+4),h3=atlasHash(gx+6,gy+2);
+const rad=1.7+h2*4.8;
+let cr,cg,cb,ca;
+if(onWater){cr=164;cg=142;cb=102;ca=0.10+h*0.36;}      // paler tan over the sea
+else{cr=(98+h*94)|0;cg=(76+h*52)|0;cb=42;ca=0.05+h*0.36;} // brown on land
+octx.save();octx.translate(px,py);octx.rotate(h2*6.283);octx.scale(1,0.5+h3*0.8);
+const blobs=h<0.15?2:1;
+for(let bi=0;bi<blobs;bi++){
+const ox=bi?(h3-0.5)*rad*1.5:0,oy=bi?(h2-0.5)*rad*1.1:0,rr=bi?rad*(0.45+h3*0.4):rad;
+const g=octx.createRadialGradient(ox,oy,0,ox,oy,rr);
+g.addColorStop(0,`rgba(${cr},${cg},${cb},${ca})`);
+g.addColorStop(0.5,`rgba(${cr},${cg},${cb},${ca*0.5})`);
+g.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+octx.fillStyle=g;octx.beginPath();octx.arc(ox,oy,rr,0,6.2832);octx.fill();}
+octx.restore();}
+// Hachures — short downhill strokes shading steep ground (escarpments, hill flanks)
+for(let gy=6;gy<CH-6;gy+=7)for(let gx=6;gx<CW-6;gx+=7){
+const px=(gx+(atlasHash(gx+3,gy+1)-0.5)*5)|0,py=(gy+(atlasHash(gx+1,gy+5)-0.5)*5)|0;
+if(px<4||px>=CW-4||py<4||py>=CH-4)continue;
+const i=py*CW+px;if(water[i]||coastDist[i]<5)continue;
+const si=dataIdx[i],e=w.elevation[si];if(e<=0||e>=mtnLo)continue;
+const gX=w.elevation[si+3]-w.elevation[si-3],gY=w.elevation[si+3*W]-w.elevation[si-3*W];
+const slope=Math.sqrt(gX*gX+gY*gY),steep=slope/(landEMax+1e-3);
+if(steep<0.04)continue;
+if(atlasHash(gx+9,gy+7)>Math.min(0.9,0.15+steep*8))continue;
+const dl=slope||1,dx=-gX/dl,dy=-gY/dl,len=1.8+Math.min(3.2,steep*30);
+octx.strokeStyle=`rgba(60,48,32,${0.26+Math.min(0.34,steep*5)})`;
+octx.lineWidth=0.4+Math.min(0.5,steep*5);
+octx.beginPath();octx.moveTo(px-dx*len*0.5,py-dy*len*0.5);octx.lineTo(px+dx*len*0.5,py+dy*len*0.5);octx.stroke();}
+// Coastlines — hatched cliffs on steep shores, pale sand flecks on gentle ones
+for(let gy=5;gy<CH-5;gy+=6)for(let gx=5;gx<CW-5;gx+=6){
+const i0=gy*CW+gx;if(water[i0]||coastDist[i0]>5)continue;
+const si=dataIdx[i0],e=w.elevation[si];if(e<=0)continue;
+const gX=w.elevation[si+3]-w.elevation[si-3],gY=w.elevation[si+3*W]-w.elevation[si-3*W];
+const slope=Math.sqrt(gX*gX+gY*gY),steep=slope/(landEMax+1e-3);
+if(steep>0.05){
+const dl=slope||1,dx=-gX/dl,dy=-gY/dl;
+octx.strokeStyle='rgba(50,40,26,0.62)';octx.lineWidth=0.5;octx.beginPath();
+for(let tk=-1;tk<=1;tk++){const ox=-dy*tk*1.7,oy=dx*tk*1.7;
+octx.moveTo(gx+ox,gy+oy);octx.lineTo(gx+ox+dx*2.6,gy+oy+dy*2.6);}
+octx.stroke();
+}else if(atlasHash(gx+2,gy+8)<0.4){
+octx.fillStyle='rgba(234,222,178,0.5)';
+octx.beginPath();octx.arc(gx+(atlasHash(gx,gy)-0.5)*4,gy+(atlasHash(gx+4,gy)-0.5)*4,0.95,0,6.2832);octx.fill();}}
+// Ground cover — grass, scrub and barren speckle for the open biomes
+for(let gy=5;gy<CH-5;gy+=9)for(let gx=5;gx<CW-5;gx+=9){
+const px=(gx+(atlasHash(gx+2,gy+3)-0.5)*8)|0,py=(gy+(atlasHash(gx+5,gy+7)-0.5)*8)|0;
+if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
+const i=py*CW+px;if(water[i])continue;
+const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
+const m=w.moisture[si],biome=getBiomeD(e,m,w.temperature[si],0);
+const h=atlasHash(gx+11,gy+4),tone=atlasHash(gx+3,gy+9);
+if(biome===12){if(h>0.42+m*0.5)continue;atlasTuft(octx,px,py,2.6+tone*2.1,tone);}
+else if(biome===11){if(h>0.4)continue;
+if(atlasHash(gx+7,gy+1)<0.1)atlasAcacia(octx,px,py,4.4+tone*2.1,tone);
+else atlasTuft(octx,px,py,2.2+tone*1.8,tone);}
+else if(biome===14){if(h>0.5)continue;atlasShrub(octx,px,py,1.9+tone*1.3,tone);}
+else if(biome===4){if(h>0.34)continue;
+octx.fillStyle=`rgba(${(112+tone*40)|0},${(114+tone*34)|0},${(106+tone*28)|0},0.5)`;
+octx.beginPath();octx.arc(px,py,0.7+tone*0.6,0,6.2832);octx.fill();}
+else if(biome===18){if(h>0.3)continue;
+octx.fillStyle='rgba(120,110,92,0.45)';
+octx.beginPath();octx.arc(px,py,0.6+tone*0.5,0,6.2832);octx.fill();}}
+// Mountains — dense & overlapping so high ground forms continuous ranges; hills below
+for(let gy=5;gy<CH-5;gy+=8)for(let gx=5;gx<CW-5;gx+=8){
+const px=(gx+(atlasHash(gx,gy)-0.5)*6)|0,py=(gy+(atlasHash(gx+7,gy+3)-0.5)*6)|0;
+if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
+const i=py*CW+px;if(water[i])continue;
+const e=w.elevation[dataIdx[i]];
+if(e>=mtnLo){
+const dens=(e-mtnLo)/(landEMax-mtnLo+1e-3);
+if(atlasHash(gx+11,gy+19)>0.62+dens*0.36)continue;
+const big=e>mtnHi,size=(big?5.4:3.6)+dens*3.8+atlasHash(gx+3,gy+9)*1.5;
+atlasMountain(octx,px,py,size,big,atlasHash(gx+6,gy+2));
+}else if(e>=hillLo){
+if(atlasHash(gx+5,gy+8)>0.13)continue;
+atlasHill(octx,px,py,1.7+atlasHash(gx+2,gy+6)*1.3);
+}else if(e>=footLo){
+if(atlasHash(gx+5,gy+8)>0.06)continue;
+atlasHill(octx,px,py,0.85+atlasHash(gx+2,gy+6)*0.6);}}
+// Ordinary forests — moderate scatter; tree silhouette varies by biome
+for(let gy=4;gy<CH-4;gy+=6)for(let gx=4;gx<CW-4;gx+=6){
+const px=(gx+(atlasHash(gx+1,gy+2)-0.5)*5)|0,py=(gy+(atlasHash(gx+4,gy+8)-0.5)*5)|0;
+if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
+const i=py*CW+px;if(water[i])continue;
+const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
+const biome=getBiomeD(e,w.moisture[si],w.temperature[si],0);
+let cover=0,kind=0;                          // kind: 0 conifer, 1 deciduous, 2 acacia
+if(biome===6){cover=0.40;kind=0;}            // taiga — fir, closed forest
+else if(biome===8||biome===17){cover=0.42;kind=1;} // temperate / subtropical — broadleaf
+else if(biome===15){cover=0.16;kind=2;}      // tropical dry forest — open acacia woodland
+else continue;
+if(atlasHash(gx+13,gy+5)>cover)continue;
+const tone=atlasHash(gx+2,gy+11),size=4.2+atlasHash(gx+9,gy+1)*2.8;
+if(kind===0)atlasConifer(octx,px,py,size,tone);
+else if(kind===1)atlasRoundTree(octx,px,py,size,tone);
+else atlasAcacia(octx,px,py,size,tone);}
+// Dense forest — packed, overlapping thicket: rainforests (jungle) + boreal (fir)
+for(let gy=3;gy<CH-3;gy+=4)for(let gx=3;gx<CW-3;gx+=4){
+const px=(gx+(atlasHash(gx+1,gy+5)-0.5)*4)|0,py=(gy+(atlasHash(gx+6,gy+2)-0.5)*4)|0;
+if(px<2||px>=CW-2||py<2||py>=CH-2)continue;
+const i=py*CW+px;if(water[i])continue;
+const si=dataIdx[i],e=w.elevation[si];if(e>=mtnLo)continue;
+const bm=getBiomeD(e,w.moisture[si],w.temperature[si],0);
+if(bm!==9&&bm!==10&&bm!==7)continue;
+if(atlasHash(gx+7,gy+9)>0.95)continue;
+const tone=atlasHash(gx+2,gy+11);
+if(bm===7)atlasConifer(octx,px,py,4.4+atlasHash(gx+9,gy+1)*2.3,tone);
+else atlasJungleTree(octx,px,py,5.0+atlasHash(gx+9,gy+1)*2.4,tone);}
+// Desert stipple (dune dots)
+for(let gy=4;gy<CH-4;gy+=7)for(let gx=4;gx<CW-4;gx+=7){
+const px=(gx+(atlasHash(gx+6,gy+1)-0.5)*6)|0,py=(gy+(atlasHash(gx+2,gy+9)-0.5)*6)|0;
+if(px<1||px>=CW-1||py<1||py>=CH-1)continue;
+const i=py*CW+px;if(water[i])continue;
+const si=dataIdx[i],e=w.elevation[si],dm=w.moisture[si];
+if(getBiomeD(e,dm,w.temperature[si],0)!==13)continue;
+if(atlasHash(gx+3,gy+7)>0.62-dm*1.6)continue;
+octx.fillStyle="rgba(120,84,38,0.5)";
+octx.beginPath();octx.arc(px,py,0.7,0,6.2832);octx.fill();}
+// Swamp reeds
+if(w.swamp){
+for(let gy=5;gy<CH-5;gy+=10)for(let gx=5;gx<CW-5;gx+=10){
+const px=(gx+(atlasHash(gx+8,gy+4)-0.5)*7)|0,py=(gy+(atlasHash(gx+5,gy+2)-0.5)*7)|0;
+if(px<1||px>=CW-1||py<1||py>=CH-1)continue;
+const i=py*CW+px;if(water[i])continue;
+const si=dataIdx[i];if(!w.swamp[si])continue;
+octx.strokeStyle="rgba(64,72,48,0.75)";octx.lineWidth=0.7;
+octx.beginPath();
+octx.moveTo(px-2.4,py+1);octx.lineTo(px+2.4,py+1);
+octx.moveTo(px-1.4,py+1);octx.lineTo(px-1.4,py-2);
+octx.moveTo(px,py+1);octx.lineTo(px,py-2.6);
+octx.moveTo(px+1.4,py+1);octx.lineTo(px+1.4,py-2);
+octx.stroke();}}
+// Re-stamp lake water over the symbol layer. Tree canopies from shoreline
+// trees overhang small lakes and would otherwise bury them; the base layer
+// (d) still holds the clean water colour, so copy it back for lake tiles
+// only — land symbols are left untouched.
+if(lk){const cur=octx.getImageData(0,0,CW,CH),cd=cur.data;
+for(let i=0;i<N;i++){if(lk[i]<0)continue;
+const pi=i<<2;cd[pi]=d[pi];cd[pi+1]=d[pi+1];cd[pi+2]=d[pi+2];cd[pi+3]=255;}
+octx.putImageData(cur,0,0);}
+// Rivers — traced from the flow network, drawn as smooth meandering ink
+// (the raw D8 flow is 8-directional/blocky; tracing + curve smoothing
+// turns it into natural winding rivers). Lakes break the trace: a river
+// ends at the lake shore, and the lake's outflow is drawn as its own
+// river from the outlet — so rivers visibly enter and leave lakes.
+if(ter.rivers&&ter.rivers.flowDir){
+const rmg=ter.rivers.riverMag,fd=ter.rivers.flowDir,RN=tw*th;
+const DDX=[1,1,0,-1,-1,-1,0,1],DDY=[0,1,1,1,0,-1,-1,-1];
+const isLk=(t)=>!!(lk&&lk[t]>=0);
+const hasUp=new Uint8Array(RN),drawn=new Uint8Array(RN);
+// Upstream flag ignores lake tiles, so a tile fed only by a lake's outlet
+// counts as a river source — that becomes the lake's outflow head.
+for(let ti=0;ti<RN;ti++){if(rmg[ti]<2||isLk(ti))continue;const d=fd[ti];if(d===255)continue;
+const nx=((ti%tw)+DDX[d]+tw)%tw,ny=((ti/tw)|0)+DDY[d];if(ny<0||ny>=th)continue;hasUp[ny*tw+nx]=1;}
+octx.lineCap="round";octx.lineJoin="round";octx.strokeStyle="rgba(42,58,78,0.92)";
+const wOf=(m)=>m>=4?2.2:m>=3?1.5:0.95;
+const drawSeg=(pts,a,b,lw)=>{if(b<=a)return;octx.lineWidth=lw;octx.beginPath();
+octx.moveTo(pts[a].x,pts[a].y);
+for(let k=a+1;k<b;k++)octx.quadraticCurveTo(pts[k].x,pts[k].y,(pts[k].x+pts[k+1].x)*0.5,(pts[k].y+pts[k+1].y)*0.5);
+octx.lineTo(pts[b].x,pts[b].y);octx.stroke();};
+for(let ti=0;ti<RN;ti++){
+if(rmg[ti]<2||hasUp[ti]||isLk(ti))continue;
+const pts=[];let ci=ti,guard=0;
+// If this head is fed by a lake outlet, prepend that outlet tile so the
+// river visibly emerges from the water rather than starting beside it.
+if(lk){const sx=ti%tw,sy=(ti/tw)|0;
+for(let d=0;d<8;d++){const lx=((sx+DDX[d])%tw+tw)%tw,ly=sy+DDY[d];
+if(ly<0||ly>=th)continue;const lci=ly*tw+lx;
+if(lk[lci]>=0&&fd[lci]!==255){
+const ld=fd[lci],fx2=((lx+DDX[ld])%tw+tw)%tw,fy2=ly+DDY[ld];
+if(fx2===sx&&fy2===sy){pts.push({x:lx,y:ly,m:rmg[ti]});break;}}}}
+for(;;){if(guard++>6000)break;
+drawn[ci]=1;pts.push({x:ci%tw,y:(ci/tw)|0,m:rmg[ci]});
+const d=fd[ci];if(d===255)break;
+const cx=ci%tw,cy=(ci/tw)|0,nx=((cx+DDX[d])%tw+tw)%tw,ny=cy+DDY[d];
+if(ny<0||ny>=th)break;const nci=ny*tw+nx;
+// Reaching a lake: end the river at the shore (the lake tile is the
+// terminal point so the line just touches the water).
+if(isLk(nci)){pts.push({x:nx,y:ny,m:pts[pts.length-1].m});break;}
+if(rmg[nci]<2||drawn[nci]){pts.push({x:nx,y:ny,m:rmg[nci]>=2?rmg[nci]:pts[pts.length-1].m});break;}
+ci=nci;}
+const n=pts.length;if(n<2)continue;
+// decimate to ~every 4th tile, then the quadratic curve smooths out the
+// D8 stair-steps — the path already wanders (jittered flow in riverGen)
+const dp=[pts[0]];
+for(let k=4;k<n-1;k+=4)dp.push(pts[k]);
+dp.push(pts[n-1]);
+const dn=dp.length;
+let a=0;
+for(let k=1;k<dn;k++){if(wOf(dp[k].m)!==wOf(dp[a].m)){drawSeg(dp,a,k,wOf(dp[a].m));a=k;}}
+drawSeg(dp,a,dn-1,wOf(dp[a].m));}
+}
+return octx.getImageData(0,0,CW,CH);
+},[CH]);
+
 // Composite render: terrain + tribe overlay into single canvas
 const draw=useCallback((ter)=>{
 if(!ter)return;const w=worldRef.current;if(!w)return;
+if(typeof window!=='undefined'){window.__ter=ter;window.__world=w;}
 const sl=0,vm=viewRef.current;
 const isGlobe=showGlobeRef.current;
 // Use onscreen canvas if available, otherwise create offscreen for globe
@@ -2826,6 +3348,11 @@ else{const s=(t-0.90)/0.10;r=255;g=(150-s*110)|0;b=(10+s*5)|0;}// orange→red (
 // Darken with elevation for topographic context
 const shade=1-Math.max(0,e-0.1)*0.4;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
+}else if(vm==="atlas"){
+// Olde-map "Atlas" view — cached parchment render, rebuilt only when world/projection changes
+if(!atlasCache.current||atlasCache.current.seed!==w._seed||atlasCache.current.ch!==CH){
+atlasCache.current={img:buildAtlas(w,ter),seed:w._seed,ch:CH};}
+d.set(atlasCache.current.img.data);
 }else{
 // Default terrain view with white tribe borders
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
@@ -2845,7 +3372,7 @@ d[pi4]=(tr*0.4+200*0.6+.5)|0;d[pi4+1]=(tg*0.4+195*0.6+.5)|0;d[pi4+2]=(tb*0.4+185
 }else{d[pi4]=tr;d[pi4+1]=tg;d[pi4+2]=tb;}
 d[pi4+3]=255;}}
 // Plate boundary overlay — domain-warped lookup for organic boundaries
-if(showPlatesRef.current&&w.pixPlate){
+if(showPlatesRef.current&&w.pixPlate&&vm!=="atlas"){
 const plateAt=(px,py)=>{
 const nx=px/W,ny=py/H;
 // Same multi-scale warp as tectonicGen elevation sampling
@@ -2862,10 +3389,10 @@ const nx2=(sx+dx+W)%W,ny2=sy+dy;if(ny2<0||ny2>=H)continue;
 if(plateAt(nx2,ny2)!==myP)boundary=true;}
 if(boundary){const pi4=ti<<2;d[pi4]=200;d[pi4+1]=60;d[pi4+2]=40;}}}
 // Lake overlay
-if(showLakesRef.current&&lk){for(let ti=0;ti<N;ti++){if(lk[ti]<0)continue;
+if(showLakesRef.current&&lk&&vm!=="atlas"){for(let ti=0;ti<N;ti++){if(lk[ti]<0)continue;
 const pi4=ti<<2;d[pi4]=25;d[pi4+1]=60;d[pi4+2]=105;d[pi4+3]=255;}}
 // River overlay — Rivers: tributary+. Streams: streams only.
-if(ter.rivers){const rm=ter.rivers.riverMag;
+if(ter.rivers&&vm!=="atlas"){const rm=ter.rivers.riverMag;
 const rivers=showRiversRef.current,streams=showStreamsRef.current;
 if(rivers||streams){
 for(let ti=0;ti<N;ti++){const mag=rm[ti];if(mag<1)continue;
@@ -3084,7 +3611,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
 }
 // Power view removed — replaced by era-based rendering and focused view
 // Power centers removed — centers already drawn in main center loop above}
-},[updateTerrainCache,CH]);
+},[updateTerrainCache,buildAtlas,CH]);
 
 useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showPower,showGlobe,activeRes]);
 
@@ -3103,7 +3630,7 @@ const sub=Math.min(3,Math.max(1,Math.ceil(speedRef.current/3*eraFactor)));// cap
 // Time-budgeted sim: stop stepping if we've used >8ms this frame
 const _simStart=performance.now();
 for(let s=0;s<sub;s++){
-try{terRef.current=stepTerritory(terRef.current,worldRef.current);}
+try{terRef.current=runTribeStep(terRef.current,worldRef.current,stepTerritory);}
 catch(e){console.error('[SIM CRASH]',e.message,e.stack);playRef.current=false;return;}
 if(performance.now()-_simStart>8)break;
 }
@@ -3128,7 +3655,7 @@ wfid=requestAnimationFrame(windLoop);
 return()=>cancelAnimationFrame(wfid);},[draw]);
 
 const togglePlay=()=>{if(!playing&&terRef.current&&terRef.current.settled>=terRef.current.landCount){
-const t=createTerritory(worldRef.current);terRef.current=t;setTribeCount(t.tribes);setCoverage(0);setDominant(null);setSelectedTribe(-1);terrainCache.current=null;draw(t);}
+const t=createTerritory(worldRef.current);attachRegistries(t);ensureTribeViews(t);resetInvariantState(t);terRef.current=t;setTribeCount(t.tribeCount);setCoverage(0);setDominant(null);setSelectedTribe(-1);terrainCache.current=null;atlasCache.current=null;draw(t);}
 playRef.current=!playRef.current;setPlaying(p=>!p);};
 const handleImport=useCallback(async(e)=>{const file=e.target.files?.[0];if(!file)return;
 e.target.value="";
@@ -3153,10 +3680,6 @@ setSeed(Math.floor(Math.random()*999999));
 setTimeout(()=>setImportStatus(null),4000);
 }catch(err){setImportStatus("Import failed: "+err.message);setTimeout(()=>setImportStatus(null),5000);}
 },[seed]);
-const bs={background:"rgba(201,184,122,0.08)",border:"1px solid rgba(201,184,122,0.18)",color:"#8a8474",
-padding:"4px 10px",borderRadius:2,cursor:"pointer",fontSize:10,letterSpacing:1,fontFamily:"inherit"};
-const bsA=(active,color)=>({...bs,background:active?`rgba(${color},0.2)`:bs.background,
-border:`1px solid ${active?`rgba(${color},0.35)`:bs.border}`,color:active?`rgb(${color})`:"#8a8474"});
 const onCanvasMove=useCallback((ev)=>{
 const c=canvasRef.current;if(!c||!worldRef.current)return;
 const r=c.getBoundingClientRect();
@@ -3192,20 +3715,19 @@ const ter=terRef.current;
 let tribeInfo=null;
 if(ter&&terTi>=0&&ter.owner[terTi]>=0){
 const ow2=ter.owner[terTi];
-const k=ter.tribeKnowledge&&ter.tribeKnowledge[ow2]?ter.tribeKnowledge[ow2]:null;
-const pop2=ter.tribePopulation?ter.tribePopulation[ow2]:0;
-const bud2=ter.tribeBudget&&ter.tribeBudget[ow2]?ter.tribeBudget[ow2]:null;
+const them=ter.tribes?.[ow2];
+if(them&&them.alive){
+const k=them.knowledge||null;
+const bud2=them.budget||null;
 // Compute relationship with selected tribe if any
 const selT=selectedTribe;
 let relation='';
-if(selT>=0&&selT!==ow2&&ter.tribeSizes[selT]>0)relation=tribeRelation(ter,selT,ow2);
-const stCounts2=ter._settleCounts&&ter._settleCounts[ow2]?ter._settleCounts[ow2]:{villages:0,towns:0,cities:0,large:0};
-const ports2=ter.tribePorts&&ter.tribePorts[ow2]?ter.tribePorts[ow2].length:0;
-const kc2=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[ow2]?ter.tribeKnownCoasts[ow2].length:0;
-tribeInfo={id:ow2,size:ter.tribeSizes[ow2],pop:Math.round(pop2),
+const meSel=selT>=0?ter.tribes?.[selT]:null;
+if(meSel&&meSel.alive&&selT!==ow2)relation=tribeRelation(ter,selT,ow2);
+tribeInfo={id:ow2,size:them.size,pop:Math.round(them.pop),
 knowledge:k?{ag:k.agriculture,mt:k.metallurgy,nv:k.navigation,cn:k.construction,og:k.organization,tr:k.trade}:null,
-personality:bud2?bud2.personality:"",budget:bud2?{mil:bud2.military,gro:bud2.growth,com:bud2.commerce,exp:bud2.exploration,sur:bud2.survival}:null,
-relation,settlements:stCounts2,ports:ports2,knownCoasts:kc2};}
+personality:them.personality,budget:bud2?{mil:bud2.military,gro:bud2.growth,com:bud2.commerce,exp:bud2.exploration,sur:bud2.survival}:null,
+relation,settlements:them.settleCounts,ports:them.ports.length,knownCoasts:them.knownCoasts.length};}}
 setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,tribeInfo});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
@@ -3217,435 +3739,497 @@ const wx=Math.floor(sx),wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const ter=terRef.current;if(!ter)return;
 const ttx=Math.min(ter.tw-1,(wx/RES)|0),tty=Math.min(ter.th-1,(wy/RES)|0);
 const tileOwner=ter.owner[tty*ter.tw+ttx];
-if(tileOwner>=0&&ter.tribeSizes[tileOwner]>0){
+if(tileOwner>=0&&ter.tribes?.[tileOwner]?.alive){
 setSelectedTribe(tileOwner);ter._selectedTribe=tileOwner;
 setRightPanel("tribes");draw(ter);
 }else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}
 },[CW,CH,draw]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
-const lbs={...bs,width:"100%",textAlign:"left",padding:"4px 10px"};
-const sep=<div style={{height:1,background:"rgba(201,184,122,0.10)",margin:"2px 0"}} />;
-const rpW=rightPanel?300:0;
 const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
 
-return(
-<div style={{width:"100vw",height:"100vh",background:"#060810",overflow:"hidden",display:"flex"}}>
+// ── Aggregate world stats for the chronicle ribbon ──
+const _ter=terRef.current;
+const _step=_ter?_ter.stepCount:0;
+const _ys=yearStr(_step);
+let _aAg=0,_aMt=0,_aNv=0,_aOg=0,_aliveK=0;
+if(_ter&&_ter.tribes){
+  for(const t of _ter.tribes){
+    if(!t.alive||!t.knowledge)continue;_aliveK++;const _k=t.knowledge;
+    _aAg+=_k.agriculture;_aMt+=_k.metallurgy;_aNv+=_k.navigation;_aOg+=_k.organization;}
+  if(_aliveK>0){_aAg/=_aliveK;_aMt/=_aliveK;_aNv/=_aliveK;_aOg/=_aliveK;}}
+const _era=deriveEra(_aAg,_aMt,_aNv,_aOg);
 
-{/* ══ LEFT PANEL ══ */}
-<div style={{width:140,minWidth:140,height:"100%",background:"rgba(6,8,16,0.92)",borderRight:"1px solid rgba(201,184,122,0.08)",
-display:"flex",flexDirection:"column",gap:4,padding:"8px 6px",overflowY:"auto",fontSize:10}}>
-<button onClick={togglePlay} style={{...lbs,color:playing?"#e0a090":"#c9b87a",
-background:playing?"rgba(200,80,60,0.15)":"rgba(201,184,122,0.1)",padding:"6px 10px",fontSize:12,textAlign:"center"}}>
-{playing?"❚❚  Pause":"▶  Play"}</button>
-<div style={{display:"flex",alignItems:"center",gap:4}}>
-<span style={{color:"#6a6458",fontSize:9}}>Speed</span>
-<input type="range" min={1} max={10} value={speed} onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value}}
-style={{flex:1,accentColor:"#c9b87a"}} />
+// View modes for the right rail
+const VIEW_MODES=[
+  ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
+  ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
+  ["resources","Resources"],["population","Pop"],["transport","Transport"],["tribes","Tribes"]
+];
+
+return(
+<div className="au-root" style={{width:"100vw",height:"calc(100vh - 40px)",
+  background:"var(--au-table-dark)",overflow:"hidden",display:"flex",position:"relative"}}>
+
+{/* ══════════ LEFT SPINE ══════════ */}
+<aside className="au-parchment au-scroll" style={{
+  width:142,minWidth:142,margin:"6px 3px 6px 6px",padding:"10px 8px",
+  display:"flex",flexDirection:"column",gap:5,overflowY:"auto"}}>
+
+<button onClick={togglePlay}
+  className={"au-btn au-block"+(playing?" au-wax au-active":"")}
+  style={{padding:"8px 6px",fontSize:13,fontFamily:"'Cinzel',Georgia,serif",letterSpacing:"0.10em"}}>
+  {playing?"❚❚  Pause":"▶  Play"}
+</button>
+
+<div style={{display:"flex",alignItems:"center",gap:6,padding:"2px 4px"}}>
+  <span className="au-sc au-fade" style={{fontSize:10}}>Speed</span>
+  <input type="range" min={1} max={10} value={speed}
+    onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value;}}
+    style={{flex:1}} />
+  <span className="au-mute" style={{fontSize:10,width:14,textAlign:"right"}}>{speed}</span>
 </div>
-{sep}
-<button onClick={()=>setPresetAndGo("earth_sim")} style={{...lbs,...(preset==="earth_sim"?{color:"rgb(80,180,200)",background:"rgba(80,180,200,0.15)"}:{})}}>Earth (Sim)</button>
-{preset==="earth_sim"&&<label style={{fontSize:10,color:useRealWind?"#6be":"#6a6458",cursor:"pointer",display:"flex",alignItems:"center",gap:3,padding:"0 4px"}}>
-<input type="checkbox" checked={useRealWind} onChange={e=>{setUseRealWind(e.target.checked);useRealWindRef.current=e.target.checked;generate(seed)}}
-style={{accentColor:"#6be",width:12,height:12}} />{isRealWindAvailable()?"Real Winds":"Real Winds (no data)"}</label>}
-<button onClick={()=>setPresetAndGo("tectonic")} style={{...lbs,...(preset==="tectonic"?{color:"rgb(180,120,100)",background:"rgba(180,120,100,0.15)"}:{})}}>Tectonic</button>
-{sep}
+
+<div className="au-rule" />
+<div className="au-sc au-fade au-heading" style={{fontSize:10,padding:"2px 4px 0"}}>World</div>
+
+<button onClick={()=>setPresetAndGo("earth_sim")}
+  className={"au-btn au-block"+(preset==="earth_sim"?" au-active":"")}>Earth (Sim)</button>
+{preset==="earth_sim"&&
+  <label style={{fontSize:10,padding:"0 4px",cursor:"pointer",display:"flex",alignItems:"center",gap:4}} className="au-fade">
+    <input type="checkbox" checked={useRealWind}
+      onChange={e=>{setUseRealWind(e.target.checked);useRealWindRef.current=e.target.checked;generate(seed);}}
+      style={{width:11,height:11}} />
+    {isRealWindAvailable()?"Real Winds":"Real Winds (n/a)"}
+  </label>}
+
+<button onClick={()=>setPresetAndGo("tectonic")}
+  className={"au-btn au-block"+(preset==="tectonic"?" au-active":"")}>Tectonic</button>
 {preset==="tectonic"&&<>
-<select value={tecPresetName} onChange={e=>{
-const name=e.target.value;setTecPresetName(name);
-if(name==="Default"){_tecParams={};generate(seed);}
-else{const presets=loadPresets();if(presets[name]){_tecParams=presets[name];generate(seed);}}
-}} style={{background:"rgba(201,184,122,0.06)",border:"1px solid rgba(201,184,122,0.18)",
-color:"#b8a060",padding:"3px 6px",borderRadius:2,fontSize:10,fontFamily:"inherit",cursor:"pointer",outline:"none",width:"100%"}}>
-<option value="Default" style={{background:"#0a0c14"}}>Default</option>
-{Object.keys(loadPresets()).map(name=><option key={name} value={name} style={{background:"#0a0c14"}}>{name}</option>)}
-</select>
-{tecPresetName!=="Default"&&<button onClick={()=>{if(confirm("Delete '"+tecPresetName+"'?")){
-deletePreset(tecPresetName);setTecPresetName("Default");_tecParams={};generate(seed);}}}
-style={{...lbs,color:"#a06060",fontSize:9,textAlign:"center"}}>Delete Preset</button>}
-{sep}
+  <select value={tecPresetName} onChange={e=>{
+    const name=e.target.value;setTecPresetName(name);
+    if(name==="Default"){_tecParams={};generate(seed);}
+    else{const presets=loadPresets();if(presets[name]){_tecParams=presets[name];generate(seed);}}
+  }} style={{width:"100%",marginTop:2}}>
+    <option value="Default">Default</option>
+    {Object.keys(loadPresets()).map(name=><option key={name} value={name}>{name}</option>)}
+  </select>
+  {tecPresetName!=="Default"&&<button onClick={()=>{
+    if(confirm("Delete '"+tecPresetName+"'?")){deletePreset(tecPresetName);setTecPresetName("Default");_tecParams={};generate(seed);}}}
+    className="au-btn au-block au-wax" style={{fontSize:10}}>Delete Preset</button>}
 </>}
-<input ref={fileRef} type="file" accept=".json,.map,.png,.jpg,.jpeg,.webp" style={{display:"none"}} onChange={handleImport} />
-<button onClick={()=>fileRef.current?.click()} style={{...lbs,...(preset==="import"?{color:"rgb(180,140,200)",background:"rgba(180,140,200,0.15)"}:{})}}>Import</button>
-{importStatus&&<span style={{fontSize:8,color:"#a99ed0",wordBreak:"break-all"}}>{importStatus}</span>}
-{sep}
+
+<input ref={fileRef} type="file" accept=".json,.map,.png,.jpg,.jpeg,.webp"
+  style={{display:"none"}} onChange={handleImport} />
+<button onClick={()=>fileRef.current?.click()} className="au-btn au-block">Import</button>
+{importStatus&&<span className="au-fade" style={{fontSize:9,wordBreak:"break-all",padding:"0 4px"}}>{importStatus}</span>}
+
 <div style={{flex:1}} />
-<span style={{color:"#4a4438",fontSize:8,textAlign:"center"}}>Seed: {seed}</span>
+<div className="au-rule" />
+<button onClick={()=>setSeed(Math.floor(Math.random()*999999))}
+  className="au-btn au-block au-flat" style={{fontSize:11}} title="Roll new seed">⚄ Roll</button>
+<span className="au-fade" style={{fontSize:9,textAlign:"center",fontFamily:"'Courier New',monospace"}}>Seed {seed}</span>
+</aside>
+
+{/* ══════════ CENTER COLUMN ══════════ */}
+<div style={{flex:1,display:"flex",flexDirection:"column",padding:"6px 3px",gap:6,minWidth:0}}>
+
+{/* Chronicle ribbon */}
+<div className="au-parchment au-chronicle" style={{flexShrink:0}}>
+  <span className="au-era">{_era}</span>
+  <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
+  <span className="au-year">{_ys}</span>
+  <span className="au-fade" style={{fontSize:11}}>Step {_step.toLocaleString()}</span>
+  <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
+  <span style={{fontSize:13}}>{tribeCount} <span className="au-sc au-fade" style={{fontSize:11}}>nations</span></span>
+  <span style={{fontSize:13}}>{coverage}<span className="au-fade">%</span> <span className="au-sc au-fade" style={{fontSize:11}}>claimed</span></span>
+  {dominant&&<>
+    <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
+    <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+      <span className="au-wax-seal au-small"
+        style={{background:`rgb(${tribeRGB(dominant.id).join(",")})`}}>{dominant.id}</span>
+      <span className="au-sc au-fade" style={{fontSize:11}}>Dominant</span>
+      <span>{dominant.size}t</span>
+    </span>
+  </>}
+  <div style={{flex:1}} />
+  {_aliveK>0&&<span className="au-fade" style={{fontSize:10,fontFamily:"'Courier New',monospace"}}>
+    Ag {(_aAg*100|0)} · Mt {(_aMt*100|0)} · Nv {(_aNv*100|0)} · Og {(_aOg*100|0)}
+  </span>}
 </div>
 
-{/* ══ CENTER: MAP AREA ══ */}
-<div style={{flex:1,position:"relative",display:"flex",flexDirection:"column"}}>
+{/* Map area */}
+<div style={{flex:1,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",minHeight:0,overflow:"hidden"}}>
 
-{/* Map grid */}
-<div style={{flex:1,display:"grid",gridTemplateColumns:`repeat(${gridCols},1fr)`,gap:2,padding:2}}>
-{Array.from({length:mapCount}).map((_,mi)=>{
-const extraSeed=seed+mi;
-return(
-<div key={mi} style={{position:"relative",overflow:"hidden",background:"#060810",display:"flex",
-alignItems:"center",justifyContent:"center",cursor:mi>0?"pointer":"default",
-border:mi===0?"2px solid rgba(201,184,122,0.25)":"2px solid transparent",borderRadius:3}}
-onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
-{mi===0?(showGlobe?<div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
-<GlobeView terrainBuf={globeBuf} world={world}
-CW={globeTexSize.w} CH={globeTexSize.h} /></div>
-:<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
-style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",
-aspectRatio:`${CW}/${CH}`}} />)
-:<canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
-style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",
-width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
-{mi>0&&<div style={{position:"absolute",bottom:2,left:0,right:0,textAlign:"center",
-color:"#6a6458",fontSize:9,pointerEvents:"none"}}>Seed: {extraSeed}</div>}
-</div>);})}
-</div>
+{mapCount<=1?(
+  showGlobe?
+    <div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
+      <GlobeView terrainBuf={globeBuf} world={world} CW={globeTexSize.w} CH={globeTexSize.h} />
+    </div>:
+    <canvas ref={canvasRef} width={CW} height={CH}
+      onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
+      style={{display:"block",imageRendering:"pixelated",
+        maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
+        boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
+):(
+  <div style={{width:"100%",height:"100%",display:"grid",
+    gridTemplateColumns:`repeat(${gridCols},1fr)`,gap:4,padding:2}}>
+    {Array.from({length:mapCount}).map((_,mi)=>{
+      const extraSeed=seed+mi;
+      return(
+        <div key={mi} style={{position:"relative",overflow:"hidden",display:"flex",
+          alignItems:"center",justifyContent:"center",cursor:mi>0?"pointer":"default",
+          border:mi===0?"1px solid var(--au-paper-deep)":"1px solid rgba(168,140,92,0.4)"}}
+          onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
+          {mi===0?
+            <canvas ref={canvasRef} width={CW} height={CH}
+              onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
+              style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`}} />:
+            <canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
+              style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
+          {mi>0&&<div style={{position:"absolute",bottom:2,left:0,right:0,textAlign:"center",
+            color:"var(--au-paper)",fontSize:10,textShadow:"0 1px 2px rgba(0,0,0,0.8)",pointerEvents:"none"}}>Seed {extraSeed}</div>}
+        </div>);})}
+  </div>
+)}
 
-{/* Hover tooltip */}
-{hoverInfo&&<div style={{position:"fixed",left:hoverInfo.x+14,top:hoverInfo.y-60,
-background:"rgba(6,8,16,0.92)",color:"#c9b87a",fontSize:10,padding:"6px 10px",
-borderRadius:3,pointerEvents:"none",whiteSpace:"nowrap",zIndex:100,lineHeight:"15px",
-border:"1px solid rgba(201,184,122,0.15)"}}>
-<div style={{fontWeight:"bold",marginBottom:2,color:hoverInfo.isLake?"#4a8aaa":hoverInfo.elevM<=0?"#4a6a8a":"#c9b87a"}}>{hoverInfo.isLake?`Lake (${hoverInfo.lakeSize} tiles)`:hoverInfo.biome}</div>
-<div><span style={{color:"#8a8474"}}>Elev:</span> {hoverInfo.elevM}m</div>
-<div><span style={{color:"#8a8474"}}>Temp:</span> {hoverInfo.tempC}°C</div>
-<div><span style={{color:"#8a8474"}}>Moist:</span> {(hoverInfo.moist*100).toFixed(0)}%</div>
-<div><span style={{color:"#8a8474"}}>Fert:</span> {(hoverInfo.fert*100).toFixed(0)}%</div>
-<div><span style={{color:"#8a8474"}}>Wind:</span> {hoverInfo.wkmh} km/h {hoverInfo.wdir}</div>
-<div><span style={{color:"#8a8474"}}>Lat:</span> {(hoverInfo.lat*90).toFixed(1)}°</div>
-{hoverInfo.river>0&&<div><span style={{color:"#8a8474"}}>River:</span> <span style={{color:"#6ab4e8"}}>{RIVER_NAMES[hoverInfo.river]}</span> <span style={{color:"#5a5448",fontSize:9}}>({hoverInfo.riverAccum.toFixed(1)})</span></div>}
-{hoverInfo.tribeInfo&&<>
-<div style={{height:1,background:"rgba(201,184,122,0.12)",margin:"3px 0"}} />
-<div><span style={{color:"#8a8474"}}>Tribe #{hoverInfo.tribeInfo.id}</span>{hoverInfo.tribeInfo.personality&&<span style={{color:"#b0a070"}}> {hoverInfo.tribeInfo.personality}</span>} <span style={{color:"#c9b87a"}}>{hoverInfo.tribeInfo.size}t</span> <span style={{color:"#7a7464"}}>{hoverInfo.tribeInfo.pop>=10000?(hoverInfo.tribeInfo.pop/1000).toFixed(1)+'M':hoverInfo.tribeInfo.pop>=1000?(hoverInfo.tribeInfo.pop/1000|0)+'M':hoverInfo.tribeInfo.pop>=1?hoverInfo.tribeInfo.pop.toFixed(0)+'k':'<1k'}</span></div>
-{hoverInfo.tribeInfo.budget&&<div style={{fontSize:8,color:"#6a6458"}}>
-<span style={{color:"#c06050"}}>{(hoverInfo.tribeInfo.budget.mil*100|0)}mil</span>{" "}
-<span style={{color:"#60a050"}}>{(hoverInfo.tribeInfo.budget.gro*100|0)}gro</span>{" "}
-<span style={{color:"#5080c0"}}>{(hoverInfo.tribeInfo.budget.com*100|0)}com</span>{" "}
-<span style={{color:"#c09030"}}>{(hoverInfo.tribeInfo.budget.exp*100|0)}exp</span>{" "}
-<span style={{color:"#808080"}}>{(hoverInfo.tribeInfo.budget.sur*100|0)}sur</span>
-</div>}
-{hoverInfo.tribeInfo.knowledge&&<div style={{fontSize:9,color:"#7a7464",lineHeight:"12px"}}>
-<span style={{color:hoverInfo.tribeInfo.knowledge.ag>0.3?"#8ab870":"#5a5448"}}>Ag {(hoverInfo.tribeInfo.knowledge.ag*100|0)}%</span>{" "}
-<span style={{color:hoverInfo.tribeInfo.knowledge.mt>0.3?"#c8946a":"#5a5448"}}>Mt {(hoverInfo.tribeInfo.knowledge.mt*100|0)}%</span>{" "}
-<span style={{color:hoverInfo.tribeInfo.knowledge.nv>0.3?"#6a9ec8":"#5a5448"}}>Nv {(hoverInfo.tribeInfo.knowledge.nv*100|0)}%</span><br/>
-<span style={{color:hoverInfo.tribeInfo.knowledge.cn>0.3?"#a89878":"#5a5448"}}>Cn {(hoverInfo.tribeInfo.knowledge.cn*100|0)}%</span>{" "}
-<span style={{color:hoverInfo.tribeInfo.knowledge.og>0.3?"#b88ac8":"#5a5448"}}>Og {(hoverInfo.tribeInfo.knowledge.og*100|0)}%</span>{" "}
-<span style={{color:hoverInfo.tribeInfo.knowledge.tr>0.3?"#c8b84a":"#5a5448"}}>Tr {(hoverInfo.tribeInfo.knowledge.tr*100|0)}%</span>
-</div>}
-{hoverInfo.tribeInfo.settlements&&<div style={{fontSize:8,color:"#6a6458"}}>
-{(()=>{const s=hoverInfo.tribeInfo.settlements;const parts=[];
-if(s.large>0)parts.push(s.large+'C');if(s.cities>0)parts.push(s.cities+'c');
-if(s.towns>0)parts.push(s.towns+'t');if(s.villages>0)parts.push(s.villages+'v');
-return parts.join(' ')||'no settlements';})()}{' '}{hoverInfo.tribeInfo.ports}p {hoverInfo.tribeInfo.knownCoasts}disc</div>}
-{hoverInfo.tribeInfo.relation&&<div style={{fontSize:9,fontWeight:"bold",
-color:hoverInfo.tribeInfo.relation==='fight'?'#e06050':hoverInfo.tribeInfo.relation==='trade'?'#d0b040':hoverInfo.tribeInfo.relation==='friendly'?'#60b060':'#8a8474'}}>
-{hoverInfo.tribeInfo.relation==='fight'?'AT WAR with selected':hoverInfo.tribeInfo.relation==='trade'?'TRADING with selected':hoverInfo.tribeInfo.relation==='friendly'?'FRIENDLY with selected':''}
-</div>}
-</>}
-{hoverInfo.resources&&hoverInfo.resources.length>0&&<>
-<div style={{height:1,background:"rgba(201,184,122,0.12)",margin:"3px 0"}} />
-{hoverInfo.resources.slice(0,4).map(r=>(
-<div key={r.id} style={{display:"flex",alignItems:"center",gap:4}}>
-<span style={{display:"inline-block",width:7,height:7,borderRadius:1,background:`rgb(${r.color.join(",")})`}} />
-<span style={{color:`rgb(${r.color.map(c=>Math.min(255,c+40)).join(",")})`}}>{r.label}</span>
-<span style={{color:"#6a6458",fontSize:9}}>{(r.richness*100).toFixed(0)}%</span>
-</div>))}
-</>}
-</div>}
-
-{/* Biome legend — BOTTOM LEFT */}
-{viewMode==="terrain"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.82)",
-borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
-{[4,5,6,7,8,9,10,15,11,12,14,13,16].map(bi=>(
-<div key={bi} style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
-<span style={{display:"inline-block",width:10,height:8,borderRadius:1,flexShrink:0,
-background:`rgb(${BC[bi][0]},${BC[bi][1]},${BC[bi][2]})`}} />
-<span>{BN[bi]}</span></div>))}</div>}
-
-{/* Era legend — BOTTOM LEFT (tribes view) */}
-{viewMode==="tribes"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.82)",
-borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
-{[["Stone Age",[50,45,35]],["Neolithic",[70,75,40]],["Farming",[80,100,45]],["Copper Age",[160,100,50]],
-["Bronze Age",[140,110,50]],["Iron Age",[90,90,100]],["Empire",[120,50,50]],["Industrial",[80,70,90]]].map(([name,col])=>(
-<div key={name} style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
-<span style={{display:"inline-block",width:10,height:8,borderRadius:1,flexShrink:0,
-background:`rgb(${col[0]},${col[1]},${col[2]})`}} />
-<span>{name}</span></div>))}</div>}
-
-{/* Resource toggles — BOTTOM LEFT */}
-{viewMode==="resources"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.88)",
-borderRadius:3,padding:"6px 8px",fontSize:9,lineHeight:"16px",color:"#b0a888",userSelect:"none"}}>
-{RESOURCES.map(r=>{const on=activeRes[r.id];return(
-<div key={r.id} onClick={()=>{setActiveRes(prev=>{const next={...prev};next[r.id]=!prev[r.id];return next;});}}
-style={{display:"flex",alignItems:"center",gap:5,marginBottom:1,cursor:"pointer",
-opacity:on?1:0.3,transition:"opacity 0.15s"}}>
-<span style={{display:"inline-block",width:10,height:8,borderRadius:1,flexShrink:0,
-background:on?`rgb(${r.color.join(",")})`:"#333"}} />
-<span>{r.label}</span>
-<span style={{color:"#5a5448",fontSize:8,marginLeft:2}}>{r.era}</span>
-</div>);})}
-<div style={{height:1,background:"rgba(201,184,122,0.10)",margin:"4px 0"}} />
-<div style={{display:"flex",gap:6}}>
-<span onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=true;setActiveRes(s);}}
-style={{cursor:"pointer",color:"#8a8474",fontSize:8}}>All</span>
-<span onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=false;setActiveRes(s);}}
-style={{cursor:"pointer",color:"#8a8474",fontSize:8}}>None</span>
-</div></div>}
-
-{/* Stats — top right of map area */}
-{(()=>{const ter=terRef.current;
-const step=ter?ter.stepCount:0;
-const year=stepToYear(step);
-const ys=yearStr(step);
-// Compute average knowledge across alive tribes for era label
-let avgAg=0,avgMet=0,avgNav=0,avgOrg=0,aliveK=0;
-if(ter&&ter.tribeKnowledge){for(let i=0;i<ter.tribeKnowledge.length;i++){
-if(ter.tribeSizes[i]<=0)continue;aliveK++;const k=ter.tribeKnowledge[i];
-avgAg+=k.agriculture;avgMet+=k.metallurgy;avgNav+=k.navigation;avgOrg+=k.organization;}
-if(aliveK>0){avgAg/=aliveK;avgMet/=aliveK;avgNav/=aliveK;avgOrg/=aliveK;}}
-return <div style={{position:"absolute",top:6,right:6,background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"5px 12px",
-display:"flex",gap:14,fontSize:11,color:"#c9b87a",pointerEvents:"none",alignItems:"center",
-border:"1px solid rgba(201,184,122,0.1)"}}>
-<span style={{fontWeight:"bold",fontSize:13,color:"#e0d4a8",letterSpacing:0.5}}>{ys}</span>
-<span style={{color:"#8a8474"}}>Step {step}</span>
-<span>{tribeCount} tribes</span>
-<span>{coverage}% settled</span>
-{dominant&&<span style={{display:"inline-flex",alignItems:"center",gap:3}}>
-<span style={{width:8,height:8,borderRadius:2,background:`rgb(${tribeRGB(dominant.id).join(",")})`,display:"inline-block",border:"1px solid rgba(255,255,255,0.3)"}} />
-<span style={{color:"#c9b87a"}}>{dominant.size}t</span></span>}
-{aliveK>0&&<span style={{fontSize:9,color:"#6a6458"}}>
-Ag {(avgAg*100|0)} Mt {(avgMet*100|0)} Nv {(avgNav*100|0)} Og {(avgOrg*100|0)}</span>}
-{ter&&<span style={{fontSize:9,color:"#886644"}}>pop:{ter._dbgTimeBgPop||'-'}ms exp:{ter._dbgTimeExpansion||'-'}ms | stl:{ter._dbgSettlementCount} city:{ter._dbgMaxCity?.toFixed(1)} ctr:{ter.tribeCenters?.reduce((s,c)=>s+(c?c.length:0),0)} {ter._tribeFoodSurplus?`food:${(ter._tribeFoodSurplus.reduce((a,b)=>a+b,0)/Math.max(1,ter.tribeCenters?.filter((_,i)=>ter.tribeSizes[i]>0).length||1)).toFixed(1)}x`:''}</span>}
-</div>;})()}
-
-{/* ══ BOTTOM CENTER: VIEW/OVERLAY OPTIONS (larger) ══ */}
-<div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",
-background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"6px 12px",
-display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-{[["terrain","Terrain"],["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],["resources","Resources"],["population","Pop"],["transport","Transport"],["tribes","Tribes"]].map(([k,label])=>(
-<button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
-style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
-color:viewMode===k?"#c9b87a":"#5a5448",padding:"6px 14px",fontSize:13}}>{label}</button>))}
-{viewMode==="depth"&&<><button onClick={()=>{setDepthFromSea(v=>!v);depthFromSeaRef.current=!depthFromSeaRef.current;}}
-style={{...bs,background:depthFromSea?"rgba(80,140,200,0.25)":"transparent",border:"none",
-color:depthFromSea?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>{depthFromSea?"Sea":"Floor"}</button>
-<span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"#8a8070",marginLeft:4}}>
-<span>Range</span>
-<input type="range" min="0.05" max="1.0" step="0.05" value={depthCeil}
-onChange={e=>{const v=parseFloat(e.target.value);setDepthCeil(v);depthCeilRef.current=v;}}
-style={{width:80,accentColor:"#8a8070"}}/>
-<span>{Math.round(depthCeil*100)}%</span>
-</span></>}
-{viewMode==="tribes"&&<button onClick={()=>setShowPower(v=>!v)}
-style={{...bs,background:showPower?"rgba(180,120,200,0.20)":"transparent",border:"none",
-color:showPower?"#b090d0":"#5a5448",padding:"4px 8px",fontSize:10}}>Power</button>}
-{world&&world.pixPlate&&<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
-style={{...bs,background:showPlates?"rgba(200,80,60,0.25)":"transparent",border:"none",
-color:showPlates?"#e07050":"#5a5448",padding:"6px 12px",fontSize:12}}>Plates</button>}
-<button onClick={()=>{setShowRivers(v=>!v);showRiversRef.current=!showRiversRef.current;}}
-style={{...bs,background:showRivers?"rgba(60,140,220,0.25)":"transparent",border:"none",
-color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</button>
-{showRivers&&<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
-style={{...bs,background:showStreams?"rgba(60,120,180,0.20)":"transparent",border:"none",
-color:showStreams?"#5a9aca":"#4a4a40",padding:"4px 8px",fontSize:10}}>Streams</button>}
-<button onClick={()=>{setShowLakes(v=>!v);showLakesRef.current=!showLakesRef.current;}}
-style={{...bs,background:showLakes?"rgba(40,80,140,0.25)":"transparent",border:"none",
-color:showLakes?"#4a80b8":"#5a5448",padding:"6px 12px",fontSize:12}}>Lakes</button>
-<button onClick={()=>setShowGlobe(!showGlobe)}
-style={{...bs,background:showGlobe?"rgba(120,180,220,0.25)":"transparent",border:"none",
-color:showGlobe?"#78b4dc":"#5a5448",padding:"6px 12px",fontSize:12}}>Globe</button>
-{(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
-<div style={{width:1,height:20,background:"rgba(201,184,122,0.15)"}} />
-<button onClick={()=>setRightPanel(rightPanel==="tribes"?"":"tribes")}
-style={{...bs,color:rightPanel==="tribes"?"#c9b87a":"#5a5448",background:rightPanel==="tribes"?"rgba(201,184,122,0.15)":"transparent",
-border:"none",padding:"6px 12px",fontSize:12}}>Tribes</button>
-<button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
-style={{...bs,color:rightPanel==="params"?"#c9b87a":"#5a5448",background:rightPanel==="params"?"rgba(201,184,122,0.15)":"transparent",
-border:"none",padding:"6px 12px",fontSize:12}}>Params</button>
-{preset==="tectonic"&&<button onClick={()=>setShowTuning(true)}
-style={{...bs,color:"#b8a060",border:"1px solid rgba(201,184,122,0.3)",padding:"6px 12px",fontSize:12}}>Tune</button>}
-</>}
-</div>
-
-</div>{/* end center */}
-
-{/* ══ RIGHT PANEL: Parameters ══ */}
-{rightPanel==="params"&&(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<div style={{width:rpW,minWidth:rpW,height:"100%",background:"rgba(6,8,16,0.92)",
-borderLeft:"1px solid rgba(201,184,122,0.08)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-<div style={{padding:"8px 10px",fontSize:11,color:"#c9b87a",borderBottom:"1px solid rgba(201,184,122,0.08)",
-display:"flex",alignItems:"center"}}>
-<span>{preset==="tectonic"?"Parameters":"Wind & Moisture"}</span>
-<div style={{flex:1}} />
-<span onClick={()=>setRightPanel("")} style={{cursor:"pointer",color:"#6a6458",fontSize:14}}>✕</span>
-</div>
-<div style={{flex:1,overflowY:"auto",padding:"6px 8px"}}>
-<ParamEditor params={{..._tecParams}} onChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
-  groups={preset==="earth"?["wind"]:preset==="earth_sim"?["wind","moisture"]:undefined} />
-</div>
+{/* ─── Pico hover card ─── */}
+{hoverInfo&&<div className="au-parchment au-pico"
+  style={{left:hoverInfo.x+14,top:hoverInfo.y-12}}>
+  <div className="au-pico-title" style={{
+    color:hoverInfo.isLake?"var(--au-verdigris)":hoverInfo.elevM<=0?"var(--au-verdigris)":"var(--au-ink)"}}>
+    {hoverInfo.isLake?`Lake (${hoverInfo.lakeSize}t)`:hoverInfo.biome}
+  </div>
+  <div className="au-fade" style={{fontSize:11}}>
+    {hoverInfo.elevM}m · {hoverInfo.tempC}°C · {(hoverInfo.moist*100|0)}% moist
+  </div>
+  {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
+    {RIVER_NAMES[hoverInfo.river]}
+  </div>}
+  {hoverInfo.tribeInfo&&<div style={{fontSize:11,marginTop:2,display:"flex",alignItems:"center",gap:5}}>
+    <span className="au-wax-seal au-small" style={{background:`rgb(${tribeRGB(hoverInfo.tribeInfo.id).join(",")})`}} />
+    <span>#{hoverInfo.tribeInfo.id} <span className="au-fade">{fmtPop(hoverInfo.tribeInfo.pop)}</span></span>
+    {hoverInfo.tribeInfo.relation==='fight'&&<span style={{color:"var(--au-wax-red)",fontWeight:600,fontSize:10}}>⚔</span>}
+    {hoverInfo.tribeInfo.relation==='trade'&&<span style={{color:"var(--au-gold)",fontWeight:600,fontSize:10}}>⚜</span>}
+  </div>}
+  <div className="au-fade" style={{fontSize:9,marginTop:2,fontStyle:"italic"}}>click for full info</div>
 </div>}
 
-{/* ══ RIGHT PANEL: Tribes ══ */}
-{rightPanel==="tribes"&&<div style={{width:rpW,minWidth:rpW,height:"100%",background:"rgba(6,8,16,0.92)",
-borderLeft:"1px solid rgba(201,184,122,0.08)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-<div style={{padding:"8px 10px",fontSize:11,color:"#c9b87a",borderBottom:"1px solid rgba(201,184,122,0.08)",
-display:"flex",alignItems:"center"}}>
-<span style={{fontWeight:"bold"}}>Tribes</span>
-<div style={{flex:1}} />
-<span onClick={()=>setRightPanel("")} style={{cursor:"pointer",color:"#6a6458",fontSize:14}}>x</span>
-</div>
-<div style={{flex:1,overflowY:"auto",padding:"4px 0"}}>
-{(()=>{const ter=terRef.current;if(!ter)return <div style={{color:"#5a5448",padding:10,fontSize:10}}>No simulation running</div>;
-const step=ter.stepCount;
-// Build sorted tribe list
-const tribes=[];
-for(let i=0;i<ter.tribeSizes.length;i++){if(ter.tribeSizes[i]<=0)continue;
-const k=ter.tribeKnowledge&&ter.tribeKnowledge[i]?ter.tribeKnowledge[i]:null;
-const pop=ter.tribePopulation?ter.tribePopulation[i]:0;
-const ports=ter.tribePorts&&ter.tribePorts[i]?ter.tribePorts[i].length:0;
-const stCounts=ter._settleCounts&&ter._settleCounts[i]?ter._settleCounts[i]:{villages:0,towns:0,cities:0,large:0};
-const knownCoasts=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
-const power=tribePower(ter,i);
-const bud=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i]:null;
-tribes.push({id:i,size:ter.tribeSizes[i],pop:Math.round(pop),power,ports,settlements:stCounts,knownCoasts,k,
-personality:bud?bud.personality:"",wealth:bud?bud.wealth:0,budget:bud?{mil:bud.military,gro:bud.growth,com:bud.commerce,exp:bud.exploration,sur:bud.survival}:null});}
-tribes.sort((a,b)=>b.power-a.power);
-// Selected tribe detail
-const sel=selectedTribe>=0&&ter.tribeSizes[selectedTribe]>0?selectedTribe:-1;
-const selData=sel>=0?tribes.find(t=>t.id===sel):null;
-return <>
-{/* Selected tribe detail */}
-{selData&&<div style={{padding:"8px 10px",borderBottom:"1px solid rgba(201,184,122,0.12)",background:"rgba(201,184,122,0.04)"}}>
-<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-<span style={{width:12,height:12,borderRadius:3,background:`rgb(${tribeRGB(selData.id).join(",")})`,display:"inline-block",border:"1px solid rgba(255,255,255,0.3)"}} />
-<span style={{fontWeight:"bold",fontSize:13,color:"#e0d4a8"}}>Tribe #{selData.id}</span>
-{selData.personality&&<span style={{color:"#b0a070",fontSize:10}}>{selData.personality}</span>}
-<span style={{color:"#6a6458",fontSize:9,marginLeft:"auto"}} onClick={()=>{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}}>(deselect)</span>
-</div>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 10px",fontSize:10,color:"#b0a888"}}>
-<div><span style={{color:"#7a7464"}}>Territory:</span> {selData.size} tiles</div>
-<div><span style={{color:"#7a7464"}}>Population:</span> {selData.pop>=10000?(selData.pop/1000).toFixed(1)+'M':selData.pop>=1000?(selData.pop/1000|0)+'M':selData.pop>=1?selData.pop.toFixed(0)+'k':'<1k'}</div>
-<div><span style={{color:"#7a7464"}}>Power:</span> {selData.power.toFixed(1)}</div>
-<div><span style={{color:"#d0b040"}}>Wealth:</span> <span style={{color:"#d0b040"}}>{selData.wealth>=1000?(selData.wealth/1000).toFixed(1)+'k':selData.wealth.toFixed(0)} gold</span></div>
-{selData.settlements&&<div style={{gridColumn:"1/3"}}>
-<span style={{color:"#7a7464"}}>Settlements: </span>
-{selData.settlements.large>0&&<span style={{color:"#e0c870"}}>{selData.settlements.large} {selData.settlements.large===1?'city':'cities'} </span>}
-{selData.settlements.cities>0&&<span style={{color:"#c0b080"}}>{selData.settlements.cities} {selData.settlements.cities===1?'town':'towns'} </span>}
-{selData.settlements.towns>0&&<span style={{color:"#a09878"}}>{selData.settlements.towns} sm.towns </span>}
-{selData.settlements.villages>0&&<span style={{color:"#808068"}}>{selData.settlements.villages} villages</span>}
-{(selData.settlements.large+selData.settlements.cities+selData.settlements.towns+selData.settlements.villages)===0&&<span style={{color:"#605848"}}>none</span>}
-</div>}
-<div><span style={{color:"#7a7464"}}>Ports:</span> {selData.ports}</div>
-<div><span style={{color:"#7a7464"}}>Known coasts:</span> {selData.knownCoasts}</div>
-</div>
-{selData.k&&<div style={{marginTop:6}}>
-<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Knowledge</div>
-{[["agriculture","Ag","#8ab870"],["metallurgy","Mt","#c8946a"],["navigation","Nv","#6a9ec8"],
-["construction","Cn","#a89878"],["organization","Og","#b88ac8"],["trade","Tr","#c8b84a"]].map(([key,label,col])=>{
-const v=selData.k[key];return <div key={key} style={{display:"flex",alignItems:"center",gap:4,marginBottom:1}}>
-<span style={{width:22,fontSize:9,color:v>0.2?col:"#4a4438"}}>{label}</span>
-<div style={{flex:1,height:6,background:"rgba(255,255,255,0.05)",borderRadius:2,overflow:"hidden"}}>
-<div style={{width:`${v*100}%`,height:"100%",background:col,borderRadius:2,transition:"width 0.3s"}} /></div>
-<span style={{width:28,fontSize:8,color:"#6a6458",textAlign:"right"}}>{(v*100|0)}%</span>
-</div>;})}
-</div>}
-{/* Trade */}
-{(()=>{const td=ter.tradeData&&ter.tradeData[sel]?ter.tradeData[sel]:null;
-if(!td||td.partners===0)return null;
-const fmtR=(v)=>v>=1?v.toFixed(1):v>=0.01?v.toFixed(2):'0';
-return <div style={{marginTop:6}}>
-<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Trade ({td.partners} partners)</div>
-{td.foodImports>0&&<div style={{fontSize:8,color:"#60a050"}}>Importing {fmtR(td.foodImports)} food</div>}
-{td.foodExports>0&&<div style={{fontSize:8,color:"#c09030"}}>Exporting {fmtR(td.foodExports)} food</div>}
-{RES_KEYS.filter(rk=>td.imports[rk]>0.01||td.exports[rk]>0.01).slice(0,6).map(rk=>
-<div key={rk} style={{fontSize:8,color:"#8a8474"}}>
-{td.imports[rk]>0.01&&<span style={{color:"#6a9ec8"}}>{rk}: +{fmtR(td.imports[rk])} </span>}
-{td.exports[rk]>0.01&&<span style={{color:"#c09030"}}>{rk}: -{fmtR(td.exports[rk])} </span>}
-</div>)}
-{td.income>0.01&&<div style={{fontSize:8,color:"#d0b040",fontWeight:"bold"}}>Trade income: {fmtR(td.income)}</div>}
-</div>;})()}
-{/* Budget allocation */}
-{selData.budget&&<div style={{marginTop:6}}>
-<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Budget</div>
-<div style={{display:"flex",height:8,borderRadius:2,overflow:"hidden",background:"rgba(255,255,255,0.05)"}}>
-<div style={{width:`${selData.budget.mil*100}%`,background:"#c06050"}} title={`Military ${(selData.budget.mil*100|0)}%`} />
-<div style={{width:`${selData.budget.gro*100}%`,background:"#60a050"}} title={`Growth ${(selData.budget.gro*100|0)}%`} />
-<div style={{width:`${selData.budget.com*100}%`,background:"#5080c0"}} title={`Commerce ${(selData.budget.com*100|0)}%`} />
-<div style={{width:`${selData.budget.exp*100}%`,background:"#c09030"}} title={`Exploration ${(selData.budget.exp*100|0)}%`} />
-<div style={{width:`${selData.budget.sur*100}%`,background:"#606060"}} title={`Survival ${(selData.budget.sur*100|0)}%`} />
-</div>
-<div style={{display:"flex",gap:6,fontSize:8,color:"#6a6458",marginTop:2}}>
-<span style={{color:"#c06050"}}>{(selData.budget.mil*100|0)}%mil</span>
-<span style={{color:"#60a050"}}>{(selData.budget.gro*100|0)}%gro</span>
-<span style={{color:"#5080c0"}}>{(selData.budget.com*100|0)}%com</span>
-<span style={{color:"#c09030"}}>{(selData.budget.exp*100|0)}%exp</span>
-<span style={{color:"#808080"}}>{(selData.budget.sur*100|0)}%sur</span>
-</div>
-</div>}
-{/* Relationships (neighbors + maritime contacts) */}
+{/* ─── Floating tribe card ─── */}
 {(()=>{
-// Gather all known tribes: border contacts + maritime
-const allRelations=[];const seen=new Set();
-if(ter._borderContacts&&ter._borderContacts[sel]){
-for(const nid in ter._borderContacts[sel]){const n=parseInt(nid);
-if(ter.tribeSizes[n]<=0)continue;seen.add(n);
-allRelations.push({id:n,contact:ter._borderContacts[sel][nid],size:ter.tribeSizes[n],
-rel:tribeRelation(ter,sel,n),via:'border'});}}
-// Maritime contacts
-if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[sel]){
-for(const kc of ter.tribeKnownCoasts[sel]){
-if(kc.owner>=0&&!seen.has(kc.owner)&&ter.tribeSizes[kc.owner]>0){
-seen.add(kc.owner);
-allRelations.push({id:kc.owner,contact:0,size:ter.tribeSizes[kc.owner],
-rel:tribeRelation(ter,sel,kc.owner),via:'maritime'});}}}
-allRelations.sort((a,b)=>b.size-a.size);
-if(allRelations.length===0)return null;
-const relCol={fight:'#e06050',trade:'#d0b040',friendly:'#60b060',neutral:'#8a8474'};
-const relLabel={fight:'War',trade:'Trade',friendly:'Peace',neutral:''};
-return <div style={{marginTop:6}}>
-<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Known Nations ({allRelations.length})</div>
-{allRelations.slice(0,10).map(n=>{const pers=ter.tribeBudget&&ter.tribeBudget[n.id]?ter.tribeBudget[n.id].personality:'';
-return <div key={n.id} style={{display:"flex",alignItems:"center",gap:4,fontSize:9,marginBottom:2,cursor:"pointer",
-padding:"1px 3px",borderRadius:2,background:n.rel==='fight'?'rgba(220,80,60,0.1)':n.rel==='trade'?'rgba(200,180,60,0.1)':'transparent'}}
-onClick={()=>{setSelectedTribe(n.id);ter._selectedTribe=n.id;draw(ter);}}>
-<span style={{width:6,height:6,borderRadius:6,background:relCol[n.rel],display:"inline-block",flexShrink:0}} />
-<span style={{color:"#b0a888"}}>#{n.id}</span>
-{pers&&<span style={{color:"#8a7a5a",fontSize:8}}>{pers}</span>}
-<span style={{color:"#6a6458"}}>{ter.tribeSizes[n.id]}t</span>
-{n.via==='maritime'&&<span style={{color:"#5a8aaa",fontSize:7}}>sea</span>}
-{relLabel[n.rel]&&<span style={{color:relCol[n.rel],fontSize:8,fontWeight:"bold",marginLeft:"auto"}}>{relLabel[n.rel]}</span>}
-</div>;})}
-</div>;})()}
+  const ter=terRef.current;
+  const me=ter?.tribes?.[selectedTribe];
+  if(!me||!me.alive)return null;
+  const sel=selectedTribe;
+  const size=me.size;
+  const pop=me.pop;
+  const power=tribePower(ter,sel);
+  const bud=me.budget||null;
+  const k=me.knowledge||null;
+  const stC=me.settleCounts;
+  const ports=me.ports.length;
+  const knownCoasts=me.knownCoasts.length;
+  const td=me.trade||null;
+  const [tr,tg,tb]=tribeRGB(sel);
+  return(
+    <div className="au-parchment au-elev au-tribe-card"
+      style={{left:cardPos.x,top:cardPos.y}}>
+      <div className="au-drag-handle"
+        onMouseDown={(e)=>{cardDragRef.current={mx:e.clientX,my:e.clientY,x:cardPos.x,y:cardPos.y};e.preventDefault();}}
+        style={{display:"flex",alignItems:"center",gap:8}}>
+        <span className="au-wax-seal" style={{background:`rgb(${tr},${tg},${tb})`}}>{sel}</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div className="au-tribename">Tribe&nbsp;№{sel}</div>
+          {bud?.personality&&<div className="au-fade" style={{fontSize:11,fontStyle:"italic"}}>the {bud.personality.toLowerCase()}</div>}
+        </div>
+        <span className="au-x" onClick={()=>{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}}>✕</span>
+      </div>
+
+      {/* Quick stats */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"2px 10px",margin:"4px 0 10px"}}>
+        <div>
+          <div className="au-sc au-fade" style={{fontSize:9}}>Territory</div>
+          <div className="au-heading" style={{fontSize:14}}>{size.toLocaleString()}</div>
+        </div>
+        <div>
+          <div className="au-sc au-fade" style={{fontSize:9}}>People</div>
+          <div className="au-heading" style={{fontSize:14}}>{fmtPop(pop)}</div>
+        </div>
+        <div>
+          <div className="au-sc au-fade" style={{fontSize:9}}>Power</div>
+          <div className="au-heading" style={{fontSize:14}}>{power.toFixed(0)}</div>
+        </div>
+        <div>
+          <div className="au-sc au-fade" style={{fontSize:9}}>Gold</div>
+          <div className="au-heading au-gold-text" style={{fontSize:14}}>{fmtGold(bud?.wealth||0)}</div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",borderBottom:"1px solid rgba(58,38,20,0.30)",margin:"0 -6px"}}>
+        {[["overview","Overview"],["knowledge","Knowledge"],["diplomacy","Diplomacy"],["trade","Trade"]].map(([id,label])=>(
+          <button key={id} className={"au-tab"+(tribeTab===id?" au-active":"")}
+            onClick={()=>setTribeTab(id)}>{label}</button>
+        ))}
+      </div>
+
+      <div style={{padding:"10px 2px 2px",fontSize:12,minHeight:160}}>
+      {tribeTab==="overview"&&<>
+        <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>Settlements</div>
+        {(stC.large+stC.cities+stC.towns+stC.villages)>0?
+          <div style={{display:"flex",gap:14,flexWrap:"wrap",marginBottom:8,fontSize:12}}>
+            {stC.large>0&&<span><span className="au-gold-text" style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.large}</span> <span className="au-fade au-sc" style={{fontSize:10}}>capital{stC.large!==1?"s":""}</span></span>}
+            {stC.cities>0&&<span><span style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.cities}</span> <span className="au-fade au-sc" style={{fontSize:10}}>cit{stC.cities===1?"y":"ies"}</span></span>}
+            {stC.towns>0&&<span><span style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.towns}</span> <span className="au-fade au-sc" style={{fontSize:10}}>town{stC.towns!==1?"s":""}</span></span>}
+            {stC.villages>0&&<span><span style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.villages}</span> <span className="au-fade au-sc" style={{fontSize:10}}>village{stC.villages!==1?"s":""}</span></span>}
+          </div>:
+          <div className="au-fade" style={{fontStyle:"italic",fontSize:11,marginBottom:8}}>no permanent settlements yet</div>}
+        {(ports>0||knownCoasts>0)&&<>
+          <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>Sea</div>
+          <div style={{fontSize:12,marginBottom:8}}>
+            <span style={{fontFamily:"'Cinzel',serif"}}>{ports}</span> <span className="au-fade au-sc" style={{fontSize:10}}>port{ports!==1?"s":""}</span>
+            {" · "}
+            <span style={{fontFamily:"'Cinzel',serif"}}>{knownCoasts}</span> <span className="au-fade au-sc" style={{fontSize:10}}>known coasts</span>
+          </div>
+        </>}
+        {bud&&<>
+          <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>Priorities</div>
+          <div style={{display:"flex",height:8,borderRadius:2,overflow:"hidden",
+            border:"1px solid rgba(58,38,20,0.3)",marginBottom:4}}>
+            <div style={{width:`${bud.military*100}%`,background:"#9a3030"}} title={`Military ${(bud.military*100|0)}%`} />
+            <div style={{width:`${bud.growth*100}%`,background:"#5a8030"}} title={`Growth ${(bud.growth*100|0)}%`} />
+            <div style={{width:`${bud.commerce*100}%`,background:"#3a6a98"}} title={`Commerce ${(bud.commerce*100|0)}%`} />
+            <div style={{width:`${bud.exploration*100}%`,background:"#a07028"}} title={`Exploration ${(bud.exploration*100|0)}%`} />
+            <div style={{width:`${bud.survival*100}%`,background:"#5a5448"}} title={`Survival ${(bud.survival*100|0)}%`} />
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",gap:4,fontSize:10}} className="au-sc">
+            <span style={{color:"#9a3030"}}>{(bud.military*100|0)}mil</span>
+            <span style={{color:"#5a8030"}}>{(bud.growth*100|0)}gro</span>
+            <span style={{color:"#3a6a98"}}>{(bud.commerce*100|0)}com</span>
+            <span style={{color:"#a07028"}}>{(bud.exploration*100|0)}exp</span>
+            <span style={{color:"#5a5448"}}>{(bud.survival*100|0)}sur</span>
+          </div>
+        </>}
+      </>}
+
+      {tribeTab==="knowledge"&&k&&
+        <div style={{display:"flex",gap:14,alignItems:"center",justifyContent:"flex-start"}}>
+          <KnowledgeRadar k={k} size={155} />
+          <div style={{fontSize:11,lineHeight:1.7,flex:1}}>
+            {[["agriculture","Agriculture","#5a8030"],["metallurgy","Metallurgy","#a07028"],
+              ["navigation","Navigation","#3a6a98"],["construction","Construction","#6b5b3c"],
+              ["organization","Organization","#7a3878"],["trade","Trade","#a08828"]].map(([key,label,col])=>{
+              const v=k[key]||0;
+              return(
+                <div key={key} style={{display:"flex",gap:5,alignItems:"baseline"}}>
+                  <span style={{flex:1,color:v>0.15?"var(--au-ink)":"var(--au-ink-light)"}}>{label}</span>
+                  <span className="au-heading" style={{fontSize:12,color:v>0.15?col:"var(--au-ink-light)"}}>{(v*100|0)}</span>
+                </div>);})}
+          </div>
+        </div>}
+      {tribeTab==="knowledge"&&!k&&<div className="au-fade" style={{textAlign:"center",fontStyle:"italic"}}>no knowledge data</div>}
+
+      {tribeTab==="diplomacy"&&(()=>{
+        const allRels=[];const seen=new Set();
+        if(ter._borderContacts&&ter._borderContacts[sel]){
+          for(const nid in ter._borderContacts[sel]){const n=parseInt(nid);
+            const tn=ter.tribes[n];if(!tn||!tn.alive)continue;seen.add(n);
+            allRels.push({id:n,size:tn.size,rel:tribeRelation(ter,sel,n),via:'border'});}}
+        for(const kc of me.knownCoasts){
+          if(kc.owner>=0&&!seen.has(kc.owner)){
+            const tk=ter.tribes[kc.owner];if(!tk||!tk.alive)continue;
+            seen.add(kc.owner);
+            allRels.push({id:kc.owner,size:tk.size,rel:tribeRelation(ter,sel,kc.owner),via:'maritime'});}}
+        allRels.sort((a,b)=>b.size-a.size);
+        if(!allRels.length)return<div className="au-fade" style={{textAlign:"center",fontStyle:"italic",padding:"12px 0"}}>no known nations</div>;
+        const relCol={fight:"#9a3030",trade:"#a07028",friendly:"#3a6a48",neutral:"#6b4f37"};
+        const relLabel={fight:"At War",trade:"Trading",friendly:"Friendly",neutral:""};
+        return<div>
+          <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>{allRels.length} known nation{allRels.length===1?"":"s"}</div>
+          <div style={{maxHeight:180,overflowY:"auto"}} className="au-scroll">
+          {allRels.slice(0,14).map(n=>{
+            const pers=ter.tribes[n.id]?.personality||"";
+            return<div key={n.id} style={{display:"flex",alignItems:"center",gap:7,padding:"3px 4px",fontSize:11,cursor:"pointer",
+              background:n.rel==="fight"?"rgba(154,48,48,0.10)":n.rel==="trade"?"rgba(160,112,40,0.10)":"transparent",
+              borderRadius:2,marginBottom:1}}
+              onClick={()=>{setSelectedTribe(n.id);ter._selectedTribe=n.id;draw(ter);}}>
+              <span className="au-wax-seal au-small" style={{background:`rgb(${tribeRGB(n.id).join(',')})`}} />
+              <span>#{n.id}</span>
+              {pers&&<span className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>{pers}</span>}
+              <span className="au-fade" style={{fontSize:10}}>{n.size}t</span>
+              {n.via==="maritime"&&<span style={{fontSize:10}}>⛵</span>}
+              <div style={{flex:1}} />
+              {relLabel[n.rel]&&<span style={{fontSize:10,fontWeight:600,color:relCol[n.rel]}}>{relLabel[n.rel]}</span>}
+            </div>;})}
+          </div>
+        </div>;
+      })()}
+
+      {tribeTab==="trade"&&(()=>{
+        if(!td||!td.partners)return<div className="au-fade" style={{textAlign:"center",fontStyle:"italic",padding:"12px 0"}}>no trade established</div>;
+        const fmt=(x)=>x>=1?x.toFixed(1):x.toFixed(2);
+        return<div>
+          <div style={{display:"flex",gap:20,marginBottom:8}}>
+            <div><div className="au-sc au-fade" style={{fontSize:10}}>Partners</div>
+              <div className="au-heading" style={{fontSize:15}}>{td.partners}</div></div>
+            {td.income>0.01&&<div><div className="au-sc au-fade" style={{fontSize:10}}>Income</div>
+              <div className="au-heading au-gold-text" style={{fontSize:15}}>{fmt(td.income)}</div></div>}
+          </div>
+          {(td.foodImports>0||td.foodExports>0)&&<div className="au-sc au-fade" style={{fontSize:10,marginBottom:3}}>Food</div>}
+          {td.foodImports>0&&<div className="au-verde-text" style={{fontSize:11}}>↓ Importing {fmt(td.foodImports)}</div>}
+          {td.foodExports>0&&<div className="au-gold-text" style={{fontSize:11}}>↑ Exporting {fmt(td.foodExports)}</div>}
+          {td.imports&&Object.keys(td.imports).length>0&&<>
+            <div className="au-sc au-fade" style={{fontSize:10,marginTop:6,marginBottom:3}}>Imports</div>
+            {Object.entries(td.imports).slice(0,5).map(([rk,v])=><div key={rk} style={{fontSize:11}}>{rk} <span className="au-fade">{fmt(v)}</span></div>)}
+          </>}
+        </div>;
+      })()}
+      </div>
+
+      {/* Footer: nation list toggle */}
+      <div className="au-rule" style={{marginTop:8}} />
+      <div style={{cursor:"pointer",padding:"3px 0",display:"flex",alignItems:"center",gap:6}}
+        onClick={()=>setShowTribeList(v=>!v)}>
+        <span className="au-sc au-fade" style={{fontSize:10,flex:1}}>{showTribeList?"▾":"▸"} All nations</span>
+      </div>
+      {showTribeList&&(()=>{
+        const tribes=[];
+        for(const tx of ter.tribes){if(!tx.alive)continue;
+          tribes.push({id:tx.id,size:tx.size,power:tribePower(ter,tx.id),
+            pop:tx.pop,personality:tx.personality});}
+        tribes.sort((a,b)=>b.power-a.power);
+        return<div style={{maxHeight:130,overflowY:"auto",marginTop:2}} className="au-scroll">
+          {tribes.map(t=>{const isSel=t.id===sel;
+            return<div key={t.id} onClick={()=>{setSelectedTribe(t.id);if(ter)ter._selectedTribe=t.id;draw(ter);}}
+              style={{display:"flex",alignItems:"center",gap:6,padding:"2px 4px",cursor:"pointer",
+                background:isSel?"rgba(120,80,40,0.18)":"transparent",borderRadius:2}}>
+              <span className="au-wax-seal au-small" style={{background:`rgb(${tribeRGB(t.id).join(",")})`}} />
+              <span style={{fontSize:11}}>#{t.id}</span>
+              {t.personality&&<span className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>{t.personality}</span>}
+              <div style={{flex:1}} />
+              <span className="au-fade" style={{fontSize:10}}>{t.size}t</span>
+              <span className="au-fade" style={{fontSize:10}}>{fmtPop(t.pop)}</span>
+              <span style={{fontSize:10,width:32,textAlign:"right"}} className="au-fade">{t.power.toFixed(0)}pw</span>
+            </div>;})}
+        </div>;
+      })()}
+    </div>
+  );
+})()}
+
+{/* ─── Bottom-left collapsible legend ─── */}
+{(viewMode==="terrain"||viewMode==="atlas"||viewMode==="tribes"||viewMode==="resources")&&
+<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
+  padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:200,zIndex:20}}>
+<div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:5,
+  borderBottom:keyOpen?"1px solid rgba(58,38,20,0.18)":"none",paddingBottom:keyOpen?3:0,marginBottom:keyOpen?4:0}}
+  onClick={()=>setKeyOpen(v=>!v)}>
+  <span className="au-heading au-sc" style={{fontSize:10,flex:1}}>{keyOpen?"▾":"▸"} Key</span>
+</div>
+{keyOpen&&<div className="au-key">
+  {viewMode==="terrain"&&[4,5,6,7,8,9,10,15,11,12,14,13,16].map(bi=>(
+    <div key={bi} className="au-key-row">
+      <span className="au-key-swatch" style={{background:`rgb(${BC[bi][0]},${BC[bi][1]},${BC[bi][2]})`}} />
+      <span>{BN[bi]}</span>
+    </div>))}
+  {viewMode==="atlas"&&[["#e6d8ad","Lowland"],["#e3bd83","Desert"],["#ede7e1","Snow / tundra"],["#586139","Forest"],["#cabd8f","Mountains"],["#1a0f04","Sea"]].map(([c,l])=>(
+    <div key={l} className="au-key-row">
+      <span className="au-key-swatch" style={{background:c}} />
+      <span>{l}</span>
+    </div>))}
+  {viewMode==="tribes"&&[["Stone",[50,45,35]],["Neolithic",[70,75,40]],["Farming",[80,100,45]],["Copper",[160,100,50]],
+    ["Bronze",[140,110,50]],["Iron",[90,90,100]],["Empire",[120,50,50]],["Industrial",[80,70,90]]].map(([name,col])=>(
+    <div key={name} className="au-key-row">
+      <span className="au-key-swatch" style={{background:`rgb(${col[0]},${col[1]},${col[2]})`}} />
+      <span>{name}</span>
+    </div>))}
+  {viewMode==="resources"&&<div>
+    {RESOURCES.map(r=>{const on=activeRes[r.id];return(
+      <div key={r.id} className="au-key-row" style={{cursor:"pointer",opacity:on?1:0.4}}
+        onClick={()=>setActiveRes(prev=>{const next={...prev};next[r.id]=!prev[r.id];return next;})}>
+        <span className="au-key-swatch" style={{background:on?`rgb(${r.color.join(",")})`:"#888"}} />
+        <span>{r.label}</span>
+        <span className="au-fade" style={{fontSize:9,marginLeft:"auto"}}>{r.era}</span>
+      </div>);})}
+    <div className="au-rule" style={{margin:"4px 0"}} />
+    <div style={{display:"flex",gap:8,fontSize:10}}>
+      <span style={{cursor:"pointer"}} className="au-fade"
+        onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=true;setActiveRes(s);}}>All</span>
+      <span style={{cursor:"pointer"}} className="au-fade"
+        onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=false;setActiveRes(s);}}>None</span>
+    </div>
+  </div>}
 </div>}
-{/* Tribe list */}
-<div style={{padding:"4px 6px"}}>
-<div style={{fontSize:9,color:"#6a6458",marginBottom:4,padding:"0 4px"}}>{tribes.length} tribes (by power)</div>
-{tribes.map(t=>{const isSel=t.id===sel;
-return <div key={t.id} onClick={()=>{setSelectedTribe(t.id);if(ter)ter._selectedTribe=t.id;draw(ter);}}
-style={{display:"flex",alignItems:"center",gap:5,padding:"3px 6px",cursor:"pointer",
-borderRadius:2,background:isSel?"rgba(201,184,122,0.12)":"transparent",
-borderLeft:isSel?`2px solid rgb(${tribeRGB(t.id).join(",")})`:"2px solid transparent"}}>
-<span style={{width:8,height:8,borderRadius:2,flexShrink:0,
-background:`rgb(${tribeRGB(t.id).join(",")})`,display:"inline-block"}} />
-<div style={{flex:1,minWidth:0}}>
-<div style={{fontSize:10,color:isSel?"#e0d4a8":"#b0a888",display:"flex",gap:6}}>
-<span>#{t.id}</span>
-<span style={{color:"#7a7464"}}>{t.size}t</span>
-<span style={{color:"#6a6458",fontSize:9}}>{t.pop>=10000?(t.pop/1000).toFixed(1)+'M':t.pop>=1000?(t.pop/1000|0)+'M':t.pop>=1?t.pop.toFixed(0)+'k':'<1k'}</span>
-</div>
-{t.k&&<div style={{fontSize:8,color:"#5a5448",display:"flex",gap:3,flexWrap:"wrap"}}>
-{t.k.agriculture>0.05&&<span style={{color:"#6a8a50"}}>Ag{(t.k.agriculture*100|0)}</span>}
-{t.k.metallurgy>0.05&&<span style={{color:"#a07050"}}>Mt{(t.k.metallurgy*100|0)}</span>}
-{t.k.navigation>0.05&&<span style={{color:"#5080a0"}}>Nv{(t.k.navigation*100|0)}</span>}
-{t.k.organization>0.05&&<span style={{color:"#9070a0"}}>Og{(t.k.organization*100|0)}</span>}
-{t.k.trade>0.05&&<span style={{color:"#a09030"}}>Tr{(t.k.trade*100|0)}</span>}
-</div>}
-</div>
-<span style={{fontSize:8,color:"#5a5448",flexShrink:0}}>{t.power.toFixed(0)}pw</span>
-{t.wealth>1&&<span style={{fontSize:7,color:"#b09830",flexShrink:0}}>{t.wealth>=1000?(t.wealth/1000|0)+'k':t.wealth.toFixed(0)}g</span>}
-</div>;})}
-</div>
-</>; })()}
-</div>
 </div>}
 
-{/* ══ TUNING OVERLAY ══ */}
+{/* ─── Depth contextual controls ─── */}
+{viewMode==="depth"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
+  padding:"6px 12px",fontSize:11,display:"flex",alignItems:"center",gap:10,zIndex:20}}>
+<button onClick={()=>{setDepthFromSea(v=>!v);depthFromSeaRef.current=!depthFromSeaRef.current;}}
+  className={"au-btn"+(depthFromSea?" au-active":"")}>{depthFromSea?"From Sea":"From Floor"}</button>
+<span className="au-sc au-fade" style={{fontSize:10}}>Range</span>
+<input type="range" min="0.05" max="1.0" step="0.05" value={depthCeil}
+  onChange={e=>{const v=parseFloat(e.target.value);setDepthCeil(v);depthCeilRef.current=v;}}
+  style={{width:90}} />
+<span className="au-fade">{Math.round(depthCeil*100)}%</span>
+</div>}
+
+</div>{/* end map area */}
+
+</div>{/* end center column */}
+
+{/* ══════════ RIGHT RAIL ══════════ */}
+<aside className="au-parchment au-scroll" style={{
+  width:128,minWidth:128,margin:"6px 6px 6px 3px",padding:"10px 0",
+  display:"flex",flexDirection:"column",gap:1,overflowY:"auto"}}>
+
+<div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"0 14px 4px"}}>View</div>
+{VIEW_MODES.map(([k,label])=>(
+  <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
+    className={"au-rail-tab"+(viewMode===k?" au-active":"")}>{label}</button>
+))}
+
+<div className="au-rule" />
+<div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"6px 14px 4px"}}>Overlay</div>
+<button onClick={()=>{setShowRivers(v=>!v);showRiversRef.current=!showRiversRef.current;}}
+  className={"au-rail-tab"+(showRivers?" au-active":"")}>Rivers</button>
+{showRivers&&<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
+  className={"au-rail-tab"+(showStreams?" au-active":"")} style={{paddingLeft:22,fontSize:11}}>· Streams</button>}
+<button onClick={()=>{setShowLakes(v=>!v);showLakesRef.current=!showLakesRef.current;}}
+  className={"au-rail-tab"+(showLakes?" au-active":"")}>Lakes</button>
+{world&&world.pixPlate&&<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
+  className={"au-rail-tab"+(showPlates?" au-active":"")}>Plates</button>}
+<button onClick={()=>setShowGlobe(!showGlobe)}
+  className={"au-rail-tab"+(showGlobe?" au-active":"")}>Globe</button>
+{viewMode==="tribes"&&<button onClick={()=>setShowPower(v=>!v)}
+  className={"au-rail-tab"+(showPower?" au-active":"")}>Power</button>}
+
+{(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
+<div className="au-rule" />
+<div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"6px 14px 4px"}}>Tools</div>
+<button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
+  className={"au-rail-tab"+(rightPanel==="params"?" au-active":"")}>Params</button>
+{preset==="tectonic"&&<button onClick={()=>setShowTuning(true)}
+  className="au-rail-tab">Tune</button>}
+</>}
+</aside>
+
+{/* ══════════ PARAMS DRAWER ══════════ */}
+{rightPanel==="params"&&(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&
+<aside className="au-parchment au-scroll" style={{
+  position:"absolute",right:142,top:6,bottom:6,width:300,
+  padding:"10px 12px",overflowY:"auto",zIndex:30}}>
+<div style={{display:"flex",alignItems:"baseline",marginBottom:6}}>
+  <span className="au-heading au-sc" style={{fontSize:12}}>{preset==="tectonic"?"Parameters":"Wind & Moisture"}</span>
+  <div style={{flex:1}} />
+  <span onClick={()=>setRightPanel("")}
+    style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
+</div>
+<ParamEditor params={{..._tecParams}}
+  onChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
+  groups={preset==="earth"?["wind"]:preset==="earth_sim"?["wind","moisture"]:undefined} />
+</aside>}
+
+{/* ══════════ TUNING MODAL ══════════ */}
 {showTuning&&<TuningPanel noiseFns={{initNoise,fbm,ridged,noise2D,worley}} seed={seed}
   params={{..._tecParams}}
   onParamsChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}

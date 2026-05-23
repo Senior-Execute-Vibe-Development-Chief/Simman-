@@ -6,6 +6,14 @@ const D8_DX = [1, 1, 0, -1, -1, -1, 0, 1];
 const D8_DY = [0, 1, 1, 1, 0, -1, -1, -1];
 const D8_DIST = [1, 1.414, 1, 1.414, 1, 1.414, 1, 1.414];
 
+// Deterministic per-(tile,direction) hash — used to jitter flow choice so
+// rivers wander on smooth terrain instead of running dead straight.
+const rhash = (x, y, d) => {
+  let h = (x * 374761393 + y * 668265263 + d * 2654435761) >>> 0;
+  h = ((h ^ (h >>> 13)) * 1274126177) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+};
+
 export const RIVER_NONE = 0;
 export const RIVER_STREAM = 1;
 export const RIVER_TRIBUTARY = 2;
@@ -142,7 +150,7 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
       if (tTemp[ti] < 0.12) continue; // permanent ice / ice sheet — no surface rivers
 
       let bestDir = 255;
-      let bestDrop = 0;
+      let bestScore = 0;
 
       for (let d = 0; d < 8; d++) {
         const nx = (tx + D8_DX[d] + tw) % tw;
@@ -150,8 +158,12 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
         if (ny < 0 || ny >= th) continue;
         const ni = ny * tw + nx;
         const drop = (filled[ti] - filled[ni]) / D8_DIST[d];
-        if (drop > bestDrop) {
-          bestDrop = drop;
+        if (drop <= 0) continue;
+        // Jitter the slope per tile+direction: on near-flat terrain the choice
+        // wanders (no dead-straight runs); on clear gradients the steep one wins.
+        const score = drop * (0.78 + rhash(tx, ty, d) * 0.44);
+        if (score > bestScore) {
+          bestScore = score;
           bestDir = d;
         }
       }

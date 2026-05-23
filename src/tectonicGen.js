@@ -32,7 +32,7 @@ const N = cw * ch;
 // with log-normal-ish weight distribution for realistic size disparity.
 // ═══════════════════════════════════════════════════════
 const numMajor = p('numMajorBase', 6) + Math.floor(rng() * p('numMajorRange', 3));
-const numMinor = p('numMinorBase', 8) + Math.floor(rng() * p('numMinorRange', 6));
+const numMinor = p('numMinorBase', 5) + Math.floor(rng() * p('numMinorRange', 4));
 const numPlates = numMajor + numMinor;
 const plates = [];
 
@@ -57,7 +57,7 @@ for (let i = 0; i < numPlates; i++) {
   // class adds further irregularity. Weight units are squared-distance offsets.
   const weight = isMajor
     ? p('majorWeightMin', 0.012) + rng() * p('majorWeightRange', 0.020)
-    : p('minorWeightMin', 0.001) + rng() * p('minorWeightRange', 0.005);
+    : p('minorWeightMin', 0.003) + rng() * p('minorWeightRange', 0.005);
 
   const hasCont = isMajor ? rng() < p('majorContProb', 0.70) : rng() < p('minorContProb', 0.40);
 
@@ -67,7 +67,7 @@ for (let i = 0; i < numPlates; i++) {
   const nucY = cy + Math.sin(nucAngle) * nucOffset;
 
   // Larger continent radii for major plates → more cohesive landmasses
-  const contRadius = hasCont ? (isMajor ? p('majorContRadMin', 0.14) + rng() * p('majorContRadRange', 0.18) : p('minorContRadMin', 0.07) + rng() * p('minorContRadRange', 0.08)) : 0;
+  const contRadius = hasCont ? (isMajor ? p('majorContRadMin', 0.10) + rng() * p('majorContRadRange', 0.10) : p('minorContRadMin', 0.05) + rng() * p('minorContRadRange', 0.06)) : 0;
 
   plates.push({
     cx, cy,
@@ -86,7 +86,7 @@ while (numWithCont < 3) {
   const idx = Math.floor(rng() * numMajor);
   if (!plates[idx].hasCont) {
     plates[idx].hasCont = true;
-    plates[idx].contRadius = 0.14 + rng() * 0.16;
+    plates[idx].contRadius = 0.10 + rng() * 0.10;
     numWithCont++;
   }
 }
@@ -105,7 +105,7 @@ const PS = 2;
 const ppW = Math.ceil(W / PS), ppH = Math.ceil(H / PS);
 const pixPlateCoarse = new Uint8Array(ppW * ppH);
 
-const _ws1 = p('warpStr1', 0.18), _ws2 = p('warpStr2', 0.05), _js = p('jagStr', 0.04);
+const _ws1 = p('warpStr1', 0.11), _ws2 = p('warpStr2', 0.05), _js = p('jagStr', 0.04);
 const _psx = p('plateStretchX', 1.3), _psy = p('plateStretchY', 0.8);
 for (let py = 0; py < ppH; py++) for (let px = 0; px < ppW; px++) {
   const x = px * PS, y = py * PS;
@@ -150,6 +150,9 @@ for (let ty = 0; ty < ch; ty++) for (let tx = 0; tx < cw; tx++) {
 // ═══════════════════════════════════════════════════════
 const rawElev = new Float32Array(W * H);
 const posStamps = [], negStamps = [];
+// Map is 2:1 (equirectangular). Continent gen works in normalized 1x1 space,
+// so a y-step must be AR* longer to cover the same display pixels as an x-step.
+const AR = W / H;
 
 for (let pi = 0; pi < numPlates; pi++) {
   const plate = plates[pi];
@@ -162,23 +165,38 @@ for (let pi = 0; pi < numPlates; pi++) {
 
   const numSubs = isMaj ? p('majorSubsBase', 7) + Math.floor(rng() * p('majorSubsRange', 5)) : p('minorSubsBase', 3) + Math.floor(rng() * p('minorSubsRange', 4));
 
+  // Grow the continent as a branching, curling walk of overlapping stamps —
+  // elongated and irregular rather than a round cluster around the nucleus.
+  const growAngle = rng() * Math.PI * 2;
+  const elong = 0.4 + rng() * 0.5;
+  const maxExtent = plate.contRadius * (1.4 + rng() * 1.0);
+  const placed = [];
   for (let s = 0; s < numSubs; s++) {
-    const ang = rng() * Math.PI * 2;
-    const dist = s === 0 ? 0 : (0.03 + rng() * 0.08) * scale;
-    const aspect = s === 0 ? 1 + rng() * 0.4
-      : s <= 2 && rng() < 0.35 ? 1.3 + rng() * 1.2
-      : 1 + rng() * 1.0;
     const baseR = (s === 0
       ? (isMaj ? p('majorCoreRadMin', 0.12) + rng() * p('majorCoreRadRange', 0.10) : p('minorCoreRadMin', 0.07) + rng() * p('minorCoreRadRange', 0.06))
       : (isMaj ? p('majorSubRadMin', 0.05) + rng() * p('majorSubRadRange', 0.08) : p('minorSubRadMin', 0.03) + rng() * p('minorSubRadRange', 0.05))
     ) * scale;
-    const rot = rng() * Math.PI;
+    let sx, sy;
+    if (s === 0) { sx = cx; sy = cy; }
+    else {
+      const parent = rng() < 0.62 ? placed[placed.length - 1] : placed[Math.floor(rng() * placed.length)];
+      const pdx = parent.x - cx, pdy = (parent.y - cy) / AR;
+      const pull = Math.min(1, Math.sqrt(pdx * pdx + pdy * pdy) / maxExtent);
+      let ang;
+      if (rng() < pull * 0.85) ang = Math.atan2((cy - parent.y) / AR, cx - parent.x) + (rng() - 0.5) * 2.0;
+      else ang = (rng() < elong) ? growAngle + (rng() - 0.5) * 1.7 : rng() * Math.PI * 2;
+      const step = (parent.r + baseR) * (0.5 + rng() * 0.32);
+      sx = parent.x + Math.cos(ang) * step;
+      sy = parent.y + Math.sin(ang) * step * AR;
+    }
+    placed.push({ x: sx, y: sy, r: baseR });
+    const aspect = s === 0 ? 1 + rng() * 0.5 : 1.2 + rng() * rng() * 2.2;
+    const rot = rng() < 0.55 ? growAngle + (rng() - 0.5) * 0.9 : rng() * Math.PI;
     posStamps.push({
-      cx: cx + Math.cos(ang) * dist,
-      cy: cy + Math.sin(ang) * dist,
-      rx: baseR * aspect, ry: baseR / aspect,
+      cx: sx, cy: sy,
+      rx: baseR * aspect, ry: baseR / aspect * AR,
       rot, cos: Math.cos(rot), sin: Math.sin(rot),
-      str: s === 0 ? 0.9 + rng() * 0.3 : 0.5 + rng() * 0.4,
+      str: s === 0 ? 0.9 + rng() * 0.3 : 0.55 + rng() * 0.4,
       no: no + s * 17,
       plateId: pi,
       contRadius: plate.contRadius
@@ -187,14 +205,15 @@ for (let pi = 0; pi < numPlates; pi++) {
 
   const numNegs = isMaj ? Math.floor(rng() * p('majorNegsMax', 4)) : Math.floor(rng() * p('minorNegsMax', 1.5));
   for (let n = 0; n < numNegs; n++) {
+    const anchor = placed[Math.floor(rng() * placed.length)];
     const ang = rng() * Math.PI * 2;
-    const dist = (0.02 + rng() * 0.06) * scale;
+    const dist = anchor.r * (0.55 + rng() * 0.85);
     const rot = rng() * Math.PI;
     negStamps.push({
-      cx: cx + Math.cos(ang) * dist,
-      cy: cy + Math.sin(ang) * dist,
-      rx: (0.02 + rng() * 0.04) * scale,
-      ry: (0.015 + rng() * 0.03) * scale,
+      cx: anchor.x + Math.cos(ang) * dist,
+      cy: anchor.y + Math.sin(ang) * dist,
+      rx: (0.02 + rng() * 0.05) * scale,
+      ry: (0.015 + rng() * 0.035) * scale * AR,
       rot, cos: Math.cos(rot), sin: Math.sin(rot),
       str: 0.25 + rng() * 0.3,
       no: no + 50 + n * 13,
@@ -811,11 +830,16 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     // Basin: medium-scale depressions and swells — only in stable interiors
     const basinVal = sg(nfBasin, x, y);
     const basinE = basinVal * 0.04 * interior * cratonZone;
-    // Endorheic depressions: use Worley noise to create isolated lake basins.
-    // Worley F1 creates natural circular/elliptical cells — perfect for isolated basins.
-    // Only the deepest part of each cell (near the seed point) becomes a depression.
-    const [wF1] = worley(nx * 10 + 500, ny * 10 + 500);
-    const endorheicE = wF1 < 0.18 ? -(0.18 - wF1) * 0.35 * interior * cratonZone : 0;
+    // Endorheic depressions → isolated lake basins. The Worley input is
+    // domain-warped (so basins are irregular blobs, not perfect circles), its
+    // edge is roughened, and the threshold varies by region so basin sizes
+    // differ widely and many areas have none at all.
+    const ebwx = fbm(nx * 7 + 711, ny * 7 + 711, 3, 2, 0.5) * 0.05;
+    const ebwy = fbm(nx * 7 + 811, ny * 7 + 811, 3, 2, 0.5) * 0.05;
+    let [wF1] = worley((nx + ebwx) * 10 + 500, (ny + ebwy) * 10 + 500);
+    wF1 += noise2D(nx * 46 + 33, ny * 46 + 33) * 0.022;
+    const ebThresh = Math.max(0, fbm(nx * 2.2 + 901, ny * 2.2 + 901, 2, 2, 0.5) * 0.30 + 0.03);
+    const endorheicE = wF1 < ebThresh ? -(ebThresh - wF1) * 0.34 * interior * cratonZone : 0;
 
     // Escarpment: sharp elevation breaks — at shield edges in stable interiors
     const escarpVal = sg(nfEscarpment, x, y);
@@ -856,7 +880,10 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     e = e * (1 - coastBlend * 0.7) + coastE * coastBlend * 0.7;
 
     e = Math.max(0, e);
-    e = Math.pow(e, 1.08) * 1.1;
+    // Hypsometric redistribution: gamma > 1 pushes the bulk of land down toward
+    // low plains while the rescale keeps peak height, so mountains read as a tall
+    // minority above broad lowlands (Earth-like) rather than a high rolling mass.
+    e = Math.pow(e, 1.38) * 1.23;
     e = Math.max(0.002, Math.min(1.0, e));
   }
 
@@ -1028,6 +1055,35 @@ if (p('erodeDropsPerPixel', 1.5) > 0) {
     const delta = eDAt(ix,iy)*(1-dx2)*(1-dy2) + eDAt(ix+1,iy)*dx2*(1-dy2)
       + eDAt(ix,iy+1)*(1-dx2)*dy2 + eDAt(ix+1,iy+1)*dx2*dy2;
     elevation[i] = Math.max(0.002, elevation[i] + delta);
+  }
+}
+
+// ── Rotate the map so its wraparound seam lands on the emptiest ocean ──
+// Pick the column band with the least land and cyclically shift the world
+// so that band sits on the x=0 / x=W edge (and the wind/moisture solved
+// below run on the already-shifted elevation, staying consistent).
+{
+  const colLand = new Float32Array(W);
+  for (let x = 0; x < W; x++) {
+    let c = 0;
+    for (let y = 0; y < H; y++) if (elevation[y * W + x] > 0) c++;
+    colLand[x] = c;
+  }
+  const HW = 40; // band half-width — keeps the seam clear of nearby coasts
+  let bestX = 0, bestSum = Infinity;
+  for (let x = 0; x < W; x++) {
+    let s = 0;
+    for (let k = -HW; k <= HW; k++) s += colLand[((x + k) % W + W) % W];
+    if (s < bestSum) { bestSum = s; bestX = x; }
+  }
+  if (bestX !== 0) {
+    const shiftField = (arr) => {
+      const tmp = arr.slice();
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++)
+        arr[y * W + x] = tmp[y * W + ((x + bestX) % W)];
+    };
+    shiftField(elevation);
+    shiftField(pixPlate);
   }
 }
 
