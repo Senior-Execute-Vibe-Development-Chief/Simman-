@@ -1559,14 +1559,20 @@ if(ts.connected>0)ts.avgCost/=ts.connected;}
 // power. Distinct from `transportCost` (which seeds all cities) — that
 // one drives food catchment, trade, etc., where secondary cities
 // legitimately count.
-if(!ter.transportFromCap||ter.transportFromCap.length<tw*th)ter.transportFromCap=new Float32Array(tw*th);
+if(!ter.transportFromCap||ter.transportFromCap.length<tw*th){
+  ter.transportFromCap=new Float32Array(tw*th);
+}
 const costCap=ter.transportFromCap;
-// Reset (only owned tiles, same trick as the main pass)
+// Full reset to 999 so unowned tiles (which the Dijkstra never visits)
+// don't render as "0 = cheap" — they should render as unreachable.
+costCap.fill(999);
+// Reset visited too (it was used by pass 1 and would otherwise block
+// pass 2 from expanding through any owned tile).
 for(let tid=0;tid<n;tid++){
   if(tribeSizes[tid]<=0)continue;
   const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
   if(!ts)continue;
-  for(const ti of ts){costCap[ti]=999;visited[ti]=0;}
+  for(const ti of ts){visited[ti]=0;}
 }
 heapSize=0;
 // Seed from capitals only
@@ -1580,7 +1586,7 @@ while(heapSize>0){
   heapPop();const ci=_popTi,cc=_popCost;
   if(visited[ci])continue;
   visited[ci]=1;
-  if(cc>200)continue;// allow deeper reach so distant tiles still get a cost
+  if(cc>500)continue;// deep reach — let large empires show full gradient
   const cx=ci%tw,cy=(ci-cx)/tw;
   const ow=owner[ci];
   if(ow<0)continue;
@@ -4177,8 +4183,10 @@ const tti=tty*ptw+ttx;
 const cost2=trc?trc[tti]:999;
 if(cost2>=999){// unreachable
 d[pi4]=(tc[ti*3]*0.15)|0;d[pi4+1]=(tc[ti*3+1]*0.15)|0;d[pi4+2]=(tc[ti*3+2]*0.15)|0;d[pi4+3]=255;continue;}
-// Normalize: 0→green, 10→yellow, 30→red, 50+→dark
-const t=Math.min(1,cost2/50);let r,g,b;
+// Log scale shows terrain variation clearly. Plains-only path cost
+// grows ~1.5 per tile, so a 100-tile journey is ~150; mountains 5-6x.
+// Normalize at log10(cost+1) / log10(401) so 0..400 maps to 0..1.
+const t=Math.min(1,Math.log10(cost2+1)/2.6);let r,g,b;
 if(t<0.2){const s=t/0.2;r=(20+s*30)|0;g=(180-s*20)|0;b=(40-s*20)|0;}
 else if(t<0.5){const s=(t-0.2)/0.3;r=(50+s*180)|0;g=(160-s*60)|0;b=(20+s*10)|0;}
 else if(t<0.8){const s=(t-0.5)/0.3;r=(230-s*80)|0;g=(100-s*70)|0;b=(30-s*10)|0;}
