@@ -2530,6 +2530,53 @@ return -(1650+(step-800)*1.875);// 1650 AD → 2025 AD
 function yearStr(step){const y=stepToYear(step);
 return y>0?`${Math.round(y)} BC`:`${Math.round(Math.abs(y))} AD`;}
 
+// ── Cultural era derived from average tribe knowledge ──
+function deriveEra(aAg,aMt,aNv,aOg){
+  if(aMt>=0.65&&aOg>=0.55)return"Industrial Age";
+  if(aMt>=0.50&&aOg>=0.42)return"Age of Empires";
+  if(aMt>=0.38)return"Iron Age";
+  if(aMt>=0.22)return"Bronze Age";
+  if(aMt>=0.08)return"Copper Age";
+  if(aAg>=0.30)return"Agrarian Age";
+  if(aAg>=0.12)return"Neolithic";
+  return"Stone Age";
+}
+function fmtPop(p){
+  if(p>=1_000_000)return(p/1_000_000).toFixed(1)+"M";
+  if(p>=1000)return(p/1000).toFixed(p>=10000?0:1)+"k";
+  if(p>=1)return p.toFixed(0);
+  return"<1";
+}
+function fmtGold(g){
+  if(g>=10000)return(g/1000).toFixed(0)+"k";
+  if(g>=1000)return(g/1000).toFixed(1)+"k";
+  return g.toFixed(0);
+}
+
+// ── Hexagonal knowledge radar (SVG) ──
+function KnowledgeRadar({k,size=140}){
+  if(!k)return null;
+  const axes=[
+    ["agriculture","Ag"],["metallurgy","Mt"],["navigation","Nv"],
+    ["construction","Cn"],["organization","Og"],["trade","Tr"]
+  ];
+  const cx=size/2,cy=size/2,R=size*0.36;
+  const angleAt=(i)=>(-Math.PI/2)+(i/axes.length)*Math.PI*2;
+  const pt=(i,r)=>{const a=angleAt(i);return[cx+Math.cos(a)*r,cy+Math.sin(a)*r];};
+  const ringPath=(r)=>axes.map((_,i)=>{const[x,y]=pt(i,r);return(i?"L":"M")+x.toFixed(1)+","+y.toFixed(1);}).join(" ")+" Z";
+  const valuePath=axes.map(([key],i)=>{const v=Math.max(0,Math.min(1,k[key]||0));const[x,y]=pt(i,R*v);return(i?"L":"M")+x.toFixed(1)+","+y.toFixed(1);}).join(" ")+" Z";
+  return(
+    <svg width={size} height={size} style={{flexShrink:0}}>
+      {[0.25,0.5,0.75,1].map(t=>(<path key={t} d={ringPath(R*t)} className="au-radar-grid" />))}
+      {axes.map((_,i)=>{const[x,y]=pt(i,R);return<line key={i} x1={cx} y1={cy} x2={x} y2={y} className="au-radar-axis" />;})}
+      <path d={valuePath} className="au-radar-fill" />
+      {axes.map(([key,label],i)=>{const[x,y]=pt(i,R+13);const v=k[key]||0;
+        return<g key={key}><text x={x} y={y} textAnchor="middle" dominantBaseline="middle" className="au-radar-label">{label}</text><text x={x} y={y+11} textAnchor="middle" dominantBaseline="middle" className="au-radar-value">{(v*100|0)}</text></g>;
+      })}
+    </svg>
+  );
+}
+
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
 const canvasRef=useRef(null);const glCanvasRef=useRef(null);const glStateRef=useRef(null);
@@ -2560,6 +2607,21 @@ const CH=useMercator?CH_MERC:CH_FLAT;
 _mercator=useMercator;
 const[mapCount,setMapCount]=useState(1);
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
+const[tribeTab,setTribeTab]=useState("overview");
+const[cardPos,setCardPos]=useState(()=>({
+  x:typeof window!=="undefined"?Math.max(20,window.innerWidth-290-360):520,
+  y:64
+}));
+const[keyOpen,setKeyOpen]=useState(true);
+const[showTribeList,setShowTribeList]=useState(false);
+const cardDragRef=useRef(null);
+useEffect(()=>{
+  const move=(e)=>{if(!cardDragRef.current)return;const d=cardDragRef.current;
+    setCardPos({x:Math.max(4,d.x+(e.clientX-d.mx)),y:Math.max(4,d.y+(e.clientY-d.my))});};
+  const up=()=>{cardDragRef.current=null;};
+  window.addEventListener("mousemove",move);window.addEventListener("mouseup",up);
+  return()=>{window.removeEventListener("mousemove",move);window.removeEventListener("mouseup",up);};
+},[]);
 const activeResRef=useRef(null);activeResRef.current=activeRes;
 const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
@@ -3569,10 +3631,6 @@ setSeed(Math.floor(Math.random()*999999));
 setTimeout(()=>setImportStatus(null),4000);
 }catch(err){setImportStatus("Import failed: "+err.message);setTimeout(()=>setImportStatus(null),5000);}
 },[seed]);
-const bs={background:"rgba(201,184,122,0.08)",border:"1px solid rgba(201,184,122,0.18)",color:"#8a8474",
-padding:"4px 10px",borderRadius:2,cursor:"pointer",fontSize:10,letterSpacing:1,fontFamily:"inherit"};
-const bsA=(active,color)=>({...bs,background:active?`rgba(${color},0.2)`:bs.background,
-border:`1px solid ${active?`rgba(${color},0.35)`:bs.border}`,color:active?`rgb(${color})`:"#8a8474"});
 const onCanvasMove=useCallback((ev)=>{
 const c=canvasRef.current;if(!c||!worldRef.current)return;
 const r=c.getBoundingClientRect();
@@ -3639,438 +3697,491 @@ setRightPanel("tribes");draw(ter);
 }else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}
 },[CW,CH,draw]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
-const lbs={...bs,width:"100%",textAlign:"left",padding:"4px 10px"};
-const sep=<div style={{height:1,background:"rgba(201,184,122,0.10)",margin:"2px 0"}} />;
-const rpW=rightPanel?300:0;
 const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
 
-return(
-<div style={{width:"100vw",height:"100vh",background:"#060810",overflow:"hidden",display:"flex"}}>
+// ── Aggregate world stats for the chronicle ribbon ──
+const _ter=terRef.current;
+const _step=_ter?_ter.stepCount:0;
+const _ys=yearStr(_step);
+let _aAg=0,_aMt=0,_aNv=0,_aOg=0,_aliveK=0;
+if(_ter&&_ter.tribeKnowledge){
+  for(let i=0;i<_ter.tribeKnowledge.length;i++){
+    if(_ter.tribeSizes[i]<=0)continue;_aliveK++;const _k=_ter.tribeKnowledge[i];
+    _aAg+=_k.agriculture;_aMt+=_k.metallurgy;_aNv+=_k.navigation;_aOg+=_k.organization;}
+  if(_aliveK>0){_aAg/=_aliveK;_aMt/=_aliveK;_aNv/=_aliveK;_aOg/=_aliveK;}}
+const _era=deriveEra(_aAg,_aMt,_aNv,_aOg);
 
-{/* ══ LEFT PANEL ══ */}
-<div style={{width:140,minWidth:140,height:"100%",background:"rgba(6,8,16,0.92)",borderRight:"1px solid rgba(201,184,122,0.08)",
-display:"flex",flexDirection:"column",gap:4,padding:"8px 6px",overflowY:"auto",fontSize:10}}>
-<button onClick={togglePlay} style={{...lbs,color:playing?"#e0a090":"#c9b87a",
-background:playing?"rgba(200,80,60,0.15)":"rgba(201,184,122,0.1)",padding:"6px 10px",fontSize:12,textAlign:"center"}}>
-{playing?"❚❚  Pause":"▶  Play"}</button>
-<div style={{display:"flex",alignItems:"center",gap:4}}>
-<span style={{color:"#6a6458",fontSize:9}}>Speed</span>
-<input type="range" min={1} max={10} value={speed} onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value}}
-style={{flex:1,accentColor:"#c9b87a"}} />
+// View modes for the right rail
+const VIEW_MODES=[
+  ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
+  ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
+  ["resources","Resources"],["population","Pop"],["transport","Transport"],["tribes","Tribes"]
+];
+
+return(
+<div className="au-root" style={{width:"100vw",height:"calc(100vh - 40px)",
+  background:"var(--au-table-dark)",overflow:"hidden",display:"flex",position:"relative"}}>
+
+{/* ══════════ LEFT SPINE ══════════ */}
+<aside className="au-parchment au-scroll" style={{
+  width:142,minWidth:142,margin:"6px 3px 6px 6px",padding:"10px 8px",
+  display:"flex",flexDirection:"column",gap:5,overflowY:"auto"}}>
+
+<button onClick={togglePlay}
+  className={"au-btn au-block"+(playing?" au-wax au-active":"")}
+  style={{padding:"8px 6px",fontSize:13,fontFamily:"'Cinzel',Georgia,serif",letterSpacing:"0.10em"}}>
+  {playing?"❚❚  Pause":"▶  Play"}
+</button>
+
+<div style={{display:"flex",alignItems:"center",gap:6,padding:"2px 4px"}}>
+  <span className="au-sc au-fade" style={{fontSize:10}}>Speed</span>
+  <input type="range" min={1} max={10} value={speed}
+    onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value;}}
+    style={{flex:1}} />
+  <span className="au-mute" style={{fontSize:10,width:14,textAlign:"right"}}>{speed}</span>
 </div>
-{sep}
-<button onClick={()=>setPresetAndGo("earth_sim")} style={{...lbs,...(preset==="earth_sim"?{color:"rgb(80,180,200)",background:"rgba(80,180,200,0.15)"}:{})}}>Earth (Sim)</button>
-{preset==="earth_sim"&&<label style={{fontSize:10,color:useRealWind?"#6be":"#6a6458",cursor:"pointer",display:"flex",alignItems:"center",gap:3,padding:"0 4px"}}>
-<input type="checkbox" checked={useRealWind} onChange={e=>{setUseRealWind(e.target.checked);useRealWindRef.current=e.target.checked;generate(seed)}}
-style={{accentColor:"#6be",width:12,height:12}} />{isRealWindAvailable()?"Real Winds":"Real Winds (no data)"}</label>}
-<button onClick={()=>setPresetAndGo("tectonic")} style={{...lbs,...(preset==="tectonic"?{color:"rgb(180,120,100)",background:"rgba(180,120,100,0.15)"}:{})}}>Tectonic</button>
-{sep}
+
+<div className="au-rule" />
+<div className="au-sc au-fade au-heading" style={{fontSize:10,padding:"2px 4px 0"}}>World</div>
+
+<button onClick={()=>setPresetAndGo("earth_sim")}
+  className={"au-btn au-block"+(preset==="earth_sim"?" au-active":"")}>Earth (Sim)</button>
+{preset==="earth_sim"&&
+  <label style={{fontSize:10,padding:"0 4px",cursor:"pointer",display:"flex",alignItems:"center",gap:4}} className="au-fade">
+    <input type="checkbox" checked={useRealWind}
+      onChange={e=>{setUseRealWind(e.target.checked);useRealWindRef.current=e.target.checked;generate(seed);}}
+      style={{width:11,height:11}} />
+    {isRealWindAvailable()?"Real Winds":"Real Winds (n/a)"}
+  </label>}
+
+<button onClick={()=>setPresetAndGo("tectonic")}
+  className={"au-btn au-block"+(preset==="tectonic"?" au-active":"")}>Tectonic</button>
 {preset==="tectonic"&&<>
-<select value={tecPresetName} onChange={e=>{
-const name=e.target.value;setTecPresetName(name);
-if(name==="Default"){_tecParams={};generate(seed);}
-else{const presets=loadPresets();if(presets[name]){_tecParams=presets[name];generate(seed);}}
-}} style={{background:"rgba(201,184,122,0.06)",border:"1px solid rgba(201,184,122,0.18)",
-color:"#b8a060",padding:"3px 6px",borderRadius:2,fontSize:10,fontFamily:"inherit",cursor:"pointer",outline:"none",width:"100%"}}>
-<option value="Default" style={{background:"#0a0c14"}}>Default</option>
-{Object.keys(loadPresets()).map(name=><option key={name} value={name} style={{background:"#0a0c14"}}>{name}</option>)}
-</select>
-{tecPresetName!=="Default"&&<button onClick={()=>{if(confirm("Delete '"+tecPresetName+"'?")){
-deletePreset(tecPresetName);setTecPresetName("Default");_tecParams={};generate(seed);}}}
-style={{...lbs,color:"#a06060",fontSize:9,textAlign:"center"}}>Delete Preset</button>}
-{sep}
+  <select value={tecPresetName} onChange={e=>{
+    const name=e.target.value;setTecPresetName(name);
+    if(name==="Default"){_tecParams={};generate(seed);}
+    else{const presets=loadPresets();if(presets[name]){_tecParams=presets[name];generate(seed);}}
+  }} style={{width:"100%",marginTop:2}}>
+    <option value="Default">Default</option>
+    {Object.keys(loadPresets()).map(name=><option key={name} value={name}>{name}</option>)}
+  </select>
+  {tecPresetName!=="Default"&&<button onClick={()=>{
+    if(confirm("Delete '"+tecPresetName+"'?")){deletePreset(tecPresetName);setTecPresetName("Default");_tecParams={};generate(seed);}}}
+    className="au-btn au-block au-wax" style={{fontSize:10}}>Delete Preset</button>}
 </>}
-<input ref={fileRef} type="file" accept=".json,.map,.png,.jpg,.jpeg,.webp" style={{display:"none"}} onChange={handleImport} />
-<button onClick={()=>fileRef.current?.click()} style={{...lbs,...(preset==="import"?{color:"rgb(180,140,200)",background:"rgba(180,140,200,0.15)"}:{})}}>Import</button>
-{importStatus&&<span style={{fontSize:8,color:"#a99ed0",wordBreak:"break-all"}}>{importStatus}</span>}
-{sep}
+
+<input ref={fileRef} type="file" accept=".json,.map,.png,.jpg,.jpeg,.webp"
+  style={{display:"none"}} onChange={handleImport} />
+<button onClick={()=>fileRef.current?.click()} className="au-btn au-block">Import</button>
+{importStatus&&<span className="au-fade" style={{fontSize:9,wordBreak:"break-all",padding:"0 4px"}}>{importStatus}</span>}
+
 <div style={{flex:1}} />
-<span style={{color:"#4a4438",fontSize:8,textAlign:"center"}}>Seed: {seed}</span>
+<div className="au-rule" />
+<button onClick={()=>setSeed(Math.floor(Math.random()*999999))}
+  className="au-btn au-block au-flat" style={{fontSize:11}} title="Roll new seed">⚄ Roll</button>
+<span className="au-fade" style={{fontSize:9,textAlign:"center",fontFamily:"'Courier New',monospace"}}>Seed {seed}</span>
+</aside>
+
+{/* ══════════ CENTER COLUMN ══════════ */}
+<div style={{flex:1,display:"flex",flexDirection:"column",padding:"6px 3px",gap:6,minWidth:0}}>
+
+{/* Chronicle ribbon */}
+<div className="au-parchment au-chronicle" style={{flexShrink:0}}>
+  <span className="au-era">{_era}</span>
+  <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
+  <span className="au-year">{_ys}</span>
+  <span className="au-fade" style={{fontSize:11}}>Step {_step.toLocaleString()}</span>
+  <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
+  <span style={{fontSize:13}}>{tribeCount} <span className="au-sc au-fade" style={{fontSize:11}}>nations</span></span>
+  <span style={{fontSize:13}}>{coverage}<span className="au-fade">%</span> <span className="au-sc au-fade" style={{fontSize:11}}>claimed</span></span>
+  {dominant&&<>
+    <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
+    <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+      <span className="au-wax-seal au-small"
+        style={{background:`rgb(${tribeRGB(dominant.id).join(",")})`}}>{dominant.id}</span>
+      <span className="au-sc au-fade" style={{fontSize:11}}>Dominant</span>
+      <span>{dominant.size}t</span>
+    </span>
+  </>}
+  <div style={{flex:1}} />
+  {_aliveK>0&&<span className="au-fade" style={{fontSize:10,fontFamily:"'Courier New',monospace"}}>
+    Ag {(_aAg*100|0)} · Mt {(_aMt*100|0)} · Nv {(_aNv*100|0)} · Og {(_aOg*100|0)}
+  </span>}
 </div>
 
-{/* ══ CENTER: MAP AREA ══ */}
-<div style={{flex:1,position:"relative",display:"flex",flexDirection:"column"}}>
+{/* Map area */}
+<div style={{flex:1,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",minHeight:0,overflow:"hidden"}}>
 
-{/* Map grid */}
-<div style={{flex:1,display:"grid",gridTemplateColumns:`repeat(${gridCols},1fr)`,gap:2,padding:2}}>
-{Array.from({length:mapCount}).map((_,mi)=>{
-const extraSeed=seed+mi;
-return(
-<div key={mi} style={{position:"relative",overflow:"hidden",background:"#060810",display:"flex",
-alignItems:"center",justifyContent:"center",cursor:mi>0?"pointer":"default",
-border:mi===0?"2px solid rgba(201,184,122,0.25)":"2px solid transparent",borderRadius:3}}
-onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
-{mi===0?(showGlobe?<div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
-<GlobeView terrainBuf={globeBuf} world={world}
-CW={globeTexSize.w} CH={globeTexSize.h} /></div>
-:<canvas ref={canvasRef} width={CW} height={CH} onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
-style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",
-aspectRatio:`${CW}/${CH}`}} />)
-:<canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
-style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",
-width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
-{mi>0&&<div style={{position:"absolute",bottom:2,left:0,right:0,textAlign:"center",
-color:"#6a6458",fontSize:9,pointerEvents:"none"}}>Seed: {extraSeed}</div>}
-</div>);})}
-</div>
+{mapCount<=1?(
+  showGlobe?
+    <div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
+      <GlobeView terrainBuf={globeBuf} world={world} CW={globeTexSize.w} CH={globeTexSize.h} />
+    </div>:
+    <canvas ref={canvasRef} width={CW} height={CH}
+      onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
+      style={{display:"block",imageRendering:"pixelated",
+        maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
+        boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
+):(
+  <div style={{width:"100%",height:"100%",display:"grid",
+    gridTemplateColumns:`repeat(${gridCols},1fr)`,gap:4,padding:2}}>
+    {Array.from({length:mapCount}).map((_,mi)=>{
+      const extraSeed=seed+mi;
+      return(
+        <div key={mi} style={{position:"relative",overflow:"hidden",display:"flex",
+          alignItems:"center",justifyContent:"center",cursor:mi>0?"pointer":"default",
+          border:mi===0?"1px solid var(--au-paper-deep)":"1px solid rgba(168,140,92,0.4)"}}
+          onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
+          {mi===0?
+            <canvas ref={canvasRef} width={CW} height={CH}
+              onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
+              style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`}} />:
+            <canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
+              style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
+          {mi>0&&<div style={{position:"absolute",bottom:2,left:0,right:0,textAlign:"center",
+            color:"var(--au-paper)",fontSize:10,textShadow:"0 1px 2px rgba(0,0,0,0.8)",pointerEvents:"none"}}>Seed {extraSeed}</div>}
+        </div>);})}
+  </div>
+)}
 
-{/* Hover tooltip */}
-{hoverInfo&&<div style={{position:"fixed",left:hoverInfo.x+14,top:hoverInfo.y-60,
-background:"rgba(6,8,16,0.92)",color:"#c9b87a",fontSize:10,padding:"6px 10px",
-borderRadius:3,pointerEvents:"none",whiteSpace:"nowrap",zIndex:100,lineHeight:"15px",
-border:"1px solid rgba(201,184,122,0.15)"}}>
-<div style={{fontWeight:"bold",marginBottom:2,color:hoverInfo.isLake?"#4a8aaa":hoverInfo.elevM<=0?"#4a6a8a":"#c9b87a"}}>{hoverInfo.isLake?`Lake (${hoverInfo.lakeSize} tiles)`:hoverInfo.biome}</div>
-<div><span style={{color:"#8a8474"}}>Elev:</span> {hoverInfo.elevM}m</div>
-<div><span style={{color:"#8a8474"}}>Temp:</span> {hoverInfo.tempC}°C</div>
-<div><span style={{color:"#8a8474"}}>Moist:</span> {(hoverInfo.moist*100).toFixed(0)}%</div>
-<div><span style={{color:"#8a8474"}}>Fert:</span> {(hoverInfo.fert*100).toFixed(0)}%</div>
-<div><span style={{color:"#8a8474"}}>Wind:</span> {hoverInfo.wkmh} km/h {hoverInfo.wdir}</div>
-<div><span style={{color:"#8a8474"}}>Lat:</span> {(hoverInfo.lat*90).toFixed(1)}°</div>
-{hoverInfo.river>0&&<div><span style={{color:"#8a8474"}}>River:</span> <span style={{color:"#6ab4e8"}}>{RIVER_NAMES[hoverInfo.river]}</span> <span style={{color:"#5a5448",fontSize:9}}>({hoverInfo.riverAccum.toFixed(1)})</span></div>}
-{hoverInfo.tribeInfo&&<>
-<div style={{height:1,background:"rgba(201,184,122,0.12)",margin:"3px 0"}} />
-<div><span style={{color:"#8a8474"}}>Tribe #{hoverInfo.tribeInfo.id}</span>{hoverInfo.tribeInfo.personality&&<span style={{color:"#b0a070"}}> {hoverInfo.tribeInfo.personality}</span>} <span style={{color:"#c9b87a"}}>{hoverInfo.tribeInfo.size}t</span> <span style={{color:"#7a7464"}}>{hoverInfo.tribeInfo.pop>=10000?(hoverInfo.tribeInfo.pop/1000).toFixed(1)+'M':hoverInfo.tribeInfo.pop>=1000?(hoverInfo.tribeInfo.pop/1000|0)+'M':hoverInfo.tribeInfo.pop>=1?hoverInfo.tribeInfo.pop.toFixed(0)+'k':'<1k'}</span></div>
-{hoverInfo.tribeInfo.budget&&<div style={{fontSize:8,color:"#6a6458"}}>
-<span style={{color:"#c06050"}}>{(hoverInfo.tribeInfo.budget.mil*100|0)}mil</span>{" "}
-<span style={{color:"#60a050"}}>{(hoverInfo.tribeInfo.budget.gro*100|0)}gro</span>{" "}
-<span style={{color:"#5080c0"}}>{(hoverInfo.tribeInfo.budget.com*100|0)}com</span>{" "}
-<span style={{color:"#c09030"}}>{(hoverInfo.tribeInfo.budget.exp*100|0)}exp</span>{" "}
-<span style={{color:"#808080"}}>{(hoverInfo.tribeInfo.budget.sur*100|0)}sur</span>
-</div>}
-{hoverInfo.tribeInfo.knowledge&&<div style={{fontSize:9,color:"#7a7464",lineHeight:"12px"}}>
-<span style={{color:hoverInfo.tribeInfo.knowledge.ag>0.3?"#8ab870":"#5a5448"}}>Ag {(hoverInfo.tribeInfo.knowledge.ag*100|0)}%</span>{" "}
-<span style={{color:hoverInfo.tribeInfo.knowledge.mt>0.3?"#c8946a":"#5a5448"}}>Mt {(hoverInfo.tribeInfo.knowledge.mt*100|0)}%</span>{" "}
-<span style={{color:hoverInfo.tribeInfo.knowledge.nv>0.3?"#6a9ec8":"#5a5448"}}>Nv {(hoverInfo.tribeInfo.knowledge.nv*100|0)}%</span><br/>
-<span style={{color:hoverInfo.tribeInfo.knowledge.cn>0.3?"#a89878":"#5a5448"}}>Cn {(hoverInfo.tribeInfo.knowledge.cn*100|0)}%</span>{" "}
-<span style={{color:hoverInfo.tribeInfo.knowledge.og>0.3?"#b88ac8":"#5a5448"}}>Og {(hoverInfo.tribeInfo.knowledge.og*100|0)}%</span>{" "}
-<span style={{color:hoverInfo.tribeInfo.knowledge.tr>0.3?"#c8b84a":"#5a5448"}}>Tr {(hoverInfo.tribeInfo.knowledge.tr*100|0)}%</span>
-</div>}
-{hoverInfo.tribeInfo.settlements&&<div style={{fontSize:8,color:"#6a6458"}}>
-{(()=>{const s=hoverInfo.tribeInfo.settlements;const parts=[];
-if(s.large>0)parts.push(s.large+'C');if(s.cities>0)parts.push(s.cities+'c');
-if(s.towns>0)parts.push(s.towns+'t');if(s.villages>0)parts.push(s.villages+'v');
-return parts.join(' ')||'no settlements';})()}{' '}{hoverInfo.tribeInfo.ports}p {hoverInfo.tribeInfo.knownCoasts}disc</div>}
-{hoverInfo.tribeInfo.relation&&<div style={{fontSize:9,fontWeight:"bold",
-color:hoverInfo.tribeInfo.relation==='fight'?'#e06050':hoverInfo.tribeInfo.relation==='trade'?'#d0b040':hoverInfo.tribeInfo.relation==='friendly'?'#60b060':'#8a8474'}}>
-{hoverInfo.tribeInfo.relation==='fight'?'AT WAR with selected':hoverInfo.tribeInfo.relation==='trade'?'TRADING with selected':hoverInfo.tribeInfo.relation==='friendly'?'FRIENDLY with selected':''}
-</div>}
-</>}
-{hoverInfo.resources&&hoverInfo.resources.length>0&&<>
-<div style={{height:1,background:"rgba(201,184,122,0.12)",margin:"3px 0"}} />
-{hoverInfo.resources.slice(0,4).map(r=>(
-<div key={r.id} style={{display:"flex",alignItems:"center",gap:4}}>
-<span style={{display:"inline-block",width:7,height:7,borderRadius:1,background:`rgb(${r.color.join(",")})`}} />
-<span style={{color:`rgb(${r.color.map(c=>Math.min(255,c+40)).join(",")})`}}>{r.label}</span>
-<span style={{color:"#6a6458",fontSize:9}}>{(r.richness*100).toFixed(0)}%</span>
-</div>))}
-</>}
-</div>}
-
-{/* Biome legend — BOTTOM LEFT */}
-{viewMode==="terrain"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.82)",
-borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
-{[4,5,6,7,8,9,10,15,11,12,14,13,16].map(bi=>(
-<div key={bi} style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
-<span style={{display:"inline-block",width:10,height:8,borderRadius:1,flexShrink:0,
-background:`rgb(${BC[bi][0]},${BC[bi][1]},${BC[bi][2]})`}} />
-<span>{BN[bi]}</span></div>))}</div>}
-
-{/* Atlas legend — BOTTOM LEFT */}
-{viewMode==="atlas"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.82)",
-borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
-{[["#e6d8ad","Lowland"],["#e3bd83","Desert"],["#ede7e1","Snow / tundra"],["#586139","Forest"],["#cabd8f","Mountains"],["#101522","Sea"]].map(([c,l])=>(
-<div key={l} style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
-<span style={{display:"inline-block",width:10,height:8,borderRadius:1,flexShrink:0,
-background:c}} />
-<span>{l}</span></div>))}</div>}
-
-{/* Era legend — BOTTOM LEFT (tribes view) */}
-{viewMode==="tribes"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.82)",
-borderRadius:3,padding:"5px 8px",pointerEvents:"none",fontSize:9,lineHeight:"14px",color:"#b0a888"}}>
-{[["Stone Age",[50,45,35]],["Neolithic",[70,75,40]],["Farming",[80,100,45]],["Copper Age",[160,100,50]],
-["Bronze Age",[140,110,50]],["Iron Age",[90,90,100]],["Empire",[120,50,50]],["Industrial",[80,70,90]]].map(([name,col])=>(
-<div key={name} style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
-<span style={{display:"inline-block",width:10,height:8,borderRadius:1,flexShrink:0,
-background:`rgb(${col[0]},${col[1]},${col[2]})`}} />
-<span>{name}</span></div>))}</div>}
-
-{/* Resource toggles — BOTTOM LEFT */}
-{viewMode==="resources"&&<div style={{position:"absolute",bottom:52,left:6,background:"rgba(6,8,16,0.88)",
-borderRadius:3,padding:"6px 8px",fontSize:9,lineHeight:"16px",color:"#b0a888",userSelect:"none"}}>
-{RESOURCES.map(r=>{const on=activeRes[r.id];return(
-<div key={r.id} onClick={()=>{setActiveRes(prev=>{const next={...prev};next[r.id]=!prev[r.id];return next;});}}
-style={{display:"flex",alignItems:"center",gap:5,marginBottom:1,cursor:"pointer",
-opacity:on?1:0.3,transition:"opacity 0.15s"}}>
-<span style={{display:"inline-block",width:10,height:8,borderRadius:1,flexShrink:0,
-background:on?`rgb(${r.color.join(",")})`:"#333"}} />
-<span>{r.label}</span>
-<span style={{color:"#5a5448",fontSize:8,marginLeft:2}}>{r.era}</span>
-</div>);})}
-<div style={{height:1,background:"rgba(201,184,122,0.10)",margin:"4px 0"}} />
-<div style={{display:"flex",gap:6}}>
-<span onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=true;setActiveRes(s);}}
-style={{cursor:"pointer",color:"#8a8474",fontSize:8}}>All</span>
-<span onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=false;setActiveRes(s);}}
-style={{cursor:"pointer",color:"#8a8474",fontSize:8}}>None</span>
-</div></div>}
-
-{/* Stats — top right of map area */}
-{(()=>{const ter=terRef.current;
-const step=ter?ter.stepCount:0;
-const year=stepToYear(step);
-const ys=yearStr(step);
-// Compute average knowledge across alive tribes for era label
-let avgAg=0,avgMet=0,avgNav=0,avgOrg=0,aliveK=0;
-if(ter&&ter.tribeKnowledge){for(let i=0;i<ter.tribeKnowledge.length;i++){
-if(ter.tribeSizes[i]<=0)continue;aliveK++;const k=ter.tribeKnowledge[i];
-avgAg+=k.agriculture;avgMet+=k.metallurgy;avgNav+=k.navigation;avgOrg+=k.organization;}
-if(aliveK>0){avgAg/=aliveK;avgMet/=aliveK;avgNav/=aliveK;avgOrg/=aliveK;}}
-return <div style={{position:"absolute",top:6,right:6,background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"5px 12px",
-display:"flex",gap:14,fontSize:11,color:"#c9b87a",pointerEvents:"none",alignItems:"center",
-border:"1px solid rgba(201,184,122,0.1)"}}>
-<span style={{fontWeight:"bold",fontSize:13,color:"#e0d4a8",letterSpacing:0.5}}>{ys}</span>
-<span style={{color:"#8a8474"}}>Step {step}</span>
-<span>{tribeCount} tribes</span>
-<span>{coverage}% settled</span>
-{dominant&&<span style={{display:"inline-flex",alignItems:"center",gap:3}}>
-<span style={{width:8,height:8,borderRadius:2,background:`rgb(${tribeRGB(dominant.id).join(",")})`,display:"inline-block",border:"1px solid rgba(255,255,255,0.3)"}} />
-<span style={{color:"#c9b87a"}}>{dominant.size}t</span></span>}
-{aliveK>0&&<span style={{fontSize:9,color:"#6a6458"}}>
-Ag {(avgAg*100|0)} Mt {(avgMet*100|0)} Nv {(avgNav*100|0)} Og {(avgOrg*100|0)}</span>}
-{ter&&<span style={{fontSize:9,color:"#886644"}}>pop:{ter._dbgTimeBgPop||'-'}ms exp:{ter._dbgTimeExpansion||'-'}ms | stl:{ter._dbgSettlementCount} city:{ter._dbgMaxCity?.toFixed(1)} ctr:{ter.tribeCenters?.reduce((s,c)=>s+(c?c.length:0),0)} {ter._tribeFoodSurplus?`food:${(ter._tribeFoodSurplus.reduce((a,b)=>a+b,0)/Math.max(1,ter.tribeCenters?.filter((_,i)=>ter.tribeSizes[i]>0).length||1)).toFixed(1)}x`:''}</span>}
-</div>;})()}
-
-{/* ══ BOTTOM CENTER: VIEW/OVERLAY OPTIONS (larger) ══ */}
-<div style={{position:"absolute",bottom:8,left:"50%",transform:"translateX(-50%)",
-background:"rgba(6,8,16,0.88)",borderRadius:4,padding:"6px 12px",
-display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-{[["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],["resources","Resources"],["population","Pop"],["transport","Transport"],["tribes","Tribes"]].map(([k,label])=>(
-<button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
-style={{...bs,background:viewMode===k?"rgba(201,184,122,0.2)":"transparent",border:"none",
-color:viewMode===k?"#c9b87a":"#5a5448",padding:"6px 14px",fontSize:13}}>{label}</button>))}
-{viewMode==="depth"&&<><button onClick={()=>{setDepthFromSea(v=>!v);depthFromSeaRef.current=!depthFromSeaRef.current;}}
-style={{...bs,background:depthFromSea?"rgba(80,140,200,0.25)":"transparent",border:"none",
-color:depthFromSea?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>{depthFromSea?"Sea":"Floor"}</button>
-<span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"#8a8070",marginLeft:4}}>
-<span>Range</span>
-<input type="range" min="0.05" max="1.0" step="0.05" value={depthCeil}
-onChange={e=>{const v=parseFloat(e.target.value);setDepthCeil(v);depthCeilRef.current=v;}}
-style={{width:80,accentColor:"#8a8070"}}/>
-<span>{Math.round(depthCeil*100)}%</span>
-</span></>}
-{viewMode==="tribes"&&<button onClick={()=>setShowPower(v=>!v)}
-style={{...bs,background:showPower?"rgba(180,120,200,0.20)":"transparent",border:"none",
-color:showPower?"#b090d0":"#5a5448",padding:"4px 8px",fontSize:10}}>Power</button>}
-{world&&world.pixPlate&&<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
-style={{...bs,background:showPlates?"rgba(200,80,60,0.25)":"transparent",border:"none",
-color:showPlates?"#e07050":"#5a5448",padding:"6px 12px",fontSize:12}}>Plates</button>}
-<button onClick={()=>{setShowRivers(v=>!v);showRiversRef.current=!showRiversRef.current;}}
-style={{...bs,background:showRivers?"rgba(60,140,220,0.25)":"transparent",border:"none",
-color:showRivers?"#6ab4e8":"#5a5448",padding:"6px 12px",fontSize:12}}>Rivers</button>
-{showRivers&&<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
-style={{...bs,background:showStreams?"rgba(60,120,180,0.20)":"transparent",border:"none",
-color:showStreams?"#5a9aca":"#4a4a40",padding:"4px 8px",fontSize:10}}>Streams</button>}
-<button onClick={()=>{setShowLakes(v=>!v);showLakesRef.current=!showLakesRef.current;}}
-style={{...bs,background:showLakes?"rgba(40,80,140,0.25)":"transparent",border:"none",
-color:showLakes?"#4a80b8":"#5a5448",padding:"6px 12px",fontSize:12}}>Lakes</button>
-<button onClick={()=>setShowGlobe(!showGlobe)}
-style={{...bs,background:showGlobe?"rgba(120,180,220,0.25)":"transparent",border:"none",
-color:showGlobe?"#78b4dc":"#5a5448",padding:"6px 12px",fontSize:12}}>Globe</button>
-{(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
-<div style={{width:1,height:20,background:"rgba(201,184,122,0.15)"}} />
-<button onClick={()=>setRightPanel(rightPanel==="tribes"?"":"tribes")}
-style={{...bs,color:rightPanel==="tribes"?"#c9b87a":"#5a5448",background:rightPanel==="tribes"?"rgba(201,184,122,0.15)":"transparent",
-border:"none",padding:"6px 12px",fontSize:12}}>Tribes</button>
-<button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
-style={{...bs,color:rightPanel==="params"?"#c9b87a":"#5a5448",background:rightPanel==="params"?"rgba(201,184,122,0.15)":"transparent",
-border:"none",padding:"6px 12px",fontSize:12}}>Params</button>
-{preset==="tectonic"&&<button onClick={()=>setShowTuning(true)}
-style={{...bs,color:"#b8a060",border:"1px solid rgba(201,184,122,0.3)",padding:"6px 12px",fontSize:12}}>Tune</button>}
-</>}
-</div>
-
-</div>{/* end center */}
-
-{/* ══ RIGHT PANEL: Parameters ══ */}
-{rightPanel==="params"&&(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<div style={{width:rpW,minWidth:rpW,height:"100%",background:"rgba(6,8,16,0.92)",
-borderLeft:"1px solid rgba(201,184,122,0.08)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-<div style={{padding:"8px 10px",fontSize:11,color:"#c9b87a",borderBottom:"1px solid rgba(201,184,122,0.08)",
-display:"flex",alignItems:"center"}}>
-<span>{preset==="tectonic"?"Parameters":"Wind & Moisture"}</span>
-<div style={{flex:1}} />
-<span onClick={()=>setRightPanel("")} style={{cursor:"pointer",color:"#6a6458",fontSize:14}}>✕</span>
-</div>
-<div style={{flex:1,overflowY:"auto",padding:"6px 8px"}}>
-<ParamEditor params={{..._tecParams}} onChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
-  groups={preset==="earth"?["wind"]:preset==="earth_sim"?["wind","moisture"]:undefined} />
-</div>
+{/* ─── Pico hover card ─── */}
+{hoverInfo&&<div className="au-parchment au-pico"
+  style={{left:hoverInfo.x+14,top:hoverInfo.y-12}}>
+  <div className="au-pico-title" style={{
+    color:hoverInfo.isLake?"var(--au-verdigris)":hoverInfo.elevM<=0?"var(--au-verdigris)":"var(--au-ink)"}}>
+    {hoverInfo.isLake?`Lake (${hoverInfo.lakeSize}t)`:hoverInfo.biome}
+  </div>
+  <div className="au-fade" style={{fontSize:11}}>
+    {hoverInfo.elevM}m · {hoverInfo.tempC}°C · {(hoverInfo.moist*100|0)}% moist
+  </div>
+  {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
+    {RIVER_NAMES[hoverInfo.river]}
+  </div>}
+  {hoverInfo.tribeInfo&&<div style={{fontSize:11,marginTop:2,display:"flex",alignItems:"center",gap:5}}>
+    <span className="au-wax-seal au-small" style={{background:`rgb(${tribeRGB(hoverInfo.tribeInfo.id).join(",")})`}} />
+    <span>#{hoverInfo.tribeInfo.id} <span className="au-fade">{fmtPop(hoverInfo.tribeInfo.pop)}</span></span>
+    {hoverInfo.tribeInfo.relation==='fight'&&<span style={{color:"var(--au-wax-red)",fontWeight:600,fontSize:10}}>⚔</span>}
+    {hoverInfo.tribeInfo.relation==='trade'&&<span style={{color:"var(--au-gold)",fontWeight:600,fontSize:10}}>⚜</span>}
+  </div>}
+  <div className="au-fade" style={{fontSize:9,marginTop:2,fontStyle:"italic"}}>click for full info</div>
 </div>}
 
-{/* ══ RIGHT PANEL: Tribes ══ */}
-{rightPanel==="tribes"&&<div style={{width:rpW,minWidth:rpW,height:"100%",background:"rgba(6,8,16,0.92)",
-borderLeft:"1px solid rgba(201,184,122,0.08)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-<div style={{padding:"8px 10px",fontSize:11,color:"#c9b87a",borderBottom:"1px solid rgba(201,184,122,0.08)",
-display:"flex",alignItems:"center"}}>
-<span style={{fontWeight:"bold"}}>Tribes</span>
-<div style={{flex:1}} />
-<span onClick={()=>setRightPanel("")} style={{cursor:"pointer",color:"#6a6458",fontSize:14}}>x</span>
-</div>
-<div style={{flex:1,overflowY:"auto",padding:"4px 0"}}>
-{(()=>{const ter=terRef.current;if(!ter)return <div style={{color:"#5a5448",padding:10,fontSize:10}}>No simulation running</div>;
-const step=ter.stepCount;
-// Build sorted tribe list
-const tribes=[];
-for(let i=0;i<ter.tribeSizes.length;i++){if(ter.tribeSizes[i]<=0)continue;
-const k=ter.tribeKnowledge&&ter.tribeKnowledge[i]?ter.tribeKnowledge[i]:null;
-const pop=ter.tribePopulation?ter.tribePopulation[i]:0;
-const ports=ter.tribePorts&&ter.tribePorts[i]?ter.tribePorts[i].length:0;
-const stCounts=ter._settleCounts&&ter._settleCounts[i]?ter._settleCounts[i]:{villages:0,towns:0,cities:0,large:0};
-const knownCoasts=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
-const power=tribePower(ter,i);
-const bud=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i]:null;
-tribes.push({id:i,size:ter.tribeSizes[i],pop:Math.round(pop),power,ports,settlements:stCounts,knownCoasts,k,
-personality:bud?bud.personality:"",wealth:bud?bud.wealth:0,budget:bud?{mil:bud.military,gro:bud.growth,com:bud.commerce,exp:bud.exploration,sur:bud.survival}:null});}
-tribes.sort((a,b)=>b.power-a.power);
-// Selected tribe detail
-const sel=selectedTribe>=0&&ter.tribeSizes[selectedTribe]>0?selectedTribe:-1;
-const selData=sel>=0?tribes.find(t=>t.id===sel):null;
-return <>
-{/* Selected tribe detail */}
-{selData&&<div style={{padding:"8px 10px",borderBottom:"1px solid rgba(201,184,122,0.12)",background:"rgba(201,184,122,0.04)"}}>
-<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-<span style={{width:12,height:12,borderRadius:3,background:`rgb(${tribeRGB(selData.id).join(",")})`,display:"inline-block",border:"1px solid rgba(255,255,255,0.3)"}} />
-<span style={{fontWeight:"bold",fontSize:13,color:"#e0d4a8"}}>Tribe #{selData.id}</span>
-{selData.personality&&<span style={{color:"#b0a070",fontSize:10}}>{selData.personality}</span>}
-<span style={{color:"#6a6458",fontSize:9,marginLeft:"auto"}} onClick={()=>{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}}>(deselect)</span>
-</div>
-<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 10px",fontSize:10,color:"#b0a888"}}>
-<div><span style={{color:"#7a7464"}}>Territory:</span> {selData.size} tiles</div>
-<div><span style={{color:"#7a7464"}}>Population:</span> {selData.pop>=10000?(selData.pop/1000).toFixed(1)+'M':selData.pop>=1000?(selData.pop/1000|0)+'M':selData.pop>=1?selData.pop.toFixed(0)+'k':'<1k'}</div>
-<div><span style={{color:"#7a7464"}}>Power:</span> {selData.power.toFixed(1)}</div>
-<div><span style={{color:"#d0b040"}}>Wealth:</span> <span style={{color:"#d0b040"}}>{selData.wealth>=1000?(selData.wealth/1000).toFixed(1)+'k':selData.wealth.toFixed(0)} gold</span></div>
-{selData.settlements&&<div style={{gridColumn:"1/3"}}>
-<span style={{color:"#7a7464"}}>Settlements: </span>
-{selData.settlements.large>0&&<span style={{color:"#e0c870"}}>{selData.settlements.large} {selData.settlements.large===1?'city':'cities'} </span>}
-{selData.settlements.cities>0&&<span style={{color:"#c0b080"}}>{selData.settlements.cities} {selData.settlements.cities===1?'town':'towns'} </span>}
-{selData.settlements.towns>0&&<span style={{color:"#a09878"}}>{selData.settlements.towns} sm.towns </span>}
-{selData.settlements.villages>0&&<span style={{color:"#808068"}}>{selData.settlements.villages} villages</span>}
-{(selData.settlements.large+selData.settlements.cities+selData.settlements.towns+selData.settlements.villages)===0&&<span style={{color:"#605848"}}>none</span>}
-</div>}
-<div><span style={{color:"#7a7464"}}>Ports:</span> {selData.ports}</div>
-<div><span style={{color:"#7a7464"}}>Known coasts:</span> {selData.knownCoasts}</div>
-</div>
-{selData.k&&<div style={{marginTop:6}}>
-<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Knowledge</div>
-{[["agriculture","Ag","#8ab870"],["metallurgy","Mt","#c8946a"],["navigation","Nv","#6a9ec8"],
-["construction","Cn","#a89878"],["organization","Og","#b88ac8"],["trade","Tr","#c8b84a"]].map(([key,label,col])=>{
-const v=selData.k[key];return <div key={key} style={{display:"flex",alignItems:"center",gap:4,marginBottom:1}}>
-<span style={{width:22,fontSize:9,color:v>0.2?col:"#4a4438"}}>{label}</span>
-<div style={{flex:1,height:6,background:"rgba(255,255,255,0.05)",borderRadius:2,overflow:"hidden"}}>
-<div style={{width:`${v*100}%`,height:"100%",background:col,borderRadius:2,transition:"width 0.3s"}} /></div>
-<span style={{width:28,fontSize:8,color:"#6a6458",textAlign:"right"}}>{(v*100|0)}%</span>
-</div>;})}
-</div>}
-{/* Trade */}
-{(()=>{const td=ter.tradeData&&ter.tradeData[sel]?ter.tradeData[sel]:null;
-if(!td||td.partners===0)return null;
-const fmtR=(v)=>v>=1?v.toFixed(1):v>=0.01?v.toFixed(2):'0';
-return <div style={{marginTop:6}}>
-<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Trade ({td.partners} partners)</div>
-{td.foodImports>0&&<div style={{fontSize:8,color:"#60a050"}}>Importing {fmtR(td.foodImports)} food</div>}
-{td.foodExports>0&&<div style={{fontSize:8,color:"#c09030"}}>Exporting {fmtR(td.foodExports)} food</div>}
-{RES_KEYS.filter(rk=>td.imports[rk]>0.01||td.exports[rk]>0.01).slice(0,6).map(rk=>
-<div key={rk} style={{fontSize:8,color:"#8a8474"}}>
-{td.imports[rk]>0.01&&<span style={{color:"#6a9ec8"}}>{rk}: +{fmtR(td.imports[rk])} </span>}
-{td.exports[rk]>0.01&&<span style={{color:"#c09030"}}>{rk}: -{fmtR(td.exports[rk])} </span>}
-</div>)}
-{td.income>0.01&&<div style={{fontSize:8,color:"#d0b040",fontWeight:"bold"}}>Trade income: {fmtR(td.income)}</div>}
-</div>;})()}
-{/* Budget allocation */}
-{selData.budget&&<div style={{marginTop:6}}>
-<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Budget</div>
-<div style={{display:"flex",height:8,borderRadius:2,overflow:"hidden",background:"rgba(255,255,255,0.05)"}}>
-<div style={{width:`${selData.budget.mil*100}%`,background:"#c06050"}} title={`Military ${(selData.budget.mil*100|0)}%`} />
-<div style={{width:`${selData.budget.gro*100}%`,background:"#60a050"}} title={`Growth ${(selData.budget.gro*100|0)}%`} />
-<div style={{width:`${selData.budget.com*100}%`,background:"#5080c0"}} title={`Commerce ${(selData.budget.com*100|0)}%`} />
-<div style={{width:`${selData.budget.exp*100}%`,background:"#c09030"}} title={`Exploration ${(selData.budget.exp*100|0)}%`} />
-<div style={{width:`${selData.budget.sur*100}%`,background:"#606060"}} title={`Survival ${(selData.budget.sur*100|0)}%`} />
-</div>
-<div style={{display:"flex",gap:6,fontSize:8,color:"#6a6458",marginTop:2}}>
-<span style={{color:"#c06050"}}>{(selData.budget.mil*100|0)}%mil</span>
-<span style={{color:"#60a050"}}>{(selData.budget.gro*100|0)}%gro</span>
-<span style={{color:"#5080c0"}}>{(selData.budget.com*100|0)}%com</span>
-<span style={{color:"#c09030"}}>{(selData.budget.exp*100|0)}%exp</span>
-<span style={{color:"#808080"}}>{(selData.budget.sur*100|0)}%sur</span>
-</div>
-</div>}
-{/* Relationships (neighbors + maritime contacts) */}
+{/* ─── Floating tribe card ─── */}
 {(()=>{
-// Gather all known tribes: border contacts + maritime
-const allRelations=[];const seen=new Set();
-if(ter._borderContacts&&ter._borderContacts[sel]){
-for(const nid in ter._borderContacts[sel]){const n=parseInt(nid);
-if(ter.tribeSizes[n]<=0)continue;seen.add(n);
-allRelations.push({id:n,contact:ter._borderContacts[sel][nid],size:ter.tribeSizes[n],
-rel:tribeRelation(ter,sel,n),via:'border'});}}
-// Maritime contacts
-if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[sel]){
-for(const kc of ter.tribeKnownCoasts[sel]){
-if(kc.owner>=0&&!seen.has(kc.owner)&&ter.tribeSizes[kc.owner]>0){
-seen.add(kc.owner);
-allRelations.push({id:kc.owner,contact:0,size:ter.tribeSizes[kc.owner],
-rel:tribeRelation(ter,sel,kc.owner),via:'maritime'});}}}
-allRelations.sort((a,b)=>b.size-a.size);
-if(allRelations.length===0)return null;
-const relCol={fight:'#e06050',trade:'#d0b040',friendly:'#60b060',neutral:'#8a8474'};
-const relLabel={fight:'War',trade:'Trade',friendly:'Peace',neutral:''};
-return <div style={{marginTop:6}}>
-<div style={{fontSize:9,color:"#7a7464",marginBottom:3}}>Known Nations ({allRelations.length})</div>
-{allRelations.slice(0,10).map(n=>{const pers=ter.tribeBudget&&ter.tribeBudget[n.id]?ter.tribeBudget[n.id].personality:'';
-return <div key={n.id} style={{display:"flex",alignItems:"center",gap:4,fontSize:9,marginBottom:2,cursor:"pointer",
-padding:"1px 3px",borderRadius:2,background:n.rel==='fight'?'rgba(220,80,60,0.1)':n.rel==='trade'?'rgba(200,180,60,0.1)':'transparent'}}
-onClick={()=>{setSelectedTribe(n.id);ter._selectedTribe=n.id;draw(ter);}}>
-<span style={{width:6,height:6,borderRadius:6,background:relCol[n.rel],display:"inline-block",flexShrink:0}} />
-<span style={{color:"#b0a888"}}>#{n.id}</span>
-{pers&&<span style={{color:"#8a7a5a",fontSize:8}}>{pers}</span>}
-<span style={{color:"#6a6458"}}>{ter.tribeSizes[n.id]}t</span>
-{n.via==='maritime'&&<span style={{color:"#5a8aaa",fontSize:7}}>sea</span>}
-{relLabel[n.rel]&&<span style={{color:relCol[n.rel],fontSize:8,fontWeight:"bold",marginLeft:"auto"}}>{relLabel[n.rel]}</span>}
-</div>;})}
-</div>;})()}
+  const ter=terRef.current;
+  if(selectedTribe<0||!ter||ter.tribeSizes[selectedTribe]<=0)return null;
+  const sel=selectedTribe;
+  const size=ter.tribeSizes[sel];
+  const pop=ter.tribePopulation?ter.tribePopulation[sel]:0;
+  const power=tribePower(ter,sel);
+  const bud=ter.tribeBudget&&ter.tribeBudget[sel]?ter.tribeBudget[sel]:null;
+  const k=ter.tribeKnowledge&&ter.tribeKnowledge[sel]?ter.tribeKnowledge[sel]:null;
+  const stC=ter._settleCounts&&ter._settleCounts[sel]?ter._settleCounts[sel]:{villages:0,towns:0,cities:0,large:0};
+  const ports=ter.tribePorts&&ter.tribePorts[sel]?ter.tribePorts[sel].length:0;
+  const knownCoasts=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[sel]?ter.tribeKnownCoasts[sel].length:0;
+  const td=ter.tradeData&&ter.tradeData[sel]?ter.tradeData[sel]:null;
+  const [tr,tg,tb]=tribeRGB(sel);
+  return(
+    <div className="au-parchment au-elev au-tribe-card"
+      style={{left:cardPos.x,top:cardPos.y}}>
+      <div className="au-drag-handle"
+        onMouseDown={(e)=>{cardDragRef.current={mx:e.clientX,my:e.clientY,x:cardPos.x,y:cardPos.y};e.preventDefault();}}
+        style={{display:"flex",alignItems:"center",gap:8}}>
+        <span className="au-wax-seal" style={{background:`rgb(${tr},${tg},${tb})`}}>{sel}</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div className="au-tribename">Tribe&nbsp;№{sel}</div>
+          {bud?.personality&&<div className="au-fade" style={{fontSize:11,fontStyle:"italic"}}>the {bud.personality.toLowerCase()}</div>}
+        </div>
+        <span className="au-x" onClick={()=>{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}}>✕</span>
+      </div>
+
+      {/* Quick stats */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"2px 10px",margin:"4px 0 10px"}}>
+        <div>
+          <div className="au-sc au-fade" style={{fontSize:9}}>Territory</div>
+          <div className="au-heading" style={{fontSize:14}}>{size.toLocaleString()}</div>
+        </div>
+        <div>
+          <div className="au-sc au-fade" style={{fontSize:9}}>People</div>
+          <div className="au-heading" style={{fontSize:14}}>{fmtPop(pop)}</div>
+        </div>
+        <div>
+          <div className="au-sc au-fade" style={{fontSize:9}}>Power</div>
+          <div className="au-heading" style={{fontSize:14}}>{power.toFixed(0)}</div>
+        </div>
+        <div>
+          <div className="au-sc au-fade" style={{fontSize:9}}>Gold</div>
+          <div className="au-heading au-gold-text" style={{fontSize:14}}>{fmtGold(bud?.wealth||0)}</div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",borderBottom:"1px solid rgba(58,38,20,0.30)",margin:"0 -6px"}}>
+        {[["overview","Overview"],["knowledge","Knowledge"],["diplomacy","Diplomacy"],["trade","Trade"]].map(([id,label])=>(
+          <button key={id} className={"au-tab"+(tribeTab===id?" au-active":"")}
+            onClick={()=>setTribeTab(id)}>{label}</button>
+        ))}
+      </div>
+
+      <div style={{padding:"10px 2px 2px",fontSize:12,minHeight:160}}>
+      {tribeTab==="overview"&&<>
+        <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>Settlements</div>
+        {(stC.large+stC.cities+stC.towns+stC.villages)>0?
+          <div style={{display:"flex",gap:14,flexWrap:"wrap",marginBottom:8,fontSize:12}}>
+            {stC.large>0&&<span><span className="au-gold-text" style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.large}</span> <span className="au-fade au-sc" style={{fontSize:10}}>capital{stC.large!==1?"s":""}</span></span>}
+            {stC.cities>0&&<span><span style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.cities}</span> <span className="au-fade au-sc" style={{fontSize:10}}>cit{stC.cities===1?"y":"ies"}</span></span>}
+            {stC.towns>0&&<span><span style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.towns}</span> <span className="au-fade au-sc" style={{fontSize:10}}>town{stC.towns!==1?"s":""}</span></span>}
+            {stC.villages>0&&<span><span style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.villages}</span> <span className="au-fade au-sc" style={{fontSize:10}}>village{stC.villages!==1?"s":""}</span></span>}
+          </div>:
+          <div className="au-fade" style={{fontStyle:"italic",fontSize:11,marginBottom:8}}>no permanent settlements yet</div>}
+        {(ports>0||knownCoasts>0)&&<>
+          <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>Sea</div>
+          <div style={{fontSize:12,marginBottom:8}}>
+            <span style={{fontFamily:"'Cinzel',serif"}}>{ports}</span> <span className="au-fade au-sc" style={{fontSize:10}}>port{ports!==1?"s":""}</span>
+            {" · "}
+            <span style={{fontFamily:"'Cinzel',serif"}}>{knownCoasts}</span> <span className="au-fade au-sc" style={{fontSize:10}}>known coasts</span>
+          </div>
+        </>}
+        {bud&&<>
+          <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>Priorities</div>
+          <div style={{display:"flex",height:8,borderRadius:2,overflow:"hidden",
+            border:"1px solid rgba(58,38,20,0.3)",marginBottom:4}}>
+            <div style={{width:`${bud.military*100}%`,background:"#9a3030"}} title={`Military ${(bud.military*100|0)}%`} />
+            <div style={{width:`${bud.growth*100}%`,background:"#5a8030"}} title={`Growth ${(bud.growth*100|0)}%`} />
+            <div style={{width:`${bud.commerce*100}%`,background:"#3a6a98"}} title={`Commerce ${(bud.commerce*100|0)}%`} />
+            <div style={{width:`${bud.exploration*100}%`,background:"#a07028"}} title={`Exploration ${(bud.exploration*100|0)}%`} />
+            <div style={{width:`${bud.survival*100}%`,background:"#5a5448"}} title={`Survival ${(bud.survival*100|0)}%`} />
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",gap:4,fontSize:10}} className="au-sc">
+            <span style={{color:"#9a3030"}}>{(bud.military*100|0)}mil</span>
+            <span style={{color:"#5a8030"}}>{(bud.growth*100|0)}gro</span>
+            <span style={{color:"#3a6a98"}}>{(bud.commerce*100|0)}com</span>
+            <span style={{color:"#a07028"}}>{(bud.exploration*100|0)}exp</span>
+            <span style={{color:"#5a5448"}}>{(bud.survival*100|0)}sur</span>
+          </div>
+        </>}
+      </>}
+
+      {tribeTab==="knowledge"&&k&&
+        <div style={{display:"flex",gap:14,alignItems:"center",justifyContent:"flex-start"}}>
+          <KnowledgeRadar k={k} size={155} />
+          <div style={{fontSize:11,lineHeight:1.7,flex:1}}>
+            {[["agriculture","Agriculture","#5a8030"],["metallurgy","Metallurgy","#a07028"],
+              ["navigation","Navigation","#3a6a98"],["construction","Construction","#6b5b3c"],
+              ["organization","Organization","#7a3878"],["trade","Trade","#a08828"]].map(([key,label,col])=>{
+              const v=k[key]||0;
+              return(
+                <div key={key} style={{display:"flex",gap:5,alignItems:"baseline"}}>
+                  <span style={{flex:1,color:v>0.15?"var(--au-ink)":"var(--au-ink-light)"}}>{label}</span>
+                  <span className="au-heading" style={{fontSize:12,color:v>0.15?col:"var(--au-ink-light)"}}>{(v*100|0)}</span>
+                </div>);})}
+          </div>
+        </div>}
+      {tribeTab==="knowledge"&&!k&&<div className="au-fade" style={{textAlign:"center",fontStyle:"italic"}}>no knowledge data</div>}
+
+      {tribeTab==="diplomacy"&&(()=>{
+        const allRels=[];const seen=new Set();
+        if(ter._borderContacts&&ter._borderContacts[sel]){
+          for(const nid in ter._borderContacts[sel]){const n=parseInt(nid);
+            if(ter.tribeSizes[n]<=0)continue;seen.add(n);
+            allRels.push({id:n,size:ter.tribeSizes[n],rel:tribeRelation(ter,sel,n),via:'border'});}}
+        if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[sel]){
+          for(const kc of ter.tribeKnownCoasts[sel]){
+            if(kc.owner>=0&&!seen.has(kc.owner)&&ter.tribeSizes[kc.owner]>0){
+              seen.add(kc.owner);
+              allRels.push({id:kc.owner,size:ter.tribeSizes[kc.owner],rel:tribeRelation(ter,sel,kc.owner),via:'maritime'});}}}
+        allRels.sort((a,b)=>b.size-a.size);
+        if(!allRels.length)return<div className="au-fade" style={{textAlign:"center",fontStyle:"italic",padding:"12px 0"}}>no known nations</div>;
+        const relCol={fight:"#9a3030",trade:"#a07028",friendly:"#3a6a48",neutral:"#6b4f37"};
+        const relLabel={fight:"At War",trade:"Trading",friendly:"Friendly",neutral:""};
+        return<div>
+          <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>{allRels.length} known nation{allRels.length===1?"":"s"}</div>
+          <div style={{maxHeight:180,overflowY:"auto"}} className="au-scroll">
+          {allRels.slice(0,14).map(n=>{
+            const pers=ter.tribeBudget&&ter.tribeBudget[n.id]?ter.tribeBudget[n.id].personality:"";
+            return<div key={n.id} style={{display:"flex",alignItems:"center",gap:7,padding:"3px 4px",fontSize:11,cursor:"pointer",
+              background:n.rel==="fight"?"rgba(154,48,48,0.10)":n.rel==="trade"?"rgba(160,112,40,0.10)":"transparent",
+              borderRadius:2,marginBottom:1}}
+              onClick={()=>{setSelectedTribe(n.id);ter._selectedTribe=n.id;draw(ter);}}>
+              <span className="au-wax-seal au-small" style={{background:`rgb(${tribeRGB(n.id).join(',')})`}} />
+              <span>#{n.id}</span>
+              {pers&&<span className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>{pers}</span>}
+              <span className="au-fade" style={{fontSize:10}}>{n.size}t</span>
+              {n.via==="maritime"&&<span style={{fontSize:10}}>⛵</span>}
+              <div style={{flex:1}} />
+              {relLabel[n.rel]&&<span style={{fontSize:10,fontWeight:600,color:relCol[n.rel]}}>{relLabel[n.rel]}</span>}
+            </div>;})}
+          </div>
+        </div>;
+      })()}
+
+      {tribeTab==="trade"&&(()=>{
+        if(!td||!td.partners)return<div className="au-fade" style={{textAlign:"center",fontStyle:"italic",padding:"12px 0"}}>no trade established</div>;
+        const fmt=(x)=>x>=1?x.toFixed(1):x.toFixed(2);
+        return<div>
+          <div style={{display:"flex",gap:20,marginBottom:8}}>
+            <div><div className="au-sc au-fade" style={{fontSize:10}}>Partners</div>
+              <div className="au-heading" style={{fontSize:15}}>{td.partners}</div></div>
+            {td.income>0.01&&<div><div className="au-sc au-fade" style={{fontSize:10}}>Income</div>
+              <div className="au-heading au-gold-text" style={{fontSize:15}}>{fmt(td.income)}</div></div>}
+          </div>
+          {(td.foodImports>0||td.foodExports>0)&&<div className="au-sc au-fade" style={{fontSize:10,marginBottom:3}}>Food</div>}
+          {td.foodImports>0&&<div className="au-verde-text" style={{fontSize:11}}>↓ Importing {fmt(td.foodImports)}</div>}
+          {td.foodExports>0&&<div className="au-gold-text" style={{fontSize:11}}>↑ Exporting {fmt(td.foodExports)}</div>}
+          {td.imports&&Object.keys(td.imports).length>0&&<>
+            <div className="au-sc au-fade" style={{fontSize:10,marginTop:6,marginBottom:3}}>Imports</div>
+            {Object.entries(td.imports).slice(0,5).map(([rk,v])=><div key={rk} style={{fontSize:11}}>{rk} <span className="au-fade">{fmt(v)}</span></div>)}
+          </>}
+        </div>;
+      })()}
+      </div>
+
+      {/* Footer: nation list toggle */}
+      <div className="au-rule" style={{marginTop:8}} />
+      <div style={{cursor:"pointer",padding:"3px 0",display:"flex",alignItems:"center",gap:6}}
+        onClick={()=>setShowTribeList(v=>!v)}>
+        <span className="au-sc au-fade" style={{fontSize:10,flex:1}}>{showTribeList?"▾":"▸"} All nations</span>
+      </div>
+      {showTribeList&&(()=>{
+        const tribes=[];
+        for(let i=0;i<ter.tribeSizes.length;i++){if(ter.tribeSizes[i]<=0)continue;
+          tribes.push({id:i,size:ter.tribeSizes[i],power:tribePower(ter,i),
+            pop:ter.tribePopulation?ter.tribePopulation[i]:0,
+            personality:ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].personality:""});}
+        tribes.sort((a,b)=>b.power-a.power);
+        return<div style={{maxHeight:130,overflowY:"auto",marginTop:2}} className="au-scroll">
+          {tribes.map(t=>{const isSel=t.id===sel;
+            return<div key={t.id} onClick={()=>{setSelectedTribe(t.id);if(ter)ter._selectedTribe=t.id;draw(ter);}}
+              style={{display:"flex",alignItems:"center",gap:6,padding:"2px 4px",cursor:"pointer",
+                background:isSel?"rgba(120,80,40,0.18)":"transparent",borderRadius:2}}>
+              <span className="au-wax-seal au-small" style={{background:`rgb(${tribeRGB(t.id).join(",")})`}} />
+              <span style={{fontSize:11}}>#{t.id}</span>
+              {t.personality&&<span className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>{t.personality}</span>}
+              <div style={{flex:1}} />
+              <span className="au-fade" style={{fontSize:10}}>{t.size}t</span>
+              <span className="au-fade" style={{fontSize:10}}>{fmtPop(t.pop)}</span>
+              <span style={{fontSize:10,width:32,textAlign:"right"}} className="au-fade">{t.power.toFixed(0)}pw</span>
+            </div>;})}
+        </div>;
+      })()}
+    </div>
+  );
+})()}
+
+{/* ─── Bottom-left collapsible legend ─── */}
+{(viewMode==="terrain"||viewMode==="atlas"||viewMode==="tribes"||viewMode==="resources")&&
+<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
+  padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:200,zIndex:20}}>
+<div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:5,
+  borderBottom:keyOpen?"1px solid rgba(58,38,20,0.18)":"none",paddingBottom:keyOpen?3:0,marginBottom:keyOpen?4:0}}
+  onClick={()=>setKeyOpen(v=>!v)}>
+  <span className="au-heading au-sc" style={{fontSize:10,flex:1}}>{keyOpen?"▾":"▸"} Key</span>
+</div>
+{keyOpen&&<div className="au-key">
+  {viewMode==="terrain"&&[4,5,6,7,8,9,10,15,11,12,14,13,16].map(bi=>(
+    <div key={bi} className="au-key-row">
+      <span className="au-key-swatch" style={{background:`rgb(${BC[bi][0]},${BC[bi][1]},${BC[bi][2]})`}} />
+      <span>{BN[bi]}</span>
+    </div>))}
+  {viewMode==="atlas"&&[["#e6d8ad","Lowland"],["#e3bd83","Desert"],["#ede7e1","Snow / tundra"],["#586139","Forest"],["#cabd8f","Mountains"],["#1a0f04","Sea"]].map(([c,l])=>(
+    <div key={l} className="au-key-row">
+      <span className="au-key-swatch" style={{background:c}} />
+      <span>{l}</span>
+    </div>))}
+  {viewMode==="tribes"&&[["Stone",[50,45,35]],["Neolithic",[70,75,40]],["Farming",[80,100,45]],["Copper",[160,100,50]],
+    ["Bronze",[140,110,50]],["Iron",[90,90,100]],["Empire",[120,50,50]],["Industrial",[80,70,90]]].map(([name,col])=>(
+    <div key={name} className="au-key-row">
+      <span className="au-key-swatch" style={{background:`rgb(${col[0]},${col[1]},${col[2]})`}} />
+      <span>{name}</span>
+    </div>))}
+  {viewMode==="resources"&&<div>
+    {RESOURCES.map(r=>{const on=activeRes[r.id];return(
+      <div key={r.id} className="au-key-row" style={{cursor:"pointer",opacity:on?1:0.4}}
+        onClick={()=>setActiveRes(prev=>{const next={...prev};next[r.id]=!prev[r.id];return next;})}>
+        <span className="au-key-swatch" style={{background:on?`rgb(${r.color.join(",")})`:"#888"}} />
+        <span>{r.label}</span>
+        <span className="au-fade" style={{fontSize:9,marginLeft:"auto"}}>{r.era}</span>
+      </div>);})}
+    <div className="au-rule" style={{margin:"4px 0"}} />
+    <div style={{display:"flex",gap:8,fontSize:10}}>
+      <span style={{cursor:"pointer"}} className="au-fade"
+        onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=true;setActiveRes(s);}}>All</span>
+      <span style={{cursor:"pointer"}} className="au-fade"
+        onClick={()=>{const s={};for(const r of RESOURCES)s[r.id]=false;setActiveRes(s);}}>None</span>
+    </div>
+  </div>}
 </div>}
-{/* Tribe list */}
-<div style={{padding:"4px 6px"}}>
-<div style={{fontSize:9,color:"#6a6458",marginBottom:4,padding:"0 4px"}}>{tribes.length} tribes (by power)</div>
-{tribes.map(t=>{const isSel=t.id===sel;
-return <div key={t.id} onClick={()=>{setSelectedTribe(t.id);if(ter)ter._selectedTribe=t.id;draw(ter);}}
-style={{display:"flex",alignItems:"center",gap:5,padding:"3px 6px",cursor:"pointer",
-borderRadius:2,background:isSel?"rgba(201,184,122,0.12)":"transparent",
-borderLeft:isSel?`2px solid rgb(${tribeRGB(t.id).join(",")})`:"2px solid transparent"}}>
-<span style={{width:8,height:8,borderRadius:2,flexShrink:0,
-background:`rgb(${tribeRGB(t.id).join(",")})`,display:"inline-block"}} />
-<div style={{flex:1,minWidth:0}}>
-<div style={{fontSize:10,color:isSel?"#e0d4a8":"#b0a888",display:"flex",gap:6}}>
-<span>#{t.id}</span>
-<span style={{color:"#7a7464"}}>{t.size}t</span>
-<span style={{color:"#6a6458",fontSize:9}}>{t.pop>=10000?(t.pop/1000).toFixed(1)+'M':t.pop>=1000?(t.pop/1000|0)+'M':t.pop>=1?t.pop.toFixed(0)+'k':'<1k'}</span>
-</div>
-{t.k&&<div style={{fontSize:8,color:"#5a5448",display:"flex",gap:3,flexWrap:"wrap"}}>
-{t.k.agriculture>0.05&&<span style={{color:"#6a8a50"}}>Ag{(t.k.agriculture*100|0)}</span>}
-{t.k.metallurgy>0.05&&<span style={{color:"#a07050"}}>Mt{(t.k.metallurgy*100|0)}</span>}
-{t.k.navigation>0.05&&<span style={{color:"#5080a0"}}>Nv{(t.k.navigation*100|0)}</span>}
-{t.k.organization>0.05&&<span style={{color:"#9070a0"}}>Og{(t.k.organization*100|0)}</span>}
-{t.k.trade>0.05&&<span style={{color:"#a09030"}}>Tr{(t.k.trade*100|0)}</span>}
-</div>}
-</div>
-<span style={{fontSize:8,color:"#5a5448",flexShrink:0}}>{t.power.toFixed(0)}pw</span>
-{t.wealth>1&&<span style={{fontSize:7,color:"#b09830",flexShrink:0}}>{t.wealth>=1000?(t.wealth/1000|0)+'k':t.wealth.toFixed(0)}g</span>}
-</div>;})}
-</div>
-</>; })()}
-</div>
 </div>}
 
-{/* ══ TUNING OVERLAY ══ */}
+{/* ─── Depth contextual controls ─── */}
+{viewMode==="depth"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
+  padding:"6px 12px",fontSize:11,display:"flex",alignItems:"center",gap:10,zIndex:20}}>
+<button onClick={()=>{setDepthFromSea(v=>!v);depthFromSeaRef.current=!depthFromSeaRef.current;}}
+  className={"au-btn"+(depthFromSea?" au-active":"")}>{depthFromSea?"From Sea":"From Floor"}</button>
+<span className="au-sc au-fade" style={{fontSize:10}}>Range</span>
+<input type="range" min="0.05" max="1.0" step="0.05" value={depthCeil}
+  onChange={e=>{const v=parseFloat(e.target.value);setDepthCeil(v);depthCeilRef.current=v;}}
+  style={{width:90}} />
+<span className="au-fade">{Math.round(depthCeil*100)}%</span>
+</div>}
+
+</div>{/* end map area */}
+
+</div>{/* end center column */}
+
+{/* ══════════ RIGHT RAIL ══════════ */}
+<aside className="au-parchment au-scroll" style={{
+  width:128,minWidth:128,margin:"6px 6px 6px 3px",padding:"10px 0",
+  display:"flex",flexDirection:"column",gap:1,overflowY:"auto"}}>
+
+<div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"0 14px 4px"}}>View</div>
+{VIEW_MODES.map(([k,label])=>(
+  <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
+    className={"au-rail-tab"+(viewMode===k?" au-active":"")}>{label}</button>
+))}
+
+<div className="au-rule" />
+<div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"6px 14px 4px"}}>Overlay</div>
+<button onClick={()=>{setShowRivers(v=>!v);showRiversRef.current=!showRiversRef.current;}}
+  className={"au-rail-tab"+(showRivers?" au-active":"")}>Rivers</button>
+{showRivers&&<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
+  className={"au-rail-tab"+(showStreams?" au-active":"")} style={{paddingLeft:22,fontSize:11}}>· Streams</button>}
+<button onClick={()=>{setShowLakes(v=>!v);showLakesRef.current=!showLakesRef.current;}}
+  className={"au-rail-tab"+(showLakes?" au-active":"")}>Lakes</button>
+{world&&world.pixPlate&&<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
+  className={"au-rail-tab"+(showPlates?" au-active":"")}>Plates</button>}
+<button onClick={()=>setShowGlobe(!showGlobe)}
+  className={"au-rail-tab"+(showGlobe?" au-active":"")}>Globe</button>
+{viewMode==="tribes"&&<button onClick={()=>setShowPower(v=>!v)}
+  className={"au-rail-tab"+(showPower?" au-active":"")}>Power</button>}
+
+{(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
+<div className="au-rule" />
+<div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"6px 14px 4px"}}>Tools</div>
+<button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
+  className={"au-rail-tab"+(rightPanel==="params"?" au-active":"")}>Params</button>
+{preset==="tectonic"&&<button onClick={()=>setShowTuning(true)}
+  className="au-rail-tab">Tune</button>}
+</>}
+</aside>
+
+{/* ══════════ PARAMS DRAWER ══════════ */}
+{rightPanel==="params"&&(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&
+<aside className="au-parchment au-scroll" style={{
+  position:"absolute",right:142,top:6,bottom:6,width:300,
+  padding:"10px 12px",overflowY:"auto",zIndex:30}}>
+<div style={{display:"flex",alignItems:"baseline",marginBottom:6}}>
+  <span className="au-heading au-sc" style={{fontSize:12}}>{preset==="tectonic"?"Parameters":"Wind & Moisture"}</span>
+  <div style={{flex:1}} />
+  <span onClick={()=>setRightPanel("")}
+    style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
+</div>
+<ParamEditor params={{..._tecParams}}
+  onChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
+  groups={preset==="earth"?["wind"]:preset==="earth_sim"?["wind","moisture"]:undefined} />
+</aside>}
+
+{/* ══════════ TUNING MODAL ══════════ */}
 {showTuning&&<TuningPanel noiseFns={{initNoise,fbm,ridged,noise2D,worley}} seed={seed}
   params={{..._tecParams}}
   onParamsChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
