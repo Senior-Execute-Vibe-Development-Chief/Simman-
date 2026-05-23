@@ -2498,22 +2498,65 @@ if(comps.length<=1)continue;
 comps.sort((a,b)=>b.length-a.length);
 for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor(comps[c][0]/tw),st);
 for(const ci of comps[c])transferTile(ter,ci,sid);}}ter._fragGen=gen;}
-// ── Remnant absorption: tiny fragments absorbed by larger neighbors ──
-// Only absorb old tiny tribes — new tribes get 100 steps of immunity to establish themselves
-if(ter.stepCount%8===0){for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>5)continue;
-// Immunity: don't absorb tribes younger than 100 steps (let them grow)
-const stAge=ter.stepCount-(tribeCenters[st][0]?tribeCenters[st][0].founded:0);
-if(stAge<100)continue;
-const stTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
-let bn=-1,bs2=0;
-const iterTiles=stTiles?stTiles:{[Symbol.iterator]:function*(){for(let i=0;i<tw*th;i++)if(owner[i]===st)yield i;}};
-for(const i of iterTiles){const ty2=Math.floor(i/tw),tx2=i%tw;
-for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-const no=owner[ni];if(no<0||no===st||tElev[ni]<=sl)continue;if(tribeSizes[no]>bs2){bs2=tribeSizes[no];bn=no;}}}
-if(bn>=0&&tribeSizes[bn]>tribeSizes[st]*3){
-const tilesToClaim=stTiles?[...stTiles]:[];
-if(!stTiles){for(let i=0;i<tw*th;i++)if(owner[i]===st)tilesToClaim.push(i);}
-for(const i of tilesToClaim)claimTile(ter,i,bn);}}}
+// ── Tiered absorption: vestigial tribes absorbed by a much larger neighbour ──
+// Real-world precedent: minor polities (Bavaria→Germany, Etruscan city-states
+// →Rome, princely states→Raj) usually vanished through annexation, dynastic
+// union, or vassalisation — not 500-year border slogs. This pass scales the
+// thresholds with defender size so 50- and 200-tile vestiges can be absorbed
+// too, not only 5-tile fragments.
+//
+//   defender ≤ 10 tiles  → any larger neighbour      after  50 steps
+//   defender ≤ 30 tiles  → neighbour ×  4 larger     after 150 steps
+//   defender ≤ 100 tiles → neighbour ×  6 larger     after 300 steps
+//   defender ≤ 300 tiles → neighbour × 10 larger     after 500 steps
+//
+// Sanity gates: real shared border (≥ 2 tiles touching), no fresh conflict
+// (last 50 steps), and the defender's pop-per-tile must be lower than the
+// absorber's — otherwise it's a thriving city-state we're trying not to
+// annex. Annexed tiles transfer (not claimTile) so population is preserved:
+// this is a peaceful absorption, not a sacking.
+if(ter.stepCount%8===0){
+const ABSORB_TIERS=[
+  {maxSize: 10,  ratio: 1.0, minAge:  30},
+  {maxSize: 30,  ratio: 2.0, minAge:  80},
+  {maxSize: 100, ratio: 3.0, minAge: 150},
+  {maxSize: 300, ratio: 5.0, minAge: 200},
+];
+if(!ter._absorbStats)ter._absorbStats={annexed:0,lastStep:-1};
+for(let st=0;st<tribeSizes.length;st++){
+  const sz=tribeSizes[st];
+  if(sz<=0||sz>300)continue;
+  let tier=null;
+  for(const t of ABSORB_TIERS){if(sz<=t.maxSize){tier=t;break;}}
+  if(!tier)continue;
+  const stAge=ter.stepCount-(tribeCenters[st][0]?tribeCenters[st][0].founded:0);
+  if(stAge<tier.minAge)continue;
+  const stTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
+  if(!stTiles||stTiles.size===0)continue;
+  // Count shared-border tiles per candidate absorber. The natural absorber
+  // is the neighbour with the most contact area, not just the largest.
+  const borderCount={};
+  for(const i of stTiles){
+    const ty2=Math.floor(i/tw),tx2=i%tw;
+    for(const[dx,dy]of DIRS){
+      const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;
+      if(ny2<0||ny2>=th)continue;
+      const ni=ny2*tw+nx2;
+      const no=owner[ni];
+      if(no<0||no===st||tElev[ni]<=sl)continue;
+      if(tribeSizes[no]<sz*tier.ratio)continue;// neighbour not large enough for this tier
+      borderCount[no]=(borderCount[no]||0)+1;
+    }
+  }
+  let bn=-1,bestBorder=0;
+  for(const nid in borderCount){if(borderCount[nid]>bestBorder){bestBorder=borderCount[nid];bn=parseInt(nid);}}
+  if(bn<0||bestBorder<2)continue;
+  // Peaceful absorption — transferTile preserves population.
+  const tilesToClaim=[...stTiles];
+  for(const i of tilesToClaim)transferTile(ter,i,bn);
+  ter._absorbStats.annexed++;
+  ter._absorbStats.lastStep=ter.stepCount;
+}}
 ter._dbgTimeExpansion=(performance.now()-_tExpStart).toFixed(1);
 const _stepTotal=performance.now()-_stepT0;
 if(_stepTotal>5){// log any step that takes >5ms
