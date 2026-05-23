@@ -2590,6 +2590,88 @@ function capitalFall(ter,ti,attacker,defender,nf,nfl){
   ter.tribeProtectFragUntil[defender]=Math.max(ter.tribeProtectFragUntil[defender]||0,ter.stepCount+64);
 }
 
+// ── Encirclement check ───────────────────────────────────────────────
+// Sweep every ~8 steps: BFS from each tribe's centers through their own
+// owned tiles. Any owned tile NOT reachable is isolated — a pocket cut
+// off from the main empire. These get auto-flipped to the surrounding
+// dominant enemy (or released to unowned if surrounded only by water/
+// wilderness). This is the killer anti-tendril mechanic: the moment any
+// tile in a thread gets nibbled, the rest of the thread is unreachable
+// from the capital and collapses to whoever's around it.
+function checkEncirclement(ter){
+  const{tw,th,owner,tribeSizes,tribeCenters,tribeTiles,tElev}=ter;
+  const N=tw*th;const n=tribeCenters.length;
+  if(!ter._encVisited||ter._encVisited.length<N)ter._encVisited=new Uint8Array(N);
+  const visited=ter._encVisited;visited.fill(0);
+  const stack=[];
+  // Seed BFS from every tribe's centers
+  for(let tid=0;tid<n;tid++){
+    if(tribeSizes[tid]<=0)continue;
+    const centers=tribeCenters[tid];if(!centers||centers.length===0)continue;
+    for(const c of centers){
+      const ci=c.y*tw+c.x;
+      if(ci>=0&&ci<N&&owner[ci]===tid&&!visited[ci]){visited[ci]=1;stack.push(ci);}
+    }
+  }
+  // Flood through owned tiles (same-owner moves only)
+  while(stack.length>0){
+    const ti=stack.pop();
+    const tx=ti%tw,ty=(ti-tx)/tw;
+    const ow=owner[ti];
+    for(const[dx,dy]of DIRS){
+      const ny=ty+dy;if(ny<0||ny>=th)continue;
+      const nx=((tx+dx)%tw+tw)%tw;
+      const ni=ny*tw+nx;
+      if(!visited[ni]&&owner[ni]===ow){visited[ni]=1;stack.push(ni);}
+    }
+  }
+  // Collect isolated tiles per tribe
+  let isolatedCount=0;
+  for(let tid=0;tid<n;tid++){
+    if(tribeSizes[tid]<=0)continue;
+    // Establishment grace — don't strip pockets from very new tribes
+    const owAge=ter.stepCount-(tribeCenters[tid][0]?tribeCenters[tid][0].founded:0);
+    if(owAge<80)continue;
+    const tiles=tribeTiles&&tribeTiles[tid]?tribeTiles[tid]:null;
+    if(!tiles)continue;
+    const toFlip=[];
+    for(const ti of tiles){if(!visited[ti])toFlip.push(ti);}
+    for(const ti of toFlip){
+      const ow=owner[ti];if(ow!==tid)continue;
+      const tx=ti%tw,ty=(ti-tx)/tw;
+      // Find majority adjacent non-self enemy owner
+      const counts={};
+      for(const[dx,dy]of DIRS){
+        const ny=ty+dy;if(ny<0||ny>=th)continue;
+        const nx=((tx+dx)%tw+tw)%tw;
+        const ni=ny*tw+nx;
+        const no=owner[ni];
+        if(no>=0&&no!==ow&&tribeSizes[no]>0)counts[no]=(counts[no]||0)+1;
+      }
+      let bestId=-1,bestC=0;
+      for(const nid in counts){if(counts[nid]>bestC){bestC=counts[nid];bestId=parseInt(nid);}}
+      if(bestId>=0){
+        // Pocket absorbed by dominant enemy neighbour. Population takes
+        // a heavier hit (a cut-off garrison surrendering is brutal).
+        if(ter.bgPop&&ter.bgPop[ti]>0)ter.bgPop[ti]*=0.65;
+        if(ter.cityPop&&ter.cityPop[ti]>0)ter.cityPop[ti]*=0.55;
+        const wasCity=isCityTile(ter,ow,ti);
+        claimTile(ter,ti,bestId);
+        recordFlip(ter,bestId,ow,ti);
+        if(wasCity)capitalFall(ter,ti,bestId,ow,null,null);
+        isolatedCount++;
+      }
+      // Else: surrounded by water / wilderness — leave it; will erode
+      // naturally via population loss and the weak-tile flip path.
+    }
+  }
+  if(isolatedCount>0){
+    if(!ter._dbgEncirclements)ter._dbgEncirclements=0;
+    ter._dbgEncirclements+=isolatedCount;
+  }
+  return isolatedCount;
+}
+
 function stepTerritory(ter,w){
 const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
 // Clear per-step caches
@@ -2972,6 +3054,18 @@ if(ter.stepCount%16===0&&ter._borderContacts){
         if(Math.random()<0.5)launchInvasion(ter,aggressor,defender);
         const counterDesire=warDesire(ter,defender,aggressor);
         if(counterDesire>0.5&&Math.random()<0.25)launchInvasion(ter,defender,aggressor);
+        // OpenFront-style attrition: both sides bleed troops at rate
+        // proportional to (troops / tiles). Dense small empires lose
+        // troops fast; wide empires lose them slowly. As a tribe
+        // shrinks under attack, density rises → bleeds faster → death
+        // spiral. This is the missing snowball mechanic that turns
+        // "I'm losing" into "I've lost."
+        const aTroops=(ter.tribeMilitary&&ter.tribeMilitary[wr.a])||0;
+        const bTroops=(ter.tribeMilitary&&ter.tribeMilitary[wr.b])||0;
+        const aSz=Math.max(1,ter.tribeSizes[wr.a]||1);
+        const bSz=Math.max(1,ter.tribeSizes[wr.b]||1);
+        spendMilitary(ter,wr.a,(aTroops/aSz)*0.4);
+        spendMilitary(ter,wr.b,(bTroops/bSz)*0.4);
       }
     }
   }
@@ -3157,11 +3251,28 @@ if(from>=0){const key=Math.min(from,to)+','+Math.max(from,to);
 ter._recentConflicts[key]=ter.stepCount;}// record latest conflict step
 const attackCost=tFert[ti]*0.3;
 tribeStrength[to]=Math.max(0.1,tribeStrength[to]-attackCost);
-// Military deduction: each successful flip costs ~60 troops from
-// attacker, ~30 from defender. Connects per-tile fighting to the
-// stored reserve so chains of flips actually deplete an army.
-spendMilitary(ter,to,60);
-if(from>=0)spendMilitary(ter,from,30);
+// Military deduction with tech-disparity asymmetry. Tech-advantaged
+// attackers spend FEWER troops per flip AND inflict MORE losses on
+// the defender — both sides of the loss equation move, which is what
+// produces real curb-stomp dynamics (gunpowder vs spears, conquistadors
+// vs Aztecs). techGap > 0 means attacker is more advanced.
+let atkCost=60,defCost=30;
+if(from>=0){
+  const aK=ter.tribeKnowledge&&ter.tribeKnowledge[to]?ter.tribeKnowledge[to]:null;
+  const dK=ter.tribeKnowledge&&ter.tribeKnowledge[from]?ter.tribeKnowledge[from]:null;
+  if(aK&&dK){
+    const metGap=(aK.metallurgy||0)-(dK.metallurgy||0);
+    const milGap=(aK.military||0)-(dK.military||0);
+    const techGap=metGap+milGap*0.7;
+    if(techGap>0.15){
+      const k=Math.min(2.5,1+techGap*1.8);
+      atkCost=atkCost/k;       // attacker spends k× fewer troops
+      defCost=defCost*k;        // defender loses k× more troops
+    }
+  }
+}
+spendMilitary(ter,to,atkCost);
+if(from>=0)spendMilitary(ter,from,defCost);
 // Check if this tile was one of the defender's cities BEFORE we claim it
 const wasCity=from>=0&&isCityTile(ter,from,ti);
 claimTile(ter,ti,to);if(!nf[ti]){nf[ti]=1;nfl.push(ti);}
@@ -3263,6 +3374,12 @@ const ix2=i%tw,iy2=(i-ix2)/tw;
 if(tDistW(ix2,iy2,wx,wy,tw)<tDistW(ix2,iy2,cap.x,cap.y,tw))toTransfer.push(i);}}
 for(const ti of toTransfer)transferTile(ter,ti,sid);}}}}
 }
+// ── Encirclement: cut-off pockets get absorbed by surrounding enemy ──
+// Runs BEFORE the disconnected-component fragmentation pass so isolated
+// pockets are absorbed (realistic) rather than spawning new tribes
+// (unrealistic — cut-off threads don't declare independence, they get
+// conquered by whoever cut them).
+if(ter.stepCount%8===0){checkEncirclement(ter);}
 // ── Fragmentation: split disconnected tribe components (largest keeps original ID/color) ──
 if(ter.stepCount%16===0){if(!ter._fragMark)ter._fragMark=new Int32Array(tw*th);const mark=ter._fragMark;let gen=ter._fragGen||0;
 for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=1)continue;
