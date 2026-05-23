@@ -1174,7 +1174,8 @@ try{
 const{tw,th,tElev,tDiff,tCoast,owner,tribeSizes,cityPop,bgPop}=ter;
 if(!ter.transportCost)ter.transportCost=new Float32Array(tw*th);
 if(!ter.transportOwner)ter.transportOwner=new Int16Array(tw*th);// which city feeds this tile
-const cost=ter.transportCost;const tOwner=ter.transportOwner;
+if(!ter._transVisited)ter._transVisited=new Uint8Array(tw*th);
+const cost=ter.transportCost;const tOwner=ter.transportOwner;const visited=ter._transVisited;
 const riverMag=ter.rivers?ter.rivers.riverMag:null;
 const n=ter.tribeCenters.length;
 // Only reset owned tiles (not all 1.84M) — saves ~5ms of memset per call
@@ -1182,7 +1183,7 @@ for(let tid=0;tid<n;tid++){
 if(tribeSizes[tid]<=0)continue;
 const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
 if(!ts)continue;
-for(const ti of ts){cost[ti]=999;tOwner[ti]=-1;}}
+for(const ti of ts){cost[ti]=999;tOwner[ti]=-1;visited[ti]=0;}}
 
 // Per-tribe transport tech: construction reduces cost, navigation enables sea routes
 const tribeCn=new Float32Array(n);
@@ -1215,57 +1216,63 @@ const roadReduction=cn*0.5;// construction halves cost at max
 const industrialReduction=Math.max(0,ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].metallurgy-0.75:0)*3;// rail
 return Math.max(0.2,base*(1-roadReduction)-industrialReduction);}
 
-// Priority queue (binary heap — reuse cached arrays)
+// Priority queue (binary heap — reuse cached arrays).
+// heapPop writes the popped value into module-scope scratch (no per-call
+// object allocation — 30k+ allocs per Dijkstra was the GC hot spot).
 if(!ter._heapTi){ter._heapTi=new Int32Array(tw*th);ter._heapCost=new Float32Array(tw*th);}
 const heapTi=ter._heapTi;const heapCost=ter._heapCost;let heapSize=0;
 const HEAP_MAX=heapTi.length;
+let _popTi=0,_popCost=0;
 function heapPush(ti2,c){
-if(heapSize>=HEAP_MAX)return;// overflow guard
+if(heapSize>=HEAP_MAX)return;
 let i=heapSize++;heapTi[i]=ti2;heapCost[i]=c;
 while(i>0){const p=(i-1)>>1;if(heapCost[p]<=heapCost[i])break;
 const tt=heapTi[p],tc=heapCost[p];heapTi[p]=heapTi[i];heapCost[p]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=p;}}
 function heapPop(){
-const ti2=heapTi[0],c=heapCost[0];heapSize--;
+_popTi=heapTi[0];_popCost=heapCost[0];heapSize--;
 if(heapSize>0){heapTi[0]=heapTi[heapSize];heapCost[0]=heapCost[heapSize];
 let i=0;while(true){const l=2*i+1,r=2*i+2;let s=i;
 if(l<heapSize&&heapCost[l]<heapCost[s])s=l;
 if(r<heapSize&&heapCost[r]<heapCost[s])s=r;
 if(s===i)break;
-const tt=heapTi[s],tc=heapCost[s];heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=s;}}
-return{ti:ti2,cost:c};}
+const tt=heapTi[s],tc=heapCost[s];heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=s;}}}
 
-// Seed: use tribeTiles to find city/market tiles (not full grid scan)
+// Seed: cities only (cityPop > 0.1). Trade-route water tiles were tried
+// as cheap-1 seeds too, but on big civs that flooded the heap with 1000s
+// of seeds (transport time spiked to seconds). Cities-only is bounded.
 for(let tid=0;tid<n;tid++){
 if(tribeSizes[tid]<=0)continue;
 const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
 if(!ts)continue;
 for(const ti of ts){
-if(cityPop&&cityPop[ti]>0.1){cost[ti]=0;tOwner[ti]=ti;heapPush(ti,0);}
-else if(bgPop[ti]>0.2&&(tCoast[ti]||(riverMag&&riverMag[ti]>=2))){
-if(cost[ti]>1){cost[ti]=1;tOwner[ti]=ti;heapPush(ti,1);}}}}
+if(cityPop&&cityPop[ti]>0.1){cost[ti]=0;tOwner[ti]=ti;heapPush(ti,0);}}}
 
 // Dijkstra: expand from cities through OWNED territory only
 const DX4=[-1,1,0,0];const DY4=[0,0,-1,1];
+// Standard Dijkstra with visited[] — once popped, never re-process.
+// Without visited[], a multi-source run thrashed (15M pushes for 50k tiles)
+// because every cheaper-path improvement re-pushed the tile.
 while(heapSize>0){
-const{ti:ci,cost:cc}=heapPop();
-if(cc>cost[ci])continue;// stale entry
-if(cc>100)continue;// don't explore beyond reasonable transport range
+heapPop();const ci=_popTi,cc=_popCost;
+if(visited[ci])continue;
+visited[ci]=1;
+if(cc>100)continue;
 const cx=ci%tw,cy=(ci-cx)/tw;
 const ow=owner[ci];
-if(ow<0)continue;// skip unowned tiles entirely
+if(ow<0)continue;
 const cn=tribeCn[ow];
 const nv=tribeNv[ow];
+const src=tOwner[ci];
 for(let d=0;d<4;d++){
 const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
 if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;
-// Only traverse own territory (skip ocean, skip enemy territory)
-const nOw=owner[ni];
-if(nOw!==ow)continue;// only traverse own territory
+if(visited[ni])continue;
+if(owner[ni]!==ow)continue;
 const moveCost=tileCost(ni,cn,nv,ow);
 const newCost=cc+moveCost;
 if(newCost<cost[ni]){
-cost[ni]=newCost;tOwner[ni]=tOwner[ci];// inherit source city
+cost[ni]=newCost;tOwner[ni]=src;
 heapPush(ni,newCost);}}}
 
 // ── Per-tribe transport stats ──
@@ -1399,7 +1406,11 @@ if(farmCap>0.001&&bp<farmCap)bgPop[ti]=bp+bp*tribeGrowth[ow]*(1-bp/farmCap);}
 // Urbanization: cities form for geographic reasons, grow from food surplus
 const surplus=ter._tribeFoodSurplus[ow]||0;
 const mxCity=tribeMaxCity[ow];
-const tCostHere=hasTrans?tCost[ti]:10;
+// Use real transport cost where Dijkstra reached this tile; fall back
+// to the uniform value (10) for isolated tiles and pre-city tribes so
+// new tribes can still seed their first city.
+const _raw=hasTrans?tCost[ti]:999;
+const tCostHere=(_raw>=500)?10:_raw;
 const transportFactor=1/(1+tCostHere*0.1);
 const localMaxCity=mxCity*transportFactor;
 
@@ -2015,9 +2026,14 @@ console.log(`[SIM ${ter.stepCount}] tribes:${nTribes} frontier:${fl} maxTribeSz:
 const _prof=ter.stepCount%64===0;const _ts=_prof?[performance.now()]:null;
 // ── Knowledge & population step (every 16 ticks — was 8, reduced for performance) ──
 if(ter.stepCount%16===0&&ter.tribeKnowledge){
-// Transport network: DISABLED — Dijkstra too expensive even on owned tiles
-// (2.6s at step 128 with 8K tiles due to heap operations on 1.84M typed array)
-// if(ter.stepCount%32===0&&ter.settled>0){...computeTransport...}
+// Transport network — Dijkstra from cities through owned tiles. Re-enabled
+// in phase 2c (audit #1). Run every 32 ticks; expanded heap operates only
+// on owned tiles so cost scales with settled-tile count, not world size.
+const _tt0=performance.now();
+if(ter.stepCount%32===0&&ter.settled>0)computeTransport(ter);
+const _tt1=performance.now();
+if(_tt1-_tt0>15)console.warn(`[TRANSPORT] ${(_tt1-_tt0).toFixed(1)}ms`);
+ter._dbgTimeTransport=(_tt1-_tt0).toFixed(1);
 const _t0=performance.now();
 stepBackgroundPop(ter);
 const _t1=performance.now();
