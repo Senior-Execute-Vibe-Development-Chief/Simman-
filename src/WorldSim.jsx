@@ -3613,20 +3613,19 @@ const ter=terRef.current;
 let tribeInfo=null;
 if(ter&&terTi>=0&&ter.owner[terTi]>=0){
 const ow2=ter.owner[terTi];
-const k=ter.tribeKnowledge&&ter.tribeKnowledge[ow2]?ter.tribeKnowledge[ow2]:null;
-const pop2=ter.tribePopulation?ter.tribePopulation[ow2]:0;
-const bud2=ter.tribeBudget&&ter.tribeBudget[ow2]?ter.tribeBudget[ow2]:null;
+const them=ter.tribes?.[ow2];
+if(them&&them.alive){
+const k=them.knowledge||null;
+const bud2=them.budget||null;
 // Compute relationship with selected tribe if any
 const selT=selectedTribe;
 let relation='';
-if(selT>=0&&selT!==ow2&&ter.tribeSizes[selT]>0)relation=tribeRelation(ter,selT,ow2);
-const stCounts2=ter._settleCounts&&ter._settleCounts[ow2]?ter._settleCounts[ow2]:{villages:0,towns:0,cities:0,large:0};
-const ports2=ter.tribePorts&&ter.tribePorts[ow2]?ter.tribePorts[ow2].length:0;
-const kc2=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[ow2]?ter.tribeKnownCoasts[ow2].length:0;
-tribeInfo={id:ow2,size:ter.tribeSizes[ow2],pop:Math.round(pop2),
+const meSel=selT>=0?ter.tribes?.[selT]:null;
+if(meSel&&meSel.alive&&selT!==ow2)relation=tribeRelation(ter,selT,ow2);
+tribeInfo={id:ow2,size:them.size,pop:Math.round(them.pop),
 knowledge:k?{ag:k.agriculture,mt:k.metallurgy,nv:k.navigation,cn:k.construction,og:k.organization,tr:k.trade}:null,
-personality:bud2?bud2.personality:"",budget:bud2?{mil:bud2.military,gro:bud2.growth,com:bud2.commerce,exp:bud2.exploration,sur:bud2.survival}:null,
-relation,settlements:stCounts2,ports:ports2,knownCoasts:kc2};}
+personality:them.personality,budget:bud2?{mil:bud2.military,gro:bud2.growth,com:bud2.commerce,exp:bud2.exploration,sur:bud2.survival}:null,
+relation,settlements:them.settleCounts,ports:them.ports.length,knownCoasts:them.knownCoasts.length};}}
 setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,tribeInfo});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
@@ -3638,7 +3637,7 @@ const wx=Math.floor(sx),wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const ter=terRef.current;if(!ter)return;
 const ttx=Math.min(ter.tw-1,(wx/RES)|0),tty=Math.min(ter.th-1,(wy/RES)|0);
 const tileOwner=ter.owner[tty*ter.tw+ttx];
-if(tileOwner>=0&&ter.tribeSizes[tileOwner]>0){
+if(tileOwner>=0&&ter.tribes?.[tileOwner]?.alive){
 setSelectedTribe(tileOwner);ter._selectedTribe=tileOwner;
 setRightPanel("tribes");draw(ter);
 }else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}
@@ -3651,9 +3650,9 @@ const _ter=terRef.current;
 const _step=_ter?_ter.stepCount:0;
 const _ys=yearStr(_step);
 let _aAg=0,_aMt=0,_aNv=0,_aOg=0,_aliveK=0;
-if(_ter&&_ter.tribeKnowledge){
-  for(let i=0;i<_ter.tribeKnowledge.length;i++){
-    if(_ter.tribeSizes[i]<=0)continue;_aliveK++;const _k=_ter.tribeKnowledge[i];
+if(_ter&&_ter.tribes){
+  for(const t of _ter.tribes){
+    if(!t.alive||!t.knowledge)continue;_aliveK++;const _k=t.knowledge;
     _aAg+=_k.agriculture;_aMt+=_k.metallurgy;_aNv+=_k.navigation;_aOg+=_k.organization;}
   if(_aliveK>0){_aAg/=_aliveK;_aMt/=_aliveK;_aNv/=_aliveK;_aOg/=_aliveK;}}
 const _era=deriveEra(_aAg,_aMt,_aNv,_aOg);
@@ -3816,17 +3815,18 @@ return(
 {/* ─── Floating tribe card ─── */}
 {(()=>{
   const ter=terRef.current;
-  if(selectedTribe<0||!ter||ter.tribeSizes[selectedTribe]<=0)return null;
+  const me=ter?.tribes?.[selectedTribe];
+  if(!me||!me.alive)return null;
   const sel=selectedTribe;
-  const size=ter.tribeSizes[sel];
-  const pop=ter.tribePopulation?ter.tribePopulation[sel]:0;
+  const size=me.size;
+  const pop=me.pop;
   const power=tribePower(ter,sel);
-  const bud=ter.tribeBudget&&ter.tribeBudget[sel]?ter.tribeBudget[sel]:null;
-  const k=ter.tribeKnowledge&&ter.tribeKnowledge[sel]?ter.tribeKnowledge[sel]:null;
-  const stC=ter._settleCounts&&ter._settleCounts[sel]?ter._settleCounts[sel]:{villages:0,towns:0,cities:0,large:0};
-  const ports=ter.tribePorts&&ter.tribePorts[sel]?ter.tribePorts[sel].length:0;
-  const knownCoasts=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[sel]?ter.tribeKnownCoasts[sel].length:0;
-  const td=ter.tradeData&&ter.tradeData[sel]?ter.tradeData[sel]:null;
+  const bud=me.budget||null;
+  const k=me.knowledge||null;
+  const stC=me.settleCounts;
+  const ports=me.ports.length;
+  const knownCoasts=me.knownCoasts.length;
+  const td=me.trade||null;
   const [tr,tg,tb]=tribeRGB(sel);
   return(
     <div className="au-parchment au-elev au-tribe-card"
@@ -3930,13 +3930,13 @@ return(
         const allRels=[];const seen=new Set();
         if(ter._borderContacts&&ter._borderContacts[sel]){
           for(const nid in ter._borderContacts[sel]){const n=parseInt(nid);
-            if(ter.tribeSizes[n]<=0)continue;seen.add(n);
-            allRels.push({id:n,size:ter.tribeSizes[n],rel:tribeRelation(ter,sel,n),via:'border'});}}
-        if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[sel]){
-          for(const kc of ter.tribeKnownCoasts[sel]){
-            if(kc.owner>=0&&!seen.has(kc.owner)&&ter.tribeSizes[kc.owner]>0){
-              seen.add(kc.owner);
-              allRels.push({id:kc.owner,size:ter.tribeSizes[kc.owner],rel:tribeRelation(ter,sel,kc.owner),via:'maritime'});}}}
+            const tn=ter.tribes[n];if(!tn||!tn.alive)continue;seen.add(n);
+            allRels.push({id:n,size:tn.size,rel:tribeRelation(ter,sel,n),via:'border'});}}
+        for(const kc of me.knownCoasts){
+          if(kc.owner>=0&&!seen.has(kc.owner)){
+            const tk=ter.tribes[kc.owner];if(!tk||!tk.alive)continue;
+            seen.add(kc.owner);
+            allRels.push({id:kc.owner,size:tk.size,rel:tribeRelation(ter,sel,kc.owner),via:'maritime'});}}
         allRels.sort((a,b)=>b.size-a.size);
         if(!allRels.length)return<div className="au-fade" style={{textAlign:"center",fontStyle:"italic",padding:"12px 0"}}>no known nations</div>;
         const relCol={fight:"#9a3030",trade:"#a07028",friendly:"#3a6a48",neutral:"#6b4f37"};
@@ -3945,7 +3945,7 @@ return(
           <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>{allRels.length} known nation{allRels.length===1?"":"s"}</div>
           <div style={{maxHeight:180,overflowY:"auto"}} className="au-scroll">
           {allRels.slice(0,14).map(n=>{
-            const pers=ter.tribeBudget&&ter.tribeBudget[n.id]?ter.tribeBudget[n.id].personality:"";
+            const pers=ter.tribes[n.id]?.personality||"";
             return<div key={n.id} style={{display:"flex",alignItems:"center",gap:7,padding:"3px 4px",fontSize:11,cursor:"pointer",
               background:n.rel==="fight"?"rgba(154,48,48,0.10)":n.rel==="trade"?"rgba(160,112,40,0.10)":"transparent",
               borderRadius:2,marginBottom:1}}
@@ -3991,10 +3991,9 @@ return(
       </div>
       {showTribeList&&(()=>{
         const tribes=[];
-        for(let i=0;i<ter.tribeSizes.length;i++){if(ter.tribeSizes[i]<=0)continue;
-          tribes.push({id:i,size:ter.tribeSizes[i],power:tribePower(ter,i),
-            pop:ter.tribePopulation?ter.tribePopulation[i]:0,
-            personality:ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].personality:""});}
+        for(const tx of ter.tribes){if(!tx.alive)continue;
+          tribes.push({id:tx.id,size:tx.size,power:tribePower(ter,tx.id),
+            pop:tx.pop,personality:tx.personality});}
         tribes.sort((a,b)=>b.power-a.power);
         return<div style={{maxHeight:130,overflowY:"auto",marginTop:2}} className="au-scroll">
           {tribes.map(t=>{const isSel=t.id===sel;
