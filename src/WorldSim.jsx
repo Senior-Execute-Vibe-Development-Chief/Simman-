@@ -13,6 +13,7 @@ import { generateResources, tileResourceSummary, dominantResource, RESOURCES, RE
 import { computeRivers, riverName, RIVER_NAMES, RIVER_NONE, RIVER_STREAM, RIVER_TRIBUTARY, RIVER_MAJOR, RIVER_GREAT } from "./riverGen.js";
 import { ensureTribeViews, attachRegistries } from "./tribeModel.js";
 import { runTribeStep, resetInvariantState } from "./tribeStep.js";
+import { tribePower, localPower, tribeOreAccess, tDistW, expFalloff } from "./tribePower.js";
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
@@ -975,14 +976,6 @@ const no=owner[ny*tw+nx];if(no>=0&&no!==ow){contacts[ow][no]=(contacts[ow][no]||
 return contacts;}
 
 // Ore access multiplier for metallurgy combat effect
-function tribeOreAccess(tRes,metallurgy){
-let access=0;
-if(tRes.copper>0.5)access=Math.max(access,0.4);
-if(tRes.copper>0.5&&tRes.tin>0.5)access=Math.max(access,0.8);
-if(tRes.iron>0.5)access=Math.max(access,1.0);
-if(tRes.iron>0.5&&tRes.coal>0.5)access=Math.max(access,1.3);
-return access*metallurgy;}
-
 // Main knowledge step: discovery + diffusion. Called every 8 sim steps.
 function stepKnowledge(ter){try{
 const{tw,th,owner,tribeCenters,tribeSizes,tribeStrength,tFert,tCoast,tenure}=ter;
@@ -1948,11 +1941,6 @@ tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudg
 tribeTiles,frontier,frontierList,_landTiles,_coastalTiles,_nfBuf,_youngTiles:[],
 landCount:lc,settled:tribeSizes.length,tribeCount:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
 
-function tDistW(x1,y1,x2,y2,tw){let dx=Math.abs(x1-x2);if(dx>tw/2)dx=tw-dx;return Math.sqrt(dx*dx+(y1-y2)*(y1-y2));}
-// Precomputed exp(-d*d/280) lookup table — eliminates Math.exp in hot loops
-const EXP_LUT_SIZE=80;const EXP_LUT=new Float32Array(EXP_LUT_SIZE+1);
-for(let d=0;d<=EXP_LUT_SIZE;d++)EXP_LUT[d]=Math.exp(-d*d/280);
-function expFalloff(d){const di=d<0?0:d>EXP_LUT_SIZE?EXP_LUT_SIZE:d;const lo=di|0;if(lo>=EXP_LUT_SIZE)return EXP_LUT[EXP_LUT_SIZE];const hi=lo+1;const f=di-lo;return EXP_LUT[lo]*(1-f)+EXP_LUT[hi]*f;}
 // Distance from (x,y) to nearest center of a tribe; also returns the capital (index 0) distance
 function nearestCenterDist(centers,x,y,tw){if(!centers||centers.length===0)return{min:0,cap:0};
 let mn=Infinity;const cap=tDistW(x,y,centers[0].x,centers[0].y,tw);
@@ -1973,50 +1961,6 @@ for(let dy=-R;dy<=R;dy++){const ny=cy+dy;if(ny<0||ny>=th)continue;
 for(let dx=-R;dx<=R;dx++){const nx=((cx+dx)%tw+tw)%tw;const ni=ny*tw+nx;
 if(owner[ni]===tribeId){const d=tDistW(cx,cy,nx,ny,tw);if(d<=R)sum+=tFert[ni];}}}return sum;}
 
-function tribePower(ter,id){
-// Power = population × military tech × organization × military investment × trade wealth
-const sz=ter.tribeSizes[id];if(sz<=0)return 0;
-const pop=ter.tribePopulation&&ter.tribePopulation[id]?ter.tribePopulation[id]:ter.tribeStrength[id]*10;
-const k=ter.tribeKnowledge&&ter.tribeKnowledge[id]?ter.tribeKnowledge[id]:null;
-const org=k?k.organization:0;
-const logThreshold=40+org*260;
-const logistics=1/(1+Math.max(0,sz-logThreshold)*0.015);
-// Military tech from metallurgy + ore
-let milTech=1;
-if(k&&ter._resCache&&ter._resCache[id]){milTech=1+tribeOreAccess(ter._resCache[id],k.metallurgy)*1.5;}
-// Budget: military investment amplifies power
-const milB=ter.tribeBudget&&ter.tribeBudget[id]?ter.tribeBudget[id].military:0.2;
-const milFocus=0.5+milB*2.5;
-// Trade wealth adds soft power
-const tradeWealth=k?1+k.trade*0.3:1;
-// Wealth amplifies power (rich nations hire mercenaries, buy allies, fund wars)
-const wealthBonus=ter.tribeBudget&&ter.tribeBudget[id]?1+Math.min(0.5,ter.tribeBudget[id].wealth*0.001):1;
-return pop*0.01*milTech*logistics*milFocus*tradeWealth*wealthBonus;
-}
-// Local power projection at a border tile: sum contributions from nearby centers.
-// Only considers centers within range 40 (beyond that, expFalloff is ~0).
-function localPower(ter,tribeId,tx,ty){
-const pop=ter.tribeStrength[tribeId],sz=ter.tribeSizes[tribeId];if(sz<=0)return 0;
-const centers=ter.tribeCenters[tribeId];if(!centers||centers.length===0)return pop*0.05;
-let total=0;
-// Limit scan: first 30 centers (sorted by pop = largest cities) contribute most
-const limit=Math.min(centers.length,30);
-for(let ci=0;ci<limit;ci++){const c=centers[ci];
-const d=tDistW(tx,ty,c.x,c.y,ter.tw);
-if(d>40)continue;// beyond expFalloff range
-total+=expFalloff(d)*c.prestige;}
-// Base influence without centers is very low (3% of pop)
-let base=pop*(0.03+0.97*Math.min(1,total));
-// Metallurgy + ore access multiplies combat effectiveness
-if(ter.tribeKnowledge&&ter.tribeKnowledge[tribeId]&&ter._resCache&&ter._resCache[tribeId]){
-const met=ter.tribeKnowledge[tribeId].metallurgy;
-const ore=tribeOreAccess(ter._resCache[tribeId],met);
-base*=(1+ore*1.5);}
-// Military budget multiplier: Sparta (mil=0.5) hits 50% harder than a balanced tribe
-const milB=ter.tribeBudget&&ter.tribeBudget[tribeId]?ter.tribeBudget[tribeId].military:0.2;
-base*=(0.5+milB*2.5);// mil=0.1→0.75x, mil=0.2→1.0x, mil=0.4→1.5x, mil=0.5→1.75x
-return base;
-}
 function newTribe(ter,x,y,parentId){const id=ter.tribeCenters.length;ter.tribeCenters.push([{x,y,prestige:1.0,founded:ter.stepCount}]);ter.tribeSizes.push(0);ter.tribeStrength.push(0);
 if(ter.tribeTiles)ter.tribeTiles.push(new Set());
 // Inherit knowledge from parent tribe (splits carry culture); new independent tribes start at zero
