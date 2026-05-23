@@ -2372,9 +2372,9 @@ const lpA=localPower(ter,ow,tx2,ty2);// only computed for border tiles
 // Defender advantage: 3x base + tenure + terrain + construction knowledge
 const defConst=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].construction:0;
 const defMilB=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].military:0.2;
-// Terrain still matters but capped so even mountain kingdoms can fall.
-// Base 1.5 (was 3) so realistic conquest is achievable with a power edge.
-let def=1.5+Math.min(1.5,tenure[i]*0.008)+Math.min(4,tDiff[i]*tDiff[i]*15)+defConst*3.0+defMilB*2.0;
+// Defender bonus stack — tuned so totalDef lands ~2-4 for typical settled tiles
+// instead of 8-12. Mountain fortresses still defend well via terrain cap.
+let def=1.0+Math.min(0.8,tenure[i]*0.005)+Math.min(2.0,tDiff[i]*tDiff[i]*8)+defConst*1.5+defMilB*1.5;
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<16)continue;
 // Avoid attacking tribes that are much larger (>3x your size)
@@ -2392,14 +2392,19 @@ const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
 const totalDef=def;
 // Recently flipped tiles (tenure < 5) can't flip again — prevents ping-pong
 if(tenure[i]<5)continue;
-if(lpB>lpA*totalDef){const diff=Math.max(tDiff[i],tDiff[ni]);const pressure=(lpB/(lpA*totalDef)-1)*0.2*atkAggression;
+// Probabilistic flip: ratio of attacker:defender drives chance, no hard gate.
+// At ratio=1.0 (parity) → small flip chance; ratio>>1 → near-certain attempt.
+// Below 0.5 ratio the attempt is hopeless (no roll). This lets close
+// matched fights actually decide territory instead of permanent stalemate.
+const ratio=lpB/Math.max(0.001,lpA*totalDef);
+if(ratio>0.35){const diff=Math.max(tDiff[i],tDiff[ni]);
+const pressure=Math.min(1.2,Math.max(0,ratio-0.35))*0.4*atkAggression;
 const prize=(0.5+tFert[i]*1.5)*(atkSz>60?1+Math.min(0.5,(atkSz-60)*0.005):1);
-if(Math.random()<Math.max(0.005,pressure*prize*(1-diff*0.7))){flips.push([i,no]);break;}}
-else if(lpB>lpA*totalDef*0.5&&Math.random()<0.1){
-// Failed attack cost: only when attacker was a credible threat (>50% of needed power)
-// and only 10% of the time, not every tick
+if(Math.random()<Math.max(0.003,pressure*prize*(1-diff*0.7))){flips.push([i,no]);break;}
+if(ratio<1.0&&Math.random()<0.1){
+// Failed/abortive attack still costs the attacker some strength
 const attemptCost=tFert[i]*0.04*atkAggression;
-tribeStrength[no]=Math.max(0.1,tribeStrength[no]-attemptCost);}}}
+tribeStrength[no]=Math.max(0.1,tribeStrength[no]-attemptCost);}}}}
 // Apply flips with attack cost
 // Track recent conflicts for relationship display
 if(!ter._recentConflicts)ter._recentConflicts={};
