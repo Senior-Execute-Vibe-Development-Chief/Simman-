@@ -983,7 +983,14 @@ function militaryCap(ter,id){
   const k=ter.tribeKnowledge&&ter.tribeKnowledge[id];
   const org=k?k.organization:0;
   const met=k?k.metallurgy:0;
-  return pop*milB*(1+org*0.5+met*0.3);
+  const mil=k?(k.military||0):0;
+  // Tech multipliers widen the cap dramatically. A maxed Imperial-age
+  // tribe sustains ~4x the troops of a Stone-age tribe at equal pop:
+  //   stone (org=0.1,met=0.1,mil=0.1)  ≈ 1.3x base
+  //   bronze (org=0.4,met=0.3,mil=0.2) ≈ 1.95x base
+  //   iron   (org=0.6,met=0.6,mil=0.5) ≈ 2.95x base
+  //   imp    (org=0.8,met=0.85,mil=0.7) ≈ 3.92x base
+  return pop*milB*(1+org*1.5+met*0.5+mil*1.0);
 }
 function militaryReadiness(ter,id){
   if(!ter.tribeMilitary)return 0.5;
@@ -2378,9 +2385,11 @@ function launchInvasion(ter,attacker,defender){
   const initialForce=force;
   const aK=ter.tribeKnowledge&&ter.tribeKnowledge[attacker]?ter.tribeKnowledge[attacker]:null;
   // Tech multiplier: more efficient armies get more reach per troop.
-  // This applies to the *cost*, not the troop count, so a 1000-troop
-  // iron-age force pushes deeper than a 1000-troop bronze-age force.
-  const techEfficiency=aK?(1+aK.metallurgy*0.5+(aK.military||0)*0.4):1;
+  // Iron-age force pushes ~2x deeper per troop than stone-age.
+  // Imperial-age with horses pushes ~3x deeper.
+  const aHorses=ter._resCache&&ter._resCache[attacker]?(ter._resCache[attacker].horses||0):0;
+  const cavalryBonus=aHorses>0.5?(1+Math.min(0.6,aHorses*0.15)):1;
+  const techEfficiency=(aK?(1+aK.metallurgy*1.4+(aK.military||0)*1.0):1)*cavalryBonus;
   const ac=bestPair.ac,dc=bestPair.dc;
   // ── Bresenham-ish march from attacker city toward defender city
   // Find the *frontier* tile on the attacker's side that's furthest in
@@ -2393,7 +2402,9 @@ function launchInvasion(ter,attacker,defender){
   // start consuming force on defender territory, stop on third-party.
   const captured=[];
   let cx=ac.x,cy=ac.y;
-  const maxSteps=Math.min(40,Math.floor(dist*1.5)+8);
+  // Cavalry armies march further. Tech improves logistics.
+  const reachMult=cavalryBonus*(aK?(1+(aK.organization||0)*0.5):1);
+  const maxSteps=Math.min(80,Math.floor((dist*1.5+10)*reachMult));
   for(let s=0;s<maxSteps;s++){
     cx+=ux;cy+=uy;
     const ix=((Math.round(cx)%tw)+tw)%tw;const iy=Math.round(cy);
@@ -3039,7 +3050,23 @@ let lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
 // Campaign momentum: armies concentrate at recent breaches
 const mom=ter._campaign[no]?(ter._campaign[no][i]||0):0;
 if(mom>0)lpB*=(1+mom*1.2);// up to 2.2x at full momentum
-const totalDef=def;
+// Tech-gap defence penalty: when the attacker is multiple eras ahead,
+// the defender's terrain/construction/militancy bonuses just don't
+// matter as much. Roman walls vs Mongol siege, Aztec spears vs
+// Spanish steel. Cap the reduction so defenders aren't *zero* def.
+let totalDef=def;
+const aK=ter.tribeKnowledge&&ter.tribeKnowledge[no]?ter.tribeKnowledge[no]:null;
+const dK=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
+if(aK&&dK){
+  const metGap=(aK.metallurgy||0)-(dK.metallurgy||0);
+  if(metGap>0.2)totalDef*=Math.max(0.25,1-metGap*1.1);
+  const milGap=(aK.military||0)-(dK.military||0);
+  if(milGap>0.2)totalDef*=Math.max(0.4,1-milGap*0.8);
+  // Cavalry vs no-cavalry: defender's bonuses get partially bypassed
+  const aHorses=ter._resCache&&ter._resCache[no]?(ter._resCache[no].horses||0):0;
+  const dHorses=ter._resCache&&ter._resCache[ow]?(ter._resCache[ow].horses||0):0;
+  if(aHorses>1&&dHorses<0.5)totalDef*=0.7;
+}
 // Recently flipped tiles can't flip again — prevents ping-pong. Wartime
 // flips get a longer protection window (the new owner garrisons the tile
 // and the defender can't immediately retake it).

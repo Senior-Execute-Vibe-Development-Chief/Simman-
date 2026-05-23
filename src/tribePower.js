@@ -179,12 +179,25 @@ export function localPower(ter, tribeId, tx, ty) {
 
   let base = pop * (0.03 + 0.97 * Math.min(1, total));
 
-  // Metallurgy + ore access multiplies combat effectiveness
+  // Metallurgy + ore access multiplies combat effectiveness.
+  // Wide range so an Iron Age power genuinely crushes a Stone Age one
+  // (not just slightly outperforms them). A maxed Iron Age tribe with
+  // ore + military doctrine + horses can hit ~6x combat strength of a
+  // Stone Age tribe with no ore — the conquistador/Zulu pattern.
   if (ter.tribeKnowledge && ter.tribeKnowledge[tribeId]
       && ter._resCache && ter._resCache[tribeId]) {
-    const met = ter.tribeKnowledge[tribeId].metallurgy;
+    const k = ter.tribeKnowledge[tribeId];
+    const met = k.metallurgy;
+    const mil = k.military || 0;
     const ore = tribeOreAccess(ter._resCache[tribeId], met);
-    base *= (1 + ore * 1.5);
+    // Bronze age (met~0.3) with ore: ~1.6x
+    // Iron age (met~0.6) with ore: ~2.8x
+    // Industrial (met~0.85) with ore + doctrine: ~4.5x
+    base *= (1 + ore * 3.0) * (1 + mil * 1.5);
+    // Cavalry: horses give mobility/shock bonus. Capped — having more
+    // than ~3 horse tiles diminishes (you only field so much cavalry).
+    const horses = ter._resCache[tribeId].horses || 0;
+    if (horses > 0) base *= (1 + Math.min(0.6, horses * 0.15));
   }
 
   // Military budget multiplier
