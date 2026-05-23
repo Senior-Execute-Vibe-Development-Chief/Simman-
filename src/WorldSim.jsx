@@ -1552,6 +1552,52 @@ for(const ti of ts2){const c=cost[ti];if(c>=999)continue;
 ts.connected++;ts.avgCost+=c;if(c>ts.maxCost)ts.maxCost=c;}}
 for(let i=0;i<n;i++){const ts=ter._tribeTransport[i];
 if(ts.connected>0)ts.avgCost/=ts.connected;}
+
+// ── Second pass: capital-only transport cost ──
+// Same Dijkstra but seeded ONLY from each tribe's capital (centers[0]).
+// Used by the transport overlay to visualise reach from the seat of
+// power. Distinct from `transportCost` (which seeds all cities) — that
+// one drives food catchment, trade, etc., where secondary cities
+// legitimately count.
+if(!ter.transportFromCap||ter.transportFromCap.length<tw*th)ter.transportFromCap=new Float32Array(tw*th);
+const costCap=ter.transportFromCap;
+// Reset (only owned tiles, same trick as the main pass)
+for(let tid=0;tid<n;tid++){
+  if(tribeSizes[tid]<=0)continue;
+  const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
+  if(!ts)continue;
+  for(const ti of ts){costCap[ti]=999;visited[ti]=0;}
+}
+heapSize=0;
+// Seed from capitals only
+for(let tid=0;tid<n;tid++){
+  if(tribeSizes[tid]<=0)continue;
+  const centers=ter.tribeCenters[tid];if(!centers||centers.length===0)continue;
+  const cap=centers[0];const capTi=cap.y*tw+cap.x;
+  if(capTi>=0&&capTi<tw*th&&owner[capTi]===tid){costCap[capTi]=0;heapPush(capTi,0);}
+}
+while(heapSize>0){
+  heapPop();const ci=_popTi,cc=_popCost;
+  if(visited[ci])continue;
+  visited[ci]=1;
+  if(cc>200)continue;// allow deeper reach so distant tiles still get a cost
+  const cx=ci%tw,cy=(ci-cx)/tw;
+  const ow=owner[ci];
+  if(ow<0)continue;
+  const cn=tribeCn[ow];
+  const nv=tribeNv[ow];
+  for(let d=0;d<4;d++){
+    const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
+    if(ny<0||ny>=th)continue;
+    const ni=ny*tw+nx;
+    if(visited[ni])continue;
+    if(owner[ni]!==ow)continue;
+    const moveCost=tileCost(ni,cn,nv,ow);
+    const newCost=cc+moveCost;
+    if(newCost<costCap[ni]){
+      costCap[ni]=newCost;
+      heapPush(ni,newCost);}}
+}
 }catch(e){console.error('[computeTransport CRASH]',e.message,'step:',ter.stepCount,'n:',ter.tribeCenters.length,'tw:',ter.tw,'th:',ter.th,'cityPop?:',!!ter.cityPop,'settled:',ter.settled);throw e;}
 }
 
@@ -3430,33 +3476,66 @@ const ABSORB_TIERS=[
 if(!ter._absorbStats)ter._absorbStats={annexed:0,lastStep:-1};
 for(let st=0;st<tribeSizes.length;st++){
   const sz=tribeSizes[st];
-  if(sz<=0||sz>300)continue;
-  let tier=null;
-  for(const t of ABSORB_TIERS){if(sz<=t.maxSize){tier=t;break;}}
-  if(!tier)continue;
+  if(sz<=0)continue;
   const stAge=ter.stepCount-(tribeCenters[st][0]?tribeCenters[st][0].founded:0);
-  if(stAge<tier.minAge)continue;
+  if(stAge<30)continue;// minimum age even for full-enclosure case
   const stTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
   if(!stTiles||stTiles.size===0)continue;
-  // Count shared-border tiles per candidate absorber. The natural absorber
-  // is the neighbour with the most contact area, not just the largest.
+  // Walk this tribe's tiles and tabulate (a) which neighbouring tribes
+  // share land borders, with counts; (b) whether the tribe has any
+  // open boundary (water, unowned land, or own-coast) — i.e. an escape
+  // route. Borders that touch only same-tribe or water count as
+  // "non-enclosing."
   const borderCount={};
+  let totalLandBorder=0;
   for(const i of stTiles){
     const ty2=Math.floor(i/tw),tx2=i%tw;
     for(const[dx,dy]of DIRS){
       const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;
       if(ny2<0||ny2>=th)continue;
       const ni=ny2*tw+nx2;
+      if(tElev[ni]<=sl)continue;// water — not a land border
       const no=owner[ni];
-      if(no<0||no===st||tElev[ni]<=sl)continue;
-      if(tribeSizes[no]<sz*tier.ratio)continue;// neighbour not large enough for this tier
-      borderCount[no]=(borderCount[no]||0)+1;
+      if(no===st)continue;// own tile
+      totalLandBorder++;
+      if(no>=0)borderCount[no]=(borderCount[no]||0)+1;
     }
   }
+  // ── Full-enclosure absorption ──
+  // If 100% of this tribe's LAND border touches a single neighbour
+  // (no unowned wilderness, no third tribe in contact), they're
+  // fully encompassed — the encloser annexes them outright, regardless
+  // of size or tier. Real-world precedent: enclaves like San Marino,
+  // Lesotho-style geography, or polities surrounded after losing all
+  // their external contact tend to become dependencies / get annexed.
+  const owners=Object.keys(borderCount);
+  if(owners.length===1&&totalLandBorder>0){
+    const enc=parseInt(owners[0]);
+    if(borderCount[enc]===totalLandBorder&&tribeSizes[enc]>0){
+      const tilesToClaim=[...stTiles];
+      for(const i of tilesToClaim)transferTile(ter,i,enc);
+      ter._absorbStats.annexed++;
+      ter._absorbStats.lastStep=ter.stepCount;
+      if(!ter._warEvents)ter._warEvents=[];
+      ter._warEvents.push({step:ter.stepCount,type:'enclosure-absorb',aggressor:enc,defender:st,tiles:tilesToClaim.length});
+      if(ter._warEvents.length>200)ter._warEvents.shift();
+      continue;
+    }
+  }
+  // ── Standard tiered absorption ──
+  if(sz>300)continue;
+  let tier=null;
+  for(const t of ABSORB_TIERS){if(sz<=t.maxSize){tier=t;break;}}
+  if(!tier)continue;
+  if(stAge<tier.minAge)continue;
+  // Filter to absorbers large enough for this tier
   let bn=-1,bestBorder=0;
-  for(const nid in borderCount){if(borderCount[nid]>bestBorder){bestBorder=borderCount[nid];bn=parseInt(nid);}}
+  for(const nid in borderCount){
+    const no=parseInt(nid);
+    if(tribeSizes[no]<sz*tier.ratio)continue;
+    if(borderCount[no]>bestBorder){bestBorder=borderCount[no];bn=no;}
+  }
   if(bn<0||bestBorder<2)continue;
-  // Peaceful absorption — transferTile preserves population.
   const tilesToClaim=[...stTiles];
   for(const i of tilesToClaim)transferTile(ter,i,bn);
   ter._absorbStats.annexed++;
@@ -4082,10 +4161,13 @@ const tr=(tc[ti*3]*landDim)|0,tg=(tc[ti*3+1]*landDim)|0,tb=(tc[ti*3+2]*landDim)|
 r=(r*heatW+tr*(1-heatW))|0;g=(g*heatW+tg*(1-heatW))|0;b=(b*heatW+tb*(1-heatW))|0;
 d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="transport"){
-// Transport cost heatmap: green(cheap/connected) → yellow → red(expensive) → black(unreachable)
+// Transport cost heatmap from each tribe's CAPITAL: green(cheap/close)
+// → yellow → red(expensive) → black(unreachable from capital).
+// Distinct from the food/trade `transportCost` field which counts any
+// city as a source; this one shows reach from the seat of power.
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
 const tc=terrainCache.current;const ptw=ter.tw,pth=ter.th;
-const trc=ter.transportCost;
+const trc=ter.transportFromCap||ter.transportCost;
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty2=(ti/CW)|0;
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty2,CH,H))),si=sy*W+sx;
 const e=w.elevation[si];const pi4=ti<<2;
