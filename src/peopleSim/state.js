@@ -11,12 +11,34 @@ const TILE_RES = 2;
 // Target entity caps — keep the world feeling intimate. The user picked
 // "Intimate (~50 entities)" as the scale ceiling. Bands cap higher than
 // settlements because many bands consolidate into fewer settlements.
+// Increased bands cap so a single cradle-band can split many generations
+// before hitting the wall.
 const CAP = {
-  bands: 60,
+  bands: 80,
   settlements: 50,
   caravans: 40,
   armies: 20,
 };
+
+// Robust "is this tile a continental land cell" check — used by both
+// the cradle finder and wander target selection so the two stay in sync.
+// Excludes 1-tile islets and pixels where the elevation downsample
+// happens to land just above 0.
+function isContinentalLand(world, ti) {
+  const { tw, th, elev } = world;
+  if (elev[ti] <= 0.005) return false;
+  const ty = (ti / tw) | 0;
+  if (ty <= 0 || ty >= th - 1) return false;
+  const tx = ti - ty * tw;
+  // Need at least 2 of 4 neighbours also above sea level.
+  let n = 0;
+  if (elev[ti - 1]  > 0) n++;
+  if (elev[ti + 1]  > 0) n++;
+  if (elev[ti - tw] > 0) n++;
+  if (elev[ti + tw] > 0) n++;
+  return n >= 2;
+}
+export { isContinentalLand };
 
 export function createWorld(w, opts = {}) {
   const tw = Math.ceil(w.width / TILE_RES);
@@ -60,7 +82,7 @@ export function createWorld(w, opts = {}) {
 
   initTerrain(world, w);
   initRiverMag(world, w);
-  seedInitialBands(world, opts.initialBands || 12);
+  seedCradleBand(world);
   return world;
 }
 
@@ -108,30 +130,59 @@ function initRiverMag(world, w) {
   world.riverMag = rm;
 }
 
-// Place initial hunter-gatherer bands at decent-quality land tiles,
-// spread across the map.
-function seedInitialBands(world, count) {
+// Cradle of humankind: scan the whole map, pick the single best site
+// for the founding band. Mirrors the East African Rift conditions —
+// warm but not roasting, modest moisture, low elevation, fertile soil,
+// with bonus for nearby water (river or coast).
+//
+// One band, ~10 people. Everything else descends from this point.
+function seedCradleBand(world) {
   resetBandIds();
-  const { tw, th, elev, fert, rng } = world;
-  const minSpacing = Math.max(8, Math.floor(tw * 0.06));
-  let attempts = 0;
-  while (world.bands.length < count && attempts < count * 200) {
-    attempts++;
-    const ti = rng.int(world.N);
-    if (elev[ti] <= 0) continue;
-    if (fert[ti] < 0.15) continue;
-    const ty = (ti / tw) | 0, tx = ti - ty * tw;
-    // Spacing.
-    let tooClose = false;
-    for (const b of world.bands) {
-      let dx = Math.abs(b.pos.x - tx);
-      if (dx > tw / 2) dx = tw - dx;
-      const dy = b.pos.y - ty;
-      if (dx * dx + dy * dy < minSpacing * minSpacing) { tooClose = true; break; }
-    }
-    if (tooClose) continue;
-    world.bands.push(makeBand(world, tx + 0.5, ty + 0.5, 8 + rng.int(12)));
+  const { tw, th, elev, temp, moist, fert, coast, riverMag, N } = world;
+  let bestTi = -1, bestScore = -Infinity;
+  for (let ti = 0; ti < N; ti++) {
+    if (!isContinentalLand(world, ti)) continue;
+    if (elev[ti] > 0.30) continue;          // no plateaus, no mountains
+    const t = temp[ti], m = moist[ti], f = fert[ti];
+    if (t < 0.55 || t > 0.85) continue;     // savannah / mild tropical
+    if (m < 0.30 || m > 0.75) continue;     // not desert, not swamp
+    if (f < 0.40) continue;                  // rich soil
+    // Bonus: water access — rivers especially. Real cradle sites
+    // (Rift Valley, Levant, Nile, Indus) all clustered near water.
+    let waterBonus = 0;
+    if (coast[ti])                            waterBonus += 0.5;
+    if (riverMag && riverMag[ti] >= 3)        waterBonus += 1.5;
+    else if (riverMag && riverMag[ti] >= 2)   waterBonus += 0.8;
+    // Fit-to-ideal scores.
+    const tempFit  = 1 - Math.abs(t - 0.70) * 2;
+    const moistFit = 1 - Math.abs(m - 0.50) * 2;
+    const elevFit  = 1 - elev[ti] * 2;        // prefer low ground
+    const score = f * 2 + tempFit + moistFit + elevFit + waterBonus;
+    if (score > bestScore) { bestScore = score; bestTi = ti; }
   }
+  if (bestTi < 0) {
+    // Fallback: any continental fertile tile.
+    for (let ti = 0; ti < N; ti++) {
+      if (!isContinentalLand(world, ti)) continue;
+      if (fert[ti] < 0.25) continue;
+      if (fert[ti] > bestScore) { bestScore = fert[ti]; bestTi = ti; }
+    }
+  }
+  if (bestTi < 0) {
+    console.warn("[peopleSim] no viable cradle site found — world all water?");
+    return;
+  }
+  const ty = (bestTi / tw) | 0, tx = bestTi - ty * tw;
+  const band = makeBand(world, tx + 0.5, ty + 0.5, 10);
+  world.bands.push(band);
+  // Log so the user knows where their species started.
+  const e = elev[bestTi].toFixed(2), t = temp[bestTi].toFixed(2);
+  const m = moist[bestTi].toFixed(2), f = fert[bestTi].toFixed(2);
+  const rm = riverMag ? riverMag[bestTi] : 0;
+  console.log(
+    `[peopleSim] cradle at tile (${tx},${ty}) — elev:${e} temp:${t} moist:${m} fert:${f}` +
+    `${coast[bestTi]?" coast":""}${rm>=2?` river(mag${rm})`:""} score:${bestScore.toFixed(2)}`
+  );
 }
 
 // Prune dead entities (called periodically to keep arrays bounded).

@@ -9,8 +9,8 @@
 const BAND_BASE_GROWTH = 0.0015;  // per tick, fraction of pop
 const BAND_SPLIT_AT    = 22;      // people; above this, split
 const BAND_MIN_AFTER_SPLIT = 6;
-const BAND_MOVE_SPEED  = 0.04;    // tiles / tick
-const BAND_SCAN_RADIUS = 5;       // tiles surveyed when picking next step
+const BAND_MOVE_SPEED  = 0.06;    // tiles / tick
+const BAND_SCAN_RINGS  = [4, 8, 14];  // radii tried when picking next step
 // Carrying capacity for a wandering band: a band moves across many
 // tiles, so K is bigger than what a single tile supports. Tunable.
 const BAND_K_BASE      = 10;
@@ -87,34 +87,48 @@ function nearTarget(band) {
 
 function pickNewTarget(world, band) {
   const { rng, tw, th, fert, elev } = world;
-  const R = BAND_SCAN_RADIUS;
-  // Sample 6 candidates around current pos, pick best score.
-  let bestX = band.pos.x, bestY = band.pos.y, bestScore = -Infinity;
-  for (let i = 0; i < 6; i++) {
+  // Try expanding rings — a band at the coast can't find a land tile
+  // within R=4, but should find one at R=8 or R=14 (push along the
+  // coast or inland). Without this, coastal bands set target=self and
+  // appear to oscillate in place (issue #2 in user feedback).
+  let bestX = null, bestY = null, bestScore = -Infinity;
+  for (const R of BAND_SCAN_RINGS) {
+    for (let i = 0; i < 10; i++) {
+      const ang = rng() * Math.PI * 2;
+      const rad = R * (0.4 + rng() * 0.6);
+      let nx = band.pos.x + Math.cos(ang) * rad;
+      let ny = band.pos.y + Math.sin(ang) * rad;
+      if (nx < 0) nx += tw;
+      if (nx >= tw) nx -= tw;
+      if (ny < 1 || ny > th - 2) continue;
+      const ti = (ny | 0) * tw + (nx | 0);
+      if (elev[ti] <= 0) continue;
+      const f = fert[ti];
+      // Crowding penalty: bands clustered nearby reduce attractiveness.
+      let crowd = 0;
+      for (const other of world.bands) {
+        if (other === band || other.mode === "dead") continue;
+        let ddx = Math.abs(other.pos.x - nx);
+        if (ddx > tw / 2) ddx = tw - ddx;
+        const ddy = other.pos.y - ny;
+        const d2 = ddx * ddx + ddy * ddy;
+        if (d2 < 16) crowd += 1 / (1 + d2);
+      }
+      const score = f * 3 - crowd * 2 - rad * 0.03 + rng() * 0.4;
+      if (score > bestScore) { bestScore = score; bestX = nx; bestY = ny; }
+    }
+    if (bestX !== null) break;   // found something at this ring, don't expand further
+  }
+  if (bestX === null) {
+    // Cornered (tiny island?). Don't set target=self (causes the freeze
+    // bug). Instead nudge in a random direction; movement clamp keeps
+    // us on the map and the next pickNewTarget cycle will retry.
     const ang = rng() * Math.PI * 2;
-    const rad = 1 + rng() * R;
-    let nx = band.pos.x + Math.cos(ang) * rad;
-    let ny = band.pos.y + Math.sin(ang) * rad;
-    // Wrap/clamp.
-    if (nx < 0) nx += tw;
-    if (nx >= tw) nx -= tw;
-    if (ny < 1 || ny > th - 2) continue;
-    const ti = (ny | 0) * tw + (nx | 0);
-    if (elev[ti] <= 0) continue;   // skip water
-    const f = fert[ti];
-    // Crowding penalty: bands clustered nearby reduce attractiveness.
-    let crowd = 0;
-    for (const other of world.bands) {
-      if (other === band || other.mode === "dead") continue;
-      const ddx = Math.min(Math.abs(other.pos.x - nx), tw - Math.abs(other.pos.x - nx));
-      const ddy = other.pos.y - ny;
-      const d2 = ddx * ddx + ddy * ddy;
-      if (d2 < 16) crowd += 1 / (1 + d2);
-    }
-    const score = f * 3 - crowd * 2 - rad * 0.05 + rng() * 0.3;
-    if (score > bestScore) {
-      bestScore = score; bestX = nx; bestY = ny;
-    }
+    bestX = band.pos.x + Math.cos(ang) * 2;
+    bestY = band.pos.y + Math.sin(ang) * 2;
+    if (bestX < 0) bestX += tw;
+    if (bestX >= tw) bestX -= tw;
+    bestY = Math.max(1, Math.min(th - 2, bestY));
   }
   band.target = { x: bestX, y: bestY };
 }
