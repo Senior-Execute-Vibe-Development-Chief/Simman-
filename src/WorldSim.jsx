@@ -5198,14 +5198,19 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
 {
   const psw=peopleRef.current;
   if(psw&&ctx){
-    // Bands.
+    // peopleSim runs at its own tile resolution (psw.tileRes, currently
+    // 2: tw=960 vs canvas CW=1920). Scale band positions back up to
+    // world pixel coordinates before projecting to the screen, or
+    // bands render at half-X / wrong-Y and appear to spawn in the
+    // ocean (user-reported bug).
+    const TR=psw.tileRes;
     for(const b of psw.bands){
       if(!b||b.mode==="dead")continue;
-      const sx=b.pos.x+0.5;
-      const sy=dataYtoScreenY(b.pos.y*RES,H,CH)+0.5;
-      const r=Math.max(0.9,Math.min(3.2,0.8+Math.sqrt(b.people)*0.35));
+      const sx=b.pos.x*TR+0.5;
+      const sy=dataYtoScreenY(b.pos.y*TR,H,CH)+0.5;
+      const r=Math.max(1.2,Math.min(4.0,1.0+Math.sqrt(b.people)*0.45));
       // Outline (paper-dark) + fill (warm tone) for legibility.
-      ctx.beginPath();ctx.arc(sx,sy,r+0.7,0,Math.PI*2);
+      ctx.beginPath();ctx.arc(sx,sy,r+0.9,0,Math.PI*2);
       ctx.fillStyle="rgba(40,30,20,0.85)";ctx.fill();
       ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);
       ctx.fillStyle="rgba(220,180,120,0.95)";ctx.fill();

@@ -9,7 +9,11 @@
 const BAND_BASE_GROWTH = 0.0015;  // per tick, fraction of pop
 const BAND_SPLIT_AT    = 22;      // people; above this, split
 const BAND_MIN_AFTER_SPLIT = 6;
-const BAND_MOVE_SPEED  = 0.06;    // tiles / tick
+// Move speed in peopleSim tile-space (psw.tileRes = 2 world pixels per tile).
+// At 0.15 tile/tick × 3 substeps × 60fps = ~27 tiles/sec ≈ 54 px/sec —
+// slow drift, but clearly visible at this map scale. Smaller values
+// made the user perceive them as standing still.
+const BAND_MOVE_SPEED  = 0.15;
 const BAND_SCAN_RINGS  = [4, 8, 14];  // radii tried when picking next step
 // Carrying capacity for a wandering band: a band moves across many
 // tiles, so K is bigger than what a single tile supports. Tunable.
