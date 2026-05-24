@@ -3936,17 +3936,17 @@ const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState
 // the BFS re-runs whenever params or capitals change.
 const[ttCapitals,setTtCapitals]=useState([]);
 const[ttParams,setTtParams]=useState({
-  tileLimit: 500,
+  tileLimit: 5000,
   plain: 0.6,
-  elev: 8,
-  slope: 25,
-  harsh: 18,
+  elev: 10,
+  slope: 30,
+  harsh: 20,
   river: 0.3,
-  coast: 0.7,
-  water: 0.8,
+  coast: 0.5,
+  water: 1.0,
   nav: 0.5,
-  port: 3.0,
-  noise: 0.0,     // per-tile cost noise; 0=Voronoi, 0.3=organic borders
+  port: 2.5,
+  noise: 0.15,
 });
 const ttResultRef=useRef(null);
 const ttCapitalsRef=useRef([]);
@@ -5548,6 +5548,34 @@ return(
 <div className="au-parchment" style={{position:"absolute",top:8,left:8,
   padding:"8px 12px",fontSize:11,width:240,zIndex:20,maxHeight:"calc(100vh - 80px)",overflowY:"auto"}}>
   <div className="au-heading au-sc" style={{fontSize:12,marginBottom:6,borderBottom:"1px solid rgba(58,38,20,0.25)",paddingBottom:4}}>Transport Test</div>
+  {/* Historical-empire presets — tuned so a capital placed in the right
+      region produces a shape resembling that civilisation's peak. */}
+  <div className="au-sc au-fade" style={{fontSize:9,marginBottom:3}}>Preset (place capital in matching region)</div>
+  <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
+    {[
+      // Rome ~117 AD: Mediterranean basin, heavy sea use, good roads,
+      // didn't push deep into Germany/Persia. Med = highway.
+      ["Roman",      {tileLimit:11000,plain:0.6,elev:14,slope:35,harsh:22,river:0.35,coast:0.4,water:0.9,nav:0.7,port:1.8,noise:0.12}],
+      // Han China ~100 AD: river-valley civilisation (Yellow/Yangtze),
+      // didn't cross deep into Mongolia/Tibet, used rivers as highways.
+      ["Han",        {tileLimit:14000,plain:0.55,elev:18,slope:45,harsh:28,river:0.2,coast:0.7,water:2.0,nav:0.3,port:5.0,noise:0.15}],
+      // Persian Achaemenid ~500 BC: Royal Road land empire, mix of land
+      // and sea, blocked by deserts and high mountains.
+      ["Persian",    {tileLimit:11000,plain:0.55,elev:13,slope:32,harsh:24,river:0.3,coast:0.5,water:1.3,nav:0.5,port:2.5,noise:0.13}],
+      // British Empire (territorial maritime): coastal/island-hopping,
+      // navigation almost free, ports cheap, land less important.
+      ["Naval",      {tileLimit:14000,plain:1.0,elev:10,slope:25,harsh:15,river:0.4,coast:0.25,water:0.4,nav:0.95,port:0.8,noise:0.12}],
+      // Mongol ~1250: steppe cavalry — plains/steppes cheap, mountains
+      // and rivers impede, no fleet.
+      ["Steppe",     {tileLimit:14000,plain:0.4,elev:22,slope:55,harsh:8,river:1.5,coast:1.2,water:999,nav:0,port:8,noise:0.15}],
+      // Default river-civilisation baseline (no preset)
+      ["Default",    {tileLimit:5000,plain:0.6,elev:10,slope:30,harsh:20,river:0.3,coast:0.5,water:1.0,nav:0.5,port:2.5,noise:0.15}],
+    ].map(([name,p])=>(
+      <button key={name} className="au-btn"
+        style={{fontSize:10,padding:"2px 5px",flex:"1 1 30%"}}
+        onClick={()=>setTtParams(p)}>{name}</button>
+    ))}
+  </div>
   {/* Sub-mode toggle */}
   <div style={{display:"flex",gap:4,marginBottom:6}}>
     <button className={"au-btn"+(ttSubMode==="capitals"?" au-active":"")}
