@@ -14,6 +14,7 @@ import { computeRivers, riverName, RIVER_NAMES, RIVER_NONE, RIVER_STREAM, RIVER_
 import { ensureTribeViews, attachRegistries } from "./tribeModel.js";
 import { runTribeStep, resetInvariantState } from "./tribeStep.js";
 import { tribePower, localPower, tribeOreAccess, tDistW, expFalloff } from "./tribePower.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
@@ -4164,6 +4165,12 @@ const activeResRef=useRef(null);activeResRef.current=activeRes;
 const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
+// peopleSim world — entity-based replacement for the legacy tribe system.
+// Bands, settlements, etc. live here. The legacy `ter` object is kept
+// alive only so the existing draw() pipeline doesn't break; it is not
+// stepped (the runTribeStep call is disabled below).
+const peopleRef=useRef(null);
+const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
 const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
 const useRealWindRef=useRef(false);
@@ -4179,8 +4186,23 @@ const W=1920,H=960,CW=CW_FLAT;
 const workerRef=useRef(null);
 // Helper: finalize a generated world (shared by worker + main thread paths)
 const finalizeWorld=useCallback((w)=>{
-setWorld(w);worldRef.current=w;const t=createTerritory(w);attachRegistries(t);ensureTribeViews(t);resetInvariantState(t);terRef.current=t;
-setCoverage(0);setTribeCount(t.tribeCount);setPlaying(false);playRef.current=false;
+setWorld(w);worldRef.current=w;const t=createTerritory(w);attachRegistries(t);ensureTribeViews(t);resetInvariantState(t);
+// Erase the legacy initial tribes from the `ter` object. createTerritory
+// seeded them at fertile tiles and the draw() pipeline would render them
+// as settlement dots, competing visually with peopleSim bands. We keep
+// the shell of `ter` alive for UI panels that still reference it, but
+// zero out anything that would paint on the canvas.
+if(t.tribeSizes){for(let i=0;i<t.tribeSizes.length;i++)t.tribeSizes[i]=0;}
+if(t.tribeStrength){for(let i=0;i<t.tribeStrength.length;i++)t.tribeStrength[i]=0;}
+if(t.tribeCenters){for(let i=0;i<t.tribeCenters.length;i++)t.tribeCenters[i]=[];}
+if(t.owner){t.owner.fill(-1);}
+t.settled=0;
+terRef.current=t;
+// peopleSim: entity-based simulator that replaces the legacy tribe model.
+// Bands wander now; settling, trade, war land in subsequent phases.
+peopleRef.current=initPeopleSim(w,{seed:w.seed,initialBands:14});
+setPsStats(peopleSimStats(peopleRef.current));
+setCoverage(0);setTribeCount(t.tribeCount||0);setPlaying(false);playRef.current=false;
 terrainCache.current=null;atlasCache.current=null;imgRef.current=null;},[]);
 const generate=useCallback((s,ol)=>{
 // Import path
@@ -5168,6 +5190,29 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
 }
 // Power view removed — replaced by era-based rendering and focused view
 // Power centers removed — centers already drawn in main center loop above}
+// ── peopleSim entity overlay ────────────────────────────────────────
+// Bands drawn as small filled circles at continuous tile-space pos.
+// Radius scales with √people. Settlements / caravans / armies will
+// layer here in subsequent phases. Aesthetic is placeholder (drawn-
+// atlas pass comes after mechanics).
+{
+  const psw=peopleRef.current;
+  if(psw&&ctx){
+    // Bands.
+    for(const b of psw.bands){
+      if(!b||b.mode==="dead")continue;
+      const sx=b.pos.x+0.5;
+      const sy=dataYtoScreenY(b.pos.y*RES,H,CH)+0.5;
+      const r=Math.max(0.9,Math.min(3.2,0.8+Math.sqrt(b.people)*0.35));
+      // Outline (paper-dark) + fill (warm tone) for legibility.
+      ctx.beginPath();ctx.arc(sx,sy,r+0.7,0,Math.PI*2);
+      ctx.fillStyle="rgba(40,30,20,0.85)";ctx.fill();
+      ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);
+      ctx.fillStyle="rgba(220,180,120,0.95)";ctx.fill();
+    }
+    // (settlements / caravans / armies — phases 2+)
+  }
+}
 },[updateTerrainCache,buildAtlas,CH]);
 
 useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showPower,showGlobe,activeRes]);
@@ -5187,16 +5232,22 @@ const sub=Math.min(3,Math.max(1,Math.ceil(speedRef.current/3*eraFactor)));// cap
 // Time-budgeted sim: stop stepping if we've used >8ms this frame
 const _simStart=performance.now();
 for(let s=0;s<sub;s++){
-try{terRef.current=runTribeStep(terRef.current,worldRef.current,stepTerritory);}
-catch(e){console.error('[SIM CRASH]',e.message,e.stack);playRef.current=false;return;}
+// Legacy tribe sim DISABLED — peopleSim is the new entity-based model.
+// runTribeStep call removed at user request ("completely erase the tribe system").
+// The `ter` object is still kept around so UI panels that read tribeCenters
+// etc. don't crash, but it is no longer mutated each tick.
+try{if(peopleRef.current)stepPeopleSim(peopleRef.current,1);}
+catch(e){console.error('[PEOPLESIM CRASH]',e.message,e.stack);playRef.current=false;return;}
 if(performance.now()-_simStart>8)break;
 }
-setCoverage(Math.round(terRef.current.settled/terRef.current.landCount*100));
-let alive=0,bestId=-1,bestPow=0;const ter2=terRef.current;
-for(let i=0;i<ter2.tribeSizes.length;i++){if(ter2.tribeSizes[i]<=0)continue;alive++;
-const pw=tribePower(ter2,i);if(pw>bestPow){bestPow=pw;bestId=i;}}
-setTribeCount(alive);setDominant(bestId>=0?{id:bestId,power:bestPow,size:ter2.tribeSizes[bestId],
-strength:ter2.tribeStrength[bestId],density:ter2.tribeStrength[bestId]/ter2.tribeSizes[bestId]}:null);
+// peopleSim stats — drives the HUD instead of legacy tribe metrics.
+if(peopleRef.current&&peopleRef.current.step%5===0){
+  setPsStats(peopleSimStats(peopleRef.current));
+}
+// Legacy tribe stats kept zero — these used to drive panels which still
+// exist but no longer reflect anything real. To be migrated to entity
+// readouts in a follow-up.
+setCoverage(0);setTribeCount(peopleRef.current?peopleRef.current.bands.length:0);setDominant(null);
 // Only redraw every 3rd sim frame to save 10-30ms/frame on CPU canvas rendering
 drawSkip++;
 if(drawSkip>=3){drawSkip=0;
