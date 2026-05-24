@@ -3935,19 +3935,39 @@ const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState
 // Transport-test mode state. Each click in this view places a capital;
 // the BFS re-runs whenever params or capitals change.
 const[ttCapitals,setTtCapitals]=useState([]);
-const[ttParams,setTtParams]=useState({
+// Transport-test mode state. Tech-driven model: instead of dialing
+// raw transport costs, you dial the tribe's technological capabilities
+// and the cost values are derived. Each tech maps to specific cost
+// reductions:
+//   metallurgy   → roads, rail (cuts plain + harsh land costs)
+//   naval        → seaworthy ships (cuts water cost, enables sea travel)
+//   construction → ports, bridges, docks (cuts port + coast + river)
+//   organization → administrative reach (raises tileLimit)
+const[ttTech,setTtTech]=useState({
+  metallurgy: 0.3,
+  naval: 0.4,
+  construction: 0.3,
+  organization: 0.4,
   tileLimit: 5000,
-  plain: 0.6,
-  elev: 10,
-  slope: 30,
-  harsh: 20,
-  river: 0.3,
-  coast: 0.5,
-  water: 1.0,
-  nav: 0.5,
-  port: 2.5,
-  noise: 0.15,
 });
+// Derive raw cost params from tech levels. This is what the BFS uses.
+function deriveTransportParams(tech){
+  const{metallurgy:m,naval:nv,construction:cn,organization:og,tileLimit}=tech;
+  return{
+    tileLimit,
+    plain: Math.max(0.25, 1.1 - m*0.55 - cn*0.1),       // 1.1 → ~0.45
+    harsh: Math.max(4, 24 - m*14 - cn*3),                // 24 → 7
+    river: Math.max(0.12, 0.45 - cn*0.25),               // 0.45 → 0.20
+    coast: Math.max(0.18, 0.85 - cn*0.35 - nv*0.25),     // 0.85 → 0.25
+    water: nv<0.05 ? 999 : Math.max(0.35, 1.8/(0.3+nv*1.5)),
+    nav: nv,
+    port: Math.max(0.4, 9 - cn*7),                       // 9 → 2
+    // elev/slope/noise removed per request — set to 0 so the surviving
+    // code paths contribute nothing (will tidy fully in a later pass).
+    elev: 0, slope: 0, noise: 0,
+  };
+}
+const ttParams=deriveTransportParams(ttTech);
 const ttResultRef=useRef(null);
 const ttCapitalsRef=useRef([]);
 // Sub-mode: "capitals" places tribe seeds and runs claim BFS;
@@ -3956,13 +3976,13 @@ const[ttSubMode,setTtSubMode]=useState("capitals");
 const[ttRoute,setTtRoute]=useState({start:null,end:null});
 const ttRouteResultRef=useRef(null);
 useEffect(()=>{ttCapitalsRef.current=ttCapitals;
-  // Re-run BFS whenever capitals or params change AND we're in test mode
+  // Re-run BFS whenever capitals or tech change AND we're in test mode
   if(viewMode!=="transport-test"){ttResultRef.current=null;return;}
   if(!terRef.current||ttCapitals.length===0){ttResultRef.current=null;
     if(terRef.current)draw(terRef.current);return;}
   ttResultRef.current=runTransportTest(terRef.current,ttCapitals,ttParams);
   draw(terRef.current);
-},[ttCapitals,ttParams,viewMode]);
+},[ttCapitals,ttTech,viewMode]);
 const[oceanLevel,setOceanLevel]=useState(0.78);
 const[depthFromSea,setDepthFromSea]=useState(false);
 const[depthCeil,setDepthCeil]=useState(1.0);
@@ -5162,14 +5182,14 @@ setSelectedTribe(tileOwner);ter._selectedTribe=tileOwner;
 setRightPanel("tribes");draw(ter);
 }else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}
 },[CW,CH,draw,viewMode,ttSubMode]);
-// Re-run route Dijkstra whenever endpoints or params change
+// Re-run route Dijkstra whenever endpoints or tech change
 useEffect(()=>{
   if(viewMode!=="transport-test"||ttSubMode!=="route"){ttRouteResultRef.current=null;return;}
   if(!terRef.current||!ttRoute.start||!ttRoute.end){ttRouteResultRef.current=null;
     if(terRef.current)draw(terRef.current);return;}
   ttRouteResultRef.current=findRoute(terRef.current,ttRoute.start,ttRoute.end,ttParams);
   draw(terRef.current);
-},[ttRoute,ttParams,ttSubMode,viewMode]);
+},[ttRoute,ttTech,ttSubMode,viewMode]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
 const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
 
@@ -5548,32 +5568,20 @@ return(
 <div className="au-parchment" style={{position:"absolute",top:8,left:8,
   padding:"8px 12px",fontSize:11,width:240,zIndex:20,maxHeight:"calc(100vh - 80px)",overflowY:"auto"}}>
   <div className="au-heading au-sc" style={{fontSize:12,marginBottom:6,borderBottom:"1px solid rgba(58,38,20,0.25)",paddingBottom:4}}>Transport Test</div>
-  {/* Historical-empire presets — tuned so a capital placed in the right
-      region produces a shape resembling that civilisation's peak. */}
-  <div className="au-sc au-fade" style={{fontSize:9,marginBottom:3}}>Preset (place capital in matching region)</div>
+  {/* Era presets — set all tech sliders to era-appropriate values. */}
+  <div className="au-sc au-fade" style={{fontSize:9,marginBottom:3}}>Era preset</div>
   <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
     {[
-      // Rome ~117 AD: Mediterranean basin, heavy sea use, good roads,
-      // didn't push deep into Germany/Persia. Med = highway.
-      ["Roman",      {tileLimit:11000,plain:0.6,elev:14,slope:35,harsh:22,river:0.35,coast:0.4,water:0.9,nav:0.7,port:1.8,noise:0.12}],
-      // Han China ~100 AD: river-valley civilisation (Yellow/Yangtze),
-      // didn't cross deep into Mongolia/Tibet, used rivers as highways.
-      ["Han",        {tileLimit:14000,plain:0.55,elev:18,slope:45,harsh:28,river:0.2,coast:0.7,water:2.0,nav:0.3,port:5.0,noise:0.15}],
-      // Persian Achaemenid ~500 BC: Royal Road land empire, mix of land
-      // and sea, blocked by deserts and high mountains.
-      ["Persian",    {tileLimit:11000,plain:0.55,elev:13,slope:32,harsh:24,river:0.3,coast:0.5,water:1.3,nav:0.5,port:2.5,noise:0.13}],
-      // British Empire (territorial maritime): coastal/island-hopping,
-      // navigation almost free, ports cheap, land less important.
-      ["Naval",      {tileLimit:14000,plain:1.0,elev:10,slope:25,harsh:15,river:0.4,coast:0.25,water:0.4,nav:0.95,port:0.8,noise:0.12}],
-      // Mongol ~1250: steppe cavalry — plains/steppes cheap, mountains
-      // and rivers impede, no fleet.
-      ["Steppe",     {tileLimit:14000,plain:0.4,elev:22,slope:55,harsh:8,river:1.5,coast:1.2,water:999,nav:0,port:8,noise:0.15}],
-      // Default river-civilisation baseline (no preset)
-      ["Default",    {tileLimit:5000,plain:0.6,elev:10,slope:30,harsh:20,river:0.3,coast:0.5,water:1.0,nav:0.5,port:2.5,noise:0.15}],
-    ].map(([name,p])=>(
+      ["Stone",      {metallurgy:0.05,naval:0.05,construction:0.05,organization:0.10,tileLimit:1500}],
+      ["Neolithic",  {metallurgy:0.15,naval:0.15,construction:0.15,organization:0.20,tileLimit:3000}],
+      ["Bronze",     {metallurgy:0.30,naval:0.35,construction:0.30,organization:0.35,tileLimit:6000}],
+      ["Iron",       {metallurgy:0.50,naval:0.55,construction:0.50,organization:0.55,tileLimit:9000}],
+      ["Medieval",   {metallurgy:0.65,naval:0.70,construction:0.65,organization:0.70,tileLimit:11000}],
+      ["Industrial", {metallurgy:0.88,naval:0.92,construction:0.85,organization:0.90,tileLimit:15000}],
+    ].map(([name,t])=>(
       <button key={name} className="au-btn"
         style={{fontSize:10,padding:"2px 5px",flex:"1 1 30%"}}
-        onClick={()=>setTtParams(p)}>{name}</button>
+        onClick={()=>setTtTech(t)}>{name}</button>
     ))}
   </div>
   {/* Sub-mode toggle */}
@@ -5612,28 +5620,31 @@ return(
       </div>
     </>
   )}
+  {/* Tech sliders — drive the derived cost values. */}
   {[
-    ["tileLimit","Tiles / capital",10,15000,10],
-    ["plain","Plain base cost",0.1,3,0.05],
-    ["elev","Elevation × (e-0.25)",0,30,0.5],
-    ["slope","Slope (|Δelev| × this)",0,80,1],
-    ["harsh","Harsh × diff² (biome)",0,40,0.5],
-    ["river","River cost",0.05,2,0.05],
-    ["coast","Coast cost cap",0.1,2,0.05],
-    ["water","Water base cost",0.1,5,0.1],
-    ["nav","Navigation (0=no sea)",0,1,0.02],
-    ["port","Port load (mode change)",0,15,0.5],
-    ["noise","Per-tile noise (0=Voronoi)",0,1,0.02],
+    ["tileLimit","Tiles / capital (∝ org)",100,15000,100],
+    ["metallurgy","Metallurgy (roads, rail)",0,1,0.02],
+    ["naval","Naval power (ships, ports)",0,1,0.02],
+    ["construction","Construction (bridges, docks)",0,1,0.02],
+    ["organization","Organisation (admin reach)",0,1,0.02],
   ].map(([k,label,min,max,step])=>(
     <div key={k} style={{marginBottom:4}}>
       <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
-        <span>{label}</span><b>{ttParams[k].toFixed(k==="tileLimit"?0:2)}</b>
+        <span>{label}</span><b>{ttTech[k].toFixed(k==="tileLimit"?0:2)}</b>
       </div>
-      <input type="range" min={min} max={max} step={step} value={ttParams[k]}
-        onChange={e=>setTtParams(p=>({...p,[k]:parseFloat(e.target.value)}))}
+      <input type="range" min={min} max={max} step={step} value={ttTech[k]}
+        onChange={e=>setTtTech(p=>({...p,[k]:parseFloat(e.target.value)}))}
         style={{width:"100%"}}/>
     </div>
   ))}
+  {/* Derived cost readout (so you can see what tech actually produces). */}
+  <div className="au-fade" style={{fontSize:9,marginTop:6,marginBottom:4,lineHeight:1.4,
+    background:"rgba(58,38,20,0.08)",padding:"4px 6px",borderRadius:2}}>
+    <div className="au-sc" style={{marginBottom:2}}>Derived costs</div>
+    plain {ttParams.plain.toFixed(2)} · harsh {ttParams.harsh.toFixed(1)}<br/>
+    river {ttParams.river.toFixed(2)} · coast {ttParams.coast.toFixed(2)}<br/>
+    water {ttParams.water>=999?"∞":ttParams.water.toFixed(2)} · port {ttParams.port.toFixed(2)}
+  </div>
   <button className="au-btn au-block" style={{marginTop:6,fontSize:11}}
     onClick={()=>{
       if(ttSubMode==="capitals")setTtCapitals([]);
