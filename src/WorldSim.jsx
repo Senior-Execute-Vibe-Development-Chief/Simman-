@@ -2574,7 +2574,7 @@ function attackWave(ter,attacker,defender,force){
   const{tw,th,owner,tElev,tribeSizes,tribeKnowledge,tribeBudget,tribeTiles,bgPop,cityPop}=ter;
   const sl=0;
   if(tribeSizes[attacker]<=0||tribeSizes[defender]<=0)return[];
-  if(force<4)return[];
+  if(force<2)return[];
   // ── Per-pair multipliers ──
   const aK=tribeKnowledge&&tribeKnowledge[attacker]?tribeKnowledge[attacker]:null;
   const dK=tribeKnowledge&&tribeKnowledge[defender]?tribeKnowledge[defender]:null;
@@ -2613,7 +2613,7 @@ function attackWave(ter,attacker,defender,force){
   const captured=[];
   let spent=0;
   let resortPending=false;
-  while(candidates.length>0&&force>=4){
+  while(candidates.length>0&&force>=2){
     if(resortPending){candidates.sort((a,b)=>a.cost-b.cost);resortPending=false;}
     const c=candidates.shift();
     if(owner[c.ti]!==defender)continue;// taken by a third party already
@@ -2661,9 +2661,9 @@ function tileAttackCost(ter,ti,techRatio){
   }
   const diff=tDiff?tDiff[ti]:0;
   const ten=tenure?tenure[ti]:0;
-  const tenureBonus=Math.min(1,ten*0.003);
-  const base=22;
-  return Math.max(4,base*(1+defPop*0.35+diff*1.4+tenureBonus)*techRatio);
+  const tenureBonus=Math.min(0.5,ten*0.0015);// long-held tiles cost ~50 % more, not 200 %
+  const base=8;// cheap enough that small forces can flip frontier tiles
+  return Math.max(2,base*(1+defPop*0.35+diff*1.4+tenureBonus)*techRatio);
 }
 
 // "Invasion" is now a spike of the wave: a war decider declaration or
@@ -2679,9 +2679,9 @@ function launchInvasion(ter,attacker,defender){
   if(standing<50||ter.tribeSizes[attacker]<=0||ter.tribeSizes[defender]<=0)return[];
   const aBud=ter.tribeBudget&&ter.tribeBudget[attacker];
   const milBud=aBud?aBud.military:0.2;
-  // Spike spend: 18 %–40 % of standing army committed in one event
-  // (vs ~5–12 % per regular border-conflict pass).
-  const force=standing*(0.18+milBud*0.55);
+  // Spike spend: 30 %–65 % of standing army committed in one event
+  // (vs ~15–35 % per regular border-conflict pass).
+  const force=standing*(0.30+milBud*0.55);
   const captured=attackWave(ter,attacker,defender,force);
   if(captured.length>0){
     if(!ter._warEvents)ter._warEvents=[];
@@ -2812,7 +2812,7 @@ function checkEncirclement(ter){
     if(tribeSizes[tid]<=0)continue;
     // Establishment grace — don't strip pockets from very new tribes
     const owAge=ter.stepCount-(tribeCenters[tid][0]?tribeCenters[tid][0].founded:0);
-    if(owAge<80)continue;
+    if(owAge<40)continue;
     const tiles=tribeTiles&&tribeTiles[tid]?tribeTiles[tid]:null;
     if(!tiles)continue;
     const toFlip=[];
@@ -3240,7 +3240,7 @@ if(ter.stepCount%16===0&&ter._borderContacts){
   for(let i=0;i<n;i++){
     if(ter.tribeSizes[i]<8)continue;// vestigial
     const owAge=ter.stepCount-(ter.tribeCenters[i][0]?ter.tribeCenters[i][0].founded:0);
-    if(owAge<80)continue;// establishment grace
+    if(owAge<40)continue;// establishment grace
     if(activeWarsCount[i]>=3)continue;// already overstretched
     // Stored military gate: a tribe with depleted standing troops can't
     // pick new fights, even if it wants to. War costs men, and broken
@@ -3391,16 +3391,18 @@ if(ter.wars){
     const budB=ter.tribeBudget&&ter.tribeBudget[wr.b]?ter.tribeBudget[wr.b].military:0.2;
     const standingA=(ter.tribeMilitary&&ter.tribeMilitary[wr.a])||0;
     const standingB=(ter.tribeMilitary&&ter.tribeMilitary[wr.b])||0;
-    const forceA=standingA*(0.05+budA*0.09)*goalMul;
-    const forceB=standingB*(0.05+budB*0.09)*goalMul;
-    if(forceA>=4)attackWave(ter,wr.a,wr.b,forceA);
-    if(forceB>=4)attackWave(ter,wr.b,wr.a,forceB);
+    // Per-pass spend: 15 % base + up to 20 % from militancy budget.
+    // A balanced tribe spends ~18 %, militant spends ~33 %, fresh-war ×1.3.
+    const forceA=standingA*(0.15+budA*0.20)*goalMul;
+    const forceB=standingB*(0.15+budB*0.20)*goalMul;
+    if(forceA>=2)attackWave(ter,wr.a,wr.b,forceA);
+    if(forceB>=2)attackWave(ter,wr.b,wr.a,forceB);
   }
 }
 for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
 // New tribes get 80 steps of protection from border conflict (establishment period)
 const owAge=ter.stepCount-(tribeCenters[ow][0]?tribeCenters[ow][0].founded:0);
-if(owAge<80)continue;// can't lose tiles while establishing
+if(owAge<40)continue;// can't lose tiles while establishing
 const ty2=Math.floor(i/tw),tx2=i%tw;
 // Quick border check: skip interior tiles with no enemy neighbors
 let hasEnemy=false;
@@ -3457,9 +3459,13 @@ if(tenure[i]<tProt)continue;
 // At ratio=1.0 (parity) → small flip chance; ratio>>1 → near-certain attempt.
 // Below 0.5 ratio the attempt is hopeless (no roll). This lets close
 // matched fights actually decide territory instead of permanent stalemate.
+// Gate lowered from 0.35 → 0.20 because campaign momentum (which lifted
+// the attacker's effective lpB up to 2.2× at active breaches) was
+// retired with the wave model. Without that boost, parity ratios sat
+// around 0.33 and the old 0.35 gate silenced peacetime borders entirely.
 const ratio=lpB/Math.max(0.001,lpA*totalDef);
-if(ratio>0.35){const diff=Math.max(tDiff[i],tDiff[ni]);
-const pressure=Math.min(1.2,Math.max(0,ratio-0.35))*0.4*atkAggression;
+if(ratio>0.20){const diff=Math.max(tDiff[i],tDiff[ni]);
+const pressure=Math.min(1.2,Math.max(0,ratio-0.20))*0.4*atkAggression;
 const prize=(0.5+tFert[i]*1.5)*(atkSz>60?1+Math.min(0.5,(atkSz-60)*0.005):1);
 // Peacetime gating: most borders sit quiet, but individual *weak* tiles
 // (tendril tips, isolated outposts, depopulated frontier scraps) are
