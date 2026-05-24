@@ -1120,7 +1120,7 @@ function stepExpansion(ter){
 // so tendrils get cut by passing neighbours without needing a formal
 // war declaration.
 function tileWeakness(ter,ti,ow){
-  const{tw,th,owner,tribeCenters,bgPop,cityPop}=ter;
+  const{tw,th,owner,tribeCenters,bgPop,cityPop,tCoast}=ter;
   const tx=ti%tw,ty=(ti-tx)/tw;
   // Isolation: 0..1 where 0 = fully embedded interior, 1 = lonely tip
   let ownN=0;
@@ -1137,7 +1137,15 @@ function tileWeakness(ter,ti,ow){
   // Fall back to euclidean if transport hasn't run yet (early game).
   let distFactor;
   const tCost=ter.transportCost?ter.transportCost[ti]:0;
-  if(tCost>0&&tCost<900){
+  // Coastal-tile defensive bonus is REMOVED for the weakness calc.
+  // tileCost caps coast at 0.7 so transportCost is artificially low on
+  // coastal tiles; that would make coastal tendril tips look "near" the
+  // capital and shield them from peacetime nibbling. Coast still gets
+  // the bonus for *claiming* unowned tiles (expansion path), but not
+  // for *holding* against enemies. Falls through to euclidean for
+  // coastal tiles, which is harsher.
+  const isCoast=tCoast&&tCoast[ti];
+  if(tCost>0&&tCost<900&&!isCoast){
     // Saturate at cost ~40 — that's a long expensive trek IRL terms
     distFactor=Math.min(1,tCost/40);
   }else{
