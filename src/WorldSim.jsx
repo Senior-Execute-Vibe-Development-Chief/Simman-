@@ -2953,6 +2953,25 @@ const largePrize=owSz>40?1+Math.min(1,(owSz-40)*0.008):1;
 const agBoost=1+agLevel*2;// ag=0→1x, ag=0.5→2x
 _candidates.length=0;
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny2=ty+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx;if(owner[ni]>=0)continue;
+// Compactness: count how many own-tribe tiles surround this candidate.
+// ownN=1 (lonely tip, would extend a thin tendril) gets heavy penalty;
+// ownN=4 (interior pocket, filling-in) is preferred. Models the
+// real-world fact that settlement requires local support — a tile
+// connected to your empire by one thread has no garrisons, no nearby
+// pop, no supply line. Indigenous resistance / banditry cuts it.
+let ownN=0;
+for(const[dx2,dy2]of DIRS){
+  const nx3=((nx+dx2)%tw+tw)%tw,ny3=ny2+dy2;
+  if(ny3<0||ny3>=th)continue;
+  if(owner[ny3*tw+nx3]===ow)ownN++;
+}
+// compactness 1=lonely tip, 2=corner extension, 3=infill, 4=interior pocket
+// We make this a strong multiplier on chance so tribes overwhelmingly
+// prefer to fill in before extending. Bootstrap tribes (size < 6) get a
+// pass so seed tiles can grow into their first ring.
+const isBootstrap=owSz<6;
+const compactFactor=isBootstrap?1.0:Math.pow(ownN/2,1.4);
+// ownN=1: 0.38 (very slow extension), 2: 1.0, 3: 1.74, 4: 2.64
 const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni];if(effT<0.02){room=true;continue;}
 const diff=tDiff[ni];
 // Knowledge reduces effective difficulty. Advanced civs conquer hard terrain:
@@ -3034,7 +3053,12 @@ const{min:distMin}=nearestCenterDist(centers,nx,ny2,tw);
 const reach=expFalloff(distMin/orgReach);// org stretches effective distance
 chance*=Math.max(0.03,reach);
 score+=Math.random()*0.1;
-_candidates.push({ni,nx,ny:ny2,chance,score,diff,distMin});}
+// Compactness — tribes prefer filling-in over thin extension. Strong
+// multiplier on chance: a lonely-tip candidate (ownN=1) is ~3x less
+// likely to be claimed than a corner-extension (ownN=2), and ~7x less
+// than an interior-fill (ownN=4).
+chance*=compactFactor;
+_candidates.push({ni,nx,ny:ny2,chance,score,diff,distMin,ownN});}
 // Sort by score — best tiles first. Each subsequent candidate gets reduced chance
 // so growth strongly follows fertile corridors, not uniform bubbles.
 _candidates.sort((a,b)=>b.score-a.score);
@@ -3051,7 +3075,11 @@ if(Math.random()<chance*rankPenalty){let nw=ow;
 // If insufficient, skip this claim — the tribe can't field enough
 // settlers to colonise this tile right now. Cheap nearby tiles
 // drain the reserve slowly; distant or rough tiles drain it fast.
-const settlerCost=claimSettlerCost(ter,nw,ni);
+// Settler cost is also scaled by compactness — lonely tips cost more
+// (no nearby pop to supply settlers, expensive to garrison).
+// ownN=1: ×2.0 (thread tip), ownN=2: ×1.0 (corner), ownN=4: ×0.55
+const compactCostMult=cand.ownN?(2.5-cand.ownN*0.5):1;
+const settlerCost=claimSettlerCost(ter,nw,ni)*compactCostMult;
 if(ter.tribeExpansion&&(ter.tribeExpansion[nw]||0)<settlerCost){
   // Out of settlers — stop trying further candidates this tile
   break;
