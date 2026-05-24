@@ -984,13 +984,17 @@ function militaryCap(ter,id){
   const org=k?k.organization:0;
   const met=k?k.metallurgy:0;
   const mil=k?(k.military||0):0;
-  // Tech multipliers widen the cap dramatically. A maxed Imperial-age
-  // tribe sustains ~4x the troops of a Stone-age tribe at equal pop:
-  //   stone (org=0.1,met=0.1,mil=0.1)  ≈ 1.3x base
-  //   bronze (org=0.4,met=0.3,mil=0.2) ≈ 1.95x base
-  //   iron   (org=0.6,met=0.6,mil=0.5) ≈ 2.95x base
-  //   imp    (org=0.8,met=0.85,mil=0.7) ≈ 3.92x base
-  return pop*milB*(1+org*1.5+met*0.5+mil*1.0);
+  // Pop-units in this sim are scaled (a "settled tile" has bgPop ~ 0.3),
+  // so a 1500-tile tribe might only hit pop ≈ 75. With the old formula
+  // (pop × milB × 1) that's a cap of 15 standing — not enough force for
+  // the wave model to capture more than 1 tile per pass. Multiplier
+  // raised to 2.0 so typical mid-game tribes muster 30–80 troops and
+  // waves carve visible bubbles without late-game runaway.
+  //   stone (no tech)      ≈ 2.6× base
+  //   bronze (org/met low) ≈ 3.9× base
+  //   iron   (med tech)    ≈ 5.9× base
+  //   imp    (high tech)   ≈ 7.8× base
+  return pop*milB*2.0*(1+org*1.5+met*0.5+mil*1.0);
 }
 function militaryReadiness(ter,id){
   if(!ter.tribeMilitary)return 0.5;
@@ -1016,7 +1020,7 @@ function stepMilitary(ter){
     // war (mobilisation costs, casualties).
     let rate=0.04;
     if(ter.wars){for(const k in ter.wars){const wr=ter.wars[k];
-      if(wr.active&&(wr.a===i||wr.b===i)){rate=0.025;break;}}}
+      if(wr.active&&(wr.a===i||wr.b===i)){rate=0.035;break;}}}
     const next=cur+(cap-cur)*rate;
     ter.tribeMilitary[i]=Math.max(0,Math.min(cap,next));
   }
@@ -2574,7 +2578,7 @@ function attackWave(ter,attacker,defender,force){
   const{tw,th,owner,tElev,tribeSizes,tribeKnowledge,tribeBudget,tribeTiles,bgPop,cityPop}=ter;
   const sl=0;
   if(tribeSizes[attacker]<=0||tribeSizes[defender]<=0)return[];
-  if(force<2)return[];
+  if(force<1)return[];
   // ── Per-pair multipliers ──
   const aK=tribeKnowledge&&tribeKnowledge[attacker]?tribeKnowledge[attacker]:null;
   const dK=tribeKnowledge&&tribeKnowledge[defender]?tribeKnowledge[defender]:null;
@@ -2595,6 +2599,10 @@ function attackWave(ter,attacker,defender,force){
   const candidates=[];// {ti, cost}
   const aTiles=tribeTiles&&tribeTiles[attacker]?tribeTiles[attacker]:null;
   if(!aTiles)return[];
+  // Tiles flipped in the last few passes (tenure < TPROT) are skipped to
+  // stop adjacent waves from ping-ponging the same border each pass.
+  const TPROT=6;
+  const tenure=ter.tenure;
   for(const ati of aTiles){
     const aty=Math.floor(ati/tw),atx=ati%tw;
     for(const[dx,dy]of DIRS){
@@ -2604,6 +2612,7 @@ function attackWave(ter,attacker,defender,force){
       if(visited.has(ni))continue;
       visited.add(ni);
       if(owner[ni]!==defender||tElev[ni]<=sl)continue;
+      if(tenure&&tenure[ni]<TPROT)continue;
       candidates.push({ti:ni,cost:tileAttackCost(ter,ni,techRatio)});
     }
   }
@@ -2613,7 +2622,7 @@ function attackWave(ter,attacker,defender,force){
   const captured=[];
   let spent=0;
   let resortPending=false;
-  while(candidates.length>0&&force>=2){
+  while(candidates.length>0&&force>=1){
     if(resortPending){candidates.sort((a,b)=>a.cost-b.cost);resortPending=false;}
     const c=candidates.shift();
     if(owner[c.ti]!==defender)continue;// taken by a third party already
@@ -2624,7 +2633,7 @@ function attackWave(ter,attacker,defender,force){
     if(cityPop&&cityPop[c.ti]>0)cityPop[c.ti]*=0.90;
     claimTile(ter,c.ti,attacker);
     captured.push(c.ti);
-    spendMilitary(ter,defender,c.cost*0.45);
+    spendMilitary(ter,defender,c.cost*0.35);
     recordFlip(ter,attacker,defender,c.ti);
     if(wasCity)capitalFall(ter,c.ti,attacker,defender,null,null);
     // Expand wave: newly captured tile's defender-neighbours become candidates
@@ -2636,11 +2645,12 @@ function attackWave(ter,attacker,defender,force){
       if(visited.has(ni))continue;
       visited.add(ni);
       if(owner[ni]!==defender||tElev[ni]<=sl)continue;
+      if(tenure&&tenure[ni]<TPROT)continue;
       candidates.push({ti:ni,cost:tileAttackCost(ter,ni,techRatio)});
       resortPending=true;
     }
   }
-  spendMilitary(ter,attacker,spent*0.7);// attacker pays ~70 % of cost in own losses
+  spendMilitary(ter,attacker,spent*0.35);// attacker pays ~35 % of cost — keeps wars sustained instead of bleeding to zero in 1-2 passes
   return captured;
 }
 
@@ -2649,21 +2659,24 @@ function tileAttackCost(ter,ti,techRatio){
   const ty=Math.floor(ti/tw),tx=ti%tw;
   const ow=owner[ti];
   // Local defender garrison estimate: own tile + same-owner 4-neighbours.
-  // Cities count heavier (urban garrisons, walls).
-  let defPop=(bgPop?bgPop[ti]:0)+(cityPop?cityPop[ti]*4:0);
+  // Cities count heavier (urban garrisons, walls). Coefficients tuned so
+  // a frontier tile in front of a populated interior costs ~5-8 (small
+  // armies can crack 1-2 per pass), a city tile costs ~25-40 (decisive
+  // force needed), an undefended thread tip costs ~3 (sweepable).
+  let defPop=(bgPop?bgPop[ti]:0)+(cityPop?cityPop[ti]*2.5:0);
   for(const[dx,dy]of DIRS){
     const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;
     if(ny<0||ny>=th)continue;
     const ni=ny*tw+nx;
     if(owner[ni]===ow){
-      defPop+=(bgPop?bgPop[ni]:0)*0.4+(cityPop?cityPop[ni]:0)*2;
+      defPop+=(bgPop?bgPop[ni]:0)*0.3+(cityPop?cityPop[ni]:0)*1.2;
     }
   }
   const diff=tDiff?tDiff[ti]:0;
   const ten=tenure?tenure[ti]:0;
-  const tenureBonus=Math.min(0.5,ten*0.0015);// long-held tiles cost ~50 % more, not 200 %
-  const base=8;// cheap enough that small forces can flip frontier tiles
-  return Math.max(2,base*(1+defPop*0.35+diff*1.4+tenureBonus)*techRatio);
+  const tenureBonus=Math.min(0.4,ten*0.001);// established borders 40 % stickier
+  const base=3;
+  return Math.max(1,base*(1+defPop*0.25+diff*1.1+tenureBonus)*techRatio);
 }
 
 // "Invasion" is now a spike of the wave: a war decider declaration or
@@ -2888,6 +2901,12 @@ ter._dbgTimeBgPop=(_t1-_t0).toFixed(1);ter._dbgTimeRest=(_t2-_t1).toFixed(1);
 // Recompute ports periodically
 // Recompute ports — staggered +8 from transport to spread load
 if(ter.stepCount%32===8){for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}}
+// Military regen runs every 2 ticks (matches wave cadence) so the wave's
+// per-pass drain is balanced by recruitment between passes. Previously
+// stepMilitary lived inside the every-16-ticks knowledge block, which
+// meant the wave drained 8 passes between regens and armies hit zero
+// permanently after the first big offensive.
+if(ter.stepCount%2===0&&ter.tribeKnowledge&&ter.settled>0)stepMilitary(ter);
 if(_prof)_ts.push(performance.now());// [1] after knowledge/pop block
 const _tExpStart=performance.now();
 // ── Expansion into empty land (directional, pressure-driven) ──
@@ -3391,12 +3410,22 @@ if(ter.wars){
     const budB=ter.tribeBudget&&ter.tribeBudget[wr.b]?ter.tribeBudget[wr.b].military:0.2;
     const standingA=(ter.tribeMilitary&&ter.tribeMilitary[wr.a])||0;
     const standingB=(ter.tribeMilitary&&ter.tribeMilitary[wr.b])||0;
-    // Per-pass spend: 15 % base + up to 20 % from militancy budget.
-    // A balanced tribe spends ~18 %, militant spends ~33 %, fresh-war ×1.3.
-    const forceA=standingA*(0.15+budA*0.20)*goalMul;
-    const forceB=standingB*(0.15+budB*0.20)*goalMul;
-    if(forceA>=2)attackWave(ter,wr.a,wr.b,forceA);
-    if(forceB>=2)attackWave(ter,wr.b,wr.a,forceB);
+    // Per-pass spend: 35 % base + up to 30 % from militancy budget.
+    // Tuned so a 30-troop army can crack ≥1 cheap frontier tile per pass
+    // (previous 0.15+0.20 produced single-pixel-or-nothing because force
+    //  ~7 was less than the minimum tile cost ~12).
+    // Balanced tribe spends ~41 %; militant ~65 %; fresh war ×1.3.
+    // Troop drain via spendMilitary(spent×0.7) inside the wave keeps wars
+    // self-limiting — the more you push, the faster you burn out.
+    const forceA=standingA*(0.35+budA*0.30)*goalMul;
+    const forceB=standingB*(0.35+budB*0.30)*goalMul;
+    let capA=null,capB=null;
+    if(forceA>=1)capA=attackWave(ter,wr.a,wr.b,forceA);
+    if(forceB>=1)capB=attackWave(ter,wr.b,wr.a,forceB);
+    // Toggle ter._waveDebug=true in console / tests to log per-wave activity.
+    if(ter._waveDebug&&((capA&&capA.length)||(capB&&capB.length))){
+      console.log(`[wave ${ter.stepCount}] ${wr.a}↔${wr.b} | A std=${standingA.toFixed(0)} f=${forceA.toFixed(0)} caps=${capA?capA.length:0} | B std=${standingB.toFixed(0)} f=${forceB.toFixed(0)} caps=${capB?capB.length:0}`);
+    }
   }
 }
 for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
