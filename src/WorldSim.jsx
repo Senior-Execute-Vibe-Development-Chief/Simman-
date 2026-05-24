@@ -3615,6 +3615,105 @@ return -(1650+(step-800)*1.875);// 1650 AD → 2025 AD
 function yearStr(step){const y=stepToYear(step);
 return y>0?`${Math.round(y)} BC`:`${Math.round(Math.abs(y))} AD`;}
 
+// ── Transport TEST: standalone greedy claim by capital cost ──────────
+// Independent of the live sim. Each "test capital" runs a Dijkstra that
+// expands through:
+//   - land (cost from params, terrain-modulated)
+//   - water (cost / nav, only if nav > 0)
+//   - mode-change transitions pay a port-load cost on top of the next
+//     tile's cost
+// Tiles are claimed by whichever capital reaches them at lowest cost,
+// until each capital has hit tileLimit. Returns {cost, ownerArr} where
+// ownerArr[ti] is the index of the capital that claimed it (or -1).
+function runTransportTest(ter, capitals, params){
+  const tw=ter.tw,th=ter.th,N=tw*th;
+  const tElev=ter.tElev,tDiff=ter.tDiff,tCoast=ter.tCoast;
+  const riverMag=ter.rivers?ter.rivers.riverMag:null;
+  const cost=new Float32Array(N);cost.fill(999);
+  const ownerArr=new Int16Array(N);ownerArr.fill(-1);
+  const visited=new Uint8Array(N);
+  const claimed=new Int32Array(capitals.length);
+  const TILE_LIMIT=params.tileLimit;
+  // Tile cost function — uses the test params, not the production tileCost
+  function moveCost(ni,ciIsWater){
+    const e=tElev[ni];
+    const niIsWater=e<=0;
+    let base;
+    if(niIsWater){
+      if(params.nav<=0.01)return 999;
+      base=params.water/Math.max(0.3,params.nav);
+    }else if(riverMag&&riverMag[ni]>=2){
+      const rm=riverMag[ni];
+      base=rm>=4?params.river:rm>=3?params.river*1.3:params.river*2;
+    }else if(tCoast[ni]){
+      base=params.coast;
+    }else{
+      base=params.plain+tDiff[ni]*tDiff[ni]*params.mountainMult;
+    }
+    // Mode-change penalty (port loading): pay only on transitions
+    if(niIsWater!==ciIsWater)base+=params.port;
+    return base;
+  }
+  // Heap (ti, cost, tribe) as parallel arrays
+  const heapTi=new Int32Array(N*2);
+  const heapCost=new Float32Array(N*2);
+  const heapTribe=new Int16Array(N*2);
+  let heapSize=0;
+  function hPush(ti,c,t){
+    let i=heapSize++;
+    heapTi[i]=ti;heapCost[i]=c;heapTribe[i]=t;
+    while(i>0){const p=(i-1)>>1;if(heapCost[p]<=heapCost[i])break;
+      const tt=heapTi[p],tc=heapCost[p],tb=heapTribe[p];
+      heapTi[p]=heapTi[i];heapCost[p]=heapCost[i];heapTribe[p]=heapTribe[i];
+      heapTi[i]=tt;heapCost[i]=tc;heapTribe[i]=tb;i=p;}
+  }
+  let _ti=0,_cost=0,_tribe=0;
+  function hPop(){
+    _ti=heapTi[0];_cost=heapCost[0];_tribe=heapTribe[0];
+    heapSize--;
+    if(heapSize===0)return;
+    heapTi[0]=heapTi[heapSize];heapCost[0]=heapCost[heapSize];heapTribe[0]=heapTribe[heapSize];
+    let i=0;for(;;){const l=i*2+1,r=l+1;let s=i;
+      if(l<heapSize&&heapCost[l]<heapCost[s])s=l;
+      if(r<heapSize&&heapCost[r]<heapCost[s])s=r;
+      if(s===i)break;
+      const tt=heapTi[s],tc=heapCost[s],tb=heapTribe[s];
+      heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];heapTribe[s]=heapTribe[i];
+      heapTi[i]=tt;heapCost[i]=tc;heapTribe[i]=tb;i=s;}
+  }
+  const DX4=[-1,1,0,0],DY4=[0,0,-1,1];
+  // Seed each capital
+  for(let i=0;i<capitals.length;i++){
+    const c=capitals[i];const ti=c.y*tw+c.x;
+    if(ti<0||ti>=N||tElev[ti]<=0)continue;// can't seed in water
+    hPush(ti,0,i);
+  }
+  let totalClaimed=0;
+  const totalTarget=capitals.length*TILE_LIMIT;
+  while(heapSize>0&&totalClaimed<totalTarget){
+    hPop();
+    const ti=_ti,cc=_cost,tribe=_tribe;
+    if(visited[ti])continue;
+    if(claimed[tribe]>=TILE_LIMIT)continue;
+    visited[ti]=1;
+    ownerArr[ti]=tribe;
+    cost[ti]=cc;
+    claimed[tribe]++;totalClaimed++;
+    const cx=ti%tw,cy=(ti-cx)/tw;
+    const ciIsWater=tElev[ti]<=0;
+    for(let d=0;d<4;d++){
+      const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
+      if(ny<0||ny>=th)continue;
+      const ni=ny*tw+nx;
+      if(visited[ni])continue;
+      const mc=moveCost(ni,ciIsWater);
+      if(mc>=999)continue;
+      hPush(ni,cc+mc,tribe);
+    }
+  }
+  return{cost,ownerArr,claimed};
+}
+
 // ── Cultural era derived from average tribe knowledge ──
 function deriveEra(aAg,aMt,aNv,aOg){
   if(aMt>=0.65&&aOg>=0.55)return"Industrial Age";
@@ -3669,6 +3768,29 @@ const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("tectonic");
+// Transport-test mode state. Each click in this view places a capital;
+// the BFS re-runs whenever params or capitals change.
+const[ttCapitals,setTtCapitals]=useState([]);
+const[ttParams,setTtParams]=useState({
+  tileLimit: 500,
+  plain: 1.0,
+  mountainMult: 12,
+  river: 0.3,
+  coast: 0.5,
+  water: 0.8,
+  nav: 0.5,
+  port: 3.0,
+});
+const ttResultRef=useRef(null);
+const ttCapitalsRef=useRef([]);
+useEffect(()=>{ttCapitalsRef.current=ttCapitals;
+  // Re-run BFS whenever capitals or params change AND we're in test mode
+  if(viewMode!=="transport-test"){ttResultRef.current=null;return;}
+  if(!terRef.current||ttCapitals.length===0){ttResultRef.current=null;
+    if(terRef.current)draw(terRef.current);return;}
+  ttResultRef.current=runTransportTest(terRef.current,ttCapitals,ttParams);
+  draw(terRef.current);
+},[ttCapitals,ttParams,viewMode]);
 const[oceanLevel,setOceanLevel]=useState(0.78);
 const[depthFromSea,setDepthFromSea]=useState(false);
 const[depthCeil,setDepthCeil]=useState(1.0);
@@ -4242,6 +4364,45 @@ const landDim=0.15;const heatW=0.80;
 const tr2=(tc[ti*3]*landDim)|0,tg2=(tc[ti*3+1]*landDim)|0,tb2=(tc[ti*3+2]*landDim)|0;
 r=(r*heatW+tr2*(1-heatW))|0;g=(g*heatW+tg2*(1-heatW))|0;b=(b*heatW+tb2*(1-heatW))|0;
 d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
+}else if(vm==="transport-test"){
+// Standalone test: each click placed a capital; the BFS claims tileLimit
+// tiles per capital by cheapest transport cost using the test params.
+// Tiles painted per-capital colour with brightness = inverse cost.
+if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
+const tc=terrainCache.current;const ptw=ter.tw,pth=ter.th;
+const res=ttResultRef.current;
+const palette=[[230,80,80],[80,170,230],[110,210,110],[230,200,80],[200,120,220],[230,150,80],[100,220,200],[230,100,160]];
+// Track per-tribe max cost for normalisation
+let maxCost=1;if(res){for(let qi=0;qi<res.cost.length;qi++){if(res.ownerArr[qi]>=0&&res.cost[qi]<999&&res.cost[qi]>maxCost)maxCost=res.cost[qi];}}
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty2=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty2,CH,H))),si=sy*W+sx;
+const e=w.elevation[si];const pi4=ti<<2;
+if(e<=0){d[pi4]=4;d[pi4+1]=5;d[pi4+2]=12;d[pi4+3]=255;continue;}
+const ttx=Math.min(ptw-1,tx),tty=Math.min(pth-1,Math.round(screenYtoDataY(ty2,CH,H)/RES));
+const tti=tty*ptw+ttx;
+const ownerT=res?res.ownerArr[tti]:-1;
+if(ownerT<0){
+  // unclaimed — dim terrain
+  d[pi4]=(tc[ti*3]*0.18)|0;d[pi4+1]=(tc[ti*3+1]*0.18)|0;d[pi4+2]=(tc[ti*3+2]*0.18)|0;d[pi4+3]=255;continue;
+}
+const col=palette[ownerT%palette.length];
+const cc2=res.cost[tti];
+// log-scale brightness: 0→full, maxCost→dim
+const t=Math.min(1,Math.log10(cc2+1)/Math.log10(maxCost+1));
+const bright=1-t*0.7;// dimmest 30% of full
+d[pi4]=(col[0]*bright)|0;d[pi4+1]=(col[1]*bright)|0;d[pi4+2]=(col[2]*bright)|0;d[pi4+3]=255;
+}
+// Mark capitals with white dots
+if(ttCapitalsRef.current){
+  for(const c of ttCapitalsRef.current){
+    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
+      const cx=c.x+dx,cy=c.y+dy;if(cy<0||cy>=pth)continue;
+      const px=cx%CW,py=Math.min(CH-1,Math.round(dataYtoScreenY(cy,CH,H)));
+      if(px<0||px>=CW||py<0||py>=CH)continue;
+      const pi=(py*CW+px)<<2;d[pi]=240;d[pi+1]=240;d[pi+2]=240;d[pi+3]=255;
+    }
+  }
+}
 }else if(vm==="tribes"){
 const eraColor=(k)=>{if(!k)return[55,48,38];
 const ag=k.agriculture,mt=k.metallurgy,org=k.organization;
@@ -4780,12 +4941,19 @@ const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
 const wx=Math.floor(sx),wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const ter=terRef.current;if(!ter)return;
 const ttx=Math.min(ter.tw-1,(wx/RES)|0),tty=Math.min(ter.th-1,(wy/RES)|0);
+// Transport-test mode: clicks place test capitals. Shift-click clears.
+if(viewMode==="transport-test"){
+  if(ter.tElev[tty*ter.tw+ttx]<=0)return;// don't place in water
+  if(ev.shiftKey){setTtCapitals([]);return;}
+  setTtCapitals(prev=>[...prev,{x:ttx,y:tty}]);
+  return;
+}
 const tileOwner=ter.owner[tty*ter.tw+ttx];
 if(tileOwner>=0&&ter.tribes?.[tileOwner]?.alive){
 setSelectedTribe(tileOwner);ter._selectedTribe=tileOwner;
 setRightPanel("tribes");draw(ter);
 }else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}
-},[CW,CH,draw]);
+},[CW,CH,draw,viewMode]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
 const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
 
@@ -4805,7 +4973,8 @@ const _era=deriveEra(_aAg,_aMt,_aNv,_aOg);
 const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
-  ["resources","Resources"],["population","Pop"],["transport","Transport"],["tribes","Tribes"]
+  ["resources","Resources"],["population","Pop"],["transport","Transport"],
+  ["transport-test","Trans Test"],["tribes","Tribes"]
 ];
 
 return(
@@ -5159,6 +5328,40 @@ return(
 })()}
 
 {/* ─── Bottom-left collapsible legend ─── */}
+{viewMode==="transport-test"&&
+<div className="au-parchment" style={{position:"absolute",top:8,left:8,
+  padding:"8px 12px",fontSize:11,width:240,zIndex:20}}>
+  <div className="au-heading au-sc" style={{fontSize:12,marginBottom:6,borderBottom:"1px solid rgba(58,38,20,0.25)",paddingBottom:4}}>Transport Test</div>
+  <div className="au-fade" style={{fontSize:10,marginBottom:6,lineHeight:1.3}}>
+    Click on land to place a capital. Shift-click clears.<br/>
+    Each capital greedy-claims tiles by cheapest path.
+  </div>
+  <div style={{fontSize:10,marginBottom:8}}>
+    Capitals: <b>{ttCapitals.length}</b>
+    {ttResultRef.current && <> · claimed: {Array.from(ttResultRef.current.claimed).join(" / ")}</>}
+  </div>
+  {[
+    ["tileLimit","Tiles / capital",10,5000,10],
+    ["plain","Plain land cost",0.1,5,0.1],
+    ["mountainMult","Mountain × diff²",0,30,0.5],
+    ["river","River cost",0.05,2,0.05],
+    ["coast","Coast cost",0.1,2,0.05],
+    ["water","Water base cost",0.1,5,0.1],
+    ["nav","Navigation (0=no sea)",0,1,0.02],
+    ["port","Port load (mode change)",0,15,0.5],
+  ].map(([k,label,min,max,step])=>(
+    <div key={k} style={{marginBottom:4}}>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
+        <span>{label}</span><b>{ttParams[k].toFixed(k==="tileLimit"?0:2)}</b>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={ttParams[k]}
+        onChange={e=>setTtParams(p=>({...p,[k]:parseFloat(e.target.value)}))}
+        style={{width:"100%"}}/>
+    </div>
+  ))}
+  <button className="au-btn au-block" style={{marginTop:6,fontSize:11}}
+    onClick={()=>setTtCapitals([])}>Clear capitals</button>
+</div>}
 {(viewMode==="terrain"||viewMode==="atlas"||viewMode==="tribes"||viewMode==="resources")&&
 <div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
   padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:200,zIndex:20}}>
