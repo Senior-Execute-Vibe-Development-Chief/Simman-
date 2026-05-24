@@ -1022,6 +1022,92 @@ function stepMilitary(ter){
   }
 }
 
+// ── Expansion (settler) reserve ──────────────────────────────────────
+// Parallel to military: a stored pool of settlers/frontiersmen drawn
+// from population × growth budget × agriculture/organization tech.
+// Each claimed tile costs from this pool; expansion stops when drained
+// and resumes after regen. Models the wave pattern of real colonisation
+// (Spanish conquista, Roman late-republic burst, US westward push, etc.)
+// instead of the continuous uncapped expansion the sim had before.
+function expansionCap(ter,id){
+  if(!ter.tribePopulation||!ter.tribeSizes||ter.tribeSizes[id]<=0)return 0;
+  const pop=ter.tribePopulation[id]||0;
+  const bud=ter.tribeBudget&&ter.tribeBudget[id];
+  const gro=bud?bud.growth:0.3;
+  const k=ter.tribeKnowledge&&ter.tribeKnowledge[id];
+  const ag=k?k.agriculture:0;
+  const og=k?k.organization:0;
+  // Cap scales with pop × growth × tech. Floor sized so an initial
+  // tribe (pop few dozen) can still sustain a meaningful frontier wave.
+  return Math.max(400,pop*gro*(1+ag*0.5+og*0.3)*3);
+}
+function expansionReadiness(ter,id){
+  if(!ter.tribeExpansion)return 0.5;
+  const cur=ter.tribeExpansion[id]||0;
+  const cap=expansionCap(ter,id);
+  if(cap<=0)return 0;
+  return Math.min(1,cur/cap);
+}
+function spendExpansion(ter,id,amount){
+  if(!ter.tribeExpansion)ter.tribeExpansion=[];
+  while(ter.tribeExpansion.length<=id)ter.tribeExpansion.push(0);
+  ter.tribeExpansion[id]=Math.max(0,(ter.tribeExpansion[id]||0)-amount);
+}
+// Cost in settlers of claiming a given tile. Calibrated so an initial
+// tribe at the cap floor (200) can claim ~4 tiles per tick of regen,
+// and a mid-sized tribe (1k tiles, pop ~500) can sustain ~3-5 tiles
+// per tick. Tech reduces cost; transport-cost from capital scales it.
+function claimSettlerCost(ter,id,ti){
+  const tc=ter.transportCost?ter.transportCost[ti]:0;
+  // Unclaimed tiles never get a transportCost entry — they're not in
+  // the Dijkstra. Use neighbour's cost as a proxy (the Dijkstra walks
+  // owned land only, so the cheapest reach for an adjacent tile is
+  // the lowest-cost owned neighbour's cost + a small step).
+  let reach;
+  if(tc>0&&tc<900){reach=tc;}else{
+    // Sample neighbours and take min transportCost; if no transportCost
+    // field yet (first few steps) fall back to base
+    const tw=ter.tw,th=ter.th;const tx=ti%tw,ty=(ti-tx)/tw;
+    let minN=999;
+    for(let d=0;d<4;d++){
+      const ny=ty+(d<2?(d?1:-1):0),nx=((tx+(d>=2?(d-2?1:-1):0))%tw+tw)%tw;
+      if(ny<0||ny>=th)continue;
+      const nti=ny*tw+nx;
+      const v=ter.transportCost?ter.transportCost[nti]:0;
+      if(v>0&&v<minN)minN=v;
+    }
+    reach=minN<999?minN+1.5:3;
+  }
+  const k=ter.tribeKnowledge&&ter.tribeKnowledge[id];
+  const ag=k?k.agriculture:0;
+  const og=k?k.organization:0;
+  // Calibrated so an initial tribe (cap floor 200, regen ~6/tick) can
+  // sustain a steady frontier wave. Lower than my first cut — the
+  // existing expansion-chance scoring is already a strong limiter, so
+  // the budget should be a *secondary* throttle that bites mostly on
+  // distant/expensive tiles and during burst growth.
+  const baseCost=0.3+reach*0.06;
+  return baseCost/(1+ag*0.4+og*0.2);
+}
+function stepExpansion(ter){
+  if(!ter.tribeExpansion)ter.tribeExpansion=[];
+  const n=ter.tribeSizes.length;
+  while(ter.tribeExpansion.length<n)ter.tribeExpansion.push(0);
+  for(let i=0;i<n;i++){
+    if(ter.tribeSizes[i]<=0){ter.tribeExpansion[i]=0;continue;}
+    const cap=expansionCap(ter,i);
+    const cur=ter.tribeExpansion[i]||0;
+    // Regen rate scales with growth budget — Sparta-style militant
+    // tribes (low growth budget) refill slowly; growth-focused tribes
+    // refill fast. Asymptotic toward cap.
+    const bud=ter.tribeBudget&&ter.tribeBudget[i];
+    const gro=bud?bud.growth:0.3;
+    const rate=0.05+gro*0.10;// gro=0.1 → 0.060, gro=0.3 → 0.080, gro=0.5 → 0.100
+    const next=cur+(cap-cur)*rate;
+    ter.tribeExpansion[i]=Math.max(0,Math.min(cap,next));
+  }
+}
+
 // ── Tile weakness ─────────────────────────────────────────────────────
 // How weak is the *individual* tile, not the tribe overall? A long
 // thin tendril through wilderness is mighty empire's claim on paper
@@ -2819,7 +2905,7 @@ ter._dbgTimeTransport=(_tt1-_tt0).toFixed(1);
 const _t0=performance.now();
 stepBackgroundPop(ter);
 const _t1=performance.now();
-if(ter.settled>0){stepPopulation(ter);stepTrade(ter);stepBudget(ter);stepKnowledge(ter);stepMilitary(ter);}
+if(ter.settled>0){stepPopulation(ter);stepTrade(ter);stepBudget(ter);stepKnowledge(ter);stepMilitary(ter);stepExpansion(ter);}
 const _t2=performance.now();
 if(_t1-_t0>5)console.warn(`[BGPOP] ${(_t1-_t0).toFixed(1)}ms`);
 if(_t2-_t1>5)console.warn(`[POP+TRADE+BUDGET+KNOW] ${(_t2-_t1).toFixed(1)}ms`);
@@ -2953,7 +3039,18 @@ let claimedThisTile=0;
 for(let ci2=0;ci2<_candidates.length;ci2++){const cand=_candidates[ci2];const{ni,nx,ny:ny2,chance,diff,distMin}=cand;
 // Each subsequent candidate is 20% as likely (very steep — usually only best gets claimed)
 const rankPenalty=Math.pow(0.2,claimedThisTile);
-if(Math.random()<chance*rankPenalty){let nw=ow;claimedThisTile++;
+if(Math.random()<chance*rankPenalty){let nw=ow;
+// Expansion budget: deduct settler cost from the tribe's reserve.
+// If insufficient, skip this claim — the tribe can't field enough
+// settlers to colonise this tile right now. Cheap nearby tiles
+// drain the reserve slowly; distant or rough tiles drain it fast.
+const settlerCost=claimSettlerCost(ter,nw,ni);
+if(ter.tribeExpansion&&(ter.tribeExpansion[nw]||0)<settlerCost){
+  // Out of settlers — stop trying further candidates this tile
+  break;
+}
+spendExpansion(ter,nw,settlerCost);
+claimedThisTile++;
 // Centers now spawn from population density peaks (stepBackgroundPop),
 // not during expansion. Cities grow where people ARE, not where borders move.
 claimTile(ter,ni,nw);if(!nf[ni]){nf[ni]=1;nfl.push(ni);}

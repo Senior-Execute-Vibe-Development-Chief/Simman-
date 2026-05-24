@@ -23,6 +23,11 @@ pureCode = pureCode.replace(
   'for(const[ti,to]of flips){if(owner[ti]===to)continue;',
   'if(!ter._dbgFlips)ter._dbgFlips=0; ter._dbgFlips+=flips.length;\nfor(const[ti,to]of flips){if(owner[ti]===to)continue;'
 );
+// Count expansion budget skips (where cost exceeded available reserve)
+pureCode = pureCode.replace(
+  'if(ter.tribeExpansion&&(ter.tribeExpansion[nw]||0)<settlerCost){',
+  'if(!ter._dbgExpSkips)ter._dbgExpSkips=0; if(ter.tribeExpansion&&(ter.tribeExpansion[nw]||0)<settlerCost){ter._dbgExpSkips++;'
+);
 // Count cascade and capital-fall results
 pureCode = pureCode.replace(
   'const cascadeTiles=conquestCascade(ter,ti,to,from,nf,nfl);',
@@ -156,6 +161,17 @@ for (let step = 1; step <= STEPS; step++) {
         else if (e.type === 'capital-fall' || e.type === 'city-fall') capitalsTaken++;
       }
     }
+    // Sample a tribe's expansion reserve
+    let expSample = "—";
+    if (ter.tribeExpansion && ter.tribeSizes) {
+      for (let i = 0; i < ter.tribeSizes.length; i++) {
+        if (ter.tribeSizes[i] > 50) {
+          expSample = `t${i}: ${(ter.tribeExpansion[i]||0).toFixed(0)} (pop ${(ter.tribePopulation?.[i]||0).toFixed(0)})`;
+          break;
+        }
+      }
+    }
+    console.log(`  exp: ${expSample} · skips: ${ter._dbgExpSkips||0}`);
     samples.push({step, alive, totalTiles, unclaimedLand, dFlips, dCred, largestTribe, totalPop, withContact, activeWars});
     console.log(`Step ${String(step).padStart(4)} | ${String(alive).padStart(3)} tribes (${withContact} touch others) | tiles=${String(totalTiles).padStart(5)} | biggest=${largestTribe} | flips/50=${dFlips} | wars: ${activeWars} active, ${recentDeclared} new, ${recentEnded} ended, ${capitalsTaken} cities fell`);
   }
