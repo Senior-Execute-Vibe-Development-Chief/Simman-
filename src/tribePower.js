@@ -145,14 +145,59 @@ export function localPower(ter, tribeId, tx, ty) {
     total += expFalloff(d) * c.prestige;
   }
 
+  // ── Local mass contribution ──
+  // Without this, a frontier tile far from any city sees `total ≈ 0`
+  // and base collapses to 3 % of population. Conquerors then can't hold
+  // captured territory because the SAME calculation makes them weak the
+  // moment they own the tile, so it flips back next tick (visible as
+  // single-pixel ping-pong at borders).
+  // The fix: owned tiles in a small box around (tx,ty) represent local
+  // levies / garrisons / armies in the field. Each contributes a small
+  // amount proportional to its fertility (which already encodes
+  // population capacity). Attackers get a small contribution from their
+  // adjacent tiles; defenders get a big contribution from being deep
+  // in their territory. Both can hold ground at the frontier.
+  if (ter.owner && ter.tFert) {
+    const tw = ter.tw, th = ter.th, owner = ter.owner, tFert = ter.tFert;
+    const R = 4;
+    let mass = 0;
+    const txi = tx | 0, tyi = ty | 0;
+    for (let dy = -R; dy <= R; dy++) {
+      const ny = tyi + dy;
+      if (ny < 0 || ny >= th) continue;
+      for (let dx = -R; dx <= R; dx++) {
+        const nx = ((txi + dx) % tw + tw) % tw;
+        const ni = ny * tw + nx;
+        if (owner[ni] === tribeId) mass += tFert[ni];
+      }
+    }
+    // Scale: a fully-owned R=4 box (~80 tiles) at fertility 0.5 gives
+    // mass≈40; we want this to amount to ~half of the centers-based
+    // contribution at full saturation. So scale down by ~0.015.
+    total += mass * 0.015;
+  }
+
   let base = pop * (0.03 + 0.97 * Math.min(1, total));
 
-  // Metallurgy + ore access multiplies combat effectiveness
+  // Metallurgy + ore access multiplies combat effectiveness.
+  // Wide range so an Iron Age power genuinely crushes a Stone Age one
+  // (not just slightly outperforms them). A maxed Iron Age tribe with
+  // ore + military doctrine + horses can hit ~6x combat strength of a
+  // Stone Age tribe with no ore — the conquistador/Zulu pattern.
   if (ter.tribeKnowledge && ter.tribeKnowledge[tribeId]
       && ter._resCache && ter._resCache[tribeId]) {
-    const met = ter.tribeKnowledge[tribeId].metallurgy;
+    const k = ter.tribeKnowledge[tribeId];
+    const met = k.metallurgy;
+    const mil = k.military || 0;
     const ore = tribeOreAccess(ter._resCache[tribeId], met);
-    base *= (1 + ore * 1.5);
+    // Bronze age (met~0.3) with ore: ~1.6x
+    // Iron age (met~0.6) with ore: ~2.8x
+    // Industrial (met~0.85) with ore + doctrine: ~4.5x
+    base *= (1 + ore * 3.0) * (1 + mil * 1.5);
+    // Cavalry: horses give mobility/shock bonus. Capped — having more
+    // than ~3 horse tiles diminishes (you only field so much cavalry).
+    const horses = ter._resCache[tribeId].horses || 0;
+    if (horses > 0) base *= (1 + Math.min(0.6, horses * 0.15));
   }
 
   // Military budget multiplier
