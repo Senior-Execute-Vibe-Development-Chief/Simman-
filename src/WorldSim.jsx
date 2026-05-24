@@ -2576,7 +2576,7 @@ function removeCenter(ter,tid,ti){
 // where multipliers come from tech (metallurgy/military offense vs
 // construction/military defense, cavalry advantage) and the budget
 // military allocation.
-function attackWave(ter,attacker,defender,force,initialCandidates){
+function attackWave(ter,attacker,defender,force,initialCandidates,focusTiles){
   const{tw,th,owner,tElev,tribeSizes,tribeKnowledge,tribeBudget,tribeTiles,bgPop,cityPop}=ter;
   const sl=0;
   if(tribeSizes[attacker]<=0||tribeSizes[defender]<=0)return[];
@@ -2601,17 +2601,43 @@ function attackWave(ter,attacker,defender,force,initialCandidates){
   // border walk in the border-conflict block), use it — that's O(border)
   // instead of O(empire). Fallback to the legacy full-empire scan when
   // called directly (e.g. launchInvasion).
+  //
+  // Focus bias: if the caller passed `focusTiles` (recent captures in
+  // this war), tiles far from any focus point get scaled cost up. This
+  // produces a moving wave front instead of opportunistic weak-tile
+  // hunting across the whole border (user complaint: "weird surround"
+  // and "scattered" attacks). Tiles within ~3 of focus pay full cost;
+  // tiles 10+ away pay up to 5×.
   const visited=new Set();
   const candidates=[];// {ti, cost}
   const TPROT=6;// tiles flipped in last <TPROT passes are off-limits
   const tenure=ter.tenure;
+  const hasFocus=focusTiles&&focusTiles.length>0;
+  function _scoreTile(ni){
+    let c=tileAttackCost(ter,ni,techRatio);
+    if(hasFocus){
+      const ty=Math.floor(ni/tw),tx=ni-ty*tw;
+      let minD2=Infinity;
+      for(let fi=0;fi<focusTiles.length;fi++){
+        const ft=focusTiles[fi];
+        const fy=Math.floor(ft/tw),fx=ft-fy*tw;
+        let dx=Math.abs(fx-tx);if(dx>tw/2)dx=tw-dx;
+        const dy=fy-ty;
+        const d2=dx*dx+dy*dy;
+        if(d2<minD2)minD2=d2;
+      }
+      // d=3 → 1.0×, d=6 → 1.36×, d=10 → 2.0×, d=20 → 5.0× (capped)
+      c*=Math.min(5,1+minD2*0.01);
+    }
+    return c;
+  }
   if(initialCandidates){
     for(const ni of initialCandidates){
       if(visited.has(ni))continue;
       visited.add(ni);
       if(owner[ni]!==defender||tElev[ni]<=sl)continue;
       if(tenure&&tenure[ni]<TPROT)continue;
-      candidates.push({ti:ni,cost:tileAttackCost(ter,ni,techRatio)});
+      candidates.push({ti:ni,cost:_scoreTile(ni)});
     }
   }else{
     const aTiles=tribeTiles&&tribeTiles[attacker]?tribeTiles[attacker]:null;
@@ -2626,7 +2652,7 @@ function attackWave(ter,attacker,defender,force,initialCandidates){
         visited.add(ni);
         if(owner[ni]!==defender||tElev[ni]<=sl)continue;
         if(tenure&&tenure[ni]<TPROT)continue;
-        candidates.push({ti:ni,cost:tileAttackCost(ter,ni,techRatio)});
+        candidates.push({ti:ni,cost:_scoreTile(ni)});
       }
     }
   }
@@ -2660,7 +2686,7 @@ function attackWave(ter,attacker,defender,force,initialCandidates){
       visited.add(ni);
       if(owner[ni]!==defender||tElev[ni]<=sl)continue;
       if(tenure&&tenure[ni]<TPROT)continue;
-      candidates.push({ti:ni,cost:tileAttackCost(ter,ni,techRatio)});
+      candidates.push({ti:ni,cost:_scoreTile(ni)});
       resortPending=true;
     }
   }
@@ -2755,46 +2781,21 @@ function capitalFall(ter,ti,attacker,defender,nf,nfl){
       tribeCenters[defender].push({x:nx2,y:ny2,prestige:0.4,founded:ter.stepCount,refugee:true});
     }
   }
-  // Cascade: transfer tiles within R that were closer to this lost city
-  // than to any other surviving defender city. Big radius — taking the
-  // capital should be a generational-scale event in the sim's narrative.
-  const R=wasCapital?14:9;
-  const R2=R*R;
-  const survivingCenters=tribeCenters[defender]||[];
-  const moved=[];
-  for(let dy=-R;dy<=R;dy++){
-    const ny=ty+dy;if(ny<0||ny>=th)continue;
-    for(let dx=-R;dx<=R;dx++){
-      if(dx*dx+dy*dy>R2)continue;
-      const nx=((tx+dx)%tw+tw)%tw;
-      const ni=ny*tw+nx;
-      if(owner[ni]!==defender)continue;
-      if(tElev[ni]<=0)continue;
-      const dLost=tDistW(nx,ny,tx,ty,tw);
-      let dSurv=Infinity;
-      for(let ci=0;ci<survivingCenters.length;ci++){const c=survivingCenters[ci];
-        const dd=tDistW(nx,ny,c.x,c.y,tw);if(dd<dSurv)dSurv=dd;}
-      if(dLost<dSurv){moved.push(ni);}
-    }
-  }
-  // Use transferTile so population is preserved (these are administered
-  // tiles changing flag — not battlefields).
-  for(const mi of moved){
-    transferTile(ter,mi,attacker);
-    if(nf&&!nf[mi]){nf[mi]=1;nfl.push(mi);}
-  }
+  // No regional cascade. Each tile must be captured through the wave —
+  // taking a city does NOT auto-transfer surrounding administered tiles.
+  // (Removed at user request: the legacy R=14 capital / R=9 secondary
+  // cascade produced the "semicircular auto-claim" effect on capture.)
   // Record the event
   if(!ter._warEvents)ter._warEvents=[];
-  ter._warEvents.push({step:ter.stepCount,type:wasCapital?'capital-fall':'city-fall',attacker,defender,ti,cascadedTiles:moved.length});
+  ter._warEvents.push({step:ter.stepCount,type:wasCapital?'capital-fall':'city-fall',attacker,defender,ti,cascadedTiles:0});
   if(ter._warEvents.length>200)ter._warEvents.shift();
   // Update the war record
   const w=getWar(ter,attacker,defender);
   if(w){w.capitalsTaken++;w.lastFlip=ter.stepCount;}
-  // Post-conquest fragmentation immunity for both sides for ~64 steps:
-  // the defender shouldn't immediately implode; the attacker's new
-  // region shouldn't immediately split off.
+  // Post-conquest fragmentation immunity for the defender so the rest
+  // of the empire doesn't immediately implode. Attacker no longer needs
+  // protection because we don't cascade-claim anything.
   if(!ter.tribeProtectFragUntil)ter.tribeProtectFragUntil=[];
-  ter.tribeProtectFragUntil[attacker]=Math.max(ter.tribeProtectFragUntil[attacker]||0,ter.stepCount+64);
   ter.tribeProtectFragUntil[defender]=Math.max(ter.tribeProtectFragUntil[defender]||0,ter.stepCount+64);
 }
 
@@ -3482,8 +3483,27 @@ if(ter.wars){
     // scale (drained tribes generate dozens of zero-capture waves/pass).
     const initialA=warTargets.get(wr.a+","+wr.b);
     const initialB=warTargets.get(wr.b+","+wr.a);
-    if(forceA>=5&&initialA)capA=attackWave(ter,wr.a,wr.b,forceA,initialA);
-    if(forceB>=5&&initialB)capB=attackWave(ter,wr.b,wr.a,forceB,initialB);
+    // Per-war focal points: a moving list of where this attacker has
+    // captured recently. The wave biases cost toward tiles near these
+    // focal points so each pass pushes the front forward from where the
+    // last one ended, instead of cherry-picking the cheapest tile from
+    // anywhere on the border (which produced the "weird surround" and
+    // scattered-capture patterns).
+    if(!ter._warFocus)ter._warFocus={};
+    const focusKeyA=wr.a+">"+wr.b,focusKeyB=wr.b+">"+wr.a;
+    const focusA=ter._warFocus[focusKeyA]||null;
+    const focusB=ter._warFocus[focusKeyB]||null;
+    if(forceA>=5&&initialA)capA=attackWave(ter,wr.a,wr.b,forceA,initialA,focusA);
+    if(forceB>=5&&initialB)capB=attackWave(ter,wr.b,wr.a,forceB,initialB,focusB);
+    // Update focus lists with the new captures (ring buffer of 6).
+    if(capA&&capA.length){
+      const f=ter._warFocus[focusKeyA]||(ter._warFocus[focusKeyA]=[]);
+      for(const ti of capA){f.push(ti);if(f.length>6)f.shift();}
+    }
+    if(capB&&capB.length){
+      const f=ter._warFocus[focusKeyB]||(ter._warFocus[focusKeyB]=[]);
+      for(const ti of capB){f.push(ti);if(f.length>6)f.shift();}
+    }
     // Toggle ter._waveDebug=true in console / tests to log per-wave activity.
     if(ter._waveDebug&&((capA&&capA.length)||(capB&&capB.length))){
       console.log(`[wave ${ter.stepCount}] ${wr.a}↔${wr.b} | A std=${standingA.toFixed(0)} f=${forceA.toFixed(0)} caps=${capA?capA.length:0} | B std=${standingB.toFixed(0)} f=${forceB.toFixed(0)} caps=${capB?capB.length:0}`);
@@ -3699,12 +3719,11 @@ const ix2=i%tw,iy2=(i-ix2)/tw;
 if(tDistW(ix2,iy2,wx,wy,tw)<tDistW(ix2,iy2,cap.x,cap.y,tw))toTransfer.push(i);}}
 for(const ti of toTransfer)transferTile(ter,ti,sid);}}}}
 }
-// ── Encirclement: cut-off pockets get absorbed by surrounding enemy ──
-// Runs BEFORE the disconnected-component fragmentation pass so isolated
-// pockets are absorbed (realistic) rather than spawning new tribes
-// (unrealistic — cut-off threads don't declare independence, they get
-// conquered by whoever cut them).
-if(ter.stepCount%8===0){checkEncirclement(ter);}
+// ── Encirclement: DISABLED ──
+// User request: remove all automatic capture logic. Cut-off pockets
+// must be captured through the wave like any other tile. Leaving the
+// function in place but never calling it (keeps capitalFall etc. happy).
+// if(ter.stepCount%8===0){checkEncirclement(ter);}
 // ── Fragmentation: split disconnected tribe components (largest keeps original ID/color) ──
 if(ter.stepCount%16===0){if(!ter._fragMark)ter._fragMark=new Int32Array(tw*th);const mark=ter._fragMark;let gen=ter._fragGen||0;
 for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=1)continue;
@@ -3728,98 +3747,11 @@ if(comps.length<=1)continue;
 comps.sort((a,b)=>b.length-a.length);
 for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor(comps[c][0]/tw),st);
 for(const ci of comps[c])transferTile(ter,ci,sid);}}ter._fragGen=gen;}
-// ── Tiered absorption: vestigial tribes absorbed by a much larger neighbour ──
-// Real-world precedent: minor polities (Bavaria→Germany, Etruscan city-states
-// →Rome, princely states→Raj) usually vanished through annexation, dynastic
-// union, or vassalisation — not 500-year border slogs. This pass scales the
-// thresholds with defender size so 50- and 200-tile vestiges can be absorbed
-// too, not only 5-tile fragments.
-//
-//   defender ≤ 10 tiles  → any larger neighbour      after  50 steps
-//   defender ≤ 30 tiles  → neighbour ×  4 larger     after 150 steps
-//   defender ≤ 100 tiles → neighbour ×  6 larger     after 300 steps
-//   defender ≤ 300 tiles → neighbour × 10 larger     after 500 steps
-//
-// Sanity gates: real shared border (≥ 2 tiles touching), no fresh conflict
-// (last 50 steps), and the defender's pop-per-tile must be lower than the
-// absorber's — otherwise it's a thriving city-state we're trying not to
-// annex. Annexed tiles transfer (not claimTile) so population is preserved:
-// this is a peaceful absorption, not a sacking.
-if(ter.stepCount%8===0){
-const ABSORB_TIERS=[
-  {maxSize: 10,  ratio: 1.0, minAge:  30},
-  {maxSize: 30,  ratio: 2.0, minAge:  80},
-  {maxSize: 100, ratio: 3.0, minAge: 150},
-  {maxSize: 300, ratio: 5.0, minAge: 200},
-];
-if(!ter._absorbStats)ter._absorbStats={annexed:0,lastStep:-1};
-for(let st=0;st<tribeSizes.length;st++){
-  const sz=tribeSizes[st];
-  if(sz<=0)continue;
-  const stAge=ter.stepCount-(tribeCenters[st][0]?tribeCenters[st][0].founded:0);
-  if(stAge<30)continue;// minimum age even for full-enclosure case
-  const stTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
-  if(!stTiles||stTiles.size===0)continue;
-  // Walk this tribe's tiles and tabulate (a) which neighbouring tribes
-  // share land borders, with counts; (b) whether the tribe has any
-  // open boundary (water, unowned land, or own-coast) — i.e. an escape
-  // route. Borders that touch only same-tribe or water count as
-  // "non-enclosing."
-  const borderCount={};
-  let totalLandBorder=0;
-  for(const i of stTiles){
-    const ty2=Math.floor(i/tw),tx2=i%tw;
-    for(const[dx,dy]of DIRS){
-      const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;
-      if(ny2<0||ny2>=th)continue;
-      const ni=ny2*tw+nx2;
-      if(tElev[ni]<=sl)continue;// water — not a land border
-      const no=owner[ni];
-      if(no===st)continue;// own tile
-      totalLandBorder++;
-      if(no>=0)borderCount[no]=(borderCount[no]||0)+1;
-    }
-  }
-  // ── Full-enclosure absorption ──
-  // If 100% of this tribe's LAND border touches a single neighbour
-  // (no unowned wilderness, no third tribe in contact), they're
-  // fully encompassed — the encloser annexes them outright, regardless
-  // of size or tier. Real-world precedent: enclaves like San Marino,
-  // Lesotho-style geography, or polities surrounded after losing all
-  // their external contact tend to become dependencies / get annexed.
-  const owners=Object.keys(borderCount);
-  if(owners.length===1&&totalLandBorder>0){
-    const enc=parseInt(owners[0]);
-    if(borderCount[enc]===totalLandBorder&&tribeSizes[enc]>0){
-      const tilesToClaim=[...stTiles];
-      for(const i of tilesToClaim)transferTile(ter,i,enc);
-      ter._absorbStats.annexed++;
-      ter._absorbStats.lastStep=ter.stepCount;
-      if(!ter._warEvents)ter._warEvents=[];
-      ter._warEvents.push({step:ter.stepCount,type:'enclosure-absorb',aggressor:enc,defender:st,tiles:tilesToClaim.length});
-      if(ter._warEvents.length>200)ter._warEvents.shift();
-      continue;
-    }
-  }
-  // ── Standard tiered absorption ──
-  if(sz>300)continue;
-  let tier=null;
-  for(const t of ABSORB_TIERS){if(sz<=t.maxSize){tier=t;break;}}
-  if(!tier)continue;
-  if(stAge<tier.minAge)continue;
-  // Filter to absorbers large enough for this tier
-  let bn=-1,bestBorder=0;
-  for(const nid in borderCount){
-    const no=parseInt(nid);
-    if(tribeSizes[no]<sz*tier.ratio)continue;
-    if(borderCount[no]>bestBorder){bestBorder=borderCount[no];bn=no;}
-  }
-  if(bn<0||bestBorder<2)continue;
-  const tilesToClaim=[...stTiles];
-  for(const i of tilesToClaim)transferTile(ter,i,bn);
-  ter._absorbStats.annexed++;
-  ter._absorbStats.lastStep=ter.stepCount;
-}}
+// ── Tiered absorption: DISABLED ──
+// User request: remove all automatic capture logic. Vestigial / enclosed
+// tribes must be conquered through the wave like any other tile. The
+// only way a tribe loses territory is via combat; the only way it dies
+// is when its last tile falls.
 ter._dbgTimeExpansion=(performance.now()-_tExpStart).toFixed(1);
 const _stepTotal=performance.now()-_stepT0;
 if(_stepTotal>50){// log any step that takes >50ms with timing breakdown
