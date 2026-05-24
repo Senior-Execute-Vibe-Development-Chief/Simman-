@@ -1553,57 +1553,104 @@ ts.connected++;ts.avgCost+=c;if(c>ts.maxCost)ts.maxCost=c;}}
 for(let i=0;i<n;i++){const ts=ter._tribeTransport[i];
 if(ts.connected>0)ts.avgCost/=ts.connected;}
 
-// ── Second pass: capital-only transport cost ──
-// Same Dijkstra but seeded ONLY from each tribe's capital (centers[0]).
-// Used by the transport overlay to visualise reach from the seat of
-// power. Distinct from `transportCost` (which seeds all cities) — that
-// one drives food catchment, trade, etc., where secondary cities
-// legitimately count.
+// ── Second pass: capital-only transport cost (per-tribe BFS) ──
+// Each tribe runs its own Dijkstra from its capital. Unlike pass 1
+// (which is forced through owned land only), this pass ALLOWS water
+// transit for tribes with navigation > 0.3 — so a coastal empire can
+// shortcut between distant cities by sea, which is the whole point
+// of having navigation tech. Cost is recorded only for the tribe's
+// owned land tiles; water tiles are pure transit.
+//
+// Uses a generation counter (capGen) instead of clearing visited[]
+// per tribe — finalized = visited[ti] === currentGen.
 if(!ter.transportFromCap||ter.transportFromCap.length<tw*th){
   ter.transportFromCap=new Float32Array(tw*th);
 }
 const costCap=ter.transportFromCap;
-// Full reset to 999 so unowned tiles (which the Dijkstra never visits)
-// don't render as "0 = cheap" — they should render as unreachable.
 costCap.fill(999);
-// Reset visited too (it was used by pass 1 and would otherwise block
-// pass 2 from expanding through any owned tile).
-for(let tid=0;tid<n;tid++){
-  if(tribeSizes[tid]<=0)continue;
-  const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
-  if(!ts)continue;
-  for(const ti of ts){visited[ti]=0;}
+if(!ter._capVisitGen||ter._capVisitGen.length<tw*th){
+  ter._capVisitGen=new Int32Array(tw*th);
 }
-heapSize=0;
-// Seed from capitals only
+const capVisit=ter._capVisitGen;
+// Track "best so far" for water tiles in a parallel array — owned
+// tiles use costCap for that (since costCap is the persistent output).
+if(!ter._capBestSea||ter._capBestSea.length<tw*th){
+  ter._capBestSea=new Float32Array(tw*th);
+}
+const seaBest=ter._capBestSea;
+let curGen=(ter._capGenCounter||0);
 for(let tid=0;tid<n;tid++){
   if(tribeSizes[tid]<=0)continue;
   const centers=ter.tribeCenters[tid];if(!centers||centers.length===0)continue;
   const cap=centers[0];const capTi=cap.y*tw+cap.x;
-  if(capTi>=0&&capTi<tw*th&&owner[capTi]===tid){costCap[capTi]=0;heapPush(capTi,0);}
+  if(capTi<0||capTi>=tw*th)continue;
+  if(owner[capTi]!==tid)continue;
+  curGen++;
+  const cn=tribeCn[tid];
+  const nv=tribeNv[tid];
+  const canSea=nv>0.3;
+  const seaCost=canSea?Math.max(0.25,0.6/Math.max(0.3,nv)):999;
+  heapSize=0;
+  costCap[capTi]=0;
+  capVisit[capTi]=curGen;
+  heapPush(capTi,0);
+  while(heapSize>0){
+    heapPop();const ci=_popTi,cc=_popCost;
+    // Skip if already finalized this gen (already had a cheaper pop)
+    if(capVisit[ci]<curGen)continue;        // stale push from earlier tribe
+    if(capVisit[ci]===curGen+1)continue;    // already finalized
+    capVisit[ci]=curGen+1;                  // finalize
+    if(cc>800)continue;                     // reach limit
+    const cx=ci%tw,cy=(ci-cx)/tw;
+    const ciIsWater=tElev[ci]<=0;
+    for(let d=0;d<4;d++){
+      const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
+      if(ny<0||ny>=th)continue;
+      const ni=ny*tw+nx;
+      if(capVisit[ni]===curGen+1)continue;  // already finalized
+      const niIsWater=tElev[ni]<=0;
+      const niIsOwn=owner[ni]===tid;
+      // Allowed transitions:
+      //   own land -> own land   (always)
+      //   own land -> water      (if canSea)
+      //   water    -> water      (if canSea)
+      //   water    -> own land   (if canSea, returning to land)
+      //   anything -> foreign    (block)
+      if(!niIsOwn&&!niIsWater)continue;
+      if(niIsWater&&!canSea)continue;
+      // Compute edge cost
+      let moveCost;
+      if(niIsWater){
+        moveCost=seaCost;
+      }else{
+        // Owned land tile — use the general tile cost function.
+        // Slight bonus to coastal-land tiles when arriving from water
+        // (port effect): no special handling here, the existing tCoast
+        // discount in tileCost already gives it.
+        moveCost=tileCost(ni,cn,nv,tid);
+      }
+      const newCost=cc+moveCost;
+      // Best-so-far storage differs for land vs sea:
+      //   - owned land: costCap[ni] is the persistent output. Use it as the
+      //     best-so-far. Bound check via capVisit gen.
+      //   - water: use seaBest[ni], gated by capVisit gen so it resets per
+      //     tribe.
+      let prev;
+      if(niIsWater){
+        prev=capVisit[ni]===curGen?seaBest[ni]:999;
+      }else{
+        prev=capVisit[ni]===curGen?costCap[ni]:999;
+      }
+      if(newCost<prev){
+        if(niIsWater){seaBest[ni]=newCost;}else{costCap[ni]=newCost;}
+        capVisit[ni]=curGen;
+        heapPush(ni,newCost);
+      }
+    }
+  }
+  curGen++;// burn one extra gen so 'finalized' marker (curGen+1) doesn't collide with next tribe's 'visited'
 }
-while(heapSize>0){
-  heapPop();const ci=_popTi,cc=_popCost;
-  if(visited[ci])continue;
-  visited[ci]=1;
-  if(cc>500)continue;// deep reach — let large empires show full gradient
-  const cx=ci%tw,cy=(ci-cx)/tw;
-  const ow=owner[ci];
-  if(ow<0)continue;
-  const cn=tribeCn[ow];
-  const nv=tribeNv[ow];
-  for(let d=0;d<4;d++){
-    const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
-    if(ny<0||ny>=th)continue;
-    const ni=ny*tw+nx;
-    if(visited[ni])continue;
-    if(owner[ni]!==ow)continue;
-    const moveCost=tileCost(ni,cn,nv,ow);
-    const newCost=cc+moveCost;
-    if(newCost<costCap[ni]){
-      costCap[ni]=newCost;
-      heapPush(ni,newCost);}}
-}
+ter._capGenCounter=curGen;
 }catch(e){console.error('[computeTransport CRASH]',e.message,'step:',ter.stepCount,'n:',ter.tribeCenters.length,'tw:',ter.tw,'th:',ter.th,'cityPop?:',!!ter.cityPop,'settled:',ter.settled);throw e;}
 }
 
