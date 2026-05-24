@@ -4198,6 +4198,12 @@ if(t.tribeCenters){for(let i=0;i<t.tribeCenters.length;i++)t.tribeCenters[i]=[];
 if(t.owner){t.owner.fill(-1);}
 t.settled=0;
 terRef.current=t;
+// Rivers (and deposits) are computed inside createTerritory and stored
+// on the `ter` object, not on the raw worldgen output. peopleSim reads
+// from `w` — so re-export those onto `w` so the cradle finder + settle
+// check + later trade/port phases can see water access.
+if(t.rivers)w.rivers=t.rivers;
+if(t.deposits)w.deposits=t.deposits;
 // peopleSim: entity-based simulator that replaces the legacy tribe model.
 // Bands wander now; settling, trade, war land in subsequent phases.
 peopleRef.current=initPeopleSim(w,{seed:w.seed,initialBands:14});

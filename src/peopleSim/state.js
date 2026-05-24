@@ -106,7 +106,11 @@ function initTerrain(world, w) {
       const ti = ty * tw + tx;
       const e = w.elevation[wi], t = w.temperature[wi], m = w.moisture[wi];
       elev[ti] = e; temp[ti] = t; moist[ti] = m;
-      coast[ti] = w.coastal ? w.coastal[ti] : 0;
+      // Coast array is at world-pixel resolution (w.width × w.height),
+      // not peopleSim tile resolution. Sample with the world index `wi`,
+      // not the tile index `ti`, or coast detection only finds tiles in
+      // the top-left quadrant of the map.
+      coast[ti] = w.coastal ? (w.coastal[wi] ? 1 : 0) : 0;
       let d = 0;
       if (e > 0.35)              d = Math.max(d, Math.min(1, (e - 0.35) * 3));
       if (t > 0.5 && m < 0.2)    d = Math.max(d, Math.min(0.85, (0.2 - m) * 3 * (t - 0.3)));

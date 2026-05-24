@@ -278,14 +278,54 @@ function growBand(world, band) {
 }
 
 // ── Split ───────────────────────────────────────────────────────────
+// Pick a split direction that points AWAY from the local crowd of
+// bands, so new offspring colonise empty land instead of re-piling
+// onto the cradle cluster.
+function pickSplitDirection(world, parent) {
+  let cx = 0, cy = 0;
+  const { tw } = world;
+  for (const b of world.bands) {
+    if (b === parent || b.mode === "dead") continue;
+    let dx = b.pos.x - parent.pos.x;
+    if (dx > tw / 2)  dx -= tw;
+    if (dx < -tw / 2) dx += tw;
+    const dy = b.pos.y - parent.pos.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > 100) continue;     // ignore distant bands
+    const w = 1 / (1 + d2);
+    cx += dx * w; cy += dy * w;
+  }
+  if (cx === 0 && cy === 0) return world.rng() * Math.PI * 2;
+  return Math.atan2(-cy, -cx);   // opposite of crowd centroid
+}
+
 function splitBand(world, parent) {
   const childPeople = Math.floor(parent.people * 0.45);
   parent.people -= childPeople;
-  // Spawn child 1-2 tiles away in a random direction.
-  const ang = world.rng() * Math.PI * 2;
-  const dist = 1.5 + world.rng() * 1.5;
-  let cx = parent.pos.x + Math.cos(ang) * dist;
-  let cy = parent.pos.y + Math.sin(ang) * dist;
+  // Spawn child 6-14 tiles from parent, away from the local crowd.
+  // Try a few candidate landings — water or out-of-bounds tiles get
+  // rejected — so a coastal band can still split successfully along
+  // the shoreline.
+  const baseAng = pickSplitDirection(world, parent);
+  let cx = parent.pos.x, cy = parent.pos.y;
+  let placed = false;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const ang = baseAng + (world.rng() - 0.5) * 1.5;
+    const dist = 6 + world.rng() * 8;
+    let nx = parent.pos.x + Math.cos(ang) * dist;
+    let ny = parent.pos.y + Math.sin(ang) * dist;
+    if (nx < 0) nx += world.tw;
+    if (nx >= world.tw) nx -= world.tw;
+    if (ny < 1 || ny > world.th - 2) continue;
+    const ti = (ny | 0) * world.tw + (nx | 0);
+    if (world.elev[ti] <= 0) continue;
+    cx = nx; cy = ny; placed = true; break;
+  }
+  if (!placed) {
+    // Fallback: hop a little in any land direction so the split still
+    // succeeds. Don't lose offspring just because we can't pick well.
+    cx = parent.pos.x; cy = parent.pos.y;
+  }
   if (cx < 0) cx += world.tw;
   if (cx >= world.tw) cx -= world.tw;
   cy = Math.max(1, Math.min(world.th - 2, cy));
