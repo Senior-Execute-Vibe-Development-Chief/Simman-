@@ -52,14 +52,141 @@ export function makeBand(world, x, y, people = 12, opts = {}) {
 
 // Per-tick update. Mutates `band` in place.
 export function updateBand(world, band) {
-  if (band.mode === "dead") return;
+  if (band.mode === "dead" || band.mode === "settling") return;
 
   wander(world, band);
   growBand(world, band);
+  learn(world, band);
+  checkSettle(world, band);
 
   // Split when oversized — too many mouths to feed while moving.
-  if (band.people >= BAND_SPLIT_AT && world.bands.length < world.cap.bands) {
+  // Gated by both bands-cap AND total-entity-cap so the world stays
+  // intimate even when bands settle and free up the bands slot.
+  if (band.people >= BAND_SPLIT_AT &&
+      aliveBandCount(world) < world.cap.bands &&
+      aliveEntityCount(world) < world.cap.total) {
     splitBand(world, band);
+  }
+}
+
+function aliveBandCount(world) {
+  let n = 0;
+  for (const b of world.bands) if (b.mode !== "dead") n++;
+  return n;
+}
+function aliveSettlementCount(world) {
+  let n = 0;
+  for (const s of world.settlements) if (s.mode !== "dead") n++;
+  return n;
+}
+function aliveEntityCount(world) {
+  return aliveBandCount(world) + aliveSettlementCount(world);
+}
+
+// ── Knowledge accumulation ──────────────────────────────────────────
+// Agriculture knowledge grows slowly while wandering, faster in warm-
+// moist tiles where wild grains were first domesticated IRL (Fertile
+// Crescent, Yangtze, Mesoamerica). Foraging skill grows steadily as
+// the band lives off the land. Construction + organization come
+// later, after settling.
+function learn(world, band) {
+  const ti = ((band.pos.y | 0) * world.tw + (band.pos.x | 0));
+  const t = world.temp[ti] || 0.5;
+  const m = world.moist[ti] || 0.4;
+  const f = world.fert[ti] || 0.05;
+  // Agriculture: bell-curve modifier peaking at temp=0.7, moist=0.55,
+  // boosted by fertility. Maxes ~3× the base rate in cradle conditions.
+  const tFit = Math.exp(-((t - 0.7) ** 2) / 0.08);
+  const mFit = Math.exp(-((m - 0.55) ** 2) / 0.10);
+  const climateMul = 0.5 + tFit * mFit * 2.5 + f * 0.5;
+  // Ag growth tuned for stretched prehistory: at peak climate (Fertile
+  // Crescent), base rate × 2.5 → ~0.000125/tick → 3200 ticks 0→0.4.
+  // Bands have plenty of time to split, spread, and meet before any
+  // single one accumulates enough to settle.
+  const agGrow = 0.00005 * climateMul * (1 - band.knowledge.agriculture);
+  band.knowledge.agriculture = Math.min(1, band.knowledge.agriculture + agGrow);
+  // Foraging: bounded by life experience.
+  band.knowledge.foraging = Math.min(1, band.knowledge.foraging + 0.00005 * (1 - band.knowledge.foraging));
+  // Toolmaking: slow universal trickle, accelerates with population
+  // (more minds, more accidents-of-discovery).
+  band.knowledge.toolmaking = Math.min(1, band.knowledge.toolmaking + 0.00003 * Math.sqrt(band.people));
+}
+
+// ── Settle trigger ─────────────────────────────────────────────────
+// "Both, with knowledge gating": absolute pop size creates the desire
+// (a band of 15+ is hard to keep moving), agriculture knowledge gates
+// the transition (without it, the band just splits instead). Local
+// site quality decides WHERE — a band only commits if it's standing
+// on a fertile, watered tile.
+//
+// Note: the original "pressure" formulation was perverse — higher
+// fertility → higher K → less pressure, so rich land became LESS
+// likely to be settled. Now absolute pop drives the desire and site
+// quality decides the location.
+const SETTLE_AG_THRESHOLD = 0.45;   // horticultural maturity
+const SETTLE_MIN_PEOPLE   = 18;     // basically at the split threshold
+const SETTLE_FERT_FLOOR   = 0.35;   // poor land never settles
+const SETTLE_LUSH_FERT    = 0.60;   // really rich land settles even without water access
+function checkSettle(world, band) {
+  if (band.mode !== "wander") return;
+  if (band.knowledge.agriculture < SETTLE_AG_THRESHOLD) return;
+  if (band.people < SETTLE_MIN_PEOPLE) return;
+  const ti = ((band.pos.y | 0) * world.tw + (band.pos.x | 0));
+  if (world.elev[ti] <= 0) return;
+  const localFert = world.fert[ti] || 0.05;
+  if (localFert < SETTLE_FERT_FLOOR) return;
+  const hasRiver = world.riverMag && world.riverMag[ti] >= 2;
+  const hasCoast = world.coast && world.coast[ti];
+  // Need either water access OR exceptionally lush land. (Real Neolithic
+  // sites were on rivers, lakes, or fertile river-deltas.)
+  if (!hasRiver && !hasCoast && localFert < SETTLE_LUSH_FERT) return;
+  // Cap enforcement: when the world is full of settlements, surplus
+  // bands stay wandering. Produces the "perpetual nomads on the
+  // periphery" effect once the intimate-scale ceiling is reached.
+  if (aliveSettlementCount(world) >= world.cap.settlements) return;
+  if (aliveEntityCount(world) >= world.cap.total) return;
+  // Settling is rare even when conditions are met: ~0.4% per tick at
+  // the threshold, rising to ~5% at maxed knowledge. Spreads founding
+  // events over time so not all descendant bands settle at once.
+  const eagerness = (band.knowledge.agriculture - SETTLE_AG_THRESHOLD) / (1 - SETTLE_AG_THRESHOLD);
+  if (world.rng() > 0.004 + eagerness * 0.05) return;
+  band.mode = "settling";
+  const tx = ti - ((ti / world.tw) | 0) * world.tw;
+  const ty = (ti / world.tw) | 0;
+  band.history.push({
+    step: world.step, type: "settle-decided",
+    at: { x: tx, y: ty }, ag: band.knowledge.agriculture, fert: localFert,
+  });
+}
+
+// ── Meetings between bands ─────────────────────────────────────────
+// O(N²) at intimate scale (<80 bands) is fine. Two bands within range
+// exchange knowledge — the lagging one's level edges up toward the
+// leading one's. Models real prehistory: tech diffused along trade
+// and migration routes between adjacent bands.
+const MEET_RANGE = 3.0;
+export function processMeetings(world) {
+  const bs = world.bands;
+  for (let i = 0; i < bs.length; i++) {
+    const a = bs[i];
+    if (a.mode === "dead" || a.mode === "settling") continue;
+    for (let j = i + 1; j < bs.length; j++) {
+      const b = bs[j];
+      if (b.mode === "dead" || b.mode === "settling") continue;
+      let dx = Math.abs(a.pos.x - b.pos.x);
+      if (dx > world.tw / 2) dx = world.tw - dx;
+      const dy = a.pos.y - b.pos.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > MEET_RANGE * MEET_RANGE) continue;
+      // Knowledge diffusion: each domain edges 5% toward the other side
+      // (so the lagging band gains, leading band loses nothing).
+      for (const k of ["agriculture", "foraging", "toolmaking", "construction", "organization"]) {
+        const av = a.knowledge[k] || 0;
+        const bv = b.knowledge[k] || 0;
+        if (av < bv) a.knowledge[k] = av + (bv - av) * 0.05;
+        else if (bv < av) b.knowledge[k] = bv + (av - bv) * 0.05;
+      }
+    }
   }
 }
 

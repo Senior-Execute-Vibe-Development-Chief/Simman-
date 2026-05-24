@@ -31,10 +31,11 @@ console.log(`world initialized: tw=${world.tw} th=${world.th} bands=${world.band
 // Snapshot initial positions to confirm movement later.
 const startPos = world.bands.map(b => ({ id: b.id, x: b.pos.x, y: b.pos.y }));
 
-const checkpoints = [200, 500, 1000, 2000];
+const checkpoints = [1000, 3000, 5000, 7000, 10000];
 let cpIdx = 0;
 const t0 = performance.now();
-for (let s = 1; s <= 2000; s++) {
+const TICKS = 10000;
+for (let s = 1; s <= TICKS; s++) {
   try {
     stepPeopleSim(world, 1);
   } catch (e) {
@@ -43,12 +44,15 @@ for (let s = 1; s <= 2000; s++) {
   }
   if (s === checkpoints[cpIdx]) {
     const stats = peopleSimStats(world);
-    console.log(`step ${s}:`, stats);
+    const maxAg = world.bands.reduce((m, b) => b.mode === "dead" ? m : Math.max(m, b.knowledge.agriculture), 0);
+    const avgPeople = stats.bands > 0 ? (stats.totalPeople / stats.bands).toFixed(1) : 0;
+    const sBuildings = world.settlements.reduce((a, s) => a + s.buildings.length, 0);
+    console.log(`step ${s}:`, stats, `avgPpl/band=${avgPeople} maxAg=${maxAg.toFixed(2)} buildings=${sBuildings}`);
     cpIdx++;
   }
 }
 const dt = performance.now() - t0;
-console.log(`\n2000 steps in ${dt.toFixed(1)}ms (${(dt / 2000).toFixed(3)}ms/step)`);
+console.log(`\n${TICKS} steps in ${dt.toFixed(1)}ms (${(dt / TICKS).toFixed(3)}ms/step)`);
 
 // Verify bands moved.
 let moved = 0;

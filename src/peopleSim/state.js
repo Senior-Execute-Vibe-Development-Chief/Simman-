@@ -5,20 +5,30 @@
 
 import { mkRng } from "./rng.js";
 import { makeBand, resetBandIds } from "./band.js";
+import { resetSettlementIds } from "./settlement.js";
 
 const TILE_RES = 2;
 
-// Target entity caps — keep the world feeling intimate. The user picked
-// "Intimate (~50 entities)" as the scale ceiling. Bands cap higher than
-// settlements because many bands consolidate into fewer settlements.
-// Increased bands cap so a single cradle-band can split many generations
-// before hitting the wall.
+// "Intimate (~50 entities)" — locked design choice. The cap below is
+// enforced at split / settle / spawn time so the world never exceeds
+// the user's target density.
+//   bands       — wandering hunter-gatherers
+//   settlements — permanent villages/towns/cities
+//   total       — hard ceiling across both kinds
 const CAP = {
-  bands: 80,
-  settlements: 50,
+  bands: 40,
+  settlements: 30,
+  total: 50,
   caravans: 40,
   armies: 20,
 };
+
+// True if the world has room for another entity overall.
+export function hasEntityRoom(world) {
+  const aliveBands = world.bands.reduce((n, b) => n + (b.mode === "dead" ? 0 : 1), 0);
+  const aliveSetts = world.settlements.reduce((n, s) => n + (s.mode === "dead" ? 0 : 1), 0);
+  return aliveBands + aliveSetts < world.cap.total;
+}
 
 // Robust "is this tile a continental land cell" check — used by both
 // the cradle finder and wander target selection so the two stay in sync.
@@ -138,6 +148,7 @@ function initRiverMag(world, w) {
 // One band, ~10 people. Everything else descends from this point.
 function seedCradleBand(world) {
   resetBandIds();
+  resetSettlementIds();
   const { tw, th, elev, temp, moist, fert, coast, riverMag, N } = world;
   let bestTi = -1, bestScore = -Infinity;
   for (let ti = 0; ti < N; ti++) {
