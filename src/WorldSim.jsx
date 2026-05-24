@@ -3655,6 +3655,16 @@ function runTransportTest(ter, capitals, params){
   const visited=new Uint8Array(N);
   const claimed=new Int32Array(capitals.length);
   const TILE_LIMIT=params.tileLimit;
+  // Deterministic per-tile noise (xorshift-style hash on tile index).
+  // Used to perturb costs so borders aren't perfectly Voronoi-straight in
+  // flat terrain. Deterministic so the BFS is stable across runs.
+  function tileNoise(ti){
+    let h=(ti+0x9E3779B9)|0;
+    h^=h>>>15;h=Math.imul(h,2246822519);
+    h^=h>>>13;h=Math.imul(h,3266489917);
+    h^=h>>>16;
+    return ((h>>>0)/4294967295);// 0..1
+  }
   function modeOf(ti){
     const e=tElev[ti];
     if(e<=0)return 2;
@@ -3671,31 +3681,25 @@ function runTransportTest(ter, capitals, params){
       const rm=riverMag[ni];
       base=rm>=4?params.river:rm>=3?params.river*1.3:params.river*2;
     }else{
-      // Land cost is a sum of independent terrain factors so different
-      // biomes look different (a flat tundra costs differently from a
-      // flat desert from a flat plain).
       const e=tElev[ni],diff=tDiff[ni],t=tTemp[ni],m=tMoist[ni];
       base=params.plain;
-      // Direct elevation penalty (altitude costs even on flat highland)
       if(e>0.25)base+=(e-0.25)*params.elev;
-      // Composite diff^2 (handles steep terrain, hot+dry, cold via tDiff)
       base+=diff*diff*params.harsh;
-      // Extreme heat + dry: hot desert
       if(t>0.55&&m<0.25)base+=(t-0.55)*5+(0.25-m)*4;
-      // Extreme cold: permafrost / tundra
       if(t<0.18)base+=(0.18-t)*8;
-      // Swampy: wet + warm
       if(m>0.7&&t>0.4)base+=(m-0.7)*6;
-      // Coastal discount applies last (it's a bonus, not a biome)
       if(tCoast[ni])base=Math.min(base,params.coast);
-      // Slope penalty: crossing a ridge is harder than walking the ridge
       if(ciElev>0){
         const slope=Math.abs(e-ciElev);
         if(slope>0.05)base+=(slope-0.05)*params.slope;
       }
     }
-    // Mode change: pay port cost on any mode transition
     if(niMode!==ciMode)base+=params.port;
+    // Deterministic noise perturbation — scales cost by (1 ± noise/2).
+    // At noise=0.3 each tile is between 0.85x and 1.15x its base cost.
+    if(params.noise>0){
+      base*=(1+(tileNoise(ni)-0.5)*params.noise);
+    }
     return base;
   }
   // Heap (ti, cost, tribe) as parallel arrays
@@ -3759,6 +3763,121 @@ function runTransportTest(ter, capitals, params){
   return{cost,ownerArr,claimed};
 }
 
+// Find the cheapest path between two tile coordinates using the same
+// cost function as runTransportTest. Returns {path: [tileIndices...],
+// totalCost} or null if no path exists. Used by the "route" sub-mode
+// in the transport-test view.
+function findRoute(ter, startTile, endTile, params){
+  const tw=ter.tw,th=ter.th,N=tw*th;
+  const tElev=ter.tElev,tDiff=ter.tDiff,tCoast=ter.tCoast,tTemp=ter.tTemp,tMoist=ter.tMoist;
+  const riverMag=ter.rivers?ter.rivers.riverMag:null;
+  const cost=new Float32Array(N);cost.fill(Infinity);
+  const parent=new Int32Array(N);parent.fill(-1);
+  const visited=new Uint8Array(N);
+  function tileNoise(ti){
+    let h=(ti+0x9E3779B9)|0;
+    h^=h>>>15;h=Math.imul(h,2246822519);
+    h^=h>>>13;h=Math.imul(h,3266489917);
+    h^=h>>>16;return ((h>>>0)/4294967295);
+  }
+  function modeOf(ti){
+    const e=tElev[ti];
+    if(e<=0)return 2;
+    if(riverMag&&riverMag[ti]>=2)return 1;
+    return 0;
+  }
+  function moveCost(ni,ciMode,ciElev){
+    const niMode=modeOf(ni);
+    let base;
+    if(niMode===2){
+      if(params.nav<=0.01)return Infinity;
+      base=params.water/Math.max(0.3,params.nav);
+    }else if(niMode===1){
+      const rm=riverMag[ni];
+      base=rm>=4?params.river:rm>=3?params.river*1.3:params.river*2;
+    }else{
+      const e=tElev[ni],diff=tDiff[ni],t=tTemp[ni],m=tMoist[ni];
+      base=params.plain;
+      if(e>0.25)base+=(e-0.25)*params.elev;
+      base+=diff*diff*params.harsh;
+      if(t>0.55&&m<0.25)base+=(t-0.55)*5+(0.25-m)*4;
+      if(t<0.18)base+=(0.18-t)*8;
+      if(m>0.7&&t>0.4)base+=(m-0.7)*6;
+      if(tCoast[ni])base=Math.min(base,params.coast);
+      if(ciElev>0){
+        const slope=Math.abs(e-ciElev);
+        if(slope>0.05)base+=(slope-0.05)*params.slope;
+      }
+    }
+    if(niMode!==ciMode)base+=params.port;
+    if(params.noise>0)base*=(1+(tileNoise(ni)-0.5)*params.noise);
+    return base;
+  }
+  const heapTi=new Int32Array(N*2);
+  const heapCost=new Float32Array(N*2);
+  let heapSize=0;
+  function hPush(ti,c){
+    let i=heapSize++;heapTi[i]=ti;heapCost[i]=c;
+    while(i>0){const p=(i-1)>>1;if(heapCost[p]<=heapCost[i])break;
+      const tt=heapTi[p],tc=heapCost[p];
+      heapTi[p]=heapTi[i];heapCost[p]=heapCost[i];
+      heapTi[i]=tt;heapCost[i]=tc;i=p;}
+  }
+  let _ti=0,_cost=0;
+  function hPop(){
+    _ti=heapTi[0];_cost=heapCost[0];heapSize--;
+    if(heapSize===0)return;
+    heapTi[0]=heapTi[heapSize];heapCost[0]=heapCost[heapSize];
+    let i=0;for(;;){const l=i*2+1,r=l+1;let s=i;
+      if(l<heapSize&&heapCost[l]<heapCost[s])s=l;
+      if(r<heapSize&&heapCost[r]<heapCost[s])s=r;
+      if(s===i)break;
+      const tt=heapTi[s],tc=heapCost[s];
+      heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];
+      heapTi[i]=tt;heapCost[i]=tc;i=s;}
+  }
+  const DX4=[-1,1,0,0],DY4=[0,0,-1,1];
+  const startTi=startTile.y*tw+startTile.x;
+  const endTi=endTile.y*tw+endTile.x;
+  if(startTi<0||startTi>=N||endTi<0||endTi>=N)return null;
+  cost[startTi]=0;
+  hPush(startTi,0);
+  while(heapSize>0){
+    hPop();const ti=_ti,cc=_cost;
+    if(visited[ti])continue;
+    visited[ti]=1;
+    if(ti===endTi)break;
+    if(cc>cost[ti])continue;
+    const cx=ti%tw,cy=(ti-cx)/tw;
+    const ciMode=modeOf(ti);
+    const ciElev=tElev[ti];
+    for(let d=0;d<4;d++){
+      const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
+      if(ny<0||ny>=th)continue;
+      const ni=ny*tw+nx;
+      if(visited[ni])continue;
+      const mc=moveCost(ni,ciMode,ciElev);
+      if(!isFinite(mc))continue;
+      const newCost=cc+mc;
+      if(newCost<cost[ni]){
+        cost[ni]=newCost;
+        parent[ni]=ti;
+        hPush(ni,newCost);
+      }
+    }
+  }
+  if(!visited[endTi])return null;
+  const path=[];
+  let cur=endTi;let safety=N;
+  while(cur>=0&&safety-->0){
+    path.push(cur);
+    if(cur===startTi)break;
+    cur=parent[cur];
+  }
+  if(cur!==startTi)return null;
+  return{path,totalCost:cost[endTi]};
+}
+
 // ── Cultural era derived from average tribe knowledge ──
 function deriveEra(aAg,aMt,aNv,aOg){
   if(aMt>=0.65&&aOg>=0.55)return"Industrial Age";
@@ -3819,17 +3938,23 @@ const[ttCapitals,setTtCapitals]=useState([]);
 const[ttParams,setTtParams]=useState({
   tileLimit: 500,
   plain: 0.6,
-  elev: 8,        // direct elevation penalty (altitude)
-  slope: 25,      // slope between current and neighbor (steep climb)
-  harsh: 18,      // composite tDiff² (biome roughness)
+  elev: 8,
+  slope: 25,
+  harsh: 18,
   river: 0.3,
   coast: 0.7,
   water: 0.8,
   nav: 0.5,
   port: 3.0,
+  noise: 0.0,     // per-tile cost noise; 0=Voronoi, 0.3=organic borders
 });
 const ttResultRef=useRef(null);
 const ttCapitalsRef=useRef([]);
+// Sub-mode: "capitals" places tribe seeds and runs claim BFS;
+// "route" places two endpoints and shows the cheapest path between them.
+const[ttSubMode,setTtSubMode]=useState("capitals");
+const[ttRoute,setTtRoute]=useState({start:null,end:null});
+const ttRouteResultRef=useRef(null);
 useEffect(()=>{ttCapitalsRef.current=ttCapitals;
   // Re-run BFS whenever capitals or params change AND we're in test mode
   if(viewMode!=="transport-test"){ttResultRef.current=null;return;}
@@ -4450,6 +4575,29 @@ if(ttCapitalsRef.current){
     }
   }
 }
+// Route mode: paint the path in cyan; endpoints in white
+const rr=ttRouteResultRef.current;
+if(rr&&rr.path){
+  for(const pti of rr.path){
+    const px2=pti%ptw,py2=(pti-px2)/ptw;
+    const sx2=px2%CW,sy2=Math.min(CH-1,Math.round(dataYtoScreenY(py2,CH,H)));
+    if(sx2<0||sx2>=CW||sy2<0||sy2>=CH)continue;
+    const pi=(sy2*CW+sx2)<<2;d[pi]=30;d[pi+1]=220;d[pi+2]=240;d[pi+3]=255;
+  }
+}
+// Endpoint markers
+const epts=[];
+if(ttRoute.start)epts.push(ttRoute.start);
+if(ttRoute.end)epts.push(ttRoute.end);
+for(const ep of epts){
+  for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){
+    if(Math.abs(dx)+Math.abs(dy)>4)continue;
+    const cx=ep.x+dx,cy=ep.y+dy;if(cy<0||cy>=pth)continue;
+    const px=cx%CW,py=Math.min(CH-1,Math.round(dataYtoScreenY(cy,CH,H)));
+    if(px<0||px>=CW||py<0||py>=CH)continue;
+    const pi=(py*CW+px)<<2;d[pi]=255;d[pi+1]=255;d[pi+2]=180;d[pi+3]=255;
+  }
+}
 }else if(vm==="tribes"){
 const eraColor=(k)=>{if(!k)return[55,48,38];
 const ag=k.agriculture,mt=k.metallurgy,org=k.organization;
@@ -4988,11 +5136,24 @@ const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
 const wx=Math.floor(sx),wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const ter=terRef.current;if(!ter)return;
 const ttx=Math.min(ter.tw-1,(wx/RES)|0),tty=Math.min(ter.th-1,(wy/RES)|0);
-// Transport-test mode: clicks place test capitals. Shift-click clears.
+// Transport-test mode: capitals sub-mode places tribe seeds; route
+// sub-mode places two endpoints and shows the cheapest path.
 if(viewMode==="transport-test"){
-  if(ter.tElev[tty*ter.tw+ttx]<=0)return;// don't place in water
-  if(ev.shiftKey){setTtCapitals([]);return;}
-  setTtCapitals(prev=>[...prev,{x:ttx,y:tty}]);
+  if(ev.shiftKey){
+    if(ttSubMode==="capitals")setTtCapitals([]);
+    else setTtRoute({start:null,end:null});
+    return;
+  }
+  if(ttSubMode==="capitals"){
+    if(ter.tElev[tty*ter.tw+ttx]<=0)return;
+    setTtCapitals(prev=>[...prev,{x:ttx,y:tty}]);
+  }else{
+    // route mode
+    setTtRoute(prev=>{
+      if(!prev.start||(prev.start&&prev.end))return{start:{x:ttx,y:tty},end:null};
+      return{...prev,end:{x:ttx,y:tty}};
+    });
+  }
   return;
 }
 const tileOwner=ter.owner[tty*ter.tw+ttx];
@@ -5000,7 +5161,15 @@ if(tileOwner>=0&&ter.tribes?.[tileOwner]?.alive){
 setSelectedTribe(tileOwner);ter._selectedTribe=tileOwner;
 setRightPanel("tribes");draw(ter);
 }else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}
-},[CW,CH,draw,viewMode]);
+},[CW,CH,draw,viewMode,ttSubMode]);
+// Re-run route Dijkstra whenever endpoints or params change
+useEffect(()=>{
+  if(viewMode!=="transport-test"||ttSubMode!=="route"){ttRouteResultRef.current=null;return;}
+  if(!terRef.current||!ttRoute.start||!ttRoute.end){ttRouteResultRef.current=null;
+    if(terRef.current)draw(terRef.current);return;}
+  ttRouteResultRef.current=findRoute(terRef.current,ttRoute.start,ttRoute.end,ttParams);
+  draw(terRef.current);
+},[ttRoute,ttParams,ttSubMode,viewMode]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
 const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
 
@@ -5377,18 +5546,46 @@ return(
 {/* ─── Bottom-left collapsible legend ─── */}
 {viewMode==="transport-test"&&
 <div className="au-parchment" style={{position:"absolute",top:8,left:8,
-  padding:"8px 12px",fontSize:11,width:240,zIndex:20}}>
+  padding:"8px 12px",fontSize:11,width:240,zIndex:20,maxHeight:"calc(100vh - 80px)",overflowY:"auto"}}>
   <div className="au-heading au-sc" style={{fontSize:12,marginBottom:6,borderBottom:"1px solid rgba(58,38,20,0.25)",paddingBottom:4}}>Transport Test</div>
-  <div className="au-fade" style={{fontSize:10,marginBottom:6,lineHeight:1.3}}>
-    Click on land to place a capital. Shift-click clears.<br/>
-    Each capital greedy-claims tiles by cheapest path.
+  {/* Sub-mode toggle */}
+  <div style={{display:"flex",gap:4,marginBottom:6}}>
+    <button className={"au-btn"+(ttSubMode==="capitals"?" au-active":"")}
+      style={{flex:1,fontSize:11,padding:"3px 6px"}}
+      onClick={()=>setTtSubMode("capitals")}>Capitals</button>
+    <button className={"au-btn"+(ttSubMode==="route"?" au-active":"")}
+      style={{flex:1,fontSize:11,padding:"3px 6px"}}
+      onClick={()=>setTtSubMode("route")}>Route</button>
   </div>
-  <div style={{fontSize:10,marginBottom:8}}>
-    Capitals: <b>{ttCapitals.length}</b>
-    {ttResultRef.current && <> · claimed: {Array.from(ttResultRef.current.claimed).join(" / ")}</>}
-  </div>
+  {ttSubMode==="capitals" ? (
+    <>
+      <div className="au-fade" style={{fontSize:10,marginBottom:6,lineHeight:1.3}}>
+        Click on land to place a capital. Shift-click clears.<br/>
+        Each capital greedy-claims tiles by cheapest path.
+      </div>
+      <div style={{fontSize:10,marginBottom:8}}>
+        Capitals: <b>{ttCapitals.length}</b>
+        {ttResultRef.current && <> · claimed: {Array.from(ttResultRef.current.claimed).join(" / ")}</>}
+      </div>
+    </>
+  ) : (
+    <>
+      <div className="au-fade" style={{fontSize:10,marginBottom:6,lineHeight:1.3}}>
+        Click two points. The cheapest path is drawn in cyan.<br/>
+        Shift-click clears. Third click starts over.
+      </div>
+      <div style={{fontSize:10,marginBottom:8}}>
+        Start: <b>{ttRoute.start?`(${ttRoute.start.x},${ttRoute.start.y})`:"—"}</b><br/>
+        End: <b>{ttRoute.end?`(${ttRoute.end.x},${ttRoute.end.y})`:"—"}</b>
+        {ttRouteResultRef.current && <><br/>
+          Length: <b>{ttRouteResultRef.current.path.length} tiles</b><br/>
+          Total cost: <b>{ttRouteResultRef.current.totalCost.toFixed(1)}</b>
+        </>}
+      </div>
+    </>
+  )}
   {[
-    ["tileLimit","Tiles / capital",10,5000,10],
+    ["tileLimit","Tiles / capital",10,15000,10],
     ["plain","Plain base cost",0.1,3,0.05],
     ["elev","Elevation × (e-0.25)",0,30,0.5],
     ["slope","Slope (|Δelev| × this)",0,80,1],
@@ -5398,6 +5595,7 @@ return(
     ["water","Water base cost",0.1,5,0.1],
     ["nav","Navigation (0=no sea)",0,1,0.02],
     ["port","Port load (mode change)",0,15,0.5],
+    ["noise","Per-tile noise (0=Voronoi)",0,1,0.02],
   ].map(([k,label,min,max,step])=>(
     <div key={k} style={{marginBottom:4}}>
       <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
@@ -5409,7 +5607,10 @@ return(
     </div>
   ))}
   <button className="au-btn au-block" style={{marginTop:6,fontSize:11}}
-    onClick={()=>setTtCapitals([])}>Clear capitals</button>
+    onClick={()=>{
+      if(ttSubMode==="capitals")setTtCapitals([]);
+      else setTtRoute({start:null,end:null});
+    }}>{ttSubMode==="capitals"?"Clear capitals":"Clear route"}</button>
 </div>}
 {(viewMode==="terrain"||viewMode==="atlas"||viewMode==="tribes"||viewMode==="resources")&&
 <div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
