@@ -1435,7 +1435,7 @@ for(let i=0;i<n;i++){if(tribeSizes[i]<=0)pop[i]=0;}}
 // Used for: food catchment, cohesion, religion spread, trade efficiency.
 function computeTransport(ter){
 try{
-const{tw,th,tElev,tDiff,tCoast,owner,tribeSizes,cityPop,bgPop}=ter;
+const{tw,th,tElev,tDiff,tCoast,tTemp,tMoist,owner,tribeSizes,cityPop,bgPop}=ter;
 if(!ter.transportCost)ter.transportCost=new Float32Array(tw*th);
 if(!ter.transportOwner)ter.transportOwner=new Int16Array(tw*th);// which city feeds this tile
 if(!ter._transVisited)ter._transVisited=new Uint8Array(tw*th);
@@ -1458,8 +1458,9 @@ const k=ter.tribeKnowledge[i];if(!k)continue;
 tribeCn[i]=k.construction;tribeNv[i]=k.navigation;}
 
 // Tile movement cost (how hard it is to move goods THROUGH this tile)
-// Returns cost for a tribe with given construction/navigation tech
-function tileCost(ti,cn,nv,ow){
+// `srcElev` is the elevation of the tile we're moving FROM (for slope
+// calculation). Pass 0 / negative if not applicable.
+function tileCost(ti,cn,nv,ow,srcElev){
 const e=tElev[ti];
 // Ocean: cheap by sea, requires navigation
 if(e<=0)return nv>0.1?0.5/(0.5+nv):50;// nv=0.3→0.6, nv=0.7→0.4, nv=0→impassable
@@ -1469,15 +1470,25 @@ if(riverMag){const rm=riverMag[ti];
 if(rm>=4)return 0.3-cn*0.1;// great river (Nile): 0.3→0.2
 if(rm>=3)return 0.4-cn*0.1;// major river: 0.4→0.3
 if(rm>=2)return 0.7-cn*0.2;}// tributary: 0.7→0.5
-// Coast: cheaper than inland (coastal shipping)
-if(tCoast[ti])return 0.8-cn*0.2-nv*0.2;// 0.8→0.4 with tech
-// Land: terrain difficulty drives cost. Construction (roads) reduces it.
-// Plains (diff~0.05): 1.5→0.7 with roads
-// Hills (diff~0.3): 3→1.5
-// Mountains (diff~0.7): 8→3
-const base=1.5+diff*diff*12;// quadratic difficulty penalty
-const roadReduction=cn*0.5;// construction halves cost at max
-const industrialReduction=Math.max(0,ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].metallurgy-0.75:0)*3;// rail
+// Land: sum of independent factors so different biomes look different.
+// Plains lowland (e<0.25): ~0.6
+// Plains highland (e=0.4): 0.6 + 0.15*8 = 1.8
+// Hills (diff=0.3, e=0.5): 0.6 + 0.25*8 + 0.09*18 = 4.22
+// Mountain (diff=0.7, e=0.75): 0.6 + 0.5*8 + 0.49*18 = 13.4
+// Tundra (T<0.18) and desert (T>0.55,M<0.25) add on top.
+const t=tTemp[ti],m=tMoist[ti];
+let base=0.6;
+if(e>0.25)base+=(e-0.25)*8;            // elevation
+base+=diff*diff*18;                     // composite difficulty (handles cold/dry/steep)
+if(t>0.55&&m<0.25)base+=(t-0.55)*5+(0.25-m)*4;
+if(t<0.18)base+=(0.18-t)*8;
+if(m>0.7&&t>0.4)base+=(m-0.7)*6;
+if(tCoast[ti])base=Math.min(base,0.7);// coastal road/cabotage cap
+// Slope penalty: significant elev gradient adds cost
+if(srcElev>0){const slope=Math.abs(e-srcElev);if(slope>0.05)base+=(slope-0.05)*25;}
+// Tech reductions: roads (construction) and rail (industrial metallurgy)
+const roadReduction=cn*0.5;
+const industrialReduction=Math.max(0,ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].metallurgy-0.75:0)*3;
 return Math.max(0.2,base*(1-roadReduction)-industrialReduction);}
 
 // Priority queue (binary heap — reuse cached arrays).
@@ -1534,13 +1545,14 @@ const cn=tribeCn[ow];
 const nv=tribeNv[ow];
 const src=tOwner[ci];
 const ciMode=tModeOf(ci);
+const ciElev=tElev[ci];
 for(let d=0;d<4;d++){
 const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
 if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;
 if(visited[ni])continue;
 if(owner[ni]!==ow)continue;
-let moveCost=tileCost(ni,cn,nv,ow);
+let moveCost=tileCost(ni,cn,nv,ow,ciElev);
 if(tModeOf(ni)!==ciMode)moveCost+=MODE_CHANGE_COST;
 const newCost=cc+moveCost;
 if(newCost<cost[ni]){
@@ -1632,7 +1644,7 @@ for(let tid=0;tid<n;tid++){
         moveCost=seaCost;
       }else{
         // Owned land tile — use the general tile cost function.
-        moveCost=tileCost(ni,cn,nv,tid);
+        moveCost=tileCost(ni,cn,nv,tid,tElev[ci]);
       }
       // Mode-change (port) cost on any transition between modes.
       // Reduced by construction tech (better ports, docks, mooring).
@@ -3636,24 +3648,20 @@ return y>0?`${Math.round(y)} BC`:`${Math.round(Math.abs(y))} AD`;}
 // ownerArr[ti] is the index of the capital that claimed it (or -1).
 function runTransportTest(ter, capitals, params){
   const tw=ter.tw,th=ter.th,N=tw*th;
-  const tElev=ter.tElev,tDiff=ter.tDiff,tCoast=ter.tCoast;
+  const tElev=ter.tElev,tDiff=ter.tDiff,tCoast=ter.tCoast,tTemp=ter.tTemp,tMoist=ter.tMoist;
   const riverMag=ter.rivers?ter.rivers.riverMag:null;
   const cost=new Float32Array(N);cost.fill(999);
   const ownerArr=new Int16Array(N);ownerArr.fill(-1);
   const visited=new Uint8Array(N);
   const claimed=new Int32Array(capitals.length);
   const TILE_LIMIT=params.tileLimit;
-  // Transport mode of a tile: 0 = land, 1 = river, 2 = sea.
-  // Mode-change (port) cost applies to ANY transition between different
-  // modes — loading onto a barge from a road, switching from barge to
-  // ship at the estuary, etc.
   function modeOf(ti){
     const e=tElev[ti];
     if(e<=0)return 2;
     if(riverMag&&riverMag[ti]>=2)return 1;
     return 0;
   }
-  function moveCost(ni,ciMode){
+  function moveCost(ni,ciMode,ciElev){
     const niMode=modeOf(ni);
     let base;
     if(niMode===2){
@@ -3662,10 +3670,29 @@ function runTransportTest(ter, capitals, params){
     }else if(niMode===1){
       const rm=riverMag[ni];
       base=rm>=4?params.river:rm>=3?params.river*1.3:params.river*2;
-    }else if(tCoast[ni]){
-      base=params.coast;
     }else{
-      base=params.plain+tDiff[ni]*tDiff[ni]*params.mountainMult;
+      // Land cost is a sum of independent terrain factors so different
+      // biomes look different (a flat tundra costs differently from a
+      // flat desert from a flat plain).
+      const e=tElev[ni],diff=tDiff[ni],t=tTemp[ni],m=tMoist[ni];
+      base=params.plain;
+      // Direct elevation penalty (altitude costs even on flat highland)
+      if(e>0.25)base+=(e-0.25)*params.elev;
+      // Composite diff^2 (handles steep terrain, hot+dry, cold via tDiff)
+      base+=diff*diff*params.harsh;
+      // Extreme heat + dry: hot desert
+      if(t>0.55&&m<0.25)base+=(t-0.55)*5+(0.25-m)*4;
+      // Extreme cold: permafrost / tundra
+      if(t<0.18)base+=(0.18-t)*8;
+      // Swampy: wet + warm
+      if(m>0.7&&t>0.4)base+=(m-0.7)*6;
+      // Coastal discount applies last (it's a bonus, not a biome)
+      if(tCoast[ni])base=Math.min(base,params.coast);
+      // Slope penalty: crossing a ridge is harder than walking the ridge
+      if(ciElev>0){
+        const slope=Math.abs(e-ciElev);
+        if(slope>0.05)base+=(slope-0.05)*params.slope;
+      }
     }
     // Mode change: pay port cost on any mode transition
     if(niMode!==ciMode)base+=params.port;
@@ -3718,12 +3745,13 @@ function runTransportTest(ter, capitals, params){
     claimed[tribe]++;totalClaimed++;
     const cx=ti%tw,cy=(ti-cx)/tw;
     const ciMode=modeOf(ti);
+    const ciElev=tElev[ti];
     for(let d=0;d<4;d++){
       const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
       if(ny<0||ny>=th)continue;
       const ni=ny*tw+nx;
       if(visited[ni])continue;
-      const mc=moveCost(ni,ciMode);
+      const mc=moveCost(ni,ciMode,ciElev);
       if(mc>=999)continue;
       hPush(ni,cc+mc,tribe);
     }
@@ -3790,10 +3818,12 @@ const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState
 const[ttCapitals,setTtCapitals]=useState([]);
 const[ttParams,setTtParams]=useState({
   tileLimit: 500,
-  plain: 1.0,
-  mountainMult: 12,
+  plain: 0.6,
+  elev: 8,        // direct elevation penalty (altitude)
+  slope: 25,      // slope between current and neighbor (steep climb)
+  harsh: 18,      // composite tDiff² (biome roughness)
   river: 0.3,
-  coast: 0.5,
+  coast: 0.7,
   water: 0.8,
   nav: 0.5,
   port: 3.0,
@@ -5359,10 +5389,12 @@ return(
   </div>
   {[
     ["tileLimit","Tiles / capital",10,5000,10],
-    ["plain","Plain land cost",0.1,5,0.1],
-    ["mountainMult","Mountain × diff²",0,30,0.5],
+    ["plain","Plain base cost",0.1,3,0.05],
+    ["elev","Elevation × (e-0.25)",0,30,0.5],
+    ["slope","Slope (|Δelev| × this)",0,80,1],
+    ["harsh","Harsh × diff² (biome)",0,40,0.5],
     ["river","River cost",0.05,2,0.05],
-    ["coast","Coast cost",0.1,2,0.05],
+    ["coast","Coast cost cap",0.1,2,0.05],
     ["water","Water base cost",0.1,5,0.1],
     ["nav","Navigation (0=no sea)",0,1,0.02],
     ["port","Port load (mode change)",0,15,0.5],
