@@ -5243,17 +5243,33 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
     }
     // ── Bands ──
-    // Scale band positions by tileRes to convert peopleSim tile-space
-    // (tw=960) to canvas pixel space (CW=1920).
+    // Fill colour interpolates from pale-amber (low agriculture) to
+    // bright gold (near settling threshold) so the player can SEE
+    // which bands are close to founding a village.
+    //   ag ≤ 0.10  → pale amber (just starting)
+    //   ag = 0.30  → warm honey
+    //   ag = 0.45  → bright gold (settling threshold)
+    //   ag > 0.45  → glowing gold ring (ready, looking for a site)
+    // Size still scales with √people.
     for(const b of psw.bands){
       if(!b||b.mode==="dead"||b.mode==="settling")continue;
       const sx=b.pos.x*TR+0.5;
       const sy=dataYtoScreenY(b.pos.y*TR,H,CH)+0.5;
       const r=Math.max(1.2,Math.min(4.0,1.0+Math.sqrt(b.people)*0.45));
-      ctx.beginPath();ctx.arc(sx,sy,r+0.9,0,Math.PI*2);
-      ctx.fillStyle="rgba(40,30,20,0.85)";ctx.fill();
+      const ag=Math.max(0,Math.min(1,(b.knowledge&&b.knowledge.agriculture)||0));
+      const t=Math.min(1,ag/0.45);
+      // R/G/B interp: 200→255 (R), 160→210 (G), 110→90 (B).
+      const cr=Math.round(200+t*55);
+      const cg=Math.round(160+t*50);
+      const cb=Math.round(110-t*20);
+      // Outline ring — gold + bright when ag ≥ threshold (ready to settle).
+      const ready=ag>=0.45;
+      ctx.beginPath();ctx.arc(sx,sy,r+1.2,0,Math.PI*2);
+      ctx.fillStyle=ready?"rgba(255,225,90,0.95)":"rgba(40,30,20,0.85)";
+      ctx.fill();
       ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);
-      ctx.fillStyle="rgba(220,180,120,0.95)";ctx.fill();
+      ctx.fillStyle=`rgba(${cr},${cg},${cb},0.95)`;
+      ctx.fill();
     }
   }
 }
@@ -5263,7 +5279,7 @@ useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;dep
 
 useEffect(()=>{let fid,acc=0,last=performance.now(),drawSkip=0;
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
-acc+=now-last;last=now;const iv=Math.max(16,100/speedRef.current);
+acc+=now-last;last=now;const iv=Math.max(8,100/speedRef.current);
 if(acc>=iv){acc=0;
 // Adaptive step rate: early history flies by, modern era slows down.
 // Uses current step count to determine how many sim steps per frame.
@@ -5272,7 +5288,7 @@ const curStep=terRef.current.stepCount;
 // Scaled by user speed setting.
 // Early Bronze Age runs faster, modern era slower
 const eraFactor=curStep<100?3:curStep<200?2:curStep<500?1.5:1;
-const sub=Math.min(3,Math.max(1,Math.ceil(speedRef.current/3*eraFactor)));// cap at 3 steps/frame to prevent freezing
+const sub=Math.min(12,Math.max(1,Math.ceil(speedRef.current/3*eraFactor)));// cap raised so high-speed actually accelerates the sim
 // Time-budgeted sim: stop stepping if we've used >8ms this frame
 const _simStart=performance.now();
 for(let s=0;s<sub;s++){
@@ -5464,10 +5480,10 @@ return(
 
 <div style={{display:"flex",alignItems:"center",gap:6,padding:"2px 4px"}}>
   <span className="au-sc au-fade" style={{fontSize:10}}>Speed</span>
-  <input type="range" min={1} max={10} value={speed}
+  <input type="range" min={1} max={30} value={speed}
     onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value;}}
     style={{flex:1}} />
-  <span className="au-mute" style={{fontSize:10,width:14,textAlign:"right"}}>{speed}</span>
+  <span className="au-mute" style={{fontSize:10,width:18,textAlign:"right"}}>{speed}</span>
 </div>
 
 <div className="au-rule" />

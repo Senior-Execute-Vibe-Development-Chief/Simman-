@@ -14,7 +14,9 @@ const BAND_MIN_AFTER_SPLIT = 6;
 // slow drift, but clearly visible at this map scale. Smaller values
 // made the user perceive them as standing still.
 const BAND_MOVE_SPEED  = 0.15;
-const BAND_SCAN_RINGS  = [4, 8, 14];  // radii tried when picking next step
+// Wider rings + bigger crowd-aware search. Bands now jump further each
+// target-pick and consider tiles well outside the cluster.
+const BAND_SCAN_RINGS  = [7, 14, 24];  // radii tried when picking next step
 // Carrying capacity for a wandering band: a band moves across many
 // tiles, so K is bigger than what a single tile supports. Tunable.
 const BAND_K_BASE      = 10;
@@ -235,7 +237,10 @@ function pickNewTarget(world, band) {
       const ti = (ny | 0) * tw + (nx | 0);
       if (elev[ti] <= 0) continue;
       const f = fert[ti];
-      // Crowding penalty: bands clustered nearby reduce attractiveness.
+      // Crowding penalty — much stronger and wider than before. Bands
+      // within ~9 tiles contribute, weighted by inverse-square. Same-
+      // tile clustering carries a heavy cost so cradle-region pile-ups
+      // get pushed apart even when fertility is uniform.
       let crowd = 0;
       for (const other of world.bands) {
         if (other === band || other.mode === "dead") continue;
@@ -243,9 +248,23 @@ function pickNewTarget(world, band) {
         if (ddx > tw / 2) ddx = tw - ddx;
         const ddy = other.pos.y - ny;
         const d2 = ddx * ddx + ddy * ddy;
-        if (d2 < 16) crowd += 1 / (1 + d2);
+        if (d2 < 80) crowd += 1 / (0.5 + d2 * 0.1);
       }
-      const score = f * 3 - crowd * 2 - rad * 0.03 + rng() * 0.4;
+      // Settlements also push bands away — already-built villages own
+      // the local fertility, leaving little forage for wanderers.
+      let sCrowd = 0;
+      for (const s of world.settlements) {
+        if (s.mode === "dead") continue;
+        let ddx = Math.abs(s.pos.x - nx);
+        if (ddx > tw / 2) ddx = tw - ddx;
+        const ddy = s.pos.y - ny;
+        const d2 = ddx * ddx + ddy * ddy;
+        if (d2 < 100) sCrowd += 1 / (0.5 + d2 * 0.08);
+      }
+      // Strong frontier bias: crowd weight dominates fertility so bands
+      // ALWAYS prefer empty land, even mediocre empty land, over rich
+      // crowded land. This is the "out of Africa" pressure.
+      const score = f * 2 - crowd * 8 - sCrowd * 6 - rad * 0.02 + rng() * 0.3;
       if (score > bestScore) { bestScore = score; bestX = nx; bestY = ny; }
     }
     if (bestX !== null) break;   // found something at this ring, don't expand further
