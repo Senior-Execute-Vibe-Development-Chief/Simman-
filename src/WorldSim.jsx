@@ -1037,9 +1037,10 @@ function expansionCap(ter,id){
   const k=ter.tribeKnowledge&&ter.tribeKnowledge[id];
   const ag=k?k.agriculture:0;
   const og=k?k.organization:0;
-  // Cap scales with pop × growth × tech. Floor sized so an initial
-  // tribe (pop few dozen) can still sustain a meaningful frontier wave.
-  return Math.max(400,pop*gro*(1+ag*0.5+og*0.3)*3);
+  // Cap is the *peak burst* capacity. Sized so budget rarely throttles
+  // sustained expansion — only bites when tribes try to claim faster
+  // than their settler regen, e.g. opening of new frontier or pop boom.
+  return Math.max(1500,pop*gro*(1+ag*0.5+og*0.3)*6);
 }
 function expansionReadiness(ter,id){
   if(!ter.tribeExpansion)return 0.5;
@@ -1086,7 +1087,9 @@ function claimSettlerCost(ter,id,ti){
   // existing expansion-chance scoring is already a strong limiter, so
   // the budget should be a *secondary* throttle that bites mostly on
   // distant/expensive tiles and during burst growth.
-  const baseCost=0.3+reach*0.06;
+  // Cost calibrated so steady-state expansion matches the old uncapped
+  // rate — only bursts of pressure push past the regen ceiling.
+  const baseCost=0.2+reach*0.04;
   return baseCost/(1+ag*0.4+og*0.2);
 }
 function stepExpansion(ter){
@@ -1102,7 +1105,7 @@ function stepExpansion(ter){
     // refill fast. Asymptotic toward cap.
     const bud=ter.tribeBudget&&ter.tribeBudget[i];
     const gro=bud?bud.growth:0.3;
-    const rate=0.05+gro*0.10;// gro=0.1 → 0.060, gro=0.3 → 0.080, gro=0.5 → 0.100
+    const rate=0.08+gro*0.15;// gro=0.1 → 0.095, gro=0.3 → 0.125, gro=0.5 → 0.155
     const next=cur+(cap-cur)*rate;
     ter.tribeExpansion[i]=Math.max(0,Math.min(cap,next));
   }
@@ -3036,6 +3039,10 @@ _candidates.push({ni,nx,ny:ny2,chance,score,diff,distMin});}
 // so growth strongly follows fertile corridors, not uniform bubbles.
 _candidates.sort((a,b)=>b.score-a.score);
 let claimedThisTile=0;
+// Early-out: if this tribe's settler reserve is below the cheapest
+// possible cost (~0.2), skip the whole candidate loop. Saves churn
+// on dead tribes / overstretched empires.
+if(ter.tribeExpansion&&(ter.tribeExpansion[ow]||0)<0.2)continue;
 for(let ci2=0;ci2<_candidates.length;ci2++){const cand=_candidates[ci2];const{ni,nx,ny:ny2,chance,diff,distMin}=cand;
 // Each subsequent candidate is 20% as likely (very steep — usually only best gets claimed)
 const rankPenalty=Math.pow(0.2,claimedThisTile);
