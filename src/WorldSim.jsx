@@ -2556,172 +2556,136 @@ function removeCenter(ter,tid,ti){
 // city. Each cascade flip uses `claimTile` directly (skipping ratio
 // checks). Returns the tile indices of cascaded captures so the caller
 // can update the war record.
-function conquestCascade(ter,ti,attacker,defender,nf,nfl){
-  const{tw,th,owner,tElev,tribeCenters,tFert,tribeStrength}=ter;
-  const sl=0;const captured=[];
-  // Find defender's nearest surviving city
-  const dCenters=tribeCenters[defender];
-  if(!dCenters||dCenters.length===0)return captured;
-  const sx=ti%tw,sy=(ti-sx)/tw;
-  let bestD=Infinity,bx=sx,by=sy;
-  for(let ci=0;ci<dCenters.length;ci++){const c=dCenters[ci];
-    const d=tDistW(sx,sy,c.x,c.y,tw);if(d<bestD){bestD=d;bx=c.x;by=c.y;}}
-  // Dominant cardinal direction from (sx,sy) toward (bx,by)
-  let dxRaw=bx-sx,dyRaw=by-sy;
-  // Wrap for x: choose shorter route
-  if(dxRaw>tw/2)dxRaw-=tw;else if(dxRaw<-tw/2)dxRaw+=tw;
-  let stepX=0,stepY=0;
-  if(Math.abs(dxRaw)>Math.abs(dyRaw)){stepX=dxRaw>0?1:dxRaw<0?-1:0;}
-  else{stepY=dyRaw>0?1:dyRaw<0?-1:0;}
-  if(stepX===0&&stepY===0)return captured;
-  // Cascade depth + reliability scaled by war intensity. A long war with
-  // many flips means an army actively in the field — pushes much deeper.
-  // Real conquest is decisive: a Persian sweep, a Mongol push. Single
-  // breaches becoming whole-province changes hands is the goal here.
-  const wr=getWar(ter,attacker,defender);
-  const intensity=wr?Math.min(1,((wr.flipsAtoB||0)+(wr.flipsBtoA||0))/40):0;
-  // Base: 5-deep cascade, probabilities boosted by intensity
-  const probs=[0.90+intensity*0.08,
-               0.80+intensity*0.10,
-               0.70+intensity*0.12,
-               0.55+intensity*0.15,
-               0.40+intensity*0.20];
-  let cx=sx,cy=sy;
-  for(let s=0;s<probs.length;s++){
-    cx=((cx+stepX)%tw+tw)%tw;cy=cy+stepY;
-    if(cy<0||cy>=th)break;
-    const ni=cy*tw+cx;
-    if(owner[ni]!==defender)break;          // hit unowned or third tribe — stop
-    if(tElev[ni]<=sl)break;                  // hit water
-    if(Math.random()>=probs[s])break;        // failed roll
-    const attackCost=tFert[ni]*0.15;          // smaller cost than a regular flip
-    tribeStrength[attacker]=Math.max(0.1,tribeStrength[attacker]-attackCost);
-    // Cascade flips also spend troops, but somewhat less than a regular
-    // flip (the army is already in motion at the breach).
-    spendMilitary(ter,attacker,40);
-    spendMilitary(ter,defender,20);
-    if(ter.bgPop&&ter.bgPop[ni]>0)ter.bgPop[ni]*=0.88;
-    if(ter.cityPop&&ter.cityPop[ni]>0)ter.cityPop[ni]*=0.92;
-    const wasCityHere=isCityTile(ter,defender,ni);
-    claimTile(ter,ni,attacker);
-    if(nf&&!nf[ni]){nf[ni]=1;nfl.push(ni);}
-    captured.push(ni);
-    // Spread campaign momentum to the cascade tile so subsequent passes
-    // continue from the new furthest point of the salient.
-    if(!ter._campaign[attacker])ter._campaign[attacker]={};
-    const cm=ter._campaign[attacker];cm[ni]=Math.min(1.0,(cm[ni]||0)+0.7);
-    if(wasCityHere){capitalFall(ter,ni,attacker,defender,nf,nfl);break;}
+// ── OpenFront-style wave attack ──────────────────────────────────────
+// Replaces the legacy directional `conquestCascade` (a cardinal-line
+// march that produced the "thin strand" pathology). Models OpenFront.io
+// expansion: attacker spends a soldier pool on defender border-tiles,
+// cheapest first, and the wave EXPANDS as it captures (each new tile
+// adds its defender-neighbours to the candidate pool). Result: a rough
+// bubble pressing into weak spots, hugging strong cities — no more
+// straight-line pokes.
+//
+// Cost per tile = base × (1 + defenderPopNearby×k + tDiff×m + tenureBonus)
+//                       × defenderMul / attackerMul
+// where multipliers come from tech (metallurgy/military offense vs
+// construction/military defense, cavalry advantage) and the budget
+// military allocation.
+function attackWave(ter,attacker,defender,force){
+  const{tw,th,owner,tElev,tribeSizes,tribeKnowledge,tribeBudget,tribeTiles,bgPop,cityPop}=ter;
+  const sl=0;
+  if(tribeSizes[attacker]<=0||tribeSizes[defender]<=0)return[];
+  if(force<4)return[];
+  // ── Per-pair multipliers ──
+  const aK=tribeKnowledge&&tribeKnowledge[attacker]?tribeKnowledge[attacker]:null;
+  const dK=tribeKnowledge&&tribeKnowledge[defender]?tribeKnowledge[defender]:null;
+  const aBud=tribeBudget&&tribeBudget[attacker];
+  const dBud=tribeBudget&&tribeBudget[defender];
+  const aMet=aK?aK.metallurgy:0,aMil=aK?(aK.military||0):0;
+  const dCon=dK?dK.construction:0,dMil=dK?(dK.military||0):0;
+  const aBudMil=aBud?aBud.military:0.2;
+  const dBudMil=dBud?dBud.military:0.2;
+  const aHorses=ter._resCache&&ter._resCache[attacker]?(ter._resCache[attacker].horses||0):0;
+  const dHorses=ter._resCache&&ter._resCache[defender]?(ter._resCache[defender].horses||0):0;
+  const horseAdv=(aHorses>1&&dHorses<0.5)?0.3:0;
+  const attackMul=(1+aMet*0.4+aMil*0.6+horseAdv)*(0.5+aBudMil*2.0);
+  const defenseMul=(1+dCon*0.5+dMil*0.4)*(0.5+dBudMil*1.5);
+  const techRatio=defenseMul/Math.max(0.1,attackMul);
+  // ── Initial candidate set: defender tiles adjacent to any attacker tile ──
+  const visited=new Set();
+  const candidates=[];// {ti, cost}
+  const aTiles=tribeTiles&&tribeTiles[attacker]?tribeTiles[attacker]:null;
+  if(!aTiles)return[];
+  for(const ati of aTiles){
+    const aty=Math.floor(ati/tw),atx=ati%tw;
+    for(const[dx,dy]of DIRS){
+      const nx=((atx+dx)%tw+tw)%tw,ny=aty+dy;
+      if(ny<0||ny>=th)continue;
+      const ni=ny*tw+nx;
+      if(visited.has(ni))continue;
+      visited.add(ni);
+      if(owner[ni]!==defender||tElev[ni]<=sl)continue;
+      candidates.push({ti:ni,cost:tileAttackCost(ter,ni,techRatio)});
+    }
   }
+  if(candidates.length===0)return[];
+  candidates.sort((a,b)=>a.cost-b.cost);
+  // ── Spend force greedily; wave expands as we capture ──
+  const captured=[];
+  let spent=0;
+  let resortPending=false;
+  while(candidates.length>0&&force>=4){
+    if(resortPending){candidates.sort((a,b)=>a.cost-b.cost);resortPending=false;}
+    const c=candidates.shift();
+    if(owner[c.ti]!==defender)continue;// taken by a third party already
+    if(force<c.cost)break;
+    force-=c.cost;spent+=c.cost;
+    const wasCity=isCityTile(ter,defender,c.ti);
+    if(bgPop&&bgPop[c.ti]>0)bgPop[c.ti]*=0.85;
+    if(cityPop&&cityPop[c.ti]>0)cityPop[c.ti]*=0.90;
+    claimTile(ter,c.ti,attacker);
+    captured.push(c.ti);
+    spendMilitary(ter,defender,c.cost*0.45);
+    recordFlip(ter,attacker,defender,c.ti);
+    if(wasCity)capitalFall(ter,c.ti,attacker,defender,null,null);
+    // Expand wave: newly captured tile's defender-neighbours become candidates
+    const cty=Math.floor(c.ti/tw),ctx=c.ti%tw;
+    for(const[dx,dy]of DIRS){
+      const nx=((ctx+dx)%tw+tw)%tw,ny=cty+dy;
+      if(ny<0||ny>=th)continue;
+      const ni=ny*tw+nx;
+      if(visited.has(ni))continue;
+      visited.add(ni);
+      if(owner[ni]!==defender||tElev[ni]<=sl)continue;
+      candidates.push({ti:ni,cost:tileAttackCost(ter,ni,techRatio)});
+      resortPending=true;
+    }
+  }
+  spendMilitary(ter,attacker,spent*0.7);// attacker pays ~70 % of cost in own losses
   return captured;
 }
 
-// Launch a concerted invasion from `attacker` into `defender`. Models a
-// real military campaign: a chunk of military might converted into a
-// directional push toward the defender's nearest city. Flips a chain of
-// tiles in one event, with force decay from attrition and supply lines.
-// This is the "Hannibal crosses the Alps" / "Cyrus sweeps to Babylon"
-// event — not a probability gradient, but a deliberate state change.
-function launchInvasion(ter,attacker,defender){
-  const{tw,th,owner,tElev,tribeCenters,tribeSizes,tribeStrength,tFert}=ter;
-  const sl=0;
-  if(tribeSizes[attacker]<=0||tribeSizes[defender]<=0)return[];
-  const aCenters=tribeCenters[attacker]||[];const dCenters=tribeCenters[defender]||[];
-  if(aCenters.length===0||dCenters.length===0)return[];
-  // ── Pick attack axis: closest attacker-city -> closest defender-city pair
-  let bestPair=null,bestD=Infinity;
-  for(const ac of aCenters){
-    for(const dc of dCenters){
-      const d=tDistW(ac.x,ac.y,dc.x,dc.y,tw);
-      if(d<bestD){bestD=d;bestPair={ac,dc};}
+function tileAttackCost(ter,ti,techRatio){
+  const{tw,th,owner,tDiff,bgPop,cityPop,tenure}=ter;
+  const ty=Math.floor(ti/tw),tx=ti%tw;
+  const ow=owner[ti];
+  // Local defender garrison estimate: own tile + same-owner 4-neighbours.
+  // Cities count heavier (urban garrisons, walls).
+  let defPop=(bgPop?bgPop[ti]:0)+(cityPop?cityPop[ti]*4:0);
+  for(const[dx,dy]of DIRS){
+    const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;
+    if(ny<0||ny>=th)continue;
+    const ni=ny*tw+nx;
+    if(owner[ni]===ow){
+      defPop+=(bgPop?bgPop[ni]:0)*0.4+(cityPop?cityPop[ni]:0)*2;
     }
   }
-  if(!bestPair)return[];
-  // ── Force budget: pulled from the attacker's stored military reserve.
-  // An invasion commits ~55 % of standing troops to a single push. When
-  // troops run out the campaign halts. After the push, the spent troops
-  // are gone — the attacker must rebuild before they can mount another
-  // serious offensive.
+  const diff=tDiff?tDiff[ti]:0;
+  const ten=tenure?tenure[ti]:0;
+  const tenureBonus=Math.min(1,ten*0.003);
+  const base=22;
+  return Math.max(4,base*(1+defPop*0.35+diff*1.4+tenureBonus)*techRatio);
+}
+
+// "Invasion" is now a spike of the wave: a war decider declaration or
+// every-16-tick offensive commits a larger fraction of the standing
+// army to attack the defender's borders in a single pass. The wave
+// model (attackWave) does the work — invasions are just bigger waves
+// with a "summer offensive" multiplier on top of the continuous per-
+// pass attacks happening in stepTerritory's border block.
+function launchInvasion(ter,attacker,defender){
   if(!ter.tribeMilitary)ter.tribeMilitary=[];
   while(ter.tribeMilitary.length<=Math.max(attacker,defender))ter.tribeMilitary.push(0);
   const standing=ter.tribeMilitary[attacker]||0;
-  if(standing<50)return[];// armies smaller than this can't mount a march
-  let force=standing*0.55;// commit ~half — leave reserves at home
-  const initialForce=force;
-  const aK=ter.tribeKnowledge&&ter.tribeKnowledge[attacker]?ter.tribeKnowledge[attacker]:null;
-  // Tech multiplier: more efficient armies get more reach per troop.
-  // Iron-age force pushes ~2x deeper per troop than stone-age.
-  // Imperial-age with horses pushes ~3x deeper.
-  const aHorses=ter._resCache&&ter._resCache[attacker]?(ter._resCache[attacker].horses||0):0;
-  const cavalryBonus=aHorses>0.5?(1+Math.min(0.6,aHorses*0.15)):1;
-  const techEfficiency=(aK?(1+aK.metallurgy*1.4+(aK.military||0)*1.0):1)*cavalryBonus;
-  const ac=bestPair.ac,dc=bestPair.dc;
-  // ── Bresenham-ish march from attacker city toward defender city
-  // Find the *frontier* tile on the attacker's side that's furthest in
-  // the direction of the target — that's where the army crosses.
-  let dxRaw=dc.x-ac.x,dyRaw=dc.y-ac.y;
-  if(dxRaw>tw/2)dxRaw-=tw;else if(dxRaw<-tw/2)dxRaw+=tw;
-  const dist=Math.max(1,Math.sqrt(dxRaw*dxRaw+dyRaw*dyRaw));
-  const ux=dxRaw/dist,uy=dyRaw/dist;
-  // Walk along the line, capturing tiles. Skip own territory (free passage),
-  // start consuming force on defender territory, stop on third-party.
-  const captured=[];
-  let cx=ac.x,cy=ac.y;
-  // Cavalry armies march further. Tech improves logistics.
-  const reachMult=cavalryBonus*(aK?(1+(aK.organization||0)*0.5):1);
-  const maxSteps=Math.min(80,Math.floor((dist*1.5+10)*reachMult));
-  for(let s=0;s<maxSteps;s++){
-    cx+=ux;cy+=uy;
-    const ix=((Math.round(cx)%tw)+tw)%tw;const iy=Math.round(cy);
-    if(iy<0||iy>=th)break;
-    const ni=iy*tw+ix;
-    if(tElev[ni]<=sl)break;// hit water
-    const o=owner[ni];
-    if(o===attacker)continue;// own land — march through freely
-    if(o>=0&&o!==defender)break;// third party — stop, don't get drawn in
-    // o is either defender or unowned
-    // Cost: each tile captured costs troops. Defender tiles cost
-    // 80-200 troops depending on terrain; defender's own readiness
-    // (their standing army) makes them more expensive to capture.
-    const diff=ter.tDiff?ter.tDiff[ni]:0;
-    const defReadiness=militaryReadiness(ter,defender);
-    const baseCost=80*(0.5+tFert[ni])*(1+diff*2)/techEfficiency;
-    const cost=baseCost*(0.7+defReadiness*1.0);// 0.7x for unmanned, 1.7x for fully manned
-    if(force<cost)break;
-    // For defender tiles: probabilistic flip with force-driven roll
-    if(o===defender){
-      const depthFactor=1-(s/maxSteps)*0.4;
-      if(Math.random()>0.85*depthFactor){
-        // Repulsed — still cost some troops to the engagement
-        force-=cost*0.3;
-        spendMilitary(ter,defender,cost*0.15);// defender also bleeds
-        break;
-      }
-      const wasCity=isCityTile(ter,defender,ni);
-      if(ter.bgPop&&ter.bgPop[ni]>0)ter.bgPop[ni]*=0.85;
-      if(ter.cityPop&&ter.cityPop[ni]>0)ter.cityPop[ni]*=0.90;
-      claimTile(ter,ni,attacker);
-      if(ter.tenure)ter.tenure[ni]=10;
-      captured.push(ni);
-      recordFlip(ter,attacker,defender,ni);
-      force-=cost;
-      // Defender bleeds ~30 % of attacker's cost in defending
-      spendMilitary(ter,defender,cost*0.3);
-      if(wasCity){capitalFall(ter,ni,attacker,defender,null,null);break;}
-    }else{
-      // Unowned tile crossed — claim it for low cost (army occupies)
-      const unclaimedCost=20*(1+diff)/techEfficiency;
-      if(force<unclaimedCost)break;
-      claimTile(ter,ni,attacker);
-      if(ter.tenure)ter.tenure[ni]=10;
-      force-=unclaimedCost;
-    }
-  }
-  // Deduct what was actually spent from attacker's stored military
-  const spent=initialForce-force;
-  spendMilitary(ter,attacker,spent);
+  if(standing<50||ter.tribeSizes[attacker]<=0||ter.tribeSizes[defender]<=0)return[];
+  const aBud=ter.tribeBudget&&ter.tribeBudget[attacker];
+  const milBud=aBud?aBud.military:0.2;
+  // Spike spend: 18 %–40 % of standing army committed in one event
+  // (vs ~5–12 % per regular border-conflict pass).
+  const force=standing*(0.18+milBud*0.55);
+  const captured=attackWave(ter,attacker,defender,force);
   if(captured.length>0){
     if(!ter._warEvents)ter._warEvents=[];
-    ter._warEvents.push({step:ter.stepCount,type:'invasion',attacker,defender,tiles:captured.length,from:[ac.x,ac.y],toward:[dc.x,dc.y],troopsCommitted:Math.round(initialForce),troopsLost:Math.round(spent)});
+    ter._warEvents.push({step:ter.stepCount,type:'invasion',attacker,defender,tiles:captured.length,troopsCommitted:Math.round(force)});
     if(ter._warEvents.length>200)ter._warEvents.shift();
   }
   return captured;
@@ -3405,18 +3369,34 @@ if(ter.stepCount%4===0){
     if(nf&&!nf[cti]){nf[cti]=1;nfl.push(cti);}
   }
 }
-// ── Border conflict: local power projection determines tile flips ──
-// Only check frontier tiles (tiles with at least one unowned/enemy neighbor)
+// ── Border conflict ─────────────────────────────────────────────────
+// Wartime: each active war runs an OpenFront-style attackWave that
+// presses the attacker's border-pool against the defender, cheapest
+// tiles first, expanding as a bubble (no more thin-strand pokes).
+// Peacetime: per-tile probabilistic nibbling of weak frontier tiles
+// (unchanged from legacy — slow erosion of tendril tips etc).
 if(ter.stepCount%2===0){const flips=[];const{tenure}=ter;
-// Decay campaign momentum each pass (per-tribe sparse map of tile→momentum).
-// Momentum represents an army actively in the field at a recent breach;
-// it lets attackers concentrate force at the point of attack while defenders
-// are spread along the whole border. Without this, symmetric borders never
-// resolve (ratio ~0.33 at parity, just below the 0.35 attempt threshold) —
-// which produced the observed 1-5-tile back-and-forth without cascading.
-if(!ter._campaign)ter._campaign={};
-for(const tid in ter._campaign){const m=ter._campaign[tid];
-for(const t in m){m[t]*=0.7;if(m[t]<0.05)delete m[t];}}
+// ── Wartime per-pass wave attacks ──
+// Both sides attack each other in every active war. Rate: ~5 % of
+// standing army per pass, +budget military up to ~14 %, with a
+// goal-urgency multiplier that decays as wars drag on (fresh wars
+// push hardest, year-long stalemates taper).
+if(ter.wars){
+  for(const wkey in ter.wars){
+    const wr=ter.wars[wkey];if(!wr||!wr.active)continue;
+    if(tribeSizes[wr.a]<=0||tribeSizes[wr.b]<=0)continue;
+    const age=ter.stepCount-(wr.declared||ter.stepCount);
+    const goalMul=age<200?1.3:age<800?1.0:0.6;
+    const budA=ter.tribeBudget&&ter.tribeBudget[wr.a]?ter.tribeBudget[wr.a].military:0.2;
+    const budB=ter.tribeBudget&&ter.tribeBudget[wr.b]?ter.tribeBudget[wr.b].military:0.2;
+    const standingA=(ter.tribeMilitary&&ter.tribeMilitary[wr.a])||0;
+    const standingB=(ter.tribeMilitary&&ter.tribeMilitary[wr.b])||0;
+    const forceA=standingA*(0.05+budA*0.09)*goalMul;
+    const forceB=standingB*(0.05+budB*0.09)*goalMul;
+    if(forceA>=4)attackWave(ter,wr.a,wr.b,forceA);
+    if(forceB>=4)attackWave(ter,wr.b,wr.a,forceB);
+  }
+}
 for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
 // New tribes get 80 steps of protection from border conflict (establishment period)
 const owAge=ter.stepCount-(tribeCenters[ow][0]?tribeCenters[ow][0].founded:0);
@@ -3436,6 +3416,9 @@ const defMilB=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].military:
 let def=1.0+Math.min(0.8,tenure[i]*0.005)+Math.min(2.0,tDiff[i]*tDiff[i]*8)+defConst*1.5+defMilB*1.5;
 for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
 const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<16)continue;
+// Wartime tiles are handled by the wave above — skip per-tile rolls.
+// This block only does peacetime nibbling on weak frontier tiles.
+if(atWar(ter,no,ow))continue;
 // Avoid attacking tribes that are much larger (>3x your size)
 const atkSz=tribeSizes[no],defSz=tribeSizes[ow];
 if(defSz>0&&atkSz>0&&defSz/atkSz>3)continue;// don't poke the giant
@@ -3447,10 +3430,7 @@ const lastG=ter.tribeLastGrowth&&ter.tribeLastGrowth[no]!=null?ter.tribeLastGrow
 const stagBonus=1+Math.min(1.0,Math.max(0,ter.stepCount-lastG-200)/300);
 const atkAggression=(atkSz<25?0.4:atkSz>80?1.5:1.0)*(0.5+atkMilB*2.5)*stagBonus;
 // River between attacker and defender tiles: additional crossing penalty
-let lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
-// Campaign momentum: armies concentrate at recent breaches
-const mom=ter._campaign[no]?(ter._campaign[no][i]||0):0;
-if(mom>0)lpB*=(1+mom*1.2);// up to 2.2x at full momentum
+const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
 // Tech-gap defence penalty: when the attacker is multiple eras ahead,
 // the defender's terrain/construction/militancy bonuses just don't
 // matter as much. Roman walls vs Mongol siege, Aztec spears vs
@@ -3536,24 +3516,10 @@ if(from>=0)spendMilitary(ter,from,defCost);
 // Check if this tile was one of the defender's cities BEFORE we claim it
 const wasCity=from>=0&&isCityTile(ter,from,ti);
 claimTile(ter,ti,to);if(!nf[ti]){nf[ti]=1;nfl.push(ti);}
-// Record in war state (auto-declares if not already at war)
+// Record in war state (auto-declares if not already at war). The wave
+// model is the wartime mechanism; this only runs here for peacetime
+// nibbles that find a weak tile, which auto-declare on first contact.
 if(from>=0)recordFlip(ter,to,from,ti);
-// Spread campaign momentum to the flipped tile + neighbours so the
-// attacker can push deeper next pass instead of stopping at one tile.
-if(!ter._campaign[to])ter._campaign[to]={};
-const cm=ter._campaign[to];cm[ti]=Math.min(1.0,(cm[ti]||0)+0.8);
-const fy=Math.floor(ti/tw),fx=ti%tw;
-for(const[dx,dy]of DIRS){const nx2=((fx+dx)%tw+tw)%tw,ny2=fy+dy;
-if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-if(owner[ni]===from)cm[ni]=Math.min(1.0,(cm[ni]||0)+0.6);}
-// Conquest cascade: in a war, a successful flip means the army pours
-// through. Try to flip 1-2 more tiles in the direction of defender's
-// nearest surviving city. Skips ratio/terrain checks (this is the
-// breach, not a fresh combat).
-if(from>=0&&atWar(ter,to,from)){
-  const cascadeTiles=conquestCascade(ter,ti,to,from,nf,nfl);
-  for(const cti of cascadeTiles){recordFlip(ter,to,from,cti);}
-}
 // Capital fall: if the flipped tile was a city, transfer it as a center
 // and cascade the surrounding region (tiles administered from that city)
 if(wasCity&&from>=0){capitalFall(ter,ti,to,from,nf,nfl);}}}
