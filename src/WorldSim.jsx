@@ -2468,11 +2468,13 @@ tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudg
 tribeTiles,frontier,frontierList,_landTiles,_coastalTiles,_nfBuf,_youngTiles:[],
 landCount:lc,settled:tribeSizes.length,tribeCount:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
 
-// Distance from (x,y) to nearest center of a tribe; also returns the capital (index 0) distance
+// Distance from (x,y) to nearest center of a tribe; also returns the capital (index 0) distance.
+// Limit reduced from 30 → 8 centers — beyond ~40 tiles expFalloff(d/orgReach) ≈ 0 so additional
+// centers contribute nothing to reach. At 25k frontier × 4 candidates × 30 = 3M tDistW calls
+// every tick this was a major hot path; 8 cuts it ~4×.
 function nearestCenterDist(centers,x,y,tw){if(!centers||centers.length===0)return{min:0,cap:0};
 let mn=Infinity;const cap=tDistW(x,y,centers[0].x,centers[0].y,tw);
-// Only check first 30 centers (sorted by pop, largest first) for perf
-const limit=Math.min(centers.length,30);
+const limit=Math.min(centers.length,8);
 for(let ci=0;ci<limit;ci++){mn=Math.min(mn,tDistW(x,y,centers[ci].x,centers[ci].y,tw));}
 return{min:mn,cap};}
 
@@ -2574,7 +2576,7 @@ function removeCenter(ter,tid,ti){
 // where multipliers come from tech (metallurgy/military offense vs
 // construction/military defense, cavalry advantage) and the budget
 // military allocation.
-function attackWave(ter,attacker,defender,force){
+function attackWave(ter,attacker,defender,force,initialCandidates){
   const{tw,th,owner,tElev,tribeSizes,tribeKnowledge,tribeBudget,tribeTiles,bgPop,cityPop}=ter;
   const sl=0;
   if(tribeSizes[attacker]<=0||tribeSizes[defender]<=0)return[];
@@ -2594,26 +2596,38 @@ function attackWave(ter,attacker,defender,force){
   const attackMul=(1+aMet*0.4+aMil*0.6+horseAdv)*(0.5+aBudMil*2.0);
   const defenseMul=(1+dCon*0.5+dMil*0.4)*(0.5+dBudMil*1.5);
   const techRatio=defenseMul/Math.max(0.1,attackMul);
-  // ── Initial candidate set: defender tiles adjacent to any attacker tile ──
+  // ── Initial candidate set ──
+  // If `initialCandidates` was precomputed by the caller (the per-pass
+  // border walk in the border-conflict block), use it — that's O(border)
+  // instead of O(empire). Fallback to the legacy full-empire scan when
+  // called directly (e.g. launchInvasion).
   const visited=new Set();
   const candidates=[];// {ti, cost}
-  const aTiles=tribeTiles&&tribeTiles[attacker]?tribeTiles[attacker]:null;
-  if(!aTiles)return[];
-  // Tiles flipped in the last few passes (tenure < TPROT) are skipped to
-  // stop adjacent waves from ping-ponging the same border each pass.
-  const TPROT=6;
+  const TPROT=6;// tiles flipped in last <TPROT passes are off-limits
   const tenure=ter.tenure;
-  for(const ati of aTiles){
-    const aty=Math.floor(ati/tw),atx=ati%tw;
-    for(const[dx,dy]of DIRS){
-      const nx=((atx+dx)%tw+tw)%tw,ny=aty+dy;
-      if(ny<0||ny>=th)continue;
-      const ni=ny*tw+nx;
+  if(initialCandidates){
+    for(const ni of initialCandidates){
       if(visited.has(ni))continue;
       visited.add(ni);
       if(owner[ni]!==defender||tElev[ni]<=sl)continue;
       if(tenure&&tenure[ni]<TPROT)continue;
       candidates.push({ti:ni,cost:tileAttackCost(ter,ni,techRatio)});
+    }
+  }else{
+    const aTiles=tribeTiles&&tribeTiles[attacker]?tribeTiles[attacker]:null;
+    if(!aTiles)return[];
+    for(const ati of aTiles){
+      const aty=Math.floor(ati/tw),atx=ati%tw;
+      for(const[dx,dy]of DIRS){
+        const nx=((atx+dx)%tw+tw)%tw,ny=aty+dy;
+        if(ny<0||ny>=th)continue;
+        const ni=ny*tw+nx;
+        if(visited.has(ni))continue;
+        visited.add(ni);
+        if(owner[ni]!==defender||tElev[ni]<=sl)continue;
+        if(tenure&&tenure[ni]<TPROT)continue;
+        candidates.push({ti:ni,cost:tileAttackCost(ter,ni,techRatio)});
+      }
     }
   }
   if(candidates.length===0)return[];
@@ -2916,32 +2930,84 @@ const nf=ter._nfBuf;const nfl=[];
 const prevFL=ter.frontierList;for(let fi=0;fi<prevFL.length;fi++)nf[prevFL[fi]]=0;
 // Reuse single candidates array across all frontier tiles (avoids 30K allocs/step)
 const _candidates=[];
-for(let fj=0;fj<ter.frontierList.length;fj++){const fi=ter.frontierList[fj];if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];let room=false;const pDiff=tDiff[fi];
-const owSz=tribeSizes[ow],owDens=owSz>0?tribeStrength[ow]/owSz:0;
-const owKnow=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
-const agLevel=owKnow?owKnow.agriculture:0;
-const agMult=1+agLevel*2.5;
-const owPop=ter.tribePopulation?ter.tribePopulation[ow]:tribeStrength[ow]*10;
-// Capacity from shared tileEraMult formula
-const owOrg=owKnow?owKnow.organization:0,owMt=owKnow?owKnow.metallurgy:0,owCn=owKnow?owKnow.construction:0;
-const owEraMult=owKnow?tileEraMult(owKnow):2;
-const owCap=tribeStrength[ow]*owEraMult;
-// No hard tile cap. Expansion is limited by real constraints:
-// - Center distance falloff (power projection decays with distance)
-// - Logistics penalty (tribePower scales with organization)
-// - Terrain difficulty (mountains/desert/cold block low-tech civs)
-// - Population pressure (need people to push outward)
-// Hunter-gatherers stay small naturally: low pop growth, low pressure, no ag boost.
-const popRatio=owCap>0?owPop/owCap:0;
-// Agricultural civs expand proactively (they know they can farm new land).
-// Hunter-gatherers need real pressure. Threshold: 30% for ag>0.3, 60% for ag=0
-const pressureThreshold=0.6-agLevel*1.0;// ag=0→0.6, ag=0.3→0.3, ag=0.5+→clamped to 0.1
-const effThreshold=Math.max(0.1,pressureThreshold);
-const popPressure=Math.max(0,(popRatio-effThreshold)/(1-effThreshold));// 0→1 normalized
-const smallBoost=owSz<5?1.5:1;
-const largePrize=owSz>40?1+Math.min(1,(owSz-40)*0.008):1;
-// Score and evaluate all candidate neighbor tiles
-const agBoost=1+agLevel*2;// ag=0→1x, ag=0.5→2x
+// Hoist deposit array references — saves 11 object lookups per candidate
+// (~25k frontier × 4 candidates = 100k candidates × 11 = 1.1M lookups/tick).
+const _depArr=[];
+if(ter.deposits){for(const rk of RES_KEYS){const d=ter.deposits[rk];if(d)_depArr.push({rk,d});}}
+// ── Per-tribe expansion-stats cache (built once per pass) ──
+// The legacy loop recomputed 15+ per-tribe values per frontier tile
+// (knowledge multipliers, capacity, pressure, budget mults, etc).
+// For a 25k-tile frontier with 30 tribes, that's 750k of redundant
+// per-tile math each tick. Hoisting it to a per-tribe struct array
+// drops the inner loop to direct field reads.
+const _tribeStats=new Array(tribeCenters.length);
+const _expansionOK=new Uint8Array(tribeCenters.length);
+const _ageEpoch=ter.stepCount*0.00005;
+for(let i=0;i<tribeCenters.length;i++){
+  const sz=tribeSizes[i];
+  if(sz<=0){_tribeStats[i]=null;continue;}
+  if(!ter.tribeExpansion||(ter.tribeExpansion[i]||0)>=0.2)_expansionOK[i]=1;
+  const k=ter.tribeKnowledge&&ter.tribeKnowledge[i]?ter.tribeKnowledge[i]:null;
+  const ag=k?k.agriculture:0;
+  const ml=k?k.metallurgy:0;
+  const cn=k?k.construction:0;
+  const og=k?k.organization:0;
+  const pop=ter.tribePopulation?ter.tribePopulation[i]:tribeStrength[i]*10;
+  const eraMul=k?tileEraMult(k):2;
+  const cap=tribeStrength[i]*eraMul;
+  const orgRed=og*0.5;
+  const horses=ter._resCache&&ter._resCache[i]?(ter._resCache[i].horses||0):0;
+  const bud=ter.tribeBudget&&ter.tribeBudget[i];
+  const groB=bud?bud.growth:0.25;
+  const expB=bud?bud.exploration:0.15;
+  const pressTh=Math.max(0.1,0.6-ag*1.0);
+  const pratio=cap>0?pop/cap:0;
+  _tribeStats[i]={
+    k,ag,ml,cn,og,sz,pop,eraMul,cap,
+    dens:tribeStrength[i]/sz,
+    press:Math.max(0,(pratio-pressTh)/(1-pressTh)),
+    agMul:1+ag*2.5,
+    agBoost:1+ag*2,
+    smallBoost:sz<5?1.5:1,
+    largePrize:sz>40?1+Math.min(1,(sz-40)*0.008):1,
+    sizeSlow:sz>200?1/(1+(sz-200)*Math.max(0.0003,0.001-orgRed*0.001)):1,
+    lateBoost:1+og*0.5,
+    knowRed:cn*0.12+og*0.08+ag*0.05+ml*0.05,
+    diffFloor:cn*0.06+og*0.04,
+    techFloor:ag*0.15+ml*0.12+cn*0.10+og*0.08+Math.min(0.05,_ageEpoch),
+    budMul:0.4+groB*3.0+expB*2.5,
+    horseBoost:horses>1?1+Math.min(0.5,horses*0.05):1,
+    orgReach:1+og*1.5,
+    isBootstrap:sz<6,
+    coldResist:k?Math.min(0.7,cn*0.4+ag*0.3):0,
+  };
+}
+for(let fj=0;fj<ter.frontierList.length;fj++){const fi=ter.frontierList[fj];if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];
+// Cheap early-out for tribes with no settler budget: do only the room
+// check (4 neighbour reads) so the tile stays in the next-tick frontier
+// list if it still has unowned neighbours, then continue. Skips ~100
+// ops of scoring math per skipped tile. Most tribes are broke most of
+// the time, so this is the dominant late-game speedup.
+if(ow<0||!_expansionOK[ow]){
+  let stillBorder=false;
+  for(const[dx,dy]of DIRS){
+    const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;
+    if(ny<0||ny>=th)continue;
+    if(owner[ny*tw+nx]<0){stillBorder=true;break;}
+  }
+  if(stillBorder&&!nf[fi]){nf[fi]=1;nfl.push(fi);}
+  continue;
+}
+let room=false;const pDiff=tDiff[fi];
+// All per-tribe stats read from the pre-computed cache. The legacy
+// recomputation per frontier-tile burned ~75 % of expansion time.
+const _ts=_tribeStats[ow];
+const owKnow=_ts.k,owSz=_ts.sz,owDens=_ts.dens;
+const agLevel=_ts.ag,agMult=_ts.agMul,agBoost=_ts.agBoost;
+const owPop=_ts.pop,owOrg=_ts.og,owMt=_ts.ml,owCn=_ts.cn;
+const owEraMult=_ts.eraMul,owCap=_ts.cap;
+const popPressure=_ts.press;
+const smallBoost=_ts.smallBoost,largePrize=_ts.largePrize;
 _candidates.length=0;
 for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny2=ty+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx;if(owner[ni]>=0)continue;
 // Compactness: count how many own-tribe tiles surround this candidate.
@@ -2960,31 +3026,17 @@ for(const[dx2,dy2]of DIRS){
 // We make this a strong multiplier on chance so tribes overwhelmingly
 // prefer to fill in before extending. Bootstrap tribes (size < 6) get a
 // pass so seed tiles can grow into their first ring.
-const isBootstrap=owSz<6;
-const compactFactor=isBootstrap?1.0:Math.pow(ownN/2,1.4);
+const compactFactor=_ts.isBootstrap?1.0:Math.pow(ownN/2,1.4);
 // ownN=1: 0.38 (very slow extension), 2: 1.0, 3: 1.74, 4: 2.64
 const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni];if(effT<0.02){room=true;continue;}
 const diff=tDiff[ni];
-// Knowledge reduces effective difficulty. Advanced civs conquer hard terrain:
-// Construction: roads, terracing, tunnels (biggest impact on mountains)
-// Organization: logistics to supply remote areas
-// Agriculture: irrigation turns desert farmable
-// Metallurgy: tools to clear forest, mine mountains
-// Knowledge reduces difficulty — but only for HARD terrain. Easy terrain should stay easy.
-// Scale: up to 0.3 reduction at max knowledge (was 0.6 — too strong, making everything trivial)
-const knowledgeReduction=owKnow?(
-owKnow.construction*0.12+// roads, terracing
-owKnow.organization*0.08+// logistics
-owKnow.agriculture*0.05+// irrigation
-owKnow.metallurgy*0.05// tools
-):0;// total up to 0.3 at max
-const adjDiff=Math.max(0.02,Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0)-knowledgeReduction));
+const adjDiff=Math.max(0.02,Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0)-_ts.knowRed));
 const fert=tFert[ni];
 // ── Directional score: what makes this tile VALUABLE to expand into ──
 let score=fert*fert*agMult*3;// quadratic fertility × agriculture tech
 // Resource pull: era-weighted. Bronze-age tribe → pulled to tin. Industrial → pulled to coal.
-if(owKnow&&ter.deposits){let owRv=_resValCache.get(ow);if(!owRv){owRv=resourceValues(owKnow);_resValCache.set(ow,owRv);}
-for(const rk of RES_KEYS){const dep=ter.deposits[rk];if(dep&&dep[ni]>0.1)score+=owRv[rk]*dep[ni]*2.0;}}
+if(owKnow&&_depArr.length>0){let owRv=_resValCache.get(ow);if(!owRv){owRv=resourceValues(owKnow);_resValCache.set(ow,owRv);}
+for(let ri=0;ri<_depArr.length;ri++){const e=_depArr[ri];const v=e.d[ni];if(v>0.1)score+=owRv[e.rk]*v*2.0;}}
 // Strategic knowledge-driven pull
 if(owKnow){
 if(owKnow.agriculture>0.1&&ter.rivers&&ter.rivers.riverMag[ni]>=2)score+=1.0*owKnow.agriculture;
@@ -3000,48 +3052,29 @@ if(ao>=0&&ao!==ow){score+=0.3*owKnow.trade;break;}}}}}
 // almost impossible until population pressure is extreme or tech improves.
 // IRL: Egypt stayed on the Nile for centuries. Sumer stayed in river valleys.
 // They didn't casually expand into every adjacent grassland.
-// Large tribes slow down but not as drastically (scaled for large maps)
-// Size slowdown reduced by organization (well-governed empires maintain expansion)
-const orgReduction=owKnow?owKnow.organization*0.5:0;// org reduces the penalty
-const sizeSlowdown=owSz>200?1/(1+(owSz-200)*Math.max(0.0003,0.001-orgReduction*0.001)):1;
-// Base chance rises with organization (modern nation-states expand bureaucratically)
-const lateBoost=owKnow?1+owKnow.organization*0.5:1;// org=0.8→1.4x
-let chance=0.22*wet*smallBoost*sizeSlowdown*lateBoost;
-// Flat terrain bonus: steppe/grassland enables RAPID expansion (Mongol pattern)
-// diff<0.05 (flat plains): 1.8x. diff=0.1 (gentle hills): 1.3x. diff>0.2: 1.0x
+// All per-tribe multipliers from the cached stats; only candidate-tile-
+// specific work (terrain, fertility, distance) is computed per neighbour.
+let chance=0.22*wet*smallBoost*_ts.sizeSlow*_ts.lateBoost;
 const flatBonus=adjDiff<0.05?1.8:adjDiff<0.1?1.3+0.5*(0.1-adjDiff)/0.05:1.0;
-// Horses amplify flat-terrain expansion (cavalry covers ground fast)
-const horseBoost=ter._resCache&&ter._resCache[ow]&&ter._resCache[ow].horses>1?1+Math.min(0.5,ter._resCache[ow].horses*0.05):1;
-chance*=flatBonus*horseBoost;
-// Difficulty: quadratic penalty with knowledge floor
-const diffFloor=owKnow?(owKnow.construction*0.06+owKnow.organization*0.04):0;
-chance*=Math.max(diffFloor+0.02,(1-adjDiff)*(1-adjDiff));
-// Fertility: quadratic with tech floor. Prime land is easy, poor land is hard but not impossible.
+chance*=flatBonus*_ts.horseBoost;
+chance*=Math.max(_ts.diffFloor+0.02,(1-adjDiff)*(1-adjDiff));
 const fertSq=fert*fert;
-// Tech floor rises with knowledge — advanced civs can settle anywhere
-// Tech floor: advanced civs can claim even barren land (sovereignty, not habitation)
-// At max knowledge: floor=0.50 — enough to claim any land tile regardless of fertility
-const techFloor=(agLevel*0.15+owMt*0.12+owCn*0.10+owOrg*0.08)+Math.min(0.05,ter.stepCount*0.00005);
-chance*=Math.max(techFloor,fertSq*4)*largePrize;// fert 0.5→1.0, fert 0.3→0.36, fert 0.1→0.04
-// Agriculture tech boost
+chance*=Math.max(_ts.techFloor,fertSq*4)*largePrize;
 chance*=agBoost;
-// Budget: growth + exploration investment strongly drives expansion
-const groB=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].growth:0.25;
-const expB=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].exploration:0.15;
-chance*=(0.4+groB*3.0+expB*2.5);// balanced→1.25x, growth-focused→2.0x, both high→3x
-// Cold: brutal without tech
-if(effT<0.15){const coldResist=owKnow?Math.min(0.7,owKnow.construction*0.4+owKnow.agriculture*0.3):0;
-chance*=0.08+coldResist;}
-// Population pressure: critical driver. Low pressure = barely expand.
+chance*=_ts.budMul;
+if(effT<0.15)chance*=0.08+_ts.coldResist;
 chance*=Math.max(0.05,popPressure);
-// High-value targets pursued more aggressively
-chance*=1+Math.min(2.0,score*0.5);// stronger score feedback// score 0→1x, score 5→2.5x
-// Center proximity — organization extends effective reach
-// Base Gaussian exp(-d²/280) halves at ~14 tiles. Organization stretches this.
-const orgReach=owKnow?1+owKnow.organization*1.5:1;// org=0→1x, org=0.5→1.75x, org=1→2.5x
-const centers=tribeCenters[ow];
-const{min:distMin}=nearestCenterDist(centers,nx,ny2,tw);
-const reach=expFalloff(distMin/orgReach);// org stretches effective distance
+chance*=1+Math.min(2.0,score*0.5);
+// Early-out: if chance is already negligible, skip the expensive
+// nearestCenterDist call (it loops up to 8 centers per candidate; 100k
+// candidates × 8 = 800k tDistW per pass was a major hot path).
+let distMin=0,reach=1;
+if(chance>0.0008){
+  const centers=tribeCenters[ow];
+  const r=nearestCenterDist(centers,nx,ny2,tw);
+  distMin=r.min;
+  reach=expFalloff(distMin/_ts.orgReach);
+}
 chance*=Math.max(0.03,reach);
 score+=Math.random()*0.1;
 // Compactness — tribes prefer filling-in over thin extension. Strong
@@ -3394,13 +3427,38 @@ if(ter.stepCount%4===0){
 // tiles first, expanding as a bubble (no more thin-strand pokes).
 // Peacetime: per-tile probabilistic nibbling of weak frontier tiles
 // (unchanged from legacy — slow erosion of tendril tips etc).
-if(ter.stepCount%2===0){const flips=[];const{tenure}=ter;
+if(ter.stepCount%2===0){const _tWaveStart=performance.now();const flips=[];const{tenure}=ter;
 // ── Wartime per-pass wave attacks ──
 // Both sides attack each other in every active war. Rate: ~5 % of
 // standing army per pass, +budget military up to ~14 %, with a
 // goal-urgency multiplier that decays as wars drag on (fresh wars
 // push hardest, year-long stalemates taper).
 if(ter.wars){
+  // ── ONE-PASS BORDER WALK ──
+  // For each at-war pair, precompute the set of defender tiles adjacent
+  // to attacker tiles. Walks the global frontier list ONCE per pass
+  // instead of every wave re-scanning all of `tribeTiles[attacker]`
+  // (which was O(empire × wars) — the dominant late-game slowdown).
+  // Map key: "attackerId,defenderId" → Set<defender tile index>.
+  const warTargets=new Map();
+  const flist=ter.frontierList;
+  for(let li=0;li<flist.length;li++){
+    const fi=flist[li];const ow=owner[fi];
+    if(ow<0||tElev[fi]<=sl)continue;
+    const fy=Math.floor(fi/tw),fx=fi%tw;
+    for(const[dx,dy]of DIRS){
+      const nx=((fx+dx)%tw+tw)%tw,ny=fy+dy;
+      if(ny<0||ny>=th)continue;
+      const ni=ny*tw+nx;
+      const no=owner[ni];
+      if(no<0||no===ow||tElev[ni]<=sl)continue;
+      if(!atWar(ter,ow,no))continue;
+      const k=ow+","+no;
+      let s=warTargets.get(k);
+      if(!s){s=new Set();warTargets.set(k,s);}
+      s.add(ni);
+    }
+  }
   for(const wkey in ter.wars){
     const wr=ter.wars[wkey];if(!wr||!wr.active)continue;
     if(tribeSizes[wr.a]<=0||tribeSizes[wr.b]<=0)continue;
@@ -3420,8 +3478,12 @@ if(ter.wars){
     const forceA=standingA*(0.35+budA*0.30)*goalMul;
     const forceB=standingB*(0.35+budB*0.30)*goalMul;
     let capA=null,capB=null;
-    if(forceA>=1)capA=attackWave(ter,wr.a,wr.b,forceA);
-    if(forceB>=1)capB=attackWave(ter,wr.b,wr.a,forceB);
+    // Skip waves with negligible force — saves wave call overhead at
+    // scale (drained tribes generate dozens of zero-capture waves/pass).
+    const initialA=warTargets.get(wr.a+","+wr.b);
+    const initialB=warTargets.get(wr.b+","+wr.a);
+    if(forceA>=5&&initialA)capA=attackWave(ter,wr.a,wr.b,forceA,initialA);
+    if(forceB>=5&&initialB)capB=attackWave(ter,wr.b,wr.a,forceB,initialB);
     // Toggle ter._waveDebug=true in console / tests to log per-wave activity.
     if(ter._waveDebug&&((capA&&capA.length)||(capB&&capB.length))){
       console.log(`[wave ${ter.stepCount}] ${wr.a}↔${wr.b} | A std=${standingA.toFixed(0)} f=${forceA.toFixed(0)} caps=${capA?capA.length:0} | B std=${standingB.toFixed(0)} f=${forceB.toFixed(0)} caps=${capB?capB.length:0}`);
@@ -3557,7 +3619,9 @@ claimTile(ter,ti,to);if(!nf[ti]){nf[ti]=1;nfl.push(ti);}
 if(from>=0)recordFlip(ter,to,from,ti);
 // Capital fall: if the flipped tile was a city, transfer it as a center
 // and cascade the surrounding region (tiles administered from that city)
-if(wasCity&&from>=0){capitalFall(ter,ti,to,from,nf,nfl);}}}
+if(wasCity&&from>=0){capitalFall(ter,ti,to,from,nf,nfl);}}
+if(!ter._dbgPhase)ter._dbgPhase={};
+ter._dbgPhase.wave=performance.now()-_tWaveStart;}
 // ── City-based cohesion challenge: when a secondary city outgrows the capital ──
 // Centers are derived from cityPop in stepBackgroundPop. Here we check if a
 // rival city challenges the capital — potentially splitting the empire.
@@ -3758,8 +3822,10 @@ for(let st=0;st<tribeSizes.length;st++){
 }}
 ter._dbgTimeExpansion=(performance.now()-_tExpStart).toFixed(1);
 const _stepTotal=performance.now()-_stepT0;
-if(_stepTotal>5){// log any step that takes >5ms
-console.warn(`[SLOW step ${ter.stepCount}] ${_stepTotal.toFixed(1)}ms frontier:${nfl.length} tribes:${tribeSizes.filter(s=>s>0).length} settled:${ter.settled}`);}
+if(_stepTotal>50){// log any step that takes >50ms with timing breakdown
+const t=ter._dbgPhase||{};
+console.warn(`[SLOW ${ter.stepCount}] ${_stepTotal.toFixed(0)}ms | expand:${ter._dbgTimeExpansion} bgPop:${ter._dbgTimeBgPop||0} rest:${ter._dbgTimeRest||0} wave:${(t.wave||0).toFixed(1)} peace:${(t.peace||0).toFixed(1)} siege:${(t.siege||0).toFixed(1)} frag:${(t.frag||0).toFixed(1)} | frontier:${nfl.length} tribes:${tribeSizes.filter(s=>s>0).length} wars:${ter.wars?Object.keys(ter.wars).length:0}`);}
+else if(_stepTotal>5){console.warn(`[SLOW step ${ter.stepCount}] ${_stepTotal.toFixed(1)}ms frontier:${nfl.length} tribes:${tribeSizes.filter(s=>s>0).length} settled:${ter.settled}`);}
 return ter;}
 
 // ── Non-linear time: starts at 3000 BC, accelerates into modernity ──
