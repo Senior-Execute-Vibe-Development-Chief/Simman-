@@ -5209,38 +5209,31 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       const sx=s.pos.x*TR;
       const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
       const footR=[0.6,1.4,2.4,3.6][s.tier]||0.6;
-      // Faint footprint ring — gives a sense of the settlement's claim
-      // on the surrounding land even before all buildings fill it.
+      // Faint footprint ring — the settlement's claim on its hinterland.
+      // Slightly darker at higher tiers to signify town/city status
+      // without needing tier-specific iconography.
+      const ringAlpha=0.30+s.tier*0.10;
       ctx.beginPath();ctx.arc(sx,sy,footR*TR+2,0,Math.PI*2);
-      ctx.strokeStyle="rgba(70,55,40,0.35)";ctx.lineWidth=0.5;ctx.stroke();
-      // Buildings.
+      ctx.strokeStyle=`rgba(70,55,40,${ringAlpha})`;
+      ctx.lineWidth=s.tier>=2?1.0:0.5;
+      ctx.stroke();
+      // Buildings — drawn at full alpha (no construction-in-progress
+      // dim phase; buildings appear when the settlement earns them).
       for(const b of s.buildings){
         const bx=sx+b.dx*TR;
         const by=sy+b.dy*TR;
-        const done=b.builtFrac>=1;
-        const alpha=done?0.95:0.4+b.builtFrac*0.4;
         if(b.kind==="house"){
-          // Small square + roof line.
-          ctx.fillStyle=`rgba(160,110,70,${alpha})`;
+          ctx.fillStyle="rgba(160,110,70,0.95)";
           ctx.fillRect(bx-1.2,by-1.2,2.4,2.4);
-          ctx.strokeStyle=`rgba(50,35,25,${alpha})`;ctx.lineWidth=0.5;
+          ctx.strokeStyle="rgba(50,35,25,0.95)";ctx.lineWidth=0.5;
           ctx.strokeRect(bx-1.2,by-1.2,2.4,2.4);
         }else if(b.kind==="farm"){
-          // Tilled-field rectangle, slightly larger, greenish.
-          ctx.fillStyle=`rgba(150,160,80,${alpha*0.7})`;
+          ctx.fillStyle="rgba(150,160,80,0.65)";
           ctx.fillRect(bx-2.2,by-1.4,4.4,2.8);
-          ctx.strokeStyle=`rgba(70,80,40,${alpha})`;ctx.lineWidth=0.4;
+          ctx.strokeStyle="rgba(70,80,40,0.95)";ctx.lineWidth=0.4;
           ctx.strokeRect(bx-2.2,by-1.4,4.4,2.8);
-        }else if(b.kind==="granary"){
-          // Round dome.
-          ctx.fillStyle=`rgba(190,160,90,${alpha})`;
-          ctx.beginPath();ctx.arc(bx,by,1.5,0,Math.PI*2);ctx.fill();
-          ctx.strokeStyle=`rgba(60,45,30,${alpha})`;ctx.lineWidth=0.5;ctx.stroke();
-        }else{
-          // Fallback: small dot for unknown building kinds.
-          ctx.fillStyle=`rgba(100,80,60,${alpha})`;
-          ctx.beginPath();ctx.arc(bx,by,1,0,Math.PI*2);ctx.fill();
         }
+        // (market / port / walls — phases 2+)
       }
     }
     // ── Bands ──
