@@ -1513,6 +1513,12 @@ if(cityPop&&cityPop[ti]>0.1){cost[ti]=0;tOwner[ti]=ti;heapPush(ti,0);}}}
 
 // Dijkstra: expand from cities through OWNED territory only
 const DX4=[-1,1,0,0];const DY4=[0,0,-1,1];
+// Transport mode of a tile: 0 = land, 1 = river, 2 = sea. Mode-change
+// (port load) cost applies on any transition between different modes.
+// Tuned to 2.5: in the test sandbox this is ~the value that produces
+// realistic-looking coast vs river vs land trade-offs.
+const MODE_CHANGE_COST=2.5;
+function tModeOf(ti){const e=tElev[ti];if(e<=0)return 2;if(riverMag&&riverMag[ti]>=2)return 1;return 0;}
 // Standard Dijkstra with visited[] — once popped, never re-process.
 // Without visited[], a multi-source run thrashed (15M pushes for 50k tiles)
 // because every cheaper-path improvement re-pushed the tile.
@@ -1527,13 +1533,15 @@ if(ow<0)continue;
 const cn=tribeCn[ow];
 const nv=tribeNv[ow];
 const src=tOwner[ci];
+const ciMode=tModeOf(ci);
 for(let d=0;d<4;d++){
 const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
 if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;
 if(visited[ni])continue;
 if(owner[ni]!==ow)continue;
-const moveCost=tileCost(ni,cn,nv,ow);
+let moveCost=tileCost(ni,cn,nv,ow);
+if(tModeOf(ni)!==ciMode)moveCost+=MODE_CHANGE_COST;
 const newCost=cc+moveCost;
 if(newCost<cost[ni]){
 cost[ni]=newCost;tOwner[ni]=src;
@@ -1624,11 +1632,12 @@ for(let tid=0;tid<n;tid++){
         moveCost=seaCost;
       }else{
         // Owned land tile — use the general tile cost function.
-        // Slight bonus to coastal-land tiles when arriving from water
-        // (port effect): no special handling here, the existing tCoast
-        // discount in tileCost already gives it.
         moveCost=tileCost(ni,cn,nv,tid);
       }
+      // Mode-change (port) cost on any transition between modes.
+      // Reduced by construction tech (better ports, docks, mooring).
+      const niMode=tModeOf(ni);const ciMode=tModeOf(ci);
+      if(niMode!==ciMode)moveCost+=Math.max(0.5,MODE_CHANGE_COST*(1-cn*0.5));
       const newCost=cc+moveCost;
       // Best-so-far storage differs for land vs sea:
       //   - owned land: costCap[ni] is the persistent output. Use it as the
@@ -3634,15 +3643,23 @@ function runTransportTest(ter, capitals, params){
   const visited=new Uint8Array(N);
   const claimed=new Int32Array(capitals.length);
   const TILE_LIMIT=params.tileLimit;
-  // Tile cost function — uses the test params, not the production tileCost
-  function moveCost(ni,ciIsWater){
-    const e=tElev[ni];
-    const niIsWater=e<=0;
+  // Transport mode of a tile: 0 = land, 1 = river, 2 = sea.
+  // Mode-change (port) cost applies to ANY transition between different
+  // modes — loading onto a barge from a road, switching from barge to
+  // ship at the estuary, etc.
+  function modeOf(ti){
+    const e=tElev[ti];
+    if(e<=0)return 2;
+    if(riverMag&&riverMag[ti]>=2)return 1;
+    return 0;
+  }
+  function moveCost(ni,ciMode){
+    const niMode=modeOf(ni);
     let base;
-    if(niIsWater){
+    if(niMode===2){
       if(params.nav<=0.01)return 999;
       base=params.water/Math.max(0.3,params.nav);
-    }else if(riverMag&&riverMag[ni]>=2){
+    }else if(niMode===1){
       const rm=riverMag[ni];
       base=rm>=4?params.river:rm>=3?params.river*1.3:params.river*2;
     }else if(tCoast[ni]){
@@ -3650,8 +3667,8 @@ function runTransportTest(ter, capitals, params){
     }else{
       base=params.plain+tDiff[ni]*tDiff[ni]*params.mountainMult;
     }
-    // Mode-change penalty (port loading): pay only on transitions
-    if(niIsWater!==ciIsWater)base+=params.port;
+    // Mode change: pay port cost on any mode transition
+    if(niMode!==ciMode)base+=params.port;
     return base;
   }
   // Heap (ti, cost, tribe) as parallel arrays
@@ -3700,13 +3717,13 @@ function runTransportTest(ter, capitals, params){
     cost[ti]=cc;
     claimed[tribe]++;totalClaimed++;
     const cx=ti%tw,cy=(ti-cx)/tw;
-    const ciIsWater=tElev[ti]<=0;
+    const ciMode=modeOf(ti);
     for(let d=0;d<4;d++){
       const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
       if(ny<0||ny>=th)continue;
       const ni=ny*tw+nx;
       if(visited[ni])continue;
-      const mc=moveCost(ni,ciIsWater);
+      const mc=moveCost(ni,ciMode);
       if(mc>=999)continue;
       hPush(ni,cc+mc,tribe);
     }
