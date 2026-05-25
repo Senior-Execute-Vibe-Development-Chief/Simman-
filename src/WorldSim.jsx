@@ -4206,7 +4206,7 @@ if(t.rivers)w.rivers=t.rivers;
 if(t.deposits)w.deposits=t.deposits;
 // peopleSim: entity-based simulator that replaces the legacy tribe model.
 // Bands wander now; settling, trade, war land in subsequent phases.
-peopleRef.current=initPeopleSim(w,{seed:w.seed,initialBands:14});
+peopleRef.current=initPeopleSim(w,{seed:w.seed});
 setPsStats(peopleSimStats(peopleRef.current));
 setCoverage(0);setTribeCount(t.tribeCount||0);setPlaying(false);playRef.current=false;
 terrainCache.current=null;atlasCache.current=null;imgRef.current=null;},[]);
@@ -5272,36 +5272,10 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
     }
     // ── Bands ──
-    // Fill colour interpolates from pale-amber (low agriculture) to
-    // bright gold (near settling threshold) so the player can SEE
-    // which bands are close to founding a village.
-    //   ag ≤ 0.10  → pale amber (just starting)
-    //   ag = 0.30  → warm honey
-    //   ag = 0.45  → bright gold (settling threshold)
-    //   ag > 0.45  → glowing gold ring (ready, looking for a site)
-    // Size still scales with √people.
-    for(const b of psw.bands){
-      if(!b||b.mode==="dead"||b.mode==="settling")continue;
-      const sx=b.pos.x*TR+0.5;
-      const sy=dataYtoScreenY(b.pos.y*TR,H,CH)+0.5;
-      // Smaller dots — bands shouldn't dominate the map. Sized so
-      // a typical 15-person band reads as a small marker, not a blob.
-      const r=Math.max(0.7,Math.min(2.2,0.5+Math.sqrt(b.people)*0.25));
-      const ag=Math.max(0,Math.min(1,(b.knowledge&&b.knowledge.agriculture)||0));
-      const t=Math.min(1,ag/0.45);
-      // R/G/B interp: 200→255 (R), 160→210 (G), 110→90 (B).
-      const cr=Math.round(200+t*55);
-      const cg=Math.round(160+t*50);
-      const cb=Math.round(110-t*20);
-      // Outline ring — gold + bright when ag ≥ threshold (ready to settle).
-      const ready=ag>=0.45;
-      ctx.beginPath();ctx.arc(sx,sy,r+1.2,0,Math.PI*2);
-      ctx.fillStyle=ready?"rgba(255,225,90,0.95)":"rgba(40,30,20,0.85)";
-      ctx.fill();
-      ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);
-      ctx.fillStyle=`rgba(${cr},${cg},${cb},0.95)`;
-      ctx.fill();
-    }
+    // ── No band rendering ──
+    // Bands removed in settlements-only model. Settlements (above) are
+    // the atomic visible entity; new ones come from daughter colonies
+    // founded by existing settlements at qualifying nearby sites.
   }
 }
 },[updateTerrainCache,buildAtlas,CH]);
@@ -5338,7 +5312,7 @@ if(peopleRef.current&&peopleRef.current.step%5===0){
 // Legacy tribe stats kept zero — these used to drive panels which still
 // exist but no longer reflect anything real. To be migrated to entity
 // readouts in a follow-up.
-setCoverage(0);setTribeCount(peopleRef.current?peopleRef.current.bands.length:0);setDominant(null);
+setCoverage(0);setTribeCount(peopleRef.current?peopleRef.current.settlements.length:0);setDominant(null);
 // Only redraw every 3rd sim frame to save 10-30ms/frame on CPU canvas rendering
 drawSkip++;
 if(drawSkip>=3){drawSkip=0;

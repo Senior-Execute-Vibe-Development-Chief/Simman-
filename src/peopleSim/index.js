@@ -1,16 +1,15 @@
-// Public API for the people simulator.
+// Public API for the people simulator (settlements-only model).
 //
-//   initPeopleSim(worldGen, opts)  — build world + initial bands
+//   initPeopleSim(worldGen, opts)  — build world + seed cradle village
 //   stepPeopleSim(world, n=1)      — advance N ticks
-//   getEntities(world)             — { bands, settlements, caravans, armies }
-//   peopleSimStats(world)          — quick numbers for the HUD
+//   getEntities(world)             — { settlements, caravans, armies }
+//   peopleSimStats(world)          — quick numbers for HUD / debug
 //
-// Phase 0 covers: bands wandering and growing/splitting. No settling,
-// trade, or war yet — those land in the next phases.
+// No bands — settlements are the atomic visible entity. New ones come
+// from daughter colonies founded by existing settlements.
 
 import { createWorld, pruneDead } from "./state.js";
-import { updateBand, processMeetings } from "./band.js";
-import { settleBand, updateSettlement } from "./settlement.js";
+import { updateSettlement } from "./settlement.js";
 
 export function initPeopleSim(worldGen, opts = {}) {
   return createWorld(worldGen, opts);
@@ -20,25 +19,9 @@ export function stepPeopleSim(world, n = 1) {
   for (let s = 0; s < n; s++) {
     const t0 = performance.now();
     world.step++;
-    // 1. Per-band update (wander, grow, learn, check settle, split).
-    for (let i = 0; i < world.bands.length; i++) {
-      updateBand(world, world.bands[i]);
-    }
-    // 2. Convert any band that decided to settle this tick into a
-    //    Settlement entity. Process AFTER updateBand so a band can't
-    //    flip-flop in the same tick.
-    for (let i = 0; i < world.bands.length; i++) {
-      const b = world.bands[i];
-      if (b.mode === "settling") settleBand(world, b);
-    }
-    // 3. Knowledge diffusion between bands within range.
-    //    O(N²) but capped at ~80 bands by world.cap.
-    if (world.step % 4 === 0) processMeetings(world);
-    // 4. Per-settlement update (food, pop, building queue, tier).
     for (let i = 0; i < world.settlements.length; i++) {
       updateSettlement(world, world.settlements[i]);
     }
-    // 5. Periodic prune of dead entities.
     if (world.step % 32 === 0) pruneDead(world);
     world.debug.tickMs = performance.now() - t0;
   }
@@ -47,7 +30,6 @@ export function stepPeopleSim(world, n = 1) {
 
 export function getEntities(world) {
   return {
-    bands:       world.bands,
     settlements: world.settlements,
     caravans:    world.caravans,
     armies:      world.armies,
@@ -55,27 +37,24 @@ export function getEntities(world) {
 }
 
 export function peopleSimStats(world) {
-  let bandPeople = 0, aliveBands = 0;
-  for (const b of world.bands) {
-    if (b.mode === "dead" || b.mode === "settling") continue;
-    aliveBands++;
-    bandPeople += b.people;
-  }
   let sPeople = 0, aliveSettlements = 0, farmlandTiles = 0;
+  const tierCounts = [0, 0, 0, 0];
   for (const s of world.settlements) {
     if (s.mode === "dead") continue;
     aliveSettlements++;
     sPeople += s.people;
     if (s.farmland) farmlandTiles += s.farmland.size;
+    if (s.tier >= 0 && s.tier < tierCounts.length) tierCounts[s.tier]++;
   }
   return {
     step: world.step,
-    bands: aliveBands,
     settlements: aliveSettlements,
+    villages:    tierCounts[0],
+    towns:       tierCounts[1],
+    cities:      tierCounts[2],
+    metropolises:tierCounts[3],
     farmlandTiles,
-    bandPeople: Math.round(bandPeople),
-    settledPeople: Math.round(sPeople),
-    totalPeople: Math.round(bandPeople + sPeople),
+    totalPeople: Math.round(sPeople),
     tickMs: world.debug.tickMs.toFixed(2),
   };
 }

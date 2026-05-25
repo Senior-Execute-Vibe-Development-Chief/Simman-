@@ -4,40 +4,31 @@
 // ownership — just terrain plus the entity arrays.
 
 import { mkRng } from "./rng.js";
-import { makeBand, resetBandIds } from "./band.js";
-import { resetSettlementIds } from "./settlement.js";
+import { resetSettlementIds, makeSettlement } from "./settlement.js";
 
 const TILE_RES = 2;
 
-// "Intimate (~50 entities)" — locked design choice. Density-based
-// limits (see band.js splitBand) keep the world from filling, not a
-// hard global cap on bands. settlements is still capped because the
-// player should see a small distinct set of cities, not a sprawl.
+// "Intimate (~50 entities)" — locked design choice. Settlements have a
+// hard cap; the world's interest comes from a small distinct set of
+// cities, not a sprawl.
 const CAP = {
   settlements: 30,
   caravans: 40,
   armies: 20,
-  // Safety ceiling so a runaway split loop can't allocate forever.
-  bandSafety: 200,
 };
 
-// True when room exists for a new settlement.
 export function hasSettlementRoom(world) {
   const alive = world.settlements.reduce((n, s) => n + (s.mode === "dead" ? 0 : 1), 0);
   return alive < world.cap.settlements;
 }
 
-// Robust "is this tile a continental land cell" check — used by both
-// the cradle finder and wander target selection so the two stay in sync.
-// Excludes 1-tile islets and pixels where the elevation downsample
-// happens to land just above 0.
+// Robust "is this tile a continental land cell" check. Excludes 1-tile
+// islets and pixels where the elevation downsample lands just above 0.
 function isContinentalLand(world, ti) {
   const { tw, th, elev } = world;
   if (elev[ti] <= 0.005) return false;
   const ty = (ti / tw) | 0;
   if (ty <= 0 || ty >= th - 1) return false;
-  const tx = ti - ty * tw;
-  // Need at least 2 of 4 neighbours also above sea level.
   let n = 0;
   if (elev[ti - 1]  > 0) n++;
   if (elev[ti + 1]  > 0) n++;
@@ -53,12 +44,10 @@ export function createWorld(w, opts = {}) {
   const N = tw * th;
 
   const world = {
-    // Geometry / world reference
     worldRef: w,
     width: w.width, height: w.height,
     tw, th, N, tileRes: TILE_RES,
 
-    // Downsampled terrain (read-only inputs)
     elev:  new Float32Array(N),
     temp:  new Float32Array(N),
     moist: new Float32Array(N),
@@ -67,35 +56,27 @@ export function createWorld(w, opts = {}) {
     diff:  new Float32Array(N),
     riverMag: null,
 
-    // Entities — plain arrays, ID-indexed. Dead entries kept in place
-    // (mode==="dead") for stable rendering; pruned periodically.
-    bands:       [],
+    // Entities. No bands — settlements-only model.
     settlements: [],
     caravans:    [],
     armies:      [],
 
-    // Farmland claims: `_farmedBy[ti]` is the settlement.id that farms
-    // tile `ti`, or -1 if unfarmed. Lets each settlement own a distinct
-    // patch around itself so two neighbours don't fight over the same
-    // fertile cell.
+    // Tile → settlement.id that farms it (or -1).
     _farmedBy: new Int16Array(N).fill(-1),
 
-    // Caps (used by entity update logic to throttle splits / spawns)
     cap: CAP,
 
-    // Tick state
     step: 0,
     seed: opts.seed || w.seed || 1,
     rng: mkRng(opts.seed || w.seed || 1),
 
-    // Debug + history
-    events: [],                    // ring buffer
-    debug:  { tickMs: 0, lastUpdateCount: 0 },
+    events: [],
+    debug:  { tickMs: 0 },
   };
 
   initTerrain(world, w);
   initRiverMag(world, w);
-  seedCradleBand(world);
+  seedCradleVillage(world);
   return world;
 }
 
@@ -109,10 +90,6 @@ function initTerrain(world, w) {
       const ti = ty * tw + tx;
       const e = w.elevation[wi], t = w.temperature[wi], m = w.moisture[wi];
       elev[ti] = e; temp[ti] = t; moist[ti] = m;
-      // Coast array is at world-pixel resolution (w.width × w.height),
-      // not peopleSim tile resolution. Sample with the world index `wi`,
-      // not the tile index `ti`, or coast detection only finds tiles in
-      // the top-left quadrant of the map.
       coast[ti] = w.coastal ? (w.coastal[wi] ? 1 : 0) : 0;
       let d = 0;
       if (e > 0.35)              d = Math.max(d, Math.min(1, (e - 0.35) * 3));
@@ -124,8 +101,6 @@ function initTerrain(world, w) {
   }
 }
 
-// Carrying-capacity base from terrain. Same bell-curve shape as the
-// legacy tileFert; lifted here so peopleSim is independent.
 function bellFert(t, m, e) {
   if (e > 0.45 || e <= 0) return 0;
   const tFit = Math.exp(-((t - 0.45) * (t - 0.45)) / (2 * 0.18 * 0.18));
@@ -147,39 +122,33 @@ function initRiverMag(world, w) {
   world.riverMag = rm;
 }
 
-// Cradle of humankind: scan the whole map, pick the single best site
-// for the founding band. Mirrors the East African Rift conditions —
-// warm but not roasting, modest moisture, low elevation, fertile soil,
-// with bonus for nearby water (river or coast).
-//
-// One band, ~10 people. Everything else descends from this point.
-function seedCradleBand(world) {
-  resetBandIds();
+// Cradle village: a SINGLE village at the East African Rift-like site.
+// Already has basic agriculture (settlements-only model — we skip the
+// hunter-gatherer phase). Everything else descends from here, founded
+// by daughter colonies sent out as the cradle and its descendants
+// reach carrying capacity.
+function seedCradleVillage(world) {
   resetSettlementIds();
   const { tw, th, elev, temp, moist, fert, coast, riverMag, N } = world;
   let bestTi = -1, bestScore = -Infinity;
   for (let ti = 0; ti < N; ti++) {
     if (!isContinentalLand(world, ti)) continue;
-    if (elev[ti] > 0.30) continue;          // no plateaus, no mountains
+    if (elev[ti] > 0.30) continue;
     const t = temp[ti], m = moist[ti], f = fert[ti];
-    if (t < 0.55 || t > 0.85) continue;     // savannah / mild tropical
-    if (m < 0.30 || m > 0.75) continue;     // not desert, not swamp
-    if (f < 0.40) continue;                  // rich soil
-    // Bonus: water access — rivers especially. Real cradle sites
-    // (Rift Valley, Levant, Nile, Indus) all clustered near water.
+    if (t < 0.55 || t > 0.85) continue;
+    if (m < 0.30 || m > 0.75) continue;
+    if (f < 0.40) continue;
     let waterBonus = 0;
     if (coast[ti])                            waterBonus += 0.5;
     if (riverMag && riverMag[ti] >= 3)        waterBonus += 1.5;
     else if (riverMag && riverMag[ti] >= 2)   waterBonus += 0.8;
-    // Fit-to-ideal scores.
     const tempFit  = 1 - Math.abs(t - 0.70) * 2;
     const moistFit = 1 - Math.abs(m - 0.50) * 2;
-    const elevFit  = 1 - elev[ti] * 2;        // prefer low ground
+    const elevFit  = 1 - elev[ti] * 2;
     const score = f * 2 + tempFit + moistFit + elevFit + waterBonus;
     if (score > bestScore) { bestScore = score; bestTi = ti; }
   }
   if (bestTi < 0) {
-    // Fallback: any continental fertile tile.
     for (let ti = 0; ti < N; ti++) {
       if (!isContinentalLand(world, ti)) continue;
       if (fert[ti] < 0.25) continue;
@@ -191,9 +160,7 @@ function seedCradleBand(world) {
     return;
   }
   const ty = (bestTi / tw) | 0, tx = bestTi - ty * tw;
-  const band = makeBand(world, tx + 0.5, ty + 0.5, 10);
-  world.bands.push(band);
-  // Log so the user knows where their species started.
+  makeSettlement(world, tx + 0.5, ty + 0.5, { people: 25, name: "cradle" });
   const e = elev[bestTi].toFixed(2), t = temp[bestTi].toFixed(2);
   const m = moist[bestTi].toFixed(2), f = fert[bestTi].toFixed(2);
   const rm = riverMag ? riverMag[bestTi] : 0;
@@ -203,9 +170,7 @@ function seedCradleBand(world) {
   );
 }
 
-// Prune dead entities (called periodically to keep arrays bounded).
 export function pruneDead(world) {
-  world.bands       = world.bands.filter(b => b.mode !== "dead");
   world.settlements = world.settlements.filter(s => s.mode !== "dead");
   world.caravans    = world.caravans.filter(c => c.mode !== "done");
   world.armies      = world.armies.filter(a => a.mode !== "dead");
