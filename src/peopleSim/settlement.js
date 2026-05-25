@@ -75,13 +75,35 @@ export function updateSettlement(world, s) {
   updateFood(world, s);
   updatePopulation(world, s);
   maybeRefreshFarmland(world, s);
+  updateKnowledge(world, s);
   updateTier(world, s);
-  // Daughter colonies removed — new settlements now appear via the
-  // world-level crystallization sweep (see crystallize.js / index.js).
-  // That handles both diffusion-driven spread (sites with low transport
-  // distance to existing settlements crystallize fast) and isolated
-  // independent invention (great sites very far away can still spawn).
 }
+
+// ── Knowledge growth ──────────────────────────────────────────────
+// Each tech accumulates slowly while a settlement does the right
+// things: more farmland → agriculture improves; more pop → organization
+// improves; bigger pop + ag → construction improves. Diminishing
+// returns near 1.0.
+const LEARN_BASE = 0.000040;          // per tick scaling
+function updateKnowledge(world, s) {
+  const k = s.knowledge;
+  const fc = s.farmland.size;
+  const pop = s.people;
+  // Agriculture: drives off farmland count + ag itself (compound). A
+  // 50-tile village makes more ag progress than a 5-tile hamlet.
+  k.agriculture = clamp01(k.agriculture + LEARN_BASE * 1.2 * (1 - k.agriculture) * (1 + fc * 0.03));
+  // Foraging: tiny ongoing trickle.
+  k.foraging    = clamp01(k.foraging    + LEARN_BASE * 0.3 * (1 - k.foraging));
+  // Toolmaking: pop drives it.
+  k.toolmaking  = clamp01(k.toolmaking  + LEARN_BASE * 0.8 * (1 - k.toolmaking)  * (1 + Math.sqrt(pop) * 0.08));
+  // Construction: needs agricultural surplus to free up builders.
+  k.construction= clamp01(k.construction+ LEARN_BASE * 0.9 * (1 - k.construction)* (1 + k.agriculture * 1.0) * (1 + Math.sqrt(pop) * 0.05));
+  // Organization: scales with pop — bigger town needs more
+  // administration to function.
+  k.organization= clamp01(k.organization+ LEARN_BASE * 1.0 * (1 - k.organization)* (1 + Math.sqrt(pop) * 0.10));
+}
+
+function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 
 // ── Food ───────────────────────────────────────────────────────────
 function updateFood(world, s) {
