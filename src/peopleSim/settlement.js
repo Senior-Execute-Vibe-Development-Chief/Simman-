@@ -129,7 +129,11 @@ function maybeRefreshFarmland(world, s) {
 }
 
 function refreshFarmland(world, s) {
-  const target = Math.max(1, Math.ceil(s.people / PEOPLE_PER_FARM_TILE));
+  // Minimum 4 farm tiles so a freshly-founded settlement (~20 ppl,
+  // would naively want only 2 tiles) has enough food capacity to grow
+  // past its founding pop. Without this, new settlements with <3
+  // tiles hit K=20-30, stall, and die out.
+  const target = Math.max(4, Math.ceil(s.people / PEOPLE_PER_FARM_TILE));
   const range = FARM_RANGE_BY_TIER[s.tier] || FARM_RANGE_BY_TIER[0];
   const { tw, th, elev, fert, _farmedBy } = world;
   const cx = s.pos.x | 0, cy = s.pos.y | 0;

@@ -4137,6 +4137,12 @@ const[tecPresetName,setTecPresetName]=useState("Default");
 const[rightPanel,setRightPanel]=useState("");  // "" | "params" | "tribes"
 const[showTuning,setShowTuning]=useState(false);
 const[selectedTribe,setSelectedTribe]=useState(-1);
+// peopleSim settlement selection — id of the clicked settlement, or -1.
+const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
+// Ref mirror so draw() (memoized) sees the current selection without
+// needing the state in its dep list.
+const selectedSettlementIdRef=useRef(-1);
+useEffect(()=>{selectedSettlementIdRef.current=selectedSettlementId;},[selectedSettlementId]);
 const[useRealWind,setUseRealWind]=useState(false);
 const useMercator=false;
 const[showGlobe,setShowGlobe]=useState(false);
@@ -5233,12 +5239,20 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // town = bigger block; city = block + walls ring; metropolis = +
     // banner mark. No individual house entities.
     const TIER_SIZE_PX=[5,8,12,18];
+    const selId=selectedSettlementIdRef.current;
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
       const sx=s.pos.x*TR;
       const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
       const size=TIER_SIZE_PX[s.tier]||TIER_SIZE_PX[0];
       const half=size/2;
+      // Selection halo — bright gold ring behind the icon.
+      if(s.id===selId){
+        ctx.beginPath();ctx.arc(sx,sy,size+4,0,Math.PI*2);
+        ctx.fillStyle="rgba(255,215,90,0.30)";ctx.fill();
+        ctx.beginPath();ctx.arc(sx,sy,size+4,0,Math.PI*2);
+        ctx.strokeStyle="rgba(255,200,70,1.0)";ctx.lineWidth=1.5;ctx.stroke();
+      }
       // Block — opaque, dark outline.
       ctx.fillStyle="rgba(140,85,50,1.0)";
       ctx.fillRect(sx-half,sy-half,size,size);
@@ -5431,6 +5445,33 @@ if(viewMode==="transport-test"){
   }
   return;
 }
+// peopleSim mode: find the closest settlement to the click. Match
+// against the peopleSim tile-space (tw=960, half of canvas width).
+const psw=peopleRef.current;
+if(psw){
+  const psTx=ttx/psw.tileRes,psTy=tty/psw.tileRes;
+  let best=null,bestD2=Infinity;
+  for(const s of psw.settlements){
+    if(!s||s.mode!=="settled")continue;
+    let dx=Math.abs(s.pos.x-psTx);
+    if(dx>psw.tw/2)dx=psw.tw-dx;
+    const dy=s.pos.y-psTy;
+    const d2=dx*dx+dy*dy;
+    if(d2<bestD2){bestD2=d2;best=s;}
+  }
+  // Pick within ~6 tile radius (handles small icons and slop).
+  if(best&&bestD2<36){
+    setSelectedSettlementId(best.id);
+    draw(ter);
+    return;
+  }else{
+    setSelectedSettlementId(-1);
+    draw(ter);
+    return;
+  }
+}
+// Legacy tribe selection path (vestigial — kept so the old code paths
+// don't error out if someone clicks while legacy ter is still in use).
 const tileOwner=ter.owner[tty*ter.tw+ttx];
 if(tileOwner>=0&&ter.tribes?.[tileOwner]?.alive){
 setSelectedTribe(tileOwner);ter._selectedTribe=tileOwner;
@@ -5615,6 +5656,46 @@ return(
   </div>}
   <div className="au-fade" style={{fontSize:9,marginTop:2,fontStyle:"italic"}}>click for full info</div>
 </div>}
+
+{/* ─── peopleSim settlement card ─── */}
+{(()=>{
+  if(selectedSettlementId<0)return null;
+  const psw=peopleRef.current;
+  if(!psw)return null;
+  const s=psw.settlements.find(x=>x&&x.id===selectedSettlementId&&x.mode==="settled");
+  if(!s)return null;
+  const tierName=["village","town","city","metropolis"][s.tier]||"settlement";
+  const TIER_THR=[0,80,400,2000];
+  const nextThr=TIER_THR[s.tier+1];
+  const progress=nextThr?Math.min(1,s.people/nextThr):1;
+  const k=s.knowledge||{};
+  const farm=s.farmland?s.farmland.size:0;
+  return(
+    <div className="au-parchment au-pico au-elev"
+      style={{position:"absolute",left:14,top:14,minWidth:180,maxWidth:240,padding:"10px 12px",fontSize:11,zIndex:30}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+        <div className="au-pico-title" style={{fontSize:13,textTransform:"capitalize"}}>{s.name}</div>
+        <button onClick={()=>setSelectedSettlementId(-1)}
+          style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:14,padding:"0 4px"}}>×</button>
+      </div>
+      <div className="au-fade" style={{fontSize:10,marginBottom:6,textTransform:"capitalize"}}>{tierName} · founded step {s.foundedStep}</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px"}}>
+        <span>Population</span><span>{Math.round(s.people)}</span>
+        <span>Farmland</span><span>{farm} tile{farm===1?"":"s"}</span>
+        <span>Food</span><span>{Math.round(s.food)}</span>
+        {nextThr&&<><span>To next tier</span><span>{Math.round(s.people)}/{nextThr} ({Math.round(progress*100)}%)</span></>}
+      </div>
+      <div style={{marginTop:8,fontSize:10}} className="au-fade">Knowledge</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
+        <span>Agriculture</span><span>{(k.agriculture*100|0)}%</span>
+        <span>Foraging</span><span>{(k.foraging*100|0)}%</span>
+        <span>Toolmaking</span><span>{(k.toolmaking*100|0)}%</span>
+        <span>Construction</span><span>{(k.construction*100|0)}%</span>
+        <span>Organization</span><span>{(k.organization*100|0)}%</span>
+      </div>
+    </div>
+  );
+})()}
 
 {/* ─── Floating tribe card ─── */}
 {(()=>{

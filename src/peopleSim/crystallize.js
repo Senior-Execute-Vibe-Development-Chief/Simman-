@@ -22,16 +22,18 @@ import { makeSettlement } from "./settlement.js";
 import { computeTransport } from "./transport.js";
 
 const CRYSTAL_INTERVAL          = 32;     // ticks between sweeps
-const TRANSPORT_REFRESH_TICKS   = 200;    // recompute transport map every N ticks
-const CANDIDATES_PER_SWEEP      = 60;     // random tiles examined per sweep
+const TRANSPORT_REFRESH_TICKS   = 200;
+const CANDIDATES_PER_SWEEP      = 80;     // up from 60 — more chances per sweep
 const MIN_FERT                  = 0.32;
-const LUSH_FERT                 = 0.55;   // crystallise without water bonus only if very lush
-const MIN_SETT_DIST             = 12;
+const MIN_AREA_FERT             = 6.0;    // sum of fert in 5×5 box must exceed this
+                                          // (rejects isolated fertile tiles surrounded by waste)
+const LUSH_FERT                 = 0.55;
+const MIN_SETT_DIST             = 18;     // up from 12 — clearer visual spacing
 const MIN_SETT_DIST_SQ          = MIN_SETT_DIST * MIN_SETT_DIST;
-const KNOWLEDGE_DECAY_SCALE     = 30;     // transport-distance over which inherited knowledge halves
-const INDEPENDENT_RATE          = 0.025;  // baseline chance for isolated cradles
-const NEAR_RATE                 = 1.50;   // peak chance for sites right next to existing settlements
-const BASE_RATE                 = 0.0025; // tunable overall crystallisation rate
+const KNOWLEDGE_DECAY_SCALE     = 30;
+const INDEPENDENT_RATE          = 0.030;  // up from 0.025 — more independent invention
+const NEAR_RATE                 = 1.50;
+const BASE_RATE                 = 0.0050; // up from 0.0025 — settlements appear earlier
 
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
@@ -60,6 +62,21 @@ export function maybeCrystallize(world) {
     const hasCoast = !!coast[ti];
     if (!hasRiver && !hasCoast && f < LUSH_FERT) continue;
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    // Area-fertility check: the SURROUNDING land must support a real
+    // settlement, not just the one point tile. Sums fert in a 5×5 box;
+    // rejects "tiny fertile islet surrounded by waste" sites that
+    // would crystallise into stillborn settlements.
+    let areaFert = 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      const ny = ty + dy;
+      if (ny < 0 || ny >= th) continue;
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = ((tx + dx) % tw + tw) % tw;
+        const ni = ny * tw + nx;
+        if (elev[ni] > 0) areaFert += fert[ni];
+      }
+    }
+    if (areaFert < MIN_AREA_FERT) continue;
     // Min distance to all existing settlements.
     let tooClose = false;
     for (const o of world.settlements) {
