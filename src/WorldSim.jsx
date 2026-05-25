@@ -5210,50 +5210,65 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // footprint outline scaled to tier (village → city); buildings
     // appear as small primitives at their (dx, dy) offsets so the
     // village grows visually as houses / farms / granaries complete.
+    // ── Farmland tiles ──
+    // Each settlement owns a Set of farmed tile indices. Paint each
+    // farmed tile as a translucent olive overlay so the underlying
+    // biome still reads through.
+    for(const s of psw.settlements){
+      if(!s||s.mode!=="settled"||!s.farmland)continue;
+      for(const fti of s.farmland){
+        const fy=(fti/psw.tw)|0;
+        const fx=fti-fy*psw.tw;
+        const px=fx*TR;
+        const py=dataYtoScreenY(fy*TR,H,CH);
+        ctx.fillStyle="rgba(155,160,75,0.55)";
+        ctx.fillRect(px,py,TR,TR);
+        ctx.strokeStyle="rgba(80,80,40,0.55)";
+        ctx.lineWidth=0.3;
+        ctx.strokeRect(px+0.5,py+0.5,TR-1,TR-1);
+      }
+    }
+    // ── Settlement icons ──
+    // ONE icon per settlement, sized by tier. Village = small block;
+    // town = bigger block; city = block + walls ring; metropolis = +
+    // banner mark. No individual house entities.
+    const TIER_SIZE_PX=[5,8,12,18];
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
       const sx=s.pos.x*TR;
       const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
-      // Mirror peopleSim/building.js footprintRadius() — kept in sync
-      // so the ring visually matches the building cluster.
-      const footR=[2.5,4.0,6.0,8.5][s.tier]||2.5;
-      // Faint footprint ring — the settlement's claim on its hinterland.
-      // Slightly darker at higher tiers to signify town/city status
-      // without needing tier-specific iconography.
-      const ringAlpha=0.30+s.tier*0.10;
-      ctx.beginPath();ctx.arc(sx,sy,footR*TR+2,0,Math.PI*2);
-      ctx.strokeStyle=`rgba(70,55,40,${ringAlpha})`;
-      ctx.lineWidth=s.tier>=2?1.0:0.5;
-      ctx.stroke();
-      // Buildings — opaque + bigger so they read clearly against the
-      // terrain. Atlas-style block primitives with thick outlines.
-      for(const b of s.buildings){
-        const bx=sx+b.dx*TR;
-        const by=sy+b.dy*TR;
-        if(b.kind==="house"){
-          // Brown gabled-roof block.
-          ctx.fillStyle="rgba(150,90,55,1.0)";
-          ctx.fillRect(bx-2.4,by-2.4,4.8,4.8);
-          ctx.strokeStyle="rgba(40,25,15,1.0)";ctx.lineWidth=1.0;
-          ctx.strokeRect(bx-2.4,by-2.4,4.8,4.8);
-          // Tiny roof apex line to suggest gable.
-          ctx.beginPath();
-          ctx.moveTo(bx-2.4,by-2.4);ctx.lineTo(bx,by-3.4);ctx.lineTo(bx+2.4,by-2.4);
-          ctx.fillStyle="rgba(90,55,30,1.0)";ctx.fill();
-          ctx.strokeStyle="rgba(40,25,15,1.0)";ctx.lineWidth=0.8;ctx.stroke();
-        }else if(b.kind==="farm"){
-          // Olive-green tilled field, larger and opaque.
-          ctx.fillStyle="rgba(140,150,70,0.92)";
-          ctx.fillRect(bx-3.5,by-2.2,7.0,4.4);
-          ctx.strokeStyle="rgba(60,70,30,1.0)";ctx.lineWidth=0.9;
-          ctx.strokeRect(bx-3.5,by-2.2,7.0,4.4);
-          // Furrow lines for texture.
-          ctx.strokeStyle="rgba(80,90,40,0.7)";ctx.lineWidth=0.5;
-          for(let fy=-1.4;fy<=1.4;fy+=1.4){
-            ctx.beginPath();ctx.moveTo(bx-3.2,by+fy);ctx.lineTo(bx+3.2,by+fy);ctx.stroke();
-          }
+      const size=TIER_SIZE_PX[s.tier]||TIER_SIZE_PX[0];
+      const half=size/2;
+      // Block — opaque, dark outline.
+      ctx.fillStyle="rgba(140,85,50,1.0)";
+      ctx.fillRect(sx-half,sy-half,size,size);
+      ctx.strokeStyle="rgba(30,20,10,1.0)";
+      ctx.lineWidth=1.0;
+      ctx.strokeRect(sx-half,sy-half,size,size);
+      // Roof apex for village/town suggests "settlement" vs "fort".
+      if(s.tier<=1){
+        ctx.beginPath();
+        ctx.moveTo(sx-half,sy-half);
+        ctx.lineTo(sx,sy-half-size*0.35);
+        ctx.lineTo(sx+half,sy-half);
+        ctx.fillStyle="rgba(90,50,25,1.0)";ctx.fill();
+        ctx.strokeStyle="rgba(30,20,10,1.0)";ctx.lineWidth=0.8;ctx.stroke();
+      }
+      // City+ get a walls ring (city = inner ring, metropolis = thicker).
+      if(s.tier>=2){
+        const wallR=size*0.75;
+        ctx.beginPath();ctx.arc(sx,sy,wallR,0,Math.PI*2);
+        ctx.strokeStyle="rgba(60,40,25,1.0)";
+        ctx.lineWidth=s.tier>=3?2.0:1.4;
+        ctx.stroke();
+        // Tiny tower-tick marks around the wall.
+        const towers=s.tier>=3?8:6;
+        for(let i=0;i<towers;i++){
+          const a=(i/towers)*Math.PI*2;
+          const tx=sx+Math.cos(a)*wallR,ty=sy+Math.sin(a)*wallR;
+          ctx.fillStyle="rgba(60,40,25,1.0)";
+          ctx.beginPath();ctx.arc(tx,ty,1.2,0,Math.PI*2);ctx.fill();
         }
-        // (market / port / walls — phases 2+)
       }
     }
     // ── Bands ──

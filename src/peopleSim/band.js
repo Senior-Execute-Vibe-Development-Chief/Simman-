@@ -66,12 +66,11 @@ export function updateBand(world, band) {
   learn(world, band);
   checkSettle(world, band);
 
-  // Split when oversized — too many mouths to feed while moving.
-  // Gated by both bands-cap AND total-entity-cap so the world stays
-  // intimate even when bands settle and free up the bands slot.
+  // Split when oversized. No global band cap — bands spread until
+  // they hit local density limits enforced inside splitBand. A safety
+  // ceiling stops a runaway split loop from allocating forever.
   if (band.people >= BAND_SPLIT_AT &&
-      aliveBandCount(world) < world.cap.bands &&
-      aliveEntityCount(world) < world.cap.total) {
+      aliveBandCount(world) < world.cap.bandSafety) {
     splitBand(world, band);
   }
 }
@@ -85,9 +84,6 @@ function aliveSettlementCount(world) {
   let n = 0;
   for (const s of world.settlements) if (s.mode !== "dead") n++;
   return n;
-}
-function aliveEntityCount(world) {
-  return aliveBandCount(world) + aliveSettlementCount(world);
 }
 
 // ── Knowledge accumulation ──────────────────────────────────────────
@@ -150,8 +146,10 @@ function checkSettle(world, band) {
   // Cap enforcement: when the world is full of settlements, surplus
   // bands stay wandering. Produces the "perpetual nomads on the
   // periphery" effect once the intimate-scale ceiling is reached.
+  // Settlements still have a hard cap so the player sees a small set of
+  // distinct cities, not an undifferentiated sprawl. Bands have no
+  // global cap — local density gates expansion instead.
   if (aliveSettlementCount(world) >= world.cap.settlements) return;
-  if (aliveEntityCount(world) >= world.cap.total) return;
   // Settling is rare even when conditions are met: ~0.4% per tick at
   // the threshold, rising to ~5% at maxed knowledge. Spreads founding
   // events over time so not all descendant bands settle at once.
@@ -352,47 +350,60 @@ function pickSplitDirection(world, parent) {
   return Math.atan2(-cy, -cx);   // opposite of crowd centroid
 }
 
+// Density check: count bands within DENSITY_RADIUS of (x, y). Returns
+// the count; splitBand uses this to reject crowded landing sites.
+const DENSITY_RADIUS    = 10;        // tiles
+const DENSITY_THRESHOLD = 3;         // refuse landing if more than this many neighbours nearby
+function localBandDensity(world, x, y) {
+  let n = 0;
+  const R2 = DENSITY_RADIUS * DENSITY_RADIUS;
+  for (const b of world.bands) {
+    if (b.mode === "dead") continue;
+    let dx = Math.abs(b.pos.x - x);
+    if (dx > world.tw / 2) dx = world.tw - dx;
+    const dy = b.pos.y - y;
+    if (dx * dx + dy * dy <= R2) n++;
+  }
+  return n;
+}
+
 function splitBand(world, parent) {
   const childPeople = Math.floor(parent.people * 0.45);
-  parent.people -= childPeople;
-  // Spawn child 20-40 tiles from parent — the "kids shoot off" model.
-  // Most spread happens via splits, not wander. Direction is away from
-  // the local crowd centroid so descendants colonise new ground.
-  // The child inherits this outward direction as its initial heading,
-  // so it continues walking AWAY from the cradle instead of drifting
-  // back home.
+  // ── Try to find a landing site ──
+  // Long-range first (20-40 tiles), then short-range fallback. Each
+  // candidate must be on land AND in a sparse area (≤ DENSITY_THRESHOLD
+  // bands within DENSITY_RADIUS). Density gate replaces the legacy
+  // global cap — bands now spread until the whole map is saturated,
+  // not until a counter hits 40.
   const baseAng = pickSplitDirection(world, parent);
   let cx = parent.pos.x, cy = parent.pos.y;
   let placed = false;
   let chosenAng = baseAng;
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const ang = baseAng + (world.rng() - 0.5) * 1.0;
-    const dist = 20 + world.rng() * 20;
-    let nx = parent.pos.x + Math.cos(ang) * dist;
-    let ny = parent.pos.y + Math.sin(ang) * dist;
-    if (nx < 0) nx += world.tw;
-    if (nx >= world.tw) nx -= world.tw;
-    if (ny < 1 || ny > world.th - 2) continue;
-    const ti = (ny | 0) * world.tw + (nx | 0);
-    if (world.elev[ti] <= 0) continue;
-    cx = nx; cy = ny; chosenAng = ang; placed = true; break;
-  }
-  if (!placed) {
-    // Fallback: shorter hop if no long landing found (band hemmed in
-    // by water on most sides — try a closer perch).
-    for (let attempt = 0; attempt < 6; attempt++) {
-      const ang = baseAng + (world.rng() - 0.5) * 2.0;
-      const dist = 6 + world.rng() * 10;
-      let nx = parent.pos.x + Math.cos(ang) * dist;
-      let ny = parent.pos.y + Math.sin(ang) * dist;
+  const tryLand = (dist, attempts, spread) => {
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const ang = baseAng + (world.rng() - 0.5) * spread;
+      const d = dist[0] + world.rng() * (dist[1] - dist[0]);
+      let nx = parent.pos.x + Math.cos(ang) * d;
+      let ny = parent.pos.y + Math.sin(ang) * d;
       if (nx < 0) nx += world.tw;
       if (nx >= world.tw) nx -= world.tw;
       if (ny < 1 || ny > world.th - 2) continue;
       const ti = (ny | 0) * world.tw + (nx | 0);
       if (world.elev[ti] <= 0) continue;
-      cx = nx; cy = ny; chosenAng = ang; placed = true; break;
+      if (localBandDensity(world, nx, ny) > DENSITY_THRESHOLD) continue;
+      cx = nx; cy = ny; chosenAng = ang; return true;
     }
+    return false;
+  };
+  placed = tryLand([20, 40], 10, 1.0);
+  if (!placed) placed = tryLand([6, 16], 8, 2.0);
+  if (!placed) {
+    // World is saturated locally AND globally — refuse the split this
+    // tick. Parent keeps its people; pop pressure relaxes naturally
+    // through K (carrying capacity).
+    return;
   }
+  parent.people -= childPeople;
   if (cx < 0) cx += world.tw;
   if (cx >= world.tw) cx -= world.tw;
   cy = Math.max(1, Math.min(world.th - 2, cy));

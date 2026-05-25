@@ -9,25 +9,22 @@ import { resetSettlementIds } from "./settlement.js";
 
 const TILE_RES = 2;
 
-// "Intimate (~50 entities)" — locked design choice. The cap below is
-// enforced at split / settle / spawn time so the world never exceeds
-// the user's target density.
-//   bands       — wandering hunter-gatherers
-//   settlements — permanent villages/towns/cities
-//   total       — hard ceiling across both kinds
+// "Intimate (~50 entities)" — locked design choice. Density-based
+// limits (see band.js splitBand) keep the world from filling, not a
+// hard global cap on bands. settlements is still capped because the
+// player should see a small distinct set of cities, not a sprawl.
 const CAP = {
-  bands: 40,
   settlements: 30,
-  total: 50,
   caravans: 40,
   armies: 20,
+  // Safety ceiling so a runaway split loop can't allocate forever.
+  bandSafety: 200,
 };
 
-// True if the world has room for another entity overall.
-export function hasEntityRoom(world) {
-  const aliveBands = world.bands.reduce((n, b) => n + (b.mode === "dead" ? 0 : 1), 0);
-  const aliveSetts = world.settlements.reduce((n, s) => n + (s.mode === "dead" ? 0 : 1), 0);
-  return aliveBands + aliveSetts < world.cap.total;
+// True when room exists for a new settlement.
+export function hasSettlementRoom(world) {
+  const alive = world.settlements.reduce((n, s) => n + (s.mode === "dead" ? 0 : 1), 0);
+  return alive < world.cap.settlements;
 }
 
 // Robust "is this tile a continental land cell" check — used by both
@@ -76,6 +73,12 @@ export function createWorld(w, opts = {}) {
     settlements: [],
     caravans:    [],
     armies:      [],
+
+    // Farmland claims: `_farmedBy[ti]` is the settlement.id that farms
+    // tile `ti`, or -1 if unfarmed. Lets each settlement own a distinct
+    // patch around itself so two neighbours don't fight over the same
+    // fertile cell.
+    _farmedBy: new Int16Array(N).fill(-1),
 
     // Caps (used by entity update logic to throttle splits / spawns)
     cap: CAP,

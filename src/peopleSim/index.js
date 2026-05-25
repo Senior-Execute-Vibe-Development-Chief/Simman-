@@ -61,18 +61,18 @@ export function peopleSimStats(world) {
     aliveBands++;
     bandPeople += b.people;
   }
-  let sPeople = 0, aliveSettlements = 0, sBuildings = 0;
+  let sPeople = 0, aliveSettlements = 0, farmlandTiles = 0;
   for (const s of world.settlements) {
     if (s.mode === "dead") continue;
     aliveSettlements++;
     sPeople += s.people;
-    sBuildings += s.buildings.length;
+    if (s.farmland) farmlandTiles += s.farmland.size;
   }
   return {
     step: world.step,
     bands: aliveBands,
     settlements: aliveSettlements,
-    buildings: sBuildings,
+    farmlandTiles,
     bandPeople: Math.round(bandPeople),
     settledPeople: Math.round(sPeople),
     totalPeople: Math.round(bandPeople + sPeople),

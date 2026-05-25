@@ -46,8 +46,8 @@ for (let s = 1; s <= TICKS; s++) {
     const stats = peopleSimStats(world);
     const maxAg = world.bands.reduce((m, b) => b.mode === "dead" ? m : Math.max(m, b.knowledge.agriculture), 0);
     const avgPeople = stats.bands > 0 ? (stats.totalPeople / stats.bands).toFixed(1) : 0;
-    const sBuildings = world.settlements.reduce((a, s) => a + s.buildings.length, 0);
-    console.log(`step ${s}:`, stats, `avgPpl/band=${avgPeople} maxAg=${maxAg.toFixed(2)} buildings=${sBuildings}`);
+    const farmTiles = world.settlements.reduce((a, s) => a + (s.farmland ? s.farmland.size : 0), 0);
+    console.log(`step ${s}:`, stats, `avgPpl/band=${avgPeople} maxAg=${maxAg.toFixed(2)} farmTiles=${farmTiles}`);
     cpIdx++;
   }
 }
