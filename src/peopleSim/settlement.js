@@ -24,7 +24,11 @@ export function resetSettlementIds() { _nextId = 1; }
 const TIER_THRESHOLD = [0, 80, 400, 2000];        // village, town, city, metropolis
 const TIER_NAME      = ["village", "town", "city", "metropolis"];
 
-const SETT_GROWTH = 0.0045;          // logistic rate per tick
+// Pop growth slowed from 0.0045 → 0.0018 so settlements visibly take
+// many in-game years to grow from village to city. With 0.0018, a
+// village at 20 ppl reaches K=470 (city tier) in ~2000 ticks rather
+// than ~700.
+const SETT_GROWTH = 0.0018;
 
 // Farmland model:
 //   1 painted tile feeds PEOPLE_PER_FARM_TILE people on average. Yield

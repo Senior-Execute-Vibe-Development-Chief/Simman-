@@ -61,19 +61,61 @@ export function makeBand(world, x, y, people = 12, opts = {}) {
 export function updateBand(world, band) {
   if (band.mode === "dead" || band.mode === "settling") return;
 
+  applyRepulsion(world, band);   // continuous "magnet" push from neighbours
   wander(world, band);
   growBand(world, band);
   learn(world, band);
   checkSettle(world, band);
 
-  // Split when oversized. No global band cap — bands spread until
-  // they hit local density limits enforced inside splitBand. A safety
-  // ceiling stops a runaway split loop from allocating forever.
+  // Split gated by local pressure: only split when the band's own
+  // immediate area is sparse. High pressure → no new band breeds out
+  // of this parent. The user's "magnet" metaphor — bands repel from
+  // each other AND won't spawn new bands until they're alone enough.
   if (band.people >= BAND_SPLIT_AT &&
-      aliveBandCount(world) < world.cap.bandSafety) {
+      aliveBandCount(world) < world.cap.bandSafety &&
+      localBandDensity(world, band.pos.x, band.pos.y) <= SPLIT_PRESSURE_MAX) {
     splitBand(world, band);
   }
 }
+
+// ── Magnetic repulsion ────────────────────────────────────────────
+// Each tick, accumulate an inverse-square push from every nearby band
+// and nudge the heading toward it. Result: even between target picks,
+// bands continuously drift apart instead of clustering. Magnitude is
+// small per tick — bands don't teleport — but compounded over many
+// ticks the pressure is real.
+const REPEL_RADIUS = 16;
+const REPEL_RADIUS_SQ = REPEL_RADIUS * REPEL_RADIUS;
+const REPEL_HEADING_BLEND = 0.25;     // how much repulsion pulls heading per tick
+function applyRepulsion(world, band) {
+  let fx = 0, fy = 0;
+  const tw = world.tw;
+  for (const other of world.bands) {
+    if (other === band || other.mode === "dead") continue;
+    let dx = band.pos.x - other.pos.x;
+    if (dx > tw / 2)  dx -= tw;
+    if (dx < -tw / 2) dx += tw;
+    const dy = band.pos.y - other.pos.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 === 0 || d2 > REPEL_RADIUS_SQ) continue;
+    const force = 1 / (1 + d2 * 0.05);
+    fx += dx * force;
+    fy += dy * force;
+  }
+  if (fx * fx + fy * fy < 0.0001) return;
+  const repelAng = Math.atan2(fy, fx);
+  // Blend heading toward repulsion direction without overwriting it.
+  // Shortest-arc interpolation.
+  let dAng = repelAng - band.heading;
+  while (dAng >  Math.PI) dAng -= Math.PI * 2;
+  while (dAng < -Math.PI) dAng += Math.PI * 2;
+  band.heading += dAng * REPEL_HEADING_BLEND;
+}
+
+// Tribes only split when their immediate area is sparse. Mirrors the
+// landing-site check in splitBand but applied to the parent — keeps
+// dense clusters from continually breeding new bands.
+const SPLIT_PRESSURE_MAX = 2;     // ≤ this many neighbours within 10 tiles allows split
 
 function aliveBandCount(world) {
   let n = 0;
@@ -126,10 +168,12 @@ function learn(world, band) {
 // fertility → higher K → less pressure, so rich land became LESS
 // likely to be settled. Now absolute pop drives the desire and site
 // quality decides the location.
-const SETTLE_AG_THRESHOLD = 0.45;   // horticultural maturity
-const SETTLE_MIN_PEOPLE   = 18;     // basically at the split threshold
-const SETTLE_FERT_FLOOR   = 0.35;   // poor land never settles
-const SETTLE_LUSH_FERT    = 0.60;   // really rich land settles even without water access
+const SETTLE_AG_THRESHOLD   = 0.45;
+const SETTLE_MIN_PEOPLE     = 18;
+const SETTLE_FERT_FLOOR     = 0.40;     // require generally fertile land
+const SETTLE_LUSH_FERT      = 0.60;     // very rich → settle even without water access
+const SETTLE_MIN_DISTANCE   = 12;       // tile units — no two settlements closer than this
+const SETTLE_MIN_DIST_SQ    = SETTLE_MIN_DISTANCE * SETTLE_MIN_DISTANCE;
 function checkSettle(world, band) {
   if (band.mode !== "wander") return;
   if (band.knowledge.agriculture < SETTLE_AG_THRESHOLD) return;
@@ -143,12 +187,17 @@ function checkSettle(world, band) {
   // Need either water access OR exceptionally lush land. (Real Neolithic
   // sites were on rivers, lakes, or fertile river-deltas.)
   if (!hasRiver && !hasCoast && localFert < SETTLE_LUSH_FERT) return;
-  // Cap enforcement: when the world is full of settlements, surplus
-  // bands stay wandering. Produces the "perpetual nomads on the
-  // periphery" effect once the intimate-scale ceiling is reached.
-  // Settlements still have a hard cap so the player sees a small set of
-  // distinct cities, not an undifferentiated sprawl. Bands have no
-  // global cap — local density gates expansion instead.
+  // Minimum distance to any existing settlement — stops villages from
+  // stacking on top of each other. Belt-and-braces with the farmland
+  // claim system; user explicitly asked for visible spacing.
+  for (const s of world.settlements) {
+    if (s.mode === "dead") continue;
+    let dx = Math.abs(s.pos.x - band.pos.x);
+    if (dx > world.tw / 2) dx = world.tw - dx;
+    const dy = s.pos.y - band.pos.y;
+    if (dx * dx + dy * dy < SETTLE_MIN_DIST_SQ) return;
+  }
+  // Hard cap so the player sees a small distinct set of cities.
   if (aliveSettlementCount(world) >= world.cap.settlements) return;
   // Settling is rare even when conditions are met: ~0.4% per tick at
   // the threshold, rising to ~5% at maxed knowledge. Spreads founding
