@@ -5217,9 +5217,13 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // appear as small primitives at their (dx, dy) offsets so the
     // village grows visually as houses / farms / granaries complete.
     // ── Farmland tiles ──
-    // Each settlement owns a Set of farmed tile indices. Paint each
-    // farmed tile as a translucent olive overlay so the underlying
-    // biome still reads through.
+    // Each settlement owns a Set of farmed tile indices. Batched into
+    // a SINGLE Path2D so the renderer makes one fillStyle/fill call
+    // for all of them instead of two canvas ops per tile (was ~10k
+    // ops/frame for a saturated map). Stroke dropped for the same
+    // reason; the colour difference is enough to read at this scale.
+    ctx.fillStyle="rgba(155,160,75,0.55)";
+    ctx.beginPath();
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled"||!s.farmland)continue;
       for(const fti of s.farmland){
@@ -5227,13 +5231,10 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         const fx=fti-fy*psw.tw;
         const px=fx*TR;
         const py=dataYtoScreenY(fy*TR,H,CH);
-        ctx.fillStyle="rgba(155,160,75,0.55)";
-        ctx.fillRect(px,py,TR,TR);
-        ctx.strokeStyle="rgba(80,80,40,0.55)";
-        ctx.lineWidth=0.3;
-        ctx.strokeRect(px+0.5,py+0.5,TR-1,TR-1);
+        ctx.rect(px,py,TR,TR);
       }
     }
+    ctx.fill();
     // ── Settlement icons ──
     // ONE icon per settlement, sized by tier. Village = small block;
     // town = bigger block; city = block + walls ring; metropolis = +

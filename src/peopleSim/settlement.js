@@ -33,7 +33,13 @@ const SETT_GROWTH = 0.0018;
 const PEOPLE_PER_FARM_TILE = 14;
 const FARM_YIELD_PER_FERT  = 0.055;
 const FORAGE_RATE          = 0.012;
-const FARM_RANGE_BY_TIER   = [3, 5, 8, 12];
+const FARM_RANGE_BY_TIER   = [6, 10, 18, 25];     // max flood-fill radius from settlement
+// Farmland flood-fill still uses a max range per tier — without it,
+// the cradle eats whole continents (45k-pop monstrosities). The range
+// is bigger than the old fixed box though, and the flood fill chooses
+// the BEST tiles within that range rather than just everything in a
+// square. Result: organic shape (rivers, coasts, valleys) AND a hard
+// ceiling on how much land a single settlement can claim.
 const FARMLAND_REFRESH_INTERVAL = 32;
 
 export function makeSettlement(world, x, y, opts = {}) {
@@ -129,7 +135,7 @@ function updatePopulation(world, s) {
   let farmFert = 0;
   for (const fti of s.farmland) farmFert += world.fert[fti] || 0;
   const K = Math.max(20, farmFert * PEOPLE_PER_FARM_TILE * (1 + (s.knowledge.agriculture || 0) * 1.2));
-  s._k = K;     // stashed for daughter-colony pressure check
+  s._k = K;
 
   if (s.food <= 0.01 && s.people > 1) {
     s.people *= 0.985;
@@ -140,6 +146,17 @@ function updatePopulation(world, s) {
     s.mode = "dead";
     releaseFarmland(world, s);
     s.history.push({ step: world.step, type: "abandoned" });
+    return;
+  }
+  // Stillborn check: a settlement that crystallised in a fully-claimed
+  // area has 0 or 1 farmland tiles and will linger at pop ~3 forever
+  // (forage from one tile barely covers 3 people's demand). Kill it
+  // outright after 800 ticks of zero-farmland — its land would be
+  // wasted on a ghost village.
+  if (s.farmland.size < 2 && (world.step - s.foundedStep) > 800) {
+    s.mode = "dead";
+    releaseFarmland(world, s);
+    s.history.push({ step: world.step, type: "stillborn-no-farmland" });
   }
 }
 
@@ -153,13 +170,11 @@ function maybeRefreshFarmland(world, s) {
 function refreshFarmland(world, s) {
   // Minimum 4 farm tiles so a freshly-founded settlement (~20 ppl,
   // would naively want only 2 tiles) has enough food capacity to grow
-  // past its founding pop. Without this, new settlements with <3
-  // tiles hit K=20-30, stall, and die out.
+  // past its founding pop.
   const target = Math.max(4, Math.ceil(s.people / PEOPLE_PER_FARM_TILE));
-  const range = FARM_RANGE_BY_TIER[s.tier] || FARM_RANGE_BY_TIER[0];
-  const { tw, th, elev, fert, _farmedBy } = world;
-  const cx = s.pos.x | 0, cy = s.pos.y | 0;
+  const { tw, th, elev, fert, coast, riverMag, _farmedBy } = world;
 
+  // ── Shrink: drop least-fertile tiles ──
   if (s.farmland.size > target) {
     const sorted = [...s.farmland].sort((a, b) => (fert[a] || 0) - (fert[b] || 0));
     while (s.farmland.size > target && sorted.length > 0) {
@@ -169,31 +184,123 @@ function refreshFarmland(world, s) {
     }
   }
 
+  // ── Grow: flood-fill from settlement, best score first ──
+  // Settlements no longer scan a fixed square box; they grow farmland
+  // organically outward from the existing patch, picking the best
+  // available adjacent tile each step. Result: farmland follows river
+  // valleys, hugs coasts, threads through fertile corridors —
+  // whatever the terrain offers — instead of a perfect square hinterland.
   if (s.farmland.size < target) {
-    const candidates = [];
-    for (let dy = -range; dy <= range; dy++) {
-      const ny = cy + dy;
-      if (ny < 1 || ny >= th - 1) continue;
-      for (let dx = -range; dx <= range; dx++) {
-        const nx = ((cx + dx) % tw + tw) % tw;
-        const ni = ny * tw + nx;
-        if (elev[ni] <= 0) continue;
-        if (s.farmland.has(ni)) continue;
-        const owner = _farmedBy[ni];
-        if (owner !== -1 && owner !== s.id) continue;
-        const f = fert[ni];
-        if (f < 0.1) continue;
-        const distPenalty = (dx * dx + dy * dy) * 0.005;
-        candidates.push({ ni, score: f - distPenalty });
+    const heap = new _MaxHeap();
+    const visited = new Set(s.farmland);
+    const maxRange = FARM_RANGE_BY_TIER[s.tier] || FARM_RANGE_BY_TIER[0];
+    const maxRangeSq = maxRange * maxRange;
+    const cx = s.pos.x | 0, cy = s.pos.y | 0;
+
+    // Score: fertility primary, plus generous river/coast bonus so
+    // settlements naturally extend along water rather than blob outward.
+    const scoreTile = (ti) => {
+      let sc = fert[ti] || 0;
+      if (riverMag && riverMag[ti] >= 3)      sc += 0.6;
+      else if (riverMag && riverMag[ti] >= 2) sc += 0.35;
+      if (coast[ti])                          sc += 0.20;
+      return sc;
+    };
+
+    const tryAddCandidate = (ti) => {
+      if (visited.has(ti)) return;
+      visited.add(ti);
+      if (elev[ti] <= 0) return;
+      // Range cap: don't push tiles further than tier-radius from the
+      // settlement's centre. Stops a city from sprawling halfway across
+      // a continent.
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      let ddx = Math.abs(tx - cx);
+      if (ddx > tw / 2) ddx = tw - ddx;
+      const ddy = ty - cy;
+      if (ddx * ddx + ddy * ddy > maxRangeSq) return;
+      const owner = _farmedBy[ti];
+      if (owner !== -1 && owner !== s.id) return;
+      if ((fert[ti] || 0) < 0.10) return;
+      heap.push(ti, scoreTile(ti));
+    };
+
+    const pushNeighbours = (ti) => {
+      const ty = (ti / tw) | 0;
+      const tx = ti - ty * tw;
+      const left  = ty * tw + (tx === 0 ? tw - 1 : tx - 1);
+      const right = ty * tw + (tx === tw - 1 ? 0 : tx + 1);
+      const up    = ty > 0      ? (ty - 1) * tw + tx : -1;
+      const down  = ty < th - 1 ? (ty + 1) * tw + tx : -1;
+      tryAddCandidate(left);
+      tryAddCandidate(right);
+      if (up   >= 0) tryAddCandidate(up);
+      if (down >= 0) tryAddCandidate(down);
+    };
+
+    // Seed from existing farmland or the home tile.
+    if (s.farmland.size === 0) {
+      const home = (s.pos.y | 0) * tw + (s.pos.x | 0);
+      visited.add(home);
+      if (elev[home] > 0 && (fert[home] || 0) >= 0.10 &&
+          (_farmedBy[home] === -1 || _farmedBy[home] === s.id)) {
+        s.farmland.add(home);
+        _farmedBy[home] = s.id;
+      }
+      pushNeighbours(home);
+    } else {
+      for (const ti of s.farmland) pushNeighbours(ti);
+    }
+
+    while (s.farmland.size < target && heap.size() > 0) {
+      const top = heap.popMax();
+      const ti = top.ti;
+      const cur = _farmedBy[ti];
+      if (cur !== -1 && cur !== s.id) continue;
+      s.farmland.add(ti);
+      _farmedBy[ti] = s.id;
+      pushNeighbours(ti);
+    }
+  }
+}
+
+// Tiny binary max-heap, parallel typed arrays. Used by refreshFarmland's
+// flood-fill expansion.
+class _MaxHeap {
+  constructor() { this.ti = []; this.sc = []; }
+  size() { return this.ti.length; }
+  push(ti, sc) {
+    this.ti.push(ti); this.sc.push(sc);
+    let i = this.ti.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.sc[p] >= this.sc[i]) break;
+      const tt = this.ti[p], ts = this.sc[p];
+      this.ti[p] = this.ti[i]; this.sc[p] = this.sc[i];
+      this.ti[i] = tt; this.sc[i] = ts;
+      i = p;
+    }
+  }
+  popMax() {
+    const ti = this.ti[0], sc = this.sc[0];
+    const lastTi = this.ti.pop(), lastSc = this.sc.pop();
+    if (this.ti.length > 0) {
+      this.ti[0] = lastTi; this.sc[0] = lastSc;
+      let i = 0;
+      const n = this.ti.length;
+      for (;;) {
+        const l = i * 2 + 1, r = i * 2 + 2;
+        let best = i;
+        if (l < n && this.sc[l] > this.sc[best]) best = l;
+        if (r < n && this.sc[r] > this.sc[best]) best = r;
+        if (best === i) break;
+        const tt = this.ti[best], ts = this.sc[best];
+        this.ti[best] = this.ti[i]; this.sc[best] = this.sc[i];
+        this.ti[i] = tt; this.sc[i] = ts;
+        i = best;
       }
     }
-    candidates.sort((a, b) => b.score - a.score);
-    const needed = target - s.farmland.size;
-    for (let i = 0; i < Math.min(needed, candidates.length); i++) {
-      const ni = candidates[i].ni;
-      s.farmland.add(ni);
-      _farmedBy[ni] = s.id;
-    }
+    return { ti, sc };
   }
 }
 
