@@ -96,10 +96,10 @@ console.log(`world: tw=${world.tw} th=${world.th} N=${world.N}`);
 console.log(`initial settlements:`);
 for (const s of world.settlements) console.log(settlementLine(s, world));
 
-const checkpoints = [500, 1500, 3000, 6000, 10000, 15000, 20000];
+const checkpoints = [1000, 5000, 15000, 30000, 50000];
 let cpIdx = 0;
 const t0 = performance.now();
-const TICKS = 20000;
+const TICKS = 50000;
 for (let s = 1; s <= TICKS; s++) {
   try { stepPeopleSim(world, 1); }
   catch (e) { console.error(`step ${s} crashed:`, e.message, e.stack); process.exit(1); }
