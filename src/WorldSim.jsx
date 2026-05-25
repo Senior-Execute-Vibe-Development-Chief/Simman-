@@ -5223,21 +5223,33 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       ctx.strokeStyle=`rgba(70,55,40,${ringAlpha})`;
       ctx.lineWidth=s.tier>=2?1.0:0.5;
       ctx.stroke();
-      // Buildings — drawn at full alpha (no construction-in-progress
-      // dim phase; buildings appear when the settlement earns them).
+      // Buildings — opaque + bigger so they read clearly against the
+      // terrain. Atlas-style block primitives with thick outlines.
       for(const b of s.buildings){
         const bx=sx+b.dx*TR;
         const by=sy+b.dy*TR;
         if(b.kind==="house"){
-          ctx.fillStyle="rgba(160,110,70,0.95)";
-          ctx.fillRect(bx-1.2,by-1.2,2.4,2.4);
-          ctx.strokeStyle="rgba(50,35,25,0.95)";ctx.lineWidth=0.5;
-          ctx.strokeRect(bx-1.2,by-1.2,2.4,2.4);
+          // Brown gabled-roof block.
+          ctx.fillStyle="rgba(150,90,55,1.0)";
+          ctx.fillRect(bx-2.4,by-2.4,4.8,4.8);
+          ctx.strokeStyle="rgba(40,25,15,1.0)";ctx.lineWidth=1.0;
+          ctx.strokeRect(bx-2.4,by-2.4,4.8,4.8);
+          // Tiny roof apex line to suggest gable.
+          ctx.beginPath();
+          ctx.moveTo(bx-2.4,by-2.4);ctx.lineTo(bx,by-3.4);ctx.lineTo(bx+2.4,by-2.4);
+          ctx.fillStyle="rgba(90,55,30,1.0)";ctx.fill();
+          ctx.strokeStyle="rgba(40,25,15,1.0)";ctx.lineWidth=0.8;ctx.stroke();
         }else if(b.kind==="farm"){
-          ctx.fillStyle="rgba(150,160,80,0.65)";
-          ctx.fillRect(bx-2.2,by-1.4,4.4,2.8);
-          ctx.strokeStyle="rgba(70,80,40,0.95)";ctx.lineWidth=0.4;
-          ctx.strokeRect(bx-2.2,by-1.4,4.4,2.8);
+          // Olive-green tilled field, larger and opaque.
+          ctx.fillStyle="rgba(140,150,70,0.92)";
+          ctx.fillRect(bx-3.5,by-2.2,7.0,4.4);
+          ctx.strokeStyle="rgba(60,70,30,1.0)";ctx.lineWidth=0.9;
+          ctx.strokeRect(bx-3.5,by-2.2,7.0,4.4);
+          // Furrow lines for texture.
+          ctx.strokeStyle="rgba(80,90,40,0.7)";ctx.lineWidth=0.5;
+          for(let fy=-1.4;fy<=1.4;fy+=1.4){
+            ctx.beginPath();ctx.moveTo(bx-3.2,by+fy);ctx.lineTo(bx+3.2,by+fy);ctx.stroke();
+          }
         }
         // (market / port / walls — phases 2+)
       }
@@ -5255,7 +5267,9 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       if(!b||b.mode==="dead"||b.mode==="settling")continue;
       const sx=b.pos.x*TR+0.5;
       const sy=dataYtoScreenY(b.pos.y*TR,H,CH)+0.5;
-      const r=Math.max(1.2,Math.min(4.0,1.0+Math.sqrt(b.people)*0.45));
+      // Smaller dots — bands shouldn't dominate the map. Sized so
+      // a typical 15-person band reads as a small marker, not a blob.
+      const r=Math.max(0.7,Math.min(2.2,0.5+Math.sqrt(b.people)*0.25));
       const ag=Math.max(0,Math.min(1,(b.knowledge&&b.knowledge.agriculture)||0));
       const t=Math.min(1,ag/0.45);
       // R/G/B interp: 200→255 (R), 160→210 (G), 110→90 (B).

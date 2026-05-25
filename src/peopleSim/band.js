@@ -32,6 +32,11 @@ export function makeBand(world, x, y, people = 12, opts = {}) {
     kind: "band",
     pos: { x, y },
     target: null,                 // {x,y} current wander destination
+    // Heading (radians) gives the wander a persistent direction so it
+    // doesn't bounce randomly. Drifts slowly between target picks; new
+    // splits inherit an OUTWARD heading so descendants colonise in
+    // coherent directions instead of milling around the parent.
+    heading: opts.heading != null ? opts.heading : world.rng() * Math.PI * 2,
     people,
     knowledge: opts.knowledge || {
       foraging:    0.4 + world.rng() * 0.1,
@@ -224,10 +229,14 @@ function pickNewTarget(world, band) {
   // within R=4, but should find one at R=8 or R=14 (push along the
   // coast or inland). Without this, coastal bands set target=self and
   // appear to oscillate in place (issue #2 in user feedback).
+  // Bias candidate angles toward the band's heading so wander has a
+  // persistent direction. Spread ~±60° around heading. Bands no longer
+  // bounce back and forth — they drift coherently across the map.
+  const HEADING_SPREAD = Math.PI * 0.66;
   let bestX = null, bestY = null, bestScore = -Infinity;
   for (const R of BAND_SCAN_RINGS) {
     for (let i = 0; i < 10; i++) {
-      const ang = rng() * Math.PI * 2;
+      const ang = band.heading + (rng() - 0.5) * HEADING_SPREAD;
       const rad = R * (0.4 + rng() * 0.6);
       let nx = band.pos.x + Math.cos(ang) * rad;
       let ny = band.pos.y + Math.sin(ang) * rad;
@@ -276,9 +285,20 @@ function pickNewTarget(world, band) {
     const ang = rng() * Math.PI * 2;
     bestX = band.pos.x + Math.cos(ang) * 2;
     bestY = band.pos.y + Math.sin(ang) * 2;
+    band.heading = ang;
     if (bestX < 0) bestX += tw;
     if (bestX >= tw) bestX -= tw;
     bestY = Math.max(1, Math.min(th - 2, bestY));
+  }
+  // Update persistent heading toward the chosen target (with wrap-aware
+  // dx). Heading-drift gives bands a coherent direction over many
+  // wander cycles instead of bouncing.
+  {
+    let dx = bestX - band.pos.x;
+    if (dx > tw / 2)  dx -= tw;
+    if (dx < -tw / 2) dx += tw;
+    const dy = bestY - band.pos.y;
+    if (dx * dx + dy * dy > 0.01) band.heading = Math.atan2(dy, dx);
   }
   band.target = { x: bestX, y: bestY };
 }
@@ -321,16 +341,19 @@ function pickSplitDirection(world, parent) {
 function splitBand(world, parent) {
   const childPeople = Math.floor(parent.people * 0.45);
   parent.people -= childPeople;
-  // Spawn child 6-14 tiles from parent, away from the local crowd.
-  // Try a few candidate landings — water or out-of-bounds tiles get
-  // rejected — so a coastal band can still split successfully along
-  // the shoreline.
+  // Spawn child 20-40 tiles from parent — the "kids shoot off" model.
+  // Most spread happens via splits, not wander. Direction is away from
+  // the local crowd centroid so descendants colonise new ground.
+  // The child inherits this outward direction as its initial heading,
+  // so it continues walking AWAY from the cradle instead of drifting
+  // back home.
   const baseAng = pickSplitDirection(world, parent);
   let cx = parent.pos.x, cy = parent.pos.y;
   let placed = false;
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const ang = baseAng + (world.rng() - 0.5) * 1.5;
-    const dist = 6 + world.rng() * 8;
+  let chosenAng = baseAng;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const ang = baseAng + (world.rng() - 0.5) * 1.0;
+    const dist = 20 + world.rng() * 20;
     let nx = parent.pos.x + Math.cos(ang) * dist;
     let ny = parent.pos.y + Math.sin(ang) * dist;
     if (nx < 0) nx += world.tw;
@@ -338,12 +361,23 @@ function splitBand(world, parent) {
     if (ny < 1 || ny > world.th - 2) continue;
     const ti = (ny | 0) * world.tw + (nx | 0);
     if (world.elev[ti] <= 0) continue;
-    cx = nx; cy = ny; placed = true; break;
+    cx = nx; cy = ny; chosenAng = ang; placed = true; break;
   }
   if (!placed) {
-    // Fallback: hop a little in any land direction so the split still
-    // succeeds. Don't lose offspring just because we can't pick well.
-    cx = parent.pos.x; cy = parent.pos.y;
+    // Fallback: shorter hop if no long landing found (band hemmed in
+    // by water on most sides — try a closer perch).
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const ang = baseAng + (world.rng() - 0.5) * 2.0;
+      const dist = 6 + world.rng() * 10;
+      let nx = parent.pos.x + Math.cos(ang) * dist;
+      let ny = parent.pos.y + Math.sin(ang) * dist;
+      if (nx < 0) nx += world.tw;
+      if (nx >= world.tw) nx -= world.tw;
+      if (ny < 1 || ny > world.th - 2) continue;
+      const ti = (ny | 0) * world.tw + (nx | 0);
+      if (world.elev[ti] <= 0) continue;
+      cx = nx; cy = ny; chosenAng = ang; placed = true; break;
+    }
   }
   if (cx < 0) cx += world.tw;
   if (cx >= world.tw) cx -= world.tw;
@@ -352,6 +386,7 @@ function splitBand(world, parent) {
     parentBandId: parent.id,
     knowledge: { ...parent.knowledge },
     traits: { ...parent.traits },
+    heading: chosenAng,           // continue outward, don't drift back
   });
   world.bands.push(child);
   parent.history.push({ step: world.step, type: "split", child: child.id });
