@@ -5,7 +5,7 @@
 
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
 
-function makeWorld(W = 256, H = 128) {
+function makeWorld(W = 512, H = 256) {
   const elevation   = new Float32Array(W * H);
   const temperature = new Float32Array(W * H);
   const moisture    = new Float32Array(W * H);
@@ -90,7 +90,7 @@ function settlementLine(s, world) {
 }
 
 console.log("=== peopleSim run-and-watch ===");
-const w = makeWorld(256, 128);
+const w = makeWorld(512, 256);
 const world = initPeopleSim(w, { seed: 4242 });
 console.log(`world: tw=${world.tw} th=${world.th} N=${world.N}`);
 console.log(`initial settlements:`);

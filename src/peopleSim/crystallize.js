@@ -21,19 +21,19 @@ import { isContinentalLand } from "./state.js";
 import { makeSettlement } from "./settlement.js";
 import { computeTransport } from "./transport.js";
 
-const CRYSTAL_INTERVAL          = 32;     // ticks between sweeps
-const TRANSPORT_REFRESH_TICKS   = 200;
-const CANDIDATES_PER_SWEEP      = 80;     // up from 60 — more chances per sweep
-const MIN_FERT                  = 0.32;
-const MIN_AREA_FERT             = 6.0;    // sum of fert in 5×5 box must exceed this
-                                          // (rejects isolated fertile tiles surrounded by waste)
+const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
+const TRANSPORT_REFRESH_TICKS   = 150;    // refresh transport more often (was 200)
+const CANDIDATES_PER_SWEEP      = 120;    // wider net per sweep (was 80)
+const MIN_FERT                  = 0.30;
+const MIN_AREA_FERT             = 5.0;    // 5×5 box fert-sum (relaxed from 6.0 — too strict)
 const LUSH_FERT                 = 0.55;
-const MIN_SETT_DIST             = 18;     // up from 12 — clearer visual spacing
+const MIN_SETT_DIST             = 18;
 const MIN_SETT_DIST_SQ          = MIN_SETT_DIST * MIN_SETT_DIST;
 const KNOWLEDGE_DECAY_SCALE     = 30;
-const INDEPENDENT_RATE          = 0.030;  // up from 0.025 — more independent invention
+const INDEPENDENT_RATE          = 0.060;  // independent invention rate doubled — distant
+                                          // continents get a first settlement sooner
 const NEAR_RATE                 = 1.50;
-const BASE_RATE                 = 0.0050; // up from 0.0025 — settlements appear earlier
+const BASE_RATE                 = 0.010;  // 2× crystallisation rate (was 0.005)
 
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
