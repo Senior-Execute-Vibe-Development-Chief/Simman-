@@ -208,13 +208,27 @@ function wander(world, band) {
   const d  = Math.hypot(dx, dy);
   if (d < 0.01) return;
   const step = Math.min(BAND_MOVE_SPEED, d);
-  band.pos.x += (dx / d) * step;
-  band.pos.y += (dy / d) * step;
+  let nx = band.pos.x + (dx / d) * step;
+  let ny = band.pos.y + (dy / d) * step;
   // Wrap x for the toroidal map; clamp y at poles.
-  if (band.pos.x < 0) band.pos.x += world.tw;
-  if (band.pos.x >= world.tw) band.pos.x -= world.tw;
-  if (band.pos.y < 1) band.pos.y = 1;
-  if (band.pos.y > world.th - 2) band.pos.y = world.th - 2;
+  if (nx < 0) nx += world.tw;
+  if (nx >= world.tw) nx -= world.tw;
+  if (ny < 1) ny = 1;
+  if (ny > world.th - 2) ny = world.th - 2;
+  // Refuse to step into water. Bands target land but the straight-line
+  // path between two land tiles can briefly cross ocean — without this
+  // check, bands physically walk on the sea. When blocked, drop the
+  // target so the next pickNewTarget picks a path-friendly one.
+  const ti = (ny | 0) * world.tw + (nx | 0);
+  if (world.elev[ti] <= 0) {
+    band.target = null;
+    // Nudge the heading by ~90° so the next pick tries a different
+    // direction along the coast.
+    band.heading += (world.rng() < 0.5 ? -1 : 1) * Math.PI * 0.5;
+    return;
+  }
+  band.pos.x = nx;
+  band.pos.y = ny;
 }
 
 function nearTarget(band) {

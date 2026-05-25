@@ -45,15 +45,50 @@ export function nextBuildingNeeded(settlement) {
   return null;
 }
 
-// Place a new building. Settlements have a growing footprint:
-// village (radius 0.6), town (1.4), city (2.4), metropolis (3.6).
-// Slight random jitter so the cluster looks organic, not gridded.
+// Place a new building. Settlements have a growing footprint scaled by
+// tier. Each new building must sit at least MIN_DIST tile units from
+// every existing building so houses (4.8 canvas px ≈ 2.4 tile units)
+// and farms (7 × 4.4 px ≈ 3.5 × 2.2 tile units) don't overlap visually.
+const MIN_BUILD_DIST = 2.2;        // tile units between building centres
+const MIN_BUILD_DIST_SQ = MIN_BUILD_DIST * MIN_BUILD_DIST;
+
 export function placeBuildingOffset(rng, settlement, kind) {
-  const r = footprintRadius(settlement.tier);
+  const baseR = footprintRadius(settlement.tier);
+  // Try the inner footprint first; if all candidates conflict, expand
+  // outward (the settlement is starting to sprawl past its nominal
+  // tier-radius). 24 tries inside + 8 tries outside is more than
+  // enough at the entity scales we run.
+  for (let i = 0; i < 24; i++) {
+    const ang = rng() * Math.PI * 2;
+    const rad = baseR * (0.1 + rng() * 0.9);
+    const dx = Math.cos(ang) * rad;
+    const dy = Math.sin(ang) * rad;
+    let ok = true;
+    for (const b of settlement.buildings) {
+      const dd = (b.dx - dx) ** 2 + (b.dy - dy) ** 2;
+      if (dd < MIN_BUILD_DIST_SQ) { ok = false; break; }
+    }
+    if (ok) return { dx, dy };
+  }
+  for (let i = 0; i < 8; i++) {
+    const ang = rng() * Math.PI * 2;
+    const rad = baseR * (1.0 + rng() * 1.2);   // outside normal footprint
+    const dx = Math.cos(ang) * rad;
+    const dy = Math.sin(ang) * rad;
+    let ok = true;
+    for (const b of settlement.buildings) {
+      const dd = (b.dx - dx) ** 2 + (b.dy - dy) ** 2;
+      if (dd < MIN_BUILD_DIST_SQ) { ok = false; break; }
+    }
+    if (ok) return { dx, dy };
+  }
+  // Last resort: best-of-N "furthest from existing" — guarantees we
+  // return SOMETHING so the queue makes progress even at extreme
+  // density.
   let bestDx = 0, bestDy = 0, bestDist = -Infinity;
   for (let i = 0; i < 8; i++) {
     const ang = rng() * Math.PI * 2;
-    const rad = r * (0.25 + rng() * 0.75);
+    const rad = baseR * (1.5 + rng() * 1.0);
     const dx = Math.cos(ang) * rad;
     const dy = Math.sin(ang) * rad;
     let minD = Infinity;
@@ -67,5 +102,8 @@ export function placeBuildingOffset(rng, settlement, kind) {
 }
 
 export function footprintRadius(tier) {
-  return [0.6, 1.4, 2.4, 3.6][tier] || 0.6;
+  // Tile units. Bumped to match larger building sprites (a 4.8-px house
+  // = 2.4 tile units across, so a village needs ~2.5 to fit 3 houses
+  // without overlap).
+  return [2.5, 4.0, 6.0, 8.5][tier] || 2.5;
 }

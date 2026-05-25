@@ -5214,7 +5214,9 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       if(!s||s.mode!=="settled")continue;
       const sx=s.pos.x*TR;
       const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
-      const footR=[0.6,1.4,2.4,3.6][s.tier]||0.6;
+      // Mirror peopleSim/building.js footprintRadius() — kept in sync
+      // so the ring visually matches the building cluster.
+      const footR=[2.5,4.0,6.0,8.5][s.tier]||2.5;
       // Faint footprint ring — the settlement's claim on its hinterland.
       // Slightly darker at higher tiers to signify town/city status
       // without needing tier-specific iconography.
