@@ -36,14 +36,6 @@ const FORAGE_RATE          = 0.012;
 const FARM_RANGE_BY_TIER   = [3, 5, 8, 12];
 const FARMLAND_REFRESH_INTERVAL = 32;
 
-// Daughter colony rules
-const FOUND_DAUGHTER_CHECK_INTERVAL = 80;   // ticks between attempts
-const FOUND_DAUGHTER_PRESSURE = 0.75;       // parent must be at ≥ this fraction of K
-const FOUND_DISCOVERY_BY_TIER = [10, 18, 28, 42];   // search radius in tiles
-const FOUND_MIN_SETTLEMENT_DIST = 12;       // belt-and-braces — same as state.js cap
-const DAUGHTER_POP_FRAC = 0.30;             // parent gives this fraction to daughter
-const DAUGHTER_KNOW_FRAC = 0.80;            // daughter inherits this fraction of parent's knowledge
-
 export function makeSettlement(world, x, y, opts = {}) {
   const s = {
     id: _nextId++,
@@ -84,7 +76,11 @@ export function updateSettlement(world, s) {
   updatePopulation(world, s);
   maybeRefreshFarmland(world, s);
   updateTier(world, s);
-  maybeFoundDaughter(world, s);
+  // Daughter colonies removed — new settlements now appear via the
+  // world-level crystallization sweep (see crystallize.js / index.js).
+  // That handles both diffusion-driven spread (sites with low transport
+  // distance to existing settlements crystallize fast) and isolated
+  // independent invention (great sites very far away can still spawn).
 }
 
 // ── Food ───────────────────────────────────────────────────────────
@@ -192,84 +188,6 @@ function updateTier(world, s) {
       break;
     }
   }
-}
-
-// ── Daughter colonies ─────────────────────────────────────────────
-// Parent settlement at high pressure surveys its discovery range for
-// a viable new settlement site. If one passes the standard checks
-// (fertility, water, min-distance from all existing settlements), it
-// spawns a daughter and hands over part of its population + most of
-// its knowledge.
-function maybeFoundDaughter(world, s) {
-  if (world.step - s.lastFoundAttempt < FOUND_DAUGHTER_CHECK_INTERVAL) return;
-  s.lastFoundAttempt = world.step;
-  // Cap check.
-  let alive = 0;
-  for (const o of world.settlements) if (o.mode !== "dead") alive++;
-  if (alive >= world.cap.settlements) return;
-  // Pressure check — only mature settlements colonise.
-  const K = s._k || 50;
-  if (s.people < K * FOUND_DAUGHTER_PRESSURE) return;
-  if (s.people < 30) return;        // too small to send anyone
-  // Survey: pick the best qualifying site in discovery range.
-  const range = FOUND_DISCOVERY_BY_TIER[s.tier] || FOUND_DISCOVERY_BY_TIER[0];
-  const target = findColonyTarget(world, s, range);
-  if (!target) return;
-  // Spawn daughter and transfer pop + knowledge.
-  const daughterPop = Math.max(15, Math.floor(s.people * DAUGHTER_POP_FRAC));
-  s.people -= daughterPop;
-  const inheritedKnow = {};
-  for (const k of Object.keys(s.knowledge)) inheritedKnow[k] = s.knowledge[k] * DAUGHTER_KNOW_FRAC;
-  const daughter = makeSettlement(world, target.x, target.y, {
-    people: daughterPop,
-    knowledge: inheritedKnow,
-    traits: { ...s.traits },
-    parentId: s.id,
-  });
-  s.history.push({ step: world.step, type: "founded-daughter", id: daughter.id, sent: daughterPop });
-}
-
-function findColonyTarget(world, parent, range) {
-  const { tw, th, elev, fert, coast, riverMag } = world;
-  const cx = parent.pos.x | 0, cy = parent.pos.y | 0;
-  const minDistSq = FOUND_MIN_SETTLEMENT_DIST * FOUND_MIN_SETTLEMENT_DIST;
-  let bestTi = -1, bestX = 0, bestY = 0, bestScore = -Infinity;
-  for (let dy = -range; dy <= range; dy++) {
-    const ny = cy + dy;
-    if (ny < 2 || ny >= th - 2) continue;
-    for (let dx = -range; dx <= range; dx++) {
-      const distSq = dx * dx + dy * dy;
-      if (distSq < FOUND_MIN_SETTLEMENT_DIST * FOUND_MIN_SETTLEMENT_DIST) continue;
-      if (distSq > range * range) continue;
-      const nx = ((cx + dx) % tw + tw) % tw;
-      const ni = ny * tw + nx;
-      if (elev[ni] <= 0.005) continue;
-      const f = fert[ni];
-      if (f < 0.40) continue;
-      const hasRiver = riverMag && riverMag[ni] >= 2;
-      const hasCoast = coast && coast[ni];
-      if (!hasRiver && !hasCoast && f < 0.60) continue;
-      // Min distance to ALL other settlements.
-      let tooClose = false;
-      for (const o of world.settlements) {
-        if (o.mode === "dead") continue;
-        let ddx = Math.abs(o.pos.x - nx);
-        if (ddx > tw / 2) ddx = tw - ddx;
-        const ddy = o.pos.y - ny;
-        if (ddx * ddx + ddy * ddy < minDistSq) { tooClose = true; break; }
-      }
-      if (tooClose) continue;
-      // Score: fertility + water bonus, with mild preference for
-      // closer-to-parent (real expansion is incremental, not random).
-      let score = f * 2;
-      if (hasRiver) score += 1.5;
-      if (hasCoast) score += 0.6;
-      score -= distSq * 0.005;
-      if (score > bestScore) { bestScore = score; bestTi = ni; bestX = nx; bestY = ny; }
-    }
-  }
-  if (bestTi < 0) return null;
-  return { x: bestX + 0.5, y: bestY + 0.5 };
 }
 
 export { TIER_THRESHOLD, TIER_NAME, releaseFarmland };

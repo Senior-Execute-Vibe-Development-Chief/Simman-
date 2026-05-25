@@ -10,6 +10,7 @@
 
 import { createWorld, pruneDead } from "./state.js";
 import { updateSettlement } from "./settlement.js";
+import { maybeCrystallize } from "./crystallize.js";
 
 export function initPeopleSim(worldGen, opts = {}) {
   return createWorld(worldGen, opts);
@@ -22,6 +23,9 @@ export function stepPeopleSim(world, n = 1) {
     for (let i = 0; i < world.settlements.length; i++) {
       updateSettlement(world, world.settlements[i]);
     }
+    // New settlements crystallise spontaneously at fertile sites,
+    // weighted by transport distance to existing ones.
+    maybeCrystallize(world);
     if (world.step % 32 === 0) pruneDead(world);
     world.debug.tickMs = performance.now() - t0;
   }
