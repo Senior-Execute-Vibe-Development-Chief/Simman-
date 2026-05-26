@@ -1,19 +1,16 @@
 // Settlement: a permanent community at a fixed location. Single icon
-// (tier-scaled) with a patch of farmland painted on the most fertile
+// (pop-scaled) with a patch of farmland painted on the most fertile
 // tiles within reach. No bands, no individual buildings — the
 // settlement is the atomic visible unit.
 //
-// New settlements come from two sources:
-//   1. The cradle village, seeded at world init at the cradle-of-
-//      humankind site (handled in state.js).
-//   2. Daughter colonies founded by an existing settlement when it
-//      hits its carrying capacity. The parent surveys its discovery
-//      range for a viable site, spawns a new village there, and
-//      transfers ~30 % of its population to the new community.
-//
-// Knowledge spreads via inheritance (daughters get ~80 % of parent's
-// knowledge) and slow neighbour diffusion. Over many generations the
-// neolithic package spreads from the cradle outward.
+// New settlements come from the crystallization sweep (crystallize.js),
+// which scatters them across viable sites and lets them inherit
+// knowledge from their nearest neighbour weighted by transport
+// distance. There is no settlement cap — the world fills with
+// settlements wherever there is room (MIN_SETT_DIST spacing) and
+// enough fertile land to support them.
+
+import { localEdgeCost } from "./transport.js";
 
 let _nextId = 1;
 export function resetSettlementIds() { _nextId = 1; }
@@ -346,24 +343,12 @@ function releaseFarmland(world, s) {
 }
 
 // Bounded Dijkstra from (sx, sy). Returns Map<ti, accumulated cost> for
-// every land tile reachable within maxCost. Tile weights match
-// transport.js's terrain part exactly so the unit of "cost" is the
-// same everywhere — but here we ALSO scale by the settlement's
-// transport knowledge:
-//   - toolmaking (wagons, harness, draft animals) — flat -30% at max
-//   - construction (bridges, switchbacks, paved roads) — halves the
-//     mountain penalty (×5 → ×2.5 at max)
-//   - organization (logistics, postal relays) — flat -15% at max
-// Combined effect at full tech: plains 1.0 → ~0.60, mountain 5.0 → ~1.50.
-// Knowledge is per-settlement, so two cities with different tech
-// portfolios have visibly different farm catchments.
+// every land tile reachable within maxCost. Uses the same continuous
+// edge-cost function as the global transport map (transport.js) so
+// units of "cost" are identical everywhere; just adds per-settlement
+// tech multipliers (localEdgeCost).
 function localTransport(world, sx, sy, maxCost, kn) {
-  const { tw, th, elev, temp, moist, riverMag, coast } = world;
-  const tool = kn?.toolmaking   || 0;
-  const cons = kn?.construction || 0;
-  const org  = kn?.organization || 0;
-  const mountainMult = 5 * (1 - 0.50 * cons);
-  const techMult     = (1 - 0.30 * tool) * (1 - 0.15 * org);
+  const { tw, th, elev } = world;
   const out = new Map();
   const seed = sy * tw + sx;
   if (elev[seed] <= 0) return out;
@@ -382,17 +367,8 @@ function localTransport(world, sx, sy, maxCost, kn) {
     for (let k = 0; k < 4; k++) {
       const ni = ns[k];
       if (ni < 0) continue;
-      const e = elev[ni];
-      if (e <= 0) continue;
-      let c = 1.0;
-      if (e > 0.35)                       c *= mountainMult;
-      else if (e > 0.20)                  c *= 2;
-      const t = temp[ni], m = moist[ni];
-      if (t < 0.15)                       c *= 3;
-      if (t > 0.70 && m < 0.20)           c *= 2.5;
-      if (riverMag && riverMag[ni] >= 2)  c *= 0.4;
-      if (coast[ni])                      c *= 0.7;
-      c *= techMult;
+      const c = localEdgeCost(world, ti, ni, kn);
+      if (c === Infinity) continue;
       const nd = d + c;
       if (nd > maxCost) continue;
       const cur = out.get(ni);

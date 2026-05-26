@@ -8,19 +8,15 @@ import { resetSettlementIds, makeSettlement } from "./settlement.js";
 
 const TILE_RES = 2;
 
-// "Intimate (~50 entities)" — locked design choice. Settlements have a
-// hard cap; the world's interest comes from a small distinct set of
-// cities, not a sprawl.
+// No settlement cap — the world fills naturally. The crystallization
+// sweep limits density via MIN_SETT_DIST spacing and the
+// fertility / area-fertility filters; saturated regions reject all
+// candidates, so spawn rate falls off automatically. Caravan/army caps
+// remain for the scaffolded systems.
 const CAP = {
-  settlements: 30,
   caravans: 40,
   armies: 20,
 };
-
-export function hasSettlementRoom(world) {
-  const alive = world.settlements.reduce((n, s) => n + (s.mode === "dead" ? 0 : 1), 0);
-  return alive < world.cap.settlements;
-}
 
 // Robust "is this tile a continental land cell" check. Excludes 1-tile
 // islets and pixels where the elevation downsample lands just above 0.
@@ -61,8 +57,10 @@ export function createWorld(w, opts = {}) {
     caravans:    [],
     armies:      [],
 
-    // Tile → settlement.id that farms it (or -1).
-    _farmedBy: new Int16Array(N).fill(-1),
+    // Tile → settlement.id that farms it (or -1). Int32 so IDs can
+    // grow without bound across long runs (each new settlement gets
+    // _nextId++; we never recycle).
+    _farmedBy: new Int32Array(N).fill(-1),
 
     cap: CAP,
 

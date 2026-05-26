@@ -37,10 +37,6 @@ const BASE_RATE                 = 0.010;  // 2× crystallisation rate (was 0.005
 
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
-  // Cap check.
-  let alive = 0;
-  for (const s of world.settlements) if (s.mode !== "dead") alive++;
-  if (alive >= world.cap.settlements) return;
 
   // Refresh transport map if stale or absent.
   if (!world.transportDist || world.step - (world._transportStep || -Infinity) > TRANSPORT_REFRESH_TICKS) {
@@ -49,11 +45,12 @@ export function maybeCrystallize(world) {
   }
 
   // Sample random tiles. For each viable one, compute crystallization
-  // probability and roll. Multiple sites can spawn in one sweep (cap-
-  // limited).
+  // probability and roll. No cap on settlement count — spacing
+  // (MIN_SETT_DIST) and the fertility filters limit density. In
+  // saturated regions every candidate fails the tooClose / area-fert
+  // checks, so spawn rate falls off naturally.
   const { N, tw, th, elev, fert, coast, riverMag, transportDist, rng } = world;
   for (let i = 0; i < CANDIDATES_PER_SWEEP; i++) {
-    if (alive >= world.cap.settlements) break;
     const ti = rng.int(N);
     if (!isContinentalLand(world, ti)) continue;
     const f = fert[ti];
@@ -106,7 +103,6 @@ export function maybeCrystallize(world) {
         people: 18 + (rng.int(8)),
         knowledge: inherited,
       });
-      alive++;
     }
   }
 }

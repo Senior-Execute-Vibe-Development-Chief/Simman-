@@ -6,17 +6,29 @@
 // independently (the historical Egypt / Indus / Yangtze / Mesoamerica
 // pattern of independent agricultural revolutions).
 //
-// Multi-source Dijkstra from every settlement. Tile costs:
-//   plains          1.0
-//   hills (e>0.20)  2.0
-//   mountains (e>0.35)  5.0
-//   cold (t<0.15)   ×3
-//   desert (t>0.70 & m<0.20)  ×2.5
-//   river (mag≥2)   ×0.4
-//   coast           ×0.7
-//   water (e≤0)     impassable
+// ── Continuous edge cost ─────────────────────────────────────────────
 //
-// Result: world.transportDist is Float32Array(N), Infinity for water.
+// Cost is computed PER EDGE (fromTi → toTi), not per tile. This lets
+// us include a slope term — climbing a steep face costs more than
+// walking a flat plateau even if both tiles have the same elevation.
+// All other components are smooth functions of the underlying terrain
+// fields (no threshold buckets), so the resulting distance map varies
+// continuously across the world instead of jumping at e=0.20 / e=0.35
+// stair-steps.
+//
+// Components (additive into base 1.0):
+//   altitude    e^1.6 × 12          smooth altitude penalty
+//   slope       |Δelev| × 25        steep climbs are punishing
+//   cold        (0.30−t)² × 22      smooth ramp below t=0.30
+//   aridity     heat × dry × 16     heat=max(0,t−0.45), dry=max(0,0.40−m)
+// Multiplicative bonuses:
+//   river       ÷ (1 + mag × 0.32) continuous in magnitude
+//   coast       × 0.80
+// Water (e ≤ 0) is impassable.
+//
+// Plain flat tile (e=0, t=0.5, m=0.5, no river/coast) costs 1.0 — same
+// as the old function — so MAX_TRANSPORT_BY_TIER still reads as "~N
+// plain tiles" of reach.
 
 const HEAP_INIT_CAP = 1024;
 
@@ -72,19 +84,66 @@ class _MinHeap {
   }
 }
 
-function tileCost(world, ti) {
+// Raw geography edge cost (no tech). Pass fromTi = toTi at a source
+// seed where there's no climb yet.
+export function baseEdgeCost(world, fromTi, toTi) {
   const { elev, temp, moist, riverMag, coast } = world;
-  const e = elev[ti];
+  const e = elev[toTi];
   if (e <= 0) return Infinity;        // water — impassable for land transport
-  let c = 1.0;
-  if (e > 0.35)                       c *= 5;
-  else if (e > 0.20)                  c *= 2;
-  const t = temp[ti], m = moist[ti];
-  if (t < 0.15)                       c *= 3;
-  if (t > 0.70 && m < 0.20)           c *= 2.5;
-  if (riverMag && riverMag[ti] >= 2)  c *= 0.4;
-  if (coast[ti])                      c *= 0.7;
+  const fromE = elev[fromTi];
+
+  // Absolute altitude. Continuous; matches the old ×2 / ×5 buckets at
+  // their crossover points but smooths the steps.
+  //   e=0.00 → +0.00   e=0.20 → +1.21   e=0.35 → +2.66
+  //   e=0.50 → +3.93   e=0.70 → +6.84   e=1.00 → +12.00
+  const altCost = Math.pow(e, 1.6) * 12;
+
+  // Slope between this tile and the one we came from. The old per-tile
+  // model could not see steepness — a flat alpine plateau cost the
+  // same as a sheer cliff face. Slope fixes that.
+  //   |Δ|=0.05 → +1.25   |Δ|=0.15 → +3.75   |Δ|=0.30 → +7.50
+  const slope = Math.abs(e - fromE);
+  const slopeCost = slope * 25;
+
+  const t = temp[toTi], m = moist[toTi];
+
+  // Cold. Smooth from t=0.30 down. (Old code triggered hard at t<0.15.)
+  //   t=0.30 → +0.00   t=0.20 → +0.22   t=0.10 → +0.88   t=0.00 → +1.98
+  let coldCost = 0;
+  if (t < 0.30) {
+    const cold = 0.30 - t;
+    coldCost = cold * cold * 22;
+  }
+
+  // Aridity. Smooth interaction of heat × dryness (old code was an
+  // AND-threshold). Worst-case hot dry desert (t=1.0, m=0): heat=0.55,
+  // dry=0.40 → +3.52.
+  const heat = Math.max(0, t - 0.45);
+  const dry  = Math.max(0, 0.40 - m);
+  const aridCost = heat * dry * 16;
+
+  let c = 1.0 + altCost + slopeCost + coldCost + aridCost;
+
+  // River bonus scales continuously with magnitude (was a binary
+  // "mag ≥ 2 → ×0.4"). mag=1 → ×0.76, mag=2 → ×0.61, mag=3 → ×0.51,
+  // mag=4 → ×0.44.
+  if (riverMag && riverMag[toTi] > 0) c /= (1 + riverMag[toTi] * 0.32);
+  if (coast[toTi])                    c *= 0.80;
   return c;
+}
+
+// Per-settlement edge cost = base × tech multipliers. Toolmaking
+// (wagons / harness / draft animals) and organization (postal relays,
+// logistics) give flat speedups; construction (roads, bridges,
+// switchbacks) reduces cost more — it makes terrain itself less of an
+// obstacle. At full tech: ×(0.70 · 0.60 · 0.85) ≈ ×0.36.
+export function localEdgeCost(world, fromTi, toTi, kn) {
+  const c = baseEdgeCost(world, fromTi, toTi);
+  if (c === Infinity || !kn) return c;
+  const tool = kn.toolmaking   || 0;
+  const cons = kn.construction || 0;
+  const org  = kn.organization || 0;
+  return c * (1 - 0.30 * tool) * (1 - 0.40 * cons) * (1 - 0.15 * org);
 }
 
 export function computeTransport(world) {
@@ -101,8 +160,8 @@ export function computeTransport(world) {
       heap.push(ti, 0);
     }
   }
-  // Dijkstra. Edge cost is the cost of stepping INTO the neighbour
-  // (i.e., the neighbour's terrain).
+  // Dijkstra. Edge cost is the cost of stepping FROM ti INTO the
+  // neighbour ni — depends on neighbour terrain AND the slope.
   while (heap.n > 0) {
     const { ti, d } = heap.popMin();
     if (d > dist[ti]) continue;       // stale
@@ -117,7 +176,7 @@ export function computeTransport(world) {
     for (let k = 0; k < 4; k++) {
       const ni = ns[k];
       if (ni < 0) continue;
-      const c = tileCost(world, ni);
+      const c = baseEdgeCost(world, ti, ni);
       if (c === Infinity) continue;
       const nd = d + c;
       if (nd < dist[ni]) {
