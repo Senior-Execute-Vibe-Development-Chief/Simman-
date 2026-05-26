@@ -2349,6 +2349,11 @@ if(bonus>0.02)tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}
 
 // 2d: Volcanic soil bonus — near plate boundaries in tectonic mode.
 // Andisols from volcanic ash are mineral-rich, excellent for agriculture.
+// bDist (plate-boundary distance) is also exposed to Pass 3's tCrop
+// so the tropical penalty can spare young volcanic / orogenic tropical
+// regions (Java, Mekong, Ganges) that escape Amazon-style lateritic
+// soil leaching.
+let bDist=null;
 if(w.pixPlate){const W=w.width,H=w.height;
 // Build a plate-boundary distance map at tile resolution
 const plateBound=new Uint8Array(tw*th);
@@ -2358,12 +2363,15 @@ const myP=w.pixPlate[py*W+px];let isBoundary=false;
 for(const[dx,dy]of DIRS){const nx2=Math.min(W-1,Math.max(0,px+dx*RES)),ny2=Math.min(H-1,Math.max(0,py+dy*RES));
 if(w.pixPlate[ny2*W+nx2]!==myP){isBoundary=true;break;}}
 if(isBoundary)plateBound[ty*tw+tx]=1;}
-// Expand boundary influence: BFS to get distance from plate boundaries
-const bDist=new Uint8Array(tw*th);bDist.fill(255);
+// Expand boundary influence: BFS to get distance from plate boundaries.
+// Radius 15 so tCrop can see "near-orogenic" regions far enough inland
+// to cover Ganges plain / Indochina interior; volcanic bonus still
+// gates itself at <7 so its behavior is unchanged.
+bDist=new Uint8Array(tw*th);bDist.fill(255);
 const bdQ=[];
 for(let i=0;i<tw*th;i++)if(plateBound[i]&&tElev[i]>0){bDist[i]=0;bdQ.push(i);}
 for(let qi=0;qi<bdQ.length;qi++){const ci=bdQ[qi],cd=bDist[ci],cx=ci%tw,cy=(ci-cx)/tw;
-if(cd>=6)continue;// max 6-tile influence radius (~12 pixels, ~100km at 1920px=40000km)
+if(cd>=15)continue;// max 15-tile influence radius
 for(const[dx,dy]of DIRS){const nx=(cx+dx+tw)%tw,ny=cy+dy;if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;if(bDist[ni]<=cd+1||tElev[ni]<=0)continue;
 bDist[ni]=cd+1;bdQ.push(ni);}}
@@ -2434,8 +2442,23 @@ else{
 const tBell=Math.exp(-((t-0.55)*(t-0.55))/(2*0.35*0.35));
 const mBell=Math.exp(-((m-0.45)*(m-0.45))/(2*0.28*0.28));
 crop=tBell*mBell;
+// Tropical lateritic-soil penalty. The Amazon/Congo paradox: hot-wet
+// land on ancient cratonic interior leaches to laterite and is
+// agriculturally poor. But hot-wet land on YOUNG soil (volcanic
+// island arcs, orogenic foreland, river alluvium) is the most
+// productive ground on Earth — Java, Mekong, Bangladesh, Ganges.
+// So the penalty is discounted near plate boundaries (volcanic ash
+// + orogenic uplift), coasts (alluvial coastal plains, island
+// arcs), and major rivers (delta / floodplain).
 if(t>0.75&&m>0.65){
-const trop=Math.min(1,(t-0.75)/0.20)*Math.min(1,(m-0.65)/0.20);
+let trop=Math.min(1,(t-0.75)/0.20)*Math.min(1,(m-0.65)/0.20);
+let youngSoil=0;
+if(bDist&&bDist[ti]<12)youngSoil+=(1-bDist[ti]/12)*0.85;
+if(tCoast[ti])youngSoil+=0.35;
+if(rivers&&rivers.riverMag){
+const rm=rivers.riverMag[ti];
+if(rm>=3)youngSoil+=0.50;else if(rm>=2)youngSoil+=0.20;}
+trop*=Math.max(0,1-Math.min(1,youngSoil));
 crop*=1-0.65*trop;}
 if(e>0.30)crop*=Math.max(0,1-(e-0.30)*2.0);}
 tCrop[ti]=Math.max(0,Math.min(1,crop));
