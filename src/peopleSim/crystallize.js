@@ -93,11 +93,11 @@ export function maybeCrystallize(world) {
     }
     if (tooClose) continue;
 
-    // Site-quality score. Floor=0.15 so even barren land has *some*
-    // probability (rare hamlets in desert/tundra); fertile sites
-    // still dominate by an order of magnitude after the f×2 and area
-    // terms. Range roughly 0.15 (worst) → ~5 (best lush river valley).
-    let quality = 0.15 + f * 2 + Math.min(2.0, areaFert * 0.1);
+    // Site-quality score. Floor=0.45 lifts low-fert spawn rate so
+    // marginal terrain is visibly populated rather than empty;
+    // fertile river valleys still dominate by 5–6× after the f×2 and
+    // area terms. Range roughly 0.45 (worst) → ~5.5 (best lush river).
+    let quality = 0.45 + f * 1.5 + Math.min(2.0, areaFert * 0.1);
     if (hasRiver) quality += 1.0;
     if (hasCoast) quality += 0.4;
 

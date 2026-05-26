@@ -27,9 +27,24 @@ const SETT_GROWTH = 0.0018;
 // Farmland model:
 //   1 painted tile feeds PEOPLE_PER_FARM_TILE people on average.
 //   Yield is calibrated so supply / demand ≈ 1.31 at K (30 % margin).
-const PEOPLE_PER_FARM_TILE = 14;
-const FARM_YIELD_PER_FERT  = 0.055;
-const FORAGE_RATE          = 0.012;
+// Forage model:
+//   K also includes a forage-area contribution at 0.8× weight, so a
+//   village in a modest semi-arid neighbourhood can carry 40–70
+//   people on hunting/gathering alone (no plantable farmland). This
+//   is what lets steppe/desert-edge/tundra hamlets be a visible
+//   feature instead of empty floor-20 dots.
+const PEOPLE_PER_FARM_TILE   = 14;
+const PEOPLE_PER_FORAGE_TILE = 7;          // forage-K rate (per fert-unit in 5×5)
+const FORAGE_K_WEIGHT        = 1.0;        // forage contribution to total K
+const K_FLOOR                = 35;         // hamlet visible at zoom — pop ~35 even in worst land
+const FARM_YIELD_PER_FERT    = 0.055;
+// Forage rate calibrated so a forage-only village in a modest 5×5
+// neighbourhood (avg fert ~0.4) reaches equilibrium pop ~70. Bumped
+// from 0.012 so K from forageArea isn't bottlenecked by food supply
+// — without this, K could be 80 but demand starved pop down to ~25.
+// Farming (yield 0.055/fert) is still ~3× more efficient per
+// fert-unit, so fertile valleys still dominate by orders of magnitude.
+const FORAGE_RATE            = 0.018;
 // Farm placement is bounded by transport COST, not Euclidean distance.
 // Reach is computed by a small Dijkstra from the settlement using the
 // same terrain weights as transport.js — plains 1, hills ×2, mountains
@@ -162,6 +177,7 @@ function updateFood(world, s) {
     }
   }
   const forage = FORAGE_RATE * forageArea * (1 + (s.knowledge.foraging || 0.3) * 0.5);
+  s._forageArea = forageArea;            // reused by updatePopulation for K
 
   let farmYield = 0;
   for (const fti of s.farmland) farmYield += world.fert[fti] || 0;
@@ -180,7 +196,14 @@ function updateFood(world, s) {
 function updatePopulation(world, s) {
   let farmFert = 0;
   for (const fti of s.farmland) farmFert += world.fert[fti] || 0;
-  const K = Math.max(20, farmFert * PEOPLE_PER_FARM_TILE * (1 + (s.knowledge.agriculture || 0) * 1.2));
+  const farmK = farmFert * PEOPLE_PER_FARM_TILE * (1 + (s.knowledge.agriculture || 0) * 1.2);
+  // Forage area was computed in updateFood (5×5 fertility-sum around
+  // the home tile). Counts toward K at FORAGE_K_WEIGHT so marginal
+  // forage-only villages can actually grow past the floor — pastoral
+  // hamlets, oasis villages, tundra encampments.
+  const forageK = (s._forageArea || 0) * PEOPLE_PER_FORAGE_TILE
+                * (1 + (s.knowledge.foraging || 0.3) * 0.5);
+  const K = Math.max(K_FLOOR, farmK + forageK * FORAGE_K_WEIGHT);
   s._k = K;
 
   if (s.food <= 0.01 && s.people > 1) {
