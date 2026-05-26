@@ -24,23 +24,27 @@ import { computeTransport } from "./transport.js";
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
 const TRANSPORT_REFRESH_TICKS   = 150;    // refresh transport more often (was 200)
 const CANDIDATES_PER_SWEEP      = 120;    // wider net per sweep (was 80)
-const MIN_FERT                  = 0.30;
-const MIN_AREA_FERT             = 5.0;    // 5×5 box fert-sum (relaxed from 6.0 — too strict)
-const LUSH_FERT                 = 0.55;
+
+// Permissive fertility gates. Earth had hamlets in desert, tundra,
+// steppe, jungle — they just stayed small because the land couldn't
+// carry more. The hard thresholds used to ban any settlement below
+// MIN_FERT=0.30 or in non-watered land below LUSH_FERT=0.55, which
+// emptied vast realistic regions. Now: any land can host a
+// settlement, but the quality-weighted probability strongly favours
+// good sites — a fertile river valley spawns a city in centuries,
+// a desert spot spawns a tiny hamlet over millennia. Carrying
+// capacity (K ∝ farmland × fert) keeps marginal hamlets small.
+const MIN_FERT                  = 0.03;   // basically "is there any soil?"
+const MIN_AREA_FERT             = 1.0;    // 5×5 box must have *some* support
 const MIN_SETT_DIST             = 18;
 const MIN_SETT_DIST_SQ          = MIN_SETT_DIST * MIN_SETT_DIST;
 const KNOWLEDGE_DECAY_SCALE     = 30;
-const INDEPENDENT_RATE          = 0.060;  // independent invention rate doubled — distant
-                                          // continents get a first settlement sooner
+const INDEPENDENT_RATE          = 0.060;
 const NEAR_RATE                 = 1.50;
-const BASE_RATE                 = 0.010;  // 2× crystallisation rate (was 0.005)
+const BASE_RATE                 = 0.010;
 
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
-  // Cap check.
-  let alive = 0;
-  for (const s of world.settlements) if (s.mode !== "dead") alive++;
-  if (alive >= world.cap.settlements) return;
 
   // Refresh transport map if stale or absent.
   if (!world.transportDist || world.step - (world._transportStep || -Infinity) > TRANSPORT_REFRESH_TICKS) {
@@ -49,23 +53,24 @@ export function maybeCrystallize(world) {
   }
 
   // Sample random tiles. For each viable one, compute crystallization
-  // probability and roll. Multiple sites can spawn in one sweep (cap-
-  // limited).
+  // probability and roll. No cap on settlement count — spacing
+  // (MIN_SETT_DIST) and the fertility filters limit density. In
+  // saturated regions every candidate fails the tooClose / area-fert
+  // checks, so spawn rate falls off naturally.
   const { N, tw, th, elev, fert, coast, riverMag, transportDist, rng } = world;
   for (let i = 0; i < CANDIDATES_PER_SWEEP; i++) {
-    if (alive >= world.cap.settlements) break;
     const ti = rng.int(N);
     if (!isContinentalLand(world, ti)) continue;
     const f = fert[ti];
     if (f < MIN_FERT) continue;
     const hasRiver = riverMag && riverMag[ti] >= 2;
     const hasCoast = !!coast[ti];
-    if (!hasRiver && !hasCoast && f < LUSH_FERT) continue;
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
-    // Area-fertility check: the SURROUNDING land must support a real
-    // settlement, not just the one point tile. Sums fert in a 5×5 box;
-    // rejects "tiny fertile islet surrounded by waste" sites that
-    // would crystallise into stillborn settlements.
+    // Area-fertility: sum fert in a 5×5 box around the candidate.
+    // Used both as a low-floor sanity check (tile must have *some*
+    // surrounding support) and as a continuous quality input below,
+    // so marginal-but-not-hopeless regions spawn small hamlets while
+    // lush regions spawn dense networks.
     let areaFert = 0;
     for (let dy = -2; dy <= 2; dy++) {
       const ny = ty + dy;
@@ -88,8 +93,11 @@ export function maybeCrystallize(world) {
     }
     if (tooClose) continue;
 
-    // Site-quality score 0..3-ish.
-    let quality = f * 2;
+    // Site-quality score. Floor=0.45 lifts low-fert spawn rate so
+    // marginal terrain is visibly populated rather than empty;
+    // fertile river valleys still dominate by 5–6× after the f×2 and
+    // area terms. Range roughly 0.45 (worst) → ~5.5 (best lush river).
+    let quality = 0.45 + f * 1.5 + Math.min(2.0, areaFert * 0.1);
     if (hasRiver) quality += 1.0;
     if (hasCoast) quality += 0.4;
 
@@ -106,7 +114,6 @@ export function maybeCrystallize(world) {
         people: 18 + (rng.int(8)),
         knowledge: inherited,
       });
-      alive++;
     }
   }
 }

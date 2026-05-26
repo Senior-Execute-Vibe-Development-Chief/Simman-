@@ -1,19 +1,16 @@
 // Settlement: a permanent community at a fixed location. Single icon
-// (tier-scaled) with a patch of farmland painted on the most fertile
+// (pop-scaled) with a patch of farmland painted on the most fertile
 // tiles within reach. No bands, no individual buildings — the
 // settlement is the atomic visible unit.
 //
-// New settlements come from two sources:
-//   1. The cradle village, seeded at world init at the cradle-of-
-//      humankind site (handled in state.js).
-//   2. Daughter colonies founded by an existing settlement when it
-//      hits its carrying capacity. The parent surveys its discovery
-//      range for a viable site, spawns a new village there, and
-//      transfers ~30 % of its population to the new community.
-//
-// Knowledge spreads via inheritance (daughters get ~80 % of parent's
-// knowledge) and slow neighbour diffusion. Over many generations the
-// neolithic package spreads from the cradle outward.
+// New settlements come from the crystallization sweep (crystallize.js),
+// which scatters them across viable sites and lets them inherit
+// knowledge from their nearest neighbour weighted by transport
+// distance. There is no settlement cap — the world fills with
+// settlements wherever there is room (MIN_SETT_DIST spacing) and
+// enough fertile land to support them.
+
+import { localEdgeCost } from "./transport.js";
 
 let _nextId = 1;
 export function resetSettlementIds() { _nextId = 1; }
@@ -30,9 +27,24 @@ const SETT_GROWTH = 0.0018;
 // Farmland model:
 //   1 painted tile feeds PEOPLE_PER_FARM_TILE people on average.
 //   Yield is calibrated so supply / demand ≈ 1.31 at K (30 % margin).
-const PEOPLE_PER_FARM_TILE = 14;
-const FARM_YIELD_PER_FERT  = 0.055;
-const FORAGE_RATE          = 0.012;
+// Forage model:
+//   K also includes a forage-area contribution at 0.8× weight, so a
+//   village in a modest semi-arid neighbourhood can carry 40–70
+//   people on hunting/gathering alone (no plantable farmland). This
+//   is what lets steppe/desert-edge/tundra hamlets be a visible
+//   feature instead of empty floor-20 dots.
+const PEOPLE_PER_FARM_TILE   = 14;
+const PEOPLE_PER_FORAGE_TILE = 7;          // forage-K rate (per fert-unit in 5×5)
+const FORAGE_K_WEIGHT        = 1.0;        // forage contribution to total K
+const K_FLOOR                = 35;         // hamlet visible at zoom — pop ~35 even in worst land
+const FARM_YIELD_PER_FERT    = 0.055;
+// Forage rate calibrated so a forage-only village in a modest 5×5
+// neighbourhood (avg fert ~0.4) reaches equilibrium pop ~70. Bumped
+// from 0.012 so K from forageArea isn't bottlenecked by food supply
+// — without this, K could be 80 but demand starved pop down to ~25.
+// Farming (yield 0.055/fert) is still ~3× more efficient per
+// fert-unit, so fertile valleys still dominate by orders of magnitude.
+const FORAGE_RATE            = 0.018;
 // Farm placement is bounded by transport COST, not Euclidean distance.
 // Reach is computed by a small Dijkstra from the settlement using the
 // same terrain weights as transport.js — plains 1, hills ×2, mountains
@@ -134,10 +146,38 @@ function updateKnowledge(world, s) {
 function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 
 // ── Food ───────────────────────────────────────────────────────────
+//
+// Two supply sources: foraging (passive, over a neighbourhood) and
+// farming (active, over the farmland set).
+//
+// Foraging used to be home-tile-only, which gave near-zero supply in
+// any settlement not sitting on a lush square — completely unrealistic
+// for hunter-gatherer baseline survival, and meant marginal-land
+// hamlets always starved. Now foraging samples a 5×5 box (the
+// neighbourhood the village can realistically walk), so a small
+// village in semi-arid land can sustain ~20 people on hunting and
+// gathering even with zero farmland.
+//
+// Farming still drives carrying capacity (K is set from farmland in
+// updatePopulation), so the gain from foraging is *additive supply*,
+// not *higher K*. A village stuck on forage alone stays at K=20 and
+// just doesn't starve.
 function updateFood(world, s) {
-  const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
-  const homeFert = world.fert[ti] || 0.05;
-  const forage = FORAGE_RATE * homeFert * (1 + (s.knowledge.foraging || 0.3) * 0.5);
+  const tw = world.tw, th = world.th;
+  const sx = s.pos.x | 0, sy = s.pos.y | 0;
+  // 5×5 forage area, fertility-summed. Includes the home tile.
+  let forageArea = 0;
+  for (let dy = -2; dy <= 2; dy++) {
+    const ny = sy + dy;
+    if (ny < 0 || ny >= th) continue;
+    for (let dx = -2; dx <= 2; dx++) {
+      const nx = ((sx + dx) % tw + tw) % tw;
+      const ni = ny * tw + nx;
+      forageArea += world.fert[ni] || 0;
+    }
+  }
+  const forage = FORAGE_RATE * forageArea * (1 + (s.knowledge.foraging || 0.3) * 0.5);
+  s._forageArea = forageArea;            // reused by updatePopulation for K
 
   let farmYield = 0;
   for (const fti of s.farmland) farmYield += world.fert[fti] || 0;
@@ -156,7 +196,14 @@ function updateFood(world, s) {
 function updatePopulation(world, s) {
   let farmFert = 0;
   for (const fti of s.farmland) farmFert += world.fert[fti] || 0;
-  const K = Math.max(20, farmFert * PEOPLE_PER_FARM_TILE * (1 + (s.knowledge.agriculture || 0) * 1.2));
+  const farmK = farmFert * PEOPLE_PER_FARM_TILE * (1 + (s.knowledge.agriculture || 0) * 1.2);
+  // Forage area was computed in updateFood (5×5 fertility-sum around
+  // the home tile). Counts toward K at FORAGE_K_WEIGHT so marginal
+  // forage-only villages can actually grow past the floor — pastoral
+  // hamlets, oasis villages, tundra encampments.
+  const forageK = (s._forageArea || 0) * PEOPLE_PER_FORAGE_TILE
+                * (1 + (s.knowledge.foraging || 0.3) * 0.5);
+  const K = Math.max(K_FLOOR, farmK + forageK * FORAGE_K_WEIGHT);
   s._k = K;
 
   if (s.food <= 0.01 && s.people > 1) {
@@ -170,15 +217,20 @@ function updatePopulation(world, s) {
     s.history.push({ step: world.step, type: "abandoned" });
     return;
   }
-  // Stillborn check: a settlement that crystallised in a fully-claimed
-  // area has 0 or 1 farmland tiles and will linger at pop ~3 forever
-  // (forage from one tile barely covers 3 people's demand). Kill it
-  // outright after 800 ticks of zero-farmland — its land would be
-  // wasted on a ghost village.
-  if (s.farmland.size < 2 && (world.step - s.foundedStep) > 800) {
-    s.mode = "dead";
-    releaseFarmland(world, s);
-    s.history.push({ step: world.step, type: "stillborn-no-farmland" });
+  // Withering: settlement has been below 8 people for too long.
+  // Catches both stillborn farmland-less villages (food too scarce
+  // even with 5×5 forage to grow) and post-famine zombies. Doesn't
+  // touch small-but-stable forage hamlets in semi-arid land — those
+  // hold ~10–15 people and never trip the timer.
+  if (s.people < 8) {
+    if (s._witherSince === undefined) s._witherSince = world.step;
+    if (world.step - s._witherSince > 2000) {
+      s.mode = "dead";
+      releaseFarmland(world, s);
+      s.history.push({ step: world.step, type: "withered" });
+    }
+  } else {
+    s._witherSince = undefined;
   }
 }
 
@@ -346,24 +398,12 @@ function releaseFarmland(world, s) {
 }
 
 // Bounded Dijkstra from (sx, sy). Returns Map<ti, accumulated cost> for
-// every land tile reachable within maxCost. Tile weights match
-// transport.js's terrain part exactly so the unit of "cost" is the
-// same everywhere — but here we ALSO scale by the settlement's
-// transport knowledge:
-//   - toolmaking (wagons, harness, draft animals) — flat -30% at max
-//   - construction (bridges, switchbacks, paved roads) — halves the
-//     mountain penalty (×5 → ×2.5 at max)
-//   - organization (logistics, postal relays) — flat -15% at max
-// Combined effect at full tech: plains 1.0 → ~0.60, mountain 5.0 → ~1.50.
-// Knowledge is per-settlement, so two cities with different tech
-// portfolios have visibly different farm catchments.
+// every land tile reachable within maxCost. Uses the same continuous
+// edge-cost function as the global transport map (transport.js) so
+// units of "cost" are identical everywhere; just adds per-settlement
+// tech multipliers (localEdgeCost).
 function localTransport(world, sx, sy, maxCost, kn) {
-  const { tw, th, elev, temp, moist, riverMag, coast } = world;
-  const tool = kn?.toolmaking   || 0;
-  const cons = kn?.construction || 0;
-  const org  = kn?.organization || 0;
-  const mountainMult = 5 * (1 - 0.50 * cons);
-  const techMult     = (1 - 0.30 * tool) * (1 - 0.15 * org);
+  const { tw, th, elev } = world;
   const out = new Map();
   const seed = sy * tw + sx;
   if (elev[seed] <= 0) return out;
@@ -382,17 +422,8 @@ function localTransport(world, sx, sy, maxCost, kn) {
     for (let k = 0; k < 4; k++) {
       const ni = ns[k];
       if (ni < 0) continue;
-      const e = elev[ni];
-      if (e <= 0) continue;
-      let c = 1.0;
-      if (e > 0.35)                       c *= mountainMult;
-      else if (e > 0.20)                  c *= 2;
-      const t = temp[ni], m = moist[ni];
-      if (t < 0.15)                       c *= 3;
-      if (t > 0.70 && m < 0.20)           c *= 2.5;
-      if (riverMag && riverMag[ni] >= 2)  c *= 0.4;
-      if (coast[ni])                      c *= 0.7;
-      c *= techMult;
+      const c = localEdgeCost(world, ti, ni, kn);
+      if (c === Infinity) continue;
       const nd = d + c;
       if (nd > maxCost) continue;
       const cur = out.get(ni);
