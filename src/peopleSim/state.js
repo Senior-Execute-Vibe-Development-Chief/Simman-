@@ -72,13 +72,13 @@ export function createWorld(w, opts = {}) {
     debug:  { tickMs: 0 },
   };
 
-  initTerrain(world, w);
+  initTerrain(world, w, opts.tCrop);
   initRiverMag(world, w);
   seedCradleVillage(world);
   return world;
 }
 
-function initTerrain(world, w) {
+function initTerrain(world, w, tCrop) {
   const { tw, th, elev, temp, moist, fert, coast, diff } = world;
   for (let ty = 0; ty < th; ty++) {
     for (let tx = 0; tx < tw; tx++) {
@@ -94,7 +94,10 @@ function initTerrain(world, w) {
       if (t > 0.5 && m < 0.2)    d = Math.max(d, Math.min(0.85, (0.2 - m) * 3 * (t - 0.3)));
       if (t < 0.2)               d = Math.max(d, Math.min(0.9, (0.2 - t) * 4));
       diff[ti] = d;
-      fert[ti] = bellFert(t, m, e);
+      // Use the same crop-suitability array the overlay renders, so
+      // where you SEE green is where settlements actually thrive. Falls
+      // back to the local bellFert formula if tCrop wasn't supplied.
+      fert[ti] = tCrop ? tCrop[wi] : bellFert(t, m, e);
     }
   }
 }

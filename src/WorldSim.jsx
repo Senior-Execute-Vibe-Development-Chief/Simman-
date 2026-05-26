@@ -4320,8 +4320,10 @@ terRef.current=t;
 if(t.rivers)w.rivers=t.rivers;
 if(t.deposits)w.deposits=t.deposits;
 // peopleSim: entity-based simulator that replaces the legacy tribe model.
-// Bands wander now; settling, trade, war land in subsequent phases.
-peopleRef.current=initPeopleSim(w,{seed:w.seed});
+// Pass t.tCrop so the sim's fertility uses the SAME formula as the
+// Crop overlay (young-soil discount, tropical penalty, wide bell).
+// Falls back to the local bellFert if tCrop is absent.
+peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES});
 setPsStats(peopleSimStats(peopleRef.current));
 setCoverage(0);setTribeCount(t.tribeCount||0);setPlaying(false);playRef.current=false;
 terrainCache.current=null;atlasCache.current=null;imgRef.current=null;},[]);
