@@ -131,10 +131,37 @@ function updateKnowledge(world, s) {
 function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 
 // ── Food ───────────────────────────────────────────────────────────
+//
+// Two supply sources: foraging (passive, over a neighbourhood) and
+// farming (active, over the farmland set).
+//
+// Foraging used to be home-tile-only, which gave near-zero supply in
+// any settlement not sitting on a lush square — completely unrealistic
+// for hunter-gatherer baseline survival, and meant marginal-land
+// hamlets always starved. Now foraging samples a 5×5 box (the
+// neighbourhood the village can realistically walk), so a small
+// village in semi-arid land can sustain ~20 people on hunting and
+// gathering even with zero farmland.
+//
+// Farming still drives carrying capacity (K is set from farmland in
+// updatePopulation), so the gain from foraging is *additive supply*,
+// not *higher K*. A village stuck on forage alone stays at K=20 and
+// just doesn't starve.
 function updateFood(world, s) {
-  const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
-  const homeFert = world.fert[ti] || 0.05;
-  const forage = FORAGE_RATE * homeFert * (1 + (s.knowledge.foraging || 0.3) * 0.5);
+  const tw = world.tw, th = world.th;
+  const sx = s.pos.x | 0, sy = s.pos.y | 0;
+  // 5×5 forage area, fertility-summed. Includes the home tile.
+  let forageArea = 0;
+  for (let dy = -2; dy <= 2; dy++) {
+    const ny = sy + dy;
+    if (ny < 0 || ny >= th) continue;
+    for (let dx = -2; dx <= 2; dx++) {
+      const nx = ((sx + dx) % tw + tw) % tw;
+      const ni = ny * tw + nx;
+      forageArea += world.fert[ni] || 0;
+    }
+  }
+  const forage = FORAGE_RATE * forageArea * (1 + (s.knowledge.foraging || 0.3) * 0.5);
 
   let farmYield = 0;
   for (const fti of s.farmland) farmYield += world.fert[fti] || 0;
@@ -167,15 +194,20 @@ function updatePopulation(world, s) {
     s.history.push({ step: world.step, type: "abandoned" });
     return;
   }
-  // Stillborn check: a settlement that crystallised in a fully-claimed
-  // area has 0 or 1 farmland tiles and will linger at pop ~3 forever
-  // (forage from one tile barely covers 3 people's demand). Kill it
-  // outright after 800 ticks of zero-farmland — its land would be
-  // wasted on a ghost village.
-  if (s.farmland.size < 2 && (world.step - s.foundedStep) > 800) {
-    s.mode = "dead";
-    releaseFarmland(world, s);
-    s.history.push({ step: world.step, type: "stillborn-no-farmland" });
+  // Withering: settlement has been below 8 people for too long.
+  // Catches both stillborn farmland-less villages (food too scarce
+  // even with 5×5 forage to grow) and post-famine zombies. Doesn't
+  // touch small-but-stable forage hamlets in semi-arid land — those
+  // hold ~10–15 people and never trip the timer.
+  if (s.people < 8) {
+    if (s._witherSince === undefined) s._witherSince = world.step;
+    if (world.step - s._witherSince > 2000) {
+      s.mode = "dead";
+      releaseFarmland(world, s);
+      s.history.push({ step: world.step, type: "withered" });
+    }
+  } else {
+    s._witherSince = undefined;
   }
 }
 
