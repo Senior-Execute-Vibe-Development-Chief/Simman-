@@ -34,12 +34,23 @@ const PEOPLE_PER_FARM_TILE = 14;
 const FARM_YIELD_PER_FERT  = 0.055;
 const FORAGE_RATE          = 0.012;
 const FARM_RANGE_BY_TIER   = [6, 10, 18, 25];     // max flood-fill radius from settlement
-// Farmland flood-fill still uses a max range per tier — without it,
-// the cradle eats whole continents (45k-pop monstrosities). The range
-// is bigger than the old fixed box though, and the flood fill chooses
-// the BEST tiles within that range rather than just everything in a
-// square. Result: organic shape (rivers, coasts, valleys) AND a hard
-// ceiling on how much land a single settlement can claim.
+// Minimum soil fertility for a tile to be plantable. Below this, the
+// land yields too little to be worth cultivating — it's left wild,
+// regardless of pop pressure. This is what stops every settlement
+// from filling its full range cap: in mediocre terrain, only a few
+// tiles clear the bar, the soil-yield → carrying-capacity → tile-
+// target feedback loop settles at a small footprint, and the
+// settlement stays a hamlet. In a lush basin most tiles clear the bar
+// and the settlement grows huge. Result: terrain-driven size variation
+// instead of every settlement converging on the same disc.
+//
+// Threshold scales with agriculture knowledge — heavy plough, drainage,
+// fertiliser, etc. progressively open up marginal soils:
+//   ag 0.00  → floor 0.60  (foraging only — must be very lush)
+//   ag 0.50  → floor 0.45  (neolithic baseline)
+//   ag 1.00  → floor 0.30  (industrial — most land plantable)
+const MIN_PLANTABLE_FERT_BASE  = 0.60;
+const MIN_PLANTABLE_FERT_SLOPE = 0.30;
 const FARMLAND_REFRESH_INTERVAL = 32;
 
 export function makeSettlement(world, x, y, opts = {}) {
@@ -173,6 +184,8 @@ function refreshFarmland(world, s) {
   // past its founding pop.
   const target = Math.max(4, Math.ceil(s.people / PEOPLE_PER_FARM_TILE));
   const { tw, th, elev, fert, coast, riverMag, _farmedBy } = world;
+  // Plantability floor for this settlement, given its current ag tech.
+  const minFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
 
   // ── Shrink: drop least-fertile tiles ──
   if (s.farmland.size > target) {
@@ -221,7 +234,7 @@ function refreshFarmland(world, s) {
       if (ddx * ddx + ddy * ddy > maxRangeSq) return;
       const owner = _farmedBy[ti];
       if (owner !== -1 && owner !== s.id) return;
-      if ((fert[ti] || 0) < 0.10) return;
+      if ((fert[ti] || 0) < minFert) return;
       heap.push(ti, scoreTile(ti));
     };
 
@@ -242,7 +255,7 @@ function refreshFarmland(world, s) {
     if (s.farmland.size === 0) {
       const home = (s.pos.y | 0) * tw + (s.pos.x | 0);
       visited.add(home);
-      if (elev[home] > 0 && (fert[home] || 0) >= 0.10 &&
+      if (elev[home] > 0 && (fert[home] || 0) >= minFert &&
           (_farmedBy[home] === -1 || _farmedBy[home] === s.id)) {
         s.farmland.add(home);
         _farmedBy[home] = s.id;
