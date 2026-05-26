@@ -788,6 +788,24 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 
   if (!isLandArr[i]) {
     e = Math.min(e, -0.001);
+    // ── Layered bathymetric noise ──
+    // Without this, the ocean was a smooth bilinear interpolation of
+    // stamp values — the Depth view showed it as a uniform gradient.
+    // Real bathymetry has continental shelves, abyssal plains broken
+    // by seamount fields, and mid-ocean ridges. Three fBm octaves for
+    // general roughness + a ridged component for linear ridge
+    // features. Amplitude scales with depth so continental shelves
+    // (shallow, near-coast) stay smooth while abyssal plains (deep)
+    // get the full texture.
+    const depthMag  = Math.min(1, -e * 6);
+    const oceanBroad = fbm(nx *  4 +  800, ny *  4 +  800, 4, 2, 0.50);
+    const oceanMid   = fbm(nx * 15 +  900, ny * 15 +  900, 3, 2, 0.50);
+    const oceanFine  = fbm(nx * 45 + 1000, ny * 45 + 1000, 2, 2, 0.40);
+    const oceanRidge = ridged(nx * 7 + 1100, ny * 7 + 1100, 3, 2.0, 2.0, 1.0);
+    e += (oceanBroad * 0.035 + oceanMid * 0.015 + oceanFine * 0.005
+        + oceanRidge * 0.020)
+        * (0.3 + depthMag * 0.7);
+    e = Math.min(e, -0.0008);
   }
 
   if (e > 0) {
@@ -898,6 +916,21 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       e += microRidge * 0.008 * Math.min(1, (e - 0.15) * 5);
     }
   }
+
+  // ── Universal Perlin layer (land + ocean) ──
+  // Final fBm pass applied to every tile so the Depth view shows
+  // continuous terrain variation everywhere, not just at the
+  // type-specific feature lines added by the land/ocean paths above.
+  // Three octaves stacked: broad rolling variation, mid-scale
+  // texture, fine roughness. Re-clamp to preserve land/ocean
+  // identity so the noise can't accidentally raise sea floor above
+  // sea level or sink low land below it.
+  const uBroad = fbm(nx *  6 + 2000, ny *  6 + 2000, 4, 2, 0.50);
+  const uMid   = fbm(nx * 22 + 2100, ny * 22 + 2100, 3, 2, 0.50);
+  const uFine  = fbm(nx * 70 + 2200, ny * 70 + 2200, 2, 2, 0.40);
+  e += uBroad * 0.028 + uMid * 0.012 + uFine * 0.005;
+  if (isLandArr[i]) e = Math.max(0.0010, Math.min(1.0, e));
+  else              e = Math.min(-0.0010, e);
 
   elevation[i] = e;
 }
