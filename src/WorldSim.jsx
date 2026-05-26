@@ -2432,7 +2432,7 @@ let crop;
 if(e>0.45)crop=0.02;
 else{
 const tBell=Math.exp(-((t-0.55)*(t-0.55))/(2*0.35*0.35));
-const mBell=Math.exp(-((m-0.45)*(m-0.45))/(2*0.27*0.27));
+const mBell=Math.exp(-((m-0.45)*(m-0.45))/(2*0.28*0.28));
 crop=tBell*mBell;
 if(t>0.75&&m>0.65){
 const trop=Math.min(1,(t-0.75)/0.20)*Math.min(1,(m-0.65)/0.20);
