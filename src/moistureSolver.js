@@ -58,7 +58,7 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       // Latitude→temperature must match the calibrated curve used
       // in tectonicGen / WorldSim — see tools/probe_temperature.mjs.
       temp[mi] = Math.max(0, Math.min(1,
-        0.87 - Math.pow(lat, 1.5) * 0.42 - lat*lat*lat * 0.10
+        0.92 - Math.pow(lat, 1.5) * 0.50 - Math.pow(lat, 6) * 0.80
         + Math.exp(-((lat - 0.20) * (lat - 0.20)) / (2 * 0.08 * 0.08)) * 0.06
         - e * 0.65));
     }

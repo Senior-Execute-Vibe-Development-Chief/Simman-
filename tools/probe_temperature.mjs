@@ -12,19 +12,28 @@
 //
 // Run: node tools/probe_temperature.mjs
 
-// Real-world zonal annual-mean surface air temperatures (NASA GISS-ish):
+// Targets calibrated for visualization: tropical bands should READ as
+// hot (orange-red), polar bands cold enough to trigger the ICE biome
+// (which fires at t<0.08). Realistic enough for crops + transport, but
+// expanded at both ends so the map has range. Reference points:
+//   • Equator → +32°C (Sahel/equatorial summer feel)
+//   • 45°N → +10°C (Berlin/Beijing annual mean)
+//   • 80°N → -20°C (Arctic Ocean)
+//   • 90° polar tip → -50°C (Antarctic interior); ICE biome
+// Greenland (lat 0.78, elev 0.4) and Antarctica (lat 0.87, elev 0.3)
+// both hit ICE after the elev penalty (-0.4*e).
 const TARGETS = [
   // lat-norm, lat-deg, real-°C, target-t
-  [0.00,   0, 26, 0.86],
-  [0.11,  10, 25, 0.85],
-  [0.22,  20, 22, 0.82],
-  [0.33,  30, 17, 0.77],
-  [0.44,  40, 11, 0.71],
-  [0.56,  50,  4, 0.64],
-  [0.67,  60, -3, 0.57],
-  [0.78,  70,-11, 0.49],
-  [0.89,  80,-19, 0.41],
-  [1.00,  90,-25, 0.35],
+  [0.00,   0, 32, 0.92],
+  [0.11,  10, 28, 0.88],
+  [0.22,  20, 25, 0.85],
+  [0.33,  30, 20, 0.80],
+  [0.44,  40, 14, 0.74],
+  [0.56,  50,  9, 0.69],
+  [0.67,  60, -2, 0.58],
+  [0.78,  70,-15, 0.45],
+  [0.89,  80,-30, 0.30],
+  [1.00,  90,-50, 0.10],
 ];
 
 // ── Current Earth preset (WorldSim.jsx:94) ──
@@ -42,14 +51,18 @@ function tectonicCurrent(lat) {
   ));
 }
 
-// ── Proposed unified curve ──
-// Goal: equator at +26°C, mid-latitudes scale realistically (45°N ~10°C),
-// poles around -25°C. Two-term fit; lat^1.5 governs the broad shape,
-// lat^3 supplies the polar acceleration.
-//   t = 0.87 - 0.42*lat^1.5 - 0.10*lat^3
+// ── Proposed unified curve (v3) ──
+// Two-term smooth: lat^1.5 governs the mid-lat shape (matches Berlin
+// /Beijing at +10°C), lat^6 stays ~0 below lat 0.7 then accelerates
+// hard so the polar tip plunges to ICE biome territory (t<0.08).
+//   t = 0.92 - 0.50*lat^1.5 - 0.80*lat^6
+// At lat 0.85+, baseT alone drops below 0.25 — combined with elev
+// penalty, Greenland interior (lat 0.78 elev 0.4) lands at tundra, and
+// Antarctica (lat 0.87 elev 0.3) crosses the ICE threshold.
 function proposed(lat) {
+  const l6 = lat*lat*lat * lat*lat*lat;
   return Math.max(0, Math.min(1,
-    0.87 - 0.42 * Math.pow(lat, 1.5) - 0.10 * lat*lat*lat
+    0.92 - 0.50 * Math.pow(lat, 1.5) - 0.80 * l6
   ));
 }
 
