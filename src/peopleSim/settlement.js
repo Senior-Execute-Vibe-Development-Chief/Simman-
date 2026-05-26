@@ -33,7 +33,14 @@ const SETT_GROWTH = 0.0018;
 const PEOPLE_PER_FARM_TILE = 14;
 const FARM_YIELD_PER_FERT  = 0.055;
 const FORAGE_RATE          = 0.012;
-const FARM_RANGE_BY_TIER   = [6, 10, 18, 25];     // max flood-fill radius from settlement
+// Farm placement is bounded by transport COST, not Euclidean distance.
+// Reach is computed by a small Dijkstra from the settlement using the
+// same terrain weights as transport.js — plains 1, hills ×2, mountains
+// ×5, cold ×3, desert ×2.5, rivers ×0.4, coasts ×0.7. Effect:
+// settlements in a river valley reach far along the river (cheap),
+// settlements walled in by mountains reach only adjacent tiles. The
+// cap below is in accumulated tile-cost units, not tiles.
+const MAX_TRANSPORT_BY_TIER = [7, 14, 26, 40];    // village → metropolis
 // Minimum soil fertility for a tile to be plantable. Below this, the
 // land yields too little to be worth cultivating — it's left wild,
 // regardless of pop pressure. This is what stops every settlement
@@ -198,17 +205,23 @@ function refreshFarmland(world, s) {
   }
 
   // ── Grow: flood-fill from settlement, best score first ──
-  // Settlements no longer scan a fixed square box; they grow farmland
-  // organically outward from the existing patch, picking the best
-  // available adjacent tile each step. Result: farmland follows river
-  // valleys, hugs coasts, threads through fertile corridors —
-  // whatever the terrain offers — instead of a perfect square hinterland.
+  // Candidates are bounded by TRANSPORT REACH (cheap Dijkstra cached on
+  // the settlement), not Euclidean distance. Effect: a city on a river
+  // stretches its fields along the cheap valley; a city walled in by
+  // mountains gets a tight, irregular pocket of farmland. The flood-
+  // fill itself still picks best-fert-first inside that reach, so the
+  // shape follows soil quality within the corridor.
   if (s.farmland.size < target) {
+    // Reach is stable for (settlement, tier) — recompute only when the
+    // tier changes (range cap is tier-driven).
+    const maxCost = MAX_TRANSPORT_BY_TIER[s.tier] || MAX_TRANSPORT_BY_TIER[0];
+    if (!s._reach || s._reachTier !== s.tier) {
+      s._reach = localTransport(world, s.pos.x | 0, s.pos.y | 0, maxCost);
+      s._reachTier = s.tier;
+    }
+    const reach = s._reach;
     const heap = new _MaxHeap();
     const visited = new Set(s.farmland);
-    const maxRange = FARM_RANGE_BY_TIER[s.tier] || FARM_RANGE_BY_TIER[0];
-    const maxRangeSq = maxRange * maxRange;
-    const cx = s.pos.x | 0, cy = s.pos.y | 0;
 
     // Score: fertility primary, plus generous river/coast bonus so
     // settlements naturally extend along water rather than blob outward.
@@ -224,14 +237,7 @@ function refreshFarmland(world, s) {
       if (visited.has(ti)) return;
       visited.add(ti);
       if (elev[ti] <= 0) return;
-      // Range cap: don't push tiles further than tier-radius from the
-      // settlement's centre. Stops a city from sprawling halfway across
-      // a continent.
-      const ty = (ti / tw) | 0, tx = ti - ty * tw;
-      let ddx = Math.abs(tx - cx);
-      if (ddx > tw / 2) ddx = tw - ddx;
-      const ddy = ty - cy;
-      if (ddx * ddx + ddy * ddy > maxRangeSq) return;
+      if (!reach.has(ti)) return;            // out of transport range
       const owner = _farmedBy[ti];
       if (owner !== -1 && owner !== s.id) return;
       if ((fert[ti] || 0) < minFert) return;
@@ -322,6 +328,105 @@ function releaseFarmland(world, s) {
     if (world._farmedBy[ti] === s.id) world._farmedBy[ti] = -1;
   }
   s.farmland.clear();
+  // Reach cache is positional + tier; both invariant when farmland is
+  // released for a dying settlement, but null it out for cleanliness.
+  s._reach = null;
+}
+
+// Bounded Dijkstra from (sx, sy). Returns Map<ti, accumulated cost> for
+// every land tile reachable within maxCost. Same edge weights as
+// transport.js (kept in sync deliberately — "transport cost" means the
+// same thing everywhere in the sim).
+function localTransport(world, sx, sy, maxCost) {
+  const { tw, th, elev, temp, moist, riverMag, coast } = world;
+  const out = new Map();
+  const seed = sy * tw + sx;
+  if (elev[seed] <= 0) return out;
+  const heap = new _MinHeap();
+  out.set(seed, 0);
+  heap.push(seed, 0);
+  while (heap.n > 0) {
+    const { ti, d } = heap.popMin();
+    if (d > (out.get(ti) ?? Infinity)) continue;
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const left  = ty * tw + (tx === 0 ? tw - 1 : tx - 1);
+    const right = ty * tw + (tx === tw - 1 ? 0 : tx + 1);
+    const up    = ty > 0      ? (ty - 1) * tw + tx : -1;
+    const down  = ty < th - 1 ? (ty + 1) * tw + tx : -1;
+    const ns = [left, right, up, down];
+    for (let k = 0; k < 4; k++) {
+      const ni = ns[k];
+      if (ni < 0) continue;
+      const e = elev[ni];
+      if (e <= 0) continue;
+      let c = 1.0;
+      if (e > 0.35)                       c *= 5;
+      else if (e > 0.20)                  c *= 2;
+      const t = temp[ni], m = moist[ni];
+      if (t < 0.15)                       c *= 3;
+      if (t > 0.70 && m < 0.20)           c *= 2.5;
+      if (riverMag && riverMag[ni] >= 2)  c *= 0.4;
+      if (coast[ni])                      c *= 0.7;
+      const nd = d + c;
+      if (nd > maxCost) continue;
+      const cur = out.get(ni);
+      if (cur === undefined || nd < cur) {
+        out.set(ni, nd);
+        heap.push(ni, nd);
+      }
+    }
+  }
+  return out;
+}
+
+// Tiny min-heap with parallel typed arrays — same shape as transport.js's
+// _MinHeap. Duplicated to keep the modules independent at this scale; if
+// a third caller shows up, lift it to a shared util.
+class _MinHeap {
+  constructor(cap = 256) {
+    this.ti = new Int32Array(cap);
+    this.d  = new Float32Array(cap);
+    this.n  = 0;
+    this.cap = cap;
+  }
+  _grow() {
+    const ncap = this.cap * 2;
+    const nti = new Int32Array(ncap); nti.set(this.ti);
+    const nd  = new Float32Array(ncap); nd.set(this.d);
+    this.ti = nti; this.d = nd; this.cap = ncap;
+  }
+  push(ti, d) {
+    if (this.n >= this.cap) this._grow();
+    let i = this.n++;
+    this.ti[i] = ti; this.d[i] = d;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this.d[p] <= this.d[i]) break;
+      const tt = this.ti[p], td = this.d[p];
+      this.ti[p] = this.ti[i]; this.d[p] = this.d[i];
+      this.ti[i] = tt; this.d[i] = td;
+      i = p;
+    }
+  }
+  popMin() {
+    const ti = this.ti[0], d = this.d[0];
+    this.n--;
+    if (this.n === 0) return { ti, d };
+    this.ti[0] = this.ti[this.n]; this.d[0] = this.d[this.n];
+    let i = 0;
+    for (;;) {
+      const l = i * 2 + 1, r = i * 2 + 2;
+      let best = i;
+      if (l < this.n && this.d[l] < this.d[best]) best = l;
+      if (r < this.n && this.d[r] < this.d[best]) best = r;
+      if (best === i) break;
+      const tt = this.ti[best], td = this.d[best];
+      this.ti[best] = this.ti[i]; this.d[best] = this.d[i];
+      this.ti[i] = tt; this.d[i] = td;
+      i = best;
+    }
+    return { ti, d };
+  }
 }
 
 // ── Tier ───────────────────────────────────────────────────────────
