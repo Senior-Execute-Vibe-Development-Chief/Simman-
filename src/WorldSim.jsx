@@ -5236,16 +5236,19 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     }
     ctx.fill();
     // ── Settlement icons ──
-    // ONE icon per settlement, sized by tier. Village = small block;
-    // town = bigger block; city = block + walls ring; metropolis = +
-    // banner mark. No individual house entities.
-    const TIER_SIZE_PX=[5,8,12,18];
+    // ONE icon per settlement, SIZED CONTINUOUSLY BY POPULATION (not
+    // tier — tier-stepped sizing made every village/town/city/metro
+    // look identical regardless of actual headcount). sqrt curve so the
+    // icon grows fast in the early hundreds and slowly in the
+    // thousands. Cultural shapes (roof apex / walls / towers) still
+    // gate on tier so the iconography keys to civic complexity.
+    const sizeFromPop=p=>Math.min(28,4+Math.sqrt(Math.max(0,p))*0.18);
     const selId=selectedSettlementIdRef.current;
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
       const sx=s.pos.x*TR;
       const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
-      const size=TIER_SIZE_PX[s.tier]||TIER_SIZE_PX[0];
+      const size=sizeFromPop(s.people);
       const half=size/2;
       // Selection halo — bright gold ring behind the icon.
       if(s.id===selId){
