@@ -2419,17 +2419,26 @@ const crossWorld={elev:tElev,temp:tTemp,moist:tMoist,coast:tCoast,
 for(let ti=0;ti<tw*th;ti++){
 const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
 if(e<=0){tCrop[ti]=0;tCross[ti]=1;continue;}
-// Crop suitability (unchanged)
+// Crop suitability. Wider bell curves than before so the full span
+// of real-Earth cropland reads as productive: boreal grain belts,
+// temperate forest, Mediterranean, savanna, and steppe all sit
+// solidly in the green/yellow range. The bell centre is shifted
+// slightly cooler (t=0.50) to match where the bulk of historical
+// agriculture sat. The tropical-rainforest penalty now needs both
+// hotter (t>0.75) AND wetter (m>0.65) than savanna to trigger, so
+// it specifically targets Amazon/Congo lateritic soils without
+// clipping productive subtropics. Elevation penalty starts at
+// e=0.30 (significant hills, not just rolling) and scales gentler.
 let crop;
 if(e>0.45)crop=0.02;
 else{
-const tBell=Math.exp(-((t-0.55)*(t-0.55))/(2*0.16*0.16));
-const mBell=Math.exp(-((m-0.40)*(m-0.40))/(2*0.14*0.14));
+const tBell=Math.exp(-((t-0.50)*(t-0.50))/(2*0.22*0.22));
+const mBell=Math.exp(-((m-0.45)*(m-0.45))/(2*0.20*0.20));
 crop=tBell*mBell;
-if(t>0.65&&m>0.55){
-const trop=Math.min(1,(t-0.65)/0.25)*Math.min(1,(m-0.55)/0.25);
-crop*=1-0.75*trop;}
-if(e>0.20)crop*=Math.max(0,1-(e-0.20)*2.5);}
+if(t>0.75&&m>0.65){
+const trop=Math.min(1,(t-0.75)/0.20)*Math.min(1,(m-0.65)/0.20);
+crop*=1-0.65*trop;}
+if(e>0.30)crop*=Math.max(0,1-(e-0.30)*2.0);}
 tCrop[ti]=Math.max(0,Math.min(1,crop));
 // Crossing difficulty: average edge cost from each land neighbour
 // into this tile. Edge-based so slope shows up; averaged so the
