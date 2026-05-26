@@ -2419,21 +2419,20 @@ const crossWorld={elev:tElev,temp:tTemp,moist:tMoist,coast:tCoast,
 for(let ti=0;ti<tw*th;ti++){
 const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
 if(e<=0){tCrop[ti]=0;tCross[ti]=1;continue;}
-// Crop suitability. Wider bell curves than before so the full span
-// of real-Earth cropland reads as productive: boreal grain belts,
-// temperate forest, Mediterranean, savanna, and steppe all sit
-// solidly in the green/yellow range. The bell centre is shifted
-// slightly cooler (t=0.50) to match where the bulk of historical
-// agriculture sat. The tropical-rainforest penalty now needs both
-// hotter (t>0.75) AND wetter (m>0.65) than savanna to trigger, so
-// it specifically targets Amazon/Congo lateritic soils without
-// clipping productive subtropics. Elevation penalty starts at
-// e=0.30 (significant hills, not just rolling) and scales gentler.
+// Crop suitability. The temperature field on this world runs hot —
+// mid-low latitude continents sit at t≈0.72–0.85 even at sea level,
+// matching the green-forest biome rendering but well above any
+// reasonable narrow bell. Sigmas widened dramatically (σ_t=0.35,
+// σ_m=0.27) and the bell centre moved to t=0.55, where India,
+// China, sub-Saharan Africa, Brazilian highlands and the rest of
+// real-world agricultural land actually sits. Only true climatic
+// extremes (tundra, hot desert, Amazon/Congo lateritic rainforest)
+// fall into the red side.
 let crop;
 if(e>0.45)crop=0.02;
 else{
-const tBell=Math.exp(-((t-0.50)*(t-0.50))/(2*0.22*0.22));
-const mBell=Math.exp(-((m-0.45)*(m-0.45))/(2*0.20*0.20));
+const tBell=Math.exp(-((t-0.55)*(t-0.55))/(2*0.35*0.35));
+const mBell=Math.exp(-((m-0.45)*(m-0.45))/(2*0.27*0.27));
 crop=tBell*mBell;
 if(t>0.75&&m>0.65){
 const trop=Math.min(1,(t-0.75)/0.20)*Math.min(1,(m-0.65)/0.20);
