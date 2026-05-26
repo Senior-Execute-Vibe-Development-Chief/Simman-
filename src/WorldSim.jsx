@@ -15,6 +15,7 @@ import { ensureTribeViews, attachRegistries } from "./tribeModel.js";
 import { runTribeStep, resetInvariantState } from "./tribeStep.js";
 import { tribePower, localPower, tribeOreAccess, tDistW, expFalloff } from "./tribePower.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
+import { baseEdgeCost } from "./peopleSim/transport.js";
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
@@ -2396,19 +2397,24 @@ if(tCoast[ti]&&tElev[ti]>0)tFert[ti]=Math.min(1,tFert[ti]+0.06);}
 //   the clearing cost is a transport/construction issue handled
 //   elsewhere, not an inherent crop-quality issue.
 //
-// tCross — base transport cost per tile, same weights as
-//   transport.js's tileCost (so the rendered gradient matches what
-//   the sim uses to bound farm placement and crystallize routes).
-//   Normalized to 0..1 against CROSS_MAX so most land falls in the
-//   visible mid-range. Rivers / coast push into the easy end; mountain
-//   + cold or mountain + desert combos sit at the brutal end.
+// tCross — average per-edge crossing cost across the 4 land
+//   neighbours, using the same continuous baseEdgeCost as the sim's
+//   transport map (peopleSim/transport.js). The slope component is
+//   real — climbing a steep face costs more than walking a flat
+//   plateau even at the same absolute elevation — so the rendered
+//   gradient varies continuously rather than stair-stepping at the
+//   old e=0.20 / e=0.35 thresholds. Normalized against CROSS_MAX so
+//   most land falls in the visible mid-range; rivers / coast push to
+//   the easy end, peaks + cold / peaks + desert sit at the brutal end.
 const tCrop=new Float32Array(tw*th);
 const tCross=new Float32Array(tw*th);
-const CROSS_MAX=8.0;
+const CROSS_MAX=12.0;
+const crossWorld={elev:tElev,temp:tTemp,moist:tMoist,coast:tCoast,
+                  riverMag:rivers&&rivers.riverMag?rivers.riverMag:null};
 for(let ti=0;ti<tw*th;ti++){
 const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
 if(e<=0){tCrop[ti]=0;tCross[ti]=1;continue;}
-// Crop suitability
+// Crop suitability (unchanged)
 let crop;
 if(e>0.45)crop=0.02;
 else{
@@ -2420,14 +2426,25 @@ const trop=Math.min(1,(t-0.65)/0.25)*Math.min(1,(m-0.55)/0.25);
 crop*=1-0.75*trop;}
 if(e>0.20)crop*=Math.max(0,1-(e-0.20)*2.5);}
 tCrop[ti]=Math.max(0,Math.min(1,crop));
-// Crossing difficulty (mirrors transport.js tileCost)
-let c=1.0;
-if(e>0.35)c*=5;else if(e>0.20)c*=2;
-if(t<0.15)c*=3;
-if(t>0.70&&m<0.20)c*=2.5;
-if(rivers&&rivers.riverMag&&rivers.riverMag[ti]>=2)c*=0.4;
-if(tCoast[ti])c*=0.7;
-tCross[ti]=Math.min(1,c/CROSS_MAX);}
+// Crossing difficulty: average edge cost from each land neighbour
+// into this tile. Edge-based so slope shows up; averaged so the
+// overlay is direction-agnostic.
+const ty=(ti/tw)|0,tx=ti-ty*tw;
+const left=ty*tw+(tx===0?tw-1:tx-1);
+const right=ty*tw+(tx===tw-1?0:tx+1);
+const up=ty>0?(ty-1)*tw+tx:-1;
+const down=ty<th-1?(ty+1)*tw+tx:-1;
+let csum=0,cnt=0;
+const nbrs=[left,right,up,down];
+for(let k=0;k<4;k++){
+const ni=nbrs[k];
+if(ni<0)continue;
+if(tElev[ni]<=0)continue;// approach across water doesn't count
+const c=baseEdgeCost(crossWorld,ni,ti);
+if(c===Infinity)continue;
+csum+=c;cnt++;}
+const cAvg=cnt>0?csum/cnt:1.0;
+tCross[ti]=Math.min(1,cAvg/CROSS_MAX);}
 
 // ── Natural resource deposits ──
 const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,rivers);
