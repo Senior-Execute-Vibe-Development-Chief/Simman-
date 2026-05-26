@@ -5397,13 +5397,27 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     }
     ctx.fill();
     // ── Settlement icons ──
-    // ONE icon per settlement, SIZED CONTINUOUSLY BY POPULATION (not
-    // tier — tier-stepped sizing made every village/town/city/metro
-    // look identical regardless of actual headcount). sqrt curve so the
-    // icon grows fast in the early hundreds and slowly in the
-    // thousands. Cultural shapes (roof apex / walls / towers) still
-    // gate on tier so the iconography keys to civic complexity.
-    const sizeFromPop=p=>Math.min(28,4+Math.sqrt(Math.max(0,p))*0.18);
+    // ONE icon per settlement, sized RELATIVE to the rest of the
+    // population on the map — the biggest settlement always reads as
+    // max size, the smallest as min, with log-interpolation between
+    // so both ends of a wide population range stay visually
+    // distinguishable. Cultural shapes (roof apex / walls / towers)
+    // still gate on tier so the iconography keys to civic complexity.
+    const MIN_SIZE=5,MAX_SIZE=30;
+    let _popMin=Infinity,_popMax=-Infinity;
+    for(const s of psw.settlements){
+      if(!s||s.mode!=="settled")continue;
+      const p=s.people;
+      if(p<_popMin)_popMin=p;
+      if(p>_popMax)_popMax=p;
+    }
+    const _logMin=Math.log(Math.max(1,_popMin));
+    const _logRange=Math.log(Math.max(2,_popMax))-_logMin;
+    const sizeFromPop=p=>{
+      if(_logRange<=0.01)return (MIN_SIZE+MAX_SIZE)*0.5;
+      const t=Math.max(0,Math.min(1,(Math.log(Math.max(1,p))-_logMin)/_logRange));
+      return MIN_SIZE+t*(MAX_SIZE-MIN_SIZE);
+    };
     const selId=selectedSettlementIdRef.current;
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
