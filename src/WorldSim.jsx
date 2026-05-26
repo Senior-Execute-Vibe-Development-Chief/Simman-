@@ -2373,6 +2373,56 @@ tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}}
 // 2e: Coastal fertility bonus — fishing, salt, trade access.
 for(let ti=0;ti<tw*th;ti++){
 if(tCoast[ti]&&tElev[ti]>0)tFert[ti]=Math.min(1,tFert[ti]+0.06);}
+
+// ── Pass 3: Analytical overlays (Crop suitability + Crossing difficulty) ──
+// Two derived maps the user can toggle to inspect *why* settlements
+// behave where they do. Stored separately from tFert so the sim's
+// food-production math is untouched.
+//
+// tCrop — agronomic crop potential (primitive-tech baseline).
+//   Differs from tFert:
+//     - tighter moisture window (crops dislike waterlogging more than
+//       biomass does — chernozem semi-humid > rainforest)
+//     - HARDER tropical lateritic penalty (×0.25 at the rainforest
+//       core, vs ×0.45 in tFert). The Amazon/Congo paradox writ large.
+//     - hill / upland penalty (terracing without construction tech).
+//   Temperate forest zones still rate high — they ARE prime cropland,
+//   the clearing cost is a transport/construction issue handled
+//   elsewhere, not an inherent crop-quality issue.
+//
+// tCross — base transport cost per tile, same weights as
+//   transport.js's tileCost (so the rendered gradient matches what
+//   the sim uses to bound farm placement and crystallize routes).
+//   Normalized to 0..1 against CROSS_MAX so most land falls in the
+//   visible mid-range. Rivers / coast push into the easy end; mountain
+//   + cold or mountain + desert combos sit at the brutal end.
+const tCrop=new Float32Array(tw*th);
+const tCross=new Float32Array(tw*th);
+const CROSS_MAX=8.0;
+for(let ti=0;ti<tw*th;ti++){
+const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
+if(e<=0){tCrop[ti]=0;tCross[ti]=1;continue;}
+// Crop suitability
+let crop;
+if(e>0.45)crop=0.02;
+else{
+const tBell=Math.exp(-((t-0.55)*(t-0.55))/(2*0.16*0.16));
+const mBell=Math.exp(-((m-0.40)*(m-0.40))/(2*0.14*0.14));
+crop=tBell*mBell;
+if(t>0.65&&m>0.55){
+const trop=Math.min(1,(t-0.65)/0.25)*Math.min(1,(m-0.55)/0.25);
+crop*=1-0.75*trop;}
+if(e>0.20)crop*=Math.max(0,1-(e-0.20)*2.5);}
+tCrop[ti]=Math.max(0,Math.min(1,crop));
+// Crossing difficulty (mirrors transport.js tileCost)
+let c=1.0;
+if(e>0.35)c*=5;else if(e>0.20)c*=2;
+if(t<0.15)c*=3;
+if(t>0.70&&m<0.20)c*=2.5;
+if(rivers&&rivers.riverMag&&rivers.riverMag[ti]>=2)c*=0.4;
+if(tCoast[ti])c*=0.7;
+tCross[ti]=Math.min(1,c/CROSS_MAX);}
+
 // ── Natural resource deposits ──
 const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,rivers);
 // ── 3000 BC START: seed civilizations at the world's best river valley locations ──
@@ -2464,7 +2514,7 @@ const _nfBuf=new Uint8Array(tw*th);
 const tribeTiles=[];
 for(let i=0;i<tribeSizes.length;i++)tribeTiles.push(new Set());
 for(let ti=0;ti<tw*th;ti++){if(owner[ti]>=0)tribeTiles[owner[ti]].add(ti);}
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
 tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudget:tribeBudgets,bgPop,cityPop,
 tribeTiles,frontier,frontierList,_landTiles,_coastalTiles,_nfBuf,_youngTiles:[],
 landCount:lc,settled:tribeSizes.length,tribeCount:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
@@ -4869,6 +4919,36 @@ if(v>0.5){const t2=(v-0.5)*2;r=((1-t2)*255)|0;g=200;b=((t2)*40)|0;}
 else{const t2=v*2;r=220;g=(t2*200)|0;b=0;}
 const shade=1-Math.max(0,e-0.1)*0.5;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
+}else if(vm==="crop"){
+// Crop suitability overlay — agronomic potential, sharper than tFert.
+// Same green→yellow→red gradient as fertility; differences vs fert
+// are visible where it matters (Amazon goes deeper red, temperate
+// hill country tones down to yellow).
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
+const e=w.elevation[si];const pi4=ti<<2;
+if(e<=sl){d[pi4]=8;d[pi4+1]=12;d[pi4+2]=22;d[pi4+3]=255;continue;}
+const v=Math.max(0,Math.min(1,ter.tCrop[ti]));
+let r,g,b;
+if(v>0.5){const t2=(v-0.5)*2;r=((1-t2)*255)|0;g=200;b=((t2)*40)|0;}
+else{const t2=v*2;r=220;g=(t2*200)|0;b=0;}
+const shade=1-Math.max(0,e-0.1)*0.5;
+d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
+}else if(vm==="crossing"){
+// Crossing difficulty overlay — green (easy) → yellow → red (brutal).
+// Same scalar the sim uses for transport routing, so dark-red areas
+// on this map ARE the places where farm placement and trade routes
+// will refuse to cross.
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
+const e=w.elevation[si];const pi4=ti<<2;
+if(e<=sl){d[pi4]=8;d[pi4+1]=12;d[pi4+2]=22;d[pi4+3]=255;continue;}
+const v=Math.max(0,Math.min(1,ter.tCross[ti]));
+let r,g,b;
+if(v<0.5){const t2=v*2;r=(t2*220)|0;g=200;b=0;}
+else{const t2=(v-0.5)*2;r=220;g=((1-t2)*200)|0;b=0;}
+const shade=1-Math.max(0,e-0.1)*0.5;
+d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else if(vm==="resources"){
 // Resource overlay — blend all active resource layers per tile
 const ar=activeResRef.current;
@@ -5509,6 +5589,7 @@ const _era=deriveEra(_aAg,_aMt,_aNv,_aOg);
 const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
+  ["crop","Crop"],["crossing","Crossing"],
   ["resources","Resources"],["population","Pop"],["transport","Transport"],
   ["transport-test","Trans Test"],["tribes","Tribes"]
 ];
