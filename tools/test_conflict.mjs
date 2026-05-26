@@ -110,6 +110,7 @@ const { createTerritory, stepTerritory } = fns;
 const W = parseInt(process.env.W || '600', 10), H = parseInt(process.env.H || '300', 10);
 const world = createMockWorld(W, H);
 const ter = createTerritory(world);
+ter._waveDebug = !!process.env.WAVE_DEBUG;
 
 // Report tribe spacing + border-contact stats
 const initialTribes = (() => { let n=0; for (let i=0;i<ter.tribeSizes.length;i++) if (ter.tribeSizes[i]>0) n++; return n; })();

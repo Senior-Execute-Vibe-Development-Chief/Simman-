@@ -1546,8 +1546,8 @@ for (let my = 0; my < mH; my++) for (let mx = 0; mx < mW; mx++) {
   const px = Math.min(W - 1, mx * 2), py = Math.min(H - 1, my * 2);
   const tLat2 = Math.abs(py / H - 0.5) * 2;  // thermal latitude, shifted north
   const e2 = elevation[py * W + px];
-  tGrid[my * mW + mx] = Math.max(0, Math.min(1, 1 - Math.pow(tLat2, 1.35) * 1.15
-    + Math.exp(-((tLat2 - 0.20) * (tLat2 - 0.20)) / (2 * 0.08 * 0.08)) * 0.06 - Math.max(0, e2) * 0.65));
+  tGrid[my * mW + mx] = Math.max(0, Math.min(1, 0.92 - Math.pow(tLat2, 1.5) * 0.50 - Math.pow(tLat2, 6) * 0.80
+    + Math.exp(-((tLat2 - 0.20) * (tLat2 - 0.20)) / (2 * 0.08 * 0.08)) * 0.06 - Math.max(0, e2) * (0.65 + 0.8 * tLat2)));
 }
 // Advect temperature along wind vectors
 for (let step = 0; step < 25; step++) {
@@ -1566,8 +1566,8 @@ for (let step = 0; step < 25; step++) {
       + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
     const e2 = elevation[fi];
     const tLat2 = Math.abs(py / H - 0.5) * 2;
-    const localT = Math.max(0, Math.min(1, 1 - Math.pow(tLat2, 1.35) * 1.15
-      + Math.exp(-((tLat2 - 0.20) * (tLat2 - 0.20)) / (2 * 0.08 * 0.08)) * 0.06 - Math.max(0, e2) * 0.65));
+    const localT = Math.max(0, Math.min(1, 0.92 - Math.pow(tLat2, 1.5) * 0.50 - Math.pow(tLat2, 6) * 0.80
+      + Math.exp(-((tLat2 - 0.20) * (tLat2 - 0.20)) / (2 * 0.08 * 0.08)) * 0.06 - Math.max(0, e2) * (0.65 + 0.8 * tLat2)));
     if (e2 <= 0) {
       // Ocean: high thermal inertia, mostly local temp with slight wind influence
       tGrid[my * mW + mx] = localT * 0.88 + upwindT * 0.12;
@@ -1608,7 +1608,12 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   // Thermal latitude centered for procedural worlds (Earth Sim uses 0.42 offset)
   const tLat = Math.abs(ny - 0.5) * 2;
   const subtropHeat = Math.exp(-((tLat - 0.20) * (tLat - 0.20)) / (2 * 0.08 * 0.08)) * 0.06;
-  const baseTemp = 1 - Math.pow(tLat, 1.35) * 1.15 + subtropHeat - Math.max(0, e) * 0.65 + sg(nfTemp, x, y) * 0.08
+  // Latitude→temperature: 0.92 at equator (+32°C, reads red), with a
+  // sharp polar plunge (lat^6 term) so high-elev polar interiors hit
+  // ICE biome (t<0.08). lat^1.5 governs the mid-lat shape. Calibrated
+  // visually + against NASA GISS zonal means in temperate bands. See
+  // tools/probe_temperature.mjs.
+  const baseTemp = 0.92 - Math.pow(tLat, 1.5) * 0.50 - Math.pow(tLat, 6) * 0.80 + subtropHeat - Math.max(0, e) * (0.65 + 0.8 * tLat) + sg(nfTemp, x, y) * 0.08
     + sg(nfTempBroad, x, y) * 0.10;
   // Continental heating: interiors at low/mid latitudes get hotter (no ocean buffering).
   // At high latitudes, interiors get colder (continental winters dominate).
