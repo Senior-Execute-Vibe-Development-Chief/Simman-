@@ -2460,7 +2460,27 @@ const rm=rivers.riverMag[ti];
 if(rm>=3)youngSoil+=0.50;else if(rm>=2)youngSoil+=0.20;}
 trop*=Math.max(0,1-Math.min(1,youngSoil));
 crop*=1-0.65*trop;}
-if(e>0.30)crop*=Math.max(0,1-(e-0.30)*2.0);}
+if(e>0.30)crop*=Math.max(0,1-(e-0.30)*2.0);
+// ── General river / coast bonus ──
+// Alluvial floodplain and coastal-plain soils are productive
+// across the climate spectrum: Nile, Indus, Yellow River turn
+// hot desert into the world's first breadbaskets. Mekong,
+// Bangladesh, Po, Mississippi, Niger ride their rivers through
+// otherwise mediocre or hot land. Coastal alluvium and island
+// arc volcanism does the same job for Java, Philippines, Japan.
+// Pull-toward-1.0 form so the bonus is strongest where the raw
+// climate is marginal (the Nile is a green ribbon through red
+// desert) and barely visible where climate is already optimal
+// (Iowa cornbelt doesn't need a bigger green).
+let alluvialBonus=0;
+if(rivers&&rivers.riverMag){
+const rm=rivers.riverMag[ti];
+if(rm>=3)alluvialBonus+=0.45;
+else if(rm>=2)alluvialBonus+=0.22;
+else if(rm>=1)alluvialBonus+=0.08;}
+if(tCoast[ti])alluvialBonus+=0.15;
+alluvialBonus=Math.min(0.65,alluvialBonus);
+crop=crop+(1-crop)*alluvialBonus;}
 tCrop[ti]=Math.max(0,Math.min(1,crop));
 // Crossing difficulty: average edge cost from each land neighbour
 // into this tile. Edge-based so slope shows up; averaged so the
