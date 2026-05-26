@@ -17,10 +17,10 @@
 // stair-steps.
 //
 // Components (additive into base 1.0):
-//   altitude    e^1.6 × 12          smooth altitude penalty
-//   slope       |Δelev| × 25        steep climbs are punishing
-//   cold        (0.30−t)² × 22      smooth ramp below t=0.30
-//   aridity     heat × dry × 16     heat=max(0,t−0.45), dry=max(0,0.40−m)
+//   altitude    e × 5 + e² × 14     spread across low/mid elevations
+//   slope       |Δelev| × 35        steep climbs visibly punished
+//   cold        (0.35−t)² × 28      smooth ramp below t=0.35
+//   aridity     heat × dry × 25     heat=max(0,t−0.45), dry=max(0,0.40−m)
 // Multiplicative bonuses:
 //   river       ÷ (1 + mag × 0.32) continuous in magnitude
 //   coast       × 0.80
@@ -28,7 +28,12 @@
 //
 // Plain flat tile (e=0, t=0.5, m=0.5, no river/coast) costs 1.0 — same
 // as the old function — so MAX_TRANSPORT_BY_TIER still reads as "~N
-// plain tiles" of reach.
+// plain tiles" of reach. Hills (e≈0.10) now cost ~2× a plain rather
+// than 1.5×; mountains (e≈0.40) cost ~5× instead of ~3×; high
+// mountains plus a climb can hit 12+. This widens the dynamic range
+// so the Crossing overlay genuinely separates terrain types, and so
+// settlements in mountainous terrain have visibly tighter
+// catchments than those on plains.
 
 const HEAP_INIT_CAP = 1024;
 
@@ -92,35 +97,34 @@ export function baseEdgeCost(world, fromTi, toTi) {
   if (e <= 0) return Infinity;        // water — impassable for land transport
   const fromE = elev[fromTi];
 
-  // Absolute altitude. Continuous; matches the old ×2 / ×5 buckets at
-  // their crossover points but smooths the steps.
-  //   e=0.00 → +0.00   e=0.20 → +1.21   e=0.35 → +2.66
-  //   e=0.50 → +3.93   e=0.70 → +6.84   e=1.00 → +12.00
-  const altCost = Math.pow(e, 1.6) * 12;
+  // Absolute altitude. Linear + quadratic so even small hills are
+  // visibly harder than sea level, and high mountains scale steeply.
+  //   e=0.00 → +0.00   e=0.10 → +0.64   e=0.20 → +1.56   e=0.35 → +3.47
+  //   e=0.50 → +6.00   e=0.70 → +10.36  e=1.00 → +19.00
+  const altCost = e * 5 + e * e * 14;
 
   // Slope between this tile and the one we came from. The old per-tile
   // model could not see steepness — a flat alpine plateau cost the
   // same as a sheer cliff face. Slope fixes that.
-  //   |Δ|=0.05 → +1.25   |Δ|=0.15 → +3.75   |Δ|=0.30 → +7.50
+  //   |Δ|=0.02 → +0.70   |Δ|=0.05 → +1.75   |Δ|=0.10 → +3.50   |Δ|=0.20 → +7.00
   const slope = Math.abs(e - fromE);
-  const slopeCost = slope * 25;
+  const slopeCost = slope * 35;
 
   const t = temp[toTi], m = moist[toTi];
 
-  // Cold. Smooth from t=0.30 down. (Old code triggered hard at t<0.15.)
-  //   t=0.30 → +0.00   t=0.20 → +0.22   t=0.10 → +0.88   t=0.00 → +1.98
+  // Cold. Smooth ramp below t=0.35 (wider than old t<0.30).
+  //   t=0.35 → +0.00   t=0.25 → +0.28   t=0.15 → +1.12   t=0.05 → +2.52   t=0.00 → +3.43
   let coldCost = 0;
-  if (t < 0.30) {
-    const cold = 0.30 - t;
-    coldCost = cold * cold * 22;
+  if (t < 0.35) {
+    const cold = 0.35 - t;
+    coldCost = cold * cold * 28;
   }
 
-  // Aridity. Smooth interaction of heat × dryness (old code was an
-  // AND-threshold). Worst-case hot dry desert (t=1.0, m=0): heat=0.55,
-  // dry=0.40 → +3.52.
+  // Aridity. Continuous heat × dryness interaction.
+  //   t=0.65, m=0.20 → +1.25   t=0.85, m=0.10 → +3.50   t=1.00, m=0.00 → +5.50
   const heat = Math.max(0, t - 0.45);
   const dry  = Math.max(0, 0.40 - m);
-  const aridCost = heat * dry * 16;
+  const aridCost = heat * dry * 25;
 
   let c = 1.0 + altCost + slopeCost + coldCost + aridCost;
 

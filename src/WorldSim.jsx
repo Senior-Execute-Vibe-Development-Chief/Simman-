@@ -2408,7 +2408,12 @@ if(tCoast[ti]&&tElev[ti]>0)tFert[ti]=Math.min(1,tFert[ti]+0.06);}
 //   the easy end, peaks + cold / peaks + desert sit at the brutal end.
 const tCrop=new Float32Array(tw*th);
 const tCross=new Float32Array(tw*th);
-const CROSS_MAX=12.0;
+// Normalisation ceiling. With the wider cost spread, typical land
+// reads between ~1.0 (plains) and ~6 (mid-mountains); peaks + climb
+// can hit 12+. CROSS_MAX=6 maps that into the full green→yellow→red
+// gradient — plains stay bright green, hills go yellow, real
+// mountains hit red.
+const CROSS_MAX=6.0;
 const crossWorld={elev:tElev,temp:tTemp,moist:tMoist,coast:tCoast,
                   riverMag:rivers&&rivers.riverMag?rivers.riverMag:null};
 for(let ti=0;ti<tw*th;ti++){
