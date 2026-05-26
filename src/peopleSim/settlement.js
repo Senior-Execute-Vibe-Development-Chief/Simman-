@@ -41,6 +41,10 @@ const FORAGE_RATE          = 0.012;
 // settlements walled in by mountains reach only adjacent tiles. The
 // cap below is in accumulated tile-cost units, not tiles.
 const MAX_TRANSPORT_BY_TIER = [7, 14, 26, 40];    // village → metropolis
+// Reach cache refresh interval — picks up slow knowledge drift within
+// a tier (mature metropolis still benefits from its tech maturing from
+// ~0.7 to ~0.99 over thousands of ticks).
+const REACH_REFRESH_TICKS = 2000;
 // Minimum soil fertility for a tile to be plantable. Below this, the
 // land yields too little to be worth cultivating — it's left wild,
 // regardless of pop pressure. This is what stops every settlement
@@ -211,13 +215,21 @@ function refreshFarmland(world, s) {
   // mountains gets a tight, irregular pocket of farmland. The flood-
   // fill itself still picks best-fert-first inside that reach, so the
   // shape follows soil quality within the corridor.
+  //
+  // Reach also widens as the settlement's transport knowledge matures
+  // (wagons, roads, logistics — see localTransport). Cache is keyed by
+  // tier; we also force a refresh every REACH_REFRESH_TICKS so a metro
+  // sitting at the top tier for thousands of ticks still benefits from
+  // its slowly-maturing tech.
   if (s.farmland.size < target) {
-    // Reach is stable for (settlement, tier) — recompute only when the
-    // tier changes (range cap is tier-driven).
     const maxCost = MAX_TRANSPORT_BY_TIER[s.tier] || MAX_TRANSPORT_BY_TIER[0];
-    if (!s._reach || s._reachTier !== s.tier) {
-      s._reach = localTransport(world, s.pos.x | 0, s.pos.y | 0, maxCost);
+    const reachStale = !s._reach ||
+                       s._reachTier !== s.tier ||
+                       (world.step - (s._reachStep || -Infinity)) > REACH_REFRESH_TICKS;
+    if (reachStale) {
+      s._reach = localTransport(world, s.pos.x | 0, s.pos.y | 0, maxCost, s.knowledge);
       s._reachTier = s.tier;
+      s._reachStep = world.step;
     }
     const reach = s._reach;
     const heap = new _MaxHeap();
@@ -334,11 +346,24 @@ function releaseFarmland(world, s) {
 }
 
 // Bounded Dijkstra from (sx, sy). Returns Map<ti, accumulated cost> for
-// every land tile reachable within maxCost. Same edge weights as
-// transport.js (kept in sync deliberately — "transport cost" means the
-// same thing everywhere in the sim).
-function localTransport(world, sx, sy, maxCost) {
+// every land tile reachable within maxCost. Tile weights match
+// transport.js's terrain part exactly so the unit of "cost" is the
+// same everywhere — but here we ALSO scale by the settlement's
+// transport knowledge:
+//   - toolmaking (wagons, harness, draft animals) — flat -30% at max
+//   - construction (bridges, switchbacks, paved roads) — halves the
+//     mountain penalty (×5 → ×2.5 at max)
+//   - organization (logistics, postal relays) — flat -15% at max
+// Combined effect at full tech: plains 1.0 → ~0.60, mountain 5.0 → ~1.50.
+// Knowledge is per-settlement, so two cities with different tech
+// portfolios have visibly different farm catchments.
+function localTransport(world, sx, sy, maxCost, kn) {
   const { tw, th, elev, temp, moist, riverMag, coast } = world;
+  const tool = kn?.toolmaking   || 0;
+  const cons = kn?.construction || 0;
+  const org  = kn?.organization || 0;
+  const mountainMult = 5 * (1 - 0.50 * cons);
+  const techMult     = (1 - 0.30 * tool) * (1 - 0.15 * org);
   const out = new Map();
   const seed = sy * tw + sx;
   if (elev[seed] <= 0) return out;
@@ -360,13 +385,14 @@ function localTransport(world, sx, sy, maxCost) {
       const e = elev[ni];
       if (e <= 0) continue;
       let c = 1.0;
-      if (e > 0.35)                       c *= 5;
+      if (e > 0.35)                       c *= mountainMult;
       else if (e > 0.20)                  c *= 2;
       const t = temp[ni], m = moist[ni];
       if (t < 0.15)                       c *= 3;
       if (t > 0.70 && m < 0.20)           c *= 2.5;
       if (riverMag && riverMag[ni] >= 2)  c *= 0.4;
       if (coast[ni])                      c *= 0.7;
+      c *= techMult;
       const nd = d + c;
       if (nd > maxCost) continue;
       const cur = out.get(ni);
