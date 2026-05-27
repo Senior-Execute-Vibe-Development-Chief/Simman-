@@ -135,6 +135,7 @@ function tryBuildOne(world, s) {
     pathCost: bestPath.cost,   // Dijkstra edge sum — drives transport cost in updateTrade
     builtBy: s.id,
     builtStep: world.step,
+    usage: 0,                  // accumulated ticks of active trade — drives roadTileQuality
     active: true,
   };
   world.roads.push(road);
@@ -307,7 +308,51 @@ export function updateTrade(world) {
     seller.wealth  = (seller.wealth || 0) + sellerGets;
     // The (transport × scale) remainder is the sink — it just
     // disappears, matching road-construction sink semantics.
+    // Wear the road in — quality compounds over thousands of ticks
+    // of active trade, eventually reaching the MAX_QUALITY discount.
+    if (scale > 0.1) road.usage = (road.usage || 0) + scale;
   }
+}
+
+// ── Road tile quality ──
+// Each road improves with use. road.usage accumulates per tick of
+// active trade (scaled by trade-completion ratio). The discount
+// applied to edges crossing that road's tiles scales from the
+// baseline (new path) down to MAX_QUALITY (worn arterial) over
+// USAGE_FOR_MAX ticks of accumulated traffic.
+const QUALITY_NEW          = 0.15;       // new road = current baseline
+const QUALITY_MAX          = 0.05;       // ~3× cheaper than a new road
+const USAGE_FOR_MAX        = 5000;       // ticks of trade to reach top quality
+const QUALITY_REBUILD_FREQ = 64;         // ticks between cache rebuilds
+
+function roadDiscount(usage) {
+  const t = Math.min(1, (usage || 0) / USAGE_FOR_MAX);
+  return QUALITY_NEW - t * (QUALITY_NEW - QUALITY_MAX);
+}
+
+export function rebuildRoadTileQuality(world) {
+  if (!world.roads || world.roads.length === 0) {
+    world.roadTileQuality = null;
+    return;
+  }
+  if (!world.roadTileQuality || world.roadTileQuality.length !== world.N) {
+    world.roadTileQuality = new Float32Array(world.N);
+  }
+  // 1.0 means "no road here, full base cost". Roads will write a
+  // value < 1.0 over their tiles (lower = better road).
+  world.roadTileQuality.fill(1.0);
+  for (const road of world.roads) {
+    if (!road.active) continue;
+    const q = roadDiscount(road.usage);
+    for (const ti of road.path) {
+      if (q < world.roadTileQuality[ti]) world.roadTileQuality[ti] = q;
+    }
+  }
+}
+
+export function maybeRebuildRoadQuality(world) {
+  if (world.step % QUALITY_REBUILD_FREQ !== 0) return;
+  rebuildRoadTileQuality(world);
 }
 
 function findById(world, id) {

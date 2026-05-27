@@ -133,12 +133,17 @@ export function baseEdgeCost(world, fromTi, toTi) {
   // mag=4 → ×0.44.
   if (riverMag && riverMag[toTi] > 0) c /= (1 + riverMag[toTi] * 0.32);
   if (coast[toTi])                    c *= 0.80;
-  // Roads: if BOTH endpoints carry a road, the edge is cheap
-  // (×0.15) — about half the cost of a great river, no mode
-  // change. world.roadTiles is the authoritative road index;
-  // absent when no roads exist yet.
-  if (world.roadTiles && world.roadTiles.has(fromTi) && world.roadTiles.has(toTi)) {
-    c *= 0.15;
+  // Roads: when BOTH endpoints carry a road tile, the edge is
+  // cheap. Per-tile quality lets heavily-used roads (Silk Road,
+  // Roman arteries) be much cheaper than barely-used new spurs —
+  // a worn-in arterial reaches QUALITY_MAX (≈0.05), a new road
+  // sits at QUALITY_NEW (≈0.15). Quality from roadTileQuality is
+  // 1.0 for non-road tiles, < 1.0 for road tiles. Use min (the
+  // better-quality of the two endpoints determines the surface).
+  const rtq = world.roadTileQuality;
+  if (rtq) {
+    const qF = rtq[fromTi], qT = rtq[toTi];
+    if (qF < 1.0 && qT < 1.0) c *= (qF < qT ? qF : qT);
   }
   return c;
 }
