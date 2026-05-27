@@ -51,17 +51,53 @@ export function maybeBuildRoads(world) {
   if (!world.roadTiles) world.roadTiles = new Set();
   if (world.step % PLAN_INTERVAL !== 0) return;
 
-  // Iterate alive settlements in random-ish order — sort by id so
-  // earlier-founded settlements (which had more time to accrue
-  // wealth) get first pick, but break ties with population so a
-  // booming new city doesn't get crowded out by a stagnant elder.
   const candidates = world.settlements
     .filter(s => s.mode === "settled"
               && s.people >= MIN_POP_TO_PLAN
               && (s.roadsConnecting?.length || 0) < MAX_ROADS_PER_SETT);
   for (const s of candidates) {
+    // Rebuild network components before each plan so a road built
+    // earlier in this loop is visible — prevents redundant duplicate
+    // links when several settlements all want to reach a hub.
+    world._networkComponents = buildNetworkComponents(world);
     tryBuildOne(world, s);
   }
+}
+
+// Union-find over the road graph. Each alive settlement id maps to
+// the "root" id of its connected component; two settlements with
+// the same root can already reach each other through the existing
+// road network and shouldn't need a direct redundant road built
+// between them.
+export function buildNetworkComponents(world) {
+  const parent = new Map();
+  const find = (x) => {
+    let p = x;
+    while ((parent.get(p) ?? p) !== p) p = parent.get(p);
+    // Path compression for the next call.
+    let cur = x;
+    while ((parent.get(cur) ?? cur) !== p) {
+      const next = parent.get(cur);
+      parent.set(cur, p);
+      cur = next;
+    }
+    return p;
+  };
+  const union = (a, b) => {
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+  for (const s of world.settlements) {
+    if (s.mode === "settled" && !parent.has(s.id)) parent.set(s.id, s.id);
+  }
+  for (const road of world.roads || []) {
+    if (road.active) union(road.from, road.to);
+  }
+  const out = new Map();
+  for (const s of world.settlements) {
+    if (s.mode === "settled") out.set(s.id, find(s.id));
+  }
+  return out;
 }
 
 function tryBuildOne(world, s) {
@@ -95,12 +131,21 @@ function tryBuildOne(world, s) {
   // Score combines both; settlements rich in money but resource-
   // self-sufficient will still build roads to lower-exportValue
   // neighbours to spend their wealth on imports.
+  // Skip any peer that's already in the same road-network component
+  // as us. They're already reachable through the existing chain of
+  // roads — trade can flow through 2 to reach 3 without a redundant
+  // direct 1↔3 link. This is how trunk-and-spur networks stay clean
+  // instead of devolving into complete graphs.
+  const components = world._networkComponents;
+  const myComponent = components ? components.get(s.id) : null;
+
   let bestPartner = null;
   let bestScore = -Infinity;
   let bestPath = null;
   for (const peer of world.settlements) {
     if (peer.mode !== "settled" || peer.id === s.id) continue;
     if (connected.has(roadIdBetween(world, s.id, peer.id))) continue;
+    if (myComponent && components.get(peer.id) === myComponent) continue;
     let dx = Math.abs(peer.pos.x - s.pos.x);
     if (dx > world.tw / 2) dx = world.tw - dx;
     const dy = peer.pos.y - s.pos.y;
