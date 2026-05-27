@@ -5469,18 +5469,23 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     }
     ctx.fill();
     // ── Roads ──
-    // Each road has a path of tile indices; render as a single
-    // Path2D-batched stroke. Drawn AFTER farmland (so it overlays
-    // green fields) and BEFORE settlement icons (so the dots sit on
-    // top). The world is a torus — when consecutive path tiles are
-    // on opposite sides of the map (|dx| > tw/2), they're connected
-    // via the X wrap. We break the line at that boundary so it
-    // doesn't draw a meaningless straight line across the whole map.
+    // Per-road stroke so each road's lineWidth reflects its usage.
+    // A brand-new road is a thin 1px line; a worn arterial after
+    // thousands of ticks of trade thickens to ~3px. Combined with
+    // the road-quality discount in baseEdgeCost, this gives a clear
+    // visual of trunk vs spur — the eye reads major trade arteries
+    // immediately. Wrap-split as before so torus paths don't draw
+    // straight across the map.
     if(psw.roads&&psw.roads.length>0){
       const halfTw=psw.tw*0.5;
-      ctx.beginPath();
+      ctx.lineCap="round";
+      ctx.lineJoin="round";
+      ctx.strokeStyle="rgba(120,80,40,0.88)";
       for(const road of psw.roads){
         if(!road||!road.active||!road.path||road.path.length<2)continue;
+        const wear=Math.min(1,(road.usage||0)/5000);
+        ctx.lineWidth=0.8+wear*2.2;       // 0.8 → 3.0 px
+        ctx.beginPath();
         let prevPx=-1e9;
         for(let i=0;i<road.path.length;i++){
           const ti=road.path[i];
@@ -5493,21 +5498,22 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           else ctx.lineTo(sx,sy);
           prevPx=px;
         }
+        ctx.stroke();
       }
-      ctx.strokeStyle="rgba(120,80,40,0.85)";
-      ctx.lineWidth=1.5;
-      ctx.lineCap="round";
-      ctx.lineJoin="round";
-      ctx.stroke();
     }
-    // ── Settlement icons ──
-    // ONE icon per settlement, sized RELATIVE to the rest of the
-    // population on the map — the biggest settlement always reads as
-    // max size, the smallest as min, with log-interpolation between
-    // so both ends of a wide population range stay visually
-    // distinguishable. Cultural shapes (roof apex / walls / towers)
-    // still gate on tier so the iconography keys to civic complexity.
-    const MIN_SIZE=5,MAX_SIZE=30;
+    // ── Settlement sprites ──
+    // Each settlement renders as a cluster of small buildings
+    // around its position. The cluster's SIZE scales with log(pop)
+    // — bigger settlements span a larger footprint and contain
+    // more individual buildings. Building TYPE distribution comes
+    // from wealth-per-capita and tier:
+    //   hovel  — squat dark roofless rectangle (poor / low tier)
+    //   house  — square wall + triangular roof (default)
+    //   tower  — tall narrow rectangle with dark cap (rich)
+    // Cities and metropolises also get an enclosing wall ring with
+    // tower-tick marks. Building positions seeded from settlement
+    // id so the sprite is stable across frames (no shimmer).
+    const MIN_SIZE=6,MAX_SIZE=28;
     let _popMin=Infinity,_popMax=-Infinity;
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
@@ -5522,49 +5528,105 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       const t=Math.max(0,Math.min(1,(Math.log(Math.max(1,p))-_logMin)/_logRange));
       return MIN_SIZE+t*(MAX_SIZE-MIN_SIZE);
     };
+    // Tiny deterministic PRNG (mulberry32-ish) so each settlement's
+    // sprite layout stays fixed across re-renders.
+    const stableRng=(seed)=>{let s=seed|0;return()=>{s=(s*1664525+1013904223)|0;return((s>>>0)%1000000)/1000000;};};
     const selId=selectedSettlementIdRef.current;
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
       const sx=s.pos.x*TR;
       const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
       const size=sizeFromPop(s.people);
-      const half=size/2;
-      // Selection halo — bright gold ring behind the icon.
+      // Selection halo — bright gold ring behind the sprite.
       if(s.id===selId){
-        ctx.beginPath();ctx.arc(sx,sy,size+4,0,Math.PI*2);
+        ctx.beginPath();ctx.arc(sx,sy,size+5,0,Math.PI*2);
         ctx.fillStyle="rgba(255,215,90,0.30)";ctx.fill();
-        ctx.beginPath();ctx.arc(sx,sy,size+4,0,Math.PI*2);
+        ctx.beginPath();ctx.arc(sx,sy,size+5,0,Math.PI*2);
         ctx.strokeStyle="rgba(255,200,70,1.0)";ctx.lineWidth=1.5;ctx.stroke();
       }
-      // Block — opaque, dark outline.
-      ctx.fillStyle="rgba(140,85,50,1.0)";
-      ctx.fillRect(sx-half,sy-half,size,size);
-      ctx.strokeStyle="rgba(30,20,10,1.0)";
-      ctx.lineWidth=1.0;
-      ctx.strokeRect(sx-half,sy-half,size,size);
-      // Roof apex for village/town suggests "settlement" vs "fort".
-      if(s.tier<=1){
-        ctx.beginPath();
-        ctx.moveTo(sx-half,sy-half);
-        ctx.lineTo(sx,sy-half-size*0.35);
-        ctx.lineTo(sx+half,sy-half);
-        ctx.fillStyle="rgba(90,50,25,1.0)";ctx.fill();
-        ctx.strokeStyle="rgba(30,20,10,1.0)";ctx.lineWidth=0.8;ctx.stroke();
-      }
-      // City+ get a walls ring (city = inner ring, metropolis = thicker).
+      // Wealth per capita determines building richness mix.
+      const wpc=(s.wealth||0)/Math.max(1,s.people);
+      // Rich threshold: wpc > 30 starts producing towers; > 100 dominant.
+      const richMix=Math.min(1,wpc/100);
+      // Poor: wealth-per-capita low → mostly hovels (tier 0/1 only).
+      const poorMix=Math.max(0,Math.min(1,(15-wpc)/15));
+      // Building count from log(pop): hamlet 25 → ~3, town 200 → ~6,
+      // city 1000 → ~9, metropolis 10000 → ~14.
+      const popLog=Math.log(Math.max(1,s.people));
+      const numBuildings=Math.max(2,Math.min(18,Math.round(popLog*1.3)));
+      // City+ walls drawn BEFORE buildings so they render behind.
       if(s.tier>=2){
-        const wallR=size*0.75;
+        const wallR=size*0.95;
         ctx.beginPath();ctx.arc(sx,sy,wallR,0,Math.PI*2);
+        ctx.fillStyle="rgba(180,160,130,0.25)";ctx.fill();
         ctx.strokeStyle="rgba(60,40,25,1.0)";
         ctx.lineWidth=s.tier>=3?2.0:1.4;
         ctx.stroke();
-        // Tiny tower-tick marks around the wall.
-        const towers=s.tier>=3?8:6;
+        const towers=s.tier>=3?10:7;
         for(let i=0;i<towers;i++){
           const a=(i/towers)*Math.PI*2;
           const tx=sx+Math.cos(a)*wallR,ty=sy+Math.sin(a)*wallR;
           ctx.fillStyle="rgba(60,40,25,1.0)";
-          ctx.beginPath();ctx.arc(tx,ty,1.2,0,Math.PI*2);ctx.fill();
+          ctx.beginPath();ctx.arc(tx,ty,1.4,0,Math.PI*2);ctx.fill();
+        }
+      }
+      // Buildings — pseudo-random scatter inside footprint.
+      const rng=stableRng(s.id*2654435761);
+      const footR=size*(s.tier>=2?0.75:0.55);
+      // Build a list of (offset, type, height) so we can z-sort
+      // by y so back buildings draw first.
+      const buildings=[];
+      for(let i=0;i<numBuildings;i++){
+        const a=rng()*Math.PI*2;
+        const d=Math.pow(rng(),0.7)*footR;
+        const bx=sx+Math.cos(a)*d;
+        const by=sy+Math.sin(a)*d;
+        // Building type roll
+        const r=rng();
+        let kind;
+        if(s.tier===0&&poorMix>0.5)kind=r<0.7?"hovel":"house";
+        else if(richMix>0.4&&r<richMix*0.6)kind="tower";
+        else if(poorMix>0.3&&r<poorMix*0.5)kind="hovel";
+        else kind="house";
+        buildings.push({bx,by,kind});
+      }
+      buildings.sort((a,b)=>a.by-b.by);
+      for(const b of buildings){
+        const{bx,by,kind}=b;
+        if(kind==="hovel"){
+          // Small dark squat rectangle
+          const w=2.2,h=1.8;
+          ctx.fillStyle="rgba(75,55,35,1.0)";
+          ctx.fillRect(bx-w/2,by-h/2,w,h);
+          ctx.strokeStyle="rgba(20,15,5,1.0)";
+          ctx.lineWidth=0.5;
+          ctx.strokeRect(bx-w/2,by-h/2,w,h);
+        }else if(kind==="tower"){
+          // Tall narrow rectangle + darker cap
+          const w=2.0,h=6.0;
+          ctx.fillStyle="rgba(180,160,130,1.0)";
+          ctx.fillRect(bx-w/2,by-h,w,h);
+          ctx.strokeStyle="rgba(40,30,15,1.0)";
+          ctx.lineWidth=0.5;
+          ctx.strokeRect(bx-w/2,by-h,w,h);
+          // Cap
+          ctx.fillStyle="rgba(80,50,25,1.0)";
+          ctx.fillRect(bx-w/2-0.3,by-h-1.2,w+0.6,1.4);
+        }else{
+          // House — square + triangular roof
+          const w=2.8,h=2.4;
+          ctx.fillStyle="rgba(150,100,65,1.0)";
+          ctx.fillRect(bx-w/2,by-h/2,w,h);
+          ctx.strokeStyle="rgba(30,20,10,1.0)";
+          ctx.lineWidth=0.5;
+          ctx.strokeRect(bx-w/2,by-h/2,w,h);
+          ctx.beginPath();
+          ctx.moveTo(bx-w/2-0.3,by-h/2);
+          ctx.lineTo(bx,by-h/2-1.4);
+          ctx.lineTo(bx+w/2+0.3,by-h/2);
+          ctx.closePath();
+          ctx.fillStyle="rgba(95,55,28,1.0)";ctx.fill();
+          ctx.lineWidth=0.5;ctx.stroke();
         }
       }
     }
