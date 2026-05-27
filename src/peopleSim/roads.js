@@ -191,13 +191,17 @@ function tryBuildOne(world, s) {
     if (!path) continue;
     // New-tile fraction: how much of this proposed path is OFF the
     // existing road network? If almost all overlap, the new road
-    // would be redundant — trade can already flow via the existing
-    // network. Only build if the path is meaningfully NEW terrain,
-    // i.e., a real new direct route worth the effort.
+    // would be redundant. The threshold depends on whether the
+    // peer is already in our network: if yes, the road would be
+    // a shortcut/loop and needs to be VERY novel (≥ 80%) to be
+    // worth it; if no, it bridges two clusters and lower bar (35%).
     let newTiles = 0;
     for (const ti of path.tiles) if (!world.roadTiles.has(ti)) newTiles++;
     const newFrac = path.tiles.length > 0 ? newTiles / path.tiles.length : 0;
-    if (newFrac < MIN_NEW_TILE_FRACTION) continue;
+    const sameNetwork = world._networkComponents
+                     && world._networkComponents.get(s.id) === world._networkComponents.get(peer.id);
+    const requiredFrac = sameNetwork ? NEW_FRACTION_IN : NEW_FRACTION_OUT;
+    if (newFrac < requiredFrac) continue;
     // Score combines resource gain (weighted 2x — direct tech
     // unlock) + trade gap (weighted 1x). Divided by path cost so
     // closer partners are preferred when benefits tie. Short-hop
@@ -560,9 +564,16 @@ export function updateTrade(world) {
 const QUALITY_NEW          = 0.25;       // new road: 4× cheaper than plain
 const QUALITY_MAX          = 0.08;       // worn arterial: 12× cheaper
 // Minimum fraction of a candidate path's tiles that must be NEW (not
-// already on an existing road) to justify building. Below this, the
-// "new" road would mostly overlap the existing network — skip it.
-const MIN_NEW_TILE_FRACTION = 0.35;
+// already on an existing road) to justify building. Two thresholds:
+//   NEW_FRACTION_OUT  — peer is in a DIFFERENT network component.
+//                       Bridging an isolated cluster onto the trade
+//                       graph is high-value, lower bar.
+//   NEW_FRACTION_IN   — peer is already in OUR network. The road
+//                       would be a "shortcut" / loop. Should only
+//                       build for truly novel routes that meaningfully
+//                       shorten the existing chain — high bar.
+const NEW_FRACTION_OUT = 0.35;
+const NEW_FRACTION_IN  = 0.80;
 const USAGE_FOR_MAX        = 5000;       // ticks of trade to reach top quality
 const QUALITY_REBUILD_FREQ = 64;         // ticks between cache rebuilds
 
