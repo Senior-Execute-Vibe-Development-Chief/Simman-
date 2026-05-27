@@ -16,6 +16,7 @@ import { runTribeStep, resetInvariantState } from "./tribeStep.js";
 import { tribePower, localPower, tribeOreAccess, tDistW, expFalloff } from "./tribePower.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { baseEdgeCost } from "./peopleSim/transport.js";
+import { getExportBreakdown, getTradeProfile } from "./peopleSim/settlement.js";
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
@@ -5961,34 +5962,63 @@ return(
         </div>
       )}
 
-      {/* ── Treasury + roads ── */}
+      {/* ── Treasury ── */}
       <div style={{marginTop:8,fontSize:10}} className="au-fade">Treasury</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
-        <span>Treasury</span><span>${Math.round(s.wealth||0).toLocaleString()}</span>
-        <span>Roads</span><span>{(s.roadsConnecting||[]).length}</span>
+        <span>Wealth</span><span>${Math.round(s.wealth||0).toLocaleString()}</span>
       </div>
-      {/* List road connections by partner name + cost. */}
+
+      {/* ── Exports breakdown ── */}
       {(()=>{
-        const ids=s.roadsConnecting||[];
-        if(ids.length===0)return null;
-        const psw2=peopleRef.current;
-        const lines=ids.map(rid=>{
-          const road=psw2.roads&&psw2.roads[rid];
-          if(!road||!road.active)return null;
-          const peerId=road.from===s.id?road.to:road.from;
-          const peer=psw2.settlements.find(o=>o.id===peerId);
-          if(!peer)return null;
-          return{ rid, peerName: peer.name, peerId, tiles: road.path.length, pathCost: Math.round(road.pathCost||0) };
-        }).filter(Boolean);
-        if(lines.length===0)return null;
+        const items=getExportBreakdown(s);
+        if(!items||items.length===0)return null;
+        const total=items.reduce((a,b)=>a+b.value,0);
         return(
-          <div style={{marginTop:4,fontSize:10}}>
-            {lines.map(l=>(
-              <div key={l.rid} className="au-fade" style={{fontSize:10}}>
-                → {l.peerName} ({l.tiles}t, transport {l.pathCost.toLocaleString()})
-              </div>
-            ))}
-          </div>
+          <>
+            <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
+              <span>Exports</span><span>total {total.toFixed(2)}</span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
+              {items.map((it,i)=>(
+                <Fragment key={i}>
+                  <span>{it.label}</span><span>{it.value.toFixed(2)}</span>
+                </Fragment>
+              ))}
+            </div>
+          </>
+        );
+      })()}
+
+      {/* ── Trade routes (imports + exports per road) ── */}
+      {(()=>{
+        const psw2=peopleRef.current;
+        const profile=getTradeProfile(s,psw2);
+        if(profile.length===0)return null;
+        const totalNet=profile.reduce((a,p)=>a+p.netPerTick,0);
+        return(
+          <>
+            <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
+              <span>Trade routes ({profile.length})</span>
+              <span style={{color:totalNet>=0?"#494":"#c44"}}>
+                {totalNet>=0?"+":""}{totalNet.toFixed(2)}/tick
+              </span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"1px 6px",fontSize:10}}>
+              {profile.map(p=>(
+                <Fragment key={p.rid}>
+                  <span style={{color:p.role==="selling"?"#5a5":"#c66"}}>
+                    {p.role==="selling"?"sell":"buy "}
+                  </span>
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {p.partner}
+                  </span>
+                  <span style={{color:p.netPerTick>=0?"#494":"#c44"}}>
+                    {p.netPerTick>=0?"+":""}{p.netPerTick.toFixed(2)}
+                  </span>
+                </Fragment>
+              ))}
+            </div>
+          </>
         );
       })()}
     </div>

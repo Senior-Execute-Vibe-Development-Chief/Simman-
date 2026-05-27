@@ -371,6 +371,81 @@ export function computeExportValue(s) {
   return v;
 }
 
+// Decomposition of exportValue — returns a sorted list of
+// { label, value } for each contributor. Used by the settlement
+// info card to show WHAT the settlement actually exports, not
+// just the headline number. Mirrors computeExportValue's
+// structure.
+export function getExportBreakdown(s) {
+  const k = s.knowledge || {};
+  const r = s.localRes || {};
+  const out = [{ label: "Baseline", value: 1.0 }];
+  const oreAccess = Math.max(r.copper || 0, r.tin || 0, r.iron || 0, r.coal || 0);
+  if (oreAccess > 0.10) {
+    const v = (k.metallurgy || 0) * 1.5;
+    if (v > 0.01) out.push({ label: "Metalwork", value: v });
+  }
+  const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
+  const construction = (k.construction || 0) * matAccess * 0.8;
+  if (construction > 0.01) out.push({ label: "Building goods", value: construction });
+  const agScale = Math.min(1, s.farmland.size / 50);
+  const agriculture = (k.agriculture || 0) * agScale * 0.6;
+  if (agriculture > 0.01) out.push({ label: "Grain surplus", value: agriculture });
+  if ((s.waterAccess || 0) > 0) {
+    const v = (k.navigation || 0) * s.waterAccess * 0.5;
+    if (v > 0.01) out.push({ label: "Ship goods", value: v });
+  }
+  const tools = (k.toolmaking || 0) * 0.4;
+  if (tools > 0.01) out.push({ label: "Crafted goods", value: tools });
+  const wild = (k.foraging || 0) * (r.timber || 0) * 0.4;
+  if (wild > 0.01) out.push({ label: "Wild goods", value: wild });
+  const horses = r.horses || 0;
+  if (horses > 0.05) {
+    const v = horses * 0.6 + (k.mobility || 0) * 0.4;
+    if (v > 0.01) out.push({ label: "Horse trade", value: v });
+  }
+  const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
+  const services = (k.organization || 0) * popScale * 0.5;
+  if (services > 0.01) out.push({ label: "Services", value: services });
+  const salt = (r.salt || 0) * 0.5;
+  if (salt > 0.01) out.push({ label: "Salt", value: salt });
+  const base = Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10);
+  if (base > 0.01) out.push({ label: "Village products", value: base });
+  return out.sort((a, b) => b.value - a.value);
+}
+
+// Trade profile across all connected roads. Returns array of
+// { rid, partner, partnerId, role, tradeValue, transport,
+//   netPerTick } where role is "selling" (we receive money) or
+// "buying" (we pay). netPerTick is positive when money flows IN,
+// negative when it flows OUT.
+export function getTradeProfile(s, world) {
+  const profile = [];
+  if (!s.roadsConnecting || !world.roads) return profile;
+  const sExport = computeExportValue(s);
+  for (const rid of s.roadsConnecting) {
+    const road = world.roads[rid];
+    if (!road || !road.active) continue;
+    const peerId = road.from === s.id ? road.to : road.from;
+    const peer = findSettlementById(world, peerId);
+    if (!peer || peer.mode !== "settled") continue;
+    const peerExport = computeExportValue(peer);
+    const diff = sExport - peerExport;             // >0: we're seller
+    const minPop = Math.min(s.people, peer.people);
+    const tradeValue = Math.abs(diff) * Math.sqrt(minPop) * 0.025;
+    const transport  = (road.pathCost || 0) * 0.012;
+    const selling = diff > 0;
+    const netPerTick = selling ? tradeValue : -(tradeValue + transport);
+    profile.push({
+      rid, partner: peer.name, partnerId: peer.id,
+      role: selling ? "selling" : "buying",
+      tradeValue, transport: selling ? 0 : transport,
+      netPerTick,
+    });
+  }
+  return profile;
+}
+
 export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;
   updateFood(world, s);
