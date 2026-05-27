@@ -215,21 +215,37 @@ function tryBuildOne(world, s) {
   }
   if (!bestPartner) return;
 
-  // Build the road. Free of charge — money will be spent on
-  // transport per-tick later (paid by importer to porters, deadweight).
+  // Truncate the new road's PHYSICAL path at the first tile that's
+  // already on an existing road. The new road becomes just the
+  // spur from this settlement to the network; the goods travel the
+  // rest of the way along existing roads.
+  //
+  // road.path  (truncated)  = visible / stored / rendered tiles
+  // road.pathCost (full)    = full S→peer Dijkstra cost; drives
+  //                           transport cost in updateTrade since
+  //                           goods physically still travel the full
+  //                           distance (just via the existing network
+  //                           beyond the junction).
+  let physicalTiles = bestPath.tiles;
+  for (let i = 1; i < bestPath.tiles.length; i++) {
+    if (world.roadTiles.has(bestPath.tiles[i])) {
+      physicalTiles = bestPath.tiles.slice(0, i + 1);
+      break;
+    }
+  }
   const roadId = world.roads.length;
   const road = {
     id: roadId,
     from: s.id, to: bestPartner.id,
-    path: bestPath.tiles,
-    pathCost: bestPath.cost,   // Dijkstra edge sum — drives transport cost in updateTrade
+    path: physicalTiles,
+    pathCost: bestPath.cost,
     builtBy: s.id,
     builtStep: world.step,
-    usage: 0,                  // accumulated ticks of active trade — drives roadTileQuality
+    usage: 0,
     active: true,
   };
   world.roads.push(road);
-  for (const ti of bestPath.tiles) world.roadTiles.add(ti);
+  for (const ti of physicalTiles) world.roadTiles.add(ti);
   // Immediately register the new road's tile quality so other
   // settlements planning in the SAME tick (and during the next
   // 64 ticks before the periodic rebuild) can route through it.
@@ -240,7 +256,7 @@ function tryBuildOne(world, s) {
     world.roadTileQuality = new Float32Array(world.N);
     world.roadTileQuality.fill(1.0);
   }
-  for (const ti of bestPath.tiles) {
+  for (const ti of physicalTiles) {
     if (QUALITY_NEW < world.roadTileQuality[ti]) world.roadTileQuality[ti] = QUALITY_NEW;
   }
   if (!s.roadsConnecting) s.roadsConnecting = [];
@@ -249,7 +265,8 @@ function tryBuildOne(world, s) {
   bestPartner.roadsConnecting.push(roadId);
   if (s.history) s.history.push({
     step: world.step, type: "road-built",
-    to: bestPartner.id, tiles: bestPath.tiles.length, pathCost: Math.round(bestPath.cost),
+    to: bestPartner.id, tiles: physicalTiles.length,
+    pathCost: Math.round(bestPath.cost),
   });
 }
 
