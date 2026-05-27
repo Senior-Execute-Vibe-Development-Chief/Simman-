@@ -11,7 +11,7 @@
 import { createWorld, pruneDead } from "./state.js";
 import { updateSettlement } from "./settlement.js";
 import { maybeCrystallize } from "./crystallize.js";
-import { maybeBuildRoads } from "./roads.js";
+import { maybeBuildRoads, updateTrade } from "./roads.js";
 
 export function initPeopleSim(worldGen, opts = {}) {
   return createWorld(worldGen, opts);
@@ -28,8 +28,10 @@ export function stepPeopleSim(world, n = 1) {
     // weighted by transport distance to existing ones.
     maybeCrystallize(world);
     // Roads: settlements with unmet resource needs and enough
-    // wealth build trade roads to partners.
+    // wealth build trade roads to partners. Then trade flows money
+    // along existing roads — zero-sum transfer from buyer to seller.
     maybeBuildRoads(world);
+    updateTrade(world);
     if (world.step % 32 === 0) pruneDead(world);
     if (world.step % 256 === 0) checkFarmlandOwnership(world);
     world.debug.tickMs = performance.now() - t0;

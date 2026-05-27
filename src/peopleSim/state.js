@@ -139,6 +139,26 @@ function initDeposits(world, w, deposits) {
     }
     world.deposits[id] = dst;
   }
+  // Money-creating mines get a per-tile RESERVE (finite stock). When a
+  // settlement extracts wealth from a mine, it draws from this reserve;
+  // when 0, the mine is dry and produces no more money. Historical
+  // pattern: Laurion silver depleted in ~180 years, Spanish New World
+  // silver in cycles. Reserves are richness × calibration, so a top-
+  // tier deposit yields ~150k wealth over its lifetime, modest tiles
+  // proportionally less.
+  world.depositReserve = {};
+  if (world.deposits.precious) {
+    const arr = world.deposits.precious;
+    const res = new Float32Array(N);
+    for (let i = 0; i < N; i++) res[i] = arr[i] * 150000;
+    world.depositReserve.precious = res;
+  }
+  if (world.deposits.gems) {
+    const arr = world.deposits.gems;
+    const res = new Float32Array(N);
+    for (let i = 0; i < N; i++) res[i] = arr[i] * 100000;
+    world.depositReserve.gems = res;
+  }
 }
 
 function initRiverMag(world, w) {

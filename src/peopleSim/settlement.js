@@ -197,6 +197,33 @@ function scanLocalResources(world, s) {
     }
   }
   s.localRes = maxOut;
+  // Cache minable tiles (precious + gems) so updateWealth can
+  // extract per-tick without re-walking reach. Each entry is
+  // [tileIndex, resourceId]. Refreshed on the same cadence as the
+  // reach scan, so newly-reached deposits start producing wealth at
+  // the next refresh boundary.
+  const minable = [];
+  const tileList = (s._reach && s._reach.size > 0)
+    ? [...s._reach.keys()]
+    : (() => {
+        const ts = [];
+        const { tw, th } = world;
+        const sx = s.pos.x | 0, sy = s.pos.y | 0;
+        for (let dy = -2; dy <= 2; dy++) {
+          const ny = sy + dy;
+          if (ny < 0 || ny >= th) continue;
+          for (let dx = -2; dx <= 2; dx++) {
+            const nx = ((sx + dx) % tw + tw) % tw;
+            ts.push(ny * tw + nx);
+          }
+        }
+        return ts;
+      })();
+  for (const ti of tileList) {
+    if (deposits.precious && deposits.precious[ti] > 0.05) minable.push([ti, "precious"]);
+    if (deposits.gems     && deposits.gems[ti]     > 0.05) minable.push([ti, "gems"]);
+  }
+  s._minableTiles = minable;
 }
 export { scanLocalResources };
 
@@ -232,61 +259,80 @@ function effectiveLocalRes(world, s) {
 }
 export { effectiveLocalRes, findSettlementById };
 
-// ── Wealth accrual ──
-// Settlements don't earn wealth from just having people — population
-// is a labour pool, not a cash machine. Real wealth comes from two
-// places: digging high-value resources out of the ground, and being
-// a node on a trade network.
+// ── Wealth: closed-economy model ──
 //
-// Mining: precious metals, gems, and salt are the historical
-// "currency-like" goods — gold/silver hoards, lapis lazuli, and the
-// salt trade that built early towns. Local deposits feed a per-tick
-// income proportional to richness × labour pool (√pop).
+// MONEY IS NOT CREATED FROM POPULATION OR TRADE. In a closed system,
+// total wealth grows only when new specie comes out of the ground.
+// All other "income" (trade, services, crafts) just moves existing
+// money between settlements.
 //
-// Trade: each active road earns income on BOTH ends, scaled by the
-// smaller of the two populations (trade flows in both directions but
-// is bottlenecked by the smaller market). This is what makes
-// trading-hub cities (Venice, Genoa, Tyre) much richer than
-// resource-equivalent inland villages.
+// SOURCE — mining. Each tick, a settlement extracts from precious-
+// and gems-bearing tiles within its reach. Each tile has a finite
+// reserve (set on world init at richness × scale). Extraction draws
+// from reserve and adds to settlement wealth. When a tile's reserve
+// hits 0, that mine is dry — no more wealth from it ever. Mines
+// visibly deplete over thousands of ticks of heavy use.
 //
-// New settlements receive a small founding endowment so they can
-// fund their first road and bootstrap the trade network. Without
-// this seed, no road ever gets built and the economy is stuck.
-const MINING_PRECIOUS = 2.0;
-const MINING_GEMS     = 1.5;
-const MINING_SALT     = 0.5;
-const TRADE_PER_ROAD  = 0.20;
+// TRANSFER — trade. Handled in roads.js updateTrade(). Each tick on
+// each road, money flows from the buyer (lower exportValue) to the
+// seller (higher exportValue), bounded by buyer's wealth. Net
+// change to total system wealth: zero.
+//
+// SINK — road construction. Wealth spent on roads is gone from the
+// trackable economy (paid to labourers who disperse it). Already
+// implemented in roads.js.
+//
+// FOUNDING ENDOWMENT — new settlements get a small starting wealth
+// so they can build a first road; cradle gets more as the world's
+// economic seed.
+const MINING_RATE = 5.0;              // base extraction multiplier
 function updateWealth(world, s) {
+  const reserves = world.depositReserve;
+  if (!reserves) return;
+  const minable = s._minableTiles;
+  if (!minable || minable.length === 0) return;
   const k = s.knowledge;
-  const r = s.localRes || {};
   const popFactor = Math.sqrt(Math.max(1, s.people)) * 0.05;
-  const orgMul    = 1 + (k.organization || 0) * 0.5;
-
-  // Mining income — only when valuable deposits are in reach.
-  const mining = ((r.precious || 0) * MINING_PRECIOUS
-                + (r.gems     || 0) * MINING_GEMS
-                + (r.salt     || 0) * MINING_SALT) * popFactor;
-
-  // Trade income — one entry per active road, scaled by the smaller
-  // population on the link. Iterating the road id list is O(roads
-  // per settlement) which is capped at MAX_ROADS_PER_SETT in roads.js
-  // so this stays cheap.
-  let trade = 0;
-  if (s.roadsConnecting && world.roads) {
-    for (const rid of s.roadsConnecting) {
-      const road = world.roads[rid];
-      if (!road || !road.active) continue;
-      const peerId = road.from === s.id ? road.to : road.from;
-      const peer = findSettlementById(world, peerId);
-      if (!peer || peer.mode !== "settled") continue;
-      const minPop = Math.min(s.people, peer.people);
-      trade += Math.sqrt(minPop) * TRADE_PER_ROAD;
-    }
+  const orgMul    = 1 + (k.organization || 0) * 0.3;
+  let mined = 0;
+  for (const [ti, id] of minable) {
+    const reserveArr = reserves[id];
+    if (!reserveArr) continue;
+    const left = reserveArr[ti];
+    if (left <= 0) continue;
+    const richness = (world.deposits[id] && world.deposits[id][ti]) || 0;
+    const want = MINING_RATE * richness * popFactor * orgMul;
+    const got = want < left ? want : left;
+    reserveArr[ti] = left - got;
+    mined += got;
   }
-
-  s.wealth = (s.wealth || 0) + (mining + trade) * orgMul;
+  s.wealth = (s.wealth || 0) + mined;
 }
 export { updateWealth };
+
+// Export-value = how much this settlement has to sell on a road.
+// Used by updateTrade in roads.js to direct money flow toward
+// settlements with higher value-add. Composition:
+//   metallurgy + ore access → tools / weapons
+//   construction + timber/stone → building goods
+//   agriculture + farmland → grain surplus
+//   navigation + water access → ship-borne goods, fish, etc.
+//   precious / gems / salt raw → high-value commodities
+// Range is roughly 1.0 (no specialisation) → ~4.5 (max edge).
+export function computeExportValue(s) {
+  const k = s.knowledge || {};
+  const r = s.localRes || {};
+  let v = 1.0;
+  const oreAccess = Math.max(r.copper || 0, r.tin || 0, r.iron || 0, r.coal || 0);
+  if (oreAccess > 0.10) v += (k.metallurgy || 0) * 1.5;
+  const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
+  v += (k.construction || 0) * matAccess * 0.8;
+  const agScale = Math.min(1, s.farmland.size / 50);
+  v += (k.agriculture || 0) * agScale * 0.6;
+  if ((s.waterAccess || 0) > 0) v += (k.navigation || 0) * s.waterAccess * 0.5;
+  v += ((r.precious || 0) + (r.gems || 0) + (r.salt || 0)) * 0.4;
+  return v;
+}
 
 export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;

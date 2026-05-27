@@ -18,6 +18,7 @@
 // that lands when production/consumption returns in a later phase.
 
 import { localEdgeCost } from "./transport.js";
+import { computeExportValue } from "./settlement.js";
 
 const ROAD_COST_FACTOR     = 0.5;      // wealth per unit of path edge cost
 const ROAD_COST_PER_TILE_MIN = 0.5;    // minimum cost per tile, even on flat road
@@ -256,6 +257,45 @@ class MinHeap {
     }
     return { ti, d };
   }
+}
+
+// ── Trade: zero-sum money transfer along roads ──
+// Each tick, every active road moves money from the buyer
+// (lower exportValue) to the seller (higher exportValue). The
+// system creates no new money here — total wealth is conserved.
+// Flow magnitude scales with both the export-value difference
+// AND the smaller of the two populations (small markets bottleneck
+// big partners). Bounded by the buyer's available wealth so a poor
+// settlement can't go negative.
+const TRADE_FLOW_RATE = 0.05;
+export function updateTrade(world) {
+  if (!world.roads || world.roads.length === 0) return;
+  for (const road of world.roads) {
+    if (!road || !road.active) continue;
+    const a = findById(world, road.from);
+    const b = findById(world, road.to);
+    if (!a || !b || a.mode !== "settled" || b.mode !== "settled") continue;
+    const exA = computeExportValue(a);
+    const exB = computeExportValue(b);
+    const diff = exA - exB;                          // >0: A is exporter; B pays
+    if (Math.abs(diff) < 0.01) continue;             // similar offerings, nothing flows
+    const minPop = Math.min(a.people, b.people);
+    const want = Math.abs(diff) * Math.sqrt(minPop) * TRADE_FLOW_RATE;
+    if (diff > 0) {
+      const got = Math.min(want, b.wealth || 0);
+      if (got > 0) { b.wealth -= got; a.wealth = (a.wealth || 0) + got; }
+    } else {
+      const got = Math.min(want, a.wealth || 0);
+      if (got > 0) { a.wealth -= got; b.wealth = (b.wealth || 0) + got; }
+    }
+  }
+}
+
+function findById(world, id) {
+  for (let i = 0; i < world.settlements.length; i++) {
+    if (world.settlements[i].id === id) return world.settlements[i];
+  }
+  return null;
 }
 
 export { ROAD_TILE_DISCOUNT };

@@ -175,8 +175,25 @@ for (let i = 1; i <= TICKS; i++) {
     const access = settlementsWithAccess(world);
     const numRoads = world.roads ? world.roads.length : 0;
     const numRoadTiles = world.roadTiles ? world.roadTiles.size : 0;
+    // System wealth conservation: sum of all settlement wealth + total
+    // sunk in roads ≈ total ever extracted from mines.
+    let totalWealth = 0;
+    for (const s of world.settlements) if (s.mode === "settled") totalWealth += s.wealth || 0;
+    let sunkInRoads = 0;
+    if (world.roads) for (const r of world.roads) if (r.active) sunkInRoads += r.cost || 0;
+    // Mine reserve remaining (total across all tiles).
+    let reserveLeft = 0;
+    if (world.depositReserve) {
+      for (const k of ["precious","gems"]) {
+        const arr = world.depositReserve[k];
+        if (arr) for (let j = 0; j < arr.length; j++) reserveLeft += arr[j];
+      }
+    }
     console.log(`\n— step ${i} — ${JSON.stringify(stats)}`);
-    console.log(`roads: ${numRoads}  road-tiles: ${numRoadTiles}`);
+    console.log(`roads: ${numRoads}  road-tiles: ${numRoadTiles}  ` +
+                `totalWealth: $${Math.round(totalWealth).toLocaleString()}  ` +
+                `sunkInRoads: $${Math.round(sunkInRoads).toLocaleString()}  ` +
+                `mineReservesLeft: $${Math.round(reserveLeft).toLocaleString()}`);
     console.log("settlements w/ access: " + RES_IDS.map(id => `${id}:${access[id]}`).join("  "));
     const alive = world.settlements
       .filter(s => s.mode === "settled")
