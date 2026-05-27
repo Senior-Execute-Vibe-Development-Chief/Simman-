@@ -5852,11 +5852,16 @@ return(
   const r=s.localRes||{};
   const farm=s.farmland?s.farmland.size:0;
   const K=s._k||0;
-  // Metallurgy era label derived from active cap.
-  const cu=(r.copper||0)>0.10,sn=(r.tin||0)>0.10,fe=(r.iron||0)>0.10,co=(r.coal||0)>0.10;
+  // Era label is driven by metallurgy KNOWLEDGE (which is monotonic —
+  // you don't unlearn how to make steel) rather than current
+  // resource access. A city that lost its iron mine still knows the
+  // craft; it just can't make new iron until a trade route reopens.
+  const m=k.metallurgy||0;
   let era="stone age";
-  if(fe&&co)era="steel age";else if(fe)era="iron age";
-  else if(cu&&sn)era="bronze age";else if(cu)era="chalcolithic";
+  if(m>=0.88)era="steel age";
+  else if(m>=0.68)era="iron age";
+  else if(m>=0.42)era="bronze age";
+  else if(m>=0.15)era="chalcolithic";
   // Local resources, sorted by richness, only show ones present.
   const RES_LABEL={timber:"Timber",stone:"Stone",copper:"Copper",tin:"Tin",iron:"Iron",coal:"Coal",horses:"Horses",salt:"Salt"};
   const presentRes=Object.entries(r).filter(([,v])=>v>0.10).sort((a,b)=>b[1]-a[1]);

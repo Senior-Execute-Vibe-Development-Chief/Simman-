@@ -204,28 +204,30 @@ export { scanLocalResources };
 // Each tick, every settlement adds harvested resource units to its
 // stockpile, proportional to total reachable deposit-density and
 // modulated by population (more workers harvest more, capped to
-// avoid metropolises hogging everything). Light decay so the value
-// stabilizes at production_rate / DECAY — the visible number is
-// "what this settlement has on hand right now", not cumulative
-// since founding. Future trade / military / construction systems
-// will consume from these stockpiles.
-const STOCKPILE_DECAY  = 0.005;       // 0.5% / tick — equilibrium ≈ 200× rate
+// avoid metropolises hogging everything). NO decay — a granary
+// holds what you've put in, doesn't leak it away. Capped by tier
+// (the granary's physical capacity) so stockpiles can't grow
+// unbounded over very long runs. Tier-up increases capacity, which
+// is when a settlement actually invests in better storage.
+//
+// Future trade / military / construction systems will CONSUME from
+// these stockpiles — that's when stockpiles will actually be drawn
+// down. Until then they just fill toward the cap.
 const HARVEST_PER_UNIT = 0.08;        // per resAccess unit per pop-factor unit
+const STOCKPILE_CAP_BY_TIER = [500, 2500, 10000, 40000]; // village → metropolis
 function updateStockpile(world, s) {
   const stash  = s.stockpile = s.stockpile || {};
   const access = s.resAccess || {};
   // Pop factor: village (25 ppl) ≈ 0.25; town (200) ≈ 0.71; city (1000) ≈ 1.58
   // metropolis (5000) capped at 3.0. Bigger = more harvesters in the field.
   const popFactor = Math.min(3.0, Math.sqrt(Math.max(1, s.people)) * 0.05);
-  // Decay first so a fully-depleted reach (after migration / loss) sees
-  // its stockpile bleed off.
-  for (const k in stash) {
-    stash[k] *= (1 - STOCKPILE_DECAY);
-    if (stash[k] < 0.05) delete stash[k];
-  }
+  const cap = STOCKPILE_CAP_BY_TIER[s.tier] || STOCKPILE_CAP_BY_TIER[0];
   for (const k in access) {
     const a = access[k];
-    if (a > 0) stash[k] = (stash[k] || 0) + a * HARVEST_PER_UNIT * popFactor;
+    if (a > 0) {
+      const cur = stash[k] || 0;
+      stash[k] = Math.min(cap, cur + a * HARVEST_PER_UNIT * popFactor);
+    }
   }
 }
 export { updateStockpile };
