@@ -5513,7 +5513,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // Cities and metropolises also get an enclosing wall ring with
     // tower-tick marks. Building positions seeded from settlement
     // id so the sprite is stable across frames (no shimmer).
-    const MIN_SIZE=6,MAX_SIZE=28;
+    const MIN_SIZE=5,MAX_SIZE=16;
     let _popMin=Infinity,_popMax=-Infinity;
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
