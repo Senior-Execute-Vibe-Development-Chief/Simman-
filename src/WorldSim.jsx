@@ -5550,29 +5550,16 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       const richMix=Math.min(1,wpc/100);
       // Poor: wealth-per-capita low → mostly hovels (tier 0/1 only).
       const poorMix=Math.max(0,Math.min(1,(15-wpc)/15));
-      // Building count from log(pop): hamlet 25 → ~3, town 200 → ~6,
-      // city 1000 → ~9, metropolis 10000 → ~14.
-      const popLog=Math.log(Math.max(1,s.people));
-      const numBuildings=Math.max(2,Math.min(18,Math.round(popLog*1.3)));
-      // City+ walls drawn BEFORE buildings so they render behind.
-      if(s.tier>=2){
-        const wallR=size*0.95;
-        ctx.beginPath();ctx.arc(sx,sy,wallR,0,Math.PI*2);
-        ctx.fillStyle="rgba(180,160,130,0.25)";ctx.fill();
-        ctx.strokeStyle="rgba(60,40,25,1.0)";
-        ctx.lineWidth=s.tier>=3?2.0:1.4;
-        ctx.stroke();
-        const towers=s.tier>=3?10:7;
-        for(let i=0;i<towers;i++){
-          const a=(i/towers)*Math.PI*2;
-          const tx=sx+Math.cos(a)*wallR,ty=sy+Math.sin(a)*wallR;
-          ctx.fillStyle="rgba(60,40,25,1.0)";
-          ctx.beginPath();ctx.arc(tx,ty,1.4,0,Math.PI*2);ctx.fill();
-        }
-      }
-      // Buildings — pseudo-random scatter inside footprint.
+      // Building count from √pop — density actually scales with
+      // city size. A hamlet of 25 has 4 buildings, a town of 200
+      // has 10, a city of 1000 has 22, a metropolis of 10000 has
+      // ~70. Cities look DENSE, packed into their footprint.
+      const numBuildings=Math.max(3,Math.min(80,Math.round(Math.sqrt(s.people)*0.7)));
+      // Buildings — pseudo-random scatter inside footprint. Density
+      // increases naturally because numBuildings grows faster than
+      // footprint area (sqrt(pop) vs log(pop)).
       const rng=stableRng(s.id*2654435761);
-      const footR=size*(s.tier>=2?0.75:0.55);
+      const footR=size*0.85;
       // Build a list of (offset, type, height) so we can z-sort
       // by y so back buildings draw first.
       const buildings=[];
