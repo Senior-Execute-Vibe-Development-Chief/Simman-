@@ -368,11 +368,22 @@ export function updateFoodTrade(world) {
     } else if (bSurplus > 0.001 && aSurplus < -0.001) {
       exporter = b; importer = a; shipRate = bSurplus; deficit = -aSurplus;
     } else continue;
-    // Per-tick flow capped at: exporter's surplus, importer's
-    // deficit, AND a small fraction of exporter's stored food (can't
-    // ship out their entire granary in one tick).
+    // Growth-buffer reservation: the exporter keeps part of their
+    // surplus for their OWN population growth. Headroom is how far
+    // below K they are (0 at K, 1 at empty); they reserve a bigger
+    // share when they have room to grow. At K → 20% reserve (still
+    // a small famine buffer); far below K → 70% reserve (most
+    // surplus fed to their own children before sold to outsiders).
+    const exporterK = exporter._k || Math.max(1, exporter.people);
+    const headroom = Math.max(0, 1 - exporter.people / exporterK);
+    const reserveFraction = 0.20 + headroom * 0.50;
+    const effectiveShipRate = shipRate * (1 - reserveFraction);
+    // Per-tick flow capped at: exporter's effective ship rate (after
+    // their growth reserve), importer's deficit, and a small
+    // fraction of exporter's stored food (can't ship out their
+    // entire granary in one tick).
     const storageRate = (exporter.food || 0) * 0.01;
-    const maxFlow = Math.min(shipRate, deficit, storageRate);
+    const maxFlow = Math.min(effectiveShipRate, deficit, storageRate);
     if (maxFlow <= 0) continue;
     const wantPrice = maxFlow * FOOD_PRICE;
     const transport = (road.pathCost || 0) * FOOD_TRANSPORT_PER_PATHCOST;
