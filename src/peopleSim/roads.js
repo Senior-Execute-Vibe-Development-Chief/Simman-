@@ -65,16 +65,17 @@ export function maybeBuildRoads(world) {
 }
 
 // Union-find over the road graph. Each alive settlement id maps to
-// the "root" id of its connected component; two settlements with
-// the same root can already reach each other through the existing
-// road network and shouldn't need a direct redundant road built
-// between them.
+// the "root" id of its connected component. ALSO builds a per-tile
+// → component map (world._tileComponent), used by tryBuildOne's
+// truncation: a new road should only terminate at an existing-road
+// tile if that road belongs to the destination settlement's
+// network. Otherwise the spur would just end at a road going
+// elsewhere, leaving the planned trade route disconnected.
 export function buildNetworkComponents(world) {
   const parent = new Map();
   const find = (x) => {
     let p = x;
     while ((parent.get(p) ?? p) !== p) p = parent.get(p);
-    // Path compression for the next call.
     let cur = x;
     while ((parent.get(cur) ?? cur) !== p) {
       const next = parent.get(cur);
@@ -93,11 +94,24 @@ export function buildNetworkComponents(world) {
   for (const road of world.roads || []) {
     if (road.active) union(road.from, road.to);
   }
-  const out = new Map();
+  const settlementComp = new Map();
   for (const s of world.settlements) {
-    if (s.mode === "settled") out.set(s.id, find(s.id));
+    if (s.mode === "settled") settlementComp.set(s.id, find(s.id));
   }
-  return out;
+  // Per-tile component: which network the tile belongs to. If two
+  // different-component roads share a tile (rare; mostly happens
+  // when networks merge), first writer wins.
+  const tileComp = new Map();
+  for (const road of world.roads || []) {
+    if (!road.active) continue;
+    const comp = settlementComp.get(road.from);
+    if (comp === undefined) continue;
+    for (const ti of road.path) {
+      if (!tileComp.has(ti)) tileComp.set(ti, comp);
+    }
+  }
+  world._tileComponent = tileComp;
+  return settlementComp;
 }
 
 function tryBuildOne(world, s) {
@@ -215,22 +229,28 @@ function tryBuildOne(world, s) {
   }
   if (!bestPartner) return;
 
-  // Truncate the new road's PHYSICAL path at the first tile that's
-  // already on an existing road. The new road becomes just the
-  // spur from this settlement to the network; the goods travel the
-  // rest of the way along existing roads.
+  // Truncate the new road's PHYSICAL path at the first tile whose
+  // existing road belongs to the DESTINATION's network — that's a
+  // genuine junction onto a route that leads to bestPartner. A
+  // tile shared with some unrelated road (e.g., crossing the 2-4
+  // road on our way from 1 to 3) is NOT a valid junction; the
+  // path must continue past it to actually reach 3.
   //
   // road.path  (truncated)  = visible / stored / rendered tiles
   // road.pathCost (full)    = full S→peer Dijkstra cost; drives
   //                           transport cost in updateTrade since
-  //                           goods physically still travel the full
-  //                           distance (just via the existing network
-  //                           beyond the junction).
+  //                           goods physically travel the full
+  //                           distance (via existing network past
+  //                           the junction).
+  const destComp = world._networkComponents ? world._networkComponents.get(bestPartner.id) : null;
+  const tileComp = world._tileComponent;
   let physicalTiles = bestPath.tiles;
-  for (let i = 1; i < bestPath.tiles.length; i++) {
-    if (world.roadTiles.has(bestPath.tiles[i])) {
-      physicalTiles = bestPath.tiles.slice(0, i + 1);
-      break;
+  if (destComp !== null && tileComp) {
+    for (let i = 1; i < bestPath.tiles.length; i++) {
+      if (tileComp.get(bestPath.tiles[i]) === destComp) {
+        physicalTiles = bestPath.tiles.slice(0, i + 1);
+        break;
+      }
     }
   }
   const roadId = world.roads.length;
