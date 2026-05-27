@@ -5931,21 +5931,43 @@ return(
         </div>
       )}
 
-      {/* ── Stockpile (harvested over time, lightly decayed) ── */}
+      {/* ── Stockpile + shortages ── */}
       {(()=>{
         const stash=s.stockpile||{};
-        const entries=Object.entries(stash).filter(([,v])=>v>=0.5).sort((a,b)=>b[1]-a[1]);
-        if(entries.length===0)return null;
+        const shortages=s._shortages||{};
+        // Build a row for every resource that's either stocked OR
+        // currently short, so the player sees both abundance and
+        // bottlenecks. Sort short resources first (so they read
+        // top-of-list and feel urgent), then by stockpile size desc.
+        const allIds=new Set([...Object.keys(stash),...Object.keys(shortages)]);
+        const rows=[...allIds].map(id=>({
+          id, v: stash[id]||0, short: !!shortages[id]
+        })).filter(r=>r.v>=0.5||r.short)
+          .sort((a,b)=>(b.short-a.short)||(b.v-a.v));
+        if(rows.length===0)return null;
+        const cap=[500,2500,10000,40000][s.tier]||500;
         return(
           <>
-            <div style={{marginTop:8,fontSize:10}} className="au-fade">Stockpile</div>
+            <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
+              <span>Stockpile</span><span>cap {cap.toLocaleString()}</span>
+            </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
-              {entries.map(([id,v])=>(
-                <Fragment key={id}>
-                  <span>{RES_LABEL[id]||id}</span><span>{Math.round(v)}</span>
+              {rows.map(r=>(
+                <Fragment key={r.id}>
+                  <span style={r.short?{color:"#c44"}:undefined}>
+                    {RES_LABEL[r.id]||r.id}{r.short?" ⚠":""}
+                  </span>
+                  <span style={r.short?{color:"#c44"}:undefined}>
+                    {Math.round(r.v)}
+                  </span>
                 </Fragment>
               ))}
             </div>
+            {Object.keys(shortages).length>0&&(
+              <div className="au-fade" style={{fontSize:9,marginTop:3,fontStyle:"italic"}}>
+                shortage slows tech growth
+              </div>
+            )}
           </>
         );
       })()}

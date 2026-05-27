@@ -232,6 +232,43 @@ function updateStockpile(world, s) {
 }
 export { updateStockpile };
 
+// ── Stockpile consumption ──
+// Per-tick drain on the stockpile, representing tools wearing out,
+// houses needing repair, food being preserved, draft animals being
+// fed. Each resource has a base rate (scales with sqrt(pop) — more
+// workers = more wear) and a knowledge gate so a settlement that
+// hasn't unlocked metallurgy doesn't consume copper. When stockpile
+// hits zero, the shortage is recorded on s._shortages so the
+// knowledge growth pass can slow the relevant track.
+const CONSUME = [
+  { id: "timber", rate: 0.020, gate: null,                                   slows: ["construction"] },
+  { id: "stone",  rate: 0.005, gate: { k: "construction", min: 0.20 },       slows: ["construction","toolmaking"] },
+  { id: "copper", rate: 0.005, gate: { k: "metallurgy",   min: 0.05 },       slows: ["metallurgy","toolmaking"] },
+  { id: "tin",    rate: 0.002, gate: { k: "metallurgy",   min: 0.30 },       slows: ["metallurgy"] },
+  { id: "iron",   rate: 0.005, gate: { k: "metallurgy",   min: 0.65 },       slows: ["metallurgy","toolmaking"] },
+  { id: "coal",   rate: 0.004, gate: { k: "metallurgy",   min: 0.85 },       slows: ["metallurgy"] },
+  { id: "salt",   rate: 0.010, gate: null,                                   slows: [] },
+  { id: "horses", rate: 0.003, gate: { k: "mobility",     min: 0.05 },       slows: ["mobility"] },
+];
+function updateConsumption(world, s) {
+  const stash = s.stockpile = s.stockpile || {};
+  const k = s.knowledge;
+  const popSqrt = Math.sqrt(Math.max(1, s.people));
+  const shortages = s._shortages = {};
+  for (const def of CONSUME) {
+    if (def.gate && (k[def.gate.k] || 0) < def.gate.min) continue;
+    const need = def.rate * popSqrt;
+    const have = stash[def.id] || 0;
+    if (have >= need) {
+      stash[def.id] = have - need;
+    } else {
+      stash[def.id] = 0;
+      shortages[def.id] = 1;            // boolean: this resource is short
+    }
+  }
+}
+export { updateConsumption };
+
 export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;
   updateFood(world, s);
@@ -239,6 +276,7 @@ export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;        // died this tick (famine / wither)
   maybeRefreshFarmland(world, s);
   updateStockpile(world, s);
+  updateConsumption(world, s);
   updateKnowledge(world, s);
   updateTier(world, s);
 }
@@ -266,6 +304,20 @@ const LEARN_BASE = 0.000040;          // per tick scaling
 //   + iron                      cap 0.90  (iron age)
 //   + iron + coal               cap 1.00  (steel / industrial)
 //
+// Shortage penalty: each shortage on a tracked resource that the
+// track depends on multiplies growth by 0.4 (stacking). A
+// settlement with both timber AND stone short hits construction
+// growth at 0.16 of nominal.
+function shortageMul(s, track) {
+  const sh = s._shortages;
+  if (!sh) return 1;
+  let m = 1;
+  for (const def of CONSUME) {
+    if (sh[def.id] && def.slows.indexOf(track) >= 0) m *= 0.4;
+  }
+  return m;
+}
+
 function updateKnowledge(world, s) {
   const k = s.knowledge;
   const r = s.localRes || {};
@@ -283,13 +335,13 @@ function updateKnowledge(world, s) {
   const stoneBoost = 1 + (r.stone || 0) * 0.6;
   const metalBoost = 1 + k.metallurgy * 2.5;
   k.toolmaking = clamp01(k.toolmaking + LEARN_BASE * 0.8 * (1 - k.toolmaking)
-    * stoneBoost * metalBoost * (1 + popSqrt * 0.08));
+    * stoneBoost * metalBoost * (1 + popSqrt * 0.08) * shortageMul(s, "toolmaking"));
 
   // Construction: timber for early shelter, stone for durable
   // structures, agriculture for surplus to free up builders.
   const buildMat = 1 + (r.timber || 0) * 0.8 + (r.stone || 0) * 0.6;
   k.construction = clamp01(k.construction + LEARN_BASE * 0.9 * (1 - k.construction)
-    * buildMat * (1 + k.agriculture * 0.8) * (1 + popSqrt * 0.05));
+    * buildMat * (1 + k.agriculture * 0.8) * (1 + popSqrt * 0.05) * shortageMul(s, "construction"));
 
   // Agriculture: farmland scale + metal tools (plough). Cradle starts
   // at 0.5 so the floor is non-zero.
@@ -315,7 +367,8 @@ function updateKnowledge(world, s) {
     const oreRate = Math.max(cu, sn, fe, co);
     const headroom = 1 - k.metallurgy / metalCap;
     k.metallurgy = Math.min(metalCap, k.metallurgy +
-      LEARN_BASE * 0.5 * headroom * oreRate * (1 + k.toolmaking * 0.5));
+      LEARN_BASE * 0.5 * headroom * oreRate * (1 + k.toolmaking * 0.5)
+      * shortageMul(s, "metallurgy"));
   }
 
   // ── Navigation: hard-gated by water access ──
@@ -332,7 +385,8 @@ function updateKnowledge(world, s) {
   const horses = r.horses || 0;
   if (horses > oreThr) {
     k.mobility = clamp01(k.mobility + LEARN_BASE * 0.5 * (1 - k.mobility)
-      * horses * (1 + k.construction * 0.4 + k.metallurgy * 0.6));
+      * horses * (1 + k.construction * 0.4 + k.metallurgy * 0.6)
+      * shortageMul(s, "mobility"));
   }
 }
 
