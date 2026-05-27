@@ -5961,12 +5961,10 @@ return(
         </div>
       )}
 
-      {/* ── Wealth + roads ── */}
-      <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
-        <span>Treasury</span>
-      </div>
+      {/* ── Treasury + roads ── */}
+      <div style={{marginTop:8,fontSize:10}} className="au-fade">Treasury</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
-        <span>Wealth</span><span>{Math.round(s.wealth||0).toLocaleString()}</span>
+        <span>Treasury</span><span>${Math.round(s.wealth||0).toLocaleString()}</span>
         <span>Roads</span><span>{(s.roadsConnecting||[]).length}</span>
       </div>
       {/* List road connections by partner name + cost. */}
@@ -5987,7 +5985,7 @@ return(
           <div style={{marginTop:4,fontSize:10}}>
             {lines.map(l=>(
               <div key={l.rid} className="au-fade" style={{fontSize:10}}>
-                → {l.peerName} ({l.tiles}t, ${l.cost})
+                → {l.peerName} ({l.tiles}t, ${l.cost.toLocaleString()})
               </div>
             ))}
           </div>
