@@ -16,7 +16,7 @@ import { runTribeStep, resetInvariantState } from "./tribeStep.js";
 import { tribePower, localPower, tribeOreAccess, tDistW, expFalloff } from "./tribePower.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { baseEdgeCost } from "./peopleSim/transport.js";
-import { getExportBreakdown, getTradeProfile } from "./peopleSim/settlement.js";
+import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
@@ -6030,10 +6030,28 @@ return(
       )}
 
       {/* ── Treasury ── */}
-      <div style={{marginTop:8,fontSize:10}} className="au-fade">Treasury</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
-        <span>Wealth</span><span>${Math.round(s.wealth||0).toLocaleString()}</span>
-      </div>
+      {(()=>{
+        const wealth=Math.round(s.wealth||0);
+        const reserve=Math.round(getWealthReserve(s));
+        const available=Math.max(0, wealth-reserve);
+        const hoarding=available<=0&&wealth>0;
+        return(
+          <>
+            <div style={{marginTop:8,fontSize:10}} className="au-fade">Treasury</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
+              <span>Wealth</span><span>${wealth.toLocaleString()}</span>
+              <span className="au-fade">Reserve (rainy day)</span>
+              <span className="au-fade">${reserve.toLocaleString()}</span>
+              <span style={hoarding?{color:"#c44"}:undefined}>
+                {hoarding?"Hoarding — no spending":"Available to spend"}
+              </span>
+              <span style={hoarding?{color:"#c44"}:undefined}>
+                ${available.toLocaleString()}
+              </span>
+            </div>
+          </>
+        );
+      })()}
 
       {/* ── Specialty profile (what they could sell — potential, not actual) ── */}
       {(()=>{

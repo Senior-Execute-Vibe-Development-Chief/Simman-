@@ -18,7 +18,7 @@
 // that lands when production/consumption returns in a later phase.
 
 import { localEdgeCost } from "./transport.js";
-import { computeExportValue } from "./settlement.js";
+import { computeExportValue, getWealthReserve } from "./settlement.js";
 
 const TRADE_RATE              = 0.025;     // slower per-tick exchange — settlements visibly accumulate
 const TRANSPORT_PER_PATHCOST  = 0.012;     // reduced proportionally with trade rate
@@ -324,9 +324,16 @@ export function updateTrade(world) {
     if (want <= 0) continue;
     const buyer  = diff > 0 ? b : a;
     const seller = diff > 0 ? a : b;
+    // Buyer's affordable spending = wealth ABOVE their reserve.
+    // Below reserve, the settlement is in "hoarding" mode — they
+    // hold their treasury and refuse to import anything. This is
+    // the urgency gate: a poor settlement won't buy luxuries when
+    // they're below their rainy-day fund.
     const have = buyer.wealth || 0;
-    if (have <= 0) continue;
-    const actual = have < want ? have : want;
+    const reserve = getWealthReserve(buyer);
+    const available = have - reserve;
+    if (available <= 0) continue;
+    const actual = available < want ? available : want;
     const scale  = actual / want;
     const sellerGets = tradeValue * scale;
     buyer.wealth  -= actual;

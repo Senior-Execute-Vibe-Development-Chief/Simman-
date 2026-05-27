@@ -371,6 +371,21 @@ export function computeExportValue(s) {
   return v;
 }
 
+// Wealth reserve = "rainy day fund" the settlement holds back from
+// active spending. Scales with population — bigger settlements have
+// more obligations (granary stockpiles, watch wages, ceremonial
+// reserves) and need more cushion against bad years.
+//   50  ppl: $ 45 reserve
+//   200 ppl: $ 90
+//   1000:    $330
+//   10000:   $3030
+// Below reserve, the settlement REFUSES to spend on trade outflows
+// of any kind — they hoard. This is the urgency / priority gate
+// the user asked for ("don't buy horses when struggling").
+export function getWealthReserve(s) {
+  return 30 + Math.max(0, s.people || 0) * 0.3;
+}
+
 // Decomposition of exportValue — returns a sorted list of
 // { label, value } for each contributor. Used by the settlement
 // info card to show WHAT the settlement actually exports, not
