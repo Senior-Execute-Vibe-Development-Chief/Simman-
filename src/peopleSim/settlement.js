@@ -25,18 +25,19 @@ const TIER_NAME      = ["village", "town", "city", "metropolis"];
 const SETT_GROWTH = 0.0018;
 
 // Farmland model:
-//   1 painted tile feeds PEOPLE_PER_FARM_TILE people on average.
-//   Yield is calibrated so supply / demand ≈ 1.31 at K (30 % margin).
+//   farmland tile yields = world.fert[tile] × FARM_YIELD_PER_FERT
+//                          × (1 + ag × 1.2)  per tick
 // Forage model:
-//   K also includes a forage-area contribution at 0.8× weight, so a
-//   village in a modest semi-arid neighbourhood can carry 40–70
-//   people on hunting/gathering alone (no plantable farmland). This
-//   is what lets steppe/desert-edge/tundra hamlets be a visible
-//   feature instead of empty floor-20 dots.
-const PEOPLE_PER_FARM_TILE   = 14;
-const PEOPLE_PER_FORAGE_TILE = 7;          // forage-K rate (per fert-unit in 5×5)
-const FORAGE_K_WEIGHT        = 1.0;        // forage contribution to total K
-const K_FLOOR                = 35;         // hamlet visible at zoom — pop ~35 even in worst land
+//   forage area food = forageArea × FORAGE_RATE
+//                      × (1 + foraging × 0.5)  per tick
+// Population K is derived ENTIRELY from food production (local +
+// imports). No artificial fudge factors — pop is what food can
+// support, full stop.
+//   K = (supply + imported supply) / demand_per_capita
+// where demand_per_capita = 0.003 food/person/tick.
+const K_MIN_VIABLE = 8;                    // bare-survival floor (matches the wither cull threshold)
+// Farm target sizing: ~1 tile feeds ~16 people (yield 0.055/fert × ag-mature 2.2 / demand 0.003).
+const FARM_TARGET_PEOPLE_PER_TILE = 16;
 const FARM_YIELD_PER_FERT    = 0.055;
 // Forage rate calibrated so a forage-only village in a modest 5×5
 // neighbourhood (avg fert ~0.4) reaches equilibrium pop ~70. Bumped
@@ -630,23 +631,18 @@ function updateFood(world, s) {
 
 // ── Population ─────────────────────────────────────────────────────
 function updatePopulation(world, s) {
-  let farmFert = 0;
-  for (const fti of s.farmland) farmFert += world.fert[fti] || 0;
-  const farmK = farmFert * PEOPLE_PER_FARM_TILE * (1 + (s.knowledge.agriculture || 0) * 1.2);
-  // Forage area was computed in updateFood (5×5 fertility-sum around
-  // the home tile). Counts toward K at FORAGE_K_WEIGHT so marginal
-  // forage-only villages can actually grow past the floor — pastoral
-  // hamlets, oasis villages, tundra encampments.
-  const forageK = (s._forageArea || 0) * PEOPLE_PER_FORAGE_TILE
-                * (1 + (s.knowledge.foraging || 0.3) * 0.5);
-  // Imported food via trade lifts effective carrying capacity. Each
-  // food unit/tick imported sustains ~1/0.003 ≈ 333 people; we
-  // weight at 0.5 because imports can be disrupted, so a prudent
-  // settlement doesn't grow to fully match imported supply. This is
-  // what lets coastal grain-importing cities (Rome → Egypt) hold
-  // populations far beyond local farmland.
-  const importK = (s._foodImportRate || 0) / 0.003 * 0.5;
-  const K = Math.max(K_FLOOR, farmK + forageK * FORAGE_K_WEIGHT + importK);
+  // K = pop the food supply can sustain.
+  //   supply = local food production per tick (forage + farmland)
+  //          + imported food per tick (smoothed EMA from updateFoodTrade)
+  //   demand_per_capita = 0.003 per tick
+  //   K = supply / demand_per_capita
+  // No artificial weights or per-tile fudge factors — food directly
+  // sets the population ceiling. Logistic growth converges to it.
+  // Import K used in full (no prudence factor) — mature import-
+  // dependent cities (Rome from Egypt) grew to actually match
+  // their grain ships.
+  const supply = (s._foodSupply || 0) + (s._foodImportRate || 0);
+  const K = Math.max(K_MIN_VIABLE, supply / 0.003);
   s._k = K;
 
   if (s.food <= 0.01 && s.people > 1) {
@@ -690,7 +686,7 @@ function refreshFarmland(world, s) {
   // Minimum 4 farm tiles so a freshly-founded settlement (~20 ppl,
   // would naively want only 2 tiles) has enough food capacity to grow
   // past its founding pop.
-  const target = Math.max(4, Math.ceil(s.people / PEOPLE_PER_FARM_TILE));
+  const target = Math.max(4, Math.ceil(s.people / FARM_TARGET_PEOPLE_PER_TILE));
   const { tw, th, elev, fert, coast, riverMag, _farmedBy } = world;
   // Plantability floor for this settlement, given its current ag tech.
   const minFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
