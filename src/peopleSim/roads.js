@@ -20,12 +20,13 @@
 import { localEdgeCost } from "./transport.js";
 import { computeExportValue } from "./settlement.js";
 
-const ROAD_COST_FACTOR     = 0.5;      // wealth per unit of path edge cost
-const ROAD_COST_PER_TILE_MIN = 0.5;    // minimum cost per tile, even on flat road
+// Roads are free to build (they emerge as traffic patterns) but
+// USING them costs money per tick of trade — see updateTrade and
+// TRANSPORT_PER_PATHCOST below.
 const ROAD_TILE_DISCOUNT   = 0.15;     // existing road tile edge cost multiplier
 const PLAN_INTERVAL        = 240;      // ticks between road-planning attempts
 const MAX_PARTNER_DIST     = 80;       // tile-units of euclidean distance to consider
-const MIN_POP_TO_PLAN      = 60;       // hamlets too small to fund anything
+const MIN_POP_TO_PLAN      = 60;       // hamlets too small to coordinate a trade route
 const MAX_ROADS_PER_SETT   = 4;        // cap so a metropolis doesn't sprawl
 
 // Resource needs by tier — what a settlement requires to fund its
@@ -88,7 +89,6 @@ function tryBuildOne(world, s) {
   let bestPartner = null;
   let bestScore = -Infinity;
   let bestPath = null;
-  let bestCost = 0;
   for (const peer of world.settlements) {
     if (peer.mode !== "settled" || peer.id === s.id) continue;
     if (connected.has(roadIdBetween(world, s.id, peer.id))) continue;
@@ -109,42 +109,43 @@ function tryBuildOne(world, s) {
     // already include existing roads as cheap edges).
     const path = findPath(world, s, peer);
     if (!path) continue;
-    const pathCost = path.cost;
-    const wealthCost = Math.max(ROAD_COST_PER_TILE_MIN * path.tiles.length, pathCost * ROAD_COST_FACTOR);
-    if (wealthCost > s.wealth) continue;
-    // Score: how much resource we'd unlock per unit wealth spent.
-    // Length bonus discounts very short hops (might already be in reach).
-    const score = bestResVal / Math.max(1, wealthCost) * (path.tiles.length > 3 ? 1 : 0.5);
+    // Roads are FREE to build (they emerge organically as trade
+    // paths get walked into existence). The pathCost is still
+    // recorded on the road and used by updateTrade to compute
+    // per-tick transport cost — long roads stay viable for
+    // valuable cargo but become unprofitable for low-margin trade.
+    // Score: resource access per unit path expense. Penalise
+    // very short hops (already de facto reachable).
+    const score = bestResVal / Math.max(1, path.cost) * (path.tiles.length > 3 ? 1 : 0.5);
     if (score > bestScore) {
       bestScore = score;
       bestPartner = peer;
       bestPath = path;
-      bestCost = wealthCost;
     }
   }
   if (!bestPartner) return;
 
-  // Build the road.
+  // Build the road. Free of charge — money will be spent on
+  // transport per-tick later (paid by importer to porters, deadweight).
   const roadId = world.roads.length;
   const road = {
     id: roadId,
     from: s.id, to: bestPartner.id,
     path: bestPath.tiles,
+    pathCost: bestPath.cost,   // Dijkstra edge sum — drives transport cost in updateTrade
     builtBy: s.id,
     builtStep: world.step,
-    cost: bestCost,
     active: true,
   };
   world.roads.push(road);
   for (const ti of bestPath.tiles) world.roadTiles.add(ti);
-  s.wealth -= bestCost;
   if (!s.roadsConnecting) s.roadsConnecting = [];
   if (!bestPartner.roadsConnecting) bestPartner.roadsConnecting = [];
   s.roadsConnecting.push(roadId);
   bestPartner.roadsConnecting.push(roadId);
   if (s.history) s.history.push({
     step: world.step, type: "road-built",
-    to: bestPartner.id, tiles: bestPath.tiles.length, cost: Math.round(bestCost),
+    to: bestPartner.id, tiles: bestPath.tiles.length, pathCost: Math.round(bestPath.cost),
   });
 }
 
@@ -259,15 +260,27 @@ class MinHeap {
   }
 }
 
-// ── Trade: zero-sum money transfer along roads ──
-// Each tick, every active road moves money from the buyer
-// (lower exportValue) to the seller (higher exportValue). The
-// system creates no new money here — total wealth is conserved.
-// Flow magnitude scales with both the export-value difference
-// AND the smaller of the two populations (small markets bottleneck
-// big partners). Bounded by the buyer's available wealth so a poor
-// settlement can't go negative.
-const TRADE_FLOW_RATE = 0.05;
+// ── Trade: zero-sum transfer + transport cost (deadweight) ──
+//
+// Each tick on each active road, money moves from the BUYER (lower
+// exportValue, importing) to the SELLER (higher exportValue,
+// exporting). The buyer ALSO pays a transport cost — wages to
+// porters, fodder for pack animals, spoilage en route — which is
+// destroyed (consumed by labour that disperses it out of trackable
+// wealth). Long / mountainous roads cost much more in transport,
+// making long-distance trade unprofitable for low-margin goods.
+//
+//   trade value      = |exportDiff| × √min(pop) × TRADE_RATE
+//   transport cost   = pathCost × TRANSPORT_PER_PATHCOST
+//   buyer pays       = trade value + transport cost  (bounded by wealth)
+//   seller receives  = trade value × (paid/want)     (scaled if buyer poor)
+//   sunk             = transport cost × (paid/want)  (destroyed)
+//
+// Net effect on system wealth per road per tick: -transportCost
+// (transport is the only money sink in the system besides the
+// already-zero road build cost).
+const TRADE_RATE              = 0.05;
+const TRANSPORT_PER_PATHCOST  = 0.02;
 export function updateTrade(world) {
   if (!world.roads || world.roads.length === 0) return;
   for (const road of world.roads) {
@@ -277,17 +290,23 @@ export function updateTrade(world) {
     if (!a || !b || a.mode !== "settled" || b.mode !== "settled") continue;
     const exA = computeExportValue(a);
     const exB = computeExportValue(b);
-    const diff = exA - exB;                          // >0: A is exporter; B pays
-    if (Math.abs(diff) < 0.01) continue;             // similar offerings, nothing flows
+    const diff = exA - exB;                          // >0: A exporter, B importer
     const minPop = Math.min(a.people, b.people);
-    const want = Math.abs(diff) * Math.sqrt(minPop) * TRADE_FLOW_RATE;
-    if (diff > 0) {
-      const got = Math.min(want, b.wealth || 0);
-      if (got > 0) { b.wealth -= got; a.wealth = (a.wealth || 0) + got; }
-    } else {
-      const got = Math.min(want, a.wealth || 0);
-      if (got > 0) { a.wealth -= got; b.wealth = (b.wealth || 0) + got; }
-    }
+    const tradeValue = Math.abs(diff) * Math.sqrt(minPop) * TRADE_RATE;
+    const transport  = (road.pathCost || 0) * TRANSPORT_PER_PATHCOST;
+    const want = tradeValue + transport;
+    if (want <= 0) continue;
+    const buyer  = diff > 0 ? b : a;
+    const seller = diff > 0 ? a : b;
+    const have = buyer.wealth || 0;
+    if (have <= 0) continue;
+    const actual = have < want ? have : want;
+    const scale  = actual / want;
+    const sellerGets = tradeValue * scale;
+    buyer.wealth  -= actual;
+    seller.wealth  = (seller.wealth || 0) + sellerGets;
+    // The (transport × scale) remainder is the sink — it just
+    // disappears, matching road-construction sink semantics.
   }
 }
 

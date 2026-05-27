@@ -5978,14 +5978,14 @@ return(
           const peerId=road.from===s.id?road.to:road.from;
           const peer=psw2.settlements.find(o=>o.id===peerId);
           if(!peer)return null;
-          return{ rid, peerName: peer.name, peerId, tiles: road.path.length, cost: Math.round(road.cost) };
+          return{ rid, peerName: peer.name, peerId, tiles: road.path.length, pathCost: Math.round(road.pathCost||0) };
         }).filter(Boolean);
         if(lines.length===0)return null;
         return(
           <div style={{marginTop:4,fontSize:10}}>
             {lines.map(l=>(
               <div key={l.rid} className="au-fade" style={{fontSize:10}}>
-                → {l.peerName} ({l.tiles}t, ${l.cost.toLocaleString()})
+                → {l.peerName} ({l.tiles}t, transport {l.pathCost.toLocaleString()})
               </div>
             ))}
           </div>
