@@ -617,11 +617,26 @@ function updateFood(world, s) {
   farmYield *= FARM_YIELD_PER_FERT * (1 + (s.knowledge.agriculture || 0) * 1.2);
 
   const supply = forage + farmYield;
-  const demand = s.people * 0.0030;
+  // Urbanization tax: per-capita food demand rises with population
+  // because bigger settlements have more non-farming specialists
+  // (craftsmen, soldiers, priests, scribes) plus transport
+  // overhead, food waste, supporting infrastructure. A village of
+  // 25 is essentially all farmers; a metropolis of 10000 has a
+  // huge urban service class eating without producing. This is what
+  // historically forced big cities to import grain — they
+  // physically couldn't feed their non-rural population from local
+  // farmland even when surrounded by it.
+  //   pop 25    → urbanFactor 1.14 (base × 1.14 = 0.0034)
+  //   pop 200   → 1.23
+  //   pop 1000  → 1.30
+  //   pop 10000 → 1.40
+  const urbanFactor = 1 + Math.log10(Math.max(10, s.people)) / 10;
+  const demand = s.people * 0.0030 * urbanFactor;
   // Expose rates so the food-trade pass can compute surplus/deficit
   // per road without recomputing forage + farmland sums.
   s._foodSupply = supply;
   s._foodDemand = demand;
+  s._urbanFactor = urbanFactor;
   s.food += supply - demand;
 
   const storageCap = 80 + s.tier * 200;
@@ -631,18 +646,18 @@ function updateFood(world, s) {
 
 // ── Population ─────────────────────────────────────────────────────
 function updatePopulation(world, s) {
-  // K = pop the food supply can sustain.
-  //   supply = local food production per tick (forage + farmland)
-  //          + imported food per tick (smoothed EMA from updateFoodTrade)
-  //   demand_per_capita = 0.003 per tick
-  //   K = supply / demand_per_capita
-  // No artificial weights or per-tile fudge factors — food directly
-  // sets the population ceiling. Logistic growth converges to it.
-  // Import K used in full (no prudence factor) — mature import-
-  // dependent cities (Rome from Egypt) grew to actually match
-  // their grain ships.
+  // K = pop the food supply can sustain at CURRENT urban-tax rate.
+  //   supply = local food production (forage + farmland)
+  //          + imported food (smoothed EMA from updateFoodTrade)
+  //   per_capita_demand = 0.003 × urbanFactor(currentPop)
+  //   K = supply / per_capita_demand
+  // urbanFactor was just computed in updateFood; it grows with
+  // log(pop) so as a settlement grows, each new person costs more
+  // food to sustain → K shrinks faster than supply grows → large
+  // settlements naturally saturate and need imports to grow further.
   const supply = (s._foodSupply || 0) + (s._foodImportRate || 0);
-  const K = Math.max(K_MIN_VIABLE, supply / 0.003);
+  const perCapita = 0.003 * (s._urbanFactor || 1);
+  const K = Math.max(K_MIN_VIABLE, supply / perCapita);
   s._k = K;
 
   if (s.food <= 0.01 && s.people > 1) {
