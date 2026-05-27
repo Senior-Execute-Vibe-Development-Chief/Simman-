@@ -310,15 +310,21 @@ function updateWealth(world, s) {
 }
 export { updateWealth };
 
-// Export-value = how much this settlement has to sell on a road.
-// Used by updateTrade in roads.js to direct money flow toward
-// settlements with higher value-add. Composition:
+// Export-value = how many GOODS this settlement has to sell on a
+// road. NOT wealth itself — precious metals and gems are CURRENCY
+// once mined, not exportable goods. Gold-rich settlements have
+// low exportValue (no goods, just coin) and become net buyers,
+// spending their gold on imports from goods-producing partners.
+// That's how mining wealth actually distributes in a closed economy.
+//
+// Composition:
 //   metallurgy + ore access → tools / weapons
 //   construction + timber/stone → building goods
 //   agriculture + farmland → grain surplus
 //   navigation + water access → ship-borne goods, fish, etc.
-//   precious / gems / salt raw → high-value commodities
-// Range is roughly 1.0 (no specialisation) → ~4.5 (max edge).
+//   salt raw → preserved foods, currency-adjacent commodity
+// Range is roughly 1.0 (no specialisation, "just gold") → ~4.5
+// (highly developed exporter).
 export function computeExportValue(s) {
   const k = s.knowledge || {};
   const r = s.localRes || {};
@@ -330,7 +336,9 @@ export function computeExportValue(s) {
   const agScale = Math.min(1, s.farmland.size / 50);
   v += (k.agriculture || 0) * agScale * 0.6;
   if ((s.waterAccess || 0) > 0) v += (k.navigation || 0) * s.waterAccess * 0.5;
-  v += ((r.precious || 0) + (r.gems || 0) + (r.salt || 0)) * 0.4;
+  // Salt counts as a tradeable good. Precious / gems do NOT —
+  // they are money once extracted, not export commodities.
+  v += (r.salt || 0) * 0.5;
   return v;
 }
 

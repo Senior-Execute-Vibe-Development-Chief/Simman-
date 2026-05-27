@@ -20,6 +20,9 @@
 import { localEdgeCost } from "./transport.js";
 import { computeExportValue } from "./settlement.js";
 
+const TRADE_RATE              = 0.025;     // slower per-tick exchange — settlements visibly accumulate
+const TRANSPORT_PER_PATHCOST  = 0.012;     // reduced proportionally with trade rate
+
 // Roads are free to build (they emerge as traffic patterns) but
 // USING them costs money per tick of trade — see updateTrade and
 // TRANSPORT_PER_PATHCOST below.
@@ -63,10 +66,11 @@ export function maybeBuildRoads(world) {
 
 function tryBuildOne(world, s) {
   const needs = NEEDED_BY_TIER[s.tier] || NEEDED_BY_TIER[0];
-  // Find unmet needs — resources the settlement doesn't yet have
-  // even through existing road links.
   const own = s.localRes || {};
   const connected = new Set(s.roadsConnecting || []);
+  // Effective reach via existing road links — figures into resource-
+  // gap analysis (resources we already get via trade don't count
+  // as "missing").
   const reachable = { ...own };
   for (const rid of connected) {
     const road = world.roads[rid];
@@ -80,43 +84,51 @@ function tryBuildOne(world, s) {
     }
   }
   const missing = needs.filter(n => (reachable[n] || 0) < HAVE_THRESHOLD);
-  if (missing.length === 0) return;
+  // exportValue of this settlement — used to gauge trade asymmetry
+  // with each candidate.
+  const sExport = computeExportValue(s);
 
-  // For each missing resource, scan candidate partners — alive
-  // settlements within MAX_PARTNER_DIST that have the resource at
-  // useful richness. Pick the one with best (richness / build cost)
-  // ratio. Build cost is wealth ≈ 0.5 × total path edge cost.
+  // Scan candidate partners. A road is worth building if EITHER
+  //   (a) the peer has a resource we lack (tech / supply gap), OR
+  //   (b) the peer has a substantially different exportValue
+  //       (trade gap — different specialties, money will flow).
+  // Score combines both; settlements rich in money but resource-
+  // self-sufficient will still build roads to lower-exportValue
+  // neighbours to spend their wealth on imports.
   let bestPartner = null;
   let bestScore = -Infinity;
   let bestPath = null;
   for (const peer of world.settlements) {
     if (peer.mode !== "settled" || peer.id === s.id) continue;
     if (connected.has(roadIdBetween(world, s.id, peer.id))) continue;
-    // Cheap distance filter so we don't Dijkstra to the other side of the world.
     let dx = Math.abs(peer.pos.x - s.pos.x);
     if (dx > world.tw / 2) dx = world.tw - dx;
     const dy = peer.pos.y - s.pos.y;
     if (dx * dx + dy * dy > MAX_PARTNER_DIST * MAX_PARTNER_DIST) continue;
-    // Does this peer ACTUALLY have something the settlement wants?
+    // Resource benefit: how many of our missing resources does this
+    // peer have? Each one contributes 1.0 to the score.
     const peerRes = peer.localRes || {};
-    let bestResVal = 0;
+    let resGain = 0;
     for (const n of missing) {
-      const v = peerRes[n] || 0;
-      if (v > bestResVal) bestResVal = v;
+      if ((peerRes[n] || 0) >= HAVE_THRESHOLD) resGain += 1;
     }
-    if (bestResVal < HAVE_THRESHOLD) continue;
-    // Dijkstra path from s to peer using current edge costs (which
-    // already include existing roads as cheap edges).
+    // Trade benefit: |exportValue gap|. Settlements with very
+    // different offerings make worthwhile trade partners even
+    // without specific resource needs.
+    const peerExport = computeExportValue(peer);
+    const exGap = Math.abs(sExport - peerExport);
+    // Skip if there's neither a resource gain nor a meaningful
+    // trade gap.
+    if (resGain === 0 && exGap < 0.25) continue;
+    // Dijkstra path (existing roads route cheap).
     const path = findPath(world, s, peer);
     if (!path) continue;
-    // Roads are FREE to build (they emerge organically as trade
-    // paths get walked into existence). The pathCost is still
-    // recorded on the road and used by updateTrade to compute
-    // per-tick transport cost — long roads stay viable for
-    // valuable cargo but become unprofitable for low-margin trade.
-    // Score: resource access per unit path expense. Penalise
-    // very short hops (already de facto reachable).
-    const score = bestResVal / Math.max(1, path.cost) * (path.tiles.length > 3 ? 1 : 0.5);
+    // Score combines resource gain (weighted 2x — direct tech
+    // unlock) + trade gap (weighted 1x). Divided by path cost so
+    // closer partners are preferred when benefits tie. Short-hop
+    // penalty unchanged.
+    const benefit = resGain * 2 + exGap;
+    const score = benefit / Math.max(1, path.cost) * (path.tiles.length > 3 ? 1 : 0.5);
     if (score > bestScore) {
       bestScore = score;
       bestPartner = peer;
@@ -280,8 +292,6 @@ class MinHeap {
 // Net effect on system wealth per road per tick: -transportCost
 // (transport is the only money sink in the system besides the
 // already-zero road build cost).
-const TRADE_RATE              = 0.05;
-const TRANSPORT_PER_PATHCOST  = 0.02;
 export function updateTrade(world) {
   if (!world.roads || world.roads.length === 0) return;
   for (const road of world.roads) {
