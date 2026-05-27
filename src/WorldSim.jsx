@@ -5031,6 +5031,13 @@ if(v<0.5){const t2=v*2;r=(t2*220)|0;g=200;b=0;}
 else{const t2=(v-0.5)*2;r=220;g=((1-t2)*200)|0;b=0;}
 const shade=1-Math.max(0,e-0.1)*0.5;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
+}else if(vm==="roads"){
+// Road network overlay — empty parchment background, then roads
+// drawn coloured-by-network so disconnected systems pop visually.
+// Settlements drawn as small grey dots so you can see which
+// communities each network connects.
+for(let ti=0;ti<N;ti++){const pi4=ti<<2;
+d[pi4]=240;d[pi4+1]=230;d[pi4+2]=205;d[pi4+3]=255;}
 }else if(vm==="resources"){
 // Resource overlay — blend all active resource layers per tile
 const ar=activeResRef.current;
@@ -5365,25 +5372,85 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
 // Power view removed — replaced by era-based rendering and focused view
 // Power centers removed — centers already drawn in main center loop above}
 // ── peopleSim entity overlay ────────────────────────────────────────
-// Bands drawn as small filled circles at continuous tile-space pos.
-// Radius scales with √people. Settlements / caravans / armies will
-// layer here in subsequent phases. Aesthetic is placeholder (drawn-
-// atlas pass comes after mechanics).
+// When vm === "roads", render ONLY the road network — no farmland,
+// no settlement icons. Each disconnected network (closed graph of
+// roads + settlements) is coloured distinctly so the player can
+// see at a glance which settlements trade with each other.
+// Otherwise: normal rendering of farmland + roads + settlement icons.
 {
   const psw=peopleRef.current;
-  if(psw&&ctx){
+  const vmRoads = viewRef.current === "roads";
+  if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
-    // ── Settlements + buildings ──
-    // Drawn first so bands render on top. Each settlement has a faint
-    // footprint outline scaled to tier (village → city); buildings
-    // appear as small primitives at their (dx, dy) offsets so the
-    // village grows visually as houses / farms / granaries complete.
+    // ── Find connected components via union-find on roads ──
+    // Each settlement.id maps to a component id; two settlements
+    // are in the same component iff a chain of active roads links
+    // them. Disconnected settlements are their own component.
+    const parent = new Map();
+    const find = (x) => { let p = parent.get(x); if (p === undefined) { parent.set(x, x); return x; } while (p !== x) { x = p; p = parent.get(p) ?? p; } return x; };
+    const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
+    for(const s of psw.settlements){
+      if(s&&s.mode==="settled") find(s.id);
+    }
+    for(const road of psw.roads||[]){
+      if(road&&road.active) union(road.from, road.to);
+    }
+    // Map component-root → colour. Hash the root id to a stable hue
+    // so the same network keeps its colour across re-renders.
+    const compColour = (rootId) => {
+      const h = ((rootId * 137) % 360 + 360) % 360;
+      return `hsl(${h}, 65%, 45%)`;
+    };
+    // ── Draw roads, batched by component for one stroke per colour ──
+    if(psw.roads&&psw.roads.length>0){
+      const byComp = new Map();
+      for(const road of psw.roads){
+        if(!road||!road.active||!road.path||road.path.length<2)continue;
+        const root = find(road.from);
+        if(!byComp.has(root)) byComp.set(root, []);
+        byComp.get(root).push(road);
+      }
+      for(const [root, roads] of byComp){
+        ctx.beginPath();
+        for(const road of roads){
+          for(let i=0;i<road.path.length;i++){
+            const ti=road.path[i];
+            const py=(ti/psw.tw)|0;
+            const px=ti-py*psw.tw;
+            const sx=px*TR+TR*0.5;
+            const sy=dataYtoScreenY(py*TR+TR*0.5,H,CH);
+            if(i===0)ctx.moveTo(sx,sy);
+            else ctx.lineTo(sx,sy);
+          }
+        }
+        ctx.strokeStyle=compColour(root);
+        ctx.lineWidth=2.0;
+        ctx.lineCap="round";
+        ctx.lineJoin="round";
+        ctx.stroke();
+      }
+    }
+    // ── Settlement dots, also coloured by network ──
+    // Smaller than the normal icons so the road shapes dominate;
+    // every settlement shown so isolated ones (no roads) are
+    // visible as their own coloured dot too.
+    for(const s of psw.settlements){
+      if(!s||s.mode!=="settled")continue;
+      const sx=s.pos.x*TR;
+      const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
+      const root=find(s.id);
+      ctx.beginPath();
+      ctx.arc(sx,sy,3,0,Math.PI*2);
+      ctx.fillStyle=compColour(root);
+      ctx.fill();
+      ctx.lineWidth=0.6;
+      ctx.strokeStyle="rgba(0,0,0,0.5)";
+      ctx.stroke();
+    }
+  }
+  if(psw&&ctx&&!vmRoads){
+    const TR=psw.tileRes;
     // ── Farmland tiles ──
-    // Each settlement owns a Set of farmed tile indices. Batched into
-    // a SINGLE Path2D so the renderer makes one fillStyle/fill call
-    // for all of them instead of two canvas ops per tile (was ~10k
-    // ops/frame for a saturated map). Stroke dropped for the same
-    // reason; the colour difference is enough to read at this scale.
     ctx.fillStyle="rgba(155,160,75,0.55)";
     ctx.beginPath();
     for(const s of psw.settlements){
@@ -5710,7 +5777,7 @@ const _era=deriveEra(_aAg,_aMt,_aNv,_aOg);
 const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
-  ["crop","Crop"],["crossing","Crossing"],
+  ["crop","Crop"],["crossing","Crossing"],["roads","Roads"],
   ["resources","Resources"],["population","Pop"],["transport","Transport"],
   ["transport-test","Trans Test"],["tribes","Tribes"]
 ];
@@ -5968,15 +6035,19 @@ return(
         <span>Wealth</span><span>${Math.round(s.wealth||0).toLocaleString()}</span>
       </div>
 
-      {/* ── Exports breakdown ── */}
+      {/* ── Specialty profile (what they could sell — potential, not actual) ── */}
       {(()=>{
         const items=getExportBreakdown(s);
         if(!items||items.length===0)return null;
         const total=items.reduce((a,b)=>a+b.value,0);
+        const hasRoads=(s.roadsConnecting||[]).length>0;
         return(
           <>
             <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
-              <span>Exports</span><span>total {total.toFixed(2)}</span>
+              <span>Specialty profile</span><span>{total.toFixed(2)}</span>
+            </div>
+            <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginBottom:2}}>
+              {hasRoads?"what they make / can sell":"what they could sell — no roads, nothing actually exported"}
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
               {items.map((it,i)=>(
@@ -5989,16 +6060,22 @@ return(
         );
       })()}
 
-      {/* ── Trade routes (imports + exports per road) ── */}
+      {/* ── Actual trade routes (real flowing imports + exports per road) ── */}
       {(()=>{
         const psw2=peopleRef.current;
         const profile=getTradeProfile(s,psw2);
-        if(profile.length===0)return null;
+        if(profile.length===0){
+          return(
+            <div className="au-fade" style={{marginTop:8,fontSize:10,fontStyle:"italic"}}>
+              No active trade routes — no imports or exports flowing.
+            </div>
+          );
+        }
         const totalNet=profile.reduce((a,p)=>a+p.netPerTick,0);
         return(
           <>
             <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
-              <span>Trade routes ({profile.length})</span>
+              <span>Actual trade ({profile.length} route{profile.length===1?"":"s"})</span>
               <span style={{color:totalNet>=0?"#494":"#c44"}}>
                 {totalNet>=0?"+":""}{totalNet.toFixed(2)}/tick
               </span>
