@@ -5865,6 +5865,11 @@ return(
   // Local resources, sorted by richness, only show ones present.
   const RES_LABEL={timber:"Timber",stone:"Stone",copper:"Copper",tin:"Tin",iron:"Iron",coal:"Coal",horses:"Horses",salt:"Salt"};
   const presentRes=Object.entries(r).filter(([,v])=>v>0.10).sort((a,b)=>b[1]-a[1]);
+  // Ore-access flags drive the metallurgy "(no ore)/(copper)/.../(steel)"
+  // hint — it shows what's POSSIBLE from current local deposits, which
+  // is independent of the era label above (driven by accumulated
+  // knowledge).
+  const cu=(r.copper||0)>0.10,sn=(r.tin||0)>0.10,fe=(r.iron||0)>0.10,co=(r.coal||0)>0.10;
   // Water-access label.
   const wa=s.waterAccess||0;
   const waterLabel=wa<=0?"landlocked":wa<0.3?"minor river":wa<0.6?"river":wa<0.85?"coastal":"port";
