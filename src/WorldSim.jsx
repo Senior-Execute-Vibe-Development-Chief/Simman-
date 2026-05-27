@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
@@ -4343,7 +4343,7 @@ if(t.deposits)w.deposits=t.deposits;
 // Pass t.tCrop so the sim's fertility uses the SAME formula as the
 // Crop overlay (young-soil discount, tropical penalty, wide bell).
 // Falls back to the local bellFert if tCrop is absent.
-peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES});
+peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
 setPsStats(peopleSimStats(peopleRef.current));
 setCoverage(0);setTribeCount(t.tribeCount||0);setPlaying(false);playRef.current=false;
 terrainCache.current=null;atlasCache.current=null;imgRef.current=null;},[]);
@@ -5849,30 +5849,82 @@ return(
   const nextThr=TIER_THR[s.tier+1];
   const progress=nextThr?Math.min(1,s.people/nextThr):1;
   const k=s.knowledge||{};
+  const r=s.localRes||{};
   const farm=s.farmland?s.farmland.size:0;
+  const K=s._k||0;
+  // Metallurgy era label derived from active cap.
+  const cu=(r.copper||0)>0.10,sn=(r.tin||0)>0.10,fe=(r.iron||0)>0.10,co=(r.coal||0)>0.10;
+  let era="stone age";
+  if(fe&&co)era="steel age";else if(fe)era="iron age";
+  else if(cu&&sn)era="bronze age";else if(cu)era="chalcolithic";
+  // Local resources, sorted by richness, only show ones present.
+  const RES_LABEL={timber:"Timber",stone:"Stone",copper:"Copper",tin:"Tin",iron:"Iron",coal:"Coal",horses:"Horses",salt:"Salt"};
+  const presentRes=Object.entries(r).filter(([,v])=>v>0.10).sort((a,b)=>b[1]-a[1]);
+  // Water-access label.
+  const wa=s.waterAccess||0;
+  const waterLabel=wa<=0?"landlocked":wa<0.3?"minor river":wa<0.6?"river":wa<0.85?"coastal":"port";
+  // Bar helper.
+  const Bar=({v,color})=>(
+    <div style={{position:"relative",height:5,background:"rgba(0,0,0,0.15)",borderRadius:2,marginTop:1}}>
+      <div style={{position:"absolute",inset:0,width:`${Math.max(0,Math.min(1,v))*100}%`,background:color||"#7a5",borderRadius:2}}/>
+    </div>
+  );
+  const KRow=({label,val,colour,note})=>(
+    <div style={{margin:"3px 0"}}>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
+        <span>{label}{note?<span className="au-fade" style={{marginLeft:4,fontSize:9}}>{note}</span>:null}</span>
+        <span>{(val*100|0)}%</span>
+      </div>
+      <Bar v={val} color={colour}/>
+    </div>
+  );
   return(
     <div className="au-parchment au-pico au-elev"
-      style={{position:"absolute",left:14,top:14,minWidth:180,maxWidth:240,padding:"10px 12px",fontSize:11,zIndex:30}}>
+      style={{position:"absolute",left:14,top:14,minWidth:220,maxWidth:280,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"90vh",overflowY:"auto"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
         <div className="au-pico-title" style={{fontSize:13,textTransform:"capitalize"}}>{s.name}</div>
         <button onClick={()=>setSelectedSettlementId(-1)}
           style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:14,padding:"0 4px"}}>×</button>
       </div>
-      <div className="au-fade" style={{fontSize:10,marginBottom:6,textTransform:"capitalize"}}>{tierName} · founded step {s.foundedStep}</div>
+      <div className="au-fade" style={{fontSize:10,marginBottom:6,textTransform:"capitalize"}}>
+        {tierName} · {era} · {waterLabel} · founded step {s.foundedStep}
+      </div>
+
+      {/* ── Demographics ── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px"}}>
-        <span>Population</span><span>{Math.round(s.people)}</span>
-        <span>Farmland</span><span>{farm} tile{farm===1?"":"s"}</span>
+        <span>Population</span><span>{Math.round(s.people)}{K?` / ${Math.round(K)} K`:""}</span>
         <span>Food</span><span>{Math.round(s.food)}</span>
+        <span>Farmland</span><span>{farm} tile{farm===1?"":"s"}</span>
         {nextThr&&<><span>To next tier</span><span>{Math.round(s.people)}/{nextThr} ({Math.round(progress*100)}%)</span></>}
       </div>
+
+      {/* ── Knowledge ── */}
       <div style={{marginTop:8,fontSize:10}} className="au-fade">Knowledge</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
-        <span>Agriculture</span><span>{(k.agriculture*100|0)}%</span>
-        <span>Foraging</span><span>{(k.foraging*100|0)}%</span>
-        <span>Toolmaking</span><span>{(k.toolmaking*100|0)}%</span>
-        <span>Construction</span><span>{(k.construction*100|0)}%</span>
-        <span>Organization</span><span>{(k.organization*100|0)}%</span>
+      <KRow label="Agriculture"  val={k.agriculture||0}  colour="#7a5"/>
+      <KRow label="Foraging"     val={k.foraging||0}     colour="#697"/>
+      <KRow label="Toolmaking"   val={k.toolmaking||0}   colour="#aa6"/>
+      <KRow label="Construction" val={k.construction||0} colour="#a85"/>
+      <KRow label="Organization" val={k.organization||0} colour="#967"/>
+      <KRow label="Metallurgy"   val={k.metallurgy||0}   colour="#86a"
+            note={!cu&&!fe?"(no ore)":(fe&&co?"(steel)":fe?"(iron)":(cu&&sn?"(bronze)":"(copper)"))}/>
+      <KRow label="Navigation"   val={k.navigation||0}   colour="#58a"
+            note={wa<=0?"(no water)":null}/>
+      <KRow label="Mobility"     val={k.mobility||0}     colour="#a76"
+            note={(r.horses||0)<=0.10?"(no horses)":null}/>
+
+      {/* ── Local resources ── */}
+      <div style={{marginTop:8,fontSize:10}} className="au-fade">
+        Local resources{presentRes.length===0?" (none in reach)":""}
       </div>
+      {presentRes.length>0&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
+          {presentRes.map(([id,v])=>(
+            <Fragment key={id}>
+              <span>{RES_LABEL[id]||id}</span><span>{(v*100|0)}%</span>
+            </Fragment>
+          ))}
+        </div>
+      )}
     </div>
   );
 })()}

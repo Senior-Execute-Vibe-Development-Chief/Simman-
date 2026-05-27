@@ -52,6 +52,12 @@ export function createWorld(w, opts = {}) {
     diff:  new Float32Array(N),
     riverMag: null,
 
+    // Per-tile resource deposits, downsampled from worldgen at
+    // peopleSim's TILE_RES. Each entry is a Float32Array(N), value
+    // in [0,1] = deposit richness. Empty object when no deposits
+    // were generated.
+    deposits: {},
+
     // Entities. No bands — settlements-only model.
     settlements: [],
     caravans:    [],
@@ -74,6 +80,7 @@ export function createWorld(w, opts = {}) {
 
   initTerrain(world, w, opts.tCrop);
   initRiverMag(world, w);
+  initDeposits(world, w, opts.deposits);
   seedCradleVillage(world);
   return world;
 }
@@ -107,6 +114,31 @@ function bellFert(t, m, e) {
   const tFit = Math.exp(-((t - 0.45) * (t - 0.45)) / (2 * 0.18 * 0.18));
   const mFit = Math.exp(-((m - 0.50) * (m - 0.50)) / (2 * 0.22 * 0.22));
   return Math.min(1, tFit * mFit * 1.1);
+}
+
+// Downsample worldgen's per-pixel deposit arrays into peopleSim's
+// tile space. Sample at the same offset used for elev/temp/moist so
+// everything lines up. Only resources relevant to the knowledge
+// system are downsampled (the worldgen also has precious / oil /
+// gems / salt which feed wealth/trade systems, kept here for future
+// use but not gated on currently).
+const TRACKED_RES = ['timber','stone','copper','tin','iron','coal','horses','salt'];
+function initDeposits(world, w, deposits) {
+  if (!deposits) return;
+  const { tw, th, N } = world;
+  for (const id of TRACKED_RES) {
+    const src = deposits[id];
+    if (!src) continue;
+    const dst = new Float32Array(N);
+    for (let ty = 0; ty < th; ty++) {
+      for (let tx = 0; tx < tw; tx++) {
+        const px = Math.min(w.width - 1, tx * TILE_RES);
+        const py = Math.min(w.height - 1, ty * TILE_RES);
+        dst[ty * tw + tx] = src[py * w.width + px] || 0;
+      }
+    }
+    world.deposits[id] = dst;
+  }
 }
 
 function initRiverMag(world, w) {

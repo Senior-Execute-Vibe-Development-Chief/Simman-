@@ -92,12 +92,23 @@ export function makeSettlement(world, x, y, opts = {}) {
       agriculture: 0.50,        // cradle starts already farming
       construction: 0.1,
       organization: 0.1,
+      metallurgy:  0,           // gated by ore access
+      navigation:  0,           // gated by water access
+      mobility:    0,           // gated by horses
     },
     traits: opts.traits || {
       aggression:   world.rng(),
       mercantilism: world.rng(),
       curiosity:    world.rng(),
     },
+    // Maximum local deposit richness within transport reach, per
+    // resource id. Populated by scanLocalResources alongside the
+    // farmland refresh, then used by updateKnowledge to gate /
+    // accelerate tech growth.
+    localRes: {},
+    // Cached water-access score (coast + river magnitude at home
+    // tile). Set on creation, doesn't change.
+    waterAccess: 0,
     farmland: new Set(),
     tier: 0,
     mode: "settled",
@@ -105,10 +116,75 @@ export function makeSettlement(world, x, y, opts = {}) {
     lastFoundAttempt: world.step,
     history: [{ step: world.step, type: "founded", parent: opts.parentId ?? -1, pos: { x, y } }],
   };
+  // Migrate older knowledge objects (e.g. crystallization inheritance)
+  // that don't have the new fields.
+  for (const k of ["metallurgy","navigation","mobility"]) {
+    if (s.knowledge[k] === undefined) s.knowledge[k] = 0;
+  }
+  // Compute water access score from the home tile + 4 neighbours.
+  s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
   world.settlements.push(s);
   refreshFarmland(world, s);
+  scanLocalResources(world, s);
   return s;
 }
+
+// Water-access score: 0 (landlocked, no river) to ~1 (coastal city
+// on a great river). Coast contributes 0.5; river magnitude scales
+// linearly: mag 1 → 0.2, mag 3 → 0.6, mag 4 → 0.8. Capped at 1.
+function computeWaterAccess(world, sx, sy) {
+  const { tw, th, coast, riverMag } = world;
+  let coastBit = 0, bestMag = 0;
+  for (let dy = -1; dy <= 1; dy++) {
+    const ny = sy + dy;
+    if (ny < 0 || ny >= th) continue;
+    for (let dx = -1; dx <= 1; dx++) {
+      const nx = ((sx + dx) % tw + tw) % tw;
+      const ni = ny * tw + nx;
+      if (coast[ni]) coastBit = 1;
+      if (riverMag) {
+        const m = riverMag[ni] || 0;
+        if (m > bestMag) bestMag = m;
+      }
+    }
+  }
+  return Math.min(1, coastBit * 0.5 + bestMag * 0.2);
+}
+
+// Walk the settlement's transport reach (if cached) or a 5×5 fall
+// back box, and record the max deposit richness seen per tracked
+// resource. Run alongside farmland refresh so it picks up tier
+// growth (bigger reach → more resources within grasp).
+function scanLocalResources(world, s) {
+  const deposits = world.deposits;
+  if (!deposits) return;
+  const keys = Object.keys(deposits);
+  if (keys.length === 0) return;
+  const out = {};
+  for (const k of keys) out[k] = 0;
+  const sample = (ti) => {
+    for (const k of keys) {
+      const v = deposits[k][ti] || 0;
+      if (v > out[k]) out[k] = v;
+    }
+  };
+  if (s._reach && s._reach.size > 0) {
+    for (const ti of s._reach.keys()) sample(ti);
+  } else {
+    const { tw, th } = world;
+    const sx = s.pos.x | 0, sy = s.pos.y | 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      const ny = sy + dy;
+      if (ny < 0 || ny >= th) continue;
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = ((sx + dx) % tw + tw) % tw;
+        sample(ny * tw + nx);
+      }
+    }
+  }
+  s.localRes = out;
+}
+export { scanLocalResources };
 
 export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;
@@ -126,22 +202,91 @@ export function updateSettlement(world, s) {
 // improves; bigger pop + ag → construction improves. Diminishing
 // returns near 1.0.
 const LEARN_BASE = 0.000040;          // per tick scaling
+//
+// ── Resource-gated knowledge growth ──
+//
+// Each tech track grows in proportion to whatever inputs let it
+// progress. Some tracks are HARD-GATED: without the input, no
+// progress at all (metallurgy without ore, navigation without water).
+// Others are SOFT-BOOSTED: they progress everywhere but faster with
+// the right inputs (construction with timber, agriculture with
+// metal tools).
+//
+// metallurgy caps:
+//   stone tools only            cap 0
+//   + copper                    cap 0.30  (chalcolithic — knives, ornaments)
+//   + copper + tin              cap 0.65  (bronze age — proper weapons + ploughs)
+//   + iron                      cap 0.90  (iron age)
+//   + iron + coal               cap 1.00  (steel / industrial)
+//
 function updateKnowledge(world, s) {
   const k = s.knowledge;
+  const r = s.localRes || {};
+  const wa = s.waterAccess || 0;
   const fc = s.farmland.size;
   const pop = s.people;
-  // Agriculture: drives off farmland count + ag itself (compound). A
-  // 50-tile village makes more ag progress than a 5-tile hamlet.
-  k.agriculture = clamp01(k.agriculture + LEARN_BASE * 1.2 * (1 - k.agriculture) * (1 + fc * 0.03));
-  // Foraging: tiny ongoing trickle.
-  k.foraging    = clamp01(k.foraging    + LEARN_BASE * 0.3 * (1 - k.foraging));
-  // Toolmaking: pop drives it.
-  k.toolmaking  = clamp01(k.toolmaking  + LEARN_BASE * 0.8 * (1 - k.toolmaking)  * (1 + Math.sqrt(pop) * 0.08));
-  // Construction: needs agricultural surplus to free up builders.
-  k.construction= clamp01(k.construction+ LEARN_BASE * 0.9 * (1 - k.construction)* (1 + k.agriculture * 1.0) * (1 + Math.sqrt(pop) * 0.05));
-  // Organization: scales with pop — bigger town needs more
-  // administration to function.
-  k.organization= clamp01(k.organization+ LEARN_BASE * 1.0 * (1 - k.organization)* (1 + Math.sqrt(pop) * 0.10));
+  const popSqrt = Math.sqrt(pop);
+
+  // Foraging: slow trickle everywhere; faster in resource-rich zones
+  // (timber for tools, salt for preservation).
+  const forageBoost = 1 + (r.timber || 0) * 0.3 + (r.salt || 0) * 0.2;
+  k.foraging = clamp01(k.foraging + LEARN_BASE * 0.3 * (1 - k.foraging) * forageBoost);
+
+  // Toolmaking: stone for primitive, metallurgy multiplies.
+  const stoneBoost = 1 + (r.stone || 0) * 0.6;
+  const metalBoost = 1 + k.metallurgy * 2.5;
+  k.toolmaking = clamp01(k.toolmaking + LEARN_BASE * 0.8 * (1 - k.toolmaking)
+    * stoneBoost * metalBoost * (1 + popSqrt * 0.08));
+
+  // Construction: timber for early shelter, stone for durable
+  // structures, agriculture for surplus to free up builders.
+  const buildMat = 1 + (r.timber || 0) * 0.8 + (r.stone || 0) * 0.6;
+  k.construction = clamp01(k.construction + LEARN_BASE * 0.9 * (1 - k.construction)
+    * buildMat * (1 + k.agriculture * 0.8) * (1 + popSqrt * 0.05));
+
+  // Agriculture: farmland scale + metal tools (plough). Cradle starts
+  // at 0.5 so the floor is non-zero.
+  k.agriculture = clamp01(k.agriculture + LEARN_BASE * 1.2 * (1 - k.agriculture)
+    * (1 + fc * 0.03) * (1 + k.toolmaking * 0.7));
+
+  // Organization: pop driven (admin burden grows with size).
+  k.organization = clamp01(k.organization + LEARN_BASE * 1.0 * (1 - k.organization)
+    * (1 + popSqrt * 0.10));
+
+  // ── Metallurgy: hard-gated by ore access ──
+  const cu = r.copper || 0;
+  const sn = r.tin    || 0;
+  const fe = r.iron   || 0;
+  const co = r.coal   || 0;
+  const oreThr = 0.10;             // need at least a faint deposit
+  let metalCap = 0;
+  if (cu > oreThr)                metalCap = Math.max(metalCap, 0.30);
+  if (cu > oreThr && sn > oreThr) metalCap = Math.max(metalCap, 0.65);
+  if (fe > oreThr)                metalCap = Math.max(metalCap, 0.90);
+  if (fe > oreThr && co > oreThr) metalCap = 1.00;
+  if (metalCap > 0 && k.metallurgy < metalCap) {
+    const oreRate = Math.max(cu, sn, fe, co);
+    const headroom = 1 - k.metallurgy / metalCap;
+    k.metallurgy = Math.min(metalCap, k.metallurgy +
+      LEARN_BASE * 0.5 * headroom * oreRate * (1 + k.toolmaking * 0.5));
+  }
+
+  // ── Navigation: hard-gated by water access ──
+  // Coast + major river gives the fastest growth (port cities). A
+  // small river alone gives slow progress (riverboats only).
+  if (wa > 0) {
+    k.navigation = clamp01(k.navigation + LEARN_BASE * 0.7 * (1 - k.navigation)
+      * wa * (1 + k.construction * 0.6));
+  }
+
+  // ── Mobility: hard-gated by horses ──
+  // Cavalry, postal relays, scouting. Construction unlocks chariots /
+  // saddles / stirrups (gradual real-world progression).
+  const horses = r.horses || 0;
+  if (horses > oreThr) {
+    k.mobility = clamp01(k.mobility + LEARN_BASE * 0.5 * (1 - k.mobility)
+      * horses * (1 + k.construction * 0.4 + k.metallurgy * 0.6));
+  }
 }
 
 function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
@@ -240,6 +385,8 @@ function maybeRefreshFarmland(world, s) {
   if (world.step - s.lastFarmRefresh < FARMLAND_REFRESH_INTERVAL) return;
   s.lastFarmRefresh = world.step;
   refreshFarmland(world, s);
+  // Reach may have widened on tier growth; rescan resources too.
+  scanLocalResources(world, s);
 }
 
 function refreshFarmland(world, s) {
