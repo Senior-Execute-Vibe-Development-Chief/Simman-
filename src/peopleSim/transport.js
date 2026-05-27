@@ -95,6 +95,23 @@ export function baseEdgeCost(world, fromTi, toTi) {
   const { elev, temp, moist, riverMag, coast } = world;
   const e = elev[toTi];
   if (e <= 0) return Infinity;        // water — impassable for land transport
+
+  // ── Road override ──
+  // If EITHER endpoint is a road tile, the edge cost is purely the
+  // road's intrinsic quality — ignore underlying terrain. A road
+  // over mountains costs the same as a road over plains
+  // (Roman-engineered-road model: the road delivers consistent
+  // speed regardless of what's underneath). Heavily-worn arterials
+  // (lower quality number) are even cheaper. This makes Dijkstra
+  // aggressively prefer routing through any existing road,
+  // producing visible trunk-and-spur networks.
+  const rtq = world.roadTileQuality;
+  if (rtq) {
+    const qF = rtq[fromTi], qT = rtq[toTi];
+    if (qF < 1.0 || qT < 1.0) return Math.min(qF, qT);
+  }
+
+  // ── Standard terrain cost (non-road edges) ──
   const fromE = elev[fromTi];
 
   // Absolute altitude. Linear + quadratic so even small hills are
@@ -103,17 +120,14 @@ export function baseEdgeCost(world, fromTi, toTi) {
   //   e=0.50 → +6.00   e=0.70 → +10.36  e=1.00 → +19.00
   const altCost = e * 5 + e * e * 14;
 
-  // Slope between this tile and the one we came from. The old per-tile
-  // model could not see steepness — a flat alpine plateau cost the
-  // same as a sheer cliff face. Slope fixes that.
+  // Slope between this tile and the one we came from.
   //   |Δ|=0.02 → +0.70   |Δ|=0.05 → +1.75   |Δ|=0.10 → +3.50   |Δ|=0.20 → +7.00
   const slope = Math.abs(e - fromE);
   const slopeCost = slope * 35;
 
   const t = temp[toTi], m = moist[toTi];
 
-  // Cold. Smooth ramp below t=0.35 (wider than old t<0.30).
-  //   t=0.35 → +0.00   t=0.25 → +0.28   t=0.15 → +1.12   t=0.05 → +2.52   t=0.00 → +3.43
+  // Cold. Smooth ramp below t=0.35.
   let coldCost = 0;
   if (t < 0.35) {
     const cold = 0.35 - t;
@@ -121,32 +135,15 @@ export function baseEdgeCost(world, fromTi, toTi) {
   }
 
   // Aridity. Continuous heat × dryness interaction.
-  //   t=0.65, m=0.20 → +1.25   t=0.85, m=0.10 → +3.50   t=1.00, m=0.00 → +5.50
   const heat = Math.max(0, t - 0.45);
   const dry  = Math.max(0, 0.40 - m);
   const aridCost = heat * dry * 25;
 
   let c = 1.0 + altCost + slopeCost + coldCost + aridCost;
 
-  // River bonus scales continuously with magnitude (was a binary
-  // "mag ≥ 2 → ×0.4"). mag=1 → ×0.76, mag=2 → ×0.61, mag=3 → ×0.51,
-  // mag=4 → ×0.44.
+  // River bonus scales continuously with magnitude.
   if (riverMag && riverMag[toTi] > 0) c /= (1 + riverMag[toTi] * 0.32);
   if (coast[toTi])                    c *= 0.80;
-  // Roads: when EITHER endpoint is a road tile, apply that road's
-  // quality discount. Previously required BOTH endpoints, which
-  // meant joining and leaving a road both paid full off-road cost
-  // — discouraging tree-like trunk-and-spur network growth. Now
-  // even the on/off-ramp tile is discounted, so new roads readily
-  // route through existing arterials when geographically aligned.
-  // The min(qF, qT) picks whichever road surface is better.
-  const rtq = world.roadTileQuality;
-  if (rtq) {
-    const qF = rtq[fromTi], qT = rtq[toTi];
-    if (qF < 1.0 || qT < 1.0) {
-      c *= Math.min(qF < 1.0 ? qF : 1.0, qT < 1.0 ? qT : 1.0);
-    }
-  }
   return c;
 }
 
