@@ -127,8 +127,16 @@ function tryBuildOne(world, s) {
     // unlock) + trade gap (weighted 1x). Divided by path cost so
     // closer partners are preferred when benefits tie. Short-hop
     // penalty unchanged.
+    // Wealth eagerness: settlements with money are aggressively
+    // seeking imports to spend it on. A $1M treasury makes the
+    // settlement up to 2× more eager to build any given road,
+    // even one that just buys luxuries. Poor settlements stay
+    // selective (eagerness ≈ 1.0 below ~$100).
+    const wealthEagerness = Math.min(2.0, 1 + Math.log10(Math.max(1, s.wealth || 1)) / 6);
     const benefit = resGain * 2 + exGap;
-    const score = benefit / Math.max(1, path.cost) * (path.tiles.length > 3 ? 1 : 0.5);
+    const score = benefit / Math.max(1, path.cost)
+                * (path.tiles.length > 3 ? 1 : 0.5)
+                * wealthEagerness;
     if (score > bestScore) {
       bestScore = score;
       bestPartner = peer;

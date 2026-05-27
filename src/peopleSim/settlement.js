@@ -317,14 +317,23 @@ export { updateWealth };
 // spending their gold on imports from goods-producing partners.
 // That's how mining wealth actually distributes in a closed economy.
 //
-// Composition:
-//   metallurgy + ore access → tools / weapons
-//   construction + timber/stone → building goods
-//   agriculture + farmland → grain surplus
-//   navigation + water access → ship-borne goods, fish, etc.
-//   salt raw → preserved foods, currency-adjacent commodity
-// Range is roughly 1.0 (no specialisation, "just gold") → ~4.5
-// (highly developed exporter).
+// Composition (broad enough that most settlements have SOMETHING
+// distinctive to sell):
+//   metallurgy + ore        tools / weapons (Damascus steel)
+//   construction + mats     building goods (lumber, dressed stone)
+//   agriculture + farmland  grain surplus (Egypt → Rome)
+//   navigation + water      ship goods, fish, salt cod
+//   toolmaking              crafted goods — pottery, textiles,
+//                           leatherwork — works without metallurgy
+//   foraging + timber       wild goods — furs, honey, herbs,
+//                           game (Russian taiga, Canadian fur trade)
+//   horses + mobility       horse trade, caravan beasts, war mounts
+//                           (Mongol horse export, Andalusian)
+//   organization + pop      administrative services — scribes,
+//                           banking, contracts (Venice's bankers)
+//   salt raw                preserved food, currency-adjacent
+// Range is roughly 1.0 (no specialisation, "just gold") → ~5.5
+// (highly developed multi-specialty exporter).
 export function computeExportValue(s) {
   const k = s.knowledge || {};
   const r = s.localRes || {};
@@ -336,8 +345,21 @@ export function computeExportValue(s) {
   const agScale = Math.min(1, s.farmland.size / 50);
   v += (k.agriculture || 0) * agScale * 0.6;
   if ((s.waterAccess || 0) > 0) v += (k.navigation || 0) * s.waterAccess * 0.5;
-  // Salt counts as a tradeable good. Precious / gems do NOT —
-  // they are money once extracted, not export commodities.
+  // Toolmaking — crafted goods are valuable even without metal.
+  // Pottery and textiles travel further than grain because of
+  // density-value ratio.
+  v += (k.toolmaking || 0) * 0.4;
+  // Foraging × timber — wild forest goods.
+  v += (k.foraging || 0) * (r.timber || 0) * 0.4;
+  // Horses + mobility — horse trade and caravans.
+  const horses = r.horses || 0;
+  if (horses > 0.05) v += horses * 0.6 + (k.mobility || 0) * 0.4;
+  // Organization × log-scale population — bureaucracy / services
+  // / banking. Scales with population because you need lots of
+  // people to support a clerical class.
+  const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
+  v += (k.organization || 0) * popScale * 0.5;
+  // Salt counts as a tradeable good.
   v += (r.salt || 0) * 0.5;
   return v;
 }
