@@ -6009,7 +6009,7 @@ return(
             <span>Population</span><span>{Math.round(s.people)}{K?` / ${Math.round(K)} K`:""}</span>
             <span>Food stored</span><span>{Math.round(s.food)}</span>
             <span className="au-fade">Production /tick</span><span className="au-fade">{supply.toFixed(3)}</span>
-            {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span className="au-fade">+{importRate.toFixed(3)}</span></>)}
+            {importRate>0.001&&(<><span className="au-fade">Imported (avg /tick)</span><span className="au-fade">+{importRate.toFixed(3)}</span></>)}
             <span className="au-fade">Consumed /tick</span><span className="au-fade">{demand.toFixed(3)}</span>
             <span style={statusColor?{color:statusColor}:undefined}>Food balance</span>
             <span style={statusColor?{color:statusColor}:undefined}>

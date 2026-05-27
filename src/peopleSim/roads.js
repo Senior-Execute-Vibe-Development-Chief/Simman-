@@ -321,12 +321,21 @@ const FOOD_PRICE                   = 5;       // wealth per food unit
 const FOOD_TRANSPORT_PER_PATHCOST  = 0.005;   // ¼ of general transport — bulk shipping
 const STARVING_TICKS_LEFT          = 100;     // < 100 ticks of food → emergency
 
+// EMA alpha for tracking average per-tick food imports. ~350-tick
+// half-life — matches the logistic-growth timescale of pop. A city
+// won't grow on a brief import surge, nor collapse on a brief dip;
+// it tracks the SUSTAINED inflow over many seasons.
+const FOOD_IMPORT_EMA_ALPHA = 0.002;
 export function updateFoodTrade(world) {
   if (!world.roads || world.roads.length === 0) return;
-  // Decay last tick's import rate so settlements that lose a food
-  // route gradually lose their inflated K.
+  // EMA: each tick, smooth toward the current tick's input. The
+  // (1 - α) decay runs every tick regardless of trade; α-scaled
+  // additions only fire when food actually flows. Steady inflow
+  // of X food/tick → equilibrium _foodImportRate = X.
   for (const s of world.settlements) {
-    if (s.mode === "settled") s._foodImportRate = (s._foodImportRate || 0) * 0.98;
+    if (s.mode === "settled") {
+      s._foodImportRate = (s._foodImportRate || 0) * (1 - FOOD_IMPORT_EMA_ALPHA);
+    }
   }
   for (const road of world.roads) {
     if (!road || !road.active) continue;
@@ -366,7 +375,12 @@ export function updateFoodTrade(world) {
     exporter.wealth = (exporter.wealth || 0) + actualPayment;
     importer.food = (importer.food || 0) + actualFood;
     exporter.food = (exporter.food || 0) - actualFood;
-    importer._foodImportRate = (importer._foodImportRate || 0) + actualFood;
+    // α-scale this tick's actual food into the EMA so the running
+    // value represents an average per-tick rate, not an integrated
+    // sum. Without the α, _foodImportRate would settle at 50× the
+    // per-tick rate.
+    importer._foodImportRate = (importer._foodImportRate || 0)
+                              + actualFood * FOOD_IMPORT_EMA_ALPHA;
     if (scale > 0.1) road.usage = (road.usage || 0) + scale * 0.5;
   }
 }
