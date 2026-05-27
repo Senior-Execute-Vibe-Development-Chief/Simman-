@@ -617,6 +617,10 @@ function updateFood(world, s) {
 
   const supply = forage + farmYield;
   const demand = s.people * 0.0030;
+  // Expose rates so the food-trade pass can compute surplus/deficit
+  // per road without recomputing forage + farmland sums.
+  s._foodSupply = supply;
+  s._foodDemand = demand;
   s.food += supply - demand;
 
   const storageCap = 80 + s.tier * 200;
@@ -635,7 +639,14 @@ function updatePopulation(world, s) {
   // hamlets, oasis villages, tundra encampments.
   const forageK = (s._forageArea || 0) * PEOPLE_PER_FORAGE_TILE
                 * (1 + (s.knowledge.foraging || 0.3) * 0.5);
-  const K = Math.max(K_FLOOR, farmK + forageK * FORAGE_K_WEIGHT);
+  // Imported food via trade lifts effective carrying capacity. Each
+  // food unit/tick imported sustains ~1/0.003 ≈ 333 people; we
+  // weight at 0.5 because imports can be disrupted, so a prudent
+  // settlement doesn't grow to fully match imported supply. This is
+  // what lets coastal grain-importing cities (Rome → Egypt) hold
+  // populations far beyond local farmland.
+  const importK = (s._foodImportRate || 0) / 0.003 * 0.5;
+  const K = Math.max(K_FLOOR, farmK + forageK * FORAGE_K_WEIGHT + importK);
   s._k = K;
 
   if (s.food <= 0.01 && s.people > 1) {

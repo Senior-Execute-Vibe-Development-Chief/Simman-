@@ -5993,13 +5993,33 @@ return(
         {tierName} · {era} · {waterLabel} · founded step {s.foundedStep}
       </div>
 
-      {/* ── Demographics ── */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px"}}>
-        <span>Population</span><span>{Math.round(s.people)}{K?` / ${Math.round(K)} K`:""}</span>
-        <span>Food</span><span>{Math.round(s.food)}</span>
-        <span>Farmland</span><span>{farm} tile{farm===1?"":"s"}</span>
-        {nextThr&&<><span>To next tier</span><span>{Math.round(s.people)}/{nextThr} ({Math.round(progress*100)}%)</span></>}
-      </div>
+      {/* ── Demographics + food balance ── */}
+      {(()=>{
+        const supply=s._foodSupply||0;
+        const demand=s._foodDemand||0;
+        const importRate=s._foodImportRate||0;
+        const totalSupply=supply+importRate;
+        const surplus=totalSupply-demand;
+        const ticksLeft=demand>0?(s.food||0)/demand:Infinity;
+        const starving=ticksLeft<100&&surplus<=0;
+        const status=starving?"starving":surplus>0.001?"surplus":surplus<-0.001?"deficit":"balanced";
+        const statusColor=starving?"#c44":surplus>0.001?"#494":surplus<-0.001?"#c84":undefined;
+        return(
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px"}}>
+            <span>Population</span><span>{Math.round(s.people)}{K?` / ${Math.round(K)} K`:""}</span>
+            <span>Food stored</span><span>{Math.round(s.food)}</span>
+            <span className="au-fade">Production /tick</span><span className="au-fade">{supply.toFixed(3)}</span>
+            {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span className="au-fade">+{importRate.toFixed(3)}</span></>)}
+            <span className="au-fade">Consumed /tick</span><span className="au-fade">{demand.toFixed(3)}</span>
+            <span style={statusColor?{color:statusColor}:undefined}>Food balance</span>
+            <span style={statusColor?{color:statusColor}:undefined}>
+              {surplus>=0?"+":""}{surplus.toFixed(3)} ({status})
+            </span>
+            <span>Farmland</span><span>{farm} tile{farm===1?"":"s"}</span>
+            {nextThr&&<><span>To next tier</span><span>{Math.round(s.people)}/{nextThr} ({Math.round(progress*100)}%)</span></>}
+          </div>
+        );
+      })()}
 
       {/* ── Knowledge ── */}
       <div style={{marginTop:8,fontSize:10}} className="au-fade">Knowledge</div>

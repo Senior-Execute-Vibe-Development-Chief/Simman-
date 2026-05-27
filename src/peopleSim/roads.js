@@ -304,6 +304,73 @@ class MinHeap {
 //   seller receives  = trade value × (paid/want)     (scaled if buyer poor)
 //   sunk             = transport cost × (paid/want)  (destroyed)
 //
+// ── Food trade (priority pass) ──
+// Runs BEFORE general trade so food gets first dibs on the buyer's
+// wealth. A starving settlement can dip into its rainy-day reserve
+// for food (and only food) — the urgency override.
+//
+//   surplus side ships food to deficit side
+//   importer pays exporter $FOOD_PRICE per food unit
+//   transport surcharge destroyed (path × FOOD_TRANSPORT_PER_PATHCOST)
+//   importer.food += actualFood;  exporter.food -= actualFood
+//
+// Imported food is also tracked in importer._foodImportRate so
+// updatePopulation can lift its carrying capacity above local food
+// production (Rome-via-Egypt grain pattern).
+const FOOD_PRICE                   = 5;       // wealth per food unit
+const FOOD_TRANSPORT_PER_PATHCOST  = 0.005;   // ¼ of general transport — bulk shipping
+const STARVING_TICKS_LEFT          = 100;     // < 100 ticks of food → emergency
+
+export function updateFoodTrade(world) {
+  if (!world.roads || world.roads.length === 0) return;
+  // Decay last tick's import rate so settlements that lose a food
+  // route gradually lose their inflated K.
+  for (const s of world.settlements) {
+    if (s.mode === "settled") s._foodImportRate = (s._foodImportRate || 0) * 0.98;
+  }
+  for (const road of world.roads) {
+    if (!road || !road.active) continue;
+    const a = findById(world, road.from);
+    const b = findById(world, road.to);
+    if (!a || !b || a.mode !== "settled" || b.mode !== "settled") continue;
+    const aSurplus = (a._foodSupply || 0) - (a._foodDemand || 0);
+    const bSurplus = (b._foodSupply || 0) - (b._foodDemand || 0);
+    let exporter, importer, shipRate, deficit;
+    if (aSurplus > 0.001 && bSurplus < -0.001) {
+      exporter = a; importer = b; shipRate = aSurplus; deficit = -bSurplus;
+    } else if (bSurplus > 0.001 && aSurplus < -0.001) {
+      exporter = b; importer = a; shipRate = bSurplus; deficit = -aSurplus;
+    } else continue;
+    // Per-tick flow capped at: exporter's surplus, importer's
+    // deficit, AND a small fraction of exporter's stored food (can't
+    // ship out their entire granary in one tick).
+    const storageRate = (exporter.food || 0) * 0.01;
+    const maxFlow = Math.min(shipRate, deficit, storageRate);
+    if (maxFlow <= 0) continue;
+    const wantPrice = maxFlow * FOOD_PRICE;
+    const transport = (road.pathCost || 0) * FOOD_TRANSPORT_PER_PATHCOST;
+    const totalCost = wantPrice + transport;
+    // Urgency override: starving settlement dips into reserve for food.
+    const importerDemand = importer._foodDemand || 0.001;
+    const ticksOfFoodLeft = (importer.food || 0) / importerDemand;
+    const isStarving = ticksOfFoodLeft < STARVING_TICKS_LEFT;
+    const reserve = isStarving ? 0 : getWealthReserve(importer);
+    const available = Math.max(0, (importer.wealth || 0) - reserve);
+    if (available <= 0) continue;
+    const affordable = available < totalCost ? available : totalCost;
+    const scale = affordable / totalCost;
+    const actualFood = maxFlow * scale;
+    const actualPayment = wantPrice * scale;
+    const actualTransport = transport * scale;
+    importer.wealth -= (actualPayment + actualTransport);
+    exporter.wealth = (exporter.wealth || 0) + actualPayment;
+    importer.food = (importer.food || 0) + actualFood;
+    exporter.food = (exporter.food || 0) - actualFood;
+    importer._foodImportRate = (importer._foodImportRate || 0) + actualFood;
+    if (scale > 0.1) road.usage = (road.usage || 0) + scale * 0.5;
+  }
+}
+
 // Net effect on system wealth per road per tick: -transportCost
 // (transport is the only money sink in the system besides the
 // already-zero road build cost).

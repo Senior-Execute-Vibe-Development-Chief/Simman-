@@ -11,7 +11,7 @@
 import { createWorld, pruneDead } from "./state.js";
 import { updateSettlement } from "./settlement.js";
 import { maybeCrystallize } from "./crystallize.js";
-import { maybeBuildRoads, updateTrade, maybeRebuildRoadQuality, rebuildRoadTileQuality } from "./roads.js";
+import { maybeBuildRoads, updateTrade, updateFoodTrade, maybeRebuildRoadQuality, rebuildRoadTileQuality } from "./roads.js";
 
 export function initPeopleSim(worldGen, opts = {}) {
   return createWorld(worldGen, opts);
@@ -32,6 +32,9 @@ export function stepPeopleSim(world, n = 1) {
     // along existing roads — zero-sum transfer from buyer to seller.
     maybeBuildRoads(world);
     maybeRebuildRoadQuality(world);
+    // Food trade runs FIRST — it has priority on importer wealth
+    // and can dip into the reserve when the importer is starving.
+    updateFoodTrade(world);
     updateTrade(world);
     if (world.step % 32 === 0) pruneDead(world);
     if (world.step % 256 === 0) checkFarmlandOwnership(world);
