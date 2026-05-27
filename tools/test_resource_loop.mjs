@@ -175,6 +175,21 @@ for (let i = 1; i <= TICKS; i++) {
     const access = settlementsWithAccess(world);
     const numRoads = world.roads ? world.roads.length : 0;
     const numRoadTiles = world.roadTiles ? world.roadTiles.size : 0;
+    // Network density: how many road tiles are SHARED by 2+ roads?
+    // High share = networked (trunks + spurs); low share = parallel paths.
+    let sharedTiles = 0, totalPathTiles = 0;
+    if (world.roads) {
+      const tileCount = new Map();
+      for (const r of world.roads) {
+        if (!r.active) continue;
+        for (const ti of r.path) {
+          totalPathTiles++;
+          tileCount.set(ti, (tileCount.get(ti) || 0) + 1);
+        }
+      }
+      for (const c of tileCount.values()) if (c > 1) sharedTiles++;
+    }
+    const sharePct = numRoadTiles > 0 ? (sharedTiles / numRoadTiles * 100).toFixed(0) : "0";
     // System wealth conservation: sum of all settlement wealth + total
     // sunk in roads ≈ total ever extracted from mines.
     let totalWealth = 0;
@@ -191,8 +206,8 @@ for (let i = 1; i <= TICKS; i++) {
     }
     console.log(`\n— step ${i} — ${JSON.stringify(stats)}`);
     console.log(`roads: ${numRoads}  road-tiles: ${numRoadTiles}  ` +
+                `shared: ${sharedTiles} (${sharePct}%)  ` +
                 `totalWealth: $${Math.round(totalWealth).toLocaleString()}  ` +
-                `sunkInRoads: $${Math.round(sunkInRoads).toLocaleString()}  ` +
                 `mineReservesLeft: $${Math.round(reserveLeft).toLocaleString()}`);
     console.log("settlements w/ access: " + RES_IDS.map(id => `${id}:${access[id]}`).join("  "));
     const alive = world.settlements

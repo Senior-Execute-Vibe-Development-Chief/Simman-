@@ -186,14 +186,17 @@ function tryBuildOne(world, s) {
   world.roads.push(road);
   for (const ti of bestPath.tiles) world.roadTiles.add(ti);
   // Immediately register the new road's tile quality so other
-  // settlements planning in the SAME tick can route through it,
-  // not just after the next 64-tick cache rebuild. Without this,
-  // batches of plans build parallel paths instead of merging.
-  const newQ = QUALITY_NEW;
-  if (world.roadTileQuality && world.roadTileQuality.length === world.N) {
-    for (const ti of bestPath.tiles) {
-      if (newQ < world.roadTileQuality[ti]) world.roadTileQuality[ti] = newQ;
-    }
+  // settlements planning in the SAME tick (and during the next
+  // 64 ticks before the periodic rebuild) can route through it.
+  // EAGERLY initialise the cache here — it's null before the first
+  // road, so without this, early road batches never see each other
+  // and you get parallel paths instead of a merged network.
+  if (!world.roadTileQuality || world.roadTileQuality.length !== world.N) {
+    world.roadTileQuality = new Float32Array(world.N);
+    world.roadTileQuality.fill(1.0);
+  }
+  for (const ti of bestPath.tiles) {
+    if (QUALITY_NEW < world.roadTileQuality[ti]) world.roadTileQuality[ti] = QUALITY_NEW;
   }
   if (!s.roadsConnecting) s.roadsConnecting = [];
   if (!bestPartner.roadsConnecting) bestPartner.roadsConnecting = [];
@@ -229,7 +232,7 @@ function findPath(world, s, t) {
   dist.set(start, 0);
   const heap = new MinHeap();
   heap.push(start, 0);
-  const limit = 5000;             // abort if path > 5k edges (won't happen on a 256×128)
+  const limit = 20000;            // generous so Dijkstra has room to detour via distant existing roads
   let visited = 0;
   while (heap.n > 0) {
     if (visited++ > limit) return null;
@@ -472,8 +475,8 @@ export function updateTrade(world) {
 // applied to edges crossing that road's tiles scales from the
 // baseline (new path) down to MAX_QUALITY (worn arterial) over
 // USAGE_FOR_MAX ticks of accumulated traffic.
-const QUALITY_NEW          = 0.15;       // new road = current baseline
-const QUALITY_MAX          = 0.05;       // ~3× cheaper than a new road
+const QUALITY_NEW          = 0.10;       // new road: 10× cheaper than plain
+const QUALITY_MAX          = 0.03;       // worn arterial: 33× cheaper
 const USAGE_FOR_MAX        = 5000;       // ticks of trade to reach top quality
 const QUALITY_REBUILD_FREQ = 64;         // ticks between cache rebuilds
 
