@@ -136,18 +136,35 @@ export function baseEdgeCost(world, fromTi, toTi) {
   return c;
 }
 
-// Per-settlement edge cost = base × tech multipliers. Toolmaking
-// (wagons / harness / draft animals) and organization (postal relays,
-// logistics) give flat speedups; construction (roads, bridges,
-// switchbacks) reduces cost more — it makes terrain itself less of an
-// obstacle. At full tech: ×(0.70 · 0.60 · 0.85) ≈ ×0.36.
+// Per-settlement edge cost = base × tech multipliers. Each track of
+// knowledge reduces effective edge cost in a way that maps to a real
+// transport innovation:
+//   toolmaking   wagons, harness, draft animals      flat ×0.70 max
+//   construction roads, bridges, switchbacks         flat ×0.60 max
+//   organization postal relays, supply chains        flat ×0.85 max
+//   mobility     horses (cavalry, courier, plough)   flat ×0.70 max
+//   navigation   ships on rivers / coasts            water ×0.55 max
+//
+// At full tech (everything at 1.0), a flat plain tile costs:
+//   ×0.70 × 0.60 × 0.85 × 0.70 = 0.250 (was 0.357 without mobility)
+// A river tile with navigation maxed adds another ×0.55 on top.
+// So a maxed-out Iron Age tribe with horses and ships moves ~4× faster
+// over land and ~7× faster on water than a stone-age starter.
 export function localEdgeCost(world, fromTi, toTi, kn) {
   const c = baseEdgeCost(world, fromTi, toTi);
   if (c === Infinity || !kn) return c;
   const tool = kn.toolmaking   || 0;
   const cons = kn.construction || 0;
   const org  = kn.organization || 0;
-  return c * (1 - 0.30 * tool) * (1 - 0.40 * cons) * (1 - 0.15 * org);
+  const mob  = kn.mobility     || 0;
+  const nav  = kn.navigation   || 0;
+  let mul = (1 - 0.30 * tool) * (1 - 0.40 * cons) * (1 - 0.15 * org) * (1 - 0.30 * mob);
+  if (nav > 0) {
+    const isWater = (world.riverMag && world.riverMag[toTi] >= 2)
+                 || (world.coast && world.coast[toTi]);
+    if (isWater) mul *= (1 - 0.45 * nav);
+  }
+  return c * mul;
 }
 
 export function computeTransport(world) {

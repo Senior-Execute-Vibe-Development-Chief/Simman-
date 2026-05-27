@@ -5912,7 +5912,7 @@ return(
       <KRow label="Mobility"     val={k.mobility||0}     colour="#a76"
             note={(r.horses||0)<=0.10?"(no horses)":null}/>
 
-      {/* ── Local resources ── */}
+      {/* ── Local resources (max richness in reach) ── */}
       <div style={{marginTop:8,fontSize:10}} className="au-fade">
         Local resources{presentRes.length===0?" (none in reach)":""}
       </div>
@@ -5925,6 +5925,25 @@ return(
           ))}
         </div>
       )}
+
+      {/* ── Stockpile (harvested over time, lightly decayed) ── */}
+      {(()=>{
+        const stash=s.stockpile||{};
+        const entries=Object.entries(stash).filter(([,v])=>v>=0.5).sort((a,b)=>b[1]-a[1]);
+        if(entries.length===0)return null;
+        return(
+          <>
+            <div style={{marginTop:8,fontSize:10}} className="au-fade">Stockpile</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
+              {entries.map(([id,v])=>(
+                <Fragment key={id}>
+                  <span>{RES_LABEL[id]||id}</span><span>{Math.round(v)}</span>
+                </Fragment>
+              ))}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 })()}

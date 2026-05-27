@@ -106,6 +106,12 @@ export function makeSettlement(world, x, y, opts = {}) {
     // farmland refresh, then used by updateKnowledge to gate /
     // accelerate tech growth.
     localRes: {},
+    // Sum of deposit richness across the reach, per resource id.
+    // Drives the per-tick stockpile harvest rate.
+    resAccess: {},
+    // Accumulated harvested resources, with light per-tick decay so
+    // the value reflects current production capacity (≈ rate × 200).
+    stockpile: {},
     // Cached water-access score (coast + river magnitude at home
     // tile). Set on creation, doesn't change.
     waterAccess: 0,
@@ -152,20 +158,27 @@ function computeWaterAccess(world, sx, sy) {
 }
 
 // Walk the settlement's transport reach (if cached) or a 5×5 fall
-// back box, and record the max deposit richness seen per tracked
-// resource. Run alongside farmland refresh so it picks up tier
-// growth (bigger reach → more resources within grasp).
+// back box, and record per-resource richness. Two outputs:
+//   s.localRes[k]  — MAX richness within reach (gates knowledge: is
+//                    there ANY deposit accessible at all?)
+//   s.resAccess[k] — SUM of richness × tile (drives the per-tick
+//                    stockpile harvest rate — more deposits = more
+//                    harvested per tick)
+// Run alongside farmland refresh so it picks up tier-driven reach
+// growth.
 function scanLocalResources(world, s) {
   const deposits = world.deposits;
   if (!deposits) return;
   const keys = Object.keys(deposits);
   if (keys.length === 0) return;
-  const out = {};
-  for (const k of keys) out[k] = 0;
+  const maxOut = {};
+  const sumOut = {};
+  for (const k of keys) { maxOut[k] = 0; sumOut[k] = 0; }
   const sample = (ti) => {
     for (const k of keys) {
       const v = deposits[k][ti] || 0;
-      if (v > out[k]) out[k] = v;
+      if (v > maxOut[k]) maxOut[k] = v;
+      sumOut[k] += v;
     }
   };
   if (s._reach && s._reach.size > 0) {
@@ -182,9 +195,40 @@ function scanLocalResources(world, s) {
       }
     }
   }
-  s.localRes = out;
+  s.localRes = maxOut;
+  s.resAccess = sumOut;
 }
 export { scanLocalResources };
+
+// ── Stockpile harvest ──
+// Each tick, every settlement adds harvested resource units to its
+// stockpile, proportional to total reachable deposit-density and
+// modulated by population (more workers harvest more, capped to
+// avoid metropolises hogging everything). Light decay so the value
+// stabilizes at production_rate / DECAY — the visible number is
+// "what this settlement has on hand right now", not cumulative
+// since founding. Future trade / military / construction systems
+// will consume from these stockpiles.
+const STOCKPILE_DECAY  = 0.005;       // 0.5% / tick — equilibrium ≈ 200× rate
+const HARVEST_PER_UNIT = 0.08;        // per resAccess unit per pop-factor unit
+function updateStockpile(world, s) {
+  const stash  = s.stockpile = s.stockpile || {};
+  const access = s.resAccess || {};
+  // Pop factor: village (25 ppl) ≈ 0.25; town (200) ≈ 0.71; city (1000) ≈ 1.58
+  // metropolis (5000) capped at 3.0. Bigger = more harvesters in the field.
+  const popFactor = Math.min(3.0, Math.sqrt(Math.max(1, s.people)) * 0.05);
+  // Decay first so a fully-depleted reach (after migration / loss) sees
+  // its stockpile bleed off.
+  for (const k in stash) {
+    stash[k] *= (1 - STOCKPILE_DECAY);
+    if (stash[k] < 0.05) delete stash[k];
+  }
+  for (const k in access) {
+    const a = access[k];
+    if (a > 0) stash[k] = (stash[k] || 0) + a * HARVEST_PER_UNIT * popFactor;
+  }
+}
+export { updateStockpile };
 
 export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;
@@ -192,6 +236,7 @@ export function updateSettlement(world, s) {
   updatePopulation(world, s);
   if (s.mode !== "settled") return;        // died this tick (famine / wither)
   maybeRefreshFarmland(world, s);
+  updateStockpile(world, s);
   updateKnowledge(world, s);
   updateTier(world, s);
 }
