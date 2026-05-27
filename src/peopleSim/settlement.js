@@ -114,6 +114,7 @@ export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;
   updateFood(world, s);
   updatePopulation(world, s);
+  if (s.mode !== "settled") return;        // died this tick (famine / wither)
   maybeRefreshFarmland(world, s);
   updateKnowledge(world, s);
   updateTier(world, s);

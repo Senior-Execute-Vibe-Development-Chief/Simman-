@@ -27,9 +27,55 @@ export function stepPeopleSim(world, n = 1) {
     // weighted by transport distance to existing ones.
     maybeCrystallize(world);
     if (world.step % 32 === 0) pruneDead(world);
+    if (world.step % 256 === 0) checkFarmlandOwnership(world);
     world.debug.tickMs = performance.now() - t0;
   }
   return world;
+}
+
+// Sanity check: every farmland tile belongs to exactly one alive
+// settlement, _farmedBy[ti] points at that settlement. Catches any
+// regression that lets two settlements claim the same ground or
+// leaves orphan-owned tiles after a settlement dies.
+const _farmlandWarned = new Set();
+function checkFarmlandOwnership(world) {
+  const seen = new Map();              // ti -> first settlement id seen
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || !s.farmland) continue;
+    for (const ti of s.farmland) {
+      const prev = seen.get(ti);
+      if (prev !== undefined && prev !== s.id) {
+        const key = `dup:${ti}`;
+        if (!_farmlandWarned.has(key)) {
+          _farmlandWarned.add(key);
+          console.warn(`[peopleSim] farmland overlap at tile ${ti}: settlements ${prev} and ${s.id}`);
+        }
+      }
+      seen.set(ti, s.id);
+      if (world._farmedBy[ti] !== s.id) {
+        const key = `mismatch:${ti}`;
+        if (!_farmlandWarned.has(key)) {
+          _farmlandWarned.add(key);
+          console.warn(`[peopleSim] _farmedBy[${ti}]=${world._farmedBy[ti]} but settlement ${s.id} has it in farmland`);
+        }
+      }
+    }
+  }
+  // Walk _farmedBy for orphan ownership (tile owned by a dead/nonexistent settlement).
+  const aliveIds = new Set();
+  for (const s of world.settlements) if (s.mode === "settled") aliveIds.add(s.id);
+  for (let ti = 0; ti < world._farmedBy.length; ti++) {
+    const o = world._farmedBy[ti];
+    if (o === -1) continue;
+    if (!aliveIds.has(o)) {
+      const key = `orphan:${ti}`;
+      if (!_farmlandWarned.has(key)) {
+        _farmlandWarned.add(key);
+        console.warn(`[peopleSim] orphan-owned tile ${ti}: settlement ${o} is not alive`);
+      }
+      world._farmedBy[ti] = -1;        // self-heal
+    }
+  }
 }
 
 export function getEntities(world) {
