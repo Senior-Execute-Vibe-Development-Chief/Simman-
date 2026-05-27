@@ -185,6 +185,16 @@ function tryBuildOne(world, s) {
   };
   world.roads.push(road);
   for (const ti of bestPath.tiles) world.roadTiles.add(ti);
+  // Immediately register the new road's tile quality so other
+  // settlements planning in the SAME tick can route through it,
+  // not just after the next 64-tick cache rebuild. Without this,
+  // batches of plans build parallel paths instead of merging.
+  const newQ = QUALITY_NEW;
+  if (world.roadTileQuality && world.roadTileQuality.length === world.N) {
+    for (const ti of bestPath.tiles) {
+      if (newQ < world.roadTileQuality[ti]) world.roadTileQuality[ti] = newQ;
+    }
+  }
   if (!s.roadsConnecting) s.roadsConnecting = [];
   if (!bestPartner.roadsConnecting) bestPartner.roadsConnecting = [];
   s.roadsConnecting.push(roadId);

@@ -430,15 +430,17 @@ export function getExportBreakdown(s) {
   return out.sort((a, b) => b.value - a.value);
 }
 
-// Trade profile across all connected roads. Returns array of
-// { rid, partner, partnerId, role, tradeValue, transport,
-//   netPerTick } where role is "selling" (we receive money) or
-// "buying" (we pay). netPerTick is positive when money flows IN,
-// negative when it flows OUT.
+// Trade profile across all connected roads. For each road, returns:
+//   role (general)        — "selling" or "buying" based on exportValue diff
+//   foodRole              — "selling food" / "buying food" / null
+//   goods                 — top 2 specialty labels exchanged (descriptive)
+//   netPerTick            — wealth flow direction & magnitude (this settlement)
 export function getTradeProfile(s, world) {
   const profile = [];
   if (!s.roadsConnecting || !world.roads) return profile;
   const sExport = computeExportValue(s);
+  const sFood = (s._foodSupply || 0) - (s._foodDemand || 0);
+  const sBreakdown = getExportBreakdown(s);
   for (const rid of s.roadsConnecting) {
     const road = world.roads[rid];
     if (!road || !road.active) continue;
@@ -446,15 +448,34 @@ export function getTradeProfile(s, world) {
     const peer = findSettlementById(world, peerId);
     if (!peer || peer.mode !== "settled") continue;
     const peerExport = computeExportValue(peer);
+    const peerFood = (peer._foodSupply || 0) - (peer._foodDemand || 0);
     const diff = sExport - peerExport;             // >0: we're seller
     const minPop = Math.min(s.people, peer.people);
     const tradeValue = Math.abs(diff) * Math.sqrt(minPop) * 0.025;
     const transport  = (road.pathCost || 0) * 0.012;
     const selling = diff > 0;
     const netPerTick = selling ? tradeValue : -(tradeValue + transport);
+
+    // Food role: independent of general trade direction.
+    let foodRole = null;
+    if (sFood > 0.01 && peerFood < -0.01) foodRole = "selling food";
+    else if (sFood < -0.01 && peerFood > 0.01) foodRole = "buying food";
+
+    // Dominant goods being exchanged. From this settlement's
+    // perspective: if SELLING, list our top exports going OUT;
+    // if BUYING, list peer's top exports coming IN. Top 2 by
+    // contribution. "Baseline" filtered out (uninteresting).
+    const breakdown = selling ? sBreakdown : getExportBreakdown(peer);
+    const goods = breakdown
+      .filter(b => b.label !== "Baseline")
+      .slice(0, 2)
+      .map(b => b.label);
+
     profile.push({
       rid, partner: peer.name, partnerId: peer.id,
       role: selling ? "selling" : "buying",
+      foodRole,
+      goods,
       tradeValue, transport: selling ? 0 : transport,
       netPerTick,
     });

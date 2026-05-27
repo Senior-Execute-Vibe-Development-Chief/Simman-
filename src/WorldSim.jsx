@@ -5410,17 +5410,21 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         if(!byComp.has(root)) byComp.set(root, []);
         byComp.get(root).push(road);
       }
+      const halfTw=psw.tw*0.5;
       for(const [root, roads] of byComp){
         ctx.beginPath();
         for(const road of roads){
+          let prevPx=-1e9;
           for(let i=0;i<road.path.length;i++){
             const ti=road.path[i];
             const py=(ti/psw.tw)|0;
             const px=ti-py*psw.tw;
             const sx=px*TR+TR*0.5;
             const sy=dataYtoScreenY(py*TR+TR*0.5,H,CH);
-            if(i===0)ctx.moveTo(sx,sy);
+            const wrap=i>0&&Math.abs(px-prevPx)>halfTw;
+            if(i===0||wrap)ctx.moveTo(sx,sy);
             else ctx.lineTo(sx,sy);
+            prevPx=px;
           }
         }
         ctx.strokeStyle=compColour(root);
@@ -5468,19 +5472,26 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // Each road has a path of tile indices; render as a single
     // Path2D-batched stroke. Drawn AFTER farmland (so it overlays
     // green fields) and BEFORE settlement icons (so the dots sit on
-    // top). Tone: warm brown, slightly thicker than 1px so it reads.
+    // top). The world is a torus — when consecutive path tiles are
+    // on opposite sides of the map (|dx| > tw/2), they're connected
+    // via the X wrap. We break the line at that boundary so it
+    // doesn't draw a meaningless straight line across the whole map.
     if(psw.roads&&psw.roads.length>0){
+      const halfTw=psw.tw*0.5;
       ctx.beginPath();
       for(const road of psw.roads){
         if(!road||!road.active||!road.path||road.path.length<2)continue;
+        let prevPx=-1e9;
         for(let i=0;i<road.path.length;i++){
           const ti=road.path[i];
           const py=(ti/psw.tw)|0;
           const px=ti-py*psw.tw;
           const sx=px*TR+TR*0.5;
           const sy=dataYtoScreenY(py*TR+TR*0.5,H,CH);
-          if(i===0)ctx.moveTo(sx,sy);
+          const wrap=i>0&&Math.abs(px-prevPx)>halfTw;
+          if(i===0||wrap)ctx.moveTo(sx,sy);
           else ctx.lineTo(sx,sy);
+          prevPx=px;
         }
       }
       ctx.strokeStyle="rgba(120,80,40,0.85)";
@@ -6126,6 +6137,17 @@ return(
                   </span>
                   <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                     {p.partner}
+                    {p.goods.length>0&&(
+                      <span className="au-fade" style={{marginLeft:4,fontSize:9}}>
+                        ({p.goods.join(", ").toLowerCase()})
+                      </span>
+                    )}
+                    {p.foodRole&&(
+                      <span style={{marginLeft:4,fontSize:9,
+                        color:p.foodRole==="selling food"?"#494":"#c84"}}>
+                        · {p.foodRole}
+                      </span>
+                    )}
                   </span>
                   <span style={{color:p.netPerTick>=0?"#494":"#c44"}}>
                     {p.netPerTick>=0?"+":""}{p.netPerTick.toFixed(2)}

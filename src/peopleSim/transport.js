@@ -133,17 +133,19 @@ export function baseEdgeCost(world, fromTi, toTi) {
   // mag=4 → ×0.44.
   if (riverMag && riverMag[toTi] > 0) c /= (1 + riverMag[toTi] * 0.32);
   if (coast[toTi])                    c *= 0.80;
-  // Roads: when BOTH endpoints carry a road tile, the edge is
-  // cheap. Per-tile quality lets heavily-used roads (Silk Road,
-  // Roman arteries) be much cheaper than barely-used new spurs —
-  // a worn-in arterial reaches QUALITY_MAX (≈0.05), a new road
-  // sits at QUALITY_NEW (≈0.15). Quality from roadTileQuality is
-  // 1.0 for non-road tiles, < 1.0 for road tiles. Use min (the
-  // better-quality of the two endpoints determines the surface).
+  // Roads: when EITHER endpoint is a road tile, apply that road's
+  // quality discount. Previously required BOTH endpoints, which
+  // meant joining and leaving a road both paid full off-road cost
+  // — discouraging tree-like trunk-and-spur network growth. Now
+  // even the on/off-ramp tile is discounted, so new roads readily
+  // route through existing arterials when geographically aligned.
+  // The min(qF, qT) picks whichever road surface is better.
   const rtq = world.roadTileQuality;
   if (rtq) {
     const qF = rtq[fromTi], qT = rtq[toTi];
-    if (qF < 1.0 && qT < 1.0) c *= (qF < qT ? qF : qT);
+    if (qF < 1.0 || qT < 1.0) {
+      c *= Math.min(qF < 1.0 ? qF : 1.0, qT < 1.0 ? qT : 1.0);
+    }
   }
   return c;
 }
