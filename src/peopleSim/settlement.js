@@ -247,7 +247,7 @@ const CONSUME = [
   { id: "tin",    rate: 0.002, gate: { k: "metallurgy",   min: 0.30 },       slows: ["metallurgy"] },
   { id: "iron",   rate: 0.005, gate: { k: "metallurgy",   min: 0.65 },       slows: ["metallurgy","toolmaking"] },
   { id: "coal",   rate: 0.004, gate: { k: "metallurgy",   min: 0.85 },       slows: ["metallurgy"] },
-  { id: "salt",   rate: 0.010, gate: null,                                   slows: [] },
+  { id: "salt",   rate: 0.003, gate: null,                                   slows: [] },
   { id: "horses", rate: 0.003, gate: { k: "mobility",     min: 0.05 },       slows: ["mobility"] },
 ];
 function updateConsumption(world, s) {
@@ -366,8 +366,11 @@ function updateKnowledge(world, s) {
   if (metalCap > 0 && k.metallurgy < metalCap) {
     const oreRate = Math.max(cu, sn, fe, co);
     const headroom = 1 - k.metallurgy / metalCap;
+    // 3× faster than the original 0.5 factor so era transitions
+    // happen on a meaningful timescale (~5–10k ticks per era jump
+    // instead of plateauing for 100k+).
     k.metallurgy = Math.min(metalCap, k.metallurgy +
-      LEARN_BASE * 0.5 * headroom * oreRate * (1 + k.toolmaking * 0.5)
+      LEARN_BASE * 1.5 * headroom * oreRate * (1 + k.toolmaking * 0.5)
       * shortageMul(s, "metallurgy"));
   }
 
@@ -381,9 +384,13 @@ function updateKnowledge(world, s) {
 
   // ── Mobility: hard-gated by horses ──
   // Cavalry, postal relays, scouting. Construction unlocks chariots /
-  // saddles / stirrups (gradual real-world progression).
+  // saddles / stirrups (gradual real-world progression). Horses are
+  // sparse and clustered, so a much lower threshold (0.05 vs the
+  // 0.10 used for ore mines) lets faint herds count — a settlement
+  // doesn't need a stud farm to start training scouts.
+  const horsesThr = 0.05;
   const horses = r.horses || 0;
-  if (horses > oreThr) {
+  if (horses > horsesThr) {
     k.mobility = clamp01(k.mobility + LEARN_BASE * 0.5 * (1 - k.mobility)
       * horses * (1 + k.construction * 0.4 + k.metallurgy * 0.6)
       * shortageMul(s, "mobility"));
