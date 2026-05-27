@@ -361,6 +361,13 @@ export function computeExportValue(s) {
   v += (k.organization || 0) * popScale * 0.5;
   // Salt counts as a tradeable good.
   v += (r.salt || 0) * 0.5;
+  // Base village products — every populated settlement has SOMETHING
+  // to sell: chickens, eggs, basket-weaving, surplus labour,
+  // hand-loomed cloth. Floor scales with log of pop so even a
+  // 25-person hamlet contributes a bit, a metropolis a lot.
+  // 25 ppl  → +0.14    1k ppl   → +0.30
+  // 100 ppl → +0.20    10k ppl  → +0.40
+  v += Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10);
   return v;
 }
 

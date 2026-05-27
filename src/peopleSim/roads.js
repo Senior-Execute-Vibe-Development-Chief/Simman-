@@ -118,8 +118,10 @@ function tryBuildOne(world, s) {
     const peerExport = computeExportValue(peer);
     const exGap = Math.abs(sExport - peerExport);
     // Skip if there's neither a resource gain nor a meaningful
-    // trade gap.
-    if (resGain === 0 && exGap < 0.25) continue;
+    // trade gap. Threshold low enough that small specialty
+    // differences (every village has some baseline products)
+    // can still motivate a road if the partner is nearby.
+    if (resGain === 0 && exGap < 0.15) continue;
     // Dijkstra path (existing roads route cheap).
     const path = findPath(world, s, peer);
     if (!path) continue;
@@ -127,12 +129,17 @@ function tryBuildOne(world, s) {
     // unlock) + trade gap (weighted 1x). Divided by path cost so
     // closer partners are preferred when benefits tie. Short-hop
     // penalty unchanged.
-    // Wealth eagerness: settlements with money are aggressively
-    // seeking imports to spend it on. A $1M treasury makes the
-    // settlement up to 2× more eager to build any given road,
-    // even one that just buys luxuries. Poor settlements stay
-    // selective (eagerness ≈ 1.0 below ~$100).
-    const wealthEagerness = Math.min(2.0, 1 + Math.log10(Math.max(1, s.wealth || 1)) / 6);
+    // Wealth eagerness goes BOTH ways:
+    //   - settlements with money want to spend it on imports
+    //     (own wealth → rich-buyer motivation)
+    //   - settlements without money still want roads to wealthy
+    //     neighbours so they can SELL their goods to them
+    //     (peer wealth → rich-customer motivation)
+    // We use the max of own wealth and HALF the peer's wealth so a
+    // poor village seeing a rich neighbour is as eager to build a
+    // road as a rich settlement seeing a poor one.
+    const effectiveWealth = Math.max(s.wealth || 0, (peer.wealth || 0) * 0.5);
+    const wealthEagerness = Math.min(2.0, 1 + Math.log10(Math.max(1, effectiveWealth)) / 6);
     const benefit = resGain * 2 + exGap;
     const score = benefit / Math.max(1, path.cost)
                 * (path.tiles.length > 3 ? 1 : 0.5)
