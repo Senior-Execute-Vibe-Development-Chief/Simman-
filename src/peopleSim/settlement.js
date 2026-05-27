@@ -111,9 +111,12 @@ export function makeSettlement(world, x, y, opts = {}) {
     // Cached water-access score (coast + river magnitude at home
     // tile). Set on creation, doesn't change.
     waterAccess: 0,
-    // Currency for funding road construction. Accrues each tick
-    // from population × productivity (organization-boosted).
-    wealth: 0,
+    // Currency for funding road construction. Earned from mining
+    // valuable resources and from trade across roads. New
+    // settlements get a small endowment so they can build their
+    // first road and join the trade network — the cradle gets a
+    // larger one as the world's economic seed.
+    wealth: opts.name === "cradle" ? 100 : 40,
     // Ids of roads connecting this settlement to others.
     roadsConnecting: [],
     farmland: new Set(),
@@ -230,15 +233,58 @@ function effectiveLocalRes(world, s) {
 export { effectiveLocalRes, findSettlementById };
 
 // ── Wealth accrual ──
-// Each settlement earns wealth each tick from population × productivity.
-// Wealth is the currency used to fund road construction. It accrues
-// silently in the background and is spent in lump sums when a road
-// gets built. No decay or per-tick consumption — wealth represents
-// accumulated trade surplus / taxation that can fund a project.
-const WEALTH_RATE = 0.0008;           // per pop per tick base
+// Settlements don't earn wealth from just having people — population
+// is a labour pool, not a cash machine. Real wealth comes from two
+// places: digging high-value resources out of the ground, and being
+// a node on a trade network.
+//
+// Mining: precious metals, gems, and salt are the historical
+// "currency-like" goods — gold/silver hoards, lapis lazuli, and the
+// salt trade that built early towns. Local deposits feed a per-tick
+// income proportional to richness × labour pool (√pop).
+//
+// Trade: each active road earns income on BOTH ends, scaled by the
+// smaller of the two populations (trade flows in both directions but
+// is bottlenecked by the smaller market). This is what makes
+// trading-hub cities (Venice, Genoa, Tyre) much richer than
+// resource-equivalent inland villages.
+//
+// New settlements receive a small founding endowment so they can
+// fund their first road and bootstrap the trade network. Without
+// this seed, no road ever gets built and the economy is stuck.
+const MINING_PRECIOUS = 2.0;
+const MINING_GEMS     = 1.5;
+const MINING_SALT     = 0.5;
+const TRADE_PER_ROAD  = 0.20;
 function updateWealth(world, s) {
-  const org = (s.knowledge.organization || 0);
-  s.wealth = (s.wealth || 0) + WEALTH_RATE * s.people * (1 + org);
+  const k = s.knowledge;
+  const r = s.localRes || {};
+  const popFactor = Math.sqrt(Math.max(1, s.people)) * 0.05;
+  const orgMul    = 1 + (k.organization || 0) * 0.5;
+
+  // Mining income — only when valuable deposits are in reach.
+  const mining = ((r.precious || 0) * MINING_PRECIOUS
+                + (r.gems     || 0) * MINING_GEMS
+                + (r.salt     || 0) * MINING_SALT) * popFactor;
+
+  // Trade income — one entry per active road, scaled by the smaller
+  // population on the link. Iterating the road id list is O(roads
+  // per settlement) which is capped at MAX_ROADS_PER_SETT in roads.js
+  // so this stays cheap.
+  let trade = 0;
+  if (s.roadsConnecting && world.roads) {
+    for (const rid of s.roadsConnecting) {
+      const road = world.roads[rid];
+      if (!road || !road.active) continue;
+      const peerId = road.from === s.id ? road.to : road.from;
+      const peer = findSettlementById(world, peerId);
+      if (!peer || peer.mode !== "settled") continue;
+      const minPop = Math.min(s.people, peer.people);
+      trade += Math.sqrt(minPop) * TRADE_PER_ROAD;
+    }
+  }
+
+  s.wealth = (s.wealth || 0) + (mining + trade) * orgMul;
 }
 export { updateWealth };
 
