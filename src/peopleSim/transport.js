@@ -133,6 +133,13 @@ export function baseEdgeCost(world, fromTi, toTi) {
   // mag=4 → ×0.44.
   if (riverMag && riverMag[toTi] > 0) c /= (1 + riverMag[toTi] * 0.32);
   if (coast[toTi])                    c *= 0.80;
+  // Roads: if BOTH endpoints carry a road, the edge is cheap
+  // (×0.15) — about half the cost of a great river, no mode
+  // change. world.roadTiles is the authoritative road index;
+  // absent when no roads exist yet.
+  if (world.roadTiles && world.roadTiles.has(fromTi) && world.roadTiles.has(toTi)) {
+    c *= 0.15;
+  }
   return c;
 }
 

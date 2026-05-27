@@ -125,37 +125,26 @@ function eraFor(m) {
 function settlementLine(s) {
   const k = s.knowledge || {};
   const r = s.localRes || {};
-  const st = s.stockpile || {};
-  const sh = s._shortages || {};
   const era = eraFor(k.metallurgy || 0);
-  // Compact resource access string: "Cu0.4 Fe0.3 H0.1"
   const resStr = RES_IDS.map(id => {
     const v = r[id] || 0;
     if (v < 0.10) return null;
     const abbrev = { timber:"T",stone:"St",copper:"Cu",tin:"Sn",iron:"Fe",coal:"Co",horses:"H",salt:"Na" }[id];
     return `${abbrev}${v.toFixed(1)}`;
   }).filter(Boolean).join(" ") || "—";
-  // Compact stockpile string with shortage markers
-  const stStr = RES_IDS.map(id => {
-    const v = st[id] || 0;
-    const short = sh[id];
-    if (v < 1 && !short) return null;
-    const abbrev = { timber:"T",stone:"St",copper:"Cu",tin:"Sn",iron:"Fe",coal:"Co",horses:"H",salt:"Na" }[id];
-    return `${abbrev}${Math.round(v)}${short ? "!" : ""}`;
-  }).filter(Boolean).join(" ") || "—";
+  const wealth = Math.round(s.wealth || 0);
+  const roads = (s.roadsConnecting || []).length;
   return (
     `  #${String(s.id).padStart(2)} ` +
     `(${String(s.pos.x|0).padStart(3)},${String(s.pos.y|0).padStart(3)}) ` +
     `pop ${String(Math.round(s.people)).padStart(4)} ` +
     `${era.padEnd(7)}` +
-    `ag ${(k.agriculture*100|0).toString().padStart(2)} ` +
-    `c ${(k.construction*100|0).toString().padStart(2)} ` +
-    `t ${(k.toolmaking*100|0).toString().padStart(2)} ` +
     `m ${(k.metallurgy*100|0).toString().padStart(2)} ` +
     `n ${(k.navigation*100|0).toString().padStart(2)} ` +
-    `mb ${(k.mobility*100|0).toString().padStart(2)} | ` +
-    `res ${resStr.padEnd(28)} | ` +
-    `stk ${stStr}`
+    `mb ${(k.mobility*100|0).toString().padStart(2)} ` +
+    `$${String(wealth).padStart(5)} ` +
+    `R${roads} | ` +
+    `res ${resStr}`
   );
 }
 
@@ -184,9 +173,11 @@ for (let i = 1; i <= TICKS; i++) {
   if (i === checkpoints[cpIdx]) {
     const stats = peopleSimStats(world);
     const access = settlementsWithAccess(world);
+    const numRoads = world.roads ? world.roads.length : 0;
+    const numRoadTiles = world.roadTiles ? world.roadTiles.size : 0;
     console.log(`\n— step ${i} — ${JSON.stringify(stats)}`);
+    console.log(`roads: ${numRoads}  road-tiles: ${numRoadTiles}`);
     console.log("settlements w/ access: " + RES_IDS.map(id => `${id}:${access[id]}`).join("  "));
-    // Sort alive settlements by population desc, print top 8 to keep output readable
     const alive = world.settlements
       .filter(s => s.mode === "settled")
       .sort((a, b) => b.people - a.people);

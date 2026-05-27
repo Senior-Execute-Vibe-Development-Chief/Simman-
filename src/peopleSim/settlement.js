@@ -103,18 +103,19 @@ export function makeSettlement(world, x, y, opts = {}) {
     },
     // Maximum local deposit richness within transport reach, per
     // resource id. Populated by scanLocalResources alongside the
-    // farmland refresh, then used by updateKnowledge to gate /
-    // accelerate tech growth.
+    // farmland refresh; used by updateKnowledge to gate tech growth.
+    // A road connection also merges the peer's localRes via max(),
+    // so a settlement effectively "sees" the resources of any town
+    // it trades with.
     localRes: {},
-    // Sum of deposit richness across the reach, per resource id.
-    // Drives the per-tick stockpile harvest rate.
-    resAccess: {},
-    // Accumulated harvested resources, with light per-tick decay so
-    // the value reflects current production capacity (≈ rate × 200).
-    stockpile: {},
     // Cached water-access score (coast + river magnitude at home
     // tile). Set on creation, doesn't change.
     waterAccess: 0,
+    // Currency for funding road construction. Accrues each tick
+    // from population × productivity (organization-boosted).
+    wealth: 0,
+    // Ids of roads connecting this settlement to others.
+    roadsConnecting: [],
     farmland: new Set(),
     tier: 0,
     mode: "settled",
@@ -159,26 +160,23 @@ function computeWaterAccess(world, sx, sy) {
 
 // Walk the settlement's transport reach (if cached) or a 5×5 fall
 // back box, and record per-resource richness. Two outputs:
-//   s.localRes[k]  — MAX richness within reach (gates knowledge: is
-//                    there ANY deposit accessible at all?)
-//   s.resAccess[k] — SUM of richness × tile (drives the per-tick
-//                    stockpile harvest rate — more deposits = more
-//                    harvested per tick)
-// Run alongside farmland refresh so it picks up tier-driven reach
-// growth.
+//   s.localRes[k]  — MAX richness within reach (gates knowledge:
+//                    is there ANY deposit accessible at all?).
+// Road connections merge peer localRes via max() in
+// effectiveLocalRes() so trade unlocks tech the same way local
+// deposits would. Run alongside farmland refresh so it picks up
+// tier-driven reach growth.
 function scanLocalResources(world, s) {
   const deposits = world.deposits;
   if (!deposits) return;
   const keys = Object.keys(deposits);
   if (keys.length === 0) return;
   const maxOut = {};
-  const sumOut = {};
-  for (const k of keys) { maxOut[k] = 0; sumOut[k] = 0; }
+  for (const k of keys) maxOut[k] = 0;
   const sample = (ti) => {
     for (const k of keys) {
       const v = deposits[k][ti] || 0;
       if (v > maxOut[k]) maxOut[k] = v;
-      sumOut[k] += v;
     }
   };
   if (s._reach && s._reach.size > 0) {
@@ -196,78 +194,53 @@ function scanLocalResources(world, s) {
     }
   }
   s.localRes = maxOut;
-  s.resAccess = sumOut;
 }
 export { scanLocalResources };
 
-// ── Stockpile harvest ──
-// Each tick, every settlement adds harvested resource units to its
-// stockpile, proportional to total reachable deposit-density and
-// modulated by population (more workers harvest more, capped to
-// avoid metropolises hogging everything). NO decay — a granary
-// holds what you've put in, doesn't leak it away. Capped by tier
-// (the granary's physical capacity) so stockpiles can't grow
-// unbounded over very long runs. Tier-up increases capacity, which
-// is when a settlement actually invests in better storage.
-//
-// Future trade / military / construction systems will CONSUME from
-// these stockpiles — that's when stockpiles will actually be drawn
-// down. Until then they just fill toward the cap.
-const HARVEST_PER_UNIT = 0.08;        // per resAccess unit per pop-factor unit
-const STOCKPILE_CAP_BY_TIER = [500, 2500, 10000, 40000]; // village → metropolis
-function updateStockpile(world, s) {
-  const stash  = s.stockpile = s.stockpile || {};
-  const access = s.resAccess || {};
-  // Pop factor: village (25 ppl) ≈ 0.25; town (200) ≈ 0.71; city (1000) ≈ 1.58
-  // metropolis (5000) capped at 3.0. Bigger = more harvesters in the field.
-  const popFactor = Math.min(3.0, Math.sqrt(Math.max(1, s.people)) * 0.05);
-  const cap = STOCKPILE_CAP_BY_TIER[s.tier] || STOCKPILE_CAP_BY_TIER[0];
-  for (const k in access) {
-    const a = access[k];
-    if (a > 0) {
-      const cur = stash[k] || 0;
-      stash[k] = Math.min(cap, cur + a * HARVEST_PER_UNIT * popFactor);
+// Settlement's effective resource access including road-connected
+// peers. Each tracked resource is the MAX across this settlement's
+// local resources and each connected peer's. world.settlements is
+// an array indexed in insertion order, NOT by id, so we have to
+// look up peers by id rather than treating ids as indices.
+function findSettlementById(world, id) {
+  for (let i = 0; i < world.settlements.length; i++) {
+    if (world.settlements[i].id === id) return world.settlements[i];
+  }
+  return null;
+}
+function effectiveLocalRes(world, s) {
+  const own = s.localRes || {};
+  if (!world.roads || world.roads.length === 0 || !s.roadsConnecting || s.roadsConnecting.length === 0) {
+    return own;
+  }
+  const out = { ...own };
+  for (const rid of s.roadsConnecting) {
+    const road = world.roads[rid];
+    if (!road || !road.active) continue;
+    const peerId = road.from === s.id ? road.to : road.from;
+    const peer = findSettlementById(world, peerId);
+    if (!peer || peer.mode !== "settled") continue;
+    const peerRes = peer.localRes || {};
+    for (const k in peerRes) {
+      if ((peerRes[k] || 0) > (out[k] || 0)) out[k] = peerRes[k];
     }
   }
+  return out;
 }
-export { updateStockpile };
+export { effectiveLocalRes, findSettlementById };
 
-// ── Stockpile consumption ──
-// Per-tick drain on the stockpile, representing tools wearing out,
-// houses needing repair, food being preserved, draft animals being
-// fed. Each resource has a base rate (scales with sqrt(pop) — more
-// workers = more wear) and a knowledge gate so a settlement that
-// hasn't unlocked metallurgy doesn't consume copper. When stockpile
-// hits zero, the shortage is recorded on s._shortages so the
-// knowledge growth pass can slow the relevant track.
-const CONSUME = [
-  { id: "timber", rate: 0.020, gate: null,                                   slows: ["construction"] },
-  { id: "stone",  rate: 0.005, gate: { k: "construction", min: 0.20 },       slows: ["construction","toolmaking"] },
-  { id: "copper", rate: 0.005, gate: { k: "metallurgy",   min: 0.05 },       slows: ["metallurgy","toolmaking"] },
-  { id: "tin",    rate: 0.002, gate: { k: "metallurgy",   min: 0.30 },       slows: ["metallurgy"] },
-  { id: "iron",   rate: 0.005, gate: { k: "metallurgy",   min: 0.65 },       slows: ["metallurgy","toolmaking"] },
-  { id: "coal",   rate: 0.004, gate: { k: "metallurgy",   min: 0.85 },       slows: ["metallurgy"] },
-  { id: "salt",   rate: 0.003, gate: null,                                   slows: [] },
-  { id: "horses", rate: 0.003, gate: { k: "mobility",     min: 0.05 },       slows: ["mobility"] },
-];
-function updateConsumption(world, s) {
-  const stash = s.stockpile = s.stockpile || {};
-  const k = s.knowledge;
-  const popSqrt = Math.sqrt(Math.max(1, s.people));
-  const shortages = s._shortages = {};
-  for (const def of CONSUME) {
-    if (def.gate && (k[def.gate.k] || 0) < def.gate.min) continue;
-    const need = def.rate * popSqrt;
-    const have = stash[def.id] || 0;
-    if (have >= need) {
-      stash[def.id] = have - need;
-    } else {
-      stash[def.id] = 0;
-      shortages[def.id] = 1;            // boolean: this resource is short
-    }
-  }
+// ── Wealth accrual ──
+// Each settlement earns wealth each tick from population × productivity.
+// Wealth is the currency used to fund road construction. It accrues
+// silently in the background and is spent in lump sums when a road
+// gets built. No decay or per-tick consumption — wealth represents
+// accumulated trade surplus / taxation that can fund a project.
+const WEALTH_RATE = 0.0008;           // per pop per tick base
+function updateWealth(world, s) {
+  const org = (s.knowledge.organization || 0);
+  s.wealth = (s.wealth || 0) + WEALTH_RATE * s.people * (1 + org);
 }
-export { updateConsumption };
+export { updateWealth };
 
 export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;
@@ -275,8 +248,7 @@ export function updateSettlement(world, s) {
   updatePopulation(world, s);
   if (s.mode !== "settled") return;        // died this tick (famine / wither)
   maybeRefreshFarmland(world, s);
-  updateStockpile(world, s);
-  updateConsumption(world, s);
+  updateWealth(world, s);
   updateKnowledge(world, s);
   updateTier(world, s);
 }
@@ -304,23 +276,12 @@ const LEARN_BASE = 0.000040;          // per tick scaling
 //   + iron                      cap 0.90  (iron age)
 //   + iron + coal               cap 1.00  (steel / industrial)
 //
-// Shortage penalty: each shortage on a tracked resource that the
-// track depends on multiplies growth by 0.4 (stacking). A
-// settlement with both timber AND stone short hits construction
-// growth at 0.16 of nominal.
-function shortageMul(s, track) {
-  const sh = s._shortages;
-  if (!sh) return 1;
-  let m = 1;
-  for (const def of CONSUME) {
-    if (sh[def.id] && def.slows.indexOf(track) >= 0) m *= 0.4;
-  }
-  return m;
-}
-
 function updateKnowledge(world, s) {
   const k = s.knowledge;
-  const r = s.localRes || {};
+  // Trade brings remote resources into the local tech equation —
+  // a copper-poor settlement connected by road to a copper-rich one
+  // can advance to chalcolithic on imported ore.
+  const r = effectiveLocalRes(world, s);
   const wa = s.waterAccess || 0;
   const fc = s.farmland.size;
   const pop = s.people;
@@ -335,13 +296,13 @@ function updateKnowledge(world, s) {
   const stoneBoost = 1 + (r.stone || 0) * 0.6;
   const metalBoost = 1 + k.metallurgy * 2.5;
   k.toolmaking = clamp01(k.toolmaking + LEARN_BASE * 0.8 * (1 - k.toolmaking)
-    * stoneBoost * metalBoost * (1 + popSqrt * 0.08) * shortageMul(s, "toolmaking"));
+    * stoneBoost * metalBoost * (1 + popSqrt * 0.08));
 
   // Construction: timber for early shelter, stone for durable
   // structures, agriculture for surplus to free up builders.
   const buildMat = 1 + (r.timber || 0) * 0.8 + (r.stone || 0) * 0.6;
   k.construction = clamp01(k.construction + LEARN_BASE * 0.9 * (1 - k.construction)
-    * buildMat * (1 + k.agriculture * 0.8) * (1 + popSqrt * 0.05) * shortageMul(s, "construction"));
+    * buildMat * (1 + k.agriculture * 0.8) * (1 + popSqrt * 0.05));
 
   // Agriculture: farmland scale + metal tools (plough). Cradle starts
   // at 0.5 so the floor is non-zero.
@@ -370,8 +331,7 @@ function updateKnowledge(world, s) {
     // happen on a meaningful timescale (~5–10k ticks per era jump
     // instead of plateauing for 100k+).
     k.metallurgy = Math.min(metalCap, k.metallurgy +
-      LEARN_BASE * 1.5 * headroom * oreRate * (1 + k.toolmaking * 0.5)
-      * shortageMul(s, "metallurgy"));
+      LEARN_BASE * 1.5 * headroom * oreRate * (1 + k.toolmaking * 0.5));
   }
 
   // ── Navigation: hard-gated by water access ──
@@ -392,8 +352,7 @@ function updateKnowledge(world, s) {
   const horses = r.horses || 0;
   if (horses > horsesThr) {
     k.mobility = clamp01(k.mobility + LEARN_BASE * 0.5 * (1 - k.mobility)
-      * horses * (1 + k.construction * 0.4 + k.metallurgy * 0.6)
-      * shortageMul(s, "mobility"));
+      * horses * (1 + k.construction * 0.4 + k.metallurgy * 0.6));
   }
 }
 

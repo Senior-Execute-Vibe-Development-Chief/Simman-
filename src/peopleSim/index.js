@@ -11,6 +11,7 @@
 import { createWorld, pruneDead } from "./state.js";
 import { updateSettlement } from "./settlement.js";
 import { maybeCrystallize } from "./crystallize.js";
+import { maybeBuildRoads } from "./roads.js";
 
 export function initPeopleSim(worldGen, opts = {}) {
   return createWorld(worldGen, opts);
@@ -26,6 +27,9 @@ export function stepPeopleSim(world, n = 1) {
     // New settlements crystallise spontaneously at fertile sites,
     // weighted by transport distance to existing ones.
     maybeCrystallize(world);
+    // Roads: settlements with unmet resource needs and enough
+    // wealth build trade roads to partners.
+    maybeBuildRoads(world);
     if (world.step % 32 === 0) pruneDead(world);
     if (world.step % 256 === 0) checkFarmlandOwnership(world);
     world.debug.tickMs = performance.now() - t0;

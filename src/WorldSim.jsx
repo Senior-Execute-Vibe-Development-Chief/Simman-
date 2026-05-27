@@ -5396,6 +5396,31 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
     }
     ctx.fill();
+    // ── Roads ──
+    // Each road has a path of tile indices; render as a single
+    // Path2D-batched stroke. Drawn AFTER farmland (so it overlays
+    // green fields) and BEFORE settlement icons (so the dots sit on
+    // top). Tone: warm brown, slightly thicker than 1px so it reads.
+    if(psw.roads&&psw.roads.length>0){
+      ctx.beginPath();
+      for(const road of psw.roads){
+        if(!road||!road.active||!road.path||road.path.length<2)continue;
+        for(let i=0;i<road.path.length;i++){
+          const ti=road.path[i];
+          const py=(ti/psw.tw)|0;
+          const px=ti-py*psw.tw;
+          const sx=px*TR+TR*0.5;
+          const sy=dataYtoScreenY(py*TR+TR*0.5,H,CH);
+          if(i===0)ctx.moveTo(sx,sy);
+          else ctx.lineTo(sx,sy);
+        }
+      }
+      ctx.strokeStyle="rgba(120,80,40,0.85)";
+      ctx.lineWidth=1.5;
+      ctx.lineCap="round";
+      ctx.lineJoin="round";
+      ctx.stroke();
+    }
     // ── Settlement icons ──
     // ONE icon per settlement, sized RELATIVE to the rest of the
     // population on the map — the biggest settlement always reads as
@@ -5936,44 +5961,36 @@ return(
         </div>
       )}
 
-      {/* ── Stockpile + shortages ── */}
+      {/* ── Wealth + roads ── */}
+      <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
+        <span>Treasury</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
+        <span>Wealth</span><span>{Math.round(s.wealth||0).toLocaleString()}</span>
+        <span>Roads</span><span>{(s.roadsConnecting||[]).length}</span>
+      </div>
+      {/* List road connections by partner name + cost. */}
       {(()=>{
-        const stash=s.stockpile||{};
-        const shortages=s._shortages||{};
-        // Build a row for every resource that's either stocked OR
-        // currently short, so the player sees both abundance and
-        // bottlenecks. Sort short resources first (so they read
-        // top-of-list and feel urgent), then by stockpile size desc.
-        const allIds=new Set([...Object.keys(stash),...Object.keys(shortages)]);
-        const rows=[...allIds].map(id=>({
-          id, v: stash[id]||0, short: !!shortages[id]
-        })).filter(r=>r.v>=0.5||r.short)
-          .sort((a,b)=>(b.short-a.short)||(b.v-a.v));
-        if(rows.length===0)return null;
-        const cap=[500,2500,10000,40000][s.tier]||500;
+        const ids=s.roadsConnecting||[];
+        if(ids.length===0)return null;
+        const psw2=peopleRef.current;
+        const lines=ids.map(rid=>{
+          const road=psw2.roads&&psw2.roads[rid];
+          if(!road||!road.active)return null;
+          const peerId=road.from===s.id?road.to:road.from;
+          const peer=psw2.settlements.find(o=>o.id===peerId);
+          if(!peer)return null;
+          return{ rid, peerName: peer.name, peerId, tiles: road.path.length, cost: Math.round(road.cost) };
+        }).filter(Boolean);
+        if(lines.length===0)return null;
         return(
-          <>
-            <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
-              <span>Stockpile</span><span>cap {cap.toLocaleString()}</span>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
-              {rows.map(r=>(
-                <Fragment key={r.id}>
-                  <span style={r.short?{color:"#c44"}:undefined}>
-                    {RES_LABEL[r.id]||r.id}{r.short?" ⚠":""}
-                  </span>
-                  <span style={r.short?{color:"#c44"}:undefined}>
-                    {Math.round(r.v)}
-                  </span>
-                </Fragment>
-              ))}
-            </div>
-            {Object.keys(shortages).length>0&&(
-              <div className="au-fade" style={{fontSize:9,marginTop:3,fontStyle:"italic"}}>
-                shortage slows tech growth
+          <div style={{marginTop:4,fontSize:10}}>
+            {lines.map(l=>(
+              <div key={l.rid} className="au-fade" style={{fontSize:10}}>
+                → {l.peerName} ({l.tiles}t, ${l.cost})
               </div>
-            )}
-          </>
+            ))}
+          </div>
         );
       })()}
     </div>
