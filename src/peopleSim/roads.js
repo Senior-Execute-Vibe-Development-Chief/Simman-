@@ -131,21 +131,12 @@ function tryBuildOne(world, s) {
   // Score combines both; settlements rich in money but resource-
   // self-sufficient will still build roads to lower-exportValue
   // neighbours to spend their wealth on imports.
-  // Skip any peer that's already in the same road-network component
-  // as us. They're already reachable through the existing chain of
-  // roads — trade can flow through 2 to reach 3 without a redundant
-  // direct 1↔3 link. This is how trunk-and-spur networks stay clean
-  // instead of devolving into complete graphs.
-  const components = world._networkComponents;
-  const myComponent = components ? components.get(s.id) : null;
-
   let bestPartner = null;
   let bestScore = -Infinity;
   let bestPath = null;
   for (const peer of world.settlements) {
     if (peer.mode !== "settled" || peer.id === s.id) continue;
     if (connected.has(roadIdBetween(world, s.id, peer.id))) continue;
-    if (myComponent && components.get(peer.id) === myComponent) continue;
     let dx = Math.abs(peer.pos.x - s.pos.x);
     if (dx > world.tw / 2) dx = world.tw - dx;
     const dy = peer.pos.y - s.pos.y;
@@ -184,6 +175,15 @@ function tryBuildOne(world, s) {
     // Dijkstra path (existing roads route cheap).
     const path = findPath(world, s, peer);
     if (!path) continue;
+    // New-tile fraction: how much of this proposed path is OFF the
+    // existing road network? If almost all overlap, the new road
+    // would be redundant — trade can already flow via the existing
+    // network. Only build if the path is meaningfully NEW terrain,
+    // i.e., a real new direct route worth the effort.
+    let newTiles = 0;
+    for (const ti of path.tiles) if (!world.roadTiles.has(ti)) newTiles++;
+    const newFrac = path.tiles.length > 0 ? newTiles / path.tiles.length : 0;
+    if (newFrac < MIN_NEW_TILE_FRACTION) continue;
     // Score combines resource gain (weighted 2x — direct tech
     // unlock) + trade gap (weighted 1x). Divided by path cost so
     // closer partners are preferred when benefits tie. Short-hop
@@ -520,8 +520,12 @@ export function updateTrade(world) {
 // applied to edges crossing that road's tiles scales from the
 // baseline (new path) down to MAX_QUALITY (worn arterial) over
 // USAGE_FOR_MAX ticks of accumulated traffic.
-const QUALITY_NEW          = 0.10;       // new road: 10× cheaper than plain
-const QUALITY_MAX          = 0.03;       // worn arterial: 33× cheaper
+const QUALITY_NEW          = 0.25;       // new road: 4× cheaper than plain
+const QUALITY_MAX          = 0.08;       // worn arterial: 12× cheaper
+// Minimum fraction of a candidate path's tiles that must be NEW (not
+// already on an existing road) to justify building. Below this, the
+// "new" road would mostly overlap the existing network — skip it.
+const MIN_NEW_TILE_FRACTION = 0.35;
 const USAGE_FOR_MAX        = 5000;       // ticks of trade to reach top quality
 const QUALITY_REBUILD_FREQ = 64;         // ticks between cache rebuilds
 
