@@ -117,11 +117,25 @@ function tryBuildOne(world, s) {
     // without specific resource needs.
     const peerExport = computeExportValue(peer);
     const exGap = Math.abs(sExport - peerExport);
+    // Food complementarity: one settlement has surplus, the other
+    // has deficit. This is THE main reason farming villages should
+    // build roads — they monetize their grain by selling to nearby
+    // cities. Weighted heavily because food trade is high-value
+    // (every food unit nets $5 to the seller), and without this
+    // signal food-surplus villages just sit on rotting grain.
+    const sFood = (s._foodSupply || 0) - (s._foodDemand || 0);
+    const peerFood = (peer._foodSupply || 0) - (peer._foodDemand || 0);
+    let foodGain = 0;
+    if ((sFood < -0.01 && peerFood > 0.01) ||
+        (sFood > 0.01 && peerFood < -0.01)) {
+      foodGain = Math.min(Math.abs(sFood), Math.abs(peerFood));
+    }
     // Skip if there's neither a resource gain nor a meaningful
-    // trade gap. Threshold low enough that small specialty
-    // differences (every village has some baseline products)
-    // can still motivate a road if the partner is nearby.
-    if (resGain === 0 && exGap < 0.15) continue;
+    // trade gap nor a food complementarity. Threshold low enough
+    // that small specialty differences (every village has some
+    // baseline products) can still motivate a road if the partner
+    // is nearby.
+    if (resGain === 0 && exGap < 0.15 && foodGain < 0.01) continue;
     // Dijkstra path (existing roads route cheap).
     const path = findPath(world, s, peer);
     if (!path) continue;
@@ -140,7 +154,11 @@ function tryBuildOne(world, s) {
     // road as a rich settlement seeing a poor one.
     const effectiveWealth = Math.max(s.wealth || 0, (peer.wealth || 0) * 0.5);
     const wealthEagerness = Math.min(2.0, 1 + Math.log10(Math.max(1, effectiveWealth)) / 6);
-    const benefit = resGain * 2 + exGap;
+    // Food gets a strong weight (×10) because a steady food road
+    // generates real wealth — at $5 per food unit per tick, a
+    // 0.1 food surplus through a road earns $0.50/tick which over
+    // hundreds of ticks dwarfs casual specialty trade.
+    const benefit = resGain * 2 + exGap + foodGain * 10;
     const score = benefit / Math.max(1, path.cost)
                 * (path.tiles.length > 3 ? 1 : 0.5)
                 * wealthEagerness;
