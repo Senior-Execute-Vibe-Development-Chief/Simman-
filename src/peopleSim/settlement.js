@@ -908,19 +908,23 @@ function localTransport(world, sx, sy, maxCost, kn) {
 class _MinHeap {
   constructor(cap = 256) {
     this.ti = new Int32Array(cap);
-    // Float64 distances: localTransport's `out` is a Map (Float64), and
-    // the staleness check `d > out.get(ti)` mis-fires on Float32 rounding
-    // — a value pushed at d=4.24445128 reads back as 4.24445152 and
-    // silently drops the expansion, truncating the reach set. (Same
-    // reason roads.js's MinHeap uses Float64.)
-    this.d  = new Float64Array(cap);
+    // NOTE: Float32 here is DELIBERATE, not an oversight. localTransport's
+    // `out` is a Float64 Map, so the staleness check `d > out.get(ti)` can
+    // mis-fire on Float32 rounding and prune branches early — which keeps
+    // each settlement's farmland catchment small. The food / carrying-
+    // capacity balance is tuned around that smaller catchment; switching
+    // to Float64 (a "correct" Dijkstra) lets the catchment flood along
+    // cheap terrain and roughly triples farmland, and would need
+    // MAX_TRANSPORT_BY_TIER re-tuned to compensate. Don't change without
+    // re-tuning the farmland reach.
+    this.d  = new Float32Array(cap);
     this.n  = 0;
     this.cap = cap;
   }
   _grow() {
     const ncap = this.cap * 2;
     const nti = new Int32Array(ncap); nti.set(this.ti);
-    const nd  = new Float64Array(ncap); nd.set(this.d);
+    const nd  = new Float32Array(ncap); nd.set(this.d);
     this.ti = nti; this.d = nd; this.cap = ncap;
   }
   push(ti, d) {
