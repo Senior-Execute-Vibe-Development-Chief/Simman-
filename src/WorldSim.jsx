@@ -6179,6 +6179,7 @@ return(
         <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
           <span className="au-fade">Food stored</span><span>{Math.round(s.food)}</span>
           <span className="au-fade">Produced /tick</span><span>{supply.toFixed(3)}</span>
+          {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{(s._fishYield||0).toFixed(2)}</span></>)}
           {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span>+{importRate.toFixed(3)}</span></>)}
           <span className="au-fade">Consumed /tick</span><span>{demand.toFixed(3)}</span>
           <span style={{color:statusColor}}>Balance</span>
@@ -6206,6 +6207,8 @@ return(
                 note={wa<=0?"(no water)":null}/>
           <KRow label="Mobility"     val={k.mobility||0}     colour="#a76"
                 note={(r.horses||0)<=0.10?"(no horses)":null}/>
+          <KRow label="Literacy"     val={k.literacy||0}     colour="#59a"
+                note={(k.organization||0)<=0.30?"(needs organization)":null}/>
         </>
       )}
 

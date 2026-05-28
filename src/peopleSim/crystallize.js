@@ -260,13 +260,16 @@ function inheritKnowledgeAt(world, ti, td) {
     const d2 = dx * dx + dy * dy;
     if (d2 < bestD2) { bestD2 = d2; nearest = s; }
   }
-  // Baseline neolithic knowledge for independent invention.
+  // Baseline neolithic knowledge for independent invention. Literacy is
+  // included (at 0) so a colony of a literate parent inherits some of its
+  // writing, blended by distance like the other soft tracks.
   const baseline = {
     foraging:    0.5,
     toolmaking:  0.2,
     agriculture: 0.45,
     construction: 0.1,
     organization: 0.1,
+    literacy:    0,
   };
   if (!nearest) return baseline;
   // Inheritance fraction by transport distance: 90 % at td=0, 30 % at

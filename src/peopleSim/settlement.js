@@ -70,6 +70,12 @@ const FARM_YIELD_PER_FERT    = 0.055;
 // Farming (yield 0.055/fert) is still ~3× more efficient per
 // fert-unit, so fertile valleys still dominate by orders of magnitude.
 const FORAGE_RATE            = 0.018;
+// Fish: per-tick food a water settlement lands. fishYield = FISH_RATE ×
+// waterAccess × (0.3 + navigation×1.2). A great-river port with a
+// deep-sea fleet (wa≈0.9, nav≈0.8) nets ~12/tk — comparable to a big
+// farmland patch — so maritime cities can feed themselves; a landlocked
+// site gets nothing.
+const FISH_RATE              = 11.0;
 // Farm placement is bounded by transport COST, not Euclidean distance.
 // Reach is computed by a small Dijkstra from the settlement using the
 // same terrain weights as transport.js — plains 1, hills ×2, mountains
@@ -122,6 +128,7 @@ export function makeSettlement(world, x, y, opts = {}) {
       metallurgy:  0,           // gated by ore access
       navigation:  0,           // gated by water access
       mobility:    0,           // gated by horses
+      literacy:    0,           // gated by organization + population
     },
     // Maximum local deposit richness within transport reach, per
     // resource id. Populated by scanLocalResources alongside the
@@ -151,7 +158,7 @@ export function makeSettlement(world, x, y, opts = {}) {
   };
   // Migrate older knowledge objects (e.g. crystallization inheritance)
   // that don't have the new fields.
-  for (const k of ["metallurgy","navigation","mobility"]) {
+  for (const k of ["metallurgy","navigation","mobility","literacy"]) {
     if (s.knowledge[k] === undefined) s.knowledge[k] = 0;
   }
   // Compute water access score from the home tile + 4 neighbours.
@@ -354,7 +361,7 @@ export function computeExportValue(s) {
   // / banking. Scales with population because you need lots of
   // people to support a clerical class.
   const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
-  v += (k.organization || 0) * popScale * 0.5;
+  v += ((k.organization || 0) + (k.literacy || 0) * 0.6) * popScale * 0.5;
   // Salt counts as a tradeable good.
   v += (r.salt || 0) * 0.5;
   // Base village products — every populated settlement has SOMETHING
@@ -416,7 +423,7 @@ export function getExportBreakdown(s) {
     if (v > 0.01) out.push({ label: "Horse trade", value: v });
   }
   const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
-  const services = (k.organization || 0) * popScale * 0.5;
+  const services = ((k.organization || 0) + (k.literacy || 0) * 0.6) * popScale * 0.5;
   if (services > 0.01) out.push({ label: "Services", value: services });
   const salt = (r.salt || 0) * 0.5;
   if (salt > 0.01) out.push({ label: "Salt", value: salt });
@@ -501,7 +508,7 @@ export function updateSettlement(world, s) {
 // improves; bigger pop + ag → construction improves. Diminishing
 // returns near 1.0.
 const LEARN_BASE = 0.000040;          // per tick scaling
-const KTRACKS = ["foraging","toolmaking","agriculture","construction","organization","metallurgy","navigation","mobility"];
+const KTRACKS = ["foraging","toolmaking","agriculture","construction","organization","metallurgy","navigation","mobility","literacy"];
 // Fraction of the gap to a better-developed road-connected neighbour
 // closed per tick — technology transfer by contact. ~1/0.0006 ≈ 1700
 // ticks to largely absorb a neighbour's lead.
@@ -594,14 +601,26 @@ function updateKnowledge(world, s) {
       * horses * (1 + k.construction * 0.4 + k.metallurgy * 0.6));
   }
 
+  // Literacy / writing — emerges only in an organised, populous society
+  // (scribes, law, records need both a bureaucracy and a class of people
+  // to support it). Once present it makes the settlement absorb diffused
+  // technique far faster (records + teaching), so it amplifies the spread
+  // below rather than the local tracks above.
+  if (k.organization > 0.30) {
+    k.literacy = clamp01((k.literacy || 0) + LEARN_BASE * 0.6 * (1 - (k.literacy || 0))
+      * k.organization * (1 + popSqrt * 0.06));
+  }
+
   // ── Diffusion: learn techniques from connected neighbours ─────────
   // Technology spreads by contact. Pull each track toward the best level
-  // among road-connected partners. The resource-gated tracks are capped
-  // by what THIS site can actually practise (ore tier / water / horses) —
-  // you can hear how iron is worked, but you still need iron to do it.
+  // among road-connected partners, FASTER the more literate this society
+  // is (writing records and teaches technique). Resource-gated tracks are
+  // capped by what THIS site can actually practise (ore tier / water /
+  // horses) — you can hear how iron is worked, but still need iron to do
+  // it.
   if (s._tradeReach && s._tradeReach.size > 0 && world._byId) {
     const km = { foraging:0, toolmaking:0, agriculture:0, construction:0,
-                 organization:0, metallurgy:0, navigation:0, mobility:0 };
+                 organization:0, metallurgy:0, navigation:0, mobility:0, literacy:0 };
     let any = false;
     for (const pid of s._tradeReach.keys()) {
       const p = world._byId.get(pid);
@@ -614,9 +633,11 @@ function updateKnowledge(world, s) {
       if (km.metallurgy > metalCap) km.metallurgy = metalCap;
       if (wa <= 0) km.navigation = 0;
       if (horses <= horsesThr) km.mobility = 0;
+      const litMul = 1 + (k.literacy || 0) * 2;     // literate cultures absorb 1–3× faster
+      const rate = DIFFUSE_RATE * litMul;
       for (const t of KTRACKS) {
         const gap = km[t] - k[t];
-        if (gap > 0) k[t] = clamp01(k[t] + DIFFUSE_RATE * gap);
+        if (gap > 0) k[t] = clamp01(k[t] + rate * gap);
       }
     }
   }
@@ -662,7 +683,18 @@ function updateFood(world, s) {
   for (const fti of s.farmland) farmYield += world.fert[fti] || 0;
   farmYield *= FARM_YIELD_PER_FERT * (1 + (s.knowledge.agriculture || 0) * 1.2);
 
-  const supply = forage + farmYield;
+  // Fish: coastal/river settlements draw food from the water, scaled by
+  // water access (the site: minor river → great-river port) and by
+  // navigation (shore-gathering → deep-sea fleets). A fixed local-fishery
+  // flow, not pop-scaled, so it sets how many people the water alone can
+  // feed; a maritime city beyond that still imports. This is what lets a
+  // coastal city — which the housing cap already lets grow large — feed
+  // itself from the sea instead of relying entirely on shipped-in grain.
+  const wa = s.waterAccess || 0;
+  const fish = wa > 0 ? FISH_RATE * wa * (0.3 + (s.knowledge.navigation || 0) * 1.2) : 0;
+  s._fishYield = fish;
+
+  const supply = forage + farmYield + fish;
   // Urbanization tax: per-capita food demand rises with population
   // because bigger settlements have more non-farming specialists
   // (craftsmen, soldiers, priests, scribes) plus transport
