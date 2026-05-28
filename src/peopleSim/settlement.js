@@ -184,68 +184,41 @@ function computeWaterAccess(world, sx, sy) {
   return Math.min(1, coastBit * 0.5 + bestMag * 0.2);
 }
 
-// Walk the settlement's transport reach (if cached) or a 5×5 fall
-// back box, and record per-resource richness. Two outputs:
-//   s.localRes[k]  — MAX richness within reach (gates knowledge:
-//                    is there ANY deposit accessible at all?).
-// Road connections merge peer localRes via max() in
-// effectiveLocalRes() so trade unlocks tech the same way local
-// deposits would. Run alongside farmland refresh so it picks up
-// tier-driven reach growth.
+// Scan the settlement's LOCAL territory — a box that grows modestly with
+// tier — for resource access. Deliberately NOT the full transport reach
+// (which spans thousands of tiles and would hand every settlement every
+// resource, erasing regional tech cultures). A settlement only "has" what
+// is near it; distant resources reach it through TRADE — effectiveLocalRes
+// merges road-connected peers' localRes, so a copper-poor town on a road
+// to a copper-rich one still gains the access (and, with knowledge
+// diffusion, the technique to use it).
+const RES_RADIUS_BY_TIER = [4, 7, 10, 13];   // village → metropolis (box half-width)
 function scanLocalResources(world, s) {
   const deposits = world.deposits;
   if (!deposits) return;
   const keys = Object.keys(deposits);
   if (keys.length === 0) return;
+  const { tw, th } = world;
+  const sx = s.pos.x | 0, sy = s.pos.y | 0;
+  const R = RES_RADIUS_BY_TIER[s.tier] || RES_RADIUS_BY_TIER[0];
   const maxOut = {};
   for (const k of keys) maxOut[k] = 0;
-  const sample = (ti) => {
-    for (const k of keys) {
-      const v = deposits[k][ti] || 0;
-      if (v > maxOut[k]) maxOut[k] = v;
-    }
-  };
-  if (s._reach && s._reach.size > 0) {
-    for (const ti of s._reach.keys()) sample(ti);
-  } else {
-    const { tw, th } = world;
-    const sx = s.pos.x | 0, sy = s.pos.y | 0;
-    for (let dy = -2; dy <= 2; dy++) {
-      const ny = sy + dy;
-      if (ny < 0 || ny >= th) continue;
-      for (let dx = -2; dx <= 2; dx++) {
-        const nx = ((sx + dx) % tw + tw) % tw;
-        sample(ny * tw + nx);
+  const minable = [];
+  for (let dy = -R; dy <= R; dy++) {
+    const ny = sy + dy;
+    if (ny < 0 || ny >= th) continue;
+    for (let dx = -R; dx <= R; dx++) {
+      const nx = ((sx + dx) % tw + tw) % tw;
+      const ti = ny * tw + nx;
+      for (const k of keys) {
+        const v = deposits[k][ti] || 0;
+        if (v > maxOut[k]) maxOut[k] = v;
       }
+      if (deposits.precious && deposits.precious[ti] > 0.05) minable.push([ti, "precious"]);
+      if (deposits.gems     && deposits.gems[ti]     > 0.05) minable.push([ti, "gems"]);
     }
   }
   s.localRes = maxOut;
-  // Cache minable tiles (precious + gems) so updateWealth can
-  // extract per-tick without re-walking reach. Each entry is
-  // [tileIndex, resourceId]. Refreshed on the same cadence as the
-  // reach scan, so newly-reached deposits start producing wealth at
-  // the next refresh boundary.
-  const minable = [];
-  const tileList = (s._reach && s._reach.size > 0)
-    ? [...s._reach.keys()]
-    : (() => {
-        const ts = [];
-        const { tw, th } = world;
-        const sx = s.pos.x | 0, sy = s.pos.y | 0;
-        for (let dy = -2; dy <= 2; dy++) {
-          const ny = sy + dy;
-          if (ny < 0 || ny >= th) continue;
-          for (let dx = -2; dx <= 2; dx++) {
-            const nx = ((sx + dx) % tw + tw) % tw;
-            ts.push(ny * tw + nx);
-          }
-        }
-        return ts;
-      })();
-  for (const ti of tileList) {
-    if (deposits.precious && deposits.precious[ti] > 0.05) minable.push([ti, "precious"]);
-    if (deposits.gems     && deposits.gems[ti]     > 0.05) minable.push([ti, "gems"]);
-  }
   s._minableTiles = minable;
 }
 export { scanLocalResources };
@@ -528,6 +501,11 @@ export function updateSettlement(world, s) {
 // improves; bigger pop + ag → construction improves. Diminishing
 // returns near 1.0.
 const LEARN_BASE = 0.000040;          // per tick scaling
+const KTRACKS = ["foraging","toolmaking","agriculture","construction","organization","metallurgy","navigation","mobility"];
+// Fraction of the gap to a better-developed road-connected neighbour
+// closed per tick — technology transfer by contact. ~1/0.0006 ≈ 1700
+// ticks to largely absorb a neighbour's lead.
+const DIFFUSE_RATE = 0.0006;
 //
 // ── Resource-gated knowledge growth ──
 //
@@ -555,9 +533,21 @@ function updateKnowledge(world, s) {
   const fc = s.farmland.size;
   const pop = s.people;
   const popSqrt = Math.sqrt(pop);
+  const horsesThr = 0.05;
+  const horses = r.horses || 0;
 
-  // Foraging: slow trickle everywhere; faster in resource-rich zones
-  // (timber for tools, salt for preservation).
+  // Ore tier cap (also caps how far a diffused metallurgy technique can
+  // actually be practised — you need the ore to use the knowledge).
+  const cu = r.copper || 0, sn = r.tin || 0, fe = r.iron || 0, co = r.coal || 0;
+  const oreThr = 0.10;
+  let metalCap = 0;
+  if (cu > oreThr)                metalCap = Math.max(metalCap, 0.30);
+  if (cu > oreThr && sn > oreThr) metalCap = Math.max(metalCap, 0.65);
+  if (fe > oreThr)                metalCap = Math.max(metalCap, 0.90);
+  if (fe > oreThr && co > oreThr) metalCap = 1.00;
+
+  // ── Local learning ──────────────────────────────────────────────
+  // Foraging: slow trickle everywhere; faster in resource-rich zones.
   const forageBoost = 1 + (r.timber || 0) * 0.3 + (r.salt || 0) * 0.2;
   k.foraging = clamp01(k.foraging + LEARN_BASE * 0.3 * (1 - k.foraging) * forageBoost);
 
@@ -567,14 +557,12 @@ function updateKnowledge(world, s) {
   k.toolmaking = clamp01(k.toolmaking + LEARN_BASE * 0.8 * (1 - k.toolmaking)
     * stoneBoost * metalBoost * (1 + popSqrt * 0.08));
 
-  // Construction: timber for early shelter, stone for durable
-  // structures, agriculture for surplus to free up builders.
+  // Construction: timber/stone + agricultural surplus to free builders.
   const buildMat = 1 + (r.timber || 0) * 0.8 + (r.stone || 0) * 0.6;
   k.construction = clamp01(k.construction + LEARN_BASE * 0.9 * (1 - k.construction)
     * buildMat * (1 + k.agriculture * 0.8) * (1 + popSqrt * 0.05));
 
-  // Agriculture: farmland scale + metal tools (plough). Cradle starts
-  // at 0.5 so the floor is non-zero.
+  // Agriculture: farmland scale + metal tools (plough).
   k.agriculture = clamp01(k.agriculture + LEARN_BASE * 1.2 * (1 - k.agriculture)
     * (1 + fc * 0.03) * (1 + k.toolmaking * 0.7));
 
@@ -582,46 +570,55 @@ function updateKnowledge(world, s) {
   k.organization = clamp01(k.organization + LEARN_BASE * 1.0 * (1 - k.organization)
     * (1 + popSqrt * 0.10));
 
-  // ── Metallurgy: hard-gated by ore access ──
-  const cu = r.copper || 0;
-  const sn = r.tin    || 0;
-  const fe = r.iron   || 0;
-  const co = r.coal   || 0;
-  const oreThr = 0.10;             // need at least a faint deposit
-  let metalCap = 0;
-  if (cu > oreThr)                metalCap = Math.max(metalCap, 0.30);
-  if (cu > oreThr && sn > oreThr) metalCap = Math.max(metalCap, 0.65);
-  if (fe > oreThr)                metalCap = Math.max(metalCap, 0.90);
-  if (fe > oreThr && co > oreThr) metalCap = 1.00;
+  // Metallurgy — hard-gated by ore. Paced so the eras (chalcolithic →
+  // bronze → iron → steel) are actually reachable within a game rather
+  // than plateauing in bronze.
   if (metalCap > 0 && k.metallurgy < metalCap) {
     const oreRate = Math.max(cu, sn, fe, co);
     const headroom = 1 - k.metallurgy / metalCap;
-    // 3× faster than the original 0.5 factor so era transitions
-    // happen on a meaningful timescale (~5–10k ticks per era jump
-    // instead of plateauing for 100k+).
     k.metallurgy = Math.min(metalCap, k.metallurgy +
-      LEARN_BASE * 1.5 * headroom * oreRate * (1 + k.toolmaking * 0.5));
+      LEARN_BASE * 2.6 * headroom * oreRate * (1 + k.toolmaking * 0.5));
   }
 
-  // ── Navigation: hard-gated by water access ──
-  // Coast + major river gives the fastest growth (port cities). A
-  // small river alone gives slow progress (riverboats only).
+  // Navigation — hard-gated by water; paced so coasts/great rivers grow
+  // into real naval powers.
   if (wa > 0) {
-    k.navigation = clamp01(k.navigation + LEARN_BASE * 0.7 * (1 - k.navigation)
+    k.navigation = clamp01(k.navigation + LEARN_BASE * 1.3 * (1 - k.navigation)
       * wa * (1 + k.construction * 0.6));
   }
 
-  // ── Mobility: hard-gated by horses ──
-  // Cavalry, postal relays, scouting. Construction unlocks chariots /
-  // saddles / stirrups (gradual real-world progression). Horses are
-  // sparse and clustered, so a much lower threshold (0.05 vs the
-  // 0.10 used for ore mines) lets faint herds count — a settlement
-  // doesn't need a stud farm to start training scouts.
-  const horsesThr = 0.05;
-  const horses = r.horses || 0;
+  // Mobility — hard-gated by horses; paced so horse country becomes
+  // cavalry country.
   if (horses > horsesThr) {
-    k.mobility = clamp01(k.mobility + LEARN_BASE * 0.5 * (1 - k.mobility)
+    k.mobility = clamp01(k.mobility + LEARN_BASE * 1.1 * (1 - k.mobility)
       * horses * (1 + k.construction * 0.4 + k.metallurgy * 0.6));
+  }
+
+  // ── Diffusion: learn techniques from connected neighbours ─────────
+  // Technology spreads by contact. Pull each track toward the best level
+  // among road-connected partners. The resource-gated tracks are capped
+  // by what THIS site can actually practise (ore tier / water / horses) —
+  // you can hear how iron is worked, but you still need iron to do it.
+  if (s._tradeReach && s._tradeReach.size > 0 && world._byId) {
+    const km = { foraging:0, toolmaking:0, agriculture:0, construction:0,
+                 organization:0, metallurgy:0, navigation:0, mobility:0 };
+    let any = false;
+    for (const pid of s._tradeReach.keys()) {
+      const p = world._byId.get(pid);
+      if (!p || p.mode !== "settled" || !p.knowledge) continue;
+      any = true;
+      const pk = p.knowledge;
+      for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) km[t] = v; }
+    }
+    if (any) {
+      if (km.metallurgy > metalCap) km.metallurgy = metalCap;
+      if (wa <= 0) km.navigation = 0;
+      if (horses <= horsesThr) km.mobility = 0;
+      for (const t of KTRACKS) {
+        const gap = km[t] - k[t];
+        if (gap > 0) k[t] = clamp01(k[t] + DIFFUSE_RATE * gap);
+      }
+    }
   }
 }
 
