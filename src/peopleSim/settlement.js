@@ -367,11 +367,11 @@ export function computeExportValue(s) {
   const agScale = Math.min(1, s.farmland.size / 50);
   v += (k.agriculture || 0) * agScale * 0.6;
   if ((s.waterAccess || 0) > 0) v += (k.navigation || 0) * s.waterAccess * 0.5;
-  // Fish / seafood — preserved fish (salt cod, etc.) is a real trade
-  // good, sold for coin on top of the raw food it provides. Available
-  // even with shore-fishing (low navigation); scales up with deep-sea
-  // fleets.
-  if ((s.waterAccess || 0) > 0) v += s.waterAccess * (0.3 + (k.navigation || 0)) * 0.6;
+  // Fish / seafood — only the PRESERVED fraction (salt cod, etc.) trades
+  // for coin; most fish is eaten fresh and locally, so this is a minor
+  // good next to the storable grain staple. Needs navigation (preserving
+  // + shipping), so a shore-fishing village sells almost none.
+  if ((s.waterAccess || 0) > 0) v += s.waterAccess * (k.navigation || 0) * 0.3;
   // Toolmaking — crafted goods are valuable even without metal.
   // Pottery and textiles travel further than grain because of
   // density-value ratio.
@@ -436,8 +436,8 @@ export function getExportBreakdown(s) {
   if ((s.waterAccess || 0) > 0) {
     const v = (k.navigation || 0) * s.waterAccess * 0.5;
     if (v > 0.01) out.push({ label: "Ship goods", value: v });
-    const fish = s.waterAccess * (0.3 + (k.navigation || 0)) * 0.6;
-    if (fish > 0.01) out.push({ label: "Fish", value: fish });
+    const fish = s.waterAccess * (k.navigation || 0) * 0.3;
+    if (fish > 0.01) out.push({ label: "Salt fish", value: fish });
   }
   const tools = (k.toolmaking || 0) * 0.4;
   if (tools > 0.01) out.push({ label: "Crafted goods", value: tools });
@@ -721,6 +721,12 @@ function updateFood(world, s) {
   const fish = wa > 0 ? FISH_RATE * wa * (0.3 + (s.knowledge.navigation || 0) * 1.2) : 0;
   s._fishYield = fish;
 
+  // Grain + forage are STORABLE — they fill granaries and ship across the
+  // world, so they're the food that feeds distant cities (and the famine
+  // buffer). Fish is perishable: it feeds the local population well but
+  // can't be shipped or stored, so it never becomes export food. The food
+  // trade reads _storableSupply for what a settlement can send out.
+  s._storableSupply = forage + farmYield;
   const supply = forage + farmYield + fish;
   // Urbanization tax: per-capita food demand rises with population
   // because bigger settlements have more non-farming specialists

@@ -690,11 +690,15 @@ function intermediatesOnPath(link, aId, bId, stMap) {
   return out;
 }
 
-// Per-tick food a settlement could profitably ship out (production
-// surplus — positive only when it's housing-capped, i.e. it grows more
-// food than its capped population eats).
+// Per-tick food a settlement could ship out. Only STORABLE food (grain +
+// forage) travels — fresh fish is perishable and stays local — so the
+// exportable surplus is the total surplus capped by storable production.
+// A fishing town that's fed mostly by the sea therefore can't become a
+// food exporter; only grain breadbaskets feed distant cities.
 function foodSurplus(s) {
-  return (s._foodSupply || 0) - (s._foodDemand || 0);
+  const total = (s._foodSupply || 0) - (s._foodDemand || 0);
+  if (total <= 0) return total;
+  return Math.min(total, s._storableSupply || 0);
 }
 // Per-tick food a settlement wants shipped IN: enough to feed the
 // population its HOUSING could hold beyond what it has now. This is what
