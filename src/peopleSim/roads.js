@@ -97,6 +97,20 @@ const STARVING_TICKS_LEFT          = 100;
 const FOOD_IMPORT_EMA_ALPHA        = 0.002;
 const USAGE_PER_TRADE              = 0.04;   // wear per tile per active trade tick
 
+// Tolls — when trade between A and B passes through a third
+// settlement C's home tile, C skims a cut of the trade value.
+// Buyer pays the toll on top of the trade price; seller's revenue
+// is unchanged; intermediate's wealth rises. Models bridge tolls,
+// market dues, inn-keeping, supply sales to caravans, taxes on
+// through-traffic — the historical mechanism that made
+// crossroads/post towns viable as economic entities (Lyon,
+// Frankfurt, every English market town on a Roman road).
+// Food trade has a lower rate: famine-era food tolls were
+// politically charged, and a 5% toll on grain to a starving city
+// would be unconscionable.
+const TOLL_RATE       = 0.05;
+const FOOD_TOLL_RATE  = 0.02;
+
 export { QUALITY_NEW, QUALITY_MAX, USAGE_FOR_MAX };
 
 // ── State init ─────────────────────────────────────────────────────
@@ -477,6 +491,10 @@ export function updateTrade(world) {
       s._foodImportRate = (s._foodImportRate || 0) * (1 - FOOD_IMPORT_EMA_ALPHA);
     }
   }
+  // Settlement tile lookup, shared across all trade pairs this tick
+  // so the toll computation in runFood/GeneralTradeBetween can
+  // identify intermediate settlements on each path in O(pathLen).
+  const stMap = buildSettlementTileMap(world);
   // Iterate settlements, then pair with their reach.
   for (const s of world.settlements) {
     if (s.mode !== "settled" || !s._tradeReach) continue;
@@ -484,8 +502,8 @@ export function updateTrade(world) {
       if (peerId <= s.id) continue;   // process each pair once
       const peer = findById(world, peerId);
       if (!peer || peer.mode !== "settled") continue;
-      runFoodTradeBetween(world, s, peer, link);
-      runGeneralTradeBetween(world, s, peer, link);
+      runFoodTradeBetween(world, s, peer, link, stMap);
+      runGeneralTradeBetween(world, s, peer, link, stMap);
       // Wear the path tiles.
       if (link.tiles && link.tiles.length > 0) {
         const ru = world.roadUsage;
@@ -506,7 +524,26 @@ export function updateTrade(world) {
   }
 }
 
-function runFoodTradeBetween(world, a, b, link) {
+// Walk the path's tiles, collect each settlement whose home tile
+// sits on the route (other than endpoints). De-duplicates so a
+// settlement that owns several adjacent tiles still only tolls
+// once per trade.
+function intermediatesOnPath(link, aId, bId, stMap) {
+  if (!link.tiles || link.tiles.length === 0) return null;
+  let out = null;
+  let seen = null;
+  for (const ti of link.tiles) {
+    const sett = stMap.get(ti);
+    if (!sett || sett.id === aId || sett.id === bId) continue;
+    if (!seen) { seen = new Set(); out = []; }
+    if (seen.has(sett.id)) continue;
+    seen.add(sett.id);
+    out.push(sett);
+  }
+  return out;
+}
+
+function runFoodTradeBetween(world, a, b, link, stMap) {
   const aSurplus = (a._foodSupply || 0) - (a._foodDemand || 0);
   const bSurplus = (b._foodSupply || 0) - (b._foodDemand || 0);
   let exporter, importer, shipRate, deficit;
@@ -525,7 +562,10 @@ function runFoodTradeBetween(world, a, b, link) {
   if (maxFlow <= 0) return;
   const wantPrice = maxFlow * FOOD_PRICE;
   const transport = link.cost * FOOD_TRANSPORT_PER_PATHCOST;
-  const totalCost = wantPrice + transport;
+  const intermediates = intermediatesOnPath(link, a.id, b.id, stMap);
+  const numInter = intermediates ? intermediates.length : 0;
+  const totalToll = wantPrice * FOOD_TOLL_RATE * numInter;
+  const totalCost = wantPrice + transport + totalToll;
   // Starvation overrides reserve.
   const importerDemand = importer._foodDemand || 0.001;
   const ticksLeft = (importer.food || 0) / importerDemand;
@@ -538,21 +578,29 @@ function runFoodTradeBetween(world, a, b, link) {
   const actualFood = maxFlow * scale;
   const actualPayment = wantPrice * scale;
   const actualTransport = transport * scale;
-  importer.wealth -= (actualPayment + actualTransport);
+  const actualTotalToll = totalToll * scale;
+  importer.wealth -= (actualPayment + actualTransport + actualTotalToll);
   exporter.wealth = (exporter.wealth || 0) + actualPayment;
+  if (intermediates) {
+    const tollPer = wantPrice * FOOD_TOLL_RATE * scale;
+    for (const inter of intermediates) inter.wealth = (inter.wealth || 0) + tollPer;
+  }
   importer.food = (importer.food || 0) + actualFood;
   exporter.food = (exporter.food || 0) - actualFood;
   importer._foodImportRate = (importer._foodImportRate || 0) + actualFood * FOOD_IMPORT_EMA_ALPHA;
 }
 
-function runGeneralTradeBetween(world, a, b, link) {
+function runGeneralTradeBetween(world, a, b, link, stMap) {
   const exA = computeExportValue(a);
   const exB = computeExportValue(b);
   const diff = exA - exB;
   const minPop = Math.min(a.people, b.people);
   const tradeValue = Math.abs(diff) * Math.sqrt(minPop) * TRADE_RATE;
   const transport = link.cost * TRANSPORT_PER_PATHCOST;
-  const want = tradeValue + transport;
+  const intermediates = intermediatesOnPath(link, a.id, b.id, stMap);
+  const numInter = intermediates ? intermediates.length : 0;
+  const totalToll = tradeValue * TOLL_RATE * numInter;
+  const want = tradeValue + transport + totalToll;
   if (want <= 0) return;
   const buyer = diff > 0 ? b : a;
   const seller = diff > 0 ? a : b;
@@ -564,6 +612,12 @@ function runGeneralTradeBetween(world, a, b, link) {
   const sellerGets = tradeValue * scale;
   buyer.wealth -= actual;
   seller.wealth = (seller.wealth || 0) + sellerGets;
+  if (intermediates) {
+    const tollPer = tradeValue * TOLL_RATE * scale;
+    for (const inter of intermediates) inter.wealth = (inter.wealth || 0) + tollPer;
+  }
+  // Conservation: buyer loses `actual` = sellerGets + transport*scale + totalToll*scale.
+  // Sum to intermediates = totalToll*scale; transport*scale is the lost sink.
 }
 
 // ── Helpers ────────────────────────────────────────────────────────

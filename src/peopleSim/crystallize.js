@@ -128,6 +128,7 @@ export function maybeCrystallize(world) {
     if (hasRiver) quality += 1.0;
     if (hasCoast) quality += 0.4;
     quality += resourceBonusFor(world, ti, resScarcity);
+    quality += busyRoadBonusFor(world, ti, tx, ty);
 
     // Transport-distance modifier. tdist=Infinity → independent only.
     const td = transportDist[ti];
@@ -185,6 +186,34 @@ function computeResourceScarcity(world) {
     out[id] = { sv: scarcity * value };
   }
   return out;
+}
+
+// Bonus from sitting on or beside a heavily-trafficked road. A
+// candidate tile picks up the max roadUsage in a 3×3 box around
+// it (so settlements form at junctions and on busy arteries, not
+// just on the road tile itself). Scales linearly with usage,
+// saturating at USAGE_FOR_BUSY ticks of trade traffic. Tolls in
+// roads.js give these settlements an *economic* reason to exist
+// (passing trade pays them tribute); this bonus speeds up their
+// spawning so the pattern is visible across the sim timescale.
+const USAGE_FOR_BUSY = 5000;
+const BUSY_ROAD_MAX_BONUS = 1.5;
+function busyRoadBonusFor(world, ti, tx, ty) {
+  const ru = world.roadUsage;
+  if (!ru) return 0;
+  const tw = world.tw, th = world.th;
+  let peak = ru[ti] || 0;
+  for (let dy = -1; dy <= 1; dy++) {
+    const ny = ty + dy;
+    if (ny < 0 || ny >= th) continue;
+    for (let dx = -1; dx <= 1; dx++) {
+      const nx = ((tx + dx) % tw + tw) % tw;
+      const u = ru[ny * tw + nx] || 0;
+      if (u > peak) peak = u;
+    }
+  }
+  if (peak <= 0) return 0;
+  return Math.min(BUSY_ROAD_MAX_BONUS, BUSY_ROAD_MAX_BONUS * peak / USAGE_FOR_BUSY);
 }
 
 // Bonus from on-tile resource deposits. Each resource contributes
