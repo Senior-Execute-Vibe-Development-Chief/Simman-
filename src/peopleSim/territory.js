@@ -1,11 +1,17 @@
 // ── Territory ────────────────────────────────────────────────────────
 //
 // Each settlement claims the land it can reach most cheaply, out to a
-// reach budget. ONE budget-bounded multi-source Dijkstra over the whole
-// map assigns every land tile to a settlement (or to wilderness), then a
-// single pass tallies each settlement's food, resources, and mineable
-// tiles from the land it controls. This replaces the old per-settlement
-// farmland flood-fill (_farmedBy) and the separate resource-scan box.
+// reach budget. Territory is PERSISTENT: once a tile is claimed it stays
+// with its owner — settlements only expand into UNCLAIMED wilderness, and
+// a neighbour's land is a wall they grow around, never over. So borders
+// form once and hold; they only move when a settlement dies (its land
+// returns to wilderness for survivors to take) or when it grows into new
+// wilderness. This kills the every-pass border shimmer the old "rebuild
+// the whole Voronoi from scratch each pass" approach produced.
+//
+// A small CORE around every home is always owned (carved even from a
+// neighbour), so a freshly-founded town boxed in by an older one still
+// gets a minimum domain to live on.
 //
 // Food drawn from a tile falls off with transport distance: near land is
 // worked intensively, far land only lightly provisions the centre — and
@@ -41,6 +47,11 @@ const MIN_PLANTABLE_FERT_SLOPE = 0.20;
 
 const SQRT2 = Math.SQRT2;
 
+// Guaranteed home block (radius in tiles). Always owned by the settlement,
+// stolen from a neighbour if need be. Kept smaller than half the minimum
+// settlement spacing (MIN_SETT_DIST=12) so two cores can never overlap.
+const CORE_R = 3;
+
 class MinHeap {
   constructor(cap = 4096) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap; }
   _grow() { const c = this.cap * 2; const t = new Int32Array(c); t.set(this.ti); const d = new Float64Array(c); d.set(this.d); this.ti = t; this.d = d; this.cap = c; }
@@ -55,23 +66,56 @@ const TERR_RES = ['timber','stone','copper','tin','iron','coal','horses','salt',
 export function computeTerritory(world) {
   const { N, tw, th, elev } = world;
   let owner = world._territoryOwner;
-  if (!owner || owner.length !== N) owner = world._territoryOwner = new Int32Array(N);
-  owner.fill(-1);
+  if (!owner || owner.length !== N) { owner = world._territoryOwner = new Int32Array(N); owner.fill(-1); }
   let cost = world._territoryCost;
   if (!cost || cost.length !== N) cost = world._territoryCost = new Float32Array(N);
+  // Reset COST every pass (roads / budgets shift the food falloff) but keep
+  // OWNER — ownership is persistent, that's what stabilises the borders.
   cost.fill(Infinity);
 
   const byId = new Map();
   const budget = new Map();
-  const heap = new MinHeap();
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     byId.set(s.id, s);
     budget.set(s.id, reachBudget(s));
-    const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
-    if (cost[ti] > 0) { cost[ti] = 0; owner[ti] = s.id; heap.push(ti, 0); }
   }
 
+  // Release any tile whose owner is gone (died / unsettled) back to
+  // wilderness, so neighbours can grow into the vacated land.
+  for (let ti = 0; ti < N; ti++) {
+    const o = owner[ti];
+    if (o >= 0 && !byId.has(o)) owner[ti] = -1;
+  }
+
+  // Guarantee each settlement its core block, carving it from a neighbour
+  // if necessary (a new town founded inside an old realm still gets land).
+  const heap = new MinHeap();
+  for (const s of byId.values()) {
+    const sx = s.pos.x | 0, sy = s.pos.y | 0;
+    for (let dy = -CORE_R; dy <= CORE_R; dy++) {
+      const ny = sy + dy; if (ny < 0 || ny >= th) continue;
+      for (let dx = -CORE_R; dx <= CORE_R; dx++) {
+        const nx = ((sx + dx) % tw + tw) % tw;
+        const ti = ny * tw + nx;
+        if (elev[ti] <= 0) continue;
+        owner[ti] = s.id;
+      }
+    }
+    const home = sy * tw + sx;
+    if (elev[home] > 0) { cost[home] = 0; heap.push(home, 0); }
+  }
+
+  // Snapshot LOCKED ownership (persistent land + cores). During the pass,
+  // a locked tile owned by someone else is a wall; only tiles that are
+  // wilderness in the snapshot are contestable — and they go to whoever
+  // reaches them cheapest (true multi-source Voronoi over the free land).
+  const base = owner.slice();
+
+  // Multi-source Dijkstra. Cost propagates through a settlement's OWN tiles
+  // (so food falloff is correct across its whole domain); free wilderness
+  // is claimed by whoever reaches it cheapest within budget; another
+  // settlement's locked land is a wall — grown around, never seized.
   while (heap.n > 0) {
     const { ti, d } = heap.popMin();
     if (d > cost[ti]) continue;
@@ -94,11 +138,17 @@ export function computeTerritory(world) {
     for (let k = 0; k < 8; k++) {
       const ni = ns[k];
       if (ni < 0 || elev[ni] <= 0) continue;
+      const lk = base[ni];
+      if (lk >= 0 && lk !== oid) continue;   // someone's locked land: a wall
       const c = baseEdgeCost(world, ti, ni);
       if (c === Infinity) continue;
       const nd = d + c * mul[k];
-      if (nd > bud) continue;            // owner can't reach further
-      if (nd < cost[ni]) { cost[ni] = nd; owner[ni] = oid; heap.push(ni, nd); }
+      if (nd > bud) continue;                // owner can't reach further
+      if (nd < cost[ni]) {
+        cost[ni] = nd;
+        if (lk < 0) owner[ni] = oid;         // claim free wilderness
+        heap.push(ni, nd);
+      }
     }
   }
 
