@@ -12,6 +12,9 @@ import { createWorld, pruneDead } from "./state.js";
 import { updateSettlement } from "./settlement.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
+import { computeTerritory } from "./territory.js";
+
+const TERRITORY_INTERVAL = 96;   // ticks between full territory recomputes
 
 export function initPeopleSim(worldGen, opts = {}) {
   return createWorld(worldGen, opts);
@@ -30,6 +33,9 @@ export function stepPeopleSim(world, n = 1) {
       world._byId.set(s.id, s);
       s._wPrev = s.wealth || 0;   // baseline for the money-flow net-change readout
     }
+    // Recompute territory periodically: each settlement claims the land it
+    // reaches cheapest, and its food / resources are tallied from it.
+    if (world.step === 1 || world.step % TERRITORY_INTERVAL === 0) computeTerritory(world);
     for (let i = 0; i < world.settlements.length; i++) {
       updateSettlement(world, world.settlements[i]);
     }
@@ -50,73 +56,23 @@ export function stepPeopleSim(world, n = 1) {
       s._wealthDelta = (s._wealthDelta || 0) * 0.9 + ((s.wealth || 0) - (s._wPrev || 0)) * 0.1;
     }
     if (world.step % 32 === 0) pruneDead(world);
-    if (world.step % 256 === 0) checkFarmlandOwnership(world);
     world.debug.tickMs = performance.now() - t0;
   }
   return world;
 }
 
-// Sanity check: every farmland tile belongs to exactly one alive
-// settlement, _farmedBy[ti] points at that settlement. Catches any
-// regression that lets two settlements claim the same ground or
-// leaves orphan-owned tiles after a settlement dies.
-const _farmlandWarned = new Set();
-function checkFarmlandOwnership(world) {
-  const seen = new Map();              // ti -> first settlement id seen
-  for (const s of world.settlements) {
-    if (s.mode !== "settled" || !s.farmland) continue;
-    for (const ti of s.farmland) {
-      const prev = seen.get(ti);
-      if (prev !== undefined && prev !== s.id) {
-        const key = `dup:${ti}`;
-        if (!_farmlandWarned.has(key)) {
-          _farmlandWarned.add(key);
-          console.warn(`[peopleSim] farmland overlap at tile ${ti}: settlements ${prev} and ${s.id}`);
-        }
-      }
-      seen.set(ti, s.id);
-      if (world._farmedBy[ti] !== s.id) {
-        const key = `mismatch:${ti}`;
-        if (!_farmlandWarned.has(key)) {
-          _farmlandWarned.add(key);
-          console.warn(`[peopleSim] _farmedBy[${ti}]=${world._farmedBy[ti]} but settlement ${s.id} has it in farmland`);
-        }
-      }
-    }
-  }
-  // Walk _farmedBy for orphan ownership (tile owned by a dead/nonexistent settlement).
-  const aliveIds = new Set();
-  for (const s of world.settlements) if (s.mode === "settled") aliveIds.add(s.id);
-  for (let ti = 0; ti < world._farmedBy.length; ti++) {
-    const o = world._farmedBy[ti];
-    if (o === -1) continue;
-    if (!aliveIds.has(o)) {
-      const key = `orphan:${ti}`;
-      if (!_farmlandWarned.has(key)) {
-        _farmlandWarned.add(key);
-        console.warn(`[peopleSim] orphan-owned tile ${ti}: settlement ${o} is not alive`);
-      }
-      world._farmedBy[ti] = -1;        // self-heal
-    }
-  }
-}
-
 export function getEntities(world) {
-  return {
-    settlements: world.settlements,
-    caravans:    world.caravans,
-    armies:      world.armies,
-  };
+  return { settlements: world.settlements };
 }
 
 export function peopleSimStats(world) {
-  let sPeople = 0, aliveSettlements = 0, farmlandTiles = 0;
+  let sPeople = 0, aliveSettlements = 0, territoryTiles = 0;
   const tierCounts = [0, 0, 0, 0];
   for (const s of world.settlements) {
     if (s.mode === "dead") continue;
     aliveSettlements++;
     sPeople += s.people;
-    if (s.farmland) farmlandTiles += s.farmland.size;
+    territoryTiles += s._terrTiles || 0;
     if (s.tier >= 0 && s.tier < tierCounts.length) tierCounts[s.tier]++;
   }
   return {
@@ -126,7 +82,7 @@ export function peopleSimStats(world) {
     towns:       tierCounts[1],
     cities:      tierCounts[2],
     metropolises:tierCounts[3],
-    farmlandTiles,
+    territoryTiles,
     totalPeople: Math.round(sPeople),
     tickMs: world.debug.tickMs.toFixed(2),
   };

@@ -59,11 +59,6 @@ export function createWorld(w, opts = {}) {
     // Entities. No bands — settlements-only model.
     settlements: [],
 
-    // Tile → settlement.id that farms it (or -1). Int32 so IDs can
-    // grow without bound across long runs (each new settlement gets
-    // _nextId++; we never recycle).
-    _farmedBy: new Int32Array(N).fill(-1),
-
     step: 0,
     seed: opts.seed || w.seed || 1,
     rng: mkRng(opts.seed || w.seed || 1),

@@ -1,16 +1,13 @@
-// Settlement: a permanent community at a fixed location. Single icon
-// (pop-scaled) with a patch of farmland painted on the most fertile
-// tiles within reach. No bands, no individual buildings — the
-// settlement is the atomic visible unit.
+// Settlement: a permanent community at a fixed location. It controls a
+// TERRITORY — the land it can reach cheapest within its budget (see
+// territory.js) — from which it draws food and resources. No bands, no
+// individual buildings.
 //
 // New settlements come from the crystallization sweep (crystallize.js),
 // which scatters them across viable sites and lets them inherit
-// knowledge from their nearest neighbour weighted by transport
-// distance. There is no settlement cap — the world fills with
-// settlements wherever there is room (MIN_SETT_DIST spacing) and
-// enough fertile land to support them.
+// knowledge from their nearest neighbour weighted by transport distance.
 
-import { localEdgeCost } from "./transport.js";
+import { seedLocalTerritory } from "./territory.js";
 
 let _nextId = 1;
 export function resetSettlementIds() { _nextId = 1; }
@@ -24,29 +21,13 @@ const TIER_NAME      = ["village", "town", "city", "metropolis"];
 // than ~700.
 const SETT_GROWTH = 0.0018;
 
-// Farmland model:
-//   farmland tile yields = world.fert[tile] × FARM_YIELD_PER_FERT
-//                          × (1 + ag × 1.2)  per tick
-// Forage model:
-//   forage area food = forageArea × FORAGE_RATE
-//                      × (1 + foraging × 0.5)  per tick
-// Population K is derived ENTIRELY from food production (local +
-// imports). No artificial fudge factors — pop is what food can
-// support, full stop.
-//   K = (supply + imported supply) / demand_per_capita
+// Food model: a settlement's land food comes from the TERRITORY it
+// controls (territory.js) — the distance-weighted sum of its claimed
+// arable tiles' fertility, times yield and agriculture. Fish is added on
+// top (and is perishable/local). Population K is derived from food:
+//   K = (land food + fish + imported food) / demand_per_capita
 // where demand_per_capita = 0.003 food/person/tick.
 const K_MIN_VIABLE = 8;                    // bare-survival floor (matches the wither cull threshold)
-// ~1 farm tile feeds ~16 people (yield 0.055/fert × ag-mature 2.2 / demand 0.003).
-const FARM_TARGET_PEOPLE_PER_TILE = 16;
-// Farmland is sized by a per-tier CATCHMENT — how much countryside the
-// settlement commands — NOT by population, so food output is set by LAND,
-// not people. Together with the housing cap below this is what lets a
-// fertile rural settlement grow far more food than its (housing-limited)
-// population eats and export the surplus, while a dense city on limited
-// land runs a deficit and must import. The flood-fill takes the best
-// plantable tiles within transport reach up to this count, so poor
-// terrain still yields a smaller patch than the cap.
-const CATCHMENT_BY_TIER = [10, 28, 80, 200];   // village → metropolis
 
 // ── Housing population cap: FOOD, BUILDINGS, and SPACE ──
 // Population grows to min(food capacity, housing). Housing is purely
@@ -74,50 +55,16 @@ const DENSITY_PER_CONSTR  = 5;      // extra people/tile per point of constructi
 // materials is TRANSFERRED to the supplying partners, not destroyed.
 const INFRA_COST          = 80;     // coin per +1 housing of (imported) materials + labour
 const BUILD_RATE          = 0.015;  // housing/tick per construction-weighted builder
-const FARM_YIELD_PER_FERT    = 0.055;
-// Forage rate calibrated so a forage-only village in a modest 5×5
-// neighbourhood (avg fert ~0.4) reaches equilibrium pop ~70. Bumped
-// from 0.012 so K from forageArea isn't bottlenecked by food supply
-// — without this, K could be 80 but demand starved pop down to ~25.
-// Farming (yield 0.055/fert) is still ~3× more efficient per
-// fert-unit, so fertile valleys still dominate by orders of magnitude.
-const FORAGE_RATE            = 0.018;
+// Yield per (distance-weighted) fertility unit of territory, ×(1+ag·1.2).
+// Calibrated against the old catchment model so population stays in a
+// similar range (the rest of the balance is tuned around it).
+const FARM_YIELD_PER_FERT    = 0.12;
 // Fish: per-tick food a water settlement lands. fishYield = FISH_RATE ×
 // waterAccess × (0.3 + navigation×1.2). A great-river port with a
 // deep-sea fleet (wa≈0.9, nav≈0.8) nets ~12/tk — comparable to a big
 // farmland patch — so maritime cities can feed themselves; a landlocked
 // site gets nothing.
 const FISH_RATE              = 11.0;
-// Farm placement is bounded by transport COST, not Euclidean distance.
-// Reach is computed by a small Dijkstra from the settlement using the
-// same terrain weights as transport.js — plains 1, hills ×2, mountains
-// ×5, cold ×3, desert ×2.5, rivers ×0.4, coasts ×0.7. Effect:
-// settlements in a river valley reach far along the river (cheap),
-// settlements walled in by mountains reach only adjacent tiles. The
-// cap below is in accumulated tile-cost units, not tiles.
-const MAX_TRANSPORT_BY_TIER = [7, 14, 26, 40];    // village → metropolis
-// Reach cache refresh interval — picks up slow knowledge drift within
-// a tier (mature metropolis still benefits from its tech maturing from
-// ~0.7 to ~0.99 over thousands of ticks).
-const REACH_REFRESH_TICKS = 2000;
-// Minimum soil fertility for a tile to be plantable. Below this, the
-// land yields too little to be worth cultivating — it's left wild,
-// regardless of pop pressure. This is what stops every settlement
-// from filling its full range cap: in mediocre terrain, only a few
-// tiles clear the bar, the soil-yield → carrying-capacity → tile-
-// target feedback loop settles at a small footprint, and the
-// settlement stays a hamlet. In a lush basin most tiles clear the bar
-// and the settlement grows huge. Result: terrain-driven size variation
-// instead of every settlement converging on the same disc.
-//
-// Threshold scales with agriculture knowledge — heavy plough, drainage,
-// fertiliser, etc. progressively open up marginal soils:
-//   ag 0.00  → floor 0.60  (foraging only — must be very lush)
-//   ag 0.50  → floor 0.45  (neolithic baseline)
-//   ag 1.00  → floor 0.30  (industrial — most land plantable)
-const MIN_PLANTABLE_FERT_BASE  = 0.60;
-const MIN_PLANTABLE_FERT_SLOPE = 0.30;
-const FARMLAND_REFRESH_INTERVAL = 32;
 
 export function makeSettlement(world, x, y, opts = {}) {
   const s = {
@@ -143,8 +90,8 @@ export function makeSettlement(world, x, y, opts = {}) {
       literacy:    0,           // gated by organization + population
     },
     // Maximum local deposit richness within transport reach, per
-    // resource id. Populated by scanLocalResources alongside the
-    // farmland refresh; used by updateKnowledge to gate tech growth.
+    // resource id. Populated from the settlement's TERRITORY (territory.js)
+    // each territory pass; used by updateKnowledge to gate tech growth.
     // A road connection also merges the peer's localRes via max(),
     // so a settlement effectively "sees" the resources of any town
     // it trades with.
@@ -167,10 +114,8 @@ export function makeSettlement(world, x, y, opts = {}) {
     // settlements. { peerId → { cost, tiles } }. Populated by
     // rebuildTradeReach in roads.js on each plan cycle.
     _tradeReach: null,
-    farmland: new Set(),
     tier: 0,
     mode: "settled",
-    lastFarmRefresh: world.step,
     lastFoundAttempt: world.step,
     history: [{ step: world.step, type: "founded", parent: opts.parentId ?? -1, pos: { x, y } }],
   };
@@ -183,8 +128,7 @@ export function makeSettlement(world, x, y, opts = {}) {
   s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
   s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
   world.settlements.push(s);
-  refreshFarmland(world, s);
-  scanLocalResources(world, s);
+  seedLocalTerritory(world, s);   // food/resource stats until the first full territory pass
   return s;
 }
 
@@ -210,44 +154,9 @@ function computeWaterAccess(world, sx, sy) {
   return Math.min(1, coastBit * 0.5 + bestMag * 0.2);
 }
 
-// Scan the settlement's LOCAL territory — a box that grows modestly with
-// tier — for resource access. Deliberately NOT the full transport reach
-// (which spans thousands of tiles and would hand every settlement every
-// resource, erasing regional tech cultures). A settlement only "has" what
-// is near it; distant resources reach it through TRADE — effectiveLocalRes
-// merges road-connected peers' localRes, so a copper-poor town on a road
-// to a copper-rich one still gains the access (and, with knowledge
-// diffusion, the technique to use it).
-const RES_RADIUS_BY_TIER = [4, 7, 10, 13];   // village → metropolis (box half-width)
-function scanLocalResources(world, s) {
-  const deposits = world.deposits;
-  if (!deposits) return;
-  const keys = Object.keys(deposits);
-  if (keys.length === 0) return;
-  const { tw, th } = world;
-  const sx = s.pos.x | 0, sy = s.pos.y | 0;
-  const R = RES_RADIUS_BY_TIER[s.tier] || RES_RADIUS_BY_TIER[0];
-  const maxOut = {};
-  for (const k of keys) maxOut[k] = 0;
-  const minable = [];
-  for (let dy = -R; dy <= R; dy++) {
-    const ny = sy + dy;
-    if (ny < 0 || ny >= th) continue;
-    for (let dx = -R; dx <= R; dx++) {
-      const nx = ((sx + dx) % tw + tw) % tw;
-      const ti = ny * tw + nx;
-      for (const k of keys) {
-        const v = deposits[k][ti] || 0;
-        if (v > maxOut[k]) maxOut[k] = v;
-      }
-      if (deposits.precious && deposits.precious[ti] > 0.05) minable.push([ti, "precious"]);
-      if (deposits.gems     && deposits.gems[ti]     > 0.05) minable.push([ti, "gems"]);
-    }
-  }
-  s.localRes = maxOut;
-  s._minableTiles = minable;
-}
-export { scanLocalResources };
+// Local resources (s.localRes) and mineable tiles (s._minableTiles) are
+// now populated from the settlement's TERRITORY (territory.js), not a box
+// scan — a settlement controls the resources of the land it claims.
 
 // Settlement's effective resource access including road-connected
 // peers. Each tracked resource is the MAX across this settlement's
@@ -364,7 +273,7 @@ export function computeExportValue(s) {
   if (oreAccess > 0.10) v += (k.metallurgy || 0) * 1.5;
   const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
   v += (k.construction || 0) * matAccess * 0.8;
-  const agScale = Math.min(1, s.farmland.size / 50);
+  const agScale = Math.min(1, (s._terrTiles || 0) / 120);
   v += (k.agriculture || 0) * agScale * 0.6;
   if ((s.waterAccess || 0) > 0) v += (k.navigation || 0) * s.waterAccess * 0.5;
   // Fish / seafood — only the PRESERVED fraction (salt cod, etc.) trades
@@ -430,7 +339,7 @@ export function getExportBreakdown(s) {
   const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
   const construction = (k.construction || 0) * matAccess * 0.8;
   if (construction > 0.01) out.push({ label: "Building goods", value: construction });
-  const agScale = Math.min(1, s.farmland.size / 50);
+  const agScale = Math.min(1, (s._terrTiles || 0) / 120);
   const agriculture = (k.agriculture || 0) * agScale * 0.6;
   if (agriculture > 0.01) out.push({ label: "Grain surplus", value: agriculture });
   if ((s.waterAccess || 0) > 0) {
@@ -522,7 +431,6 @@ export function updateSettlement(world, s) {
   updateFood(world, s);
   updatePopulation(world, s);
   if (s.mode !== "settled") return;        // died this tick (famine / wither)
-  maybeRefreshFarmland(world, s);
   updateWealth(world, s);
   updateDevelopment(world, s);
   updateKnowledge(world, s);
@@ -564,7 +472,7 @@ function updateKnowledge(world, s) {
   // can advance to chalcolithic on imported ore.
   const r = effectiveLocalRes(world, s);
   const wa = s.waterAccess || 0;
-  const fc = s.farmland.size;
+  const fc = s._terrTiles || 0;
   const pop = s.people;
   const popSqrt = Math.sqrt(pop);
   const horsesThr = 0.05;
@@ -690,25 +598,11 @@ function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 // not *higher K*. A village stuck on forage alone stays at K=20 and
 // just doesn't starve.
 function updateFood(world, s) {
-  const tw = world.tw, th = world.th;
-  const sx = s.pos.x | 0, sy = s.pos.y | 0;
-  // 5×5 forage area, fertility-summed. Includes the home tile.
-  let forageArea = 0;
-  for (let dy = -2; dy <= 2; dy++) {
-    const ny = sy + dy;
-    if (ny < 0 || ny >= th) continue;
-    for (let dx = -2; dx <= 2; dx++) {
-      const nx = ((sx + dx) % tw + tw) % tw;
-      const ni = ny * tw + nx;
-      forageArea += world.fert[ni] || 0;
-    }
-  }
-  const forage = FORAGE_RATE * forageArea * (1 + (s.knowledge.foraging || 0.3) * 0.5);
-  s._forageArea = forageArea;            // reused by updatePopulation for K
-
-  let farmYield = 0;
-  for (const fti of s.farmland) farmYield += world.fert[fti] || 0;
-  farmYield *= FARM_YIELD_PER_FERT * (1 + (s.knowledge.agriculture || 0) * 1.2);
+  // Land food from the controlled TERRITORY: the distance-weighted sum of
+  // claimed arable fertility (computed in territory.js), times yield and
+  // agriculture. Storable — fills granaries and ships to feed cities.
+  const landFood = (s._terrFertSum || 0) * FARM_YIELD_PER_FERT
+    * (1 + (s.knowledge.agriculture || 0) * 1.2);
 
   // Fish: coastal/river settlements draw food from the water, scaled by
   // water access (the site: minor river → great-river port) and by
@@ -721,13 +615,13 @@ function updateFood(world, s) {
   const fish = wa > 0 ? FISH_RATE * wa * (0.3 + (s.knowledge.navigation || 0) * 1.2) : 0;
   s._fishYield = fish;
 
-  // Grain + forage are STORABLE — they fill granaries and ship across the
-  // world, so they're the food that feeds distant cities (and the famine
-  // buffer). Fish is perishable: it feeds the local population well but
-  // can't be shipped or stored, so it never becomes export food. The food
-  // trade reads _storableSupply for what a settlement can send out.
-  s._storableSupply = forage + farmYield;
-  const supply = forage + farmYield + fish;
+  // Land food is STORABLE — it fills granaries and ships across the world
+  // to feed distant cities. Fish is perishable: it feeds the local
+  // population well but can't be shipped or stored, so it never becomes
+  // export food. The food trade reads _storableSupply for what a
+  // settlement can send out.
+  s._storableSupply = landFood;
+  const supply = landFood + fish;
   // Urbanization tax: per-capita food demand rises with population
   // because bigger settlements have more non-farming specialists
   // (craftsmen, soldiers, priests, scribes) plus transport
@@ -881,286 +775,20 @@ function updatePopulation(world, s) {
   }
   if (s.people < 1.5) {
     s.mode = "dead";
-    releaseFarmland(world, s);
     s.history.push({ step: world.step, type: "abandoned" });
     return;
   }
-  // Withering: settlement has been below 8 people for too long.
-  // Catches both stillborn farmland-less villages (food too scarce
-  // even with 5×5 forage to grow) and post-famine zombies. Doesn't
-  // touch small-but-stable forage hamlets in semi-arid land — those
-  // hold ~10–15 people and never trip the timer.
+  // Withering: a settlement stuck below 8 people for too long (a stillborn
+  // site whose territory can't feed it, or a post-famine zombie) dies.
+  // Stable small forage hamlets sit at ~10–15 and never trip the timer.
   if (s.people < 8) {
     if (s._witherSince === undefined) s._witherSince = world.step;
     if (world.step - s._witherSince > 2000) {
       s.mode = "dead";
-      releaseFarmland(world, s);
       s.history.push({ step: world.step, type: "withered" });
     }
   } else {
     s._witherSince = undefined;
-  }
-}
-
-// ── Farmland selection ────────────────────────────────────────────
-function maybeRefreshFarmland(world, s) {
-  if (world.step - s.lastFarmRefresh < FARMLAND_REFRESH_INTERVAL) return;
-  s.lastFarmRefresh = world.step;
-  refreshFarmland(world, s);
-  // Reach may have widened on tier growth; rescan resources too.
-  scanLocalResources(world, s);
-}
-
-function refreshFarmland(world, s) {
-  // Farmland is sized by the settlement's tier CATCHMENT (land it
-  // commands), not its population — so food output is set by land. The
-  // flood-fill below takes the best plantable tiles within reach up to
-  // this count.
-  const target = Math.max(4, CATCHMENT_BY_TIER[s.tier] || CATCHMENT_BY_TIER[0]);
-  const { tw, th, elev, fert, coast, riverMag, _farmedBy } = world;
-  // Plantability floor for this settlement, given its current ag tech.
-  const minFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
-
-  // ── Shrink: drop least-fertile tiles ──
-  if (s.farmland.size > target) {
-    const sorted = [...s.farmland].sort((a, b) => (fert[a] || 0) - (fert[b] || 0));
-    while (s.farmland.size > target && sorted.length > 0) {
-      const ti = sorted.shift();
-      s.farmland.delete(ti);
-      if (_farmedBy[ti] === s.id) _farmedBy[ti] = -1;
-    }
-  }
-
-  // ── Grow: flood-fill from settlement, best score first ──
-  // Candidates are bounded by TRANSPORT REACH (cheap Dijkstra cached on
-  // the settlement), not Euclidean distance. Effect: a city on a river
-  // stretches its fields along the cheap valley; a city walled in by
-  // mountains gets a tight, irregular pocket of farmland. The flood-
-  // fill itself still picks best-fert-first inside that reach, so the
-  // shape follows soil quality within the corridor.
-  //
-  // Reach also widens as the settlement's transport knowledge matures
-  // (wagons, roads, logistics — see localTransport). Cache is keyed by
-  // tier; we also force a refresh every REACH_REFRESH_TICKS so a metro
-  // sitting at the top tier for thousands of ticks still benefits from
-  // its slowly-maturing tech.
-  if (s.farmland.size < target) {
-    const maxCost = MAX_TRANSPORT_BY_TIER[s.tier] || MAX_TRANSPORT_BY_TIER[0];
-    const reachStale = !s._reach ||
-                       s._reachTier !== s.tier ||
-                       (world.step - (s._reachStep || -Infinity)) > REACH_REFRESH_TICKS;
-    if (reachStale) {
-      s._reach = localTransport(world, s.pos.x | 0, s.pos.y | 0, maxCost, s.knowledge);
-      s._reachTier = s.tier;
-      s._reachStep = world.step;
-    }
-    const reach = s._reach;
-    const heap = new _MaxHeap();
-    const visited = new Set(s.farmland);
-
-    // Score: fertility primary, plus generous river/coast bonus so
-    // settlements naturally extend along water rather than blob outward.
-    const scoreTile = (ti) => {
-      let sc = fert[ti] || 0;
-      if (riverMag && riverMag[ti] >= 3)      sc += 0.6;
-      else if (riverMag && riverMag[ti] >= 2) sc += 0.35;
-      if (coast[ti])                          sc += 0.20;
-      return sc;
-    };
-
-    const tryAddCandidate = (ti) => {
-      if (visited.has(ti)) return;
-      visited.add(ti);
-      if (elev[ti] <= 0) return;
-      if (!reach.has(ti)) return;            // out of transport range
-      const owner = _farmedBy[ti];
-      if (owner !== -1 && owner !== s.id) return;
-      if ((fert[ti] || 0) < minFert) return;
-      heap.push(ti, scoreTile(ti));
-    };
-
-    const pushNeighbours = (ti) => {
-      const ty = (ti / tw) | 0;
-      const tx = ti - ty * tw;
-      const left  = ty * tw + (tx === 0 ? tw - 1 : tx - 1);
-      const right = ty * tw + (tx === tw - 1 ? 0 : tx + 1);
-      const up    = ty > 0      ? (ty - 1) * tw + tx : -1;
-      const down  = ty < th - 1 ? (ty + 1) * tw + tx : -1;
-      tryAddCandidate(left);
-      tryAddCandidate(right);
-      if (up   >= 0) tryAddCandidate(up);
-      if (down >= 0) tryAddCandidate(down);
-    };
-
-    // Seed from existing farmland or the home tile.
-    if (s.farmland.size === 0) {
-      const home = (s.pos.y | 0) * tw + (s.pos.x | 0);
-      visited.add(home);
-      if (elev[home] > 0 && (fert[home] || 0) >= minFert &&
-          (_farmedBy[home] === -1 || _farmedBy[home] === s.id)) {
-        s.farmland.add(home);
-        _farmedBy[home] = s.id;
-      }
-      pushNeighbours(home);
-    } else {
-      for (const ti of s.farmland) pushNeighbours(ti);
-    }
-
-    while (s.farmland.size < target && heap.size() > 0) {
-      const top = heap.popMax();
-      const ti = top.ti;
-      const cur = _farmedBy[ti];
-      if (cur !== -1 && cur !== s.id) continue;
-      s.farmland.add(ti);
-      _farmedBy[ti] = s.id;
-      pushNeighbours(ti);
-    }
-  }
-}
-
-// Tiny binary max-heap, parallel typed arrays. Used by refreshFarmland's
-// flood-fill expansion.
-class _MaxHeap {
-  constructor() { this.ti = []; this.sc = []; }
-  size() { return this.ti.length; }
-  push(ti, sc) {
-    this.ti.push(ti); this.sc.push(sc);
-    let i = this.ti.length - 1;
-    while (i > 0) {
-      const p = (i - 1) >> 1;
-      if (this.sc[p] >= this.sc[i]) break;
-      const tt = this.ti[p], ts = this.sc[p];
-      this.ti[p] = this.ti[i]; this.sc[p] = this.sc[i];
-      this.ti[i] = tt; this.sc[i] = ts;
-      i = p;
-    }
-  }
-  popMax() {
-    const ti = this.ti[0], sc = this.sc[0];
-    const lastTi = this.ti.pop(), lastSc = this.sc.pop();
-    if (this.ti.length > 0) {
-      this.ti[0] = lastTi; this.sc[0] = lastSc;
-      let i = 0;
-      const n = this.ti.length;
-      for (;;) {
-        const l = i * 2 + 1, r = i * 2 + 2;
-        let best = i;
-        if (l < n && this.sc[l] > this.sc[best]) best = l;
-        if (r < n && this.sc[r] > this.sc[best]) best = r;
-        if (best === i) break;
-        const tt = this.ti[best], ts = this.sc[best];
-        this.ti[best] = this.ti[i]; this.sc[best] = this.sc[i];
-        this.ti[i] = tt; this.sc[i] = ts;
-        i = best;
-      }
-    }
-    return { ti, sc };
-  }
-}
-
-function releaseFarmland(world, s) {
-  for (const ti of s.farmland) {
-    if (world._farmedBy[ti] === s.id) world._farmedBy[ti] = -1;
-  }
-  s.farmland.clear();
-  // Reach cache is positional + tier; both invariant when farmland is
-  // released for a dying settlement, but null it out for cleanliness.
-  s._reach = null;
-}
-
-// Bounded Dijkstra from (sx, sy). Returns Map<ti, accumulated cost> for
-// every land tile reachable within maxCost. Uses the same continuous
-// edge-cost function as the global transport map (transport.js) so
-// units of "cost" are identical everywhere; just adds per-settlement
-// tech multipliers (localEdgeCost).
-function localTransport(world, sx, sy, maxCost, kn) {
-  const { tw, th, elev } = world;
-  const out = new Map();
-  const seed = sy * tw + sx;
-  if (elev[seed] <= 0) return out;
-  const heap = new _MinHeap();
-  out.set(seed, 0);
-  heap.push(seed, 0);
-  while (heap.n > 0) {
-    const { ti, d } = heap.popMin();
-    if (d > (out.get(ti) ?? Infinity)) continue;
-    const ty = (ti / tw) | 0, tx = ti - ty * tw;
-    const left  = ty * tw + (tx === 0 ? tw - 1 : tx - 1);
-    const right = ty * tw + (tx === tw - 1 ? 0 : tx + 1);
-    const up    = ty > 0      ? (ty - 1) * tw + tx : -1;
-    const down  = ty < th - 1 ? (ty + 1) * tw + tx : -1;
-    const ns = [left, right, up, down];
-    for (let k = 0; k < 4; k++) {
-      const ni = ns[k];
-      if (ni < 0) continue;
-      const c = localEdgeCost(world, ti, ni, kn);
-      if (c === Infinity) continue;
-      const nd = d + c;
-      if (nd > maxCost) continue;
-      const cur = out.get(ni);
-      if (cur === undefined || nd < cur) {
-        out.set(ni, nd);
-        heap.push(ni, nd);
-      }
-    }
-  }
-  return out;
-}
-
-// Tiny min-heap with parallel typed arrays — same shape as transport.js's
-// _MinHeap. Duplicated to keep the modules independent at this scale; if
-// a third caller shows up, lift it to a shared util.
-class _MinHeap {
-  constructor(cap = 256) {
-    this.ti = new Int32Array(cap);
-    // Float64 distances (matches roads.js): localTransport's `out` is a
-    // Float64 Map, so a Float32 heap mis-fires the `d > out.get(ti)`
-    // staleness check on rounding and silently truncates the reach. The
-    // full reach is now SAFE for farmland because the patch is capped by
-    // the per-tier CATCHMENT, not by population — a large reach just gives
-    // the flood-fill more good tiles to pick from, it can't blow farmland
-    // up the way pop/16 × huge-reach did.
-    this.d  = new Float64Array(cap);
-    this.n  = 0;
-    this.cap = cap;
-  }
-  _grow() {
-    const ncap = this.cap * 2;
-    const nti = new Int32Array(ncap); nti.set(this.ti);
-    const nd  = new Float64Array(ncap); nd.set(this.d);
-    this.ti = nti; this.d = nd; this.cap = ncap;
-  }
-  push(ti, d) {
-    if (this.n >= this.cap) this._grow();
-    let i = this.n++;
-    this.ti[i] = ti; this.d[i] = d;
-    while (i > 0) {
-      const p = (i - 1) >> 1;
-      if (this.d[p] <= this.d[i]) break;
-      const tt = this.ti[p], td = this.d[p];
-      this.ti[p] = this.ti[i]; this.d[p] = this.d[i];
-      this.ti[i] = tt; this.d[i] = td;
-      i = p;
-    }
-  }
-  popMin() {
-    const ti = this.ti[0], d = this.d[0];
-    this.n--;
-    if (this.n === 0) return { ti, d };
-    this.ti[0] = this.ti[this.n]; this.d[0] = this.d[this.n];
-    let i = 0;
-    for (;;) {
-      const l = i * 2 + 1, r = i * 2 + 2;
-      let best = i;
-      if (l < this.n && this.d[l] < this.d[best]) best = l;
-      if (r < this.n && this.d[r] < this.d[best]) best = r;
-      if (best === i) break;
-      const tt = this.ti[best], td = this.d[best];
-      this.ti[best] = this.ti[i]; this.d[best] = this.d[i];
-      this.ti[i] = tt; this.d[i] = td;
-      i = best;
-    }
-    return { ti, d };
   }
 }
 
@@ -1170,10 +798,9 @@ function updateTier(world, s) {
     if (s.people >= TIER_THRESHOLD[t]) {
       s.tier = t;
       s.history.push({ step: world.step, type: "tier-up", tier: TIER_NAME[t], people: Math.round(s.people) });
-      s.lastFarmRefresh = world.step - FARMLAND_REFRESH_INTERVAL;
       break;
     }
   }
 }
 
-export { TIER_THRESHOLD, TIER_NAME, releaseFarmland };
+export { TIER_THRESHOLD, TIER_NAME };

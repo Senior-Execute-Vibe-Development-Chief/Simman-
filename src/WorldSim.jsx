@@ -5547,20 +5547,20 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   }
   if(psw&&ctx&&!vmRoads&&!vmMoney){
     const TR=psw.tileRes;
-    // ── Farmland tiles ──
-    ctx.fillStyle="rgba(155,160,75,0.55)";
-    ctx.beginPath();
-    for(const s of psw.settlements){
-      if(!s||s.mode!=="settled"||!s.farmland)continue;
-      for(const fti of s.farmland){
-        const fy=(fti/psw.tw)|0;
-        const fx=fti-fy*psw.tw;
-        const px=fx*TR;
-        const py=dataYtoScreenY(fy*TR,H,CH);
-        ctx.rect(px,py,TR,TR);
+    // ── Territory tiles ── each settlement's claimed land, tinted by a
+    // stable per-settlement hue so domains read at a glance.
+    const owner=psw._territoryOwner;
+    if(owner){
+      for(let ti=0;ti<owner.length;ti++){
+        const oid=owner[ti];
+        if(oid<0)continue;
+        const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
+        const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+        const h=((oid*61)%360+360)%360;
+        ctx.fillStyle=`hsla(${h},45%,50%,0.30)`;
+        ctx.fillRect(sx,sy,TR,TR);
       }
     }
-    ctx.fill();
     // ── Roads ──
     // Roads live in two per-tile arrays — roadQuality (1.0 = no
     // road, <1.0 = road) and roadFlow (current trade traffic rate,
@@ -6097,7 +6097,7 @@ return(
   const progress=nextThr?Math.min(1,s.people/nextThr):1;
   const k=s.knowledge||{};
   const r=s.localRes||{};
-  const farm=s.farmland?s.farmland.size:0;
+  const farm=s._terrTiles||0;
   const K=s._k||0;
   const foodK=s._foodK||0,houseK=s._houseK||0;
   const limitedBy=foodK<=houseK?"food":"housing";
@@ -6196,7 +6196,7 @@ return(
           <span className="au-fade">Consumed /tick</span><span>{demand.toFixed(3)}</span>
           <span style={{color:statusColor}}>Balance</span>
           <span style={{color:statusColor}}>{surplus>=0?"+":""}{surplus.toFixed(3)} ({status})</span>
-          <span className="au-fade">Farmland</span><span>{farm} tile{farm===1?"":"s"}</span>
+          <span className="au-fade">Territory</span><span>{farm} tile{farm===1?"":"s"}</span>
           <span className="au-fade">Capacity</span>
           <span>{Math.round(K)} <span className="au-fade" style={{fontSize:9}}>({limitedBy}-limited)</span></span>
           {(s.infrastructure||0)>1&&(<><span className="au-fade">· buildings</span><span className="au-fade">{Math.round(s.infrastructure||0).toLocaleString()}</span></>)}
