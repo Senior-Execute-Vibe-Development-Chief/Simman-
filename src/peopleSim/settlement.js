@@ -133,12 +133,11 @@ export function makeSettlement(world, x, y, opts = {}) {
     // Cached water-access score (coast + river magnitude at home
     // tile). Set on creation, doesn't change.
     waterAccess: 0,
-    // Purchasing power. Generated each tick from production (and a
-    // mining bonus where deposits exist), spent on imports across
-    // roads — see updateWealth. This is just a starting value; within
-    // ~100 ticks it converges to the settlement's production-based
-    // equilibrium. Cradle starts a little higher as the economic seed.
-    wealth: opts.name === "cradle" ? 100 : 40,
+    // Coin. Starts at ZERO — the world runs on barter. Money only comes
+    // into being once it is mined out of the ground (updateWealth), and
+    // from there it spreads through trade, replacing barter wherever it
+    // reaches.
+    wealth: 0,
     // Cached shortest road-network paths to all reachable
     // settlements. { peerId → { cost, tiles } }. Populated by
     // rebuildTradeReach in roads.js on each plan cycle.
@@ -465,6 +464,18 @@ export function getExportBreakdown(s) {
 // export-value gradient, not specific-commodity barter, so a goods label
 // would be fiction (and made a town look like it both buys and sells the
 // same thing).
+// Resources, by richness, that `haver` has and `needer` lacks — i.e.
+// what `haver` could barter to `needer`. Returns the top one (or null).
+const BARTER_RES = ["timber","stone","copper","tin","iron","coal","horses","salt"];
+function topBarterGood(haver, needer) {
+  const hr = haver.localRes || {}, nr = needer.localRes || {};
+  let best = null, bestV = HAVE_THRESHOLD;
+  for (const id of BARTER_RES) {
+    const hv = hr[id] || 0;
+    if (hv > bestV && (nr[id] || 0) < HAVE_THRESHOLD) { bestV = hv; best = id; }
+  }
+  return best;
+}
 export function getTradeProfile(s, world) {
   const profile = [];
   if (!s._tradeReach || s._tradeReach.size === 0) return profile;
@@ -484,10 +495,15 @@ export function getTradeProfile(s, world) {
     let foodRole = null;
     if (sFood > 0.01 && peerFood < -0.01) foodRole = "selling food";
     else if (sFood < -0.01 && peerFood > 0.01) foodRole = "buying food";
+    // Barter description: what each side gives the other (a resource it
+    // has that the partner lacks). Shown when little/no coin moves.
+    const give = topBarterGood(s, peer);
+    const get  = topBarterGood(peer, s);
 
     profile.push({
       partner: peer.name, partnerId: peer.id,
       netPerTick: net, foodRole, pathCost: link.cost,
+      give, get,
     });
   }
   profile.sort((a, b) => Math.abs(b.netPerTick) - Math.abs(a.netPerTick));

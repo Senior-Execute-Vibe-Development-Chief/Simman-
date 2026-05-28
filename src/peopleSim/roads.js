@@ -727,34 +727,39 @@ function runFoodTradeBetween(world, a, b, link, stMap) {
   // trickle, which is what made import-fed cities impossible.)
   const maxFlow = Math.min(effectiveShipRate, deficit, Math.max(0, exporter.food || 0));
   if (maxFlow <= 0) return;
+
+  // ── The grain moves by BARTER — always. Survival and growth don't wait
+  // for coin; the importer gives goods in return (untracked). This is the
+  // default exchange and is what keeps a money-less settlement (or a whole
+  // pre-money world) fed.
+  importer.food = (importer.food || 0) + maxFlow;
+  exporter.food = (exporter.food || 0) - maxFlow;
+  importer._foodImportRate = (importer._foodImportRate || 0) + maxFlow * FOOD_IMPORT_EMA_ALPHA;
+
+  // ── If the importer holds coin (above its reserve) money REPLACES
+  // barter for as much of the grain as it can pay for: coin flows
+  // importer → exporter, tolls to any middlemen. A broke importer simply
+  // barters (no coin moves). This is how money supplants barter once it
+  // reaches a settlement.
   const wantPrice = maxFlow * FOOD_PRICE;
   const transport = link.cost * FOOD_TRANSPORT_PER_PATHCOST;
   const intermediates = intermediatesOnPath(link, a.id, b.id, stMap);
   const numInter = intermediates ? intermediates.length : 0;
   const totalToll = wantPrice * FOOD_TOLL_RATE * numInter;
   const totalCost = wantPrice + transport + totalToll;
-  // Starvation overrides reserve.
   const importerDemand = importer._foodDemand || 0.001;
-  const ticksLeft = (importer.food || 0) / importerDemand;
-  const isStarving = ticksLeft < STARVING_TICKS_LEFT;
+  const isStarving = (importer.food || 0) / importerDemand < STARVING_TICKS_LEFT;
   const reserve = isStarving ? 0 : getWealthReserve(importer);
   const available = Math.max(0, (importer.wealth || 0) - reserve);
-  if (available <= 0) return;
-  const affordable = available < totalCost ? available : totalCost;
-  const scale = affordable / totalCost;
-  const actualFood = maxFlow * scale;
-  const actualPayment = wantPrice * scale;
-  const actualTransport = transport * scale;
-  const actualTotalToll = totalToll * scale;
-  importer.wealth -= (actualPayment + actualTransport + actualTotalToll);
-  exporter.wealth = (exporter.wealth || 0) + actualPayment;
+  if (available <= 0) return;            // no coin — pure barter, done
+  const pay = available < totalCost ? available : totalCost;
+  const scale = pay / totalCost;
+  importer.wealth -= pay;
+  exporter.wealth = (exporter.wealth || 0) + wantPrice * scale;
   if (intermediates) {
     const tollPer = wantPrice * FOOD_TOLL_RATE * scale;
     for (const inter of intermediates) inter.wealth = (inter.wealth || 0) + tollPer;
   }
-  importer.food = (importer.food || 0) + actualFood;
-  exporter.food = (exporter.food || 0) - actualFood;
-  importer._foodImportRate = (importer._foodImportRate || 0) + actualFood * FOOD_IMPORT_EMA_ALPHA;
 }
 
 // Bilateral trade: each settlement sells its OWN goods to the other and

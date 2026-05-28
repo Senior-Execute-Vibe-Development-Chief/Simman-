@@ -6226,12 +6226,14 @@ return(
         <span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{wealthDelta.toFixed(2)}/tick</span>,
         <>
           <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
+            <span className="au-fade">Exchange</span>
+            <span style={{color:available>0?"#caa24a":"#8a8f9c"}}>{available>0?"coin economy":"barter"}</span>
             <span style={{color:moneyCol(wealthDelta)}}>Net wealth /tick</span>
             <span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{wealthDelta.toFixed(2)}</span>
             {minedRate>0.01&&(<><span className="au-fade">· mining</span><span className="au-fade">+{minedRate.toFixed(2)}</span></>)}
             <span className="au-fade">· trade</span><span className="au-fade">{tradeNet>=0?"+":""}{tradeNet.toFixed(2)}</span>
-            <span className="au-fade">Available to spend</span>
-            <span style={available<=0?{color:"#c44"}:undefined}>${available.toLocaleString()}{available<=0?" (hoarding)":""}</span>
+            <span className="au-fade">Coin held</span>
+            <span style={available<=0?{color:"#8a8f9c"}:undefined}>${wealth.toLocaleString()}</span>
           </div>
           {produces.length>0&&(
             <div className="au-fade" style={{fontSize:9,marginTop:3}}>Produces: {produces.join(", ")}</div>
@@ -6239,18 +6241,24 @@ return(
           {profile.length===0
             ?<div className="au-fade" style={{fontSize:10,fontStyle:"italic",marginTop:4}}>No active trade routes.</div>
             :<>
-              <div className="au-fade" style={{fontSize:9,marginTop:4}}>Routes (net $/tick on each)</div>
+              <div className="au-fade" style={{fontSize:9,marginTop:4}}>Routes (coin $/tick, or ⇄ barter)</div>
               <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"1px 6px",fontSize:10,marginTop:1}}>
-                {profile.slice(0,10).map(p=>(
+                {profile.slice(0,10).map(p=>{
+                  const money=Math.abs(p.netPerTick)>0.005;
+                  const rl=id=>(RES_LABEL[id]||id).toLowerCase();
+                  const barter=p.give&&p.get?`${rl(p.give)} ⇄ ${rl(p.get)}`:p.give?`gives ${rl(p.give)}`:p.get?`wants ${rl(p.get)}`:"barter";
+                  return(
                   <Fragment key={p.partnerId}>
-                    <span style={{color:p.netPerTick>=0?"#3a7":"#c66"}}>{p.netPerTick>=0?"in":"out"}</span>
+                    <span style={{color:money?(p.netPerTick>=0?"#3a7":"#c66"):"#8a8f9c"}}>{money?(p.netPerTick>=0?"in":"out"):"⇄"}</span>
                     <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                       {p.partner}
+                      {!money&&<span className="au-fade" style={{marginLeft:4,fontSize:9}}>({barter})</span>}
                       {p.foodRole&&<span style={{marginLeft:4,fontSize:9,color:p.foodRole==="selling food"?"#3a7":"#c84"}}>· {p.foodRole}</span>}
                     </span>
-                    <span style={{color:p.netPerTick>=0?"#3a7":"#c44"}}>{p.netPerTick>=0?"+":""}{p.netPerTick.toFixed(2)}</span>
+                    <span style={{color:money?(p.netPerTick>=0?"#3a7":"#c44"):"#8a8f9c"}}>{money?`${p.netPerTick>=0?"+":""}${p.netPerTick.toFixed(2)}`:"barter"}</span>
                   </Fragment>
-                ))}
+                  );
+                })}
               </div>
             </>}
         </>
@@ -6620,8 +6628,8 @@ return(
     <span style={{color:"#ffcd46"}}>● ● ●</span>
     <span>Coins flow toward the buyer's seller</span></div>
   <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
-    Near-closed economy: money is minted only by mining and otherwise
-    circulates by trade — the only leak out is transport freight.
+    The world starts on barter (no coins shown). Money is minted only by
+    mining, then spreads by trade and replaces barter where it reaches.
   </div>
 </div>}
 
