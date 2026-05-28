@@ -5447,22 +5447,26 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     }
     ctx.fill();
     // ── Roads ──
-    // Roads now live in two per-tile arrays — roadQuality (1.0 = no
-    // road, <1.0 = road) and roadUsage (accumulated trade traffic).
-    // We paint each road tile as a small rect, with a "thickness"
-    // (visual intensity) driven by usage so trunk arteries clearly
-    // pop vs new spurs. No per-road stroking, no overlap artifacts.
-    if(psw.roadQuality&&psw.roadUsage){
-      const rq=psw.roadQuality,ru=psw.roadUsage;
+    // Roads live in two per-tile arrays — roadQuality (1.0 = no
+    // road, <1.0 = road) and roadFlow (current trade traffic rate,
+    // a decaying EMA). We paint each road tile as a small rect,
+    // with thickness driven by CURRENT flow so trunk arteries pop
+    // vs. quiet spurs and abandoned routes fade visually as their
+    // traffic falls off.
+    if(psw.roadQuality&&psw.roadFlow){
+      const rq=psw.roadQuality,rf=psw.roadFlow;
+      // Scale: flow=60 (a heavy multi-pair corridor) reads as full
+      // thickness; a quiet single-pair link sits around flow=20.
+      const FLOW_FULL=60;
       for(let ti=0;ti<rq.length;ti++){
         if(rq[ti]>=1.0)continue;
         const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
         const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-        const wear=Math.min(1,(ru[ti]||0)/5000);
-        // 1.4 → 3.0 px for the tile fill — usage thickens trunks.
-        const w=1.4+wear*1.6;
+        const intensity=Math.min(1,(rf[ti]||0)/FLOW_FULL);
+        // 1.4 → 3.0 px for the tile fill — busier = thicker.
+        const w=1.4+intensity*1.6;
         const off=(TR-w)*0.5;
-        const alpha=0.55+wear*0.35;
+        const alpha=0.55+intensity*0.35;
         ctx.fillStyle=`rgba(120,80,40,${alpha.toFixed(2)})`;
         ctx.fillRect(sx+off,sy+off,w,w);
       }

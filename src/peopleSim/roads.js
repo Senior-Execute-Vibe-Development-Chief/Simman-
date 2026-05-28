@@ -5,13 +5,21 @@
 //
 //   world.roadQuality[ti]  — 1.0 = no road, < 1.0 = road quality.
 //                            QUALITY_NEW (0.25) when freshly built,
-//                            falls toward QUALITY_MAX (0.08) with use.
+//                            falls toward QUALITY_MAX (0.08) under
+//                            sustained flow. Monotonically decreases —
+//                            a road never gets worse.
 //                            Read by baseEdgeCost so Dijkstra prefers
 //                            road tiles.
-//   world.roadUsage[ti]    — accumulated trade traffic, drives the
-//                            usage → quality wear function. Also
-//                            used by the renderer to thicken trunk
-//                            arteries.
+//   world.roadFlow[ti]     — current trade traffic rate per tile, a
+//                            decaying EMA-style value. Each active
+//                            trade tick adds USAGE_PER_TRADE; each
+//                            tick the whole field decays by
+//                            FLOW_DECAY so abandoned roads fall
+//                            silent. Drives both the quality
+//                            pave-rate and the renderer's
+//                            trunk-thickness — "busy" means traffic
+//                            NOW, not traffic at any point in
+//                            history.
 //
 // Each alive settlement caches its TRADE REACH — the shortest
 // road-path to every other settlement it can reach through the
@@ -40,10 +48,22 @@ import { computeExportValue, getWealthReserve } from "./settlement.js";
 // ── Constants ──────────────────────────────────────────────────────
 const QUALITY_NEW         = 0.25;       // new road: 4× cheaper than plain
 const QUALITY_MAX         = 0.08;       // worn arterial: 12× cheaper
-const USAGE_FOR_MAX       = 5000;       // ticks of usage to reach max quality
 const PLAN_INTERVAL       = 240;        // ticks between road-planning attempts
 const MIN_POP_TO_PLAN     = 60;
 const MAX_REACH_VISITS    = 8000;       // BFS visit cap for trade-reach computation
+
+// Flow dynamics. roadFlow is added to per trade tick and decayed
+// every tick — equilibrium under sustained single-pair trade is
+// USAGE_PER_TRADE / FLOW_DECAY = 0.04 / 0.002 = 20. Busy trunks
+// with 5+ pairs through the same tile equilibrate near 100.
+const FLOW_DECAY          = 0.002;      // per-tick multiplicative decay (~700-tick half-life)
+const FLOW_FOR_PAVE       = 20;         // sustained flow that fully drives quality progression
+const FLOW_FOR_BUSY       = 60;         // sustained flow that saturates the busy-road bonus
+// Quality improves toward QUALITY_MAX at this rate per tick when
+// flow ≥ FLOW_FOR_PAVE; proportionally slower when flow is lower.
+// At flow=20, it takes ~(QUALITY_NEW-QUALITY_MAX)/0.000034 ≈ 5000
+// ticks to fully pave — matches the historical wear curve.
+const PAVE_RATE           = (QUALITY_NEW - QUALITY_MAX) / 5000;
 
 // Partner-distance reach scales with the BUILDER's population: a
 // 60-pop hamlet can only see ~28 tiles; a 5000-pop city sees ~90;
@@ -95,7 +115,7 @@ const FOOD_PRICE                   = 5;
 const FOOD_TRANSPORT_PER_PATHCOST  = 0.005;
 const STARVING_TICKS_LEFT          = 100;
 const FOOD_IMPORT_EMA_ALPHA        = 0.002;
-const USAGE_PER_TRADE              = 0.04;   // wear per tile per active trade tick
+const USAGE_PER_TRADE              = 0.04;   // flow added per tile per active trade tick
 
 // Tolls — when trade between A and B passes through a third
 // settlement C's home tile, C skims a cut of the trade value.
@@ -111,15 +131,15 @@ const USAGE_PER_TRADE              = 0.04;   // wear per tile per active trade t
 const TOLL_RATE       = 0.05;
 const FOOD_TOLL_RATE  = 0.02;
 
-export { QUALITY_NEW, QUALITY_MAX, USAGE_FOR_MAX };
+export { QUALITY_NEW, QUALITY_MAX, FLOW_FOR_PAVE, FLOW_FOR_BUSY };
 
 // ── State init ─────────────────────────────────────────────────────
 function ensureRoadArrays(world) {
   if (!world.roadQuality || world.roadQuality.length !== world.N) {
     world.roadQuality = new Float32Array(world.N).fill(1.0);
   }
-  if (!world.roadUsage || world.roadUsage.length !== world.N) {
-    world.roadUsage = new Float32Array(world.N);
+  if (!world.roadFlow || world.roadFlow.length !== world.N) {
+    world.roadFlow = new Float32Array(world.N);
   }
 }
 
@@ -482,7 +502,7 @@ function tryAddRoad(world, s) {
 //   1. Food trade — if surplus/deficit complementarity exists
 //   2. General trade — flow money from lower exportValue to higher
 // Both apply the appropriate per-tick transport cost (as a sink)
-// and wear the path tiles by incrementing roadUsage.
+// add to the path tiles' roadFlow.
 export function updateTrade(world) {
   ensureRoadArrays(world);
   // Food import EMA decay (per-settlement) runs every tick.
@@ -490,6 +510,14 @@ export function updateTrade(world) {
     if (s.mode === "settled") {
       s._foodImportRate = (s._foodImportRate || 0) * (1 - FOOD_IMPORT_EMA_ALPHA);
     }
+  }
+  // Decay current flow across all tiles (fast — single linear pass).
+  // Done BEFORE this tick's trade contributions so trades land on a
+  // freshly-decayed field and the equilibrium is well-defined.
+  const rf = world.roadFlow;
+  if (rf) {
+    const keep = 1 - FLOW_DECAY;
+    for (let ti = 0; ti < world.N; ti++) rf[ti] *= keep;
   }
   // Settlement tile lookup, shared across all trade pairs this tick
   // so the toll computation in runFood/GeneralTradeBetween can
@@ -504,22 +532,24 @@ export function updateTrade(world) {
       if (!peer || peer.mode !== "settled") continue;
       runFoodTradeBetween(world, s, peer, link, stMap);
       runGeneralTradeBetween(world, s, peer, link, stMap);
-      // Wear the path tiles.
+      // Add this trade's contribution to current flow on the path.
       if (link.tiles && link.tiles.length > 0) {
-        const ru = world.roadUsage;
-        for (const ti of link.tiles) ru[ti] += USAGE_PER_TRADE;
+        for (const ti of link.tiles) rf[ti] += USAGE_PER_TRADE;
       }
     }
   }
-  // Apply usage → quality update (smoothly, per-tick).
-  // Each tile's quality improves toward QUALITY_MAX with usage.
-  const rq = world.roadQuality, ru = world.roadUsage;
-  if (rq && ru) {
+  // Quality progression: each road tile paves further toward
+  // QUALITY_MAX at a rate proportional to its CURRENT flow,
+  // bounded so a tile at sustained flow=FLOW_FOR_PAVE takes ~5000
+  // ticks to fully pave. Monotonic — quality never rises.
+  const rq = world.roadQuality;
+  if (rq && rf) {
     for (let ti = 0; ti < world.N; ti++) {
       if (rq[ti] >= 1.0) continue;  // not a road tile
-      const t = Math.min(1, ru[ti] / USAGE_FOR_MAX);
-      const target = QUALITY_NEW - t * (QUALITY_NEW - QUALITY_MAX);
-      if (target < rq[ti]) rq[ti] = target;
+      const t = Math.min(1, rf[ti] / FLOW_FOR_PAVE);
+      if (t <= 0) continue;
+      const next = rq[ti] - t * PAVE_RATE;
+      if (next < rq[ti]) rq[ti] = next < QUALITY_MAX ? QUALITY_MAX : next;
     }
   }
 }

@@ -189,31 +189,35 @@ function computeResourceScarcity(world) {
 }
 
 // Bonus from sitting on or beside a heavily-trafficked road. A
-// candidate tile picks up the max roadUsage in a 3×3 box around
+// candidate tile picks up the max roadFlow in a 3×3 box around
 // it (so settlements form at junctions and on busy arteries, not
-// just on the road tile itself). Scales linearly with usage,
-// saturating at USAGE_FOR_BUSY ticks of trade traffic. Tolls in
-// roads.js give these settlements an *economic* reason to exist
-// (passing trade pays them tribute); this bonus speeds up their
-// spawning so the pattern is visible across the sim timescale.
-const USAGE_FOR_BUSY = 5000;
+// just on the road tile itself). Scales linearly with current
+// flow, saturating at FLOW_FOR_BUSY (~3-pair sustained traffic).
+// roadFlow is a decaying EMA, so a route that USED to be busy
+// but has since gone quiet no longer attracts new towns — the
+// "busy" signal reflects traffic happening now, not at any
+// point in history. Tolls in roads.js give these settlements an
+// economic reason to exist (passing trade pays them tribute);
+// this bonus speeds up their spawning so the pattern is visible
+// across the sim timescale.
+const FLOW_FOR_BUSY = 60;
 const BUSY_ROAD_MAX_BONUS = 1.5;
 function busyRoadBonusFor(world, ti, tx, ty) {
-  const ru = world.roadUsage;
-  if (!ru) return 0;
+  const rf = world.roadFlow;
+  if (!rf) return 0;
   const tw = world.tw, th = world.th;
-  let peak = ru[ti] || 0;
+  let peak = rf[ti] || 0;
   for (let dy = -1; dy <= 1; dy++) {
     const ny = ty + dy;
     if (ny < 0 || ny >= th) continue;
     for (let dx = -1; dx <= 1; dx++) {
       const nx = ((tx + dx) % tw + tw) % tw;
-      const u = ru[ny * tw + nx] || 0;
+      const u = rf[ny * tw + nx] || 0;
       if (u > peak) peak = u;
     }
   }
   if (peak <= 0) return 0;
-  return Math.min(BUSY_ROAD_MAX_BONUS, BUSY_ROAD_MAX_BONUS * peak / USAGE_FOR_BUSY);
+  return Math.min(BUSY_ROAD_MAX_BONUS, BUSY_ROAD_MAX_BONUS * peak / FLOW_FOR_BUSY);
 }
 
 // Bonus from on-tile resource deposits. Each resource contributes

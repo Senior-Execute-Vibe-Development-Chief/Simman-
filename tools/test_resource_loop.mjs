@@ -173,17 +173,18 @@ for (let i = 1; i <= TICKS; i++) {
   if (i === checkpoints[cpIdx]) {
     const stats = peopleSimStats(world);
     const access = settlementsWithAccess(world);
-    // Tile-map road metrics: how many tiles are roads, average usage.
-    let numRoadTiles = 0, totalUsage = 0;
+    // Tile-map road metrics: how many tiles are roads, average
+    // CURRENT flow rate (decaying EMA, not lifetime cumulative).
+    let numRoadTiles = 0, totalFlow = 0;
     if (world.roadQuality) {
       for (let ti = 0; ti < world.roadQuality.length; ti++) {
         if (world.roadQuality[ti] < 1.0) {
           numRoadTiles++;
-          totalUsage += world.roadUsage ? (world.roadUsage[ti] || 0) : 0;
+          totalFlow += world.roadFlow ? (world.roadFlow[ti] || 0) : 0;
         }
       }
     }
-    const avgUsage = numRoadTiles > 0 ? (totalUsage / numRoadTiles).toFixed(0) : "0";
+    const avgFlow = numRoadTiles > 0 ? (totalFlow / numRoadTiles).toFixed(1) : "0";
     // Average reach: how many peers can each settlement trade with on average.
     let totalReach = 0, aliveSett = 0;
     for (const s of world.settlements) {
@@ -207,7 +208,7 @@ for (let i = 1; i <= TICKS; i++) {
       }
     }
     console.log(`\n— step ${i} — ${JSON.stringify(stats)}`);
-    console.log(`road-tiles: ${numRoadTiles}  avg-usage: ${avgUsage}  ` +
+    console.log(`road-tiles: ${numRoadTiles}  avg-flow: ${avgFlow}  ` +
                 `avg-reach: ${avgReach}  ` +
                 `totalWealth: $${Math.round(totalWealth).toLocaleString()}  ` +
                 `mineReservesLeft: $${Math.round(reserveLeft).toLocaleString()}`);
