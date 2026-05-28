@@ -16,6 +16,13 @@ const POLITY_INTERVAL  = 150;   // ticks between polity passes
 const SECEDE_GRACE     = 500;   // ticks of sustained over-extension before a member secedes
 const OVERSTRETCH      = 0.07;  // each extra member shrinks the empire's hold radius (admin limits)
 const TRIBUTE_FRACTION = 0.06;  // share of a member's wealth sent to the capital each pass
+// Naval administration: a maritime capital (a port with navigation) can
+// govern distant overseas members (also ports) far beyond its land hold
+// range — the sea is its highway, not a barrier. This is what lets a
+// colonial empire span the ocean for a long age before overstretch finally
+// fragments it. Effective distance to a fellow port is divided by
+// (1 + navigation × NAVAL_REACH).
+const NAVAL_REACH      = 2.2;
 // Base hold range (tiles) from the capital's reach techs — how far it can
 // administer. Grows with organization/mobility/navigation; then SHRINKS
 // with empire size (overstretch), so big empires can't hold their
@@ -69,10 +76,16 @@ export function updatePolities(world) {
     // can't administer its edges, so distant provinces fall away.
     const hold = c.range / (1 + OVERSTRETCH * (c.members.length - 1));
 
+    // Naval administration: if the capital is a port with navigation, its
+    // effective reach to fellow ports (overseas colonies) is hugely
+    // extended — the sea is the empire's highway.
+    const capNav = c.capital._isPort ? (c.capital.knowledge.navigation || 0) : 0;
+
     // ── Secession (sticky): break away after sustained over-extension ──
     for (const s of c.members) {
       if (s.id === c.capitalId) { s._disloyalSince = undefined; continue; }
-      const d = dist(world, c.capital.pos.x, c.capital.pos.y, s.pos.x, s.pos.y);
+      let d = dist(world, c.capital.pos.x, c.capital.pos.y, s.pos.x, s.pos.y);
+      if (capNav > 0 && s._isPort) d /= (1 + capNav * NAVAL_REACH);
       if (d > hold) {
         if (s._disloyalSince === undefined) s._disloyalSince = world.step;
         if (world.step - s._disloyalSince >= SECEDE_GRACE) {

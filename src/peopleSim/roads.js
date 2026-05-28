@@ -623,8 +623,12 @@ export function updateTrade(world) {
   const moneyFlows = [];
   const linkMoney = new Map();   // "loId:hiId" -> net money that reached the higher-id settlement
   for (const s of world.settlements) {
-    if (s.mode !== "settled" || !s._tradeReach) continue;
-    for (const [peerId, link] of s._tradeReach) {
+    if (s.mode !== "settled") continue;
+    // Trade peers = the road network reach PLUS any sea-lane peers
+    // (sea.js). Where both exist for a peer, take the cheaper link.
+    const reach = mergeReach(s);
+    if (!reach) continue;
+    for (const [peerId, link] of reach) {
       if (peerId <= s.id) continue;   // process each pair once
       const peer = findById(world, peerId);
       if (!peer || peer.mode !== "settled") continue;
@@ -633,11 +637,12 @@ export function updateTrade(world) {
       runGeneralTradeBetween(world, s, peer, link, stMap);
       const net = (peer.wealth || 0) - peerBefore;   // +ve = money toward peer (higher id, end of tiles)
       linkMoney.set(s.id + ":" + peerId, net);
-      // Add this trade's contribution to current flow on the path.
+      // Land trade wears its road path (flow drives paving + thickness);
+      // sea trade leaves no road, but both animate on the money overlay.
       if (link.tiles && link.tiles.length > 0) {
-        for (const ti of link.tiles) { rf[ti] += USAGE_PER_TRADE; flowTiles.add(ti); }
+        if (!link.sea) { for (const ti of link.tiles) { rf[ti] += USAGE_PER_TRADE; flowTiles.add(ti); } }
         if (link.tiles.length > 1 && Math.abs(net) > MONEY_FLOW_EPS) {
-          moneyFlows.push({ tiles: link.tiles, mag: Math.abs(net), toEnd: net >= 0 });
+          moneyFlows.push({ tiles: link.tiles, mag: Math.abs(net), toEnd: net >= 0, sea: !!link.sea });
         }
       }
     }
@@ -810,6 +815,22 @@ function sellGoods(seller, buyer, goodsValue, freight, intermediates, numInter) 
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
+// Combined trade reach for a settlement: its road-network peers plus any
+// sea-lane peers (sea.js, on s._seaReach). Returns the road map directly
+// when there's no sea reach (the common case — only ports sail), so we
+// only allocate a merged map for actual ports.
+function mergeReach(s) {
+  const road = s._tradeReach, sea = s._seaReach;
+  if (!sea || sea.size === 0) return road;
+  if (!road || road.size === 0) return sea;
+  const m = new Map(road);
+  for (const [pid, link] of sea) {
+    const ex = m.get(pid);
+    if (!ex || link.cost < ex.cost) m.set(pid, link);
+  }
+  return m;
+}
+
 // O(1) id lookup via the per-tick map built in stepPeopleSim. Falls
 // back to building it on demand (e.g. when called from the UI between
 // ticks).

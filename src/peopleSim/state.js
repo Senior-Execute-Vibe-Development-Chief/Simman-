@@ -5,6 +5,7 @@
 
 import { mkRng } from "./rng.js";
 import { resetSettlementIds, makeSettlement } from "./settlement.js";
+import { resetShipIds } from "./sea.js";
 
 const TILE_RES = 2;
 
@@ -59,6 +60,7 @@ export function createWorld(w, opts = {}) {
     // Entities. No bands — settlements-only model.
     settlements: [],
     armies: [],                  // marching field armies (armies.js)
+    ships: [],                   // colony ships in transit (sea.js)
 
     step: 0,
     seed: opts.seed || w.seed || 1,
@@ -70,6 +72,7 @@ export function createWorld(w, opts = {}) {
   initTerrain(world, w, opts.tCrop);
   initRiverMag(world, w);
   initDeposits(world, w, opts.deposits);
+  resetShipIds();
   seedCradleVillage(world);
   return world;
 }

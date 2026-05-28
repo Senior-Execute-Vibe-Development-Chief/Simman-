@@ -45,6 +45,13 @@ const MIN_SETT_DIST             = 12;
 const MIN_SETT_DIST_SQ          = MIN_SETT_DIST * MIN_SETT_DIST;
 const KNOWLEDGE_DECAY_SCALE     = 30;
 const INDEPENDENT_RATE          = 0.060;
+// Spontaneous invention ACROSS OPEN WATER (no land path to any existing
+// settlement → transportDist is Infinity) is far rarer: separate landmasses
+// are reached by COLONISATION (sea.js), not magically populated. A small
+// non-zero rate keeps the door open for the occasional independent overseas
+// genesis (the Mesoamerica/Andes pattern) without letting empty continents
+// fill before colonists can sail to them.
+const OVERSEAS_INDEPENDENT_RATE = 0.004;
 const NEAR_RATE                 = 1.50;
 const BASE_RATE                 = 0.010;
 
@@ -135,10 +142,14 @@ export function maybeCrystallize(world) {
     quality += resourceBonusFor(world, ti, resScarcity);
     quality += busyRoadBonusFor(world, ti, tx, ty);
 
-    // Transport-distance modifier. tdist=Infinity → independent only.
+    // Transport-distance modifier. Finite td → diffusion from the land
+    // network plus the normal independent floor. Infinite td (across water,
+    // unreachable by land) → only the much smaller overseas-invention rate,
+    // so other landmasses wait to be colonised rather than self-populating.
     const td = transportDist[ti];
     const diffusionMul = isFinite(td) ? Math.exp(-td / KNOWLEDGE_DECAY_SCALE) * NEAR_RATE : 0;
-    const p = quality * (diffusionMul + INDEPENDENT_RATE) * BASE_RATE;
+    const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
+    const p = quality * (diffusionMul + independent) * BASE_RATE;
 
     if (rng() < p) {
       // Inherited knowledge: blend from nearest settlement, weighted by

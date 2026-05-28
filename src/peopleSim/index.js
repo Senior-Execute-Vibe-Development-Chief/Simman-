@@ -15,6 +15,7 @@ import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
 import { updatePolities, POLITY_INTERVAL } from "./conquest.js";
 import { musterArmies, moveArmies, MUSTER_INTERVAL } from "./armies.js";
+import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
 
 const TERRITORY_INTERVAL = 96;   // ticks between full territory recomputes
 
@@ -62,6 +63,10 @@ export function stepPeopleSim(world, n = 1) {
     // campaigns periodically. Captured settlements flip country.
     moveArmies(world);
     if (world.step % MUSTER_INTERVAL === 0) musterArmies(world);
+    // Maritime: colony ships sail every tick; the port→port sea-lane graph
+    // (sea trade peers) and overseas colonisation are rebuilt periodically.
+    moveShips(world);
+    if (world.step % SEA_INTERVAL === 0) updateSea(world);
     // Polities: group settlements into countries, tribute, and let
     // over-extended members secede.
     if (world.step % POLITY_INTERVAL === 0) updatePolities(world);

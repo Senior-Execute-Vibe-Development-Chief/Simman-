@@ -5705,6 +5705,50 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
     }
   }
+  // ── Sea lanes ── faint dashed routes over open water connecting the
+  // ports that trade by ship (sea.js). Drawn in every view except the
+  // land-roads view, beneath the moving ships and armies.
+  if(psw&&ctx&&!vmRoads&&psw._seaLanes&&psw._seaLanes.length){
+    const TR=psw.tileRes,tw=psw.tw;
+    ctx.save();
+    ctx.strokeStyle="rgba(90,175,225,0.28)";
+    ctx.lineWidth=0.8;
+    ctx.setLineDash([3,3]);
+    for(const lane of psw._seaLanes){
+      const pts=lane.tiles;if(!pts||pts.length<2)continue;
+      let started=false,px=0;
+      for(let k=0;k<pts.length;k++){
+        const ti=pts[k],ty=(ti/tw)|0,tx=ti-ty*tw;
+        const X=(tx+0.5)*TR,Y=dataYtoScreenY((ty+0.5)*TR,H,CH);
+        if(started&&Math.abs(X-px)>CW*0.5){ctx.stroke();started=false;}
+        if(!started){ctx.beginPath();ctx.moveTo(X,Y);started=true;}else ctx.lineTo(X,Y);
+        px=X;
+      }
+      if(started)ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // ── Colony ships ── diamonds in the founding country's colour sailing
+  // toward the shore they'll settle, with a faint line to that
+  // destination. Drawn in every view (like armies).
+  if(psw&&ctx&&psw.ships&&psw.ships.length){
+    const TR=psw.tileRes,tw=psw.tw;
+    for(const sh of psw.ships){
+      const sxp=sh.x*TR,syp=dataYtoScreenY(sh.y*TR,H,CH);
+      const lt=sh.landTi,ly=(lt/tw)|0,lx=lt-ly*tw;
+      const dxs=(lx+0.5)*TR,dys=dataYtoScreenY((ly+0.5)*TR,H,CH);
+      if(Math.abs(dxs-sxp)<CW*0.5){
+        ctx.strokeStyle="rgba(60,150,210,0.55)";ctx.lineWidth=0.7;
+        ctx.beginPath();ctx.moveTo(sxp,syp);ctx.lineTo(dxs,dys);ctx.stroke();
+      }
+      const hue=((sh.countryId*61)%360+360)%360;
+      ctx.save();ctx.translate(sxp,syp);ctx.rotate(Math.PI/4);
+      ctx.fillStyle=`hsl(${hue},75%,55%)`;
+      ctx.fillRect(-2.6,-2.6,5.2,5.2);
+      ctx.lineWidth=1;ctx.strokeStyle="rgba(0,20,40,0.9)";ctx.strokeRect(-2.6,-2.6,5.2,5.2);
+      ctx.restore();
+    }
+  }
   // ── Marching armies ── dots moving toward the settlement they're
   // invading, coloured by country, with a faint line to the target.
   if(psw&&ctx&&psw.armies&&psw.armies.length){
@@ -6199,6 +6243,26 @@ return(
           <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
             <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0}}/>
             <span className="au-fade" style={{textTransform:"capitalize"}}>{label}</span>
+          </div>
+        );
+      })()}
+
+      {/* ── Maritime (ports / sea trade / colonies) ── */}
+      {(()=>{
+        const isPort=!!s._isPort;
+        const seaPeers=s._seaReach?s._seaReach.size:0;
+        const sent=s.history?s.history.filter(h=>h.type==="colony-launched").length:0;
+        const isColony=s.history?s.history.some(h=>h.type==="colony-founded"):false;
+        if(!isPort&&seaPeers===0&&sent===0&&!isColony)return null;
+        const bits=[];
+        if(isPort)bits.push("port");
+        if(seaPeers>0)bits.push(`${seaPeers} sea route${seaPeers>1?"s":""}`);
+        if(sent>0)bits.push(`${sent} colon${sent>1?"ies":"y"} sent`);
+        if(isColony)bits.push("founded as a colony");
+        return(
+          <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+            <span style={{width:9,height:9,borderRadius:2,background:"hsl(205,60%,52%)",flexShrink:0}}/>
+            <span className="au-fade" style={{textTransform:"capitalize"}}>{bits.join(" · ")}</span>
           </div>
         );
       })()}
