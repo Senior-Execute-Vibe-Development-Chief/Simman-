@@ -13,12 +13,14 @@
 // re-taken, making the borders flicker.
 
 const POLITY_INTERVAL  = 150;   // ticks between polity passes
-const SECEDE_FACTOR    = 1.4;   // a member beyond capital range × this is "over-extended"
-const SECEDE_GRACE     = 600;   // ticks of sustained over-extension before it actually secedes
+const SECEDE_GRACE     = 500;   // ticks of sustained over-extension before a member secedes
+const OVERSTRETCH      = 0.07;  // each extra member shrinks the empire's hold radius (admin limits)
 const TRIBUTE_FRACTION = 0.06;  // share of a member's wealth sent to the capital each pass
-// Hold range (tiles) from the capital's reach techs — how far an empire
-// can administer. Grows with organization/mobility/navigation.
-const RANGE_BASE = 12, RANGE_ORG = 26, RANGE_MOB = 16, RANGE_NAV = 10;
+// Base hold range (tiles) from the capital's reach techs — how far it can
+// administer. Grows with organization/mobility/navigation; then SHRINKS
+// with empire size (overstretch), so big empires can't hold their
+// periphery and fragment into successor states.
+const RANGE_BASE = 8, RANGE_ORG = 16, RANGE_MOB = 10, RANGE_NAV = 6;
 
 export { POLITY_INTERVAL };
 
@@ -63,12 +65,15 @@ export function updatePolities(world) {
 
   for (const c of countries.values()) {
     if (c.members.length <= 1) continue;
+    // Effective hold radius shrinks as the empire grows: a sprawling realm
+    // can't administer its edges, so distant provinces fall away.
+    const hold = c.range / (1 + OVERSTRETCH * (c.members.length - 1));
 
     // ── Secession (sticky): break away after sustained over-extension ──
     for (const s of c.members) {
       if (s.id === c.capitalId) { s._disloyalSince = undefined; continue; }
       const d = dist(world, c.capital.pos.x, c.capital.pos.y, s.pos.x, s.pos.y);
-      if (d > c.range * SECEDE_FACTOR) {
+      if (d > hold) {
         if (s._disloyalSince === undefined) s._disloyalSince = world.step;
         if (world.step - s._disloyalSince >= SECEDE_GRACE) {
           s.countryId = s.id;
