@@ -11,7 +11,7 @@
 import { createWorld, pruneDead } from "./state.js";
 import { updateSettlement } from "./settlement.js";
 import { maybeCrystallize } from "./crystallize.js";
-import { maybeBuildRoads, updateTrade, updateFoodTrade, maybeRebuildRoadQuality, rebuildRoadTileQuality } from "./roads.js";
+import { maybeBuildRoads, updateTrade } from "./roads.js";
 
 export function initPeopleSim(worldGen, opts = {}) {
   return createWorld(worldGen, opts);
@@ -21,20 +21,24 @@ export function stepPeopleSim(world, n = 1) {
   for (let s = 0; s < n; s++) {
     const t0 = performance.now();
     world.step++;
+    // Fast id → settlement lookup, rebuilt each tick. Replaces the
+    // O(n) linear scans the trade / knowledge passes would otherwise
+    // do per peer (effectiveLocalRes, findById, ...).
+    world._byId = new Map();
+    for (let i = 0; i < world.settlements.length; i++) {
+      world._byId.set(world.settlements[i].id, world.settlements[i]);
+    }
     for (let i = 0; i < world.settlements.length; i++) {
       updateSettlement(world, world.settlements[i]);
     }
     // New settlements crystallise spontaneously at fertile sites,
     // weighted by transport distance to existing ones.
     maybeCrystallize(world);
-    // Roads: settlements with unmet resource needs and enough
-    // wealth build trade roads to partners. Then trade flows money
-    // along existing roads — zero-sum transfer from buyer to seller.
+    // Roads: settlements build trade roads to partners, then trade
+    // flows money along the network. updateTrade runs food trade
+    // first within each pair, so a starving importer's wealth goes
+    // to grain (and can dip into its reserve) before luxuries.
     maybeBuildRoads(world);
-    maybeRebuildRoadQuality(world);
-    // Food trade runs FIRST — it has priority on importer wealth
-    // and can dip into the reserve when the importer is starving.
-    updateFoodTrade(world);
     updateTrade(world);
     if (world.step % 32 === 0) pruneDead(world);
     if (world.step % 256 === 0) checkFarmlandOwnership(world);

@@ -51,6 +51,18 @@ const QUALITY_MAX         = 0.08;       // worn arterial: 12× cheaper
 const PLAN_INTERVAL       = 240;        // ticks between road-planning attempts
 const MIN_POP_TO_PLAN     = 60;
 const MAX_REACH_VISITS    = 8000;       // BFS visit cap for trade-reach computation
+// Caps on full-path A* evaluations per settlement per plan cycle.
+// Candidates are ranked by (cheap) trade benefit first; only this many
+// get a real path computed, so the cost is bounded regardless of how
+// many peers fall within a big city's partner reach. Split by kind:
+//   • NEW    — peers NOT yet in the trade network (genuine new bridges,
+//              the builds that matter); pathed generously.
+//   • SHORTCUT — peers already reachable via the network (we only path
+//              them to look for a meaningfully-shorter direct line).
+//              Tightly capped: on a stable, fully-connected network this
+//              is the only work left, and it's almost always fruitless.
+const MAX_NEW_EVALS       = 6;
+const MAX_SHORTCUT_EVALS  = 2;
 
 // Flow dynamics. roadFlow gains USAGE_PER_TRADE per active trade
 // per tile each tick, decays multiplicatively the rest of the time.
@@ -67,6 +79,24 @@ const FLOW_FOR_BUSY       = 50;         // sustained flow that saturates the bus
 // At flow=FLOW_FOR_PAVE sustained, takes ~5000 ticks to fully pave
 // — matches the historical wear curve.
 const PAVE_RATE           = (QUALITY_NEW - QUALITY_MAX) / 5000;
+
+// Road abandonment. A road carrying essentially no traffic
+// (flow < ROAD_ABANDON_FLOW — below even a single sustained trade
+// pair, whose equilibrium flow is ~2) is no longer maintained and
+// its surface decays back toward bare terrain (quality → 1.0) at
+// ROAD_DECAY_RATE per tick (~5000 ticks to fully revert). Once it
+// crosses ROAD_GONE it's dropped from the road set entirely, so
+// Dijkstra / network-component passes stop walking it and the
+// network shrinks instead of accreting dead trunks forever. This
+// both restores realism (unmaintained roads crumble) and bounds the
+// road-tile count that every routing pass has to traverse.
+const ROAD_ABANDON_FLOW   = 0.2;
+const ROAD_DECAY_RATE     = (1.0 - QUALITY_NEW) / 5000;
+const ROAD_GONE           = 0.999;
+// Flow below this is treated as zero (tile drops out of the active
+// flow set so the per-tick decay sweep stays proportional to live
+// traffic, not world size).
+const FLOW_EPS            = 0.001;
 
 // Partner-distance reach scales with the BUILDER's population: a
 // 60-pop hamlet can only see ~28 tiles; a 5000-pop city sees ~90;
@@ -96,9 +126,9 @@ const SHORTCUT_GAIN_RATIO = 0.85;       // new direct path must save ≥ 15% vs 
 // neighbours whether or not they have anything to trade. Without
 // this, two hamlets 22 tiles apart get routed 80 tiles round a
 // worn trunk because the worn arterial is "cheaper" than a fresh
-// terrain crossing. Threshold sits just above MIN_SETT_DIST (18)
+// terrain crossing. Threshold sits just above MIN_SETT_DIST (12)
 // so the closest possible pairs always qualify.
-const CLOSE_NEIGHBOUR_DIST    = 28;
+const CLOSE_NEIGHBOUR_DIST    = 20;
 const CLOSE_NEIGHBOUR_DIST_SQ = CLOSE_NEIGHBOUR_DIST * CLOSE_NEIGHBOUR_DIST;
 const MIN_POP_TO_LINK         = 30;     // lower bar than road planning
 
@@ -140,10 +170,36 @@ export { QUALITY_NEW, QUALITY_MAX, FLOW_FOR_PAVE, FLOW_FOR_BUSY };
 function ensureRoadArrays(world) {
   if (!world.roadQuality || world.roadQuality.length !== world.N) {
     world.roadQuality = new Float32Array(world.N).fill(1.0);
+    world._roadTiles = new Set();
   }
   if (!world.roadFlow || world.roadFlow.length !== world.N) {
     world.roadFlow = new Float32Array(world.N);
+    world._flowTiles = new Set();
   }
+  // Sparse indices: tiles that are roads (quality < 1.0) and tiles that
+  // currently carry flow. The per-tick decay / paving sweeps iterate
+  // these instead of all N tiles, so their cost scales with the live
+  // network (hundreds of tiles) rather than the whole map (N ~ 460k in
+  // the real sim). Rebuild from roadQuality if it exists but the index
+  // doesn't (e.g. after a state load that set the array directly).
+  if (!world._roadTiles) {
+    world._roadTiles = new Set();
+    const rq = world.roadQuality;
+    for (let ti = 0; ti < rq.length; ti++) if (rq[ti] < 1.0) world._roadTiles.add(ti);
+  }
+  if (!world._flowTiles) world._flowTiles = new Set();
+}
+
+// Paint a single tile as a fresh road, keeping the sparse road-tile
+// index in sync. Takes min so an existing worn road isn't downgraded.
+// Returns true if the tile actually changed.
+function paintRoad(world, ti) {
+  if (QUALITY_NEW < world.roadQuality[ti]) {
+    world.roadQuality[ti] = QUALITY_NEW;
+    world._roadTiles.add(ti);
+    return true;
+  }
+  return false;
 }
 
 // Map: settlementId → its home tile index. Inverse lookup tile → settlement.
@@ -176,10 +232,11 @@ export function buildNetworkComponents(world) {
     if (visited[start]) continue;
     const root = s.id;
     const q = [start];
+    let head = 0;                       // index-based dequeue (q.shift is O(n))
     visited[start] = 1;
     tileComp.set(start, root);
-    while (q.length) {
-      const ti = q.shift();
+    while (head < q.length) {
+      const ti = q[head++];
       const peer = stMap.get(ti);
       if (peer && peer.id !== s.id) out.set(peer.id, root);
       const ty = (ti / tw) | 0, tx = ti - ty * tw;
@@ -318,9 +375,14 @@ export function maybeBuildRoads(world) {
   for (const s of candidates) {
     if (tryAddRoad(world, s)) {
       anyBuilt = true;
-      // Rebuild incrementally so later candidates in this cycle
-      // see the road we just added.
-      rebuildTradeReach(world);
+      // Refresh ONLY the network components after each build — that's
+      // a cheap BFS and keeps the cross-component / junction-truncation
+      // decisions of later candidates correct. The expensive per-
+      // settlement trade-reach Dijkstra is NOT rebuilt here (it was the
+      // dominant cost of a plan tick — O(builds × settlements × reach));
+      // it's deferred to a single rebuild at the end of the cycle.
+      // Within-cycle reach is therefore slightly stale, which at worst
+      // adds a redundant shortcut the next cycle's fresh reach prunes.
       world._networkComponents = buildNetworkComponents(world);
     }
   }
@@ -328,8 +390,9 @@ export function maybeBuildRoads(world) {
   // path. Runs AFTER economic road planning so trunk lines win
   // the planner's attention first; this pass only fills in the
   // missing village-to-village links.
-  if (maybeBuildLocalLinks(world)) {
-    anyBuilt = true;
+  if (maybeBuildLocalLinks(world)) anyBuilt = true;
+  // Single trade-reach rebuild for the whole cycle.
+  if (anyBuilt) {
     rebuildTradeReach(world);
     world._networkComponents = buildNetworkComponents(world);
   }
@@ -345,7 +408,6 @@ function maybeBuildLocalLinks(world) {
   const candidates = world.settlements.filter(
     s => s.mode === "settled" && s.people >= MIN_POP_TO_LINK
   );
-  const rq = world.roadQuality;
   let anyBuilt = false;
   for (const s of candidates) {
     for (const peer of candidates) {
@@ -358,7 +420,7 @@ function maybeBuildLocalLinks(world) {
       if (!path) continue;
       let didChange = false;
       for (const ti of path.tiles) {
-        if (QUALITY_NEW < rq[ti]) { rq[ti] = QUALITY_NEW; didChange = true; }
+        if (paintRoad(world, ti)) didChange = true;
       }
       if (didChange) {
         anyBuilt = true;
@@ -398,7 +460,13 @@ function tryAddRoad(world, s) {
 
   const reach = partnerReachFor(s);
   const reachSq = reach * reach;
-  let bestPartner = null, bestScore = -Infinity, bestPath = null, bestNewFrac = 0;
+
+  // ── Pass 1: rank in-reach peers by trade benefit, WITHOUT pathing ──
+  // findPath is a full terrain Dijkstra (the expensive primitive); doing
+  // it for every in-reach peer was the dominant cost of a plan tick.
+  // Score peers cheaply on benefit first, then only path the most
+  // promising few.
+  const ranked = [];
   for (const peer of world.settlements) {
     if (peer.mode !== "settled" || peer.id === s.id) continue;
     let dx = Math.abs(peer.pos.x - s.pos.x);
@@ -407,33 +475,48 @@ function tryAddRoad(world, s) {
     const peerDistSq = dx * dx + dy * dy;
     if (peerDistSq > reachSq) continue;
 
-    // Resource gain from connecting to this peer.
     const peerRes = peer.localRes || {};
     let resGain = 0;
     for (const n of missing) {
       if ((peerRes[n] || 0) >= HAVE_THRESHOLD) resGain += 1;
     }
-    // Export-value gap.
     const peerExport = computeExportValue(peer);
     const exGap = Math.abs(sExport - peerExport);
-    // Food complementarity.
     const peerFood = (peer._foodSupply || 0) - (peer._foodDemand || 0);
     let foodGain = 0;
     if ((sFood < -0.01 && peerFood > 0.01) ||
         (sFood > 0.01 && peerFood < -0.01)) {
       foodGain = Math.min(Math.abs(sFood), Math.abs(peerFood));
     }
-    // Always evaluate the path — early-game settlements have similar
-    // export profiles, so a hard eligibility gate here would prevent
-    // initial network formation entirely. The score-multiplier
-    // below still favours genuinely-useful partners.
+    const benefit = resGain * 2 + exGap + foodGain * 10;
+    ranked.push({ peer, benefit, distSq: peerDistSq });
+  }
+  // Best benefit first; ties broken toward the nearer (cheaper) peer.
+  ranked.sort((p, q) => (q.benefit - p.benefit) || (p.distSq - q.distSq));
+
+  // ── Pass 2: path only the top candidates, pick the best buildable ──
+  // Two budgets: bridges to unconnected peers (the valuable builds) get
+  // most of it; shortcut probes against already-connected peers get a
+  // tight cap so a stable network doesn't re-path every peer every cycle.
+  const rq = world.roadQuality;
+  let bestPartner = null, bestScore = -Infinity, bestPath = null, bestNewFrac = 0;
+  let newEvals = 0, shortcutEvals = 0;
+  for (const cand of ranked) {
+    if (newEvals >= MAX_NEW_EVALS && shortcutEvals >= MAX_SHORTCUT_EVALS) break;
+    const peer = cand.peer;
+    const connected = !!(s._tradeReach && s._tradeReach.has(peer.id));
+    if (connected) {
+      if (shortcutEvals >= MAX_SHORTCUT_EVALS) continue;
+    } else {
+      if (newEvals >= MAX_NEW_EVALS) continue;
+    }
     const path = findPath(world, s, peer);
+    if (connected) shortcutEvals++; else newEvals++;   // count cost even if null
     if (!path) continue;
 
     // New-tile fraction: how much of the path is NOT yet on a
     // road. Lower bar to bridge disconnected clusters; higher
     // bar to add a shortcut within an existing network.
-    const rq = world.roadQuality;
     let newTiles = 0;
     for (const ti of path.tiles) if (rq[ti] >= 1.0) newTiles++;
     const newFrac = path.tiles.length > 0 ? newTiles / path.tiles.length : 0;
@@ -454,8 +537,7 @@ function tryAddRoad(world, s) {
     // themselves (in road labour, not money, but the principle
     // stands: poor settlements build modestly).
     const wealthEagerness = Math.min(2.0, 1 + Math.log10(Math.max(1, s.wealth || 0)) / 6);
-    const benefit = resGain * 2 + exGap + foodGain * 10;
-    const score = benefit / Math.max(1, path.cost)
+    const score = cand.benefit / Math.max(1, path.cost)
                 * (path.tiles.length > 3 ? 1 : 0.5)
                 * wealthEagerness
                 * newFrac;
@@ -484,10 +566,9 @@ function tryAddRoad(world, s) {
   // an existing worn road). If nothing actually changed (path is
   // entirely on existing roads), report no build — otherwise we
   // re-run reach + components every cycle on a stable network.
-  const rq = world.roadQuality;
   let didChange = false;
   for (const ti of physicalTiles) {
-    if (QUALITY_NEW < rq[ti]) { rq[ti] = QUALITY_NEW; didChange = true; }
+    if (paintRoad(world, ti)) didChange = true;
   }
   if (!didChange) return false;
   if (s.history) s.history.push({
@@ -514,13 +595,20 @@ export function updateTrade(world) {
       s._foodImportRate = (s._foodImportRate || 0) * (1 - FOOD_IMPORT_EMA_ALPHA);
     }
   }
-  // Decay current flow across all tiles (fast — single linear pass).
-  // Done BEFORE this tick's trade contributions so trades land on a
-  // freshly-decayed field and the equilibrium is well-defined.
+  // Decay current flow over the active-flow set only (proportional to
+  // live traffic, not world size). Done BEFORE this tick's trade
+  // contributions so trades land on a freshly-decayed field and the
+  // equilibrium is well-defined. Tiles whose flow falls below FLOW_EPS
+  // drop out of the set.
   const rf = world.roadFlow;
-  if (rf) {
+  const flowTiles = world._flowTiles;
+  if (rf && flowTiles) {
     const keep = 1 - FLOW_DECAY;
-    for (let ti = 0; ti < world.N; ti++) rf[ti] *= keep;
+    for (const ti of flowTiles) {
+      const v = rf[ti] * keep;
+      if (v < FLOW_EPS) { rf[ti] = 0; flowTiles.delete(ti); }
+      else rf[ti] = v;
+    }
   }
   // Settlement tile lookup, shared across all trade pairs this tick
   // so the toll computation in runFood/GeneralTradeBetween can
@@ -537,23 +625,34 @@ export function updateTrade(world) {
       runGeneralTradeBetween(world, s, peer, link, stMap);
       // Add this trade's contribution to current flow on the path.
       if (link.tiles && link.tiles.length > 0) {
-        for (const ti of link.tiles) rf[ti] += USAGE_PER_TRADE;
+        for (const ti of link.tiles) { rf[ti] += USAGE_PER_TRADE; flowTiles.add(ti); }
       }
     }
   }
-  // Quality progression: each road tile paves further toward
-  // QUALITY_MAX at a rate proportional to its CURRENT flow,
-  // bounded so a tile at sustained flow=FLOW_FOR_PAVE takes ~5000
-  // ticks to fully pave. Monotonic — quality never rises.
+  // Quality evolution over the road set only:
+  //   • busy tiles (flow ≥ ROAD_ABANDON_FLOW) pave further toward
+  //     QUALITY_MAX, faster the higher the flow (capped at FLOW_FOR_PAVE,
+  //     ~5000 ticks to fully pave).
+  //   • abandoned tiles (flow below that floor) revert toward bare
+  //     terrain and, once past ROAD_GONE, leave the road set so routing
+  //     and component passes stop treating them as roads.
   const rq = world.roadQuality;
-  if (rq && rf) {
-    for (let ti = 0; ti < world.N; ti++) {
-      if (rq[ti] >= 1.0) continue;  // not a road tile
-      const t = Math.min(1, rf[ti] / FLOW_FOR_PAVE);
-      if (t <= 0) continue;
-      const next = rq[ti] - t * PAVE_RATE;
-      if (next < rq[ti]) rq[ti] = next < QUALITY_MAX ? QUALITY_MAX : next;
+  const roadTiles = world._roadTiles;
+  if (rq && rf && roadTiles) {
+    const gone = [];
+    for (const ti of roadTiles) {
+      const flow = rf[ti] || 0;
+      if (flow >= ROAD_ABANDON_FLOW) {
+        const t = Math.min(1, flow / FLOW_FOR_PAVE);
+        const next = rq[ti] - t * PAVE_RATE;
+        if (next < rq[ti]) rq[ti] = next < QUALITY_MAX ? QUALITY_MAX : next;
+      } else {
+        const next = rq[ti] + ROAD_DECAY_RATE;
+        if (next >= ROAD_GONE) { rq[ti] = 1.0; gone.push(ti); }
+        else rq[ti] = next;
+      }
     }
+    for (const ti of gone) roadTiles.delete(ti);
   }
 }
 
@@ -633,6 +732,12 @@ function runGeneralTradeBetween(world, a, b, link, stMap) {
   const intermediates = intermediatesOnPath(link, a.id, b.id, stMap);
   const numInter = intermediates ? intermediates.length : 0;
   const totalToll = tradeValue * TOLL_RATE * numInter;
+  // Profitability gate: no one ships goods worth less than the freight
+  // + tolls to move them. Without this, near-equal-export pairs traded
+  // every tick at a guaranteed loss, bleeding the buyer's wealth into
+  // the transport sink for ~zero goods. (Food trade has no such gate —
+  // survival justifies paying any freight.)
+  if (tradeValue <= transport + totalToll) return;
   const want = tradeValue + transport + totalToll;
   if (want <= 0) return;
   const buyer = diff > 0 ? b : a;
@@ -654,11 +759,15 @@ function runGeneralTradeBetween(world, a, b, link, stMap) {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
+// O(1) id lookup via the per-tick map built in stepPeopleSim. Falls
+// back to building it on demand (e.g. when called from the UI between
+// ticks).
 function findById(world, id) {
-  for (let i = 0; i < world.settlements.length; i++) {
-    if (world.settlements[i].id === id) return world.settlements[i];
+  if (!world._byId) {
+    world._byId = new Map();
+    for (const s of world.settlements) world._byId.set(s.id, s);
   }
-  return null;
+  return world._byId.get(id) || null;
 }
 
 // Bounded Dijkstra from s to t (full terrain Dijkstra including
@@ -774,8 +883,3 @@ class MinHeap {
     return { ti, d };
   }
 }
-
-// Compatibility shims so callers using old function names still work.
-export function updateFoodTrade() { /* merged into updateTrade */ }
-export function maybeRebuildRoadQuality() { /* tile quality now updates per-tick in updateTrade */ }
-export function rebuildRoadTileQuality(world) { ensureRoadArrays(world); }

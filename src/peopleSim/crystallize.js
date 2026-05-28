@@ -36,7 +36,12 @@ const CANDIDATES_PER_SWEEP      = 120;    // wider net per sweep (was 80)
 // capacity (K ∝ farmland × fert) keeps marginal hamlets small.
 const MIN_FERT                  = 0.03;   // basically "is there any soil?"
 const MIN_AREA_FERT             = 1.0;    // 5×5 box must have *some* support
-const MIN_SETT_DIST             = 18;
+// Tighter spacing → a lush continent fills with a denser web of
+// smaller settlements rather than a handful of ever-growing
+// metropolises. Farmland contention (_farmedBy) between close
+// neighbours keeps each one's footprint — and so its carrying
+// capacity — modest.
+const MIN_SETT_DIST             = 12;
 const MIN_SETT_DIST_SQ          = MIN_SETT_DIST * MIN_SETT_DIST;
 const KNOWLEDGE_DECAY_SCALE     = 30;
 const INDEPENDENT_RATE          = 0.060;

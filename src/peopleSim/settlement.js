@@ -86,7 +86,9 @@ export function makeSettlement(world, x, y, opts = {}) {
     parentSettlementId: opts.parentId ?? -1,
     name: opts.name || `settlement-${_nextId - 1}`,
     people: opts.people ?? 25,
-    food: (opts.people ?? 25) * 30,
+    // Start at the tier-0 storage cap (see storageCap in updateFood);
+    // a larger value would just be clamped away on the first tick.
+    food: 80,
     knowledge: opts.knowledge || {
       foraging:    0.5,
       toolmaking:  0.2,
@@ -96,11 +98,6 @@ export function makeSettlement(world, x, y, opts = {}) {
       metallurgy:  0,           // gated by ore access
       navigation:  0,           // gated by water access
       mobility:    0,           // gated by horses
-    },
-    traits: opts.traits || {
-      aggression:   world.rng(),
-      mercantilism: world.rng(),
-      curiosity:    world.rng(),
     },
     // Maximum local deposit richness within transport reach, per
     // resource id. Populated by scanLocalResources alongside the
@@ -236,10 +233,11 @@ export { scanLocalResources };
 // an array indexed in insertion order, NOT by id, so we have to
 // look up peers by id rather than treating ids as indices.
 function findSettlementById(world, id) {
-  for (let i = 0; i < world.settlements.length; i++) {
-    if (world.settlements[i].id === id) return world.settlements[i];
+  if (!world._byId) {
+    world._byId = new Map();
+    for (const s of world.settlements) world._byId.set(s.id, s);
   }
-  return null;
+  return world._byId.get(id) || null;
 }
 function effectiveLocalRes(world, s) {
   const own = s.localRes || {};
@@ -332,6 +330,14 @@ export { updateWealth };
 //   salt raw                preserved food, currency-adjacent
 // Range is roughly 1.0 (no specialisation, "just gold") → ~5.5
 // (highly developed multi-specialty exporter).
+//
+// Deliberately uses s.localRes (materials physically present in the
+// settlement's reach), NOT effectiveLocalRes (which folds in trade-
+// reachable peers). You can't forge steel from ore you don't hold, and
+// counting a partner's ore here would double-count the same goods the
+// partner already exports. Knowledge growth (updateKnowledge) is the
+// place imported resources legitimately matter — learning a craft from
+// a trading partner — not finished-goods output.
 export function computeExportValue(s) {
   const k = s.knowledge || {};
   const r = s.localRes || {};
@@ -659,7 +665,7 @@ function updateFood(world, s) {
 function updatePopulation(world, s) {
   // K = pop the food supply can sustain at CURRENT urban-tax rate.
   //   supply = local food production (forage + farmland)
-  //          + imported food (smoothed EMA from updateFoodTrade)
+  //          + imported food (smoothed EMA from food trade in updateTrade)
   //   per_capita_demand = 0.003 × urbanFactor(currentPop)
   //   K = supply / per_capita_demand
   // urbanFactor was just computed in updateFood; it grows with
@@ -909,14 +915,19 @@ function localTransport(world, sx, sy, maxCost, kn) {
 class _MinHeap {
   constructor(cap = 256) {
     this.ti = new Int32Array(cap);
-    this.d  = new Float32Array(cap);
+    // Float64 distances: localTransport's `out` is a Map (Float64), and
+    // the staleness check `d > out.get(ti)` mis-fires on Float32 rounding
+    // — a value pushed at d=4.24445128 reads back as 4.24445152 and
+    // silently drops the expansion, truncating the reach set. (Same
+    // reason roads.js's MinHeap uses Float64.)
+    this.d  = new Float64Array(cap);
     this.n  = 0;
     this.cap = cap;
   }
   _grow() {
     const ncap = this.cap * 2;
     const nti = new Int32Array(ncap); nti.set(this.ti);
-    const nd  = new Float32Array(ncap); nd.set(this.d);
+    const nd  = new Float64Array(ncap); nd.set(this.d);
     this.ti = nti; this.d = nd; this.cap = ncap;
   }
   push(ti, d) {
