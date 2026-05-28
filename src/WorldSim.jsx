@@ -6198,6 +6198,10 @@ return(
           <span className="au-fade">Farmland</span><span>{farm} tile{farm===1?"":"s"}</span>
           <span className="au-fade">Capacity</span>
           <span>{Math.round(K)} <span className="au-fade" style={{fontSize:9}}>({limitedBy}-limited)</span></span>
+          {(s.infrastructure||0)>1&&(<><span className="au-fade">· built w/ coin</span><span className="au-fade">{Math.round(s.infrastructure||0).toLocaleString()}</span></>)}
+          {limitedBy==="housing"&&((s._developRate||0)>0.001
+            ?<><span style={{color:"#caa24a"}}>· expanding</span><span style={{color:"#caa24a"}}>+{(s._developRate||0).toFixed(2)}/tk</span></>
+            :<><span className="au-fade">· can't expand</span><span style={{color:"#c84"}}>no spare coin</span></>)}
           {limitedBy==="food"&&houseK>foodK*1.05&&(<><span className="au-fade">· could house</span><span className="au-fade">{Math.round(houseK)} if fed</span></>)}
           {nextThr&&<><span className="au-fade">To next tier</span><span>{Math.round(s.people)}/{nextThr}</span></>}
         </div>

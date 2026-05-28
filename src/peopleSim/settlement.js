@@ -62,6 +62,14 @@ const HOUSING_ORG         = 9.0;    // organization-knowledge multiplier
 const HOUSING_WATER       = 3.0;    // water-access multiplier
 const HOUSING_PARTNER     = 0.30;   // per connected trade partner
 const HOUSING_PARTNER_CAP = 12;
+// Development: a settlement spends spare coin to build INFRASTRUCTURE,
+// which adds directly to housing capacity. This is what lets a coin-rich,
+// housing-pressed settlement turn wealth into population growth — and it
+// gives money a real job (and a sink). Rate-limited by construction tech
+// + labour (you can only build so fast), so even an infinitely-rich town
+// grows gradually, and a poor one can't grow at all.
+const INFRA_COST          = 80;     // coin per +1 housing capacity built
+const BUILD_RATE          = 0.015;  // housing/tick per construction-weighted builder
 const FARM_YIELD_PER_FERT    = 0.055;
 // Forage rate calibrated so a forage-only village in a modest 5×5
 // neighbourhood (avg fert ~0.4) reaches equilibrium pop ~70. Bumped
@@ -140,6 +148,10 @@ export function makeSettlement(world, x, y, opts = {}) {
     // Cached water-access score (coast + river magnitude at home
     // tile). Set on creation, doesn't change.
     waterAccess: 0,
+    // Coin. Starts at ZERO — the world runs on barter. Money only comes
+    // Built infrastructure (housing capacity bought with coin via
+    // updateDevelopment). Persists; adds to housingCapacity.
+    infrastructure: 0,
     // Coin. Starts at ZERO — the world runs on barter. Money only comes
     // into being once it is mined out of the ground (updateWealth), and
     // from there it spreads through trade, replacing barter wherever it
@@ -498,6 +510,7 @@ export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;        // died this tick (famine / wither)
   maybeRefreshFarmland(world, s);
   updateWealth(world, s);
+  updateDevelopment(world, s);
   updateKnowledge(world, s);
   updateTier(world, s);
 }
@@ -731,12 +744,38 @@ function housingCapacity(s) {
   const org = (s.knowledge && s.knowledge.organization) || 0;
   const wa = s.waterAccess || 0;
   const partners = s._tradeReach ? s._tradeReach.size : 0;
-  return HOUSING_BASE
+  const innate = HOUSING_BASE
     * (1 + org * HOUSING_ORG)
     * (1 + wa * HOUSING_WATER)
     * (1 + Math.min(partners, HOUSING_PARTNER_CAP) * HOUSING_PARTNER);
+  return innate + (s.infrastructure || 0);
 }
 export { housingCapacity };
+
+// Development: convert spare coin into housing capacity. Only runs when
+// HOUSING is the binding constraint (food could feed more people than the
+// settlement can currently house) — there's no point building houses you
+// can't feed. Rate-limited by construction tech × labour, then by spare
+// coin, then by the remaining food headroom (never build past what food
+// supports). This is why a rich, housing-pressed settlement now GROWS,
+// while an equally housing-pressed but poor one stays stuck.
+function updateDevelopment(world, s) {
+  s._developRate = 0;                           // reset each tick (for the info panel)
+  const houseK = s._houseK || 0;
+  const foodK = s._foodK || 0;
+  s._housingPressed = foodK > houseK * 1.02;    // wants to grow but housing-capped
+  if (!s._housingPressed) return;               // housing isn't what's holding it back
+  const spare = (s.wealth || 0) - getWealthReserve(s);
+  if (spare <= 0) return;                        // no coin to invest — stuck
+  const buildCap = (0.2 + (s.knowledge.construction || 0) * 2)
+    * Math.sqrt(Math.max(1, s.people)) * BUILD_RATE;
+  const add = Math.min(buildCap, spare / INFRA_COST, foodK - houseK);
+  if (add <= 0) return;
+  s.infrastructure = (s.infrastructure || 0) + add;
+  s.wealth -= add * INFRA_COST;
+  s._developRate = add;                          // housing/tick added
+}
+export { updateDevelopment };
 
 function updatePopulation(world, s) {
   // Carrying capacity = the lesser of what FOOD can feed and what HOUSING
