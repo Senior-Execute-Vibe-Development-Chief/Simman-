@@ -255,67 +255,47 @@ function effectiveLocalRes(world, s) {
 }
 export { effectiveLocalRes, findSettlementById };
 
-// ── Wealth: production economy + specie bonus ──
+// ── Wealth: money comes from trade, not thin air ──
 //
-// Money is a claim on tradeable surplus, not just dug-up metal. Real
-// pre-modern economies created purchasing power mostly from PRODUCTION
-// (goods, services, and the credit/commodity money built on them) and
-// circulated it by velocity — coins changed hands constantly. Minted
-// specie from mines was only the hard-currency base layer, a fraction
-// of total activity. Modelling money as "only from mines" made the
-// economy slow and clunky and left non-mining settlements pinned at
-// their reserve with nothing to spend. So:
+// A settlement earns money by SELLING what it produces to other
+// settlements (see runGeneralTradeBetween in roads.js) — money is never
+// credited just for existing. The only thing updateWealth does is
+// inject the base money SUPPLY: minted specie pulled out of the ground.
 //
-// INCOME — production. Every tick a settlement generates wealth from
-// its real output, ∝ exportValue × population. exportValue ≥ 1 for
-// everyone, so every settlement always has SOME income and money keeps
-// flowing instead of freezing.
+// SOURCE — mining. Each tick a settlement extracts from precious / gem
+// tiles in reach, drawing on finite per-tile reserves (set on world
+// init at richness × scale). When a tile's reserve hits 0 the mine is
+// dry forever. This is how fresh money enters the system; founding
+// endowments (makeSettlement) seed a little more.
 //
-// BONUS — mining. Precious / gem tiles add hard specie on top, drawn
-// from finite per-tile reserves (set on world init at richness ×
-// scale). A gold or gem town is conspicuously rich while its lodes
-// last, then fades back toward its production level once they're dry —
-// the classic boom-town arc.
-//
-// SINK — holding cost. Wealth that piles up is spent down each tick
-// (upkeep, spoilage, ceremony, theft, the carrying cost of stored coin
-// and goods). This is what bounds total wealth — it equilibrates at
-// ~income / WEALTH_DECAY instead of inflating forever — and what keeps
-// money moving rather than sitting frozen at a reserve floor.
-//
-// TRANSFER — trade. Handled in roads.js updateTrade(): money flows
-// from buyer (lower exportValue) to seller (higher exportValue), and
-// tolls to intermediates. Redistributes wealth toward productive hubs
-// on top of their own production; conserved except for freight.
-const MINING_RATE     = 5.0;          // base specie extraction multiplier
-const PRODUCTION_RATE = 0.03;         // wealth/tick per (exportValue × pop)
-const WEALTH_DECAY    = 0.01;         // holding-cost sink → wealth ~ income / WEALTH_DECAY
+// CIRCULATION — bilateral trade. On every road both partners sell their
+// goods to each other, so money flows BOTH ways and keeps moving by
+// velocity instead of pooling. A cash-poor town still earns by selling
+// what little it makes, so it never freezes at its reserve. Gold-rich
+// (but goods-poor) mining towns are net buyers, spending their specie
+// outward — that's how mined money spreads to the rest of the economy.
+const MINING_RATE = 5.0;              // base specie extraction multiplier
 function updateWealth(world, s) {
-  // Production income — the bulk of the economy.
-  let income = PRODUCTION_RATE * computeExportValue(s) * Math.max(1, s.people);
-
-  // Mining bonus — finite specie on top.
   const reserves = world.depositReserve;
+  if (!reserves) return;
   const minable = s._minableTiles;
-  if (reserves && minable && minable.length > 0) {
-    const k = s.knowledge;
-    const popFactor = Math.sqrt(Math.max(1, s.people)) * 0.05;
-    const orgMul    = 1 + (k.organization || 0) * 0.3;
-    for (const [ti, id] of minable) {
-      const reserveArr = reserves[id];
-      if (!reserveArr) continue;
-      const left = reserveArr[ti];
-      if (left <= 0) continue;
-      const richness = (world.deposits[id] && world.deposits[id][ti]) || 0;
-      const want = MINING_RATE * richness * popFactor * orgMul;
-      const got = want < left ? want : left;
-      reserveArr[ti] = left - got;
-      income += got;
-    }
+  if (!minable || minable.length === 0) return;
+  const k = s.knowledge;
+  const popFactor = Math.sqrt(Math.max(1, s.people)) * 0.05;
+  const orgMul    = 1 + (k.organization || 0) * 0.3;
+  let mined = 0;
+  for (const [ti, id] of minable) {
+    const reserveArr = reserves[id];
+    if (!reserveArr) continue;
+    const left = reserveArr[ti];
+    if (left <= 0) continue;
+    const richness = (world.deposits[id] && world.deposits[id][ti]) || 0;
+    const want = MINING_RATE * richness * popFactor * orgMul;
+    const got = want < left ? want : left;
+    reserveArr[ti] = left - got;
+    mined += got;
   }
-
-  // Add income, then bleed off the holding cost so wealth equilibrates.
-  s.wealth = ((s.wealth || 0) + income) * (1 - WEALTH_DECAY);
+  s.wealth = (s.wealth || 0) + mined;
 }
 export { updateWealth };
 

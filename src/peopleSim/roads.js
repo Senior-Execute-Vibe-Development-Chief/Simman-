@@ -722,40 +722,47 @@ function runFoodTradeBetween(world, a, b, link, stMap) {
   importer._foodImportRate = (importer._foodImportRate || 0) + actualFood * FOOD_IMPORT_EMA_ALPHA;
 }
 
+// Bilateral trade: each settlement sells its OWN goods to the other and
+// pays for what it buys. Money flows BOTH directions, so a settlement
+// earns by selling what it makes (never credited for nothing), and even
+// a cash-poor, low-export town keeps earning instead of draining to its
+// reserve and freezing — that's the velocity that keeps money moving.
+// Net wealth still drifts toward the higher-export partner, but only by
+// the difference, while the gross flow circulates.
 function runGeneralTradeBetween(world, a, b, link, stMap) {
-  const exA = computeExportValue(a);
-  const exB = computeExportValue(b);
-  const diff = exA - exB;
   const minPop = Math.min(a.people, b.people);
-  const tradeValue = Math.abs(diff) * Math.sqrt(minPop) * TRADE_RATE;
+  const vol = Math.sqrt(minPop) * TRADE_RATE;
   const transport = link.cost * TRANSPORT_PER_PATHCOST;
   const intermediates = intermediatesOnPath(link, a.id, b.id, stMap);
   const numInter = intermediates ? intermediates.length : 0;
-  const totalToll = tradeValue * TOLL_RATE * numInter;
-  // Profitability gate: no one ships goods worth less than the freight
-  // + tolls to move them. Without this, near-equal-export pairs traded
-  // every tick at a guaranteed loss, bleeding the buyer's wealth into
-  // the transport sink for ~zero goods. (Food trade has no such gate —
-  // survival justifies paying any freight.)
-  if (tradeValue <= transport + totalToll) return;
-  const want = tradeValue + transport + totalToll;
-  if (want <= 0) return;
-  const buyer = diff > 0 ? b : a;
-  const seller = diff > 0 ? a : b;
+  // A's goods sold to B (B pays A), then B's goods sold to A (A pays B).
+  // Freight is split across the two legs of the round trip.
+  sellGoods(a, b, computeExportValue(a) * vol, transport * 0.5, intermediates, numInter);
+  sellGoods(b, a, computeExportValue(b) * vol, transport * 0.5, intermediates, numInter);
+}
+
+// One leg: `seller` ships `goodsValue` of goods to `buyer`; buyer pays
+// from wealth above its reserve, with freight consumed en route and a
+// toll skimmed by each intermediate settlement on the road.
+function sellGoods(seller, buyer, goodsValue, freight, intermediates, numInter) {
+  if (goodsValue <= 0) return;
+  const totalToll = goodsValue * TOLL_RATE * numInter;
+  // Don't ship goods worth less than the freight + tolls to move them.
+  if (goodsValue <= freight + totalToll) return;
+  const want = goodsValue + freight + totalToll;
   const reserve = getWealthReserve(buyer);
   const available = Math.max(0, (buyer.wealth || 0) - reserve);
   if (available <= 0) return;
   const actual = available < want ? available : want;
   const scale = actual / want;
-  const sellerGets = tradeValue * scale;
   buyer.wealth -= actual;
-  seller.wealth = (seller.wealth || 0) + sellerGets;
+  seller.wealth = (seller.wealth || 0) + goodsValue * scale;
   if (intermediates) {
-    const tollPer = tradeValue * TOLL_RATE * scale;
+    const tollPer = goodsValue * TOLL_RATE * scale;
     for (const inter of intermediates) inter.wealth = (inter.wealth || 0) + tollPer;
   }
-  // Conservation: buyer loses `actual` = sellerGets + transport*scale + totalToll*scale.
-  // Sum to intermediates = totalToll*scale; transport*scale is the lost sink.
+  // Conservation: buyer loses `actual` = goodsValue*scale (to seller)
+  // + totalToll*scale (to intermediates) + freight*scale (consumed).
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
