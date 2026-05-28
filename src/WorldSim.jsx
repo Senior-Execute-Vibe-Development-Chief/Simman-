@@ -4195,6 +4195,43 @@ function KnowledgeRadar({k,size=140}){
   );
 }
 
+// ── Settlement-card presentational components ──
+// Defined at module scope (stable identities) so they are NOT redefined
+// every WorldSim render. The card re-renders several times a second while
+// the sim plays; if these lived inside the render, React would treat them
+// as new component types each time and tear down + rebuild their DOM —
+// causing flicker and making the collapsible headers flaky to click.
+function PsBar({ v, color }) {
+  return (
+    <div style={{ position:"relative", height:5, background:"rgba(0,0,0,0.15)", borderRadius:2, marginTop:1 }}>
+      <div style={{ position:"absolute", inset:0, width:`${Math.max(0,Math.min(1,v))*100}%`, background:color||"#7a5", borderRadius:2 }} />
+    </div>
+  );
+}
+function PsKRow({ label, val, colour, note }) {
+  return (
+    <div style={{ margin:"3px 0" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", fontSize:10 }}>
+        <span>{label}{note ? <span className="au-fade" style={{ marginLeft:4, fontSize:9 }}>{note}</span> : null}</span>
+        <span>{(val*100|0)}%</span>
+      </div>
+      <PsBar v={val} color={colour} />
+    </div>
+  );
+}
+function PsSection({ id, title, right, open, onToggle, children }) {
+  return (
+    <div style={{ marginTop:6, borderTop:"1px solid rgba(0,0,0,0.10)", paddingTop:5 }}>
+      <div onClick={(e)=>{ e.stopPropagation(); onToggle(id); }} className="au-fade"
+        style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", userSelect:"none", fontSize:10, letterSpacing:0.4, textTransform:"uppercase" }}>
+        <span>{open ? "▾" : "▸"} {title}</span>
+        {right!=null && <span style={{ textTransform:"none", letterSpacing:0 }}>{right}</span>}
+      </div>
+      {open && <div style={{ marginTop:4 }}>{children}</div>}
+    </div>
+  );
+}
+
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
 const canvasRef=useRef(null);const glCanvasRef=useRef(null);const glStateRef=useRef(null);
@@ -6085,47 +6122,21 @@ return(
   // Water-access label.
   const wa=s.waterAccess||0;
   const waterLabel=wa<=0?"landlocked":wa<0.3?"minor river":wa<0.6?"river":wa<0.85?"coastal":"port";
-  // ── Inline helpers ──
-  const Bar=({v,color})=>(
-    <div style={{position:"relative",height:5,background:"rgba(0,0,0,0.15)",borderRadius:2,marginTop:1}}>
-      <div style={{position:"absolute",inset:0,width:`${Math.max(0,Math.min(1,v))*100}%`,background:color||"#7a5",borderRadius:2}}/>
-    </div>
-  );
-  const KRow=({label,val,colour,note})=>(
-    <div style={{margin:"3px 0"}}>
-      <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
-        <span>{label}{note?<span className="au-fade" style={{marginLeft:4,fontSize:9}}>{note}</span>:null}</span>
-        <span>{(val*100|0)}%</span>
-      </div>
-      <Bar v={val} color={colour}/>
-    </div>
-  );
-  // Collapsible section: a clickable header (with an optional at-a-glance
-  // value on the right) that shows/hides its body. Open/closed state
-  // lives in psCardOpen so it persists across the card's frequent
-  // re-renders. Called as a function (not <Section/>) to avoid React
-  // remounting it as a new component type every render.
-  const Section=(id,title,right,body)=>{
-    const open=psCardOpen[id];
-    return(
-      <div style={{marginTop:6,borderTop:"1px solid rgba(0,0,0,0.10)",paddingTop:5}}>
-        <div onClick={()=>togglePsCard(id)} className="au-fade"
-          style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none",fontSize:10,letterSpacing:0.4,textTransform:"uppercase"}}>
-          <span>{open?"▾":"▸"} {title}</span>
-          {right!=null&&<span style={{textTransform:"none",letterSpacing:0}}>{right}</span>}
-        </div>
-        {open&&<div style={{marginTop:4}}>{body}</div>}
-      </div>
-    );
-  };
-
-  // Food balance.
+  // Food balance. surplus is the REAL flow balance — local production +
+  // smoothed imports − consumption. An import-fed city sits near 0 (it
+  // eats grain as fast as it arrives, so stored food stays low); that is
+  // "balanced", NOT starving. Only a genuine, uncovered shortfall that is
+  // actually draining the granary counts as starving.
   const supply=s._foodSupply||0, demand=s._foodDemand||0, importRate=s._foodImportRate||0;
   const surplus=(supply+importRate)-demand;
+  const eps=Math.max(0.02,demand*0.02);
   const ticksLeft=demand>0?(s.food||0)/demand:Infinity;
-  const starving=ticksLeft<100&&surplus<=0;
-  const status=starving?"starving":surplus>0.001?"surplus":surplus<-0.001?"deficit":"balanced";
-  const statusColor=starving?"#c44":surplus>0.001?"#3a7":surplus<-0.001?"#c84":"#888";
+  let status,statusColor;
+  if(surplus>eps){status="surplus";statusColor="#3a7";}
+  else if(surplus<-eps){
+    if(ticksLeft<50){status="starving";statusColor="#c44";}
+    else{status="deficit";statusColor="#c84";}
+  } else {status="balanced";statusColor="#888";}
 
   // Treasury + trade.
   const wealth=Math.round(s.wealth||0);
@@ -6174,8 +6185,8 @@ return(
       </div>
 
       {/* ── Population & food ── */}
-      {Section("food","Population & food",
-        <span style={{color:statusColor}}>{surplus>=0?"+":""}{surplus.toFixed(2)}</span>,
+      <PsSection id="food" title="Population & food" open={psCardOpen.food} onToggle={togglePsCard}
+        right={<span style={{color:statusColor}}>{surplus>=0?"+":""}{surplus.toFixed(2)}</span>}>
         <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
           <span className="au-fade">Food stored</span><span>{Math.round(s.food)}</span>
           <span className="au-fade">Produced /tick</span><span>{supply.toFixed(3)}</span>
@@ -6190,43 +6201,43 @@ return(
           {limitedBy==="food"&&houseK>foodK*1.05&&(<><span className="au-fade">· could house</span><span className="au-fade">{Math.round(houseK)} if fed</span></>)}
           {nextThr&&<><span className="au-fade">To next tier</span><span>{Math.round(s.people)}/{nextThr}</span></>}
         </div>
-      )}
+      </PsSection>
 
       {/* ── Knowledge ── */}
-      {Section("knowledge","Knowledge",
-        <span className="au-fade" style={{textTransform:"capitalize"}}>{era}</span>,
+      <PsSection id="knowledge" title="Knowledge" open={psCardOpen.knowledge} onToggle={togglePsCard}
+        right={<span className="au-fade" style={{textTransform:"capitalize"}}>{era}</span>}>
         <>
-          <KRow label="Agriculture"  val={k.agriculture||0}  colour="#7a5"/>
-          <KRow label="Foraging"     val={k.foraging||0}     colour="#697"/>
-          <KRow label="Toolmaking"   val={k.toolmaking||0}   colour="#aa6"/>
-          <KRow label="Construction" val={k.construction||0} colour="#a85"/>
-          <KRow label="Organization" val={k.organization||0} colour="#967"/>
-          <KRow label="Metallurgy"   val={k.metallurgy||0}   colour="#86a"
+          <PsKRow label="Agriculture"  val={k.agriculture||0}  colour="#7a5"/>
+          <PsKRow label="Foraging"     val={k.foraging||0}     colour="#697"/>
+          <PsKRow label="Toolmaking"   val={k.toolmaking||0}   colour="#aa6"/>
+          <PsKRow label="Construction" val={k.construction||0} colour="#a85"/>
+          <PsKRow label="Organization" val={k.organization||0} colour="#967"/>
+          <PsKRow label="Metallurgy"   val={k.metallurgy||0}   colour="#86a"
                 note={!cu&&!fe?"(no ore)":(fe&&co?"(steel)":fe?"(iron)":(cu&&sn?"(bronze)":"(copper)"))}/>
-          <KRow label="Navigation"   val={k.navigation||0}   colour="#58a"
+          <PsKRow label="Navigation"   val={k.navigation||0}   colour="#58a"
                 note={wa<=0?"(no water)":null}/>
-          <KRow label="Mobility"     val={k.mobility||0}     colour="#a76"
+          <PsKRow label="Mobility"     val={k.mobility||0}     colour="#a76"
                 note={(r.horses||0)<=0.10?"(no horses)":null}/>
-          <KRow label="Literacy"     val={k.literacy||0}     colour="#59a"
+          <PsKRow label="Literacy"     val={k.literacy||0}     colour="#59a"
                 note={(k.organization||0)<=0.30?"(needs organization)":null}/>
         </>
-      )}
+      </PsSection>
 
       {/* ── Resources ── */}
-      {Section("resources","Resources",
-        presentRes.length>0?<span className="au-fade">{presentRes.length}</span>:null,
-        presentRes.length>0
+      <PsSection id="resources" title="Resources" open={psCardOpen.resources} onToggle={togglePsCard}
+        right={presentRes.length>0?<span className="au-fade">{presentRes.length}</span>:null}>
+        {presentRes.length>0
           ?<div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
               {presentRes.map(([id,v])=>(
                 <Fragment key={id}><span>{RES_LABEL[id]||id}</span><span>{(v*100|0)}%</span></Fragment>
               ))}
             </div>
-          :<span className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>No notable deposits in reach.</span>
-      )}
+          :<span className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>No notable deposits in reach.</span>}
+      </PsSection>
 
       {/* ── Trade & economy ── */}
-      {Section("trade","Trade & economy",
-        <span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{wealthDelta.toFixed(2)}/tick</span>,
+      <PsSection id="trade" title="Trade & economy" open={psCardOpen.trade} onToggle={togglePsCard}
+        right={<span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{wealthDelta.toFixed(2)}/tick</span>}>
         <>
           <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
             <span className="au-fade">Exchange</span>
@@ -6265,7 +6276,7 @@ return(
               </div>
             </>}
         </>
-      )}
+      </PsSection>
     </div>
   );
 })()}
