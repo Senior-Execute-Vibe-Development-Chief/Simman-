@@ -100,14 +100,13 @@ export function baseEdgeCost(world, fromTi, toTi) {
   // If EITHER endpoint is a road tile, the edge cost is purely the
   // road's intrinsic quality — ignore underlying terrain. A road
   // over mountains costs the same as a road over plains
-  // (Roman-engineered-road model: the road delivers consistent
-  // speed regardless of what's underneath). Heavily-worn arterials
-  // (lower quality number) are even cheaper. This makes Dijkstra
-  // aggressively prefer routing through any existing road,
-  // producing visible trunk-and-spur networks.
-  const rtq = world.roadTileQuality;
-  if (rtq) {
-    const qF = rtq[fromTi], qT = rtq[toTi];
+  // (Roman-engineered-road model). Heavily-worn arterials (lower
+  // quality number) are even cheaper. This makes Dijkstra
+  // aggressively prefer any existing road, producing visible
+  // trunk-and-spur networks.
+  const rq = world.roadQuality;
+  if (rq) {
+    const qF = rq[fromTi], qT = rq[toTi];
     if (qF < 1.0 || qT < 1.0) return Math.min(qF, qT);
   }
 

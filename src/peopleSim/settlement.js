@@ -118,8 +118,10 @@ export function makeSettlement(world, x, y, opts = {}) {
     // first road and join the trade network — the cradle gets a
     // larger one as the world's economic seed.
     wealth: opts.name === "cradle" ? 100 : 40,
-    // Ids of roads connecting this settlement to others.
-    roadsConnecting: [],
+    // Cached shortest road-network paths to all reachable
+    // settlements. { peerId → { cost, tiles } }. Populated by
+    // rebuildTradeReach in roads.js on each plan cycle.
+    _tradeReach: null,
     farmland: new Set(),
     tier: 0,
     mode: "settled",
@@ -241,14 +243,9 @@ function findSettlementById(world, id) {
 }
 function effectiveLocalRes(world, s) {
   const own = s.localRes || {};
-  if (!world.roads || world.roads.length === 0 || !s.roadsConnecting || s.roadsConnecting.length === 0) {
-    return own;
-  }
+  if (!s._tradeReach || s._tradeReach.size === 0) return own;
   const out = { ...own };
-  for (const rid of s.roadsConnecting) {
-    const road = world.roads[rid];
-    if (!road || !road.active) continue;
-    const peerId = road.from === s.id ? road.to : road.from;
+  for (const peerId of s._tradeReach.keys()) {
     const peer = findSettlementById(world, peerId);
     if (!peer || peer.mode !== "settled") continue;
     const peerRes = peer.localRes || {};
@@ -437,34 +434,26 @@ export function getExportBreakdown(s) {
 //   netPerTick            — wealth flow direction & magnitude (this settlement)
 export function getTradeProfile(s, world) {
   const profile = [];
-  if (!s.roadsConnecting || !world.roads) return profile;
+  if (!s._tradeReach || s._tradeReach.size === 0) return profile;
   const sExport = computeExportValue(s);
   const sFood = (s._foodSupply || 0) - (s._foodDemand || 0);
   const sBreakdown = getExportBreakdown(s);
-  for (const rid of s.roadsConnecting) {
-    const road = world.roads[rid];
-    if (!road || !road.active) continue;
-    const peerId = road.from === s.id ? road.to : road.from;
+  for (const [peerId, link] of s._tradeReach) {
     const peer = findSettlementById(world, peerId);
     if (!peer || peer.mode !== "settled") continue;
     const peerExport = computeExportValue(peer);
     const peerFood = (peer._foodSupply || 0) - (peer._foodDemand || 0);
-    const diff = sExport - peerExport;             // >0: we're seller
+    const diff = sExport - peerExport;
     const minPop = Math.min(s.people, peer.people);
     const tradeValue = Math.abs(diff) * Math.sqrt(minPop) * 0.025;
-    const transport  = (road.pathCost || 0) * 0.012;
+    const transport  = (link.cost || 0) * 0.012;
     const selling = diff > 0;
     const netPerTick = selling ? tradeValue : -(tradeValue + transport);
 
-    // Food role: independent of general trade direction.
     let foodRole = null;
     if (sFood > 0.01 && peerFood < -0.01) foodRole = "selling food";
     else if (sFood < -0.01 && peerFood > 0.01) foodRole = "buying food";
 
-    // Dominant goods being exchanged. From this settlement's
-    // perspective: if SELLING, list our top exports going OUT;
-    // if BUYING, list peer's top exports coming IN. Top 2 by
-    // contribution. "Baseline" filtered out (uninteresting).
     const breakdown = selling ? sBreakdown : getExportBreakdown(peer);
     const goods = breakdown
       .filter(b => b.label !== "Baseline")
@@ -472,12 +461,13 @@ export function getTradeProfile(s, world) {
       .map(b => b.label);
 
     profile.push({
-      rid, partner: peer.name, partnerId: peer.id,
+      partner: peer.name, partnerId: peer.id,
       role: selling ? "selling" : "buying",
       foodRole,
       goods,
       tradeValue, transport: selling ? 0 : transport,
       netPerTick,
+      pathCost: link.cost,
     });
   }
   return profile;

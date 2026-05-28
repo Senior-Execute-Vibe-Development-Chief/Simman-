@@ -5382,56 +5382,34 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmRoads = viewRef.current === "roads";
   if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
-    // ── Find connected components via union-find on roads ──
-    // Each settlement.id maps to a component id; two settlements
-    // are in the same component iff a chain of active roads links
-    // them. Disconnected settlements are their own component.
-    const parent = new Map();
-    const find = (x) => { let p = parent.get(x); if (p === undefined) { parent.set(x, x); return x; } while (p !== x) { x = p; p = parent.get(p) ?? p; } return x; };
-    const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
-    for(const s of psw.settlements){
-      if(s&&s.mode==="settled") find(s.id);
-    }
-    for(const road of psw.roads||[]){
-      if(road&&road.active) union(road.from, road.to);
-    }
-    // Map component-root → colour. Hash the root id to a stable hue
-    // so the same network keeps its colour across re-renders.
+    // ── Network components from tile map ──
+    // psw._tileComponent is a Map<tileIndex → componentRootId>
+    // populated by buildNetworkComponents. If absent (initial state
+    // before any road planning), use a stable id-based hash.
+    const tileComp = psw._tileComponent;
+    const find = (sid) => {
+      // Each settlement is the root of its own component until joined.
+      // We approximate by reading the tile component for its home tile.
+      const s = psw.settlements.find(o => o.id === sid);
+      if (!s) return sid;
+      const ti = (s.pos.y | 0) * psw.tw + (s.pos.x | 0);
+      return tileComp && tileComp.get(ti) !== undefined ? tileComp.get(ti) : sid;
+    };
     const compColour = (rootId) => {
       const h = ((rootId * 137) % 360 + 360) % 360;
       return `hsl(${h}, 65%, 45%)`;
     };
-    // ── Draw roads, batched by component for one stroke per colour ──
-    if(psw.roads&&psw.roads.length>0){
-      const byComp = new Map();
-      for(const road of psw.roads){
-        if(!road||!road.active||!road.path||road.path.length<2)continue;
-        const root = find(road.from);
-        if(!byComp.has(root)) byComp.set(root, []);
-        byComp.get(root).push(road);
-      }
-      const halfTw=psw.tw*0.5;
-      for(const [root, roads] of byComp){
-        ctx.beginPath();
-        for(const road of roads){
-          let prevPx=-1e9;
-          for(let i=0;i<road.path.length;i++){
-            const ti=road.path[i];
-            const py=(ti/psw.tw)|0;
-            const px=ti-py*psw.tw;
-            const sx=px*TR+TR*0.5;
-            const sy=dataYtoScreenY(py*TR+TR*0.5,H,CH);
-            const wrap=i>0&&Math.abs(px-prevPx)>halfTw;
-            if(i===0||wrap)ctx.moveTo(sx,sy);
-            else ctx.lineTo(sx,sy);
-            prevPx=px;
-          }
-        }
-        ctx.strokeStyle=compColour(root);
-        ctx.lineWidth=2.0;
-        ctx.lineCap="round";
-        ctx.lineJoin="round";
-        ctx.stroke();
+    // ── Draw road tiles, coloured by their component ──
+    if(psw.roadQuality&&tileComp){
+      const rq=psw.roadQuality;
+      for(let ti=0;ti<rq.length;ti++){
+        if(rq[ti]>=1.0)continue;
+        const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
+        const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+        const comp=tileComp.get(ti);
+        if(comp===undefined)continue;
+        ctx.fillStyle=compColour(comp);
+        ctx.fillRect(sx,sy,TR,TR);
       }
     }
     // ── Settlement dots, also coloured by network ──
@@ -5469,36 +5447,24 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     }
     ctx.fill();
     // ── Roads ──
-    // Per-road stroke so each road's lineWidth reflects its usage.
-    // A brand-new road is a thin 1px line; a worn arterial after
-    // thousands of ticks of trade thickens to ~3px. Combined with
-    // the road-quality discount in baseEdgeCost, this gives a clear
-    // visual of trunk vs spur — the eye reads major trade arteries
-    // immediately. Wrap-split as before so torus paths don't draw
-    // straight across the map.
-    if(psw.roads&&psw.roads.length>0){
-      const halfTw=psw.tw*0.5;
-      ctx.lineCap="round";
-      ctx.lineJoin="round";
-      ctx.strokeStyle="rgba(120,80,40,0.88)";
-      for(const road of psw.roads){
-        if(!road||!road.active||!road.path||road.path.length<2)continue;
-        const wear=Math.min(1,(road.usage||0)/5000);
-        ctx.lineWidth=0.8+wear*2.2;       // 0.8 → 3.0 px
-        ctx.beginPath();
-        let prevPx=-1e9;
-        for(let i=0;i<road.path.length;i++){
-          const ti=road.path[i];
-          const py=(ti/psw.tw)|0;
-          const px=ti-py*psw.tw;
-          const sx=px*TR+TR*0.5;
-          const sy=dataYtoScreenY(py*TR+TR*0.5,H,CH);
-          const wrap=i>0&&Math.abs(px-prevPx)>halfTw;
-          if(i===0||wrap)ctx.moveTo(sx,sy);
-          else ctx.lineTo(sx,sy);
-          prevPx=px;
-        }
-        ctx.stroke();
+    // Roads now live in two per-tile arrays — roadQuality (1.0 = no
+    // road, <1.0 = road) and roadUsage (accumulated trade traffic).
+    // We paint each road tile as a small rect, with a "thickness"
+    // (visual intensity) driven by usage so trunk arteries clearly
+    // pop vs new spurs. No per-road stroking, no overlap artifacts.
+    if(psw.roadQuality&&psw.roadUsage){
+      const rq=psw.roadQuality,ru=psw.roadUsage;
+      for(let ti=0;ti<rq.length;ti++){
+        if(rq[ti]>=1.0)continue;
+        const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
+        const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+        const wear=Math.min(1,(ru[ti]||0)/5000);
+        // 1.4 → 3.0 px for the tile fill — usage thickens trunks.
+        const w=1.4+wear*1.6;
+        const off=(TR-w)*0.5;
+        const alpha=0.55+wear*0.35;
+        ctx.fillStyle=`rgba(120,80,40,${alpha.toFixed(2)})`;
+        ctx.fillRect(sx+off,sy+off,w,w);
       }
     }
     // ── Settlement sprites ──
@@ -6138,7 +6104,7 @@ return(
         const items=getExportBreakdown(s);
         if(!items||items.length===0)return null;
         const total=items.reduce((a,b)=>a+b.value,0);
-        const hasRoads=(s.roadsConnecting||[]).length>0;
+        const hasRoads=s._tradeReach&&s._tradeReach.size>0;
         return(
           <>
             <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">

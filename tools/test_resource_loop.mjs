@@ -133,7 +133,7 @@ function settlementLine(s) {
     return `${abbrev}${v.toFixed(1)}`;
   }).filter(Boolean).join(" ") || "—";
   const wealth = Math.round(s.wealth || 0);
-  const roads = (s.roadsConnecting || []).length;
+  const roads = s._tradeReach ? s._tradeReach.size : 0;
   return (
     `  #${String(s.id).padStart(2)} ` +
     `(${String(s.pos.x|0).padStart(3)},${String(s.pos.y|0).padStart(3)}) ` +
@@ -173,29 +173,31 @@ for (let i = 1; i <= TICKS; i++) {
   if (i === checkpoints[cpIdx]) {
     const stats = peopleSimStats(world);
     const access = settlementsWithAccess(world);
-    const numRoads = world.roads ? world.roads.length : 0;
-    const numRoadTiles = world.roadTiles ? world.roadTiles.size : 0;
-    // Network density: how many road tiles are SHARED by 2+ roads?
-    // High share = networked (trunks + spurs); low share = parallel paths.
-    let sharedTiles = 0, totalPathTiles = 0;
-    if (world.roads) {
-      const tileCount = new Map();
-      for (const r of world.roads) {
-        if (!r.active) continue;
-        for (const ti of r.path) {
-          totalPathTiles++;
-          tileCount.set(ti, (tileCount.get(ti) || 0) + 1);
+    // Tile-map road metrics: how many tiles are roads, average usage.
+    let numRoadTiles = 0, totalUsage = 0;
+    if (world.roadQuality) {
+      for (let ti = 0; ti < world.roadQuality.length; ti++) {
+        if (world.roadQuality[ti] < 1.0) {
+          numRoadTiles++;
+          totalUsage += world.roadUsage ? (world.roadUsage[ti] || 0) : 0;
         }
       }
-      for (const c of tileCount.values()) if (c > 1) sharedTiles++;
     }
-    const sharePct = numRoadTiles > 0 ? (sharedTiles / numRoadTiles * 100).toFixed(0) : "0";
+    const avgUsage = numRoadTiles > 0 ? (totalUsage / numRoadTiles).toFixed(0) : "0";
+    // Average reach: how many peers can each settlement trade with on average.
+    let totalReach = 0, aliveSett = 0;
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      aliveSett++;
+      if (s._tradeReach) totalReach += s._tradeReach.size;
+    }
+    const avgReach = aliveSett > 0 ? (totalReach / aliveSett).toFixed(1) : "0";
     // System wealth conservation: sum of all settlement wealth + total
     // sunk in roads ≈ total ever extracted from mines.
     let totalWealth = 0;
     for (const s of world.settlements) if (s.mode === "settled") totalWealth += s.wealth || 0;
-    let sunkInRoads = 0;
-    if (world.roads) for (const r of world.roads) if (r.active) sunkInRoads += r.cost || 0;
+    // Roads are free now; transport flows are the only sink.
+    const sunkInRoads = 0;
     // Mine reserve remaining (total across all tiles).
     let reserveLeft = 0;
     if (world.depositReserve) {
@@ -205,8 +207,8 @@ for (let i = 1; i <= TICKS; i++) {
       }
     }
     console.log(`\n— step ${i} — ${JSON.stringify(stats)}`);
-    console.log(`roads: ${numRoads}  road-tiles: ${numRoadTiles}  ` +
-                `shared: ${sharedTiles} (${sharePct}%)  ` +
+    console.log(`road-tiles: ${numRoadTiles}  avg-usage: ${avgUsage}  ` +
+                `avg-reach: ${avgReach}  ` +
                 `totalWealth: $${Math.round(totalWealth).toLocaleString()}  ` +
                 `mineReservesLeft: $${Math.round(reserveLeft).toLocaleString()}`);
     console.log("settlements w/ access: " + RES_IDS.map(id => `${id}:${access[id]}`).join("  "));
