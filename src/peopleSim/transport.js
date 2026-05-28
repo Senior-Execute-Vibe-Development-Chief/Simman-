@@ -191,25 +191,36 @@ export function computeTransport(world) {
       heap.push(ti, 0);
     }
   }
-  // Dijkstra. Edge cost is the cost of stepping FROM ti INTO the
-  // neighbour ni — depends on neighbour terrain AND the slope.
+  // Dijkstra over 8-neighbours (cardinals + diagonals). Diagonal
+  // steps cover √2 × the geometric distance so their cost is
+  // multiplied accordingly — this stops the algorithm from
+  // preferring stairstep paths over a straight diagonal across
+  // open ground.
+  const SQRT2 = Math.SQRT2;
   while (heap.n > 0) {
     const { ti, d } = heap.popMin();
     if (d > dist[ti]) continue;       // stale
     const ty = (ti / tw) | 0;
     const tx = ti - ty * tw;
-    // 4-neighbours with wrap-X, clamp-Y.
-    const left  = ty * tw + (tx === 0 ? tw - 1 : tx - 1);
-    const right = ty * tw + (tx === tw - 1 ? 0 : tx + 1);
-    const up    = ty > 0      ? (ty - 1) * tw + tx : -1;
-    const down  = ty < th - 1 ? (ty + 1) * tw + tx : -1;
-    const ns = [left, right, up, down];
-    for (let k = 0; k < 4; k++) {
+    const xm = tx === 0      ? tw - 1 : tx - 1;
+    const xp = tx === tw - 1 ? 0      : tx + 1;
+    const yu = ty - 1, yd = ty + 1;
+    const left  = ty * tw + xm;
+    const right = ty * tw + xp;
+    const up    = yu >= 0 ? yu * tw + tx : -1;
+    const down  = yd < th ? yd * tw + tx : -1;
+    const ul    = yu >= 0 ? yu * tw + xm : -1;
+    const ur    = yu >= 0 ? yu * tw + xp : -1;
+    const dl    = yd < th ? yd * tw + xm : -1;
+    const dr    = yd < th ? yd * tw + xp : -1;
+    const ns  = [left, right, up, down, ul, ur, dl, dr];
+    const mul = [1,    1,     1,  1,    SQRT2, SQRT2, SQRT2, SQRT2];
+    for (let k = 0; k < 8; k++) {
       const ni = ns[k];
       if (ni < 0) continue;
       const c = baseEdgeCost(world, ti, ni);
       if (c === Infinity) continue;
-      const nd = d + c;
+      const nd = d + c * mul[k];
       if (nd < dist[ni]) {
         dist[ni] = nd;
         heap.push(ni, nd);

@@ -132,11 +132,21 @@ export function buildNetworkComponents(world) {
       const peer = stMap.get(ti);
       if (peer && peer.id !== s.id) out.set(peer.id, root);
       const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const xm = tx === 0      ? tw - 1 : tx - 1;
+      const xp = tx === tw - 1 ? 0      : tx + 1;
+      const yu = ty - 1, yd = ty + 1;
+      // 8-neighbours: diagonally-adjacent road tiles are part of
+      // the same network (the road tiles meet at a corner and a
+      // foot or cart can transit between them).
       const ns = [
-        ty * tw + (tx === 0 ? tw - 1 : tx - 1),
-        ty * tw + (tx === tw - 1 ? 0 : tx + 1),
-        ty > 0      ? (ty - 1) * tw + tx : -1,
-        ty < th - 1 ? (ty + 1) * tw + tx : -1,
+        ty * tw + xm,
+        ty * tw + xp,
+        yu >= 0 ? yu * tw + tx : -1,
+        yd < th ? yd * tw + tx : -1,
+        yu >= 0 ? yu * tw + xm : -1,
+        yu >= 0 ? yu * tw + xp : -1,
+        yd < th ? yd * tw + xm : -1,
+        yd < th ? yd * tw + xp : -1,
       ];
       for (const ni of ns) {
         if (ni < 0 || visited[ni]) continue;
@@ -193,22 +203,33 @@ function computeReach(world, s, stMap) {
       reach.set(peer.id, { cost: d, tiles });
       // Continue — there may be more peers further along this branch.
     }
-    // Expand to neighbours that are roads or settlement tiles.
+    // Expand to 8-neighbours that are roads or settlement tiles.
+    // Diagonal step cost is multiplied by √2 to match the real
+    // geometric distance traversed.
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const xm = tx === 0      ? tw - 1 : tx - 1;
+    const xp = tx === tw - 1 ? 0      : tx + 1;
+    const yu = ty - 1, yd = ty + 1;
     const ns = [
-      ty * tw + (tx === 0 ? tw - 1 : tx - 1),
-      ty * tw + (tx === tw - 1 ? 0 : tx + 1),
-      ty > 0      ? (ty - 1) * tw + tx : -1,
-      ty < th - 1 ? (ty + 1) * tw + tx : -1,
+      ty * tw + xm,
+      ty * tw + xp,
+      yu >= 0 ? yu * tw + tx : -1,
+      yd < th ? yd * tw + tx : -1,
+      yu >= 0 ? yu * tw + xm : -1,
+      yu >= 0 ? yu * tw + xp : -1,
+      yd < th ? yd * tw + xm : -1,
+      yd < th ? yd * tw + xp : -1,
     ];
-    for (const ni of ns) {
+    const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
+    for (let k = 0; k < 8; k++) {
+      const ni = ns[k];
       if (ni < 0) continue;
       const isRoad = rq[ni] < 1.0;
       const isSett = stMap.has(ni);
       if (!isRoad && !isSett) continue;
       // Cost: use the road tile's quality (or a small settlement-
       // transit cost for non-road settlement tiles).
-      const stepCost = isRoad ? rq[ni] : 0.15;
+      const stepCost = (isRoad ? rq[ni] : 0.15) * mul[k];
       const nd = d + stepCost;
       if (nd < (dist.get(ni) ?? Infinity)) {
         dist.set(ni, nd);
@@ -492,7 +513,9 @@ function findById(world, id) {
 // Bounded Dijkstra from s to t (full terrain Dijkstra including
 // the road-override discount in baseEdgeCost). Used by road
 // planning to decide if a new road segment between two settlements
-// is worth painting.
+// is worth painting. Uses 8-neighbour movement so paths can run
+// diagonally rather than stairstepping over open ground.
+const SQRT2 = Math.SQRT2;
 function findPath(world, s, t) {
   const { tw, th, elev } = world;
   const start = (s.pos.y | 0) * tw + (s.pos.x | 0);
@@ -503,7 +526,7 @@ function findPath(world, s, t) {
   dist.set(start, 0);
   const heap = new MinHeap();
   heap.push(start, 0);
-  const limit = 20000;
+  const limit = 40000;
   let visited = 0;
   while (heap.n > 0) {
     if (visited++ > limit) return null;
@@ -511,18 +534,26 @@ function findPath(world, s, t) {
     if (d > (dist.get(ti) ?? Infinity)) continue;
     if (ti === goal) break;
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const xm = tx === 0      ? tw - 1 : tx - 1;
+    const xp = tx === tw - 1 ? 0      : tx + 1;
+    const yu = ty - 1, yd = ty + 1;
     const ns = [
-      ty * tw + (tx === 0 ? tw - 1 : tx - 1),
-      ty * tw + (tx === tw - 1 ? 0 : tx + 1),
-      ty > 0      ? (ty - 1) * tw + tx : -1,
-      ty < th - 1 ? (ty + 1) * tw + tx : -1,
+      ty * tw + xm,                          // W
+      ty * tw + xp,                          // E
+      yu >= 0 ? yu * tw + tx : -1,           // N
+      yd < th ? yd * tw + tx : -1,           // S
+      yu >= 0 ? yu * tw + xm : -1,           // NW
+      yu >= 0 ? yu * tw + xp : -1,           // NE
+      yd < th ? yd * tw + xm : -1,           // SW
+      yd < th ? yd * tw + xp : -1,           // SE
     ];
-    for (let k = 0; k < 4; k++) {
+    const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
+    for (let k = 0; k < 8; k++) {
       const ni = ns[k];
       if (ni < 0) continue;
       const c = localEdgeCost(world, ti, ni, s.knowledge);
       if (c === Infinity) continue;
-      const nd = d + c;
+      const nd = d + c * mul[k];
       if (nd < (dist.get(ni) ?? Infinity)) {
         dist.set(ni, nd);
         prev.set(ni, ti);
