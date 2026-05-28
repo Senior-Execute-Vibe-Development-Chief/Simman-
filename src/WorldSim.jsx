@@ -6129,8 +6129,13 @@ return(
   const wealth=Math.round(s.wealth||0);
   const available=Math.max(0,wealth-Math.round(getWealthReserve(s)));
   const profile=getTradeProfile(s,peopleRef.current);
-  const totalNet=profile.reduce((a,p)=>a+(p.netPerTick||0),0);
   const produces=getExportBreakdown(s).filter(b=>b.label!=="Baseline").slice(0,3).map(b=>b.label.toLowerCase());
+  // Real money rates from the sim (smoothed): total wealth change, the
+  // mining slice, and trade as the remainder.
+  const wealthDelta=s._wealthDelta||0;
+  const minedRate=s._minedRate||0;
+  const tradeNet=wealthDelta-minedRate;
+  const moneyCol=v=>v>0.02?"#3a7":v<-0.02?"#c44":"#8a8f9c";
   const nextName=["town","city","metropolis"][s.tier];
 
   return(
@@ -6213,9 +6218,13 @@ return(
 
       {/* ── Trade & economy ── */}
       {Section("trade","Trade & economy",
-        profile.length>0?<span style={{color:totalNet>=0?"#3a7":"#c44"}}>{totalNet>=0?"+":""}{totalNet.toFixed(2)}/tick</span>:null,
+        <span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{wealthDelta.toFixed(2)}/tick</span>,
         <>
-          <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
+            <span style={{color:moneyCol(wealthDelta)}}>Net wealth /tick</span>
+            <span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{wealthDelta.toFixed(2)}</span>
+            {minedRate>0.01&&(<><span className="au-fade">· mining</span><span className="au-fade">+{minedRate.toFixed(2)}</span></>)}
+            <span className="au-fade">· trade</span><span className="au-fade">{tradeNet>=0?"+":""}{tradeNet.toFixed(2)}</span>
             <span className="au-fade">Available to spend</span>
             <span style={available<=0?{color:"#c44"}:undefined}>${available.toLocaleString()}{available<=0?" (hoarding)":""}</span>
           </div>
@@ -6224,19 +6233,21 @@ return(
           )}
           {profile.length===0
             ?<div className="au-fade" style={{fontSize:10,fontStyle:"italic",marginTop:4}}>No active trade routes.</div>
-            :<div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"1px 6px",fontSize:10,marginTop:4}}>
-                {profile.map(p=>(
+            :<>
+              <div className="au-fade" style={{fontSize:9,marginTop:4}}>Routes (net $/tick on each)</div>
+              <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"1px 6px",fontSize:10,marginTop:1}}>
+                {profile.slice(0,10).map(p=>(
                   <Fragment key={p.partnerId}>
-                    <span style={{color:p.role==="selling"?"#3a7":"#c66"}}>{p.role==="selling"?"sell":"buy"}</span>
+                    <span style={{color:p.netPerTick>=0?"#3a7":"#c66"}}>{p.netPerTick>=0?"in":"out"}</span>
                     <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                       {p.partner}
-                      {p.goods.length>0&&<span className="au-fade" style={{marginLeft:4,fontSize:9}}>({p.goods.join(", ").toLowerCase()})</span>}
                       {p.foodRole&&<span style={{marginLeft:4,fontSize:9,color:p.foodRole==="selling food"?"#3a7":"#c84"}}>· {p.foodRole}</span>}
                     </span>
                     <span style={{color:p.netPerTick>=0?"#3a7":"#c44"}}>{p.netPerTick>=0?"+":""}{p.netPerTick.toFixed(2)}</span>
                   </Fragment>
                 ))}
-              </div>}
+              </div>
+            </>}
         </>
       )}
     </div>

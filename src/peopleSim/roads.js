@@ -621,6 +621,7 @@ export function updateTrade(world) {
   // flow direction. Rebuilt fresh each tick (no staleness across the
   // 240-tick reach rebuilds).
   const moneyFlows = [];
+  const linkMoney = new Map();   // "loId:hiId" -> net money that reached the higher-id settlement
   for (const s of world.settlements) {
     if (s.mode !== "settled" || !s._tradeReach) continue;
     for (const [peerId, link] of s._tradeReach) {
@@ -630,7 +631,8 @@ export function updateTrade(world) {
       const peerBefore = peer.wealth || 0;
       runFoodTradeBetween(world, s, peer, link, stMap);
       runGeneralTradeBetween(world, s, peer, link, stMap);
-      const net = (peer.wealth || 0) - peerBefore;   // +ve = money toward peer (end of tiles)
+      const net = (peer.wealth || 0) - peerBefore;   // +ve = money toward peer (higher id, end of tiles)
+      linkMoney.set(s.id + ":" + peerId, net);
       // Add this trade's contribution to current flow on the path.
       if (link.tiles && link.tiles.length > 0) {
         for (const ti of link.tiles) { rf[ti] += USAGE_PER_TRADE; flowTiles.add(ti); }
@@ -641,6 +643,7 @@ export function updateTrade(world) {
     }
   }
   world._moneyFlows = moneyFlows;
+  world._linkMoney = linkMoney;
   // Quality evolution over the road set only:
   //   • busy tiles (flow ≥ ROAD_ABANDON_FLOW) pave further toward
   //     QUALITY_MAX, faster the higher the flow (capped at FLOW_FOR_PAVE,

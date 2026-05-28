@@ -429,49 +429,44 @@ export function getExportBreakdown(s) {
   return out.sort((a, b) => b.value - a.value);
 }
 
-// Trade profile across all connected roads. For each road, returns:
-//   role (general)        — "selling" or "buying" based on exportValue diff
-//   foodRole              — "selling food" / "buying food" / null
-//   goods                 — top 2 specialty labels exchanged (descriptive)
-//   netPerTick            — wealth flow direction & magnitude (this settlement)
+// Trade profile across all connected roads. Per route:
+//   netPerTick — ACTUAL net money this settlement gained (+) or paid (−)
+//                on that route last tick, read from the live trade pass
+//                (world._linkMoney). NOT a notional value — matches what
+//                actually moved.
+//   foodRole   — "selling food" / "buying food" / null (real
+//                complementary food flow).
+// Sorted by magnitude so the biggest flows show first. We deliberately
+// don't report per-route "goods": trade is abstract money flow along the
+// export-value gradient, not specific-commodity barter, so a goods label
+// would be fiction (and made a town look like it both buys and sells the
+// same thing).
 export function getTradeProfile(s, world) {
   const profile = [];
   if (!s._tradeReach || s._tradeReach.size === 0) return profile;
-  const sExport = computeExportValue(s);
   const sFood = (s._foodSupply || 0) - (s._foodDemand || 0);
-  const sBreakdown = getExportBreakdown(s);
+  const lm = world._linkMoney;
   for (const [peerId, link] of s._tradeReach) {
     const peer = findSettlementById(world, peerId);
     if (!peer || peer.mode !== "settled") continue;
-    const peerExport = computeExportValue(peer);
+    // Actual money this settlement netted on the route last tick.
+    let net = 0;
+    if (lm) {
+      const lo = Math.min(s.id, peer.id), hi = Math.max(s.id, peer.id);
+      const toHi = lm.get(lo + ":" + hi) || 0;     // money that reached the higher-id settlement
+      net = (s.id === hi) ? toHi : -toHi;
+    }
     const peerFood = (peer._foodSupply || 0) - (peer._foodDemand || 0);
-    const diff = sExport - peerExport;
-    const minPop = Math.min(s.people, peer.people);
-    const tradeValue = Math.abs(diff) * Math.sqrt(minPop) * 0.025;
-    const transport  = (link.cost || 0) * 0.012;
-    const selling = diff > 0;
-    const netPerTick = selling ? tradeValue : -(tradeValue + transport);
-
     let foodRole = null;
     if (sFood > 0.01 && peerFood < -0.01) foodRole = "selling food";
     else if (sFood < -0.01 && peerFood > 0.01) foodRole = "buying food";
 
-    const breakdown = selling ? sBreakdown : getExportBreakdown(peer);
-    const goods = breakdown
-      .filter(b => b.label !== "Baseline")
-      .slice(0, 2)
-      .map(b => b.label);
-
     profile.push({
       partner: peer.name, partnerId: peer.id,
-      role: selling ? "selling" : "buying",
-      foodRole,
-      goods,
-      tradeValue, transport: selling ? 0 : transport,
-      netPerTick,
-      pathCost: link.cost,
+      netPerTick: net, foodRole, pathCost: link.cost,
     });
   }
+  profile.sort((a, b) => Math.abs(b.netPerTick) - Math.abs(a.netPerTick));
   return profile;
 }
 
