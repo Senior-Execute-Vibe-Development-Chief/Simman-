@@ -95,6 +95,22 @@ export function baseEdgeCost(world, fromTi, toTi) {
   const { elev, temp, moist, riverMag, coast } = world;
   const e = elev[toTi];
   if (e <= 0) return Infinity;        // water — impassable for land transport
+
+  // ── Road override ──
+  // If EITHER endpoint is a road tile, the edge cost is purely the
+  // road's intrinsic quality — ignore underlying terrain. A road
+  // over mountains costs the same as a road over plains
+  // (Roman-engineered-road model). Heavily-worn arterials (lower
+  // quality number) are even cheaper. This makes Dijkstra
+  // aggressively prefer any existing road, producing visible
+  // trunk-and-spur networks.
+  const rq = world.roadQuality;
+  if (rq) {
+    const qF = rq[fromTi], qT = rq[toTi];
+    if (qF < 1.0 || qT < 1.0) return Math.min(qF, qT);
+  }
+
+  // ── Standard terrain cost (non-road edges) ──
   const fromE = elev[fromTi];
 
   // Absolute altitude. Linear + quadratic so even small hills are
@@ -103,17 +119,14 @@ export function baseEdgeCost(world, fromTi, toTi) {
   //   e=0.50 → +6.00   e=0.70 → +10.36  e=1.00 → +19.00
   const altCost = e * 5 + e * e * 14;
 
-  // Slope between this tile and the one we came from. The old per-tile
-  // model could not see steepness — a flat alpine plateau cost the
-  // same as a sheer cliff face. Slope fixes that.
+  // Slope between this tile and the one we came from.
   //   |Δ|=0.02 → +0.70   |Δ|=0.05 → +1.75   |Δ|=0.10 → +3.50   |Δ|=0.20 → +7.00
   const slope = Math.abs(e - fromE);
   const slopeCost = slope * 35;
 
   const t = temp[toTi], m = moist[toTi];
 
-  // Cold. Smooth ramp below t=0.35 (wider than old t<0.30).
-  //   t=0.35 → +0.00   t=0.25 → +0.28   t=0.15 → +1.12   t=0.05 → +2.52   t=0.00 → +3.43
+  // Cold. Smooth ramp below t=0.35.
   let coldCost = 0;
   if (t < 0.35) {
     const cold = 0.35 - t;
@@ -121,33 +134,47 @@ export function baseEdgeCost(world, fromTi, toTi) {
   }
 
   // Aridity. Continuous heat × dryness interaction.
-  //   t=0.65, m=0.20 → +1.25   t=0.85, m=0.10 → +3.50   t=1.00, m=0.00 → +5.50
   const heat = Math.max(0, t - 0.45);
   const dry  = Math.max(0, 0.40 - m);
   const aridCost = heat * dry * 25;
 
   let c = 1.0 + altCost + slopeCost + coldCost + aridCost;
 
-  // River bonus scales continuously with magnitude (was a binary
-  // "mag ≥ 2 → ×0.4"). mag=1 → ×0.76, mag=2 → ×0.61, mag=3 → ×0.51,
-  // mag=4 → ×0.44.
+  // River bonus scales continuously with magnitude.
   if (riverMag && riverMag[toTi] > 0) c /= (1 + riverMag[toTi] * 0.32);
   if (coast[toTi])                    c *= 0.80;
   return c;
 }
 
-// Per-settlement edge cost = base × tech multipliers. Toolmaking
-// (wagons / harness / draft animals) and organization (postal relays,
-// logistics) give flat speedups; construction (roads, bridges,
-// switchbacks) reduces cost more — it makes terrain itself less of an
-// obstacle. At full tech: ×(0.70 · 0.60 · 0.85) ≈ ×0.36.
+// Per-settlement edge cost = base × tech multipliers. Each track of
+// knowledge reduces effective edge cost in a way that maps to a real
+// transport innovation:
+//   toolmaking   wagons, harness, draft animals      flat ×0.70 max
+//   construction roads, bridges, switchbacks         flat ×0.60 max
+//   organization postal relays, supply chains        flat ×0.85 max
+//   mobility     horses (cavalry, courier, plough)   flat ×0.70 max
+//   navigation   ships on rivers / coasts            water ×0.55 max
+//
+// At full tech (everything at 1.0), a flat plain tile costs:
+//   ×0.70 × 0.60 × 0.85 × 0.70 = 0.250 (was 0.357 without mobility)
+// A river tile with navigation maxed adds another ×0.55 on top.
+// So a maxed-out Iron Age tribe with horses and ships moves ~4× faster
+// over land and ~7× faster on water than a stone-age starter.
 export function localEdgeCost(world, fromTi, toTi, kn) {
   const c = baseEdgeCost(world, fromTi, toTi);
   if (c === Infinity || !kn) return c;
   const tool = kn.toolmaking   || 0;
   const cons = kn.construction || 0;
   const org  = kn.organization || 0;
-  return c * (1 - 0.30 * tool) * (1 - 0.40 * cons) * (1 - 0.15 * org);
+  const mob  = kn.mobility     || 0;
+  const nav  = kn.navigation   || 0;
+  let mul = (1 - 0.30 * tool) * (1 - 0.40 * cons) * (1 - 0.15 * org) * (1 - 0.30 * mob);
+  if (nav > 0) {
+    const isWater = (world.riverMag && world.riverMag[toTi] >= 2)
+                 || (world.coast && world.coast[toTi]);
+    if (isWater) mul *= (1 - 0.45 * nav);
+  }
+  return c * mul;
 }
 
 export function computeTransport(world) {
@@ -164,25 +191,36 @@ export function computeTransport(world) {
       heap.push(ti, 0);
     }
   }
-  // Dijkstra. Edge cost is the cost of stepping FROM ti INTO the
-  // neighbour ni — depends on neighbour terrain AND the slope.
+  // Dijkstra over 8-neighbours (cardinals + diagonals). Diagonal
+  // steps cover √2 × the geometric distance so their cost is
+  // multiplied accordingly — this stops the algorithm from
+  // preferring stairstep paths over a straight diagonal across
+  // open ground.
+  const SQRT2 = Math.SQRT2;
   while (heap.n > 0) {
     const { ti, d } = heap.popMin();
     if (d > dist[ti]) continue;       // stale
     const ty = (ti / tw) | 0;
     const tx = ti - ty * tw;
-    // 4-neighbours with wrap-X, clamp-Y.
-    const left  = ty * tw + (tx === 0 ? tw - 1 : tx - 1);
-    const right = ty * tw + (tx === tw - 1 ? 0 : tx + 1);
-    const up    = ty > 0      ? (ty - 1) * tw + tx : -1;
-    const down  = ty < th - 1 ? (ty + 1) * tw + tx : -1;
-    const ns = [left, right, up, down];
-    for (let k = 0; k < 4; k++) {
+    const xm = tx === 0      ? tw - 1 : tx - 1;
+    const xp = tx === tw - 1 ? 0      : tx + 1;
+    const yu = ty - 1, yd = ty + 1;
+    const left  = ty * tw + xm;
+    const right = ty * tw + xp;
+    const up    = yu >= 0 ? yu * tw + tx : -1;
+    const down  = yd < th ? yd * tw + tx : -1;
+    const ul    = yu >= 0 ? yu * tw + xm : -1;
+    const ur    = yu >= 0 ? yu * tw + xp : -1;
+    const dl    = yd < th ? yd * tw + xm : -1;
+    const dr    = yd < th ? yd * tw + xp : -1;
+    const ns  = [left, right, up, down, ul, ur, dl, dr];
+    const mul = [1,    1,     1,  1,    SQRT2, SQRT2, SQRT2, SQRT2];
+    for (let k = 0; k < 8; k++) {
       const ni = ns[k];
       if (ni < 0) continue;
       const c = baseEdgeCost(world, ti, ni);
       if (c === Infinity) continue;
-      const nd = d + c;
+      const nd = d + c * mul[k];
       if (nd < dist[ni]) {
         dist[ni] = nd;
         heap.push(ni, nd);

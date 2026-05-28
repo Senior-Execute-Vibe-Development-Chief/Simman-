@@ -25,18 +25,19 @@ const TIER_NAME      = ["village", "town", "city", "metropolis"];
 const SETT_GROWTH = 0.0018;
 
 // Farmland model:
-//   1 painted tile feeds PEOPLE_PER_FARM_TILE people on average.
-//   Yield is calibrated so supply / demand ≈ 1.31 at K (30 % margin).
+//   farmland tile yields = world.fert[tile] × FARM_YIELD_PER_FERT
+//                          × (1 + ag × 1.2)  per tick
 // Forage model:
-//   K also includes a forage-area contribution at 0.8× weight, so a
-//   village in a modest semi-arid neighbourhood can carry 40–70
-//   people on hunting/gathering alone (no plantable farmland). This
-//   is what lets steppe/desert-edge/tundra hamlets be a visible
-//   feature instead of empty floor-20 dots.
-const PEOPLE_PER_FARM_TILE   = 14;
-const PEOPLE_PER_FORAGE_TILE = 7;          // forage-K rate (per fert-unit in 5×5)
-const FORAGE_K_WEIGHT        = 1.0;        // forage contribution to total K
-const K_FLOOR                = 35;         // hamlet visible at zoom — pop ~35 even in worst land
+//   forage area food = forageArea × FORAGE_RATE
+//                      × (1 + foraging × 0.5)  per tick
+// Population K is derived ENTIRELY from food production (local +
+// imports). No artificial fudge factors — pop is what food can
+// support, full stop.
+//   K = (supply + imported supply) / demand_per_capita
+// where demand_per_capita = 0.003 food/person/tick.
+const K_MIN_VIABLE = 8;                    // bare-survival floor (matches the wither cull threshold)
+// Farm target sizing: ~1 tile feeds ~16 people (yield 0.055/fert × ag-mature 2.2 / demand 0.003).
+const FARM_TARGET_PEOPLE_PER_TILE = 16;
 const FARM_YIELD_PER_FERT    = 0.055;
 // Forage rate calibrated so a forage-only village in a modest 5×5
 // neighbourhood (avg fert ~0.4) reaches equilibrium pop ~70. Bumped
@@ -92,12 +93,35 @@ export function makeSettlement(world, x, y, opts = {}) {
       agriculture: 0.50,        // cradle starts already farming
       construction: 0.1,
       organization: 0.1,
+      metallurgy:  0,           // gated by ore access
+      navigation:  0,           // gated by water access
+      mobility:    0,           // gated by horses
     },
     traits: opts.traits || {
       aggression:   world.rng(),
       mercantilism: world.rng(),
       curiosity:    world.rng(),
     },
+    // Maximum local deposit richness within transport reach, per
+    // resource id. Populated by scanLocalResources alongside the
+    // farmland refresh; used by updateKnowledge to gate tech growth.
+    // A road connection also merges the peer's localRes via max(),
+    // so a settlement effectively "sees" the resources of any town
+    // it trades with.
+    localRes: {},
+    // Cached water-access score (coast + river magnitude at home
+    // tile). Set on creation, doesn't change.
+    waterAccess: 0,
+    // Currency for funding road construction. Earned from mining
+    // valuable resources and from trade across roads. New
+    // settlements get a small endowment so they can build their
+    // first road and join the trade network — the cradle gets a
+    // larger one as the world's economic seed.
+    wealth: opts.name === "cradle" ? 100 : 40,
+    // Cached shortest road-network paths to all reachable
+    // settlements. { peerId → { cost, tiles } }. Populated by
+    // rebuildTradeReach in roads.js on each plan cycle.
+    _tradeReach: null,
     farmland: new Set(),
     tier: 0,
     mode: "settled",
@@ -105,16 +129,357 @@ export function makeSettlement(world, x, y, opts = {}) {
     lastFoundAttempt: world.step,
     history: [{ step: world.step, type: "founded", parent: opts.parentId ?? -1, pos: { x, y } }],
   };
+  // Migrate older knowledge objects (e.g. crystallization inheritance)
+  // that don't have the new fields.
+  for (const k of ["metallurgy","navigation","mobility"]) {
+    if (s.knowledge[k] === undefined) s.knowledge[k] = 0;
+  }
+  // Compute water access score from the home tile + 4 neighbours.
+  s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
   world.settlements.push(s);
   refreshFarmland(world, s);
+  scanLocalResources(world, s);
   return s;
+}
+
+// Water-access score: 0 (landlocked, no river) to ~1 (coastal city
+// on a great river). Coast contributes 0.5; river magnitude scales
+// linearly: mag 1 → 0.2, mag 3 → 0.6, mag 4 → 0.8. Capped at 1.
+function computeWaterAccess(world, sx, sy) {
+  const { tw, th, coast, riverMag } = world;
+  let coastBit = 0, bestMag = 0;
+  for (let dy = -1; dy <= 1; dy++) {
+    const ny = sy + dy;
+    if (ny < 0 || ny >= th) continue;
+    for (let dx = -1; dx <= 1; dx++) {
+      const nx = ((sx + dx) % tw + tw) % tw;
+      const ni = ny * tw + nx;
+      if (coast[ni]) coastBit = 1;
+      if (riverMag) {
+        const m = riverMag[ni] || 0;
+        if (m > bestMag) bestMag = m;
+      }
+    }
+  }
+  return Math.min(1, coastBit * 0.5 + bestMag * 0.2);
+}
+
+// Walk the settlement's transport reach (if cached) or a 5×5 fall
+// back box, and record per-resource richness. Two outputs:
+//   s.localRes[k]  — MAX richness within reach (gates knowledge:
+//                    is there ANY deposit accessible at all?).
+// Road connections merge peer localRes via max() in
+// effectiveLocalRes() so trade unlocks tech the same way local
+// deposits would. Run alongside farmland refresh so it picks up
+// tier-driven reach growth.
+function scanLocalResources(world, s) {
+  const deposits = world.deposits;
+  if (!deposits) return;
+  const keys = Object.keys(deposits);
+  if (keys.length === 0) return;
+  const maxOut = {};
+  for (const k of keys) maxOut[k] = 0;
+  const sample = (ti) => {
+    for (const k of keys) {
+      const v = deposits[k][ti] || 0;
+      if (v > maxOut[k]) maxOut[k] = v;
+    }
+  };
+  if (s._reach && s._reach.size > 0) {
+    for (const ti of s._reach.keys()) sample(ti);
+  } else {
+    const { tw, th } = world;
+    const sx = s.pos.x | 0, sy = s.pos.y | 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      const ny = sy + dy;
+      if (ny < 0 || ny >= th) continue;
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = ((sx + dx) % tw + tw) % tw;
+        sample(ny * tw + nx);
+      }
+    }
+  }
+  s.localRes = maxOut;
+  // Cache minable tiles (precious + gems) so updateWealth can
+  // extract per-tick without re-walking reach. Each entry is
+  // [tileIndex, resourceId]. Refreshed on the same cadence as the
+  // reach scan, so newly-reached deposits start producing wealth at
+  // the next refresh boundary.
+  const minable = [];
+  const tileList = (s._reach && s._reach.size > 0)
+    ? [...s._reach.keys()]
+    : (() => {
+        const ts = [];
+        const { tw, th } = world;
+        const sx = s.pos.x | 0, sy = s.pos.y | 0;
+        for (let dy = -2; dy <= 2; dy++) {
+          const ny = sy + dy;
+          if (ny < 0 || ny >= th) continue;
+          for (let dx = -2; dx <= 2; dx++) {
+            const nx = ((sx + dx) % tw + tw) % tw;
+            ts.push(ny * tw + nx);
+          }
+        }
+        return ts;
+      })();
+  for (const ti of tileList) {
+    if (deposits.precious && deposits.precious[ti] > 0.05) minable.push([ti, "precious"]);
+    if (deposits.gems     && deposits.gems[ti]     > 0.05) minable.push([ti, "gems"]);
+  }
+  s._minableTiles = minable;
+}
+export { scanLocalResources };
+
+// Settlement's effective resource access including road-connected
+// peers. Each tracked resource is the MAX across this settlement's
+// local resources and each connected peer's. world.settlements is
+// an array indexed in insertion order, NOT by id, so we have to
+// look up peers by id rather than treating ids as indices.
+function findSettlementById(world, id) {
+  for (let i = 0; i < world.settlements.length; i++) {
+    if (world.settlements[i].id === id) return world.settlements[i];
+  }
+  return null;
+}
+function effectiveLocalRes(world, s) {
+  const own = s.localRes || {};
+  if (!s._tradeReach || s._tradeReach.size === 0) return own;
+  const out = { ...own };
+  for (const peerId of s._tradeReach.keys()) {
+    const peer = findSettlementById(world, peerId);
+    if (!peer || peer.mode !== "settled") continue;
+    const peerRes = peer.localRes || {};
+    for (const k in peerRes) {
+      if ((peerRes[k] || 0) > (out[k] || 0)) out[k] = peerRes[k];
+    }
+  }
+  return out;
+}
+export { effectiveLocalRes, findSettlementById };
+
+// ── Wealth: closed-economy model ──
+//
+// MONEY IS NOT CREATED FROM POPULATION OR TRADE. In a closed system,
+// total wealth grows only when new specie comes out of the ground.
+// All other "income" (trade, services, crafts) just moves existing
+// money between settlements.
+//
+// SOURCE — mining. Each tick, a settlement extracts from precious-
+// and gems-bearing tiles within its reach. Each tile has a finite
+// reserve (set on world init at richness × scale). Extraction draws
+// from reserve and adds to settlement wealth. When a tile's reserve
+// hits 0, that mine is dry — no more wealth from it ever. Mines
+// visibly deplete over thousands of ticks of heavy use.
+//
+// TRANSFER — trade. Handled in roads.js updateTrade(). Each tick on
+// each road, money flows from the buyer (lower exportValue) to the
+// seller (higher exportValue), bounded by buyer's wealth. Net
+// change to total system wealth: zero.
+//
+// SINK — road construction. Wealth spent on roads is gone from the
+// trackable economy (paid to labourers who disperse it). Already
+// implemented in roads.js.
+//
+// FOUNDING ENDOWMENT — new settlements get a small starting wealth
+// so they can build a first road; cradle gets more as the world's
+// economic seed.
+const MINING_RATE = 5.0;              // base extraction multiplier
+function updateWealth(world, s) {
+  const reserves = world.depositReserve;
+  if (!reserves) return;
+  const minable = s._minableTiles;
+  if (!minable || minable.length === 0) return;
+  const k = s.knowledge;
+  const popFactor = Math.sqrt(Math.max(1, s.people)) * 0.05;
+  const orgMul    = 1 + (k.organization || 0) * 0.3;
+  let mined = 0;
+  for (const [ti, id] of minable) {
+    const reserveArr = reserves[id];
+    if (!reserveArr) continue;
+    const left = reserveArr[ti];
+    if (left <= 0) continue;
+    const richness = (world.deposits[id] && world.deposits[id][ti]) || 0;
+    const want = MINING_RATE * richness * popFactor * orgMul;
+    const got = want < left ? want : left;
+    reserveArr[ti] = left - got;
+    mined += got;
+  }
+  s.wealth = (s.wealth || 0) + mined;
+}
+export { updateWealth };
+
+// Export-value = how many GOODS this settlement has to sell on a
+// road. NOT wealth itself — precious metals and gems are CURRENCY
+// once mined, not exportable goods. Gold-rich settlements have
+// low exportValue (no goods, just coin) and become net buyers,
+// spending their gold on imports from goods-producing partners.
+// That's how mining wealth actually distributes in a closed economy.
+//
+// Composition (broad enough that most settlements have SOMETHING
+// distinctive to sell):
+//   metallurgy + ore        tools / weapons (Damascus steel)
+//   construction + mats     building goods (lumber, dressed stone)
+//   agriculture + farmland  grain surplus (Egypt → Rome)
+//   navigation + water      ship goods, fish, salt cod
+//   toolmaking              crafted goods — pottery, textiles,
+//                           leatherwork — works without metallurgy
+//   foraging + timber       wild goods — furs, honey, herbs,
+//                           game (Russian taiga, Canadian fur trade)
+//   horses + mobility       horse trade, caravan beasts, war mounts
+//                           (Mongol horse export, Andalusian)
+//   organization + pop      administrative services — scribes,
+//                           banking, contracts (Venice's bankers)
+//   salt raw                preserved food, currency-adjacent
+// Range is roughly 1.0 (no specialisation, "just gold") → ~5.5
+// (highly developed multi-specialty exporter).
+export function computeExportValue(s) {
+  const k = s.knowledge || {};
+  const r = s.localRes || {};
+  let v = 1.0;
+  const oreAccess = Math.max(r.copper || 0, r.tin || 0, r.iron || 0, r.coal || 0);
+  if (oreAccess > 0.10) v += (k.metallurgy || 0) * 1.5;
+  const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
+  v += (k.construction || 0) * matAccess * 0.8;
+  const agScale = Math.min(1, s.farmland.size / 50);
+  v += (k.agriculture || 0) * agScale * 0.6;
+  if ((s.waterAccess || 0) > 0) v += (k.navigation || 0) * s.waterAccess * 0.5;
+  // Toolmaking — crafted goods are valuable even without metal.
+  // Pottery and textiles travel further than grain because of
+  // density-value ratio.
+  v += (k.toolmaking || 0) * 0.4;
+  // Foraging × timber — wild forest goods.
+  v += (k.foraging || 0) * (r.timber || 0) * 0.4;
+  // Horses + mobility — horse trade and caravans.
+  const horses = r.horses || 0;
+  if (horses > 0.05) v += horses * 0.6 + (k.mobility || 0) * 0.4;
+  // Organization × log-scale population — bureaucracy / services
+  // / banking. Scales with population because you need lots of
+  // people to support a clerical class.
+  const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
+  v += (k.organization || 0) * popScale * 0.5;
+  // Salt counts as a tradeable good.
+  v += (r.salt || 0) * 0.5;
+  // Base village products — every populated settlement has SOMETHING
+  // to sell: chickens, eggs, basket-weaving, surplus labour,
+  // hand-loomed cloth. Floor scales with log of pop so even a
+  // 25-person hamlet contributes a bit, a metropolis a lot.
+  // 25 ppl  → +0.14    1k ppl   → +0.30
+  // 100 ppl → +0.20    10k ppl  → +0.40
+  v += Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10);
+  return v;
+}
+
+// Wealth reserve = "rainy day fund" the settlement holds back from
+// active spending. Scales with population — bigger settlements have
+// more obligations (granary stockpiles, watch wages, ceremonial
+// reserves) and need more cushion against bad years.
+//   50  ppl: $ 45 reserve
+//   200 ppl: $ 90
+//   1000:    $330
+//   10000:   $3030
+// Below reserve, the settlement REFUSES to spend on trade outflows
+// of any kind — they hoard. This is the urgency / priority gate
+// the user asked for ("don't buy horses when struggling").
+export function getWealthReserve(s) {
+  return 30 + Math.max(0, s.people || 0) * 0.3;
+}
+
+// Decomposition of exportValue — returns a sorted list of
+// { label, value } for each contributor. Used by the settlement
+// info card to show WHAT the settlement actually exports, not
+// just the headline number. Mirrors computeExportValue's
+// structure.
+export function getExportBreakdown(s) {
+  const k = s.knowledge || {};
+  const r = s.localRes || {};
+  const out = [{ label: "Baseline", value: 1.0 }];
+  const oreAccess = Math.max(r.copper || 0, r.tin || 0, r.iron || 0, r.coal || 0);
+  if (oreAccess > 0.10) {
+    const v = (k.metallurgy || 0) * 1.5;
+    if (v > 0.01) out.push({ label: "Metalwork", value: v });
+  }
+  const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
+  const construction = (k.construction || 0) * matAccess * 0.8;
+  if (construction > 0.01) out.push({ label: "Building goods", value: construction });
+  const agScale = Math.min(1, s.farmland.size / 50);
+  const agriculture = (k.agriculture || 0) * agScale * 0.6;
+  if (agriculture > 0.01) out.push({ label: "Grain surplus", value: agriculture });
+  if ((s.waterAccess || 0) > 0) {
+    const v = (k.navigation || 0) * s.waterAccess * 0.5;
+    if (v > 0.01) out.push({ label: "Ship goods", value: v });
+  }
+  const tools = (k.toolmaking || 0) * 0.4;
+  if (tools > 0.01) out.push({ label: "Crafted goods", value: tools });
+  const wild = (k.foraging || 0) * (r.timber || 0) * 0.4;
+  if (wild > 0.01) out.push({ label: "Wild goods", value: wild });
+  const horses = r.horses || 0;
+  if (horses > 0.05) {
+    const v = horses * 0.6 + (k.mobility || 0) * 0.4;
+    if (v > 0.01) out.push({ label: "Horse trade", value: v });
+  }
+  const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
+  const services = (k.organization || 0) * popScale * 0.5;
+  if (services > 0.01) out.push({ label: "Services", value: services });
+  const salt = (r.salt || 0) * 0.5;
+  if (salt > 0.01) out.push({ label: "Salt", value: salt });
+  const base = Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10);
+  if (base > 0.01) out.push({ label: "Village products", value: base });
+  return out.sort((a, b) => b.value - a.value);
+}
+
+// Trade profile across all connected roads. For each road, returns:
+//   role (general)        — "selling" or "buying" based on exportValue diff
+//   foodRole              — "selling food" / "buying food" / null
+//   goods                 — top 2 specialty labels exchanged (descriptive)
+//   netPerTick            — wealth flow direction & magnitude (this settlement)
+export function getTradeProfile(s, world) {
+  const profile = [];
+  if (!s._tradeReach || s._tradeReach.size === 0) return profile;
+  const sExport = computeExportValue(s);
+  const sFood = (s._foodSupply || 0) - (s._foodDemand || 0);
+  const sBreakdown = getExportBreakdown(s);
+  for (const [peerId, link] of s._tradeReach) {
+    const peer = findSettlementById(world, peerId);
+    if (!peer || peer.mode !== "settled") continue;
+    const peerExport = computeExportValue(peer);
+    const peerFood = (peer._foodSupply || 0) - (peer._foodDemand || 0);
+    const diff = sExport - peerExport;
+    const minPop = Math.min(s.people, peer.people);
+    const tradeValue = Math.abs(diff) * Math.sqrt(minPop) * 0.025;
+    const transport  = (link.cost || 0) * 0.012;
+    const selling = diff > 0;
+    const netPerTick = selling ? tradeValue : -(tradeValue + transport);
+
+    let foodRole = null;
+    if (sFood > 0.01 && peerFood < -0.01) foodRole = "selling food";
+    else if (sFood < -0.01 && peerFood > 0.01) foodRole = "buying food";
+
+    const breakdown = selling ? sBreakdown : getExportBreakdown(peer);
+    const goods = breakdown
+      .filter(b => b.label !== "Baseline")
+      .slice(0, 2)
+      .map(b => b.label);
+
+    profile.push({
+      partner: peer.name, partnerId: peer.id,
+      role: selling ? "selling" : "buying",
+      foodRole,
+      goods,
+      tradeValue, transport: selling ? 0 : transport,
+      netPerTick,
+      pathCost: link.cost,
+    });
+  }
+  return profile;
 }
 
 export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;
   updateFood(world, s);
   updatePopulation(world, s);
+  if (s.mode !== "settled") return;        // died this tick (famine / wither)
   maybeRefreshFarmland(world, s);
+  updateWealth(world, s);
   updateKnowledge(world, s);
   updateTier(world, s);
 }
@@ -125,22 +490,101 @@ export function updateSettlement(world, s) {
 // improves; bigger pop + ag → construction improves. Diminishing
 // returns near 1.0.
 const LEARN_BASE = 0.000040;          // per tick scaling
+//
+// ── Resource-gated knowledge growth ──
+//
+// Each tech track grows in proportion to whatever inputs let it
+// progress. Some tracks are HARD-GATED: without the input, no
+// progress at all (metallurgy without ore, navigation without water).
+// Others are SOFT-BOOSTED: they progress everywhere but faster with
+// the right inputs (construction with timber, agriculture with
+// metal tools).
+//
+// metallurgy caps:
+//   stone tools only            cap 0
+//   + copper                    cap 0.30  (chalcolithic — knives, ornaments)
+//   + copper + tin              cap 0.65  (bronze age — proper weapons + ploughs)
+//   + iron                      cap 0.90  (iron age)
+//   + iron + coal               cap 1.00  (steel / industrial)
+//
 function updateKnowledge(world, s) {
   const k = s.knowledge;
+  // Trade brings remote resources into the local tech equation —
+  // a copper-poor settlement connected by road to a copper-rich one
+  // can advance to chalcolithic on imported ore.
+  const r = effectiveLocalRes(world, s);
+  const wa = s.waterAccess || 0;
   const fc = s.farmland.size;
   const pop = s.people;
-  // Agriculture: drives off farmland count + ag itself (compound). A
-  // 50-tile village makes more ag progress than a 5-tile hamlet.
-  k.agriculture = clamp01(k.agriculture + LEARN_BASE * 1.2 * (1 - k.agriculture) * (1 + fc * 0.03));
-  // Foraging: tiny ongoing trickle.
-  k.foraging    = clamp01(k.foraging    + LEARN_BASE * 0.3 * (1 - k.foraging));
-  // Toolmaking: pop drives it.
-  k.toolmaking  = clamp01(k.toolmaking  + LEARN_BASE * 0.8 * (1 - k.toolmaking)  * (1 + Math.sqrt(pop) * 0.08));
-  // Construction: needs agricultural surplus to free up builders.
-  k.construction= clamp01(k.construction+ LEARN_BASE * 0.9 * (1 - k.construction)* (1 + k.agriculture * 1.0) * (1 + Math.sqrt(pop) * 0.05));
-  // Organization: scales with pop — bigger town needs more
-  // administration to function.
-  k.organization= clamp01(k.organization+ LEARN_BASE * 1.0 * (1 - k.organization)* (1 + Math.sqrt(pop) * 0.10));
+  const popSqrt = Math.sqrt(pop);
+
+  // Foraging: slow trickle everywhere; faster in resource-rich zones
+  // (timber for tools, salt for preservation).
+  const forageBoost = 1 + (r.timber || 0) * 0.3 + (r.salt || 0) * 0.2;
+  k.foraging = clamp01(k.foraging + LEARN_BASE * 0.3 * (1 - k.foraging) * forageBoost);
+
+  // Toolmaking: stone for primitive, metallurgy multiplies.
+  const stoneBoost = 1 + (r.stone || 0) * 0.6;
+  const metalBoost = 1 + k.metallurgy * 2.5;
+  k.toolmaking = clamp01(k.toolmaking + LEARN_BASE * 0.8 * (1 - k.toolmaking)
+    * stoneBoost * metalBoost * (1 + popSqrt * 0.08));
+
+  // Construction: timber for early shelter, stone for durable
+  // structures, agriculture for surplus to free up builders.
+  const buildMat = 1 + (r.timber || 0) * 0.8 + (r.stone || 0) * 0.6;
+  k.construction = clamp01(k.construction + LEARN_BASE * 0.9 * (1 - k.construction)
+    * buildMat * (1 + k.agriculture * 0.8) * (1 + popSqrt * 0.05));
+
+  // Agriculture: farmland scale + metal tools (plough). Cradle starts
+  // at 0.5 so the floor is non-zero.
+  k.agriculture = clamp01(k.agriculture + LEARN_BASE * 1.2 * (1 - k.agriculture)
+    * (1 + fc * 0.03) * (1 + k.toolmaking * 0.7));
+
+  // Organization: pop driven (admin burden grows with size).
+  k.organization = clamp01(k.organization + LEARN_BASE * 1.0 * (1 - k.organization)
+    * (1 + popSqrt * 0.10));
+
+  // ── Metallurgy: hard-gated by ore access ──
+  const cu = r.copper || 0;
+  const sn = r.tin    || 0;
+  const fe = r.iron   || 0;
+  const co = r.coal   || 0;
+  const oreThr = 0.10;             // need at least a faint deposit
+  let metalCap = 0;
+  if (cu > oreThr)                metalCap = Math.max(metalCap, 0.30);
+  if (cu > oreThr && sn > oreThr) metalCap = Math.max(metalCap, 0.65);
+  if (fe > oreThr)                metalCap = Math.max(metalCap, 0.90);
+  if (fe > oreThr && co > oreThr) metalCap = 1.00;
+  if (metalCap > 0 && k.metallurgy < metalCap) {
+    const oreRate = Math.max(cu, sn, fe, co);
+    const headroom = 1 - k.metallurgy / metalCap;
+    // 3× faster than the original 0.5 factor so era transitions
+    // happen on a meaningful timescale (~5–10k ticks per era jump
+    // instead of plateauing for 100k+).
+    k.metallurgy = Math.min(metalCap, k.metallurgy +
+      LEARN_BASE * 1.5 * headroom * oreRate * (1 + k.toolmaking * 0.5));
+  }
+
+  // ── Navigation: hard-gated by water access ──
+  // Coast + major river gives the fastest growth (port cities). A
+  // small river alone gives slow progress (riverboats only).
+  if (wa > 0) {
+    k.navigation = clamp01(k.navigation + LEARN_BASE * 0.7 * (1 - k.navigation)
+      * wa * (1 + k.construction * 0.6));
+  }
+
+  // ── Mobility: hard-gated by horses ──
+  // Cavalry, postal relays, scouting. Construction unlocks chariots /
+  // saddles / stirrups (gradual real-world progression). Horses are
+  // sparse and clustered, so a much lower threshold (0.05 vs the
+  // 0.10 used for ore mines) lets faint herds count — a settlement
+  // doesn't need a stud farm to start training scouts.
+  const horsesThr = 0.05;
+  const horses = r.horses || 0;
+  if (horses > horsesThr) {
+    k.mobility = clamp01(k.mobility + LEARN_BASE * 0.5 * (1 - k.mobility)
+      * horses * (1 + k.construction * 0.4 + k.metallurgy * 0.6));
+  }
 }
 
 function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
@@ -184,7 +628,26 @@ function updateFood(world, s) {
   farmYield *= FARM_YIELD_PER_FERT * (1 + (s.knowledge.agriculture || 0) * 1.2);
 
   const supply = forage + farmYield;
-  const demand = s.people * 0.0030;
+  // Urbanization tax: per-capita food demand rises with population
+  // because bigger settlements have more non-farming specialists
+  // (craftsmen, soldiers, priests, scribes) plus transport
+  // overhead, food waste, supporting infrastructure. A village of
+  // 25 is essentially all farmers; a metropolis of 10000 has a
+  // huge urban service class eating without producing. This is what
+  // historically forced big cities to import grain — they
+  // physically couldn't feed their non-rural population from local
+  // farmland even when surrounded by it.
+  //   pop 25    → urbanFactor 1.14 (base × 1.14 = 0.0034)
+  //   pop 200   → 1.23
+  //   pop 1000  → 1.30
+  //   pop 10000 → 1.40
+  const urbanFactor = 1 + Math.log10(Math.max(10, s.people)) / 10;
+  const demand = s.people * 0.0030 * urbanFactor;
+  // Expose rates so the food-trade pass can compute surplus/deficit
+  // per road without recomputing forage + farmland sums.
+  s._foodSupply = supply;
+  s._foodDemand = demand;
+  s._urbanFactor = urbanFactor;
   s.food += supply - demand;
 
   const storageCap = 80 + s.tier * 200;
@@ -194,16 +657,18 @@ function updateFood(world, s) {
 
 // ── Population ─────────────────────────────────────────────────────
 function updatePopulation(world, s) {
-  let farmFert = 0;
-  for (const fti of s.farmland) farmFert += world.fert[fti] || 0;
-  const farmK = farmFert * PEOPLE_PER_FARM_TILE * (1 + (s.knowledge.agriculture || 0) * 1.2);
-  // Forage area was computed in updateFood (5×5 fertility-sum around
-  // the home tile). Counts toward K at FORAGE_K_WEIGHT so marginal
-  // forage-only villages can actually grow past the floor — pastoral
-  // hamlets, oasis villages, tundra encampments.
-  const forageK = (s._forageArea || 0) * PEOPLE_PER_FORAGE_TILE
-                * (1 + (s.knowledge.foraging || 0.3) * 0.5);
-  const K = Math.max(K_FLOOR, farmK + forageK * FORAGE_K_WEIGHT);
+  // K = pop the food supply can sustain at CURRENT urban-tax rate.
+  //   supply = local food production (forage + farmland)
+  //          + imported food (smoothed EMA from updateFoodTrade)
+  //   per_capita_demand = 0.003 × urbanFactor(currentPop)
+  //   K = supply / per_capita_demand
+  // urbanFactor was just computed in updateFood; it grows with
+  // log(pop) so as a settlement grows, each new person costs more
+  // food to sustain → K shrinks faster than supply grows → large
+  // settlements naturally saturate and need imports to grow further.
+  const supply = (s._foodSupply || 0) + (s._foodImportRate || 0);
+  const perCapita = 0.003 * (s._urbanFactor || 1);
+  const K = Math.max(K_MIN_VIABLE, supply / perCapita);
   s._k = K;
 
   if (s.food <= 0.01 && s.people > 1) {
@@ -239,13 +704,15 @@ function maybeRefreshFarmland(world, s) {
   if (world.step - s.lastFarmRefresh < FARMLAND_REFRESH_INTERVAL) return;
   s.lastFarmRefresh = world.step;
   refreshFarmland(world, s);
+  // Reach may have widened on tier growth; rescan resources too.
+  scanLocalResources(world, s);
 }
 
 function refreshFarmland(world, s) {
   // Minimum 4 farm tiles so a freshly-founded settlement (~20 ppl,
   // would naively want only 2 tiles) has enough food capacity to grow
   // past its founding pop.
-  const target = Math.max(4, Math.ceil(s.people / PEOPLE_PER_FARM_TILE));
+  const target = Math.max(4, Math.ceil(s.people / FARM_TARGET_PEOPLE_PER_TILE));
   const { tw, th, elev, fert, coast, riverMag, _farmedBy } = world;
   // Plantability floor for this settlement, given its current ag tech.
   const minFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);

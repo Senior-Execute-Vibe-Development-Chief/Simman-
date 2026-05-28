@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
@@ -16,6 +16,7 @@ import { runTribeStep, resetInvariantState } from "./tribeStep.js";
 import { tribePower, localPower, tribeOreAccess, tDistW, expFalloff } from "./tribePower.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { baseEdgeCost } from "./peopleSim/transport.js";
+import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
@@ -2349,6 +2350,11 @@ if(bonus>0.02)tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}
 
 // 2d: Volcanic soil bonus — near plate boundaries in tectonic mode.
 // Andisols from volcanic ash are mineral-rich, excellent for agriculture.
+// bDist (plate-boundary distance) is also exposed to Pass 3's tCrop
+// so the tropical penalty can spare young volcanic / orogenic tropical
+// regions (Java, Mekong, Ganges) that escape Amazon-style lateritic
+// soil leaching.
+let bDist=null;
 if(w.pixPlate){const W=w.width,H=w.height;
 // Build a plate-boundary distance map at tile resolution
 const plateBound=new Uint8Array(tw*th);
@@ -2358,12 +2364,15 @@ const myP=w.pixPlate[py*W+px];let isBoundary=false;
 for(const[dx,dy]of DIRS){const nx2=Math.min(W-1,Math.max(0,px+dx*RES)),ny2=Math.min(H-1,Math.max(0,py+dy*RES));
 if(w.pixPlate[ny2*W+nx2]!==myP){isBoundary=true;break;}}
 if(isBoundary)plateBound[ty*tw+tx]=1;}
-// Expand boundary influence: BFS to get distance from plate boundaries
-const bDist=new Uint8Array(tw*th);bDist.fill(255);
+// Expand boundary influence: BFS to get distance from plate boundaries.
+// Radius 15 so tCrop can see "near-orogenic" regions far enough inland
+// to cover Ganges plain / Indochina interior; volcanic bonus still
+// gates itself at <7 so its behavior is unchanged.
+bDist=new Uint8Array(tw*th);bDist.fill(255);
 const bdQ=[];
 for(let i=0;i<tw*th;i++)if(plateBound[i]&&tElev[i]>0){bDist[i]=0;bdQ.push(i);}
 for(let qi=0;qi<bdQ.length;qi++){const ci=bdQ[qi],cd=bDist[ci],cx=ci%tw,cy=(ci-cx)/tw;
-if(cd>=6)continue;// max 6-tile influence radius (~12 pixels, ~100km at 1920px=40000km)
+if(cd>=15)continue;// max 15-tile influence radius
 for(const[dx,dy]of DIRS){const nx=(cx+dx+tw)%tw,ny=cy+dy;if(ny<0||ny>=th)continue;
 const ni=ny*tw+nx;if(bDist[ni]<=cd+1||tElev[ni]<=0)continue;
 bDist[ni]=cd+1;bdQ.push(ni);}}
@@ -2432,12 +2441,47 @@ let crop;
 if(e>0.45)crop=0.02;
 else{
 const tBell=Math.exp(-((t-0.55)*(t-0.55))/(2*0.35*0.35));
-const mBell=Math.exp(-((m-0.45)*(m-0.45))/(2*0.27*0.27));
+const mBell=Math.exp(-((m-0.45)*(m-0.45))/(2*0.28*0.28));
 crop=tBell*mBell;
+// Tropical lateritic-soil penalty. The Amazon/Congo paradox: hot-wet
+// land on ancient cratonic interior leaches to laterite and is
+// agriculturally poor. But hot-wet land on YOUNG soil (volcanic
+// island arcs, orogenic foreland, river alluvium) is the most
+// productive ground on Earth — Java, Mekong, Bangladesh, Ganges.
+// So the penalty is discounted near plate boundaries (volcanic ash
+// + orogenic uplift), coasts (alluvial coastal plains, island
+// arcs), and major rivers (delta / floodplain).
 if(t>0.75&&m>0.65){
-const trop=Math.min(1,(t-0.75)/0.20)*Math.min(1,(m-0.65)/0.20);
+let trop=Math.min(1,(t-0.75)/0.20)*Math.min(1,(m-0.65)/0.20);
+let youngSoil=0;
+if(bDist&&bDist[ti]<12)youngSoil+=(1-bDist[ti]/12)*0.85;
+if(tCoast[ti])youngSoil+=0.35;
+if(rivers&&rivers.riverMag){
+const rm=rivers.riverMag[ti];
+if(rm>=3)youngSoil+=0.50;else if(rm>=2)youngSoil+=0.20;}
+trop*=Math.max(0,1-Math.min(1,youngSoil));
 crop*=1-0.65*trop;}
-if(e>0.30)crop*=Math.max(0,1-(e-0.30)*2.0);}
+if(e>0.30)crop*=Math.max(0,1-(e-0.30)*2.0);
+// ── General river / coast bonus ──
+// Alluvial floodplain and coastal-plain soils are productive
+// across the climate spectrum: Nile, Indus, Yellow River turn
+// hot desert into the world's first breadbaskets. Mekong,
+// Bangladesh, Po, Mississippi, Niger ride their rivers through
+// otherwise mediocre or hot land. Coastal alluvium and island
+// arc volcanism does the same job for Java, Philippines, Japan.
+// Pull-toward-1.0 form so the bonus is strongest where the raw
+// climate is marginal (the Nile is a green ribbon through red
+// desert) and barely visible where climate is already optimal
+// (Iowa cornbelt doesn't need a bigger green).
+let alluvialBonus=0;
+if(rivers&&rivers.riverMag){
+const rm=rivers.riverMag[ti];
+if(rm>=3)alluvialBonus+=0.45;
+else if(rm>=2)alluvialBonus+=0.22;
+else if(rm>=1)alluvialBonus+=0.08;}
+if(tCoast[ti])alluvialBonus+=0.15;
+alluvialBonus=Math.min(0.65,alluvialBonus);
+crop=crop+(1-crop)*alluvialBonus;}
 tCrop[ti]=Math.max(0,Math.min(1,crop));
 // Crossing difficulty: average edge cost from each land neighbour
 // into this tile. Edge-based so slope shows up; averaged so the
@@ -4297,8 +4341,10 @@ terRef.current=t;
 if(t.rivers)w.rivers=t.rivers;
 if(t.deposits)w.deposits=t.deposits;
 // peopleSim: entity-based simulator that replaces the legacy tribe model.
-// Bands wander now; settling, trade, war land in subsequent phases.
-peopleRef.current=initPeopleSim(w,{seed:w.seed});
+// Pass t.tCrop so the sim's fertility uses the SAME formula as the
+// Crop overlay (young-soil discount, tropical penalty, wide bell).
+// Falls back to the local bellFert if tCrop is absent.
+peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
 setPsStats(peopleSimStats(peopleRef.current));
 setCoverage(0);setTribeCount(t.tribeCount||0);setPlaying(false);playRef.current=false;
 terrainCache.current=null;atlasCache.current=null;imgRef.current=null;},[]);
@@ -4985,6 +5031,13 @@ if(v<0.5){const t2=v*2;r=(t2*220)|0;g=200;b=0;}
 else{const t2=(v-0.5)*2;r=220;g=((1-t2)*200)|0;b=0;}
 const shade=1-Math.max(0,e-0.1)*0.5;
 d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
+}else if(vm==="roads"){
+// Road network overlay — empty parchment background, then roads
+// drawn coloured-by-network so disconnected systems pop visually.
+// Settlements drawn as small grey dots so you can see which
+// communities each network connects.
+for(let ti=0;ti<N;ti++){const pi4=ti<<2;
+d[pi4]=240;d[pi4+1]=230;d[pi4+2]=205;d[pi4+3]=255;}
 }else if(vm==="resources"){
 // Resource overlay — blend all active resource layers per tile
 const ar=activeResRef.current;
@@ -5319,25 +5372,67 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
 // Power view removed — replaced by era-based rendering and focused view
 // Power centers removed — centers already drawn in main center loop above}
 // ── peopleSim entity overlay ────────────────────────────────────────
-// Bands drawn as small filled circles at continuous tile-space pos.
-// Radius scales with √people. Settlements / caravans / armies will
-// layer here in subsequent phases. Aesthetic is placeholder (drawn-
-// atlas pass comes after mechanics).
+// When vm === "roads", render ONLY the road network — no farmland,
+// no settlement icons. Each disconnected network (closed graph of
+// roads + settlements) is coloured distinctly so the player can
+// see at a glance which settlements trade with each other.
+// Otherwise: normal rendering of farmland + roads + settlement icons.
 {
   const psw=peopleRef.current;
-  if(psw&&ctx){
+  const vmRoads = viewRef.current === "roads";
+  if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
-    // ── Settlements + buildings ──
-    // Drawn first so bands render on top. Each settlement has a faint
-    // footprint outline scaled to tier (village → city); buildings
-    // appear as small primitives at their (dx, dy) offsets so the
-    // village grows visually as houses / farms / granaries complete.
+    // ── Network components from tile map ──
+    // psw._tileComponent is a Map<tileIndex → componentRootId>
+    // populated by buildNetworkComponents. If absent (initial state
+    // before any road planning), use a stable id-based hash.
+    const tileComp = psw._tileComponent;
+    const find = (sid) => {
+      // Each settlement is the root of its own component until joined.
+      // We approximate by reading the tile component for its home tile.
+      const s = psw.settlements.find(o => o.id === sid);
+      if (!s) return sid;
+      const ti = (s.pos.y | 0) * psw.tw + (s.pos.x | 0);
+      return tileComp && tileComp.get(ti) !== undefined ? tileComp.get(ti) : sid;
+    };
+    const compColour = (rootId) => {
+      const h = ((rootId * 137) % 360 + 360) % 360;
+      return `hsl(${h}, 65%, 45%)`;
+    };
+    // ── Draw road tiles, coloured by their component ──
+    if(psw.roadQuality&&tileComp){
+      const rq=psw.roadQuality;
+      for(let ti=0;ti<rq.length;ti++){
+        if(rq[ti]>=1.0)continue;
+        const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
+        const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+        const comp=tileComp.get(ti);
+        if(comp===undefined)continue;
+        ctx.fillStyle=compColour(comp);
+        ctx.fillRect(sx,sy,TR,TR);
+      }
+    }
+    // ── Settlement dots, also coloured by network ──
+    // Smaller than the normal icons so the road shapes dominate;
+    // every settlement shown so isolated ones (no roads) are
+    // visible as their own coloured dot too.
+    for(const s of psw.settlements){
+      if(!s||s.mode!=="settled")continue;
+      const sx=s.pos.x*TR;
+      const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
+      const root=find(s.id);
+      ctx.beginPath();
+      ctx.arc(sx,sy,3,0,Math.PI*2);
+      ctx.fillStyle=compColour(root);
+      ctx.fill();
+      ctx.lineWidth=0.6;
+      ctx.strokeStyle="rgba(0,0,0,0.5)";
+      ctx.stroke();
+    }
+  }
+  if(psw&&ctx&&!vmRoads){
+    const TR=psw.tileRes;
     // ── Farmland tiles ──
-    // Each settlement owns a Set of farmed tile indices. Batched into
-    // a SINGLE Path2D so the renderer makes one fillStyle/fill call
-    // for all of them instead of two canvas ops per tile (was ~10k
-    // ops/frame for a saturated map). Stroke dropped for the same
-    // reason; the colour difference is enough to read at this scale.
     ctx.fillStyle="rgba(155,160,75,0.55)";
     ctx.beginPath();
     for(const s of psw.settlements){
@@ -5351,57 +5446,144 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
     }
     ctx.fill();
-    // ── Settlement icons ──
-    // ONE icon per settlement, SIZED CONTINUOUSLY BY POPULATION (not
-    // tier — tier-stepped sizing made every village/town/city/metro
-    // look identical regardless of actual headcount). sqrt curve so the
-    // icon grows fast in the early hundreds and slowly in the
-    // thousands. Cultural shapes (roof apex / walls / towers) still
-    // gate on tier so the iconography keys to civic complexity.
-    const sizeFromPop=p=>Math.min(28,4+Math.sqrt(Math.max(0,p))*0.18);
+    // ── Roads ──
+    // Roads live in two per-tile arrays — roadQuality (1.0 = no
+    // road, <1.0 = road) and roadFlow (current trade traffic rate,
+    // a decaying EMA). We paint each road tile as a small rect,
+    // with thickness driven by CURRENT flow so trunk arteries pop
+    // vs. quiet spurs and abandoned routes fade visually as their
+    // traffic falls off.
+    if(psw.roadQuality&&psw.roadFlow){
+      const rq=psw.roadQuality,rf=psw.roadFlow;
+      // Scale: flow=50 (a heavy multi-pair corridor) reads as full
+      // thickness; a quiet single-pair link sits around flow=2.
+      const FLOW_FULL=50;
+      for(let ti=0;ti<rq.length;ti++){
+        if(rq[ti]>=1.0)continue;
+        const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
+        const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+        const intensity=Math.min(1,(rf[ti]||0)/FLOW_FULL);
+        // 1.4 → 3.0 px for the tile fill — busier = thicker.
+        const w=1.4+intensity*1.6;
+        const off=(TR-w)*0.5;
+        const alpha=0.55+intensity*0.35;
+        ctx.fillStyle=`rgba(120,80,40,${alpha.toFixed(2)})`;
+        ctx.fillRect(sx+off,sy+off,w,w);
+      }
+    }
+    // ── Settlement sprites ──
+    // Each settlement renders as a cluster of small buildings
+    // around its position. The cluster's SIZE scales with log(pop)
+    // — bigger settlements span a larger footprint and contain
+    // more individual buildings. Building TYPE distribution comes
+    // from wealth-per-capita and tier:
+    //   hovel  — squat dark roofless rectangle (poor / low tier)
+    //   house  — square wall + triangular roof (default)
+    //   tower  — tall narrow rectangle with dark cap (rich)
+    // Cities and metropolises also get an enclosing wall ring with
+    // tower-tick marks. Building positions seeded from settlement
+    // id so the sprite is stable across frames (no shimmer).
+    const MIN_SIZE=5,MAX_SIZE=16;
+    let _popMin=Infinity,_popMax=-Infinity;
+    for(const s of psw.settlements){
+      if(!s||s.mode!=="settled")continue;
+      const p=s.people;
+      if(p<_popMin)_popMin=p;
+      if(p>_popMax)_popMax=p;
+    }
+    const _logMin=Math.log(Math.max(1,_popMin));
+    const _logRange=Math.log(Math.max(2,_popMax))-_logMin;
+    const sizeFromPop=p=>{
+      if(_logRange<=0.01)return (MIN_SIZE+MAX_SIZE)*0.5;
+      const t=Math.max(0,Math.min(1,(Math.log(Math.max(1,p))-_logMin)/_logRange));
+      return MIN_SIZE+t*(MAX_SIZE-MIN_SIZE);
+    };
+    // Tiny deterministic PRNG (mulberry32-ish) so each settlement's
+    // sprite layout stays fixed across re-renders.
+    const stableRng=(seed)=>{let s=seed|0;return()=>{s=(s*1664525+1013904223)|0;return((s>>>0)%1000000)/1000000;};};
     const selId=selectedSettlementIdRef.current;
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
       const sx=s.pos.x*TR;
       const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
       const size=sizeFromPop(s.people);
-      const half=size/2;
-      // Selection halo — bright gold ring behind the icon.
+      // Selection halo — bright gold ring behind the sprite.
       if(s.id===selId){
-        ctx.beginPath();ctx.arc(sx,sy,size+4,0,Math.PI*2);
+        ctx.beginPath();ctx.arc(sx,sy,size+5,0,Math.PI*2);
         ctx.fillStyle="rgba(255,215,90,0.30)";ctx.fill();
-        ctx.beginPath();ctx.arc(sx,sy,size+4,0,Math.PI*2);
+        ctx.beginPath();ctx.arc(sx,sy,size+5,0,Math.PI*2);
         ctx.strokeStyle="rgba(255,200,70,1.0)";ctx.lineWidth=1.5;ctx.stroke();
       }
-      // Block — opaque, dark outline.
-      ctx.fillStyle="rgba(140,85,50,1.0)";
-      ctx.fillRect(sx-half,sy-half,size,size);
-      ctx.strokeStyle="rgba(30,20,10,1.0)";
-      ctx.lineWidth=1.0;
-      ctx.strokeRect(sx-half,sy-half,size,size);
-      // Roof apex for village/town suggests "settlement" vs "fort".
-      if(s.tier<=1){
-        ctx.beginPath();
-        ctx.moveTo(sx-half,sy-half);
-        ctx.lineTo(sx,sy-half-size*0.35);
-        ctx.lineTo(sx+half,sy-half);
-        ctx.fillStyle="rgba(90,50,25,1.0)";ctx.fill();
-        ctx.strokeStyle="rgba(30,20,10,1.0)";ctx.lineWidth=0.8;ctx.stroke();
+      // Wealth per capita determines building richness mix.
+      const wpc=(s.wealth||0)/Math.max(1,s.people);
+      // Rich threshold: wpc > 30 starts producing towers; > 100 dominant.
+      const richMix=Math.min(1,wpc/100);
+      // Poor: wealth-per-capita low → mostly hovels (tier 0/1 only).
+      const poorMix=Math.max(0,Math.min(1,(15-wpc)/15));
+      // Building count from √pop — density actually scales with
+      // city size. A hamlet of 25 has 4 buildings, a town of 200
+      // has 10, a city of 1000 has 22, a metropolis of 10000 has
+      // ~70. Cities look DENSE, packed into their footprint.
+      const numBuildings=Math.max(3,Math.min(80,Math.round(Math.sqrt(s.people)*0.7)));
+      // Buildings — pseudo-random scatter inside footprint. Density
+      // increases naturally because numBuildings grows faster than
+      // footprint area (sqrt(pop) vs log(pop)).
+      const rng=stableRng(s.id*2654435761);
+      const footR=size*0.85;
+      // Build a list of (offset, type, height) so we can z-sort
+      // by y so back buildings draw first.
+      const buildings=[];
+      for(let i=0;i<numBuildings;i++){
+        const a=rng()*Math.PI*2;
+        const d=Math.pow(rng(),0.7)*footR;
+        const bx=sx+Math.cos(a)*d;
+        const by=sy+Math.sin(a)*d;
+        // Building type roll
+        const r=rng();
+        let kind;
+        if(s.tier===0&&poorMix>0.5)kind=r<0.7?"hovel":"house";
+        else if(richMix>0.4&&r<richMix*0.6)kind="tower";
+        else if(poorMix>0.3&&r<poorMix*0.5)kind="hovel";
+        else kind="house";
+        buildings.push({bx,by,kind});
       }
-      // City+ get a walls ring (city = inner ring, metropolis = thicker).
-      if(s.tier>=2){
-        const wallR=size*0.75;
-        ctx.beginPath();ctx.arc(sx,sy,wallR,0,Math.PI*2);
-        ctx.strokeStyle="rgba(60,40,25,1.0)";
-        ctx.lineWidth=s.tier>=3?2.0:1.4;
-        ctx.stroke();
-        // Tiny tower-tick marks around the wall.
-        const towers=s.tier>=3?8:6;
-        for(let i=0;i<towers;i++){
-          const a=(i/towers)*Math.PI*2;
-          const tx=sx+Math.cos(a)*wallR,ty=sy+Math.sin(a)*wallR;
-          ctx.fillStyle="rgba(60,40,25,1.0)";
-          ctx.beginPath();ctx.arc(tx,ty,1.2,0,Math.PI*2);ctx.fill();
+      buildings.sort((a,b)=>a.by-b.by);
+      for(const b of buildings){
+        const{bx,by,kind}=b;
+        if(kind==="hovel"){
+          // Small dark squat rectangle
+          const w=2.2,h=1.8;
+          ctx.fillStyle="rgba(75,55,35,1.0)";
+          ctx.fillRect(bx-w/2,by-h/2,w,h);
+          ctx.strokeStyle="rgba(20,15,5,1.0)";
+          ctx.lineWidth=0.5;
+          ctx.strokeRect(bx-w/2,by-h/2,w,h);
+        }else if(kind==="tower"){
+          // Tall narrow rectangle + darker cap
+          const w=2.0,h=6.0;
+          ctx.fillStyle="rgba(180,160,130,1.0)";
+          ctx.fillRect(bx-w/2,by-h,w,h);
+          ctx.strokeStyle="rgba(40,30,15,1.0)";
+          ctx.lineWidth=0.5;
+          ctx.strokeRect(bx-w/2,by-h,w,h);
+          // Cap
+          ctx.fillStyle="rgba(80,50,25,1.0)";
+          ctx.fillRect(bx-w/2-0.3,by-h-1.2,w+0.6,1.4);
+        }else{
+          // House — square + triangular roof
+          const w=2.8,h=2.4;
+          ctx.fillStyle="rgba(150,100,65,1.0)";
+          ctx.fillRect(bx-w/2,by-h/2,w,h);
+          ctx.strokeStyle="rgba(30,20,10,1.0)";
+          ctx.lineWidth=0.5;
+          ctx.strokeRect(bx-w/2,by-h/2,w,h);
+          ctx.beginPath();
+          ctx.moveTo(bx-w/2-0.3,by-h/2);
+          ctx.lineTo(bx,by-h/2-1.4);
+          ctx.lineTo(bx+w/2+0.3,by-h/2);
+          ctx.closePath();
+          ctx.fillStyle="rgba(95,55,28,1.0)";ctx.fill();
+          ctx.lineWidth=0.5;ctx.stroke();
         }
       }
     }
@@ -5625,7 +5807,7 @@ const _era=deriveEra(_aAg,_aMt,_aNv,_aOg);
 const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
-  ["crop","Crop"],["crossing","Crossing"],
+  ["crop","Crop"],["crossing","Crossing"],["roads","Roads"],
   ["resources","Resources"],["population","Pop"],["transport","Transport"],
   ["transport-test","Trans Test"],["tribes","Tribes"]
 ];
@@ -5790,30 +5972,211 @@ return(
   const nextThr=TIER_THR[s.tier+1];
   const progress=nextThr?Math.min(1,s.people/nextThr):1;
   const k=s.knowledge||{};
+  const r=s.localRes||{};
   const farm=s.farmland?s.farmland.size:0;
+  const K=s._k||0;
+  // Era label is driven by metallurgy KNOWLEDGE (which is monotonic —
+  // you don't unlearn how to make steel) rather than current
+  // resource access. A city that lost its iron mine still knows the
+  // craft; it just can't make new iron until a trade route reopens.
+  const m=k.metallurgy||0;
+  let era="stone age";
+  if(m>=0.88)era="steel age";
+  else if(m>=0.68)era="iron age";
+  else if(m>=0.42)era="bronze age";
+  else if(m>=0.15)era="chalcolithic";
+  // Local resources, sorted by richness, only show ones present.
+  const RES_LABEL={timber:"Timber",stone:"Stone",copper:"Copper",tin:"Tin",iron:"Iron",coal:"Coal",horses:"Horses",salt:"Salt"};
+  const presentRes=Object.entries(r).filter(([,v])=>v>0.10).sort((a,b)=>b[1]-a[1]);
+  // Ore-access flags drive the metallurgy "(no ore)/(copper)/.../(steel)"
+  // hint — it shows what's POSSIBLE from current local deposits, which
+  // is independent of the era label above (driven by accumulated
+  // knowledge).
+  const cu=(r.copper||0)>0.10,sn=(r.tin||0)>0.10,fe=(r.iron||0)>0.10,co=(r.coal||0)>0.10;
+  // Water-access label.
+  const wa=s.waterAccess||0;
+  const waterLabel=wa<=0?"landlocked":wa<0.3?"minor river":wa<0.6?"river":wa<0.85?"coastal":"port";
+  // Bar helper.
+  const Bar=({v,color})=>(
+    <div style={{position:"relative",height:5,background:"rgba(0,0,0,0.15)",borderRadius:2,marginTop:1}}>
+      <div style={{position:"absolute",inset:0,width:`${Math.max(0,Math.min(1,v))*100}%`,background:color||"#7a5",borderRadius:2}}/>
+    </div>
+  );
+  const KRow=({label,val,colour,note})=>(
+    <div style={{margin:"3px 0"}}>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
+        <span>{label}{note?<span className="au-fade" style={{marginLeft:4,fontSize:9}}>{note}</span>:null}</span>
+        <span>{(val*100|0)}%</span>
+      </div>
+      <Bar v={val} color={colour}/>
+    </div>
+  );
   return(
     <div className="au-parchment au-pico au-elev"
-      style={{position:"absolute",left:14,top:14,minWidth:180,maxWidth:240,padding:"10px 12px",fontSize:11,zIndex:30}}>
+      style={{position:"absolute",left:14,top:14,minWidth:220,maxWidth:280,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"90vh",overflowY:"auto"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
         <div className="au-pico-title" style={{fontSize:13,textTransform:"capitalize"}}>{s.name}</div>
         <button onClick={()=>setSelectedSettlementId(-1)}
           style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:14,padding:"0 4px"}}>×</button>
       </div>
-      <div className="au-fade" style={{fontSize:10,marginBottom:6,textTransform:"capitalize"}}>{tierName} · founded step {s.foundedStep}</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px"}}>
-        <span>Population</span><span>{Math.round(s.people)}</span>
-        <span>Farmland</span><span>{farm} tile{farm===1?"":"s"}</span>
-        <span>Food</span><span>{Math.round(s.food)}</span>
-        {nextThr&&<><span>To next tier</span><span>{Math.round(s.people)}/{nextThr} ({Math.round(progress*100)}%)</span></>}
+      <div className="au-fade" style={{fontSize:10,marginBottom:6,textTransform:"capitalize"}}>
+        {tierName} · {era} · {waterLabel} · founded step {s.foundedStep}
       </div>
+
+      {/* ── Demographics + food balance ── */}
+      {(()=>{
+        const supply=s._foodSupply||0;
+        const demand=s._foodDemand||0;
+        const importRate=s._foodImportRate||0;
+        const totalSupply=supply+importRate;
+        const surplus=totalSupply-demand;
+        const ticksLeft=demand>0?(s.food||0)/demand:Infinity;
+        const starving=ticksLeft<100&&surplus<=0;
+        const status=starving?"starving":surplus>0.001?"surplus":surplus<-0.001?"deficit":"balanced";
+        const statusColor=starving?"#c44":surplus>0.001?"#494":surplus<-0.001?"#c84":undefined;
+        return(
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px"}}>
+            <span>Population</span><span>{Math.round(s.people)}{K?` / ${Math.round(K)} K`:""}</span>
+            <span>Food stored</span><span>{Math.round(s.food)}</span>
+            <span className="au-fade">Production /tick</span><span className="au-fade">{supply.toFixed(3)}</span>
+            {importRate>0.001&&(<><span className="au-fade">Imported (avg /tick)</span><span className="au-fade">+{importRate.toFixed(3)}</span></>)}
+            <span className="au-fade">Consumed /tick</span><span className="au-fade">{demand.toFixed(3)}</span>
+            <span style={statusColor?{color:statusColor}:undefined}>Food balance</span>
+            <span style={statusColor?{color:statusColor}:undefined}>
+              {surplus>=0?"+":""}{surplus.toFixed(3)} ({status})
+            </span>
+            <span>Farmland</span><span>{farm} tile{farm===1?"":"s"}</span>
+            {nextThr&&<><span>To next tier</span><span>{Math.round(s.people)}/{nextThr} ({Math.round(progress*100)}%)</span></>}
+          </div>
+        );
+      })()}
+
+      {/* ── Knowledge ── */}
       <div style={{marginTop:8,fontSize:10}} className="au-fade">Knowledge</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
-        <span>Agriculture</span><span>{(k.agriculture*100|0)}%</span>
-        <span>Foraging</span><span>{(k.foraging*100|0)}%</span>
-        <span>Toolmaking</span><span>{(k.toolmaking*100|0)}%</span>
-        <span>Construction</span><span>{(k.construction*100|0)}%</span>
-        <span>Organization</span><span>{(k.organization*100|0)}%</span>
+      <KRow label="Agriculture"  val={k.agriculture||0}  colour="#7a5"/>
+      <KRow label="Foraging"     val={k.foraging||0}     colour="#697"/>
+      <KRow label="Toolmaking"   val={k.toolmaking||0}   colour="#aa6"/>
+      <KRow label="Construction" val={k.construction||0} colour="#a85"/>
+      <KRow label="Organization" val={k.organization||0} colour="#967"/>
+      <KRow label="Metallurgy"   val={k.metallurgy||0}   colour="#86a"
+            note={!cu&&!fe?"(no ore)":(fe&&co?"(steel)":fe?"(iron)":(cu&&sn?"(bronze)":"(copper)"))}/>
+      <KRow label="Navigation"   val={k.navigation||0}   colour="#58a"
+            note={wa<=0?"(no water)":null}/>
+      <KRow label="Mobility"     val={k.mobility||0}     colour="#a76"
+            note={(r.horses||0)<=0.10?"(no horses)":null}/>
+
+      {/* ── Local resources (max richness in reach) ── */}
+      <div style={{marginTop:8,fontSize:10}} className="au-fade">
+        Local resources{presentRes.length===0?" (none in reach)":""}
       </div>
+      {presentRes.length>0&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
+          {presentRes.map(([id,v])=>(
+            <Fragment key={id}>
+              <span>{RES_LABEL[id]||id}</span><span>{(v*100|0)}%</span>
+            </Fragment>
+          ))}
+        </div>
+      )}
+
+      {/* ── Treasury ── */}
+      {(()=>{
+        const wealth=Math.round(s.wealth||0);
+        const reserve=Math.round(getWealthReserve(s));
+        const available=Math.max(0, wealth-reserve);
+        const hoarding=available<=0&&wealth>0;
+        return(
+          <>
+            <div style={{marginTop:8,fontSize:10}} className="au-fade">Treasury</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
+              <span>Wealth</span><span>${wealth.toLocaleString()}</span>
+              <span className="au-fade">Reserve (rainy day)</span>
+              <span className="au-fade">${reserve.toLocaleString()}</span>
+              <span style={hoarding?{color:"#c44"}:undefined}>
+                {hoarding?"Hoarding — no spending":"Available to spend"}
+              </span>
+              <span style={hoarding?{color:"#c44"}:undefined}>
+                ${available.toLocaleString()}
+              </span>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* ── Specialty profile (what they could sell — potential, not actual) ── */}
+      {(()=>{
+        const items=getExportBreakdown(s);
+        if(!items||items.length===0)return null;
+        const total=items.reduce((a,b)=>a+b.value,0);
+        const hasRoads=s._tradeReach&&s._tradeReach.size>0;
+        return(
+          <>
+            <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
+              <span>Specialty profile</span><span>{total.toFixed(2)}</span>
+            </div>
+            <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginBottom:2}}>
+              {hasRoads?"what they make / can sell":"what they could sell — no roads, nothing actually exported"}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
+              {items.map((it,i)=>(
+                <Fragment key={i}>
+                  <span>{it.label}</span><span>{it.value.toFixed(2)}</span>
+                </Fragment>
+              ))}
+            </div>
+          </>
+        );
+      })()}
+
+      {/* ── Actual trade routes (real flowing imports + exports per road) ── */}
+      {(()=>{
+        const psw2=peopleRef.current;
+        const profile=getTradeProfile(s,psw2);
+        if(profile.length===0){
+          return(
+            <div className="au-fade" style={{marginTop:8,fontSize:10,fontStyle:"italic"}}>
+              No active trade routes — no imports or exports flowing.
+            </div>
+          );
+        }
+        const totalNet=profile.reduce((a,p)=>a+p.netPerTick,0);
+        return(
+          <>
+            <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
+              <span>Actual trade ({profile.length} route{profile.length===1?"":"s"})</span>
+              <span style={{color:totalNet>=0?"#494":"#c44"}}>
+                {totalNet>=0?"+":""}{totalNet.toFixed(2)}/tick
+              </span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"1px 6px",fontSize:10}}>
+              {profile.map(p=>(
+                <Fragment key={p.rid}>
+                  <span style={{color:p.role==="selling"?"#5a5":"#c66"}}>
+                    {p.role==="selling"?"sell":"buy "}
+                  </span>
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {p.partner}
+                    {p.goods.length>0&&(
+                      <span className="au-fade" style={{marginLeft:4,fontSize:9}}>
+                        ({p.goods.join(", ").toLowerCase()})
+                      </span>
+                    )}
+                    {p.foodRole&&(
+                      <span style={{marginLeft:4,fontSize:9,
+                        color:p.foodRole==="selling food"?"#494":"#c84"}}>
+                        · {p.foodRole}
+                      </span>
+                    )}
+                  </span>
+                  <span style={{color:p.netPerTick>=0?"#494":"#c44"}}>
+                    {p.netPerTick>=0?"+":""}{p.netPerTick.toFixed(2)}
+                  </span>
+                </Fragment>
+              ))}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 })()}

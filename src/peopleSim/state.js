@@ -52,6 +52,12 @@ export function createWorld(w, opts = {}) {
     diff:  new Float32Array(N),
     riverMag: null,
 
+    // Per-tile resource deposits, downsampled from worldgen at
+    // peopleSim's TILE_RES. Each entry is a Float32Array(N), value
+    // in [0,1] = deposit richness. Empty object when no deposits
+    // were generated.
+    deposits: {},
+
     // Entities. No bands — settlements-only model.
     settlements: [],
     caravans:    [],
@@ -72,13 +78,14 @@ export function createWorld(w, opts = {}) {
     debug:  { tickMs: 0 },
   };
 
-  initTerrain(world, w);
+  initTerrain(world, w, opts.tCrop);
   initRiverMag(world, w);
+  initDeposits(world, w, opts.deposits);
   seedCradleVillage(world);
   return world;
 }
 
-function initTerrain(world, w) {
+function initTerrain(world, w, tCrop) {
   const { tw, th, elev, temp, moist, fert, coast, diff } = world;
   for (let ty = 0; ty < th; ty++) {
     for (let tx = 0; tx < tw; tx++) {
@@ -94,7 +101,10 @@ function initTerrain(world, w) {
       if (t > 0.5 && m < 0.2)    d = Math.max(d, Math.min(0.85, (0.2 - m) * 3 * (t - 0.3)));
       if (t < 0.2)               d = Math.max(d, Math.min(0.9, (0.2 - t) * 4));
       diff[ti] = d;
-      fert[ti] = bellFert(t, m, e);
+      // Use the same crop-suitability array the overlay renders, so
+      // where you SEE green is where settlements actually thrive. Falls
+      // back to the local bellFert formula if tCrop wasn't supplied.
+      fert[ti] = tCrop ? tCrop[wi] : bellFert(t, m, e);
     }
   }
 }
@@ -104,6 +114,51 @@ function bellFert(t, m, e) {
   const tFit = Math.exp(-((t - 0.45) * (t - 0.45)) / (2 * 0.18 * 0.18));
   const mFit = Math.exp(-((m - 0.50) * (m - 0.50)) / (2 * 0.22 * 0.22));
   return Math.min(1, tFit * mFit * 1.1);
+}
+
+// Downsample worldgen's per-pixel deposit arrays into peopleSim's
+// tile space. Sample at the same offset used for elev/temp/moist so
+// everything lines up. Only resources relevant to the knowledge
+// system are downsampled (the worldgen also has precious / oil /
+// gems / salt which feed wealth/trade systems, kept here for future
+// use but not gated on currently).
+const TRACKED_RES = ['timber','stone','copper','tin','iron','coal','horses','salt','precious','gems'];
+function initDeposits(world, w, deposits) {
+  if (!deposits) return;
+  const { tw, th, N } = world;
+  for (const id of TRACKED_RES) {
+    const src = deposits[id];
+    if (!src) continue;
+    const dst = new Float32Array(N);
+    for (let ty = 0; ty < th; ty++) {
+      for (let tx = 0; tx < tw; tx++) {
+        const px = Math.min(w.width - 1, tx * TILE_RES);
+        const py = Math.min(w.height - 1, ty * TILE_RES);
+        dst[ty * tw + tx] = src[py * w.width + px] || 0;
+      }
+    }
+    world.deposits[id] = dst;
+  }
+  // Money-creating mines get a per-tile RESERVE (finite stock). When a
+  // settlement extracts wealth from a mine, it draws from this reserve;
+  // when 0, the mine is dry and produces no more money. Historical
+  // pattern: Laurion silver depleted in ~180 years, Spanish New World
+  // silver in cycles. Reserves are richness × calibration, so a top-
+  // tier deposit yields ~150k wealth over its lifetime, modest tiles
+  // proportionally less.
+  world.depositReserve = {};
+  if (world.deposits.precious) {
+    const arr = world.deposits.precious;
+    const res = new Float32Array(N);
+    for (let i = 0; i < N; i++) res[i] = arr[i] * 150000;
+    world.depositReserve.precious = res;
+  }
+  if (world.deposits.gems) {
+    const arr = world.deposits.gems;
+    const res = new Float32Array(N);
+    for (let i = 0; i < N; i++) res[i] = arr[i] * 100000;
+    world.depositReserve.gems = res;
+  }
 }
 
 function initRiverMag(world, w) {
