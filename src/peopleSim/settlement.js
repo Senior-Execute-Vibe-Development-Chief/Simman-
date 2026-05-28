@@ -48,27 +48,31 @@ const FARM_TARGET_PEOPLE_PER_TILE = 16;
 // terrain still yields a smaller patch than the cap.
 const CATCHMENT_BY_TIER = [10, 28, 80, 200];   // village → metropolis
 
-// ── Housing / development population cap ──
-// Population grows to min(food capacity, HOUSING capacity). Housing is
-// what a settlement's economy and SITE can physically sustain regardless
-// of food: an undeveloped farming hamlet caps out small (its surplus food
-// is exported), while a developed, watered, well-connected trade hub
-// houses many and imports the food to feed them. Driven by organization
-// (dense administration), water access (ports/rivers concentrate people)
-// and trade connectivity (market hubs) — none of which a remote
-// breadbasket has, which is exactly why it stays a village.
-const HOUSING_BASE        = 45;
-const HOUSING_ORG         = 9.0;    // organization-knowledge multiplier
-const HOUSING_WATER       = 3.0;    // water-access multiplier
-const HOUSING_PARTNER     = 0.30;   // per connected trade partner
-const HOUSING_PARTNER_CAP = 12;
-// Development: a settlement pays spare coin to build INFRASTRUCTURE,
-// which adds directly to housing capacity — letting a coin-rich,
-// housing-pressed settlement turn wealth into population growth. The coin
-// is paid to the suppliers (trade partners — see updateDevelopment), not
-// destroyed. Rate-limited by construction tech + labour, so even an
-// infinitely-rich town grows gradually and a poor one can't grow at all.
-const INFRA_COST          = 80;     // coin paid to suppliers per +1 housing capacity
+// ── Housing population cap: FOOD, BUILDINGS, and SPACE ──
+// Population grows to min(food capacity, housing). Housing is purely
+// physical now:
+//   SPACE        — buildable land around the site (water and high
+//                  mountains don't count) × density. Density rises with
+//                  construction knowledge (huts → dense multi-storey),
+//                  so better building tech fits more people on the same
+//                  ground. This is the hard ceiling: a settlement boxed
+//                  in by sea/mountains stays small no matter how rich.
+//   BUILDINGS    — to actually occupy that space you must BUILD, which
+//                  needs construction materials (timber + stone, local or
+//                  bought from trade partners) and labour. Until built,
+//                  housing sits at HOUSING_BASE. See updateDevelopment.
+// Economy / water / organization no longer magically house people — they
+// matter only insofar as they bring food, materials, and the coin to buy
+// them.
+const HOUSING_BASE        = 45;     // starting shelter before anything is built
+const SPACE_RADIUS        = 14;     // urban-footprint radius for the buildable-land scan
+const DENSITY_BASE        = 6;      // people per buildable tile at zero construction
+const DENSITY_PER_CONSTR  = 5;      // extra people/tile per point of construction knowledge
+// Development: build housing up toward the space ceiling. Needs materials
+// (timber/stone — own, or bought from suppliers with coin) and labour;
+// rate-limited by construction tech + population. Coin paid for imported
+// materials is TRANSFERRED to the supplying partners, not destroyed.
+const INFRA_COST          = 80;     // coin per +1 housing of (imported) materials + labour
 const BUILD_RATE          = 0.015;  // housing/tick per construction-weighted builder
 const FARM_YIELD_PER_FERT    = 0.055;
 // Forage rate calibrated so a forage-only village in a modest 5×5
@@ -148,9 +152,11 @@ export function makeSettlement(world, x, y, opts = {}) {
     // Cached water-access score (coast + river magnitude at home
     // tile). Set on creation, doesn't change.
     waterAccess: 0,
-    // Coin. Starts at ZERO — the world runs on barter. Money only comes
-    // Built infrastructure (housing capacity bought with coin via
-    // updateDevelopment). Persists; adds to housingCapacity.
+    // Buildable land within the urban footprint (the SPACE ceiling).
+    // Cached on creation; terrain doesn't change.
+    _buildableArea: 0,
+    // Built infrastructure (housing built with materials + labour via
+    // updateDevelopment). Persists; adds to housing capacity up to space.
     infrastructure: 0,
     // Coin. Starts at ZERO — the world runs on barter. Money only comes
     // into being once it is mined out of the ground (updateWealth), and
@@ -175,6 +181,7 @@ export function makeSettlement(world, x, y, opts = {}) {
   }
   // Compute water access score from the home tile + 4 neighbours.
   s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
+  s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
   world.settlements.push(s);
   refreshFarmland(world, s);
   scanLocalResources(world, s);
@@ -740,81 +747,101 @@ function updateFood(world, s) {
 // of food, from its economy + site. Multiplicative, so a hub with several
 // advantages (organised + watered + many partners) compounds into a real
 // city while a plain inland hamlet sits near HOUSING_BASE.
+// SPACE: buildable land within the urban footprint. Water and high
+// mountains don't count. Cached on the settlement (terrain is static).
+function computeBuildableArea(world, sx, sy) {
+  const { tw, th, elev } = world;
+  let n = 0;
+  for (let dy = -SPACE_RADIUS; dy <= SPACE_RADIUS; dy++) {
+    const ny = sy + dy;
+    if (ny < 0 || ny >= th) continue;
+    for (let dx = -SPACE_RADIUS; dx <= SPACE_RADIUS; dx++) {
+      const nx = ((sx + dx) % tw + tw) % tw;
+      const e = elev[ny * tw + nx];
+      if (e > 0 && e < 0.6) n++;        // habitable land only
+    }
+  }
+  return n;
+}
+
+// The hard ceiling: how many people the SITE can physically hold =
+// buildable land x density, density rising with construction knowledge
+// (more people on the same ground as building tech improves).
+function spaceCapacity(s) {
+  const area = s._buildableArea || 1;
+  const density = DENSITY_BASE * (1 + (s.knowledge.construction || 0) * DENSITY_PER_CONSTR);
+  return area * density;
+}
+export { spaceCapacity };
+
+// Housing = what's actually been BUILT (base shelter + infrastructure),
+// never exceeding the physical SPACE ceiling.
 function housingCapacity(s) {
-  const org = (s.knowledge && s.knowledge.organization) || 0;
-  const wa = s.waterAccess || 0;
-  const partners = s._tradeReach ? s._tradeReach.size : 0;
-  const innate = HOUSING_BASE
-    * (1 + org * HOUSING_ORG)
-    * (1 + wa * HOUSING_WATER)
-    * (1 + Math.min(partners, HOUSING_PARTNER_CAP) * HOUSING_PARTNER);
-  return innate + (s.infrastructure || 0);
+  return Math.min(HOUSING_BASE + (s.infrastructure || 0), spaceCapacity(s));
 }
 export { housingCapacity };
 
-// Development: build housing capacity by PAYING for materials and labour.
-// Only runs when HOUSING is the binding constraint (food could feed more
-// than the settlement can house). Rate-limited by construction tech ×
-// labour, capped at the remaining food headroom (no point housing people
-// you can't feed), and bounded by spare coin — a settlement can only
-// build as much as it can pay its suppliers for.
-//
-// The coin is NOT destroyed: a construction boom enriches the surrounding
-// economy. It's transferred to the settlement's trade partners, weighted
-// toward those who supply construction materials (timber / stone) — that's
-// where the money goes in real life (quarries, foresters, carters,
-// migrant builders). A settlement with no partners builds with purely
-// local labour and materials, so no coin moves.
+// Development: build housing up toward the SPACE ceiling. Runs only when
+// housing is the binding constraint (food could feed more than is housed),
+// and is gated by the three real limits on a growing town: FOOD, SPACE,
+// and construction MATERIALS (timber/stone, local or bought from trade
+// partners). Coin spent buying imported materials is TRANSFERRED to the
+// supplying partners (a building boom enriches the material-rich
+// hinterland), never destroyed.
 function updateDevelopment(world, s) {
-  s._developRate = 0;                           // reset each tick (for the info panel)
-  const houseK = s._houseK || 0;
-  const foodK = s._foodK || 0;
-  s._housingPressed = foodK > houseK * 1.02;    // wants to grow but housing-capped
+  s._developRate = 0;
+  s._devReason = null;
+  const houseK = s._houseK || 0, foodK = s._foodK || 0;
+  s._housingPressed = foodK > houseK * 1.02;
   if (!s._housingPressed) return;
-  const buildCap = (0.2 + (s.knowledge.construction || 0) * 2)
-    * Math.sqrt(Math.max(1, s.people)) * BUILD_RATE;
-  let add = Math.min(buildCap, foodK - houseK);
-  if (add <= 0) return;
 
-  // Who gets paid: trade partners, weighted by the construction materials
-  // they can supply (timber + stone), plus a small flat share so any
-  // partner provides some labour / provisioning. partnerWeight() is reused
-  // for the payout below.
-  const partnerWeight = p => {
-    const pr = p.localRes || {};
-    return (pr.timber || 0) + (pr.stone || 0) + 0.05;
-  };
-  let totalW = 0;
+  // Room to grow = up to whichever of FOOD / SPACE binds first.
+  const space = spaceCapacity(s);
+  const room = Math.min(foodK, space) - houseK;
+  if (room <= 0) { s._devReason = "space"; return; }   // built out the site
+
+  // MATERIALS gate: timber + stone, local or from a trade partner.
+  const own = s.localRes || {};
+  const localMat = (own.timber || 0) + (own.stone || 0);
+  const partnerWeight = p => { const pr = p.localRes || {}; return (pr.timber || 0) + (pr.stone || 0) + 0.05; };
+  let bestPartnerMat = 0, totalW = 0;
   if (s._tradeReach && world._byId) {
     for (const pid of s._tradeReach.keys()) {
       const p = world._byId.get(pid);
-      if (p && p.mode === "settled") totalW += partnerWeight(p);
+      if (!p || p.mode !== "settled") continue;
+      const pr = p.localRes || {};
+      const pm = (pr.timber || 0) + (pr.stone || 0);
+      if (pm > bestPartnerMat) bestPartnerMat = pm;
+      totalW += partnerWeight(p);
     }
   }
+  if (Math.max(localMat, bestPartnerMat) < 0.05) { s._devReason = "materials"; return; }
 
-  if (totalW <= 0) {
-    // Isolated: build with local labour + materials, no coin changes hands.
-    s.infrastructure = (s.infrastructure || 0) + add;
-    s._developRate = add;
-    return;
-  }
-
-  // Bound by spare coin (can't pay suppliers more than this).
-  const spare = (s.wealth || 0) - getWealthReserve(s);
-  if (spare <= 0) return;                        // can't afford materials — stuck
-  let cost = add * INFRA_COST;
-  if (cost > spare) { add *= spare / cost; cost = spare; }
+  const buildCap = (0.2 + (s.knowledge.construction || 0) * 2)
+    * Math.sqrt(Math.max(1, s.people)) * BUILD_RATE;
+  let add = Math.min(buildCap, room);
   if (add <= 0) return;
 
-  s.infrastructure = (s.infrastructure || 0) + add;
-  s.wealth -= cost;
-  // Distribute the payment to partners, weighted by material supply.
-  for (const pid of s._tradeReach.keys()) {
-    const p = world._byId.get(pid);
-    if (!p || p.mode !== "settled") continue;
-    p.wealth = (p.wealth || 0) + cost * (partnerWeight(p) / totalW);
+  // Local materials cover part of the cost for free (own forests/quarries
+  // + local labour); the rest is bought from suppliers and paid for in
+  // coin, transferred to them.
+  const discount = Math.min(0.7, localMat * 0.5);
+  let cost = add * INFRA_COST * (1 - discount);
+  if (cost > 0 && totalW > 0) {
+    const spare = (s.wealth || 0) - getWealthReserve(s);
+    if (spare <= 0) { s._devReason = "coin"; return; }   // needs to buy materials it lacks
+    if (cost > spare) { add *= spare / cost; cost = spare; }
+    if (add <= 0) return;
+    s.wealth -= cost;
+    for (const pid of s._tradeReach.keys()) {
+      const p = world._byId.get(pid);
+      if (!p || p.mode !== "settled") continue;
+      p.wealth = (p.wealth || 0) + cost * (partnerWeight(p) / totalW);
+    }
   }
+  s.infrastructure = (s.infrastructure || 0) + add;
   s._developRate = add;
+  s._devReason = "expanding";
 }
 export { updateDevelopment };
 
