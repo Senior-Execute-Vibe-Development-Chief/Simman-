@@ -62,13 +62,13 @@ const HOUSING_ORG         = 9.0;    // organization-knowledge multiplier
 const HOUSING_WATER       = 3.0;    // water-access multiplier
 const HOUSING_PARTNER     = 0.30;   // per connected trade partner
 const HOUSING_PARTNER_CAP = 12;
-// Development: a settlement spends spare coin to build INFRASTRUCTURE,
-// which adds directly to housing capacity. This is what lets a coin-rich,
-// housing-pressed settlement turn wealth into population growth — and it
-// gives money a real job (and a sink). Rate-limited by construction tech
-// + labour (you can only build so fast), so even an infinitely-rich town
-// grows gradually, and a poor one can't grow at all.
-const INFRA_COST          = 80;     // coin per +1 housing capacity built
+// Development: a settlement pays spare coin to build INFRASTRUCTURE,
+// which adds directly to housing capacity — letting a coin-rich,
+// housing-pressed settlement turn wealth into population growth. The coin
+// is paid to the suppliers (trade partners — see updateDevelopment), not
+// destroyed. Rate-limited by construction tech + labour, so even an
+// infinitely-rich town grows gradually and a poor one can't grow at all.
+const INFRA_COST          = 80;     // coin paid to suppliers per +1 housing capacity
 const BUILD_RATE          = 0.015;  // housing/tick per construction-weighted builder
 const FARM_YIELD_PER_FERT    = 0.055;
 // Forage rate calibrated so a forage-only village in a modest 5×5
@@ -752,28 +752,69 @@ function housingCapacity(s) {
 }
 export { housingCapacity };
 
-// Development: convert spare coin into housing capacity. Only runs when
-// HOUSING is the binding constraint (food could feed more people than the
-// settlement can currently house) — there's no point building houses you
-// can't feed. Rate-limited by construction tech × labour, then by spare
-// coin, then by the remaining food headroom (never build past what food
-// supports). This is why a rich, housing-pressed settlement now GROWS,
-// while an equally housing-pressed but poor one stays stuck.
+// Development: build housing capacity by PAYING for materials and labour.
+// Only runs when HOUSING is the binding constraint (food could feed more
+// than the settlement can house). Rate-limited by construction tech ×
+// labour, capped at the remaining food headroom (no point housing people
+// you can't feed), and bounded by spare coin — a settlement can only
+// build as much as it can pay its suppliers for.
+//
+// The coin is NOT destroyed: a construction boom enriches the surrounding
+// economy. It's transferred to the settlement's trade partners, weighted
+// toward those who supply construction materials (timber / stone) — that's
+// where the money goes in real life (quarries, foresters, carters,
+// migrant builders). A settlement with no partners builds with purely
+// local labour and materials, so no coin moves.
 function updateDevelopment(world, s) {
   s._developRate = 0;                           // reset each tick (for the info panel)
   const houseK = s._houseK || 0;
   const foodK = s._foodK || 0;
   s._housingPressed = foodK > houseK * 1.02;    // wants to grow but housing-capped
-  if (!s._housingPressed) return;               // housing isn't what's holding it back
-  const spare = (s.wealth || 0) - getWealthReserve(s);
-  if (spare <= 0) return;                        // no coin to invest — stuck
+  if (!s._housingPressed) return;
   const buildCap = (0.2 + (s.knowledge.construction || 0) * 2)
     * Math.sqrt(Math.max(1, s.people)) * BUILD_RATE;
-  const add = Math.min(buildCap, spare / INFRA_COST, foodK - houseK);
+  let add = Math.min(buildCap, foodK - houseK);
   if (add <= 0) return;
+
+  // Who gets paid: trade partners, weighted by the construction materials
+  // they can supply (timber + stone), plus a small flat share so any
+  // partner provides some labour / provisioning. partnerWeight() is reused
+  // for the payout below.
+  const partnerWeight = p => {
+    const pr = p.localRes || {};
+    return (pr.timber || 0) + (pr.stone || 0) + 0.05;
+  };
+  let totalW = 0;
+  if (s._tradeReach && world._byId) {
+    for (const pid of s._tradeReach.keys()) {
+      const p = world._byId.get(pid);
+      if (p && p.mode === "settled") totalW += partnerWeight(p);
+    }
+  }
+
+  if (totalW <= 0) {
+    // Isolated: build with local labour + materials, no coin changes hands.
+    s.infrastructure = (s.infrastructure || 0) + add;
+    s._developRate = add;
+    return;
+  }
+
+  // Bound by spare coin (can't pay suppliers more than this).
+  const spare = (s.wealth || 0) - getWealthReserve(s);
+  if (spare <= 0) return;                        // can't afford materials — stuck
+  let cost = add * INFRA_COST;
+  if (cost > spare) { add *= spare / cost; cost = spare; }
+  if (add <= 0) return;
+
   s.infrastructure = (s.infrastructure || 0) + add;
-  s.wealth -= add * INFRA_COST;
-  s._developRate = add;                          // housing/tick added
+  s.wealth -= cost;
+  // Distribute the payment to partners, weighted by material supply.
+  for (const pid of s._tradeReach.keys()) {
+    const p = world._byId.get(pid);
+    if (!p || p.mode !== "settled") continue;
+    p.wealth = (p.wealth || 0) + cost * (partnerWeight(p) / totalW);
+  }
+  s._developRate = add;
 }
 export { updateDevelopment };
 
