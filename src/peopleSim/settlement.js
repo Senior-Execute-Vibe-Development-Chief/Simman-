@@ -109,11 +109,11 @@ export function makeSettlement(world, x, y, opts = {}) {
     // Cached water-access score (coast + river magnitude at home
     // tile). Set on creation, doesn't change.
     waterAccess: 0,
-    // Currency for funding road construction. Earned from mining
-    // valuable resources and from trade across roads. New
-    // settlements get a small endowment so they can build their
-    // first road and join the trade network — the cradle gets a
-    // larger one as the world's economic seed.
+    // Purchasing power. Generated each tick from production (and a
+    // mining bonus where deposits exist), spent on imports across
+    // roads — see updateWealth. This is just a starting value; within
+    // ~100 ticks it converges to the settlement's production-based
+    // equilibrium. Cradle starts a little higher as the economic seed.
     wealth: opts.name === "cradle" ? 100 : 40,
     // Cached shortest road-network paths to all reachable
     // settlements. { peerId → { cost, tiles } }. Populated by
@@ -255,54 +255,67 @@ function effectiveLocalRes(world, s) {
 }
 export { effectiveLocalRes, findSettlementById };
 
-// ── Wealth: closed-economy model ──
+// ── Wealth: production economy + specie bonus ──
 //
-// MONEY IS NOT CREATED FROM POPULATION OR TRADE. In a closed system,
-// total wealth grows only when new specie comes out of the ground.
-// All other "income" (trade, services, crafts) just moves existing
-// money between settlements.
+// Money is a claim on tradeable surplus, not just dug-up metal. Real
+// pre-modern economies created purchasing power mostly from PRODUCTION
+// (goods, services, and the credit/commodity money built on them) and
+// circulated it by velocity — coins changed hands constantly. Minted
+// specie from mines was only the hard-currency base layer, a fraction
+// of total activity. Modelling money as "only from mines" made the
+// economy slow and clunky and left non-mining settlements pinned at
+// their reserve with nothing to spend. So:
 //
-// SOURCE — mining. Each tick, a settlement extracts from precious-
-// and gems-bearing tiles within its reach. Each tile has a finite
-// reserve (set on world init at richness × scale). Extraction draws
-// from reserve and adds to settlement wealth. When a tile's reserve
-// hits 0, that mine is dry — no more wealth from it ever. Mines
-// visibly deplete over thousands of ticks of heavy use.
+// INCOME — production. Every tick a settlement generates wealth from
+// its real output, ∝ exportValue × population. exportValue ≥ 1 for
+// everyone, so every settlement always has SOME income and money keeps
+// flowing instead of freezing.
 //
-// TRANSFER — trade. Handled in roads.js updateTrade(). Each tick on
-// each road, money flows from the buyer (lower exportValue) to the
-// seller (higher exportValue), bounded by buyer's wealth. Net
-// change to total system wealth: zero.
+// BONUS — mining. Precious / gem tiles add hard specie on top, drawn
+// from finite per-tile reserves (set on world init at richness ×
+// scale). A gold or gem town is conspicuously rich while its lodes
+// last, then fades back toward its production level once they're dry —
+// the classic boom-town arc.
 //
-// SINK — road construction. Wealth spent on roads is gone from the
-// trackable economy (paid to labourers who disperse it). Already
-// implemented in roads.js.
+// SINK — holding cost. Wealth that piles up is spent down each tick
+// (upkeep, spoilage, ceremony, theft, the carrying cost of stored coin
+// and goods). This is what bounds total wealth — it equilibrates at
+// ~income / WEALTH_DECAY instead of inflating forever — and what keeps
+// money moving rather than sitting frozen at a reserve floor.
 //
-// FOUNDING ENDOWMENT — new settlements get a small starting wealth
-// so they can build a first road; cradle gets more as the world's
-// economic seed.
-const MINING_RATE = 5.0;              // base extraction multiplier
+// TRANSFER — trade. Handled in roads.js updateTrade(): money flows
+// from buyer (lower exportValue) to seller (higher exportValue), and
+// tolls to intermediates. Redistributes wealth toward productive hubs
+// on top of their own production; conserved except for freight.
+const MINING_RATE     = 5.0;          // base specie extraction multiplier
+const PRODUCTION_RATE = 0.03;         // wealth/tick per (exportValue × pop)
+const WEALTH_DECAY    = 0.01;         // holding-cost sink → wealth ~ income / WEALTH_DECAY
 function updateWealth(world, s) {
+  // Production income — the bulk of the economy.
+  let income = PRODUCTION_RATE * computeExportValue(s) * Math.max(1, s.people);
+
+  // Mining bonus — finite specie on top.
   const reserves = world.depositReserve;
-  if (!reserves) return;
   const minable = s._minableTiles;
-  if (!minable || minable.length === 0) return;
-  const k = s.knowledge;
-  const popFactor = Math.sqrt(Math.max(1, s.people)) * 0.05;
-  const orgMul    = 1 + (k.organization || 0) * 0.3;
-  let mined = 0;
-  for (const [ti, id] of minable) {
-    const reserveArr = reserves[id];
-    if (!reserveArr) continue;
-    const left = reserveArr[ti];
-    if (left <= 0) continue;
-    const richness = (world.deposits[id] && world.deposits[id][ti]) || 0;
-    const want = MINING_RATE * richness * popFactor * orgMul;
-    const got = want < left ? want : left;
-    reserveArr[ti] = left - got;
-    mined += got;
+  if (reserves && minable && minable.length > 0) {
+    const k = s.knowledge;
+    const popFactor = Math.sqrt(Math.max(1, s.people)) * 0.05;
+    const orgMul    = 1 + (k.organization || 0) * 0.3;
+    for (const [ti, id] of minable) {
+      const reserveArr = reserves[id];
+      if (!reserveArr) continue;
+      const left = reserveArr[ti];
+      if (left <= 0) continue;
+      const richness = (world.deposits[id] && world.deposits[id][ti]) || 0;
+      const want = MINING_RATE * richness * popFactor * orgMul;
+      const got = want < left ? want : left;
+      reserveArr[ti] = left - got;
+      income += got;
+    }
   }
-  s.wealth = (s.wealth || 0) + mined;
+
+  // Add income, then bleed off the holding cost so wealth equilibrates.
+  s.wealth = ((s.wealth || 0) + income) * (1 - WEALTH_DECAY);
 }
 export { updateWealth };
 
@@ -310,8 +323,8 @@ export { updateWealth };
 // road. NOT wealth itself — precious metals and gems are CURRENCY
 // once mined, not exportable goods. Gold-rich settlements have
 // low exportValue (no goods, just coin) and become net buyers,
-// spending their gold on imports from goods-producing partners.
-// That's how mining wealth actually distributes in a closed economy.
+// spending their gold on imports from goods-producing partners —
+// how mining wealth spreads out to the rest of the economy.
 //
 // Composition (broad enough that most settlements have SOMETHING
 // distinctive to sell):
