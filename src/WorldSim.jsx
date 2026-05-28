@@ -6062,6 +6062,8 @@ return(
   const r=s.localRes||{};
   const farm=s.farmland?s.farmland.size:0;
   const K=s._k||0;
+  const foodK=s._foodK||0,houseK=s._houseK||0;
+  const limitedBy=foodK<=houseK?"food":"housing";
   // Era label is driven by metallurgy KNOWLEDGE (which is monotonic —
   // you don't unlearn how to make steel) rather than current
   // resource access. A city that lost its iron mine still knows the
@@ -6182,6 +6184,9 @@ return(
           <span style={{color:statusColor}}>Balance</span>
           <span style={{color:statusColor}}>{surplus>=0?"+":""}{surplus.toFixed(3)} ({status})</span>
           <span className="au-fade">Farmland</span><span>{farm} tile{farm===1?"":"s"}</span>
+          <span className="au-fade">Capacity</span>
+          <span>{Math.round(K)} <span className="au-fade" style={{fontSize:9}}>({limitedBy}-limited)</span></span>
+          {limitedBy==="food"&&houseK>foodK*1.05&&(<><span className="au-fade">· could house</span><span className="au-fade">{Math.round(houseK)} if fed</span></>)}
           {nextThr&&<><span className="au-fade">To next tier</span><span>{Math.round(s.people)}/{nextThr}</span></>}
         </div>
       )}

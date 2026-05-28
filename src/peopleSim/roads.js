@@ -690,22 +690,42 @@ function intermediatesOnPath(link, aId, bId, stMap) {
   return out;
 }
 
+// Per-tick food a settlement could profitably ship out (production
+// surplus — positive only when it's housing-capped, i.e. it grows more
+// food than its capped population eats).
+function foodSurplus(s) {
+  return (s._foodSupply || 0) - (s._foodDemand || 0);
+}
+// Per-tick food a settlement wants shipped IN: enough to feed the
+// population its HOUSING could hold beyond what it has now. This is what
+// lets a food-limited but development-rich city pull grain and grow past
+// its own land — at pop = foodK it has no starvation deficit, but it
+// still has housing headroom to fill.
+function foodAppetite(s) {
+  const headroom = (s._houseK || 0) - s.people;
+  if (headroom <= 0) return 0;
+  return headroom * 0.003 * (s._urbanFactor || 1);
+}
 function runFoodTradeBetween(world, a, b, link, stMap) {
-  const aSurplus = (a._foodSupply || 0) - (a._foodDemand || 0);
-  const bSurplus = (b._foodSupply || 0) - (b._foodDemand || 0);
+  const aSurplus = foodSurplus(a), bSurplus = foodSurplus(b);
+  const aWant = foodAppetite(a), bWant = foodAppetite(b);
   let exporter, importer, shipRate, deficit;
-  if (aSurplus > 0.001 && bSurplus < -0.001) {
-    exporter = a; importer = b; shipRate = aSurplus; deficit = -bSurplus;
-  } else if (bSurplus > 0.001 && aSurplus < -0.001) {
-    exporter = b; importer = a; shipRate = bSurplus; deficit = -aSurplus;
+  if (aSurplus > 0.001 && bWant > 0.001) {
+    exporter = a; importer = b; shipRate = aSurplus; deficit = bWant;
+  } else if (bSurplus > 0.001 && aWant > 0.001) {
+    exporter = b; importer = a; shipRate = bSurplus; deficit = aWant;
   } else return;
   // Growth-reserve fraction for exporter (feed own children first).
   const exporterK = exporter._k || Math.max(1, exporter.people);
   const headroom = Math.max(0, 1 - exporter.people / exporterK);
   const reserveFraction = 0.20 + headroom * 0.50;
   const effectiveShipRate = shipRate * (1 - reserveFraction);
-  const storageRate = (exporter.food || 0) * 0.01;
-  const maxFlow = Math.min(effectiveShipRate, deficit, storageRate);
+  // Ship the ongoing production surplus, bounded by the importer's
+  // deficit. effectiveShipRate was just added to the granary this tick so
+  // this can't drive food negative; the stored-food term is only a floor
+  // against transient dips. (The old food×0.01 cap throttled exports to a
+  // trickle, which is what made import-fed cities impossible.)
+  const maxFlow = Math.min(effectiveShipRate, deficit, Math.max(0, exporter.food || 0));
   if (maxFlow <= 0) return;
   const wantPrice = maxFlow * FOOD_PRICE;
   const transport = link.cost * FOOD_TRANSPORT_PER_PATHCOST;

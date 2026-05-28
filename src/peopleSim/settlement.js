@@ -36,8 +36,32 @@ const SETT_GROWTH = 0.0018;
 //   K = (supply + imported supply) / demand_per_capita
 // where demand_per_capita = 0.003 food/person/tick.
 const K_MIN_VIABLE = 8;                    // bare-survival floor (matches the wither cull threshold)
-// Farm target sizing: ~1 tile feeds ~16 people (yield 0.055/fert × ag-mature 2.2 / demand 0.003).
+// ~1 farm tile feeds ~16 people (yield 0.055/fert × ag-mature 2.2 / demand 0.003).
 const FARM_TARGET_PEOPLE_PER_TILE = 16;
+// Farmland is sized by a per-tier CATCHMENT — how much countryside the
+// settlement commands — NOT by population, so food output is set by LAND,
+// not people. Together with the housing cap below this is what lets a
+// fertile rural settlement grow far more food than its (housing-limited)
+// population eats and export the surplus, while a dense city on limited
+// land runs a deficit and must import. The flood-fill takes the best
+// plantable tiles within transport reach up to this count, so poor
+// terrain still yields a smaller patch than the cap.
+const CATCHMENT_BY_TIER = [10, 28, 80, 200];   // village → metropolis
+
+// ── Housing / development population cap ──
+// Population grows to min(food capacity, HOUSING capacity). Housing is
+// what a settlement's economy and SITE can physically sustain regardless
+// of food: an undeveloped farming hamlet caps out small (its surplus food
+// is exported), while a developed, watered, well-connected trade hub
+// houses many and imports the food to feed them. Driven by organization
+// (dense administration), water access (ports/rivers concentrate people)
+// and trade connectivity (market hubs) — none of which a remote
+// breadbasket has, which is exactly why it stays a village.
+const HOUSING_BASE        = 45;
+const HOUSING_ORG         = 9.0;    // organization-knowledge multiplier
+const HOUSING_WATER       = 3.0;    // water-access multiplier
+const HOUSING_PARTNER     = 0.30;   // per connected trade partner
+const HOUSING_PARTNER_CAP = 12;
 const FARM_YIELD_PER_FERT    = 0.055;
 // Forage rate calibrated so a forage-only village in a modest 5×5
 // neighbourhood (avg fert ~0.4) reaches equilibrium pop ~70. Bumped
@@ -653,20 +677,36 @@ function updateFood(world, s) {
 }
 
 // ── Population ─────────────────────────────────────────────────────
+// Housing capacity: how many people a settlement can sustain regardless
+// of food, from its economy + site. Multiplicative, so a hub with several
+// advantages (organised + watered + many partners) compounds into a real
+// city while a plain inland hamlet sits near HOUSING_BASE.
+function housingCapacity(s) {
+  const org = (s.knowledge && s.knowledge.organization) || 0;
+  const wa = s.waterAccess || 0;
+  const partners = s._tradeReach ? s._tradeReach.size : 0;
+  return HOUSING_BASE
+    * (1 + org * HOUSING_ORG)
+    * (1 + wa * HOUSING_WATER)
+    * (1 + Math.min(partners, HOUSING_PARTNER_CAP) * HOUSING_PARTNER);
+}
+export { housingCapacity };
+
 function updatePopulation(world, s) {
-  // K = pop the food supply can sustain at CURRENT urban-tax rate.
-  //   supply = local food production (forage + farmland)
-  //          + imported food (smoothed EMA from food trade in updateTrade)
-  //   per_capita_demand = 0.003 × urbanFactor(currentPop)
-  //   K = supply / per_capita_demand
-  // urbanFactor was just computed in updateFood; it grows with
-  // log(pop) so as a settlement grows, each new person costs more
-  // food to sustain → K shrinks faster than supply grows → large
-  // settlements naturally saturate and need imports to grow further.
+  // Carrying capacity = the lesser of what FOOD can feed and what HOUSING
+  // can hold. Food capacity includes smoothed imports, so a housing-rich
+  // city grows past its LOCAL food on shipped-in grain; a food-rich but
+  // undeveloped village is capped by housing and exports the surplus.
+  //   foodK   = (local production + imports) / (0.003 × urbanFactor)
+  //   houseK  = housingCapacity(s)  — economy + site, food-independent
   const supply = (s._foodSupply || 0) + (s._foodImportRate || 0);
   const perCapita = 0.003 * (s._urbanFactor || 1);
-  const K = Math.max(K_MIN_VIABLE, supply / perCapita);
+  const foodK = supply / perCapita;
+  const houseK = housingCapacity(s);
+  const K = Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
   s._k = K;
+  s._foodK = foodK;            // exposed so the info panel can show which limit binds
+  s._houseK = houseK;
 
   if (s.food <= 0.01 && s.people > 1) {
     s.people *= 0.985;
@@ -706,10 +746,11 @@ function maybeRefreshFarmland(world, s) {
 }
 
 function refreshFarmland(world, s) {
-  // Minimum 4 farm tiles so a freshly-founded settlement (~20 ppl,
-  // would naively want only 2 tiles) has enough food capacity to grow
-  // past its founding pop.
-  const target = Math.max(4, Math.ceil(s.people / FARM_TARGET_PEOPLE_PER_TILE));
+  // Farmland is sized by the settlement's tier CATCHMENT (land it
+  // commands), not its population — so food output is set by land. The
+  // flood-fill below takes the best plantable tiles within reach up to
+  // this count.
+  const target = Math.max(4, CATCHMENT_BY_TIER[s.tier] || CATCHMENT_BY_TIER[0]);
   const { tw, th, elev, fert, coast, riverMag, _farmedBy } = world;
   // Plantability floor for this settlement, given its current ag tech.
   const minFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
@@ -906,23 +947,21 @@ function localTransport(world, sx, sy, maxCost, kn) {
 class _MinHeap {
   constructor(cap = 256) {
     this.ti = new Int32Array(cap);
-    // NOTE: Float32 here is DELIBERATE, not an oversight. localTransport's
-    // `out` is a Float64 Map, so the staleness check `d > out.get(ti)` can
-    // mis-fire on Float32 rounding and prune branches early — which keeps
-    // each settlement's farmland catchment small. The food / carrying-
-    // capacity balance is tuned around that smaller catchment; switching
-    // to Float64 (a "correct" Dijkstra) lets the catchment flood along
-    // cheap terrain and roughly triples farmland, and would need
-    // MAX_TRANSPORT_BY_TIER re-tuned to compensate. Don't change without
-    // re-tuning the farmland reach.
-    this.d  = new Float32Array(cap);
+    // Float64 distances (matches roads.js): localTransport's `out` is a
+    // Float64 Map, so a Float32 heap mis-fires the `d > out.get(ti)`
+    // staleness check on rounding and silently truncates the reach. The
+    // full reach is now SAFE for farmland because the patch is capped by
+    // the per-tier CATCHMENT, not by population — a large reach just gives
+    // the flood-fill more good tiles to pick from, it can't blow farmland
+    // up the way pop/16 × huge-reach did.
+    this.d  = new Float64Array(cap);
     this.n  = 0;
     this.cap = cap;
   }
   _grow() {
     const ncap = this.cap * 2;
     const nti = new Int32Array(ncap); nti.set(this.ti);
-    const nd  = new Float32Array(ncap); nd.set(this.d);
+    const nd  = new Float64Array(ncap); nd.set(this.d);
     this.ti = nti; this.d = nd; this.cap = ncap;
   }
   push(ti, d) {
