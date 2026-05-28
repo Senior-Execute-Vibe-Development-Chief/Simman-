@@ -106,9 +106,16 @@ export function computeTerritory(world) {
 }
 
 // Walk every claimed tile once and accumulate each owner's food / resource
-// / mineable stats. Cheap O(N) pass.
+// / mineable stats, and record which settlements BORDER each other (their
+// territories are adjacent) — used by the conquest layer. Cheap O(N) pass.
 function tallyTerritory(world, owner, cost, byId) {
-  const { N, fert, deposits } = world;
+  const { N, tw, th, fert, deposits } = world;
+  const borders = new Map();   // settlementId -> Set(bordering settlementIds)
+  const addBorder = (a, b) => {
+    if (a === b) return;
+    let sa = borders.get(a); if (!sa) { sa = new Set(); borders.set(a, sa); } sa.add(b);
+    let sb = borders.get(b); if (!sb) { sb = new Set(); borders.set(b, sb); } sb.add(a);
+  };
   for (const s of byId.values()) {
     s._terrFertSum = 0;
     s._terrTiles = 0;
@@ -136,8 +143,14 @@ function tallyTerritory(world, owner, cost, byId) {
       if (deposits.precious && deposits.precious[ti] > 0.05) s._minableTiles.push([ti, "precious"]);
       if (deposits.gems && deposits.gems[ti] > 0.05) s._minableTiles.push([ti, "gems"]);
     }
+    // Borders: compare right + down neighbours (x wraps).
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const rt = ty * tw + (tx === tw - 1 ? 0 : tx + 1);
+    const ro = owner[rt]; if (ro >= 0 && ro !== oid) addBorder(oid, ro);
+    if (ty < th - 1) { const dn = ti + tw; const dno = owner[dn]; if (dno >= 0 && dno !== oid) addBorder(oid, dno); }
   }
   for (const s of byId.values()) s.localRes = s._terrResAcc;
+  world._borders = borders;
 }
 
 // Cheap local fallback so a freshly-founded settlement has food + resource

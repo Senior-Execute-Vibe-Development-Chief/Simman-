@@ -114,6 +114,9 @@ export function makeSettlement(world, x, y, opts = {}) {
     // settlements. { peerId → { cost, tiles } }. Populated by
     // rebuildTradeReach in roads.js on each plan cycle.
     _tradeReach: null,
+    // Polity: each settlement starts as its own one-settlement country
+    // (city-state); conquest merges them (see conquest.js).
+    countryId: 0,                 // set to own id just below
     tier: 0,
     mode: "settled",
     lastFoundAttempt: world.step,
@@ -125,6 +128,7 @@ export function makeSettlement(world, x, y, opts = {}) {
     if (s.knowledge[k] === undefined) s.knowledge[k] = 0;
   }
   // Compute water access score from the home tile + 4 neighbours.
+  s.countryId = s.id;             // its own one-settlement country to start
   s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
   s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
   world.settlements.push(s);

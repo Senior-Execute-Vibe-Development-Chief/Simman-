@@ -5547,17 +5547,19 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   }
   if(psw&&ctx&&!vmRoads&&!vmMoney){
     const TR=psw.tileRes;
-    // ── Territory tiles ── each settlement's claimed land, tinted by a
-    // stable per-settlement hue so domains read at a glance.
+    // ── Territory tiles ── claimed land tinted by COUNTRY, so realms read
+    // at a glance (members of one country share a hue).
     const owner=psw._territoryOwner;
     if(owner){
+      const cc=new Map();           // settlementId -> country hue
+      for(const s of psw.settlements){if(s&&s.mode==="settled")cc.set(s.id,((s.countryId*61)%360+360)%360);}
       for(let ti=0;ti<owner.length;ti++){
         const oid=owner[ti];
         if(oid<0)continue;
+        const h=cc.get(oid); if(h===undefined)continue;
         const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
         const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-        const h=((oid*61)%360+360)%360;
-        ctx.fillStyle=`hsla(${h},45%,50%,0.30)`;
+        ctx.fillStyle=`hsla(${h},50%,50%,0.32)`;
         ctx.fillRect(sx,sy,TR,TR);
       }
     }
@@ -6165,6 +6167,25 @@ return(
       <div className="au-fade" style={{fontSize:10,textTransform:"capitalize",marginBottom:6}}>
         {tierName} · {era} · {waterLabel}
       </div>
+
+      {/* ── Country / polity ── */}
+      {(()=>{
+        const ctry=psw.countries&&psw.countries.get(s.countryId);
+        const n=ctry?ctry.members.length:1;
+        const hue=((s.countryId*61)%360+360)%360;
+        const cap=ctry&&ctry.capital;
+        const isCap=cap&&cap.id===s.id;
+        let label;
+        if(n<=1)label="independent city-state";
+        else if(isCap)label=`capital · ${n} settlements`;
+        else label=`subject of ${cap?cap.name:"?"} · ${n} settlements`;
+        return(
+          <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0}}/>
+            <span className="au-fade" style={{textTransform:"capitalize"}}>{label}</span>
+          </div>
+        );
+      })()}
 
       {/* ── At-a-glance summary (always visible) ── */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
