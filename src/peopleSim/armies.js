@@ -22,6 +22,12 @@ const ARMY_GROW     = 0.05;   // growth toward the cap per muster
 const UPKEEP_PER    = 0.4;    // wealth per soldier per muster
 export const MUSTER_INTERVAL   = 100;
 export const CONQUEST_INTERVAL = 50;
+// A freshly stormed settlement is PACIFIED for this long: it can't be
+// re-stormed and it won't secede (conquest.js reads this), so a garrisoned
+// new province is firmly held for an age instead of flip-flopping between
+// rival empires every pass. The single biggest stabiliser of the political
+// map — without it contested frontier cities ping-pong endlessly.
+export const CONQUEST_GRACE = 800;
 
 const ATTACK_MIN_RATIO  = 1.15;        // must out-power a neighbour by this to push
 const CAPTURE_SCALE     = 7;           // tiles/pass per unit of power-ratio advantage
@@ -31,6 +37,7 @@ const CITY_ASSAULT_DIST = CORE_R + 2;  // attacker must have pushed this close t
                                        // (covers the whole re-carved core, so the front
                                        // doesn't flicker on the heartland tiles)
 const ATTRITION         = 0.035;       // army drained per warring front per pass
+const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent storming a city
 
 function techMul(s) {
   const k = s.knowledge || {};
@@ -107,12 +114,20 @@ export function advanceFronts(world) {
     if (att.mode !== "settled" || def.mode !== "settled" || att.countryId === def.countryId) continue;
     const adv = att._M / Math.max(1, def._M);
 
-    if (pc.canStorm && adv >= CITY_STORM_RATIO) {
-      def.countryId = att.countryId;                        // annexed — its realm flips
-      if (def.history) def.history.push({ step: world.step, type: "conquered", by: att.id });
-      def.army = Math.max(0, (def.army || 0) - att._M * ATTRITION * 2 / techMul(def));
-      att.army = Math.max(0, (att.army || 0) - def._M * ATTRITION / techMul(att));
-      continue;
+    if (pc.canStorm) {
+      // Front is at the heartland. Storm it only with overwhelming force,
+      // and only if the city isn't still pacified from a recent conquest —
+      // that grace is what stops rival empires trading it back and forth
+      // every pass. The assault costs the victor a large slice of its army.
+      if (adv >= CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= CONQUEST_GRACE) {
+        def.countryId = att.countryId;                      // annexed — its realm flips
+        def._conqueredAt = world.step;
+        def._disloyalSince = undefined;
+        if (def.history) def.history.push({ step: world.step, type: "conquered", by: att.id });
+        att.army = Math.max(0, (att.army || 0) * (1 - ASSAULT_ARMY_COST));
+        def.army = Math.max(0, (def.army || 0) * 0.3);
+      }
+      continue;   // front's at the core — no countryside left to nibble here
     }
 
     const budget = Math.min(MAX_CAPTURE, Math.floor((adv - 1) * CAPTURE_SCALE));

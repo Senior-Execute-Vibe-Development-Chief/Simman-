@@ -12,6 +12,8 @@
 // captured right at the frontier would secede the very next pass and get
 // re-taken, making the borders flicker.
 
+import { CONQUEST_GRACE } from "./armies.js";
+
 const POLITY_INTERVAL  = 150;   // ticks between polity passes
 const SECEDE_GRACE     = 500;   // ticks of sustained over-extension before a member secedes
 const OVERSTRETCH      = 0.07;  // each extra member shrinks the empire's hold radius (admin limits)
@@ -100,6 +102,9 @@ export function updatePolities(world) {
     // ── Secession (sticky): break away after sustained over-extension ──
     for (const s of c.members) {
       if (s.id === c.capitalId) { s._disloyalSince = undefined; continue; }
+      // A freshly conquered province is pacified (garrisoned): it's held
+      // firmly for a while before the over-extension clock can run.
+      if (world.step - (s._conqueredAt ?? -Infinity) < CONQUEST_GRACE) { s._disloyalSince = undefined; continue; }
       let d = dist(world, c.capital.pos.x, c.capital.pos.y, s.pos.x, s.pos.y);
       if (capNav > 0 && s._isPort) d /= (1 + capNav * NAVAL_REACH);
       d /= holdPull(s);                         // valuable provinces are clung to
