@@ -367,6 +367,11 @@ export function computeExportValue(s) {
   const agScale = Math.min(1, s.farmland.size / 50);
   v += (k.agriculture || 0) * agScale * 0.6;
   if ((s.waterAccess || 0) > 0) v += (k.navigation || 0) * s.waterAccess * 0.5;
+  // Fish / seafood — preserved fish (salt cod, etc.) is a real trade
+  // good, sold for coin on top of the raw food it provides. Available
+  // even with shore-fishing (low navigation); scales up with deep-sea
+  // fleets.
+  if ((s.waterAccess || 0) > 0) v += s.waterAccess * (0.3 + (k.navigation || 0)) * 0.6;
   // Toolmaking — crafted goods are valuable even without metal.
   // Pottery and textiles travel further than grain because of
   // density-value ratio.
@@ -431,6 +436,8 @@ export function getExportBreakdown(s) {
   if ((s.waterAccess || 0) > 0) {
     const v = (k.navigation || 0) * s.waterAccess * 0.5;
     if (v > 0.01) out.push({ label: "Ship goods", value: v });
+    const fish = s.waterAccess * (0.3 + (k.navigation || 0)) * 0.6;
+    if (fish > 0.01) out.push({ label: "Fish", value: fish });
   }
   const tools = (k.toolmaking || 0) * 0.4;
   if (tools > 0.01) out.push({ label: "Crafted goods", value: tools });
