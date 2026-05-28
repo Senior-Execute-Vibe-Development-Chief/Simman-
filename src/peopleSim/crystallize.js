@@ -43,6 +43,30 @@ const INDEPENDENT_RATE          = 0.060;
 const NEAR_RATE                 = 1.50;
 const BASE_RATE                 = 0.010;
 
+// Resource attraction. Each resource has a per-tier value (how
+// valuable it is to a civilisation at that tech level) and a
+// scarcity factor (how many of the existing settlements DON'T have
+// access to it). A candidate tile with a high-richness deposit of
+// a tier-appropriate, currently-scarce resource gets a quality
+// bonus — that's how mining towns and breadbasket sites form.
+// Resource bonuses are still gated by the transport-distance
+// modifier (Math.exp(-td/...)), so deposits in genuinely
+// unexplored land don't spontaneously attract settlement — the
+// resource has to be "discoverable" by an existing network.
+const RES_RICHNESS_FLOOR = 0.20;
+const RESOURCE_TIER_VALUE = {
+  timber:   [1.0, 1.0, 0.8, 0.6],
+  stone:    [0.5, 1.0, 1.0, 0.8],
+  copper:   [0.2, 0.6, 1.0, 0.8],
+  tin:      [0.0, 0.4, 0.8, 0.6],
+  iron:     [0.0, 0.2, 1.0, 1.2],
+  coal:     [0.0, 0.0, 0.3, 1.0],
+  horses:   [0.4, 0.6, 0.8, 1.0],
+  salt:     [0.6, 0.8, 1.0, 1.0],
+  precious: [1.0, 1.2, 1.4, 1.6],  // currency: always wanted, more in later tiers
+  gems:     [0.8, 1.0, 1.2, 1.4],
+};
+
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
@@ -51,6 +75,9 @@ export function maybeCrystallize(world) {
     world.transportDist = computeTransport(world);
     world._transportStep = world.step;
   }
+
+  // Compute per-sweep resource scarcity / value table once.
+  const resScarcity = computeResourceScarcity(world);
 
   // Sample random tiles. For each viable one, compute crystallization
   // probability and roll. No cap on settlement count — spacing
@@ -100,6 +127,7 @@ export function maybeCrystallize(world) {
     let quality = 0.45 + f * 1.5 + Math.min(2.0, areaFert * 0.1);
     if (hasRiver) quality += 1.0;
     if (hasCoast) quality += 0.4;
+    quality += resourceBonusFor(world, ti, resScarcity);
 
     // Transport-distance modifier. tdist=Infinity → independent only.
     const td = transportDist[ti];
@@ -116,6 +144,66 @@ export function maybeCrystallize(world) {
       });
     }
   }
+}
+
+// Per-sweep resource scarcity / value table. For each tracked
+// resource: scarcity = fraction of alive settlements that DON'T
+// have local access (≥0.10 richness); value = the tier-appropriate
+// weight from RESOURCE_TIER_VALUE, picked by the average settlement
+// tier (stone-age clusters don't care about iron; iron-age clusters
+// care a lot). The product `scarcity × value` is what later
+// multiplies on-tile deposit richness to bonus the spawn quality.
+function computeResourceScarcity(world) {
+  const out = {};
+  if (!world.deposits) {
+    for (const id in RESOURCE_TIER_VALUE) out[id] = { sv: 0 };
+    return out;
+  }
+  let total = 0, tierSum = 0;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    total++;
+    tierSum += s.tier || 0;
+  }
+  const avgTier = total > 0 ? tierSum / total : 0;
+  const tierIdx = Math.min(3, Math.max(0, Math.floor(avgTier)));
+  for (const id in RESOURCE_TIER_VALUE) {
+    if (!world.deposits[id]) { out[id] = { sv: 0 }; continue; }
+    if (total === 0) {
+      // No settlements yet — treat as fully scarce for the cradle.
+      out[id] = { sv: RESOURCE_TIER_VALUE[id][tierIdx] };
+      continue;
+    }
+    let have = 0;
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      const r = s.localRes && s.localRes[id];
+      if (r && r >= 0.10) have++;
+    }
+    const scarcity = 1 - (have / total);
+    const value = RESOURCE_TIER_VALUE[id][tierIdx];
+    out[id] = { sv: scarcity * value };
+  }
+  return out;
+}
+
+// Bonus from on-tile resource deposits. Each resource contributes
+// `richness × scarcityValue` where scarcityValue is precomputed per
+// sweep. Capped overall to stop a single ultra-rich precious tile
+// from dominating fertility (a goldmine in a desert is attractive,
+// but not so attractive that the surrounding deserts spawn cities
+// just to be near it).
+function resourceBonusFor(world, ti, scarcity) {
+  if (!world.deposits) return 0;
+  let bonus = 0;
+  for (const id in scarcity) {
+    const arr = world.deposits[id];
+    if (!arr) continue;
+    const r = arr[ti] || 0;
+    if (r < RES_RICHNESS_FLOOR) continue;
+    bonus += r * scarcity[id].sv;
+  }
+  return Math.min(2.5, bonus);
 }
 
 // Pick the nearest settlement (by straight-line distance, cheap), then
