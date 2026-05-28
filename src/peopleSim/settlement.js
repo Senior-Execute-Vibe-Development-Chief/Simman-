@@ -467,12 +467,13 @@ export function getExportBreakdown(s) {
 // Resources, by richness, that `haver` has and `needer` lacks — i.e.
 // what `haver` could barter to `needer`. Returns the top one (or null).
 const BARTER_RES = ["timber","stone","copper","tin","iron","coal","horses","salt"];
+const BARTER_HAVE = 0.10;   // a settlement "has" a resource at ≥ this richness
 function topBarterGood(haver, needer) {
   const hr = haver.localRes || {}, nr = needer.localRes || {};
-  let best = null, bestV = HAVE_THRESHOLD;
+  let best = null, bestV = BARTER_HAVE;
   for (const id of BARTER_RES) {
     const hv = hr[id] || 0;
-    if (hv > bestV && (nr[id] || 0) < HAVE_THRESHOLD) { bestV = hv; best = id; }
+    if (hv > bestV && (nr[id] || 0) < BARTER_HAVE) { bestV = hv; best = id; }
   }
   return best;
 }
