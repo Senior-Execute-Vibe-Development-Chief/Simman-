@@ -13,7 +13,8 @@ import { updateSettlement } from "./settlement.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
-import { updatePolities, CONQUEST_INTERVAL } from "./conquest.js";
+import { updatePolities, POLITY_INTERVAL } from "./conquest.js";
+import { musterArmies, moveArmies, MUSTER_INTERVAL } from "./armies.js";
 
 const TERRITORY_INTERVAL = 96;   // ticks between full territory recomputes
 
@@ -57,9 +58,13 @@ export function stepPeopleSim(world, n = 1) {
       s._wealthDelta = (s._wealthDelta || 0) * 0.9 + ((s.wealth || 0) - (s._wPrev || 0)) * 0.1;
     }
     if (world.step % 32 === 0) pruneDead(world);
-    // Polities: strong countries conquer weak neighbours' frontier
-    // settlements; over-extended members secede.
-    if (world.step % CONQUEST_INTERVAL === 0) updatePolities(world);
+    // Military: armies march + fight every tick; garrisons muster + launch
+    // campaigns periodically. Captured settlements flip country.
+    moveArmies(world);
+    if (world.step % MUSTER_INTERVAL === 0) musterArmies(world);
+    // Polities: group settlements into countries, tribute, and let
+    // over-extended members secede.
+    if (world.step % POLITY_INTERVAL === 0) updatePolities(world);
     world.debug.tickMs = performance.now() - t0;
   }
   return world;

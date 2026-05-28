@@ -5704,11 +5704,27 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
       }
     }
-    // ── Bands ──
-    // ── No band rendering ──
-    // Bands removed in settlements-only model. Settlements (above) are
-    // the atomic visible entity; new ones come from daughter colonies
-    // founded by existing settlements at qualifying nearby sites.
+  }
+  // ── Marching armies ── dots moving toward the settlement they're
+  // invading, coloured by country, with a faint line to the target.
+  if(psw&&ctx&&psw.armies&&psw.armies.length){
+    const TR=psw.tileRes;
+    for(const a of psw.armies){
+      const ax=a.x*TR, ay=dataYtoScreenY(a.y*TR,H,CH);
+      const tgt=psw._byId&&psw._byId.get(a.target);
+      if(tgt){
+        const tx=tgt.pos.x*TR, ty=dataYtoScreenY(tgt.pos.y*TR,H,CH);
+        if(Math.abs(tx-ax)<CW*0.5){
+          ctx.strokeStyle="rgba(180,40,40,0.45)";ctx.lineWidth=0.8;
+          ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(tx,ty);ctx.stroke();
+        }
+      }
+      const hue=((a.countryId*61)%360+360)%360;
+      const r=2+Math.min(4,Math.sqrt(a.size||1)*0.3);
+      ctx.beginPath();ctx.arc(ax,ay,r,0,Math.PI*2);
+      ctx.fillStyle=`hsl(${hue},70%,45%)`;ctx.fill();
+      ctx.lineWidth=1;ctx.strokeStyle="rgba(30,0,0,0.85)";ctx.stroke();
+    }
   }
 }
 },[updateTerrainCache,buildAtlas,CH]);

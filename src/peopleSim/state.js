@@ -58,6 +58,7 @@ export function createWorld(w, opts = {}) {
 
     // Entities. No bands — settlements-only model.
     settlements: [],
+    armies: [],                  // marching field armies (armies.js)
 
     step: 0,
     seed: opts.seed || w.seed || 1,

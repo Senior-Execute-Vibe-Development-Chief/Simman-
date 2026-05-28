@@ -115,8 +115,9 @@ export function makeSettlement(world, x, y, opts = {}) {
     // rebuildTradeReach in roads.js on each plan cycle.
     _tradeReach: null,
     // Polity: each settlement starts as its own one-settlement country
-    // (city-state); conquest merges them (see conquest.js).
+    // (city-state); conquest merges them (see conquest.js / armies.js).
     countryId: 0,                 // set to own id just below
+    army: 0,                      // garrison size (soldiers), see armies.js
     tier: 0,
     mode: "settled",
     lastFoundAttempt: world.step,
