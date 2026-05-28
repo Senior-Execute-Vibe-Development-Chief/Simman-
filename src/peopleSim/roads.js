@@ -42,17 +42,28 @@ const QUALITY_NEW         = 0.25;       // new road: 4× cheaper than plain
 const QUALITY_MAX         = 0.08;       // worn arterial: 12× cheaper
 const USAGE_FOR_MAX       = 5000;       // ticks of usage to reach max quality
 const PLAN_INTERVAL       = 240;        // ticks between road-planning attempts
-const MAX_PARTNER_DIST    = 80;         // Euclidean tile-distance for partner search
 const MIN_POP_TO_PLAN     = 60;
 const MAX_REACH_VISITS    = 8000;       // BFS visit cap for trade-reach computation
 
+// Partner-distance reach scales with the BUILDER's population: a
+// 60-pop hamlet can only see ~28 tiles; a 5000-pop city sees ~90;
+// a 16000-pop metropolis sees ~140. Stops small villages from
+// reaching out across the whole map to a distant rich neighbour.
+const PARTNER_DIST_BASE   = 20;
+const PARTNER_DIST_PER    = 1.0;        // tiles per sqrt(pop)
+function partnerReachFor(s) {
+  return PARTNER_DIST_BASE + Math.sqrt(Math.max(0, s.people || 0)) * PARTNER_DIST_PER;
+}
+
 // New roads need a margin of improvement to justify the effort.
-// Higher threshold for shortcuts within an existing network (the
-// network already provides connectivity) vs lower for bridging
-// disconnected clusters.
+// Lower bar to bridge disconnected components; medium bar for
+// shortcuts WITHIN a network — a direct line through the
+// countryside should still be possible if it saves enough cost
+// (medieval trunk roads were often more direct than the village
+// paths they replaced).
 const NEW_FRACTION_OUT    = 0.35;       // peer in different component: low bar
-const NEW_FRACTION_IN     = 0.80;       // peer in same component: must be much novel
-const SHORTCUT_GAIN_RATIO = 0.65;       // new direct path must be ≤ 65% of network path
+const NEW_FRACTION_IN     = 0.55;       // peer in same component: moderate novelty
+const SHORTCUT_GAIN_RATIO = 0.85;       // new direct path must save ≥ 15% vs network path
 
 // Resource needs by tier — kept for road-planning preference.
 const NEEDED_BY_TIER = [
@@ -268,13 +279,15 @@ function tryAddRoad(world, s) {
   const components = world._networkComponents;
   const myComp = components ? components.get(s.id) : null;
 
+  const reach = partnerReachFor(s);
+  const reachSq = reach * reach;
   let bestPartner = null, bestScore = -Infinity, bestPath = null, bestNewFrac = 0;
   for (const peer of world.settlements) {
     if (peer.mode !== "settled" || peer.id === s.id) continue;
     let dx = Math.abs(peer.pos.x - s.pos.x);
     if (dx > world.tw / 2) dx = world.tw - dx;
     const dy = peer.pos.y - s.pos.y;
-    if (dx * dx + dy * dy > MAX_PARTNER_DIST * MAX_PARTNER_DIST) continue;
+    if (dx * dx + dy * dy > reachSq) continue;
 
     // Resource gain from connecting to this peer.
     const peerRes = peer.localRes || {};
@@ -317,10 +330,12 @@ function tryAddRoad(world, s) {
       if (path.cost > networkCost * SHORTCUT_GAIN_RATIO) continue;
     }
 
-    // Wealth eagerness: both sides' wealth raise enthusiasm. A
-    // poor village seeing a rich neighbour wants the road too.
-    const effectiveWealth = Math.max(s.wealth || 0, (peer.wealth || 0) * 0.5);
-    const wealthEagerness = Math.min(2.0, 1 + Math.log10(Math.max(1, effectiveWealth)) / 6);
+    // Wealth eagerness: only the BUILDER's own coffers matter. A
+    // poor hamlet can't be lured into an over-ambitious road just
+    // because a distant peer is rich — they have to fund it
+    // themselves (in road labour, not money, but the principle
+    // stands: poor settlements build modestly).
+    const wealthEagerness = Math.min(2.0, 1 + Math.log10(Math.max(1, s.wealth || 0)) / 6);
     const benefit = resGain * 2 + exGap + foodGain * 10;
     const score = benefit / Math.max(1, path.cost)
                 * (path.tiles.length > 3 ? 1 : 0.5)
