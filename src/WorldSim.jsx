@@ -5551,17 +5551,42 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // at a glance (members of one country share a hue).
     const owner=psw._territoryOwner;
     if(owner){
+      const tw=psw.tw,th=psw.th;
       const cc=new Map();           // settlementId -> country hue
-      for(const s of psw.settlements){if(s&&s.mode==="settled")cc.set(s.id,((s.countryId*61)%360+360)%360);}
+      const ctryOf=new Map();       // settlementId -> countryId
+      for(const s of psw.settlements){if(s&&s.mode==="settled"){cc.set(s.id,((s.countryId*61)%360+360)%360);ctryOf.set(s.id,s.countryId);}}
+      // Pass 1: tinted territory fill.
       for(let ti=0;ti<owner.length;ti++){
         const oid=owner[ti];
         if(oid<0)continue;
         const h=cc.get(oid); if(h===undefined)continue;
-        const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
+        const py=(ti/tw)|0,px=ti-py*tw;
         const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
         ctx.fillStyle=`hsla(${h},50%,50%,0.32)`;
         ctx.fillRect(sx,sy,TR,TR);
       }
+      // Pass 2: national borders / war fronts. Where a tile's right or down
+      // neighbour belongs to a DIFFERENT country, stroke a red edge — these
+      // are the lines the tile-by-tile conquest grinds across.
+      ctx.strokeStyle="rgba(200,40,30,0.65)";ctx.lineWidth=1;
+      ctx.beginPath();
+      for(let ti=0;ti<owner.length;ti++){
+        const oid=owner[ti];if(oid<0)continue;
+        const co=ctryOf.get(oid);if(co===undefined)continue;
+        const py=(ti/tw)|0,px=ti-py*tw;
+        const rt=py*tw+(px===tw-1?0:px+1);
+        const ro=owner[rt];
+        if(ro>=0&&ro!==oid&&ctryOf.get(ro)!==co){
+          const ex=(px+1)*TR,ey=dataYtoScreenY(py*TR,H,CH);
+          ctx.moveTo(ex,ey);ctx.lineTo(ex,ey+TR);
+        }
+        if(py<th-1){const dn=ti+tw,dno=owner[dn];
+          if(dno>=0&&dno!==oid&&ctryOf.get(dno)!==co){
+            const bx=px*TR,by=dataYtoScreenY((py+1)*TR,H,CH);
+            ctx.moveTo(bx,by);ctx.lineTo(bx+TR,by);
+          }}
+      }
+      ctx.stroke();
     }
     // ── Roads ──
     // Roads live in two per-tile arrays — roadQuality (1.0 = no
@@ -5747,27 +5772,6 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       ctx.fillRect(-2.6,-2.6,5.2,5.2);
       ctx.lineWidth=1;ctx.strokeStyle="rgba(0,20,40,0.9)";ctx.strokeRect(-2.6,-2.6,5.2,5.2);
       ctx.restore();
-    }
-  }
-  // ── Marching armies ── dots moving toward the settlement they're
-  // invading, coloured by country, with a faint line to the target.
-  if(psw&&ctx&&psw.armies&&psw.armies.length){
-    const TR=psw.tileRes;
-    for(const a of psw.armies){
-      const ax=a.x*TR, ay=dataYtoScreenY(a.y*TR,H,CH);
-      const tgt=psw._byId&&psw._byId.get(a.target);
-      if(tgt){
-        const tx=tgt.pos.x*TR, ty=dataYtoScreenY(tgt.pos.y*TR,H,CH);
-        if(Math.abs(tx-ax)<CW*0.5){
-          ctx.strokeStyle="rgba(180,40,40,0.45)";ctx.lineWidth=0.8;
-          ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(tx,ty);ctx.stroke();
-        }
-      }
-      const hue=((a.countryId*61)%360+360)%360;
-      const r=2+Math.min(4,Math.sqrt(a.size||1)*0.3);
-      ctx.beginPath();ctx.arc(ax,ay,r,0,Math.PI*2);
-      ctx.fillStyle=`hsl(${hue},70%,45%)`;ctx.fill();
-      ctx.lineWidth=1;ctx.strokeStyle="rgba(30,0,0,0.85)";ctx.stroke();
     }
   }
 }

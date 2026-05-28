@@ -23,6 +23,22 @@ const TRIBUTE_FRACTION = 0.06;  // share of a member's wealth sent to the capita
 // fragments it. Effective distance to a fellow port is divided by
 // (1 + navigation × NAVAL_REACH).
 const NAVAL_REACH      = 2.2;
+// Economic hold: a province worth keeping is held far beyond the normal
+// administrative range — the empire pours resources into clinging to it.
+// This is the Spanish-silver effect: Potosí was the far side of the world,
+// but the bullion made it worth a fleet and an army to keep. A member's
+// pull = its mining income (the "valuables") plus a slice of its treasury
+// (the tribute it can be milked for); its effective distance to the
+// capital is divided by (1 + that pull), so rich colonies don't secede.
+const VALUE_HOLD_CAP   = 4;       // richest provinces held from up to 5× the range
+const MINE_HOLD_SCALE  = 0.15;    // per unit of mining income / tick
+const TREASURE_HOLD_DIV = 60000;  // wealth that contributes one unit of pull (cap 2)
+
+function holdPull(s) {
+  const mine = (s._minedRate || 0) * MINE_HOLD_SCALE;
+  const treasure = Math.min(2, (s.wealth || 0) / TREASURE_HOLD_DIV);
+  return 1 + Math.min(VALUE_HOLD_CAP, mine + treasure);
+}
 // Base hold range (tiles) from the capital's reach techs — how far it can
 // administer. Grows with organization/mobility/navigation; then SHRINKS
 // with empire size (overstretch), so big empires can't hold their
@@ -86,6 +102,7 @@ export function updatePolities(world) {
       if (s.id === c.capitalId) { s._disloyalSince = undefined; continue; }
       let d = dist(world, c.capital.pos.x, c.capital.pos.y, s.pos.x, s.pos.y);
       if (capNav > 0 && s._isPort) d /= (1 + capNav * NAVAL_REACH);
+      d /= holdPull(s);                         // valuable provinces are clung to
       if (d > hold) {
         if (s._disloyalSince === undefined) s._disloyalSince = world.step;
         if (world.step - s._disloyalSince >= SECEDE_GRACE) {

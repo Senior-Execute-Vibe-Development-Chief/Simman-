@@ -50,7 +50,7 @@ const SQRT2 = Math.SQRT2;
 // Guaranteed home block (radius in tiles). Always owned by the settlement,
 // stolen from a neighbour if need be. Kept smaller than half the minimum
 // settlement spacing (MIN_SETT_DIST=12) so two cores can never overlap.
-const CORE_R = 3;
+export const CORE_R = 3;
 
 class MinHeap {
   constructor(cap = 4096) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap; }
