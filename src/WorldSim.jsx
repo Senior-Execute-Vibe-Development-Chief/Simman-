@@ -5043,6 +5043,15 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 // communities each network connects.
 for(let ti=0;ti<N;ti++){const pi4=ti<<2;
 d[pi4]=240;d[pi4+1]=230;d[pi4+2]=205;d[pi4+3]=255;}
+}else if(vm==="money"){
+// Money-flow overlay — dark slate backdrop so gold sources and the
+// flowing-coin particles glow. Land tiles a touch lighter than sea so
+// coastlines stay legible. Roads + sources + flow drawn in the
+// peopleSim overlay pass below.
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),sx=Math.min(W-1,tx*RES),si=sy*W+sx;
+const land=w.elevation[si]>sl;const pi4=ti<<2;
+d[pi4]=land?28:16;d[pi4+1]=land?30:18;d[pi4+2]=land?36:26;d[pi4+3]=255;}
 }else if(vm==="resources"){
 // Resource overlay — blend all active resource layers per tile
 const ar=activeResRef.current;
@@ -5385,6 +5394,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
 {
   const psw=peopleRef.current;
   const vmRoads = viewRef.current === "roads";
+  const vmMoney = viewRef.current === "money";
   if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components from tile map ──
@@ -5435,7 +5445,70 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       ctx.stroke();
     }
   }
-  if(psw&&ctx&&!vmRoads){
+  if(psw&&ctx&&vmMoney){
+    // ── Money-flow overlay ──────────────────────────────────────────
+    // Maps the economy: where money is minted (mining), which way it
+    // flows along roads, and which settlements are gaining vs losing it.
+    const TR=psw.tileRes;
+    const sx=ti=>((ti%psw.tw)+0.5)*TR;
+    const sy=ti=>dataYtoScreenY(((ti/psw.tw|0)+0.5)*TR,H,CH);
+    // 1) Faint road network, so the flow has visible channels.
+    if(psw.roadQuality){
+      const rq=psw.roadQuality;
+      ctx.fillStyle="rgba(150,160,180,0.18)";
+      for(let ti=0;ti<rq.length;ti++){
+        if(rq[ti]>=1.0)continue;
+        const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
+        ctx.fillRect(px*TR,dataYtoScreenY(py*TR,H,CH),TR,TR);
+      }
+    }
+    // 2) Animated coin particles flowing along trade links in the net-
+    // money direction. Positions derived from a time phase (stateless).
+    const flows=psw._moneyFlows;
+    if(flows&&flows.length){
+      const now=performance.now();
+      for(const f of flows){
+        const pts=f.tiles;const np=pts.length;if(np<2)continue;
+        // dot count + brightness scale gently with money magnitude.
+        const dots=Math.max(1,Math.min(6,Math.round(f.mag*2.5)));
+        const alpha=Math.max(0.25,Math.min(0.95,0.3+f.mag*0.4));
+        ctx.fillStyle=`rgba(255,205,70,${alpha.toFixed(2)})`;
+        const period=2600;                 // ms for a coin to traverse the link
+        for(let j=0;j<dots;j++){
+          let u=((now/period)+(j/dots))%1;
+          if(!f.toEnd)u=1-u;               // reverse direction
+          const fi=u*(np-1);const i0=fi|0;const i1=Math.min(np-1,i0+1);const fr=fi-i0;
+          const x0=sx(pts[i0]),x1=sx(pts[i1]);
+          const y0=sy(pts[i0]),y1=sy(pts[i1]);
+          if(Math.abs(x1-x0)>CW*0.5)continue;   // skip segments that wrap the seam
+          const x=x0+(x1-x0)*fr,y=y0+(y1-y0)*fr;
+          ctx.beginPath();ctx.arc(x,y,1.7,0,Math.PI*2);ctx.fill();
+        }
+      }
+    }
+    // 3) Settlements: dot coloured by net wealth change (gold = gaining,
+    // red = losing, grey = steady) with a gold glow scaled to mining
+    // income (where money enters the system).
+    for(const s of psw.settlements){
+      if(!s||s.mode!=="settled")continue;
+      const x=s.pos.x*TR,y=dataYtoScreenY(s.pos.y*TR,H,CH);
+      const mined=s._minedRate||0;
+      if(mined>0.01){
+        const rad=4+Math.min(16,Math.sqrt(mined)*2.2);
+        const g=ctx.createRadialGradient(x,y,0,x,y,rad);
+        g.addColorStop(0,"rgba(255,210,80,0.55)");
+        g.addColorStop(1,"rgba(255,210,80,0)");
+        ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,rad,0,Math.PI*2);ctx.fill();
+      }
+      const d=s._wealthDelta||0;
+      const col=d>0.02?"#ffcf46":d<-0.02?"#e0563b":"#8a8f9c";
+      const r=2+Math.min(2.5,Math.sqrt(Math.abs(d))*0.6);
+      ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.fillStyle=col;ctx.fill();
+      ctx.lineWidth=0.6;ctx.strokeStyle="rgba(0,0,0,0.55)";ctx.stroke();
+    }
+  }
+  if(psw&&ctx&&!vmRoads&&!vmMoney){
     const TR=psw.tileRes;
     // ── Farmland tiles ──
     ctx.fillStyle="rgba(155,160,75,0.55)";
@@ -5648,6 +5721,15 @@ draw(terRef.current);};
 wfid=requestAnimationFrame(windLoop);
 return()=>cancelAnimationFrame(wfid);},[draw]);
 
+// Money-flow animation loop — redraws so the coin particles move, even
+// while the sim is paused (so you can study a frozen economy).
+useEffect(()=>{let mfid;
+const moneyLoop=()=>{mfid=requestAnimationFrame(moneyLoop);
+if(viewRef.current!=="money"||!worldRef.current||!terRef.current)return;
+draw(terRef.current);};
+mfid=requestAnimationFrame(moneyLoop);
+return()=>cancelAnimationFrame(mfid);},[draw]);
+
 const togglePlay=()=>{if(!playing&&terRef.current&&terRef.current.settled>=terRef.current.landCount){
 const t=createTerritory(worldRef.current);attachRegistries(t);ensureTribeViews(t);resetInvariantState(t);terRef.current=t;setTribeCount(t.tribeCount);setCoverage(0);setDominant(null);setSelectedTribe(-1);terrainCache.current=null;atlasCache.current=null;draw(t);}
 playRef.current=!playRef.current;setPlaying(p=>!p);};
@@ -5812,7 +5894,7 @@ const _era=deriveEra(_aAg,_aMt,_aNv,_aOg);
 const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
-  ["crop","Crop"],["crossing","Crossing"],["roads","Roads"],
+  ["crop","Crop"],["crossing","Crossing"],["roads","Roads"],["money","Money"],
   ["resources","Resources"],["population","Pop"],["transport","Transport"],
   ["transport-test","Trans Test"],["tribes","Tribes"]
 ];
@@ -6505,6 +6587,26 @@ return(
   onChange={e=>{const v=parseFloat(e.target.value);setDepthCeil(v);depthCeilRef.current=v;}}
   style={{width:90}} />
 <span className="au-fade">{Math.round(depthCeil*100)}%</span>
+</div>}
+
+{viewMode==="money"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
+  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:230}}>
+  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Money flow</div>
+  <div style={{display:"flex",alignItems:"center",gap:6,margin:"2px 0"}}>
+    <span style={{width:12,height:12,borderRadius:"50%",background:"radial-gradient(rgba(255,210,80,0.9),rgba(255,210,80,0))",flexShrink:0}}/>
+    <span>Mining — money minted into the system</span></div>
+  <div style={{display:"flex",alignItems:"center",gap:6,margin:"2px 0"}}>
+    <span style={{width:9,height:9,borderRadius:"50%",background:"#ffcf46",flexShrink:0}}/>
+    <span>Gaining wealth</span>
+    <span style={{width:9,height:9,borderRadius:"50%",background:"#e0563b",marginLeft:8,flexShrink:0}}/>
+    <span>Losing</span></div>
+  <div style={{display:"flex",alignItems:"center",gap:6,margin:"2px 0"}}>
+    <span style={{color:"#ffcd46"}}>● ● ●</span>
+    <span>Coins flow toward the buyer's seller</span></div>
+  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
+    Near-closed economy: money is minted only by mining and otherwise
+    circulates by trade — the only leak out is transport freight.
+  </div>
 </div>}
 
 </div>{/* end map area */}

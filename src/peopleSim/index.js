@@ -26,7 +26,9 @@ export function stepPeopleSim(world, n = 1) {
     // do per peer (effectiveLocalRes, findById, ...).
     world._byId = new Map();
     for (let i = 0; i < world.settlements.length; i++) {
-      world._byId.set(world.settlements[i].id, world.settlements[i]);
+      const s = world.settlements[i];
+      world._byId.set(s.id, s);
+      s._wPrev = s.wealth || 0;   // baseline for the money-flow net-change readout
     }
     for (let i = 0; i < world.settlements.length; i++) {
       updateSettlement(world, world.settlements[i]);
@@ -40,6 +42,13 @@ export function stepPeopleSim(world, n = 1) {
     // to grain (and can dip into its reserve) before luxuries.
     maybeBuildRoads(world);
     updateTrade(world);
+    // Smoothed per-settlement wealth change rate, for the money-flow
+    // overlay (gold = gaining, red = losing). Cheap; ready when shown.
+    for (let i = 0; i < world.settlements.length; i++) {
+      const s = world.settlements[i];
+      if (s.mode !== "settled") continue;
+      s._wealthDelta = (s._wealthDelta || 0) * 0.9 + ((s.wealth || 0) - (s._wPrev || 0)) * 0.1;
+    }
     if (world.step % 32 === 0) pruneDead(world);
     if (world.step % 256 === 0) checkFarmlandOwnership(world);
     world.debug.tickMs = performance.now() - t0;

@@ -296,6 +296,9 @@ function updateWealth(world, s) {
     mined += got;
   }
   s.wealth = (s.wealth || 0) + mined;
+  // Smoothed mining income, for the money-flow overlay's source markers
+  // (mining is the only money entering the system).
+  s._minedRate = (s._minedRate || 0) * 0.9 + mined * 0.1;
 }
 export { updateWealth };
 

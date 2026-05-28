@@ -149,6 +149,7 @@ const FOOD_TRANSPORT_PER_PATHCOST  = 0.005;
 const STARVING_TICKS_LEFT          = 100;
 const FOOD_IMPORT_EMA_ALPHA        = 0.002;
 const USAGE_PER_TRADE              = 0.04;   // flow added per tile per active trade tick
+const MONEY_FLOW_EPS               = 0.01;   // min net /tick for a link to register in the money-flow overlay
 
 // Tolls — when trade between A and B passes through a third
 // settlement C's home tile, C skims a cut of the trade value.
@@ -614,21 +615,32 @@ export function updateTrade(world) {
   // so the toll computation in runFood/GeneralTradeBetween can
   // identify intermediate settlements on each path in O(pathLen).
   const stMap = buildSettlementTileMap(world);
-  // Iterate settlements, then pair with their reach.
+  // Iterate settlements, then pair with their reach. Also snapshot, per
+  // actively-trading pair, the NET money that reached the peer this tick
+  // and along which tiles — consumed by the money-flow overlay to animate
+  // flow direction. Rebuilt fresh each tick (no staleness across the
+  // 240-tick reach rebuilds).
+  const moneyFlows = [];
   for (const s of world.settlements) {
     if (s.mode !== "settled" || !s._tradeReach) continue;
     for (const [peerId, link] of s._tradeReach) {
       if (peerId <= s.id) continue;   // process each pair once
       const peer = findById(world, peerId);
       if (!peer || peer.mode !== "settled") continue;
+      const peerBefore = peer.wealth || 0;
       runFoodTradeBetween(world, s, peer, link, stMap);
       runGeneralTradeBetween(world, s, peer, link, stMap);
+      const net = (peer.wealth || 0) - peerBefore;   // +ve = money toward peer (end of tiles)
       // Add this trade's contribution to current flow on the path.
       if (link.tiles && link.tiles.length > 0) {
         for (const ti of link.tiles) { rf[ti] += USAGE_PER_TRADE; flowTiles.add(ti); }
+        if (link.tiles.length > 1 && Math.abs(net) > MONEY_FLOW_EPS) {
+          moneyFlows.push({ tiles: link.tiles, mag: Math.abs(net), toEnd: net >= 0 });
+        }
       }
     }
   }
+  world._moneyFlows = moneyFlows;
   // Quality evolution over the road set only:
   //   • busy tiles (flow ≥ ROAD_ABANDON_FLOW) pave further toward
   //     QUALITY_MAX, faster the higher the flow (capped at FLOW_FOR_PAVE,
