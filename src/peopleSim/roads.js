@@ -65,6 +65,20 @@ const NEW_FRACTION_OUT    = 0.35;       // peer in different component: low bar
 const NEW_FRACTION_IN     = 0.55;       // peer in same component: moderate novelty
 const SHORTCUT_GAIN_RATIO = 0.85;       // new direct path must save ≥ 15% vs network path
 
+// Close-neighbour rule: any settled pair within this many tiles
+// of each other gets a direct path painted by the local-link
+// pass — separate from economic road planning. Models the
+// ever-present village foot traffic (kin visits, shared grazing,
+// market days, parish boundaries) which produces paths between
+// neighbours whether or not they have anything to trade. Without
+// this, two hamlets 22 tiles apart get routed 80 tiles round a
+// worn trunk because the worn arterial is "cheaper" than a fresh
+// terrain crossing. Threshold sits just above MIN_SETT_DIST (18)
+// so the closest possible pairs always qualify.
+const CLOSE_NEIGHBOUR_DIST    = 28;
+const CLOSE_NEIGHBOUR_DIST_SQ = CLOSE_NEIGHBOUR_DIST * CLOSE_NEIGHBOUR_DIST;
+const MIN_POP_TO_LINK         = 30;     // lower bar than road planning
+
 // Resource needs by tier — kept for road-planning preference.
 const NEEDED_BY_TIER = [
   ["timber"],
@@ -273,6 +287,51 @@ export function maybeBuildRoads(world) {
       world._networkComponents = buildNetworkComponents(world);
     }
   }
+  // Local-link pass: ensure close-neighbour pairs have a direct
+  // path. Runs AFTER economic road planning so trunk lines win
+  // the planner's attention first; this pass only fills in the
+  // missing village-to-village links.
+  if (maybeBuildLocalLinks(world)) {
+    anyBuilt = true;
+    rebuildTradeReach(world);
+    world._networkComponents = buildNetworkComponents(world);
+  }
+  return anyBuilt;
+}
+
+// Paint direct paths between close-neighbour pairs that don't
+// already have one. No economic gate — proximity is the only
+// criterion. Each pair processed once via id ordering. A pair
+// "already has a direct path" if every tile of the shortest
+// route is already a road (newFrac === 0).
+function maybeBuildLocalLinks(world) {
+  const candidates = world.settlements.filter(
+    s => s.mode === "settled" && s.people >= MIN_POP_TO_LINK
+  );
+  const rq = world.roadQuality;
+  let anyBuilt = false;
+  for (const s of candidates) {
+    for (const peer of candidates) {
+      if (peer.id <= s.id) continue;            // each pair once
+      let dx = Math.abs(peer.pos.x - s.pos.x);
+      if (dx > world.tw / 2) dx = world.tw - dx;
+      const dy = peer.pos.y - s.pos.y;
+      if (dx * dx + dy * dy > CLOSE_NEIGHBOUR_DIST_SQ) continue;
+      const path = findPath(world, s, peer);
+      if (!path) continue;
+      let didChange = false;
+      for (const ti of path.tiles) {
+        if (QUALITY_NEW < rq[ti]) { rq[ti] = QUALITY_NEW; didChange = true; }
+      }
+      if (didChange) {
+        anyBuilt = true;
+        if (s.history) s.history.push({
+          step: world.step, type: "local-link",
+          to: peer.id, tiles: path.tiles.length,
+        });
+      }
+    }
+  }
   return anyBuilt;
 }
 
@@ -308,7 +367,8 @@ function tryAddRoad(world, s) {
     let dx = Math.abs(peer.pos.x - s.pos.x);
     if (dx > world.tw / 2) dx = world.tw - dx;
     const dy = peer.pos.y - s.pos.y;
-    if (dx * dx + dy * dy > reachSq) continue;
+    const peerDistSq = dx * dx + dy * dy;
+    if (peerDistSq > reachSq) continue;
 
     // Resource gain from connecting to this peer.
     const peerRes = peer.localRes || {};
@@ -384,11 +444,15 @@ function tryAddRoad(world, s) {
     }
   }
   // Paint new tiles into roadQuality (take min so we don't downgrade
-  // an existing worn road).
+  // an existing worn road). If nothing actually changed (path is
+  // entirely on existing roads), report no build — otherwise we
+  // re-run reach + components every cycle on a stable network.
   const rq = world.roadQuality;
+  let didChange = false;
   for (const ti of physicalTiles) {
-    if (QUALITY_NEW < rq[ti]) rq[ti] = QUALITY_NEW;
+    if (QUALITY_NEW < rq[ti]) { rq[ti] = QUALITY_NEW; didChange = true; }
   }
+  if (!didChange) return false;
   if (s.history) s.history.push({
     step: world.step, type: "road-built",
     to: bestPartner.id, tiles: physicalTiles.length,
