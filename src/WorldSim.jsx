@@ -4273,6 +4273,11 @@ const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
 useEffect(()=>{selectedSettlementIdRef.current=selectedSettlementId;},[selectedSettlementId]);
+// Which collapsible sections of the settlement card are open. Persists
+// across re-renders (the card re-renders every few ticks) and across
+// selecting different settlements.
+const[psCardOpen,setPsCardOpen]=useState({food:true,knowledge:false,resources:false,trade:true});
+const togglePsCard=id=>setPsCardOpen(o=>({...o,[id]:!o[id]}));
 const[useRealWind,setUseRealWind]=useState(false);
 const useMercator=false;
 const[showGlobe,setShowGlobe]=useState(false);
@@ -5996,7 +6001,7 @@ return(
   // Water-access label.
   const wa=s.waterAccess||0;
   const waterLabel=wa<=0?"landlocked":wa<0.3?"minor river":wa<0.6?"river":wa<0.85?"coastal":"port";
-  // Bar helper.
+  // ── Inline helpers ──
   const Bar=({v,color})=>(
     <div style={{position:"relative",height:5,background:"rgba(0,0,0,0.15)",borderRadius:2,marginTop:1}}>
       <div style={{position:"absolute",inset:0,width:`${Math.max(0,Math.min(1,v))*100}%`,background:color||"#7a5",borderRadius:2}}/>
@@ -6011,172 +6016,147 @@ return(
       <Bar v={val} color={colour}/>
     </div>
   );
+  // Collapsible section: a clickable header (with an optional at-a-glance
+  // value on the right) that shows/hides its body. Open/closed state
+  // lives in psCardOpen so it persists across the card's frequent
+  // re-renders. Called as a function (not <Section/>) to avoid React
+  // remounting it as a new component type every render.
+  const Section=(id,title,right,body)=>{
+    const open=psCardOpen[id];
+    return(
+      <div style={{marginTop:6,borderTop:"1px solid rgba(0,0,0,0.10)",paddingTop:5}}>
+        <div onClick={()=>togglePsCard(id)} className="au-fade"
+          style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none",fontSize:10,letterSpacing:0.4,textTransform:"uppercase"}}>
+          <span>{open?"▾":"▸"} {title}</span>
+          {right!=null&&<span style={{textTransform:"none",letterSpacing:0}}>{right}</span>}
+        </div>
+        {open&&<div style={{marginTop:4}}>{body}</div>}
+      </div>
+    );
+  };
+
+  // Food balance.
+  const supply=s._foodSupply||0, demand=s._foodDemand||0, importRate=s._foodImportRate||0;
+  const surplus=(supply+importRate)-demand;
+  const ticksLeft=demand>0?(s.food||0)/demand:Infinity;
+  const starving=ticksLeft<100&&surplus<=0;
+  const status=starving?"starving":surplus>0.001?"surplus":surplus<-0.001?"deficit":"balanced";
+  const statusColor=starving?"#c44":surplus>0.001?"#3a7":surplus<-0.001?"#c84":"#888";
+
+  // Treasury + trade.
+  const wealth=Math.round(s.wealth||0);
+  const available=Math.max(0,wealth-Math.round(getWealthReserve(s)));
+  const profile=getTradeProfile(s,peopleRef.current);
+  const totalNet=profile.reduce((a,p)=>a+(p.netPerTick||0),0);
+  const produces=getExportBreakdown(s).filter(b=>b.label!=="Baseline").slice(0,3).map(b=>b.label.toLowerCase());
+  const nextName=["town","city","metropolis"][s.tier];
+
   return(
     <div className="au-parchment au-pico au-elev"
-      style={{position:"absolute",left:14,top:14,minWidth:220,maxWidth:280,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"90vh",overflowY:"auto"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-        <div className="au-pico-title" style={{fontSize:13,textTransform:"capitalize"}}>{s.name}</div>
+      style={{position:"absolute",left:14,top:14,width:248,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"90vh",overflowY:"auto"}}>
+
+      {/* ── Header ── */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div className="au-pico-title" style={{fontSize:14,textTransform:"capitalize"}}>{s.name}</div>
         <button onClick={()=>setSelectedSettlementId(-1)}
-          style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:14,padding:"0 4px"}}>×</button>
+          style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:16,lineHeight:1,padding:"0 2px"}}>×</button>
       </div>
-      <div className="au-fade" style={{fontSize:10,marginBottom:6,textTransform:"capitalize"}}>
-        {tierName} · {era} · {waterLabel} · founded step {s.foundedStep}
+      <div className="au-fade" style={{fontSize:10,textTransform:"capitalize",marginBottom:6}}>
+        {tierName} · {era} · {waterLabel}
       </div>
 
-      {/* ── Demographics + food balance ── */}
-      {(()=>{
-        const supply=s._foodSupply||0;
-        const demand=s._foodDemand||0;
-        const importRate=s._foodImportRate||0;
-        const totalSupply=supply+importRate;
-        const surplus=totalSupply-demand;
-        const ticksLeft=demand>0?(s.food||0)/demand:Infinity;
-        const starving=ticksLeft<100&&surplus<=0;
-        const status=starving?"starving":surplus>0.001?"surplus":surplus<-0.001?"deficit":"balanced";
-        const statusColor=starving?"#c44":surplus>0.001?"#494":surplus<-0.001?"#c84":undefined;
-        return(
-          <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px"}}>
-            <span>Population</span><span>{Math.round(s.people)}{K?` / ${Math.round(K)} K`:""}</span>
-            <span>Food stored</span><span>{Math.round(s.food)}</span>
-            <span className="au-fade">Production /tick</span><span className="au-fade">{supply.toFixed(3)}</span>
-            {importRate>0.001&&(<><span className="au-fade">Imported (avg /tick)</span><span className="au-fade">+{importRate.toFixed(3)}</span></>)}
-            <span className="au-fade">Consumed /tick</span><span className="au-fade">{demand.toFixed(3)}</span>
-            <span style={statusColor?{color:statusColor}:undefined}>Food balance</span>
-            <span style={statusColor?{color:statusColor}:undefined}>
-              {surplus>=0?"+":""}{surplus.toFixed(3)} ({status})
-            </span>
-            <span>Farmland</span><span>{farm} tile{farm===1?"":"s"}</span>
-            {nextThr&&<><span>To next tier</span><span>{Math.round(s.people)}/{nextThr} ({Math.round(progress*100)}%)</span></>}
-          </div>
-        );
-      })()}
-
-      {/* ── Knowledge ── */}
-      <div style={{marginTop:8,fontSize:10}} className="au-fade">Knowledge</div>
-      <KRow label="Agriculture"  val={k.agriculture||0}  colour="#7a5"/>
-      <KRow label="Foraging"     val={k.foraging||0}     colour="#697"/>
-      <KRow label="Toolmaking"   val={k.toolmaking||0}   colour="#aa6"/>
-      <KRow label="Construction" val={k.construction||0} colour="#a85"/>
-      <KRow label="Organization" val={k.organization||0} colour="#967"/>
-      <KRow label="Metallurgy"   val={k.metallurgy||0}   colour="#86a"
-            note={!cu&&!fe?"(no ore)":(fe&&co?"(steel)":fe?"(iron)":(cu&&sn?"(bronze)":"(copper)"))}/>
-      <KRow label="Navigation"   val={k.navigation||0}   colour="#58a"
-            note={wa<=0?"(no water)":null}/>
-      <KRow label="Mobility"     val={k.mobility||0}     colour="#a76"
-            note={(r.horses||0)<=0.10?"(no horses)":null}/>
-
-      {/* ── Local resources (max richness in reach) ── */}
-      <div style={{marginTop:8,fontSize:10}} className="au-fade">
-        Local resources{presentRes.length===0?" (none in reach)":""}
+      {/* ── At-a-glance summary (always visible) ── */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+        <div>
+          <span style={{fontSize:18,fontWeight:600}}>{Math.round(s.people).toLocaleString()}</span>
+          {K?<span className="au-fade" style={{fontSize:10}}> / {Math.round(K).toLocaleString()}</span>:null}
+          <span className="au-fade" style={{fontSize:9,marginLeft:3}}>people</span>
+        </div>
+        <span style={{fontSize:9,fontWeight:600,color:"#fff",background:statusColor,borderRadius:8,padding:"1px 8px",textTransform:"uppercase",letterSpacing:0.3}}>{status}</span>
       </div>
-      {presentRes.length>0&&(
-        <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
-          {presentRes.map(([id,v])=>(
-            <Fragment key={id}>
-              <span>{RES_LABEL[id]||id}</span><span>{(v*100|0)}%</span>
-            </Fragment>
-          ))}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginTop:3}}>
+        <div>
+          <span style={{fontSize:13}}>${wealth.toLocaleString()}</span>
+          <span className="au-fade" style={{fontSize:9,marginLeft:3}}>treasury</span>
+        </div>
+        <span className="au-fade" style={{fontSize:9}}>
+          {nextName?`${Math.round(progress*100)}% → ${nextName}`:"max tier"}
+        </span>
+      </div>
+
+      {/* ── Population & food ── */}
+      {Section("food","Population & food",
+        <span style={{color:statusColor}}>{surplus>=0?"+":""}{surplus.toFixed(2)}</span>,
+        <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
+          <span className="au-fade">Food stored</span><span>{Math.round(s.food)}</span>
+          <span className="au-fade">Produced /tick</span><span>{supply.toFixed(3)}</span>
+          {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span>+{importRate.toFixed(3)}</span></>)}
+          <span className="au-fade">Consumed /tick</span><span>{demand.toFixed(3)}</span>
+          <span style={{color:statusColor}}>Balance</span>
+          <span style={{color:statusColor}}>{surplus>=0?"+":""}{surplus.toFixed(3)} ({status})</span>
+          <span className="au-fade">Farmland</span><span>{farm} tile{farm===1?"":"s"}</span>
+          {nextThr&&<><span className="au-fade">To next tier</span><span>{Math.round(s.people)}/{nextThr}</span></>}
         </div>
       )}
 
-      {/* ── Treasury ── */}
-      {(()=>{
-        const wealth=Math.round(s.wealth||0);
-        const reserve=Math.round(getWealthReserve(s));
-        const available=Math.max(0, wealth-reserve);
-        const hoarding=available<=0&&wealth>0;
-        return(
-          <>
-            <div style={{marginTop:8,fontSize:10}} className="au-fade">Treasury</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
-              <span>Wealth</span><span>${wealth.toLocaleString()}</span>
-              <span className="au-fade">Reserve (rainy day)</span>
-              <span className="au-fade">${reserve.toLocaleString()}</span>
-              <span style={hoarding?{color:"#c44"}:undefined}>
-                {hoarding?"Hoarding — no spending":"Available to spend"}
-              </span>
-              <span style={hoarding?{color:"#c44"}:undefined}>
-                ${available.toLocaleString()}
-              </span>
-            </div>
-          </>
-        );
-      })()}
+      {/* ── Knowledge ── */}
+      {Section("knowledge","Knowledge",
+        <span className="au-fade" style={{textTransform:"capitalize"}}>{era}</span>,
+        <>
+          <KRow label="Agriculture"  val={k.agriculture||0}  colour="#7a5"/>
+          <KRow label="Foraging"     val={k.foraging||0}     colour="#697"/>
+          <KRow label="Toolmaking"   val={k.toolmaking||0}   colour="#aa6"/>
+          <KRow label="Construction" val={k.construction||0} colour="#a85"/>
+          <KRow label="Organization" val={k.organization||0} colour="#967"/>
+          <KRow label="Metallurgy"   val={k.metallurgy||0}   colour="#86a"
+                note={!cu&&!fe?"(no ore)":(fe&&co?"(steel)":fe?"(iron)":(cu&&sn?"(bronze)":"(copper)"))}/>
+          <KRow label="Navigation"   val={k.navigation||0}   colour="#58a"
+                note={wa<=0?"(no water)":null}/>
+          <KRow label="Mobility"     val={k.mobility||0}     colour="#a76"
+                note={(r.horses||0)<=0.10?"(no horses)":null}/>
+        </>
+      )}
 
-      {/* ── Specialty profile (what they could sell — potential, not actual) ── */}
-      {(()=>{
-        const items=getExportBreakdown(s);
-        if(!items||items.length===0)return null;
-        const total=items.reduce((a,b)=>a+b.value,0);
-        const hasRoads=s._tradeReach&&s._tradeReach.size>0;
-        return(
-          <>
-            <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
-              <span>Specialty profile</span><span>{total.toFixed(2)}</span>
-            </div>
-            <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginBottom:2}}>
-              {hasRoads?"what they make / can sell":"what they could sell — no roads, nothing actually exported"}
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
-              {items.map((it,i)=>(
-                <Fragment key={i}>
-                  <span>{it.label}</span><span>{it.value.toFixed(2)}</span>
-                </Fragment>
+      {/* ── Resources ── */}
+      {Section("resources","Resources",
+        presentRes.length>0?<span className="au-fade">{presentRes.length}</span>:null,
+        presentRes.length>0
+          ?<div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
+              {presentRes.map(([id,v])=>(
+                <Fragment key={id}><span>{RES_LABEL[id]||id}</span><span>{(v*100|0)}%</span></Fragment>
               ))}
             </div>
-          </>
-        );
-      })()}
+          :<span className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>No notable deposits in reach.</span>
+      )}
 
-      {/* ── Actual trade routes (real flowing imports + exports per road) ── */}
-      {(()=>{
-        const psw2=peopleRef.current;
-        const profile=getTradeProfile(s,psw2);
-        if(profile.length===0){
-          return(
-            <div className="au-fade" style={{marginTop:8,fontSize:10,fontStyle:"italic"}}>
-              No active trade routes — no imports or exports flowing.
-            </div>
-          );
-        }
-        const totalNet=profile.reduce((a,p)=>a+p.netPerTick,0);
-        return(
-          <>
-            <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
-              <span>Actual trade ({profile.length} route{profile.length===1?"":"s"})</span>
-              <span style={{color:totalNet>=0?"#494":"#c44"}}>
-                {totalNet>=0?"+":""}{totalNet.toFixed(2)}/tick
-              </span>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"1px 6px",fontSize:10}}>
-              {profile.map(p=>(
-                <Fragment key={p.rid}>
-                  <span style={{color:p.role==="selling"?"#5a5":"#c66"}}>
-                    {p.role==="selling"?"sell":"buy "}
-                  </span>
-                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {p.partner}
-                    {p.goods.length>0&&(
-                      <span className="au-fade" style={{marginLeft:4,fontSize:9}}>
-                        ({p.goods.join(", ").toLowerCase()})
-                      </span>
-                    )}
-                    {p.foodRole&&(
-                      <span style={{marginLeft:4,fontSize:9,
-                        color:p.foodRole==="selling food"?"#494":"#c84"}}>
-                        · {p.foodRole}
-                      </span>
-                    )}
-                  </span>
-                  <span style={{color:p.netPerTick>=0?"#494":"#c44"}}>
-                    {p.netPerTick>=0?"+":""}{p.netPerTick.toFixed(2)}
-                  </span>
-                </Fragment>
-              ))}
-            </div>
-          </>
-        );
-      })()}
+      {/* ── Trade & economy ── */}
+      {Section("trade","Trade & economy",
+        profile.length>0?<span style={{color:totalNet>=0?"#3a7":"#c44"}}>{totalNet>=0?"+":""}{totalNet.toFixed(2)}/tick</span>:null,
+        <>
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
+            <span className="au-fade">Available to spend</span>
+            <span style={available<=0?{color:"#c44"}:undefined}>${available.toLocaleString()}{available<=0?" (hoarding)":""}</span>
+          </div>
+          {produces.length>0&&(
+            <div className="au-fade" style={{fontSize:9,marginTop:3}}>Produces: {produces.join(", ")}</div>
+          )}
+          {profile.length===0
+            ?<div className="au-fade" style={{fontSize:10,fontStyle:"italic",marginTop:4}}>No active trade routes.</div>
+            :<div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"1px 6px",fontSize:10,marginTop:4}}>
+                {profile.map(p=>(
+                  <Fragment key={p.partnerId}>
+                    <span style={{color:p.role==="selling"?"#3a7":"#c66"}}>{p.role==="selling"?"sell":"buy"}</span>
+                    <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {p.partner}
+                      {p.goods.length>0&&<span className="au-fade" style={{marginLeft:4,fontSize:9}}>({p.goods.join(", ").toLowerCase()})</span>}
+                      {p.foodRole&&<span style={{marginLeft:4,fontSize:9,color:p.foodRole==="selling food"?"#3a7":"#c84"}}>· {p.foodRole}</span>}
+                    </span>
+                    <span style={{color:p.netPerTick>=0?"#3a7":"#c44"}}>{p.netPerTick>=0?"+":""}{p.netPerTick.toFixed(2)}</span>
+                  </Fragment>
+                ))}
+              </div>}
+        </>
+      )}
     </div>
   );
 })()}
