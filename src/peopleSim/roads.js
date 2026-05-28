@@ -52,17 +52,20 @@ const PLAN_INTERVAL       = 240;        // ticks between road-planning attempts
 const MIN_POP_TO_PLAN     = 60;
 const MAX_REACH_VISITS    = 8000;       // BFS visit cap for trade-reach computation
 
-// Flow dynamics. roadFlow is added to per trade tick and decayed
-// every tick — equilibrium under sustained single-pair trade is
-// USAGE_PER_TRADE / FLOW_DECAY = 0.04 / 0.002 = 20. Busy trunks
-// with 5+ pairs through the same tile equilibrate near 100.
-const FLOW_DECAY          = 0.002;      // per-tick multiplicative decay (~700-tick half-life)
-const FLOW_FOR_PAVE       = 20;         // sustained flow that fully drives quality progression
-const FLOW_FOR_BUSY       = 60;         // sustained flow that saturates the busy-road bonus
+// Flow dynamics. roadFlow gains USAGE_PER_TRADE per active trade
+// per tile each tick, decays multiplicatively the rest of the time.
+// Half-life ≈ 35 ticks — the value reflects traffic over the last
+// few seconds of game time, not lifetime accumulation.
+//   Sustained 1-pair trade:    eq ≈ 0.04 / 0.02 = 2
+//   Sustained 5-pair trunk:    eq ≈ 10
+//   Heavy 30-pair arterial:    eq ≈ 60
+const FLOW_DECAY          = 0.02;       // per-tick multiplicative decay (half-life ~35 ticks)
+const FLOW_FOR_PAVE       = 5;          // sustained flow that fully drives quality progression
+const FLOW_FOR_BUSY       = 50;         // sustained flow that saturates the busy-road bonus
 // Quality improves toward QUALITY_MAX at this rate per tick when
 // flow ≥ FLOW_FOR_PAVE; proportionally slower when flow is lower.
-// At flow=20, it takes ~(QUALITY_NEW-QUALITY_MAX)/0.000034 ≈ 5000
-// ticks to fully pave — matches the historical wear curve.
+// At flow=FLOW_FOR_PAVE sustained, takes ~5000 ticks to fully pave
+// — matches the historical wear curve.
 const PAVE_RATE           = (QUALITY_NEW - QUALITY_MAX) / 5000;
 
 // Partner-distance reach scales with the BUILDER's population: a

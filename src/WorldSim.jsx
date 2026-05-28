@@ -5455,9 +5455,9 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // traffic falls off.
     if(psw.roadQuality&&psw.roadFlow){
       const rq=psw.roadQuality,rf=psw.roadFlow;
-      // Scale: flow=60 (a heavy multi-pair corridor) reads as full
-      // thickness; a quiet single-pair link sits around flow=20.
-      const FLOW_FULL=60;
+      // Scale: flow=50 (a heavy multi-pair corridor) reads as full
+      // thickness; a quiet single-pair link sits around flow=2.
+      const FLOW_FULL=50;
       for(let ti=0;ti<rq.length;ti++){
         if(rq[ti]>=1.0)continue;
         const py=(ti/psw.tw)|0,px=ti-py*psw.tw;

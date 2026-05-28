@@ -200,7 +200,7 @@ function computeResourceScarcity(world) {
 // economic reason to exist (passing trade pays them tribute);
 // this bonus speeds up their spawning so the pattern is visible
 // across the sim timescale.
-const FLOW_FOR_BUSY = 60;
+const FLOW_FOR_BUSY = 50;
 const BUSY_ROAD_MAX_BONUS = 1.5;
 function busyRoadBonusFor(world, ti, tx, ty) {
   const rf = world.roadFlow;
