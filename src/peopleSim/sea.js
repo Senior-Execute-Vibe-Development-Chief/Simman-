@@ -44,6 +44,12 @@ export const SEA_INTERVAL = 300;   // ticks between sea-lane / colony passes
 const SEA_STEP        = 0.35;    // cost per water tile (×√2 on diagonals)
 const SEA_RANGE_BASE  = 10;      // sea reach (cost units) at navigation 0
 const SEA_RANGE_NAV   = 160;     // extra reach per point of navigation
+// Wind. A leg sailed with the wind is cheaper, against it dearer (tacking).
+// align = unit-heading · wind direction ∈ [-1,1]; effect scales with wind
+// strength so doldrums barely matter and trade-wind belts shape the routes.
+const WIND_AID  = 0.5;    // max ± cost swing from a full-strength head/tail wind
+const WIND_STR  = 1.6;    // how quickly wind magnitude saturates to full effect
+const WIND_MULT_MIN = 0.45, WIND_MULT_MAX = 1.7;
 const MIN_NAV_FOR_SEA = 0.04;    // below this a settlement has no seacraft
 const EMBARK_RADIUS   = 4;       // tiles to search around home for water
 const SEA_MIN_POP     = 40;      // a port below this doesn't project lanes
@@ -54,16 +60,36 @@ const MAX_ROUTE_TILES = 1200;    // cap on a sea path's stored tile count
 // the per-tick trade pass O(ports²); real trade also favours nearer ports.
 const SEA_MAX_PEERS   = 12;
 
-// Colonisation.
-const COLONY_MIN_POP    = 600;   // only sizable port cities send colonists
-const COLONY_MIN_NAV    = 0.30;  // need ocean-going ships
+// Colonisation. Tuned to be reasonably common: a navigation-capable city
+// mounts expeditions fairly often, and a young colony is supplied from
+// home (see supplyColonies in conquest.js) so it survives its first years.
+const COLONY_MIN_POP    = 400;   // a city (tier 2) can colonise
+const COLONY_MIN_NAV    = 0.25;  // need ocean-going ships
 const COLONY_PEOPLE     = 30;    // colonists carried (migrated out of parent)
-const COLONY_COOLDOWN   = 800;   // ticks between expeditions from one port
+const COLONY_COOLDOWN   = 500;   // ticks between expeditions from one port
 const COLONY_ENDOW_FRAC = 0.12;  // share of the parent's coin colonists carry
 const COLONY_ENDOW_CAP  = 5000;
 const COLONY_MIN_DIST   = 14;    // landing must be this far from any settlement
 const COLONY_MIN_DIST_SQ = COLONY_MIN_DIST * COLONY_MIN_DIST;
 const COLONY_PER_PORT_CAND = 400; // cap shore candidates collected per port
+
+// 8-neighbour offsets (match the flood's neighbour order) for wind heading.
+const DX = [-1, 1, 0, 0, -1, 1, -1, 1];
+const DY = [0, 0, -1, 1, -1, -1, 1, 1];
+// Wind cost multiplier for sailing from any tile toward (dx,dy), using the
+// wind at the destination tile. With the wind → cheaper; into it → dearer.
+function windMul(world, ni, dx, dy) {
+  const wx = world._windX;
+  if (!wx) return 1;
+  const wvx = wx[ni], wvy = world._windY[ni];
+  const wmag = Math.sqrt(wvx * wvx + wvy * wvy);
+  if (wmag < 1e-4) return 1;
+  const dmag = Math.sqrt(dx * dx + dy * dy);
+  const align = (dx * wvx + dy * wvy) / (dmag * wmag);   // [-1,1]
+  const strength = Math.min(1, wmag * WIND_STR);
+  let m = 1 - WIND_AID * align * strength;
+  return m < WIND_MULT_MIN ? WIND_MULT_MIN : m > WIND_MULT_MAX ? WIND_MULT_MAX : m;
+}
 const SHIP_SPEED        = 0.7;   // path tiles per tick, ×(1+navigation)
 
 const SQRT2 = Math.SQRT2;
@@ -162,8 +188,6 @@ export function updateSea(world) {
     if (e < 0 || elev[e] > 0) continue;
     if (dist[e] > 0) { dist[e] = 0; owner[e] = p.id; prev[e] = -1; heap.push(e, 0); }
   }
-  // Direct sea links discovered where two ports' waters meet.
-  const edges = new Map();   // "lo:hi" -> { cost, tiA, tiB }  (tiA owned lo, tiB owned hi)
   let visited = 0;
   while (heap.n > 0 && visited < MAX_SEA_VISITS) {
     const { ti, d } = heap.popMin();
@@ -197,19 +221,39 @@ export function updateSea(world) {
         continue;
       }
       const no = owner[ni];
-      if (no >= 0 && no !== oid) {
-        // Boundary between two ports' waters → a direct sea link candidate.
-        const cost = d + SEA_STEP * mul[k] + dist[ni];
-        const lo = oid < no ? oid : no, hi = oid < no ? no : oid;
-        const tiLo = oid < no ? ti : ni, tiHi = oid < no ? ni : ti;
-        const key = lo + ":" + hi;
-        const ex = edges.get(key);
-        if (!ex || cost < ex.cost) edges.set(key, { cost, tiA: tiLo, tiB: tiHi });
-        continue;
-      }
-      const nd = d + SEA_STEP * mul[k];
-      if (nd > bud) continue;                 // beyond this port's range
+      if (no >= 0 && no !== oid) continue;       // another port's water (boundary handled below)
+      const nd = d + SEA_STEP * mul[k] * windMul(world, ni, DX[k], DY[k]);
+      if (nd > bud) continue;                    // beyond this port's range
       if (nd < dist[ni]) { dist[ni] = nd; owner[ni] = oid; prev[ni] = ti; heap.push(ni, nd); }
+    }
+  }
+
+  // Direct sea links from where two ports' waters meet, using the FINAL
+  // distances (computing the cost mid-flood, before a tile is settled,
+  // picked off-axis meeting points and produced the V-shaped detours).
+  // Checking right / down / both diagonals counts each adjacency once.
+  const edges = new Map();   // "lo:hi" -> { cost, tiA, tiB }  (tiA owned lo, tiB owned hi)
+  for (let ti = 0; ti < N; ti++) {
+    const oid = owner[ti];
+    if (oid < 0) continue;
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const xp = tx === tw - 1 ? 0 : tx + 1, xm = tx === 0 ? tw - 1 : tx - 1;
+    const cand = [
+      [ty * tw + xp, 1],                          // right
+      ty < th - 1 ? [ti + tw, 1] : null,          // down
+      ty < th - 1 ? [(ty + 1) * tw + xp, SQRT2] : null,   // down-right
+      ty < th - 1 ? [(ty + 1) * tw + xm, SQRT2] : null,   // down-left
+    ];
+    for (const c of cand) {
+      if (!c) continue;
+      const nj = c[0], no = owner[nj];
+      if (no < 0 || no === oid) continue;
+      const cost = dist[ti] + SEA_STEP * c[1] + dist[nj];
+      const lo = oid < no ? oid : no, hi = oid < no ? no : oid;
+      const tiLo = oid < no ? ti : nj, tiHi = oid < no ? nj : ti;
+      const key = lo + ":" + hi;
+      const ex = edges.get(key);
+      if (!ex || cost < ex.cost) edges.set(key, { cost, tiA: tiLo, tiB: tiHi });
     }
   }
 

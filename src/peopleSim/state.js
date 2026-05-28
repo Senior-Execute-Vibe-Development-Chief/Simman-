@@ -70,6 +70,7 @@ export function createWorld(w, opts = {}) {
 
   initTerrain(world, w, opts.tCrop);
   initRiverMag(world, w);
+  initWind(world, w);
   initDeposits(world, w, opts.deposits);
   resetShipIds();
   seedCradleVillage(world);
@@ -145,6 +146,26 @@ function initDeposits(world, w, deposits) {
     for (let i = 0; i < N; i++) res[i] = arr[i] * 100000;
     world.depositReserve.gems = res;
   }
+}
+
+// Downsample the worldgen wind field into tile space, for wind-aware sea
+// routing (sea.js). Vectors point in the direction the wind blows TOWARD,
+// so a ship travelling with the wind (positive alignment) goes faster.
+function initWind(world, w) {
+  if (!w.windX || !w.windY) return;
+  const { tw, th, tileRes, N } = world;
+  const wx = new Float32Array(N), wy = new Float32Array(N);
+  for (let ty = 0; ty < th; ty++) {
+    for (let tx = 0; tx < tw; tx++) {
+      const px = Math.min(w.width - 1, tx * tileRes);
+      const py = Math.min(w.height - 1, ty * tileRes);
+      const wi = py * w.width + px;
+      wx[ty * tw + tx] = w.windX[wi] || 0;
+      wy[ty * tw + tx] = w.windY[wi] || 0;
+    }
+  }
+  world._windX = wx;
+  world._windY = wy;
 }
 
 function initRiverMag(world, w) {

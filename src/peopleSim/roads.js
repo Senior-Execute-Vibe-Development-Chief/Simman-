@@ -164,6 +164,14 @@ const MONEY_FLOW_EPS               = 0.01;   // min net /tick for a link to regi
 // would be unconscionable.
 const TOLL_RATE       = 0.05;
 const FOOD_TOLL_RATE  = 0.02;
+// Cross-border customs: when goods are sold INTO a different country, that
+// country's state (its capital) levies an import duty on top of the price.
+// It raises the cost of foreign trade — so commerce within one realm is
+// cheaper and empires act as trade blocs — and hands the crown a customs
+// income, making a conquered trade hub genuinely worth holding. Conserved:
+// the duty the buyer pays goes to the importing country's capital. Food is
+// exempt (famine relief shouldn't be taxed).
+const TARIFF_RATE     = 0.10;
 
 export { QUALITY_NEW, QUALITY_MAX, FLOW_FOR_PAVE, FLOW_FOR_BUSY };
 
@@ -786,19 +794,31 @@ function runGeneralTradeBetween(world, a, b, link, stMap) {
   const numInter = intermediates ? intermediates.length : 0;
   // A's goods sold to B (B pays A), then B's goods sold to A (A pays B).
   // Freight is split across the two legs of the round trip.
-  sellGoods(a, b, computeExportValue(a) * vol, transport * 0.5, intermediates, numInter);
-  sellGoods(b, a, computeExportValue(b) * vol, transport * 0.5, intermediates, numInter);
+  sellGoods(world, a, b, computeExportValue(a) * vol, transport * 0.5, intermediates, numInter);
+  sellGoods(world, b, a, computeExportValue(b) * vol, transport * 0.5, intermediates, numInter);
 }
 
-// One leg: `seller` ships `goodsValue` of goods to `buyer`; buyer pays
-// from wealth above its reserve, with freight consumed en route and a
-// toll skimmed by each intermediate settlement on the road.
-function sellGoods(seller, buyer, goodsValue, freight, intermediates, numInter) {
+// Importing country's capital (the customs collector) when buying foreign
+// goods, or null for domestic trade / when the buyer is itself the capital.
+function customsCollector(world, seller, buyer) {
+  if (seller.countryId === buyer.countryId) return null;
+  const c = world.countries && world.countries.get(buyer.countryId);
+  if (!c || !c.capital || c.capital === buyer) return null;
+  return c.capital;
+}
+
+// One leg: `seller` ships `goodsValue` of goods to `buyer`; buyer pays from
+// wealth above its reserve, with freight consumed en route, a toll skimmed
+// by each intermediate settlement on the road, and — for foreign goods — an
+// import duty collected by the buyer's state.
+function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, numInter) {
   if (goodsValue <= 0) return;
   const totalToll = goodsValue * TOLL_RATE * numInter;
-  // Don't ship goods worth less than the freight + tolls to move them.
-  if (goodsValue <= freight + totalToll) return;
-  const want = goodsValue + freight + totalToll;
+  const collector = customsCollector(world, seller, buyer);
+  const tariff = collector ? goodsValue * TARIFF_RATE : 0;
+  // Don't ship goods worth less than the cost to move + clear them.
+  if (goodsValue <= freight + totalToll + tariff) return;
+  const want = goodsValue + freight + totalToll + tariff;
   const reserve = getWealthReserve(buyer);
   const available = Math.max(0, (buyer.wealth || 0) - reserve);
   if (available <= 0) return;
@@ -810,8 +830,10 @@ function sellGoods(seller, buyer, goodsValue, freight, intermediates, numInter) 
     const tollPer = goodsValue * TOLL_RATE * scale;
     for (const inter of intermediates) inter.wealth = (inter.wealth || 0) + tollPer;
   }
+  if (collector) collector.wealth = (collector.wealth || 0) + tariff * scale;
   // Conservation: buyer loses `actual` = goodsValue*scale (to seller)
-  // + totalToll*scale (to intermediates) + freight*scale (consumed).
+  // + totalToll*scale (to intermediates) + tariff*scale (to the state)
+  // + freight*scale (consumed).
 }
 
 // ── Helpers ────────────────────────────────────────────────────────

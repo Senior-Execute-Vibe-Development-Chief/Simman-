@@ -35,6 +35,11 @@ const NAVAL_REACH      = 2.2;
 const VALUE_HOLD_CAP   = 4;       // richest provinces held from up to 5× the range
 const MINE_HOLD_SCALE  = 0.15;    // per unit of mining income / tick
 const TREASURE_HOLD_DIV = 60000;  // wealth that contributes one unit of pull (cap 2)
+// Colonial support: a young colony draws food + coin from the mother
+// country's capital each polity pass (and pays no tribute) until it matures.
+const COLONY_SUPPLY_TICKS = 4000;
+const COLONY_SUPPLY_FOOD  = 40;
+const COLONY_SUPPLY_COIN  = 300;
 
 function holdPull(s) {
   const mine = (s._minedRate || 0) * MINE_HOLD_SCALE;
@@ -113,6 +118,10 @@ export function updatePolities(world) {
         if (world.step - s._disloyalSince >= SECEDE_GRACE) {
           s.countryId = s.id;
           s._disloyalSince = undefined;
+          // A state that has just won its independence resists re-conquest
+          // for a while (reuses the pacification grace), so it doesn't get
+          // re-annexed next pass — the other half of killing the flicker.
+          s._conqueredAt = world.step;
           if (s.history) s.history.push({ step: world.step, type: "seceded" });
         }
       } else {
@@ -120,9 +129,22 @@ export function updatePolities(world) {
       }
     }
 
-    // ── Tribute: members send a slice of wealth up to the capital ──
+    // ── Tribute / colonial support ──
+    // Established members send a slice of wealth up to the capital. A YOUNG
+    // colony instead RECEIVES support — food and coin shipped from the
+    // mother country — so it survives its first years instead of starving
+    // on a raw frontier (exactly how real colonies were kept alive).
     for (const s of c.members) {
       if (s.id === c.capitalId || s.countryId !== c.id) continue;
+      const youngColony = s.parentSettlementId >= 0 &&
+                          world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      if (youngColony) {
+        const food = Math.min(COLONY_SUPPLY_FOOD, Math.max(0, (c.capital.food || 0) - 20));
+        if (food > 0) { c.capital.food -= food; s.food = (s.food || 0) + food; }
+        const coin = Math.min(COLONY_SUPPLY_COIN, Math.max(0, c.capital.wealth || 0));
+        if (coin > 0) { c.capital.wealth -= coin; s.wealth = (s.wealth || 0) + coin; }
+        continue;                                   // subsidised, not taxed
+      }
       const give = Math.max(0, s.wealth || 0) * TRIBUTE_FRACTION;
       if (give > 0) { s.wealth -= give; c.capital.wealth = (c.capital.wealth || 0) + give; }
     }

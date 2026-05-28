@@ -51,7 +51,7 @@ const INDEPENDENT_RATE          = 0.060;
 // non-zero rate keeps the door open for the occasional independent overseas
 // genesis (the Mesoamerica/Andes pattern) without letting empty continents
 // fill before colonists can sail to them.
-const OVERSEAS_INDEPENDENT_RATE = 0.004;
+const OVERSEAS_INDEPENDENT_RATE = 0.0015;
 const NEAR_RATE                 = 1.50;
 const BASE_RATE                 = 0.010;
 
