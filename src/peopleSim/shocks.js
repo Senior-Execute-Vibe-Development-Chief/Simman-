@@ -31,13 +31,14 @@ const FAMINE_MIN_POP  = 30;     // only seed on a real settlement
 // shrinks the control budget (conquest.js) and can collapse the realm.
 const PLAGUE_CHECK    = 2600;   // ticks between plague-spawn rolls (generational)
 const PLAGUE_CHANCE   = 0.4;
-const PLAGUE_DUR      = 400;    // how long a settlement stays infected
-const PLAGUE_IMMUNE   = 3000;   // post-plague immunity window (resistant survivors)
-const PLAGUE_MORT     = 0.0010; // base per-tick mortality while infected
+const PLAGUE_DUR      = 250;    // how long a settlement stays infectious (shorter window → lower R0)
+const PLAGUE_IMMUNE   = 4000;   // post-plague immunity window (resistant survivors block re-cascade)
+const PLAGUE_MORT     = 0.0016; // base per-tick mortality (raised to keep a short outbreak lethal)
 const PLAGUE_URBAN    = 0.6;    // extra mortality ∝ log10(pop/100) (crowding/sanitation)
-const PLAGUE_SPREAD   = 0.0007; // per-tick chance an infected node infects a trade partner
-                                // (low enough that most outbreaks stay regional; only a
-                                // well-connected, sustained one becomes a continental pandemic)
+const PLAGUE_SPREAD   = 0.00018;// per-tick chance an infected node infects a trade partner.
+                                // Tuned for R0 ≈ 1.5 (over a 250-tick window, ~20 partners):
+                                // most outbreaks fizzle regionally; only a well-connected,
+                                // lucky one becomes a continental pandemic.
 const PLAGUE_SEA_MULT = 2.0;    // sea routes carried plague fast + far (Black Death by ship)
 const PLAGUE_MIN_POP  = 50;     // needs a real population to take hold / seed
 
