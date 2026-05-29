@@ -31,11 +31,10 @@ const RESERVE_PASSES = 3;   // war-chest the state keeps (passes of peacetime ar
 const SOLVENCY_FLOOR = 0.5; // a fully bankrupt state still retains this fraction of its control budget
 
 // ── Variable taxation ─────────────────────────────────────────────────
-// The base tax rate climbs when the state is under fiscal stress (at war, or
-// insolvent) — a desperate treasury squeezes its subjects harder. That funds
-// the army, but the overtaxation feeds POPULAR UNREST below: the classic trap
-// where taxing to pay for a war drives the people to revolt (France 1789,
-// late Ming, late Rome).
+// The tax rate climbs under fiscal stress (war + insolvency) toward a cap — a
+// desperate treasury squeezes harder. That funds the army, but the
+// overtaxation feeds POPULAR UNREST: the classic trap where taxing to pay for
+// a war drives the people to revolt (France 1789, late Ming, late Rome).
 const TAX_BASE     = 0.06;   // baseline share of a member's wealth taxed per pass
 const TAX_MAX      = 0.22;   // hard cap on the tax rate, however desperate the state
 const TAX_WAR      = 0.025;  // extra rate per level of war
@@ -43,27 +42,28 @@ const TAX_BANKRUPT = 0.12;   // extra rate × how insolvent the state was last p
 const TAX_DRIFT    = 0.25;   // how fast the actual rate moves toward its target (no whipsaw)
 
 // ── Popular unrest → rebellion ────────────────────────────────────────
-// Unrest accumulates from hardship and, sustained, boils over into a
-// destructive rebellion (distinct from an orderly frontier secession): it
-// guts the rebelling towns and spreads through the discontented HEARTLAND.
+// Unrest is a SECOND stock alongside loyalty (kept separate so neither masks
+// the other): loyalty = administrative cohesion (overextension → orderly
+// secession); unrest = popular grievance (hardship → destructive rebellion).
+// It accumulates from hunger / conscription / war fatigue / overtaxation,
+// cools in peace + plenty, bleeds loyalty, and at the top boils over.
 const CONSCRIPT_REF = 0.15;  // garrison/pop fraction at which the conscription grievance saturates
-const HUNGER_W   = 1.0;      // weights of each grievance feeding unrest (hunger dominates, as in history)
+const HUNGER_W   = 1.0;      // grievance weights (hunger dominates, as in history)
 const CONSCRIPT_W = 0.4;
 const WARFAT_W   = 0.5;
 const OVERTAX_W  = 0.7;
 const UNREST_GAIN   = 0.15;  // how fast grievance piles into the unrest stock
 const UNREST_RELIEF = 0.06;  // how fast unrest cools when the people are content
 const UNREST_LOYALTY_BLEED = 0.12;  // an angry populace also erodes administrative loyalty
-const UNREST_RADIUS_MIN = 15;       // a rebellion rallies discontented neighbours within this (or range×below)
+const UNREST_RADIUS_MIN = 15;       // a rebellion rallies discontented neighbours within this (or range)
 const UNREST_JOIN = 0.6;            // a co-member this discontented joins a nearby uprising
-const REBEL_POP   = 0.82;    // a rebellion costs the town this fraction of its people (death/flight)...
-const REBEL_WEALTH = 0.5;    // ...this fraction of its wealth (looted/destroyed)...
+const REBEL_POP   = 0.82;    // a rebellion costs a town this fraction of its people...
+const REBEL_WEALTH = 0.5;    // ...this fraction of its wealth...
 const REBEL_ARMY  = 0.4;     // ...and its garrison mutinies down to this
-const RIOT_POP    = 0.90;    // the CAPITAL doesn't secede — it RIOTS: lighter pop/wealth/army damage, no breakaway
+const RIOT_POP    = 0.90;    // the capital RIOTS instead of seceding: lighter damage, no breakaway
 const RIOT_WEALTH = 0.65;
 const RIOT_ARMY   = 0.7;
-const SPOILS_PER   = 0.6;    // war-weariness relief a realm banks each time it storms a city (decays)
-const SPOILS_DECAY = 0.85;
+const SPOILS_DECAY = 0.85;   // war-weariness relief (banked on conquest in armies.js) fades per pass
 
 export function govOf(world, countryId) {
   if (!world.governments) world.governments = new Map();
@@ -373,6 +373,52 @@ function declareIndependence(world, c, seed) {
   }
 }
 
+// Damage a town in a rising — people die or flee, wealth is looted, the
+// garrison mutinies.
+function ravage(s, popMul, wealthMul, armyMul) {
+  s.people = Math.max(1, (s.people || 0) * popMul);
+  s.wealth = Math.max(0, (s.wealth || 0) * wealthMul);
+  s.army   = Math.max(0, (s.army || 0) * armyMul);
+}
+
+// A popular REBELLION (distinct from an orderly secession): each boiled-over
+// town guts itself and rallies the discontented HEARTLAND around it into a
+// rebel state — destructive, and able to fire in the core, not just the edge.
+// The capital can't break from itself, so it RIOTS instead (damage, no
+// breakaway) — a starving throne loses people, shrinking the control budget.
+function rebel(world, c, seeds) {
+  const radius = Math.max(UNREST_RADIUS_MIN, c.range);
+  for (const seed of seeds) {
+    if (seed.id === c.capitalId) {            // the throne riots, it doesn't secede
+      ravage(seed, RIOT_POP, RIOT_WEALTH, RIOT_ARMY);
+      seed.unrest = 0;
+      if (seed.history) seed.history.push({ step: world.step, type: "riot" });
+      continue;
+    }
+    if (seed.countryId !== c.id) continue;    // already swept into an earlier rising this pass
+    const bloc = [seed];
+    for (const m of c.members) {
+      if (m === seed || m.countryId !== c.id || m.id === c.capitalId) continue;
+      if ((m.unrest ?? 0) < UNREST_JOIN) continue;                    // content → doesn't rise
+      const pacified = world.step - (m._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const infant   = m.parentSettlementId >= 0 && world.step - (m.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      if (pacified || infant) continue;                              // garrison holds it down for now
+      if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
+      bloc.push(m);
+    }
+    const newId = freshCountryId(c, bloc);
+    if (newId < 0) { seed.unrest = 0; continue; }
+    for (const m of bloc) {
+      ravage(m, REBEL_POP, REBEL_WEALTH, REBEL_ARMY);
+      m.countryId = newId;
+      m.unrest = 0;                            // the rising vents the grievance
+      m.loyalty = 1;                           // loyal to the new rebel realm
+      m._conqueredAt = world.step;             // resists immediate re-annex (anti-flicker)
+      if (m.history) m.history.push({ step: world.step, type: m === seed ? "rebellion" : "joined-rebellion", to: newId });
+    }
+  }
+}
+
 // Spend the treasury, army first. The army has the FIRST claim on the
 // treasury; if it can't be paid in full the state is INSOLVENT (gov._solvency
 // < 1), which both makes garrisons desert (armies.js) and throttles the
@@ -478,9 +524,8 @@ export function updatePolities(world) {
     c._capitalBesieged = besiegedCap;
     c._solvency = solvency;
 
-    // Variable taxation: war + insolvency push the rate up toward a cap (a
-    // desperate treasury squeezes harder). War-weariness relief from recent
-    // conquests fades each pass.
+    // Variable taxation: war + insolvency push the rate up toward a cap. Recent
+    // conquests bank war-weariness relief (_spoils, in armies.js) that fades.
     const targetTax = Math.min(TAX_MAX, TAX_BASE + TAX_WAR * warLevel + TAX_BANKRUPT * (1 - solvency));
     gov._taxRate = (gov._taxRate ?? TAX_BASE) + (targetTax - (gov._taxRate ?? TAX_BASE)) * TAX_DRIFT;
     gov._spoils = (gov._spoils || 0) * SPOILS_DECAY;
@@ -502,7 +547,7 @@ export function updatePolities(world) {
       s._unrestCause = gH >= gC && gH >= gW && gH >= gT ? "famine"
                      : gT >= gC && gT >= gW ? "taxes"
                      : gW >= gC ? "war fatigue" : "conscription";
-      if (s.unrest > 0.5) s.loyalty = Math.max(0, (s.loyalty ?? 1) - UNREST_LOYALTY_BLEED * (s.unrest - 0.5));  // anger erodes loyalty too
+      if (s.unrest > 0.5) s.loyalty = Math.max(0, (s.loyalty ?? 1) - UNREST_LOYALTY_BLEED * (s.unrest - 0.5));  // anger erodes loyalty
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
       if (s.unrest >= 1 && (s.id === c.capitalId || !pacified)) rebelSeeds.push(s);
     }

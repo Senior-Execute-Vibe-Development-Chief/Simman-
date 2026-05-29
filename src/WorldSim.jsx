@@ -6464,6 +6464,19 @@ return(
         );
       })()}
 
+      {/* ── Popular unrest (separate stock from loyalty) ── */}
+      {(()=>{
+        const u=s.unrest||0;
+        if(u<0.15)return null;
+        const hue=u>0.66?8:u>0.33?28:42;   // red / orange / amber as it climbs
+        return(
+          <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},75%,50%)`,flexShrink:0}}/>
+            <span className="au-fade">unrest {Math.round(u*100)}%{s._unrestCause?` · ${s._unrestCause}`:""}{u>0.8?" · on the verge of revolt":""}</span>
+          </div>
+        );
+      })()}
+
       {/* ── Maritime (ports / sea trade / colonies) ── */}
       {(()=>{
         const isPort=!!s._isPort;
