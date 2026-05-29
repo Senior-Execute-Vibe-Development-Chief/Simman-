@@ -4356,6 +4356,13 @@ const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
 const atlasCache=useRef(null);
+// Offscreen cache for the political overlay (territory tint + borders + roads).
+// That overlay is a pure function of owner[]/roadQuality[], which change only
+// slowly (territory recomputes every 96 ticks, roads on plan cycles), yet it
+// re-rasterised ~460k tiles every frame. We render it to this canvas and only
+// regenerate every PS_OVERLAY_REGEN sim-steps, blitting it otherwise.
+const psOverlayRef=useRef(null);
+const psOverlayMeta=useRef({step:-1,ch:0});
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
 const imgRef=useRef(null);
 // Wind particle animation state
@@ -5548,72 +5555,71 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   }
   if(psw&&ctx&&!vmRoads&&!vmMoney){
     const TR=psw.tileRes;
-    // ── Territory tiles ── claimed land tinted by COUNTRY, so realms read
-    // at a glance (members of one country share a hue).
-    const owner=psw._territoryOwner;
-    if(owner){
-      const tw=psw.tw,th=psw.th;
-      const cc=new Map();           // settlementId -> country hue
-      const ctryOf=new Map();       // settlementId -> countryId
-      for(const s of psw.settlements){if(s&&s.mode==="settled"){cc.set(s.id,((s.countryId*61)%360+360)%360);ctryOf.set(s.id,s.countryId);}}
-      // Pass 1: tinted territory fill.
-      for(let ti=0;ti<owner.length;ti++){
-        const oid=owner[ti];
-        if(oid<0)continue;
-        const h=cc.get(oid); if(h===undefined)continue;
-        const py=(ti/tw)|0,px=ti-py*tw;
-        const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-        ctx.fillStyle=`hsla(${h},50%,50%,0.32)`;
-        ctx.fillRect(sx,sy,TR,TR);
-      }
-      // Pass 2: national borders / war fronts. Where a tile's right or down
-      // neighbour belongs to a DIFFERENT country, stroke a dotted black edge
-      // — these are the lines the tile-by-tile conquest grinds across.
-      ctx.strokeStyle="rgba(15,15,15,0.8)";ctx.lineWidth=1;ctx.setLineDash([2,2]);
-      ctx.beginPath();
-      for(let ti=0;ti<owner.length;ti++){
-        const oid=owner[ti];if(oid<0)continue;
-        const co=ctryOf.get(oid);if(co===undefined)continue;
-        const py=(ti/tw)|0,px=ti-py*tw;
-        const rt=py*tw+(px===tw-1?0:px+1);
-        const ro=owner[rt];
-        if(ro>=0&&ro!==oid&&ctryOf.get(ro)!==co){
-          const ex=(px+1)*TR,ey=dataYtoScreenY(py*TR,H,CH);
-          ctx.moveTo(ex,ey);ctx.lineTo(ex,ey+TR);
+    // ── Territory tint + borders + roads ── cached to an offscreen canvas
+    // and regenerated only every PS_OVERLAY_REGEN sim-steps (it's a pure
+    // function of owner[]/roadQuality[], which change slowly), then blitted.
+    // This took ~460k per-tile fillRect+Map.get ops off EVERY frame.
+    const PS_OVERLAY_REGEN=30;
+    let ov=psOverlayRef.current;
+    if(!ov||ov.width!==CW||ov.height!==CH){
+      ov=psOverlayRef.current=(typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(CW,CH):document.createElement('canvas'));
+      ov.width=CW;ov.height=CH;psOverlayMeta.current.step=-1;
+    }
+    const meta=psOverlayMeta.current;
+    const stepNow=psw.step||0;
+    // Regenerate on: first draw, canvas-height change, world reset (step
+    // jumped backwards), or every PS_OVERLAY_REGEN steps of normal play.
+    if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN){
+      const octx=ov.getContext('2d');
+      octx.clearRect(0,0,CW,CH);
+      const owner=psw._territoryOwner;
+      if(owner){
+        const tw=psw.tw,th=psw.th;
+        // Per-settlement-id lookups (small int ids) instead of Maps, and a
+        // single shared colour string per country so fillStyle is reassigned
+        // only when the country actually changes between adjacent tiles.
+        let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
+        const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
+        const tintByCountry=new Map();
+        for(const s of psw.settlements){if(s&&s.mode==="settled"){
+          let t=tintByCountry.get(s.countryId);
+          if(t===undefined){const h=((s.countryId*61)%360+360)%360;t=`hsla(${h},50%,50%,0.32)`;tintByCountry.set(s.countryId,t);}
+          tintById[s.id]=t; ctryById[s.id]=s.countryId;
+        }}
+        // Single pass: tint fill + accumulate dotted national borders.
+        octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();
+        let lastFs=null;
+        for(let ti=0;ti<owner.length;ti++){
+          const oid=owner[ti];if(oid<0)continue;
+          const fs=tintById[oid];if(fs===undefined)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+          octx.fillRect(sx,sy,TR,TR);
+          const co=ctryById[oid];
+          const ro=owner[py*tw+(px===tw-1?0:px+1)];
+          if(ro>=0&&ro!==oid&&ctryById[ro]!==co){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(py<th-1){const dno=owner[ti+tw];
+            if(dno>=0&&dno!==oid&&ctryById[dno]!==co){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
-        if(py<th-1){const dn=ti+tw,dno=owner[dn];
-          if(dno>=0&&dno!==oid&&ctryOf.get(dno)!==co){
-            const bx=px*TR,by=dataYtoScreenY((py+1)*TR,H,CH);
-            ctx.moveTo(bx,by);ctx.lineTo(bx+TR,by);
-          }}
+        octx.stroke();octx.setLineDash([]);
       }
-      ctx.stroke();ctx.setLineDash([]);
-    }
-    // ── Roads ──
-    // Roads live in two per-tile arrays — roadQuality (1.0 = no
-    // road, <1.0 = road) and roadFlow (current trade traffic rate,
-    // a decaying EMA). We paint each road tile as a small rect,
-    // with thickness driven by CURRENT flow so trunk arteries pop
-    // vs. quiet spurs and abandoned routes fade visually as their
-    // traffic falls off.
-    if(psw.roadQuality&&psw.roadFlow){
-      const rq=psw.roadQuality,rf=psw.roadFlow;
-      // Scale: flow=50 (a heavy multi-pair corridor) reads as full
-      // thickness; a quiet single-pair link sits around flow=2.
-      const FLOW_FULL=50;
-      for(let ti=0;ti<rq.length;ti++){
-        if(rq[ti]>=1.0)continue;
-        const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
-        const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-        const intensity=Math.min(1,(rf[ti]||0)/FLOW_FULL);
-        // 1.4 → 3.0 px for the tile fill — busier = thicker.
-        const w=1.4+intensity*1.6;
-        const off=(TR-w)*0.5;
-        const alpha=0.55+intensity*0.35;
-        ctx.fillStyle=`rgba(120,80,40,${alpha.toFixed(2)})`;
-        ctx.fillRect(sx+off,sy+off,w,w);
+      // Roads — thickness + alpha from current flow.
+      if(psw.roadQuality&&psw.roadFlow){
+        const rq=psw.roadQuality,rf=psw.roadFlow,FLOW_FULL=50;
+        for(let ti=0;ti<rq.length;ti++){
+          if(rq[ti]>=1.0)continue;
+          const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          const intensity=Math.min(1,(rf[ti]||0)/FLOW_FULL);
+          const w=1.4+intensity*1.6,off=(TR-w)*0.5;
+          octx.fillStyle=`rgba(120,80,40,${(0.55+intensity*0.35).toFixed(2)})`;
+          octx.fillRect(sx+off,sy+off,w,w);
+        }
       }
+      meta.step=stepNow;meta.ch=CH;
     }
+    ctx.drawImage(ov,0,0);
     // ── Settlement sprites ──
     // Each settlement renders as a cluster of small buildings
     // around its position. The cluster's SIZE scales with log(pop)
