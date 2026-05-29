@@ -57,6 +57,11 @@ const CW_FLAT = 1920, CH_FLAT = 960; // equirectangular canvas (matches world at
 // Mercator height: match equator pixel scale to flat mode, then add space for polar stretch
 // Formula: CH = 2 * MERC_MAX * (CH_FLAT / π) — equator stays same size as flat mode
 const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688
+// Views whose base raster is a pure function of the world (not the sim), so it
+// can be rendered once to an offscreen canvas and blitted each frame instead
+// of rebuilt per-pixel. Sim-dependent views (population, transport, roads,
+// money, tribes) and atlas are excluded.
+const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","fertility","crop","crossing","resources","moisture","temperature"]);
 let _mercator = false; // module-level flag for projection functions
 
 function screenYtoDataY(sy, ch, H) {
@@ -4371,6 +4376,12 @@ const atlasCache=useRef(null);
 // regenerate every PS_OVERLAY_REGEN sim-steps, blitting it otherwise.
 const psOverlayRef=useRef(null);
 const psOverlayMeta=useRef({step:-1,ch:0});
+// Offscreen cache of the STATIC base raster (terrain etc.). Rebuilt only when
+// the view or a relevant toggle changes; blitted every frame otherwise — the
+// per-pixel terrain rebuild + putImageData was a big per-frame cost now that
+// the sim is off-thread.
+const baseLayerRef=useRef(null);
+const baseLayerKey=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
 const imgRef=useRef(null);
 // Wind particle animation state
@@ -4843,6 +4854,13 @@ const lk=ter.rivers&&ter.rivers.lake?ter.rivers.lake:null;
 const maxT=ter.tribeCenters.length;const tcR=new Uint8Array(maxT),tcG=new Uint8Array(maxT),tcB=new Uint8Array(maxT);
 for(let t2=0;t2<maxT;t2++){const c=tribeRGB(t2);tcR[t2]=c[0];tcG[t2]=c[1];tcB[t2]=c[2];}
 const N=CW*CH;
+// Static-base cache: blit the cached terrain raster instead of rebuilding it
+// per-pixel when nothing affecting it changed.
+const _staticBase=BASE_CACHE_VIEWS.has(vm)&&!isGlobe;
+const _baseKey=_staticBase?(vm+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+(activeResRef.current||'')+'|'+oceanLevelRef.current):null;
+let _baseHit=false;
+if(_staticBase&&ctx&&baseLayerRef.current&&baseLayerRef.current.width===CW&&baseLayerRef.current.height===CH&&baseLayerKey.current===_baseKey){ctx.drawImage(baseLayerRef.current,0,0);_baseHit=true;}
+if(!_baseHit){
 if(vm==="depth"){
 // Depth/heightmap view — flat black-to-white gradient using actual data range
 // Find actual min/max elevation
@@ -5286,8 +5304,16 @@ if(polarBlend>0){const pr=220,pg=225,pb=235;
 r=r*(1-polarBlend)+pr*polarBlend;g=g*(1-polarBlend)+pg*polarBlend;b=b*(1-polarBlend)+pb*polarBlend;}
 const ti3=(gy*gW+gx)*3;buf[ti3]=r|0;buf[ti3+1]=g|0;buf[ti3+2]=b|0;}}
 setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});}
+}
 if(!ctx)return;
-ctx.putImageData(img,0,0);
+if(!_baseHit){
+  if(_staticBase){
+    // Stash the freshly-built base into the offscreen cache, then blit it.
+    if(!baseLayerRef.current)baseLayerRef.current=document.createElement('canvas');
+    const _bl=baseLayerRef.current;if(_bl.width!==CW||_bl.height!==CH){_bl.width=CW;_bl.height=CH;}
+    _bl.getContext('2d').putImageData(img,0,0);ctx.drawImage(_bl,0,0);baseLayerKey.current=_baseKey;
+  }else ctx.putImageData(img,0,0);
+}
 // Draw settlements — size scales continuously with log(population)
 {const selSt=ter._selectedTribe;const hasSel=selSt>=0&&ter.tribeSizes[selSt]>0&&vm==="tribes";
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
