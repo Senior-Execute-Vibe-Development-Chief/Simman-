@@ -104,7 +104,7 @@ function packSelected(s) {
     _foodSupply: s._foodSupply, _foodDemand: s._foodDemand, _urbanFactor: s._urbanFactor,
     food: s.food, _foodImportRate: s._foodImportRate, _civFoodDemand: s._civFoodDemand,
     _luxSupply: s._luxSupply, _luxDemand: s._luxDemand,
-    army: s.army,
+    army: s.army, loyalty: s.loyalty, _adminLoad: s._adminLoad,
     _developRate: s._developRate, _devReason: s._devReason, _housingPressed: s._housingPressed,
     _houseK: s._houseK, _foodK: s._foodK,
     _mInRate: s._mInRate, _mOutRate: s._mOutRate,
@@ -127,6 +127,7 @@ function buildSnapshot() {
         id: c.id, capitalId: c.capitalId,
         memberIds: c.members.map(m => m.id),
         hue: c.hue, range: c.range,
+        _capacity: c._capacity, _loadTotal: c._loadTotal,
       });
     }
   }

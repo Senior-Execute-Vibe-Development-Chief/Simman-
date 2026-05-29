@@ -16,10 +16,31 @@ import { CONQUEST_GRACE } from "./armies.js";
 import { recordIn, recordOut, IN_TRIBUTE, IN_AID, OUT_TRIBUTE, OUT_AID } from "./money.js";
 
 const POLITY_INTERVAL  = 150;   // ticks between polity passes
-const SECEDE_GRACE     = 500;   // ticks of sustained over-extension before a member secedes
-const OVERSTRETCH      = 0.07;  // each extra member shrinks the empire's hold radius (admin limits)
-const POWER_HOLD_CAP   = 5;     // a capital this-many× stronger holds a province from POWER_HOLD_CAP× farther
 const TRIBUTE_FRACTION = 0.06;  // share of a member's wealth sent to the capital each pass
+
+// ── Control budget (overextension) ───────────────────────────────────
+// An empire holds its provinces out of a finite CONTROL BUDGET projected
+// from its CENTRE. Each province draws some of that budget (its admin
+// LOAD, ∝ distance-to-liege / size / how recently it was taken); the
+// realm spends the budget on its cheapest provinces first. Provinces that
+// don't fit lose LOYALTY each pass and eventually secede; provinces that
+// fit recover loyalty. Because the budget is computed from the capital's
+// LIVE strength, a weakening capital (war, plague, a sacked throne)
+// shrinks the budget and the frontier sheds — overextension becomes a
+// dynamic event, not a fixed radius. Magnitudes are in "reach-units":
+// a province sitting exactly at the capital's reach costs a load of ~1.
+const CAP_BASE      = 6;     // reach-units a lone capital can administer
+const CAP_POP       = 3;     // extra capacity from a big capital (log of pop)
+const CAP_POP_REF   = 1000;  // capital population that scores one CAP_POP unit
+const CAP_SEAT      = 1.2;   // capacity each loyal regional seat adds (sub-administration)
+const SEAT_BONUS_CAP = 6;    // total seat contribution is capped (admin has diminishing returns)
+const COERCE_CAP    = 2.5;   // a far-stronger capital coerces a province (caps the load cut)
+const SIZE_LOAD     = 0.4;   // bigger provinces are harder to administer
+const SIZE_REF      = 1000;  // population scale for the size term
+const RECENCY_LOAD  = 1.0;   // a freshly conquered province costs this much extra...
+const RECENCY_TICKS = 4000;  // ...decaying to none over this many ticks (digestion)
+const LOYAL_RECOVER = 0.06;  // per pass: covered provinces climb toward full loyalty
+const LOYAL_DECAY   = 0.10;  // per pass: uncovered provinces bleed loyalty toward zero
 // Naval administration: a maritime capital (a port with navigation) can
 // govern distant overseas members (also ports) far beyond its land hold
 // range — the sea is its highway, not a barrier. This is what lets a
@@ -47,6 +68,14 @@ function holdPull(s) {
   const mine = (s._minedRate || 0) * MINE_HOLD_SCALE;
   const treasure = Math.min(2, (s.wealth || 0) / TREASURE_HOLD_DIV);
   return 1 + Math.min(VALUE_HOLD_CAP, mine + treasure);
+}
+// How "fresh" a conquest still is, 1 (just taken) → 0 (fully digested).
+// A newly seized province is restless and costs extra to administer; rapid
+// expansion piles up this load and triggers indigestion-overextension.
+function recencyFactor(world, s) {
+  const age = world.step - (s._conqueredAt ?? -Infinity);
+  if (!(age < RECENCY_TICKS)) return 0;   // also handles age === Infinity
+  return 1 - age / RECENCY_TICKS;
 }
 // Base hold range (tiles) from the capital's reach techs — how far it can
 // administer. Grows with organization/mobility/navigation; then SHRINKS
@@ -124,48 +153,83 @@ export function updatePolities(world) {
   const countries = rebuildCountries(world);
 
   for (const c of countries.values()) {
+    if (c.members.length === 1) { c.members[0].loyalty = 1; continue; }   // city-state: loyal to itself
     if (c.members.length <= 1) continue;
-    // Effective hold radius shrinks as the empire grows: a sprawling realm
-    // can't administer its edges, so distant provinces fall away.
-    const hold = c.range / (1 + OVERSTRETCH * (c.members.length - 1));
 
-    // Naval administration: if the capital is a port with navigation, its
-    // effective reach to fellow ports (overseas colonies) is hugely
-    // extended — the sea is the empire's highway.
-    const capNav = c.capital._isPort ? (c.capital.knowledge.navigation || 0) : 0;
-    const capPower = settlementPower(c.capital);
+    const cap = c.capital;
+    const capNav = cap._isPort ? (cap.knowledge.navigation || 0) : 0;
+    const capPower = settlementPower(cap);
+    const range = Math.max(1, c.range);
 
-    // ── Secession (sticky): break away after sustained over-extension ──
+    // ── Control budget: what the centre can administer (reach-units) ──
+    // The capital projects a base budget that grows with its own size; loyal
+    // regional seats run sub-administrations that extend it. A weak/declining
+    // capital → small budget → the frontier can't be held.
+    let seatBonus = 0;
     for (const s of c.members) {
-      if (s.id === c.capitalId) { s._disloyalSince = undefined; continue; }
-      // A freshly conquered province is pacified (garrisoned): it's held
-      // firmly for a while before the over-extension clock can run.
-      if (world.step - (s._conqueredAt ?? -Infinity) < CONQUEST_GRACE) { s._disloyalSince = undefined; continue; }
-      let d = dist(world, c.capital.pos.x, c.capital.pos.y, s.pos.x, s.pos.y);
-      if (capNav > 0 && s._isPort) d /= (1 + capNav * NAVAL_REACH);
-      d /= holdPull(s);                         // valuable provinces are clung to
-      // Relative strength: a capital far stronger than the province projects
-      // authority over it from much farther. A weak village simply can't
-      // break away from a powerful kingdom that could crush it — only
-      // provinces approaching the capital's own strength secede. (The capital
-      // is always the strongest member, so this never makes secession easier.)
-      const powerRatio = Math.min(POWER_HOLD_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
-      const effHold = hold * powerRatio;
-      if (d > effHold) {
-        if (s._disloyalSince === undefined) s._disloyalSince = world.step;
-        if (world.step - s._disloyalSince >= SECEDE_GRACE) {
-          s.countryId = s.id;
-          s._disloyalSince = undefined;
-          // A state that has just won its independence resists re-conquest
-          // for a while (reuses the pacification grace), so it doesn't get
-          // re-annexed next pass — the other half of killing the flicker.
-          s._conqueredAt = world.step;
+      if (s.id === c.capitalId) continue;
+      const isSeat = (s.tier | 0) >= 2 || (s._vassalCount || 0) > 0;
+      if (!isSeat) continue;
+      const seatSize = Math.min(2, Math.log2(1 + (s.people || 0) / SIZE_REF));
+      seatBonus += CAP_SEAT * (s.loyalty ?? 1) * seatSize;   // disloyal/small seats help less
+    }
+    const capacity = CAP_BASE + CAP_POP * Math.log2(1 + (cap.people || 0) / CAP_POP_REF)
+                   + Math.min(SEAT_BONUS_CAP, seatBonus);
+    c._capacity = capacity;   // control budget (for the info panel + debugging)
+
+    // ── Per-member admin load (cost to hold) ──────────────────────────
+    const loads = [];
+    for (const s of c.members) {
+      if (s.id === c.capitalId) { s.loyalty = 1; continue; }
+      // Distance the CENTRE must project authority across — the real reach
+      // cost. (A loyal regional seat doesn't make a far province cheap to
+      // measure; it pays for it via the capacity budget above instead.)
+      let d = dist(world, cap.pos.x, cap.pos.y, s.pos.x, s.pos.y);
+      if (capNav > 0 && s._isPort) d /= (1 + capNav * NAVAL_REACH);   // sea highway
+      d /= holdPull(s);                                               // value cling
+      const coerce  = Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
+      const sizeMul = 1 + SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
+      const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
+      const load = (d / range) * sizeMul * recMul / coerce;
+      s._adminLoad = load;            // for the info panel
+      loads.push({ s, load });
+    }
+
+    // ── Spend the budget on the cheapest provinces first ──────────────
+    // Walk provinces from cheapest to dearest, spending the budget. Those
+    // that fit are "covered" and recover loyalty; the rest are over-extended
+    // and bleed loyalty (faster the deeper past the line they sit). When a
+    // province's loyalty stock hits zero it breaks away. Recently-conquered
+    // and infant colonies are GARRISONED — held firm while loyalty settles,
+    // so the map doesn't flicker right after a capture or a founding.
+    loads.sort((a, b) => a.load - b.load);
+    let cum = 0;
+    for (const { s, load } of loads) {
+      cum += load;
+      const covered  = cum <= capacity;
+      const pacified = world.step - (s._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      if (pacified || infant) {
+        // Held by garrison / colonial project: nudge loyalty toward its base
+        // but never secede yet.
+        const base = pacified ? 0.5 : 0.7;
+        s.loyalty = (s.loyalty ?? base) + (base - (s.loyalty ?? base)) * 0.15;
+        continue;
+      }
+      if (covered) {
+        s.loyalty = Math.min(1, (s.loyalty ?? 1) + LOYAL_RECOVER * (1 - (s.loyalty ?? 1)));
+      } else {
+        const over = (cum - capacity) / capacity;          // how deep past the budget
+        s.loyalty = Math.max(0, (s.loyalty ?? 1) - LOYAL_DECAY * (1 + over));
+        if (s.loyalty <= 0) {
+          s.countryId = s.id;            // secede — a new successor state
+          s.loyalty = 1;                 // loyal to itself now
+          s._conqueredAt = world.step;   // resists immediate re-annex (anti-flicker)
           if (s.history) s.history.push({ step: world.step, type: "seceded" });
         }
-      } else {
-        s._disloyalSince = undefined;
       }
     }
+    c._loadTotal = cum;   // total admin load drawn (vs c._capacity)
 
     // ── Tribute / colonial support ──
     // Established members send a slice of wealth up to the capital. A YOUNG

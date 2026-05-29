@@ -139,6 +139,12 @@ export function makeSettlement(world, x, y, opts = {}) {
     // Polity: each settlement starts as its own one-settlement country
     // (city-state); conquest merges them (see conquest.js / armies.js).
     countryId: 0,                 // set to own id just below
+    // Loyalty to the current country [0..1]. A loyalty STOCK that integrates
+    // over time (conquest.js): it climbs while the realm can administer this
+    // province (within its control budget) and bleeds while it can't; the
+    // province secedes when it hits zero. Starts fully loyal (a city-state is
+    // loyal to itself); set low when conquered.
+    loyalty: 1,
     army: 0,                      // garrison size (soldiers), see armies.js
     tier: 0,
     mode: "settled",

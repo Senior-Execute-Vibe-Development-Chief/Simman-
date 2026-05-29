@@ -252,7 +252,7 @@ export function advanceFronts(world) {
           // Defence broken — the city falls and its whole realm flips.
           def.countryId = att.countryId;
           def._conqueredAt = world.step;
-          def._disloyalSince = undefined;
+          def.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)
           if (def.history) def.history.push({ step: world.step, type: "conquered", by: att.id });
           att.army = Math.max(0, (att.army || 0) * (1 - ASSAULT_ARMY_COST));
           def.army = Math.max(0, (def.army || 0) * 0.3);

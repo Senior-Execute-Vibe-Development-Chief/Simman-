@@ -5910,7 +5910,7 @@ const applySnapshot=useCallback((snap)=>{
   for(const c of (snap.countries||[])){
     const members=c.memberIds.map(id=>byId.get(id)).filter(Boolean);
     const capital=byId.get(c.capitalId)||members[0]||null;
-    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range});
+    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal});
   }
   psw.countries=countries;
   // HUD state updates re-render the whole component, so throttle them to ~5Hz
@@ -6405,6 +6405,37 @@ return(
           <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
             <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0}}/>
             <span className="au-fade" style={{textTransform:"capitalize"}}>{label}</span>
+          </div>
+        );
+      })()}
+
+      {/* ── Loyalty / control budget (overextension) ── */}
+      {(()=>{
+        const ctry=psw.countries&&psw.countries.get(s.countryId);
+        if(!ctry||ctry.members.length<=1)return null;   // city-states have no internal control problem
+        const isCap=ctry.capital&&ctry.capital.id===s.id;
+        if(isCap){
+          // The realm's overall control budget: load drawn vs capacity available.
+          const cap=ctry._capacity,load=ctry._loadTotal;
+          if(cap==null||load==null)return null;
+          const over=load>cap;
+          const pct=cap>0?Math.round(load/cap*100):0;
+          return(
+            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+              <span style={{width:9,height:9,borderRadius:2,background:over?"hsl(8,70%,52%)":"hsl(140,45%,45%)",flexShrink:0}}/>
+              <span className="au-fade">control {load.toFixed(1)}/{cap.toFixed(1)} ({pct}%){over?" · over-extended":""}</span>
+            </div>
+          );
+        }
+        const loy=s.loyalty;
+        if(loy==null)return null;
+        const pct=Math.round(loy*100);
+        const hue=loy>0.66?140:loy>0.33?42:8;   // green / amber / red
+        const load=s._adminLoad;
+        return(
+          <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},60%,48%)`,flexShrink:0}}/>
+            <span className="au-fade">loyalty {pct}%{loy<0.34?" · restless":""}{load!=null?` · admin load ${load.toFixed(2)}`:""}</span>
           </div>
         );
       })()}
