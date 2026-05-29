@@ -388,43 +388,60 @@ function computeReach(world, s, stMap) {
 // When a road segment is added, new tiles are painted into
 // roadQuality and the trade reach is rebuilt so subsequent plans
 // see the new connectivity.
+// A full plan cycle (evaluate every settlement for new roads + a local-link
+// pass + reach rebuilds) is hundreds of pathfinds — doing it all on one tick
+// caused a periodic multi-hundred-ms FREEZE that grew with the map, the main
+// cause of "starts fast, then rapidly slows". Instead the cycle is now SPREAD
+// across PLAN_SPREAD ticks: a snapshot is taken each PLAN_INTERVAL, then a
+// small slice of candidates is evaluated per tick, so the same total work is
+// amortised into smooth per-tick cost with no stutter.
+const PLAN_SPREAD = 120;   // ticks to spread one plan cycle over (< PLAN_INTERVAL)
+
 export function maybeBuildRoads(world) {
   ensureRoadArrays(world);
-  if (world.step % PLAN_INTERVAL !== 0) return;
 
-  const candidates = world.settlements.filter(
-    s => s.mode === "settled" && s.people >= MIN_POP_TO_PLAN
-  );
-  // Rebuild reach + components before this plan cycle so all
-  // settlements see the current network state.
-  rebuildTradeReach(world);
-  world._networkComponents = buildNetworkComponents(world);
-  let anyBuilt = false;
-  for (const s of candidates) {
+  // Start a new cycle: snapshot the candidate list and refresh the network
+  // state once. tryAddRoad reads the (now slightly stale across the spread)
+  // reach + components; that staleness is harmless — the next cycle's fresh
+  // reach prunes any redundant shortcut.
+  if (world.step % PLAN_INTERVAL === 0) {
+    rebuildTradeReach(world);
+    world._networkComponents = buildNetworkComponents(world);
+    world._planQueue = world.settlements.filter(
+      s => s.mode === "settled" && s.people >= MIN_POP_TO_PLAN
+    );
+    world._planIdx = 0;
+    world._planAnyBuilt = false;
+  }
+
+  const queue = world._planQueue;
+  if (!queue) return false;
+
+  // Evaluate a slice this tick — sized so the whole queue finishes within
+  // PLAN_SPREAD ticks regardless of how many settlements there are.
+  const perTick = Math.max(1, Math.ceil(queue.length / PLAN_SPREAD));
+  const end = Math.min(queue.length, world._planIdx + perTick);
+  let built = false;
+  for (; world._planIdx < end; world._planIdx++) {
+    const s = queue[world._planIdx];
+    if (!s || s.mode !== "settled") continue;
     if (tryAddRoad(world, s)) {
-      anyBuilt = true;
-      // Refresh ONLY the network components after each build — that's
-      // a cheap BFS and keeps the cross-component / junction-truncation
-      // decisions of later candidates correct. The expensive per-
-      // settlement trade-reach Dijkstra is NOT rebuilt here (it was the
-      // dominant cost of a plan tick — O(builds × settlements × reach));
-      // it's deferred to a single rebuild at the end of the cycle.
-      // Within-cycle reach is therefore slightly stale, which at worst
-      // adds a redundant shortcut the next cycle's fresh reach prunes.
+      built = true; world._planAnyBuilt = true;
+      // Cheap BFS so later candidates' junction-truncation stays correct.
       world._networkComponents = buildNetworkComponents(world);
     }
   }
-  // Local-link pass: ensure close-neighbour pairs have a direct
-  // path. Runs AFTER economic road planning so trunk lines win
-  // the planner's attention first; this pass only fills in the
-  // missing village-to-village links.
-  if (maybeBuildLocalLinks(world)) anyBuilt = true;
-  // Single trade-reach rebuild for the whole cycle.
-  if (anyBuilt) {
-    rebuildTradeReach(world);
-    world._networkComponents = buildNetworkComponents(world);
+
+  // Cycle finished: run the local-link pass + a single final reach rebuild.
+  if (world._planIdx >= queue.length) {
+    world._planQueue = null;
+    if (maybeBuildLocalLinks(world)) world._planAnyBuilt = true;
+    if (world._planAnyBuilt) {
+      rebuildTradeReach(world);
+      world._networkComponents = buildNetworkComponents(world);
+    }
   }
-  return anyBuilt;
+  return built;
 }
 
 // Paint direct paths between close-neighbour pairs that don't
@@ -436,6 +453,7 @@ function maybeBuildLocalLinks(world) {
   const candidates = world.settlements.filter(
     s => s.mode === "settled" && s.people >= MIN_POP_TO_LINK
   );
+  let comp = world._networkComponents;
   let anyBuilt = false;
   for (const s of candidates) {
     for (const peer of candidates) {
@@ -444,6 +462,12 @@ function maybeBuildLocalLinks(world) {
       if (dx > world.tw / 2) dx = world.tw - dx;
       const dy = peer.pos.y - s.pos.y;
       if (dx * dx + dy * dy > CLOSE_NEIGHBOUR_DIST_SQ) continue;
+      // Already in the same road network? Then a direct path already exists
+      // (or a perfectly good indirect one does) — skip the full pathfind.
+      // This pass only needs to wire up UNCONNECTED close neighbours; without
+      // this guard it re-pathed every established link every cycle, which was
+      // a large slice of the road-plan freeze.
+      if (comp && comp.get(s.id) === comp.get(peer.id)) continue;
       const path = findPath(world, s, peer);
       if (!path) continue;
       let didChange = false;
@@ -456,6 +480,10 @@ function maybeBuildLocalLinks(world) {
           step: world.step, type: "local-link",
           to: peer.id, tiles: path.tiles.length,
         });
+        // Refresh components so the just-merged pair (and any now-connected
+        // neighbours) are skipped for the rest of this pass. Builds are rare
+        // here (only unconnected neighbours reach this point), so it's cheap.
+        comp = world._networkComponents = buildNetworkComponents(world);
       }
     }
   }
@@ -891,23 +919,47 @@ function findById(world, id) {
 // is worth painting. Uses 8-neighbour movement so paths can run
 // diagonally rather than stairstepping over open ground.
 const SQRT2 = Math.SQRT2;
+// Point-to-point least-cost path for road building. A* over the terrain
+// cost field: an admissible heuristic (straight-line distance × the cheapest
+// possible per-tile step) steers the search toward the goal so it explores a
+// fraction of the tiles a blind Dijkstra would, and typed-array scratch with
+// a per-call stamp avoids both Map overhead and any O(N) clear. Hundreds of
+// these run each road-plan cycle, so this is the hot primitive.
+const FP_MIN_STEP = 0.02;   // cheapest an edge can ever cost (worn road × max tech) — keeps h admissible
 function findPath(world, s, t) {
-  const { tw, th, elev } = world;
+  const { tw, th, elev, N } = world;
   const start = (s.pos.y | 0) * tw + (s.pos.x | 0);
   const goal  = (t.pos.y | 0) * tw + (t.pos.x | 0);
   if (start === goal || elev[start] <= 0 || elev[goal] <= 0) return null;
-  const dist = new Map();
-  const prev = new Map();
-  dist.set(start, 0);
+  // Scratch arrays, reused across calls; a monotonic stamp marks which
+  // entries belong to THIS call so we never have to clear N every time.
+  if (!world._fpG || world._fpG.length !== N) {
+    world._fpG = new Float64Array(N);
+    world._fpSeen = new Int32Array(N);
+    world._fpPrev = new Int32Array(N);
+    world._fpStamp = 0;
+  }
+  const g = world._fpG, seen = world._fpSeen, prev = world._fpPrev;
+  if (world._fpStamp >= 2147483646) { seen.fill(0); world._fpStamp = 0; }
+  const stamp = ++world._fpStamp;
+  const gy = (goal / tw) | 0, gx = goal - gy * tw;
+  const h = ti => {
+    const y = (ti / tw) | 0, x = ti - y * tw;
+    let dx = Math.abs(x - gx); if (dx > tw / 2) dx = tw - dx;
+    const dy = y - gy;
+    return Math.sqrt(dx * dx + dy * dy) * FP_MIN_STEP;
+  };
+  g[start] = 0; seen[start] = stamp; prev[start] = -1;
   const heap = new MinHeap();
-  heap.push(start, 0);
+  heap.push(start, h(start));
   const limit = 40000;
   let visited = 0;
   while (heap.n > 0) {
     if (visited++ > limit) return null;
     const { ti, d } = heap.popMin();
-    if (d > (dist.get(ti) ?? Infinity)) continue;
     if (ti === goal) break;
+    const gti = g[ti];
+    if (d > gti + h(ti) + 1e-9) continue;     // stale heap entry (a cheaper g was found after push)
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0      ? tw - 1 : tx - 1;
     const xp = tx === tw - 1 ? 0      : tx + 1;
@@ -928,24 +980,23 @@ function findPath(world, s, t) {
       if (ni < 0) continue;
       const c = localEdgeCost(world, ti, ni, s.knowledge);
       if (c === Infinity) continue;
-      const nd = d + c * mul[k];
-      if (nd < (dist.get(ni) ?? Infinity)) {
-        dist.set(ni, nd);
-        prev.set(ni, ti);
-        heap.push(ni, nd);
+      const nd = gti + c * mul[k];
+      if (seen[ni] !== stamp || nd < g[ni]) {
+        g[ni] = nd; seen[ni] = stamp; prev[ni] = ti;
+        heap.push(ni, nd + h(ni));
       }
     }
   }
-  if (!prev.has(goal)) return null;
+  if (seen[goal] !== stamp) return null;
   const tiles = [];
   let cur = goal;
-  while (cur !== undefined) {
+  while (cur !== -1) {
     tiles.push(cur);
     if (cur === start) break;
-    cur = prev.get(cur);
+    cur = prev[cur];
   }
   tiles.reverse();
-  return { tiles, cost: dist.get(goal) };
+  return { tiles, cost: g[goal] };
 }
 
 // Float64 distance storage is required: dist is a Map (Float64 numbers),
