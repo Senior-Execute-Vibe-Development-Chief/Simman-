@@ -71,6 +71,22 @@ const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capaci
 const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
 const WAR_CAPACITY_MULT   = 0.8;   // capital's countryside merely raided → mild throttle
 const SIEGE_WINDOW        = 300;   // ticks the siege/war throttle lingers after the last front
+
+// ── Overmighty governor (ambition-driven secession) ───────────────────
+// A powerful regional governor doesn't wait for the budget to fail. If his
+// own city grows strong RELATIVE TO THE THRONE and sits on an independent
+// power base — far from the capital, commanding his own vassals — he schemes,
+// and eventually declares independence, taking his WHOLE sub-realm (his branch
+// of the liege hierarchy) with him, loyal or not. War at the centre emboldens
+// him. This is the breakaway duke / over-mighty subject, distinct from a
+// frontier crumbling under an over-stretched budget. (A strong city RIGHT BY
+// the capital is the loyal court / heir apparent — it tends to inherit the
+// throne via rebuildCountries rather than secede.)
+const AMBITION_RATIO   = 0.40;  // a governor at least this strong (vs the throne) starts to scheme
+const AMBITION_MIN_FAR = 0.5;   // ...and at least this far out (reach-units); a core city stays loyal
+const AMBITION_FAR     = 1.8;   // distance amplifies ambition this much
+const AMBITION_GAIN    = 0.10;  // ambition-stock growth per pass at full margin
+const AMBITION_DURESS  = 1.6;   // a besieged throne emboldens governors (multiplier)
 // Naval administration: a maritime capital (a port with navigation) can
 // govern distant overseas members (also ports) far beyond its land hold
 // range — the sea is its highway, not a barrier. This is what lets a
@@ -179,6 +195,17 @@ function buildHierarchy(world, c) {
   }
 }
 
+// A breakaway needs a country id distinct from the parent realm. Country ids
+// are settlement ids by convention, and the realm's id is its FOUNDER's id —
+// which, once a stronger city has taken the capital role, may belong to an
+// ordinary member that's now breaking away. So prefer the seed's id, but if
+// that IS the parent realm's id, borrow another bloc member's id instead.
+function freshCountryId(c, bloc) {
+  if (bloc[0].id !== c.id) return bloc[0].id;        // seed's own id is free
+  for (const m of bloc) if (m.id !== c.id) return m.id;
+  return -1;                                          // degenerate: nothing distinct to use
+}
+
 // A regional revolt: each collapsed province becomes the seed of a successor
 // state and rallies the disloyal members around it (within a reach radius)
 // to join it. Loyal provinces stay with the empire; restless ones leave as a
@@ -187,22 +214,23 @@ function secedeContagious(world, c, seeds) {
   const radius = Math.max(REVOLT_RADIUS_MIN, c.range * REVOLT_RADIUS_RANGE);
   for (const seed of seeds) {
     if (seed.countryId !== c.id) continue;        // already swept into an earlier revolt this pass
-    const newId = seed.id;
-    seed.countryId = newId;
-    seed.loyalty = 1;
-    seed._conqueredAt = world.step;               // resists immediate re-annex (anti-flicker)
-    if (seed.history) seed.history.push({ step: world.step, type: "seceded" });
+    const bloc = [seed];
     for (const m of c.members) {
-      if (m.countryId !== c.id || m.id === c.capitalId) continue;   // capital + already-moved stay put
+      if (m === seed || m.countryId !== c.id || m.id === c.capitalId) continue;
       if ((m.loyalty ?? 1) > REVOLT_JOIN_LOYALTY) continue;          // still loyal → doesn't join
       const pacified = world.step - (m._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
       const infant   = m.parentSettlementId >= 0 && world.step - (m.foundedStep || 0) < COLONY_SUPPLY_TICKS;
       if (pacified || infant) continue;                              // garrisoned / supported → held
       if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
+      bloc.push(m);
+    }
+    const newId = freshCountryId(c, bloc);
+    if (newId < 0) continue;                       // can't carve out a distinct realm this pass
+    for (const m of bloc) {
       m.countryId = newId;
-      m.loyalty = 0.85;                            // enthusiastic for the new local realm
-      m._conqueredAt = world.step;
-      if (m.history) m.history.push({ step: world.step, type: "joined-revolt", to: newId });
+      m.loyalty = m === seed ? 1 : 0.85;           // seed leads; followers enthusiastic
+      m._conqueredAt = world.step;                 // resists immediate re-annex (anti-flicker)
+      if (m.history) m.history.push({ step: world.step, type: m === seed ? "seceded" : "joined-revolt", to: newId });
     }
   }
 }
@@ -246,6 +274,38 @@ export function fragmentRealm(world, oldId, excludeId) {
     s.loyalty = s.id === best.id ? 1 : 0.9;
     s._conqueredAt = world.step;                  // successors get breathing room (grace)
     if (s.history) s.history.push({ step: world.step, type: "successor", of: oldId });
+  }
+}
+
+// Every member whose chain of lieges passes through `seed` — the governor's
+// whole branch of the administrative tree (his vassals, their vassals, …).
+function subtreeOf(c, seed) {
+  const children = new Map();
+  for (const m of c.members) {
+    if (m.liegeId >= 0) { let a = children.get(m.liegeId); if (!a) children.set(m.liegeId, a = []); a.push(m); }
+  }
+  const out = [seed], stack = [seed];
+  while (stack.length) {
+    const cur = stack.pop();
+    const kids = children.get(cur.id);
+    if (kids) for (const k of kids) { out.push(k); stack.push(k); }
+  }
+  return out;
+}
+
+// An overmighty governor declares independence and takes his sub-realm with
+// him — the whole liege branch under `seed` follows their lord into the new
+// state, regardless of their own loyalty.
+function declareIndependence(world, c, seed) {
+  const bloc = subtreeOf(c, seed).filter(m => m.countryId === c.id);   // still in the realm
+  const newId = freshCountryId(c, bloc);
+  if (newId < 0) { seed._ambition = 0; return; }                       // can't split cleanly — vent it
+  for (const m of bloc) {
+    m.countryId = newId;
+    m._conqueredAt = world.step;                 // the breakaway realm gets breathing room (grace)
+    m._ambition = 0;
+    m.loyalty = m === seed ? 1 : 0.9;            // vassals are committed to their lord's new realm
+    if (m.history) m.history.push({ step: world.step, type: m === seed ? "declared-independence" : "followed-lord", to: newId });
   }
 }
 
@@ -294,7 +354,7 @@ export function updatePolities(world) {
     // ── Per-member admin load (cost to hold) ──────────────────────────
     const loads = [];
     for (const s of c.members) {
-      if (s.id === c.capitalId) { s.loyalty = 1; continue; }
+      if (s.id === c.capitalId) { s.loyalty = 1; s._ambition = 0; continue; }
       // Distance the CENTRE must project authority across — the real reach
       // cost. (A loyal regional seat doesn't make a far province cheap to
       // measure; it pays for it via the capacity budget above instead.)
@@ -342,6 +402,27 @@ export function updatePolities(world) {
     c._loadTotal = cum;   // total admin load drawn (vs c._capacity)
     // A collapse drags its restless region out with it (see secedeContagious).
     if (seeds.length) secedeContagious(world, c, seeds);
+
+    // ── Overmighty governors: ambition-driven breakaway (with sub-realm) ──
+    // Independent of the budget: a strong, distant governor schemes and, when
+    // his ambition matures, declares independence and takes his vassal branch
+    // with him. A besieged throne emboldens him.
+    for (const s of c.members) {
+      if (s.countryId !== c.id || s.id === c.capitalId) continue;     // gone / is the throne
+      const seat = (s.tier | 0) >= 2 || (s._vassalCount || 0) > 0;    // must command a region
+      const pacified = world.step - (s._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      const ratio = settlementPower(s) / capPower;                    // strength vs the throne
+      const far   = dist(world, cap.pos.x, cap.pos.y, s.pos.x, s.pos.y) / range;
+      if (!seat || pacified || infant || ratio < AMBITION_RATIO || far < AMBITION_MIN_FAR) {
+        if (s._ambition) s._ambition = Math.max(0, s._ambition - AMBITION_GAIN);   // fades when unqualified
+        continue;
+      }
+      const margin = (ratio - AMBITION_RATIO) / (1 - AMBITION_RATIO);  // 0 at threshold → 1 near parity
+      const duressMul = besiegedCap ? AMBITION_DURESS : (raidedCap ? 1.2 : 1);
+      s._ambition = (s._ambition || 0) + AMBITION_GAIN * margin * (1 + AMBITION_FAR * far) * duressMul;
+      if (s._ambition >= 1) declareIndependence(world, c, s);
+    }
 
     // ── Tribute / colonial support ──
     // Established members send a slice of wealth up to the capital. A YOUNG

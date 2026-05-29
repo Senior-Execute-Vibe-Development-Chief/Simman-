@@ -6434,6 +6434,17 @@ return(
         const loy=s.loyalty;
         if(loy==null)return null;
         const pct=Math.round(loy*100);
+        const amb=s._ambition||0;
+        // An ambitious governor (scheming to break away with his vassals) is the
+        // more telling signal — show it instead of loyalty when it's brewing.
+        if(amb>0.15){
+          return(
+            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+              <span style={{width:9,height:9,borderRadius:2,background:"hsl(28,75%,50%)",flexShrink:0}}/>
+              <span className="au-fade">ambitious governor · scheming {Math.round(amb*100)}%{amb>0.6?" · on the brink of revolt":""}</span>
+            </div>
+          );
+        }
         const hue=loy>0.66?140:loy>0.33?42:8;   // green / amber / red
         const load=s._adminLoad;
         return(

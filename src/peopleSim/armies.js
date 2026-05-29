@@ -277,6 +277,7 @@ export function advanceFronts(world) {
           def.countryId = att.countryId;
           def._conqueredAt = world.step;
           def.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)
+          def._ambition = 0;    // a freshly subdued city isn't plotting (yet)
           if (def.history) def.history.push({ step: world.step, type: "conquered", by: att.id });
           att.army = Math.max(0, (att.army || 0) * (1 - ASSAULT_ARMY_COST));
           def.army = Math.max(0, (def.army || 0) * 0.3);
