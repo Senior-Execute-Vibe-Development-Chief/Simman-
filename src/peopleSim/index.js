@@ -18,7 +18,9 @@ import { musterArmies, advanceFronts, MUSTER_INTERVAL, CONQUEST_INTERVAL } from 
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
 import { foldMoney } from "./money.js";
 
-const TERRITORY_INTERVAL = 96;   // ticks between full territory recomputes
+const TERRITORY_INTERVAL = 144;  // ticks between full territory recomputes (a global
+                                 // O(land) pass — lower frequency = fewer frame spikes;
+                                 // territory drifts slowly so the staleness is invisible)
 
 export function initPeopleSim(worldGen, opts = {}) {
   return createWorld(worldGen, opts);
