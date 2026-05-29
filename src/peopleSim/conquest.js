@@ -118,18 +118,6 @@ function buildHierarchy(world, c) {
   for (const s of members) {
     if (s.liegeId >= 0) { const L = byId.get(s.liegeId); if (L) L._vassalCount++; }
   }
-  // Province membership: walk each settlement up its liege chain to the node
-  // DIRECTLY below the capital — that regional seat is the province head, and
-  // everything rolling up to it is one province. The capital is its own
-  // (crown-land) province. Used by the province-border overlay.
-  for (const s of members) {
-    if (s.id === c.capitalId) { s._provinceId = s.id; continue; }
-    let cur = s, guard = 0;
-    while (cur.liegeId >= 0 && cur.liegeId !== c.capitalId && guard++ < 64) {
-      const nxt = byId.get(cur.liegeId); if (!nxt) break; cur = nxt;
-    }
-    s._provinceId = cur.id;
-  }
 }
 
 export function updatePolities(world) {

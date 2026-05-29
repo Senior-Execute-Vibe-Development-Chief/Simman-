@@ -5433,7 +5433,6 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const psw=peopleRef.current;
   const vmRoads = viewRef.current === "roads";
   const vmMoney = viewRef.current === "money";
-  const vmProvince = viewRef.current === "provinces";
   if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components from tile map ──
@@ -5556,25 +5555,21 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       const tw=psw.tw,th=psw.th;
       const cc=new Map();           // settlementId -> country hue
       const ctryOf=new Map();       // settlementId -> countryId
-      const provOf=new Map();       // settlementId -> province head id
-      for(const s of psw.settlements){if(s&&s.mode==="settled"){cc.set(s.id,((s.countryId*61)%360+360)%360);ctryOf.set(s.id,s.countryId);provOf.set(s.id,s._provinceId!==undefined?s._provinceId:s.id);}}
-      // Pass 1: tinted territory fill. In Provinces mode each province within
-      // a country gets its own lightness band so the provinces read as
-      // distinct shaded regions of the same realm hue.
+      for(const s of psw.settlements){if(s&&s.mode==="settled"){cc.set(s.id,((s.countryId*61)%360+360)%360);ctryOf.set(s.id,s.countryId);}}
+      // Pass 1: tinted territory fill.
       for(let ti=0;ti<owner.length;ti++){
         const oid=owner[ti];
         if(oid<0)continue;
         const h=cc.get(oid); if(h===undefined)continue;
         const py=(ti/tw)|0,px=ti-py*tw;
         const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-        if(vmProvince){const pid=provOf.get(oid)||0;const lt=38+(((pid*101)%100)/100)*34;ctx.fillStyle=`hsla(${h},55%,${lt.toFixed(0)}%,0.40)`;}
-        else ctx.fillStyle=`hsla(${h},50%,50%,0.32)`;
+        ctx.fillStyle=`hsla(${h},50%,50%,0.32)`;
         ctx.fillRect(sx,sy,TR,TR);
       }
       // Pass 2: national borders / war fronts. Where a tile's right or down
-      // neighbour belongs to a DIFFERENT country, stroke a red edge — these
-      // are the lines the tile-by-tile conquest grinds across.
-      ctx.strokeStyle="rgba(200,40,30,0.65)";ctx.lineWidth=1;
+      // neighbour belongs to a DIFFERENT country, stroke a dotted black edge
+      // — these are the lines the tile-by-tile conquest grinds across.
+      ctx.strokeStyle="rgba(15,15,15,0.8)";ctx.lineWidth=1;ctx.setLineDash([2,2]);
       ctx.beginPath();
       for(let ti=0;ti<owner.length;ti++){
         const oid=owner[ti];if(oid<0)continue;
@@ -5592,30 +5587,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             ctx.moveTo(bx,by);ctx.lineTo(bx+TR,by);
           }}
       }
-      ctx.stroke();
-      // Pass 3 (Provinces mode): internal provincial borders — where two
-      // tiles of the SAME country belong to DIFFERENT provinces. Drawn in
-      // pale gold, thinner than the red national frontier.
-      if(vmProvince){
-        ctx.strokeStyle="rgba(245,225,150,0.85)";ctx.lineWidth=0.8;
-        ctx.beginPath();
-        for(let ti=0;ti<owner.length;ti++){
-          const oid=owner[ti];if(oid<0)continue;
-          const co=ctryOf.get(oid),pv=provOf.get(oid);if(co===undefined)continue;
-          const py=(ti/tw)|0,px=ti-py*tw;
-          const rt=py*tw+(px===tw-1?0:px+1);const ro=owner[rt];
-          if(ro>=0&&ro!==oid&&ctryOf.get(ro)===co&&provOf.get(ro)!==pv){
-            const ex=(px+1)*TR,ey=dataYtoScreenY(py*TR,H,CH);
-            ctx.moveTo(ex,ey);ctx.lineTo(ex,ey+TR);
-          }
-          if(py<th-1){const dn=ti+tw,dno=owner[dn];
-            if(dno>=0&&dno!==oid&&ctryOf.get(dno)===co&&provOf.get(dno)!==pv){
-              const bx=px*TR,by=dataYtoScreenY((py+1)*TR,H,CH);
-              ctx.moveTo(bx,by);ctx.lineTo(bx+TR,by);
-            }}
-        }
-        ctx.stroke();
-      }
+      ctx.stroke();ctx.setLineDash([]);
     }
     // ── Roads ──
     // Roads live in two per-tile arrays — roadQuality (1.0 = no
@@ -6048,7 +6020,6 @@ const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
   ["crop","Crop"],["crossing","Crossing"],["roads","Roads"],["money","Money"],
-  ["provinces","Provinces"],
   ["resources","Resources"],["population","Pop"],["transport","Transport"],
   ["transport-test","Trans Test"],["tribes","Tribes"]
 ];
