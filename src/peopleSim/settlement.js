@@ -12,7 +12,12 @@ import { seedLocalTerritory } from "./territory.js";
 let _nextId = 1;
 export function resetSettlementIds() { _nextId = 1; }
 
-const TIER_THRESHOLD = [0, 80, 400, 2000];
+// Pop thresholds for village / town / city / metropolis. Set so that with
+// subsistence farm yields most settlements are small farming VILLAGES, towns
+// are the local market centres, and cities/metropolises are the rare
+// trade-fed hubs — a realistic population pyramid rather than a map of
+// uniform cities.
+const TIER_THRESHOLD = [0, 250, 1200, 5000];
 const TIER_NAME      = ["village", "town", "city", "metropolis"];
 
 // Pop growth slowed from 0.0045 → 0.0018 so settlements visibly take
@@ -56,9 +61,13 @@ const DENSITY_PER_CONSTR  = 5;      // extra people/tile per point of constructi
 const INFRA_COST          = 80;     // coin per +1 housing of (imported) materials + labour
 const BUILD_RATE          = 0.015;  // housing/tick per construction-weighted builder
 // Yield per (distance-weighted) fertility unit of territory, ×(1+ag·1.2).
-// Calibrated against the old catchment model so population stays in a
-// similar range (the rest of the balance is tuned around it).
-const FARM_YIELD_PER_FERT    = 0.12;
+// Deliberately SUBSISTENCE-scale: a settlement's own land feeds only a
+// village-to-town population, so the countryside fills with small farming
+// villages. Growing into a city requires importing grain by trade — which
+// is exactly what makes cities form at trade/river/coast hubs and produces
+// the realistic village → town → city size hierarchy (rather than every
+// patch of decent land becoming a metropolis).
+const FARM_YIELD_PER_FERT    = 0.02;
 // Fish: per-tick food a water settlement lands. fishYield = FISH_RATE ×
 // waterAccess × (0.3 + navigation×1.2). A great-river port with a
 // deep-sea fleet (wa≈0.9, nav≈0.8) nets ~12/tk — comparable to a big
