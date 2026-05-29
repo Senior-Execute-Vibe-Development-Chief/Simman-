@@ -58,6 +58,19 @@ const REVOLT_RADIUS_RANGE = 1.3;  // ...or the capital's reach × this, whicheve
 // strongest surviving cities (the Diadochi after Alexander).
 const FRAG_MAX_STATES = 4;    // at most this many successor realms form
 const FRAG_SEPARATION = 20;   // successor capitals must be at least this far apart
+
+// ── War duress (capacity catalysts) ───────────────────────────────────
+// War throttles the control budget: a realm at war on several fronts has its
+// army and attention split, and a realm whose CAPITAL is under attack is
+// pinned defending the throne instead of governing the frontier. Both shrink
+// capacity, so a realm stable in peace sheds provinces (via the loyalty
+// budget + contagion) the moment it's pressured — the dynamic trigger for
+// overextension. The effect lingers a window past the last front, then the
+// budget recovers as the realm consolidates in peace.
+const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capacity by (1 + this)
+const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
+const WAR_CAPACITY_MULT   = 0.8;   // capital's countryside merely raided → mild throttle
+const SIEGE_WINDOW        = 300;   // ticks the siege/war throttle lingers after the last front
 // Naval administration: a maritime capital (a port with navigation) can
 // govern distant overseas members (also ports) far beyond its land hold
 // range — the sea is its highway, not a barrier. This is what lets a
@@ -260,9 +273,23 @@ export function updatePolities(world) {
       const seatSize = Math.min(2, Math.log2(1 + (s.people || 0) / SIZE_REF));
       seatBonus += CAP_SEAT * (s.loyalty ?? 1) * seatSize;   // disloyal/small seats help less
     }
-    const capacity = CAP_BASE + CAP_POP * Math.log2(1 + (cap.people || 0) / CAP_POP_REF)
-                   + Math.min(SEAT_BONUS_CAP, seatBonus);
-    c._capacity = capacity;   // control budget (for the info panel + debugging)
+    const peaceCapacity = CAP_BASE + CAP_POP * Math.log2(1 + (cap.people || 0) / CAP_POP_REF)
+                        + Math.min(SEAT_BONUS_CAP, seatBonus);
+
+    // ── War duress: throttle the budget while the realm is fighting ────
+    // (fronts are tallied in armies.js advanceFronts → world._fronts.)
+    const fb = world._fronts && world._fronts.byCountry;
+    const fronts = fb ? (fb.get(c.id) ? fb.get(c.id).size : 0) : 0;
+    const besiegedCap = world.step - (cap._siegeAt ?? -Infinity) < SIEGE_WINDOW;
+    const raidedCap   = world.step - (cap._warAt   ?? -Infinity) < SIEGE_WINDOW;
+    let duress = 1;
+    if (fronts > 1) duress /= (1 + MULTIFRONT_PENALTY * Math.min(3, fronts - 1));   // split army/attention (capped)
+    if (besiegedCap)     duress *= SIEGE_CAPACITY_MULT;                  // throne pinned
+    else if (raidedCap)  duress *= WAR_CAPACITY_MULT;                    // core harried
+    const capacity = peaceCapacity * duress;
+    c._capacity = capacity;        // (already duress-adjusted) for the info panel
+    c._fronts = fronts;
+    c._capitalBesieged = besiegedCap;
 
     // ── Per-member admin load (cost to hold) ──────────────────────────
     const loads = [];

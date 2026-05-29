@@ -128,6 +128,7 @@ function buildSnapshot() {
         memberIds: c.members.map(m => m.id),
         hue: c.hue, range: c.range,
         _capacity: c._capacity, _loadTotal: c._loadTotal,
+        _fronts: c._fronts, _capitalBesieged: c._capitalBesieged,
       });
     }
   }

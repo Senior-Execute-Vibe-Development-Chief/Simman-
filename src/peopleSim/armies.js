@@ -228,9 +228,28 @@ export function advanceFronts(world) {
   }
 
   // Realm-mates march to relieve every settlement under attack (over transit
-  // time — see dispatchReinforcements / moveArmies).
+  // time — see dispatchReinforcements / moveArmies). While here, stamp each
+  // defender with the current step (a war/siege clock the polity pass reads to
+  // throttle a realm's control budget) and tally, per country, the distinct
+  // enemy countries it's engaged with — its front count, for the multi-front
+  // overextension catalyst (conquest.js).
   const besieged = new Set();
-  for (const pc of pairs.values()) besieged.add(pc.def);
+  const fronts = new Map();   // countryId → Set(enemy countryId) it is DEFENDING against
+  const addFront = (a, b) => { let s = fronts.get(a); if (!s) fronts.set(a, s = new Set()); s.add(b); };
+  for (const pc of pairs.values()) {
+    besieged.add(pc.def);
+    pc.def._warAt = world.step;                       // core/countryside under attack
+    if (pc.canStorm) {
+      pc.def._siegeAt = world.step;                   // front at the heartland (true siege)
+      // Multi-front strain counts only SERIOUS defensive fronts: a distinct
+      // enemy actually assaulting one of the realm's towns. Mere border
+      // skirmishing (a strong neighbour nibbling a weak frontier tile) is not
+      // a war that splits the army — otherwise every large realm reads as
+      // permanently multi-front simply from bordering many polities.
+      addFront(pc.def.countryId, pc.att.countryId);
+    }
+  }
+  world._fronts = { stamp: world.step, byCountry: fronts };
   if (besieged.size) dispatchReinforcements(world, besieged);
 
   // Resolve each front: besiege the city if the front reached its

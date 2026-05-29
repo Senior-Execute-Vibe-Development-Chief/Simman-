@@ -5910,7 +5910,7 @@ const applySnapshot=useCallback((snap)=>{
   for(const c of (snap.countries||[])){
     const members=c.memberIds.map(id=>byId.get(id)).filter(Boolean);
     const capital=byId.get(c.capitalId)||members[0]||null;
-    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal});
+    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged});
   }
   psw.countries=countries;
   // HUD state updates re-render the whole component, so throttle them to ~5Hz
@@ -6420,10 +6420,14 @@ return(
           if(cap==null||load==null)return null;
           const over=load>cap;
           const pct=cap>0?Math.round(load/cap*100):0;
+          // Why the budget is squeezed (capacity already reflects this).
+          let strain="";
+          if(ctry._capitalBesieged)strain=" · capital besieged";
+          else if((ctry._fronts||0)>1)strain=` · ${ctry._fronts}-front war`;
           return(
             <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
               <span style={{width:9,height:9,borderRadius:2,background:over?"hsl(8,70%,52%)":"hsl(140,45%,45%)",flexShrink:0}}/>
-              <span className="au-fade">control {load.toFixed(1)}/{cap.toFixed(1)} ({pct}%){over?" · over-extended":""}</span>
+              <span className="au-fade">control {load.toFixed(1)}/{cap.toFixed(1)} ({pct}%){over?" · over-extended":""}{strain}</span>
             </div>
           );
         }
