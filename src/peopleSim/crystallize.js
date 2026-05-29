@@ -22,7 +22,9 @@ import { makeSettlement } from "./settlement.js";
 import { computeTransport } from "./transport.js";
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
-const TRANSPORT_REFRESH_TICKS   = 150;    // refresh transport more often (was 200)
+const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) flood — a
+                                          // frame spike at high speed; it drives only spawn
+                                          // weighting and drifts slowly, so refresh rarely
 const CANDIDATES_PER_SWEEP      = 120;    // wider net per sweep (was 80)
 
 // Permissive fertility gates. Earth had hamlets in desert, tundra,

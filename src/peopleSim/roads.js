@@ -452,8 +452,6 @@ export function maybeBuildRoads(world) {
       return (s._planNext || 0) <= snap;
     });
     world._planIdx = 0;
-    world._planAnyBuilt = false;
-    world._planHadWork = world._planQueue.length > 0;
   }
 
   const queue = world._planQueue;
@@ -475,82 +473,46 @@ export function maybeBuildRoads(world) {
     s._planPop = s.people;
     s._planBackoff = did ? 1 : Math.min(8, (s._planBackoff || 1) * 2);
     s._planNext = snap + PLAN_INTERVAL * s._planBackoff;
-    if (did) { built = true; world._planAnyBuilt = true; }
+    if (did) built = true;
+    // Wire this settlement to any UNCONNECTED close neighbour. Done per
+    // candidate (one settlement/tick) rather than as a single cycle-end pass —
+    // that pass did all its pathfinds at once and was a ~90ms spike.
+    if (linkCloseNeighbours(world, s)) built = true;
   }
   // One components refresh per tick if anything built (not per build — that
   // BFS-per-build was a multi-hundred-ms stall when a cycle built many roads).
   if (built) world._networkComponents = buildNetworkComponents(world);
 
-  // Cycle finished: wire up close neighbours of the settlements that were due
-  // this cycle (new/growing ones — that's where unconnected pairs appear).
-  // Reach + components are NOT rebuilt here: the road-version gate at the next
-  // snapshot detects the new roads and refreshes then, which keeps this from
-  // being a fat single tick. New roads just take effect a cycle later.
-  if (world._planIdx >= queue.length) {
-    if (world._planHadWork) maybeBuildLocalLinks(world, queue);
-    world._planQueue = null;
-  }
+  if (world._planIdx >= queue.length) world._planQueue = null;
   return built;
 }
 
-// Paint direct paths between close-neighbour pairs that don't
-// already have one. No economic gate — proximity is the only
-// criterion. Each pair processed once via id ordering. A pair
-// "already has a direct path" if every tile of the shortest
-// route is already a road (newFrac === 0).
-function maybeBuildLocalLinks(world, active) {
-  const candidates = world.settlements.filter(
-    s => s.mode === "settled" && s.people >= MIN_POP_TO_LINK
-  );
-  // Outer loop is the settlements that were DUE to plan this cycle (new /
-  // growing — the only places unconnected close pairs appear). In a mature
-  // world that's a handful, so this stays O(due × candidates) instead of the
-  // old O(candidates²) every cycle.
-  const outer = (active && active.length)
-    ? active.filter(s => s.mode === "settled" && s.people >= MIN_POP_TO_LINK)
-    : candidates;
-  // Connectivity tracked with a union-find seeded from the current network
-  // components: two settlements start "connected" iff they share a component
-  // root, and each new link unions them. This replaces a full BFS after every
-  // build (which stalled for hundreds of ms when a cycle built many links)
-  // with near-O(1) find/union, while still skipping already-linked pairs.
+// Connect ONE settlement to any close neighbour that isn't already in its
+// road network. Called for a single settlement per tick from the plan spread,
+// so the cost (a scan for close neighbours + a bounded pathfind for each
+// unconnected one) is tiny and never lumps into a cycle-end spike. Uses the
+// cached network components for the "already connected?" test; slightly stale
+// between rebuilds, which at worst costs a redundant (bounded) pathfind.
+function linkCloseNeighbours(world, s) {
+  if (s.people < MIN_POP_TO_LINK) return false;
   const comp = world._networkComponents;
-  const parent = new Map();
-  const find = x => {
-    let r = x;
-    while (parent.has(r) && parent.get(r) !== r) r = parent.get(r);
-    while (parent.has(x) && parent.get(x) !== r) { const n = parent.get(x); parent.set(x, r); x = n; }
-    return r;
-  };
-  const root = id => (comp && comp.get(id) !== undefined ? comp.get(id) : id);
-  const union = (a, b) => { const ra = find(root(a)), rb = find(root(b)); if (ra !== rb) parent.set(ra, rb); };
-  const connected = (a, b) => find(root(a)) === find(root(b));
-
+  const myComp = comp && comp.get(s.id) !== undefined ? comp.get(s.id) : s.id;
   let anyBuilt = false;
-  for (const s of outer) {
-    for (const peer of candidates) {
-      if (peer.id === s.id) continue;           // union-find dedupes repeats
-      let dx = Math.abs(peer.pos.x - s.pos.x);
-      if (dx > world.tw / 2) dx = world.tw - dx;
-      const dy = peer.pos.y - s.pos.y;
-      if (dx * dx + dy * dy > CLOSE_NEIGHBOUR_DIST_SQ) continue;
-      // Already in the same road network? A path already exists — this pass
-      // only wires up UNCONNECTED close neighbours.
-      if (connected(s.id, peer.id)) continue;
-      const path = findPath(world, s, peer);
-      if (!path) continue;
-      let didChange = false;
-      for (const ti of path.tiles) {
-        if (paintRoad(world, ti)) didChange = true;
-      }
-      union(s.id, peer.id);   // now connected (whether we paved new tiles or it was already road)
-      if (didChange) {
-        anyBuilt = true;
-        if (s.history) s.history.push({
-          step: world.step, type: "local-link",
-          to: peer.id, tiles: path.tiles.length,
-        });
-      }
+  for (const peer of world.settlements) {
+    if (peer.id === s.id || peer.mode !== "settled" || peer.people < MIN_POP_TO_LINK) continue;
+    let dx = Math.abs(peer.pos.x - s.pos.x);
+    if (dx > world.tw / 2) dx = world.tw - dx;
+    const dy = peer.pos.y - s.pos.y;
+    if (dx * dx + dy * dy > CLOSE_NEIGHBOUR_DIST_SQ) continue;
+    const pc = comp && comp.get(peer.id) !== undefined ? comp.get(peer.id) : peer.id;
+    if (pc === myComp) continue;                 // already road-connected
+    const path = findPath(world, s, peer);
+    if (!path) continue;
+    let didChange = false;
+    for (const ti of path.tiles) if (paintRoad(world, ti)) didChange = true;
+    if (didChange) {
+      anyBuilt = true;
+      if (s.history) s.history.push({ step: world.step, type: "local-link", to: peer.id, tiles: path.tiles.length });
     }
   }
   return anyBuilt;

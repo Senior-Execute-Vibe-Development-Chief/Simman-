@@ -36,7 +36,10 @@ import { recordOut, OUT_COLONY } from "./money.js";
 let _shipId = 1;
 export function resetShipIds() { _shipId = 1; }
 
-export const SEA_INTERVAL = 300;   // ticks between sea-lane / colony passes
+export const SEA_INTERVAL = 600;   // ticks between sea-lane / colony passes. This is
+                                   // a global ocean flood (O(map)) — a frame spike at
+                                   // high sim speed — and sea lanes/colonies change
+                                   // slowly, so it runs infrequently.
 
 // Sea routing. Cost is in the same path-cost units the trade pass uses
 // (TRANSPORT_PER_PATHCOST). Water is a cheap highway per tile; what limits
