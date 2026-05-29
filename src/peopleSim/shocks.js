@@ -16,11 +16,11 @@ import { mkRng } from "./rng.js";
 // Hits a geographic cluster of settlements for a window, slashing their land-
 // food yield. Reduced supply → starvation (settlement.js) + hunger-driven
 // unrest (conquest.js). Read in updateFood via s._famineUntil / s._harvestMul.
-const FAMINE_CHECK    = 500;    // ticks between famine-spawn rolls
-const FAMINE_CHANCE   = 0.5;    // probability a roll actually spawns one
-const FAMINE_RADIUS   = 18;     // tiles — settlements within this of the seed are struck
-const FAMINE_MIN_DUR  = 500;
-const FAMINE_MAX_DUR  = 1600;
+const FAMINE_CHECK    = 700;    // ticks between famine-spawn rolls
+const FAMINE_CHANCE   = 0.35;   // probability a roll actually spawns one
+const FAMINE_RADIUS   = 12;     // tiles — settlements within this of the seed are struck (regional, not continental)
+const FAMINE_MIN_DUR  = 400;
+const FAMINE_MAX_DUR  = 1200;
 const FAMINE_SEVERITY = 0.35;   // harvest multiplier during famine (0.35 = ~65% crop loss)
 const FAMINE_MIN_POP  = 30;     // only seed on a real settlement
 
@@ -29,13 +29,15 @@ const FAMINE_MIN_POP  = 30;     // only seed on a real settlement
 // temporarily immune. The trade network that enriches a realm also carries the
 // disease — and a plague that reaches the capital craters its population, which
 // shrinks the control budget (conquest.js) and can collapse the realm.
-const PLAGUE_CHECK    = 1400;   // ticks between plague-spawn rolls
-const PLAGUE_CHANCE   = 0.5;
+const PLAGUE_CHECK    = 2600;   // ticks between plague-spawn rolls (generational)
+const PLAGUE_CHANCE   = 0.4;
 const PLAGUE_DUR      = 400;    // how long a settlement stays infected
 const PLAGUE_IMMUNE   = 3000;   // post-plague immunity window (resistant survivors)
 const PLAGUE_MORT     = 0.0010; // base per-tick mortality while infected
 const PLAGUE_URBAN    = 0.6;    // extra mortality ∝ log10(pop/100) (crowding/sanitation)
-const PLAGUE_SPREAD   = 0.008;  // per-tick chance an infected node infects a trade partner
+const PLAGUE_SPREAD   = 0.0007; // per-tick chance an infected node infects a trade partner
+                                // (low enough that most outbreaks stay regional; only a
+                                // well-connected, sustained one becomes a continental pandemic)
 const PLAGUE_SEA_MULT = 2.0;    // sea routes carried plague fast + far (Black Death by ship)
 const PLAGUE_MIN_POP  = 50;     // needs a real population to take hold / seed
 
