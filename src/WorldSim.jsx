@@ -19,6 +19,7 @@ import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
 import { IN_LABELS, OUT_LABELS } from "./peopleSim/money.js";
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
+import PeopleSimWorker from "./peopleSimWorker.js?worker&inline";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
 function initNoise(seed){const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)PERM[i]=p[i&255];}
@@ -4349,6 +4350,13 @@ const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=u
 // alive only so the existing draw() pipeline doesn't break; it is not
 // stepped (the runTribeStep call is disabled below).
 const peopleRef=useRef(null);
+// peopleSim runs in a Web Worker so its heavy passes can't stutter rendering.
+// simWorkerRef holds the worker; peopleRef.current becomes a MIRROR populated
+// from snapshots (shaped like the real world so draw()/the card read it
+// unchanged). If the worker can't start, we fall back to stepping on the main
+// thread (simWorkerRef stays null and the rAF loop steps as before).
+const simWorkerRef=useRef(null);
+const applySnapshotRef=useRef(null);
 const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
 const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
@@ -4393,9 +4401,44 @@ if(t.deposits)w.deposits=t.deposits;
 // peopleSim: entity-based simulator that replaces the legacy tribe model.
 // Pass t.tCrop so the sim's fertility uses the SAME formula as the
 // Crop overlay (young-soil discount, tropical penalty, wide bell).
-// Falls back to the local bellFert if tCrop is absent.
-peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
-setPsStats(peopleSimStats(peopleRef.current));
+// Runs in a Web Worker (off the render thread); peopleRef.current becomes a
+// snapshot-fed mirror. Falls back to a main-thread sim if the worker fails.
+let usedWorker=false;
+try{
+  if(simWorkerRef.current){simWorkerRef.current.terminate();simWorkerRef.current=null;}
+  const sw=new PeopleSimWorker();
+  sw.onmessage=(e)=>{
+    const d=e.data;
+    if(d.type==='snapshot'){if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    else if(d.type==='error'){console.error('[SimWorker]',d.message,d.stack);}
+  };
+  sw.onerror=(err)=>{
+    console.warn('[SimWorker] error — falling back to main-thread sim:',err.message);
+    try{if(simWorkerRef.current){simWorkerRef.current.terminate();}}catch(_){}
+    simWorkerRef.current=null;
+    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
+    setPsStats(peopleSimStats(peopleRef.current));
+  };
+  simWorkerRef.current=sw;
+  // Empty mirror until the first snapshot arrives.
+  peopleRef.current={_isMirror:true,step:0,settlements:[],tw:t.tw||0,th:t.th||0,tileRes:RES,N:0,countries:new Map(),_byId:new Map()};
+  // Send ONLY the fields createWorld reads (structured-clone copies them; the
+  // main thread keeps its own w arrays for terrain rendering). Avoids cloning
+  // the full worldgen object, which may carry non-cloneable extras.
+  const initW={width:w.width,height:w.height,seed:w.seed,
+    elevation:w.elevation,temperature:w.temperature,moisture:w.moisture,coastal:w.coastal,
+    windX:w.windX,windY:w.windY,
+    rivers:(w.rivers&&w.rivers.riverMag)?{riverMag:w.rivers.riverMag}:null,
+    deposits:w.deposits};
+  sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tileRes:RES,seed:w.seed});
+  // Push current play/speed state to the fresh worker.
+  sw.postMessage({type:'control',playing:false,speed:speedRef.current});
+  usedWorker=true;
+}catch(e){console.warn('[SimWorker] init failed — main-thread sim:',e);}
+if(!usedWorker){
+  peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
+  setPsStats(peopleSimStats(peopleRef.current));
+}
 setCoverage(0);setTribeCount(t.tribeCount||0);setPlaying(false);playRef.current=false;
 terrainCache.current=null;atlasCache.current=null;imgRef.current=null;},[]);
 const generate=useCallback((s,ol)=>{
@@ -5459,16 +5502,16 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       const h = ((rootId * 137) % 360 + 360) % 360;
       return `hsl(${h}, 65%, 45%)`;
     };
-    // ── Draw road tiles, coloured by their component ──
-    if(psw.roadQuality&&tileComp){
+    // ── Draw road tiles, coloured by their component (or a uniform colour
+    // when the component map isn't available, e.g. worker mode) ──
+    if(psw.roadQuality){
       const rq=psw.roadQuality;
       for(let ti=0;ti<rq.length;ti++){
         if(rq[ti]>=1.0)continue;
         const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
         const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-        const comp=tileComp.get(ti);
-        if(comp===undefined)continue;
-        ctx.fillStyle=compColour(comp);
+        const comp=tileComp?tileComp.get(ti):undefined;
+        ctx.fillStyle=comp!==undefined?compColour(comp):"rgba(150,110,60,0.9)";
         ctx.fillRect(sx,sy,TR,TR);
       }
     }
@@ -5805,10 +5848,48 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
 }
 },[updateTerrainCache,buildAtlas,CH]);
 
+// Apply a snapshot from the sim worker into the mirror (peopleRef.current),
+// shaped like the real world so draw()/the card read it unchanged, then draw.
+const applySnapshot=useCallback((snap)=>{
+  let psw=peopleRef.current;
+  if(!psw||!psw._isMirror){psw=peopleRef.current={_isMirror:true};}
+  psw.step=snap.step;psw.tw=snap.tw;psw.th=snap.th;psw.tileRes=snap.tileRes;psw.N=snap.N;
+  if(snap.owner)psw._territoryOwner=snap.owner;
+  if(snap.roadQuality)psw.roadQuality=snap.roadQuality;
+  if(snap.roadFlow)psw.roadFlow=snap.roadFlow;
+  if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
+  psw.ships=snap.ships;
+  const setts=snap.settlements||[];
+  if(snap.selected){const sel=setts.find(x=>x.id===snap.selected.id);if(sel)Object.assign(sel,snap.selected);}
+  psw.settlements=setts;
+  const byId=new Map();for(const s of setts)byId.set(s.id,s);psw._byId=byId;
+  const countries=new Map();
+  for(const c of (snap.countries||[])){
+    const members=c.memberIds.map(id=>byId.get(id)).filter(Boolean);
+    const capital=byId.get(c.capitalId)||members[0]||null;
+    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range});
+  }
+  psw.countries=countries;
+  // HUD state updates re-render the whole component, so throttle them to ~5Hz
+  // (the sim numbers don't need 30Hz); drawing still happens every snapshot.
+  psw._snapN=(psw._snapN||0)+1;
+  if(psw._snapN%6===1){if(snap.stats)setPsStats(snap.stats);setTribeCount(setts.length);}
+  if(terRef.current){try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);}}
+},[draw]);
+useEffect(()=>{applySnapshotRef.current=applySnapshot;},[applySnapshot]);
+
+// Forward play/pause + speed to the sim worker.
+useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'control',playing,speed});},[playing,speed]);
+// Forward selection so the worker includes that settlement's full detail.
+useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'select',id:selectedSettlementId});},[selectedSettlementId]);
+
 useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showPower,showGlobe,activeRes]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now(),drawSkip=0;
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
+// Worker mode: the sim runs off-thread and drives drawing via snapshots, so
+// this loop does nothing. Only the main-thread FALLBACK steps + draws here.
+if(simWorkerRef.current){last=now;return;}
 acc+=now-last;last=now;const iv=Math.max(8,100/speedRef.current);
 if(acc>=iv){acc=0;
 // Adaptive step rate: early history flies by, modern era slows down.
@@ -6235,7 +6316,7 @@ return(
   // Treasury + trade.
   const wealth=Math.round(s.wealth||0);
   const available=Math.max(0,wealth-Math.round(getWealthReserve(s)));
-  const profile=getTradeProfile(s,peopleRef.current);
+  const profile=s._tradeProfile||getTradeProfile(s,peopleRef.current);
   const produces=getExportBreakdown(s).filter(b=>b.label!=="Baseline").slice(0,3).map(b=>b.label.toLowerCase());
   // Smoothed net wealth change rate from the sim (the categorised in/out
   // breakdown below comes from s._mInRate / s._mOutRate).
@@ -6286,7 +6367,7 @@ return(
       {/* ── Maritime (ports / sea trade / colonies) ── */}
       {(()=>{
         const isPort=!!s._isPort;
-        const seaPeers=s._seaReach?s._seaReach.size:0;
+        const seaPeers=s._seaReachSize??(s._seaReach?s._seaReach.size:0);
         const sent=s.history?s.history.filter(h=>h.type==="colony-launched").length:0;
         const isColony=s.history?s.history.some(h=>h.type==="colony-founded"):false;
         if(!isPort&&seaPeers===0&&sent===0&&!isColony)return null;
