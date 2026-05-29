@@ -674,8 +674,11 @@ function updateFood(world, s) {
   // Land food from the controlled TERRITORY: the distance-weighted sum of
   // claimed arable fertility (computed in territory.js), times yield and
   // agriculture. Storable — fills granaries and ships to feed cities.
-  const landFood = (s._terrFertSum || 0) * FARM_YIELD_PER_FERT
+  const landFood0 = (s._terrFertSum || 0) * FARM_YIELD_PER_FERT
     * (1 + (s.knowledge.agriculture || 0) * 1.2);
+  // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
+  const landFood = world.step < (s._famineUntil || 0)
+    ? landFood0 * (s._harvestMul || 1) : landFood0;
 
   // Fish: coastal/river settlements draw food from the water, scaled by
   // water access (the site: minor river → great-river port) and by

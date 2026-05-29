@@ -16,6 +16,7 @@ import { computeTerritory } from "./territory.js";
 import { updatePolities, POLITY_INTERVAL } from "./conquest.js";
 import { musterArmies, advanceFronts, moveArmies, MUSTER_INTERVAL, CONQUEST_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
+import { updateShocks } from "./shocks.js";
 import { foldMoney } from "./money.js";
 
 const TERRITORY_INTERVAL = 144;  // ticks between full territory recomputes (a global
@@ -53,6 +54,12 @@ export function stepPeopleSim(world, n = 1) {
       updateSettlement(world, world.settlements[i]);
     }
     mark("settlements");
+    // Exogenous shocks: regional famines (harvest crash) + epidemics that
+    // spread along the trade graph (population crash). Both feed the unrest /
+    // control-budget systems, so a bad harvest or a plague can tip a stable
+    // realm into collapse.
+    updateShocks(world);
+    mark("shocks");
     // New settlements crystallise spontaneously at fertile sites,
     // weighted by transport distance to existing ones.
     maybeCrystallize(world);

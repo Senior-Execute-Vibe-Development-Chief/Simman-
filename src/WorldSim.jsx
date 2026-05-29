@@ -6464,6 +6464,19 @@ return(
         );
       })()}
 
+      {/* ── Active shock (plague / famine) ── */}
+      {(()=>{
+        const sh=s._shock||0;
+        if(!sh)return null;
+        const plague=sh===2;
+        return(
+          <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+            <span style={{width:9,height:9,borderRadius:2,background:plague?"hsl(280,55%,52%)":"hsl(30,80%,48%)",flexShrink:0}}/>
+            <span className="au-fade">{plague?"struck by plague":"famine — harvest failing"}</span>
+          </div>
+        );
+      })()}
+
       {/* ── Popular unrest (separate stock from loyalty) ── */}
       {(()=>{
         const u=s.unrest||0;

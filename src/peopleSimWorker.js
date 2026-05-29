@@ -90,6 +90,7 @@ function packSettlement(s) {
     people: s.people, tier: s.tier, countryId: s.countryId,
     wealth: s.wealth, _wealthDelta: s._wealthDelta, _minedRate: s._minedRate,
     _isPort: s._isPort, _vassalCount: s._vassalCount, liegeId: s.liegeId,
+    _shock: s._plagueActive ? 2 : (world.step < (s._famineUntil || 0) ? 1 : 0),
   };
 }
 

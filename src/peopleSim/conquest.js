@@ -14,6 +14,7 @@
 
 import { CONQUEST_GRACE } from "./armies.js";
 import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.js";
+import { shockUnrest } from "./shocks.js";
 
 const POLITY_INTERVAL  = 150;   // ticks between polity passes
 
@@ -543,8 +544,10 @@ export function updatePolities(world) {
       const hunger = fed < demand ? Math.min(1, (demand - fed) / demand) : 0;
       const conscript = Math.min(1, ((s.army || 0) / Math.max(1, s.people)) / CONSCRIPT_REF);
       const gH = hunger * HUNGER_W, gC = conscript * CONSCRIPT_W, gW = warFat * WARFAT_W, gT = taxOver * OVERTAX_W;
-      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT) * UNREST_GAIN - UNREST_RELIEF));
-      s._unrestCause = gH >= gC && gH >= gW && gH >= gT ? "famine"
+      const gS = shockUnrest(world, s);   // direct famine/plague distress (shocks.js)
+      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS) * UNREST_GAIN - UNREST_RELIEF));
+      s._unrestCause = s._plagueActive ? "plague"
+                     : gH >= gC && gH >= gW && gH >= gT ? "famine"
                      : gT >= gC && gT >= gW ? "taxes"
                      : gW >= gC ? "war fatigue" : "conscription";
       if (s.unrest > 0.5) s.loyalty = Math.max(0, (s.loyalty ?? 1) - UNREST_LOYALTY_BLEED * (s.unrest - 0.5));  // anger erodes loyalty
