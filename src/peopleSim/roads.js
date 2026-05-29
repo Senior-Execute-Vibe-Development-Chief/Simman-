@@ -73,8 +73,8 @@ const MAX_PARTNERS        = 20;
 //              them to look for a meaningfully-shorter direct line).
 //              Tightly capped: on a stable, fully-connected network this
 //              is the only work left, and it's almost always fruitless.
-const MAX_NEW_EVALS       = 6;
-const MAX_SHORTCUT_EVALS  = 2;
+const MAX_NEW_EVALS       = 4;
+const MAX_SHORTCUT_EVALS  = 1;
 
 // Flow dynamics. roadFlow gains USAGE_PER_TRADE per active trade
 // per tile each tick, decays multiplicatively the rest of the time.
@@ -218,6 +218,7 @@ function paintRoad(world, ti) {
   if (QUALITY_NEW < world.roadQuality[ti]) {
     world.roadQuality[ti] = QUALITY_NEW;
     world._roadTiles.add(ti);
+    world._roadVersion = (world._roadVersion || 0) + 1;   // topology changed
     return true;
   }
   return false;
@@ -307,41 +308,38 @@ export function rebuildTradeReach(world) {
 
 function computeReach(world, s, stMap) {
   const reach = new Map();
-  const { tw, th, roadQuality: rq } = world;
+  const { tw, th, roadQuality: rq, N } = world;
   const startTi = (s.pos.y | 0) * tw + (s.pos.x | 0);
-  const dist = new Map();
-  const prev = new Map();
+  // Typed-array Dijkstra scratch (shared across settlements; a per-call stamp
+  // means no Map overhead and no O(N) clear). This pass runs once per
+  // settlement on every reach rebuild, so the Map version was a big spike.
+  if (!world._reachDist || world._reachDist.length !== N) {
+    world._reachDist = new Float64Array(N);
+    world._reachSeen = new Int32Array(N);
+    world._reachPrev = new Int32Array(N);
+    world._reachStamp = 0;
+  }
+  const dist = world._reachDist, seen = world._reachSeen, prev = world._reachPrev;
+  if (world._reachStamp >= 2147483646) { seen.fill(0); world._reachStamp = 0; }
+  const stamp = ++world._reachStamp;
   const heap = new MinHeap();
-  dist.set(startTi, 0);
+  dist[startTi] = 0; seen[startTi] = stamp; prev[startTi] = -1;
   heap.push(startTi, 0);
   let visited = 0;
   while (heap.n > 0 && visited++ < MAX_REACH_VISITS) {
     const { ti, d } = heap.popMin();
-    if (d > (dist.get(ti) ?? Infinity)) continue;
-    // Record peer arrivals (other settlement home tiles)
+    if (d > dist[ti]) continue;                 // stale heap entry
     const peer = stMap.get(ti);
     if (peer && peer.id !== s.id && !reach.has(peer.id)) {
       const tiles = [];
       let cur = ti;
-      while (cur !== undefined) {
-        tiles.push(cur);
-        if (cur === startTi) break;
-        cur = prev.get(cur);
-      }
+      while (cur !== -1) { tiles.push(cur); if (cur === startTi) break; cur = prev[cur]; }
       tiles.reverse();
-      // Precompute the intermediate toll-takers ONCE here (the path is fixed
-      // until the next reach rebuild) instead of re-walking it every tick in
-      // the trade pass — that walk was the dominant per-tick cost.
       const link = { cost: d, tiles };
       link.inter = intermediatesOnPath(link, s.id, peer.id, stMap);
       reach.set(peer.id, link);
-      // Peers arrive nearest-first (Dijkstra pops min cost), so once we have
-      // MAX_PARTNERS we've got the closest ones — stop early.
-      if (reach.size >= MAX_PARTNERS) break;
+      if (reach.size >= MAX_PARTNERS) break;     // nearest-first; we have enough
     }
-    // Expand to 8-neighbours that are roads or settlement tiles.
-    // Diagonal step cost is multiplied by √2 to match the real
-    // geometric distance traversed.
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0      ? tw - 1 : tx - 1;
     const xp = tx === tw - 1 ? 0      : tx + 1;
@@ -361,15 +359,10 @@ function computeReach(world, s, stMap) {
       const ni = ns[k];
       if (ni < 0) continue;
       const isRoad = rq[ni] < 1.0;
-      const isSett = stMap.has(ni);
-      if (!isRoad && !isSett) continue;
-      // Cost: use the road tile's quality (or a small settlement-
-      // transit cost for non-road settlement tiles).
-      const stepCost = (isRoad ? rq[ni] : 0.15) * mul[k];
-      const nd = d + stepCost;
-      if (nd < (dist.get(ni) ?? Infinity)) {
-        dist.set(ni, nd);
-        prev.set(ni, ti);
+      if (!isRoad && !stMap.has(ni)) continue;
+      const nd = d + (isRoad ? rq[ni] : 0.15) * mul[k];
+      if (seen[ni] !== stamp || nd < dist[ni]) {
+        dist[ni] = nd; seen[ni] = stamp; prev[ni] = ti;
         heap.push(ni, nd);
       }
     }
@@ -397,21 +390,43 @@ function computeReach(world, s, stMap) {
 // amortised into smooth per-tick cost with no stutter.
 const PLAN_SPREAD = 120;   // ticks to spread one plan cycle over (< PLAN_INTERVAL)
 
+// Reach + components only need rebuilding when the network topology changed
+// (a road was built / decayed away, or the settlement set changed). In a
+// settled, mature world neither happens for long stretches, so this skips the
+// ~tens-of-ms rebuild on most plan cycles instead of paying it every cycle.
+function refreshNetworkIfStale(world) {
+  let settled = 0;
+  for (const s of world.settlements) if (s.mode === "settled") settled++;
+  const rv = world._roadVersion || 0;
+  if (rv === world._reachRoadVer && settled === world._reachSettCount) return;
+  rebuildTradeReach(world);
+  world._networkComponents = buildNetworkComponents(world);
+  world._reachRoadVer = rv;
+  world._reachSettCount = settled;
+}
+
 export function maybeBuildRoads(world) {
   ensureRoadArrays(world);
 
-  // Start a new cycle: snapshot the candidate list and refresh the network
-  // state once. tryAddRoad reads the (now slightly stale across the spread)
-  // reach + components; that staleness is harmless — the next cycle's fresh
-  // reach prunes any redundant shortcut.
+  // Start a new cycle: refresh network state (only if stale) and snapshot the
+  // candidates DUE for planning. Settlements that recently built nothing back
+  // off exponentially (re-checked up to 8× less often), so a stable world
+  // evaluates only its new / growing settlements instead of all of them — the
+  // per-candidate work (ranking + several A* pathfinds) was the bulk of the
+  // plan cost. Growth (or a backoff cap) brings a settlement back into the queue.
   if (world.step % PLAN_INTERVAL === 0) {
-    rebuildTradeReach(world);
-    world._networkComponents = buildNetworkComponents(world);
-    world._planQueue = world.settlements.filter(
-      s => s.mode === "settled" && s.people >= MIN_POP_TO_PLAN
-    );
+    refreshNetworkIfStale(world);
+    const snap = world.step;
+    world._planSnap = snap;
+    world._planQueue = world.settlements.filter(s => {
+      if (s.mode !== "settled" || s.people < MIN_POP_TO_PLAN) return false;
+      // A meaningful pop jump (or first-ever evaluation) makes it due now.
+      if (s._planPop === undefined || s.people > s._planPop * 1.4) s._planNext = 0;
+      return (s._planNext || 0) <= snap;
+    });
     world._planIdx = 0;
     world._planAnyBuilt = false;
+    world._planHadWork = world._planQueue.length > 0;
   }
 
   const queue = world._planQueue;
@@ -419,26 +434,38 @@ export function maybeBuildRoads(world) {
 
   // Evaluate a slice this tick — sized so the whole queue finishes within
   // PLAN_SPREAD ticks regardless of how many settlements there are.
-  const perTick = Math.max(1, Math.ceil(queue.length / PLAN_SPREAD));
+  const snap = world._planSnap || world.step;
+  // Spread over PLAN_SPREAD ticks, but never more than a couple of settlements
+  // per tick (each one is several A* probes) so one tick can't spike. A huge
+  // backlog just takes a few extra cycles to clear — fine, roads aren't urgent.
+  const perTick = Math.min(2, Math.max(1, Math.ceil(queue.length / PLAN_SPREAD)));
   const end = Math.min(queue.length, world._planIdx + perTick);
   let built = false;
   for (; world._planIdx < end; world._planIdx++) {
     const s = queue[world._planIdx];
     if (!s || s.mode !== "settled") continue;
-    if (tryAddRoad(world, s)) {
-      built = true; world._planAnyBuilt = true;
-      // Cheap BFS so later candidates' junction-truncation stays correct.
-      world._networkComponents = buildNetworkComponents(world);
-    }
+    const did = tryAddRoad(world, s);
+    s._planPop = s.people;
+    s._planBackoff = did ? 1 : Math.min(8, (s._planBackoff || 1) * 2);
+    s._planNext = snap + PLAN_INTERVAL * s._planBackoff;
+    if (did) { built = true; world._planAnyBuilt = true; }
   }
+  // One components refresh per tick if anything built (not per build — that
+  // BFS-per-build was a multi-hundred-ms stall when a cycle built many roads).
+  if (built) world._networkComponents = buildNetworkComponents(world);
 
-  // Cycle finished: run the local-link pass + a single final reach rebuild.
+  // Cycle finished: run the local-link pass (only if something was due —
+  // a fully stable world has no new neighbours to wire up) + a final reach
+  // rebuild if anything was built this cycle.
   if (world._planIdx >= queue.length) {
     world._planQueue = null;
-    if (maybeBuildLocalLinks(world)) world._planAnyBuilt = true;
+    if (world._planHadWork && maybeBuildLocalLinks(world)) world._planAnyBuilt = true;
     if (world._planAnyBuilt) {
       rebuildTradeReach(world);
       world._networkComponents = buildNetworkComponents(world);
+      world._reachRoadVer = world._roadVersion || 0;
+      let settled = 0; for (const s of world.settlements) if (s.mode === "settled") settled++;
+      world._reachSettCount = settled;
     }
   }
   return built;
@@ -453,7 +480,23 @@ function maybeBuildLocalLinks(world) {
   const candidates = world.settlements.filter(
     s => s.mode === "settled" && s.people >= MIN_POP_TO_LINK
   );
-  let comp = world._networkComponents;
+  // Connectivity tracked with a union-find seeded from the current network
+  // components: two settlements start "connected" iff they share a component
+  // root, and each new link unions them. This replaces a full BFS after every
+  // build (which stalled for hundreds of ms when a cycle built many links)
+  // with near-O(1) find/union, while still skipping already-linked pairs.
+  const comp = world._networkComponents;
+  const parent = new Map();
+  const find = x => {
+    let r = x;
+    while (parent.has(r) && parent.get(r) !== r) r = parent.get(r);
+    while (parent.has(x) && parent.get(x) !== r) { const n = parent.get(x); parent.set(x, r); x = n; }
+    return r;
+  };
+  const root = id => (comp && comp.get(id) !== undefined ? comp.get(id) : id);
+  const union = (a, b) => { const ra = find(root(a)), rb = find(root(b)); if (ra !== rb) parent.set(ra, rb); };
+  const connected = (a, b) => find(root(a)) === find(root(b));
+
   let anyBuilt = false;
   for (const s of candidates) {
     for (const peer of candidates) {
@@ -462,28 +505,22 @@ function maybeBuildLocalLinks(world) {
       if (dx > world.tw / 2) dx = world.tw - dx;
       const dy = peer.pos.y - s.pos.y;
       if (dx * dx + dy * dy > CLOSE_NEIGHBOUR_DIST_SQ) continue;
-      // Already in the same road network? Then a direct path already exists
-      // (or a perfectly good indirect one does) — skip the full pathfind.
-      // This pass only needs to wire up UNCONNECTED close neighbours; without
-      // this guard it re-pathed every established link every cycle, which was
-      // a large slice of the road-plan freeze.
-      if (comp && comp.get(s.id) === comp.get(peer.id)) continue;
+      // Already in the same road network? A path already exists — this pass
+      // only wires up UNCONNECTED close neighbours.
+      if (connected(s.id, peer.id)) continue;
       const path = findPath(world, s, peer);
       if (!path) continue;
       let didChange = false;
       for (const ti of path.tiles) {
         if (paintRoad(world, ti)) didChange = true;
       }
+      union(s.id, peer.id);   // now connected (whether we paved new tiles or it was already road)
       if (didChange) {
         anyBuilt = true;
         if (s.history) s.history.push({
           step: world.step, type: "local-link",
           to: peer.id, tiles: path.tiles.length,
         });
-        // Refresh components so the just-merged pair (and any now-connected
-        // neighbours) are skipped for the rest of this pass. Builds are rare
-        // here (only unconnected neighbours reach this point), so it's cheap.
-        comp = world._networkComponents = buildNetworkComponents(world);
       }
     }
   }
@@ -724,6 +761,7 @@ export function updateTrade(world) {
       }
     }
     for (const ti of gone) roadTiles.delete(ti);
+    if (gone.length) world._roadVersion = (world._roadVersion || 0) + 1;   // topology changed
   }
 }
 
@@ -952,7 +990,15 @@ function findPath(world, s, t) {
   g[start] = 0; seen[start] = stamp; prev[start] = -1;
   const heap = new MinHeap();
   heap.push(start, h(start));
-  const limit = 40000;
+  // Bound exploration by the straight-line distance: a road should be roughly
+  // direct, so cap the node budget at O(distance²). This makes a FAILED probe
+  // (e.g. a peer with no land route) abort within its local region instead of
+  // scanning the whole landmass up to 40k nodes — those failures were the
+  // dominant road-plan spike on a large map.
+  let dgx=Math.abs((start%tw)-gx); if(dgx>tw/2)dgx=tw-dgx;
+  const dgy=((start/tw)|0)-gy;
+  const dHint=Math.sqrt(dgx*dgx+dgy*dgy);
+  const limit = Math.min(40000, 2000 + ((dHint*dHint*8)|0));
   let visited = 0;
   while (heap.n > 0) {
     if (visited++ > limit) return null;
