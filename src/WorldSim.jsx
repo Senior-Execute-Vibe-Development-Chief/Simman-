@@ -4431,8 +4431,9 @@ try{
     rivers:(w.rivers&&w.rivers.riverMag)?{riverMag:w.rivers.riverMag}:null,
     deposits:w.deposits};
   sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tileRes:RES,seed:w.seed});
-  // Push current play/speed state to the fresh worker.
+  // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
+  sw.postMessage({type:'view',view:viewRef.current});
   usedWorker=true;
 }catch(e){console.warn('[SimWorker] init failed — main-thread sim:',e);}
 if(!usedWorker){
@@ -5485,33 +5486,33 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmMoney = viewRef.current === "money";
   if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
-    // ── Network components from tile map ──
-    // psw._tileComponent is a Map<tileIndex → componentRootId>
-    // populated by buildNetworkComponents. If absent (initial state
-    // before any road planning), use a stable id-based hash.
-    const tileComp = psw._tileComponent;
+    // ── Network components per tile ── world._tileComp is an Int32Array of
+    // component-root ids. On the REAL world it's stamp-validated (only valid
+    // where _tileCompSeen === _tileCompStampVal); the worker MIRROR ships a
+    // pre-cleaned copy (-1 = no component). compAt() reads the root or -1.
+    const tc=psw._tileComp,tcSeen=psw._tileCompSeen,tcStamp=psw._tileCompStampVal;
+    const compAt = tc ? (tcSeen ? (ti)=>(tcSeen[ti]===tcStamp?tc[ti]:-1) : (ti)=>tc[ti]) : null;
     const find = (sid) => {
-      // Each settlement is the root of its own component until joined.
-      // We approximate by reading the tile component for its home tile.
       const s = psw.settlements.find(o => o.id === sid);
       if (!s) return sid;
       const ti = (s.pos.y | 0) * psw.tw + (s.pos.x | 0);
-      return tileComp && tileComp.get(ti) !== undefined ? tileComp.get(ti) : sid;
+      const c = compAt ? compAt(ti) : -1;
+      return c >= 0 ? c : sid;
     };
     const compColour = (rootId) => {
       const h = ((rootId * 137) % 360 + 360) % 360;
       return `hsl(${h}, 65%, 45%)`;
     };
     // ── Draw road tiles, coloured by their component (or a uniform colour
-    // when the component map isn't available, e.g. worker mode) ──
+    // when component data isn't available yet) ──
     if(psw.roadQuality){
       const rq=psw.roadQuality;
       for(let ti=0;ti<rq.length;ti++){
         if(rq[ti]>=1.0)continue;
         const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
         const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-        const comp=tileComp?tileComp.get(ti):undefined;
-        ctx.fillStyle=comp!==undefined?compColour(comp):"rgba(150,110,60,0.9)";
+        const comp=compAt?compAt(ti):-1;
+        ctx.fillStyle=comp>=0?compColour(comp):"rgba(150,110,60,0.9)";
         ctx.fillRect(sx,sy,TR,TR);
       }
     }
@@ -5857,6 +5858,9 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.owner)psw._territoryOwner=snap.owner;
   if(snap.roadQuality)psw.roadQuality=snap.roadQuality;
   if(snap.roadFlow)psw.roadFlow=snap.roadFlow;
+  if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
+  psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
+  psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   psw.ships=snap.ships;
   const setts=snap.settlements||[];
@@ -5882,6 +5886,8 @@ useEffect(()=>{applySnapshotRef.current=applySnapshot;},[applySnapshot]);
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'control',playing,speed});},[playing,speed]);
 // Forward selection so the worker includes that settlement's full detail.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'select',id:selectedSettlementId});},[selectedSettlementId]);
+// Tell the worker the current view so it ships money-flow / road-component extras only when shown.
+useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'view',view:viewMode});},[viewMode]);
 
 useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showPower,showGlobe,activeRes]);
 

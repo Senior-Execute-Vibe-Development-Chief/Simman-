@@ -20,6 +20,8 @@ let world = null;
 let playing = false;
 let speed = 5;
 let selId = -1;
+let viewMode = "terrain";    // main thread tells us the view so we only ship
+                             // the money-flow / road-component extras when shown
 let lastSnap = 0;
 let snapCount = 0;
 let staticSent = false;      // owner/roadQuality sent at least once?
@@ -45,6 +47,9 @@ self.onmessage = (e) => {
   } else if (m.type === "select") {
     selId = m.id;
     if (!playing && world) buildSnapshot();          // show the selection's detail now
+  } else if (m.type === "view") {
+    viewMode = m.view;
+    if (!playing && world) buildSnapshot();          // refresh extras for the new view
   }
 };
 
@@ -83,7 +88,7 @@ function packSettlement(s) {
     id: s.id, name: s.name, mode: s.mode,
     pos: { x: s.pos.x, y: s.pos.y },
     people: s.people, tier: s.tier, countryId: s.countryId,
-    wealth: s.wealth, _wealthDelta: s._wealthDelta,
+    wealth: s.wealth, _wealthDelta: s._wealthDelta, _minedRate: s._minedRate,
     _isPort: s._isPort, _vassalCount: s._vassalCount, liegeId: s.liegeId,
   };
 }
@@ -142,17 +147,29 @@ function buildSnapshot() {
   const roadQuality = sendStatic && world.roadQuality ? world.roadQuality.slice() : null;
   const roadFlow = world.roadFlow ? world.roadFlow.slice() : null;
 
+  // Money view: the animated coin flows (change every tick → send each frame
+  // while the view is open). Roads view: a clean per-tile component-root array
+  // (changes slowly → gate with the static group).
+  const moneyFlows = (viewMode === "money" && world._moneyFlows) ? world._moneyFlows : null;
+  let tileComp = null;
+  if (viewMode === "roads" && sendStatic && world._tileComp && world._tileCompSeen) {
+    const tc = world._tileComp, seen = world._tileCompSeen, stamp = world._tileCompStampVal, N = world.N;
+    tileComp = new Int32Array(N);
+    for (let i = 0; i < N; i++) tileComp[i] = seen[i] === stamp ? tc[i] : -1;
+  }
+
   const transfer = [];
   if (owner) transfer.push(owner.buffer);
   if (roadQuality) transfer.push(roadQuality.buffer);
   if (roadFlow) transfer.push(roadFlow.buffer);
+  if (tileComp) transfer.push(tileComp.buffer);
 
   self.postMessage({
     type: "snapshot",
     step: world.step,
     tw: world.tw, th: world.th, tileRes: world.tileRes, N: world.N,
     stats: peopleSimStats(world),
-    owner, roadQuality, roadFlow,
+    owner, roadQuality, roadFlow, tileComp, moneyFlows,
     settlements: setts,
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last
