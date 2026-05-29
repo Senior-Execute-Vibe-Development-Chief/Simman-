@@ -5644,6 +5644,10 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // sprite layout stays fixed across re-renders.
     const stableRng=(seed)=>{let s=seed|0;return()=>{s=(s*1664525+1013904223)|0;return((s>>>0)%1000000)/1000000;};};
     const selId=selectedSettlementIdRef.current;
+    // National capitals (for the crown marker) — provincial seats are read
+    // from each settlement's vassal count.
+    const capitalIds=new Set();
+    if(psw.countries)for(const c of psw.countries.values())if(c.capital)capitalIds.add(c.capital.id);
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
       const sx=s.pos.x*TR;
@@ -5727,6 +5731,23 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           ctx.fillStyle="rgba(95,55,28,1.0)";ctx.fill();
           ctx.lineWidth=0.5;ctx.stroke();
         }
+      }
+      // ── Rank marker ── a gold star above national capitals, a small open
+      // ring above provincial seats (settlements that have vassals). Lets
+      // the administrative hierarchy be read at a glance over the country
+      // tint: stars = kingdoms' seats, rings = the regional centres beneath.
+      if(capitalIds.has(s.id)){
+        const my=sy-size-3.5;
+        ctx.fillStyle="rgba(255,210,70,0.95)";ctx.strokeStyle="rgba(60,40,0,0.9)";ctx.lineWidth=0.6;
+        ctx.beginPath();
+        for(let p=0;p<10;p++){const ang=-Math.PI/2+p*Math.PI/5;const rr=(p%2===0)?3.4:1.5;
+          const px=sx+Math.cos(ang)*rr,py=my+Math.sin(ang)*rr;p===0?ctx.moveTo(px,py):ctx.lineTo(px,py);}
+        ctx.closePath();ctx.fill();ctx.stroke();
+      }else if((s._vassalCount||0)>0){
+        const my=sy-size-3;
+        ctx.beginPath();ctx.arc(sx,my,2.1,0,Math.PI*2);
+        ctx.fillStyle="rgba(255,235,180,0.85)";ctx.fill();
+        ctx.lineWidth=0.7;ctx.strokeStyle="rgba(90,60,10,0.9)";ctx.stroke();
       }
     }
   }
@@ -6232,17 +6253,23 @@ return(
         {tierName} · {era} · {waterLabel}
       </div>
 
-      {/* ── Country / polity ── */}
+      {/* ── Country / polity (with administrative lineage) ── */}
       {(()=>{
         const ctry=psw.countries&&psw.countries.get(s.countryId);
         const n=ctry?ctry.members.length:1;
         const hue=((s.countryId*61)%360+360)%360;
         const cap=ctry&&ctry.capital;
         const isCap=cap&&cap.id===s.id;
+        const byId=psw._byId||(()=>{const m=new Map();for(const o of psw.settlements)m.set(o.id,o);return m;})();
+        const liege=(!isCap&&s.liegeId>=0)?byId.get(s.liegeId):null;
         let label;
         if(n<=1)label="independent city-state";
-        else if(isCap)label=`capital · ${n} settlements`;
-        else label=`subject of ${cap?cap.name:"?"} · ${n} settlements`;
+        else if(isCap)label=`national capital · ${n} settlements`;
+        else{
+          const role=(s._vassalCount>0)?"provincial seat":(tierName||"settlement");
+          label=`${role} · answers to ${liege?liege.name:(cap?cap.name:"?")}`;
+          if(liege&&cap&&liege.id!==cap.id)label+=` · realm of ${cap.name}`;
+        }
         return(
           <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
             <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0}}/>

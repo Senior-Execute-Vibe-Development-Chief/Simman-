@@ -15,7 +15,7 @@
 // Fighting drains both garrisons (attrition), so over-extended offensives
 // stall and the front ebbs and flows.
 
-import { CORE_R } from "./territory.js";
+import { coreRadiusFor } from "./territory.js";
 
 const ARMY_FRACTION = 0.08;   // garrison cap as a fraction of population
 const ARMY_GROW     = 0.05;   // growth toward the cap per muster
@@ -33,9 +33,7 @@ const ATTACK_MIN_RATIO  = 1.12;        // must out-power a neighbour by this to 
 const CAPTURE_SCALE     = 5;           // tiles/pass per unit of power-ratio advantage
 const MAX_CAPTURE       = 24;          // hard cap on tiles flipped per front per pass
 const CITY_STORM_RATIO  = 1.6;         // power ratio needed to besiege the core
-const CITY_ASSAULT_DIST = CORE_R + 2;  // attacker must have pushed this close to the home
-                                       // (covers the whole re-carved core, so the front
-                                       // doesn't flicker on the heartland tiles)
+const ASSAULT_MARGIN    = 2;           // front must reach within (defender core + this) of the home
 const ATTRITION         = 0.035;       // army drained per warring front per pass
 const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent taking a city
 // Siege: once the front reaches the heartland the city does NOT fall at
@@ -108,10 +106,11 @@ export function advanceFronts(world) {
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
     const ddy = ty - dhy;
     const distHome = Math.sqrt(ddx * ddx + ddy * ddy);
+    const assaultDist = coreRadiusFor(D) + ASSAULT_MARGIN;   // scales with the city's size
     const key = bestA + ":" + d;
     let pc = pairs.get(key);
     if (!pc) { pc = { att: A, def: D, tiles: [], canStorm: false }; pairs.set(key, pc); }
-    if (distHome <= CITY_ASSAULT_DIST) pc.canStorm = true;   // front at the heartland
+    if (distHome <= assaultDist) pc.canStorm = true;         // front at the heartland
     else pc.tiles.push({ ti, distHome });                    // capturable countryside
   }
 

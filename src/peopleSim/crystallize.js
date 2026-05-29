@@ -41,7 +41,7 @@ const MIN_AREA_FERT             = 1.0;    // 5×5 box must have *some* support
 // metropolises. Farmland contention (_farmedBy) between close
 // neighbours keeps each one's footprint — and so its carrying
 // capacity — modest.
-const MIN_SETT_DIST             = 12;
+const MIN_SETT_DIST             = 8;
 const MIN_SETT_DIST_SQ          = MIN_SETT_DIST * MIN_SETT_DIST;
 const KNOWLEDGE_DECAY_SCALE     = 30;
 const INDEPENDENT_RATE          = 0.060;

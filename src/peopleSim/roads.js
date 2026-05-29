@@ -317,7 +317,12 @@ function computeReach(world, s, stMap) {
         cur = prev.get(cur);
       }
       tiles.reverse();
-      reach.set(peer.id, { cost: d, tiles });
+      // Precompute the intermediate toll-takers ONCE here (the path is fixed
+      // until the next reach rebuild) instead of re-walking it every tick in
+      // the trade pass — that walk was the dominant per-tick cost.
+      const link = { cost: d, tiles };
+      link.inter = intermediatesOnPath(link, s.id, peer.id, stMap);
+      reach.set(peer.id, link);
       // Continue — there may be more peers further along this branch.
     }
     // Expand to 8-neighbours that are roads or settlement tiles.
@@ -619,10 +624,6 @@ export function updateTrade(world) {
       else rf[ti] = v;
     }
   }
-  // Settlement tile lookup, shared across all trade pairs this tick
-  // so the toll computation in runFood/GeneralTradeBetween can
-  // identify intermediate settlements on each path in O(pathLen).
-  const stMap = buildSettlementTileMap(world);
   // Iterate settlements, then pair with their reach. Also snapshot, per
   // actively-trading pair, the NET money that reached the peer this tick
   // and along which tiles — consumed by the money-flow overlay to animate
@@ -641,8 +642,8 @@ export function updateTrade(world) {
       const peer = findById(world, peerId);
       if (!peer || peer.mode !== "settled") continue;
       const peerBefore = peer.wealth || 0;
-      runFoodTradeBetween(world, s, peer, link, stMap);
-      runGeneralTradeBetween(world, s, peer, link, stMap);
+      runFoodTradeBetween(world, s, peer, link);
+      runGeneralTradeBetween(world, s, peer, link);
       const net = (peer.wealth || 0) - peerBefore;   // +ve = money toward peer (higher id, end of tiles)
       linkMoney.set(s.id + ":" + peerId, net);
       // Land trade wears its road path (flow drives paving + thickness);
@@ -723,7 +724,7 @@ function foodAppetite(s) {
   if (headroom <= 0) return 0;
   return headroom * 0.003 * (s._urbanFactor || 1);
 }
-function runFoodTradeBetween(world, a, b, link, stMap) {
+function runFoodTradeBetween(world, a, b, link) {
   const aSurplus = foodSurplus(a), bSurplus = foodSurplus(b);
   const aWant = foodAppetite(a), bWant = foodAppetite(b);
   let exporter, importer, shipRate, deficit;
@@ -760,7 +761,7 @@ function runFoodTradeBetween(world, a, b, link, stMap) {
   // reaches a settlement.
   const wantPrice = maxFlow * FOOD_PRICE;
   const transport = link.cost * FOOD_TRANSPORT_PER_PATHCOST;
-  const intermediates = intermediatesOnPath(link, a.id, b.id, stMap);
+  const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;
   const totalToll = wantPrice * FOOD_TOLL_RATE * numInter;
   const totalCost = wantPrice + transport + totalToll;
@@ -786,11 +787,11 @@ function runFoodTradeBetween(world, a, b, link, stMap) {
 // reserve and freezing — that's the velocity that keeps money moving.
 // Net wealth still drifts toward the higher-export partner, but only by
 // the difference, while the gross flow circulates.
-function runGeneralTradeBetween(world, a, b, link, stMap) {
+function runGeneralTradeBetween(world, a, b, link) {
   const minPop = Math.min(a.people, b.people);
   const vol = Math.sqrt(minPop) * TRADE_RATE;
   const transport = link.cost * TRANSPORT_PER_PATHCOST;
-  const intermediates = intermediatesOnPath(link, a.id, b.id, stMap);
+  const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;
   // A's goods sold to B (B pays A), then B's goods sold to A (A pays B).
   // Freight is split across the two legs of the round trip.

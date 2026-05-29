@@ -50,7 +50,15 @@ const SQRT2 = Math.SQRT2;
 // Guaranteed home block (radius in tiles). Always owned by the settlement,
 // stolen from a neighbour if need be. Kept smaller than half the minimum
 // settlement spacing (MIN_SETT_DIST=12) so two cores can never overlap.
-export const CORE_R = 3;
+// Guaranteed home block. Its radius scales with the settlement's TIER, so a
+// hamlet holds only its home cluster while a city commands a broad heartland
+// — that size gap is what reads as a hierarchy on the map, and small village
+// cores let settlements pack in densely without fighting over the same land.
+const CORE_BY_TIER = [1, 2, 3, 4];
+export function coreRadiusFor(s) {
+  const t = s.tier | 0;
+  return CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
+}
 
 class MinHeap {
   constructor(cap = 4096) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap; }
@@ -88,17 +96,25 @@ export function computeTerritory(world) {
     if (o >= 0 && !byId.has(o)) owner[ti] = -1;
   }
 
-  // Guarantee each settlement its core block, carving it from a neighbour
-  // if necessary (a new town founded inside an old realm still gets land).
+  // Guarantee each settlement its (tier-sized) core block, carving it from a
+  // neighbour if necessary. Where two cores overlap (close settlements) the
+  // FIRST to claim a tile this pass keeps it — and since we iterate in the
+  // stable settlement order, the same one always wins, so no flicker.
   const heap = new MinHeap();
+  const coreClaimed = world._coreClaimed && world._coreClaimed.length === N
+    ? world._coreClaimed : (world._coreClaimed = new Int32Array(N));
+  const stamp = (world._coreStamp = (world._coreStamp || 0) + 1);
   for (const s of byId.values()) {
     const sx = s.pos.x | 0, sy = s.pos.y | 0;
-    for (let dy = -CORE_R; dy <= CORE_R; dy++) {
+    const r = coreRadiusFor(s);
+    for (let dy = -r; dy <= r; dy++) {
       const ny = sy + dy; if (ny < 0 || ny >= th) continue;
-      for (let dx = -CORE_R; dx <= CORE_R; dx++) {
+      for (let dx = -r; dx <= r; dx++) {
         const nx = ((sx + dx) % tw + tw) % tw;
         const ti = ny * tw + nx;
         if (elev[ti] <= 0) continue;
+        if (coreClaimed[ti] === stamp) continue;   // already core of an earlier settlement this pass
+        coreClaimed[ti] = stamp;
         owner[ti] = s.id;
       }
     }

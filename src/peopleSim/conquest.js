@@ -85,9 +85,37 @@ export function rebuildCountries(world) {
     const k = best.knowledge || {};
     c.range = RANGE_BASE + (k.organization || 0) * RANGE_ORG + (k.mobility || 0) * RANGE_MOB + (k.navigation || 0) * RANGE_NAV;
     c.hue = ((c.id * 61) % 360 + 360) % 360;
+    buildHierarchy(world, c);
   }
   world.countries = countries;
   return countries;
+}
+
+// Administrative tree inside one country: every settlement answers to the
+// NEAREST larger settlement (one of strictly higher tier), forming the
+// chain village → town → regional city → capital. The capital is the root.
+// Tribute then flows up this chain one level at a time, and the info panel
+// can show the full lineage. Because each liege is strictly higher-tier than
+// its vassal (capital excepted), the pointers can't cycle.
+function buildHierarchy(world, c) {
+  const members = c.members;
+  for (const s of members) { s._vassalCount = 0; s._depth = 0; }
+  for (const s of members) {
+    if (s.id === c.capitalId) { s.liegeId = -1; continue; }
+    const st = s.tier | 0;
+    let best = c.capital, bestD = Infinity;
+    for (const m of members) {
+      if (m === s || (m.tier | 0) <= st) continue;        // liege must be larger
+      const d = dist(world, s.pos.x, s.pos.y, m.pos.x, m.pos.y);
+      if (d < bestD) { bestD = d; best = m; }
+    }
+    s.liegeId = best.id;
+  }
+  // Tally direct vassals (for the "provincial seat" role + display).
+  const byId = new Map(); for (const m of members) byId.set(m.id, m);
+  for (const s of members) {
+    if (s.liegeId >= 0) { const L = byId.get(s.liegeId); if (L) L._vassalCount++; }
+  }
 }
 
 export function updatePolities(world) {
@@ -145,8 +173,13 @@ export function updatePolities(world) {
         if (coin > 0) { c.capital.wealth -= coin; s.wealth = (s.wealth || 0) + coin; }
         continue;                                   // subsidised, not taxed
       }
+      // Tribute flows UP the administrative chain: a village pays its town,
+      // the town its city, the city the capital — so wealth climbs the
+      // hierarchy level by level rather than teleporting to the throne.
+      const liege = (s.liegeId >= 0 && world._byId) ? world._byId.get(s.liegeId) : null;
+      const to = liege && liege.mode === "settled" ? liege : c.capital;
       const give = Math.max(0, s.wealth || 0) * TRIBUTE_FRACTION;
-      if (give > 0) { s.wealth -= give; c.capital.wealth = (c.capital.wealth || 0) + give; }
+      if (give > 0) { s.wealth -= give; to.wealth = (to.wealth || 0) + give; }
     }
   }
 }
