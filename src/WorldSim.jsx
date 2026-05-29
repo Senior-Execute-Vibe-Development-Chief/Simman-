@@ -6319,7 +6319,7 @@ return(
   else if(m>=0.42)era="bronze age";
   else if(m>=0.15)era="chalcolithic";
   // Local resources, sorted by richness, only show ones present.
-  const RES_LABEL={timber:"Timber",stone:"Stone",copper:"Copper",tin:"Tin",iron:"Iron",coal:"Coal",horses:"Horses",salt:"Salt"};
+  const RES_LABEL={timber:"Timber",stone:"Stone",copper:"Copper",tin:"Tin",iron:"Iron",coal:"Coal",horses:"Horses",salt:"Salt",precious:"Precious",gems:"Gems",spices:"Spices",furs:"Furs",incense:"Incense",dyes:"Dyes"};
   const presentRes=Object.entries(r).filter(([,v])=>v>0.10).sort((a,b)=>b[1]-a[1]);
   // Ore-access flags drive the metallurgy "(no ore)/(copper)/.../(steel)"
   // hint — it shows what's POSSIBLE from current local deposits, which

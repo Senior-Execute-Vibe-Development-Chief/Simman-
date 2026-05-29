@@ -109,7 +109,7 @@ function bellFert(t, m, e) {
 // system are downsampled (the worldgen also has precious / oil /
 // gems / salt which feed wealth/trade systems, kept here for future
 // use but not gated on currently).
-const TRACKED_RES = ['timber','stone','copper','tin','iron','coal','horses','salt','precious','gems'];
+const TRACKED_RES = ['timber','stone','copper','tin','iron','coal','horses','salt','precious','gems','spices','furs','incense','dyes'];
 function initDeposits(world, w, deposits) {
   if (!deposits) return;
   const { tw, th, N } = world;

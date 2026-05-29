@@ -79,6 +79,10 @@ const RESOURCE_TIER_VALUE = {
   salt:     [0.6, 0.8, 1.0, 1.0],
   precious: [1.0, 1.2, 1.4, 1.6],  // currency: always wanted, more in later tiers
   gems:     [0.8, 1.0, 1.2, 1.4],
+  spices:   [0.5, 0.8, 1.0, 1.0],  // luxury trade goods: draw settlement, more as wealth grows
+  furs:     [0.5, 0.7, 0.8, 0.8],
+  incense:  [0.4, 0.6, 0.8, 0.8],
+  dyes:     [0.4, 0.6, 0.9, 1.0],
 };
 
 export function maybeCrystallize(world) {

@@ -69,7 +69,7 @@ class MinHeap {
 
 // Resources whose richness we track per territory (gates knowledge + feeds
 // export goods). Precious/gems also feed mining wealth.
-const TERR_RES = ['timber','stone','copper','tin','iron','coal','horses','salt','precious','gems'];
+const TERR_RES = ['timber','stone','copper','tin','iron','coal','horses','salt','precious','gems','spices','furs','incense','dyes'];
 
 export function computeTerritory(world) {
   const { N, tw, th, elev } = world;

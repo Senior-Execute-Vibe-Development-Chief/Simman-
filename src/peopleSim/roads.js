@@ -44,7 +44,7 @@
 
 import { localEdgeCost, baseEdgeCost } from "./transport.js";
 import { computeExportValue, getWealthReserve } from "./settlement.js";
-import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_TOLLS, IN_TARIFFS, OUT_GOODS, OUT_FOOD, OUT_TOLLS, OUT_TARIFFS } from "./money.js";
+import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_TOLLS, IN_TARIFFS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 
 // ── Constants ──────────────────────────────────────────────────────
 const QUALITY_NEW         = 0.25;       // new road: 4× cheaper than plain
@@ -715,6 +715,7 @@ export function updateTrade(world) {
       const peerBefore = peer.wealth || 0;
       runFoodTradeBetween(world, s, peer, link);
       runGeneralTradeBetween(world, s, peer, link);
+      runLuxuryTradeBetween(world, s, peer);
       const net = (peer.wealth || 0) - peerBefore;   // +ve = money toward peer (higher id, end of tiles)
       linkMoney.set(s.id + ":" + peerId, net);
       // Land trade wears its road path (flow drives paving + thickness);
@@ -872,6 +873,31 @@ function runGeneralTradeBetween(world, a, b, link) {
   // Freight is split across the two legs of the round trip.
   sellGoods(world, a, b, computeExportValue(a) * vol, transport * 0.5, intermediates, numInter);
   sellGoods(world, b, a, computeExportValue(b) * vol, transport * 0.5, intermediates, numInter);
+}
+
+// Luxury trade: a wealthy settlement spends coin importing luxury goods
+// (spices/furs/incense/dyes) from a connected region that produces them.
+// Coin flows consumer → producer (high value-to-weight, so no freight cost),
+// bounded each tick by the producer's supply, the consumer's appetite, and
+// what the consumer can afford above its reserve. This is what makes luxury-
+// producing regions prosper and what gives rich cities somewhere to spend.
+function runLuxuryTradeBetween(world, a, b) {
+  luxLeg(a, b);   // a sells to b
+  luxLeg(b, a);   // b sells to a
+}
+function luxLeg(seller, buyer) {
+  const supply = seller._luxSupplyLeft || 0;
+  const demand = buyer._luxDemandLeft || 0;
+  if (supply <= 0.0001 || demand <= 0.0001) return;
+  const affordable = Math.max(0, (buyer.wealth || 0) - getWealthReserve(buyer));
+  const pay = Math.min(supply, demand, affordable);
+  if (pay <= 0.0001) return;
+  buyer.wealth -= pay;
+  seller.wealth = (seller.wealth || 0) + pay;
+  seller._luxSupplyLeft -= pay;
+  buyer._luxDemandLeft -= pay;
+  recordIn(seller, IN_LUXURY, pay);
+  recordOut(buyer, OUT_LUXURY, pay);
 }
 
 // Importing country's capital (the customs collector) when buying foreign

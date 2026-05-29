@@ -15,7 +15,8 @@ export const IN_TOLLS     = 4;   // transit tolls — trade routes passing throu
 export const IN_TARIFFS   = 5;   // customs duties it collects as a capital
 export const IN_TRIBUTE   = 6;   // tribute received from its vassals
 export const IN_AID       = 7;   // colonial support received from the mother country
-const N_IN = 8;
+export const IN_LUXURY    = 8;   // sold luxury goods (spices/furs/incense/dyes) to wealthy buyers
+const N_IN = 9;
 
 // Spending channels.
 export const OUT_GOODS    = 0;   // bought goods (imports)
@@ -27,15 +28,18 @@ export const OUT_TRIBUTE  = 5;   // tribute paid up to its liege
 export const OUT_MILITARY = 6;   // army upkeep
 export const OUT_AID      = 7;   // colonial support sent to its colonies
 export const OUT_COLONY   = 8;   // endowment for a departing colony ship
-const N_OUT = 9;
+export const OUT_LUXURY   = 9;   // bought luxury goods (elite consumption)
+const N_OUT = 10;
 
 export const IN_LABELS = [
   "mining", "goods sold", "food sold", "materials sold",
   "transit tolls", "customs duties", "tribute received", "colonial aid",
+  "luxuries sold",
 ];
 export const OUT_LABELS = [
   "goods bought", "food bought", "construction", "freight & tolls",
   "import duties", "tribute paid", "army upkeep", "colonial aid", "colony ship",
+  "luxuries bought",
 ];
 
 const DECAY = 0.95;   // EMA smoothing (~20-tick window)

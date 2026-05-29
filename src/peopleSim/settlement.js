@@ -69,6 +69,15 @@ const BUILD_RATE          = 0.015;  // housing/tick per construction-weighted bu
 // the realistic village → town → city size hierarchy (rather than every
 // patch of decent land becoming a metropolis).
 const FARM_YIELD_PER_FERT    = 0.02;
+// ── Luxury trade ── Renewable luxury goods (spices/furs/incense/dyes) in a
+// settlement's territory let it EARN coin by selling to wealthy buyers; and a
+// settlement's own wealth drives a DEMAND to import luxuries (elite
+// consumption). The actual coin transfer happens in the trade pass
+// (runLuxuryTradeBetween). Both are expressed directly in coin/tick.
+const LUX_RES = ["spices", "furs", "incense", "dyes"];
+const LUX_SUPPLY_RATE = 4.0;    // coin/tick a region can earn per luxury-unit × √pop
+const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends on luxury/tick
+                                // (so rich hoards drive real luxury demand, not just headcount)
 // Fish: per-tick food a water settlement lands. fishYield = FISH_RATE ×
 // waterAccess × (0.3 + navigation×1.2). A great-river port with a
 // deep-sea fleet (wa≈0.9, nav≈0.8) nets ~12/tk — comparable to a big
@@ -246,6 +255,21 @@ function updateWealth(world, s) {
   // Smoothed mining income, for the money-flow overlay's source markers
   // (mining is the only money entering the system).
   s._minedRate = (s._minedRate || 0) * 0.9 + mined * 0.1;
+  computeLuxury(s);
+}
+
+// Per-tick luxury supply (coin a region can earn selling its luxury goods)
+// and demand (coin the settlement will spend importing luxuries, scaled by
+// how rich it is). Stored as remaining budgets the trade pass draws down.
+function computeLuxury(s) {
+  const lr = s.localRes || {};
+  let luxRes = 0; for (const id of LUX_RES) luxRes += lr[id] || 0;
+  const popF = Math.sqrt(Math.max(1, s.people));
+  s._luxSupply = luxRes * LUX_SUPPLY_RATE * popF;
+  const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
+  s._luxDemand = spare * LUX_SPEND_FRAC;
+  s._luxSupplyLeft = s._luxSupply;   // drawn down across partners in the trade pass
+  s._luxDemandLeft = s._luxDemand;
 }
 export { updateWealth };
 
