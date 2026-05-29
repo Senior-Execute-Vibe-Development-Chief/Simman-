@@ -177,6 +177,7 @@ function buildSnapshot() {
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last
     ships: world.ships ? world.ships.map(sh => ({ x: sh.x, y: sh.y, landTi: sh.landTi, countryId: sh.countryId })) : null,
+    armies: world.armies ? world.armies.map(m => ({ x: m.x, y: m.y, countryId: m.countryId, troops: m.troops })) : null,
     selected,
   }, transfer);
 }

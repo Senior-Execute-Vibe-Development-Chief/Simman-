@@ -5872,6 +5872,19 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       ctx.restore();
     }
   }
+  // ── Marching reinforcement columns ── small chevrons in the realm's colour
+  // moving along roads toward a besieged settlement (size hints troop count).
+  if(psw&&ctx&&psw.armies&&psw.armies.length){
+    const TR=psw.tileRes;
+    for(const m of psw.armies){
+      const mx=m.x*TR,my=dataYtoScreenY(m.y*TR,H,CH);
+      const hue=((m.countryId*61)%360+360)%360;
+      const r=1.8+Math.min(3,Math.sqrt(Math.max(1,m.troops))*0.4);
+      ctx.beginPath();ctx.moveTo(mx,my-r);ctx.lineTo(mx+r,my+r);ctx.lineTo(mx-r,my+r);ctx.closePath();
+      ctx.fillStyle=`hsl(${hue},70%,45%)`;ctx.fill();
+      ctx.lineWidth=0.6;ctx.strokeStyle="rgba(20,10,0,0.85)";ctx.stroke();
+    }
+  }
 }
 },[updateTerrainCache,buildAtlas,CH]);
 
@@ -5888,7 +5901,7 @@ const applySnapshot=useCallback((snap)=>{
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
-  psw.ships=snap.ships;
+  psw.ships=snap.ships;psw.armies=snap.armies;
   const setts=snap.settlements||[];
   if(snap.selected){const sel=setts.find(x=>x.id===snap.selected.id);if(sel)Object.assign(sel,snap.selected);}
   psw.settlements=setts;

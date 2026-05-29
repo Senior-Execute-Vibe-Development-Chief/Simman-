@@ -14,7 +14,7 @@ import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
 import { updatePolities, POLITY_INTERVAL } from "./conquest.js";
-import { musterArmies, advanceFronts, MUSTER_INTERVAL, CONQUEST_INTERVAL } from "./armies.js";
+import { musterArmies, advanceFronts, moveArmies, MUSTER_INTERVAL, CONQUEST_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
 import { foldMoney } from "./money.js";
 
@@ -78,6 +78,7 @@ export function stepPeopleSim(world, n = 1) {
     // heartland is stormed.
     if (world.step % MUSTER_INTERVAL === 0) musterArmies(world);
     if (world.step % CONQUEST_INTERVAL === 0) advanceFronts(world);
+    moveArmies(world);   // marching reinforcement columns advance every tick
     mark("armies");
     // Maritime: colony ships sail every tick; the port→port sea-lane graph
     // (sea trade peers) and overseas colonisation are rebuilt periodically.

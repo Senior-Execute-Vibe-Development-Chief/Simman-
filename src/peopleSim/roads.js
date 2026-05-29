@@ -986,7 +986,7 @@ const SQRT2 = Math.SQRT2;
 // a per-call stamp avoids both Map overhead and any O(N) clear. Hundreds of
 // these run each road-plan cycle, so this is the hot primitive.
 const FP_MIN_STEP = 0.02;   // cheapest an edge can ever cost (worn road × max tech) — keeps h admissible
-function findPath(world, s, t) {
+export function findPath(world, s, t) {
   const { tw, th, elev, N } = world;
   const start = (s.pos.y | 0) * tw + (s.pos.x | 0);
   const goal  = (t.pos.y | 0) * tw + (t.pos.x | 0);

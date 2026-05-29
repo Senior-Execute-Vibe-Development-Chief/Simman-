@@ -17,6 +17,7 @@
 
 import { coreRadiusFor } from "./territory.js";
 import { recordOut, OUT_MILITARY } from "./money.js";
+import { findPath } from "./roads.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
 // population (capped by tier — villages keep a token watch, cities/capitals
@@ -59,6 +60,88 @@ function techMul(s) {
   return 1 + (k.metallurgy || 0) * 1.5 + (k.mobility || 0) * 0.8;
 }
 function might(s) { return (s.army || 0) * techMul(s); }
+
+// ── Marching reinforcements ──
+// When a settlement is besieged, its realm-mates detach part of their garrison
+// and MARCH it to the front along roads (slow over wilderness, fast on roads),
+// arriving after a real transit delay. So a small frontier town gets overrun
+// before help comes, while a connected capital can relieve a siege — and the
+// senders are weakened while their troops are away. Modelled as moving units
+// (world.armies), same as colony ships.
+const MARCH_SPEED        = 0.6;   // base path-tiles advanced per tick
+const ROAD_MARCH_MULT    = 2.5;   // marching along a road is this much faster
+const REINFORCE_SEND_FRAC = 0.4;  // fraction of a sender's garrison dispatched
+const REINFORCE_COOLDOWN  = 200;  // ticks before a settlement sends again
+const REINFORCE_MAX_SENDERS = 5;  // nearest realm-mates that respond to one siege
+const REINFORCE_MIN_ARMY  = 3;    // a sender needs at least this many troops to bother
+const MAX_MARCHES         = 240;  // global cap on in-flight columns (perf)
+
+function distTiles(world, ax, ay, bx, by) {
+  let dx = Math.abs(ax - bx); if (dx > world.tw / 2) dx = world.tw - dx;
+  const dy = ay - by; return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Each besieged settlement calls its nearest realm-mates to march troops in.
+function dispatchReinforcements(world, besieged) {
+  if (!world.armies) world.armies = [];
+  if (world.armies.length >= MAX_MARCHES) return;
+  const tw = world.tw;
+  for (const def of besieged) {
+    const senders = [];
+    for (const m of world.settlements) {
+      if (m.mode !== "settled" || m.id === def.id) continue;
+      if (m.countryId !== def.countryId) continue;
+      if ((m.army || 0) < REINFORCE_MIN_ARMY) continue;
+      if (world.step - (m._lastReinforce ?? -Infinity) < REINFORCE_COOLDOWN) continue;
+      senders.push({ m, d: distTiles(world, m.pos.x, m.pos.y, def.pos.x, def.pos.y) });
+    }
+    senders.sort((a, b) => a.d - b.d);
+    let sent = 0;
+    for (const { m } of senders) {
+      if (sent >= REINFORCE_MAX_SENDERS || world.armies.length >= MAX_MARCHES) break;
+      const path = findPath(world, m, def);          // road-aware route (none → can't relieve)
+      if (!path || path.tiles.length < 2) continue;
+      const troops = (m.army || 0) * REINFORCE_SEND_FRAC;
+      if (troops < 1) continue;
+      m.army -= troops;                               // committed: gone from home until they arrive
+      m._lastReinforce = world.step;
+      world.armies.push({
+        owner: m.id, countryId: m.countryId, troops, targetId: def.id,
+        path: path.tiles.map(ti => ({ x: (ti % tw) + 0.5, y: ((ti / tw) | 0) + 0.5 })),
+        idx: 0, x: m.pos.x, y: m.pos.y,
+      });
+      sent++;
+    }
+  }
+}
+
+// ── Per tick: advance every marching column; merge into the garrison on arrival ──
+export function moveArmies(world) {
+  const arr = world.armies;
+  if (!arr || arr.length === 0) return;
+  const { tw, th, roadQuality: rq } = world;
+  const live = [];
+  for (const m of arr) {
+    const path = m.path;
+    const ti = (Math.max(0, Math.min(th - 1, m.y | 0))) * tw + (((m.x | 0) % tw + tw) % tw);
+    const onRoad = rq && rq[ti] < 1.0;
+    m.idx += MARCH_SPEED * (onRoad ? ROAD_MARCH_MULT : 1);
+    if (!path || path.length < 2 || m.idx >= path.length - 1) {
+      // Arrived: the column joins its target's garrison (if it still stands
+      // and is still friendly). Otherwise the relief force is lost.
+      const def = world._byId ? world._byId.get(m.targetId) : null;
+      if (def && def.mode === "settled" && def.countryId === m.countryId) def.army = (def.army || 0) + m.troops;
+      continue;
+    }
+    const i0 = m.idx | 0, i1 = Math.min(path.length - 1, i0 + 1), fr = m.idx - i0;
+    const p0 = path[i0], p1 = path[i1];
+    let dxp = p1.x - p0.x; if (dxp > tw / 2) dxp -= tw; else if (dxp < -tw / 2) dxp += tw;
+    m.x = ((p0.x + dxp * fr) % tw + tw) % tw;
+    m.y = Math.max(0, Math.min(th - 1, p0.y + (p1.y - p0.y) * fr));
+    live.push(m);
+  }
+  world.armies = live;
+}
 
 function armyCapFrac(world, s) {
   let f = ARMY_TIER_FRAC[s.tier | 0] ?? ARMY_TIER_FRAC[0];
@@ -142,6 +225,12 @@ export function advanceFronts(world) {
     if (distHome <= assaultDist) pc.canStorm = true;         // front at the heartland
     else pc.tiles.push({ ti, distHome });                    // capturable countryside
   }
+
+  // Realm-mates march to relieve every settlement under attack (over transit
+  // time — see dispatchReinforcements / moveArmies).
+  const besieged = new Set();
+  for (const pc of pairs.values()) besieged.add(pc.def);
+  if (besieged.size) dispatchReinforcements(world, besieged);
 
   // Resolve each front: besiege the city if the front reached its
   // heartland; otherwise grind the countryside forward, tile by tile.
