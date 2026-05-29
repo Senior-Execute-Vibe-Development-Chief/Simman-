@@ -18,9 +18,17 @@
 import { coreRadiusFor } from "./territory.js";
 import { recordOut, OUT_MILITARY } from "./money.js";
 
-const ARMY_FRACTION = 0.08;   // garrison cap as a fraction of population
+// Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
+// population (capped by tier — villages keep a token watch, cities/capitals
+// field real armies). The garrison also EATS (provisioning, in updateFood),
+// so a settlement that can't cover that food drains its granary and the army
+// DESERTS — you can't field more troops than you can feed. Coin upkeep is now
+// a small secondary cost (pay/equipment), not the binding constraint.
+const ARMY_TIER_FRAC = [0.02, 0.05, 0.09, 0.11];  // garrison cap as fraction of pop, by tier
+const ARMY_CAPITAL_BONUS = 0.03;                  // the capital fields a bit more
 const ARMY_GROW     = 0.05;   // growth toward the cap per muster
-const UPKEEP_PER    = 0.4;    // wealth per soldier per muster
+const ARMY_DESERT   = 0.80;   // when food-starved, the garrison melts to this each muster
+const UPKEEP_PER    = 0.12;   // wealth per soldier per muster (small; food is the real cost)
 export const MUSTER_INTERVAL   = 100;
 export const CONQUEST_INTERVAL = 50;
 // A freshly stormed settlement is PACIFIED for this long: it can't be
@@ -52,16 +60,36 @@ function techMul(s) {
 }
 function might(s) { return (s.army || 0) * techMul(s); }
 
-// ── Periodic: grow + pay garrisons ──
+function armyCapFrac(world, s) {
+  let f = ARMY_TIER_FRAC[s.tier | 0] ?? ARMY_TIER_FRAC[0];
+  const c = world.countries && world.countries.get(s.countryId);
+  if (c && c.capitalId === s.id) f += ARMY_CAPITAL_BONUS;   // the capital fields a bit more
+  return f;
+}
+
+// ── Periodic: grow + provision garrisons ──
 export function musterArmies(world) {
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
-    const cap = s.people * ARMY_FRACTION;
-    s.army = (s.army || 0) + (cap - (s.army || 0)) * ARMY_GROW;
+    // Can the settlement actually FEED its garrison? The signal is an
+    // UNCOVERED food deficit — local production + grain imports falling short
+    // of total demand (which includes the garrison's provisioning). Low STORED
+    // food isn't enough (import-fed towns always run their granary near empty);
+    // only a real shortfall starves the army into desertion. Fed settlements
+    // grow their garrison to the tier/political cap. This is the soft "can't
+    // field more than you can feed" limit.
+    const fed = (s._foodSupply || 0) + (s._foodImportRate || 0);
+    if (fed < (s._foodDemand || 0) * 0.98) {
+      s.army = (s.army || 0) * ARMY_DESERT;
+    } else {
+      const popCap = s.people * armyCapFrac(world, s);   // tier/political limit
+      s.army = (s.army || 0) + (popCap - (s.army || 0)) * ARMY_GROW;
+    }
     if (s.army < 0) s.army = 0;
+    // Small coin upkeep (pay/equipment) — a minor sink, no longer the gate.
     const cost = s.army * UPKEEP_PER;
     if ((s.wealth || 0) >= cost) { s.wealth -= cost; recordOut(s, OUT_MILITARY, cost); }
-    else { s.army = (s.wealth || 0) / UPKEEP_PER; recordOut(s, OUT_MILITARY, s.wealth || 0); s.wealth = 0; }   // disband the unpaid
+    else { recordOut(s, OUT_MILITARY, s.wealth || 0); s.wealth = 0; }   // can't fully pay: army stays (food-fed), treasury drained
   }
 }
 

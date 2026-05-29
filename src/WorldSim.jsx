@@ -6455,6 +6455,10 @@ return(
             :<><span className="au-fade">· can't grow</span><span style={{color:"#c84"}}>{s._devReason==="space"?"no room (built out)":s._devReason==="materials"?"no timber/stone":s._devReason==="coin"?"can't afford materials":"—"}</span></>)}
           {limitedBy==="food"&&houseK>foodK*1.05&&(<><span className="au-fade">· could house</span><span className="au-fade">{Math.round(houseK)} if fed</span></>)}
           {nextThr&&<><span className="au-fade">To next tier</span><span>{Math.round(s.people)}/{nextThr}</span></>}
+          {(s.army||0)>0.5&&(<>
+            <span className="au-fade">Garrison</span>
+            <span>{Math.round(s.army)} <span className="au-fade" style={{fontSize:9}}>({((s.army||0)/Math.max(1,s.people)*100).toFixed(1)}% of pop · fed from food)</span></span>
+          </>)}
         </div>
       </PsSection>
 

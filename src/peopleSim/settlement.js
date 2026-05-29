@@ -74,6 +74,9 @@ const FARM_YIELD_PER_FERT    = 0.02;
 // settlement's own wealth drives a DEMAND to import luxuries (elite
 // consumption). The actual coin transfer happens in the trade pass
 // (runLuxuryTradeBetween). Both are expressed directly in coin/tick.
+// ── Army food cost ── A garrison consumes extra food (provisioning); it's
+// sized against the food surplus in musterArmies so the granary stays positive.
+export const ARMY_FOOD        = 0.003;  // extra food per soldier per tick (provisioning, above civilian)
 const LUX_RES = ["spices", "furs", "incense", "dyes"];
 const LUX_SUPPLY_RATE = 4.0;    // coin/tick a region can earn per luxury-unit × √pop
 const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends on luxury/tick
@@ -344,7 +347,10 @@ export function computeExportValue(s) {
   // 25 ppl  → +0.14    1k ppl   → +0.30
   // 100 ppl → +0.20    10k ppl  → +0.40
   v += Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10);
-  return v;
+  // Soldiers don't produce trade goods — a heavily militarised settlement
+  // exports less (the workforce is under arms, not at the loom/forge).
+  const armyFrac = (s.army || 0) / Math.max(1, s.people);
+  return v * Math.max(0.1, 1 - armyFrac);
 }
 
 // Wealth reserve = "rainy day fund" the settlement holds back from
@@ -691,11 +697,19 @@ function updateFood(world, s) {
   //   pop 1000  → 1.30
   //   pop 10000 → 1.40
   const urbanFactor = 1 + Math.log10(Math.max(10, s.people)) / 10;
-  const demand = s.people * 0.0030 * urbanFactor;
+  const civDemand = s.people * 0.0030 * urbanFactor;
+  // The garrison eats too — extra rations/fodder above the civilian rate
+  // (provisioning). This is the food cost of a standing army: a big garrison
+  // burns the food surplus that would otherwise fill granaries / grow the
+  // town (guns vs. butter). The army is SIZED against this surplus in
+  // musterArmies, so the granary still nets positive in steady state.
+  const armyFood = (s.army || 0) * ARMY_FOOD;
+  const demand = civDemand + armyFood;
   // Expose rates so the food-trade pass can compute surplus/deficit
   // per road without recomputing forage + farmland sums.
   s._foodSupply = supply;
-  s._foodDemand = demand;
+  s._foodDemand = demand;          // total (civilian + garrison) — drains the granary
+  s._civFoodDemand = civDemand;    // civilian only — army sizing reads this
   s._urbanFactor = urbanFactor;
   s.food += supply - demand;
 

@@ -794,8 +794,12 @@ function foodSurplus(s) {
 // still has housing headroom to fill.
 function foodAppetite(s) {
   const headroom = (s._houseK || 0) - s.people;
-  if (headroom <= 0) return 0;
-  return headroom * 0.003 * (s._urbanFactor || 1);
+  const growthNeed = headroom > 0 ? headroom * 0.003 * (s._urbanFactor || 1) : 0;
+  // Also import enough to cover any CURRENT shortfall between local supply and
+  // total demand (which now includes garrison provisioning) — that's how a
+  // city feeds a standing army it can't grow the food for locally.
+  const deficit = Math.max(0, (s._foodDemand || 0) - (s._foodSupply || 0));
+  return growthNeed + deficit;
 }
 function runFoodTradeBetween(world, a, b, link) {
   const aSurplus = foodSurplus(a), bSurplus = foodSurplus(b);
