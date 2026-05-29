@@ -102,6 +102,7 @@ function packSelected(s) {
     _minedRate: s._minedRate, _terrTiles: s._terrTiles, _terrFertSum: s._terrFertSum,
     waterAccess: s.waterAccess, _fishYield: s._fishYield,
     _foodSupply: s._foodSupply, _foodDemand: s._foodDemand, _urbanFactor: s._urbanFactor,
+    food: s.food, _foodImportRate: s._foodImportRate,
     _developRate: s._developRate, _devReason: s._devReason, _housingPressed: s._housingPressed,
     _houseK: s._houseK, _foodK: s._foodK,
     _mInRate: s._mInRate, _mOutRate: s._mOutRate,
