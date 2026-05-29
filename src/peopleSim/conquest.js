@@ -13,10 +13,28 @@
 // re-taken, making the borders flicker.
 
 import { CONQUEST_GRACE } from "./armies.js";
-import { recordIn, recordOut, IN_TRIBUTE, IN_AID, OUT_TRIBUTE, OUT_AID } from "./money.js";
+import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.js";
 
 const POLITY_INTERVAL  = 150;   // ticks between polity passes
-const TRIBUTE_FRACTION = 0.06;  // share of a member's wealth sent to the capital each pass
+const TRIBUTE_FRACTION = 0.06;  // share of a member's wealth taxed into the state treasury each pass
+
+// ── Government treasury (fiscal redistribution) ───────────────────────
+// The realm's coin is taxed into a GOVERNMENT treasury (not the capital
+// city's own purse) and spent straight back out — army pay to the garrisons,
+// public works to the provinces. Because the state taxes and spends at the
+// same high bandwidth (it touches every member directly, unlike throughput-
+// limited trade), a roughly balanced budget keeps coin circulating to the
+// periphery instead of pooling at the throne. Treasury lives in
+// world.governments keyed by countryId (stable across capital changes).
+const ARMY_WAGE   = 5;   // coin per soldier per polity pass — the dominant state expense + bankruptcy gate
+const GOV_RESERVE = 0;   // war-chest kept between passes (0 = spend it all → perfectly balanced for now)
+
+export function govOf(world, countryId) {
+  if (!world.governments) world.governments = new Map();
+  let g = world.governments.get(countryId);
+  if (!g) { g = { treasury: 0, _revenue: 0, _spend: 0 }; world.governments.set(countryId, g); }
+  return g;
+}
 
 // ── Control budget (overextension) ───────────────────────────────────
 // An empire holds its provinces out of a finite CONTROL BUDGET projected
@@ -240,6 +258,16 @@ function secedeContagious(world, c, seeds) {
 // armies.js the moment a capital is stormed. The conqueror (excludeId) keeps
 // only the captured throne-city; everything else fragments.
 export function fragmentRealm(world, oldId, excludeId) {
+  // The conqueror sacks the treasury — the fallen state's war-chest is seized
+  // into the victor's coffers (keeps the coin conserved + a great war prize).
+  if (world.governments) {
+    const dead = world.governments.get(oldId);
+    if (dead && dead.treasury > 0) {
+      const conqId = world._byId ? (world._byId.get(excludeId) || {}).countryId : null;
+      if (conqId != null) govOf(world, conqId).treasury += dead.treasury;
+      dead.treasury = 0;
+    }
+  }
   const survivors = [];
   for (const s of world.settlements) {
     if (s.mode === "settled" && s.countryId === oldId && s.id !== excludeId) survivors.push(s);
@@ -307,6 +335,53 @@ function declareIndependence(world, c, seed) {
     m.loyalty = m === seed ? 1 : 0.9;            // vassals are committed to their lord's new realm
     if (m.history) m.history.push({ step: world.step, type: m === seed ? "declared-independence" : "followed-lord", to: newId });
   }
+}
+
+// Spend the treasury back down to its reserve, in priority order: army pay
+// first (the dominant historical line + the bankruptcy gate), then public
+// works / dole to the PROVINCES. Lands coin on the periphery (garrisons +
+// non-capital towns), which then relays it onward via trade.
+function disburseTreasury(world, c, gov) {
+  let budget = gov.treasury - GOV_RESERVE;
+  if (budget <= 0.01) { gov._spend *= 0.9; return; }
+  const members = c.members;
+  let spent = 0;
+
+  // 1. ARMY PAY — to garrisoned settlements, in proportion to garrison size.
+  let totalArmy = 0;
+  for (const s of members) if (s.countryId === c.id) totalArmy += s.army || 0;
+  if (totalArmy > 0) {
+    const armyPay = Math.min(budget, totalArmy * ARMY_WAGE);
+    for (const s of members) {
+      if (s.countryId !== c.id || !(s.army > 0)) continue;
+      const share = armyPay * (s.army / totalArmy);
+      s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
+    }
+    spent += armyPay; budget -= armyPay;
+  }
+
+  // 2. PUBLIC WORKS / DOLE — the rest to the provinces (non-capital members),
+  // weighted by population, with a boost for towns that are building or short
+  // of food (infrastructure + grain relief).
+  if (budget > 0.01) {
+    let totW = 0;
+    for (const s of members) {
+      if (s.countryId !== c.id || s.id === c.capitalId) continue;
+      const boost = (s._housingPressed ? 0.5 : 0) + ((s._foodDemand || 0) > (s._foodSupply || 0) ? 0.5 : 0);
+      s._govW = Math.max(0, s.people || 0) * (1 + boost);
+      totW += s._govW;
+    }
+    if (totW > 0) {
+      for (const s of members) {
+        if (s.countryId !== c.id || s.id === c.capitalId) continue;
+        const share = budget * (s._govW / totW);
+        s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
+      }
+      spent += budget; budget = 0;
+    }
+  }
+  gov.treasury -= spent;
+  gov._spend = gov._spend * 0.9 + spent * 0.1;
 }
 
 export function updatePolities(world) {
@@ -424,11 +499,13 @@ export function updatePolities(world) {
       if (s._ambition >= 1) declareIndependence(world, c, s);
     }
 
-    // ── Tribute / colonial support ──
-    // Established members send a slice of wealth up to the capital. A YOUNG
-    // colony instead RECEIVES support — food and coin shipped from the
-    // mother country — so it survives its first years instead of starving
-    // on a raw frontier (exactly how real colonies were kept alive).
+    // ── State finances: tax members into the treasury, then spend it back ──
+    // REVENUE: each established member pays tribute (the state tax) into the
+    // GOVERNMENT treasury — not the capital city's private purse. (Customs
+    // duties were already paid into the treasury during the trade pass.) A
+    // YOUNG colony instead RECEIVES support (food from the capital's granary +
+    // coin from the treasury) until it matures, so a raw frontier survives.
+    const gov = govOf(world, c.id);
     for (const s of c.members) {
       if (s.id === c.capitalId || s.countryId !== c.id) continue;
       const youngColony = s.parentSettlementId >= 0 &&
@@ -436,17 +513,24 @@ export function updatePolities(world) {
       if (youngColony) {
         const food = Math.min(COLONY_SUPPLY_FOOD, Math.max(0, (c.capital.food || 0) - 20));
         if (food > 0) { c.capital.food -= food; s.food = (s.food || 0) + food; }
-        const coin = Math.min(COLONY_SUPPLY_COIN, Math.max(0, c.capital.wealth || 0));
-        if (coin > 0) { c.capital.wealth -= coin; s.wealth = (s.wealth || 0) + coin; recordOut(c.capital, OUT_AID, coin); recordIn(s, IN_AID, coin); }
+        const coin = Math.min(COLONY_SUPPLY_COIN, Math.max(0, gov.treasury));
+        if (coin > 0) { gov.treasury -= coin; s.wealth = (s.wealth || 0) + coin; recordIn(s, IN_AID, coin); }
         continue;                                   // subsidised, not taxed
       }
-      // Tribute flows UP the administrative chain: a village pays its town,
-      // the town its city, the city the capital — so wealth climbs the
-      // hierarchy level by level rather than teleporting to the throne.
-      const liege = (s.liegeId >= 0 && world._byId) ? world._byId.get(s.liegeId) : null;
-      const to = liege && liege.mode === "settled" ? liege : c.capital;
       const give = Math.max(0, s.wealth || 0) * TRIBUTE_FRACTION;
-      if (give > 0) { s.wealth -= give; to.wealth = (to.wealth || 0) + give; recordOut(s, OUT_TRIBUTE, give); recordIn(to, IN_TRIBUTE, give); }
+      if (give > 0) { s.wealth -= give; gov.treasury += give; gov._revenue += give; recordOut(s, OUT_TRIBUTE, give); }
     }
+    // EXPENDITURE: spend the treasury back out (army pay → garrisons, then
+    // works/dole → provinces). Balanced budget ⇒ the throne stops hoarding.
+    disburseTreasury(world, c, gov);
+    c._treasury = gov.treasury;
+    c._govRevenue = gov._revenue; gov._revenue = 0;   // per-pass revenue, for the panel
+    c._govSpend = gov._spend;
+  }
+
+  // Drop treasuries of realms that no longer exist (conquest seizure already
+  // moved the coin of conquered capitals; this just stops the map growing).
+  if (world.governments) {
+    for (const id of world.governments.keys()) if (!countries.has(id)) world.governments.delete(id);
   }
 }

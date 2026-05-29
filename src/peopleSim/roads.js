@@ -44,7 +44,8 @@
 
 import { localEdgeCost, baseEdgeCost } from "./transport.js";
 import { computeExportValue, getWealthReserve } from "./settlement.js";
-import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_TOLLS, IN_TARIFFS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
+import { govOf } from "./conquest.js";
+import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 
 // ── Constants ──────────────────────────────────────────────────────
 const QUALITY_NEW         = 0.25;       // new road: 4× cheaper than plain
@@ -155,6 +156,13 @@ const HAVE_THRESHOLD = 0.10;
 
 // Trade flow rates (same as old model so dynamics carry over).
 const TRADE_RATE                   = 0.025;
+// Wealth-scaled demand: a settlement holding coin above its reserve imports
+// MORE (its buying power, not just its headcount, drives consumption). This is
+// what stops a windfall (mining, state pay, a tax hoard) from sitting idle —
+// a rich node relays it onward by buying more from its neighbours. Capped so
+// it lubricates circulation without exploding trade volume.
+const DEMAND_WEALTH_REF            = 4000;   // spare wealth that adds +1× import demand
+const DEMAND_WEALTH_CAP            = 6;      // a very rich buyer imports up to (1+cap)× as much
 const TRANSPORT_PER_PATHCOST       = 0.012;
 const FOOD_PRICE                   = 5;
 const FOOD_TRANSPORT_PER_PATHCOST  = 0.005;
@@ -867,6 +875,11 @@ function runFoodTradeBetween(world, a, b, link) {
 // reserve and freezing — that's the velocity that keeps money moving.
 // Net wealth still drifts toward the higher-export partner, but only by
 // the difference, while the gross flow circulates.
+function demandMul(buyer) {
+  const spare = (buyer.wealth || 0) - getWealthReserve(buyer);
+  if (spare <= 0) return 1;
+  return 1 + Math.min(DEMAND_WEALTH_CAP, spare / DEMAND_WEALTH_REF);
+}
 function runGeneralTradeBetween(world, a, b, link) {
   const minPop = Math.min(a.people, b.people);
   const vol = Math.sqrt(minPop) * TRADE_RATE;
@@ -874,9 +887,10 @@ function runGeneralTradeBetween(world, a, b, link) {
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;
   // A's goods sold to B (B pays A), then B's goods sold to A (A pays B).
-  // Freight is split across the two legs of the round trip.
-  sellGoods(world, a, b, computeExportValue(a) * vol, transport * 0.5, intermediates, numInter);
-  sellGoods(world, b, a, computeExportValue(b) * vol, transport * 0.5, intermediates, numInter);
+  // Each leg scales with the BUYER's buying power, so a rich node imports more
+  // and relays its coin onward. Freight is split across the two legs.
+  sellGoods(world, a, b, computeExportValue(a) * vol * demandMul(b), transport * 0.5, intermediates, numInter);
+  sellGoods(world, b, a, computeExportValue(b) * vol * demandMul(a), transport * 0.5, intermediates, numInter);
 }
 
 // Luxury trade: a wealthy settlement spends coin importing luxury goods
@@ -939,7 +953,9 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
     const tollPer = goodsValue * TOLL_RATE * scale;
     for (const inter of intermediates) { inter.wealth = (inter.wealth || 0) + tollPer; recordIn(inter, IN_TOLLS, tollPer); }
   }
-  if (collector) { collector.wealth = (collector.wealth || 0) + tariff * scale; recordIn(collector, IN_TARIFFS, tariff * scale); recordOut(buyer, OUT_TARIFFS, tariff * scale); }
+  // Customs duty funds the importing realm's STATE TREASURY (not the capital
+  // city's purse) — the government then redistributes it (conquest.js).
+  if (collector) { govOf(world, buyer.countryId).treasury += tariff * scale; recordOut(buyer, OUT_TARIFFS, tariff * scale); }
   // Conservation: buyer loses `actual` = goodsValue*scale (to seller)
   // + totalToll*scale (to intermediates) + tariff*scale (to the state)
   // + freight*scale (consumed).

@@ -5910,7 +5910,7 @@ const applySnapshot=useCallback((snap)=>{
   for(const c of (snap.countries||[])){
     const members=c.memberIds.map(id=>byId.get(id)).filter(Boolean);
     const capital=byId.get(c.capitalId)||members[0]||null;
-    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged});
+    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend});
   }
   psw.countries=countries;
   // HUD state updates re-render the whole component, so throttle them to ~5Hz
@@ -6424,11 +6424,20 @@ return(
           let strain="";
           if(ctry._capitalBesieged)strain=" · capital besieged";
           else if((ctry._fronts||0)>1)strain=` · ${ctry._fronts}-front war`;
+          const treas=ctry._treasury;
           return(
+            <>
             <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
               <span style={{width:9,height:9,borderRadius:2,background:over?"hsl(8,70%,52%)":"hsl(140,45%,45%)",flexShrink:0}}/>
               <span className="au-fade">control {load.toFixed(1)}/{cap.toFixed(1)} ({pct}%){over?" · over-extended":""}{strain}</span>
             </div>
+            {treas!=null&&(
+              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+                <span style={{width:9,height:9,borderRadius:2,background:"hsl(48,65%,48%)",flexShrink:0}}/>
+                <span className="au-fade">state treasury ${Math.round(treas)}{ctry._govSpend>0.01?` · spends ${ctry._govSpend.toFixed(0)}/pass`:""}</span>
+              </div>
+            )}
+            </>
           );
         }
         const loy=s.loyalty;

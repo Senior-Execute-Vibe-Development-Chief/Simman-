@@ -16,7 +16,8 @@ export const IN_TARIFFS   = 5;   // customs duties it collects as a capital
 export const IN_TRIBUTE   = 6;   // tribute received from its vassals
 export const IN_AID       = 7;   // colonial support received from the mother country
 export const IN_LUXURY    = 8;   // sold luxury goods (spices/furs/incense/dyes) to wealthy buyers
-const N_IN = 9;
+export const IN_STATE_PAY  = 9;   // received from the state treasury (army pay / public works / dole)
+const N_IN = 10;
 
 // Spending channels.
 export const OUT_GOODS    = 0;   // bought goods (imports)
@@ -34,7 +35,7 @@ const N_OUT = 10;
 export const IN_LABELS = [
   "mining", "goods sold", "food sold", "materials sold",
   "transit tolls", "customs duties", "tribute received", "colonial aid",
-  "luxuries sold",
+  "luxuries sold", "state pay",
 ];
 export const OUT_LABELS = [
   "goods bought", "food bought", "construction", "freight & tolls",
