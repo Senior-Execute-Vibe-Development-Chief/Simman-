@@ -52,6 +52,17 @@ const QUALITY_MAX         = 0.08;       // worn arterial: 12× cheaper
 const PLAN_INTERVAL       = 240;        // ticks between road-planning attempts
 const MIN_POP_TO_PLAN     = 60;
 const MAX_REACH_VISITS    = 8000;       // BFS visit cap for trade-reach computation
+// Each settlement trades only with its NEAREST few road-connected peers.
+// Without this, a settlement in a large connected landmass reaches almost
+// every other settlement, so the trade pass (and the per-tick reach loops)
+// degrade to O(settlements²) — that quadratic blow-up is what makes the sim
+// start fast and then rapidly bog down as the network fuses. Capping reach
+// keeps trade O(settlements × MAX_PARTNERS), and lets the Dijkstra stop as
+// soon as it has found this many peers (they come out nearest-first), which
+// also slashes the periodic reach-rebuild cost. Distant partners contributed
+// almost nothing anyway — transport cost already throttled their volume to a
+// trickle.
+const MAX_PARTNERS        = 20;
 // Caps on full-path A* evaluations per settlement per plan cycle.
 // Candidates are ranked by (cheap) trade benefit first; only this many
 // get a real path computed, so the cost is bounded regardless of how
@@ -324,7 +335,9 @@ function computeReach(world, s, stMap) {
       const link = { cost: d, tiles };
       link.inter = intermediatesOnPath(link, s.id, peer.id, stMap);
       reach.set(peer.id, link);
-      // Continue — there may be more peers further along this branch.
+      // Peers arrive nearest-first (Dijkstra pops min cost), so once we have
+      // MAX_PARTNERS we've got the closest ones — stop early.
+      if (reach.size >= MAX_PARTNERS) break;
     }
     // Expand to 8-neighbours that are roads or settlement tiles.
     // Diagonal step cost is multiplied by √2 to match the real

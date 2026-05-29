@@ -464,6 +464,15 @@ const KTRACKS = ["foraging","toolmaking","agriculture","construction","organizat
 // closed per tick — technology transfer by contact. ~1/0.0006 ≈ 1700
 // ticks to largely absorb a neighbour's lead.
 const DIFFUSE_RATE = 0.0006;
+// The two reach-iterating parts of updateKnowledge (folding in trade-reach
+// resources, and diffusing technique from neighbours) are recomputed only
+// every KNOW_INTERVAL ticks per settlement — staggered by id so the cost
+// spreads evenly across ticks instead of every settlement paying it every
+// tick. Knowledge and resource availability drift far too slowly for the
+// per-tick recompute to matter; rates are scaled up to keep the average
+// pace identical. This is the single biggest per-tick cost as the trade
+// network grows (it was O(reach) × every settlement × every tick).
+const KNOW_INTERVAL = 8;
 //
 // ── Resource-gated knowledge growth ──
 //
@@ -485,8 +494,10 @@ function updateKnowledge(world, s) {
   const k = s.knowledge;
   // Trade brings remote resources into the local tech equation —
   // a copper-poor settlement connected by road to a copper-rich one
-  // can advance to chalcolithic on imported ore.
-  const r = effectiveLocalRes(world, s);
+  // can advance to chalcolithic on imported ore. Cached and refreshed
+  // only every KNOW_INTERVAL ticks (resource availability drifts slowly).
+  if (!s._effRes || (world.step + s.id) % KNOW_INTERVAL === 0) s._effRes = effectiveLocalRes(world, s);
+  const r = s._effRes;
   const wa = s.waterAccess || 0;
   const fc = s._terrTiles || 0;
   const pop = s.people;
@@ -569,7 +580,11 @@ function updateKnowledge(world, s) {
   // capped by what THIS site can actually practise (ore tier / water /
   // horses) — you can hear how iron is worked, but still need iron to do
   // it.
-  if (s._tradeReach && s._tradeReach.size > 0 && world._byId) {
+  // Diffusion is throttled to every KNOW_INTERVAL ticks (staggered by id),
+  // with the rate scaled up to match — technique spreads over ~1700 ticks,
+  // so an 8-tick cadence is indistinguishable while costing 8× less.
+  if (s._tradeReach && s._tradeReach.size > 0 && world._byId
+      && (world.step + s.id) % KNOW_INTERVAL === 0) {
     const km = { foraging:0, toolmaking:0, agriculture:0, construction:0,
                  organization:0, metallurgy:0, navigation:0, mobility:0, literacy:0 };
     let any = false;
@@ -585,7 +600,7 @@ function updateKnowledge(world, s) {
       if (wa <= 0) km.navigation = 0;
       if (horses <= horsesThr) km.mobility = 0;
       const litMul = 1 + (k.literacy || 0) * 2;     // literate cultures absorb 1–3× faster
-      const rate = DIFFUSE_RATE * litMul;
+      const rate = DIFFUSE_RATE * KNOW_INTERVAL * litMul;
       for (const t of KTRACKS) {
         const gap = km[t] - k[t];
         if (gap > 0) k[t] = clamp01(k[t] + rate * gap);
@@ -723,21 +738,28 @@ function updateDevelopment(world, s) {
   const room = Math.min(foodK, space) - houseK;
   if (room <= 0) { s._devReason = "space"; return; }   // built out the site
 
-  // MATERIALS gate: timber + stone, local or from a trade partner.
+  // MATERIALS gate: timber + stone, local or from a trade partner. The
+  // partner aggregate (best supplier + total supply weight) drifts slowly,
+  // so it's cached and refreshed only every KNOW_INTERVAL ticks (staggered)
+  // rather than re-walking the whole reach every tick a town is building.
   const own = s.localRes || {};
   const localMat = (own.timber || 0) + (own.stone || 0);
   const partnerWeight = p => { const pr = p.localRes || {}; return (pr.timber || 0) + (pr.stone || 0) + 0.05; };
-  let bestPartnerMat = 0, totalW = 0;
-  if (s._tradeReach && world._byId) {
-    for (const pid of s._tradeReach.keys()) {
-      const p = world._byId.get(pid);
-      if (!p || p.mode !== "settled") continue;
-      const pr = p.localRes || {};
-      const pm = (pr.timber || 0) + (pr.stone || 0);
-      if (pm > bestPartnerMat) bestPartnerMat = pm;
-      totalW += partnerWeight(p);
+  if (!s._devMat || (world.step + s.id) % KNOW_INTERVAL === 0) {
+    let bpm = 0, tw = 0;
+    if (s._tradeReach && world._byId) {
+      for (const pid of s._tradeReach.keys()) {
+        const p = world._byId.get(pid);
+        if (!p || p.mode !== "settled") continue;
+        const pr = p.localRes || {};
+        const pm = (pr.timber || 0) + (pr.stone || 0);
+        if (pm > bpm) bpm = pm;
+        tw += partnerWeight(p);
+      }
     }
+    s._devMat = { bestPartnerMat: bpm, totalW: tw };
   }
+  const bestPartnerMat = s._devMat.bestPartnerMat, totalW = s._devMat.totalW;
   if (Math.max(localMat, bestPartnerMat) < 0.05) { s._devReason = "materials"; return; }
 
   const buildCap = (0.2 + (s.knowledge.construction || 0) * 2)
