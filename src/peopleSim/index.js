@@ -27,8 +27,13 @@ export function initPeopleSim(worldGen, opts = {}) {
 }
 
 export function stepPeopleSim(world, n = 1) {
+  // Optional per-pass timing (set world._dbgProfile to capture a breakdown of
+  // the most expensive passes into world.debug.pass). Zero cost when off.
+  const prof = world._dbgProfile ? (world.debug.pass || (world.debug.pass = {})) : null;
+  let _pt = 0; const mark = prof ? (k) => { const n2 = performance.now(); prof[k] = n2 - _pt; _pt = n2; } : () => {};
   for (let s = 0; s < n; s++) {
     const t0 = performance.now();
+    if (prof) _pt = t0;
     world.step++;
     // Fast id → settlement lookup, rebuilt each tick. Replaces the
     // O(n) linear scans the trade / knowledge passes would otherwise
@@ -39,21 +44,27 @@ export function stepPeopleSim(world, n = 1) {
       world._byId.set(s.id, s);
       s._wPrev = s.wealth || 0;   // baseline for the money-flow net-change readout
     }
+    mark("byId");
     // Recompute territory periodically: each settlement claims the land it
     // reaches cheapest, and its food / resources are tallied from it.
     if (world.step === 1 || world.step % TERRITORY_INTERVAL === 0) computeTerritory(world);
+    mark("territory");
     for (let i = 0; i < world.settlements.length; i++) {
       updateSettlement(world, world.settlements[i]);
     }
+    mark("settlements");
     // New settlements crystallise spontaneously at fertile sites,
     // weighted by transport distance to existing ones.
     maybeCrystallize(world);
+    mark("crystallize");
     // Roads: settlements build trade roads to partners, then trade
     // flows money along the network. updateTrade runs food trade
     // first within each pair, so a starving importer's wealth goes
     // to grain (and can dip into its reserve) before luxuries.
     maybeBuildRoads(world);
+    mark("roads");
     updateTrade(world);
+    mark("trade");
     // Smoothed per-settlement wealth change rate, for the money-flow
     // overlay (gold = gaining, red = losing). Cheap; ready when shown.
     for (let i = 0; i < world.settlements.length; i++) {
@@ -67,13 +78,16 @@ export function stepPeopleSim(world, n = 1) {
     // heartland is stormed.
     if (world.step % MUSTER_INTERVAL === 0) musterArmies(world);
     if (world.step % CONQUEST_INTERVAL === 0) advanceFronts(world);
+    mark("armies");
     // Maritime: colony ships sail every tick; the port→port sea-lane graph
     // (sea trade peers) and overseas colonisation are rebuilt periodically.
     moveShips(world);
     if (world.step % SEA_INTERVAL === 0) updateSea(world);
+    mark("sea");
     // Polities: group settlements into countries, tribute, and let
     // over-extended members secede.
     if (world.step % POLITY_INTERVAL === 0) updatePolities(world);
+    mark("polities");
     // Fold this tick's categorised money flows (recorded across all the
     // passes above) into each settlement's smoothed in/out rate, for the
     // info panel's "where the money comes from / goes" breakdown.
