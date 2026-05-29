@@ -129,7 +129,7 @@ function buildSnapshot() {
         hue: c.hue, range: c.range,
         _capacity: c._capacity, _loadTotal: c._loadTotal,
         _fronts: c._fronts, _capitalBesieged: c._capitalBesieged,
-        _treasury: c._treasury, _govRevenue: c._govRevenue, _govSpend: c._govSpend,
+        _treasury: c._treasury, _govRevenue: c._govRevenue, _govSpend: c._govSpend, _solvency: c._solvency,
       });
     }
   }

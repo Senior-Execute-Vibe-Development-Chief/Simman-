@@ -26,8 +26,10 @@ const TRIBUTE_FRACTION = 0.06;  // share of a member's wealth taxed into the sta
 // limited trade), a roughly balanced budget keeps coin circulating to the
 // periphery instead of pooling at the throne. Treasury lives in
 // world.governments keyed by countryId (stable across capital changes).
-const ARMY_WAGE   = 5;   // coin per soldier per polity pass — the dominant state expense + bankruptcy gate
-const GOV_RESERVE = 0;   // war-chest kept between passes (0 = spend it all → perfectly balanced for now)
+const ARMY_WAGE     = 60;   // coin per soldier per polity pass — peacetime garrison pay
+const WAR_SURCHARGE = 1.2;  // each level of war (defensive front / besieged capital) multiplies the army bill
+const RESERVE_PASSES = 3;   // war-chest the state keeps (passes of peacetime army pay) before funding works
+const SOLVENCY_FLOOR = 0.5; // a fully bankrupt state still retains this fraction of its control budget
 
 export function govOf(world, countryId) {
   if (!world.governments) world.governments = new Map();
@@ -337,32 +339,39 @@ function declareIndependence(world, c, seed) {
   }
 }
 
-// Spend the treasury back down to its reserve, in priority order: army pay
-// first (the dominant historical line + the bankruptcy gate), then public
-// works / dole to the PROVINCES. Lands coin on the periphery (garrisons +
-// non-capital towns), which then relays it onward via trade.
-function disburseTreasury(world, c, gov) {
-  let budget = gov.treasury - GOV_RESERVE;
-  if (budget <= 0.01) { gov._spend *= 0.9; return; }
+// Spend the treasury, army first. The army has the FIRST claim on the
+// treasury; if it can't be paid in full the state is INSOLVENT (gov._solvency
+// < 1), which both makes garrisons desert (armies.js) and throttles the
+// control budget (capacity) — the fiscal-military collapse trigger. Only the
+// surplus above a war-chest reserve is spent on public works / dole.
+function disburseTreasury(world, c, gov, warLevel) {
   const members = c.members;
   let spent = 0;
 
-  // 1. ARMY PAY — to garrisoned settlements, in proportion to garrison size.
+  // ── 1. ARMY PAY (first claim) ──
+  // War multiplies the bill: campaigning/being besieged costs far more than a
+  // peacetime garrison — this is what actually drains a treasury and bankrupts
+  // a state under sustained or multi-front war.
   let totalArmy = 0;
   for (const s of members) if (s.countryId === c.id) totalArmy += s.army || 0;
-  if (totalArmy > 0) {
-    const armyPay = Math.min(budget, totalArmy * ARMY_WAGE);
+  const armyBill = totalArmy * ARMY_WAGE * (1 + WAR_SURCHARGE * (warLevel || 0));
+  const armyPaid = Math.min(Math.max(0, gov.treasury), armyBill);
+  gov._solvency = armyBill > 0.01 ? armyPaid / armyBill : 1;   // 1 = fully paid; < 1 = arrears
+  if (armyPaid > 0 && totalArmy > 0) {
     for (const s of members) {
       if (s.countryId !== c.id || !(s.army > 0)) continue;
-      const share = armyPay * (s.army / totalArmy);
+      const share = armyPaid * (s.army / totalArmy);
       s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
     }
-    spent += armyPay; budget -= armyPay;
+    gov.treasury -= armyPaid; spent += armyPaid;
   }
 
-  // 2. PUBLIC WORKS / DOLE — the rest to the provinces (non-capital members),
-  // weighted by population, with a boost for towns that are building or short
-  // of food (infrastructure + grain relief).
+  // ── 2. PUBLIC WORKS / DOLE — only the surplus above the war-chest reserve ──
+  // The reserve is sized on the PEACETIME bill (built up in peace, drawn down
+  // by a war's surcharge) so a solvent state can ride out a war for a while
+  // before going bankrupt. It's also the coin a conqueror seizes.
+  const reserve = totalArmy * ARMY_WAGE * RESERVE_PASSES;
+  let budget = gov.treasury - reserve;
   if (budget > 0.01) {
     let totW = 0;
     for (const s of members) {
@@ -377,10 +386,9 @@ function disburseTreasury(world, c, gov) {
         const share = budget * (s._govW / totW);
         s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
       }
-      spent += budget; budget = 0;
+      gov.treasury -= budget; spent += budget;
     }
   }
-  gov.treasury -= spent;
   gov._spend = gov._spend * 0.9 + spent * 0.1;
 }
 
@@ -421,10 +429,20 @@ export function updatePolities(world) {
     if (fronts > 1) duress /= (1 + MULTIFRONT_PENALTY * Math.min(3, fronts - 1));   // split army/attention (capped)
     if (besiegedCap)     duress *= SIEGE_CAPACITY_MULT;                  // throne pinned
     else if (raidedCap)  duress *= WAR_CAPACITY_MULT;                    // core harried
-    const capacity = peaceCapacity * duress;
+    // War intensity drives the army's wartime cost surcharge (disburseTreasury).
+    const warLevel = fronts + (besiegedCap ? 2 : raidedCap ? 1 : 0);
+    // Fiscal duress (death-spiral): a state that can't pay its army (last
+    // pass's solvency, from disburseTreasury) loses its grip on the frontier.
+    // Lose provinces → lose tax revenue → can't pay → capacity falls → lose
+    // more — the self-reinforcing collapse.
+    const gov = govOf(world, c.id);
+    const solvency = gov._solvency ?? 1;
+    const fiscalDuress = SOLVENCY_FLOOR + solvency * (1 - SOLVENCY_FLOOR);
+    const capacity = peaceCapacity * duress * fiscalDuress;
     c._capacity = capacity;        // (already duress-adjusted) for the info panel
     c._fronts = fronts;
     c._capitalBesieged = besiegedCap;
+    c._solvency = solvency;
 
     // ── Per-member admin load (cost to hold) ──────────────────────────
     const loads = [];
@@ -505,7 +523,7 @@ export function updatePolities(world) {
     // duties were already paid into the treasury during the trade pass.) A
     // YOUNG colony instead RECEIVES support (food from the capital's granary +
     // coin from the treasury) until it matures, so a raw frontier survives.
-    const gov = govOf(world, c.id);
+    // (gov fetched above for the fiscal-duress capacity term.)
     for (const s of c.members) {
       if (s.id === c.capitalId || s.countryId !== c.id) continue;
       const youngColony = s.parentSettlementId >= 0 &&
@@ -522,7 +540,7 @@ export function updatePolities(world) {
     }
     // EXPENDITURE: spend the treasury back out (army pay → garrisons, then
     // works/dole → provinces). Balanced budget ⇒ the throne stops hoarding.
-    disburseTreasury(world, c, gov);
+    disburseTreasury(world, c, gov, warLevel);
     c._treasury = gov.treasury;
     c._govRevenue = gov._revenue; gov._revenue = 0;   // per-pass revenue, for the panel
     c._govSpend = gov._spend;

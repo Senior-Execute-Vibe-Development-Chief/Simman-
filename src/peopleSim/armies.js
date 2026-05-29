@@ -16,7 +16,6 @@
 // stall and the front ebbs and flows.
 
 import { coreRadiusFor } from "./territory.js";
-import { recordOut, OUT_MILITARY } from "./money.js";
 import { findPath } from "./roads.js";
 import { fragmentRealm } from "./conquest.js";
 
@@ -30,7 +29,7 @@ const ARMY_TIER_FRAC = [0.02, 0.05, 0.09, 0.11];  // garrison cap as fraction of
 const ARMY_CAPITAL_BONUS = 0.03;                  // the capital fields a bit more
 const ARMY_GROW     = 0.05;   // growth toward the cap per muster
 const ARMY_DESERT   = 0.80;   // when food-starved, the garrison melts to this each muster
-const UPKEEP_PER    = 0.12;   // wealth per soldier per muster (small; food is the real cost)
+const BANKRUPT_DESERT = 0.70; // when wholly unpaid (insolvent state), the garrison melts to this each muster
 export const MUSTER_INTERVAL   = 100;
 export const CONQUEST_INTERVAL = 50;
 // A freshly stormed settlement is PACIFIED for this long: it can't be
@@ -169,11 +168,15 @@ export function musterArmies(world) {
       const popCap = s.people * armyCapFrac(world, s);   // tier/political limit
       s.army = (s.army || 0) + (popCap - (s.army || 0)) * ARMY_GROW;
     }
+    // Unpaid troops desert. The army is funded by the state treasury
+    // (conquest.js); when the treasury can't cover the wage bill the realm is
+    // insolvent (gov._solvency < 1) and its garrisons melt away in proportion
+    // to the shortfall — the fiscal-military collapse trigger. (City-states
+    // have no treasury and field food-fed militias, so they never go bankrupt.)
+    const gov = world.governments && world.governments.get(s.countryId);
+    const solvency = gov && gov._solvency != null ? gov._solvency : 1;
+    if (solvency < 0.999) s.army *= BANKRUPT_DESERT + (1 - BANKRUPT_DESERT) * solvency;
     if (s.army < 0) s.army = 0;
-    // Small coin upkeep (pay/equipment) — a minor sink, no longer the gate.
-    const cost = s.army * UPKEEP_PER;
-    if ((s.wealth || 0) >= cost) { s.wealth -= cost; recordOut(s, OUT_MILITARY, cost); }
-    else { recordOut(s, OUT_MILITARY, s.wealth || 0); s.wealth = 0; }   // can't fully pay: army stays (food-fed), treasury drained
   }
 }
 

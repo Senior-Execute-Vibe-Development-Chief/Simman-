@@ -162,7 +162,7 @@ const TRADE_RATE                   = 0.025;
 // a rich node relays it onward by buying more from its neighbours. Capped so
 // it lubricates circulation without exploding trade volume.
 const DEMAND_WEALTH_REF            = 4000;   // spare wealth that adds +1× import demand
-const DEMAND_WEALTH_CAP            = 6;      // a very rich buyer imports up to (1+cap)× as much
+const DEMAND_WEALTH_CAP            = 8;      // a very rich buyer imports up to (1+cap)× as much
 const TRANSPORT_PER_PATHCOST       = 0.012;
 const FOOD_PRICE                   = 5;
 const FOOD_TRANSPORT_PER_PATHCOST  = 0.005;
