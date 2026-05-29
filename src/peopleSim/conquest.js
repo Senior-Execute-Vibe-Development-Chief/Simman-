@@ -41,6 +41,23 @@ const RECENCY_LOAD  = 1.0;   // a freshly conquered province costs this much ext
 const RECENCY_TICKS = 4000;  // ...decaying to none over this many ticks (digestion)
 const LOYAL_RECOVER = 0.06;  // per pass: covered provinces climb toward full loyalty
 const LOYAL_DECAY   = 0.10;  // per pass: uncovered provinces bleed loyalty toward zero
+
+// ── Contagious secession (amplifier) ──────────────────────────────────
+// A revolt is regional, not solitary: when a province's loyalty collapses,
+// it rallies the RESTLESS neighbours around it into one successor state
+// (with their combined garrisons), instead of seceding alone only to be
+// re-annexed next pass. This is what turns a frontier wobble into a real
+// breakaway realm.
+const REVOLT_JOIN_LOYALTY = 0.5;  // a co-member this disloyal joins a nearby uprising
+const REVOLT_RADIUS_MIN   = 15;   // a revolt rallies members within at least this many tiles
+const REVOLT_RADIUS_RANGE = 1.3;  // ...or the capital's reach × this, whichever is larger
+// ── Capital-fall fragmentation (amplifier) ────────────────────────────
+// When the capital itself is stormed, the leaderless empire SHATTERS: the
+// conqueror keeps the captured throne-city, but the far provinces don't
+// meekly transfer — they break into regional successor states around their
+// strongest surviving cities (the Diadochi after Alexander).
+const FRAG_MAX_STATES = 4;    // at most this many successor realms form
+const FRAG_SEPARATION = 20;   // successor capitals must be at least this far apart
 // Naval administration: a maritime capital (a port with navigation) can
 // govern distant overseas members (also ports) far beyond its land hold
 // range — the sea is its highway, not a barrier. This is what lets a
@@ -149,6 +166,76 @@ function buildHierarchy(world, c) {
   }
 }
 
+// A regional revolt: each collapsed province becomes the seed of a successor
+// state and rallies the disloyal members around it (within a reach radius)
+// to join it. Loyal provinces stay with the empire; restless ones leave as a
+// bloc with their garrisons — so the breakaway can actually defend itself.
+function secedeContagious(world, c, seeds) {
+  const radius = Math.max(REVOLT_RADIUS_MIN, c.range * REVOLT_RADIUS_RANGE);
+  for (const seed of seeds) {
+    if (seed.countryId !== c.id) continue;        // already swept into an earlier revolt this pass
+    const newId = seed.id;
+    seed.countryId = newId;
+    seed.loyalty = 1;
+    seed._conqueredAt = world.step;               // resists immediate re-annex (anti-flicker)
+    if (seed.history) seed.history.push({ step: world.step, type: "seceded" });
+    for (const m of c.members) {
+      if (m.countryId !== c.id || m.id === c.capitalId) continue;   // capital + already-moved stay put
+      if ((m.loyalty ?? 1) > REVOLT_JOIN_LOYALTY) continue;          // still loyal → doesn't join
+      const pacified = world.step - (m._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const infant   = m.parentSettlementId >= 0 && world.step - (m.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      if (pacified || infant) continue;                              // garrisoned / supported → held
+      if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
+      m.countryId = newId;
+      m.loyalty = 0.85;                            // enthusiastic for the new local realm
+      m._conqueredAt = world.step;
+      if (m.history) m.history.push({ step: world.step, type: "joined-revolt", to: newId });
+    }
+  }
+}
+
+// The throne has fallen: scatter the dead empire's surviving provinces into
+// regional successor states around their strongest cities. Called from
+// armies.js the moment a capital is stormed. The conqueror (excludeId) keeps
+// only the captured throne-city; everything else fragments.
+export function fragmentRealm(world, oldId, excludeId) {
+  const survivors = [];
+  for (const s of world.settlements) {
+    if (s.mode === "settled" && s.countryId === oldId && s.id !== excludeId) survivors.push(s);
+  }
+  if (survivors.length === 0) return;
+  if (survivors.length === 1) {
+    const s = survivors[0];
+    s.countryId = s.id; s.loyalty = 1; s._conqueredAt = world.step;
+    if (s.history) s.history.push({ step: world.step, type: "successor", of: oldId });
+    return;
+  }
+  // Successor capitals: the strongest surviving cities, spread apart so the
+  // fragments are genuinely separate regions rather than rivals next door.
+  const ranked = survivors.slice().sort((a, b) => settlementPower(b) - settlementPower(a));
+  const capitals = [];
+  for (const s of ranked) {
+    if (capitals.length >= FRAG_MAX_STATES) break;
+    let far = true;
+    for (const cap of capitals) {
+      if (dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y) < FRAG_SEPARATION) { far = false; break; }
+    }
+    if (far) capitals.push(s);
+  }
+  // Each survivor joins its nearest successor capital.
+  for (const s of survivors) {
+    let best = capitals[0], bd = Infinity;
+    for (const cap of capitals) {
+      const d = dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y);
+      if (d < bd) { bd = d; best = cap; }
+    }
+    s.countryId = best.id;
+    s.loyalty = s.id === best.id ? 1 : 0.9;
+    s._conqueredAt = world.step;                  // successors get breathing room (grace)
+    if (s.history) s.history.push({ step: world.step, type: "successor", of: oldId });
+  }
+}
+
 export function updatePolities(world) {
   const countries = rebuildCountries(world);
 
@@ -204,6 +291,7 @@ export function updatePolities(world) {
     // so the map doesn't flicker right after a capture or a founding.
     loads.sort((a, b) => a.load - b.load);
     let cum = 0;
+    const seeds = [];   // provinces whose loyalty collapsed this pass → revolt seeds
     for (const { s, load } of loads) {
       cum += load;
       const covered  = cum <= capacity;
@@ -221,15 +309,12 @@ export function updatePolities(world) {
       } else {
         const over = (cum - capacity) / capacity;          // how deep past the budget
         s.loyalty = Math.max(0, (s.loyalty ?? 1) - LOYAL_DECAY * (1 + over));
-        if (s.loyalty <= 0) {
-          s.countryId = s.id;            // secede — a new successor state
-          s.loyalty = 1;                 // loyal to itself now
-          s._conqueredAt = world.step;   // resists immediate re-annex (anti-flicker)
-          if (s.history) s.history.push({ step: world.step, type: "seceded" });
-        }
+        if (s.loyalty <= 0) seeds.push(s);                 // collapsed — defer (revolt is contagious)
       }
     }
     c._loadTotal = cum;   // total admin load drawn (vs c._capacity)
+    // A collapse drags its restless region out with it (see secedeContagious).
+    if (seeds.length) secedeContagious(world, c, seeds);
 
     // ── Tribute / colonial support ──
     // Established members send a slice of wealth up to the capital. A YOUNG

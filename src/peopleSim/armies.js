@@ -18,6 +18,7 @@
 import { coreRadiusFor } from "./territory.js";
 import { recordOut, OUT_MILITARY } from "./money.js";
 import { findPath } from "./roads.js";
+import { fragmentRealm } from "./conquest.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
 // population (capped by tier — villages keep a token watch, cities/capitals
@@ -249,13 +250,21 @@ export function advanceFronts(world) {
         att.army = Math.max(0, (att.army || 0) - def._M * ATTRITION / techMul(att));
         const defNow = def.army * techMul(def);
         if (defNow <= att._M * SIEGE_BREAK) {
-          // Defence broken — the city falls and its whole realm flips.
+          // Was this the capital of its realm? (Decide before the flip.)
+          const dc = world.countries && world.countries.get(def.countryId);
+          const defWasCapital = !!(dc && dc.capitalId === def.id);
+          const oldId = def.countryId;
+          // Defence broken — the throne-city falls to the attacker.
           def.countryId = att.countryId;
           def._conqueredAt = world.step;
           def.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)
           if (def.history) def.history.push({ step: world.step, type: "conquered", by: att.id });
           att.army = Math.max(0, (att.army || 0) * (1 - ASSAULT_ARMY_COST));
           def.army = Math.max(0, (def.army || 0) * 0.3);
+          // If it was the capital, the leaderless empire shatters into
+          // regional successor states rather than handing the conqueror the
+          // whole realm intact (conquest.js).
+          if (defWasCapital) fragmentRealm(world, oldId, def.id);
         }
       }
       continue;   // front's at the core — no countryside left to nibble here
