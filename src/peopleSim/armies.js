@@ -29,15 +29,23 @@ export const CONQUEST_INTERVAL = 50;
 // map — without it contested frontier cities ping-pong endlessly.
 export const CONQUEST_GRACE = 800;
 
-const ATTACK_MIN_RATIO  = 1.15;        // must out-power a neighbour by this to push
-const CAPTURE_SCALE     = 7;           // tiles/pass per unit of power-ratio advantage
-const MAX_CAPTURE       = 28;          // hard cap on tiles flipped per front per pass
-const CITY_STORM_RATIO  = 2.0;         // power ratio needed to storm the core (annex)
+const ATTACK_MIN_RATIO  = 1.12;        // must out-power a neighbour by this to push
+const CAPTURE_SCALE     = 5;           // tiles/pass per unit of power-ratio advantage
+const MAX_CAPTURE       = 24;          // hard cap on tiles flipped per front per pass
+const CITY_STORM_RATIO  = 1.6;         // power ratio needed to besiege the core
 const CITY_ASSAULT_DIST = CORE_R + 2;  // attacker must have pushed this close to the home
                                        // (covers the whole re-carved core, so the front
                                        // doesn't flicker on the heartland tiles)
 const ATTRITION         = 0.035;       // army drained per warring front per pass
-const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent storming a city
+const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent taking a city
+// Siege: once the front reaches the heartland the city does NOT fall at
+// once. The besiegers grind the garrison down over several passes (SIEGE_DMG
+// of the attacker's might per pass); the city is only stormed once its
+// defence breaks (drops below SIEGE_BREAK of the attacker's might). So a
+// well-garrisoned city visibly holds out under a shrinking front, while an
+// undefended one falls quickly.
+const SIEGE_DMG         = 0.06;
+const SIEGE_BREAK       = 0.15;
 
 function techMul(s) {
   const k = s.knowledge || {};
@@ -107,33 +115,41 @@ export function advanceFronts(world) {
     else pc.tiles.push({ ti, distHome });                    // capturable countryside
   }
 
-  // Resolve each front: storm the city if the front reached it with
-  // overwhelming power; otherwise grind the countryside forward.
+  // Resolve each front: besiege the city if the front reached its
+  // heartland; otherwise grind the countryside forward, tile by tile.
   for (const pc of pairs.values()) {
     const { att, def } = pc;
     if (att.mode !== "settled" || def.mode !== "settled" || att.countryId === def.countryId) continue;
     const adv = att._M / Math.max(1, def._M);
 
     if (pc.canStorm) {
-      // Front is at the heartland. Storm it only with overwhelming force,
-      // and only if the city isn't still pacified from a recent conquest —
-      // that grace is what stops rival empires trading it back and forth
-      // every pass. The assault costs the victor a large slice of its army.
+      // Front is at the heartland. A recently-conquered city is still
+      // pacified (garrisoned) and can't be besieged yet — that grace stops
+      // rival empires trading it back and forth.
       if (adv >= CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= CONQUEST_GRACE) {
-        def.countryId = att.countryId;                      // annexed — its realm flips
-        def._conqueredAt = world.step;
-        def._disloyalSince = undefined;
-        if (def.history) def.history.push({ step: world.step, type: "conquered", by: att.id });
-        att.army = Math.max(0, (att.army || 0) * (1 - ASSAULT_ARMY_COST));
-        def.army = Math.max(0, (def.army || 0) * 0.3);
+        // Bombard: grind the garrison; the besiegers bleed a little too.
+        def.army = Math.max(0, (def.army || 0) - att._M * SIEGE_DMG);
+        att.army = Math.max(0, (att.army || 0) - def._M * ATTRITION / techMul(att));
+        const defNow = def.army * techMul(def);
+        if (defNow <= att._M * SIEGE_BREAK) {
+          // Defence broken — the city falls and its whole realm flips.
+          def.countryId = att.countryId;
+          def._conqueredAt = world.step;
+          def._disloyalSince = undefined;
+          if (def.history) def.history.push({ step: world.step, type: "conquered", by: att.id });
+          att.army = Math.max(0, (att.army || 0) * (1 - ASSAULT_ARMY_COST));
+          def.army = Math.max(0, (def.army || 0) * 0.3);
+        }
       }
       continue;   // front's at the core — no countryside left to nibble here
     }
 
     const budget = Math.min(MAX_CAPTURE, Math.floor((adv - 1) * CAPTURE_SCALE));
     if (budget >= 1 && pc.tiles.length) {
-      // Drive toward the city: take the tiles nearest the defender's home.
-      pc.tiles.sort((p, q) => p.distHome - q.distHome);
+      // Advance the front BROADLY: take the outermost contested tiles first
+      // so the defender's countryside erodes ring by ring (visible) instead
+      // of a thin salient spiking straight to the capital.
+      pc.tiles.sort((p, q) => q.distHome - p.distHome);
       const n = Math.min(budget, pc.tiles.length);
       for (let i = 0; i < n; i++) owner[pc.tiles[i].ti] = att.id;
     }
