@@ -16,6 +16,7 @@
 // stall and the front ebbs and flows.
 
 import { coreRadiusFor } from "./territory.js";
+import { recordOut, OUT_MILITARY } from "./money.js";
 
 const ARMY_FRACTION = 0.08;   // garrison cap as a fraction of population
 const ARMY_GROW     = 0.05;   // growth toward the cap per muster
@@ -59,8 +60,8 @@ export function musterArmies(world) {
     s.army = (s.army || 0) + (cap - (s.army || 0)) * ARMY_GROW;
     if (s.army < 0) s.army = 0;
     const cost = s.army * UPKEEP_PER;
-    if ((s.wealth || 0) >= cost) s.wealth -= cost;
-    else { s.army = (s.wealth || 0) / UPKEEP_PER; s.wealth = 0; }   // disband the unpaid
+    if ((s.wealth || 0) >= cost) { s.wealth -= cost; recordOut(s, OUT_MILITARY, cost); }
+    else { s.army = (s.wealth || 0) / UPKEEP_PER; recordOut(s, OUT_MILITARY, s.wealth || 0); s.wealth = 0; }   // disband the unpaid
   }
 }
 

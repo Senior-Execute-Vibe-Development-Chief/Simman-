@@ -16,6 +16,7 @@ import { computeTerritory } from "./territory.js";
 import { updatePolities, POLITY_INTERVAL } from "./conquest.js";
 import { musterArmies, advanceFronts, MUSTER_INTERVAL, CONQUEST_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
+import { foldMoney } from "./money.js";
 
 const TERRITORY_INTERVAL = 96;   // ticks between full territory recomputes
 
@@ -71,6 +72,13 @@ export function stepPeopleSim(world, n = 1) {
     // Polities: group settlements into countries, tribute, and let
     // over-extended members secede.
     if (world.step % POLITY_INTERVAL === 0) updatePolities(world);
+    // Fold this tick's categorised money flows (recorded across all the
+    // passes above) into each settlement's smoothed in/out rate, for the
+    // info panel's "where the money comes from / goes" breakdown.
+    for (let i = 0; i < world.settlements.length; i++) {
+      const s = world.settlements[i];
+      if (s.mode === "settled") foldMoney(s);
+    }
     world.debug.tickMs = performance.now() - t0;
   }
   return world;

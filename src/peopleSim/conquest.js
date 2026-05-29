@@ -13,10 +13,12 @@
 // re-taken, making the borders flicker.
 
 import { CONQUEST_GRACE } from "./armies.js";
+import { recordIn, recordOut, IN_TRIBUTE, IN_AID, OUT_TRIBUTE, OUT_AID } from "./money.js";
 
 const POLITY_INTERVAL  = 150;   // ticks between polity passes
 const SECEDE_GRACE     = 500;   // ticks of sustained over-extension before a member secedes
 const OVERSTRETCH      = 0.07;  // each extra member shrinks the empire's hold radius (admin limits)
+const POWER_HOLD_CAP   = 5;     // a capital this-many× stronger holds a province from POWER_HOLD_CAP× farther
 const TRIBUTE_FRACTION = 0.06;  // share of a member's wealth sent to the capital each pass
 // Naval administration: a maritime capital (a port with navigation) can
 // govern distant overseas members (also ports) far beyond its land hold
@@ -116,6 +118,18 @@ function buildHierarchy(world, c) {
   for (const s of members) {
     if (s.liegeId >= 0) { const L = byId.get(s.liegeId); if (L) L._vassalCount++; }
   }
+  // Province membership: walk each settlement up its liege chain to the node
+  // DIRECTLY below the capital — that regional seat is the province head, and
+  // everything rolling up to it is one province. The capital is its own
+  // (crown-land) province. Used by the province-border overlay.
+  for (const s of members) {
+    if (s.id === c.capitalId) { s._provinceId = s.id; continue; }
+    let cur = s, guard = 0;
+    while (cur.liegeId >= 0 && cur.liegeId !== c.capitalId && guard++ < 64) {
+      const nxt = byId.get(cur.liegeId); if (!nxt) break; cur = nxt;
+    }
+    s._provinceId = cur.id;
+  }
 }
 
 export function updatePolities(world) {
@@ -131,6 +145,7 @@ export function updatePolities(world) {
     // effective reach to fellow ports (overseas colonies) is hugely
     // extended — the sea is the empire's highway.
     const capNav = c.capital._isPort ? (c.capital.knowledge.navigation || 0) : 0;
+    const capPower = settlementPower(c.capital);
 
     // ── Secession (sticky): break away after sustained over-extension ──
     for (const s of c.members) {
@@ -141,7 +156,14 @@ export function updatePolities(world) {
       let d = dist(world, c.capital.pos.x, c.capital.pos.y, s.pos.x, s.pos.y);
       if (capNav > 0 && s._isPort) d /= (1 + capNav * NAVAL_REACH);
       d /= holdPull(s);                         // valuable provinces are clung to
-      if (d > hold) {
+      // Relative strength: a capital far stronger than the province projects
+      // authority over it from much farther. A weak village simply can't
+      // break away from a powerful kingdom that could crush it — only
+      // provinces approaching the capital's own strength secede. (The capital
+      // is always the strongest member, so this never makes secession easier.)
+      const powerRatio = Math.min(POWER_HOLD_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
+      const effHold = hold * powerRatio;
+      if (d > effHold) {
         if (s._disloyalSince === undefined) s._disloyalSince = world.step;
         if (world.step - s._disloyalSince >= SECEDE_GRACE) {
           s.countryId = s.id;
@@ -170,7 +192,7 @@ export function updatePolities(world) {
         const food = Math.min(COLONY_SUPPLY_FOOD, Math.max(0, (c.capital.food || 0) - 20));
         if (food > 0) { c.capital.food -= food; s.food = (s.food || 0) + food; }
         const coin = Math.min(COLONY_SUPPLY_COIN, Math.max(0, c.capital.wealth || 0));
-        if (coin > 0) { c.capital.wealth -= coin; s.wealth = (s.wealth || 0) + coin; }
+        if (coin > 0) { c.capital.wealth -= coin; s.wealth = (s.wealth || 0) + coin; recordOut(c.capital, OUT_AID, coin); recordIn(s, IN_AID, coin); }
         continue;                                   // subsidised, not taxed
       }
       // Tribute flows UP the administrative chain: a village pays its town,
@@ -179,7 +201,7 @@ export function updatePolities(world) {
       const liege = (s.liegeId >= 0 && world._byId) ? world._byId.get(s.liegeId) : null;
       const to = liege && liege.mode === "settled" ? liege : c.capital;
       const give = Math.max(0, s.wealth || 0) * TRIBUTE_FRACTION;
-      if (give > 0) { s.wealth -= give; to.wealth = (to.wealth || 0) + give; }
+      if (give > 0) { s.wealth -= give; to.wealth = (to.wealth || 0) + give; recordOut(s, OUT_TRIBUTE, give); recordIn(to, IN_TRIBUTE, give); }
     }
   }
 }

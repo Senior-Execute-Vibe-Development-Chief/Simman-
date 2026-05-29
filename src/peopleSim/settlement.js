@@ -8,6 +8,7 @@
 // knowledge from their nearest neighbour weighted by transport distance.
 
 import { seedLocalTerritory } from "./territory.js";
+import { recordIn, recordOut, IN_MINING, IN_MATERIALS, OUT_MATERIALS } from "./money.js";
 
 let _nextId = 1;
 export function resetSettlementIds() { _nextId = 1; }
@@ -241,6 +242,7 @@ function updateWealth(world, s) {
     mined += got;
   }
   s.wealth = (s.wealth || 0) + mined;
+  recordIn(s, IN_MINING, mined);
   // Smoothed mining income, for the money-flow overlay's source markers
   // (mining is the only money entering the system).
   s._minedRate = (s._minedRate || 0) * 0.9 + mined * 0.1;
@@ -754,10 +756,13 @@ function updateDevelopment(world, s) {
     if (cost > spare) { add *= spare / cost; cost = spare; }
     if (add <= 0) return;
     s.wealth -= cost;
+    recordOut(s, OUT_MATERIALS, cost);
     for (const pid of s._tradeReach.keys()) {
       const p = world._byId.get(pid);
       if (!p || p.mode !== "settled") continue;
-      p.wealth = (p.wealth || 0) + cost * (partnerWeight(p) / totalW);
+      const share = cost * (partnerWeight(p) / totalW);
+      p.wealth = (p.wealth || 0) + share;
+      recordIn(p, IN_MATERIALS, share);
     }
   }
   s.infrastructure = (s.infrastructure || 0) + add;

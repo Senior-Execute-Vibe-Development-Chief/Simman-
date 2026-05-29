@@ -17,6 +17,7 @@ import { tribePower, localPower, tribeOreAccess, tDistW, expFalloff } from "./tr
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
+import { IN_LABELS, OUT_LABELS } from "./peopleSim/money.js";
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 
 const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
@@ -5432,6 +5433,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const psw=peopleRef.current;
   const vmRoads = viewRef.current === "roads";
   const vmMoney = viewRef.current === "money";
+  const vmProvince = viewRef.current === "provinces";
   if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components from tile map ──
@@ -5554,15 +5556,19 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       const tw=psw.tw,th=psw.th;
       const cc=new Map();           // settlementId -> country hue
       const ctryOf=new Map();       // settlementId -> countryId
-      for(const s of psw.settlements){if(s&&s.mode==="settled"){cc.set(s.id,((s.countryId*61)%360+360)%360);ctryOf.set(s.id,s.countryId);}}
-      // Pass 1: tinted territory fill.
+      const provOf=new Map();       // settlementId -> province head id
+      for(const s of psw.settlements){if(s&&s.mode==="settled"){cc.set(s.id,((s.countryId*61)%360+360)%360);ctryOf.set(s.id,s.countryId);provOf.set(s.id,s._provinceId!==undefined?s._provinceId:s.id);}}
+      // Pass 1: tinted territory fill. In Provinces mode each province within
+      // a country gets its own lightness band so the provinces read as
+      // distinct shaded regions of the same realm hue.
       for(let ti=0;ti<owner.length;ti++){
         const oid=owner[ti];
         if(oid<0)continue;
         const h=cc.get(oid); if(h===undefined)continue;
         const py=(ti/tw)|0,px=ti-py*tw;
         const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-        ctx.fillStyle=`hsla(${h},50%,50%,0.32)`;
+        if(vmProvince){const pid=provOf.get(oid)||0;const lt=38+(((pid*101)%100)/100)*34;ctx.fillStyle=`hsla(${h},55%,${lt.toFixed(0)}%,0.40)`;}
+        else ctx.fillStyle=`hsla(${h},50%,50%,0.32)`;
         ctx.fillRect(sx,sy,TR,TR);
       }
       // Pass 2: national borders / war fronts. Where a tile's right or down
@@ -5587,6 +5593,29 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           }}
       }
       ctx.stroke();
+      // Pass 3 (Provinces mode): internal provincial borders — where two
+      // tiles of the SAME country belong to DIFFERENT provinces. Drawn in
+      // pale gold, thinner than the red national frontier.
+      if(vmProvince){
+        ctx.strokeStyle="rgba(245,225,150,0.85)";ctx.lineWidth=0.8;
+        ctx.beginPath();
+        for(let ti=0;ti<owner.length;ti++){
+          const oid=owner[ti];if(oid<0)continue;
+          const co=ctryOf.get(oid),pv=provOf.get(oid);if(co===undefined)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const rt=py*tw+(px===tw-1?0:px+1);const ro=owner[rt];
+          if(ro>=0&&ro!==oid&&ctryOf.get(ro)===co&&provOf.get(ro)!==pv){
+            const ex=(px+1)*TR,ey=dataYtoScreenY(py*TR,H,CH);
+            ctx.moveTo(ex,ey);ctx.lineTo(ex,ey+TR);
+          }
+          if(py<th-1){const dn=ti+tw,dno=owner[dn];
+            if(dno>=0&&dno!==oid&&ctryOf.get(dno)===co&&provOf.get(dno)!==pv){
+              const bx=px*TR,by=dataYtoScreenY((py+1)*TR,H,CH);
+              ctx.moveTo(bx,by);ctx.lineTo(bx+TR,by);
+            }}
+        }
+        ctx.stroke();
+      }
     }
     // ── Roads ──
     // Roads live in two per-tile arrays — roadQuality (1.0 = no
@@ -6019,6 +6048,7 @@ const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
   ["crop","Crop"],["crossing","Crossing"],["roads","Roads"],["money","Money"],
+  ["provinces","Provinces"],
   ["resources","Resources"],["population","Pop"],["transport","Transport"],
   ["transport-test","Trans Test"],["tribes","Tribes"]
 ];
@@ -6230,11 +6260,9 @@ return(
   const available=Math.max(0,wealth-Math.round(getWealthReserve(s)));
   const profile=getTradeProfile(s,peopleRef.current);
   const produces=getExportBreakdown(s).filter(b=>b.label!=="Baseline").slice(0,3).map(b=>b.label.toLowerCase());
-  // Real money rates from the sim (smoothed): total wealth change, the
-  // mining slice, and trade as the remainder.
+  // Smoothed net wealth change rate from the sim (the categorised in/out
+  // breakdown below comes from s._mInRate / s._mOutRate).
   const wealthDelta=s._wealthDelta||0;
-  const minedRate=s._minedRate||0;
-  const tradeNet=wealthDelta-minedRate;
   const moneyCol=v=>v>0.02?"#3a7":v<-0.02?"#c44":"#8a8f9c";
   const nextName=["town","city","metropolis"][s.tier];
 
@@ -6381,11 +6409,45 @@ return(
             <span style={{color:available>0?"#caa24a":"#8a8f9c"}}>{available>0?"coin economy":"barter"}</span>
             <span style={{color:moneyCol(wealthDelta)}}>Net wealth /tick</span>
             <span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{wealthDelta.toFixed(2)}</span>
-            {minedRate>0.01&&(<><span className="au-fade">· mining</span><span className="au-fade">+{minedRate.toFixed(2)}</span></>)}
-            <span className="au-fade">· trade</span><span className="au-fade">{tradeNet>=0?"+":""}{tradeNet.toFixed(2)}</span>
             <span className="au-fade">Coin held</span>
             <span style={available<=0?{color:"#8a8f9c"}:undefined}>${wealth.toLocaleString()}</span>
           </div>
+          {/* ── Where the money comes from / goes ── categorised $/tick from
+              the sim (mining, selling food, buying lumber, tribute, …). */}
+          {(()=>{
+            const inR=s._mInRate, outR=s._mOutRate, EPS=0.005;
+            const ins=[], outs=[];
+            if(inR)for(let i=0;i<inR.length;i++)if(inR[i]>EPS)ins.push([IN_LABELS[i],inR[i]]);
+            if(outR)for(let i=0;i<outR.length;i++)if(outR[i]>EPS)outs.push([OUT_LABELS[i],outR[i]]);
+            ins.sort((a,b)=>b[1]-a[1]); outs.sort((a,b)=>b[1]-a[1]);
+            const totIn=ins.reduce((t,x)=>t+x[1],0), totOut=outs.reduce((t,x)=>t+x[1],0);
+            if(ins.length===0&&outs.length===0)
+              return <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>No coin moving (barter / self-sufficient).</div>;
+            return(
+              <div style={{marginTop:5}}>
+                <div className="au-fade" style={{fontSize:9}}>Money in / out ($/tick)</div>
+                <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"1px 6px",fontSize:10,marginTop:1}}>
+                  {ins.map(([l,v])=>(
+                    <Fragment key={"i"+l}>
+                      <span style={{color:"#3a7"}}>in</span>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l}</span>
+                      <span style={{color:"#3a7"}}>+{v.toFixed(2)}</span>
+                    </Fragment>
+                  ))}
+                  {outs.map(([l,v])=>(
+                    <Fragment key={"o"+l}>
+                      <span style={{color:"#c44"}}>out</span>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l}</span>
+                      <span style={{color:"#c44"}}>-{v.toFixed(2)}</span>
+                    </Fragment>
+                  ))}
+                  <span className="au-fade" style={{borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}>net</span>
+                  <span className="au-fade" style={{borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}></span>
+                  <span style={{color:moneyCol(totIn-totOut),borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}>{totIn-totOut>=0?"+":""}{(totIn-totOut).toFixed(2)}</span>
+                </div>
+              </div>
+            );
+          })()}
           {produces.length>0&&(
             <div className="au-fade" style={{fontSize:9,marginTop:3}}>Produces: {produces.join(", ")}</div>
           )}

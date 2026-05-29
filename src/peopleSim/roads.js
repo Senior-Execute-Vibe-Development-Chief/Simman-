@@ -44,6 +44,7 @@
 
 import { localEdgeCost, baseEdgeCost } from "./transport.js";
 import { computeExportValue, getWealthReserve } from "./settlement.js";
+import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_TOLLS, IN_TARIFFS, OUT_GOODS, OUT_FOOD, OUT_TOLLS, OUT_TARIFFS } from "./money.js";
 
 // ── Constants ──────────────────────────────────────────────────────
 const QUALITY_NEW         = 0.25;       // new road: 4× cheaper than plain
@@ -774,9 +775,12 @@ function runFoodTradeBetween(world, a, b, link) {
   const scale = pay / totalCost;
   importer.wealth -= pay;
   exporter.wealth = (exporter.wealth || 0) + wantPrice * scale;
+  recordOut(importer, OUT_FOOD, wantPrice * scale);
+  recordOut(importer, OUT_TOLLS, (transport + totalToll) * scale);
+  recordIn(exporter, IN_FOOD, wantPrice * scale);
   if (intermediates) {
     const tollPer = wantPrice * FOOD_TOLL_RATE * scale;
-    for (const inter of intermediates) inter.wealth = (inter.wealth || 0) + tollPer;
+    for (const inter of intermediates) { inter.wealth = (inter.wealth || 0) + tollPer; recordIn(inter, IN_TOLLS, tollPer); }
   }
 }
 
@@ -827,11 +831,14 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   const scale = actual / want;
   buyer.wealth -= actual;
   seller.wealth = (seller.wealth || 0) + goodsValue * scale;
+  recordOut(buyer, OUT_GOODS, goodsValue * scale);
+  recordOut(buyer, OUT_TOLLS, (freight + totalToll) * scale);
+  recordIn(seller, IN_GOODS, goodsValue * scale);
   if (intermediates) {
     const tollPer = goodsValue * TOLL_RATE * scale;
-    for (const inter of intermediates) inter.wealth = (inter.wealth || 0) + tollPer;
+    for (const inter of intermediates) { inter.wealth = (inter.wealth || 0) + tollPer; recordIn(inter, IN_TOLLS, tollPer); }
   }
-  if (collector) collector.wealth = (collector.wealth || 0) + tariff * scale;
+  if (collector) { collector.wealth = (collector.wealth || 0) + tariff * scale; recordIn(collector, IN_TARIFFS, tariff * scale); recordOut(buyer, OUT_TARIFFS, tariff * scale); }
   // Conservation: buyer loses `actual` = goodsValue*scale (to seller)
   // + totalToll*scale (to intermediates) + tariff*scale (to the state)
   // + freight*scale (consumed).
