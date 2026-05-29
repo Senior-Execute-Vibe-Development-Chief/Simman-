@@ -105,6 +105,7 @@ function packSelected(s) {
     food: s.food, _foodImportRate: s._foodImportRate, _civFoodDemand: s._civFoodDemand,
     _luxSupply: s._luxSupply, _luxDemand: s._luxDemand,
     army: s.army, loyalty: s.loyalty, _adminLoad: s._adminLoad, _ambition: s._ambition,
+    unrest: s.unrest, _unrestCause: s._unrestCause,
     _developRate: s._developRate, _devReason: s._devReason, _housingPressed: s._housingPressed,
     _houseK: s._houseK, _foodK: s._foodK,
     _mInRate: s._mInRate, _mOutRate: s._mOutRate,
@@ -130,6 +131,7 @@ function buildSnapshot() {
         _capacity: c._capacity, _loadTotal: c._loadTotal,
         _fronts: c._fronts, _capitalBesieged: c._capitalBesieged,
         _treasury: c._treasury, _govRevenue: c._govRevenue, _govSpend: c._govSpend, _solvency: c._solvency,
+        _taxRate: c._taxRate,
       });
     }
   }

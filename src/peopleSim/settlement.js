@@ -145,6 +145,12 @@ export function makeSettlement(world, x, y, opts = {}) {
     // province secedes when it hits zero. Starts fully loyal (a city-state is
     // loyal to itself); set low when conquered.
     loyalty: 1,
+    // Popular discontent [0..1] — a separate stock from loyalty (conquest.js).
+    // Loyalty is administrative cohesion (can the centre reach/hold this?);
+    // unrest is POPULAR grievance (hunger, conscription, war fatigue, heavy
+    // taxes). It rises with hardship, cools in peace + plenty, bleeds loyalty,
+    // and at the top boils over into a destructive REBELLION. Starts content.
+    unrest: 0,
     army: 0,                      // garrison size (soldiers), see armies.js
     tier: 0,
     mode: "settled",

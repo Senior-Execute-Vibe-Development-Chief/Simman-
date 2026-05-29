@@ -30,6 +30,7 @@ const ARMY_CAPITAL_BONUS = 0.03;                  // the capital fields a bit mo
 const ARMY_GROW     = 0.05;   // growth toward the cap per muster
 const ARMY_DESERT   = 0.80;   // when food-starved, the garrison melts to this each muster
 const BANKRUPT_DESERT = 0.70; // when wholly unpaid (insolvent state), the garrison melts to this each muster
+const WAR_SPOILS    = 0.6;    // war-weariness relief a realm banks each time it storms a city (conquest.js)
 export const MUSTER_INTERVAL   = 100;
 export const CONQUEST_INTERVAL = 50;
 // A freshly stormed settlement is PACIFIED for this long: it can't be
@@ -281,6 +282,10 @@ export function advanceFronts(world) {
           def._conqueredAt = world.step;
           def.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)
           def._ambition = 0;    // a freshly subdued city isn't plotting (yet)
+          def.unrest = 0;       // the conquered populace is cowed for now
+          // Spoils of war ease the victor's war-weariness (conquest.js unrest).
+          const ag = world.governments && world.governments.get(att.countryId);
+          if (ag) ag._spoils = Math.min(2, (ag._spoils || 0) + WAR_SPOILS);
           if (def.history) def.history.push({ step: world.step, type: "conquered", by: att.id });
           att.army = Math.max(0, (att.army || 0) * (1 - ASSAULT_ARMY_COST));
           def.army = Math.max(0, (def.army || 0) * 0.3);

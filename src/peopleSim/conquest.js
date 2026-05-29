@@ -16,7 +16,6 @@ import { CONQUEST_GRACE } from "./armies.js";
 import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.js";
 
 const POLITY_INTERVAL  = 150;   // ticks between polity passes
-const TRIBUTE_FRACTION = 0.06;  // share of a member's wealth taxed into the state treasury each pass
 
 // ── Government treasury (fiscal redistribution) ───────────────────────
 // The realm's coin is taxed into a GOVERNMENT treasury (not the capital
@@ -30,6 +29,41 @@ const ARMY_WAGE     = 60;   // coin per soldier per polity pass — peacetime ga
 const WAR_SURCHARGE = 1.2;  // each level of war (defensive front / besieged capital) multiplies the army bill
 const RESERVE_PASSES = 3;   // war-chest the state keeps (passes of peacetime army pay) before funding works
 const SOLVENCY_FLOOR = 0.5; // a fully bankrupt state still retains this fraction of its control budget
+
+// ── Variable taxation ─────────────────────────────────────────────────
+// The base tax rate climbs when the state is under fiscal stress (at war, or
+// insolvent) — a desperate treasury squeezes its subjects harder. That funds
+// the army, but the overtaxation feeds POPULAR UNREST below: the classic trap
+// where taxing to pay for a war drives the people to revolt (France 1789,
+// late Ming, late Rome).
+const TAX_BASE     = 0.06;   // baseline share of a member's wealth taxed per pass
+const TAX_MAX      = 0.22;   // hard cap on the tax rate, however desperate the state
+const TAX_WAR      = 0.025;  // extra rate per level of war
+const TAX_BANKRUPT = 0.12;   // extra rate × how insolvent the state was last pass
+const TAX_DRIFT    = 0.25;   // how fast the actual rate moves toward its target (no whipsaw)
+
+// ── Popular unrest → rebellion ────────────────────────────────────────
+// Unrest accumulates from hardship and, sustained, boils over into a
+// destructive rebellion (distinct from an orderly frontier secession): it
+// guts the rebelling towns and spreads through the discontented HEARTLAND.
+const CONSCRIPT_REF = 0.15;  // garrison/pop fraction at which the conscription grievance saturates
+const HUNGER_W   = 1.0;      // weights of each grievance feeding unrest (hunger dominates, as in history)
+const CONSCRIPT_W = 0.4;
+const WARFAT_W   = 0.5;
+const OVERTAX_W  = 0.7;
+const UNREST_GAIN   = 0.15;  // how fast grievance piles into the unrest stock
+const UNREST_RELIEF = 0.06;  // how fast unrest cools when the people are content
+const UNREST_LOYALTY_BLEED = 0.12;  // an angry populace also erodes administrative loyalty
+const UNREST_RADIUS_MIN = 15;       // a rebellion rallies discontented neighbours within this (or range×below)
+const UNREST_JOIN = 0.6;            // a co-member this discontented joins a nearby uprising
+const REBEL_POP   = 0.82;    // a rebellion costs the town this fraction of its people (death/flight)...
+const REBEL_WEALTH = 0.5;    // ...this fraction of its wealth (looted/destroyed)...
+const REBEL_ARMY  = 0.4;     // ...and its garrison mutinies down to this
+const RIOT_POP    = 0.90;    // the CAPITAL doesn't secede — it RIOTS: lighter pop/wealth/army damage, no breakaway
+const RIOT_WEALTH = 0.65;
+const RIOT_ARMY   = 0.7;
+const SPOILS_PER   = 0.6;    // war-weariness relief a realm banks each time it storms a city (decays)
+const SPOILS_DECAY = 0.85;
 
 export function govOf(world, countryId) {
   if (!world.governments) world.governments = new Map();
@@ -444,6 +478,35 @@ export function updatePolities(world) {
     c._capitalBesieged = besiegedCap;
     c._solvency = solvency;
 
+    // Variable taxation: war + insolvency push the rate up toward a cap (a
+    // desperate treasury squeezes harder). War-weariness relief from recent
+    // conquests fades each pass.
+    const targetTax = Math.min(TAX_MAX, TAX_BASE + TAX_WAR * warLevel + TAX_BANKRUPT * (1 - solvency));
+    gov._taxRate = (gov._taxRate ?? TAX_BASE) + (targetTax - (gov._taxRate ?? TAX_BASE)) * TAX_DRIFT;
+    gov._spoils = (gov._spoils || 0) * SPOILS_DECAY;
+    c._taxRate = gov._taxRate;
+
+    // ── Popular unrest: hardship piles up; peace + plenty + light taxes cool it.
+    // At the top it boils over into a rebellion (rebel(), fired after secession).
+    const taxOver = Math.max(0, (gov._taxRate - TAX_BASE) / (TAX_MAX - TAX_BASE));
+    const warFat = Math.min(1, warLevel * 0.4) * (1 - Math.min(1, gov._spoils || 0));
+    const rebelSeeds = [];
+    for (const s of c.members) {
+      if (s.countryId !== c.id) continue;
+      const fed = (s._foodSupply || 0) + (s._foodImportRate || 0);
+      const demand = s._foodDemand || 0.0001;
+      const hunger = fed < demand ? Math.min(1, (demand - fed) / demand) : 0;
+      const conscript = Math.min(1, ((s.army || 0) / Math.max(1, s.people)) / CONSCRIPT_REF);
+      const gH = hunger * HUNGER_W, gC = conscript * CONSCRIPT_W, gW = warFat * WARFAT_W, gT = taxOver * OVERTAX_W;
+      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT) * UNREST_GAIN - UNREST_RELIEF));
+      s._unrestCause = gH >= gC && gH >= gW && gH >= gT ? "famine"
+                     : gT >= gC && gT >= gW ? "taxes"
+                     : gW >= gC ? "war fatigue" : "conscription";
+      if (s.unrest > 0.5) s.loyalty = Math.max(0, (s.loyalty ?? 1) - UNREST_LOYALTY_BLEED * (s.unrest - 0.5));  // anger erodes loyalty too
+      const pacified = world.step - (s._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      if (s.unrest >= 1 && (s.id === c.capitalId || !pacified)) rebelSeeds.push(s);
+    }
+
     // ── Per-member admin load (cost to hold) ──────────────────────────
     const loads = [];
     for (const s of c.members) {
@@ -495,6 +558,8 @@ export function updatePolities(world) {
     c._loadTotal = cum;   // total admin load drawn (vs c._capacity)
     // A collapse drags its restless region out with it (see secedeContagious).
     if (seeds.length) secedeContagious(world, c, seeds);
+    // Boiled-over towns rise up (destructive, heartland-capable — see rebel()).
+    if (rebelSeeds.length) rebel(world, c, rebelSeeds);
 
     // ── Overmighty governors: ambition-driven breakaway (with sub-realm) ──
     // Independent of the budget: a strong, distant governor schemes and, when
@@ -535,7 +600,7 @@ export function updatePolities(world) {
         if (coin > 0) { gov.treasury -= coin; s.wealth = (s.wealth || 0) + coin; recordIn(s, IN_AID, coin); }
         continue;                                   // subsidised, not taxed
       }
-      const give = Math.max(0, s.wealth || 0) * TRIBUTE_FRACTION;
+      const give = Math.max(0, s.wealth || 0) * (gov._taxRate ?? TAX_BASE);
       if (give > 0) { s.wealth -= give; gov.treasury += give; gov._revenue += give; recordOut(s, OUT_TRIBUTE, give); }
     }
     // EXPENDITURE: spend the treasury back out (army pay → garrisons, then
