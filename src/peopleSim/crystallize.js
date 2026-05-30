@@ -57,6 +57,26 @@ const OVERSEAS_INDEPENDENT_RATE = 0.0015;
 const NEAR_RATE                 = 1.50;
 const BASE_RATE                 = 0.010;
 
+// ── Settler colonisation (mother-country-driven expansion) ───────────
+// A crowded, prosperous town with no room to grow ("housing pressed" or
+// near its food cap) sends out a SETTLER PARTY: a chunk of its population
+// walks a few tiles to a viable empty site and founds a daughter town that
+// joins the parent's realm from day one (s.countryId = parent.countryId,
+// parentSettlementId set → already gets COLONY_SUPPLY_FOOD/COIN from
+// conquest.js). This is the Greek apoikia / Roman colonia / Ostsiedlung
+// pattern: population pressure drives outward settlement, peacefully growing
+// the realm instead of waiting for spontaneous crystallisation or conquest.
+const COLONY_CHECK_INTERVAL   = 240;   // ticks between settler-party rolls (per parent)
+const COLONY_MIN_POP          = 200;   // need a town worth's people before splitting one off
+const COLONY_PRESS_FRAC       = 0.85;  // counts as "pressed" at this fraction of carrying capacity
+const COLONY_SEND_FRAC        = 0.10;  // fraction of parent's population that leaves with the settler party
+const COLONY_SEND_CAP         = 80;    // max settlers per founding (a whole town doesn't depopulate)
+const COLONY_RANGE            = 28;    // tiles the settler party will walk from the parent
+const COLONY_MIN_RANGE        = MIN_SETT_DIST + 2;  // can't found right next door (spacing already enforces it; this is just the search lower bound)
+const COLONY_CANDIDATES       = 12;    // viable sites sampled per attempt (best is picked)
+const COLONY_CHANCE           = 0.5;   // probability a pressed, eligible parent actually sends settlers on a roll
+const COLONY_COOLDOWN         = 1500;  // ticks the parent waits between settler parties (recovery)
+
 // Resource attraction. Each resource has a per-tier value (how
 // valuable it is to a civilisation at that tech level) and a
 // scarcity factor (how many of the existing settlements DON'T have
@@ -93,6 +113,11 @@ export function maybeCrystallize(world) {
     world.transportDist = computeTransport(world);
     world._transportStep = world.step;
   }
+
+  // Mother-country expansion: pressed towns send settler parties (see
+  // sendSettlers — this is the entire "population pressure → new colony"
+  // axis, distinct from the random crystallisation sweep below).
+  if (world.step % COLONY_CHECK_INTERVAL === 0) maybeSendSettlers(world);
 
   // Compute per-sweep resource scarcity / value table once.
   const resScarcity = computeResourceScarcity(world);
@@ -259,6 +284,91 @@ function resourceBonusFor(world, ti, scarcity) {
     bonus += r * scarcity[id].sv;
   }
   return Math.min(2.5, bonus);
+}
+
+// ── Settler colonisation (mode #1): parent-driven founding ───────────
+// Each pass, every viable parent town that's both population-pressed and off
+// cooldown rolls to send a settler party. The party walks up to COLONY_RANGE
+// tiles to a viable empty site (picks the best one out of a small sample) and
+// founds a daughter joining the parent's realm. Cooldown stops a single town
+// from spamming colonies; settler-cost shaves the parent's population so
+// expansion has a real demographic cost (you trade headcount for territory).
+function maybeSendSettlers(world) {
+  if (!world.transportDist) return;
+  const { rng } = world;
+  for (const parent of world.settlements) {
+    if (parent.mode !== "settled") continue;
+    if (parent.people < COLONY_MIN_POP) continue;
+    if (world.step - (parent._lastColonySent ?? -Infinity) < COLONY_COOLDOWN) continue;
+    // Pressed: at or near carrying capacity (either food or housing) — the
+    // people would otherwise sit at the ceiling. updatePopulation set s._k.
+    const k = parent._k || 1;
+    if (parent.people / k < COLONY_PRESS_FRAC) continue;
+    if (rng() >= COLONY_CHANCE) continue;
+    sendSettlers(world, parent);
+  }
+}
+
+function sendSettlers(world, parent) {
+  // Find a viable empty site within walking range. Score by quality (same
+  // ingredients as the random sweep) and pick the best.
+  const { tw, th, elev, fert, coast, riverMag, rng } = world;
+  const px = parent.pos.x | 0, py = parent.pos.y | 0;
+  let best = null, bestQ = -Infinity;
+  for (let i = 0; i < COLONY_CANDIDATES; i++) {
+    // Sample a tile in an annulus around the parent: random angle, random
+    // radius in [COLONY_MIN_RANGE, COLONY_RANGE].
+    const ang = rng() * Math.PI * 2;
+    const r = COLONY_MIN_RANGE + rng() * (COLONY_RANGE - COLONY_MIN_RANGE);
+    const tx = ((px + Math.round(Math.cos(ang) * r)) % tw + tw) % tw;
+    const ty = py + Math.round(Math.sin(ang) * r);
+    if (ty < 1 || ty >= th - 1) continue;
+    const ti = ty * tw + tx;
+    if (!isContinentalLand(world, ti)) continue;
+    if (fert[ti] < MIN_FERT) continue;
+    // Spacing check against existing settlements.
+    let tooClose = false;
+    for (const o of world.settlements) {
+      if (o.mode === "dead") continue;
+      let ddx = Math.abs(o.pos.x - tx); if (ddx > tw / 2) ddx = tw - ddx;
+      const ddy = o.pos.y - ty;
+      if (ddx * ddx + ddy * ddy < MIN_SETT_DIST_SQ) { tooClose = true; break; }
+    }
+    if (tooClose) continue;
+    let areaFert = 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      const ny = ty + dy;
+      if (ny < 0 || ny >= th) continue;
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = ((tx + dx) % tw + tw) % tw;
+        const ni = ny * tw + nx;
+        if (elev[ni] > 0) areaFert += fert[ni];
+      }
+    }
+    if (areaFert < MIN_AREA_FERT) continue;
+    let q = fert[ti] * 1.5 + Math.min(2.0, areaFert * 0.1);
+    if (riverMag && riverMag[ti] >= 2) q += 1.0;
+    if (coast && coast[ti]) q += 0.4;
+    if (q > bestQ) { bestQ = q; best = { ti, tx, ty }; }
+  }
+  if (!best) return;
+  // Pay the demographic cost: a chunk of the parent's people leaves with
+  // them. They take some of the parent's tech (full inheritance — they're
+  // literate citizens of the realm, not isolated frontier inventors).
+  const settlers = Math.min(COLONY_SEND_CAP, Math.round(parent.people * COLONY_SEND_FRAC));
+  if (settlers < 25) return;
+  parent.people -= settlers;
+  parent._lastColonySent = world.step;
+  const inherited = {};
+  for (const k of Object.keys(parent.knowledge)) inherited[k] = parent.knowledge[k];
+  const daughter = makeSettlement(world, best.tx + 0.5, best.ty + 0.5, {
+    people: settlers,
+    knowledge: inherited,
+    parentId: parent.id,
+    countryId: parent.countryId,                   // joins the parent's realm immediately
+    name: "colony-" + parent.id + "-" + world.step,
+  });
+  if (parent.history) parent.history.push({ step: world.step, type: "colony-sent", to: daughter.id, settlers });
 }
 
 // Pick the nearest settlement (by straight-line distance, cheap), then

@@ -163,7 +163,7 @@ export function makeSettlement(world, x, y, opts = {}) {
     if (s.knowledge[k] === undefined) s.knowledge[k] = 0;
   }
   // Compute water access score from the home tile + 4 neighbours.
-  s.countryId = s.id;             // its own one-settlement country to start
+  s.countryId = opts.countryId ?? s.id;             // joins parent's realm if specified, else own city-state
   s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
   s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
   world.settlements.push(s);
