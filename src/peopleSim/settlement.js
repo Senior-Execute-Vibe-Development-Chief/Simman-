@@ -607,10 +607,23 @@ function updateKnowledge(world, s) {
   // (folded in from the old literacy track) that kicks in once the
   // bureaucracy is mature enough to support scribes. The kicker means
   // organization keeps accelerating past 0.30 instead of plateauing.
+  //
+  // ERA GATE: organization can't outrun the MATERIAL era. A stone-tool
+  // society runs a chiefdom, not a continental bureaucracy — without this,
+  // a big fertile village grew org→1.0 (continental reach) on population
+  // alone, with zero metallurgy. The ceiling rises with the era ladder
+  // (metallurgy: chalcolithic 0.30 → bronze 0.65 → iron 0.90), and ore
+  // counts even when IMPORTED by trade (metalCap is computed from
+  // effectiveLocalRes), so a trade-connected culture isn't frozen on
+  // ore-poor ground; construction (monumental/record infrastructure) lifts
+  // it a little more. Iron-era realms still reach full org (≈continental
+  // reach); stone-age realms are held to kingdom scale.
+  const orgEraCap = clamp01(0.15 + metalCap * 0.95 + k.construction * 0.15);
+  const orgHead = Math.max(0, orgEraCap - k.organization);
   const litBranch = k.organization > 0.30
     ? 0.6 * k.organization * (1 + popSqrt * 0.06)
     : 0;
-  k.organization = clamp01(k.organization + LEARN_BASE * (1 - k.organization)
+  k.organization = clamp01(k.organization + LEARN_BASE * orgHead
     * ((1 + popSqrt * 0.10) + litBranch));
 
   // Metallurgy — hard-gated by ore. Paced so the eras (chalcolithic →
