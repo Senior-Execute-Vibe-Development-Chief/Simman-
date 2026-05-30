@@ -9,6 +9,7 @@
 
 import { seedLocalTerritory } from "./territory.js";
 import { recordIn, recordOut, IN_MINING, IN_MATERIALS, OUT_MATERIALS } from "./money.js";
+import { localP } from "./inflation.js";
 
 let _nextId = 1;
 export function resetSettlementIds() { _nextId = 1; }
@@ -824,7 +825,9 @@ function updateDevelopment(world, s) {
   // + local labour); the rest is bought from suppliers and paid for in
   // coin, transferred to them.
   const discount = Math.min(0.7, localMat * 0.5);
-  let cost = add * INFRA_COST * (1 - discount);
+  // Building costs scale with the local price level (inflation.js): an
+  // inflated economy pays more in coin for the same imported materials.
+  let cost = add * INFRA_COST * (1 - discount) * localP(world, s);
   if (cost > 0 && totalW > 0) {
     const spare = (s.wealth || 0) - getWealthReserve(s);
     if (spare <= 0) { s._devReason = "coin"; return; }   // needs to buy materials it lacks

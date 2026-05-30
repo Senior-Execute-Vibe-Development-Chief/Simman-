@@ -17,6 +17,7 @@ import { updatePolities, POLITY_INTERVAL } from "./conquest.js";
 import { musterArmies, advanceFronts, moveArmies, MUSTER_INTERVAL, CONQUEST_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
 import { updateShocks } from "./shocks.js";
+import { updateInflation } from "./inflation.js";
 import { foldMoney } from "./money.js";
 
 const TERRITORY_INTERVAL = 144;  // ticks between full territory recomputes (a global
@@ -70,6 +71,10 @@ export function stepPeopleSim(world, n = 1) {
     // to grain (and can dip into its reserve) before luxuries.
     maybeBuildRoads(world);
     mark("roads");
+    // Recompute the per-component price level (quantity theory of money,
+    // closed-system inflation). Runs every INFLATION_INTERVAL ticks and EMAs
+    // toward the new target, so per-tick reads via localP are stable.
+    updateInflation(world);
     updateTrade(world);
     mark("trade");
     // Smoothed per-settlement wealth change rate, for the money-flow

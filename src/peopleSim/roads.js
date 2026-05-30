@@ -44,6 +44,7 @@
 
 import { localEdgeCost, baseEdgeCost } from "./transport.js";
 import { computeExportValue, getWealthReserve } from "./settlement.js";
+import { localP } from "./inflation.js";
 import { govOf } from "./conquest.js";
 import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 
@@ -843,8 +844,9 @@ function runFoodTradeBetween(world, a, b, link) {
   // barter for as much of the grain as it can pay for: coin flows
   // importer → exporter, tolls to any middlemen. A broke importer simply
   // barters (no coin moves). This is how money supplants barter once it
-  // reaches a settlement.
-  const wantPrice = maxFlow * FOOD_PRICE;
+  // reaches a settlement. The price is scaled by the IMPORTER's local
+  // price level (inflation.js) — a coin-rich region pays more for grain.
+  const wantPrice = maxFlow * FOOD_PRICE * localP(world, importer);
   const transport = link.cost * FOOD_TRANSPORT_PER_PATHCOST;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;

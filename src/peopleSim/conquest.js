@@ -15,6 +15,7 @@
 import { CONQUEST_GRACE } from "./armies.js";
 import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.js";
 import { shockUnrest } from "./shocks.js";
+import { localPByCountry } from "./inflation.js";
 
 const POLITY_INTERVAL  = 150;   // ticks between polity passes
 
@@ -427,6 +428,12 @@ function rebel(world, c, seeds) {
 // surplus above a war-chest reserve is spent on public works / dole.
 function disburseTreasury(world, c, gov, warLevel) {
   const members = c.members;
+  // Wages and the reserve scale with the realm's local price level
+  // (inflation.js). An inflated economy needs more coin to pay the same
+  // soldiers — Spain-after-Potosí dynamics — and the war-chest grows with
+  // the wage bill so a state still has a couple of passes' buffer at any P.
+  const realmP = localPByCountry(world, c);
+  const wage = ARMY_WAGE * realmP;
   let spent = 0;
 
   // ── 1. ARMY PAY (first claim) ──
@@ -435,7 +442,7 @@ function disburseTreasury(world, c, gov, warLevel) {
   // a state under sustained or multi-front war.
   let totalArmy = 0;
   for (const s of members) if (s.countryId === c.id) totalArmy += s.army || 0;
-  const armyBill = totalArmy * ARMY_WAGE * (1 + WAR_SURCHARGE * (warLevel || 0));
+  const armyBill = totalArmy * wage * (1 + WAR_SURCHARGE * (warLevel || 0));
   const armyPaid = Math.min(Math.max(0, gov.treasury), armyBill);
   gov._solvency = armyBill > 0.01 ? armyPaid / armyBill : 1;   // 1 = fully paid; < 1 = arrears
   if (armyPaid > 0 && totalArmy > 0) {
@@ -451,7 +458,7 @@ function disburseTreasury(world, c, gov, warLevel) {
   // The reserve is sized on the PEACETIME bill (built up in peace, drawn down
   // by a war's surcharge) so a solvent state can ride out a war for a while
   // before going bankrupt. It's also the coin a conqueror seizes.
-  const reserve = totalArmy * ARMY_WAGE * RESERVE_PASSES;
+  const reserve = totalArmy * wage * RESERVE_PASSES;
   let budget = gov.treasury - reserve;
   if (budget > 0.01) {
     let totW = 0;
@@ -644,7 +651,10 @@ export function updatePolities(world) {
       if (youngColony) {
         const food = Math.min(COLONY_SUPPLY_FOOD, Math.max(0, (c.capital.food || 0) - 20));
         if (food > 0) { c.capital.food -= food; s.food = (s.food || 0) + food; }
-        const coin = Math.min(COLONY_SUPPLY_COIN, Math.max(0, gov.treasury));
+        // Colony subsidy scales with the realm's price level so a settlement
+        // founded in an inflated economy gets a real (P-adjusted) endowment.
+        const grant = COLONY_SUPPLY_COIN * localPByCountry(world, c);
+        const coin = Math.min(grant, Math.max(0, gov.treasury));
         if (coin > 0) { gov.treasury -= coin; s.wealth = (s.wealth || 0) + coin; recordIn(s, IN_AID, coin); }
         continue;                                   // subsidised, not taxed
       }

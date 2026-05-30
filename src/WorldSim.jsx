@@ -5947,6 +5947,7 @@ const applySnapshot=useCallback((snap)=>{
   let psw=peopleRef.current;
   if(!psw||!psw._isMirror){psw=peopleRef.current={_isMirror:true};}
   psw.step=snap.step;psw.tw=snap.tw;psw.th=snap.th;psw.tileRes=snap.tileRes;psw.N=snap.N;
+  psw.globalP=snap.globalP;
   if(snap.owner)psw._territoryOwner=snap.owner;
   if(snap.roadQuality)psw.roadQuality=snap.roadQuality;
   if(snap.roadFlow)psw.roadFlow=snap.roadFlow;
@@ -5963,7 +5964,7 @@ const applySnapshot=useCallback((snap)=>{
   for(const c of (snap.countries||[])){
     const members=c.memberIds.map(id=>byId.get(id)).filter(Boolean);
     const capital=byId.get(c.capitalId)||members[0]||null;
-    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate});
+    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel});
   }
   psw.countries=countries;
   // HUD state updates re-render the whole component, so throttle them to ~5Hz
@@ -6356,6 +6357,27 @@ return(
   <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
   <span style={{fontSize:13}}>{tribeCount} <span className="au-sc au-fade" style={{fontSize:11}}>nations</span></span>
   <span style={{fontSize:13}}>{coverage}<span className="au-fade">%</span> <span className="au-sc au-fade" style={{fontSize:11}}>claimed</span></span>
+  {(()=>{
+    // Wheat-price ticker — population-weighted global price level. The number
+    // shown is the price of 1 unit of farmed wheat relative to its baseline.
+    // (The displayed number is `globalP × baselineFOOD_PRICE`.)
+    const psw=peopleRef.current;
+    const P=psw&&isFinite(psw.globalP)?psw.globalP:null;
+    if(P==null)return null;
+    const price=(5*P).toFixed(2);
+    const dir=P>1.04?"▲":P<0.96?"▼":"·";
+    const col=P>1.1?"hsl(8,75%,55%)":P<0.9?"hsl(195,65%,50%)":"var(--au-ink)";
+    return(
+      <>
+        <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
+        <span style={{fontSize:13}} title={`global price level ×${P.toFixed(2)} (1.00 = baseline)`}>
+          <span className="au-sc au-fade" style={{fontSize:11,marginRight:4}}>Wheat</span>
+          <span style={{color:col,fontWeight:600}}>{price}</span>
+          <span className="au-fade" style={{fontSize:11,marginLeft:3}}>{dir}</span>
+        </span>
+      </>
+    );
+  })()}
   {dominant&&<>
     <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
     <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
@@ -6561,6 +6583,13 @@ return(
               <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
                 <span style={{width:9,height:9,borderRadius:2,background:broke?"hsl(8,75%,52%)":"hsl(48,65%,48%)",flexShrink:0}}/>
                 <span className="au-fade">state treasury ${Math.round(treas)}{ctry._govSpend>0.01?` · spends ${ctry._govSpend.toFixed(0)}/pass`:""}{broke?` · INSOLVENT (army ${Math.round(sv*100)}% paid)`:""}</span>
+              </div>
+            );})()}
+            {(()=>{const P=ctry._priceLevel;if(P==null||Math.abs(P-1)<0.04)return null;
+              const inflating=P>1;return(
+              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+                <span style={{width:9,height:9,borderRadius:2,background:inflating?"hsl(28,75%,50%)":"hsl(200,65%,50%)",flexShrink:0}}/>
+                <span className="au-fade">price level ×{P.toFixed(2)} · {inflating?"inflating":"deflating"}</span>
               </div>
             );})()}
             </>

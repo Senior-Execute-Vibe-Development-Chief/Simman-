@@ -15,6 +15,7 @@
 
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { getTradeProfile } from "./peopleSim/settlement.js";
+import { displayPByCountry } from "./peopleSim/inflation.js";
 
 let world = null;
 let playing = false;
@@ -134,6 +135,7 @@ function buildSnapshot() {
         _fronts: c._fronts, _capitalBesieged: c._capitalBesieged,
         _treasury: c._treasury, _govRevenue: c._govRevenue, _govSpend: c._govSpend, _solvency: c._solvency,
         _taxRate: c._taxRate,
+        _priceLevel: displayPByCountry(world, c),
       });
     }
   }
@@ -174,11 +176,27 @@ function buildSnapshot() {
   if (roadFlow) transfer.push(roadFlow.buffer);
   if (tileComp) transfer.push(tileComp.buffer);
 
+  // Global price-level summary for the HUD ticker — population-weighted
+  // mean across all settlements, so it tracks "the average wheat price the
+  // average citizen pays" rather than a count of isolated hamlets.
+  let _Pnum = 0, _Pden = 0;
+  if (world._inflRaw && world._networkComponents) {
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      const root = world._networkComponents.has(s.id) ? world._networkComponents.get(s.id) : s.id;
+      const p = world._inflRaw.get(root);
+      if (p === undefined) continue;
+      const w = Math.max(1, s.people);
+      _Pnum += p * w; _Pden += w;
+    }
+  }
+  const globalP = _Pden > 0 ? _Pnum / _Pden : 1;
   self.postMessage({
     type: "snapshot",
     step: world.step,
     tw: world.tw, th: world.th, tileRes: world.tileRes, N: world.N,
     stats: peopleSimStats(world),
+    globalP,
     owner, roadQuality, roadFlow, tileComp, moneyFlows,
     settlements: setts,
     countries,
