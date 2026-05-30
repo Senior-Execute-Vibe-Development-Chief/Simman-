@@ -209,9 +209,25 @@ export function maybeCrystallize(world) {
       // Inherited knowledge: blend from nearest settlement, weighted by
       // distance. Far sites start near baseline neolithic knowledge.
       const inherited = inheritKnowledgeAt(world, ti, td);
+      // Inherited COUNTRY: if the spawn site is already inside an existing
+      // realm's territory, the new town joins that realm. Pre-existing
+      // sovereigns don't tolerate sovereign new villages popping up inside
+      // their borders — they'd be vassals from day one. Only spawns on
+      // genuinely unclaimed land become their own city-state. This is what
+      // stops the map being littered with awkward independent one-tile
+      // statelets randomly forming inside someone else's country.
+      let inheritedCountry;
+      if (world._territoryOwner && world._byId) {
+        const ownerId = world._territoryOwner[ti];
+        if (ownerId >= 0) {
+          const ownerSett = world._byId.get(ownerId);
+          if (ownerSett && ownerSett.mode === "settled") inheritedCountry = ownerSett.countryId;
+        }
+      }
       makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: 18 + (rng.int(8)),
         knowledge: inherited,
+        countryId: inheritedCountry,
       });
     }
   }
