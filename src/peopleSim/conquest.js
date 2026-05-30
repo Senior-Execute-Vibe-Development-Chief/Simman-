@@ -19,6 +19,12 @@ import { localPByCountry } from "./inflation.js";
 import { localEdgeCost } from "./transport.js";
 
 const POLITY_INTERVAL  = 150;   // ticks between polity passes
+// Sub-city absorption requires the absorbing power to have at least this
+// much ORGANISATION (state apparatus) before it can administratively
+// swallow a touching village-only country. Below this threshold the
+// village stays independent — only direct conquest by armies can take it.
+// Stops chalcolithic cradles from peacefully vacuuming continents.
+const ABSORB_ORG_MIN   = 0.18;
 
 // ── Government treasury (fiscal redistribution) ───────────────────────
 // The realm's coin is taxed into a GOVERNMENT treasury (not the capital
@@ -1038,7 +1044,18 @@ function absorbSubCityCountries(world, countries) {
         let foreignHasCity = false;
         for (const fm of foreign.members) if ((fm.tier | 0) >= 2) { foreignHasCity = true; break; }
         if (!foreignHasCity) continue;
-        touchScore.set(ns2.countryId, (touchScore.get(ns2.countryId) || 0) + settlementPower(foreign.capital));
+        // Tech gate: peaceful absorption requires the absorbing power to
+        // have a real STATE apparatus — administration, records,
+        // bureaucracy. A chalcolithic cradle with a population that happens
+        // to be touching can't just file a neighbour into its kingdom.
+        // (Conquest by armies still works at any tech level — this only
+        // gates the peaceful vacuum-up path that was producing instant
+        // continental empires.) Once organization passes the threshold,
+        // the foreign power weights its draw by how far past it sits.
+        const orgK = (foreign.capital.knowledge && foreign.capital.knowledge.organization) || 0;
+        if (orgK < ABSORB_ORG_MIN) continue;
+        const orgFactor = Math.min(1, (orgK - ABSORB_ORG_MIN) / (1 - ABSORB_ORG_MIN));
+        touchScore.set(ns2.countryId, (touchScore.get(ns2.countryId) || 0) + settlementPower(foreign.capital) * orgFactor);
       }
     }
     if (touchScore.size === 0) continue;        // truly isolated → stays a city-state
@@ -1089,7 +1106,12 @@ function absorbSubCityCountries(world, countries) {
         let foreignHasCity = false;
         for (const fm of foreign.members) if ((fm.tier | 0) >= 2) { foreignHasCity = true; break; }
         if (!foreignHasCity) continue;
-        foreignTouch.set(ns2.countryId, (foreignTouch.get(ns2.countryId) || 0) + settlementPower(foreign.capital));
+        // Same tech gate as the sub-city absorption: a low-organisation
+        // power can't administratively swallow even a stranded enclave.
+        const orgK = (foreign.capital.knowledge && foreign.capital.knowledge.organization) || 0;
+        if (orgK < ABSORB_ORG_MIN) continue;
+        const orgFactor = Math.min(1, (orgK - ABSORB_ORG_MIN) / (1 - ABSORB_ORG_MIN));
+        foreignTouch.set(ns2.countryId, (foreignTouch.get(ns2.countryId) || 0) + settlementPower(foreign.capital) * orgFactor);
       }
       if (ownCC > 0) continue;                    // not actually marooned
       if (foreignTouch.size === 0) continue;      // unclaimed land — let crystallisation/territory pass handle

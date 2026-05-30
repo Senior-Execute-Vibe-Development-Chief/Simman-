@@ -185,7 +185,7 @@ const WATER_BASE_COST    = 12;   // small-boat / raft crossing at nav≈0.2
 const WATER_NAV_FLOOR    = 3;    // real-fleet crossing at nav≥1
 const NAV_EMBARK_THRESH  = 0.2;  // below this, water remains impassable
 const MODE_CHANGE_COST   = 0.6;  // additive penalty when crossing a class boundary
-const RIVER_BOARD_COST   = 1.5;  // embark OR debark a major river (each side, ≈ a ford / raft / bridge)
+const RIVER_BOARD_COST   = 5.0;  // embark OR debark a major river (each side, ≈ a ford / raft / bridge)
 
 function tileMode(world, ti) {
   // 0 = ocean water, 1 = road, 2 = land, 3 = major river (mag ≥ 2)
