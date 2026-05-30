@@ -183,3 +183,46 @@ if (world.countries) {
     console.log(`   ${cap.padEnd(20)} members=${c.members.length} pop=${Math.round(pop / 1000)}k treas=${Math.round(treas)} solv=${(c._solvency ?? 1).toFixed(2)} P=${(c._priceLevel ?? 1).toFixed(2)}`);
   }
 }
+
+// ── 8. Nearest-neighbour distance distribution ───────────────────────
+// A natural settlement pattern is non-uniform: dense clusters along rivers /
+// coasts, large empty stretches across desert / tundra. A tightly clumped
+// nearest-neighbour distribution means placement is too geometric (every
+// settlement at roughly the same distance from its neighbour), which reads
+// as an unnatural grid.
+{
+  const alive = world.settlements.filter(s => s.mode === "settled");
+  const dists = [];
+  const tw = world.tw;
+  for (let i = 0; i < alive.length; i++) {
+    let nd = Infinity;
+    for (let j = 0; j < alive.length; j++) {
+      if (i === j) continue;
+      let dx = Math.abs(alive[i].pos.x - alive[j].pos.x);
+      if (dx > tw / 2) dx = tw - dx;
+      const dy = alive[i].pos.y - alive[j].pos.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < nd) nd = d;
+    }
+    dists.push(nd);
+  }
+  dists.sort((a, b) => a - b);
+  const n = dists.length;
+  const pct = p => dists[Math.min(n - 1, Math.floor(n * p))];
+  const mean = dists.reduce((a, b) => a + b, 0) / Math.max(1, n);
+  const variance = dists.reduce((a, b) => a + (b - mean) * (b - mean), 0) / Math.max(1, n);
+  const stdev = Math.sqrt(variance);
+  console.log(`\n[earthRun] nearest-neighbour distances over ${n} settlements:`);
+  console.log(`   min=${pct(0).toFixed(1)}  p10=${pct(0.10).toFixed(1)}  p25=${pct(0.25).toFixed(1)}  median=${pct(0.5).toFixed(1)}  p75=${pct(0.75).toFixed(1)}  p90=${pct(0.9).toFixed(1)}  max=${pct(0.999).toFixed(1)}`);
+  console.log(`   mean=${mean.toFixed(1)}  stdev=${stdev.toFixed(1)}  CV=${(stdev / Math.max(1, mean)).toFixed(2)}  (low CV → uniform grid; high CV → natural clusters)`);
+  // Histogram (5-tile bins)
+  const bins = new Array(20).fill(0);
+  for (const d of dists) { const b = Math.min(19, Math.floor(d / 5)); bins[b]++; }
+  console.log(`   histogram (bins of 5 tiles):`);
+  for (let b = 0; b < bins.length; b++) {
+    if (bins[b] === 0 && b > 8) continue;
+    const lo = b * 5, hi = (b + 1) * 5;
+    const bar = "█".repeat(Math.round(bins[b] * 40 / Math.max(1, n)));
+    console.log(`   ${String(lo).padStart(3)}-${String(hi).padStart(3)}: ${String(bins[b]).padStart(3)} ${bar}`);
+  }
+}
