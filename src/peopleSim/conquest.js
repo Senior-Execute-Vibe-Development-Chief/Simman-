@@ -21,10 +21,17 @@ import { localEdgeCost } from "./transport.js";
 const POLITY_INTERVAL  = 150;   // ticks between polity passes
 // Sub-city absorption requires the absorbing power to have at least this
 // much ORGANISATION (state apparatus) before it can administratively
-// swallow a touching village-only country. Below this threshold the
-// village stays independent — only direct conquest by armies can take it.
-// Stops chalcolithic cradles from peacefully vacuuming continents.
-const ABSORB_ORG_MIN   = 0.18;
+// swallow a touching village. Below this threshold the village stays
+// independent — only direct conquest by armies can take it. Bronze-age
+// society is the floor; chalcolithic and earlier are too primitive to
+// integrate a foreign realm administratively.
+const ABSORB_ORG_MIN   = 0.30;
+// Maximum per-polity-pass defection probability. Caps the rate at which
+// a sub-city settlement can flip to a touching foreign realm — even a
+// tiny village vs a massive cradle defects over multiple passes, never
+// in a single tick. With POLITY_INTERVAL=150 and ABSORB_PROB_MAX=0.10,
+// a fully-pressured village takes ~10 passes (~1500 ticks) on average.
+const ABSORB_PROB_MAX  = 0.10;
 
 // ── Government treasury (fiscal redistribution) ───────────────────────
 // The realm's coin is taxed into a GOVERNMENT treasury (not the capital
@@ -1016,58 +1023,70 @@ function absorbSubCityCountries(world, countries) {
   }
   if (subCity.length === 0) return;
   const tw = world.tw, th = world.th, N = world.N;
-  for (const c of subCity) {
-    // Skip if every member is still pacified (freshly conquered/seceded) —
-    // re-flipping it next pass would just create instability. The next polity
-    // pass will see it again once the grace expires.
-    let allPacified = true;
-    for (const m of c.members) {
-      if (world.step - (m._conqueredAt ?? -Infinity) >= CONQUEST_GRACE) { allPacified = false; break; }
+  // Map every sub-city settlement-id → its country, and remember which ids
+  // belong to a sub-city realm at all (for fast tile-walk filtering).
+  const settToCountry = new Map();
+  for (const c of subCity) for (const m of c.members) settToCountry.set(m.id, c);
+  // Per-settlement touch scores (foreign-country-id → cumulative power).
+  // We walk EVERY tile once and credit each foreign neighbour to the
+  // settlement that owns the home tile, NOT to the whole country. That
+  // makes each sub-city member's exposure independent: a village on the
+  // edge feels the cradle's pull; a village deep inside its own
+  // hinterland doesn't.
+  const perSett = new Map();
+  for (let ti = 0; ti < N; ti++) {
+    const oid = owner[ti]; if (oid < 0) continue;
+    const ownerSett = byId.get(oid);
+    if (!ownerSett || !settToCountry.has(ownerSett.id)) continue;
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+    const ns = [ty * tw + xm, ty * tw + xp,
+                ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+    const myCountry = ownerSett.countryId;
+    for (let k = 0; k < 4; k++) {
+      const ni = ns[k]; if (ni < 0) continue;
+      const no = owner[ni]; if (no < 0) continue;
+      const ns2 = byId.get(no); if (!ns2 || ns2.countryId === myCountry) continue;
+      const foreign = countries.get(ns2.countryId); if (!foreign) continue;
+      let foreignHasCity = false;
+      for (const fm of foreign.members) if ((fm.tier | 0) >= 2) { foreignHasCity = true; break; }
+      if (!foreignHasCity) continue;
+      const orgK = (foreign.capital.knowledge && foreign.capital.knowledge.organization) || 0;
+      if (orgK < ABSORB_ORG_MIN) continue;
+      const orgFactor = Math.min(1, (orgK - ABSORB_ORG_MIN) / (1 - ABSORB_ORG_MIN));
+      let perCc = perSett.get(ownerSett.id);
+      if (!perCc) { perCc = new Map(); perSett.set(ownerSett.id, perCc); }
+      perCc.set(ns2.countryId,
+        (perCc.get(ns2.countryId) || 0) + settlementPower(foreign.capital) * orgFactor);
     }
-    if (allPacified) continue;
-    // Find the strongest country whose territory touches this one's.
-    const myIds = new Set(); for (const m of c.members) myIds.add(m.id);
-    const touchScore = new Map();   // foreign countryId → cumulative power
-    for (let ti = 0; ti < N; ti++) {
-      const oid = owner[ti]; if (oid < 0 || !myIds.has(oid)) continue;
-      const ty = (ti / tw) | 0, tx = ti - ty * tw;
-      const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
-      const ns = [ty * tw + xm, ty * tw + xp,
-                  ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
-      for (let k = 0; k < 4; k++) {
-        const ni = ns[k]; if (ni < 0) continue;
-        const no = owner[ni]; if (no < 0 || myIds.has(no)) continue;
-        const ns2 = byId.get(no); if (!ns2 || ns2.countryId === c.id) continue;
-        const foreign = countries.get(ns2.countryId); if (!foreign) continue;
-        // Only absorbing into countries that DO have a city (otherwise we'd
-        // just merge two village statelets, which solves nothing).
-        let foreignHasCity = false;
-        for (const fm of foreign.members) if ((fm.tier | 0) >= 2) { foreignHasCity = true; break; }
-        if (!foreignHasCity) continue;
-        // Tech gate: peaceful absorption requires the absorbing power to
-        // have a real STATE apparatus — administration, records,
-        // bureaucracy. A chalcolithic cradle with a population that happens
-        // to be touching can't just file a neighbour into its kingdom.
-        // (Conquest by armies still works at any tech level — this only
-        // gates the peaceful vacuum-up path that was producing instant
-        // continental empires.) Once organization passes the threshold,
-        // the foreign power weights its draw by how far past it sits.
-        const orgK = (foreign.capital.knowledge && foreign.capital.knowledge.organization) || 0;
-        if (orgK < ABSORB_ORG_MIN) continue;
-        const orgFactor = Math.min(1, (orgK - ABSORB_ORG_MIN) / (1 - ABSORB_ORG_MIN));
-        touchScore.set(ns2.countryId, (touchScore.get(ns2.countryId) || 0) + settlementPower(foreign.capital) * orgFactor);
-      }
-    }
-    if (touchScore.size === 0) continue;        // truly isolated → stays a city-state
+  }
+  // Per-settlement probabilistic defection. A village that's heavily
+  // exposed to a strong foreign neighbour rolls a per-pass chance to
+  // defect; one that's barely touching rolls a lower chance. This
+  // produces the visible "village-by-village, year by year" pattern of
+  // a small statelet being eroded into a great power's orbit, instead
+  // of the entire statelet flipping atomically in one tick.
+  for (const [settId, scoreMap] of perSett) {
+    const m = byId.get(settId);
+    if (!m || m.mode !== "settled") continue;
+    if (world.step - (m._conqueredAt ?? -Infinity) < CONQUEST_GRACE) continue;
     let bestId = -1, bestScore = -1;
-    for (const [cid, score] of touchScore) if (score > bestScore) { bestScore = score; bestId = cid; }
+    for (const [cid, score] of scoreMap) if (score > bestScore) { bestScore = score; bestId = cid; }
     if (bestId < 0) continue;
-    for (const m of c.members) {
-      m.countryId = bestId;
-      m.loyalty = 0.6;                          // absorbed, not yet truly part of the realm
-      m._conqueredAt = world.step;              // brief grace to settle in
-      if (m.history) m.history.push({ step: world.step, type: "absorbed", into: bestId });
-    }
+    const myPower = Math.max(1, settlementPower(m));
+    // Defection chance per polity pass — caps at ABSORB_PROB_MAX so even
+    // a tiny village vs a huge cradle defects gradually (~10 passes to
+    // flip on average), not instantly.
+    const ratio = bestScore / myPower;
+    const prob = Math.min(ABSORB_PROB_MAX, ratio * 0.04);
+    // Deterministic hash on (id, step) — same input always rolls the same
+    // outcome, so debugging is reproducible and there's no jitter.
+    const r = ((m.id * 9301 + world.step * 49297 + 7) % 233280) / 233280;
+    if (r > prob) continue;
+    m.countryId = bestId;
+    m.loyalty = 0.6;                          // absorbed, not yet truly part of the realm
+    m._conqueredAt = world.step;              // brief grace to settle in
+    if (m.history) m.history.push({ step: world.step, type: "absorbed", into: bestId });
   }
 
   // ── Enclave fragment absorption ─────────────────────────────────────
@@ -1118,6 +1137,12 @@ function absorbSubCityCountries(world, countries) {
       let bestId = -1, bestScore = -1;
       for (const [cid, score] of foreignTouch) if (score > bestScore) { bestScore = score; bestId = cid; }
       if (bestId < 0) continue;
+      // Same per-pass probabilistic flip as the sub-city absorption —
+      // a stranded fragment takes time to give up.
+      const myPower = Math.max(1, settlementPower(m));
+      const prob = Math.min(ABSORB_PROB_MAX, (bestScore / myPower) * 0.04);
+      const r = ((m.id * 9301 + world.step * 49297 + 13) % 233280) / 233280;
+      if (r > prob) continue;
       m.countryId = bestId;
       m.loyalty = 0.6;
       m._conqueredAt = world.step;

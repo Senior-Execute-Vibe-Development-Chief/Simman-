@@ -106,10 +106,12 @@ export function computeTerritory(world) {
   }
 
   // Release any tile whose owner is gone (died / unsettled) back to
-  // wilderness, so neighbours can grow into the vacated land.
+  // wilderness, so neighbours can grow into the vacated land. Also
+  // release any WATER tiles that lingered from an older code path —
+  // borders shouldn't bleed into the ocean.
   for (let ti = 0; ti < N; ti++) {
     const o = owner[ti];
-    if (o >= 0 && !byId.has(o)) owner[ti] = -1;
+    if (o >= 0 && (!byId.has(o) || world.elev[ti] <= 0)) owner[ti] = -1;
   }
 
   // Guarantee each settlement its (tier-sized) core block, carving it from a
@@ -176,15 +178,19 @@ export function computeTerritory(world) {
       // Tech×terrain edge cost from the OWNER's perspective. A neolithic
       // civ pays the full mountain/cold/river-crossing tariff; a civ with
       // construction/navigation/mobility pays less. Water tiles return
-      // Infinity unless this civ has the nav floor (≥0.2), in which case
-      // they cost 3–12 (sail) and the claim can hop offshore.
+      // Infinity unless this civ has the nav floor (≥0.10), in which case
+      // they cost ~3-12 (sail) and the claim can hop offshore.
       const c = localEdgeCost(world, ti, ni, kn);
       if (c === Infinity) continue;
       const nd = d + c * mul[k];
       if (nd > bud) continue;                // owner can't reach further
       if (nd < cost[ni]) {
         cost[ni] = nd;
-        if (lk < 0) owner[ni] = oid;         // claim free wilderness
+        // Walk THROUGH water (so a navy reaches the far shore) but don't
+        // CLAIM water tiles — borders shouldn't bleed into the ocean.
+        // Land tiles are claimed normally; water tiles just propagate
+        // the cost frontier.
+        if (lk < 0 && elev[ni] > 0) owner[ni] = oid;
         heap.push(ni, nd);
       }
     }
