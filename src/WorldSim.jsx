@@ -3532,13 +3532,13 @@ else if(_stepTotal>5){console.warn(`[SLOW step ${ter.stepCount}] ${_stepTotal.to
 return ter;}
 
 // ── Non-linear time: starts at 3000 BC, accelerates into modernity ──
-// ~1000 steps spans 3000 BC → 2025 AD (5025 years)
-// Early game (step 0-200): ~12 yr/step (3000 BC → 600 BC: Bronze → Iron Age)
+// ~1000 steps spans 2000 BC → 2025 AD (4025 years)
+// Early game (step 0-200): ~7 yr/step (2000 BC → 600 BC: Bronze → Iron Age)
 // Mid game (step 200-500): ~5 yr/step (600 BC → 900 AD: Classical → Medieval)
 // Late game (step 500-800): ~2.5 yr/step (900 AD → 1650 AD: Medieval → Early Modern)
 // Modern (step 800-1000): ~1.9 yr/step (1650 → 2025 AD)
 function stepToYear(step){
-if(step<=200)return 3000-step*12;// 3000 BC → 600 BC
+if(step<=200)return 2000-step*7;// 2000 BC → 600 BC
 if(step<=500)return 600-(step-200)*5;// 600 BC → 900 AD (negative = AD)
 if(step<=800)return -(900+(step-500)*2.5);// 900 AD → 1650 AD
 return -(1650+(step-800)*1.875);// 1650 AD → 2025 AD
