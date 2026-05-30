@@ -62,6 +62,25 @@ const HARD_FLOOR                = 4;          // absolutely no settlement closer
 const HARD_FLOOR_SQ             = HARD_FLOOR * HARD_FLOOR;
 const SOFT_DIST                 = 14;         // beyond this, the spacing factor is 1 (no penalty)
 const SOFT_DIST_SQ              = SOFT_DIST * SOFT_DIST;
+// ── Market-town pull ──
+// A new settlement is more likely to crystallise WITHIN the catchment area
+// of an existing town/city — markets, labour pools, defence, and trade
+// gravity all attract incoming farmers. This is the cause of the
+// historical "cluster of villages around a market town" pattern: most real
+// rural settlements existed within a day's walk of a market. Without this
+// term, the spacing rules alone produced a circle-pack with everyone at the
+// floor; market pull breaks that by making the *area around an existing
+// settlement* a preferred zone.
+//
+// Per existing settlement, contribute (tier+1) × exp(-d/MARKET_RANGE) to a
+// candidate's pull. So a city (tier 2) within 20 tiles adds 3 × exp(-20/30)
+// = ~1.54, while a village (tier 0) at 40 tiles adds only 1 × exp(-40/30) =
+// ~0.26. The cradle's nearby villages cluster; distant frontiers are weak.
+// The cradle's MARKET_RANGE is large enough that the catchment overlaps
+// with itself, producing dense intra-cluster spawning at distances above
+// the SOFT_DIST floor (15-30 tiles, not 5-10).
+const MARKET_RANGE              = 30;
+const MARKET_PULL_WEIGHT        = 1.2;  // strength of the bonus (combined with spacingFactor)
 // Spacing-factor: 0 at HARD_FLOOR, 1 at SOFT_DIST. Used in sendSettlers'
 // hard reject because mother-country colony parties already pick deliberately
 // (the founder doesn't accidentally plant at 4 tiles).
@@ -191,21 +210,32 @@ export function maybeCrystallize(world) {
       }
     }
     if (areaFert < MIN_AREA_FERT) continue;
-    // Distance to nearest existing settlement. SOFT rule: HARD_FLOOR
-    // rejects outright (territorial overlap), beyond SOFT_DIST no penalty,
-    // in between a linear falloff multiplied into the spawn probability
-    // below. So brilliant sites can still pair up close to existing ones
-    // (twin towns), while typical sites still get pushed apart.
+    // Walk existing settlements ONCE, accumulating both:
+    //   nearestSq  — for the spacing (anti-overlap) rule
+    //   marketPull — for the market-town attraction (positive cluster pull)
+    // A market-area-bonus cutoff distance (MARKET_RANGE × 3) skips far-away
+    // settlements that contribute nothing to either signal.
+    const MARKET_CUTOFF_SQ = (MARKET_RANGE * 3) * (MARKET_RANGE * 3);
     let nearestSq = Infinity;
+    let marketPull = 0;
+    let earlyExit = false;
     for (const o of world.settlements) {
       if (o.mode === "dead") continue;
       let ddx = Math.abs(o.pos.x - tx);
       if (ddx > tw / 2) ddx = tw - ddx;
       const ddy = o.pos.y - ty;
       const dd = ddx * ddx + ddy * ddy;
-      if (dd < nearestSq) { nearestSq = dd; if (dd < HARD_FLOOR_SQ) break; }
+      if (dd < nearestSq) {
+        nearestSq = dd;
+        if (dd < HARD_FLOOR_SQ) { earlyExit = true; break; }
+      }
+      if (dd < MARKET_CUTOFF_SQ) {
+        const d = Math.sqrt(dd);
+        const tierBonus = 1 + (o.tier | 0);
+        marketPull += tierBonus * Math.exp(-d / MARKET_RANGE);
+      }
     }
-    if (nearestSq < HARD_FLOOR_SQ) continue;          // hard reject — overlap
+    if (earlyExit || nearestSq < HARD_FLOOR_SQ) continue;       // hard reject — overlap
     // Linear ramp between HARD_FLOOR and SOFT_DIST on actual distance (not
     // squared, so it grows steeply near the floor and flattens out near the
     // soft boundary — matches the "very close = bad, modest distance =
@@ -215,6 +245,12 @@ export function maybeCrystallize(world) {
       const d = Math.sqrt(nearestSq);
       spacingFactor = (d - HARD_FLOOR) / (SOFT_DIST - HARD_FLOOR);
     }
+    // Market pull: 1.0 at zero pull (frontier), grows with proximity to
+    // existing settlements weighted by their tier. Multiplied into the
+    // overall spawn probability so a candidate WITHIN reach of an existing
+    // town's catchment gets a real boost — the cause of the historical
+    // village-cluster pattern.
+    const marketFactor = 1 + MARKET_PULL_WEIGHT * marketPull;
 
     // Site-quality score — the LOCATIONAL PULL that decides where a sparsely
     // settled landscape clusters. Real settlement patterns are highly uneven
@@ -249,7 +285,7 @@ export function maybeCrystallize(world) {
     const td = transportDist[ti];
     const diffusionMul = isFinite(td) ? Math.exp(-td / KNOWLEDGE_DECAY_SCALE) * NEAR_RATE : 0;
     const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
-    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor;
+    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor;
 
     if (rng() < p) {
       // Inherited knowledge: blend from nearest settlement, weighted by
