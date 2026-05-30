@@ -27,9 +27,16 @@ import { settlementPower } from "../src/peopleSim/conquest.js";
 const STEPS = parseInt(process.argv[2] || "10000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);
 
-// World dimensions — match WorldSim.jsx's W,H constants. The browser
-// uses 1920×960 at RES=1 → 1920×960 tile space.
-const W = 1920, H = 960, RES = 1;
+// World dimensions — defaults match WorldSim.jsx (1920×960, RES=1) but
+// can be overridden by env vars for faster headless runs:
+//   EARTH_W=960 EARTH_H=480 node tools/earthRun.mjs 50000 8817
+// Lower resolution speeds the per-step trade/territory work proportionally
+// to (W*H), without changing the Earth shape — the heightmap is sampled at
+// the requested grid size. For "what does the user see", run at the
+// default 1920×960; for fast iteration, drop to 960×480.
+const W = parseInt(process.env.EARTH_W || "1920", 10);
+const H = parseInt(process.env.EARTH_H || "960", 10);
+const RES = 1;
 const TW = Math.ceil(W / RES), TH = Math.ceil(H / RES);
 
 console.log(`[earthRun] seed=${SEED} steps=${STEPS} W=${W} H=${H}`);
