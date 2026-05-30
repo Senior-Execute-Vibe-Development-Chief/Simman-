@@ -4350,6 +4350,15 @@ const activeResRef=useRef(null);activeResRef.current=activeRes;
 const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
+// ── Pan / zoom view transform ────────────────────────────────────────
+// All map drawing applies `ctx.translate(panX,panY); ctx.scale(zoom,zoom)`
+// so the existing draw code can stay in canvas-pixel coordinates; only the
+// inverse is needed when hit-testing a click or hover. Stored as refs to
+// avoid re-renders during a drag — the `draw()` call already runs every
+// frame so we don't need React state for these to repaint.
+const viewXRef=useRef(0),viewYRef=useRef(0),viewZRef=useRef(1);
+const panDragRef=useRef(null);   // {sx,sy,vx,vy} during a middle/right or drag-from-empty-space pan
+const ZOOM_MIN=0.5,ZOOM_MAX=8;
 // peopleSim world — entity-based replacement for the legacy tribe system.
 // Bands, settlements, etc. live here. The legacy `ter` object is kept
 // alive only so the existing draw() pipeline doesn't break; it is not
@@ -4846,6 +4855,17 @@ const isGlobe=showGlobeRef.current;
 // Use onscreen canvas if available, otherwise create offscreen for globe
 let ctx=canvasRef.current?canvasRef.current.getContext("2d"):null;
 if(!ctx&&!isGlobe)return;
+// ── Apply pan/zoom view transform (peopleSim views only — legacy views
+// like globe/preview keep their own coordinate handling). Cleared first
+// because at zoom<1 the transformed image doesn't cover the whole canvas
+// and we'd otherwise see stale pixels around the edges. Hit-testing
+// reverses this transform (see onCanvasMove / onCanvasClick).
+const _pz=ctx&&!isGlobe;
+if(_pz){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle="#000";ctx.fillRect(0,0,CW,CH);
+  ctx.setTransform(viewZRef.current,0,0,viewZRef.current,viewXRef.current,viewYRef.current);
+}
 if(!imgRef.current)imgRef.current=new ImageData(CW,CH);
 const img=imgRef.current;const d=img.data;
 // Lake lookup for rendering
@@ -5312,7 +5332,14 @@ if(!_baseHit){
     if(!baseLayerRef.current)baseLayerRef.current=document.createElement('canvas');
     const _bl=baseLayerRef.current;if(_bl.width!==CW||_bl.height!==CH){_bl.width=CW;_bl.height=CH;}
     _bl.getContext('2d').putImageData(img,0,0);ctx.drawImage(_bl,0,0);baseLayerKey.current=_baseKey;
-  }else ctx.putImageData(img,0,0);
+  }else{
+    // Non-cached views: route the image data through a temp canvas so the
+    // pan/zoom transform (set on ctx above) applies to the blit. putImageData
+    // ignores the active transform and would otherwise paint at literal 0,0.
+    if(!baseLayerRef.current)baseLayerRef.current=document.createElement('canvas');
+    const _bl=baseLayerRef.current;if(_bl.width!==CW||_bl.height!==CH){_bl.width=CW;_bl.height=CH;}
+    _bl.getContext('2d').putImageData(img,0,0);ctx.drawImage(_bl,0,0);
+  }
 }
 // Draw settlements — size scales continuously with log(population)
 {const selSt=ter._selectedTribe;const hasSel=selSt>=0&&ter.tribeSizes[selSt]>0&&vm==="tribes";
@@ -6013,10 +6040,29 @@ setSeed(Math.floor(Math.random()*999999));
 setTimeout(()=>setImportStatus(null),4000);
 }catch(err){setImportStatus("Import failed: "+err.message);setTimeout(()=>setImportStatus(null),5000);}
 },[seed]);
+// Screen → canvas-pixel-space (reversing the pan/zoom transform). Returns
+// {sx,sy} in the same coordinate system the existing hit-testing already uses.
+const screenToCanvas=useCallback((ev)=>{
+  const c=canvasRef.current;if(!c)return null;
+  const r=c.getBoundingClientRect();
+  const rawX=(ev.clientX-r.left)/r.width*CW;
+  const rawY=(ev.clientY-r.top)/r.height*CH;
+  const z=viewZRef.current;
+  return {sx:(rawX-viewXRef.current)/z, sy:(rawY-viewYRef.current)/z, rawX, rawY};
+},[CW,CH]);
 const onCanvasMove=useCallback((ev)=>{
 const c=canvasRef.current;if(!c||!worldRef.current)return;
-const r=c.getBoundingClientRect();
-const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
+// Pan dragging — middle button, or left-button drag from empty terrain
+// (the drag-start handler decides; here we just consume motion).
+if(panDragRef.current){
+  const pd=panDragRef.current;
+  viewXRef.current=pd.vx+(ev.clientX-pd.mx)*(CW/c.getBoundingClientRect().width);
+  viewYRef.current=pd.vy+(ev.clientY-pd.my)*(CH/c.getBoundingClientRect().height);
+  if(terRef.current)draw(terRef.current);
+  return;
+}
+const _sc=screenToCanvas(ev);if(!_sc)return;
+const sx=_sc.sx,sy=_sc.sy;
 const wx=Math.floor(sx)*RES,wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const w=worldRef.current,i=wy*1920+wx;
 if(wx<0||wx>=1920||wy<0||wy>=960){setHoverInfo(null);return;}
@@ -6066,8 +6112,16 @@ setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:f
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const onCanvasClick=useCallback((ev)=>{
 const c=canvasRef.current;if(!c||!terRef.current)return;
-const r=c.getBoundingClientRect();
-const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
+// If a pan-drag was in progress and moved more than a pixel or two, treat
+// the click as the end of the drag rather than a real click.
+if(panDragRef.current){
+  const pd=panDragRef.current;
+  const moved=Math.hypot(ev.clientX-pd.mx,ev.clientY-pd.my)>3;
+  panDragRef.current=null;
+  if(moved)return;
+}
+const _sc=screenToCanvas(ev);if(!_sc)return;
+const sx=_sc.sx,sy=_sc.sy;
 const wx=Math.floor(sx),wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const ter=terRef.current;if(!ter)return;
 const ttx=Math.min(ter.tw-1,(wx/RES)|0),tty=Math.min(ter.th-1,(wy/RES)|0);
@@ -6124,6 +6178,40 @@ setSelectedTribe(tileOwner);ter._selectedTribe=tileOwner;
 setRightPanel("tribes");draw(ter);
 }else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}
 },[CW,CH,draw,viewMode,ttSubMode]);
+// ── Pan / zoom mouse handlers ────────────────────────────────────────
+// Wheel: zoom around the cursor (Google-Maps style). Pan: middle-button or
+// shift+left-button drag (left-only drag is reserved for settlement clicks).
+const onCanvasWheel=useCallback((ev)=>{
+  ev.preventDefault();
+  const c=canvasRef.current;if(!c)return;
+  const r=c.getBoundingClientRect();
+  const rawX=(ev.clientX-r.left)/r.width*CW;
+  const rawY=(ev.clientY-r.top)/r.height*CH;
+  const zOld=viewZRef.current;
+  // Negative deltaY = wheel up = zoom in. ~10% step per notch.
+  const factor=ev.deltaY<0?1.15:1/1.15;
+  const zNew=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,zOld*factor));
+  if(zNew===zOld)return;
+  // Keep the point under the cursor stationary: solve for (vx,vy) such that
+  // (rawX-vxNew)/zNew == (rawX-vxOld)/zOld → vxNew = rawX - (rawX-vxOld)*zNew/zOld.
+  const k=zNew/zOld;
+  viewXRef.current=rawX-(rawX-viewXRef.current)*k;
+  viewYRef.current=rawY-(rawY-viewYRef.current)*k;
+  viewZRef.current=zNew;
+  if(terRef.current)draw(terRef.current);
+},[CW,CH,draw]);
+const onCanvasMouseDown=useCallback((ev)=>{
+  // Middle button, or shift+left, starts a pan. Plain left stays as click.
+  if(ev.button===1||(ev.button===0&&ev.shiftKey)){
+    ev.preventDefault();
+    panDragRef.current={mx:ev.clientX,my:ev.clientY,vx:viewXRef.current,vy:viewYRef.current};
+  }
+},[]);
+// Reset view (double-click to recentre at zoom 1).
+const resetView=useCallback(()=>{
+  viewXRef.current=0;viewYRef.current=0;viewZRef.current=1;
+  if(terRef.current)draw(terRef.current);
+},[draw]);
 // Re-run route Dijkstra whenever endpoints or tech change
 useEffect(()=>{
   if(viewMode!=="transport-test"||ttSubMode!=="route"){ttRouteResultRef.current=null;return;}
@@ -6257,6 +6345,7 @@ return(
     </div>:
     <canvas ref={canvasRef} width={CW} height={CH}
       onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
+      onWheel={onCanvasWheel} onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
       style={{display:"block",imageRendering:"pixelated",
         maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
         boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
@@ -6273,6 +6362,7 @@ return(
           {mi===0?
             <canvas ref={canvasRef} width={CW} height={CH}
               onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
+      onWheel={onCanvasWheel} onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
               style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`}} />:
             <canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
               style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
