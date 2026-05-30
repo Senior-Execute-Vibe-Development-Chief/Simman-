@@ -5717,141 +5717,109 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       meta.step=stepNow;meta.ch=CH;
     }
     ctx.drawImage(ov,0,0);
-    // ── Settlement sprites ──
-    // Each settlement renders as a cluster of small buildings
-    // around its position. The cluster's SIZE scales with log(pop)
-    // — bigger settlements span a larger footprint and contain
-    // more individual buildings. Building TYPE distribution comes
-    // from wealth-per-capita and tier:
-    //   hovel  — squat dark roofless rectangle (poor / low tier)
-    //   house  — square wall + triangular roof (default)
-    //   tower  — tall narrow rectangle with dark cap (rich)
-    // Cities and metropolises also get an enclosing wall ring with
-    // tower-tick marks. Building positions seeded from settlement
-    // id so the sprite is stable across frames (no shimmer).
-    const MIN_SIZE=5,MAX_SIZE=16;
-    let _popMin=Infinity,_popMax=-Infinity;
-    for(const s of psw.settlements){
-      if(!s||s.mode!=="settled")continue;
-      const p=s.people;
-      if(p<_popMin)_popMin=p;
-      if(p>_popMax)_popMax=p;
-    }
-    const _logMin=Math.log(Math.max(1,_popMin));
-    const _logRange=Math.log(Math.max(2,_popMax))-_logMin;
-    const sizeFromPop=p=>{
-      if(_logRange<=0.01)return (MIN_SIZE+MAX_SIZE)*0.5;
-      const t=Math.max(0,Math.min(1,(Math.log(Math.max(1,p))-_logMin)/_logRange));
-      return MIN_SIZE+t*(MAX_SIZE-MIN_SIZE);
-    };
-    // Tiny deterministic PRNG (mulberry32-ish) so each settlement's
-    // sprite layout stays fixed across re-renders.
-    const stableRng=(seed)=>{let s=seed|0;return()=>{s=(s*1664525+1013904223)|0;return((s>>>0)%1000000)/1000000;};};
+    // ── Settlement glyphs ──
+    // Compact single-glyph per settlement, much smaller than the old
+    // building-cluster sprite. Tier picks the SHAPE (village=dot,
+    // town=square, city=diamond, metropolis=larger diamond), the FILL is
+    // wealth-tinted, and overlay marks layer on top to communicate:
+    //   – garrison size (armoured outline)
+    //   – active shock (red plague / amber famine outline)
+    //   – capital (gold star above — kept from old code)
+    //   – provincial seat (small ring above — kept)
+    //   – selection (gold halo)
+    // Sizing scales with √log(pop) so a metropolis is visibly bigger than a
+    // hamlet, but the dynamic range is small — the visual distinction comes
+    // from SHAPE + COLOUR + DECORATION, not raw size.
+    // Apply icon scale 1/zoom so glyphs stay roughly constant on-screen
+    // regardless of map zoom (a metropolis at 8x zoom shouldn't take up the
+    // whole quarter of the screen). Allow a small growth at high zoom so
+    // detail is visible up close.
+    const zoom=viewZRef.current;
+    const iconScale=Math.max(0.4,Math.min(2,1/Math.sqrt(zoom)));
+    // Pop → "weight" 0..1 (log scale across the population range).
+    let _popMax=1;
+    for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.people>_popMax)_popMax=s.people;}
+    const _logMax=Math.log(Math.max(2,_popMax));
+    const popWeight=p=>Math.max(0,Math.min(1,Math.log(Math.max(1,p))/_logMax));
     const selId=selectedSettlementIdRef.current;
-    // National capitals (for the crown marker) — provincial seats are read
-    // from each settlement's vassal count.
     const capitalIds=new Set();
     if(psw.countries)for(const c of psw.countries.values())if(c.capital)capitalIds.add(c.capital.id);
+    // Tier sizes (canvas pixels at zoom=1) — village dot, town square, city
+    // diamond, metropolis bigger diamond.
+    const tierBaseSize=[1.6,2.4,3.4,4.6];
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
       const sx=s.pos.x*TR;
       const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
-      const size=sizeFromPop(s.people);
-      // Selection halo — bright gold ring behind the sprite.
+      const tier=s.tier|0;
+      const pw=popWeight(s.people);
+      // Size: base by tier + small √pop boost within tier, scaled for zoom.
+      const r=(tierBaseSize[tier]||2)*(0.85+pw*0.35)*iconScale;
+      // Selection halo — bright gold ring behind the glyph.
       if(s.id===selId){
-        ctx.beginPath();ctx.arc(sx,sy,size+5,0,Math.PI*2);
-        ctx.fillStyle="rgba(255,215,90,0.30)";ctx.fill();
-        ctx.beginPath();ctx.arc(sx,sy,size+5,0,Math.PI*2);
-        ctx.strokeStyle="rgba(255,200,70,1.0)";ctx.lineWidth=1.5;ctx.stroke();
+        ctx.beginPath();ctx.arc(sx,sy,r+3*iconScale,0,Math.PI*2);
+        ctx.fillStyle="rgba(255,215,90,0.28)";ctx.fill();
+        ctx.lineWidth=1.2*iconScale;ctx.strokeStyle="rgba(255,200,70,1)";ctx.stroke();
       }
-      // Wealth per capita determines building richness mix.
+      // Wealth-per-capita drives fill brightness (poor = dark earth, rich
+      // = warm cream); kept in a narrow range so country tints still read.
       const wpc=(s.wealth||0)/Math.max(1,s.people);
-      // Rich threshold: wpc > 30 starts producing towers; > 100 dominant.
-      const richMix=Math.min(1,wpc/100);
-      // Poor: wealth-per-capita low → mostly hovels (tier 0/1 only).
-      const poorMix=Math.max(0,Math.min(1,(15-wpc)/15));
-      // Building count from √pop — density actually scales with
-      // city size. A hamlet of 25 has 4 buildings, a town of 200
-      // has 10, a city of 1000 has 22, a metropolis of 10000 has
-      // ~70. Cities look DENSE, packed into their footprint.
-      const numBuildings=Math.max(3,Math.min(80,Math.round(Math.sqrt(s.people)*0.7)));
-      // Buildings — pseudo-random scatter inside footprint. Density
-      // increases naturally because numBuildings grows faster than
-      // footprint area (sqrt(pop) vs log(pop)).
-      const rng=stableRng(s.id*2654435761);
-      const footR=size*0.85;
-      // Build a list of (offset, type, height) so we can z-sort
-      // by y so back buildings draw first.
-      const buildings=[];
-      for(let i=0;i<numBuildings;i++){
-        const a=rng()*Math.PI*2;
-        const d=Math.pow(rng(),0.7)*footR;
-        const bx=sx+Math.cos(a)*d;
-        const by=sy+Math.sin(a)*d;
-        // Building type roll
-        const r=rng();
-        let kind;
-        if(s.tier===0&&poorMix>0.5)kind=r<0.7?"hovel":"house";
-        else if(richMix>0.4&&r<richMix*0.6)kind="tower";
-        else if(poorMix>0.3&&r<poorMix*0.5)kind="hovel";
-        else kind="house";
-        buildings.push({bx,by,kind});
-      }
-      buildings.sort((a,b)=>a.by-b.by);
-      for(const b of buildings){
-        const{bx,by,kind}=b;
-        if(kind==="hovel"){
-          // Small dark squat rectangle
-          const w=2.2,h=1.8;
-          ctx.fillStyle="rgba(75,55,35,1.0)";
-          ctx.fillRect(bx-w/2,by-h/2,w,h);
-          ctx.strokeStyle="rgba(20,15,5,1.0)";
-          ctx.lineWidth=0.5;
-          ctx.strokeRect(bx-w/2,by-h/2,w,h);
-        }else if(kind==="tower"){
-          // Tall narrow rectangle + darker cap
-          const w=2.0,h=6.0;
-          ctx.fillStyle="rgba(180,160,130,1.0)";
-          ctx.fillRect(bx-w/2,by-h,w,h);
-          ctx.strokeStyle="rgba(40,30,15,1.0)";
-          ctx.lineWidth=0.5;
-          ctx.strokeRect(bx-w/2,by-h,w,h);
-          // Cap
-          ctx.fillStyle="rgba(80,50,25,1.0)";
-          ctx.fillRect(bx-w/2-0.3,by-h-1.2,w+0.6,1.4);
-        }else{
-          // House — square + triangular roof
-          const w=2.8,h=2.4;
-          ctx.fillStyle="rgba(150,100,65,1.0)";
-          ctx.fillRect(bx-w/2,by-h/2,w,h);
-          ctx.strokeStyle="rgba(30,20,10,1.0)";
-          ctx.lineWidth=0.5;
-          ctx.strokeRect(bx-w/2,by-h/2,w,h);
-          ctx.beginPath();
-          ctx.moveTo(bx-w/2-0.3,by-h/2);
-          ctx.lineTo(bx,by-h/2-1.4);
-          ctx.lineTo(bx+w/2+0.3,by-h/2);
-          ctx.closePath();
-          ctx.fillStyle="rgba(95,55,28,1.0)";ctx.fill();
-          ctx.lineWidth=0.5;ctx.stroke();
+      const richT=Math.min(1,wpc/80);
+      const fr=Math.round(95+richT*105), fg=Math.round(75+richT*95), fb=Math.round(55+richT*55);
+      ctx.fillStyle=`rgb(${fr},${fg},${fb})`;
+      ctx.strokeStyle="rgba(20,15,5,0.95)";
+      ctx.lineWidth=0.7*iconScale;
+      // Tier glyph
+      if(tier===0){          // village — dot
+        ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.fill();ctx.stroke();
+      }else if(tier===1){    // town — square
+        ctx.fillRect(sx-r,sy-r,r*2,r*2);ctx.strokeRect(sx-r,sy-r,r*2,r*2);
+      }else{                 // city / metropolis — diamond
+        ctx.beginPath();ctx.moveTo(sx,sy-r);ctx.lineTo(sx+r,sy);ctx.lineTo(sx,sy+r);ctx.lineTo(sx-r,sy);ctx.closePath();
+        ctx.fill();ctx.stroke();
+        // Metropolis gets a second concentric diamond for visual weight.
+        if(tier>=3){
+          const r2=r*0.5;
+          ctx.beginPath();ctx.moveTo(sx,sy-r2);ctx.lineTo(sx+r2,sy);ctx.lineTo(sx,sy+r2);ctx.lineTo(sx-r2,sy);ctx.closePath();
+          ctx.strokeStyle="rgba(40,30,10,0.8)";ctx.lineWidth=0.6*iconScale;ctx.stroke();
         }
       }
+      // GARRISON ring — a settlement with an army > 5% of pop gets a thin
+      // armoured outline; saturates at 15%. Lets defended towns be read
+      // at a glance even when their tier glyph is small.
+      const armyFrac=(s.army||0)/Math.max(1,s.people);
+      if(armyFrac>0.05){
+        const t=Math.min(1,(armyFrac-0.05)/0.10);
+        ctx.beginPath();ctx.arc(sx,sy,r+1.4*iconScale,0,Math.PI*2);
+        ctx.strokeStyle=`rgba(80,60,30,${0.5+t*0.4})`;ctx.lineWidth=(0.8+t*0.9)*iconScale;ctx.stroke();
+      }
+      // ACTIVE SHOCK ring — plague (purple) or famine (amber). Overrides the
+      // garrison ring colour because a struck town is the more urgent signal.
+      const shock=s._shock||0;
+      if(shock){
+        ctx.beginPath();ctx.arc(sx,sy,r+2.2*iconScale,0,Math.PI*2);
+        ctx.strokeStyle=shock===2?"rgba(190,80,210,0.9)":"rgba(245,170,40,0.9)";
+        ctx.lineWidth=1.3*iconScale;ctx.stroke();
+      }
+      // Adjust below rank-marker offset for the new (smaller) icon.
+      const _markerR=r;
       // ── Rank marker ── a gold star above national capitals, a small open
       // ring above provincial seats (settlements that have vassals). Lets
       // the administrative hierarchy be read at a glance over the country
       // tint: stars = kingdoms' seats, rings = the regional centres beneath.
       if(capitalIds.has(s.id)){
-        const my=sy-size-3.5;
-        ctx.fillStyle="rgba(255,210,70,0.95)";ctx.strokeStyle="rgba(60,40,0,0.9)";ctx.lineWidth=0.6;
+        const my=sy-_markerR-3*iconScale;
+        const starOuter=3.2*iconScale,starInner=1.4*iconScale;
+        ctx.fillStyle="rgba(255,210,70,0.95)";ctx.strokeStyle="rgba(60,40,0,0.9)";ctx.lineWidth=0.6*iconScale;
         ctx.beginPath();
-        for(let p=0;p<10;p++){const ang=-Math.PI/2+p*Math.PI/5;const rr=(p%2===0)?3.4:1.5;
+        for(let p=0;p<10;p++){const ang=-Math.PI/2+p*Math.PI/5;const rr=(p%2===0)?starOuter:starInner;
           const px=sx+Math.cos(ang)*rr,py=my+Math.sin(ang)*rr;p===0?ctx.moveTo(px,py):ctx.lineTo(px,py);}
         ctx.closePath();ctx.fill();ctx.stroke();
       }else if((s._vassalCount||0)>0){
-        const my=sy-size-3;
-        ctx.beginPath();ctx.arc(sx,my,2.1,0,Math.PI*2);
+        const my=sy-_markerR-2.5*iconScale;
+        ctx.beginPath();ctx.arc(sx,my,1.9*iconScale,0,Math.PI*2);
         ctx.fillStyle="rgba(255,235,180,0.85)";ctx.fill();
-        ctx.lineWidth=0.7;ctx.strokeStyle="rgba(90,60,10,0.9)";ctx.stroke();
+        ctx.lineWidth=0.7*iconScale;ctx.strokeStyle="rgba(90,60,10,0.9)";ctx.stroke();
       }
     }
   }
