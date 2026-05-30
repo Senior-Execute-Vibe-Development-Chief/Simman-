@@ -313,7 +313,25 @@ export function advanceFronts(world) {
     // Floor at 0.1 — even an isolated tile takes SOME effort to grab,
     // so the per-pass attrition still applies. Maps 0/8 → 0.1, 4/8 → 0.55, 8/8 → 1.
     const thinFactor = cellTotal > 0 ? Math.max(0.1, sameCC / cellTotal) : 1;
-    const effDef = D._M * thinFactor;
+    // ── Terrain defensive multiplier ────────────────────────────────
+    // A tile on a major river, in mountains, or in dense forest is
+    // structurally easier to defend than open plain. The attacker has
+    // to ford, climb, or pick through cover under fire. Construction
+    // tech bridges rivers and engineers passes — high-construction
+    // defenders lose most of the river bonus (Roman engineers; modern
+    // pontoons). This is what makes fronts visibly SNAP to rivers and
+    // mountain ridges instead of plowing straight across the map.
+    let terrainDef = 1;
+    if (world.riverMag && world.riverMag[ti] >= 2) {
+      const cons = (D.knowledge && D.knowledge.construction) || 0;
+      terrainDef *= 1 + 1.5 * (1 - 0.6 * cons);    // ≈2.5× at neolithic, ≈1.6× at high-construction
+    }
+    if (world.elev[ti] > 0.55) {
+      const cons = (D.knowledge && D.knowledge.construction) || 0;
+      terrainDef *= 1 + 1.0 * (1 - 0.5 * cons);    // ≈2.0× rough alpine, ≈1.5× with engineered passes
+    }
+    if (terrainDef > 3.5) terrainDef = 3.5;        // cap — a single tile can't be unconquerable
+    const effDef = D._M * thinFactor * terrainDef;
     // Trade peace raises the bar: between two countries with a profitable
     // trade link, opportunistic encroachment is suppressed (it's bad
     // business). A saturated trade peer requires ~2× the normal advantage

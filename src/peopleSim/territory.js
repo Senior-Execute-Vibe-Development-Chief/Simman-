@@ -19,12 +19,14 @@
 // Roman grain-lane effect). Resource CONTROL extends to the full domain
 // edge (you tax/own the whole territory even if you don't farm it).
 
-import { baseEdgeCost } from "./transport.js";
+import { localEdgeCost } from "./transport.js";
 
 // Reach budget, in transport-cost units (a plain tile = 1.0). Grows with
 // the things that actually extend a polity's reach — administration
 // (organization), sheer size (population), and the transport techs
-// (mobility, navigation). Roads enter automatically through baseEdgeCost.
+// (mobility, navigation). Roads enter automatically through localEdgeCost,
+// which also sees the civ's tech multipliers so a high-construction realm
+// pushes farther up a mountain valley than a neolithic one.
 // Deliberately NOT a function of age/time.
 const TERRITORY_BASE = 5;
 export function reachBudget(s) {
@@ -83,10 +85,12 @@ export function computeTerritory(world) {
 
   const byId = new Map();
   const budget = new Map();
+  const knOf = new Map();   // owner id → snapshot of its knowledge for localEdgeCost
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     byId.set(s.id, s);
     budget.set(s.id, reachBudget(s));
+    knOf.set(s.id, s.knowledge || {});
   }
 
   // Release any tile whose owner is gone (died / unsettled) back to
@@ -137,6 +141,7 @@ export function computeTerritory(world) {
     if (d > cost[ti]) continue;
     const oid = owner[ti];
     const bud = budget.get(oid) || 0;
+    const kn  = knOf.get(oid);
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1;
     const xp = tx === tw - 1 ? 0 : tx + 1;
@@ -153,10 +158,15 @@ export function computeTerritory(world) {
     const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
     for (let k = 0; k < 8; k++) {
       const ni = ns[k];
-      if (ni < 0 || elev[ni] <= 0) continue;
+      if (ni < 0) continue;
       const lk = base[ni];
       if (lk >= 0 && lk !== oid) continue;   // someone's locked land: a wall
-      const c = baseEdgeCost(world, ti, ni);
+      // Tech×terrain edge cost from the OWNER's perspective. A neolithic
+      // civ pays the full mountain/cold/river-crossing tariff; a civ with
+      // construction/navigation/mobility pays less. Water tiles return
+      // Infinity unless this civ has the nav floor (≥0.2), in which case
+      // they cost 3–12 (sail) and the claim can hop offshore.
+      const c = localEdgeCost(world, ti, ni, kn);
       if (c === Infinity) continue;
       const nd = d + c * mul[k];
       if (nd > bud) continue;                // owner can't reach further
