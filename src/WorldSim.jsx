@@ -4317,6 +4317,21 @@ const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
 useEffect(()=>{selectedSettlementIdRef.current=selectedSettlementId;},[selectedSettlementId]);
+// ── Layer visibility ────────────────────────────────────────────────
+// All toggles for what gets drawn on the peopleSim view. Tier toggles
+// independently hide villages / towns / cities / metropolises; the road
+// overlay also respects them (links with both endpoints in a hidden tier
+// drop out). Stored as a single state object so the panel can edit it
+// declaratively; mirrored to a ref so draw() (memoized) reads current
+// values without needing them in its deps.
+const[layers,setLayers]=useState({
+  icons:true, tints:true, borders:true, roads:true, seaLanes:true,
+  moneyFlow:true, ships:true, armies:true, shocks:true,
+  village:true, town:true, city:true, metropolis:true,
+});
+const[layersOpen,setLayersOpen]=useState(false);
+const layersRef=useRef(layers);
+useEffect(()=>{layersRef.current=layers;if(terRef.current)draw(terRef.current);},[layers,draw]);
 // Which collapsible sections of the settlement card are open. Persists
 // across re-renders (the card re-renders every few ticks) and across
 // selecting different settlements.
@@ -5565,15 +5580,33 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       const h = ((rootId * 137) % 360 + 360) % 360;
       return `hsl(${h}, 65%, 45%)`;
     };
+    // ── Tier filter (Layers panel): drop any component whose ONLY settlements
+    // belong to hidden tiers, so only roads connecting the active tiers show.
+    const _Lr=layersRef.current;
+    const tierShowR=[_Lr.village,_Lr.town,_Lr.city,_Lr.metropolis];
+    const allTiers=tierShowR.every(Boolean);
+    let compVisible=null;
+    if(!allTiers){
+      compVisible=new Set();
+      for(const s of psw.settlements){
+        if(!s||s.mode!=="settled")continue;
+        if(!tierShowR[s.tier|0])continue;
+        const ti=(s.pos.y|0)*psw.tw+(s.pos.x|0);
+        const c=compAt?compAt(ti):-1;
+        compVisible.add(c>=0?c:s.id);
+      }
+    }
+    const _showComp=c=>allTiers||compVisible.has(c);
     // ── Draw road tiles, coloured by their component (or a uniform colour
     // when component data isn't available yet) ──
-    if(psw.roadQuality){
+    if(_Lr.roads&&psw.roadQuality){
       const rq=psw.roadQuality;
       for(let ti=0;ti<rq.length;ti++){
         if(rq[ti]>=1.0)continue;
+        const comp=compAt?compAt(ti):-1;
+        if(comp>=0&&!_showComp(comp))continue;
         const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
         const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-        const comp=compAt?compAt(ti):-1;
         ctx.fillStyle=comp>=0?compColour(comp):"rgba(150,110,60,0.9)";
         ctx.fillRect(sx,sy,TR,TR);
       }
@@ -5582,8 +5615,9 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // Smaller than the normal icons so the road shapes dominate;
     // every settlement shown so isolated ones (no roads) are
     // visible as their own coloured dot too.
-    for(const s of psw.settlements){
+    if(_Lr.icons)for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
+      if(!tierShowR[s.tier|0])continue;
       const sx=s.pos.x*TR;
       const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
       const root=find(s.id);
@@ -5596,7 +5630,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       ctx.stroke();
     }
   }
-  if(psw&&ctx&&vmMoney){
+  if(psw&&ctx&&vmMoney&&layersRef.current.moneyFlow){
     // ── Money-flow overlay ──────────────────────────────────────────
     // Maps the economy: where money is minted (mining), which way it
     // flows along roads, and which settlements are gaining vs losing it.
@@ -5673,13 +5707,16 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     }
     const meta=psOverlayMeta.current;
     const stepNow=psw.step||0;
-    // Regenerate on: first draw, canvas-height change, world reset (step
-    // jumped backwards), or every PS_OVERLAY_REGEN steps of normal play.
-    if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN){
+    const L=layersRef.current;
+    // Toggle key — when any of the rendered-into-overlay layers flips on/off
+    // we must rebuild, otherwise the cached image stays stale.
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0);
+    if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
+      meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
       octx.clearRect(0,0,CW,CH);
       const owner=psw._territoryOwner;
-      if(owner){
+      if((L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         // Per-settlement-id lookups (small int ids) instead of Maps, and a
         // single shared colour string per country so fillStyle is reassigned
@@ -5693,25 +5730,29 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           tintById[s.id]=t; ctryById[s.id]=s.countryId;
         }}
         // Single pass: tint fill + accumulate dotted national borders.
-        octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();
+        // Either layer can be off and the other is unaffected.
+        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
         for(let ti=0;ti<owner.length;ti++){
           const oid=owner[ti];if(oid<0)continue;
           const fs=tintById[oid];if(fs===undefined)continue;
           const py=(ti/tw)|0,px=ti-py*tw;
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-          octx.fillRect(sx,sy,TR,TR);
+          if(L.tints){
+            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+            octx.fillRect(sx,sy,TR,TR);
+          }
+          if(!L.borders)continue;
           const co=ctryById[oid];
           const ro=owner[py*tw+(px===tw-1?0:px+1)];
           if(ro>=0&&ro!==oid&&ctryById[ro]!==co){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
           if(py<th-1){const dno=owner[ti+tw];
             if(dno>=0&&dno!==oid&&ctryById[dno]!==co){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
-        octx.stroke();octx.setLineDash([]);
+        if(L.borders){octx.stroke();octx.setLineDash([]);}
       }
       // Roads — thickness + alpha from current flow.
-      if(psw.roadQuality&&psw.roadFlow){
+      if(L.roads&&psw.roadQuality&&psw.roadFlow){
         const rq=psw.roadQuality,rf=psw.roadFlow,FLOW_FULL=50;
         for(let ti=0;ti<rq.length;ti++){
           if(rq[ti]>=1.0)continue;
@@ -5756,8 +5797,13 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // Tier sizes (canvas pixels at zoom=1) — village dot, town square, city
     // diamond, metropolis bigger diamond.
     const tierBaseSize=[1.6,2.4,3.4,4.6];
+    // Per-tier visibility (Layers panel). When all tiers are off the loop
+    // does nothing — same as turning icons off entirely.
+    const _L=layersRef.current;
+    const tierShow=[_L.icons&&_L.village,_L.icons&&_L.town,_L.icons&&_L.city,_L.icons&&_L.metropolis];
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
+      if(!tierShow[s.tier|0])continue;
       const sx=s.pos.x*TR;
       const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
       const tier=s.tier|0;
@@ -5804,7 +5850,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
       // ACTIVE SHOCK ring — plague (purple) or famine (amber). Overrides the
       // garrison ring colour because a struck town is the more urgent signal.
-      const shock=s._shock||0;
+      const shock=_L.shocks?(s._shock||0):0;
       if(shock){
         ctx.beginPath();ctx.arc(sx,sy,r+2.2*iconScale,0,Math.PI*2);
         ctx.strokeStyle=shock===2?"rgba(190,80,210,0.9)":"rgba(245,170,40,0.9)";
@@ -5835,7 +5881,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   // ── Sea lanes ── faint dashed routes over open water connecting the
   // ports that trade by ship (sea.js). Drawn in every view except the
   // land-roads view, beneath the moving ships and armies.
-  if(psw&&ctx&&!vmRoads&&psw._seaLanes&&psw._seaLanes.length){
+  if(psw&&ctx&&!vmRoads&&psw._seaLanes&&psw._seaLanes.length&&layersRef.current.seaLanes){
     const TR=psw.tileRes,tw=psw.tw;
     ctx.save();
     ctx.strokeStyle="rgba(90,175,225,0.28)";
@@ -5858,7 +5904,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   // ── Colony ships ── diamonds in the founding country's colour sailing
   // toward the shore they'll settle, with a faint line to that
   // destination. Drawn in every view (like armies).
-  if(psw&&ctx&&psw.ships&&psw.ships.length){
+  if(psw&&ctx&&psw.ships&&psw.ships.length&&layersRef.current.ships){
     const TR=psw.tileRes,tw=psw.tw;
     for(const sh of psw.ships){
       const sxp=sh.x*TR,syp=dataYtoScreenY(sh.y*TR,H,CH);
@@ -5878,7 +5924,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   }
   // ── Marching reinforcement columns ── small chevrons in the realm's colour
   // moving along roads toward a besieged settlement (size hints troop count).
-  if(psw&&ctx&&psw.armies&&psw.armies.length){
+  if(psw&&ctx&&psw.armies&&psw.armies.length&&layersRef.current.armies){
     const TR=psw.tileRes;
     for(const m of psw.armies){
       const mx=m.x*TR,my=dataYtoScreenY(m.y*TR,H,CH);
@@ -7140,6 +7186,8 @@ return(
   className={"au-rail-tab"+(showGlobe?" au-active":"")}>Globe</button>
 {viewMode==="tribes"&&<button onClick={()=>setShowPower(v=>!v)}
   className={"au-rail-tab"+(showPower?" au-active":"")}>Power</button>}
+<button onClick={()=>setLayersOpen(v=>!v)}
+  className={"au-rail-tab"+(layersOpen?" au-active":"")}>Layers</button>
 
 {(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
 <div className="au-rule" />
@@ -7152,6 +7200,43 @@ return(
 </aside>
 
 {/* ══════════ PARAMS DRAWER ══════════ */}
+{layersOpen&&(()=>{
+  const tog=(k)=>setLayers(L=>({...L,[k]:!L[k]}));
+  const Row=({k,label,indent})=>(
+    <button onClick={()=>tog(k)}
+      className={"au-rail-tab"+(layers[k]?" au-active":"")}
+      style={{paddingLeft:14+(indent||0),width:"100%",textAlign:"left",fontSize:12}}>{label}</button>
+  );
+  return(
+    <aside className="au-parchment au-scroll" style={{
+      position:"absolute",right:142,top:6,width:220,maxHeight:"80vh",
+      padding:"10px 0",overflowY:"auto",zIndex:30}}>
+      <div style={{display:"flex",alignItems:"baseline",marginBottom:4,padding:"0 12px"}}>
+        <span className="au-heading au-sc" style={{fontSize:12}}>Layers</span>
+        <div style={{flex:1}} />
+        <span onClick={()=>setLayersOpen(false)}
+          style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
+      </div>
+      <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"4px 14px 2px"}}>Map</div>
+      <Row k="tints" label="Country tints" />
+      <Row k="borders" label="Borders" />
+      <Row k="roads" label="Roads" />
+      <Row k="seaLanes" label="Sea lanes" />
+      <Row k="moneyFlow" label="Money flow" />
+      <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Settlements</div>
+      <Row k="icons" label="Icons (master)" />
+      <Row k="village" label="· Villages" indent={10} />
+      <Row k="town" label="· Towns" indent={10} />
+      <Row k="city" label="· Cities" indent={10} />
+      <Row k="metropolis" label="· Metropolises" indent={10} />
+      <Row k="shocks" label="Plague / famine outlines" />
+      <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Moving</div>
+      <Row k="ships" label="Colony ships" />
+      <Row k="armies" label="Marching armies" />
+    </aside>
+  );
+})()}
+
 {rightPanel==="params"&&(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&
 <aside className="au-parchment au-scroll" style={{
   position:"absolute",right:142,top:6,bottom:6,width:300,
