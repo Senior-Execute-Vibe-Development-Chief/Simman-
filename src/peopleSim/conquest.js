@@ -205,6 +205,33 @@ function recencyFactor(world, s) {
 // periphery and fragment into successor states.
 const RANGE_BASE = 8, RANGE_ORG = 16, RANGE_MOB = 10, RANGE_NAV = 6;
 
+// ── Major-river administrative frontier ───────────────────────────────
+// A great river is a natural border: holding a province on the FAR bank
+// costs the centre extra reach to cross. The toll is CONSTRUCTION-gated —
+// a chalcolithic realm (cons≈0) pays the full toll and is walled by a
+// great river (the Rhine/Danube/Nile frontier effect), while an engineered
+// realm (Roman pontoons, bridges) crosses it cheaply. Only MAJOR/GREAT
+// rivers (mag ≥ 3) wall an empire; minor streams (mag 2) don't. The toll
+// enters the admin load at FULL weight (unlike generic terrain, which is
+// half-weighted) so rivers genuinely bound a low-tech empire's extent.
+const RIVER_TOLL_MAX  = 6;     // reach-units to cross a major river at zero construction
+const RIVER_TOLL_CONS = 5;     // construction shaves up to this off the toll
+const RIVER_TOLL_MIN  = 0.5;   // floor — even a bridged crossing isn't free
+
+// Toll for an edge that steps ONTO a major-river tile from a non-river
+// tile — one charge per river crossed (travelling ALONG a river is free,
+// so a riverine heartland isn't self-penalised). Returns 0 for any other
+// edge. Construction bridges the toll down toward RIVER_TOLL_MIN.
+function majorRiverToll(world, fromTi, toTi, cons) {
+  const rm = world.riverMag;
+  if (!rm) return 0;
+  const toMajor   = rm[toTi]   >= 3 && world.elev[toTi]   > 0;
+  if (!toMajor) return 0;
+  const fromMajor = rm[fromTi] >= 3 && world.elev[fromTi] > 0;
+  if (fromMajor) return 0;     // already on the river → travelling along it, not crossing
+  return Math.max(RIVER_TOLL_MIN, RIVER_TOLL_MAX - cons * RIVER_TOLL_CONS);
+}
+
 export { POLITY_INTERVAL };
 
 // Military/administrative weight, used to pick the capital (strongest member).
@@ -737,18 +764,24 @@ function capitalTransportCosts(world, c) {
   // water-embarkation gate. Land = baseEdgeCost; water = navigable iff
   // nav ≥ 0.2 and at a cost that falls from ~12 to ~3 as nav rises.
   const kn  = { navigation: (cap.knowledge && cap.knowledge.navigation) || 0 };
+  // Major-river crossings are tracked SEPARATELY (full-weight barrier, not
+  // halved with generic terrain) and bridged down by the capital's
+  // construction tech — see majorRiverToll.
+  const cons = (cap.knowledge && cap.knowledge.construction) || 0;
   const out = new Map();
+  const cross = new Map();   // member id → major-river toll accrued on its cheapest path
   const homes = new Map();
   let pending = 0;
   for (const m of c.members) {
-    if (m.id === c.capitalId) { out.set(m.id, 0); continue; }
+    if (m.id === c.capitalId) { out.set(m.id, 0); cross.set(m.id, 0); continue; }
     const ti = (m.pos.y | 0) * tw + (m.pos.x | 0);
     homes.set(ti, m.id);
     pending++;
   }
-  if (pending === 0) return out;
+  if (pending === 0) return { cost: out, cross };
   const maxCost = Math.max(50, c.range * 25);
   const dist = new Map();
+  const crossAcc = new Map();   // tile → major-river toll accrued reaching it (parallels dist)
   const capTi = (cap.pos.y | 0) * tw + (cap.pos.x | 0);
   dist.set(capTi, 0);
   const heap = new _PolHeap();
@@ -760,7 +793,7 @@ function capitalTransportCosts(world, c) {
     const dHere = dist.get(ti);
     if (dHere === undefined || d > dHere) continue;
     const hit = homes.get(ti);
-    if (hit !== undefined) { out.set(hit, d); homes.delete(ti); pending--; }
+    if (hit !== undefined) { out.set(hit, d); cross.set(hit, crossAcc.get(ti) || 0); homes.delete(ti); pending--; }
     const ty = (ti / tw) | 0;
     const tx = ti - ty * tw;
     const xm = tx === 0      ? tw - 1 : tx - 1;
@@ -780,10 +813,14 @@ function capitalTransportCosts(world, c) {
       const nd = d + ec * mul[k];
       if (nd > maxCost) continue;
       const prev = dist.get(ni);
-      if (prev === undefined || nd < prev) { dist.set(ni, nd); heap.push(ni, nd); }
+      if (prev === undefined || nd < prev) {
+        dist.set(ni, nd);
+        crossAcc.set(ni, (crossAcc.get(ti) || 0) + majorRiverToll(world, ti, ni, cons));
+        heap.push(ni, nd);
+      }
     }
   }
-  return out;
+  return { cost: out, cross };
 }
 
 export function updatePolities(world) {
@@ -801,7 +838,7 @@ export function updatePolities(world) {
     // exactly the way they drain a column's movement. (Naval shortcuts are
     // already baked into localEdgeCost via water embarkation, so we no
     // longer apply a separate _isPort discount here.)
-    const tcosts = capitalTransportCosts(world, c);
+    const { cost: tcosts, cross: tcross } = capitalTransportCosts(world, c);
     const reachCeil = range * 25;   // matches the Dijkstra's bound
 
     // ── Control budget: what the centre can administer (reach-units) ──
@@ -889,7 +926,11 @@ export function updatePolities(world) {
       const tc   = tcosts.get(s.id);
       const tcEff = (tc === undefined || !isFinite(tc)) ? reachCeil : tc;
       const surcharge = Math.max(0, tcEff - eucl);
-      let d = eucl + 0.5 * surcharge;
+      // Major-river crossings are a FULL-weight, construction-gated barrier
+      // (generic terrain above is half-weighted): a low-construction realm
+      // is walled by a great river, an engineered one bridges it.
+      const riverToll = tcross.get(s.id) || 0;
+      let d = eucl + 0.5 * surcharge + riverToll;
       d /= holdPull(s);                                               // value cling
       const coerce  = Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
       const sizeMul = 1 + SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
@@ -951,7 +992,9 @@ export function updatePolities(world) {
       const eucl = dist(world, cap.pos.x, cap.pos.y, s.pos.x, s.pos.y);
       const tc   = tcosts.get(s.id);
       const tcEff = (tc === undefined || !isFinite(tc)) ? reachCeil : tc;
-      const far  = (eucl + 0.5 * Math.max(0, tcEff - eucl)) / range;
+      // A governor across a great river is "farther" too (same full-weight
+      // river toll as the hold load) — so a far-bank seat schemes harder.
+      const far  = (eucl + 0.5 * Math.max(0, tcEff - eucl) + (tcross.get(s.id) || 0)) / range;
       if (!seat || pacified || infant || ratio < AMBITION_RATIO || far < AMBITION_MIN_FAR) {
         if (s._ambition) s._ambition = Math.max(0, s._ambition - AMBITION_GAIN);   // fades when unqualified
         continue;
