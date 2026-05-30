@@ -6372,8 +6372,6 @@ return(
         right={<span className="au-fade" style={{textTransform:"capitalize"}}>{era}</span>}>
         <>
           <PsKRow label="Agriculture"  val={k.agriculture||0}  colour="#7a5"/>
-          <PsKRow label="Foraging"     val={k.foraging||0}     colour="#697"/>
-          <PsKRow label="Toolmaking"   val={k.toolmaking||0}   colour="#aa6"/>
           <PsKRow label="Construction" val={k.construction||0} colour="#a85"/>
           <PsKRow label="Organization" val={k.organization||0} colour="#967"/>
           <PsKRow label="Metallurgy"   val={k.metallurgy||0}   colour="#86a"
@@ -6382,8 +6380,6 @@ return(
                 note={wa<=0?"(no water)":null}/>
           <PsKRow label="Mobility"     val={k.mobility||0}     colour="#a76"
                 note={(r.horses||0)<=0.10?"(no horses)":null}/>
-          <PsKRow label="Literacy"     val={k.literacy||0}     colour="#59a"
-                note={(k.organization||0)<=0.30?"(needs organization)":null}/>
         </>
       </PsSection>
 

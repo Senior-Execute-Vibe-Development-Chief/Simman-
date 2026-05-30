@@ -116,7 +116,7 @@ function dispatchReinforcements(world, besieged) {
         owner: m.id, countryId: m.countryId, troops, targetId: def.id,
         path: path.tiles.map(ti => ({ x: (ti % tw) + 0.5, y: ((ti / tw) | 0) + 0.5 })),
         pathTiles: path.tiles,
-        knowledge: { toolmaking: k.toolmaking||0, construction: k.construction||0,
+        knowledge: { construction: k.construction||0,
                      organization: k.organization||0, mobility: k.mobility||0,
                      navigation: k.navigation||0 },
         idx: 0, x: m.pos.x, y: m.pos.y,

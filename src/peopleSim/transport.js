@@ -146,13 +146,14 @@ export function baseEdgeCost(world, fromTi, toTi) {
   return c;
 }
 
-// Per-settlement edge cost = base × tech multipliers. Each track of
-// knowledge reduces effective edge cost in a way that maps to a real
-// transport innovation:
-//   toolmaking   wagons, harness, draft animals      flat ×0.70 max
-//   construction roads, bridges, switchbacks         flat ×0.60 max
-//   organization postal relays, supply chains        flat ×0.85 max
-//   mobility     horses (cavalry, courier, plough)   flat ×0.70 max
+// Per-settlement edge cost = base × tech multipliers. Each surviving
+// knowledge track reduces effective edge cost in a way that maps to a
+// real transport innovation. (Toolmaking was folded into construction
+// in the knowledge merge — bridges/wagons/road-junctions all live under
+// "construction" now.)
+//   construction roads, bridges, wagons, switchbacks ×0.55 max
+//   organization postal relays, supply chains        ×0.85 max
+//   mobility     horses (cavalry, courier, plough)   ×0.70 max
 //   navigation   ships on rivers / coasts            water ×0.55 max
 //                + WATER EMBARKATION (see below): with nav ≥ 0.2, water
 //                tiles become passable for land transport at a cost that
@@ -160,10 +161,10 @@ export function baseEdgeCost(world, fromTi, toTi) {
 //                rises. Models troop transports / amphibious crossings.
 //
 // At full tech (everything at 1.0), a flat plain tile costs:
-//   ×0.70 × 0.60 × 0.85 × 0.70 = 0.250 (was 0.357 without mobility)
-// A river tile with navigation maxed adds another ×0.55 on top.
-// So a maxed-out Iron Age tribe with horses and ships moves ~4× faster
-// over land and ~7× faster on water than a stone-age starter.
+//   ×0.55 × 0.85 × 0.70 = 0.327 (was 0.250 with the separate toolmaking
+//   multiplier). The slightly higher floor means high-tech land transport
+//   doesn't crush the distance budget for empire reach — which was part
+//   of why "empires too big" kept happening.
 //
 // MODE-CHANGE cost: crossing between road and rough terrain, or between
 // land and water, incurs a one-step setup penalty — the column has to
@@ -212,11 +213,10 @@ export function localEdgeCost(world, fromTi, toTi, kn) {
   }
   const c = baseEdgeCost(world, fromTi, toTi);
   if (c === Infinity || !kn) return c;
-  const tool = kn.toolmaking   || 0;
   const cons = kn.construction || 0;
   const org  = kn.organization || 0;
   const mob  = kn.mobility     || 0;
-  let mul = (1 - 0.30 * tool) * (1 - 0.40 * cons) * (1 - 0.15 * org) * (1 - 0.30 * mob);
+  let mul = (1 - 0.45 * cons) * (1 - 0.15 * org) * (1 - 0.30 * mob);
   if (nav > 0) {
     const isWater = (world.riverMag && world.riverMag[toTi] >= 2)
                  || (world.coast && world.coast[toTi]);

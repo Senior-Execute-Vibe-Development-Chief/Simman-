@@ -102,15 +102,12 @@ export function makeSettlement(world, x, y, opts = {}) {
     // a larger value would just be clamped away on the first tick.
     food: 80,
     knowledge: opts.knowledge || {
-      foraging:    0.5,
-      toolmaking:  0.2,
-      agriculture: 0.50,        // cradle starts already farming
-      construction: 0.1,
-      organization: 0.1,
+      agriculture: 0.50,        // cradle starts already farming (absorbs the old foraging track)
+      construction: 0.1,        // absorbs the old toolmaking track (wagons + bridges)
+      organization: 0.1,        // absorbs the old literacy track (records + bureaucracy)
       metallurgy:  0,           // gated by ore access
       navigation:  0,           // gated by water access
       mobility:    0,           // gated by horses
-      literacy:    0,           // gated by organization + population
     },
     // Maximum local deposit richness within transport reach, per
     // resource id. Populated from the settlement's TERRITORY (territory.js)
@@ -160,7 +157,7 @@ export function makeSettlement(world, x, y, opts = {}) {
   };
   // Migrate older knowledge objects (e.g. crystallization inheritance)
   // that don't have the new fields.
-  for (const k of ["metallurgy","navigation","mobility","literacy"]) {
+  for (const k of ["metallurgy","navigation","mobility"]) {
     if (s.knowledge[k] === undefined) s.knowledge[k] = 0;
   }
   // Compute water access score from the home tile + 4 neighbours.
@@ -304,17 +301,20 @@ export { updateWealth };
 // Composition (broad enough that most settlements have SOMETHING
 // distinctive to sell):
 //   metallurgy + ore        tools / weapons (Damascus steel)
-//   construction + mats     building goods (lumber, dressed stone)
-//   agriculture + farmland  grain surplus (Egypt → Rome)
+//   construction + mats     building goods + crafted wares — lumber,
+//                           dressed stone, pottery, textiles. (Folds in
+//                           the old toolmaking track.)
+//   agriculture + farmland  grain surplus + wild forest goods — fur,
+//                           honey, herbs. (Folds in the old foraging
+//                           track; an agrarian society also manages its
+//                           wood-and-hunt commons.)
 //   navigation + water      ship goods, fish, salt cod
-//   toolmaking              crafted goods — pottery, textiles,
-//                           leatherwork — works without metallurgy
-//   foraging + timber       wild goods — furs, honey, herbs,
-//                           game (Russian taiga, Canadian fur trade)
 //   horses + mobility       horse trade, caravan beasts, war mounts
 //                           (Mongol horse export, Andalusian)
-//   organization + pop      administrative services — scribes,
-//                           banking, contracts (Venice's bankers)
+//   organization + pop      administrative services — scribes, records,
+//                           banking, contracts. (Folds in the old
+//                           literacy track; a state apparatus implies a
+//                           clerical class.)
 //   salt raw                preserved food, currency-adjacent
 // Range is roughly 1.0 (no specialisation, "just gold") → ~5.5
 // (highly developed multi-specialty exporter).
@@ -351,29 +351,29 @@ export function computeExportValue(s, world) {
   const oreAccess = Math.max(r.copper || 0, r.tin || 0, r.iron || 0, r.coal || 0);
   if (oreAccess > 0.10) v += (k.metallurgy || 0) * 1.5;
   const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
-  v += (k.construction || 0) * matAccess * 0.8;
+  // Construction now covers building goods + crafted wares (formerly the
+  // toolmaking line) — the floor term gives a craft contribution even
+  // without raw materials.
+  v += (k.construction || 0) * (0.4 + matAccess * 0.8);
   const agScale = Math.min(1, (s._terrTiles || 0) / 120);
+  // Agriculture now covers grain surplus + wild-forest goods (formerly
+  // the foraging × timber line).
   v += (k.agriculture || 0) * agScale * 0.6;
+  v += (k.agriculture || 0) * (r.timber || 0) * 0.4;
   if ((s.waterAccess || 0) > 0) v += (k.navigation || 0) * s.waterAccess * 0.5;
   // Fish / seafood — only the PRESERVED fraction (salt cod, etc.) trades
   // for coin; most fish is eaten fresh and locally, so this is a minor
   // good next to the storable grain staple. Needs navigation (preserving
   // + shipping), so a shore-fishing village sells almost none.
   if ((s.waterAccess || 0) > 0) v += s.waterAccess * (k.navigation || 0) * 0.3;
-  // Toolmaking — crafted goods are valuable even without metal.
-  // Pottery and textiles travel further than grain because of
-  // density-value ratio.
-  v += (k.toolmaking || 0) * 0.4;
-  // Foraging × timber — wild forest goods.
-  v += (k.foraging || 0) * (r.timber || 0) * 0.4;
   // Horses + mobility — horse trade and caravans.
   const horses = r.horses || 0;
   if (horses > 0.05) v += horses * 0.6 + (k.mobility || 0) * 0.4;
-  // Organization × log-scale population — bureaucracy / services
-  // / banking. Scales with population because you need lots of
-  // people to support a clerical class.
+  // Organization × log-scale population — bureaucracy / services / banking
+  // (now includes the old literacy contribution: scribes and records are
+  // a sub-function of an organised state with a clerical class).
   const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
-  v += ((k.organization || 0) + (k.literacy || 0) * 0.6) * popScale * 0.5;
+  v += (k.organization || 0) * popScale * 0.8;
   // Salt counts as a tradeable good.
   v += (r.salt || 0) * 0.5;
   // Base village products — every populated settlement has SOMETHING
@@ -423,8 +423,8 @@ export function getExportBreakdown(s) {
     if (v > 0.01) out.push({ label: "Metalwork", value: v });
   }
   const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
-  const construction = (k.construction || 0) * matAccess * 0.8;
-  if (construction > 0.01) out.push({ label: "Building goods", value: construction });
+  const construction = (k.construction || 0) * (0.4 + matAccess * 0.8);
+  if (construction > 0.01) out.push({ label: "Building & crafted goods", value: construction });
   const agScale = Math.min(1, (s._terrTiles || 0) / 120);
   const agriculture = (k.agriculture || 0) * agScale * 0.6;
   if (agriculture > 0.01) out.push({ label: "Grain surplus", value: agriculture });
@@ -434,9 +434,7 @@ export function getExportBreakdown(s) {
     const fish = s.waterAccess * (k.navigation || 0) * 0.3;
     if (fish > 0.01) out.push({ label: "Salt fish", value: fish });
   }
-  const tools = (k.toolmaking || 0) * 0.4;
-  if (tools > 0.01) out.push({ label: "Crafted goods", value: tools });
-  const wild = (k.foraging || 0) * (r.timber || 0) * 0.4;
+  const wild = (k.agriculture || 0) * (r.timber || 0) * 0.4;
   if (wild > 0.01) out.push({ label: "Wild goods", value: wild });
   const horses = r.horses || 0;
   if (horses > 0.05) {
@@ -444,8 +442,8 @@ export function getExportBreakdown(s) {
     if (v > 0.01) out.push({ label: "Horse trade", value: v });
   }
   const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
-  const services = ((k.organization || 0) + (k.literacy || 0) * 0.6) * popScale * 0.5;
-  if (services > 0.01) out.push({ label: "Services", value: services });
+  const services = (k.organization || 0) * popScale * 0.8;
+  if (services > 0.01) out.push({ label: "Services & records", value: services });
   const salt = (r.salt || 0) * 0.5;
   if (salt > 0.01) out.push({ label: "Salt", value: salt });
   const base = Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10);
@@ -529,7 +527,7 @@ export function updateSettlement(world, s) {
 // improves; bigger pop + ag → construction improves. Diminishing
 // returns near 1.0.
 const LEARN_BASE = 0.000040;          // per tick scaling
-const KTRACKS = ["foraging","toolmaking","agriculture","construction","organization","metallurgy","navigation","mobility","literacy"];
+const KTRACKS = ["agriculture","construction","organization","metallurgy","navigation","mobility"];
 // Fraction of the gap to a better-developed road-connected neighbour
 // closed per tick — technology transfer by contact. ~1/0.0006 ≈ 1700
 // ticks to largely absorb a neighbour's lead.
@@ -586,28 +584,34 @@ function updateKnowledge(world, s) {
   if (fe > oreThr && co > oreThr) metalCap = 1.00;
 
   // ── Local learning ──────────────────────────────────────────────
-  // Foraging: slow trickle everywhere; faster in resource-rich zones.
-  const forageBoost = 1 + (r.timber || 0) * 0.3 + (r.salt || 0) * 0.2;
-  k.foraging = clamp01(k.foraging + LEARN_BASE * 0.3 * (1 - k.foraging) * forageBoost);
-
-  // Toolmaking: stone for primitive, metallurgy multiplies.
-  const stoneBoost = 1 + (r.stone || 0) * 0.6;
-  const metalBoost = 1 + k.metallurgy * 2.5;
-  k.toolmaking = clamp01(k.toolmaking + LEARN_BASE * 0.8 * (1 - k.toolmaking)
-    * stoneBoost * metalBoost * (1 + popSqrt * 0.08));
-
-  // Construction: timber/stone + agricultural surplus to free builders.
+  // Construction: covers buildings, roads, wagons, bridges (the old
+  // toolmaking track folded in here — they're all "things built by
+  // skilled labour"). Driven by timber/stone, helped by metal tools,
+  // agricultural surplus to free builders, and population.
   const buildMat = 1 + (r.timber || 0) * 0.8 + (r.stone || 0) * 0.6;
-  k.construction = clamp01(k.construction + LEARN_BASE * 0.9 * (1 - k.construction)
-    * buildMat * (1 + k.agriculture * 0.8) * (1 + popSqrt * 0.05));
+  const stoneBoost = 1 + (r.stone || 0) * 0.6;
+  const metalBoost = 1 + k.metallurgy * 1.8;
+  k.construction = clamp01(k.construction + LEARN_BASE * 1.0 * (1 - k.construction)
+    * buildMat * stoneBoost * metalBoost
+    * (1 + k.agriculture * 0.6) * (1 + popSqrt * 0.06));
 
-  // Agriculture: farmland scale + metal tools (plough).
+  // Agriculture: farmland scale + metal tools (plough) + wild-food
+  // gathering that supplements the early village (folds in the old
+  // foraging track). The wild-food boost decays as metallurgy advances
+  // — society moves off forage onto stored grain.
+  const wildBoost = 1 + (r.timber || 0) * 0.2 * (1 - k.metallurgy * 0.7);
   k.agriculture = clamp01(k.agriculture + LEARN_BASE * 1.2 * (1 - k.agriculture)
-    * (1 + fc * 0.03) * (1 + k.toolmaking * 0.7));
+    * (1 + fc * 0.03) * (1 + k.construction * 0.5) * wildBoost);
 
-  // Organization: pop driven (admin burden grows with size).
-  k.organization = clamp01(k.organization + LEARN_BASE * 1.0 * (1 - k.organization)
-    * (1 + popSqrt * 0.10));
+  // Organization: pop-driven admin burden + a literate-state branch
+  // (folded in from the old literacy track) that kicks in once the
+  // bureaucracy is mature enough to support scribes. The kicker means
+  // organization keeps accelerating past 0.30 instead of plateauing.
+  const litBranch = k.organization > 0.30
+    ? 0.6 * k.organization * (1 + popSqrt * 0.06)
+    : 0;
+  k.organization = clamp01(k.organization + LEARN_BASE * (1 - k.organization)
+    * ((1 + popSqrt * 0.10) + litBranch));
 
   // Metallurgy — hard-gated by ore. Paced so the eras (chalcolithic →
   // bronze → iron → steel) are actually reachable within a game rather
@@ -616,7 +620,7 @@ function updateKnowledge(world, s) {
     const oreRate = Math.max(cu, sn, fe, co);
     const headroom = 1 - k.metallurgy / metalCap;
     k.metallurgy = Math.min(metalCap, k.metallurgy +
-      LEARN_BASE * 2.6 * headroom * oreRate * (1 + k.toolmaking * 0.5));
+      LEARN_BASE * 2.6 * headroom * oreRate * (1 + k.construction * 0.4));
   }
 
   // Navigation — hard-gated by water; paced so coasts/great rivers grow
@@ -633,30 +637,21 @@ function updateKnowledge(world, s) {
       * horses * (1 + k.construction * 0.4 + k.metallurgy * 0.6));
   }
 
-  // Literacy / writing — emerges only in an organised, populous society
-  // (scribes, law, records need both a bureaucracy and a class of people
-  // to support it). Once present it makes the settlement absorb diffused
-  // technique far faster (records + teaching), so it amplifies the spread
-  // below rather than the local tracks above.
-  if (k.organization > 0.30) {
-    k.literacy = clamp01((k.literacy || 0) + LEARN_BASE * 0.6 * (1 - (k.literacy || 0))
-      * k.organization * (1 + popSqrt * 0.06));
-  }
-
   // ── Diffusion: learn techniques from connected neighbours ─────────
   // Technology spreads by contact. Pull each track toward the best level
-  // among road-connected partners, FASTER the more literate this society
-  // is (writing records and teaches technique). Resource-gated tracks are
-  // capped by what THIS site can actually practise (ore tier / water /
-  // horses) — you can hear how iron is worked, but still need iron to do
-  // it.
+  // among road-connected partners, FASTER the more ORGANISED this
+  // society is (writing/records are now folded into organization, so a
+  // literate-bureaucratic state absorbs technique 1–3× faster).
+  // Resource-gated tracks are capped by what THIS site can actually
+  // practise (ore tier / water / horses) — you can hear how iron is
+  // worked, but still need iron to do it.
   // Diffusion is throttled to every KNOW_INTERVAL ticks (staggered by id),
   // with the rate scaled up to match — technique spreads over ~1700 ticks,
   // so an 8-tick cadence is indistinguishable while costing 8× less.
   if (s._tradeReach && s._tradeReach.size > 0 && world._byId
       && (world.step + s.id) % KNOW_INTERVAL === 0) {
-    const km = { foraging:0, toolmaking:0, agriculture:0, construction:0,
-                 organization:0, metallurgy:0, navigation:0, mobility:0, literacy:0 };
+    const km = { agriculture:0, construction:0, organization:0,
+                 metallurgy:0, navigation:0, mobility:0 };
     let any = false;
     for (const pid of s._tradeReach.keys()) {
       const p = world._byId.get(pid);
@@ -669,7 +664,10 @@ function updateKnowledge(world, s) {
       if (km.metallurgy > metalCap) km.metallurgy = metalCap;
       if (wa <= 0) km.navigation = 0;
       if (horses <= horsesThr) km.mobility = 0;
-      const litMul = 1 + (k.literacy || 0) * 2;     // literate cultures absorb 1–3× faster
+      // Literate-state diffusion multiplier (was "literacy"; now reads off
+      // the literate-state branch of organization, which only kicks in
+      // past 0.30).
+      const litMul = 1 + Math.max(0, k.organization - 0.30) * 3;
       const rate = DIFFUSE_RATE * KNOW_INTERVAL * litMul;
       for (const t of KTRACKS) {
         const gap = km[t] - k[t];
