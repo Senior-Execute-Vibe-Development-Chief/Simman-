@@ -43,10 +43,21 @@ const MIN_AREA_FERT             = 1.0;    // 5×5 box must have *some* support
 // metropolises. Farmland contention (_farmedBy) between close
 // neighbours keeps each one's footprint — and so its carrying
 // capacity — modest.
+// Spacing. A hard minimum prevents territorial overlap; everything else
+// (where towns cluster vs. where they don't) is driven by site quality, not
+// the spacing rule. The "geometric grid" pattern we used to see came not
+// from the spacing alone but from too-weak locational pull: with roughly
+// uniform fertility AND only ~2× quality multipliers for rivers/coasts,
+// every site looked similar and packed evenly. The fix is in the QUALITY
+// scoring below (much stronger river/coast/chokepoint pull) — the spacing
+// rule itself is fine.
 const MIN_SETT_DIST             = 8;
 const MIN_SETT_DIST_SQ          = MIN_SETT_DIST * MIN_SETT_DIST;
 const KNOWLEDGE_DECAY_SCALE     = 30;
-const INDEPENDENT_RATE          = 0.060;
+// Independent invention: a site reached by no land network at all relies on
+// this baseline rate. Low so empty regions stay empty until colonised
+// (existing networks still spread by diffusionMul × NEAR_RATE).
+const INDEPENDENT_RATE          = 0.020;
 // Spontaneous invention ACROSS OPEN WATER (no land path to any existing
 // settlement → transportDist is Infinity) is far rarer: separate landmasses
 // are reached by COLONISATION (sea.js), not magically populated. A small
@@ -152,7 +163,9 @@ export function maybeCrystallize(world) {
       }
     }
     if (areaFert < MIN_AREA_FERT) continue;
-    // Min distance to all existing settlements.
+    // Min distance to all existing settlements (hard floor — territorial
+    // overlap). Locational pull is the *quality* score below, not the spacing
+    // rule.
     let tooClose = false;
     for (const o of world.settlements) {
       if (o.mode === "dead") continue;
@@ -163,15 +176,25 @@ export function maybeCrystallize(world) {
     }
     if (tooClose) continue;
 
-    // Site-quality score. Floor=0.45 lifts low-fert spawn rate so
-    // marginal terrain is visibly populated rather than empty;
-    // fertile river valleys still dominate by 5–6× after the f×2 and
-    // area terms. Range roughly 0.45 (worst) → ~5.5 (best lush river).
-    let quality = 0.45 + f * 1.5 + Math.min(2.0, areaFert * 0.1);
-    if (hasRiver) quality += 1.0;
-    if (hasCoast) quality += 0.4;
+    // Site-quality score — the LOCATIONAL PULL that decides where a sparsely
+    // settled landscape clusters. Real settlement patterns are highly uneven
+    // (dense along rivers/coasts/chokepoints, empty in marginal interior),
+    // and that's because the difference between a good site and a poor one
+    // is huge — not the ~2× of the earlier scoring, which produced near-
+    // uniform packing. Scale ≈ 0.4 (marginal interior) → 1.5 (decent
+    // farmland) → 5–10 (river valley / coast) → 15+ (river-mouth port, pass,
+    // confluence). The multiplicative form (rather than additive bonuses) is
+    // what makes rivers/coasts dominate by enough to leave bad land empty.
+    const fertilityScore = 0.4 + f * 1.5 + Math.min(2.0, areaFert * 0.1);
+    let locMul = 1;
+    if (hasRiver) locMul *= 3;            // rivers were *the* historical magnet
+    if (hasCoast) locMul *= 1.8;          // coasts second
+    // Resource / network / geographic bonuses are still additive
+    // contributions on top of the multiplied location score.
+    let quality = fertilityScore * locMul;
     quality += resourceBonusFor(world, ti, resScarcity);
     quality += busyRoadBonusFor(world, ti, tx, ty);
+    quality += geoBonusFor(world, ti, tx, ty);   // chokepoints / passes / sheltered harbours
 
     // Transport-distance modifier. Finite td → diffusion from the land
     // network plus the normal independent floor. Infinite td (across water,
@@ -284,6 +307,75 @@ function resourceBonusFor(world, ti, scarcity) {
     bonus += r * scarcity[id].sv;
   }
   return Math.min(2.5, bonus);
+}
+
+// ── Geographic / chokepoint bonus ──
+// The "why this city is here" factor — captures three patterns:
+//   • RIVER CONFLUENCE   (two river tiles meeting): inland trade nexus
+//                        (St. Louis, Khartoum, Pittsburgh, Lyon — pick any
+//                        big inland city, it's almost always on one).
+//   • CHOKEPOINT / NECK  (land tile with land on two opposite sides AND
+//                        water/impassable on the other two): a pass through
+//                        terrain barriers (Constantinople's isthmus,
+//                        Panama, mountain passes, river fords).
+//   • SHELTERED HARBOUR  (coastal tile with coast on several sides — a bay,
+//                        not a straight shoreline): a natural port
+//                        (Venice, Boston, San Francisco).
+// Computed cheaply over a 3×3 neighbourhood (and 5×5 for the harbour shape).
+function geoBonusFor(world, ti, tx, ty) {
+  const { tw, th, elev, riverMag } = world;
+  let bonus = 0;
+
+  // RIVER CONFLUENCE: this tile is on a river, and a neighbouring tile is on
+  // a DIFFERENT river segment. Cheap proxy: this tile has riverMag ≥ 2, and
+  // at least 3 of the 8 neighbours also have riverMag ≥ 2 (a confluence has
+  // more "river" around it than a straight stretch's 2 neighbours).
+  if (riverMag && riverMag[ti] >= 2) {
+    let riverNbrs = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      const ny = ty + dy;
+      if (ny < 0 || ny >= th) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = ((tx + dx) % tw + tw) % tw;
+        if (riverMag[ny * tw + nx] >= 2) riverNbrs++;
+      }
+    }
+    if (riverNbrs >= 3) bonus += 1.5;        // confluence
+  }
+
+  // Sample a 3×3 neighbourhood once for the chokepoint + harbour checks.
+  let landN = 0, waterN = 0;
+  const landBits = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    const ny = ty + dy;
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) { landBits.push(true); continue; }
+      if (ny < 0 || ny >= th) { landBits.push(false); waterN++; continue; }
+      const nx = ((tx + dx) % tw + tw) % tw;
+      const isLand = elev[ny * tw + nx] > 0;
+      landBits.push(isLand);
+      if (isLand) landN++; else waterN++;
+    }
+  }
+  // CHOKEPOINT: very land-poor neighbourhood (a thin strip) — 2–4 of 8 neighbours
+  // are land. A wide-open plain has all 8; deep ocean has 0; a neck has ~3.
+  if (landN >= 2 && landN <= 4 && waterN >= 3) bonus += 1.2;
+
+  // SHELTERED HARBOUR: coast tile (already given +0.4 above) where the coast
+  // WRAPS around it — i.e. nearby tiles on several sides are also water.
+  // Detected by the same 3×3: 3-5 water neighbours = an indent/bay, not a
+  // straight shoreline (which would have ~3-5 water but all on one side).
+  // Approximation: if this tile is coastal AND has water on at least two of
+  // the four cardinal directions, it's a bay shape.
+  if (world.coast && world.coast[ti] && waterN >= 3) {
+    // landBits index layout: [NW,N,NE,W,self,E,SW,S,SE] (dy=-1..1, dx=-1..1)
+    const N = !landBits[1], S = !landBits[7], W = !landBits[3], E = !landBits[5];
+    const cardWater = (N ? 1 : 0) + (S ? 1 : 0) + (W ? 1 : 0) + (E ? 1 : 0);
+    if (cardWater >= 2) bonus += 0.8;
+  }
+
+  return bonus;
 }
 
 // ── Settler colonisation (mode #1): parent-driven founding ───────────
