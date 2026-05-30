@@ -13,7 +13,14 @@ export const RESOURCES = [
   { id: 'precious',  label: 'Precious Metals', color: [220, 195, 60],  era: 'all',   icon: 'Au' },
   { id: 'coal',      label: 'Coal',            color: [90, 70, 45],    era: 'late',  icon: 'C' },
   { id: 'oil',       label: 'Oil',             color: [60, 90, 110],   era: 'late',  icon: 'O' },
-  { id: 'gems',      label: 'Gems / Luxury',   color: [160, 60, 180],  era: 'all',   icon: 'G' },
+  { id: 'gems',      label: 'Gems',            color: [160, 60, 180],  era: 'all',   icon: 'G' },
+  // ── Luxury trade goods (renewable; harvested, not mined) — each tied to a
+  // climate band so different regions export different luxuries. Demand comes
+  // from wealthy settlements (see settlement.js / roads.js luxury trade).
+  { id: 'spices',    label: 'Spices',          color: [205, 110, 40],  era: 'all',   icon: 'Sp' },
+  { id: 'furs',      label: 'Furs',            color: [150, 105, 70],  era: 'all',   icon: 'Fu' },
+  { id: 'incense',   label: 'Incense',         color: [215, 185, 95],  era: 'all',   icon: 'In' },
+  { id: 'dyes',      label: 'Dyes',            color: [150, 45, 130],  era: 'all',   icon: 'Dy' },
 ];
 
 export const RES_BY_ID = {};
@@ -371,6 +378,52 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
         if (interior > 0) score = Math.max(score, interior * 0.55);
       }
       if (score > 0) deposits.oil[ti] = Math.min(1, score);
+    }
+
+    // ── SPICES ── tropical/subtropical (pepper, cinnamon, cloves) ──
+    {
+      if (biome === B_TROP_RAIN || biome === B_TROP_DRY || biome === B_SUBTROP) {
+        const field = depositField(tx, ty, tw, th, s0 + 1100, 7, 0.55);
+        if (field > 0) {
+          let r = 0.2 + field * 0.6;
+          if (biome === B_TROP_RAIN) r += 0.2;
+          deposits.spices[ti] = Math.min(1, r);
+        }
+      }
+    }
+
+    // ── FURS ── cold forests + tundra (sable, ermine) ──
+    {
+      if (biome === B_TAIGA || biome === B_BOREAL || biome === B_TUNDRA) {
+        const field = depositField(tx, ty, tw, th, s0 + 1200, 6, 0.45);
+        if (field > 0) {
+          let r = 0.2 + field * 0.6;
+          if (biome === B_TAIGA || biome === B_BOREAL) r += 0.15;
+          deposits.furs[ti] = Math.min(1, r);
+        }
+      }
+    }
+
+    // ── INCENSE ── arid lands (frankincense, myrrh) ──
+    {
+      if (biome === B_DESERT || biome === B_COLD_DESERT || biome === B_SHRUBLAND) {
+        const field = depositField(tx, ty, tw, th, s0 + 1300, 8, 0.62);
+        if (field > 0) deposits.incense[ti] = Math.min(1, 0.2 + field * 0.6);
+      }
+    }
+
+    // ── DYES ── coastal (Tyrian purple from shellfish) + warm wetlands (indigo) ──
+    {
+      let score = 0;
+      if (cd <= 4 && e > 0) {
+        const field = depositField(tx, ty, tw, th, s0 + 1400, 9, 0.60);
+        if (field > 0) score = field * 0.7;
+      }
+      if ((biome === B_TROP_RAIN || biome === B_SUBTROP || biome === B_TEMP_RAIN) && m > 0.5) {
+        const field = depositField(tx, ty, tw, th, s0 + 1401, 8, 0.60);
+        if (field > 0) score = Math.max(score, field * 0.6);
+      }
+      if (score > 0) deposits.dyes[ti] = Math.min(1, score);
     }
   }
 

@@ -5,18 +5,14 @@
 
 import { mkRng } from "./rng.js";
 import { resetSettlementIds, makeSettlement } from "./settlement.js";
+import { resetShipIds } from "./sea.js";
 
 const TILE_RES = 2;
 
 // No settlement cap — the world fills naturally. The crystallization
 // sweep limits density via MIN_SETT_DIST spacing and the
 // fertility / area-fertility filters; saturated regions reject all
-// candidates, so spawn rate falls off automatically. Caravan/army caps
-// remain for the scaffolded systems.
-const CAP = {
-  caravans: 40,
-  armies: 20,
-};
+// candidates, so spawn rate falls off automatically.
 
 // Robust "is this tile a continental land cell" check. Excludes 1-tile
 // islets and pixels where the elevation downsample lands just above 0.
@@ -25,9 +21,13 @@ function isContinentalLand(world, ti) {
   if (elev[ti] <= 0.005) return false;
   const ty = (ti / tw) | 0;
   if (ty <= 0 || ty >= th - 1) return false;
+  // Left / right wrap in longitude (x is periodic); up / down don't.
+  const tx = ti - ty * tw;
+  const left  = ty * tw + (tx === 0 ? tw - 1 : tx - 1);
+  const right = ty * tw + (tx === tw - 1 ? 0 : tx + 1);
   let n = 0;
-  if (elev[ti - 1]  > 0) n++;
-  if (elev[ti + 1]  > 0) n++;
+  if (elev[left]    > 0) n++;
+  if (elev[right]   > 0) n++;
   if (elev[ti - tw] > 0) n++;
   if (elev[ti + tw] > 0) n++;
   return n >= 2;
@@ -49,7 +49,6 @@ export function createWorld(w, opts = {}) {
     moist: new Float32Array(N),
     fert:  new Float32Array(N),
     coast: new Uint8Array(N),
-    diff:  new Float32Array(N),
     riverMag: null,
 
     // Per-tile resource deposits, downsampled from worldgen at
@@ -60,33 +59,26 @@ export function createWorld(w, opts = {}) {
 
     // Entities. No bands — settlements-only model.
     settlements: [],
-    caravans:    [],
-    armies:      [],
-
-    // Tile → settlement.id that farms it (or -1). Int32 so IDs can
-    // grow without bound across long runs (each new settlement gets
-    // _nextId++; we never recycle).
-    _farmedBy: new Int32Array(N).fill(-1),
-
-    cap: CAP,
+    ships: [],                   // colony ships in transit (sea.js)
 
     step: 0,
     seed: opts.seed || w.seed || 1,
     rng: mkRng(opts.seed || w.seed || 1),
 
-    events: [],
     debug:  { tickMs: 0 },
   };
 
   initTerrain(world, w, opts.tCrop);
   initRiverMag(world, w);
+  initWind(world, w);
   initDeposits(world, w, opts.deposits);
+  resetShipIds();
   seedCradleVillage(world);
   return world;
 }
 
 function initTerrain(world, w, tCrop) {
-  const { tw, th, elev, temp, moist, fert, coast, diff } = world;
+  const { tw, th, elev, temp, moist, fert, coast } = world;
   for (let ty = 0; ty < th; ty++) {
     for (let tx = 0; tx < tw; tx++) {
       const px = Math.min(w.width - 1, tx * TILE_RES);
@@ -96,11 +88,6 @@ function initTerrain(world, w, tCrop) {
       const e = w.elevation[wi], t = w.temperature[wi], m = w.moisture[wi];
       elev[ti] = e; temp[ti] = t; moist[ti] = m;
       coast[ti] = w.coastal ? (w.coastal[wi] ? 1 : 0) : 0;
-      let d = 0;
-      if (e > 0.35)              d = Math.max(d, Math.min(1, (e - 0.35) * 3));
-      if (t > 0.5 && m < 0.2)    d = Math.max(d, Math.min(0.85, (0.2 - m) * 3 * (t - 0.3)));
-      if (t < 0.2)               d = Math.max(d, Math.min(0.9, (0.2 - t) * 4));
-      diff[ti] = d;
       // Use the same crop-suitability array the overlay renders, so
       // where you SEE green is where settlements actually thrive. Falls
       // back to the local bellFert formula if tCrop wasn't supplied.
@@ -122,7 +109,7 @@ function bellFert(t, m, e) {
 // system are downsampled (the worldgen also has precious / oil /
 // gems / salt which feed wealth/trade systems, kept here for future
 // use but not gated on currently).
-const TRACKED_RES = ['timber','stone','copper','tin','iron','coal','horses','salt','precious','gems'];
+const TRACKED_RES = ['timber','stone','copper','tin','iron','coal','horses','salt','precious','gems','spices','furs','incense','dyes'];
 function initDeposits(world, w, deposits) {
   if (!deposits) return;
   const { tw, th, N } = world;
@@ -161,6 +148,26 @@ function initDeposits(world, w, deposits) {
   }
 }
 
+// Downsample the worldgen wind field into tile space, for wind-aware sea
+// routing (sea.js). Vectors point in the direction the wind blows TOWARD,
+// so a ship travelling with the wind (positive alignment) goes faster.
+function initWind(world, w) {
+  if (!w.windX || !w.windY) return;
+  const { tw, th, tileRes, N } = world;
+  const wx = new Float32Array(N), wy = new Float32Array(N);
+  for (let ty = 0; ty < th; ty++) {
+    for (let tx = 0; tx < tw; tx++) {
+      const px = Math.min(w.width - 1, tx * tileRes);
+      const py = Math.min(w.height - 1, ty * tileRes);
+      const wi = py * w.width + px;
+      wx[ty * tw + tx] = w.windX[wi] || 0;
+      wy[ty * tw + tx] = w.windY[wi] || 0;
+    }
+  }
+  world._windX = wx;
+  world._windY = wy;
+}
+
 function initRiverMag(world, w) {
   if (!w.rivers || !w.rivers.riverMag) return;
   const { tw, th, tileRes, N } = world;
@@ -177,13 +184,27 @@ function initRiverMag(world, w) {
 
 // Cradle village: a SINGLE village at the East African Rift-like site.
 // Already has basic agriculture (settlements-only model — we skip the
-// hunter-gatherer phase). Everything else descends from here, founded
-// by daughter colonies sent out as the cradle and its descendants
+// hunter-gatherer phase). Everything else descends from these cradles,
+// founded by daughter colonies sent out as each cradle and its descendants
 // reach carrying capacity.
+//
+// MULTIPLE CRADLES: historically agriculture arose independently in
+// several places — Mesopotamia, Egypt, Indus, Yellow River, Mesoamerica.
+// Seeding just one cradle gave the first civilisation a permanent compounding
+// lead and led to a single dominant power swallowing the world. So we seed
+// up to MAX_CRADLES top scoring sites separated by a minimum distance — each
+// becomes the seed of an independent civilization, producing a multipolar
+// world even at high resolution.
+const MAX_CRADLES = 5;
+const CRADLE_MIN_SEP = 60;   // tile-space minimum separation (large enough that a single
+                              // continent gets at most 1-2 cradles, but Earth's separated
+                              // landmasses each get one if they have a viable site)
 function seedCradleVillage(world) {
   resetSettlementIds();
   const { tw, th, elev, temp, moist, fert, coast, riverMag, N } = world;
-  let bestTi = -1, bestScore = -Infinity;
+  // Collect ALL viable candidates with their scores, then greedily pick the
+  // top-scoring set with minimum separation.
+  const candidates = [];
   for (let ti = 0; ti < N; ti++) {
     if (!isContinentalLand(world, ti)) continue;
     if (elev[ti] > 0.30) continue;
@@ -199,32 +220,50 @@ function seedCradleVillage(world) {
     const moistFit = 1 - Math.abs(m - 0.50) * 2;
     const elevFit  = 1 - elev[ti] * 2;
     const score = f * 2 + tempFit + moistFit + elevFit + waterBonus;
-    if (score > bestScore) { bestScore = score; bestTi = ti; }
+    candidates.push({ ti, score });
   }
-  if (bestTi < 0) {
+  if (candidates.length === 0) {
+    // Fallback: relax filters
     for (let ti = 0; ti < N; ti++) {
       if (!isContinentalLand(world, ti)) continue;
       if (fert[ti] < 0.25) continue;
-      if (fert[ti] > bestScore) { bestScore = fert[ti]; bestTi = ti; }
+      candidates.push({ ti, score: fert[ti] });
     }
   }
-  if (bestTi < 0) {
+  if (candidates.length === 0) {
     console.warn("[peopleSim] no viable cradle site found — world all water?");
     return;
   }
-  const ty = (bestTi / tw) | 0, tx = bestTi - ty * tw;
-  makeSettlement(world, tx + 0.5, ty + 0.5, { people: 25, name: "cradle" });
-  const e = elev[bestTi].toFixed(2), t = temp[bestTi].toFixed(2);
-  const m = moist[bestTi].toFixed(2), f = fert[bestTi].toFixed(2);
-  const rm = riverMag ? riverMag[bestTi] : 0;
-  console.log(
-    `[peopleSim] cradle at tile (${tx},${ty}) — elev:${e} temp:${t} moist:${m} fert:${f}` +
-    `${coast[bestTi]?" coast":""}${rm>=2?` river(mag${rm})`:""} score:${bestScore.toFixed(2)}`
-  );
+  candidates.sort((a, b) => b.score - a.score);
+  // Greedy: pick highest-scoring tile, then skip any tile within CRADLE_MIN_SEP.
+  const picked = [];
+  const minSepSq = CRADLE_MIN_SEP * CRADLE_MIN_SEP;
+  for (const c of candidates) {
+    if (picked.length >= MAX_CRADLES) break;
+    const ty = (c.ti / tw) | 0, tx = c.ti - ty * tw;
+    let tooClose = false;
+    for (const p of picked) {
+      let ddx = Math.abs(p.tx - tx);
+      if (ddx > tw / 2) ddx = tw - ddx;     // longitude wraps
+      const ddy = p.ty - ty;
+      if (ddx * ddx + ddy * ddy < minSepSq) { tooClose = true; break; }
+    }
+    if (!tooClose) picked.push({ tx, ty, ti: c.ti, score: c.score });
+  }
+  for (let i = 0; i < picked.length; i++) {
+    const p = picked[i];
+    const name = i === 0 ? "cradle" : `cradle-${i + 1}`;
+    makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: 25, name });
+    const e = elev[p.ti].toFixed(2), t = temp[p.ti].toFixed(2);
+    const m = moist[p.ti].toFixed(2), f = fert[p.ti].toFixed(2);
+    const rm = riverMag ? riverMag[p.ti] : 0;
+    console.log(
+      `[peopleSim] ${name} at tile (${p.tx},${p.ty}) — elev:${e} temp:${t} moist:${m} fert:${f}` +
+      `${coast[p.ti]?" coast":""}${rm>=2?` river(mag${rm})`:""} score:${p.score.toFixed(2)}`
+    );
+  }
 }
 
 export function pruneDead(world) {
   world.settlements = world.settlements.filter(s => s.mode !== "dead");
-  world.caravans    = world.caravans.filter(c => c.mode !== "done");
-  world.armies      = world.armies.filter(a => a.mode !== "dead");
 }

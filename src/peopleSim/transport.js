@@ -89,92 +89,132 @@ class _MinHeap {
   }
 }
 
-// Raw geography edge cost (no tech). Pass fromTi = toTi at a source
-// seed where there's no climb yet.
-export function baseEdgeCost(world, fromTi, toTi) {
-  const { elev, temp, moist, riverMag, coast } = world;
-  const e = elev[toTi];
-  if (e <= 0) return Infinity;        // water — impassable for land transport
+// ── Trans-test cost model ────────────────────────────────────────────
+//
+// Adapted from the live "Transport Test" view (WorldSim.jsx
+// runTransportTest). The principle: each tile is one of THREE MODES,
+// each mode has its own base cost, mode changes pay a flat PORT TAX,
+// and tech maps to SPECIFIC cost reductions (not a generic multiplier
+// on every land tile).
+//
+//   mode LAND  (elev > 0, not a river)
+//     base = params.plain
+//     + (elev-0.25) × 8           when e > 0.25 (mountains)
+//     + slope_above_0.05 × params.harsh     (rough terrain)
+//     + climate penalties         (hot+dry, cold, hot+wet)
+//     coast → min(base, params.coast)
+//
+//   mode RIVER (mag ≥ 2)
+//     base = params.river × {1.0 if mag≥4, 1.3 if mag=3, 2.0 if mag=2}
+//
+//   mode WATER (elev ≤ 0)
+//     params.water (=Infinity if nav below threshold)
+//
+//   MODE CHANGE → + params.port (the single dominant tax on switching
+//   modes — at low construction this is large; bridges/ferries/ports
+//   bring it down).
+//
+// Tech mapping:
+//   construction → cuts plain (roads), harsh, river, coast, port
+//   mobility     → cuts plain (wagons), harsh
+//   navigation   → enables water (gate at 0.10); cuts coast and water
+//   organization → does NOT enter here; it controls reach budget
+//                  in territory.js. Pure separation of concerns.
+//
+// Two exports:
+//   baseEdgeCost — zero-tech costs (used by the global transport
+//                  distance map and the crossing overlay)
+//   localEdgeCost — same shape, parametrised by the caller's tech
+//                  (used by territory, conquest, armies, roads)
+//
+// Both delegate to one core function so the rules can never drift.
 
-  // ── Road override ──
-  // If EITHER endpoint is a road tile, the edge cost is purely the
-  // road's intrinsic quality — ignore underlying terrain. A road
-  // over mountains costs the same as a road over plains
-  // (Roman-engineered-road model). Heavily-worn arterials (lower
-  // quality number) are even cheaper. This makes Dijkstra
-  // aggressively prefer any existing road, producing visible
-  // trunk-and-spur networks.
+const NAV_EMBARK_THRESH = 0.10;   // below this nav, water = Infinity
+
+function _paramsFromKnowledge(kn) {
+  const k = kn || {};
+  const cons = k.construction || 0;
+  const mob  = k.mobility     || 0;
+  const nav  = k.navigation   || 0;
+  return {
+    nav,
+    // Cost-per-tile by mode (base values), then tech-discounted.
+    plain: Math.max(0.30, 1.0 - mob * 0.30 - cons * 0.10),    // wagons + roads
+    harsh: Math.max(8,    35  - mob * 13   - cons * 10),       // slope coefficient (steep climbs)
+    river: Math.max(0.15, 0.50 - cons * 0.30),                 // river-along (banded by mag)
+    coast: Math.max(0.20, 0.70 - cons * 0.30 - nav * 0.25),    // coastal hop floor
+    water: nav < NAV_EMBARK_THRESH ? Infinity
+         : Math.max(0.5, 2.5 / (0.3 + nav * 1.5)),             // open ocean (gated)
+    port:  Math.max(0.5, 6   - cons * 5),                      // mode-change tax (6 → 1)
+  };
+}
+
+function _tileMode(world, ti) {
+  // 0 = land, 1 = river, 2 = water. Matches the trans-test convention.
+  if (world.elev[ti] <= 0) return 2;
+  if (world.riverMag && world.riverMag[ti] >= 2) return 1;
+  return 0;
+}
+
+// Core cost function. Roads short-circuit it (a road tile costs its
+// intrinsic road quality, terrain ignored — Roman-engineered model).
+function _edgeCost(world, fromTi, toTi, params) {
+  // Road override stays — roads are infrastructure, not terrain.
   const rq = world.roadQuality;
   if (rq) {
     const qF = rq[fromTi], qT = rq[toTi];
     if (qF < 1.0 || qT < 1.0) return Math.min(qF, qT);
   }
 
-  // ── Standard terrain cost (non-road edges) ──
-  const fromE = elev[fromTi];
+  const toMode   = _tileMode(world, toTi);
+  const fromMode = _tileMode(world, fromTi);
+  let base;
 
-  // Absolute altitude. Linear + quadratic so even small hills are
-  // visibly harder than sea level, and high mountains scale steeply.
-  //   e=0.00 → +0.00   e=0.10 → +0.64   e=0.20 → +1.56   e=0.35 → +3.47
-  //   e=0.50 → +6.00   e=0.70 → +10.36  e=1.00 → +19.00
-  const altCost = e * 5 + e * e * 14;
-
-  // Slope between this tile and the one we came from.
-  //   |Δ|=0.02 → +0.70   |Δ|=0.05 → +1.75   |Δ|=0.10 → +3.50   |Δ|=0.20 → +7.00
-  const slope = Math.abs(e - fromE);
-  const slopeCost = slope * 35;
-
-  const t = temp[toTi], m = moist[toTi];
-
-  // Cold. Smooth ramp below t=0.35.
-  let coldCost = 0;
-  if (t < 0.35) {
-    const cold = 0.35 - t;
-    coldCost = cold * cold * 28;
+  if (toMode === 2) {                        // ── WATER ──
+    if (!isFinite(params.water)) return Infinity;
+    base = params.water;
+    if (world.coast && world.coast[toTi]) base = Math.min(base, params.coast);
+  } else if (toMode === 1) {                 // ── RIVER ──
+    const rm = world.riverMag[toTi];
+    const magMul = rm >= 4 ? 1.0 : rm >= 3 ? 1.3 : 2.0;
+    base = params.river * magMul;
+  } else {                                   // ── LAND ──
+    const e = world.elev[toTi];
+    const t = world.temp[toTi];
+    const m = world.moist[toTi];
+    base = params.plain;
+    // Mountains: linear + quadratic so foothills are mild but high
+    // peaks are crushing. e=0.20 → +1.6, e=0.50 → +6.0, e=0.80 → +12.0.
+    // Matches the old altitude term — empires shouldn't march over
+    // alpine passes cheaply just because they have wagons.
+    base += e * 5 + e * e * 14;
+    // Slope (vs the tile we just left). Coefficient steep so a sudden
+    // climb across one tile reads as a wall. Construction (engineered
+    // switchbacks, cut roads) cuts this — that's params.harsh.
+    const slope = Math.abs(e - world.elev[fromTi]);
+    if (slope > 0.02) base += (slope - 0.02) * params.harsh;
+    if (t > 0.55 && m < 0.25) base += (t - 0.55) * 5 + (0.25 - m) * 4;  // hot dry
+    if (t < 0.18) base += (0.18 - t) * 8;                          // cold
+    if (m > 0.70 && t > 0.4) base += (m - 0.70) * 6;               // hot wet
+    if (world.coast && world.coast[toTi]) base = Math.min(base, params.coast);
   }
 
-  // Aridity. Continuous heat × dryness interaction.
-  const heat = Math.max(0, t - 0.45);
-  const dry  = Math.max(0, 0.40 - m);
-  const aridCost = heat * dry * 25;
-
-  let c = 1.0 + altCost + slopeCost + coldCost + aridCost;
-
-  // River bonus scales continuously with magnitude.
-  if (riverMag && riverMag[toTi] > 0) c /= (1 + riverMag[toTi] * 0.32);
-  if (coast[toTi])                    c *= 0.80;
-  return c;
+  // Mode change pays the port tax. Construction shrinks it — this is
+  // why a high-construction realm can bridge rivers cheaply while a
+  // neolithic one is walled by them.
+  if (toMode !== fromMode) base += params.port;
+  return base;
 }
 
-// Per-settlement edge cost = base × tech multipliers. Each track of
-// knowledge reduces effective edge cost in a way that maps to a real
-// transport innovation:
-//   toolmaking   wagons, harness, draft animals      flat ×0.70 max
-//   construction roads, bridges, switchbacks         flat ×0.60 max
-//   organization postal relays, supply chains        flat ×0.85 max
-//   mobility     horses (cavalry, courier, plough)   flat ×0.70 max
-//   navigation   ships on rivers / coasts            water ×0.55 max
-//
-// At full tech (everything at 1.0), a flat plain tile costs:
-//   ×0.70 × 0.60 × 0.85 × 0.70 = 0.250 (was 0.357 without mobility)
-// A river tile with navigation maxed adds another ×0.55 on top.
-// So a maxed-out Iron Age tribe with horses and ships moves ~4× faster
-// over land and ~7× faster on water than a stone-age starter.
+// Zero-tech cost (for global transport distance map + crossing overlay).
+const _ZERO_PARAMS = _paramsFromKnowledge({});
+export function baseEdgeCost(world, fromTi, toTi) {
+  return _edgeCost(world, fromTi, toTi, _ZERO_PARAMS);
+}
+
+// Tech-aware cost (per-settlement reach, march speed, conquest range).
 export function localEdgeCost(world, fromTi, toTi, kn) {
-  const c = baseEdgeCost(world, fromTi, toTi);
-  if (c === Infinity || !kn) return c;
-  const tool = kn.toolmaking   || 0;
-  const cons = kn.construction || 0;
-  const org  = kn.organization || 0;
-  const mob  = kn.mobility     || 0;
-  const nav  = kn.navigation   || 0;
-  let mul = (1 - 0.30 * tool) * (1 - 0.40 * cons) * (1 - 0.15 * org) * (1 - 0.30 * mob);
-  if (nav > 0) {
-    const isWater = (world.riverMag && world.riverMag[toTi] >= 2)
-                 || (world.coast && world.coast[toTi]);
-    if (isWater) mul *= (1 - 0.45 * nav);
-  }
-  return c * mul;
+  return _edgeCost(world, fromTi, toTi, _paramsFromKnowledge(kn));
 }
 
 export function computeTransport(world) {

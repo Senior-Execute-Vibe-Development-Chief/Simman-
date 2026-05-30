@@ -22,7 +22,9 @@ import { makeSettlement } from "./settlement.js";
 import { computeTransport } from "./transport.js";
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
-const TRANSPORT_REFRESH_TICKS   = 150;    // refresh transport more often (was 200)
+const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) flood — a
+                                          // frame spike at high speed; it drives only spawn
+                                          // weighting and drifts slowly, so refresh rarely
 const CANDIDATES_PER_SWEEP      = 120;    // wider net per sweep (was 80)
 
 // Permissive fertility gates. Earth had hamlets in desert, tundra,
@@ -36,12 +38,88 @@ const CANDIDATES_PER_SWEEP      = 120;    // wider net per sweep (was 80)
 // capacity (K ∝ farmland × fert) keeps marginal hamlets small.
 const MIN_FERT                  = 0.03;   // basically "is there any soil?"
 const MIN_AREA_FERT             = 1.0;    // 5×5 box must have *some* support
-const MIN_SETT_DIST             = 18;
+// Tighter spacing → a lush continent fills with a denser web of
+// smaller settlements rather than a handful of ever-growing
+// metropolises. Farmland contention (_farmedBy) between close
+// neighbours keeps each one's footprint — and so its carrying
+// capacity — modest.
+// Spacing. A hard minimum prevents territorial overlap; everything else
+// (where towns cluster vs. where they don't) is driven by site quality, not
+// the spacing rule. The "geometric grid" pattern we used to see came not
+// from the spacing alone but from too-weak locational pull: with roughly
+// uniform fertility AND only ~2× quality multipliers for rivers/coasts,
+// every site looked similar and packed evenly. The fix is in the QUALITY
+// scoring below — but the spacing rule is now SOFT, not binary. The old
+// binary `tooClose = (d < MIN_SETT_DIST)` rule produced a circle-packing
+// pattern visible as a low coefficient-of-variation in the nearest-neighbour
+// distribution: every new settlement landed at *exactly* the smallest
+// distance the rule allowed, giving a uniform grid. The soft version below
+// rejects truly overlapping sites (d < HARD_FLOOR) but lets brilliant
+// candidates squeeze in close (creating twin/paired towns — Buda-Pest,
+// Edo-shitamachi, the classic dual market settlements) while typical
+// fertility-tier candidates still get pushed apart.
+const HARD_FLOOR                = 4;          // absolutely no settlement closer than this
+const HARD_FLOOR_SQ             = HARD_FLOOR * HARD_FLOOR;
+const SOFT_DIST                 = 14;         // beyond this, the spacing factor is 1 (no penalty)
+const SOFT_DIST_SQ              = SOFT_DIST * SOFT_DIST;
+// ── Market-town pull ──
+// A new settlement is more likely to crystallise WITHIN the catchment area
+// of an existing town/city — markets, labour pools, defence, and trade
+// gravity all attract incoming farmers. This is the cause of the
+// historical "cluster of villages around a market town" pattern: most real
+// rural settlements existed within a day's walk of a market. Without this
+// term, the spacing rules alone produced a circle-pack with everyone at the
+// floor; market pull breaks that by making the *area around an existing
+// settlement* a preferred zone.
+//
+// Per existing settlement, contribute (tier+1) × exp(-d/MARKET_RANGE) to a
+// candidate's pull. So a city (tier 2) within 20 tiles adds 3 × exp(-20/30)
+// = ~1.54, while a village (tier 0) at 40 tiles adds only 1 × exp(-40/30) =
+// ~0.26. The cradle's nearby villages cluster; distant frontiers are weak.
+// The cradle's MARKET_RANGE is large enough that the catchment overlaps
+// with itself, producing dense intra-cluster spawning at distances above
+// the SOFT_DIST floor (15-30 tiles, not 5-10).
+const MARKET_RANGE              = 20;   // tighter catchment — clusters are local, not regional
+const MARKET_PULL_WEIGHT        = 0.4;   // modest pull so clusters form but don't snowball
+// Spacing-factor: 0 at HARD_FLOOR, 1 at SOFT_DIST. Used in sendSettlers'
+// hard reject because mother-country colony parties already pick deliberately
+// (the founder doesn't accidentally plant at 4 tiles).
+const MIN_SETT_DIST             = 8;          // kept for daughter-colony search hardcoding
 const MIN_SETT_DIST_SQ          = MIN_SETT_DIST * MIN_SETT_DIST;
 const KNOWLEDGE_DECAY_SCALE     = 30;
-const INDEPENDENT_RATE          = 0.060;
+// Independent invention: a site reached by no land network at all relies on
+// this baseline rate. Low so empty regions stay empty until colonised
+// (existing networks still spread by diffusionMul × NEAR_RATE).
+const INDEPENDENT_RATE          = 0.020;
+// Spontaneous invention ACROSS OPEN WATER (no land path to any existing
+// settlement → transportDist is Infinity) is far rarer: separate landmasses
+// are reached by COLONISATION (sea.js), not magically populated. A small
+// non-zero rate keeps the door open for the occasional independent overseas
+// genesis (the Mesoamerica/Andes pattern) without letting empty continents
+// fill before colonists can sail to them.
+const OVERSEAS_INDEPENDENT_RATE = 0.0015;
 const NEAR_RATE                 = 1.50;
 const BASE_RATE                 = 0.010;
+
+// ── Settler colonisation (mother-country-driven expansion) ───────────
+// A crowded, prosperous town with no room to grow ("housing pressed" or
+// near its food cap) sends out a SETTLER PARTY: a chunk of its population
+// walks a few tiles to a viable empty site and founds a daughter town that
+// joins the parent's realm from day one (s.countryId = parent.countryId,
+// parentSettlementId set → already gets COLONY_SUPPLY_FOOD/COIN from
+// conquest.js). This is the Greek apoikia / Roman colonia / Ostsiedlung
+// pattern: population pressure drives outward settlement, peacefully growing
+// the realm instead of waiting for spontaneous crystallisation or conquest.
+const COLONY_CHECK_INTERVAL   = 240;   // ticks between settler-party rolls (per parent)
+const COLONY_MIN_POP          = 200;   // need a town worth's people before splitting one off
+const COLONY_PRESS_FRAC       = 0.85;  // counts as "pressed" at this fraction of carrying capacity
+const COLONY_SEND_FRAC        = 0.10;  // fraction of parent's population that leaves with the settler party
+const COLONY_SEND_CAP         = 80;    // max settlers per founding (a whole town doesn't depopulate)
+const COLONY_RANGE            = 28;    // tiles the settler party will walk from the parent
+const COLONY_MIN_RANGE        = MIN_SETT_DIST + 2;  // can't found right next door (spacing already enforces it; this is just the search lower bound)
+const COLONY_CANDIDATES       = 12;    // viable sites sampled per attempt (best is picked)
+const COLONY_CHANCE           = 0.5;   // probability a pressed, eligible parent actually sends settlers on a roll
+const COLONY_COOLDOWN         = 1500;  // ticks the parent waits between settler parties (recovery)
 
 // Resource attraction. Each resource has a per-tier value (how
 // valuable it is to a civilisation at that tech level) and a
@@ -65,8 +143,21 @@ const RESOURCE_TIER_VALUE = {
   salt:     [0.6, 0.8, 1.0, 1.0],
   precious: [1.0, 1.2, 1.4, 1.6],  // currency: always wanted, more in later tiers
   gems:     [0.8, 1.0, 1.2, 1.4],
+  spices:   [0.5, 0.8, 1.0, 1.0],  // luxury trade goods: draw settlement, more as wealth grows
+  furs:     [0.5, 0.7, 0.8, 0.8],
+  incense:  [0.4, 0.6, 0.8, 0.8],
+  dyes:     [0.4, 0.6, 0.9, 1.0],
 };
 
+// Settlement-count decay for crystallisation: each existing settlement
+// makes the next one *slightly* less likely, modelling that as a world
+// fills up the remaining viable land is more contested and less likely
+// to produce a brand-new village. Without this the late game shows a
+// hockey-stick where settlement count explodes once a few cities exist.
+// Half-rate around N=300, third-rate around N=600. Settler colonisation
+// (which is parent-driven and intentional) is NOT subject to this — the
+// mother country can still push outward into the frontier.
+const CRYSTAL_SATURATION_REF = 300;
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
@@ -75,6 +166,16 @@ export function maybeCrystallize(world) {
     world.transportDist = computeTransport(world);
     world._transportStep = world.step;
   }
+
+  // Mother-country expansion: pressed towns send settler parties (see
+  // sendSettlers — this is the entire "population pressure → new colony"
+  // axis, distinct from the random crystallisation sweep below).
+  if (world.step % COLONY_CHECK_INTERVAL === 0) maybeSendSettlers(world);
+
+  // Crystallisation saturation: settlement-count-dependent damper.
+  let _alive = 0;
+  for (const s of world.settlements) if (s.mode === "settled") _alive++;
+  const saturationDamper = 1 / (1 + _alive / CRYSTAL_SATURATION_REF);
 
   // Compute per-sweep resource scarcity / value table once.
   const resScarcity = computeResourceScarcity(world);
@@ -109,39 +210,106 @@ export function maybeCrystallize(world) {
       }
     }
     if (areaFert < MIN_AREA_FERT) continue;
-    // Min distance to all existing settlements.
-    let tooClose = false;
+    // Walk existing settlements ONCE, accumulating both:
+    //   nearestSq  — for the spacing (anti-overlap) rule
+    //   marketPull — for the market-town attraction (positive cluster pull)
+    // A market-area-bonus cutoff distance (MARKET_RANGE × 3) skips far-away
+    // settlements that contribute nothing to either signal.
+    const MARKET_CUTOFF_SQ = (MARKET_RANGE * 3) * (MARKET_RANGE * 3);
+    let nearestSq = Infinity;
+    let marketPull = 0;
+    let earlyExit = false;
     for (const o of world.settlements) {
       if (o.mode === "dead") continue;
       let ddx = Math.abs(o.pos.x - tx);
       if (ddx > tw / 2) ddx = tw - ddx;
       const ddy = o.pos.y - ty;
-      if (ddx * ddx + ddy * ddy < MIN_SETT_DIST_SQ) { tooClose = true; break; }
+      const dd = ddx * ddx + ddy * ddy;
+      if (dd < nearestSq) {
+        nearestSq = dd;
+        if (dd < HARD_FLOOR_SQ) { earlyExit = true; break; }
+      }
+      if (dd < MARKET_CUTOFF_SQ) {
+        const d = Math.sqrt(dd);
+        const tierBonus = 1 + (o.tier | 0);
+        marketPull += tierBonus * Math.exp(-d / MARKET_RANGE);
+      }
     }
-    if (tooClose) continue;
+    if (earlyExit || nearestSq < HARD_FLOOR_SQ) continue;       // hard reject — overlap
+    // Linear ramp between HARD_FLOOR and SOFT_DIST on actual distance (not
+    // squared, so it grows steeply near the floor and flattens out near the
+    // soft boundary — matches the "very close = bad, modest distance =
+    // mostly fine" historical pattern).
+    let spacingFactor = 1;
+    if (nearestSq < SOFT_DIST_SQ) {
+      const d = Math.sqrt(nearestSq);
+      spacingFactor = (d - HARD_FLOOR) / (SOFT_DIST - HARD_FLOOR);
+    }
+    // Market pull: 1.0 at zero pull (frontier), grows with proximity to
+    // existing settlements weighted by their tier. Multiplied into the
+    // overall spawn probability so a candidate WITHIN reach of an existing
+    // town's catchment gets a real boost — the cause of the historical
+    // village-cluster pattern.
+    const marketFactor = 1 + MARKET_PULL_WEIGHT * marketPull;
 
-    // Site-quality score. Floor=0.45 lifts low-fert spawn rate so
-    // marginal terrain is visibly populated rather than empty;
-    // fertile river valleys still dominate by 5–6× after the f×2 and
-    // area terms. Range roughly 0.45 (worst) → ~5.5 (best lush river).
-    let quality = 0.45 + f * 1.5 + Math.min(2.0, areaFert * 0.1);
-    if (hasRiver) quality += 1.0;
-    if (hasCoast) quality += 0.4;
+    // Site-quality score — the LOCATIONAL PULL that decides where a sparsely
+    // settled landscape clusters. Real settlement patterns are highly uneven
+    // (dense along rivers/coasts/chokepoints, empty in marginal interior),
+    // and that's because the difference between a good site and a poor one
+    // is huge — not the ~2× of the earlier scoring, which produced near-
+    // uniform packing. Scale ≈ 0.4 (marginal interior) → 1.5 (decent
+    // farmland) → 5–10 (river valley / coast) → 15+ (river-mouth port, pass,
+    // confluence). The multiplicative form (rather than additive bonuses) is
+    // what makes rivers/coasts dominate by enough to leave bad land empty.
+    const fertilityScore = 0.4 + f * 1.5 + Math.min(2.0, areaFert * 0.1);
+    let locMul = 1;
+    if (hasRiver) locMul *= 6;            // rivers were *the* historical magnet —
+                                          // strong multiplier so river valleys
+                                          // dominate spawning and dry inland
+                                          // tiles stay empty. The Nile pattern:
+                                          // dense settlement along the water,
+                                          // huge empty desert between.
+    if (hasCoast) locMul *= 3;            // coasts second — natural harbours
+                                          // and trade contact draw settlement.
+    // Resource / network / geographic bonuses are still additive
+    // contributions on top of the multiplied location score.
+    let quality = fertilityScore * locMul;
     quality += resourceBonusFor(world, ti, resScarcity);
     quality += busyRoadBonusFor(world, ti, tx, ty);
+    quality += geoBonusFor(world, ti, tx, ty);   // chokepoints / passes / sheltered harbours
 
-    // Transport-distance modifier. tdist=Infinity → independent only.
+    // Transport-distance modifier. Finite td → diffusion from the land
+    // network plus the normal independent floor. Infinite td (across water,
+    // unreachable by land) → only the much smaller overseas-invention rate,
+    // so other landmasses wait to be colonised rather than self-populating.
     const td = transportDist[ti];
     const diffusionMul = isFinite(td) ? Math.exp(-td / KNOWLEDGE_DECAY_SCALE) * NEAR_RATE : 0;
-    const p = quality * (diffusionMul + INDEPENDENT_RATE) * BASE_RATE;
+    const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
+    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor;
 
     if (rng() < p) {
       // Inherited knowledge: blend from nearest settlement, weighted by
       // distance. Far sites start near baseline neolithic knowledge.
       const inherited = inheritKnowledgeAt(world, ti, td);
+      // Inherited COUNTRY: if the spawn site is already inside an existing
+      // realm's territory, the new town joins that realm. Pre-existing
+      // sovereigns don't tolerate sovereign new villages popping up inside
+      // their borders — they'd be vassals from day one. Only spawns on
+      // genuinely unclaimed land become their own city-state. This is what
+      // stops the map being littered with awkward independent one-tile
+      // statelets randomly forming inside someone else's country.
+      let inheritedCountry;
+      if (world._territoryOwner && world._byId) {
+        const ownerId = world._territoryOwner[ti];
+        if (ownerId >= 0) {
+          const ownerSett = world._byId.get(ownerId);
+          if (ownerSett && ownerSett.mode === "settled") inheritedCountry = ownerSett.countryId;
+        }
+      }
       makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: 18 + (rng.int(8)),
         knowledge: inherited,
+        countryId: inheritedCountry,
       });
     }
   }
@@ -239,6 +407,160 @@ function resourceBonusFor(world, ti, scarcity) {
   return Math.min(2.5, bonus);
 }
 
+// ── Geographic / chokepoint bonus ──
+// The "why this city is here" factor — captures three patterns:
+//   • RIVER CONFLUENCE   (two river tiles meeting): inland trade nexus
+//                        (St. Louis, Khartoum, Pittsburgh, Lyon — pick any
+//                        big inland city, it's almost always on one).
+//   • CHOKEPOINT / NECK  (land tile with land on two opposite sides AND
+//                        water/impassable on the other two): a pass through
+//                        terrain barriers (Constantinople's isthmus,
+//                        Panama, mountain passes, river fords).
+//   • SHELTERED HARBOUR  (coastal tile with coast on several sides — a bay,
+//                        not a straight shoreline): a natural port
+//                        (Venice, Boston, San Francisco).
+// Computed cheaply over a 3×3 neighbourhood (and 5×5 for the harbour shape).
+function geoBonusFor(world, ti, tx, ty) {
+  const { tw, th, elev, riverMag } = world;
+  let bonus = 0;
+
+  // RIVER CONFLUENCE: this tile is on a river, and a neighbouring tile is on
+  // a DIFFERENT river segment. Cheap proxy: this tile has riverMag ≥ 2, and
+  // at least 3 of the 8 neighbours also have riverMag ≥ 2 (a confluence has
+  // more "river" around it than a straight stretch's 2 neighbours).
+  if (riverMag && riverMag[ti] >= 2) {
+    let riverNbrs = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      const ny = ty + dy;
+      if (ny < 0 || ny >= th) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = ((tx + dx) % tw + tw) % tw;
+        if (riverMag[ny * tw + nx] >= 2) riverNbrs++;
+      }
+    }
+    if (riverNbrs >= 3) bonus += 1.5;        // confluence
+  }
+
+  // Sample a 3×3 neighbourhood once for the chokepoint + harbour checks.
+  let landN = 0, waterN = 0;
+  const landBits = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    const ny = ty + dy;
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) { landBits.push(true); continue; }
+      if (ny < 0 || ny >= th) { landBits.push(false); waterN++; continue; }
+      const nx = ((tx + dx) % tw + tw) % tw;
+      const isLand = elev[ny * tw + nx] > 0;
+      landBits.push(isLand);
+      if (isLand) landN++; else waterN++;
+    }
+  }
+  // CHOKEPOINT: very land-poor neighbourhood (a thin strip) — 2–4 of 8 neighbours
+  // are land. A wide-open plain has all 8; deep ocean has 0; a neck has ~3.
+  if (landN >= 2 && landN <= 4 && waterN >= 3) bonus += 1.2;
+
+  // SHELTERED HARBOUR: coast tile (already given +0.4 above) where the coast
+  // WRAPS around it — i.e. nearby tiles on several sides are also water.
+  // Detected by the same 3×3: 3-5 water neighbours = an indent/bay, not a
+  // straight shoreline (which would have ~3-5 water but all on one side).
+  // Approximation: if this tile is coastal AND has water on at least two of
+  // the four cardinal directions, it's a bay shape.
+  if (world.coast && world.coast[ti] && waterN >= 3) {
+    // landBits index layout: [NW,N,NE,W,self,E,SW,S,SE] (dy=-1..1, dx=-1..1)
+    const N = !landBits[1], S = !landBits[7], W = !landBits[3], E = !landBits[5];
+    const cardWater = (N ? 1 : 0) + (S ? 1 : 0) + (W ? 1 : 0) + (E ? 1 : 0);
+    if (cardWater >= 2) bonus += 0.8;
+  }
+
+  return bonus;
+}
+
+// ── Settler colonisation (mode #1): parent-driven founding ───────────
+// Each pass, every viable parent town that's both population-pressed and off
+// cooldown rolls to send a settler party. The party walks up to COLONY_RANGE
+// tiles to a viable empty site (picks the best one out of a small sample) and
+// founds a daughter joining the parent's realm. Cooldown stops a single town
+// from spamming colonies; settler-cost shaves the parent's population so
+// expansion has a real demographic cost (you trade headcount for territory).
+function maybeSendSettlers(world) {
+  if (!world.transportDist) return;
+  const { rng } = world;
+  for (const parent of world.settlements) {
+    if (parent.mode !== "settled") continue;
+    if (parent.people < COLONY_MIN_POP) continue;
+    if (world.step - (parent._lastColonySent ?? -Infinity) < COLONY_COOLDOWN) continue;
+    // Pressed: at or near carrying capacity (either food or housing) — the
+    // people would otherwise sit at the ceiling. updatePopulation set s._k.
+    const k = parent._k || 1;
+    if (parent.people / k < COLONY_PRESS_FRAC) continue;
+    if (rng() >= COLONY_CHANCE) continue;
+    sendSettlers(world, parent);
+  }
+}
+
+function sendSettlers(world, parent) {
+  // Find a viable empty site within walking range. Score by quality (same
+  // ingredients as the random sweep) and pick the best.
+  const { tw, th, elev, fert, coast, riverMag, rng } = world;
+  const px = parent.pos.x | 0, py = parent.pos.y | 0;
+  let best = null, bestQ = -Infinity;
+  for (let i = 0; i < COLONY_CANDIDATES; i++) {
+    // Sample a tile in an annulus around the parent: random angle, random
+    // radius in [COLONY_MIN_RANGE, COLONY_RANGE].
+    const ang = rng() * Math.PI * 2;
+    const r = COLONY_MIN_RANGE + rng() * (COLONY_RANGE - COLONY_MIN_RANGE);
+    const tx = ((px + Math.round(Math.cos(ang) * r)) % tw + tw) % tw;
+    const ty = py + Math.round(Math.sin(ang) * r);
+    if (ty < 1 || ty >= th - 1) continue;
+    const ti = ty * tw + tx;
+    if (!isContinentalLand(world, ti)) continue;
+    if (fert[ti] < MIN_FERT) continue;
+    // Spacing check against existing settlements.
+    let tooClose = false;
+    for (const o of world.settlements) {
+      if (o.mode === "dead") continue;
+      let ddx = Math.abs(o.pos.x - tx); if (ddx > tw / 2) ddx = tw - ddx;
+      const ddy = o.pos.y - ty;
+      if (ddx * ddx + ddy * ddy < MIN_SETT_DIST_SQ) { tooClose = true; break; }
+    }
+    if (tooClose) continue;
+    let areaFert = 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      const ny = ty + dy;
+      if (ny < 0 || ny >= th) continue;
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = ((tx + dx) % tw + tw) % tw;
+        const ni = ny * tw + nx;
+        if (elev[ni] > 0) areaFert += fert[ni];
+      }
+    }
+    if (areaFert < MIN_AREA_FERT) continue;
+    let q = fert[ti] * 1.5 + Math.min(2.0, areaFert * 0.1);
+    if (riverMag && riverMag[ti] >= 2) q += 1.0;
+    if (coast && coast[ti]) q += 0.4;
+    if (q > bestQ) { bestQ = q; best = { ti, tx, ty }; }
+  }
+  if (!best) return;
+  // Pay the demographic cost: a chunk of the parent's people leaves with
+  // them. They take some of the parent's tech (full inheritance — they're
+  // literate citizens of the realm, not isolated frontier inventors).
+  const settlers = Math.min(COLONY_SEND_CAP, Math.round(parent.people * COLONY_SEND_FRAC));
+  if (settlers < 25) return;
+  parent.people -= settlers;
+  parent._lastColonySent = world.step;
+  const inherited = {};
+  for (const k of Object.keys(parent.knowledge)) inherited[k] = parent.knowledge[k];
+  const daughter = makeSettlement(world, best.tx + 0.5, best.ty + 0.5, {
+    people: settlers,
+    knowledge: inherited,
+    parentId: parent.id,
+    countryId: parent.countryId,                   // joins the parent's realm immediately
+    name: "colony-" + parent.id + "-" + world.step,
+  });
+  if (parent.history) parent.history.push({ step: world.step, type: "colony-sent", to: daughter.id, settlers });
+}
+
 // Pick the nearest settlement (by straight-line distance, cheap), then
 // blend its knowledge with a baseline based on how isolated this site
 // is in transport terms. Settlements that crystallise right next to a
@@ -255,10 +577,12 @@ function inheritKnowledgeAt(world, ti, td) {
     const d2 = dx * dx + dy * dy;
     if (d2 < bestD2) { bestD2 = d2; nearest = s; }
   }
-  // Baseline neolithic knowledge for independent invention.
+  // Baseline neolithic knowledge for independent invention. Just the six
+  // surviving tracks after the merge (foraging→agriculture,
+  // toolmaking→construction, literacy→organization). Metallurgy,
+  // navigation, and mobility stay at zero — they're resource-gated and
+  // only kick in once the site touches ore / water / horses.
   const baseline = {
-    foraging:    0.5,
-    toolmaking:  0.2,
     agriculture: 0.45,
     construction: 0.1,
     organization: 0.1,

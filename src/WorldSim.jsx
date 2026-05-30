@@ -17,34 +17,13 @@ import { tribePower, localPower, tribeOreAccess, tDistW, expFalloff } from "./tr
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
+import { IN_LABELS, OUT_LABELS } from "./peopleSim/money.js";
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
+import PeopleSimWorker from "./peopleSimWorker.js?worker&inline";
 
-const PERM=new Uint8Array(512);const GRAD=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
-function initNoise(seed){const p=new Uint8Array(256);for(let i=0;i<256;i++)p[i]=i;for(let i=255;i>0;i--){seed=(seed*16807)%2147483647;const j=seed%(i+1);[p[i],p[j]]=[p[j],p[i]];}for(let i=0;i<512;i++)PERM[i]=p[i&255];}
-function noise2D(x,y){const X=Math.floor(x)&255,Y=Math.floor(y)&255,xf=x-Math.floor(x),yf=y-Math.floor(y),u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);const aa=PERM[PERM[X]+Y],ab=PERM[PERM[X]+Y+1],ba=PERM[PERM[X+1]+Y],bb=PERM[PERM[X+1]+Y+1];const d=(g,x2,y2)=>GRAD[g%8][0]*x2+GRAD[g%8][1]*y2;const l1=d(aa,xf,yf)+u*(d(ba,xf-1,yf)-d(aa,xf,yf)),l2=d(ab,xf,yf-1)+u*(d(bb,xf-1,yf-1)-d(ab,xf,yf-1));return l1+v*(l2-l1);}
-function fbm(x,y,o,l,g){let v=0,a=1,f=1,m=0;for(let i=0;i<o;i++){v+=noise2D(x*f,y*f)*a;m+=a;a*=g;f*=l;}return v/m;}
-// Domain warping: distort coordinates using noise for organic shapes (Inigo Quilez technique)
-function warp(x,y,freq,oct,str,off1,off2){
-const wx=x+fbm(x*freq+off1,y*freq+off1,oct,2,.5)*str;
-const wy=y+fbm(x*freq+off2,y*freq+off2,oct,2,.5)*str;
-return[wx,wy];}
-// Ridged multifractal noise: sharp ridges at zero-crossings, feedback-weighted
-function ridged(x,y,oct,lac,gain,off){
-let v=0,a=1,f=1,w=1,m=0;
-for(let i=0;i<oct;i++){let s=off-Math.abs(noise2D(x*f,y*f));s*=s;s*=w;w=Math.min(1,Math.max(0,s*gain));
-v+=s*a;m+=a;a*=.5;f*=lac;}return v/m;}
-// Worley (cellular) noise: returns [F1, F2] distances to nearest two seed points
-function worley(x,y){
-const ix=Math.floor(x),iy=Math.floor(y);let d1=9,d2=9;
-for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-const cx=ix+dx,cy=iy+dy;
-// Hash cell to get seed point position
-const h1=PERM[(PERM[(cx&255)]+((cy&255)))&511],h2=PERM[(h1+73)&511];
-const px=cx+(h1/255),py=cy+(h2/255);
-const dd=(x-px)*(x-px)+(y-py)*(y-py);
-if(dd<d1){d2=d1;d1=dd;}else if(dd<d2)d2=dd;}
-return[Math.sqrt(d1),Math.sqrt(d2)];}
-function mkRng(s){s=((s%2147483647)+2147483647)%2147483647||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};}
+// Noise + PRNG utilities moved to src/worldgenUtils.js so worldgen code can
+// also run headlessly (Node tests, future tooling) without dragging React in.
+import { initNoise, noise2D, fbm, warp, ridged, worley, mkRng } from "./worldgenUtils.js";
 
 const RES=1;
 // ── Mercator projection helpers ──
@@ -55,6 +34,11 @@ const CW_FLAT = 1920, CH_FLAT = 960; // equirectangular canvas (matches world at
 // Mercator height: match equator pixel scale to flat mode, then add space for polar stretch
 // Formula: CH = 2 * MERC_MAX * (CH_FLAT / π) — equator stays same size as flat mode
 const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688
+// Views whose base raster is a pure function of the world (not the sim), so it
+// can be rendered once to an offscreen canvas and blitted each frame instead
+// of rebuilt per-pixel. Sim-dependent views (population, transport, roads,
+// money, tribes) and atlas are excluded.
+const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","fertility","crop","crossing","resources","moisture","temperature"]);
 let _mercator = false; // module-level flag for projection functions
 
 function screenYtoDataY(sy, ch, H) {
@@ -78,352 +62,8 @@ let _tecParams = {};
 // Static climate: no ice ages or sea level changes
 const CLIMATE={tempMod:0,seaLevel:0,wet:0.7};
 
-function generateWorld(W,H,seed,preset,oceanLevel,_unused=true,realWind=false){
-initNoise(seed);const rng=mkRng(seed);
-const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
-let tecPlates=null,tecWindX=null,tecWindY=null;
-if(preset==="earth"){
-// ── Earth mode: use real heightmap data ──
-const eData=decodeEarth(EARTH_ELEV);
-// Pass 1: elevation + temperature
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
-const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);// 0-255
-const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
-if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
-elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
-}else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}
-// Steeper cold curve: lat² term makes high latitudes drop faster (Moscow at 56°N IS cold)
-// Latitude→temperature: 0.92 at equator (+32°C, reads as red). Polar
-// drop comes mostly from the elevation penalty being amplified at
-// high latitudes — elev*(0.4 + 0.8*lat) — so Greenland's ice sheet
-// (lat 0.78, elev 0.4) hits ICE biome, while flat coasts at the
-// same lat stay tundra/taiga. Calibrated visually + against NASA
-// GISS zonal means (~+10°C at lat 0.5). See tools/probe_temperature.mjs.
-temperature[i]=Math.max(0,Math.min(1,0.92-Math.pow(lat,1.5)*0.50-Math.pow(lat,6)*0.80-Math.max(0,elevation[i])*(.4+.8*lat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.08));}
-// Pass 2: coast-distance BFS at tile resolution for continentality
-const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
-const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);
-const cdQ=[];
-for(let ty=0;ty<CDH;ty++)for(let tx=0;tx<CDW;tx++){
-const px=Math.min(W-1,tx*CDT),py=Math.min(H-1,ty*CDT),ti=ty*CDW+tx;
-if(elevation[py*W+px]<=0)continue;// ocean tile
-for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-const nx2=(tx+dx+CDW)%CDW,ny2=ty+dy;if(ny2<0||ny2>=CDH)continue;
-const np=Math.min(W-1,nx2*CDT),npy=Math.min(H-1,ny2*CDT);
-if(elevation[npy*W+np]<=0){cdist[ti]=0;cdQ.push(ti);break;}}}
-for(let qi=0;qi<cdQ.length;qi++){const ci=cdQ[qi],cd=cdist[ci],cx=ci%CDW,cy=(ci-cx)/CDW;
-for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
-const nx2=(cx+dx+CDW)%CDW,ny2=cy+dy;if(ny2<0||ny2>=CDH)continue;
-const ni=ny2*CDW+nx2,nd=cd+1;if(nd<cdist[ni]&&elevation[Math.min(H-1,ny2*CDT)*W+Math.min(W-1,nx2*CDT)]>0){cdist[ni]=nd;cdQ.push(ni);}}}
-// Pass 3: moisture using ITCZ, subtropical HP belt, continentality, westerlies
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
-if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
-const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
-const coastProx=Math.max(0,1-cd/8);// 1 at coast, 0 inland
-const tropWet=Math.max(0,1-lat*2.5);// ITCZ: wet equator
-const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.08*.08))*.35*(1-coastProx*.5);// subtropical HP, softened + widened for realism
-const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.22;// temperate westerlies
-const tropF=Math.max(0,1-lat*3);// tropical moisture recycling factor
-const contRate=.006+(1-tropF)*.014;// weak in tropics, stronger elsewhere
-const cont=Math.min(.28,cd*contRate);
-const polarDry=Math.max(0,(lat-.75))*.25;
-let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12
-+fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*.15;// continent-scale wet/dry to break banding
-if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
-if(elevation[i]<.02)m+=.10;
-moisture[i]=Math.max(.02,Math.min(1,m));}
-// Run wind solver on Earth elevation data
-const earthWind=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137);
-tecWindX=earthWind.windX;tecWindY=earthWind.windY;
-}else if(preset==="earth_sim"){
-// ── Earth (Sim) mode: real heightmap + full wind-based climate simulation ──
-// Uses same elevation as Earth mode but applies wind-advected moisture/temperature
-const eData=decodeEarth(EARTH_ELEV);
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
-const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);
-const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
-if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
-elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
-}else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}}
-// Coast distance BFS
-const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
-const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);const cdQ=[];
-for(let ty=0;ty<CDH;ty++)for(let tx=0;tx<CDW;tx++){
-const px=Math.min(W-1,tx*CDT),py=Math.min(H-1,ty*CDT),ti2=ty*CDW+tx;
-if(elevation[py*W+px]<=0)continue;
-for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-const nx2=(tx+dx+CDW)%CDW,ny2=ty+dy;if(ny2<0||ny2>=CDH)continue;
-if(elevation[Math.min(H-1,ny2*CDT)*W+Math.min(W-1,nx2*CDT)]<=0){cdist[ti2]=0;cdQ.push(ti2);break;}}}
-for(let qi=0;qi<cdQ.length;qi++){const ci=cdQ[qi],cd=cdist[ci],cx=ci%CDW,cy=(ci-cx)/CDW;
-for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
-const nx2=(cx+dx+CDW)%CDW,ny2=cy+dy;if(ny2<0||ny2>=CDH)continue;
-const ni=ny2*CDW+nx2,nd=cd+1;if(nd<cdist[ni]&&elevation[Math.min(H-1,ny2*CDT)*W+Math.min(W-1,nx2*CDT)]>0){cdist[ni]=nd;cdQ.push(ni);}}}
-// Wind: use real NCEP/NCAR data if available and toggled, otherwise solver
-if(realWind&&isRealWindAvailable()){
-tecWindX=new Float32Array(W*H);tecWindY=new Float32Array(W*H);
-fillRealWind(W,H,tecWindX,tecWindY);
-console.log("Earth (Sim): using real NCEP/NCAR wind data");
-}else{
-const esWind=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137);
-tecWindX=esWind.windX;tecWindY=esWind.windY;
-}
-const fWX=tecWindX,fWY=tecWindY;
-// Moisture solver — physically-grounded evaporation → transport → precipitation
-const windMoisture=solveMoisture(W,H,elevation,fWX,fWY,temperature,_tecParams);
-// Wind-advected temperature
-const mW2=Math.ceil(W/2),mH2=Math.ceil(H/2);
-const windTemp=new Float32Array(W*H);
-const tGrid=new Float32Array(mW2*mH2);
-for(let my=0;my<mH2;my++)for(let mx=0;mx<mW2;mx++){
-const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
-const lt=Math.abs(py/H-0.5)*2,e2=elevation[py*W+px];
-tGrid[my*mW2+mx]=Math.max(0,Math.min(1,0.92-Math.pow(lt,1.5)*0.50-Math.pow(lt,6)*0.80+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*(.45+.8*lt)));}
-for(let step=0;step<60;step++){const prev=new Float32Array(tGrid);// 60 iterations for deep heat transport
-for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
-const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
-const wx2=fWX[fi],wy2=fWY[fi];
-// Wind vectors are small (max ~0.25) — amplify strongly for temperature transport
-// Target: Gulf Stream should push warm water ~500 pixels over 25 iterations
-const srcX=mx-wx2*60.0,srcY=my-wy2*60.0;
-// Wrap X for toroidal map
-const sx=((Math.floor(srcX)%mW2)+mW2)%mW2,sy=Math.min(mH2-2,Math.max(0,srcX|0));
-const syC=Math.min(mH2-2,Math.max(0,Math.floor(srcY)));
-const fdx=Math.max(0,Math.min(1,srcX-Math.floor(srcX))),fdy=Math.max(0,Math.min(1,srcY-syC));
-const sxr=(sx+1)%mW2;
-let upT=(prev[syC*mW2+sx]*(1-fdx)+prev[syC*mW2+sxr]*fdx)*(1-fdy)
-+(prev[Math.min(mH2-1,syC+1)*mW2+sx]*(1-fdx)+prev[Math.min(mH2-1,syC+1)*mW2+sxr]*fdx)*fdy;
-// Prevent ocean tiles from pulling hot land temps (causes coast shearing)
-// If this is ocean but the source sample is very different from local, dampen it
-const e2=elevation[fi],lt=Math.abs(py/H-0.5)*2;
-const locT=Math.max(0,Math.min(1,0.92-Math.pow(lt,1.5)*0.50-Math.pow(lt,6)*0.80+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*(.45+.8*lt)));
-if(e2<=0&&Math.abs(upT-prev[my*mW2+mx])>0.15){
-// Dampen extreme jumps at coast boundaries
-upT=prev[my*mW2+mx]*0.7+upT*0.3;}
-// Ocean base temp is cooler than land (water absorbs more solar energy as latent heat)
-// Ocean: slightly cooler in tropics (water buffers heat), slightly warmer at poles
-// Ocean is MUCH cooler in tropics (water has huge heat capacity), warmer at poles
-const oceanAdj=e2<=0?(lt<0.3?0.78:lt<0.5?0.85:lt<0.7?0.95:1.1):1.0;
-const adjLocT=locT*oceanAdj;
-// Ocean: wind transport dominates — once ocean picks up warm/cold water, it persists
-// Use PREVIOUS value (which already has transport) blended with new transport, not base temp
-if(e2<=0){const wMix=lt<0.3?0.30:lt<0.6?0.50:0.60;
-// Blend previous temp (momentum) with wind-advected — base temp only pulls weakly
-tGrid[my*mW2+mx]=prev[my*mW2+mx]*0.7+upT*0.25+adjLocT*0.05;}// 55% wind influence — strong ocean currents
-else{const tb=Math.min(0.8,Math.max(0,e2-0.05)*3);
-// Land: warm advection penetrates more (0.45 base), cold less (0.25)
-const bi=(1-tb*0.5)*0.45,wb=upT>locT?1.4:0.7;
-const wi=Math.min(0.60,bi*wb);
-tGrid[my*mW2+mx]=locT*(1-wi)+upT*wi;}}
-// Smooth pass: 3x3 box blur on ocean tiles to remove coast shearing artifacts
-if(step%3===0){const sm=new Float32Array(tGrid);
-for(let sy2=1;sy2<mH2-1;sy2++)for(let sx2=0;sx2<mW2;sx2++){
-const si2=sy2*mW2+sx2;const e3=elevation[Math.min(H-1,sy2*2)*W+Math.min(W-1,sx2*2)];
-if(e3>0)continue;// only smooth ocean
-const l=(sx2-1+mW2)%mW2,r2=(sx2+1)%mW2;
-tGrid[si2]=(sm[si2]*4+sm[si2-mW2]+sm[si2+mW2]+sm[sy2*mW2+l]+sm[sy2*mW2+r2])/8;}}
-}
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){
-const fx=x/2,fy=y/2,ix=Math.min(mW2-2,fx|0),iy=Math.min(mH2-2,fy|0);
-const dx2=fx-ix,dy2=fy-iy;
-windTemp[y*W+x]=(tGrid[iy*mW2+ix]*(1-dx2)+tGrid[iy*mW2+Math.min(mW2-1,ix+1)]*dx2)*(1-dy2)
-+(tGrid[(iy+1)*mW2+ix]*(1-dx2)+tGrid[(iy+1)*mW2+Math.min(mW2-1,ix+1)]*dx2)*dy2;}
-// Final temperature & moisture combination
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H;
-const e=elevation[i];
-const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
-const cp=Math.max(0,1-cd/8);
-const tLat=Math.abs(ny-0.5)*2;// equator at map center (standard equirectangular)
-const shE=Math.exp(-((tLat-0.20)*(tLat-0.20))/(2*0.08*0.08))*0.06;
-// Steeper curve: pow(2.0)*1.35 drops faster at mid-latitudes
-const bt=0.92-Math.pow(tLat,1.5)*0.50-Math.pow(tLat,6)*0.80+shE-Math.max(0,e)*(.45+.8*tLat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
-const inland=Math.max(0,1-cp);
-// Maritime effect: coasts are WARMER at high latitudes (Gulf Stream, ocean heat release)
-// and slightly COOLER in tropics (sea breeze). Inland is MORE extreme (hot summers, cold winters).
-// At 40-65° lat: coastal areas up to +10°C warmer than inland (London vs Moscow)
-const maritimeWarm=tLat>0.3?Math.min(0.12,((tLat-0.3)*0.4))*cp:0;// warming from ocean proximity at high lat
-const tropicalCool=tLat<0.3?cp*0.05:0;// slight coastal cooling in tropics (sea breeze)
-const continentality=inland*tLat*0.08;// inland areas are colder at high lat (Yakutsk vs Anchorage)
-const mt=bt+maritimeWarm-tropicalCool-continentality+(0.45-bt)*cp*0.15;
-const wt=windTemp[i];
-// Ocean tiles get more wind influence (ocean currents = wind-driven)
-const isOcean=e<=0;
-temperature[i]=Math.max(0,Math.min(1,isOcean?mt*0.35+wt*0.65:mt*0.60+wt*0.40));
-moisture[i]=windMoisture[i];}
-}else if(preset==="pangaea"){
-// ── Pangaea mode: 100% land with mountains, valleys, climate ──
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
-// Base elevation: always land, varied terrain from fbm
-let e=0.08+fbm(nx*6+3.7,ny*6+3.7,5,2,.5)*.15
-+Math.pow(Math.max(0,fbm(nx*3+20,ny*3+20,4,2.2,.5)),2)*.4// mountain ranges
-+fbm(nx*14+7,ny*14+7,3,2,.4)*.06// fine detail
-+Math.pow(1-Math.abs(fbm(nx*2.5+40,ny*2.5+40,3,2.1,.5)),4)*.25;// ridges
-// Polar tundra: slightly elevated but not dramatically
-if(lat>.85)e=Math.max(0.01,e*0.5);
-// Valley systems (subtract to create lowlands)
-e-=Math.pow(Math.max(0,fbm(nx*4+60,ny*4+60,3,2,.5)+.1),2)*.15;
-elevation[i]=Math.max(0.005,e);
-// Moisture: climate zones + elevation effects
-const tropWet=Math.max(0,1-lat*2.5);
-const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.08*.08))*.30;// subtropical HP belt, softened
-const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.20;
-const polarDry=Math.max(0,(lat-.75))*.25;
-let m=.40+tropWet*.35-subtropDry+tempWet-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.15
-+fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*.15;// continent-scale wet/dry to break banding
-if(e<0.06)m+=.15;// valleys are wet
-if(e>0.3)m-=.15;// mountains are drier
-moisture[i]=Math.max(.02,Math.min(1,m));
-temperature[i]=Math.max(0,Math.min(1,0.92-Math.pow(lat,1.5)*0.50-Math.pow(lat,6)*0.80-Math.max(0,e)*(.4+.8*lat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
-}else if(preset==="tectonic"){
-// ── Tectonic plate mode: separate module ──
-const tec=generateTectonicWorld(W,H,seed,{initNoise,fbm,ridged,noise2D,worley},_tecParams);
-for(let i=0;i<W*H;i++){elevation[i]=tec.elevation[i];moisture[i]=tec.moisture[i];temperature[i]=tec.temperature[i];}
-tecPlates=tec.pixPlate;tecWindX=tec.windX;tecWindY=tec.windY;
-}else{
-// ── Random world mode: multi-stamp composition with advanced coastline shaping ──
-// [1] MULTI-STAMP COMPOSITION: 3-6 sub-ellipses per continent + negative stamps for bays
-const continents=[];
-const numCont=3+Math.floor(rng()*4);// 3-6 continents
-for(let c=0;c<numCont;c++){
-const cx=rng(),cy=.08+rng()*.84,no=rng()*100;
-// Each continent: 2-5 overlapping stamps. First stamp is always the broad core (low aspect).
-// Later stamps can be peninsulas (higher aspect) but spread wider from center.
-const subs=[];const numSubs=2+Math.floor(rng()*4);
-for(let s=0;s<numSubs;s++){
-const ang=rng()*Math.PI*2;
-// First stamp: centered core. Others: spread wider to avoid strip-piling
-const dist=s===0?0:.06+rng()*.12;
-// Aspect: core is broad (1-1.5), peninsulas are moderate (1-2.5), max one long one (up to 3)
-const aspect=s===0?1+rng()*.5:s===1&&rng()<.3?1.5+rng()*1.5:1+rng()*1.5;
-const baseR=s===0?.08+rng()*.1:.04+rng()*.08;
-subs.push({cx:cx+Math.cos(ang)*dist,cy:cy+Math.sin(ang)*dist,
-rx:baseR*aspect,ry:baseR/aspect,rot:rng()*Math.PI,str:s===0?.8+rng()*.4:.5+rng()*.4,no:no+s*17});}
-// 0-2 negative stamps carve bays/gulfs
-const negs=[];const numNegs=Math.floor(rng()*2.5);
-for(let n=0;n<numNegs;n++){
-const ang=rng()*Math.PI*2,dist=.02+rng()*.06;
-negs.push({cx:cx+Math.cos(ang)*dist,cy:cy+Math.sin(ang)*dist,
-rx:.02+rng()*.04,ry:.015+rng()*.03,rot:rng()*Math.PI,str:.25+rng()*.3,no:no+50+n*13});}
-continents.push({subs,negs});}
-const s1=rng()*100,s2=rng()*100,s3=rng()*100,s4=rng()*100,s5=rng()*100;
-// Flatten all stamps into single arrays for faster iteration
-const posStamps=[],negStamps=[];
-for(const cont of continents){for(const c of cont.subs){c.cos=Math.cos(c.rot);c.sin=Math.sin(c.rot);posStamps.push(c);}
-for(const c of cont.negs){c.cos=Math.cos(c.rot);c.sin=Math.sin(c.rot);negStamps.push(c);}}
-// Step 1: Generate raw elevation with all techniques
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const nx=x/W,ny=y/H;let e=0;
-// [7] ITERATIVE DOMAIN WARPING (double Quilez warp, reduced octaves for speed)
-const w1x=fbm(nx*2.5+s1,ny*2.5+s1,2,2,.5)*.08,w1y=fbm(nx*2.5+s1+50,ny*2.5+s1+50,2,2,.5)*.08;
-const wnx=nx+w1x+fbm((nx+w1x)*5+s2,(ny+w1y)*5+s2,2,2,.5)*.04;
-const wny=ny+w1y+fbm((nx+w1x)*5+s2+30,(ny+w1y)*5+s2+30,2,2,.5)*.04;
-// Positive stamps (landmass lobes + peninsulas + islands)
-// Shared coastline noise (computed once, not per-stamp)
-const cnA=noise2D(wnx*5+s1,wny*5+s1)*.04,cnB=noise2D(wnx*5+s1+30,wny*5+s1+30)*.04;
-const coastRidge=noise2D(wnx*14+s2+50,wny*14+s2+50);
-for(const c of posStamps){let dx=wnx-c.cx+cnA;if(dx>.5)dx-=1;if(dx<-.5)dx+=1;let dy=wny-c.cy+cnB;
-let dd=Math.sqrt(Math.pow((dx*c.cos+dy*c.sin)/c.rx,2)+Math.pow((-dx*c.sin+dy*c.cos)/c.ry,2));
-// [3] RIDGED NOISE AT COASTLINES — per-stamp offset varies the coastline noise
-dd+=Math.abs(coastRidge+noise2D(wnx*7+c.no,wny*7+c.no)*.5)*.2;
-if(dd>.7&&dd<1.3){const rn=1-Math.abs(noise2D(wnx*8+c.no+70,wny*8+c.no+70));dd+=rn*rn*.12;}
-if(dd<1){const f2=1-dd;e+=f2*f2*c.str;}}
-// Negative stamps (bays/gulfs — subtract from elevation)
-for(const c of negStamps){let dx=wnx-c.cx+cnA;if(dx>.5)dx-=1;if(dx<-.5)dx+=1;let dy=wny-c.cy+cnB;
-let dd=Math.sqrt(Math.pow((dx*c.cos+dy*c.sin)/c.rx,2)+Math.pow((-dx*c.sin+dy*c.cos)/c.ry,2));
-dd+=Math.abs(coastRidge+noise2D(wnx*5+c.no,wny*5+c.no)*.5)*.18;
-if(dd<1){const f2=1-dd;e-=f2*f2*c.str;}}
-// [5] MULTI-THRESHOLD NOISE STACKING: peninsula/bay features (gentler, lower freq)
-const penNoise=fbm(wnx*4+s3+90,wny*4+s3+90,3,2,.5);
-if(penNoise>.4)e+=(penNoise-.4)*.2;// higher threshold, lower strength
-const bayNoise=fbm(wnx*3.5+s4+120,wny*3.5+s4+120,3,2,.5);
-if(bayNoise>.45)e-=(bayNoise-.45)*.18;
-// [4] WORLEY F2-F1: only affects areas near existing land (not open ocean)
-const[wf1,wf2]=worley(wnx*5+s5,wny*5+s5);
-if(e>-.1)e+=(wf2-wf1)*.04-.02;// weaker, and only where there's already some elevation
-// Domain-warped base terrain
-e+=fbm(wnx*7+3.7,wny*7+3.7,4,2,.5)*.10;
-// Fine detail
-e+=fbm(nx*20+s3,ny*20+s3,2,2,.4)*.025;
-rawElev[y*W+x]=e;}
-// Step 2: Determine sea level at 70th percentile
-const sorted=Float32Array.from(rawElev).sort();const sl=sorted[Math.floor(W*H*(oceanLevel||0.78))];
-const isLandArr=new Uint8Array(W*H);for(let i=0;i<W*H;i++)isLandArr[i]=rawElev[i]>sl?1:0;
-// Remove tiny isolated land clusters (< 20 pixels) via flood fill
-const visited=new Uint8Array(W*H);
-for(let i=0;i<W*H;i++){if(!isLandArr[i]||visited[i])continue;
-const q=[i],cluster=[];visited[i]=1;
-while(q.length){const ci=q.pop();cluster.push(ci);const cx2=ci%W,cy2=(ci-cx2)/W;
-for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
-const nx2=(cx2+dx+W)%W,ny2=cy2+dy;if(ny2<0||ny2>=H)continue;
-const ni=ny2*W+nx2;if(isLandArr[ni]&&!visited[ni]){visited[ni]=1;q.push(ni);}}}
-if(cluster.length<20)for(const ci of cluster){isLandArr[ci]=0;rawElev[ci]=sl-.01;}}
-// Coast-distance BFS for continentality
-const DG=RES,dw=Math.ceil(W/DG),dh=Math.ceil(H/DG);
-const cdist2=new Uint8Array(dw*dh);cdist2.fill(255);const cdQ2=[];
-for(let ty=0;ty<dh;ty++)for(let tx=0;tx<dw;tx++){
-const px=Math.min(W-1,tx*DG),py=Math.min(H-1,ty*DG),ti=ty*dw+tx;
-if(!isLandArr[py*W+px])continue;
-for(let ddy=-1;ddy<=1;ddy++)for(let ddx=-1;ddx<=1;ddx++){
-const nx2=(tx+ddx+dw)%dw,ny2=ty+ddy;if(ny2<0||ny2>=dh)continue;
-const np=Math.min(W-1,nx2*DG),npy=Math.min(H-1,ny2*DG);
-if(!isLandArr[npy*W+np]){cdist2[ti]=0;cdQ2.push(ti);break;}}}
-for(let qi=0;qi<cdQ2.length;qi++){const ci=cdQ2[qi],cd=cdist2[ci],cx2=ci%dw,cy2=(ci-cx2)/dw;
-for(let ddy=-1;ddy<=1;ddy++)for(let ddx=-1;ddx<=1;ddx++){if(!ddx&&!ddy)continue;
-const nx2=(cx2+ddx+dw)%dw,ny2=cy2+ddy;if(ny2<0||ny2>=dh)continue;
-const ni=ny2*dw+nx2,nd=cd+1;const np=Math.min(W-1,nx2*DG),npy=Math.min(H-1,ny2*DG);
-if(nd<cdist2[ni]&&isLandArr[npy*W+np]){cdist2[ni]=nd;cdQ2.push(ni);}}}
-// Step 3: Final elevation — [2] SHALLOW COASTAL GRADIENTS + terrain shaping
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
-let e=rawElev[i]-sl;
-// Unified terrain — one continuous surface, no land/ocean split
-e=e*0.3;
-if(preset!=="continental"){// Default: continentality-based shaping (land only, ocean passes through)
-if(e>0){const raw=e,domeH=Math.min(1,raw/0.15);
-const cd=cdist2[Math.min(dh-1,Math.floor(y/DG))*dw+Math.min(dw-1,Math.floor(x/DG))];
-const interior=Math.min(1,cd/15);
-const[wmx,wmy]=warp(nx,ny,2,3,0.1,s4,s4+40);
-e+=ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0)*interior*interior*domeH*0.45;
-const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
-e+=Math.max(0,fbm(whx*6+s2,why*6+s2,4,2,.5))*.08*Math.sqrt(interior);
-e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.06*interior;
-e=Math.pow(Math.max(0,e),0.85)*1.2;e=Math.max(0.003,e);}
-}else{// Continental: features scale by distance from sea level
-// Stronger features deep in ocean or high on land, weaker near coastline
-const featureStr=Math.min(1,Math.abs(e)*8);
-const[wmx,wmy]=warp(nx,ny,2,3,0.1,s4,s4+40);
-e+=(ridged(wmx*4+s5,wmy*4+s5,5,2.2,2.0,1.0)-0.45)*0.30*featureStr;
-const[whx,why]=warp(nx,ny,4,3,0.05,s3+20,s3+70);
-e+=fbm(whx*6+s2,why*6+s2,4,2,.5)*.06*featureStr;
-e-=Math.max(0,fbm(nx*5+s1+60,ny*5+s1+60,3,2,.5)+.15)*.05*featureStr;}
-elevation[i]=e;temperature[i]=Math.max(0,Math.min(1,0.92-Math.pow(lat,1.5)*0.50-Math.pow(lat,6)*0.80-Math.max(0,e)*(.4+.8*lat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.1));}
-// Moisture with climate zones + continentality
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
-if(elevation[i]<=0){moisture[i]=0.5+fbm(nx*3+30,ny*3+30,2,2,.5)*.1;continue;}
-const cd=cdist2[Math.min(dh-1,Math.floor(y/DG))*dw+Math.min(dw-1,Math.floor(x/DG))];
-const coastProx=Math.max(0,1-cd/8);
-const tropWet=Math.max(0,1-lat*2.5);
-const subtropDry=Math.exp(-((lat-.28)*(lat-.28))/(2*.08*.08))*.35*(1-coastProx*.5);
-const tempWet=Math.exp(-((lat-.55)*(lat-.55))/.025)*.22;
-const tropF=Math.max(0,1-lat*3);
-const contRate=.006+(1-tropF)*.014;
-const cont=Math.min(.28,cd*contRate);
-const polarDry=Math.max(0,(lat-.75))*.25;
-let m=.42+tropWet*.42-subtropDry+tempWet-cont-polarDry+fbm(nx*4+50,ny*4+50,4,2,.55)*.12
-+fbm(nx*1.5+90,ny*1.5+90,3,2,.55)*.15;// continent-scale wet/dry to break banding
-if(elevation[i]>.15)m-=Math.min(.2,(elevation[i]-.15)*1);
-if(elevation[i]<.02)m+=.10;
-moisture[i]=Math.max(.02,Math.min(1,m));}}
-const ctw=Math.ceil(W/RES),cth=Math.ceil(H/RES);const coastal=new Uint8Array(ctw*cth);
-for(let ty=1;ty<cth-1;ty++)for(let tx=0;tx<ctw;tx++){const px=Math.min(W-1,tx*RES),py=Math.min(H-1,ty*RES);
-if(elevation[py*W+px]>0){
-outer:for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const wx=((tx+dx)%ctw+ctw)%ctw,wy=ty+dy;if(wy<0||wy>=cth)continue;
-const npx=Math.min(W-1,wx*RES),npy=Math.min(H-1,wy*RES);
-if(elevation[npy*W+npx]<=0){coastal[ty*ctw+tx]=1;break outer;}}}}
-// Swamps: low-lying wet warm terrain
-const swamp=new Uint8Array(W*H);
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;
-if(elevation[i]>0&&elevation[i]<0.025&&moisture[i]>0.45&&temperature[i]>0.35){
-const nv=fbm(x/W*20+300,y/H*20+300,2,2,.5);
-if(nv>-0.1)swamp[i]=1;}}
-return{elevation,moisture,temperature,coastal,swamp,width:W,height:H,preset,pixPlate:tecPlates,windX:tecWindX||null,windY:tecWindY||null,_seed:seed};}
+// generateWorld extracted to ./worldgen.js so worldgen can run headlessly.
+import { generateWorld } from "./worldgen.js";
 
 const BC=[
 [10,22,56],      // 0  Deep Ocean
@@ -3892,13 +3532,13 @@ else if(_stepTotal>5){console.warn(`[SLOW step ${ter.stepCount}] ${_stepTotal.to
 return ter;}
 
 // ── Non-linear time: starts at 3000 BC, accelerates into modernity ──
-// ~1000 steps spans 3000 BC → 2025 AD (5025 years)
-// Early game (step 0-200): ~12 yr/step (3000 BC → 600 BC: Bronze → Iron Age)
+// ~1000 steps spans 2000 BC → 2025 AD (4025 years)
+// Early game (step 0-200): ~7 yr/step (2000 BC → 600 BC: Bronze → Iron Age)
 // Mid game (step 200-500): ~5 yr/step (600 BC → 900 AD: Classical → Medieval)
 // Late game (step 500-800): ~2.5 yr/step (900 AD → 1650 AD: Medieval → Early Modern)
 // Modern (step 800-1000): ~1.9 yr/step (1650 → 2025 AD)
 function stepToYear(step){
-if(step<=200)return 3000-step*12;// 3000 BC → 600 BC
+if(step<=200)return 2000-step*7;// 2000 BC → 600 BC
 if(step<=500)return 600-(step-200)*5;// 600 BC → 900 AD (negative = AD)
 if(step<=800)return -(900+(step-500)*2.5);// 900 AD → 1650 AD
 return -(1650+(step-800)*1.875);// 1650 AD → 2025 AD
@@ -4195,6 +3835,43 @@ function KnowledgeRadar({k,size=140}){
   );
 }
 
+// ── Settlement-card presentational components ──
+// Defined at module scope (stable identities) so they are NOT redefined
+// every WorldSim render. The card re-renders several times a second while
+// the sim plays; if these lived inside the render, React would treat them
+// as new component types each time and tear down + rebuild their DOM —
+// causing flicker and making the collapsible headers flaky to click.
+function PsBar({ v, color }) {
+  return (
+    <div style={{ position:"relative", height:5, background:"rgba(0,0,0,0.15)", borderRadius:2, marginTop:1 }}>
+      <div style={{ position:"absolute", inset:0, width:`${Math.max(0,Math.min(1,v))*100}%`, background:color||"#7a5", borderRadius:2 }} />
+    </div>
+  );
+}
+function PsKRow({ label, val, colour, note }) {
+  return (
+    <div style={{ margin:"3px 0" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", fontSize:10 }}>
+        <span>{label}{note ? <span className="au-fade" style={{ marginLeft:4, fontSize:9 }}>{note}</span> : null}</span>
+        <span>{(val*100|0)}%</span>
+      </div>
+      <PsBar v={val} color={colour} />
+    </div>
+  );
+}
+function PsSection({ id, title, right, open, onToggle, children }) {
+  return (
+    <div style={{ marginTop:6, borderTop:"1px solid rgba(0,0,0,0.10)", paddingTop:5 }}>
+      <div onClick={(e)=>{ e.stopPropagation(); onToggle(id); }} className="au-fade"
+        style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", userSelect:"none", fontSize:10, letterSpacing:0.4, textTransform:"uppercase" }}>
+        <span>{open ? "▾" : "▸"} {title}</span>
+        {right!=null && <span style={{ textTransform:"none", letterSpacing:0 }}>{right}</span>}
+      </div>
+      {open && <div style={{ marginTop:4 }}>{children}</div>}
+    </div>
+  );
+}
+
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
 const canvasRef=useRef(null);const glCanvasRef=useRef(null);const glStateRef=useRef(null);
@@ -4273,6 +3950,29 @@ const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
 useEffect(()=>{selectedSettlementIdRef.current=selectedSettlementId;},[selectedSettlementId]);
+// ── Layer visibility ────────────────────────────────────────────────
+// All toggles for what gets drawn on the peopleSim view. Tier toggles
+// independently hide villages / towns / cities / metropolises; the road
+// overlay also respects them (links with both endpoints in a hidden tier
+// drop out). Stored as a single state object so the panel can edit it
+// declaratively; mirrored to a ref so draw() (memoized) reads current
+// values without needing them in its deps.
+const[layers,setLayers]=useState({
+  icons:true, tints:true, borders:true, roads:true, seaLanes:true,
+  moneyFlow:true, ships:true, armies:true, shocks:true,
+  village:true, town:true, city:true, metropolis:true,
+});
+const[layersOpen,setLayersOpen]=useState(false);
+const[boardOpen,setBoardOpen]=useState(false);
+const[boardMode,setBoardMode]=useState("countries");   // "countries" | "settlements"
+const[boardSort,setBoardSort]=useState("size");        // see SORT_KEYS below
+const layersRef=useRef(layers);
+useEffect(()=>{layersRef.current=layers;},[layers]);
+// Which collapsible sections of the settlement card are open. Persists
+// across re-renders (the card re-renders every few ticks) and across
+// selecting different settlements.
+const[psCardOpen,setPsCardOpen]=useState({food:true,knowledge:false,resources:false,trade:true});
+const togglePsCard=id=>setPsCardOpen(o=>({...o,[id]:!o[id]}));
 const[useRealWind,setUseRealWind]=useState(false);
 const useMercator=false;
 const[showGlobe,setShowGlobe]=useState(false);
@@ -4293,7 +3993,12 @@ const cardDragRef=useRef(null);
 useEffect(()=>{
   const move=(e)=>{if(!cardDragRef.current)return;const d=cardDragRef.current;
     setCardPos({x:Math.max(4,d.x+(e.clientX-d.mx)),y:Math.max(4,d.y+(e.clientY-d.my))});};
-  const up=()=>{cardDragRef.current=null;};
+  const up=()=>{cardDragRef.current=null;
+    // Clear any in-flight pan that ended outside the canvas — otherwise the
+    // next click would see panDragRef set with stale "moved" and either pan
+    // or swallow the click, depending on timing.
+    if(panDragRef.current&&!panDragRef.current.moved)panDragRef.current=null;
+  };
   window.addEventListener("mousemove",move);window.addEventListener("mouseup",up);
   return()=>{window.removeEventListener("mousemove",move);window.removeEventListener("mouseup",up);};
 },[]);
@@ -4301,11 +4006,27 @@ const activeResRef=useRef(null);activeResRef.current=activeRes;
 const extraCanvasRefs=useRef([]);
 const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
+// ── Pan / zoom view transform ────────────────────────────────────────
+// All map drawing applies `ctx.translate(panX,panY); ctx.scale(zoom,zoom)`
+// so the existing draw code can stay in canvas-pixel coordinates; only the
+// inverse is needed when hit-testing a click or hover. Stored as refs to
+// avoid re-renders during a drag — the `draw()` call already runs every
+// frame so we don't need React state for these to repaint.
+const viewXRef=useRef(0),viewYRef=useRef(0),viewZRef=useRef(1);
+const panDragRef=useRef(null);   // {sx,sy,vx,vy} during a middle/right or drag-from-empty-space pan
+const ZOOM_MIN=0.5,ZOOM_MAX=8;
 // peopleSim world — entity-based replacement for the legacy tribe system.
 // Bands, settlements, etc. live here. The legacy `ter` object is kept
 // alive only so the existing draw() pipeline doesn't break; it is not
 // stepped (the runTribeStep call is disabled below).
 const peopleRef=useRef(null);
+// peopleSim runs in a Web Worker so its heavy passes can't stutter rendering.
+// simWorkerRef holds the worker; peopleRef.current becomes a MIRROR populated
+// from snapshots (shaped like the real world so draw()/the card read it
+// unchanged). If the worker can't start, we fall back to stepping on the main
+// thread (simWorkerRef stays null and the rAF loop steps as before).
+const simWorkerRef=useRef(null);
+const applySnapshotRef=useRef(null);
 const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
 const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
@@ -4313,6 +4034,19 @@ const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
 const terrainCache=useRef(null);
 const atlasCache=useRef(null);
+// Offscreen cache for the political overlay (territory tint + borders + roads).
+// That overlay is a pure function of owner[]/roadQuality[], which change only
+// slowly (territory recomputes every 96 ticks, roads on plan cycles), yet it
+// re-rasterised ~460k tiles every frame. We render it to this canvas and only
+// regenerate every PS_OVERLAY_REGEN sim-steps, blitting it otherwise.
+const psOverlayRef=useRef(null);
+const psOverlayMeta=useRef({step:-1,ch:0});
+// Offscreen cache of the STATIC base raster (terrain etc.). Rebuilt only when
+// the view or a relevant toggle changes; blitted every frame otherwise — the
+// per-pixel terrain rebuild + putImageData was a big per-frame cost now that
+// the sim is off-thread.
+const baseLayerRef=useRef(null);
+const baseLayerKey=useRef(null);
 // Reuse ImageData between frames to avoid 7.3MB allocation per draw
 const imgRef=useRef(null);
 // Wind particle animation state
@@ -4343,9 +4077,45 @@ if(t.deposits)w.deposits=t.deposits;
 // peopleSim: entity-based simulator that replaces the legacy tribe model.
 // Pass t.tCrop so the sim's fertility uses the SAME formula as the
 // Crop overlay (young-soil discount, tropical penalty, wide bell).
-// Falls back to the local bellFert if tCrop is absent.
-peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
-setPsStats(peopleSimStats(peopleRef.current));
+// Runs in a Web Worker (off the render thread); peopleRef.current becomes a
+// snapshot-fed mirror. Falls back to a main-thread sim if the worker fails.
+let usedWorker=false;
+try{
+  if(simWorkerRef.current){simWorkerRef.current.terminate();simWorkerRef.current=null;}
+  const sw=new PeopleSimWorker();
+  sw.onmessage=(e)=>{
+    const d=e.data;
+    if(d.type==='snapshot'){if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    else if(d.type==='error'){console.error('[SimWorker]',d.message,d.stack);}
+  };
+  sw.onerror=(err)=>{
+    console.warn('[SimWorker] error — falling back to main-thread sim:',err.message);
+    try{if(simWorkerRef.current){simWorkerRef.current.terminate();}}catch(_){}
+    simWorkerRef.current=null;
+    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
+    setPsStats(peopleSimStats(peopleRef.current));
+  };
+  simWorkerRef.current=sw;
+  // Empty mirror until the first snapshot arrives.
+  peopleRef.current={_isMirror:true,step:0,settlements:[],tw:t.tw||0,th:t.th||0,tileRes:RES,N:0,countries:new Map(),_byId:new Map()};
+  // Send ONLY the fields createWorld reads (structured-clone copies them; the
+  // main thread keeps its own w arrays for terrain rendering). Avoids cloning
+  // the full worldgen object, which may carry non-cloneable extras.
+  const initW={width:w.width,height:w.height,seed:w.seed,
+    elevation:w.elevation,temperature:w.temperature,moisture:w.moisture,coastal:w.coastal,
+    windX:w.windX,windY:w.windY,
+    rivers:(w.rivers&&w.rivers.riverMag)?{riverMag:w.rivers.riverMag}:null,
+    deposits:w.deposits};
+  sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tileRes:RES,seed:w.seed});
+  // Push current play/speed/view state to the fresh worker.
+  sw.postMessage({type:'control',playing:false,speed:speedRef.current});
+  sw.postMessage({type:'view',view:viewRef.current});
+  usedWorker=true;
+}catch(e){console.warn('[SimWorker] init failed — main-thread sim:',e);}
+if(!usedWorker){
+  peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
+  setPsStats(peopleSimStats(peopleRef.current));
+}
 setCoverage(0);setTribeCount(t.tribeCount||0);setPlaying(false);playRef.current=false;
 terrainCache.current=null;atlasCache.current=null;imgRef.current=null;},[]);
 const generate=useCallback((s,ol)=>{
@@ -4360,13 +4130,13 @@ const worker=new WorldGenWorker();workerRef.current=worker;
 worker.onmessage=(e)=>{
 if(e.data.type==='result'){console.log(`[Worker] Done in ${e.data.time?.toFixed(0)}ms`);finalizeWorld(e.data.world);}
 else{console.warn('[Worker]',e.data.type,e.data.message||'');
-finalizeWorld(generateWorld(W,H,s,'tectonic',ol!==undefined?ol:oceanLevelRef.current,true,false));}};
+finalizeWorld(generateWorld(W,H,s,'tectonic',ol!==undefined?ol:oceanLevelRef.current,true,false,_tecParams));}};
 worker.onerror=(err)=>{console.warn('[Worker] Error:',err.message);
-finalizeWorld(generateWorld(W,H,s,'tectonic',ol!==undefined?ol:oceanLevelRef.current,true,false));};
+finalizeWorld(generateWorld(W,H,s,'tectonic',ol!==undefined?ol:oceanLevelRef.current,true,false,_tecParams));};
 worker.postMessage({type:'generate',W,H,seed:s,preset:'tectonic',oceanLevel:ol!==undefined?ol:oceanLevelRef.current,tecParams:_tecParams});
 return;}catch(e){console.warn('[Worker] Init failed:',e);}}
 // All other presets: main thread
-finalizeWorld(generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,true,useRealWindRef.current));},[finalizeWorld]);
+finalizeWorld(generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,true,useRealWindRef.current,_tecParams));},[finalizeWorld]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 // Clear caches when globe toggled off (canvas remounts)
@@ -4741,6 +4511,21 @@ const isGlobe=showGlobeRef.current;
 // Use onscreen canvas if available, otherwise create offscreen for globe
 let ctx=canvasRef.current?canvasRef.current.getContext("2d"):null;
 if(!ctx&&!isGlobe)return;
+// ── Apply pan/zoom view transform (peopleSim views only — legacy views
+// like globe/preview keep their own coordinate handling). Cleared first
+// because at zoom<1 the transformed image doesn't cover the whole canvas
+// and we'd otherwise see stale pixels around the edges. Hit-testing
+// reverses this transform (see onCanvasMove / onCanvasClick).
+const _pz=ctx&&!isGlobe;
+if(_pz){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle="#000";ctx.fillRect(0,0,CW,CH);
+  // Crisp upscale at zoom > 1 — match the `imageRendering: pixelated` style
+  // on the <canvas>. Without this the base raster smooths into mush when
+  // zoomed in.
+  ctx.imageSmoothingEnabled=false;
+  ctx.setTransform(viewZRef.current,0,0,viewZRef.current,viewXRef.current,viewYRef.current);
+}
 if(!imgRef.current)imgRef.current=new ImageData(CW,CH);
 const img=imgRef.current;const d=img.data;
 // Lake lookup for rendering
@@ -4749,6 +4534,13 @@ const lk=ter.rivers&&ter.rivers.lake?ter.rivers.lake:null;
 const maxT=ter.tribeCenters.length;const tcR=new Uint8Array(maxT),tcG=new Uint8Array(maxT),tcB=new Uint8Array(maxT);
 for(let t2=0;t2<maxT;t2++){const c=tribeRGB(t2);tcR[t2]=c[0];tcG[t2]=c[1];tcB[t2]=c[2];}
 const N=CW*CH;
+// Static-base cache: blit the cached terrain raster instead of rebuilding it
+// per-pixel when nothing affecting it changed.
+const _staticBase=BASE_CACHE_VIEWS.has(vm)&&!isGlobe;
+const _baseKey=_staticBase?(vm+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+(activeResRef.current||'')+'|'+oceanLevelRef.current):null;
+let _baseHit=false;
+if(_staticBase&&ctx&&baseLayerRef.current&&baseLayerRef.current.width===CW&&baseLayerRef.current.height===CH&&baseLayerKey.current===_baseKey){ctx.drawImage(baseLayerRef.current,0,0);_baseHit=true;}
+if(!_baseHit){
 if(vm==="depth"){
 // Depth/heightmap view — flat black-to-white gradient using actual data range
 // Find actual min/max elevation
@@ -5038,6 +4830,15 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 // communities each network connects.
 for(let ti=0;ti<N;ti++){const pi4=ti<<2;
 d[pi4]=240;d[pi4+1]=230;d[pi4+2]=205;d[pi4+3]=255;}
+}else if(vm==="money"){
+// Money-flow overlay — dark slate backdrop so gold sources and the
+// flowing-coin particles glow. Land tiles a touch lighter than sea so
+// coastlines stay legible. Roads + sources + flow drawn in the
+// peopleSim overlay pass below.
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),sx=Math.min(W-1,tx*RES),si=sy*W+sx;
+const land=w.elevation[si]>sl;const pi4=ti<<2;
+d[pi4]=land?28:16;d[pi4+1]=land?30:18;d[pi4+2]=land?36:26;d[pi4+3]=255;}
 }else if(vm==="resources"){
 // Resource overlay — blend all active resource layers per tile
 const ar=activeResRef.current;
@@ -5183,8 +4984,23 @@ if(polarBlend>0){const pr=220,pg=225,pb=235;
 r=r*(1-polarBlend)+pr*polarBlend;g=g*(1-polarBlend)+pg*polarBlend;b=b*(1-polarBlend)+pb*polarBlend;}
 const ti3=(gy*gW+gx)*3;buf[ti3]=r|0;buf[ti3+1]=g|0;buf[ti3+2]=b|0;}}
 setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});}
+}
 if(!ctx)return;
-ctx.putImageData(img,0,0);
+if(!_baseHit){
+  if(_staticBase){
+    // Stash the freshly-built base into the offscreen cache, then blit it.
+    if(!baseLayerRef.current)baseLayerRef.current=document.createElement('canvas');
+    const _bl=baseLayerRef.current;if(_bl.width!==CW||_bl.height!==CH){_bl.width=CW;_bl.height=CH;}
+    _bl.getContext('2d').putImageData(img,0,0);ctx.drawImage(_bl,0,0);baseLayerKey.current=_baseKey;
+  }else{
+    // Non-cached views: route the image data through a temp canvas so the
+    // pan/zoom transform (set on ctx above) applies to the blit. putImageData
+    // ignores the active transform and would otherwise paint at literal 0,0.
+    if(!baseLayerRef.current)baseLayerRef.current=document.createElement('canvas');
+    const _bl=baseLayerRef.current;if(_bl.width!==CW||_bl.height!==CH){_bl.width=CW;_bl.height=CH;}
+    _bl.getContext('2d').putImageData(img,0,0);ctx.drawImage(_bl,0,0);
+  }
+}
 // Draw settlements — size scales continuously with log(population)
 {const selSt=ter._selectedTribe;const hasSel=selSt>=0&&ter.tribeSizes[selSt]>0&&vm==="tribes";
 for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
@@ -5380,35 +5196,54 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
 {
   const psw=peopleRef.current;
   const vmRoads = viewRef.current === "roads";
+  const vmMoney = viewRef.current === "money";
   if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
-    // ── Network components from tile map ──
-    // psw._tileComponent is a Map<tileIndex → componentRootId>
-    // populated by buildNetworkComponents. If absent (initial state
-    // before any road planning), use a stable id-based hash.
-    const tileComp = psw._tileComponent;
+    // ── Network components per tile ── world._tileComp is an Int32Array of
+    // component-root ids. On the REAL world it's stamp-validated (only valid
+    // where _tileCompSeen === _tileCompStampVal); the worker MIRROR ships a
+    // pre-cleaned copy (-1 = no component). compAt() reads the root or -1.
+    const tc=psw._tileComp,tcSeen=psw._tileCompSeen,tcStamp=psw._tileCompStampVal;
+    const compAt = tc ? (tcSeen ? (ti)=>(tcSeen[ti]===tcStamp?tc[ti]:-1) : (ti)=>tc[ti]) : null;
     const find = (sid) => {
-      // Each settlement is the root of its own component until joined.
-      // We approximate by reading the tile component for its home tile.
       const s = psw.settlements.find(o => o.id === sid);
       if (!s) return sid;
       const ti = (s.pos.y | 0) * psw.tw + (s.pos.x | 0);
-      return tileComp && tileComp.get(ti) !== undefined ? tileComp.get(ti) : sid;
+      const c = compAt ? compAt(ti) : -1;
+      return c >= 0 ? c : sid;
     };
     const compColour = (rootId) => {
       const h = ((rootId * 137) % 360 + 360) % 360;
       return `hsl(${h}, 65%, 45%)`;
     };
-    // ── Draw road tiles, coloured by their component ──
-    if(psw.roadQuality&&tileComp){
+    // ── Tier filter (Layers panel): drop any component whose ONLY settlements
+    // belong to hidden tiers, so only roads connecting the active tiers show.
+    const _Lr=layersRef.current;
+    const tierShowR=[_Lr.village,_Lr.town,_Lr.city,_Lr.metropolis];
+    const allTiers=tierShowR.every(Boolean);
+    let compVisible=null;
+    if(!allTiers){
+      compVisible=new Set();
+      for(const s of psw.settlements){
+        if(!s||s.mode!=="settled")continue;
+        if(!tierShowR[s.tier|0])continue;
+        const ti=(s.pos.y|0)*psw.tw+(s.pos.x|0);
+        const c=compAt?compAt(ti):-1;
+        compVisible.add(c>=0?c:s.id);
+      }
+    }
+    const _showComp=c=>allTiers||compVisible.has(c);
+    // ── Draw road tiles, coloured by their component (or a uniform colour
+    // when component data isn't available yet) ──
+    if(_Lr.roads&&psw.roadQuality){
       const rq=psw.roadQuality;
       for(let ti=0;ti<rq.length;ti++){
         if(rq[ti]>=1.0)continue;
+        const comp=compAt?compAt(ti):-1;
+        if(comp>=0&&!_showComp(comp))continue;
         const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
         const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-        const comp=tileComp.get(ti);
-        if(comp===undefined)continue;
-        ctx.fillStyle=compColour(comp);
+        ctx.fillStyle=comp>=0?compColour(comp):"rgba(150,110,60,0.9)";
         ctx.fillRect(sx,sy,TR,TR);
       }
     }
@@ -5416,8 +5251,9 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // Smaller than the normal icons so the road shapes dominate;
     // every settlement shown so isolated ones (no roads) are
     // visible as their own coloured dot too.
-    for(const s of psw.settlements){
+    if(_Lr.icons)for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
+      if(!tierShowR[s.tier|0])continue;
       const sx=s.pos.x*TR;
       const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
       const root=find(s.id);
@@ -5430,176 +5266,380 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       ctx.stroke();
     }
   }
-  if(psw&&ctx&&!vmRoads){
+  if(psw&&ctx&&vmMoney&&layersRef.current.moneyFlow){
+    // ── Money-flow overlay ──────────────────────────────────────────
+    // Maps the economy: where money is minted (mining), which way it
+    // flows along roads, and which settlements are gaining vs losing it.
     const TR=psw.tileRes;
-    // ── Farmland tiles ──
-    ctx.fillStyle="rgba(155,160,75,0.55)";
-    ctx.beginPath();
-    for(const s of psw.settlements){
-      if(!s||s.mode!=="settled"||!s.farmland)continue;
-      for(const fti of s.farmland){
-        const fy=(fti/psw.tw)|0;
-        const fx=fti-fy*psw.tw;
-        const px=fx*TR;
-        const py=dataYtoScreenY(fy*TR,H,CH);
-        ctx.rect(px,py,TR,TR);
-      }
-    }
-    ctx.fill();
-    // ── Roads ──
-    // Roads live in two per-tile arrays — roadQuality (1.0 = no
-    // road, <1.0 = road) and roadFlow (current trade traffic rate,
-    // a decaying EMA). We paint each road tile as a small rect,
-    // with thickness driven by CURRENT flow so trunk arteries pop
-    // vs. quiet spurs and abandoned routes fade visually as their
-    // traffic falls off.
-    if(psw.roadQuality&&psw.roadFlow){
-      const rq=psw.roadQuality,rf=psw.roadFlow;
-      // Scale: flow=50 (a heavy multi-pair corridor) reads as full
-      // thickness; a quiet single-pair link sits around flow=2.
-      const FLOW_FULL=50;
+    const sx=ti=>((ti%psw.tw)+0.5)*TR;
+    const sy=ti=>dataYtoScreenY(((ti/psw.tw|0)+0.5)*TR,H,CH);
+    // 1) Faint road network, so the flow has visible channels.
+    if(psw.roadQuality){
+      const rq=psw.roadQuality;
+      ctx.fillStyle="rgba(150,160,180,0.18)";
       for(let ti=0;ti<rq.length;ti++){
         if(rq[ti]>=1.0)continue;
         const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
-        const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-        const intensity=Math.min(1,(rf[ti]||0)/FLOW_FULL);
-        // 1.4 → 3.0 px for the tile fill — busier = thicker.
-        const w=1.4+intensity*1.6;
-        const off=(TR-w)*0.5;
-        const alpha=0.55+intensity*0.35;
-        ctx.fillStyle=`rgba(120,80,40,${alpha.toFixed(2)})`;
-        ctx.fillRect(sx+off,sy+off,w,w);
+        ctx.fillRect(px*TR,dataYtoScreenY(py*TR,H,CH),TR,TR);
       }
     }
-    // ── Settlement sprites ──
-    // Each settlement renders as a cluster of small buildings
-    // around its position. The cluster's SIZE scales with log(pop)
-    // — bigger settlements span a larger footprint and contain
-    // more individual buildings. Building TYPE distribution comes
-    // from wealth-per-capita and tier:
-    //   hovel  — squat dark roofless rectangle (poor / low tier)
-    //   house  — square wall + triangular roof (default)
-    //   tower  — tall narrow rectangle with dark cap (rich)
-    // Cities and metropolises also get an enclosing wall ring with
-    // tower-tick marks. Building positions seeded from settlement
-    // id so the sprite is stable across frames (no shimmer).
-    const MIN_SIZE=5,MAX_SIZE=16;
-    let _popMin=Infinity,_popMax=-Infinity;
-    for(const s of psw.settlements){
-      if(!s||s.mode!=="settled")continue;
-      const p=s.people;
-      if(p<_popMin)_popMin=p;
-      if(p>_popMax)_popMax=p;
-    }
-    const _logMin=Math.log(Math.max(1,_popMin));
-    const _logRange=Math.log(Math.max(2,_popMax))-_logMin;
-    const sizeFromPop=p=>{
-      if(_logRange<=0.01)return (MIN_SIZE+MAX_SIZE)*0.5;
-      const t=Math.max(0,Math.min(1,(Math.log(Math.max(1,p))-_logMin)/_logRange));
-      return MIN_SIZE+t*(MAX_SIZE-MIN_SIZE);
-    };
-    // Tiny deterministic PRNG (mulberry32-ish) so each settlement's
-    // sprite layout stays fixed across re-renders.
-    const stableRng=(seed)=>{let s=seed|0;return()=>{s=(s*1664525+1013904223)|0;return((s>>>0)%1000000)/1000000;};};
-    const selId=selectedSettlementIdRef.current;
-    for(const s of psw.settlements){
-      if(!s||s.mode!=="settled")continue;
-      const sx=s.pos.x*TR;
-      const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
-      const size=sizeFromPop(s.people);
-      // Selection halo — bright gold ring behind the sprite.
-      if(s.id===selId){
-        ctx.beginPath();ctx.arc(sx,sy,size+5,0,Math.PI*2);
-        ctx.fillStyle="rgba(255,215,90,0.30)";ctx.fill();
-        ctx.beginPath();ctx.arc(sx,sy,size+5,0,Math.PI*2);
-        ctx.strokeStyle="rgba(255,200,70,1.0)";ctx.lineWidth=1.5;ctx.stroke();
-      }
-      // Wealth per capita determines building richness mix.
-      const wpc=(s.wealth||0)/Math.max(1,s.people);
-      // Rich threshold: wpc > 30 starts producing towers; > 100 dominant.
-      const richMix=Math.min(1,wpc/100);
-      // Poor: wealth-per-capita low → mostly hovels (tier 0/1 only).
-      const poorMix=Math.max(0,Math.min(1,(15-wpc)/15));
-      // Building count from √pop — density actually scales with
-      // city size. A hamlet of 25 has 4 buildings, a town of 200
-      // has 10, a city of 1000 has 22, a metropolis of 10000 has
-      // ~70. Cities look DENSE, packed into their footprint.
-      const numBuildings=Math.max(3,Math.min(80,Math.round(Math.sqrt(s.people)*0.7)));
-      // Buildings — pseudo-random scatter inside footprint. Density
-      // increases naturally because numBuildings grows faster than
-      // footprint area (sqrt(pop) vs log(pop)).
-      const rng=stableRng(s.id*2654435761);
-      const footR=size*0.85;
-      // Build a list of (offset, type, height) so we can z-sort
-      // by y so back buildings draw first.
-      const buildings=[];
-      for(let i=0;i<numBuildings;i++){
-        const a=rng()*Math.PI*2;
-        const d=Math.pow(rng(),0.7)*footR;
-        const bx=sx+Math.cos(a)*d;
-        const by=sy+Math.sin(a)*d;
-        // Building type roll
-        const r=rng();
-        let kind;
-        if(s.tier===0&&poorMix>0.5)kind=r<0.7?"hovel":"house";
-        else if(richMix>0.4&&r<richMix*0.6)kind="tower";
-        else if(poorMix>0.3&&r<poorMix*0.5)kind="hovel";
-        else kind="house";
-        buildings.push({bx,by,kind});
-      }
-      buildings.sort((a,b)=>a.by-b.by);
-      for(const b of buildings){
-        const{bx,by,kind}=b;
-        if(kind==="hovel"){
-          // Small dark squat rectangle
-          const w=2.2,h=1.8;
-          ctx.fillStyle="rgba(75,55,35,1.0)";
-          ctx.fillRect(bx-w/2,by-h/2,w,h);
-          ctx.strokeStyle="rgba(20,15,5,1.0)";
-          ctx.lineWidth=0.5;
-          ctx.strokeRect(bx-w/2,by-h/2,w,h);
-        }else if(kind==="tower"){
-          // Tall narrow rectangle + darker cap
-          const w=2.0,h=6.0;
-          ctx.fillStyle="rgba(180,160,130,1.0)";
-          ctx.fillRect(bx-w/2,by-h,w,h);
-          ctx.strokeStyle="rgba(40,30,15,1.0)";
-          ctx.lineWidth=0.5;
-          ctx.strokeRect(bx-w/2,by-h,w,h);
-          // Cap
-          ctx.fillStyle="rgba(80,50,25,1.0)";
-          ctx.fillRect(bx-w/2-0.3,by-h-1.2,w+0.6,1.4);
-        }else{
-          // House — square + triangular roof
-          const w=2.8,h=2.4;
-          ctx.fillStyle="rgba(150,100,65,1.0)";
-          ctx.fillRect(bx-w/2,by-h/2,w,h);
-          ctx.strokeStyle="rgba(30,20,10,1.0)";
-          ctx.lineWidth=0.5;
-          ctx.strokeRect(bx-w/2,by-h/2,w,h);
-          ctx.beginPath();
-          ctx.moveTo(bx-w/2-0.3,by-h/2);
-          ctx.lineTo(bx,by-h/2-1.4);
-          ctx.lineTo(bx+w/2+0.3,by-h/2);
-          ctx.closePath();
-          ctx.fillStyle="rgba(95,55,28,1.0)";ctx.fill();
-          ctx.lineWidth=0.5;ctx.stroke();
+    // 2) Animated coin particles flowing along trade links in the net-
+    // money direction. Each link gets a SHARE of a global dot budget
+    // — but allocated by sqrt(mag) instead of mag, so a giant trunk
+    // doesn't drown out the dozens of small links. The budget is also
+    // large enough to keep the scene populated even when the world has
+    // few links: one dot ~= 0.3% of the world's current trade activity.
+    const flows=psw._moneyFlows;
+    if(flows&&flows.length){
+      let totalRoot=0,maxMag=0;
+      for(const f of flows){totalRoot+=Math.sqrt(f.mag);if(f.mag>maxMag)maxMag=f.mag;}
+      const DOT_BUDGET=350;
+      // Noise floor low enough that genuinely active mid-tier links still
+      // get a dot. Anything above 3% of the busiest link is always visible.
+      const noiseFloor=maxMag*0.03;
+      const now=performance.now();
+      for(const f of flows){
+        const pts=f.tiles;const np=pts.length;if(np<2)continue;
+        let dots=Math.round((Math.sqrt(f.mag)/Math.max(0.001,totalRoot))*DOT_BUDGET);
+        if(f.mag>=noiseFloor&&dots<1)dots=1;
+        if(dots<=0)continue;
+        dots=Math.min(dots,16);            // per-link cap so a single huge link doesn't eat the screen
+        // Brightness scales with the link's SHARE of the maximum (not raw
+        // magnitude), so dominant links pop relative to whatever scene you
+        // are looking at.
+        const share=f.mag/Math.max(0.001,maxMag);
+        const alpha=Math.max(0.35,Math.min(0.95,0.35+share*0.6));
+        ctx.fillStyle=`rgba(255,205,70,${alpha.toFixed(2)})`;
+        const period=2600;                 // ms for a coin to traverse the link
+        for(let j=0;j<dots;j++){
+          let u=((now/period)+(j/dots))%1;
+          if(!f.toEnd)u=1-u;               // reverse direction
+          const fi=u*(np-1);const i0=fi|0;const i1=Math.min(np-1,i0+1);const fr=fi-i0;
+          const x0=sx(pts[i0]),x1=sx(pts[i1]);
+          const y0=sy(pts[i0]),y1=sy(pts[i1]);
+          if(Math.abs(x1-x0)>CW*0.5)continue;   // skip segments that wrap the seam
+          const x=x0+(x1-x0)*fr,y=y0+(y1-y0)*fr;
+          ctx.beginPath();ctx.arc(x,y,1.7,0,Math.PI*2);ctx.fill();
         }
       }
     }
-    // ── Bands ──
-    // ── No band rendering ──
-    // Bands removed in settlements-only model. Settlements (above) are
-    // the atomic visible entity; new ones come from daughter colonies
-    // founded by existing settlements at qualifying nearby sites.
+    // 3) Settlements: dot coloured by net wealth change (gold = gaining,
+    // red = losing, grey = steady) with a gold glow scaled to mining
+    // income (where money enters the system). Kept small so the trade
+    // FLOWS dominate the visual — this is the money-flow overlay, not
+    // the settlement overlay.
+    for(const s of psw.settlements){
+      if(!s||s.mode!=="settled")continue;
+      const x=s.pos.x*TR,y=dataYtoScreenY(s.pos.y*TR,H,CH);
+      const mined=s._minedRate||0;
+      if(mined>0.01){
+        const rad=2.5+Math.min(10,Math.sqrt(mined)*1.4);
+        const g=ctx.createRadialGradient(x,y,0,x,y,rad);
+        g.addColorStop(0,"rgba(255,210,80,0.55)");
+        g.addColorStop(1,"rgba(255,210,80,0)");
+        ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,rad,0,Math.PI*2);ctx.fill();
+      }
+      const d=s._wealthDelta||0;
+      const col=d>0.02?"#ffcf46":d<-0.02?"#e0563b":"#8a8f9c";
+      const r=1.2+Math.min(1.6,Math.sqrt(Math.abs(d))*0.35);
+      ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
+      ctx.fillStyle=col;ctx.fill();
+      ctx.lineWidth=0.4;ctx.strokeStyle="rgba(0,0,0,0.55)";ctx.stroke();
+    }
+  }
+  if(psw&&ctx&&!vmRoads&&!vmMoney){
+    const TR=psw.tileRes;
+    // ── Territory tint + borders + roads ── cached to an offscreen canvas
+    // and regenerated only every PS_OVERLAY_REGEN sim-steps (it's a pure
+    // function of owner[]/roadQuality[], which change slowly), then blitted.
+    // This took ~460k per-tile fillRect+Map.get ops off EVERY frame.
+    const PS_OVERLAY_REGEN=30;
+    let ov=psOverlayRef.current;
+    if(!ov||ov.width!==CW||ov.height!==CH){
+      ov=psOverlayRef.current=(typeof OffscreenCanvas!=='undefined'?new OffscreenCanvas(CW,CH):document.createElement('canvas'));
+      ov.width=CW;ov.height=CH;psOverlayMeta.current.step=-1;
+    }
+    const meta=psOverlayMeta.current;
+    const stepNow=psw.step||0;
+    const L=layersRef.current;
+    // Toggle key — when any of the rendered-into-overlay layers flips on/off
+    // we must rebuild, otherwise the cached image stays stale.
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0);
+    if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
+      meta.layerKey=layerKey;
+      const octx=ov.getContext('2d');
+      octx.clearRect(0,0,CW,CH);
+      const owner=psw._territoryOwner;
+      if((L.tints||L.borders)&&owner){
+        const tw=psw.tw,th=psw.th;
+        // Per-settlement-id lookups (small int ids) instead of Maps, and a
+        // single shared colour string per country so fillStyle is reassigned
+        // only when the country actually changes between adjacent tiles.
+        let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
+        const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
+        const tintByCountry=new Map();
+        for(const s of psw.settlements){if(s&&s.mode==="settled"){
+          let t=tintByCountry.get(s.countryId);
+          if(t===undefined){const h=((s.countryId*61)%360+360)%360;t=`hsla(${h},50%,50%,0.32)`;tintByCountry.set(s.countryId,t);}
+          tintById[s.id]=t; ctryById[s.id]=s.countryId;
+        }}
+        // Single pass: tint fill + accumulate dotted national borders.
+        // Either layer can be off and the other is unaffected.
+        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
+        let lastFs=null;
+        for(let ti=0;ti<owner.length;ti++){
+          const oid=owner[ti];if(oid<0)continue;
+          const fs=tintById[oid];if(fs===undefined)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          if(L.tints){
+            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+            octx.fillRect(sx,sy,TR,TR);
+          }
+          if(!L.borders)continue;
+          const co=ctryById[oid];
+          const ro=owner[py*tw+(px===tw-1?0:px+1)];
+          if(ro>=0&&ro!==oid&&ctryById[ro]!==co){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(py<th-1){const dno=owner[ti+tw];
+            if(dno>=0&&dno!==oid&&ctryById[dno]!==co){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+        }
+        if(L.borders){octx.stroke();octx.setLineDash([]);}
+      }
+      // Roads — thickness + alpha from current flow.
+      if(L.roads&&psw.roadQuality&&psw.roadFlow){
+        const rq=psw.roadQuality,rf=psw.roadFlow,FLOW_FULL=50;
+        for(let ti=0;ti<rq.length;ti++){
+          if(rq[ti]>=1.0)continue;
+          const py=(ti/psw.tw)|0,px=ti-py*psw.tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          const intensity=Math.min(1,(rf[ti]||0)/FLOW_FULL);
+          const w=1.4+intensity*1.6,off=(TR-w)*0.5;
+          octx.fillStyle=`rgba(120,80,40,${(0.55+intensity*0.35).toFixed(2)})`;
+          octx.fillRect(sx+off,sy+off,w,w);
+        }
+      }
+      meta.step=stepNow;meta.ch=CH;
+    }
+    ctx.drawImage(ov,0,0);
+    // ── Settlement glyphs ──
+    // Compact single-glyph per settlement, much smaller than the old
+    // building-cluster sprite. Tier picks the SHAPE (village=dot,
+    // town=square, city=diamond, metropolis=larger diamond), the FILL is
+    // wealth-tinted, and overlay marks layer on top to communicate:
+    //   – garrison size (armoured outline)
+    //   – active shock (red plague / amber famine outline)
+    //   – capital (gold star above — kept from old code)
+    //   – provincial seat (small ring above — kept)
+    //   – selection (gold halo)
+    // Sizing scales with √log(pop) so a metropolis is visibly bigger than a
+    // hamlet, but the dynamic range is small — the visual distinction comes
+    // from SHAPE + COLOUR + DECORATION, not raw size.
+    // Icons live in canvas-pixel coordinates inside the view transform, so
+    // they grow with zoom naturally (a metropolis at 8x zoom IS 8x bigger,
+    // because that's the point of zooming in — more detail). iconScale is
+    // kept as a knob for fine-tuning but stays at 1 here so the visible
+    // size scales 1:1 with the user's zoom level.
+    const iconScale=1;
+    // Pop → "weight" 0..1 (log scale across the population range).
+    let _popMax=1;
+    for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.people>_popMax)_popMax=s.people;}
+    const _logMax=Math.log(Math.max(2,_popMax));
+    const popWeight=p=>Math.max(0,Math.min(1,Math.log(Math.max(1,p))/_logMax));
+    const selId=selectedSettlementIdRef.current;
+    const capitalIds=new Set();
+    if(psw.countries)for(const c of psw.countries.values())if(c.capital)capitalIds.add(c.capital.id);
+    // Tier sizes (canvas pixels at zoom=1) — village dot, town square, city
+    // diamond, metropolis bigger diamond.
+    const tierBaseSize=[1.6,2.4,3.4,4.6];
+    // Per-tier visibility (Layers panel). When all tiers are off the loop
+    // does nothing — same as turning icons off entirely.
+    const _L=layersRef.current;
+    const tierShow=[_L.icons&&_L.village,_L.icons&&_L.town,_L.icons&&_L.city,_L.icons&&_L.metropolis];
+    for(const s of psw.settlements){
+      if(!s||s.mode!=="settled")continue;
+      if(!tierShow[s.tier|0])continue;
+      const sx=s.pos.x*TR;
+      const sy=dataYtoScreenY(s.pos.y*TR,H,CH);
+      const tier=s.tier|0;
+      const pw=popWeight(s.people);
+      // Size: base by tier + small √pop boost within tier, scaled for zoom.
+      const r=(tierBaseSize[tier]||2)*(0.85+pw*0.35)*iconScale;
+      // Selection halo — bright gold ring behind the glyph.
+      if(s.id===selId){
+        ctx.beginPath();ctx.arc(sx,sy,r+3*iconScale,0,Math.PI*2);
+        ctx.fillStyle="rgba(255,215,90,0.28)";ctx.fill();
+        ctx.lineWidth=1.2*iconScale;ctx.strokeStyle="rgba(255,200,70,1)";ctx.stroke();
+      }
+      // Wealth-per-capita drives fill brightness (poor = dark earth, rich
+      // = warm cream); kept in a narrow range so country tints still read.
+      const wpc=(s.wealth||0)/Math.max(1,s.people);
+      const richT=Math.min(1,wpc/80);
+      const fr=Math.round(95+richT*105), fg=Math.round(75+richT*95), fb=Math.round(55+richT*55);
+      ctx.fillStyle=`rgb(${fr},${fg},${fb})`;
+      ctx.strokeStyle="rgba(20,15,5,0.95)";
+      ctx.lineWidth=0.7*iconScale;
+      // Tier glyph
+      if(tier===0){          // village — dot
+        ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.fill();ctx.stroke();
+      }else if(tier===1){    // town — square
+        ctx.fillRect(sx-r,sy-r,r*2,r*2);ctx.strokeRect(sx-r,sy-r,r*2,r*2);
+      }else{                 // city / metropolis — diamond
+        ctx.beginPath();ctx.moveTo(sx,sy-r);ctx.lineTo(sx+r,sy);ctx.lineTo(sx,sy+r);ctx.lineTo(sx-r,sy);ctx.closePath();
+        ctx.fill();ctx.stroke();
+        // Metropolis gets a second concentric diamond for visual weight.
+        if(tier>=3){
+          const r2=r*0.5;
+          ctx.beginPath();ctx.moveTo(sx,sy-r2);ctx.lineTo(sx+r2,sy);ctx.lineTo(sx,sy+r2);ctx.lineTo(sx-r2,sy);ctx.closePath();
+          ctx.strokeStyle="rgba(40,30,10,0.8)";ctx.lineWidth=0.6*iconScale;ctx.stroke();
+        }
+      }
+      // GARRISON ring — a settlement with an army > 5% of pop gets a thin
+      // armoured outline; saturates at 15%. Lets defended towns be read
+      // at a glance even when their tier glyph is small.
+      const armyFrac=(s.army||0)/Math.max(1,s.people);
+      if(armyFrac>0.05){
+        const t=Math.min(1,(armyFrac-0.05)/0.10);
+        ctx.beginPath();ctx.arc(sx,sy,r+1.4*iconScale,0,Math.PI*2);
+        ctx.strokeStyle=`rgba(80,60,30,${0.5+t*0.4})`;ctx.lineWidth=(0.8+t*0.9)*iconScale;ctx.stroke();
+      }
+      // ACTIVE SHOCK ring — plague (purple) or famine (amber). Overrides the
+      // garrison ring colour because a struck town is the more urgent signal.
+      const shock=_L.shocks?(s._shock||0):0;
+      if(shock){
+        ctx.beginPath();ctx.arc(sx,sy,r+2.2*iconScale,0,Math.PI*2);
+        ctx.strokeStyle=shock===2?"rgba(190,80,210,0.9)":"rgba(245,170,40,0.9)";
+        ctx.lineWidth=1.3*iconScale;ctx.stroke();
+      }
+      // Adjust below rank-marker offset for the new (smaller) icon.
+      const _markerR=r;
+      // ── Rank marker ── a gold star above national capitals, a small open
+      // ring above provincial seats (settlements that have vassals). Lets
+      // the administrative hierarchy be read at a glance over the country
+      // tint: stars = kingdoms' seats, rings = the regional centres beneath.
+      if(capitalIds.has(s.id)){
+        const my=sy-_markerR-3*iconScale;
+        const starOuter=3.2*iconScale,starInner=1.4*iconScale;
+        ctx.fillStyle="rgba(255,210,70,0.95)";ctx.strokeStyle="rgba(60,40,0,0.9)";ctx.lineWidth=0.6*iconScale;
+        ctx.beginPath();
+        for(let p=0;p<10;p++){const ang=-Math.PI/2+p*Math.PI/5;const rr=(p%2===0)?starOuter:starInner;
+          const px=sx+Math.cos(ang)*rr,py=my+Math.sin(ang)*rr;p===0?ctx.moveTo(px,py):ctx.lineTo(px,py);}
+        ctx.closePath();ctx.fill();ctx.stroke();
+      }else if((s._vassalCount||0)>0){
+        const my=sy-_markerR-2.5*iconScale;
+        ctx.beginPath();ctx.arc(sx,my,1.9*iconScale,0,Math.PI*2);
+        ctx.fillStyle="rgba(255,235,180,0.85)";ctx.fill();
+        ctx.lineWidth=0.7*iconScale;ctx.strokeStyle="rgba(90,60,10,0.9)";ctx.stroke();
+      }
+    }
+  }
+  // ── Sea lanes ── faint dashed routes over open water connecting the
+  // ports that trade by ship (sea.js). Drawn in every view except the
+  // land-roads view, beneath the moving ships and armies.
+  if(psw&&ctx&&!vmRoads&&psw._seaLanes&&psw._seaLanes.length&&layersRef.current.seaLanes){
+    const TR=psw.tileRes,tw=psw.tw;
+    ctx.save();
+    ctx.strokeStyle="rgba(90,175,225,0.28)";
+    ctx.lineWidth=0.8;
+    ctx.setLineDash([3,3]);
+    for(const lane of psw._seaLanes){
+      const pts=lane.tiles;if(!pts||pts.length<2)continue;
+      let started=false,px=0;
+      for(let k=0;k<pts.length;k++){
+        const ti=pts[k],ty=(ti/tw)|0,tx=ti-ty*tw;
+        const X=(tx+0.5)*TR,Y=dataYtoScreenY((ty+0.5)*TR,H,CH);
+        if(started&&Math.abs(X-px)>CW*0.5){ctx.stroke();started=false;}
+        if(!started){ctx.beginPath();ctx.moveTo(X,Y);started=true;}else ctx.lineTo(X,Y);
+        px=X;
+      }
+      if(started)ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // ── Colony ships ── diamonds in the founding country's colour sailing
+  // toward the shore they'll settle, with a faint line to that
+  // destination. Drawn in every view (like armies).
+  if(psw&&ctx&&psw.ships&&psw.ships.length&&layersRef.current.ships){
+    const TR=psw.tileRes,tw=psw.tw;
+    for(const sh of psw.ships){
+      const sxp=sh.x*TR,syp=dataYtoScreenY(sh.y*TR,H,CH);
+      const lt=sh.landTi,ly=(lt/tw)|0,lx=lt-ly*tw;
+      const dxs=(lx+0.5)*TR,dys=dataYtoScreenY((ly+0.5)*TR,H,CH);
+      if(Math.abs(dxs-sxp)<CW*0.5){
+        ctx.strokeStyle="rgba(60,150,210,0.55)";ctx.lineWidth=0.7;
+        ctx.beginPath();ctx.moveTo(sxp,syp);ctx.lineTo(dxs,dys);ctx.stroke();
+      }
+      const hue=((sh.countryId*61)%360+360)%360;
+      ctx.save();ctx.translate(sxp,syp);ctx.rotate(Math.PI/4);
+      ctx.fillStyle=`hsl(${hue},75%,55%)`;
+      ctx.fillRect(-2.6,-2.6,5.2,5.2);
+      ctx.lineWidth=1;ctx.strokeStyle="rgba(0,20,40,0.9)";ctx.strokeRect(-2.6,-2.6,5.2,5.2);
+      ctx.restore();
+    }
+  }
+  // ── Marching reinforcement columns ── small chevrons in the realm's colour
+  // moving along roads toward a besieged settlement (size hints troop count).
+  if(psw&&ctx&&psw.armies&&psw.armies.length&&layersRef.current.armies){
+    const TR=psw.tileRes;
+    for(const m of psw.armies){
+      const mx=m.x*TR,my=dataYtoScreenY(m.y*TR,H,CH);
+      const hue=((m.countryId*61)%360+360)%360;
+      const r=1.8+Math.min(3,Math.sqrt(Math.max(1,m.troops))*0.4);
+      ctx.beginPath();ctx.moveTo(mx,my-r);ctx.lineTo(mx+r,my+r);ctx.lineTo(mx-r,my+r);ctx.closePath();
+      ctx.fillStyle=`hsl(${hue},70%,45%)`;ctx.fill();
+      ctx.lineWidth=0.6;ctx.strokeStyle="rgba(20,10,0,0.85)";ctx.stroke();
+    }
   }
 }
 },[updateTerrainCache,buildAtlas,CH]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showPower,showGlobe,activeRes]);
+// Apply a snapshot from the sim worker into the mirror (peopleRef.current),
+// shaped like the real world so draw()/the card read it unchanged, then draw.
+const applySnapshot=useCallback((snap)=>{
+  let psw=peopleRef.current;
+  if(!psw||!psw._isMirror){psw=peopleRef.current={_isMirror:true};}
+  psw.step=snap.step;psw.tw=snap.tw;psw.th=snap.th;psw.tileRes=snap.tileRes;psw.N=snap.N;
+  psw.globalP=snap.globalP;
+  if(snap.owner)psw._territoryOwner=snap.owner;
+  if(snap.roadQuality)psw.roadQuality=snap.roadQuality;
+  if(snap.roadFlow)psw.roadFlow=snap.roadFlow;
+  if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
+  psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
+  psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
+  if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
+  psw.ships=snap.ships;psw.armies=snap.armies;
+  const setts=snap.settlements||[];
+  if(snap.selected){const sel=setts.find(x=>x.id===snap.selected.id);if(sel)Object.assign(sel,snap.selected);}
+  psw.settlements=setts;
+  const byId=new Map();for(const s of setts)byId.set(s.id,s);psw._byId=byId;
+  const countries=new Map();
+  for(const c of (snap.countries||[])){
+    const members=c.memberIds.map(id=>byId.get(id)).filter(Boolean);
+    const capital=byId.get(c.capitalId)||members[0]||null;
+    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel});
+  }
+  psw.countries=countries;
+  // HUD state updates re-render the whole component, so throttle them to ~5Hz
+  // (the sim numbers don't need 30Hz); drawing still happens every snapshot.
+  psw._snapN=(psw._snapN||0)+1;
+  if(psw._snapN%6===1){if(snap.stats)setPsStats(snap.stats);setTribeCount(setts.length);}
+  if(terRef.current){try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);}}
+},[draw]);
+useEffect(()=>{applySnapshotRef.current=applySnapshot;},[applySnapshot]);
+
+// Forward play/pause + speed to the sim worker.
+useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'control',playing,speed});},[playing,speed]);
+// Forward selection so the worker includes that settlement's full detail.
+useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'select',id:selectedSettlementId});},[selectedSettlementId]);
+// Tell the worker the current view so it ships money-flow / road-component extras only when shown.
+useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'view',view:viewMode});},[viewMode]);
+
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showPower,showGlobe,activeRes,layers]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now(),drawSkip=0;
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
+// Worker mode: the sim runs off-thread and drives drawing via snapshots, so
+// this loop does nothing. Only the main-thread FALLBACK steps + draws here.
+if(simWorkerRef.current){last=now;return;}
 acc+=now-last;last=now;const iv=Math.max(8,100/speedRef.current);
 if(acc>=iv){acc=0;
 // Adaptive step rate: early history flies by, modern era slows down.
@@ -5643,6 +5683,15 @@ draw(terRef.current);};
 wfid=requestAnimationFrame(windLoop);
 return()=>cancelAnimationFrame(wfid);},[draw]);
 
+// Money-flow animation loop — redraws so the coin particles move, even
+// while the sim is paused (so you can study a frozen economy).
+useEffect(()=>{let mfid;
+const moneyLoop=()=>{mfid=requestAnimationFrame(moneyLoop);
+if(viewRef.current!=="money"||!worldRef.current||!terRef.current)return;
+draw(terRef.current);};
+mfid=requestAnimationFrame(moneyLoop);
+return()=>cancelAnimationFrame(mfid);},[draw]);
+
 const togglePlay=()=>{if(!playing&&terRef.current&&terRef.current.settled>=terRef.current.landCount){
 const t=createTerritory(worldRef.current);attachRegistries(t);ensureTribeViews(t);resetInvariantState(t);terRef.current=t;setTribeCount(t.tribeCount);setCoverage(0);setDominant(null);setSelectedTribe(-1);terrainCache.current=null;atlasCache.current=null;draw(t);}
 playRef.current=!playRef.current;setPlaying(p=>!p);};
@@ -5669,10 +5718,33 @@ setSeed(Math.floor(Math.random()*999999));
 setTimeout(()=>setImportStatus(null),4000);
 }catch(err){setImportStatus("Import failed: "+err.message);setTimeout(()=>setImportStatus(null),5000);}
 },[seed]);
+// Screen → canvas-pixel-space (reversing the pan/zoom transform). Returns
+// {sx,sy} in the same coordinate system the existing hit-testing already uses.
+const screenToCanvas=useCallback((ev)=>{
+  const c=canvasRef.current;if(!c)return null;
+  const r=c.getBoundingClientRect();
+  const rawX=(ev.clientX-r.left)/r.width*CW;
+  const rawY=(ev.clientY-r.top)/r.height*CH;
+  const z=viewZRef.current;
+  return {sx:(rawX-viewXRef.current)/z, sy:(rawY-viewYRef.current)/z, rawX, rawY};
+},[CW,CH]);
 const onCanvasMove=useCallback((ev)=>{
 const c=canvasRef.current;if(!c||!worldRef.current)return;
-const r=c.getBoundingClientRect();
-const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
+// Pan dragging — any button. Only PAN if the mouse has crossed the
+// click/drag threshold; once it has, mark it so the subsequent click is
+// suppressed (drag-to-pan + plain-click-to-select on the same button).
+if(panDragRef.current){
+  const pd=panDragRef.current;
+  const dx=ev.clientX-pd.mx,dy=ev.clientY-pd.my;
+  if(!pd.moved&&Math.hypot(dx,dy)<=3)return;   // below threshold; wait
+  pd.moved=true;
+  viewXRef.current=pd.vx+dx*(CW/c.getBoundingClientRect().width);
+  viewYRef.current=pd.vy+dy*(CH/c.getBoundingClientRect().height);
+  if(terRef.current)draw(terRef.current);
+  return;
+}
+const _sc=screenToCanvas(ev);if(!_sc)return;
+const sx=_sc.sx,sy=_sc.sy;
 const wx=Math.floor(sx)*RES,wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const w=worldRef.current,i=wy*1920+wx;
 if(wx<0||wx>=1920||wy<0||wy>=960){setHoverInfo(null);return;}
@@ -5722,8 +5794,16 @@ setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:f
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const onCanvasClick=useCallback((ev)=>{
 const c=canvasRef.current;if(!c||!terRef.current)return;
-const r=c.getBoundingClientRect();
-const sx=(ev.clientX-r.left)/r.width*CW,sy=(ev.clientY-r.top)/r.height*CH;
+// If the mouse-down → up was actually a drag (moved past threshold), the
+// onCanvasMove pass already set pd.moved=true and panned. Swallow the click
+// in that case so dragging never accidentally selects.
+if(panDragRef.current){
+  const wasDrag=panDragRef.current.moved===true;
+  panDragRef.current=null;
+  if(wasDrag)return;
+}
+const _sc=screenToCanvas(ev);if(!_sc)return;
+const sx=_sc.sx,sy=_sc.sy;
 const wx=Math.floor(sx),wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const ter=terRef.current;if(!ter)return;
 const ttx=Math.min(ter.tw-1,(wx/RES)|0),tty=Math.min(ter.th-1,(wy/RES)|0);
@@ -5780,6 +5860,46 @@ setSelectedTribe(tileOwner);ter._selectedTribe=tileOwner;
 setRightPanel("tribes");draw(ter);
 }else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}
 },[CW,CH,draw,viewMode,ttSubMode]);
+// ── Pan / zoom mouse handlers ────────────────────────────────────────
+// Wheel: zoom around the cursor (Google-Maps style). Pan: middle-button or
+// shift+left-button drag (left-only drag is reserved for settlement clicks).
+// React's synthetic onWheel is registered as PASSIVE in most browsers, so
+// ev.preventDefault() is a no-op (the page scrolls behind the canvas while
+// we zoom). Attach a native non-passive listener directly to the element so
+// preventDefault actually fires.
+useEffect(()=>{
+  const c=canvasRef.current;if(!c)return;
+  const onWheel=(ev)=>{
+    ev.preventDefault();
+    const r=c.getBoundingClientRect();
+    const rawX=(ev.clientX-r.left)/r.width*CW;
+    const rawY=(ev.clientY-r.top)/r.height*CH;
+    const zOld=viewZRef.current;
+    const factor=ev.deltaY<0?1.15:1/1.15;
+    const zNew=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,zOld*factor));
+    if(zNew===zOld)return;
+    const k=zNew/zOld;
+    viewXRef.current=rawX-(rawX-viewXRef.current)*k;
+    viewYRef.current=rawY-(rawY-viewYRef.current)*k;
+    viewZRef.current=zNew;
+    if(terRef.current)draw(terRef.current);
+  };
+  c.addEventListener("wheel",onWheel,{passive:false});
+  return()=>c.removeEventListener("wheel",onWheel);
+},[CW,CH,draw]);
+const onCanvasMouseDown=useCallback((ev)=>{
+  // Any button (left, middle, right) can start a drag. onCanvasClick fires
+  // only if the mouse hardly moved (see the moved>3 check there), so plain
+  // left-click → still selects a settlement, but left-drag → pans.
+  if(ev.button===0||ev.button===1||ev.button===2){
+    panDragRef.current={mx:ev.clientX,my:ev.clientY,vx:viewXRef.current,vy:viewYRef.current,moved:false};
+  }
+},[]);
+// Reset view (double-click to recentre at zoom 1).
+const resetView=useCallback(()=>{
+  viewXRef.current=0;viewYRef.current=0;viewZRef.current=1;
+  if(terRef.current)draw(terRef.current);
+},[draw]);
 // Re-run route Dijkstra whenever endpoints or tech change
 useEffect(()=>{
   if(viewMode!=="transport-test"||ttSubMode!=="route"){ttRouteResultRef.current=null;return;}
@@ -5802,12 +5922,17 @@ if(_ter&&_ter.tribes){
     _aAg+=_k.agriculture;_aMt+=_k.metallurgy;_aNv+=_k.navigation;_aOg+=_k.organization;}
   if(_aliveK>0){_aAg/=_aliveK;_aMt/=_aliveK;_aNv/=_aliveK;_aOg/=_aliveK;}}
 const _era=deriveEra(_aAg,_aMt,_aNv,_aOg);
+// Nation count = peopleSim countries (active polities). The chronicle
+// previously read tribeCount, which the worker snapshot was setting to
+// the number of settlements — wrong scale for "nations."
+const _psw=peopleRef.current;
+const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 
 // View modes for the right rail
 const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
-  ["crop","Crop"],["crossing","Crossing"],["roads","Roads"],
+  ["crop","Crop"],["crossing","Crossing"],["roads","Roads"],["money","Money"],
   ["resources","Resources"],["population","Pop"],["transport","Transport"],
   ["transport-test","Trans Test"],["tribes","Tribes"]
 ];
@@ -5886,8 +6011,29 @@ return(
   <span className="au-year">{_ys}</span>
   <span className="au-fade" style={{fontSize:11}}>Step {_step.toLocaleString()}</span>
   <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
-  <span style={{fontSize:13}}>{tribeCount} <span className="au-sc au-fade" style={{fontSize:11}}>nations</span></span>
+  <span style={{fontSize:13}}>{_countryCount} <span className="au-sc au-fade" style={{fontSize:11}}>nations</span></span>
   <span style={{fontSize:13}}>{coverage}<span className="au-fade">%</span> <span className="au-sc au-fade" style={{fontSize:11}}>claimed</span></span>
+  {(()=>{
+    // Wheat-price ticker — population-weighted global price level. The number
+    // shown is the price of 1 unit of farmed wheat relative to its baseline.
+    // (The displayed number is `globalP × baselineFOOD_PRICE`.)
+    const psw=peopleRef.current;
+    const P=psw&&isFinite(psw.globalP)?psw.globalP:null;
+    if(P==null)return null;
+    const price=(5*P).toFixed(2);
+    const dir=P>1.04?"▲":P<0.96?"▼":"·";
+    const col=P>1.1?"hsl(8,75%,55%)":P<0.9?"hsl(195,65%,50%)":"var(--au-ink)";
+    return(
+      <>
+        <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
+        <span style={{fontSize:13}} title={`global price level ×${P.toFixed(2)} (1.00 = baseline)`}>
+          <span className="au-sc au-fade" style={{fontSize:11,marginRight:4}}>Wheat</span>
+          <span style={{color:col,fontWeight:600}}>{price}</span>
+          <span className="au-fade" style={{fontSize:11,marginLeft:3}}>{dir}</span>
+        </span>
+      </>
+    );
+  })()}
   {dominant&&<>
     <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
     <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
@@ -5913,6 +6059,7 @@ return(
     </div>:
     <canvas ref={canvasRef} width={CW} height={CH}
       onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
+      onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
       style={{display:"block",imageRendering:"pixelated",
         maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
         boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
@@ -5929,6 +6076,7 @@ return(
           {mi===0?
             <canvas ref={canvasRef} width={CW} height={CH}
               onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
+      onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
               style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`}} />:
             <canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
               style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
@@ -5973,8 +6121,10 @@ return(
   const progress=nextThr?Math.min(1,s.people/nextThr):1;
   const k=s.knowledge||{};
   const r=s.localRes||{};
-  const farm=s.farmland?s.farmland.size:0;
+  const farm=s._terrTiles||0;
   const K=s._k||0;
+  const foodK=s._foodK||0,houseK=s._houseK||0;
+  const limitedBy=foodK<=houseK?"food":"housing";
   // Era label is driven by metallurgy KNOWLEDGE (which is monotonic —
   // you don't unlearn how to make steel) rather than current
   // resource access. A city that lost its iron mine still knows the
@@ -5986,7 +6136,7 @@ return(
   else if(m>=0.42)era="bronze age";
   else if(m>=0.15)era="chalcolithic";
   // Local resources, sorted by richness, only show ones present.
-  const RES_LABEL={timber:"Timber",stone:"Stone",copper:"Copper",tin:"Tin",iron:"Iron",coal:"Coal",horses:"Horses",salt:"Salt"};
+  const RES_LABEL={timber:"Timber",stone:"Stone",copper:"Copper",tin:"Tin",iron:"Iron",coal:"Coal",horses:"Horses",salt:"Salt",precious:"Precious",gems:"Gems",spices:"Spices",furs:"Furs",incense:"Incense",dyes:"Dyes"};
   const presentRes=Object.entries(r).filter(([,v])=>v>0.10).sort((a,b)=>b[1]-a[1]);
   // Ore-access flags drive the metallurgy "(no ore)/(copper)/.../(steel)"
   // hint — it shows what's POSSIBLE from current local deposits, which
@@ -5996,187 +6146,331 @@ return(
   // Water-access label.
   const wa=s.waterAccess||0;
   const waterLabel=wa<=0?"landlocked":wa<0.3?"minor river":wa<0.6?"river":wa<0.85?"coastal":"port";
-  // Bar helper.
-  const Bar=({v,color})=>(
-    <div style={{position:"relative",height:5,background:"rgba(0,0,0,0.15)",borderRadius:2,marginTop:1}}>
-      <div style={{position:"absolute",inset:0,width:`${Math.max(0,Math.min(1,v))*100}%`,background:color||"#7a5",borderRadius:2}}/>
-    </div>
-  );
-  const KRow=({label,val,colour,note})=>(
-    <div style={{margin:"3px 0"}}>
-      <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
-        <span>{label}{note?<span className="au-fade" style={{marginLeft:4,fontSize:9}}>{note}</span>:null}</span>
-        <span>{(val*100|0)}%</span>
-      </div>
-      <Bar v={val} color={colour}/>
-    </div>
-  );
+  // Food balance. surplus is the REAL flow balance — local production +
+  // smoothed imports − consumption. An import-fed city sits near 0 (it
+  // eats grain as fast as it arrives, so stored food stays low); that is
+  // "balanced", NOT starving. Only a genuine, uncovered shortfall that is
+  // actually draining the granary counts as starving.
+  const supply=s._foodSupply||0, demand=s._foodDemand||0, importRate=s._foodImportRate||0;
+  const surplus=(supply+importRate)-demand;
+  const eps=Math.max(0.02,demand*0.02);
+  const ticksLeft=demand>0?(s.food||0)/demand:Infinity;
+  let status,statusColor;
+  if(surplus>eps){status="surplus";statusColor="#3a7";}
+  else if(surplus<-eps){
+    if(ticksLeft<50){status="starving";statusColor="#c44";}
+    else{status="deficit";statusColor="#c84";}
+  } else {status="balanced";statusColor="#888";}
+
+  // Treasury + trade.
+  const wealth=Math.round(s.wealth||0);
+  const available=Math.max(0,wealth-Math.round(getWealthReserve(s)));
+  const profile=s._tradeProfile||getTradeProfile(s,peopleRef.current);
+  const produces=getExportBreakdown(s).filter(b=>b.label!=="Baseline").slice(0,3).map(b=>b.label.toLowerCase());
+  // Smoothed net wealth change rate from the sim (the categorised in/out
+  // breakdown below comes from s._mInRate / s._mOutRate).
+  const wealthDelta=s._wealthDelta||0;
+  const moneyCol=v=>v>0.02?"#3a7":v<-0.02?"#c44":"#8a8f9c";
+  const nextName=["town","city","metropolis"][s.tier];
+
   return(
     <div className="au-parchment au-pico au-elev"
-      style={{position:"absolute",left:14,top:14,minWidth:220,maxWidth:280,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"90vh",overflowY:"auto"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-        <div className="au-pico-title" style={{fontSize:13,textTransform:"capitalize"}}>{s.name}</div>
+      style={{position:"absolute",left:14,top:14,width:248,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"90vh",overflowY:"auto",
+        pointerEvents:"auto"/* au-pico sets pointer-events:none for the hover tooltip; this card is interactive */}}>
+
+      {/* ── Header ── */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div className="au-pico-title" style={{fontSize:14,textTransform:"capitalize"}}>{s.name}</div>
         <button onClick={()=>setSelectedSettlementId(-1)}
-          style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:14,padding:"0 4px"}}>×</button>
+          style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:16,lineHeight:1,padding:"0 2px"}}>×</button>
       </div>
-      <div className="au-fade" style={{fontSize:10,marginBottom:6,textTransform:"capitalize"}}>
-        {tierName} · {era} · {waterLabel} · founded step {s.foundedStep}
+      <div className="au-fade" style={{fontSize:10,textTransform:"capitalize",marginBottom:6}}>
+        {tierName} · {era} · {waterLabel}
       </div>
 
-      {/* ── Demographics + food balance ── */}
+      {/* ── Country / polity (with administrative lineage) ── */}
       {(()=>{
-        const supply=s._foodSupply||0;
-        const demand=s._foodDemand||0;
-        const importRate=s._foodImportRate||0;
-        const totalSupply=supply+importRate;
-        const surplus=totalSupply-demand;
-        const ticksLeft=demand>0?(s.food||0)/demand:Infinity;
-        const starving=ticksLeft<100&&surplus<=0;
-        const status=starving?"starving":surplus>0.001?"surplus":surplus<-0.001?"deficit":"balanced";
-        const statusColor=starving?"#c44":surplus>0.001?"#494":surplus<-0.001?"#c84":undefined;
+        const ctry=psw.countries&&psw.countries.get(s.countryId);
+        const n=ctry?ctry.members.length:1;
+        const hue=((s.countryId*61)%360+360)%360;
+        const cap=ctry&&ctry.capital;
+        const isCap=cap&&cap.id===s.id;
+        const byId=psw._byId||(()=>{const m=new Map();for(const o of psw.settlements)m.set(o.id,o);return m;})();
+        const liege=(!isCap&&s.liegeId>=0)?byId.get(s.liegeId):null;
+        let label;
+        if(n<=1)label="independent city-state";
+        else if(isCap)label=`national capital · ${n} settlements`;
+        else{
+          const role=(s._vassalCount>0)?"provincial seat":(tierName||"settlement");
+          label=`${role} · answers to ${liege?liege.name:(cap?cap.name:"?")}`;
+          if(liege&&cap&&liege.id!==cap.id)label+=` · realm of ${cap.name}`;
+        }
         return(
-          <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px"}}>
-            <span>Population</span><span>{Math.round(s.people)}{K?` / ${Math.round(K)} K`:""}</span>
-            <span>Food stored</span><span>{Math.round(s.food)}</span>
-            <span className="au-fade">Production /tick</span><span className="au-fade">{supply.toFixed(3)}</span>
-            {importRate>0.001&&(<><span className="au-fade">Imported (avg /tick)</span><span className="au-fade">+{importRate.toFixed(3)}</span></>)}
-            <span className="au-fade">Consumed /tick</span><span className="au-fade">{demand.toFixed(3)}</span>
-            <span style={statusColor?{color:statusColor}:undefined}>Food balance</span>
-            <span style={statusColor?{color:statusColor}:undefined}>
-              {surplus>=0?"+":""}{surplus.toFixed(3)} ({status})
-            </span>
-            <span>Farmland</span><span>{farm} tile{farm===1?"":"s"}</span>
-            {nextThr&&<><span>To next tier</span><span>{Math.round(s.people)}/{nextThr} ({Math.round(progress*100)}%)</span></>}
+          <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0}}/>
+            <span className="au-fade" style={{textTransform:"capitalize"}}>{label}</span>
           </div>
         );
       })()}
 
-      {/* ── Knowledge ── */}
-      <div style={{marginTop:8,fontSize:10}} className="au-fade">Knowledge</div>
-      <KRow label="Agriculture"  val={k.agriculture||0}  colour="#7a5"/>
-      <KRow label="Foraging"     val={k.foraging||0}     colour="#697"/>
-      <KRow label="Toolmaking"   val={k.toolmaking||0}   colour="#aa6"/>
-      <KRow label="Construction" val={k.construction||0} colour="#a85"/>
-      <KRow label="Organization" val={k.organization||0} colour="#967"/>
-      <KRow label="Metallurgy"   val={k.metallurgy||0}   colour="#86a"
-            note={!cu&&!fe?"(no ore)":(fe&&co?"(steel)":fe?"(iron)":(cu&&sn?"(bronze)":"(copper)"))}/>
-      <KRow label="Navigation"   val={k.navigation||0}   colour="#58a"
-            note={wa<=0?"(no water)":null}/>
-      <KRow label="Mobility"     val={k.mobility||0}     colour="#a76"
-            note={(r.horses||0)<=0.10?"(no horses)":null}/>
-
-      {/* ── Local resources (max richness in reach) ── */}
-      <div style={{marginTop:8,fontSize:10}} className="au-fade">
-        Local resources{presentRes.length===0?" (none in reach)":""}
-      </div>
-      {presentRes.length>0&&(
-        <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
-          {presentRes.map(([id,v])=>(
-            <Fragment key={id}>
-              <span>{RES_LABEL[id]||id}</span><span>{(v*100|0)}%</span>
-            </Fragment>
-          ))}
-        </div>
-      )}
-
-      {/* ── Treasury ── */}
+      {/* ── Loyalty / control budget (overextension) ── */}
       {(()=>{
-        const wealth=Math.round(s.wealth||0);
-        const reserve=Math.round(getWealthReserve(s));
-        const available=Math.max(0, wealth-reserve);
-        const hoarding=available<=0&&wealth>0;
-        return(
-          <>
-            <div style={{marginTop:8,fontSize:10}} className="au-fade">Treasury</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
-              <span>Wealth</span><span>${wealth.toLocaleString()}</span>
-              <span className="au-fade">Reserve (rainy day)</span>
-              <span className="au-fade">${reserve.toLocaleString()}</span>
-              <span style={hoarding?{color:"#c44"}:undefined}>
-                {hoarding?"Hoarding — no spending":"Available to spend"}
-              </span>
-              <span style={hoarding?{color:"#c44"}:undefined}>
-                ${available.toLocaleString()}
-              </span>
-            </div>
-          </>
-        );
-      })()}
-
-      {/* ── Specialty profile (what they could sell — potential, not actual) ── */}
-      {(()=>{
-        const items=getExportBreakdown(s);
-        if(!items||items.length===0)return null;
-        const total=items.reduce((a,b)=>a+b.value,0);
-        const hasRoads=s._tradeReach&&s._tradeReach.size>0;
-        return(
-          <>
-            <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
-              <span>Specialty profile</span><span>{total.toFixed(2)}</span>
-            </div>
-            <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginBottom:2}}>
-              {hasRoads?"what they make / can sell":"what they could sell — no roads, nothing actually exported"}
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
-              {items.map((it,i)=>(
-                <Fragment key={i}>
-                  <span>{it.label}</span><span>{it.value.toFixed(2)}</span>
-                </Fragment>
-              ))}
-            </div>
-          </>
-        );
-      })()}
-
-      {/* ── Actual trade routes (real flowing imports + exports per road) ── */}
-      {(()=>{
-        const psw2=peopleRef.current;
-        const profile=getTradeProfile(s,psw2);
-        if(profile.length===0){
+        const ctry=psw.countries&&psw.countries.get(s.countryId);
+        if(!ctry||ctry.members.length<=1)return null;   // city-states have no internal control problem
+        const isCap=ctry.capital&&ctry.capital.id===s.id;
+        if(isCap){
+          // The realm's overall control budget: load drawn vs capacity available.
+          const cap=ctry._capacity,load=ctry._loadTotal;
+          if(cap==null||load==null)return null;
+          const over=load>cap;
+          const pct=cap>0?Math.round(load/cap*100):0;
+          // Why the budget is squeezed (capacity already reflects this).
+          let strain="";
+          if(ctry._capitalBesieged)strain=" · capital besieged";
+          else if((ctry._fronts||0)>1)strain=` · ${ctry._fronts}-front war`;
+          const treas=ctry._treasury;
           return(
-            <div className="au-fade" style={{marginTop:8,fontSize:10,fontStyle:"italic"}}>
-              No active trade routes — no imports or exports flowing.
+            <>
+            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+              <span style={{width:9,height:9,borderRadius:2,background:over?"hsl(8,70%,52%)":"hsl(140,45%,45%)",flexShrink:0}}/>
+              <span className="au-fade">control {load.toFixed(1)}/{cap.toFixed(1)} ({pct}%){over?" · over-extended":""}{strain}</span>
+            </div>
+            {treas!=null&&(()=>{const sv=ctry._solvency??1;const broke=sv<0.99;return(
+              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+                <span style={{width:9,height:9,borderRadius:2,background:broke?"hsl(8,75%,52%)":"hsl(48,65%,48%)",flexShrink:0}}/>
+                <span className="au-fade">state treasury ${Math.round(treas)}{ctry._govSpend>0.01?` · spends ${ctry._govSpend.toFixed(0)}/pass`:""}{broke?` · INSOLVENT (army ${Math.round(sv*100)}% paid)`:""}</span>
+              </div>
+            );})()}
+            {(()=>{const P=ctry._priceLevel;if(P==null||Math.abs(P-1)<0.04)return null;
+              const inflating=P>1;return(
+              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+                <span style={{width:9,height:9,borderRadius:2,background:inflating?"hsl(28,75%,50%)":"hsl(200,65%,50%)",flexShrink:0}}/>
+                <span className="au-fade">price level ×{P.toFixed(2)} · {inflating?"inflating":"deflating"}</span>
+              </div>
+            );})()}
+            </>
+          );
+        }
+        const loy=s.loyalty;
+        if(loy==null)return null;
+        const pct=Math.round(loy*100);
+        const amb=s._ambition||0;
+        // An ambitious governor (scheming to break away with his vassals) is the
+        // more telling signal — show it instead of loyalty when it's brewing.
+        if(amb>0.15){
+          return(
+            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+              <span style={{width:9,height:9,borderRadius:2,background:"hsl(28,75%,50%)",flexShrink:0}}/>
+              <span className="au-fade">ambitious governor · scheming {Math.round(amb*100)}%{amb>0.6?" · on the brink of revolt":""}</span>
             </div>
           );
         }
-        const totalNet=profile.reduce((a,p)=>a+p.netPerTick,0);
+        const hue=loy>0.66?140:loy>0.33?42:8;   // green / amber / red
+        const load=s._adminLoad;
         return(
-          <>
-            <div style={{marginTop:8,fontSize:10,display:"flex",justifyContent:"space-between"}} className="au-fade">
-              <span>Actual trade ({profile.length} route{profile.length===1?"":"s"})</span>
-              <span style={{color:totalNet>=0?"#494":"#c44"}}>
-                {totalNet>=0?"+":""}{totalNet.toFixed(2)}/tick
-              </span>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"1px 6px",fontSize:10}}>
-              {profile.map(p=>(
-                <Fragment key={p.rid}>
-                  <span style={{color:p.role==="selling"?"#5a5":"#c66"}}>
-                    {p.role==="selling"?"sell":"buy "}
-                  </span>
-                  <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {p.partner}
-                    {p.goods.length>0&&(
-                      <span className="au-fade" style={{marginLeft:4,fontSize:9}}>
-                        ({p.goods.join(", ").toLowerCase()})
-                      </span>
-                    )}
-                    {p.foodRole&&(
-                      <span style={{marginLeft:4,fontSize:9,
-                        color:p.foodRole==="selling food"?"#494":"#c84"}}>
-                        · {p.foodRole}
-                      </span>
-                    )}
-                  </span>
-                  <span style={{color:p.netPerTick>=0?"#494":"#c44"}}>
-                    {p.netPerTick>=0?"+":""}{p.netPerTick.toFixed(2)}
-                  </span>
-                </Fragment>
-              ))}
-            </div>
-          </>
+          <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},60%,48%)`,flexShrink:0}}/>
+            <span className="au-fade">loyalty {pct}%{loy<0.34?" · restless":""}{load!=null?` · admin load ${load.toFixed(2)}`:""}</span>
+          </div>
         );
       })()}
+
+      {/* ── Active shock (plague / famine) ── */}
+      {(()=>{
+        const sh=s._shock||0;
+        if(!sh)return null;
+        const plague=sh===2;
+        return(
+          <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+            <span style={{width:9,height:9,borderRadius:2,background:plague?"hsl(280,55%,52%)":"hsl(30,80%,48%)",flexShrink:0}}/>
+            <span className="au-fade">{plague?"struck by plague":"famine — harvest failing"}</span>
+          </div>
+        );
+      })()}
+
+      {/* ── Popular unrest (separate stock from loyalty) ── */}
+      {(()=>{
+        const u=s.unrest||0;
+        if(u<0.15)return null;
+        const hue=u>0.66?8:u>0.33?28:42;   // red / orange / amber as it climbs
+        return(
+          <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},75%,50%)`,flexShrink:0}}/>
+            <span className="au-fade">unrest {Math.round(u*100)}%{s._unrestCause?` · ${s._unrestCause}`:""}{u>0.8?" · on the verge of revolt":""}</span>
+          </div>
+        );
+      })()}
+
+      {/* ── Maritime (ports / sea trade / colonies) ── */}
+      {(()=>{
+        const isPort=!!s._isPort;
+        const seaPeers=s._seaReachSize??(s._seaReach?s._seaReach.size:0);
+        const sent=s.history?s.history.filter(h=>h.type==="colony-launched").length:0;
+        const isColony=s.history?s.history.some(h=>h.type==="colony-founded"):false;
+        if(!isPort&&seaPeers===0&&sent===0&&!isColony)return null;
+        const bits=[];
+        if(isPort)bits.push("port");
+        if(seaPeers>0)bits.push(`${seaPeers} sea route${seaPeers>1?"s":""}`);
+        if(sent>0)bits.push(`${sent} colon${sent>1?"ies":"y"} sent`);
+        if(isColony)bits.push("founded as a colony");
+        return(
+          <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+            <span style={{width:9,height:9,borderRadius:2,background:"hsl(205,60%,52%)",flexShrink:0}}/>
+            <span className="au-fade" style={{textTransform:"capitalize"}}>{bits.join(" · ")}</span>
+          </div>
+        );
+      })()}
+
+      {/* ── At-a-glance summary (always visible) ── */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+        <div>
+          <span style={{fontSize:18,fontWeight:600}}>{Math.round(s.people).toLocaleString()}</span>
+          {K?<span className="au-fade" style={{fontSize:10}}> / {Math.round(K).toLocaleString()}</span>:null}
+          <span className="au-fade" style={{fontSize:9,marginLeft:3}}>people</span>
+        </div>
+        <span style={{fontSize:9,fontWeight:600,color:"#fff",background:statusColor,borderRadius:8,padding:"1px 8px",textTransform:"uppercase",letterSpacing:0.3}}>{status}</span>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginTop:3}}>
+        <div>
+          <span style={{fontSize:13}}>${wealth.toLocaleString()}</span>
+          <span className="au-fade" style={{fontSize:9,marginLeft:3}}>treasury</span>
+        </div>
+        <span className="au-fade" style={{fontSize:9}}>
+          {nextName?`${Math.round(progress*100)}% → ${nextName}`:"max tier"}
+        </span>
+      </div>
+
+      {/* ── Population & food ── */}
+      <PsSection id="food" title="Population & food" open={psCardOpen.food} onToggle={togglePsCard}
+        right={<span style={{color:statusColor}}>{surplus>=0?"+":""}{surplus.toFixed(2)}</span>}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
+          <span className="au-fade">Food stored</span><span>{Math.round(s.food)}</span>
+          <span className="au-fade">Produced /tick</span><span>{supply.toFixed(3)}</span>
+          {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{(s._fishYield||0).toFixed(2)}</span></>)}
+          {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span>+{importRate.toFixed(3)}</span></>)}
+          <span className="au-fade">Consumed /tick</span><span>{demand.toFixed(3)}</span>
+          <span style={{color:statusColor}}>Balance</span>
+          <span style={{color:statusColor}}>{surplus>=0?"+":""}{surplus.toFixed(3)} ({status})</span>
+          <span className="au-fade">Territory</span><span>{farm} tile{farm===1?"":"s"}</span>
+          <span className="au-fade">Capacity</span>
+          <span>{Math.round(K)} <span className="au-fade" style={{fontSize:9}}>({limitedBy}-limited)</span></span>
+          {(s.infrastructure||0)>1&&(<><span className="au-fade">· buildings</span><span className="au-fade">{Math.round(s.infrastructure||0).toLocaleString()}</span></>)}
+          {limitedBy==="housing"&&((s._developRate||0)>0.001
+            ?<><span style={{color:"#caa24a"}}>· building</span><span style={{color:"#caa24a"}}>+{(s._developRate||0).toFixed(2)}/tk</span></>
+            :<><span className="au-fade">· can't grow</span><span style={{color:"#c84"}}>{s._devReason==="space"?"no room (built out)":s._devReason==="materials"?"no timber/stone":s._devReason==="coin"?"can't afford materials":"—"}</span></>)}
+          {limitedBy==="food"&&houseK>foodK*1.05&&(<><span className="au-fade">· could house</span><span className="au-fade">{Math.round(houseK)} if fed</span></>)}
+          {nextThr&&<><span className="au-fade">To next tier</span><span>{Math.round(s.people)}/{nextThr}</span></>}
+          {(s.army||0)>0.5&&(<>
+            <span className="au-fade">Garrison</span>
+            <span>{Math.round(s.army)} <span className="au-fade" style={{fontSize:9}}>({((s.army||0)/Math.max(1,s.people)*100).toFixed(1)}% of pop · fed from food)</span></span>
+          </>)}
+        </div>
+      </PsSection>
+
+      {/* ── Knowledge ── */}
+      <PsSection id="knowledge" title="Knowledge" open={psCardOpen.knowledge} onToggle={togglePsCard}
+        right={<span className="au-fade" style={{textTransform:"capitalize"}}>{era}</span>}>
+        <>
+          <PsKRow label="Agriculture"  val={k.agriculture||0}  colour="#7a5"/>
+          <PsKRow label="Construction" val={k.construction||0} colour="#a85"/>
+          <PsKRow label="Organization" val={k.organization||0} colour="#967"/>
+          <PsKRow label="Metallurgy"   val={k.metallurgy||0}   colour="#86a"
+                note={!cu&&!fe?"(no ore)":(fe&&co?"(steel)":fe?"(iron)":(cu&&sn?"(bronze)":"(copper)"))}/>
+          <PsKRow label="Navigation"   val={k.navigation||0}   colour="#58a"
+                note={wa<=0?"(no water)":null}/>
+          <PsKRow label="Mobility"     val={k.mobility||0}     colour="#a76"
+                note={(r.horses||0)<=0.10?"(no horses)":null}/>
+        </>
+      </PsSection>
+
+      {/* ── Resources ── */}
+      <PsSection id="resources" title="Resources" open={psCardOpen.resources} onToggle={togglePsCard}
+        right={presentRes.length>0?<span className="au-fade">{presentRes.length}</span>:null}>
+        {presentRes.length>0
+          ?<div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 8px",fontSize:10}}>
+              {presentRes.map(([id,v])=>(
+                <Fragment key={id}><span>{RES_LABEL[id]||id}</span><span>{(v*100|0)}%</span></Fragment>
+              ))}
+            </div>
+          :<span className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>No notable deposits in reach.</span>}
+      </PsSection>
+
+      {/* ── Trade & economy ── */}
+      <PsSection id="trade" title="Trade & economy" open={psCardOpen.trade} onToggle={togglePsCard}
+        right={<span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{wealthDelta.toFixed(2)}/tick</span>}>
+        <>
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
+            <span className="au-fade">Exchange</span>
+            <span style={{color:available>0?"#caa24a":"#8a8f9c"}}>{available>0?"coin economy":"barter"}</span>
+            <span style={{color:moneyCol(wealthDelta)}}>Net wealth /tick</span>
+            <span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{wealthDelta.toFixed(2)}</span>
+            <span className="au-fade">Coin held</span>
+            <span style={available<=0?{color:"#8a8f9c"}:undefined}>${wealth.toLocaleString()}</span>
+          </div>
+          {/* ── Where the money comes from / goes ── categorised $/tick from
+              the sim (mining, selling food, buying lumber, tribute, …). */}
+          {(()=>{
+            const inR=s._mInRate, outR=s._mOutRate, EPS=0.005;
+            const ins=[], outs=[];
+            if(inR)for(let i=0;i<inR.length;i++)if(inR[i]>EPS)ins.push([IN_LABELS[i],inR[i]]);
+            if(outR)for(let i=0;i<outR.length;i++)if(outR[i]>EPS)outs.push([OUT_LABELS[i],outR[i]]);
+            ins.sort((a,b)=>b[1]-a[1]); outs.sort((a,b)=>b[1]-a[1]);
+            const totIn=ins.reduce((t,x)=>t+x[1],0), totOut=outs.reduce((t,x)=>t+x[1],0);
+            if(ins.length===0&&outs.length===0)
+              return <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>No coin moving (barter / self-sufficient).</div>;
+            return(
+              <div style={{marginTop:5}}>
+                <div className="au-fade" style={{fontSize:9}}>Money in / out ($/tick)</div>
+                <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"1px 6px",fontSize:10,marginTop:1}}>
+                  {ins.map(([l,v])=>(
+                    <Fragment key={"i"+l}>
+                      <span style={{color:"#3a7"}}>in</span>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l}</span>
+                      <span style={{color:"#3a7"}}>+{v.toFixed(2)}</span>
+                    </Fragment>
+                  ))}
+                  {outs.map(([l,v])=>(
+                    <Fragment key={"o"+l}>
+                      <span style={{color:"#c44"}}>out</span>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l}</span>
+                      <span style={{color:"#c44"}}>-{v.toFixed(2)}</span>
+                    </Fragment>
+                  ))}
+                  <span className="au-fade" style={{borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}>net</span>
+                  <span className="au-fade" style={{borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}></span>
+                  <span style={{color:moneyCol(totIn-totOut),borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}>{totIn-totOut>=0?"+":""}{(totIn-totOut).toFixed(2)}</span>
+                </div>
+              </div>
+            );
+          })()}
+          {produces.length>0&&(
+            <div className="au-fade" style={{fontSize:9,marginTop:3}}>Produces: {produces.join(", ")}</div>
+          )}
+          {profile.length===0
+            ?<div className="au-fade" style={{fontSize:10,fontStyle:"italic",marginTop:4}}>No active trade routes.</div>
+            :<>
+              <div className="au-fade" style={{fontSize:9,marginTop:4}}>Routes (coin $/tick, or ⇄ barter)</div>
+              <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"1px 6px",fontSize:10,marginTop:1}}>
+                {profile.slice(0,10).map(p=>{
+                  const money=Math.abs(p.netPerTick)>0.005;
+                  const rl=id=>(RES_LABEL[id]||id).toLowerCase();
+                  const barter=p.give&&p.get?`${rl(p.give)} ⇄ ${rl(p.get)}`:p.give?`gives ${rl(p.give)}`:p.get?`wants ${rl(p.get)}`:"barter";
+                  return(
+                  <Fragment key={p.partnerId}>
+                    <span style={{color:money?(p.netPerTick>=0?"#3a7":"#c66"):"#8a8f9c"}}>{money?(p.netPerTick>=0?"in":"out"):"⇄"}</span>
+                    <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {p.partner}
+                      {!money&&<span className="au-fade" style={{marginLeft:4,fontSize:9}}>({barter})</span>}
+                      {p.foodRole&&<span style={{marginLeft:4,fontSize:9,color:p.foodRole==="selling food"?"#3a7":"#c84"}}>· {p.foodRole}</span>}
+                    </span>
+                    <span style={{color:money?(p.netPerTick>=0?"#3a7":"#c44"):"#8a8f9c"}}>{money?`${p.netPerTick>=0?"+":""}${p.netPerTick.toFixed(2)}`:"barter"}</span>
+                  </Fragment>
+                  );
+                })}
+              </div>
+            </>}
+        </>
+      </PsSection>
     </div>
   );
 })()}
@@ -6527,6 +6821,27 @@ return(
 <span className="au-fade">{Math.round(depthCeil*100)}%</span>
 </div>}
 
+{viewMode==="money"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
+  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:230}}>
+  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Money flow</div>
+  <div style={{display:"flex",alignItems:"center",gap:6,margin:"2px 0"}}>
+    <span style={{width:12,height:12,borderRadius:"50%",background:"radial-gradient(rgba(255,210,80,0.9),rgba(255,210,80,0))",flexShrink:0}}/>
+    <span>Mining — money minted into the system</span></div>
+  <div style={{display:"flex",alignItems:"center",gap:6,margin:"2px 0"}}>
+    <span style={{width:9,height:9,borderRadius:"50%",background:"#ffcf46",flexShrink:0}}/>
+    <span>Gaining wealth</span>
+    <span style={{width:9,height:9,borderRadius:"50%",background:"#e0563b",marginLeft:8,flexShrink:0}}/>
+    <span>Losing</span></div>
+  <div style={{display:"flex",alignItems:"center",gap:6,margin:"2px 0"}}>
+    <span style={{color:"#ffcd46"}}>● ● ●</span>
+    <span>Coins flow from buyer to seller</span></div>
+  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
+    Dot density on each link is its share of THIS tick's total activity, so
+    the busiest links pop and quiet ones go silent regardless of the world's
+    absolute money supply. The world starts on barter (no coins shown).
+  </div>
+</div>}
+
 </div>{/* end map area */}
 
 </div>{/* end center column */}
@@ -6556,6 +6871,10 @@ return(
   className={"au-rail-tab"+(showGlobe?" au-active":"")}>Globe</button>
 {viewMode==="tribes"&&<button onClick={()=>setShowPower(v=>!v)}
   className={"au-rail-tab"+(showPower?" au-active":"")}>Power</button>}
+<button onClick={()=>setLayersOpen(v=>!v)}
+  className={"au-rail-tab"+(layersOpen?" au-active":"")}>Layers</button>
+<button onClick={()=>setBoardOpen(v=>!v)}
+  className={"au-rail-tab"+(boardOpen?" au-active":"")}>Leaderboard</button>
 
 {(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
 <div className="au-rule" />
@@ -6568,6 +6887,158 @@ return(
 </aside>
 
 {/* ══════════ PARAMS DRAWER ══════════ */}
+{layersOpen&&(()=>{
+  const tog=(k)=>setLayers(L=>({...L,[k]:!L[k]}));
+  const Row=({k,label,indent})=>(
+    <button onClick={()=>tog(k)}
+      className={"au-rail-tab"+(layers[k]?" au-active":"")}
+      style={{paddingLeft:14+(indent||0),width:"100%",textAlign:"left",fontSize:12}}>{label}</button>
+  );
+  return(
+    <aside className="au-parchment au-scroll" style={{
+      position:"absolute",right:142,top:6,width:220,maxHeight:"80vh",
+      padding:"10px 0",overflowY:"auto",zIndex:30}}>
+      <div style={{display:"flex",alignItems:"baseline",marginBottom:4,padding:"0 12px"}}>
+        <span className="au-heading au-sc" style={{fontSize:12}}>Layers</span>
+        <div style={{flex:1}} />
+        <span onClick={()=>setLayersOpen(false)}
+          style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
+      </div>
+      <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"4px 14px 2px"}}>Map</div>
+      <Row k="tints" label="Country tints" />
+      <Row k="borders" label="Borders" />
+      <Row k="roads" label="Roads" />
+      <Row k="seaLanes" label="Sea lanes" />
+      <Row k="moneyFlow" label="Money flow" />
+      <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Settlements</div>
+      <Row k="icons" label="Icons (master)" />
+      <Row k="village" label="· Villages" indent={10} />
+      <Row k="town" label="· Towns" indent={10} />
+      <Row k="city" label="· Cities" indent={10} />
+      <Row k="metropolis" label="· Metropolises" indent={10} />
+      <Row k="shocks" label="Plague / famine outlines" />
+      <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Moving</div>
+      <Row k="ships" label="Colony ships" />
+      <Row k="armies" label="Marching armies" />
+    </aside>
+  );
+})()}
+
+{boardOpen&&(()=>{
+  // Leaderboard. Pulls live data from the mirror (peopleRef.current) — same
+  // structure draw() reads — so the panel always reflects the current snapshot.
+  const psw=peopleRef.current;
+  if(!psw||!psw.settlements)return null;
+  const setts=psw.settlements.filter(s=>s&&s.mode==="settled");
+  const countries=psw.countries?Array.from(psw.countries.values()):[];
+
+  // Sort keys per mode. Functions return a number (descending sort).
+  const SETT_SORTS={
+    population:[s=>s.people,"Population"],
+    wealth:[s=>s.wealth||0,"Wealth"],
+    army:[s=>s.army||0,"Garrison"],
+    mining:[s=>s._minedRate||0,"Mining rate"],
+    vassals:[s=>s._vassalCount||0,"Vassals"],
+    income:[s=>s._wealthDelta||0,"Income (¤/tick)"],
+  };
+  const CNT_SORTS={
+    size:[c=>c.members?c.members.length:0,"Size (settlements)"],
+    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Population"],
+    wealth:[c=>(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0),"Total wealth"],
+    treasury:[c=>c._treasury||0,"State treasury"],
+    army:[c=>(c.members||[]).reduce((a,m)=>a+(m.army||0),0),"Standing army"],
+    capacity:[c=>c._capacity||0,"Control capacity"],
+  };
+  const sorts=boardMode==="settlements"?SETT_SORTS:CNT_SORTS;
+  const sortKey=sorts[boardSort]?boardSort:Object.keys(sorts)[0];
+  const [sortFn,sortLabel]=sorts[sortKey];
+  const rows=(boardMode==="settlements"?setts:countries).slice()
+    .sort((a,b)=>sortFn(b)-sortFn(a)).slice(0,15);
+
+  const fmt=v=>{
+    if(!isFinite(v))return "-";
+    const a=Math.abs(v);
+    if(a>=1e6)return (v/1e6).toFixed(1)+"M";
+    if(a>=1e3)return (v/1e3).toFixed(1)+"k";
+    if(a>=10)return Math.round(v).toString();
+    return v.toFixed(1);
+  };
+
+  return(
+    <aside className="au-parchment au-scroll" style={{
+      position:"absolute",right:142,top:6,width:340,maxHeight:"80vh",
+      padding:"10px 0",overflowY:"auto",zIndex:30}}>
+      <div style={{display:"flex",alignItems:"baseline",marginBottom:6,padding:"0 12px"}}>
+        <span className="au-heading au-sc" style={{fontSize:12}}>Leaderboard</span>
+        <div style={{flex:1}} />
+        <span onClick={()=>setBoardOpen(false)}
+          style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
+      </div>
+      <div style={{display:"flex",gap:4,padding:"0 12px 6px"}}>
+        {["countries","settlements"].map(m=>(
+          <button key={m} onClick={()=>setBoardMode(m)}
+            className={"au-rail-tab"+(boardMode===m?" au-active":"")}
+            style={{flex:1,fontSize:11,textTransform:"capitalize"}}>{m}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:3,padding:"0 12px 6px"}}>
+        {Object.entries(sorts).map(([k,[,label]])=>(
+          <button key={k} onClick={()=>setBoardSort(k)}
+            className={"au-rail-tab"+(sortKey===k?" au-active":"")}
+            style={{fontSize:10,padding:"3px 7px",textTransform:"none"}}>{label}</button>
+        ))}
+      </div>
+      <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
+        <thead>
+          <tr style={{color:"var(--au-fade)",textAlign:"left"}}>
+            <th style={{padding:"2px 6px 2px 12px",width:24}}>#</th>
+            <th style={{padding:"2px 4px"}}>{boardMode==="settlements"?"Settlement":"Country"}</th>
+            <th style={{padding:"2px 12px 2px 4px",textAlign:"right"}}>{sortLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r,i)=>{
+            if(boardMode==="settlements"){
+              const ctry=psw.countries&&psw.countries.get(r.countryId);
+              const hue=((r.countryId*61)%360+360)%360;
+              return(
+                <tr key={r.id}
+                  onClick={()=>setSelectedSettlementId(r.id)}
+                  style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
+                  <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
+                  <td style={{padding:"3px 4px"}}>
+                    <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
+                      background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
+                    <span style={{textTransform:"capitalize"}}>{r.name}</span>
+                    {ctry&&ctry.capitalId===r.id&&<span style={{color:"var(--au-fade)",marginLeft:4}}>· capital</span>}
+                  </td>
+                  <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{fmt(sortFn(r))}</td>
+                </tr>
+              );
+            }
+            const cap=r.capital||(r.members&&r.members[0]);
+            const hue=((r.id*61)%360+360)%360;
+            return(
+              <tr key={r.id}
+                onClick={()=>{if(cap)setSelectedSettlementId(cap.id);}}
+                style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
+                <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
+                <td style={{padding:"3px 4px"}}>
+                  <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
+                    background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
+                  <span style={{textTransform:"capitalize"}}>{cap?cap.name:"realm-"+r.id}</span>
+                </td>
+                <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{fmt(sortFn(r))}</td>
+              </tr>
+            );
+          })}
+          {rows.length===0&&<tr><td colSpan={3} style={{padding:"10px 12px",color:"var(--au-fade)",fontStyle:"italic"}}>no data yet</td></tr>}
+        </tbody>
+      </table>
+    </aside>
+  );
+})()}
+
 {rightPanel==="params"&&(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&
 <aside className="au-parchment au-scroll" style={{
   position:"absolute",right:142,top:6,bottom:6,width:300,
