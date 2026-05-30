@@ -314,6 +314,17 @@ function hasOutsideBorder(world, parentCountryId, bloc) {
   return false;                                       // fully enclosed by parent
 }
 
+// A sovereign state historically needed a CITY to function — somewhere to
+// mint coin, hold court, raise an army, and be recognised by neighbours.
+// Villages and towns could riot, break their tax obligation, or follow a
+// city into a new realm — but they couldn't carry sovereignty alone. This
+// predicate gates every successor-state path: any bloc whose highest tier
+// is village (0) or town (1) fails to consolidate as a country.
+function blocHasCity(bloc) {
+  for (const m of bloc) if ((m.tier | 0) >= 2) return true;
+  return false;
+}
+
 // A regional revolt: each collapsed province becomes the seed of a successor
 // state and rallies the disloyal members around it (within a reach radius)
 // to join it. Loyal provinces stay with the empire; restless ones leave as a
@@ -334,11 +345,11 @@ function secedeContagious(world, c, seeds) {
     }
     const newId = freshCountryId(c, bloc);
     if (newId < 0) continue;                       // can't carve out a distinct realm this pass
-    // Geographic viability: a fully-enclosed bloc has no allies it can reach
-    // and is historically unrealistic. Fail the secession — but the pressure
-    // discharges as a FAILED REVOLT (damage + loyalty reset + cooldown), so
-    // the unrest still has consequences.
-    if (!hasOutsideBorder(world, c.id, bloc)) {
+    // Viability checks:
+    //  - geographic: a fully-enclosed bloc has no allies it can reach
+    //  - political:  a bloc with no city has no seat of government
+    // Either failure: discharge as a FAILED REVOLT (damage + cooldown).
+    if (!hasOutsideBorder(world, c.id, bloc) || !blocHasCity(bloc)) {
       for (const m of bloc) {
         ravage(m, FAILED_REVOLT_POP, FAILED_REVOLT_WEALTH, FAILED_REVOLT_ARMY);
         m.loyalty = 0.5;                            // crushed but not happy
@@ -434,7 +445,7 @@ function declareIndependence(world, c, seed) {
   // Even an ambitious governor can't carve out an enclave with no
   // outside border — his bid is crushed by the surrounding loyalists.
   // The plot still costs him (army loss, ambition reset, cooldown).
-  if (!hasOutsideBorder(world, c.id, bloc)) {
+  if (!hasOutsideBorder(world, c.id, bloc) || !blocHasCity(bloc)) {
     for (const m of bloc) {
       ravage(m, FAILED_REVOLT_POP, FAILED_REVOLT_WEALTH, FAILED_REVOLT_ARMY);
       m._ambition = 0;
@@ -492,7 +503,7 @@ function rebel(world, c, seeds) {
     // sovereign state — the parent's loyal provinces surround and crush it.
     // The pressure still vents (unrest reset, towns damaged, grace), it
     // just doesn't produce a successor realm.
-    if (!hasOutsideBorder(world, c.id, bloc)) {
+    if (!hasOutsideBorder(world, c.id, bloc) || !blocHasCity(bloc)) {
       for (const m of bloc) {
         ravage(m, REBEL_POP, REBEL_WEALTH, REBEL_ARMY);
         m.unrest = 0;
@@ -761,9 +772,75 @@ export function updatePolities(world) {
     c._govSpend = gov._spend;
   }
 
+  // ── City-state minimum tier rule ─────────────────────────────────────
+  // A sovereign realm needs a city. A "country" whose largest member is a
+  // village or town has no seat to mint, govern, or defend — it's the new
+  // village whose owner hasn't gotten around to claiming it. Absorb it
+  // into the strongest neighbouring country (sharing any tile border).
+  // No bordering country at all → genuinely undiscovered frontier, stays
+  // an independent city-state. (Pacified-grace gate: don't immediately
+  // re-flip a freshly seceded/conquered settlement.)
+  absorbSubCityCountries(world, countries);
+
   // Drop treasuries of realms that no longer exist (conquest seizure already
   // moved the coin of conquered capitals; this just stops the map growing).
   if (world.governments) {
     for (const id of world.governments.keys()) if (!countries.has(id)) world.governments.delete(id);
+  }
+}
+
+function absorbSubCityCountries(world, countries) {
+  const owner = world._territoryOwner, byId = world._byId;
+  if (!owner || !byId) return;
+  // Identify countries that lack any city-tier member.
+  const subCity = [];
+  for (const c of countries.values()) {
+    let hasCity = false;
+    for (const m of c.members) if ((m.tier | 0) >= 2) { hasCity = true; break; }
+    if (!hasCity) subCity.push(c);
+  }
+  if (subCity.length === 0) return;
+  const tw = world.tw, th = world.th, N = world.N;
+  for (const c of subCity) {
+    // Skip if every member is still pacified (freshly conquered/seceded) —
+    // re-flipping it next pass would just create instability. The next polity
+    // pass will see it again once the grace expires.
+    let allPacified = true;
+    for (const m of c.members) {
+      if (world.step - (m._conqueredAt ?? -Infinity) >= CONQUEST_GRACE) { allPacified = false; break; }
+    }
+    if (allPacified) continue;
+    // Find the strongest country whose territory touches this one's.
+    const myIds = new Set(); for (const m of c.members) myIds.add(m.id);
+    const touchScore = new Map();   // foreign countryId → cumulative power
+    for (let ti = 0; ti < N; ti++) {
+      const oid = owner[ti]; if (oid < 0 || !myIds.has(oid)) continue;
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+      const ns = [ty * tw + xm, ty * tw + xp,
+                  ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+      for (let k = 0; k < 4; k++) {
+        const ni = ns[k]; if (ni < 0) continue;
+        const no = owner[ni]; if (no < 0 || myIds.has(no)) continue;
+        const ns2 = byId.get(no); if (!ns2 || ns2.countryId === c.id) continue;
+        const foreign = countries.get(ns2.countryId); if (!foreign) continue;
+        // Only absorbing into countries that DO have a city (otherwise we'd
+        // just merge two village statelets, which solves nothing).
+        let foreignHasCity = false;
+        for (const fm of foreign.members) if ((fm.tier | 0) >= 2) { foreignHasCity = true; break; }
+        if (!foreignHasCity) continue;
+        touchScore.set(ns2.countryId, (touchScore.get(ns2.countryId) || 0) + settlementPower(foreign.capital));
+      }
+    }
+    if (touchScore.size === 0) continue;        // truly isolated → stays a city-state
+    let bestId = -1, bestScore = -1;
+    for (const [cid, score] of touchScore) if (score > bestScore) { bestScore = score; bestId = cid; }
+    if (bestId < 0) continue;
+    for (const m of c.members) {
+      m.countryId = bestId;
+      m.loyalty = 0.6;                          // absorbed, not yet truly part of the realm
+      m._conqueredAt = world.step;              // brief grace to settle in
+      if (m.history) m.history.push({ step: world.step, type: "absorbed", into: bestId });
+    }
   }
 }
