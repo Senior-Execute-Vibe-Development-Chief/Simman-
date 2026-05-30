@@ -5652,30 +5652,30 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     }
     // 2) Animated coin particles flowing along trade links in the net-
     // money direction. Each link gets a SHARE of a global dot budget
-    // proportional to its current activity — so the busiest links always
-    // pop and quiet links go silent, regardless of the world's absolute
-    // money supply (an economy after inflation or a stagnant frontier
-    // shouldn't flood or drain the screen).
+    // — but allocated by sqrt(mag) instead of mag, so a giant trunk
+    // doesn't drown out the dozens of small links. The budget is also
+    // large enough to keep the scene populated even when the world has
+    // few links: one dot ~= 0.3% of the world's current trade activity.
     const flows=psw._moneyFlows;
     if(flows&&flows.length){
-      // Budget targets ~200 dots on screen at most; share is mag / total.
-      // Also keep a noise floor — links above 10% of the max get at least
-      // one dot, so the second-busiest link is always visible too.
-      let totalMag=0,maxMag=0;
-      for(const f of flows){totalMag+=f.mag;if(f.mag>maxMag)maxMag=f.mag;}
-      const DOT_BUDGET=200;
-      const noiseFloor=maxMag*0.1;
+      let totalRoot=0,maxMag=0;
+      for(const f of flows){totalRoot+=Math.sqrt(f.mag);if(f.mag>maxMag)maxMag=f.mag;}
+      const DOT_BUDGET=350;
+      // Noise floor low enough that genuinely active mid-tier links still
+      // get a dot. Anything above 3% of the busiest link is always visible.
+      const noiseFloor=maxMag*0.03;
       const now=performance.now();
       for(const f of flows){
         const pts=f.tiles;const np=pts.length;if(np<2)continue;
-        let dots=Math.round((f.mag/Math.max(0.001,totalMag))*DOT_BUDGET);
+        let dots=Math.round((Math.sqrt(f.mag)/Math.max(0.001,totalRoot))*DOT_BUDGET);
         if(f.mag>=noiseFloor&&dots<1)dots=1;
         if(dots<=0)continue;
-        dots=Math.min(dots,12);            // per-link cap so one giant link doesn't eat the budget visually
-        // Brightness scales with the link's SHARE of activity, not raw
-        // magnitude, so the most active links pop relative to the scene.
+        dots=Math.min(dots,16);            // per-link cap so a single huge link doesn't eat the screen
+        // Brightness scales with the link's SHARE of the maximum (not raw
+        // magnitude), so dominant links pop relative to whatever scene you
+        // are looking at.
         const share=f.mag/Math.max(0.001,maxMag);
-        const alpha=Math.max(0.3,Math.min(0.95,0.3+share*0.65));
+        const alpha=Math.max(0.35,Math.min(0.95,0.35+share*0.6));
         ctx.fillStyle=`rgba(255,205,70,${alpha.toFixed(2)})`;
         const period=2600;                 // ms for a coin to traverse the link
         for(let j=0;j<dots;j++){
@@ -5692,13 +5692,15 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     }
     // 3) Settlements: dot coloured by net wealth change (gold = gaining,
     // red = losing, grey = steady) with a gold glow scaled to mining
-    // income (where money enters the system).
+    // income (where money enters the system). Kept small so the trade
+    // FLOWS dominate the visual — this is the money-flow overlay, not
+    // the settlement overlay.
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
       const x=s.pos.x*TR,y=dataYtoScreenY(s.pos.y*TR,H,CH);
       const mined=s._minedRate||0;
       if(mined>0.01){
-        const rad=4+Math.min(16,Math.sqrt(mined)*2.2);
+        const rad=2.5+Math.min(10,Math.sqrt(mined)*1.4);
         const g=ctx.createRadialGradient(x,y,0,x,y,rad);
         g.addColorStop(0,"rgba(255,210,80,0.55)");
         g.addColorStop(1,"rgba(255,210,80,0)");
@@ -5706,10 +5708,10 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
       const d=s._wealthDelta||0;
       const col=d>0.02?"#ffcf46":d<-0.02?"#e0563b":"#8a8f9c";
-      const r=2+Math.min(2.5,Math.sqrt(Math.abs(d))*0.6);
+      const r=1.2+Math.min(1.6,Math.sqrt(Math.abs(d))*0.35);
       ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
       ctx.fillStyle=col;ctx.fill();
-      ctx.lineWidth=0.6;ctx.strokeStyle="rgba(0,0,0,0.55)";ctx.stroke();
+      ctx.lineWidth=0.4;ctx.strokeStyle="rgba(0,0,0,0.55)";ctx.stroke();
     }
   }
   if(psw&&ctx&&!vmRoads&&!vmMoney){
