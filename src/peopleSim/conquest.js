@@ -65,6 +65,12 @@ const REBEL_ARMY  = 0.4;     // ...and its garrison mutinies down to this
 const RIOT_POP    = 0.90;    // the capital RIOTS instead of seceding: lighter damage, no breakaway
 const RIOT_WEALTH = 0.65;
 const RIOT_ARMY   = 0.7;
+// Failed revolts (the bid was geographically un-viable — landlocked enclave
+// surrounded by parent loyalists). Damage is between a riot and a rebellion
+// — the rising actually fought, but lost. No new state forms.
+const FAILED_REVOLT_POP    = 0.88;
+const FAILED_REVOLT_WEALTH = 0.55;
+const FAILED_REVOLT_ARMY   = 0.35;
 const SPOILS_DECAY = 0.85;   // war-weariness relief (banked on conquest in armies.js) fades per pass
 
 export function govOf(world, countryId) {
@@ -262,6 +268,52 @@ function freshCountryId(c, bloc) {
   return -1;                                          // degenerate: nothing distinct to use
 }
 
+// History rarely produced fully landlocked enclaves seceding from a still-
+// functioning empire — the seceding state has no allies it can reach, no
+// trade route the parent doesn't control, no escape route, so the parent
+// simply sieges it forever. (Andorra-style microstates exist only because
+// the surrounder LET them — by gift, not by force.) Capital-fall
+// fragmentation is the historical exception and is handled separately.
+//
+// This predicate tests whether the bloc's combined territory touches
+// ANYTHING that isn't the parent country — another country, unclaimed
+// land, or sea. If yes, secession is geographically viable; if no, the
+// bloc is fully enclosed and the attempt fails (the loyalty/ambition/
+// unrest still discharges as DAMAGE — see ravage callers).
+function hasOutsideBorder(world, parentCountryId, bloc) {
+  const owner = world._territoryOwner;
+  if (!owner || !world._byId) return true;            // no territory data yet → don't block
+  const tw = world.tw, th = world.th, N = world.N;
+  const blocIds = new Set();
+  for (const m of bloc) blocIds.add(m.id);
+  // Country of each tile-owner-id, cached so we don't look up countryId per tile.
+  const ownerCountry = new Map();
+  for (let ti = 0; ti < N; ti++) {
+    const oid = owner[ti]; if (oid < 0) continue;
+    if (!blocIds.has(oid)) continue;
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    // 4-neighbour border check (wrap in x).
+    const xm = tx === 0 ? tw - 1 : tx - 1;
+    const xp = tx === tw - 1 ? 0 : tx + 1;
+    const ns = [ty * tw + xm, ty * tw + xp,
+                ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+    for (let k = 0; k < 4; k++) {
+      const ni = ns[k]; if (ni < 0) continue;
+      const nOwner = owner[ni];
+      if (nOwner < 0) return true;                    // unclaimed / sea = outside border
+      if (blocIds.has(nOwner)) continue;              // tile owned by a bloc-mate, still "inside"
+      let nc = ownerCountry.get(nOwner);
+      if (nc === undefined) {
+        const ns2 = world._byId.get(nOwner);
+        nc = ns2 ? ns2.countryId : parentCountryId;
+        ownerCountry.set(nOwner, nc);
+      }
+      if (nc !== parentCountryId) return true;        // touches a foreign country
+    }
+  }
+  return false;                                       // fully enclosed by parent
+}
+
 // A regional revolt: each collapsed province becomes the seed of a successor
 // state and rallies the disloyal members around it (within a reach radius)
 // to join it. Loyal provinces stay with the empire; restless ones leave as a
@@ -282,6 +334,19 @@ function secedeContagious(world, c, seeds) {
     }
     const newId = freshCountryId(c, bloc);
     if (newId < 0) continue;                       // can't carve out a distinct realm this pass
+    // Geographic viability: a fully-enclosed bloc has no allies it can reach
+    // and is historically unrealistic. Fail the secession — but the pressure
+    // discharges as a FAILED REVOLT (damage + loyalty reset + cooldown), so
+    // the unrest still has consequences.
+    if (!hasOutsideBorder(world, c.id, bloc)) {
+      for (const m of bloc) {
+        ravage(m, FAILED_REVOLT_POP, FAILED_REVOLT_WEALTH, FAILED_REVOLT_ARMY);
+        m.loyalty = 0.5;                            // crushed but not happy
+        m._conqueredAt = world.step;                // pacified for a while (no immediate retry)
+        if (m.history) m.history.push({ step: world.step, type: "failed-revolt" });
+      }
+      continue;
+    }
     for (const m of bloc) {
       m.countryId = newId;
       m.loyalty = m === seed ? 1 : 0.85;           // seed leads; followers enthusiastic
@@ -366,6 +431,19 @@ function declareIndependence(world, c, seed) {
   const bloc = subtreeOf(c, seed).filter(m => m.countryId === c.id);   // still in the realm
   const newId = freshCountryId(c, bloc);
   if (newId < 0) { seed._ambition = 0; return; }                       // can't split cleanly — vent it
+  // Even an ambitious governor can't carve out an enclave with no
+  // outside border — his bid is crushed by the surrounding loyalists.
+  // The plot still costs him (army loss, ambition reset, cooldown).
+  if (!hasOutsideBorder(world, c.id, bloc)) {
+    for (const m of bloc) {
+      ravage(m, FAILED_REVOLT_POP, FAILED_REVOLT_WEALTH, FAILED_REVOLT_ARMY);
+      m._ambition = 0;
+      m.loyalty = 0.5;
+      m._conqueredAt = world.step;
+      if (m.history) m.history.push({ step: world.step, type: "failed-revolt" });
+    }
+    return;
+  }
   for (const m of bloc) {
     m.countryId = newId;
     m._conqueredAt = world.step;                 // the breakaway realm gets breathing room (grace)
@@ -410,6 +488,20 @@ function rebel(world, c, seeds) {
     }
     const newId = freshCountryId(c, bloc);
     if (newId < 0) { seed.unrest = 0; continue; }
+    // A landlocked rebellion can RIOT (do damage) but can't carve out a
+    // sovereign state — the parent's loyal provinces surround and crush it.
+    // The pressure still vents (unrest reset, towns damaged, grace), it
+    // just doesn't produce a successor realm.
+    if (!hasOutsideBorder(world, c.id, bloc)) {
+      for (const m of bloc) {
+        ravage(m, REBEL_POP, REBEL_WEALTH, REBEL_ARMY);
+        m.unrest = 0;
+        m.loyalty = 0.5;
+        m._conqueredAt = world.step;
+        if (m.history) m.history.push({ step: world.step, type: "failed-revolt" });
+      }
+      continue;
+    }
     for (const m of bloc) {
       ravage(m, REBEL_POP, REBEL_WEALTH, REBEL_ARMY);
       m.countryId = newId;
