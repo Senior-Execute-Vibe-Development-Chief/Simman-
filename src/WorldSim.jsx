@@ -5922,6 +5922,11 @@ if(_ter&&_ter.tribes){
     _aAg+=_k.agriculture;_aMt+=_k.metallurgy;_aNv+=_k.navigation;_aOg+=_k.organization;}
   if(_aliveK>0){_aAg/=_aliveK;_aMt/=_aliveK;_aNv/=_aliveK;_aOg/=_aliveK;}}
 const _era=deriveEra(_aAg,_aMt,_aNv,_aOg);
+// Nation count = peopleSim countries (active polities). The chronicle
+// previously read tribeCount, which the worker snapshot was setting to
+// the number of settlements — wrong scale for "nations."
+const _psw=peopleRef.current;
+const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 
 // View modes for the right rail
 const VIEW_MODES=[
@@ -6006,7 +6011,7 @@ return(
   <span className="au-year">{_ys}</span>
   <span className="au-fade" style={{fontSize:11}}>Step {_step.toLocaleString()}</span>
   <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
-  <span style={{fontSize:13}}>{tribeCount} <span className="au-sc au-fade" style={{fontSize:11}}>nations</span></span>
+  <span style={{fontSize:13}}>{_countryCount} <span className="au-sc au-fade" style={{fontSize:11}}>nations</span></span>
   <span style={{fontSize:13}}>{coverage}<span className="au-fade">%</span> <span className="au-sc au-fade" style={{fontSize:11}}>claimed</span></span>
   {(()=>{
     // Wheat-price ticker — population-weighted global price level. The number
