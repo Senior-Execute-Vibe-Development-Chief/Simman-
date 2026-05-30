@@ -79,8 +79,8 @@ const SOFT_DIST_SQ              = SOFT_DIST * SOFT_DIST;
 // The cradle's MARKET_RANGE is large enough that the catchment overlaps
 // with itself, producing dense intra-cluster spawning at distances above
 // the SOFT_DIST floor (15-30 tiles, not 5-10).
-const MARKET_RANGE              = 30;
-const MARKET_PULL_WEIGHT        = 1.2;  // strength of the bonus (combined with spacingFactor)
+const MARKET_RANGE              = 20;   // tighter catchment — clusters are local, not regional
+const MARKET_PULL_WEIGHT        = 0.4;   // modest pull so clusters form but don't snowball
 // Spacing-factor: 0 at HARD_FLOOR, 1 at SOFT_DIST. Used in sendSettlers'
 // hard reject because mother-country colony parties already pick deliberately
 // (the founder doesn't accidentally plant at 4 tiles).
