@@ -170,25 +170,28 @@ export function baseEdgeCost(world, fromTi, toTi) {
 // find the route, board ships, etc. Applied as a small additive cost
 // when the cost class of the FROM and TO tiles differs.
 //
-// RIVER CROSSING cost: rivers parallel to travel are bonuses (the path
-// follows the bank); rivers perpendicular to travel are obstacles
-// (without a bridge, a column has to ford). We add a perpendicular-river
-// penalty when crossing FROM a non-river tile TO a non-river tile but
-// stepping through a river-tile neighbour structure isn't tractable per
-// edge; instead approximate it as an extra cost when going from river
-// to non-river (just stepping off the bank costs little, but next time
-// the column encounters a river it pays). This is a coarse approximation
-// — for fine-grained perpendicular-river penalties we'd need to track
-// flow direction, which we don't.
+// RIVER as its own mode: a major river (mag ≥ 2) is treated as a
+// distinct travel class — getting INTO the water is an event (find a
+// ford / build a raft / board a boat) and so is getting OUT, regardless
+// of the river's width. That makes river crossing a FIXED penalty
+// (embark + debark = RIVER_BOARD_COST × 2), not a per-tile traversal
+// cost, which matches the physical fact that a 1-tile and a 3-tile
+// river take roughly the same effort to cross — the work is in boarding
+// and disembarking, not in paddling. Construction tech (bridges,
+// pontoons, ferries) shrinks the boarding cost toward zero. Travel
+// ALONG the river (river → river) pays only the cheap river-tile cost
+// from baseEdgeCost — once you're floating, you keep floating.
 const WATER_BASE_COST    = 12;   // small-boat / raft crossing at nav≈0.2
 const WATER_NAV_FLOOR    = 3;    // real-fleet crossing at nav≥1
 const NAV_EMBARK_THRESH  = 0.2;  // below this, water remains impassable
 const MODE_CHANGE_COST   = 0.6;  // additive penalty when crossing a class boundary
+const RIVER_BOARD_COST   = 1.5;  // embark OR debark a major river (each side, ≈ a ford / raft / bridge)
 
 function tileMode(world, ti) {
-  // 0 = water, 1 = road, 2 = land
+  // 0 = ocean water, 1 = road, 2 = land, 3 = major river (mag ≥ 2)
   if (world.elev[ti] <= 0) return 0;
   if (world.roadQuality && world.roadQuality[ti] < 1.0) return 1;
+  if (world.riverMag && world.riverMag[ti] >= 2) return 3;
   return 2;
 }
 export function localEdgeCost(world, fromTi, toTi, kn) {
@@ -220,20 +223,24 @@ export function localEdgeCost(world, fromTi, toTi, kn) {
     if (isWater) mul *= (1 - 0.45 * nav);
   }
   let cost = c * mul;
-  // Mode-change penalty when crossing between land/road/water classes.
-  // Construction reduces the cost (better infrastructure makes transitions
-  // cheaper — proper ports, road junctions, embankments).
+  // Mode-change penalty when crossing between land/road/water/river
+  // classes. Construction reduces the cost (better infrastructure makes
+  // transitions cheaper — proper ports, road junctions, embankments,
+  // bridges). The RIVER mode pays a much bigger boarding cost than a
+  // road-↔-land transition, because the boat/ford operation is the
+  // whole "cross the river" event compressed into one step. A full
+  // crossing (land → river → land) therefore pays RIVER_BOARD_COST
+  // TWICE — once to embark, once to debark — and a river of any width
+  // pays roughly the same total, since paddling is cheap once you're
+  // in the boat.
   const fromMode = tileMode(world, fromTi);
   const toMode   = tileMode(world, toTi);
   if (fromMode !== toMode) {
-    cost += MODE_CHANGE_COST * (1 - 0.5 * cons);
-  }
-  // River-crossing penalty: stepping off a major river tile (mag≥2) to a
-  // non-river land tile costs more, since you've just had to ford. Coarse
-  // approximation but at least the model knows rivers are obstacles for
-  // cross-current travel, not just bonuses for along-river travel.
-  if (world.riverMag && world.riverMag[fromTi] >= 2 && world.riverMag[toTi] < 2 && toMode === 2) {
-    cost += 1.5 * (1 - 0.6 * cons);   // bridges/fords (construction) cut the cost
+    if (fromMode === 3 || toMode === 3) {
+      cost += RIVER_BOARD_COST * (1 - 0.7 * cons);   // boat/ford/bridge
+    } else {
+      cost += MODE_CHANGE_COST * (1 - 0.5 * cons);
+    }
   }
   return cost;
 }
