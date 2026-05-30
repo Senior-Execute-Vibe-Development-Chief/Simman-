@@ -271,17 +271,22 @@ function updateWealth(world, s) {
   // Smoothed mining income, for the money-flow overlay's source markers
   // (mining is the only money entering the system).
   s._minedRate = (s._minedRate || 0) * 0.9 + mined * 0.1;
-  computeLuxury(s);
+  computeLuxury(s, world);
 }
 
 // Per-tick luxury supply (coin a region can earn selling its luxury goods)
 // and demand (coin the settlement will spend importing luxuries, scaled by
 // how rich it is). Stored as remaining budgets the trade pass draws down.
-function computeLuxury(s) {
+function computeLuxury(s, world) {
   const lr = s.localRes || {};
   let luxRes = 0; for (const id of LUX_RES) luxRes += lr[id] || 0;
   const popF = Math.sqrt(Math.max(1, s.people));
-  s._luxSupply = luxRes * LUX_SUPPLY_RATE * popF;
+  // Luxury supply takes the FULL sack penalty squared — luxuries depend on
+  // the most skilled labour, so a sacked town's silk/dye/spice production
+  // collapses harder than its grain (which the same sackPenalty above only
+  // dents). Squaring takes 0.3 → 0.09 at the floor.
+  const sp = sackPenalty(s, world && world.step);
+  s._luxSupply = luxRes * LUX_SUPPLY_RATE * popF * sp * sp;
   const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
   s._luxDemand = spare * LUX_SPEND_FRAC;
   s._luxSupplyLeft = s._luxSupply;   // drawn down across partners in the trade pass
@@ -321,7 +326,25 @@ export { updateWealth };
 // partner already exports. Knowledge growth (updateKnowledge) is the
 // place imported resources legitimately matter — learning a craft from
 // a trading partner — not finished-goods output.
-export function computeExportValue(s) {
+// Conquest production penalty: forcibly stormed settlements (armies.js sets
+// _sackedAt) lose most of their export value for a while — skilled labour
+// fled or died, infrastructure was destroyed, supply lines collapsed. This
+// makes conquest of a trading partner DESTRUCTIVE to the very thing that
+// made them worth attacking, the historical reason conquering trade hubs
+// was usually a bad deal (Mongol sack of Baghdad, Mongol/Yuan collapse of
+// Iranian agriculture, etc.). Recovers linearly over ~CONQUEST_RECOVERY
+// ticks. The penalty applies regardless of whether the new owner held the
+// city long ago and re-took it — sacks always cost real productive value.
+const SACK_PRODUCTION_FLOOR = 0.3;   // freshly-sacked town keeps this fraction of normal output
+const CONQUEST_RECOVERY     = 5000;  // ticks to recover linearly to full output
+function sackPenalty(s, worldStep) {
+  if (s._sackedAt == null || worldStep == null) return 1;
+  const age = worldStep - s._sackedAt;
+  if (age >= CONQUEST_RECOVERY) return 1;
+  if (age < 0) return 1;
+  return SACK_PRODUCTION_FLOOR + (1 - SACK_PRODUCTION_FLOOR) * (age / CONQUEST_RECOVERY);
+}
+export function computeExportValue(s, world) {
   const k = s.knowledge || {};
   const r = s.localRes || {};
   let v = 1.0;
@@ -363,7 +386,11 @@ export function computeExportValue(s) {
   // Soldiers don't produce trade goods — a heavily militarised settlement
   // exports less (the workforce is under arms, not at the loom/forge).
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
-  return v * Math.max(0.1, 1 - armyFrac);
+  // Sack penalty: a forcibly-stormed settlement loses output for a while
+  // (see sackPenalty above). World-aware callers pass `world`; older callers
+  // get penalty=1 (no change). The trade pass and the inflation pass DO
+  // pass world, so the dynamics fire where it matters most.
+  return v * Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step);
 }
 
 // Wealth reserve = "rainy day fund" the settlement holds back from

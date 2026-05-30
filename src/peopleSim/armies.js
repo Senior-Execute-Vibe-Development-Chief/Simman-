@@ -200,7 +200,14 @@ export function advanceFronts(world) {
   // trade magnitude index from world._linkMoney; tile-capture rate is
   // multiplied by 1/(1 + tradeFactor) so peaceful trading neighbours hold
   // stable borders even with mild power asymmetries.
-  const TRADE_PEACE_REF = 5;   // total cross-border money/tick at which the dampener saturates
+  // Softened (was ×2 max bar increase) now that the SACK PRODUCTION PENALTY
+  // (settlement.js sackPenalty) provides the structural reason — conquering
+  // a trade partner DESTROYS the trade asset, so the calculus naturally
+  // discourages it. The dampener is now just the secondary "political
+  // friction" effect (merchant lobby, international norms) and tops out at
+  // +50% required advantage instead of +100%.
+  const TRADE_PEACE_REF = 8;   // total cross-border money/tick at which the dampener saturates
+  const TRADE_PEACE_MAX = 0.5; // max multiplier on ATTACK_MIN_RATIO from trade peace
   const tradePair = new Map();   // "ccA:ccB" (sorted) → magnitude
   const lm = world._linkMoney;
   if (lm) {
@@ -278,7 +285,7 @@ export function advanceFronts(world) {
     // business). A saturated trade peer requires ~2× the normal advantage
     // to capture a tile from.
     const tf = tradeFactor(A.countryId, D.countryId);
-    if (A._M < effDef * ATTACK_MIN_RATIO * (1 + tf)) continue;
+    if (A._M < effDef * ATTACK_MIN_RATIO * (1 + tf * TRADE_PEACE_MAX)) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -341,6 +348,7 @@ export function advanceFronts(world) {
           // Defence broken — the throne-city falls to the attacker.
           def.countryId = att.countryId;
           def._conqueredAt = world.step;
+          def._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue
           def.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)
           def._ambition = 0;    // a freshly subdued city isn't plotting (yet)
           def.unrest = 0;       // the conquered populace is cowed for now

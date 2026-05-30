@@ -528,7 +528,7 @@ function linkCloseNeighbours(world, s) {
 }
 
 function tryAddRoad(world, s) {
-  const sExport = computeExportValue(s);
+  const sExport = computeExportValue(s, world);
   const sFood = (s._foodSupply || 0) - (s._foodDemand || 0);
   const own = s.localRes || {};
   // Resources we already have access to via local OR via existing
@@ -573,7 +573,7 @@ function tryAddRoad(world, s) {
     for (const n of missing) {
       if ((peerRes[n] || 0) >= HAVE_THRESHOLD) resGain += 1;
     }
-    const peerExport = computeExportValue(peer);
+    const peerExport = computeExportValue(peer, world);
     const exGap = Math.abs(sExport - peerExport);
     const peerFood = (peer._foodSupply || 0) - (peer._foodDemand || 0);
     let foodGain = 0;
@@ -891,8 +891,8 @@ function runGeneralTradeBetween(world, a, b, link) {
   // A's goods sold to B (B pays A), then B's goods sold to A (A pays B).
   // Each leg scales with the BUYER's buying power, so a rich node imports more
   // and relays its coin onward. Freight is split across the two legs.
-  sellGoods(world, a, b, computeExportValue(a) * vol * demandMul(b), transport * 0.5, intermediates, numInter);
-  sellGoods(world, b, a, computeExportValue(b) * vol * demandMul(a), transport * 0.5, intermediates, numInter);
+  sellGoods(world, a, b, computeExportValue(a, world) * vol * demandMul(b), transport * 0.5, intermediates, numInter);
+  sellGoods(world, b, a, computeExportValue(b, world) * vol * demandMul(a), transport * 0.5, intermediates, numInter);
 }
 
 // Luxury trade: a wealthy settlement spends coin importing luxury goods

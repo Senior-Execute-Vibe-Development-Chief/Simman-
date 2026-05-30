@@ -64,7 +64,7 @@ export function updateInflation(world) {
     if (s.mode !== "settled") continue;
     const root = comps.has(s.id) ? comps.get(s.id) : s.id;
     M.set(root, (M.get(root) || 0) + Math.max(0, s.wealth || 0));
-    const ev = computeExportValue(s);
+    const ev = computeExportValue(s, world);
     const out = Math.max(1, ev * Math.sqrt(Math.max(1, s.people)));
     T.set(root, (T.get(root) || 0) + out);
   }
