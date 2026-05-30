@@ -17,6 +17,7 @@
 
 import { coreRadiusFor } from "./territory.js";
 import { findPath } from "./roads.js";
+import { localEdgeCost } from "./transport.js";
 import { fragmentRealm } from "./conquest.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
@@ -106,9 +107,18 @@ function dispatchReinforcements(world, besieged) {
       if (troops < 1) continue;
       m.army -= troops;                               // committed: gone from home until they arrive
       m._lastReinforce = world.step;
+      // Snapshot the dispatching settlement's tech so the column moves at
+      // the speed its TRAINING earned (the troops carry their doctrine with
+      // them, not the home town's). Keeping the raw tile indices on the path
+      // lets moveArmies look up terrain cost per step.
+      const k = m.knowledge || {};
       world.armies.push({
         owner: m.id, countryId: m.countryId, troops, targetId: def.id,
         path: path.tiles.map(ti => ({ x: (ti % tw) + 0.5, y: ((ti / tw) | 0) + 0.5 })),
+        pathTiles: path.tiles,
+        knowledge: { toolmaking: k.toolmaking||0, construction: k.construction||0,
+                     organization: k.organization||0, mobility: k.mobility||0,
+                     navigation: k.navigation||0 },
         idx: 0, x: m.pos.x, y: m.pos.y,
       });
       sent++;
@@ -117,16 +127,18 @@ function dispatchReinforcements(world, besieged) {
 }
 
 // ── Per tick: advance every marching column; merge into the garrison on arrival ──
+// March speed reads the per-tile terrain cost via localEdgeCost (transport.js)
+// modulated by the column's own knowledge snapshot — so a Mongol cavalry horde
+// gallops across plains while a stone-age levy plods through mountains. Roads
+// dominate (cost ≈ 0.08-0.25, so ~4-12× the base speed). The same edge-cost
+// function the trade pathfinder uses, applied symmetrically to military movement.
 export function moveArmies(world) {
   const arr = world.armies;
   if (!arr || arr.length === 0) return;
-  const { tw, th, roadQuality: rq } = world;
+  const { tw, th } = world;
   const live = [];
   for (const m of arr) {
-    const path = m.path;
-    const ti = (Math.max(0, Math.min(th - 1, m.y | 0))) * tw + (((m.x | 0) % tw + tw) % tw);
-    const onRoad = rq && rq[ti] < 1.0;
-    m.idx += MARCH_SPEED * (onRoad ? ROAD_MARCH_MULT : 1);
+    const path = m.path, pathTiles = m.pathTiles;
     if (!path || path.length < 2 || m.idx >= path.length - 1) {
       // Arrived: the column joins its target's garrison (if it still stands
       // and is still friendly). Otherwise the relief force is lost.
@@ -134,7 +146,29 @@ export function moveArmies(world) {
       if (def && def.mode === "settled" && def.countryId === m.countryId) def.army = (def.army || 0) + m.troops;
       continue;
     }
-    const i0 = m.idx | 0, i1 = Math.min(path.length - 1, i0 + 1), fr = m.idx - i0;
+    // Per-step movement cost: integer tile we're about to leave → next tile.
+    // Higher cost = slower step (m.idx advances less).
+    const i0 = m.idx | 0, i1 = Math.min(path.length - 1, i0 + 1);
+    let stepMul = 1;
+    if (pathTiles && pathTiles.length === path.length) {
+      const c = localEdgeCost(world, pathTiles[i0], pathTiles[i1], m.knowledge);
+      // Speed scales as 1/√c so the spread stays moderate:
+      //   road (c≈0.10) → ~3.2× speed
+      //   plain, base tech (c≈1.0) → 1.0× speed
+      //   plain, max tech (c≈0.25) → 2.0× speed
+      //   hills (c≈3) → 0.58× speed
+      //   high mountain (c≈10) → 0.32× speed
+      // Bounded above so a perfect worn road doesn't blow past sane limits.
+      stepMul = isFinite(c) ? Math.min(4, 1 / Math.sqrt(Math.max(0.05, c))) : 0.5;
+    } else {
+      // Backwards-compatibility: legacy columns without pathTiles fall back
+      // to a flat road check (the pre-terrain behaviour).
+      const ti = (Math.max(0, Math.min(th - 1, m.y | 0))) * tw + (((m.x | 0) % tw + tw) % tw);
+      const onRoad = world.roadQuality && world.roadQuality[ti] < 1.0;
+      stepMul = onRoad ? ROAD_MARCH_MULT : 1;
+    }
+    m.idx += MARCH_SPEED * stepMul;
+    const fr = m.idx - i0;
     const p0 = path[i0], p1 = path[i1];
     let dxp = p1.x - p0.x; if (dxp > tw / 2) dxp -= tw; else if (dxp < -tw / 2) dxp += tw;
     m.x = ((p0.x + dxp * fr) % tw + tw) % tw;

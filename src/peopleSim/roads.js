@@ -112,14 +112,23 @@ const ROAD_GONE           = 0.999;
 // traffic, not world size).
 const FLOW_EPS            = 0.001;
 
-// Partner-distance reach scales with the BUILDER's population: a
-// 60-pop hamlet can only see ~28 tiles; a 5000-pop city sees ~90;
-// a 16000-pop metropolis sees ~140. Stops small villages from
-// reaching out across the whole map to a distant rich neighbour.
+// Partner-distance reach scales with the BUILDER's population AND its
+// transport technology: a 60-pop hamlet can only see ~28 tiles at stone-
+// age tech; the same hamlet with horses+ships+roads can see ~50. A
+// 5000-pop city sees ~90 base → ~160 maxed. A 16000-pop metropolis sees
+// ~140 base → ~250 maxed. Stops small villages from reaching across the
+// world while letting tech-advanced civs build genuine trade empires
+// (the historical pattern — the Hanseatic League's reach was about
+// shipping tech, not just city size).
 const PARTNER_DIST_BASE   = 20;
 const PARTNER_DIST_PER    = 1.0;        // tiles per sqrt(pop)
 function partnerReachFor(s) {
-  return PARTNER_DIST_BASE + Math.sqrt(Math.max(0, s.people || 0)) * PARTNER_DIST_PER;
+  const k = s.knowledge || {};
+  // Mobility (horses, wagons) and navigation (ships) both expand commercial
+  // horizon. Cap the multiplier at ~1.8× so even a maxed-tech metropolis
+  // can't reach across an entire continent in one trade pair.
+  const techMul = 1 + 0.5 * (k.mobility || 0) + 0.3 * (k.navigation || 0);
+  return (PARTNER_DIST_BASE + Math.sqrt(Math.max(0, s.people || 0)) * PARTNER_DIST_PER) * techMul;
 }
 
 // New roads need a margin of improvement to justify the effort.
