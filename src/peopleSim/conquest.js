@@ -843,4 +843,54 @@ function absorbSubCityCountries(world, countries) {
       if (m.history) m.history.push({ step: world.step, type: "absorbed", into: bestId });
     }
   }
+
+  // ── Enclave fragment absorption ─────────────────────────────────────
+  // A sub-city settlement inside a LARGER country whose home tile is
+  // fully surrounded by foreign territory (and which has no port → no sea
+  // resupply) is a stranded fragment — a village whose parent capital is
+  // unreachable. Real example: a one-village exclave of country A
+  // marooned inside country B. The settlement flips to the surrounding
+  // power. (City-bearing enclaves stay — they have the apparatus to hold
+  // out: West Berlin, Vatican, Llívia.)
+  for (const c of countries.values()) {
+    for (const m of c.members) {
+      if (m.mode !== "settled") continue;
+      if ((m.tier | 0) >= 2) continue;            // cities can hold out as enclaves
+      if (m._isPort) continue;                    // sea resupply → real enclave
+      if (m.id === c.capitalId) continue;
+      if (world.step - (m._conqueredAt ?? -Infinity) < CONQUEST_GRACE) continue;
+      // Check the 8 neighbours of the settlement's home tile.
+      const ti = (m.pos.y | 0) * tw + (m.pos.x | 0);
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+      const yu = ty - 1, yd = ty + 1;
+      const cells = [
+        ty * tw + xm, ty * tw + xp,
+        yu >= 0 ? yu * tw + tx : -1, yd < th ? yd * tw + tx : -1,
+        yu >= 0 ? yu * tw + xm : -1, yu >= 0 ? yu * tw + xp : -1,
+        yd < th ? yd * tw + xm : -1, yd < th ? yd * tw + xp : -1,
+      ];
+      let ownCC = 0, foreignTouch = new Map();
+      for (let k = 0; k < 8; k++) {
+        const ni = cells[k]; if (ni < 0) continue;
+        const oid = owner[ni]; if (oid < 0) continue;
+        const ns2 = byId.get(oid); if (!ns2) continue;
+        if (ns2.countryId === c.id) { ownCC++; continue; }
+        const foreign = countries.get(ns2.countryId); if (!foreign) continue;
+        let foreignHasCity = false;
+        for (const fm of foreign.members) if ((fm.tier | 0) >= 2) { foreignHasCity = true; break; }
+        if (!foreignHasCity) continue;
+        foreignTouch.set(ns2.countryId, (foreignTouch.get(ns2.countryId) || 0) + settlementPower(foreign.capital));
+      }
+      if (ownCC > 0) continue;                    // not actually marooned
+      if (foreignTouch.size === 0) continue;      // unclaimed land — let crystallisation/territory pass handle
+      let bestId = -1, bestScore = -1;
+      for (const [cid, score] of foreignTouch) if (score > bestScore) { bestScore = score; bestId = cid; }
+      if (bestId < 0) continue;
+      m.countryId = bestId;
+      m.loyalty = 0.6;
+      m._conqueredAt = world.step;
+      if (m.history) m.history.push({ step: world.step, type: "absorbed", into: bestId });
+    }
+  }
 }

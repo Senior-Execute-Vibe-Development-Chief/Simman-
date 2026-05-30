@@ -194,6 +194,34 @@ export function advanceFronts(world) {
     s._homeTi = (s.pos.y | 0) * tw + (s.pos.x | 0);
   }
 
+  // Trade-dampened encroachment: a frontier with active cross-border trade
+  // sees less opportunistic encroachment (it's bad business to grab tiles
+  // from a profitable peer). Build a country-pair → recent inter-country
+  // trade magnitude index from world._linkMoney; tile-capture rate is
+  // multiplied by 1/(1 + tradeFactor) so peaceful trading neighbours hold
+  // stable borders even with mild power asymmetries.
+  const TRADE_PEACE_REF = 5;   // total cross-border money/tick at which the dampener saturates
+  const tradePair = new Map();   // "ccA:ccB" (sorted) → magnitude
+  const lm = world._linkMoney;
+  if (lm) {
+    for (const [key, net] of lm) {
+      const colon = key.indexOf(":");
+      const aId = +key.slice(0, colon), bId = +key.slice(colon + 1);
+      const Sa = byId.get(aId), Sb = byId.get(bId);
+      if (!Sa || !Sb || Sa.countryId === Sb.countryId) continue;
+      const cA = Math.min(Sa.countryId, Sb.countryId);
+      const cB = Math.max(Sa.countryId, Sb.countryId);
+      const k = cA + ":" + cB;
+      tradePair.set(k, (tradePair.get(k) || 0) + Math.abs(net));
+    }
+  }
+  const tradeFactor = (ccA, ccB) => {
+    const cA = Math.min(ccA, ccB), cB = Math.max(ccA, ccB);
+    const v = tradePair.get(cA + ":" + cB);
+    if (!v) return 0;
+    return Math.min(1, v / TRADE_PEACE_REF);
+  };
+
   // One scan of the territory map. For each owned tile, find the strongest
   // ENEMY settlement (different country) adjacent to it that out-powers the
   // owner — that enemy can capture this tile. Group candidates by
@@ -217,7 +245,40 @@ export function advanceFronts(world) {
     }
     if (bestA < 0) continue;
     const A = byId.get(bestA);
-    if (A._M < D._M * ATTACK_MIN_RATIO) continue;        // not strong enough here
+    // ── Thin-tile defence penalty ───────────────────────────────────
+    // A tile's defensibility is proportional to how much of its
+    // neighbourhood is the same country — heartland tiles (8/8 own-
+    // country neighbours) defend at full strength, an isthmus (2/8) at
+    // a fraction, and an enclave fragment (0/8) effectively undefended.
+    // Cheap 8-neighbour scan; produces the historical pattern where
+    // long thin protrusions collapse first under pressure and enclave
+    // fragments naturally fall to the surrounding power.
+    let sameCC = 0, cellTotal = 0;
+    const defCC = D.countryId;
+    const yu = ty - 1, yd = ty + 1;
+    const cells = [
+      ty * tw + xm, ty * tw + xp,
+      yu >= 0 ? yu * tw + tx : -1, yd < th ? yd * tw + tx : -1,
+      yu >= 0 ? yu * tw + xm : -1, yu >= 0 ? yu * tw + xp : -1,
+      yd < th ? yd * tw + xm : -1, yd < th ? yd * tw + xp : -1,
+    ];
+    for (let k = 0; k < 8; k++) {
+      const ni = cells[k]; if (ni < 0) continue;
+      cellTotal++;
+      const oid = owner[ni]; if (oid < 0) continue;
+      const ns2 = byId.get(oid);
+      if (ns2 && ns2.countryId === defCC) sameCC++;
+    }
+    // Floor at 0.1 — even an isolated tile takes SOME effort to grab,
+    // so the per-pass attrition still applies. Maps 0/8 → 0.1, 4/8 → 0.55, 8/8 → 1.
+    const thinFactor = cellTotal > 0 ? Math.max(0.1, sameCC / cellTotal) : 1;
+    const effDef = D._M * thinFactor;
+    // Trade peace raises the bar: between two countries with a profitable
+    // trade link, opportunistic encroachment is suppressed (it's bad
+    // business). A saturated trade peer requires ~2× the normal advantage
+    // to capture a tile from.
+    const tf = tradeFactor(A.countryId, D.countryId);
+    if (A._M < effDef * ATTACK_MIN_RATIO * (1 + tf)) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
