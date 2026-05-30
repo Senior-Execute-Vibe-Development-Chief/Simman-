@@ -154,27 +154,88 @@ export function baseEdgeCost(world, fromTi, toTi) {
 //   organization postal relays, supply chains        flat ×0.85 max
 //   mobility     horses (cavalry, courier, plough)   flat ×0.70 max
 //   navigation   ships on rivers / coasts            water ×0.55 max
+//                + WATER EMBARKATION (see below): with nav ≥ 0.2, water
+//                tiles become passable for land transport at a cost that
+//                falls from ~12 (small boats) to ~3 (real fleet) as nav
+//                rises. Models troop transports / amphibious crossings.
 //
 // At full tech (everything at 1.0), a flat plain tile costs:
 //   ×0.70 × 0.60 × 0.85 × 0.70 = 0.250 (was 0.357 without mobility)
 // A river tile with navigation maxed adds another ×0.55 on top.
 // So a maxed-out Iron Age tribe with horses and ships moves ~4× faster
 // over land and ~7× faster on water than a stone-age starter.
+//
+// MODE-CHANGE cost: crossing between road and rough terrain, or between
+// land and water, incurs a one-step setup penalty — the column has to
+// find the route, board ships, etc. Applied as a small additive cost
+// when the cost class of the FROM and TO tiles differs.
+//
+// RIVER CROSSING cost: rivers parallel to travel are bonuses (the path
+// follows the bank); rivers perpendicular to travel are obstacles
+// (without a bridge, a column has to ford). We add a perpendicular-river
+// penalty when crossing FROM a non-river tile TO a non-river tile but
+// stepping through a river-tile neighbour structure isn't tractable per
+// edge; instead approximate it as an extra cost when going from river
+// to non-river (just stepping off the bank costs little, but next time
+// the column encounters a river it pays). This is a coarse approximation
+// — for fine-grained perpendicular-river penalties we'd need to track
+// flow direction, which we don't.
+const WATER_BASE_COST    = 12;   // small-boat / raft crossing at nav≈0.2
+const WATER_NAV_FLOOR    = 3;    // real-fleet crossing at nav≥1
+const NAV_EMBARK_THRESH  = 0.2;  // below this, water remains impassable
+const MODE_CHANGE_COST   = 0.6;  // additive penalty when crossing a class boundary
+
+function tileMode(world, ti) {
+  // 0 = water, 1 = road, 2 = land
+  if (world.elev[ti] <= 0) return 0;
+  if (world.roadQuality && world.roadQuality[ti] < 1.0) return 1;
+  return 2;
+}
 export function localEdgeCost(world, fromTi, toTi, kn) {
+  const nav  = kn ? (kn.navigation || 0) : 0;
+  // Water embarkation: if the destination is water and the column has
+  // navigation, substitute a navigation-shaped cost instead of Infinity.
+  // Source can be land OR water (we're sailing); intermediate water steps
+  // cost the same.
+  const toIsWater = world.elev[toTi] <= 0;
+  if (toIsWater) {
+    if (nav < NAV_EMBARK_THRESH) return Infinity;
+    // Cost from WATER_BASE_COST at nav≈0.2 down to WATER_NAV_FLOOR at nav≥1.
+    const t = Math.max(0, Math.min(1, (nav - NAV_EMBARK_THRESH) / (1 - NAV_EMBARK_THRESH)));
+    let waterCost = WATER_BASE_COST + (WATER_NAV_FLOOR - WATER_BASE_COST) * t;
+    // Coastal vs open ocean: stick close to the coast for cheaper hops.
+    if (world.coast && world.coast[toTi]) waterCost *= 0.7;
+    return waterCost;
+  }
   const c = baseEdgeCost(world, fromTi, toTi);
   if (c === Infinity || !kn) return c;
   const tool = kn.toolmaking   || 0;
   const cons = kn.construction || 0;
   const org  = kn.organization || 0;
   const mob  = kn.mobility     || 0;
-  const nav  = kn.navigation   || 0;
   let mul = (1 - 0.30 * tool) * (1 - 0.40 * cons) * (1 - 0.15 * org) * (1 - 0.30 * mob);
   if (nav > 0) {
     const isWater = (world.riverMag && world.riverMag[toTi] >= 2)
                  || (world.coast && world.coast[toTi]);
     if (isWater) mul *= (1 - 0.45 * nav);
   }
-  return c * mul;
+  let cost = c * mul;
+  // Mode-change penalty when crossing between land/road/water classes.
+  // Construction reduces the cost (better infrastructure makes transitions
+  // cheaper — proper ports, road junctions, embankments).
+  const fromMode = tileMode(world, fromTi);
+  const toMode   = tileMode(world, toTi);
+  if (fromMode !== toMode) {
+    cost += MODE_CHANGE_COST * (1 - 0.5 * cons);
+  }
+  // River-crossing penalty: stepping off a major river tile (mag≥2) to a
+  // non-river land tile costs more, since you've just had to ford. Coarse
+  // approximation but at least the model knows rivers are obstacles for
+  // cross-current travel, not just bonuses for along-river travel.
+  if (world.riverMag && world.riverMag[fromTi] >= 2 && world.riverMag[toTi] < 2 && toMode === 2) {
+    cost += 1.5 * (1 - 0.6 * cons);   // bridges/fords (construction) cut the cost
+  }
+  return cost;
 }
 
 export function computeTransport(world) {

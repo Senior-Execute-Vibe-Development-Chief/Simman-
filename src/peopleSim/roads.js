@@ -233,6 +233,9 @@ function ensureRoadArrays(world) {
 // index in sync. Takes min so an existing worn road isn't downgraded.
 // Returns true if the tile actually changed.
 function paintRoad(world, ti) {
+  // Don't paint roads on water tiles — navigation lets findPath route across
+  // water (for marching armies), but the road network is land-only.
+  if (world.elev && world.elev[ti] <= 0) return false;
   if (QUALITY_NEW < world.roadQuality[ti]) {
     world.roadQuality[ti] = QUALITY_NEW;
     world._roadTiles.add(ti);
@@ -524,7 +527,7 @@ function linkCloseNeighbours(world, s) {
     if (dx * dx + dy * dy > CLOSE_NEIGHBOUR_DIST_SQ) continue;
     const pc = comp && comp.get(peer.id) !== undefined ? comp.get(peer.id) : peer.id;
     if (pc === myComp) continue;                 // already road-connected
-    const path = findPath(world, s, peer);
+    const path = findPath(world, s, peer, { noWater: true });
     if (!path) continue;
     let didChange = false;
     for (const ti of path.tiles) if (paintRoad(world, ti)) didChange = true;
@@ -612,7 +615,7 @@ function tryAddRoad(world, s) {
     } else {
       if (newEvals >= MAX_NEW_EVALS) continue;
     }
-    const path = findPath(world, s, peer);
+    const path = findPath(world, s, peer, { noWater: true });
     if (connected) shortcutEvals++; else newEvals++;   // count cost even if null
     if (!path) continue;
 
@@ -1013,8 +1016,13 @@ const SQRT2 = Math.SQRT2;
 // a per-call stamp avoids both Map overhead and any O(N) clear. Hundreds of
 // these run each road-plan cycle, so this is the hot primitive.
 const FP_MIN_STEP = 0.02;   // cheapest an edge can ever cost (worn road × max tech) — keeps h admissible
-export function findPath(world, s, t) {
+// Optional opts.noWater: skip water tiles even if the settlement's
+// navigation would let it embark. Used by road planners (you can't paint
+// a road across the sea); marching armies pass no opts so they DO get to
+// route over water if they have navigation tech.
+export function findPath(world, s, t, opts) {
   const { tw, th, elev, N } = world;
+  const noWater = opts && opts.noWater;
   const start = (s.pos.y | 0) * tw + (s.pos.x | 0);
   const goal  = (t.pos.y | 0) * tw + (t.pos.x | 0);
   if (start === goal || elev[start] <= 0 || elev[goal] <= 0) return null;
@@ -1073,6 +1081,7 @@ export function findPath(world, s, t) {
     for (let k = 0; k < 8; k++) {
       const ni = ns[k];
       if (ni < 0) continue;
+      if (noWater && elev[ni] <= 0) continue;
       const c = localEdgeCost(world, ti, ni, s.knowledge);
       if (c === Infinity) continue;
       const nd = gti + c * mul[k];
