@@ -5651,15 +5651,31 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
     }
     // 2) Animated coin particles flowing along trade links in the net-
-    // money direction. Positions derived from a time phase (stateless).
+    // money direction. Each link gets a SHARE of a global dot budget
+    // proportional to its current activity — so the busiest links always
+    // pop and quiet links go silent, regardless of the world's absolute
+    // money supply (an economy after inflation or a stagnant frontier
+    // shouldn't flood or drain the screen).
     const flows=psw._moneyFlows;
     if(flows&&flows.length){
+      // Budget targets ~200 dots on screen at most; share is mag / total.
+      // Also keep a noise floor — links above 10% of the max get at least
+      // one dot, so the second-busiest link is always visible too.
+      let totalMag=0,maxMag=0;
+      for(const f of flows){totalMag+=f.mag;if(f.mag>maxMag)maxMag=f.mag;}
+      const DOT_BUDGET=200;
+      const noiseFloor=maxMag*0.1;
       const now=performance.now();
       for(const f of flows){
         const pts=f.tiles;const np=pts.length;if(np<2)continue;
-        // dot count + brightness scale gently with money magnitude.
-        const dots=Math.max(1,Math.min(6,Math.round(f.mag*2.5)));
-        const alpha=Math.max(0.25,Math.min(0.95,0.3+f.mag*0.4));
+        let dots=Math.round((f.mag/Math.max(0.001,totalMag))*DOT_BUDGET);
+        if(f.mag>=noiseFloor&&dots<1)dots=1;
+        if(dots<=0)continue;
+        dots=Math.min(dots,12);            // per-link cap so one giant link doesn't eat the budget visually
+        // Brightness scales with the link's SHARE of activity, not raw
+        // magnitude, so the most active links pop relative to the scene.
+        const share=f.mag/Math.max(0.001,maxMag);
+        const alpha=Math.max(0.3,Math.min(0.95,0.3+share*0.65));
         ctx.fillStyle=`rgba(255,205,70,${alpha.toFixed(2)})`;
         const period=2600;                 // ms for a coin to traverse the link
         for(let j=0;j<dots;j++){
@@ -7182,10 +7198,11 @@ return(
     <span>Losing</span></div>
   <div style={{display:"flex",alignItems:"center",gap:6,margin:"2px 0"}}>
     <span style={{color:"#ffcd46"}}>● ● ●</span>
-    <span>Coins flow toward the buyer's seller</span></div>
+    <span>Coins flow from buyer to seller</span></div>
   <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
-    The world starts on barter (no coins shown). Money is minted only by
-    mining, then spreads by trade and replaces barter where it reaches.
+    Dot density on each link is its share of THIS tick's total activity, so
+    the busiest links pop and quiet ones go silent regardless of the world's
+    absolute money supply. The world starts on barter (no coins shown).
   </div>
 </div>}
 
