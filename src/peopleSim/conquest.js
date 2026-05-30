@@ -16,6 +16,7 @@ import { CONQUEST_GRACE } from "./armies.js";
 import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.js";
 import { shockUnrest } from "./shocks.js";
 import { localPByCountry } from "./inflation.js";
+import { localEdgeCost } from "./transport.js";
 
 const POLITY_INTERVAL  = 150;   // ticks between polity passes
 
@@ -149,13 +150,13 @@ const AMBITION_MIN_FAR = 0.5;   // ...and at least this far out (reach-units); a
 const AMBITION_FAR     = 1.8;   // distance amplifies ambition this much
 const AMBITION_GAIN    = 0.10;  // ambition-stock growth per pass at full margin
 const AMBITION_DURESS  = 1.6;   // a besieged throne emboldens governors (multiplier)
-// Naval administration: a maritime capital (a port with navigation) can
-// govern distant overseas members (also ports) far beyond its land hold
-// range — the sea is its highway, not a barrier. This is what lets a
-// colonial empire span the ocean for a long age before overstretch finally
-// fragments it. Effective distance to a fellow port is divided by
-// (1 + navigation × NAVAL_REACH).
-const NAVAL_REACH      = 2.2;
+// Naval administration is no longer a special-case discount on _isPort
+// pairs — water embarkation in localEdgeCost (transport.js) gives the
+// capital's Dijkstra a sea-highway over coastal water when it has
+// navigation, so capitalTransportCosts() naturally reaches overseas
+// members at a steeply discounted cost (≈3 per tile at full nav, vs
+// Infinity below the embarkation threshold). Same effect, applied
+// uniformly to every reach calculation.
 // Economic hold: a province worth keeping is held far beyond the normal
 // administrative range — the empire pours resources into clinging to it.
 // This is the Spanish-silver effect: Potosí was the far side of the world,
@@ -669,6 +670,109 @@ function disburseTreasury(world, c, gov, warLevel) {
   gov._spend = gov._spend * 0.9 + spent * 0.1;
 }
 
+// ── Capital → member transport cost (terrain + naval) ────────────────
+// The "real" distance an empire's centre must project authority across.
+// We Dijkstra outward from the capital, charging the raw terrain cost per
+// step — so a Himalayan-isolated province costs the centre far more than
+// its straight-line distance suggests, while a province on the open plain
+// is exactly as expensive as the euclidean reading.
+//
+// Tech does NOT discount land travel here — that belongs in c.range (the
+// reach BUDGET), not in the distance. Otherwise a high-tech empire pays
+// 4× less per plain tile and the budget never bites. The only tech that
+// enters this Dijkstra is NAVIGATION, which gates water embarkation: a
+// port capital with navigation projects authority across coastal water at
+// the same cost as overland (the sea-highway effect that lets a colonial
+// empire span the ocean). Without navigation, water is Infinity.
+//
+// The search is bounded by ~25 × range so we don't walk the whole map, and
+// returns as soon as every member's home tile is hit. With ~20 countries
+// and member-rich heartlands the per-pass cost is well under 1ms.
+class _PolHeap {
+  constructor() { this.ti = []; this.d = []; this.n = 0; }
+  push(ti, d) {
+    let i = this.n++; this.ti.push(ti); this.d.push(d);
+    while (i > 0) { const p = (i - 1) >> 1; if (this.d[p] <= this.d[i]) break;
+      const tt = this.ti[p], td = this.d[p];
+      this.ti[p] = this.ti[i]; this.d[p] = this.d[i];
+      this.ti[i] = tt; this.d[i] = td; i = p;
+    }
+  }
+  popMin() {
+    const ti = this.ti[0], d = this.d[0]; this.n--;
+    if (this.n > 0) {
+      this.ti[0] = this.ti[this.n]; this.d[0] = this.d[this.n];
+      this.ti.pop(); this.d.pop();
+      let i = 0;
+      for (;;) {
+        const l = i * 2 + 1, r = i * 2 + 2; let b = i;
+        if (l < this.n && this.d[l] < this.d[b]) b = l;
+        if (r < this.n && this.d[r] < this.d[b]) b = r;
+        if (b === i) break;
+        const tt = this.ti[b], td = this.d[b];
+        this.ti[b] = this.ti[i]; this.d[b] = this.d[i];
+        this.ti[i] = tt; this.d[i] = td; i = b;
+      }
+    } else { this.ti.pop(); this.d.pop(); }
+    return { ti, d };
+  }
+}
+function capitalTransportCosts(world, c) {
+  const { tw, th } = world;
+  const cap = c.capital;
+  // Pass navigation ONLY — strips the land tech-multipliers, keeps the
+  // water-embarkation gate. Land = baseEdgeCost; water = navigable iff
+  // nav ≥ 0.2 and at a cost that falls from ~12 to ~3 as nav rises.
+  const kn  = { navigation: (cap.knowledge && cap.knowledge.navigation) || 0 };
+  const out = new Map();
+  const homes = new Map();
+  let pending = 0;
+  for (const m of c.members) {
+    if (m.id === c.capitalId) { out.set(m.id, 0); continue; }
+    const ti = (m.pos.y | 0) * tw + (m.pos.x | 0);
+    homes.set(ti, m.id);
+    pending++;
+  }
+  if (pending === 0) return out;
+  const maxCost = Math.max(50, c.range * 25);
+  const dist = new Map();
+  const capTi = (cap.pos.y | 0) * tw + (cap.pos.x | 0);
+  dist.set(capTi, 0);
+  const heap = new _PolHeap();
+  heap.push(capTi, 0);
+  const SQRT2 = Math.SQRT2;
+  while (heap.n > 0 && pending > 0) {
+    const { ti, d } = heap.popMin();
+    if (d > maxCost) break;
+    const dHere = dist.get(ti);
+    if (dHere === undefined || d > dHere) continue;
+    const hit = homes.get(ti);
+    if (hit !== undefined) { out.set(hit, d); homes.delete(ti); pending--; }
+    const ty = (ti / tw) | 0;
+    const tx = ti - ty * tw;
+    const xm = tx === 0      ? tw - 1 : tx - 1;
+    const xp = tx === tw - 1 ? 0      : tx + 1;
+    const yu = ty - 1, yd = ty + 1;
+    const ns = [
+      ty * tw + xm, ty * tw + xp,
+      yu >= 0 ? yu * tw + tx : -1, yd < th ? yd * tw + tx : -1,
+      yu >= 0 ? yu * tw + xm : -1, yu >= 0 ? yu * tw + xp : -1,
+      yd < th ? yd * tw + xm : -1, yd < th ? yd * tw + xp : -1,
+    ];
+    const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
+    for (let k = 0; k < 8; k++) {
+      const ni = ns[k]; if (ni < 0) continue;
+      const ec = localEdgeCost(world, ti, ni, kn);
+      if (ec === Infinity) continue;
+      const nd = d + ec * mul[k];
+      if (nd > maxCost) continue;
+      const prev = dist.get(ni);
+      if (prev === undefined || nd < prev) { dist.set(ni, nd); heap.push(ni, nd); }
+    }
+  }
+  return out;
+}
+
 export function updatePolities(world) {
   const countries = rebuildCountries(world);
 
@@ -677,9 +781,15 @@ export function updatePolities(world) {
     if (c.members.length <= 1) continue;
 
     const cap = c.capital;
-    const capNav = cap._isPort ? (cap.knowledge.navigation || 0) : 0;
     const capPower = settlementPower(cap);
     const range = Math.max(1, c.range);
+    // Real per-member projection cost from the capital, via tech × terrain.
+    // The Himalayas / oceans / rivers all drain the centre's reach budget
+    // exactly the way they drain a column's movement. (Naval shortcuts are
+    // already baked into localEdgeCost via water embarkation, so we no
+    // longer apply a separate _isPort discount here.)
+    const tcosts = capitalTransportCosts(world, c);
+    const reachCeil = range * 25;   // matches the Dijkstra's bound
 
     // ── Control budget: what the centre can administer (reach-units) ──
     // The capital projects a base budget that grows with its own size; loyal
@@ -755,11 +865,18 @@ export function updatePolities(world) {
     const loads = [];
     for (const s of c.members) {
       if (s.id === c.capitalId) { s.loyalty = 1; s._ambition = 0; continue; }
-      // Distance the CENTRE must project authority across — the real reach
-      // cost. (A loyal regional seat doesn't make a far province cheap to
-      // measure; it pays for it via the capacity budget above instead.)
-      let d = dist(world, cap.pos.x, cap.pos.y, s.pos.x, s.pos.y);
-      if (capNav > 0 && s._isPort) d /= (1 + capNav * NAVAL_REACH);   // sea highway
+      // Distance the CENTRE must project authority across. Start from the
+      // straight-line reading, then add HALF the terrain surcharge over
+      // that baseline (mountains and water hurt; easy terrain doesn't help —
+      // otherwise riverine/coastal capitals project authority too cheaply
+      // and rival the historic mega-empires for the wrong reasons). The
+      // result: a province behind the Himalayas reads as several times
+      // farther; a province across plain reads at its true distance.
+      const eucl = dist(world, cap.pos.x, cap.pos.y, s.pos.x, s.pos.y);
+      const tc   = tcosts.get(s.id);
+      const tcEff = (tc === undefined || !isFinite(tc)) ? reachCeil : tc;
+      const surcharge = Math.max(0, tcEff - eucl);
+      let d = eucl + 0.5 * surcharge;
       d /= holdPull(s);                                               // value cling
       const coerce  = Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
       const sizeMul = 1 + SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
@@ -815,7 +932,13 @@ export function updatePolities(world) {
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
       const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
       const ratio = settlementPower(s) / capPower;                    // strength vs the throne
-      const far   = dist(world, cap.pos.x, cap.pos.y, s.pos.x, s.pos.y) / range;
+      // Same blended distance as the hold load — a governor across a
+      // mountain range is "farther" than its straight-line reading,
+      // proportionally embolder.
+      const eucl = dist(world, cap.pos.x, cap.pos.y, s.pos.x, s.pos.y);
+      const tc   = tcosts.get(s.id);
+      const tcEff = (tc === undefined || !isFinite(tc)) ? reachCeil : tc;
+      const far  = (eucl + 0.5 * Math.max(0, tcEff - eucl)) / range;
       if (!seat || pacified || infant || ratio < AMBITION_RATIO || far < AMBITION_MIN_FAR) {
         if (s._ambition) s._ambition = Math.max(0, s._ambition - AMBITION_GAIN);   // fades when unqualified
         continue;
