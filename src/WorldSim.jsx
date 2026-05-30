@@ -4342,7 +4342,12 @@ const cardDragRef=useRef(null);
 useEffect(()=>{
   const move=(e)=>{if(!cardDragRef.current)return;const d=cardDragRef.current;
     setCardPos({x:Math.max(4,d.x+(e.clientX-d.mx)),y:Math.max(4,d.y+(e.clientY-d.my))});};
-  const up=()=>{cardDragRef.current=null;};
+  const up=()=>{cardDragRef.current=null;
+    // Clear any in-flight pan that ended outside the canvas — otherwise the
+    // next click would see panDragRef set with stale "moved" and either pan
+    // or swallow the click, depending on timing.
+    if(panDragRef.current&&!panDragRef.current.moved)panDragRef.current=null;
+  };
   window.addEventListener("mousemove",move);window.addEventListener("mouseup",up);
   return()=>{window.removeEventListener("mousemove",move);window.removeEventListener("mouseup",up);};
 },[]);
@@ -4864,6 +4869,10 @@ const _pz=ctx&&!isGlobe;
 if(_pz){
   ctx.setTransform(1,0,0,1,0,0);
   ctx.fillStyle="#000";ctx.fillRect(0,0,CW,CH);
+  // Crisp upscale at zoom > 1 — match the `imageRendering: pixelated` style
+  // on the <canvas>. Without this the base raster smooths into mush when
+  // zoomed in.
+  ctx.imageSmoothingEnabled=false;
   ctx.setTransform(viewZRef.current,0,0,viewZRef.current,viewXRef.current,viewYRef.current);
 }
 if(!imgRef.current)imgRef.current=new ImageData(CW,CH);
@@ -5730,12 +5739,12 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // Sizing scales with √log(pop) so a metropolis is visibly bigger than a
     // hamlet, but the dynamic range is small — the visual distinction comes
     // from SHAPE + COLOUR + DECORATION, not raw size.
-    // Apply icon scale 1/zoom so glyphs stay roughly constant on-screen
-    // regardless of map zoom (a metropolis at 8x zoom shouldn't take up the
-    // whole quarter of the screen). Allow a small growth at high zoom so
-    // detail is visible up close.
-    const zoom=viewZRef.current;
-    const iconScale=Math.max(0.4,Math.min(2,1/Math.sqrt(zoom)));
+    // Icons live in canvas-pixel coordinates inside the view transform, so
+    // they grow with zoom naturally (a metropolis at 8x zoom IS 8x bigger,
+    // because that's the point of zooming in — more detail). iconScale is
+    // kept as a knob for fine-tuning but stays at 1 here so the visible
+    // size scales 1:1 with the user's zoom level.
+    const iconScale=1;
     // Pop → "weight" 0..1 (log scale across the population range).
     let _popMax=1;
     for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.people>_popMax)_popMax=s.people;}
@@ -6020,12 +6029,16 @@ const screenToCanvas=useCallback((ev)=>{
 },[CW,CH]);
 const onCanvasMove=useCallback((ev)=>{
 const c=canvasRef.current;if(!c||!worldRef.current)return;
-// Pan dragging — middle button, or left-button drag from empty terrain
-// (the drag-start handler decides; here we just consume motion).
+// Pan dragging — any button. Only PAN if the mouse has crossed the
+// click/drag threshold; once it has, mark it so the subsequent click is
+// suppressed (drag-to-pan + plain-click-to-select on the same button).
 if(panDragRef.current){
   const pd=panDragRef.current;
-  viewXRef.current=pd.vx+(ev.clientX-pd.mx)*(CW/c.getBoundingClientRect().width);
-  viewYRef.current=pd.vy+(ev.clientY-pd.my)*(CH/c.getBoundingClientRect().height);
+  const dx=ev.clientX-pd.mx,dy=ev.clientY-pd.my;
+  if(!pd.moved&&Math.hypot(dx,dy)<=3)return;   // below threshold; wait
+  pd.moved=true;
+  viewXRef.current=pd.vx+dx*(CW/c.getBoundingClientRect().width);
+  viewYRef.current=pd.vy+dy*(CH/c.getBoundingClientRect().height);
   if(terRef.current)draw(terRef.current);
   return;
 }
@@ -6080,13 +6093,13 @@ setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:f
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const onCanvasClick=useCallback((ev)=>{
 const c=canvasRef.current;if(!c||!terRef.current)return;
-// If a pan-drag was in progress and moved more than a pixel or two, treat
-// the click as the end of the drag rather than a real click.
+// If the mouse-down → up was actually a drag (moved past threshold), the
+// onCanvasMove pass already set pd.moved=true and panned. Swallow the click
+// in that case so dragging never accidentally selects.
 if(panDragRef.current){
-  const pd=panDragRef.current;
-  const moved=Math.hypot(ev.clientX-pd.mx,ev.clientY-pd.my)>3;
+  const wasDrag=panDragRef.current.moved===true;
   panDragRef.current=null;
-  if(moved)return;
+  if(wasDrag)return;
 }
 const _sc=screenToCanvas(ev);if(!_sc)return;
 const sx=_sc.sx,sy=_sc.sy;
@@ -6149,30 +6162,36 @@ setRightPanel("tribes");draw(ter);
 // ── Pan / zoom mouse handlers ────────────────────────────────────────
 // Wheel: zoom around the cursor (Google-Maps style). Pan: middle-button or
 // shift+left-button drag (left-only drag is reserved for settlement clicks).
-const onCanvasWheel=useCallback((ev)=>{
-  ev.preventDefault();
+// React's synthetic onWheel is registered as PASSIVE in most browsers, so
+// ev.preventDefault() is a no-op (the page scrolls behind the canvas while
+// we zoom). Attach a native non-passive listener directly to the element so
+// preventDefault actually fires.
+useEffect(()=>{
   const c=canvasRef.current;if(!c)return;
-  const r=c.getBoundingClientRect();
-  const rawX=(ev.clientX-r.left)/r.width*CW;
-  const rawY=(ev.clientY-r.top)/r.height*CH;
-  const zOld=viewZRef.current;
-  // Negative deltaY = wheel up = zoom in. ~10% step per notch.
-  const factor=ev.deltaY<0?1.15:1/1.15;
-  const zNew=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,zOld*factor));
-  if(zNew===zOld)return;
-  // Keep the point under the cursor stationary: solve for (vx,vy) such that
-  // (rawX-vxNew)/zNew == (rawX-vxOld)/zOld → vxNew = rawX - (rawX-vxOld)*zNew/zOld.
-  const k=zNew/zOld;
-  viewXRef.current=rawX-(rawX-viewXRef.current)*k;
-  viewYRef.current=rawY-(rawY-viewYRef.current)*k;
-  viewZRef.current=zNew;
-  if(terRef.current)draw(terRef.current);
+  const onWheel=(ev)=>{
+    ev.preventDefault();
+    const r=c.getBoundingClientRect();
+    const rawX=(ev.clientX-r.left)/r.width*CW;
+    const rawY=(ev.clientY-r.top)/r.height*CH;
+    const zOld=viewZRef.current;
+    const factor=ev.deltaY<0?1.15:1/1.15;
+    const zNew=Math.max(ZOOM_MIN,Math.min(ZOOM_MAX,zOld*factor));
+    if(zNew===zOld)return;
+    const k=zNew/zOld;
+    viewXRef.current=rawX-(rawX-viewXRef.current)*k;
+    viewYRef.current=rawY-(rawY-viewYRef.current)*k;
+    viewZRef.current=zNew;
+    if(terRef.current)draw(terRef.current);
+  };
+  c.addEventListener("wheel",onWheel,{passive:false});
+  return()=>c.removeEventListener("wheel",onWheel);
 },[CW,CH,draw]);
 const onCanvasMouseDown=useCallback((ev)=>{
-  // Middle button, or shift+left, starts a pan. Plain left stays as click.
-  if(ev.button===1||(ev.button===0&&ev.shiftKey)){
-    ev.preventDefault();
-    panDragRef.current={mx:ev.clientX,my:ev.clientY,vx:viewXRef.current,vy:viewYRef.current};
+  // Any button (left, middle, right) can start a drag. onCanvasClick fires
+  // only if the mouse hardly moved (see the moved>3 check there), so plain
+  // left-click → still selects a settlement, but left-drag → pans.
+  if(ev.button===0||ev.button===1||ev.button===2){
+    panDragRef.current={mx:ev.clientX,my:ev.clientY,vx:viewXRef.current,vy:viewYRef.current,moved:false};
   }
 },[]);
 // Reset view (double-click to recentre at zoom 1).
@@ -6313,7 +6332,7 @@ return(
     </div>:
     <canvas ref={canvasRef} width={CW} height={CH}
       onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
-      onWheel={onCanvasWheel} onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
+      onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
       style={{display:"block",imageRendering:"pixelated",
         maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
         boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
@@ -6330,7 +6349,7 @@ return(
           {mi===0?
             <canvas ref={canvasRef} width={CW} height={CH}
               onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
-      onWheel={onCanvasWheel} onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
+      onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
               style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`}} />:
             <canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
               style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
