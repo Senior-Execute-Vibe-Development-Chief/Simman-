@@ -21,21 +21,33 @@
 
 import { localEdgeCost } from "./transport.js";
 
-// Reach budget, in transport-cost units (a plain tile = 1.0). Grows with
-// the things that actually extend a polity's reach — administration
-// (organization), sheer size (population), and the transport techs
-// (mobility, navigation). Roads enter automatically through localEdgeCost,
-// which also sees the civ's tech multipliers so a high-construction realm
-// pushes farther up a mountain valley than a neolithic one.
-// Deliberately NOT a function of age/time.
+// Reach budget, in transport-cost units (a plain tile = 1.0). Pure
+// function of ORGANIZATION — the centre's willingness/ability to
+// project administrative authority across distance, full stop.
+//
+// Other tech (construction, mobility, navigation) is NOT in the budget
+// — it enters through localEdgeCost, reducing per-tile cost. The two
+// interact correctly: organization buys you REACH; other tech buys you
+// EFFICIENCY per step. A high-construction realm pays less per
+// mountain tile (so it can hold more mountains within its budget), but
+// it doesn't get a bigger budget for free. The chronicle of empires
+// rising and falling is then ORG growing and shrinking, not a stew of
+// four tracks moving together.
+//
+// Calibration: a plain tile costs ~1.0, so the radius in plains
+// roughly equals the budget. Era-typical:
+//   stone (org 0.05):  ~7  → ~7-tile plain radius   (city-state)
+//   bronze (org 0.30): ~17 → ~17-tile radius        (kingdom)
+//   iron (org 0.50):   ~25 → ~25-tile radius        (regional empire)
+//   industrial (0.90): ~41 → ~41-tile radius        (continental)
+//
+// Across mountains the SAME budget reaches fewer tiles; with navy it
+// can hop across coastal water at ~3 cost per tile and reach further.
 const TERRITORY_BASE = 5;
+const ORG_REACH = 40;
 export function reachBudget(s) {
   const k = s.knowledge || {};
-  return TERRITORY_BASE
-    + (k.organization || 0) * 14
-    + Math.min(22, Math.sqrt(Math.max(1, s.people)) * 0.35)
-    + (k.mobility || 0) * 8
-    + (k.navigation || 0) * 6;
+  return TERRITORY_BASE + (k.organization || 0) * ORG_REACH;
 }
 
 // Per-tile food weight by distance: 1 next to the centre, tailing off with
