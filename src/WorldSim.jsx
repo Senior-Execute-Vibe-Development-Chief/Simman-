@@ -4330,6 +4330,9 @@ const[layers,setLayers]=useState({
   village:true, town:true, city:true, metropolis:true,
 });
 const[layersOpen,setLayersOpen]=useState(false);
+const[boardOpen,setBoardOpen]=useState(false);
+const[boardMode,setBoardMode]=useState("countries");   // "countries" | "settlements"
+const[boardSort,setBoardSort]=useState("size");        // see SORT_KEYS below
 const layersRef=useRef(layers);
 useEffect(()=>{layersRef.current=layers;},[layers]);
 // Which collapsible sections of the settlement card are open. Persists
@@ -7188,6 +7191,8 @@ return(
   className={"au-rail-tab"+(showPower?" au-active":"")}>Power</button>}
 <button onClick={()=>setLayersOpen(v=>!v)}
   className={"au-rail-tab"+(layersOpen?" au-active":"")}>Layers</button>
+<button onClick={()=>setBoardOpen(v=>!v)}
+  className={"au-rail-tab"+(boardOpen?" au-active":"")}>Leaderboard</button>
 
 {(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
 <div className="au-rule" />
@@ -7233,6 +7238,121 @@ return(
       <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Moving</div>
       <Row k="ships" label="Colony ships" />
       <Row k="armies" label="Marching armies" />
+    </aside>
+  );
+})()}
+
+{boardOpen&&(()=>{
+  // Leaderboard. Pulls live data from the mirror (peopleRef.current) — same
+  // structure draw() reads — so the panel always reflects the current snapshot.
+  const psw=peopleRef.current;
+  if(!psw||!psw.settlements)return null;
+  const setts=psw.settlements.filter(s=>s&&s.mode==="settled");
+  const countries=psw.countries?Array.from(psw.countries.values()):[];
+
+  // Sort keys per mode. Functions return a number (descending sort).
+  const SETT_SORTS={
+    population:[s=>s.people,"Population"],
+    wealth:[s=>s.wealth||0,"Wealth"],
+    army:[s=>s.army||0,"Garrison"],
+    mining:[s=>s._minedRate||0,"Mining rate"],
+    vassals:[s=>s._vassalCount||0,"Vassals"],
+    income:[s=>s._wealthDelta||0,"Income (¤/tick)"],
+  };
+  const CNT_SORTS={
+    size:[c=>c.members?c.members.length:0,"Size (settlements)"],
+    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Population"],
+    wealth:[c=>(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0),"Total wealth"],
+    treasury:[c=>c._treasury||0,"State treasury"],
+    army:[c=>(c.members||[]).reduce((a,m)=>a+(m.army||0),0),"Standing army"],
+    capacity:[c=>c._capacity||0,"Control capacity"],
+  };
+  const sorts=boardMode==="settlements"?SETT_SORTS:CNT_SORTS;
+  const sortKey=sorts[boardSort]?boardSort:Object.keys(sorts)[0];
+  const [sortFn,sortLabel]=sorts[sortKey];
+  const rows=(boardMode==="settlements"?setts:countries).slice()
+    .sort((a,b)=>sortFn(b)-sortFn(a)).slice(0,15);
+
+  const fmt=v=>{
+    if(!isFinite(v))return "-";
+    const a=Math.abs(v);
+    if(a>=1e6)return (v/1e6).toFixed(1)+"M";
+    if(a>=1e3)return (v/1e3).toFixed(1)+"k";
+    if(a>=10)return Math.round(v).toString();
+    return v.toFixed(1);
+  };
+
+  return(
+    <aside className="au-parchment au-scroll" style={{
+      position:"absolute",right:142,top:6,width:340,maxHeight:"80vh",
+      padding:"10px 0",overflowY:"auto",zIndex:30}}>
+      <div style={{display:"flex",alignItems:"baseline",marginBottom:6,padding:"0 12px"}}>
+        <span className="au-heading au-sc" style={{fontSize:12}}>Leaderboard</span>
+        <div style={{flex:1}} />
+        <span onClick={()=>setBoardOpen(false)}
+          style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
+      </div>
+      <div style={{display:"flex",gap:4,padding:"0 12px 6px"}}>
+        {["countries","settlements"].map(m=>(
+          <button key={m} onClick={()=>setBoardMode(m)}
+            className={"au-rail-tab"+(boardMode===m?" au-active":"")}
+            style={{flex:1,fontSize:11,textTransform:"capitalize"}}>{m}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:3,padding:"0 12px 6px"}}>
+        {Object.entries(sorts).map(([k,[,label]])=>(
+          <button key={k} onClick={()=>setBoardSort(k)}
+            className={"au-rail-tab"+(sortKey===k?" au-active":"")}
+            style={{fontSize:10,padding:"3px 7px",textTransform:"none"}}>{label}</button>
+        ))}
+      </div>
+      <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
+        <thead>
+          <tr style={{color:"var(--au-fade)",textAlign:"left"}}>
+            <th style={{padding:"2px 6px 2px 12px",width:24}}>#</th>
+            <th style={{padding:"2px 4px"}}>{boardMode==="settlements"?"Settlement":"Country"}</th>
+            <th style={{padding:"2px 12px 2px 4px",textAlign:"right"}}>{sortLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r,i)=>{
+            if(boardMode==="settlements"){
+              const ctry=psw.countries&&psw.countries.get(r.countryId);
+              const hue=((r.countryId*61)%360+360)%360;
+              return(
+                <tr key={r.id}
+                  onClick={()=>setSelectedSettlementId(r.id)}
+                  style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
+                  <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
+                  <td style={{padding:"3px 4px"}}>
+                    <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
+                      background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
+                    <span style={{textTransform:"capitalize"}}>{r.name}</span>
+                    {ctry&&ctry.capitalId===r.id&&<span style={{color:"var(--au-fade)",marginLeft:4}}>· capital</span>}
+                  </td>
+                  <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{fmt(sortFn(r))}</td>
+                </tr>
+              );
+            }
+            const cap=r.capital||(r.members&&r.members[0]);
+            const hue=((r.id*61)%360+360)%360;
+            return(
+              <tr key={r.id}
+                onClick={()=>{if(cap)setSelectedSettlementId(cap.id);}}
+                style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
+                <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
+                <td style={{padding:"3px 4px"}}>
+                  <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
+                    background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
+                  <span style={{textTransform:"capitalize"}}>{cap?cap.name:"realm-"+r.id}</span>
+                </td>
+                <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{fmt(sortFn(r))}</td>
+              </tr>
+            );
+          })}
+          {rows.length===0&&<tr><td colSpan={3} style={{padding:"10px 12px",color:"var(--au-fade)",fontStyle:"italic"}}>no data yet</td></tr>}
+        </tbody>
+      </table>
     </aside>
   );
 })()}
