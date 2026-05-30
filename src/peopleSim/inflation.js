@@ -30,23 +30,28 @@ import { computeExportValue } from "./settlement.js";
 const INFLATION_INTERVAL = 50;        // ticks between recompute passes (slow drift)
 const EMA_ALPHA          = 0.05;      // per-pass smoothing — over many passes the
                                       // level moves to its new target gradually
-const P_MIN              = 0.5;       // clamped price-level range for the SIM
-const P_MAX              = 1.8;       // — sim prices respond modestly so the
-                                      // existing calibration isn't broken even
-                                      // when raw M/T diverges by 10x. The HUD
-                                      // ticker shows the un-clamped indicator
-                                      // separately (see globalIndicator below).
-const RAW_MIN            = 0.3;       // wider band for the DISPLAY indicator —
-const RAW_MAX            = 6.0;       // lets the wheat-price ticker show real
-                                      // boom/bust drama while sim stays sane.
+const P_MIN              = 0.4;       // clamped price-level range for the SIM
+const P_MAX              = 3.0;       // widened (was 1.8) so sustained
+                                      // monetary expansion keeps registering as
+                                      // real fiscal pressure on army wages /
+                                      // building costs. Hard cap at 3x still
+                                      // prevents runaway, but the realm
+                                      // genuinely feels the squeeze before then.
+const RAW_MIN            = 0.2;       // very wide band for the DISPLAY indicator
+const RAW_MAX            = 20.0;      // — lets the wheat-price ticker show real
+                                      // boom/bust drama (Spanish silver flooded
+                                      // Europe ~6x). Cap at 20x just so the
+                                      // number doesn't run off the screen during
+                                      // pathological pre-calibration noise.
 const P_REF              = 1.0;       // anchored baseline; calibrated below
-// Soft response curve: the raw ratio (m/T)/REF is squashed through
-// y = 1 + (x-1) * RESPONSE so a 10x divergence in coin/output becomes a
-// ~30% price move in the SIM. Realistic at the macro level (real-world
-// money supply changes do NOT translate 1:1 to consumer-price changes
-// because velocity and supply respond) and small enough to keep the army
-// wage / building cost calibration alive.
-const RESPONSE           = 0.04;
+// Response curve: instead of a flat linear y = 1 + (x-1) * RESPONSE that
+// hits the SIM cap and stays there (looks static to the user), use a log-
+// shaped curve that keeps nudging up logarithmically even at high raw M/T.
+// At raw=1 the curve gives 1; at raw=5 it gives ~1.4; at raw=20 it gives
+// ~1.9; at raw=100 it gives ~2.5 — gradually saturating but never quite
+// pinned. The SIM still sees meaningful pressure differences between
+// "modest inflation" and "massive inflation".
+const RESPONSE           = 0.40;       // pre-log multiplier — controls steepness
 
 // Reference M/T: at the world's initial steady state the average component
 // has M/T near this number. P is divided by REF so it lands near 1 at the
@@ -105,8 +110,14 @@ export function updateInflation(world) {
   for (const [root, m] of M) {
     const t = T.get(root) || 1;
     const raw = (m / t) / REF;
-    // SIM price: soft squash + tight clamp.
-    const simTarget = Math.max(P_MIN, Math.min(P_MAX, 1 + (raw - 1) * RESPONSE));
+    // SIM price: log-shaped saturation. Below raw=1 (deflation) the curve
+    // is linear down to P_MIN; above raw=1 (inflation) it grows as 1 +
+    // RESPONSE * log(raw), so price keeps responding to monetary expansion
+    // even when raw M/T diverges 10-100x — instead of pegging at a hard cap
+    // and looking static. Final clamp at P_MAX is just a sanity ceiling.
+    const simTarget = raw <= 1
+      ? Math.max(P_MIN, 1 + (raw - 1) * RESPONSE)
+      : Math.min(P_MAX, 1 + RESPONSE * Math.log(raw));
     const prevP = Pmap.get(root);
     Pmap.set(root, prevP === undefined ? simTarget : prevP * (1 - EMA_ALPHA) + simTarget * EMA_ALPHA);
     // Display indicator: linear, wide clamp.

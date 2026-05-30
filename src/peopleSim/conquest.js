@@ -604,7 +604,25 @@ function disburseTreasury(world, c, gov, warLevel) {
   // soldiers — Spain-after-Potosí dynamics — and the war-chest grows with
   // the wage bill so a state still has a couple of passes' buffer at any P.
   const realmP = localPByCountry(world, c);
-  const wage = ARMY_WAGE * realmP;
+  // Wages also scale with the AVERAGE TIER of the realm. A village's
+  // soldiers are cheap militia (food + a little equipment), while a city
+  // fields professional infantry that demand real pay. Without this, tiny
+  // village-tier countries paid the same wages as Roman legions, and the
+  // fiscal-military spiral instantly crushed them — they bankrupted within
+  // 1-2 passes of forming. This restores the realistic case of a small
+  // viable state.
+  let _tierTotal = 0, _tierN = 0;
+  for (const s of members) { _tierTotal += s.tier | 0; _tierN++; }
+  const avgTier = _tierN > 0 ? _tierTotal / _tierN : 0;
+  const tierFactor = 0.3 + 0.7 * Math.min(1, avgTier / 2);  // 0.3 at village, 0.65 at town, 1.0 at city+
+  const wage = ARMY_WAGE * realmP * tierFactor;
+  // War surcharge only really applies to real states (with at least one
+  // city). A village-level realm can't afford a war and shouldn't be modelled
+  // as paying for one — its army either runs away or is dismantled (food
+  // desertion handles that), not bankrupted.
+  let hasCity = false;
+  for (const s of members) if ((s.tier | 0) >= 2) { hasCity = true; break; }
+  const effSurcharge = hasCity ? WAR_SURCHARGE : 0;
   let spent = 0;
 
   // ── 1. ARMY PAY (first claim) ──
@@ -613,7 +631,7 @@ function disburseTreasury(world, c, gov, warLevel) {
   // a state under sustained or multi-front war.
   let totalArmy = 0;
   for (const s of members) if (s.countryId === c.id) totalArmy += s.army || 0;
-  const armyBill = totalArmy * wage * (1 + WAR_SURCHARGE * (warLevel || 0));
+  const armyBill = totalArmy * wage * (1 + effSurcharge * (warLevel || 0));
   const armyPaid = Math.min(Math.max(0, gov.treasury), armyBill);
   gov._solvency = armyBill > 0.01 ? armyPaid / armyBill : 1;   // 1 = fully paid; < 1 = arrears
   if (armyPaid > 0 && totalArmy > 0) {

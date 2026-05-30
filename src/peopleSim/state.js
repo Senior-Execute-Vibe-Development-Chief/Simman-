@@ -184,13 +184,27 @@ function initRiverMag(world, w) {
 
 // Cradle village: a SINGLE village at the East African Rift-like site.
 // Already has basic agriculture (settlements-only model — we skip the
-// hunter-gatherer phase). Everything else descends from here, founded
-// by daughter colonies sent out as the cradle and its descendants
+// hunter-gatherer phase). Everything else descends from these cradles,
+// founded by daughter colonies sent out as each cradle and its descendants
 // reach carrying capacity.
+//
+// MULTIPLE CRADLES: historically agriculture arose independently in
+// several places — Mesopotamia, Egypt, Indus, Yellow River, Mesoamerica.
+// Seeding just one cradle gave the first civilisation a permanent compounding
+// lead and led to a single dominant power swallowing the world. So we seed
+// up to MAX_CRADLES top scoring sites separated by a minimum distance — each
+// becomes the seed of an independent civilization, producing a multipolar
+// world even at high resolution.
+const MAX_CRADLES = 5;
+const CRADLE_MIN_SEP = 60;   // tile-space minimum separation (large enough that a single
+                              // continent gets at most 1-2 cradles, but Earth's separated
+                              // landmasses each get one if they have a viable site)
 function seedCradleVillage(world) {
   resetSettlementIds();
   const { tw, th, elev, temp, moist, fert, coast, riverMag, N } = world;
-  let bestTi = -1, bestScore = -Infinity;
+  // Collect ALL viable candidates with their scores, then greedily pick the
+  // top-scoring set with minimum separation.
+  const candidates = [];
   for (let ti = 0; ti < N; ti++) {
     if (!isContinentalLand(world, ti)) continue;
     if (elev[ti] > 0.30) continue;
@@ -206,28 +220,48 @@ function seedCradleVillage(world) {
     const moistFit = 1 - Math.abs(m - 0.50) * 2;
     const elevFit  = 1 - elev[ti] * 2;
     const score = f * 2 + tempFit + moistFit + elevFit + waterBonus;
-    if (score > bestScore) { bestScore = score; bestTi = ti; }
+    candidates.push({ ti, score });
   }
-  if (bestTi < 0) {
+  if (candidates.length === 0) {
+    // Fallback: relax filters
     for (let ti = 0; ti < N; ti++) {
       if (!isContinentalLand(world, ti)) continue;
       if (fert[ti] < 0.25) continue;
-      if (fert[ti] > bestScore) { bestScore = fert[ti]; bestTi = ti; }
+      candidates.push({ ti, score: fert[ti] });
     }
   }
-  if (bestTi < 0) {
+  if (candidates.length === 0) {
     console.warn("[peopleSim] no viable cradle site found — world all water?");
     return;
   }
-  const ty = (bestTi / tw) | 0, tx = bestTi - ty * tw;
-  makeSettlement(world, tx + 0.5, ty + 0.5, { people: 25, name: "cradle" });
-  const e = elev[bestTi].toFixed(2), t = temp[bestTi].toFixed(2);
-  const m = moist[bestTi].toFixed(2), f = fert[bestTi].toFixed(2);
-  const rm = riverMag ? riverMag[bestTi] : 0;
-  console.log(
-    `[peopleSim] cradle at tile (${tx},${ty}) — elev:${e} temp:${t} moist:${m} fert:${f}` +
-    `${coast[bestTi]?" coast":""}${rm>=2?` river(mag${rm})`:""} score:${bestScore.toFixed(2)}`
-  );
+  candidates.sort((a, b) => b.score - a.score);
+  // Greedy: pick highest-scoring tile, then skip any tile within CRADLE_MIN_SEP.
+  const picked = [];
+  const minSepSq = CRADLE_MIN_SEP * CRADLE_MIN_SEP;
+  for (const c of candidates) {
+    if (picked.length >= MAX_CRADLES) break;
+    const ty = (c.ti / tw) | 0, tx = c.ti - ty * tw;
+    let tooClose = false;
+    for (const p of picked) {
+      let ddx = Math.abs(p.tx - tx);
+      if (ddx > tw / 2) ddx = tw - ddx;     // longitude wraps
+      const ddy = p.ty - ty;
+      if (ddx * ddx + ddy * ddy < minSepSq) { tooClose = true; break; }
+    }
+    if (!tooClose) picked.push({ tx, ty, ti: c.ti, score: c.score });
+  }
+  for (let i = 0; i < picked.length; i++) {
+    const p = picked[i];
+    const name = i === 0 ? "cradle" : `cradle-${i + 1}`;
+    makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: 25, name });
+    const e = elev[p.ti].toFixed(2), t = temp[p.ti].toFixed(2);
+    const m = moist[p.ti].toFixed(2), f = fert[p.ti].toFixed(2);
+    const rm = riverMag ? riverMag[p.ti] : 0;
+    console.log(
+      `[peopleSim] ${name} at tile (${p.tx},${p.ty}) — elev:${e} temp:${t} moist:${m} fert:${f}` +
+      `${coast[p.ti]?" coast":""}${rm>=2?` river(mag${rm})`:""} score:${p.score.toFixed(2)}`
+    );
+  }
 }
 
 export function pruneDead(world) {

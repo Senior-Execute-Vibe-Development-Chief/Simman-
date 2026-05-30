@@ -116,6 +116,15 @@ const RESOURCE_TIER_VALUE = {
   dyes:     [0.4, 0.6, 0.9, 1.0],
 };
 
+// Settlement-count decay for crystallisation: each existing settlement
+// makes the next one *slightly* less likely, modelling that as a world
+// fills up the remaining viable land is more contested and less likely
+// to produce a brand-new village. Without this the late game shows a
+// hockey-stick where settlement count explodes once a few cities exist.
+// Half-rate around N=300, third-rate around N=600. Settler colonisation
+// (which is parent-driven and intentional) is NOT subject to this — the
+// mother country can still push outward into the frontier.
+const CRYSTAL_SATURATION_REF = 300;
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
@@ -129,6 +138,11 @@ export function maybeCrystallize(world) {
   // sendSettlers — this is the entire "population pressure → new colony"
   // axis, distinct from the random crystallisation sweep below).
   if (world.step % COLONY_CHECK_INTERVAL === 0) maybeSendSettlers(world);
+
+  // Crystallisation saturation: settlement-count-dependent damper.
+  let _alive = 0;
+  for (const s of world.settlements) if (s.mode === "settled") _alive++;
+  const saturationDamper = 1 / (1 + _alive / CRYSTAL_SATURATION_REF);
 
   // Compute per-sweep resource scarcity / value table once.
   const resScarcity = computeResourceScarcity(world);
@@ -203,7 +217,7 @@ export function maybeCrystallize(world) {
     const td = transportDist[ti];
     const diffusionMul = isFinite(td) ? Math.exp(-td / KNOWLEDGE_DECAY_SCALE) * NEAR_RATE : 0;
     const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
-    const p = quality * (diffusionMul + independent) * BASE_RATE;
+    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper;
 
     if (rng() < p) {
       // Inherited knowledge: blend from nearest settlement, weighted by
