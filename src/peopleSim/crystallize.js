@@ -49,9 +49,23 @@ const MIN_AREA_FERT             = 1.0;    // 5×5 box must have *some* support
 // from the spacing alone but from too-weak locational pull: with roughly
 // uniform fertility AND only ~2× quality multipliers for rivers/coasts,
 // every site looked similar and packed evenly. The fix is in the QUALITY
-// scoring below (much stronger river/coast/chokepoint pull) — the spacing
-// rule itself is fine.
-const MIN_SETT_DIST             = 8;
+// scoring below — but the spacing rule is now SOFT, not binary. The old
+// binary `tooClose = (d < MIN_SETT_DIST)` rule produced a circle-packing
+// pattern visible as a low coefficient-of-variation in the nearest-neighbour
+// distribution: every new settlement landed at *exactly* the smallest
+// distance the rule allowed, giving a uniform grid. The soft version below
+// rejects truly overlapping sites (d < HARD_FLOOR) but lets brilliant
+// candidates squeeze in close (creating twin/paired towns — Buda-Pest,
+// Edo-shitamachi, the classic dual market settlements) while typical
+// fertility-tier candidates still get pushed apart.
+const HARD_FLOOR                = 4;          // absolutely no settlement closer than this
+const HARD_FLOOR_SQ             = HARD_FLOOR * HARD_FLOOR;
+const SOFT_DIST                 = 14;         // beyond this, the spacing factor is 1 (no penalty)
+const SOFT_DIST_SQ              = SOFT_DIST * SOFT_DIST;
+// Spacing-factor: 0 at HARD_FLOOR, 1 at SOFT_DIST. Used in sendSettlers'
+// hard reject because mother-country colony parties already pick deliberately
+// (the founder doesn't accidentally plant at 4 tiles).
+const MIN_SETT_DIST             = 8;          // kept for daughter-colony search hardcoding
 const MIN_SETT_DIST_SQ          = MIN_SETT_DIST * MIN_SETT_DIST;
 const KNOWLEDGE_DECAY_SCALE     = 30;
 // Independent invention: a site reached by no land network at all relies on
@@ -177,18 +191,30 @@ export function maybeCrystallize(world) {
       }
     }
     if (areaFert < MIN_AREA_FERT) continue;
-    // Min distance to all existing settlements (hard floor — territorial
-    // overlap). Locational pull is the *quality* score below, not the spacing
-    // rule.
-    let tooClose = false;
+    // Distance to nearest existing settlement. SOFT rule: HARD_FLOOR
+    // rejects outright (territorial overlap), beyond SOFT_DIST no penalty,
+    // in between a linear falloff multiplied into the spawn probability
+    // below. So brilliant sites can still pair up close to existing ones
+    // (twin towns), while typical sites still get pushed apart.
+    let nearestSq = Infinity;
     for (const o of world.settlements) {
       if (o.mode === "dead") continue;
       let ddx = Math.abs(o.pos.x - tx);
       if (ddx > tw / 2) ddx = tw - ddx;
       const ddy = o.pos.y - ty;
-      if (ddx * ddx + ddy * ddy < MIN_SETT_DIST_SQ) { tooClose = true; break; }
+      const dd = ddx * ddx + ddy * ddy;
+      if (dd < nearestSq) { nearestSq = dd; if (dd < HARD_FLOOR_SQ) break; }
     }
-    if (tooClose) continue;
+    if (nearestSq < HARD_FLOOR_SQ) continue;          // hard reject — overlap
+    // Linear ramp between HARD_FLOOR and SOFT_DIST on actual distance (not
+    // squared, so it grows steeply near the floor and flattens out near the
+    // soft boundary — matches the "very close = bad, modest distance =
+    // mostly fine" historical pattern).
+    let spacingFactor = 1;
+    if (nearestSq < SOFT_DIST_SQ) {
+      const d = Math.sqrt(nearestSq);
+      spacingFactor = (d - HARD_FLOOR) / (SOFT_DIST - HARD_FLOOR);
+    }
 
     // Site-quality score — the LOCATIONAL PULL that decides where a sparsely
     // settled landscape clusters. Real settlement patterns are highly uneven
@@ -201,8 +227,14 @@ export function maybeCrystallize(world) {
     // what makes rivers/coasts dominate by enough to leave bad land empty.
     const fertilityScore = 0.4 + f * 1.5 + Math.min(2.0, areaFert * 0.1);
     let locMul = 1;
-    if (hasRiver) locMul *= 3;            // rivers were *the* historical magnet
-    if (hasCoast) locMul *= 1.8;          // coasts second
+    if (hasRiver) locMul *= 6;            // rivers were *the* historical magnet —
+                                          // strong multiplier so river valleys
+                                          // dominate spawning and dry inland
+                                          // tiles stay empty. The Nile pattern:
+                                          // dense settlement along the water,
+                                          // huge empty desert between.
+    if (hasCoast) locMul *= 3;            // coasts second — natural harbours
+                                          // and trade contact draw settlement.
     // Resource / network / geographic bonuses are still additive
     // contributions on top of the multiplied location score.
     let quality = fertilityScore * locMul;
@@ -217,7 +249,7 @@ export function maybeCrystallize(world) {
     const td = transportDist[ti];
     const diffusionMul = isFinite(td) ? Math.exp(-td / KNOWLEDGE_DECAY_SCALE) * NEAR_RATE : 0;
     const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
-    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper;
+    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor;
 
     if (rng() < p) {
       // Inherited knowledge: blend from nearest settlement, weighted by
