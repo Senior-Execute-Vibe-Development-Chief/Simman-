@@ -66,3 +66,20 @@ corr("commerce",   c=>wealthOf(c)/Math.max(1,tilesByCountry.get(c.id)||1), "weal
 corr("aggression", c=>(c._fronts||0)*1000 + c.members.reduce((s,m)=>s+(m.history?m.history.filter(h=>h.type==="conquered").length:0),0), "warIdx");
 corr("commerce",   c=>c.members.reduce((s,m)=>s+(m.wealth||0),0), "wealth");
 corr("expansionism", c=>tilesByCountry.get(c.id)||0, "land");
+
+// Liechtenstein effect: among SMALL realms (<=4 members), are the survivors
+// disproportionately mercantile? Compare commerce of small realms vs all.
+{
+  const small=[], all=[];
+  for(const c of world.countries.values()){ if(c.members.length<=1)continue; const com=(c.personality&&c.personality.commerce)||0; all.push(com); if(c.members.length<=4) small.push(com); }
+  const mean=a=>a.reduce((s,x)=>s+x,0)/Math.max(1,a.length);
+  console.log(`\n=== Liechtenstein effect (small-state survival) ===`);
+  console.log(`  mean commerce of ALL realms:        ${mean(all).toFixed(3)} (n=${all.length})`);
+  console.log(`  mean commerce of SMALL realms(<=4): ${mean(small).toFixed(3)} (n=${small.length})  [higher => merchants survive small]`);
+  // Also: smallest-but-richest survivors (Venice profile)
+  const rows=[...world.countries.values()].filter(c=>c.members.length>1 && c.members.length<=5)
+    .map(c=>({nm:c.capital.name,mem:c.members.length,w:wealthOf(c),com:(c.personality&&c.personality.commerce)||0,lbl:c.personality&&c.personality._label}))
+    .sort((a,b)=>b.w-a.w).slice(0,6);
+  console.log(`  richest small (<=5 member) realms:`);
+  for(const r of rows) console.log(`    ${(r.nm||"?").padEnd(16)} mem=${r.mem} wealth=${Math.round(r.w)} com=${r.com.toFixed(2)} ${r.lbl}`);
+}
