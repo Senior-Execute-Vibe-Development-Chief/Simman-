@@ -6219,7 +6219,7 @@ return(
         const p=ctry&&ctry.personality;
         if(!p)return null;
         // Hue per dominant temperament so the label reads at a glance.
-        const labelHue={Warlike:8,Mercantile:140,Expansionist:265,Insular:210,Balanced:45}[p.label]??45;
+        const labelHue={Warlike:8,Conqueror:340,"Raider-Republic":30,Mercantile:140,"Trading Empire":175,Expansionist:265,Insular:210,Balanced:45}[p.label]??45;
         // Compact trait bars: aggression / commerce / expansionism.
         const bar=(v,h)=>(
           <span style={{display:"inline-block",width:20,height:5,borderRadius:2,background:"rgba(255,255,255,0.12)",position:"relative",overflow:"hidden"}}>

@@ -132,7 +132,7 @@ function buildSnapshot() {
       const pers = c.personality
         ? { label: c.personality._label,
             aggression: c.personality.aggression, commerce: c.personality.commerce,
-            expansionism: c.personality.expansionism, caution: c.personality.caution }
+            expansionism: c.personality.expansionism }
         : null;
       countries.push({
         id: c.id, capitalId: c.capitalId,

@@ -1091,8 +1091,8 @@ export function updatePolities(world) {
     c._govSpend = gov._spend;
 
     // Temperament drifts with lived experience (war hardens militarism, long
-    // solvent peace lets commerce flower, lost ground breeds caution, steady
-    // growth emboldens expansion) — see personality.js driftPersonality.
+    // solvent peace lets commerce flower, lost ground turns a realm inward,
+    // steady growth emboldens expansion) — see personality.js driftPersonality.
     driftPersonality(world, c, { warLevel, solvency });
   }
 

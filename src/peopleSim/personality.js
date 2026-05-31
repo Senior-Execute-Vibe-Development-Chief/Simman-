@@ -27,9 +27,9 @@
 //     room back in as a "trait" was double-counting geography, not flavour.
 //
 //   • Traits DRIFT over a realm's life (driftPersonality): a long war hardens
-//     militarism, a long peace lets commerce flower, losing ground breeds
-//     caution. Drift is slow (it reverts toward the intrinsic anchor) so a
-//     people's character shifts over centuries, not decades.
+//     militarism, a long peace lets commerce flower, losing ground turns a
+//     realm inward (expansionism ebbs). Drift is slow (it reverts toward the
+//     intrinsic anchor) so a people's character shifts over centuries.
 //
 //   • Successor states INHERIT the parent's temperament with a small drift,
 //     so lineages stay coherent while diverging over generations.
@@ -41,7 +41,12 @@
 
 import { mkRng } from "./rng.js";
 
-export const TRAITS = ["aggression", "commerce", "expansionism", "caution"];
+// Three INDEPENDENT outward-drive axes (each 0..1, uncorrelated — so a realm
+// can be high on two at once: the warlike merchant, the conquering trader).
+// There is deliberately NO "caution" trait: caution is not an orthogonal
+// drive, it's the ABSENCE of outward drive, so we DERIVE it (a realm low on
+// all three reads as "Insular") rather than storing a redundant fourth number.
+export const TRAITS = ["aggression", "commerce", "expansionism"];
 
 // How far a successor state's traits drift from the parent's (±). Small — a
 // breakaway is recognisably its parent's child, not a fresh roll.
@@ -65,7 +70,9 @@ const ENV_PRIOR_W = 0.20;
 const DRIFT_REVERT     = 0.010;  // per pass: traits ease back toward intrinsic anchor
 const DRIFT_WAR_AGG    = 0.004;  // a realm at war slowly hardens toward militarism
 const DRIFT_PEACE_COMM = 0.003;  // a solvent realm at peace drifts mercantile
-const DRIFT_LOSS_CAUT  = 0.008;  // losing members (secession/conquest) breeds caution
+const DRIFT_LOSS_EXP   = 0.008;  // losing members (secession/conquest) turns a realm
+                                 // INWARD — expansionism ebbs (the "breeds caution"
+                                 // effect, now expressed as withdrawal → derives Insular)
 const DRIFT_GROW_EXP   = 0.004;  // steadily gaining members emboldens expansionism
 
 // Luxury / specie resource ids read off the capital's territory for the
@@ -95,7 +102,6 @@ function intrinsicAnchor(rng) {
     aggression:   cultureRoll(rng),
     commerce:     cultureRoll(rng),
     expansionism: cultureRoll(rng),
-    caution:      cultureRoll(rng),
   };
 }
 
@@ -157,8 +163,8 @@ export function personalityOf(world, c) {
 // Slow, event-driven drift — called once per polity pass per multi-member
 // country. Traits ease back toward the intrinsic anchor (mean reversion) and
 // are pushed by lived experience: sustained war hardens militarism, long
-// solvent peace lets commerce flower, losing ground breeds caution, steady
-// growth emboldens expansion. Magnitudes are per-pass (POLITY_INTERVAL ≈ 150
+// solvent peace lets commerce flower, losing ground turns a realm inward,
+// steady growth emboldens expansion. Magnitudes are per-pass (POLITY_INTERVAL ≈ 150
 // ticks), so character shifts over centuries — a Tokugawa→Meiji turn, not a
 // mood swing.
 export function driftPersonality(world, c, signals) {
@@ -175,7 +181,7 @@ export function driftPersonality(world, c, signals) {
   // Lived experience.
   if (atWar)               p.aggression   += DRIFT_WAR_AGG  * (1 - p.aggression);
   else if (solvent)        p.commerce     += DRIFT_PEACE_COMM * (1 - p.commerce);
-  if (grew < 0)            p.caution      += DRIFT_LOSS_CAUT * (1 - p.caution);
+  if (grew < 0)            p.expansionism -= DRIFT_LOSS_EXP * p.expansionism;   // turn inward
   else if (grew > 0)       p.expansionism += DRIFT_GROW_EXP * (1 - p.expansionism);
 
   for (const t of TRAITS) p[t] = clamp01(p[t]);
@@ -216,20 +222,42 @@ export function prunePersonalities(world, countries) {
   }
 }
 
-// Human-readable archetype from the dominant trait — for the info panel.
-// Caution only "wins" when no outward drive is notably high, so a balanced
-// realm reads as "Balanced" rather than defaulting to cautious.
+// Human-readable archetype — BLEND-AWARE, so the personalities we actually
+// simulate read on screen. The three outward drives are independent, so a
+// realm can be co-dominant in two at once; that blend gets its own evocative
+// name (the warlike merchant is a Raider-Republic, not just "Warlike").
+//
+//   • all three drives low      → Insular   (the absence of outward drive —
+//                                  this is the DERIVED "caution"/withdrawal)
+//   • one drive clearly on top   → its single archetype
+//   • two co-dominant drives     → the pair's blend name
+//   • all three high & close     → Balanced  (driven but unspecialised)
+const LABEL_INSULAR_MAX = 0.40;  // top drive below this ⇒ no real ambition ⇒ Insular
+const LABEL_CODOMINANT  = 0.12;  // drives within this of the top count as co-dominant
+const NOUN = { aggression: "Warlike", commerce: "Mercantile", expansionism: "Expansionist" };
+// Blend names keyed by the sorted pair (symmetric — a blend is a blend).
+const COMBO = {
+  "aggression+commerce":     "Raider-Republic",  // Carthage / Norse / the armed trading city
+  "aggression+expansionism": "Conqueror",        // Rome / the Mongols / Macedon
+  "commerce+expansionism":   "Trading Empire",   // the Dutch / Portuguese / maritime colonial powers
+};
 function labelFor(p) {
   const drives = [
-    ["aggression",   p.aggression,   "Warlike"],
-    ["commerce",     p.commerce,     "Mercantile"],
-    ["expansionism", p.expansionism, "Expansionist"],
+    ["aggression",   p.aggression],
+    ["commerce",     p.commerce],
+    ["expansionism", p.expansionism],
   ];
   drives.sort((a, b) => b[1] - a[1]);
-  const top = drives[0], second = drives[1];
-  if (top[1] < 0.45 && p.caution > 0.5) return "Insular";
-  if (top[1] - second[1] < 0.08) return "Balanced";
-  return top[2];
+  const [top, second, third] = drives;
+  if (top[1] < LABEL_INSULAR_MAX) return "Insular";          // no drive worth the name
+  const coSecond = top[1] - second[1] < LABEL_CODOMINANT;
+  const coThird  = top[1] - third[1]  < LABEL_CODOMINANT;
+  if (coSecond && coThird) return "Balanced";                // all three jostling
+  if (coSecond) {                                            // two co-dominant → blend
+    const key = [top[0], second[0]].sort().join("+");
+    return COMBO[key] || NOUN[top[0]];
+  }
+  return NOUN[top[0]];                                       // one clear dominant
 }
 
 // ── Behaviour multipliers (the levers other passes read) ───────────────
@@ -238,10 +266,12 @@ function labelFor(p) {
 // their existing constant by these.
 
 // Conquest appetite: a warlike realm needs less of a power edge to attack
-// (lowers ATTACK_MIN_RATIO); a cautious one demands more.
+// (lowers ATTACK_MIN_RATIO); a peaceable (low-aggression) one demands a clear
+// advantage — the old caution term is subsumed here, since "cautious" is just
+// low aggression. Spans the same ~0.75–1.35 band on aggression alone.
 export function aggressionAttackMul(p) {
   if (!p) return 1;
-  return clampv(1.18 - p.aggression * 0.50 + p.caution * 0.30, 0.75, 1.35);
+  return clampv(1.35 - p.aggression * 0.60, 0.75, 1.35);
 }
 
 // Garrison size: aggressive realms field bigger armies for their pop.
@@ -257,11 +287,12 @@ export function commerceMul(p) {
 }
 
 // Administrative reach: an expansionist realm projects authority a little
-// farther; a cautious one pulls in. Deliberately MILD — knowledge sets the
-// real reach; personality only colours it.
+// farther; an inward (low-expansion) one pulls in. Deliberately MILD —
+// knowledge sets the real reach; personality only colours it. Widened slightly
+// on the expansion axis to recover the pull-in the caution term used to give.
 export function expansionReachMul(p) {
   if (!p) return 1;
-  return 0.9 + p.expansionism * 0.28 - p.caution * 0.10;
+  return 0.85 + p.expansionism * 0.34;
 }
 
 // Colony drive: how eager a realm is to seed overseas/frontier colonies.
