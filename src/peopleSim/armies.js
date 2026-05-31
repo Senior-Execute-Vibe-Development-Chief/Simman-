@@ -18,7 +18,7 @@
 import { coreRadiusFor } from "./territory.js";
 import { findPath } from "./roads.js";
 import { localEdgeCost } from "./transport.js";
-import { fragmentRealm } from "./conquest.js";
+import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
@@ -417,6 +417,7 @@ export function advanceFronts(world) {
           const ag = world.governments && world.governments.get(att.countryId);
           if (ag) ag._spoils = Math.min(2, (ag._spoils || 0) + WAR_SPOILS);
           if (def.history) def.history.push({ step: world.step, type: "conquered", by: att.id });
+          bankMomentum(world, att.countryId, MOMENTUM_PER_STORM);   // a stormed city feeds the winning streak
           att.army = Math.max(0, (att.army || 0) * (1 - ASSAULT_ARMY_COST));
           def.army = Math.max(0, (def.army || 0) * 0.3);
           // If it was the capital, the leaderless empire shatters into
@@ -436,6 +437,7 @@ export function advanceFronts(world) {
       pc.tiles.sort((p, q) => q.distHome - p.distHome);
       const n = Math.min(budget, pc.tiles.length);
       for (let i = 0; i < n; i++) owner[pc.tiles[i].ti] = att.id;
+      bankMomentum(world, att.countryId, n * MOMENTUM_PER_TILE);   // captured countryside feeds the streak
     }
     att.army = Math.max(0, (att.army || 0) - def._M * ATTRITION / techMul(att));
     def.army = Math.max(0, (def.army || 0) - att._M * ATTRITION / techMul(def));

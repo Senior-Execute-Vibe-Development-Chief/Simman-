@@ -95,6 +95,16 @@ export function govOf(world, countryId) {
   return g;
 }
 
+// Bank conquest momentum onto the conquering country (armies.js calls this
+// when it captures tiles / storms a city). Momentum adds hold-capacity in the
+// polity pass and decays fast, so a stalled conqueror fragments — see the
+// MOMENTUM_* block. The cap is applied on read in the polity pass.
+export function bankMomentum(world, countryId, amount) {
+  if (!(amount > 0)) return;
+  const g = govOf(world, countryId);
+  g._momentum = (g._momentum || 0) + amount;
+}
+
 // ── Control budget (overextension) ───────────────────────────────────
 // An empire holds its provinces out of a finite CONTROL BUDGET projected
 // from its CENTRE. Each province draws some of that budget (its admin
@@ -148,6 +158,27 @@ const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capaci
 const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
 const WAR_CAPACITY_MULT   = 0.8;   // capital's countryside merely raided → mild throttle
 const SIEGE_WINDOW        = 300;   // ticks the siege/war throttle lingers after the last front
+
+// ── Conquest momentum (the rise-and-shatter of the steppe empire) ─────
+// A realm on a winning streak coheres around the conquest itself: loot,
+// prestige, fear, and shared enterprise hold a far larger domain together
+// than its settled administration ever could — SO LONG AS IT KEEPS WINNING.
+// The Mongols, Alexander, Timur, the Arab conquests, Attila: each held an
+// impossible expanse on momentum, then shattered within a generation the
+// moment the conquest stalled (no soft targets left, a lost battle, the
+// khan's death). We model that with a per-country MOMENTUM stock (lives on
+// the persistent gov object, keyed by countryId):
+//   • FED by successful conquest — tiles captured + cities stormed
+//     (banked in armies.js via bankMomentum).
+//   • Each pass it ADDS hold-capacity (a conqueror holds far past its static
+//     budget while the streak runs), then DECAYS fast.
+//   • When the streak stops, momentum craters in a few passes → the capacity
+//     it was propping up vanishes → the over-extended frontier sheds all at
+//     once: a hard, Mongol-style fragmentation. (Hard snap, not a glide.)
+const MOMENTUM_CAP        = 14;    // max reach-units momentum can add to capacity
+const MOMENTUM_DECAY      = 0.55;  // per polity pass: momentum retained when not fed (hard snap)
+export const MOMENTUM_PER_TILE  = 0.05;  // momentum banked per enemy tile captured
+export const MOMENTUM_PER_STORM = 3.0;   // momentum banked per enemy CITY stormed
 
 // ── Overmighty governor (ambition-driven secession) ───────────────────
 // A powerful regional governor doesn't wait for the budget to fail. If his
@@ -889,8 +920,17 @@ export function updatePolities(world) {
     const gov = govOf(world, c.id);
     const solvency = gov._solvency ?? 1;
     const fiscalDuress = SOLVENCY_FLOOR + solvency * (1 - SOLVENCY_FLOOR);
-    const capacity = peaceCapacity * duress * fiscalDuress;
+    // Conquest momentum: a winning streak (banked in armies.js) holds a far
+    // larger domain together than the settled budget could — but it decays
+    // FAST once the conquering stops, so the moment the streak ends the
+    // propped-up frontier sheds in a few passes (hard snap). Added on top of
+    // the throttled budget so even a multi-front war-machine over-holds while
+    // it's winning, then shatters when it stalls.
+    const momentum = Math.min(MOMENTUM_CAP, gov._momentum || 0);
+    gov._momentum = momentum * MOMENTUM_DECAY;     // decay each pass; conquest re-banks it (armies.js)
+    const capacity = peaceCapacity * duress * fiscalDuress + momentum;
     c._capacity = capacity;        // (already duress-adjusted) for the info panel
+    c._momentum = momentum;        // for the info panel
     c._fronts = fronts;
     c._capitalBesieged = besiegedCap;
     c._solvency = solvency;
