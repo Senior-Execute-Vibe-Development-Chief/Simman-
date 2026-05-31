@@ -235,7 +235,9 @@ function recencyFactor(world, s) {
 // administer. Grows with organization/mobility/navigation; then SHRINKS
 // with empire size (overstretch), so big empires can't hold their
 // periphery and fragment into successor states.
-const RANGE_BASE = 8, RANGE_ORG = 16, RANGE_MOB = 10, RANGE_NAV = 6;
+const RANGE_BASE = 8 * 1.02, RANGE_ORG = 16 * 1.02, RANGE_MOB = 10 * 1.02, RANGE_NAV = 6 * 1.02;
+// (all ×1.02 re-anchor the 0.5-pivot expansionReachMul — personality.js;
+//  c.range = RANGE_expr × reachMul, so behaviour is identical to the old form)
 
 // ── Major-river administrative frontier ───────────────────────────────
 // A great river is a natural border: holding a province on the FAR bank

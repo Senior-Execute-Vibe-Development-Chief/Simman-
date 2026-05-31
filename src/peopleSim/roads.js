@@ -138,8 +138,10 @@ function partnerReachFor(s) {
 // countryside should still be possible if it saves enough cost
 // (medieval trunk roads were often more direct than the village
 // paths they replaced).
-const NEW_FRACTION_OUT    = 0.35;       // peer in different component: low bar
-const NEW_FRACTION_IN     = 0.55;       // peer in same component: moderate novelty
+const NEW_FRACTION_OUT    = 0.35 / 1.2; // peer in different component: low bar
+const NEW_FRACTION_IN     = 0.55 / 1.2; // peer in same component: moderate novelty
+                                        // (both ÷1.2 re-anchor the 0.5-pivot commerceMul,
+                                        // which divides these; behaviour identical)
 const SHORTCUT_GAIN_RATIO = 0.85;       // new direct path must save ≥ 15% vs network path
 
 // Close-neighbour rule: any settled pair within this many tiles

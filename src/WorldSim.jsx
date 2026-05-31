@@ -6220,12 +6220,20 @@ return(
         if(!p)return null;
         // Hue per dominant temperament so the label reads at a glance.
         const labelHue={Warlike:8,Conqueror:340,"Raider-Republic":30,Mercantile:140,"Trading Empire":175,Expansionist:265,Insular:210,Balanced:45}[p.label]??45;
-        // Compact trait bars: aggression / commerce / expansionism.
-        const bar=(v,h)=>(
-          <span style={{display:"inline-block",width:20,height:5,borderRadius:2,background:"rgba(255,255,255,0.12)",position:"relative",overflow:"hidden"}}>
-            <span style={{position:"absolute",left:0,top:0,bottom:0,width:`${Math.round((v||0)*100)}%`,background:`hsl(${h},60%,52%)`}}/>
+        // Compact CENTERED trait bars: traits are −1..1 (0=neutral), so the
+        // fill grows rightward from the centre for a positive (trait-expressing)
+        // value and leftward for a negative (mirror) one, against a centre tick.
+        const bar=(v,h)=>{
+          const c=Math.max(-1,Math.min(1,v||0));
+          const half=Math.abs(c)*50;                 // % of the half-track filled
+          const left=c>=0?50:50-half;                // start at centre (right) or back off (left)
+          return(
+          <span style={{display:"inline-block",width:22,height:5,borderRadius:2,background:"rgba(255,255,255,0.12)",position:"relative",overflow:"hidden"}}>
+            <span style={{position:"absolute",left:"50%",top:0,bottom:0,width:1,background:"rgba(255,255,255,0.35)"}}/>
+            <span style={{position:"absolute",left:`${left}%`,top:0,bottom:0,width:`${half}%`,background:`hsl(${h},60%,52%)`}}/>
           </span>
-        );
+          );
+        };
         return(
           <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10,marginBottom:6,flexWrap:"wrap"}}>
             <span style={{width:9,height:9,borderRadius:2,background:`hsl(${labelHue},60%,50%)`,flexShrink:0}}/>

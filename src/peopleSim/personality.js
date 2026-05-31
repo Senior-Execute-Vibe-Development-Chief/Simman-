@@ -1,7 +1,8 @@
 // ── Country personalities ─────────────────────────────────────────────
 //
-// Every country carries a PERSONALITY: a small vector of continuous 0..1
-// temperament traits that bias what a realm WANTS to do. Knowledge gates
+// Every country carries a PERSONALITY: a small vector of continuous −1..1
+// temperament traits (0 = neutral; sign = direction, magnitude = intensity)
+// that bias what a realm WANTS to do. Knowledge gates
 // what a realm CAN do; geography sets what's materially POSSIBLE; this layer
 // is the cultural CHARACTER on top — so two iron-age empires of equal tech on
 // similar ground can still be a war-machine and a merchant republic.
@@ -41,16 +42,20 @@
 
 import { mkRng } from "./rng.js";
 
-// Three INDEPENDENT outward-drive axes (each 0..1, uncorrelated — so a realm
-// can be high on two at once: the warlike merchant, the conquering trader).
-// There is deliberately NO "caution" trait: caution is not an orthogonal
-// drive, it's the ABSENCE of outward drive, so we DERIVE it (a realm low on
-// all three reads as "Insular") rather than storing a redundant fourth number.
+// Three INDEPENDENT outward-drive axes, each in −1..1 with 0 = neutral
+// (uncorrelated — so a realm can be high on two at once: the warlike merchant,
+// the conquering trader). A POSITIVE value expresses the trait (warlike,
+// mercantile, expansive); a NEGATIVE value its mirror (pacifist, autarkic,
+// inward); 0 is an average realm with no lean. There is deliberately NO
+// "caution" trait: caution is not an orthogonal drive, it's the ABSENCE of
+// outward drive, so we DERIVE it (a realm negative on all three reads as
+// "Insular") rather than storing a redundant fourth number.
 export const TRAITS = ["aggression", "commerce", "expansionism"];
 
-// How far a successor state's traits drift from the parent's (±). Small — a
-// breakaway is recognisably its parent's child, not a fresh roll.
-const INHERIT_DRIFT = 0.12;
+// How far a successor state's traits drift from the parent's (±, in the −1..1
+// trait scale). Small — a breakaway is recognisably its parent's child, not a
+// fresh roll.
+const INHERIT_DRIFT = 0.24;
 
 // Weight of the environment PRIOR vs the intrinsic cultural seed. 0.2 means
 // temperament is ~80% arbitrary character, ~20% "the ground leans you this
@@ -90,10 +95,11 @@ function countryRng(world, countryId) {
   return mkRng((base ^ (countryId * 40503)) >>> 0);
 }
 
-// A spread roll in 0..1 with a gentle central bias (average of two uniforms),
-// so most cultures are moderate and the extremes are rarer — without ever
-// pinning a trait to circumstance.
-function cultureRoll(rng) { return (rng() + rng()) / 2; }
+// A spread roll in −1..1 with a gentle central bias toward 0 (sum of two
+// uniforms minus 1 → a triangular distribution peaked at neutral), so most
+// cultures are moderate and the extremes are rarer — without ever pinning a
+// trait to circumstance.
+function cultureRoll(rng) { return (rng() + rng()) - 1; }
 
 // The intrinsic cultural ANCHOR: arbitrary, seeded, geography-free. This is
 // the heart of the temperament; everything else is a nudge on top.
@@ -127,8 +133,10 @@ function environmentPrior(world, c) {
   const aggression = clamp01(0.3 + horses * 0.6 + (k.metallurgy || 0) * 0.3
     + Math.min(0.25, ore * 0.4));
 
-  // No expansionism / caution prior — those are purely cultural.
-  return { aggression, commerce };
+  // No expansionism prior — that's purely cultural. The priors above are
+  // computed in 0..1 (their natural form); map them onto the −1..1 trait scale
+  // (x → 2x−1) so they blend in the same space as the intrinsic anchor.
+  return { aggression: aggression * 2 - 1, commerce: commerce * 2 - 1 };
 }
 
 // Build a fresh personality: intrinsic anchor, nudged ~20% toward the weak
@@ -141,7 +149,7 @@ function makePersonality(world, c, rng) {
   for (const t of TRAITS) {
     let v = base[t];
     if (prior[t] !== undefined) v = v * (1 - ENV_PRIOR_W) + prior[t] * ENV_PRIOR_W;
-    p[t] = clamp01(v);
+    p[t] = clampv(v, -1, 1);
     p._base[t] = p[t];      // intrinsic anchor for mean-reverting drift
   }
   p._label = labelFor(p);
@@ -178,13 +186,15 @@ export function driftPersonality(world, c, signals) {
   // Mean reversion toward the intrinsic anchor.
   for (const t of TRAITS) p[t] += (p._base[t] - p[t]) * DRIFT_REVERT;
 
-  // Lived experience.
-  if (atWar)               p.aggression   += DRIFT_WAR_AGG  * (1 - p.aggression);
+  // Lived experience. Each term scales by the HEADROOM to the relevant pole
+  // (+1 for the hardening drifts, −1 for the inward one), so a trait already
+  // near its pole barely moves and the push is gentle and bounded.
+  if (atWar)               p.aggression   += DRIFT_WAR_AGG   * (1 - p.aggression);
   else if (solvent)        p.commerce     += DRIFT_PEACE_COMM * (1 - p.commerce);
-  if (grew < 0)            p.expansionism -= DRIFT_LOSS_EXP * p.expansionism;   // turn inward
-  else if (grew > 0)       p.expansionism += DRIFT_GROW_EXP * (1 - p.expansionism);
+  if (grew < 0)            p.expansionism -= DRIFT_LOSS_EXP  * (p.expansionism + 1);   // turn inward (toward −1)
+  else if (grew > 0)       p.expansionism += DRIFT_GROW_EXP  * (1 - p.expansionism);
 
-  for (const t of TRAITS) p[t] = clamp01(p[t]);
+  for (const t of TRAITS) p[t] = clampv(p[t], -1, 1);
   p._size = c.members.length;
   p._label = labelFor(p);
 }
@@ -203,11 +213,11 @@ export function inheritPersonality(world, parentCountryId, childCountryId) {
   const child = { _base: {} };
   for (const t of TRAITS) {
     const jitter = (rng() - 0.5) * 2 * INHERIT_DRIFT;
-    child[t] = clamp01((parent[t] ?? 0.5) + jitter);
+    child[t] = clampv((parent[t] ?? 0) + jitter, -1, 1);
     // Anchor inherits the parent's anchor with its own drift, so the
     // breakaway has a distinct-but-related intrinsic character to revert to.
     const baseJ = (rng() - 0.5) * 2 * INHERIT_DRIFT;
-    child._base[t] = clamp01(((parent._base && parent._base[t]) ?? parent[t] ?? 0.5) + baseJ);
+    child._base[t] = clampv(((parent._base && parent._base[t]) ?? parent[t] ?? 0) + baseJ, -1, 1);
   }
   child._label = labelFor(child);
   world.personalities.set(childCountryId, child);
@@ -227,13 +237,14 @@ export function prunePersonalities(world, countries) {
 // realm can be co-dominant in two at once; that blend gets its own evocative
 // name (the warlike merchant is a Raider-Republic, not just "Warlike").
 //
-//   • all three drives low      → Insular   (the absence of outward drive —
+//   • all three drives negative → Insular   (the absence of outward drive —
 //                                  this is the DERIVED "caution"/withdrawal)
 //   • one drive clearly on top   → its single archetype
 //   • two co-dominant drives     → the pair's blend name
 //   • all three high & close     → Balanced  (driven but unspecialised)
-const LABEL_INSULAR_MAX = 0.40;  // top drive below this ⇒ no real ambition ⇒ Insular
-const LABEL_CODOMINANT  = 0.12;  // drives within this of the top count as co-dominant
+// Thresholds are in the −1..1 trait scale.
+const LABEL_INSULAR_MAX = -0.20; // top drive below this ⇒ no real ambition ⇒ Insular
+const LABEL_CODOMINANT  = 0.24;  // drives within this of the top count as co-dominant
 const NOUN = { aggression: "Warlike", commerce: "Mercantile", expansionism: "Expansionist" };
 // Blend names keyed by the sorted pair (symmetric — a blend is a blend).
 const COMBO = {
@@ -261,42 +272,62 @@ function labelFor(p) {
 }
 
 // ── Behaviour multipliers (the levers other passes read) ───────────────
-// Each returns a multiplier centred near 1.0 so a trait of 0.5 is roughly
-// neutral and the extremes meaningfully push the lever. Callers multiply
-// their existing constant by these.
+// CONVENTION: every multiplier is centred on the 0 pivot —
+//     mul = 1 + trait · HALFSPAN          (trait ∈ −1..1)
+// so a trait of 0 is neutral (mul = 1.0, the bare constant), a negative trait
+// expresses the MIRROR (pacifist / autarkic / inward) and a positive one the
+// trait, symmetrically. Because `cultureRoll` is mean-0, the AVERAGE realm is
+// genuinely neutral.
+//
+// This is a PURE RE-PARAMETERISATION of the old hand-tuned multipliers — the
+// behaviour is mathematically IDENTICAL for every realm, only the trait's
+// scale and pivot moved. The old forms were `base + slope·t01` (t01 ∈ 0..1)
+// pivoting at varied places (0.25–0.58), so "neutral" was inconsistent and
+// even disagreed between a trait's own two levers. With t11 = 2·t01−1, each
+// HALFSPAN is the old slope ÷ (2·F) where F is the old value-at-the-mean, and
+// every caller constant is re-anchored by that same F (×F for a constant the
+// multiplier MULTIPLIES, ÷F for one it DIVIDES). F is written inline so the
+// algebra stays legible:
+//   attack F=1.05   army F=1.075   commerce F=1.20   reach F=1.02   colony F=1.10
 
-// Conquest appetite: a warlike realm needs less of a power edge to attack
-// (lowers ATTACK_MIN_RATIO); a peaceable (low-aggression) one demands a clear
-// advantage — the old caution term is subsumed here, since "cautious" is just
-// low aggression. Spans the same ~0.75–1.35 band on aggression alone.
+// Conquest appetite: a warlike realm (aggression > 0) needs less of a power
+// edge to attack (lowers the effective ATTACK_MIN_RATIO, which is ×1.05); a
+// peaceable one (aggression < 0) demands a clear advantage. The old caution
+// term is subsumed here — "cautious" is just negative aggression. Clamp caps
+// the extremes (the old [0.75,1.35] band ÷1.05).
 export function aggressionAttackMul(p) {
   if (!p) return 1;
-  return clampv(1.35 - p.aggression * 0.60, 0.75, 1.35);
+  return clampv(1 - p.aggression * (0.60 / (2 * 1.05)), 0.75 / 1.05, 1.35 / 1.05);
 }
 
-// Garrison size: aggressive realms field bigger armies for their pop.
+// Garrison size: warlike realms field bigger armies for their pop; pacifist
+// ones (negative) fewer. (ARMY_TIER_FRAC and ARMY_CAPITAL_BONUS are ×1.075.)
 export function aggressionArmyMul(p) {
   if (!p) return 1;
-  return 0.85 + p.aggression * 0.45;
+  return 1 + p.aggression * (0.45 / (2 * 1.075));
 }
 
-// Road-building eagerness: a mercantile realm builds trade roads more readily.
+// Road-building eagerness: a mercantile realm (commerce > 0) builds trade roads
+// more readily, an autarkic one (negative) less so. (NEW_FRACTION_* in roads.js
+// are ÷1.2 — they're divided by this multiplier.)
 export function commerceMul(p) {
   if (!p) return 1;
-  return 0.8 + p.commerce * 0.8;
+  return 1 + p.commerce * (0.80 / (2 * 1.20));
 }
 
 // Administrative reach: an expansionist realm projects authority a little
-// farther; an inward (low-expansion) one pulls in. Deliberately MILD —
-// knowledge sets the real reach; personality only colours it. Widened slightly
-// on the expansion axis to recover the pull-in the caution term used to give.
+// farther; an inward (negative) one pulls in. Deliberately MILD — knowledge
+// sets the real reach; personality only colours it. (RANGE_* in conquest.js
+// are ×1.02.)
 export function expansionReachMul(p) {
   if (!p) return 1;
-  return 0.85 + p.expansionism * 0.34;
+  return 1 + p.expansionism * (0.34 / (2 * 1.02));
 }
 
-// Colony drive: how eager a realm is to seed overseas/frontier colonies.
+// Colony drive: how eager a realm is to seed overseas/frontier colonies; an
+// inward realm (negative) mounts fewer. (COLONY_COOLDOWN in sea.js is ÷1.1 —
+// it's divided by this multiplier.)
 export function expansionColonyMul(p) {
   if (!p) return 1;
-  return 0.6 + p.expansionism * 1.0;
+  return 1 + p.expansionism * (1.0 / (2 * 1.10));
 }

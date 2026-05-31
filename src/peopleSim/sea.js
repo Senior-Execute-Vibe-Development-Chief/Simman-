@@ -71,7 +71,9 @@ const SEA_MAX_PEERS   = 12;
 const COLONY_MIN_POP    = 400;   // a city (tier 2) can colonise
 const COLONY_MIN_NAV    = 0.25;  // need ocean-going ships
 const COLONY_PEOPLE     = 30;    // colonists carried (migrated out of parent)
-const COLONY_COOLDOWN   = 500;   // ticks between expeditions from one port
+const COLONY_COOLDOWN   = 500 / 1.1; // ticks between expeditions from one port
+                                 // (÷1.1 re-anchors the 0.5-pivot expansionColonyMul,
+                                 // which divides this; behaviour identical)
 const COLONY_ENDOW_FRAC = 0.12;  // share of the parent's coin colonists carry
 const COLONY_ENDOW_CAP  = 5000;
 const COLONY_MIN_DIST   = 14;    // landing must be this far from any settlement

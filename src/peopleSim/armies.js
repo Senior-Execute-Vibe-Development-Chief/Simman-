@@ -27,8 +27,10 @@ import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 // so a settlement that can't cover that food drains its granary and the army
 // DESERTS — you can't field more troops than you can feed. Coin upkeep is now
 // a small secondary cost (pay/equipment), not the binding constraint.
-const ARMY_TIER_FRAC = [0.02, 0.05, 0.09, 0.11];  // garrison cap as fraction of pop, by tier
-const ARMY_CAPITAL_BONUS = 0.03;                  // the capital fields a bit more
+const ARMY_TIER_FRAC = [0.02, 0.05, 0.09, 0.11].map(f => f * 1.075);  // garrison cap as fraction of pop, by tier
+const ARMY_CAPITAL_BONUS = 0.03 * 1.075;          // the capital fields a bit more
+// (TIER_FRAC and CAPITAL_BONUS ×1.075 re-anchor the 0.5-pivot aggressionArmyMul
+//  — personality.js; behaviour identical to the old 0.85+a·0.45 form)
 const ARMY_GROW     = 0.05;   // growth toward the cap per muster
 const ARMY_DESERT   = 0.80;   // when food-starved, the garrison melts to this each muster
 const BANKRUPT_DESERT = 0.70; // when wholly unpaid (insolvent state), the garrison melts to this each muster
@@ -42,7 +44,9 @@ export const CONQUEST_INTERVAL = 50;
 // map — without it contested frontier cities ping-pong endlessly.
 export const CONQUEST_GRACE = 800;
 
-const ATTACK_MIN_RATIO  = 1.12;        // must out-power a neighbour by this to push
+const ATTACK_MIN_RATIO  = 1.12 * 1.05; // must out-power a neighbour by this to push
+                                       // (×1.05 re-anchors the 0.5-pivot
+                                       // aggressionAttackMul; behaviour identical)
 const CAPTURE_SCALE     = 5;           // tiles/pass per unit of power-ratio advantage
 const MAX_CAPTURE       = 24;          // hard cap on tiles flipped per front per pass
 const CITY_STORM_RATIO  = 1.6;         // power ratio needed to besiege the core
