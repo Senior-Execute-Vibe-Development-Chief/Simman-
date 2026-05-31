@@ -127,15 +127,23 @@ function buildSnapshot() {
   const countries = [];
   if (world.countries) {
     for (const c of world.countries.values()) {
+      // Personality: send the label + the trait vector (for a small bar
+      // readout in the info panel). Cheap — a handful of floats per realm.
+      const pers = c.personality
+        ? { label: c.personality._label,
+            aggression: c.personality.aggression, commerce: c.personality.commerce,
+            expansionism: c.personality.expansionism, caution: c.personality.caution }
+        : null;
       countries.push({
         id: c.id, capitalId: c.capitalId,
         memberIds: c.members.map(m => m.id),
         hue: c.hue, range: c.range,
-        _capacity: c._capacity, _loadTotal: c._loadTotal,
+        _capacity: c._capacity, _loadTotal: c._loadTotal, _momentum: c._momentum,
         _fronts: c._fronts, _capitalBesieged: c._capitalBesieged,
         _treasury: c._treasury, _govRevenue: c._govRevenue, _govSpend: c._govSpend, _solvency: c._solvency,
         _taxRate: c._taxRate,
         _priceLevel: displayPByCountry(world, c),
+        personality: pers,
       });
     }
   }

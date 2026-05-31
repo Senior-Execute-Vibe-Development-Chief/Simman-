@@ -5615,7 +5615,7 @@ const applySnapshot=useCallback((snap)=>{
   for(const c of (snap.countries||[])){
     const members=c.memberIds.map(id=>byId.get(id)).filter(Boolean);
     const capital=byId.get(c.capitalId)||members[0]||null;
-    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel});
+    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_momentum:c._momentum,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel,personality:c.personality});
   }
   psw.countries=countries;
   // HUD state updates re-render the whole component, so throttle them to ~5Hz
@@ -6213,6 +6213,30 @@ return(
         );
       })()}
 
+      {/* ── National temperament (personality) ── */}
+      {(()=>{
+        const ctry=psw.countries&&psw.countries.get(s.countryId);
+        const p=ctry&&ctry.personality;
+        if(!p)return null;
+        // Hue per dominant temperament so the label reads at a glance.
+        const labelHue={Warlike:8,Mercantile:140,Expansionist:265,Insular:210,Balanced:45}[p.label]??45;
+        // Compact trait bars: aggression / commerce / expansionism.
+        const bar=(v,h)=>(
+          <span style={{display:"inline-block",width:20,height:5,borderRadius:2,background:"rgba(255,255,255,0.12)",position:"relative",overflow:"hidden"}}>
+            <span style={{position:"absolute",left:0,top:0,bottom:0,width:`${Math.round((v||0)*100)}%`,background:`hsl(${h},60%,52%)`}}/>
+          </span>
+        );
+        return(
+          <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10,marginBottom:6,flexWrap:"wrap"}}>
+            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${labelHue},60%,50%)`,flexShrink:0}}/>
+            <span className="au-fade" style={{fontWeight:600}}>{p.label}</span>
+            <span style={{display:"inline-flex",alignItems:"center",gap:3}} title={`aggression ${(p.aggression||0).toFixed(2)}`}>{bar(p.aggression,8)}<span className="au-fade" style={{opacity:0.5}}>war</span></span>
+            <span style={{display:"inline-flex",alignItems:"center",gap:3}} title={`commerce ${(p.commerce||0).toFixed(2)}`}>{bar(p.commerce,140)}<span className="au-fade" style={{opacity:0.5}}>trade</span></span>
+            <span style={{display:"inline-flex",alignItems:"center",gap:3}} title={`expansionism ${(p.expansionism||0).toFixed(2)}`}>{bar(p.expansionism,265)}<span className="au-fade" style={{opacity:0.5}}>expand</span></span>
+          </div>
+        );
+      })()}
+
       {/* ── Loyalty / control budget (overextension) ── */}
       {(()=>{
         const ctry=psw.countries&&psw.countries.get(s.countryId);
@@ -6235,6 +6259,12 @@ return(
               <span style={{width:9,height:9,borderRadius:2,background:over?"hsl(8,70%,52%)":"hsl(140,45%,45%)",flexShrink:0}}/>
               <span className="au-fade">control {load.toFixed(1)}/{cap.toFixed(1)} ({pct}%){over?" · over-extended":""}{strain}</span>
             </div>
+            {(()=>{const mom=ctry._momentum||0;if(mom<1)return null;return(
+              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+                <span style={{width:9,height:9,borderRadius:2,background:"hsl(28,80%,52%)",flexShrink:0}}/>
+                <span className="au-fade">conquest momentum +{mom.toFixed(1)} · holding on the offensive (fades if the advance stalls)</span>
+              </div>
+            );})()}
             {treas!=null&&(()=>{const sv=ctry._solvency??1;const broke=sv<0.99;return(
               <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
                 <span style={{width:9,height:9,borderRadius:2,background:broke?"hsl(8,75%,52%)":"hsl(48,65%,48%)",flexShrink:0}}/>
