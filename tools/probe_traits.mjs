@@ -58,7 +58,11 @@ function corr(traitKey, outcomeFn, outName){
   const mean=arr=>arr.reduce((s,r)=>s+r[1],0)/Math.max(1,arr.length);
   console.log(`  ${traitKey.padEnd(13)} low-half ${outName}=${mean(lo).toFixed(0)}   high-half ${outName}=${mean(hi).toFixed(0)}`);
 }
+const pop=c=>c.members.reduce((s,m)=>s+(m.people||0),0);
+const wealthOf=c=>c.members.reduce((s,m)=>s+(m.wealth||0),0);
 console.log(`\n=== trait vs outcome (bottom-half vs top-half of each trait) ===`);
+corr("commerce",   c=>wealthOf(c)/Math.max(1,pop(c)), "wealth/capita");
+corr("commerce",   c=>wealthOf(c)/Math.max(1,tilesByCountry.get(c.id)||1), "wealth/tile");
 corr("aggression", c=>(c._fronts||0)*1000 + c.members.reduce((s,m)=>s+(m.history?m.history.filter(h=>h.type==="conquered").length:0),0), "warIdx");
 corr("commerce",   c=>c.members.reduce((s,m)=>s+(m.wealth||0),0), "wealth");
 corr("expansionism", c=>tilesByCountry.get(c.id)||0, "land");
