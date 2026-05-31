@@ -17,7 +17,7 @@ import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.
 import { shockUnrest } from "./shocks.js";
 import { localPByCountry } from "./inflation.js";
 import { localEdgeCost } from "./transport.js";
-import { personalityOf, inheritPersonality, prunePersonalities, expansionReachMul } from "./personality.js";
+import { personalityOf, inheritPersonality, prunePersonalities, driftPersonality, expansionReachMul } from "./personality.js";
 
 const POLITY_INTERVAL  = 150;   // ticks between polity passes
 // Sub-city absorption requires the absorbing power to have at least this
@@ -1049,6 +1049,11 @@ export function updatePolities(world) {
     c._treasury = gov.treasury;
     c._govRevenue = gov._revenue; gov._revenue = 0;   // per-pass revenue, for the panel
     c._govSpend = gov._spend;
+
+    // Temperament drifts with lived experience (war hardens militarism, long
+    // solvent peace lets commerce flower, lost ground breeds caution, steady
+    // growth emboldens expansion) — see personality.js driftPersonality.
+    driftPersonality(world, c, { warLevel, solvency });
   }
 
   // ── City-state minimum tier rule ─────────────────────────────────────
