@@ -17,6 +17,7 @@ import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.
 import { shockUnrest } from "./shocks.js";
 import { localPByCountry } from "./inflation.js";
 import { localEdgeCost } from "./transport.js";
+import { personalityOf, inheritPersonality, prunePersonalities, expansionReachMul } from "./personality.js";
 
 const POLITY_INTERVAL  = 150;   // ticks between polity passes
 // Sub-city absorption requires the absorbing power to have at least this
@@ -264,6 +265,13 @@ export function rebuildCountries(world) {
     c.capitalId = best.id;
     const k = best.knowledge || {};
     c.range = RANGE_BASE + (k.organization || 0) * RANGE_ORG + (k.mobility || 0) * RANGE_MOB + (k.navigation || 0) * RANGE_NAV;
+    // Personality nudges reach: an expansionist realm projects authority a
+    // little farther, a cautious one pulls in. Knowledge still sets the bulk
+    // of the reach — this is a mild temperament colouring on top (see
+    // personality.js). The personality is lazily seeded from the capital's
+    // environment the first time it's read.
+    c.personality = personalityOf(world, c);
+    c.range *= expansionReachMul(c.personality);
     c.hue = ((c.id * 61) % 360 + 360) % 360;
     buildHierarchy(world, c);
   }
@@ -453,6 +461,7 @@ function secedeContagious(world, c, seeds) {
       }
       continue;
     }
+    inheritPersonality(world, c.id, newId);        // successor inherits parent temperament (with drift)
     for (const m of bloc) {
       m.countryId = newId;
       m.loyalty = m === seed ? 1 : 0.85;           // seed leads; followers enthusiastic
@@ -484,6 +493,7 @@ export function fragmentRealm(world, oldId, excludeId) {
   if (survivors.length === 0) return;
   if (survivors.length === 1) {
     const s = survivors[0];
+    inheritPersonality(world, oldId, s.id);       // lone successor keeps the old realm's temperament
     s.countryId = s.id; s.loyalty = 1; s._conqueredAt = world.step;
     if (s.history) s.history.push({ step: world.step, type: "successor", of: oldId });
     return;
@@ -500,6 +510,9 @@ export function fragmentRealm(world, oldId, excludeId) {
     }
     if (far) capitals.push(s);
   }
+  // Each successor realm inherits the dead empire's temperament (with drift),
+  // so the Diadochi share their predecessor's character before diverging.
+  for (const cap of capitals) inheritPersonality(world, oldId, cap.id);
   // Each survivor joins its nearest successor capital.
   for (const s of survivors) {
     let best = capitals[0], bd = Infinity;
@@ -554,6 +567,7 @@ function declareIndependence(world, c, seed) {
     }
     return;
   }
+  inheritPersonality(world, c.id, newId);        // the breakaway carries its parent's temperament (with drift)
   for (const m of bloc) {
     m.countryId = newId;
     m._conqueredAt = world.step;                 // the breakaway realm gets breathing room (grace)
@@ -1052,6 +1066,8 @@ export function updatePolities(world) {
   if (world.governments) {
     for (const id of world.governments.keys()) if (!countries.has(id)) world.governments.delete(id);
   }
+  // Same for personalities — prune temperaments of dead realms.
+  prunePersonalities(world, countries);
 }
 
 function absorbSubCityCountries(world, countries) {

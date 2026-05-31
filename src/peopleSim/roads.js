@@ -46,6 +46,7 @@ import { localEdgeCost, baseEdgeCost } from "./transport.js";
 import { computeExportValue, getWealthReserve } from "./settlement.js";
 import { localP } from "./inflation.js";
 import { govOf } from "./conquest.js";
+import { commerceMul } from "./personality.js";
 import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -542,6 +543,7 @@ function linkCloseNeighbours(world, s) {
 function tryAddRoad(world, s) {
   const sExport = computeExportValue(s, world);
   const sFood = (s._foodSupply || 0) - (s._foodDemand || 0);
+  const sCountry = world.countries && world.countries.get(s.countryId);   // for the commerce-temperament road bar
   const own = s.localRes || {};
   // Resources we already have access to via local OR via existing
   // trade reach. Anything missing from this set is a "needed"
@@ -626,7 +628,12 @@ function tryAddRoad(world, s) {
     for (const ti of path.tiles) if (rq[ti] >= 1.0) newTiles++;
     const newFrac = path.tiles.length > 0 ? newTiles / path.tiles.length : 0;
     const sameNetwork = myComp !== null && components && components.get(peer.id) === myComp;
-    const requiredFrac = sameNetwork ? NEW_FRACTION_IN : NEW_FRACTION_OUT;
+    // A mercantile realm builds trade roads more eagerly (lower acceptance
+    // bar); an insular one less so (personality.js commerceMul). Knowledge /
+    // wealth still gate whether a road is actually affordable below — this
+    // only colours the appetite.
+    const commMul = (sCountry && sCountry.personality) ? commerceMul(sCountry.personality) : 1;
+    const requiredFrac = (sameNetwork ? NEW_FRACTION_IN : NEW_FRACTION_OUT) / commMul;
     if (newFrac < requiredFrac) continue;
 
     // If same network: ALSO require the new direct path to be

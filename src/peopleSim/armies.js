@@ -19,6 +19,7 @@ import { coreRadiusFor } from "./territory.js";
 import { findPath } from "./roads.js";
 import { localEdgeCost } from "./transport.js";
 import { fragmentRealm } from "./conquest.js";
+import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
 // population (capped by tier — villages keep a token watch, cities/capitals
@@ -182,6 +183,9 @@ function armyCapFrac(world, s) {
   let f = ARMY_TIER_FRAC[s.tier | 0] ?? ARMY_TIER_FRAC[0];
   const c = world.countries && world.countries.get(s.countryId);
   if (c && c.capitalId === s.id) f += ARMY_CAPITAL_BONUS;   // the capital fields a bit more
+  // A warlike realm keeps a bigger garrison for its size; a mercantile /
+  // cautious one fields less (personality.js aggressionArmyMul).
+  if (c && c.personality) f *= aggressionArmyMul(c.personality);
   return f;
 }
 
@@ -337,7 +341,12 @@ export function advanceFronts(world) {
     // business). A saturated trade peer requires ~2× the normal advantage
     // to capture a tile from.
     const tf = tradeFactor(A.countryId, D.countryId);
-    if (A._M < effDef * ATTACK_MIN_RATIO * (1 + tf * TRADE_PEACE_MAX)) continue;
+    // The ATTACKER's temperament sets how much of an edge it demands before
+    // pushing: a warlike realm attacks on a slim margin, a cautious/merchant
+    // one wants a clear advantage (personality.js aggressionAttackMul).
+    const aCountry = world.countries && world.countries.get(A.countryId);
+    const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
+    if (A._M < effDef * ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX)) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;

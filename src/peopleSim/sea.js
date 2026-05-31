@@ -32,6 +32,7 @@
 import { makeSettlement } from "./settlement.js";
 import { isContinentalLand } from "./state.js";
 import { recordOut, OUT_COLONY } from "./money.js";
+import { expansionColonyMul } from "./personality.js";
 
 let _shipId = 1;
 export function resetShipIds() { _shipId = 1; }
@@ -168,9 +169,16 @@ export function updateSea(world) {
   const eligible = new Set();
   const shoreCand = new Map();   // portId -> [{landTi, waterTi, d, f}]
   for (const p of ports) {
+    // An expansionist realm mounts colonial expeditions more often (shorter
+    // effective cooldown); an insular one rarely bothers (personality.js
+    // expansionColonyMul). Pop / navigation still gate eligibility — this
+    // only paces how often an already-capable port reaches out.
+    const pc = world.countries && world.countries.get(p.countryId);
+    const colonyMul = (pc && pc.personality) ? expansionColonyMul(pc.personality) : 1;
+    const cooldown = COLONY_COOLDOWN / colonyMul;
     if ((p.people || 0) >= COLONY_MIN_POP &&
         (p.knowledge.navigation || 0) >= COLONY_MIN_NAV &&
-        world.step - (p._lastColony ?? -Infinity) >= COLONY_COOLDOWN) {
+        world.step - (p._lastColony ?? -Infinity) >= cooldown) {
       eligible.add(p.id);
       shoreCand.set(p.id, []);
     }
