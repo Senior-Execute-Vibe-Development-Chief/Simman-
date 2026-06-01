@@ -41,6 +41,8 @@ export const TUNING_SCHEMA = [
         desc: "How sharply a power imbalance translates into defection pressure. Down = even much-stronger neighbours absorb their small rivals only slowly." },
       { key: "CAP_POP", label: "Big-capital bonus", def: 2, min: 0, max: 8, step: 0.25,
         desc: "Extra control capacity a large capital projects (scales with its population). Down = a giant metropolis can't administer a giant empire, so conquests over-extend and shed." },
+      { key: "CAP_ORG", label: "Bureaucratic capacity", def: 8, min: 0, max: 24, step: 0.5,
+        desc: "Extra control capacity per point of the capital's ORGANIZATION tech — the bureaucratic/administrative depth that lets an advanced state govern many provinces. THE empire-cohesion-over-time dial: up = high-org empires hold large domains (the late map consolidates into a few great powers); down = even advanced empires over-extend and fragment (a perpetually multipolar, shifting map)." },
       { key: "CAP_SEAT", label: "Regional seat capacity", def: 1.2, min: 0, max: 4, step: 0.1,
         desc: "Extra control each loyal regional city adds (sub-administration). Up = sprawling federations stay glued." },
       { key: "MOMENTUM_CAP", label: "Conquest snowball cap", def: 8, min: 0, max: 30, step: 1,

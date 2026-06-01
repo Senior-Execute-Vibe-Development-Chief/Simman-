@@ -36,6 +36,11 @@ import { T } from "./tuning.js";
 // INSIDE the budget instead of instantly over-extending and seceding back
 // (the absorb↔secede oscillation that flipped whole swathes each pass).
 const ABSORB_HEADROOM  = 0.90;
+// A realm's whole country must out-power a neighbour's whole country by this
+// factor before it can administratively absorb that neighbour's frontier
+// settlements (absorbWeakNeighbors). Hysteresis: only clearly-minor neighbours
+// erode, so two comparable empires hold a stable border instead of flip-flopping.
+const ABSORB_DOMINANCE = 1.3;
 // A landlocked territory fragment hemmed in on at least this fraction of its
 // border by a SINGLE realm is treated as enclosed-inside-it and ceded to that
 // realm (eliminateEnclaves) — cleaning up the marooned "bits stuck inside
@@ -154,6 +159,13 @@ const LOYAL_RECOVER = 0.06;  // per pass: covered provinces climb toward full lo
 // borders MOVE instead of teleporting. (The realm still loses the land — just
 // legibly, as a retreat, not an implosion.)
 const OVER_DECAY_CAP = 1.0;  // max value of the over-extension multiplier term
+// How much the capital's ORGANIZATION slows an over-budget province's loyalty
+// bleed (administrative glue: records, garrisons, integrated economy, roads).
+// At org=1 a province bleeds at (1 − this) of the base rate, so a high-org
+// empire holds an over-stretched frontier for many passes — a slow imperial
+// overstretch — where a chiefdom shatters fast. Keep < 1 so even an advanced
+// empire eventually sheds what it truly can't afford (great powers still fall).
+const LOYAL_ORG_HOLD = 0.7;
 
 // ── Contagious secession (amplifier) ──────────────────────────────────
 // A revolt is regional, not solitary: when a province's loyalty collapses,
@@ -184,6 +196,17 @@ const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capaci
 const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
 const WAR_CAPACITY_MULT   = 0.8;   // capital's countryside merely raided → mild throttle
 const SIEGE_WINDOW        = 300;   // ticks the siege/war throttle lingers after the last front
+// Administrative RESILIENCE: how much an ORGANISED state shrugs off the war/
+// fiscal-duress capacity throttle. A literate-bureaucratic empire (standing
+// army, deep officialdom, roads, granaries) keeps governing its core while a
+// frontier war rages; a chiefdom's levy disperses and its grip fails. At the
+// capital's org × this fraction the throttle is eased toward 1 — so a high-org
+// EMPIRE no longer sheds its provinces the instant a border skirmish flares
+// (which was shattering every large realm the moment it consolidated), while a
+// primitive realm still fragments under stress. (Keep < 1 so even the most
+// advanced empire isn't perfectly war-proof — great powers still fall, just on
+// a slower, deliberate timescale rather than at every frontier wobble.)
+const DURESS_RESILIENCE  = 0.6;
 
 // ── Conquest momentum (the rise-and-shatter of the steppe empire) ─────
 // A realm on a winning streak coheres around the conquest itself: loot,
@@ -925,8 +948,17 @@ export function updatePolities(world) {
       const seatSize = Math.min(2, Math.log2(1 + (s.people || 0) / SIZE_REF));
       seatBonus += T.CAP_SEAT * (s.loyalty ?? 1) * seatSize;   // disloyal/small seats help less
     }
+    // Organization buys administrative CAPACITY (slots), not just reach: a
+    // literate-bureaucratic state (records, roads, a professional officialdom)
+    // governs far more provinces than a chiefdom. Without this term a high-org
+    // empire had long reach but the same handful of slots, so the moment conquest
+    // grew it past that handful it over-extended and shattered — the late-game
+    // re-fragmentation. Scaling capacity with org lets large empires that form by
+    // conquest actually HOLD, so consolidation persists into the late game.
+    const capOrg = (cap.knowledge && cap.knowledge.organization) || 0;
     const peaceCapacity = T.CAP_BASE + T.CAP_POP * Math.log2(1 + (cap.people || 0) / CAP_POP_REF)
-                        + Math.min(SEAT_BONUS_CAP, seatBonus);
+                        + Math.min(SEAT_BONUS_CAP, seatBonus)
+                        + T.CAP_ORG * capOrg;
 
     // ── War duress: throttle the budget while the realm is fighting ────
     // (fronts are tallied in armies.js advanceFronts → world._fronts.)
@@ -946,7 +978,13 @@ export function updatePolities(world) {
     // more — the self-reinforcing collapse.
     const gov = govOf(world, c.id);
     const solvency = gov._solvency ?? 1;
-    const fiscalDuress = SOLVENCY_FLOOR + solvency * (1 - SOLVENCY_FLOOR);
+    let fiscalDuress = SOLVENCY_FLOOR + solvency * (1 - SOLVENCY_FLOOR);
+    // Organised states weather both war and insolvency far better — ease both
+    // throttles toward 1 by the capital's org, so large high-org empires HOLD
+    // under pressure instead of shattering at the first frontier war.
+    const resilience = 1 - capOrg * DURESS_RESILIENCE;
+    duress       = 1 - (1 - duress)       * resilience;
+    fiscalDuress = 1 - (1 - fiscalDuress) * resilience;
     // Conquest momentum: a winning streak (banked in armies.js) holds a far
     // larger domain together than the settled budget could — but it decays
     // FAST once the conquering stops, so the moment the streak ends the
@@ -1050,7 +1088,15 @@ export function updatePolities(world) {
         // sheds gradually (ring by ring over passes) instead of its whole
         // frontier collapsing in one tick (see OVER_DECAY_CAP).
         const over = Math.min(OVER_DECAY_CAP, (cum - capacity) / capacity);
-        s.loyalty = Math.max(0, (s.loyalty ?? 1) - T.LOYAL_DECAY * (1 + over));
+        // An ORGANISED empire's provinces are administratively STICKY — records,
+        // garrisons, an integrated economy and roads bind a province to the
+        // realm, so it bleeds loyalty slowly even while over-budget. This is the
+        // direct lever that lets a large high-org empire HOLD (it sheds its
+        // frontier over many passes, a slow imperial overstretch, rather than
+        // shattering wholesale the moment a war pushes it past budget). A
+        // primitive realm (low org) has no such glue and fragments fast.
+        const orgHold = 1 - capOrg * LOYAL_ORG_HOLD;
+        s.loyalty = Math.max(0, (s.loyalty ?? 1) - T.LOYAL_DECAY * (1 + over) * orgHold);
         if (s.loyalty <= 0) seeds.push(s);                 // collapsed — defer (revolt is contagious)
       }
     }
@@ -1126,15 +1172,15 @@ export function updatePolities(world) {
     driftPersonality(world, c, { warLevel, solvency });
   }
 
-  // ── City-state minimum tier rule ─────────────────────────────────────
-  // A sovereign realm needs a city. A "country" whose largest member is a
-  // village or town has no seat to mint, govern, or defend — it's the new
-  // village whose owner hasn't gotten around to claiming it. Absorb it
-  // into the strongest neighbouring country (sharing any tile border).
-  // No bordering country at all → genuinely undiscovered frontier, stays
-  // an independent city-state. (Pacified-grace gate: don't immediately
-  // re-flip a freshly seceded/conquered settlement.)
-  absorbSubCityCountries(world, countries);
+  // ── Peaceful consolidation (erode weak neighbours into strong realms) ──
+  // A dominant, organised realm administratively absorbs the frontier
+  // settlements of a much weaker touching neighbour. How DEVELOPED a settlement
+  // it can integrate scales with its organization tech (tierCapForOrg), so the
+  // map consolidates AS THE ERA ADVANCES — villages in the bronze age, towns and
+  // small cities by the iron age. Genuinely-strong neighbours and undiscovered
+  // frontier are untouched, and a pacified-grace gate stops re-flipping a
+  // freshly seceded/conquered settlement.
+  absorbWeakNeighbors(world, countries);
 
   // Drop treasuries of realms that no longer exist (conquest seizure already
   // moved the coin of conquered capitals; this just stops the map growing).
@@ -1176,53 +1222,55 @@ function estAbsorbLoad(world, c, m) {
   return Math.max(0.5, eucl / Math.max(1, c.range));
 }
 
-function absorbSubCityCountries(world, countries) {
+// Org → highest target TIER a realm can administratively absorb. THE
+// consolidate-with-the-era knob: a bronze-age power (org ~0.5) can only vacuum
+// villages off a touching statelet, but an iron-age empire (org ~0.8) integrates
+// towns and small cities — so a fragmented classical patchwork coalesces into
+// empires late instead of staying confetti. (Below T.ABSORB_ORG_MIN nothing
+// absorbs at all.)
+function tierCapForOrg(org) { return org >= 0.85 ? 3 : org >= 0.72 ? 2 : org >= 0.60 ? 1 : 0; }
+
+function absorbWeakNeighbors(world, countries) {
   const owner = world._territoryOwner, byId = world._byId;
   if (!owner || !byId) return;
-  // Identify countries that lack any city-tier member.
-  const subCity = [];
-  for (const c of countries.values()) {
-    let hasCity = false;
-    for (const m of c.members) if ((m.tier | 0) >= 2) { hasCity = true; break; }
-    if (!hasCity) subCity.push(c);
-  }
-  if (subCity.length === 0) return;
   const tw = world.tw, th = world.th, N = world.N;
-  // Map every sub-city settlement-id → its country, and remember which ids
-  // belong to a sub-city realm at all (for fast tile-walk filtering).
-  const settToCountry = new Map();
-  for (const c of subCity) for (const m of c.members) settToCountry.set(m.id, c);
-  // Per-settlement touch scores (foreign-country-id → cumulative power).
-  // We walk EVERY tile once and credit each foreign neighbour to the
-  // settlement that owns the home tile, NOT to the whole country. That
-  // makes each sub-city member's exposure independent: a village on the
-  // edge feels the cradle's pull; a village deep inside its own
-  // hinterland doesn't.
+  // Per-country total power, for the dominance gate (only a realm that clearly
+  // out-powers a neighbour's WHOLE country can erode it — so peer empires don't
+  // peel border settlements off each other and flip-flop).
+  const countryPower = new Map();
+  for (const c of countries.values()) {
+    let pow = 0; for (const m of c.members) pow += settlementPower(m);
+    countryPower.set(c.id, pow);
+  }
+  // Per-settlement exposure to strong, organised foreign realms able to absorb a
+  // settlement of its tier. Walk every tile once, crediting each qualifying
+  // foreign neighbour to the settlement that owns the home tile (so a frontier
+  // town feels the empire's pull while one deep in its own realm doesn't).
   const perSett = new Map();
   for (let ti = 0; ti < N; ti++) {
     const oid = owner[ti]; if (oid < 0) continue;
-    const ownerSett = byId.get(oid);
-    if (!ownerSett || !settToCountry.has(ownerSett.id)) continue;
+    const m = byId.get(oid);
+    if (!m || m.mode !== "settled") continue;
+    const myCC = m.countryId;
+    const myCountryPow = countryPower.get(myCC) || 1;
+    const myTier = m.tier | 0;
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
     const ns = [ty * tw + xm, ty * tw + xp,
                 ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
-    const myCountry = ownerSett.countryId;
     for (let k = 0; k < 4; k++) {
       const ni = ns[k]; if (ni < 0) continue;
       const no = owner[ni]; if (no < 0) continue;
-      const ns2 = byId.get(no); if (!ns2 || ns2.countryId === myCountry) continue;
-      const foreign = countries.get(ns2.countryId); if (!foreign) continue;
-      let foreignHasCity = false;
-      for (const fm of foreign.members) if ((fm.tier | 0) >= 2) { foreignHasCity = true; break; }
-      if (!foreignHasCity) continue;
-      const orgK = (foreign.capital.knowledge && foreign.capital.knowledge.organization) || 0;
-      if (orgK < T.ABSORB_ORG_MIN) continue;
-      const orgFactor = Math.min(1, (orgK - T.ABSORB_ORG_MIN) / (1 - T.ABSORB_ORG_MIN));
-      let perCc = perSett.get(ownerSett.id);
-      if (!perCc) { perCc = new Map(); perSett.set(ownerSett.id, perCc); }
-      perCc.set(ns2.countryId,
-        (perCc.get(ns2.countryId) || 0) + settlementPower(foreign.capital) * orgFactor);
+      const fs = byId.get(no); if (!fs || fs.countryId === myCC) continue;
+      const F = countries.get(fs.countryId); if (!F) continue;
+      const fOrg = (F.capital.knowledge && F.capital.knowledge.organization) || 0;
+      if (fOrg < T.ABSORB_ORG_MIN) continue;
+      if (myTier > tierCapForOrg(fOrg)) continue;            // too developed for F's statecraft
+      if ((countryPower.get(F.id) || 1) < myCountryPow * ABSORB_DOMINANCE) continue;  // not dominant enough
+      const orgFactor = Math.min(1, (fOrg - T.ABSORB_ORG_MIN) / (1 - T.ABSORB_ORG_MIN));
+      let perCc = perSett.get(m.id);
+      if (!perCc) { perCc = new Map(); perSett.set(m.id, perCc); }
+      perCc.set(F.id, (perCc.get(F.id) || 0) + settlementPower(F.capital) * orgFactor);
     }
   }
   // Per-settlement probabilistic defection. A village that's heavily

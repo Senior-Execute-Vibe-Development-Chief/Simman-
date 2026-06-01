@@ -20,6 +20,7 @@
 import { isContinentalLand } from "./state.js";
 import { makeSettlement } from "./settlement.js";
 import { computeTransport } from "./transport.js";
+import { T } from "./tuning.js";
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
 const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) flood — a
@@ -100,6 +101,12 @@ const INDEPENDENT_RATE          = 0.020;
 const OVERSEAS_INDEPENDENT_RATE = 0.0015;
 const NEAR_RATE                 = 1.50;
 const BASE_RATE                 = 0.010;
+// A settlement spontaneously arising on a realm's territory is born INTO it
+// (vs independent) only once that realm is organised enough to integrate a
+// polity — the SAME threshold conquest.js uses to absorb a neighbour
+// (T.ABSORB_ORG_MIN). Below it the realm is a primitive chiefdom that doesn't
+// administer its hinterland, so the EARLY map fragments into many city-states;
+// above it new settlements join and the world consolidates with the era.
 
 // ── Settler colonisation (mother-country-driven expansion) ───────────
 // A crowded, prosperous town with no room to grow ("housing pressed" or
@@ -293,19 +300,25 @@ export function maybeCrystallize(world) {
       // Inherited knowledge: blend from nearest settlement, weighted by
       // distance. Far sites start near baseline neolithic knowledge.
       const inherited = inheritKnowledgeAt(world, ti, td);
-      // Inherited COUNTRY: if the spawn site is already inside an existing
-      // realm's territory, the new town joins that realm. Pre-existing
-      // sovereigns don't tolerate sovereign new villages popping up inside
-      // their borders — they'd be vassals from day one. Only spawns on
-      // genuinely unclaimed land become their own city-state. This is what
-      // stops the map being littered with awkward independent one-tile
-      // statelets randomly forming inside someone else's country.
+      // Inherited COUNTRY: a new village joins the realm whose land it spawns
+      // on ONLY if that realm is organised enough to actually administer it.
+      // Primitive chiefdoms (low organization) don't control their hinterland —
+      // villages arising on their land are born INDEPENDENT, so the EARLY map is
+      // a dense patchwork of small city-states rather than a few big blobs. As
+      // organization tech rises past SPAWN_JOIN_ORG a realm starts integrating
+      // new settlements (and, via conquest.js, absorbing/conquering existing
+      // ones), so the world CONSOLIDATES with the era instead of starting
+      // consolidated and fracturing. A developed sovereign still won't tolerate
+      // an independent village inside its borders — that's the org gate.
       let inheritedCountry;
       if (world._territoryOwner && world._byId) {
         const ownerId = world._territoryOwner[ti];
         if (ownerId >= 0) {
           const ownerSett = world._byId.get(ownerId);
-          if (ownerSett && ownerSett.mode === "settled") inheritedCountry = ownerSett.countryId;
+          if (ownerSett && ownerSett.mode === "settled"
+              && (ownerSett.knowledge.organization || 0) >= T.ABSORB_ORG_MIN) {
+            inheritedCountry = ownerSett.countryId;
+          }
         }
       }
       makeSettlement(world, tx + 0.5, ty + 0.5, {
