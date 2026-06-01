@@ -16,6 +16,7 @@
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { getTradeProfile } from "./peopleSim/settlement.js";
 import { displayPByCountry } from "./peopleSim/inflation.js";
+import { applyTuning, resetTuning } from "./peopleSim/tuning.js";
 
 let world = null;
 let playing = false;
@@ -51,6 +52,13 @@ self.onmessage = (e) => {
   } else if (m.type === "view") {
     viewMode = m.view;
     if (!playing && world) buildSnapshot();          // refresh extras for the new view
+  } else if (m.type === "tune") {
+    // Live gameplay tuning. m.reset wipes back to defaults; m.values is a
+    // partial { KEY: number } override map. Applied to the shared tuning
+    // registry the sim reads, so it takes effect on the next pass.
+    if (m.reset) resetTuning();
+    applyTuning(m.values);
+    if (!playing && world) buildSnapshot();           // reflect on the paused frame
   }
 };
 
@@ -127,15 +135,23 @@ function buildSnapshot() {
   const countries = [];
   if (world.countries) {
     for (const c of world.countries.values()) {
+      // Personality: send the label + the trait vector (for a small bar
+      // readout in the info panel). Cheap — a handful of floats per realm.
+      const pers = c.personality
+        ? { label: c.personality._label,
+            aggression: c.personality.aggression, commerce: c.personality.commerce,
+            expansionism: c.personality.expansionism }
+        : null;
       countries.push({
         id: c.id, capitalId: c.capitalId,
         memberIds: c.members.map(m => m.id),
         hue: c.hue, range: c.range,
-        _capacity: c._capacity, _loadTotal: c._loadTotal,
+        _capacity: c._capacity, _loadTotal: c._loadTotal, _momentum: c._momentum,
         _fronts: c._fronts, _capitalBesieged: c._capitalBesieged,
         _treasury: c._treasury, _govRevenue: c._govRevenue, _govSpend: c._govSpend, _solvency: c._solvency,
         _taxRate: c._taxRate,
         _priceLevel: displayPByCountry(world, c),
+        personality: pers,
       });
     }
   }

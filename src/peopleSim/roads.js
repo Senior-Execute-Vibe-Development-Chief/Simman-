@@ -43,9 +43,11 @@
 // painted into roadQuality; nothing else is created.
 
 import { localEdgeCost, baseEdgeCost } from "./transport.js";
+import { T } from "./tuning.js";
 import { computeExportValue, getWealthReserve } from "./settlement.js";
 import { localP } from "./inflation.js";
 import { govOf } from "./conquest.js";
+import { commerceMul } from "./personality.js";
 import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -137,8 +139,10 @@ function partnerReachFor(s) {
 // countryside should still be possible if it saves enough cost
 // (medieval trunk roads were often more direct than the village
 // paths they replaced).
-const NEW_FRACTION_OUT    = 0.35;       // peer in different component: low bar
-const NEW_FRACTION_IN     = 0.55;       // peer in same component: moderate novelty
+const NEW_FRACTION_OUT    = 0.35 / 1.2; // peer in different component: low bar
+const NEW_FRACTION_IN     = 0.55 / 1.2; // peer in same component: moderate novelty
+                                        // (both ÷1.2 re-anchor the 0.5-pivot commerceMul,
+                                        // which divides these; behaviour identical)
 const SHORTCUT_GAIN_RATIO = 0.85;       // new direct path must save ≥ 15% vs network path
 
 // Close-neighbour rule: any settled pair within this many tiles
@@ -165,7 +169,7 @@ const NEEDED_BY_TIER = [
 const HAVE_THRESHOLD = 0.10;
 
 // Trade flow rates (same as old model so dynamics carry over).
-const TRADE_RATE                   = 0.025;
+// TRADE_RATE -> runtime lever (tuning.js T.TRADE_RATE)
 // Wealth-scaled demand: a settlement holding coin above its reserve imports
 // MORE (its buying power, not just its headcount, drives consumption). This is
 // what stops a windfall (mining, state pay, a tax hoard) from sitting idle —
@@ -201,7 +205,7 @@ const FOOD_TOLL_RATE  = 0.02;
 // income, making a conquered trade hub genuinely worth holding. Conserved:
 // the duty the buyer pays goes to the importing country's capital. Food is
 // exempt (famine relief shouldn't be taxed).
-const TARIFF_RATE     = 0.10;
+// TARIFF_RATE -> runtime lever (tuning.js T.TARIFF_RATE)
 
 export { QUALITY_NEW, QUALITY_MAX, FLOW_FOR_PAVE, FLOW_FOR_BUSY };
 
@@ -542,6 +546,7 @@ function linkCloseNeighbours(world, s) {
 function tryAddRoad(world, s) {
   const sExport = computeExportValue(s, world);
   const sFood = (s._foodSupply || 0) - (s._foodDemand || 0);
+  const sCountry = world.countries && world.countries.get(s.countryId);   // for the commerce-temperament road bar
   const own = s.localRes || {};
   // Resources we already have access to via local OR via existing
   // trade reach. Anything missing from this set is a "needed"
@@ -626,7 +631,12 @@ function tryAddRoad(world, s) {
     for (const ti of path.tiles) if (rq[ti] >= 1.0) newTiles++;
     const newFrac = path.tiles.length > 0 ? newTiles / path.tiles.length : 0;
     const sameNetwork = myComp !== null && components && components.get(peer.id) === myComp;
-    const requiredFrac = sameNetwork ? NEW_FRACTION_IN : NEW_FRACTION_OUT;
+    // A mercantile realm builds trade roads more eagerly (lower acceptance
+    // bar); an insular one less so (personality.js commerceMul). Knowledge /
+    // wealth still gate whether a road is actually affordable below — this
+    // only colours the appetite.
+    const commMul = (sCountry && sCountry.personality) ? commerceMul(sCountry.personality) : 1;
+    const requiredFrac = (sameNetwork ? NEW_FRACTION_IN : NEW_FRACTION_OUT) / commMul;
     if (newFrac < requiredFrac) continue;
 
     // If same network: ALSO require the new direct path to be
@@ -896,7 +906,7 @@ function demandMul(buyer) {
 }
 function runGeneralTradeBetween(world, a, b, link) {
   const minPop = Math.min(a.people, b.people);
-  const vol = Math.sqrt(minPop) * TRADE_RATE;
+  const vol = Math.sqrt(minPop) * T.TRADE_RATE;
   const transport = link.cost * TRANSPORT_PER_PATHCOST;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;
@@ -949,7 +959,7 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   if (goodsValue <= 0) return;
   const totalToll = goodsValue * TOLL_RATE * numInter;
   const collector = customsCollector(world, seller, buyer);
-  const tariff = collector ? goodsValue * TARIFF_RATE : 0;
+  const tariff = collector ? goodsValue * T.TARIFF_RATE : 0;
   // Don't ship goods worth less than the cost to move + clear them.
   if (goodsValue <= freight + totalToll + tariff) return;
   const want = goodsValue + freight + totalToll + tariff;

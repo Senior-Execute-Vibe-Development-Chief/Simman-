@@ -15,6 +15,8 @@ import { ensureTribeViews, attachRegistries } from "./tribeModel.js";
 import { runTribeStep, resetInvariantState } from "./tribeStep.js";
 import { tribePower, localPower, tribeOreAccess, tDistW, expFalloff } from "./tribePower.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
+import { applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js";
+import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
 import { IN_LABELS, OUT_LABELS } from "./peopleSim/money.js";
@@ -3531,17 +3533,20 @@ console.warn(`[SLOW ${ter.stepCount}] ${_stepTotal.toFixed(0)}ms | expand:${ter.
 else if(_stepTotal>5){console.warn(`[SLOW step ${ter.stepCount}] ${_stepTotal.toFixed(1)}ms frontier:${nfl.length} tribes:${tribeSizes.filter(s=>s>0).length} settled:${ter.settled}`);}
 return ter;}
 
-// ── Non-linear time: starts at 3000 BC, accelerates into modernity ──
-// ~1000 steps spans 2000 BC → 2025 AD (4025 years)
-// Early game (step 0-200): ~7 yr/step (2000 BC → 600 BC: Bronze → Iron Age)
-// Mid game (step 200-500): ~5 yr/step (600 BC → 900 AD: Classical → Medieval)
-// Late game (step 500-800): ~2.5 yr/step (900 AD → 1650 AD: Medieval → Early Modern)
-// Modern (step 800-1000): ~1.9 yr/step (1650 → 2025 AD)
+// ── Non-linear time: starts at 2000 BC, accelerates into modernity ──
+// The peopleSim step is far finer-grained than the legacy tribe sim this
+// curve was first written for, so steps are mapped onto the original
+// year-curve through YEAR_STEP_SCALE (≈ peopleSim steps per legacy
+// "year-step"). A mature, roughly-industrial world lands near ys≈1000
+// (≈2025 AD); past that we clamp to the present rather than invent a future.
+// Tune YEAR_STEP_SCALE to stretch / compress how fast the clock runs.
+const YEAR_STEP_SCALE = 18;
 function stepToYear(step){
-if(step<=200)return 2000-step*7;// 2000 BC → 600 BC
-if(step<=500)return 600-(step-200)*5;// 600 BC → 900 AD (negative = AD)
-if(step<=800)return -(900+(step-500)*2.5);// 900 AD → 1650 AD
-return -(1650+(step-800)*1.875);// 1650 AD → 2025 AD
+const ys=Math.min(1000, step/YEAR_STEP_SCALE);   // clamp at the present day
+if(ys<=200)return 2000-ys*7;// 2000 BC → 600 BC
+if(ys<=500)return 600-(ys-200)*5;// 600 BC → 900 AD (negative = AD)
+if(ys<=800)return -(900+(ys-500)*2.5);// 900 AD → 1650 AD
+return -(1650+(ys-800)*1.875);// 1650 AD → 2025 AD
 }
 function yearStr(step){const y=stepToYear(step);
 return y>0?`${Math.round(y)} BC`:`${Math.round(Math.abs(y))} AD`;}
@@ -3964,6 +3969,29 @@ const[layers,setLayers]=useState({
 });
 const[layersOpen,setLayersOpen]=useState(false);
 const[boardOpen,setBoardOpen]=useState(false);
+const[leversOpen,setLeversOpen]=useState(false);
+const[tuneVals,setTuneVals]=useState(()=>tuningDefaults());
+const tuneValsRef=useRef(tuneVals);
+// Push a tuning change to the sim. Covers BOTH execution paths: postMessage to
+// the worker (normal) and a direct applyTuning for the main-thread fallback sim.
+const pushTune=useCallback((vals,reset)=>{
+  if(reset){resetTuning();}
+  applyTuning(vals);
+  if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'tune',values:vals,reset:!!reset});
+},[]);
+const onLeverChange=useCallback((key,val)=>{
+  setTuneVals(prev=>{const next={...prev,[key]:val};tuneValsRef.current=next;return next;});
+  pushTune({[key]:val});
+},[pushTune]);
+const onLeverResetKey=useCallback((key)=>{
+  const def=tuningDefaults()[key];
+  setTuneVals(prev=>{const next={...prev,[key]:def};tuneValsRef.current=next;return next;});
+  pushTune({[key]:def});
+},[pushTune]);
+const onLeverResetAll=useCallback(()=>{
+  const def=tuningDefaults();tuneValsRef.current=def;setTuneVals(def);
+  pushTune(def,true);
+},[pushTune]);
 const[boardMode,setBoardMode]=useState("countries");   // "countries" | "settlements"
 const[boardSort,setBoardSort]=useState("size");        // see SORT_KEYS below
 const layersRef=useRef(layers);
@@ -4110,6 +4138,8 @@ try{
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
   sw.postMessage({type:'view',view:viewRef.current});
+  // A fresh worker starts at default tuning — re-send the user's current levers.
+  sw.postMessage({type:'tune',values:tuneValsRef.current});
   usedWorker=true;
 }catch(e){console.warn('[SimWorker] init failed — main-thread sim:',e);}
 if(!usedWorker){
@@ -5615,7 +5645,7 @@ const applySnapshot=useCallback((snap)=>{
   for(const c of (snap.countries||[])){
     const members=c.memberIds.map(id=>byId.get(id)).filter(Boolean);
     const capital=byId.get(c.capitalId)||members[0]||null;
-    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel});
+    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_momentum:c._momentum,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel,personality:c.personality});
   }
   psw.countries=countries;
   // HUD state updates re-render the whole component, so throttle them to ~5Hz
@@ -5913,7 +5943,9 @@ const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
 
 // ── Aggregate world stats for the chronicle ribbon ──
 const _ter=terRef.current;
-const _step=_ter?_ter.stepCount:0;
+// The live clock is the peopleSim step (the legacy tribe sim is disabled, so
+// _ter.stepCount stays 0 — that's what froze the year at 2000 BC).
+const _step=(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
 const _ys=yearStr(_step);
 let _aAg=0,_aMt=0,_aNv=0,_aOg=0,_aliveK=0;
 if(_ter&&_ter.tribes){
@@ -6213,6 +6245,38 @@ return(
         );
       })()}
 
+      {/* ── National temperament (personality) ── */}
+      {(()=>{
+        const ctry=psw.countries&&psw.countries.get(s.countryId);
+        const p=ctry&&ctry.personality;
+        if(!p)return null;
+        // Hue per dominant temperament so the label reads at a glance.
+        const labelHue={Warlike:8,Conqueror:340,"Raider-Republic":30,Mercantile:140,"Trading Empire":175,Expansionist:265,Insular:210,Balanced:45}[p.label]??45;
+        // Compact CENTERED trait bars: traits are −1..1 (0=neutral), so the
+        // fill grows rightward from the centre for a positive (trait-expressing)
+        // value and leftward for a negative (mirror) one, against a centre tick.
+        const bar=(v,h)=>{
+          const c=Math.max(-1,Math.min(1,v||0));
+          const half=Math.abs(c)*50;                 // % of the half-track filled
+          const left=c>=0?50:50-half;                // start at centre (right) or back off (left)
+          return(
+          <span style={{display:"inline-block",width:22,height:5,borderRadius:2,background:"rgba(255,255,255,0.12)",position:"relative",overflow:"hidden"}}>
+            <span style={{position:"absolute",left:"50%",top:0,bottom:0,width:1,background:"rgba(255,255,255,0.35)"}}/>
+            <span style={{position:"absolute",left:`${left}%`,top:0,bottom:0,width:`${half}%`,background:`hsl(${h},60%,52%)`}}/>
+          </span>
+          );
+        };
+        return(
+          <div style={{display:"flex",alignItems:"center",gap:6,fontSize:10,marginBottom:6,flexWrap:"wrap"}}>
+            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${labelHue},60%,50%)`,flexShrink:0}}/>
+            <span className="au-fade" style={{fontWeight:600}}>{p.label}</span>
+            <span style={{display:"inline-flex",alignItems:"center",gap:3}} title={`aggression ${(p.aggression||0).toFixed(2)}`}>{bar(p.aggression,8)}<span className="au-fade" style={{opacity:0.5}}>war</span></span>
+            <span style={{display:"inline-flex",alignItems:"center",gap:3}} title={`commerce ${(p.commerce||0).toFixed(2)}`}>{bar(p.commerce,140)}<span className="au-fade" style={{opacity:0.5}}>trade</span></span>
+            <span style={{display:"inline-flex",alignItems:"center",gap:3}} title={`expansionism ${(p.expansionism||0).toFixed(2)}`}>{bar(p.expansionism,265)}<span className="au-fade" style={{opacity:0.5}}>expand</span></span>
+          </div>
+        );
+      })()}
+
       {/* ── Loyalty / control budget (overextension) ── */}
       {(()=>{
         const ctry=psw.countries&&psw.countries.get(s.countryId);
@@ -6235,6 +6299,12 @@ return(
               <span style={{width:9,height:9,borderRadius:2,background:over?"hsl(8,70%,52%)":"hsl(140,45%,45%)",flexShrink:0}}/>
               <span className="au-fade">control {load.toFixed(1)}/{cap.toFixed(1)} ({pct}%){over?" · over-extended":""}{strain}</span>
             </div>
+            {(()=>{const mom=ctry._momentum||0;if(mom<1)return null;return(
+              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+                <span style={{width:9,height:9,borderRadius:2,background:"hsl(28,80%,52%)",flexShrink:0}}/>
+                <span className="au-fade">conquest momentum +{mom.toFixed(1)} · holding on the offensive (fades if the advance stalls)</span>
+              </div>
+            );})()}
             {treas!=null&&(()=>{const sv=ctry._solvency??1;const broke=sv<0.99;return(
               <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
                 <span style={{width:9,height:9,borderRadius:2,background:broke?"hsl(8,75%,52%)":"hsl(48,65%,48%)",flexShrink:0}}/>
@@ -6883,6 +6953,8 @@ return(
   className={"au-rail-tab"+(rightPanel==="params"?" au-active":"")}>Params</button>
 {preset==="tectonic"&&<button onClick={()=>setShowTuning(true)}
   className="au-rail-tab">Tune</button>}
+{preset==="earth_sim"&&<button onClick={()=>setLeversOpen(v=>!v)}
+  className={"au-rail-tab"+(leversOpen?" au-active":"")}>Sim Levers</button>}
 </>}
 </aside>
 
@@ -7053,6 +7125,11 @@ return(
   onChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
   groups={preset==="earth"?["wind"]:preset==="earth_sim"?["wind","moisture"]:undefined} />
 </aside>}
+
+{/* ══════════ SIM LEVERS PANEL ══════════ */}
+{leversOpen&&<SimLevers values={tuneVals} onChange={onLeverChange}
+  onResetKey={onLeverResetKey} onResetAll={onLeverResetAll}
+  onClose={()=>setLeversOpen(false)} />}
 
 {/* ══════════ TUNING MODAL ══════════ */}
 {showTuning&&<TuningPanel noiseFns={{initNoise,fbm,ridged,noise2D,worley}} seed={seed}

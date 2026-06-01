@@ -20,6 +20,7 @@
 // edge (you tax/own the whole territory even if you don't farm it).
 
 import { localEdgeCost } from "./transport.js";
+import { T } from "./tuning.js";
 
 // Reach budget, in transport-cost units (a plain tile = 1.0). Pure
 // function of ORGANIZATION — the centre's willingness/ability to
@@ -44,10 +45,10 @@ import { localEdgeCost } from "./transport.js";
 // Across mountains the SAME budget reaches fewer tiles; with navy it
 // can hop across coastal water at ~3 cost per tile and reach further.
 const TERRITORY_BASE = 5;
-const ORG_REACH = 40;
+// ORG_REACH -> runtime lever (tuning.js T.ORG_REACH)
 export function reachBudget(s) {
   const k = s.knowledge || {};
-  return TERRITORY_BASE + (k.organization || 0) * ORG_REACH;
+  return TERRITORY_BASE + (k.organization || 0) * T.ORG_REACH;
 }
 
 // Per-tile food weight by distance: 1 next to the centre, tailing off with
@@ -72,6 +73,19 @@ const CORE_BY_TIER = [1, 2, 3, 4];
 export function coreRadiusFor(s) {
   const t = s.tier | 0;
   return CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
+}
+
+// Beyond the guaranteed core, every settlement is also GUARANTEED a farmland
+// HINTERLAND out to this radius (by tier), claimed nearest-settlement-wins so a
+// dominant city can't hoard all the shared countryside and a densely-packed
+// town is never squeezed down to its bare core block. This belt is the land a
+// region genuinely owns — and therefore carries with it when it secedes.
+// Scaled by T.HINTERLAND_MULT (tuning.js); never smaller than the core.
+const HINTERLAND_BY_TIER = [3, 4, 6, 8];
+export function hinterlandRadiusFor(s) {
+  const t = s.tier | 0;
+  const base = HINTERLAND_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
+  return Math.max(coreRadiusFor(s), Math.round(base * T.HINTERLAND_MULT));
 }
 
 class MinHeap {
@@ -138,6 +152,35 @@ export function computeTerritory(world) {
     }
     const home = sy * tw + sx;
     if (elev[home] > 0) { cost[home] = 0; heap.push(home, 0); }
+  }
+
+  // ── Guaranteed farmland hinterland (nearest-wins distance Voronoi) ──
+  // Each settlement claims the land within its hinterland radius that it is the
+  // NEAREST settlement to, carving fairly from wilderness AND from a neighbour
+  // that had over-claimed the shared countryside — so every town keeps a real
+  // farmland belt instead of being squeezed to its core. Cores are sacred
+  // (skipped), and CONQUERED tiles are left to whoever took them (a tile with a
+  // capture timestamp is battlefield land, not free countryside) so this never
+  // undoes a conquest. Deterministic per pass ⇒ stable borders, no flicker.
+  const hintDist = (world._hintDist && world._hintDist.length === N)
+    ? world._hintDist : (world._hintDist = new Float32Array(N));
+  hintDist.fill(Infinity);
+  const capAt = world._tileCapturedAt;
+  for (const s of byId.values()) {
+    const sx = s.pos.x | 0, sy = s.pos.y | 0;
+    const hr = hinterlandRadiusFor(s), hr2 = hr * hr;
+    for (let dy = -hr; dy <= hr; dy++) {
+      const ny = sy + dy; if (ny < 0 || ny >= th) continue;
+      for (let dx = -hr; dx <= hr; dx++) {
+        const d2 = dx * dx + dy * dy; if (d2 > hr2) continue;
+        const nx = ((sx + dx) % tw + tw) % tw;
+        const ti = ny * tw + nx;
+        if (elev[ti] <= 0) continue;
+        if (coreClaimed[ti] === stamp) continue;       // a settlement's core — sacred
+        if (capAt && capAt[ti] > -Infinity) continue;  // conquered land — leave to the conqueror
+        if (d2 < hintDist[ti]) { hintDist[ti] = d2; owner[ti] = s.id; }
+      }
+    }
   }
 
   // Snapshot LOCKED ownership (persistent land + cores). During the pass,

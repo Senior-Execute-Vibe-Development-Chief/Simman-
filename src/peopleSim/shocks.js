@@ -11,13 +11,14 @@
 // past its tipping point.
 
 import { mkRng } from "./rng.js";
+import { T } from "./tuning.js";
 
 // ── FAMINE — a regional bad-harvest event ──
 // Hits a geographic cluster of settlements for a window, slashing their land-
 // food yield. Reduced supply → starvation (settlement.js) + hunger-driven
 // unrest (conquest.js). Read in updateFood via s._famineUntil / s._harvestMul.
 const FAMINE_CHECK    = 700;    // ticks between famine-spawn rolls
-const FAMINE_CHANCE   = 0.35;   // probability a roll actually spawns one
+// FAMINE_CHANCE -> runtime lever (tuning.js T.FAMINE_CHANCE)
 const FAMINE_RADIUS   = 12;     // tiles — settlements within this of the seed are struck (regional, not continental)
 const FAMINE_MIN_DUR  = 400;
 const FAMINE_MAX_DUR  = 1200;
@@ -30,10 +31,10 @@ const FAMINE_MIN_POP  = 30;     // only seed on a real settlement
 // disease — and a plague that reaches the capital craters its population, which
 // shrinks the control budget (conquest.js) and can collapse the realm.
 const PLAGUE_CHECK    = 1800;   // ticks between plague-spawn rolls (generational)
-const PLAGUE_CHANCE   = 0.55;
+// PLAGUE_CHANCE -> runtime lever (tuning.js T.PLAGUE_CHANCE)
 const PLAGUE_DUR      = 250;    // how long a settlement stays infectious (shorter window → lower R0)
 const PLAGUE_IMMUNE   = 4000;   // post-plague immunity window (resistant survivors block re-cascade)
-const PLAGUE_MORT     = 0.0016; // base per-tick mortality (raised to keep a short outbreak lethal)
+// PLAGUE_MORT -> runtime lever (tuning.js T.PLAGUE_MORT)
 const PLAGUE_URBAN    = 0.6;    // extra mortality ∝ log10(pop/100) (crowding/sanitation)
 const PLAGUE_SPREAD   = 0.0006; // per-tick chance an infected node infects a trade partner.
                                 // Tuned for R0 ≈ 3 on a real-scale Earth (~250 large hubs,
@@ -54,7 +55,7 @@ export function updateShocks(world) {
   const rng = mkRng((world.seed ^ (world.step * 40503)) >>> 0);
 
   // ── Famine spawn ──
-  if (world.step % FAMINE_CHECK === 0 && rng() < FAMINE_CHANCE) {
+  if (world.step % FAMINE_CHECK === 0 && rng() < T.FAMINE_CHANCE) {
     const pool = world.settlements.filter(s => s.mode === "settled" && s.people >= FAMINE_MIN_POP);
     if (pool.length) {
       const seed = pool[(rng() * pool.length) | 0];
@@ -72,7 +73,7 @@ export function updateShocks(world) {
 
   // ── Plague spawn ──
   if (!world._plagued) world._plagued = new Set();
-  if (world.step % PLAGUE_CHECK === 0 && rng() < PLAGUE_CHANCE) {
+  if (world.step % PLAGUE_CHECK === 0 && rng() < T.PLAGUE_CHANCE) {
     const pool = world.settlements.filter(s =>
       s.mode === "settled" && s.people >= PLAGUE_MIN_POP &&
       world.step >= (s._plagueUntil || 0) && world.step >= (s._plagueImmuneUntil || 0));
@@ -102,7 +103,7 @@ export function updateShocks(world) {
       }
       // Mortality (worse in crowded cities).
       const urban = Math.max(0, Math.log10(Math.max(1, s.people) / 100));
-      const mort = PLAGUE_MORT * (1 + PLAGUE_URBAN * urban);
+      const mort = T.PLAGUE_MORT * (1 + PLAGUE_URBAN * urban);
       s.people = Math.max(1, s.people * (1 - mort));
       // Spread along the trade graph (road reach + sea lanes). The very links
       // that carry grain and coin carry the contagion.

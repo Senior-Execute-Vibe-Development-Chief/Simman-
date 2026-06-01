@@ -12,26 +12,36 @@
 // captured right at the frontier would secede the very next pass and get
 // re-taken, making the borders flicker.
 
-import { CONQUEST_GRACE } from "./armies.js";
 import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.js";
 import { shockUnrest } from "./shocks.js";
 import { localPByCountry } from "./inflation.js";
 import { localEdgeCost } from "./transport.js";
+import { personalityOf, inheritPersonality, prunePersonalities, driftPersonality, expansionReachMul } from "./personality.js";
+import { T } from "./tuning.js";
 
-const POLITY_INTERVAL  = 150;   // ticks between polity passes
+// POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
+// (T.POLITY_INTERVAL); index.js gates the pass on it.
 // Sub-city absorption requires the absorbing power to have at least this
 // much ORGANISATION (state apparatus) before it can administratively
 // swallow a touching village. Below this threshold the village stays
 // independent — only direct conquest by armies can take it. Bronze-age
 // society is the floor; chalcolithic and earlier are too primitive to
 // integrate a foreign realm administratively.
-const ABSORB_ORG_MIN   = 0.30;
+// T.ABSORB_ORG_MIN (org-tech a city needs before it can peacefully vacuum
+// neighbouring village/town statelets), T.ABSORB_PROB_MAX and ABSORB_RATE (the
+// per-pass defection rate) are runtime levers — tuning.js. Raising the gate /
+// lowering the rate keeps many small states alive deeper into the timeline.
+// A realm may only absorb a new province while its admin load is below this
+// fraction of its capacity — leaving slack so the freshly taken land lands
+// INSIDE the budget instead of instantly over-extending and seceding back
+// (the absorb↔secede oscillation that flipped whole swathes each pass).
+const ABSORB_HEADROOM  = 0.90;
 // Maximum per-polity-pass defection probability. Caps the rate at which
 // a sub-city settlement can flip to a touching foreign realm — even a
 // tiny village vs a massive cradle defects over multiple passes, never
-// in a single tick. With POLITY_INTERVAL=150 and ABSORB_PROB_MAX=0.10,
+// in a single tick. With POLITY_INTERVAL=150 and T.ABSORB_PROB_MAX=0.10,
 // a fully-pressured village takes ~10 passes (~1500 ticks) on average.
-const ABSORB_PROB_MAX  = 0.10;
+// (Runtime lever — tuning.js T.ABSORB_PROB_MAX.)
 
 // ── Government treasury (fiscal redistribution) ───────────────────────
 // The realm's coin is taxed into a GOVERNMENT treasury (not the capital
@@ -41,7 +51,7 @@ const ABSORB_PROB_MAX  = 0.10;
 // limited trade), a roughly balanced budget keeps coin circulating to the
 // periphery instead of pooling at the throne. Treasury lives in
 // world.governments keyed by countryId (stable across capital changes).
-const ARMY_WAGE     = 60;   // coin per soldier per polity pass — peacetime garrison pay
+// ARMY_WAGE -> runtime lever (tuning.js T.ARMY_WAGE)
 const WAR_SURCHARGE = 1.2;  // each level of war (defensive front / besieged capital) multiplies the army bill
 const RESERVE_PASSES = 3;   // war-chest the state keeps (passes of peacetime army pay) before funding works
 const SOLVENCY_FLOOR = 0.5; // a fully bankrupt state still retains this fraction of its control budget
@@ -52,7 +62,7 @@ const SOLVENCY_FLOOR = 0.5; // a fully bankrupt state still retains this fractio
 // overtaxation feeds POPULAR UNREST: the classic trap where taxing to pay for
 // a war drives the people to revolt (France 1789, late Ming, late Rome).
 const TAX_BASE     = 0.06;   // baseline share of a member's wealth taxed per pass
-const TAX_MAX      = 0.22;   // hard cap on the tax rate, however desperate the state
+// TAX_MAX -> runtime lever (tuning.js T.TAX_MAX)
 const TAX_WAR      = 0.025;  // extra rate per level of war
 const TAX_BANKRUPT = 0.12;   // extra rate × how insolvent the state was last pass
 const TAX_DRIFT    = 0.25;   // how fast the actual rate moves toward its target (no whipsaw)
@@ -68,7 +78,7 @@ const HUNGER_W   = 1.0;      // grievance weights (hunger dominates, as in histo
 const CONSCRIPT_W = 0.4;
 const WARFAT_W   = 0.5;
 const OVERTAX_W  = 0.7;
-const UNREST_GAIN   = 0.15;  // how fast grievance piles into the unrest stock
+// UNREST_GAIN -> runtime lever (tuning.js T.UNREST_GAIN)
 const UNREST_RELIEF = 0.06;  // how fast unrest cools when the people are content
 const UNREST_LOYALTY_BLEED = 0.12;  // an angry populace also erodes administrative loyalty
 const UNREST_RADIUS_MIN = 15;       // a rebellion rallies discontented neighbours within this (or range)
@@ -94,6 +104,16 @@ export function govOf(world, countryId) {
   return g;
 }
 
+// Bank conquest momentum onto the conquering country (armies.js calls this
+// when it captures tiles / storms a city). Momentum adds hold-capacity in the
+// polity pass and decays fast, so a stalled conqueror fragments — see the
+// MOMENTUM_* block. The cap is applied on read in the polity pass.
+export function bankMomentum(world, countryId, amount) {
+  if (!(amount > 0)) return;
+  const g = govOf(world, countryId);
+  g._momentum = (g._momentum || 0) + amount;
+}
+
 // ── Control budget (overextension) ───────────────────────────────────
 // An empire holds its provinces out of a finite CONTROL BUDGET projected
 // from its CENTRE. Each province draws some of that budget (its admin
@@ -105,18 +125,18 @@ export function govOf(world, countryId) {
 // shrinks the budget and the frontier sheds — overextension becomes a
 // dynamic event, not a fixed radius. Magnitudes are in "reach-units":
 // a province sitting exactly at the capital's reach costs a load of ~1.
-const CAP_BASE      = 6;     // reach-units a lone capital can administer
-const CAP_POP       = 3;     // extra capacity from a big capital (log of pop)
-const CAP_POP_REF   = 1000;  // capital population that scores one CAP_POP unit
-const CAP_SEAT      = 1.2;   // capacity each loyal regional seat adds (sub-administration)
+// CAP_BASE -> runtime lever (tuning.js T.CAP_BASE)
+// CAP_POP -> runtime lever (tuning.js T.CAP_POP)
+const CAP_POP_REF   = 1000;  // capital population that scores one T.CAP_POP unit
+// CAP_SEAT -> runtime lever (tuning.js T.CAP_SEAT)
 const SEAT_BONUS_CAP = 6;    // total seat contribution is capped (admin has diminishing returns)
 const COERCE_CAP    = 2.5;   // a far-stronger capital coerces a province (caps the load cut)
-const SIZE_LOAD     = 0.4;   // bigger provinces are harder to administer
+// SIZE_LOAD -> runtime lever (tuning.js T.SIZE_LOAD)
 const SIZE_REF      = 1000;  // population scale for the size term
 const RECENCY_LOAD  = 1.0;   // a freshly conquered province costs this much extra...
-const RECENCY_TICKS = 4000;  // ...decaying to none over this many ticks (digestion)
+// RECENCY_TICKS -> runtime lever (tuning.js T.RECENCY_TICKS)
 const LOYAL_RECOVER = 0.06;  // per pass: covered provinces climb toward full loyalty
-const LOYAL_DECAY   = 0.10;  // per pass: uncovered provinces bleed loyalty toward zero
+// LOYAL_DECAY -> runtime lever (tuning.js T.LOYAL_DECAY)
 
 // ── Contagious secession (amplifier) ──────────────────────────────────
 // A revolt is regional, not solitary: when a province's loyalty collapses,
@@ -147,6 +167,27 @@ const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capaci
 const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
 const WAR_CAPACITY_MULT   = 0.8;   // capital's countryside merely raided → mild throttle
 const SIEGE_WINDOW        = 300;   // ticks the siege/war throttle lingers after the last front
+
+// ── Conquest momentum (the rise-and-shatter of the steppe empire) ─────
+// A realm on a winning streak coheres around the conquest itself: loot,
+// prestige, fear, and shared enterprise hold a far larger domain together
+// than its settled administration ever could — SO LONG AS IT KEEPS WINNING.
+// The Mongols, Alexander, Timur, the Arab conquests, Attila: each held an
+// impossible expanse on momentum, then shattered within a generation the
+// moment the conquest stalled (no soft targets left, a lost battle, the
+// khan's death). We model that with a per-country MOMENTUM stock (lives on
+// the persistent gov object, keyed by countryId):
+//   • FED by successful conquest — tiles captured + cities stormed
+//     (banked in armies.js via bankMomentum).
+//   • Each pass it ADDS hold-capacity (a conqueror holds far past its static
+//     budget while the streak runs), then DECAYS fast.
+//   • When the streak stops, momentum craters in a few passes → the capacity
+//     it was propping up vanishes → the over-extended frontier sheds all at
+//     once: a hard, Mongol-style fragmentation. (Hard snap, not a glide.)
+// MOMENTUM_CAP -> runtime lever (tuning.js T.MOMENTUM_CAP)
+const MOMENTUM_DECAY      = 0.55;  // per polity pass: momentum retained when not fed (hard snap)
+export const MOMENTUM_PER_TILE  = 0.05;  // momentum banked per enemy tile captured
+export const MOMENTUM_PER_STORM = 3.0;   // momentum banked per enemy CITY stormed
 
 // ── Overmighty governor (ambition-driven secession) ───────────────────
 // A powerful regional governor doesn't wait for the budget to fail. If his
@@ -196,16 +237,44 @@ function holdPull(s) {
 // expansion piles up this load and triggers indigestion-overextension.
 function recencyFactor(world, s) {
   const age = world.step - (s._conqueredAt ?? -Infinity);
-  if (!(age < RECENCY_TICKS)) return 0;   // also handles age === Infinity
-  return 1 - age / RECENCY_TICKS;
+  if (!(age < T.RECENCY_TICKS)) return 0;   // also handles age === Infinity
+  return 1 - age / T.RECENCY_TICKS;
 }
 // Base hold range (tiles) from the capital's reach techs — how far it can
 // administer. Grows with organization/mobility/navigation; then SHRINKS
 // with empire size (overstretch), so big empires can't hold their
 // periphery and fragment into successor states.
-const RANGE_BASE = 8, RANGE_ORG = 16, RANGE_MOB = 10, RANGE_NAV = 6;
+const RANGE_BASE = 8 * 1.02, RANGE_ORG = 16 * 1.02, RANGE_MOB = 10 * 1.02, RANGE_NAV = 6 * 1.02;
+// (all ×1.02 re-anchor the 0.5-pivot expansionReachMul — personality.js;
+//  c.range = RANGE_expr × reachMul, so behaviour is identical to the old form)
 
-export { POLITY_INTERVAL };
+// ── Major-river administrative frontier ───────────────────────────────
+// A great river is a natural border: holding a province on the FAR bank
+// costs the centre extra reach to cross. The toll is CONSTRUCTION-gated —
+// a chalcolithic realm (cons≈0) pays the full toll and is walled by a
+// great river (the Rhine/Danube/Nile frontier effect), while an engineered
+// realm (Roman pontoons, bridges) crosses it cheaply. Only MAJOR/GREAT
+// rivers (mag ≥ 3) wall an empire; minor streams (mag 2) don't. The toll
+// enters the admin load at FULL weight (unlike generic terrain, which is
+// half-weighted) so rivers genuinely bound a low-tech empire's extent.
+const RIVER_TOLL_MAX  = 6;     // reach-units to cross a major river at zero construction
+const RIVER_TOLL_CONS = 5;     // construction shaves up to this off the toll
+const RIVER_TOLL_MIN  = 0.5;   // floor — even a bridged crossing isn't free
+
+// Toll for an edge that steps ONTO a major-river tile from a non-river
+// tile — one charge per river crossed (travelling ALONG a river is free,
+// so a riverine heartland isn't self-penalised). Returns 0 for any other
+// edge. Construction bridges the toll down toward RIVER_TOLL_MIN.
+function majorRiverToll(world, fromTi, toTi, cons) {
+  const rm = world.riverMag;
+  if (!rm) return 0;
+  const toMajor   = rm[toTi]   >= 3 && world.elev[toTi]   > 0;
+  if (!toMajor) return 0;
+  const fromMajor = rm[fromTi] >= 3 && world.elev[fromTi] > 0;
+  if (fromMajor) return 0;     // already on the river → travelling along it, not crossing
+  return Math.max(RIVER_TOLL_MIN, RIVER_TOLL_MAX - cons * RIVER_TOLL_CONS);
+}
+
 
 // Military/administrative weight, used to pick the capital (strongest member).
 export function settlementPower(s) {
@@ -237,6 +306,13 @@ export function rebuildCountries(world) {
     c.capitalId = best.id;
     const k = best.knowledge || {};
     c.range = RANGE_BASE + (k.organization || 0) * RANGE_ORG + (k.mobility || 0) * RANGE_MOB + (k.navigation || 0) * RANGE_NAV;
+    // Personality nudges reach: an expansionist realm projects authority a
+    // little farther, a cautious one pulls in. Knowledge still sets the bulk
+    // of the reach — this is a mild temperament colouring on top (see
+    // personality.js). The personality is lazily seeded from the capital's
+    // environment the first time it's read.
+    c.personality = personalityOf(world, c);
+    c.range *= expansionReachMul(c.personality);
     c.hue = ((c.id * 61) % 360 + 360) % 360;
     buildHierarchy(world, c);
   }
@@ -393,7 +469,7 @@ function secedeContagious(world, c, seeds) {
     for (const m of c.members) {
       if (m === seed || m.countryId !== c.id || m.id === c.capitalId) continue;
       if ((m.loyalty ?? 1) > REVOLT_JOIN_LOYALTY) continue;          // still loyal → doesn't join
-      const pacified = world.step - (m._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const pacified = world.step - (m._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = m.parentSettlementId >= 0 && world.step - (m.foundedStep || 0) < COLONY_SUPPLY_TICKS;
       if (pacified || infant) continue;                              // garrisoned / supported → held
       if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
@@ -426,6 +502,7 @@ function secedeContagious(world, c, seeds) {
       }
       continue;
     }
+    inheritPersonality(world, c.id, newId);        // successor inherits parent temperament (with drift)
     for (const m of bloc) {
       m.countryId = newId;
       m.loyalty = m === seed ? 1 : 0.85;           // seed leads; followers enthusiastic
@@ -457,6 +534,7 @@ export function fragmentRealm(world, oldId, excludeId) {
   if (survivors.length === 0) return;
   if (survivors.length === 1) {
     const s = survivors[0];
+    inheritPersonality(world, oldId, s.id);       // lone successor keeps the old realm's temperament
     s.countryId = s.id; s.loyalty = 1; s._conqueredAt = world.step;
     if (s.history) s.history.push({ step: world.step, type: "successor", of: oldId });
     return;
@@ -473,6 +551,9 @@ export function fragmentRealm(world, oldId, excludeId) {
     }
     if (far) capitals.push(s);
   }
+  // Each successor realm inherits the dead empire's temperament (with drift),
+  // so the Diadochi share their predecessor's character before diverging.
+  for (const cap of capitals) inheritPersonality(world, oldId, cap.id);
   // Each survivor joins its nearest successor capital.
   for (const s of survivors) {
     let best = capitals[0], bd = Infinity;
@@ -527,6 +608,7 @@ function declareIndependence(world, c, seed) {
     }
     return;
   }
+  inheritPersonality(world, c.id, newId);        // the breakaway carries its parent's temperament (with drift)
   for (const m of bloc) {
     m.countryId = newId;
     m._conqueredAt = world.step;                 // the breakaway realm gets breathing room (grace)
@@ -563,7 +645,7 @@ function rebel(world, c, seeds) {
     for (const m of c.members) {
       if (m === seed || m.countryId !== c.id || m.id === c.capitalId) continue;
       if ((m.unrest ?? 0) < UNREST_JOIN) continue;                    // content → doesn't rise
-      const pacified = world.step - (m._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const pacified = world.step - (m._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = m.parentSettlementId >= 0 && world.step - (m.foundedStep || 0) < COLONY_SUPPLY_TICKS;
       if (pacified || infant) continue;                              // garrison holds it down for now
       if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
@@ -629,7 +711,7 @@ function disburseTreasury(world, c, gov, warLevel) {
   for (const s of members) { _tierTotal += s.tier | 0; _tierN++; }
   const avgTier = _tierN > 0 ? _tierTotal / _tierN : 0;
   const tierFactor = 0.3 + 0.7 * Math.min(1, avgTier / 2);  // 0.3 at village, 0.65 at town, 1.0 at city+
-  const wage = ARMY_WAGE * realmP * tierFactor;
+  const wage = T.ARMY_WAGE * realmP * tierFactor;
   // War surcharge only really applies to real states (with at least one
   // city). A village-level realm can't afford a war and shouldn't be modelled
   // as paying for one — its army either runs away or is dismantled (food
@@ -737,18 +819,24 @@ function capitalTransportCosts(world, c) {
   // water-embarkation gate. Land = baseEdgeCost; water = navigable iff
   // nav ≥ 0.2 and at a cost that falls from ~12 to ~3 as nav rises.
   const kn  = { navigation: (cap.knowledge && cap.knowledge.navigation) || 0 };
+  // Major-river crossings are tracked SEPARATELY (full-weight barrier, not
+  // halved with generic terrain) and bridged down by the capital's
+  // construction tech — see majorRiverToll.
+  const cons = (cap.knowledge && cap.knowledge.construction) || 0;
   const out = new Map();
+  const cross = new Map();   // member id → major-river toll accrued on its cheapest path
   const homes = new Map();
   let pending = 0;
   for (const m of c.members) {
-    if (m.id === c.capitalId) { out.set(m.id, 0); continue; }
+    if (m.id === c.capitalId) { out.set(m.id, 0); cross.set(m.id, 0); continue; }
     const ti = (m.pos.y | 0) * tw + (m.pos.x | 0);
     homes.set(ti, m.id);
     pending++;
   }
-  if (pending === 0) return out;
+  if (pending === 0) return { cost: out, cross };
   const maxCost = Math.max(50, c.range * 25);
   const dist = new Map();
+  const crossAcc = new Map();   // tile → major-river toll accrued reaching it (parallels dist)
   const capTi = (cap.pos.y | 0) * tw + (cap.pos.x | 0);
   dist.set(capTi, 0);
   const heap = new _PolHeap();
@@ -760,7 +848,7 @@ function capitalTransportCosts(world, c) {
     const dHere = dist.get(ti);
     if (dHere === undefined || d > dHere) continue;
     const hit = homes.get(ti);
-    if (hit !== undefined) { out.set(hit, d); homes.delete(ti); pending--; }
+    if (hit !== undefined) { out.set(hit, d); cross.set(hit, crossAcc.get(ti) || 0); homes.delete(ti); pending--; }
     const ty = (ti / tw) | 0;
     const tx = ti - ty * tw;
     const xm = tx === 0      ? tw - 1 : tx - 1;
@@ -780,10 +868,14 @@ function capitalTransportCosts(world, c) {
       const nd = d + ec * mul[k];
       if (nd > maxCost) continue;
       const prev = dist.get(ni);
-      if (prev === undefined || nd < prev) { dist.set(ni, nd); heap.push(ni, nd); }
+      if (prev === undefined || nd < prev) {
+        dist.set(ni, nd);
+        crossAcc.set(ni, (crossAcc.get(ti) || 0) + majorRiverToll(world, ti, ni, cons));
+        heap.push(ni, nd);
+      }
     }
   }
-  return out;
+  return { cost: out, cross };
 }
 
 export function updatePolities(world) {
@@ -801,7 +893,7 @@ export function updatePolities(world) {
     // exactly the way they drain a column's movement. (Naval shortcuts are
     // already baked into localEdgeCost via water embarkation, so we no
     // longer apply a separate _isPort discount here.)
-    const tcosts = capitalTransportCosts(world, c);
+    const { cost: tcosts, cross: tcross } = capitalTransportCosts(world, c);
     const reachCeil = range * 25;   // matches the Dijkstra's bound
 
     // ── Control budget: what the centre can administer (reach-units) ──
@@ -814,9 +906,9 @@ export function updatePolities(world) {
       const isSeat = (s.tier | 0) >= 2 || (s._vassalCount || 0) > 0;
       if (!isSeat) continue;
       const seatSize = Math.min(2, Math.log2(1 + (s.people || 0) / SIZE_REF));
-      seatBonus += CAP_SEAT * (s.loyalty ?? 1) * seatSize;   // disloyal/small seats help less
+      seatBonus += T.CAP_SEAT * (s.loyalty ?? 1) * seatSize;   // disloyal/small seats help less
     }
-    const peaceCapacity = CAP_BASE + CAP_POP * Math.log2(1 + (cap.people || 0) / CAP_POP_REF)
+    const peaceCapacity = T.CAP_BASE + T.CAP_POP * Math.log2(1 + (cap.people || 0) / CAP_POP_REF)
                         + Math.min(SEAT_BONUS_CAP, seatBonus);
 
     // ── War duress: throttle the budget while the realm is fighting ────
@@ -838,22 +930,31 @@ export function updatePolities(world) {
     const gov = govOf(world, c.id);
     const solvency = gov._solvency ?? 1;
     const fiscalDuress = SOLVENCY_FLOOR + solvency * (1 - SOLVENCY_FLOOR);
-    const capacity = peaceCapacity * duress * fiscalDuress;
+    // Conquest momentum: a winning streak (banked in armies.js) holds a far
+    // larger domain together than the settled budget could — but it decays
+    // FAST once the conquering stops, so the moment the streak ends the
+    // propped-up frontier sheds in a few passes (hard snap). Added on top of
+    // the throttled budget so even a multi-front war-machine over-holds while
+    // it's winning, then shatters when it stalls.
+    const momentum = Math.min(T.MOMENTUM_CAP, gov._momentum || 0);
+    gov._momentum = momentum * MOMENTUM_DECAY;     // decay each pass; conquest re-banks it (armies.js)
+    const capacity = peaceCapacity * duress * fiscalDuress + momentum;
     c._capacity = capacity;        // (already duress-adjusted) for the info panel
+    c._momentum = momentum;        // for the info panel
     c._fronts = fronts;
     c._capitalBesieged = besiegedCap;
     c._solvency = solvency;
 
     // Variable taxation: war + insolvency push the rate up toward a cap. Recent
     // conquests bank war-weariness relief (_spoils, in armies.js) that fades.
-    const targetTax = Math.min(TAX_MAX, TAX_BASE + TAX_WAR * warLevel + TAX_BANKRUPT * (1 - solvency));
+    const targetTax = Math.min(T.TAX_MAX, TAX_BASE + TAX_WAR * warLevel + TAX_BANKRUPT * (1 - solvency));
     gov._taxRate = (gov._taxRate ?? TAX_BASE) + (targetTax - (gov._taxRate ?? TAX_BASE)) * TAX_DRIFT;
     gov._spoils = (gov._spoils || 0) * SPOILS_DECAY;
     c._taxRate = gov._taxRate;
 
     // ── Popular unrest: hardship piles up; peace + plenty + light taxes cool it.
     // At the top it boils over into a rebellion (rebel(), fired after secession).
-    const taxOver = Math.max(0, (gov._taxRate - TAX_BASE) / (TAX_MAX - TAX_BASE));
+    const taxOver = Math.max(0, (gov._taxRate - TAX_BASE) / (T.TAX_MAX - TAX_BASE));
     const warFat = Math.min(1, warLevel * 0.4) * (1 - Math.min(1, gov._spoils || 0));
     const rebelSeeds = [];
     for (const s of c.members) {
@@ -864,13 +965,13 @@ export function updatePolities(world) {
       const conscript = Math.min(1, ((s.army || 0) / Math.max(1, s.people)) / CONSCRIPT_REF);
       const gH = hunger * HUNGER_W, gC = conscript * CONSCRIPT_W, gW = warFat * WARFAT_W, gT = taxOver * OVERTAX_W;
       const gS = shockUnrest(world, s);   // direct famine/plague distress (shocks.js)
-      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS) * UNREST_GAIN - UNREST_RELIEF));
+      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS) * T.UNREST_GAIN - UNREST_RELIEF));
       s._unrestCause = s._plagueActive ? "plague"
                      : gH >= gC && gH >= gW && gH >= gT ? "famine"
                      : gT >= gC && gT >= gW ? "taxes"
                      : gW >= gC ? "war fatigue" : "conscription";
       if (s.unrest > 0.5) s.loyalty = Math.max(0, (s.loyalty ?? 1) - UNREST_LOYALTY_BLEED * (s.unrest - 0.5));  // anger erodes loyalty
-      const pacified = world.step - (s._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       if (s.unrest >= 1 && (s.id === c.capitalId || !pacified)) rebelSeeds.push(s);
     }
 
@@ -889,10 +990,14 @@ export function updatePolities(world) {
       const tc   = tcosts.get(s.id);
       const tcEff = (tc === undefined || !isFinite(tc)) ? reachCeil : tc;
       const surcharge = Math.max(0, tcEff - eucl);
-      let d = eucl + 0.5 * surcharge;
+      // Major-river crossings are a FULL-weight, construction-gated barrier
+      // (generic terrain above is half-weighted): a low-construction realm
+      // is walled by a great river, an engineered one bridges it.
+      const riverToll = tcross.get(s.id) || 0;
+      let d = eucl + 0.5 * surcharge + riverToll;
       d /= holdPull(s);                                               // value cling
       const coerce  = Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
-      const sizeMul = 1 + SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
+      const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
       const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
       const load = (d / range) * sizeMul * recMul / coerce;
       s._adminLoad = load;            // for the info panel
@@ -912,7 +1017,7 @@ export function updatePolities(world) {
     for (const { s, load } of loads) {
       cum += load;
       const covered  = cum <= capacity;
-      const pacified = world.step - (s._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
       if (pacified || infant) {
         // Held by garrison / colonial project: nudge loyalty toward its base
@@ -925,7 +1030,7 @@ export function updatePolities(world) {
         s.loyalty = Math.min(1, (s.loyalty ?? 1) + LOYAL_RECOVER * (1 - (s.loyalty ?? 1)));
       } else {
         const over = (cum - capacity) / capacity;          // how deep past the budget
-        s.loyalty = Math.max(0, (s.loyalty ?? 1) - LOYAL_DECAY * (1 + over));
+        s.loyalty = Math.max(0, (s.loyalty ?? 1) - T.LOYAL_DECAY * (1 + over));
         if (s.loyalty <= 0) seeds.push(s);                 // collapsed — defer (revolt is contagious)
       }
     }
@@ -942,7 +1047,7 @@ export function updatePolities(world) {
     for (const s of c.members) {
       if (s.countryId !== c.id || s.id === c.capitalId) continue;     // gone / is the throne
       const seat = (s.tier | 0) >= 2 || (s._vassalCount || 0) > 0;    // must command a region
-      const pacified = world.step - (s._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
       const ratio = settlementPower(s) / capPower;                    // strength vs the throne
       // Same blended distance as the hold load — a governor across a
@@ -951,7 +1056,9 @@ export function updatePolities(world) {
       const eucl = dist(world, cap.pos.x, cap.pos.y, s.pos.x, s.pos.y);
       const tc   = tcosts.get(s.id);
       const tcEff = (tc === undefined || !isFinite(tc)) ? reachCeil : tc;
-      const far  = (eucl + 0.5 * Math.max(0, tcEff - eucl)) / range;
+      // A governor across a great river is "farther" too (same full-weight
+      // river toll as the hold load) — so a far-bank seat schemes harder.
+      const far  = (eucl + 0.5 * Math.max(0, tcEff - eucl) + (tcross.get(s.id) || 0)) / range;
       if (!seat || pacified || infant || ratio < AMBITION_RATIO || far < AMBITION_MIN_FAR) {
         if (s._ambition) s._ambition = Math.max(0, s._ambition - AMBITION_GAIN);   // fades when unqualified
         continue;
@@ -992,6 +1099,11 @@ export function updatePolities(world) {
     c._treasury = gov.treasury;
     c._govRevenue = gov._revenue; gov._revenue = 0;   // per-pass revenue, for the panel
     c._govSpend = gov._spend;
+
+    // Temperament drifts with lived experience (war hardens militarism, long
+    // solvent peace lets commerce flower, lost ground turns a realm inward,
+    // steady growth emboldens expansion) — see personality.js driftPersonality.
+    driftPersonality(world, c, { warLevel, solvency });
   }
 
   // ── City-state minimum tier rule ─────────────────────────────────────
@@ -1009,6 +1121,19 @@ export function updatePolities(world) {
   if (world.governments) {
     for (const id of world.governments.keys()) if (!countries.has(id)) world.governments.delete(id);
   }
+  // Same for personalities — prune temperaments of dead realms.
+  prunePersonalities(world, countries);
+}
+
+// Does this realm have administrative room for one more province? A realm
+// already drawing its full capacity (load ≥ capacity) would immediately
+// over-extend on anything it absorbed, secede it next pass, and oscillate.
+// We require a small slack so the new province lands inside the budget.
+function hasAbsorbHeadroom(c) {
+  if (!c) return false;
+  const cap = c._capacity, load = c._loadTotal;
+  if (cap == null || load == null) return true;        // no budget data yet → allow
+  return load < cap * ABSORB_HEADROOM;
 }
 
 function absorbSubCityCountries(world, countries) {
@@ -1052,8 +1177,8 @@ function absorbSubCityCountries(world, countries) {
       for (const fm of foreign.members) if ((fm.tier | 0) >= 2) { foreignHasCity = true; break; }
       if (!foreignHasCity) continue;
       const orgK = (foreign.capital.knowledge && foreign.capital.knowledge.organization) || 0;
-      if (orgK < ABSORB_ORG_MIN) continue;
-      const orgFactor = Math.min(1, (orgK - ABSORB_ORG_MIN) / (1 - ABSORB_ORG_MIN));
+      if (orgK < T.ABSORB_ORG_MIN) continue;
+      const orgFactor = Math.min(1, (orgK - T.ABSORB_ORG_MIN) / (1 - T.ABSORB_ORG_MIN));
       let perCc = perSett.get(ownerSett.id);
       if (!perCc) { perCc = new Map(); perSett.set(ownerSett.id, perCc); }
       perCc.set(ns2.countryId,
@@ -1069,16 +1194,22 @@ function absorbSubCityCountries(world, countries) {
   for (const [settId, scoreMap] of perSett) {
     const m = byId.get(settId);
     if (!m || m.mode !== "settled") continue;
-    if (world.step - (m._conqueredAt ?? -Infinity) < CONQUEST_GRACE) continue;
+    if (world.step - (m._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE) continue;
     let bestId = -1, bestScore = -1;
     for (const [cid, score] of scoreMap) if (score > bestScore) { bestScore = score; bestId = cid; }
     if (bestId < 0) continue;
+    // Don't absorb into a realm that can't AFFORD the new province: if the
+    // absorber is already at/over its administrative budget, the freshly
+    // taken village would be over-extended and secede again next pass — the
+    // absorb↔secede oscillation that flips whole swathes back and forth.
+    // Only pull in what the surrounder has the spare capacity to hold.
+    if (!hasAbsorbHeadroom(countries.get(bestId))) continue;
     const myPower = Math.max(1, settlementPower(m));
-    // Defection chance per polity pass — caps at ABSORB_PROB_MAX so even
+    // Defection chance per polity pass — caps at T.ABSORB_PROB_MAX so even
     // a tiny village vs a huge cradle defects gradually (~10 passes to
     // flip on average), not instantly.
     const ratio = bestScore / myPower;
-    const prob = Math.min(ABSORB_PROB_MAX, ratio * 0.04);
+    const prob = Math.min(T.ABSORB_PROB_MAX, ratio * T.ABSORB_RATE);
     // Deterministic hash on (id, step) — same input always rolls the same
     // outcome, so debugging is reproducible and there's no jitter.
     const r = ((m.id * 9301 + world.step * 49297 + 7) % 233280) / 233280;
@@ -1089,64 +1220,99 @@ function absorbSubCityCountries(world, countries) {
     if (m.history) m.history.push({ step: world.step, type: "absorbed", into: bestId });
   }
 
-  // ── Enclave fragment absorption ─────────────────────────────────────
-  // A sub-city settlement inside a LARGER country whose home tile is
-  // fully surrounded by foreign territory (and which has no port → no sea
-  // resupply) is a stranded fragment — a village whose parent capital is
-  // unreachable. Real example: a one-village exclave of country A
-  // marooned inside country B. The settlement flips to the surrounding
-  // power. (City-bearing enclaves stay — they have the apparatus to hold
-  // out: West Berlin, Vatican, Llívia.)
-  for (const c of countries.values()) {
-    for (const m of c.members) {
-      if (m.mode !== "settled") continue;
-      if ((m.tier | 0) >= 2) continue;            // cities can hold out as enclaves
-      if (m._isPort) continue;                    // sea resupply → real enclave
-      if (m.id === c.capitalId) continue;
-      if (world.step - (m._conqueredAt ?? -Infinity) < CONQUEST_GRACE) continue;
-      // Check the 8 neighbours of the settlement's home tile.
-      const ti = (m.pos.y | 0) * tw + (m.pos.x | 0);
+  // ── Enclave elimination ─────────────────────────────────────────────
+  // Nothing should sit fully enclosed inside one country: not a marooned
+  // fragment of another realm, not a whole engulfed country, and not a pocket
+  // of wild land. Any connected region of NON-{surrounder} territory (and the
+  // unclaimed land threaded through it) that touches only ONE country and the
+  // map edge nowhere is instantly claimed by that surrounding country.
+  // (Coastlines count as an outside border — a region touching sea is NOT
+  // enclosed, so islands and ports keep their independence: Vatican-style
+  // landlocked holdouts are absorbed, West-Berlin-by-sea-resupply are not.)
+  eliminateEnclaves(world, countries);
+}
+
+// Flood-fill the whole map once. Each maximal region NOT owned by a given
+// country, if it borders exactly one country and never the sea/edge, is an
+// enclave wholly inside that country and gets claimed. Land settlements in the
+// region flip to the surrounder; wild tiles are stamped to it directly.
+function eliminateEnclaves(world, countries) {
+  const owner = world._territoryOwner, byId = world._byId;
+  if (!owner || !byId) return;
+  const { tw, th, N, elev } = world;
+  // tile → countryId of its owner (-1 wild land, -2 sea/empty).
+  const tileCountry = (ti) => {
+    if (elev[ti] <= 0) return -2;                 // sea
+    const oid = owner[ti];
+    if (oid < 0) return -1;                        // wild land
+    const s = byId.get(oid);
+    return s ? s.countryId : -1;
+  };
+  const visited = new Uint8Array(N);
+  const region = [];                               // reused per flood
+  const q = [];
+  for (let start = 0; start < N; start++) {
+    if (visited[start]) continue;
+    const surrounder = tileCountry(start);
+    visited[start] = 1;
+    // We flood the COMPLEMENT of each country: skip tiles that belong to a
+    // country (they're flooded as part of detecting OTHER regions' borders).
+    // Seed only on wild land or a foreign-country tile; pure-country tiles are
+    // walls we discover from the region side.
+    // Flood the maximal connected region of "everything that is NOT exactly
+    // one particular surrounding country". To keep it simple and correct we
+    // flood by EQUAL tileCountry value across {wild, sea, or a given country}.
+    region.length = 0; q.length = 0;
+    q.push(start); region.push(start);
+    let touchesEdge = false;
+    const borderCountries = new Set();
+    const selfCC = surrounder;                     // the region's own classification
+    while (q.length) {
+      const ti = q.pop();
       const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      if (ty === 0 || ty === th - 1) touchesEdge = true;   // map top/bottom = open border
       const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
-      const yu = ty - 1, yd = ty + 1;
-      const cells = [
-        ty * tw + xm, ty * tw + xp,
-        yu >= 0 ? yu * tw + tx : -1, yd < th ? yd * tw + tx : -1,
-        yu >= 0 ? yu * tw + xm : -1, yu >= 0 ? yu * tw + xp : -1,
-        yd < th ? yd * tw + xm : -1, yd < th ? yd * tw + xp : -1,
-      ];
-      let ownCC = 0, foreignTouch = new Map();
-      for (let k = 0; k < 8; k++) {
-        const ni = cells[k]; if (ni < 0) continue;
-        const oid = owner[ni]; if (oid < 0) continue;
-        const ns2 = byId.get(oid); if (!ns2) continue;
-        if (ns2.countryId === c.id) { ownCC++; continue; }
-        const foreign = countries.get(ns2.countryId); if (!foreign) continue;
-        let foreignHasCity = false;
-        for (const fm of foreign.members) if ((fm.tier | 0) >= 2) { foreignHasCity = true; break; }
-        if (!foreignHasCity) continue;
-        // Same tech gate as the sub-city absorption: a low-organisation
-        // power can't administratively swallow even a stranded enclave.
-        const orgK = (foreign.capital.knowledge && foreign.capital.knowledge.organization) || 0;
-        if (orgK < ABSORB_ORG_MIN) continue;
-        const orgFactor = Math.min(1, (orgK - ABSORB_ORG_MIN) / (1 - ABSORB_ORG_MIN));
-        foreignTouch.set(ns2.countryId, (foreignTouch.get(ns2.countryId) || 0) + settlementPower(foreign.capital) * orgFactor);
+      const ns = [ty * tw + xm, ty * tw + xp,
+                  ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+      for (let k = 0; k < 4; k++) {
+        const ni = ns[k]; if (ni < 0) continue;
+        const ncc = tileCountry(ni);
+        if (ncc === selfCC) {
+          if (!visited[ni]) { visited[ni] = 1; q.push(ni); region.push(ni); }
+        } else if (ncc === -2) {
+          touchesEdge = true;                       // sea = open border
+        } else {
+          borderCountries.add(ncc);                 // a bounding country (or wild, -1)
+        }
       }
-      if (ownCC > 0) continue;                    // not actually marooned
-      if (foreignTouch.size === 0) continue;      // unclaimed land — let crystallisation/territory pass handle
-      let bestId = -1, bestScore = -1;
-      for (const [cid, score] of foreignTouch) if (score > bestScore) { bestScore = score; bestId = cid; }
-      if (bestId < 0) continue;
-      // Same per-pass probabilistic flip as the sub-city absorption —
-      // a stranded fragment takes time to give up.
-      const myPower = Math.max(1, settlementPower(m));
-      const prob = Math.min(ABSORB_PROB_MAX, (bestScore / myPower) * 0.04);
-      const r = ((m.id * 9301 + world.step * 49297 + 13) % 233280) / 233280;
-      if (r > prob) continue;
-      m.countryId = bestId;
-      m.loyalty = 0.6;
-      m._conqueredAt = world.step;
-      if (m.history) m.history.push({ step: world.step, type: "absorbed", into: bestId });
+    }
+    // An enclave is a region that (a) isn't itself a country we'd be dissolving
+    // into nothing improperly, (b) never touches sea or the map edge, and
+    // (c) is bounded by exactly ONE country. Wild land (-1) bordering it does
+    // NOT count as a bounding country, but the region must still be sealed.
+    if (touchesEdge) continue;
+    if (selfCC >= 0 && borderCountries.size === 0) continue;   // whole-map single country
+    // Remove the wild marker from bounders; we need exactly one real country.
+    borderCountries.delete(-1);
+    if (borderCountries.size !== 1) continue;       // open to >1 country or to none
+    const intoId = borderCountries.values().next().value;
+    if (intoId === selfCC) continue;                // region already that country
+    const into = countries.get(intoId);
+    if (!into) continue;
+    // Claim it: flip any settlements in the region, stamp wild tiles.
+    for (const ti of region) {
+      if (elev[ti] <= 0) continue;
+      const oid = owner[ti];
+      if (oid >= 0) {
+        const s = byId.get(oid);
+        if (s && s.countryId !== intoId) {
+          s.countryId = intoId;
+          s.loyalty = 0.6;
+          s._conqueredAt = world.step;
+          if (s.history) s.history.push({ step: world.step, type: "absorbed", into: intoId });
+        }
+      }
+      owner[ti] = into.capitalId;                   // wild / fragment tile → surrounder's land
     }
   }
 }
