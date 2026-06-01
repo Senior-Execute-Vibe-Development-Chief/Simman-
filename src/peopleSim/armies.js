@@ -43,6 +43,16 @@ export const CONQUEST_INTERVAL = 50;
 // rival empires every pass. The single biggest stabiliser of the political
 // map — without it contested frontier cities ping-pong endlessly.
 export const CONQUEST_GRACE = 800;
+// The same idea one rung down, for COUNTRYSIDE tiles. A frontier tile has no
+// garrison of its own, and a freshly-grabbed border tile is by definition a
+// thin protrusion into the enemy (low thinFactor), so without hysteresis the
+// two sides' fronts trade the exact same tiles back every pass — the political
+// map visibly flickers along contested borders. Once a tile is captured it is
+// HELD for this long before it can flip again, so a front that stalls sits
+// still instead of ping-ponging. It does NOT slow a genuine advance: the next
+// pass eats the enemy's still-untouched tiles deeper in (their grace clock is
+// cold), only the just-taken ring is locked.
+export const TILE_CAPTURE_GRACE = 400;
 
 const ATTACK_MIN_RATIO  = 1.12 * 1.05; // must out-power a neighbour by this to push
                                        // (×1.05 re-anchors the 0.5-pivot
@@ -229,6 +239,13 @@ export function advanceFronts(world) {
   const byId = world._byId;
   if (!owner || !byId) return;
   const { N, tw, th } = world;
+  // Per-tile "captured at step" clock for the post-capture hold (see
+  // TILE_CAPTURE_GRACE). Cold (-Infinity) everywhere until a tile is flipped by
+  // a front, so a stable border is never affected.
+  let capturedAt = world._tileCapturedAt;
+  if (!capturedAt || capturedAt.length !== N) {
+    capturedAt = world._tileCapturedAt = new Float64Array(N).fill(-Infinity);
+  }
 
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
@@ -361,7 +378,10 @@ export function advanceFronts(world) {
     let pc = pairs.get(key);
     if (!pc) { pc = { att: A, def: D, tiles: [], canStorm: false }; pairs.set(key, pc); }
     if (distHome <= assaultDist) pc.canStorm = true;         // front at the heartland
-    else pc.tiles.push({ ti, distHome });                    // capturable countryside
+    // capturable countryside — unless this tile was just flipped and is still
+    // in its post-capture hold, which keeps a stalled front from ping-ponging
+    // the same border tiles back and forth every pass.
+    else if (world.step - capturedAt[ti] >= TILE_CAPTURE_GRACE) pc.tiles.push({ ti, distHome });
   }
 
   // Realm-mates march to relieve every settlement under attack (over transit
@@ -440,7 +460,7 @@ export function advanceFronts(world) {
       // of a thin salient spiking straight to the capital.
       pc.tiles.sort((p, q) => q.distHome - p.distHome);
       const n = Math.min(budget, pc.tiles.length);
-      for (let i = 0; i < n; i++) owner[pc.tiles[i].ti] = att.id;
+      for (let i = 0; i < n; i++) { const cti = pc.tiles[i].ti; owner[cti] = att.id; capturedAt[cti] = world.step; }
       bankMomentum(world, att.countryId, n * MOMENTUM_PER_TILE);   // captured countryside feeds the streak
     }
     att.army = Math.max(0, (att.army || 0) - def._M * ATTRITION / techMul(att));
