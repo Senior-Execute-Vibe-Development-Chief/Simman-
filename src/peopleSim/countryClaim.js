@@ -24,7 +24,7 @@ import { reachBudget } from "./territory.js";
 // National claim reaches this many × a settlement's food-territory reach. >1 so
 // borders enclose frontier hinterland between towns; tune for coverage (higher
 // = countries tile more of the map, less unclaimed wilderness).
-const CLAIM_MULT = 1.7;
+const CLAIM_MULT = 1.1;
 
 class MinHeap {
   constructor(cap = 4096) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap; }
