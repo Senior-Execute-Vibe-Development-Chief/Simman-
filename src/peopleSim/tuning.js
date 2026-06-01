@@ -75,6 +75,8 @@ export const TUNING_SCHEMA = [
         desc: "Ticks a stormed city is locked (can't be re-stormed or secede). The single biggest political-map stabiliser." },
       { key: "TILE_CAPTURE_GRACE", label: "Tile hold time", def: 400, min: 0, max: 2000, step: 50,
         desc: "Ticks a captured countryside tile is held before it can flip back. Up = less border flicker, stickier fronts." },
+      { key: "HOME_MILITIA_FRAC", label: "Home militia defence", def: 0.035, min: 0, max: 0.15, step: 0.005,
+        desc: "Fraction of a city's people who defend their own walls even when the paid garrison has deserted (bankruptcy), scaled by the city's morale. The brake on the boiling map: 0 = a bankrupt city is free to storm (over-extension → insolvency → defenceless cities → the whole map churns). UP = cities are hard nuts once solvency fails, so empires fragment less and consolidate slower." },
     ],
   },
   {

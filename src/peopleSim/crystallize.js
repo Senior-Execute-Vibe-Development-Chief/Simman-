@@ -120,6 +120,8 @@ const COLONY_MIN_RANGE        = MIN_SETT_DIST + 2;  // can't found right next do
 const COLONY_CANDIDATES       = 12;    // viable sites sampled per attempt (best is picked)
 const COLONY_CHANCE           = 0.5;   // probability a pressed, eligible parent actually sends settlers on a roll
 const COLONY_COOLDOWN         = 1500;  // ticks the parent waits between settler parties (recovery)
+const COLONY_HEADROOM         = 0.85;  // realm may only colonise while admin load is below this fraction of capacity
+const COLONY_MIN_SOLVENCY     = 0.80;  // ...and only while it can still (mostly) pay its army
 
 // Resource attraction. Each resource has a per-tier value (how
 // valuable it is to a civilisation at that tech level) and a
@@ -490,6 +492,18 @@ function maybeSendSettlers(world) {
     if (parent.mode !== "settled") continue;
     if (parent.people < COLONY_MIN_POP) continue;
     if (world.step - (parent._lastColonySent ?? -Infinity) < COLONY_COOLDOWN) continue;
+    // Don't expand a realm that can't hold what it already governs. A young
+    // colony is an UNSHEDDABLE, SUBSIDISED province (it pays no tribute and
+    // draws food + coin for COLONY_SUPPLY_TICKS, and can't secede however
+    // over-budget the realm is) — so founding colonies from an already
+    // over-extended or insolvent state just deepens the over-stretch and feeds
+    // the secession/rebellion churn. Let such a realm consolidate first; only
+    // states with real administrative and fiscal slack push out new colonies.
+    const c = world.countries && world.countries.get(parent.countryId);
+    if (c && c._capacity != null && c._loadTotal != null
+        && c._loadTotal > c._capacity * COLONY_HEADROOM) continue;
+    const gov = world.governments && world.governments.get(parent.countryId);
+    if (gov && (gov._solvency ?? 1) < COLONY_MIN_SOLVENCY) continue;
     // Pressed: at or near carrying capacity (either food or housing) — the
     // people would otherwise sit at the ceiling. updatePopulation set s._k.
     const k = parent._k || 1;

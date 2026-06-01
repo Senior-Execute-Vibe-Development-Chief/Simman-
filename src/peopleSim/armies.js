@@ -71,11 +71,52 @@ const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent t
 const SIEGE_DMG         = 0.06;
 const SIEGE_BREAK       = 0.15;
 
+// ── Home defence (citizen militia floor) ─────────────────────────────
+// A city's paid garrison can desert (food shortfall, or an insolvent state
+// that can't make payroll), but the CITIZENS still man the walls when their
+// own homes are stormed. So a settlement's effective might DEFENDING ITS OWN
+// CORE never falls below a militia levy proportional to its population.
+//
+// Why this exists: without it, the chain over-extension → insolvency →
+// garrison desertion left big cities with a ~zero garrison, so any neighbour
+// stormed them in a single pass; storming a CAPITAL shatters the realm
+// (fragmentRealm), the leaderless fragments are instantly re-stormed, and the
+// whole political map boils (measured: ~300 city-captures per 2000 ticks on a
+// 255-settlement map — every city taken ~1.6× per window). The militia floor
+// makes a bankrupt city cost a real army to take, so wars between two
+// exhausted realms STALEMATE (positional sieges) instead of trading capitals
+// every pass. It is HOME-ONLY: it does not project to capture tiles or defend
+// distant countryside — only to make the city itself defensible. The fraction
+// sits below a solvent city's full garrison cap (ARMY_TIER_FRAC ~0.10 for a
+// city), so a paid garrison still dominates when the state can afford one; the
+// floor only bites once the garrison has melted away.
+// HOME_MILITIA_FRAC -> runtime lever (tuning.js T.HOME_MILITIA_FRAC) — the
+// fraction of population that mans the walls; THE dial for the
+// consolidation↔fragmentation balance (0 reproduces the old boiling map).
+// ...but citizens only turn out for a regime they still believe in. A city in
+// open revolt (loyalty gone, unrest boiling) won't man the walls for the
+// throne — it throws the gates. So the militia floor scales with MORALE
+// (loyalty, less unrest): a stable, content city is a hard nut even when
+// bankrupt, while a collapsing realm's cities fall readily. THIS is what keeps
+// conquest as the mechanism that prunes failing empires (so the map still
+// consolidates) instead of freezing every border (the over-correction a flat
+// floor produced: cities unconquerable → realms never merge → confetti).
+const MILITIA_MORALE_FLOOR = 0.2;   // even a mutinous city musters this fraction
+
 function techMul(s) {
   const k = s.knowledge || {};
   return 1 + (k.metallurgy || 0) * 1.5 + (k.mobility || 0) * 0.8;
 }
 function might(s) { return (s.army || 0) * techMul(s); }
+// Effective defensive might of a settlement holding its OWN core: the greater
+// of its paid garrison and the citizen militia its population can raise — the
+// militia weighted by the city's morale (a disloyal/rioting populace barely
+// defends the regime).
+function homeMight(s) {
+  const morale = Math.max(MILITIA_MORALE_FLOOR, (s.loyalty ?? 1) - 0.5 * (s.unrest || 0));
+  const militia = (s.people || 0) * T.HOME_MILITIA_FRAC * morale;
+  return Math.max(s.army || 0, militia) * techMul(s);
+}
 
 // ── Marching reinforcements ──
 // When a settlement is besieged, its realm-mates detach part of their garrison
@@ -416,14 +457,24 @@ export function advanceFronts(world) {
     const adv = att._M / Math.max(1, def._M);
 
     if (pc.canStorm) {
-      // Front is at the heartland. A recently-conquered city is still
-      // pacified (garrisoned) and can't be besieged yet — that grace stops
-      // rival empires trading it back and forth.
-      if (adv >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
-        // Bombard: grind the garrison; the besiegers bleed a little too.
+      // Front is at the heartland. The city defends with its garrison OR its
+      // citizen militia, whichever is greater (homeMight) — so a city whose
+      // paid garrison deserted under bankruptcy is NOT free real estate; it
+      // still takes a real army to storm. This is the single biggest brake on
+      // the boiling-map churn (see HOME_MILITIA_FRAC).
+      const defHome = homeMight(def);
+      const advCity = att._M / Math.max(1, defHome);
+      // A recently-conquered city is still pacified (garrisoned) and can't be
+      // besieged yet — that grace stops rival empires trading it back and forth.
+      if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
+        // Bombard: grind the garrison; the besiegers bleed against the defence
+        // they actually face (the militia floor, not the melted garrison).
         def.army = Math.max(0, (def.army || 0) - att._M * SIEGE_DMG);
-        att.army = Math.max(0, (att.army || 0) - def._M * T.ATTRITION / techMul(att));
-        const defNow = def.army * techMul(def);
+        att.army = Math.max(0, (att.army || 0) - defHome * T.ATTRITION / techMul(att));
+        // Defence as the siege grinds on: the garrison falls, but never below
+        // the (morale-weighted) citizen militia — homeMight recomputed on the
+        // now-reduced garrison returns exactly that floor.
+        const defNow = homeMight(def);
         if (defNow <= att._M * SIEGE_BREAK) {
           // Was this the capital of its realm? (Decide before the flip.)
           const dc = world.countries && world.countries.get(def.countryId);

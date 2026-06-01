@@ -36,6 +36,13 @@ import { T } from "./tuning.js";
 // INSIDE the budget instead of instantly over-extending and seceding back
 // (the absorb↔secede oscillation that flipped whole swathes each pass).
 const ABSORB_HEADROOM  = 0.90;
+// A landlocked territory fragment hemmed in on at least this fraction of its
+// border by a SINGLE realm is treated as enclosed-inside-it and ceded to that
+// realm (eliminateEnclaves) — cleaning up the marooned "bits stuck inside
+// another country". 1.0 would mean only PERFECTLY enclosed bits; 0.8 also mops
+// up a fragment whose border is mostly one neighbour with a sliver touching a
+// third. (Regions containing a city are exempt — see eliminateEnclaves.)
+const ENCLAVE_DOMINANCE = 0.80;
 // Maximum per-polity-pass defection probability. Caps the rate at which
 // a sub-city settlement can flip to a touching foreign realm — even a
 // tiny village vs a massive cradle defects over multiple passes, never
@@ -137,6 +144,16 @@ const RECENCY_LOAD  = 1.0;   // a freshly conquered province costs this much ext
 // RECENCY_TICKS -> runtime lever (tuning.js T.RECENCY_TICKS)
 const LOYAL_RECOVER = 0.06;  // per pass: covered provinces climb toward full loyalty
 // LOYAL_DECAY -> runtime lever (tuning.js T.LOYAL_DECAY)
+// The deeper past the budget a province sits, the faster it bleeds loyalty —
+// but UNCAPPED that term is ruinous: a realm holding 6× its budget (which the
+// old absorb/conquest paths let happen) gave its frontier `over≈5`, so those
+// provinces lost ~0.84 loyalty in a SINGLE pass and the whole over-extended tail
+// seceded at once — a total political-map repaint every few passes (the "instant
+// claiming back and forth"). Capping `over` turns that cliff into a slope: an
+// over-stretched realm sheds its frontier ring by ring over several passes, so
+// borders MOVE instead of teleporting. (The realm still loses the land — just
+// legibly, as a retreat, not an implosion.)
+const OVER_DECAY_CAP = 1.0;  // max value of the over-extension multiplier term
 
 // ── Contagious secession (amplifier) ──────────────────────────────────
 // A revolt is regional, not solitary: when a province's loyalty collapses,
@@ -1029,7 +1046,10 @@ export function updatePolities(world) {
       if (covered) {
         s.loyalty = Math.min(1, (s.loyalty ?? 1) + LOYAL_RECOVER * (1 - (s.loyalty ?? 1)));
       } else {
-        const over = (cum - capacity) / capacity;          // how deep past the budget
+        // How deep past the budget — CAPPED so a wildly over-extended realm
+        // sheds gradually (ring by ring over passes) instead of its whole
+        // frontier collapsing in one tick (see OVER_DECAY_CAP).
+        const over = Math.min(OVER_DECAY_CAP, (cum - capacity) / capacity);
         s.loyalty = Math.max(0, (s.loyalty ?? 1) - T.LOYAL_DECAY * (1 + over));
         if (s.loyalty <= 0) seeds.push(s);                 // collapsed — defer (revolt is contagious)
       }
@@ -1129,11 +1149,31 @@ export function updatePolities(world) {
 // already drawing its full capacity (load ≥ capacity) would immediately
 // over-extend on anything it absorbed, secede it next pass, and oscillate.
 // We require a small slack so the new province lands inside the budget.
-function hasAbsorbHeadroom(c) {
+//
+// `extra` is the load ALREADY committed to this realm by earlier absorptions
+// in the SAME pass — without it, every absorption this pass checks against the
+// realm's stale pre-pass load, so a realm with a sliver of headroom vacuums a
+// dozen villages at once and is massively over-extended next pass (the very
+// absorb↔secede oscillation this gate exists to stop). Charging each
+// absorption forward closes that hole — a pass fills only the real headroom.
+function hasAbsorbHeadroom(c, extra = 0) {
   if (!c) return false;
   const cap = c._capacity, load = c._loadTotal;
   if (cap == null || load == null) return true;        // no budget data yet → allow
-  return load < cap * ABSORB_HEADROOM;
+  return load + extra < cap * ABSORB_HEADROOM;
+}
+
+// Cheap estimate of the admin load a freshly-absorbed province adds to a realm
+// — euclidean distance / reach (the same calibration the full load uses: a
+// province at the capital's reach costs ~1), floored so an adjacent village is
+// never free. Used only to charge in-pass absorptions against the headroom gate
+// above; the real load is recomputed from scratch next polity pass.
+function estAbsorbLoad(world, c, m) {
+  const cap = c.capital; if (!cap) return 1;
+  let dx = Math.abs(cap.pos.x - m.pos.x); if (dx > world.tw / 2) dx = world.tw - dx;
+  const dy = cap.pos.y - m.pos.y;
+  const eucl = Math.sqrt(dx * dx + dy * dy);
+  return Math.max(0.5, eucl / Math.max(1, c.range));
 }
 
 function absorbSubCityCountries(world, countries) {
@@ -1191,6 +1231,11 @@ function absorbSubCityCountries(world, countries) {
   // produces the visible "village-by-village, year by year" pattern of
   // a small statelet being eroded into a great power's orbit, instead
   // of the entire statelet flipping atomically in one tick.
+  // Load each realm commits to absorptions THIS pass, so a realm with a
+  // little headroom can't swallow a dozen villages at once (see
+  // hasAbsorbHeadroom — without this the gate checks every candidate against
+  // the same stale pre-pass load and the realm over-extends in one tick).
+  const absorbedLoad = new Map();
   for (const [settId, scoreMap] of perSett) {
     const m = byId.get(settId);
     if (!m || m.mode !== "settled") continue;
@@ -1202,8 +1247,11 @@ function absorbSubCityCountries(world, countries) {
     // absorber is already at/over its administrative budget, the freshly
     // taken village would be over-extended and secede again next pass — the
     // absorb↔secede oscillation that flips whole swathes back and forth.
-    // Only pull in what the surrounder has the spare capacity to hold.
-    if (!hasAbsorbHeadroom(countries.get(bestId))) continue;
+    // Only pull in what the surrounder has the spare capacity to hold —
+    // counting what it has already taken on this pass.
+    const target = countries.get(bestId);
+    const committed = absorbedLoad.get(bestId) || 0;
+    if (!hasAbsorbHeadroom(target, committed)) continue;
     const myPower = Math.max(1, settlementPower(m));
     // Defection chance per polity pass — caps at T.ABSORB_PROB_MAX so even
     // a tiny village vs a huge cradle defects gradually (~10 passes to
@@ -1217,6 +1265,7 @@ function absorbSubCityCountries(world, countries) {
     m.countryId = bestId;
     m.loyalty = 0.6;                          // absorbed, not yet truly part of the realm
     m._conqueredAt = world.step;              // brief grace to settle in
+    absorbedLoad.set(bestId, committed + estAbsorbLoad(world, target, m));
     if (m.history) m.history.push({ step: world.step, type: "absorbed", into: bestId });
   }
 
@@ -1265,7 +1314,7 @@ function eliminateEnclaves(world, countries) {
     region.length = 0; q.length = 0;
     q.push(start); region.push(start);
     let touchesEdge = false;
-    const borderCountries = new Set();
+    const borderCount = new Map();                  // bounding countryId (or wild -1) → border length
     const selfCC = surrounder;                     // the region's own classification
     while (q.length) {
       const ti = q.pop();
@@ -1282,21 +1331,31 @@ function eliminateEnclaves(world, countries) {
         } else if (ncc === -2) {
           touchesEdge = true;                       // sea = open border
         } else {
-          borderCountries.add(ncc);                 // a bounding country (or wild, -1)
+          borderCount.set(ncc, (borderCount.get(ncc) || 0) + 1);   // weight by shared border
         }
       }
     }
-    // An enclave is a region that (a) isn't itself a country we'd be dissolving
-    // into nothing improperly, (b) never touches sea or the map edge, and
-    // (c) is bounded by exactly ONE country. Wild land (-1) bordering it does
+    // An enclave is a region that never touches sea or the map edge and is
+    // dominated by a single bounding country. Wild land (-1) bordering it does
     // NOT count as a bounding country, but the region must still be sealed.
     if (touchesEdge) continue;
-    if (selfCC >= 0 && borderCountries.size === 0) continue;   // whole-map single country
-    // Remove the wild marker from bounders; we need exactly one real country.
-    borderCountries.delete(-1);
-    if (borderCountries.size !== 1) continue;       // open to >1 country or to none
-    const intoId = borderCountries.values().next().value;
+    borderCount.delete(-1);                          // wild doesn't bound
+    if (borderCount.size === 0) continue;            // whole-map country / interior wilderness
+    // Dominant bounding country = the one sharing the most border with the
+    // region. We cede the region to it when it CLEARLY surrounds it. Exactly-one
+    // bounder is the strict enclave (Vatican); a landlocked fragment hemmed in
+    // ≥ DOMINANCE on its border by one realm (the rest a sliver of some third
+    // party) is the same situation in practice — a marooned bit "stuck inside"
+    // a neighbour — and is cleaned up the same way. A region holding an actual
+    // CITY is exempt from the relaxed rule: a seat of government doesn't change
+    // hands without conquest, so a city only flips when TRULY (fully) enclosed.
+    let intoId = -1, bestBord = 0, totBord = 0;
+    for (const [cc, n] of borderCount) { totBord += n; if (n > bestBord) { bestBord = n; intoId = cc; } }
     if (intoId === selfCC) continue;                // region already that country
+    let regionHasCity = false;
+    for (const ti of region) { const o = owner[ti]; if (o >= 0) { const s = byId.get(o); if (s && (s.tier | 0) >= 2) { regionHasCity = true; break; } } }
+    const needFrac = regionHasCity ? 1.0 : ENCLAVE_DOMINANCE;
+    if (bestBord < totBord * needFrac) continue;    // no realm clearly surrounds it → leave it
     const into = countries.get(intoId);
     if (!into) continue;
     // Claim it: flip any settlements in the region, stamp wild tiles.
