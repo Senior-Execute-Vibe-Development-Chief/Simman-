@@ -189,8 +189,5 @@ export function applyTuning(overrides) {
 // Reset every lever to its hand-tuned default.
 export function resetTuning() { Object.assign(T, DEFAULTS); }
 
-// Snapshot of the current live values (for seeding the menu UI).
-export function getTuning() { return { ...T }; }
-
 // The defaults, for the menu's "reset" affordance / change indicators.
 export function tuningDefaults() { return { ...DEFAULTS }; }

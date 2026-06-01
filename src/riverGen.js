@@ -336,7 +336,3 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
 export function riverName(riverMag, ti) {
   return RIVER_NAMES[riverMag[ti]] || '';
 }
-
-export function isNavigable(riverMag, ti) {
-  return riverMag[ti] >= RIVER_MAJOR;
-}

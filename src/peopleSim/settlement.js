@@ -133,7 +133,7 @@ export function makeSettlement(world, x, y, opts = {}) {
     wealth: 0,
     // Cached shortest road-network paths to all reachable
     // settlements. { peerId → { cost, tiles } }. Populated by
-    // rebuildTradeReach in roads.js on each plan cycle.
+    // staggerReachRebuild in roads.js on each plan cycle.
     _tradeReach: null,
     // Polity: each settlement starts as its own one-settlement country
     // (city-state); conquest merges them (see conquest.js / armies.js).
@@ -392,6 +392,21 @@ export function computeExportValue(s, world) {
   // get penalty=1 (no change). The trade pass and the inflation pass DO
   // pass world, so the dynamics fire where it matters most.
   return v * Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step);
+}
+
+// Per-tick memo of computeExportValue. It's a heavy function (several log/sqrt
+// terms) whose inputs — knowledge, localRes, territory, population, army — are
+// fixed within a tick, yet the trade pass alone called it ~40×/settlement/tick
+// (twice per trade pair, plus road ranking and inflation). Compute it once per
+// settlement per tick on first use; every later read that tick is free. (The
+// passes that consume it — roads, inflation, trade — don't mutate any of its
+// inputs, so the memo is consistent across them.)
+export function exportValueOf(s, world) {
+  if (s._evStep !== world.step) {
+    s._exportValue = computeExportValue(s, world);
+    s._evStep = world.step;
+  }
+  return s._exportValue;
 }
 
 // Wealth reserve = "rainy day fund" the settlement holds back from

@@ -44,7 +44,7 @@
 
 import { localEdgeCost, baseEdgeCost } from "./transport.js";
 import { T } from "./tuning.js";
-import { computeExportValue, getWealthReserve } from "./settlement.js";
+import { exportValueOf, getWealthReserve } from "./settlement.js";
 import { localP } from "./inflation.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
@@ -322,17 +322,6 @@ export function buildNetworkComponents(world) {
 }
 
 // ── Trade-reach: per-settlement Dijkstra through road network ──
-// For each alive settlement, compute the shortest road-path to every
-// other settlement reachable via the network. Result is cached on
-// s._tradeReach for the trade pass to iterate.
-export function rebuildTradeReach(world) {
-  if (!world.roadQuality) return;
-  const stMap = buildSettlementTileMap(world);
-  for (const s of world.settlements) {
-    if (s.mode !== "settled") { s._tradeReach = null; continue; }
-    s._tradeReach = computeReach(world, s, stMap);
-  }
-}
 
 function computeReach(world, s, stMap) {
   const reach = new Map();
@@ -544,7 +533,7 @@ function linkCloseNeighbours(world, s) {
 }
 
 function tryAddRoad(world, s) {
-  const sExport = computeExportValue(s, world);
+  const sExport = exportValueOf(s, world);
   const sFood = (s._foodSupply || 0) - (s._foodDemand || 0);
   const sCountry = world.countries && world.countries.get(s.countryId);   // for the commerce-temperament road bar
   const own = s.localRes || {};
@@ -590,7 +579,7 @@ function tryAddRoad(world, s) {
     for (const n of missing) {
       if ((peerRes[n] || 0) >= HAVE_THRESHOLD) resGain += 1;
     }
-    const peerExport = computeExportValue(peer, world);
+    const peerExport = exportValueOf(peer, world);
     const exGap = Math.abs(sExport - peerExport);
     const peerFood = (peer._foodSupply || 0) - (peer._foodDemand || 0);
     let foodGain = 0;
@@ -913,8 +902,8 @@ function runGeneralTradeBetween(world, a, b, link) {
   // A's goods sold to B (B pays A), then B's goods sold to A (A pays B).
   // Each leg scales with the BUYER's buying power, so a rich node imports more
   // and relays its coin onward. Freight is split across the two legs.
-  sellGoods(world, a, b, computeExportValue(a, world) * vol * demandMul(b), transport * 0.5, intermediates, numInter);
-  sellGoods(world, b, a, computeExportValue(b, world) * vol * demandMul(a), transport * 0.5, intermediates, numInter);
+  sellGoods(world, a, b, exportValueOf(a, world) * vol * demandMul(b), transport * 0.5, intermediates, numInter);
+  sellGoods(world, b, a, exportValueOf(b, world) * vol * demandMul(a), transport * 0.5, intermediates, numInter);
 }
 
 // Luxury trade: a wealthy settlement spends coin importing luxury goods

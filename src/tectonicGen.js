@@ -1178,11 +1178,11 @@ for (let step = 0; step < 25; step++) {
     const fi = py * W + px;
     const wx2 = fullWindX[fi], wy2 = fullWindY[fi];
     const srcX = mx - wx2 * 2.0, srcY = my - wy2 * 2.0;
-    const sx = Math.min(mW - 2, Math.max(0, srcX | 0));
-    const sy = Math.min(mH - 2, Math.max(0, srcY | 0));
-    const fdx = Math.max(0, Math.min(1, srcX - sx));
+    const sx = ((Math.floor(srcX) % mW) + mW) % mW;        // wrap longitude (cylindrical map)
+    const sy = Math.min(mH - 2, Math.max(0, srcY | 0));    // clamp latitude (poles don't wrap)
+    const fdx = Math.max(0, Math.min(1, srcX - Math.floor(srcX)));
     const fdy = Math.max(0, Math.min(1, srcY - sy));
-    const sxr = Math.min(mW - 1, sx + 1);
+    const sxr = (sx + 1) % mW;                             // wraps at the antimeridian (no seam)
     const upwindT = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
       + (prev[(sy + 1) * mW + sx] * (1 - fdx) + prev[(sy + 1) * mW + sxr] * fdx) * fdy;
     const e2 = elevation[fi];
