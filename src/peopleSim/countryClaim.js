@@ -94,7 +94,7 @@ export function computeCountryClaim(world) {
         if (!ls || ls.countryId !== oc) continue;   // another country's land = wall
         sibling = true;                              // same-country: flow through, don't seize
       }
-      const c = localEdgeCost(world, ti, ni, kn);
+      const c = localEdgeCost(world, ti, ni, kn, true);  // reach ignores roads
       if (c === Infinity) continue;
       const nd = d + c * mul[k];
       if (nd > bud) continue;

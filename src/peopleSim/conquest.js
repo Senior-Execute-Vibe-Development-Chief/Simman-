@@ -903,7 +903,7 @@ function capitalTransportCosts(world, c) {
     const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
     for (let k = 0; k < 8; k++) {
       const ni = ns[k]; if (ni < 0) continue;
-      const ec = localEdgeCost(world, ti, ni, kn);
+      const ec = localEdgeCost(world, ti, ni, kn, true);  // admin reach ignores roads
       if (ec === Infinity) continue;
       const nd = d + ec * mul[k];
       if (nd > maxCost) continue;

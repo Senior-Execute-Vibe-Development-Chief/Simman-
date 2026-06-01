@@ -223,7 +223,7 @@ export function computeTerritory(world) {
       // construction/navigation/mobility pays less. Water tiles return
       // Infinity unless this civ has the nav floor (≥0.10), in which case
       // they cost ~3-12 (sail) and the claim can hop offshore.
-      const c = localEdgeCost(world, ti, ni, kn);
+      const c = localEdgeCost(world, ti, ni, kn, true);  // reach ignores roads
       if (c === Infinity) continue;
       const nd = d + c * mul[k];
       if (nd > bud) continue;                // owner can't reach further
