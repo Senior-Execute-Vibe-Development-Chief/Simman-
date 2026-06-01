@@ -15,6 +15,7 @@
 
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { getTradeProfile } from "./peopleSim/settlement.js";
+import { computeCountryClaim } from "./peopleSim/countryClaim.js";
 import { displayPByCountry } from "./peopleSim/inflation.js";
 import { applyTuning, resetTuning } from "./peopleSim/tuning.js";
 
@@ -195,12 +196,20 @@ function buildSnapshot() {
     tileComp = new Int32Array(N);
     for (let i = 0; i < N; i++) tileComp[i] = seen[i] === stamp ? tc[i] : -1;
   }
+  // Capital-claim PROTOTYPE overlay (parallel territory experiment) — compute +
+  // ship the per-tile country claim only while its debug view is open.
+  let countryClaim = null;
+  if (viewMode === "claim" && sendStatic && world.countries) {
+    const c = computeCountryClaim(world);
+    if (c) countryClaim = c.slice();
+  }
 
   const transfer = [];
   if (owner) transfer.push(owner.buffer);
   if (roadQuality) transfer.push(roadQuality.buffer);
   if (roadFlow) transfer.push(roadFlow.buffer);
   if (tileComp) transfer.push(tileComp.buffer);
+  if (countryClaim) transfer.push(countryClaim.buffer);
 
   // Global price-level summary for the HUD ticker — population-weighted
   // mean across all settlements, so it tracks "the average wheat price the
@@ -223,7 +232,7 @@ function buildSnapshot() {
     tw: world.tw, th: world.th, tileRes: world.tileRes, N: world.N,
     stats: peopleSimStats(world),
     globalP,
-    owner, roadQuality, roadFlow, tileComp, moneyFlows,
+    owner, roadQuality, roadFlow, tileComp, moneyFlows, countryClaim,
     settlements: setts,
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last

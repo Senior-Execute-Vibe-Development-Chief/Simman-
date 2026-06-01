@@ -2533,6 +2533,30 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
       }
+      // ── Capital-claim PROTOTYPE overlay ("Capital Claim" view) ───────────
+      // Parallel territory experiment: render the national claim projected from
+      // each CAPITAL (worker computeCountryClaim) tinted by country, with dotted
+      // borders where two countries' claims meet — so we can compare it live
+      // against the settlement-union borders before adopting it for real.
+      if(viewRef.current==="claim"&&psw._countryClaim){
+        const claim=psw._countryClaim,tw=psw.tw,th=psw.th,tintC=new Map();
+        octx.strokeStyle="rgba(10,10,10,0.9)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();
+        let lastFs=null;
+        for(let ti=0;ti<claim.length;ti++){
+          const cc=claim[ti];if(cc<0)continue;
+          let fs=tintC.get(cc);
+          if(fs===undefined){const h=((cc*61)%360+360)%360;fs=`hsla(${h},58%,50%,0.45)`;tintC.set(cc,fs);}
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+          octx.fillRect(sx,sy,TR,TR);
+          const ro=claim[py*tw+(px===tw-1?0:px+1)];
+          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(py<th-1){const dno=claim[ti+tw];
+            if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+        }
+        octx.stroke();octx.setLineDash([]);
+      }
       // Roads — thickness + alpha from current flow.
       if(L.roads&&psw.roadQuality&&psw.roadFlow){
         const rq=psw.roadQuality,rf=psw.roadFlow,FLOW_FULL=50;
@@ -2732,6 +2756,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.roadFlow)psw.roadFlow=snap.roadFlow;
   if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
+  if(snap.countryClaim)psw._countryClaim=snap.countryClaim;  // capital-claim prototype (Capital Claim view); keep last
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   psw.ships=snap.ships;psw.armies=snap.armies;
@@ -3066,7 +3091,7 @@ const VIEW_MODES=[
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
   ["crop","Crop"],["crossing","Crossing"],["roads","Roads"],["money","Money"],
   ["resources","Resources"],["population","Pop"],["transport","Transport"],
-  ["transport-test","Trans Test"],["tribes","Tribes"]
+  ["transport-test","Trans Test"],["claim","Capital Claim"],["tribes","Tribes"]
 ];
 
 return(
