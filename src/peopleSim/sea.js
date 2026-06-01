@@ -367,7 +367,6 @@ function tryColonize(world, A, cands, prev) {
   }
   if (!chosen) return;
 
-  const ly = (chosen.landTi / tw) | 0, lx = chosen.landTi - ly * tw;
   const water = reconstruct(prev, chosen.waterTi);     // A.embark → landing water
   const homeA = (A.pos.y | 0) * tw + (A.pos.x | 0);
   let full = [homeA, ...water, chosen.landTi];
@@ -433,9 +432,21 @@ export function moveShips(world) {
 function foundColony(world, sh) {
   const { tw } = world;
   const ly = (sh.landTi / tw) | 0, lx = sh.landTi - ly * tw;
-  // A settlement may have appeared on the target during the voyage; if the
-  // shore is no longer clear the expedition is simply lost.
-  if (!siteIsClear(world, sh.landTi)) return;
+  // A settlement may have appeared on the target during the voyage. Rather than
+  // delete the expedition (which would silently destroy its colonists AND their
+  // coin endowment — both were already debited from the founder at launch, so
+  // dropping them leaks population and breaks the closed money supply), the
+  // fleet TURNS BACK: its people and treasury return to the founder if it still
+  // stands. (If the founder is gone, the loss is unavoidable but rare.)
+  if (!siteIsClear(world, sh.landTi)) {
+    const home = world._byId && world._byId.get(sh.owner);
+    if (home && home.mode === "settled") {
+      home.people = (home.people || 0) + (sh.people || 0);
+      home.wealth = (home.wealth || 0) + (sh.wealth || 0);
+      if (home.history) home.history.push({ step: world.step, type: "colony-recalled", coin: Math.round(sh.wealth || 0) });
+    }
+    return;
+  }
   const colony = makeSettlement(world, lx + 0.5, ly + 0.5, {
     people: sh.people,
     knowledge: { ...sh.knowledge },
