@@ -27,7 +27,10 @@ import { T } from "./tuning.js";
 // independent — only direct conquest by armies can take it. Bronze-age
 // society is the floor; chalcolithic and earlier are too primitive to
 // integrate a foreign realm administratively.
-const ABSORB_ORG_MIN   = 0.30;
+// T.ABSORB_ORG_MIN (org-tech a city needs before it can peacefully vacuum
+// neighbouring village/town statelets), T.ABSORB_PROB_MAX and ABSORB_RATE (the
+// per-pass defection rate) are runtime levers — tuning.js. Raising the gate /
+// lowering the rate keeps many small states alive deeper into the timeline.
 // A realm may only absorb a new province while its admin load is below this
 // fraction of its capacity — leaving slack so the freshly taken land lands
 // INSIDE the budget instead of instantly over-extending and seceding back
@@ -36,9 +39,9 @@ const ABSORB_HEADROOM  = 0.90;
 // Maximum per-polity-pass defection probability. Caps the rate at which
 // a sub-city settlement can flip to a touching foreign realm — even a
 // tiny village vs a massive cradle defects over multiple passes, never
-// in a single tick. With POLITY_INTERVAL=150 and ABSORB_PROB_MAX=0.10,
+// in a single tick. With POLITY_INTERVAL=150 and T.ABSORB_PROB_MAX=0.10,
 // a fully-pressured village takes ~10 passes (~1500 ticks) on average.
-const ABSORB_PROB_MAX  = 0.10;
+// (Runtime lever — tuning.js T.ABSORB_PROB_MAX.)
 
 // ── Government treasury (fiscal redistribution) ───────────────────────
 // The realm's coin is taxed into a GOVERNMENT treasury (not the capital
@@ -123,8 +126,8 @@ export function bankMomentum(world, countryId, amount) {
 // dynamic event, not a fixed radius. Magnitudes are in "reach-units":
 // a province sitting exactly at the capital's reach costs a load of ~1.
 // CAP_BASE -> runtime lever (tuning.js T.CAP_BASE)
-const CAP_POP       = 3;     // extra capacity from a big capital (log of pop)
-const CAP_POP_REF   = 1000;  // capital population that scores one CAP_POP unit
+// CAP_POP -> runtime lever (tuning.js T.CAP_POP)
+const CAP_POP_REF   = 1000;  // capital population that scores one T.CAP_POP unit
 // CAP_SEAT -> runtime lever (tuning.js T.CAP_SEAT)
 const SEAT_BONUS_CAP = 6;    // total seat contribution is capped (admin has diminishing returns)
 const COERCE_CAP    = 2.5;   // a far-stronger capital coerces a province (caps the load cut)
@@ -181,7 +184,7 @@ const SIEGE_WINDOW        = 300;   // ticks the siege/war throttle lingers after
 //   • When the streak stops, momentum craters in a few passes → the capacity
 //     it was propping up vanishes → the over-extended frontier sheds all at
 //     once: a hard, Mongol-style fragmentation. (Hard snap, not a glide.)
-const MOMENTUM_CAP        = 14;    // max reach-units momentum can add to capacity
+// MOMENTUM_CAP -> runtime lever (tuning.js T.MOMENTUM_CAP)
 const MOMENTUM_DECAY      = 0.55;  // per polity pass: momentum retained when not fed (hard snap)
 export const MOMENTUM_PER_TILE  = 0.05;  // momentum banked per enemy tile captured
 export const MOMENTUM_PER_STORM = 3.0;   // momentum banked per enemy CITY stormed
@@ -905,7 +908,7 @@ export function updatePolities(world) {
       const seatSize = Math.min(2, Math.log2(1 + (s.people || 0) / SIZE_REF));
       seatBonus += T.CAP_SEAT * (s.loyalty ?? 1) * seatSize;   // disloyal/small seats help less
     }
-    const peaceCapacity = T.CAP_BASE + CAP_POP * Math.log2(1 + (cap.people || 0) / CAP_POP_REF)
+    const peaceCapacity = T.CAP_BASE + T.CAP_POP * Math.log2(1 + (cap.people || 0) / CAP_POP_REF)
                         + Math.min(SEAT_BONUS_CAP, seatBonus);
 
     // ── War duress: throttle the budget while the realm is fighting ────
@@ -933,7 +936,7 @@ export function updatePolities(world) {
     // propped-up frontier sheds in a few passes (hard snap). Added on top of
     // the throttled budget so even a multi-front war-machine over-holds while
     // it's winning, then shatters when it stalls.
-    const momentum = Math.min(MOMENTUM_CAP, gov._momentum || 0);
+    const momentum = Math.min(T.MOMENTUM_CAP, gov._momentum || 0);
     gov._momentum = momentum * MOMENTUM_DECAY;     // decay each pass; conquest re-banks it (armies.js)
     const capacity = peaceCapacity * duress * fiscalDuress + momentum;
     c._capacity = capacity;        // (already duress-adjusted) for the info panel
@@ -1174,8 +1177,8 @@ function absorbSubCityCountries(world, countries) {
       for (const fm of foreign.members) if ((fm.tier | 0) >= 2) { foreignHasCity = true; break; }
       if (!foreignHasCity) continue;
       const orgK = (foreign.capital.knowledge && foreign.capital.knowledge.organization) || 0;
-      if (orgK < ABSORB_ORG_MIN) continue;
-      const orgFactor = Math.min(1, (orgK - ABSORB_ORG_MIN) / (1 - ABSORB_ORG_MIN));
+      if (orgK < T.ABSORB_ORG_MIN) continue;
+      const orgFactor = Math.min(1, (orgK - T.ABSORB_ORG_MIN) / (1 - T.ABSORB_ORG_MIN));
       let perCc = perSett.get(ownerSett.id);
       if (!perCc) { perCc = new Map(); perSett.set(ownerSett.id, perCc); }
       perCc.set(ns2.countryId,
@@ -1202,11 +1205,11 @@ function absorbSubCityCountries(world, countries) {
     // Only pull in what the surrounder has the spare capacity to hold.
     if (!hasAbsorbHeadroom(countries.get(bestId))) continue;
     const myPower = Math.max(1, settlementPower(m));
-    // Defection chance per polity pass — caps at ABSORB_PROB_MAX so even
+    // Defection chance per polity pass — caps at T.ABSORB_PROB_MAX so even
     // a tiny village vs a huge cradle defects gradually (~10 passes to
     // flip on average), not instantly.
     const ratio = bestScore / myPower;
-    const prob = Math.min(ABSORB_PROB_MAX, ratio * 0.04);
+    const prob = Math.min(T.ABSORB_PROB_MAX, ratio * T.ABSORB_RATE);
     // Deterministic hash on (id, step) — same input always rolls the same
     // outcome, so debugging is reproducible and there's no jitter.
     const r = ((m.id * 9301 + world.step * 49297 + 7) % 233280) / 233280;

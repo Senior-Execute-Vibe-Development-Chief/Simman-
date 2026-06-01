@@ -75,6 +75,19 @@ export function coreRadiusFor(s) {
   return CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
 }
 
+// Beyond the guaranteed core, every settlement is also GUARANTEED a farmland
+// HINTERLAND out to this radius (by tier), claimed nearest-settlement-wins so a
+// dominant city can't hoard all the shared countryside and a densely-packed
+// town is never squeezed down to its bare core block. This belt is the land a
+// region genuinely owns — and therefore carries with it when it secedes.
+// Scaled by T.HINTERLAND_MULT (tuning.js); never smaller than the core.
+const HINTERLAND_BY_TIER = [3, 4, 6, 8];
+export function hinterlandRadiusFor(s) {
+  const t = s.tier | 0;
+  const base = HINTERLAND_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
+  return Math.max(coreRadiusFor(s), Math.round(base * T.HINTERLAND_MULT));
+}
+
 class MinHeap {
   constructor(cap = 4096) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap; }
   _grow() { const c = this.cap * 2; const t = new Int32Array(c); t.set(this.ti); const d = new Float64Array(c); d.set(this.d); this.ti = t; this.d = d; this.cap = c; }
@@ -139,6 +152,35 @@ export function computeTerritory(world) {
     }
     const home = sy * tw + sx;
     if (elev[home] > 0) { cost[home] = 0; heap.push(home, 0); }
+  }
+
+  // ── Guaranteed farmland hinterland (nearest-wins distance Voronoi) ──
+  // Each settlement claims the land within its hinterland radius that it is the
+  // NEAREST settlement to, carving fairly from wilderness AND from a neighbour
+  // that had over-claimed the shared countryside — so every town keeps a real
+  // farmland belt instead of being squeezed to its core. Cores are sacred
+  // (skipped), and CONQUERED tiles are left to whoever took them (a tile with a
+  // capture timestamp is battlefield land, not free countryside) so this never
+  // undoes a conquest. Deterministic per pass ⇒ stable borders, no flicker.
+  const hintDist = (world._hintDist && world._hintDist.length === N)
+    ? world._hintDist : (world._hintDist = new Float32Array(N));
+  hintDist.fill(Infinity);
+  const capAt = world._tileCapturedAt;
+  for (const s of byId.values()) {
+    const sx = s.pos.x | 0, sy = s.pos.y | 0;
+    const hr = hinterlandRadiusFor(s), hr2 = hr * hr;
+    for (let dy = -hr; dy <= hr; dy++) {
+      const ny = sy + dy; if (ny < 0 || ny >= th) continue;
+      for (let dx = -hr; dx <= hr; dx++) {
+        const d2 = dx * dx + dy * dy; if (d2 > hr2) continue;
+        const nx = ((sx + dx) % tw + tw) % tw;
+        const ti = ny * tw + nx;
+        if (elev[ti] <= 0) continue;
+        if (coreClaimed[ti] === stamp) continue;       // a settlement's core — sacred
+        if (capAt && capAt[ti] > -Infinity) continue;  // conquered land — leave to the conqueror
+        if (d2 < hintDist[ti]) { hintDist[ti] = d2; owner[ti] = s.id; }
+      }
+    }
   }
 
   // Snapshot LOCKED ownership (persistent land + cores). During the pass,
