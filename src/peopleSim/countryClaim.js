@@ -29,6 +29,12 @@ const CLAIM_MULT = 1.1;
 // smoothest crawl. index.js calls relaxClaim every RELAX_INTERVAL ticks.
 const RINGS_PER_RELAX = 1;
 
+// "Main" settlement of a country: the strongest member (tier first, then
+// people) — the same seat rebuildCountries would crown capital. Used to pick
+// the single tile a brand-new realm's claim is born from. Robust to a dead
+// founder (a country id can outlive the settlement it was named for).
+function headScore(s) { return (s.tier | 0) * 1e7 + (s.people || 0); }
+
 class MinHeap {
   constructor(cap = 4096) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap; }
   _grow() { const c = this.cap * 2; const t = new Int32Array(c); t.set(this.ti); const d = new Float64Array(c); d.set(this.d); this.ti = t; this.d = d; this.cap = c; }
@@ -106,12 +112,44 @@ export function relaxClaim(world) {
   const target = world._claimTarget;
   if (!target) return claim;
 
-  // Every settlement's home tile flies its CURRENT flag — the foothold a fresh
-  // (e.g. just-seceded) country needs for its claim to spread from.
+  // ── Footholds ──────────────────────────────────────────────────────
+  // A settlement plants its flag on its OWN home tile only when doing so is
+  // NOT a transfer of land away from another country — otherwise the claim must
+  // CRAWL to it (below) so land never teleports. A home tile is planted when:
+  //   • it is already ours        → no-op;
+  //   • it is wilderness (-1)     → a settlement legitimately sits on fresh land
+  //                                  (a new colony / crystallised town / the
+  //                                  very first village) — not a land transfer;
+  //   • it belongs to ANOTHER country, BUT this settlement is the HEAD of a
+  //     country that holds no tiles yet → the single birth-foothold a brand-new
+  //     realm needs. Only the head plants it, so a secession (even a multi-city
+  //     revolt) EMANATES from its one main settlement and then crawls outward to
+  //     absorb its co-seceders' land, instead of every breakaway city lighting
+  //     up at once.
+  // First: which countries already hold ground, and (for those that don't yet)
+  // their head settlement.
+  const present = new Set();
+  for (let ti = 0; ti < N; ti++) { const v = claim[ti]; if (v >= 0) present.add(v); }
+  const headOf = new Map();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || present.has(s.countryId)) continue;
+    const cur = headOf.get(s.countryId);
+    if (!cur || headScore(s) > headScore(cur)) headOf.set(s.countryId, s);
+  }
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
-    if (elev[ti] > 0) claim[ti] = s.countryId;
+    if (elev[ti] <= 0) continue;
+    const cur = claim[ti];
+    if (cur === s.countryId) continue;                       // already ours
+    if (cur === -1) { claim[ti] = s.countryId; continue; }   // fresh land — legit foothold
+    // Home tile currently belongs to another country: flipping it is a land
+    // transfer. Only the head of a country with no ground yet may plant its one
+    // birth-foothold; everyone else waits for the crawl to reach them.
+    if (!present.has(s.countryId) && headOf.get(s.countryId) === s) {
+      claim[ti] = s.countryId;
+      present.add(s.countryId);                              // it now exists; co-seceders wait for the crawl
+    }
   }
 
   for (let r = 0; r < RINGS_PER_RELAX; r++) {
