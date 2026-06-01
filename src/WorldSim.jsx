@@ -999,39 +999,29 @@ const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState
 // Transport-test mode state. Each click in this view places a capital;
 // the BFS re-runs whenever params or capitals change.
 const[ttCapitals,setTtCapitals]=useState([]);
-// Transport-test mode state. Tech-driven model: instead of dialing
-// raw transport costs, you dial the tribe's technological capabilities
-// and the cost values are derived. Each tech maps to specific cost
-// reductions:
-//   metallurgy   → roads, rail (cuts plain + harsh land costs)
-//   naval        → seaworthy ships (cuts water cost, enables sea travel)
-//   construction → ports, bridges, docks (cuts port + coast + river)
-//   organization → administrative reach (raises tileLimit)
-const[ttTech,setTtTech]=useState({
-  metallurgy: 0.3,
-  naval: 0.4,
-  construction: 0.3,
-  organization: 0.4,
-  tileLimit: 5000,
+// Transport-test cost model — RAW per-terrain / per-mode travel costs, dialed
+// DIRECTLY. This view exposes the EXACT cost of each tile/terrain type and of
+// the mode changes, instead of abstract tech points:
+//   plain    flat land, per tile
+//   rough    rough-terrain coefficient (× slope-variance²)
+//   mountain elevation penalty coefficient (above e=0.25)
+//   slope    per-step climb penalty coefficient
+//   river    moving ALONG a river (mag≥4; mag-3 ×1.3, mag-2 ×2)
+//   coast    hugging a coastline
+//   water    crossing open SEA, per tile ("sea passable" off ⇒ impassable)
+//   port     MODE CHANGE — the tax to step on/off water, or land↔river
+const[ttCost,setTtCost]=useState({
+  tileLimit:6000, plain:0.95, rough:14, mountain:6, slope:8,
+  river:0.35, coast:0.5, water:3.5, port:5, seaPassable:true,
 });
-// Derive raw cost params from tech levels. This is what the BFS uses.
-function deriveTransportParams(tech){
-  const{metallurgy:m,naval:nv,construction:cn,organization:og,tileLimit}=tech;
-  return{
-    tileLimit,
-    plain: Math.max(0.25, 1.1 - m*0.55 - cn*0.1),       // 1.1 → ~0.45
-    harsh: Math.max(4, 24 - m*14 - cn*3),                // 24 → 7
-    river: Math.max(0.12, 0.45 - cn*0.25),               // 0.45 → 0.20
-    coast: Math.max(0.18, 0.85 - cn*0.35 - nv*0.25),     // 0.85 → 0.25
-    water: nv<0.05 ? 999 : Math.max(0.35, 1.8/(0.3+nv*1.5)),
-    nav: nv,
-    port: Math.max(0.4, 9 - cn*7),                       // 9 → 2
-    // elev/slope/noise removed per request — set to 0 so the surviving
-    // code paths contribute nothing (will tidy fully in a later pass).
-    elev: 0, slope: 0, noise: 0,
-  };
-}
-const ttParams=deriveTransportParams(ttTech);
+// The BFS reads these raw costs straight (no tech derivation). nav is just the
+// on/off switch for sea travel; water carries the actual per-tile sea cost.
+const ttParams={
+  tileLimit:ttCost.tileLimit, plain:ttCost.plain, harsh:ttCost.rough,
+  elev:ttCost.mountain, slope:ttCost.slope, river:ttCost.river, coast:ttCost.coast,
+  water:ttCost.seaPassable?ttCost.water:999, nav:ttCost.seaPassable?1:0,
+  port:ttCost.port, noise:0,
+};
 const ttResultRef=useRef(null);
 const ttCapitalsRef=useRef([]);
 // Sub-mode: "capitals" places tribe seeds and runs claim BFS;
@@ -1046,7 +1036,7 @@ useEffect(()=>{ttCapitalsRef.current=ttCapitals;
     if(terRef.current)draw(terRef.current);return;}
   ttResultRef.current=runTransportTest(terRef.current,ttCapitals,ttParams);
   draw(terRef.current);
-},[ttCapitals,ttTech,viewMode]);
+},[ttCapitals,ttCost,viewMode]);
 const[oceanLevel,setOceanLevel]=useState(0.78);
 const[depthFromSea,setDepthFromSea]=useState(false);
 const[depthCeil,setDepthCeil]=useState(1.0);
@@ -3047,7 +3037,7 @@ useEffect(()=>{
     if(terRef.current)draw(terRef.current);return;}
   ttRouteResultRef.current=findRoute(terRef.current,ttRoute.start,ttRoute.end,ttParams);
   draw(terRef.current);
-},[ttRoute,ttTech,ttSubMode,viewMode]);
+},[ttRoute,ttCost,ttSubMode,viewMode]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
 const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
 
@@ -3862,20 +3852,20 @@ return(
 <div className="au-parchment" style={{position:"absolute",top:8,left:8,
   padding:"8px 12px",fontSize:11,width:240,zIndex:20,maxHeight:"calc(100vh - 80px)",overflowY:"auto"}}>
   <div className="au-heading au-sc" style={{fontSize:12,marginBottom:6,borderBottom:"1px solid rgba(58,38,20,0.25)",paddingBottom:4}}>Transport Test</div>
-  {/* Era presets — set all tech sliders to era-appropriate values. */}
-  <div className="au-sc au-fade" style={{fontSize:9,marginBottom:3}}>Era preset</div>
+  {/* Era presets — set all RAW cost sliders to era-appropriate values. */}
+  <div className="au-sc au-fade" style={{fontSize:9,marginBottom:3}}>Era preset (sets raw costs)</div>
   <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
     {[
-      ["Stone",      {metallurgy:0.05,naval:0.05,construction:0.05,organization:0.10,tileLimit:1500}],
-      ["Neolithic",  {metallurgy:0.15,naval:0.15,construction:0.15,organization:0.20,tileLimit:3000}],
-      ["Bronze",     {metallurgy:0.30,naval:0.35,construction:0.30,organization:0.35,tileLimit:6000}],
-      ["Iron",       {metallurgy:0.50,naval:0.55,construction:0.50,organization:0.55,tileLimit:9000}],
-      ["Medieval",   {metallurgy:0.65,naval:0.70,construction:0.65,organization:0.70,tileLimit:11000}],
-      ["Industrial", {metallurgy:0.88,naval:0.92,construction:0.85,organization:0.90,tileLimit:15000}],
+      ["Stone",      {tileLimit:1500, plain:1.30,rough:22,mountain:9,slope:12,river:0.50,coast:0.80,water:8.0,port:9,seaPassable:false}],
+      ["Neolithic",  {tileLimit:3000, plain:1.15,rough:18,mountain:8,slope:10,river:0.45,coast:0.65,water:6.0,port:7,seaPassable:false}],
+      ["Bronze",     {tileLimit:6000, plain:0.95,rough:14,mountain:6,slope:8, river:0.35,coast:0.50,water:3.5,port:5,seaPassable:true}],
+      ["Iron",       {tileLimit:9000, plain:0.75,rough:11,mountain:5,slope:6, river:0.28,coast:0.40,water:2.2,port:3.5,seaPassable:true}],
+      ["Medieval",   {tileLimit:11000,plain:0.60,rough:9, mountain:4,slope:5, river:0.22,coast:0.32,water:1.6,port:2.5,seaPassable:true}],
+      ["Industrial", {tileLimit:15000,plain:0.40,rough:6, mountain:3,slope:3, river:0.18,coast:0.25,water:1.0,port:1.5,seaPassable:true}],
     ].map(([name,t])=>(
       <button key={name} className="au-btn"
         style={{fontSize:10,padding:"2px 5px",flex:"1 1 30%"}}
-        onClick={()=>setTtTech(t)}>{name}</button>
+        onClick={()=>setTtCost(t)}>{name}</button>
     ))}
   </div>
   {/* Sub-mode toggle */}
@@ -3914,31 +3904,36 @@ return(
       </div>
     </>
   )}
-  {/* Tech sliders — drive the derived cost values. */}
+  {/* Raw travel-cost sliders — the EXACT per-terrain / per-mode costs the BFS
+      charges. Grouped: land terrain, then water/river, then the mode-change. */}
+  <div className="au-sc au-fade" style={{fontSize:9,margin:"2px 0 3px"}}>Travel cost per tile</div>
+  {/* Sea-passable toggle (going on/off water at all). */}
+  <button className={"au-btn au-block"+(ttCost.seaPassable?" au-active":"")} style={{fontSize:10,marginBottom:5}}
+    onClick={()=>setTtCost(p=>({...p,seaPassable:!p.seaPassable}))}>
+    Sea {ttCost.seaPassable?"passable":"IMPASSABLE"}
+  </button>
   {[
-    ["tileLimit","Tiles / capital (∝ org)",100,15000,100],
-    ["metallurgy","Metallurgy (roads, rail)",0,1,0.02],
-    ["naval","Naval power (ships, ports)",0,1,0.02],
-    ["construction","Construction (bridges, docks)",0,1,0.02],
-    ["organization","Organisation (admin reach)",0,1,0.02],
-  ].map(([k,label,min,max,step])=>(
-    <div key={k} style={{marginBottom:4}}>
+    ["tileLimit","Tiles / capital",100,15000,100,"how much each capital claims"],
+    ["plain","Plain (flat land)",0.2,3,0.05,"open level ground, per tile"],
+    ["rough","Rough terrain",0,30,0.5,"× local slope-variance² (hills, badlands)"],
+    ["mountain","Mountain (elevation)",0,20,0.5,"penalty above e=0.25"],
+    ["slope","Slope climb",0,20,0.5,"per-step elevation change"],
+    ["river","River (along)",0.1,2,0.05,"travelling along a major river"],
+    ["coast","Coast",0.1,2,0.05,"hugging the shoreline"],
+    ["water","Sea crossing",0.3,20,0.1,"open ocean, per tile (if passable)"],
+    ["port","Mode change ⇄",0,15,0.25,"on/off water · land↔river"],
+  ].map(([k,label,min,max,step,hint])=>(
+    <div key={k} style={{marginBottom:4}} title={hint}>
       <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
-        <span>{label}</span><b>{ttTech[k].toFixed(k==="tileLimit"?0:2)}</b>
+        <span>{label}</span><b>{ttCost[k].toFixed(k==="tileLimit"?0:2)}</b>
       </div>
-      <input type="range" min={min} max={max} step={step} value={ttTech[k]}
-        onChange={e=>setTtTech(p=>({...p,[k]:parseFloat(e.target.value)}))}
-        style={{width:"100%"}}/>
+      <input type="range" min={min} max={max} step={step}
+        value={ttCost[k]} disabled={k==="water"&&!ttCost.seaPassable}
+        onChange={e=>setTtCost(p=>({...p,[k]:parseFloat(e.target.value)}))}
+        style={{width:"100%",opacity:(k==="water"&&!ttCost.seaPassable)?0.4:1}}/>
+      <div className="au-fade" style={{fontSize:8.5,lineHeight:1.1,marginTop:-1}}>{hint}</div>
     </div>
   ))}
-  {/* Derived cost readout (so you can see what tech actually produces). */}
-  <div className="au-fade" style={{fontSize:9,marginTop:6,marginBottom:4,lineHeight:1.4,
-    background:"rgba(58,38,20,0.08)",padding:"4px 6px",borderRadius:2}}>
-    <div className="au-sc" style={{marginBottom:2}}>Derived costs</div>
-    plain {ttParams.plain.toFixed(2)} · harsh {ttParams.harsh.toFixed(1)}<br/>
-    river {ttParams.river.toFixed(2)} · coast {ttParams.coast.toFixed(2)}<br/>
-    water {ttParams.water>=999?"∞":ttParams.water.toFixed(2)} · port {ttParams.port.toFixed(2)}
-  </div>
   <button className="au-btn au-block" style={{marginTop:6,fontSize:11}}
     onClick={()=>{
       if(ttSubMode==="capitals")setTtCapitals([]);
