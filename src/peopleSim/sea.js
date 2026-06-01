@@ -30,6 +30,7 @@
 // regardless of how many ports exist — far cheaper than a per-port flood.
 
 import { makeSettlement } from "./settlement.js";
+import { T } from "./tuning.js";
 import { isContinentalLand } from "./state.js";
 import { recordOut, OUT_COLONY } from "./money.js";
 import { expansionColonyMul } from "./personality.js";
@@ -48,7 +49,7 @@ export const SEA_INTERVAL = 600;   // ticks between sea-lane / colony passes. Th
 // a strait, a maritime power crosses an ocean.
 const SEA_STEP        = 0.35;    // cost per water tile (×√2 on diagonals)
 const SEA_RANGE_BASE  = 10;      // sea reach (cost units) at navigation 0
-const SEA_RANGE_NAV   = 160;     // extra reach per point of navigation
+// SEA_RANGE_NAV -> runtime lever (tuning.js T.SEA_RANGE_NAV)
 // Wind. A leg sailed with the wind is cheaper, against it dearer (tacking).
 // align = unit-heading · wind direction ∈ [-1,1]; effect scales with wind
 // strength so doldrums barely matter and trade-wind belts shape the routes.
@@ -57,7 +58,7 @@ const WIND_STR  = 1.6;    // how quickly wind magnitude saturates to full effect
 const WIND_MULT_MIN = 0.45, WIND_MULT_MAX = 1.7;
 const MIN_NAV_FOR_SEA = 0.04;    // below this a settlement has no seacraft
 const EMBARK_RADIUS   = 4;       // tiles to search around home for water
-const SEA_MIN_POP     = 40;      // a port below this doesn't project lanes
+// SEA_MIN_POP -> runtime lever (tuning.js T.SEA_MIN_POP)
 const MAX_SEA_VISITS  = 300000;  // global flood pop cap (one flood per pass)
 const MAX_ROUTE_TILES = 1200;    // cap on a sea path's stored tile count
 // A port keeps only its nearest sea partners (by route cost). Without this,
@@ -68,7 +69,7 @@ const SEA_MAX_PEERS   = 12;
 // Colonisation. Tuned to be reasonably common: a navigation-capable city
 // mounts expeditions fairly often, and a young colony is supplied from
 // home (see supplyColonies in conquest.js) so it survives its first years.
-const COLONY_MIN_POP    = 400;   // a city (tier 2) can colonise
+// COLONY_MIN_POP -> runtime lever (tuning.js T.COLONY_MIN_POP)
 const COLONY_MIN_NAV    = 0.25;  // need ocean-going ships
 const COLONY_PEOPLE     = 30;    // colonists carried (migrated out of parent)
 const COLONY_COOLDOWN   = 500 / 1.1; // ticks between expeditions from one port
@@ -97,7 +98,7 @@ function windMul(world, ni, dx, dy) {
   let m = 1 - WIND_AID * align * strength;
   return m < WIND_MULT_MIN ? WIND_MULT_MIN : m > WIND_MULT_MAX ? WIND_MULT_MAX : m;
 }
-const SHIP_SPEED        = 0.7;   // path tiles per tick, ×(1+navigation)
+// SHIP_SPEED -> runtime lever (tuning.js T.SHIP_SPEED)
 
 const SQRT2 = Math.SQRT2;
 
@@ -162,8 +163,8 @@ export function updateSea(world) {
   const budget = new Map();
   for (const p of ports) {
     const nav = p.knowledge.navigation || 0;
-    const canSail = nav >= MIN_NAV_FOR_SEA && (p.people || 0) >= SEA_MIN_POP;
-    budget.set(p.id, canSail ? SEA_RANGE_BASE + nav * SEA_RANGE_NAV : 0);
+    const canSail = nav >= MIN_NAV_FOR_SEA && (p.people || 0) >= T.SEA_MIN_POP;
+    budget.set(p.id, canSail ? SEA_RANGE_BASE + nav * T.SEA_RANGE_NAV : 0);
   }
 
   // Colony-eligible ports (we only collect shore candidates for these, to
@@ -178,7 +179,7 @@ export function updateSea(world) {
     const pc = world.countries && world.countries.get(p.countryId);
     const colonyMul = (pc && pc.personality) ? expansionColonyMul(pc.personality) : 1;
     const cooldown = COLONY_COOLDOWN / colonyMul;
-    if ((p.people || 0) >= COLONY_MIN_POP &&
+    if ((p.people || 0) >= T.COLONY_MIN_POP &&
         (p.knowledge.navigation || 0) >= COLONY_MIN_NAV &&
         world.step - (p._lastColony ?? -Infinity) >= cooldown) {
       eligible.add(p.id);
@@ -385,7 +386,7 @@ function tryColonize(world, A, cands, prev) {
     people: COLONY_PEOPLE, wealth: endow,
     landTi: chosen.landTi,
     path: full.map(ti => ({ x: (ti % tw) + 0.5, y: ((ti / tw) | 0) + 0.5 })),
-    idx: 0, speed: SHIP_SPEED * (1 + (A.knowledge.navigation || 0)),
+    idx: 0, speed: T.SHIP_SPEED * (1 + (A.knowledge.navigation || 0)),
     x: A.pos.x, y: A.pos.y,
   });
   if (A.history) A.history.push({ step: world.step, type: "colony-launched", landTi: chosen.landTi });

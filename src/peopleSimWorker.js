@@ -16,6 +16,7 @@
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { getTradeProfile } from "./peopleSim/settlement.js";
 import { displayPByCountry } from "./peopleSim/inflation.js";
+import { applyTuning, resetTuning } from "./peopleSim/tuning.js";
 
 let world = null;
 let playing = false;
@@ -51,6 +52,13 @@ self.onmessage = (e) => {
   } else if (m.type === "view") {
     viewMode = m.view;
     if (!playing && world) buildSnapshot();          // refresh extras for the new view
+  } else if (m.type === "tune") {
+    // Live gameplay tuning. m.reset wipes back to defaults; m.values is a
+    // partial { KEY: number } override map. Applied to the shared tuning
+    // registry the sim reads, so it takes effect on the next pass.
+    if (m.reset) resetTuning();
+    applyTuning(m.values);
+    if (!playing && world) buildSnapshot();           // reflect on the paused frame
   }
 };
 

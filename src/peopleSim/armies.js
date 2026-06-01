@@ -20,6 +20,7 @@ import { findPath } from "./roads.js";
 import { localEdgeCost } from "./transport.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
+import { T } from "./tuning.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
 // population (capped by tier — villages keep a token watch, cities/capitals
@@ -31,18 +32,19 @@ const ARMY_TIER_FRAC = [0.02, 0.05, 0.09, 0.11].map(f => f * 1.075);  // garriso
 const ARMY_CAPITAL_BONUS = 0.03 * 1.075;          // the capital fields a bit more
 // (TIER_FRAC and CAPITAL_BONUS ×1.075 re-anchor the 0.5-pivot aggressionArmyMul
 //  — personality.js; behaviour identical to the old 0.85+a·0.45 form)
-const ARMY_GROW     = 0.05;   // growth toward the cap per muster
+// ARMY_GROW (recruitment speed) is a runtime lever — see tuning.js (T.ARMY_GROW).
 const ARMY_DESERT   = 0.80;   // when food-starved, the garrison melts to this each muster
 const BANKRUPT_DESERT = 0.70; // when wholly unpaid (insolvent state), the garrison melts to this each muster
 const WAR_SPOILS    = 0.6;    // war-weariness relief a realm banks each time it storms a city (conquest.js)
 export const MUSTER_INTERVAL   = 100;
-export const CONQUEST_INTERVAL = 50;
+// CONQUEST_INTERVAL (war-pass cadence) is a runtime lever — tuning.js
+// T.CONQUEST_INTERVAL; index.js gates advanceFronts on it.
 // A freshly stormed settlement is PACIFIED for this long: it can't be
 // re-stormed and it won't secede (conquest.js reads this), so a garrisoned
 // new province is firmly held for an age instead of flip-flopping between
 // rival empires every pass. The single biggest stabiliser of the political
 // map — without it contested frontier cities ping-pong endlessly.
-export const CONQUEST_GRACE = 800;
+// (Runtime lever — see tuning.js T.CONQUEST_GRACE.)
 // The same idea one rung down, for COUNTRYSIDE tiles. A frontier tile has no
 // garrison of its own, and a freshly-grabbed border tile is by definition a
 // thin protrusion into the enemy (low thinFactor), so without hysteresis the
@@ -52,16 +54,13 @@ export const CONQUEST_GRACE = 800;
 // still instead of ping-ponging. It does NOT slow a genuine advance: the next
 // pass eats the enemy's still-untouched tiles deeper in (their grace clock is
 // cold), only the just-taken ring is locked.
-export const TILE_CAPTURE_GRACE = 400;
+// (Runtime lever — see tuning.js T.TILE_CAPTURE_GRACE.)
 
-const ATTACK_MIN_RATIO  = 1.12 * 1.05; // must out-power a neighbour by this to push
-                                       // (×1.05 re-anchors the 0.5-pivot
-                                       // aggressionAttackMul; behaviour identical)
+// ATTACK_MIN_RATIO, MAX_CAPTURE, CITY_STORM_RATIO, ATTRITION are runtime levers
+// (tuning.js). ATTACK_MIN_RATIO's old 1.12×1.05 re-anchored the 0.5-pivot
+// aggressionAttackMul — its tuning default (1.176) preserves that exactly.
 const CAPTURE_SCALE     = 5;           // tiles/pass per unit of power-ratio advantage
-const MAX_CAPTURE       = 24;          // hard cap on tiles flipped per front per pass
-const CITY_STORM_RATIO  = 1.6;         // power ratio needed to besiege the core
 const ASSAULT_MARGIN    = 2;           // front must reach within (defender core + this) of the home
-const ATTRITION         = 0.035;       // army drained per warring front per pass
 const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent taking a city
 // Siege: once the front reaches the heartland the city does NOT fall at
 // once. The besiegers grind the garrison down over several passes (SIEGE_DMG
@@ -200,7 +199,7 @@ function armyCapFrac(world, s) {
   // A warlike realm keeps a bigger garrison for its size; a mercantile /
   // cautious one fields less (personality.js aggressionArmyMul).
   if (c && c.personality) f *= aggressionArmyMul(c.personality);
-  return f;
+  return f * T.ARMY_SIZE_MULT;   // global garrison-size dial (tuning.js)
 }
 
 // ── Periodic: grow + provision garrisons ──
@@ -219,7 +218,7 @@ export function musterArmies(world) {
       s.army = (s.army || 0) * ARMY_DESERT;
     } else {
       const popCap = s.people * armyCapFrac(world, s);   // tier/political limit
-      s.army = (s.army || 0) + (popCap - (s.army || 0)) * ARMY_GROW;
+      s.army = (s.army || 0) + (popCap - (s.army || 0)) * T.ARMY_GROW;
     }
     // Unpaid troops desert. The army is funded by the state treasury
     // (conquest.js); when the treasury can't cover the wage bill the realm is
@@ -367,7 +366,7 @@ export function advanceFronts(world) {
     // one wants a clear advantage (personality.js aggressionAttackMul).
     const aCountry = world.countries && world.countries.get(A.countryId);
     const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
-    if (A._M < effDef * ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX)) continue;
+    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX)) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -381,7 +380,7 @@ export function advanceFronts(world) {
     // capturable countryside — unless this tile was just flipped and is still
     // in its post-capture hold, which keeps a stalled front from ping-ponging
     // the same border tiles back and forth every pass.
-    else if (world.step - capturedAt[ti] >= TILE_CAPTURE_GRACE) pc.tiles.push({ ti, distHome });
+    else if (world.step - capturedAt[ti] >= T.TILE_CAPTURE_GRACE) pc.tiles.push({ ti, distHome });
   }
 
   // Realm-mates march to relieve every settlement under attack (over transit
@@ -420,10 +419,10 @@ export function advanceFronts(world) {
       // Front is at the heartland. A recently-conquered city is still
       // pacified (garrisoned) and can't be besieged yet — that grace stops
       // rival empires trading it back and forth.
-      if (adv >= CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= CONQUEST_GRACE) {
+      if (adv >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
         // Bombard: grind the garrison; the besiegers bleed a little too.
         def.army = Math.max(0, (def.army || 0) - att._M * SIEGE_DMG);
-        att.army = Math.max(0, (att.army || 0) - def._M * ATTRITION / techMul(att));
+        att.army = Math.max(0, (att.army || 0) - def._M * T.ATTRITION / techMul(att));
         const defNow = def.army * techMul(def);
         if (defNow <= att._M * SIEGE_BREAK) {
           // Was this the capital of its realm? (Decide before the flip.)
@@ -453,7 +452,7 @@ export function advanceFronts(world) {
       continue;   // front's at the core — no countryside left to nibble here
     }
 
-    const budget = Math.min(MAX_CAPTURE, Math.floor((adv - 1) * CAPTURE_SCALE));
+    const budget = Math.min(T.MAX_CAPTURE, Math.floor((adv - 1) * CAPTURE_SCALE));
     if (budget >= 1 && pc.tiles.length) {
       // Advance the front BROADLY: take the outermost contested tiles first
       // so the defender's countryside erodes ring by ring (visible) instead
@@ -463,7 +462,7 @@ export function advanceFronts(world) {
       for (let i = 0; i < n; i++) { const cti = pc.tiles[i].ti; owner[cti] = att.id; capturedAt[cti] = world.step; }
       bankMomentum(world, att.countryId, n * MOMENTUM_PER_TILE);   // captured countryside feeds the streak
     }
-    att.army = Math.max(0, (att.army || 0) - def._M * ATTRITION / techMul(att));
-    def.army = Math.max(0, (def.army || 0) - att._M * ATTRITION / techMul(def));
+    att.army = Math.max(0, (att.army || 0) - def._M * T.ATTRITION / techMul(att));
+    def.army = Math.max(0, (def.army || 0) - att._M * T.ATTRITION / techMul(def));
   }
 }

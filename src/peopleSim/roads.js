@@ -43,6 +43,7 @@
 // painted into roadQuality; nothing else is created.
 
 import { localEdgeCost, baseEdgeCost } from "./transport.js";
+import { T } from "./tuning.js";
 import { computeExportValue, getWealthReserve } from "./settlement.js";
 import { localP } from "./inflation.js";
 import { govOf } from "./conquest.js";
@@ -168,7 +169,7 @@ const NEEDED_BY_TIER = [
 const HAVE_THRESHOLD = 0.10;
 
 // Trade flow rates (same as old model so dynamics carry over).
-const TRADE_RATE                   = 0.025;
+// TRADE_RATE -> runtime lever (tuning.js T.TRADE_RATE)
 // Wealth-scaled demand: a settlement holding coin above its reserve imports
 // MORE (its buying power, not just its headcount, drives consumption). This is
 // what stops a windfall (mining, state pay, a tax hoard) from sitting idle —
@@ -204,7 +205,7 @@ const FOOD_TOLL_RATE  = 0.02;
 // income, making a conquered trade hub genuinely worth holding. Conserved:
 // the duty the buyer pays goes to the importing country's capital. Food is
 // exempt (famine relief shouldn't be taxed).
-const TARIFF_RATE     = 0.10;
+// TARIFF_RATE -> runtime lever (tuning.js T.TARIFF_RATE)
 
 export { QUALITY_NEW, QUALITY_MAX, FLOW_FOR_PAVE, FLOW_FOR_BUSY };
 
@@ -905,7 +906,7 @@ function demandMul(buyer) {
 }
 function runGeneralTradeBetween(world, a, b, link) {
   const minPop = Math.min(a.people, b.people);
-  const vol = Math.sqrt(minPop) * TRADE_RATE;
+  const vol = Math.sqrt(minPop) * T.TRADE_RATE;
   const transport = link.cost * TRANSPORT_PER_PATHCOST;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;
@@ -958,7 +959,7 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   if (goodsValue <= 0) return;
   const totalToll = goodsValue * TOLL_RATE * numInter;
   const collector = customsCollector(world, seller, buyer);
-  const tariff = collector ? goodsValue * TARIFF_RATE : 0;
+  const tariff = collector ? goodsValue * T.TARIFF_RATE : 0;
   // Don't ship goods worth less than the cost to move + clear them.
   if (goodsValue <= freight + totalToll + tariff) return;
   const want = goodsValue + freight + totalToll + tariff;

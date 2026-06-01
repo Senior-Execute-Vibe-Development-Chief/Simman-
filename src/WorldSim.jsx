@@ -15,6 +15,8 @@ import { ensureTribeViews, attachRegistries } from "./tribeModel.js";
 import { runTribeStep, resetInvariantState } from "./tribeStep.js";
 import { tribePower, localPower, tribeOreAccess, tDistW, expFalloff } from "./tribePower.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
+import { applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js";
+import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
 import { IN_LABELS, OUT_LABELS } from "./peopleSim/money.js";
@@ -3967,6 +3969,29 @@ const[layers,setLayers]=useState({
 });
 const[layersOpen,setLayersOpen]=useState(false);
 const[boardOpen,setBoardOpen]=useState(false);
+const[leversOpen,setLeversOpen]=useState(false);
+const[tuneVals,setTuneVals]=useState(()=>tuningDefaults());
+const tuneValsRef=useRef(tuneVals);
+// Push a tuning change to the sim. Covers BOTH execution paths: postMessage to
+// the worker (normal) and a direct applyTuning for the main-thread fallback sim.
+const pushTune=useCallback((vals,reset)=>{
+  if(reset){resetTuning();}
+  applyTuning(vals);
+  if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'tune',values:vals,reset:!!reset});
+},[]);
+const onLeverChange=useCallback((key,val)=>{
+  setTuneVals(prev=>{const next={...prev,[key]:val};tuneValsRef.current=next;return next;});
+  pushTune({[key]:val});
+},[pushTune]);
+const onLeverResetKey=useCallback((key)=>{
+  const def=tuningDefaults()[key];
+  setTuneVals(prev=>{const next={...prev,[key]:def};tuneValsRef.current=next;return next;});
+  pushTune({[key]:def});
+},[pushTune]);
+const onLeverResetAll=useCallback(()=>{
+  const def=tuningDefaults();tuneValsRef.current=def;setTuneVals(def);
+  pushTune(def,true);
+},[pushTune]);
 const[boardMode,setBoardMode]=useState("countries");   // "countries" | "settlements"
 const[boardSort,setBoardSort]=useState("size");        // see SORT_KEYS below
 const layersRef=useRef(layers);
@@ -4113,6 +4138,8 @@ try{
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
   sw.postMessage({type:'view',view:viewRef.current});
+  // A fresh worker starts at default tuning — re-send the user's current levers.
+  sw.postMessage({type:'tune',values:tuneValsRef.current});
   usedWorker=true;
 }catch(e){console.warn('[SimWorker] init failed — main-thread sim:',e);}
 if(!usedWorker){
@@ -6926,6 +6953,8 @@ return(
   className={"au-rail-tab"+(rightPanel==="params"?" au-active":"")}>Params</button>
 {preset==="tectonic"&&<button onClick={()=>setShowTuning(true)}
   className="au-rail-tab">Tune</button>}
+{preset==="earth_sim"&&<button onClick={()=>setLeversOpen(v=>!v)}
+  className={"au-rail-tab"+(leversOpen?" au-active":"")}>Sim Levers</button>}
 </>}
 </aside>
 
@@ -7096,6 +7125,11 @@ return(
   onChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
   groups={preset==="earth"?["wind"]:preset==="earth_sim"?["wind","moisture"]:undefined} />
 </aside>}
+
+{/* ══════════ SIM LEVERS PANEL ══════════ */}
+{leversOpen&&<SimLevers values={tuneVals} onChange={onLeverChange}
+  onResetKey={onLeverResetKey} onResetAll={onLeverResetAll}
+  onClose={()=>setLeversOpen(false)} />}
 
 {/* ══════════ TUNING MODAL ══════════ */}
 {showTuning&&<TuningPanel noiseFns={{initNoise,fbm,ridged,noise2D,worley}} seed={seed}

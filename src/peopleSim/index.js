@@ -13,16 +13,17 @@ import { updateSettlement } from "./settlement.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
-import { updatePolities, POLITY_INTERVAL } from "./conquest.js";
-import { musterArmies, advanceFronts, moveArmies, MUSTER_INTERVAL, CONQUEST_INTERVAL } from "./armies.js";
+import { updatePolities } from "./conquest.js";
+import { musterArmies, advanceFronts, moveArmies, MUSTER_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
 import { updateShocks } from "./shocks.js";
 import { updateInflation } from "./inflation.js";
 import { foldMoney } from "./money.js";
+import { T } from "./tuning.js";
 
-const TERRITORY_INTERVAL = 144;  // ticks between full territory recomputes (a global
-                                 // O(land) pass — lower frequency = fewer frame spikes;
-                                 // territory drifts slowly so the staleness is invisible)
+// Territory / conquest / polity cadences are runtime levers (tuning.js:
+// T.TERRITORY_INTERVAL, T.CONQUEST_INTERVAL, T.POLITY_INTERVAL) — the step
+// loop below gates each pass on its live value.
 
 export function initPeopleSim(worldGen, opts = {}) {
   return createWorld(worldGen, opts);
@@ -49,7 +50,7 @@ export function stepPeopleSim(world, n = 1) {
     mark("byId");
     // Recompute territory periodically: each settlement claims the land it
     // reaches cheapest, and its food / resources are tallied from it.
-    if (world.step === 1 || world.step % TERRITORY_INTERVAL === 0) computeTerritory(world);
+    if (world.step === 1 || world.step % T.TERRITORY_INTERVAL === 0) computeTerritory(world);
     mark("territory");
     for (let i = 0; i < world.settlements.length; i++) {
       updateSettlement(world, world.settlements[i]);
@@ -89,7 +90,7 @@ export function stepPeopleSim(world, n = 1) {
     // grind tile-by-tile across borders, annexing a settlement when its
     // heartland is stormed.
     if (world.step % MUSTER_INTERVAL === 0) musterArmies(world);
-    if (world.step % CONQUEST_INTERVAL === 0) advanceFronts(world);
+    if (world.step % T.CONQUEST_INTERVAL === 0) advanceFronts(world);
     moveArmies(world);   // marching reinforcement columns advance every tick
     mark("armies");
     // Maritime: colony ships sail every tick; the port→port sea-lane graph
@@ -99,7 +100,7 @@ export function stepPeopleSim(world, n = 1) {
     mark("sea");
     // Polities: group settlements into countries, tribute, and let
     // over-extended members secede.
-    if (world.step % POLITY_INTERVAL === 0) updatePolities(world);
+    if (world.step % T.POLITY_INTERVAL === 0) updatePolities(world);
     mark("polities");
     // Fold this tick's categorised money flows (recorded across all the
     // passes above) into each settlement's smoothed in/out rate, for the

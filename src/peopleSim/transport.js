@@ -1,3 +1,4 @@
+import { T } from "./tuning.js";
 // Transport distance map: for every land tile, the minimum cumulative
 // terrain-weighted cost to reach the nearest settlement. Used by the
 // crystallization sweep to bias new settlements toward sites already
@@ -129,7 +130,7 @@ class _MinHeap {
 //
 // Both delegate to one core function so the rules can never drift.
 
-const NAV_EMBARK_THRESH = 0.10;   // below this nav, water = Infinity
+// NAV_EMBARK_THRESH (seafaring tech gate) is a runtime lever — tuning.js T.NAV_EMBARK_THRESH.
 
 function _paramsFromKnowledge(kn) {
   const k = kn || {};
@@ -143,7 +144,7 @@ function _paramsFromKnowledge(kn) {
     harsh: Math.max(8,    35  - mob * 13   - cons * 10),       // slope coefficient (steep climbs)
     river: Math.max(0.15, 0.50 - cons * 0.30),                 // river-along (banded by mag)
     coast: Math.max(0.20, 0.70 - cons * 0.30 - nav * 0.25),    // coastal hop floor
-    water: nav < NAV_EMBARK_THRESH ? Infinity
+    water: nav < T.NAV_EMBARK_THRESH ? Infinity
          : Math.max(0.5, 2.5 / (0.3 + nav * 1.5)),             // open ocean (gated)
     port:  Math.max(0.5, 6   - cons * 5),                      // mode-change tax (6 → 1)
   };
@@ -174,6 +175,7 @@ function _edgeCost(world, fromTi, toTi, params) {
     if (!isFinite(params.water)) return Infinity;
     base = params.water;
     if (world.coast && world.coast[toTi]) base = Math.min(base, params.coast);
+    base *= T.WATER_COST_MULT;               // open-water crossing dial (tuning.js)
   } else if (toMode === 1) {                 // ── RIVER ──
     const rm = world.riverMag[toTi];
     const magMul = rm >= 4 ? 1.0 : rm >= 3 ? 1.3 : 2.0;
@@ -183,20 +185,20 @@ function _edgeCost(world, fromTi, toTi, params) {
     const t = world.temp[toTi];
     const m = world.moist[toTi];
     base = params.plain;
-    // Mountains: linear + quadratic so foothills are mild but high
-    // peaks are crushing. e=0.20 → +1.6, e=0.50 → +6.0, e=0.80 → +12.0.
-    // Matches the old altitude term — empires shouldn't march over
-    // alpine passes cheaply just because they have wagons.
-    base += e * 5 + e * e * 14;
-    // Slope (vs the tile we just left). Coefficient steep so a sudden
-    // climb across one tile reads as a wall. Construction (engineered
-    // switchbacks, cut roads) cuts this — that's params.harsh.
+    // Mountains + slope: linear + quadratic altitude so foothills are mild
+    // but high peaks are crushing (e=0.20 → +1.6, 0.50 → +6.0, 0.80 → +12.0),
+    // plus the steep per-tile climb term (construction cuts it via
+    // params.harsh). The whole relief penalty is scaled by the mountain-cost
+    // lever, so ranges can be made hard walls or gentle slopes (tuning.js).
+    let relief = e * 5 + e * e * 14;
     const slope = Math.abs(e - world.elev[fromTi]);
-    if (slope > 0.02) base += (slope - 0.02) * params.harsh;
+    if (slope > 0.02) relief += (slope - 0.02) * params.harsh;
+    base += relief * T.MOUNTAIN_COST_MULT;
     if (t > 0.55 && m < 0.25) base += (t - 0.55) * 5 + (0.25 - m) * 4;  // hot dry
     if (t < 0.18) base += (0.18 - t) * 8;                          // cold
     if (m > 0.70 && t > 0.4) base += (m - 0.70) * 6;               // hot wet
     if (world.coast && world.coast[toTi]) base = Math.min(base, params.coast);
+    base *= T.LAND_COST_MULT;                // overall land-travel cost dial (tuning.js)
   }
 
   // Mode change pays the port tax. Construction shrinks it — this is

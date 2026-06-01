@@ -8,6 +8,7 @@
 // knowledge from their nearest neighbour weighted by transport distance.
 
 import { seedLocalTerritory } from "./territory.js";
+import { T } from "./tuning.js";
 import { recordIn, recordOut, IN_MINING, IN_MATERIALS, OUT_MATERIALS } from "./money.js";
 import { localP } from "./inflation.js";
 
@@ -26,7 +27,7 @@ const TIER_NAME      = ["village", "town", "city", "metropolis"];
 // many in-game years to grow from village to city. With 0.0018, a
 // village at 20 ppl reaches K=470 (city tier) in ~2000 ticks rather
 // than ~700.
-const SETT_GROWTH = 0.0018;
+// SETT_GROWTH -> runtime lever (tuning.js T.SETT_GROWTH)
 
 // Food model: a settlement's land food comes from the TERRITORY it
 // controls (territory.js) — the distance-weighted sum of its claimed
@@ -55,7 +56,7 @@ const K_MIN_VIABLE = 8;                    // bare-survival floor (matches the w
 const HOUSING_BASE        = 45;     // starting shelter before anything is built
 const SPACE_RADIUS        = 14;     // urban-footprint radius for the buildable-land scan
 const DENSITY_BASE        = 6;      // people per buildable tile at zero construction
-const DENSITY_PER_CONSTR  = 5;      // extra people/tile per point of construction knowledge
+// DENSITY_PER_CONSTR -> runtime lever (tuning.js T.DENSITY_PER_CONSTR)
 // Development: build housing up toward the space ceiling. Needs materials
 // (timber/stone — own, or bought from suppliers with coin) and labour;
 // rate-limited by construction tech + population. Coin paid for imported
@@ -69,7 +70,7 @@ const BUILD_RATE          = 0.015;  // housing/tick per construction-weighted bu
 // is exactly what makes cities form at trade/river/coast hubs and produces
 // the realistic village → town → city size hierarchy (rather than every
 // patch of decent land becoming a metropolis).
-const FARM_YIELD_PER_FERT    = 0.02;
+// FARM_YIELD_PER_FERT -> runtime lever (tuning.js T.FARM_YIELD_PER_FERT)
 // ── Luxury trade ── Renewable luxury goods (spices/furs/incense/dyes) in a
 // settlement's territory let it EARN coin by selling to wealthy buyers; and a
 // settlement's own wealth drives a DEMAND to import luxuries (elite
@@ -82,12 +83,12 @@ const LUX_RES = ["spices", "furs", "incense", "dyes"];
 const LUX_SUPPLY_RATE = 4.0;    // coin/tick a region can earn per luxury-unit × √pop
 const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends on luxury/tick
                                 // (so rich hoards drive real luxury demand, not just headcount)
-// Fish: per-tick food a water settlement lands. fishYield = FISH_RATE ×
+// Fish: per-tick food a water settlement lands. fishYield = T.FISH_RATE ×
 // waterAccess × (0.3 + navigation×1.2). A great-river port with a
 // deep-sea fleet (wa≈0.9, nav≈0.8) nets ~12/tk — comparable to a big
 // farmland patch — so maritime cities can feed themselves; a landlocked
 // site gets nothing.
-const FISH_RATE              = 11.0;
+// FISH_RATE -> runtime lever (tuning.js T.FISH_RATE)
 
 export function makeSettlement(world, x, y, opts = {}) {
   const s = {
@@ -242,7 +243,7 @@ export { effectiveLocalRes, findSettlementById };
 // what little it makes, so it never freezes at its reserve. Gold-rich
 // (but goods-poor) mining towns are net buyers, spending their specie
 // outward — that's how mined money spreads to the rest of the economy.
-const MINING_RATE = 5.0;              // base specie extraction multiplier
+// MINING_RATE -> runtime lever (tuning.js T.MINING_RATE)
 function updateWealth(world, s) {
   const reserves = world.depositReserve;
   if (!reserves) return;
@@ -258,7 +259,7 @@ function updateWealth(world, s) {
     const left = reserveArr[ti];
     if (left <= 0) continue;
     const richness = (world.deposits[id] && world.deposits[id][ti]) || 0;
-    const want = MINING_RATE * richness * popFactor * orgMul;
+    const want = T.MINING_RATE * richness * popFactor * orgMul;
     const got = want < left ? want : left;
     reserveArr[ti] = left - got;
     mined += got;
@@ -335,14 +336,14 @@ export { updateWealth };
 // Iranian agriculture, etc.). Recovers linearly over ~CONQUEST_RECOVERY
 // ticks. The penalty applies regardless of whether the new owner held the
 // city long ago and re-took it — sacks always cost real productive value.
-const SACK_PRODUCTION_FLOOR = 0.3;   // freshly-sacked town keeps this fraction of normal output
+// SACK_PRODUCTION_FLOOR -> runtime lever (tuning.js T.SACK_PRODUCTION_FLOOR)
 const CONQUEST_RECOVERY     = 5000;  // ticks to recover linearly to full output
 function sackPenalty(s, worldStep) {
   if (s._sackedAt == null || worldStep == null) return 1;
   const age = worldStep - s._sackedAt;
   if (age >= CONQUEST_RECOVERY) return 1;
   if (age < 0) return 1;
-  return SACK_PRODUCTION_FLOOR + (1 - SACK_PRODUCTION_FLOOR) * (age / CONQUEST_RECOVERY);
+  return T.SACK_PRODUCTION_FLOOR + (1 - T.SACK_PRODUCTION_FLOOR) * (age / CONQUEST_RECOVERY);
 }
 export function computeExportValue(s, world) {
   const k = s.knowledge || {};
@@ -526,12 +527,12 @@ export function updateSettlement(world, s) {
 // things: more farmland → agriculture improves; more pop → organization
 // improves; bigger pop + ag → construction improves. Diminishing
 // returns near 1.0.
-const LEARN_BASE = 0.000040;          // per tick scaling
+// LEARN_BASE -> runtime lever (tuning.js T.LEARN_BASE)
 const KTRACKS = ["agriculture","construction","organization","metallurgy","navigation","mobility"];
 // Fraction of the gap to a better-developed road-connected neighbour
 // closed per tick — technology transfer by contact. ~1/0.0006 ≈ 1700
 // ticks to largely absorb a neighbour's lead.
-const DIFFUSE_RATE = 0.0006;
+// DIFFUSE_RATE -> runtime lever (tuning.js T.DIFFUSE_RATE)
 // The two reach-iterating parts of updateKnowledge (folding in trade-reach
 // resources, and diffusing technique from neighbours) are recomputed only
 // every KNOW_INTERVAL ticks per settlement — staggered by id so the cost
@@ -591,7 +592,7 @@ function updateKnowledge(world, s) {
   const buildMat = 1 + (r.timber || 0) * 0.8 + (r.stone || 0) * 0.6;
   const stoneBoost = 1 + (r.stone || 0) * 0.6;
   const metalBoost = 1 + k.metallurgy * 1.8;
-  k.construction = clamp01(k.construction + LEARN_BASE * 1.0 * (1 - k.construction)
+  k.construction = clamp01(k.construction + T.LEARN_BASE * 1.0 * (1 - k.construction)
     * buildMat * stoneBoost * metalBoost
     * (1 + k.agriculture * 0.6) * (1 + popSqrt * 0.06));
 
@@ -600,7 +601,7 @@ function updateKnowledge(world, s) {
   // foraging track). The wild-food boost decays as metallurgy advances
   // — society moves off forage onto stored grain.
   const wildBoost = 1 + (r.timber || 0) * 0.2 * (1 - k.metallurgy * 0.7);
-  k.agriculture = clamp01(k.agriculture + LEARN_BASE * 1.2 * (1 - k.agriculture)
+  k.agriculture = clamp01(k.agriculture + T.LEARN_BASE * 1.2 * (1 - k.agriculture)
     * (1 + fc * 0.03) * (1 + k.construction * 0.5) * wildBoost);
 
   // Organization: pop-driven admin burden + a literate-state branch
@@ -623,7 +624,7 @@ function updateKnowledge(world, s) {
   const litBranch = k.organization > 0.30
     ? 0.6 * k.organization * (1 + popSqrt * 0.06)
     : 0;
-  k.organization = clamp01(k.organization + LEARN_BASE * orgHead
+  k.organization = clamp01(k.organization + T.LEARN_BASE * orgHead
     * ((1 + popSqrt * 0.10) + litBranch));
 
   // Metallurgy — hard-gated by ore. Paced so the eras (chalcolithic →
@@ -633,20 +634,20 @@ function updateKnowledge(world, s) {
     const oreRate = Math.max(cu, sn, fe, co);
     const headroom = 1 - k.metallurgy / metalCap;
     k.metallurgy = Math.min(metalCap, k.metallurgy +
-      LEARN_BASE * 2.6 * headroom * oreRate * (1 + k.construction * 0.4));
+      T.LEARN_BASE * 2.6 * headroom * oreRate * (1 + k.construction * 0.4));
   }
 
   // Navigation — hard-gated by water; paced so coasts/great rivers grow
   // into real naval powers.
   if (wa > 0) {
-    k.navigation = clamp01(k.navigation + LEARN_BASE * 1.3 * (1 - k.navigation)
+    k.navigation = clamp01(k.navigation + T.LEARN_BASE * 1.3 * (1 - k.navigation)
       * wa * (1 + k.construction * 0.6));
   }
 
   // Mobility — hard-gated by horses; paced so horse country becomes
   // cavalry country.
   if (horses > horsesThr) {
-    k.mobility = clamp01(k.mobility + LEARN_BASE * 1.1 * (1 - k.mobility)
+    k.mobility = clamp01(k.mobility + T.LEARN_BASE * 1.1 * (1 - k.mobility)
       * horses * (1 + k.construction * 0.4 + k.metallurgy * 0.6));
   }
 
@@ -681,7 +682,7 @@ function updateKnowledge(world, s) {
       // the literate-state branch of organization, which only kicks in
       // past 0.30).
       const litMul = 1 + Math.max(0, k.organization - 0.30) * 3;
-      const rate = DIFFUSE_RATE * KNOW_INTERVAL * litMul;
+      const rate = T.DIFFUSE_RATE * KNOW_INTERVAL * litMul;
       for (const t of KTRACKS) {
         const gap = km[t] - k[t];
         if (gap > 0) k[t] = clamp01(k[t] + rate * gap);
@@ -713,7 +714,7 @@ function updateFood(world, s) {
   // Land food from the controlled TERRITORY: the distance-weighted sum of
   // claimed arable fertility (computed in territory.js), times yield and
   // agriculture. Storable — fills granaries and ships to feed cities.
-  const landFood0 = (s._terrFertSum || 0) * FARM_YIELD_PER_FERT
+  const landFood0 = (s._terrFertSum || 0) * T.FARM_YIELD_PER_FERT
     * (1 + (s.knowledge.agriculture || 0) * 1.2);
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
@@ -727,7 +728,7 @@ function updateFood(world, s) {
   // coastal city — which the housing cap already lets grow large — feed
   // itself from the sea instead of relying entirely on shipped-in grain.
   const wa = s.waterAccess || 0;
-  const fish = wa > 0 ? FISH_RATE * wa * (0.3 + (s.knowledge.navigation || 0) * 1.2) : 0;
+  const fish = wa > 0 ? T.FISH_RATE * wa * (0.3 + (s.knowledge.navigation || 0) * 1.2) : 0;
   s._fishYield = fish;
 
   // Land food is STORABLE — it fills granaries and ships across the world
@@ -799,7 +800,7 @@ function computeBuildableArea(world, sx, sy) {
 // (more people on the same ground as building tech improves).
 function spaceCapacity(s) {
   const area = s._buildableArea || 1;
-  const density = DENSITY_BASE * (1 + (s.knowledge.construction || 0) * DENSITY_PER_CONSTR);
+  const density = DENSITY_BASE * (1 + (s.knowledge.construction || 0) * T.DENSITY_PER_CONSTR);
   return area * density;
 }
 export { spaceCapacity };
@@ -906,7 +907,7 @@ function updatePopulation(world, s) {
   if (s.food <= 0.01 && s.people > 1) {
     s.people *= 0.985;
   } else {
-    s.people = s.people + SETT_GROWTH * s.people * (1 - s.people / K);
+    s.people = s.people + T.SETT_GROWTH * s.people * (1 - s.people / K);
   }
   if (s.people < 1.5) {
     s.mode = "dead";

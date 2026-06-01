@@ -12,14 +12,15 @@
 // captured right at the frontier would secede the very next pass and get
 // re-taken, making the borders flicker.
 
-import { CONQUEST_GRACE } from "./armies.js";
 import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.js";
 import { shockUnrest } from "./shocks.js";
 import { localPByCountry } from "./inflation.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, prunePersonalities, driftPersonality, expansionReachMul } from "./personality.js";
+import { T } from "./tuning.js";
 
-const POLITY_INTERVAL  = 150;   // ticks between polity passes
+// POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
+// (T.POLITY_INTERVAL); index.js gates the pass on it.
 // Sub-city absorption requires the absorbing power to have at least this
 // much ORGANISATION (state apparatus) before it can administratively
 // swallow a touching village. Below this threshold the village stays
@@ -47,7 +48,7 @@ const ABSORB_PROB_MAX  = 0.10;
 // limited trade), a roughly balanced budget keeps coin circulating to the
 // periphery instead of pooling at the throne. Treasury lives in
 // world.governments keyed by countryId (stable across capital changes).
-const ARMY_WAGE     = 60;   // coin per soldier per polity pass — peacetime garrison pay
+// ARMY_WAGE -> runtime lever (tuning.js T.ARMY_WAGE)
 const WAR_SURCHARGE = 1.2;  // each level of war (defensive front / besieged capital) multiplies the army bill
 const RESERVE_PASSES = 3;   // war-chest the state keeps (passes of peacetime army pay) before funding works
 const SOLVENCY_FLOOR = 0.5; // a fully bankrupt state still retains this fraction of its control budget
@@ -58,7 +59,7 @@ const SOLVENCY_FLOOR = 0.5; // a fully bankrupt state still retains this fractio
 // overtaxation feeds POPULAR UNREST: the classic trap where taxing to pay for
 // a war drives the people to revolt (France 1789, late Ming, late Rome).
 const TAX_BASE     = 0.06;   // baseline share of a member's wealth taxed per pass
-const TAX_MAX      = 0.22;   // hard cap on the tax rate, however desperate the state
+// TAX_MAX -> runtime lever (tuning.js T.TAX_MAX)
 const TAX_WAR      = 0.025;  // extra rate per level of war
 const TAX_BANKRUPT = 0.12;   // extra rate × how insolvent the state was last pass
 const TAX_DRIFT    = 0.25;   // how fast the actual rate moves toward its target (no whipsaw)
@@ -74,7 +75,7 @@ const HUNGER_W   = 1.0;      // grievance weights (hunger dominates, as in histo
 const CONSCRIPT_W = 0.4;
 const WARFAT_W   = 0.5;
 const OVERTAX_W  = 0.7;
-const UNREST_GAIN   = 0.15;  // how fast grievance piles into the unrest stock
+// UNREST_GAIN -> runtime lever (tuning.js T.UNREST_GAIN)
 const UNREST_RELIEF = 0.06;  // how fast unrest cools when the people are content
 const UNREST_LOYALTY_BLEED = 0.12;  // an angry populace also erodes administrative loyalty
 const UNREST_RADIUS_MIN = 15;       // a rebellion rallies discontented neighbours within this (or range)
@@ -121,18 +122,18 @@ export function bankMomentum(world, countryId, amount) {
 // shrinks the budget and the frontier sheds — overextension becomes a
 // dynamic event, not a fixed radius. Magnitudes are in "reach-units":
 // a province sitting exactly at the capital's reach costs a load of ~1.
-const CAP_BASE      = 6;     // reach-units a lone capital can administer
+// CAP_BASE -> runtime lever (tuning.js T.CAP_BASE)
 const CAP_POP       = 3;     // extra capacity from a big capital (log of pop)
 const CAP_POP_REF   = 1000;  // capital population that scores one CAP_POP unit
-const CAP_SEAT      = 1.2;   // capacity each loyal regional seat adds (sub-administration)
+// CAP_SEAT -> runtime lever (tuning.js T.CAP_SEAT)
 const SEAT_BONUS_CAP = 6;    // total seat contribution is capped (admin has diminishing returns)
 const COERCE_CAP    = 2.5;   // a far-stronger capital coerces a province (caps the load cut)
-const SIZE_LOAD     = 0.4;   // bigger provinces are harder to administer
+// SIZE_LOAD -> runtime lever (tuning.js T.SIZE_LOAD)
 const SIZE_REF      = 1000;  // population scale for the size term
 const RECENCY_LOAD  = 1.0;   // a freshly conquered province costs this much extra...
-const RECENCY_TICKS = 4000;  // ...decaying to none over this many ticks (digestion)
+// RECENCY_TICKS -> runtime lever (tuning.js T.RECENCY_TICKS)
 const LOYAL_RECOVER = 0.06;  // per pass: covered provinces climb toward full loyalty
-const LOYAL_DECAY   = 0.10;  // per pass: uncovered provinces bleed loyalty toward zero
+// LOYAL_DECAY -> runtime lever (tuning.js T.LOYAL_DECAY)
 
 // ── Contagious secession (amplifier) ──────────────────────────────────
 // A revolt is regional, not solitary: when a province's loyalty collapses,
@@ -233,8 +234,8 @@ function holdPull(s) {
 // expansion piles up this load and triggers indigestion-overextension.
 function recencyFactor(world, s) {
   const age = world.step - (s._conqueredAt ?? -Infinity);
-  if (!(age < RECENCY_TICKS)) return 0;   // also handles age === Infinity
-  return 1 - age / RECENCY_TICKS;
+  if (!(age < T.RECENCY_TICKS)) return 0;   // also handles age === Infinity
+  return 1 - age / T.RECENCY_TICKS;
 }
 // Base hold range (tiles) from the capital's reach techs — how far it can
 // administer. Grows with organization/mobility/navigation; then SHRINKS
@@ -271,7 +272,6 @@ function majorRiverToll(world, fromTi, toTi, cons) {
   return Math.max(RIVER_TOLL_MIN, RIVER_TOLL_MAX - cons * RIVER_TOLL_CONS);
 }
 
-export { POLITY_INTERVAL };
 
 // Military/administrative weight, used to pick the capital (strongest member).
 export function settlementPower(s) {
@@ -466,7 +466,7 @@ function secedeContagious(world, c, seeds) {
     for (const m of c.members) {
       if (m === seed || m.countryId !== c.id || m.id === c.capitalId) continue;
       if ((m.loyalty ?? 1) > REVOLT_JOIN_LOYALTY) continue;          // still loyal → doesn't join
-      const pacified = world.step - (m._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const pacified = world.step - (m._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = m.parentSettlementId >= 0 && world.step - (m.foundedStep || 0) < COLONY_SUPPLY_TICKS;
       if (pacified || infant) continue;                              // garrisoned / supported → held
       if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
@@ -642,7 +642,7 @@ function rebel(world, c, seeds) {
     for (const m of c.members) {
       if (m === seed || m.countryId !== c.id || m.id === c.capitalId) continue;
       if ((m.unrest ?? 0) < UNREST_JOIN) continue;                    // content → doesn't rise
-      const pacified = world.step - (m._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const pacified = world.step - (m._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = m.parentSettlementId >= 0 && world.step - (m.foundedStep || 0) < COLONY_SUPPLY_TICKS;
       if (pacified || infant) continue;                              // garrison holds it down for now
       if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
@@ -708,7 +708,7 @@ function disburseTreasury(world, c, gov, warLevel) {
   for (const s of members) { _tierTotal += s.tier | 0; _tierN++; }
   const avgTier = _tierN > 0 ? _tierTotal / _tierN : 0;
   const tierFactor = 0.3 + 0.7 * Math.min(1, avgTier / 2);  // 0.3 at village, 0.65 at town, 1.0 at city+
-  const wage = ARMY_WAGE * realmP * tierFactor;
+  const wage = T.ARMY_WAGE * realmP * tierFactor;
   // War surcharge only really applies to real states (with at least one
   // city). A village-level realm can't afford a war and shouldn't be modelled
   // as paying for one — its army either runs away or is dismantled (food
@@ -903,9 +903,9 @@ export function updatePolities(world) {
       const isSeat = (s.tier | 0) >= 2 || (s._vassalCount || 0) > 0;
       if (!isSeat) continue;
       const seatSize = Math.min(2, Math.log2(1 + (s.people || 0) / SIZE_REF));
-      seatBonus += CAP_SEAT * (s.loyalty ?? 1) * seatSize;   // disloyal/small seats help less
+      seatBonus += T.CAP_SEAT * (s.loyalty ?? 1) * seatSize;   // disloyal/small seats help less
     }
-    const peaceCapacity = CAP_BASE + CAP_POP * Math.log2(1 + (cap.people || 0) / CAP_POP_REF)
+    const peaceCapacity = T.CAP_BASE + CAP_POP * Math.log2(1 + (cap.people || 0) / CAP_POP_REF)
                         + Math.min(SEAT_BONUS_CAP, seatBonus);
 
     // ── War duress: throttle the budget while the realm is fighting ────
@@ -944,14 +944,14 @@ export function updatePolities(world) {
 
     // Variable taxation: war + insolvency push the rate up toward a cap. Recent
     // conquests bank war-weariness relief (_spoils, in armies.js) that fades.
-    const targetTax = Math.min(TAX_MAX, TAX_BASE + TAX_WAR * warLevel + TAX_BANKRUPT * (1 - solvency));
+    const targetTax = Math.min(T.TAX_MAX, TAX_BASE + TAX_WAR * warLevel + TAX_BANKRUPT * (1 - solvency));
     gov._taxRate = (gov._taxRate ?? TAX_BASE) + (targetTax - (gov._taxRate ?? TAX_BASE)) * TAX_DRIFT;
     gov._spoils = (gov._spoils || 0) * SPOILS_DECAY;
     c._taxRate = gov._taxRate;
 
     // ── Popular unrest: hardship piles up; peace + plenty + light taxes cool it.
     // At the top it boils over into a rebellion (rebel(), fired after secession).
-    const taxOver = Math.max(0, (gov._taxRate - TAX_BASE) / (TAX_MAX - TAX_BASE));
+    const taxOver = Math.max(0, (gov._taxRate - TAX_BASE) / (T.TAX_MAX - TAX_BASE));
     const warFat = Math.min(1, warLevel * 0.4) * (1 - Math.min(1, gov._spoils || 0));
     const rebelSeeds = [];
     for (const s of c.members) {
@@ -962,13 +962,13 @@ export function updatePolities(world) {
       const conscript = Math.min(1, ((s.army || 0) / Math.max(1, s.people)) / CONSCRIPT_REF);
       const gH = hunger * HUNGER_W, gC = conscript * CONSCRIPT_W, gW = warFat * WARFAT_W, gT = taxOver * OVERTAX_W;
       const gS = shockUnrest(world, s);   // direct famine/plague distress (shocks.js)
-      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS) * UNREST_GAIN - UNREST_RELIEF));
+      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS) * T.UNREST_GAIN - UNREST_RELIEF));
       s._unrestCause = s._plagueActive ? "plague"
                      : gH >= gC && gH >= gW && gH >= gT ? "famine"
                      : gT >= gC && gT >= gW ? "taxes"
                      : gW >= gC ? "war fatigue" : "conscription";
       if (s.unrest > 0.5) s.loyalty = Math.max(0, (s.loyalty ?? 1) - UNREST_LOYALTY_BLEED * (s.unrest - 0.5));  // anger erodes loyalty
-      const pacified = world.step - (s._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       if (s.unrest >= 1 && (s.id === c.capitalId || !pacified)) rebelSeeds.push(s);
     }
 
@@ -994,7 +994,7 @@ export function updatePolities(world) {
       let d = eucl + 0.5 * surcharge + riverToll;
       d /= holdPull(s);                                               // value cling
       const coerce  = Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
-      const sizeMul = 1 + SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
+      const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
       const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
       const load = (d / range) * sizeMul * recMul / coerce;
       s._adminLoad = load;            // for the info panel
@@ -1014,7 +1014,7 @@ export function updatePolities(world) {
     for (const { s, load } of loads) {
       cum += load;
       const covered  = cum <= capacity;
-      const pacified = world.step - (s._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
       if (pacified || infant) {
         // Held by garrison / colonial project: nudge loyalty toward its base
@@ -1027,7 +1027,7 @@ export function updatePolities(world) {
         s.loyalty = Math.min(1, (s.loyalty ?? 1) + LOYAL_RECOVER * (1 - (s.loyalty ?? 1)));
       } else {
         const over = (cum - capacity) / capacity;          // how deep past the budget
-        s.loyalty = Math.max(0, (s.loyalty ?? 1) - LOYAL_DECAY * (1 + over));
+        s.loyalty = Math.max(0, (s.loyalty ?? 1) - T.LOYAL_DECAY * (1 + over));
         if (s.loyalty <= 0) seeds.push(s);                 // collapsed — defer (revolt is contagious)
       }
     }
@@ -1044,7 +1044,7 @@ export function updatePolities(world) {
     for (const s of c.members) {
       if (s.countryId !== c.id || s.id === c.capitalId) continue;     // gone / is the throne
       const seat = (s.tier | 0) >= 2 || (s._vassalCount || 0) > 0;    // must command a region
-      const pacified = world.step - (s._conqueredAt ?? -Infinity) < CONQUEST_GRACE;
+      const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
       const ratio = settlementPower(s) / capPower;                    // strength vs the throne
       // Same blended distance as the hold load — a governor across a
@@ -1191,7 +1191,7 @@ function absorbSubCityCountries(world, countries) {
   for (const [settId, scoreMap] of perSett) {
     const m = byId.get(settId);
     if (!m || m.mode !== "settled") continue;
-    if (world.step - (m._conqueredAt ?? -Infinity) < CONQUEST_GRACE) continue;
+    if (world.step - (m._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE) continue;
     let bestId = -1, bestScore = -1;
     for (const [cid, score] of scoreMap) if (score > bestScore) { bestScore = score; bestId = cid; }
     if (bestId < 0) continue;

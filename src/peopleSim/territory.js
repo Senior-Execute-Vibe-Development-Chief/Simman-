@@ -20,6 +20,7 @@
 // edge (you tax/own the whole territory even if you don't farm it).
 
 import { localEdgeCost } from "./transport.js";
+import { T } from "./tuning.js";
 
 // Reach budget, in transport-cost units (a plain tile = 1.0). Pure
 // function of ORGANIZATION — the centre's willingness/ability to
@@ -44,10 +45,10 @@ import { localEdgeCost } from "./transport.js";
 // Across mountains the SAME budget reaches fewer tiles; with navy it
 // can hop across coastal water at ~3 cost per tile and reach further.
 const TERRITORY_BASE = 5;
-const ORG_REACH = 40;
+// ORG_REACH -> runtime lever (tuning.js T.ORG_REACH)
 export function reachBudget(s) {
   const k = s.knowledge || {};
-  return TERRITORY_BASE + (k.organization || 0) * ORG_REACH;
+  return TERRITORY_BASE + (k.organization || 0) * T.ORG_REACH;
 }
 
 // Per-tile food weight by distance: 1 next to the centre, tailing off with
