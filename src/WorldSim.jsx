@@ -3531,17 +3531,20 @@ console.warn(`[SLOW ${ter.stepCount}] ${_stepTotal.toFixed(0)}ms | expand:${ter.
 else if(_stepTotal>5){console.warn(`[SLOW step ${ter.stepCount}] ${_stepTotal.toFixed(1)}ms frontier:${nfl.length} tribes:${tribeSizes.filter(s=>s>0).length} settled:${ter.settled}`);}
 return ter;}
 
-// ── Non-linear time: starts at 3000 BC, accelerates into modernity ──
-// ~1000 steps spans 2000 BC → 2025 AD (4025 years)
-// Early game (step 0-200): ~7 yr/step (2000 BC → 600 BC: Bronze → Iron Age)
-// Mid game (step 200-500): ~5 yr/step (600 BC → 900 AD: Classical → Medieval)
-// Late game (step 500-800): ~2.5 yr/step (900 AD → 1650 AD: Medieval → Early Modern)
-// Modern (step 800-1000): ~1.9 yr/step (1650 → 2025 AD)
+// ── Non-linear time: starts at 2000 BC, accelerates into modernity ──
+// The peopleSim step is far finer-grained than the legacy tribe sim this
+// curve was first written for, so steps are mapped onto the original
+// year-curve through YEAR_STEP_SCALE (≈ peopleSim steps per legacy
+// "year-step"). A mature, roughly-industrial world lands near ys≈1000
+// (≈2025 AD); past that we clamp to the present rather than invent a future.
+// Tune YEAR_STEP_SCALE to stretch / compress how fast the clock runs.
+const YEAR_STEP_SCALE = 18;
 function stepToYear(step){
-if(step<=200)return 2000-step*7;// 2000 BC → 600 BC
-if(step<=500)return 600-(step-200)*5;// 600 BC → 900 AD (negative = AD)
-if(step<=800)return -(900+(step-500)*2.5);// 900 AD → 1650 AD
-return -(1650+(step-800)*1.875);// 1650 AD → 2025 AD
+const ys=Math.min(1000, step/YEAR_STEP_SCALE);   // clamp at the present day
+if(ys<=200)return 2000-ys*7;// 2000 BC → 600 BC
+if(ys<=500)return 600-(ys-200)*5;// 600 BC → 900 AD (negative = AD)
+if(ys<=800)return -(900+(ys-500)*2.5);// 900 AD → 1650 AD
+return -(1650+(ys-800)*1.875);// 1650 AD → 2025 AD
 }
 function yearStr(step){const y=stepToYear(step);
 return y>0?`${Math.round(y)} BC`:`${Math.round(Math.abs(y))} AD`;}
@@ -5913,7 +5916,9 @@ const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
 
 // ── Aggregate world stats for the chronicle ribbon ──
 const _ter=terRef.current;
-const _step=_ter?_ter.stepCount:0;
+// The live clock is the peopleSim step (the legacy tribe sim is disabled, so
+// _ter.stepCount stays 0 — that's what froze the year at 2000 BC).
+const _step=(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
 const _ys=yearStr(_step);
 let _aAg=0,_aMt=0,_aNv=0,_aOg=0,_aliveK=0;
 if(_ter&&_ter.tribes){

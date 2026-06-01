@@ -1195,64 +1195,99 @@ function absorbSubCityCountries(world, countries) {
     if (m.history) m.history.push({ step: world.step, type: "absorbed", into: bestId });
   }
 
-  // ── Enclave fragment absorption ─────────────────────────────────────
-  // A sub-city settlement inside a LARGER country whose home tile is
-  // fully surrounded by foreign territory (and which has no port → no sea
-  // resupply) is a stranded fragment — a village whose parent capital is
-  // unreachable. Real example: a one-village exclave of country A
-  // marooned inside country B. The settlement flips to the surrounding
-  // power. (City-bearing enclaves stay — they have the apparatus to hold
-  // out: West Berlin, Vatican, Llívia.)
-  for (const c of countries.values()) {
-    for (const m of c.members) {
-      if (m.mode !== "settled") continue;
-      if ((m.tier | 0) >= 2) continue;            // cities can hold out as enclaves
-      if (m._isPort) continue;                    // sea resupply → real enclave
-      if (m.id === c.capitalId) continue;
-      if (world.step - (m._conqueredAt ?? -Infinity) < CONQUEST_GRACE) continue;
-      // Check the 8 neighbours of the settlement's home tile.
-      const ti = (m.pos.y | 0) * tw + (m.pos.x | 0);
+  // ── Enclave elimination ─────────────────────────────────────────────
+  // Nothing should sit fully enclosed inside one country: not a marooned
+  // fragment of another realm, not a whole engulfed country, and not a pocket
+  // of wild land. Any connected region of NON-{surrounder} territory (and the
+  // unclaimed land threaded through it) that touches only ONE country and the
+  // map edge nowhere is instantly claimed by that surrounding country.
+  // (Coastlines count as an outside border — a region touching sea is NOT
+  // enclosed, so islands and ports keep their independence: Vatican-style
+  // landlocked holdouts are absorbed, West-Berlin-by-sea-resupply are not.)
+  eliminateEnclaves(world, countries);
+}
+
+// Flood-fill the whole map once. Each maximal region NOT owned by a given
+// country, if it borders exactly one country and never the sea/edge, is an
+// enclave wholly inside that country and gets claimed. Land settlements in the
+// region flip to the surrounder; wild tiles are stamped to it directly.
+function eliminateEnclaves(world, countries) {
+  const owner = world._territoryOwner, byId = world._byId;
+  if (!owner || !byId) return;
+  const { tw, th, N, elev } = world;
+  // tile → countryId of its owner (-1 wild land, -2 sea/empty).
+  const tileCountry = (ti) => {
+    if (elev[ti] <= 0) return -2;                 // sea
+    const oid = owner[ti];
+    if (oid < 0) return -1;                        // wild land
+    const s = byId.get(oid);
+    return s ? s.countryId : -1;
+  };
+  const visited = new Uint8Array(N);
+  const region = [];                               // reused per flood
+  const q = [];
+  for (let start = 0; start < N; start++) {
+    if (visited[start]) continue;
+    const surrounder = tileCountry(start);
+    visited[start] = 1;
+    // We flood the COMPLEMENT of each country: skip tiles that belong to a
+    // country (they're flooded as part of detecting OTHER regions' borders).
+    // Seed only on wild land or a foreign-country tile; pure-country tiles are
+    // walls we discover from the region side.
+    // Flood the maximal connected region of "everything that is NOT exactly
+    // one particular surrounding country". To keep it simple and correct we
+    // flood by EQUAL tileCountry value across {wild, sea, or a given country}.
+    region.length = 0; q.length = 0;
+    q.push(start); region.push(start);
+    let touchesEdge = false;
+    const borderCountries = new Set();
+    const selfCC = surrounder;                     // the region's own classification
+    while (q.length) {
+      const ti = q.pop();
       const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      if (ty === 0 || ty === th - 1) touchesEdge = true;   // map top/bottom = open border
       const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
-      const yu = ty - 1, yd = ty + 1;
-      const cells = [
-        ty * tw + xm, ty * tw + xp,
-        yu >= 0 ? yu * tw + tx : -1, yd < th ? yd * tw + tx : -1,
-        yu >= 0 ? yu * tw + xm : -1, yu >= 0 ? yu * tw + xp : -1,
-        yd < th ? yd * tw + xm : -1, yd < th ? yd * tw + xp : -1,
-      ];
-      let ownCC = 0, foreignTouch = new Map();
-      for (let k = 0; k < 8; k++) {
-        const ni = cells[k]; if (ni < 0) continue;
-        const oid = owner[ni]; if (oid < 0) continue;
-        const ns2 = byId.get(oid); if (!ns2) continue;
-        if (ns2.countryId === c.id) { ownCC++; continue; }
-        const foreign = countries.get(ns2.countryId); if (!foreign) continue;
-        let foreignHasCity = false;
-        for (const fm of foreign.members) if ((fm.tier | 0) >= 2) { foreignHasCity = true; break; }
-        if (!foreignHasCity) continue;
-        // Same tech gate as the sub-city absorption: a low-organisation
-        // power can't administratively swallow even a stranded enclave.
-        const orgK = (foreign.capital.knowledge && foreign.capital.knowledge.organization) || 0;
-        if (orgK < ABSORB_ORG_MIN) continue;
-        const orgFactor = Math.min(1, (orgK - ABSORB_ORG_MIN) / (1 - ABSORB_ORG_MIN));
-        foreignTouch.set(ns2.countryId, (foreignTouch.get(ns2.countryId) || 0) + settlementPower(foreign.capital) * orgFactor);
+      const ns = [ty * tw + xm, ty * tw + xp,
+                  ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+      for (let k = 0; k < 4; k++) {
+        const ni = ns[k]; if (ni < 0) continue;
+        const ncc = tileCountry(ni);
+        if (ncc === selfCC) {
+          if (!visited[ni]) { visited[ni] = 1; q.push(ni); region.push(ni); }
+        } else if (ncc === -2) {
+          touchesEdge = true;                       // sea = open border
+        } else {
+          borderCountries.add(ncc);                 // a bounding country (or wild, -1)
+        }
       }
-      if (ownCC > 0) continue;                    // not actually marooned
-      if (foreignTouch.size === 0) continue;      // unclaimed land — let crystallisation/territory pass handle
-      let bestId = -1, bestScore = -1;
-      for (const [cid, score] of foreignTouch) if (score > bestScore) { bestScore = score; bestId = cid; }
-      if (bestId < 0) continue;
-      // Same per-pass probabilistic flip as the sub-city absorption —
-      // a stranded fragment takes time to give up.
-      const myPower = Math.max(1, settlementPower(m));
-      const prob = Math.min(ABSORB_PROB_MAX, (bestScore / myPower) * 0.04);
-      const r = ((m.id * 9301 + world.step * 49297 + 13) % 233280) / 233280;
-      if (r > prob) continue;
-      m.countryId = bestId;
-      m.loyalty = 0.6;
-      m._conqueredAt = world.step;
-      if (m.history) m.history.push({ step: world.step, type: "absorbed", into: bestId });
+    }
+    // An enclave is a region that (a) isn't itself a country we'd be dissolving
+    // into nothing improperly, (b) never touches sea or the map edge, and
+    // (c) is bounded by exactly ONE country. Wild land (-1) bordering it does
+    // NOT count as a bounding country, but the region must still be sealed.
+    if (touchesEdge) continue;
+    if (selfCC >= 0 && borderCountries.size === 0) continue;   // whole-map single country
+    // Remove the wild marker from bounders; we need exactly one real country.
+    borderCountries.delete(-1);
+    if (borderCountries.size !== 1) continue;       // open to >1 country or to none
+    const intoId = borderCountries.values().next().value;
+    if (intoId === selfCC) continue;                // region already that country
+    const into = countries.get(intoId);
+    if (!into) continue;
+    // Claim it: flip any settlements in the region, stamp wild tiles.
+    for (const ti of region) {
+      if (elev[ti] <= 0) continue;
+      const oid = owner[ti];
+      if (oid >= 0) {
+        const s = byId.get(oid);
+        if (s && s.countryId !== intoId) {
+          s.countryId = intoId;
+          s.loyalty = 0.6;
+          s._conqueredAt = world.step;
+          if (s.history) s.history.push({ step: world.step, type: "absorbed", into: intoId });
+        }
+      }
+      owner[ti] = into.capitalId;                   // wild / fragment tile → surrounder's land
     }
   }
 }
