@@ -27,6 +27,11 @@ const POLITY_INTERVAL  = 150;   // ticks between polity passes
 // society is the floor; chalcolithic and earlier are too primitive to
 // integrate a foreign realm administratively.
 const ABSORB_ORG_MIN   = 0.30;
+// A realm may only absorb a new province while its admin load is below this
+// fraction of its capacity — leaving slack so the freshly taken land lands
+// INSIDE the budget instead of instantly over-extending and seceding back
+// (the absorb↔secede oscillation that flipped whole swathes each pass).
+const ABSORB_HEADROOM  = 0.90;
 // Maximum per-polity-pass defection probability. Caps the rate at which
 // a sub-city settlement can flip to a touching foreign realm — even a
 // tiny village vs a massive cradle defects over multiple passes, never
@@ -1117,6 +1122,17 @@ export function updatePolities(world) {
   prunePersonalities(world, countries);
 }
 
+// Does this realm have administrative room for one more province? A realm
+// already drawing its full capacity (load ≥ capacity) would immediately
+// over-extend on anything it absorbed, secede it next pass, and oscillate.
+// We require a small slack so the new province lands inside the budget.
+function hasAbsorbHeadroom(c) {
+  if (!c) return false;
+  const cap = c._capacity, load = c._loadTotal;
+  if (cap == null || load == null) return true;        // no budget data yet → allow
+  return load < cap * ABSORB_HEADROOM;
+}
+
 function absorbSubCityCountries(world, countries) {
   const owner = world._territoryOwner, byId = world._byId;
   if (!owner || !byId) return;
@@ -1179,6 +1195,12 @@ function absorbSubCityCountries(world, countries) {
     let bestId = -1, bestScore = -1;
     for (const [cid, score] of scoreMap) if (score > bestScore) { bestScore = score; bestId = cid; }
     if (bestId < 0) continue;
+    // Don't absorb into a realm that can't AFFORD the new province: if the
+    // absorber is already at/over its administrative budget, the freshly
+    // taken village would be over-extended and secede again next pass — the
+    // absorb↔secede oscillation that flips whole swathes back and forth.
+    // Only pull in what the surrounder has the spare capacity to hold.
+    if (!hasAbsorbHeadroom(countries.get(bestId))) continue;
     const myPower = Math.max(1, settlementPower(m));
     // Defection chance per polity pass — caps at ABSORB_PROB_MAX so even
     // a tiny village vs a huge cradle defects gradually (~10 passes to
