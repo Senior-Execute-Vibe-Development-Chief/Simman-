@@ -1,30 +1,33 @@
-// ── National claim (the rendered country borders) ────────────────────
+// ── National claim: a PROGRESSIVE, tile-by-tile border ───────────────
 //
-// A second, render-facing territory pass that draws the political borders the
-// way the Transport-Test overlay did: smooth, terrain-following, capital/
-// country-centric regions — instead of the blobby union of per-settlement food
-// patches that owner[] produces.
+// The rendered country borders. Two parts:
 //
-// PHASE 1 (this is it): borders only. The SIM still runs on the settlement
-// territory (territory.js owner[]) for food / conquest / secession; this just
-// produces world._countryClaim (countryId per tile) for the renderer. Because
-// it is keyed off each settlement's CURRENT countryId, it tracks the real
-// political map automatically — conquer a city and its claim flips with it.
+//   computeClaimTarget(world) → world._claimTarget
+//     Where each tile's border SHOULD be right now: a fresh cost-Voronoi by
+//     COUNTRY (nearest settlement by terrain reach — roads ignored — within a
+//     reach budget; tiles beyond everyone's reach stay -1 = wilderness).
 //
-// It differs from owner[] in exactly two ways, which is what makes it look
-// better: (1) a much larger reach (CLAIM_MULT × the settlement's reach), so a
-// realm projects sovereignty over its frontier hinterland, not just its farmed
-// core; (2) same-country settlements COOPERATE (no internal walls) so a country
-// reads as one clean region. Persistent + multi-source, same as owner[], so it
-// is stable (no per-frame reshuffle → no flicker).
+//   relaxClaim(world) → world._countryClaim
+//     The ACTUAL drawn border, which crawls one ring toward the target each
+//     call. Every settlement's home tile flies its current flag (a foothold),
+//     and a tile only flips to its target country once that country's claim has
+//     reached an adjacent tile. So land NEVER teleports: when a city is taken
+//     or a town secedes, the target flips instantly but the LAND is re-claimed
+//     tile by tile, emanating outward from the settlement, over many ticks.
+//     (This replaces the old instant "whole territory re-colours when a
+//     settlement changes countryId" behaviour.)
+//
+// Render-only: nothing in the sim depends on _countryClaim.
 
 import { localEdgeCost } from "./transport.js";
 import { reachBudget } from "./territory.js";
 
-// National claim reaches this many × a settlement's food-territory reach. >1 so
-// borders enclose frontier hinterland between towns; tune for coverage (higher
-// = countries tile more of the map, less unclaimed wilderness).
+// National claim reaches this many × a settlement's food reach (terrain cost,
+// roads ignored). The target Voronoi extent; wilderness lies beyond it.
 const CLAIM_MULT = 1.1;
+// Rings the drawn claim advances toward the target per relax call. 1 = slowest/
+// smoothest crawl. index.js calls relaxClaim every RELAX_INTERVAL ticks.
+const RINGS_PER_RELAX = 1;
 
 class MinHeap {
   constructor(cap = 4096) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap; }
@@ -34,17 +37,19 @@ class MinHeap {
 }
 const SQRT2 = Math.SQRT2;
 
-export function computeCountryClaim(world) {
+// Fresh cost-Voronoi by country (the IDEAL borders). Stores settlement id per
+// tile during the search (for per-settlement budgets), then derives country.
+export function computeClaimTarget(world) {
   const { N, tw, th, elev } = world;
-  // _claimSett (settlement id per tile, persistent) is the working substrate;
-  // _countryClaim (countryId per tile) is the render output derived from it.
-  let sett = world._claimSett;
-  if (!sett || sett.length !== N) { sett = world._claimSett = new Int32Array(N); sett.fill(-1); }
-  let cost = world._claimCost;
-  if (!cost || cost.length !== N) cost = world._claimCost = new Float32Array(N);
-  let claim = world._countryClaim;
-  if (!claim || claim.length !== N) claim = world._countryClaim = new Int32Array(N);
+  let target = world._claimTarget;
+  if (!target || target.length !== N) target = world._claimTarget = new Int32Array(N);
+  target.fill(-1);
+  let cost = world._claimTargetCost;
+  if (!cost || cost.length !== N) cost = world._claimTargetCost = new Float32Array(N);
   cost.fill(Infinity);
+  let sid = world._claimTargetSid;
+  if (!sid || sid.length !== N) sid = world._claimTargetSid = new Int32Array(N);
+  sid.fill(-1);
 
   const byId = new Map(), budget = new Map(), knOf = new Map();
   for (const s of world.settlements) {
@@ -53,26 +58,15 @@ export function computeCountryClaim(world) {
     budget.set(s.id, reachBudget(s) * CLAIM_MULT);
     knOf.set(s.id, s.knowledge || {});
   }
-
-  // Persistence: release tiles whose settlement is gone, and any water.
-  for (let ti = 0; ti < N; ti++) {
-    const o = sett[ti];
-    if (o >= 0 && (!byId.has(o) || elev[ti] <= 0)) sett[ti] = -1;
-  }
-
   const heap = new MinHeap();
   for (const s of byId.values()) {
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
-    if (elev[ti] > 0) { sett[ti] = s.id; cost[ti] = 0; heap.push(ti, 0); }
+    if (elev[ti] > 0) { sid[ti] = s.id; cost[ti] = 0; heap.push(ti, 0); }
   }
-  const base = sett.slice();   // pre-pass snapshot for the wall test
-
   while (heap.n > 0) {
     const { ti, d } = heap.popMin();
     if (d > cost[ti]) continue;
-    const oid = sett[ti];
-    const owner = byId.get(oid); if (!owner) continue;
-    const oc = owner.countryId;
+    const oid = sid[ti];
     const bud = budget.get(oid) || 0;
     const kn = knOf.get(oid);
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
@@ -87,30 +81,56 @@ export function computeCountryClaim(world) {
     const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
     for (let k = 0; k < 8; k++) {
       const ni = ns[k]; if (ni < 0) continue;
-      const lk = base[ni];
-      let sibling = false;
-      if (lk >= 0 && lk !== oid) {
-        const ls = byId.get(lk);
-        if (!ls || ls.countryId !== oc) continue;   // another country's land = wall
-        sibling = true;                              // same-country: flow through, don't seize
-      }
-      const c = localEdgeCost(world, ti, ni, kn, true);  // reach ignores roads
+      const c = localEdgeCost(world, ti, ni, kn, true);   // reach ignores roads
       if (c === Infinity) continue;
       const nd = d + c * mul[k];
       if (nd > bud) continue;
-      if (nd < cost[ni]) {
-        cost[ni] = nd;
-        if (!sibling && lk < 0 && elev[ni] > 0) sett[ni] = oid;   // claim unclaimed land
-        heap.push(ni, nd);
-      }
+      if (nd < cost[ni]) { cost[ni] = nd; if (elev[ni] > 0) sid[ni] = oid; heap.push(ni, nd); }
     }
   }
-
-  // Derive the render map: countryId per tile (-1 = unclaimed / water).
   for (let ti = 0; ti < N; ti++) {
-    const o = sett[ti];
+    const o = sid[ti];
     const s = o >= 0 ? byId.get(o) : null;
-    claim[ti] = s ? s.countryId : -1;
+    target[ti] = s ? s.countryId : -1;
+  }
+  return target;
+}
+
+// Crawl the drawn claim one (or RINGS_PER_RELAX) ring toward the target. A tile
+// only changes hands once the gaining country (or wilderness) already holds a
+// neighbour — so borders advance/retreat tile by tile, never jumping.
+export function relaxClaim(world) {
+  const { N, tw, th, elev } = world;
+  let claim = world._countryClaim;
+  if (!claim || claim.length !== N) { claim = world._countryClaim = new Int32Array(N); claim.fill(-1); }
+  const target = world._claimTarget;
+  if (!target) return claim;
+
+  // Every settlement's home tile flies its CURRENT flag — the foothold a fresh
+  // (e.g. just-seceded) country needs for its claim to spread from.
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    if (elev[ti] > 0) claim[ti] = s.countryId;
+  }
+
+  for (let r = 0; r < RINGS_PER_RELAX; r++) {
+    const flips = [];
+    for (let ti = 0; ti < N; ti++) {
+      if (elev[ti] <= 0) { if (claim[ti] >= 0) claim[ti] = -1; continue; }  // water is never claimed
+      const tg = target[ti];
+      if (claim[ti] === tg) continue;
+      // Flip toward the target only if the target country (or wilderness, -1)
+      // already holds an orthogonal neighbour — i.e. its front has reached here.
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+      const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+      let adjacent = false;
+      for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni < 0) continue; if (claim[ni] === tg) { adjacent = true; break; } }
+      if (adjacent) flips.push(ti);
+    }
+    if (flips.length === 0) break;
+    for (const ti of flips) claim[ti] = target[ti];
   }
   return claim;
 }

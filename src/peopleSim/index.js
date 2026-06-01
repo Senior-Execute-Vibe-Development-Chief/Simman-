@@ -13,7 +13,11 @@ import { updateSettlement } from "./settlement.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
-import { computeCountryClaim } from "./countryClaim.js";
+import { computeClaimTarget, relaxClaim } from "./countryClaim.js";
+
+// How often the drawn national claim crawls one ring toward its target. Small
+// so borders visibly creep tile-by-tile rather than snapping each territory pass.
+const CLAIM_RELAX_INTERVAL = 12;
 import { updatePolities } from "./conquest.js";
 import { musterArmies, advanceFronts, moveArmies, MUSTER_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
@@ -53,8 +57,12 @@ export function stepPeopleSim(world, n = 1) {
     // reaches cheapest, and its food / resources are tallied from it.
     if (world.step === 1 || world.step % T.TERRITORY_INTERVAL === 0) {
       computeTerritory(world);
-      computeCountryClaim(world);   // render-facing national borders (Phase 1: borders only)
+      computeClaimTarget(world);    // where the national borders SHOULD be (cost-Voronoi)
     }
+    // The drawn border CRAWLS toward that target a ring at a time, so land
+    // exchanges (conquest / secession / absorption) play out tile-by-tile over
+    // ticks instead of teleporting (see countryClaim.js relaxClaim).
+    if (world.step === 1 || world.step % CLAIM_RELAX_INTERVAL === 0) relaxClaim(world);
     mark("territory");
     for (let i = 0; i < world.settlements.length; i++) {
       updateSettlement(world, world.settlements[i]);
