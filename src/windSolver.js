@@ -11,11 +11,6 @@
 //   - Continental thermal lows that pull wind onshore (monsoons)
 // ══════════════════════════════════════════════════════════════════
 
-import { initGPUWindSolver, solveWindGPU } from './gpuWindSolver.js';
-
-// GPU solver disabled — readPixels gl.RG on RG32F framebuffer not supported
-// on all platforms. CPU path with pre-allocated buffers is used instead.
-let _gpuSolver = null;
 
 export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const p = (k, d) => params[k] !== undefined ? params[k] : d;
@@ -283,33 +278,13 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
     }
   }
 
-  // ── Iterative refinement ──
-  // Try GPU acceleration first (10-50x faster for 500 iterations)
-  let usedGPU = false;
-  if (_gpuSolver === undefined) {
-    try {
-      _gpuSolver = initGPUWindSolver();
-      if (_gpuSolver) console.log('[Wind] GPU solver initialized');
-      else console.log('[Wind] GPU not available, using CPU');
-    } catch (e) { _gpuSolver = null; }
-  }
-  if (_gpuSolver) {
-    try {
-      const t0 = performance.now();
-      const gpuResult = solveWindGPU(_gpuSolver, wW, wH, windX, windY, pressure, drag, wElev, {
-        windSolverIter: _solverIter, coriolisStrength: _coriolisStr
-      });
-      // Copy GPU results back
-      windX.set(gpuResult.windX);
-      windY.set(gpuResult.windY);
-      usedGPU = true;
-      console.log(`[Wind] GPU solver: ${(performance.now()-t0).toFixed(0)}ms (${_solverIter} iterations)`);
-    } catch (e) {
-      console.warn('[Wind] GPU solver failed, falling back to CPU:', e.message);
-      _gpuSolver = null;
-    }
-  }
-
+  // ── Iterative refinement (CPU) ──
+  // A GPU path once sat here, but its init guard (`_gpuSolver === undefined`)
+  // could never fire (the var was initialised to null) AND readPixels on an
+  // RG32F framebuffer wasn't supported across platforms — so the CPU branch ran
+  // every time. Removed as dead code (gpuWindSolver.js deleted); the always-true
+  // `if (!usedGPU)` wrapper is kept to bound the CPU solver's scratch buffers.
+  const usedGPU = false;
   if (!usedGPU) {
   // CPU fallback
   const dt = 0.35;
