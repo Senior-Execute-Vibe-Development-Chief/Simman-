@@ -171,7 +171,17 @@ function buildSnapshot() {
   snapCount++;
   const sendStatic = !staticSent || (snapCount % 6 === 0);
   staticSent = true;
-  const owner = sendStatic && world._territoryOwner ? world._territoryOwner.slice() : null;
+  let owner = sendStatic && world._territoryOwner ? world._territoryOwner.slice() : null;
+  if (owner) {
+    // Drop tiles still owned by a settlement that has DIED but whose territory
+    // the sim hasn't recomputed yet (computeTerritory releases them, but only
+    // every TERRITORY_INTERVAL ticks, and we resend owner only every 6 snaps).
+    // Without this the map renders "ghost" borders/colour fragments left behind
+    // by dead settlements — the stray bits/outlines floating on the map.
+    const settled = new Set();
+    for (const s of world.settlements) if (s.mode === "settled") settled.add(s.id);
+    for (let i = 0; i < owner.length; i++) { const o = owner[i]; if (o >= 0 && !settled.has(o)) owner[i] = -1; }
+  }
   const roadQuality = sendStatic && world.roadQuality ? world.roadQuality.slice() : null;
   const roadFlow = world.roadFlow ? world.roadFlow.slice() : null;
 
