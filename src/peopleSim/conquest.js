@@ -36,11 +36,12 @@ import { T } from "./tuning.js";
 // INSIDE the budget instead of instantly over-extending and seceding back
 // (the absorb↔secede oscillation that flipped whole swathes each pass).
 const ABSORB_HEADROOM  = 0.90;
-// A realm's whole country must out-power a neighbour's whole country by this
-// factor before it can administratively absorb that neighbour's frontier
-// settlements (absorbWeakNeighbors). Hysteresis: only clearly-minor neighbours
-// erode, so two comparable empires hold a stable border instead of flip-flopping.
-const ABSORB_DOMINANCE = 1.3;
+// A realm's whole country must out-power a neighbour's whole country by
+// T.ABSORB_DOMINANCE before it can administratively absorb that neighbour's
+// frontier settlements (absorbWeakNeighbors). Hysteresis: only clearly-minor
+// neighbours erode, so comparable empires hold a stable border, not flip-flop.
+// Down = aggressive consolidation (fewer/larger nations); up = multipolar.
+// (Runtime lever — tuning.js T.ABSORB_DOMINANCE.)
 // A landlocked territory fragment hemmed in on at least this fraction of its
 // border by a SINGLE realm is treated as enclosed-inside-it and ceded to that
 // realm (eliminateEnclaves) — cleaning up the marooned "bits stuck inside
@@ -161,11 +162,10 @@ const LOYAL_RECOVER = 0.06;  // per pass: covered provinces climb toward full lo
 const OVER_DECAY_CAP = 1.0;  // max value of the over-extension multiplier term
 // How much the capital's ORGANIZATION slows an over-budget province's loyalty
 // bleed (administrative glue: records, garrisons, integrated economy, roads).
-// At org=1 a province bleeds at (1 − this) of the base rate, so a high-org
-// empire holds an over-stretched frontier for many passes — a slow imperial
-// overstretch — where a chiefdom shatters fast. Keep < 1 so even an advanced
-// empire eventually sheds what it truly can't afford (great powers still fall).
-const LOYAL_ORG_HOLD = 0.7;
+// At org=1 a province bleeds at (1 − T.LOYAL_ORG_HOLD) of the base rate. THE
+// empire-lifespan dial: low = even advanced empires fragment fast (short-lived
+// empires, churny map); high → near-immortal great powers. (Runtime lever —
+// tuning.js T.LOYAL_ORG_HOLD.)
 
 // ── Contagious secession (amplifier) ──────────────────────────────────
 // A revolt is regional, not solitary: when a province's loyalty collapses,
@@ -206,7 +206,7 @@ const SIEGE_WINDOW        = 300;   // ticks the siege/war throttle lingers after
 // primitive realm still fragments under stress. (Keep < 1 so even the most
 // advanced empire isn't perfectly war-proof — great powers still fall, just on
 // a slower, deliberate timescale rather than at every frontier wobble.)
-const DURESS_RESILIENCE  = 0.6;
+// (Runtime lever — tuning.js T.DURESS_RESILIENCE.)
 
 // ── Conquest momentum (the rise-and-shatter of the steppe empire) ─────
 // A realm on a winning streak coheres around the conquest itself: loot,
@@ -982,7 +982,7 @@ export function updatePolities(world) {
     // Organised states weather both war and insolvency far better — ease both
     // throttles toward 1 by the capital's org, so large high-org empires HOLD
     // under pressure instead of shattering at the first frontier war.
-    const resilience = 1 - capOrg * DURESS_RESILIENCE;
+    const resilience = 1 - capOrg * T.DURESS_RESILIENCE;
     duress       = 1 - (1 - duress)       * resilience;
     fiscalDuress = 1 - (1 - fiscalDuress) * resilience;
     // Conquest momentum: a winning streak (banked in armies.js) holds a far
@@ -1095,7 +1095,7 @@ export function updatePolities(world) {
         // frontier over many passes, a slow imperial overstretch, rather than
         // shattering wholesale the moment a war pushes it past budget). A
         // primitive realm (low org) has no such glue and fragments fast.
-        const orgHold = 1 - capOrg * LOYAL_ORG_HOLD;
+        const orgHold = 1 - capOrg * T.LOYAL_ORG_HOLD;
         s.loyalty = Math.max(0, (s.loyalty ?? 1) - T.LOYAL_DECAY * (1 + over) * orgHold);
         if (s.loyalty <= 0) seeds.push(s);                 // collapsed — defer (revolt is contagious)
       }
@@ -1266,7 +1266,7 @@ function absorbWeakNeighbors(world, countries) {
       const fOrg = (F.capital.knowledge && F.capital.knowledge.organization) || 0;
       if (fOrg < T.ABSORB_ORG_MIN) continue;
       if (myTier > tierCapForOrg(fOrg)) continue;            // too developed for F's statecraft
-      if ((countryPower.get(F.id) || 1) < myCountryPow * ABSORB_DOMINANCE) continue;  // not dominant enough
+      if ((countryPower.get(F.id) || 1) < myCountryPow * T.ABSORB_DOMINANCE) continue;  // not dominant enough
       const orgFactor = Math.min(1, (fOrg - T.ABSORB_ORG_MIN) / (1 - T.ABSORB_ORG_MIN));
       let perCc = perSett.get(m.id);
       if (!perCc) { perCc = new Map(); perSett.set(m.id, perCc); }
