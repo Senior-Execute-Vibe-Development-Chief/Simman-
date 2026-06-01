@@ -162,9 +162,10 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       // Bilinear sample from previous step (with X wrapping)
       let srcXw = ((srcX % mW) + mW) % mW; // wrap X
       const srcYc = Math.max(0, Math.min(mH - 1.001, srcY)); // clamp Y
-      const sx = Math.min(mW - 2, srcXw | 0);
+      const sx = srcXw | 0;                 // already wrapped to [0,mW-1]; clamping
+                                            // to mW-2 made fdx exceed 1 at the seam
       const sy = Math.min(mH - 2, srcYc | 0);
-      const fdx = srcXw - sx;
+      const fdx = srcXw - sx;               // now correctly in [0,1)
       const fdy = srcYc - sy;
       const sxr = (sx + 1) % mW;
       let upwind = (prev[sy * mW + sx] * (1 - fdx) + prev[sy * mW + sxr] * fdx) * (1 - fdy)
