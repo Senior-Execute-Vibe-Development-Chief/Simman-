@@ -2497,12 +2497,34 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
       octx.clearRect(0,0,CW,CH);
-      const owner=psw._territoryOwner;
-      if((L.tints||L.borders)&&owner){
+      // National territory tints + dotted borders. Prefer the SMOOTH national
+      // CLAIM (countryId per tile, peopleSim/countryClaim.js) — country-centric
+      // borders that follow terrain and enclose frontier hinterland; fall back
+      // to the per-settlement owner map only until the first claim arrives.
+      const owner=psw._territoryOwner, claimArr=psw._countryClaim;
+      if((L.tints||L.borders)&&claimArr){
+        const tw=psw.tw,th=psw.th,tintByCountry=new Map();
+        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
+        let lastFs=null;
+        for(let ti=0;ti<claimArr.length;ti++){
+          const cc=claimArr[ti];if(cc<0)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          if(L.tints){
+            let fs=tintByCountry.get(cc);
+            if(fs===undefined){const h=((cc*61)%360+360)%360;fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
+            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+            octx.fillRect(sx,sy,TR,TR);
+          }
+          if(!L.borders)continue;
+          const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
+          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(py<th-1){const dno=claimArr[ti+tw];
+            if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+        }
+        if(L.borders){octx.stroke();octx.setLineDash([]);}
+      } else if((L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
-        // Per-settlement-id lookups (small int ids) instead of Maps, and a
-        // single shared colour string per country so fillStyle is reassigned
-        // only when the country actually changes between adjacent tiles.
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
         const tintByCountry=new Map();
@@ -2511,8 +2533,6 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           if(t===undefined){const h=((s.countryId*61)%360+360)%360;t=`hsla(${h},50%,50%,0.32)`;tintByCountry.set(s.countryId,t);}
           tintById[s.id]=t; ctryById[s.id]=s.countryId;
         }}
-        // Single pass: tint fill + accumulate dotted national borders.
-        // Either layer can be off and the other is unaffected.
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
         for(let ti=0;ti<owner.length;ti++){
@@ -2532,30 +2552,6 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==oid&&ctryById[dno]!==co){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
-      }
-      // ── Capital-claim PROTOTYPE overlay ("Capital Claim" view) ───────────
-      // Parallel territory experiment: render the national claim projected from
-      // each CAPITAL (worker computeCountryClaim) tinted by country, with dotted
-      // borders where two countries' claims meet — so we can compare it live
-      // against the settlement-union borders before adopting it for real.
-      if(viewRef.current==="claim"&&psw._countryClaim){
-        const claim=psw._countryClaim,tw=psw.tw,th=psw.th,tintC=new Map();
-        octx.strokeStyle="rgba(10,10,10,0.9)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();
-        let lastFs=null;
-        for(let ti=0;ti<claim.length;ti++){
-          const cc=claim[ti];if(cc<0)continue;
-          let fs=tintC.get(cc);
-          if(fs===undefined){const h=((cc*61)%360+360)%360;fs=`hsla(${h},58%,50%,0.45)`;tintC.set(cc,fs);}
-          const py=(ti/tw)|0,px=ti-py*tw;
-          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-          octx.fillRect(sx,sy,TR,TR);
-          const ro=claim[py*tw+(px===tw-1?0:px+1)];
-          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
-          if(py<th-1){const dno=claim[ti+tw];
-            if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
-        }
-        octx.stroke();octx.setLineDash([]);
       }
       // Roads — thickness + alpha from current flow.
       if(L.roads&&psw.roadQuality&&psw.roadFlow){
@@ -3091,7 +3087,7 @@ const VIEW_MODES=[
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
   ["crop","Crop"],["crossing","Crossing"],["roads","Roads"],["money","Money"],
   ["resources","Resources"],["population","Pop"],["transport","Transport"],
-  ["transport-test","Trans Test"],["claim","Capital Claim"],["tribes","Tribes"]
+  ["transport-test","Trans Test"],["tribes","Tribes"]
 ];
 
 return(

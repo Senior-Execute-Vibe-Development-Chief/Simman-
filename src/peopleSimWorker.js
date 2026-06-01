@@ -15,7 +15,6 @@
 
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { getTradeProfile } from "./peopleSim/settlement.js";
-import { computeCountryClaim } from "./peopleSim/countryClaim.js";
 import { displayPByCountry } from "./peopleSim/inflation.js";
 import { applyTuning, resetTuning } from "./peopleSim/tuning.js";
 
@@ -196,13 +195,10 @@ function buildSnapshot() {
     tileComp = new Int32Array(N);
     for (let i = 0; i < N; i++) tileComp[i] = seen[i] === stamp ? tc[i] : -1;
   }
-  // Capital-claim PROTOTYPE overlay (parallel territory experiment) — compute +
-  // ship the per-tile country claim only while its debug view is open.
-  let countryClaim = null;
-  if (viewMode === "claim" && sendStatic && world.countries) {
-    const c = computeCountryClaim(world);
-    if (c) countryClaim = c.slice();
-  }
+  // National border claim — computed in the sim each territory pass
+  // (world._countryClaim); ship it with the static group like owner[]. The
+  // renderer draws country borders/tints from this (smoother than owner[]).
+  const countryClaim = sendStatic && world._countryClaim ? world._countryClaim.slice() : null;
 
   const transfer = [];
   if (owner) transfer.push(owner.buffer);

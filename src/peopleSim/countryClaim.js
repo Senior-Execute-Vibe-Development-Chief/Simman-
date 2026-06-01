@@ -1,28 +1,30 @@
-// ── PROTOTYPE: capital-projected national claim ──────────────────────
+// ── National claim (the rendered country borders) ────────────────────
 //
-// A PARALLEL, render-only experiment that computes country borders the way the
-// Transport-Test overlay does — a claim projected outward from each country's
-// CAPITAL — so we can eyeball it next to the live settlement-union borders
-// before deciding whether to make it the real territory model.
+// A second, render-facing territory pass that draws the political borders the
+// way the Transport-Test overlay did: smooth, terrain-following, capital/
+// country-centric regions — instead of the blobby union of per-settlement food
+// patches that owner[] produces.
 //
-// Key design point (the whole reason this exists): the Trans Test looks clean
-// because it's STATIC. A naive capital-Voronoi recomputed every frame would
-// shimmer as budgets/capitals shift. So this is PERSISTENT, exactly like
-// territory.js: a claimed tile sticks with its country (a wall to everyone
-// else) and is only released when that country dies; each capital only EXPANDS
-// into UNCLAIMED land, cheapest-cost-wins. That's what makes a live capital
-// claim stable instead of flickery.
+// PHASE 1 (this is it): borders only. The SIM still runs on the settlement
+// territory (territory.js owner[]) for food / conquest / secession; this just
+// produces world._countryClaim (countryId per tile) for the renderer. Because
+// it is keyed off each settlement's CURRENT countryId, it tracks the real
+// political map automatically — conquer a city and its claim flips with it.
 //
-// Nothing in the sim depends on this — it does not feed food, conquest, or
-// secession. It only fills world._countryClaim (countryId per tile) for the
-// "Capital Claim" debug view.
+// It differs from owner[] in exactly two ways, which is what makes it look
+// better: (1) a much larger reach (CLAIM_MULT × the settlement's reach), so a
+// realm projects sovereignty over its frontier hinterland, not just its farmed
+// core; (2) same-country settlements COOPERATE (no internal walls) so a country
+// reads as one clean region. Persistent + multi-source, same as owner[], so it
+// is stable (no per-frame reshuffle → no flicker).
 
 import { localEdgeCost } from "./transport.js";
+import { reachBudget } from "./territory.js";
 
-// National claim reaches this many × the capital's admin range (conquest.js
-// c.range). Generous so neighbours' claims actually meet (Voronoi borders)
-// rather than leaving big unclaimed gaps; tune by eye in the overlay.
-const CLAIM_REACH_MULT = 3.5;
+// National claim reaches this many × a settlement's food-territory reach. >1 so
+// borders enclose frontier hinterland between towns; tune for coverage (higher
+// = countries tile more of the map, less unclaimed wilderness).
+const CLAIM_MULT = 1.7;
 
 class MinHeap {
   constructor(cap = 4096) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap; }
@@ -30,49 +32,49 @@ class MinHeap {
   push(ti, d) { if (this.n >= this.cap) this._grow(); let i = this.n++; this.ti[i] = ti; this.d[i] = d; while (i > 0) { const p = (i - 1) >> 1; if (this.d[p] <= this.d[i]) break; const tt = this.ti[p], td = this.d[p]; this.ti[p] = this.ti[i]; this.d[p] = this.d[i]; this.ti[i] = tt; this.d[i] = td; i = p; } }
   popMin() { const ti = this.ti[0], d = this.d[0]; this.n--; if (this.n > 0) { this.ti[0] = this.ti[this.n]; this.d[0] = this.d[this.n]; let i = 0; for (;;) { const l = i * 2 + 1, r = i * 2 + 2; let b = i; if (l < this.n && this.d[l] < this.d[b]) b = l; if (r < this.n && this.d[r] < this.d[b]) b = r; if (b === i) break; const tt = this.ti[b], td = this.d[b]; this.ti[b] = this.ti[i]; this.d[b] = this.d[i]; this.ti[i] = tt; this.d[i] = td; i = b; } } return { ti, d }; }
 }
-
 const SQRT2 = Math.SQRT2;
 
 export function computeCountryClaim(world) {
   const { N, tw, th, elev } = world;
-  const countries = world.countries;
-  if (!countries || countries.size === 0) return null;
-
+  // _claimSett (settlement id per tile, persistent) is the working substrate;
+  // _countryClaim (countryId per tile) is the render output derived from it.
+  let sett = world._claimSett;
+  if (!sett || sett.length !== N) { sett = world._claimSett = new Int32Array(N); sett.fill(-1); }
+  let cost = world._claimCost;
+  if (!cost || cost.length !== N) cost = world._claimCost = new Float32Array(N);
   let claim = world._countryClaim;
-  if (!claim || claim.length !== N) { claim = world._countryClaim = new Int32Array(N); claim.fill(-1); }
-  let cost = world._countryClaimCost;
-  if (!cost || cost.length !== N) cost = world._countryClaimCost = new Float32Array(N);
-
-  // Release tiles whose country is gone, and any water (claims don't bleed
-  // into the ocean). This is the only way a claimed tile ever changes hands —
-  // everything else is sticky, which is what kills flicker.
-  for (let ti = 0; ti < N; ti++) {
-    const c = claim[ti];
-    if (c >= 0 && (!countries.has(c) || elev[ti] <= 0)) claim[ti] = -1;
-  }
-
-  // Per-country budget + capital knowledge; seed each capital.
-  const budget = new Map(), knOf = new Map();
+  if (!claim || claim.length !== N) claim = world._countryClaim = new Int32Array(N);
   cost.fill(Infinity);
-  const heap = new MinHeap();
-  for (const c of countries.values()) {
-    const cap = c.capital; if (!cap) continue;
-    budget.set(c.id, Math.max(8, (c.range || 8) * CLAIM_REACH_MULT));
-    knOf.set(c.id, cap.knowledge || {});
-    const ti = (cap.pos.y | 0) * tw + (cap.pos.x | 0);
-    if (elev[ti] > 0) { claim[ti] = c.id; cost[ti] = 0; heap.push(ti, 0); }
+
+  const byId = new Map(), budget = new Map(), knOf = new Map();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    byId.set(s.id, s);
+    budget.set(s.id, reachBudget(s) * CLAIM_MULT);
+    knOf.set(s.id, s.knowledge || {});
   }
 
-  // Snapshot pre-pass ownership: a tile already held by ANOTHER country is a
-  // wall (sticky persistence). Only tiles unclaimed in the snapshot are raced.
-  const base = claim.slice();
+  // Persistence: release tiles whose settlement is gone, and any water.
+  for (let ti = 0; ti < N; ti++) {
+    const o = sett[ti];
+    if (o >= 0 && (!byId.has(o) || elev[ti] <= 0)) sett[ti] = -1;
+  }
+
+  const heap = new MinHeap();
+  for (const s of byId.values()) {
+    const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    if (elev[ti] > 0) { sett[ti] = s.id; cost[ti] = 0; heap.push(ti, 0); }
+  }
+  const base = sett.slice();   // pre-pass snapshot for the wall test
 
   while (heap.n > 0) {
     const { ti, d } = heap.popMin();
     if (d > cost[ti]) continue;
-    const cid = claim[ti];
-    const bud = budget.get(cid) || 0;
-    const kn = knOf.get(cid);
+    const oid = sett[ti];
+    const owner = byId.get(oid); if (!owner) continue;
+    const oc = owner.countryId;
+    const bud = budget.get(oid) || 0;
+    const kn = knOf.get(oid);
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
     const yu = ty - 1, yd = ty + 1;
@@ -86,17 +88,29 @@ export function computeCountryClaim(world) {
     for (let k = 0; k < 8; k++) {
       const ni = ns[k]; if (ni < 0) continue;
       const lk = base[ni];
-      if (lk >= 0 && lk !== cid) continue;        // another country's land = wall
+      let sibling = false;
+      if (lk >= 0 && lk !== oid) {
+        const ls = byId.get(lk);
+        if (!ls || ls.countryId !== oc) continue;   // another country's land = wall
+        sibling = true;                              // same-country: flow through, don't seize
+      }
       const c = localEdgeCost(world, ti, ni, kn);
       if (c === Infinity) continue;
       const nd = d + c * mul[k];
-      if (nd > bud) continue;                      // beyond this capital's reach
+      if (nd > bud) continue;
       if (nd < cost[ni]) {
         cost[ni] = nd;
-        if (elev[ni] > 0) claim[ni] = cid;         // claim land; water propagates cost but isn't claimed
+        if (!sibling && lk < 0 && elev[ni] > 0) sett[ni] = oid;   // claim unclaimed land
         heap.push(ni, nd);
       }
     }
+  }
+
+  // Derive the render map: countryId per tile (-1 = unclaimed / water).
+  for (let ti = 0; ti < N; ti++) {
+    const o = sett[ti];
+    const s = o >= 0 ? byId.get(o) : null;
+    claim[ti] = s ? s.countryId : -1;
   }
   return claim;
 }
