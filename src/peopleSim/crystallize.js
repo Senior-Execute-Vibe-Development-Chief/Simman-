@@ -131,7 +131,7 @@ const COLONY_MIN_SOLVENCY     = 0.80;  // ...and only while it can still (mostly
 // packing towns into already-claimed land forever — ever more provinces → ever
 // more over-extension secession → the steadily-climbing nation count and the
 // late-game splotchy churn. With it, settlement density plateaus.
-const COLONY_SATURATION_REF   = 240;   // quadratic damper (1/(1+(alive/REF)^2)) — founding tapers to ~0 as the map fills, plateauing settlement density
+const COLONY_SATURATION_REF   = 110;   // quadratic damper (1/(1+(alive/REF)^2)) — founding tapers hard as the map fills, plateauing settlement density (~400) so the COUNTRY count stops tracking an ever-growing town population
 
 // Resource attraction. Each resource has a per-tier value (how
 // valuable it is to a civilisation at that tech level) and a
@@ -169,7 +169,7 @@ const RESOURCE_TIER_VALUE = {
 // Half-rate around N=300, third-rate around N=600. Settler colonisation
 // (which is parent-driven and intentional) is NOT subject to this — the
 // mother country can still push outward into the frontier.
-const CRYSTAL_SATURATION_REF = 240;   // quadratic (see saturationDamper): plateaus settlement density as the map saturates
+const CRYSTAL_SATURATION_REF = 110;   // quadratic (see saturationDamper): plateaus settlement density (~400) as the map saturates
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
