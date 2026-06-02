@@ -33,6 +33,19 @@ export function relaxClaim(world) {
   const target = world._countryOwner;   // country-primary territory (countryTerritory.js)
   if (!target) return claim;
 
+  // ── Instantaneous secession ────────────────────────────────────────
+  // A country flagged by conquest.js (snapClaim — a secession / rebellion /
+  // capital-fall successor) has its WHOLE Voronoi region painted at once this
+  // pass, rather than crawled out as a slow wave: a province that declares
+  // independence is its own that day. Cleared once its region has been painted
+  // (it may take a pass for the territory Voronoi to draw the new region).
+  const snap = world._claimSnap;
+  if (snap && snap.size) {
+    const seen = new Set();
+    for (let ti = 0; ti < N; ti++) { const t = target[ti]; if (t >= 0 && snap.has(t)) { claim[ti] = t; seen.add(t); } }
+    for (const id of seen) snap.delete(id);
+  }
+
   // ── Footholds ──────────────────────────────────────────────────────
   // A settlement plants its flag on its OWN home tile only when doing so is
   // NOT a transfer of land away from another country — otherwise the claim must

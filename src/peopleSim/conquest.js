@@ -407,6 +407,15 @@ function freshCountryId(c, bloc) {
   return -1;                                          // degenerate: nothing distinct to use
 }
 
+// Mark a freshly-seceded / successor country so its territory SNAPS into place
+// at once on the next render pass, rather than crawling out as a slow wave —
+// secession is a political event (the province is its own that day), unlike a
+// conquest front. Consumed + cleared in countryClaim.js relaxClaim.
+function snapClaim(world, id) {
+  if (id < 0) return;
+  (world._claimSnap || (world._claimSnap = new Set())).add(id);
+}
+
 // History rarely produced fully landlocked enclaves seceding from a still-
 // functioning empire — the seceding state has no allies it can reach, no
 // trade route the parent doesn't control, no escape route, so the parent
@@ -552,6 +561,7 @@ function secedeContagious(world, c, seeds) {
       continue;
     }
     inheritPersonality(world, c.id, newId);        // successor inherits parent temperament (with drift)
+    snapClaim(world, newId);                       // secession is instantaneous, not a slow wave
     for (const m of bloc) {
       m.countryId = newId;
       m.loyalty = m === seed ? 1 : 0.85;           // seed leads; followers enthusiastic
@@ -584,6 +594,7 @@ export function fragmentRealm(world, oldId, excludeId) {
   if (survivors.length === 1) {
     const s = survivors[0];
     inheritPersonality(world, oldId, s.id);       // lone successor keeps the old realm's temperament
+    snapClaim(world, s.id);                        // the realm shatters at once, not as a wave
     s.countryId = s.id; s.loyalty = 1; s._conqueredAt = world.step;
     if (s.history) s.history.push({ step: world.step, type: "successor", of: oldId });
     return;
@@ -602,7 +613,7 @@ export function fragmentRealm(world, oldId, excludeId) {
   }
   // Each successor realm inherits the dead empire's temperament (with drift),
   // so the Diadochi share their predecessor's character before diverging.
-  for (const cap of capitals) inheritPersonality(world, oldId, cap.id);
+  for (const cap of capitals) { inheritPersonality(world, oldId, cap.id); snapClaim(world, cap.id); }
   // Each survivor joins its nearest successor capital.
   for (const s of survivors) {
     let best = capitals[0], bd = Infinity;
@@ -658,6 +669,7 @@ function declareIndependence(world, c, seed) {
     return;
   }
   inheritPersonality(world, c.id, newId);        // the breakaway carries its parent's temperament (with drift)
+  snapClaim(world, newId);                        // instantaneous secession
   for (const m of bloc) {
     m.countryId = newId;
     m._conqueredAt = world.step;                 // the breakaway realm gets breathing room (grace)
@@ -726,6 +738,7 @@ function rebel(world, c, seeds) {
       }
       continue;
     }
+    snapClaim(world, newId);                   // a rebellion seizes its territory at once
     for (const m of bloc) {
       ravage(m, REBEL_POP, REBEL_WEALTH, REBEL_ARMY);
       m.countryId = newId;
