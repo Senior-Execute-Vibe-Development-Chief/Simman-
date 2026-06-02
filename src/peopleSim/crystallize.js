@@ -131,7 +131,7 @@ const COLONY_MIN_SOLVENCY     = 0.80;  // ...and only while it can still (mostly
 // packing towns into already-claimed land forever — ever more provinces → ever
 // more over-extension secession → the steadily-climbing nation count and the
 // late-game splotchy churn. With it, settlement density plateaus.
-const COLONY_SATURATION_REF   = 300;
+const COLONY_SATURATION_REF   = 240;   // quadratic damper (1/(1+(alive/REF)^2)) — founding tapers to ~0 as the map fills, plateauing settlement density
 
 // Resource attraction. Each resource has a per-tier value (how
 // valuable it is to a civilisation at that tech level) and a
@@ -169,7 +169,7 @@ const RESOURCE_TIER_VALUE = {
 // Half-rate around N=300, third-rate around N=600. Settler colonisation
 // (which is parent-driven and intentional) is NOT subject to this — the
 // mother country can still push outward into the frontier.
-const CRYSTAL_SATURATION_REF = 300;
+const CRYSTAL_SATURATION_REF = 240;   // quadratic (see saturationDamper): plateaus settlement density as the map saturates
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
@@ -187,7 +187,7 @@ export function maybeCrystallize(world) {
   // Crystallisation saturation: settlement-count-dependent damper.
   let _alive = 0;
   for (const s of world.settlements) if (s.mode === "settled") _alive++;
-  const saturationDamper = 1 / (1 + _alive / CRYSTAL_SATURATION_REF);
+  const saturationDamper = 1 / (1 + (_alive / CRYSTAL_SATURATION_REF) ** 2);
 
   // Compute per-sweep resource scarcity / value table once.
   const resScarcity = computeResourceScarcity(world);
@@ -502,7 +502,7 @@ function maybeSendSettlers(world) {
   // plateaus instead of climbing forever (see COLONY_SATURATION_REF).
   let _alive = 0;
   for (const s of world.settlements) if (s.mode === "settled") _alive++;
-  const colonySat = 1 / (1 + _alive / COLONY_SATURATION_REF);
+  const colonySat = 1 / (1 + (_alive / COLONY_SATURATION_REF) ** 2);
   for (const parent of world.settlements) {
     if (parent.mode !== "settled") continue;
     if (parent.people < COLONY_MIN_POP) continue;
