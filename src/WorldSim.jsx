@@ -15,7 +15,7 @@ import { applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js"
 import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
-import { IN_LABELS, OUT_LABELS } from "./peopleSim/money.js";
+import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./peopleSim/money.js";
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 import PeopleSimWorker from "./peopleSimWorker.js?worker&inline";
 
@@ -3319,7 +3319,17 @@ return(
   const wealth=Math.round(s.wealth||0);
   const available=Math.max(0,wealth-Math.round(getWealthReserve(s)));
   const profile=s._tradeProfile||getTradeProfile(s,peopleRef.current);
-  const produces=getExportBreakdown(s).filter(b=>b.label!=="Baseline").slice(0,3).map(b=>b.label.toLowerCase());
+  // Export composition (specific goods) — each good's value contribution to what
+  // this settlement makes for sale. The "goods sold" coin is earned in
+  // proportion to these shares, so we split that $/tick across the named goods.
+  const _xb=getExportBreakdown(s);
+  const _xbTot=_xb.reduce((t,b)=>t+b.value,0)||1;
+  const produces=_xb.filter(b=>b.label!=="Baseline").slice(0,3).map(b=>b.label.toLowerCase());
+  const _goodsRate=(s._mInRate&&s._mInRate[IN_GOODS])||0;
+  const goodsBreakdown=_goodsRate>0.005
+    ? _xb.map(b=>[b.label==="Baseline"?"Basic produce":b.label, _goodsRate*b.value/_xbTot])
+         .filter(x=>x[1]>0.005).sort((a,b)=>b[1]-a[1])
+    : [];
   // Smoothed net wealth change rate from the sim (the categorised in/out
   // breakdown below comes from s._mInRate / s._mOutRate).
   const wealthDelta=s._wealthDelta||0;
@@ -3634,7 +3644,19 @@ return(
               </div>
             );
           })()}
-          {produces.length>0&&(
+          {goodsBreakdown.length>0?(
+            <div style={{marginTop:4}}>
+              <div className="au-fade" style={{fontSize:9}}>Goods sold — by good ($/tick)</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 6px",fontSize:10,marginTop:1}}>
+                {goodsBreakdown.map(([l,v])=>(
+                  <Fragment key={"g"+l}>
+                    <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l}</span>
+                    <span style={{color:"#3a7"}}>+{v.toFixed(2)}</span>
+                  </Fragment>
+                ))}
+              </div>
+            </div>
+          ):produces.length>0&&(
             <div className="au-fade" style={{fontSize:9,marginTop:3}}>Produces: {produces.join(", ")}</div>
           )}
           {profile.length===0
