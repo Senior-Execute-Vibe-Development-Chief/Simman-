@@ -17,7 +17,6 @@ import { shockUnrest } from "./shocks.js";
 import { localPByCountry } from "./inflation.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, prunePersonalities, driftPersonality, expansionReachMul } from "./personality.js";
-import { circumscriptionOf } from "./countryTerritory.js";
 import { T } from "./tuning.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
@@ -158,7 +157,6 @@ const SEAT_BONUS_CAP = 6;    // total seat contribution is capped (admin has dim
 // old CAP_BASE / CAP_POP / CAP_ORG count-forcing dials.
 const CAP_K   = 2.6;
 const POW_REF = 380;
-const CIRC_EASE = 0.5;       // a fully-circumscribed province costs this much LESS to hold (Carneiro)
 const COERCE_CAP    = 2.5;   // a far-stronger capital coerces a province (caps the load cut)
 // SIZE_LOAD -> runtime lever (tuning.js T.SIZE_LOAD)
 const SIZE_REF      = 1000;  // population scale for the size term
@@ -1090,11 +1088,7 @@ export function updatePolities(world) {
       const coerce  = Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
       const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
       const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
-      // Circumscription (Carneiro): a province in bounded land (hemmed by sea /
-      // mountain / desert) is cheaper to hold — its people can't flee, so the
-      // centre dominates them; open-land provinces resist and cost full.
-      const circEase = 1 - CIRC_EASE * circumscriptionOf(world, s);
-      const load = (d / range) * sizeMul * recMul / coerce * circEase;
+      const load = (d / range) * sizeMul * recMul / coerce;
       s._adminLoad = load;            // for the info panel
       loads.push({ s, load });
     }

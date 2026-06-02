@@ -107,34 +107,6 @@ export function computeCountryTerritory(world) {
   return co;
 }
 
-// ── Circumscription (Carneiro) ───────────────────────────────────────
-// How BOUNDED a settlement's region is: the fraction of nearby tiles that are
-// barriers — sea, high mountains, or barren desert. High = a fertile pocket
-// hemmed in (a Nile/Mesopotamia/Greece-style core) where war losers can't flee,
-// so a state can form and dominate a trapped population. Low = open land where
-// people scatter and no state coheres. Cached (terrain is static, settlements
-// don't move). Used to gate state-founding and to ease coercion in bounded land.
-const CIRC_RADIUS   = 7;
-const CIRC_FOUND_MIN = 0.30;   // a town founds a state only where boundedness ≥ this (else dispersed/stateless)
-export function circumscriptionOf(world, s) {
-  if (s._circ !== undefined) return s._circ;
-  const { tw, th, elev, fert } = world;
-  const sx = s.pos.x | 0, sy = s.pos.y | 0;
-  let barrier = 0, total = 0;
-  const r2 = CIRC_RADIUS * CIRC_RADIUS;
-  for (let dy = -CIRC_RADIUS; dy <= CIRC_RADIUS; dy++) {
-    const ny = sy + dy; if (ny < 0 || ny >= th) continue;
-    for (let dx = -CIRC_RADIUS; dx <= CIRC_RADIUS; dx++) {
-      if (dx * dx + dy * dy > r2) continue;
-      const ti = ny * tw + (((sx + dx) % tw + tw) % tw);
-      total++;
-      const e = elev[ti];
-      if (e <= 0 || e > 0.42 || (fert[ti] || 0) < 0.12) barrier++;   // sea / mountain / desert = barrier
-    }
-  }
-  return (s._circ = total > 0 ? barrier / total : 0);
-}
-
 // Settlements take their politics from the territory:
 //   • CITY (tier ≥ CITY_TIER): a sovereign ANCHOR. Keeps its countryId (changed
 //     only by conquest / secession). A stateless city FOUNDS a country — its own
@@ -152,15 +124,8 @@ export function adoptAndFound(world) {
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
     const region = elev[ti] > 0 ? co[ti] : -1;
     if ((s.tier | 0) >= CITY_TIER) {
-      if (s.countryId < 0) {
-        if (region >= 0) s.countryId = region;                          // inside a realm → joins it
-        // Found a new state only in CIRCUMSCRIBED land (Carneiro) — a bounded
-        // fertile core where a population is trapped and a state can cohere — or
-        // once it's a real city (tier ≥ 2), whose agglomeration founds a state
-        // even on open ground. Open-land towns stay stateless (dispersed people).
-        else if ((s.tier | 0) >= 2 || circumscriptionOf(world, s) >= CIRC_FOUND_MIN) s.countryId = s.id;
-      }
-      // a city with a country keeps it (sovereign)
+      if (s.countryId < 0) s.countryId = region >= 0 ? region : s.id;   // stateless anchor: join its region, else found
+      // a town/city with a country keeps it (sovereign)
     } else {
       // village / town: follow the land (region), or stateless on the frontier
       if (s.countryId !== region) s.countryId = region;
