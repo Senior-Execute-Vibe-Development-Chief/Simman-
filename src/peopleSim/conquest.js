@@ -17,6 +17,7 @@ import { shockUnrest } from "./shocks.js";
 import { localPByCountry } from "./inflation.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, prunePersonalities, driftPersonality, expansionReachMul } from "./personality.js";
+import { CITY_TIER } from "./countryTerritory.js";
 import { T } from "./tuning.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
@@ -474,57 +475,68 @@ function hasOutsideBorder(world, parentCountryId, bloc) {
   return false;                                       // fully enclosed by parent
 }
 
-// A sovereign state historically needed a CITY to function — somewhere to
-// mint coin, hold court, raise an army, and be recognised by neighbours.
-// Villages and towns could riot, break their tax obligation, or follow a
-// city into a new realm — but they couldn't carry sovereignty alone. This
-// predicate gates every successor-state path: any bloc whose highest tier
-// is village (0) or town (1) fails to consolidate as a country.
+// A successor state needs a SEAT of government to carry sovereignty — the
+// same bar a stateless settlement must clear to FOUND a country in the first
+// place (adoptAndFound uses CITY_TIER: a town or above can anchor a realm; a
+// plain village is pure population and can't). Secession is held to that SAME
+// threshold, not a stricter one: any bloc containing a tier ≥ CITY_TIER seat
+// (town+) can break away as a country; a bloc of only villages has no seat and
+// fails (it riots and re-pacifies instead). Requiring a full CITY (tier 2)
+// here was the bug that made empires immortal — a realm built of towns and
+// villages (the normal case: a town capital ruling a sea of villages) had NO
+// member that could ever lead a breakaway, so its frontier revolts ALL failed
+// the gate, re-pacified, and stayed however far past the hold budget it sat.
 function blocHasCity(bloc) {
-  for (const m of bloc) if ((m.tier | 0) >= 2) return true;
+  for (const m of bloc) if ((m.tier | 0) >= CITY_TIER) return true;
   return false;
 }
 
-// Filter a candidate secession bloc to only the members whose TILE TERRITORY
-// is contiguous with the seed's via other bloc members' tiles. A vassal can
-// physically only follow its lord into a new realm if the new realm's
-// territory actually reaches it — a village stranded deep inside parent
-// territory, with no bloc-mate's land touching it, can't "go" anywhere when
-// its lord declares independence; it stays with the parent state. This kills
-// the pattern where seceded villages float as 1-tile islands inside their
-// original country.
-function filterToConnectedBloc(world, bloc, seed) {
-  const owner = world._territoryOwner;
-  if (!owner || !world._byId) return bloc;       // no territory data yet — fall back to as-given
-  const tw = world.tw, th = world.th, N = world.N;
-  const candidateIds = new Set();
-  for (const m of bloc) candidateIds.add(m.id);
-  // BFS over tiles, starting from any seed-owned tile, walking only tiles
-  // owned by candidate-bloc members. Mark which member-ids we can reach.
-  const reachable = new Set();
-  reachable.add(seed.id);
-  const q = [];
-  // Seed all of seed's tiles into the queue.
-  for (let ti = 0; ti < N; ti++) if (owner[ti] === seed.id) q.push(ti);
-  if (q.length === 0) return [seed];             // seed has no claimed tiles (shouldn't happen)
-  const visited = new Uint8Array(N);
-  for (const ti of q) visited[ti] = 1;
+// Trim a candidate revolt bloc to the members that form a CONTIGUOUS region
+// with the seed — reachable from the seed by walking the PARENT REALM's own
+// contiguous land (the country Voronoi, _countryOwner) within the revolt
+// radius. Walking the realm itself — not the sparse per-settlement catchments
+// — is what lets a regional uprising rally a whole frontier PROVINCE (the
+// towns and the villages between them) into ONE successor state, instead of
+// each town breaking away alone as a 1-member fleck (the lone-town nibbling
+// that never actually fragmented an empire). A member marooned across the sea,
+// or behind a foreign wedge that severs its land link to the revolt's core,
+// can't physically follow and stays with the parent. Flooding outward from the
+// seed (bounded by the radius disk) keeps this cheap — no full-map scan.
+function filterToConnectedBloc(world, bloc, seed, radius) {
+  const co = world._countryOwner;
+  if (!co) return bloc;                            // no political map yet — fall back to as-given
+  const tw = world.tw, th = world.th;
+  const parentId = seed.countryId;
+  // Home tile → member, so the flood marks which candidates it reaches.
+  const homeOf = new Map();
+  for (const m of bloc) homeOf.set((m.pos.y | 0) * tw + (m.pos.x | 0), m);
+  // An optional radius keeps a contagious REVOLT regional; the ambition/rebellion
+  // paths pass none (Infinity) and flood the whole connected branch instead.
+  const sx = seed.pos.x | 0, sy = seed.pos.y | 0;
+  const r2 = (radius && isFinite(radius)) ? radius * radius : Infinity;
+  const start = sy * tw + sx;
+  const reached = new Set([seed]);
+  const visited = new Set([start]);
+  const q = [start];
   while (q.length) {
     const ti = q.pop();
+    const hit = homeOf.get(ti); if (hit) reached.add(hit);
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
     const ns = [ty * tw + xm, ty * tw + xp,
                 ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
     for (let k = 0; k < 4; k++) {
-      const ni = ns[k]; if (ni < 0 || visited[ni]) continue;
-      const oid = owner[ni]; if (oid < 0) continue;
-      if (!candidateIds.has(oid)) continue;       // hit non-bloc territory — stop
-      visited[ni] = 1;
-      reachable.add(oid);
-      q.push(ni);
+      const ni = ns[k]; if (ni < 0 || visited.has(ni)) continue;
+      const ny = (ni / tw) | 0, nx = ni - ny * tw;
+      const hit2 = homeOf.get(ni); if (hit2) reached.add(hit2);  // a member sitting right on the border still joins
+      if (co[ni] !== parentId) continue;           // only flood through the parent's own contiguous land
+      let dx = Math.abs(nx - sx); if (dx > tw / 2) dx = tw - dx;
+      const dy = ny - sy;
+      if (dx * dx + dy * dy > r2) continue;         // stay within the revolt radius
+      visited.add(ni); q.push(ni);
     }
   }
-  return bloc.filter(m => reachable.has(m.id));
+  return bloc.filter(m => reached.has(m));
 }
 
 // A regional revolt: each collapsed province becomes the seed of a successor
@@ -545,23 +557,18 @@ function secedeContagious(world, c, seeds) {
       if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
       bloc.push(m);
     }
-    // Promote the strongest city in the bloc to be the "anchor" — only
-    // vassals whose territory connects to the anchor through bloc-owned
-    // tiles can physically follow it into the new realm (filterToConnectedBloc).
-    // Disconnected members stay with the parent state — they can't teleport.
-    let anchor = seed;
-    let anchorPow = (seed.tier | 0) >= 2 ? settlementPower(seed) : -1;
-    for (const m of bloc) {
-      if ((m.tier | 0) < 2) continue;
-      const p = settlementPower(m);
-      if (p > anchorPow) { anchorPow = p; anchor = m; }
-    }
-    bloc = filterToConnectedBloc(world, bloc, anchor);
+    // Trim the bloc to the members that form a CONTIGUOUS region with the seed
+    // through the realm's own land (filterToConnectedBloc) — so a regional
+    // uprising carries the whole frontier province (towns and the villages
+    // between them), while a member stranded across the sea or a foreign wedge
+    // can't teleport into the new realm. The new realm's seat (capital) is then
+    // the strongest member, chosen by rebuildCountries next pass.
+    bloc = filterToConnectedBloc(world, bloc, seed, radius);
     const newId = freshCountryId(c, bloc);
-    if (newId < 0) continue;                       // can't carve out a distinct realm this pass
+    if (newId < 0) continue;                        // can't carve out a distinct realm this pass
     // Viability checks:
     //  - geographic: a fully-enclosed bloc has no allies it can reach
-    //  - political:  a bloc with no city has no seat of government
+    //  - political:  a bloc with no seat (town+) has no government to carry it
     // Either failure: discharge as a FAILED REVOLT (damage + cooldown).
     if (!hasOutsideBorder(world, c.id, bloc) || !blocHasCity(bloc)) {
       for (const m of bloc) {
@@ -661,10 +668,11 @@ function subtreeOf(c, seed) {
 // state, regardless of their own loyalty.
 function declareIndependence(world, c, seed) {
   let bloc = subtreeOf(c, seed).filter(m => m.countryId === c.id);     // still in the realm
-  // Only vassals whose tiles connect to the governor's via bloc-owned
-  // land can physically follow him — distant vassals stranded inside
-  // loyal-parent territory stay with the parent.
-  bloc = filterToConnectedBloc(world, bloc, seed);
+  // Only vassals whose tiles connect to the governor's through the realm's own
+  // land can physically follow him — a vassal stranded across the sea or behind
+  // a foreign wedge stays with the parent. (No radius: the whole connected
+  // branch follows its lord, however far it reaches.)
+  bloc = filterToConnectedBloc(world, bloc, seed, Infinity);
   const newId = freshCountryId(c, bloc);
   if (newId < 0) { seed._ambition = 0; return; }                       // can't split cleanly — vent it
   // Even an ambitious governor can't carve out an enclave with no
@@ -724,16 +732,10 @@ function rebel(world, c, seeds) {
       if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
       bloc.push(m);
     }
-    // Anchor + connectivity filter — disconnected members can't physically
-    // follow the rebellion into the new state (see filterToConnectedBloc).
-    let anchor = seed;
-    let anchorPow = (seed.tier | 0) >= 2 ? settlementPower(seed) : -1;
-    for (const m of bloc) {
-      if ((m.tier | 0) < 2) continue;
-      const p = settlementPower(m);
-      if (p > anchorPow) { anchorPow = p; anchor = m; }
-    }
-    bloc = filterToConnectedBloc(world, bloc, anchor);
+    // Connectivity filter — the rising rallies the contiguous heartland around
+    // the seed; members it can't reach through the realm's own land can't follow
+    // (see filterToConnectedBloc). The seat is the strongest member (rebuildCountries).
+    bloc = filterToConnectedBloc(world, bloc, seed, radius);
     const newId = freshCountryId(c, bloc);
     if (newId < 0) { seed.unrest = 0; continue; }
     // A landlocked rebellion can RIOT (do damage) but can't carve out a
