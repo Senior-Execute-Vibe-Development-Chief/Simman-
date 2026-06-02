@@ -126,27 +126,42 @@ over time (the rise→fall arc). **Conclusion: the substrate is sound; proceed t
 integrate.** Working levers: `REACH_*` (reach), `PER_SETT_TILES`/`ORG_CAP`
 (size), `WILD_*` (count), `OVERCAP_SECEDE` (fragmentation).
 
-## 4b. Integration plan (into the real sim)
+## 4b. Integration — SHIPPED (B1, B2, B3 all done)
 
-Re-root the sim onto a first-class `world._countryOwner` (country-id per tile)
-while keeping the settlement economy. Stages:
+Re-rooted the sim onto a first-class `world._countryOwner` (country-id per tile)
+while keeping the settlement economy. All three stages are committed on
+`claude/nice-albattani-61FJF`:
 
-- **B1 — substrate**: add `countryOwner[]` + the growth/capacity pass above
-  (per-country budget from the capital's org/capacity, which already exists in
-  `conquest.js`). Seed countries from the cradles. Render from `countryOwner`
-  (retire the union-of-settlements claim).
-- **B2 — settlements inside territory**: each settlement carves a **local food
-  slice** from its country's region (constrained `computeTerritory` → per-tile
-  nearest-settlement *within* the country) feeding `_terrFertSum`. Spawning =
-  frontier colonies of the country (repoint `crystallize.js`); independent
-  genesis only in wilderness.
-- **B3 — war/secession on tiles**: fronts (`armies.js`) move `countryOwner`
-  boundary tiles; capital capture collapses; secession carves a sub-region.
-  Re-tune size/count/fall-apart with the levers above + existing capacity/
-  loyalty knobs.
+- **B1 — substrate** ✓ (`countryTerritory.js`): `world._countryOwner` = settled
+  core (from `owner[]`) + state-owned marches grown by a per-country
+  org/capacity budget. Render crawls toward it; economy untouched.
+- **B2 — capital-outward growth** ✓: a settlement founded on a state's land
+  (core or march) JOINS that state (`crystallize.js`); only wilderness sites are
+  born independent. Marches became the state's real territorial reach
+  (org-scaled, capacity-capped). `MAX_CRADLES` 5→10. Food still flows from each
+  settlement's local catchment = its slice of the realm (the chosen model).
+- **B3 — war over land** ✓: `_countryOwner` is PERSISTENT (hybrid) — core
+  refreshed from settlements (settled land taken by storming the city, via the
+  existing conquest), marches persist + grow + are contestable. `marchWarfare()`
+  lets a militarily stronger neighbour annex a weaker realm's march tiles tile-
+  by-tile (war over the empty frontier). Capital-collapse + secession keep using
+  the existing mechanisms; their territory follows automatically.
+
+**Design note (B3 hybrid):** rather than the fully-inverted "territory
+authoritative for everything, settlements adopt their tile" model — which would
+have meant rewriting all of `conquest.js`'s tuned logic — settled land stays
+settlement-defended (realistic: you take the city to take its land) and only the
+unsettled marches are freely contested. This delivered "war is about land"
+without gutting the economy.
+
+**Validated** (full 960×480, seed 8817): rise→consolidate arc 15 → 53 → 50
+countries, contiguous (no rash), borders shift visibly from war, population
+~34k at step 10k (matching pre-B). Levers for further tuning: `MARCH_BASE/ORG`,
+`CAP_TILES_BASE/ORG`, `WAR_DOMINANCE/WAR_FLIP_FRAC` (countryTerritory.js),
+`MAX_CRADLES` (state.js).
 
 Economy (food via local slice, trade, money, knowledge, roads) is unchanged
-throughout; only the territory substrate and what drives spawning change.
+throughout; only the territory substrate, spawning, and frontier war changed.
 
 ## 5. Risks & mitigations
 
