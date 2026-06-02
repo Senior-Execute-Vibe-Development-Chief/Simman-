@@ -43,19 +43,27 @@ class MinHeap {
 }
 const SQRT2 = Math.SQRT2;
 
-// Fresh cost-Voronoi by country (the IDEAL borders). Stores settlement id per
-// tile during the search (for per-settlement budgets), then derives country.
+// PERSISTENT, flow-through cost-Voronoi by country (the IDEAL borders). Keeps a
+// per-settlement claim ACROSS passes — releasing only tiles whose settlement
+// died (or turned to water) and claiming nearby UNCLAIMED land within budget —
+// so a realm's territory ACCUMULATES into one solid region. A from-scratch
+// single-pass Voronoi instead repaints the raw cost-reachable star every pass,
+// which renders as spindly, disconnected-looking "rash" arms and shimmers as
+// budgets drift; persistence fills those arms in and holds them steady. Same-
+// country settlements flow THROUGH each other (no internal walls) so a country
+// reads as one clean region; another country's land is a wall. Derives
+// world._claimTarget (countryId per tile) for relaxClaim to crawl toward.
 export function computeClaimTarget(world) {
   const { N, tw, th, elev } = world;
+  // _claimSett (settlement id per tile) is the PERSISTENT substrate; _claimTarget
+  // (countryId per tile) is the derived target the drawn border chases.
+  let sett = world._claimSett;
+  if (!sett || sett.length !== N) { sett = world._claimSett = new Int32Array(N); sett.fill(-1); }
+  let cost = world._claimCost;
+  if (!cost || cost.length !== N) cost = world._claimCost = new Float32Array(N);
   let target = world._claimTarget;
   if (!target || target.length !== N) target = world._claimTarget = new Int32Array(N);
-  target.fill(-1);
-  let cost = world._claimTargetCost;
-  if (!cost || cost.length !== N) cost = world._claimTargetCost = new Float32Array(N);
   cost.fill(Infinity);
-  let sid = world._claimTargetSid;
-  if (!sid || sid.length !== N) sid = world._claimTargetSid = new Int32Array(N);
-  sid.fill(-1);
 
   const byId = new Map(), budget = new Map(), knOf = new Map();
   for (const s of world.settlements) {
@@ -64,15 +72,26 @@ export function computeClaimTarget(world) {
     budget.set(s.id, reachBudget(s) * CLAIM_MULT);
     knOf.set(s.id, s.knowledge || {});
   }
+
+  // Persistence: release tiles whose settlement is gone, and any water.
+  for (let ti = 0; ti < N; ti++) {
+    const o = sett[ti];
+    if (o >= 0 && (!byId.has(o) || elev[ti] <= 0)) sett[ti] = -1;
+  }
+
   const heap = new MinHeap();
   for (const s of byId.values()) {
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
-    if (elev[ti] > 0) { sid[ti] = s.id; cost[ti] = 0; heap.push(ti, 0); }
+    if (elev[ti] > 0) { sett[ti] = s.id; cost[ti] = 0; heap.push(ti, 0); }
   }
+  const base = sett.slice();   // pre-pass snapshot for the wall / unclaimed test
+
   while (heap.n > 0) {
     const { ti, d } = heap.popMin();
     if (d > cost[ti]) continue;
-    const oid = sid[ti];
+    const oid = sett[ti];
+    const owner = byId.get(oid); if (!owner) continue;
+    const oc = owner.countryId;
     const bud = budget.get(oid) || 0;
     const kn = knOf.get(oid);
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
@@ -87,15 +106,28 @@ export function computeClaimTarget(world) {
     const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
     for (let k = 0; k < 8; k++) {
       const ni = ns[k]; if (ni < 0) continue;
-      const c = localEdgeCost(world, ti, ni, kn, true);   // reach ignores roads
+      const lk = base[ni];
+      let sibling = false;
+      if (lk >= 0 && lk !== oid) {
+        const ls = byId.get(lk);
+        if (!ls || ls.countryId !== oc) continue;   // another country's land = wall
+        sibling = true;                              // same-country: flow through, don't seize
+      }
+      const c = localEdgeCost(world, ti, ni, kn, true);  // reach ignores roads
       if (c === Infinity) continue;
       const nd = d + c * mul[k];
       if (nd > bud) continue;
-      if (nd < cost[ni]) { cost[ni] = nd; if (elev[ni] > 0) sid[ni] = oid; heap.push(ni, nd); }
+      if (nd < cost[ni]) {
+        cost[ni] = nd;
+        if (!sibling && lk < 0 && elev[ni] > 0) sett[ni] = oid;   // claim unclaimed land
+        heap.push(ni, nd);
+      }
     }
   }
+
+  // Derive the target: countryId per tile (-1 = unclaimed / water).
   for (let ti = 0; ti < N; ti++) {
-    const o = sid[ti];
+    const o = sett[ti];
     const s = o >= 0 ? byId.get(o) : null;
     target[ti] = s ? s.countryId : -1;
   }
