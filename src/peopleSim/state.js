@@ -195,7 +195,7 @@ function initRiverMag(world, w) {
 // up to MAX_CRADLES top scoring sites separated by a minimum distance — each
 // becomes the seed of an independent civilization, producing a multipolar
 // world even at high resolution.
-const MAX_CRADLES = 5;
+const MAX_CRADLES = 10;
 const CRADLE_MIN_SEP = 60;   // tile-space minimum separation (large enough that a single
                               // continent gets at most 1-2 cradles, but Earth's separated
                               // landmasses each get one if they have a viable site)

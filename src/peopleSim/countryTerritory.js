@@ -25,15 +25,20 @@
 import { localEdgeCost } from "./transport.js";
 
 // March reach (transport-cost) a state projects into wilderness BEYOND its
-// settled core: MARCH_BASE + capital-organization × MARCH_ORG. Modest — marches
-// are a frontier fringe, not a second territory. (B3 will fold these into the
-// real size/capacity tuning.)
-const MARCH_BASE = 3;
-const MARCH_ORG  = 10;
+// settled core: MARCH_BASE + capital-organization × MARCH_ORG. In the country-
+// primary model the marches ARE the state's territory (not a thin fringe), so
+// the reach is generous and org-scaled — a developed realm projects authority
+// far into its hinterland. Total size is bounded by the capacity below, so this
+// just sets how far the state CAN reach; capacity decides how much it holds.
+const MARCH_BASE = 8;
+const MARCH_ORG  = 46;
 // Tile capacity = members × (CAP_TILES_BASE + capitalOrg × CAP_TILES_ORG). Over
-// it, the farthest march tiles are released (settled core is never shed here).
-const CAP_TILES_BASE = 90;
-const CAP_TILES_ORG  = 520;
+// it, the farthest march tiles are released (settled core is never shed). This
+// is the real size dial: low-org early states hold little (so the map fragments
+// into many small realms with lots of wilderness between), high-org late states
+// hold large regions (so the world consolidates with the era).
+const CAP_TILES_BASE = 200;
+const CAP_TILES_ORG  = 1400;
 const SQRT2 = Math.SQRT2;
 
 class MinHeap {
