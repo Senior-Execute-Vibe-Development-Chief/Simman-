@@ -38,6 +38,14 @@ const CAP_TILES_ORG  = 1400;
 // fronts creep, not collapse). See marchWarfare().
 const WAR_DOMINANCE  = 1.2;
 const WAR_FLIP_FRAC  = 0.10;
+// Border smoothing (surface tension). On a grid a tile on a STRAIGHT border has
+// 5 same-country LAND neighbours; a convex bump has fewer, a lone speck 0-1. A
+// march tile flips toward the country that surrounds it MORE, with probability
+// SMOOTH_BASE × (5 − sameCountryLandNbrs) — so protrusions/specks erode and
+// borders relax toward straight. A speck (≤1) flips at SPECK_FLIP. Sea/wilderness
+// neighbours are NEUTRAL (don't count), so coastlines / open frontiers aren't melted.
+const SMOOTH_BASE    = 0.06;
+const SPECK_FLIP     = 0.5;
 const SQRT2 = Math.SQRT2;
 
 class MinHeap {
@@ -151,14 +159,19 @@ export function computeCountryTerritory(world) {
   return co;
 }
 
-// ── Frontier warfare (B3) ────────────────────────────────────────────
-// War over LAND: where a country's MARCH tile (claimed but unsettled frontier)
-// borders a militarily STRONGER country, the stronger annexes it — tile by tile,
-// a fraction per pass, so fronts creep across the empty frontier rather than
-// snapping. Only marches are contestable here; settled core is taken by storming
-// the settlement (armies.js). Strength = the realm's total army.
+// ── Frontier warfare + border smoothing (B3) ─────────────────────────
+// Two forces relax a country's MARCH tiles (claimed, unsettled frontier — the
+// settled core is taken by storming its settlement, armies.js):
+//   • WAR     — a march bordering a militarily STRONGER country is annexed by it.
+//   • SMOOTH  — surface tension: a march flips toward the country that SURROUNDS
+//               it more, eroding convex bumps / specks so borders relax toward
+//               straight (5 same-country land neighbours). Sea/wilderness
+//               neighbours are NEUTRAL, so coastlines / open frontiers survive.
+// Both resolve as a per-pass flip PROBABILITY toward the dominant orthogonally-
+// adjacent foreign country (orthogonal ⇒ contiguous & reachable), so borders
+// creep/relax rather than snap; relaxClaim then animates it.
 export function marchWarfare(world) {
-  const { N, tw, th } = world;
+  const { N, tw, th, elev } = world;
   const co = world._countryOwner, owner = world._territoryOwner;
   if (!co || !owner) return;
   const army = new Map();
@@ -168,23 +181,48 @@ export function marchWarfare(world) {
   }
   const rng = world.rng;
   const flips = [];
+  const surround = new Map();   // reused per tile: foreign countryId → shared-neighbour count (of 8)
+  const orthAdj = new Set();    // reused per tile: foreign countries orthogonally adjacent (eligible takers)
   for (let ti = 0; ti < N; ti++) {
     const c = co[ti];
-    if (c < 0 || owner[ti] >= 0) continue;          // only a defender's MARCH tile is contestable
-    const def = army.get(c) || 0;
+    if (c < 0 || owner[ti] >= 0 || elev[ti] <= 0) continue;   // only a MARCH tile (claimed, unsettled, land)
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
-    const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
-    let bestC = -1, bestStr = def * WAR_DOMINANCE;   // attacker must beat this
-    for (let k = 0; k < 4; k++) {
-      const ni = ns[k]; if (ni < 0) continue;
-      const nc = co[ni]; if (nc < 0 || nc === c) continue;
-      const str = army.get(nc) || 0;
-      if (str > bestStr) { bestStr = str; bestC = nc; }
+    // 8 neighbours, ORTHOGONAL first (the contiguous, reachable ones).
+    const n8 = [
+      ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1,
+      ty > 0 ? (ty - 1) * tw + xm : -1, ty > 0 ? (ty - 1) * tw + xp : -1,
+      ty < th - 1 ? (ty + 1) * tw + xm : -1, ty < th - 1 ? (ty + 1) * tw + xp : -1,
+    ];
+    let same = 0;
+    surround.clear(); orthAdj.clear();
+    for (let k = 0; k < 8; k++) {
+      const ni = n8[k]; if (ni < 0 || elev[ni] <= 0) continue;   // sea / edge = neutral
+      const nc = co[ni];
+      if (nc === c) { same++; continue; }
+      if (nc < 0) continue;                                       // wilderness = neutral
+      surround.set(nc, (surround.get(nc) || 0) + 1);
+      if (k < 4) orthAdj.add(nc);
     }
-    if (bestC >= 0) flips.push(ti, bestC);
+    // Dominant orthogonally-adjacent foreign country = the eligible taker.
+    let bestC = -1, bestCnt = 0, bestArmy = -1;
+    for (const [nc, cnt] of surround) {
+      if (!orthAdj.has(nc)) continue;
+      const a = army.get(nc) || 0;
+      if (cnt > bestCnt || (cnt === bestCnt && a > bestArmy)) { bestCnt = cnt; bestC = nc; bestArmy = a; }
+    }
+    if (bestC < 0) continue;
+    const speck = same <= 1;
+    const stronger = (army.get(bestC) || 0) > (army.get(c) || 0) * WAR_DOMINANCE;
+    // Smoothing only flips toward a side that surrounds the tile MORE than its
+    // owner (straight/concave borders stay put, so it can't oscillate); a lone
+    // speck always yields; war can still take a non-convex tile.
+    if (!speck && bestCnt <= same && !stronger) continue;
+    const curvature = 5 - same;                       // > 0 ⇒ convex / protruding
+    let p = curvature > 0 ? SMOOTH_BASE * curvature : 0;
+    if (stronger) p += WAR_FLIP_FRAC;
+    if (speck) p = Math.max(p, SPECK_FLIP);
+    if (p > 0 && rng() < p) flips.push(ti, bestC);
   }
-  for (let i = 0; i < flips.length; i += 2) {
-    if (rng() < WAR_FLIP_FRAC) co[flips[i]] = flips[i + 1];
-  }
+  for (let i = 0; i < flips.length; i += 2) co[flips[i]] = flips[i + 1];
 }
