@@ -31,7 +31,7 @@ export const TUNING_SCHEMA = [
     category: "Empire size & cohesion",
     blurb: "How large an empire one capital can hold together before the frontier rebels. Max empire size is dynamic, not a fixed radius.",
     params: [
-      { key: "CAP_BASE", label: "Capital base reach", def: 1.5, min: 1, max: 30, step: 0.5,
+      { key: "CAP_BASE", label: "Capital base reach", def: 1.2, min: 1, max: 30, step: 0.5,
         desc: "Reach-units a lone capital can administer. THE master dial for empire size — up = bigger empires hold." },
       { key: "ABSORB_ORG_MIN", label: "Absorption tech gate", def: 0.48, min: 0.1, max: 0.95, step: 0.02,
         desc: "Organization tech a city needs before it can peacefully vacuum neighbouring village/town statelets into its realm. UP = small city-states survive far longer; the map stays fragmented through the early/classical era." },
@@ -41,7 +41,7 @@ export const TUNING_SCHEMA = [
         desc: "How sharply a power imbalance translates into defection pressure. Down = even much-stronger neighbours absorb their small rivals only slowly." },
       { key: "CAP_POP", label: "Big-capital bonus", def: 0.4, min: 0, max: 8, step: 0.25,
         desc: "Extra control capacity a large capital projects (scales with its population). Down = a giant metropolis can't administer a giant empire, so conquests over-extend and shed." },
-      { key: "CAP_ORG", label: "Bureaucratic capacity", def: 0.3, min: 0, max: 24, step: 0.5,
+      { key: "CAP_ORG", label: "Bureaucratic capacity", def: 0.6, min: 0, max: 24, step: 0.5,
         desc: "Extra control capacity per point of the capital's ORGANIZATION tech — administrative depth that lets an advanced state govern more provinces. Up = bigger late empires; down = even advanced empires stay modest. (One of four org-cohesion dials; together they set how large/durable empires get.)" },
       { key: "ABSORB_DOMINANCE", label: "Absorption dominance gate", def: 4.0, min: 1.05, max: 5.0, step: 0.05,
         desc: "How many times stronger a realm must be than a neighbour before it peacefully absorbs that neighbour's frontier settlements. DOWN = aggressive consolidation, fewer & larger nations; UP = only lopsided mismatches erode, so the map stays more multipolar with many nations." },
