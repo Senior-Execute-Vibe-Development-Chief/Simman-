@@ -150,13 +150,24 @@ export function bankMomentum(world, countryId, amount) {
 // a province sitting exactly at the capital's reach costs a load of ~1.
 // CAP_BASE -> runtime lever (tuning.js T.CAP_BASE)
 // CAP_SEAT -> runtime lever (tuning.js T.CAP_SEAT)
-const SEAT_BONUS_CAP = 6;    // total seat contribution is capped (admin has diminishing returns)
+const SEAT_BONUS_CAP = 10;   // total seat contribution is capped (admin has diminishing returns)
 // Coercive capacity (Tilly): how many provinces the centre can hold is EMERGENT
 // from its coercive POWER, not fixed dials. capacity = CAP_K · log2(1 + capPower
 // / POW_REF) + seat bonuses. A stronger capital (army + people + development)
 // holds more; war / insolvency sap it; circumscription eases it. Replaces the
 // old CAP_BASE / CAP_POP / CAP_ORG count-forcing dials.
-const CAP_K   = 1.3;
+//
+// CAP_K is the coercion coefficient — how many reach-units of province a unit of
+// log-power holds. It sets the SUSTAINABLE empire size: the floor a realm
+// fragments back TO once conquest stalls and its over-reach sheds (secession is
+// the perturbation; this is the equilibrium it relaxes toward). Too low and even
+// an organised empire can hold only a handful of seats, so once secession works
+// the whole map shatters into statelets and the country count runs away; too
+// high and a realm holds everything it ever conquers and never fragments (the
+// immortal juggernaut). Calibrated so a high-org capital sustains a real empire
+// (~a dozen-plus seats) while still being out-conquerable past its budget — so
+// great powers persist AND shed their over-extension.
+const CAP_K   = 2.6;
 const POW_REF = 380;
 // Contiguity toll: projecting administrative authority THROUGH a foreign
 // country's territory costs this much more per tile. So a province cut off from
@@ -994,14 +1005,17 @@ export function updatePolities(world) {
     // re-fragmentation. Scaling capacity with org lets large empires that form by
     // conquest actually HOLD, so consolidation persists into the late game.
     const capOrg = (cap.knowledge && cap.knowledge.organization) || 0;
-    // Organisation capacity scales with org SQUARED, not linearly: a primitive
-    // realm (low org) holds barely more than its base, so the EARLY map stays
-    // fragmented into many small city-states; but as organisation tech matures
-    // the bureaucratic capacity climbs steeply, so high-org empires aggregate
-    // many provinces and the world CONSOLIDATES into a few great powers (the
-    // classical/imperial consolidation, and the bounded modern count) instead of
-    // fragmenting into ever more statelets. This is the shape of the real
-    // historical country-count curve (many small -> few empires -> bounded).
+    // Capacity grows with the capital's coercive POWER (people × military-tech ×
+    // organisation — see settlementPower), compressed through log2 so it climbs
+    // steeply at first then levels: a primitive realm holds barely more than its
+    // base (the EARLY map stays fragmented into small city-states), while a
+    // developed, organised, populous capital sustains a real empire of many
+    // provinces (the classical/imperial CONSOLIDATION into a few great powers).
+    // Loyal regional seats add their own sub-administration on top (seatBonus).
+    // Because it tracks the capital's LIVE strength, a weakening centre (war,
+    // plague, a sacked throne) shrinks capacity and the frontier sheds — and an
+    // empire that conquers past this budget holds the excess only on pacification
+    // grace, then fragments back toward it once the conquest stalls.
     const peaceCapacity = CAP_K * Math.log2(1 + capPower / POW_REF)
                         + Math.min(SEAT_BONUS_CAP, seatBonus);
 
