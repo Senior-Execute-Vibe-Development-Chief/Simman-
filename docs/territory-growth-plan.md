@@ -77,14 +77,76 @@ each contributing its persistent core+hinterland+reach, make the realm's union
 grow outward from the capital; `countryClaim.js` already renders that union as a
 solid region. We keep the entire settlement economy and ~all of the balance.
 
-## 4. Option B (heavier — true country-primary territory)
+## 4. Option B — true country-primary territory (CHOSEN)
 
 A country owns a single contiguous tile-region grown from the capital by an
 org/capacity budget; settlements are interior nodes drawing a local slice;
-conquest moves the region boundary; secession carves a sub-region. More
-literally "capital grows outward," but it's a real rewrite of
-territory/grouping/conquest and re-tunes everything from scratch. **Recommend
-only if Option A's feel proves insufficient.**
+**the state holds land with or without a settlement on it**; conquest moves the
+region boundary tile-by-tile; secession carves a sub-region. A real rewrite of
+the territory/grouping/conquest substrate, re-tuned from scratch — but it
+structurally eliminates the bag-of-blobs (territory is contiguous by
+construction) and makes war about land.
+
+### 4a. Validated prototype (standalone, real terrain — NOT the sim)
+
+`/tmp/proto_b.mjs` implements the core substrate on the real world terrain +
+`localEdgeCost`, with no economy, to check the substrate behaves. Algorithm:
+
+- `owner[]` = country-id per tile (−1 wilderness/water), **persistent**.
+- **Growth** (each tick): one multi-source cost-Dijkstra. Seeds = every
+  country's settlement tiles at cost 0; cost propagates *freely through a
+  country's own land* and *claims WILDERNESS within a per-country budget*
+  `B = REACH_BASE + org·REACH_ORG`; another country's land is a wall (taken
+  only by war). → land grows outward from the capital, and frontier colonies
+  relay the budget further out.
+- **Capacity** `cap = nSettlements·(PER_SETT_TILES + org·ORG_CAP)`. Over cap →
+  shed the highest-cost (farthest frontier) non-settlement tiles. This is the
+  size limit and the "pull back over-extension" pressure.
+- **Settlement spawn**: a country with territorial room founds a town at the
+  best **frontier** site (≥ SPAWN_MINDIST from its others) — extends future reach.
+- **Wilderness genesis**: new independent countries seed in empty land far from
+  any realm (keeps the count up).
+- **War**: at each A│B border the stronger side (org·√tiles, jittered) flips a
+  boundary tile; taking the capital collapses the loser. Tile-by-tile.
+- **Secession**: a chronically over-cap realm sheds its farthest province
+  (a settlement + the tiles nearer it than the capital) as a new country.
+
+**Results** (sim grid 480×240, seed 8817, 160 ticks):
+
+| tick | countries | settlements | coverage | max/med | CV |
+|-----:|----------:|------------:|---------:|--------:|----:|
+| 50   | 52        | 479         | 61%      | 2.6     | 0.59 |
+| 100  | 47        | 609         | 70%      | 3.6     | 0.73 |
+| 160  | 36        | 643         | 77%      | 5.2     | 0.84 |
+
+Renders show clean, **contiguous**, outward-grown continental realms — a proper
+political map. Count (36–52), coverage (~75%), and size variety (a few big
+empires among many small states, CV≈0.8) are all in range, with consolidation
+over time (the rise→fall arc). **Conclusion: the substrate is sound; proceed to
+integrate.** Working levers: `REACH_*` (reach), `PER_SETT_TILES`/`ORG_CAP`
+(size), `WILD_*` (count), `OVERCAP_SECEDE` (fragmentation).
+
+## 4b. Integration plan (into the real sim)
+
+Re-root the sim onto a first-class `world._countryOwner` (country-id per tile)
+while keeping the settlement economy. Stages:
+
+- **B1 — substrate**: add `countryOwner[]` + the growth/capacity pass above
+  (per-country budget from the capital's org/capacity, which already exists in
+  `conquest.js`). Seed countries from the cradles. Render from `countryOwner`
+  (retire the union-of-settlements claim).
+- **B2 — settlements inside territory**: each settlement carves a **local food
+  slice** from its country's region (constrained `computeTerritory` → per-tile
+  nearest-settlement *within* the country) feeding `_terrFertSum`. Spawning =
+  frontier colonies of the country (repoint `crystallize.js`); independent
+  genesis only in wilderness.
+- **B3 — war/secession on tiles**: fronts (`armies.js`) move `countryOwner`
+  boundary tiles; capital capture collapses; secession carves a sub-region.
+  Re-tune size/count/fall-apart with the levers above + existing capacity/
+  loyalty knobs.
+
+Economy (food via local slice, trade, money, knowledge, roads) is unchanged
+throughout; only the territory substrate and what drives spawning change.
 
 ## 5. Risks & mitigations
 
