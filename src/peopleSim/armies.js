@@ -389,13 +389,19 @@ export function advanceFronts(world) {
     let terrainDef = 1;
     if (world.riverMag && world.riverMag[ti] >= 2) {
       const cons = (D.knowledge && D.knowledge.construction) || 0;
-      terrainDef *= 1 + 1.5 * (1 - 0.6 * cons);    // ≈2.5× at neolithic, ≈1.6× at high-construction
+      terrainDef *= 1 + 2.2 * (1 - 0.6 * cons);    // ≈3.2× at neolithic, ≈2× at high-construction
     }
-    if (world.elev[ti] > 0.55) {
+    if (world.elev[ti] > 0.5) {
       const cons = (D.knowledge && D.knowledge.construction) || 0;
-      terrainDef *= 1 + 1.0 * (1 - 0.5 * cons);    // ≈2.0× rough alpine, ≈1.5× with engineered passes
+      // Steeper highland defends harder, scaling past the 0.5 threshold, so a
+      // mountain wall genuinely channels invasions instead of being plowed flat.
+      const alp = Math.min(1, (world.elev[ti] - 0.5) / 0.3);
+      terrainDef *= 1 + (1.0 + 1.6 * alp) * (1 - 0.5 * cons);   // ≈2–4.6× rough/high alpine
     }
-    if (terrainDef > 3.5) terrainDef = 3.5;        // cap — a single tile can't be unconquerable
+    if (terrainDef > 6) terrainDef = 6;            // cap — a single tile can't be unconquerable
+    // Even a vastly-stronger attacker is CHANNELLED by terrain: a river/mountain
+    // tile resists ~up to 6× a plain, so fronts snap to ridges and rivers and
+    // pour through the passes/valleys between, rather than advancing as a wall.
     const effDef = D._M * thinFactor * terrainDef;
     // Trade peace raises the bar: between two countries with a profitable
     // trade link, opportunistic encroachment is suppressed (it's bad

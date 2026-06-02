@@ -157,6 +157,13 @@ const SEAT_BONUS_CAP = 6;    // total seat contribution is capped (admin has dim
 // old CAP_BASE / CAP_POP / CAP_ORG count-forcing dials.
 const CAP_K   = 2.6;
 const POW_REF = 380;
+// Contiguity toll: projecting administrative authority THROUGH a foreign
+// country's territory costs this much more per tile. So a province cut off from
+// the capital's contiguous realm (an enemy wedge between them) reads as very far
+// — its load spikes and it drifts to independence — while a connected province
+// is reached normally. This is what makes an invasion that SPLITS an empire
+// shear off the severed part as a successor state, instead of slow nibbling.
+const FOREIGN_CROSS = 9;
 const COERCE_CAP    = 2.5;   // a far-stronger capital coerces a province (caps the load cut)
 // SIZE_LOAD -> runtime lever (tuning.js T.SIZE_LOAD)
 const SIZE_REF      = 1000;  // population scale for the size term
@@ -901,6 +908,7 @@ function capitalTransportCosts(world, c) {
     pending++;
   }
   if (pending === 0) return { cost: out, cross };
+  const co = world._countryOwner;   // for the contiguity toll (crossing foreign land)
   const maxCost = Math.max(50, c.range * 25);
   const dist = new Map();
   const crossAcc = new Map();   // tile → major-river toll accrued reaching it (parallels dist)
@@ -930,8 +938,9 @@ function capitalTransportCosts(world, c) {
     const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
     for (let k = 0; k < 8; k++) {
       const ni = ns[k]; if (ni < 0) continue;
-      const ec = localEdgeCost(world, ti, ni, kn, true);  // admin reach ignores roads
+      let ec = localEdgeCost(world, ti, ni, kn, true);  // admin reach ignores roads
       if (ec === Infinity) continue;
+      if (co) { const oc = co[ni]; if (oc >= 0 && oc !== c.id) ec *= FOREIGN_CROSS; }  // contiguity: crossing foreign land is dear
       const nd = d + ec * mul[k];
       if (nd > maxCost) continue;
       const prev = dist.get(ni);
