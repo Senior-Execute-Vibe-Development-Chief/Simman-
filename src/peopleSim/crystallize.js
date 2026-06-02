@@ -303,25 +303,17 @@ export function maybeCrystallize(world) {
       // Inherited knowledge: blend from nearest settlement, weighted by
       // distance. Far sites start near baseline neolithic knowledge.
       const inherited = inheritKnowledgeAt(world, ti, td);
-      // Country-primary spawn rule (B2): a settlement founded on a STATE'S
-      // land — its settled core OR its claimed marches (world._countryOwner) —
-      // JOINS that state. This is internal growth: it fills the realm and, when
-      // it lands on a march, pushes a fresh town out to the frontier so the
-      // territory grows OUTWARD from the capital. Only a settlement founded in
-      // genuine WILDERNESS (unclaimed by any state) is born INDEPENDENT, so new
-      // countries seed in empty regions — never as infill inside a realm.
-      // Early on most land is wilderness, so the map still fragments into many
-      // small states; as realms claim ground, new sites there join them and the
-      // world consolidates with the era.
-      let inheritedCountry;
-      if (world._countryOwner) {
-        const c = world._countryOwner[ti];
-        if (c >= 0) inheritedCountry = c;
-      }
+      // A spawned village is NEVER its own country. It ADOPTS the country that
+      // owns the tile it's founded on (world._countryOwner), or is born STATELESS
+      // (-1) if that's open wilderness — a frontier hamlet that's just population
+      // until a state's territory reaches it (adoptAndFound) or it grows into a
+      // city and founds a realm. This is what keeps the political map clean
+      // however many villages spawn: villages add people, never countries/flecks.
+      const region = world._countryOwner ? world._countryOwner[ti] : -1;
       makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: 18 + (rng.int(8)),
         knowledge: inherited,
-        countryId: inheritedCountry,
+        countryId: region >= 0 ? region : -1,
       });
     }
   }

@@ -53,12 +53,12 @@ export function relaxClaim(world) {
   for (let ti = 0; ti < N; ti++) { const v = claim[ti]; if (v >= 0) present.add(v); }
   const headOf = new Map();
   for (const s of world.settlements) {
-    if (s.mode !== "settled" || present.has(s.countryId)) continue;
+    if (s.mode !== "settled" || s.countryId < 0 || present.has(s.countryId)) continue;
     const cur = headOf.get(s.countryId);
     if (!cur || headScore(s) > headScore(cur)) headOf.set(s.countryId, s);
   }
   for (const s of world.settlements) {
-    if (s.mode !== "settled") continue;
+    if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless frontier settlements fly no flag
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
     if (elev[ti] <= 0) continue;
     const cur = claim[ti];

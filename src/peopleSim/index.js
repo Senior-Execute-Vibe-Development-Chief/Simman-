@@ -13,7 +13,7 @@ import { updateSettlement } from "./settlement.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
-import { computeCountryTerritory, marchWarfare } from "./countryTerritory.js";
+import { computeCountryTerritory, adoptAndFound } from "./countryTerritory.js";
 import { relaxClaim } from "./countryClaim.js";
 
 // How often the drawn border crawls one ring toward the country-primary
@@ -58,8 +58,9 @@ export function stepPeopleSim(world, n = 1) {
     // Recompute territory periodically: each settlement claims the land it
     // reaches cheapest, and its food / resources are tallied from it.
     if (world.step === 1 || world.step % T.TERRITORY_INTERVAL === 0) {
-      computeTerritory(world);
-      computeCountryTerritory(world);   // country-primary territory: settled core + state-owned marches
+      computeTerritory(world);          // per-settlement food catchments (economy)
+      computeCountryTerritory(world);   // clean per-country cost-Voronoi (the political map)
+      adoptAndFound(world);             // settlements take their politics from the territory (villages adopt; stateless cities found)
     }
     // The drawn border CRAWLS toward that target a ring at a time, so land
     // exchanges (conquest / secession / absorption) play out tile-by-tile over
@@ -100,13 +101,12 @@ export function stepPeopleSim(world, n = 1) {
       s._wealthDelta = (s._wealthDelta || 0) * 0.9 + ((s.wealth || 0) - (s._wPrev || 0)) * 0.1;
     }
     if (world.step % 32 === 0) pruneDead(world);
-    // Military: garrisons muster + are paid periodically; war fronts then
-    // grind tile-by-tile across borders, annexing a settlement when its
-    // heartland is stormed. marchWarfare then lets the stronger realm annex a
-    // weaker neighbour's unsettled FRONTIER (march) tiles, tile-by-tile — war
-    // over land, not just over cities (B3, see countryTerritory.js).
+    // Military: garrisons muster + are paid periodically; war fronts then grind
+    // across borders, annexing a settlement when its heartland is stormed. Land
+    // follows the cities: capturing a city flips it to the conqueror, and the
+    // per-country Voronoi (computeCountryTerritory) re-draws its region cleanly.
     if (world.step % MUSTER_INTERVAL === 0) musterArmies(world);
-    if (world.step % T.CONQUEST_INTERVAL === 0) { advanceFronts(world); marchWarfare(world); }
+    if (world.step % T.CONQUEST_INTERVAL === 0) advanceFronts(world);
     moveArmies(world);   // marching reinforcement columns advance every tick
     mark("armies");
     // Maritime: colony ships sail every tick; the port→port sea-lane graph

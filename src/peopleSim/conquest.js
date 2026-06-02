@@ -343,7 +343,7 @@ function dist(world, ax, ay, bx, by) {
 export function rebuildCountries(world) {
   const countries = new Map();
   for (const s of world.settlements) {
-    if (s.mode !== "settled") continue;
+    if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless frontier settlements belong to no country
     let c = countries.get(s.countryId);
     if (!c) { c = { id: s.countryId, members: [], capital: null }; countries.set(s.countryId, c); }
     c.members.push(s);
