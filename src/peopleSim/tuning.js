@@ -41,7 +41,7 @@ export const TUNING_SCHEMA = [
         desc: "How sharply a power imbalance translates into defection pressure. Down = even much-stronger neighbours absorb their small rivals only slowly." },
       { key: "CAP_POP", label: "Big-capital bonus", def: 0.4, min: 0, max: 8, step: 0.25,
         desc: "Extra control capacity a large capital projects (scales with its population). Down = a giant metropolis can't administer a giant empire, so conquests over-extend and shed." },
-      { key: "CAP_ORG", label: "Bureaucratic capacity", def: 0.6, min: 0, max: 24, step: 0.5,
+      { key: "CAP_ORG", label: "Bureaucratic capacity", def: 2.5, min: 0, max: 24, step: 0.5,
         desc: "Extra control capacity per point of the capital's ORGANIZATION tech — administrative depth that lets an advanced state govern more provinces. Up = bigger late empires; down = even advanced empires stay modest. (One of four org-cohesion dials; together they set how large/durable empires get.)" },
       { key: "ABSORB_DOMINANCE", label: "Absorption dominance gate", def: 4.0, min: 1.05, max: 5.0, step: 0.05,
         desc: "How many times stronger a realm must be than a neighbour before it peacefully absorbs that neighbour's frontier settlements. DOWN = aggressive consolidation, fewer & larger nations; UP = only lopsided mismatches erode, so the map stays more multipolar with many nations." },

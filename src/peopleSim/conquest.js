@@ -956,9 +956,17 @@ export function updatePolities(world) {
     // re-fragmentation. Scaling capacity with org lets large empires that form by
     // conquest actually HOLD, so consolidation persists into the late game.
     const capOrg = (cap.knowledge && cap.knowledge.organization) || 0;
+    // Organisation capacity scales with org SQUARED, not linearly: a primitive
+    // realm (low org) holds barely more than its base, so the EARLY map stays
+    // fragmented into many small city-states; but as organisation tech matures
+    // the bureaucratic capacity climbs steeply, so high-org empires aggregate
+    // many provinces and the world CONSOLIDATES into a few great powers (the
+    // classical/imperial consolidation, and the bounded modern count) instead of
+    // fragmenting into ever more statelets. This is the shape of the real
+    // historical country-count curve (many small -> few empires -> bounded).
     const peaceCapacity = T.CAP_BASE + T.CAP_POP * Math.log2(1 + (cap.people || 0) / CAP_POP_REF)
                         + Math.min(SEAT_BONUS_CAP, seatBonus)
-                        + T.CAP_ORG * capOrg;
+                        + T.CAP_ORG * capOrg * capOrg;
 
     // ── War duress: throttle the budget while the realm is fighting ────
     // (fronts are tallied in armies.js advanceFronts → world._fronts.)
