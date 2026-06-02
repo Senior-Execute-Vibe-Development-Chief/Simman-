@@ -155,7 +155,7 @@ const SEAT_BONUS_CAP = 6;    // total seat contribution is capped (admin has dim
 // / POW_REF) + seat bonuses. A stronger capital (army + people + development)
 // holds more; war / insolvency sap it; circumscription eases it. Replaces the
 // old CAP_BASE / CAP_POP / CAP_ORG count-forcing dials.
-const CAP_K   = 2.6;
+const CAP_K   = 1.3;
 const POW_REF = 380;
 // Contiguity toll: projecting administrative authority THROUGH a foreign
 // country's territory costs this much more per tile. So a province cut off from
