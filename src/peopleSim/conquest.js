@@ -1251,6 +1251,7 @@ function absorbWeakNeighbors(world, countries) {
   const owner = world._territoryOwner, byId = world._byId;
   if (!owner || !byId) return;
   const tw = world.tw, th = world.th, N = world.N;
+  const co = world._countryOwner;   // country-primary territory (incl. marches)
   // Per-country total power, for the dominance gate (only a realm that clearly
   // out-powers a neighbour's WHOLE country can erode it — so peer empires don't
   // peel border settlements off each other and flip-flop).
@@ -1277,9 +1278,18 @@ function absorbWeakNeighbors(world, countries) {
                 ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
     for (let k = 0; k < 4; k++) {
       const ni = ns[k]; if (ni < 0) continue;
-      const no = owner[ni]; if (no < 0) continue;
-      const fs = byId.get(no); if (!fs || fs.countryId === myCC) continue;
-      const F = countries.get(fs.countryId); if (!F) continue;
+      // The neighbour's COUNTRY: the owning settlement's country if this tile is
+      // someone's catchment, else the country-primary owner of the tile (an
+      // empire's MARCH — claimed land with no settlement on it). Using the march
+      // owner is what lets a statelet ENGULFED by a big empire's frontier be
+      // seen as bordering that empire — without it, a speck surrounded by marches
+      // looks like it borders only wilderness and is never absorbed (the "sludge").
+      const no = owner[ni];
+      let ncc;
+      if (no >= 0) { const fs = byId.get(no); if (!fs) continue; ncc = fs.countryId; }
+      else { ncc = co ? co[ni] : -1; }
+      if (ncc < 0 || ncc === myCC) continue;
+      const F = countries.get(ncc); if (!F) continue;
       const fOrg = (F.capital.knowledge && F.capital.knowledge.organization) || 0;
       if (fOrg < T.ABSORB_ORG_MIN) continue;
       if (myTier > tierCapForOrg(fOrg)) continue;            // too developed for F's statecraft
