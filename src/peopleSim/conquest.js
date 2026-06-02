@@ -36,6 +36,15 @@ import { T } from "./tuning.js";
 // INSIDE the budget instead of instantly over-extending and seceding back
 // (the absorb↔secede oscillation that flipped whole swathes each pass).
 const ABSORB_HEADROOM  = 0.90;
+// Great-power engulfment of a weak STATELET: when a realm out-powers a
+// neighbour's WHOLE country by this much, it can absorb that neighbour's
+// settlements even with NO capacity headroom (a great power always finds room
+// to swallow a tiny state) and at the faster ENGULF_PROB rate. This is the
+// consolidation force that pulls the late-game splotch of tiny states into a
+// few large empires; it only fires on lopsided matchups, so peer empires don't
+// peel border villages off each other.
+const LOPSIDED_ENGULF  = 8.0;
+const ENGULF_PROB      = 0.25;
 // A realm's whole country must out-power a neighbour's whole country by
 // T.ABSORB_DOMINANCE before it can administratively absorb that neighbour's
 // frontier settlements (absorbWeakNeighbors). Hysteresis: only clearly-minor
@@ -1307,13 +1316,19 @@ function absorbWeakNeighbors(world, countries) {
     // counting what it has already taken on this pass.
     const target = countries.get(bestId);
     const committed = absorbedLoad.get(bestId) || 0;
-    if (!hasAbsorbHeadroom(target, committed)) continue;
+    // Lopsided: the absorber out-powers this settlement's WHOLE country by
+    // LOPSIDED_ENGULF — a great power vs a statelet. Then it engulfs even with no
+    // headroom (and faster, below); otherwise it must have spare capacity.
+    const myCountryPow = countryPower.get(m.countryId) || 1;
+    const lopsided = (countryPower.get(bestId) || 1) >= myCountryPow * LOPSIDED_ENGULF;
+    if (!lopsided && !hasAbsorbHeadroom(target, committed)) continue;
     const myPower = Math.max(1, settlementPower(m));
-    // Defection chance per polity pass — caps at T.ABSORB_PROB_MAX so even
-    // a tiny village vs a huge cradle defects gradually (~10 passes to
-    // flip on average), not instantly.
+    // Defection chance per polity pass — caps at T.ABSORB_PROB_MAX normally; a
+    // lopsided great-power engulfment goes at the faster ENGULF_PROB so the
+    // splotch of tiny states is consolidated within a few passes, not never.
     const ratio = bestScore / myPower;
-    const prob = Math.min(T.ABSORB_PROB_MAX, ratio * T.ABSORB_RATE);
+    let prob = Math.min(T.ABSORB_PROB_MAX, ratio * T.ABSORB_RATE);
+    if (lopsided) prob = Math.max(prob, ENGULF_PROB);
     // Deterministic hash on (id, step) — same input always rolls the same
     // outcome, so debugging is reproducible and there's no jitter.
     const r = ((m.id * 9301 + world.step * 49297 + 7) % 233280) / 233280;
