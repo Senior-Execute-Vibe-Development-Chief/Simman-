@@ -1,44 +1,43 @@
-// ── Country-primary territory (Option B, stage B1) ───────────────────
+// ── Country-primary territory (Option B) ─────────────────────────────
 //
-// world._countryOwner — countryId per tile (-1 = wilderness / water). This is
-// the FIRST-CLASS political territory: the land a STATE owns, as opposed to the
-// per-settlement food catchments in territory.js (owner[]).
+// world._countryOwner — countryId per tile (-1 = wilderness / water). The land
+// a STATE owns, as opposed to the per-settlement food catchments in
+// territory.js (owner[]). Two layers:
 //
-// Built in two layers:
-//   1. CORE — the country of the settlement that owns each tile in the
-//      per-settlement owner[] map. This makes the realm's settled heartland
-//      transfer automatically when a settlement is conquered or secedes (its
-//      countryId flips → its tiles' country flips), and it is contiguous
-//      because owner[] is.
-//   2. MARCHES — each country then grows OUTWARD into adjacent WILDERNESS up to
-//      a per-country reach budget (set by the CAPITAL's organization, so a
-//      bigger state projects authority over more unsettled frontier). This is
-//      the "a state can hold land with no settlement on it" capability — empty
-//      marches, buffer zones, claimed-but-unfarmed hinterland.
+//   CORE    — a settled tile flies the country of the settlement whose
+//             catchment it is (owner[]). Refreshed every pass, so capturing or
+//             seceding a settlement moves its settled heartland with it (via the
+//             existing conquest in conquest.js / armies.js). Settled land is
+//             defended by its city; you take the city to take the land.
+//   MARCHES — claimed but UNSETTLED frontier the state holds directly. PERSISTENT
+//             (survives across passes), grown outward from the core up to a
+//             per-country reach budget, capacity-capped. This is the "a state
+//             owns land with no settlement on it" land — and the land WAR fights
+//             over: marchWarfare() lets a stronger neighbour annex a weaker
+//             realm's march tiles, tile by tile (B3).
 //
-// A per-country tile CAPACITY (members + capital org) caps total size; over it,
-// the farthest march tiles are shed (over-extension pulls back). Stages B2/B3
-// will re-root food onto slices of this territory and move conquest/secession
-// onto the tiles directly; for now the economy still runs on territory.js and
-// this drives the rendered borders.
+// The rendered border (countryClaim.js relaxClaim) crawls toward this, so all
+// of it animates tile-by-tile.
 
 import { localEdgeCost } from "./transport.js";
 
-// March reach (transport-cost) a state projects into wilderness BEYOND its
-// settled core: MARCH_BASE + capital-organization × MARCH_ORG. In the country-
-// primary model the marches ARE the state's territory (not a thin fringe), so
-// the reach is generous and org-scaled — a developed realm projects authority
-// far into its hinterland. Total size is bounded by the capacity below, so this
-// just sets how far the state CAN reach; capacity decides how much it holds.
+// March reach (transport-cost) a state projects into wilderness beyond its core:
+// MARCH_BASE + capital-organization × MARCH_ORG. Generous + org-scaled — in the
+// country-primary model the marches ARE the territory. Total size is bounded by
+// the capacity below; this just sets how far the state CAN reach.
 const MARCH_BASE = 8;
 const MARCH_ORG  = 46;
 // Tile capacity = members × (CAP_TILES_BASE + capitalOrg × CAP_TILES_ORG). Over
-// it, the farthest march tiles are released (settled core is never shed). This
-// is the real size dial: low-org early states hold little (so the map fragments
-// into many small realms with lots of wilderness between), high-org late states
-// hold large regions (so the world consolidates with the era).
+// it the farthest marches are shed (over-extension pulls back). The real size
+// dial: low-org early states hold little (map fragments into many small realms),
+// high-org late states hold large regions (world consolidates with the era).
 const CAP_TILES_BASE = 200;
 const CAP_TILES_ORG  = 1400;
+// Frontier warfare: a neighbour must be at least this much stronger to annex a
+// march tile, and only this fraction of contestable tiles flip per pass (so
+// fronts creep, not collapse). See marchWarfare().
+const WAR_DOMINANCE  = 1.2;
+const WAR_FLIP_FRAC  = 0.10;
 const SQRT2 = Math.SQRT2;
 
 class MinHeap {
@@ -49,23 +48,18 @@ class MinHeap {
   popMin() { const ti = this.ti[0], d = this.d[0], c = this.c[0]; this.n--; if (this.n > 0) { this.ti[0] = this.ti[this.n]; this.d[0] = this.d[this.n]; this.c[0] = this.c[this.n]; let i = 0; for (;;) { const l = i * 2 + 1, r = i * 2 + 2; let b = i; if (l < this.n && this.d[l] < this.d[b]) b = l; if (r < this.n && this.d[r] < this.d[b]) b = r; if (b === i) break; this._sw(b, i); i = b; } } return { ti, d, c }; }
 }
 
-// Compute world._countryOwner. Cheap-ish: one O(N) derive + one bounded
-// wilderness flood (marches) + one O(N) capacity tally. Runs on the territory
-// pass alongside computeTerritory.
+// Persistent country territory: refresh core from settlements, keep + grow
+// marches, prune orphaned / over-capacity marches. Runs on the territory pass.
 export function computeCountryTerritory(world) {
   const { N, tw, th, elev } = world;
   const owner = world._territoryOwner;       // per-settlement food catchments
   const byId = world._byId;
   if (!owner || !byId) return null;
   let co = world._countryOwner;
-  if (!co || co.length !== N) co = world._countryOwner = new Int32Array(N);
-  co.fill(-1);
+  if (!co || co.length !== N) { co = world._countryOwner = new Int32Array(N); co.fill(-1); }
 
-  // Per-country: members + the capital (strongest org, used for the march reach
-  // budget and tile capacity — a state's reach is a property of its centre).
-  const members = new Map();   // countryId -> count
-  const capOrg = new Map();    // countryId -> max member organization
-  const knOf = new Map();      // countryId -> capital knowledge (for edge cost)
+  // Per-country: members + the capital (strongest org → march reach + capacity).
+  const members = new Map(), capOrg = new Map(), knOf = new Map();
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const c = s.countryId;
@@ -74,7 +68,15 @@ export function computeCountryTerritory(world) {
     if (!capOrg.has(c) || org > capOrg.get(c)) { capOrg.set(c, org); knOf.set(c, s.knowledge || {}); }
   }
 
-  // 1. CORE: country of the owning settlement, per tile.
+  // Release tiles of dead (member-less) countries and any water — but KEEP the
+  // marches of living countries (persistence; that's what lets war stick).
+  for (let ti = 0; ti < N; ti++) {
+    const c = co[ti];
+    if (c >= 0 && (!members.has(c) || elev[ti] <= 0)) co[ti] = -1;
+  }
+
+  // CORE: every settled tile flies its settlement's country (refreshed). This
+  // also reclaims a march tile that just became someone's settled catchment.
   for (let ti = 0; ti < N; ti++) {
     const oid = owner[ti];
     if (oid < 0 || elev[ti] <= 0) continue;
@@ -82,27 +84,23 @@ export function computeCountryTerritory(world) {
     if (s && s.mode === "settled") co[ti] = s.countryId;
   }
 
-  // 2. MARCHES: grow each country into adjacent wilderness up to its budget.
-  //    Multi-source Dijkstra seeded from every core tile (cost 0, its country);
-  //    claims only wilderness (co<0, land) within that country's budget; another
-  //    country's land is a wall. dist[] = march cost from the core (for shedding).
+  // GROW marches: multi-source Dijkstra SEEDED FROM THE CORE (owner ≥ 0) at cost
+  // 0; cost propagates through a country's own owned land (core + existing
+  // marches) and CLAIMS unclaimed wilderness within the country budget. Another
+  // country's land is a wall (taken only by war). dist[] = cost from the core,
+  // used to prune orphaned marches + shed when over capacity.
   const budget = new Map();
   for (const [c, org] of capOrg) budget.set(c, MARCH_BASE + org * MARCH_ORG);
   const dist = world._countryMarchDist && world._countryMarchDist.length === N
     ? world._countryMarchDist : (world._countryMarchDist = new Float64Array(N));
-  dist.fill(0);
+  dist.fill(Infinity);
   const heap = new MinHeap();
-  for (let ti = 0; ti < N; ti++) if (co[ti] >= 0) heap.push(ti, 0, co[ti]);
-  const claimC = world._countryClaimTmp && world._countryClaimTmp.length === N
-    ? world._countryClaimTmp : (world._countryClaimTmp = new Int32Array(N));
-  claimC.fill(-1);
-  const claimD = world._countryClaimTmpD && world._countryClaimTmpD.length === N
-    ? world._countryClaimTmpD : (world._countryClaimTmpD = new Float64Array(N));
-  claimD.fill(Infinity);
+  for (let ti = 0; ti < N; ti++) {
+    if (owner[ti] >= 0 && co[ti] >= 0) { dist[ti] = 0; heap.push(ti, 0, co[ti]); }   // core seeds
+  }
   while (heap.n > 0) {
     const { ti, d, c } = heap.popMin();
-    const isCore = co[ti] === c;
-    if (!isCore && d > claimD[ti]) continue;
+    if (d > dist[ti]) continue;
     const bud = budget.get(c) || 0;
     const kn = knOf.get(c);
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
@@ -116,34 +114,77 @@ export function computeCountryTerritory(world) {
     const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
     for (let k = 0; k < 8; k++) {
       const ni = ns[k]; if (ni < 0 || elev[ni] <= 0) continue;
-      if (co[ni] >= 0) continue;                       // settled core or already-claimed wall
+      const oc = co[ni];
+      if (oc >= 0 && oc !== c) continue;            // another country's land = wall
       const ec = localEdgeCost(world, ti, ni, kn, true);
       if (ec === Infinity) continue;
       const nd = d + ec * mul[k];
       if (nd > bud) continue;
-      if (nd < claimD[ni]) { claimD[ni] = nd; claimC[ni] = c; heap.push(ni, nd, c); }
+      if (nd < dist[ni]) {
+        dist[ni] = nd;
+        if (oc < 0) co[ni] = c;                     // claim unclaimed wilderness for this country
+        heap.push(ni, nd, c);
+      }
     }
   }
-  for (let ti = 0; ti < N; ti++) {
-    if (co[ti] < 0 && claimC[ti] >= 0) { co[ti] = claimC[ti]; dist[ti] = claimD[ti]; }
-  }
 
-  // 3. CAPACITY: cap total tiles per country; shed the farthest MARCH tiles
-  //    (never the settled core) when over.
-  const tally = new Map();   // countryId -> array of march-tile indices (shed candidates)
-  const total = new Map();   // countryId -> total tiles
+  // Prune orphaned marches (a march no longer reachable from its country's core —
+  // e.g. cut off by a war flip) and tally for the capacity check. Settled core
+  // (owner ≥ 0) is never pruned or shed here.
+  const total = new Map();
+  const marchesOf = new Map();
   for (let ti = 0; ti < N; ti++) {
     const c = co[ti]; if (c < 0) continue;
+    if (owner[ti] >= 0) { total.set(c, (total.get(c) || 0) + 1); continue; }   // core
+    if (!isFinite(dist[ti])) { co[ti] = -1; continue; }                        // orphaned march → wilderness
     total.set(c, (total.get(c) || 0) + 1);
-    if (claimC[ti] === c) { let a = tally.get(c); if (!a) tally.set(c, a = []); a.push(ti); }   // a march tile
+    let a = marchesOf.get(c); if (!a) marchesOf.set(c, a = []); a.push(ti);
   }
   for (const [c, tot] of total) {
     const cap = (members.get(c) || 1) * (CAP_TILES_BASE + (capOrg.get(c) || 0) * CAP_TILES_ORG);
     if (tot <= cap) continue;
-    const marches = tally.get(c); if (!marches) continue;
-    marches.sort((a, b) => dist[b] - dist[a]);        // farthest first
+    const marches = marchesOf.get(c); if (!marches) continue;
+    marches.sort((a, b) => dist[b] - dist[a]);     // farthest from core shed first
     let shed = tot - cap;
     for (const ti of marches) { if (shed <= 0) break; co[ti] = -1; shed--; }
   }
   return co;
+}
+
+// ── Frontier warfare (B3) ────────────────────────────────────────────
+// War over LAND: where a country's MARCH tile (claimed but unsettled frontier)
+// borders a militarily STRONGER country, the stronger annexes it — tile by tile,
+// a fraction per pass, so fronts creep across the empty frontier rather than
+// snapping. Only marches are contestable here; settled core is taken by storming
+// the settlement (armies.js). Strength = the realm's total army.
+export function marchWarfare(world) {
+  const { N, tw, th } = world;
+  const co = world._countryOwner, owner = world._territoryOwner;
+  if (!co || !owner) return;
+  const army = new Map();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    army.set(s.countryId, (army.get(s.countryId) || 0) + (s.army || 0));
+  }
+  const rng = world.rng;
+  const flips = [];
+  for (let ti = 0; ti < N; ti++) {
+    const c = co[ti];
+    if (c < 0 || owner[ti] >= 0) continue;          // only a defender's MARCH tile is contestable
+    const def = army.get(c) || 0;
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+    const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+    let bestC = -1, bestStr = def * WAR_DOMINANCE;   // attacker must beat this
+    for (let k = 0; k < 4; k++) {
+      const ni = ns[k]; if (ni < 0) continue;
+      const nc = co[ni]; if (nc < 0 || nc === c) continue;
+      const str = army.get(nc) || 0;
+      if (str > bestStr) { bestStr = str; bestC = nc; }
+    }
+    if (bestC >= 0) flips.push(ti, bestC);
+  }
+  for (let i = 0; i < flips.length; i += 2) {
+    if (rng() < WAR_FLIP_FRAC) co[flips[i]] = flips[i + 1];
+  }
 }

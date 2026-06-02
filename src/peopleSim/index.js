@@ -13,7 +13,7 @@ import { updateSettlement } from "./settlement.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
-import { computeCountryTerritory } from "./countryTerritory.js";
+import { computeCountryTerritory, marchWarfare } from "./countryTerritory.js";
 import { relaxClaim } from "./countryClaim.js";
 
 // How often the drawn border crawls one ring toward the country-primary
@@ -102,9 +102,11 @@ export function stepPeopleSim(world, n = 1) {
     if (world.step % 32 === 0) pruneDead(world);
     // Military: garrisons muster + are paid periodically; war fronts then
     // grind tile-by-tile across borders, annexing a settlement when its
-    // heartland is stormed.
+    // heartland is stormed. marchWarfare then lets the stronger realm annex a
+    // weaker neighbour's unsettled FRONTIER (march) tiles, tile-by-tile — war
+    // over land, not just over cities (B3, see countryTerritory.js).
     if (world.step % MUSTER_INTERVAL === 0) musterArmies(world);
-    if (world.step % T.CONQUEST_INTERVAL === 0) advanceFronts(world);
+    if (world.step % T.CONQUEST_INTERVAL === 0) { advanceFronts(world); marchWarfare(world); }
     moveArmies(world);   // marching reinforcement columns advance every tick
     mark("armies");
     // Maritime: colony ships sail every tick; the port→port sea-lane graph
