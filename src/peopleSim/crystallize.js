@@ -125,6 +125,13 @@ const COLONY_CHANCE           = 0.5;   // probability a pressed, eligible parent
 const COLONY_COOLDOWN         = 1500;  // ticks the parent waits between settler parties (recovery)
 const COLONY_HEADROOM         = 0.85;  // realm may only colonise while admin load is below this fraction of capacity
 const COLONY_MIN_SOLVENCY     = 0.80;  // ...and only while it can still (mostly) pay its army
+// Colonisation, like crystallisation (CRYSTAL_SATURATION_REF), slows as the
+// world fills: the per-parent send chance is scaled by 1/(1+alive/REF). Without
+// this, colonisation (undamped, and now the dominant settlement source) keeps
+// packing towns into already-claimed land forever — ever more provinces → ever
+// more over-extension secession → the steadily-climbing nation count and the
+// late-game splotchy churn. With it, settlement density plateaus.
+const COLONY_SATURATION_REF   = 300;
 
 // Resource attraction. Each resource has a per-tier value (how
 // valuable it is to a civilisation at that tech level) and a
@@ -491,6 +498,11 @@ function geoBonusFor(world, ti, tx, ty) {
 function maybeSendSettlers(world) {
   if (!world.transportDist) return;
   const { rng } = world;
+  // Saturation: colonies get rarer as the map fills, so settlement density
+  // plateaus instead of climbing forever (see COLONY_SATURATION_REF).
+  let _alive = 0;
+  for (const s of world.settlements) if (s.mode === "settled") _alive++;
+  const colonySat = 1 / (1 + _alive / COLONY_SATURATION_REF);
   for (const parent of world.settlements) {
     if (parent.mode !== "settled") continue;
     if (parent.people < COLONY_MIN_POP) continue;
@@ -511,7 +523,7 @@ function maybeSendSettlers(world) {
     // people would otherwise sit at the ceiling. updatePopulation set s._k.
     const k = parent._k || 1;
     if (parent.people / k < COLONY_PRESS_FRAC) continue;
-    if (rng() >= COLONY_CHANCE) continue;
+    if (rng() >= COLONY_CHANCE * colonySat) continue;
     sendSettlers(world, parent);
   }
 }
