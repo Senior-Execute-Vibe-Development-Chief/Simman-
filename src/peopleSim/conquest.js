@@ -17,6 +17,7 @@ import { shockUnrest } from "./shocks.js";
 import { localPByCountry } from "./inflation.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, prunePersonalities, driftPersonality, expansionReachMul } from "./personality.js";
+import { circumscriptionOf } from "./countryTerritory.js";
 import { T } from "./tuning.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
@@ -148,10 +149,16 @@ export function bankMomentum(world, countryId, amount) {
 // dynamic event, not a fixed radius. Magnitudes are in "reach-units":
 // a province sitting exactly at the capital's reach costs a load of ~1.
 // CAP_BASE -> runtime lever (tuning.js T.CAP_BASE)
-// CAP_POP -> runtime lever (tuning.js T.CAP_POP)
-const CAP_POP_REF   = 1000;  // capital population that scores one T.CAP_POP unit
 // CAP_SEAT -> runtime lever (tuning.js T.CAP_SEAT)
 const SEAT_BONUS_CAP = 6;    // total seat contribution is capped (admin has diminishing returns)
+// Coercive capacity (Tilly): how many provinces the centre can hold is EMERGENT
+// from its coercive POWER, not fixed dials. capacity = CAP_K · log2(1 + capPower
+// / POW_REF) + seat bonuses. A stronger capital (army + people + development)
+// holds more; war / insolvency sap it; circumscription eases it. Replaces the
+// old CAP_BASE / CAP_POP / CAP_ORG count-forcing dials.
+const CAP_K   = 2.6;
+const POW_REF = 380;
+const CIRC_EASE = 0.5;       // a fully-circumscribed province costs this much LESS to hold (Carneiro)
 const COERCE_CAP    = 2.5;   // a far-stronger capital coerces a province (caps the load cut)
 // SIZE_LOAD -> runtime lever (tuning.js T.SIZE_LOAD)
 const SIZE_REF      = 1000;  // population scale for the size term
@@ -986,9 +993,8 @@ export function updatePolities(world) {
     // classical/imperial consolidation, and the bounded modern count) instead of
     // fragmenting into ever more statelets. This is the shape of the real
     // historical country-count curve (many small -> few empires -> bounded).
-    const peaceCapacity = T.CAP_BASE + T.CAP_POP * Math.log2(1 + (cap.people || 0) / CAP_POP_REF)
-                        + Math.min(SEAT_BONUS_CAP, seatBonus)
-                        + T.CAP_ORG * capOrg * capOrg;
+    const peaceCapacity = CAP_K * Math.log2(1 + capPower / POW_REF)
+                        + Math.min(SEAT_BONUS_CAP, seatBonus);
 
     // ── War duress: throttle the budget while the realm is fighting ────
     // (fronts are tallied in armies.js advanceFronts → world._fronts.)
@@ -1084,7 +1090,11 @@ export function updatePolities(world) {
       const coerce  = Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
       const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
       const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
-      const load = (d / range) * sizeMul * recMul / coerce;
+      // Circumscription (Carneiro): a province in bounded land (hemmed by sea /
+      // mountain / desert) is cheaper to hold — its people can't flee, so the
+      // centre dominates them; open-land provinces resist and cost full.
+      const circEase = 1 - CIRC_EASE * circumscriptionOf(world, s);
+      const load = (d / range) * sizeMul * recMul / coerce * circEase;
       s._adminLoad = load;            // for the info panel
       loads.push({ s, load });
     }
