@@ -34,6 +34,7 @@ import { T } from "./tuning.js";
 import { isContinentalLand } from "./state.js";
 import { recordOut, OUT_COLONY } from "./money.js";
 import { expansionColonyMul } from "./personality.js";
+import { forEachNear } from "./spatialGrid.js";
 
 let _shipId = 1;
 export function resetShipIds() { _shipId = 1; }
@@ -77,8 +78,7 @@ const COLONY_COOLDOWN   = 500 / 1.1; // ticks between expeditions from one port
                                  // which divides this; behaviour identical)
 const COLONY_ENDOW_FRAC = 0.12;  // share of the parent's coin colonists carry
 const COLONY_ENDOW_CAP  = 5000;
-const COLONY_MIN_DIST   = 14;    // landing must be this far from any settlement
-const COLONY_MIN_DIST_SQ = COLONY_MIN_DIST * COLONY_MIN_DIST;
+const COLONY_MIN_DIST   = 14;    // landing must be this far from any settlement (grid near-query radius)
 const COLONY_PER_PORT_CAND = 400; // cap shore candidates collected per port
 
 // 8-neighbour offsets (match the flood's neighbour order) for wind heading.
@@ -391,18 +391,17 @@ function tryColonize(world, A, cands, prev) {
   if (A.history) A.history.push({ step: world.step, type: "colony-launched", landTi: chosen.landTi });
 }
 
-// A landing tile is clear if no settlement sits within COLONY_MIN_DIST.
+// A landing tile is clear if no settlement sits within COLONY_MIN_DIST. The
+// spatial grid returns exactly those (vs an O(settlements) scan per candidate).
+// The grid is rebuilt at step start, so a colony founded earlier THIS step
+// (makeSettlement, not gridAdd) isn't in it yet — but foundColony re-checks at
+// landing time, so the spacing is still enforced at the outcome.
 function siteIsClear(world, lti) {
   const { tw } = world;
   const ty = (lti / tw) | 0, tx = lti - ty * tw;
-  for (const o of world.settlements) {
-    if (o.mode !== "settled") continue;
-    let dx = Math.abs(o.pos.x - tx);
-    if (dx > tw / 2) dx = tw - dx;
-    const dy = o.pos.y - ty;
-    if (dx * dx + dy * dy < COLONY_MIN_DIST_SQ) return false;
-  }
-  return true;
+  let clear = true;
+  forEachNear(world, tx, ty, COLONY_MIN_DIST, () => { clear = false; });
+  return clear;
 }
 
 // ── Per tick: advance every colony ship; found its colony on arrival ──

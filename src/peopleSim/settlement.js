@@ -31,6 +31,11 @@ export function resetSettlementIds() { _nextId = 1; }
 // dense countryside for fewer, larger settlements.
 const TIER_THRESHOLD = [0, 250, 1200, 3000];
 const TIER_NAME      = ["village", "town", "city", "metropolis"];
+// Demotion hysteresis: a settlement loses a tier only once its population falls
+// below this fraction of its CURRENT tier's promotion floor — a deadband so a
+// city hovering at a threshold doesn't flicker between tiers, while a sustained
+// decline (plague, famine, sacking, out-migration) genuinely costs it its rank.
+const TIER_DEMOTE_FRAC = 0.8;
 
 // Pop growth slowed from 0.0045 → 0.0018 so settlements visibly take
 // many in-game years to grow from village to city. With 0.0018, a
@@ -957,14 +962,26 @@ function updateDevelopment(world, s) {
     if (spare <= 0) { s._devReason = "coin"; return; }   // needs to buy materials it lacks
     if (cost > spare) { add *= spare / cost; cost = spare; }
     if (add <= 0) return;
-    s.wealth -= cost;
-    recordOut(s, OUT_MATERIALS, cost);
+    // Pay the suppliers ACTUALLY in reach this tick, distributing by a weight
+    // sum recomputed over exactly those recipients. The cached _devMat.totalW
+    // can be stale (a partner died / reach shifted since the KNOW_INTERVAL
+    // refresh), which would make the shares sum to less/more than `cost` and
+    // silently leak or mint coin — but the money supply is meant to be closed
+    // (inflation.js depends on it). Recomputing liveW here keeps Σshare == cost.
+    let liveW = 0; const recips = [];
     for (const pid of s._tradeReach.keys()) {
       const p = world._byId.get(pid);
       if (!p || p.mode !== "settled") continue;
-      const share = cost * (partnerWeight(p) / totalW);
-      p.wealth = (p.wealth || 0) + share;
-      recordIn(p, IN_MATERIALS, share);
+      const w = partnerWeight(p); liveW += w; recips.push([p, w]);
+    }
+    if (liveW > 0) {
+      s.wealth -= cost;
+      recordOut(s, OUT_MATERIALS, cost);
+      for (const [p, w] of recips) {
+        const share = cost * (w / liveW);
+        p.wealth = (p.wealth || 0) + share;
+        recordIn(p, IN_MATERIALS, share);
+      }
     }
   }
   s.infrastructure = (s.infrastructure || 0) + add;
@@ -1015,12 +1032,22 @@ function updatePopulation(world, s) {
 
 // ── Tier ───────────────────────────────────────────────────────────
 function updateTier(world, s) {
+  // Promote to the highest tier whose population floor is met.
   for (let t = TIER_THRESHOLD.length - 1; t > s.tier; t--) {
     if (s.people >= TIER_THRESHOLD[t]) {
       s.tier = t;
       s.history.push({ step: world.step, type: "tier-up", tier: TIER_NAME[t], people: Math.round(s.people) });
-      break;
+      return;
     }
+  }
+  // Demote one rung once population has fallen clearly below the current tier's
+  // floor (hysteresis band). updateTier runs every tick, so a real collapse
+  // walks the settlement down to its true bracket over a few ticks without
+  // threshold flicker — and a gutted metropolis stops being counted (and
+  // over-resourced: core/hinterland/garrison/seat) as one it no longer is.
+  if (s.tier > 0 && s.people < TIER_THRESHOLD[s.tier] * TIER_DEMOTE_FRAC) {
+    s.tier -= 1;
+    s.history.push({ step: world.step, type: "decline", tier: TIER_NAME[s.tier], people: Math.round(s.people) });
   }
 }
 

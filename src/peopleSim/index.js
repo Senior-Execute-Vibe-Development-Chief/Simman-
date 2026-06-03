@@ -27,6 +27,7 @@ import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
 import { updateShocks } from "./shocks.js";
 import { updateInflation } from "./inflation.js";
 import { foldMoney } from "./money.js";
+import { checkPeopleSimInvariants } from "./invariants.js";
 import { T } from "./tuning.js";
 
 // Territory / conquest / polity cadences are runtime levers (tuning.js:
@@ -128,6 +129,9 @@ export function stepPeopleSim(world, n = 1) {
       const s = world.settlements[i];
       if (s.mode === "settled") foldMoney(s);
     }
+    // Opt-in dev sanity pass (finiteness / non-negative wealth / tier range,
+    // plus money + population totals on world.debug). Zero cost unless enabled.
+    if (world._checkInvariants) checkPeopleSimInvariants(world);
     world.debug.tickMs = performance.now() - t0;
   }
   return world;

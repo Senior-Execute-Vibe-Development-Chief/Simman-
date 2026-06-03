@@ -7,9 +7,6 @@ import { loadPresets, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
 import { generateResources, tileResourceSummary, RESOURCES } from "./resourceGen.js";
 import { computeRivers, RIVER_NAMES, RIVER_STREAM } from "./riverGen.js";
-import { ensureTribeViews, attachRegistries } from "./tribeModel.js";
-import { resetInvariantState } from "./tribeStep.js";
-import { tribePower } from "./tribePower.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
@@ -922,12 +919,6 @@ function fmtPop(p){
   if(p>=1)return p.toFixed(0);
   return"<1";
 }
-function fmtGold(g){
-  if(g>=10000)return(g/1000).toFixed(0)+"k";
-  if(g>=1000)return(g/1000).toFixed(1)+"k";
-  return g.toFixed(0);
-}
-
 // ── Display units (peopleSim) ───────────────────────────────────────
 // The sim runs on compact internal units; these scale them to realistic,
 // human-readable figures at the DISPLAY layer ONLY — the simulation math is
@@ -1002,30 +993,6 @@ function buildHistoryExport(H){
   const sep ="|---|---|---|---|---|---|---|---|---|---|---|---|";
   const body=rows.map(r=>`| ${r.step} | ${fmtPeople(r.pop)} | ${fmtGoldKg(r.gold)} | ${(r.landPct*100).toFixed(0)}% | ${r.countries} | ${r.sett} | ${r.villages} | ${r.towns} | ${r.cities} | ${r.metros} | ${r.largest} | ${fmtPeople(r.army)} |`).join("\n");
   return `Simman — global stats over time (display units: 1 sim-person = ${POP_SCALE} people; gold by weight; land % of all land)\n\n${head}\n${sep}\n${body}`;
-}
-
-// ── Hexagonal knowledge radar (SVG) ──
-function KnowledgeRadar({k,size=140}){
-  if(!k)return null;
-  const axes=[
-    ["agriculture","Ag"],["metallurgy","Mt"],["navigation","Nv"],
-    ["construction","Cn"],["organization","Og"],["trade","Tr"]
-  ];
-  const cx=size/2,cy=size/2,R=size*0.36;
-  const angleAt=(i)=>(-Math.PI/2)+(i/axes.length)*Math.PI*2;
-  const pt=(i,r)=>{const a=angleAt(i);return[cx+Math.cos(a)*r,cy+Math.sin(a)*r];};
-  const ringPath=(r)=>axes.map((_,i)=>{const[x,y]=pt(i,r);return(i?"L":"M")+x.toFixed(1)+","+y.toFixed(1);}).join(" ")+" Z";
-  const valuePath=axes.map(([key],i)=>{const v=Math.max(0,Math.min(1,k[key]||0));const[x,y]=pt(i,R*v);return(i?"L":"M")+x.toFixed(1)+","+y.toFixed(1);}).join(" ")+" Z";
-  return(
-    <svg width={size} height={size} style={{flexShrink:0}}>
-      {[0.25,0.5,0.75,1].map(t=>(<path key={t} d={ringPath(R*t)} className="au-radar-grid" />))}
-      {axes.map((_,i)=>{const[x,y]=pt(i,R);return<line key={i} x1={cx} y1={cy} x2={x} y2={y} className="au-radar-axis" />;})}
-      <path d={valuePath} className="au-radar-fill" />
-      {axes.map(([key,label],i)=>{const[x,y]=pt(i,R+13);const v=k[key]||0;
-        return<g key={key}><text x={x} y={y} textAnchor="middle" dominantBaseline="middle" className="au-radar-label">{label}</text><text x={x} y={y+11} textAnchor="middle" dominantBaseline="middle" className="au-radar-value">{(v*100|0)}</text></g>;
-      })}
-    </svg>
-  );
 }
 
 // ── Settlement-card presentational components ──
@@ -1188,25 +1155,14 @@ const CH=useMercator?CH_MERC:CH_FLAT;
 _mercator=useMercator;
 const[mapCount,setMapCount]=useState(1);
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
-const[tribeTab,setTribeTab]=useState("overview");
-const[cardPos,setCardPos]=useState(()=>({
-  x:typeof window!=="undefined"?Math.max(20,window.innerWidth-290-360):520,
-  y:64
-}));
 const[keyOpen,setKeyOpen]=useState(true);
-const[showTribeList,setShowTribeList]=useState(false);
-const cardDragRef=useRef(null);
 useEffect(()=>{
-  const move=(e)=>{if(!cardDragRef.current)return;const d=cardDragRef.current;
-    setCardPos({x:Math.max(4,d.x+(e.clientX-d.mx)),y:Math.max(4,d.y+(e.clientY-d.my))});};
-  const up=()=>{cardDragRef.current=null;
-    // Clear any in-flight pan that ended outside the canvas — otherwise the
-    // next click would see panDragRef set with stale "moved" and either pan
-    // or swallow the click, depending on timing.
-    if(panDragRef.current&&!panDragRef.current.moved)panDragRef.current=null;
-  };
-  window.addEventListener("mousemove",move);window.addEventListener("mouseup",up);
-  return()=>{window.removeEventListener("mousemove",move);window.removeEventListener("mouseup",up);};
+  // On mouse-up, clear any in-flight pan that ended outside the canvas —
+  // otherwise the next click would see panDragRef with a stale "moved" flag
+  // and either pan or swallow the click depending on timing.
+  const up=()=>{if(panDragRef.current&&!panDragRef.current.moved)panDragRef.current=null;};
+  window.addEventListener("mouseup",up);
+  return()=>window.removeEventListener("mouseup",up);
 },[]);
 const activeResRef=useRef(null);activeResRef.current=activeRes;
 const extraCanvasRefs=useRef([]);
@@ -1267,7 +1223,7 @@ const W=1920,H=960,CW=CW_FLAT;
 const workerRef=useRef(null);
 // Helper: finalize a generated world (shared by worker + main thread paths)
 const finalizeWorld=useCallback((w)=>{
-setWorld(w);worldRef.current=w;const t=createTerritory(w);attachRegistries(t);ensureTribeViews(t);resetInvariantState(t);
+setWorld(w);worldRef.current=w;const t=createTerritory(w);
 // Erase the legacy initial tribes from the `ter` object. createTerritory
 // seeded them at fertile tiles and the draw() pipeline would render them
 // as settlement dots, competing visually with peopleSim bands. We keep
@@ -2938,7 +2894,7 @@ mfid=requestAnimationFrame(moneyLoop);
 return()=>cancelAnimationFrame(mfid);},[draw]);
 
 const togglePlay=()=>{if(!playing&&terRef.current&&terRef.current.settled>=terRef.current.landCount){
-const t=createTerritory(worldRef.current);attachRegistries(t);ensureTribeViews(t);resetInvariantState(t);terRef.current=t;setTribeCount(t.tribeCount);setCoverage(0);setDominant(null);setSelectedTribe(-1);terrainCache.current=null;atlasCache.current=null;draw(t);}
+const t=createTerritory(worldRef.current);terRef.current=t;setTribeCount(t.tribeCount);setCoverage(0);setDominant(null);setSelectedTribe(-1);terrainCache.current=null;atlasCache.current=null;draw(t);}
 playRef.current=!playRef.current;setPlaying(p=>!p);};
 const handleImport=useCallback(async(e)=>{const file=e.target.files?.[0];if(!file)return;
 e.target.value="";
@@ -3782,207 +3738,6 @@ return(
   );
 })()}
 
-{/* ─── Floating tribe card ─── */}
-{(()=>{
-  const ter=terRef.current;
-  const me=ter?.tribes?.[selectedTribe];
-  if(!me||!me.alive)return null;
-  const sel=selectedTribe;
-  const size=me.size;
-  const pop=me.pop;
-  const power=tribePower(ter,sel);
-  const bud=me.budget||null;
-  const k=me.knowledge||null;
-  const stC=me.settleCounts;
-  const ports=me.ports.length;
-  const knownCoasts=me.knownCoasts.length;
-  const td=me.trade||null;
-  const [tr,tg,tb]=tribeRGB(sel);
-  return(
-    <div className="au-parchment au-elev au-tribe-card"
-      style={{left:cardPos.x,top:cardPos.y}}>
-      <div className="au-drag-handle"
-        onMouseDown={(e)=>{cardDragRef.current={mx:e.clientX,my:e.clientY,x:cardPos.x,y:cardPos.y};e.preventDefault();}}
-        style={{display:"flex",alignItems:"center",gap:8}}>
-        <span className="au-wax-seal" style={{background:`rgb(${tr},${tg},${tb})`}}>{sel}</span>
-        <div style={{flex:1,minWidth:0}}>
-          <div className="au-tribename">Tribe&nbsp;№{sel}</div>
-          {bud?.personality&&<div className="au-fade" style={{fontSize:11,fontStyle:"italic"}}>the {bud.personality.toLowerCase()}</div>}
-        </div>
-        <span className="au-x" onClick={()=>{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}}>✕</span>
-      </div>
-
-      {/* Quick stats */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"2px 10px",margin:"4px 0 10px"}}>
-        <div>
-          <div className="au-sc au-fade" style={{fontSize:9}}>Territory</div>
-          <div className="au-heading" style={{fontSize:14}}>{size.toLocaleString()}</div>
-        </div>
-        <div>
-          <div className="au-sc au-fade" style={{fontSize:9}}>People</div>
-          <div className="au-heading" style={{fontSize:14}}>{fmtPop(pop)}</div>
-        </div>
-        <div>
-          <div className="au-sc au-fade" style={{fontSize:9}}>Power</div>
-          <div className="au-heading" style={{fontSize:14}}>{power.toFixed(0)}</div>
-        </div>
-        <div>
-          <div className="au-sc au-fade" style={{fontSize:9}}>Gold</div>
-          <div className="au-heading au-gold-text" style={{fontSize:14}}>{fmtGold(bud?.wealth||0)}</div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div style={{display:"flex",borderBottom:"1px solid rgba(58,38,20,0.30)",margin:"0 -6px"}}>
-        {[["overview","Overview"],["knowledge","Knowledge"],["diplomacy","Diplomacy"],["trade","Trade"]].map(([id,label])=>(
-          <button key={id} className={"au-tab"+(tribeTab===id?" au-active":"")}
-            onClick={()=>setTribeTab(id)}>{label}</button>
-        ))}
-      </div>
-
-      <div style={{padding:"10px 2px 2px",fontSize:12,minHeight:160}}>
-      {tribeTab==="overview"&&<>
-        <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>Settlements</div>
-        {(stC.large+stC.cities+stC.towns+stC.villages)>0?
-          <div style={{display:"flex",gap:14,flexWrap:"wrap",marginBottom:8,fontSize:12}}>
-            {stC.large>0&&<span><span className="au-gold-text" style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.large}</span> <span className="au-fade au-sc" style={{fontSize:10}}>capital{stC.large!==1?"s":""}</span></span>}
-            {stC.cities>0&&<span><span style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.cities}</span> <span className="au-fade au-sc" style={{fontSize:10}}>cit{stC.cities===1?"y":"ies"}</span></span>}
-            {stC.towns>0&&<span><span style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.towns}</span> <span className="au-fade au-sc" style={{fontSize:10}}>town{stC.towns!==1?"s":""}</span></span>}
-            {stC.villages>0&&<span><span style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.villages}</span> <span className="au-fade au-sc" style={{fontSize:10}}>village{stC.villages!==1?"s":""}</span></span>}
-          </div>:
-          <div className="au-fade" style={{fontStyle:"italic",fontSize:11,marginBottom:8}}>no permanent settlements yet</div>}
-        {(ports>0||knownCoasts>0)&&<>
-          <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>Sea</div>
-          <div style={{fontSize:12,marginBottom:8}}>
-            <span style={{fontFamily:"'Cinzel',serif"}}>{ports}</span> <span className="au-fade au-sc" style={{fontSize:10}}>port{ports!==1?"s":""}</span>
-            {" · "}
-            <span style={{fontFamily:"'Cinzel',serif"}}>{knownCoasts}</span> <span className="au-fade au-sc" style={{fontSize:10}}>known coasts</span>
-          </div>
-        </>}
-        {bud&&<>
-          <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>Priorities</div>
-          <div style={{display:"flex",height:8,borderRadius:2,overflow:"hidden",
-            border:"1px solid rgba(58,38,20,0.3)",marginBottom:4}}>
-            <div style={{width:`${bud.military*100}%`,background:"#9a3030"}} title={`Military ${(bud.military*100|0)}%`} />
-            <div style={{width:`${bud.growth*100}%`,background:"#5a8030"}} title={`Growth ${(bud.growth*100|0)}%`} />
-            <div style={{width:`${bud.commerce*100}%`,background:"#3a6a98"}} title={`Commerce ${(bud.commerce*100|0)}%`} />
-            <div style={{width:`${bud.exploration*100}%`,background:"#a07028"}} title={`Exploration ${(bud.exploration*100|0)}%`} />
-            <div style={{width:`${bud.survival*100}%`,background:"#5a5448"}} title={`Survival ${(bud.survival*100|0)}%`} />
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",gap:4,fontSize:10}} className="au-sc">
-            <span style={{color:"#9a3030"}}>{(bud.military*100|0)}mil</span>
-            <span style={{color:"#5a8030"}}>{(bud.growth*100|0)}gro</span>
-            <span style={{color:"#3a6a98"}}>{(bud.commerce*100|0)}com</span>
-            <span style={{color:"#a07028"}}>{(bud.exploration*100|0)}exp</span>
-            <span style={{color:"#5a5448"}}>{(bud.survival*100|0)}sur</span>
-          </div>
-        </>}
-      </>}
-
-      {tribeTab==="knowledge"&&k&&
-        <div style={{display:"flex",gap:14,alignItems:"center",justifyContent:"flex-start"}}>
-          <KnowledgeRadar k={k} size={155} />
-          <div style={{fontSize:11,lineHeight:1.7,flex:1}}>
-            {[["agriculture","Agriculture","#5a8030"],["metallurgy","Metallurgy","#a07028"],
-              ["navigation","Navigation","#3a6a98"],["construction","Construction","#6b5b3c"],
-              ["organization","Organization","#7a3878"],["trade","Trade","#a08828"]].map(([key,label,col])=>{
-              const v=k[key]||0;
-              return(
-                <div key={key} style={{display:"flex",gap:5,alignItems:"baseline"}}>
-                  <span style={{flex:1,color:v>0.15?"var(--au-ink)":"var(--au-ink-light)"}}>{label}</span>
-                  <span className="au-heading" style={{fontSize:12,color:v>0.15?col:"var(--au-ink-light)"}}>{(v*100|0)}</span>
-                </div>);})}
-          </div>
-        </div>}
-      {tribeTab==="knowledge"&&!k&&<div className="au-fade" style={{textAlign:"center",fontStyle:"italic"}}>no knowledge data</div>}
-
-      {tribeTab==="diplomacy"&&(()=>{
-        const allRels=[];const seen=new Set();
-        if(ter._borderContacts&&ter._borderContacts[sel]){
-          for(const nid in ter._borderContacts[sel]){const n=parseInt(nid);
-            const tn=ter.tribes[n];if(!tn||!tn.alive)continue;seen.add(n);
-            allRels.push({id:n,size:tn.size,rel:tribeRelation(ter,sel,n),via:'border'});}}
-        for(const kc of me.knownCoasts){
-          if(kc.owner>=0&&!seen.has(kc.owner)){
-            const tk=ter.tribes[kc.owner];if(!tk||!tk.alive)continue;
-            seen.add(kc.owner);
-            allRels.push({id:kc.owner,size:tk.size,rel:tribeRelation(ter,sel,kc.owner),via:'maritime'});}}
-        allRels.sort((a,b)=>b.size-a.size);
-        if(!allRels.length)return<div className="au-fade" style={{textAlign:"center",fontStyle:"italic",padding:"12px 0"}}>no known nations</div>;
-        const relCol={fight:"#9a3030",trade:"#a07028",friendly:"#3a6a48",neutral:"#6b4f37"};
-        const relLabel={fight:"At War",trade:"Trading",friendly:"Friendly",neutral:""};
-        return<div>
-          <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>{allRels.length} known nation{allRels.length===1?"":"s"}</div>
-          <div style={{maxHeight:180,overflowY:"auto"}} className="au-scroll">
-          {allRels.slice(0,14).map(n=>{
-            const pers=ter.tribes[n.id]?.personality||"";
-            return<div key={n.id} style={{display:"flex",alignItems:"center",gap:7,padding:"3px 4px",fontSize:11,cursor:"pointer",
-              background:n.rel==="fight"?"rgba(154,48,48,0.10)":n.rel==="trade"?"rgba(160,112,40,0.10)":"transparent",
-              borderRadius:2,marginBottom:1}}
-              onClick={()=>{setSelectedTribe(n.id);ter._selectedTribe=n.id;draw(ter);}}>
-              <span className="au-wax-seal au-small" style={{background:`rgb(${tribeRGB(n.id).join(',')})`}} />
-              <span>#{n.id}</span>
-              {pers&&<span className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>{pers}</span>}
-              <span className="au-fade" style={{fontSize:10}}>{n.size}t</span>
-              {n.via==="maritime"&&<span style={{fontSize:10}}>⛵</span>}
-              <div style={{flex:1}} />
-              {relLabel[n.rel]&&<span style={{fontSize:10,fontWeight:600,color:relCol[n.rel]}}>{relLabel[n.rel]}</span>}
-            </div>;})}
-          </div>
-        </div>;
-      })()}
-
-      {tribeTab==="trade"&&(()=>{
-        if(!td||!td.partners)return<div className="au-fade" style={{textAlign:"center",fontStyle:"italic",padding:"12px 0"}}>no trade established</div>;
-        const fmt=(x)=>x>=1?x.toFixed(1):x.toFixed(2);
-        return<div>
-          <div style={{display:"flex",gap:20,marginBottom:8}}>
-            <div><div className="au-sc au-fade" style={{fontSize:10}}>Partners</div>
-              <div className="au-heading" style={{fontSize:15}}>{td.partners}</div></div>
-            {td.income>0.01&&<div><div className="au-sc au-fade" style={{fontSize:10}}>Income</div>
-              <div className="au-heading au-gold-text" style={{fontSize:15}}>{fmt(td.income)}</div></div>}
-          </div>
-          {(td.foodImports>0||td.foodExports>0)&&<div className="au-sc au-fade" style={{fontSize:10,marginBottom:3}}>Food</div>}
-          {td.foodImports>0&&<div className="au-verde-text" style={{fontSize:11}}>↓ Importing {fmt(td.foodImports)}</div>}
-          {td.foodExports>0&&<div className="au-gold-text" style={{fontSize:11}}>↑ Exporting {fmt(td.foodExports)}</div>}
-          {td.imports&&Object.keys(td.imports).length>0&&<>
-            <div className="au-sc au-fade" style={{fontSize:10,marginTop:6,marginBottom:3}}>Imports</div>
-            {Object.entries(td.imports).slice(0,5).map(([rk,v])=><div key={rk} style={{fontSize:11}}>{rk} <span className="au-fade">{fmt(v)}</span></div>)}
-          </>}
-        </div>;
-      })()}
-      </div>
-
-      {/* Footer: nation list toggle */}
-      <div className="au-rule" style={{marginTop:8}} />
-      <div style={{cursor:"pointer",padding:"3px 0",display:"flex",alignItems:"center",gap:6}}
-        onClick={()=>setShowTribeList(v=>!v)}>
-        <span className="au-sc au-fade" style={{fontSize:10,flex:1}}>{showTribeList?"▾":"▸"} All nations</span>
-      </div>
-      {showTribeList&&(()=>{
-        const tribes=[];
-        for(const tx of ter.tribes){if(!tx.alive)continue;
-          tribes.push({id:tx.id,size:tx.size,power:tribePower(ter,tx.id),
-            pop:tx.pop,personality:tx.personality});}
-        tribes.sort((a,b)=>b.power-a.power);
-        return<div style={{maxHeight:130,overflowY:"auto",marginTop:2}} className="au-scroll">
-          {tribes.map(t=>{const isSel=t.id===sel;
-            return<div key={t.id} onClick={()=>{setSelectedTribe(t.id);if(ter)ter._selectedTribe=t.id;draw(ter);}}
-              style={{display:"flex",alignItems:"center",gap:6,padding:"2px 4px",cursor:"pointer",
-                background:isSel?"rgba(120,80,40,0.18)":"transparent",borderRadius:2}}>
-              <span className="au-wax-seal au-small" style={{background:`rgb(${tribeRGB(t.id).join(",")})`}} />
-              <span style={{fontSize:11}}>#{t.id}</span>
-              {t.personality&&<span className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>{t.personality}</span>}
-              <div style={{flex:1}} />
-              <span className="au-fade" style={{fontSize:10}}>{t.size}t</span>
-              <span className="au-fade" style={{fontSize:10}}>{fmtPop(t.pop)}</span>
-              <span style={{fontSize:10,width:32,textAlign:"right"}} className="au-fade">{t.power.toFixed(0)}pw</span>
-            </div>;})}
-        </div>;
-      })()}
-    </div>
-  );
-})()}
 
 {/* ─── Bottom-left collapsible legend ─── */}
 {viewMode==="transport-test"&&

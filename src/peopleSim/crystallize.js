@@ -87,6 +87,10 @@ const MARKET_PULL_WEIGHT        = 0.4;   // modest pull so clusters form but don
 // (the founder doesn't accidentally plant at 4 tiles).
 const MIN_SETT_DIST             = 8;          // daughter-colony spacing floor (grid near-query radius)
 const KNOWLEDGE_DECAY_SCALE     = 30;
+// Radius for the spatial-grid fast path in inheritKnowledgeAt. Generous enough
+// that any non-isolated spawn finds its nearest neighbour in the grid (so the
+// O(settlements) full scan is only hit for genuinely remote sites).
+const INHERIT_NEAR_RADIUS       = 90;
 // Independent invention: a site reached by no land network at all relies on
 // this baseline rate. Low so empty regions stay empty until colonised
 // (existing networks still spread by diffusionMul × NEAR_RATE).
@@ -179,14 +183,17 @@ export function maybeCrystallize(world) {
     world._transportStep = world.step;
   }
 
+  // Alive-settlement count — shared by the colony saturation damper and the
+  // crystallisation saturation damper below (one scan instead of two).
+  let _alive = 0;
+  for (const s of world.settlements) if (s.mode === "settled") _alive++;
+
   // Mother-country expansion: pressed towns send settler parties (see
   // sendSettlers — this is the entire "population pressure → new colony"
   // axis, distinct from the random crystallisation sweep below).
-  if (world.step % COLONY_CHECK_INTERVAL === 0) maybeSendSettlers(world);
+  if (world.step % COLONY_CHECK_INTERVAL === 0) maybeSendSettlers(world, _alive);
 
   // Crystallisation saturation: settlement-count-dependent damper.
-  let _alive = 0;
-  for (const s of world.settlements) if (s.mode === "settled") _alive++;
   const saturationDamper = 1 / (1 + (_alive / CRYSTAL_SATURATION_REF) ** 2);
 
   // Compute per-sweep resource scarcity / value table once.
@@ -481,14 +488,12 @@ function geoBonusFor(world, ti, tx, ty) {
 // founds a daughter joining the parent's realm. Cooldown stops a single town
 // from spamming colonies; settler-cost shaves the parent's population so
 // expansion has a real demographic cost (you trade headcount for territory).
-function maybeSendSettlers(world) {
+function maybeSendSettlers(world, alive) {
   if (!world.transportDist) return;
   const { rng } = world;
   // Saturation: colonies get rarer as the map fills, so settlement density
   // plateaus instead of climbing forever (see COLONY_SATURATION_REF).
-  let _alive = 0;
-  for (const s of world.settlements) if (s.mode === "settled") _alive++;
-  const colonySat = 1 / (1 + (_alive / COLONY_SATURATION_REF) ** 2);
+  const colonySat = 1 / (1 + (alive / COLONY_SATURATION_REF) ** 2);
   for (const parent of world.settlements) {
     if (parent.mode !== "settled") continue;
     if (parent.people < COLONY_MIN_POP) continue;
@@ -581,13 +586,22 @@ function inheritKnowledgeAt(world, ti, td) {
   const { tw } = world;
   const ty = (ti / tw) | 0, tx = ti - ty * tw;
   let nearest = null, bestD2 = Infinity;
-  for (const s of world.settlements) {
-    if (s.mode !== "settled") continue;
-    let dx = Math.abs(s.pos.x - tx);
-    if (dx > tw / 2) dx = tw - dx;
-    const dy = s.pos.y - ty;
-    const d2 = dx * dx + dy * dy;
+  // Fast path via the spatial grid: the nearest settlement within a generous
+  // radius IS the global nearest (nothing closer can exist outside the disk).
+  // Only when the disk is empty (a genuinely isolated spawn) do we fall back to
+  // the full O(settlements) scan — so this is behaviour-identical, just cheaper.
+  forEachNear(world, tx, ty, INHERIT_NEAR_RADIUS, (s, d2) => {
     if (d2 < bestD2) { bestD2 = d2; nearest = s; }
+  });
+  if (!nearest) {
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      let dx = Math.abs(s.pos.x - tx);
+      if (dx > tw / 2) dx = tw - dx;
+      const dy = s.pos.y - ty;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) { bestD2 = d2; nearest = s; }
+    }
   }
   // Baseline neolithic knowledge for independent invention. Just the six
   // surviving tracks after the merge (foraging→agriculture,

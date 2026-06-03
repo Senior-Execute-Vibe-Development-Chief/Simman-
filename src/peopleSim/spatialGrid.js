@@ -38,6 +38,20 @@ export function gridAdd(world, s) {
   (grid.cells[k] || (grid.cells[k] = [])).push(s);
 }
 
+// Test one bucket's settlements against the (x,y) radius query and fire cb for
+// hits. Pulled out of forEachNear so both the windowed and whole-row column
+// sweeps below share exactly one distance test.
+function _visitCell(arr, x, y, tw, halfTw, r2, cb) {
+  for (let i = 0; i < arr.length; i++) {
+    const s = arr[i];
+    if (s.mode !== "settled") continue;   // died after the grid was built this step
+    let dx = Math.abs(s.pos.x - x); if (dx > halfTw) dx = tw - dx;
+    const dy = s.pos.y - y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 <= r2) cb(s, d2);
+  }
+}
+
 // Call cb(settlement, distSq) for every settled settlement whose centre is
 // within `radius` tiles of (x,y). Longitude wraps; latitude clamps. The grid is
 // built once per step, but a settlement can die (mode → "dead") between the
@@ -50,18 +64,22 @@ export function forEachNear(world, x, y, radius, cb) {
   const span = Math.ceil(radius / CELL);
   const ccx = (x / CELL) | 0, ccy = (y / CELL) | 0;
   const yLo = Math.max(0, ccy - span), yHi = Math.min(rows - 1, ccy + span);
+  // When the column window spans the whole globe (2·span+1 ≥ cols), the wrapped
+  // index (ccx+dxc)%cols lands on the same column twice, so a settlement would
+  // be handed to cb more than once — double-counting market pull, queuing a
+  // road candidate twice (a wasted pathfind), etc. In that case sweep every
+  // distinct column exactly once instead.
+  const wholeRow = (2 * span + 1) >= cols;
   for (let cy = yLo; cy <= yHi; cy++) {
     const rowOff = cy * cols;
-    for (let dxc = -span; dxc <= span; dxc++) {
-      let cx = (ccx + dxc) % cols; if (cx < 0) cx += cols;
-      const arr = cells[rowOff + cx]; if (!arr) continue;
-      for (let i = 0; i < arr.length; i++) {
-        const s = arr[i];
-        if (s.mode !== "settled") continue;   // died after the grid was built this step
-        let dx = Math.abs(s.pos.x - x); if (dx > halfTw) dx = tw - dx;
-        const dy = s.pos.y - y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 <= r2) cb(s, d2);
+    if (wholeRow) {
+      for (let cx = 0; cx < cols; cx++) {
+        const arr = cells[rowOff + cx]; if (arr) _visitCell(arr, x, y, tw, halfTw, r2, cb);
+      }
+    } else {
+      for (let dxc = -span; dxc <= span; dxc++) {
+        let cx = (ccx + dxc) % cols; if (cx < 0) cx += cols;
+        const arr = cells[rowOff + cx]; if (arr) _visitCell(arr, x, y, tw, halfTw, r2, cb);
       }
     }
   }

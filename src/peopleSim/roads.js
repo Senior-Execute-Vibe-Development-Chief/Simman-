@@ -760,15 +760,29 @@ export function updateTrade(world) {
     const reach = mergeReach(s);
     if (!reach) continue;
     for (const [peerId, link] of reach) {
-      if (peerId <= s.id) continue;   // process each pair once
+      if (peerId === s.id) continue;
       const peer = findById(world, peerId);
       if (!peer || peer.mode !== "settled") continue;
+      // Process each unordered pair exactly once. Normally the lower-id member
+      // runs it — but trade reach can be ASYMMETRIC (each settlement keeps only
+      // its nearest MAX_PARTNERS, and "b is among a's nearest" does NOT imply
+      // the reverse). So the lower id runs it, UNLESS the lower-id peer doesn't
+      // list us back — then WE run it, so a one-way-listed link still trades
+      // instead of being silently dropped (a peripheral breadbasket's grain
+      // reaching a city used to hinge on arbitrary id ordering).
+      if (peerId < s.id && reachHasPeer(peer, s.id)) continue;
       const peerBefore = peer.wealth || 0;
       runFoodTradeBetween(world, s, peer, link);
       runGeneralTradeBetween(world, s, peer, link);
       runLuxuryTradeBetween(world, s, peer);
-      const net = (peer.wealth || 0) - peerBefore;   // +ve = money toward peer (higher id, end of tiles)
-      linkMoney.set(s.id + ":" + peerId, net);
+      // Net coin that reached the peer (the end of link.tiles, oriented s→peer).
+      const net = (peer.wealth || 0) - peerBefore;
+      // Store under a canonical lo:hi key, oriented as "coin that reached the
+      // HIGHER-id settlement" (the convention getTradeProfile + the money-flow
+      // overlay expect) — the pair can now be run from either side, so we can't
+      // assume s is the lower id.
+      const lo = s.id < peerId ? s.id : peerId, hi = s.id < peerId ? peerId : s.id;
+      linkMoney.set(lo + ":" + hi, peerId === hi ? net : -net);
       // Land trade wears its road path (flow drives paving + thickness);
       // sea trade leaves no road, but both animate on the money overlay.
       if (link.tiles && link.tiles.length > 0) {
@@ -1026,6 +1040,13 @@ function mergeReach(s) {
     if (!ex || link.cost < ex.cost) m.set(pid, link);
   }
   return m;
+}
+
+// Does settlement `p` list `id` among its trade peers (road OR sea reach)?
+// Used by the trade pass to dedupe each unordered pair exactly once even when
+// the nearest-K reach is asymmetric (see updateTrade).
+function reachHasPeer(p, id) {
+  return !!((p._tradeReach && p._tradeReach.has(id)) || (p._seaReach && p._seaReach.has(id)));
 }
 
 // O(1) id lookup via the per-tick map built in stepPeopleSim. Falls

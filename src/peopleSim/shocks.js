@@ -52,10 +52,18 @@ function torusDist(world, ax, ay, bx, by) {
 }
 
 export function updateShocks(world) {
+  if (!world._plagued) world._plagued = new Set();
+  const famineCheck = world.step % FAMINE_CHECK === 0;
+  const plagueCheck = world.step % PLAGUE_CHECK === 0;
+  // Nothing shock-related can happen this tick (no spawn roll due, no active
+  // outbreak to advance) — skip, and skip the per-tick RNG allocation. The RNG
+  // is re-seeded from world.step each tick and only ever consumed on these
+  // ticks anyway, so not allocating it on the rest is behaviour-identical.
+  if (!famineCheck && !plagueCheck && world._plagued.size === 0) return;
   const rng = mkRng((world.seed ^ (world.step * 40503)) >>> 0);
 
   // ── Famine spawn ──
-  if (world.step % FAMINE_CHECK === 0 && rng() < T.FAMINE_CHANCE) {
+  if (famineCheck && rng() < T.FAMINE_CHANCE) {
     const pool = world.settlements.filter(s => s.mode === "settled" && s.people >= FAMINE_MIN_POP);
     if (pool.length) {
       const seed = pool[(rng() * pool.length) | 0];
@@ -72,8 +80,7 @@ export function updateShocks(world) {
   }
 
   // ── Plague spawn ──
-  if (!world._plagued) world._plagued = new Set();
-  if (world.step % PLAGUE_CHECK === 0 && rng() < T.PLAGUE_CHANCE) {
+  if (plagueCheck && rng() < T.PLAGUE_CHANCE) {
     const pool = world.settlements.filter(s =>
       s.mode === "settled" && s.people >= PLAGUE_MIN_POP &&
       world.step >= (s._plagueUntil || 0) && world.step >= (s._plagueImmuneUntil || 0));
