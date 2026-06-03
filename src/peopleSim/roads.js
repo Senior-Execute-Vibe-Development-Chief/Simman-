@@ -184,7 +184,7 @@ const TRANSPORT_PER_PATHCOST       = 0.012;
 const FOOD_PRICE                   = 5;
 const FOOD_TRANSPORT_PER_PATHCOST  = 0.005;
 const STARVING_TICKS_LEFT          = 100;
-const FOOD_IMPORT_EMA_ALPHA        = 0.002;
+const FOOD_IMPORT_EMA_ALPHA        = 0.02;    // import-fed food capacity tracks delivered grain in ~50 ticks, not ~500 — lets a city grow on grain it's actually receiving instead of lagging centuries behind
 const USAGE_PER_TRADE              = 0.04;   // flow added per tile per active trade tick
 const MONEY_FLOW_EPS               = 0.01;   // min net /tick for a link to register in the money-flow overlay
 
@@ -861,10 +861,16 @@ function runFoodTradeBetween(world, a, b, link) {
   } else if (bSurplus > 0.001 && aWant > 0.001) {
     exporter = b; importer = a; shipRate = bSurplus; deficit = aWant;
   } else return;
-  // Growth-reserve fraction for exporter (feed own children first).
+  // Growth-reserve fraction for exporter: keep a thin buffer against transient
+  // dips, but SHIP THE SURPLUS. The old rule reserved up to 70% when the
+  // exporter had spare capacity ("feed own children first"), which made exactly
+  // the depopulating rural villages — the breadbaskets a city should eat from —
+  // hoard their grain instead of feeding the city. Shipping surplus doesn't
+  // impede the seller's own growth (that's logistic on K, not on granary
+  // level), so a farming village exports most of what it grows.
   const exporterK = exporter._k || Math.max(1, exporter.people);
   const headroom = Math.max(0, 1 - exporter.people / exporterK);
-  const reserveFraction = 0.20 + headroom * 0.50;
+  const reserveFraction = 0.10 + headroom * 0.15;
   const effectiveShipRate = shipRate * (1 - reserveFraction);
   // Ship the ongoing production surplus, bounded by the importer's
   // deficit. effectiveShipRate was just added to the granary this tick so
