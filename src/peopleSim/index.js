@@ -138,15 +138,42 @@ export function getEntities(world) {
 }
 
 export function peopleSimStats(world) {
-  let sPeople = 0, aliveSettlements = 0, territoryTiles = 0;
+  let sPeople = 0, sWealth = 0, aliveSettlements = 0, territoryTiles = 0, sArmy = 0;
   const tierCounts = [0, 0, 0, 0];
   for (const s of world.settlements) {
     if (s.mode === "dead") continue;
     aliveSettlements++;
     sPeople += s.people;
+    sWealth += s.wealth || 0;
+    sArmy += s.army || 0;
     territoryTiles += s._terrTiles || 0;
     if (s.tier >= 0 && s.tier < tierCounts.length) tierCounts[s.tier]++;
   }
+  // Political map: land claimed (vs total land) and the largest single empire,
+  // tallied from the per-tile country owner. This scans the whole owner array,
+  // and peopleSimStats is posted ~30×/s, so cache it and refresh only every ~32
+  // steps (it drifts slowly). Sum of state treasuries folds into the world's
+  // total gold alongside settlement coin.
+  let claimedTiles = 0, landTiles = 0, largestEmpire = 0, treasury = 0;
+  const co = world._countryOwner, elev = world.elev;
+  const cache = world._landStatsCache;
+  if (cache && cache.landTiles > 0 && world.step - cache.step < 32) {
+    claimedTiles = cache.claimedTiles; landTiles = cache.landTiles; largestEmpire = cache.largestEmpire;
+  } else if (co && elev) {
+    const perCountry = new Map();
+    for (let i = 0; i < co.length; i++) {
+      if (elev[i] <= 0) continue;
+      landTiles++;
+      const o = co[i];
+      if (o >= 0) {
+        claimedTiles++;
+        const v = (perCountry.get(o) || 0) + 1; perCountry.set(o, v);
+        if (v > largestEmpire) largestEmpire = v;
+      }
+    }
+    world._landStatsCache = { step: world.step, claimedTiles, landTiles, largestEmpire };
+  }
+  if (world.countries) for (const c of world.countries.values()) treasury += c._treasury || 0;
   return {
     step: world.step,
     settlements: aliveSettlements,
@@ -156,6 +183,12 @@ export function peopleSimStats(world) {
     metropolises:tierCounts[3],
     territoryTiles,
     totalPeople: Math.round(sPeople),
+    totalWealth: Math.round(sWealth + treasury),   // total gold in the world (settlement coin + state treasuries)
+    totalArmy:   Math.round(sArmy),
+    claimedTiles, landTiles,
+    landPct: landTiles > 0 ? claimedTiles / landTiles : 0,
+    countries: world.countries ? world.countries.size : 0,
+    largestEmpire,
     tickMs: world.debug.tickMs.toFixed(2),
   };
 }

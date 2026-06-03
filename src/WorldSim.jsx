@@ -937,6 +937,7 @@ function fmtGold(g){
 const POP_SCALE        = 1000;   // sim pop → people: metropolis ~3.4M, city ~1.2M, town ~250k, village ~25k
 const FOOD_KG_PER_UNIT = 1000;   // one sim food unit → kg of grain (1 unit = 1 tonne)
 const GOLD_G_PER_COIN  = 8;      // one sim coin → grams of gold (a gold ducat ≈ 3.5g; 8g keeps treasuries legible)
+const HISTORY_INTERVAL = 100;    // sim steps between History-chart samples
 
 // Compact number: 1234 → "1.2k", 3_400_000 → "3.4M", 2.1e9 → "2.1B".
 function fmtNum(n){
@@ -960,6 +961,48 @@ function fmtPeople(p){ return fmtNum((p||0)*POP_SCALE); }
 function fmtFood(simFood){ return fmtMass((simFood||0)*FOOD_KG_PER_UNIT); }
 // Wealth shown as a mass of gold.
 function fmtGoldKg(simCoin){ return fmtMass((simCoin||0)*GOLD_G_PER_COIN/1000); }
+
+// ── History charts ──────────────────────────────────────────────────
+// One metric over sim-steps as a small SVG line chart (the History panel).
+function MiniChart({data,get,label,color,fmtY}){
+  const W=300,H=54,padL=3,padR=3,padT=2,padB=8;
+  if(!data||data.length<2)
+    return <div style={{padding:"5px 10px"}}><div className="au-sc au-fade" style={{fontSize:9}}>{label}</div><div className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>gathering data…</div></div>;
+  let yMin=Infinity,yMax=-Infinity;
+  for(const d of data){const v=get(d);if(v<yMin)yMin=v;if(v>yMax)yMax=v;}
+  if(!(yMax>yMin))yMax=yMin+1;
+  const x0=data[0].step,x1=data[data.length-1].step,dx=Math.max(1,x1-x0);
+  const sx=v=>padL+(W-padL-padR)*((v-x0)/dx);
+  const sy=v=>padT+(H-padT-padB)*(1-(v-yMin)/(yMax-yMin));
+  let pts="";
+  for(const d of data)pts+=sx(d.step).toFixed(1)+","+sy(get(d)).toFixed(1)+" ";
+  const cur=get(data[data.length-1]);
+  return(
+    <div style={{padding:"3px 10px 6px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+        <span className="au-sc au-fade" style={{fontSize:9}}>{label}</span>
+        <span style={{fontSize:11,fontWeight:600,color}}>{fmtY(cur)}</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{width:"100%",height:H,display:"block"}}>
+        <polyline points={pts.trim()} fill="none" stroke={color} strokeWidth={1.3} vectorEffect="non-scaling-stroke"/>
+      </svg>
+      <div style={{display:"flex",justifyContent:"space-between"}}>
+        <span className="au-fade" style={{fontSize:8}}>{fmtY(yMin)}</span>
+        <span className="au-fade" style={{fontSize:8}}>peak {fmtY(yMax)}</span>
+      </div>
+    </div>);
+}
+// Copyable markdown rundown of the run so far (downsampled to ~40 rows).
+function buildHistoryExport(H){
+  if(!H||!H.length)return "No history yet — let the simulation run for a while, then copy again.";
+  const N=H.length,stride=Math.max(1,Math.ceil(N/40)),rows=[];
+  for(let i=0;i<N;i+=stride)rows.push(H[i]);
+  if(rows[rows.length-1]!==H[N-1])rows.push(H[N-1]);
+  const head="| step | population | gold | land % | countries | settlements | villages | towns | cities | metros | largest empire (tiles) | army |";
+  const sep ="|---|---|---|---|---|---|---|---|---|---|---|---|";
+  const body=rows.map(r=>`| ${r.step} | ${fmtPeople(r.pop)} | ${fmtGoldKg(r.gold)} | ${(r.landPct*100).toFixed(0)}% | ${r.countries} | ${r.sett} | ${r.villages} | ${r.towns} | ${r.cities} | ${r.metros} | ${r.largest} | ${fmtPeople(r.army)} |`).join("\n");
+  return `Simman — global stats over time (display units: 1 sim-person = ${POP_SCALE} people; gold by weight; land % of all land)\n\n${head}\n${sep}\n${body}`;
+}
 
 // ── Hexagonal knowledge radar (SVG) ──
 function KnowledgeRadar({k,size=140}){
@@ -1191,6 +1234,12 @@ const peopleRef=useRef(null);
 const simWorkerRef=useRef(null);
 const applySnapshotRef=useRef(null);
 const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
+// Time-series of global metrics for the History charts + copyable export. Kept
+// in a ref (no re-render on every sample); the charts read it on the regular
+// psStats-driven re-render. Sampled every HISTORY_INTERVAL sim steps.
+const psHistoryRef=useRef([]);
+const [chartsOpen,setChartsOpen]=useState(false);
+const [statsCopied,setStatsCopied]=useState(false);
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
 const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
 const useRealWindRef=useRef(false);
@@ -2803,6 +2852,19 @@ const applySnapshot=useCallback((snap)=>{
   // (the sim numbers don't need 30Hz); drawing still happens every snapshot.
   psw._snapN=(psw._snapN||0)+1;
   if(psw._snapN%6===1){if(snap.stats)setPsStats(snap.stats);setTribeCount(setts.length);}
+  // History sample for the charts/export (gated by sim-step, reset on new run).
+  if(snap.stats){
+    const H=psHistoryRef.current, st=snap.step, last=H[H.length-1];
+    if(last&&st<last.step)H.length=0;                       // step jumped back → new world
+    if(!H.length||st-H[H.length-1].step>=HISTORY_INTERVAL){
+      const x=snap.stats;
+      H.push({step:st,pop:x.totalPeople||0,gold:x.totalWealth||0,landPct:x.landPct||0,
+              countries:x.countries||0,sett:x.settlements||0,villages:x.villages||0,
+              towns:x.towns||0,cities:x.cities||0,metros:x.metropolises||0,
+              largest:x.largestEmpire||0,army:x.totalArmy||0});
+      if(H.length>5000)H.splice(0,H.length-5000);
+    }
+  }
   if(terRef.current){try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);}}
 },[draw]);
 useEffect(()=>{applySnapshotRef.current=applySnapshot;},[applySnapshot]);
@@ -4125,6 +4187,8 @@ return(
   className={"au-rail-tab"+(layersOpen?" au-active":"")}>Layers</button>
 <button onClick={()=>setBoardOpen(v=>!v)}
   className={"au-rail-tab"+(boardOpen?" au-active":"")}>Leaderboard</button>
+<button onClick={()=>setChartsOpen(v=>!v)}
+  className={"au-rail-tab"+(chartsOpen?" au-active":"")}>History</button>
 
 {(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
 <div className="au-rule" />
@@ -4287,6 +4351,42 @@ return(
           {rows.length===0&&<tr><td colSpan={3} style={{padding:"10px 12px",color:"var(--au-fade)",fontStyle:"italic"}}>no data yet</td></tr>}
         </tbody>
       </table>
+    </aside>
+  );
+})()}
+
+{chartsOpen&&(()=>{
+  const H=psHistoryRef.current;
+  const copy=()=>{ const t=buildHistoryExport(H);
+    try{navigator.clipboard.writeText(t);}catch(e){/* clipboard blocked — ignore */}
+    setStatsCopied(true); setTimeout(()=>setStatsCopied(false),1500); };
+  const curStep=H.length?H[H.length-1].step:0;
+  return(
+    <aside className="au-parchment au-scroll" style={{
+      position:"absolute",right:142,top:6,width:316,maxHeight:"88vh",
+      padding:"10px 0",overflowY:"auto",zIndex:31}}>
+      <div style={{display:"flex",alignItems:"baseline",marginBottom:4,padding:"0 12px"}}>
+        <span className="au-heading au-sc" style={{fontSize:12}}>History</span>
+        <span className="au-fade" style={{fontSize:9,marginLeft:6}}>step {curStep}</span>
+        <div style={{flex:1}} />
+        <span onClick={()=>setChartsOpen(false)}
+          style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
+      </div>
+      <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
+      <MiniChart data={H} get={d=>d.gold}           label="Gold (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
+      <MiniChart data={H} get={d=>d.landPct*100}    label="Land claimed"             color="#5a9367" fmtY={v=>v.toFixed(0)+"%"}/>
+      <MiniChart data={H} get={d=>d.countries}      label="Countries"                color="#7a6da8" fmtY={v=>Math.round(v).toString()}/>
+      <MiniChart data={H} get={d=>d.cities+d.metros} label="Cities + metropolises"   color="#b5562f" fmtY={v=>Math.round(v).toString()}/>
+      <MiniChart data={H} get={d=>d.sett}           label="Settlements"              color="#8a8f9c" fmtY={v=>Math.round(v).toString()}/>
+      <MiniChart data={H} get={d=>d.largest}        label="Largest empire (tiles)"   color="#4a78a8" fmtY={v=>Math.round(v).toLocaleString()}/>
+      <div style={{padding:"6px 10px 2px",borderTop:"1px solid rgba(0,0,0,0.08)",marginTop:4}}>
+        <button onClick={copy} className="au-rail-tab au-active" style={{width:"100%",fontSize:11,padding:"5px 0"}}>
+          {statsCopied?"Copied ✓":"Copy stats rundown"}
+        </button>
+        <div className="au-fade" style={{fontSize:9,marginTop:3,lineHeight:1.35}}>
+          Copies a markdown table of the run so far (~40 rows) — paste it back for a full breakdown over time.
+        </div>
+      </div>
     </aside>
   );
 })()}
