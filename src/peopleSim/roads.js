@@ -43,6 +43,7 @@
 // painted into roadQuality; nothing else is created.
 
 import { localEdgeCost, baseEdgeCost } from "./transport.js";
+import { forEachNear } from "./spatialGrid.js";
 import { T } from "./tuning.js";
 import { exportValueOf, getWealthReserve } from "./settlement.js";
 import { localP } from "./inflation.js";
@@ -155,8 +156,7 @@ const SHORTCUT_GAIN_RATIO = 0.85;       // new direct path must save ≥ 15% vs 
 // worn trunk because the worn arterial is "cheaper" than a fresh
 // terrain crossing. Threshold sits just above MIN_SETT_DIST (12)
 // so the closest possible pairs always qualify.
-const CLOSE_NEIGHBOUR_DIST    = 20;
-const CLOSE_NEIGHBOUR_DIST_SQ = CLOSE_NEIGHBOUR_DIST * CLOSE_NEIGHBOUR_DIST;
+const CLOSE_NEIGHBOUR_DIST    = 20;     // grid near-query radius for local links
 const MIN_POP_TO_LINK         = 30;     // lower bar than road planning
 
 // Resource needs by tier — kept for road-planning preference.
@@ -516,15 +516,24 @@ export function maybeBuildRoads(world) {
 // bare spanning tree the bridge logic alone produces.)
 function isGabrielEdge(world, a, b, dAB2) {
   const tw = world.tw;
-  for (const c of world.settlements) {
-    if (c === a || c === b || c.mode !== "settled" || c.people < MIN_POP_TO_LINK) continue;
-    let acx = Math.abs(c.pos.x - a.pos.x); if (acx > tw / 2) acx = tw - acx;
-    const acy = c.pos.y - a.pos.y;
-    let bcx = Math.abs(c.pos.x - b.pos.x); if (bcx > tw / 2) bcx = tw - bcx;
-    const bcy = c.pos.y - b.pos.y;
-    if (acx * acx + acy * acy + bcx * bcx + bcy * bcy < dAB2) return false;   // c is between → not a Gabriel edge
-  }
-  return true;
+  // A town c lies "between" a and b (inside the Thales circle on diameter AB)
+  // exactly when it sits within |AB|/2 of the segment's MIDPOINT — by the
+  // parallelogram law |ac|²+|bc|² = 2|mc|² + |AB|²/2, so the original
+  // "< dAB2" between-test is precisely |mc|² < dAB2/4. Only settlements the
+  // spatial grid returns for that small disk can break the edge, so we query
+  // it instead of scanning every settlement. Midpoint via the shortest signed
+  // Δx so it's correct across the longitude seam (edges here are ≤20 tiles).
+  let dx = b.pos.x - a.pos.x;
+  if (dx > tw / 2) dx -= tw; else if (dx < -tw / 2) dx += tw;
+  let mx = a.pos.x + dx / 2; mx = ((mx % tw) + tw) % tw;
+  const my = (a.pos.y + b.pos.y) / 2;
+  const radius = Math.sqrt(dAB2) / 2;
+  let between = false;
+  forEachNear(world, mx, my, radius, (c, d2) => {
+    if (between || c === a || c === b || c.people < MIN_POP_TO_LINK) return;
+    if (d2 < dAB2 / 4) between = true;   // c is inside the Thales circle
+  });
+  return !between;
 }
 
 function linkCloseNeighbours(world, s) {
@@ -532,28 +541,26 @@ function linkCloseNeighbours(world, s) {
   const comp = world._networkComponents;
   const myComp = comp && comp.get(s.id) !== undefined ? comp.get(s.id) : s.id;
   let anyBuilt = false;
-  for (const peer of world.settlements) {
-    if (peer.id === s.id || peer.mode !== "settled" || peer.people < MIN_POP_TO_LINK) continue;
-    let dx = Math.abs(peer.pos.x - s.pos.x);
-    if (dx > world.tw / 2) dx = world.tw - dx;
-    const dy = peer.pos.y - s.pos.y;
-    const dAB2 = dx * dx + dy * dy;
-    if (dAB2 > CLOSE_NEIGHBOUR_DIST_SQ) continue;
+  // Only the settlements within CLOSE_NEIGHBOUR_DIST matter; the spatial grid
+  // returns exactly those (with their squared distance as dAB2) instead of a
+  // full O(settlements) scan per settled town each tick.
+  forEachNear(world, s.pos.x, s.pos.y, CLOSE_NEIGHBOUR_DIST, (peer, dAB2) => {
+    if (peer.id === s.id || peer.people < MIN_POP_TO_LINK) return;
     const pc = comp && comp.get(peer.id) !== undefined ? comp.get(peer.id) : peer.id;
     // Unconnected close neighbours are bridged for connectivity. ALREADY-connected
     // ones still get a DIRECT road when they are true mesh neighbours (a Gabriel
     // edge — no town between them), so a city links straight to its neighbour
     // instead of every trip detouring out to a trunk artery and back.
-    if (pc === myComp && !isGabrielEdge(world, s, peer, dAB2)) continue;
+    if (pc === myComp && !isGabrielEdge(world, s, peer, dAB2)) return;
     const path = findPath(world, s, peer, { noWater: true });
-    if (!path) continue;
+    if (!path) return;
     let didChange = false;
     for (const ti of path.tiles) if (paintRoad(world, ti)) didChange = true;
     if (didChange) {
       anyBuilt = true;
       if (s.history) s.history.push({ step: world.step, type: "local-link", to: peer.id, tiles: path.tiles.length });
     }
-  }
+  });
   return anyBuilt;
 }
 
@@ -583,7 +590,6 @@ function tryAddRoad(world, s) {
   const myComp = components ? components.get(s.id) : null;
 
   const reach = partnerReachFor(s);
-  const reachSq = reach * reach;
 
   // ── Pass 1: rank in-reach peers by trade benefit, WITHOUT pathing ──
   // findPath is a full terrain Dijkstra (the expensive primitive); doing
@@ -591,14 +597,11 @@ function tryAddRoad(world, s) {
   // Score peers cheaply on benefit first, then only path the most
   // promising few.
   const ranked = [];
-  for (const peer of world.settlements) {
-    if (peer.mode !== "settled" || peer.id === s.id) continue;
-    let dx = Math.abs(peer.pos.x - s.pos.x);
-    if (dx > world.tw / 2) dx = world.tw - dx;
-    const dy = peer.pos.y - s.pos.y;
-    const peerDistSq = dx * dx + dy * dy;
-    if (peerDistSq > reachSq) continue;
-
+  // Grid-bounded near query: rank only the peers within partner reach instead
+  // of scanning every settlement (this ranking pass was the dominant per-plan
+  // cost once the map got dense). forEachNear hands back the squared distance.
+  forEachNear(world, s.pos.x, s.pos.y, reach, (peer, peerDistSq) => {
+    if (peer.id === s.id) return;
     const peerRes = peer.localRes || {};
     let resGain = 0;
     for (const n of missing) {
@@ -614,7 +617,7 @@ function tryAddRoad(world, s) {
     }
     const benefit = resGain * 2 + exGap + foodGain * 10;
     ranked.push({ peer, benefit, distSq: peerDistSq });
-  }
+  });
   // Best benefit first; ties broken toward the nearer (cheaper) peer.
   ranked.sort((p, q) => (q.benefit - p.benefit) || (p.distSq - q.distSq));
 

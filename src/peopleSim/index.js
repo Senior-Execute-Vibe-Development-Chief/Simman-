@@ -14,6 +14,7 @@ import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
 import { computeCountryTerritory, adoptAndFound } from "./countryTerritory.js";
+import { buildSettlementGrid } from "./spatialGrid.js";
 import { relaxClaim } from "./countryClaim.js";
 
 // How often the drawn border crawls one ring toward the country-primary
@@ -54,6 +55,7 @@ export function stepPeopleSim(world, n = 1) {
       world._byId.set(s.id, s);
       s._wPrev = s.wealth || 0;   // baseline for the money-flow net-change readout
     }
+    buildSettlementGrid(world);   // spatial index for near-settlement queries (crystallise / roads)
     mark("byId");
     // Recompute territory periodically: each settlement claims the land it
     // reaches cheapest, and its food / resources are tallied from it.
