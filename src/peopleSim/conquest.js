@@ -582,6 +582,20 @@ function topProvinceSeat(c, s, byId) {
 function secedeContagious(world, c, seeds) {
   const radius = Math.max(REVOLT_RADIUS_MIN, c.range * REVOLT_RADIUS_RANGE);
   const byId = new Map(); for (const m of c.members) byId.set(m.id, m);
+  // Administrative children index, built ONCE: a province is a seat plus the
+  // branch beneath it, gathered by `province()` (cheaper than subtreeOf, which
+  // would rebuild this map on every call across the contagion sweep).
+  const children = new Map();
+  for (const m of c.members) if (m.liegeId >= 0) { let a = children.get(m.liegeId); if (!a) children.set(m.liegeId, a = []); a.push(m); }
+  const province = (seat) => {
+    const out = [], stack = [seat];
+    while (stack.length) {
+      const cur = stack.pop();
+      if (cur.countryId === c.id) out.push(cur);
+      const kids = children.get(cur.id); if (kids) for (const k of kids) stack.push(k);
+    }
+    return out;
+  };
   // A province leads a breakaway only when its GOVERNOR (the top-level seat) has
   // himself turned — the centre has lost the whole region, not just one restless
   // frontier hamlet. Each collapsed member points up at its province's seat.
@@ -604,7 +618,7 @@ function secedeContagious(world, c, seeds) {
   for (const seat of order) {
     if (taken.has(seat.id) || seat.countryId !== c.id) continue;
     // The province: this seat's whole administrative branch (its towns + villages).
-    let bloc = subtreeOf(c, seat).filter(m => m.countryId === c.id);
+    let bloc = province(seat);
     taken.add(seat.id);
     // Contagion: ADJACENT provinces whose governor is also restless rally to this
     // (stronger) seat — the several-province break-up of a collapsing empire.
@@ -612,7 +626,7 @@ function secedeContagious(world, c, seeds) {
       if (taken.has(s.id) || s.countryId !== c.id) continue;
       if (!isLeadSeat(s)) continue;
       if (dist(world, seat.pos.x, seat.pos.y, s.pos.x, s.pos.y) > radius) continue;
-      for (const m of subtreeOf(c, s)) if (m.countryId === c.id) bloc.push(m);
+      for (const m of province(s)) bloc.push(m);
       taken.add(s.id);
     }
     // Drop any member with no land link to the seat through the realm (marooned
