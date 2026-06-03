@@ -61,7 +61,14 @@ const CLAIM_SOFT      = 0.12;
 // climbs with the capital's construction (the surveying/road/communication tech
 // that lets authority carry far), turning the ancient archipelago of realms into
 // the modern wall-to-wall partition as the centuries pass.
-const REACH_ERA = 5;          // budget ×(1 + construction² · REACH_ERA): ~×1 ancient, ~×6 modern
+const REACH_ERA = 3;          // budget ×(1 + construction² · REACH_ERA): ~×1 ancient, ~×4 modern
+// Reach is also scaled by how BIG the realm is, so a claim is backed by real
+// settlements rather than the capital's tech alone. budget ×= clamp(members /
+// REACH_SIZE_REF, REACH_SIZE_MIN, 1): a fledgling realm projects only a fraction
+// of its tech-reach (no continent-from-three-cities) and earns the full reach as
+// it grows to a continental-scale state.
+const REACH_SIZE_REF = 20;    // settlements for full reach
+const REACH_SIZE_MIN = 0.3;   // a tiny realm still projects at least this fraction
 // Tier at/above which a settlement is a sovereign ANCHOR that can found and hold
 // a country (a town or city — a real seat of government). Below it (villages)
 // adopt their territory's country and are never sovereign. Cities-only (tier 2)
@@ -91,10 +98,11 @@ export function computeCountryTerritory(world) {
 
   // Per-country reach budget + the knowledge used for edge cost — both taken
   // from the country's most-organised settlement (its de-facto capital).
-  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map();
+  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map();
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless settlements don't seed
     const c = s.countryId;
+    members.set(c, (members.get(c) || 0) + 1);
     const org = (s.knowledge && s.knowledge.organization) || 0;
     if (!capOrg.has(c) || org > capOrg.get(c)) {
       capOrg.set(c, org);
@@ -107,6 +115,16 @@ export function computeCountryTerritory(world) {
       budget.set(c, (COUNTRY_REACH_BASE + org * COUNTRY_REACH_ORG) * eraMul);
       claimCap.set(c, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
     }
+  }
+  // Reach must be BACKED by the realm, not just its capital's tech: scale the
+  // budget by how many settlements the country actually has. Without this a
+  // 3-city cradle with high construction projects a continental claim out of
+  // nothing (the early-game balloon). A small realm is throttled to REACH_SIZE_MIN
+  // of its tech-reach and earns the full continental projection only as it grows
+  // to REACH_SIZE_REF settlements.
+  for (const [c, b] of budget) {
+    const sf = Math.max(REACH_SIZE_MIN, Math.min(1, (members.get(c) || 1) / REACH_SIZE_REF));
+    budget.set(c, b * sf);
   }
 
   // Seed: every country-affiliated settlement plants its country at cost 0.
