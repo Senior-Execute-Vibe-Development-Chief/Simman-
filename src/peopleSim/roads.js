@@ -507,6 +507,26 @@ export function maybeBuildRoads(world) {
 // unconnected one) is tiny and never lumps into a cycle-end spike. Uses the
 // cached network components for the "already connected?" test; slightly stale
 // between rebuilds, which at worst costs a redundant (bounded) pathfind.
+// Gabriel-edge test: is the segment a–b free of any other town lying "between"
+// them (inside the circle that has a–b as its diameter)? By Thales that's
+// |ac|² + |bc|² < |ab|² for some town c. If NO such town exists, a and b are
+// direct neighbours in the realistic road mesh and deserve a direct road; if one
+// sits between, the route runs a→c→b instead. (Real road networks sit at roughly
+// the Gabriel graph — MST ⊂ relative-neighbourhood ⊂ Gabriel ⊂ Delaunay — not the
+// bare spanning tree the bridge logic alone produces.)
+function isGabrielEdge(world, a, b, dAB2) {
+  const tw = world.tw;
+  for (const c of world.settlements) {
+    if (c === a || c === b || c.mode !== "settled" || c.people < MIN_POP_TO_LINK) continue;
+    let acx = Math.abs(c.pos.x - a.pos.x); if (acx > tw / 2) acx = tw - acx;
+    const acy = c.pos.y - a.pos.y;
+    let bcx = Math.abs(c.pos.x - b.pos.x); if (bcx > tw / 2) bcx = tw - bcx;
+    const bcy = c.pos.y - b.pos.y;
+    if (acx * acx + acy * acy + bcx * bcx + bcy * bcy < dAB2) return false;   // c is between → not a Gabriel edge
+  }
+  return true;
+}
+
 function linkCloseNeighbours(world, s) {
   if (s.people < MIN_POP_TO_LINK) return false;
   const comp = world._networkComponents;
@@ -517,9 +537,14 @@ function linkCloseNeighbours(world, s) {
     let dx = Math.abs(peer.pos.x - s.pos.x);
     if (dx > world.tw / 2) dx = world.tw - dx;
     const dy = peer.pos.y - s.pos.y;
-    if (dx * dx + dy * dy > CLOSE_NEIGHBOUR_DIST_SQ) continue;
+    const dAB2 = dx * dx + dy * dy;
+    if (dAB2 > CLOSE_NEIGHBOUR_DIST_SQ) continue;
     const pc = comp && comp.get(peer.id) !== undefined ? comp.get(peer.id) : peer.id;
-    if (pc === myComp) continue;                 // already road-connected
+    // Unconnected close neighbours are bridged for connectivity. ALREADY-connected
+    // ones still get a DIRECT road when they are true mesh neighbours (a Gabriel
+    // edge — no town between them), so a city links straight to its neighbour
+    // instead of every trip detouring out to a trunk artery and back.
+    if (pc === myComp && !isGabrielEdge(world, s, peer, dAB2)) continue;
     const path = findPath(world, s, peer, { noWater: true });
     if (!path) continue;
     let didChange = false;
