@@ -550,37 +550,86 @@ function filterToConnectedBloc(world, bloc, seed, radius) {
   return bloc.filter(m => reached.has(m));
 }
 
-// A regional revolt: each collapsed province becomes the seed of a successor
-// state and rallies the disloyal members around it (within a reach radius)
-// to join it. Loyal provinces stay with the empire; restless ones leave as a
-// bloc with their garrisons — so the breakaway can actually defend itself.
+// ── Provincial secession: an over-stretched empire sheds whole PROVINCES ──
+// History never fragmented an empire one town at a time. The unit of secession
+// was a REGION with its own seat of government and army — a province under its
+// governor, a satrapy under its general, an ulus under its khan — and when the
+// centre weakened that regional seat carried its WHOLE administrative branch (its
+// towns and the villages beneath them) out of the realm. Adjacent restless
+// provinces then rallied to the strongest seat among them into ONE successor
+// state: Rome shedding the Gallic Empire (Gaul+Britain+Hispania under the general
+// Postumus) and the Palmyrene Empire (Egypt+Syria under Zenobia) in the Crisis of
+// the Third Century; the Mongol realm splitting along its ulus/appanage lines into
+// the four khanates after Möngke's death; Alexander's empire carved among the
+// Diadochi by satrapy. So secession here is at the granularity of the PROVINCE —
+// a top-level seat (a city/town answering directly to the capital) plus its whole
+// subtree — and neighbouring restless provinces COALESCE under the strongest
+// regional seat. An empire fragments into a few large successor realms along its
+// administrative seams, never into a confetti of single seceding towns.
+
+// Walk the administrative chain up from a member to its TOP-LEVEL province seat:
+// the city/town answering DIRECTLY to the capital, under whose branch this member
+// sits (its region's "governor"). Returns the capital itself only for the
+// capital's own immediate dependents — its core province, which never secedes.
+function topProvinceSeat(c, s, byId) {
+  let cur = s, guard = 0;
+  while (cur.liegeId >= 0 && cur.liegeId !== c.capitalId && guard++ < 64) {
+    const L = byId.get(cur.liegeId); if (!L) break; cur = L;
+  }
+  return cur;
+}
+
 function secedeContagious(world, c, seeds) {
   const radius = Math.max(REVOLT_RADIUS_MIN, c.range * REVOLT_RADIUS_RANGE);
+  const byId = new Map(); for (const m of c.members) byId.set(m.id, m);
+  // A province leads a breakaway only when its GOVERNOR (the top-level seat) has
+  // himself turned — the centre has lost the whole region, not just one restless
+  // frontier hamlet. Each collapsed member points up at its province's seat.
+  const isLeadSeat = (s) => {
+    if (s.id === c.capitalId || (s.tier | 0) < CITY_TIER || s.liegeId !== c.capitalId) return false;
+    if ((s.loyalty ?? 1) > REVOLT_JOIN_LOYALTY) return false;             // governor still loyal → province held
+    if (world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE) return false;  // freshly taken → garrisoned
+    return true;
+  };
+  const leaders = new Map();   // seatId → seat whose loyalty broke
   for (const seed of seeds) {
-    if (seed.countryId !== c.id) continue;        // already swept into an earlier revolt this pass
-    let bloc = [seed];
-    for (const m of c.members) {
-      if (m === seed || m.countryId !== c.id || m.id === c.capitalId) continue;
-      if ((m.loyalty ?? 1) > REVOLT_JOIN_LOYALTY) continue;          // still loyal → doesn't join
-      const pacified = world.step - (m._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
-      const infant   = m.parentSettlementId >= 0 && world.step - (m.foundedStep || 0) < COLONY_SUPPLY_TICKS;
-      if (pacified || infant) continue;                              // garrisoned / supported → held
-      if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
-      bloc.push(m);
+    if (seed.countryId !== c.id) continue;
+    const seat = topProvinceSeat(c, seed, byId);
+    if (isLeadSeat(seat)) leaders.set(seat.id, seat);
+  }
+  if (!leaders.size) return;
+  // The strongest restless governor breaks first and rallies the rest around him.
+  const order = [...leaders.values()].sort((a, b) => settlementPower(b) - settlementPower(a));
+  const taken = new Set();
+  for (const seat of order) {
+    if (taken.has(seat.id) || seat.countryId !== c.id) continue;
+    // The province: this seat's whole administrative branch (its towns + villages).
+    let bloc = subtreeOf(c, seat).filter(m => m.countryId === c.id);
+    taken.add(seat.id);
+    // Contagion: ADJACENT provinces whose governor is also restless rally to this
+    // (stronger) seat — the several-province break-up of a collapsing empire.
+    for (const s of c.members) {
+      if (taken.has(s.id) || s.countryId !== c.id) continue;
+      if (!isLeadSeat(s)) continue;
+      if (dist(world, seat.pos.x, seat.pos.y, s.pos.x, s.pos.y) > radius) continue;
+      for (const m of subtreeOf(c, s)) if (m.countryId === c.id) bloc.push(m);
+      taken.add(s.id);
     }
-    // Trim the bloc to the members that form a CONTIGUOUS region with the seed
-    // through the realm's own land (filterToConnectedBloc) — so a regional
-    // uprising carries the whole frontier province (towns and the villages
-    // between them), while a member stranded across the sea or a foreign wedge
-    // can't teleport into the new realm. The new realm's seat (capital) is then
-    // the strongest member, chosen by rebuildCountries next pass.
-    bloc = filterToConnectedBloc(world, bloc, seed, radius);
+    // Drop any member with no land link to the seat through the realm (marooned
+    // across the sea or behind a foreign wedge) — it can't physically follow.
+    let maxd = radius;
+    for (const m of bloc) { const d = dist(world, seat.pos.x, seat.pos.y, m.pos.x, m.pos.y); if (d > maxd) maxd = d; }
+    bloc = filterToConnectedBloc(world, bloc, seat, maxd * 1.4 + 8);
     const newId = freshCountryId(c, bloc);
-    if (newId < 0) continue;                        // can't carve out a distinct realm this pass
-    // Viability checks:
-    //  - geographic: a fully-enclosed bloc has no allies it can reach
-    //  - political:  a bloc with no seat (town+) has no government to carry it
-    // Either failure: discharge as a FAILED REVOLT (damage + cooldown).
+    if (newId < 0) continue;
+    // A province is a SEAT AND ITS HINTERLAND — never a town on its own. A
+    // governor with no dependents and no restless neighbour to rally has no
+    // region to take with him, so he simply stays put (restless) until a
+    // hinterland forms or an adjacent province rises with him. This is what stops
+    // bare towns peeling off the map one at a time.
+    if (bloc.length < 2) continue;
+    // A fully-enclosed breakaway has no outside border and is besieged into
+    // submission; a province always carries a seat. Failure → crushed revolt.
     if (!hasOutsideBorder(world, c.id, bloc) || !blocHasCity(bloc)) {
       for (const m of bloc) {
         ravage(m, FAILED_REVOLT_POP, FAILED_REVOLT_WEALTH, FAILED_REVOLT_ARMY);
@@ -591,12 +640,13 @@ function secedeContagious(world, c, seeds) {
       continue;
     }
     inheritPersonality(world, c.id, newId);        // successor inherits parent temperament (with drift)
-    snapClaim(world, newId);                       // secession is instantaneous, not a slow wave
+    snapClaim(world, newId);                       // the region is its own that day (instant, not a slow wave)
     for (const m of bloc) {
       m.countryId = newId;
-      m.loyalty = m === seed ? 1 : 0.85;           // seed leads; followers enthusiastic
+      m.loyalty = m === seat ? 1 : 0.85;           // the governor leads; his province follows
+      m._ambition = 0;
       m._conqueredAt = world.step;                 // resists immediate re-annex (anti-flicker)
-      if (m.history) m.history.push({ step: world.step, type: m === seed ? "seceded" : "joined-revolt", to: newId });
+      if (m.history) m.history.push({ step: world.step, type: m === seat ? "seceded" : "joined-secession", to: newId });
     }
   }
 }
