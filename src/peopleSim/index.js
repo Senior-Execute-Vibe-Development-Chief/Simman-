@@ -9,7 +9,7 @@
 // from daughter colonies founded by existing settlements.
 
 import { createWorld, pruneDead } from "./state.js";
-import { updateSettlement } from "./settlement.js";
+import { updateSettlement, urbanise } from "./settlement.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
@@ -70,6 +70,7 @@ export function stepPeopleSim(world, n = 1) {
     for (let i = 0; i < world.settlements.length; i++) {
       updateSettlement(world, world.settlements[i]);
     }
+    urbanise(world);   // rural→urban drift: concentrate population into hubs so real cities form
     mark("settlements");
     // Exogenous shocks: regional famines (harvest crash) + epidemics that
     // spread along the trade graph (population crash). Both feed the unrest /

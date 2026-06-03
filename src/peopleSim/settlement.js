@@ -526,6 +526,44 @@ export function getTradeProfile(s, world) {
   return profile;
 }
 
+// ── Urbanisation: rural → urban drift ────────────────────────────────
+// Without migration every village just grows toward its own small local carrying
+// capacity, so the map is a uniform sea of hamlets and no real CITY ever forms.
+// In reality people drift to the nearest big town — opportunity, trade, the
+// market — and that town outgrows its own fields on the surplus GRAIN those same
+// emptying villages ship in. So each pass a small fraction of a settlement's
+// people move to the LARGEST road-connected settlement in its trade reach, faster
+// the bigger the gap, capped by the destination's remaining carrying capacity so
+// the city only grows to what it can actually feed and house. Chained up the
+// network (village → town → city → metropolis) this concentrates population into
+// a few real cities standing over many villages — the historical settlement
+// pyramid — instead of an even smear.
+const MIGRATE_RATE     = 0.004;  // per pass: base share of a town that drifts to its hub
+const MIGRATE_MIN_POP  = 25;     // a hamlet this small doesn't shed migrants
+const MIGRATE_GAP_CAP  = 6;      // a far-bigger hub pulls this much harder (capped)
+const MIGRATE_DRAIN_CAP = 0.04;  // never move more than this fraction of a village in one pass
+export function urbanise(world) {
+  const byId = world._byId;
+  if (!byId) return;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || s.people < MIGRATE_MIN_POP || !s._tradeReach) continue;
+    // The biggest road-connected settlement in reach is this region's draw.
+    let best = null, bestPop = s.people;
+    for (const pid of s._tradeReach.keys()) {
+      const d = byId.get(pid);
+      if (!d || d.mode !== "settled") continue;
+      if (d.people > bestPop) { bestPop = d.people; best = d; }
+    }
+    if (!best) continue;                               // s is its own region's hub
+    const gap = Math.min(MIGRATE_GAP_CAP, best.people / Math.max(1, s.people));
+    const room = Math.max(0, (best._k || best.people) - best.people);   // don't push it past what it can feed/house
+    let movers = Math.min(s.people * MIGRATE_RATE * gap, room, s.people * MIGRATE_DRAIN_CAP);
+    if (movers < 0.2) continue;
+    s.people -= movers;
+    best.people += movers;
+  }
+}
+
 export function updateSettlement(world, s) {
   if (s.mode !== "settled") return;
   updateFood(world, s);
