@@ -44,8 +44,8 @@ const ABSORB_HEADROOM  = 0.90;
 // consolidation force that pulls the late-game splotch of tiny states into a
 // few large empires; it only fires on lopsided matchups, so peer empires don't
 // peel border villages off each other.
-const LOPSIDED_ENGULF  = 8.0;
-const ENGULF_PROB      = 0.25;
+const LOPSIDED_ENGULF  = 5.0;
+const ENGULF_PROB      = 0.4;
 // A realm's whole country must out-power a neighbour's whole country by
 // T.ABSORB_DOMINANCE before it can administratively absorb that neighbour's
 // frontier settlements (absorbWeakNeighbors). Hysteresis: only clearly-minor
@@ -272,10 +272,10 @@ export const MOMENTUM_PER_STORM = 3.0;   // momentum banked per enemy CITY storm
 // frontier crumbling under an over-stretched budget. (A strong city RIGHT BY
 // the capital is the loyal court / heir apparent — it tends to inherit the
 // throne via rebuildCountries rather than secede.)
-const AMBITION_RATIO   = 0.40;  // a governor at least this strong (vs the throne) starts to scheme
+const AMBITION_RATIO   = 0.55;  // a governor at least this strong (vs the throne) starts to scheme
 const AMBITION_MIN_FAR = 0.5;   // ...and at least this far out (reach-units); a core city stays loyal
 const AMBITION_FAR     = 1.8;   // distance amplifies ambition this much
-const AMBITION_GAIN    = 0.10;  // ambition-stock growth per pass at full margin
+const AMBITION_GAIN    = 0.06;  // ambition-stock growth per pass at full margin
 const AMBITION_DURESS  = 1.6;   // a besieged throne emboldens governors (multiplier)
 // Naval administration is no longer a special-case discount on _isPort
 // pairs — water embarkation in localEdgeCost (transport.js) gives the
