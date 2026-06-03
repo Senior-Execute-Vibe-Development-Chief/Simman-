@@ -928,6 +928,39 @@ function fmtGold(g){
   return g.toFixed(0);
 }
 
+// ── Display units (peopleSim) ───────────────────────────────────────
+// The sim runs on compact internal units; these scale them to realistic,
+// human-readable figures at the DISPLAY layer ONLY — the simulation math is
+// untouched. One sim-"person" ≈ POP_SCALE real people (the map labels already
+// assumed this convention); food is shown as a mass of grain; wealth as a mass
+// of gold. Tweak these three to taste.
+const POP_SCALE        = 1000;   // sim pop → people: metropolis ~3.4M, city ~1.2M, town ~250k, village ~25k
+const FOOD_KG_PER_UNIT = 1000;   // one sim food unit → kg of grain (1 unit = 1 tonne)
+const GOLD_G_PER_COIN  = 8;      // one sim coin → grams of gold (a gold ducat ≈ 3.5g; 8g keeps treasuries legible)
+
+// Compact number: 1234 → "1.2k", 3_400_000 → "3.4M", 2.1e9 → "2.1B".
+function fmtNum(n){
+  const s=n<0?"-":""; const a=Math.abs(n);
+  if(a>=1e9)return s+(a/1e9).toFixed(1)+"B";
+  if(a>=1e6)return s+(a/1e6).toFixed(a>=1e7?0:1)+"M";
+  if(a>=1e3)return s+(a/1e3).toFixed(a>=1e4?0:1)+"k";
+  return s+Math.round(a).toString();
+}
+// Mass in kilograms → grams / kg / tonnes / kilotonnes.
+function fmtMass(kg){
+  const s=kg<0?"-":""; const a=Math.abs(kg);
+  if(a>=1e6)return s+(a/1e6).toFixed(1)+" kt";
+  if(a>=1e3)return s+(a/1e3).toFixed(a>=1e4?0:1)+" t";
+  if(a>=1)return s+(a>=100?Math.round(a):a.toFixed(1))+" kg";
+  return s+Math.round(a*1000)+" g";
+}
+// People — scale sim population to real people.
+function fmtPeople(p){ return fmtNum((p||0)*POP_SCALE); }
+// Food (grain) shown as a mass.
+function fmtFood(simFood){ return fmtMass((simFood||0)*FOOD_KG_PER_UNIT); }
+// Wealth shown as a mass of gold.
+function fmtGoldKg(simCoin){ return fmtMass((simCoin||0)*GOLD_G_PER_COIN/1000); }
+
 // ── Hexagonal knowledge radar (SVG) ──
 function KnowledgeRadar({k,size=140}){
   if(!k)return null;
@@ -2180,9 +2213,8 @@ else if(k.metallurgy>0.3)era="Bronze";
 else if(k.metallurgy>0.15)era="Copper";
 else if(k.agriculture>0.3)era="Farming";
 else if(k.agriculture>0.1)era="Neolithic";}
-// Format population nicely
-// Pop is in thousands. Display as "800k" or "1.2M" or "12M"
-const popStr=pop>=10000?(pop/1000).toFixed(1)+'M':pop>=1000?(pop/1000|0)+'M':pop>=1?pop.toFixed(0)+'k':'<1k';
+// Population label, scaled to real people (see fmtPeople / POP_SCALE).
+const popStr=fmtPeople(pop);
 // Two-line label: era + personality | pop + tiles
 const pers=ter.tribeBudget&&ter.tribeBudget[st]?ter.tribeBudget[st].personality:"";
 const line1=pers?`${era} ${pers}`:era;
@@ -3439,7 +3471,7 @@ return(
             {treas!=null&&(()=>{const sv=ctry._solvency??1;const broke=sv<0.99;return(
               <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
                 <span style={{width:9,height:9,borderRadius:2,background:broke?"hsl(8,75%,52%)":"hsl(48,65%,48%)",flexShrink:0}}/>
-                <span className="au-fade">state treasury ${Math.round(treas)}{ctry._govSpend>0.01?` · spends ${ctry._govSpend.toFixed(0)}/pass`:""}{broke?` · INSOLVENT (army ${Math.round(sv*100)}% paid)`:""}</span>
+                <span className="au-fade">state treasury {fmtGoldKg(treas)}{ctry._govSpend>0.01?` · spends ${fmtGoldKg(ctry._govSpend)}/pass`:""}{broke?` · INSOLVENT (army ${Math.round(sv*100)}% paid)`:""}</span>
               </div>
             );})()}
             {(()=>{const P=ctry._priceLevel;if(P==null||Math.abs(P-1)<0.04)return null;
@@ -3525,16 +3557,16 @@ return(
       {/* ── At-a-glance summary (always visible) ── */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
         <div>
-          <span style={{fontSize:18,fontWeight:600}}>{Math.round(s.people).toLocaleString()}</span>
-          {K?<span className="au-fade" style={{fontSize:10}}> / {Math.round(K).toLocaleString()}</span>:null}
+          <span style={{fontSize:18,fontWeight:600}}>{fmtPeople(s.people)}</span>
+          {K?<span className="au-fade" style={{fontSize:10}}> / {fmtPeople(K)}</span>:null}
           <span className="au-fade" style={{fontSize:9,marginLeft:3}}>people</span>
         </div>
         <span style={{fontSize:9,fontWeight:600,color:"#fff",background:statusColor,borderRadius:8,padding:"1px 8px",textTransform:"uppercase",letterSpacing:0.3}}>{status}</span>
       </div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginTop:3}}>
         <div>
-          <span style={{fontSize:13}}>${wealth.toLocaleString()}</span>
-          <span className="au-fade" style={{fontSize:9,marginLeft:3}}>treasury</span>
+          <span style={{fontSize:13}} className="au-gold-text">{fmtGoldKg(s.wealth||0)}</span>
+          <span className="au-fade" style={{fontSize:9,marginLeft:3}}>gold treasury</span>
         </div>
         <span className="au-fade" style={{fontSize:9}}>
           {nextName?`${Math.round(progress*100)}% → ${nextName}`:"max tier"}
@@ -3543,27 +3575,27 @@ return(
 
       {/* ── Population & food ── */}
       <PsSection id="food" title="Population & food" open={psCardOpen.food} onToggle={togglePsCard}
-        right={<span style={{color:statusColor}}>{surplus>=0?"+":""}{surplus.toFixed(2)}</span>}>
+        right={<span style={{color:statusColor}}>{surplus>=0?"+":""}{fmtFood(surplus)}</span>}>
         <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
-          <span className="au-fade">Food stored</span><span>{Math.round(s.food)}</span>
-          <span className="au-fade">Produced /tick</span><span>{supply.toFixed(3)}</span>
-          {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{(s._fishYield||0).toFixed(2)}</span></>)}
-          {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span>+{importRate.toFixed(3)}</span></>)}
-          <span className="au-fade">Consumed /tick</span><span>{demand.toFixed(3)}</span>
+          <span className="au-fade">Grain stored</span><span>{fmtFood(s.food)}</span>
+          <span className="au-fade">Produced /tick</span><span>{fmtFood(supply)}</span>
+          {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{fmtFood(s._fishYield||0)}</span></>)}
+          {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span>+{fmtFood(importRate)}</span></>)}
+          <span className="au-fade">Consumed /tick</span><span>{fmtFood(demand)}</span>
           <span style={{color:statusColor}}>Balance</span>
-          <span style={{color:statusColor}}>{surplus>=0?"+":""}{surplus.toFixed(3)} ({status})</span>
+          <span style={{color:statusColor}}>{surplus>=0?"+":""}{fmtFood(surplus)} ({status})</span>
           <span className="au-fade">Territory</span><span>{farm} tile{farm===1?"":"s"}</span>
           <span className="au-fade">Capacity</span>
-          <span>{Math.round(K)} <span className="au-fade" style={{fontSize:9}}>({limitedBy}-limited)</span></span>
-          {(s.infrastructure||0)>1&&(<><span className="au-fade">· buildings</span><span className="au-fade">{Math.round(s.infrastructure||0).toLocaleString()}</span></>)}
+          <span>{fmtPeople(K)} <span className="au-fade" style={{fontSize:9}}>({limitedBy}-limited)</span></span>
+          {(s.infrastructure||0)>1&&(<><span className="au-fade">· housing</span><span className="au-fade">{fmtPeople(s.infrastructure||0)}</span></>)}
           {limitedBy==="housing"&&((s._developRate||0)>0.001
-            ?<><span style={{color:"#caa24a"}}>· building</span><span style={{color:"#caa24a"}}>+{(s._developRate||0).toFixed(2)}/tk</span></>
+            ?<><span style={{color:"#caa24a"}}>· building</span><span style={{color:"#caa24a"}}>+{fmtPeople(s._developRate||0)}/tk</span></>
             :<><span className="au-fade">· can't grow</span><span style={{color:"#c84"}}>{s._devReason==="space"?"no room (built out)":s._devReason==="materials"?"no timber/stone":s._devReason==="coin"?"can't afford materials":"—"}</span></>)}
-          {limitedBy==="food"&&houseK>foodK*1.05&&(<><span className="au-fade">· could house</span><span className="au-fade">{Math.round(houseK)} if fed</span></>)}
-          {nextThr&&<><span className="au-fade">To next tier</span><span>{Math.round(s.people)}/{nextThr}</span></>}
+          {limitedBy==="food"&&houseK>foodK*1.05&&(<><span className="au-fade">· could house</span><span className="au-fade">{fmtPeople(houseK)} if fed</span></>)}
+          {nextThr&&<><span className="au-fade">To next tier</span><span>{fmtPeople(s.people)}/{fmtPeople(nextThr)}</span></>}
           {(s.army||0)>0.5&&(<>
             <span className="au-fade">Garrison</span>
-            <span>{Math.round(s.army)} <span className="au-fade" style={{fontSize:9}}>({((s.army||0)/Math.max(1,s.people)*100).toFixed(1)}% of pop · fed from food)</span></span>
+            <span>{fmtPeople(s.army)} <span className="au-fade" style={{fontSize:9}}>({((s.army||0)/Math.max(1,s.people)*100).toFixed(1)}% of pop · fed from food)</span></span>
           </>)}
         </div>
       </PsSection>
@@ -3598,15 +3630,15 @@ return(
 
       {/* ── Trade & economy ── */}
       <PsSection id="trade" title="Trade & economy" open={psCardOpen.trade} onToggle={togglePsCard}
-        right={<span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{wealthDelta.toFixed(2)}/tick</span>}>
+        right={<span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{fmtGoldKg(wealthDelta)}/tick</span>}>
         <>
           <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
             <span className="au-fade">Exchange</span>
-            <span style={{color:available>0?"#caa24a":"#8a8f9c"}}>{available>0?"coin economy":"barter"}</span>
+            <span style={{color:available>0?"#caa24a":"#8a8f9c"}}>{available>0?"gold economy":"barter"}</span>
             <span style={{color:moneyCol(wealthDelta)}}>Net wealth /tick</span>
-            <span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{wealthDelta.toFixed(2)}</span>
-            <span className="au-fade">Coin held</span>
-            <span style={available<=0?{color:"#8a8f9c"}:undefined}>${wealth.toLocaleString()}</span>
+            <span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{fmtGoldKg(wealthDelta)}</span>
+            <span className="au-fade">Gold held</span>
+            <span style={available<=0?{color:"#8a8f9c"}:undefined} className="au-gold-text">{fmtGoldKg(s.wealth||0)}</span>
           </div>
           {/* ── Where the money comes from / goes ── categorised $/tick from
               the sim (mining, selling food, buying lumber, tribute, …). */}
@@ -3621,25 +3653,25 @@ return(
               return <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>No coin moving (barter / self-sufficient).</div>;
             return(
               <div style={{marginTop:5}}>
-                <div className="au-fade" style={{fontSize:9}}>Money in / out ($/tick)</div>
+                <div className="au-fade" style={{fontSize:9}}>Gold in / out (/tick)</div>
                 <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"1px 6px",fontSize:10,marginTop:1}}>
                   {ins.map(([l,v])=>(
                     <Fragment key={"i"+l}>
                       <span style={{color:"#3a7"}}>in</span>
                       <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l}</span>
-                      <span style={{color:"#3a7"}}>+{v.toFixed(2)}</span>
+                      <span style={{color:"#3a7"}}>+{fmtGoldKg(v)}</span>
                     </Fragment>
                   ))}
                   {outs.map(([l,v])=>(
                     <Fragment key={"o"+l}>
                       <span style={{color:"#c44"}}>out</span>
                       <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l}</span>
-                      <span style={{color:"#c44"}}>-{v.toFixed(2)}</span>
+                      <span style={{color:"#c44"}}>-{fmtGoldKg(v)}</span>
                     </Fragment>
                   ))}
                   <span className="au-fade" style={{borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}>net</span>
                   <span className="au-fade" style={{borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}></span>
-                  <span style={{color:moneyCol(totIn-totOut),borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}>{totIn-totOut>=0?"+":""}{(totIn-totOut).toFixed(2)}</span>
+                  <span style={{color:moneyCol(totIn-totOut),borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}>{totIn-totOut>=0?"+":""}{fmtGoldKg(totIn-totOut)}</span>
                 </div>
               </div>
             );
@@ -4154,24 +4186,24 @@ return(
 
   // Sort keys per mode. Functions return a number (descending sort).
   const SETT_SORTS={
-    population:[s=>s.people,"Population"],
-    wealth:[s=>s.wealth||0,"Wealth"],
-    army:[s=>s.army||0,"Garrison"],
-    mining:[s=>s._minedRate||0,"Mining rate"],
+    population:[s=>s.people,"Population",fmtPeople],
+    wealth:[s=>s.wealth||0,"Wealth",fmtGoldKg],
+    army:[s=>s.army||0,"Garrison",fmtPeople],
+    mining:[s=>s._minedRate||0,"Mining rate",fmtGoldKg],
     vassals:[s=>s._vassalCount||0,"Vassals"],
-    income:[s=>s._wealthDelta||0,"Income (¤/tick)"],
+    income:[s=>s._wealthDelta||0,"Income (gold/tick)",fmtGoldKg],
   };
   const CNT_SORTS={
     size:[c=>c.members?c.members.length:0,"Size (settlements)"],
-    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Population"],
-    wealth:[c=>(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0),"Total wealth"],
-    treasury:[c=>c._treasury||0,"State treasury"],
-    army:[c=>(c.members||[]).reduce((a,m)=>a+(m.army||0),0),"Standing army"],
+    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Population",fmtPeople],
+    wealth:[c=>(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0),"Total wealth",fmtGoldKg],
+    treasury:[c=>c._treasury||0,"State treasury",fmtGoldKg],
+    army:[c=>(c.members||[]).reduce((a,m)=>a+(m.army||0),0),"Standing army",fmtPeople],
     capacity:[c=>c._capacity||0,"Control capacity"],
   };
   const sorts=boardMode==="settlements"?SETT_SORTS:CNT_SORTS;
   const sortKey=sorts[boardSort]?boardSort:Object.keys(sorts)[0];
-  const [sortFn,sortLabel]=sorts[sortKey];
+  const [sortFn,sortLabel,sortFmt]=sorts[sortKey];
   const rows=(boardMode==="settlements"?setts:countries).slice()
     .sort((a,b)=>sortFn(b)-sortFn(a)).slice(0,15);
 
@@ -4232,7 +4264,7 @@ return(
                     <span style={{textTransform:"capitalize"}}>{r.name}</span>
                     {ctry&&ctry.capitalId===r.id&&<span style={{color:"var(--au-fade)",marginLeft:4}}>· capital</span>}
                   </td>
-                  <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{fmt(sortFn(r))}</td>
+                  <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
                 </tr>
               );
             }
@@ -4248,7 +4280,7 @@ return(
                     background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
                   <span style={{textTransform:"capitalize"}}>{cap?cap.name:"realm-"+r.id}</span>
                 </td>
-                <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{fmt(sortFn(r))}</td>
+                <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
               </tr>
             );
           })}
