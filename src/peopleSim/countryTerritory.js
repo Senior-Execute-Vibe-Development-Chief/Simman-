@@ -30,6 +30,31 @@ import { localEdgeCost } from "./transport.js";
 // it, land is wilderness — which is where stateless frontier hamlets live.
 const COUNTRY_REACH_BASE = 8;
 const COUNTRY_REACH_ORG  = 20;
+// ── Frontier-fill: claiming the harsh interior as engineering matures ──
+// For most of history great regions were politically EMPTY — no state claimed
+// the deep Sahara, the high Himalaya, the Amazon, interior Africa. They filled
+// in LATE, and chiefly by being CLAIMED out to a natural boundary (the colonial
+// partition of Africa drew borders straight across the desert; modern states
+// leave no terra nullius). The thing that let a state administer terrain it could
+// never densely settle was ENGINEERING — roads, forts, depots, surveys
+// (construction tech). So we CAP the per-tile CLAIM cost, and lower that cap as
+// the capital's construction matures: a neolithic realm is walled out of the
+// mountains and deserts (they stay open wilderness, as in antiquity), while a
+// developed one projects a claim across them at roughly plains-cost — so the
+// blank interiors fill to their natural boundaries and get partitioned among the
+// bordering states, instead of staying empty for all time. (Climbs from no
+// effective cap at construction 0 down toward CLAIM_CAP_FLOOR near construction 1.)
+const CLAIM_CAP_CEIL  = 40;   // construction 0: harsh tiles uncapped (ranges/deserts wall the claim)
+const CLAIM_CAP_FLOOR = 1.5;  // construction 1: even alpine/desert claimable at ~plains cost
+// How far a realm projects a CLAIM also grows with the era. In antiquity a state
+// was an island of territory in a sea of unclaimed land — most of the world
+// belonged to no polity (steppe, forest, desert, the deep interior). The modern
+// norm is the opposite: every habitable region is some state's, claimed out to a
+// natural boundary. So the reach budget is multiplied by an ERA factor that
+// climbs with the capital's construction (the surveying/road/communication tech
+// that lets authority carry far), turning the ancient archipelago of realms into
+// the modern wall-to-wall partition as the centuries pass.
+const REACH_ERA = 5;          // budget ×(1 + construction² · REACH_ERA): ~×1 ancient, ~×6 modern
 // Tier at/above which a settlement is a sovereign ANCHOR that can found and hold
 // a country (a town or city — a real seat of government). Below it (villages)
 // adopt their territory's country and are never sovereign. Cities-only (tier 2)
@@ -59,7 +84,7 @@ export function computeCountryTerritory(world) {
 
   // Per-country reach budget + the knowledge used for edge cost — both taken
   // from the country's most-organised settlement (its de-facto capital).
-  const budget = new Map(), knOf = new Map(), capOrg = new Map();
+  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map();
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless settlements don't seed
     const c = s.countryId;
@@ -67,7 +92,13 @@ export function computeCountryTerritory(world) {
     if (!capOrg.has(c) || org > capOrg.get(c)) {
       capOrg.set(c, org);
       knOf.set(c, s.knowledge || {});
-      budget.set(c, COUNTRY_REACH_BASE + org * COUNTRY_REACH_ORG);
+      // Engineering era: reach expands and the harsh-terrain claim-cost cap falls
+      // as construction matures, so the ancient archipelago of compact realms
+      // becomes the modern wall-to-wall partition (above).
+      const cons = (s.knowledge && s.knowledge.construction) || 0;
+      const eraMul = 1 + cons * cons * REACH_ERA;
+      budget.set(c, (COUNTRY_REACH_BASE + org * COUNTRY_REACH_ORG) * eraMul);
+      claimCap.set(c, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
     }
   }
 
@@ -86,6 +117,7 @@ export function computeCountryTerritory(world) {
     if (d > cost[ti]) continue;
     const bud = budget.get(c) || 0;
     const kn = knOf.get(c);
+    const cap = claimCap.get(c) || CLAIM_CAP_CEIL;   // construction-eased per-tile claim cost ceiling
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
     const ns = [
@@ -97,8 +129,9 @@ export function computeCountryTerritory(world) {
     const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
     for (let k = 0; k < 8; k++) {
       const ni = ns[k]; if (ni < 0 || elev[ni] <= 0) continue;
-      const ec = localEdgeCost(world, ti, ni, kn, true);   // roads ignored
+      let ec = localEdgeCost(world, ti, ni, kn, true);   // roads ignored
       if (ec === Infinity) continue;
+      if (ec > cap) ec = cap;                            // engineering caps the harsh-terrain claim cost
       const nd = d + ec * mul[k];
       if (nd > bud) continue;
       if (nd < cost[ni]) { cost[ni] = nd; co[ni] = c; heap.push(ni, nd, c); }
