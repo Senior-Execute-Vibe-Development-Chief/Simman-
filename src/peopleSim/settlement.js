@@ -56,6 +56,13 @@ const K_MIN_VIABLE = 8;                    // bare-survival floor (matches the w
 const HOUSING_BASE        = 45;     // starting shelter before anything is built
 const SPACE_RADIUS        = 14;     // urban-footprint radius for the buildable-land scan
 const DENSITY_BASE        = 6;      // people per buildable tile at zero construction
+// Anticipatory urban development: a city builds housing/infrastructure for more
+// people than its CURRENT food can feed, and that empty headroom is what makes
+// it import grain (foodAppetite.growthNeed) and pull in migrants — the engine of
+// real urban growth. Applied only above town size, so villages/towns stay
+// pinned to their own food (the dense rural map is untouched).
+const URBAN_ANTICIPATION     = 1.6;   // a city builds housing up to 1.6x its current food capacity
+const URBAN_ANTICIPATION_REF = 250;   // = TIER_THRESHOLD[town]; anticipation kicks in above town size
 // DENSITY_PER_CONSTR -> runtime lever (tuning.js T.DENSITY_PER_CONSTR)
 // Development: build housing up toward the space ceiling. Needs materials
 // (timber/stone — own, or bought from suppliers with coin) and labour;
@@ -556,7 +563,14 @@ export function urbanise(world) {
     }
     if (!best) continue;                               // s is its own region's hub
     const gap = Math.min(MIGRATE_GAP_CAP, best.people / Math.max(1, s.people));
-    const room = Math.max(0, (best._k || best.people) - best.people);   // don't push it past what it can feed/house
+    // Draw toward the hub's HOUSING (which a city builds ahead of its food),
+    // not its current food capacity. Moving a person frees ~exactly their food
+    // back in the village, and that grain ships to the hub (food trade), so the
+    // migrant and their food arrive together — the hub's food capacity rises to
+    // match. Gating on current food instead would deadlock: a food-full city
+    // couldn't pull migrants, so its villages never depopulate and never free
+    // the surplus that would let it grow.
+    const room = Math.max(0, (best._houseK || best._k || best.people) - best.people);
     let movers = Math.min(s.people * MIGRATE_RATE * gap, room, s.people * MIGRATE_DRAIN_CAP);
     if (movers < 0.2) continue;
     s.people -= movers;
@@ -879,12 +893,19 @@ function updateDevelopment(world, s) {
   s._developRate = 0;
   s._devReason = null;
   const houseK = s._houseK || 0, foodK = s._foodK || 0;
-  s._housingPressed = foodK > houseK * 1.02;
+  // Cities lay out housing AHEAD of the food they have today; that empty
+  // headroom is exactly what creates the demand to IMPORT grain (foodAppetite's
+  // growthNeed) and draw migrants — how a real city grows. With housing pinned
+  // to current foodK, houseK tracks population, growthNeed ~ 0, and the city
+  // never pulls the grain that would let it grow, so metropolises never form.
+  const target = s.people > URBAN_ANTICIPATION_REF ? foodK * URBAN_ANTICIPATION : foodK;
+  s._housingPressed = target > houseK * 1.02;
   if (!s._housingPressed) return;
 
-  // Room to grow = up to whichever of FOOD / SPACE binds first.
+  // Room to grow = up to whichever of the (anticipatory) housing target / SPACE
+  // binds first.
   const space = spaceCapacity(s);
-  const room = Math.min(foodK, space) - houseK;
+  const room = Math.min(target, space) - houseK;
   if (room <= 0) { s._devReason = "space"; return; }   // built out the site
 
   // MATERIALS gate: timber + stone, local or from a trade partner. The
