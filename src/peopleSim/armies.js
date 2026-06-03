@@ -62,6 +62,15 @@ export const MUSTER_INTERVAL   = 100;
 const CAPTURE_SCALE     = 5;           // tiles/pass per unit of power-ratio advantage
 const ASSAULT_MARGIN    = 2;           // front must reach within (defender core + this) of the home
 const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent taking a city
+// Defensive drag on offense: a realm pinned defending its own ground commits its
+// army to survival, not conquest — so its offensive pushes are sapped in
+// proportion to its DEFENSIVE burden this pass (a besieged capital ≫ a town under
+// assault ≫ a countryside raid). offMul = 1/(1 + DEFENSE_DRAG·burden): one town
+// under assault ~0.4, a besieged capital ~0.2, a minor raid ~0.7, an untouched
+// dominant power 1.0 (it still conquers freely — Rome could hold the Rhine and
+// take Dacia). This stops the unrealistic case of a realm expanding on one front
+// while being overrun on another.
+const DEFENSE_DRAG      = 2.5;
 // Siege: once the front reaches the heartland the city does NOT fall at
 // once. The besiegers grind the garrison down over several passes (SIEGE_DMG
 // of the attacker's might per pass); the city is only stormed once its
@@ -455,12 +464,28 @@ export function advanceFronts(world) {
   world._fronts = { stamp: world.step, byCountry: fronts };
   if (besieged.size) dispatchReinforcements(world, besieged);
 
+  // Defensive burden per realm this pass — a town under assault weighs heavily
+  // (its capital heaviest), a countryside raid lightly. A realm carrying burden
+  // has its OFFENSIVE thrust sapped (offMulOf), so it can't keep conquering while
+  // it's being overrun elsewhere (see DEFENSE_DRAG).
+  const defBurden = new Map();
+  for (const pc of pairs.values()) {
+    const dc = world.countries && world.countries.get(pc.def.countryId);
+    const isCap = !!(dc && dc.capitalId === pc.def.id);
+    const w = pc.canStorm ? (isCap ? 2.5 : 1.0) : 0.3;   // capital siege ≫ town assault ≫ countryside raid
+    defBurden.set(pc.def.countryId, (defBurden.get(pc.def.countryId) || 0) + w);
+  }
+  const offMulOf = (cc) => 1 / (1 + DEFENSE_DRAG * (defBurden.get(cc) || 0));
+
   // Resolve each front: besiege the city if the front reached its
   // heartland; otherwise grind the countryside forward, tile by tile.
   for (const pc of pairs.values()) {
     const { att, def } = pc;
     if (att.mode !== "settled" || def.mode !== "settled" || att.countryId === def.countryId) continue;
-    const adv = att._M / Math.max(1, def._M);
+    // The attacker's effective offensive might is throttled while it is itself
+    // under attack — a realm fighting for its own heartland can't also expand.
+    const attM = att._M * offMulOf(att.countryId);
+    const adv = attM / Math.max(1, def._M);
 
     if (pc.canStorm) {
       // Front is at the heartland. The city defends with its garrison OR its
@@ -469,7 +494,7 @@ export function advanceFronts(world) {
       // still takes a real army to storm. This is the single biggest brake on
       // the boiling-map churn (see HOME_MILITIA_FRAC).
       const defHome = homeMight(def);
-      const advCity = att._M / Math.max(1, defHome);
+      const advCity = attM / Math.max(1, defHome);   // throttled if the attacker is itself under attack
       // A recently-conquered city is still pacified (garrisoned) and can't be
       // besieged yet — that grace stops rival empires trading it back and forth.
       if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
