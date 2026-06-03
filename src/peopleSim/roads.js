@@ -66,8 +66,11 @@ const MAX_REACH_VISITS    = 8000;       // BFS visit cap for trade-reach computa
 // soon as it has found this many peers (they come out nearest-first), which
 // also slashes the periodic reach-rebuild cost. Distant partners contributed
 // almost nothing anyway — transport cost already throttled their volume to a
-// trickle.
-const MAX_PARTNERS        = 20;
+// trickle — so this is the single biggest lever on the per-tick trade cost
+// (updateTrade, knowledge diffusion, and urbanise all iterate the reach):
+// 12 nearest partners is still a dense, well-connected local economy, but
+// ~40% cheaper per tick than 20 once the dense map's networks fuse.
+const MAX_PARTNERS        = 12;
 // Caps on full-path A* evaluations per settlement per plan cycle.
 // Candidates are ranked by (cheap) trade benefit first; only this many
 // get a real path computed, so the cost is bounded regardless of how
