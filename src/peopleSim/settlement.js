@@ -56,6 +56,12 @@ const K_MIN_VIABLE = 8;                    // bare-survival floor (matches the w
 const HOUSING_BASE        = 45;     // starting shelter before anything is built
 const SPACE_RADIUS        = 14;     // urban-footprint radius for the buildable-land scan
 const DENSITY_BASE        = 6;      // people per buildable tile at zero construction
+// Agricultural-hinterland food multiplier (see updateFood): how a big city's
+// organised, intensively-farmed food shed scales with its population above
+// town size. The strength is the runtime lever T.URBAN_HINTERLAND; REF is the
+// population floor below which there's no boost (town threshold), so
+// villages/towns keep their plain catchment.
+const HINTERLAND_REF      = 250;    // = TIER_THRESHOLD[town]; boost starts above town size
 // DENSITY_PER_CONSTR -> runtime lever (tuning.js T.DENSITY_PER_CONSTR)
 // Development: build housing up toward the space ceiling. Needs materials
 // (timber/stone — own, or bought from suppliers with coin) and labour;
@@ -767,8 +773,23 @@ function updateFood(world, s) {
   // Land food from the controlled TERRITORY: the distance-weighted sum of
   // claimed arable fertility (computed in territory.js), times yield and
   // agriculture. Storable — fills granaries and ships to feed cities.
+  //
+  // Agricultural hinterland / provisioning: a large settlement organises a
+  // proportionally larger and more intensively-worked food shed than the tiles
+  // it claims — peri-urban market gardening and irrigation, plus the state
+  // granary/supply system (Rome's annona, the Inca qollqa) that concentrated
+  // staples from a wide region to feed a non-farming urban class. Without this
+  // every settlement grows to eat exactly its own catchment, leaving no
+  // structural surplus, so the largest cities stall at foodK ~2000 and the
+  // metropolis tier (5000+) is unreachable. Modelled as a bounded multiplier
+  // that grows with population ABOVE town size (HINTERLAND_REF) — villages and
+  // towns are untouched (the dense rural map stays), but a city can assemble
+  // the grain to push into the metropolis tier. The log keeps it self-limiting:
+  // food rises far slower than population, so it settles at a finite size.
+  const hinterlandMul = 1 + T.URBAN_HINTERLAND
+    * Math.max(0, Math.log10(Math.max(1, s.people / HINTERLAND_REF)));
   const landFood0 = (s._terrFertSum || 0) * T.FARM_YIELD_PER_FERT
-    * (1 + (s.knowledge.agriculture || 0) * 1.2);
+    * (1 + (s.knowledge.agriculture || 0) * 1.2) * hinterlandMul;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
