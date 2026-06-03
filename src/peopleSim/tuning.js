@@ -129,8 +129,6 @@ export const TUNING_SCHEMA = [
         desc: "Food a water-adjacent settlement lands. Up = thriving maritime cities; 0 = no fishing economy." },
       { key: "DENSITY_PER_CONSTR", label: "Urban density per construction", def: 5, min: 0, max: 20, step: 1,
         desc: "Extra residents per buildable tile per point of construction tech. Up = sky-high megacities late game." },
-      { key: "URBAN_HINTERLAND", label: "City food shed", def: 4.0, min: 0, max: 8, step: 0.5,
-        desc: "How strongly a city's organised food shed (state provisioning, intensive peri-urban farming) grows with its size above a town. Up = larger cities and real metropolises; 0 = every settlement feeds only from its own catchment, so the biggest cities stall." },
       { key: "MINING_RATE", label: "Specie mining rate", def: 5.0, min: 0, max: 20, step: 0.5,
         desc: "Precious-metal extraction multiplier → hard-currency wealth. Up = gold-rush economies." },
       { key: "SACK_PRODUCTION_FLOOR", label: "Sacked-city output floor", def: 0.3, min: 0, max: 1.0, step: 0.05,
