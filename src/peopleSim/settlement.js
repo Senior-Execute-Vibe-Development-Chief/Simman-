@@ -20,7 +20,16 @@ export function resetSettlementIds() { _nextId = 1; }
 // are the local market centres, and cities/metropolises are the rare
 // trade-fed hubs — a realistic population pyramid rather than a map of
 // uniform cities.
-const TIER_THRESHOLD = [0, 250, 1200, 5000];
+//
+// The metropolis bar is 3000, not 5000: at the current (dense) settlement
+// density the world's fixed food is spread across hundreds of small village
+// catchments, so an import-fed city's stable ceiling is ~3500 — a city
+// aggregates grain only as fast as its import→housing→growth spiral turns, and
+// that fragmentation caps it. 3000 marks the genuine primate hubs that tower
+// over the villages (the realistic megacity tier for this map's scale); the old
+// 5000 bar predated the density increase and is unreachable without trading the
+// dense countryside for fewer, larger settlements.
+const TIER_THRESHOLD = [0, 250, 1200, 3000];
 const TIER_NAME      = ["village", "town", "city", "metropolis"];
 
 // Pop growth slowed from 0.0045 → 0.0018 so settlements visibly take
