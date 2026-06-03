@@ -563,14 +563,13 @@ export function urbanise(world) {
     }
     if (!best) continue;                               // s is its own region's hub
     const gap = Math.min(MIGRATE_GAP_CAP, best.people / Math.max(1, s.people));
-    // Draw toward the hub's HOUSING (which a city builds ahead of its food),
-    // not its current food capacity. Moving a person frees ~exactly their food
-    // back in the village, and that grain ships to the hub (food trade), so the
-    // migrant and their food arrive together — the hub's food capacity rises to
-    // match. Gating on current food instead would deadlock: a food-full city
-    // couldn't pull migrants, so its villages never depopulate and never free
-    // the surplus that would let it grow.
-    const room = Math.max(0, (best._houseK || best._k || best.people) - best.people);
+    // Draw only toward what the hub can actually feed today (its carrying
+    // capacity). Pulling migrants beyond that — toward the city's pre-built
+    // housing — looks like it should free more village grain, but in practice
+    // the migrants outrun the food (which ships in with a lag) and simply
+    // starve, shrinking both the city and the villages it drained. Filling to
+    // capacity lets the city grow exactly as fast as imported grain arrives.
+    const room = Math.max(0, (best._k || best.people) - best.people);
     let movers = Math.min(s.people * MIGRATE_RATE * gap, room, s.people * MIGRATE_DRAIN_CAP);
     if (movers < 0.2) continue;
     s.people -= movers;
