@@ -25,7 +25,7 @@
 // (or `localPByCountry` for state-level money). At P=1 (the reference)
 // behaviour is unchanged from the pre-inflation calibration.
 
-import { computeExportValue } from "./settlement.js";
+import { exportValueOf } from "./settlement.js";
 
 const INFLATION_INTERVAL = 50;        // ticks between recompute passes (slow drift)
 const EMA_ALPHA          = 0.05;      // per-pass smoothing — over many passes the
@@ -69,7 +69,7 @@ export function updateInflation(world) {
     if (s.mode !== "settled") continue;
     const root = comps.has(s.id) ? comps.get(s.id) : s.id;
     M.set(root, (M.get(root) || 0) + Math.max(0, s.wealth || 0));
-    const ev = computeExportValue(s, world);
+    const ev = exportValueOf(s, world);
     const out = Math.max(1, ev * Math.sqrt(Math.max(1, s.people)));
     T.set(root, (T.get(root) || 0) + out);
   }
@@ -83,8 +83,10 @@ export function updateInflation(world) {
     let totalM = 0, totalT = 0;
     for (const [root, m] of M) {
       const t = T.get(root) || 1;
-      // Weight components by their T (real economy size) so a tiny coin-poor
-      // hamlet doesn't drag the baseline down.
+      // Aggregate M/T across ALL components — the global coin-to-real-economy
+      // ratio. Larger economies dominate the baseline naturally (their bigger M
+      // and T both land in the sums) and a tiny coin-poor hamlet barely moves
+      // it, without an explicit per-component weighting.
       totalM += m;
       totalT += t;
     }
@@ -158,17 +160,6 @@ export function localPByCountry(world, c) {
     num += p * w; den += w;
   }
   return den > 0 ? num / den : 1;
-}
-
-// DISPLAY-facing raw indicator (per settlement) — for the wheat-price ticker
-// and the per-realm "price level" line. Wider band than the sim-facing P;
-// this is what the user sees.
-export function displayP(world, s) {
-  const Rmap = world._inflRaw;
-  if (!Rmap || !world._networkComponents) return 1;
-  const root = world._networkComponents.has(s.id) ? world._networkComponents.get(s.id) : s.id;
-  const p = Rmap.get(root);
-  return p === undefined ? 1 : p;
 }
 
 export function displayPByCountry(world, c) {

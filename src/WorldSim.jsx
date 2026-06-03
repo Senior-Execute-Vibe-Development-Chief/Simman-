@@ -1,31 +1,27 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
-import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthData.js";
 import { generateTectonicWorld } from "./tectonicGen.js";
-import { solveWind } from "./windSolver.js";
-import { solveMoisture } from "./moistureSolver.js";
-import { initGL, uploadTileData, renderGL } from "./glRenderer.js";
-import { isRealWindAvailable, fillRealWind } from "./realWindData.js";
+import { isRealWindAvailable } from "./realWindData.js";
 import GlobeView from "./GlobeView.jsx";
 import TuningPanel, { ParamEditor, renderPreview } from "./TuningPanel.jsx";
-import { PARAMS, loadPresets, savePreset, deletePreset } from "./paramDefs.js";
+import { loadPresets, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
-import { generateResources, tileResourceSummary, dominantResource, RESOURCES, RES_BY_ID } from "./resourceGen.js";
-import { computeRivers, riverName, RIVER_NAMES, RIVER_NONE, RIVER_STREAM, RIVER_TRIBUTARY, RIVER_MAJOR, RIVER_GREAT } from "./riverGen.js";
+import { generateResources, tileResourceSummary, RESOURCES } from "./resourceGen.js";
+import { computeRivers, RIVER_NAMES, RIVER_STREAM } from "./riverGen.js";
 import { ensureTribeViews, attachRegistries } from "./tribeModel.js";
-import { runTribeStep, resetInvariantState } from "./tribeStep.js";
-import { tribePower, localPower, tribeOreAccess, tDistW, expFalloff } from "./tribePower.js";
+import { resetInvariantState } from "./tribeStep.js";
+import { tribePower } from "./tribePower.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
-import { IN_LABELS, OUT_LABELS } from "./peopleSim/money.js";
+import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./peopleSim/money.js";
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 import PeopleSimWorker from "./peopleSimWorker.js?worker&inline";
 
 // Noise + PRNG utilities moved to src/worldgenUtils.js so worldgen code can
 // also run headlessly (Node tests, future tooling) without dragging React in.
-import { initNoise, noise2D, fbm, warp, ridged, worley, mkRng } from "./worldgenUtils.js";
+import { initNoise, noise2D, fbm, ridged, worley } from "./worldgenUtils.js";
 
 const RES=1;
 // ── Mercator projection helpers ──
@@ -226,9 +222,7 @@ const LEAPS=[];for(let r=5;r<=13;r++)for(let a=0;a<8;a++){const ang=a*Math.PI/4;
 // ── Knowledge System: emergent technological development ──
 // No artificial eras. Knowledge is a continuous fluid (0→1) that grows from local conditions
 // and diffuses between neighbors. "Eras" emerge as an observation, not a programmed state.
-const KNOW_DOMAINS=['agriculture','metallurgy','navigation','construction','organization','trade'];
 function initKnowledge(){return{agriculture:0,metallurgy:0,navigation:0,construction:0,organization:0,trade:0};}
-function cloneKnowledge(k){return{agriculture:k.agriculture,metallurgy:k.metallurgy,navigation:k.navigation,construction:k.construction,organization:k.organization,trade:k.trade};}
 
 // ── Budget + Personality System ──
 // Each tribe allocates capacity across military/growth/commerce/exploration/survival.
@@ -241,320 +235,6 @@ return{military:0.2,growth:0.3,commerce:0.2,exploration:0.15,survival:0.15,
 total:0,wealth:0,personality:"",
 // Temperament: permanent random bias per tribe (cultural DNA)
 tMil:r(),tGro:r(),tCom:r(),tExp:r()};}
-function cloneBudget(b){return{military:b.military,growth:b.growth,commerce:b.commerce,wealth:b.wealth*0.3,// child tribes get 30% of parent's wealth
-exploration:b.exploration,survival:b.survival,total:b.total,personality:b.personality,
-tMil:b.tMil+(Math.random()-0.5)*0.4,// child tribes inherit with meaningful drift
-tGro:b.tGro+(Math.random()-0.5)*0.4,
-tCom:b.tCom+(Math.random()-0.5)*0.4,
-tExp:b.tExp+(Math.random()-0.5)*0.4};}
-
-// ── Resource Trade System ──
-// Each tribe has production (from tiles), demand (from pop+knowledge), surplus/deficit.
-// Surplus flows to trade partners. Trade generates income and enables interdependence.
-function _emptyTradeData(){return{imports:{},exports:{},income:0,foodImports:0,foodExports:0,partners:0};}
-function stepTrade(ter){
-const{tribeSizes,tribeStrength,tribePopulation,tribeKnowledge,tribeCenters}=ter;
-const n=tribeCenters.length;
-if(!ter._resCache)return;
-if(!ter.tradeData)ter.tradeData=[];
-while(ter.tradeData.length<n)ter.tradeData.push(_emptyTradeData());
-
-// ── PASS 1: per-tribe stats + partner sets, output zeroed once ──
-// Each pair (i,j) is processed exactly once in PASS 2 with i<j and
-// writes atomically to BOTH tradeData[i] and tradeData[j]. This kills
-// the audit's #2 double-count + foodExports-wipe bug.
-const stats=new Array(n);
-const partnersOf=new Array(n);
-for(let i=0;i<n;i++){
-  if(tribeSizes[i]<=0){ter.tradeData[i]=_emptyTradeData();stats[i]=null;partnersOf[i]=null;continue;}
-  const td=ter.tradeData[i];
-  td.income=0;td.foodImports=0;td.foodExports=0;td.partners=0;
-  for(const rk of RES_KEYS){td.imports[rk]=0;td.exports[rk]=0;}
-  const k=tribeKnowledge[i];const r=ter._resCache[i];const pop=tribePopulation[i];
-  if(!r||!k){stats[i]=null;partnersOf[i]=null;continue;}
-  // Food balance — uses the unit-coherent values computed by
-  // stepBackgroundPop (audit #3 fix: was popK/1000 which gave
-  // microscopic deficits no matter how many people starved).
-  const foodSupply=ter._tribeFoodSupply?ter._tribeFoodSupply[i]:0;
-  const foodNeed=ter._tribeFoodNeed?ter._tribeFoodNeed[i]:0;
-  // Resource demand scales with absolute population (was popK).
-  const demand={
-    timber:pop*0.3+k.navigation*3,
-    stone:k.construction*pop*0.2,
-    iron:k.metallurgy*pop*0.15,
-    salt:pop*0.2,
-    copper:k.metallurgy<0.5?k.metallurgy*pop*0.1:0,
-    tin:k.metallurgy>0.1&&k.metallurgy<0.6?k.metallurgy*pop*0.08:0,
-    coal:Math.max(0,k.metallurgy-0.6)*pop*0.5,
-    oil:Math.max(0,k.metallurgy-0.8)*pop*0.3,
-    horses:k.organization*pop*0.05,
-    precious:k.trade*pop*0.1,
-    gems:k.trade*pop*0.03,
-  };
-  const surplus={},deficit={};
-  for(const rk of RES_KEYS){
-    const prod=r[rk]||0;const dem=demand[rk]||0;
-    surplus[rk]=Math.max(0,prod-dem);
-    deficit[rk]=Math.max(0,dem-prod);
-  }
-  // Partners: border + maritime
-  const part=new Set();
-  if(ter._borderContacts&&ter._borderContacts[i])
-    for(const nid in ter._borderContacts[i]){const j=parseInt(nid);if(tribeSizes[j]>0)part.add(j);}
-  if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[i])
-    for(const kc of ter.tribeKnownCoasts[i])
-      if(kc.owner>=0&&kc.owner!==i&&tribeSizes[kc.owner]>0)part.add(kc.owner);
-  td.partners=part.size;
-  partnersOf[i]=part;
-  const eff=k.trade*0.5+(ter.tribeBudget?.[i]?.commerce??0.2)*0.3+0.1;
-  stats[i]={k,r,
-    foodSurplus:Math.max(0,foodSupply-foodNeed),
-    foodDeficit:Math.max(0,foodNeed-foodSupply),
-    surplus,deficit,eff,rv:resourceValues(k)};
-}
-
-// ── PASS 2: pair-wise trade (i<j only), atomic two-sided writes ──
-// Surplus/deficit are decremented as we go so a tribe with N partners
-// cannot export the same surplus N times (also fixes infinite-trade).
-for(let i=0;i<n;i++){
-  const si=stats[i];if(!si)continue;
-  const part=partnersOf[i];if(!part)continue;
-  const tdI=ter.tradeData[i];
-  for(const j of part){
-    if(j<=i)continue;
-    const sj=stats[j];if(!sj)continue;
-    const tdJ=ter.tradeData[j];
-    const rel=tribeRelation(ter,i,j);
-    if(rel==='fight')continue;
-    const relBonus=rel==='trade'?1.5:1.0;
-    const eff=Math.min(si.eff,sj.eff);
-    // Food: i→j
-    if(si.foodSurplus>0&&sj.foodDeficit>0){
-      const flow=Math.min(si.foodSurplus*0.3,sj.foodDeficit*0.3)*eff*relBonus;
-      tdI.foodExports+=flow;tdI.income+=flow*2;
-      tdJ.foodImports+=flow;
-      si.foodSurplus-=flow;sj.foodDeficit-=flow;
-    }
-    // Food: j→i
-    if(sj.foodSurplus>0&&si.foodDeficit>0){
-      const flow=Math.min(sj.foodSurplus*0.3,si.foodDeficit*0.3)*eff*relBonus;
-      tdJ.foodExports+=flow;tdJ.income+=flow*2;
-      tdI.foodImports+=flow;
-      sj.foodSurplus-=flow;si.foodDeficit-=flow;
-    }
-    // Resources, both directions
-    for(const rk of RES_KEYS){
-      if(si.surplus[rk]>0&&sj.deficit[rk]>0){
-        const flow=Math.min(si.surplus[rk]*0.3,sj.deficit[rk]*0.3)*eff*relBonus;
-        tdI.exports[rk]+=flow;tdI.income+=flow*si.rv[rk]*3;
-        tdJ.imports[rk]+=flow;
-        si.surplus[rk]-=flow;sj.deficit[rk]-=flow;
-      }
-      if(sj.surplus[rk]>0&&si.deficit[rk]>0){
-        const flow=Math.min(sj.surplus[rk]*0.3,si.deficit[rk]*0.3)*eff*relBonus;
-        tdJ.exports[rk]+=flow;tdJ.income+=flow*sj.rv[rk]*3;
-        tdI.imports[rk]+=flow;
-        sj.surplus[rk]-=flow;si.deficit[rk]-=flow;
-      }
-    }
-  }
-}
-}
-
-// Budget step: compute allocation for all tribes
-function stepBudget(ter){
-const{tribeSizes,tribeStrength,tribeCenters,tribePopulation,tribeKnowledge}=ter;
-const budgets=ter.tribeBudget;if(!budgets)return;
-const n=tribeCenters.length;
-// Need border contacts and resource cache
-if(!ter._borderContacts)return;
-const contacts=ter._borderContacts;
-if(!ter._resCache)return;
-const res=ter._resCache;
-
-for(let i=0;i<n;i++){if(tribeSizes[i]<=0)continue;
-const b=budgets[i];const k=tribeKnowledge[i];const r=res[i];
-const pop=tribePopulation[i];const sz=tribeSizes[i];
-if(!r)continue;// resource cache not ready yet for this tribe
-const rv=resourceValues(k);
-let resWealth=0;for(const rk of RES_KEYS)resWealth+=rv[rk]*(r[rk]||0)*0.01;
-// Budget = population base + resource wealth (additive, not just multiplier).
-// A tiny tribe on gold can rival a large tribe with no resources (Phoenicia, Qatar).
-const popBase=pop*(1+k.trade*0.3)*(0.5+k.organization*0.5);
-const resBase=resWealth*pop*0.5;// resource wealth scales with pop but is ADDITIVE
-// Budget = action capacity (what the tribe can DO per step)
-b.total=popBase+resBase;
-
-// Wealth = accumulated treasury in gold. Grows from:
-// - Tax revenue (population × organization)
-// - Trade income (selling surplus resources)
-// - Resource value (precious metals directly add to treasury)
-// Decays slightly each step (maintenance, corruption)
-const taxRevenue=pop*(0.5+k.organization*0.5)*0.001;// organized states collect more tax
-const tradeIncome=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].income:0;
-const goldIncome=rv.precious*(r.precious||0)*0.01+rv.gems*(r.gems||0)*0.005;// gold/gems → direct wealth
-const decay=b.wealth*0.02;// 2% decay (maintenance, corruption, waste)
-b.wealth=Math.max(0,b.wealth+taxRevenue+tradeIncome+goldIncome-decay);
-
-// ── Survival floor: mandatory, scales with threats ──
-let borderThreat=0;const myContacts=contacts[i];
-for(const nid in myContacts){const j=parseInt(nid);if(tribeSizes[j]<=0)continue;
-const theirPop=tribePopulation[j];if(theirPop>pop*1.5)borderThreat+=0.2;
-if(theirPop>pop*3)borderThreat+=0.3;}
-const eraMult=15+k.agriculture*60+k.metallurgy*40+k.construction*30+k.organization*25;
-const capacity=tribeStrength[i]*eraMult;
-const faminePressure=capacity>0?Math.max(0,(pop/capacity)-1)*2:0;
-const survivalFloor=Math.max(0.08,Math.min(0.55,borderThreat*0.3+faminePressure*0.3));
-const available=1-survivalFloor;
-
-// ── Score each category: resources + geography + situation + temperament ──
-// Resources are the PRIMARY driver of personality, not just a modifier.
-const neighborCount=Object.keys(myContacts).length;
-let hasWeakNeighbor=false;
-for(const nid in myContacts){const j=parseInt(nid);if(tribeSizes[j]<=0)continue;
-if(tribePopulation[j]<pop*0.5&&tribeSizes[j]>10){hasWeakNeighbor=true;break;}}
-const fertAvg=sz>0?tribeStrength[i]/sz:0;
-let tradeWealth=0;for(const rk of RES_KEYS)tradeWealth+=rv[rk]*(r[rk]||0)*0.015;
-const coastRatio=sz>0?(r.coastTiles||0)/sz:0;
-const popRatio=capacity>0?pop/capacity:0;
-const knownCoasts=ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
-
-let milScore=0.5+b.tMil;// lower base — resources/situation drive the score
-let groScore=0.5+b.tGro;
-let comScore=0.5+b.tCom;
-let expScore=0.5+b.tExp;
-
-// Military: HORSES are the main driver, plus threats and iron
-milScore+=Math.min(3.0,(r.horses||0)*0.4);// horses: up to +3.0 (Mongols, cavalry empires)
-milScore+=Math.min(1.5,(r.iron||0)*0.15);// iron weapons
-milScore+=borderThreat*3;// under attack → military
-milScore+=Math.min(0.5,neighborCount*0.1);// many borders
-if(hasWeakNeighbor)milScore+=1.0;
-if(k.metallurgy>0.3)milScore+=0.5;// armed and dangerous
-
-// Growth: fertile land is the main driver
-groScore+=fertAvg*5;// fertile territory → invest in farming (up to ~2.5)
-groScore+=Math.min(1.5,(r.riverTiles||0)*0.08);// rivers → irrigation
-if(capacity>0&&pop/capacity<0.7)groScore+=1.5;// underpopulated
-if(k.agriculture<0.5)groScore+=0.5;
-groScore+=Math.min(1.0,(r.salt||0)*0.1);// salt → food preservation → growth
-
-// Commerce: GOLD and GEMS are the main driver, plus trade position
-comScore+=Math.min(3.0,((r.precious||0)+(r.gems||0))*0.3);// gold/gems → trade empire
-comScore+=Math.min(2.0,tradeWealth);// era-weighted resource wealth
-comScore+=Math.min(0.8,neighborCount*0.15);// trade partners
-if(r.coastTiles>sz*0.25&&sz<60)comScore+=1.5;// Phoenician
-if(neighborCount>=4)comScore+=0.5;// crossroads
-// Don't double-count coast in both commerce and exploration
-comScore+=Math.min(0.5,r.coastTiles*0.01);// modest port bonus
-
-// Exploration: coast + timber + population pressure
-expScore+=coastRatio*3.0;// coastal → explore
-expScore+=Math.min(1.0,(r.timber||0)*0.08);// shipbuilding
-if(popRatio>0.9)expScore+=1.5;// overpopulated → must explore
-if(knownCoasts>0)expScore+=0.5;
-if(coastRatio>0.4&&sz<30)expScore+=2.0;// island survival
-
-// Floor all scores at 0.1 (everyone does a little of everything)
-milScore=Math.max(0.1,milScore);
-groScore=Math.max(0.1,groScore);
-comScore=Math.max(0.1,comScore);
-expScore=Math.max(0.1,expScore);
-
-// Normalize to fill available budget
-const totalScore=milScore+groScore+comScore+expScore;
-const targetMil=milScore/totalScore*available;
-const targetGro=groScore/totalScore*available;
-const targetCom=comScore/totalScore*available;
-const targetExp=expScore/totalScore*available;
-
-// Smooth blending (30% toward target per step — personality shifts gradually)
-const blend=0.3;
-b.military=b.military*(1-blend)+targetMil*blend;
-b.growth=b.growth*(1-blend)+targetGro*blend;
-b.commerce=b.commerce*(1-blend)+targetCom*blend;
-b.exploration=b.exploration*(1-blend)+targetExp*blend;
-b.survival=survivalFloor;
-
-// ── Personality label from dominant allocation ──
-const mil=b.military,gro=b.growth,com=b.commerce,exp=b.exploration,sur=b.survival;
-// Find the dominant category
-const maxCat=Math.max(mil,gro,com,exp);
-if(sur>0.35)b.personality="Besieged";
-else if(mil+exp>0.50&&mil>0.20&&exp>0.15)b.personality="Imperial";
-else if(com+exp>0.45&&com>0.20&&exp>0.15)b.personality="Maritime";
-else if(mil===maxCat&&mil>0.25)b.personality="Militant";
-else if(com===maxCat&&com>0.22)b.personality="Mercantile";
-else if(gro===maxCat&&gro>0.25)b.personality="Agricultural";
-else if(exp===maxCat&&exp>0.22)b.personality="Expansionist";
-else b.personality="Balanced";}
-}
-// ── Era-dependent resource values: what each resource is WORTH at this knowledge level ──
-// Per-step cache: resourceValues only depends on tribe knowledge, which doesn't change within a step.
-// Eliminates ~30K object allocations per step in the expansion loop.
-let _resValCache=null;// Map<tribeId, values> cleared each step
-function resourceValues(k){if(!k)return{timber:0.3,stone:0.1,copper:0,tin:0,iron:0,salt:0.3,horses:0,precious:0,coal:0,oil:0,gems:0};
-const mt=k.metallurgy,ag=k.agriculture,nv=k.navigation,cn=k.construction,og=k.organization,tr=k.trade;
-return{
-timber:  Math.min(1,0.3+ag*0.2+nv*0.4+cn*0.1),
-stone:   Math.min(1,0.1+cn*0.6+og*0.2),
-copper:  Math.min(1,mt<0.5?mt*1.5:0.75-(mt-0.5)*0.5),
-tin:     Math.min(1,mt>0.1&&mt<0.6?(mt-0.1)*2.0:mt>=0.6?0.3:0),
-iron:    Math.min(1,Math.max(0,mt-0.2)*1.2),
-salt:    Math.min(1,0.3+ag*0.3+og*0.2+nv*0.1),
-horses:  Math.min(1,og*0.5+mt*0.3),
-precious:Math.min(1,tr*0.8+og*0.2),
-coal:    Math.min(1,Math.max(0,mt-0.5)*Math.max(0,cn-0.4)*4),
-oil:     Math.min(1,Math.max(0,mt-0.7)*Math.max(0,cn-0.6)*5),
-gems:    Math.min(1,tr*0.5+og*0.3)};}
-const RES_KEYS=['copper','tin','iron','coal','stone','timber','salt','horses','precious','oil','gems'];
-
-// BFS ocean pathfinder for short hops (within discovery range).
-// Finds an actual ocean-tile path from coastal point A to coastal point B.
-// Returns simplified waypoints. Step size 4 for speed. Max 5000 nodes.
-function computeOceanRoute(ter,x1,y1,x2,y2,numPts){
-const{tw,th,tElev}=ter;
-let wrDx=x2-x1;if(Math.abs(wrDx)>tw/2)wrDx=wrDx>0?wrDx-tw:wrDx+tw;
-const totalDist=Math.sqrt(wrDx*wrDx+(y2-y1)*(y2-y1));
-if(totalDist<8)return[];
-// BFS through ocean tiles
-const STEP=3;// tile step size
-const MAX=15000;
-const visited=new Uint8Array(tw*th);// fast visited array
-const queue=[];const parentOf=[];
-// Seed: ocean tiles near source
-for(let dy=-6;dy<=6;dy++){for(let dx=-6;dx<=6;dx++){
-const nx=((x1+dx)%tw+tw)%tw,ny=Math.max(0,Math.min(th-1,y1+dy));
-const ni=ny*tw+nx;
-if(tElev[ni]<=0&&!visited[ni]){visited[ni]=1;queue.push(ni);parentOf.push(-1);}}}
-let found=-1,qi=0;
-while(qi<queue.length&&qi<MAX){
-const ci=queue[qi];qi++;
-const cx=ci%tw,cy=(ci-cx)/tw;
-// Check target reached
-let ddx2=Math.abs(cx-x2);if(ddx2>tw/2)ddx2=tw-ddx2;
-if(ddx2<=6&&Math.abs(cy-y2)<=6){found=qi-1;break;}
-// Expand 8 directions with STEP size
-for(let ddir=0;ddir<8;ddir++){
-const sdx=[0,STEP,STEP,STEP,0,-STEP,-STEP,-STEP][ddir];
-const sdy=[-STEP,-STEP,0,STEP,STEP,STEP,0,-STEP][ddir];
-const nx=((cx+sdx)%tw+tw)%tw,ny=cy+sdy;
-if(ny<1||ny>=th-1)continue;
-const ni=ny*tw+nx;
-if(visited[ni]||tElev[ni]>0)continue;
-visited[ni]=1;queue.push(ni);parentOf.push(qi-1);}}
-if(found>=0){
-// Trace back
-const path=[];let idx=found;
-while(idx>=0){const ti2=queue[idx];path.push({x:ti2%tw,y:(ti2-ti2%tw)/tw});idx=parentOf[idx];}
-path.reverse();
-// Simplify to numPts
-if(path.length<=numPts)return path;
-const step2=Math.floor(path.length/numPts);
-const result=[];for(let i=0;i<path.length;i+=step2){if(result.length<numPts)result.push(path[i]);}
-return result;}
-return[];// no path found
-}
 
 // ── War state ─────────────────────────────────────────────────────────
 // `ter.wars` is a sparse map keyed by "min(a,b),max(a,b)". Each entry
@@ -569,330 +249,9 @@ return[];// no path found
 //   3. War expires when nothing fires for ~60 steps (mutual exhaustion)
 //      or when the war-ending logic forces peace / total conquest.
 function warKey(a,b){return a<b?a+","+b:b+","+a;}
-function getWar(ter,a,b){return ter.wars?ter.wars[warKey(a,b)]:null;}
 function atWar(ter,a,b){
   if(a===b||!ter.wars)return false;
   const w=ter.wars[warKey(a,b)];return !!w&&w.active;
-}
-function declareWar(ter,aggressor,defender,reason){
-  if(aggressor===defender)return null;
-  if(!ter.wars)ter.wars={};
-  const k=warKey(aggressor,defender);
-  let w=ter.wars[k];
-  if(w&&w.active){w.lastFlip=ter.stepCount;return w;}
-  w={a:Math.min(aggressor,defender),b:Math.max(aggressor,defender),
-     aggressor,declared:ter.stepCount,lastFlip:ter.stepCount,
-     flipsAtoB:0,flipsBtoA:0,capitalsTaken:0,reason:reason||'border',active:true,
-     startSizeAgg:ter.tribeSizes[aggressor]||0,startSizeDef:ter.tribeSizes[defender]||0};
-  ter.wars[k]=w;
-  if(!ter._warEvents)ter._warEvents=[];
-  ter._warEvents.push({step:ter.stepCount,type:'declared',aggressor,defender,reason:w.reason});
-  if(ter._warEvents.length>200)ter._warEvents.shift();
-  // One-time visibility log so the user can confirm the new war system
-  // is actually running in their build (vs a stale cache).
-  if(typeof console!=='undefined'&&!ter._warLogShown){
-    ter._warLogShown=true;
-    console.log(`[WarSystem v2] First war declared at step ${ter.stepCount}: tribe ${aggressor} -> tribe ${defender} (reason: ${reason||'border'})`);
-  }
-  return w;
-}
-function recordFlip(ter,attacker,defender,ti){
-  const w=declareWar(ter,attacker,defender,'first-strike');// auto-declare on first flip
-  if(!w)return;
-  w.lastFlip=ter.stepCount;
-  if(attacker===w.aggressor)w.flipsAtoB++; else w.flipsBtoA++;
-}
-function endWar(ter,a,b,outcome){
-  if(!ter.wars)return;
-  const k=warKey(a,b);const w=ter.wars[k];if(!w||!w.active)return;
-  w.active=false;w.endedAt=ter.stepCount;w.outcome=outcome||'expired';
-  if(!ter._warHistory)ter._warHistory={};
-  ter._warHistory[k]=w;
-  delete ter.wars[k];
-  if(!ter._warEvents)ter._warEvents=[];
-  ter._warEvents.push({step:ter.stepCount,type:'ended',a:w.a,b:w.b,outcome:w.outcome});
-  if(ter._warEvents.length>200)ter._warEvents.shift();
-}
-
-// ── Military reserve (troops) ────────────────────────────────────────
-// Each tribe has a stored military strength in `ter.tribeMilitary[id]`,
-// a single scalar representing standing troops. It depletes when used
-// (invasions, flips, sieges) and regenerates each tick from population
-// + military budget — the OpenFront / Civ / Risk pattern.
-//
-// Cap = population × militaryBudget × (1 + organization*0.5 + metallurgy*0.3)
-// Regen = (cap - troops) × 0.04, asymptotic refill toward cap
-//
-// Wars now have a natural rhythm: launch offensive → drained → recover
-// → next offensive. A depleted tribe can't pick new fights even if its
-// war desire is high (gated in the decider).
-function militaryCap(ter,id){
-  if(!ter.tribePopulation||!ter.tribeSizes||ter.tribeSizes[id]<=0)return 0;
-  const pop=ter.tribePopulation[id]||0;
-  const bud=ter.tribeBudget&&ter.tribeBudget[id];
-  const milB=bud?bud.military:0.2;
-  const k=ter.tribeKnowledge&&ter.tribeKnowledge[id];
-  const org=k?k.organization:0;
-  const met=k?k.metallurgy:0;
-  const mil=k?(k.military||0):0;
-  // Pop-units in this sim are scaled (a "settled tile" has bgPop ~ 0.3),
-  // so a 1500-tile tribe might only hit pop ≈ 75. With the old formula
-  // (pop × milB × 1) that's a cap of 15 standing — not enough force for
-  // the wave model to capture more than 1 tile per pass. Multiplier
-  // raised to 2.0 so typical mid-game tribes muster 30–80 troops and
-  // waves carve visible bubbles without late-game runaway.
-  //   stone (no tech)      ≈ 2.6× base
-  //   bronze (org/met low) ≈ 3.9× base
-  //   iron   (med tech)    ≈ 5.9× base
-  //   imp    (high tech)   ≈ 7.8× base
-  return pop*milB*2.0*(1+org*1.5+met*0.5+mil*1.0);
-}
-function militaryReadiness(ter,id){
-  if(!ter.tribeMilitary)return 0.5;
-  const cur=ter.tribeMilitary[id]||0;
-  const cap=militaryCap(ter,id);
-  if(cap<=0)return 0;
-  return Math.min(1,cur/cap);
-}
-function spendMilitary(ter,id,amount){
-  if(!ter.tribeMilitary)ter.tribeMilitary=[];
-  while(ter.tribeMilitary.length<=id)ter.tribeMilitary.push(0);
-  ter.tribeMilitary[id]=Math.max(0,(ter.tribeMilitary[id]||0)-amount);
-}
-function stepMilitary(ter){
-  if(!ter.tribeMilitary)ter.tribeMilitary=[];
-  const n=ter.tribeSizes.length;
-  while(ter.tribeMilitary.length<n)ter.tribeMilitary.push(0);
-  for(let i=0;i<n;i++){
-    if(ter.tribeSizes[i]<=0){ter.tribeMilitary[i]=0;continue;}
-    const cap=militaryCap(ter,i);
-    const cur=ter.tribeMilitary[i]||0;
-    // Asymptotic regen — 4% per tick toward cap. Slightly slower if at
-    // war (mobilisation costs, casualties).
-    let rate=0.04;
-    if(ter.wars){for(const k in ter.wars){const wr=ter.wars[k];
-      if(wr.active&&(wr.a===i||wr.b===i)){rate=0.035;break;}}}
-    const next=cur+(cap-cur)*rate;
-    ter.tribeMilitary[i]=Math.max(0,Math.min(cap,next));
-  }
-}
-
-// ── Expansion (settler) reserve ──────────────────────────────────────
-// Parallel to military: a stored pool of settlers/frontiersmen drawn
-// from population × growth budget × agriculture/organization tech.
-// Each claimed tile costs from this pool; expansion stops when drained
-// and resumes after regen. Models the wave pattern of real colonisation
-// (Spanish conquista, Roman late-republic burst, US westward push, etc.)
-// instead of the continuous uncapped expansion the sim had before.
-function expansionCap(ter,id){
-  if(!ter.tribePopulation||!ter.tribeSizes||ter.tribeSizes[id]<=0)return 0;
-  const pop=ter.tribePopulation[id]||0;
-  const bud=ter.tribeBudget&&ter.tribeBudget[id];
-  const gro=bud?bud.growth:0.3;
-  const k=ter.tribeKnowledge&&ter.tribeKnowledge[id];
-  const ag=k?k.agriculture:0;
-  const og=k?k.organization:0;
-  // Cap is the *peak burst* capacity. Sized so budget rarely throttles
-  // sustained expansion — only bites when tribes try to claim faster
-  // than their settler regen, e.g. opening of new frontier or pop boom.
-  return Math.max(1500,pop*gro*(1+ag*0.5+og*0.3)*6);
-}
-function expansionReadiness(ter,id){
-  if(!ter.tribeExpansion)return 0.5;
-  const cur=ter.tribeExpansion[id]||0;
-  const cap=expansionCap(ter,id);
-  if(cap<=0)return 0;
-  return Math.min(1,cur/cap);
-}
-function spendExpansion(ter,id,amount){
-  if(!ter.tribeExpansion)ter.tribeExpansion=[];
-  while(ter.tribeExpansion.length<=id)ter.tribeExpansion.push(0);
-  ter.tribeExpansion[id]=Math.max(0,(ter.tribeExpansion[id]||0)-amount);
-}
-// Cost in settlers of claiming a given tile. Calibrated so an initial
-// tribe at the cap floor (200) can claim ~4 tiles per tick of regen,
-// and a mid-sized tribe (1k tiles, pop ~500) can sustain ~3-5 tiles
-// per tick. Tech reduces cost; transport-cost from capital scales it.
-function claimSettlerCost(ter,id,ti){
-  const tc=ter.transportCost?ter.transportCost[ti]:0;
-  // Unclaimed tiles never get a transportCost entry — they're not in
-  // the Dijkstra. Use neighbour's cost as a proxy (the Dijkstra walks
-  // owned land only, so the cheapest reach for an adjacent tile is
-  // the lowest-cost owned neighbour's cost + a small step).
-  let reach;
-  if(tc>0&&tc<900){reach=tc;}else{
-    // Sample neighbours and take min transportCost; if no transportCost
-    // field yet (first few steps) fall back to base
-    const tw=ter.tw,th=ter.th;const tx=ti%tw,ty=(ti-tx)/tw;
-    let minN=999;
-    for(let d=0;d<4;d++){
-      const ny=ty+(d<2?(d?1:-1):0),nx=((tx+(d>=2?(d-2?1:-1):0))%tw+tw)%tw;
-      if(ny<0||ny>=th)continue;
-      const nti=ny*tw+nx;
-      const v=ter.transportCost?ter.transportCost[nti]:0;
-      if(v>0&&v<minN)minN=v;
-    }
-    reach=minN<999?minN+1.5:3;
-  }
-  const k=ter.tribeKnowledge&&ter.tribeKnowledge[id];
-  const ag=k?k.agriculture:0;
-  const og=k?k.organization:0;
-  // Calibrated so an initial tribe (cap floor 200, regen ~6/tick) can
-  // sustain a steady frontier wave. Lower than my first cut — the
-  // existing expansion-chance scoring is already a strong limiter, so
-  // the budget should be a *secondary* throttle that bites mostly on
-  // distant/expensive tiles and during burst growth.
-  // Cost calibrated so steady-state expansion matches the old uncapped
-  // rate — only bursts of pressure push past the regen ceiling.
-  const baseCost=0.2+reach*0.04;
-  return baseCost/(1+ag*0.4+og*0.2);
-}
-function stepExpansion(ter){
-  if(!ter.tribeExpansion)ter.tribeExpansion=[];
-  const n=ter.tribeSizes.length;
-  while(ter.tribeExpansion.length<n)ter.tribeExpansion.push(0);
-  for(let i=0;i<n;i++){
-    if(ter.tribeSizes[i]<=0){ter.tribeExpansion[i]=0;continue;}
-    const cap=expansionCap(ter,i);
-    const cur=ter.tribeExpansion[i]||0;
-    // Regen rate scales with growth budget — Sparta-style militant
-    // tribes (low growth budget) refill slowly; growth-focused tribes
-    // refill fast. Asymptotic toward cap.
-    const bud=ter.tribeBudget&&ter.tribeBudget[i];
-    const gro=bud?bud.growth:0.3;
-    const rate=0.08+gro*0.15;// gro=0.1 → 0.095, gro=0.3 → 0.125, gro=0.5 → 0.155
-    const next=cur+(cap-cur)*rate;
-    ter.tribeExpansion[i]=Math.max(0,Math.min(cap,next));
-  }
-}
-
-// ── Tile weakness ─────────────────────────────────────────────────────
-// How weak is the *individual* tile, not the tribe overall? A long
-// thin tendril through wilderness is mighty empire's claim on paper
-// but the actual tiles are isolated, far from supply, and unpopulated
-// — IRL neighbours would nibble them off opportunistically. We score
-// each contested tile and amplify peacetime flip chance accordingly,
-// so tendrils get cut by passing neighbours without needing a formal
-// war declaration.
-function tileWeakness(ter,ti,ow){
-  const{tw,th,owner,tribeCenters,bgPop,cityPop,tCoast}=ter;
-  const tx=ti%tw,ty=(ti-tx)/tw;
-  // Isolation: 0..1 where 0 = fully embedded interior, 1 = lonely tip
-  let ownN=0;
-  for(const[dx,dy]of DIRS){
-    const ny=ty+dy;if(ny<0||ny>=th)continue;
-    const nx=((tx+dx)%tw+tw)%tw;
-    if(owner[ny*tw+nx]===ow)ownN++;
-  }
-  const isolation=(4-ownN)/4;
-  // Reach: prefer real transport cost (Dijkstra through owned tiles,
-  // weighted by terrain — rivers cheap, mountains expensive) when it
-  // exists. This naturally penalises tendrils: a 1-tile-wide thread
-  // forces the path through that bottleneck and accumulates huge cost.
-  // Fall back to euclidean if transport hasn't run yet (early game).
-  let distFactor;
-  const tCost=ter.transportCost?ter.transportCost[ti]:0;
-  // Coastal-tile defensive bonus is REMOVED for the weakness calc.
-  // tileCost caps coast at 0.7 so transportCost is artificially low on
-  // coastal tiles; that would make coastal tendril tips look "near" the
-  // capital and shield them from peacetime nibbling. Coast still gets
-  // the bonus for *claiming* unowned tiles (expansion path), but not
-  // for *holding* against enemies. Falls through to euclidean for
-  // coastal tiles, which is harsher.
-  const isCoast=tCoast&&tCoast[ti];
-  if(tCost>0&&tCost<900&&!isCoast){
-    // Saturate at cost ~40 — that's a long expensive trek IRL terms
-    distFactor=Math.min(1,tCost/40);
-  }else{
-    // Fallback: straight-line distance to nearest center
-    const centers=tribeCenters[ow];
-    let minD=Infinity;
-    if(centers){
-      const lim=Math.min(centers.length,12);
-      for(let ci=0;ci<lim;ci++){const c=centers[ci];
-        const d=tDistW(tx,ty,c.x,c.y,tw);if(d<minD)minD=d;}}
-    distFactor=minD<Infinity?Math.min(1,minD/25):1;
-  }
-  // Population dryness — unpopulated tiles are a paper claim only
-  const pop=(bgPop?bgPop[ti]:0)+(cityPop?cityPop[ti]:0);
-  const popDry=Math.max(0,1-pop/0.4);
-  // Weighted aggregate. Isolation is the dominant signal (it's geometric
-  // and unambiguous), distance and population reinforce.
-  return isolation*0.45+distFactor*0.35+popDry*0.20;
-}
-
-// ── War desire score ──────────────────────────────────────────────────
-// Heuristic: how much does tribe `a` want to fight tribe `b` right now?
-// Returns a scalar. >1.0 means strong enough to declare war. Negative
-// means actively don't want to. Aggregates several historically-motivated
-// factors so wars are *legible* — a militant tribe attacks a weaker
-// neighbour with key resources is a recognisable pattern.
-function warDesire(ter,a,b){
-  if(a===b)return -10;
-  const sA=ter.tribeSizes[a]||0,sB=ter.tribeSizes[b]||0;
-  if(sA<8||sB<8)return -10;
-  let d=0;
-  // ── Power asymmetry (weight ~1.0) ──
-  // Use tribeStrength as a cheap proxy; tribePower would be ideal but
-  // requires the full per-tribe calc each tick. Strength tracks land
-  // quality which correlates strongly enough.
-  const pA=Math.max(0.1,ter.tribeStrength[a]||0);
-  const pB=Math.max(0.1,ter.tribeStrength[b]||0);
-  const ratio=pB/pA;
-  if(ratio<=0.3)d+=1.5;
-  else if(ratio<=0.6)d+=0.7;
-  else if(ratio<=1.2)d+=0.0;
-  else if(ratio<=2.0)d-=0.6;
-  else d-=1.5;
-  // ── Personality / military budget (weight 0.8) ──
-  const bud=ter.tribeBudget&&ter.tribeBudget[a]?ter.tribeBudget[a]:null;
-  if(bud){d+=(bud.military-0.2)*0.8;}
-  // ── Stagnation (weight 0.6) ──
-  if(ter.tribeLastGrowth){
-    const stag=Math.max(0,ter.stepCount-(ter.tribeLastGrowth[a]||ter.stepCount));
-    d+=Math.min(1,stag/300)*0.6;
-  }
-  // ── Resource jealousy (weight 0.5) ──
-  // If b has resources a is short on, motivation rises. Era-weighted:
-  // metallurgy makes ore matter; navigation makes salt+coast matter.
-  if(ter._resCache&&ter._resCache[a]&&ter._resCache[b]){
-    const ra=ter._resCache[a],rb=ter._resCache[b];
-    const ka=ter.tribeKnowledge?ter.tribeKnowledge[a]:null;
-    const met=ka?ka.metallurgy:0;
-    let jealousy=0;
-    // Iron-age weighting
-    if(met>0.3){
-      if((ra.iron||0)<2&&(rb.iron||0)>5)jealousy+=0.4;
-      if((ra.copper||0)<2&&(rb.copper||0)>5)jealousy+=0.2;
-    }
-    if((ra.horses||0)<1&&(rb.horses||0)>3)jealousy+=0.3;
-    if((ra.salt||0)<1&&(rb.salt||0)>3)jealousy+=0.2;
-    if((ra.timber||0)<2&&(rb.timber||0)>5)jealousy+=0.15;
-    d+=jealousy*0.5;
-  }
-  // ── Tech gap (weight 0.4) ──
-  if(ter.tribeKnowledge&&ter.tribeKnowledge[a]&&ter.tribeKnowledge[b]){
-    const ka=ter.tribeKnowledge[a],kb=ter.tribeKnowledge[b];
-    const gapMet=(ka.metallurgy-kb.metallurgy);
-    const gapMil=(ka.military||0)-(kb.military||0);
-    d+=(gapMet*1.5+gapMil)*0.4;
-  }
-  // ── Border friction (weight 0.3, capped) ──
-  const contacts=ter._borderContacts&&ter._borderContacts[a]?ter._borderContacts[a]:null;
-  if(contacts){const border=contacts[b]||0;d+=Math.min(0.5,border*0.02)*0.3;}
-  // ── Grudges from past wars (weight 0.3) ──
-  if(ter._warHistory){
-    const hist=ter._warHistory[warKey(a,b)];
-    if(hist&&ter.stepCount-hist.endedAt<200){
-      const isA=a===hist.a;
-      const myLosses=isA?hist.flipsBtoA:hist.flipsAtoB;
-      const theirLosses=isA?hist.flipsAtoB:hist.flipsBtoA;
-      if(myLosses>theirLosses)d+=0.4*0.3;// revenge motive
-    }
-  }
-  // ── Noise (so ties don't always resolve the same way) ──
-  d+=(Math.random()-0.5)*0.3;
-  return d;
 }
 
 // Compute relationship between two tribes: 'fight','trade','friendly','neutral'
@@ -910,213 +269,6 @@ if((hasBorder||hasMaritimeLink)&&ka&&kb&&ka.trade>0.15&&kb.trade>0.15)return'tra
 if(hasBorder)return'friendly';
 return'neutral';}
 
-function computeTribeResources(ter){
-const{tw,th,owner,deposits,tCoast,tribeStrength,tribeTiles}=ter;
-const n=ter.tribeCenters.length;
-const res=[];for(let i=0;i<n;i++)res.push({copper:0,tin:0,iron:0,coal:0,stone:0,timber:0,salt:0,horses:0,precious:0,oil:0,gems:0,coastTiles:0,riverTiles:0,resourceTypes:0});
-// Accumulate resources per tile — shared logic for both paths
-function accumTile(r,ti){
-if(deposits){
-if(deposits.copper[ti]>0.1)r.copper+=deposits.copper[ti];
-if(deposits.tin[ti]>0.1)r.tin+=deposits.tin[ti];
-if(deposits.iron[ti]>0.1)r.iron+=deposits.iron[ti];
-if(deposits.coal[ti]>0.1)r.coal+=deposits.coal[ti];
-if(deposits.stone[ti]>0.1)r.stone+=deposits.stone[ti];
-if(deposits.timber[ti]>0.1)r.timber+=deposits.timber[ti];
-if(deposits.salt[ti]>0.1)r.salt+=deposits.salt[ti];
-if(deposits.horses[ti]>0.1)r.horses+=deposits.horses[ti];
-if(deposits.precious[ti]>0.1)r.precious+=deposits.precious[ti];
-if(deposits.oil[ti]>0.1)r.oil+=deposits.oil[ti];
-if(deposits.gems[ti]>0.1)r.gems+=deposits.gems[ti];}
-if(tCoast[ti])r.coastTiles++;
-if(ter.rivers&&ter.rivers.riverMag[ti]>=2)r.riverTiles++;}
-// Use per-tribe tile index (O(settled) vs O(tw*th))
-if(tribeTiles){for(let tid=0;tid<n;tid++){if(ter.tribeSizes[tid]<=0||!tribeTiles[tid])continue;
-const r=res[tid];for(const ti of tribeTiles[tid])accumTile(r,ti);}}
-else{for(let ti=0;ti<tw*th;ti++){const ow=owner[ti];if(ow<0)continue;accumTile(res[ow],ti);}}
-// Count distinct resource types per tribe
-for(let i=0;i<n;i++){const r=res[i];let ct=0;
-if(r.copper>0.5)ct++;if(r.tin>0.5)ct++;if(r.iron>0.5)ct++;if(r.coal>0.5)ct++;
-if(r.stone>0.5)ct++;if(r.timber>0.5)ct++;if(r.salt>0.5)ct++;if(r.horses>0.5)ct++;
-if(r.precious>0.5)ct++;if(r.oil>0.5)ct++;if(r.gems>0.5)ct++;r.resourceTypes=ct;}
-return res;}
-
-// Compute border contact: for each tribe, count tiles touching each neighbor tribe
-// Optimized: only check frontier tiles (tiles on territory borders)
-function computeBorderContact(ter){
-const{tw,th,owner,tribeSizes,frontierList}=ter;const n=ter.tribeCenters.length;
-// Map: tribeId → {neighborId: contactCount}
-const contacts=[];for(let i=0;i<n;i++)contacts.push({});
-// Frontier list contains all border tiles — only these can have cross-tribe neighbors
-const list=frontierList&&frontierList.length>0?frontierList:null;
-if(list){for(let fi=0;fi<list.length;fi++){const ti=list[fi];const ow=owner[ti];if(ow<0)continue;
-const tx=ti%tw,ty=(ti-tx)/tw;
-for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;
-const no=owner[ny*tw+nx];if(no>=0&&no!==ow){contacts[ow][no]=(contacts[ow][no]||0)+1;}}}}
-else{for(let ti=0;ti<tw*th;ti++){const ow=owner[ti];if(ow<0)continue;
-const tx=ti%tw,ty=(ti-tx)/tw;
-for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;if(ny<0||ny>=th)continue;
-const no=owner[ny*tw+nx];if(no>=0&&no!==ow){contacts[ow][no]=(contacts[ow][no]||0)+1;}}}}
-// ── Proximity-based discovery ──
-// Inland tribes separated by wilderness never appear in each other's
-// border contacts via direct adjacency. In reality, neighbouring polities
-// know about each other through traders, scouts, refugees. Add a
-// proximity pass: tribes whose centers are within DISCOVERY_R tiles of
-// each other get a low-weight contact entry (via='proximity').
-// Walks tribeCenters[] only — O(tribes²) but tribes << tiles.
-const DISCOVERY_R=Math.max(40,Math.round(tw*0.07));// scales with world size
-const R2=DISCOVERY_R*DISCOVERY_R;
-const centers=ter.tribeCenters;
-for(let i=0;i<n;i++){if(tribeSizes[i]<=0||!centers[i]||centers[i].length===0)continue;
-const ci=centers[i][0];const cix=ci.x,ciy=ci.y;
-for(let j=i+1;j<n;j++){if(tribeSizes[j]<=0||!centers[j]||centers[j].length===0)continue;
-if(contacts[i][j])continue;// already known via direct adjacency
-const cj=centers[j][0];
-// Wrap-aware x distance
-let ddx=Math.abs(cj.x-cix);if(ddx>tw/2)ddx=tw-ddx;
-const ddy=cj.y-ciy;
-const d2=ddx*ddx+ddy*ddy;
-if(d2<=R2){
-// Low-weight contact (1 vs adjacent-tile contacts which sum across border length)
-contacts[i][j]=1;contacts[j][i]=1;}}}
-return contacts;}
-
-// Ore access multiplier for metallurgy combat effect
-// Main knowledge step: discovery + diffusion. Called every 8 sim steps.
-function stepKnowledge(ter){try{
-const{tw,th,owner,tribeCenters,tribeSizes,tribeStrength,tFert,tCoast,tenure}=ter;
-const know=ter.tribeKnowledge;const n=tribeCenters.length;
-if(!know||know.length===0)return;
-
-// Recompute resource cache periodically
-if(!ter._resCache||ter.stepCount%16===0)ter._resCache=computeTribeResources(ter);
-const tRes=ter._resCache;
-
-// ── Discovery: knowledge grows from local conditions ──
-// Growth rates tuned so that with good conditions:
-//   Agriculture: 0→0.3 in ~80 steps (~800yr), 0.3→0.7 in ~200 steps
-//   Metallurgy: 0→0.3 in ~120 steps (with ore), 0.3→0.7 in ~300 steps
-//   Others scale similarly. Diminishing returns (1-k) slow late-game naturally.
-for(let i=0;i<n;i++){if(tribeSizes[i]<=0)continue;
-const k=know[i],rRaw=tRes[i],sz=tribeSizes[i],pop=ter.tribePopulation[i];
-if(!rRaw)continue;
-// Effective resources: own production + imports from trade
-const ti2=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i].imports:{};
-const r={};for(const rk of RES_KEYS)r[rk]=(rRaw[rk]||0)+(ti2[rk]||0)*0.5;// imports count at 50% (less efficient than owning)
-r.coastTiles=rRaw.coastTiles||0;r.riverTiles=rRaw.riverTiles||0;r.resourceTypes=rRaw.resourceTypes;
-const dens=sz>0?tribeStrength[i]/sz:0;
-
-// Agriculture: fertility + rivers + density + sedentary time
-{let score=0;
-score+=dens*0.8;// fertile land drives experimentation
-score+=Math.min(0.4,r.riverTiles*0.04);// river access (irrigation potential)
-score+=Math.min(0.3,pop*0.003);// more minds = more innovation
-const age=ter.stepCount-(tribeCenters[i][0]?tribeCenters[i][0].founded:0);
-score+=Math.min(0.3,age*0.004);// sedentary bonus
-score+=Math.random()*0.08;
-// Fast early progress (pow 0.4), moderate late
-const agDim=k.agriculture<0.5?Math.pow(1-k.agriculture,0.4):Math.sqrt(1-k.agriculture);
-const growth=0.012*score*agDim;// ~5x faster than before
-k.agriculture=Math.min(1,k.agriculture+Math.max(0,growth));}
-
-// Metallurgy: era-weighted ore value + agriculture surplus + positive feedback
-{let score=0;
-const metRv=resourceValues(k);
-// Having the RIGHT ores at the RIGHT time matters most (tin in bronze age, iron in iron age)
-// Era-weighted: the RIGHT ore at the RIGHT time drives metallurgy hard
-const oreRichness=Math.min(1,metRv.copper*(r.copper||0)*0.12+metRv.tin*(r.tin||0)*0.15+metRv.iron*(r.iron||0)*0.12+metRv.coal*(r.coal||0)*0.10);
-score+=oreRichness*1.2;// ore is the primary driver
-score+=k.agriculture*0.6;// surplus labor — agriculture alone enables SOME metalwork
-score+=k.metallurgy*0.5;// positive feedback
-// Without ore: slow but not zero. Agriculture alone should reach copper age (~0.15) eventually.
-if(oreRichness<0.05)score*=0.25;// reduced penalty (was 0.15)
-// Fast early, very slow late: (1-k)^0.3 for early, (1-k)^2 for late
-// This makes bronze (0.3) fast but industrial (0.7+) very slow
-// Fast to bronze, moderate to iron, slow to industrial — but always progressing
-// Fast to bronze, moderate to iron, very slow to industrial
-const dimRet=k.metallurgy<0.35?Math.pow(1-k.metallurgy,0.3):// fast early
-k.metallurgy<0.50?Math.pow(1-k.metallurgy,1.0)*1.5:// moderate mid
-k.metallurgy<0.70?Math.pow(1-k.metallurgy,1.5)*1.8:// slow late
-Math.max(0.02,Math.pow(1-k.metallurgy,2.5)*3);// glacial industrial
-const growth=0.012*score*dimRet;
-k.metallurgy=Math.min(1,k.metallurgy+Math.max(0,growth));}
-
-// Navigation: coast is the key driver — coastal tribes MUST develop sailing
-{let score=0;
-score+=Math.min(1.0,r.coastTiles*0.05);// much higher cap and rate
-score+=Math.min(0.5,r.timber*0.05);// timber essential for ships
-const coastRatio=sz>0?r.coastTiles/sz:0;
-if(coastRatio>0.2)score+=0.8*Math.min(1,(coastRatio-0.2)/0.5);// strong island/coastal pressure
-score+=k.trade*0.4;// trade drives maritime expansion
-score+=k.agriculture*0.2;// food surplus enables sailors
-const knownCount=ter.tribeKnownCoasts[i]?ter.tribeKnownCoasts[i].length:0;
-score+=Math.min(0.3,knownCount*0.05);// discovery breeds more exploration
-if(r.coastTiles<1)score*=0.03;// landlocked: near zero
-// Slow early (boats are hard to invent), faster once basics are learned
-const navDim=k.navigation<0.3?Math.pow(1-k.navigation,0.6):Math.sqrt(1-k.navigation);
-const growth=0.008*score*navDim;
-k.navigation=Math.min(1,k.navigation+Math.max(0,growth));}
-
-// Construction: stone + density + agriculture + metallurgy
-{let score=0;
-score+=Math.min(0.4,r.stone*0.04);
-score+=Math.min(0.3,pop*0.002);
-score+=k.agriculture*0.35;
-score+=k.metallurgy*0.15;// metal tools help build
-const growth=0.009*score*Math.sqrt(1-k.construction);
-k.construction=Math.min(1,k.construction+Math.max(0,growth));}
-
-// Organization: population size + centers + construction + trade
-{let score=0;
-score+=Math.min(0.4,sz*0.005);// large groups need governance
-const centerCount=tribeCenters[i]?tribeCenters[i].length:1;
-score+=Math.min(0.3,centerCount*0.07);// multi-center polities
-score+=k.construction*0.25;// infrastructure enables governance
-score+=k.trade*0.15;// trade networks need admin
-score+=Math.min(0.15,sz>40?(sz-40)*0.002:0);
-const growth=0.009*score*Math.sqrt(1-k.organization);
-k.organization=Math.min(1,k.organization+Math.max(0,growth));}
-
-// Trade: contact with neighbors + resources + maritime access
-{let score=0;
-const contacts=ter._borderContacts;
-let neighborCount=0;if(contacts&&contacts[i])neighborCount=Object.keys(contacts[i]).length;
-score+=Math.min(0.8,neighborCount*0.15);// more neighbors = more trade (higher cap)
-score+=Math.min(0.5,r.resourceTypes*0.07);// resource diversity
-score+=Math.min(0.4,r.coastTiles*0.02);// ports
-score+=k.navigation*0.4;// maritime trade
-score+=k.organization*0.2;// organized states trade better
-const growth=0.010*score*Math.sqrt(1-k.trade);// faster rate
-k.trade=Math.min(1,k.trade+Math.max(0,growth));}}
-
-// ── Diffusion: knowledge flows across borders from high to low ──
-if(!ter._borderContacts||ter.stepCount%16===0)ter._borderContacts=computeBorderContact(ter);
-const contacts=ter._borderContacts;
-// Also diffuse via maritime trade routes (known ports)
-for(let i=0;i<n;i++){if(tribeSizes[i]<=0)continue;
-const ki=know[i];
-// Land border diffusion
-const myContacts=contacts[i];
-for(const nid in myContacts){const j=parseInt(nid);if(tribeSizes[j]<=0)continue;
-const kj=know[j];
-const contactStrength=Math.min(1,myContacts[nid]*0.01);// normalized border contact
-const tradeMult=1+ki.trade*2+kj.trade*2;// trade amplifies diffusion
-// Commerce budget amplifies knowledge diffusion (Mercantile tribes are knowledge highways)
-const comB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].commerce:0.2;
-const rate=0.005*contactStrength*tradeMult*(0.5+comB*2.5);// faster diffusion
-for(const d of KNOW_DOMAINS){
-if(kj[d]>ki[d]){ki[d]=Math.min(1,ki[d]+rate*(kj[d]-ki[d]));}}}
-// Maritime diffusion: if tribe knows ports of another tribe, diffuse via trade
-const knownCoasts=ter.tribeKnownCoasts[i];
-if(knownCoasts){const seenTribes=new Set();
-for(const kc of knownCoasts){if(kc.owner>=0&&kc.owner!==i&&tribeSizes[kc.owner]>0)seenTribes.add(kc.owner);}
-for(const j of seenTribes){if(j===i)continue;const kj=know[j];
-const maritimeRate=0.002*Math.min(ki.navigation,kj.navigation)*Math.min(ki.trade,kj.trade);
-if(maritimeRate<0.0001)continue;
-for(const d of KNOW_DOMAINS){
-if(kj[d]>ki[d]){ki[d]=Math.min(1,ki[d]+maritimeRate*(kj[d]-ki[d]));}}}}}
-}catch(e){console.error('[stepKnowledge CRASH]',e.message,'step:',ter.stepCount);throw e;}}
-
 // ── Settlement tier thresholds (cityPop in thousands) ──
 // Tech gates max city size; tier is just a reading of how many people are there
 const SETTLE_TIERS=[
@@ -1130,754 +282,6 @@ const SETTLE_TIERS=[
 function settleTier(cityPop){
 for(let i=SETTLE_TIERS.length-1;i>=0;i--)if(cityPop>=SETTLE_TIERS[i].min)return SETTLE_TIERS[i];
 return null;}
-// Max city population (thousands) gated by technology
-function maxCityPop(k){if(!k)return 1;
-const ag=k.agriculture,mt=k.metallurgy,cn=k.construction,og=k.organization;
-// Neolithic village: ~2k. Bronze city: ~30k. Iron: ~100k. Classical: ~500k. Industrial: ~5M+
-let cap=1+ag*5;// agriculture alone: up to ~6k (large village)
-if(mt>0.15)cap+=15;// copper/early bronze: +15k
-if(mt>0.3)cap+=30;// bronze: +30k (Ur, Memphis scale)
-if(mt>0.5)cap+=60;// iron: +60k (Athens, Babylon)
-if(cn>0.4)cap+=100;// construction: aqueducts, walls → +100k
-if(og>0.4)cap+=200;// organization: bureaucracy → +200k (Rome)
-if(cn>0.6&&og>0.5)cap+=500;// advanced infrastructure → +500k
-// Industrial explosion
-const indust=(Math.max(0,mt-0.75))*(Math.max(0,cn-0.60));
-cap+=indust*20000;// mt=0.85,cn=0.7: 0.10*0.10*20000 = 200. mt=0.95,cn=0.9: 0.20*0.30*20000 = 1200
-return cap;}
-// Rural cap: dispersed countryside population per tile (before urbanizing).
-// Intentionally LOW — represents the point at which people start concentrating
-// into villages and towns rather than staying dispersed.
-// At bronze (em~4): fert=0.3 → 0.3*4*0.25*0.97 = 0.29 (290 people then urbanize)
-// At classical (em~11): fert=0.3 → 0.3*11*0.25*0.97 = 0.80
-// Overflow above 80% of this cap flows into cityPop (settlement formation).
-function ruralCap(fert,diff,em){return fert*em*0.25*(1-diff*0.3);}
-
-// ── Era multiplier for tile carrying capacity (shared by population + bgPop systems) ──
-// Returns people (in thousands) supportable per unit of tile fertility.
-// Bronze: ~5k/str, Iron: ~8k, Classical: ~11k, Industrial: ~100k+
-function tileEraMult(k){
-const ag=k.agriculture,mt=k.metallurgy,cn=k.construction,og=k.organization;
-let em=(0.2+ag*0.4+mt*0.25+cn*0.15+og*0.1)*10;
-em+=(Math.max(0,mt-0.75))*(Math.max(0,cn-0.60))*2500;// industrial explosion
-return em;}
-
-// Population step: derive tribePopulation from per-tile bgPop sums.
-// Population = bgPop (rural) + cityPop (urban) summed per tribe.
-function stepPopulation(ter){
-const pop=ter.tribePopulation;const{tribeSizes,bgPop,cityPop,owner,tw,th,tribeTiles}=ter;
-if(!bgPop)return;
-const n=pop.length;
-for(let i=0;i<n;i++)pop[i]=0;
-// Use per-tribe tile index when available (O(settled) vs O(tw*th))
-if(tribeTiles){
-for(let tid=0;tid<n;tid++){if(tribeSizes[tid]<=0||!tribeTiles[tid])continue;
-let sum=0;for(const ti of tribeTiles[tid])sum+=bgPop[ti]+(cityPop?cityPop[ti]:0);
-pop[tid]=sum;}}
-else{for(let ti=0;ti<tw*th;ti++){
-const ow=owner[ti];if(ow<0||ow>=n)continue;
-pop[ow]+=bgPop[ti]+(cityPop?cityPop[ti]:0);}
-for(let i=0;i<n;i++){if(tribeSizes[i]<=0)pop[i]=0;}}
-}
-
-// ── Transport / Communication Network ──
-// Dijkstra from each tribe's cities outward through owned territory.
-// Produces per-tile transport cost = cheapest path from nearest city.
-// Rivers are highways (0.4 cost), coast is cheap (0.5), mountains expensive (8+).
-// Used for: food catchment, cohesion, religion spread, trade efficiency.
-function computeTransport(ter){
-try{
-const{tw,th,tElev,tDiff,tCoast,tTemp,tMoist,owner,tribeSizes,cityPop,bgPop}=ter;
-if(!ter.transportCost)ter.transportCost=new Float32Array(tw*th);
-if(!ter.transportOwner)ter.transportOwner=new Int16Array(tw*th);// which city feeds this tile
-if(!ter._transVisited)ter._transVisited=new Uint8Array(tw*th);
-const cost=ter.transportCost;const tOwner=ter.transportOwner;const visited=ter._transVisited;
-const riverMag=ter.rivers?ter.rivers.riverMag:null;
-const n=ter.tribeCenters.length;
-// Only reset owned tiles (not all 1.84M) — saves ~5ms of memset per call
-for(let tid=0;tid<n;tid++){
-if(tribeSizes[tid]<=0)continue;
-const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
-if(!ts)continue;
-for(const ti of ts){cost[ti]=999;tOwner[ti]=-1;visited[ti]=0;}}
-
-// Per-tribe transport tech: construction reduces cost, navigation enables sea routes
-const tribeCn=new Float32Array(n);
-const tribeNv=new Float32Array(n);
-for(let i=0;i<n;i++){
-if(tribeSizes[i]<=0)continue;
-const k=ter.tribeKnowledge[i];if(!k)continue;
-tribeCn[i]=k.construction;tribeNv[i]=k.navigation;}
-
-// Tile movement cost (how hard it is to move goods THROUGH this tile)
-// `srcElev` is the elevation of the tile we're moving FROM (for slope
-// calculation). Pass 0 / negative if not applicable.
-function tileCost(ti,cn,nv,ow,srcElev){
-const e=tElev[ti];
-// Ocean: cheap by sea, requires navigation
-if(e<=0)return nv>0.1?0.5/(0.5+nv):50;// nv=0.3→0.6, nv=0.7→0.4, nv=0→impassable
-const diff=tDiff[ti];
-// River tiles: barges are cheap! The bigger the river, the cheaper.
-if(riverMag){const rm=riverMag[ti];
-if(rm>=4)return 0.3-cn*0.1;// great river (Nile): 0.3→0.2
-if(rm>=3)return 0.4-cn*0.1;// major river: 0.4→0.3
-if(rm>=2)return 0.7-cn*0.2;}// tributary: 0.7→0.5
-// Land: sum of independent factors so different biomes look different.
-// Plains lowland (e<0.25): ~0.6
-// Plains highland (e=0.4): 0.6 + 0.15*8 = 1.8
-// Hills (diff=0.3, e=0.5): 0.6 + 0.25*8 + 0.09*18 = 4.22
-// Mountain (diff=0.7, e=0.75): 0.6 + 0.5*8 + 0.49*18 = 13.4
-// Tundra (T<0.18) and desert (T>0.55,M<0.25) add on top.
-const t=tTemp[ti],m=tMoist[ti];
-let base=0.6;
-if(e>0.25)base+=(e-0.25)*8;            // elevation
-base+=diff*diff*18;                     // composite difficulty (handles cold/dry/steep)
-if(t>0.55&&m<0.25)base+=(t-0.55)*5+(0.25-m)*4;
-if(t<0.18)base+=(0.18-t)*8;
-if(m>0.7&&t>0.4)base+=(m-0.7)*6;
-if(tCoast[ti])base=Math.min(base,0.7);// coastal road/cabotage cap
-// Slope penalty: significant elev gradient adds cost
-if(srcElev>0){const slope=Math.abs(e-srcElev);if(slope>0.05)base+=(slope-0.05)*25;}
-// Tech reductions: roads (construction) and rail (industrial metallurgy)
-const roadReduction=cn*0.5;
-const industrialReduction=Math.max(0,ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].metallurgy-0.75:0)*3;
-return Math.max(0.2,base*(1-roadReduction)-industrialReduction);}
-
-// Priority queue (binary heap — reuse cached arrays).
-// heapPop writes the popped value into module-scope scratch (no per-call
-// object allocation — 30k+ allocs per Dijkstra was the GC hot spot).
-if(!ter._heapTi){ter._heapTi=new Int32Array(tw*th);ter._heapCost=new Float32Array(tw*th);}
-const heapTi=ter._heapTi;const heapCost=ter._heapCost;let heapSize=0;
-const HEAP_MAX=heapTi.length;
-let _popTi=0,_popCost=0;
-function heapPush(ti2,c){
-if(heapSize>=HEAP_MAX)return;
-let i=heapSize++;heapTi[i]=ti2;heapCost[i]=c;
-while(i>0){const p=(i-1)>>1;if(heapCost[p]<=heapCost[i])break;
-const tt=heapTi[p],tc=heapCost[p];heapTi[p]=heapTi[i];heapCost[p]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=p;}}
-function heapPop(){
-_popTi=heapTi[0];_popCost=heapCost[0];heapSize--;
-if(heapSize>0){heapTi[0]=heapTi[heapSize];heapCost[0]=heapCost[heapSize];
-let i=0;while(true){const l=2*i+1,r=2*i+2;let s=i;
-if(l<heapSize&&heapCost[l]<heapCost[s])s=l;
-if(r<heapSize&&heapCost[r]<heapCost[s])s=r;
-if(s===i)break;
-const tt=heapTi[s],tc=heapCost[s];heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];heapTi[i]=tt;heapCost[i]=tc;i=s;}}}
-
-// Seed: cities only (cityPop > 0.1). Trade-route water tiles were tried
-// as cheap-1 seeds too, but on big civs that flooded the heap with 1000s
-// of seeds (transport time spiked to seconds). Cities-only is bounded.
-for(let tid=0;tid<n;tid++){
-if(tribeSizes[tid]<=0)continue;
-const ts=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
-if(!ts)continue;
-for(const ti of ts){
-if(cityPop&&cityPop[ti]>0.1){cost[ti]=0;tOwner[ti]=ti;heapPush(ti,0);}}}
-
-// Dijkstra: expand from cities through OWNED territory only
-const DX4=[-1,1,0,0];const DY4=[0,0,-1,1];
-// Transport mode of a tile: 0 = land, 1 = river, 2 = sea. Mode-change
-// (port load) cost applies on any transition between different modes.
-// Tuned to 2.5: in the test sandbox this is ~the value that produces
-// realistic-looking coast vs river vs land trade-offs.
-const MODE_CHANGE_COST=2.5;
-function tModeOf(ti){const e=tElev[ti];if(e<=0)return 2;if(riverMag&&riverMag[ti]>=2)return 1;return 0;}
-// Standard Dijkstra with visited[] — once popped, never re-process.
-// Without visited[], a multi-source run thrashed (15M pushes for 50k tiles)
-// because every cheaper-path improvement re-pushed the tile.
-while(heapSize>0){
-heapPop();const ci=_popTi,cc=_popCost;
-if(visited[ci])continue;
-visited[ci]=1;
-if(cc>100)continue;
-const cx=ci%tw,cy=(ci-cx)/tw;
-const ow=owner[ci];
-if(ow<0)continue;
-const cn=tribeCn[ow];
-const nv=tribeNv[ow];
-const src=tOwner[ci];
-const ciMode=tModeOf(ci);
-const ciElev=tElev[ci];
-for(let d=0;d<4;d++){
-const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
-if(ny<0||ny>=th)continue;
-const ni=ny*tw+nx;
-if(visited[ni])continue;
-if(owner[ni]!==ow)continue;
-let moveCost=tileCost(ni,cn,nv,ow,ciElev);
-if(tModeOf(ni)!==ciMode)moveCost+=MODE_CHANGE_COST;
-const newCost=cc+moveCost;
-if(newCost<cost[ni]){
-cost[ni]=newCost;tOwner[ni]=src;
-heapPush(ni,newCost);}}}
-
-// ── Per-tribe transport stats ──
-if(!ter._tribeTransport)ter._tribeTransport=[];
-while(ter._tribeTransport.length<n)ter._tribeTransport.push({maxCost:0,avgCost:0,connected:0});
-for(let i=0;i<n;i++){ter._tribeTransport[i].maxCost=0;ter._tribeTransport[i].avgCost=0;ter._tribeTransport[i].connected=0;}
-// Stats: use tribeTiles instead of full grid scan
-for(let tid=0;tid<n;tid++){
-if(tribeSizes[tid]<=0)continue;
-const ts2=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
-if(!ts2)continue;const ts=ter._tribeTransport[tid];
-for(const ti of ts2){const c=cost[ti];if(c>=999)continue;
-ts.connected++;ts.avgCost+=c;if(c>ts.maxCost)ts.maxCost=c;}}
-for(let i=0;i<n;i++){const ts=ter._tribeTransport[i];
-if(ts.connected>0)ts.avgCost/=ts.connected;}
-
-// ── Second pass: capital-only transport cost (per-tribe BFS) ──
-// Each tribe runs its own Dijkstra from its capital. Unlike pass 1
-// (which is forced through owned land only), this pass ALLOWS water
-// transit for tribes with navigation > 0.3 — so a coastal empire can
-// shortcut between distant cities by sea, which is the whole point
-// of having navigation tech. Cost is recorded only for the tribe's
-// owned land tiles; water tiles are pure transit.
-//
-// Uses a generation counter (capGen) instead of clearing visited[]
-// per tribe — finalized = visited[ti] === currentGen.
-if(!ter.transportFromCap||ter.transportFromCap.length<tw*th){
-  ter.transportFromCap=new Float32Array(tw*th);
-}
-const costCap=ter.transportFromCap;
-costCap.fill(999);
-if(!ter._capVisitGen||ter._capVisitGen.length<tw*th){
-  ter._capVisitGen=new Int32Array(tw*th);
-}
-const capVisit=ter._capVisitGen;
-// Track "best so far" for water tiles in a parallel array — owned
-// tiles use costCap for that (since costCap is the persistent output).
-if(!ter._capBestSea||ter._capBestSea.length<tw*th){
-  ter._capBestSea=new Float32Array(tw*th);
-}
-const seaBest=ter._capBestSea;
-let curGen=(ter._capGenCounter||0);
-for(let tid=0;tid<n;tid++){
-  if(tribeSizes[tid]<=0)continue;
-  const centers=ter.tribeCenters[tid];if(!centers||centers.length===0)continue;
-  const cap=centers[0];const capTi=cap.y*tw+cap.x;
-  if(capTi<0||capTi>=tw*th)continue;
-  if(owner[capTi]!==tid)continue;
-  curGen++;
-  const cn=tribeCn[tid];
-  const nv=tribeNv[tid];
-  const canSea=nv>0.3;
-  const seaCost=canSea?Math.max(0.25,0.6/Math.max(0.3,nv)):999;
-  heapSize=0;
-  costCap[capTi]=0;
-  capVisit[capTi]=curGen;
-  heapPush(capTi,0);
-  while(heapSize>0){
-    heapPop();const ci=_popTi,cc=_popCost;
-    // Skip if already finalized this gen (already had a cheaper pop)
-    if(capVisit[ci]<curGen)continue;        // stale push from earlier tribe
-    if(capVisit[ci]===curGen+1)continue;    // already finalized
-    capVisit[ci]=curGen+1;                  // finalize
-    if(cc>800)continue;                     // reach limit
-    const cx=ci%tw,cy=(ci-cx)/tw;
-    const ciIsWater=tElev[ci]<=0;
-    for(let d=0;d<4;d++){
-      const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
-      if(ny<0||ny>=th)continue;
-      const ni=ny*tw+nx;
-      if(capVisit[ni]===curGen+1)continue;  // already finalized
-      const niIsWater=tElev[ni]<=0;
-      const niIsOwn=owner[ni]===tid;
-      // Allowed transitions:
-      //   own land -> own land   (always)
-      //   own land -> water      (if canSea)
-      //   water    -> water      (if canSea)
-      //   water    -> own land   (if canSea, returning to land)
-      //   anything -> foreign    (block)
-      if(!niIsOwn&&!niIsWater)continue;
-      if(niIsWater&&!canSea)continue;
-      // Compute edge cost
-      let moveCost;
-      if(niIsWater){
-        moveCost=seaCost;
-      }else{
-        // Owned land tile — use the general tile cost function.
-        moveCost=tileCost(ni,cn,nv,tid,tElev[ci]);
-      }
-      // Mode-change (port) cost on any transition between modes.
-      // Reduced by construction tech (better ports, docks, mooring).
-      const niMode=tModeOf(ni);const ciMode=tModeOf(ci);
-      if(niMode!==ciMode)moveCost+=Math.max(0.5,MODE_CHANGE_COST*(1-cn*0.5));
-      const newCost=cc+moveCost;
-      // Best-so-far storage differs for land vs sea:
-      //   - owned land: costCap[ni] is the persistent output. Use it as the
-      //     best-so-far. Bound check via capVisit gen.
-      //   - water: use seaBest[ni], gated by capVisit gen so it resets per
-      //     tribe.
-      let prev;
-      if(niIsWater){
-        prev=capVisit[ni]===curGen?seaBest[ni]:999;
-      }else{
-        prev=capVisit[ni]===curGen?costCap[ni]:999;
-      }
-      if(newCost<prev){
-        if(niIsWater){seaBest[ni]=newCost;}else{costCap[ni]=newCost;}
-        capVisit[ni]=curGen;
-        heapPush(ni,newCost);
-      }
-    }
-  }
-  curGen++;// burn one extra gen so 'finalized' marker (curGen+1) doesn't collide with next tribe's 'visited'
-}
-ter._capGenCounter=curGen;
-}catch(e){console.error('[computeTransport CRASH]',e.message,'step:',ter.stepCount,'n:',ter.tribeCenters.length,'tw:',ter.tw,'th:',ter.th,'cityPop?:',!!ter.cityPop,'settled:',ter.settled);throw e;}
-}
-
-// ── Per-tile population with FOOD ECONOMY ──
-// Historical model:
-//   - Farm tiles produce food. A farmer family consumes ~80% of output.
-//   - The ~20% surplus feeds non-farmers (city dwellers).
-//   - Pre-industrial: 8-12 farmers per 1 city dweller (5-10% urban)
-//   - Industrial: 3:1 then 1:50 (33%→80% urban)
-//   - Surplus kids go to nearest town (~50%), military (~15%), frontier (~15%)
-//   - Cities were death traps until ~1800: constant need for rural migrants
-//   - Most migration was SHORT range: under 30 miles
-//
-// Model:
-//   bgPop = farmers. They grow logistically to fill available farmland.
-//   Food output = bgPop * fert * (1 + agTech). Surplus = output - bgPop (self-consumption).
-//   Tribal surplus pool (transport-weighted) feeds cities.
-//   cityPop grows from tribal surplus, capped by transport access + tech.
-//   Excess rural pop (above labor demand) migrates to nearest city tile or frontier.
-function stepBackgroundPop(ter){
-try{
-const{tw,th,tElev,tTemp,tFert,tDiff,tCoast,owner,bgPop,tribeSizes}=ter;
-if(!bgPop)return;
-if(!ter.cityPop)ter.cityPop=new Float32Array(tw*th);
-const cityPop=ter.cityPop;
-const DX=[-1,1,0,0];const DY=[0,0,-1,1];
-
-// ── Precompute per-tribe stats (cached arrays, grown as needed) ──
-const n=ter.tribeCenters.length;
-if(!ter._bgPopBufs||ter._bgPopBufs.n<n){
-ter._bgPopBufs={n:Math.max(n,80),
-maxCity:new Float32Array(Math.max(n,80)),growth:new Float32Array(Math.max(n,80)),
-infra:new Float32Array(Math.max(n,80)),surplusFrac:new Float32Array(Math.max(n,80)),
-foodProd:new Float32Array(Math.max(n,80)),foodSurplus:new Float32Array(Math.max(n,80)),
-totalCity:new Float32Array(Math.max(n,80))};}
-const b=ter._bgPopBufs;
-const tribeMaxCity=b.maxCity;const tribeGrowth=b.growth;
-const tribeInfra=b.infra;const tribeSurplusFrac=b.surplusFrac;
-const tribeFoodProd=b.foodProd;const tribeFoodSurplus=b.foodSurplus;
-const tribeTotalCity=b.totalCity;
-// Zero the accumulators (only the used range)
-for(let i=0;i<n;i++){tribeMaxCity[i]=0;tribeGrowth[i]=0;tribeInfra[i]=0;tribeSurplusFrac[i]=0;tribeFoodProd[i]=0;tribeFoodSurplus[i]=0;tribeTotalCity[i]=0;}
-for(let i=0;i<n;i++){
-if(tribeSizes[i]<=0)continue;
-const k=ter.tribeKnowledge[i];if(!k)continue;
-const ag=k.agriculture,mt=k.metallurgy,cn=k.construction,og=k.organization;
-tribeMaxCity[i]=maxCityPop(k);
-tribeInfra[i]=1+cn*1.5+og;
-const industrialFactor=Math.max(0,mt-0.6)*3+Math.max(0,cn-0.5)*2;
-const groB=ter.tribeBudget&&ter.tribeBudget[i]?ter.tribeBudget[i].growth:0.25;
-tribeGrowth[i]=(0.01+ag*0.005+industrialFactor*0.015)*(0.5+groB*1.5);
-// Surplus fraction: matches historical ratios
-// Bronze (ag=0.3): 0.20 → 5 farmers:1 city → ~10% urban
-// Classical (ag=0.5): 0.30 → 3:1 → ~15% urban
-// Industrial: 0.95+ → 1:50 → ~80% urban
-tribeSurplusFrac[i]=Math.min(0.98,0.05+ag*0.5+industrialFactor*0.4);}
-
-const riverMag=ter.rivers?ter.rivers.riverMag:null;
-const tCost=ter.transportCost;
-const hasTrans=tCost&&tCost.length>=tw*th;
-
-// ── PASS 1: Food production & consumption accounting ──
-// Per tile: production = bgPop × fert × (1 + ag-derived multiplier).
-// Per tribe: foodSupply (production sum), foodNeed (rural + urban eaters),
-// foodNet (supply − need). All quantities are in the same per-tile-pop
-// units so they're directly comparable. stepTrade reads these.
-const hasTribes=ter.settled>0;
-if(!ter._tribeFoodSupply)ter._tribeFoodSupply=new Float32Array(Math.max(n,80));
-if(!ter._tribeFoodNeed)ter._tribeFoodNeed=new Float32Array(Math.max(n,80));
-if(!ter._tribeFoodNet)ter._tribeFoodNet=new Float32Array(Math.max(n,80));
-// Grow accumulators if tribe count exceeded
-if(ter._tribeFoodSupply.length<n){
-  const sz=Math.max(n,ter._tribeFoodSupply.length*2);
-  ter._tribeFoodSupply=new Float32Array(sz);
-  ter._tribeFoodNeed=new Float32Array(sz);
-  ter._tribeFoodNet=new Float32Array(sz);
-}
-const tribeFoodSupply=ter._tribeFoodSupply;
-const tribeFoodNeed=ter._tribeFoodNeed;
-const tribeFoodNet=ter._tribeFoodNet;
-for(let i=0;i<n;i++){tribeFoodSupply[i]=0;tribeFoodNeed[i]=0;tribeFoodNet[i]=0;}
-if(hasTribes){
-for(let tid=0;tid<n;tid++){
-if(tribeSizes[tid]<=0)continue;
-const ts1=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
-if(!ts1)continue;
-const ow=tid;
-// surplusFrac already scales with ag; don't double-multiply (a 4x agMult
-// here made supply 5x need across the board → no tribe ever went hungry).
-for(const ti of ts1){
-const production=bgPop[ti]*tFert[ti]*(1+tribeSurplusFrac[ow]*3);
-const selfConsumption=bgPop[ti];// rural eaters
-const cityConsumption=cityPop[ti];// urban eaters consume food (was implicit; now explicit)
-const surplus=Math.max(0,production-selfConsumption);
-tribeFoodProd[ow]+=production;
-tribeFoodSurplus[ow]+=surplus;
-tribeTotalCity[ow]+=cityPop[ti];
-tribeFoodSupply[ow]+=production;
-tribeFoodNeed[ow]+=selfConsumption+cityConsumption;}}
-// Food imports/exports adjust the available pool (in same units now —
-// stepTrade computes flows from these very fields, so the loop converges)
-for(let i=0;i<n;i++){
-const td=ter.tradeData&&ter.tradeData[i]?ter.tradeData[i]:null;
-const fi=td?td.foodImports:0;const fe=td?td.foodExports:0;
-tribeFoodSurplus[i]+=fi;
-tribeFoodSupply[i]+=fi;
-tribeFoodNeed[i]+=fe;
-tribeFoodNet[i]=tribeFoodSupply[i]-tribeFoodNeed[i];}
-
-// Surplus-per-city ratio for the urbanisation pass (existing behaviour)
-if(!ter._tribeFoodSurplus)ter._tribeFoodSurplus=new Float32Array(n);
-for(let i=0;i<n;i++){
-if(tribeSizes[i]<=0){ter._tribeFoodSurplus[i]=2.0;continue;}
-if(tribeTotalCity[i]<0.01){ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]>0.01?5.0:0.5;continue;}
-ter._tribeFoodSurplus[i]=tribeFoodSurplus[i]/tribeTotalCity[i];}
-
-} // end PASS 1 food accounting
-
-// ── Debug counters ──
-let maxBg=0,maxCity=0,settlementCount=0;
-
-// ── PASS 2: Owned tiles ONLY — growth + urbanization + migration ──
-// Iterates ONLY tiles owned by active tribes via tribeTiles index.
-// Unowned tiles are NOT simulated — their population is implicit from terrain fertility
-// and gets materialized when a tribe claims them (see claimTile).
-// This makes sim cost O(settled) instead of O(all land) — 200-300x faster early game.
-const n2=ter.tribeCenters.length;
-for(let tid=0;tid<n2;tid++){
-if(tribeSizes[tid]<=0)continue;
-const tileSet=ter.tribeTiles&&ter.tribeTiles[tid]?ter.tribeTiles[tid]:null;
-if(!tileSet||tileSet.size===0)continue;
-for(const ti of tileSet){
-const fert=tFert[ti];const ow=tid;
-const bp=bgPop[ti];const cp=cityPop[ti];
-
-// Farmer growth / famine.
-//   - farmCap raised by ag tech directly (audit #4 — previously the cap
-//     only saw ag through surplusFrac which was too weak).
-//   - shrink when the tribe-wide food balance is negative (audit #5 —
-//     was only cities that reacted; rural pop ignored shortage).
-{const ag=ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].agriculture:0;
-const techCap=1+ag*1.5;// ag=0→1x, ag=1→2.5x — moderate, not industrial
-const farmCap=fert*(1+tribeSurplusFrac[ow]*3)*(1-tDiff[ti]*0.4)*techCap;
-const net=tribeFoodNet[ow];
-if(net<0&&bp>0.005){
-  // Famine: shrink rural pop by a fraction of the deficit ratio. Mirrors
-  // the urban shrink magnitude at ~line 1437 (a few percent per call).
-  const need=tribeFoodNeed[ow]||1;
-  const deficitFrac=Math.min(0.5,-net/need);
-  bgPop[ti]=Math.max(0.005,bp*(1-deficitFrac*0.08));
-}else if(farmCap>0.001&&bp<farmCap){
-  bgPop[ti]=bp+bp*tribeGrowth[ow]*(1-bp/farmCap);
-}}
-
-// Urbanization: cities form for geographic reasons, grow from food surplus
-const surplus=ter._tribeFoodSurplus[ow]||0;
-const mxCity=tribeMaxCity[ow];
-// Use real transport cost where Dijkstra reached this tile; fall back
-// to the uniform value (10) for isolated tiles and pre-city tribes so
-// new tribes can still seed their first city.
-const _raw=hasTrans?tCost[ti]:999;
-const tCostHere=(_raw>=500)?10:_raw;
-const transportFactor=1/(1+tCostHere*0.1);
-const localMaxCity=mxCity*transportFactor;
-
-// City seeding: river confluence, harbor, mine, defensive hill
-if(cp<0.01){
-let siteQuality=0;
-if(riverMag){const rm=riverMag[ti];
-if(rm>=4)siteQuality+=3.0;else if(rm>=3)siteQuality+=2.0;else if(rm>=2)siteQuality+=0.5;}
-if(tCoast[ti])siteQuality+=1.5;
-siteQuality+=transportFactor*0.4;
-if(ter.deposits){for(let ri=0;ri<3;ri++){
-const rk2=['copper','iron','salt'][ri];const dep=ter.deposits[rk2];
-if(dep&&dep[ti]>0.2)siteQuality+=0.5;}}
-if(tDiff[ti]>0.3&&fert>0.15)siteQuality+=0.3;
-if(siteQuality>0.8&&bgPop[ti]>0.05)cityPop[ti]=0.01;}
-
-// City growth/shrink from food surplus
-if(cp>0){
-const foodReaching=surplus>0.01?tribeFoodSurplus[ow]*transportFactor/(Math.max(1,tribeTotalCity[ow])+1):0;
-const foodCap=Math.min(localMaxCity,foodReaching);
-if(cp<foodCap&&surplus>1.0){cityPop[ti]+=Math.min(0.03,(foodCap-cp)*0.02);}
-if(cp>foodCap*1.1&&foodCap>0){cityPop[ti]=Math.max(0.01,cp*0.97);}
-if(surplus<0.7&&cp>0.01){cityPop[ti]=Math.max(0.01,cp*(0.96+surplus*0.02));}}
-
-// Rural migration: 4-neighbor flow toward higher opportunity
-if(bgPop[ti]>0.05){
-const baseFlow=bgPop[ti]*0.003*tribeInfra[ow];
-const myDensity=bgPop[ti]+cp;
-let myValue=fert;
-if(cp>0.1)myValue+=Math.sqrt(cp)*0.5;
-if(riverMag){const rm=riverMag[ti];if(rm>=3)myValue+=0.5;else if(rm>=2)myValue+=0.2;}
-if(tCoast[ti])myValue+=0.3;
-const myOpp=myValue/(myDensity+0.3);
-const tx2=ti%tw,ty2=(ti-tx2)/tw;
-for(let d=0;d<4;d++){
-const nx=((tx2+DX[d])%tw+tw)%tw,ny=ty2+DY[d];if(ny<0||ny>=th)continue;
-const ni=ny*tw+nx;if(tElev[ni]<=0||owner[ni]!==ow)continue;
-let nValue=tFert[ni];
-if(cityPop[ni]>0.1)nValue+=Math.sqrt(cityPop[ni])*0.5;
-if(riverMag){const rm=riverMag[ni];if(rm>=3)nValue+=0.5;else if(rm>=2)nValue+=0.2;}
-if(tCoast[ni])nValue+=0.3;
-const nOpp=nValue/(bgPop[ni]+cityPop[ni]+0.3);
-if(nOpp>myOpp){
-const pull=(nOpp-myOpp)/(myOpp+0.05);
-const flow=Math.min(bgPop[ti]*0.08,baseFlow*pull*(1-tDiff[ni]));
-if(flow>0.001){bgPop[ti]-=flow;bgPop[ni]+=flow;}}}}
-
-// Debug
-if(bgPop[ti]>maxBg)maxBg=bgPop[ti];
-if(cityPop[ti]>maxCity)maxCity=cityPop[ti];
-if(cityPop[ti]>SETTLE_TIERS[0].min)settlementCount++;
-}} // end per-tribe, per-tile loop
-
-ter._dbgMaxBgPop=maxBg;ter._dbgMaxCity=maxCity;
-ter._dbgSettlementCount=settlementCount;
-
-// ── Rebuild tribeCenters from cityPop (towns+) ──
-// Villages = tiles with bgPop > 0.3 (farmers, counted but not tracked as centers)
-// Towns/cities = tiles with cityPop > 0.5 (urban, tracked as centers for power/cohesion)
-// Staggered +16 from transport to spread per-frame load
-if(ter.stepCount%32===16){
-const tribeSett=[];for(let i=0;i<n;i++)tribeSett.push([]);
-if(!ter._settleCounts)ter._settleCounts=[];
-while(ter._settleCounts.length<n)ter._settleCounts.push({villages:0,towns:0,cities:0,large:0});
-for(let i=0;i<n;i++){ter._settleCounts[i].villages=0;ter._settleCounts[i].towns=0;ter._settleCounts[i].cities=0;ter._settleCounts[i].large=0;}
-// Use tribeTiles to iterate only owned tiles (not all 609K land tiles)
-for(let tid2=0;tid2<n;tid2++){
-if(tribeSizes[tid2]<=0)continue;
-const ts2=ter.tribeTiles&&ter.tribeTiles[tid2]?ter.tribeTiles[tid2]:null;
-if(!ts2)continue;const sc=ter._settleCounts[tid2];const ow2=tid2;
-for(const ti of ts2){
-// Villages = farming communities (bgPop-based, not cityPop)
-if(bgPop[ti]>=0.3)sc.villages++;
-// Towns/cities = urban (cityPop-based, become centers)
-const cp=cityPop[ti];if(cp<SETTLE_TIERS[1].min)continue;// 0.5 = town threshold
-const tier=settleTier(cp);
-if(tier){
-const MAX_SETT=200;// cap settlement tracking to avoid massive arrays
-if(tier.name==='town'){sc.towns++;if(tribeSett[ow2].length<MAX_SETT)tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}
-else if(tier.name==='small'||tier.name==='medium'){sc.cities++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}
-else{sc.large++;tribeSett[ow2].push({x:ti%tw,y:(ti-ti%tw)/tw,pop:cp});}}}}
-for(let st=0;st<n;st++){
-if(tribeSizes[st]<=0)continue;
-const sett=tribeSett[st];
-if(sett.length===0)continue;
-sett.sort((a,b)=>b.pop-a.pop);
-// Cap centers per tribe to prevent unbounded growth (largest cities only)
-const MAX_CENTERS=60;
-const oldMap=new Map();
-const old=ter.tribeCenters[st]||[];
-for(const oc of old)oldMap.set(oc.x+','+oc.y,oc);
-const nc=[];
-const limit=Math.min(sett.length,MAX_CENTERS);
-for(let si=0;si<limit;si++){
-const s=sett[si];const key=s.x+','+s.y;
-const oc=oldMap.get(key);
-if(oc){oc.pop=s.pop;nc.push(oc);}
-else nc.push({x:s.x,y:s.y,prestige:si===0?1.0:0.3,founded:ter.stepCount,pop:s.pop});}
-ter.tribeCenters[st]=nc;
-if(nc.length>0){
-nc[0].prestige=Math.min(3.0,nc[0].prestige+0.05);
-for(let c=1;c<nc.length;c++)nc[c].prestige=Math.min(2.0,nc[c].prestige+0.02);}}}
-// ── Tribe crystallization ──
-if(ter.stepCount%16!==0)return;// check every 16 steps
-let alive=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)alive++;
-if(alive>=80)return;
-const CRYSTAL_THRESHOLD=0.12;
-const MIN_SPACING=Math.round(tw*0.02);
-// Sample a small random subset of unowned high-pop tiles instead of scanning all.
-// By 1500 BC there can be 100K+ qualifying tiles — scanning all is O(n × tribes × centers) = freeze.
-// Random sampling finds the best candidates probabilistically without exhaustive search.
-const crystalCandidates=[];
-const sampleSize=Math.min(500,tw*th);
-// Fertility threshold decreases over time (tech matures → marginal land becomes viable)
-const fertReq=Math.max(0.08,0.25-ter.stepCount*0.0003);
-for(let si=0;si<sampleSize;si++){
-const ti=Math.floor(Math.random()*tw*th);
-// Score by terrain quality (fertility, no simulated bgPop needed)
-if(owner[ti]>=0||tElev[ti]<=0||tFert[ti]<fertReq)continue;
-const tx=ti%tw,ty=(ti-tx)/tw;
-// Check spacing against tribe capitals only (not all centers — that's O(thousands))
-let tooClose=false;
-for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0||!ter.tribeCenters[t][0])continue;
-const c=ter.tribeCenters[t][0];
-if(tDistW(tx,ty,c.x,c.y,tw)<MIN_SPACING){tooClose=true;break;}}
-if(tooClose)continue;
-// Score by local fertility density (no bgPop simulation needed)
-let localFert=0;
-for(let dy=-3;dy<=3;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
-for(let dx=-3;dx<=3;dx++){const nx=((tx+dx)%tw+tw)%tw;
-const ni=ny*tw+nx;if(tElev[ni]>0&&owner[ni]<0)localFert+=tFert[ni];}}
-if(localFert<2.0)continue;// need meaningful fertile area
-// River bonus: river tiles are prime crystallization sites
-let riverBonus=0;
-if(ter.rivers&&ter.rivers.riverMag){const rm=ter.rivers.riverMag[ti];
-if(rm>=4)riverBonus=3;else if(rm>=3)riverBonus=2;else if(rm>=2)riverBonus=0.5;}
-const score=localFert*tFert[ti]*(1+riverBonus);
-if(score>0.5)crystalCandidates.push({ti,tx,ty,score});}
-// Sort by score, spawn up to 3 per check
-crystalCandidates.sort((a,b)=>b.score-a.score);
-ter._dbgCrystalCandidates=crystalCandidates.length;// debug: how many candidates found
-for(let cc=0;cc<Math.min(3,crystalCandidates.length);cc++){
-const bestTi=crystalCandidates[cc].ti;
-// Crystallize: claim the ENTIRE populated region at once.
-// IRL Egypt didn't expand from tile #1 — hundreds of Nile villages unified into one polity.
-// The tribe forms by absorbing all nearby background-populated tiles above a density threshold.
-if(Math.random()<0.4){
-ter._dbgCrystalSpawned=(ter._dbgCrystalSpawned||0)+1;
-const tx=bestTi%tw,ty=(bestTi-tx)/tw;
-// Before creating tribe, check nearby civs to inherit knowledge.
-// A new civilization forming in 1500 AD near iron-age neighbors doesn't start from stone age.
-// It inherits roughly 60% of the average knowledge of civs within range 20.
-// Inherit knowledge from nearby tribes (check capitals only, not all centers)
-let nearKnow=null;let nearCount=0;
-for(let t=0;t<ter.tribeCenters.length;t++){if(tribeSizes[t]<=0||!ter.tribeCenters[t][0])continue;
-const c=ter.tribeCenters[t][0];// capital only
-const d=tDistW(tx,ty,c.x,c.y,tw);
-if(d<25){
-if(!nearKnow)nearKnow={agriculture:0,metallurgy:0,navigation:0,construction:0,organization:0,trade:0};
-const nk=ter.tribeKnowledge[t];for(const dom of KNOW_DOMAINS)nearKnow[dom]+=nk[dom];nearCount++;}}
-const nid=newTribe(ter,tx,ty,-1);
-const newK=ter.tribeKnowledge[nid];
-if(nearKnow&&nearCount>0){for(const dom of KNOW_DOMAINS)newK[dom]=Math.min(0.9,(nearKnow[dom]/nearCount)*0.6);}
-newK.agriculture=Math.max(newK.agriculture,0.25+Math.random()*0.15);
-// Flood-fill to claim nearby populated tiles (reuse shared visited buffer)
-if(!ter._crystalVisited)ter._crystalVisited=new Uint8Array(tw*th);
-const visited=ter._crystalVisited;
-// Clear only the tiles we visit (not the whole array)
-const stack=[bestTi];visited[bestTi]=1;
-const visitedTiles=[bestTi];// track for cleanup
-let claimed=0;const maxClaim=12;
-while(stack.length>0&&claimed<maxClaim){
-const ci=stack.pop();
-if(tElev[ci]<=0)continue;
-// Crystallising tribes claim only unowned land — no free annexation of
-// existing tribes' tiles (audit flaw #8). Bordering tribes can be
-// challenged later through normal expansion / war.
-if(owner[ci]>=0&&owner[ci]!==nid)continue;
-claimTile(ter,ci,nid);
-if(!ter.frontier[ci]){ter.frontier[ci]=1;ter.frontierList.push(ci);}
-claimed++;
-const cx=ci%tw,cy2=(ci-cx)/tw;
-for(const[ddx,ddy]of DIRS){const nnx=((cx+ddx)%tw+tw)%tw,nny=cy2+ddy;
-if(nny<0||nny>=th)continue;const nni=nny*tw+nnx;
-if(visited[nni])continue;visited[nni]=1;visitedTiles.push(nni);
-if(tElev[nni]>0&&tFert[nni]>=0.05){stack.push(nni);}}}
-// Clear visited buffer (only the tiles we touched, not the whole array)
-for(const vt of visitedTiles)visited[vt]=0;
-// Clear remaining bgPop in wider area (people absorbed or displaced)
-for(let dy=-6;dy<=6;dy++){const ny=ty+dy;if(ny<0||ny>=th)continue;
-for(let dx=-6;dx<=6;dx++){const nx=((tx+dx)%tw+tw)%tw;
-bgPop[ny*tw+nx]*=0.3;}}// reduce, don't zero (some people remain)
-alive++;if(alive>=80)break;
-}}// end if(random) + for cc (candidates loop)
-}catch(e){console.error('[stepBackgroundPop CRASH]',e.message,'step:',ter.stepCount,'tribes:',ter.tribeSizes.filter(s=>s>0).length,'settled:',ter.settled);throw e;}
-}// end stepBackgroundPop
-
-// Port computation: find best coastal settlement tiles for a tribe
-function computeTribePorts(ter,tribeId){
-const{tw,th,owner,tFert,tCoast,tenure,rivers,tribeTiles}=ter;
-const ports=[];const orgLevel=ter.tribeKnowledge[tribeId]?ter.tribeKnowledge[tribeId].organization:0;
-const maxPorts=Math.max(2,Math.floor(3+orgLevel*7));// 3-10 ports based on organization
-// Use tribeTiles index to avoid full grid scan
-const tiles=tribeTiles&&tribeTiles[tribeId]?tribeTiles[tribeId]:null;
-const portSource=tiles||{[Symbol.iterator]:function*(){for(let ti=0;ti<tw*th;ti++)if(owner[ti]===tribeId)yield ti;}};
-for(const ti of portSource){if(!tCoast[ti])continue;
-if(tenure[ti]<10)continue;// must be established
-let score=tFert[ti]*2;
-// River mouth bonus
-if(rivers&&rivers.riverMag[ti]>=2)score+=0.5;
-if(rivers&&rivers.riverMag[ti]>=3)score+=0.5;
-// Fertility in local area (settlement size proxy)
-const tx=ti%tw,ty=(ti-tx)/tw;
-let localFert=0;for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;
-if(ny>=0&&ny<th&&owner[ny*tw+nx]===tribeId)localFert+=tFert[ny*tw+nx];}
-score+=localFert*0.2;
-ports.push({x:tx,y:ty,ti,score});}
-ports.sort((a,b)=>b.score-a.score);
-return ports.slice(0,maxPorts);}
-
-// Voyage: trace path from port across ocean, find land within range
-function launchVoyage(ter,tribeId,port,maxRange){
-const{tw,th,tElev,tTemp,owner,tFert,tCoast}=ter;
-const knownCoasts=ter.tribeKnownCoasts[tribeId];
-// Choose direction: toward known unowned coast, or random exploration
-let targetX=-1,targetY=-1;
-// Check known coasts for unowned or enemy targets
-if(knownCoasts&&knownCoasts.length>0&&Math.random()<0.6){
-// Pick a known coast weighted by distance (prefer closer)
-let best=null,bestScore=-1;
-for(const kc of knownCoasts){
-const d=tDistW(port.x,port.y,kc.x,kc.y,tw);
-if(d>maxRange*1.3)continue;// too far
-const isEnemy=kc.owner>=0&&kc.owner!==tribeId;
-const score=(1/(1+d*0.05))*(isEnemy?0.5:1.0)+(Math.random()*0.3);
-if(score>bestScore){bestScore=score;best=kc;}}
-if(best){targetX=best.x;targetY=best.y;}}
-// If no known target, pick a random ocean direction
-if(targetX<0){const ang=Math.random()*Math.PI*2;
-targetX=((port.x+Math.round(Math.cos(ang)*maxRange))%tw+tw)%tw;
-targetY=Math.max(0,Math.min(th-1,port.y+Math.round(Math.sin(ang)*maxRange)));}
-// Trace path from port toward target, tile by tile across ocean
-const dx=targetX-port.x,dy=targetY-port.y;
-let wrappedDx=dx;if(Math.abs(wrappedDx)>tw/2)wrappedDx=wrappedDx>0?wrappedDx-tw:wrappedDx+tw;
-const dist=Math.sqrt(wrappedDx*wrappedDx+dy*dy);
-if(dist<2)return null;
-const stepX=wrappedDx/dist,stepY=dy/dist;
-let cx=port.x+0.5,cy=port.y+0.5;
-const maxSteps=Math.min(300,maxRange,Math.ceil(dist));// cap iterations for performance
-for(let s=1;s<=maxSteps;s++){
-cx+=stepX;cy+=stepY;
-const tx=((Math.round(cx)%tw)+tw)%tw,ty=Math.round(cy);
-if(ty<0||ty>=th)break;
-const ti=ty*tw+tx;
-const elev=tElev[ti];
-if(elev<=0)continue;// still on ocean, keep going
-// Hit land!
-if(tTemp[ti]<0.05)return null;// frozen — can't land
-// Record as known coast regardless of ownership
-if(!knownCoasts)ter.tribeKnownCoasts[tribeId]=[];
-const kc=ter.tribeKnownCoasts[tribeId];
-let alreadyKnown=false;
-for(const k of kc){if(Math.abs(k.x-tx)<=2&&Math.abs(k.y-ty)<=2){k.owner=owner[ti];k.lastSeen=ter.stepCount;alreadyKnown=true;break;}}
-if(!alreadyKnown)kc.push({x:tx,y:ty,owner:owner[ti],lastSeen:ter.stepCount});
-// Mutual awareness: the discovered tribe also learns about the voyager
-if(owner[ti]>=0&&owner[ti]!==tribeId&&ter.tribeKnownCoasts[owner[ti]]){
-const otherKc=ter.tribeKnownCoasts[owner[ti]];
-let otherKnows=false;
-for(const ok of otherKc){if(ok.owner===tribeId){otherKnows=true;break;}}
-if(!otherKnows&&ter.tribePorts[tribeId]&&ter.tribePorts[tribeId].length>0){
-const myPort=ter.tribePorts[tribeId][0];
-otherKc.push({x:myPort.x,y:myPort.y,owner:tribeId,lastSeen:ter.stepCount});}}
-// Can we land?
-if(owner[ti]>=0){
-// Owned coast — try invasion, otherwise skip past and keep looking for unowned land
-const navV=ter.tribeKnowledge[tribeId].navigation;
-const met=ter.tribeKnowledge[tribeId].metallurgy;
-if(navV>0.5&&met>0.4&&owner[ti]!==tribeId){
-const defPow=localPower(ter,owner[ti],tx,ty);
-const atkPow=ter.tribePopulation[tribeId]*0.0002*met*navV;
-if(atkPow>defPow*2)return{x:tx,y:ty,ti,type:'invade'};}
-continue;}// skip past owned land — keep looking for unowned coast
-// Check contested coast
-let contested=false;
-for(const[ddx,ddy]of DIRS){const nx=((tx+ddx)%tw+tw)%tw,ny2=ty+ddy;
-if(ny2>=0&&ny2<th){const ao=owner[ny2*tw+nx];
-if(ao>=0&&ao!==tribeId){contested=true;break;}}}
-if(contested)return null;
-return{x:tx,y:ty,ti,type:'land'};// successful landfall
-}
-return null;// ran out of range without finding land
-}
 
 function createTerritory(w){
 const tw=Math.ceil(w.width/RES),th=Math.ceil(w.height/RES);
@@ -2241,1298 +645,6 @@ tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudg
 tribeTiles,frontier,frontierList,_landTiles,_coastalTiles,_nfBuf,_youngTiles:[],
 landCount:lc,settled:tribeSizes.length,tribeCount:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
 
-// Distance from (x,y) to nearest center of a tribe; also returns the capital (index 0) distance.
-// Limit reduced from 30 → 8 centers — beyond ~40 tiles expFalloff(d/orgReach) ≈ 0 so additional
-// centers contribute nothing to reach. At 25k frontier × 4 candidates × 30 = 3M tDistW calls
-// every tick this was a major hot path; 8 cuts it ~4×.
-function nearestCenterDist(centers,x,y,tw){if(!centers||centers.length===0)return{min:0,cap:0};
-let mn=Infinity;const cap=tDistW(x,y,centers[0].x,centers[0].y,tw);
-const limit=Math.min(centers.length,8);
-for(let ci=0;ci<limit;ci++){mn=Math.min(mn,tDistW(x,y,centers[ci].x,centers[ci].y,tw));}
-return{min:mn,cap};}
-
-// ── Faster nearestCenterDist using squared distance (avoids sqrt) ──
-// expFalloff uses d²/280 internally, so we can pass sqrt of squared dist.
-// But the LUT expects actual distance, so we still need sqrt.
-// Optimization: limit center check to 10 instead of 30 for expansion (most
-// centers beyond ~20 tiles won't affect reach significantly).
-// Full 30-center version kept for non-expansion callers.
-// Sum of fertility within radius R of a point, for tiles owned by tribeId
-function centerPower(ter,tribeId,cx,cy,R){const{tw,th,owner,tFert}=ter;let sum=0;
-for(let dy=-R;dy<=R;dy++){const ny=cy+dy;if(ny<0||ny>=th)continue;
-for(let dx=-R;dx<=R;dx++){const nx=((cx+dx)%tw+tw)%tw;const ni=ny*tw+nx;
-if(owner[ni]===tribeId){const d=tDistW(cx,cy,nx,ny,tw);if(d<=R)sum+=tFert[ni];}}}return sum;}
-
-function newTribe(ter,x,y,parentId){const id=ter.tribeCenters.length;ter.tribeCenters.push([{x,y,prestige:1.0,founded:ter.stepCount}]);ter.tribeSizes.push(0);ter.tribeStrength.push(0);
-if(!ter.tribeLastGrowth)ter.tribeLastGrowth=[];ter.tribeLastGrowth.push(ter.stepCount);
-if(ter.tribeTiles)ter.tribeTiles.push(new Set());
-// Inherit knowledge from parent tribe (splits carry culture); new independent tribes start at zero
-const parentKnow=parentId>=0&&ter.tribeKnowledge[parentId]?ter.tribeKnowledge[parentId]:null;
-ter.tribeKnowledge.push(parentKnow?cloneKnowledge(parentKnow):initKnowledge());
-ter.tribePopulation.push(0);
-// Inherit known coasts from parent (maritime memory carries over)
-ter.tribeKnownCoasts.push(parentKnow&&ter.tribeKnownCoasts[parentId]?ter.tribeKnownCoasts[parentId].map(c=>({...c})):[]);
-ter.tribePorts.push([]);
-// Inherit budget personality from parent (with drift) or fresh random
-const parentBudget=parentId>=0&&ter.tribeBudget&&ter.tribeBudget[parentId]?ter.tribeBudget[parentId]:null;
-if(ter.tribeBudget)ter.tribeBudget.push(parentBudget?cloneBudget(parentBudget):initBudget());
-ter.tribeCount=id+1;ensureTribeViews(ter);return id;}
-function claimTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tenure,tribeTiles,tDiff}=ter;const ow=owner[ti];
-if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];
-if(tribeTiles&&tribeTiles[ow])tribeTiles[ow].delete(ti);
-// Conquest: people stay. Small war loss (15% of rural + 10% of urban).
-if(ter.bgPop&&ter.bgPop[ti]>0)ter.bgPop[ti]*=0.85;
-if(ter.cityPop&&ter.cityPop[ti]>0)ter.cityPop[ti]*=0.90;
-if(ter.tribeLastGrowth)ter.tribeLastGrowth[nw]=ter.stepCount;
-}else{
-if(ter.tribeLastGrowth)ter.tribeLastGrowth[nw]=ter.stepCount;
-ter.settled++;
-// Claiming unclaimed land: set bgPop based on fertility (people were already there)
-// No need to have simulated their growth — it's implicit from the terrain quality
-if(ter.bgPop&&ter.bgPop[ti]<0.01){
-const f=tFert[ti];const d=tDiff?tDiff[ti]:0;
-ter.bgPop[ti]=f*(1-d*0.5)*0.8;// ~80% of natural carrying capacity
-}}
-owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];tenure[ti]=1;
-if(tribeTiles){while(tribeTiles.length<=nw)tribeTiles.push(new Set());tribeTiles[nw].add(ti);}
-}
-// Transfer tile without resetting tenure (for splits/fragmentation — population stays, allegiance changes)
-function transferTile(ter,ti,nw){const{owner,tribeSizes,tribeStrength,tFert,tribeTiles}=ter;const ow=owner[ti];
-if(ow>=0){tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];if(tribeTiles&&tribeTiles[ow])tribeTiles[ow].delete(ti);}
-// bgPop stays untouched — people remain, only political control changes
-owner[ti]=nw;tribeSizes[nw]++;tribeStrength[nw]+=tFert[ti];
-if(tribeTiles){while(tribeTiles.length<=nw)tribeTiles.push(new Set());tribeTiles[nw].add(ti);}}
-// Canonical "abandon tile" writer: tile becomes unowned and the former
-// owner's tribeTiles index is kept consistent. Used by migration when a
-// nomadic tribe gives up its worst tile.
-function abandonTile(ter,ti){const{owner,tribeSizes,tribeStrength,tFert,tribeTiles,tenure}=ter;const ow=owner[ti];
-if(ow<0)return;
-tribeSizes[ow]--;tribeStrength[ow]-=tFert[ti];
-if(tribeTiles&&tribeTiles[ow])tribeTiles[ow].delete(ti);
-owner[ti]=-1;tenure[ti]=0;
-if(typeof ter.settled==='number')ter.settled--;}
-
-// True if this tile is in tribe `tid`'s tribeCenters[] (i.e. a city).
-function isCityTile(ter,tid,ti){
-  const centers=ter.tribeCenters[tid];if(!centers||centers.length===0)return false;
-  const tx=ti%ter.tw,ty=(ti-tx)/ter.tw;
-  for(let ci=0;ci<centers.length;ci++){const c=centers[ci];if(c.x===tx&&c.y===ty)return true;}
-  return false;
-}
-
-// Remove a center from a tribe by tile coordinates. Returns the removed
-// center object (or null). Used when a city falls to a conqueror.
-function removeCenter(ter,tid,ti){
-  const centers=ter.tribeCenters[tid];if(!centers)return null;
-  const tx=ti%ter.tw,ty=(ti-tx)/ter.tw;
-  for(let ci=0;ci<centers.length;ci++){
-    if(centers[ci].x===tx&&centers[ci].y===ty){return centers.splice(ci,1)[0];}}
-  return null;
-}
-
-// Conquest cascade: after a successful in-wartime flip, push the salient
-// 1-2 more tiles in the direction of the defender's nearest surviving
-// city. Each cascade flip uses `claimTile` directly (skipping ratio
-// checks). Returns the tile indices of cascaded captures so the caller
-// can update the war record.
-// ── OpenFront-style wave attack ──────────────────────────────────────
-// Replaces the legacy directional `conquestCascade` (a cardinal-line
-// march that produced the "thin strand" pathology). Models OpenFront.io
-// expansion: attacker spends a soldier pool on defender border-tiles,
-// cheapest first, and the wave EXPANDS as it captures (each new tile
-// adds its defender-neighbours to the candidate pool). Result: a rough
-// bubble pressing into weak spots, hugging strong cities — no more
-// straight-line pokes.
-//
-// Cost per tile = base × (1 + defenderPopNearby×k + tDiff×m + tenureBonus)
-//                       × defenderMul / attackerMul
-// where multipliers come from tech (metallurgy/military offense vs
-// construction/military defense, cavalry advantage) and the budget
-// military allocation.
-function attackWave(ter,attacker,defender,force,initialCandidates,focusTiles){
-  const{tw,th,owner,tElev,tribeSizes,tribeKnowledge,tribeBudget,tribeTiles,bgPop,cityPop}=ter;
-  const sl=0;
-  if(tribeSizes[attacker]<=0||tribeSizes[defender]<=0)return[];
-  if(force<1)return[];
-  // ── Per-pair multipliers ──
-  const aK=tribeKnowledge&&tribeKnowledge[attacker]?tribeKnowledge[attacker]:null;
-  const dK=tribeKnowledge&&tribeKnowledge[defender]?tribeKnowledge[defender]:null;
-  const aBud=tribeBudget&&tribeBudget[attacker];
-  const dBud=tribeBudget&&tribeBudget[defender];
-  const aMet=aK?aK.metallurgy:0,aMil=aK?(aK.military||0):0;
-  const dCon=dK?dK.construction:0,dMil=dK?(dK.military||0):0;
-  const aBudMil=aBud?aBud.military:0.2;
-  const dBudMil=dBud?dBud.military:0.2;
-  const aHorses=ter._resCache&&ter._resCache[attacker]?(ter._resCache[attacker].horses||0):0;
-  const dHorses=ter._resCache&&ter._resCache[defender]?(ter._resCache[defender].horses||0):0;
-  const horseAdv=(aHorses>1&&dHorses<0.5)?0.3:0;
-  const attackMul=(1+aMet*0.4+aMil*0.6+horseAdv)*(0.5+aBudMil*2.0);
-  const defenseMul=(1+dCon*0.5+dMil*0.4)*(0.5+dBudMil*1.5);
-  const techRatio=defenseMul/Math.max(0.1,attackMul);
-  // ── Initial candidate set ──
-  // If `initialCandidates` was precomputed by the caller (the per-pass
-  // border walk in the border-conflict block), use it — that's O(border)
-  // instead of O(empire). Fallback to the legacy full-empire scan when
-  // called directly (e.g. launchInvasion).
-  //
-  // Focus bias: if the caller passed `focusTiles` (recent captures in
-  // this war), tiles far from any focus point get scaled cost up. This
-  // produces a moving wave front instead of opportunistic weak-tile
-  // hunting across the whole border (user complaint: "weird surround"
-  // and "scattered" attacks). Tiles within ~3 of focus pay full cost;
-  // tiles 10+ away pay up to 5×.
-  const visited=new Set();
-  const candidates=[];// {ti, cost}
-  const TPROT=6;// tiles flipped in last <TPROT passes are off-limits
-  const tenure=ter.tenure;
-  const hasFocus=focusTiles&&focusTiles.length>0;
-  function _scoreTile(ni){
-    let c=tileAttackCost(ter,ni,techRatio);
-    if(hasFocus){
-      const ty=Math.floor(ni/tw),tx=ni-ty*tw;
-      let minD2=Infinity;
-      for(let fi=0;fi<focusTiles.length;fi++){
-        const ft=focusTiles[fi];
-        const fy=Math.floor(ft/tw),fx=ft-fy*tw;
-        let dx=Math.abs(fx-tx);if(dx>tw/2)dx=tw-dx;
-        const dy=fy-ty;
-        const d2=dx*dx+dy*dy;
-        if(d2<minD2)minD2=d2;
-      }
-      // d=3 → 1.0×, d=6 → 1.36×, d=10 → 2.0×, d=20 → 5.0× (capped)
-      c*=Math.min(5,1+minD2*0.01);
-    }
-    return c;
-  }
-  if(initialCandidates){
-    for(const ni of initialCandidates){
-      if(visited.has(ni))continue;
-      visited.add(ni);
-      if(owner[ni]!==defender||tElev[ni]<=sl)continue;
-      if(tenure&&tenure[ni]<TPROT)continue;
-      candidates.push({ti:ni,cost:_scoreTile(ni)});
-    }
-  }else{
-    const aTiles=tribeTiles&&tribeTiles[attacker]?tribeTiles[attacker]:null;
-    if(!aTiles)return[];
-    for(const ati of aTiles){
-      const aty=Math.floor(ati/tw),atx=ati%tw;
-      for(const[dx,dy]of DIRS){
-        const nx=((atx+dx)%tw+tw)%tw,ny=aty+dy;
-        if(ny<0||ny>=th)continue;
-        const ni=ny*tw+nx;
-        if(visited.has(ni))continue;
-        visited.add(ni);
-        if(owner[ni]!==defender||tElev[ni]<=sl)continue;
-        if(tenure&&tenure[ni]<TPROT)continue;
-        candidates.push({ti:ni,cost:_scoreTile(ni)});
-      }
-    }
-  }
-  if(candidates.length===0)return[];
-  candidates.sort((a,b)=>a.cost-b.cost);
-  // ── Spend force greedily; wave expands as we capture ──
-  const captured=[];
-  let spent=0;
-  let resortPending=false;
-  while(candidates.length>0&&force>=1){
-    if(resortPending){candidates.sort((a,b)=>a.cost-b.cost);resortPending=false;}
-    const c=candidates.shift();
-    if(owner[c.ti]!==defender)continue;// taken by a third party already
-    if(force<c.cost)break;
-    force-=c.cost;spent+=c.cost;
-    const wasCity=isCityTile(ter,defender,c.ti);
-    if(bgPop&&bgPop[c.ti]>0)bgPop[c.ti]*=0.85;
-    if(cityPop&&cityPop[c.ti]>0)cityPop[c.ti]*=0.90;
-    claimTile(ter,c.ti,attacker);
-    captured.push(c.ti);
-    spendMilitary(ter,defender,c.cost*0.35);
-    recordFlip(ter,attacker,defender,c.ti);
-    if(wasCity)capitalFall(ter,c.ti,attacker,defender,null,null);
-    // Expand wave: newly captured tile's defender-neighbours become candidates
-    const cty=Math.floor(c.ti/tw),ctx=c.ti%tw;
-    for(const[dx,dy]of DIRS){
-      const nx=((ctx+dx)%tw+tw)%tw,ny=cty+dy;
-      if(ny<0||ny>=th)continue;
-      const ni=ny*tw+nx;
-      if(visited.has(ni))continue;
-      visited.add(ni);
-      if(owner[ni]!==defender||tElev[ni]<=sl)continue;
-      if(tenure&&tenure[ni]<TPROT)continue;
-      candidates.push({ti:ni,cost:_scoreTile(ni)});
-      resortPending=true;
-    }
-  }
-  spendMilitary(ter,attacker,spent*0.35);// attacker pays ~35 % of cost — keeps wars sustained instead of bleeding to zero in 1-2 passes
-  return captured;
-}
-
-function tileAttackCost(ter,ti,techRatio){
-  const{tw,th,owner,tDiff,bgPop,cityPop,tenure}=ter;
-  const ty=Math.floor(ti/tw),tx=ti%tw;
-  const ow=owner[ti];
-  // Local defender garrison estimate: own tile + same-owner 4-neighbours.
-  // Cities count heavier (urban garrisons, walls). Coefficients tuned so
-  // a frontier tile in front of a populated interior costs ~5-8 (small
-  // armies can crack 1-2 per pass), a city tile costs ~25-40 (decisive
-  // force needed), an undefended thread tip costs ~3 (sweepable).
-  let defPop=(bgPop?bgPop[ti]:0)+(cityPop?cityPop[ti]*2.5:0);
-  for(const[dx,dy]of DIRS){
-    const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;
-    if(ny<0||ny>=th)continue;
-    const ni=ny*tw+nx;
-    if(owner[ni]===ow){
-      defPop+=(bgPop?bgPop[ni]:0)*0.3+(cityPop?cityPop[ni]:0)*1.2;
-    }
-  }
-  const diff=tDiff?tDiff[ti]:0;
-  const ten=tenure?tenure[ti]:0;
-  const tenureBonus=Math.min(0.4,ten*0.001);// established borders 40 % stickier
-  const base=3;
-  return Math.max(1,base*(1+defPop*0.25+diff*1.1+tenureBonus)*techRatio);
-}
-
-// "Invasion" is now a spike of the wave: a war decider declaration or
-// every-16-tick offensive commits a larger fraction of the standing
-// army to attack the defender's borders in a single pass. The wave
-// model (attackWave) does the work — invasions are just bigger waves
-// with a "summer offensive" multiplier on top of the continuous per-
-// pass attacks happening in stepTerritory's border block.
-function launchInvasion(ter,attacker,defender){
-  if(!ter.tribeMilitary)ter.tribeMilitary=[];
-  while(ter.tribeMilitary.length<=Math.max(attacker,defender))ter.tribeMilitary.push(0);
-  const standing=ter.tribeMilitary[attacker]||0;
-  if(standing<50||ter.tribeSizes[attacker]<=0||ter.tribeSizes[defender]<=0)return[];
-  const aBud=ter.tribeBudget&&ter.tribeBudget[attacker];
-  const milBud=aBud?aBud.military:0.2;
-  // Spike spend: 30 %–65 % of standing army committed in one event
-  // (vs ~15–35 % per regular border-conflict pass).
-  const force=standing*(0.30+milBud*0.55);
-  const captured=attackWave(ter,attacker,defender,force);
-  if(captured.length>0){
-    if(!ter._warEvents)ter._warEvents=[];
-    ter._warEvents.push({step:ter.stepCount,type:'invasion',attacker,defender,tiles:captured.length,troopsCommitted:Math.round(force)});
-    if(ter._warEvents.length>200)ter._warEvents.shift();
-  }
-  return captured;
-}
-
-// Capital-fall cascade: when a city tile flips, the city changes hands
-// (added to attacker's centers at reduced prestige, removed from
-// defender's) and surrounding tiles administered from that city
-// transfer to the attacker. R is larger for the actual capital
-// (centers[0]) than for secondary cities.
-function capitalFall(ter,ti,attacker,defender,nf,nfl){
-  const{tw,th,owner,tElev,tribeCenters,tribeSizes}=ter;
-  // Identify whether the lost center was the capital BEFORE removal
-  const dCenters=tribeCenters[defender]||[];
-  const tx=ti%tw,ty=(ti-tx)/tw;
-  let wasCapital=false;
-  if(dCenters.length>0&&dCenters[0].x===tx&&dCenters[0].y===ty)wasCapital=true;
-  // Move the center from defender to attacker
-  const removed=removeCenter(ter,defender,ti);
-  if(removed){
-    const aCenters=tribeCenters[attacker]||[];
-    // Captured city has reduced prestige — it's an occupation, not a hometown
-    aCenters.push({x:removed.x,y:removed.y,prestige:Math.max(0.3,(removed.prestige||1.0)*0.5),founded:ter.stepCount,captured:true});
-    tribeCenters[attacker]=aCenters;
-  }
-  // If the defender just lost their LAST city, promote their largest
-  // remaining settlement to a new capital (or, if no settlements,
-  // any owned tile — that's the survivors regrouping). If they have
-  // zero tiles, they're effectively dead and skip the cascade.
-  if(tribeCenters[defender]&&tribeCenters[defender].length===0){
-    if(tribeSizes[defender]>0&&ter.tribeTiles&&ter.tribeTiles[defender]&&ter.tribeTiles[defender].size>0){
-      // Pick highest-cityPop tile, or first tile if none
-      let bestTi=-1,bestPop=-1;
-      for(const ti2 of ter.tribeTiles[defender]){
-        const cp=ter.cityPop?ter.cityPop[ti2]:0;
-        if(cp>bestPop){bestPop=cp;bestTi=ti2;}
-      }
-      if(bestTi<0){bestTi=ter.tribeTiles[defender].values().next().value;}
-      const nx2=bestTi%tw,ny2=(bestTi-nx2)/tw;
-      tribeCenters[defender].push({x:nx2,y:ny2,prestige:0.4,founded:ter.stepCount,refugee:true});
-    }
-  }
-  // No regional cascade. Each tile must be captured through the wave —
-  // taking a city does NOT auto-transfer surrounding administered tiles.
-  // (Removed at user request: the legacy R=14 capital / R=9 secondary
-  // cascade produced the "semicircular auto-claim" effect on capture.)
-  // Record the event
-  if(!ter._warEvents)ter._warEvents=[];
-  ter._warEvents.push({step:ter.stepCount,type:wasCapital?'capital-fall':'city-fall',attacker,defender,ti,cascadedTiles:0});
-  if(ter._warEvents.length>200)ter._warEvents.shift();
-  // Update the war record
-  const w=getWar(ter,attacker,defender);
-  if(w){w.capitalsTaken++;w.lastFlip=ter.stepCount;}
-  // Post-conquest fragmentation immunity for the defender so the rest
-  // of the empire doesn't immediately implode. Attacker no longer needs
-  // protection because we don't cascade-claim anything.
-  if(!ter.tribeProtectFragUntil)ter.tribeProtectFragUntil=[];
-  ter.tribeProtectFragUntil[defender]=Math.max(ter.tribeProtectFragUntil[defender]||0,ter.stepCount+64);
-}
-
-// ── Encirclement check ───────────────────────────────────────────────
-// Sweep every ~8 steps: BFS from each tribe's centers through their own
-// owned tiles. Any owned tile NOT reachable is isolated — a pocket cut
-// off from the main empire. These get auto-flipped to the surrounding
-// dominant enemy (or released to unowned if surrounded only by water/
-// wilderness). This is the killer anti-tendril mechanic: the moment any
-// tile in a thread gets nibbled, the rest of the thread is unreachable
-// from the capital and collapses to whoever's around it.
-function checkEncirclement(ter){
-  const{tw,th,owner,tribeSizes,tribeCenters,tribeTiles,tElev}=ter;
-  const N=tw*th;const n=tribeCenters.length;
-  if(!ter._encVisited||ter._encVisited.length<N)ter._encVisited=new Uint8Array(N);
-  const visited=ter._encVisited;visited.fill(0);
-  const stack=[];
-  // Seed BFS from every tribe's centers
-  for(let tid=0;tid<n;tid++){
-    if(tribeSizes[tid]<=0)continue;
-    const centers=tribeCenters[tid];if(!centers||centers.length===0)continue;
-    for(const c of centers){
-      const ci=c.y*tw+c.x;
-      if(ci>=0&&ci<N&&owner[ci]===tid&&!visited[ci]){visited[ci]=1;stack.push(ci);}
-    }
-  }
-  // Flood through owned tiles (same-owner moves only)
-  while(stack.length>0){
-    const ti=stack.pop();
-    const tx=ti%tw,ty=(ti-tx)/tw;
-    const ow=owner[ti];
-    for(const[dx,dy]of DIRS){
-      const ny=ty+dy;if(ny<0||ny>=th)continue;
-      const nx=((tx+dx)%tw+tw)%tw;
-      const ni=ny*tw+nx;
-      if(!visited[ni]&&owner[ni]===ow){visited[ni]=1;stack.push(ni);}
-    }
-  }
-  // Collect isolated tiles per tribe
-  let isolatedCount=0;
-  for(let tid=0;tid<n;tid++){
-    if(tribeSizes[tid]<=0)continue;
-    // Establishment grace — don't strip pockets from very new tribes
-    const owAge=ter.stepCount-(tribeCenters[tid][0]?tribeCenters[tid][0].founded:0);
-    if(owAge<40)continue;
-    const tiles=tribeTiles&&tribeTiles[tid]?tribeTiles[tid]:null;
-    if(!tiles)continue;
-    const toFlip=[];
-    for(const ti of tiles){if(!visited[ti])toFlip.push(ti);}
-    for(const ti of toFlip){
-      const ow=owner[ti];if(ow!==tid)continue;
-      const tx=ti%tw,ty=(ti-tx)/tw;
-      // Find majority adjacent non-self enemy owner
-      const counts={};
-      for(const[dx,dy]of DIRS){
-        const ny=ty+dy;if(ny<0||ny>=th)continue;
-        const nx=((tx+dx)%tw+tw)%tw;
-        const ni=ny*tw+nx;
-        const no=owner[ni];
-        if(no>=0&&no!==ow&&tribeSizes[no]>0)counts[no]=(counts[no]||0)+1;
-      }
-      let bestId=-1,bestC=0;
-      for(const nid in counts){if(counts[nid]>bestC){bestC=counts[nid];bestId=parseInt(nid);}}
-      if(bestId>=0){
-        // Pocket absorbed by dominant enemy neighbour. Population takes
-        // a heavier hit (a cut-off garrison surrendering is brutal).
-        if(ter.bgPop&&ter.bgPop[ti]>0)ter.bgPop[ti]*=0.65;
-        if(ter.cityPop&&ter.cityPop[ti]>0)ter.cityPop[ti]*=0.55;
-        const wasCity=isCityTile(ter,ow,ti);
-        claimTile(ter,ti,bestId);
-        recordFlip(ter,bestId,ow,ti);
-        if(wasCity)capitalFall(ter,ti,bestId,ow,null,null);
-        isolatedCount++;
-      }
-      // Else: surrounded by water / wilderness — leave it; will erode
-      // naturally via population loss and the weak-tile flip path.
-    }
-  }
-  if(isolatedCount>0){
-    if(!ter._dbgEncirclements)ter._dbgEncirclements=0;
-    ter._dbgEncirclements+=isolatedCount;
-  }
-  return isolatedCount;
-}
-
-function stepTerritory(ter,w){
-const sl=0,wet=0.7;const{tw,th,tElev,tTemp,tCoast,tDiff,tFert,owner,tribeCenters,tribeSizes,tribeStrength}=ter;ter.stepCount++;
-// Clear per-step caches
-if(!_resValCache)_resValCache=new Map();else _resValCache.clear();
-// ── Per-step timing + size monitoring ──
-const _stepT0=performance.now();
-// Log sizes every 8 steps to catch runaway growth
-if(ter.stepCount%8===0){
-const nTribes=tribeSizes.filter(s=>s>0).length;
-const fl=ter.frontierList?ter.frontierList.length:0;
-const maxTribeSz=Math.max(...tribeSizes);
-const totalCenters=tribeCenters.reduce((s,c)=>s+(c?c.length:0),0);
-console.log(`[SIM ${ter.stepCount}] tribes:${nTribes} frontier:${fl} maxTribeSz:${maxTribeSz} totalCenters:${totalCenters} settled:${ter.settled}/${ter.landCount}`);}
-const _prof=ter.stepCount%64===0;const _ts=_prof?[performance.now()]:null;
-// ── Knowledge & population step (every 16 ticks — was 8, reduced for performance) ──
-if(ter.stepCount%16===0&&ter.tribeKnowledge){
-// Transport network — Dijkstra from cities through owned tiles. Re-enabled
-// in phase 2c (audit #1). Run every 32 ticks; expanded heap operates only
-// on owned tiles so cost scales with settled-tile count, not world size.
-const _tt0=performance.now();
-if(ter.stepCount%32===0&&ter.settled>0)computeTransport(ter);
-const _tt1=performance.now();
-if(_tt1-_tt0>15)console.warn(`[TRANSPORT] ${(_tt1-_tt0).toFixed(1)}ms`);
-ter._dbgTimeTransport=(_tt1-_tt0).toFixed(1);
-const _t0=performance.now();
-stepBackgroundPop(ter);
-const _t1=performance.now();
-if(ter.settled>0){stepPopulation(ter);stepTrade(ter);stepBudget(ter);stepKnowledge(ter);stepMilitary(ter);stepExpansion(ter);}
-const _t2=performance.now();
-if(_t1-_t0>5)console.warn(`[BGPOP] ${(_t1-_t0).toFixed(1)}ms`);
-if(_t2-_t1>5)console.warn(`[POP+TRADE+BUDGET+KNOW] ${(_t2-_t1).toFixed(1)}ms`);
-ter._dbgTimeBgPop=(_t1-_t0).toFixed(1);ter._dbgTimeRest=(_t2-_t1).toFixed(1);
-// Recompute ports periodically
-// Recompute ports — staggered +8 from transport to spread load
-if(ter.stepCount%32===8){for(let i=0;i<tribeCenters.length;i++){if(tribeSizes[i]>0&&ter.tribeKnowledge[i].navigation>0.05)ter.tribePorts[i]=computeTribePorts(ter,i);}}}
-// Military regen runs every 2 ticks (matches wave cadence) so the wave's
-// per-pass drain is balanced by recruitment between passes. Previously
-// stepMilitary lived inside the every-16-ticks knowledge block, which
-// meant the wave drained 8 passes between regens and armies hit zero
-// permanently after the first big offensive.
-if(ter.stepCount%2===0&&ter.tribeKnowledge&&ter.settled>0)stepMilitary(ter);
-if(_prof)_ts.push(performance.now());// [1] after knowledge/pop block
-const _tExpStart=performance.now();
-// ── Expansion into empty land (directional, pressure-driven) ──
-// Reuse frontier marker array across frames (avoids 1.8MB alloc per frame)
-const nf=ter._nfBuf;const nfl=[];
-// Clear only the tiles marked in the PREVIOUS frame's frontier list
-const prevFL=ter.frontierList;for(let fi=0;fi<prevFL.length;fi++)nf[prevFL[fi]]=0;
-// Reuse single candidates array across all frontier tiles (avoids 30K allocs/step)
-const _candidates=[];
-// Hoist deposit array references — saves 11 object lookups per candidate
-// (~25k frontier × 4 candidates = 100k candidates × 11 = 1.1M lookups/tick).
-const _depArr=[];
-if(ter.deposits){for(const rk of RES_KEYS){const d=ter.deposits[rk];if(d)_depArr.push({rk,d});}}
-// ── Per-tribe expansion-stats cache (built once per pass) ──
-// The legacy loop recomputed 15+ per-tribe values per frontier tile
-// (knowledge multipliers, capacity, pressure, budget mults, etc).
-// For a 25k-tile frontier with 30 tribes, that's 750k of redundant
-// per-tile math each tick. Hoisting it to a per-tribe struct array
-// drops the inner loop to direct field reads.
-const _tribeStats=new Array(tribeCenters.length);
-const _expansionOK=new Uint8Array(tribeCenters.length);
-const _ageEpoch=ter.stepCount*0.00005;
-for(let i=0;i<tribeCenters.length;i++){
-  const sz=tribeSizes[i];
-  if(sz<=0){_tribeStats[i]=null;continue;}
-  if(!ter.tribeExpansion||(ter.tribeExpansion[i]||0)>=0.2)_expansionOK[i]=1;
-  const k=ter.tribeKnowledge&&ter.tribeKnowledge[i]?ter.tribeKnowledge[i]:null;
-  const ag=k?k.agriculture:0;
-  const ml=k?k.metallurgy:0;
-  const cn=k?k.construction:0;
-  const og=k?k.organization:0;
-  const pop=ter.tribePopulation?ter.tribePopulation[i]:tribeStrength[i]*10;
-  const eraMul=k?tileEraMult(k):2;
-  const cap=tribeStrength[i]*eraMul;
-  const orgRed=og*0.5;
-  const horses=ter._resCache&&ter._resCache[i]?(ter._resCache[i].horses||0):0;
-  const bud=ter.tribeBudget&&ter.tribeBudget[i];
-  const groB=bud?bud.growth:0.25;
-  const expB=bud?bud.exploration:0.15;
-  const pressTh=Math.max(0.1,0.6-ag*1.0);
-  const pratio=cap>0?pop/cap:0;
-  _tribeStats[i]={
-    k,ag,ml,cn,og,sz,pop,eraMul,cap,
-    dens:tribeStrength[i]/sz,
-    press:Math.max(0,(pratio-pressTh)/(1-pressTh)),
-    agMul:1+ag*2.5,
-    agBoost:1+ag*2,
-    smallBoost:sz<5?1.5:1,
-    largePrize:sz>40?1+Math.min(1,(sz-40)*0.008):1,
-    sizeSlow:sz>200?1/(1+(sz-200)*Math.max(0.0003,0.001-orgRed*0.001)):1,
-    lateBoost:1+og*0.5,
-    knowRed:cn*0.12+og*0.08+ag*0.05+ml*0.05,
-    diffFloor:cn*0.06+og*0.04,
-    techFloor:ag*0.15+ml*0.12+cn*0.10+og*0.08+Math.min(0.05,_ageEpoch),
-    budMul:0.4+groB*3.0+expB*2.5,
-    horseBoost:horses>1?1+Math.min(0.5,horses*0.05):1,
-    orgReach:1+og*1.5,
-    isBootstrap:sz<6,
-    coldResist:k?Math.min(0.7,cn*0.4+ag*0.3):0,
-  };
-}
-for(let fj=0;fj<ter.frontierList.length;fj++){const fi=ter.frontierList[fj];if(tElev[fi]<=sl)continue;const ty=Math.floor(fi/tw),tx=fi%tw,ow=owner[fi];
-// Cheap early-out for tribes with no settler budget: do only the room
-// check (4 neighbour reads) so the tile stays in the next-tick frontier
-// list if it still has unowned neighbours, then continue. Skips ~100
-// ops of scoring math per skipped tile. Most tribes are broke most of
-// the time, so this is the dominant late-game speedup.
-if(ow<0||!_expansionOK[ow]){
-  let stillBorder=false;
-  for(const[dx,dy]of DIRS){
-    const nx=((tx+dx)%tw+tw)%tw,ny=ty+dy;
-    if(ny<0||ny>=th)continue;
-    if(owner[ny*tw+nx]<0){stillBorder=true;break;}
-  }
-  if(stillBorder&&!nf[fi]){nf[fi]=1;nfl.push(fi);}
-  continue;
-}
-let room=false;const pDiff=tDiff[fi];
-// All per-tribe stats read from the pre-computed cache. The legacy
-// recomputation per frontier-tile burned ~75 % of expansion time.
-const _ts=_tribeStats[ow];
-const owKnow=_ts.k,owSz=_ts.sz,owDens=_ts.dens;
-const agLevel=_ts.ag,agMult=_ts.agMul,agBoost=_ts.agBoost;
-const owPop=_ts.pop,owOrg=_ts.og,owMt=_ts.ml,owCn=_ts.cn;
-const owEraMult=_ts.eraMul,owCap=_ts.cap;
-const popPressure=_ts.press;
-const smallBoost=_ts.smallBoost,largePrize=_ts.largePrize;
-_candidates.length=0;
-for(const[dx,dy]of DIRS){const nx=((tx+dx)%tw+tw)%tw,ny2=ty+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx;if(owner[ni]>=0)continue;
-// Compactness: count how many own-tribe tiles surround this candidate.
-// ownN=1 (lonely tip, would extend a thin tendril) gets heavy penalty;
-// ownN=4 (interior pocket, filling-in) is preferred. Models the
-// real-world fact that settlement requires local support — a tile
-// connected to your empire by one thread has no garrisons, no nearby
-// pop, no supply line. Indigenous resistance / banditry cuts it.
-let ownN=0;
-for(const[dx2,dy2]of DIRS){
-  const nx3=((nx+dx2)%tw+tw)%tw,ny3=ny2+dy2;
-  if(ny3<0||ny3>=th)continue;
-  if(owner[ny3*tw+nx3]===ow)ownN++;
-}
-// compactness 1=lonely tip, 2=corner extension, 3=infill, 4=interior pocket
-// We make this a strong multiplier on chance so tribes overwhelmingly
-// prefer to fill in before extending. Bootstrap tribes (size < 6) get a
-// pass so seed tiles can grow into their first ring.
-const compactFactor=_ts.isBootstrap?1.0:Math.pow(ownN/2,1.4);
-// ownN=1: 0.38 (very slow extension), 2: 1.0, 3: 1.74, 4: 2.64
-const elev=tElev[ni];if(elev<=sl){room=true;continue;}const effT=tTemp[ni];if(effT<0.02){room=true;continue;}
-const diff=tDiff[ni];
-const adjDiff=Math.max(0.02,Math.min(1,diff+(effT<0.15?0.3:0)-(wet>0.7?0.1:0)-_ts.knowRed));
-const fert=tFert[ni];
-// ── Directional score: what makes this tile VALUABLE to expand into ──
-let score=fert*fert*agMult*3;// quadratic fertility × agriculture tech
-// Resource pull: era-weighted. Bronze-age tribe → pulled to tin. Industrial → pulled to coal.
-if(owKnow&&_depArr.length>0){let owRv=_resValCache.get(ow);if(!owRv){owRv=resourceValues(owKnow);_resValCache.set(ow,owRv);}
-for(let ri=0;ri<_depArr.length;ri++){const e=_depArr[ri];const v=e.d[ni];if(v>0.1)score+=owRv[e.rk]*v*2.0;}}
-// Strategic knowledge-driven pull
-if(owKnow){
-if(owKnow.agriculture>0.1&&ter.rivers&&ter.rivers.riverMag[ni]>=2)score+=1.0*owKnow.agriculture;
-if(owKnow.agriculture>0.1&&ter.rivers&&ter.rivers.riverMag[ni]>=3)score+=0.5*owKnow.agriculture;
-if(owKnow.navigation>0.1&&tCoast[ni])score+=0.5*owKnow.navigation;
-if(owKnow.organization>0.2&&tDiff[ni]>0.5)score+=0.4*owKnow.organization;// strategic chokepoints
-if(owKnow.trade>0.1){// push toward neighbors (trade contact)
-for(const[dx2,dy2]of DIRS){const ax=((nx+dx2)%tw+tw)%tw,ay=ny2+dy2;
-if(ay>=0&&ay<th){const ao=owner[ay*tw+ax];
-if(ao>=0&&ao!==ow){score+=0.3*owKnow.trade;break;}}}}}
-// ── Expansion chance: how EASY is it to take this tile ──
-// Early civs should ONLY expand into prime land. Mediocre land should be
-// almost impossible until population pressure is extreme or tech improves.
-// IRL: Egypt stayed on the Nile for centuries. Sumer stayed in river valleys.
-// They didn't casually expand into every adjacent grassland.
-// All per-tribe multipliers from the cached stats; only candidate-tile-
-// specific work (terrain, fertility, distance) is computed per neighbour.
-let chance=0.22*wet*smallBoost*_ts.sizeSlow*_ts.lateBoost;
-const flatBonus=adjDiff<0.05?1.8:adjDiff<0.1?1.3+0.5*(0.1-adjDiff)/0.05:1.0;
-chance*=flatBonus*_ts.horseBoost;
-chance*=Math.max(_ts.diffFloor+0.02,(1-adjDiff)*(1-adjDiff));
-const fertSq=fert*fert;
-chance*=Math.max(_ts.techFloor,fertSq*4)*largePrize;
-chance*=agBoost;
-chance*=_ts.budMul;
-if(effT<0.15)chance*=0.08+_ts.coldResist;
-chance*=Math.max(0.05,popPressure);
-chance*=1+Math.min(2.0,score*0.5);
-// Early-out: if chance is already negligible, skip the expensive
-// nearestCenterDist call (it loops up to 8 centers per candidate; 100k
-// candidates × 8 = 800k tDistW per pass was a major hot path).
-let distMin=0,reach=1;
-if(chance>0.0008){
-  const centers=tribeCenters[ow];
-  const r=nearestCenterDist(centers,nx,ny2,tw);
-  distMin=r.min;
-  reach=expFalloff(distMin/_ts.orgReach);
-}
-chance*=Math.max(0.03,reach);
-score+=Math.random()*0.1;
-// Compactness — tribes prefer filling-in over thin extension. Strong
-// multiplier on chance: a lonely-tip candidate (ownN=1) is ~3x less
-// likely to be claimed than a corner-extension (ownN=2), and ~7x less
-// than an interior-fill (ownN=4).
-chance*=compactFactor;
-_candidates.push({ni,nx,ny:ny2,chance,score,diff,distMin,ownN});}
-// Sort by score — best tiles first. Each subsequent candidate gets reduced chance
-// so growth strongly follows fertile corridors, not uniform bubbles.
-_candidates.sort((a,b)=>b.score-a.score);
-let claimedThisTile=0;
-// Early-out: if this tribe's settler reserve is below the cheapest
-// possible cost (~0.2), skip the whole candidate loop. Saves churn
-// on dead tribes / overstretched empires.
-if(ter.tribeExpansion&&(ter.tribeExpansion[ow]||0)<0.2)continue;
-for(let ci2=0;ci2<_candidates.length;ci2++){const cand=_candidates[ci2];const{ni,nx,ny:ny2,chance,diff,distMin}=cand;
-// Each subsequent candidate is 20% as likely (very steep — usually only best gets claimed)
-const rankPenalty=Math.pow(0.2,claimedThisTile);
-if(Math.random()<chance*rankPenalty){let nw=ow;
-// Expansion budget: deduct settler cost from the tribe's reserve.
-// If insufficient, skip this claim — the tribe can't field enough
-// settlers to colonise this tile right now. Cheap nearby tiles
-// drain the reserve slowly; distant or rough tiles drain it fast.
-// Settler cost is also scaled by compactness — lonely tips cost more
-// (no nearby pop to supply settlers, expensive to garrison).
-// ownN=1: ×2.0 (thread tip), ownN=2: ×1.0 (corner), ownN=4: ×0.55
-const compactCostMult=cand.ownN?(2.5-cand.ownN*0.5):1;
-const settlerCost=claimSettlerCost(ter,nw,ni)*compactCostMult;
-if(ter.tribeExpansion&&(ter.tribeExpansion[nw]||0)<settlerCost){
-  // Out of settlers — stop trying further candidates this tile
-  break;
-}
-spendExpansion(ter,nw,settlerCost);
-claimedThisTile++;
-// Centers now spawn from population density peaks (stepBackgroundPop),
-// not during expansion. Cities grow where people ARE, not where borders move.
-claimTile(ter,ni,nw);if(!nf[ni]){nf[ni]=1;nfl.push(ni);}
-// Hunter-gatherers: claim only best candidate. Agricultural civs: can claim multiple.
-if(agLevel<0.2)break;}
-else room=true;}
-// Maritime discovery moved to separate per-tribe pass below
-if(room&&!nf[fi]){nf[fi]=1;nfl.push(fi);}}
-// ── Maritime discovery: hop-based exploration chains ──
-// Discoveries expand from KNOWN coasts, not just home ports.
-// Lisbon→W.Africa→Cape→E.Africa→India→Indonesia (each hop within range)
-if(ter.stepCount%8===0){
-if(!ter._coastalTiles){ter._coastalTiles=[];
-for(let cti=0;cti<tw*th;cti++){if(tElev[cti]>0&&tCoast[cti])ter._coastalTiles.push(cti);}}
-const coastList=ter._coastalTiles;
-for(let st=0;st<tribeCenters.length;st++){
-if(tribeSizes[st]<=0)continue;
-const stK=ter.tribeKnowledge[st];if(!stK||stK.navigation<0.05)continue;// lower threshold
-const stPorts=ter.tribePorts[st];if(!stPorts||stPorts.length===0)continue;
-const nav2=stK.navigation;
-const expB3=ter.tribeBudget&&ter.tribeBudget[st]?ter.tribeBudget[st].exploration:0.15;
-// Hop range: how far a single voyage can go from any known point
-// Hop range: short coastal hops early, ocean crossing at high nav
-// nav=0.3→46 (Mediterranean), nav=0.5→100 (along Africa), nav=0.7→250 (Atlantic!), nav=0.9→420 (Pacific)
-const hopRange=Math.floor(10+nav2*nav2*tw*0.25);
-const discChance=0.3*nav2*(0.3+expB3*3);// nav=0.1→2%, nav=0.3→7%, nav=0.5→12%, nav=0.8→18%
-if(Math.random()>discChance)continue;
-ter._dbgDiscAttempts=(ter._dbgDiscAttempts||0)+1;
-// Build list of ALL known points: own ports + all known coasts
-// This is the "frontier of exploration" — discoveries hop from here
-const knownPoints=[];
-for(const p of stPorts)knownPoints.push({x:p.x,y:p.y});
-const kcList=ter.tribeKnownCoasts[st];
-for(const kc of kcList)knownPoints.push({x:kc.x,y:kc.y});
-if(knownPoints.length===0)continue;
-// Pick a random known point as the SOURCE of this voyage
-const src=knownPoints[Math.floor(Math.random()*knownPoints.length)];
-// Pick a random direction + distance within hopRange, then search nearby for coast
-const attempts=3;
-for(let att=0;att<attempts;att++){
-const ang=Math.random()*Math.PI*2;
-const dist3=hopRange*(0.2+Math.random()*0.8);// 20-100% of range
-const tgtX=((src.x+Math.round(Math.cos(ang)*dist3))%tw+tw)%tw;
-const tgtY=Math.max(2,Math.min(th-3,src.y+Math.round(Math.sin(ang)*dist3)));
-// Search 11×11 area around target for any coastal tile
-let targetIdx=-1;
-for(let sdy=-10;sdy<=10&&targetIdx<0;sdy++){const sny=tgtY+sdy;if(sny<0||sny>=th)continue;
-for(let sdx=-10;sdx<=10;sdx++){const snx=((tgtX+sdx)%tw+tw)%tw;
-const sni=sny*tw+snx;if(tElev[sni]>0&&tCoast[sni]){targetIdx=sni;break;}}}
-if(targetIdx<0)continue;// no coast found near target
-const tgtX2=targetIdx%tw,tgtY2=(targetIdx-tgtX2)/tw;
-// Check not already known
-let already2=false;
-for(const kc2 of kcList){if(Math.abs(kc2.x-tgtX2)<=3&&Math.abs(kc2.y-tgtY2)<=3){already2=true;break;}}
-if(already2)continue;
-// Compute cached ocean route from source to this discovery
-const route=computeOceanRoute(ter,src.x,src.y,tgtX2,tgtY2,8);
-kcList.push({x:tgtX2,y:tgtY2,owner:owner[targetIdx],lastSeen:ter.stepCount,fromX:src.x,fromY:src.y,route});
-ter._dbgDiscSuccess=(ter._dbgDiscSuccess||0)+1;
-if(owner[targetIdx]>=0&&owner[targetIdx]!==st){
-// Discovered an inhabited coast — mutual awareness
-if(ter.tribeKnownCoasts[owner[targetIdx]]){
-const oKc=ter.tribeKnownCoasts[owner[targetIdx]];
-let oKnows=false;for(const ok2 of oKc){if(ok2.owner===st){oKnows=true;break;}}
-if(!oKnows){const sp=stPorts[0];oKc.push({x:sp.x,y:sp.y,owner:st,lastSeen:ter.stepCount,fromX:tgtX2,fromY:tgtY2});}}
-// Naval invasion: if we're much stronger (tech advantage), try to take the coast
-// Cortez vs Aztecs, British in India, Portuguese in East Africa
-const defender=owner[targetIdx];
-const myPow=tribePower(ter,st);
-const theirPow=tribePower(ter,defender);
-const techGap=(stK.metallurgy+stK.navigation)-(ter.tribeKnowledge[defender]?ter.tribeKnowledge[defender].metallurgy+ter.tribeKnowledge[defender].navigation:0);
-// Need significant tech advantage AND military superiority to invade by sea
-if(myPow>theirPow*0.5&&techGap>0.3&&stK.navigation>0.4){
-const milB=ter.tribeBudget&&ter.tribeBudget[st]?ter.tribeBudget[st].military:0.2;
-const invadeChance=0.1*milB*techGap;// ~3% for a militant power with big tech gap
-if(Math.random()<invadeChance){
-claimTile(ter,targetIdx,st);
-if(!nf[targetIdx]){nf[targetIdx]=1;nfl.push(targetIdx);}
-// Seed colonial settlement at beachhead
-if(ter.cityPop)ter.cityPop[targetIdx]=Math.max(ter.cityPop[targetIdx],1.0);// small colonial town
-}}}
-if(owner[targetIdx]<0&&tFert[targetIdx]>0.03){
-let nw3=st;const{min:vDist2}=nearestCenterDist(tribeCenters[st],tgtX2,tgtY2,tw);
-if(vDist2>30&&Math.random()<0.3-stK.organization*0.3)nw3=newTribe(ter,tgtX2,tgtY2,st);
-else if(vDist2>20&&ter.cityPop)
-ter.cityPop[targetIdx]=Math.max(ter.cityPop[targetIdx],0.5);// seed a small colonial village
-claimTile(ter,targetIdx,nw3);if(!nf[targetIdx]){nf[targetIdx]=1;nfl.push(targetIdx);}}
-break;}}}
-// ── Sovereignty expansion: advanced tribes claim adjacent unclaimed land automatically ──
-// Modern nations claim deserts, tundra, mountains by drawing borders, not settling.
-if(ter.stepCount%4===0){
-for(let fj=0;fj<nfl.length;fj++){const fi=nfl[fj];const ow=owner[fi];if(ow<0)continue;
-const owK=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
-if(!owK||owK.organization<0.4)continue;// need meaningful organization
-const sovChance=owK.organization*0.08;// org=0.5→4%, org=0.8→6.4%, org=1.0→8%
-const ty4=Math.floor(fi/tw),tx4=fi%tw;
-for(const[dx,dy]of DIRS){const nx=((tx4+dx)%tw+tw)%tw,ny=ty4+dy;if(ny<0||ny>=th)continue;
-const ni=ny*tw+nx;if(owner[ni]>=0||tElev[ni]<=0)continue;
-if(Math.random()<sovChance){claimTile(ter,ni,ow);if(!nf[ni]){nf[ni]=1;nfl.push(ni);}break;}}}}
-// ── Migration: small nomadic tribes abandon worst tiles, push toward best direction ──
-if(ter.stepCount%8===0){
-for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=0||tribeSizes[st]>15)continue;
-const stKnow=ter.tribeKnowledge&&ter.tribeKnowledge[st]?ter.tribeKnowledge[st]:null;
-if(stKnow&&stKnow.agriculture>0.3)continue;// settled agricultural tribes don't migrate
-const stPop=ter.tribePopulation?ter.tribePopulation[st]:tribeStrength[st];
-const stCap=tribeStrength[st]*(stKnow?1+stKnow.agriculture*2.5:1);
-const pressure=stCap>0?stPop/stCap:0;
-if(pressure<0.5)continue;// not enough pressure to migrate
-// Find worst tile (lowest fertility, highest difficulty) — use tribeTiles index
-let worstTi=-1,worstScore=Infinity;
-const migTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
-if(migTiles){for(const i of migTiles){
-const sc=tFert[i]-tDiff[i]*0.5;if(sc<worstScore){worstScore=sc;worstTi=i;}}}
-else{for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;
-const sc=tFert[i]-tDiff[i]*0.5;if(sc<worstScore){worstScore=sc;worstTi=i;}}}
-if(worstTi>=0&&tribeSizes[st]>3){
-// Abandon worst tile via canonical writer (keeps tribeTiles index consistent)
-abandonTile(ter,worstTi);}}}
-ter.frontier=nf;ter.frontierList=nfl;
-// ── Age tenure + occupation cost: newly conquered tiles drain strength ──
-if(ter.stepCount%4===0){const{tenure}=ter;
-// Use frontier list for young tiles (tenure<200), skip settled interior
-// Most tiles have tenure=200 and need no update — frontier list covers active zones
-for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];if(owner[i]<0)continue;
-if(tenure[i]<200)tenure[i]++;
-if(tenure[i]<15){const drain=tFert[i]*0.015*(1-tenure[i]/15);
-tribeStrength[owner[i]]=Math.max(0.1,tribeStrength[owner[i]]-drain);}}
-// Bulk tenure aging for interior: only tiles with tenure<200 need incrementing
-// Use a lazy counter — most tiles hit 200 quickly and stop being relevant
-if(!ter._youngTiles)ter._youngTiles=[];// lazy init, populated as tiles are claimed
-const young=ter._youngTiles;let j=0;
-for(let k=0;k<young.length;k++){const i=young[k];if(owner[i]<0)continue;
-if(tenure[i]<200){tenure[i]++;young[j++]=i;
-if(tenure[i]<15){const drain=tFert[i]*0.015*(1-tenure[i]/15);
-tribeStrength[owner[i]]=Math.max(0.1,tribeStrength[owner[i]]-drain);}}}
-young.length=j;// compact: remove tiles that aged out or lost ownership
-// Add newly claimed frontier tiles to young list
-for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];if(owner[i]>=0&&tenure[i]<200)young.push(i);}}
-// ── War decider: each tribe periodically considers declaring war ──
-// Runs every 16 steps (matches _borderContacts refresh). For each tribe,
-// score every known neighbour by warDesire() and declare on the best
-// target if it exceeds the threshold. Also ends expired/exhausted wars.
-if(ter.stepCount%16===0&&ter._borderContacts){
-  const n=ter.tribeCenters.length;
-  // ── End wars first ──
-  if(ter.wars){
-    const keysToEnd=[];
-    for(const k in ter.wars){const wr=ter.wars[k];if(!wr.active)continue;
-      const ageSinceFlip=ter.stepCount-wr.lastFlip;
-      // Mutual exhaustion: no flip for 60+ steps, low residual hostility
-      if(ageSinceFlip>60){
-        const aAlive=ter.tribeSizes[wr.a]>0,bAlive=ter.tribeSizes[wr.b]>0;
-        if(!aAlive||!bAlive){keysToEnd.push([k,'conquest']);continue;}
-        const d1=warDesire(ter,wr.a,wr.b),d2=warDesire(ter,wr.b,wr.a);
-        if(d1<0.5&&d2<0.5){keysToEnd.push([k,'exhaustion']);continue;}
-      }
-      // One-sided exhaustion: defender lost >30% of starting tiles
-      const aSz=ter.tribeSizes[wr.a]||0,bSz=ter.tribeSizes[wr.b]||0;
-      if(wr.startSizeAgg>0&&wr.startSizeDef>0){
-        const aLossRatio=1-aSz/wr.startSizeAgg,bLossRatio=1-bSz/wr.startSizeDef;
-        if(bLossRatio>0.3){
-          // Defender wants peace. Aggressor accepts unless still hungry.
-          const d=warDesire(ter,wr.aggressor,wr.aggressor===wr.a?wr.b:wr.a);
-          if(d<1.2){keysToEnd.push([k,'defender-surrender']);continue;}}
-        if(aLossRatio>0.3){
-          const d=warDesire(ter,wr.aggressor===wr.a?wr.b:wr.a,wr.aggressor);
-          if(d<1.2){keysToEnd.push([k,'aggressor-surrender']);continue;}}
-      }
-    }
-    for(const[k,outcome]of keysToEnd){
-      const wr=ter.wars[k];if(!wr)continue;
-      endWar(ter,wr.a,wr.b,outcome);
-    }
-  }
-  // ── Declare new wars ──
-  // Count active wars per tribe to avoid overextension explosion
-  const activeWarsCount=new Int32Array(n);
-  if(ter.wars){for(const k in ter.wars){const wr=ter.wars[k];if(!wr.active)continue;
-    activeWarsCount[wr.a]++;activeWarsCount[wr.b]++;}}
-  for(let i=0;i<n;i++){
-    if(ter.tribeSizes[i]<8)continue;// vestigial
-    const owAge=ter.stepCount-(ter.tribeCenters[i][0]?ter.tribeCenters[i][0].founded:0);
-    if(owAge<40)continue;// establishment grace
-    if(activeWarsCount[i]>=3)continue;// already overstretched
-    // Stored military gate: a tribe with depleted standing troops can't
-    // pick new fights, even if it wants to. War costs men, and broken
-    // armies need rebuilding.
-    const readiness=militaryReadiness(ter,i);
-    if(readiness<0.35)continue;
-    const myContacts=ter._borderContacts[i];if(!myContacts)continue;
-    let bestTarget=-1,bestDesire=1.0;// must exceed 1.0 threshold to declare
-    for(const nid in myContacts){
-      const j=parseInt(nid);
-      if(j===i||ter.tribeSizes[j]<8)continue;
-      if(atWar(ter,i,j))continue;
-      const desire=warDesire(ter,i,j);
-      if(desire>bestDesire){bestDesire=desire;bestTarget=j;}
-    }
-    if(bestTarget>=0){
-      declareWar(ter,i,bestTarget,'decided');
-      // Concerted offensive — the aggressor commits military might to a
-      // single deep push toward the defender's nearest city. This is the
-      // dramatic event that makes a war declaration *visible* on the map,
-      // instead of just relabelling the existing border for slow churn.
-      launchInvasion(ter,i,bestTarget);
-    }
-  }
-  // ── Sustained offensives: active wars launch follow-up campaigns ──
-  // Every 16-step decider tick, each active war's aggressor has a chance
-  // to mount another push. Models the rhythm of historical campaigns —
-  // a war isn't constant grinding, it's seasonal offensives separated by
-  // recovery.
-  if(ter.wars){
-    for(const k in ter.wars){const wr=ter.wars[k];if(!wr||!wr.active)continue;
-      const aggressor=wr.aggressor;
-      const defender=aggressor===wr.a?wr.b:wr.a;
-      if(ter.tribeSizes[aggressor]>0&&ter.tribeSizes[defender]>0){
-        if(Math.random()<0.5)launchInvasion(ter,aggressor,defender);
-        const counterDesire=warDesire(ter,defender,aggressor);
-        if(counterDesire>0.5&&Math.random()<0.25)launchInvasion(ter,defender,aggressor);
-        // OpenFront-style attrition: both sides bleed troops at rate
-        // proportional to (troops / tiles). Dense small empires lose
-        // troops fast; wide empires lose them slowly. As a tribe
-        // shrinks under attack, density rises → bleeds faster → death
-        // spiral. This is the missing snowball mechanic that turns
-        // "I'm losing" into "I've lost."
-        const aTroops=(ter.tribeMilitary&&ter.tribeMilitary[wr.a])||0;
-        const bTroops=(ter.tribeMilitary&&ter.tribeMilitary[wr.b])||0;
-        const aSz=Math.max(1,ter.tribeSizes[wr.a]||1);
-        const bSz=Math.max(1,ter.tribeSizes[wr.b]||1);
-        spendMilitary(ter,wr.a,(aTroops/aSz)*0.4);
-        spendMilitary(ter,wr.b,(bTroops/bSz)*0.4);
-      }
-    }
-  }
-}
-// ── Siege: cities surrounded by enemy territory eventually fall ──────
-// Per-tile power calculations make city tiles essentially unconquerable
-// (defender's max strength is right at the city). Real cities fell to
-// sieges — sustained encirclement, not momentary power exchange. Each
-// city tracks a per-enemy siege counter (`ter._sieges[cityTi][enemyId]`)
-// that increments when most surrounding tiles are enemy-held. When it
-// crosses a threshold, the city falls via capitalFall — bypassing the
-// normal probability roll.
-if(ter.stepCount%4===0){
-  if(!ter._sieges)ter._sieges={};
-  const n=ter.tribeCenters.length;
-  // Build set of currently-besieged cities
-  const cityFalls=[];
-  for(let tid=0;tid<n;tid++){
-    if(tribeSizes[tid]<=0)continue;
-    const centers=ter.tribeCenters[tid];if(!centers)continue;
-    for(let ci=0;ci<centers.length;ci++){
-      const c=centers[ci];const cti=c.y*tw+c.x;
-      // Count surrounding tiles by owner within R=2 (the city's immediate hinterland)
-      const enemyCounts={};let ownTiles=0,total=0;
-      for(let dy=-2;dy<=2;dy++){
-        const ny=c.y+dy;if(ny<0||ny>=th)continue;
-        for(let dx=-2;dx<=2;dx++){
-          const nx=((c.x+dx)%tw+tw)%tw;
-          const ni=ny*tw+nx;
-          if(tElev[ni]<=sl)continue;
-          total++;
-          const o=owner[ni];
-          if(o===tid)ownTiles++;
-          else if(o>=0&&atWar(ter,tid,o))enemyCounts[o]=(enemyCounts[o]||0)+1;
-        }
-      }
-      if(total===0)continue;
-      // Find dominant enemy
-      let bestE=-1,bestC=0;
-      for(const eid in enemyCounts){if(enemyCounts[eid]>bestC){bestC=enemyCounts[eid];bestE=parseInt(eid);}}
-      // Threshold: enemy holds at least 50% of city's hinterland AND defender holds <30%
-      const enemyFrac=bestC/total,ownFrac=ownTiles/total;
-      if(!ter._sieges[cti])ter._sieges[cti]={};
-      const siege=ter._sieges[cti];
-      if(bestE>=0&&enemyFrac>0.5&&ownFrac<0.3){
-        // Siege requires troops to maintain — besieger spends 80 per tick.
-        // If besieger is too depleted, the siege stalls (counter does not
-        // advance, so the city has time to recover).
-        const besiegerTroops=(ter.tribeMilitary&&ter.tribeMilitary[bestE])||0;
-        if(besiegerTroops>=80){
-          spendMilitary(ter,bestE,80);
-          spendMilitary(ter,tid,30);// defender bleeds too from city defence
-          siege[bestE]=(siege[bestE]||0)+1;
-          // Falls after ~6 ticks of effective siege (at %4===0, so ~24 sim steps)
-          if(siege[bestE]>=6){cityFalls.push([cti,bestE,tid]);delete siege[bestE];}
-        }else{
-          // Not enough troops to sustain — siege weakens
-          siege[bestE]=Math.max(0,(siege[bestE]||0)-1);
-          if(siege[bestE]===0)delete siege[bestE];
-        }
-      }else if(siege[bestE]){
-        // Siege lifted — decay quickly
-        siege[bestE]=Math.max(0,siege[bestE]-1);
-        if(siege[bestE]===0)delete siege[bestE];
-      }
-    }
-  }
-  // Apply siege-driven city falls
-  for(const[cti,attacker,defender]of cityFalls){
-    if(owner[cti]!==defender)continue;// city already gone
-    // Direct city capture via siege
-    if(ter.bgPop&&ter.bgPop[cti]>0)ter.bgPop[cti]*=0.70;// siege starvation
-    if(ter.cityPop&&ter.cityPop[cti]>0)ter.cityPop[cti]*=0.60;
-    claimTile(ter,cti,attacker);
-    recordFlip(ter,attacker,defender,cti);
-    capitalFall(ter,cti,attacker,defender,nf,nfl);
-    if(nf&&!nf[cti]){nf[cti]=1;nfl.push(cti);}
-  }
-}
-// ── Border conflict ─────────────────────────────────────────────────
-// Wartime: each active war runs an OpenFront-style attackWave that
-// presses the attacker's border-pool against the defender, cheapest
-// tiles first, expanding as a bubble (no more thin-strand pokes).
-// Peacetime: per-tile probabilistic nibbling of weak frontier tiles
-// (unchanged from legacy — slow erosion of tendril tips etc).
-if(ter.stepCount%2===0){const _tWaveStart=performance.now();const flips=[];const{tenure}=ter;
-// ── Wartime per-pass wave attacks ──
-// Both sides attack each other in every active war. Rate: ~5 % of
-// standing army per pass, +budget military up to ~14 %, with a
-// goal-urgency multiplier that decays as wars drag on (fresh wars
-// push hardest, year-long stalemates taper).
-if(ter.wars){
-  // ── ONE-PASS BORDER WALK ──
-  // For each at-war pair, precompute the set of defender tiles adjacent
-  // to attacker tiles. Walks the global frontier list ONCE per pass
-  // instead of every wave re-scanning all of `tribeTiles[attacker]`
-  // (which was O(empire × wars) — the dominant late-game slowdown).
-  // Map key: "attackerId,defenderId" → Set<defender tile index>.
-  const warTargets=new Map();
-  const flist=ter.frontierList;
-  for(let li=0;li<flist.length;li++){
-    const fi=flist[li];const ow=owner[fi];
-    if(ow<0||tElev[fi]<=sl)continue;
-    const fy=Math.floor(fi/tw),fx=fi%tw;
-    for(const[dx,dy]of DIRS){
-      const nx=((fx+dx)%tw+tw)%tw,ny=fy+dy;
-      if(ny<0||ny>=th)continue;
-      const ni=ny*tw+nx;
-      const no=owner[ni];
-      if(no<0||no===ow||tElev[ni]<=sl)continue;
-      if(!atWar(ter,ow,no))continue;
-      const k=ow+","+no;
-      let s=warTargets.get(k);
-      if(!s){s=new Set();warTargets.set(k,s);}
-      s.add(ni);
-    }
-  }
-  for(const wkey in ter.wars){
-    const wr=ter.wars[wkey];if(!wr||!wr.active)continue;
-    if(tribeSizes[wr.a]<=0||tribeSizes[wr.b]<=0)continue;
-    const age=ter.stepCount-(wr.declared||ter.stepCount);
-    const goalMul=age<200?1.3:age<800?1.0:0.6;
-    const budA=ter.tribeBudget&&ter.tribeBudget[wr.a]?ter.tribeBudget[wr.a].military:0.2;
-    const budB=ter.tribeBudget&&ter.tribeBudget[wr.b]?ter.tribeBudget[wr.b].military:0.2;
-    const standingA=(ter.tribeMilitary&&ter.tribeMilitary[wr.a])||0;
-    const standingB=(ter.tribeMilitary&&ter.tribeMilitary[wr.b])||0;
-    // Per-pass spend: 35 % base + up to 30 % from militancy budget.
-    // Tuned so a 30-troop army can crack ≥1 cheap frontier tile per pass
-    // (previous 0.15+0.20 produced single-pixel-or-nothing because force
-    //  ~7 was less than the minimum tile cost ~12).
-    // Balanced tribe spends ~41 %; militant ~65 %; fresh war ×1.3.
-    // Troop drain via spendMilitary(spent×0.7) inside the wave keeps wars
-    // self-limiting — the more you push, the faster you burn out.
-    const forceA=standingA*(0.35+budA*0.30)*goalMul;
-    const forceB=standingB*(0.35+budB*0.30)*goalMul;
-    let capA=null,capB=null;
-    // Skip waves with negligible force — saves wave call overhead at
-    // scale (drained tribes generate dozens of zero-capture waves/pass).
-    const initialA=warTargets.get(wr.a+","+wr.b);
-    const initialB=warTargets.get(wr.b+","+wr.a);
-    // Per-war focal points: a moving list of where this attacker has
-    // captured recently. The wave biases cost toward tiles near these
-    // focal points so each pass pushes the front forward from where the
-    // last one ended, instead of cherry-picking the cheapest tile from
-    // anywhere on the border (which produced the "weird surround" and
-    // scattered-capture patterns).
-    if(!ter._warFocus)ter._warFocus={};
-    const focusKeyA=wr.a+">"+wr.b,focusKeyB=wr.b+">"+wr.a;
-    const focusA=ter._warFocus[focusKeyA]||null;
-    const focusB=ter._warFocus[focusKeyB]||null;
-    if(forceA>=5&&initialA)capA=attackWave(ter,wr.a,wr.b,forceA,initialA,focusA);
-    if(forceB>=5&&initialB)capB=attackWave(ter,wr.b,wr.a,forceB,initialB,focusB);
-    // Update focus lists with the new captures (ring buffer of 6).
-    if(capA&&capA.length){
-      const f=ter._warFocus[focusKeyA]||(ter._warFocus[focusKeyA]=[]);
-      for(const ti of capA){f.push(ti);if(f.length>6)f.shift();}
-    }
-    if(capB&&capB.length){
-      const f=ter._warFocus[focusKeyB]||(ter._warFocus[focusKeyB]=[]);
-      for(const ti of capB){f.push(ti);if(f.length>6)f.shift();}
-    }
-    // Toggle ter._waveDebug=true in console / tests to log per-wave activity.
-    if(ter._waveDebug&&((capA&&capA.length)||(capB&&capB.length))){
-      console.log(`[wave ${ter.stepCount}] ${wr.a}↔${wr.b} | A std=${standingA.toFixed(0)} f=${forceA.toFixed(0)} caps=${capA?capA.length:0} | B std=${standingB.toFixed(0)} f=${forceB.toFixed(0)} caps=${capB?capB.length:0}`);
-    }
-  }
-}
-for(let fj=0;fj<nfl.length;fj++){const i=nfl[fj];const ow=owner[i];if(ow<0||tElev[i]<=sl||tribeSizes[ow]<1)continue;
-// New tribes get 80 steps of protection from border conflict (establishment period)
-const owAge=ter.stepCount-(tribeCenters[ow][0]?tribeCenters[ow][0].founded:0);
-if(owAge<40)continue;// can't lose tiles while establishing
-const ty2=Math.floor(i/tw),tx2=i%tw;
-// Quick border check: skip interior tiles with no enemy neighbors
-let hasEnemy=false;
-for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-const no=owner[ni];if(no>=0&&no!==ow&&tElev[ni]>sl&&tribeSizes[no]>=16){hasEnemy=true;break;}}
-if(!hasEnemy)continue;
-const lpA=localPower(ter,ow,tx2,ty2);// only computed for border tiles
-// Defender advantage: 3x base + tenure + terrain + construction knowledge
-const defConst=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow].construction:0;
-const defMilB=ter.tribeBudget&&ter.tribeBudget[ow]?ter.tribeBudget[ow].military:0.2;
-// Defender bonus stack — tuned so totalDef lands ~2-4 for typical settled tiles
-// instead of 8-12. Mountain fortresses still defend well via terrain cap.
-let def=1.0+Math.min(0.8,tenure[i]*0.005)+Math.min(2.0,tDiff[i]*tDiff[i]*8)+defConst*1.5+defMilB*1.5;
-for(const[dx,dy]of DIRS){const nx2=((tx2+dx)%tw+tw)%tw,ny2=ty2+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-const no=owner[ni];if(no<0||no===ow||tElev[ni]<=sl||tribeSizes[no]<16)continue;
-// Wartime tiles are handled by the wave above — skip per-tile rolls.
-// This block only does peacetime nibbling on weak frontier tiles.
-if(atWar(ter,no,ow))continue;
-// Avoid attacking tribes that are much larger (>3x your size)
-const atkSz=tribeSizes[no],defSz=tribeSizes[ow];
-if(defSz>0&&atkSz>0&&defSz/atkSz>3)continue;// don't poke the giant
-// Small tribes are less aggressive; large tribes more so
-const atkMilB=ter.tribeBudget&&ter.tribeBudget[no]?ter.tribeBudget[no].military:0.2;
-// Stagnation pressure: tribes that haven't grown in 200+ steps get restless
-// and push harder on neighbours (caps at +1.0 after 500 steps of no growth)
-const lastG=ter.tribeLastGrowth&&ter.tribeLastGrowth[no]!=null?ter.tribeLastGrowth[no]:ter.stepCount;
-const stagBonus=1+Math.min(1.0,Math.max(0,ter.stepCount-lastG-200)/300);
-const atkAggression=(atkSz<25?0.4:atkSz>80?1.5:1.0)*(0.5+atkMilB*2.5)*stagBonus;
-// River between attacker and defender tiles: additional crossing penalty
-const lpB=localPower(ter,no,tx2,ty2);// attacker's projected power at this tile
-// Tech-gap defence penalty: when the attacker is multiple eras ahead,
-// the defender's terrain/construction/militancy bonuses just don't
-// matter as much. Roman walls vs Mongol siege, Aztec spears vs
-// Spanish steel. Cap the reduction so defenders aren't *zero* def.
-let totalDef=def;
-const aK=ter.tribeKnowledge&&ter.tribeKnowledge[no]?ter.tribeKnowledge[no]:null;
-const dK=ter.tribeKnowledge&&ter.tribeKnowledge[ow]?ter.tribeKnowledge[ow]:null;
-if(aK&&dK){
-  const metGap=(aK.metallurgy||0)-(dK.metallurgy||0);
-  if(metGap>0.2)totalDef*=Math.max(0.25,1-metGap*1.1);
-  const milGap=(aK.military||0)-(dK.military||0);
-  if(milGap>0.2)totalDef*=Math.max(0.4,1-milGap*0.8);
-  // Cavalry vs no-cavalry: defender's bonuses get partially bypassed
-  const aHorses=ter._resCache&&ter._resCache[no]?(ter._resCache[no].horses||0):0;
-  const dHorses=ter._resCache&&ter._resCache[ow]?(ter._resCache[ow].horses||0):0;
-  if(aHorses>1&&dHorses<0.5)totalDef*=0.7;
-}
-// Recently flipped tiles can't flip again — prevents ping-pong. Wartime
-// flips get a longer protection window (the new owner garrisons the tile
-// and the defender can't immediately retake it).
-const tProt=atWar(ter,no,ow)?12:5;
-if(tenure[i]<tProt)continue;
-// Probabilistic flip: ratio of attacker:defender drives chance, no hard gate.
-// At ratio=1.0 (parity) → small flip chance; ratio>>1 → near-certain attempt.
-// Below 0.5 ratio the attempt is hopeless (no roll). This lets close
-// matched fights actually decide territory instead of permanent stalemate.
-// Gate lowered from 0.35 → 0.20 because campaign momentum (which lifted
-// the attacker's effective lpB up to 2.2× at active breaches) was
-// retired with the wave model. Without that boost, parity ratios sat
-// around 0.33 and the old 0.35 gate silenced peacetime borders entirely.
-const ratio=lpB/Math.max(0.001,lpA*totalDef);
-if(ratio>0.20){const diff=Math.max(tDiff[i],tDiff[ni]);
-const pressure=Math.min(1.2,Math.max(0,ratio-0.20))*0.4*atkAggression;
-const prize=(0.5+tFert[i]*1.5)*(atkSz>60?1+Math.min(0.5,(atkSz-60)*0.005):1);
-// Peacetime gating: most borders sit quiet, but individual *weak* tiles
-// (tendril tips, isolated outposts, depopulated frontier scraps) are
-// opportunistically nibbled even without a war declared. This is what
-// stops long tendrils — they're paper claims, and neighbours pick them
-// off whenever they're adjacent. A formal war still amplifies everything,
-// but tile-level weakness now matters in its own right.
-const isWar=atWar(ter,no,ow);
-let peaceMult;
-if(isWar){peaceMult=1.0;}
-else{
-  // Weak tiles (weakness ~1) reach ~0.85 of wartime; strong embedded
-  // tiles (weakness ~0) stay at 0.05 — most peacetime borders quiet.
-  const tw_=tileWeakness(ter,i,ow);
-  peaceMult=0.05+tw_*0.85;
-}
-let flipP=Math.max(0.003,pressure*prize*(1-diff*0.7))*peaceMult;
-if(Math.random()<flipP){flips.push([i,no]);break;}
-if(ratio<1.0&&Math.random()<0.1){
-// Failed/abortive attack still costs the attacker some strength
-const attemptCost=tFert[i]*0.04*atkAggression;
-tribeStrength[no]=Math.max(0.1,tribeStrength[no]-attemptCost);}}}}
-// Apply flips with attack cost
-// Track recent conflicts for relationship display
-if(!ter._recentConflicts)ter._recentConflicts={};
-for(const[ti,to]of flips){if(owner[ti]===to)continue;
-const from=owner[ti];// who lost the tile
-if(from>=0){const key=Math.min(from,to)+','+Math.max(from,to);
-ter._recentConflicts[key]=ter.stepCount;}// record latest conflict step
-const attackCost=tFert[ti]*0.3;
-tribeStrength[to]=Math.max(0.1,tribeStrength[to]-attackCost);
-// Military deduction with tech-disparity asymmetry. Tech-advantaged
-// attackers spend FEWER troops per flip AND inflict MORE losses on
-// the defender — both sides of the loss equation move, which is what
-// produces real curb-stomp dynamics (gunpowder vs spears, conquistadors
-// vs Aztecs). techGap > 0 means attacker is more advanced.
-let atkCost=60,defCost=30;
-if(from>=0){
-  const aK=ter.tribeKnowledge&&ter.tribeKnowledge[to]?ter.tribeKnowledge[to]:null;
-  const dK=ter.tribeKnowledge&&ter.tribeKnowledge[from]?ter.tribeKnowledge[from]:null;
-  if(aK&&dK){
-    const metGap=(aK.metallurgy||0)-(dK.metallurgy||0);
-    const milGap=(aK.military||0)-(dK.military||0);
-    const techGap=metGap+milGap*0.7;
-    if(techGap>0.15){
-      const k=Math.min(2.5,1+techGap*1.8);
-      atkCost=atkCost/k;       // attacker spends k× fewer troops
-      defCost=defCost*k;        // defender loses k× more troops
-    }
-  }
-}
-spendMilitary(ter,to,atkCost);
-if(from>=0)spendMilitary(ter,from,defCost);
-// Check if this tile was one of the defender's cities BEFORE we claim it
-const wasCity=from>=0&&isCityTile(ter,from,ti);
-claimTile(ter,ti,to);if(!nf[ti]){nf[ti]=1;nfl.push(ti);}
-// Record in war state (auto-declares if not already at war). The wave
-// model is the wartime mechanism; this only runs here for peacetime
-// nibbles that find a weak tile, which auto-declare on first contact.
-if(from>=0)recordFlip(ter,to,from,ti);
-// Capital fall: if the flipped tile was a city, transfer it as a center
-// and cascade the surrounding region (tiles administered from that city)
-if(wasCity&&from>=0){capitalFall(ter,ti,to,from,nf,nfl);}}
-if(!ter._dbgPhase)ter._dbgPhase={};
-ter._dbgPhase.wave=performance.now()-_tWaveStart;}
-// ── City-based cohesion challenge: when a secondary city outgrows the capital ──
-// Centers are derived from cityPop in stepBackgroundPop. Here we check if a
-// rival city challenges the capital — potentially splitting the empire.
-// Staggered +24 from transport
-if(ter.stepCount%32===24){for(let st=0;st<tribeSizes.length;st++){
-const centers=tribeCenters[st];if(!centers||centers.length<2||tribeSizes[st]<40)continue;
-// Skip if tribe is in post-conquest fragmentation immunity window
-if(ter.tribeProtectFragUntil&&ter.tribeProtectFragUntil[st]>ter.stepCount)continue;
-// Capital = centers[0] (largest city). Check if any secondary rivals it.
-const capTi=centers[0].y*tw+centers[0].x;
-const capCity=ter.cityPop?ter.cityPop[capTi]:0;
-for(let c=1;c<centers.length;c++){
-const secTi=centers[c].y*tw+centers[c].x;
-const secCity=ter.cityPop?ter.cityPop[secTi]:0;
-if(secCity<=capCity*1.3)continue;// secondary must significantly exceed capital
-// Cohesion check: terrain difficulty between the two cities
-const dx=centers[c].x-centers[0].x,dy=centers[c].y-centers[0].y;
-const steps=Math.max(4,Math.floor(Math.sqrt(dx*dx+dy*dy)/2));
-let diffSum=0;for(let s=0;s<=steps;s++){const sx=((Math.round(centers[0].x+dx*s/steps)%tw)+tw)%tw;
-const sy=Math.round(centers[0].y+dy*s/steps);if(sy>=0&&sy<th)diffSum+=tDiff[sy*tw+sx];}
-const avgDiff=diffSum/steps;const dist=tDistW(centers[0].x,centers[0].y,centers[c].x,centers[c].y,tw);
-const orgCoh=ter.tribeKnowledge[st]?ter.tribeKnowledge[st].organization:0;
-const cohesion=1/(1+dist*0.05+avgDiff*avgDiff*15-orgCoh*0.3);
-if(cohesion>0.4)continue;// cohesive enough — no split
-// Low cohesion + rival city → split
-let aliveT=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)aliveT++;
-if(aliveT>=80)break;
-const sc=centers[c];const sid=newTribe(ter,sc.x,sc.y,st);
-const cohTiles=ter.tribeTiles&&ter.tribeTiles[st]?[...ter.tribeTiles[st]]:null;
-const cohSource=cohTiles||{[Symbol.iterator]:function*(){for(let i=0;i<tw*th;i++)if(owner[i]===st)yield i;}};
-const toXfer=[];
-for(const i of cohSource){const iy=Math.floor(i/tw),ix=i%tw;
-const dSec=tDistW(ix,iy,sc.x,sc.y,tw);
-let dNearest=Infinity;for(const rc of centers){if(rc===sc)continue;dNearest=Math.min(dNearest,tDistW(ix,iy,rc.x,rc.y,tw));}
-if(dSec<dNearest)toXfer.push(i);}
-for(const ti of toXfer)transferTile(ter,ti,sid);
-break;}}}
-// ── Terrain-based fragmentation: large tribes in rough terrain tend to split ──
-// Staggered +8 from cohesion check
-if(ter.stepCount%32===0){
-for(let st=0;st<tribeSizes.length;st++){
-if(tribeSizes[st]<=40)continue;
-// Skip if tribe is in post-conquest fragmentation immunity window
-if(ter.tribeProtectFragUntil&&ter.tribeProtectFragUntil[st]>ter.stepCount)continue;
-const stK=ter.tribeKnowledge[st];const stOrg=stK?stK.organization:0;
-const stTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
-let totalDiff2=0,tileCount2=0;
-if(stTiles){for(const i of stTiles){totalDiff2+=tDiff[i];tileCount2++;}}
-else{for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;totalDiff2+=tDiff[i];tileCount2++;}}
-if(tileCount2<20)continue;
-const avgTribeDiff=totalDiff2/tileCount2;
-// Split pressure: high for mountainous (Europe), near-zero for flat (Russia)
-const splitPressure=avgTribeDiff*avgTribeDiff*0.3-stOrg*0.05;
-if(splitPressure>0&&Math.random()<splitPressure){
-const cap=tribeCenters[st]&&tribeCenters[st][0];
-if(!cap)continue;// tribe lost all cities to conquest — skip frag
-let worstTi=-1,worstScore=-1;
-if(stTiles){for(const i of stTiles){
-const ix=i%tw,iy=(i-ix)/tw;
-const score=tDistW(ix,iy,cap.x,cap.y,tw)*tDiff[i];
-if(score>worstScore){worstScore=score;worstTi=i;}}}
-else{for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;
-const ix=i%tw,iy=(i-ix)/tw;
-const score=tDistW(ix,iy,cap.x,cap.y,tw)*tDiff[i];
-if(score>worstScore){worstScore=score;worstTi=i;}}}
-if(worstTi>=0){const wx=worstTi%tw,wy=(worstTi-wx)/tw;
-let aliveT=0;for(let tt=0;tt<tribeSizes.length;tt++)if(tribeSizes[tt]>0)aliveT++;
-if(aliveT<80){const sid=newTribe(ter,wx,wy,st);
-const toTransfer=[];
-if(stTiles){for(const i of stTiles){
-const ix2=i%tw,iy2=(i-ix2)/tw;
-if(tDistW(ix2,iy2,wx,wy,tw)<tDistW(ix2,iy2,cap.x,cap.y,tw))toTransfer.push(i);}}
-else{for(let i=0;i<tw*th;i++){if(owner[i]!==st)continue;
-const ix2=i%tw,iy2=(i-ix2)/tw;
-if(tDistW(ix2,iy2,wx,wy,tw)<tDistW(ix2,iy2,cap.x,cap.y,tw))toTransfer.push(i);}}
-for(const ti of toTransfer)transferTile(ter,ti,sid);}}}}
-}
-// ── Encirclement: DISABLED ──
-// User request: remove all automatic capture logic. Cut-off pockets
-// must be captured through the wave like any other tile. Leaving the
-// function in place but never calling it (keeps capitalFall etc. happy).
-// if(ter.stepCount%8===0){checkEncirclement(ter);}
-// ── Fragmentation: split disconnected tribe components (largest keeps original ID/color) ──
-if(ter.stepCount%16===0){if(!ter._fragMark)ter._fragMark=new Int32Array(tw*th);const mark=ter._fragMark;let gen=ter._fragGen||0;
-for(let st=0;st<tribeSizes.length;st++){if(tribeSizes[st]<=1)continue;
-const baseGen=gen;const comps=[];
-// Use tribeTiles index to iterate only over this tribe's tiles (not full grid)
-const stTiles=ter.tribeTiles&&ter.tribeTiles[st]?ter.tribeTiles[st]:null;
-const tileSource=stTiles?stTiles:null;
-if(tileSource){for(const i of tileSource){if(mark[i]>baseGen)continue;gen++;
-const stack=[i];mark[i]=gen;const comp=[];
-while(stack.length>0){const ci=stack.pop();comp.push(ci);const cy=Math.floor(ci/tw),cx=ci%tw;
-for(const[dx,dy]of DIRS){const nx2=((cx+dx)%tw+tw)%tw,ny2=cy+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-if(mark[ni]<=baseGen&&owner[ni]===st){mark[ni]=gen;stack.push(ni);}}}
-comps.push(comp);}}
-else{for(let i=0;i<tw*th;i++){if(owner[i]!==st||mark[i]>baseGen)continue;gen++;
-const stack=[i];mark[i]=gen;const comp=[];
-while(stack.length>0){const ci=stack.pop();comp.push(ci);const cy=Math.floor(ci/tw),cx=ci%tw;
-for(const[dx,dy]of DIRS){const nx2=((cx+dx)%tw+tw)%tw,ny2=cy+dy;if(ny2<0||ny2>=th)continue;const ni=ny2*tw+nx2;
-if(mark[ni]<=baseGen&&owner[ni]===st){mark[ni]=gen;stack.push(ni);}}}
-comps.push(comp);}}
-if(comps.length<=1)continue;
-comps.sort((a,b)=>b.length-a.length);
-for(let c=1;c<comps.length;c++){const sid=newTribe(ter,comps[c][0]%tw,Math.floor(comps[c][0]/tw),st);
-for(const ci of comps[c])transferTile(ter,ci,sid);}}ter._fragGen=gen;}
-// ── Tiered absorption: DISABLED ──
-// User request: remove all automatic capture logic. Vestigial / enclosed
-// tribes must be conquered through the wave like any other tile. The
-// only way a tribe loses territory is via combat; the only way it dies
-// is when its last tile falls.
-ter._dbgTimeExpansion=(performance.now()-_tExpStart).toFixed(1);
-const _stepTotal=performance.now()-_stepT0;
-if(_stepTotal>50){// log any step that takes >50ms with timing breakdown
-const t=ter._dbgPhase||{};
-console.warn(`[SLOW ${ter.stepCount}] ${_stepTotal.toFixed(0)}ms | expand:${ter._dbgTimeExpansion} bgPop:${ter._dbgTimeBgPop||0} rest:${ter._dbgTimeRest||0} wave:${(t.wave||0).toFixed(1)} peace:${(t.peace||0).toFixed(1)} siege:${(t.siege||0).toFixed(1)} frag:${(t.frag||0).toFixed(1)} | frontier:${nfl.length} tribes:${tribeSizes.filter(s=>s>0).length} wars:${ter.wars?Object.keys(ter.wars).length:0}`);}
-else if(_stepTotal>5){console.warn(`[SLOW step ${ter.stepCount}] ${_stepTotal.toFixed(1)}ms frontier:${nfl.length} tribes:${tribeSizes.filter(s=>s>0).length} settled:${ter.settled}`);}
-return ter;}
-
 // ── Non-linear time: starts at 2000 BC, accelerates into modernity ──
 // The peopleSim step is far finer-grained than the legacy tribe sim this
 // curve was first written for, so steps are mapped onto the original
@@ -3816,6 +928,82 @@ function fmtGold(g){
   return g.toFixed(0);
 }
 
+// ── Display units (peopleSim) ───────────────────────────────────────
+// The sim runs on compact internal units; these scale them to realistic,
+// human-readable figures at the DISPLAY layer ONLY — the simulation math is
+// untouched. One sim-"person" ≈ POP_SCALE real people (the map labels already
+// assumed this convention); food is shown as a mass of grain; wealth as a mass
+// of gold. Tweak these three to taste.
+const POP_SCALE        = 1000;   // sim pop → people: metropolis ~3.4M, city ~1.2M, town ~250k, village ~25k
+const FOOD_KG_PER_UNIT = 1000;   // one sim food unit → kg of grain (1 unit = 1 tonne)
+const GOLD_G_PER_COIN  = 8;      // one sim coin → grams of gold (a gold ducat ≈ 3.5g; 8g keeps treasuries legible)
+const HISTORY_INTERVAL = 100;    // sim steps between History-chart samples
+
+// Compact number: 1234 → "1.2k", 3_400_000 → "3.4M", 2.1e9 → "2.1B".
+function fmtNum(n){
+  const s=n<0?"-":""; const a=Math.abs(n);
+  if(a>=1e9)return s+(a/1e9).toFixed(1)+"B";
+  if(a>=1e6)return s+(a/1e6).toFixed(a>=1e7?0:1)+"M";
+  if(a>=1e3)return s+(a/1e3).toFixed(a>=1e4?0:1)+"k";
+  return s+Math.round(a).toString();
+}
+// Mass in kilograms → grams / kg / tonnes / kilotonnes.
+function fmtMass(kg){
+  const s=kg<0?"-":""; const a=Math.abs(kg);
+  if(a>=1e6)return s+(a/1e6).toFixed(1)+" kt";
+  if(a>=1e3)return s+(a/1e3).toFixed(a>=1e4?0:1)+" t";
+  if(a>=1)return s+(a>=100?Math.round(a):a.toFixed(1))+" kg";
+  return s+Math.round(a*1000)+" g";
+}
+// People — scale sim population to real people.
+function fmtPeople(p){ return fmtNum((p||0)*POP_SCALE); }
+// Food (grain) shown as a mass.
+function fmtFood(simFood){ return fmtMass((simFood||0)*FOOD_KG_PER_UNIT); }
+// Wealth shown as a mass of gold.
+function fmtGoldKg(simCoin){ return fmtMass((simCoin||0)*GOLD_G_PER_COIN/1000); }
+
+// ── History charts ──────────────────────────────────────────────────
+// One metric over sim-steps as a small SVG line chart (the History panel).
+function MiniChart({data,get,label,color,fmtY}){
+  const W=300,H=54,padL=3,padR=3,padT=2,padB=8;
+  if(!data||data.length<2)
+    return <div style={{padding:"5px 10px"}}><div className="au-sc au-fade" style={{fontSize:9}}>{label}</div><div className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>gathering data…</div></div>;
+  let yMin=Infinity,yMax=-Infinity;
+  for(const d of data){const v=get(d);if(v<yMin)yMin=v;if(v>yMax)yMax=v;}
+  if(!(yMax>yMin))yMax=yMin+1;
+  const x0=data[0].step,x1=data[data.length-1].step,dx=Math.max(1,x1-x0);
+  const sx=v=>padL+(W-padL-padR)*((v-x0)/dx);
+  const sy=v=>padT+(H-padT-padB)*(1-(v-yMin)/(yMax-yMin));
+  let pts="";
+  for(const d of data)pts+=sx(d.step).toFixed(1)+","+sy(get(d)).toFixed(1)+" ";
+  const cur=get(data[data.length-1]);
+  return(
+    <div style={{padding:"3px 10px 6px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
+        <span className="au-sc au-fade" style={{fontSize:9}}>{label}</span>
+        <span style={{fontSize:11,fontWeight:600,color}}>{fmtY(cur)}</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{width:"100%",height:H,display:"block"}}>
+        <polyline points={pts.trim()} fill="none" stroke={color} strokeWidth={1.3} vectorEffect="non-scaling-stroke"/>
+      </svg>
+      <div style={{display:"flex",justifyContent:"space-between"}}>
+        <span className="au-fade" style={{fontSize:8}}>{fmtY(yMin)}</span>
+        <span className="au-fade" style={{fontSize:8}}>peak {fmtY(yMax)}</span>
+      </div>
+    </div>);
+}
+// Copyable markdown rundown of the run so far (downsampled to ~40 rows).
+function buildHistoryExport(H){
+  if(!H||!H.length)return "No history yet — let the simulation run for a while, then copy again.";
+  const N=H.length,stride=Math.max(1,Math.ceil(N/40)),rows=[];
+  for(let i=0;i<N;i+=stride)rows.push(H[i]);
+  if(rows[rows.length-1]!==H[N-1])rows.push(H[N-1]);
+  const head="| step | population | gold | land % | countries | settlements | villages | towns | cities | metros | largest empire (tiles) | army |";
+  const sep ="|---|---|---|---|---|---|---|---|---|---|---|---|";
+  const body=rows.map(r=>`| ${r.step} | ${fmtPeople(r.pop)} | ${fmtGoldKg(r.gold)} | ${(r.landPct*100).toFixed(0)}% | ${r.countries} | ${r.sett} | ${r.villages} | ${r.towns} | ${r.cities} | ${r.metros} | ${r.largest} | ${fmtPeople(r.army)} |`).join("\n");
+  return `Simman — global stats over time (display units: 1 sim-person = ${POP_SCALE} people; gold by weight; land % of all land)\n\n${head}\n${sep}\n${body}`;
+}
+
 // ── Hexagonal knowledge radar (SVG) ──
 function KnowledgeRadar({k,size=140}){
   if(!k)return null;
@@ -3879,7 +1067,7 @@ function PsSection({ id, title, right, open, onToggle, children }) {
 
 // ── SINGLE CANVAS: terrain + overlay composited together ──
 export default function WorldSim(){
-const canvasRef=useRef(null);const glCanvasRef=useRef(null);const glStateRef=useRef(null);
+const canvasRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
@@ -3887,39 +1075,29 @@ const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState
 // Transport-test mode state. Each click in this view places a capital;
 // the BFS re-runs whenever params or capitals change.
 const[ttCapitals,setTtCapitals]=useState([]);
-// Transport-test mode state. Tech-driven model: instead of dialing
-// raw transport costs, you dial the tribe's technological capabilities
-// and the cost values are derived. Each tech maps to specific cost
-// reductions:
-//   metallurgy   → roads, rail (cuts plain + harsh land costs)
-//   naval        → seaworthy ships (cuts water cost, enables sea travel)
-//   construction → ports, bridges, docks (cuts port + coast + river)
-//   organization → administrative reach (raises tileLimit)
-const[ttTech,setTtTech]=useState({
-  metallurgy: 0.3,
-  naval: 0.4,
-  construction: 0.3,
-  organization: 0.4,
-  tileLimit: 5000,
+// Transport-test cost model — RAW per-terrain / per-mode travel costs, dialed
+// DIRECTLY. This view exposes the EXACT cost of each tile/terrain type and of
+// the mode changes, instead of abstract tech points:
+//   plain    flat land, per tile
+//   rough    rough-terrain coefficient (× slope-variance²)
+//   mountain elevation penalty coefficient (above e=0.25)
+//   slope    per-step climb penalty coefficient
+//   river    moving ALONG a river (mag≥4; mag-3 ×1.3, mag-2 ×2)
+//   coast    hugging a coastline
+//   water    crossing open SEA, per tile ("sea passable" off ⇒ impassable)
+//   port     MODE CHANGE — the tax to step on/off water, or land↔river
+const[ttCost,setTtCost]=useState({
+  tileLimit:6000, plain:0.95, rough:14, mountain:6, slope:8,
+  river:0.35, coast:0.5, water:3.5, port:5, seaPassable:true,
 });
-// Derive raw cost params from tech levels. This is what the BFS uses.
-function deriveTransportParams(tech){
-  const{metallurgy:m,naval:nv,construction:cn,organization:og,tileLimit}=tech;
-  return{
-    tileLimit,
-    plain: Math.max(0.25, 1.1 - m*0.55 - cn*0.1),       // 1.1 → ~0.45
-    harsh: Math.max(4, 24 - m*14 - cn*3),                // 24 → 7
-    river: Math.max(0.12, 0.45 - cn*0.25),               // 0.45 → 0.20
-    coast: Math.max(0.18, 0.85 - cn*0.35 - nv*0.25),     // 0.85 → 0.25
-    water: nv<0.05 ? 999 : Math.max(0.35, 1.8/(0.3+nv*1.5)),
-    nav: nv,
-    port: Math.max(0.4, 9 - cn*7),                       // 9 → 2
-    // elev/slope/noise removed per request — set to 0 so the surviving
-    // code paths contribute nothing (will tidy fully in a later pass).
-    elev: 0, slope: 0, noise: 0,
-  };
-}
-const ttParams=deriveTransportParams(ttTech);
+// The BFS reads these raw costs straight (no tech derivation). nav is just the
+// on/off switch for sea travel; water carries the actual per-tile sea cost.
+const ttParams={
+  tileLimit:ttCost.tileLimit, plain:ttCost.plain, harsh:ttCost.rough,
+  elev:ttCost.mountain, slope:ttCost.slope, river:ttCost.river, coast:ttCost.coast,
+  water:ttCost.seaPassable?ttCost.water:999, nav:ttCost.seaPassable?1:0,
+  port:ttCost.port, noise:0,
+};
 const ttResultRef=useRef(null);
 const ttCapitalsRef=useRef([]);
 // Sub-mode: "capitals" places tribe seeds and runs claim BFS;
@@ -3934,7 +1112,7 @@ useEffect(()=>{ttCapitalsRef.current=ttCapitals;
     if(terRef.current)draw(terRef.current);return;}
   ttResultRef.current=runTransportTest(terRef.current,ttCapitals,ttParams);
   draw(terRef.current);
-},[ttCapitals,ttTech,viewMode]);
+},[ttCapitals,ttCost,viewMode]);
 const[oceanLevel,setOceanLevel]=useState(0.78);
 const[depthFromSea,setDepthFromSea]=useState(false);
 const[depthCeil,setDepthCeil]=useState(1.0);
@@ -4056,6 +1234,12 @@ const peopleRef=useRef(null);
 const simWorkerRef=useRef(null);
 const applySnapshotRef=useRef(null);
 const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
+// Time-series of global metrics for the History charts + copyable export. Kept
+// in a ref (no re-render on every sample); the charts read it on the regular
+// psStats-driven re-render. Sampled every HISTORY_INTERVAL sim steps.
+const psHistoryRef=useRef([]);
+const [chartsOpen,setChartsOpen]=useState(false);
+const [statsCopied,setStatsCopied]=useState(false);
 const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
 const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
 const useRealWindRef=useRef(false);
@@ -4079,7 +1263,6 @@ const baseLayerKey=useRef(null);
 const imgRef=useRef(null);
 // Wind particle animation state
 const windParticlesRef=useRef(null);
-const windAnimRef=useRef(null);
 const W=1920,H=960,CW=CW_FLAT;
 const workerRef=useRef(null);
 // Helper: finalize a generated world (shared by worker + main thread paths)
@@ -4535,7 +1718,7 @@ return octx.getImageData(0,0,CW,CH);
 // Composite render: terrain + tribe overlay into single canvas
 const draw=useCallback((ter)=>{
 if(!ter)return;const w=worldRef.current;if(!w)return;
-if(typeof window!=='undefined'){window.__ter=ter;window.__world=w;}
+if(import.meta.env.DEV&&typeof window!=='undefined'){window.__ter=ter;window.__world=w;}
 const sl=0,vm=viewRef.current;
 const isGlobe=showGlobeRef.current;
 // Use onscreen canvas if available, otherwise create offscreen for globe
@@ -4560,9 +1743,6 @@ if(!imgRef.current)imgRef.current=new ImageData(CW,CH);
 const img=imgRef.current;const d=img.data;
 // Lake lookup for rendering
 const lk=ter.rivers&&ter.rivers.lake?ter.rivers.lake:null;
-// Pre-cache tribe colors (avoids HSL→RGB trig per tile)
-const maxT=ter.tribeCenters.length;const tcR=new Uint8Array(maxT),tcG=new Uint8Array(maxT),tcB=new Uint8Array(maxT);
-for(let t2=0;t2<maxT;t2++){const c=tribeRGB(t2);tcR[t2]=c[0];tcG[t2]=c[1];tcB[t2]=c[2];}
 const N=CW*CH;
 // Static-base cache: blit the cached terrain raster instead of rebuilding it
 // per-pixel when nothing affecting it changed.
@@ -5082,9 +2262,8 @@ else if(k.metallurgy>0.3)era="Bronze";
 else if(k.metallurgy>0.15)era="Copper";
 else if(k.agriculture>0.3)era="Farming";
 else if(k.agriculture>0.1)era="Neolithic";}
-// Format population nicely
-// Pop is in thousands. Display as "800k" or "1.2M" or "12M"
-const popStr=pop>=10000?(pop/1000).toFixed(1)+'M':pop>=1000?(pop/1000|0)+'M':pop>=1?pop.toFixed(0)+'k':'<1k';
+// Population label, scaled to real people (see fmtPeople / POP_SCALE).
+const popStr=fmtPeople(pop);
 // Two-line label: era + personality | pop + tiles
 const pers=ter.tribeBudget&&ter.tribeBudget[st]?ter.tribeBudget[st].personality:"";
 const line1=pers?`${era} ${pers}`:era;
@@ -5399,12 +2578,34 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
       octx.clearRect(0,0,CW,CH);
-      const owner=psw._territoryOwner;
-      if((L.tints||L.borders)&&owner){
+      // National territory tints + dotted borders. Prefer the SMOOTH national
+      // CLAIM (countryId per tile, peopleSim/countryClaim.js) — country-centric
+      // borders that follow terrain and enclose frontier hinterland; fall back
+      // to the per-settlement owner map only until the first claim arrives.
+      const owner=psw._territoryOwner, claimArr=psw._countryClaim;
+      if((L.tints||L.borders)&&claimArr){
+        const tw=psw.tw,th=psw.th,tintByCountry=new Map();
+        if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
+        let lastFs=null;
+        for(let ti=0;ti<claimArr.length;ti++){
+          const cc=claimArr[ti];if(cc<0)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          if(L.tints){
+            let fs=tintByCountry.get(cc);
+            if(fs===undefined){const h=((cc*61)%360+360)%360;fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
+            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+            octx.fillRect(sx,sy,TR,TR);
+          }
+          if(!L.borders)continue;
+          const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
+          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(py<th-1){const dno=claimArr[ti+tw];
+            if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+        }
+        if(L.borders){octx.stroke();octx.setLineDash([]);}
+      } else if((L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
-        // Per-settlement-id lookups (small int ids) instead of Maps, and a
-        // single shared colour string per country so fillStyle is reassigned
-        // only when the country actually changes between adjacent tiles.
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
         const tintByCountry=new Map();
@@ -5413,8 +2614,6 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           if(t===undefined){const h=((s.countryId*61)%360+360)%360;t=`hsla(${h},50%,50%,0.32)`;tintByCountry.set(s.countryId,t);}
           tintById[s.id]=t; ctryById[s.id]=s.countryId;
         }}
-        // Single pass: tint fill + accumulate dotted national borders.
-        // Either layer can be off and the other is unaffected.
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
         for(let ti=0;ti<owner.length;ti++){
@@ -5634,6 +2833,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.roadFlow)psw.roadFlow=snap.roadFlow;
   if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
+  if(snap.countryClaim)psw._countryClaim=snap.countryClaim;  // capital-claim prototype (Capital Claim view); keep last
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   psw.ships=snap.ships;psw.armies=snap.armies;
@@ -5652,6 +2852,19 @@ const applySnapshot=useCallback((snap)=>{
   // (the sim numbers don't need 30Hz); drawing still happens every snapshot.
   psw._snapN=(psw._snapN||0)+1;
   if(psw._snapN%6===1){if(snap.stats)setPsStats(snap.stats);setTribeCount(setts.length);}
+  // History sample for the charts/export (gated by sim-step, reset on new run).
+  if(snap.stats){
+    const H=psHistoryRef.current, st=snap.step, last=H[H.length-1];
+    if(last&&st<last.step)H.length=0;                       // step jumped back → new world
+    if(!H.length||st-H[H.length-1].step>=HISTORY_INTERVAL){
+      const x=snap.stats;
+      H.push({step:st,pop:x.totalPeople||0,gold:x.totalWealth||0,landPct:x.landPct||0,
+              countries:x.countries||0,sett:x.settlements||0,villages:x.villages||0,
+              towns:x.towns||0,cities:x.cities||0,metros:x.metropolises||0,
+              largest:x.largestEmpire||0,army:x.totalArmy||0});
+      if(H.length>5000)H.splice(0,H.length-5000);
+    }
+  }
   if(terRef.current){try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);}}
 },[draw]);
 useEffect(()=>{applySnapshotRef.current=applySnapshot;},[applySnapshot]);
@@ -5662,6 +2875,8 @@ useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'c
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'select',id:selectedSettlementId});},[selectedSettlementId]);
 // Tell the worker the current view so it ships money-flow / road-component extras only when shown.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'view',view:viewMode});},[viewMode]);
+// Terminate both workers on unmount so they don't leak across hot-reloads / route changes.
+useEffect(()=>()=>{try{simWorkerRef.current?.terminate();}catch{}try{workerRef.current?.terminate();}catch{}},[]);
 
 useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showPower,showGlobe,activeRes,layers]);
 
@@ -5937,7 +3152,7 @@ useEffect(()=>{
     if(terRef.current)draw(terRef.current);return;}
   ttRouteResultRef.current=findRoute(terRef.current,ttRoute.start,ttRoute.end,ttParams);
   draw(terRef.current);
-},[ttRoute,ttTech,ttSubMode,viewMode]);
+},[ttRoute,ttCost,ttSubMode,viewMode]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
 const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
 
@@ -6198,7 +3413,17 @@ return(
   const wealth=Math.round(s.wealth||0);
   const available=Math.max(0,wealth-Math.round(getWealthReserve(s)));
   const profile=s._tradeProfile||getTradeProfile(s,peopleRef.current);
-  const produces=getExportBreakdown(s).filter(b=>b.label!=="Baseline").slice(0,3).map(b=>b.label.toLowerCase());
+  // Export composition (specific goods) — each good's value contribution to what
+  // this settlement makes for sale. The "goods sold" coin is earned in
+  // proportion to these shares, so we split that $/tick across the named goods.
+  const _xb=getExportBreakdown(s);
+  const _xbTot=_xb.reduce((t,b)=>t+b.value,0)||1;
+  const produces=_xb.filter(b=>b.label!=="Baseline").slice(0,3).map(b=>b.label.toLowerCase());
+  const _goodsRate=(s._mInRate&&s._mInRate[IN_GOODS])||0;
+  const goodsBreakdown=_goodsRate>0.005
+    ? _xb.map(b=>[b.label==="Baseline"?"Basic produce":b.label, _goodsRate*b.value/_xbTot])
+         .filter(x=>x[1]>0.005).sort((a,b)=>b[1]-a[1])
+    : [];
   // Smoothed net wealth change rate from the sim (the categorised in/out
   // breakdown below comes from s._mInRate / s._mOutRate).
   const wealthDelta=s._wealthDelta||0;
@@ -6308,7 +3533,7 @@ return(
             {treas!=null&&(()=>{const sv=ctry._solvency??1;const broke=sv<0.99;return(
               <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
                 <span style={{width:9,height:9,borderRadius:2,background:broke?"hsl(8,75%,52%)":"hsl(48,65%,48%)",flexShrink:0}}/>
-                <span className="au-fade">state treasury ${Math.round(treas)}{ctry._govSpend>0.01?` · spends ${ctry._govSpend.toFixed(0)}/pass`:""}{broke?` · INSOLVENT (army ${Math.round(sv*100)}% paid)`:""}</span>
+                <span className="au-fade">state treasury {fmtGoldKg(treas)}{ctry._govSpend>0.01?` · spends ${fmtGoldKg(ctry._govSpend)}/pass`:""}{broke?` · INSOLVENT (army ${Math.round(sv*100)}% paid)`:""}</span>
               </div>
             );})()}
             {(()=>{const P=ctry._priceLevel;if(P==null||Math.abs(P-1)<0.04)return null;
@@ -6394,16 +3619,16 @@ return(
       {/* ── At-a-glance summary (always visible) ── */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline"}}>
         <div>
-          <span style={{fontSize:18,fontWeight:600}}>{Math.round(s.people).toLocaleString()}</span>
-          {K?<span className="au-fade" style={{fontSize:10}}> / {Math.round(K).toLocaleString()}</span>:null}
+          <span style={{fontSize:18,fontWeight:600}}>{fmtPeople(s.people)}</span>
+          {K?<span className="au-fade" style={{fontSize:10}}> / {fmtPeople(K)}</span>:null}
           <span className="au-fade" style={{fontSize:9,marginLeft:3}}>people</span>
         </div>
         <span style={{fontSize:9,fontWeight:600,color:"#fff",background:statusColor,borderRadius:8,padding:"1px 8px",textTransform:"uppercase",letterSpacing:0.3}}>{status}</span>
       </div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginTop:3}}>
         <div>
-          <span style={{fontSize:13}}>${wealth.toLocaleString()}</span>
-          <span className="au-fade" style={{fontSize:9,marginLeft:3}}>treasury</span>
+          <span style={{fontSize:13}} className="au-gold-text">{fmtGoldKg(s.wealth||0)}</span>
+          <span className="au-fade" style={{fontSize:9,marginLeft:3}}>gold treasury</span>
         </div>
         <span className="au-fade" style={{fontSize:9}}>
           {nextName?`${Math.round(progress*100)}% → ${nextName}`:"max tier"}
@@ -6412,27 +3637,27 @@ return(
 
       {/* ── Population & food ── */}
       <PsSection id="food" title="Population & food" open={psCardOpen.food} onToggle={togglePsCard}
-        right={<span style={{color:statusColor}}>{surplus>=0?"+":""}{surplus.toFixed(2)}</span>}>
+        right={<span style={{color:statusColor}}>{surplus>=0?"+":""}{fmtFood(surplus)}</span>}>
         <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
-          <span className="au-fade">Food stored</span><span>{Math.round(s.food)}</span>
-          <span className="au-fade">Produced /tick</span><span>{supply.toFixed(3)}</span>
-          {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{(s._fishYield||0).toFixed(2)}</span></>)}
-          {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span>+{importRate.toFixed(3)}</span></>)}
-          <span className="au-fade">Consumed /tick</span><span>{demand.toFixed(3)}</span>
+          <span className="au-fade">Grain stored</span><span>{fmtFood(s.food)}</span>
+          <span className="au-fade">Produced /tick</span><span>{fmtFood(supply)}</span>
+          {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{fmtFood(s._fishYield||0)}</span></>)}
+          {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span>+{fmtFood(importRate)}</span></>)}
+          <span className="au-fade">Consumed /tick</span><span>{fmtFood(demand)}</span>
           <span style={{color:statusColor}}>Balance</span>
-          <span style={{color:statusColor}}>{surplus>=0?"+":""}{surplus.toFixed(3)} ({status})</span>
+          <span style={{color:statusColor}}>{surplus>=0?"+":""}{fmtFood(surplus)} ({status})</span>
           <span className="au-fade">Territory</span><span>{farm} tile{farm===1?"":"s"}</span>
           <span className="au-fade">Capacity</span>
-          <span>{Math.round(K)} <span className="au-fade" style={{fontSize:9}}>({limitedBy}-limited)</span></span>
-          {(s.infrastructure||0)>1&&(<><span className="au-fade">· buildings</span><span className="au-fade">{Math.round(s.infrastructure||0).toLocaleString()}</span></>)}
+          <span>{fmtPeople(K)} <span className="au-fade" style={{fontSize:9}}>({limitedBy}-limited)</span></span>
+          {(s.infrastructure||0)>1&&(<><span className="au-fade">· housing</span><span className="au-fade">{fmtPeople(s.infrastructure||0)}</span></>)}
           {limitedBy==="housing"&&((s._developRate||0)>0.001
-            ?<><span style={{color:"#caa24a"}}>· building</span><span style={{color:"#caa24a"}}>+{(s._developRate||0).toFixed(2)}/tk</span></>
+            ?<><span style={{color:"#caa24a"}}>· building</span><span style={{color:"#caa24a"}}>+{fmtPeople(s._developRate||0)}/tk</span></>
             :<><span className="au-fade">· can't grow</span><span style={{color:"#c84"}}>{s._devReason==="space"?"no room (built out)":s._devReason==="materials"?"no timber/stone":s._devReason==="coin"?"can't afford materials":"—"}</span></>)}
-          {limitedBy==="food"&&houseK>foodK*1.05&&(<><span className="au-fade">· could house</span><span className="au-fade">{Math.round(houseK)} if fed</span></>)}
-          {nextThr&&<><span className="au-fade">To next tier</span><span>{Math.round(s.people)}/{nextThr}</span></>}
+          {limitedBy==="food"&&houseK>foodK*1.05&&(<><span className="au-fade">· could house</span><span className="au-fade">{fmtPeople(houseK)} if fed</span></>)}
+          {nextThr&&<><span className="au-fade">To next tier</span><span>{fmtPeople(s.people)}/{fmtPeople(nextThr)}</span></>}
           {(s.army||0)>0.5&&(<>
             <span className="au-fade">Garrison</span>
-            <span>{Math.round(s.army)} <span className="au-fade" style={{fontSize:9}}>({((s.army||0)/Math.max(1,s.people)*100).toFixed(1)}% of pop · fed from food)</span></span>
+            <span>{fmtPeople(s.army)} <span className="au-fade" style={{fontSize:9}}>({((s.army||0)/Math.max(1,s.people)*100).toFixed(1)}% of pop · fed from food)</span></span>
           </>)}
         </div>
       </PsSection>
@@ -6467,15 +3692,15 @@ return(
 
       {/* ── Trade & economy ── */}
       <PsSection id="trade" title="Trade & economy" open={psCardOpen.trade} onToggle={togglePsCard}
-        right={<span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{wealthDelta.toFixed(2)}/tick</span>}>
+        right={<span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{fmtGoldKg(wealthDelta)}/tick</span>}>
         <>
           <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10}}>
             <span className="au-fade">Exchange</span>
-            <span style={{color:available>0?"#caa24a":"#8a8f9c"}}>{available>0?"coin economy":"barter"}</span>
+            <span style={{color:available>0?"#caa24a":"#8a8f9c"}}>{available>0?"gold economy":"barter"}</span>
             <span style={{color:moneyCol(wealthDelta)}}>Net wealth /tick</span>
-            <span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{wealthDelta.toFixed(2)}</span>
-            <span className="au-fade">Coin held</span>
-            <span style={available<=0?{color:"#8a8f9c"}:undefined}>${wealth.toLocaleString()}</span>
+            <span style={{color:moneyCol(wealthDelta)}}>{wealthDelta>=0?"+":""}{fmtGoldKg(wealthDelta)}</span>
+            <span className="au-fade">Gold held</span>
+            <span style={available<=0?{color:"#8a8f9c"}:undefined} className="au-gold-text">{fmtGoldKg(s.wealth||0)}</span>
           </div>
           {/* ── Where the money comes from / goes ── categorised $/tick from
               the sim (mining, selling food, buying lumber, tribute, …). */}
@@ -6490,30 +3715,42 @@ return(
               return <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>No coin moving (barter / self-sufficient).</div>;
             return(
               <div style={{marginTop:5}}>
-                <div className="au-fade" style={{fontSize:9}}>Money in / out ($/tick)</div>
+                <div className="au-fade" style={{fontSize:9}}>Gold in / out (/tick)</div>
                 <div style={{display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"1px 6px",fontSize:10,marginTop:1}}>
                   {ins.map(([l,v])=>(
                     <Fragment key={"i"+l}>
                       <span style={{color:"#3a7"}}>in</span>
                       <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l}</span>
-                      <span style={{color:"#3a7"}}>+{v.toFixed(2)}</span>
+                      <span style={{color:"#3a7"}}>+{fmtGoldKg(v)}</span>
                     </Fragment>
                   ))}
                   {outs.map(([l,v])=>(
                     <Fragment key={"o"+l}>
                       <span style={{color:"#c44"}}>out</span>
                       <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l}</span>
-                      <span style={{color:"#c44"}}>-{v.toFixed(2)}</span>
+                      <span style={{color:"#c44"}}>-{fmtGoldKg(v)}</span>
                     </Fragment>
                   ))}
                   <span className="au-fade" style={{borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}>net</span>
                   <span className="au-fade" style={{borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}></span>
-                  <span style={{color:moneyCol(totIn-totOut),borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}>{totIn-totOut>=0?"+":""}{(totIn-totOut).toFixed(2)}</span>
+                  <span style={{color:moneyCol(totIn-totOut),borderTop:"1px solid var(--au-line,#0002)",marginTop:1}}>{totIn-totOut>=0?"+":""}{fmtGoldKg(totIn-totOut)}</span>
                 </div>
               </div>
             );
           })()}
-          {produces.length>0&&(
+          {goodsBreakdown.length>0?(
+            <div style={{marginTop:4}}>
+              <div className="au-fade" style={{fontSize:9}}>Goods sold — by good ($/tick)</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"1px 6px",fontSize:10,marginTop:1}}>
+                {goodsBreakdown.map(([l,v])=>(
+                  <Fragment key={"g"+l}>
+                    <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l}</span>
+                    <span style={{color:"#3a7"}}>+{v.toFixed(2)}</span>
+                  </Fragment>
+                ))}
+              </div>
+            </div>
+          ):produces.length>0&&(
             <div className="au-fade" style={{fontSize:9,marginTop:3}}>Produces: {produces.join(", ")}</div>
           )}
           {profile.length===0
@@ -6752,20 +3989,20 @@ return(
 <div className="au-parchment" style={{position:"absolute",top:8,left:8,
   padding:"8px 12px",fontSize:11,width:240,zIndex:20,maxHeight:"calc(100vh - 80px)",overflowY:"auto"}}>
   <div className="au-heading au-sc" style={{fontSize:12,marginBottom:6,borderBottom:"1px solid rgba(58,38,20,0.25)",paddingBottom:4}}>Transport Test</div>
-  {/* Era presets — set all tech sliders to era-appropriate values. */}
-  <div className="au-sc au-fade" style={{fontSize:9,marginBottom:3}}>Era preset</div>
+  {/* Era presets — set all RAW cost sliders to era-appropriate values. */}
+  <div className="au-sc au-fade" style={{fontSize:9,marginBottom:3}}>Era preset (sets raw costs)</div>
   <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
     {[
-      ["Stone",      {metallurgy:0.05,naval:0.05,construction:0.05,organization:0.10,tileLimit:1500}],
-      ["Neolithic",  {metallurgy:0.15,naval:0.15,construction:0.15,organization:0.20,tileLimit:3000}],
-      ["Bronze",     {metallurgy:0.30,naval:0.35,construction:0.30,organization:0.35,tileLimit:6000}],
-      ["Iron",       {metallurgy:0.50,naval:0.55,construction:0.50,organization:0.55,tileLimit:9000}],
-      ["Medieval",   {metallurgy:0.65,naval:0.70,construction:0.65,organization:0.70,tileLimit:11000}],
-      ["Industrial", {metallurgy:0.88,naval:0.92,construction:0.85,organization:0.90,tileLimit:15000}],
+      ["Stone",      {tileLimit:1500, plain:1.30,rough:22,mountain:9,slope:12,river:0.50,coast:0.80,water:8.0,port:9,seaPassable:false}],
+      ["Neolithic",  {tileLimit:3000, plain:1.15,rough:18,mountain:8,slope:10,river:0.45,coast:0.65,water:6.0,port:7,seaPassable:false}],
+      ["Bronze",     {tileLimit:6000, plain:0.95,rough:14,mountain:6,slope:8, river:0.35,coast:0.50,water:3.5,port:5,seaPassable:true}],
+      ["Iron",       {tileLimit:9000, plain:0.75,rough:11,mountain:5,slope:6, river:0.28,coast:0.40,water:2.2,port:3.5,seaPassable:true}],
+      ["Medieval",   {tileLimit:11000,plain:0.60,rough:9, mountain:4,slope:5, river:0.22,coast:0.32,water:1.6,port:2.5,seaPassable:true}],
+      ["Industrial", {tileLimit:15000,plain:0.40,rough:6, mountain:3,slope:3, river:0.18,coast:0.25,water:1.0,port:1.5,seaPassable:true}],
     ].map(([name,t])=>(
       <button key={name} className="au-btn"
         style={{fontSize:10,padding:"2px 5px",flex:"1 1 30%"}}
-        onClick={()=>setTtTech(t)}>{name}</button>
+        onClick={()=>setTtCost(t)}>{name}</button>
     ))}
   </div>
   {/* Sub-mode toggle */}
@@ -6804,31 +4041,36 @@ return(
       </div>
     </>
   )}
-  {/* Tech sliders — drive the derived cost values. */}
+  {/* Raw travel-cost sliders — the EXACT per-terrain / per-mode costs the BFS
+      charges. Grouped: land terrain, then water/river, then the mode-change. */}
+  <div className="au-sc au-fade" style={{fontSize:9,margin:"2px 0 3px"}}>Travel cost per tile</div>
+  {/* Sea-passable toggle (going on/off water at all). */}
+  <button className={"au-btn au-block"+(ttCost.seaPassable?" au-active":"")} style={{fontSize:10,marginBottom:5}}
+    onClick={()=>setTtCost(p=>({...p,seaPassable:!p.seaPassable}))}>
+    Sea {ttCost.seaPassable?"passable":"IMPASSABLE"}
+  </button>
   {[
-    ["tileLimit","Tiles / capital (∝ org)",100,15000,100],
-    ["metallurgy","Metallurgy (roads, rail)",0,1,0.02],
-    ["naval","Naval power (ships, ports)",0,1,0.02],
-    ["construction","Construction (bridges, docks)",0,1,0.02],
-    ["organization","Organisation (admin reach)",0,1,0.02],
-  ].map(([k,label,min,max,step])=>(
-    <div key={k} style={{marginBottom:4}}>
+    ["tileLimit","Tiles / capital",100,15000,100,"how much each capital claims"],
+    ["plain","Plain (flat land)",0.2,3,0.05,"open level ground, per tile"],
+    ["rough","Rough terrain",0,30,0.5,"× local slope-variance² (hills, badlands)"],
+    ["mountain","Mountain (elevation)",0,20,0.5,"penalty above e=0.25"],
+    ["slope","Slope climb",0,20,0.5,"per-step elevation change"],
+    ["river","River (along)",0.1,2,0.05,"travelling along a major river"],
+    ["coast","Coast",0.1,2,0.05,"hugging the shoreline"],
+    ["water","Sea crossing",0.3,20,0.1,"open ocean, per tile (if passable)"],
+    ["port","Mode change ⇄",0,15,0.25,"on/off water · land↔river"],
+  ].map(([k,label,min,max,step,hint])=>(
+    <div key={k} style={{marginBottom:4}} title={hint}>
       <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
-        <span>{label}</span><b>{ttTech[k].toFixed(k==="tileLimit"?0:2)}</b>
+        <span>{label}</span><b>{ttCost[k].toFixed(k==="tileLimit"?0:2)}</b>
       </div>
-      <input type="range" min={min} max={max} step={step} value={ttTech[k]}
-        onChange={e=>setTtTech(p=>({...p,[k]:parseFloat(e.target.value)}))}
-        style={{width:"100%"}}/>
+      <input type="range" min={min} max={max} step={step}
+        value={ttCost[k]} disabled={k==="water"&&!ttCost.seaPassable}
+        onChange={e=>setTtCost(p=>({...p,[k]:parseFloat(e.target.value)}))}
+        style={{width:"100%",opacity:(k==="water"&&!ttCost.seaPassable)?0.4:1}}/>
+      <div className="au-fade" style={{fontSize:8.5,lineHeight:1.1,marginTop:-1}}>{hint}</div>
     </div>
   ))}
-  {/* Derived cost readout (so you can see what tech actually produces). */}
-  <div className="au-fade" style={{fontSize:9,marginTop:6,marginBottom:4,lineHeight:1.4,
-    background:"rgba(58,38,20,0.08)",padding:"4px 6px",borderRadius:2}}>
-    <div className="au-sc" style={{marginBottom:2}}>Derived costs</div>
-    plain {ttParams.plain.toFixed(2)} · harsh {ttParams.harsh.toFixed(1)}<br/>
-    river {ttParams.river.toFixed(2)} · coast {ttParams.coast.toFixed(2)}<br/>
-    water {ttParams.water>=999?"∞":ttParams.water.toFixed(2)} · port {ttParams.port.toFixed(2)}
-  </div>
   <button className="au-btn au-block" style={{marginTop:6,fontSize:11}}
     onClick={()=>{
       if(ttSubMode==="capitals")setTtCapitals([]);
@@ -6945,6 +4187,8 @@ return(
   className={"au-rail-tab"+(layersOpen?" au-active":"")}>Layers</button>
 <button onClick={()=>setBoardOpen(v=>!v)}
   className={"au-rail-tab"+(boardOpen?" au-active":"")}>Leaderboard</button>
+<button onClick={()=>setChartsOpen(v=>!v)}
+  className={"au-rail-tab"+(chartsOpen?" au-active":"")}>History</button>
 
 {(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
 <div className="au-rule" />
@@ -7006,24 +4250,24 @@ return(
 
   // Sort keys per mode. Functions return a number (descending sort).
   const SETT_SORTS={
-    population:[s=>s.people,"Population"],
-    wealth:[s=>s.wealth||0,"Wealth"],
-    army:[s=>s.army||0,"Garrison"],
-    mining:[s=>s._minedRate||0,"Mining rate"],
+    population:[s=>s.people,"Population",fmtPeople],
+    wealth:[s=>s.wealth||0,"Wealth",fmtGoldKg],
+    army:[s=>s.army||0,"Garrison",fmtPeople],
+    mining:[s=>s._minedRate||0,"Mining rate",fmtGoldKg],
     vassals:[s=>s._vassalCount||0,"Vassals"],
-    income:[s=>s._wealthDelta||0,"Income (¤/tick)"],
+    income:[s=>s._wealthDelta||0,"Income (gold/tick)",fmtGoldKg],
   };
   const CNT_SORTS={
     size:[c=>c.members?c.members.length:0,"Size (settlements)"],
-    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Population"],
-    wealth:[c=>(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0),"Total wealth"],
-    treasury:[c=>c._treasury||0,"State treasury"],
-    army:[c=>(c.members||[]).reduce((a,m)=>a+(m.army||0),0),"Standing army"],
+    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Population",fmtPeople],
+    wealth:[c=>(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0),"Total wealth",fmtGoldKg],
+    treasury:[c=>c._treasury||0,"State treasury",fmtGoldKg],
+    army:[c=>(c.members||[]).reduce((a,m)=>a+(m.army||0),0),"Standing army",fmtPeople],
     capacity:[c=>c._capacity||0,"Control capacity"],
   };
   const sorts=boardMode==="settlements"?SETT_SORTS:CNT_SORTS;
   const sortKey=sorts[boardSort]?boardSort:Object.keys(sorts)[0];
-  const [sortFn,sortLabel]=sorts[sortKey];
+  const [sortFn,sortLabel,sortFmt]=sorts[sortKey];
   const rows=(boardMode==="settlements"?setts:countries).slice()
     .sort((a,b)=>sortFn(b)-sortFn(a)).slice(0,15);
 
@@ -7084,7 +4328,7 @@ return(
                     <span style={{textTransform:"capitalize"}}>{r.name}</span>
                     {ctry&&ctry.capitalId===r.id&&<span style={{color:"var(--au-fade)",marginLeft:4}}>· capital</span>}
                   </td>
-                  <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{fmt(sortFn(r))}</td>
+                  <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
                 </tr>
               );
             }
@@ -7100,13 +4344,49 @@ return(
                     background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
                   <span style={{textTransform:"capitalize"}}>{cap?cap.name:"realm-"+r.id}</span>
                 </td>
-                <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{fmt(sortFn(r))}</td>
+                <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
               </tr>
             );
           })}
           {rows.length===0&&<tr><td colSpan={3} style={{padding:"10px 12px",color:"var(--au-fade)",fontStyle:"italic"}}>no data yet</td></tr>}
         </tbody>
       </table>
+    </aside>
+  );
+})()}
+
+{chartsOpen&&(()=>{
+  const H=psHistoryRef.current;
+  const copy=()=>{ const t=buildHistoryExport(H);
+    try{navigator.clipboard.writeText(t);}catch(e){/* clipboard blocked — ignore */}
+    setStatsCopied(true); setTimeout(()=>setStatsCopied(false),1500); };
+  const curStep=H.length?H[H.length-1].step:0;
+  return(
+    <aside className="au-parchment au-scroll" style={{
+      position:"absolute",right:142,top:6,width:316,maxHeight:"88vh",
+      padding:"10px 0",overflowY:"auto",zIndex:31}}>
+      <div style={{display:"flex",alignItems:"baseline",marginBottom:4,padding:"0 12px"}}>
+        <span className="au-heading au-sc" style={{fontSize:12}}>History</span>
+        <span className="au-fade" style={{fontSize:9,marginLeft:6}}>step {curStep}</span>
+        <div style={{flex:1}} />
+        <span onClick={()=>setChartsOpen(false)}
+          style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
+      </div>
+      <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
+      <MiniChart data={H} get={d=>d.gold}           label="Gold (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
+      <MiniChart data={H} get={d=>d.landPct*100}    label="Land claimed"             color="#5a9367" fmtY={v=>v.toFixed(0)+"%"}/>
+      <MiniChart data={H} get={d=>d.countries}      label="Countries"                color="#7a6da8" fmtY={v=>Math.round(v).toString()}/>
+      <MiniChart data={H} get={d=>d.cities+d.metros} label="Cities + metropolises"   color="#b5562f" fmtY={v=>Math.round(v).toString()}/>
+      <MiniChart data={H} get={d=>d.sett}           label="Settlements"              color="#8a8f9c" fmtY={v=>Math.round(v).toString()}/>
+      <MiniChart data={H} get={d=>d.largest}        label="Largest empire (tiles)"   color="#4a78a8" fmtY={v=>Math.round(v).toLocaleString()}/>
+      <div style={{padding:"6px 10px 2px",borderTop:"1px solid rgba(0,0,0,0.08)",marginTop:4}}>
+        <button onClick={copy} className="au-rail-tab au-active" style={{width:"100%",fontSize:11,padding:"5px 0"}}>
+          {statsCopied?"Copied ✓":"Copy stats rundown"}
+        </button>
+        <div className="au-fade" style={{fontSize:9,marginTop:3,lineHeight:1.35}}>
+          Copies a markdown table of the run so far (~40 rows) — paste it back for a full breakdown over time.
+        </div>
+      </div>
     </aside>
   );
 })()}

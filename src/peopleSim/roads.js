@@ -43,8 +43,9 @@
 // painted into roadQuality; nothing else is created.
 
 import { localEdgeCost, baseEdgeCost } from "./transport.js";
+import { forEachNear } from "./spatialGrid.js";
 import { T } from "./tuning.js";
-import { computeExportValue, getWealthReserve } from "./settlement.js";
+import { exportValueOf, getWealthReserve } from "./settlement.js";
 import { localP } from "./inflation.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
@@ -65,8 +66,11 @@ const MAX_REACH_VISITS    = 8000;       // BFS visit cap for trade-reach computa
 // soon as it has found this many peers (they come out nearest-first), which
 // also slashes the periodic reach-rebuild cost. Distant partners contributed
 // almost nothing anyway — transport cost already throttled their volume to a
-// trickle.
-const MAX_PARTNERS        = 20;
+// trickle — so this is the single biggest lever on the per-tick trade cost
+// (updateTrade, knowledge diffusion, and urbanise all iterate the reach):
+// 12 nearest partners is still a dense, well-connected local economy, but
+// ~40% cheaper per tick than 20 once the dense map's networks fuse.
+const MAX_PARTNERS        = 12;
 // Caps on full-path A* evaluations per settlement per plan cycle.
 // Candidates are ranked by (cheap) trade benefit first; only this many
 // get a real path computed, so the cost is bounded regardless of how
@@ -155,8 +159,7 @@ const SHORTCUT_GAIN_RATIO = 0.85;       // new direct path must save ≥ 15% vs 
 // worn trunk because the worn arterial is "cheaper" than a fresh
 // terrain crossing. Threshold sits just above MIN_SETT_DIST (12)
 // so the closest possible pairs always qualify.
-const CLOSE_NEIGHBOUR_DIST    = 20;
-const CLOSE_NEIGHBOUR_DIST_SQ = CLOSE_NEIGHBOUR_DIST * CLOSE_NEIGHBOUR_DIST;
+const CLOSE_NEIGHBOUR_DIST    = 20;     // grid near-query radius for local links
 const MIN_POP_TO_LINK         = 30;     // lower bar than road planning
 
 // Resource needs by tier — kept for road-planning preference.
@@ -181,7 +184,7 @@ const TRANSPORT_PER_PATHCOST       = 0.012;
 const FOOD_PRICE                   = 5;
 const FOOD_TRANSPORT_PER_PATHCOST  = 0.005;
 const STARVING_TICKS_LEFT          = 100;
-const FOOD_IMPORT_EMA_ALPHA        = 0.002;
+const FOOD_IMPORT_EMA_ALPHA        = 0.02;    // import-fed food capacity tracks delivered grain in ~50 ticks, not ~500 — lets a city grow on grain it's actually receiving instead of lagging centuries behind
 const USAGE_PER_TRADE              = 0.04;   // flow added per tile per active trade tick
 const MONEY_FLOW_EPS               = 0.01;   // min net /tick for a link to register in the money-flow overlay
 
@@ -322,17 +325,6 @@ export function buildNetworkComponents(world) {
 }
 
 // ── Trade-reach: per-settlement Dijkstra through road network ──
-// For each alive settlement, compute the shortest road-path to every
-// other settlement reachable via the network. Result is cached on
-// s._tradeReach for the trade pass to iterate.
-export function rebuildTradeReach(world) {
-  if (!world.roadQuality) return;
-  const stMap = buildSettlementTileMap(world);
-  for (const s of world.settlements) {
-    if (s.mode !== "settled") { s._tradeReach = null; continue; }
-    s._tradeReach = computeReach(world, s, stMap);
-  }
-}
 
 function computeReach(world, s, stMap) {
   const reach = new Map();
@@ -518,33 +510,65 @@ export function maybeBuildRoads(world) {
 // unconnected one) is tiny and never lumps into a cycle-end spike. Uses the
 // cached network components for the "already connected?" test; slightly stale
 // between rebuilds, which at worst costs a redundant (bounded) pathfind.
+// Gabriel-edge test: is the segment a–b free of any other town lying "between"
+// them (inside the circle that has a–b as its diameter)? By Thales that's
+// |ac|² + |bc|² < |ab|² for some town c. If NO such town exists, a and b are
+// direct neighbours in the realistic road mesh and deserve a direct road; if one
+// sits between, the route runs a→c→b instead. (Real road networks sit at roughly
+// the Gabriel graph — MST ⊂ relative-neighbourhood ⊂ Gabriel ⊂ Delaunay — not the
+// bare spanning tree the bridge logic alone produces.)
+function isGabrielEdge(world, a, b, dAB2) {
+  const tw = world.tw;
+  // A town c lies "between" a and b (inside the Thales circle on diameter AB)
+  // exactly when it sits within |AB|/2 of the segment's MIDPOINT — by the
+  // parallelogram law |ac|²+|bc|² = 2|mc|² + |AB|²/2, so the original
+  // "< dAB2" between-test is precisely |mc|² < dAB2/4. Only settlements the
+  // spatial grid returns for that small disk can break the edge, so we query
+  // it instead of scanning every settlement. Midpoint via the shortest signed
+  // Δx so it's correct across the longitude seam (edges here are ≤20 tiles).
+  let dx = b.pos.x - a.pos.x;
+  if (dx > tw / 2) dx -= tw; else if (dx < -tw / 2) dx += tw;
+  let mx = a.pos.x + dx / 2; mx = ((mx % tw) + tw) % tw;
+  const my = (a.pos.y + b.pos.y) / 2;
+  const radius = Math.sqrt(dAB2) / 2;
+  let between = false;
+  forEachNear(world, mx, my, radius, (c, d2) => {
+    if (between || c === a || c === b || c.people < MIN_POP_TO_LINK) return;
+    if (d2 < dAB2 / 4) between = true;   // c is inside the Thales circle
+  });
+  return !between;
+}
+
 function linkCloseNeighbours(world, s) {
   if (s.people < MIN_POP_TO_LINK) return false;
   const comp = world._networkComponents;
   const myComp = comp && comp.get(s.id) !== undefined ? comp.get(s.id) : s.id;
   let anyBuilt = false;
-  for (const peer of world.settlements) {
-    if (peer.id === s.id || peer.mode !== "settled" || peer.people < MIN_POP_TO_LINK) continue;
-    let dx = Math.abs(peer.pos.x - s.pos.x);
-    if (dx > world.tw / 2) dx = world.tw - dx;
-    const dy = peer.pos.y - s.pos.y;
-    if (dx * dx + dy * dy > CLOSE_NEIGHBOUR_DIST_SQ) continue;
+  // Only the settlements within CLOSE_NEIGHBOUR_DIST matter; the spatial grid
+  // returns exactly those (with their squared distance as dAB2) instead of a
+  // full O(settlements) scan per settled town each tick.
+  forEachNear(world, s.pos.x, s.pos.y, CLOSE_NEIGHBOUR_DIST, (peer, dAB2) => {
+    if (peer.id === s.id || peer.people < MIN_POP_TO_LINK) return;
     const pc = comp && comp.get(peer.id) !== undefined ? comp.get(peer.id) : peer.id;
-    if (pc === myComp) continue;                 // already road-connected
+    // Unconnected close neighbours are bridged for connectivity. ALREADY-connected
+    // ones still get a DIRECT road when they are true mesh neighbours (a Gabriel
+    // edge — no town between them), so a city links straight to its neighbour
+    // instead of every trip detouring out to a trunk artery and back.
+    if (pc === myComp && !isGabrielEdge(world, s, peer, dAB2)) return;
     const path = findPath(world, s, peer, { noWater: true });
-    if (!path) continue;
+    if (!path) return;
     let didChange = false;
     for (const ti of path.tiles) if (paintRoad(world, ti)) didChange = true;
     if (didChange) {
       anyBuilt = true;
       if (s.history) s.history.push({ step: world.step, type: "local-link", to: peer.id, tiles: path.tiles.length });
     }
-  }
+  });
   return anyBuilt;
 }
 
 function tryAddRoad(world, s) {
-  const sExport = computeExportValue(s, world);
+  const sExport = exportValueOf(s, world);
   const sFood = (s._foodSupply || 0) - (s._foodDemand || 0);
   const sCountry = world.countries && world.countries.get(s.countryId);   // for the commerce-temperament road bar
   const own = s.localRes || {};
@@ -569,7 +593,6 @@ function tryAddRoad(world, s) {
   const myComp = components ? components.get(s.id) : null;
 
   const reach = partnerReachFor(s);
-  const reachSq = reach * reach;
 
   // ── Pass 1: rank in-reach peers by trade benefit, WITHOUT pathing ──
   // findPath is a full terrain Dijkstra (the expensive primitive); doing
@@ -577,20 +600,17 @@ function tryAddRoad(world, s) {
   // Score peers cheaply on benefit first, then only path the most
   // promising few.
   const ranked = [];
-  for (const peer of world.settlements) {
-    if (peer.mode !== "settled" || peer.id === s.id) continue;
-    let dx = Math.abs(peer.pos.x - s.pos.x);
-    if (dx > world.tw / 2) dx = world.tw - dx;
-    const dy = peer.pos.y - s.pos.y;
-    const peerDistSq = dx * dx + dy * dy;
-    if (peerDistSq > reachSq) continue;
-
+  // Grid-bounded near query: rank only the peers within partner reach instead
+  // of scanning every settlement (this ranking pass was the dominant per-plan
+  // cost once the map got dense). forEachNear hands back the squared distance.
+  forEachNear(world, s.pos.x, s.pos.y, reach, (peer, peerDistSq) => {
+    if (peer.id === s.id) return;
     const peerRes = peer.localRes || {};
     let resGain = 0;
     for (const n of missing) {
       if ((peerRes[n] || 0) >= HAVE_THRESHOLD) resGain += 1;
     }
-    const peerExport = computeExportValue(peer, world);
+    const peerExport = exportValueOf(peer, world);
     const exGap = Math.abs(sExport - peerExport);
     const peerFood = (peer._foodSupply || 0) - (peer._foodDemand || 0);
     let foodGain = 0;
@@ -600,7 +620,7 @@ function tryAddRoad(world, s) {
     }
     const benefit = resGain * 2 + exGap + foodGain * 10;
     ranked.push({ peer, benefit, distSq: peerDistSq });
-  }
+  });
   // Best benefit first; ties broken toward the nearer (cheaper) peer.
   ranked.sort((p, q) => (q.benefit - p.benefit) || (p.distSq - q.distSq));
 
@@ -841,10 +861,16 @@ function runFoodTradeBetween(world, a, b, link) {
   } else if (bSurplus > 0.001 && aWant > 0.001) {
     exporter = b; importer = a; shipRate = bSurplus; deficit = aWant;
   } else return;
-  // Growth-reserve fraction for exporter (feed own children first).
+  // Growth-reserve fraction for exporter: keep a thin buffer against transient
+  // dips, but SHIP THE SURPLUS. The old rule reserved up to 70% when the
+  // exporter had spare capacity ("feed own children first"), which made exactly
+  // the depopulating rural villages — the breadbaskets a city should eat from —
+  // hoard their grain instead of feeding the city. Shipping surplus doesn't
+  // impede the seller's own growth (that's logistic on K, not on granary
+  // level), so a farming village exports most of what it grows.
   const exporterK = exporter._k || Math.max(1, exporter.people);
   const headroom = Math.max(0, 1 - exporter.people / exporterK);
-  const reserveFraction = 0.20 + headroom * 0.50;
+  const reserveFraction = 0.10 + headroom * 0.15;
   const effectiveShipRate = shipRate * (1 - reserveFraction);
   // Ship the ongoing production surplus, bounded by the importer's
   // deficit. effectiveShipRate was just added to the granary this tick so
@@ -913,8 +939,8 @@ function runGeneralTradeBetween(world, a, b, link) {
   // A's goods sold to B (B pays A), then B's goods sold to A (A pays B).
   // Each leg scales with the BUYER's buying power, so a rich node imports more
   // and relays its coin onward. Freight is split across the two legs.
-  sellGoods(world, a, b, computeExportValue(a, world) * vol * demandMul(b), transport * 0.5, intermediates, numInter);
-  sellGoods(world, b, a, computeExportValue(b, world) * vol * demandMul(a), transport * 0.5, intermediates, numInter);
+  sellGoods(world, a, b, exportValueOf(a, world) * vol * demandMul(b), transport * 0.5, intermediates, numInter);
+  sellGoods(world, b, a, exportValueOf(b, world) * vol * demandMul(a), transport * 0.5, intermediates, numInter);
 }
 
 // Luxury trade: a wealthy settlement spends coin importing luxury goods

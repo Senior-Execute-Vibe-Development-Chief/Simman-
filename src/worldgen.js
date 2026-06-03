@@ -133,7 +133,7 @@ const wx2=fWX[fi],wy2=fWY[fi];
 // Target: Gulf Stream should push warm water ~500 pixels over 25 iterations
 const srcX=mx-wx2*60.0,srcY=my-wy2*60.0;
 // Wrap X for toroidal map
-const sx=((Math.floor(srcX)%mW2)+mW2)%mW2,sy=Math.min(mH2-2,Math.max(0,srcX|0));
+const sx=((Math.floor(srcX)%mW2)+mW2)%mW2;
 const syC=Math.min(mH2-2,Math.max(0,Math.floor(srcY)));
 const fdx=Math.max(0,Math.min(1,srcX-Math.floor(srcX))),fdy=Math.max(0,Math.min(1,srcY-syC));
 const sxr=(sx+1)%mW2;
@@ -153,7 +153,7 @@ const oceanAdj=e2<=0?(lt<0.3?0.78:lt<0.5?0.85:lt<0.7?0.95:1.1):1.0;
 const adjLocT=locT*oceanAdj;
 // Ocean: wind transport dominates — once ocean picks up warm/cold water, it persists
 // Use PREVIOUS value (which already has transport) blended with new transport, not base temp
-if(e2<=0){const wMix=lt<0.3?0.30:lt<0.6?0.50:0.60;
+if(e2<=0){
 // Blend previous temp (momentum) with wind-advected — base temp only pulls weakly
 tGrid[my*mW2+mx]=prev[my*mW2+mx]*0.7+upT*0.25+adjLocT*0.05;}// 55% wind influence — strong ocean currents
 else{const tb=Math.min(0.8,Math.max(0,e2-0.05)*3);

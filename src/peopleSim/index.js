@@ -9,10 +9,18 @@
 // from daughter colonies founded by existing settlements.
 
 import { createWorld, pruneDead } from "./state.js";
-import { updateSettlement } from "./settlement.js";
+import { updateSettlement, urbanise } from "./settlement.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
+import { computeCountryTerritory, adoptAndFound } from "./countryTerritory.js";
+import { buildSettlementGrid } from "./spatialGrid.js";
+import { relaxClaim } from "./countryClaim.js";
+
+// How often the drawn border crawls one ring toward the country-primary
+// territory target (world._countryOwner). Small so borders visibly creep
+// tile-by-tile rather than snapping each territory pass.
+const CLAIM_RELAX_INTERVAL = 12;
 import { updatePolities } from "./conquest.js";
 import { musterArmies, advanceFronts, moveArmies, MUSTER_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
@@ -47,14 +55,24 @@ export function stepPeopleSim(world, n = 1) {
       world._byId.set(s.id, s);
       s._wPrev = s.wealth || 0;   // baseline for the money-flow net-change readout
     }
+    buildSettlementGrid(world);   // spatial index for near-settlement queries (crystallise / roads)
     mark("byId");
     // Recompute territory periodically: each settlement claims the land it
     // reaches cheapest, and its food / resources are tallied from it.
-    if (world.step === 1 || world.step % T.TERRITORY_INTERVAL === 0) computeTerritory(world);
+    if (world.step === 1 || world.step % T.TERRITORY_INTERVAL === 0) {
+      computeTerritory(world);          // per-settlement food catchments (economy)
+      computeCountryTerritory(world);   // clean per-country cost-Voronoi (the political map)
+      adoptAndFound(world);             // settlements take their politics from the territory (villages adopt; stateless cities found)
+    }
+    // The drawn border CRAWLS toward that target a ring at a time, so land
+    // exchanges (conquest / secession / absorption) play out tile-by-tile over
+    // ticks instead of teleporting (see countryClaim.js relaxClaim).
+    if (world.step === 1 || world.step % CLAIM_RELAX_INTERVAL === 0) relaxClaim(world);
     mark("territory");
     for (let i = 0; i < world.settlements.length; i++) {
       updateSettlement(world, world.settlements[i]);
     }
+    urbanise(world);   // rural→urban drift: concentrate population into hubs so real cities form
     mark("settlements");
     // Exogenous shocks: regional famines (harvest crash) + epidemics that
     // spread along the trade graph (population crash). Both feed the unrest /
@@ -86,9 +104,10 @@ export function stepPeopleSim(world, n = 1) {
       s._wealthDelta = (s._wealthDelta || 0) * 0.9 + ((s.wealth || 0) - (s._wPrev || 0)) * 0.1;
     }
     if (world.step % 32 === 0) pruneDead(world);
-    // Military: garrisons muster + are paid periodically; war fronts then
-    // grind tile-by-tile across borders, annexing a settlement when its
-    // heartland is stormed.
+    // Military: garrisons muster + are paid periodically; war fronts then grind
+    // across borders, annexing a settlement when its heartland is stormed. Land
+    // follows the cities: capturing a city flips it to the conqueror, and the
+    // per-country Voronoi (computeCountryTerritory) re-draws its region cleanly.
     if (world.step % MUSTER_INTERVAL === 0) musterArmies(world);
     if (world.step % T.CONQUEST_INTERVAL === 0) advanceFronts(world);
     moveArmies(world);   // marching reinforcement columns advance every tick
@@ -119,15 +138,42 @@ export function getEntities(world) {
 }
 
 export function peopleSimStats(world) {
-  let sPeople = 0, aliveSettlements = 0, territoryTiles = 0;
+  let sPeople = 0, sWealth = 0, aliveSettlements = 0, territoryTiles = 0, sArmy = 0;
   const tierCounts = [0, 0, 0, 0];
   for (const s of world.settlements) {
     if (s.mode === "dead") continue;
     aliveSettlements++;
     sPeople += s.people;
+    sWealth += s.wealth || 0;
+    sArmy += s.army || 0;
     territoryTiles += s._terrTiles || 0;
     if (s.tier >= 0 && s.tier < tierCounts.length) tierCounts[s.tier]++;
   }
+  // Political map: land claimed (vs total land) and the largest single empire,
+  // tallied from the per-tile country owner. This scans the whole owner array,
+  // and peopleSimStats is posted ~30×/s, so cache it and refresh only every ~32
+  // steps (it drifts slowly). Sum of state treasuries folds into the world's
+  // total gold alongside settlement coin.
+  let claimedTiles = 0, landTiles = 0, largestEmpire = 0, treasury = 0;
+  const co = world._countryOwner, elev = world.elev;
+  const cache = world._landStatsCache;
+  if (cache && cache.landTiles > 0 && world.step - cache.step < 32) {
+    claimedTiles = cache.claimedTiles; landTiles = cache.landTiles; largestEmpire = cache.largestEmpire;
+  } else if (co && elev) {
+    const perCountry = new Map();
+    for (let i = 0; i < co.length; i++) {
+      if (elev[i] <= 0) continue;
+      landTiles++;
+      const o = co[i];
+      if (o >= 0) {
+        claimedTiles++;
+        const v = (perCountry.get(o) || 0) + 1; perCountry.set(o, v);
+        if (v > largestEmpire) largestEmpire = v;
+      }
+    }
+    world._landStatsCache = { step: world.step, claimedTiles, landTiles, largestEmpire };
+  }
+  if (world.countries) for (const c of world.countries.values()) treasury += c._treasury || 0;
   return {
     step: world.step,
     settlements: aliveSettlements,
@@ -137,6 +183,12 @@ export function peopleSimStats(world) {
     metropolises:tierCounts[3],
     territoryTiles,
     totalPeople: Math.round(sPeople),
+    totalWealth: Math.round(sWealth + treasury),   // total gold in the world (settlement coin + state treasuries)
+    totalArmy:   Math.round(sArmy),
+    claimedTiles, landTiles,
+    landPct: landTiles > 0 ? claimedTiles / landTiles : 0,
+    countries: world.countries ? world.countries.size : 0,
+    largestEmpire,
     tickMs: world.debug.tickMs.toFixed(2),
   };
 }

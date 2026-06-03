@@ -17,6 +17,7 @@ import { shockUnrest } from "./shocks.js";
 import { localPByCountry } from "./inflation.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, prunePersonalities, driftPersonality, expansionReachMul } from "./personality.js";
+import { CITY_TIER } from "./countryTerritory.js";
 import { T } from "./tuning.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
@@ -36,6 +37,28 @@ import { T } from "./tuning.js";
 // INSIDE the budget instead of instantly over-extending and seceding back
 // (the absorb↔secede oscillation that flipped whole swathes each pass).
 const ABSORB_HEADROOM  = 0.90;
+// Great-power engulfment of a weak STATELET: when a realm out-powers a
+// neighbour's WHOLE country by this much, it can absorb that neighbour's
+// settlements even with NO capacity headroom (a great power always finds room
+// to swallow a tiny state) and at the faster ENGULF_PROB rate. This is the
+// consolidation force that pulls the late-game splotch of tiny states into a
+// few large empires; it only fires on lopsided matchups, so peer empires don't
+// peel border villages off each other.
+const LOPSIDED_ENGULF  = 5.0;
+const ENGULF_PROB      = 0.4;
+// A realm's whole country must out-power a neighbour's whole country by
+// T.ABSORB_DOMINANCE before it can administratively absorb that neighbour's
+// frontier settlements (absorbWeakNeighbors). Hysteresis: only clearly-minor
+// neighbours erode, so comparable empires hold a stable border, not flip-flop.
+// Down = aggressive consolidation (fewer/larger nations); up = multipolar.
+// (Runtime lever — tuning.js T.ABSORB_DOMINANCE.)
+// A landlocked territory fragment hemmed in on at least this fraction of its
+// border by a SINGLE realm is treated as enclosed-inside-it and ceded to that
+// realm (eliminateEnclaves) — cleaning up the marooned "bits stuck inside
+// another country". 1.0 would mean only PERFECTLY enclosed bits; 0.8 also mops
+// up a fragment whose border is mostly one neighbour with a sliver touching a
+// third. (Regions containing a city are exempt — see eliminateEnclaves.)
+const ENCLAVE_DOMINANCE = 0.80;
 // Maximum per-polity-pass defection probability. Caps the rate at which
 // a sub-city settlement can flip to a touching foreign realm — even a
 // tiny village vs a massive cradle defects over multiple passes, never
@@ -126,10 +149,33 @@ export function bankMomentum(world, countryId, amount) {
 // dynamic event, not a fixed radius. Magnitudes are in "reach-units":
 // a province sitting exactly at the capital's reach costs a load of ~1.
 // CAP_BASE -> runtime lever (tuning.js T.CAP_BASE)
-// CAP_POP -> runtime lever (tuning.js T.CAP_POP)
-const CAP_POP_REF   = 1000;  // capital population that scores one T.CAP_POP unit
 // CAP_SEAT -> runtime lever (tuning.js T.CAP_SEAT)
-const SEAT_BONUS_CAP = 6;    // total seat contribution is capped (admin has diminishing returns)
+const SEAT_BONUS_CAP = 10;   // total seat contribution is capped (admin has diminishing returns)
+// Coercive capacity (Tilly): how many provinces the centre can hold is EMERGENT
+// from its coercive POWER, not fixed dials. capacity = CAP_K · log2(1 + capPower
+// / POW_REF) + seat bonuses. A stronger capital (army + people + development)
+// holds more; war / insolvency sap it; circumscription eases it. Replaces the
+// old CAP_BASE / CAP_POP / CAP_ORG count-forcing dials.
+//
+// CAP_K is the coercion coefficient — how many reach-units of province a unit of
+// log-power holds. It sets the SUSTAINABLE empire size: the floor a realm
+// fragments back TO once conquest stalls and its over-reach sheds (secession is
+// the perturbation; this is the equilibrium it relaxes toward). Too low and even
+// an organised empire can hold only a handful of seats, so once secession works
+// the whole map shatters into statelets and the country count runs away; too
+// high and a realm holds everything it ever conquers and never fragments (the
+// immortal juggernaut). Calibrated so a high-org capital sustains a real empire
+// (~a dozen-plus seats) while still being out-conquerable past its budget — so
+// great powers persist AND shed their over-extension.
+const CAP_K   = 2.6;
+const POW_REF = 380;
+// Contiguity toll: projecting administrative authority THROUGH a foreign
+// country's territory costs this much more per tile. So a province cut off from
+// the capital's contiguous realm (an enemy wedge between them) reads as very far
+// — its load spikes and it drifts to independence — while a connected province
+// is reached normally. This is what makes an invasion that SPLITS an empire
+// shear off the severed part as a successor state, instead of slow nibbling.
+const FOREIGN_CROSS = 9;
 const COERCE_CAP    = 2.5;   // a far-stronger capital coerces a province (caps the load cut)
 // SIZE_LOAD -> runtime lever (tuning.js T.SIZE_LOAD)
 const SIZE_REF      = 1000;  // population scale for the size term
@@ -137,6 +183,22 @@ const RECENCY_LOAD  = 1.0;   // a freshly conquered province costs this much ext
 // RECENCY_TICKS -> runtime lever (tuning.js T.RECENCY_TICKS)
 const LOYAL_RECOVER = 0.06;  // per pass: covered provinces climb toward full loyalty
 // LOYAL_DECAY -> runtime lever (tuning.js T.LOYAL_DECAY)
+// The deeper past the budget a province sits, the faster it bleeds loyalty —
+// but UNCAPPED that term is ruinous: a realm holding 6× its budget (which the
+// old absorb/conquest paths let happen) gave its frontier `over≈5`, so those
+// provinces lost ~0.84 loyalty in a SINGLE pass and the whole over-extended tail
+// seceded at once — a total political-map repaint every few passes (the "instant
+// claiming back and forth"). Capping `over` turns that cliff into a slope: an
+// over-stretched realm sheds its frontier ring by ring over several passes, so
+// borders MOVE instead of teleporting. (The realm still loses the land — just
+// legibly, as a retreat, not an implosion.)
+const OVER_DECAY_CAP = 1.0;  // max value of the over-extension multiplier term
+// How much the capital's ORGANIZATION slows an over-budget province's loyalty
+// bleed (administrative glue: records, garrisons, integrated economy, roads).
+// At org=1 a province bleeds at (1 − T.LOYAL_ORG_HOLD) of the base rate. THE
+// empire-lifespan dial: low = even advanced empires fragment fast (short-lived
+// empires, churny map); high → near-immortal great powers. (Runtime lever —
+// tuning.js T.LOYAL_ORG_HOLD.)
 
 // ── Contagious secession (amplifier) ──────────────────────────────────
 // A revolt is regional, not solitary: when a province's loyalty collapses,
@@ -167,6 +229,17 @@ const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capaci
 const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
 const WAR_CAPACITY_MULT   = 0.8;   // capital's countryside merely raided → mild throttle
 const SIEGE_WINDOW        = 300;   // ticks the siege/war throttle lingers after the last front
+// Administrative RESILIENCE: how much an ORGANISED state shrugs off the war/
+// fiscal-duress capacity throttle. A literate-bureaucratic empire (standing
+// army, deep officialdom, roads, granaries) keeps governing its core while a
+// frontier war rages; a chiefdom's levy disperses and its grip fails. At the
+// capital's org × this fraction the throttle is eased toward 1 — so a high-org
+// EMPIRE no longer sheds its provinces the instant a border skirmish flares
+// (which was shattering every large realm the moment it consolidated), while a
+// primitive realm still fragments under stress. (Keep < 1 so even the most
+// advanced empire isn't perfectly war-proof — great powers still fall, just on
+// a slower, deliberate timescale rather than at every frontier wobble.)
+// (Runtime lever — tuning.js T.DURESS_RESILIENCE.)
 
 // ── Conquest momentum (the rise-and-shatter of the steppe empire) ─────
 // A realm on a winning streak coheres around the conquest itself: loot,
@@ -199,10 +272,10 @@ export const MOMENTUM_PER_STORM = 3.0;   // momentum banked per enemy CITY storm
 // frontier crumbling under an over-stretched budget. (A strong city RIGHT BY
 // the capital is the loyal court / heir apparent — it tends to inherit the
 // throne via rebuildCountries rather than secede.)
-const AMBITION_RATIO   = 0.40;  // a governor at least this strong (vs the throne) starts to scheme
+const AMBITION_RATIO   = 0.55;  // a governor at least this strong (vs the throne) starts to scheme
 const AMBITION_MIN_FAR = 0.5;   // ...and at least this far out (reach-units); a core city stays loyal
 const AMBITION_FAR     = 1.8;   // distance amplifies ambition this much
-const AMBITION_GAIN    = 0.10;  // ambition-stock growth per pass at full margin
+const AMBITION_GAIN    = 0.06;  // ambition-stock growth per pass at full margin
 const AMBITION_DURESS  = 1.6;   // a besieged throne emboldens governors (multiplier)
 // Naval administration is no longer a special-case discount on _isPort
 // pairs — water embarkation in localEdgeCost (transport.js) gives the
@@ -294,7 +367,7 @@ function dist(world, ax, ay, bx, by) {
 export function rebuildCountries(world) {
   const countries = new Map();
   for (const s of world.settlements) {
-    if (s.mode !== "settled") continue;
+    if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless frontier settlements belong to no country
     let c = countries.get(s.countryId);
     if (!c) { c = { id: s.countryId, members: [], capital: null }; countries.set(s.countryId, c); }
     c.members.push(s);
@@ -358,6 +431,15 @@ function freshCountryId(c, bloc) {
   return -1;                                          // degenerate: nothing distinct to use
 }
 
+// Mark a freshly-seceded / successor country so its territory SNAPS into place
+// at once on the next render pass, rather than crawling out as a slow wave —
+// secession is a political event (the province is its own that day), unlike a
+// conquest front. Consumed + cleared in countryClaim.js relaxClaim.
+function snapClaim(world, id) {
+  if (id < 0) return;
+  (world._claimSnap || (world._claimSnap = new Set())).add(id);
+}
+
 // History rarely produced fully landlocked enclaves seceding from a still-
 // functioning empire — the seceding state has no allies it can reach, no
 // trade route the parent doesn't control, no escape route, so the parent
@@ -404,95 +486,164 @@ function hasOutsideBorder(world, parentCountryId, bloc) {
   return false;                                       // fully enclosed by parent
 }
 
-// A sovereign state historically needed a CITY to function — somewhere to
-// mint coin, hold court, raise an army, and be recognised by neighbours.
-// Villages and towns could riot, break their tax obligation, or follow a
-// city into a new realm — but they couldn't carry sovereignty alone. This
-// predicate gates every successor-state path: any bloc whose highest tier
-// is village (0) or town (1) fails to consolidate as a country.
+// A successor state needs a SEAT of government to carry sovereignty — the
+// same bar a stateless settlement must clear to FOUND a country in the first
+// place (adoptAndFound uses CITY_TIER: a town or above can anchor a realm; a
+// plain village is pure population and can't). Secession is held to that SAME
+// threshold, not a stricter one: any bloc containing a tier ≥ CITY_TIER seat
+// (town+) can break away as a country; a bloc of only villages has no seat and
+// fails (it riots and re-pacifies instead). Requiring a full CITY (tier 2)
+// here was the bug that made empires immortal — a realm built of towns and
+// villages (the normal case: a town capital ruling a sea of villages) had NO
+// member that could ever lead a breakaway, so its frontier revolts ALL failed
+// the gate, re-pacified, and stayed however far past the hold budget it sat.
 function blocHasCity(bloc) {
-  for (const m of bloc) if ((m.tier | 0) >= 2) return true;
+  for (const m of bloc) if ((m.tier | 0) >= CITY_TIER) return true;
   return false;
 }
 
-// Filter a candidate secession bloc to only the members whose TILE TERRITORY
-// is contiguous with the seed's via other bloc members' tiles. A vassal can
-// physically only follow its lord into a new realm if the new realm's
-// territory actually reaches it — a village stranded deep inside parent
-// territory, with no bloc-mate's land touching it, can't "go" anywhere when
-// its lord declares independence; it stays with the parent state. This kills
-// the pattern where seceded villages float as 1-tile islands inside their
-// original country.
-function filterToConnectedBloc(world, bloc, seed) {
-  const owner = world._territoryOwner;
-  if (!owner || !world._byId) return bloc;       // no territory data yet — fall back to as-given
-  const tw = world.tw, th = world.th, N = world.N;
-  const candidateIds = new Set();
-  for (const m of bloc) candidateIds.add(m.id);
-  // BFS over tiles, starting from any seed-owned tile, walking only tiles
-  // owned by candidate-bloc members. Mark which member-ids we can reach.
-  const reachable = new Set();
-  reachable.add(seed.id);
-  const q = [];
-  // Seed all of seed's tiles into the queue.
-  for (let ti = 0; ti < N; ti++) if (owner[ti] === seed.id) q.push(ti);
-  if (q.length === 0) return [seed];             // seed has no claimed tiles (shouldn't happen)
-  const visited = new Uint8Array(N);
-  for (const ti of q) visited[ti] = 1;
+// Trim a candidate revolt bloc to the members that form a CONTIGUOUS region
+// with the seed — reachable from the seed by walking the PARENT REALM's own
+// contiguous land (the country Voronoi, _countryOwner) within the revolt
+// radius. Walking the realm itself — not the sparse per-settlement catchments
+// — is what lets a regional uprising rally a whole frontier PROVINCE (the
+// towns and the villages between them) into ONE successor state, instead of
+// each town breaking away alone as a 1-member fleck (the lone-town nibbling
+// that never actually fragmented an empire). A member marooned across the sea,
+// or behind a foreign wedge that severs its land link to the revolt's core,
+// can't physically follow and stays with the parent. Flooding outward from the
+// seed (bounded by the radius disk) keeps this cheap — no full-map scan.
+function filterToConnectedBloc(world, bloc, seed, radius) {
+  const co = world._countryOwner;
+  if (!co) return bloc;                            // no political map yet — fall back to as-given
+  const tw = world.tw, th = world.th;
+  const parentId = seed.countryId;
+  // Home tile → member, so the flood marks which candidates it reaches.
+  const homeOf = new Map();
+  for (const m of bloc) homeOf.set((m.pos.y | 0) * tw + (m.pos.x | 0), m);
+  // An optional radius keeps a contagious REVOLT regional; the ambition/rebellion
+  // paths pass none (Infinity) and flood the whole connected branch instead.
+  const sx = seed.pos.x | 0, sy = seed.pos.y | 0;
+  const r2 = (radius && isFinite(radius)) ? radius * radius : Infinity;
+  const start = sy * tw + sx;
+  const reached = new Set([seed]);
+  const visited = new Set([start]);
+  const q = [start];
   while (q.length) {
     const ti = q.pop();
+    const hit = homeOf.get(ti); if (hit) reached.add(hit);
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
     const ns = [ty * tw + xm, ty * tw + xp,
                 ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
     for (let k = 0; k < 4; k++) {
-      const ni = ns[k]; if (ni < 0 || visited[ni]) continue;
-      const oid = owner[ni]; if (oid < 0) continue;
-      if (!candidateIds.has(oid)) continue;       // hit non-bloc territory — stop
-      visited[ni] = 1;
-      reachable.add(oid);
-      q.push(ni);
+      const ni = ns[k]; if (ni < 0 || visited.has(ni)) continue;
+      const ny = (ni / tw) | 0, nx = ni - ny * tw;
+      const hit2 = homeOf.get(ni); if (hit2) reached.add(hit2);  // a member sitting right on the border still joins
+      if (co[ni] !== parentId) continue;           // only flood through the parent's own contiguous land
+      let dx = Math.abs(nx - sx); if (dx > tw / 2) dx = tw - dx;
+      const dy = ny - sy;
+      if (dx * dx + dy * dy > r2) continue;         // stay within the revolt radius
+      visited.add(ni); q.push(ni);
     }
   }
-  return bloc.filter(m => reachable.has(m.id));
+  return bloc.filter(m => reached.has(m));
 }
 
-// A regional revolt: each collapsed province becomes the seed of a successor
-// state and rallies the disloyal members around it (within a reach radius)
-// to join it. Loyal provinces stay with the empire; restless ones leave as a
-// bloc with their garrisons — so the breakaway can actually defend itself.
+// ── Provincial secession: an over-stretched empire sheds whole PROVINCES ──
+// History never fragmented an empire one town at a time. The unit of secession
+// was a REGION with its own seat of government and army — a province under its
+// governor, a satrapy under its general, an ulus under its khan — and when the
+// centre weakened that regional seat carried its WHOLE administrative branch (its
+// towns and the villages beneath them) out of the realm. Adjacent restless
+// provinces then rallied to the strongest seat among them into ONE successor
+// state: Rome shedding the Gallic Empire (Gaul+Britain+Hispania under the general
+// Postumus) and the Palmyrene Empire (Egypt+Syria under Zenobia) in the Crisis of
+// the Third Century; the Mongol realm splitting along its ulus/appanage lines into
+// the four khanates after Möngke's death; Alexander's empire carved among the
+// Diadochi by satrapy. So secession here is at the granularity of the PROVINCE —
+// a top-level seat (a city/town answering directly to the capital) plus its whole
+// subtree — and neighbouring restless provinces COALESCE under the strongest
+// regional seat. An empire fragments into a few large successor realms along its
+// administrative seams, never into a confetti of single seceding towns.
+
+// Walk the administrative chain up from a member to its TOP-LEVEL province seat:
+// the city/town answering DIRECTLY to the capital, under whose branch this member
+// sits (its region's "governor"). Returns the capital itself only for the
+// capital's own immediate dependents — its core province, which never secedes.
+function topProvinceSeat(c, s, byId) {
+  let cur = s, guard = 0;
+  while (cur.liegeId >= 0 && cur.liegeId !== c.capitalId && guard++ < 64) {
+    const L = byId.get(cur.liegeId); if (!L) break; cur = L;
+  }
+  return cur;
+}
+
 function secedeContagious(world, c, seeds) {
   const radius = Math.max(REVOLT_RADIUS_MIN, c.range * REVOLT_RADIUS_RANGE);
+  const byId = new Map(); for (const m of c.members) byId.set(m.id, m);
+  // Administrative children index, built ONCE: a province is a seat plus the
+  // branch beneath it, gathered by `province()` (cheaper than subtreeOf, which
+  // would rebuild this map on every call across the contagion sweep).
+  const children = new Map();
+  for (const m of c.members) if (m.liegeId >= 0) { let a = children.get(m.liegeId); if (!a) children.set(m.liegeId, a = []); a.push(m); }
+  const province = (seat) => {
+    const out = [], stack = [seat];
+    while (stack.length) {
+      const cur = stack.pop();
+      if (cur.countryId === c.id) out.push(cur);
+      const kids = children.get(cur.id); if (kids) for (const k of kids) stack.push(k);
+    }
+    return out;
+  };
+  // A province leads a breakaway only when its GOVERNOR (the top-level seat) has
+  // himself turned — the centre has lost the whole region, not just one restless
+  // frontier hamlet. Each collapsed member points up at its province's seat.
+  const isLeadSeat = (s) => {
+    if (s.id === c.capitalId || (s.tier | 0) < CITY_TIER || s.liegeId !== c.capitalId) return false;
+    if ((s.loyalty ?? 1) > REVOLT_JOIN_LOYALTY) return false;             // governor still loyal → province held
+    if (world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE) return false;  // freshly taken → garrisoned
+    return true;
+  };
+  const leaders = new Map();   // seatId → seat whose loyalty broke
   for (const seed of seeds) {
-    if (seed.countryId !== c.id) continue;        // already swept into an earlier revolt this pass
-    let bloc = [seed];
-    for (const m of c.members) {
-      if (m === seed || m.countryId !== c.id || m.id === c.capitalId) continue;
-      if ((m.loyalty ?? 1) > REVOLT_JOIN_LOYALTY) continue;          // still loyal → doesn't join
-      const pacified = world.step - (m._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
-      const infant   = m.parentSettlementId >= 0 && world.step - (m.foundedStep || 0) < COLONY_SUPPLY_TICKS;
-      if (pacified || infant) continue;                              // garrisoned / supported → held
-      if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
-      bloc.push(m);
+    if (seed.countryId !== c.id) continue;
+    const seat = topProvinceSeat(c, seed, byId);
+    if (isLeadSeat(seat)) leaders.set(seat.id, seat);
+  }
+  if (!leaders.size) return;
+  // The strongest restless governor breaks first and rallies the rest around him.
+  const order = [...leaders.values()].sort((a, b) => settlementPower(b) - settlementPower(a));
+  const taken = new Set();
+  for (const seat of order) {
+    if (taken.has(seat.id) || seat.countryId !== c.id) continue;
+    // The province: this seat's whole administrative branch (its towns + villages).
+    let bloc = province(seat);
+    taken.add(seat.id);
+    // Contagion: ADJACENT provinces whose governor is also restless rally to this
+    // (stronger) seat — the several-province break-up of a collapsing empire.
+    for (const s of c.members) {
+      if (taken.has(s.id) || s.countryId !== c.id) continue;
+      if (!isLeadSeat(s)) continue;
+      if (dist(world, seat.pos.x, seat.pos.y, s.pos.x, s.pos.y) > radius) continue;
+      for (const m of province(s)) bloc.push(m);
+      taken.add(s.id);
     }
-    // Promote the strongest city in the bloc to be the "anchor" — only
-    // vassals whose territory connects to the anchor through bloc-owned
-    // tiles can physically follow it into the new realm (filterToConnectedBloc).
-    // Disconnected members stay with the parent state — they can't teleport.
-    let anchor = seed;
-    let anchorPow = (seed.tier | 0) >= 2 ? settlementPower(seed) : -1;
-    for (const m of bloc) {
-      if ((m.tier | 0) < 2) continue;
-      const p = settlementPower(m);
-      if (p > anchorPow) { anchorPow = p; anchor = m; }
-    }
-    bloc = filterToConnectedBloc(world, bloc, anchor);
+    // Drop any member with no land link to the seat through the realm (marooned
+    // across the sea or behind a foreign wedge) — it can't physically follow.
+    let maxd = radius;
+    for (const m of bloc) { const d = dist(world, seat.pos.x, seat.pos.y, m.pos.x, m.pos.y); if (d > maxd) maxd = d; }
+    bloc = filterToConnectedBloc(world, bloc, seat, maxd * 1.4 + 8);
     const newId = freshCountryId(c, bloc);
-    if (newId < 0) continue;                       // can't carve out a distinct realm this pass
-    // Viability checks:
-    //  - geographic: a fully-enclosed bloc has no allies it can reach
-    //  - political:  a bloc with no city has no seat of government
-    // Either failure: discharge as a FAILED REVOLT (damage + cooldown).
+    if (newId < 0) continue;
+    // A province is a SEAT AND ITS HINTERLAND — never a town on its own. A
+    // governor with no dependents and no restless neighbour to rally has no
+    // region to take with him, so he simply stays put (restless) until a
+    // hinterland forms or an adjacent province rises with him. This is what stops
+    // bare towns peeling off the map one at a time.
+    if (bloc.length < 2) continue;
+    // A fully-enclosed breakaway has no outside border and is besieged into
+    // submission; a province always carries a seat. Failure → crushed revolt.
     if (!hasOutsideBorder(world, c.id, bloc) || !blocHasCity(bloc)) {
       for (const m of bloc) {
         ravage(m, FAILED_REVOLT_POP, FAILED_REVOLT_WEALTH, FAILED_REVOLT_ARMY);
@@ -503,11 +654,13 @@ function secedeContagious(world, c, seeds) {
       continue;
     }
     inheritPersonality(world, c.id, newId);        // successor inherits parent temperament (with drift)
+    snapClaim(world, newId);                       // the region is its own that day (instant, not a slow wave)
     for (const m of bloc) {
       m.countryId = newId;
-      m.loyalty = m === seed ? 1 : 0.85;           // seed leads; followers enthusiastic
+      m.loyalty = m === seat ? 1 : 0.85;           // the governor leads; his province follows
+      m._ambition = 0;
       m._conqueredAt = world.step;                 // resists immediate re-annex (anti-flicker)
-      if (m.history) m.history.push({ step: world.step, type: m === seed ? "seceded" : "joined-revolt", to: newId });
+      if (m.history) m.history.push({ step: world.step, type: m === seat ? "seceded" : "joined-secession", to: newId });
     }
   }
 }
@@ -535,6 +688,7 @@ export function fragmentRealm(world, oldId, excludeId) {
   if (survivors.length === 1) {
     const s = survivors[0];
     inheritPersonality(world, oldId, s.id);       // lone successor keeps the old realm's temperament
+    snapClaim(world, s.id);                        // the realm shatters at once, not as a wave
     s.countryId = s.id; s.loyalty = 1; s._conqueredAt = world.step;
     if (s.history) s.history.push({ step: world.step, type: "successor", of: oldId });
     return;
@@ -553,7 +707,7 @@ export function fragmentRealm(world, oldId, excludeId) {
   }
   // Each successor realm inherits the dead empire's temperament (with drift),
   // so the Diadochi share their predecessor's character before diverging.
-  for (const cap of capitals) inheritPersonality(world, oldId, cap.id);
+  for (const cap of capitals) { inheritPersonality(world, oldId, cap.id); snapClaim(world, cap.id); }
   // Each survivor joins its nearest successor capital.
   for (const s of survivors) {
     let best = capitals[0], bd = Infinity;
@@ -589,10 +743,11 @@ function subtreeOf(c, seed) {
 // state, regardless of their own loyalty.
 function declareIndependence(world, c, seed) {
   let bloc = subtreeOf(c, seed).filter(m => m.countryId === c.id);     // still in the realm
-  // Only vassals whose tiles connect to the governor's via bloc-owned
-  // land can physically follow him — distant vassals stranded inside
-  // loyal-parent territory stay with the parent.
-  bloc = filterToConnectedBloc(world, bloc, seed);
+  // Only vassals whose tiles connect to the governor's through the realm's own
+  // land can physically follow him — a vassal stranded across the sea or behind
+  // a foreign wedge stays with the parent. (No radius: the whole connected
+  // branch follows its lord, however far it reaches.)
+  bloc = filterToConnectedBloc(world, bloc, seed, Infinity);
   const newId = freshCountryId(c, bloc);
   if (newId < 0) { seed._ambition = 0; return; }                       // can't split cleanly — vent it
   // Even an ambitious governor can't carve out an enclave with no
@@ -609,6 +764,7 @@ function declareIndependence(world, c, seed) {
     return;
   }
   inheritPersonality(world, c.id, newId);        // the breakaway carries its parent's temperament (with drift)
+  snapClaim(world, newId);                        // instantaneous secession
   for (const m of bloc) {
     m.countryId = newId;
     m._conqueredAt = world.step;                 // the breakaway realm gets breathing room (grace)
@@ -651,16 +807,10 @@ function rebel(world, c, seeds) {
       if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
       bloc.push(m);
     }
-    // Anchor + connectivity filter — disconnected members can't physically
-    // follow the rebellion into the new state (see filterToConnectedBloc).
-    let anchor = seed;
-    let anchorPow = (seed.tier | 0) >= 2 ? settlementPower(seed) : -1;
-    for (const m of bloc) {
-      if ((m.tier | 0) < 2) continue;
-      const p = settlementPower(m);
-      if (p > anchorPow) { anchorPow = p; anchor = m; }
-    }
-    bloc = filterToConnectedBloc(world, bloc, anchor);
+    // Connectivity filter — the rising rallies the contiguous heartland around
+    // the seed; members it can't reach through the realm's own land can't follow
+    // (see filterToConnectedBloc). The seat is the strongest member (rebuildCountries).
+    bloc = filterToConnectedBloc(world, bloc, seed, radius);
     const newId = freshCountryId(c, bloc);
     if (newId < 0) { seed.unrest = 0; continue; }
     // A landlocked rebellion can RIOT (do damage) but can't carve out a
@@ -677,6 +827,7 @@ function rebel(world, c, seeds) {
       }
       continue;
     }
+    snapClaim(world, newId);                   // a rebellion seizes its territory at once
     for (const m of bloc) {
       ravage(m, REBEL_POP, REBEL_WEALTH, REBEL_ARMY);
       m.countryId = newId;
@@ -834,6 +985,7 @@ function capitalTransportCosts(world, c) {
     pending++;
   }
   if (pending === 0) return { cost: out, cross };
+  const co = world._countryOwner;   // for the contiguity toll (crossing foreign land)
   const maxCost = Math.max(50, c.range * 25);
   const dist = new Map();
   const crossAcc = new Map();   // tile → major-river toll accrued reaching it (parallels dist)
@@ -863,8 +1015,9 @@ function capitalTransportCosts(world, c) {
     const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
     for (let k = 0; k < 8; k++) {
       const ni = ns[k]; if (ni < 0) continue;
-      const ec = localEdgeCost(world, ti, ni, kn);
+      let ec = localEdgeCost(world, ti, ni, kn, true);  // admin reach ignores roads
       if (ec === Infinity) continue;
+      if (co) { const oc = co[ni]; if (oc >= 0 && oc !== c.id) ec *= FOREIGN_CROSS; }  // contiguity: crossing foreign land is dear
       const nd = d + ec * mul[k];
       if (nd > maxCost) continue;
       const prev = dist.get(ni);
@@ -908,7 +1061,26 @@ export function updatePolities(world) {
       const seatSize = Math.min(2, Math.log2(1 + (s.people || 0) / SIZE_REF));
       seatBonus += T.CAP_SEAT * (s.loyalty ?? 1) * seatSize;   // disloyal/small seats help less
     }
-    const peaceCapacity = T.CAP_BASE + T.CAP_POP * Math.log2(1 + (cap.people || 0) / CAP_POP_REF)
+    // Organization buys administrative CAPACITY (slots), not just reach: a
+    // literate-bureaucratic state (records, roads, a professional officialdom)
+    // governs far more provinces than a chiefdom. Without this term a high-org
+    // empire had long reach but the same handful of slots, so the moment conquest
+    // grew it past that handful it over-extended and shattered — the late-game
+    // re-fragmentation. Scaling capacity with org lets large empires that form by
+    // conquest actually HOLD, so consolidation persists into the late game.
+    const capOrg = (cap.knowledge && cap.knowledge.organization) || 0;
+    // Capacity grows with the capital's coercive POWER (people × military-tech ×
+    // organisation — see settlementPower), compressed through log2 so it climbs
+    // steeply at first then levels: a primitive realm holds barely more than its
+    // base (the EARLY map stays fragmented into small city-states), while a
+    // developed, organised, populous capital sustains a real empire of many
+    // provinces (the classical/imperial CONSOLIDATION into a few great powers).
+    // Loyal regional seats add their own sub-administration on top (seatBonus).
+    // Because it tracks the capital's LIVE strength, a weakening centre (war,
+    // plague, a sacked throne) shrinks capacity and the frontier sheds — and an
+    // empire that conquers past this budget holds the excess only on pacification
+    // grace, then fragments back toward it once the conquest stalls.
+    const peaceCapacity = CAP_K * Math.log2(1 + capPower / POW_REF)
                         + Math.min(SEAT_BONUS_CAP, seatBonus);
 
     // ── War duress: throttle the budget while the realm is fighting ────
@@ -929,7 +1101,13 @@ export function updatePolities(world) {
     // more — the self-reinforcing collapse.
     const gov = govOf(world, c.id);
     const solvency = gov._solvency ?? 1;
-    const fiscalDuress = SOLVENCY_FLOOR + solvency * (1 - SOLVENCY_FLOOR);
+    let fiscalDuress = SOLVENCY_FLOOR + solvency * (1 - SOLVENCY_FLOOR);
+    // Organised states weather both war and insolvency far better — ease both
+    // throttles toward 1 by the capital's org, so large high-org empires HOLD
+    // under pressure instead of shattering at the first frontier war.
+    const resilience = 1 - capOrg * T.DURESS_RESILIENCE;
+    duress       = 1 - (1 - duress)       * resilience;
+    fiscalDuress = 1 - (1 - fiscalDuress) * resilience;
     // Conquest momentum: a winning streak (banked in armies.js) holds a far
     // larger domain together than the settled budget could — but it decays
     // FAST once the conquering stops, so the moment the streak ends the
@@ -1029,8 +1207,19 @@ export function updatePolities(world) {
       if (covered) {
         s.loyalty = Math.min(1, (s.loyalty ?? 1) + LOYAL_RECOVER * (1 - (s.loyalty ?? 1)));
       } else {
-        const over = (cum - capacity) / capacity;          // how deep past the budget
-        s.loyalty = Math.max(0, (s.loyalty ?? 1) - T.LOYAL_DECAY * (1 + over));
+        // How deep past the budget — CAPPED so a wildly over-extended realm
+        // sheds gradually (ring by ring over passes) instead of its whole
+        // frontier collapsing in one tick (see OVER_DECAY_CAP).
+        const over = Math.min(OVER_DECAY_CAP, (cum - capacity) / capacity);
+        // An ORGANISED empire's provinces are administratively STICKY — records,
+        // garrisons, an integrated economy and roads bind a province to the
+        // realm, so it bleeds loyalty slowly even while over-budget. This is the
+        // direct lever that lets a large high-org empire HOLD (it sheds its
+        // frontier over many passes, a slow imperial overstretch, rather than
+        // shattering wholesale the moment a war pushes it past budget). A
+        // primitive realm (low org) has no such glue and fragments fast.
+        const orgHold = 1 - capOrg * T.LOYAL_ORG_HOLD;
+        s.loyalty = Math.max(0, (s.loyalty ?? 1) - T.LOYAL_DECAY * (1 + over) * orgHold);
         if (s.loyalty <= 0) seeds.push(s);                 // collapsed — defer (revolt is contagious)
       }
     }
@@ -1106,15 +1295,15 @@ export function updatePolities(world) {
     driftPersonality(world, c, { warLevel, solvency });
   }
 
-  // ── City-state minimum tier rule ─────────────────────────────────────
-  // A sovereign realm needs a city. A "country" whose largest member is a
-  // village or town has no seat to mint, govern, or defend — it's the new
-  // village whose owner hasn't gotten around to claiming it. Absorb it
-  // into the strongest neighbouring country (sharing any tile border).
-  // No bordering country at all → genuinely undiscovered frontier, stays
-  // an independent city-state. (Pacified-grace gate: don't immediately
-  // re-flip a freshly seceded/conquered settlement.)
-  absorbSubCityCountries(world, countries);
+  // ── Peaceful consolidation (erode weak neighbours into strong realms) ──
+  // A dominant, organised realm administratively absorbs the frontier
+  // settlements of a much weaker touching neighbour. How DEVELOPED a settlement
+  // it can integrate scales with its organization tech (tierCapForOrg), so the
+  // map consolidates AS THE ERA ADVANCES — villages in the bronze age, towns and
+  // small cities by the iron age. Genuinely-strong neighbours and undiscovered
+  // frontier are untouched, and a pacified-grace gate stops re-flipping a
+  // freshly seceded/conquered settlement.
+  absorbWeakNeighbors(world, countries);
 
   // Drop treasuries of realms that no longer exist (conquest seizure already
   // moved the coin of conquered capitals; this just stops the map growing).
@@ -1129,60 +1318,92 @@ export function updatePolities(world) {
 // already drawing its full capacity (load ≥ capacity) would immediately
 // over-extend on anything it absorbed, secede it next pass, and oscillate.
 // We require a small slack so the new province lands inside the budget.
-function hasAbsorbHeadroom(c) {
+//
+// `extra` is the load ALREADY committed to this realm by earlier absorptions
+// in the SAME pass — without it, every absorption this pass checks against the
+// realm's stale pre-pass load, so a realm with a sliver of headroom vacuums a
+// dozen villages at once and is massively over-extended next pass (the very
+// absorb↔secede oscillation this gate exists to stop). Charging each
+// absorption forward closes that hole — a pass fills only the real headroom.
+function hasAbsorbHeadroom(c, extra = 0) {
   if (!c) return false;
   const cap = c._capacity, load = c._loadTotal;
   if (cap == null || load == null) return true;        // no budget data yet → allow
-  return load < cap * ABSORB_HEADROOM;
+  return load + extra < cap * ABSORB_HEADROOM;
 }
 
-function absorbSubCityCountries(world, countries) {
+// Cheap estimate of the admin load a freshly-absorbed province adds to a realm
+// — euclidean distance / reach (the same calibration the full load uses: a
+// province at the capital's reach costs ~1), floored so an adjacent village is
+// never free. Used only to charge in-pass absorptions against the headroom gate
+// above; the real load is recomputed from scratch next polity pass.
+function estAbsorbLoad(world, c, m) {
+  const cap = c.capital; if (!cap) return 1;
+  let dx = Math.abs(cap.pos.x - m.pos.x); if (dx > world.tw / 2) dx = world.tw - dx;
+  const dy = cap.pos.y - m.pos.y;
+  const eucl = Math.sqrt(dx * dx + dy * dy);
+  return Math.max(0.5, eucl / Math.max(1, c.range));
+}
+
+// Org → highest target TIER a realm can administratively absorb. THE
+// consolidate-with-the-era knob: a bronze-age power (org ~0.5) can only vacuum
+// villages off a touching statelet, but an iron-age empire (org ~0.8) integrates
+// towns and small cities — so a fragmented classical patchwork coalesces into
+// empires late instead of staying confetti. (Below T.ABSORB_ORG_MIN nothing
+// absorbs at all.)
+function tierCapForOrg(org) { return org >= 0.85 ? 3 : org >= 0.72 ? 2 : org >= 0.60 ? 1 : 0; }
+
+function absorbWeakNeighbors(world, countries) {
   const owner = world._territoryOwner, byId = world._byId;
   if (!owner || !byId) return;
-  // Identify countries that lack any city-tier member.
-  const subCity = [];
-  for (const c of countries.values()) {
-    let hasCity = false;
-    for (const m of c.members) if ((m.tier | 0) >= 2) { hasCity = true; break; }
-    if (!hasCity) subCity.push(c);
-  }
-  if (subCity.length === 0) return;
   const tw = world.tw, th = world.th, N = world.N;
-  // Map every sub-city settlement-id → its country, and remember which ids
-  // belong to a sub-city realm at all (for fast tile-walk filtering).
-  const settToCountry = new Map();
-  for (const c of subCity) for (const m of c.members) settToCountry.set(m.id, c);
-  // Per-settlement touch scores (foreign-country-id → cumulative power).
-  // We walk EVERY tile once and credit each foreign neighbour to the
-  // settlement that owns the home tile, NOT to the whole country. That
-  // makes each sub-city member's exposure independent: a village on the
-  // edge feels the cradle's pull; a village deep inside its own
-  // hinterland doesn't.
+  const co = world._countryOwner;   // country-primary territory (incl. marches)
+  // Per-country total power, for the dominance gate (only a realm that clearly
+  // out-powers a neighbour's WHOLE country can erode it — so peer empires don't
+  // peel border settlements off each other and flip-flop).
+  const countryPower = new Map();
+  for (const c of countries.values()) {
+    let pow = 0; for (const m of c.members) pow += settlementPower(m);
+    countryPower.set(c.id, pow);
+  }
+  // Per-settlement exposure to strong, organised foreign realms able to absorb a
+  // settlement of its tier. Walk every tile once, crediting each qualifying
+  // foreign neighbour to the settlement that owns the home tile (so a frontier
+  // town feels the empire's pull while one deep in its own realm doesn't).
   const perSett = new Map();
   for (let ti = 0; ti < N; ti++) {
     const oid = owner[ti]; if (oid < 0) continue;
-    const ownerSett = byId.get(oid);
-    if (!ownerSett || !settToCountry.has(ownerSett.id)) continue;
+    const m = byId.get(oid);
+    if (!m || m.mode !== "settled") continue;
+    const myCC = m.countryId;
+    const myCountryPow = countryPower.get(myCC) || 1;
+    const myTier = m.tier | 0;
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
     const ns = [ty * tw + xm, ty * tw + xp,
                 ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
-    const myCountry = ownerSett.countryId;
     for (let k = 0; k < 4; k++) {
       const ni = ns[k]; if (ni < 0) continue;
-      const no = owner[ni]; if (no < 0) continue;
-      const ns2 = byId.get(no); if (!ns2 || ns2.countryId === myCountry) continue;
-      const foreign = countries.get(ns2.countryId); if (!foreign) continue;
-      let foreignHasCity = false;
-      for (const fm of foreign.members) if ((fm.tier | 0) >= 2) { foreignHasCity = true; break; }
-      if (!foreignHasCity) continue;
-      const orgK = (foreign.capital.knowledge && foreign.capital.knowledge.organization) || 0;
-      if (orgK < T.ABSORB_ORG_MIN) continue;
-      const orgFactor = Math.min(1, (orgK - T.ABSORB_ORG_MIN) / (1 - T.ABSORB_ORG_MIN));
-      let perCc = perSett.get(ownerSett.id);
-      if (!perCc) { perCc = new Map(); perSett.set(ownerSett.id, perCc); }
-      perCc.set(ns2.countryId,
-        (perCc.get(ns2.countryId) || 0) + settlementPower(foreign.capital) * orgFactor);
+      // The neighbour's COUNTRY: the owning settlement's country if this tile is
+      // someone's catchment, else the country-primary owner of the tile (an
+      // empire's MARCH — claimed land with no settlement on it). Using the march
+      // owner is what lets a statelet ENGULFED by a big empire's frontier be
+      // seen as bordering that empire — without it, a speck surrounded by marches
+      // looks like it borders only wilderness and is never absorbed (the "sludge").
+      const no = owner[ni];
+      let ncc;
+      if (no >= 0) { const fs = byId.get(no); if (!fs) continue; ncc = fs.countryId; }
+      else { ncc = co ? co[ni] : -1; }
+      if (ncc < 0 || ncc === myCC) continue;
+      const F = countries.get(ncc); if (!F) continue;
+      const fOrg = (F.capital.knowledge && F.capital.knowledge.organization) || 0;
+      if (fOrg < T.ABSORB_ORG_MIN) continue;
+      if (myTier > tierCapForOrg(fOrg)) continue;            // too developed for F's statecraft
+      if ((countryPower.get(F.id) || 1) < myCountryPow * T.ABSORB_DOMINANCE) continue;  // not dominant enough
+      const orgFactor = Math.min(1, (fOrg - T.ABSORB_ORG_MIN) / (1 - T.ABSORB_ORG_MIN));
+      let perCc = perSett.get(m.id);
+      if (!perCc) { perCc = new Map(); perSett.set(m.id, perCc); }
+      perCc.set(F.id, (perCc.get(F.id) || 0) + settlementPower(F.capital) * orgFactor);
     }
   }
   // Per-settlement probabilistic defection. A village that's heavily
@@ -1191,6 +1412,11 @@ function absorbSubCityCountries(world, countries) {
   // produces the visible "village-by-village, year by year" pattern of
   // a small statelet being eroded into a great power's orbit, instead
   // of the entire statelet flipping atomically in one tick.
+  // Load each realm commits to absorptions THIS pass, so a realm with a
+  // little headroom can't swallow a dozen villages at once (see
+  // hasAbsorbHeadroom — without this the gate checks every candidate against
+  // the same stale pre-pass load and the realm over-extends in one tick).
+  const absorbedLoad = new Map();
   for (const [settId, scoreMap] of perSett) {
     const m = byId.get(settId);
     if (!m || m.mode !== "settled") continue;
@@ -1202,14 +1428,23 @@ function absorbSubCityCountries(world, countries) {
     // absorber is already at/over its administrative budget, the freshly
     // taken village would be over-extended and secede again next pass — the
     // absorb↔secede oscillation that flips whole swathes back and forth.
-    // Only pull in what the surrounder has the spare capacity to hold.
-    if (!hasAbsorbHeadroom(countries.get(bestId))) continue;
+    // Only pull in what the surrounder has the spare capacity to hold —
+    // counting what it has already taken on this pass.
+    const target = countries.get(bestId);
+    const committed = absorbedLoad.get(bestId) || 0;
+    // Lopsided: the absorber out-powers this settlement's WHOLE country by
+    // LOPSIDED_ENGULF — a great power vs a statelet. Then it engulfs even with no
+    // headroom (and faster, below); otherwise it must have spare capacity.
+    const myCountryPow = countryPower.get(m.countryId) || 1;
+    const lopsided = (countryPower.get(bestId) || 1) >= myCountryPow * LOPSIDED_ENGULF;
+    if (!lopsided && !hasAbsorbHeadroom(target, committed)) continue;
     const myPower = Math.max(1, settlementPower(m));
-    // Defection chance per polity pass — caps at T.ABSORB_PROB_MAX so even
-    // a tiny village vs a huge cradle defects gradually (~10 passes to
-    // flip on average), not instantly.
+    // Defection chance per polity pass — caps at T.ABSORB_PROB_MAX normally; a
+    // lopsided great-power engulfment goes at the faster ENGULF_PROB so the
+    // splotch of tiny states is consolidated within a few passes, not never.
     const ratio = bestScore / myPower;
-    const prob = Math.min(T.ABSORB_PROB_MAX, ratio * T.ABSORB_RATE);
+    let prob = Math.min(T.ABSORB_PROB_MAX, ratio * T.ABSORB_RATE);
+    if (lopsided) prob = Math.max(prob, ENGULF_PROB);
     // Deterministic hash on (id, step) — same input always rolls the same
     // outcome, so debugging is reproducible and there's no jitter.
     const r = ((m.id * 9301 + world.step * 49297 + 7) % 233280) / 233280;
@@ -1217,6 +1452,7 @@ function absorbSubCityCountries(world, countries) {
     m.countryId = bestId;
     m.loyalty = 0.6;                          // absorbed, not yet truly part of the realm
     m._conqueredAt = world.step;              // brief grace to settle in
+    absorbedLoad.set(bestId, committed + estAbsorbLoad(world, target, m));
     if (m.history) m.history.push({ step: world.step, type: "absorbed", into: bestId });
   }
 
@@ -1265,7 +1501,7 @@ function eliminateEnclaves(world, countries) {
     region.length = 0; q.length = 0;
     q.push(start); region.push(start);
     let touchesEdge = false;
-    const borderCountries = new Set();
+    const borderCount = new Map();                  // bounding countryId (or wild -1) → border length
     const selfCC = surrounder;                     // the region's own classification
     while (q.length) {
       const ti = q.pop();
@@ -1282,21 +1518,31 @@ function eliminateEnclaves(world, countries) {
         } else if (ncc === -2) {
           touchesEdge = true;                       // sea = open border
         } else {
-          borderCountries.add(ncc);                 // a bounding country (or wild, -1)
+          borderCount.set(ncc, (borderCount.get(ncc) || 0) + 1);   // weight by shared border
         }
       }
     }
-    // An enclave is a region that (a) isn't itself a country we'd be dissolving
-    // into nothing improperly, (b) never touches sea or the map edge, and
-    // (c) is bounded by exactly ONE country. Wild land (-1) bordering it does
+    // An enclave is a region that never touches sea or the map edge and is
+    // dominated by a single bounding country. Wild land (-1) bordering it does
     // NOT count as a bounding country, but the region must still be sealed.
     if (touchesEdge) continue;
-    if (selfCC >= 0 && borderCountries.size === 0) continue;   // whole-map single country
-    // Remove the wild marker from bounders; we need exactly one real country.
-    borderCountries.delete(-1);
-    if (borderCountries.size !== 1) continue;       // open to >1 country or to none
-    const intoId = borderCountries.values().next().value;
+    borderCount.delete(-1);                          // wild doesn't bound
+    if (borderCount.size === 0) continue;            // whole-map country / interior wilderness
+    // Dominant bounding country = the one sharing the most border with the
+    // region. We cede the region to it when it CLEARLY surrounds it. Exactly-one
+    // bounder is the strict enclave (Vatican); a landlocked fragment hemmed in
+    // ≥ DOMINANCE on its border by one realm (the rest a sliver of some third
+    // party) is the same situation in practice — a marooned bit "stuck inside"
+    // a neighbour — and is cleaned up the same way. A region holding an actual
+    // CITY is exempt from the relaxed rule: a seat of government doesn't change
+    // hands without conquest, so a city only flips when TRULY (fully) enclosed.
+    let intoId = -1, bestBord = 0, totBord = 0;
+    for (const [cc, n] of borderCount) { totBord += n; if (n > bestBord) { bestBord = n; intoId = cc; } }
     if (intoId === selfCC) continue;                // region already that country
+    let regionHasCity = false;
+    for (const ti of region) { const o = owner[ti]; if (o >= 0) { const s = byId.get(o); if (s && (s.tier | 0) >= 2) { regionHasCity = true; break; } } }
+    const needFrac = regionHasCity ? 1.0 : ENCLAVE_DOMINANCE;
+    if (bestBord < totBord * needFrac) continue;    // no realm clearly surrounds it → leave it
     const into = countries.get(intoId);
     if (!into) continue;
     // Claim it: flip any settlements in the region, stamp wild tiles.

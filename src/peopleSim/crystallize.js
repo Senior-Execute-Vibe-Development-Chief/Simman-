@@ -20,6 +20,7 @@
 import { isContinentalLand } from "./state.js";
 import { makeSettlement } from "./settlement.js";
 import { computeTransport } from "./transport.js";
+import { forEachNear, gridAdd } from "./spatialGrid.js";
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
 const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) flood — a
@@ -60,7 +61,7 @@ const MIN_AREA_FERT             = 1.0;    // 5×5 box must have *some* support
 // fertility-tier candidates still get pushed apart.
 const HARD_FLOOR                = 4;          // absolutely no settlement closer than this
 const HARD_FLOOR_SQ             = HARD_FLOOR * HARD_FLOOR;
-const SOFT_DIST                 = 14;         // beyond this, the spacing factor is 1 (no penalty)
+const SOFT_DIST                 = 10;         // beyond this, the spacing factor is 1 (no penalty) — tighter so villages pack denser
 const SOFT_DIST_SQ              = SOFT_DIST * SOFT_DIST;
 // ── Market-town pull ──
 // A new settlement is more likely to crystallise WITHIN the catchment area
@@ -84,8 +85,7 @@ const MARKET_PULL_WEIGHT        = 0.4;   // modest pull so clusters form but don
 // Spacing-factor: 0 at HARD_FLOOR, 1 at SOFT_DIST. Used in sendSettlers'
 // hard reject because mother-country colony parties already pick deliberately
 // (the founder doesn't accidentally plant at 4 tiles).
-const MIN_SETT_DIST             = 8;          // kept for daughter-colony search hardcoding
-const MIN_SETT_DIST_SQ          = MIN_SETT_DIST * MIN_SETT_DIST;
+const MIN_SETT_DIST             = 8;          // daughter-colony spacing floor (grid near-query radius)
 const KNOWLEDGE_DECAY_SCALE     = 30;
 // Independent invention: a site reached by no land network at all relies on
 // this baseline rate. Low so empty regions stay empty until colonised
@@ -99,7 +99,10 @@ const INDEPENDENT_RATE          = 0.020;
 // fill before colonists can sail to them.
 const OVERSEAS_INDEPENDENT_RATE = 0.0015;
 const NEAR_RATE                 = 1.50;
-const BASE_RATE                 = 0.010;
+const BASE_RATE                 = 0.030;   // 3x — the world settles ~3x faster/denser (a fuller map of villages); the saturation guard (REF) sets where it plateaus
+// A settlement spontaneously arising on a STATE'S land (its core or claimed
+// marches, world._countryOwner) is born INTO that state; one arising in genuine
+// wilderness is born INDEPENDENT (a new country). See the spawn block below.
 
 // ── Settler colonisation (mother-country-driven expansion) ───────────
 // A crowded, prosperous town with no room to grow ("housing pressed" or
@@ -120,6 +123,15 @@ const COLONY_MIN_RANGE        = MIN_SETT_DIST + 2;  // can't found right next do
 const COLONY_CANDIDATES       = 12;    // viable sites sampled per attempt (best is picked)
 const COLONY_CHANCE           = 0.5;   // probability a pressed, eligible parent actually sends settlers on a roll
 const COLONY_COOLDOWN         = 1500;  // ticks the parent waits between settler parties (recovery)
+const COLONY_HEADROOM         = 0.85;  // realm may only colonise while admin load is below this fraction of capacity
+const COLONY_MIN_SOLVENCY     = 0.80;  // ...and only while it can still (mostly) pay its army
+// Colonisation, like crystallisation (CRYSTAL_SATURATION_REF), slows as the
+// world fills: the per-parent send chance is scaled by 1/(1+alive/REF). Without
+// this, colonisation (undamped, and now the dominant settlement source) keeps
+// packing towns into already-claimed land forever — ever more provinces → ever
+// more over-extension secession → the steadily-climbing nation count and the
+// late-game splotchy churn. With it, settlement density plateaus.
+const COLONY_SATURATION_REF   = 1500;  // density guard — much higher so colonisation keeps filling the frontier (denser map), not plateauing at a few hundred
 
 // Resource attraction. Each resource has a per-tier value (how
 // valuable it is to a civilisation at that tech level) and a
@@ -157,7 +169,7 @@ const RESOURCE_TIER_VALUE = {
 // Half-rate around N=300, third-rate around N=600. Settler colonisation
 // (which is parent-driven and intentional) is NOT subject to this — the
 // mother country can still push outward into the frontier.
-const CRYSTAL_SATURATION_REF = 300;
+const CRYSTAL_SATURATION_REF = 1500;  // density guard — much higher so the world keeps filling with villages (a denser, more alive map) instead of plateauing at a few hundred
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
@@ -175,7 +187,7 @@ export function maybeCrystallize(world) {
   // Crystallisation saturation: settlement-count-dependent damper.
   let _alive = 0;
   for (const s of world.settlements) if (s.mode === "settled") _alive++;
-  const saturationDamper = 1 / (1 + _alive / CRYSTAL_SATURATION_REF);
+  const saturationDamper = 1 / (1 + (_alive / CRYSTAL_SATURATION_REF) ** 2);
 
   // Compute per-sweep resource scarcity / value table once.
   const resScarcity = computeResourceScarcity(world);
@@ -210,32 +222,25 @@ export function maybeCrystallize(world) {
       }
     }
     if (areaFert < MIN_AREA_FERT) continue;
-    // Walk existing settlements ONCE, accumulating both:
+    // Visit only the settlements NEAR this candidate (spatial grid, radius
+    // MARKET_RANGE × 3), accumulating both:
     //   nearestSq  — for the spacing (anti-overlap) rule
     //   marketPull — for the market-town attraction (positive cluster pull)
-    // A market-area-bonus cutoff distance (MARKET_RANGE × 3) skips far-away
-    // settlements that contribute nothing to either signal.
-    const MARKET_CUTOFF_SQ = (MARKET_RANGE * 3) * (MARKET_RANGE * 3);
+    // The radius IS the market cutoff: anything beyond it contributes nothing
+    // to either signal (HARD_FLOOR/SOFT_DIST ≪ radius, and the market kernel
+    // has decayed to nothing), so the grid query is exact, not approximate.
+    // This replaces an O(settlements) scan per candidate — the dominant cost
+    // once the map gets dense.
+    const MARKET_CUTOFF = MARKET_RANGE * 3;
     let nearestSq = Infinity;
     let marketPull = 0;
-    let earlyExit = false;
-    for (const o of world.settlements) {
-      if (o.mode === "dead") continue;
-      let ddx = Math.abs(o.pos.x - tx);
-      if (ddx > tw / 2) ddx = tw - ddx;
-      const ddy = o.pos.y - ty;
-      const dd = ddx * ddx + ddy * ddy;
-      if (dd < nearestSq) {
-        nearestSq = dd;
-        if (dd < HARD_FLOOR_SQ) { earlyExit = true; break; }
-      }
-      if (dd < MARKET_CUTOFF_SQ) {
-        const d = Math.sqrt(dd);
-        const tierBonus = 1 + (o.tier | 0);
-        marketPull += tierBonus * Math.exp(-d / MARKET_RANGE);
-      }
-    }
-    if (earlyExit || nearestSq < HARD_FLOOR_SQ) continue;       // hard reject — overlap
+    forEachNear(world, tx, ty, MARKET_CUTOFF, (o, dd) => {
+      if (dd < nearestSq) nearestSq = dd;
+      const d = Math.sqrt(dd);
+      const tierBonus = 1 + (o.tier | 0);
+      marketPull += tierBonus * Math.exp(-d / MARKET_RANGE);
+    });
+    if (nearestSq < HARD_FLOOR_SQ) continue;       // hard reject — overlap
     // Linear ramp between HARD_FLOOR and SOFT_DIST on actual distance (not
     // squared, so it grows steeply near the floor and flattens out near the
     // soft boundary — matches the "very close = bad, modest distance =
@@ -291,26 +296,19 @@ export function maybeCrystallize(world) {
       // Inherited knowledge: blend from nearest settlement, weighted by
       // distance. Far sites start near baseline neolithic knowledge.
       const inherited = inheritKnowledgeAt(world, ti, td);
-      // Inherited COUNTRY: if the spawn site is already inside an existing
-      // realm's territory, the new town joins that realm. Pre-existing
-      // sovereigns don't tolerate sovereign new villages popping up inside
-      // their borders — they'd be vassals from day one. Only spawns on
-      // genuinely unclaimed land become their own city-state. This is what
-      // stops the map being littered with awkward independent one-tile
-      // statelets randomly forming inside someone else's country.
-      let inheritedCountry;
-      if (world._territoryOwner && world._byId) {
-        const ownerId = world._territoryOwner[ti];
-        if (ownerId >= 0) {
-          const ownerSett = world._byId.get(ownerId);
-          if (ownerSett && ownerSett.mode === "settled") inheritedCountry = ownerSett.countryId;
-        }
-      }
-      makeSettlement(world, tx + 0.5, ty + 0.5, {
+      // A spawned village is NEVER its own country. It ADOPTS the country that
+      // owns the tile it's founded on (world._countryOwner), or is born STATELESS
+      // (-1) if that's open wilderness — a frontier hamlet that's just population
+      // until a state's territory reaches it (adoptAndFound) or it grows into a
+      // city and founds a realm. This is what keeps the political map clean
+      // however many villages spawn: villages add people, never countries/flecks.
+      const region = world._countryOwner ? world._countryOwner[ti] : -1;
+      const born = makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: 18 + (rng.int(8)),
         knowledge: inherited,
-        countryId: inheritedCountry,
+        countryId: region >= 0 ? region : -1,
       });
+      gridAdd(world, born);   // same-pass candidates must see (and space off) it
     }
   }
 }
@@ -486,15 +484,32 @@ function geoBonusFor(world, ti, tx, ty) {
 function maybeSendSettlers(world) {
   if (!world.transportDist) return;
   const { rng } = world;
+  // Saturation: colonies get rarer as the map fills, so settlement density
+  // plateaus instead of climbing forever (see COLONY_SATURATION_REF).
+  let _alive = 0;
+  for (const s of world.settlements) if (s.mode === "settled") _alive++;
+  const colonySat = 1 / (1 + (_alive / COLONY_SATURATION_REF) ** 2);
   for (const parent of world.settlements) {
     if (parent.mode !== "settled") continue;
     if (parent.people < COLONY_MIN_POP) continue;
     if (world.step - (parent._lastColonySent ?? -Infinity) < COLONY_COOLDOWN) continue;
+    // Don't expand a realm that can't hold what it already governs. A young
+    // colony is an UNSHEDDABLE, SUBSIDISED province (it pays no tribute and
+    // draws food + coin for COLONY_SUPPLY_TICKS, and can't secede however
+    // over-budget the realm is) — so founding colonies from an already
+    // over-extended or insolvent state just deepens the over-stretch and feeds
+    // the secession/rebellion churn. Let such a realm consolidate first; only
+    // states with real administrative and fiscal slack push out new colonies.
+    const c = world.countries && world.countries.get(parent.countryId);
+    if (c && c._capacity != null && c._loadTotal != null
+        && c._loadTotal > c._capacity * COLONY_HEADROOM) continue;
+    const gov = world.governments && world.governments.get(parent.countryId);
+    if (gov && (gov._solvency ?? 1) < COLONY_MIN_SOLVENCY) continue;
     // Pressed: at or near carrying capacity (either food or housing) — the
     // people would otherwise sit at the ceiling. updatePopulation set s._k.
     const k = parent._k || 1;
     if (parent.people / k < COLONY_PRESS_FRAC) continue;
-    if (rng() >= COLONY_CHANCE) continue;
+    if (rng() >= COLONY_CHANCE * colonySat) continue;
     sendSettlers(world, parent);
   }
 }
@@ -516,14 +531,10 @@ function sendSettlers(world, parent) {
     const ti = ty * tw + tx;
     if (!isContinentalLand(world, ti)) continue;
     if (fert[ti] < MIN_FERT) continue;
-    // Spacing check against existing settlements.
+    // Spacing check against existing settlements (grid-bounded near query —
+    // any settled neighbour within MIN_SETT_DIST disqualifies the site).
     let tooClose = false;
-    for (const o of world.settlements) {
-      if (o.mode === "dead") continue;
-      let ddx = Math.abs(o.pos.x - tx); if (ddx > tw / 2) ddx = tw - ddx;
-      const ddy = o.pos.y - ty;
-      if (ddx * ddx + ddy * ddy < MIN_SETT_DIST_SQ) { tooClose = true; break; }
-    }
+    forEachNear(world, tx, ty, MIN_SETT_DIST, () => { tooClose = true; });
     if (tooClose) continue;
     let areaFert = 0;
     for (let dy = -2; dy <= 2; dy++) {
@@ -558,6 +569,7 @@ function sendSettlers(world, parent) {
     countryId: parent.countryId,                   // joins the parent's realm immediately
     name: "colony-" + parent.id + "-" + world.step,
   });
+  gridAdd(world, daughter);   // register for same-pass spacing queries
   if (parent.history) parent.history.push({ step: world.step, type: "colony-sent", to: daughter.id, settlers });
 }
 

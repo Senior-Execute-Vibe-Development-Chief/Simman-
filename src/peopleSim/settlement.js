@@ -20,7 +20,16 @@ export function resetSettlementIds() { _nextId = 1; }
 // are the local market centres, and cities/metropolises are the rare
 // trade-fed hubs — a realistic population pyramid rather than a map of
 // uniform cities.
-const TIER_THRESHOLD = [0, 250, 1200, 5000];
+//
+// The metropolis bar is 3000, not 5000: at the current (dense) settlement
+// density the world's fixed food is spread across hundreds of small village
+// catchments, so an import-fed city's stable ceiling is ~3500 — a city
+// aggregates grain only as fast as its import→housing→growth spiral turns, and
+// that fragmentation caps it. 3000 marks the genuine primate hubs that tower
+// over the villages (the realistic megacity tier for this map's scale); the old
+// 5000 bar predated the density increase and is unreachable without trading the
+// dense countryside for fewer, larger settlements.
+const TIER_THRESHOLD = [0, 250, 1200, 3000];
 const TIER_NAME      = ["village", "town", "city", "metropolis"];
 
 // Pop growth slowed from 0.0045 → 0.0018 so settlements visibly take
@@ -56,6 +65,13 @@ const K_MIN_VIABLE = 8;                    // bare-survival floor (matches the w
 const HOUSING_BASE        = 45;     // starting shelter before anything is built
 const SPACE_RADIUS        = 14;     // urban-footprint radius for the buildable-land scan
 const DENSITY_BASE        = 6;      // people per buildable tile at zero construction
+// Anticipatory urban development: a city builds housing/infrastructure for more
+// people than its CURRENT food can feed, and that empty headroom is what makes
+// it import grain (foodAppetite.growthNeed) and pull in migrants — the engine of
+// real urban growth. Applied only above town size, so villages/towns stay
+// pinned to their own food (the dense rural map is untouched).
+const URBAN_ANTICIPATION     = 1.6;   // a city builds housing up to 1.6x its current food capacity
+const URBAN_ANTICIPATION_REF = 250;   // = TIER_THRESHOLD[town]; anticipation kicks in above town size
 // DENSITY_PER_CONSTR -> runtime lever (tuning.js T.DENSITY_PER_CONSTR)
 // Development: build housing up toward the space ceiling. Needs materials
 // (timber/stone — own, or bought from suppliers with coin) and labour;
@@ -133,7 +149,7 @@ export function makeSettlement(world, x, y, opts = {}) {
     wealth: 0,
     // Cached shortest road-network paths to all reachable
     // settlements. { peerId → { cost, tiles } }. Populated by
-    // rebuildTradeReach in roads.js on each plan cycle.
+    // staggerReachRebuild in roads.js on each plan cycle.
     _tradeReach: null,
     // Polity: each settlement starts as its own one-settlement country
     // (city-state); conquest merges them (see conquest.js / armies.js).
@@ -394,6 +410,21 @@ export function computeExportValue(s, world) {
   return v * Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step);
 }
 
+// Per-tick memo of computeExportValue. It's a heavy function (several log/sqrt
+// terms) whose inputs — knowledge, localRes, territory, population, army — are
+// fixed within a tick, yet the trade pass alone called it ~40×/settlement/tick
+// (twice per trade pair, plus road ranking and inflation). Compute it once per
+// settlement per tick on first use; every later read that tick is free. (The
+// passes that consume it — roads, inflation, trade — don't mutate any of its
+// inputs, so the memo is consistent across them.)
+export function exportValueOf(s, world) {
+  if (s._evStep !== world.step) {
+    s._exportValue = computeExportValue(s, world);
+    s._evStep = world.step;
+  }
+  return s._exportValue;
+}
+
 // Wealth reserve = "rainy day fund" the settlement holds back from
 // active spending. Scales with population — bigger settlements have
 // more obligations (granary stockpiles, watch wages, ceremonial
@@ -509,6 +540,50 @@ export function getTradeProfile(s, world) {
   }
   profile.sort((a, b) => Math.abs(b.netPerTick) - Math.abs(a.netPerTick));
   return profile;
+}
+
+// ── Urbanisation: rural → urban drift ────────────────────────────────
+// Without migration every village just grows toward its own small local carrying
+// capacity, so the map is a uniform sea of hamlets and no real CITY ever forms.
+// In reality people drift to the nearest big town — opportunity, trade, the
+// market — and that town outgrows its own fields on the surplus GRAIN those same
+// emptying villages ship in. So each pass a small fraction of a settlement's
+// people move to the LARGEST road-connected settlement in its trade reach, faster
+// the bigger the gap, capped by the destination's remaining carrying capacity so
+// the city only grows to what it can actually feed and house. Chained up the
+// network (village → town → city → metropolis) this concentrates population into
+// a few real cities standing over many villages — the historical settlement
+// pyramid — instead of an even smear.
+const MIGRATE_RATE     = 0.004;  // per pass: base share of a town that drifts to its hub
+const MIGRATE_MIN_POP  = 25;     // a hamlet this small doesn't shed migrants
+const MIGRATE_GAP_CAP  = 6;      // a far-bigger hub pulls this much harder (capped)
+const MIGRATE_DRAIN_CAP = 0.04;  // never move more than this fraction of a village in one pass
+export function urbanise(world) {
+  const byId = world._byId;
+  if (!byId) return;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || s.people < MIGRATE_MIN_POP || !s._tradeReach) continue;
+    // The biggest road-connected settlement in reach is this region's draw.
+    let best = null, bestPop = s.people;
+    for (const pid of s._tradeReach.keys()) {
+      const d = byId.get(pid);
+      if (!d || d.mode !== "settled") continue;
+      if (d.people > bestPop) { bestPop = d.people; best = d; }
+    }
+    if (!best) continue;                               // s is its own region's hub
+    const gap = Math.min(MIGRATE_GAP_CAP, best.people / Math.max(1, s.people));
+    // Draw only toward what the hub can actually feed today (its carrying
+    // capacity). Pulling migrants beyond that — toward the city's pre-built
+    // housing — looks like it should free more village grain, but in practice
+    // the migrants outrun the food (which ships in with a lag) and simply
+    // starve, shrinking both the city and the villages it drained. Filling to
+    // capacity lets the city grow exactly as fast as imported grain arrives.
+    const room = Math.max(0, (best._k || best.people) - best.people);
+    let movers = Math.min(s.people * MIGRATE_RATE * gap, room, s.people * MIGRATE_DRAIN_CAP);
+    if (movers < 0.2) continue;
+    s.people -= movers;
+    best.people += movers;
+  }
 }
 
 export function updateSettlement(world, s) {
@@ -713,7 +788,10 @@ function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 function updateFood(world, s) {
   // Land food from the controlled TERRITORY: the distance-weighted sum of
   // claimed arable fertility (computed in territory.js), times yield and
-  // agriculture. Storable — fills granaries and ships to feed cities.
+  // agriculture. Storable — fills granaries and ships to feed cities. A big
+  // city does NOT magically farm more; it grows by IMPORTING grain shipped
+  // from its rural hinterland (see updatePopulation / the food trade), exactly
+  // as real metropolises did (Rome's Egyptian grain, London's American wheat).
   const landFood0 = (s._terrFertSum || 0) * T.FARM_YIELD_PER_FERT
     * (1 + (s.knowledge.agriculture || 0) * 1.2);
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
@@ -823,12 +901,19 @@ function updateDevelopment(world, s) {
   s._developRate = 0;
   s._devReason = null;
   const houseK = s._houseK || 0, foodK = s._foodK || 0;
-  s._housingPressed = foodK > houseK * 1.02;
+  // Cities lay out housing AHEAD of the food they have today; that empty
+  // headroom is exactly what creates the demand to IMPORT grain (foodAppetite's
+  // growthNeed) and draw migrants — how a real city grows. With housing pinned
+  // to current foodK, houseK tracks population, growthNeed ~ 0, and the city
+  // never pulls the grain that would let it grow, so metropolises never form.
+  const target = s.people > URBAN_ANTICIPATION_REF ? foodK * URBAN_ANTICIPATION : foodK;
+  s._housingPressed = target > houseK * 1.02;
   if (!s._housingPressed) return;
 
-  // Room to grow = up to whichever of FOOD / SPACE binds first.
+  // Room to grow = up to whichever of the (anticipatory) housing target / SPACE
+  // binds first.
   const space = spaceCapacity(s);
-  const room = Math.min(foodK, space) - houseK;
+  const room = Math.min(target, space) - houseK;
   if (room <= 0) { s._devReason = "space"; return; }   // built out the site
 
   // MATERIALS gate: timber + stone, local or from a trade partner. The

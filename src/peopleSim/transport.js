@@ -158,13 +158,17 @@ function _tileMode(world, ti) {
 }
 
 // Core cost function. Roads short-circuit it (a road tile costs its
-// intrinsic road quality, terrain ignored — Roman-engineered model).
-function _edgeCost(world, fromTi, toTi, params) {
-  // Road override stays — roads are infrastructure, not terrain.
-  const rq = world.roadQuality;
-  if (rq) {
-    const qF = rq[fromTi], qT = rq[toTi];
-    if (qF < 1.0 || qT < 1.0) return Math.min(qF, qT);
+// intrinsic road quality, terrain ignored — Roman-engineered model) — UNLESS
+// ignoreRoads is set, used by the territory/claim/admin-reach passes so that
+// political reach follows TERRAIN, not roads (a realm shouldn't sprawl its
+// borders down a trade road). Movement/trade callers keep the road discount.
+function _edgeCost(world, fromTi, toTi, params, ignoreRoads) {
+  if (!ignoreRoads) {
+    const rq = world.roadQuality;
+    if (rq) {
+      const qF = rq[fromTi], qT = rq[toTi];
+      if (qF < 1.0 || qT < 1.0) return Math.min(qF, qT);
+    }
   }
 
   const toMode   = _tileMode(world, toTi);
@@ -214,9 +218,12 @@ export function baseEdgeCost(world, fromTi, toTi) {
   return _edgeCost(world, fromTi, toTi, _ZERO_PARAMS);
 }
 
-// Tech-aware cost (per-settlement reach, march speed, conquest range).
-export function localEdgeCost(world, fromTi, toTi, kn) {
-  return _edgeCost(world, fromTi, toTi, _paramsFromKnowledge(kn));
+// Tech-aware cost (per-settlement reach, march speed, conquest range). Pass
+// ignoreRoads=true for political REACH (territory / national claim / admin
+// projection) so borders follow terrain, not roads; leave it off for movement
+// and trade, which legitimately speed up on roads.
+export function localEdgeCost(world, fromTi, toTi, kn, ignoreRoads) {
+  return _edgeCost(world, fromTi, toTi, _paramsFromKnowledge(kn), ignoreRoads);
 }
 
 export function computeTransport(world) {

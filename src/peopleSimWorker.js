@@ -171,7 +171,17 @@ function buildSnapshot() {
   snapCount++;
   const sendStatic = !staticSent || (snapCount % 6 === 0);
   staticSent = true;
-  const owner = sendStatic && world._territoryOwner ? world._territoryOwner.slice() : null;
+  let owner = sendStatic && world._territoryOwner ? world._territoryOwner.slice() : null;
+  if (owner) {
+    // Drop tiles still owned by a settlement that has DIED but whose territory
+    // the sim hasn't recomputed yet (computeTerritory releases them, but only
+    // every TERRITORY_INTERVAL ticks, and we resend owner only every 6 snaps).
+    // Without this the map renders "ghost" borders/colour fragments left behind
+    // by dead settlements — the stray bits/outlines floating on the map.
+    const settled = new Set();
+    for (const s of world.settlements) if (s.mode === "settled") settled.add(s.id);
+    for (let i = 0; i < owner.length; i++) { const o = owner[i]; if (o >= 0 && !settled.has(o)) owner[i] = -1; }
+  }
   const roadQuality = sendStatic && world.roadQuality ? world.roadQuality.slice() : null;
   const roadFlow = world.roadFlow ? world.roadFlow.slice() : null;
 
@@ -185,12 +195,17 @@ function buildSnapshot() {
     tileComp = new Int32Array(N);
     for (let i = 0; i < N; i++) tileComp[i] = seen[i] === stamp ? tc[i] : -1;
   }
+  // National border claim — computed in the sim each territory pass
+  // (world._countryClaim); ship it with the static group like owner[]. The
+  // renderer draws country borders/tints from this (smoother than owner[]).
+  const countryClaim = sendStatic && world._countryClaim ? world._countryClaim.slice() : null;
 
   const transfer = [];
   if (owner) transfer.push(owner.buffer);
   if (roadQuality) transfer.push(roadQuality.buffer);
   if (roadFlow) transfer.push(roadFlow.buffer);
   if (tileComp) transfer.push(tileComp.buffer);
+  if (countryClaim) transfer.push(countryClaim.buffer);
 
   // Global price-level summary for the HUD ticker — population-weighted
   // mean across all settlements, so it tracks "the average wheat price the
@@ -213,7 +228,7 @@ function buildSnapshot() {
     tw: world.tw, th: world.th, tileRes: world.tileRes, N: world.N,
     stats: peopleSimStats(world),
     globalP,
-    owner, roadQuality, roadFlow, tileComp, moneyFlows,
+    owner, roadQuality, roadFlow, tileComp, moneyFlows, countryClaim,
     settlements: setts,
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last

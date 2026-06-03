@@ -195,10 +195,31 @@ function initRiverMag(world, w) {
 // up to MAX_CRADLES top scoring sites separated by a minimum distance — each
 // becomes the seed of an independent civilization, producing a multipolar
 // world even at high resolution.
-const MAX_CRADLES = 5;
+const MAX_CRADLES = 10;
 const CRADLE_MIN_SEP = 60;   // tile-space minimum separation (large enough that a single
                               // continent gets at most 1-2 cradles, but Earth's separated
                               // landmasses each get one if they have a viable site)
+// Boundedness (Carneiro circumscription): fraction of nearby tiles that are
+// barriers — sea, high mountain, or barren desert. High = a fertile pocket
+// hemmed in (the river-valley cores where the first states arose). Used only to
+// score cradle sites, so genesis civilisations start in circumscribed land.
+function boundedness(world, ti) {
+  const { tw, th, elev, fert } = world;
+  const ty = (ti / tw) | 0, tx = ti - ty * tw;
+  const R = 7, r2 = R * R;
+  let barrier = 0, total = 0;
+  for (let dy = -R; dy <= R; dy++) {
+    const ny = ty + dy; if (ny < 0 || ny >= th) continue;
+    for (let dx = -R; dx <= R; dx++) {
+      if (dx * dx + dy * dy > r2) continue;
+      const t2 = ny * tw + (((tx + dx) % tw + tw) % tw);
+      total++;
+      const e = elev[t2];
+      if (e <= 0 || e > 0.42 || (fert[t2] || 0) < 0.12) barrier++;
+    }
+  }
+  return total > 0 ? barrier / total : 0;
+}
 function seedCradleVillage(world) {
   resetSettlementIds();
   const { tw, th, elev, temp, moist, fert, coast, riverMag, N } = world;
@@ -219,7 +240,11 @@ function seedCradleVillage(world) {
     const tempFit  = 1 - Math.abs(t - 0.70) * 2;
     const moistFit = 1 - Math.abs(m - 0.50) * 2;
     const elevFit  = 1 - elev[ti] * 2;
-    const score = f * 2 + tempFit + moistFit + elevFit + waterBonus;
+    // Circumscription (Carneiro): favour a fertile pocket hemmed in by barriers
+    // (sea / mountain / desert) — the bounded river-valley cores where the first
+    // civilisations actually arose (Nile, Mesopotamia, Indus), because a trapped
+    // population gets absorbed into a state rather than scattering.
+    const score = f * 2 + tempFit + moistFit + elevFit + waterBonus + boundedness(world, ti) * 2.5;
     candidates.push({ ti, score });
   }
   if (candidates.length === 0) {

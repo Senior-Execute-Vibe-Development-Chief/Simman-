@@ -31,7 +31,7 @@ export const TUNING_SCHEMA = [
     category: "Empire size & cohesion",
     blurb: "How large an empire one capital can hold together before the frontier rebels. Max empire size is dynamic, not a fixed radius.",
     params: [
-      { key: "CAP_BASE", label: "Capital base reach", def: 4.5, min: 1, max: 30, step: 0.5,
+      { key: "CAP_BASE", label: "Capital base reach", def: 1.2, min: 1, max: 30, step: 0.5,
         desc: "Reach-units a lone capital can administer. THE master dial for empire size — up = bigger empires hold." },
       { key: "ABSORB_ORG_MIN", label: "Absorption tech gate", def: 0.48, min: 0.1, max: 0.95, step: 0.02,
         desc: "Organization tech a city needs before it can peacefully vacuum neighbouring village/town statelets into its realm. UP = small city-states survive far longer; the map stays fragmented through the early/classical era." },
@@ -39,17 +39,25 @@ export const TUNING_SCHEMA = [
         desc: "Cap on a bordering statelet's per-pass chance of defecting into a strong neighbour. Down = slower, more gradual erosion of small states (less snowballing)." },
       { key: "ABSORB_RATE", label: "Absorption pressure", def: 0.025, min: 0.005, max: 0.1, step: 0.005,
         desc: "How sharply a power imbalance translates into defection pressure. Down = even much-stronger neighbours absorb their small rivals only slowly." },
-      { key: "CAP_POP", label: "Big-capital bonus", def: 2, min: 0, max: 8, step: 0.25,
+      { key: "CAP_POP", label: "Big-capital bonus", def: 0.4, min: 0, max: 8, step: 0.25,
         desc: "Extra control capacity a large capital projects (scales with its population). Down = a giant metropolis can't administer a giant empire, so conquests over-extend and shed." },
-      { key: "CAP_SEAT", label: "Regional seat capacity", def: 1.2, min: 0, max: 4, step: 0.1,
+      { key: "CAP_ORG", label: "Bureaucratic capacity", def: 1.0, min: 0, max: 24, step: 0.5,
+        desc: "Extra control capacity per point of the capital's ORGANIZATION tech — administrative depth that lets an advanced state govern more provinces. Up = bigger late empires; down = even advanced empires stay modest. (One of four org-cohesion dials; together they set how large/durable empires get.)" },
+      { key: "ABSORB_DOMINANCE", label: "Absorption dominance gate", def: 2.5, min: 1.05, max: 5.0, step: 0.05,
+        desc: "How many times stronger a realm must be than a neighbour before it peacefully absorbs that neighbour's frontier settlements. DOWN = aggressive consolidation, fewer & larger nations; UP = only lopsided mismatches erode, so the map stays more multipolar with many nations." },
+      { key: "LOYAL_ORG_HOLD", label: "Imperial cohesion (loyalty)", def: 0.35, min: 0, max: 0.9, step: 0.05,
+        desc: "How much the capital's ORGANIZATION slows an over-budget province's slide to revolt. THE empire-LIFESPAN dial: 0 = even advanced empires fragment fast (a churning, short-lived-empire world); high = great powers hold their overstretch for ages (long-lived, hard-to-kill empires). At ~0.9 empires become near-immortal — back off if they never fall." },
+      { key: "DURESS_RESILIENCE", label: "Wartime resilience (org)", def: 0.4, min: 0, max: 0.9, step: 0.05,
+        desc: "How much an organised state shrugs off the war/insolvency capacity throttle. 0 = any frontier war can collapse an empire's grip (volatile, war-driven rise & fall); high = advanced empires weather wars without shedding provinces. Pairs with Imperial cohesion to set how mortal empires are." },
+      { key: "CAP_SEAT", label: "Regional seat capacity", def: 0.3, min: 0, max: 4, step: 0.1,
         desc: "Extra control each loyal regional city adds (sub-administration). Up = sprawling federations stay glued." },
       { key: "MOMENTUM_CAP", label: "Conquest snowball cap", def: 8, min: 0, max: 30, step: 1,
         desc: "Max bonus capacity a winning war-streak grants (lets a conqueror temporarily over-hold). Down = freshly conquered empires fragment sooner once the conquering pauses — more rise-and-fall." },
       { key: "SIZE_LOAD", label: "Big-province burden", def: 0.4, min: 0, max: 1.5, step: 0.05,
         desc: "How much harder a populous province is to govern. Down = easy to swallow large cities whole." },
-      { key: "ORG_REACH", label: "Reach per organization tech", def: 40, min: 5, max: 120, step: 5,
+      { key: "ORG_REACH", label: "Reach per organization tech", def: 7, min: 5, max: 120, step: 5,
         desc: "Tiles of land-claim & admin reach gained per point of organization knowledge. Scales empire size with the era." },
-      { key: "LOYAL_DECAY", label: "Disloyalty speed", def: 0.14, min: 0.01, max: 0.5, step: 0.01,
+      { key: "LOYAL_DECAY", label: "Disloyalty speed", def: 0.12, min: 0.01, max: 0.5, step: 0.01,
         desc: "How fast an over-extended (uncovered) province bleeds loyalty toward revolt. Up = fragile frontiers, empires shed land and rise/fall faster." },
       { key: "RECENCY_TICKS", label: "Conquest digestion time", def: 4000, min: 500, max: 12000, step: 250,
         desc: "How long a freshly-conquered province stays extra-costly to hold. Up = blitz conquest destabilises longer." },
@@ -71,10 +79,12 @@ export const TUNING_SCHEMA = [
         desc: "Global scale on every garrison's population cap. Up = bigger armies everywhere (more decisive war)." },
       { key: "ARMY_GROW", label: "Recruitment speed", def: 0.05, min: 0.01, max: 0.4, step: 0.01,
         desc: "How fast a fed garrison grows toward its cap each muster. Up = realms re-arm quickly after a war." },
-      { key: "CONQUEST_GRACE", label: "City pacification", def: 800, min: 0, max: 4000, step: 100,
+      { key: "CONQUEST_GRACE", label: "City pacification", def: 500, min: 0, max: 4000, step: 100,
         desc: "Ticks a stormed city is locked (can't be re-stormed or secede). The single biggest political-map stabiliser." },
       { key: "TILE_CAPTURE_GRACE", label: "Tile hold time", def: 400, min: 0, max: 2000, step: 50,
         desc: "Ticks a captured countryside tile is held before it can flip back. Up = less border flicker, stickier fronts." },
+      { key: "HOME_MILITIA_FRAC", label: "Home militia defence", def: 0.035, min: 0, max: 0.15, step: 0.005,
+        desc: "Fraction of a city's people who defend their own walls even when the paid garrison has deserted (bankruptcy), scaled by the city's morale. The brake on the boiling map: 0 = a bankrupt city is free to storm (over-extension → insolvency → defenceless cities → the whole map churns). UP = cities are hard nuts once solvency fails, so empires fragment less and consolidate slower." },
     ],
   },
   {
@@ -186,9 +196,6 @@ export function applyTuning(overrides) {
 
 // Reset every lever to its hand-tuned default.
 export function resetTuning() { Object.assign(T, DEFAULTS); }
-
-// Snapshot of the current live values (for seeding the menu UI).
-export function getTuning() { return { ...T }; }
 
 // The defaults, for the menu's "reset" affordance / change indicators.
 export function tuningDefaults() { return { ...DEFAULTS }; }
