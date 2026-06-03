@@ -46,6 +46,13 @@ const COUNTRY_REACH_ORG  = 20;
 // effective cap at construction 0 down toward CLAIM_CAP_FLOOR near construction 1.)
 const CLAIM_CAP_CEIL  = 40;   // construction 0: harsh tiles uncapped (ranges/deserts wall the claim)
 const CLAIM_CAP_FLOOR = 1.5;  // construction 1: even alpine/desert claimable at ~plains cost
+// The cap is SOFT, not a hard clamp: above the cap the excess cost is compressed
+// (× CLAIM_SOFT) rather than flattened to a single value. A hard clamp made every
+// harsh tile cost exactly the same, which turns the cost-Voronoi into a geometric
+// one — and geometric bisectors between two realms are dead-straight LINES (the
+// "straight wall" carving across deserts/ranges). Keeping a little of the terrain
+// gradient lets the border still slump onto the real ridge/desert spine.
+const CLAIM_SOFT      = 0.12;
 // How far a realm projects a CLAIM also grows with the era. In antiquity a state
 // was an island of territory in a sea of unclaimed land — most of the world
 // belonged to no polity (steppe, forest, desert, the deep interior). The modern
@@ -131,7 +138,7 @@ export function computeCountryTerritory(world) {
       const ni = ns[k]; if (ni < 0 || elev[ni] <= 0) continue;
       let ec = localEdgeCost(world, ti, ni, kn, true);   // roads ignored
       if (ec === Infinity) continue;
-      if (ec > cap) ec = cap;                            // engineering caps the harsh-terrain claim cost
+      if (ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;  // soft cap: ease harsh terrain but keep its gradient (no straight-wall borders)
       const nd = d + ec * mul[k];
       if (nd > bud) continue;
       if (nd < cost[ni]) { cost[ni] = nd; co[ni] = c; heap.push(ni, nd, c); }
