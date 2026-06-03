@@ -60,7 +60,7 @@ const MIN_AREA_FERT             = 1.0;    // 5×5 box must have *some* support
 // fertility-tier candidates still get pushed apart.
 const HARD_FLOOR                = 4;          // absolutely no settlement closer than this
 const HARD_FLOOR_SQ             = HARD_FLOOR * HARD_FLOOR;
-const SOFT_DIST                 = 14;         // beyond this, the spacing factor is 1 (no penalty)
+const SOFT_DIST                 = 10;         // beyond this, the spacing factor is 1 (no penalty) — tighter so villages pack denser
 const SOFT_DIST_SQ              = SOFT_DIST * SOFT_DIST;
 // ── Market-town pull ──
 // A new settlement is more likely to crystallise WITHIN the catchment area
@@ -99,7 +99,7 @@ const INDEPENDENT_RATE          = 0.020;
 // fill before colonists can sail to them.
 const OVERSEAS_INDEPENDENT_RATE = 0.0015;
 const NEAR_RATE                 = 1.50;
-const BASE_RATE                 = 0.010;
+const BASE_RATE                 = 0.030;   // 3x — the world settles ~3x faster/denser (a fuller map of villages); the saturation guard (REF) sets where it plateaus
 // A settlement spontaneously arising on a STATE'S land (its core or claimed
 // marches, world._countryOwner) is born INTO that state; one arising in genuine
 // wilderness is born INDEPENDENT (a new country). See the spawn block below.
@@ -131,7 +131,7 @@ const COLONY_MIN_SOLVENCY     = 0.80;  // ...and only while it can still (mostly
 // packing towns into already-claimed land forever — ever more provinces → ever
 // more over-extension secession → the steadily-climbing nation count and the
 // late-game splotchy churn. With it, settlement density plateaus.
-const COLONY_SATURATION_REF   = 350;  // gentle density guard (carrying capacity) — country count is now emergent (circumscription), not damper-forced
+const COLONY_SATURATION_REF   = 1500;  // density guard — much higher so colonisation keeps filling the frontier (denser map), not plateauing at a few hundred
 
 // Resource attraction. Each resource has a per-tier value (how
 // valuable it is to a civilisation at that tech level) and a
@@ -169,7 +169,7 @@ const RESOURCE_TIER_VALUE = {
 // Half-rate around N=300, third-rate around N=600. Settler colonisation
 // (which is parent-driven and intentional) is NOT subject to this — the
 // mother country can still push outward into the frontier.
-const CRYSTAL_SATURATION_REF = 350;  // gentle density guard; many villages, country count emergent
+const CRYSTAL_SATURATION_REF = 1500;  // density guard — much higher so the world keeps filling with villages (a denser, more alive map) instead of plateauing at a few hundred
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
