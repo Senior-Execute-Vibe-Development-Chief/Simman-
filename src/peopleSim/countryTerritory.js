@@ -81,6 +81,12 @@ const REACH_SIZE_MIN = 0.25;  // a tiny realm still projects at least this fract
 // _integratedAt, so a stormed city or a seceded province keeps its land at once.)
 const INTEGRATE_TICKS = 3000;
 const INTEGRATE_MIN   = 2;     // reach-units a just-adopted settlement projects on day one
+// Reach RAMP: a country's claimed reach EASES toward its tech-budget rather than
+// snapping to it, so territory grows in gradually instead of exploding to
+// continent size the moment cities emerge / the construction era turns (the
+// mid-game "continent-power explosion"). A realm earns its full reach over
+// ~1/BUDGET_RAMP territory passes; a brand-new country starts near the base reach.
+const BUDGET_RAMP = 0.06;
 // ── Organic borders ──────────────────────────────────────────────────
 // A uniform cost field makes the cost-Voronoi bisector between two realms a dead-
 // straight LINE (the "geometric border / straight-line land grab" artefact). A
@@ -187,6 +193,19 @@ export function computeCountryTerritory(world) {
     const sf = Math.max(REACH_SIZE_MIN, Math.min(1, (members.get(c) || 1) / REACH_SIZE_REF));
     budget.set(c, b * sf);
   }
+  // Ease each country's reach toward that (size-scaled tech) target so territory
+  // grows in gradually instead of snapping to a continental claim in one pass
+  // (smooths the mid-game explosion — see BUDGET_RAMP). A brand-new country
+  // starts near the base reach and earns the rest over many passes.
+  let ramp = world._cBudgetRamp; if (!ramp) ramp = world._cBudgetRamp = new Map();
+  for (const [c, target] of budget) {
+    const prev = ramp.get(c);
+    const next = prev === undefined ? Math.min(target, COUNTRY_REACH_BASE)
+                                    : prev + (target - prev) * BUDGET_RAMP;
+    ramp.set(c, next);
+    budget.set(c, next);
+  }
+  for (const c of [...ramp.keys()]) if (!budget.has(c)) ramp.delete(c);
 
   // Per-tile basin budget: how far the SEED that claimed a tile may project.
   // Normally the country's full reach; smaller for a freshly-integrated frontier
