@@ -204,7 +204,7 @@ const tropicalCool=tLat<0.3?cp*0.005:0;// faint coastal sea-breeze cooling — e
 // leaves the coasts wet and only desiccates the interiors — so it can't override
 // the monsoon. Coastal deserts that exist by cold currents (Atacama, Namib) are
 // already bone-dry in the wind solver and don't need this.
-const subtropDry=e>0?Math.exp(-((tLat-0.25)*(tLat-0.25))/(2*0.12*0.12))*0.65*Math.pow(inland,1.3):0;
+const subtropDry=e>0?Math.exp(-((tLat-0.25)*(tLat-0.25))/(2*0.09*0.09))*0.65*Math.pow(inland,1.3):0;
 const mo=Math.max(0.02,windMoisture[i]-subtropDry);
 const dry=Math.max(0,1-mo/0.35);// 1 = bone-dry, 0 = humid
 const desertHeat=dry*0.09*Math.exp(-((tLat-0.22)*(tLat-0.22))/(2*0.13*0.13));// peaks on the 13-30° HOT-DESERT belt (Sahel, Sahara, Arabia — Earth's hottest annual means), not the 33° subtropics
