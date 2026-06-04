@@ -17,6 +17,7 @@
 
 import { coreRadiusFor } from "./territory.js";
 import { findPath } from "./roads.js";
+import { forEachNear } from "./spatialGrid.js";
 import { localEdgeCost } from "./transport.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
@@ -141,30 +142,61 @@ const REINFORCE_COOLDOWN  = 200;  // ticks before a settlement sends again
 const REINFORCE_MAX_SENDERS = 5;  // nearest realm-mates that respond to one siege
 const REINFORCE_MIN_ARMY  = 3;    // a sender needs at least this many troops to bother
 const MAX_MARCHES         = 240;  // global cap on in-flight columns (perf)
+// Only NEARBY realm-mates can relieve a siege in time: a column marches at
+// MARCH_SPEED and a siege lasts a handful of conquest passes, so a sender across
+// the map never arrives. Bounding the sender search to this radius also lets the
+// spatial grid answer it locally instead of scanning every settlement (the
+// O(besieged × settlements) scan was part of the late-game blow-up).
+const REINFORCE_RANGE     = 90;
+// Hard cap on relief PATHFINDS per conquest pass. Late game can have hundreds of
+// simultaneous sieges, and each sender needs a full-map A* route — unbounded,
+// that single pass dominated the whole tick (multi-second spikes). With a budget
+// the cost is bounded; sieges left unrelieved this pass simply get another shot
+// next conquest pass (they persist for many passes), and the budget is spent on
+// the most important sieges first (triage below).
+const MAX_REINFORCE_PATHS = 64;
 
-function distTiles(world, ax, ay, bx, by) {
-  let dx = Math.abs(ax - bx); if (dx > world.tw / 2) dx = world.tw - dx;
-  const dy = ay - by; return Math.sqrt(dx * dx + dy * dy);
-}
-
-// Each besieged settlement calls its nearest realm-mates to march troops in.
+// Besieged settlements call their nearest realm-mates to march troops in. Cost
+// is bounded three ways: senders are found via the spatial grid within
+// REINFORCE_RANGE, only the nearest few are pathed per siege, and a global
+// per-pass pathfind budget caps the total work (capitals/large cities first).
 function dispatchReinforcements(world, besieged) {
   if (!world.armies) world.armies = [];
   if (world.armies.length >= MAX_MARCHES) return;
   const tw = world.tw;
-  for (const def of besieged) {
-    const senders = [];
-    for (const m of world.settlements) {
-      if (m.mode !== "settled" || m.id === def.id) continue;
-      if (m.countryId !== def.countryId) continue;
-      if ((m.army || 0) < REINFORCE_MIN_ARMY) continue;
-      if (world.step - (m._lastReinforce ?? -Infinity) < REINFORCE_COOLDOWN) continue;
-      senders.push({ m, d: distTiles(world, m.pos.x, m.pos.y, def.pos.x, def.pos.y) });
-    }
-    senders.sort((a, b) => a.d - b.d);
+  // Triage: spend the limited relief budget on the most important sieges first
+  // (the throne, then larger settlements), so a swamped frontier can't starve
+  // the capital of reinforcements.
+  const order = [...besieged].sort((a, b) => {
+    const ca = world.countries && world.countries.get(a.countryId);
+    const cb = world.countries && world.countries.get(b.countryId);
+    const capA = ca && ca.capitalId === a.id ? 1 : 0;
+    const capB = cb && cb.capitalId === b.id ? 1 : 0;
+    if (capA !== capB) return capB - capA;
+    return (b.people || 0) - (a.people || 0);
+  });
+  let pathBudget = MAX_REINFORCE_PATHS;
+  for (const def of order) {
+    if (pathBudget <= 0 || world.armies.length >= MAX_MARCHES) break;
+    // Nearby same-realm senders with troops to spare and off cooldown — gathered
+    // from the spatial grid (local, not a full-settlement scan).
+    const cands = [];
+    forEachNear(world, def.pos.x, def.pos.y, REINFORCE_RANGE, (m, d2) => {
+      if (m.id === def.id || m.countryId !== def.countryId) return;
+      if ((m.army || 0) < REINFORCE_MIN_ARMY) return;
+      if (world.step - (m._lastReinforce ?? -Infinity) < REINFORCE_COOLDOWN) return;
+      cands.push({ m, d2 });
+    });
+    if (cands.length === 0) continue;
+    cands.sort((a, b) => a.d2 - b.d2);
+    // Path only the nearest few candidates (each is one A*), capped by the global
+    // budget — so a single siege can never path the whole realm.
     let sent = 0;
-    for (const { m } of senders) {
-      if (sent >= REINFORCE_MAX_SENDERS || world.armies.length >= MAX_MARCHES) break;
+    const tries = Math.min(cands.length, REINFORCE_MAX_SENDERS);
+    for (let i = 0; i < tries; i++) {
+      if (sent >= REINFORCE_MAX_SENDERS || pathBudget <= 0 || world.armies.length >= MAX_MARCHES) break;
+      const m = cands[i].m;
+      pathBudget--;
       const path = findPath(world, m, def);          // road-aware route (none → can't relieve)
       if (!path || path.tiles.length < 2) continue;
       const troops = (m.army || 0) * REINFORCE_SEND_FRAC;
