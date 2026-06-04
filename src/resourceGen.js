@@ -83,12 +83,15 @@ function getBiome(e, m, t) {
   if (e <= 0) return -1;
   const demand = 0.5 + t * 0.5;
   const em = Math.min(1, m / demand);
-  if (t < 0.08) return 5;
-  if (t < 0.15) return em > 0.4 ? B_TAIGA : em > 0.08 ? B_TUNDRA : B_COLD_DESERT;
-  if (t < 0.25) return em > 0.35 ? B_TAIGA : em > 0.08 ? B_TUNDRA : B_COLD_DESERT;
-  if (t < 0.38) return em > 0.45 ? B_BOREAL : em > 0.25 ? B_TAIGA : em > 0.08 ? B_TUNDRA : B_COLD_DESERT;
-  if (t < 0.55) return em > 0.55 ? B_TEMP_RAIN : em > 0.35 ? B_TEMP_FOREST : em > 0.15 ? B_GRASSLAND : B_DESERT;
-  if (t < 0.72) return em > 0.5 ? B_SUBTROP : em > 0.3 ? B_TROP_DRY : em > 0.18 ? B_SAVANNA : em > 0.1 ? B_SHRUBLAND : B_DESERT;
+  // Biome temperature bands on the calibrated air-temp scale (kept in sync with
+  // WorldSim.jsx getBiomeD): ICE <-15°C · tundra -15..-2 · taiga -2..+5 ·
+  // temperate +5..+18 · subtropical +18..+25 · tropical > +25°C.
+  if (t < 0.45) return 5;
+  if (t < 0.52) return em > 0.4 ? B_TAIGA : em > 0.08 ? B_TUNDRA : B_COLD_DESERT;
+  if (t < 0.58) return em > 0.35 ? B_TAIGA : em > 0.08 ? B_TUNDRA : B_COLD_DESERT;
+  if (t < 0.65) return em > 0.45 ? B_BOREAL : em > 0.25 ? B_TAIGA : em > 0.08 ? B_TUNDRA : B_COLD_DESERT;
+  if (t < 0.78) return em > 0.55 ? B_TEMP_RAIN : em > 0.35 ? B_TEMP_FOREST : em > 0.15 ? B_GRASSLAND : B_DESERT;
+  if (t < 0.85) return em > 0.5 ? B_SUBTROP : em > 0.3 ? B_TROP_DRY : em > 0.18 ? B_SAVANNA : em > 0.1 ? B_SHRUBLAND : B_DESERT;
   return em > 0.5 ? B_TROP_RAIN : em > 0.3 ? B_TROP_DRY : em > 0.18 ? B_SAVANNA : em > 0.1 ? B_GRASSLAND : B_DESERT;
 }
 

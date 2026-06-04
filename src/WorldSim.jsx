@@ -91,19 +91,17 @@ function getBiomeD(e,m,t,sl){
   // hot regions lose it to evaporation (Holdridge PET principle).
   const demand=.5+t*.5;
   const em=Math.min(1,m/demand);
-  // Permanent ice: extremely cold → snow/ice (Arctic, Antarctic, glaciers)
-  if(t<.08)return 5;
-  // Polar / subpolar (low elevation only)
-  // Cold desert only where it's cold but not freezing AND very dry
-  if(t<.15)return em>.4?6:em>.08?4:18; // Taiga / Tundra / Cold Desert
-  if(t<.25)return em>.35?6:em>.08?4:18;
-  if(t<.38)return em>.45?7:em>.25?6:em>.08?4:18;
-  // Temperate (cool-moderate)
-  if(t<.55)return em>.55?9:em>.35?8:em>.15?12:13;
-  // Warm / subtropical
-  if(t<.72)return em>.5?17:em>.3?15:em>.18?11:em>.1?14:13;
-  // Hot / tropical
-  return em>.5?10:em>.3?15:em>.18?11:em>.1?12:13;
+  // Biome temperature bands on the calibrated air-temp scale (t = 0.60 + °C/100):
+  // ICE < -15°C · tundra -15..-2 · taiga -2..+5 · temperate +5..+18 ·
+  // subtropical +18..+25 · tropical > +25°C. (Moisture em then picks
+  // forest/grassland/desert within each band — Holdridge PET logic, unchanged.)
+  if(t<.45)return 5;                                        // permanent ice / snow (Greenland, Antarctica, high Arctic)
+  if(t<.52)return em>.4?6:em>.08?4:18;                      // tundra / cold desert
+  if(t<.58)return em>.35?6:em>.08?4:18;
+  if(t<.65)return em>.45?7:em>.25?6:em>.08?4:18;            // taiga / boreal
+  if(t<.78)return em>.55?9:em>.35?8:em>.15?12:13;           // temperate
+  if(t<.85)return em>.5?17:em>.3?15:em>.18?11:em>.1?14:13;  // subtropical
+  return em>.5?10:em>.3?15:em>.18?11:em>.1?12:13;           // tropical
 }
 function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
