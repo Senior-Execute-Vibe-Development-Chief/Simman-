@@ -1,30 +1,39 @@
 // ── Central-place food hierarchy ──────────────────────────────────────
 //
 // Food flows UP the settlement hierarchy (village → market town → city →
-// capital). Each settlement keeps what its HOUSING can use and ships the surplus
-// up to its liege; a market centre therefore aggregates the surplus of its WHOLE
-// subtree, so a city is fed by its entire hinterland — not a fixed handful of
-// trade partners. This is Central Place Theory, and it's what lets real
+// capital). Each settlement ships a tier-weighted fraction of its grain up to its
+// liege and keeps the rest; a market centre therefore aggregates the shipped grain
+// of its WHOLE subtree, so a city is fed by its entire hinterland — not a fixed
+// handful of trade partners. This is Central Place Theory, and it's what lets real
 // metropolises form (the flat 12-nearest-partner food trade capped a city's
 // grain at ~12 villages). Goods / luxuries / money still trade flat (roads.js).
 //
 // One post-order sweep of the liege tree each tick (cheap, O(settlements)):
 //   pool[s] = own storable production + Σ children's shipped-up food
-//   up[s]   = max(0, pool − houseCap) × KEEP^hop   (food beyond what s's housing
-//             can hold, shipped up; the per-hop KEEP is freight + spoilage)
-//   net[s]  = pool − up                            (what s keeps → its food supply)
-// A housing-limited rural settlement ships its farm surplus up; a housing-rich
-// city keeps and aggregates it. BARTER only — no coin moves, so the closed money
-// supply is untouched; a city simply keeps the coin it no longer spends on grain,
-// which funds its housing and reinforces the city-grows / village-stays-small
-// pyramid.
+//   up[s]   = pool × SHIP_BY_TIER[tier] × KEEP^hop        (a village ships most of
+//             its grain to market; a city keeps + aggregates its hinterland's)
+//   net[s]  = pool − up                                   (what s keeps → its food)
+// A rural settlement is a FARM: it ships most of its grain surplus up to its
+// market centre regardless of its own housing (the old "ship only beyond housing"
+// rule failed because food-limited villages have no housing slack, so they shipped
+// nothing and starved the cities). A city keeps most of what flows to it and grows.
+// BARTER only — no coin moves, so the closed money supply is untouched; a city
+// keeps the coin it no longer spends on grain, funding its housing and reinforcing
+// the city-grows / village-stays-small pyramid.
 //
 // Runs at the END of the settlement phase (after updateFood/updatePopulation set
 // fresh _storableSupply / _houseK / _urbanFactor), producing _foodNet for the
 // NEXT tick's updateFood — a 1-tick lag that's invisible (production drifts slowly).
 
 const KEEP_PER_HOP = 0.9;   // fraction of shipped food surviving each hop up the hierarchy
-const PERCAP = 0.003;
+// Fraction of its food POOL a settlement ships up to its market centre, by tier
+// (village → town → city → metropolis). A village is a farm: it sends most of its
+// grain to market and stays small; a metropolis keeps nearly all that flows to it
+// and grows into a primate city. The wide spread between tiers is what builds the
+// settlement-size pyramid. Pool is land-based (independent of population), so a
+// fixed FRACTION can't cause the pinning feedback a "pool − current demand" rule
+// would (population growing to eat its food → zero surplus → ships nothing).
+const SHIP_FRAC_BY_TIER = [0.8, 0.5, 0.2, 0.05];
 
 export function aggregateFoodHierarchy(world) {
   const byId = world._byId;
@@ -66,9 +75,8 @@ export function aggregateFoodHierarchy(world) {
         const kids = children.get(node.id);
         if (kids) for (const k of kids) pool += k._foodUp || 0;
         node._foodPool = pool;
-        const perCap = PERCAP * (node._urbanFactor || 1);
-        const houseCap = (node._houseK || 0) * perCap;     // food the settlement's housing can actually use
-        const up = node._hasFoodParent ? Math.max(0, pool - houseCap) * KEEP_PER_HOP : 0;
+        const sf = SHIP_FRAC_BY_TIER[Math.min(3, Math.max(0, node.tier | 0))];
+        const up = node._hasFoodParent ? pool * sf * KEEP_PER_HOP : 0;
         node._foodUp = up;
         node._foodNet = pool - up;                          // what it keeps for its own population
       }
