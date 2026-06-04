@@ -14,7 +14,7 @@ const SEED = parseInt(process.argv[3] || "8817", 10);
 const W = parseInt(process.argv[4] || "480", 10), H = parseInt(process.argv[5] || "240", 10);
 const w = generateWorld(W, H, SEED, "earth_sim", 0.78, true, false, {});
 const tCrop = new Float32Array(W * H);
-function tf(t, m, e) { if (e > 0.45) return 0.01; const a = Math.min(1, t * 1.5) * Math.min(1, 1 - Math.pow(Math.max(0, t - 0.7), 2) * 4); const b = Math.exp(-((m - 0.45) ** 2) / (2 * 0.22 * 0.22)); return Math.max(0.01, a * b * (1 - Math.max(0, e - 0.15) * 3)); }
+function tf(t, m, e) { if (e > 0.45) return 0.01; const a = Math.min(1, Math.max(0,(t-0.57)/0.13)) * Math.min(1, 1-Math.pow(Math.max(0,t-0.88),2)*1.5); const b = Math.exp(-((m - 0.45) ** 2) / (2 * 0.22 * 0.22)); return Math.max(0.01, a * b * (1 - Math.max(0, e - 0.15) * 3)); }
 const tC = new Uint8Array(W * H), tE = new Float32Array(W * H), tT = new Float32Array(W * H), tM = new Float32Array(W * H);
 for (let i = 0; i < W * H; i++) { tE[i] = w.elevation[i]; tT[i] = w.temperature[i]; tM[i] = w.moisture[i]; tC[i] = w.coastal[i] || 0; tCrop[i] = tf(w.temperature[i], w.moisture[i], w.elevation[i]); }
 w.rivers = computeRivers(W, H, tE, tM, tT); w.deposits = generateResources(W, H, tE, tT, tM, tC, w, w._seed || SEED, w.rivers);

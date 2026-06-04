@@ -203,9 +203,12 @@ c.fillStyle=`rgba(${(84+tone*34)|0},${(96+tone*26)|0},${(56+tone*20)|0},0.72)`;c
 c.strokeStyle='rgba(42,48,28,0.6)';c.lineWidth=Math.max(0.3,s*0.12);c.stroke();}
 
 // Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
-// Agriculture needs adequate moisture (not maximum) — bell curve peaks at 0.45 (temperate optimum)
+// Temperature fitness uses a COLD GATE (calibrated air-temp scale t=0.60+°C/100):
+// near-zero below ~-3°C (short-season high latitudes — far-N Europe, Siberia are
+// marginal), full by ~+10°C, broad warm plateau, gentle roll-off in extreme heat.
+// Kept in sync with the tCrop bell below. Moisture bell peaks at 0.45.
 function tileFert(t,m,e){if(e>0.45)return 0.01;
-const tFactor=Math.min(1,t*1.5)*Math.min(1,1-Math.pow(Math.max(0,t-0.7),2)*4);
+const tFactor=Math.min(1,Math.max(0,(t-0.57)/0.13))*Math.min(1,1-Math.pow(Math.max(0,t-0.88),2)*1.5);
 const mFactor=Math.exp(-((m-0.45)*(m-0.45))/(2*0.22*0.22));
 const base=tFactor*mFactor;
 return Math.max(0.01,base*(1-Math.max(0,e-0.15)*3));}
@@ -469,19 +472,19 @@ const crossWorld={elev:tElev,temp:tTemp,moist:tMoist,coast:tCoast,
 for(let ti=0;ti<tw*th;ti++){
 const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
 if(e<=0){tCrop[ti]=0;tCross[ti]=1;continue;}
-// Crop suitability. The temperature field on this world runs hot —
-// mid-low latitude continents sit at t≈0.72–0.85 even at sea level,
-// matching the green-forest biome rendering but well above any
-// reasonable narrow bell. Sigmas widened dramatically (σ_t=0.35,
-// σ_m=0.27) and the bell centre moved to t=0.55, where India,
-// China, sub-Saharan Africa, Brazilian highlands and the rest of
-// real-world agricultural land actually sits. Only true climatic
-// extremes (tundra, hot desert, Amazon/Congo lateritic rainforest)
-// fall into the red side.
+// Crop suitability. Temperature is now calibrated to real annual-mean air temp
+// (t = 0.60 + °C/100, see tools/probe_temperature.mjs), so the optimum is a
+// realistic agricultural band rather than the old wide bell (which, tuned to the
+// previous hot scale, peaked in the cold and wrongly rated far-northern Europe /
+// Siberia as prime farmland). A COLD GATE rules out short-season high latitudes
+// (annual mean below ~-3°C ≈ 0; rising to full suitability by ~+10°C), then a
+// broad warm plateau (temperate breadbaskets → subtropics → watered tropics)
+// with only a gentle roll-off in extreme heat. Hot-wet laterite and aridity are
+// handled by the moisture bell + penalties below.
 let crop;
 if(e>0.45)crop=0.02;
 else{
-const tBell=Math.exp(-((t-0.55)*(t-0.55))/(2*0.35*0.35));
+const tBell=Math.min(1,Math.max(0,(t-0.57)/0.13))*Math.min(1,1-Math.pow(Math.max(0,t-0.88),2)*1.5);
 const mBell=Math.exp(-((m-0.45)*(m-0.45))/(2*0.28*0.28));
 crop=tBell*mBell;
 // Tropical lateritic-soil penalty. The Amazon/Congo paradox: hot-wet
