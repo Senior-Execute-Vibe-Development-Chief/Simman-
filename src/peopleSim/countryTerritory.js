@@ -92,12 +92,21 @@ const INTEGRATE_MIN   = 2;     // reach-units a just-adopted settlement projects
 const NOISE_CELL = 13;
 const NOISE_AMP  = 0.30;       // ± fraction the claim cost wobbles (0.30 ⇒ ×0.70..×1.30)
 // Tier at/above which a settlement is a sovereign ANCHOR that can found and hold
-// a country (a town or city — a real seat of government). Below it (villages)
-// adopt their territory's country and are never sovereign. Cities-only (tier 2)
-// proved far too rare to populate a political map (the few cradles just tiled
-// everything); towns-and-up gives a clean, healthily-populated set of realms
-// while plain villages remain pure population.
-const CITY_TIER = 1;
+// a country (a real seat of government). Below it, settlements ADOPT their
+// territory's country or stay stateless on the frontier — they are pure
+// population, never sovereign.
+//
+// CITY (tier 2). Towns (tier 1) used to qualify, which let EVERY town in a reach-
+// gap mint its own micro-state and secede alone — the "swarm of tiny nations
+// parasitising an empire" + a runaway country count (60+ realms, most <120 tiles,
+// at 480x240). Requiring a real CITY makes sovereignty substantial: the count
+// lands near the realistic ~80-100-country target (cities are far rarer than
+// towns), secessions need a city so they break off province-sized chunks rather
+// than single towns, and frontier towns are just population until a city emerges
+// or a realm's territory reaches them. (The old "cities tiled everything" worry
+// predated the reach-budget trim + gradual integration + slowed consolidation,
+// which now keep even a sparse set of city-states regional.)
+const CITY_TIER = 2;
 const SQRT2 = Math.SQRT2;
 
 class MinHeap {
