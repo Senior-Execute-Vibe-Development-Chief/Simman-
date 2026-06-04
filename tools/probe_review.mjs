@@ -135,6 +135,17 @@ for(const s of world.settlements){if(s.mode!=="settled")continue; tiers[s.tier|0
 pops.sort((a,b)=>b-a);
 console.log(`tiers V${tiers[0]} T${tiers[1]} C${tiers[2]} M${tiers[3]}  largest settlement ${topSett?topSett.name+" "+fmt(topSett.people)+" (tier "+topSett.tier+")":"-"}`);
 console.log(`pop pyramid: top10 [${pops.slice(0,10).map(fmt).join(",")}]  median ${fmt(pops[pops.length>>1]||0)}`);
+// Province readiness: a province seat is a city+ (tier>=2). Count city-seats per
+// country — a realm with 2+ cities can form multiple provinces (and shed them via
+// secession); a 0-city realm is a single province that stays whole.
+{
+  const cityByC=new Map();
+  for(const s of world.settlements){if(s.mode!=="settled")continue; if((s.tier|0)>=2 && s.countryId>=0) cityByC.set(s.countryId,(cityByC.get(s.countryId)||0)+1);}
+  let with0=0,with1=0,with2=0; const seats=[];
+  if(world.countries)for(const c of world.countries.values()){const n=cityByC.get(c.id)||0; seats.push(n); if(n===0)with0++; else if(n===1)with1++; else with2++;}
+  seats.sort((a,b)=>b-a);
+  console.log(`province seats (cities per country): 0=${with0}  1=${with1}  2+=${with2}  top [${seats.slice(0,6).join(",")}]`);
+}
 console.log("country SHAPES (top 8 by tiles): area comps biggest% bbox fill iso(1=disc,>1 ragged)");
 for(const r of shapeReport(world,8)){
   const c=world.countries.get(r.cid); const k=(c&&c.capital&&c.capital.knowledge)||{};
