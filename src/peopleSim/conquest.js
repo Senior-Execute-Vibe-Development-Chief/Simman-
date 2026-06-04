@@ -44,8 +44,8 @@ const ABSORB_HEADROOM  = 0.90;
 // consolidation force that pulls the late-game splotch of tiny states into a
 // few large empires; it only fires on lopsided matchups, so peer empires don't
 // peel border villages off each other.
-const LOPSIDED_ENGULF  = 8.0;   // (was 5.0) a realm must out-power a neighbour's WHOLE country by this much to engulf it regardless of admin headroom — raised so a strong realm can't vacuum a whole continent of statelets early
-const ENGULF_PROB      = 0.20;  // (was 0.4) ...and at half the per-pass rate, so consolidation is a slow accretion, not a sweep
+const LOPSIDED_ENGULF  = 5.0;   // a realm must out-power a neighbour's WHOLE country by this much to engulf it regardless of admin headroom (the great-power consolidation that merges city-states into multi-city empires — the source of provinces)
+const ENGULF_PROB      = 0.35;  // per-pass engulf rate once lopsided
 // A realm's whole country must out-power a neighbour's whole country by
 // T.ABSORB_DOMINANCE before it can administratively absorb that neighbour's
 // frontier settlements (absorbWeakNeighbors). Hysteresis: only clearly-minor

@@ -82,21 +82,25 @@ function render(arr, label) {
 // chain to its top-level seat, border where seats differ within a country).
 function renderProv() {
   const { tw, th, elev } = world;
-  const claim = world._countryClaim, owner = world._territoryOwner;
-  if (!claim || !owner) { console.log("[prov] no claim/owner yet"); return; }
-  let maxId = 0; for (const s of world.settlements) if (s.mode === "settled" && s.id > maxId) maxId = s.id;
-  const byId = new Map(); for (const s of world.settlements) if (s.mode === "settled") byId.set(s.id, s);
-  const provById = new Int32Array(maxId + 1).fill(-1);
-  for (const s of world.settlements) {
-    if (s.mode !== "settled") continue;
-    let cur = s, guard = 0, seat = s.id;
-    while (cur && cur.liegeId >= 0 && guard++ < 64) { const Lg = byId.get(cur.liegeId); if (!Lg) break; if (Lg.liegeId < 0) { seat = cur.id; cur = null; break; } cur = Lg; }
-    if (cur && cur.liegeId < 0) seat = cur.id;
-    provById[s.id] = seat;
+  const claim = world._countryClaim;
+  if (!claim) { console.log("[prov] no claim yet"); return; }
+  const halfTw = tw / 2;
+  const cityList = new Map();
+  for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0 && (s.tier | 0) >= 2) { let a = cityList.get(s.countryId); if (!a) cityList.set(s.countryId, a = []); a.push(s); }
+  // province per tile = nearest CITY of the tile's country (a city-reach Voronoi)
+  const prov = new Int32Array(tw * th).fill(-1);
+  for (let ti = 0; ti < prov.length; ti++) {
+    const cc = claim[ti]; if (cc < 0) continue;
+    const arr = cityList.get(cc); if (!arr) continue;
+    if (arr.length === 1) { prov[ti] = arr[0].id; continue; }
+    const cy = ((ti / tw) | 0) + 0.5, cx = (ti - ((ti / tw) | 0) * tw) + 0.5;
+    let best = -1, bd = Infinity;
+    for (const c of arr) { let dx = Math.abs(c.pos.x - cx); if (dx > halfTw) dx = tw - dx; const dy = c.pos.y - cy; const d = dx * dx + dy * dy; if (d < bd) { bd = d; best = c.id; } }
+    prov[ti] = best;
   }
   const ow = tw * SCALE, oh = th * SCALE, px = Buffer.alloc(ow * oh * 3);
   const set = (x, y, r, g, b) => { const o = (y * ow + x) * 3; px[o] = r; px[o + 1] = g; px[o + 2] = b; };
-  const provAt = (ti) => { const o = owner[ti]; return (o >= 0 && o <= maxId) ? provById[o] : -1; };
+  const provAt = (ti) => prov[ti];
   for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) {
     const ti = ty * tw + tx; let r, g, b;
     if (elev[ti] <= 0) { r = 28; g = 42; b = 74; }

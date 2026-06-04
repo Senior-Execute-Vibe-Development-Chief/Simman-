@@ -2591,36 +2591,35 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         if(L.borders){octx.stroke();octx.setLineDash([]);}
       }
       // ── Province borders (Layers → Provinces) ──
-      // Internal administrative divisions: where land governed by different
-      // top-level provincial seats of the SAME country meets. A province = a
-      // city directly under the capital plus the towns/villages that report up
-      // the liege chain to it (the capital's own dependents form the core
-      // province). Derived render-side from the per-settlement owner map +
-      // liegeId; drawn lighter/dotted so it reads as a sub-border under the
-      // national one.
-      if(L.provinces&&claimArr&&owner){
-        const tw=psw.tw,th=psw.th;
-        let maxId=0; for(const s of psw.settlements){if(s&&s.id>maxId)maxId=s.id;}
-        const byId=new Map(); for(const s of psw.settlements){if(s)byId.set(s.id,s);}
-        // settlement id → its top-level province seat id (liegeId<0 marks a capital).
-        const provById=new Int32Array(maxId+1).fill(-1);
-        for(const s of psw.settlements){
-          if(!s||s.mode!=="settled")continue;
-          let cur=s,guard=0,seat=s.id;
-          while(cur&&cur.liegeId>=0&&guard++<64){const Lg=byId.get(cur.liegeId);if(!Lg)break;if(Lg.liegeId<0){seat=cur.id;cur=null;break;}cur=Lg;}
-          if(cur&&cur.liegeId<0)seat=cur.id;
-          provById[s.id]=seat;
+      // Internal administrative divisions: each CITY (tier ≥ 2) of a country is a
+      // provincial seat, and the country is partitioned into provinces by NEAREST
+      // CITY (a city-reach Voronoi within the country) — so a single-city realm is
+      // one province and a multi-city empire is split into a few large regions,
+      // matching how the empire's provinces would secede. Drawn lighter/dotted as
+      // a sub-border beneath the national one. (Computed from claim + the cities in
+      // psw.settlements; no sim/worker data needed beyond what's already shipped.)
+      if(L.provinces&&claimArr){
+        const tw=psw.tw,th=psw.th,halfTw=tw/2;
+        const cityList=new Map();   // countryId → [city settlements]
+        for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.countryId>=0&&(s.tier|0)>=2){let a=cityList.get(s.countryId);if(!a)cityList.set(s.countryId,a=[]);a.push(s);}}
+        // province id per tile = nearest city (of the tile's country) by wrapped Euclidean.
+        const prov=new Int32Array(claimArr.length).fill(-1);
+        for(let ti=0;ti<claimArr.length;ti++){
+          const cc=claimArr[ti];if(cc<0)continue;
+          const arr=cityList.get(cc);if(!arr)continue;
+          if(arr.length===1){prov[ti]=arr[0].id;continue;}
+          const py=(ti/tw)+0.5,px=(ti-((ti/tw)|0)*tw)+0.5;
+          let best=-1,bd=Infinity;
+          for(const c of arr){let dx=Math.abs(c.pos.x-px);if(dx>halfTw)dx=tw-dx;const dy=c.pos.y-py;const d=dx*dx+dy*dy;if(d<bd){bd=d;best=c.id;}}
+          prov[ti]=best;
         }
         octx.strokeStyle="rgba(20,20,20,0.5)";octx.lineWidth=1;octx.setLineDash([1,2]);octx.beginPath();
         for(let ti=0;ti<claimArr.length;ti++){
-          const cc=claimArr[ti];if(cc<0)continue;
-          const oid=owner[ti];if(oid<0||oid>maxId)continue;
-          const pv=provById[oid];if(pv<0)continue;
-          const py=(ti/tw)|0,px=ti-py*tw;
-          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          const cc=claimArr[ti];if(cc<0)continue;const pv=prov[ti];if(pv<0)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           const rti=py*tw+(px===tw-1?0:px+1);
-          if(claimArr[rti]===cc){const ro=owner[rti];if(ro>=0&&ro<=maxId&&provById[ro]>=0&&provById[ro]!==pv){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}}
-          if(py<th-1){const dti=ti+tw;if(claimArr[dti]===cc){const dno=owner[dti];if(dno>=0&&dno<=maxId&&provById[dno]>=0&&provById[dno]!==pv){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
+          if(claimArr[rti]===cc&&prov[rti]>=0&&prov[rti]!==pv){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(py<th-1){const dti=ti+tw;if(claimArr[dti]===cc&&prov[dti]>=0&&prov[dti]!==pv){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         octx.stroke();octx.setLineDash([]);
       }

@@ -28,7 +28,7 @@ const world=initPeopleSim(w,{seed:w._seed||SEED,tCrop,tileRes:1,deposits});
 const SECEDE_TYPES = new Set(["seceded","rebellion","declared-independence","successor","joined-secession","joined-rebellion","followed-lord"]);
 let prev = new Set();
 console.log(`dynamics ${W}x${H} seed=${SEED}  (substantial = >${(0.01*W*H/100*100|0)||300} tiles; tiny = <120 tiles)`);
-console.log("step    cnt  land%  top3 empire tiles        subst tiny  born(found/secede)  died");
+console.log("step    cnt  land%  top3 empire tiles        subst tiny  cit/ctry multi maxC  born(f/s)  died");
 
 function tilesByCountry(){ const co=world._countryOwner, m=new Map(); if(co)for(let i=0;i<co.length;i++){const c=co[i]; if(c>=0)m.set(c,(m.get(c)||0)+1);} return m; }
 function capOf(cid){ const c=world.countries&&world.countries.get(cid); return c&&c.capital; }
@@ -47,8 +47,13 @@ function report(step){
   }
   for(const id of prev) if(!cur.has(id)) died++;
   prev = cur;
+  // cities-per-country: the province-enabler — a country needs >=2 cities to have provinces
+  const cityBy=new Map();
+  for(const s of world.settlements){if(s.mode==="settled"&&s.countryId>=0&&(s.tier|0)>=2)cityBy.set(s.countryId,(cityBy.get(s.countryId)||0)+1);}
+  let multiCity=0,totCit=0,maxCit=0;for(const v of cityBy.values()){if(v>=2)multiCity++;totCit+=v;if(v>maxCit)maxCit=v;}
+  const avgCit=(totCit/Math.max(1,st.countries)).toFixed(1);
   const top3 = sizes.slice(0,3).map(s=>String(s).padStart(5)).join(" ");
-  console.log(`${String(step).padStart(5)}  ${String(st.countries).padStart(4)}  ${(st.landPct*100).toFixed(0).padStart(3)}%  ${top3.padEnd(20)}  ${String(subst).padStart(4)} ${String(tiny).padStart(4)}   ${String(foundBorn).padStart(4)}/${String(secedeBorn).padStart(4)}        ${String(died).padStart(4)}`);
+  console.log(`${String(step).padStart(5)}  ${String(st.countries).padStart(4)}  ${(st.landPct*100).toFixed(0).padStart(3)}%  ${top3.padEnd(20)}  ${String(subst).padStart(4)} ${String(tiny).padStart(4)}    ${avgCit.padStart(4)} ${String(multiCity).padStart(4)} ${String(maxCit).padStart(3)}  ${String(foundBorn).padStart(3)}/${String(secedeBorn).padStart(3)}   ${String(died).padStart(4)}`);
 }
 
 for(let s=1;s<=STEPS;s++){ stepPeopleSim(world,1); if(s%INTERVAL===0) report(s); }
