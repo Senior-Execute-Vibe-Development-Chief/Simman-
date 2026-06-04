@@ -39,13 +39,20 @@ import { T } from "./tuning.js";
 const ABSORB_HEADROOM  = 0.90;
 // Great-power engulfment of a weak STATELET: when a realm out-powers a
 // neighbour's WHOLE country by this much, it can absorb that neighbour's
-// settlements even with NO capacity headroom (a great power always finds room
-// to swallow a tiny state) and at the faster ENGULF_PROB rate. This is the
-// consolidation force that pulls the late-game splotch of tiny states into a
-// few large empires; it only fires on lopsided matchups, so peer empires don't
-// peel border villages off each other.
-const LOPSIDED_ENGULF  = 5.0;   // a realm must out-power a neighbour's WHOLE country by this much to engulf it regardless of admin headroom (the great-power consolidation that merges city-states into multi-city empires — the source of provinces)
+// settlements PAST its normal capacity headroom — up to LOPSIDED_HEADROOM ×
+// capacity (a great power over-extends to swallow tiny states) and at the faster
+// ENGULF_PROB rate. This is the consolidation force that pulls the late-game
+// splotch of tiny states into a few multi-city empires; it only fires on
+// lopsided matchups, so peer empires don't peel border villages off each other.
+const LOPSIDED_ENGULF  = 5.0;   // a realm must out-power a neighbour's WHOLE country by this much to engulf it past its normal admin headroom (the great-power consolidation that merges city-states into multi-city empires — the source of provinces)
 const ENGULF_PROB      = 0.35;  // per-pass engulf rate once lopsided
+// Capacity ceiling for lopsided engulfment: a great power may over-extend to
+// this MULTIPLE of its admin budget while engulfing statelets — enough to
+// consolidate a neighbourhood of city-states into a multi-city empire, but NOT
+// to swallow a continent. Past it, even a lopsided absorber must first shed an
+// over-extended province (the over-budget frontier secedes) before it can take
+// another — the boom-bust ceiling that stops one realm eating the whole map.
+const LOPSIDED_HEADROOM = 1.6;
 // A realm's whole country must out-power a neighbour's whole country by
 // T.ABSORB_DOMINANCE before it can administratively absorb that neighbour's
 // frontier settlements (absorbWeakNeighbors). Hysteresis: only clearly-minor
@@ -1314,11 +1321,11 @@ export function updatePolities(world) {
 // dozen villages at once and is massively over-extended next pass (the very
 // absorb↔secede oscillation this gate exists to stop). Charging each
 // absorption forward closes that hole — a pass fills only the real headroom.
-function hasAbsorbHeadroom(c, extra = 0) {
+function hasAbsorbHeadroom(c, extra = 0, mult = ABSORB_HEADROOM) {
   if (!c) return false;
   const cap = c._capacity, load = c._loadTotal;
   if (cap == null || load == null) return true;        // no budget data yet → allow
-  return load + extra < cap * ABSORB_HEADROOM;
+  return load + extra < cap * mult;
 }
 
 // Cheap estimate of the admin load a freshly-absorbed province adds to a realm
@@ -1426,7 +1433,10 @@ function absorbWeakNeighbors(world, countries) {
     // headroom (and faster, below); otherwise it must have spare capacity.
     const myCountryPow = countryPower.get(m.countryId) || 1;
     const lopsided = (countryPower.get(bestId) || 1) >= myCountryPow * LOPSIDED_ENGULF;
-    if (!lopsided && !hasAbsorbHeadroom(target, committed)) continue;
+    // Lopsided great powers may over-extend (up to LOPSIDED_HEADROOM × capacity)
+    // but are NOT exempt from the ceiling — without an upper bound a dominant
+    // realm engulfs the whole map. Past the ceiling it must shed before it grows.
+    if (!hasAbsorbHeadroom(target, committed, lopsided ? LOPSIDED_HEADROOM : ABSORB_HEADROOM)) continue;
     const myPower = Math.max(1, settlementPower(m));
     // Defection chance per polity pass — caps at T.ABSORB_PROB_MAX normally; a
     // lopsided great-power engulfment goes at the faster ENGULF_PROB so the
