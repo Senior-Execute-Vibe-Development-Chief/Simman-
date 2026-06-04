@@ -16,6 +16,13 @@
 // smoothest crawl. index.js calls relaxClaim every CLAIM_RELAX_INTERVAL ticks.
 const RINGS_PER_RELAX = 1;
 
+// Ticks after a settlement is INTEGRATED out of the wild (adoptAndFound stamps
+// _integratedAt) during which it does NOT plant a wild-land foothold — so its
+// realm's colour crawls out to it FROM the existing border instead of blooming
+// around the freshly-absorbed settlement. A genuinely new settlement on fresh
+// land (a colony / crystallised town, no recent integration) plants normally.
+const FOOTHOLD_GRACE = 600;
+
 // "Main" settlement of a country: the strongest member (tier first, then
 // people) — the same seat rebuildCountries would crown capital. Used to pick
 // the single tile a brand-new realm's claim is born from. Robust to a dead
@@ -76,10 +83,17 @@ export function relaxClaim(world) {
     if (elev[ti] <= 0) continue;
     const cur = claim[ti];
     if (cur === s.countryId) continue;                       // already ours
-    if (cur === -1) { claim[ti] = s.countryId; continue; }   // fresh land — legit foothold
-    // Home tile currently belongs to another country: flipping it is a land
-    // transfer. Only the head of a country with no ground yet may plant its one
-    // birth-foothold; everyone else waits for the crawl to reach them.
+    // A settlement that just GREW INTO the wild as its realm expanded (recent
+    // _integratedAt) must NOT plant a foothold — its colour should crawl out from
+    // the realm's existing border rather than bloom around the settlement. A
+    // genuinely new settlement on fresh land (colony / crystallised town) plants.
+    const recentlyIntegrated = world.step - (s._integratedAt ?? -Infinity) < FOOTHOLD_GRACE;
+    if (cur === -1 && !recentlyIntegrated) { claim[ti] = s.countryId; continue; }   // fresh land — legit foothold
+    // Either the home tile belongs to ANOTHER country, or it's wild but the
+    // settlement is freshly integrated (above): flipping it is a transfer / would
+    // bloom. Only the head of a country with no ground yet may plant its one
+    // birth-foothold (so a brand-new realm can still be born); everyone else
+    // waits for the crawl to reach them.
     if (!present.has(s.countryId) && headOf.get(s.countryId) === s) {
       claim[ti] = s.countryId;
       present.add(s.countryId);                              // it now exists; co-seceders wait for the crawl

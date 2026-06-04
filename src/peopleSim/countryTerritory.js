@@ -29,7 +29,7 @@ import { localEdgeCost } from "./transport.js";
 // between) and high-org empires reach far (consolidation with the era). Beyond
 // it, land is wilderness — which is where stateless frontier hamlets live.
 const COUNTRY_REACH_BASE = 8;
-const COUNTRY_REACH_ORG  = 20;
+const COUNTRY_REACH_ORG  = 14;   // reach per organisation tech (was 20 — empires were continental too early)
 // ── Frontier-fill: claiming the harsh interior as engineering matures ──
 // For most of history great regions were politically EMPTY — no state claimed
 // the deep Sahara, the high Himalaya, the Amazon, interior Africa. They filled
@@ -61,14 +61,36 @@ const CLAIM_SOFT      = 0.12;
 // climbs with the capital's construction (the surveying/road/communication tech
 // that lets authority carry far), turning the ancient archipelago of realms into
 // the modern wall-to-wall partition as the centuries pass.
-const REACH_ERA = 3;          // budget ×(1 + construction² · REACH_ERA): ~×1 ancient, ~×4 modern
+const REACH_ERA = 2;          // budget ×(1 + construction² · REACH_ERA): ~×1 ancient, ~×3 modern (was 3 — eased so realms don't balloon mid-era)
 // Reach is also scaled by how BIG the realm is, so a claim is backed by real
 // settlements rather than the capital's tech alone. budget ×= clamp(members /
 // REACH_SIZE_REF, REACH_SIZE_MIN, 1): a fledgling realm projects only a fraction
 // of its tech-reach (no continent-from-three-cities) and earns the full reach as
 // it grows to a continental-scale state.
-const REACH_SIZE_REF = 20;    // settlements for full reach
-const REACH_SIZE_MIN = 0.3;   // a tiny realm still projects at least this fraction
+const REACH_SIZE_REF = 32;    // settlements for full reach (was 20 — a realm must be bigger before it projects its whole tech-reach, so a few-city state stays regional)
+const REACH_SIZE_MIN = 0.25;  // a tiny realm still projects at least this fraction
+// ── Gradual integration of newly-acquired land ───────────────────────
+// A settlement that just joined this realm out of the WILD (adoptAndFound stamps
+// _integratedAt when a stateless settlement adopts a country, as the realm's
+// territory grows into it) does NOT immediately project the country's full reach
+// from its own location — that made the country's colour BLOOM out around each
+// freshly-absorbed frontier settlement. Instead its territorial basin starts at
+// INTEGRATE_MIN and grows to the full country reach over INTEGRATE_TICKS, so the
+// captured frontier fills in gradually FROM the realm rather than radiating out
+// of the new settlement. (Conquest/secession are unaffected — they never stamp
+// _integratedAt, so a stormed city or a seceded province keeps its land at once.)
+const INTEGRATE_TICKS = 3000;
+const INTEGRATE_MIN   = 2;     // reach-units a just-adopted settlement projects on day one
+// ── Organic borders ──────────────────────────────────────────────────
+// A uniform cost field makes the cost-Voronoi bisector between two realms a dead-
+// straight LINE (the "geometric border / straight-line land grab" artefact). A
+// smooth, low-frequency NOISE field multiplied into the per-tile claim cost gives
+// the frontier somewhere to meander, so borders wander organically (and still
+// slump onto real ridges/rivers/coasts via the terrain term) instead of cutting
+// straight across open ground. Coherent (≈NOISE_CELL-tile wavelength), wraps in
+// longitude, cached per world.
+const NOISE_CELL = 13;
+const NOISE_AMP  = 0.30;       // ± fraction the claim cost wobbles (0.30 ⇒ ×0.70..×1.30)
 // Tier at/above which a settlement is a sovereign ANCHOR that can found and hold
 // a country (a town or city — a real seat of government). Below it (villages)
 // adopt their territory's country and are never sovereign. Cities-only (tier 2)
@@ -84,6 +106,36 @@ class MinHeap {
   push(ti, d, c) { if (this.n >= this.cap) this._grow(); let i = this.n++; this.ti[i] = ti; this.d[i] = d; this.c[i] = c; while (i > 0) { const p = (i - 1) >> 1; if (this.d[p] <= this.d[i]) break; this._sw(p, i); i = p; } }
   _sw(a, b) { const t = this.ti[a]; this.ti[a] = this.ti[b]; this.ti[b] = t; const d = this.d[a]; this.d[a] = this.d[b]; this.d[b] = d; const c = this.c[a]; this.c[a] = this.c[b]; this.c[b] = c; }
   popMin() { const ti = this.ti[0], d = this.d[0], c = this.c[0]; this.n--; if (this.n > 0) { this.ti[0] = this.ti[this.n]; this.d[0] = this.d[this.n]; this.c[0] = this.c[this.n]; let i = 0; for (;;) { const l = i * 2 + 1, r = i * 2 + 2; let b = i; if (l < this.n && this.d[l] < this.d[b]) b = l; if (r < this.n && this.d[r] < this.d[b]) b = r; if (b === i) break; this._sw(b, i); i = b; } } return { ti, d, c }; }
+}
+
+// Smooth value-noise field (≈NOISE_CELL-tile wavelength, longitude-wrapping),
+// in [0,1], cached on the world. Multiplied into the per-tile claim cost so the
+// cost-Voronoi border meanders instead of running straight (see NOISE_* above).
+function claimNoise(world) {
+  if (world._claimNoise && world._claimNoise.length === world.N) return world._claimNoise;
+  const { N, tw, th } = world;
+  const noise = new Float32Array(N);
+  const cols = Math.max(1, Math.round(tw / NOISE_CELL)), rows = Math.ceil(th / NOISE_CELL) + 1;
+  const grid = new Float32Array(cols * rows);
+  const seed = (world.seed || 1) >>> 0;
+  for (let i = 0; i < grid.length; i++) {
+    let h = (i * 2654435761 ^ (seed * 40503)) >>> 0;
+    h ^= h >>> 15; h = Math.imul(h, 2246822519) >>> 0; h ^= h >>> 13;
+    grid[i] = (h >>> 0) / 4294967295;
+  }
+  for (let ty = 0; ty < th; ty++) {
+    const gy = ty / NOISE_CELL; let y0 = gy | 0; const fy = gy - y0; if (y0 >= rows - 1) y0 = rows - 2;
+    const sy = fy * fy * (3 - 2 * fy);
+    for (let tx = 0; tx < tw; tx++) {
+      const gx = tx / NOISE_CELL; const x0 = gx % cols | 0; const fx = (gx - (gx | 0)); const x1 = (x0 + 1) % cols;
+      const sx = fx * fx * (3 - 2 * fx);
+      const a = grid[y0 * cols + x0], b = grid[y0 * cols + x1], c = grid[(y0 + 1) * cols + x0], d = grid[(y0 + 1) * cols + x1];
+      const top = a + (b - a) * sx, bot = c + (d - c) * sx;
+      noise[ty * tw + tx] = top + (bot - top) * sy;
+    }
+  }
+  world._claimNoise = noise;
+  return noise;
 }
 
 // Clean per-country cost-Voronoi → world._countryOwner. Runs on the territory pass.
@@ -127,12 +179,28 @@ export function computeCountryTerritory(world) {
     budget.set(c, b * sf);
   }
 
-  // Seed: every country-affiliated settlement plants its country at cost 0.
+  // Per-tile basin budget: how far the SEED that claimed a tile may project.
+  // Normally the country's full reach; smaller for a freshly-integrated frontier
+  // settlement (grows over INTEGRATE_TICKS) so captured land fills in gradually.
+  let seedBud = world._countrySeedBud;
+  if (!seedBud || seedBud.length !== N) seedBud = world._countrySeedBud = new Float64Array(N);
+  const noise = claimNoise(world);
+
+  // Seed: every country-affiliated settlement plants its country at cost 0, with
+  // a basin budget capped by how INTEGRATED it is (a just-adopted wild settlement
+  // starts at INTEGRATE_MIN and earns the full reach over INTEGRATE_TICKS).
   const heap = new MinHeap();
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
-    if (elev[ti] > 0 && cost[ti] > 0) { cost[ti] = 0; co[ti] = s.countryId; heap.push(ti, 0, s.countryId); }
+    if (!(elev[ti] > 0 && cost[ti] > 0)) continue;
+    const c = s.countryId;
+    const full = budget.get(c) || 0;
+    const age = world.step - (s._integratedAt ?? -Infinity);
+    const sb = age < INTEGRATE_TICKS
+      ? Math.min(full, INTEGRATE_MIN + Math.max(0, full - INTEGRATE_MIN) * (age / INTEGRATE_TICKS))
+      : full;
+    cost[ti] = 0; co[ti] = c; seedBud[ti] = sb; heap.push(ti, 0, c);
   }
   // Multi-source Dijkstra: every land tile goes to the nearest country (by travel
   // cost) within that country's reach budget; another country's tile is just a
@@ -140,7 +208,7 @@ export function computeCountryTerritory(world) {
   while (heap.n > 0) {
     const { ti, d, c } = heap.popMin();
     if (d > cost[ti]) continue;
-    const bud = budget.get(c) || 0;
+    const basinBud = seedBud[ti];                    // this basin's reach cap (recency-limited for new land)
     const kn = knOf.get(c);
     const cap = claimCap.get(c) || CLAIM_CAP_CEIL;   // construction-eased per-tile claim cost ceiling
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
@@ -157,9 +225,10 @@ export function computeCountryTerritory(world) {
       let ec = localEdgeCost(world, ti, ni, kn, true);   // roads ignored
       if (ec === Infinity) continue;
       if (ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;  // soft cap: ease harsh terrain but keep its gradient (no straight-wall borders)
+      ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);     // organic meander → borders wander instead of cutting straight
       const nd = d + ec * mul[k];
-      if (nd > bud) continue;
-      if (nd < cost[ni]) { cost[ni] = nd; co[ni] = c; heap.push(ni, nd, c); }
+      if (nd > basinBud) continue;                       // basin's (recency-limited) reach budget
+      if (nd < cost[ni]) { cost[ni] = nd; co[ni] = c; seedBud[ni] = basinBud; heap.push(ni, nd, c); }
     }
   }
   return co;
@@ -182,11 +251,17 @@ export function adoptAndFound(world) {
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
     const region = elev[ti] > 0 ? co[ti] : -1;
     if ((s.tier | 0) >= CITY_TIER) {
-      if (s.countryId < 0) s.countryId = region >= 0 ? region : s.id;   // stateless anchor: join its region, else found
+      if (s.countryId < 0) {
+        s.countryId = region >= 0 ? region : s.id;   // stateless anchor: join its region, else found
+        s._integratedAt = world.step;                // new sovereign / adopted land integrates its territory in gradually (anti-bloom; see INTEGRATE_*)
+      }
       // a town/city with a country keeps it (sovereign)
     } else {
       // village / town: follow the land (region), or stateless on the frontier
-      if (s.countryId !== region) s.countryId = region;
+      if (s.countryId !== region) {
+        if (s.countryId < 0 && region >= 0) s._integratedAt = world.step;   // wild → joined a realm: grow its basin in from the border, don't bloom
+        s.countryId = region;
+      }
     }
   }
 }
