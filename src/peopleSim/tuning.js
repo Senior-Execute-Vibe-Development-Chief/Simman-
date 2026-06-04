@@ -121,7 +121,7 @@ export const TUNING_SCHEMA = [
     params: [
       { key: "SETT_GROWTH", label: "Population growth rate", def: 0.0018, min: 0.0002, max: 0.01, step: 0.0002,
         desc: "Base per-tick population growth. The master demographics-speed dial — up = the world fills fast." },
-      { key: "FARM_YIELD_PER_FERT", label: "Farm yield", def: 0.02, min: 0.005, max: 0.08, step: 0.005,
+      { key: "FARM_YIELD_PER_FERT", label: "Farm yield", def: 0.035, min: 0.005, max: 0.08, step: 0.005,
         desc: "Food produced per unit of land fertility → carrying capacity. Up = denser, larger inland cities." },
       { key: "HINTERLAND_MULT", label: "Farmland hinterland", def: 1.0, min: 0.3, max: 2.5, step: 0.1,
         desc: "Scales the guaranteed farmland belt every settlement holds beyond its core. Up = each town owns more countryside (and carries more land when it secedes); down = territory hugs the cores." },
