@@ -67,7 +67,7 @@ const K_MIN_VIABLE = 8;                    // bare-survival floor (matches the w
 // Economy / water / organization no longer magically house people — they
 // matter only insofar as they bring food, materials, and the coin to buy
 // them.
-const HOUSING_BASE        = 45;     // starting shelter before anything is built
+const HOUSING_BASE        = 90;     // starting shelter before anything is built (raised so small settlements aren't pinned tiny by build-lag)
 const SPACE_RADIUS        = 14;     // urban-footprint radius for the buildable-land scan
 const DENSITY_BASE        = 6;      // people per buildable tile at zero construction
 // Anticipatory urban development: a city builds housing/infrastructure for more
@@ -83,7 +83,7 @@ const URBAN_ANTICIPATION_REF = 250;   // = TIER_THRESHOLD[town]; anticipation ki
 // rate-limited by construction tech + population. Coin paid for imported
 // materials is TRANSFERRED to the supplying partners, not destroyed.
 const INFRA_COST          = 80;     // coin per +1 housing of (imported) materials + labour
-const BUILD_RATE          = 0.015;  // housing/tick per construction-weighted builder
+const BUILD_RATE          = 0.045;  // housing/tick per construction-weighted builder (3x: at scale, build-lag was the binding constraint — settlements sat housing-limited far below their food potential, so few reached city size. Faster building lets FOOD drive scaling, as intended.)
 // Yield per (distance-weighted) fertility unit of territory, ×(1+ag·1.2).
 // Deliberately SUBSISTENCE-scale: a settlement's own land feeds only a
 // village-to-town population, so the countryside fills with small farming
