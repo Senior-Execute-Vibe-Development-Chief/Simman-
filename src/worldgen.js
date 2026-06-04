@@ -188,8 +188,16 @@ const inland=Math.max(0,1-cp);
 // At 40-65° lat: coastal areas up to +10°C warmer than inland (London vs Moscow)
 const maritimeWarm=tLat>0.3?Math.min(0.12,((tLat-0.3)*0.4))*cp:0;// warming from ocean proximity at high lat
 const tropicalCool=tLat<0.3?cp*0.015:0;// slight coastal cooling in tropics (sea breeze) — real tropical coasts are barely below the curve
-const continentality=e>0?inland*tLat*0.06:0;// LAND interiors colder at high lat (Yakutsk vs Anchorage); open OCEAN is maritime, never "continental"
-const mt=bt+maritimeWarm-tropicalCool-continentality+(0.60-bt)*cp*0.05;// gentle coastal moderation toward a mild ~0°C
+// Continentality is SIGNED and moisture-gated (a plain latitude curve can't see
+// this): DRY SUBTROPICAL interiors run HOT (deserts — Sahara, Sonoran, Arabian),
+// HIGH-LATITUDE interiors run COLD (Siberia, interior Canada). Open ocean is
+// maritime — no continental effect at all.
+const mo=windMoisture[i];
+const dry=Math.max(0,1-mo/0.35);// 1 = bone-dry, 0 = humid
+const desertHeat=dry*0.085*Math.exp(-((tLat-0.33)*(tLat-0.33))/(2*0.15*0.15));// peaks in the subtropics
+const interiorCold=Math.max(0,tLat-0.55)*0.45;// ramps in past ~50° latitude
+const continental=e>0?inland*(desertHeat-interiorCold):0;
+const mt=bt+maritimeWarm-tropicalCool+continental+(0.60-bt)*cp*0.05;// gentle coastal moderation toward a mild ~0°C
 const wt=windTemp[i];
 // The wind-advected field (wt) homogenises the latitude gradient over its 60
 // iterations — useful for current-driven flavour (warm NW-Europe coasts) but it
