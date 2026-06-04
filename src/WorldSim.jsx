@@ -1108,7 +1108,7 @@ useEffect(()=>{selectedSettlementIdRef.current=selectedSettlementId;},[selectedS
 // declaratively; mirrored to a ref so draw() (memoized) reads current
 // values without needing them in its deps.
 const[layers,setLayers]=useState({
-  icons:true, tints:true, borders:true, roads:true, seaLanes:true,
+  icons:true, tints:true, borders:true, provinces:false, roads:true, seaLanes:true,
   moneyFlow:true, ships:true, armies:true, shocks:true,
   village:true, town:true, city:true, metropolis:true,
 });
@@ -2529,7 +2529,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0);
     if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
@@ -2589,6 +2589,40 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==oid&&ctryById[dno]!==co){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
+      }
+      // ── Province borders (Layers → Provinces) ──
+      // Internal administrative divisions: where land governed by different
+      // top-level provincial seats of the SAME country meets. A province = a
+      // city directly under the capital plus the towns/villages that report up
+      // the liege chain to it (the capital's own dependents form the core
+      // province). Derived render-side from the per-settlement owner map +
+      // liegeId; drawn lighter/dotted so it reads as a sub-border under the
+      // national one.
+      if(L.provinces&&claimArr&&owner){
+        const tw=psw.tw,th=psw.th;
+        let maxId=0; for(const s of psw.settlements){if(s&&s.id>maxId)maxId=s.id;}
+        const byId=new Map(); for(const s of psw.settlements){if(s)byId.set(s.id,s);}
+        // settlement id → its top-level province seat id (liegeId<0 marks a capital).
+        const provById=new Int32Array(maxId+1).fill(-1);
+        for(const s of psw.settlements){
+          if(!s||s.mode!=="settled")continue;
+          let cur=s,guard=0,seat=s.id;
+          while(cur&&cur.liegeId>=0&&guard++<64){const Lg=byId.get(cur.liegeId);if(!Lg)break;if(Lg.liegeId<0){seat=cur.id;cur=null;break;}cur=Lg;}
+          if(cur&&cur.liegeId<0)seat=cur.id;
+          provById[s.id]=seat;
+        }
+        octx.strokeStyle="rgba(20,20,20,0.5)";octx.lineWidth=1;octx.setLineDash([1,2]);octx.beginPath();
+        for(let ti=0;ti<claimArr.length;ti++){
+          const cc=claimArr[ti];if(cc<0)continue;
+          const oid=owner[ti];if(oid<0||oid>maxId)continue;
+          const pv=provById[oid];if(pv<0)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          const rti=py*tw+(px===tw-1?0:px+1);
+          if(claimArr[rti]===cc){const ro=owner[rti];if(ro>=0&&ro<=maxId&&provById[ro]>=0&&provById[ro]!==pv){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}}
+          if(py<th-1){const dti=ti+tw;if(claimArr[dti]===cc){const dno=owner[dti];if(dno>=0&&dno<=maxId&&provById[dno]>=0&&provById[dno]!==pv){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
+        }
+        octx.stroke();octx.setLineDash([]);
       }
       // Roads — thickness + alpha from current flow.
       if(L.roads&&psw.roadQuality&&psw.roadFlow){
@@ -3978,6 +4012,7 @@ return(
       <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"4px 14px 2px"}}>Map</div>
       <Row k="tints" label="Country tints" />
       <Row k="borders" label="Borders" />
+      <Row k="provinces" label="Province borders" />
       <Row k="roads" label="Roads" />
       <Row k="seaLanes" label="Sea lanes" />
       <Row k="moneyFlow" label="Money flow" />

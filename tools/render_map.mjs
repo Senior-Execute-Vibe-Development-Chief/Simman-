@@ -77,5 +77,56 @@ function render(arr, label) {
   console.log(`[png] ${file}  (${tw * SCALE}x${th * SCALE})`);
 }
 
+// Province view: country tints + dark national borders + lighter province borders
+// (same logic as WorldSim's Provinces layer — group each settlement up its liege
+// chain to its top-level seat, border where seats differ within a country).
+function renderProv() {
+  const { tw, th, elev } = world;
+  const claim = world._countryClaim, owner = world._territoryOwner;
+  if (!claim || !owner) { console.log("[prov] no claim/owner yet"); return; }
+  let maxId = 0; for (const s of world.settlements) if (s.mode === "settled" && s.id > maxId) maxId = s.id;
+  const byId = new Map(); for (const s of world.settlements) if (s.mode === "settled") byId.set(s.id, s);
+  const provById = new Int32Array(maxId + 1).fill(-1);
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    let cur = s, guard = 0, seat = s.id;
+    while (cur && cur.liegeId >= 0 && guard++ < 64) { const Lg = byId.get(cur.liegeId); if (!Lg) break; if (Lg.liegeId < 0) { seat = cur.id; cur = null; break; } cur = Lg; }
+    if (cur && cur.liegeId < 0) seat = cur.id;
+    provById[s.id] = seat;
+  }
+  const ow = tw * SCALE, oh = th * SCALE, px = Buffer.alloc(ow * oh * 3);
+  const set = (x, y, r, g, b) => { const o = (y * ow + x) * 3; px[o] = r; px[o + 1] = g; px[o + 2] = b; };
+  const provAt = (ti) => { const o = owner[ti]; return (o >= 0 && o <= maxId) ? provById[o] : -1; };
+  for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) {
+    const ti = ty * tw + tx; let r, g, b;
+    if (elev[ti] <= 0) { r = 28; g = 42; b = 74; }
+    else if (claim[ti] < 0) { r = 64; g = 70; b = 54; }
+    else { [r, g, b] = ccColor(claim[ti]); }
+    const cc = claim[ti];
+    const rcc = claim[ty * tw + (tx === tw - 1 ? 0 : tx + 1)], dcc = ty < th - 1 ? claim[ti + tw] : cc;
+    const countryB = elev[ti] > 0 && cc >= 0 && ((rcc >= 0 && rcc !== cc) || (dcc >= 0 && dcc !== cc));
+    let provB = false;
+    if (elev[ti] > 0 && cc >= 0 && !countryB) {
+      const pv = provAt(ti);
+      if (pv >= 0) {
+        if (rcc === cc) { const rp = provAt(ty * tw + (tx === tw - 1 ? 0 : tx + 1)); if (rp >= 0 && rp !== pv) provB = true; }
+        if (ty < th - 1 && dcc === cc) { const dp = provAt(ti + tw); if (dp >= 0 && dp !== pv) provB = true; }
+      }
+    }
+    if (countryB) { r = (r * 0.28) | 0; g = (g * 0.28) | 0; b = (b * 0.28) | 0; }
+    else if (provB) { r = (r * 0.58) | 0; g = (g * 0.58) | 0; b = (b * 0.58) | 0; }
+    for (let yy = 0; yy < SCALE; yy++) for (let xx = 0; xx < SCALE; xx++) set(tx * SCALE + xx, ty * SCALE + yy, r, g, b);
+  }
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    const cx = (s.pos.x | 0) * SCALE, cy = (s.pos.y | 0) * SCALE, t = s.tier | 0;
+    const col = t >= 2 ? [255, 255, 255] : t >= 1 ? [230, 220, 150] : [150, 150, 150], rad = t >= 2 ? 2 : t >= 1 ? 1 : 0;
+    for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) { const x = cx + dx, y = cy + dy; if (x >= 0 && x < ow && y >= 0 && y < oh) set(x, y, col[0], col[1], col[2]); }
+  }
+  writeFileSync(`${OUT}_prov.png`, png(ow, oh, px));
+  console.log(`[png] ${OUT}_prov.png  (${ow}x${oh})`);
+}
+
 render(world._countryClaim, "claim");
 render(world._countryOwner, "owner");
+renderProv();
