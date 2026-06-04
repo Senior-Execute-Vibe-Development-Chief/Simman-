@@ -146,6 +146,17 @@ console.log(`pop pyramid: top10 [${pops.slice(0,10).map(fmt).join(",")}]  median
   seats.sort((a,b)=>b-a);
   console.log(`province seats (cities per country): 0=${with0}  1=${with1}  2+=${with2}  top [${seats.slice(0,6).join(",")}]`);
 }
+// Grain merchant chain (foodHierarchy.js): per-tier coin earned selling grain vs
+// spent buying it. Healthy = villages net-positive (sellers), towns net-positive
+// (entrepot margin), city/capital net-negative (top buyers funding the chain).
+{
+  const gn=["village","town","city","metro"]; const ga=[0,1,2,3].map(()=>({n:0,sold:0,bought:0,w:0}));
+  let earn=0,tn=0;
+  for(const s of world.settlements){if(s.mode!=="settled")continue; const t=Math.min(3,Math.max(0,s.tier|0)); const a=ga[t]; a.n++; const so=s._mInRate?s._mInRate[2]:0, bo=s._mOutRate?s._mOutRate[1]:0; a.sold+=so; a.bought+=bo; a.w+=s.wealth||0; if(t===1){tn++; if(so>bo)earn++;}}
+  console.log("grain chain (coin/tick): tier      n   sold  bought    net  avgWealth");
+  for(let t=0;t<4;t++){const a=ga[t]; if(!a.n)continue; console.log(`  ${gn[t].padEnd(8)} ${String(a.n).padStart(5)} ${(a.sold/a.n).toFixed(2).padStart(6)} ${(a.bought/a.n).toFixed(2).padStart(6)} ${((a.sold-a.bought)/a.n).toFixed(2).padStart(6)}  ${fmt(a.w/a.n)}`);}
+  console.log(`  towns earning a grain margin: ${earn}/${tn}`);
+}
 console.log("country SHAPES (top 8 by tiles): area comps biggest% bbox fill iso(1=disc,>1 ragged)");
 for(const r of shapeReport(world,8)){
   const c=world.countries.get(r.cid); const k=(c&&c.capital&&c.capital.knowledge)||{};
