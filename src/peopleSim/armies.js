@@ -295,7 +295,7 @@ export function musterArmies(world) {
     // only a real shortfall starves the army into desertion. Fed settlements
     // grow their garrison to the tier/political cap. This is the soft "can't
     // field more than you can feed" limit.
-    const fed = (s._foodSupply || 0) + (s._foodImportRate || 0);
+    const fed = s._foodSupply || 0;   // _foodSupply now includes hierarchy-aggregated grain (foodHierarchy.js)
     if (fed < (s._foodDemand || 0) * 0.98) {
       s.army = (s.army || 0) * ARMY_DESERT;
     } else {

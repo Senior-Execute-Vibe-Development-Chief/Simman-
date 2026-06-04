@@ -820,7 +820,13 @@ function updateFood(world, s) {
   // export food. The food trade reads _storableSupply for what a
   // settlement can send out.
   s._storableSupply = landFood;
-  const supply = landFood + fish;
+  // Carrying food = what the food HIERARCHY leaves this settlement — its
+  // aggregated subtree intake minus what it ships up to its liege (computed last
+  // tick, foodHierarchy.js) — plus local perishable fish. So a city is fed by its
+  // whole hinterland, not 12 partners. Before the first aggregation (_foodNet
+  // unset) fall back to its own land food.
+  const netLand = s._foodNet !== undefined ? s._foodNet : landFood;
+  const supply = netLand + fish;
   // Urbanization tax: per-capita food demand rises with population
   // because bigger settlements have more non-farming specialists
   // (craftsmen, soldiers, priests, scribes) plus transport
@@ -997,9 +1003,8 @@ function updatePopulation(world, s) {
   // undeveloped village is capped by housing and exports the surplus.
   //   foodK   = (local production + imports) / (0.003 × urbanFactor)
   //   houseK  = housingCapacity(s)  — economy + site, food-independent
-  const supply = (s._foodSupply || 0) + (s._foodImportRate || 0);
   const perCapita = 0.003 * (s._urbanFactor || 1);
-  const foodK = supply / perCapita;
+  const foodK = (s._foodSupply || 0) / perCapita;   // _foodSupply = food-hierarchy net (own + subtree intake − shipped up) + local fish
   const houseK = housingCapacity(s);
   const K = Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
   s._k = K;

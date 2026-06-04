@@ -1126,7 +1126,7 @@ export function updatePolities(world) {
     const rebelSeeds = [];
     for (const s of c.members) {
       if (s.countryId !== c.id) continue;
-      const fed = (s._foodSupply || 0) + (s._foodImportRate || 0);
+      const fed = s._foodSupply || 0;   // _foodSupply now includes hierarchy-aggregated grain (foodHierarchy.js)
       const demand = s._foodDemand || 0.0001;
       const hunger = fed < demand ? Math.min(1, (demand - fed) / demand) : 0;
       const conscript = Math.min(1, ((s.army || 0) / Math.max(1, s.people)) / CONSCRIPT_REF);
