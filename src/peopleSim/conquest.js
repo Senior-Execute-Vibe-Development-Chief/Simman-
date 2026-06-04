@@ -388,6 +388,7 @@ export function rebuildCountries(world) {
     c.range *= expansionReachMul(c.personality);
     c.hue = ((c.id * 61) % 360 + 360) % 360;
     buildHierarchy(world, c);
+    assignProvinces(world, c);
   }
   world.countries = countries;
   return countries;
@@ -417,6 +418,26 @@ function buildHierarchy(world, c) {
   const byId = new Map(); for (const m of members) byId.set(m.id, m);
   for (const s of members) {
     if (s.liegeId >= 0) { const L = byId.get(s.liegeId); if (L) L._vassalCount++; }
+  }
+}
+
+// PROVINCES — assign every member to the nearest CITY of its realm (the capital
+// is always a seat, even if it's only a town). A province is therefore a city
+// plus the settlements nearest to it: a city-reach region at settlement
+// granularity, matching the drawn Province layer's nearest-city Voronoi. This is
+// the unit secession sheds — conquest assembles provinces (each absorbed city +
+// its hinterland) and the realm fragments back along the same lines.
+function assignProvinces(world, c) {
+  const seats = [];
+  for (const m of c.members) if (m.id === c.capitalId || (m.tier | 0) >= CITY_TIER) seats.push(m);
+  if (seats.length === 0 && c.capital) seats.push(c.capital);
+  for (const s of c.members) {
+    let best = seats[0], bd = Infinity;
+    for (const seat of seats) {
+      const d = dist(world, s.pos.x, s.pos.y, seat.pos.x, seat.pos.y);
+      if (d < bd) { bd = d; best = seat; }
+    }
+    s._provinceCity = best ? best.id : c.capitalId;
   }
 }
 
@@ -567,49 +588,30 @@ function filterToConnectedBloc(world, bloc, seed, radius) {
 // regional seat. An empire fragments into a few large successor realms along its
 // administrative seams, never into a confetti of single seceding towns.
 
-// Walk the administrative chain up from a member to its TOP-LEVEL province seat:
-// the city/town answering DIRECTLY to the capital, under whose branch this member
-// sits (its region's "governor"). Returns the capital itself only for the
-// capital's own immediate dependents — its core province, which never secedes.
-function topProvinceSeat(c, s, byId) {
-  let cur = s, guard = 0;
-  while (cur.liegeId >= 0 && cur.liegeId !== c.capitalId && guard++ < 64) {
-    const L = byId.get(cur.liegeId); if (!L) break; cur = L;
-  }
-  return cur;
-}
-
 function secedeContagious(world, c, seeds) {
   const radius = Math.max(REVOLT_RADIUS_MIN, c.range * REVOLT_RADIUS_RANGE);
   const byId = new Map(); for (const m of c.members) byId.set(m.id, m);
-  // Administrative children index, built ONCE: a province is a seat plus the
-  // branch beneath it, gathered by `province()` (cheaper than subtreeOf, which
-  // would rebuild this map on every call across the contagion sweep).
-  const children = new Map();
-  for (const m of c.members) if (m.liegeId >= 0) { let a = children.get(m.liegeId); if (!a) children.set(m.liegeId, a = []); a.push(m); }
-  const province = (seat) => {
-    const out = [], stack = [seat];
-    while (stack.length) {
-      const cur = stack.pop();
-      if (cur.countryId === c.id) out.push(cur);
-      const kids = children.get(cur.id); if (kids) for (const k of kids) stack.push(k);
-    }
-    return out;
-  };
-  // A province leads a breakaway only when its GOVERNOR (the top-level seat) has
-  // himself turned — the centre has lost the whole region, not just one restless
-  // frontier hamlet. Each collapsed member points up at its province's seat.
+  // PROVINCE index: each member was assigned (assignProvinces) to its nearest
+  // CITY; a province is that city plus its nearest settlements — a city-reach
+  // region (the unit that secedes, matching the drawn Province layer).
+  const provMembers = new Map();   // province-city id → [members]
+  for (const m of c.members) { const pc = m._provinceCity ?? c.capitalId; let a = provMembers.get(pc); if (!a) provMembers.set(pc, a = []); a.push(m); }
+  const province = (seat) => provMembers.get(seat.id) || [seat];
+  // A province breaks away only when its CITY has turned (loyalty broke) — the
+  // centre has lost the whole region, not one restless frontier hamlet.
   const isLeadSeat = (s) => {
-    if (s.id === c.capitalId || (s.tier | 0) < CITY_TIER || s.liegeId !== c.capitalId) return false;
-    if ((s.loyalty ?? 1) > REVOLT_JOIN_LOYALTY) return false;             // governor still loyal → province held
+    if (s.id === c.capitalId || (s.tier | 0) < CITY_TIER) return false;     // only a non-capital CITY leads a province
+    if ((s.loyalty ?? 1) > REVOLT_JOIN_LOYALTY) return false;               // its city still loyal → province held
     if (world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE) return false;  // freshly taken → garrisoned
     return true;
   };
-  const leaders = new Map();   // seatId → seat whose loyalty broke
+  // Each collapsed member points at its province's city; that city leads the
+  // breakaway if IT has turned too.
+  const leaders = new Map();
   for (const seed of seeds) {
     if (seed.countryId !== c.id) continue;
-    const seat = topProvinceSeat(c, seed, byId);
-    if (isLeadSeat(seat)) leaders.set(seat.id, seat);
+    const seat = byId.get(seed._provinceCity ?? c.capitalId);
+    if (seat && isLeadSeat(seat)) leaders.set(seat.id, seat);
   }
   if (!leaders.size) return;
   // The strongest restless governor breaks first and rallies the rest around him.
@@ -617,16 +619,17 @@ function secedeContagious(world, c, seeds) {
   const taken = new Set();
   for (const seat of order) {
     if (taken.has(seat.id) || seat.countryId !== c.id) continue;
-    // The province: this seat's whole administrative branch (its towns + villages).
-    let bloc = province(seat);
+    // The province: this city plus the settlements nearest to it (copy the shared
+    // province array before extending it).
+    let bloc = province(seat).filter(m => m.countryId === c.id);
     taken.add(seat.id);
-    // Contagion: ADJACENT provinces whose governor is also restless rally to this
-    // (stronger) seat — the several-province break-up of a collapsing empire.
+    // Contagion: ADJACENT restless provinces (their cities also turned) rally to
+    // this stronger seat — the several-province break-up of a collapsing empire.
     for (const s of c.members) {
       if (taken.has(s.id) || s.countryId !== c.id) continue;
       if (!isLeadSeat(s)) continue;
       if (dist(world, seat.pos.x, seat.pos.y, s.pos.x, s.pos.y) > radius) continue;
-      for (const m of province(s)) bloc.push(m);
+      for (const m of province(s)) if (m.countryId === c.id) bloc.push(m);
       taken.add(s.id);
     }
     // Drop any member with no land link to the seat through the realm (marooned
@@ -722,31 +725,17 @@ export function fragmentRealm(world, oldId, excludeId) {
   }
 }
 
-// Every member whose chain of lieges passes through `seed` — the governor's
-// whole branch of the administrative tree (his vassals, their vassals, …).
-function subtreeOf(c, seed) {
-  const children = new Map();
-  for (const m of c.members) {
-    if (m.liegeId >= 0) { let a = children.get(m.liegeId); if (!a) children.set(m.liegeId, a = []); a.push(m); }
-  }
-  const out = [seed], stack = [seed];
-  while (stack.length) {
-    const cur = stack.pop();
-    const kids = children.get(cur.id);
-    if (kids) for (const k of kids) { out.push(k); stack.push(k); }
-  }
-  return out;
-}
-
 // An overmighty governor declares independence and takes his sub-realm with
 // him — the whole liege branch under `seed` follows their lord into the new
 // state, regardless of their own loyalty.
 function declareIndependence(world, c, seed) {
-  let bloc = subtreeOf(c, seed).filter(m => m.countryId === c.id);     // still in the realm
-  // Only vassals whose tiles connect to the governor's through the realm's own
-  // land can physically follow him — a vassal stranded across the sea or behind
-  // a foreign wedge stays with the parent. (No radius: the whole connected
-  // branch follows its lord, however far it reaches.)
+  // The governor takes his PROVINCE — his city plus the settlements nearest to it
+  // (assignProvinces); the whole region follows its lord out.
+  let bloc = c.members.filter(m => m.countryId === c.id && (m._provinceCity ?? c.capitalId) === seed.id);
+  // Only settlements whose tiles connect to the governor's through the realm's own
+  // land can physically follow him — one stranded across the sea or behind a
+  // foreign wedge stays with the parent. (No radius: the whole connected province
+  // follows its lord, however far it reaches.)
   bloc = filterToConnectedBloc(world, bloc, seed, Infinity);
   const newId = freshCountryId(c, bloc);
   if (newId < 0) { seed._ambition = 0; return; }                       // can't split cleanly — vent it
@@ -1235,7 +1224,7 @@ export function updatePolities(world) {
     // with him. A besieged throne emboldens him.
     for (const s of c.members) {
       if (s.countryId !== c.id || s.id === c.capitalId) continue;     // gone / is the throne
-      const seat = (s.tier | 0) >= 2 || (s._vassalCount || 0) > 0;    // must command a region
+      const seat = (s.tier | 0) >= CITY_TIER;    // must be a CITY (a province seat) — it takes its province with it
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
       const ratio = settlementPower(s) / capPower;                    // strength vs the throne
