@@ -43,7 +43,7 @@ elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
 // +26°C at the equator, flattening to ~-23°C at the pole (the real Arctic mean,
 // not the old -60°C). A small subtropical shoulder lifts the 10-20° band; the
 // Greenland/Antarctica ice still comes from the lat-amplified elevation penalty.
-temperature[i]=Math.max(0,Math.min(1,0.85-0.66*lat*lat+0.18*lat*lat*lat*lat+Math.exp(-((lat-0.15)*(lat-0.15))/(2*0.10*0.10))*0.035-Math.max(0,elevation[i])*(.4+.8*lat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.03));}
+temperature[i]=Math.max(0,Math.min(1,0.85-0.66*lat*lat+0.18*lat*lat*lat*lat+Math.exp(-((lat-0.12)*(lat-0.12))/(2*0.14*0.14))*0.030-Math.max(0,elevation[i])*(.4+.8*lat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.03));}
 // Pass 2: coast-distance BFS at tile resolution for continentality
 const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
 const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);
@@ -177,7 +177,7 @@ const e=elevation[i];
 const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
 const cp=Math.max(0,1-cd/8);
 const tLat=Math.abs(ny-0.5)*2;// equator at map center (standard equirectangular)
-const shE=Math.exp(-((tLat-0.15)*(tLat-0.15))/(2*0.10*0.10))*0.035;
+const shE=Math.exp(-((tLat-0.12)*(tLat-0.12))/(2*0.14*0.14))*0.030;// equatorial+subtropical lift (humid tropics sit ~27°C); fades out by ~40° so it doesn't warm mid-latitudes
 // Accurate annual-mean latitude curve (see tools/probe_temperature.mjs): nearly
 // flat near the equator, steep through mid-latitudes, FLATTENING toward the pole
 // (-23°C at 90°, not the old -60°C). Greenland/Antarctica ice via the elev penalty.
@@ -187,14 +187,20 @@ const inland=Math.max(0,1-cp);
 // and slightly COOLER in tropics (sea breeze). Inland is MORE extreme (hot summers, cold winters).
 // At 40-65° lat: coastal areas up to +10°C warmer than inland (London vs Moscow)
 const maritimeWarm=tLat>0.3?Math.min(0.08,((tLat-0.3)*0.4))*cp:0;// warming from ocean proximity at high lat (London/Reykjavik milder than inland)
-const tropicalCool=tLat<0.3?cp*0.015:0;// slight coastal cooling in tropics (sea breeze) — real tropical coasts are barely below the curve
+const tropicalCool=tLat<0.3?cp*0.005:0;// faint coastal sea-breeze cooling — equatorial coasts sit right on the curve
 // Continentality is SIGNED and moisture-gated (a plain latitude curve can't see
 // this): DRY SUBTROPICAL interiors run HOT (deserts — Sahara, Sonoran, Arabian),
 // HIGH-LATITUDE interiors run COLD (Siberia, interior Canada). Open ocean is
 // maritime — no continental effect at all.
-const mo=windMoisture[i];
+// Subtropical high-pressure aridity dries the great deserts (Sahara, Arabia,
+// Australia) — descending air at ~15-30°, strongest in continental interiors away
+// from the equatorial ITCZ. The wind solver underplays it, so apply it here; the
+// DRIED moisture both feeds the dryness-gated desert heat below AND becomes the
+// tile's final moisture. Land only — oceans stay humid.
+const subtropDry=e>0?Math.exp(-((tLat-0.25)*(tLat-0.25))/(2*0.12*0.12))*0.55*(0.4+0.6*inland):0;
+const mo=Math.max(0.02,windMoisture[i]-subtropDry);
 const dry=Math.max(0,1-mo/0.35);// 1 = bone-dry, 0 = humid
-const desertHeat=dry*0.085*Math.exp(-((tLat-0.33)*(tLat-0.33))/(2*0.11*0.11));// peaks in the subtropics (narrow, so semi-arid mid-latitudes aren't over-warmed)
+const desertHeat=dry*0.09*Math.exp(-((tLat-0.22)*(tLat-0.22))/(2*0.13*0.13));// peaks on the 13-30° HOT-DESERT belt (Sahel, Sahara, Arabia — Earth's hottest annual means), not the 33° subtropics
 const interiorCold=Math.max(0,tLat-0.55)*0.45;// ramps in past ~50° latitude
 const continental=e>0?inland*(desertHeat-interiorCold):0;
 const mt=bt+maritimeWarm-tropicalCool+continental+Math.max(0,0.60-bt)*cp*0.05;// coastal moderation: warms COLD maritime coasts toward ~0°C, never cools warm ones
@@ -205,7 +211,7 @@ const wt=windTemp[i];
 // latitude curve (mt) leads; wt only nudges. Ocean takes a bit more wt (currents).
 const isOcean=e<=0;
 temperature[i]=Math.max(0,Math.min(1,isOcean?mt*0.92+wt*0.08:mt*0.92+wt*0.08));
-moisture[i]=windMoisture[i];}
+moisture[i]=mo;}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;

@@ -82,3 +82,41 @@ for (const [name, lat, lon, real] of CITIES) {
 }
 console.log("─".repeat(72));
 console.log(`mean abs error (land cities): ${(sumAbs / n).toFixed(1)}°C  (sea-level only: ${(sumAbsLow / nLow).toFixed(1)}°C)`);
+
+// ── equatorial lowland + genuinely HOT locations (real annual mean °C) ──
+const EQHOT = [
+  // equatorial humid lowland (~25-28°C)
+  ["Kuala Lumpur",   3.14, 101.69, 27.5],
+  ["Jakarta",       -6.20, 106.85, 27.6],
+  ["Libreville",     0.39,   9.45, 26.0],
+  ["Kinshasa",      -4.32,  15.31, 25.3],
+  ["Belem (Amazon)",-1.46, -48.50, 26.8],
+  ["Colombo",        6.93,  79.86, 27.6],
+  ["Guayaquil",     -2.19, -79.88, 26.0],
+  ["Mogadishu",      2.04,  45.34, 27.0],
+  ["Paramaribo",     5.87, -55.17, 27.2],
+  ["Manaus",        -3.10, -60.02, 27.4],
+  // hot deserts / hottest inhabited (~26-35°C)
+  ["Khartoum",      15.50,  32.56, 29.9],
+  ["Niamey",        13.51,   2.11, 29.3],
+  ["Timbuktu",      16.77,  -3.00, 28.9],
+  ["Mecca",         21.43,  39.83, 31.0],
+  ["Djibouti",      11.59,  43.15, 30.0],
+  ["Assab",         13.00,  42.73, 30.5],
+  ["Dallol(hottest)",14.24, 40.30, 34.6],
+  ["Riyadh",        24.71,  46.68, 26.0],
+  ["Alice Springs", -23.70, 133.88, 21.4],
+  ["Las Vegas",     36.17, -115.14, 20.3],
+];
+console.log("\nEQUATORIAL & HOT      real    sim     Δ       simElev   (note)");
+console.log("─".repeat(72));
+let sa = 0, nn = 0;
+for (const [name, lat, lon, real] of EQHOT) {
+  const i = tileOf(lat, lon);
+  const s = simC(i), d = s - real, e = elevM(i);
+  const ocean = w.elevation[i] <= 0;
+  console.log(`${name.padEnd(18)} ${real.toFixed(1).padStart(6)} ${s.toFixed(1).padStart(6)} ${(d >= 0 ? "+" : "") + d.toFixed(1)}`.padEnd(44) + `${e.padStart(7)}   ${ocean ? "[on OCEAN tile]" : ""}`);
+  if (!ocean) { sa += Math.abs(d); nn++; }
+}
+console.log("─".repeat(72));
+console.log(`mean abs error (equatorial & hot, land): ${(sa / nn).toFixed(1)}°C`);
