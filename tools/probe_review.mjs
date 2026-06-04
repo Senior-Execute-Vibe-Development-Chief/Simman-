@@ -118,12 +118,18 @@ function report(step){
   if(world.debug.invariantHits&&Object.keys(world.debug.invariantHits).length) console.log(` !! invariant hits ${JSON.stringify(world.debug.invariantHits)}`);
 }
 
-for(let s=1;s<=STEPS;s++){ stepPeopleSim(world,1); if(checkpoints.has(s)) report(s); }
+const passAcc = {};   // accumulate per-pass time across EVERY tick (true amortized cost)
+for(let s=1;s<=STEPS;s++){
+  stepPeopleSim(world,1);
+  if(world.debug.pass){ for(const k in world.debug.pass) passAcc[k]=(passAcc[k]||0)+world.debug.pass[k]; }
+  if(checkpoints.has(s)) report(s);
+}
 
 console.log(`\n================= FINAL @ ${STEPS} =================`);
 const total=(performance.now()-T0)/1000;
 console.log(`total wall ${total.toFixed(1)}s  avg ${((total*1000)/STEPS).toFixed(2)} ms/step (incl worldgen)`);
 if(world.debug.pass){ console.log("per-pass (last tick, ms):"); for(const[k,v]of Object.entries(world.debug.pass).sort((a,b)=>b[1]-a[1]))console.log(`   ${k.padEnd(12)} ${v.toFixed(2)}`); }
+{ const tot=Object.values(passAcc).reduce((a,b)=>a+b,0)||1; console.log("ACCUMULATED per-pass over whole run (amortized cost, share of step time):"); for(const[k,v]of Object.entries(passAcc).sort((a,b)=>b[1]-a[1])) console.log(`   ${k.padEnd(12)} ${(v/1000).toFixed(1)}s  ${(100*v/tot).toFixed(1)}%`); }
 const tiers=[0,0,0,0]; const pops=[]; let topSett=null;
 for(const s of world.settlements){if(s.mode!=="settled")continue; tiers[s.tier|0]++; pops.push(s.people); if(!topSett||s.people>topSett.people)topSett=s;}
 pops.sort((a,b)=>b-a);
