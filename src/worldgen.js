@@ -39,14 +39,11 @@ const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.00
 if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
 elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
 }else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}
-// Steeper cold curve: lat² term makes high latitudes drop faster (Moscow at 56°N IS cold)
-// Latitude→temperature: 0.92 at equator (+32°C, reads as red). Polar
-// drop comes mostly from the elevation penalty being amplified at
-// high latitudes — elev*(0.4 + 0.8*lat) — so Greenland's ice sheet
-// (lat 0.78, elev 0.4) hits ICE biome, while flat coasts at the
-// same lat stay tundra/taiga. Calibrated visually + against NASA
-// GISS zonal means (~+10°C at lat 0.5). See tools/probe_temperature.mjs.
-temperature[i]=Math.max(0,Math.min(1,0.92-Math.pow(lat,1.5)*0.50-Math.pow(lat,6)*0.80-Math.max(0,elevation[i])*(.4+.8*lat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.08));}
+// Accurate annual-mean latitude→temperature (see tools/probe_temperature.mjs):
+// +26°C at the equator, flattening to ~-23°C at the pole (the real Arctic mean,
+// not the old -60°C). A small subtropical shoulder lifts the 10-20° band; the
+// Greenland/Antarctica ice still comes from the lat-amplified elevation penalty.
+temperature[i]=Math.max(0,Math.min(1,0.85-0.66*lat*lat+0.18*lat*lat*lat*lat+Math.exp(-((lat-0.15)*(lat-0.15))/(2*0.10*0.10))*0.035-Math.max(0,elevation[i])*(.4+.8*lat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.08));}
 // Pass 2: coast-distance BFS at tile resolution for continentality
 const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
 const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);
@@ -124,7 +121,7 @@ const tGrid=new Float32Array(mW2*mH2);
 for(let my=0;my<mH2;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
 const lt=Math.abs(py/H-0.5)*2,e2=elevation[py*W+px];
-tGrid[my*mW2+mx]=Math.max(0,Math.min(1,0.92-Math.pow(lt,1.5)*0.50-Math.pow(lt,6)*0.80+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*(.45+.8*lt)));}
+tGrid[my*mW2+mx]=Math.max(0,Math.min(1,0.85-0.66*lt*lt+0.18*lt*lt*lt*lt+Math.exp(-((lt-0.15)*(lt-0.15))/(2*0.10*0.10))*0.035-Math.max(0,e2)*(.45+.8*lt)));}
 for(let step=0;step<60;step++){const prev=new Float32Array(tGrid);// 60 iterations for deep heat transport
 for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
@@ -142,7 +139,7 @@ let upT=(prev[syC*mW2+sx]*(1-fdx)+prev[syC*mW2+sxr]*fdx)*(1-fdy)
 // Prevent ocean tiles from pulling hot land temps (causes coast shearing)
 // If this is ocean but the source sample is very different from local, dampen it
 const e2=elevation[fi],lt=Math.abs(py/H-0.5)*2;
-const locT=Math.max(0,Math.min(1,0.92-Math.pow(lt,1.5)*0.50-Math.pow(lt,6)*0.80+Math.exp(-((lt-0.20)*(lt-0.20))/(2*0.08*0.08))*0.06-Math.max(0,e2)*(.45+.8*lt)));
+const locT=Math.max(0,Math.min(1,0.85-0.66*lt*lt+0.18*lt*lt*lt*lt+Math.exp(-((lt-0.15)*(lt-0.15))/(2*0.10*0.10))*0.035-Math.max(0,e2)*(.45+.8*lt)));
 if(e2<=0&&Math.abs(upT-prev[my*mW2+mx])>0.15){
 // Dampen extreme jumps at coast boundaries
 upT=prev[my*mW2+mx]*0.7+upT*0.3;}
@@ -180,21 +177,26 @@ const e=elevation[i];
 const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
 const cp=Math.max(0,1-cd/8);
 const tLat=Math.abs(ny-0.5)*2;// equator at map center (standard equirectangular)
-const shE=Math.exp(-((tLat-0.20)*(tLat-0.20))/(2*0.08*0.08))*0.06;
-// Steeper curve: pow(2.0)*1.35 drops faster at mid-latitudes
-const bt=0.92-Math.pow(tLat,1.5)*0.50-Math.pow(tLat,6)*0.80+shE-Math.max(0,e)*(.45+.8*tLat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
+const shE=Math.exp(-((tLat-0.15)*(tLat-0.15))/(2*0.10*0.10))*0.035;
+// Accurate annual-mean latitude curve (see tools/probe_temperature.mjs): nearly
+// flat near the equator, steep through mid-latitudes, FLATTENING toward the pole
+// (-23°C at 90°, not the old -60°C). Greenland/Antarctica ice via the elev penalty.
+const bt=0.85-0.66*tLat*tLat+0.18*tLat*tLat*tLat*tLat+shE-Math.max(0,e)*(.45+.8*tLat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
 const inland=Math.max(0,1-cp);
 // Maritime effect: coasts are WARMER at high latitudes (Gulf Stream, ocean heat release)
 // and slightly COOLER in tropics (sea breeze). Inland is MORE extreme (hot summers, cold winters).
 // At 40-65° lat: coastal areas up to +10°C warmer than inland (London vs Moscow)
 const maritimeWarm=tLat>0.3?Math.min(0.12,((tLat-0.3)*0.4))*cp:0;// warming from ocean proximity at high lat
 const tropicalCool=tLat<0.3?cp*0.05:0;// slight coastal cooling in tropics (sea breeze)
-const continentality=inland*tLat*0.08;// inland areas are colder at high lat (Yakutsk vs Anchorage)
-const mt=bt+maritimeWarm-tropicalCool-continentality+(0.45-bt)*cp*0.15;
+const continentality=e>0?inland*tLat*0.06:0;// LAND interiors colder at high lat (Yakutsk vs Anchorage); open OCEAN is maritime, never "continental"
+const mt=bt+maritimeWarm-tropicalCool-continentality+(0.60-bt)*cp*0.05;// gentle coastal moderation toward a mild ~0°C
 const wt=windTemp[i];
-// Ocean tiles get more wind influence (ocean currents = wind-driven)
+// The wind-advected field (wt) homogenises the latitude gradient over its 60
+// iterations — useful for current-driven flavour (warm NW-Europe coasts) but it
+// flattens the equator-to-pole spread if it dominates. So the accurate base
+// latitude curve (mt) leads; wt only nudges. Ocean takes a bit more wt (currents).
 const isOcean=e<=0;
-temperature[i]=Math.max(0,Math.min(1,isOcean?mt*0.35+wt*0.65:mt*0.60+wt*0.40));
+temperature[i]=Math.max(0,Math.min(1,isOcean?mt*0.85+wt*0.15:mt*0.88+wt*0.12));
 moisture[i]=windMoisture[i];}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
