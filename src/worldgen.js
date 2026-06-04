@@ -43,7 +43,7 @@ elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
 // +26°C at the equator, flattening to ~-23°C at the pole (the real Arctic mean,
 // not the old -60°C). A small subtropical shoulder lifts the 10-20° band; the
 // Greenland/Antarctica ice still comes from the lat-amplified elevation penalty.
-temperature[i]=Math.max(0,Math.min(1,0.85-0.66*lat*lat+0.18*lat*lat*lat*lat+Math.exp(-((lat-0.15)*(lat-0.15))/(2*0.10*0.10))*0.035-Math.max(0,elevation[i])*(.4+.8*lat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.08));}
+temperature[i]=Math.max(0,Math.min(1,0.85-0.66*lat*lat+0.18*lat*lat*lat*lat+Math.exp(-((lat-0.15)*(lat-0.15))/(2*0.10*0.10))*0.035-Math.max(0,elevation[i])*(.4+.8*lat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.03));}
 // Pass 2: coast-distance BFS at tile resolution for continentality
 const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
 const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);
@@ -181,13 +181,13 @@ const shE=Math.exp(-((tLat-0.15)*(tLat-0.15))/(2*0.10*0.10))*0.035;
 // Accurate annual-mean latitude curve (see tools/probe_temperature.mjs): nearly
 // flat near the equator, steep through mid-latitudes, FLATTENING toward the pole
 // (-23°C at 90°, not the old -60°C). Greenland/Antarctica ice via the elev penalty.
-const bt=0.85-0.66*tLat*tLat+0.18*tLat*tLat*tLat*tLat+shE-Math.max(0,e)*(.45+.8*tLat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.08+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.10;
+const bt=0.85-0.66*tLat*tLat+0.18*tLat*tLat*tLat*tLat+shE-Math.max(0,e)*(.45+.8*tLat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.02+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.025;
 const inland=Math.max(0,1-cp);
 // Maritime effect: coasts are WARMER at high latitudes (Gulf Stream, ocean heat release)
 // and slightly COOLER in tropics (sea breeze). Inland is MORE extreme (hot summers, cold winters).
 // At 40-65° lat: coastal areas up to +10°C warmer than inland (London vs Moscow)
 const maritimeWarm=tLat>0.3?Math.min(0.12,((tLat-0.3)*0.4))*cp:0;// warming from ocean proximity at high lat
-const tropicalCool=tLat<0.3?cp*0.05:0;// slight coastal cooling in tropics (sea breeze)
+const tropicalCool=tLat<0.3?cp*0.015:0;// slight coastal cooling in tropics (sea breeze) — real tropical coasts are barely below the curve
 const continentality=e>0?inland*tLat*0.06:0;// LAND interiors colder at high lat (Yakutsk vs Anchorage); open OCEAN is maritime, never "continental"
 const mt=bt+maritimeWarm-tropicalCool-continentality+(0.60-bt)*cp*0.05;// gentle coastal moderation toward a mild ~0°C
 const wt=windTemp[i];
