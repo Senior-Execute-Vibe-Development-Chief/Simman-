@@ -52,11 +52,14 @@ const KEEP_PER_HOP = 0.9;   // fraction of shipped grain surviving each hop up t
 const SHIP_FRAC_BY_TIER = [0.8, 0.5, 0.2, 0.05];
 const SHIP_FRAC_MAX = 0.95;   // demand can pull no more than this up (a settlement always keeps a seed of grain)
 const DEMAND_PULL   = 0.6;    // how strongly a hungry market upstream raises the fraction shipped to it
-// Grain's market price by the SELLER's tier (× local price level). Rising up the
-// hierarchy — a city's grain is worth far more than a village's farm-gate grain —
-// is what gives a market town its margin: it buys village grain cheap and resells
-// it dear to the city. (× localP so grain trades higher in a wealthy region.)
-const GRAIN_PRICE_BY_TIER = [3, 5, 8, 12];
+// Grain's market price by the SELLER's tier (× local price level). The gradient
+// must be STEEP: a market town ships only ~a third of the grain it takes in
+// further up (it feeds its own people with the rest) yet pays its villages for
+// ALL of it, so a gentle markup leaves the town a net buyer. A big farm-gate→
+// market step-up (village grain is cheap; a town's collected, market-ready grain
+// is dear) is what lets the town capture the entrepôt margin instead of pumping
+// coin into the countryside. (× localP so grain trades higher in a wealthy region.)
+const GRAIN_PRICE_BY_TIER = [2, 8, 14, 22];
 
 export function aggregateFoodHierarchy(world) {
   const byId = world._byId;
