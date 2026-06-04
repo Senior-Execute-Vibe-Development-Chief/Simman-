@@ -197,7 +197,14 @@ const tropicalCool=tLat<0.3?cp*0.005:0;// faint coastal sea-breeze cooling — e
 // from the equatorial ITCZ. The wind solver underplays it, so apply it here; the
 // DRIED moisture both feeds the dryness-gated desert heat below AND becomes the
 // tile's final moisture. Land only — oceans stay humid.
-const subtropDry=e>0?Math.exp(-((tLat-0.25)*(tLat-0.25))/(2*0.12*0.12))*0.55*(0.4+0.6*inland):0;
+// ...but ONLY deepen dryness where the wind solver ALREADY indicates aridity
+// (windMoisture < ~0.45). This protects the monsoon/humid subtropics — India,
+// SE Asia, southern China, the Chaco/Cerrado of South America all sit in the
+// 15-30° band but are WET, and a flat latitude dry-down wrongly turned them to
+// desert. The solver gives them more moisture (~0.55+) than true deserts (~0.25),
+// so gating on that separates them.
+const aridGate=Math.max(0,Math.min(1,(0.45-windMoisture[i])/0.15));
+const subtropDry=e>0?Math.exp(-((tLat-0.25)*(tLat-0.25))/(2*0.12*0.12))*0.55*(0.4+0.6*inland)*aridGate:0;
 const mo=Math.max(0.02,windMoisture[i]-subtropDry);
 const dry=Math.max(0,1-mo/0.35);// 1 = bone-dry, 0 = humid
 const desertHeat=dry*0.09*Math.exp(-((tLat-0.22)*(tLat-0.22))/(2*0.13*0.13));// peaks on the 13-30° HOT-DESERT belt (Sahel, Sahara, Arabia — Earth's hottest annual means), not the 33° subtropics
