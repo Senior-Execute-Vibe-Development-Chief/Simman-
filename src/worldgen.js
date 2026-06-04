@@ -186,7 +186,7 @@ const inland=Math.max(0,1-cp);
 // Maritime effect: coasts are WARMER at high latitudes (Gulf Stream, ocean heat release)
 // and slightly COOLER in tropics (sea breeze). Inland is MORE extreme (hot summers, cold winters).
 // At 40-65° lat: coastal areas up to +10°C warmer than inland (London vs Moscow)
-const maritimeWarm=tLat>0.3?Math.min(0.12,((tLat-0.3)*0.4))*cp:0;// warming from ocean proximity at high lat
+const maritimeWarm=tLat>0.3?Math.min(0.08,((tLat-0.3)*0.4))*cp:0;// warming from ocean proximity at high lat (London/Reykjavik milder than inland)
 const tropicalCool=tLat<0.3?cp*0.015:0;// slight coastal cooling in tropics (sea breeze) — real tropical coasts are barely below the curve
 // Continentality is SIGNED and moisture-gated (a plain latitude curve can't see
 // this): DRY SUBTROPICAL interiors run HOT (deserts — Sahara, Sonoran, Arabian),
@@ -194,17 +194,17 @@ const tropicalCool=tLat<0.3?cp*0.015:0;// slight coastal cooling in tropics (sea
 // maritime — no continental effect at all.
 const mo=windMoisture[i];
 const dry=Math.max(0,1-mo/0.35);// 1 = bone-dry, 0 = humid
-const desertHeat=dry*0.085*Math.exp(-((tLat-0.33)*(tLat-0.33))/(2*0.15*0.15));// peaks in the subtropics
+const desertHeat=dry*0.085*Math.exp(-((tLat-0.33)*(tLat-0.33))/(2*0.11*0.11));// peaks in the subtropics (narrow, so semi-arid mid-latitudes aren't over-warmed)
 const interiorCold=Math.max(0,tLat-0.55)*0.45;// ramps in past ~50° latitude
 const continental=e>0?inland*(desertHeat-interiorCold):0;
-const mt=bt+maritimeWarm-tropicalCool+continental+(0.60-bt)*cp*0.05;// gentle coastal moderation toward a mild ~0°C
+const mt=bt+maritimeWarm-tropicalCool+continental+Math.max(0,0.60-bt)*cp*0.05;// coastal moderation: warms COLD maritime coasts toward ~0°C, never cools warm ones
 const wt=windTemp[i];
 // The wind-advected field (wt) homogenises the latitude gradient over its 60
 // iterations — useful for current-driven flavour (warm NW-Europe coasts) but it
 // flattens the equator-to-pole spread if it dominates. So the accurate base
 // latitude curve (mt) leads; wt only nudges. Ocean takes a bit more wt (currents).
 const isOcean=e<=0;
-temperature[i]=Math.max(0,Math.min(1,isOcean?mt*0.85+wt*0.15:mt*0.88+wt*0.12));
+temperature[i]=Math.max(0,Math.min(1,isOcean?mt*0.92+wt*0.08:mt*0.92+wt*0.08));
 moisture[i]=windMoisture[i];}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
