@@ -46,7 +46,7 @@ export const TUNING_SCHEMA = [
         desc: "Extra control capacity a large capital projects (scales with its population). Down = a giant metropolis can't administer a giant empire, so conquests over-extend and shed." },
       { key: "CAP_ORG", label: "Bureaucratic capacity", def: 1.0, min: 0, max: 24, step: 0.5,
         desc: "Extra control capacity per point of the capital's ORGANIZATION tech — administrative depth that lets an advanced state govern more provinces. Up = bigger late empires; down = even advanced empires stay modest. (One of four org-cohesion dials; together they set how large/durable empires get.)" },
-      { key: "ABSORB_DOMINANCE", label: "Absorption dominance gate", def: 2.6, min: 1.05, max: 5.0, step: 0.05,
+      { key: "ABSORB_DOMINANCE", label: "Absorption dominance gate", def: 3.6, min: 1.05, max: 5.0, step: 0.05,
         desc: "How many times stronger a realm must be than a neighbour before it peacefully absorbs that neighbour's frontier settlements. DOWN = aggressive consolidation, fewer & larger nations; UP = only lopsided mismatches erode, so the map stays more multipolar with many nations." },
       { key: "LOYAL_ORG_HOLD", label: "Imperial cohesion (loyalty)", def: 0.35, min: 0, max: 0.9, step: 0.05,
         desc: "How much the capital's ORGANIZATION slows an over-budget province's slide to revolt. THE empire-LIFESPAN dial: 0 = even advanced empires fragment fast (a churning, short-lived-empire world); high = great powers hold their overstretch for ages (long-lived, hard-to-kill empires). At ~0.9 empires become near-immortal — back off if they never fall." },

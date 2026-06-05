@@ -158,7 +158,7 @@ export function bankMomentum(world, countryId, amount) {
 // a province sitting exactly at the capital's reach costs a load of ~1.
 // CAP_BASE -> runtime lever (tuning.js T.CAP_BASE)
 // CAP_SEAT -> runtime lever (tuning.js T.CAP_SEAT)
-const SEAT_BONUS_CAP = 10;   // total seat contribution is capped (admin has diminishing returns)
+const SEAT_BONUS_CAP = 6;    // total seat contribution is capped (was 10 — trimmed so big realms can't pile on extra capacity from regional seats)
 // Coercive capacity (Tilly): how many provinces the centre can hold is EMERGENT
 // from its coercive POWER, not fixed dials. capacity = CAP_K · log2(1 + capPower
 // / POW_REF) + seat bonuses. A stronger capital (army + people + development)
@@ -175,7 +175,7 @@ const SEAT_BONUS_CAP = 10;   // total seat contribution is capped (admin has dim
 // immortal juggernaut). Calibrated so a high-org capital sustains a real empire
 // (~a dozen-plus seats) while still being out-conquerable past its budget — so
 // great powers persist AND shed their over-extension.
-const CAP_K   = 2.6;
+const CAP_K   = 1.7;   // was 2.6 — fewer provinces per unit of coercive power, so empires hold less and many realms coexist (populate the map)
 const POW_REF = 380;
 // Contiguity toll: projecting administrative authority THROUGH a foreign
 // country's territory costs this much more per tile. So a province cut off from

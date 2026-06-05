@@ -39,7 +39,9 @@ for(let s=1;s<=STEPS;s++){ stepPeopleSim(world,1); if(s%50===0) classify();
     let stTotal=0, stByTier=[0,0,0,0];
     for(const x of world.settlements){ if(x.mode!=="settled")continue; if(x.countryId<0){stTotal++; stByTier[Math.min(3,x.tier|0)]++;} }
     const st=peopleSimStats(world);
-    console.log(`step ${String(s).padStart(5)}: countries ${st.countries}  | births so far: founded ${founded} seceded ${seceded} | stateless ${stTotal} (V${stByTier[0]} T${stByTier[1]} C${stByTier[2]} M${stByTier[3]})`);
+    let pop=0; for(const x of world.settlements) if(x.mode==="settled") pop+=x.people;
+    const pf=n=>n>=1e3?(n/1e3).toFixed(0)+"k":String(n|0);
+    console.log(`step ${String(s).padStart(5)}: countries ${String(st.countries).padStart(3)} bigEmp ${String(pf(st.largestEmpire)).padStart(4)}t pop ${pf(pop)} | founded ${founded} flips ${seceded} | stateless ${stTotal} (V${stByTier[0]} T${stByTier[1]} C${stByTier[2]} M${stByTier[3]})`);
   }
 }
 console.log(`\nTOTAL over ${STEPS} steps: FOUNDED ${founded}  SECEDED/conquered ${seceded}  (stateless→adopted ${adopted})`);
