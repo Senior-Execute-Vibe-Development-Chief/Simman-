@@ -12,16 +12,18 @@ const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>
 function svgFor(title, k) {
   const ts = techState(k);
   const L = techLayout();
-  const { pos, COLW, NW, NH, MX, TOP, W, H } = L;
+  const { pos, NW, NH, MX, TOP, W, H } = L;
   const HH = H + 26;                       // a little extra for the title line
   let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${HH}">`;
   s += `<rect width="${W}" height="${HH}" fill="#f4ecd9"/>`;
   s += `<text x="${MX}" y="16" font-family="sans-serif" font-size="13" font-weight="bold" fill="#3a2c18">${esc(title)} — ${ERAS[ts.era]} · ${ts.count}/${TECHS.length} discovered</text>`;
   s += `<g transform="translate(0,22)">`;
-  // era bands + headers
-  ERAS.forEach((e, ci) => {
-    s += `<rect x="${MX+ci*COLW-7}" y="${TOP-8}" width="${COLW-2}" height="${H-TOP+2}" fill="${ERA_BG[ci]}" opacity="0.12" rx="5"/>`;
-    s += `<text x="${MX+ci*COLW+NW/2}" y="26" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold" fill="#5a4a32" letter-spacing="0.5">${esc(e.toUpperCase())}</text>`;
+  // era labels at the centroid column of each era's techs
+  ERAS.forEach((e, ei) => {
+    let sx = 0, n = 0; for (const t of TECHS) if (t.era === ei) { const pp = pos[t.id]; if (pp) { sx += pp.x+NW/2; n++; } }
+    if (!n) return; const cx = sx/n;
+    s += `<rect x="${cx-46}" y="${TOP-26}" width="92" height="3" fill="${ERA_BG[ei]}" rx="1.5"/>`;
+    s += `<text x="${cx}" y="${TOP-12}" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="#5a4a32" letter-spacing="0.5">${esc(e.toUpperCase())}</text>`;
   });
   // prereq edges
   for (const t of TECHS) for (const p of t.prereq) {
@@ -38,7 +40,7 @@ function svgFor(title, k) {
     else if (ns.state === "next") { fill = "rgba(255,251,243,0.94)"; stroke = era; txt = "#2c2114"; sw = 2; }
     else { fill = "rgba(150,140,120,0.16)"; stroke = "rgba(90,75,50,0.4)"; txt = "rgba(70,58,40,0.62)"; sw = 1; dash = '4 3'; }
     s += `<rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="5" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" ${dash?`stroke-dasharray="${dash}"`:""}/>`;
-    s += `<text x="${p.x+8}" y="${p.y+NH/2+3.4}" font-family="sans-serif" font-size="9.5" fill="${txt}" ${ns.state==="have"?'font-weight="bold"':""}>${esc(t.name)}</text>`;
+    s += `<text x="${p.x+7}" y="${p.y+NH/2+3.2}" font-family="sans-serif" font-size="9" fill="${txt}" ${ns.state==="have"?'font-weight="bold"':""}>${esc(t.name)}</text>`;
     if (ns.state === "next") s += `<rect x="${p.x+1}" y="${p.y+NH-3}" width="${(NW-2)*ns.prog}" height="2.4" fill="${era}" rx="1.2"/>`;
   }
   s += `</g></svg>`;

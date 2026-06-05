@@ -156,7 +156,7 @@ function assignCountryColors(claimArr,tw,th,prev){
 function TechTreeOverlay({k,title,onClose}){
   const ts=techState(k||{});
   const L=techLayout();
-  const {pos,COLW,NW,NH,MX,TOP,W,H}=L;
+  const {pos,NW,NH,TOP,W,H}=L;
   const chip=(bg,bd)=>(<span style={{display:"inline-block",width:9,height:9,background:bg,border:bd,borderRadius:2,marginRight:4,verticalAlign:"middle",boxSizing:"border-box"}}/>);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -167,11 +167,15 @@ function TechTreeOverlay({k,title,onClose}){
           <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
         </div>
         <svg width={W} height={H} style={{display:"block"}}>
-          {/* era column bands + headers */}
-          {ERAS.map((e,ci)=>(<g key={e}>
-            <rect x={MX+ci*COLW-7} y={TOP-8} width={COLW-2} height={H-TOP+2} fill={ERA_BG[ci]} opacity={0.08} rx={5}/>
-            <text x={MX+ci*COLW+NW/2} y={26} textAnchor="middle" fontSize={12} fill="#5a4a32" fontWeight="bold" style={{textTransform:"uppercase",letterSpacing:0.5}}>{e}</text>
-          </g>))}
+          {/* era labels at the centroid column of each era's techs — eras
+              interleave across the depth tiers (as in Civ), so they orient
+              rather than partition; node FILL carries the era colour */}
+          {ERAS.map((e,ei)=>{let sx=0,n=0;for(const t of TECHS)if(t.era===ei){const pp=pos[t.id];if(pp){sx+=pp.x+NW/2;n++;}}if(!n)return null;const cx=sx/n;
+            return(<g key={e}>
+              <rect x={cx-46} y={TOP-26} width={92} height={3} fill={ERA_BG[ei]} rx={1.5}/>
+              <text x={cx} y={TOP-12} textAnchor="middle" fontSize={11} fill="#5a4a32" fontWeight="bold" style={{textTransform:"uppercase",letterSpacing:0.5}}>{e}</text>
+            </g>);
+          })}
           {/* prerequisite links (drawn under nodes) */}
           {TECHS.map(t=>t.prereq.map(p=>{const a=pos[p],b=pos[t.id];if(!a||!b)return null;
             const x1=a.x+NW,y1=a.y+NH/2,x2=b.x,y2=b.y+NH/2,mx=(x1+x2)/2;
@@ -188,7 +192,7 @@ function TechTreeOverlay({k,title,onClose}){
             return(<g key={t.id}>
               <title>{t.name} — {t.desc}{t.prereq.length?`\nRequires: ${t.prereq.map(pp=>TECHS[TECH_IDX[pp]].name).join(" + ")}`:""}{ns.state==="next"?`\n${(ns.prog*100)|0}% — ${t.gate[0]} → ${(t.gate[1]*100)|0}`:ns.state==="locked"?"\n(locked — an earlier tech is missing)":""}</title>
               <rect x={p.x} y={p.y} width={NW} height={NH} rx={5} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash}/>
-              <text x={p.x+8} y={p.y+NH/2+3.4} fontSize={9.5} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{t.name}</text>
+              <text x={p.x+7} y={p.y+NH/2+3.2} fontSize={9} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{t.name}</text>
               {ns.state==="next"&&<rect x={p.x+1} y={p.y+NH-3} width={(NW-2)*ns.prog} height={2.4} fill={era} rx={1.2}/>}
             </g>);
           })}

@@ -175,21 +175,55 @@ export function nextTechs(k, have, n = 3) {
 
 // ── Layout ───────────────────────────────────────────────────────────
 // Shared by the React overlay and the offline render script so they can never
-// drift. Era = column; within a column, techs are ordered by the mean ROW of
-// their already-placed (earlier-era) prerequisites — a one-sided barycentric
-// sort that keeps dependency edges roughly horizontal instead of crossing the
-// whole tree. Returns node positions plus the overall SVG size.
+// drift. Longest-path LAYERING (Civ-style tiers): a tech's COLUMN = 1 + the
+// deepest of its prerequisites' columns (roots at 0). This guarantees every
+// prerequisite sits in an EARLIER column and the BINDING one in the column
+// immediately to the left, so dependency edges run left-to-right and stay
+// short, and ~78 techs spread thinly across many slim tiers instead of a few
+// tall era stacks. Era is kept only as the node COLOUR — eras interleave across
+// the depth tiers, exactly as a Civ tree does. Within a column, techs are
+// ordered by the mean ROW of their already-placed prerequisites (a one-sided
+// barycentric sort) to keep the edges from crossing.
 export function techLayout(opts = {}) {
-  const COLW = opts.COLW ?? 176, ROWH = opts.ROWH ?? 44, NW = opts.NW ?? 154, NH = opts.NH ?? 30;
-  const MX = opts.MX ?? 22, TOP = opts.TOP ?? 52;
-  const cols = ERAS.map(() => []);
-  TECHS.forEach(t => cols[t.era].push(t));
-  const pos = {};
-  cols.forEach((techs, ci) => {
+  const COLW = opts.COLW ?? 150, ROWH = opts.ROWH ?? 44, NW = opts.NW ?? 132, NH = opts.NH ?? 28;
+  const MX = opts.MX ?? 16, TOP = opts.TOP ?? 44, CAP = opts.CAP ?? 5;
+  // 1. Longest-path depth: dep = 1 + the deepest prerequisite's depth.
+  const layer = {};
+  const depthOf = t => {
+    if (layer[t.id] !== undefined) return layer[t.id];
+    layer[t.id] = 0;                                   // guard against cycles
+    let m = 0;
+    for (const p of t.prereq) { const pt = TECHS[TECH_IDX[p]]; if (pt) m = Math.max(m, depthOf(pt) + 1); }
+    return layer[t.id] = m;
+  };
+  TECHS.forEach(depthOf);
+  const nLayers = Math.max(0, ...Object.values(layer)) + 1;
+  const byDepth = Array.from({ length: nLayers }, () => []);
+  TECHS.forEach(t => byDepth[layer[t.id]].push(t));
+  // 2. Place depth by depth; SPLIT any tier wider than CAP into adjacent
+  // sub-columns so no column exceeds CAP rows (Civ-style thin tiers). Within a
+  // tier, order by the mean row of already-placed prerequisites (one-sided
+  // barycentric sort) before slicing, so edges stay short and uncrossed. Two
+  // sub-columns of the same depth never have an edge between them (a tech is
+  // always strictly deeper than its prerequisites), so splitting is safe.
+  const pos = {}, colX = {};
+  let gcol = 0;
+  for (let d = 0; d < nLayers; d++) {
+    const techs = byDepth[d];
+    if (!techs.length) continue;
     const keyOf = t => { let s = 0, m = 0; for (const p of t.prereq) { const pp = pos[p]; if (pp) { s += pp.y; m++; } } return m ? s / m : TOP + TECH_IDX[t.id] * 0.001; };
     const sorted = techs.map((t, ri) => ({ t, ri, key: keyOf(t) })).sort((a, b) => a.key - b.key || a.ri - b.ri).map(o => o.t);
-    sorted.forEach((t, ri) => { pos[t.id] = { x: MX + ci * COLW, y: TOP + ri * ROWH }; });
-  });
-  const maxRows = Math.max(1, ...cols.map(c => c.length));
-  return { pos, COLW, ROWH, NW, NH, MX, TOP, maxRows, W: MX * 2 + ERAS.length * COLW, H: TOP + maxRows * ROWH + 8 };
+    const k = Math.ceil(sorted.length / CAP);
+    const base = Math.floor(sorted.length / k), extra = sorted.length % k;
+    let idx = 0;
+    for (let s = 0; s < k; s++) {
+      const size = base + (s < extra ? 1 : 0);
+      sorted.slice(idx, idx + size).forEach((t, ri) => { pos[t.id] = { x: MX + gcol * COLW, y: TOP + ri * ROWH }; colX[t.id] = gcol; });
+      idx += size; gcol++;
+    }
+  }
+  const nCols = gcol;
+  let maxRows = 1;
+  for (const id in pos) { const r = (pos[id].y - TOP) / ROWH + 1; if (r > maxRows) maxRows = r; }
+  return { pos, layer, colX, nCols, COLW, ROWH, NW, NH, MX, TOP, maxRows, W: MX * 2 + nCols * COLW, H: TOP + maxRows * ROWH + 10 };
 }
