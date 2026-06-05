@@ -154,6 +154,8 @@ export const TUNING_SCHEMA = [
         desc: "How fast a COLLAPSING or cut-off society forgets technique. 0 = knowledge never regresses (old behaviour); up = depopulation (plague/famine/war), a sacked capital, and severed trade trigger real dark-age regressions that the tech tree visibly loses." },
       { key: "ENV_SPEC", label: "Climate specialization", def: 1.0, min: 0, max: 2.0, step: 0.1,
         desc: "How much local CLIMATE biases which techniques a culture perfects — arid river valleys pioneer irrigation farming, the humid tropics lag in cereal farming, short cold seasons cap it, temperate maritime coasts grow trade-administration. 0 = climate-blind learning (old behaviour)." },
+      { key: "TECH_EFFECTS", label: "Tech-driven bonuses", def: 1.0, min: 0, max: 1.0, step: 0.1,
+        desc: "How much the discrete TECHS (vs the raw continuous tracks) grant the sim's bonuses & abilities. 1 = fully tech-driven, Civ-style — a discovery is what gives the bonus; 0 = the old continuous-knowledge formulas. Calibrated so the two match at full tech. Currently wired to food, fishing and city size." },
     ],
   },
   {

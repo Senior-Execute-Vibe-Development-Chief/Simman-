@@ -252,3 +252,163 @@ export function techEdgePath(a, b, dims, stag = 0) {
   const laneY = by - dir * (ROWH * 0.5 - 6) + (stag - 2) * 6;  // row-gutter lane beside the target
   return `M${ax},${ay} H${sx} V${laneY} H${tx} V${by} H${bx}`;
 }
+
+// ── Per-tech bespoke EFFECTS ──────────────────────────────────────────
+// The concrete bonus/ability each discovery grants. techEffects() sums these
+// across a culture's DISCOVERED techs into channel totals, and the sim reads
+// those instead of the raw continuous tracks — so the tree is what gives the
+// abilities (Civ-style) while the continuous tracks are demoted to the research
+// that EARNS the techs. Channels (per-tech contributions, summed):
+//   farm     +land-food multiplier        military +combat multiplier
+//   fish     +fishery yield               reach    +admin/territory reach
+//   build    +urban density level         cohesion +loyalty / stability
+//   trade    +trade & export              defense  +city defence (walls)
+//   wealth   +specie / treasury           seaSpeed/seaRange  naval
+//   abilities (booleans): embark · ocean · colonize · walls · market
+// Calibrated (see techEffects) so that with TECH_EFFECTS = 0 the OLD continuous
+// formulas are reproduced exactly, and = 1 is fully tech-driven.
+export const TECH_FX = {
+  // — subsistence / agriculture —  (farm sums ≈ 1.18, ≈ old ag·1.2; the late
+  //  techs stay strong because the food HIERARCHY feeds big cities from
+  //  high-agriculture hinterlands — robbing them starves the cities. Partial
+  //  credit (techEffects) supplies the early-game on-ramp.)
+  hunting:      { farm:0.03 },
+  farming:      { farm:0.15 },
+  animal_husb:  { farm:0.07, military:0.03 },
+  the_plough:   { farm:0.11 },
+  irrigation:   { farm:0.18 },
+  calendar:     { farm:0.04 },
+  crop_rotation:{ farm:0.19 },
+  heavy_plough: { farm:0.12 },
+  fertilizers:  { farm:0.22 },
+  chemistry:    { farm:0.05, military:0.04 },
+  // — naval / water —  (fish sums ≈ 1.18, ≈ old nav·1.2)
+  sailing:      { fish:0.32, seaSpeed:0.20, embark:true },
+  galleys:      { fish:0.32, seaRange:0.30, military:0.05 },
+  cartography:  { seaRange:0.18, seaSpeed:0.10 },
+  the_compass:  { seaRange:0.24, seaSpeed:0.16 },
+  caravels:     { seaRange:0.38, seaSpeed:0.20, ocean:true },
+  ocean_nav:    { fish:0.24, seaRange:0.46, seaSpeed:0.24, colonize:true },
+  steamship:    { fish:0.30, seaSpeed:0.60, seaRange:0.50 },
+  optics:       { seaRange:0.10 },
+  astronomy:    { seaRange:0.10, farm:0.02 },
+  // — building / urban —  (build sums ≈ 1.10; front-loaded so density tracks
+  //  construction through the mid-game instead of all arriving late)
+  pottery:      { build:0.10 },
+  masonry:      { build:0.14, defense:0.25, walls:true },
+  monuments:    { build:0.06, cohesion:0.06 },
+  the_arch:     { build:0.10, defense:0.10 },
+  aqueducts:    { build:0.14, defense:0.04 },
+  machinery:    { build:0.06, trade:0.10 },
+  cathedrals:   { build:0.08, cohesion:0.10, defense:0.10 },
+  architecture: { build:0.08, defense:0.10 },
+  clockwork:    { build:0.02, trade:0.05 },
+  steam_power:  { build:0.03, trade:0.15, military:0.04 },
+  the_factory:  { build:0.06, trade:0.20, wealth:0.10 },
+  mass_prod:    { build:0.04, trade:0.18 },
+  electricity:  { build:0.03, wealth:0.15, reach:0.06 },
+  // — metal / military —  (military sums ≈ 2.30, ≈ old met·1.5+mob·0.8)
+  copper_working:{ military:0.03, wealth:0.03 },
+  bronze_working:{ military:0.05 },
+  bronze_arms:  { military:0.12 },
+  archery:      { military:0.04 },
+  iron_working: { military:0.09 },
+  iron_legions: { military:0.17, cohesion:0.04 },
+  chariots:     { military:0.07 },
+  cavalry:      { military:0.13 },
+  chivalry:     { military:0.16, defense:0.08 },
+  blast_furnace:{ military:0.06, build:0.02 },
+  gunpowder:    { military:0.15, defense:-0.12 },   // ends the age of the castle wall
+  firearms:     { military:0.19 },
+  foundry:      { military:0.07, build:0.02 },
+  musketry:     { military:0.13, cohesion:0.05 },
+  steel:        { military:0.10, build:0.04 },
+  rifling:      { military:0.22 },
+  combustion:   { military:0.11, trade:0.10, seaSpeed:0.20 },
+  flight:       { military:0.14, reach:0.08 },
+  mining:       { wealth:0.12, military:0.02 },
+  // — administration / reach / cohesion —
+  mysticism:    { cohesion:0.05 },
+  writing:      { reach:0.14, trade:0.05 },
+  code_of_laws: { reach:0.16, cohesion:0.12 },
+  mathematics:  { trade:0.05, build:0.02 },
+  philosophy:   { cohesion:0.06, reach:0.04 },
+  feudalism:    { reach:0.13, cohesion:0.12, military:0.04 },
+  the_wheel:    { trade:0.08, military:0.02 },
+  roads:        { reach:0.12, trade:0.18, military:0.03 },
+  paper:        { reach:0.05, trade:0.04 },
+  university:   { reach:0.06 },
+  printing:     { reach:0.08, cohesion:0.05 },
+  sci_method:   { reach:0.05 },
+  democracy:    { reach:0.16, cohesion:0.18 },
+  industrialism:{ reach:0.14, wealth:0.20, build:0.04 },
+  telegraph:    { reach:0.12, cohesion:0.08 },
+  computing:    { reach:0.14, wealth:0.20 },
+  // — economy / wealth / trade —
+  currency:     { trade:0.18, wealth:0.15, market:true },
+  guilds:       { trade:0.10, wealth:0.08, build:0.02 },
+  banking:      { trade:0.15, wealth:0.24 },
+  economics:    { trade:0.20, wealth:0.20, reach:0.06 },
+  alchemy:      { wealth:0.05 },
+};
+
+const lerp = (a, b, t) => a + (b - a) * t;
+const FX_CH = ["farm", "fish", "build", "military", "reach", "cohesion", "defense", "trade", "wealth", "seaSpeed", "seaRange"];
+const FX_ABIL = ["embark", "ocean", "colonize", "walls", "market"];
+
+// Aggregate a culture's discovered techs into concrete bonus channels + ability
+// flags, blended against the OLD continuous-knowledge formulas by `blend`
+// (0 = exactly the previous sim, 1 = fully tech-driven). The returned object is
+// what the sim reads — farmYield/fishFactor/buildLevel/military/reach/… — so the
+// continuous tracks no longer hand out bonuses directly; the techs do.
+export function techEffects(k, blend = 1) {
+  const have = techState(k).have;
+  const ch = {}; for (const c of FX_CH) ch[c] = 0;
+  const can = {}; for (const a of FX_ABIL) can[a] = false;
+  // Imminent techs (prereqs met, knowledge in progress) lend a FRACTION of their
+  // bonus by how close they are — a soft on-ramp that lets the discrete staircase
+  // hug the old smooth curve instead of jumping at the unlock tick. Abilities
+  // (embark/ocean/…) still flip only on the real unlock.
+  const PARTIAL = 0.6;
+  for (let i = 0; i < TECHS.length; i++) {
+    const fx = TECH_FX[TECHS[i].id]; if (!fx) continue;
+    let credit;
+    if (have[i]) credit = 1;
+    else { const ns = techNodeState(k, have, TECHS[i]); credit = ns.state === "next" ? ns.prog * PARTIAL : 0; }
+    if (credit <= 0) continue;
+    for (const key in fx) {
+      const v = fx[key];
+      if (typeof v === "boolean") { if (v && credit >= 1) can[key] = true; }
+      else if (key in ch) ch[key] += v * credit;
+    }
+  }
+  const ag = k.agriculture || 0, cn = k.construction || 0, nav = k.navigation || 0,
+        met = k.metallurgy || 0, mob = k.mobility || 0, org = k.organization || 0;
+  return {
+    have, ch, ...can,
+    farmYield:  1 + lerp(ag * 1.2, ch.farm, blend),            // ×land food   (old 1+ag·1.2)
+    fishFactor: 0.3 + lerp(nav * 1.2, ch.fish, blend),          // ×fishery     (old 0.3+nav·1.2)
+    buildLevel: lerp(cn, ch.build, blend),                      // density lvl  (old construction)
+    military:   1 + lerp(met * 1.5 + mob * 0.8, ch.military, blend), // ×combat (old 1+met·1.5+mob·0.8)
+    reachLevel: lerp(org, ch.reach, blend),                     // admin reach  (old organization)
+    cohesion:   lerp(org, ch.cohesion, blend),                  // loyalty hold (old organization)
+    defenseLevel: lerp(cn, ch.defense, blend),                  // city defence (old construction)
+    seaSpeed:   lerp(nav, ch.seaSpeed, blend),                  // ship speed   (old navigation)
+    seaRange:   lerp(nav, ch.seaRange, blend),                  // naval reach  (old navigation)
+  };
+}
+
+// Human-readable one-line summary of a tech's effect, for the tree tooltip.
+const FX_LABEL = { farm:"farm", fish:"fishing", build:"city size", military:"military", reach:"reach",
+  cohesion:"stability", defense:"defence", trade:"trade", wealth:"wealth", seaSpeed:"ship speed", seaRange:"naval range",
+  embark:"can embark", ocean:"ocean-going ships", colonize:"overseas colonies", walls:"city walls", market:"markets" };
+export function techEffectText(id) {
+  const fx = TECH_FX[id]; if (!fx) return "";
+  const parts = [];
+  for (const key in fx) {
+    const v = fx[key];
+    if (typeof v === "boolean") { if (v) parts.push(FX_LABEL[key] || key); }
+    else parts.push(`${v > 0 ? "+" : ""}${Math.round(v * 100)}% ${FX_LABEL[key] || key}`);
+  }
+  return parts.join(" · ");
+}

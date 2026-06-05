@@ -13,7 +13,7 @@ import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./peopleSim/money.js";
-import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath } from "./peopleSim/tech.js";
+import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectText } from "./peopleSim/tech.js";
 // tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
 const ERA_BG=["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
@@ -188,13 +188,13 @@ function TechTreeOverlay({k,title,onClose}){
               stroke={open?"#7a5c34":"rgba(120,100,70,0.32)"} strokeWidth={open?1.7:1} strokeDasharray={open?"":"3 3"}/>;
           }))}
           {/* tech nodes (opaque fills occlude the links routed behind them) */}
-          {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.have,t);const era=ERA_BG[t.era]||"#b9b2a4";
+          {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.have,t);const era=ERA_BG[t.era]||"#b9b2a4";const fxText=techEffectText(t.id);
             let fill,stroke,txt,sw,dash="";
             if(ns.state==="have"){fill=era;stroke="#3a2c18";txt="#1a140c";sw=1.1;}
             else if(ns.state==="next"){fill="#fffaf0";stroke=era;txt="#2c2114";sw=2;}
             else{fill="#e9e1ce";stroke="rgba(90,75,50,0.42)";txt="rgba(70,58,40,0.62)";sw=1;dash="4 3";}
             return(<g key={t.id}>
-              <title>{t.name} — {t.desc}{t.prereq.length?`\nRequires: ${t.prereq.map(pp=>TECHS[TECH_IDX[pp]].name).join(" + ")}`:""}{ns.state==="next"?`\n${(ns.prog*100)|0}% — ${t.gate[0]} → ${(t.gate[1]*100)|0}`:ns.state==="locked"?"\n(locked — an earlier tech is missing)":""}</title>
+              <title>{t.name} — {t.desc}{fxText?`\n⚙ ${fxText}`:""}{t.prereq.length?`\nRequires: ${t.prereq.map(pp=>TECHS[TECH_IDX[pp]].name).join(" + ")}`:""}{ns.state==="next"?`\n${(ns.prog*100)|0}% — ${t.gate[0]} → ${(t.gate[1]*100)|0}`:ns.state==="locked"?"\n(locked — an earlier tech is missing)":""}</title>
               <rect x={p.x} y={p.y} width={NW} height={NH} rx={5} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash}/>
               <text x={p.x+9} y={p.y+NH/2+3.6} fontSize={10} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{t.name}</text>
               {ns.state==="next"&&<rect x={p.x+1} y={p.y+NH-3} width={(NW-2)*ns.prog} height={2.4} fill={era} rx={1.2}/>}

@@ -8,6 +8,7 @@
 // knowledge from their nearest neighbour weighted by transport distance.
 
 import { seedLocalTerritory } from "./territory.js";
+import { techEffects } from "./tech.js";
 import { T } from "./tuning.js";
 import { recordIn, recordOut, IN_MINING, IN_MATERIALS, OUT_MATERIALS } from "./money.js";
 import { localP } from "./inflation.js";
@@ -258,6 +259,18 @@ function climateOf(world, s) {
   s._climTemp  = world.temp[ci]  ?? 0.5;
   s._climMoist = world.moist[ci] ?? 0.5;
 }
+
+// Cached tech-derived bonus channels (tech.js techEffects) for a settlement —
+// what its DISCOVERED techs grant: farmYield, fishFactor, buildLevel, military,
+// reach, abilities, etc. This is what the sim reads instead of the raw
+// continuous tracks (the tree gives the bonuses; the tracks earn the tree).
+// Refreshed every KNOW_INTERVAL ticks in updateKnowledge (knowledge drifts
+// slowly); filled lazily here for a settlement inspected before its first tick.
+function techEff(s) {
+  if (!s._techEff) s._techEff = techEffects(s.knowledge, T.TECH_EFFECTS);
+  return s._techEff;
+}
+export { techEff };
 
 // ── Wealth: money comes from trade, not thin air ──
 //
@@ -856,6 +869,10 @@ function updateKnowledge(world, s) {
       }
     }
   }
+
+  // Refresh the cached tech-effect bonuses the sim reads (food, density, …),
+  // throttled like the rest of the knowledge recompute (knowledge drifts slowly).
+  if ((world.step + s.id) % KNOW_INTERVAL === 0) s._techEff = techEffects(k, T.TECH_EFFECTS);
 }
 
 function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
@@ -884,8 +901,7 @@ function updateFood(world, s) {
   // city does NOT magically farm more; it grows by IMPORTING grain shipped
   // from its rural hinterland (see updatePopulation / the food trade), exactly
   // as real metropolises did (Rome's Egyptian grain, London's American wheat).
-  const landFood0 = (s._terrFertSum || 0) * T.FARM_YIELD_PER_FERT
-    * (1 + (s.knowledge.agriculture || 0) * 1.2);
+  const landFood0 = (s._terrFertSum || 0) * T.FARM_YIELD_PER_FERT * techEff(s).farmYield;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
@@ -898,7 +914,7 @@ function updateFood(world, s) {
   // coastal city — which the housing cap already lets grow large — feed
   // itself from the sea instead of relying entirely on shipped-in grain.
   const wa = s.waterAccess || 0;
-  const fish = wa > 0 ? T.FISH_RATE * wa * (0.3 + (s.knowledge.navigation || 0) * 1.2) : 0;
+  const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor : 0;
   s._fishYield = fish;
 
   // Land food is STORABLE — it fills granaries and ships across the world
@@ -976,7 +992,7 @@ function computeBuildableArea(world, sx, sy) {
 // (more people on the same ground as building tech improves).
 function spaceCapacity(s) {
   const area = s._buildableArea || 1;
-  const density = DENSITY_BASE * (1 + (s.knowledge.construction || 0) * T.DENSITY_PER_CONSTR);
+  const density = DENSITY_BASE * (1 + techEff(s).buildLevel * T.DENSITY_PER_CONSTR);
   return area * density;
 }
 export { spaceCapacity };
