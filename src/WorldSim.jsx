@@ -33,7 +33,7 @@ const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688
 // can be rendered once to an offscreen canvas and blitted each frame instead
 // of rebuilt per-pixel. Sim-dependent views (population, transport, roads,
 // money, tribes) and atlas are excluded.
-const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","fertility","crop","crossing","resources","moisture","temperature"]);
+const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","fertility","crop","crossing","resources","moisture","temperature","country"]);
 let _mercator = false; // module-level flag for projection functions
 
 function screenYtoDataY(sy, ch, H) {
@@ -108,6 +108,43 @@ return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
 function tribeRGB(id){const h=((id*67+20)%360)/360,s=(60+((id*31)%25))/100,l=(45+((id*17)%25))/100;
 const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;const hr=(pp,qq,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return pp+(qq-pp)*6*t;if(t<1/2)return qq;if(t<2/3)return pp+(qq-pp)*(2/3-t)*6;return pp;};
 return[Math.round(hr(p,q,h+1/3)*255),Math.round(hr(p,q,h)*255),Math.round(hr(p,q,h-1/3)*255)];}
+
+// ── Live country colouring (Country view) ───────────────────────────
+// Give every country a hue as DISTINCT as possible from the countries it borders,
+// so the political map stays legible as the world changes. Builds the border-
+// adjacency graph from the claim map, then runs a force-directed relaxation on the
+// hue WHEEL: each country is pushed away from its neighbours' hues (repulsion that's
+// stronger the closer two neighbours are). Previous hues seed the next solve, so the
+// colours spread out and then drift smoothly rather than flickering each refresh.
+function assignCountryColors(claimArr,tw,th,prev){
+  const adj=new Map(),present=[],seen=new Set();
+  const link=(a,b)=>{let s=adj.get(a);if(!s)adj.set(a,s=new Set());s.add(b);let t=adj.get(b);if(!t)adj.set(b,t=new Set());t.add(a);};
+  for(let ti=0;ti<claimArr.length;ti++){
+    const cc=claimArr[ti];if(cc<0)continue;
+    if(!seen.has(cc)){seen.add(cc);present.push(cc);}
+    const py=(ti/tw)|0,px=ti-py*tw;
+    const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
+    if(ro>=0&&ro!==cc)link(cc,ro);
+    if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc)link(cc,dno);}
+  }
+  const hue=new Map();
+  for(const c of present)hue.set(c,prev.has(c)?prev.get(c):((c*61)%360+360)%360);
+  for(let it=0;it<60;it++){
+    const nudge=[];
+    for(const c of present){
+      const ns=adj.get(c);if(!ns||ns.size===0){nudge.push(0);continue;}
+      const hc=hue.get(c);let f=0;
+      for(const n of ns){
+        let d=((hc-hue.get(n)+540)%360)-180;          // signed hue gap (-180,180]
+        if(d>-0.5&&d<0.5)d=d>=0?0.5:-0.5;             // break exact overlaps
+        f+=Math.sign(d)*(180-Math.abs(d))/ns.size;     // repel — strongest when hues are close
+      }
+      nudge.push(f);
+    }
+    let i=0;for(const c of present)hue.set(c,((hue.get(c)+nudge[i++]*0.06)%360+360)%360);
+  }
+  return hue;   // Map: countryId → hue 0..360
+}
 
 // ── Atlas (olde-map) cartographic symbols — hand-drawn map iconography ──
 function atlasHash(a,b){let h=(a*374761393+b*668265263)>>>0;h=((h^(h>>>13))*1274126177)>>>0;return((h^(h>>>16))>>>0)/4294967296;}
@@ -1142,6 +1179,9 @@ const[boardMode,setBoardMode]=useState("countries");   // "countries" | "settlem
 const[boardSort,setBoardSort]=useState("size");        // see SORT_KEYS below
 const layersRef=useRef(layers);
 useEffect(()=>{layersRef.current=layers;},[layers]);
+// Country view: live per-country hue assignment (seeded by the previous solve so
+// colours drift smoothly as borders shift). Map: countryId → hue 0..360.
+const countryColorsRef=useRef(new Map());
 // Which collapsible sections of the settlement card are open. Persists
 // across re-renders (the card re-renders every few ticks) and across
 // selecting different settlements.
@@ -2363,6 +2403,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const psw=peopleRef.current;
   const vmRoads = viewRef.current === "roads";
   const vmMoney = viewRef.current === "money";
+  const vmCountry = viewRef.current === "country";
   if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
@@ -2530,7 +2571,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0);
     if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
@@ -2540,7 +2581,37 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // borders that follow terrain and enclose frontier hinterland; fall back
       // to the per-settlement owner map only until the first claim arrives.
       const owner=psw._territoryOwner, claimArr=psw._countryClaim;
-      if((L.tints||L.borders)&&claimArr){
+      // ── Country view: BOLD opaque political map with thick borders + live,
+      // maximally-distinct neighbour colours (assignCountryColors). ──
+      if(vmCountry&&claimArr){
+        const tw=psw.tw,th=psw.th;
+        const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current);
+        countryColorsRef.current=hues;
+        const fillByCountry=new Map();
+        // opaque bold fills (cover the terrain so the colours read clean)
+        let lastFs=null;
+        for(let ti=0;ti<claimArr.length;ti++){
+          const cc=claimArr[ti];if(cc<0)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          let fs=fillByCountry.get(cc);
+          if(fs===undefined){const h=(hues.get(cc)??((cc*61)%360+360)%360)|0;fs=`hsl(${h},60%,50%)`;fillByCountry.set(cc,fs);}
+          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+          octx.fillRect(sx,sy,TR+0.6,TR+0.6);   // slight overdraw kills inter-tile seams
+        }
+        // thick dark borders between neighbouring countries
+        octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=Math.max(1.6,TR*1.1);octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
+        for(let ti=0;ti<claimArr.length;ti++){
+          const cc=claimArr[ti];if(cc<0)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
+          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+        }
+        octx.stroke();
+      }
+      if(!vmCountry&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map();
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
@@ -2561,7 +2632,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
-      } else if((L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -3169,7 +3240,7 @@ const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
-  ["crop","Crop"],["crossing","Crossing"],["roads","Roads"],["money","Money"],
+  ["crop","Crop"],["crossing","Crossing"],["country","Country"],["roads","Roads"],["money","Money"],
   ["resources","Resources"],["population","Pop"],["transport","Transport"],
   ["transport-test","Trans Test"],["tribes","Tribes"]
 ];
