@@ -31,7 +31,7 @@ import { T } from "./tuning.js";
 // between) and high-org empires reach far (consolidation with the era). Beyond
 // it, land is wilderness — which is where stateless frontier hamlets live.
 const COUNTRY_REACH_BASE = 8;
-const COUNTRY_REACH_ORG  = 10;   // reach per organisation tech (was 20→14→10 — smaller realms leave room + frontier for many countries to coexist)
+const COUNTRY_REACH_ORG  = 14;   // reach per organisation tech (was 20 — empires were continental too early)
 // ── Frontier-fill: claiming the harsh interior as engineering matures ──
 // For most of history great regions were politically EMPTY — no state claimed
 // the deep Sahara, the high Himalaya, the Amazon, interior Africa. They filled
@@ -63,7 +63,7 @@ const CLAIM_SOFT      = 0.12;
 // climbs with the capital's construction (the surveying/road/communication tech
 // that lets authority carry far), turning the ancient archipelago of realms into
 // the modern wall-to-wall partition as the centuries pass.
-const REACH_ERA = 1.4;        // budget ×(1 + construction² · REACH_ERA): ~×1 ancient, ~×2.4 modern (was 3→2→1.4 — modern empires stay continental-scale, not planetary, leaving room for many realms)
+const REACH_ERA = 2;          // budget ×(1 + construction² · REACH_ERA): ~×1 ancient, ~×3 modern (was 3 — eased so realms don't balloon mid-era)
 // Reach is also scaled by how BIG the realm is, so a claim is backed by real
 // settlements rather than the capital's tech alone. budget ×= clamp(members /
 // REACH_SIZE_REF, REACH_SIZE_MIN, 1): a fledgling realm projects only a fraction
