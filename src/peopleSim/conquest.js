@@ -1187,7 +1187,7 @@ export function updatePolities(world) {
       // (generic terrain above is half-weighted): a low-construction realm
       // is walled by a great river, an engineered one bridges it.
       const riverToll = tcross.get(s.id) || 0;
-      let d = eucl + 0.5 * surcharge + riverToll;
+      let d = eucl + surcharge + riverToll;   // FULL route cost: detouring around a rival (rivals impassable) costs its true extra distance
       d /= holdPull(s);                                               // value cling
       const coerce  = Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
       const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
@@ -1262,7 +1262,7 @@ export function updatePolities(world) {
       const tcEff = (tc === undefined || !isFinite(tc)) ? reachCeil : tc;
       // A governor across a great river is "farther" too (same full-weight
       // river toll as the hold load) — so a far-bank seat schemes harder.
-      const far  = (eucl + 0.5 * Math.max(0, tcEff - eucl) + (tcross.get(s.id) || 0)) / range;
+      const far  = (eucl + Math.max(0, tcEff - eucl) + (tcross.get(s.id) || 0)) / range;
       if (!seat || pacified || infant || ratio < AMBITION_RATIO || far < AMBITION_MIN_FAR) {
         if (s._ambition) s._ambition = Math.max(0, s._ambition - AMBITION_GAIN);   // fades when unqualified
         continue;
