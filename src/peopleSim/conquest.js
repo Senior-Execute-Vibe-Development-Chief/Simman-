@@ -177,6 +177,12 @@ const SEAT_BONUS_CAP = 10;   // total seat contribution is capped (admin has dim
 // great powers persist AND shed their over-extension.
 const CAP_K   = 2.6;
 const POW_REF = 380;
+// Transport/communication gate on administrable capacity: factor = LOGI_CAP_MIN
+// + logisticsLevel·LOGI_CAP_SLOPE. Road-less ≈ 0.45× (city-states), Roads ≈ 0.65×
+// (Rome/regional), Rail+Telegraph ≈ 1.2× (continental). Empire SIZE becomes a
+// temporal arc unlocked by transport tech, not power alone.
+const LOGI_CAP_MIN   = 0.45;
+const LOGI_CAP_SLOPE = 0.85;
 // Contiguity toll: projecting administrative authority THROUGH a foreign
 // country's territory costs this much more per tile. So a province cut off from
 // the capital's contiguous realm (an enemy wedge between them) reads as very far
@@ -1065,7 +1071,8 @@ export function updatePolities(world) {
     // grew it past that handful it over-extended and shattered — the late-game
     // re-fragmentation. Scaling capacity with org lets large empires that form by
     // conquest actually HOLD, so consolidation persists into the late game.
-    const capCoh = techEff(cap).cohesion;   // administrative glue (stability techs: law, institutions, religion)
+    const capE = techEff(cap);
+    const capCoh = capE.cohesion;           // administrative glue (stability techs: law, institutions, religion)
     // Capacity grows with the capital's coercive POWER (people × military-tech ×
     // organisation — see settlementPower), compressed through log2 so it climbs
     // steeply at first then levels: a primitive realm holds barely more than its
@@ -1077,8 +1084,16 @@ export function updatePolities(world) {
     // plague, a sacked throne) shrinks capacity and the frontier sheds — and an
     // empire that conquers past this budget holds the excess only on pacification
     // grace, then fragments back toward it once the conquest stalls.
-    const peaceCapacity = CAP_K * Math.log2(1 + capPower / POW_REF)
-                        + Math.min(SEAT_BONUS_CAP, seatBonus);
+    // Transport/communication gate on how many provinces can actually be
+    // ADMINISTERED: roads → telegraph extend the span a capital can hold, so a
+    // road-less realm stays small however strong (the Mongols conquered vastly
+    // but couldn't HOLD it), Rome's roads bought a Mediterranean empire, and
+    // rail+telegraph a continental one. This is what bounds empire SIZE via
+    // conquest — capacity was previously power-only, transport-blind. Blended by
+    // TECH_EFFECTS (=0 → the old power-only capacity).
+    const logiCap = 1 + (LOGI_CAP_MIN + capE.logisticsLevel * LOGI_CAP_SLOPE - 1) * T.TECH_EFFECTS;
+    const peaceCapacity = (CAP_K * Math.log2(1 + capPower / POW_REF)
+                        + Math.min(SEAT_BONUS_CAP, seatBonus)) * logiCap;
 
     // ── War duress: throttle the budget while the realm is fighting ────
     // (fronts are tallied in armies.js advanceFronts → world._fronts.)
