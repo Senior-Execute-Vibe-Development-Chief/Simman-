@@ -13,6 +13,8 @@ import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./peopleSim/money.js";
+import { TECHS, ERAS, techState, nextTechs } from "./peopleSim/tech.js";
+const ERA_BG=["#b9b2a4","#cd9a6a","#d8b24a","#9bb0c2","#dde4ea"];  // tech-chip tint per era (stone→steel)
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 import PeopleSimWorker from "./peopleSimWorker.js?worker&inline";
 
@@ -1185,7 +1187,7 @@ const countryColorsRef=useRef(new Map());
 // Which collapsible sections of the settlement card are open. Persists
 // across re-renders (the card re-renders every few ticks) and across
 // selecting different settlements.
-const[psCardOpen,setPsCardOpen]=useState({food:true,knowledge:false,resources:false,trade:true});
+const[psCardOpen,setPsCardOpen]=useState({food:true,tech:true,knowledge:false,resources:false,trade:true});
 const togglePsCard=id=>setPsCardOpen(o=>({...o,[id]:!o[id]}));
 const[useRealWind,setUseRealWind]=useState(false);
 const useMercator=false;
@@ -3428,6 +3430,9 @@ return(
   const nextThr=TIER_THR[s.tier+1];
   const progress=nextThr?Math.min(1,s.people/nextThr):1;
   const k=s.knowledge||{};
+  const tech=techState(k);                 // Civ-like discovery layer derived from knowledge (tech.js)
+  const techList=TECHS.filter((t,i)=>(tech.mask&(1<<i))!==0);
+  const techNext=nextTechs(k,tech.mask,3);
   const r=s.localRes||{};
   const farm=s._terrTiles||0;
   const K=s._k||0;
@@ -3737,6 +3742,35 @@ return(
           <PsKRow label="Mobility"     val={k.mobility||0}     colour="#a76"
                 note={(r.horses||0)<=0.10?"(no horses)":null}/>
         </>
+      </PsSection>
+
+      {/* ── Technologies (Civ-like discovery layer, derived from knowledge) ── */}
+      <PsSection id="tech" title="Technologies" open={psCardOpen.tech} onToggle={togglePsCard}
+        right={<span className="au-fade">{ERAS[tech.era]} · {tech.have}/{TECHS.length}</span>}>
+        <div style={{fontSize:10}}>
+          <div style={{display:"flex",flexWrap:"wrap",gap:"3px 4px"}}>
+            {techList.map(t=>(
+              <span key={t.id} title={ERAS[t.era]}
+                style={{padding:"1px 5px",borderRadius:3,background:ERA_BG[t.era]||"#b9b2a4",color:"#1a140c",whiteSpace:"nowrap",fontSize:9.5}}>
+                {t.name}
+              </span>
+            ))}
+          </div>
+          {techNext.length>0&&(
+            <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid rgba(120,90,50,0.22)"}}>
+              <div className="au-fade" style={{marginBottom:3,fontSize:9.5}}>Researching</div>
+              {techNext.map(t=>(
+                <div key={t.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                  <span style={{flex:"0 0 100px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.name}</span>
+                  <div style={{flex:1,height:5,background:"rgba(80,60,30,0.22)",borderRadius:3,overflow:"hidden"}}>
+                    <div style={{width:`${(t.prog*100)|0}%`,height:"100%",background:ERA_BG[t.era]||"#8a6"}}/>
+                  </div>
+                  <span className="au-fade" style={{flex:"0 0 26px",textAlign:"right"}}>{(t.prog*100)|0}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </PsSection>
 
       {/* ── Resources ── */}
