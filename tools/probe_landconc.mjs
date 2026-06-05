@@ -8,6 +8,8 @@ import { generateWorld } from "../src/worldgen.js";
 import { computeRivers } from "../src/riverGen.js";
 import { generateResources } from "../src/resourceGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
+import { T } from "../src/peopleSim/tuning.js";
+if (process.env.TE !== undefined) T.TECH_EFFECTS = parseFloat(process.env.TE);
 
 const STEPS = parseInt(process.argv[2] || "12000", 10);
 const W = parseInt(process.argv[3] || "480", 10), H = parseInt(process.argv[4] || "240", 10);

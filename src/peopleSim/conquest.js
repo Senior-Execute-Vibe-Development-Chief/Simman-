@@ -334,6 +334,13 @@ function recencyFactor(world, s) {
 // with empire size (overstretch), so big empires can't hold their
 // periphery and fragment into successor states.
 const RANGE_BASE = 8 * 1.02, RANGE_ORG = 16 * 1.02, RANGE_MOB = 10 * 1.02, RANGE_NAV = 6 * 1.02;
+// Transport-gated hold-distance (TECH_EFFECTS path): the dominant term is now
+// LOGISTICS (roads → rail → telegraph), with admin a minor helper and horses/
+// ships trimmed (they already feed the logistics channel). So a road-less realm
+// can hold only a COMPACT core — distant conquests revolt — and continental
+// SPREAD needs rail+telegraph. Diagnosis (probe_landconc) showed admin alone was
+// projecting empires across continents without the transport history required.
+const RANGE_LOGI = 17, RANGE_ADMIN = 5, RANGE_MOB_T = 5, RANGE_NAV_T = 3;
 // (all ×1.02 re-anchor the 0.5-pivot expansionReachMul — personality.js;
 //  c.range = RANGE_expr × reachMul, so behaviour is identical to the old form)
 
@@ -394,7 +401,10 @@ export function rebuildCountries(world) {
     c.capital = best;
     c.capitalId = best.id;
     const k = best.knowledge || {};
-    c.range = RANGE_BASE + techEff(best).reachLevel * RANGE_ORG + (k.mobility || 0) * RANGE_MOB + (k.navigation || 0) * RANGE_NAV;
+    const bE = techEff(best), bMob = k.mobility || 0, bNav = k.navigation || 0;
+    const rangeOld = RANGE_BASE + bE.reachLevel * RANGE_ORG + bMob * RANGE_MOB + bNav * RANGE_NAV;
+    const rangeNew = RANGE_BASE + bE.logisticsLevel * RANGE_LOGI + bE.reachLevel * RANGE_ADMIN + bMob * RANGE_MOB_T + bNav * RANGE_NAV_T;
+    c.range = rangeOld + (rangeNew - rangeOld) * T.TECH_EFFECTS;   // transport-gated hold-distance (TE=0 → old admin-driven)
     // Personality nudges reach: an expansionist realm projects authority a
     // little farther, a cautious one pulls in. Knowledge still sets the bulk
     // of the reach — this is a mild temperament colouring on top (see
