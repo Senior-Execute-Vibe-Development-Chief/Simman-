@@ -554,6 +554,16 @@ export function advanceFronts(world) {
           const ag = world.governments && world.governments.get(att.countryId);
           if (ag) ag._spoils = Math.min(2, (ag._spoils || 0) + WAR_SPOILS);
           if (def.history) def.history.push({ step: world.step, type: "conquered", by: att.id });
+          // Sack: the storm burns institutions, records and workshops. A
+          // stormed CAPITAL loses its whole administrative apparatus — the
+          // classic dark-age trigger (the fall of Rome, the Bronze-Age
+          // collapse); a provincial city far less. (T.KNOW_DECAY gates the
+          // whole dark-age system; 0 = off.)
+          if (T.KNOW_DECAY > 0 && def.knowledge) {
+            const hit = Math.min(0.5, (defWasCapital ? 0.22 : 0.10) * T.KNOW_DECAY);
+            def.knowledge.organization = Math.max(0, def.knowledge.organization * (1 - hit));
+            def.knowledge.construction = Math.max(0, def.knowledge.construction * (1 - hit * 0.6));
+          }
           bankMomentum(world, att.countryId, MOMENTUM_PER_STORM);   // a stormed city feeds the winning streak
           att.army = Math.max(0, (att.army || 0) * (1 - ASSAULT_ARMY_COST));
           def.army = Math.max(0, (def.army || 0) * 0.3);

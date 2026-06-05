@@ -4,7 +4,10 @@
 // Tuning menu. Every sim module imports { T } from here and reads T.KEY at
 // USE TIME (inside its passes), so dragging a slider mutates T and the next
 // pass picks it up — no restart. Defaults below reproduce the hand-tuned
-// behaviour exactly, so an untouched world is byte-identical to before.
+// behaviour exactly, so an untouched world is byte-identical to before —
+// EXCEPT the four knowledge-realism levers (SCI_SPREAD, AXIS_BIAS, KNOW_DECAY,
+// ENV_SPEC), which default to their new ACTIVE setting; set each to 0 to
+// recover the old behaviour for that effect.
 //
 // To add a lever: add one entry to TUNING_SCHEMA (key/label/desc/min/max/
 // step/def), then read T.KEY where the old const used to live. That's it.
@@ -143,6 +146,14 @@ export const TUNING_SCHEMA = [
         desc: "Master scaling on all knowledge growth. Up = the whole bronze→industrial arc plays out faster." },
       { key: "DIFFUSE_RATE", label: "Tech diffusion rate", def: 0.0006, min: 0, max: 0.005, step: 0.0002,
         desc: "How fast tech spreads between trading neighbours. Up = no lasting tech gaps; 0 = isolated innovators pull ahead." },
+      { key: "SCI_SPREAD", label: "Emergent science spread", def: 1.0, min: 0, max: 2.0, step: 0.1,
+        desc: "How strongly population, food surplus, trade contact and organization swing a settlement's invention rate. 0 = the old uniform pace (everywhere learns alike); up = fed, populous, connected hubs race ahead while isolated backwaters stall." },
+      { key: "AXIS_BIAS", label: "Continental-axis diffusion", def: 1.0, min: 0, max: 1.0, step: 0.1,
+        desc: "How much a SHARED CLIMATE gates tech spread. 0 = tech diffuses equally in every direction (old behaviour); 1 = it flows fast east–west along a latitude band and only crawls across climates — Diamond's continental-axis effect (why Eurasia outran the Americas)." },
+      { key: "KNOW_DECAY", label: "Knowledge loss (dark ages)", def: 1.0, min: 0, max: 3.0, step: 0.1,
+        desc: "How fast a COLLAPSING or cut-off society forgets technique. 0 = knowledge never regresses (old behaviour); up = depopulation (plague/famine/war), a sacked capital, and severed trade trigger real dark-age regressions that the tech tree visibly loses." },
+      { key: "ENV_SPEC", label: "Climate specialization", def: 1.0, min: 0, max: 2.0, step: 0.1,
+        desc: "How much local CLIMATE biases which techniques a culture perfects — arid river valleys pioneer irrigation farming, the humid tropics lag in cereal farming, short cold seasons cap it, temperate maritime coasts grow trade-administration. 0 = climate-blind learning (old behaviour)." },
     ],
   },
   {

@@ -245,6 +245,20 @@ function effectiveLocalRes(world, s) {
 }
 export { effectiveLocalRes, findSettlementById };
 
+// Cache a settlement's home-tile climate — latitude band (0 = equator,
+// 1 = pole), temperature and moisture (worldgen's 0..1 scales). Terrain is
+// static, so this is computed once and reused by the knowledge model
+// (continental-axis diffusion + climate specialization).
+function climateOf(world, s) {
+  if (s._climLat !== undefined) return;
+  const ty = Math.min(world.th - 1, Math.max(0, s.pos.y | 0));
+  const tx = ((s.pos.x | 0) % world.tw + world.tw) % world.tw;
+  const ci = ty * world.tw + tx;
+  s._climLat   = Math.abs((ty / world.th) * 2 - 1);
+  s._climTemp  = world.temp[ci]  ?? 0.5;
+  s._climMoist = world.moist[ci] ?? 0.5;
+}
+
 // ── Wealth: money comes from trade, not thin air ──
 //
 // A settlement earns money by SELLING what it produces to other
@@ -664,6 +678,39 @@ function updateKnowledge(world, s) {
   if (fe > oreThr)                metalCap = Math.max(metalCap, 0.90);
   if (fe > oreThr && co > oreThr) metalCap = 1.00;
 
+  // ── Emergent capacity (the science rate) ──────────────────────────────
+  // What a society LEARNS per tick is not a constant: it scales with the
+  // number of minds (population), the banked food surplus that frees
+  // specialists from the fields, the trade contacts that exchange ideas, and
+  // the institutions that organise them. A fed, populous, well-connected hub
+  // invents fast; a starving, isolated hamlet barely moves. Centred so a
+  // typical developing settlement learns at ≈ the old flat pace; T.SCI_SPREAD
+  // dials the swing (0 = the old uniform rate everywhere).
+  const popF = Math.min(1, popSqrt / 45);                                   // ~2000 souls → 1
+  const granF = Math.min(1, (s.food || 0) / (80 + s.tier * 200));          // banked surplus
+  const flow = (s._foodSupply || 0) / Math.max(0.01, s._foodDemand || 0);  // 1 = break-even
+  const surplusF = Math.max(0, Math.min(1, 0.5 * granF + 0.5 * Math.min(1, Math.max(0, (flow - 1) / 0.4))));
+  const reachN = s._tradeReach ? s._tradeReach.size : 0;
+  const tradeF = Math.min(1, reachN / 18);                                 // ~18 partners → 1
+  const sciMul = Math.max(0.25, Math.min(2.2,
+    1 + T.SCI_SPREAD * (0.55 * popF + 0.45 * surplusF + 0.30 * tradeF + 0.20 * k.organization - 0.45)));
+
+  // ── Environment specialization (climate-tied learning) ────────────────
+  // Beyond the resource gates, the LOCAL CLIMATE biases which techniques a
+  // culture perfects: arid river valleys pioneer irrigation farming
+  // (Egypt/Mesopotamia/Indus); the humid tropics lacked a storable cereal
+  // staple and carried a heavy disease burden; short cold seasons cap farming;
+  // temperate maritime coasts grow trade-administration. T.ENV_SPEC dials it
+  // (0 = climate-blind, the old behaviour).
+  climateOf(world, s);
+  const arid     = Math.max(0, 0.42 - s._climMoist) / 0.42;                // 0 wet .. 1 desert
+  const irrig    = arid * wa;                                              // desert + river → irrigation
+  const tropical = (Math.max(0, s._climTemp - 0.80) / 0.20) * (Math.max(0, s._climMoist - 0.55) / 0.45);
+  const cold     = Math.max(0, 0.40 - s._climTemp) / 0.40;                 // short growing season
+  const maritime = wa * Math.max(0, 1 - Math.abs(s._climTemp - 0.62) / 0.25);   // temperate coast
+  const agriClim = Math.max(0.2, 1 + T.ENV_SPEC * (irrig * 1.1 - tropical * 0.45 - cold * 0.5));
+  const orgClim  = Math.max(0.4, 1 + T.ENV_SPEC * (maritime * 0.3 - tropical * 0.40));
+
   // ── Local learning ──────────────────────────────────────────────
   // Construction: covers buildings, roads, wagons, bridges (the old
   // toolmaking track folded in here — they're all "things built by
@@ -672,7 +719,7 @@ function updateKnowledge(world, s) {
   const buildMat = 1 + (r.timber || 0) * 0.8 + (r.stone || 0) * 0.6;
   const stoneBoost = 1 + (r.stone || 0) * 0.6;
   const metalBoost = 1 + k.metallurgy * 1.8;
-  k.construction = clamp01(k.construction + T.LEARN_BASE * 1.0 * (1 - k.construction)
+  k.construction = clamp01(k.construction + T.LEARN_BASE * 1.0 * sciMul * (1 - k.construction)
     * buildMat * stoneBoost * metalBoost
     * (1 + k.agriculture * 0.6) * (1 + popSqrt * 0.06));
 
@@ -681,7 +728,7 @@ function updateKnowledge(world, s) {
   // foraging track). The wild-food boost decays as metallurgy advances
   // — society moves off forage onto stored grain.
   const wildBoost = 1 + (r.timber || 0) * 0.2 * (1 - k.metallurgy * 0.7);
-  k.agriculture = clamp01(k.agriculture + T.LEARN_BASE * 1.2 * (1 - k.agriculture)
+  k.agriculture = clamp01(k.agriculture + T.LEARN_BASE * 1.2 * sciMul * agriClim * (1 - k.agriculture)
     * (1 + fc * 0.03) * (1 + k.construction * 0.5) * wildBoost);
 
   // Organization: pop-driven admin burden + a literate-state branch
@@ -704,7 +751,7 @@ function updateKnowledge(world, s) {
   const litBranch = k.organization > 0.30
     ? 0.6 * k.organization * (1 + popSqrt * 0.06)
     : 0;
-  k.organization = clamp01(k.organization + T.LEARN_BASE * orgHead
+  k.organization = clamp01(k.organization + T.LEARN_BASE * sciMul * orgClim * orgHead
     * ((1 + popSqrt * 0.10) + litBranch));
 
   // Metallurgy — hard-gated by ore. Paced so the eras (chalcolithic →
@@ -714,21 +761,46 @@ function updateKnowledge(world, s) {
     const oreRate = Math.max(cu, sn, fe, co);
     const headroom = 1 - k.metallurgy / metalCap;
     k.metallurgy = Math.min(metalCap, k.metallurgy +
-      T.LEARN_BASE * 2.6 * headroom * oreRate * (1 + k.construction * 0.4));
+      T.LEARN_BASE * 2.6 * sciMul * headroom * oreRate * (1 + k.construction * 0.4));
   }
 
   // Navigation — hard-gated by water; paced so coasts/great rivers grow
   // into real naval powers.
   if (wa > 0) {
-    k.navigation = clamp01(k.navigation + T.LEARN_BASE * 1.3 * (1 - k.navigation)
+    k.navigation = clamp01(k.navigation + T.LEARN_BASE * 1.3 * sciMul * (1 - k.navigation)
       * wa * (1 + k.construction * 0.6));
   }
 
   // Mobility — hard-gated by horses; paced so horse country becomes
   // cavalry country.
   if (horses > horsesThr) {
-    k.mobility = clamp01(k.mobility + T.LEARN_BASE * 1.1 * (1 - k.mobility)
+    k.mobility = clamp01(k.mobility + T.LEARN_BASE * 1.1 * sciMul * (1 - k.mobility)
       * horses * (1 + k.construction * 0.4 + k.metallurgy * 0.6));
+  }
+
+  // ── Dark ages: knowledge is lost when a society collapses ─────────────
+  // Technique lives in people and institutions. When a settlement's
+  // population falls far below its historic peak (plague, famine, war, a sack)
+  // or it is cut off from all trade, the specialist class dies or scatters and
+  // craft, records and administration are forgotten. The peak bleeds slowly
+  // toward the present, so a collapse causes a BURST of forgetting that eases
+  // once the survivors stabilise at their new, smaller scale — a dark age, not
+  // a permanent reset. Organization and the crafts go first; subsistence
+  // agriculture is the stickiest. T.KNOW_DECAY dials it (0 = off).
+  s._popPeak = Math.max(pop, (s._popPeak || pop) * 0.9997 + pop * 0.0003);
+  const drawdown = 1 - pop / Math.max(1, s._popPeak);               // fraction of peak lost
+  // Isolation only bites an ESTABLISHED settlement that has genuinely been cut
+  // off — not a new frontier village that simply hasn't built roads yet.
+  const cutOff = reachN === 0 && (world.step - (s.foundedStep || 0)) > 2000;
+  const regress = Math.max(0, drawdown - 0.15) + (cutOff ? 0.12 : 0);  // small dips absorbed
+  if (T.KNOW_DECAY > 0 && regress > 0) {
+    const dec = T.LEARN_BASE * 12 * T.KNOW_DECAY * regress;
+    k.organization = Math.max(0, k.organization - dec * 1.4 * k.organization);
+    k.construction = Math.max(0, k.construction - dec * 1.0 * k.construction);
+    k.metallurgy   = Math.max(0, k.metallurgy   - dec * 0.8 * k.metallurgy);
+    k.navigation   = Math.max(0, k.navigation   - dec * 0.8 * k.navigation);
+    k.mobility     = Math.max(0, k.mobility     - dec * 0.8 * k.mobility);
+    k.agriculture  = Math.max(0, k.agriculture  - dec * 0.4 * k.agriculture);
   }
 
   // ── Diffusion: learn techniques from connected neighbours ─────────
@@ -746,13 +818,23 @@ function updateKnowledge(world, s) {
       && (world.step + s.id) % KNOW_INTERVAL === 0) {
     const km = { agriculture:0, construction:0, organization:0,
                  metallurgy:0, navigation:0, mobility:0 };
+    // Climate similarity to the partner that holds each track's best level —
+    // 1 = same climate band, → 0 = opposite climate.
+    const kmSim = { agriculture:1, construction:1, organization:1,
+                    metallurgy:1, navigation:1, mobility:1 };
     let any = false;
     for (const pid of s._tradeReach.keys()) {
       const p = world._byId.get(pid);
       if (!p || p.mode !== "settled" || !p.knowledge) continue;
       any = true;
       const pk = p.knowledge;
-      for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) km[t] = v; }
+      // Continental-axis effect: technique crosses easily along a shared
+      // latitude/climate band (same day-length, soils, crops, seasons) and
+      // only slowly across them. Same-latitude neighbour → sim ≈ 1.
+      climateOf(world, p);
+      const dLat = s._climLat - p._climLat, dT = s._climTemp - p._climTemp;
+      const sim = Math.exp(-(dLat * dLat) / (2 * 0.22 * 0.22) - (dT * dT) / (2 * 0.10 * 0.10));
+      for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) { km[t] = v; kmSim[t] = sim; } }
     }
     if (any) {
       if (km.metallurgy > metalCap) km.metallurgy = metalCap;
@@ -765,7 +847,12 @@ function updateKnowledge(world, s) {
       const rate = T.DIFFUSE_RATE * KNOW_INTERVAL * litMul;
       for (const t of KTRACKS) {
         const gap = km[t] - k[t];
-        if (gap > 0) k[t] = clamp01(k[t] + rate * gap);
+        if (gap > 0) {
+          // Axis bias: a lead held only across a climate band trickles in
+          // slowly (floor 5%); one from a same-band neighbour floods in.
+          const axisW = Math.max(0.05, 1 - T.AXIS_BIAS * (1 - kmSim[t]));
+          k[t] = clamp01(k[t] + rate * axisW * gap);
+        }
       }
     }
   }
