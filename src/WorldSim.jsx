@@ -13,7 +13,7 @@ import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./peopleSim/money.js";
-import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout } from "./peopleSim/tech.js";
+import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath } from "./peopleSim/tech.js";
 // tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
 const ERA_BG=["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
@@ -156,8 +156,7 @@ function assignCountryColors(claimArr,tw,th,prev){
 function TechTreeOverlay({k,title,onClose}){
   const ts=techState(k||{});
   const L=techLayout();
-  const {pos,COLW,NW,NH,TOP,W,H}=L;
-  const GAP=COLW-NW;
+  const {pos,NW,NH,TOP,W,H}=L;
   const chip=(bg,bd)=>(<span style={{display:"inline-block",width:9,height:9,background:bg,border:bd,borderRadius:2,marginRight:4,verticalAlign:"middle",boxSizing:"border-box"}}/>);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -183,9 +182,9 @@ function TechTreeOverlay({k,title,onClose}){
               edge, runs to the target column's left gutter, then rises/drops
               into the target's left edge. */}
           {TECHS.map(t=>t.prereq.map(p=>{const a=pos[p],b=pos[t.id];if(!a||!b)return null;
-            const x1=a.x+NW,y1=a.y+NH/2,x2=b.x,y2=b.y+NH/2,cx=x2-GAP*0.5;
             const open=ts.have[TECH_IDX[p]]===1;
-            return <path key={p+">"+t.id} d={`M${x1},${y1} H${cx} V${y2} H${x2}`} fill="none"
+            const stag=(TECH_IDX[p]*3+TECH_IDX[t.id])%5;
+            return <path key={p+">"+t.id} d={techEdgePath(a,b,L,stag)} fill="none"
               stroke={open?"#7a5c34":"rgba(120,100,70,0.32)"} strokeWidth={open?1.7:1} strokeDasharray={open?"":"3 3"}/>;
           }))}
           {/* tech nodes (opaque fills occlude the links routed behind them) */}

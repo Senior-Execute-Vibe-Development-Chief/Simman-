@@ -4,7 +4,7 @@
 // SVG per sample to /tmp; convert to PNG with cairosvg in the shell.
 //   node tools/render_tech.mjs
 import { writeFileSync } from "fs";
-import { TECHS, ERAS, TECH_IDX, techState, techNodeState, techLayout } from "../src/peopleSim/tech.js";
+import { TECHS, ERAS, TECH_IDX, techState, techNodeState, techLayout, techEdgePath } from "../src/peopleSim/tech.js";
 
 const ERA_BG = ["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
 const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
@@ -12,8 +12,7 @@ const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>
 function svgFor(title, k) {
   const ts = techState(k);
   const L = techLayout();
-  const { pos, COLW, NW, NH, MX, TOP, W, H } = L;
-  const GAP = COLW - NW;
+  const { pos, NW, NH, MX, TOP, W, H } = L;
   const HH = H + 26;                       // a little extra for the title line
   let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${HH}">`;
   s += `<rect width="${W}" height="${HH}" fill="#f4ecd9"/>`;
@@ -26,12 +25,12 @@ function svgFor(title, k) {
     s += `<rect x="${cx-46}" y="${TOP-26}" width="92" height="3" fill="${ERA_BG[ei]}" rx="1.5"/>`;
     s += `<text x="${cx}" y="${TOP-12}" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="bold" fill="#5a4a32" letter-spacing="0.5">${esc(e.toUpperCase())}</text>`;
   });
-  // prereq edges — orthogonal right-angle routing (into the target's left gutter)
+  // prereq edges — orthogonal right-angle routing with row-gutter lanes + stagger
   for (const t of TECHS) for (const p of t.prereq) {
     const a = pos[p], b = pos[t.id]; if (!a || !b) continue;
-    const x1 = a.x+NW, y1 = a.y+NH/2, x2 = b.x, y2 = b.y+NH/2, cx = x2-GAP*0.5;
     const open = ts.have[TECH_IDX[p]] === 1;
-    s += `<path d="M${x1},${y1} H${cx} V${y2} H${x2}" fill="none" stroke="${open?"#7a5c34":"rgba(120,100,70,0.32)"}" stroke-width="${open?1.7:1}" ${open?"":'stroke-dasharray="3 3"'}/>`;
+    const stag = (TECH_IDX[p]*3 + TECH_IDX[t.id]) % 5;
+    s += `<path d="${techEdgePath(a, b, L, stag)}" fill="none" stroke="${open?"#7a5c34":"rgba(120,100,70,0.32)"}" stroke-width="${open?1.7:1}" ${open?"":'stroke-dasharray="3 3"'}/>`;
   }
   // nodes (opaque fills occlude the links routed behind them)
   for (const t of TECHS) {

@@ -227,3 +227,28 @@ export function techLayout(opts = {}) {
   for (const id in pos) { const r = (pos[id].y - TOP) / ROWH + 1; if (r > maxRows) maxRows = r; }
   return { pos, layer, colX, nCols, COLW, ROWH, NW, NH, MX, TOP, maxRows, W: MX * 2 + nCols * COLW, H: TOP + maxRows * ROWH + 10 };
 }
+
+// Orthogonal (right-angle) SVG path for a prerequisite link a → b, shared by the
+// overlay and the render script. Adjacent-column links drop straight through the
+// single gutter between the two columns. A LONG link (target ≥ 2 columns away)
+// must not run along a node's centre row — that is what makes every node it
+// passes look connected — so it rises into a ROW-GUTTER lane (between node rows)
+// and runs there, where the intervening columns are empty. `stag` (0..4) offsets
+// the risers and the lane a few px so parallel links separate instead of merging
+// into one fat line.
+export function techEdgePath(a, b, dims, stag = 0) {
+  const { NW, NH, COLW, ROWH } = dims;
+  const ax = a.x + NW, ay = a.y + NH / 2;
+  const bx = b.x, by = b.y + NH / 2;
+  const gap = COLW - NW;
+  const sgx = (stag - 2) * 3;                                  // −6..+6 px lateral spread
+  if (bx - ax <= gap * 1.4) {                                  // adjacent columns: one clean drop
+    const cx = (ax + bx) / 2 + sgx;
+    return `M${ax},${ay} H${cx} V${by} H${bx}`;
+  }
+  const sx = ax + gap * 0.32 + sgx;                            // riser just right of the source
+  const tx = bx - gap * 0.32 + sgx;                            // riser just left of the target
+  const dir = by >= ay ? 1 : -1;
+  const laneY = by - dir * (ROWH * 0.5 - 2) + (stag - 2) * 2.4;// row-gutter lane beside the target
+  return `M${ax},${ay} H${sx} V${laneY} H${tx} V${by} H${bx}`;
+}
