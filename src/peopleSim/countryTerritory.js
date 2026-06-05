@@ -31,7 +31,7 @@ import { T } from "./tuning.js";
 // between) and high-org empires reach far (consolidation with the era). Beyond
 // it, land is wilderness — which is where stateless frontier hamlets live.
 const COUNTRY_REACH_BASE = 8;
-const COUNTRY_REACH_ORG  = 14;   // reach per organisation tech (was 20 — empires were continental too early)
+const COUNTRY_REACH_ORG  = 10;   // reach per organisation tech (was 20→14→10 — smaller realms leave room + frontier for many countries to coexist)
 // ── Frontier-fill: claiming the harsh interior as engineering matures ──
 // For most of history great regions were politically EMPTY — no state claimed
 // the deep Sahara, the high Himalaya, the Amazon, interior Africa. They filled
@@ -63,7 +63,7 @@ const CLAIM_SOFT      = 0.12;
 // climbs with the capital's construction (the surveying/road/communication tech
 // that lets authority carry far), turning the ancient archipelago of realms into
 // the modern wall-to-wall partition as the centuries pass.
-const REACH_ERA = 2;          // budget ×(1 + construction² · REACH_ERA): ~×1 ancient, ~×3 modern (was 3 — eased so realms don't balloon mid-era)
+const REACH_ERA = 1.4;        // budget ×(1 + construction² · REACH_ERA): ~×1 ancient, ~×2.4 modern (was 3→2→1.4 — modern empires stay continental-scale, not planetary, leaving room for many realms)
 // Reach is also scaled by how BIG the realm is, so a claim is backed by real
 // settlements rather than the capital's tech alone. budget ×= clamp(members /
 // REACH_SIZE_REF, REACH_SIZE_MIN, 1): a fledgling realm projects only a fraction
@@ -316,10 +316,10 @@ export function adoptAndFound(world) {
 // on top so a new state can't pop up in an empire's heartland. Gated on real
 // cluster population so the country count stays controlled (no micro-state swarm).
 const NUCLEATE_R          = 9;      // cluster radius, tiles
-const NUCLEATE_SEAT_POP   = 220;    // the seat must be a real regional centre (a large village / town)
-const NUCLEATE_CLUSTER_POP= 600;    // total stateless population nearby to be a viable state
-const NUCLEATE_CAP_DIST   = 10;     // ...and at least this far from any existing capital
-const NUCLEATE_MAX_PASS   = 3;      // cap new states minted per territory pass (anti-bloom)
+const NUCLEATE_SEAT_POP   = 160;    // the seat must be a real regional centre (a large village / town)
+const NUCLEATE_CLUSTER_POP= 400;    // total stateless population nearby to be a viable state
+const NUCLEATE_CAP_DIST   = 8;      // ...and at least this far from any existing capital
+const NUCLEATE_MAX_PASS   = 4;      // cap new states minted per territory pass (anti-bloom)
 export function nucleateFrontierStates(world) {
   const lever = T.FRONTIER_FOUNDING;          // 0 = off (old behaviour), 1 = default, >1 = easier
   if (!(lever > 0)) return;
