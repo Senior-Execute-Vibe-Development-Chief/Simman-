@@ -438,3 +438,24 @@ export function techEffectList(id) {
   }
   return out;
 }
+
+// Stacked totals — every DISCOVERED tech's effects summed per channel (+ the
+// abilities unlocked). No partial credit, no blend: the raw "what all my techs
+// add up to" the tree header shows. `have` is techState(k).have.
+export function techTotals(have) {
+  const ch = {}; for (const c of FX_CH) ch[c] = 0;
+  const can = {}; for (const a of FX_ABIL) can[a] = false;
+  for (let i = 0; i < TECHS.length; i++) {
+    if (!have[i]) continue;
+    const fx = TECH_FX[TECHS[i].id]; if (!fx) continue;
+    for (const key in fx) { const v = fx[key]; if (typeof v === "boolean") { if (v) can[key] = true; } else if (key in ch) ch[key] += v; }
+  }
+  return { ch, can };
+}
+export function techTotalList(have) {
+  const { ch, can } = techTotals(have);
+  const out = [];
+  for (const c of FX_CH) if (Math.abs(ch[c]) > 0.001) out.push({ key: c, text: `${ch[c] > 0 ? "+" : ""}${Math.round(ch[c] * 100)}% ${FX_LABEL[c] || c}`, good: ch[c] > 0 });
+  for (const a of FX_ABIL) if (can[a]) out.push({ key: a, text: FX_LABEL[a] || a, good: true, ability: true });
+  return out;
+}
