@@ -47,8 +47,11 @@ import { T } from "./tuning.js";
 const TERRITORY_BASE = 5;
 // ORG_REACH -> runtime lever (tuning.js T.ORG_REACH)
 export function reachBudget(s) {
-  const k = s.knowledge || {};
-  return TERRITORY_BASE + (k.organization || 0) * T.ORG_REACH;
+  // Admin reach now comes from the reach techs (tech.js) via the settlement's
+  // cached effects (reachLevel tracks organization); falls back to continuous
+  // organization if the cache isn't computed yet.
+  const reach = s._techEff ? s._techEff.reachLevel : ((s.knowledge && s.knowledge.organization) || 0);
+  return TERRITORY_BASE + reach * T.ORG_REACH;
 }
 
 // Per-tile food weight by distance: 1 next to the centre, tailing off with

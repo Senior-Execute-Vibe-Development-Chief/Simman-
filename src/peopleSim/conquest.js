@@ -359,9 +359,9 @@ function majorRiverToll(world, fromTi, toTi, cons) {
 
 // Military/administrative weight, used to pick the capital (strongest member).
 export function settlementPower(s) {
-  const k = s.knowledge || {};
-  const mil = techEff(s).military;                 // combat strength from war techs (tech.js)
-  const org = 1 + (k.organization || 0) * 0.6;     // admin weight stays continuous (tuned empire gates) — migrates with the reach pass
+  const e = techEff(s);
+  const mil = e.military;                           // combat strength from war techs (tech.js)
+  const org = 1 + e.reachLevel * 0.6;              // admin weight from the reach techs (Writing → Code of Laws → Democracy)
   return Math.max(1, s.people) * mil * org;
 }
 
@@ -386,7 +386,7 @@ export function rebuildCountries(world) {
     c.capital = best;
     c.capitalId = best.id;
     const k = best.knowledge || {};
-    c.range = RANGE_BASE + (k.organization || 0) * RANGE_ORG + (k.mobility || 0) * RANGE_MOB + (k.navigation || 0) * RANGE_NAV;
+    c.range = RANGE_BASE + techEff(best).reachLevel * RANGE_ORG + (k.mobility || 0) * RANGE_MOB + (k.navigation || 0) * RANGE_NAV;
     // Personality nudges reach: an expansionist realm projects authority a
     // little farther, a cautious one pulls in. Knowledge still sets the bulk
     // of the reach — this is a mild temperament colouring on top (see
@@ -1065,7 +1065,7 @@ export function updatePolities(world) {
     // grew it past that handful it over-extended and shattered — the late-game
     // re-fragmentation. Scaling capacity with org lets large empires that form by
     // conquest actually HOLD, so consolidation persists into the late game.
-    const capOrg = (cap.knowledge && cap.knowledge.organization) || 0;
+    const capCoh = techEff(cap).cohesion;   // administrative glue (stability techs: law, institutions, religion)
     // Capacity grows with the capital's coercive POWER (people × military-tech ×
     // organisation — see settlementPower), compressed through log2 so it climbs
     // steeply at first then levels: a primitive realm holds barely more than its
@@ -1102,7 +1102,7 @@ export function updatePolities(world) {
     // Organised states weather both war and insolvency far better — ease both
     // throttles toward 1 by the capital's org, so large high-org empires HOLD
     // under pressure instead of shattering at the first frontier war.
-    const resilience = 1 - capOrg * T.DURESS_RESILIENCE;
+    const resilience = 1 - capCoh * T.DURESS_RESILIENCE;
     duress       = 1 - (1 - duress)       * resilience;
     fiscalDuress = 1 - (1 - fiscalDuress) * resilience;
     // Conquest momentum: a winning streak (banked in armies.js) holds a far
@@ -1215,7 +1215,7 @@ export function updatePolities(world) {
         // frontier over many passes, a slow imperial overstretch, rather than
         // shattering wholesale the moment a war pushes it past budget). A
         // primitive realm (low org) has no such glue and fragments fast.
-        const orgHold = 1 - capOrg * T.LOYAL_ORG_HOLD;
+        const orgHold = 1 - capCoh * T.LOYAL_ORG_HOLD;
         s.loyalty = Math.max(0, (s.loyalty ?? 1) - T.LOYAL_DECAY * (1 + over) * orgHold);
         if (s.loyalty <= 0) seeds.push(s);                 // collapsed — defer (revolt is contagious)
       }
@@ -1393,7 +1393,7 @@ function absorbWeakNeighbors(world, countries) {
       else { ncc = co ? co[ni] : -1; }
       if (ncc < 0 || ncc === myCC) continue;
       const F = countries.get(ncc); if (!F) continue;
-      const fOrg = (F.capital.knowledge && F.capital.knowledge.organization) || 0;
+      const fOrg = techEff(F.capital).reachLevel;   // foreign realm's statecraft, from its admin techs (reachLevel tracks org)
       if (fOrg < T.ABSORB_ORG_MIN) continue;
       if (myTier > tierCapForOrg(fOrg)) continue;            // too developed for F's statecraft
       if ((countryPower.get(F.id) || 1) < myCountryPow * T.ABSORB_DOMINANCE) continue;  // not dominant enough

@@ -35,12 +35,13 @@ function run(w, tCrop, SEED, te) {
 
 const fmt = n => n >= 1e3 ? (n/1e3).toFixed(1)+"k" : String(n|0);
 console.log(`Multi-seed A/B @ ${STEPS} steps ${W}x${H}, seeds ${SEEDS.join(",")}\n`);
-console.log("seed     oldPop   newPop   ratio   old(C/M)  new(C/M)  inv");
-let sum = 0, n = 0;
+console.log("seed     pop old→new (ratio)     countries   largest-empire(tiles)   cities/metros        inv");
+let sum = 0, n = 0, esum = 0;
 for (const SEED of SEEDS) {
   const { w, tCrop } = buildWorld(SEED);
   const off = run(w, tCrop, SEED, 0), on = run(w, tCrop, SEED, 1);
   const r = on.pop / Math.max(1, off.pop); sum += r; n++;
-  console.log(`${String(SEED).padEnd(7)} ${fmt(off.pop).padStart(7)} ${fmt(on.pop).padStart(8)} ${r.toFixed(3).padStart(7)}   ${off.st.cities}/${off.st.metropolises}      ${on.st.cities}/${on.st.metropolises}      ${off.inv&&on.inv?"ok":"BAD"}`);
+  const er = on.st.largestEmpire / Math.max(1, off.st.largestEmpire); esum += er;
+  console.log(`${String(SEED).padEnd(6)} ${fmt(off.pop)}→${fmt(on.pop)} (${r.toFixed(2)})      ${String(off.st.countries+"→"+on.st.countries).padEnd(8)}    ${(fmt(off.st.largestEmpire)+"→"+fmt(on.st.largestEmpire)+" ("+er.toFixed(2)+")").padEnd(20)}   ${off.st.cities}/${off.st.metropolises}→${on.st.cities}/${on.st.metropolises}         ${off.inv&&on.inv?"ok":"BAD"}`);
 }
-console.log(`\nmean population ratio new/old = ${(sum/n).toFixed(3)}   (≈1.0 = balance preserved)`);
+console.log(`\nmean pop ratio = ${(sum/n).toFixed(3)}   mean largest-empire ratio = ${(esum/n).toFixed(3)}   (≈1.0 = balance preserved)`);

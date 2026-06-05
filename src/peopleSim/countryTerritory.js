@@ -170,7 +170,7 @@ export function computeCountryTerritory(world) {
     if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless settlements don't seed
     const c = s.countryId;
     members.set(c, (members.get(c) || 0) + 1);
-    const org = (s.knowledge && s.knowledge.organization) || 0;
+    const org = s._techEff ? s._techEff.reachLevel : ((s.knowledge && s.knowledge.organization) || 0);   // admin reach from techs (tech.js)
     if (!capOrg.has(c) || org > capOrg.get(c)) {
       capOrg.set(c, org);
       knOf.set(c, s.knowledge || {});
