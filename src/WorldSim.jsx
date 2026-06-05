@@ -156,7 +156,8 @@ function assignCountryColors(claimArr,tw,th,prev){
 function TechTreeOverlay({k,title,onClose}){
   const ts=techState(k||{});
   const L=techLayout();
-  const {pos,NW,NH,TOP,W,H}=L;
+  const {pos,COLW,NW,NH,TOP,W,H}=L;
+  const GAP=COLW-NW;
   const chip=(bg,bd)=>(<span style={{display:"inline-block",width:9,height:9,background:bg,border:bd,borderRadius:2,marginRight:4,verticalAlign:"middle",boxSizing:"border-box"}}/>);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -176,19 +177,23 @@ function TechTreeOverlay({k,title,onClose}){
               <text x={cx} y={TOP-12} textAnchor="middle" fontSize={11} fill="#5a4a32" fontWeight="bold" style={{textTransform:"uppercase",letterSpacing:0.5}}>{e}</text>
             </g>);
           })}
-          {/* prerequisite links (drawn under nodes) */}
+          {/* prerequisite links — orthogonal (right-angle) routing, drawn UNDER
+              the opaque nodes so a long link passes cleanly behind intervening
+              tiers instead of crossing them. Each link leaves the prereq's right
+              edge, runs to the target column's left gutter, then rises/drops
+              into the target's left edge. */}
           {TECHS.map(t=>t.prereq.map(p=>{const a=pos[p],b=pos[t.id];if(!a||!b)return null;
-            const x1=a.x+NW,y1=a.y+NH/2,x2=b.x,y2=b.y+NH/2,mx=(x1+x2)/2;
+            const x1=a.x+NW,y1=a.y+NH/2,x2=b.x,y2=b.y+NH/2,cx=x2-GAP*0.5;
             const open=ts.have[TECH_IDX[p]]===1;
-            return <path key={p+">"+t.id} d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`} fill="none"
-              stroke={open?"#7a5c34":"rgba(120,100,70,0.28)"} strokeWidth={open?1.6:1} strokeDasharray={open?"":"3 3"}/>;
+            return <path key={p+">"+t.id} d={`M${x1},${y1} H${cx} V${y2} H${x2}`} fill="none"
+              stroke={open?"#7a5c34":"rgba(120,100,70,0.32)"} strokeWidth={open?1.7:1} strokeDasharray={open?"":"3 3"}/>;
           }))}
-          {/* tech nodes */}
+          {/* tech nodes (opaque fills occlude the links routed behind them) */}
           {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.have,t);const era=ERA_BG[t.era]||"#b9b2a4";
             let fill,stroke,txt,sw,dash="";
             if(ns.state==="have"){fill=era;stroke="#3a2c18";txt="#1a140c";sw=1.1;}
-            else if(ns.state==="next"){fill="rgba(255,251,243,0.94)";stroke=era;txt="#2c2114";sw=2;}
-            else{fill="rgba(150,140,120,0.14)";stroke="rgba(90,75,50,0.38)";txt="rgba(70,58,40,0.6)";sw=1;dash="4 3";}
+            else if(ns.state==="next"){fill="#fffaf0";stroke=era;txt="#2c2114";sw=2;}
+            else{fill="#e9e1ce";stroke="rgba(90,75,50,0.42)";txt="rgba(70,58,40,0.62)";sw=1;dash="4 3";}
             return(<g key={t.id}>
               <title>{t.name} — {t.desc}{t.prereq.length?`\nRequires: ${t.prereq.map(pp=>TECHS[TECH_IDX[pp]].name).join(" + ")}`:""}{ns.state==="next"?`\n${(ns.prog*100)|0}% — ${t.gate[0]} → ${(t.gate[1]*100)|0}`:ns.state==="locked"?"\n(locked — an earlier tech is missing)":""}</title>
               <rect x={p.x} y={p.y} width={NW} height={NH} rx={5} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash}/>

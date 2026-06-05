@@ -40,7 +40,7 @@ export const TECHS = [
   { id:"archery",       era:0, name:"Archery",         prereq:["hunting"],              req:k=>k.construction>=0.24,                        gate:["construction",0.24], desc:"The bow — the first true ranged weapon." },
 
   // ── Bronze Age ──────────────────────────────────────────────────────
-  { id:"mining",        era:1, name:"Mining",          prereq:["the_wheel"],            req:k=>k.construction>=0.36,                        gate:["construction",0.36], desc:"Shafts and galleries win ore and stone from the earth." },
+  { id:"mining",        era:1, name:"Mining",          prereq:["stone_tools"],          req:k=>k.construction>=0.36,                        gate:["construction",0.36], desc:"Shafts and galleries win ore and stone from the earth." },
   { id:"masonry",       era:1, name:"Masonry",         prereq:["pottery"],              req:k=>k.construction>=0.42,                        gate:["construction",0.42], desc:"Dressed stone — city walls, tombs and temples." },
   { id:"copper_working",era:1, name:"Copper Working",  prereq:["mining"],               req:k=>k.metallurgy>=0.18,                          gate:["metallurgy",0.18],   desc:"Smelted copper — knives, ornaments, the first metal." },
   { id:"sailing",       era:1, name:"Sailing",         prereq:["pottery"],              req:k=>k.navigation>=0.30,                          gate:["navigation",0.30],   desc:"Sails and oars carry boats along the coast." },
@@ -71,7 +71,7 @@ export const TECHS = [
 
   // ── Medieval ────────────────────────────────────────────────────────
   { id:"feudalism",     era:3, name:"Feudalism",       prereq:["code_of_laws"],         req:k=>k.organization>=0.62,                        gate:["organization",0.62], desc:"Lords, vassals, fiefs and the manor economy." },
-  { id:"paper",         era:3, name:"Paper",           prereq:["writing","currency"],   req:k=>k.organization>=0.64,                        gate:["organization",0.64], desc:"Cheap rag paper replaces parchment and clay." },
+  { id:"paper",         era:3, name:"Paper",           prereq:["writing"],              req:k=>k.organization>=0.64,                        gate:["organization",0.64], desc:"Cheap rag paper replaces parchment and clay." },
   { id:"alchemy",       era:3, name:"Alchemy",         prereq:["philosophy","pottery"], req:k=>k.organization>=0.66,                        gate:["organization",0.66], desc:"Proto-chemistry: acids, distillation, the elements." },
   { id:"guilds",        era:3, name:"Guilds",          prereq:["currency","masonry"],   req:k=>k.organization>=0.66,                        gate:["organization",0.66], desc:"Craft guilds master and monopolise the trades." },
   { id:"university",    era:3, name:"University",       prereq:["philosophy","paper"],   req:k=>k.organization>=0.68,                        gate:["organization",0.68], desc:"Scholars gather; knowledge gathers and compounds." },
@@ -185,7 +185,7 @@ export function nextTechs(k, have, n = 3) {
 // ordered by the mean ROW of their already-placed prerequisites (a one-sided
 // barycentric sort) to keep the edges from crossing.
 export function techLayout(opts = {}) {
-  const COLW = opts.COLW ?? 150, ROWH = opts.ROWH ?? 44, NW = opts.NW ?? 132, NH = opts.NH ?? 28;
+  const COLW = opts.COLW ?? 164, ROWH = opts.ROWH ?? 50, NW = opts.NW ?? 132, NH = opts.NH ?? 30;
   const MX = opts.MX ?? 16, TOP = opts.TOP ?? 44, CAP = opts.CAP ?? 5;
   // 1. Longest-path depth: dep = 1 + the deepest prerequisite's depth.
   const layer = {};
