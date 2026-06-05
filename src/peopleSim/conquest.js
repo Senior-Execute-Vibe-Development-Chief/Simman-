@@ -18,6 +18,7 @@ import { localPByCountry } from "./inflation.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, prunePersonalities, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER } from "./countryTerritory.js";
+import { techEff } from "./settlement.js";
 import { T } from "./tuning.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
@@ -359,8 +360,8 @@ function majorRiverToll(world, fromTi, toTi, cons) {
 // Military/administrative weight, used to pick the capital (strongest member).
 export function settlementPower(s) {
   const k = s.knowledge || {};
-  const mil = 1 + (k.metallurgy || 0) * 1.5 + (k.mobility || 0) * 0.8;
-  const org = 1 + (k.organization || 0) * 0.6;
+  const mil = techEff(s).military;                 // combat strength from war techs (tech.js)
+  const org = 1 + (k.organization || 0) * 0.6;     // admin weight stays continuous (tuned empire gates) — migrates with the reach pass
   return Math.max(1, s.people) * mil * org;
 }
 

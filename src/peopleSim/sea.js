@@ -29,7 +29,7 @@
 // One global flood per pass (bounded by a visit cap) keeps this cheap
 // regardless of how many ports exist — far cheaper than a per-port flood.
 
-import { makeSettlement } from "./settlement.js";
+import { makeSettlement, techEff } from "./settlement.js";
 import { T } from "./tuning.js";
 import { isContinentalLand } from "./state.js";
 import { recordOut, OUT_COLONY } from "./money.js";
@@ -164,7 +164,9 @@ export function updateSea(world) {
   for (const p of ports) {
     const nav = p.knowledge.navigation || 0;
     const canSail = nav >= MIN_NAV_FOR_SEA && (p.people || 0) >= T.SEA_MIN_POP;
-    budget.set(p.id, canSail ? SEA_RANGE_BASE + nav * T.SEA_RANGE_NAV : 0);
+    // Sea-lane reach now scales with the naval techs (Galleys → Caravels → Ocean
+    // Sailing → Steamship), not raw navigation (tech.js seaRange channel).
+    budget.set(p.id, canSail ? SEA_RANGE_BASE + techEff(p).seaRange * T.SEA_RANGE_NAV : 0);
   }
 
   // Colony-eligible ports (we only collect shore candidates for these, to
@@ -385,7 +387,7 @@ function tryColonize(world, A, cands, prev) {
     people: COLONY_PEOPLE, wealth: endow,
     landTi: chosen.landTi,
     path: full.map(ti => ({ x: (ti % tw) + 0.5, y: ((ti / tw) | 0) + 0.5 })),
-    idx: 0, speed: T.SHIP_SPEED * (1 + (A.knowledge.navigation || 0)),
+    idx: 0, speed: T.SHIP_SPEED * (1 + techEff(A).seaSpeed),
     x: A.pos.x, y: A.pos.y,
   });
   if (A.history) A.history.push({ step: world.step, type: "colony-launched", landTi: chosen.landTi });

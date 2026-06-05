@@ -16,6 +16,7 @@
 // stall and the front ebbs and flows.
 
 import { coreRadiusFor } from "./territory.js";
+import { techEff } from "./settlement.js";
 import { findPath } from "./roads.js";
 import { forEachNear } from "./spatialGrid.js";
 import { localEdgeCost } from "./transport.js";
@@ -114,8 +115,7 @@ const SIEGE_BREAK       = 0.15;
 const MILITIA_MORALE_FLOOR = 0.2;   // even a mutinous city musters this fraction
 
 function techMul(s) {
-  const k = s.knowledge || {};
-  return 1 + (k.metallurgy || 0) * 1.5 + (k.mobility || 0) * 0.8;
+  return techEff(s).military;   // combat multiplier from the discovered war techs (tech.js)
 }
 function might(s) { return (s.army || 0) * techMul(s); }
 // Effective defensive might of a settlement holding its OWN core: the greater

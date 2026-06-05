@@ -189,6 +189,7 @@ export function makeSettlement(world, x, y, opts = {}) {
   s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
   world.settlements.push(s);
   seedLocalTerritory(world, s);   // food/resource stats until the first full territory pass
+  s._techEff = techEffects(s.knowledge, T.TECH_EFFECTS);   // tech bonuses available from tick 0 (refreshed in updateKnowledge)
   return s;
 }
 

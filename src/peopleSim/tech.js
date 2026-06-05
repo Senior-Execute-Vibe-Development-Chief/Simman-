@@ -356,6 +356,15 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const FX_CH = ["farm", "fish", "build", "military", "reach", "cohesion", "defense", "trade", "wealth", "seaSpeed", "seaRange"];
 const FX_ABIL = ["embark", "ocean", "colonize", "walls", "market"];
 
+// Full-tech channel totals (every tech's contribution summed). Used to NORMALISE
+// the "level" channels — the ones that stand in for a 0..1 track inside a formula
+// (build↔construction, reach/cohesion↔organization, sea*↔navigation) — so they
+// span 0..1 like that track. The additive-bonus channels (farm/fish/military) are
+// NOT normalised; their hand-calibrated sums already equal the old additive max.
+const FX_TOTAL = {}; for (const c of FX_CH) FX_TOTAL[c] = 0;
+for (const id in TECH_FX) { const fx = TECH_FX[id]; for (const key in fx) if (typeof fx[key] === "number" && key in FX_TOTAL) FX_TOTAL[key] += fx[key]; }
+const lvl = (sum, ch) => FX_TOTAL[ch] > 0 ? sum / FX_TOTAL[ch] : 0;   // raw channel sum → 0..1 level
+
 // Aggregate a culture's discovered techs into concrete bonus channels + ability
 // flags, blended against the OLD continuous-knowledge formulas by `blend`
 // (0 = exactly the previous sim, 1 = fully tech-driven). The returned object is
@@ -388,13 +397,13 @@ export function techEffects(k, blend = 1) {
     have, ch, ...can,
     farmYield:  1 + lerp(ag * 1.2, ch.farm, blend),            // ×land food   (old 1+ag·1.2)
     fishFactor: 0.3 + lerp(nav * 1.2, ch.fish, blend),          // ×fishery     (old 0.3+nav·1.2)
-    buildLevel: lerp(cn, ch.build, blend),                      // density lvl  (old construction)
     military:   1 + lerp(met * 1.5 + mob * 0.8, ch.military, blend), // ×combat (old 1+met·1.5+mob·0.8)
-    reachLevel: lerp(org, ch.reach, blend),                     // admin reach  (old organization)
-    cohesion:   lerp(org, ch.cohesion, blend),                  // loyalty hold (old organization)
-    defenseLevel: lerp(cn, ch.defense, blend),                  // city defence (old construction)
-    seaSpeed:   lerp(nav, ch.seaSpeed, blend),                  // ship speed   (old navigation)
-    seaRange:   lerp(nav, ch.seaRange, blend),                  // naval reach  (old navigation)
+    buildLevel: lerp(cn, lvl(ch.build, "build"), blend),        // density lvl  (old construction)
+    reachLevel: lerp(org, lvl(ch.reach, "reach"), blend),       // admin reach  (old organization)
+    cohesion:   lerp(org, lvl(ch.cohesion, "cohesion"), blend), // loyalty hold (old organization)
+    defenseLevel: lerp(cn, lvl(ch.defense, "defense"), blend),  // city defence (old construction)
+    seaSpeed:   lerp(nav, lvl(ch.seaSpeed, "seaSpeed"), blend), // ship speed   (old navigation)
+    seaRange:   lerp(nav, lvl(ch.seaRange, "seaRange"), blend), // naval reach  (old navigation)
   };
 }
 
