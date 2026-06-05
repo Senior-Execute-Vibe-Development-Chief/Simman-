@@ -407,6 +407,12 @@ export function techEffects(k, blend = 1) {
     defenseLevel: lerp(cn, lvl(ch.defense, "defense"), blend),  // city defence (old construction)
     seaSpeed:   lerp(nav, lvl(ch.seaSpeed, "seaSpeed"), blend), // ship speed   (old navigation)
     seaRange:   lerp(nav, lvl(ch.seaRange, "seaRange"), blend), // naval reach  (old navigation)
+    // Trade & wealth are ADDED bonuses (the old sim had no trade-infrastructure
+    // term) — Currency → Banking → Economics lift a settlement's export value, so
+    // trade-tech cities capture more of the (fixed, mining-minted) coin pool.
+    // 1.0 at blend 0 (no change), up to ~1.5 fully teched.
+    tradeMult:  1 + blend * lvl(ch.trade, "trade") * 0.5,
+    wealthMult: 1 + blend * lvl(ch.wealth, "wealth") * 0.5,     // exposed for later (treasury/mining); not yet wired
   };
 }
 

@@ -440,7 +440,7 @@ export function computeExportValue(s, world) {
   // (see sackPenalty above). World-aware callers pass `world`; older callers
   // get penalty=1 (no change). The trade pass and the inflation pass DO
   // pass world, so the dynamics fire where it matters most.
-  return v * Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step);
+  return v * Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step) * techEff(s).tradeMult;
 }
 
 // Per-tick memo of computeExportValue. It's a heavy function (several log/sqrt
