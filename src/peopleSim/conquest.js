@@ -189,7 +189,8 @@ const POW_REF = 380;
 // — its load spikes and it drifts to independence — while a connected province
 // is reached normally. This is what makes an invasion that SPLITS an empire
 // shear off the severed part as a successor state, instead of slow nibbling.
-const FOREIGN_CROSS = 9;
+// (rival territory is now fully IMPASSABLE to reach — see capitalTransportCosts —
+//  so a realm holds only what it can reach through its own land, wilderness or sea)
 const COERCE_CAP    = 2.5;   // a far-stronger capital coerces a province (caps the load cut)
 // SIZE_LOAD -> runtime lever (tuning.js T.SIZE_LOAD)
 const SIZE_REF      = 1000;  // population scale for the size term
@@ -1030,7 +1031,7 @@ function capitalTransportCosts(world, c) {
       const ni = ns[k]; if (ni < 0) continue;
       let ec = localEdgeCost(world, ti, ni, kn, true);  // admin reach ignores roads
       if (ec === Infinity) continue;
-      if (co) { const oc = co[ni]; if (oc >= 0 && oc !== c.id) ec *= FOREIGN_CROSS; }  // contiguity: crossing foreign land is dear
+      if (co) { const oc = co[ni]; if (oc >= 0 && oc !== c.id) continue; }  // contiguity: a RIVAL's land is impassable — you cannot project reach through it (only own land, wilderness, or the sea)
       const nd = d + ec * mul[k];
       if (nd > maxCost) continue;
       const prev = dist.get(ni);
