@@ -307,25 +307,28 @@ export const TECH_FX = {
   the_factory:  { build:0.06, trade:0.20, wealth:0.10 },
   mass_prod:    { build:0.04, trade:0.18 },
   electricity:  { build:0.03, wealth:0.15, reach:0.06 },
-  // — metal / military —  (military sums ≈ 2.30, ≈ old met·1.5+mob·0.8)
-  copper_working:{ military:0.03, wealth:0.03 },
-  bronze_working:{ military:0.05 },
-  bronze_arms:  { military:0.12 },
-  archery:      { military:0.04 },
-  iron_working: { military:0.09 },
-  iron_legions: { military:0.17, cohesion:0.04 },
-  chariots:     { military:0.07 },
-  cavalry:      { military:0.13 },
-  chivalry:     { military:0.16, defense:0.08 },
-  blast_furnace:{ military:0.06, build:0.02 },
-  gunpowder:    { military:0.15, defense:-0.12 },   // ends the age of the castle wall
-  firearms:     { military:0.19 },
-  foundry:      { military:0.07, build:0.02 },
-  musketry:     { military:0.13, cohesion:0.05 },
-  steel:        { military:0.10, build:0.04 },
-  rifling:      { military:0.22 },
-  combustion:   { military:0.11, trade:0.10, seaSpeed:0.20 },
-  flight:       { military:0.14, reach:0.08 },
+  // — metal / military —  (military sums ≈ 2.30 ≈ old met·1.5+mob·0.8, but
+  //  FRONT-LOADED onto the era-defining weapons — copper/bronze/iron and the
+  //  chariot/cavalry steps — so a mid-tech army isn't a pushover, the way the
+  //  continuous met·1.5 made it. A bronze or iron sword is a real leap.)
+  copper_working:{ military:0.24, wealth:0.03 },
+  bronze_working:{ military:0.28 },
+  bronze_arms:  { military:0.08 },
+  archery:      { military:0.05 },
+  iron_working: { military:0.30 },
+  iron_legions: { military:0.12, cohesion:0.04 },
+  chariots:     { military:0.28 },
+  cavalry:      { military:0.18 },
+  chivalry:     { military:0.10, defense:0.08 },
+  blast_furnace:{ military:0.03, build:0.02 },
+  gunpowder:    { military:0.05, defense:-0.12 },   // ends the age of the castle wall
+  firearms:     { military:0.05 },
+  foundry:      { military:0.04, build:0.02 },
+  musketry:     { military:0.07, cohesion:0.05 },
+  steel:        { military:0.06, build:0.04 },
+  rifling:      { military:0.05 },
+  combustion:   { military:0.03, trade:0.10, seaSpeed:0.20 },
+  flight:       { military:0.03, reach:0.08 },
   mining:       { wealth:0.12, military:0.02 },
   // — administration / reach / cohesion —
   mysticism:    { cohesion:0.05 },
