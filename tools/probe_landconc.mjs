@@ -9,6 +9,7 @@ import { computeRivers } from "../src/riverGen.js";
 import { generateResources } from "../src/resourceGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
 import { T } from "../src/peopleSim/tuning.js";
+import { techEffects } from "../src/peopleSim/tech.js";
 if (process.env.TE !== undefined) T.TECH_EFFECTS = parseFloat(process.env.TE);
 
 const STEPS = parseInt(process.argv[2] || "12000", 10);
@@ -38,9 +39,12 @@ function snapshot(s){
   // largest realm: how big, how many settlements, tiles/settlement, and how it grew
   const [topCC,topTiles]=entries[0]||[-1,0];
   const topSetts=sc.get(topCC)||1;
-  const topGain=ld.gain.get(topCC)||0;                  // settlements it took by conquest+absorb (cumulative)
-  console.log(`step ${String(s).padStart(5)}: realms ${entries.length}  land top1/3/5 ${share(1)}/${share(3)}/${share(5)}  | moves: conquest ${ld.conquest} absorb ${ld.absorb} found ${found} adopt ${adopt}`);
-  console.log(`            largest realm: ${topTiles}t  ${topSetts} setts  ${(topTiles/topSetts)|0} tiles/sett  took ${topGain} setts by force/absorb`);
+  let topCap=null,pop=0;
+  for(const x of world.settlements){ if(x.mode!=="settled")continue; pop+=x.people||0; if(x.countryId===topCC&&(!topCap||(x.people||0)>(topCap.people||0)))topCap=x; }
+  const topLogi=topCap?techEffects(topCap.knowledge,1).logisticsLevel:0;   // largest realm's transport tech
+  const pf=n=>n>=1e3?(n/1e3).toFixed(0)+"k":String(n|0);
+  console.log(`step ${String(s).padStart(5)}: realms ${entries.length}  land top1/3/5 ${share(1)}/${share(3)}/${share(5)}  pop ${pf(pop)} | moves: conquest ${ld.conquest} absorb ${ld.absorb} found ${found}`);
+  console.log(`            largest realm: ${topTiles}t  ${topSetts} setts  logistics ${topLogi.toFixed(2)}  (is the biggest realm the most transport-advanced?)`);
 }
 for(let s=1;s<=STEPS;s++){ stepPeopleSim(world,1); if(s%50===0) classify(); if(s%3000===0) snapshot(s); }
 console.log(`\nTOTALS: conquest ${world.debug.land.conquest}  absorb ${world.debug.land.absorb}  founded ${found}  adopted ${adopt}`);

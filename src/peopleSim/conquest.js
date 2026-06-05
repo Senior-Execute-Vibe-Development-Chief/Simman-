@@ -177,14 +177,12 @@ const SEAT_BONUS_CAP = 10;   // total seat contribution is capped (admin has dim
 // great powers persist AND shed their over-extension.
 const CAP_K   = 2.6;
 const POW_REF = 380;
-// Transport/communication gate on administrable capacity: factor = LOGI_CAP_MIN
-// + logisticsLevel·LOGI_CAP_SLOPE. Road-less ≈ 0.45×, Roads ≈ 0.65× (Rome),
-// Rail+Telegraph ≈ 1.2× (continental). NOTE: this gates a single realm's
-// administrable span (historically correct), but it does NOT reduce emergent
-// MAP-wide empire size — squeezing it just makes weak realms shed land that the
-// strong re-conquer, so the conquest equilibrium re-establishes the same sizes.
-const LOGI_CAP_MIN   = 0.45;
-const LOGI_CAP_SLOPE = 0.85;
+// Empire size is NOT capped. It emerges from the existing over-extension
+// mechanism: provinces past a realm's REACH bleed loyalty and revolt. We gate
+// that reach (`range`, the admin-load denominator) hard on transport tech below —
+// so without roads/rail/telegraph a realm's conquests sit "too far", bleed
+// loyalty, and break away on their own, making continental size very UNLIKELY
+// (not impossible) before the tech to actually extend reach exists.
 // Contiguity toll: projecting administrative authority THROUGH a foreign
 // country's territory costs this much more per tile. So a province cut off from
 // the capital's contiguous realm (an enemy wedge between them) reads as very far
@@ -340,7 +338,7 @@ const RANGE_BASE = 8 * 1.02, RANGE_ORG = 16 * 1.02, RANGE_MOB = 10 * 1.02, RANGE
 // can hold only a COMPACT core — distant conquests revolt — and continental
 // SPREAD needs rail+telegraph. Diagnosis (probe_landconc) showed admin alone was
 // projecting empires across continents without the transport history required.
-const RANGE_LOGI = 17, RANGE_ADMIN = 5, RANGE_MOB_T = 5, RANGE_NAV_T = 3;
+const RANGE_BASE_T = 5, RANGE_LOGI = 24, RANGE_ADMIN = 2, RANGE_MOB_T = 4, RANGE_NAV_T = 3;
 // (all ×1.02 re-anchor the 0.5-pivot expansionReachMul — personality.js;
 //  c.range = RANGE_expr × reachMul, so behaviour is identical to the old form)
 
@@ -403,7 +401,7 @@ export function rebuildCountries(world) {
     const k = best.knowledge || {};
     const bE = techEff(best), bMob = k.mobility || 0, bNav = k.navigation || 0;
     const rangeOld = RANGE_BASE + bE.reachLevel * RANGE_ORG + bMob * RANGE_MOB + bNav * RANGE_NAV;
-    const rangeNew = RANGE_BASE + bE.logisticsLevel * RANGE_LOGI + bE.reachLevel * RANGE_ADMIN + bMob * RANGE_MOB_T + bNav * RANGE_NAV_T;
+    const rangeNew = RANGE_BASE_T + bE.logisticsLevel * RANGE_LOGI + bE.reachLevel * RANGE_ADMIN + bMob * RANGE_MOB_T + bNav * RANGE_NAV_T;
     c.range = rangeOld + (rangeNew - rangeOld) * T.TECH_EFFECTS;   // transport-gated hold-distance (TE=0 → old admin-driven)
     // Personality nudges reach: an expansionist realm projects authority a
     // little farther, a cautious one pulls in. Knowledge still sets the bulk
@@ -1096,16 +1094,8 @@ export function updatePolities(world) {
     // plague, a sacked throne) shrinks capacity and the frontier sheds — and an
     // empire that conquers past this budget holds the excess only on pacification
     // grace, then fragments back toward it once the conquest stalls.
-    // Transport/communication gate on how many provinces can actually be
-    // ADMINISTERED: roads → telegraph extend the span a capital can hold, so a
-    // road-less realm stays small however strong (the Mongols conquered vastly
-    // but couldn't HOLD it), Rome's roads bought a Mediterranean empire, and
-    // rail+telegraph a continental one. This is what bounds empire SIZE via
-    // conquest — capacity was previously power-only, transport-blind. Blended by
-    // TECH_EFFECTS (=0 → the old power-only capacity).
-    const logiCap = 1 + (LOGI_CAP_MIN + capE.logisticsLevel * LOGI_CAP_SLOPE - 1) * T.TECH_EFFECTS;
-    const peaceCapacity = (CAP_K * Math.log2(1 + capPower / POW_REF)
-                        + Math.min(SEAT_BONUS_CAP, seatBonus)) * logiCap;
+    const peaceCapacity = CAP_K * Math.log2(1 + capPower / POW_REF)
+                        + Math.min(SEAT_BONUS_CAP, seatBonus);
 
     // ── War duress: throttle the budget while the realm is fighting ────
     // (fronts are tallied in armies.js advanceFronts → world._fronts.)
