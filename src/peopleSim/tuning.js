@@ -72,9 +72,9 @@ export const TUNING_SCHEMA = [
     category: "Military & conquest",
     blurb: "Aggression, war speed, sieges, and how stable the political map is.",
     params: [
-      { key: "ATTACK_MIN_RATIO", label: "Attack threshold", def: 1.176, min: 1.0, max: 3.0, step: 0.02,
-        desc: "Power advantage needed to push a front. Up = wars stalemate; down = relentless aggression." },
-      { key: "MAX_CAPTURE", label: "Max tiles per pass", def: 24, min: 1, max: 120, step: 1,
+      { key: "ATTACK_MIN_RATIO", label: "Attack threshold", def: 1.45, min: 1.0, max: 3.0, step: 0.02,
+        desc: "Power advantage needed to push a front. Up = wars stalemate; down = relentless aggression. (1.176→1.45: wars need a real edge, so the map consolidates less and many states survive.)" },
+      { key: "MAX_CAPTURE", label: "Max tiles per pass", def: 12, min: 1, max: 120, step: 1,
         desc: "Hard cap on tiles a front grabs per war pass. The raw conquest-speed knob." },
       { key: "CITY_STORM_RATIO", label: "City siege threshold", def: 1.6, min: 1.0, max: 4.0, step: 0.1,
         desc: "Power ratio needed to besiege a city core. Up = cities hold out far longer." },
