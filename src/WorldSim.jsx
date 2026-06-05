@@ -196,7 +196,7 @@ function TechTreeOverlay({k,title,onClose}){
             return(<g key={t.id}>
               <title>{t.name} — {t.desc}{t.prereq.length?`\nRequires: ${t.prereq.map(pp=>TECHS[TECH_IDX[pp]].name).join(" + ")}`:""}{ns.state==="next"?`\n${(ns.prog*100)|0}% — ${t.gate[0]} → ${(t.gate[1]*100)|0}`:ns.state==="locked"?"\n(locked — an earlier tech is missing)":""}</title>
               <rect x={p.x} y={p.y} width={NW} height={NH} rx={5} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash}/>
-              <text x={p.x+7} y={p.y+NH/2+3.2} fontSize={9} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{t.name}</text>
+              <text x={p.x+9} y={p.y+NH/2+3.6} fontSize={10} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{t.name}</text>
               {ns.state==="next"&&<rect x={p.x+1} y={p.y+NH-3} width={(NW-2)*ns.prog} height={2.4} fill={era} rx={1.2}/>}
             </g>);
           })}

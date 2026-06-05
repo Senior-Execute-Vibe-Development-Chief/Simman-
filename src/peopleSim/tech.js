@@ -185,8 +185,8 @@ export function nextTechs(k, have, n = 3) {
 // ordered by the mean ROW of their already-placed prerequisites (a one-sided
 // barycentric sort) to keep the edges from crossing.
 export function techLayout(opts = {}) {
-  const COLW = opts.COLW ?? 164, ROWH = opts.ROWH ?? 50, NW = opts.NW ?? 132, NH = opts.NH ?? 30;
-  const MX = opts.MX ?? 16, TOP = opts.TOP ?? 44, CAP = opts.CAP ?? 5;
+  const COLW = opts.COLW ?? 228, ROWH = opts.ROWH ?? 84, NW = opts.NW ?? 138, NH = opts.NH ?? 32;
+  const MX = opts.MX ?? 20, TOP = opts.TOP ?? 52, CAP = opts.CAP ?? 5;
   // 1. Longest-path depth: dep = 1 + the deepest prerequisite's depth.
   const layer = {};
   const depthOf = t => {
@@ -241,14 +241,14 @@ export function techEdgePath(a, b, dims, stag = 0) {
   const ax = a.x + NW, ay = a.y + NH / 2;
   const bx = b.x, by = b.y + NH / 2;
   const gap = COLW - NW;
-  const sgx = (stag - 2) * 3;                                  // −6..+6 px lateral spread
+  const sgx = (stag - 2) * 7;                                  // −14..+14 px lateral spread
   if (bx - ax <= gap * 1.4) {                                  // adjacent columns: one clean drop
     const cx = (ax + bx) / 2 + sgx;
     return `M${ax},${ay} H${cx} V${by} H${bx}`;
   }
-  const sx = ax + gap * 0.32 + sgx;                            // riser just right of the source
-  const tx = bx - gap * 0.32 + sgx;                            // riser just left of the target
+  const sx = ax + gap * 0.30 + sgx;                            // riser just right of the source
+  const tx = bx - gap * 0.30 + sgx;                            // riser just left of the target
   const dir = by >= ay ? 1 : -1;
-  const laneY = by - dir * (ROWH * 0.5 - 2) + (stag - 2) * 2.4;// row-gutter lane beside the target
+  const laneY = by - dir * (ROWH * 0.5 - 6) + (stag - 2) * 6;  // row-gutter lane beside the target
   return `M${ax},${ay} H${sx} V${laneY} H${tx} V${by} H${bx}`;
 }

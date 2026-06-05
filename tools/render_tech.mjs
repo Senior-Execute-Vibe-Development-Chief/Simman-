@@ -40,7 +40,7 @@ function svgFor(title, k) {
     else if (ns.state === "next") { fill = "#fffaf0"; stroke = era; txt = "#2c2114"; sw = 2; }
     else { fill = "#e9e1ce"; stroke = "rgba(90,75,50,0.42)"; txt = "rgba(70,58,40,0.62)"; sw = 1; dash = '4 3'; }
     s += `<rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="5" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" ${dash?`stroke-dasharray="${dash}"`:""}/>`;
-    s += `<text x="${p.x+7}" y="${p.y+NH/2+3.2}" font-family="sans-serif" font-size="9" fill="${txt}" ${ns.state==="have"?'font-weight="bold"':""}>${esc(t.name)}</text>`;
+    s += `<text x="${p.x+9}" y="${p.y+NH/2+3.6}" font-family="sans-serif" font-size="10" fill="${txt}" ${ns.state==="have"?'font-weight="bold"':""}>${esc(t.name)}</text>`;
     if (ns.state === "next") s += `<rect x="${p.x+1}" y="${p.y+NH-3}" width="${(NW-2)*ns.prog}" height="2.4" fill="${era}" rx="1.2"/>`;
   }
   s += `</g></svg>`;
