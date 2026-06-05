@@ -266,7 +266,75 @@ export function computeCountryTerritory(world) {
       if (nd < cost[ni]) { cost[ni] = nd; co[ni] = c; seedBud[ni] = basinBud; heap.push(ni, nd, c); }
     }
   }
+  closeRealmGaps(world, co, T.REALM_GAP_FILL);
   return co;
+}
+
+// ── Solidify each realm: bridge the wilderness GAPS between a realm's OWN
+// settlements so a country reads as ONE clean territorial chunk, not a confetti
+// of detached basin-dots separated by unclaimed land. A wilderness LAND tile is
+// claimed for country C only when C lies on BOTH sides of it along an axis
+// (north&south, or east&west) within D tiles, with nothing else wedged between —
+// i.e. the tile sits in an interior gap / channel / concavity of C. The OPEN
+// FRONTIER (C on one side, wilderness out the other) and the BUFFER between two
+// DIFFERENT realms (C on one side, a rival on the other) are deliberately left
+// unclaimed, so the sparse "islands of territory in a sea of wilderness" look
+// survives BETWEEN realms while each realm itself fills solid. WATER blocks the
+// span — a strait is never bridged into land. Four linear sweeps → O(N), so this
+// stays cheap at any map size. Set D=0 (REALM_GAP_FILL) to recover the old basins.
+function closeRealmGaps(world, co, D) {
+  if (!(D > 0)) return;
+  const { N, tw, th, elev } = world;
+  // For each tile, the nearest country (within D) looking W / E / N / S, with
+  // wilderness transparent and water opaque (a ray dies at the coast).
+  let buf = world._gapBuf;
+  if (!buf || buf.wC.length !== N) buf = world._gapBuf = { wC: new Int32Array(N), eC: new Int32Array(N), nC: new Int32Array(N), sC: new Int32Array(N) };
+  const { wC, eC, nC, sC } = buf;
+  for (let y = 0; y < th; y++) {                       // ← nearest country to the WEST
+    let last = -1, lastP = -1e9; const row = y * tw;
+    for (let x = 0; x < tw; x++) { const ti = row + x;
+      if (elev[ti] <= 0) { last = -1; lastP = -1e9; wC[ti] = -1; continue; }
+      wC[ti] = (last >= 0 && x - lastP <= D) ? last : -1;
+      if (co[ti] >= 0) { last = co[ti]; lastP = x; }
+    }
+  }
+  for (let y = 0; y < th; y++) {                       // → nearest country to the EAST
+    let last = -1, lastP = 1e9; const row = y * tw;
+    for (let x = tw - 1; x >= 0; x--) { const ti = row + x;
+      if (elev[ti] <= 0) { last = -1; lastP = 1e9; eC[ti] = -1; continue; }
+      eC[ti] = (last >= 0 && lastP - x <= D) ? last : -1;
+      if (co[ti] >= 0) { last = co[ti]; lastP = x; }
+    }
+  }
+  for (let x = 0; x < tw; x++) {                       // ↓ nearest country to the NORTH
+    let last = -1, lastP = -1e9;
+    for (let y = 0; y < th; y++) { const ti = y * tw + x;
+      if (elev[ti] <= 0) { last = -1; lastP = -1e9; nC[ti] = -1; continue; }
+      nC[ti] = (last >= 0 && y - lastP <= D) ? last : -1;
+      if (co[ti] >= 0) { last = co[ti]; lastP = y; }
+    }
+  }
+  for (let x = 0; x < tw; x++) {                       // ↑ nearest country to the SOUTH
+    let last = -1, lastP = 1e9;
+    for (let y = th - 1; y >= 0; y--) { const ti = y * tw + x;
+      if (elev[ti] <= 0) { last = -1; lastP = 1e9; sC[ti] = -1; continue; }
+      sC[ti] = (last >= 0 && lastP - y <= D) ? last : -1;
+      if (co[ti] >= 0) { last = co[ti]; lastP = y; }
+    }
+  }
+  // Claim every unclaimed land tile flanked by the SAME realm on an opposite pair
+  // (gather first, write after, so fills don't seed off each other within a pass).
+  let fills = world._gapFills;
+  if (!fills || fills.length < N) fills = world._gapFills = new Int32Array(N);
+  let n = 0;
+  for (let ti = 0; ti < N; ti++) {
+    if (co[ti] >= 0 || elev[ti] <= 0) continue;
+    let c = -1;
+    if (wC[ti] >= 0 && wC[ti] === eC[ti]) c = wC[ti];           // horizontal channel
+    else if (nC[ti] >= 0 && nC[ti] === sC[ti]) c = nC[ti];      // vertical channel
+    if (c >= 0) { fills[n++] = ti; fills[n++] = c; }
+  }
+  for (let i = 0; i < n; i += 2) co[fills[i]] = fills[i + 1];
 }
 
 // Settlements take their politics from the territory:
