@@ -296,10 +296,11 @@ export const TECH_FX = {
   sailing:      { fish:0.32, seaSpeed:0.20, embark:true },
   galleys:      { fish:0.32, seaRange:0.30, military:0.05 },
   cartography:  { seaRange:0.18, seaSpeed:0.10 },
-  the_compass:  { seaRange:0.24, seaSpeed:0.16 },
-  caravels:     { seaRange:0.38, seaSpeed:0.20, ocean:true },
+  the_compass:  { seaRange:0.24, seaSpeed:0.16, logistics:0.04 },
+  caravels:     { seaRange:0.38, seaSpeed:0.20, ocean:true, logistics:0.08 },
   ocean_nav:    { fish:0.24, seaRange:0.46, seaSpeed:0.24, colonize:true },
-  steamship:    { fish:0.30, seaSpeed:0.60, seaRange:0.50 },
+  steamship:    { fish:0.30, seaSpeed:0.60, seaRange:0.50, logistics:0.18 },
+  railroad:     { logistics:0.35, trade:0.12, military:0.04 },   // iron rails — the continental land-empire enabler (was missing any effect)
   trawling:     { fish:0.40 },
   optics:       { seaRange:0.10 },
   astronomy:    { seaRange:0.10, farm:0.02 },
@@ -328,8 +329,8 @@ export const TECH_FX = {
   archery:      { military:0.05 },
   iron_working: { military:0.30 },
   iron_legions: { military:0.12, cohesion:0.03 },
-  chariots:     { military:0.28 },
-  cavalry:      { military:0.18 },
+  chariots:     { military:0.28, logistics:0.04 },
+  cavalry:      { military:0.18, logistics:0.12 },
   chivalry:     { military:0.10, defense:0.08 },
   blast_furnace:{ military:0.03, build:0.02 },
   gunpowder:    { military:0.05, defense:-0.12 },   // ends the age of the castle wall
@@ -338,7 +339,7 @@ export const TECH_FX = {
   musketry:     { military:0.07, cohesion:0.04 },
   steel:        { military:0.06, build:0.04 },
   rifling:      { military:0.05 },
-  combustion:   { military:0.03, trade:0.10, seaSpeed:0.20 },
+  combustion:   { military:0.03, trade:0.10, seaSpeed:0.20, logistics:0.15 },
   flight:       { military:0.03 },
   mining:       { wealth:0.12, military:0.02 },
   // — administration / reach / cohesion —  (reach is GAP-WEIGHTED onto the admin
@@ -351,16 +352,16 @@ export const TECH_FX = {
   mathematics:  { trade:0.05, build:0.02 },
   philosophy:   { cohesion:0.04, reach:0.05 },
   feudalism:    { reach:0.06, cohesion:0.12, military:0.04 },
-  the_wheel:    { trade:0.08, military:0.02 },
-  roads:        { reach:0.03, trade:0.18, military:0.03 },
+  the_wheel:    { trade:0.08, military:0.02, logistics:0.06 },
+  roads:        { reach:0.03, trade:0.18, military:0.03, logistics:0.30 },
   paper:        { reach:0.03, trade:0.04 },
   university:   { reach:0.04 },
-  printing:     { reach:0.05, cohesion:0.04 },
+  printing:     { reach:0.05, cohesion:0.04, logistics:0.08 },
   sci_method:   { reach:0.04 },
   democracy:    { reach:0.08, cohesion:0.10 },
   industrialism:{ reach:0.06, wealth:0.20, build:0.04 },
-  telegraph:    { reach:0.04, cohesion:0.06 },
-  computing:    { reach:0.05, wealth:0.20 },
+  telegraph:    { reach:0.04, cohesion:0.06, logistics:0.25 },
+  computing:    { reach:0.05, wealth:0.20, logistics:0.10 },
   // — economy / wealth / trade —
   currency:     { trade:0.18, wealth:0.15, market:true, reach:0.08 },
   guilds:       { trade:0.10, wealth:0.08, build:0.02 },
@@ -370,7 +371,7 @@ export const TECH_FX = {
 };
 
 const lerp = (a, b, t) => a + (b - a) * t;
-const FX_CH = ["farm", "fish", "build", "military", "reach", "cohesion", "defense", "trade", "wealth", "seaSpeed", "seaRange"];
+const FX_CH = ["farm", "fish", "build", "military", "reach", "cohesion", "defense", "trade", "wealth", "seaSpeed", "seaRange", "logistics"];
 const FX_ABIL = ["embark", "ocean", "colonize", "walls", "market"];
 
 // Full-tech channel totals (every tech's contribution summed). Used to NORMALISE
@@ -421,6 +422,7 @@ export function techEffects(k, blend = 1) {
     defenseLevel: lerp(cn, lvl(ch.defense, "defense"), blend),  // city defence (old construction)
     seaSpeed:   lerp(nav, lvl(ch.seaSpeed, "seaSpeed"), blend), // ship speed   (old navigation)
     seaRange:   lerp(nav, lvl(ch.seaRange, "seaRange"), blend), // naval reach  (old navigation)
+    logisticsLevel: lvl(ch.logistics, "logistics"),            // transport+comms → empire SIZE (roads→rail→telegraph); blended into eraMul in countryTerritory.js
     // Trade & wealth are ADDED bonuses (the old sim had no trade-infrastructure
     // term) — Currency → Banking → Economics lift a settlement's export value, so
     // trade-tech cities capture more of the (fixed, mining-minted) coin pool.
@@ -432,7 +434,7 @@ export function techEffects(k, blend = 1) {
 
 // Human-readable one-line summary of a tech's effect, for the tree tooltip.
 const FX_LABEL = { farm:"farm", fish:"fishing", build:"city size", military:"military", reach:"reach",
-  cohesion:"stability", defense:"defence", trade:"trade", wealth:"wealth", seaSpeed:"ship speed", seaRange:"naval range",
+  cohesion:"stability", defense:"defence", trade:"trade", wealth:"wealth", seaSpeed:"ship speed", seaRange:"naval range", logistics:"empire reach",
   embark:"can embark", ocean:"ocean-going ships", colonize:"overseas colonies", walls:"city walls", market:"markets" };
 export function techEffectText(id) {
   const fx = TECH_FX[id]; if (!fx) return "";

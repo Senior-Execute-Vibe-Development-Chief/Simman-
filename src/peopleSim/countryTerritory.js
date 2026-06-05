@@ -63,7 +63,8 @@ const CLAIM_SOFT      = 0.12;
 // climbs with the capital's construction (the surveying/road/communication tech
 // that lets authority carry far), turning the ancient archipelago of realms into
 // the modern wall-to-wall partition as the centuries pass.
-const REACH_ERA = 2;          // budget ×(1 + construction² · REACH_ERA): ~×1 ancient, ~×3 modern (was 3 — eased so realms don't balloon mid-era)
+const REACH_ERA = 2;          // budget ×(1 + construction² · REACH_ERA): ~×1 ancient, ~×3 modern (was 3 — eased so realms don't balloon mid-era). OLD-path (TECH_EFFECTS=0) only.
+const LOGI_REACH = 2.2;       // budget ×(1 + logisticsLevel · LOGI_REACH): transport/comms-gated era scaling (Roads≈Rome-scale, Rail+Telegraph≈continental). NEW path.
 // Reach is also scaled by how BIG the realm is, so a claim is backed by real
 // settlements rather than the capital's tech alone. budget ×= clamp(members /
 // REACH_SIZE_REF, REACH_SIZE_MIN, 1): a fledgling realm projects only a fraction
@@ -176,11 +177,15 @@ export function computeCountryTerritory(world) {
     if (!capOrg.has(c) || org > capOrg.get(c)) {
       capOrg.set(c, org);
       knOf.set(c, s.knowledge || {});
-      // Engineering era: reach expands and the harsh-terrain claim-cost cap falls
-      // as construction matures, so the ancient archipelago of compact realms
-      // becomes the modern wall-to-wall partition (above).
+      // Empire SIZE is unlocked by TRANSPORT & COMMUNICATION tech, not raw
+      // construction: a road-less realm stays regional however many monuments it
+      // raises (the tyranny of distance), Roads make it Rome-scale, and only Rail
+      // + Telegraph (+ steam/ocean for maritime) enable a continental, British-
+      // scale empire — see tech.js logistics channel. Blended with the old
+      // construction² curve by TECH_EFFECTS so the lever still reverts cleanly.
       const cons = (s.knowledge && s.knowledge.construction) || 0;
-      const eraMul = 1 + cons * cons * REACH_ERA;
+      const logi = s._techEff ? s._techEff.logisticsLevel : cons * cons;
+      const eraMul = 1 + (cons * cons * REACH_ERA) * (1 - T.TECH_EFFECTS) + (logi * LOGI_REACH) * T.TECH_EFFECTS;
       budget.set(c, (COUNTRY_REACH_BASE + org * COUNTRY_REACH_ORG) * eraMul);
       claimCap.set(c, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
     }
