@@ -1467,6 +1467,7 @@ function absorbWeakNeighbors(world, countries) {
     const r = ((m.id * 9301 + world.step * 49297 + 7) % 233280) / 233280;
     if (r > prob) continue;
     m.countryId = bestId;
+    if (world.debug && world.debug.land) { world.debug.land.absorb++; const g = world.debug.land.gain; g.set(bestId, (g.get(bestId) || 0) + 1); }
     m.loyalty = 0.6;                          // absorbed, not yet truly part of the realm
     m._conqueredAt = world.step;              // brief grace to settle in
     absorbedLoad.set(bestId, committed + estAbsorbLoad(world, target, m));

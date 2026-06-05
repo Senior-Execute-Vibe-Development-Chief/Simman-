@@ -545,6 +545,7 @@ export function advanceFronts(world) {
           const oldId = def.countryId;
           // Defence broken — the throne-city falls to the attacker.
           def.countryId = att.countryId;
+          if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(att.countryId, (g.get(att.countryId) || 0) + 1); }
           def._conqueredAt = world.step;
           def._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue
           def.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)
