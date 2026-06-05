@@ -13,8 +13,9 @@ import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./peopleSim/money.js";
-import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs } from "./peopleSim/tech.js";
-const ERA_BG=["#b9b2a4","#cd9a6a","#d8b24a","#9bb0c2","#dde4ea"];  // tech-chip tint per era (stone→steel)
+import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout } from "./peopleSim/tech.js";
+// tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
+const ERA_BG=["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 import PeopleSimWorker from "./peopleSimWorker.js?worker&inline";
 
@@ -153,48 +154,47 @@ function assignCountryColors(claimArr,tw,th,prev){
 // era columns, prerequisite links, and per-node state (discovered / researching
 // with progress / locked). Pure view over tech.js + the settlement's knowledge.
 function TechTreeOverlay({k,title,onClose}){
-  const COLW=190,ROWH=60,NW=158,NH=40,MX=22,TOP=60;
   const ts=techState(k||{});
-  const cols=ERAS.map(()=>[]);
-  TECHS.forEach(t=>cols[t.era].push(t));
-  const pos={};
-  cols.forEach((techs,ci)=>techs.forEach((t,ri)=>{pos[t.id]={x:MX+ci*COLW,y:TOP+ri*ROWH};}));
-  const maxRows=Math.max(...cols.map(c=>c.length));
-  const W=MX*2+ERAS.length*COLW, H=TOP+maxRows*ROWH+6;
-  const chip=(bg,bd,dash)=>(<span style={{display:"inline-block",width:9,height:9,background:bg,border:bd,borderRadius:2,marginRight:4,verticalAlign:"middle",boxSizing:"border-box"}}/>);
+  const L=techLayout();
+  const {pos,COLW,NW,NH,MX,TOP,W,H}=L;
+  const chip=(bg,bd)=>(<span style={{display:"inline-block",width:9,height:9,background:bg,border:bd,borderRadius:2,marginRight:4,verticalAlign:"middle",boxSizing:"border-box"}}/>);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"10px 14px",maxWidth:"95vw",maxHeight:"93vh",overflow:"auto"}}>
+      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"10px 14px",maxWidth:"96vw",maxHeight:"94vh",overflow:"auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
           <div className="au-pico-title" style={{fontSize:15}}>Tech Tree{title?` — ${title}`:""}{" "}
-            <span className="au-fade" style={{fontSize:11}}>· {ERAS[ts.era]} · {ts.have}/{TECHS.length} discovered</span></div>
+            <span className="au-fade" style={{fontSize:11}}>· {ERAS[ts.era]} · {ts.count}/{TECHS.length} discovered</span></div>
           <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
         </div>
         <svg width={W} height={H} style={{display:"block"}}>
-          {ERAS.map((e,ci)=>(<text key={e} x={MX+ci*COLW+NW/2} y={28} textAnchor="middle" fontSize={12.5} fill="#5a4a32" fontWeight="bold" style={{textTransform:"uppercase",letterSpacing:0.5}}>{e}</text>))}
+          {/* era column bands + headers */}
+          {ERAS.map((e,ci)=>(<g key={e}>
+            <rect x={MX+ci*COLW-7} y={TOP-8} width={COLW-2} height={H-TOP+2} fill={ERA_BG[ci]} opacity={0.08} rx={5}/>
+            <text x={MX+ci*COLW+NW/2} y={26} textAnchor="middle" fontSize={12} fill="#5a4a32" fontWeight="bold" style={{textTransform:"uppercase",letterSpacing:0.5}}>{e}</text>
+          </g>))}
           {/* prerequisite links (drawn under nodes) */}
           {TECHS.map(t=>t.prereq.map(p=>{const a=pos[p],b=pos[t.id];if(!a||!b)return null;
             const x1=a.x+NW,y1=a.y+NH/2,x2=b.x,y2=b.y+NH/2,mx=(x1+x2)/2;
-            const open=(ts.mask&(1<<TECH_IDX[p]))!==0;
+            const open=ts.have[TECH_IDX[p]]===1;
             return <path key={p+">"+t.id} d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`} fill="none"
-              stroke={open?"#7a5c34":"rgba(120,100,70,0.32)"} strokeWidth={open?1.8:1.1} strokeDasharray={open?"":"3 3"}/>;
+              stroke={open?"#7a5c34":"rgba(120,100,70,0.28)"} strokeWidth={open?1.6:1} strokeDasharray={open?"":"3 3"}/>;
           }))}
           {/* tech nodes */}
-          {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.mask,t);const era=ERA_BG[t.era]||"#b9b2a4";
+          {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.have,t);const era=ERA_BG[t.era]||"#b9b2a4";
             let fill,stroke,txt,sw,dash="";
-            if(ns.state==="have"){fill=era;stroke="#3a2c18";txt="#1a140c";sw=1.2;}
-            else if(ns.state==="next"){fill="rgba(255,251,243,0.92)";stroke=era;txt="#2c2114";sw=2.2;}
-            else{fill="rgba(150,140,120,0.16)";stroke="rgba(90,75,50,0.4)";txt="rgba(70,58,40,0.62)";sw=1.1;dash="4 3";}
+            if(ns.state==="have"){fill=era;stroke="#3a2c18";txt="#1a140c";sw=1.1;}
+            else if(ns.state==="next"){fill="rgba(255,251,243,0.94)";stroke=era;txt="#2c2114";sw=2;}
+            else{fill="rgba(150,140,120,0.14)";stroke="rgba(90,75,50,0.38)";txt="rgba(70,58,40,0.6)";sw=1;dash="4 3";}
             return(<g key={t.id}>
-              <title>{t.name}{t.prereq.length?` — requires ${t.prereq.map(pp=>TECHS[TECH_IDX[pp]].name).join(" + ")}`:""}{ns.state==="next"?`  (${(ns.prog*100)|0}% researched)`:ns.state==="locked"?"  (locked)":""}</title>
+              <title>{t.name} — {t.desc}{t.prereq.length?`\nRequires: ${t.prereq.map(pp=>TECHS[TECH_IDX[pp]].name).join(" + ")}`:""}{ns.state==="next"?`\n${(ns.prog*100)|0}% — ${t.gate[0]} → ${(t.gate[1]*100)|0}`:ns.state==="locked"?"\n(locked — an earlier tech is missing)":""}</title>
               <rect x={p.x} y={p.y} width={NW} height={NH} rx={5} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash}/>
-              <text x={p.x+9} y={p.y+NH/2+3.6} fontSize={10.5} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{t.name}</text>
-              {ns.state==="next"&&<rect x={p.x+1} y={p.y+NH-3.5} width={(NW-2)*ns.prog} height={2.5} fill={era} rx={1.2}/>}
+              <text x={p.x+8} y={p.y+NH/2+3.4} fontSize={9.5} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{t.name}</text>
+              {ns.state==="next"&&<rect x={p.x+1} y={p.y+NH-3} width={(NW-2)*ns.prog} height={2.4} fill={era} rx={1.2}/>}
             </g>);
           })}
         </svg>
         <div className="au-fade" style={{fontSize:10,marginTop:6,display:"flex",gap:16,flexWrap:"wrap"}}>
-          <span>{chip("#d8b24a","none")}discovered</span>
+          <span>{chip("#dab347","none")}discovered</span>
           <span>{chip("rgba(255,251,243,0.95)","2px solid #d8b24a")}researching (prerequisites met)</span>
           <span>{chip("rgba(150,140,120,0.2)","1px dashed rgba(90,75,50,0.5)")}locked — needs an earlier tech</span>
         </div>
@@ -3487,8 +3487,8 @@ return(
   const progress=nextThr?Math.min(1,s.people/nextThr):1;
   const k=s.knowledge||{};
   const tech=techState(k);                 // Civ-like discovery layer derived from knowledge (tech.js)
-  const techList=TECHS.filter((t,i)=>(tech.mask&(1<<i))!==0);
-  const techNext=nextTechs(k,tech.mask,3);
+  const techList=TECHS.filter((t,i)=>tech.have[i]===1);
+  const techNext=nextTechs(k,tech.have,3);
   const r=s.localRes||{};
   const farm=s._terrTiles||0;
   const K=s._k||0;
@@ -3805,7 +3805,7 @@ return(
 
       {/* ── Technologies (Civ-like discovery layer, derived from knowledge) ── */}
       <PsSection id="tech" title="Technologies" open={psCardOpen.tech} onToggle={togglePsCard}
-        right={<span className="au-fade">{ERAS[tech.era]} · {tech.have}/{TECHS.length}</span>}>
+        right={<span className="au-fade">{ERAS[tech.era]} · {tech.count}/{TECHS.length}</span>}>
         <div style={{fontSize:10}}>
           <button onClick={()=>setTechTreeOpen(true)}
             style={{width:"100%",marginBottom:6,padding:"4px 6px",cursor:"pointer",borderRadius:4,

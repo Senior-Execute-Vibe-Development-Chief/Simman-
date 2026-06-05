@@ -1,0 +1,57 @@
+// Offline preview of the tech-tree overlay (tech.js) — renders the SVG for a
+// few sample knowledge vectors using the SAME techLayout() the live React
+// overlay uses, so this preview can't drift from what the app draws. Writes one
+// SVG per sample to /tmp; convert to PNG with cairosvg in the shell.
+//   node tools/render_tech.mjs
+import { writeFileSync } from "fs";
+import { TECHS, ERAS, TECH_IDX, techState, techNodeState, techLayout } from "../src/peopleSim/tech.js";
+
+const ERA_BG = ["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+function svgFor(title, k) {
+  const ts = techState(k);
+  const L = techLayout();
+  const { pos, COLW, NW, NH, MX, TOP, W, H } = L;
+  const HH = H + 26;                       // a little extra for the title line
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${HH}">`;
+  s += `<rect width="${W}" height="${HH}" fill="#f4ecd9"/>`;
+  s += `<text x="${MX}" y="16" font-family="sans-serif" font-size="13" font-weight="bold" fill="#3a2c18">${esc(title)} — ${ERAS[ts.era]} · ${ts.count}/${TECHS.length} discovered</text>`;
+  s += `<g transform="translate(0,22)">`;
+  // era bands + headers
+  ERAS.forEach((e, ci) => {
+    s += `<rect x="${MX+ci*COLW-7}" y="${TOP-8}" width="${COLW-2}" height="${H-TOP+2}" fill="${ERA_BG[ci]}" opacity="0.12" rx="5"/>`;
+    s += `<text x="${MX+ci*COLW+NW/2}" y="26" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="bold" fill="#5a4a32" letter-spacing="0.5">${esc(e.toUpperCase())}</text>`;
+  });
+  // prereq edges
+  for (const t of TECHS) for (const p of t.prereq) {
+    const a = pos[p], b = pos[t.id]; if (!a || !b) continue;
+    const x1 = a.x+NW, y1 = a.y+NH/2, x2 = b.x, y2 = b.y+NH/2, mx = (x1+x2)/2;
+    const open = ts.have[TECH_IDX[p]] === 1;
+    s += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="${open?"#7a5c34":"rgba(120,100,70,0.28)"}" stroke-width="${open?1.6:1}" ${open?"":'stroke-dasharray="3 3"'}/>`;
+  }
+  // nodes
+  for (const t of TECHS) {
+    const p = pos[t.id]; const ns = techNodeState(k, ts.have, t); const era = ERA_BG[t.era] || "#b9b2a4";
+    let fill, stroke, txt, sw, dash = "";
+    if (ns.state === "have") { fill = era; stroke = "#3a2c18"; txt = "#1a140c"; sw = 1.1; }
+    else if (ns.state === "next") { fill = "rgba(255,251,243,0.94)"; stroke = era; txt = "#2c2114"; sw = 2; }
+    else { fill = "rgba(150,140,120,0.16)"; stroke = "rgba(90,75,50,0.4)"; txt = "rgba(70,58,40,0.62)"; sw = 1; dash = '4 3'; }
+    s += `<rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="5" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" ${dash?`stroke-dasharray="${dash}"`:""}/>`;
+    s += `<text x="${p.x+8}" y="${p.y+NH/2+3.4}" font-family="sans-serif" font-size="9.5" fill="${txt}" ${ns.state==="have"?'font-weight="bold"':""}>${esc(t.name)}</text>`;
+    if (ns.state === "next") s += `<rect x="${p.x+1}" y="${p.y+NH-3}" width="${(NW-2)*ns.prog}" height="2.4" fill="${era}" rx="1.2"/>`;
+  }
+  s += `</g></svg>`;
+  return s;
+}
+
+const samples = [
+  ["Bronze coastal city",   { agriculture:0.62, construction:0.52, organization:0.48, metallurgy:0.52, navigation:0.62, mobility:0.20 }],
+  ["Iron horse empire",     { agriculture:0.82, construction:0.74, organization:0.78, metallurgy:0.86, navigation:0.10, mobility:0.86 }],
+  ["Industrial metropolis", { agriculture:0.96, construction:0.96, organization:1.00, metallurgy:0.97, navigation:0.94, mobility:0.72 }],
+];
+for (const [title, k] of samples) {
+  const path = `/tmp/tech_${title.replace(/\s+/g,"_")}.svg`;
+  writeFileSync(path, svgFor(title, k));
+  console.log(path);
+}
