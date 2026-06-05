@@ -20,7 +20,7 @@ import { techEff } from "./settlement.js";
 import { findPath } from "./roads.js";
 import { forEachNear } from "./spatialGrid.js";
 import { localEdgeCost } from "./transport.js";
-import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM } from "./conquest.js";
+import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { T } from "./tuning.js";
 
@@ -545,6 +545,7 @@ export function advanceFronts(world) {
           const oldId = def.countryId;
           // Defence broken — the throne-city falls to the attacker.
           def.countryId = att.countryId;
+          recordOccupation(def, oldId, att.countryId, world.step);   // remember the nation it just lost (homeland)
           if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(att.countryId, (g.get(att.countryId) || 0) + 1); }
           def._conqueredAt = world.step;
           def._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue

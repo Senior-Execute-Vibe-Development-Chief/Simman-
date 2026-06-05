@@ -224,6 +224,24 @@ const OVER_DECAY_CAP = 1.0;  // max value of the over-extension multiplier term
 const REVOLT_JOIN_LOYALTY = 0.5;  // a co-member this disloyal joins a nearby uprising
 const REVOLT_RADIUS_MIN   = 15;   // a revolt rallies members within at least this many tiles
 const REVOLT_RADIUS_RANGE = 1.3;  // ...or the capital's reach × this, whichever is larger
+// ── Historical homeland / national identity ──────────────────────────
+// A settlement remembers the NATION it natively belongs to (`_homeland`, a
+// country id; <0 means "I'm in my homeland now"). Conquest PRESERVES it — an
+// occupied people keep their identity and yearn to restore it — so when their
+// region revolts within living memory it re-emerges as that SAME country (its id,
+// hue and history continue): Poland partitioned then restored. But identity FADES:
+// after HOMELAND_MEMORY steps under occupation a settlement ASSIMILATES to its
+// ruler (homeland cleared), and a late revolt there forms a NEW state on the old
+// administrative lines instead. `_homelandFell` marks when it last left home.
+const HOMELAND_MEMORY = 6000;   // ~a couple of generations before a conquered people assimilate
+// Record that `s` changed hands fromId → toId (conquest / absorption): keep its
+// native homeland, stamp when it first fell, and snap back to "native" if it was
+// just RE-TAKEN by its own homeland.
+export function recordOccupation(s, fromId, toId, step) {
+  if (s._homeland === toId) { s._homeland = -1; s._homelandFell = -1; return; }   // home again
+  if (s._homeland === undefined || s._homeland < 0) { s._homeland = fromId; s._homelandFell = step; }
+  // else: already occupied by someone — keep its true homeland and original fall step
+}
 // ── Capital-fall fragmentation (amplifier) ────────────────────────────
 // When the capital itself is stormed, the leaderless empire SHATTERS: the
 // conqueror keeps the captured throne-city, but the far provinces don't
@@ -613,7 +631,60 @@ function filterToConnectedBloc(world, bloc, seed, radius) {
 // regional seat. An empire fragments into a few large successor realms along its
 // administrative seams, never into a confetti of single seceding towns.
 
+// HOMELAND RESTORATION: among `members` currently held by `ownerId`, each distinct
+// fallen nation (`_homeland`) that is FULLY GONE and forms a viable contiguous bloc
+// carrying a city re-emerges as that SAME country — its id, hue (derived from id)
+// and history continue: Poland restored, the USSR back into its republics, Rome
+// shedding Gaul AS Gaul. `requireBorder` is set for a GRADUAL revolt (a breakaway
+// needs an outside edge); it's waived on TOTAL collapse (the realm is dissolving
+// anyway). Runs before any city-based fragmentation. Returns the restored ids.
+function restoreNations(world, members, ownerId, requireBorder) {
+  const restored = new Set();
+  const D = world.debug; if (D) D.rest = D.rest || { calls:0, groups:0, live:0, small:0, disconn:0, nocity:0, noborder:0, ok:0 };
+  if (D) D.rest.calls++;
+  const live = new Set();
+  for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) live.add(s.countryId);
+  const byH = new Map();
+  for (const m of members) {
+    const Hh = m._homeland ?? -1;
+    if (Hh < 0 || m.countryId !== ownerId) continue;
+    let a = byH.get(Hh); if (!a) byH.set(Hh, a = []); a.push(m);
+  }
+  for (const [H, group] of byH) {
+    if (D) D.rest.groups++;
+    if (live.has(H)) { if (D) D.rest.live++; continue; }          // a rump still flies the old flag
+    if (group.length < 2) { if (D) D.rest.small++; continue; }    // too small to be a state
+    let seat = group.find(m => m.id === H);                       // the historical capital returns if it has risen
+    if (!seat) for (const m of group) if ((m.tier | 0) >= CITY_TIER && (!seat || settlementPower(m) > settlementPower(seat))) seat = m;
+    if (!seat) seat = group.reduce((a, b) => settlementPower(b) > settlementPower(a) ? b : a, group[0]);
+    const bloc = filterToConnectedBloc(world, group, seat, Infinity);   // the WHOLE connected nation
+    if (bloc.length < 2) { if (D) D.rest.disconn++; continue; }
+    if (!blocHasCity(bloc)) { if (D) D.rest.nocity++; continue; }
+    if (requireBorder && !hasOutsideBorder(world, ownerId, bloc)) { if (D) D.rest.noborder++; continue; }
+    if (D) D.rest.ok++;
+    inheritPersonality(world, ownerId, H);
+    snapClaim(world, H);
+    if (world.debug) world.debug.restored = (world.debug.restored || 0) + 1;
+    for (const m of bloc) {
+      m.countryId = H; m._homeland = -1; m._homelandFell = -1;    // home again
+      m.loyalty = m === seat ? 1 : 0.85; m._ambition = 0; m._conqueredAt = world.step;
+      restored.add(m.id);
+      if (m.history) m.history.push({ step: world.step, type: "restored", nation: H });
+    }
+  }
+  return restored;
+}
+
 function secedeContagious(world, c, seeds) {
+  // homeland restoration first: an occupied nation whose region collapsed (a seed
+  // there) and is still restless re-emerges as itself before any city-based split
+  const seededH = new Set();
+  for (const sd of seeds) if (sd.countryId === c.id && (sd._homeland ?? -1) >= 0) seededH.add(sd._homeland);
+  if (seededH.size) {
+    const restless = c.members.filter(m => m.countryId === c.id && seededH.has(m._homeland ?? -1)
+      && (m.loyalty ?? 1) <= REVOLT_JOIN_LOYALTY && world.step - (m._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE);
+    restoreNations(world, restless, c.id, true);
+  }
   const radius = Math.max(REVOLT_RADIUS_MIN, c.range * REVOLT_RADIUS_RANGE);
   const byId = new Map(); for (const m of c.members) byId.set(m.id, m);
   // PROVINCE index: each member was assigned (assignProvinces) to its nearest
@@ -708,10 +779,16 @@ export function fragmentRealm(world, oldId, excludeId) {
       dead.treasury = 0;
     }
   }
-  const survivors = [];
+  let survivors = [];
   for (const s of world.settlements) {
     if (s.mode === "settled" && s.countryId === oldId && s.id !== excludeId) survivors.push(s);
   }
+  if (survivors.length === 0) return;
+  // The dying realm's occupied nations (still in living memory) re-emerge as
+  // THEMSELVES — same id, hue, history; only the native/assimilated remainder
+  // fragments into city-based successors below (the Diadochi case).
+  const restoredIds = restoreNations(world, survivors, oldId, false);
+  if (restoredIds.size) survivors = survivors.filter(s => !restoredIds.has(s.id));
   if (survivors.length === 0) return;
   if (survivors.length === 1) {
     const s = survivors[0];
@@ -1047,6 +1124,14 @@ function capitalTransportCosts(world, c) {
 
 export function updatePolities(world) {
   const countries = rebuildCountries(world);
+
+  // Assimilation: a people held beyond living memory (HOMELAND_MEMORY) lose their
+  // old national identity and become natives of their current ruler — so a LATE
+  // revolt there forms a NEW state on the administrative lines, not the old nation.
+  for (const s of world.settlements) {
+    if (s.mode === "settled" && (s._homeland ?? -1) >= 0 && (s._homelandFell ?? -1) >= 0
+        && world.step - s._homelandFell > HOMELAND_MEMORY) { s._homeland = -1; s._homelandFell = -1; }
+  }
 
   for (const c of countries.values()) {
     if (c.members.length === 1) { c.members[0].loyalty = 1; continue; }   // city-state: loyal to itself
@@ -1467,7 +1552,9 @@ function absorbWeakNeighbors(world, countries) {
     // outcome, so debugging is reproducible and there's no jitter.
     const r = ((m.id * 9301 + world.step * 49297 + 7) % 233280) / 233280;
     if (r > prob) continue;
+    const oldCC = m.countryId;
     m.countryId = bestId;
+    recordOccupation(m, oldCC, bestId, world.step);   // absorbed people keep their homeland identity
     if (world.debug && world.debug.land) { world.debug.land.absorb++; const g = world.debug.land.gain; g.set(bestId, (g.get(bestId) || 0) + 1); }
     m.loyalty = 0.6;                          // absorbed, not yet truly part of the realm
     m._conqueredAt = world.step;              // brief grace to settle in
