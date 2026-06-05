@@ -422,11 +422,19 @@ const FX_LABEL = { farm:"farm", fish:"fishing", build:"city size", military:"mil
   embark:"can embark", ocean:"ocean-going ships", colonize:"overseas colonies", walls:"city walls", market:"markets" };
 export function techEffectText(id) {
   const fx = TECH_FX[id]; if (!fx) return "";
-  const parts = [];
+  return techEffectList(id).map(e => e.text).join(" · ");
+}
+
+// Structured per-tech effects for the tree's hover card: one entry per channel
+// with its display text, the channel key (for colour-coding) and whether it's a
+// boon. Booleans (embark/walls/…) render as plain ability labels.
+export function techEffectList(id) {
+  const fx = TECH_FX[id]; if (!fx) return [];
+  const out = [];
   for (const key in fx) {
     const v = fx[key];
-    if (typeof v === "boolean") { if (v) parts.push(FX_LABEL[key] || key); }
-    else parts.push(`${v > 0 ? "+" : ""}${Math.round(v * 100)}% ${FX_LABEL[key] || key}`);
+    if (typeof v === "boolean") { if (v) out.push({ key, text: FX_LABEL[key] || key, good: true, ability: true }); }
+    else out.push({ key, text: `${v > 0 ? "+" : ""}${Math.round(v * 100)}% ${FX_LABEL[key] || key}`, good: v > 0, ability: false });
   }
-  return parts.join(" · ");
+  return out;
 }

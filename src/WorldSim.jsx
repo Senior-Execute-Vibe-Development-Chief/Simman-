@@ -13,9 +13,11 @@ import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./peopleSim/money.js";
-import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectText } from "./peopleSim/tech.js";
+import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectList } from "./peopleSim/tech.js";
 // tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
 const ERA_BG=["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
+// effect-chip colour per channel (food=green, naval=teal, build=tan, war=red, admin=violet, trade=jade, wealth=gold)
+const FX_COLOR={farm:"#5f7d33",fish:"#2f7d8a",build:"#9a6f38",military:"#9c3a36",reach:"#6a4a8d",cohesion:"#9a6a33",defense:"#566089",trade:"#2f7d5a",wealth:"#9a7a24",seaSpeed:"#2f6d8a",seaRange:"#2f6d8a",embark:"#2f7d8a",ocean:"#2a6a8a",colonize:"#2a6a8a",walls:"#566089",market:"#2f7d5a"};
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 import PeopleSimWorker from "./peopleSimWorker.js?worker&inline";
 
@@ -157,6 +159,7 @@ function TechTreeOverlay({k,title,onClose}){
   const ts=techState(k||{});
   const L=techLayout();
   const {pos,NW,NH,TOP,W,H}=L;
+  const [hov,setHov]=useState(null);   // {id,x,y} — hovered tech for the effect card
   const chip=(bg,bd)=>(<span style={{display:"inline-block",width:9,height:9,background:bg,border:bd,borderRadius:2,marginRight:4,verticalAlign:"middle",boxSizing:"border-box"}}/>);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -188,13 +191,13 @@ function TechTreeOverlay({k,title,onClose}){
               stroke={open?"#7a5c34":"rgba(120,100,70,0.32)"} strokeWidth={open?1.7:1} strokeDasharray={open?"":"3 3"}/>;
           }))}
           {/* tech nodes (opaque fills occlude the links routed behind them) */}
-          {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.have,t);const era=ERA_BG[t.era]||"#b9b2a4";const fxText=techEffectText(t.id);
+          {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.have,t);const era=ERA_BG[t.era]||"#b9b2a4";
             let fill,stroke,txt,sw,dash="";
             if(ns.state==="have"){fill=era;stroke="#3a2c18";txt="#1a140c";sw=1.1;}
             else if(ns.state==="next"){fill="#fffaf0";stroke=era;txt="#2c2114";sw=2;}
             else{fill="#e9e1ce";stroke="rgba(90,75,50,0.42)";txt="rgba(70,58,40,0.62)";sw=1;dash="4 3";}
-            return(<g key={t.id}>
-              <title>{t.name} — {t.desc}{fxText?`\n⚙ ${fxText}`:""}{t.prereq.length?`\nRequires: ${t.prereq.map(pp=>TECHS[TECH_IDX[pp]].name).join(" + ")}`:""}{ns.state==="next"?`\n${(ns.prog*100)|0}% — ${t.gate[0]} → ${(t.gate[1]*100)|0}`:ns.state==="locked"?"\n(locked — an earlier tech is missing)":""}</title>
+            return(<g key={t.id} style={{cursor:"help"}}
+              onMouseMove={e=>setHov({id:t.id,x:e.clientX,y:e.clientY})} onMouseLeave={()=>setHov(null)}>
               <rect x={p.x} y={p.y} width={NW} height={NH} rx={5} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash}/>
               <text x={p.x+9} y={p.y+NH/2+3.6} fontSize={10} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{t.name}</text>
               {ns.state==="next"&&<rect x={p.x+1} y={p.y+NH-3} width={(NW-2)*ns.prog} height={2.4} fill={era} rx={1.2}/>}
@@ -207,6 +210,25 @@ function TechTreeOverlay({k,title,onClose}){
           <span>{chip("rgba(150,140,120,0.2)","1px dashed rgba(90,75,50,0.5)")}locked — needs an earlier tech</span>
         </div>
       </div>
+      {hov&&(()=>{
+        const t=TECHS[TECH_IDX[hov.id]]; if(!t) return null;
+        const ns=techNodeState(k||{},ts.have,t); const fx=techEffectList(hov.id);
+        const vw=typeof window!=="undefined"?window.innerWidth:1280, vh=typeof window!=="undefined"?window.innerHeight:800;
+        const left=Math.min(hov.x+16, vw-258), top=Math.min(hov.y+16, vh-200);
+        return(<div style={{position:"fixed",left,top,width:242,zIndex:320,pointerEvents:"none",
+          background:"#f6eeda",border:`2px solid ${ERA_BG[t.era]||"#b9b2a4"}`,borderRadius:7,padding:"8px 10px",boxShadow:"0 6px 18px rgba(0,0,0,0.4)"}}>
+          <div style={{fontWeight:"bold",fontSize:13,color:"#2c2114"}}>{t.name}</div>
+          <div style={{fontSize:9,letterSpacing:0.5,textTransform:"uppercase",color:"#8a7a55",marginBottom:4}}>
+            {ERAS[t.era]} · {ns.state==="have"?"discovered":ns.state==="next"?`researching ${(ns.prog*100)|0}%`:"locked"}</div>
+          <div style={{fontSize:10.5,color:"#473a28",lineHeight:1.35,marginBottom:6}}>{t.desc}</div>
+          {fx.length>0
+            ? <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:t.prereq.length?6:0}}>
+                {fx.map((e,i)=><span key={i} style={{padding:"1.5px 5px",borderRadius:3,fontSize:9.5,fontWeight:600,color:"#fff",background:FX_COLOR[e.key]||"#6a5a3a",opacity:e.good?1:0.85}}>{e.text}</span>)}
+              </div>
+            : <div style={{fontSize:9.5,fontStyle:"italic",color:"#9a8a65",marginBottom:t.prereq.length?6:0}}>a stepping-stone — no direct bonus</div>}
+          {t.prereq.length>0&&<div style={{fontSize:9.5,color:"#7a6a48"}}>Requires: {t.prereq.map(p=>TECHS[TECH_IDX[p]].name).join(" + ")}</div>}
+        </div>);
+      })()}
     </div>
   );
 }
