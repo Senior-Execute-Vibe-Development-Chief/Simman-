@@ -66,7 +66,7 @@ export const TUNING_SCHEMA = [
         desc: "How long a freshly-conquered province stays extra-costly to hold. Up = blitz conquest destabilises longer." },
       { key: "FRONTIER_FOUNDING", label: "Frontier state founding", def: 1.0, min: 0, max: 3.0, step: 0.25,
         desc: "Primary state formation: how readily a developed cluster of stateless frontier settlements crystallises into a NEW country (its largest town becomes the sovereign seat). 0 = off — new countries come only from secession (old behaviour); >1 = lower the size/distance bar so frontier states appear more freely. Far-from-capitals and viable-cluster gates keep the country count in check." },
-      { key: "REALM_GAP_FILL", label: "Realm solidity (gap fill)", def: 0, min: 0, max: 30, step: 1,
+      { key: "REALM_GAP_FILL", label: "Realm solidity (gap fill)", def: 12, min: 0, max: 30, step: 1,
         desc: "Bridges the wilderness GAPS between a realm's own settlements so each country reads as ONE clean territorial chunk instead of a confetti of detached basin-dots. A wilderness tile is claimed only when the SAME realm flanks it on an opposite pair of sides (N&S or E&W) within this many tiles — interior gaps/channels fill, while the OPEN frontier and the buffer between DIFFERENT realms stay wilderness (the sparse ancient look survives between realms). 0 = off (old speckled basins)." },
     ],
   },
