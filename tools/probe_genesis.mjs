@@ -8,6 +8,8 @@ import { generateWorld } from "../src/worldgen.js";
 import { computeRivers } from "../src/riverGen.js";
 import { generateResources } from "../src/resourceGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
+import { T } from "../src/peopleSim/tuning.js";
+if (process.env.TE !== undefined) T.TECH_EFFECTS = parseFloat(process.env.TE);   // TE=0 → old construction² empire reach; TE=1 → logistics-gated
 
 const STEPS = parseInt(process.argv[2] || "12000", 10);
 const W = parseInt(process.argv[3] || "480", 10), H = parseInt(process.argv[4] || "240", 10);
@@ -41,7 +43,13 @@ for(let s=1;s<=STEPS;s++){ stepPeopleSim(world,1); if(s%50===0) classify();
     const st=peopleSimStats(world);
     let pop=0; for(const x of world.settlements) if(x.mode==="settled") pop+=x.people;
     const pf=n=>n>=1e3?(n/1e3).toFixed(0)+"k":String(n|0);
-    console.log(`step ${String(s).padStart(5)}: countries ${String(st.countries).padStart(3)} bigEmp ${String(pf(st.largestEmpire)).padStart(4)}t pop ${pf(pop)} | founded ${founded} flips ${seceded} | stateless ${stTotal} (V${stByTier[0]} T${stByTier[1]} C${stByTier[2]} M${stByTier[3]})`);
+    // empire-size distribution from the country-owner map (tiles per realm)
+    const tc=new Map(); const co=world._countryOwner;
+    if(co) for(let i=0;i<co.length;i++){ const c=co[i]; if(c>=0) tc.set(c,(tc.get(c)||0)+1); }
+    const sizes=[...tc.values()].sort((a,b)=>b-a);
+    const top3=sizes.slice(0,3).join("/");
+    const meanSz=sizes.length?(sizes.reduce((a,b)=>a+b,0)/sizes.length)|0:0;
+    console.log(`step ${String(s).padStart(5)}: countries ${String(st.countries).padStart(3)} top3 ${top3.padEnd(14)} mean ${String(meanSz).padStart(4)}t pop ${pf(pop)} | founded ${founded} | stateless ${stTotal}`);
   }
 }
 console.log(`\nTOTAL over ${STEPS} steps: FOUNDED ${founded}  SECEDED/conquered ${seceded}  (stateless→adopted ${adopted})`);
