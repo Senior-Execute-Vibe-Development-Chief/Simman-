@@ -633,15 +633,15 @@ function filterToConnectedBloc(world, bloc, seed, radius) {
 
 // HOMELAND RESTORATION: among `members` currently held by `ownerId`, each distinct
 // fallen nation (`_homeland`) that is FULLY GONE and forms a viable contiguous bloc
-// carrying a city re-emerges as that SAME country — its id, hue (derived from id)
-// and history continue: Poland restored, the USSR back into its republics, Rome
-// shedding Gaul AS Gaul. `requireBorder` is set for a GRADUAL revolt (a breakaway
-// needs an outside edge); it's waived on TOTAL collapse (the realm is dissolving
-// anyway). Runs before any city-based fragmentation. Returns the restored ids.
+// (≥2 settlements rallying a seat — its historical capital if risen, else a town)
+// re-emerges as that SAME country — its id, hue (derived from id) and history
+// continue: Poland restored, the USSR back into its republics, Rome shedding Gaul
+// AS Gaul. A nation that still flies its flag somewhere (a live rump) is left for
+// reunification, not cloned. `requireBorder` is set for a GRADUAL revolt (a
+// breakaway needs an outside edge); it's waived on TOTAL collapse (the realm is
+// dissolving anyway). Runs before any city-based fragmentation. Returns the ids.
 function restoreNations(world, members, ownerId, requireBorder) {
   const restored = new Set();
-  const D = world.debug; if (D) D.rest = D.rest || { calls:0, groups:0, live:0, small:0, disconn:0, nocity:0, noborder:0, ok:0 };
-  if (D) D.rest.calls++;
   const live = new Set();
   for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) live.add(s.countryId);
   const byH = new Map();
@@ -651,17 +651,19 @@ function restoreNations(world, members, ownerId, requireBorder) {
     let a = byH.get(Hh); if (!a) byH.set(Hh, a = []); a.push(m);
   }
   for (const [H, group] of byH) {
-    if (D) D.rest.groups++;
-    if (live.has(H)) { if (D) D.rest.live++; continue; }          // a rump still flies the old flag
-    if (group.length < 2) { if (D) D.rest.small++; continue; }    // too small to be a state
-    let seat = group.find(m => m.id === H);                       // the historical capital returns if it has risen
-    if (!seat) for (const m of group) if ((m.tier | 0) >= CITY_TIER && (!seat || settlementPower(m) > settlementPower(seat))) seat = m;
-    if (!seat) seat = group.reduce((a, b) => settlementPower(b) > settlementPower(a) ? b : a, group[0]);
+    if (live.has(H)) continue;          // a rump still flies the old flag — reunify, don't clone
+    if (group.length < 2) continue;     // too small to be a state, not a whole province
+    // Seat = the historical capital (whatever its tier now — a fallen capital
+    // still rallies its nation), else the strongest TOWN-or-better among the
+    // risen. A bloc of mere villages has no seat to re-form a state around. (No
+    // full-CITY bar: that was to stop single-TOWN confetti, which the
+    // ≥2-contiguous-settlements + town-seat rule already prevents for a nation.)
+    let seat = group.find(m => m.id === H);
+    if (!seat) for (const m of group) if ((m.tier | 0) >= 1 && (!seat || settlementPower(m) > settlementPower(seat))) seat = m;
+    if (!seat) continue;                // only villages, and not even the old capital
     const bloc = filterToConnectedBloc(world, group, seat, Infinity);   // the WHOLE connected nation
-    if (bloc.length < 2) { if (D) D.rest.disconn++; continue; }
-    if (!blocHasCity(bloc)) { if (D) D.rest.nocity++; continue; }
-    if (requireBorder && !hasOutsideBorder(world, ownerId, bloc)) { if (D) D.rest.noborder++; continue; }
-    if (D) D.rest.ok++;
+    if (bloc.length < 2) continue;
+    if (requireBorder && !hasOutsideBorder(world, ownerId, bloc)) continue;
     inheritPersonality(world, ownerId, H);
     snapClaim(world, H);
     if (world.debug) world.debug.restored = (world.debug.restored || 0) + 1;
@@ -1128,9 +1130,15 @@ export function updatePolities(world) {
   // Assimilation: a people held beyond living memory (HOMELAND_MEMORY) lose their
   // old national identity and become natives of their current ruler — so a LATE
   // revolt there forms a NEW state on the administrative lines, not the old nation.
+  // Home-by-any-path also clears: a secession that hands a settlement back its own
+  // original nation-id (freshCountryId reusing it) is a homecoming too — drop the
+  // now self-referential marker so it can't linger or re-trigger a restoration.
   for (const s of world.settlements) {
-    if (s.mode === "settled" && (s._homeland ?? -1) >= 0 && (s._homelandFell ?? -1) >= 0
-        && world.step - s._homelandFell > HOMELAND_MEMORY) { s._homeland = -1; s._homelandFell = -1; }
+    if (s.mode !== "settled" || (s._homeland ?? -1) < 0) continue;
+    if (s._homeland === s.countryId
+        || ((s._homelandFell ?? -1) >= 0 && world.step - s._homelandFell > HOMELAND_MEMORY)) {
+      s._homeland = -1; s._homelandFell = -1;
+    }
   }
 
   for (const c of countries.values()) {
