@@ -316,10 +316,10 @@ export function adoptAndFound(world) {
 // on top so a new state can't pop up in an empire's heartland. Gated on real
 // cluster population so the country count stays controlled (no micro-state swarm).
 const NUCLEATE_R          = 9;      // cluster radius, tiles
-const NUCLEATE_SEAT_POP   = 450;    // the seat must be a real regional centre
-const NUCLEATE_CLUSTER_POP= 1400;   // total stateless population nearby to be a viable state
-const NUCLEATE_CAP_DIST   = 13;     // ...and at least this far from any existing capital
-const NUCLEATE_MAX_PASS   = 2;      // cap new states minted per territory pass (anti-bloom)
+const NUCLEATE_SEAT_POP   = 220;    // the seat must be a real regional centre (a large village / town)
+const NUCLEATE_CLUSTER_POP= 600;    // total stateless population nearby to be a viable state
+const NUCLEATE_CAP_DIST   = 10;     // ...and at least this far from any existing capital
+const NUCLEATE_MAX_PASS   = 3;      // cap new states minted per territory pass (anti-bloom)
 export function nucleateFrontierStates(world) {
   const lever = T.FRONTIER_FOUNDING;          // 0 = off (old behaviour), 1 = default, >1 = easier
   if (!(lever > 0)) return;
