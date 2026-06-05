@@ -13,7 +13,7 @@ import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./peopleSim/money.js";
-import { TECHS, ERAS, techState, nextTechs } from "./peopleSim/tech.js";
+import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs } from "./peopleSim/tech.js";
 const ERA_BG=["#b9b2a4","#cd9a6a","#d8b24a","#9bb0c2","#dde4ea"];  // tech-chip tint per era (stone→steel)
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 import PeopleSimWorker from "./peopleSimWorker.js?worker&inline";
@@ -146,6 +146,61 @@ function assignCountryColors(claimArr,tw,th,prev){
     let i=0;for(const c of present)hue.set(c,((hue.get(c)+nudge[i++]*0.06)%360+360)%360);
   }
   return hue;   // Map: countryId → hue 0..360
+}
+
+// ── Tech-tree overlay (Civ-like skill tree) ─────────────────────────
+// Full-screen modal showing the whole tech DAG for the selected settlement:
+// era columns, prerequisite links, and per-node state (discovered / researching
+// with progress / locked). Pure view over tech.js + the settlement's knowledge.
+function TechTreeOverlay({k,title,onClose}){
+  const COLW=190,ROWH=60,NW=158,NH=40,MX=22,TOP=60;
+  const ts=techState(k||{});
+  const cols=ERAS.map(()=>[]);
+  TECHS.forEach(t=>cols[t.era].push(t));
+  const pos={};
+  cols.forEach((techs,ci)=>techs.forEach((t,ri)=>{pos[t.id]={x:MX+ci*COLW,y:TOP+ri*ROWH};}));
+  const maxRows=Math.max(...cols.map(c=>c.length));
+  const W=MX*2+ERAS.length*COLW, H=TOP+maxRows*ROWH+6;
+  const chip=(bg,bd,dash)=>(<span style={{display:"inline-block",width:9,height:9,background:bg,border:bd,borderRadius:2,marginRight:4,verticalAlign:"middle",boxSizing:"border-box"}}/>);
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"10px 14px",maxWidth:"95vw",maxHeight:"93vh",overflow:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+          <div className="au-pico-title" style={{fontSize:15}}>Tech Tree{title?` — ${title}`:""}{" "}
+            <span className="au-fade" style={{fontSize:11}}>· {ERAS[ts.era]} · {ts.have}/{TECHS.length} discovered</span></div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
+        </div>
+        <svg width={W} height={H} style={{display:"block"}}>
+          {ERAS.map((e,ci)=>(<text key={e} x={MX+ci*COLW+NW/2} y={28} textAnchor="middle" fontSize={12.5} fill="#5a4a32" fontWeight="bold" style={{textTransform:"uppercase",letterSpacing:0.5}}>{e}</text>))}
+          {/* prerequisite links (drawn under nodes) */}
+          {TECHS.map(t=>t.prereq.map(p=>{const a=pos[p],b=pos[t.id];if(!a||!b)return null;
+            const x1=a.x+NW,y1=a.y+NH/2,x2=b.x,y2=b.y+NH/2,mx=(x1+x2)/2;
+            const open=(ts.mask&(1<<TECH_IDX[p]))!==0;
+            return <path key={p+">"+t.id} d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`} fill="none"
+              stroke={open?"#7a5c34":"rgba(120,100,70,0.32)"} strokeWidth={open?1.8:1.1} strokeDasharray={open?"":"3 3"}/>;
+          }))}
+          {/* tech nodes */}
+          {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.mask,t);const era=ERA_BG[t.era]||"#b9b2a4";
+            let fill,stroke,txt,sw,dash="";
+            if(ns.state==="have"){fill=era;stroke="#3a2c18";txt="#1a140c";sw=1.2;}
+            else if(ns.state==="next"){fill="rgba(255,251,243,0.92)";stroke=era;txt="#2c2114";sw=2.2;}
+            else{fill="rgba(150,140,120,0.16)";stroke="rgba(90,75,50,0.4)";txt="rgba(70,58,40,0.62)";sw=1.1;dash="4 3";}
+            return(<g key={t.id}>
+              <title>{t.name}{t.prereq.length?` — requires ${t.prereq.map(pp=>TECHS[TECH_IDX[pp]].name).join(" + ")}`:""}{ns.state==="next"?`  (${(ns.prog*100)|0}% researched)`:ns.state==="locked"?"  (locked)":""}</title>
+              <rect x={p.x} y={p.y} width={NW} height={NH} rx={5} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash}/>
+              <text x={p.x+9} y={p.y+NH/2+3.6} fontSize={10.5} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{t.name}</text>
+              {ns.state==="next"&&<rect x={p.x+1} y={p.y+NH-3.5} width={(NW-2)*ns.prog} height={2.5} fill={era} rx={1.2}/>}
+            </g>);
+          })}
+        </svg>
+        <div className="au-fade" style={{fontSize:10,marginTop:6,display:"flex",gap:16,flexWrap:"wrap"}}>
+          <span>{chip("#d8b24a","none")}discovered</span>
+          <span>{chip("rgba(255,251,243,0.95)","2px solid #d8b24a")}researching (prerequisites met)</span>
+          <span>{chip("rgba(150,140,120,0.2)","1px dashed rgba(90,75,50,0.5)")}locked — needs an earlier tech</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Atlas (olde-map) cartographic symbols — hand-drawn map iconography ──
@@ -1136,6 +1191,7 @@ const[showTuning,setShowTuning]=useState(false);
 const[selectedTribe,setSelectedTribe]=useState(-1);
 // peopleSim settlement selection — id of the clicked settlement, or -1.
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
+const[techTreeOpen,setTechTreeOpen]=useState(false);   // full tech-tree overlay (for the selected settlement)
 // Ref mirror so draw() (memoized) sees the current selection without
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
@@ -3501,6 +3557,9 @@ return(
       style={{position:"absolute",left:14,top:14,width:248,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"90vh",overflowY:"auto",
         pointerEvents:"auto"/* au-pico sets pointer-events:none for the hover tooltip; this card is interactive */}}>
 
+      {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
+      {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} onClose={()=>setTechTreeOpen(false)}/>}
+
       {/* ── Header ── */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div className="au-pico-title" style={{fontSize:14,textTransform:"capitalize"}}>{s.name}</div>
@@ -3748,6 +3807,11 @@ return(
       <PsSection id="tech" title="Technologies" open={psCardOpen.tech} onToggle={togglePsCard}
         right={<span className="au-fade">{ERAS[tech.era]} · {tech.have}/{TECHS.length}</span>}>
         <div style={{fontSize:10}}>
+          <button onClick={()=>setTechTreeOpen(true)}
+            style={{width:"100%",marginBottom:6,padding:"4px 6px",cursor:"pointer",borderRadius:4,
+              background:"rgba(120,90,50,0.14)",border:"1px solid rgba(120,90,50,0.35)",color:"#3a2c18",fontSize:10.5}}>
+            ⛬ Open tech tree
+          </button>
           <div style={{display:"flex",flexWrap:"wrap",gap:"3px 4px"}}>
             {techList.map(t=>(
               <span key={t.id} title={ERAS[t.era]}
