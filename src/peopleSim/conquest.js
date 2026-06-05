@@ -178,9 +178,11 @@ const SEAT_BONUS_CAP = 10;   // total seat contribution is capped (admin has dim
 const CAP_K   = 2.6;
 const POW_REF = 380;
 // Transport/communication gate on administrable capacity: factor = LOGI_CAP_MIN
-// + logisticsLevel·LOGI_CAP_SLOPE. Road-less ≈ 0.45× (city-states), Roads ≈ 0.65×
-// (Rome/regional), Rail+Telegraph ≈ 1.2× (continental). Empire SIZE becomes a
-// temporal arc unlocked by transport tech, not power alone.
+// + logisticsLevel·LOGI_CAP_SLOPE. Road-less ≈ 0.45×, Roads ≈ 0.65× (Rome),
+// Rail+Telegraph ≈ 1.2× (continental). NOTE: this gates a single realm's
+// administrable span (historically correct), but it does NOT reduce emergent
+// MAP-wide empire size — squeezing it just makes weak realms shed land that the
+// strong re-conquer, so the conquest equilibrium re-establishes the same sizes.
 const LOGI_CAP_MIN   = 0.45;
 const LOGI_CAP_SLOPE = 0.85;
 // Contiguity toll: projecting administrative authority THROUGH a foreign
