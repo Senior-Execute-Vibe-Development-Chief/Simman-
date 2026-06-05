@@ -21,6 +21,8 @@
 // so land changes animate tile-by-tile.
 
 import { localEdgeCost } from "./transport.js";
+import { forEachNear } from "./spatialGrid.js";
+import { T } from "./tuning.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
 // claims land out to COUNTRY_REACH_BASE + capital-organisation × COUNTRY_REACH_ORG
@@ -278,7 +280,10 @@ export function adoptAndFound(world) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
     const region = elev[ti] > 0 ? co[ti] : -1;
-    if ((s.tier | 0) >= CITY_TIER) {
+    // A CITY is a sovereign anchor; so is a frontier SEAT minted by
+    // nucleateFrontierStates (a regional-leader town that founded a state — it
+    // never reaches city tier in isolation, so it carries sovereignty by flag).
+    if ((s.tier | 0) >= CITY_TIER || s._sovereignSeat) {
       if (s.countryId < 0) {
         s.countryId = region >= 0 ? region : s.id;   // stateless anchor: join its region, else found
         s._integratedAt = world.step;                // new sovereign / adopted land integrates its territory in gradually (anti-bloom; see INTEGRATE_*)
@@ -291,6 +296,63 @@ export function adoptAndFound(world) {
         s.countryId = region;
       }
     }
+  }
+}
+
+// ── Frontier state nucleation (primary state formation) ───────────────
+// Without this, new countries came ONLY from secession: a lone frontier
+// settlement never reaches CITY tier in isolation (no trade network, no state
+// backing — confirmed by tools/probe_genesis.mjs: 0 foundings, stateless cities
+// always 0), so the founding bar in adoptAndFound could never be met, and
+// stateless hamlets just got adopted by an expanding neighbour.
+//
+// Here a developed CLUSTER of stateless settlements on the open frontier
+// crystallises into a NEW country — its largest member becomes the sovereign
+// SEAT (a primary state), the rest become its first provinces once its territory
+// floods out. Because "stateless" already means "on land beyond every empire's
+// reach", a viable cluster encodes both of the things that should drive this:
+// QUALITY of location (population actually grew there) and DISTANCE from other
+// countries (it's unclaimed frontier) — with an explicit capital-distance gate
+// on top so a new state can't pop up in an empire's heartland. Gated on real
+// cluster population so the country count stays controlled (no micro-state swarm).
+const NUCLEATE_R          = 9;      // cluster radius, tiles
+const NUCLEATE_SEAT_POP   = 450;    // the seat must be a real regional centre
+const NUCLEATE_CLUSTER_POP= 1400;   // total stateless population nearby to be a viable state
+const NUCLEATE_CAP_DIST   = 13;     // ...and at least this far from any existing capital
+const NUCLEATE_MAX_PASS   = 2;      // cap new states minted per territory pass (anti-bloom)
+export function nucleateFrontierStates(world) {
+  const lever = T.FRONTIER_FOUNDING;          // 0 = off (old behaviour), 1 = default, >1 = easier
+  if (!(lever > 0)) return;
+  const tw = world.tw, halfTw = tw / 2;
+  const seatPop = NUCLEATE_SEAT_POP / lever, clusterPop = NUCLEATE_CLUSTER_POP / lever;
+  const capD2 = (NUCLEATE_CAP_DIST / Math.sqrt(lever)) ** 2;
+  const caps = [];
+  if (world.countries) for (const c of world.countries.values()) if (c.capital && c.capital.mode === "settled") caps.push(c.capital.pos);
+  const cand = [];
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || s.countryId >= 0 || (s.people || 0) < seatPop) continue;
+    let dCap = Infinity;                        // isolation from existing states' heartlands
+    for (const p of caps) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; const d2 = dx * dx + dy * dy; if (d2 < dCap) dCap = d2; }
+    if (caps.length && dCap < capD2) continue;
+    let cp = 0, isLeader = true;                // viable cluster + this settlement leads it
+    forEachNear(world, s.pos.x, s.pos.y, NUCLEATE_R, (o) => {
+      if (o.mode !== "settled" || o.countryId >= 0) return;
+      cp += o.people || 0;
+      const op = o.people || 0, sp = s.people || 0;
+      if (op > sp || (op === sp && o.id < s.id)) isLeader = false;
+    });
+    if (isLeader && cp >= clusterPop) cand.push({ s, cp });
+  }
+  if (!cand.length) return;
+  cand.sort((a, b) => b.cp - a.cp);             // most-developed clusters first
+  const placed = []; let n = 0;
+  for (const { s } of cand) {
+    if (n >= NUCLEATE_MAX_PASS) break;
+    let tooClose = false;                        // don't mint two adjacent states in one pass
+    for (const p of placed) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; if (dx * dx + dy * dy < (NUCLEATE_R * 2) ** 2) { tooClose = true; break; } }
+    if (tooClose) continue;
+    s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
+    placed.push({ x: s.pos.x, y: s.pos.y }); n++;
   }
 }
 

@@ -64,6 +64,8 @@ export const TUNING_SCHEMA = [
         desc: "How fast an over-extended (uncovered) province bleeds loyalty toward revolt. Up = fragile frontiers, empires shed land and rise/fall faster." },
       { key: "RECENCY_TICKS", label: "Conquest digestion time", def: 4000, min: 500, max: 12000, step: 250,
         desc: "How long a freshly-conquered province stays extra-costly to hold. Up = blitz conquest destabilises longer." },
+      { key: "FRONTIER_FOUNDING", label: "Frontier state founding", def: 1.0, min: 0, max: 3.0, step: 0.25,
+        desc: "Primary state formation: how readily a developed cluster of stateless frontier settlements crystallises into a NEW country (its largest town becomes the sovereign seat). 0 = off — new countries come only from secession (old behaviour); >1 = lower the size/distance bar so frontier states appear more freely. Far-from-capitals and viable-cluster gates keep the country count in check." },
     ],
   },
   {

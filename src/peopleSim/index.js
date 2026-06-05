@@ -14,7 +14,7 @@ import { aggregateFoodHierarchy } from "./foodHierarchy.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
-import { computeCountryTerritory, adoptAndFound } from "./countryTerritory.js";
+import { computeCountryTerritory, adoptAndFound, nucleateFrontierStates } from "./countryTerritory.js";
 import { buildSettlementGrid } from "./spatialGrid.js";
 import { relaxClaim } from "./countryClaim.js";
 
@@ -65,6 +65,7 @@ export function stepPeopleSim(world, n = 1) {
       computeTerritory(world);          // per-settlement food catchments (economy)
       computeCountryTerritory(world);   // clean per-country cost-Voronoi (the political map)
       adoptAndFound(world);             // settlements take their politics from the territory (villages adopt; stateless cities found)
+      nucleateFrontierStates(world);    // primary state formation: a developed stateless frontier cluster mints a NEW country
     }
     // The drawn border CRAWLS toward that target a ring at a time, so land
     // exchanges (conquest / secession / absorption) play out tile-by-tile over
