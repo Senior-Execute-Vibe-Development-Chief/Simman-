@@ -78,6 +78,23 @@ const REACH_SIZE_MIN = 0.25;  // a tiny realm still projects at least this fract
 // tiles, so territory hugs the capital and realms read as compact blobs instead of
 // sprawling along the settlement scatter. The strength is the CAPITAL_ANCHOR lever.
 const ANCHOR_SCALE = 40;
+// ── Resolution invariance ─────────────────────────────────────────────
+// The reach quantities here (the BASE/ORG budget, ANCHOR_SCALE, INTEGRATE_MIN)
+// are absolute travel-COST units ≈ tiles, and were tuned on the 240-wide test
+// grid. The SHIPPED world runs 4× wider (sim ≈960), where a fixed tile-budget
+// covers only ¼ the linear fraction of the map — so every realm collapsed to a
+// capital-sized blob and the political map shattered into a confetti of tiny
+// proto-states at ~6% claimed land (the full-res regression: "weird small proto
+// states, confettified, countries not growing"). It read fine only because the
+// constants were validated at the 240-wide test resolution — the blind spot. Fix:
+// normalise every tile-DISTANCE quantity by the map width, so a realm projects the
+// same FRACTION of the world at any resolution. At the test grid resScale=1
+// (behaviour unchanged, backwards-compatible); at the 960-wide world resScale=4.
+// (Per-EDGE costs like CLAIM_CAP are NOT scaled — crossing one mountain tile costs
+// the same however fine the grid; only cumulative reach distances scale.)
+const RES_REF_W = 240;
+const _resScaleEnv = (typeof process !== "undefined" && process.env && +process.env.SIM_RES_SCALE) || 0;
+function resScaleFor(tw) { return _resScaleEnv > 0 ? _resScaleEnv : Math.max(1, tw / RES_REF_W); }
 // ── Gradual integration of newly-acquired land ───────────────────────
 // A settlement that just joined this realm out of the WILD (adoptAndFound stamps
 // _integratedAt when a stateless settlement adopts a country, as the realm's
@@ -165,6 +182,7 @@ function claimNoise(world) {
 // Clean per-country cost-Voronoi → world._countryOwner. Runs on the territory pass.
 export function computeCountryTerritory(world) {
   const { N, tw, th, elev } = world;
+  const resScale = resScaleFor(tw);   // tile budgets are res-relative → keep the same world-fraction at any grid size (see RES_REF_W)
   let co = world._countryOwner;
   if (!co || co.length !== N) co = world._countryOwner = new Int32Array(N);
   co.fill(-1);
@@ -193,7 +211,7 @@ export function computeCountryTerritory(world) {
       const cons = (s.knowledge && s.knowledge.construction) || 0;
       const logi = s._techEff ? s._techEff.logisticsLevel : cons * cons;
       const eraMul = 1 + (cons * cons * REACH_ERA) * (1 - T.TECH_EFFECTS) + (logi * LOGI_REACH) * T.TECH_EFFECTS;
-      budget.set(c, (COUNTRY_REACH_BASE + org * COUNTRY_REACH_ORG) * eraMul);
+      budget.set(c, (COUNTRY_REACH_BASE + org * COUNTRY_REACH_ORG) * eraMul * resScale);
       claimCap.set(c, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
     }
   }
@@ -220,7 +238,7 @@ export function computeCountryTerritory(world) {
   for (const [c, target] of budget) {
     const prev = ramp.get(c);
     const next = prev === undefined
-      ? ((inherit && inherit.has(c)) ? target : Math.min(target, COUNTRY_REACH_BASE))
+      ? ((inherit && inherit.has(c)) ? target : Math.min(target, COUNTRY_REACH_BASE * resScale))
       : prev + (target - prev) * BUDGET_RAMP;
     ramp.set(c, next);
     budget.set(c, next);
@@ -246,9 +264,10 @@ export function computeCountryTerritory(world) {
     if (!(elev[ti] > 0 && cost[ti] > 0)) continue;
     const c = s.countryId;
     const full = budget.get(c) || 0;
+    const integMin = INTEGRATE_MIN * resScale;   // day-one basin is a tile distance → res-relative
     const age = world.step - (s._integratedAt ?? -Infinity);
     let sb = age < INTEGRATE_TICKS
-      ? Math.min(full, INTEGRATE_MIN + Math.max(0, full - INTEGRATE_MIN) * (age / INTEGRATE_TICKS))
+      ? Math.min(full, integMin + Math.max(0, full - integMin) * (age / INTEGRATE_TICKS))
       : full;
     // CAPITAL ANCHOR: a settlement projects the realm's reach less the FARTHER it
     // sits from the capital — authority radiates from one centre and fades with
@@ -263,7 +282,7 @@ export function computeCountryTerritory(world) {
       let dx = Math.abs(s.pos.x - cp.x); if (dx > tw / 2) dx = tw - dx;
       const dy = s.pos.y - cp.y;
       const capDist = Math.sqrt(dx * dx + dy * dy);
-      sb *= 1 / (1 + anchor * capDist / ANCHOR_SCALE);     // falloff: halves the basin at capDist = ANCHOR_SCALE/anchor
+      sb *= 1 / (1 + anchor * capDist / (ANCHOR_SCALE * resScale));   // falloff distance is res-relative → blobs keep shape at any grid size
     }
     cost[ti] = 0; co[ti] = c; seedBud[ti] = sb; heap.push(ti, 0, c);
   }
