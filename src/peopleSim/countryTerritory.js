@@ -72,6 +72,11 @@ const LOGI_REACH = 2.2;       // budget ×(1 + logisticsLevel · LOGI_REACH): tr
 // it grows to a continental-scale state.
 const REACH_SIZE_REF = 32;    // settlements for full reach (was 20 — a realm must be bigger before it projects its whole tech-reach, so a few-city state stays regional)
 const REACH_SIZE_MIN = 0.25;  // a tiny realm still projects at least this fraction
+// CAPITAL ANCHOR: a settlement's projected reach falls off with its distance from
+// the capital (see seeding) — the basin HALVES at capDist = ANCHOR_SCALE / anchor
+// tiles, so territory hugs the capital and realms read as compact blobs instead of
+// sprawling along the settlement scatter. The strength is the CAPITAL_ANCHOR lever.
+const ANCHOR_SCALE = 40;
 // ── Gradual integration of newly-acquired land ───────────────────────
 // A settlement that just joined this realm out of the WILD (adoptAndFound stamps
 // _integratedAt when a stateless settlement adopts a country, as the realm's
@@ -168,7 +173,7 @@ export function computeCountryTerritory(world) {
 
   // Per-country reach budget + the knowledge used for edge cost — both taken
   // from the country's most-organised settlement (its de-facto capital).
-  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map();
+  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map();
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless settlements don't seed
     const c = s.countryId;
@@ -176,6 +181,7 @@ export function computeCountryTerritory(world) {
     const org = s._techEff ? s._techEff.reachLevel : ((s.knowledge && s.knowledge.organization) || 0);   // admin reach from techs (tech.js)
     if (!capOrg.has(c) || org > capOrg.get(c)) {
       capOrg.set(c, org);
+      capPos.set(c, s.pos);          // the most-organised settlement = the realm's de-facto capital (the anchor reach radiates from)
       knOf.set(c, s.knowledge || {});
       // Empire SIZE is unlocked by TRANSPORT & COMMUNICATION tech, not raw
       // construction: a road-less realm stays regional however many monuments it
@@ -232,6 +238,7 @@ export function computeCountryTerritory(world) {
   // a basin budget capped by how INTEGRATED it is (a just-adopted wild settlement
   // starts at INTEGRATE_MIN and earns the full reach over INTEGRATE_TICKS).
   const heap = new MinHeap();
+  const anchor = T.CAPITAL_ANCHOR;
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
@@ -239,9 +246,24 @@ export function computeCountryTerritory(world) {
     const c = s.countryId;
     const full = budget.get(c) || 0;
     const age = world.step - (s._integratedAt ?? -Infinity);
-    const sb = age < INTEGRATE_TICKS
+    let sb = age < INTEGRATE_TICKS
       ? Math.min(full, INTEGRATE_MIN + Math.max(0, full - INTEGRATE_MIN) * (age / INTEGRATE_TICKS))
       : full;
+    // CAPITAL ANCHOR: a settlement projects the realm's reach less the FARTHER it
+    // sits from the capital — authority radiates from one centre and fades with
+    // distance, so the territory pulls into a compact blob around the capital
+    // instead of sprawling to wherever any town happens to be. The capital itself
+    // (distance 0) projects the full reach; a far frontier town anchors only a
+    // small basin. So the union of basins reads as one centred region, not a
+    // scatter, and a far salient that a nearer RIVAL capital reaches more cheaply
+    // cedes to it — the power-Voronoi-of-capitals that makes real borders blobby.
+    const cp = capPos.get(c);
+    if (anchor > 0 && cp) {
+      let dx = Math.abs(s.pos.x - cp.x); if (dx > tw / 2) dx = tw - dx;
+      const dy = s.pos.y - cp.y;
+      const capDist = Math.sqrt(dx * dx + dy * dy);
+      sb *= 1 / (1 + anchor * capDist / ANCHOR_SCALE);     // falloff: halves the basin at capDist = ANCHOR_SCALE/anchor
+    }
     cost[ti] = 0; co[ti] = c; seedBud[ti] = sb; heap.push(ti, 0, c);
   }
   // Multi-source Dijkstra: every land tile goes to the nearest country (by travel

@@ -7,7 +7,11 @@ import { generateWorld } from "../src/worldgen.js";
 import { computeRivers } from "../src/riverGen.js";
 import { generateResources } from "../src/resourceGen.js";
 import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
+import { T } from "../src/peopleSim/tuning.js";
+if (process.env.ANCHOR !== undefined) T.CAPITAL_ANCHOR = parseFloat(process.env.ANCHOR);
+if (process.env.GAPD !== undefined) T.REALM_GAP_FILL = parseFloat(process.env.GAPD);
 const STEP=+(process.argv[2]||6000), SEED=+(process.argv[3]||8817), W=+(process.argv[4]||480), H=+(process.argv[5]||240);
+const TAG = (process.env.ANCHOR !== undefined ? `_a${process.env.ANCHOR}` : "") + (process.env.GAPD !== undefined ? `_g${process.env.GAPD}` : "");
 const crcT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
 const crc=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=crcT[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0;};
 function png(w,h,rgb){const sig=Buffer.from([137,80,78,71,13,10,26,10]);const ch=(t,d)=>{const l=Buffer.alloc(4);l.writeUInt32BE(d.length,0);const b=Buffer.concat([Buffer.from(t,"ascii"),d]);const c=Buffer.alloc(4);c.writeUInt32BE(crc(b),0);return Buffer.concat([l,b,c]);};const ih=Buffer.alloc(13);ih.writeUInt32BE(w,0);ih.writeUInt32BE(h,4);ih[8]=8;ih[9]=2;const st=w*3+1,raw=Buffer.alloc(st*h);for(let y=0;y<h;y++){raw[y*st]=0;rgb.copy(raw,y*st+1,y*w*3,(y+1)*w*3);}return Buffer.concat([sig,ch("IHDR",ih),ch("IDAT",zlib.deflateSync(raw,{level:6})),ch("IEND",Buffer.alloc(0))]);}
@@ -25,5 +29,5 @@ const colByC=new Map();
 for(let ti=0;ti<owner.length;ti++){const py=(ti/tw)|0,px=ti-py*tw;const cc=owner[ti];let col;
   if(elev[ti]<=0)col=[18,32,64];else if(cc<0)col=[150,140,120];else{col=colByC.get(cc);if(!col){col=hsl(((cc*61)%360+360)%360,0.62,0.5);colByC.set(cc,col);}}
   for(let dy=0;dy<SC;dy++)for(let dx=0;dx<SC;dx++){const o=((py*SC+dy)*OW+(px*SC+dx))*3;rgb[o]=col[0];rgb[o+1]=col[1];rgb[o+2]=col[2];}}
-const out=`/tmp/owner_${STEP}.png`;
+const out=`/tmp/owner_${STEP}${TAG}.png`;
 writeFileSync(out,png(OW,OH,rgb));console.log("[png] "+out);
