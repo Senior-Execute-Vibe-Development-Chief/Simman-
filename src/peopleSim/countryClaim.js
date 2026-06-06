@@ -54,7 +54,9 @@ function headScore(s) { return (s.tier | 0) * 1e7 + (s.people || 0); }
 // reach-budget at a time (the "weird growth / claimed before the country gets
 // there" pathology). Falls back to the target only before the very first crawl
 // has run (step 1), when no claim array exists yet.
+const _adoptTarget = (typeof process !== "undefined" && process.env && +process.env.SIM_ADOPT_TARGET) || 0;
 export function grownOwnerAt(world, ti) {
+  if (_adoptTarget) { const co = world._countryOwner; return co ? co[ti] : -1; }   // A/B: adopt off the projected target (old behaviour)
   const claim = world._countryClaim;
   if (claim && claim.length === world.N) return claim[ti];
   const co = world._countryOwner;
