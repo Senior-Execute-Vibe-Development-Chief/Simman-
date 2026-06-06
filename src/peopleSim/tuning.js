@@ -32,6 +32,8 @@ export const TUNING_SCHEMA = [
         desc: "Resolve bilateral trade every N ticks at N× volume — same AVERAGE money/goods flow, ~N× cheaper. The biggest single CPU dial: 1 = every tick (max fidelity); 3 (default) ≈ 23% faster ticks; higher = faster still, money flow slightly lumpier." },
       { key: "DEV_STRIDE", label: "Construction stride", def: 3, min: 1, max: 6, step: 1,
         desc: "Resolve town construction (housing + material purchases) every N ticks at N× rate — same AVERAGE building. 1 = every tick; 3 (default) trims the per-settlement pass; higher = faster, housing grows in bursts." },
+      { key: "VILLAGE_PARTNERS", label: "Village trade partners", def: 12, min: 1, max: 12, step: 1,
+        desc: "How many trade partners a tier-0 VILLAGE keeps (towns/cities always keep the full set). Lower = villages trade only LOCALLY (their market town) instead of across the whole network — much cheaper, and arguably more realistic (a subsistence countryside feeding trading cities), while tolls, tariffs, taxes and the food shipped to cities all keep working unchanged. 12 = villages trade like everyone else (original)." },
     ],
   },
   {

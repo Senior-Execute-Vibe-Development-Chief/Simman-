@@ -334,6 +334,15 @@ function computeReach(world, s, stMap) {
   const reach = new Map();
   const { tw, th, roadQuality: rq, N } = world;
   const startTi = (s.pos.y | 0) * tw + (s.pos.x | 0);
+  // A tier-0 VILLAGE keeps only its nearest T.VILLAGE_PARTNERS partners (local
+  // market trade) instead of the whole network. Same toll/tariff/tax machinery
+  // (money stays conserved — it's still real bilateral trade), but far cheaper:
+  // the reach Dijkstra stops sooner, and the per-pair trade / knowledge-diffusion
+  // / development-materials loops all iterate THIS reach. Towns+ always get the
+  // full set; default 12 = villages trade like everyone else (no change).
+  const cap = (s.tier | 0) < 1
+    ? Math.max(1, Math.min(MAX_PARTNERS, T.VILLAGE_PARTNERS | 0))
+    : MAX_PARTNERS;
   // Typed-array Dijkstra scratch (shared across settlements; a per-call stamp
   // means no Map overhead and no O(N) clear). This pass runs once per
   // settlement on every reach rebuild, so the Map version was a big spike.
@@ -362,7 +371,7 @@ function computeReach(world, s, stMap) {
       const link = { cost: d, tiles };
       link.inter = intermediatesOnPath(link, s.id, peer.id, stMap);
       reach.set(peer.id, link);
-      if (reach.size >= MAX_PARTNERS) break;     // nearest-first; we have enough
+      if (reach.size >= cap) break;              // nearest-first; we have enough (villages: fewer — see cap)
     }
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0      ? tw - 1 : tx - 1;
