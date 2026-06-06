@@ -28,6 +28,10 @@ export const TUNING_SCHEMA = [
         desc: "Ticks between polity passes (tax, loyalty, secession, control budget). The empire-politics clock." },
       { key: "TERRITORY_INTERVAL", label: "Territory recompute interval", def: 144, min: 24, max: 400, step: 12,
         desc: "Ticks between full territory (Voronoi) recomputes. Lower = borders track changes more closely." },
+      { key: "TRADE_STRIDE", label: "Trade pass stride", def: 3, min: 1, max: 6, step: 1,
+        desc: "Resolve bilateral trade every N ticks at N× volume — same AVERAGE money/goods flow, ~N× cheaper. The biggest single CPU dial: 1 = every tick (max fidelity); 3 (default) ≈ 23% faster ticks; higher = faster still, money flow slightly lumpier." },
+      { key: "DEV_STRIDE", label: "Construction stride", def: 3, min: 1, max: 6, step: 1,
+        desc: "Resolve town construction (housing + material purchases) every N ticks at N× rate — same AVERAGE building. 1 = every tick; 3 (default) trims the per-settlement pass; higher = faster, housing grows in bursts." },
     ],
   },
   {

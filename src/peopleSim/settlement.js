@@ -85,6 +85,12 @@ const URBAN_ANTICIPATION_REF = 250;   // = TIER_THRESHOLD[town]; anticipation ki
 // materials is TRANSFERRED to the supplying partners, not destroyed.
 const INFRA_COST          = 80;     // coin per +1 housing of (imported) materials + labour
 const BUILD_RATE          = 0.045;  // housing/tick per construction-weighted builder (3x: at scale, build-lag was the binding constraint — settlements sat housing-limited far below their food potential, so few reached city size. Faster building lets FOOD drive scaling, as intended.)
+// Construction is resolved every T.DEV_STRIDE ticks at STRIDE× rate (temporal
+// LOD): a town's build pass walks its trade reach every tick to pay material
+// suppliers — the biggest slice of the per-settlement update — but housing grows
+// slowly, so bursting it keeps the same AVERAGE pace at ~STRIDE× less cost.
+// 1 = build every tick (original). (Towns are staggered by id so the cost is
+// even across ticks, not a spike.) T.DEV_STRIDE is a live Pacing lever (tuning.js).
 // Yield per (distance-weighted) fertility unit of territory, ×(1+ag·1.2).
 // Deliberately SUBSISTENCE-scale: a settlement's own land feeds only a
 // village-to-town population, so the countryside fills with small farming
@@ -1013,8 +1019,6 @@ export { housingCapacity };
 // supplying partners (a building boom enriches the material-rich
 // hinterland), never destroyed.
 function updateDevelopment(world, s) {
-  s._developRate = 0;
-  s._devReason = null;
   const houseK = s._houseK || 0, foodK = s._foodK || 0;
   // Cities lay out housing AHEAD of the food they have today; that empty
   // headroom is exactly what creates the demand to IMPORT grain (foodAppetite's
@@ -1022,8 +1026,20 @@ function updateDevelopment(world, s) {
   // to current foodK, houseK tracks population, growthNeed ~ 0, and the city
   // never pulls the grain that would let it grow, so metropolises never form.
   const target = s.people > URBAN_ANTICIPATION_REF ? foodK * URBAN_ANTICIPATION : foodK;
-  s._housingPressed = target > houseK * 1.02;
-  if (!s._housingPressed) return;
+  s._housingPressed = target > houseK * 1.02;     // set EVERY tick — conquest.js + food appetite read it
+  if (!s._housingPressed) { s._developRate = 0; s._devReason = null; return; }
+
+  // ── Construction is BATCHED (temporal LOD; see DEV_STRIDE) ──
+  // The materials gate + supplier-payment walk below iterate the trade reach every
+  // tick a town builds — the biggest slice of the per-settlement pass. Housing
+  // grows slowly, so resolve it every DEV_STRIDE ticks at DEV_STRIDE× rate: same
+  // average build pace + payments, ~DEV_STRIDE× cheaper. Only _housingPressed
+  // (above) stays per-tick; between bursts _developRate / _devReason keep their
+  // last value so the info-panel readout is steady. Staggered by id → even cost.
+  const stride = Math.max(1, T.DEV_STRIDE | 0);
+  if (stride > 1 && (world.step + s.id) % stride !== 0) return;
+  s._developRate = 0;
+  s._devReason = null;
 
   // Room to grow = up to whichever of the (anticipatory) housing target / SPACE
   // binds first.
@@ -1055,8 +1071,10 @@ function updateDevelopment(world, s) {
   const bestPartnerMat = s._devMat.bestPartnerMat, totalW = s._devMat.totalW;
   if (Math.max(localMat, bestPartnerMat) < 0.05) { s._devReason = "materials"; return; }
 
+  // ×stride: this burst stands in for `stride` ticks of building (so the average
+  // housing/tick — and the coin paid to suppliers — matches the per-tick original).
   const buildCap = (0.2 + (s.knowledge.construction || 0) * 2)
-    * Math.sqrt(Math.max(1, s.people)) * BUILD_RATE;
+    * Math.sqrt(Math.max(1, s.people)) * BUILD_RATE * stride;
   let add = Math.min(buildCap, room);
   if (add <= 0) return;
 
@@ -1095,7 +1113,7 @@ function updateDevelopment(world, s) {
     }
   }
   s.infrastructure = (s.infrastructure || 0) + add;
-  s._developRate = add;
+  s._developRate = add / stride;   // per-tick-equivalent (the burst built `add` over `stride` ticks)
   s._devReason = "expanding";
 }
 export { updateDevelopment };

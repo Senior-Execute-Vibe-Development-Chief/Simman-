@@ -186,12 +186,12 @@ const MONEY_FLOW_EPS               = 0.01;   // min net /tick for a link to regi
 // The bilateral trade loop is O(pairs) and the single biggest per-tick cost of
 // the whole sim, yet a pair's transfer is tiny and the economy runs on EMAs +
 // granary buffers — it does NOT need resolving every tick. So run the pass once
-// every TRADE_STRIDE ticks at STRIDE× volume: same AVERAGE money / goods / road-
+// every T.TRADE_STRIDE ticks at STRIDE× volume: same AVERAGE money / goods / road-
 // flow, ~STRIDE× cheaper amortised. This is the same throttle the knowledge pass
 // already uses (KNOW_INTERVAL). Road flow DECAY and PAVING still run every tick,
-// so the surface maintains smoothly between trade ticks. Set to 1 to recover the
-// exact every-tick behaviour (env override SIM_TRADE_STRIDE used for A/B).
-const TRADE_STRIDE = (typeof process !== "undefined" && process.env && +process.env.SIM_TRADE_STRIDE) || 3;
+// so the surface maintains smoothly between trade ticks. T.TRADE_STRIDE is a live
+// Pacing lever (tuning.js); 1 recovers the exact every-tick behaviour.
+const tradeStride = () => Math.max(1, T.TRADE_STRIDE | 0);
 
 // Tolls — when trade between A and B passes through a third
 // settlement C's home tile, C skims a cut of the trade value.
@@ -746,11 +746,12 @@ export function updateTrade(world) {
       else rf[ti] = v;
     }
   }
-  // Throttle the O(pairs) bilateral trade to every TRADE_STRIDE ticks at STRIDE×
-  // volume (see TRADE_STRIDE). On the skipped ticks _linkMoney / _moneyFlows keep
+  // Throttle the O(pairs) bilateral trade to every T.TRADE_STRIDE ticks at STRIDE×
+  // volume (see tradeStride). On the skipped ticks _linkMoney / _moneyFlows keep
   // the last sweep's (complete) contents — at most STRIDE-1 ticks stale, which the
   // armies trade-peace read and the money overlay both tolerate.
-  if (world.step === 1 || world.step % TRADE_STRIDE === 0) runTradePass(world, rf, flowTiles, TRADE_STRIDE);
+  const tStride = tradeStride();
+  if (world.step === 1 || world.step % tStride === 0) runTradePass(world, rf, flowTiles, tStride);
   // Quality evolution over the road set only:
   //   • busy tiles (flow ≥ ROAD_ABANDON_FLOW) pave further toward
   //     QUALITY_MAX, faster the higher the flow (capped at FLOW_FOR_PAVE,
