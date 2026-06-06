@@ -1066,10 +1066,17 @@ function disburseTreasury(world, c, gov, warLevel) {
 // The search is bounded by ~25 × range so we don't walk the whole map, and
 // returns as soon as every member's home tile is hit. With ~20 countries
 // and member-rich heartlands the per-pass cost is well under 1ms.
+// Preallocated typed-array binary min-heap (reused across capitalTransportCosts
+// calls via clear() — no per-pop array resize, no per-call allocation). popMin
+// writes the result into shared fields (om_ti/om_d) instead of allocating an
+// object per pop, since this runs millions of times per polity pass.
 class _PolHeap {
-  constructor() { this.ti = []; this.d = []; this.n = 0; }
+  constructor(cap = 8192) { this.ti = new Int32Array(cap); this.d = new Float64Array(cap); this.n = 0; this.cap = cap; this.om_ti = 0; this.om_d = 0; }
+  clear() { this.n = 0; }
+  _grow() { const k = this.cap * 2; const t = new Int32Array(k); t.set(this.ti); this.ti = t; const d = new Float64Array(k); d.set(this.d); this.d = d; this.cap = k; }
   push(ti, d) {
-    let i = this.n++; this.ti.push(ti); this.d.push(d);
+    if (this.n >= this.cap) this._grow();
+    let i = this.n++; this.ti[i] = ti; this.d[i] = d;
     while (i > 0) { const p = (i - 1) >> 1; if (this.d[p] <= this.d[i]) break;
       const tt = this.ti[p], td = this.d[p];
       this.ti[p] = this.ti[i]; this.d[p] = this.d[i];
@@ -1077,10 +1084,9 @@ class _PolHeap {
     }
   }
   popMin() {
-    const ti = this.ti[0], d = this.d[0]; this.n--;
+    this.om_ti = this.ti[0]; this.om_d = this.d[0]; this.n--;
     if (this.n > 0) {
       this.ti[0] = this.ti[this.n]; this.d[0] = this.d[this.n];
-      this.ti.pop(); this.d.pop();
       let i = 0;
       for (;;) {
         const l = i * 2 + 1, r = i * 2 + 2; let b = i;
@@ -1091,10 +1097,12 @@ class _PolHeap {
         this.ti[b] = this.ti[i]; this.d[b] = this.d[i];
         this.ti[i] = tt; this.d[i] = td; i = b;
       }
-    } else { this.ti.pop(); this.d.pop(); }
-    return { ti, d };
+    }
   }
 }
+// 8-neighbour cost multipliers (orthogonal 1, diagonal √2) — module-level so the
+// hot Dijkstra inner loop doesn't reallocate it per tile.
+const POL_MUL = [1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];
 function capitalTransportCosts(world, c) {
   const { tw, th } = world;
   const cap = c.capital;
@@ -1119,20 +1127,31 @@ function capitalTransportCosts(world, c) {
   if (pending === 0) return { cost: out, cross };
   const co = world._countryOwner;   // for the contiguity toll (crossing foreign land)
   const maxCost = Math.max(50, c.range * 25);
-  const dist = new Map();
-  const crossAcc = new Map();   // tile → major-river toll accrued reaching it (parallels dist)
+  // Persistent, GENERATION-STAMPED scratch (was per-call Maps — this Dijkstra
+  // runs once per country every polity pass and was the single biggest sim
+  // hitch). A tile's dist[]/crossB[] count only while stamp[ti] === gen, so a
+  // fresh gen each call "clears" all N tiles in O(1) without touching memory.
+  const N = world.N;
+  let dist = world._polDist, stamp = world._polStamp, crossB = world._polCross;
+  if (!dist || dist.length !== N) {
+    dist = world._polDist = new Float64Array(N);
+    stamp = world._polStamp = new Int32Array(N);   // 0 = untouched; gen runs 1,2,3,…
+    crossB = world._polCross = new Float64Array(N);
+    world._polGen = 0;
+  }
+  const gen = (world._polGen = (world._polGen | 0) + 1);
+  const cid = c.id;
   const capTi = (cap.pos.y | 0) * tw + (cap.pos.x | 0);
-  dist.set(capTi, 0);
-  const heap = new _PolHeap();
+  dist[capTi] = 0; crossB[capTi] = 0; stamp[capTi] = gen;
+  const heap = world._polHeap || (world._polHeap = new _PolHeap());
+  heap.clear();
   heap.push(capTi, 0);
-  const SQRT2 = Math.SQRT2;
   while (heap.n > 0 && pending > 0) {
-    const { ti, d } = heap.popMin();
+    heap.popMin(); const ti = heap.om_ti, d = heap.om_d;
     if (d > maxCost) break;
-    const dHere = dist.get(ti);
-    if (dHere === undefined || d > dHere) continue;
+    if (d > dist[ti]) continue;   // stale heap entry (this tile already finalised cheaper)
     const hit = homes.get(ti);
-    if (hit !== undefined) { out.set(hit, d); cross.set(hit, crossAcc.get(ti) || 0); homes.delete(ti); pending--; }
+    if (hit !== undefined) { out.set(hit, d); cross.set(hit, crossB[ti] || 0); homes.delete(ti); pending--; }
     const ty = (ti / tw) | 0;
     const tx = ti - ty * tw;
     const xm = tx === 0      ? tw - 1 : tx - 1;
@@ -1144,18 +1163,18 @@ function capitalTransportCosts(world, c) {
       yu >= 0 ? yu * tw + xm : -1, yu >= 0 ? yu * tw + xp : -1,
       yd < th ? yd * tw + xm : -1, yd < th ? yd * tw + xp : -1,
     ];
-    const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
+    const baseCross = crossB[ti];
     for (let k = 0; k < 8; k++) {
       const ni = ns[k]; if (ni < 0) continue;
-      let ec = localEdgeCost(world, ti, ni, kn, true);  // admin reach ignores roads
+      if (co) { const oc = co[ni]; if (oc >= 0 && oc !== cid) continue; }  // contiguity FIRST (cheap): a RIVAL's land is impassable — skip it before the costly edge eval (only own land, wilderness, or the sea project reach)
+      const ec = localEdgeCost(world, ti, ni, kn, true);  // admin reach ignores roads
       if (ec === Infinity) continue;
-      if (co) { const oc = co[ni]; if (oc >= 0 && oc !== c.id) continue; }  // contiguity: a RIVAL's land is impassable — you cannot project reach through it (only own land, wilderness, or the sea)
-      const nd = d + ec * mul[k];
+      const nd = d + ec * POL_MUL[k];
       if (nd > maxCost) continue;
-      const prev = dist.get(ni);
-      if (prev === undefined || nd < prev) {
-        dist.set(ni, nd);
-        crossAcc.set(ni, (crossAcc.get(ti) || 0) + majorRiverToll(world, ti, ni, cons));
+      if (stamp[ni] !== gen || nd < dist[ni]) {
+        dist[ni] = nd;
+        crossB[ni] = baseCross + majorRiverToll(world, ti, ni, cons);
+        stamp[ni] = gen;
         heap.push(ni, nd);
       }
     }
@@ -1164,7 +1183,10 @@ function capitalTransportCosts(world, c) {
 }
 
 export function updatePolities(world) {
+  const _pf = world._dbgProfile ? (world.debug.pol = { rebuild: 0, transport: 0, loop: 0, absorb: 0 }) : null;
+  let _pt = _pf ? performance.now() : 0;
   const countries = rebuildCountries(world);
+  if (_pf) { _pf.rebuild = performance.now() - _pt; _pt = performance.now(); }
 
   // Assimilation: a people held beyond living memory (HOMELAND_MEMORY) lose their
   // old national identity and become natives of their current ruler — so a LATE
@@ -1192,7 +1214,9 @@ export function updatePolities(world) {
     // exactly the way they drain a column's movement. (Naval shortcuts are
     // already baked into localEdgeCost via water embarkation, so we no
     // longer apply a separate _isPort discount here.)
+    const _tt = _pf ? performance.now() : 0;
     const { cost: tcosts, cross: tcross } = capitalTransportCosts(world, c);
+    if (_pf) _pf.transport += performance.now() - _tt;
     const reachCeil = range * 25;   // matches the Dijkstra's bound
 
     // ── Control budget: what the centre can administer (reach-units) ──
@@ -1447,6 +1471,7 @@ export function updatePolities(world) {
     // steady growth emboldens expansion) — see personality.js driftPersonality.
     driftPersonality(world, c, { warLevel, solvency });
   }
+  if (_pf) { _pf.loop = performance.now() - _pt; _pt = performance.now(); }
 
   // ── Peaceful consolidation (erode weak neighbours into strong realms) ──
   // A dominant, organised realm administratively absorbs the frontier
@@ -1457,6 +1482,7 @@ export function updatePolities(world) {
   // frontier are untouched, and a pacified-grace gate stops re-flipping a
   // freshly seceded/conquered settlement.
   absorbWeakNeighbors(world, countries);
+  if (_pf) _pf.absorb = performance.now() - _pt;
 
   // Drop treasuries of realms that no longer exist (conquest seizure already
   // moved the coin of conquered capitals; this just stops the map growing).
