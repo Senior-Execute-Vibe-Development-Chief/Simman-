@@ -10,6 +10,7 @@ import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/i
 import { T } from "../src/peopleSim/tuning.js";
 if (process.env.SIM_LOCALITY) T.LOCALITY_MODE = +process.env.SIM_LOCALITY;
 if (process.env.SIM_LOCALITY_SPACING) T.LOCALITY_SPACING = +process.env.SIM_LOCALITY_SPACING;
+if (process.env.SIM_LAND_HUNGER) T.LAND_HUNGER = +process.env.SIM_LAND_HUNGER;
 
 const STEP=+(process.argv[2]||10000), SEED=+(process.argv[3]||8817), OUT=process.argv[4]||"/tmp/locality.png", W=480,H=240;
 const crcT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();

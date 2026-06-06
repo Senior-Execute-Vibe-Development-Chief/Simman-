@@ -142,6 +142,8 @@ export const TUNING_SCHEMA = [
     params: [
       { key: "SETT_GROWTH", label: "Population growth rate", def: 0.0018, min: 0.0002, max: 0.01, step: 0.0002,
         desc: "Base per-tick population growth. The master demographics-speed dial — up = the world fills fast." },
+      { key: "LAND_HUNGER", label: "Marginal-land tolerance", def: 1.5, min: 0, max: 6, step: 0.5,
+        desc: "How readily new settlements spill onto LOW-quality land once the good sites nearby are already taken (population pressure / the historical frontier). 0 = settlers shun poor land forever, so deserts/uplands stay empty even late game; higher = marginal land WITHIN settled regions fills with sparse hamlets. Good land still fills first — this only lifts poor sites where the surroundings are already populated." },
       { key: "FARM_YIELD_PER_FERT", label: "Farm yield", def: 0.035, min: 0.005, max: 0.08, step: 0.005,
         desc: "Food produced per unit of land fertility → carrying capacity. Up = denser, larger inland cities." },
       { key: "HINTERLAND_MULT", label: "Farmland hinterland", def: 1.0, min: 0.3, max: 2.5, step: 0.1,

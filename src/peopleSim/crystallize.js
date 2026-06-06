@@ -296,6 +296,14 @@ export function maybeCrystallize(world) {
     // Resource / network / geographic bonuses are still additive
     // contributions on top of the multiplied location score.
     let quality = fertilityScore * locMul;
+    // LAND-HUNGER: population pressure pushes settlers onto poorer land once the
+    // good sites NEARBY are taken. marketPull measures how settled the surroundings
+    // already are, so this lifts low-fertility tiles ONLY within populated regions
+    // (good land still fills first on an open frontier) — and being ADDITIVE it
+    // boosts a marginal site far more than an already-prime one. This is what lets
+    // the desert/upland interior of a mature region fill with sparse hamlets
+    // instead of staying empty forever. (T.LAND_HUNGER lever.)
+    quality += T.LAND_HUNGER * Math.min(3, marketPull);
     quality += resourceBonusFor(world, ti, resScarcity);
     quality += busyRoadBonusFor(world, ti, tx, ty);
     quality += geoBonusFor(world, ti, tx, ty);   // chokepoints / passes / sheltered harbours
