@@ -101,6 +101,7 @@ function packSettlement(s) {
     _isPort: s._isPort, _vassalCount: s._vassalCount, liegeId: s.liegeId,
     army: s.army,         // for the leaderboard's "biggest armies" sort
     _shock: s._plagueActive ? 2 : (world.step < (s._famineUntil || 0) ? 1 : 0),
+    _homeland: s._homeland ?? -1, _provinceCity: s._provinceCity ?? -1,   // Provinces overlay: captured-nation + admin seat
   };
 }
 

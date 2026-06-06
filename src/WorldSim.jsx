@@ -2757,37 +2757,55 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         if(L.borders){octx.stroke();octx.setLineDash([]);}
       }
       // ── Province borders (Layers → Provinces) ──
-      // Internal administrative divisions: each CITY (tier ≥ 2) of a country is a
-      // provincial seat, and the country is partitioned into provinces by NEAREST
-      // CITY (a city-reach Voronoi within the country) — so a single-city realm is
-      // one province and a multi-city empire is split into a few large regions,
-      // matching how the empire's provinces would secede. Drawn lighter/dotted as
-      // a sub-border beneath the national one. (Computed from claim + the cities in
-      // psw.settlements; no sim/worker data needed beyond what's already shipped.)
+      // Internal administrative divisions. A province follows the SIM's own
+      // territory, not a fresh geometric guess: every tile is taken by the
+      // settlement that ADMINISTERS it (_territoryOwner — the transport-cost
+      // catchment), and that settlement's province is:
+      //   • a CAPTURED town → its _homeland (the nation it was conquered from),
+      //     so an absorbed country stays ONE province bordered by its FORMER
+      //     extent (the conquered-border lines), until it assimilates (~HOMELAND_
+      //     MEMORY) and rejoins the core; and
+      //   • a NATIVE town → its administrative seat (_provinceCity, the nearest
+      //     CITY by the sim's reach), so the heartland splits into city regions.
+      // Because the cells are unions of transport catchments they BEND with
+      // terrain (no straight Euclidean bisectors). Captured-nation provinces use
+      // negative keys so they never collide with a native city-seat id. Tiles
+      // with no settlement catchment (gap-filled interior) fall back to nearest
+      // city. Drawn lighter/dotted beneath the national border.
       if(L.provinces&&claimArr){
         const tw=psw.tw,th=psw.th,halfTw=tw/2;
-        const cityList=new Map();   // countryId → [city settlements]
-        for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.countryId>=0&&(s.tier|0)>=2){let a=cityList.get(s.countryId);if(!a)cityList.set(s.countryId,a=[]);a.push(s);}}
-        // province id per tile = nearest city (of the tile's country) by wrapped Euclidean.
-        const prov=new Int32Array(claimArr.length).fill(-1);
+        const provById=new Map();   // settlementId → province key (neg = captured nation)
+        const cityList=new Map();   // countryId → [cities] (fallback for catchment-less tiles)
+        for(const s of psw.settlements){if(!(s&&s.mode==="settled"&&s.countryId>=0))continue;
+          const hl=s._homeland??-1; const captured=hl>=0&&hl!==s.countryId;   // ignore a stale self-home
+          provById.set(s.id, captured ? -(hl+2) : ((s._provinceCity??-1)>=0 ? s._provinceCity : s.countryId));
+          if((s.tier|0)>=2){let a=cityList.get(s.countryId);if(!a)cityList.set(s.countryId,a=[]);a.push(s);}}
+        const nearestCity=(ti,cc)=>{const arr=cityList.get(cc);if(!arr)return cc;if(arr.length===1)return arr[0].id;
+          const py=((ti/tw)|0)+0.5,px=(ti-((ti/tw)|0)*tw)+0.5;let best=cc,bd=Infinity;
+          for(const c of arr){let dx=Math.abs(c.pos.x-px);if(dx>halfTw)dx=tw-dx;const dy=c.pos.y-py;const d=dx*dx+dy*dy;if(d<bd){bd=d;best=c.id;}}return best;};
+        const prov=new Int32Array(claimArr.length).fill(-2147483648);   // sentinel = unset
         for(let ti=0;ti<claimArr.length;ti++){
           const cc=claimArr[ti];if(cc<0)continue;
-          const arr=cityList.get(cc);if(!arr)continue;
-          if(arr.length===1){prov[ti]=arr[0].id;continue;}
-          const py=(ti/tw)+0.5,px=(ti-((ti/tw)|0)*tw)+0.5;
-          let best=-1,bd=Infinity;
-          for(const c of arr){let dx=Math.abs(c.pos.x-px);if(dx>halfTw)dx=tw-dx;const dy=c.pos.y-py;const d=dx*dx+dy*dy;if(d<bd){bd=d;best=c.id;}}
-          prov[ti]=best;
+          const sid=owner?owner[ti]:-1;
+          let pv=sid>=0?provById.get(sid):undefined;
+          prov[ti]=pv!==undefined?pv:nearestCity(ti,cc);   // catchment province, else nearest-city fallback
         }
-        octx.strokeStyle="rgba(20,20,20,0.5)";octx.lineWidth=1;octx.setLineDash([1,2]);octx.beginPath();
-        for(let ti=0;ti<claimArr.length;ti++){
-          const cc=claimArr[ti];if(cc<0)continue;const pv=prov[ti];if(pv<0)continue;
-          const py=(ti/tw)|0,px=ti-py*tw;const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-          const rti=py*tw+(px===tw-1?0:px+1);
-          if(claimArr[rti]===cc&&prov[rti]>=0&&prov[rti]!==pv){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
-          if(py<th-1){const dti=ti+tw;if(claimArr[dti]===cc&&prov[dti]>=0&&prov[dti]!==pv){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
-        }
-        octx.stroke();octx.setLineDash([]);
+        // Two pens. A border touching a CAPTURED-nation province (negative key) is
+        // a former national frontier inside the realm — drawn heavier/longer-dashed
+        // so a conquered country's old outline reads as historically significant;
+        // ordinary city-seam borders in the heartland stay faint dots.
+        const drawSeams=(heritage)=>{
+          for(let ti=0;ti<claimArr.length;ti++){
+            const cc=claimArr[ti];if(cc<0)continue;const pv=prov[ti];
+            const py=(ti/tw)|0,px=ti-py*tw;const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+            const rti=py*tw+(px===tw-1?0:px+1);
+            if(claimArr[rti]===cc){const qv=prov[rti];if(qv!==pv&&((pv<0||qv<0)===heritage)){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}}
+            if(py<th-1){const dti=ti+tw;if(claimArr[dti]===cc){const qv=prov[dti];if(qv!==pv&&((pv<0||qv<0)===heritage)){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
+          }
+        };
+        octx.strokeStyle="rgba(20,20,20,0.45)";octx.lineWidth=1;octx.setLineDash([1,2]);octx.beginPath();drawSeams(false);octx.stroke();
+        octx.strokeStyle="rgba(15,15,15,0.75)";octx.lineWidth=1;octx.setLineDash([3,2]);octx.beginPath();drawSeams(true);octx.stroke();
+        octx.setLineDash([]);
       }
       // Roads — thickness + alpha from current flow.
       if(L.roads&&psw.roadQuality&&psw.roadFlow){
