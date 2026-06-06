@@ -501,6 +501,12 @@ function freshCountryId(c, bloc) {
 function snapClaim(world, id) {
   if (id < 0) return;
   (world._claimSnap || (world._claimSnap = new Set())).add(id);
+  // A state born of secession / fragmentation / re-emergence INHERITS a developed,
+  // administered region — it should hold that region at once, not ramp its reach up
+  // from the cradle base over thousands of steps (which left the territory it broke
+  // off with sitting as wilderness in the meantime). Mark it so the territory pass
+  // seeds its reach at the full (size-scaled) target immediately.
+  (world._inheritReach || (world._inheritReach = new Set())).add(id);
 }
 
 // History rarely produced fully landlocked enclaves seceding from a still-

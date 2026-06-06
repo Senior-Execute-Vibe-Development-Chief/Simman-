@@ -202,16 +202,23 @@ export function computeCountryTerritory(world) {
   }
   // Ease each country's reach toward that (size-scaled tech) target so territory
   // grows in gradually instead of snapping to a continental claim in one pass
-  // (smooths the mid-game explosion — see BUDGET_RAMP). A brand-new country
-  // starts near the base reach and earns the rest over many passes.
+  // (smooths the mid-game explosion — see BUDGET_RAMP). A brand-new CRADLE starts
+  // near the base reach and earns the rest over many passes; but a state born of
+  // SECESSION / fragmentation / re-emergence (flagged in _inheritReach by snapClaim)
+  // inherits an administered region and seeds at its FULL target at once, so the
+  // land it broke off with stays held instead of reverting to wilderness while a
+  // fresh reach ramps up.
   let ramp = world._cBudgetRamp; if (!ramp) ramp = world._cBudgetRamp = new Map();
+  const inherit = world._inheritReach;
   for (const [c, target] of budget) {
     const prev = ramp.get(c);
-    const next = prev === undefined ? Math.min(target, COUNTRY_REACH_BASE)
-                                    : prev + (target - prev) * BUDGET_RAMP;
+    const next = prev === undefined
+      ? ((inherit && inherit.has(c)) ? target : Math.min(target, COUNTRY_REACH_BASE))
+      : prev + (target - prev) * BUDGET_RAMP;
     ramp.set(c, next);
     budget.set(c, next);
   }
+  if (inherit && inherit.size) for (const c of inherit) if (ramp.has(c)) inherit.delete(c);   // one-shot, once seeded
   for (const c of [...ramp.keys()]) if (!budget.has(c)) ramp.delete(c);
 
   // Per-tile basin budget: how far the SEED that claimed a tile may project.
@@ -270,68 +277,77 @@ export function computeCountryTerritory(world) {
   return co;
 }
 
-// ── Solidify each realm: bridge the wilderness GAPS between a realm's OWN
-// settlements so a country reads as ONE clean territorial chunk, not a confetti
-// of detached basin-dots separated by unclaimed land. A wilderness LAND tile is
-// claimed for country C only when C lies on BOTH sides of it along an axis
-// (north&south, or east&west) within D tiles, with nothing else wedged between —
-// i.e. the tile sits in an interior gap / channel / concavity of C. The OPEN
-// FRONTIER (C on one side, wilderness out the other) and the BUFFER between two
-// DIFFERENT realms (C on one side, a rival on the other) are deliberately left
-// unclaimed, so the sparse "islands of territory in a sea of wilderness" look
-// survives BETWEEN realms while each realm itself fills solid. WATER blocks the
-// span — a strait is never bridged into land. Four linear sweeps → O(N), so this
-// stays cheap at any map size. Set D=0 (REALM_GAP_FILL) to recover the old basins.
+// ── Partition the gaps: no terra nullius between neighbours ──────────────────
+// Unclaimed LAND that sits BETWEEN claimed territory — flanked by a country on
+// both sides of an axis (W&E or N&S) within D tiles — is handed to the NEARER of
+// the flanking countries. So an interior gap of one realm fills solid (same
+// country both sides), AND the no-man's-land BETWEEN two realms is split along
+// the midline so they border directly — a modern wall-to-wall partition rather
+// than a sea of blank buffer. What stays wilderness is the genuinely OPEN
+// frontier: land with a country within D on only one side (or none), facing a
+// large uninhabited expanse — the deep desert/ice/interior beyond any state's
+// reach. WATER blocks the span (a strait is never bridged into land). Four linear
+// sweeps → O(N). Set D=0 (REALM_GAP_FILL) to recover the raw cost-Voronoi basins.
 function closeRealmGaps(world, co, D) {
   if (!(D > 0)) return;
   const { N, tw, th, elev } = world;
-  // For each tile, the nearest country (within D) looking W / E / N / S, with
+  // Per tile, the nearest country AND its distance looking W / E / N / S — with
   // wilderness transparent and water opaque (a ray dies at the coast).
   let buf = world._gapBuf;
-  if (!buf || buf.wC.length !== N) buf = world._gapBuf = { wC: new Int32Array(N), eC: new Int32Array(N), nC: new Int32Array(N), sC: new Int32Array(N) };
-  const { wC, eC, nC, sC } = buf;
+  if (!buf || buf.wC.length !== N) buf = world._gapBuf = {
+    wC: new Int32Array(N), eC: new Int32Array(N), nC: new Int32Array(N), sC: new Int32Array(N),
+    wD: new Int32Array(N), eD: new Int32Array(N), nD: new Int32Array(N), sD: new Int32Array(N) };
+  const { wC, eC, nC, sC, wD, eD, nD, sD } = buf;
+  const FAR = 1 << 28;
   for (let y = 0; y < th; y++) {                       // ← nearest country to the WEST
     let last = -1, lastP = -1e9; const row = y * tw;
     for (let x = 0; x < tw; x++) { const ti = row + x;
-      if (elev[ti] <= 0) { last = -1; lastP = -1e9; wC[ti] = -1; continue; }
-      wC[ti] = (last >= 0 && x - lastP <= D) ? last : -1;
+      if (elev[ti] <= 0) { last = -1; lastP = -1e9; wC[ti] = -1; wD[ti] = FAR; continue; }
+      const d = x - lastP;
+      if (last >= 0 && d <= D) { wC[ti] = last; wD[ti] = d; } else { wC[ti] = -1; wD[ti] = FAR; }
       if (co[ti] >= 0) { last = co[ti]; lastP = x; }
     }
   }
   for (let y = 0; y < th; y++) {                       // → nearest country to the EAST
     let last = -1, lastP = 1e9; const row = y * tw;
     for (let x = tw - 1; x >= 0; x--) { const ti = row + x;
-      if (elev[ti] <= 0) { last = -1; lastP = 1e9; eC[ti] = -1; continue; }
-      eC[ti] = (last >= 0 && lastP - x <= D) ? last : -1;
+      if (elev[ti] <= 0) { last = -1; lastP = 1e9; eC[ti] = -1; eD[ti] = FAR; continue; }
+      const d = lastP - x;
+      if (last >= 0 && d <= D) { eC[ti] = last; eD[ti] = d; } else { eC[ti] = -1; eD[ti] = FAR; }
       if (co[ti] >= 0) { last = co[ti]; lastP = x; }
     }
   }
   for (let x = 0; x < tw; x++) {                       // ↓ nearest country to the NORTH
     let last = -1, lastP = -1e9;
     for (let y = 0; y < th; y++) { const ti = y * tw + x;
-      if (elev[ti] <= 0) { last = -1; lastP = -1e9; nC[ti] = -1; continue; }
-      nC[ti] = (last >= 0 && y - lastP <= D) ? last : -1;
+      if (elev[ti] <= 0) { last = -1; lastP = -1e9; nC[ti] = -1; nD[ti] = FAR; continue; }
+      const d = y - lastP;
+      if (last >= 0 && d <= D) { nC[ti] = last; nD[ti] = d; } else { nC[ti] = -1; nD[ti] = FAR; }
       if (co[ti] >= 0) { last = co[ti]; lastP = y; }
     }
   }
   for (let x = 0; x < tw; x++) {                       // ↑ nearest country to the SOUTH
     let last = -1, lastP = 1e9;
     for (let y = th - 1; y >= 0; y--) { const ti = y * tw + x;
-      if (elev[ti] <= 0) { last = -1; lastP = 1e9; sC[ti] = -1; continue; }
-      sC[ti] = (last >= 0 && lastP - y <= D) ? last : -1;
+      if (elev[ti] <= 0) { last = -1; lastP = 1e9; sC[ti] = -1; sD[ti] = FAR; continue; }
+      const d = lastP - y;
+      if (last >= 0 && d <= D) { sC[ti] = last; sD[ti] = d; } else { sC[ti] = -1; sD[ti] = FAR; }
       if (co[ti] >= 0) { last = co[ti]; lastP = y; }
     }
   }
-  // Claim every unclaimed land tile flanked by the SAME realm on an opposite pair
-  // (gather first, write after, so fills don't seed off each other within a pass).
+  // Assign each between-tile to its NEAREST flanking country (gather first, write
+  // after, so fills don't seed off each other within a pass).
   let fills = world._gapFills;
   if (!fills || fills.length < N) fills = world._gapFills = new Int32Array(N);
   let n = 0;
   for (let ti = 0; ti < N; ti++) {
     if (co[ti] >= 0 || elev[ti] <= 0) continue;
-    let c = -1;
-    if (wC[ti] >= 0 && wC[ti] === eC[ti]) c = wC[ti];           // horizontal channel
-    else if (nC[ti] >= 0 && nC[ti] === sC[ti]) c = nC[ti];      // vertical channel
+    let c = -1, cd = FAR;
+    if (wC[ti] >= 0 && eC[ti] >= 0) { if (wD[ti] <= eD[ti]) { c = wC[ti]; cd = wD[ti]; } else { c = eC[ti]; cd = eD[ti]; } }  // flanked W&E
+    if (nC[ti] >= 0 && sC[ti] >= 0) {                                                                                          // flanked N&S, closer?
+      const vd = nD[ti] <= sD[ti] ? nD[ti] : sD[ti];
+      if (vd < cd) { c = nD[ti] <= sD[ti] ? nC[ti] : sC[ti]; cd = vd; }
+    }
     if (c >= 0) { fills[n++] = ti; fills[n++] = c; }
   }
   for (let i = 0; i < n; i += 2) co[fills[i]] = fills[i + 1];
