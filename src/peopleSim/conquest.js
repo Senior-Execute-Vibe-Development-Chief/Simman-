@@ -614,6 +614,45 @@ function filterToConnectedBloc(world, bloc, seed, radius) {
   return bloc.filter(m => reached.has(m));
 }
 
+// Loyal parent settlements the breakaway ENVELOPES — those cut off from the
+// capital once the seceding bloc's tiles become a foreign wall. A region that
+// breaks away can't leave a loyal parent island marooned in its interior (the
+// realm couldn't physically reach it anyway), so the breakaway swallows it. Two
+// floods over the parent's OWN country tiles — including, then excluding, the
+// bloc — isolate exactly those stranded by THIS breakaway: a tile reachable from
+// the capital before but not after is enclosed (a pre-existing exclave isn't
+// reachable even before, so it's never blamed here). Capped to a pocket no
+// larger than the bloc: a breakaway that severs the realm outright is a DIVIDER,
+// not an envelope, so the far side is left for the over-extension machinery.
+function absorbEnclosed(world, c, blocSet) {
+  const co = world._countryOwner, owner = world._territoryOwner;
+  if (!co || !owner || !c.capital) return [];
+  const tw = world.tw, th = world.th, capTi = (c.capital.pos.y | 0) * tw + (c.capital.pos.x | 0);
+  if (co[capTi] !== c.id) return [];
+  const flood = (excludeBloc) => {
+    const seen = new Uint8Array(world.N); const q = [capTi]; seen[capTi] = 1;
+    while (q.length) {
+      const ti = q.pop(), ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+      const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+      for (let k = 0; k < 4; k++) {
+        const ni = ns[k]; if (ni < 0 || seen[ni] || co[ni] !== c.id) continue;
+        if (excludeBloc && blocSet.has(owner[ni])) continue;   // bloc tiles are walls
+        seen[ni] = 1; q.push(ni);
+      }
+    }
+    return seen;
+  };
+  const before = flood(false), after = flood(true);
+  const enclosed = [];
+  for (const m of c.members) {
+    if (m.countryId !== c.id || blocSet.has(m.id)) continue;
+    const ti = (m.pos.y | 0) * tw + (m.pos.x | 0);
+    if (before[ti] && !after[ti]) enclosed.push(m);
+  }
+  return enclosed.length > blocSet.size ? [] : enclosed;   // severs the realm → not an envelope
+}
+
 // ── Provincial secession: an over-stretched empire sheds whole PROVINCES ──
 // History never fragmented an empire one town at a time. The unit of secession
 // was a REGION with its own seat of government and army — a province under its
@@ -754,14 +793,27 @@ function secedeContagious(world, c, seeds) {
       }
       continue;
     }
+    // Loyal parent towns the new state would strand inside itself come along —
+    // a clean chunk leaves no enemy island in its belly (computed before the flip).
+    const blocSet = new Set(bloc.map(m => m.id));
+    const enclosed = absorbEnclosed(world, c, blocSet);
     inheritPersonality(world, c.id, newId);        // successor inherits parent temperament (with drift)
     snapClaim(world, newId);                       // the region is its own that day (instant, not a slow wave)
     for (const m of bloc) {
       m.countryId = newId;
+      if (m._homeland === newId) { m._homeland = -1; m._homelandFell = -1; }  // re-formed its own old nation → home
       m.loyalty = m === seat ? 1 : 0.85;           // the governor leads; his province follows
       m._ambition = 0;
       m._conqueredAt = world.step;                 // resists immediate re-annex (anti-flicker)
       if (m.history) m.history.push({ step: world.step, type: m === seat ? "seceded" : "joined-secession", to: newId });
+    }
+    for (const m of enclosed) {
+      recordOccupation(m, c.id, newId, world.step); // swept in unwillingly; remembers its old flag
+      m.countryId = newId;
+      m.loyalty = 0.4;                              // a disgruntled new subject (grace garrisons it for now)
+      m._ambition = 0;
+      m._conqueredAt = world.step;
+      if (m.history) m.history.push({ step: world.step, type: "enveloped", to: newId });
     }
   }
 }
