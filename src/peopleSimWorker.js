@@ -35,6 +35,7 @@ self.onmessage = (e) => {
   if (m.type === "init") {
     try {
       world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tileRes: m.tileRes, deposits: m.w.deposits });
+      world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
       lastSnap = 0;
       buildSnapshot();            // immediate first frame
     } catch (err) {
@@ -51,6 +52,7 @@ self.onmessage = (e) => {
     if (!playing && world) buildSnapshot();          // show the selection's detail now
   } else if (m.type === "view") {
     viewMode = m.view;
+    if (world) world._wantMoneyFlows = (viewMode === "money");   // gate the per-tick money-flow overlay build
     if (!playing && world) buildSnapshot();          // refresh extras for the new view
   } else if (m.type === "tune") {
     // Live gameplay tuning. m.reset wipes back to defaults; m.values is a

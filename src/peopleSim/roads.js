@@ -743,6 +743,12 @@ export function updateTrade(world) {
   // 240-tick reach rebuilds).
   const moneyFlows = [];
   const linkMoney = new Map();   // "loId:hiId" -> net money that reached the higher-id settlement
+  // The animated money-flow overlay (moneyFlows) is render-only and consumed
+  // ONLY in the money view, yet it was built every tick for every trading pair.
+  // Skip the per-pair object churn unless that view is active (the worker sets
+  // the flag from viewMode). _linkMoney is always built — armies.js reads it for
+  // the trade-peace dampener, so it's a sim input, not just an overlay.
+  const wantFlows = world._wantMoneyFlows !== false;
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     // Trade peers = the road network reach PLUS any sea-lane peers
@@ -775,8 +781,11 @@ export function updateTrade(world) {
       // Land trade wears its road path (flow drives paving + thickness);
       // sea trade leaves no road, but both animate on the money overlay.
       if (link.tiles && link.tiles.length > 0) {
-        if (!link.sea) { for (const ti of link.tiles) { rf[ti] += USAGE_PER_TRADE; flowTiles.add(ti); } }
-        if (link.tiles.length > 1 && Math.abs(net) > MONEY_FLOW_EPS) {
+        // A tile only needs ADDING to the sparse flow-set when it was idle; a
+        // busy trunk shared by many pairs (and across ticks) is already in the
+        // set, so the cheap rf===0 test skips almost every redundant Set.add.
+        if (!link.sea) { for (const ti of link.tiles) { if (rf[ti] === 0) flowTiles.add(ti); rf[ti] += USAGE_PER_TRADE; } }
+        if (wantFlows && link.tiles.length > 1 && Math.abs(net) > MONEY_FLOW_EPS) {
           moneyFlows.push({ tiles: link.tiles, mag: Math.abs(net), toEnd: net >= 0, sea: !!link.sea });
         }
       }
