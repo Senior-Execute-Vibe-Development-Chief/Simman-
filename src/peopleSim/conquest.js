@@ -740,42 +740,55 @@ function shedFrontier(world, c, seeds, tcosts, range, stress) {
   }
 }
 
-// Carve one loose patch loose. Every CITY on it anchors a successor and the patch's
-// settlements join their nearest such city (a watershed); #cities → #pieces, so the
-// severity of the collapse sets the shape. A patch with no city is abandoned: its
-// settlements fall stateless and their tiles revert to wilderness.
+// Carve one loose patch loose. The patch SECEDES as its own state(s): each CITY on
+// it anchors a successor and the settlements join their nearest such city (a
+// watershed) — #cities → #pieces, so severity sets the shape. If the patch has no
+// city, its strongest TOWN leads a single frontier state (the land doesn't
+// evaporate just because no metropolis sits on it). Only a lone village or empty
+// over-claimed tiles have no government to inherit: those fall stateless and the
+// land reverts to wilderness (the rim recedes).
 function shedPatch(world, c, members) {
-  const cities = members.filter(m => (m.tier | 0) >= CITY_TIER && m.id !== c.capitalId);
-  if (cities.length === 0) {
+  let seats = members.filter(m => (m.tier | 0) >= CITY_TIER && m.id !== c.capitalId);
+  if (seats.length === 0) {
+    // No city — the biggest town becomes a frontier capital, provided the patch is
+    // a real region (a seat plus at least one dependent), not a single hamlet.
+    const towns = members.filter(m => (m.tier | 0) >= 1 && m.id !== c.capitalId);
+    if (towns.length && members.length >= 2) {
+      let best = towns[0]; for (const t of towns) if (settlementPower(t) > settlementPower(best)) best = t;
+      seats = [best];
+    }
+  }
+  if (seats.length === 0) {
+    // Genuinely marginal frontier (a lone village, or bare tiles): no polity forms.
     for (const m of members) {
       if (m.countryId !== c.id) continue;
-      m.countryId = -1; m.loyalty = 1; m._ambition = 0; m._conqueredAt = world.step;   // frontier abandoned
+      m.countryId = -1; m.loyalty = 1; m._ambition = 0; m._conqueredAt = world.step;   // falls stateless; tiles revert
       if (m.history) m.history.push({ step: world.step, type: "abandoned", from: c.id });
     }
     return;
   }
   const groups = new Map();
-  for (const city of cities) groups.set(city.id, []);
+  for (const seat of seats) groups.set(seat.id, []);
   for (const m of members) {
     if (m.countryId !== c.id) continue;
-    let best = cities[0], bd = Infinity;
-    for (const city of cities) { const d = dist(world, city.pos.x, city.pos.y, m.pos.x, m.pos.y); if (d < bd) { bd = d; best = city; } }
+    let best = seats[0], bd = Infinity;
+    for (const seat of seats) { const d = dist(world, seat.pos.x, seat.pos.y, m.pos.x, m.pos.y); if (d < bd) { bd = d; best = seat; } }
     groups.get(best.id).push(m);
   }
-  for (const city of cities) {
-    const grp = groups.get(city.id);
+  for (const seat of seats) {
+    const grp = groups.get(seat.id);
     if (!grp || !grp.length) continue;
-    const newId = freshCountryId(c, [city, ...grp.filter(m => m !== city)]);   // the city leads (its own id, unless that IS the parent)
+    const newId = freshCountryId(c, [seat, ...grp.filter(m => m !== seat)]);   // the seat leads (its own id, unless that IS the parent)
     if (newId < 0) continue;
     inheritPersonality(world, c.id, newId);        // successor inherits the parent's temperament (with drift)
     snapClaim(world, newId);                       // the cell is its own that day (instant, not a slow wave)
     for (const m of grp) {
       m.countryId = newId;
       if (m._homeland === newId) { m._homeland = -1; m._homelandFell = -1; }   // re-formed its own old nation → home
-      m.loyalty = m === city ? 1 : 0.8;
+      m.loyalty = m === seat ? 1 : 0.8;
       m._ambition = 0;
       m._conqueredAt = world.step;                 // anti-flicker grace
-      if (m.history) m.history.push({ step: world.step, type: m === city ? "seceded" : "joined-secession", to: newId });
+      if (m.history) m.history.push({ step: world.step, type: m === seat ? "seceded" : "joined-secession", to: newId });
     }
   }
 }
