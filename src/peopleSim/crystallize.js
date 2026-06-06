@@ -22,6 +22,7 @@ import { makeSettlement } from "./settlement.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
 import { grownOwnerAt } from "./countryClaim.js";
+import { T } from "./tuning.js";
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
 const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) flood — a
@@ -206,6 +207,14 @@ export function maybeCrystallize(world) {
   // saturated regions every candidate fails the tooClose / area-fert
   // checks, so spawn rate falls off naturally.
   const { N, tw, th, elev, fert, coast, riverMag, transportDist, rng } = world;
+  // LOCALITY model spaces centres farther apart (×LOCALITY_SPACING) so the map
+  // fills with fewer, larger localities — each farming a bigger catchment —
+  // instead of a dense village scatter.
+  const spMul = T.LOCALITY_MODE ? Math.max(1, T.LOCALITY_SPACING || 3) : 1;
+  const hardFloorSq = HARD_FLOOR_SQ * spMul * spMul;
+  const softDistSq  = SOFT_DIST_SQ  * spMul * spMul;
+  const hardFloor   = HARD_FLOOR * spMul;
+  const softDist    = SOFT_DIST  * spMul;
   for (let i = 0; i < CANDIDATES_PER_SWEEP; i++) {
     const ti = rng.int(N);
     if (!isContinentalLand(world, ti)) continue;
@@ -248,15 +257,15 @@ export function maybeCrystallize(world) {
       const tierBonus = 1 + (o.tier | 0);
       marketPull += tierBonus * Math.exp(-d / MARKET_RANGE);
     });
-    if (nearestSq < HARD_FLOOR_SQ) continue;       // hard reject — overlap
+    if (nearestSq < hardFloorSq) continue;         // hard reject — overlap
     // Linear ramp between HARD_FLOOR and SOFT_DIST on actual distance (not
     // squared, so it grows steeply near the floor and flattens out near the
     // soft boundary — matches the "very close = bad, modest distance =
-    // mostly fine" historical pattern).
+    // mostly fine" historical pattern). (Thresholds widen in LOCALITY mode.)
     let spacingFactor = 1;
-    if (nearestSq < SOFT_DIST_SQ) {
+    if (nearestSq < softDistSq) {
       const d = Math.sqrt(nearestSq);
-      spacingFactor = (d - HARD_FLOOR) / (SOFT_DIST - HARD_FLOOR);
+      spacingFactor = (d - hardFloor) / (softDist - hardFloor);
     }
     // Market pull: 1.0 at zero pull (frontier), grows with proximity to
     // existing settlements weighted by their tier. Multiplied into the

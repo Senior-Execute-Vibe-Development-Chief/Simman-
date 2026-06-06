@@ -11,6 +11,8 @@ import { T } from "../src/peopleSim/tuning.js";
 if (process.env.SIM_TRADE_STRIDE) T.TRADE_STRIDE = +process.env.SIM_TRADE_STRIDE;   // A/B the trade throttle
 if (process.env.SIM_DEV_STRIDE)   T.DEV_STRIDE   = +process.env.SIM_DEV_STRIDE;     // A/B the construction stagger
 if (process.env.SIM_VILLAGE_PARTNERS) T.VILLAGE_PARTNERS = +process.env.SIM_VILLAGE_PARTNERS;
+if (process.env.SIM_LOCALITY) T.LOCALITY_MODE = +process.env.SIM_LOCALITY;
+if (process.env.SIM_LOCALITY_SPACING) T.LOCALITY_SPACING = +process.env.SIM_LOCALITY_SPACING;
 
 const STEPS = parseInt(process.argv[2] || "12000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);
@@ -26,10 +28,10 @@ const rivers=computeRivers(TW,TH,tElev,tMoist,tTemp); w.rivers=rivers;
 const deposits=generateResources(TW,TH,tElev,tTemp,tMoist,tCoast,w,w._seed||SEED,rivers); w.deposits=deposits;
 const world=initPeopleSim(w,{seed:w._seed||SEED,tCrop,tileRes:1,deposits});
 
-console.log(`econ ${W}x${H} seed=${SEED}  TRADE_STRIDE=${process.env.SIM_TRADE_STRIDE||"(default)"}`);
-console.log("step    setts cities ctry  land%      pop        wealth");
+console.log(`econ ${W}x${H} seed=${SEED}  LOCALITY=${process.env.SIM_LOCALITY||"0"}`);
+console.log("step    setts  vil  twn  cty ctry land%      pop        wealth");
 function report(step){
   const st = peopleSimStats(world);
-  console.log(`${String(step).padStart(5)}  ${String(st.settlements).padStart(5)} ${String(st.cities+st.metropolises).padStart(5)}  ${String(st.countries).padStart(3)}  ${(st.landPct*100).toFixed(0).padStart(3)}%  ${String(st.totalPeople).padStart(9)}  ${String(st.totalWealth).padStart(11)}`);
+  console.log(`${String(step).padStart(5)}  ${String(st.settlements).padStart(5)} ${String(st.villages).padStart(4)} ${String(st.towns).padStart(4)} ${String(st.cities+st.metropolises).padStart(4)} ${String(st.countries).padStart(4)} ${(st.landPct*100).toFixed(0).padStart(3)}%  ${String(st.totalPeople).padStart(9)}  ${String(st.totalWealth).padStart(11)}`);
 }
 for(let s=1;s<=STEPS;s++){ stepPeopleSim(world,1); if(s%INTERVAL===0) report(s); }

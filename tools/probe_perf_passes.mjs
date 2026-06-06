@@ -11,6 +11,8 @@ import { T } from "../src/peopleSim/tuning.js";
 if (process.env.SIM_TRADE_STRIDE) T.TRADE_STRIDE = +process.env.SIM_TRADE_STRIDE;   // A/B the trade throttle
 if (process.env.SIM_DEV_STRIDE)   T.DEV_STRIDE   = +process.env.SIM_DEV_STRIDE;     // A/B the construction stagger
 if (process.env.SIM_VILLAGE_PARTNERS) T.VILLAGE_PARTNERS = +process.env.SIM_VILLAGE_PARTNERS;
+if (process.env.SIM_LOCALITY) T.LOCALITY_MODE = +process.env.SIM_LOCALITY;
+if (process.env.SIM_LOCALITY_SPACING) T.LOCALITY_SPACING = +process.env.SIM_LOCALITY_SPACING;
 
 const STEPS = parseInt(process.argv[2] || "8000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);

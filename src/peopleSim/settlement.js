@@ -1128,7 +1128,14 @@ function updatePopulation(world, s) {
   const perCapita = 0.003 * (s._urbanFactor || 1);
   const foodK = (s._foodSupply || 0) / perCapita;   // _foodSupply = food-hierarchy net (own + subtree intake − shipped up) + local fish
   const houseK = housingCapacity(s);
-  const K = Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
+  // LOCALITY model: population = whatever the farmable catchment feeds (foodK
+  // already folds in own land + any food routed in). Housing stops being the
+  // size cap — a locality IS its hinterland, so a rich-land centre simply holds
+  // more people (→ a city) and a poor one stays a town. Money is a separate
+  // closed layer (commerce/mining), unrelated to how big the place is.
+  const K = T.LOCALITY_MODE
+    ? Math.max(K_MIN_VIABLE, foodK)
+    : Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
   s._k = K;
   s._foodK = foodK;            // exposed so the info panel can show which limit binds
   s._houseK = houseK;

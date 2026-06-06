@@ -34,6 +34,10 @@ export const TUNING_SCHEMA = [
         desc: "Resolve town construction (housing + material purchases) every N ticks at N× rate — same AVERAGE building. 1 = every tick; 3 (default) trims the per-settlement pass; higher = faster, housing grows in bursts." },
       { key: "VILLAGE_PARTNERS", label: "Village trade partners", def: 12, min: 1, max: 12, step: 1,
         desc: "How many trade partners a tier-0 VILLAGE keeps (towns/cities always keep the full set). Lower = villages trade only LOCALLY (their market town) instead of across the whole network — much cheaper, and arguably more realistic (a subsistence countryside feeding trading cities), while tolls, tariffs, taxes and the food shipped to cities all keep working unchanged. 12 = villages trade like everyone else (original)." },
+      { key: "LOCALITY_MODE", label: "Locality model (experimental)", def: 0, min: 0, max: 1, step: 1,
+        desc: "EXPERIMENTAL. 1 = no villages: a settlement's POPULATION is whatever its farmable catchment feeds (land → people → city size), so cities land on rich terrain and money becomes a separate closed commerce layer. Far fewer entities → much faster. 0 = original (housing-capped) model." },
+      { key: "LOCALITY_SPACING", label: "Locality spacing ×", def: 3, min: 1, max: 6, step: 0.5,
+        desc: "Only with Locality model on: how much farther apart centres spawn (×original spacing). Higher = fewer, larger localities each farming a bigger catchment." },
     ],
   },
   {
