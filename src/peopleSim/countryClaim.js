@@ -15,6 +15,19 @@
 // Rings the drawn border advances toward the target per relax call. 1 = slowest,
 // smoothest crawl. index.js calls relaxClaim every CLAIM_RELAX_INTERVAL ticks.
 const RINGS_PER_RELAX = 1;
+// ...but the crawl must keep PACE with a realm's growing territory regardless of
+// map size. At a fixed 1 ring/relax the border advances the same number of TILES
+// per tick on any map, so on the full-res world (≈4× wider than the test grid)
+// it covers ¼ the ground — and because a settlement is only claimed once the
+// border grows over it, realms can't bootstrap and the map freezes into a
+// confetti of stateless villages at ~0% claimed. So scale the rings with the map
+// width (reference RELAX_REF_W) so the front covers a consistent FRACTION of the
+// world per tick. (SIM_CLAIM_RINGS env overrides, for A/B.)
+const RELAX_REF_W = 240;
+const _ringsEnv = (typeof process !== "undefined" && process.env && +process.env.SIM_CLAIM_RINGS) || 0;
+function ringsPerRelax(tw) {
+  return _ringsEnv > 0 ? _ringsEnv : Math.max(RINGS_PER_RELAX, Math.round(RINGS_PER_RELAX * tw / RELAX_REF_W));
+}
 // Organic front: a tile on an advancing border accumulates breakthrough PRESSURE
 // each relax and only flips once it overcomes the tile's RESISTANCE. Open ground
 // resists ~1 (flips at once, as before); mountains resist far more (the front
@@ -152,7 +165,8 @@ export function relaxClaim(world) {
   let press = world._claimPress;
   if (!press || press.length !== N) press = world._claimPress = new Float32Array(N);
   const noiseF = world._claimNoise;   // coherent value-noise field (countryTerritory.js); may be unset on the first pass
-  for (let r = 0; r < RINGS_PER_RELAX; r++) {
+  const rings = ringsPerRelax(tw);    // map-size-scaled so the front keeps pace at any resolution (see ringsPerRelax)
+  for (let r = 0; r < rings; r++) {
     const flips = [];
     for (let ti = 0; ti < N; ti++) {
       if (elev[ti] <= 0) { if (claim[ti] >= 0) claim[ti] = -1; press[ti] = 0; continue; }  // water is never claimed
