@@ -6,7 +6,7 @@ import { generateWorld } from "../src/worldgen.js";
 import { computeRivers } from "../src/riverGen.js";
 import { generateResources } from "../src/resourceGen.js";
 import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
-const STEP=+(process.argv[2]||12000), SEED=+(process.argv[3]||8817), W=960,H=480;
+const STEP=+(process.argv[2]||12000), SEED=+(process.argv[3]||8817), W=+(process.argv[4]||1920),H=+(process.argv[5]||960);
 const crcT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
 const crc=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=crcT[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0;};
 function png(w,h,rgb){const sig=Buffer.from([137,80,78,71,13,10,26,10]);const ch=(t,d)=>{const l=Buffer.alloc(4);l.writeUInt32BE(d.length,0);const b=Buffer.concat([Buffer.from(t,"ascii"),d]);const c=Buffer.alloc(4);c.writeUInt32BE(crc(b),0);return Buffer.concat([l,b,c]);};const ih=Buffer.alloc(13);ih.writeUInt32BE(w,0);ih.writeUInt32BE(h,4);ih[8]=8;ih[9]=2;const st=w*3+1,raw=Buffer.alloc(st*h);for(let y=0;y<h;y++){raw[y*st]=0;rgb.copy(raw,y*st+1,y*w*3,(y+1)*w*3);}return Buffer.concat([sig,ch("IHDR",ih),ch("IDAT",zlib.deflateSync(raw,{level:6})),ch("IEND",Buffer.alloc(0))]);}
@@ -37,4 +37,4 @@ const dark=[8,8,12];
 for(let ti=0;ti<claim.length;ti++){const cc=claim[ti];if(cc<0)continue;const py=(ti/tw)|0,px=ti-py*tw;
   const ro=claim[py*tw+(px===tw-1?0:px+1)];if(ro>=0&&ro!==cc){for(let dy=0;dy<SC;dy++)for(let k=-1;k<=0;k++){const ox=(px+1)*SC+k,oy=py*SC+dy;if(ox<OW&&oy<OH){const o=(oy*OW+ox)*3;rgb[o]=dark[0];rgb[o+1]=dark[1];rgb[o+2]=dark[2];}}}
   if(py<th-1){const dno=claim[ti+tw];if(dno>=0&&dno!==cc){for(let dx=0;dx<SC;dx++)for(let k=-1;k<=0;k++){const ox=px*SC+dx,oy=(py+1)*SC+k;if(ox<OW&&oy<OH){const o=(oy*OW+ox)*3;rgb[o]=dark[0];rgb[o+1]=dark[1];rgb[o+2]=dark[2];}}}}}
-writeFileSync("/tmp/country_view.png",png(OW,OH,rgb));console.log("[png] /tmp/country_view.png");
+const OUT=process.argv[6]||"/tmp/country_view.png";writeFileSync(OUT,png(OW,OH,rgb));console.log("[png] "+OUT);
