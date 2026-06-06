@@ -24,18 +24,40 @@ const RINGS_PER_RELAX = 1;
 const ELEV_RESIST  = 11;   // extra passes a high-elevation tile makes the front wait
 const NOISE_RESIST = 2.5;  // coherent jitter (×_claimNoise 0..1) → ragged/bulging edge
 
-// Ticks after a settlement is INTEGRATED out of the wild (adoptAndFound stamps
-// _integratedAt) during which it does NOT plant a wild-land foothold — so its
-// realm's colour crawls out to it FROM the existing border instead of blooming
-// around the freshly-absorbed settlement. A genuinely new settlement on fresh
-// land (a colony / crystallised town, no recent integration) plants normally.
-const FOOTHOLD_GRACE = 600;
-
 // "Main" settlement of a country: the strongest member (tier first, then
 // people) — the same seat rebuildCountries would crown capital. Used to pick
 // the single tile a brand-new realm's claim is born from. Robust to a dead
 // founder (a country id can outlive the settlement it was named for).
 function headScore(s) { return (s.tier | 0) * 1e7 + (s.people || 0); }
+
+// Is this tile on the SAME LANDMASS as land country `cid` already claims? Land
+// becomes a realm's only as its border crawls into it from ground it holds, so a
+// settlement standing on unclaimed land must WAIT for the crawl rather than light
+// up its own tile — otherwise a realm's scattered or not-yet-reached towns appear
+// as disconnected dots ahead of the border. The one case that legitimately needs
+// its own seed is a settlement the border can NEVER crawl to: one cut off by
+// WATER (an overseas colony / island), since the crawl never crosses sea. So flood
+// the landmass from `startTi` over land; if it reaches a tile the realm already
+// claims, the border will arrive on its own (no foothold — it fills in
+// contiguously); if the flood is walled in by water without finding one, this is a
+// separate landmass and needs a birth foothold. Bounded so a continent exits cheap.
+function landConnectedToClaim(world, claim, startTi, cid) {
+  const { tw, th, elev } = world;
+  const MAX = 4000;
+  const seen = new Set([startTi]); const q = [startTi]; let visited = 0;
+  while (q.length && visited < MAX) {
+    const ti = q.pop(); visited++;
+    if (claim[ti] === cid) return true;                  // same landmass as ground the realm already holds
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+    const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+    for (let k = 0; k < 4; k++) {
+      const ni = ns[k]; if (ni < 0 || seen.has(ni) || elev[ni] <= 0) continue;   // water walls the flood
+      seen.add(ni); q.push(ni);
+    }
+  }
+  return false;
+}
 
 
 // Crawl the drawn claim one (or RINGS_PER_RELAX) ring toward the target. A tile
@@ -91,20 +113,21 @@ export function relaxClaim(world) {
     if (elev[ti] <= 0) continue;
     const cur = claim[ti];
     if (cur === s.countryId) continue;                       // already ours
-    // A settlement that just GREW INTO the wild as its realm expanded (recent
-    // _integratedAt) must NOT plant a foothold — its colour should crawl out from
-    // the realm's existing border rather than bloom around the settlement. A
-    // genuinely new settlement on fresh land (colony / crystallised town) plants.
-    const recentlyIntegrated = world.step - (s._integratedAt ?? -Infinity) < FOOTHOLD_GRACE;
-    if (cur === -1 && !recentlyIntegrated) { claim[ti] = s.countryId; continue; }   // fresh land — legit foothold
-    // Either the home tile belongs to ANOTHER country, or it's wild but the
-    // settlement is freshly integrated (above): flipping it is a transfer / would
-    // bloom. Only the head of a country with no ground yet may plant its one
-    // birth-foothold (so a brand-new realm can still be born); everyone else
-    // waits for the crawl to reach them.
-    if (!present.has(s.countryId) && headOf.get(s.countryId) === s) {
-      claim[ti] = s.countryId;
-      present.add(s.countryId);                              // it now exists; co-seceders wait for the crawl
+    if (cur >= 0) continue;                                  // belongs to another country — only the crawl may transfer it
+    // The home tile is unclaimed land. Land becomes a realm's only as its border
+    // CRAWLS into it from ground it already holds — a settlement does NOT light up
+    // its own tile just for standing on wilderness, or a realm's frontier towns
+    // would appear as disconnected dots ahead of the advancing border. The only
+    // tiles that legitimately seed themselves:
+    if (present.has(s.countryId)) {
+      // realm already holds ground: plant ONLY if this is a different LANDMASS
+      // (an overseas colony the crawl can never cross water to reach). A town on
+      // the same landmass — even one not yet reached — waits for the border, so
+      // it never shows as a disconnected dot ahead of the advance.
+      if (!landConnectedToClaim(world, claim, ti, s.countryId)) claim[ti] = s.countryId;
+    } else if (headOf.get(s.countryId) === s) {
+      claim[ti] = s.countryId;                               // the realm's single BIRTH foothold
+      present.add(s.countryId);                              // it now exists; everyone else waits for the crawl
     }
   }
 
