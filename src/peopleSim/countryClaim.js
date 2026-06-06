@@ -15,6 +15,14 @@
 // Rings the drawn border advances toward the target per relax call. 1 = slowest,
 // smoothest crawl. index.js calls relaxClaim every CLAIM_RELAX_INTERVAL ticks.
 const RINGS_PER_RELAX = 1;
+// Organic front: a tile on an advancing border accumulates breakthrough PRESSURE
+// each relax and only flips once it overcomes the tile's RESISTANCE. Open ground
+// resists ~1 (flips at once, as before); mountains resist far more (the front
+// stalls and bulges around ranges); and a coherent NOISE term jitters the edge so
+// even a front across flat ground creeps as a ragged, organic line rather than a
+// dead-straight wall. Pressure resets the moment a tile leaves a front.
+const ELEV_RESIST  = 11;   // extra passes a high-elevation tile makes the front wait
+const NOISE_RESIST = 2.5;  // coherent jitter (×_claimNoise 0..1) → ragged/bulging edge
 
 // Ticks after a settlement is INTEGRATED out of the wild (adoptAndFound stamps
 // _integratedAt) during which it does NOT plant a wild-land foothold — so its
@@ -100,23 +108,31 @@ export function relaxClaim(world) {
     }
   }
 
+  let press = world._claimPress;
+  if (!press || press.length !== N) press = world._claimPress = new Float32Array(N);
+  const noiseF = world._claimNoise;   // coherent value-noise field (countryTerritory.js); may be unset on the first pass
   for (let r = 0; r < RINGS_PER_RELAX; r++) {
     const flips = [];
     for (let ti = 0; ti < N; ti++) {
-      if (elev[ti] <= 0) { if (claim[ti] >= 0) claim[ti] = -1; continue; }  // water is never claimed
+      if (elev[ti] <= 0) { if (claim[ti] >= 0) claim[ti] = -1; press[ti] = 0; continue; }  // water is never claimed
       const tg = target[ti];
-      if (claim[ti] === tg) continue;
-      // Flip toward the target only if the target country (or wilderness, -1)
-      // already holds an orthogonal neighbour — i.e. its front has reached here.
+      if (claim[ti] === tg) { press[ti] = 0; continue; }
+      // The front has only reached here if the target country (or wilderness, -1)
+      // already holds an orthogonal neighbour.
       const ty = (ti / tw) | 0, tx = ti - ty * tw;
       const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
       const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
       let adjacent = false;
       for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni < 0) continue; if (claim[ni] === tg) { adjacent = true; break; } }
-      if (adjacent) flips.push(ti);
+      if (!adjacent) { press[ti] = 0; continue; }   // not on a front yet
+      // Push against this tile; break through once pressure beats its resistance —
+      // quick on open ground, slow on high terrain, ragged via the coherent noise.
+      const nv = noiseF ? noiseF[ti] : 0.5;
+      const resist = 1 + ELEV_RESIST * Math.max(0, elev[ti] - 0.3) + NOISE_RESIST * nv;
+      if ((press[ti] += 1) >= resist) flips.push(ti);
     }
     if (flips.length === 0) break;
-    for (const ti of flips) claim[ti] = target[ti];
+    for (const ti of flips) { claim[ti] = target[ti]; press[ti] = 0; }
   }
   return claim;
 }
