@@ -7,15 +7,17 @@ import { loadPresets, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
 import { generateResources, tileResourceSummary, RESOURCES } from "./resourceGen.js";
 import { computeRivers, RIVER_NAMES, RIVER_STREAM } from "./riverGen.js";
-import { ensureTribeViews, attachRegistries } from "./tribeModel.js";
-import { resetInvariantState } from "./tribeStep.js";
-import { tribePower } from "./tribePower.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./peopleSim/money.js";
+import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectList, techTotalList } from "./peopleSim/tech.js";
+// tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
+const ERA_BG=["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
+// effect-chip colour per channel (food=green, naval=teal, build=tan, war=red, admin=violet, trade=jade, wealth=gold)
+const FX_COLOR={farm:"#5f7d33",fish:"#2f7d8a",build:"#9a6f38",military:"#9c3a36",reach:"#6a4a8d",cohesion:"#9a6a33",defense:"#566089",trade:"#2f7d5a",wealth:"#9a7a24",seaSpeed:"#2f6d8a",seaRange:"#2f6d8a",embark:"#2f7d8a",ocean:"#2a6a8a",colonize:"#2a6a8a",walls:"#566089",market:"#2f7d5a"};
 import WorldGenWorker from "./worldGenWorker.js?worker&inline";
 import PeopleSimWorker from "./peopleSimWorker.js?worker&inline";
 
@@ -36,7 +38,7 @@ const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688
 // can be rendered once to an offscreen canvas and blitted each frame instead
 // of rebuilt per-pixel. Sim-dependent views (population, transport, roads,
 // money, tribes) and atlas are excluded.
-const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","fertility","crop","crossing","resources","moisture","temperature"]);
+const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","fertility","crop","crossing","resources","moisture","temperature","country"]);
 let _mercator = false; // module-level flag for projection functions
 
 function screenYtoDataY(sy, ch, H) {
@@ -94,25 +96,148 @@ function getBiomeD(e,m,t,sl){
   // hot regions lose it to evaporation (Holdridge PET principle).
   const demand=.5+t*.5;
   const em=Math.min(1,m/demand);
-  // Permanent ice: extremely cold → snow/ice (Arctic, Antarctic, glaciers)
-  if(t<.08)return 5;
-  // Polar / subpolar (low elevation only)
-  // Cold desert only where it's cold but not freezing AND very dry
-  if(t<.15)return em>.4?6:em>.08?4:18; // Taiga / Tundra / Cold Desert
-  if(t<.25)return em>.35?6:em>.08?4:18;
-  if(t<.38)return em>.45?7:em>.25?6:em>.08?4:18;
-  // Temperate (cool-moderate)
-  if(t<.55)return em>.55?9:em>.35?8:em>.15?12:13;
-  // Warm / subtropical
-  if(t<.72)return em>.5?17:em>.3?15:em>.18?11:em>.1?14:13;
-  // Hot / tropical
-  return em>.5?10:em>.3?15:em>.18?11:em>.1?12:13;
+  // Biome temperature bands on the calibrated air-temp scale (t = 0.60 + °C/100):
+  // ICE < -15°C · tundra -15..-2 · taiga -2..+5 · temperate +5..+18 ·
+  // subtropical +18..+25 · tropical > +25°C. (Moisture em then picks
+  // forest/grassland/desert within each band — Holdridge PET logic, unchanged.)
+  if(t<.45)return 5;                                        // permanent ice / snow (Greenland, Antarctica, high Arctic)
+  if(t<.52)return em>.4?6:em>.08?4:18;                      // tundra / cold desert
+  if(t<.58)return em>.35?6:em>.08?4:18;
+  if(t<.65)return em>.45?7:em>.25?6:em>.08?4:18;            // taiga / boreal
+  if(t<.78)return em>.55?9:em>.35?8:em>.15?12:13;           // temperate
+  if(t<.85)return em>.5?17:em>.3?15:em>.18?11:em>.1?14:13;  // subtropical
+  return em>.5?10:em>.3?15:em>.18?11:em>.1?12:13;           // tropical
 }
 function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
 function tribeRGB(id){const h=((id*67+20)%360)/360,s=(60+((id*31)%25))/100,l=(45+((id*17)%25))/100;
 const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;const hr=(pp,qq,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return pp+(qq-pp)*6*t;if(t<1/2)return qq;if(t<2/3)return pp+(qq-pp)*(2/3-t)*6;return pp;};
 return[Math.round(hr(p,q,h+1/3)*255),Math.round(hr(p,q,h)*255),Math.round(hr(p,q,h-1/3)*255)];}
+
+// ── Live country colouring (Country view) ───────────────────────────
+// Give every country a hue as DISTINCT as possible from the countries it borders,
+// so the political map stays legible as the world changes. Builds the border-
+// adjacency graph from the claim map, then runs a force-directed relaxation on the
+// hue WHEEL: each country is pushed away from its neighbours' hues (repulsion that's
+// stronger the closer two neighbours are). Previous hues seed the next solve, so the
+// colours spread out and then drift smoothly rather than flickering each refresh.
+function assignCountryColors(claimArr,tw,th,prev){
+  const adj=new Map(),present=[],seen=new Set();
+  const link=(a,b)=>{let s=adj.get(a);if(!s)adj.set(a,s=new Set());s.add(b);let t=adj.get(b);if(!t)adj.set(b,t=new Set());t.add(a);};
+  for(let ti=0;ti<claimArr.length;ti++){
+    const cc=claimArr[ti];if(cc<0)continue;
+    if(!seen.has(cc)){seen.add(cc);present.push(cc);}
+    const py=(ti/tw)|0,px=ti-py*tw;
+    const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
+    if(ro>=0&&ro!==cc)link(cc,ro);
+    if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc)link(cc,dno);}
+  }
+  const hue=new Map();
+  for(const c of present)hue.set(c,prev.has(c)?prev.get(c):((c*61)%360+360)%360);
+  for(let it=0;it<60;it++){
+    const nudge=[];
+    for(const c of present){
+      const ns=adj.get(c);if(!ns||ns.size===0){nudge.push(0);continue;}
+      const hc=hue.get(c);let f=0;
+      for(const n of ns){
+        let d=((hc-hue.get(n)+540)%360)-180;          // signed hue gap (-180,180]
+        if(d>-0.5&&d<0.5)d=d>=0?0.5:-0.5;             // break exact overlaps
+        f+=Math.sign(d)*(180-Math.abs(d))/ns.size;     // repel — strongest when hues are close
+      }
+      nudge.push(f);
+    }
+    let i=0;for(const c of present)hue.set(c,((hue.get(c)+nudge[i++]*0.06)%360+360)%360);
+  }
+  return hue;   // Map: countryId → hue 0..360
+}
+
+// ── Tech-tree overlay (Civ-like skill tree) ─────────────────────────
+// Full-screen modal showing the whole tech DAG for the selected settlement:
+// era columns, prerequisite links, and per-node state (discovered / researching
+// with progress / locked). Pure view over tech.js + the settlement's knowledge.
+function TechTreeOverlay({k,title,onClose}){
+  const ts=techState(k||{});
+  const L=techLayout();
+  const {pos,NW,NH,TOP,W,H}=L;
+  const [hov,setHov]=useState(null);   // {id,x,y} — hovered tech for the effect card
+  const chip=(bg,bd)=>(<span style={{display:"inline-block",width:9,height:9,background:bg,border:bd,borderRadius:2,marginRight:4,verticalAlign:"middle",boxSizing:"border-box"}}/>);
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"10px 14px",maxWidth:"96vw",maxHeight:"94vh",overflow:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+          <div className="au-pico-title" style={{fontSize:15}}>Tech Tree{title?` — ${title}`:""}{" "}
+            <span className="au-fade" style={{fontSize:11}}>· {ERAS[ts.era]} · {ts.count}/{TECHS.length} discovered</span></div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
+        </div>
+        {(()=>{const tot=techTotalList(ts.have);if(!tot.length)return null;
+          return <div style={{display:"flex",flexWrap:"wrap",gap:3,alignItems:"center",marginBottom:7,paddingBottom:6,borderBottom:"1px solid rgba(120,90,50,0.2)"}}>
+            <span className="au-fade" style={{fontSize:10,marginRight:3,fontWeight:600,letterSpacing:0.3}}>STACKED TECH BONUSES</span>
+            {tot.map((e,i)=><span key={i} style={{padding:"1.5px 6px",borderRadius:3,fontSize:10,fontWeight:600,color:"#fff",background:FX_COLOR[e.key]||"#6a5a3a",opacity:e.good?1:0.85}}>{e.text}</span>)}
+          </div>;
+        })()}
+        <svg width={W} height={H} style={{display:"block"}}>
+          {/* era labels at the centroid column of each era's techs — eras
+              interleave across the depth tiers (as in Civ), so they orient
+              rather than partition; node FILL carries the era colour */}
+          {ERAS.map((e,ei)=>{let sx=0,n=0;for(const t of TECHS)if(t.era===ei){const pp=pos[t.id];if(pp){sx+=pp.x+NW/2;n++;}}if(!n)return null;const cx=sx/n;
+            return(<g key={e}>
+              <rect x={cx-46} y={TOP-26} width={92} height={3} fill={ERA_BG[ei]} rx={1.5}/>
+              <text x={cx} y={TOP-12} textAnchor="middle" fontSize={11} fill="#5a4a32" fontWeight="bold" style={{textTransform:"uppercase",letterSpacing:0.5}}>{e}</text>
+            </g>);
+          })}
+          {/* prerequisite links — orthogonal (right-angle) routing, drawn UNDER
+              the opaque nodes so a long link passes cleanly behind intervening
+              tiers instead of crossing them. Each link leaves the prereq's right
+              edge, runs to the target column's left gutter, then rises/drops
+              into the target's left edge. */}
+          {TECHS.map(t=>t.prereq.map(p=>{const a=pos[p],b=pos[t.id];if(!a||!b)return null;
+            const open=ts.have[TECH_IDX[p]]===1;
+            const stag=(TECH_IDX[p]*3+TECH_IDX[t.id])%5;
+            return <path key={p+">"+t.id} d={techEdgePath(a,b,L,stag)} fill="none"
+              stroke={open?"#7a5c34":"rgba(120,100,70,0.32)"} strokeWidth={open?1.7:1} strokeDasharray={open?"":"3 3"}/>;
+          }))}
+          {/* tech nodes (opaque fills occlude the links routed behind them) */}
+          {TECHS.map(t=>{const p=pos[t.id];const ns=techNodeState(k||{},ts.have,t);const era=ERA_BG[t.era]||"#b9b2a4";
+            let fill,stroke,txt,sw,dash="";
+            if(ns.state==="have"){fill=era;stroke="#3a2c18";txt="#1a140c";sw=1.1;}
+            else if(ns.state==="next"){fill="#fffaf0";stroke=era;txt="#2c2114";sw=2;}
+            else{fill="#e9e1ce";stroke="rgba(90,75,50,0.42)";txt="rgba(70,58,40,0.62)";sw=1;dash="4 3";}
+            return(<g key={t.id} style={{cursor:"help"}}
+              onMouseMove={e=>setHov({id:t.id,x:e.clientX,y:e.clientY})} onMouseLeave={()=>setHov(null)}>
+              <rect x={p.x} y={p.y} width={NW} height={NH} rx={5} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash}/>
+              <text x={p.x+9} y={p.y+NH/2+3.6} fontSize={10} fill={txt} fontWeight={ns.state==="have"?"bold":"normal"}>{t.name}</text>
+              {ns.state==="next"&&<rect x={p.x+1} y={p.y+NH-3} width={(NW-2)*ns.prog} height={2.4} fill={era} rx={1.2}/>}
+            </g>);
+          })}
+        </svg>
+        <div className="au-fade" style={{fontSize:10,marginTop:6,display:"flex",gap:16,flexWrap:"wrap"}}>
+          <span>{chip("#dab347","none")}discovered</span>
+          <span>{chip("rgba(255,251,243,0.95)","2px solid #d8b24a")}researching (prerequisites met)</span>
+          <span>{chip("rgba(150,140,120,0.2)","1px dashed rgba(90,75,50,0.5)")}locked — needs an earlier tech</span>
+        </div>
+      </div>
+      {hov&&(()=>{
+        const t=TECHS[TECH_IDX[hov.id]]; if(!t) return null;
+        const ns=techNodeState(k||{},ts.have,t); const fx=techEffectList(hov.id);
+        const vw=typeof window!=="undefined"?window.innerWidth:1280, vh=typeof window!=="undefined"?window.innerHeight:800;
+        const left=Math.min(hov.x+16, vw-258), top=Math.min(hov.y+16, vh-200);
+        return(<div style={{position:"fixed",left,top,width:242,zIndex:320,pointerEvents:"none",
+          background:"#f6eeda",border:`2px solid ${ERA_BG[t.era]||"#b9b2a4"}`,borderRadius:7,padding:"8px 10px",boxShadow:"0 6px 18px rgba(0,0,0,0.4)"}}>
+          <div style={{fontWeight:"bold",fontSize:13,color:"#2c2114"}}>{t.name}</div>
+          <div style={{fontSize:9,letterSpacing:0.5,textTransform:"uppercase",color:"#8a7a55",marginBottom:4}}>
+            {ERAS[t.era]} · {ns.state==="have"?"discovered":ns.state==="next"?`researching ${(ns.prog*100)|0}%`:"locked"}</div>
+          <div style={{fontSize:10.5,color:"#473a28",lineHeight:1.35,marginBottom:6}}>{t.desc}</div>
+          {fx.length>0
+            ? <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:t.prereq.length?6:0}}>
+                {fx.map((e,i)=><span key={i} style={{padding:"1.5px 5px",borderRadius:3,fontSize:9.5,fontWeight:600,color:"#fff",background:FX_COLOR[e.key]||"#6a5a3a",opacity:e.good?1:0.85}}>{e.text}</span>)}
+              </div>
+            : <div style={{fontSize:9.5,fontStyle:"italic",color:"#9a8a65",marginBottom:t.prereq.length?6:0}}>a stepping-stone — no direct bonus</div>}
+          {t.prereq.length>0&&<div style={{fontSize:9.5,color:"#7a6a48"}}>Requires: {t.prereq.map(p=>TECHS[TECH_IDX[p]].name).join(" + ")}</div>}
+        </div>);
+      })()}
+    </div>
+  );
+}
 
 // ── Atlas (olde-map) cartographic symbols — hand-drawn map iconography ──
 function atlasHash(a,b){let h=(a*374761393+b*668265263)>>>0;h=((h^(h>>>13))*1274126177)>>>0;return((h^(h>>>16))>>>0)/4294967296;}
@@ -208,9 +333,12 @@ c.fillStyle=`rgba(${(84+tone*34)|0},${(96+tone*26)|0},${(56+tone*20)|0},0.72)`;c
 c.strokeStyle='rgba(42,48,28,0.6)';c.lineWidth=Math.max(0.3,s*0.12);c.stroke();}
 
 // Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
-// Agriculture needs adequate moisture (not maximum) — bell curve peaks at 0.45 (temperate optimum)
+// Temperature fitness uses a COLD GATE (calibrated air-temp scale t=0.60+°C/100):
+// near-zero below ~-3°C (short-season high latitudes — far-N Europe, Siberia are
+// marginal), full by ~+10°C, broad warm plateau, gentle roll-off in extreme heat.
+// Kept in sync with the tCrop bell below. Moisture bell peaks at 0.45.
 function tileFert(t,m,e){if(e>0.45)return 0.01;
-const tFactor=Math.min(1,t*1.5)*Math.min(1,1-Math.pow(Math.max(0,t-0.7),2)*4);
+const tFactor=Math.min(1,Math.max(0,(t-0.57)/0.13))*Math.min(1,1-Math.pow(Math.max(0,t-0.88),2)*1.5);
 const mFactor=Math.exp(-((m-0.45)*(m-0.45))/(2*0.22*0.22));
 const base=tFactor*mFactor;
 return Math.max(0.01,base*(1-Math.max(0,e-0.15)*3));}
@@ -474,19 +602,19 @@ const crossWorld={elev:tElev,temp:tTemp,moist:tMoist,coast:tCoast,
 for(let ti=0;ti<tw*th;ti++){
 const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
 if(e<=0){tCrop[ti]=0;tCross[ti]=1;continue;}
-// Crop suitability. The temperature field on this world runs hot —
-// mid-low latitude continents sit at t≈0.72–0.85 even at sea level,
-// matching the green-forest biome rendering but well above any
-// reasonable narrow bell. Sigmas widened dramatically (σ_t=0.35,
-// σ_m=0.27) and the bell centre moved to t=0.55, where India,
-// China, sub-Saharan Africa, Brazilian highlands and the rest of
-// real-world agricultural land actually sits. Only true climatic
-// extremes (tundra, hot desert, Amazon/Congo lateritic rainforest)
-// fall into the red side.
+// Crop suitability. Temperature is now calibrated to real annual-mean air temp
+// (t = 0.60 + °C/100, see tools/probe_temperature.mjs), so the optimum is a
+// realistic agricultural band rather than the old wide bell (which, tuned to the
+// previous hot scale, peaked in the cold and wrongly rated far-northern Europe /
+// Siberia as prime farmland). A COLD GATE rules out short-season high latitudes
+// (annual mean below ~-3°C ≈ 0; rising to full suitability by ~+10°C), then a
+// broad warm plateau (temperate breadbaskets → subtropics → watered tropics)
+// with only a gentle roll-off in extreme heat. Hot-wet laterite and aridity are
+// handled by the moisture bell + penalties below.
 let crop;
 if(e>0.45)crop=0.02;
 else{
-const tBell=Math.exp(-((t-0.55)*(t-0.55))/(2*0.35*0.35));
+const tBell=Math.min(1,Math.max(0,(t-0.57)/0.13))*Math.min(1,1-Math.pow(Math.max(0,t-0.88),2)*1.5);
 const mBell=Math.exp(-((m-0.45)*(m-0.45))/(2*0.28*0.28));
 crop=tBell*mBell;
 // Tropical lateritic-soil penalty. The Amazon/Congo paradox: hot-wet
@@ -922,12 +1050,6 @@ function fmtPop(p){
   if(p>=1)return p.toFixed(0);
   return"<1";
 }
-function fmtGold(g){
-  if(g>=10000)return(g/1000).toFixed(0)+"k";
-  if(g>=1000)return(g/1000).toFixed(1)+"k";
-  return g.toFixed(0);
-}
-
 // ── Display units (peopleSim) ───────────────────────────────────────
 // The sim runs on compact internal units; these scale them to realistic,
 // human-readable figures at the DISPLAY layer ONLY — the simulation math is
@@ -1002,30 +1124,6 @@ function buildHistoryExport(H){
   const sep ="|---|---|---|---|---|---|---|---|---|---|---|---|";
   const body=rows.map(r=>`| ${r.step} | ${fmtPeople(r.pop)} | ${fmtGoldKg(r.gold)} | ${(r.landPct*100).toFixed(0)}% | ${r.countries} | ${r.sett} | ${r.villages} | ${r.towns} | ${r.cities} | ${r.metros} | ${r.largest} | ${fmtPeople(r.army)} |`).join("\n");
   return `Simman — global stats over time (display units: 1 sim-person = ${POP_SCALE} people; gold by weight; land % of all land)\n\n${head}\n${sep}\n${body}`;
-}
-
-// ── Hexagonal knowledge radar (SVG) ──
-function KnowledgeRadar({k,size=140}){
-  if(!k)return null;
-  const axes=[
-    ["agriculture","Ag"],["metallurgy","Mt"],["navigation","Nv"],
-    ["construction","Cn"],["organization","Og"],["trade","Tr"]
-  ];
-  const cx=size/2,cy=size/2,R=size*0.36;
-  const angleAt=(i)=>(-Math.PI/2)+(i/axes.length)*Math.PI*2;
-  const pt=(i,r)=>{const a=angleAt(i);return[cx+Math.cos(a)*r,cy+Math.sin(a)*r];};
-  const ringPath=(r)=>axes.map((_,i)=>{const[x,y]=pt(i,r);return(i?"L":"M")+x.toFixed(1)+","+y.toFixed(1);}).join(" ")+" Z";
-  const valuePath=axes.map(([key],i)=>{const v=Math.max(0,Math.min(1,k[key]||0));const[x,y]=pt(i,R*v);return(i?"L":"M")+x.toFixed(1)+","+y.toFixed(1);}).join(" ")+" Z";
-  return(
-    <svg width={size} height={size} style={{flexShrink:0}}>
-      {[0.25,0.5,0.75,1].map(t=>(<path key={t} d={ringPath(R*t)} className="au-radar-grid" />))}
-      {axes.map((_,i)=>{const[x,y]=pt(i,R);return<line key={i} x1={cx} y1={cy} x2={x} y2={y} className="au-radar-axis" />;})}
-      <path d={valuePath} className="au-radar-fill" />
-      {axes.map(([key,label],i)=>{const[x,y]=pt(i,R+13);const v=k[key]||0;
-        return<g key={key}><text x={x} y={y} textAnchor="middle" dominantBaseline="middle" className="au-radar-label">{label}</text><text x={x} y={y+11} textAnchor="middle" dominantBaseline="middle" className="au-radar-value">{(v*100|0)}</text></g>;
-      })}
-    </svg>
-  );
 }
 
 // ── Settlement-card presentational components ──
@@ -1129,6 +1227,7 @@ const[showTuning,setShowTuning]=useState(false);
 const[selectedTribe,setSelectedTribe]=useState(-1);
 // peopleSim settlement selection — id of the clicked settlement, or -1.
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
+const[techTreeOpen,setTechTreeOpen]=useState(false);   // full tech-tree overlay (for the selected settlement)
 // Ref mirror so draw() (memoized) sees the current selection without
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
@@ -1141,7 +1240,7 @@ useEffect(()=>{selectedSettlementIdRef.current=selectedSettlementId;},[selectedS
 // declaratively; mirrored to a ref so draw() (memoized) reads current
 // values without needing them in its deps.
 const[layers,setLayers]=useState({
-  icons:true, tints:true, borders:true, roads:true, seaLanes:true,
+  icons:true, tints:true, borders:true, provinces:false, roads:true, seaLanes:true,
   moneyFlow:true, ships:true, armies:true, shocks:true,
   village:true, town:true, city:true, metropolis:true,
 });
@@ -1174,10 +1273,13 @@ const[boardMode,setBoardMode]=useState("countries");   // "countries" | "settlem
 const[boardSort,setBoardSort]=useState("size");        // see SORT_KEYS below
 const layersRef=useRef(layers);
 useEffect(()=>{layersRef.current=layers;},[layers]);
+// Country view: live per-country hue assignment (seeded by the previous solve so
+// colours drift smoothly as borders shift). Map: countryId → hue 0..360.
+const countryColorsRef=useRef(new Map());
 // Which collapsible sections of the settlement card are open. Persists
 // across re-renders (the card re-renders every few ticks) and across
 // selecting different settlements.
-const[psCardOpen,setPsCardOpen]=useState({food:true,knowledge:false,resources:false,trade:true});
+const[psCardOpen,setPsCardOpen]=useState({food:true,tech:true,knowledge:false,resources:false,trade:true});
 const togglePsCard=id=>setPsCardOpen(o=>({...o,[id]:!o[id]}));
 const[useRealWind,setUseRealWind]=useState(false);
 const useMercator=false;
@@ -1188,25 +1290,14 @@ const CH=useMercator?CH_MERC:CH_FLAT;
 _mercator=useMercator;
 const[mapCount,setMapCount]=useState(1);
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
-const[tribeTab,setTribeTab]=useState("overview");
-const[cardPos,setCardPos]=useState(()=>({
-  x:typeof window!=="undefined"?Math.max(20,window.innerWidth-290-360):520,
-  y:64
-}));
 const[keyOpen,setKeyOpen]=useState(true);
-const[showTribeList,setShowTribeList]=useState(false);
-const cardDragRef=useRef(null);
 useEffect(()=>{
-  const move=(e)=>{if(!cardDragRef.current)return;const d=cardDragRef.current;
-    setCardPos({x:Math.max(4,d.x+(e.clientX-d.mx)),y:Math.max(4,d.y+(e.clientY-d.my))});};
-  const up=()=>{cardDragRef.current=null;
-    // Clear any in-flight pan that ended outside the canvas — otherwise the
-    // next click would see panDragRef set with stale "moved" and either pan
-    // or swallow the click, depending on timing.
-    if(panDragRef.current&&!panDragRef.current.moved)panDragRef.current=null;
-  };
-  window.addEventListener("mousemove",move);window.addEventListener("mouseup",up);
-  return()=>{window.removeEventListener("mousemove",move);window.removeEventListener("mouseup",up);};
+  // On mouse-up, clear any in-flight pan that ended outside the canvas —
+  // otherwise the next click would see panDragRef with a stale "moved" flag
+  // and either pan or swallow the click depending on timing.
+  const up=()=>{if(panDragRef.current&&!panDragRef.current.moved)panDragRef.current=null;};
+  window.addEventListener("mouseup",up);
+  return()=>window.removeEventListener("mouseup",up);
 },[]);
 const activeResRef=useRef(null);activeResRef.current=activeRes;
 const extraCanvasRefs=useRef([]);
@@ -1267,7 +1358,7 @@ const W=1920,H=960,CW=CW_FLAT;
 const workerRef=useRef(null);
 // Helper: finalize a generated world (shared by worker + main thread paths)
 const finalizeWorld=useCallback((w)=>{
-setWorld(w);worldRef.current=w;const t=createTerritory(w);attachRegistries(t);ensureTribeViews(t);resetInvariantState(t);
+setWorld(w);worldRef.current=w;const t=createTerritory(w);
 // Erase the legacy initial tribes from the `ter` object. createTerritory
 // seeded them at fertile tiles and the draw() pipeline would render them
 // as settlement dots, competing visually with peopleSim bands. We keep
@@ -2406,6 +2497,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const psw=peopleRef.current;
   const vmRoads = viewRef.current === "roads";
   const vmMoney = viewRef.current === "money";
+  const vmCountry = viewRef.current === "country";
   if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
@@ -2573,7 +2665,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0);
     if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
@@ -2583,7 +2675,37 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // borders that follow terrain and enclose frontier hinterland; fall back
       // to the per-settlement owner map only until the first claim arrives.
       const owner=psw._territoryOwner, claimArr=psw._countryClaim;
-      if((L.tints||L.borders)&&claimArr){
+      // ── Country view: BOLD opaque political map with thick borders + live,
+      // maximally-distinct neighbour colours (assignCountryColors). ──
+      if(vmCountry&&claimArr){
+        const tw=psw.tw,th=psw.th;
+        const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current);
+        countryColorsRef.current=hues;
+        const fillByCountry=new Map();
+        // opaque bold fills (cover the terrain so the colours read clean)
+        let lastFs=null;
+        for(let ti=0;ti<claimArr.length;ti++){
+          const cc=claimArr[ti];if(cc<0)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          let fs=fillByCountry.get(cc);
+          if(fs===undefined){const h=(hues.get(cc)??((cc*61)%360+360)%360)|0;fs=`hsl(${h},60%,50%)`;fillByCountry.set(cc,fs);}
+          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+          octx.fillRect(sx,sy,TR+0.6,TR+0.6);   // slight overdraw kills inter-tile seams
+        }
+        // thick dark borders between neighbouring countries
+        octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=Math.max(1.6,TR*1.1);octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
+        for(let ti=0;ti<claimArr.length;ti++){
+          const cc=claimArr[ti];if(cc<0)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
+          if(ro>=0&&ro!==cc){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+        }
+        octx.stroke();
+      }
+      if(!vmCountry&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map();
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
@@ -2604,7 +2726,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
-      } else if((L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -2633,6 +2755,57 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==oid&&ctryById[dno]!==co){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
+      }
+      // ── Province borders (Layers → Provinces) ──
+      // Internal administrative divisions. A province follows the SIM's own
+      // territory, not a fresh geometric guess: every tile is taken by the
+      // settlement that ADMINISTERS it (_territoryOwner — the transport-cost
+      // catchment), and that settlement's province is:
+      //   • a CAPTURED town → its _homeland (the nation it was conquered from),
+      //     so an absorbed country stays ONE province bordered by its FORMER
+      //     extent (the conquered-border lines), until it assimilates (~HOMELAND_
+      //     MEMORY) and rejoins the core; and
+      //   • a NATIVE town → its administrative seat (_provinceCity, the nearest
+      //     CITY by the sim's reach), so the heartland splits into city regions.
+      // Because the cells are unions of transport catchments they BEND with
+      // terrain (no straight Euclidean bisectors). Captured-nation provinces use
+      // negative keys so they never collide with a native city-seat id. Tiles
+      // with no settlement catchment (gap-filled interior) fall back to nearest
+      // city. Drawn lighter/dotted beneath the national border.
+      if(L.provinces&&claimArr){
+        const tw=psw.tw,th=psw.th,halfTw=tw/2;
+        const provById=new Map();   // settlementId → province key (neg = captured nation)
+        const cityList=new Map();   // countryId → [cities] (fallback for catchment-less tiles)
+        for(const s of psw.settlements){if(!(s&&s.mode==="settled"&&s.countryId>=0))continue;
+          const hl=s._homeland??-1; const captured=hl>=0&&hl!==s.countryId;   // ignore a stale self-home
+          provById.set(s.id, captured ? -(hl+2) : ((s._provinceCity??-1)>=0 ? s._provinceCity : s.countryId));
+          if((s.tier|0)>=2){let a=cityList.get(s.countryId);if(!a)cityList.set(s.countryId,a=[]);a.push(s);}}
+        const nearestCity=(ti,cc)=>{const arr=cityList.get(cc);if(!arr)return cc;if(arr.length===1)return arr[0].id;
+          const py=((ti/tw)|0)+0.5,px=(ti-((ti/tw)|0)*tw)+0.5;let best=cc,bd=Infinity;
+          for(const c of arr){let dx=Math.abs(c.pos.x-px);if(dx>halfTw)dx=tw-dx;const dy=c.pos.y-py;const d=dx*dx+dy*dy;if(d<bd){bd=d;best=c.id;}}return best;};
+        const prov=new Int32Array(claimArr.length).fill(-2147483648);   // sentinel = unset
+        for(let ti=0;ti<claimArr.length;ti++){
+          const cc=claimArr[ti];if(cc<0)continue;
+          const sid=owner?owner[ti]:-1;
+          let pv=sid>=0?provById.get(sid):undefined;
+          prov[ti]=pv!==undefined?pv:nearestCity(ti,cc);   // catchment province, else nearest-city fallback
+        }
+        // Two pens. A border touching a CAPTURED-nation province (negative key) is
+        // a former national frontier inside the realm — drawn heavier/longer-dashed
+        // so a conquered country's old outline reads as historically significant;
+        // ordinary city-seam borders in the heartland stay faint dots.
+        const drawSeams=(heritage)=>{
+          for(let ti=0;ti<claimArr.length;ti++){
+            const cc=claimArr[ti];if(cc<0)continue;const pv=prov[ti];
+            const py=(ti/tw)|0,px=ti-py*tw;const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+            const rti=py*tw+(px===tw-1?0:px+1);
+            if(claimArr[rti]===cc){const qv=prov[rti];if(qv!==pv&&((pv<0||qv<0)===heritage)){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}}
+            if(py<th-1){const dti=ti+tw;if(claimArr[dti]===cc){const qv=prov[dti];if(qv!==pv&&((pv<0||qv<0)===heritage)){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
+          }
+        };
+        octx.strokeStyle="rgba(20,20,20,0.45)";octx.lineWidth=1;octx.setLineDash([1,2]);octx.beginPath();drawSeams(false);octx.stroke();
+        octx.strokeStyle="rgba(15,15,15,0.75)";octx.lineWidth=1;octx.setLineDash([3,2]);octx.beginPath();drawSeams(true);octx.stroke();
+        octx.setLineDash([]);
       }
       // Roads — thickness + alpha from current flow.
       if(L.roads&&psw.roadQuality&&psw.roadFlow){
@@ -2938,7 +3111,7 @@ mfid=requestAnimationFrame(moneyLoop);
 return()=>cancelAnimationFrame(mfid);},[draw]);
 
 const togglePlay=()=>{if(!playing&&terRef.current&&terRef.current.settled>=terRef.current.landCount){
-const t=createTerritory(worldRef.current);attachRegistries(t);ensureTribeViews(t);resetInvariantState(t);terRef.current=t;setTribeCount(t.tribeCount);setCoverage(0);setDominant(null);setSelectedTribe(-1);terrainCache.current=null;atlasCache.current=null;draw(t);}
+const t=createTerritory(worldRef.current);terRef.current=t;setTribeCount(t.tribeCount);setCoverage(0);setDominant(null);setSelectedTribe(-1);terrainCache.current=null;atlasCache.current=null;draw(t);}
 playRef.current=!playRef.current;setPlaying(p=>!p);};
 const handleImport=useCallback(async(e)=>{const file=e.target.files?.[0];if(!file)return;
 e.target.value="";
@@ -3179,7 +3352,7 @@ const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
-  ["crop","Crop"],["crossing","Crossing"],["roads","Roads"],["money","Money"],
+  ["crop","Crop"],["crossing","Crossing"],["country","Country"],["roads","Roads"],["money","Money"],
   ["resources","Resources"],["population","Pop"],["transport","Transport"],
   ["transport-test","Trans Test"],["tribes","Tribes"]
 ];
@@ -3367,6 +3540,9 @@ return(
   const nextThr=TIER_THR[s.tier+1];
   const progress=nextThr?Math.min(1,s.people/nextThr):1;
   const k=s.knowledge||{};
+  const tech=techState(k);                 // Civ-like discovery layer derived from knowledge (tech.js)
+  const techList=TECHS.filter((t,i)=>tech.have[i]===1);
+  const techNext=nextTechs(k,tech.have,3);
   const r=s.localRes||{};
   const farm=s._terrTiles||0;
   const K=s._k||0;
@@ -3434,6 +3610,9 @@ return(
     <div className="au-parchment au-pico au-elev"
       style={{position:"absolute",left:14,top:14,width:248,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"90vh",overflowY:"auto",
         pointerEvents:"auto"/* au-pico sets pointer-events:none for the hover tooltip; this card is interactive */}}>
+
+      {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
+      {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} onClose={()=>setTechTreeOpen(false)}/>}
 
       {/* ── Header ── */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -3678,6 +3857,40 @@ return(
         </>
       </PsSection>
 
+      {/* ── Technologies (Civ-like discovery layer, derived from knowledge) ── */}
+      <PsSection id="tech" title="Technologies" open={psCardOpen.tech} onToggle={togglePsCard}
+        right={<span className="au-fade">{ERAS[tech.era]} · {tech.count}/{TECHS.length}</span>}>
+        <div style={{fontSize:10}}>
+          <button onClick={()=>setTechTreeOpen(true)}
+            style={{width:"100%",marginBottom:6,padding:"4px 6px",cursor:"pointer",borderRadius:4,
+              background:"rgba(120,90,50,0.14)",border:"1px solid rgba(120,90,50,0.35)",color:"#3a2c18",fontSize:10.5}}>
+            ⛬ Open tech tree
+          </button>
+          <div style={{display:"flex",flexWrap:"wrap",gap:"3px 4px"}}>
+            {techList.map(t=>(
+              <span key={t.id} title={ERAS[t.era]}
+                style={{padding:"1px 5px",borderRadius:3,background:ERA_BG[t.era]||"#b9b2a4",color:"#1a140c",whiteSpace:"nowrap",fontSize:9.5}}>
+                {t.name}
+              </span>
+            ))}
+          </div>
+          {techNext.length>0&&(
+            <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid rgba(120,90,50,0.22)"}}>
+              <div className="au-fade" style={{marginBottom:3,fontSize:9.5}}>Researching</div>
+              {techNext.map(t=>(
+                <div key={t.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                  <span style={{flex:"0 0 100px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.name}</span>
+                  <div style={{flex:1,height:5,background:"rgba(80,60,30,0.22)",borderRadius:3,overflow:"hidden"}}>
+                    <div style={{width:`${(t.prog*100)|0}%`,height:"100%",background:ERA_BG[t.era]||"#8a6"}}/>
+                  </div>
+                  <span className="au-fade" style={{flex:"0 0 26px",textAlign:"right"}}>{(t.prog*100)|0}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </PsSection>
+
       {/* ── Resources ── */}
       <PsSection id="resources" title="Resources" open={psCardOpen.resources} onToggle={togglePsCard}
         right={presentRes.length>0?<span className="au-fade">{presentRes.length}</span>:null}>
@@ -3782,207 +3995,6 @@ return(
   );
 })()}
 
-{/* ─── Floating tribe card ─── */}
-{(()=>{
-  const ter=terRef.current;
-  const me=ter?.tribes?.[selectedTribe];
-  if(!me||!me.alive)return null;
-  const sel=selectedTribe;
-  const size=me.size;
-  const pop=me.pop;
-  const power=tribePower(ter,sel);
-  const bud=me.budget||null;
-  const k=me.knowledge||null;
-  const stC=me.settleCounts;
-  const ports=me.ports.length;
-  const knownCoasts=me.knownCoasts.length;
-  const td=me.trade||null;
-  const [tr,tg,tb]=tribeRGB(sel);
-  return(
-    <div className="au-parchment au-elev au-tribe-card"
-      style={{left:cardPos.x,top:cardPos.y}}>
-      <div className="au-drag-handle"
-        onMouseDown={(e)=>{cardDragRef.current={mx:e.clientX,my:e.clientY,x:cardPos.x,y:cardPos.y};e.preventDefault();}}
-        style={{display:"flex",alignItems:"center",gap:8}}>
-        <span className="au-wax-seal" style={{background:`rgb(${tr},${tg},${tb})`}}>{sel}</span>
-        <div style={{flex:1,minWidth:0}}>
-          <div className="au-tribename">Tribe&nbsp;№{sel}</div>
-          {bud?.personality&&<div className="au-fade" style={{fontSize:11,fontStyle:"italic"}}>the {bud.personality.toLowerCase()}</div>}
-        </div>
-        <span className="au-x" onClick={()=>{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}}>✕</span>
-      </div>
-
-      {/* Quick stats */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"2px 10px",margin:"4px 0 10px"}}>
-        <div>
-          <div className="au-sc au-fade" style={{fontSize:9}}>Territory</div>
-          <div className="au-heading" style={{fontSize:14}}>{size.toLocaleString()}</div>
-        </div>
-        <div>
-          <div className="au-sc au-fade" style={{fontSize:9}}>People</div>
-          <div className="au-heading" style={{fontSize:14}}>{fmtPop(pop)}</div>
-        </div>
-        <div>
-          <div className="au-sc au-fade" style={{fontSize:9}}>Power</div>
-          <div className="au-heading" style={{fontSize:14}}>{power.toFixed(0)}</div>
-        </div>
-        <div>
-          <div className="au-sc au-fade" style={{fontSize:9}}>Gold</div>
-          <div className="au-heading au-gold-text" style={{fontSize:14}}>{fmtGold(bud?.wealth||0)}</div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div style={{display:"flex",borderBottom:"1px solid rgba(58,38,20,0.30)",margin:"0 -6px"}}>
-        {[["overview","Overview"],["knowledge","Knowledge"],["diplomacy","Diplomacy"],["trade","Trade"]].map(([id,label])=>(
-          <button key={id} className={"au-tab"+(tribeTab===id?" au-active":"")}
-            onClick={()=>setTribeTab(id)}>{label}</button>
-        ))}
-      </div>
-
-      <div style={{padding:"10px 2px 2px",fontSize:12,minHeight:160}}>
-      {tribeTab==="overview"&&<>
-        <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>Settlements</div>
-        {(stC.large+stC.cities+stC.towns+stC.villages)>0?
-          <div style={{display:"flex",gap:14,flexWrap:"wrap",marginBottom:8,fontSize:12}}>
-            {stC.large>0&&<span><span className="au-gold-text" style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.large}</span> <span className="au-fade au-sc" style={{fontSize:10}}>capital{stC.large!==1?"s":""}</span></span>}
-            {stC.cities>0&&<span><span style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.cities}</span> <span className="au-fade au-sc" style={{fontSize:10}}>cit{stC.cities===1?"y":"ies"}</span></span>}
-            {stC.towns>0&&<span><span style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.towns}</span> <span className="au-fade au-sc" style={{fontSize:10}}>town{stC.towns!==1?"s":""}</span></span>}
-            {stC.villages>0&&<span><span style={{fontSize:14,fontFamily:"'Cinzel',serif"}}>{stC.villages}</span> <span className="au-fade au-sc" style={{fontSize:10}}>village{stC.villages!==1?"s":""}</span></span>}
-          </div>:
-          <div className="au-fade" style={{fontStyle:"italic",fontSize:11,marginBottom:8}}>no permanent settlements yet</div>}
-        {(ports>0||knownCoasts>0)&&<>
-          <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>Sea</div>
-          <div style={{fontSize:12,marginBottom:8}}>
-            <span style={{fontFamily:"'Cinzel',serif"}}>{ports}</span> <span className="au-fade au-sc" style={{fontSize:10}}>port{ports!==1?"s":""}</span>
-            {" · "}
-            <span style={{fontFamily:"'Cinzel',serif"}}>{knownCoasts}</span> <span className="au-fade au-sc" style={{fontSize:10}}>known coasts</span>
-          </div>
-        </>}
-        {bud&&<>
-          <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>Priorities</div>
-          <div style={{display:"flex",height:8,borderRadius:2,overflow:"hidden",
-            border:"1px solid rgba(58,38,20,0.3)",marginBottom:4}}>
-            <div style={{width:`${bud.military*100}%`,background:"#9a3030"}} title={`Military ${(bud.military*100|0)}%`} />
-            <div style={{width:`${bud.growth*100}%`,background:"#5a8030"}} title={`Growth ${(bud.growth*100|0)}%`} />
-            <div style={{width:`${bud.commerce*100}%`,background:"#3a6a98"}} title={`Commerce ${(bud.commerce*100|0)}%`} />
-            <div style={{width:`${bud.exploration*100}%`,background:"#a07028"}} title={`Exploration ${(bud.exploration*100|0)}%`} />
-            <div style={{width:`${bud.survival*100}%`,background:"#5a5448"}} title={`Survival ${(bud.survival*100|0)}%`} />
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",gap:4,fontSize:10}} className="au-sc">
-            <span style={{color:"#9a3030"}}>{(bud.military*100|0)}mil</span>
-            <span style={{color:"#5a8030"}}>{(bud.growth*100|0)}gro</span>
-            <span style={{color:"#3a6a98"}}>{(bud.commerce*100|0)}com</span>
-            <span style={{color:"#a07028"}}>{(bud.exploration*100|0)}exp</span>
-            <span style={{color:"#5a5448"}}>{(bud.survival*100|0)}sur</span>
-          </div>
-        </>}
-      </>}
-
-      {tribeTab==="knowledge"&&k&&
-        <div style={{display:"flex",gap:14,alignItems:"center",justifyContent:"flex-start"}}>
-          <KnowledgeRadar k={k} size={155} />
-          <div style={{fontSize:11,lineHeight:1.7,flex:1}}>
-            {[["agriculture","Agriculture","#5a8030"],["metallurgy","Metallurgy","#a07028"],
-              ["navigation","Navigation","#3a6a98"],["construction","Construction","#6b5b3c"],
-              ["organization","Organization","#7a3878"],["trade","Trade","#a08828"]].map(([key,label,col])=>{
-              const v=k[key]||0;
-              return(
-                <div key={key} style={{display:"flex",gap:5,alignItems:"baseline"}}>
-                  <span style={{flex:1,color:v>0.15?"var(--au-ink)":"var(--au-ink-light)"}}>{label}</span>
-                  <span className="au-heading" style={{fontSize:12,color:v>0.15?col:"var(--au-ink-light)"}}>{(v*100|0)}</span>
-                </div>);})}
-          </div>
-        </div>}
-      {tribeTab==="knowledge"&&!k&&<div className="au-fade" style={{textAlign:"center",fontStyle:"italic"}}>no knowledge data</div>}
-
-      {tribeTab==="diplomacy"&&(()=>{
-        const allRels=[];const seen=new Set();
-        if(ter._borderContacts&&ter._borderContacts[sel]){
-          for(const nid in ter._borderContacts[sel]){const n=parseInt(nid);
-            const tn=ter.tribes[n];if(!tn||!tn.alive)continue;seen.add(n);
-            allRels.push({id:n,size:tn.size,rel:tribeRelation(ter,sel,n),via:'border'});}}
-        for(const kc of me.knownCoasts){
-          if(kc.owner>=0&&!seen.has(kc.owner)){
-            const tk=ter.tribes[kc.owner];if(!tk||!tk.alive)continue;
-            seen.add(kc.owner);
-            allRels.push({id:kc.owner,size:tk.size,rel:tribeRelation(ter,sel,kc.owner),via:'maritime'});}}
-        allRels.sort((a,b)=>b.size-a.size);
-        if(!allRels.length)return<div className="au-fade" style={{textAlign:"center",fontStyle:"italic",padding:"12px 0"}}>no known nations</div>;
-        const relCol={fight:"#9a3030",trade:"#a07028",friendly:"#3a6a48",neutral:"#6b4f37"};
-        const relLabel={fight:"At War",trade:"Trading",friendly:"Friendly",neutral:""};
-        return<div>
-          <div className="au-sc au-fade" style={{fontSize:10,marginBottom:4}}>{allRels.length} known nation{allRels.length===1?"":"s"}</div>
-          <div style={{maxHeight:180,overflowY:"auto"}} className="au-scroll">
-          {allRels.slice(0,14).map(n=>{
-            const pers=ter.tribes[n.id]?.personality||"";
-            return<div key={n.id} style={{display:"flex",alignItems:"center",gap:7,padding:"3px 4px",fontSize:11,cursor:"pointer",
-              background:n.rel==="fight"?"rgba(154,48,48,0.10)":n.rel==="trade"?"rgba(160,112,40,0.10)":"transparent",
-              borderRadius:2,marginBottom:1}}
-              onClick={()=>{setSelectedTribe(n.id);ter._selectedTribe=n.id;draw(ter);}}>
-              <span className="au-wax-seal au-small" style={{background:`rgb(${tribeRGB(n.id).join(',')})`}} />
-              <span>#{n.id}</span>
-              {pers&&<span className="au-fade" style={{fontSize:10,fontStyle:"italic"}}>{pers}</span>}
-              <span className="au-fade" style={{fontSize:10}}>{n.size}t</span>
-              {n.via==="maritime"&&<span style={{fontSize:10}}>⛵</span>}
-              <div style={{flex:1}} />
-              {relLabel[n.rel]&&<span style={{fontSize:10,fontWeight:600,color:relCol[n.rel]}}>{relLabel[n.rel]}</span>}
-            </div>;})}
-          </div>
-        </div>;
-      })()}
-
-      {tribeTab==="trade"&&(()=>{
-        if(!td||!td.partners)return<div className="au-fade" style={{textAlign:"center",fontStyle:"italic",padding:"12px 0"}}>no trade established</div>;
-        const fmt=(x)=>x>=1?x.toFixed(1):x.toFixed(2);
-        return<div>
-          <div style={{display:"flex",gap:20,marginBottom:8}}>
-            <div><div className="au-sc au-fade" style={{fontSize:10}}>Partners</div>
-              <div className="au-heading" style={{fontSize:15}}>{td.partners}</div></div>
-            {td.income>0.01&&<div><div className="au-sc au-fade" style={{fontSize:10}}>Income</div>
-              <div className="au-heading au-gold-text" style={{fontSize:15}}>{fmt(td.income)}</div></div>}
-          </div>
-          {(td.foodImports>0||td.foodExports>0)&&<div className="au-sc au-fade" style={{fontSize:10,marginBottom:3}}>Food</div>}
-          {td.foodImports>0&&<div className="au-verde-text" style={{fontSize:11}}>↓ Importing {fmt(td.foodImports)}</div>}
-          {td.foodExports>0&&<div className="au-gold-text" style={{fontSize:11}}>↑ Exporting {fmt(td.foodExports)}</div>}
-          {td.imports&&Object.keys(td.imports).length>0&&<>
-            <div className="au-sc au-fade" style={{fontSize:10,marginTop:6,marginBottom:3}}>Imports</div>
-            {Object.entries(td.imports).slice(0,5).map(([rk,v])=><div key={rk} style={{fontSize:11}}>{rk} <span className="au-fade">{fmt(v)}</span></div>)}
-          </>}
-        </div>;
-      })()}
-      </div>
-
-      {/* Footer: nation list toggle */}
-      <div className="au-rule" style={{marginTop:8}} />
-      <div style={{cursor:"pointer",padding:"3px 0",display:"flex",alignItems:"center",gap:6}}
-        onClick={()=>setShowTribeList(v=>!v)}>
-        <span className="au-sc au-fade" style={{fontSize:10,flex:1}}>{showTribeList?"▾":"▸"} All nations</span>
-      </div>
-      {showTribeList&&(()=>{
-        const tribes=[];
-        for(const tx of ter.tribes){if(!tx.alive)continue;
-          tribes.push({id:tx.id,size:tx.size,power:tribePower(ter,tx.id),
-            pop:tx.pop,personality:tx.personality});}
-        tribes.sort((a,b)=>b.power-a.power);
-        return<div style={{maxHeight:130,overflowY:"auto",marginTop:2}} className="au-scroll">
-          {tribes.map(t=>{const isSel=t.id===sel;
-            return<div key={t.id} onClick={()=>{setSelectedTribe(t.id);if(ter)ter._selectedTribe=t.id;draw(ter);}}
-              style={{display:"flex",alignItems:"center",gap:6,padding:"2px 4px",cursor:"pointer",
-                background:isSel?"rgba(120,80,40,0.18)":"transparent",borderRadius:2}}>
-              <span className="au-wax-seal au-small" style={{background:`rgb(${tribeRGB(t.id).join(",")})`}} />
-              <span style={{fontSize:11}}>#{t.id}</span>
-              {t.personality&&<span className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>{t.personality}</span>}
-              <div style={{flex:1}} />
-              <span className="au-fade" style={{fontSize:10}}>{t.size}t</span>
-              <span className="au-fade" style={{fontSize:10}}>{fmtPop(t.pop)}</span>
-              <span style={{fontSize:10,width:32,textAlign:"right"}} className="au-fade">{t.power.toFixed(0)}pw</span>
-            </div>;})}
-        </div>;
-      })()}
-    </div>
-  );
-})()}
 
 {/* ─── Bottom-left collapsible legend ─── */}
 {viewMode==="transport-test"&&
@@ -4223,6 +4235,7 @@ return(
       <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"4px 14px 2px"}}>Map</div>
       <Row k="tints" label="Country tints" />
       <Row k="borders" label="Borders" />
+      <Row k="provinces" label="Province borders" />
       <Row k="roads" label="Roads" />
       <Row k="seaLanes" label="Sea lanes" />
       <Row k="moneyFlow" label="Money flow" />

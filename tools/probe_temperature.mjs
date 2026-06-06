@@ -12,28 +12,25 @@
 //
 // Run: node tools/probe_temperature.mjs
 
-// Targets calibrated for visualization: tropical bands should READ as
-// hot (orange-red), polar bands cold enough to trigger the ICE biome
-// (which fires at t<0.08). Realistic enough for crops + transport, but
-// expanded at both ends so the map has range. Reference points:
-//   • Equator → +32°C (Sahel/equatorial summer feel)
-//   • 45°N → +10°C (Berlin/Beijing annual mean)
-//   • 80°N → -20°C (Arctic Ocean)
-//   • 90° polar tip → -50°C (Antarctic interior); ICE biome
-// Greenland (lat 0.78, elev 0.4) and Antarctica (lat 0.87, elev 0.3)
-// both hit ICE after the elev penalty (-0.4*e).
+// Targets = REAL annual-mean surface air temperature by latitude (zonal means,
+// NCEP/ERA climatology), not the old visualization-inflated values. The map is
+// hemisphere-symmetric (lat = abs(ny-.5)*2), so these track the better-sampled
+// northern profile; Antarctica's extra cold comes from its ice-sheet ELEVATION,
+// not the base latitude curve. Reference points:
+//   • Equator → +26°C   • 20° → +25°C (subtropical shoulder)   • 30° → +20°C
+//   • 50° → +7°C   • 60° → 0°C   • 70° → -10°C   • 80° → -18°C   • 90° → -23°C
 const TARGETS = [
-  // lat-norm, lat-deg, real-°C, target-t
-  [0.00,   0, 32, 0.92],
-  [0.11,  10, 28, 0.88],
+  // lat-norm, lat-deg, real-°C, target-t (t = 0.60 + °C/100)
+  [0.00,   0, 26, 0.86],
+  [0.11,  10, 27, 0.87],
   [0.22,  20, 25, 0.85],
   [0.33,  30, 20, 0.80],
   [0.44,  40, 14, 0.74],
-  [0.56,  50,  9, 0.69],
-  [0.67,  60, -2, 0.58],
-  [0.78,  70,-15, 0.45],
-  [0.89,  80,-30, 0.30],
-  [1.00,  90,-50, 0.10],
+  [0.56,  50,  7, 0.67],
+  [0.67,  60,  0, 0.60],
+  [0.78,  70,-10, 0.50],
+  [0.89,  80,-18, 0.42],
+  [1.00,  90,-23, 0.37],
 ];
 
 // ── Current Earth preset (WorldSim.jsx:94) ──
@@ -51,18 +48,21 @@ function tectonicCurrent(lat) {
   ));
 }
 
-// ── Proposed unified curve (v5) ──
-// Keep v3's base curve (mid-lats fine). The Greenland/Antarctica fix
-// goes into the ELEVATION penalty instead of the base lat curve —
-// lat-amplified elev penalty (0.4 + 0.8*lat) means polar+high-elev
-// combos plunge fast without disturbing flat polar lowlands or any
-// mid-lat behavior.
-//   t = 0.92 - 0.50*lat^1.5 - 0.80*lat^6 - elev * (0.40 + 0.80*lat)
+// ── Proposed accurate curve (v6) ──
+// Real annual-mean temperature is nearly flat near the equator, drops fastest
+// through the mid-latitudes, then FLATTENS toward the pole (poleward heat
+// transport — the old lat^6 term plunged the poles to -60°C, far colder than the
+// real ~-23°C Arctic mean). A quadratic with a quartic flattening term fits the
+// real zonal curve to within ~2°C everywhere; a small subtropical shoulder lifts
+// the 10-20° band (clear-sky deserts run hotter than the cloudy equator). The
+// Greenland/Antarctica ice still comes from the lat-amplified elevation penalty.
+//   t = 0.85 - 0.66*lat^2 + 0.18*lat^4 + shoulder - elev*(0.40 + 0.80*lat)
 function proposed(lat, elev = 0) {
-  const l6 = lat*lat*lat * lat*lat*lat;
+  const l2 = lat*lat;
+  const shoulder = 0.035 * Math.exp(-((lat - 0.15) * (lat - 0.15)) / (2 * 0.10 * 0.10));
   const elevPen = Math.max(0, elev) * (0.40 + 0.80 * lat);
   return Math.max(0, Math.min(1,
-    0.92 - 0.50 * Math.pow(lat, 1.5) - 0.80 * l6 - elevPen
+    0.85 - 0.66 * l2 + 0.18 * l2 * l2 + shoulder - elevPen
   ));
 }
 

@@ -199,15 +199,17 @@ const MAX_CRADLES = 10;
 const CRADLE_MIN_SEP = 60;   // tile-space minimum separation (large enough that a single
                               // continent gets at most 1-2 cradles, but Earth's separated
                               // landmasses each get one if they have a viable site)
-// Boundedness (Carneiro circumscription): fraction of nearby tiles that are
-// barriers — sea, high mountain, or barren desert. High = a fertile pocket
-// hemmed in (the river-valley cores where the first states arose). Used only to
-// score cradle sites, so genesis civilisations start in circumscribed land.
-function boundedness(world, ti) {
+// Circumscription (Carneiro): the first states arose in fertile pockets hemmed in
+// by INHOSPITABLE LAND — the Nile walled by the Sahara, the Indus by the Thar,
+// Mesopotamia by desert and mountains. The barrier that matters is dry/mountain
+// LAND, not ocean: an island or coastal outcropping is hemmed by SEA, which is the
+// opposite of a river-valley cradle, so we measure the two separately — reward
+// land-circumscription, penalise being mostly surrounded by sea.
+function cradleSurround(world, ti) {
   const { tw, th, elev, fert } = world;
   const ty = (ti / tw) | 0, tx = ti - ty * tw;
   const R = 7, r2 = R * R;
-  let barrier = 0, total = 0;
+  let landBarrier = 0, sea = 0, total = 0;
   for (let dy = -R; dy <= R; dy++) {
     const ny = ty + dy; if (ny < 0 || ny >= th) continue;
     for (let dx = -R; dx <= R; dx++) {
@@ -215,14 +217,16 @@ function boundedness(world, ti) {
       const t2 = ny * tw + (((tx + dx) % tw + tw) % tw);
       total++;
       const e = elev[t2];
-      if (e <= 0 || e > 0.42 || (fert[t2] || 0) < 0.12) barrier++;
+      if (e <= 0) sea++;
+      else if (e > 0.42 || (fert[t2] || 0) < 0.12) landBarrier++;   // arid desert or high mountain
     }
   }
-  return total > 0 ? barrier / total : 0;
+  return total > 0 ? { landBarrier: landBarrier / total, seaFrac: sea / total }
+                   : { landBarrier: 0, seaFrac: 0 };
 }
 function seedCradleVillage(world) {
   resetSettlementIds();
-  const { tw, th, elev, temp, moist, fert, coast, riverMag, N } = world;
+  const { tw, elev, temp, moist, fert, coast, riverMag, N } = world;
   // Collect ALL viable candidates with their scores, then greedily pick the
   // top-scoring set with minimum separation.
   const candidates = [];
@@ -230,21 +234,24 @@ function seedCradleVillage(world) {
     if (!isContinentalLand(world, ti)) continue;
     if (elev[ti] > 0.30) continue;
     const t = temp[ti], m = moist[ti], f = fert[ti];
-    if (t < 0.55 || t > 0.85) continue;
-    if (m < 0.30 || m > 0.75) continue;
-    if (f < 0.40) continue;
-    let waterBonus = 0;
-    if (coast[ti])                            waterBonus += 0.5;
-    if (riverMag && riverMag[ti] >= 3)        waterBonus += 1.5;
-    else if (riverMag && riverMag[ti] >= 2)   waterBonus += 0.8;
-    const tempFit  = 1 - Math.abs(t - 0.70) * 2;
-    const moistFit = 1 - Math.abs(m - 0.50) * 2;
-    const elevFit  = 1 - elev[ti] * 2;
-    // Circumscription (Carneiro): favour a fertile pocket hemmed in by barriers
-    // (sea / mountain / desert) — the bounded river-valley cores where the first
-    // civilisations actually arose (Nile, Mesopotamia, Indus), because a trapped
-    // population gets absorbed into a state rather than scattering.
-    const score = f * 2 + tempFit + moistFit + elevFit + waterBonus + boundedness(world, ti) * 2.5;
+    if (t < 0.68 || t > 0.88) continue;            // warm valleys only (+8..+28°C) — the Yellow River is the coldest real cradle (~+12°C); excludes cold high-latitude rivers
+    const rm = riverMag ? riverMag[ti] : 0;
+    const onRiver = rm >= 2;
+    // A major river substitutes for rainfall — that's the whole point of the Nile
+    // and the Indus: a fertile ribbon through a desert. Only DRY sites WITHOUT a
+    // major river are rejected for low moisture.
+    if (!onRiver && (m < 0.30 || m > 0.78)) continue;
+    if (f < 0.40) continue;                        // fertile (river alluvium counts via tCrop)
+    // Major rivers are THE cradle feature — weight them heavily.
+    const riverBonus = rm >= 3 ? 2.6 : rm >= 2 ? 1.6 : rm >= 1 ? 0.6 : 0;
+    const tempFit = 1 - Math.abs(t - 0.76) * 1.3;
+    const elevFit = 1 - elev[ti] * 2;
+    const { landBarrier, seaFrac } = cradleSurround(world, ti);
+    // Reward a fertile pocket walled by inhospitable LAND (the real river-valley
+    // cradles — Nile/Sahara, Indus/Thar); PENALISE being mostly ringed by ocean
+    // (islands / coastal outcroppings, where the first states did NOT arise).
+    const score = f * 2 + riverBonus + landBarrier * 2.5 + tempFit + elevFit
+                - Math.max(0, seaFrac - 0.30) * 5;
     candidates.push({ ti, score });
   }
   if (candidates.length === 0) {

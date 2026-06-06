@@ -28,6 +28,10 @@ const w = makeFakeWorld(128, 64);
 const world = initPeopleSim(w, { seed: 99 });
 console.log(`world initialized: tw=${world.tw} th=${world.th} settlements=${world.settlements.length}`);
 
+// Exercise the dev invariant harness (finiteness / non-negative wealth / tier
+// range + money/pop totals) over the whole run — a free regression net.
+world._checkInvariants = true;
+
 const checkpoints = [500, 1500, 3000, 6000, 10000];
 let cpIdx = 0;
 const t0 = performance.now();
@@ -42,4 +46,10 @@ for (let s = 1; s <= TICKS; s++) {
 }
 const dt = performance.now() - t0;
 console.log(`\n${TICKS} steps in ${dt.toFixed(1)}ms (${(dt / TICKS).toFixed(3)}ms/step)`);
+
+const hits = world.debug.invariantHits || {};
+const nHits = Object.values(hits).reduce((a, b) => a + b, 0);
+console.log(`invariant hits: ${nHits === 0 ? "none" : JSON.stringify(hits)}`);
+console.log(`final totals: coin=${Math.round(world.debug.totalCoin)} people=${Math.round(world.debug.totalPeople)} settlements=${world.debug.aliveSettlements}`);
+if (nHits > 0) { console.error("=== test FAILED: invariant violations ==="); process.exit(1); }
 console.log("\n=== test PASSED ===");

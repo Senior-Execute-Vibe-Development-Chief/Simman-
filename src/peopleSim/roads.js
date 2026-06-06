@@ -46,10 +46,9 @@ import { localEdgeCost, baseEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
 import { T } from "./tuning.js";
 import { exportValueOf, getWealthReserve } from "./settlement.js";
-import { localP } from "./inflation.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
-import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
+import { recordIn, recordOut, IN_GOODS, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 
 // ── Constants ──────────────────────────────────────────────────────
 const QUALITY_NEW         = 0.25;       // new road: 4× cheaper than plain
@@ -181,10 +180,6 @@ const HAVE_THRESHOLD = 0.10;
 const DEMAND_WEALTH_REF            = 4000;   // spare wealth that adds +1× import demand
 const DEMAND_WEALTH_CAP            = 8;      // a very rich buyer imports up to (1+cap)× as much
 const TRANSPORT_PER_PATHCOST       = 0.012;
-const FOOD_PRICE                   = 5;
-const FOOD_TRANSPORT_PER_PATHCOST  = 0.005;
-const STARVING_TICKS_LEFT          = 100;
-const FOOD_IMPORT_EMA_ALPHA        = 0.02;    // import-fed food capacity tracks delivered grain in ~50 ticks, not ~500 — lets a city grow on grain it's actually receiving instead of lagging centuries behind
 const USAGE_PER_TRADE              = 0.04;   // flow added per tile per active trade tick
 const MONEY_FLOW_EPS               = 0.01;   // min net /tick for a link to register in the money-flow overlay
 
@@ -200,7 +195,6 @@ const MONEY_FLOW_EPS               = 0.01;   // min net /tick for a link to regi
 // politically charged, and a 5% toll on grain to a starving city
 // would be unconscionable.
 const TOLL_RATE       = 0.05;
-const FOOD_TOLL_RATE  = 0.02;
 // Cross-border customs: when goods are sold INTO a different country, that
 // country's state (its capital) levies an import duty on top of the price.
 // It raises the cost of foreign trade — so commerce within one realm is
@@ -725,12 +719,8 @@ function tryAddRoad(world, s) {
 // add to the path tiles' roadFlow.
 export function updateTrade(world) {
   ensureRoadArrays(world);
-  // Food import EMA decay (per-settlement) runs every tick.
-  for (const s of world.settlements) {
-    if (s.mode === "settled") {
-      s._foodImportRate = (s._foodImportRate || 0) * (1 - FOOD_IMPORT_EMA_ALPHA);
-    }
-  }
+  // (Food no longer trades flat here — it flows up the settlement hierarchy in
+  // foodHierarchy.js. This pass handles goods / luxuries / money only.)
   // Decay current flow over the active-flow set only (proportional to
   // live traffic, not world size). Done BEFORE this tick's trade
   // contributions so trades land on a freshly-decayed field and the
@@ -760,15 +750,28 @@ export function updateTrade(world) {
     const reach = mergeReach(s);
     if (!reach) continue;
     for (const [peerId, link] of reach) {
-      if (peerId <= s.id) continue;   // process each pair once
+      if (peerId === s.id) continue;
       const peer = findById(world, peerId);
       if (!peer || peer.mode !== "settled") continue;
+      // Process each unordered pair exactly once. Normally the lower-id member
+      // runs it — but trade reach can be ASYMMETRIC (each settlement keeps only
+      // its nearest MAX_PARTNERS, and "b is among a's nearest" does NOT imply
+      // the reverse). So the lower id runs it, UNLESS the lower-id peer doesn't
+      // list us back — then WE run it, so a one-way-listed link still trades
+      // instead of being silently dropped (a peripheral breadbasket's grain
+      // reaching a city used to hinge on arbitrary id ordering).
+      if (peerId < s.id && reachHasPeer(peer, s.id)) continue;
       const peerBefore = peer.wealth || 0;
-      runFoodTradeBetween(world, s, peer, link);
       runGeneralTradeBetween(world, s, peer, link);
       runLuxuryTradeBetween(world, s, peer);
-      const net = (peer.wealth || 0) - peerBefore;   // +ve = money toward peer (higher id, end of tiles)
-      linkMoney.set(s.id + ":" + peerId, net);
+      // Net coin that reached the peer (the end of link.tiles, oriented s→peer).
+      const net = (peer.wealth || 0) - peerBefore;
+      // Store under a canonical lo:hi key, oriented as "coin that reached the
+      // HIGHER-id settlement" (the convention getTradeProfile + the money-flow
+      // overlay expect) — the pair can now be run from either side, so we can't
+      // assume s is the lower id.
+      const lo = s.id < peerId ? s.id : peerId, hi = s.id < peerId ? peerId : s.id;
+      linkMoney.set(lo + ":" + hi, peerId === hi ? net : -net);
       // Land trade wears its road path (flow drives paving + thickness);
       // sea trade leaves no road, but both animate on the money overlay.
       if (link.tiles && link.tiles.length > 0) {
@@ -828,95 +831,9 @@ function intermediatesOnPath(link, aId, bId, stMap) {
   return out;
 }
 
-// Per-tick food a settlement could ship out. Only STORABLE food (grain +
-// forage) travels — fresh fish is perishable and stays local — so the
-// exportable surplus is the total surplus capped by storable production.
-// A fishing town that's fed mostly by the sea therefore can't become a
-// food exporter; only grain breadbaskets feed distant cities.
-function foodSurplus(s) {
-  const total = (s._foodSupply || 0) - (s._foodDemand || 0);
-  if (total <= 0) return total;
-  return Math.min(total, s._storableSupply || 0);
-}
-// Per-tick food a settlement wants shipped IN: enough to feed the
-// population its HOUSING could hold beyond what it has now. This is what
-// lets a food-limited but development-rich city pull grain and grow past
-// its own land — at pop = foodK it has no starvation deficit, but it
-// still has housing headroom to fill.
-function foodAppetite(s) {
-  const headroom = (s._houseK || 0) - s.people;
-  const growthNeed = headroom > 0 ? headroom * 0.003 * (s._urbanFactor || 1) : 0;
-  // Also import enough to cover any CURRENT shortfall between local supply and
-  // total demand (which now includes garrison provisioning) — that's how a
-  // city feeds a standing army it can't grow the food for locally.
-  const deficit = Math.max(0, (s._foodDemand || 0) - (s._foodSupply || 0));
-  return growthNeed + deficit;
-}
-function runFoodTradeBetween(world, a, b, link) {
-  const aSurplus = foodSurplus(a), bSurplus = foodSurplus(b);
-  const aWant = foodAppetite(a), bWant = foodAppetite(b);
-  let exporter, importer, shipRate, deficit;
-  if (aSurplus > 0.001 && bWant > 0.001) {
-    exporter = a; importer = b; shipRate = aSurplus; deficit = bWant;
-  } else if (bSurplus > 0.001 && aWant > 0.001) {
-    exporter = b; importer = a; shipRate = bSurplus; deficit = aWant;
-  } else return;
-  // Growth-reserve fraction for exporter: keep a thin buffer against transient
-  // dips, but SHIP THE SURPLUS. The old rule reserved up to 70% when the
-  // exporter had spare capacity ("feed own children first"), which made exactly
-  // the depopulating rural villages — the breadbaskets a city should eat from —
-  // hoard their grain instead of feeding the city. Shipping surplus doesn't
-  // impede the seller's own growth (that's logistic on K, not on granary
-  // level), so a farming village exports most of what it grows.
-  const exporterK = exporter._k || Math.max(1, exporter.people);
-  const headroom = Math.max(0, 1 - exporter.people / exporterK);
-  const reserveFraction = 0.10 + headroom * 0.15;
-  const effectiveShipRate = shipRate * (1 - reserveFraction);
-  // Ship the ongoing production surplus, bounded by the importer's
-  // deficit. effectiveShipRate was just added to the granary this tick so
-  // this can't drive food negative; the stored-food term is only a floor
-  // against transient dips. (The old food×0.01 cap throttled exports to a
-  // trickle, which is what made import-fed cities impossible.)
-  const maxFlow = Math.min(effectiveShipRate, deficit, Math.max(0, exporter.food || 0));
-  if (maxFlow <= 0) return;
-
-  // ── The grain moves by BARTER — always. Survival and growth don't wait
-  // for coin; the importer gives goods in return (untracked). This is the
-  // default exchange and is what keeps a money-less settlement (or a whole
-  // pre-money world) fed.
-  importer.food = (importer.food || 0) + maxFlow;
-  exporter.food = (exporter.food || 0) - maxFlow;
-  importer._foodImportRate = (importer._foodImportRate || 0) + maxFlow * FOOD_IMPORT_EMA_ALPHA;
-
-  // ── If the importer holds coin (above its reserve) money REPLACES
-  // barter for as much of the grain as it can pay for: coin flows
-  // importer → exporter, tolls to any middlemen. A broke importer simply
-  // barters (no coin moves). This is how money supplants barter once it
-  // reaches a settlement. The price is scaled by the IMPORTER's local
-  // price level (inflation.js) — a coin-rich region pays more for grain.
-  const wantPrice = maxFlow * FOOD_PRICE * localP(world, importer);
-  const transport = link.cost * FOOD_TRANSPORT_PER_PATHCOST;
-  const intermediates = link.inter || null;          // precomputed at reach build
-  const numInter = intermediates ? intermediates.length : 0;
-  const totalToll = wantPrice * FOOD_TOLL_RATE * numInter;
-  const totalCost = wantPrice + transport + totalToll;
-  const importerDemand = importer._foodDemand || 0.001;
-  const isStarving = (importer.food || 0) / importerDemand < STARVING_TICKS_LEFT;
-  const reserve = isStarving ? 0 : getWealthReserve(importer);
-  const available = Math.max(0, (importer.wealth || 0) - reserve);
-  if (available <= 0) return;            // no coin — pure barter, done
-  const pay = available < totalCost ? available : totalCost;
-  const scale = pay / totalCost;
-  importer.wealth -= pay;
-  exporter.wealth = (exporter.wealth || 0) + wantPrice * scale;
-  recordOut(importer, OUT_FOOD, wantPrice * scale);
-  recordOut(importer, OUT_TOLLS, (transport + totalToll) * scale);
-  recordIn(exporter, IN_FOOD, wantPrice * scale);
-  if (intermediates) {
-    const tollPer = wantPrice * FOOD_TOLL_RATE * scale;
-    for (const inter of intermediates) { inter.wealth = (inter.wealth || 0) + tollPer; recordIn(inter, IN_TOLLS, tollPer); }
-  }
-}
+// (Food is no longer traded flat between pairs — it flows UP the settlement
+// hierarchy in foodHierarchy.js, so a city is fed by its whole hinterland rather
+// than its 12 nearest partners. This pass handles goods / luxuries / money only.)
 
 // Bilateral trade: each settlement sells its OWN goods to the other and
 // pays for what it buys. Money flows BOTH directions, so a settlement
@@ -1026,6 +943,13 @@ function mergeReach(s) {
     if (!ex || link.cost < ex.cost) m.set(pid, link);
   }
   return m;
+}
+
+// Does settlement `p` list `id` among its trade peers (road OR sea reach)?
+// Used by the trade pass to dedupe each unordered pair exactly once even when
+// the nearest-K reach is asymmetric (see updateTrade).
+function reachHasPeer(p, id) {
+  return !!((p._tradeReach && p._tradeReach.has(id)) || (p._seaReach && p._seaReach.has(id)));
 }
 
 // O(1) id lookup via the per-tick map built in stepPeopleSim. Falls

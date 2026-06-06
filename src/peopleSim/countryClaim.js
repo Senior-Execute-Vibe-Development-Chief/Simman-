@@ -15,12 +15,49 @@
 // Rings the drawn border advances toward the target per relax call. 1 = slowest,
 // smoothest crawl. index.js calls relaxClaim every CLAIM_RELAX_INTERVAL ticks.
 const RINGS_PER_RELAX = 1;
+// Organic front: a tile on an advancing border accumulates breakthrough PRESSURE
+// each relax and only flips once it overcomes the tile's RESISTANCE. Open ground
+// resists ~1 (flips at once, as before); mountains resist far more (the front
+// stalls and bulges around ranges); and a coherent NOISE term jitters the edge so
+// even a front across flat ground creeps as a ragged, organic line rather than a
+// dead-straight wall. Pressure resets the moment a tile leaves a front.
+const ELEV_RESIST  = 11;   // extra passes a high-elevation tile makes the front wait
+const NOISE_RESIST = 2.5;  // coherent jitter (×_claimNoise 0..1) → ragged/bulging edge
 
 // "Main" settlement of a country: the strongest member (tier first, then
 // people) — the same seat rebuildCountries would crown capital. Used to pick
 // the single tile a brand-new realm's claim is born from. Robust to a dead
 // founder (a country id can outlive the settlement it was named for).
 function headScore(s) { return (s.tier | 0) * 1e7 + (s.people || 0); }
+
+// Is this tile on the SAME LANDMASS as land country `cid` already claims? Land
+// becomes a realm's only as its border crawls into it from ground it holds, so a
+// settlement standing on unclaimed land must WAIT for the crawl rather than light
+// up its own tile — otherwise a realm's scattered or not-yet-reached towns appear
+// as disconnected dots ahead of the border. The one case that legitimately needs
+// its own seed is a settlement the border can NEVER crawl to: one cut off by
+// WATER (an overseas colony / island), since the crawl never crosses sea. So flood
+// the landmass from `startTi` over land; if it reaches a tile the realm already
+// claims, the border will arrive on its own (no foothold — it fills in
+// contiguously); if the flood is walled in by water without finding one, this is a
+// separate landmass and needs a birth foothold. Bounded so a continent exits cheap.
+function landConnectedToClaim(world, claim, startTi, cid) {
+  const { tw, th, elev } = world;
+  const MAX = 4000;
+  const seen = new Set([startTi]); const q = [startTi]; let visited = 0;
+  while (q.length && visited < MAX) {
+    const ti = q.pop(); visited++;
+    if (claim[ti] === cid) return true;                  // same landmass as ground the realm already holds
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+    const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+    for (let k = 0; k < 4; k++) {
+      const ni = ns[k]; if (ni < 0 || seen.has(ni) || elev[ni] <= 0) continue;   // water walls the flood
+      seen.add(ni); q.push(ni);
+    }
+  }
+  return false;
+}
 
 
 // Crawl the drawn claim one (or RINGS_PER_RELAX) ring toward the target. A tile
@@ -76,33 +113,49 @@ export function relaxClaim(world) {
     if (elev[ti] <= 0) continue;
     const cur = claim[ti];
     if (cur === s.countryId) continue;                       // already ours
-    if (cur === -1) { claim[ti] = s.countryId; continue; }   // fresh land — legit foothold
-    // Home tile currently belongs to another country: flipping it is a land
-    // transfer. Only the head of a country with no ground yet may plant its one
-    // birth-foothold; everyone else waits for the crawl to reach them.
-    if (!present.has(s.countryId) && headOf.get(s.countryId) === s) {
-      claim[ti] = s.countryId;
-      present.add(s.countryId);                              // it now exists; co-seceders wait for the crawl
+    if (cur >= 0) continue;                                  // belongs to another country — only the crawl may transfer it
+    // The home tile is unclaimed land. Land becomes a realm's only as its border
+    // CRAWLS into it from ground it already holds — a settlement does NOT light up
+    // its own tile just for standing on wilderness, or a realm's frontier towns
+    // would appear as disconnected dots ahead of the advancing border. The only
+    // tiles that legitimately seed themselves:
+    if (present.has(s.countryId)) {
+      // realm already holds ground: plant ONLY if this is a different LANDMASS
+      // (an overseas colony the crawl can never cross water to reach). A town on
+      // the same landmass — even one not yet reached — waits for the border, so
+      // it never shows as a disconnected dot ahead of the advance.
+      if (!landConnectedToClaim(world, claim, ti, s.countryId)) claim[ti] = s.countryId;
+    } else if (headOf.get(s.countryId) === s) {
+      claim[ti] = s.countryId;                               // the realm's single BIRTH foothold
+      present.add(s.countryId);                              // it now exists; everyone else waits for the crawl
     }
   }
 
+  let press = world._claimPress;
+  if (!press || press.length !== N) press = world._claimPress = new Float32Array(N);
+  const noiseF = world._claimNoise;   // coherent value-noise field (countryTerritory.js); may be unset on the first pass
   for (let r = 0; r < RINGS_PER_RELAX; r++) {
     const flips = [];
     for (let ti = 0; ti < N; ti++) {
-      if (elev[ti] <= 0) { if (claim[ti] >= 0) claim[ti] = -1; continue; }  // water is never claimed
+      if (elev[ti] <= 0) { if (claim[ti] >= 0) claim[ti] = -1; press[ti] = 0; continue; }  // water is never claimed
       const tg = target[ti];
-      if (claim[ti] === tg) continue;
-      // Flip toward the target only if the target country (or wilderness, -1)
-      // already holds an orthogonal neighbour — i.e. its front has reached here.
+      if (claim[ti] === tg) { press[ti] = 0; continue; }
+      // The front has only reached here if the target country (or wilderness, -1)
+      // already holds an orthogonal neighbour.
       const ty = (ti / tw) | 0, tx = ti - ty * tw;
       const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
       const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
       let adjacent = false;
       for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni < 0) continue; if (claim[ni] === tg) { adjacent = true; break; } }
-      if (adjacent) flips.push(ti);
+      if (!adjacent) { press[ti] = 0; continue; }   // not on a front yet
+      // Push against this tile; break through once pressure beats its resistance —
+      // quick on open ground, slow on high terrain, ragged via the coherent noise.
+      const nv = noiseF ? noiseF[ti] : 0.5;
+      const resist = 1 + ELEV_RESIST * Math.max(0, elev[ti] - 0.3) + NOISE_RESIST * nv;
+      if ((press[ti] += 1) >= resist) flips.push(ti);
     }
     if (flips.length === 0) break;
-    for (const ti of flips) claim[ti] = target[ti];
+    for (const ti of flips) { claim[ti] = target[ti]; press[ti] = 0; }
   }
   return claim;
 }

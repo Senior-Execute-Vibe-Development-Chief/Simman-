@@ -4,7 +4,10 @@
 // Tuning menu. Every sim module imports { T } from here and reads T.KEY at
 // USE TIME (inside its passes), so dragging a slider mutates T and the next
 // pass picks it up — no restart. Defaults below reproduce the hand-tuned
-// behaviour exactly, so an untouched world is byte-identical to before.
+// behaviour exactly, so an untouched world is byte-identical to before —
+// EXCEPT the four knowledge-realism levers (SCI_SPREAD, AXIS_BIAS, KNOW_DECAY,
+// ENV_SPEC), which default to their new ACTIVE setting; set each to 0 to
+// recover the old behaviour for that effect.
 //
 // To add a lever: add one entry to TUNING_SCHEMA (key/label/desc/min/max/
 // step/def), then read T.KEY where the old const used to live. That's it.
@@ -43,7 +46,7 @@ export const TUNING_SCHEMA = [
         desc: "Extra control capacity a large capital projects (scales with its population). Down = a giant metropolis can't administer a giant empire, so conquests over-extend and shed." },
       { key: "CAP_ORG", label: "Bureaucratic capacity", def: 1.0, min: 0, max: 24, step: 0.5,
         desc: "Extra control capacity per point of the capital's ORGANIZATION tech — administrative depth that lets an advanced state govern more provinces. Up = bigger late empires; down = even advanced empires stay modest. (One of four org-cohesion dials; together they set how large/durable empires get.)" },
-      { key: "ABSORB_DOMINANCE", label: "Absorption dominance gate", def: 2.5, min: 1.05, max: 5.0, step: 0.05,
+      { key: "ABSORB_DOMINANCE", label: "Absorption dominance gate", def: 2.6, min: 1.05, max: 5.0, step: 0.05,
         desc: "How many times stronger a realm must be than a neighbour before it peacefully absorbs that neighbour's frontier settlements. DOWN = aggressive consolidation, fewer & larger nations; UP = only lopsided mismatches erode, so the map stays more multipolar with many nations." },
       { key: "LOYAL_ORG_HOLD", label: "Imperial cohesion (loyalty)", def: 0.35, min: 0, max: 0.9, step: 0.05,
         desc: "How much the capital's ORGANIZATION slows an over-budget province's slide to revolt. THE empire-LIFESPAN dial: 0 = even advanced empires fragment fast (a churning, short-lived-empire world); high = great powers hold their overstretch for ages (long-lived, hard-to-kill empires). At ~0.9 empires become near-immortal — back off if they never fall." },
@@ -61,6 +64,14 @@ export const TUNING_SCHEMA = [
         desc: "How fast an over-extended (uncovered) province bleeds loyalty toward revolt. Up = fragile frontiers, empires shed land and rise/fall faster." },
       { key: "RECENCY_TICKS", label: "Conquest digestion time", def: 4000, min: 500, max: 12000, step: 250,
         desc: "How long a freshly-conquered province stays extra-costly to hold. Up = blitz conquest destabilises longer." },
+      { key: "FRONTIER_FOUNDING", label: "Frontier state founding", def: 1.0, min: 0, max: 3.0, step: 0.25,
+        desc: "Primary state formation: how readily a developed cluster of stateless frontier settlements crystallises into a NEW country (its largest town becomes the sovereign seat). 0 = off — new countries come only from secession (old behaviour); >1 = lower the size/distance bar so frontier states appear more freely. Far-from-capitals and viable-cluster gates keep the country count in check." },
+      { key: "CAPITAL_ANCHOR", label: "Country compactness", def: 1.0, min: 0, max: 3, step: 0.1,
+        desc: "Pulls a realm's territory into a compact BLOB around its capital instead of sprawling along wherever its towns happen to sit. Authority radiates from the capital and fades with distance: a settlement projects the realm's full reach at the centre but only a small basin far out (the basin halves ~40/this-many tiles from the capital). So the union of basins reads as one centred region, and a far salient a nearer RIVAL capital reaches more cheaply cedes to it — the power-Voronoi-of-capitals that makes real borders squarish blobs. UP = rounder, more compact countries (far provinces harder to hold); 0 = off (territory sprawls to every town equally, weird tendrilled shapes)." },
+      { key: "SECEDE_GRIP", label: "Frontier shedding", def: 1.6, min: 0, max: 5, step: 0.1,
+        desc: "How readily an over-stretched empire's grip pulls inward, shedding frontier tiles. Secession is tile-driven: authority decays with transport distance from the capital, and tiles outside the (stress-shrunk) reach go loose and break away — a loose patch with a city secedes as a successor, one with none reverts to wilderness. UP = the rim peels off at the first sign of overstretch (fragile, churning frontiers); DOWN = empires hold their overstretch far longer before the edges crumble. Severity sets the SCALE: a mild overstretch peels the rim, a deep collapse loosens many provinces into several successors at once." },
+      { key: "REALM_GAP_FILL", label: "Gap fill (no man's land)", def: 18, min: 0, max: 30, step: 1,
+        desc: "Partitions the unclaimed land that sits BETWEEN claimed territory: a wilderness tile flanked by a country on both sides of an axis (N&S or E&W) within this many tiles is handed to the NEARER neighbour. Interior gaps of a realm fill solid, AND the no-man's-land between two realms is split so they border directly — a wall-to-wall political map rather than a sea of blank buffer. What stays wilderness is the genuinely OPEN frontier (a country within reach on only one side, facing a large uninhabited expanse — deep desert/ice/interior). UP = fills wider gaps (less wilderness, neighbours meet sooner); 0 = off (raw cost-Voronoi basins, lots of blank between realms)." },
     ],
   },
   {
@@ -121,7 +132,7 @@ export const TUNING_SCHEMA = [
     params: [
       { key: "SETT_GROWTH", label: "Population growth rate", def: 0.0018, min: 0.0002, max: 0.01, step: 0.0002,
         desc: "Base per-tick population growth. The master demographics-speed dial — up = the world fills fast." },
-      { key: "FARM_YIELD_PER_FERT", label: "Farm yield", def: 0.02, min: 0.005, max: 0.08, step: 0.005,
+      { key: "FARM_YIELD_PER_FERT", label: "Farm yield", def: 0.035, min: 0.005, max: 0.08, step: 0.005,
         desc: "Food produced per unit of land fertility → carrying capacity. Up = denser, larger inland cities." },
       { key: "HINTERLAND_MULT", label: "Farmland hinterland", def: 1.0, min: 0.3, max: 2.5, step: 0.1,
         desc: "Scales the guaranteed farmland belt every settlement holds beyond its core. Up = each town owns more countryside (and carries more land when it secedes); down = territory hugs the cores." },
@@ -143,6 +154,16 @@ export const TUNING_SCHEMA = [
         desc: "Master scaling on all knowledge growth. Up = the whole bronze→industrial arc plays out faster." },
       { key: "DIFFUSE_RATE", label: "Tech diffusion rate", def: 0.0006, min: 0, max: 0.005, step: 0.0002,
         desc: "How fast tech spreads between trading neighbours. Up = no lasting tech gaps; 0 = isolated innovators pull ahead." },
+      { key: "SCI_SPREAD", label: "Emergent science spread", def: 1.0, min: 0, max: 2.0, step: 0.1,
+        desc: "How strongly population, food surplus, trade contact and organization swing a settlement's invention rate. 0 = the old uniform pace (everywhere learns alike); up = fed, populous, connected hubs race ahead while isolated backwaters stall." },
+      { key: "AXIS_BIAS", label: "Continental-axis diffusion", def: 1.0, min: 0, max: 1.0, step: 0.1,
+        desc: "How much a SHARED CLIMATE gates tech spread. 0 = tech diffuses equally in every direction (old behaviour); 1 = it flows fast east–west along a latitude band and only crawls across climates — Diamond's continental-axis effect (why Eurasia outran the Americas)." },
+      { key: "KNOW_DECAY", label: "Knowledge loss (dark ages)", def: 1.0, min: 0, max: 3.0, step: 0.1,
+        desc: "How fast a COLLAPSING or cut-off society forgets technique. 0 = knowledge never regresses (old behaviour); up = depopulation (plague/famine/war), a sacked capital, and severed trade trigger real dark-age regressions that the tech tree visibly loses." },
+      { key: "ENV_SPEC", label: "Climate specialization", def: 1.0, min: 0, max: 2.0, step: 0.1,
+        desc: "How much local CLIMATE biases which techniques a culture perfects — arid river valleys pioneer irrigation farming, the humid tropics lag in cereal farming, short cold seasons cap it, temperate maritime coasts grow trade-administration. 0 = climate-blind learning (old behaviour)." },
+      { key: "TECH_EFFECTS", label: "Tech-driven bonuses", def: 1.0, min: 0, max: 1.0, step: 0.1,
+        desc: "How much the discrete TECHS (vs the raw continuous tracks) grant the sim's bonuses & abilities. 1 = fully tech-driven, Civ-style — a discovery is what gives the bonus; 0 = the old continuous-knowledge formulas. Calibrated so the two match at full tech. Currently wired to food, fishing and city size." },
     ],
   },
   {

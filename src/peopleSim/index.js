@@ -10,10 +10,11 @@
 
 import { createWorld, pruneDead } from "./state.js";
 import { updateSettlement, urbanise } from "./settlement.js";
+import { aggregateFoodHierarchy } from "./foodHierarchy.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
-import { computeCountryTerritory, adoptAndFound } from "./countryTerritory.js";
+import { computeCountryTerritory, adoptAndFound, nucleateFrontierStates } from "./countryTerritory.js";
 import { buildSettlementGrid } from "./spatialGrid.js";
 import { relaxClaim } from "./countryClaim.js";
 
@@ -27,6 +28,7 @@ import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
 import { updateShocks } from "./shocks.js";
 import { updateInflation } from "./inflation.js";
 import { foldMoney } from "./money.js";
+import { checkPeopleSimInvariants } from "./invariants.js";
 import { T } from "./tuning.js";
 
 // Territory / conquest / polity cadences are runtime levers (tuning.js:
@@ -63,6 +65,7 @@ export function stepPeopleSim(world, n = 1) {
       computeTerritory(world);          // per-settlement food catchments (economy)
       computeCountryTerritory(world);   // clean per-country cost-Voronoi (the political map)
       adoptAndFound(world);             // settlements take their politics from the territory (villages adopt; stateless cities found)
+      nucleateFrontierStates(world);    // primary state formation: a developed stateless frontier cluster mints a NEW country
     }
     // The drawn border CRAWLS toward that target a ring at a time, so land
     // exchanges (conquest / secession / absorption) play out tile-by-tile over
@@ -73,6 +76,10 @@ export function stepPeopleSim(world, n = 1) {
       updateSettlement(world, world.settlements[i]);
     }
     urbanise(world);   // rural→urban drift: concentrate population into hubs so real cities form
+    // Central-place food: surplus flows UP the liege tree so a city is fed by its
+    // whole hinterland (foodHierarchy.js). Produces _foodNet for next tick's
+    // updateFood; runs here so it sees this tick's fresh production + housing.
+    aggregateFoodHierarchy(world);
     mark("settlements");
     // Exogenous shocks: regional famines (harvest crash) + epidemics that
     // spread along the trade graph (population crash). Both feed the unrest /
@@ -128,6 +135,9 @@ export function stepPeopleSim(world, n = 1) {
       const s = world.settlements[i];
       if (s.mode === "settled") foldMoney(s);
     }
+    // Opt-in dev sanity pass (finiteness / non-negative wealth / tier range,
+    // plus money + population totals on world.debug). Zero cost unless enabled.
+    if (world._checkInvariants) checkPeopleSimInvariants(world);
     world.debug.tickMs = performance.now() - t0;
   }
   return world;
