@@ -357,20 +357,25 @@ function closeRealmGaps(world, co, D) {
       if (co[ti] >= 0) { last = co[ti]; lastP = y; }
     }
   }
-  // Assign each between-tile to its NEAREST flanking country (gather first, write
-  // after, so fills don't seed off each other within a pass).
+  // Fill ONLY tiles ENCLOSED on all four cardinal sides within D — a genuine
+  // pocket / hole / surrounded buffer — and hand each to its NEAREST flanking
+  // country. Requiring all four (not just one opposite pair) is what stops thin
+  // axis-aligned CHANNELS from filling: a one-axis flank would string two far
+  // basins together with a rectilinear finger, which read as "weirdly stringy"
+  // countries. A pocket is open on no side, so it fills cleanly without fingers;
+  // open frontiers and long buffers (open on a perpendicular axis) stay wilderness.
+  // (gather first, write after, so fills don't seed off each other within a pass.)
   let fills = world._gapFills;
   if (!fills || fills.length < N) fills = world._gapFills = new Int32Array(N);
   let n = 0;
   for (let ti = 0; ti < N; ti++) {
     if (co[ti] >= 0 || elev[ti] <= 0) continue;
-    let c = -1, cd = FAR;
-    if (wC[ti] >= 0 && eC[ti] >= 0) { if (wD[ti] <= eD[ti]) { c = wC[ti]; cd = wD[ti]; } else { c = eC[ti]; cd = eD[ti]; } }  // flanked W&E
-    if (nC[ti] >= 0 && sC[ti] >= 0) {                                                                                          // flanked N&S, closer?
-      const vd = nD[ti] <= sD[ti] ? nD[ti] : sD[ti];
-      if (vd < cd) { c = nD[ti] <= sD[ti] ? nC[ti] : sC[ti]; cd = vd; }
-    }
-    if (c >= 0) { fills[n++] = ti; fills[n++] = c; }
+    if (wC[ti] < 0 || eC[ti] < 0 || nC[ti] < 0 || sC[ti] < 0) continue;   // not fully enclosed → leave wild (no fingers)
+    let c = wC[ti], cd = wD[ti];                                          // nearest of the four flanks wins the tile
+    if (eD[ti] < cd) { c = eC[ti]; cd = eD[ti]; }
+    if (nD[ti] < cd) { c = nC[ti]; cd = nD[ti]; }
+    if (sD[ti] < cd) { c = sC[ti]; cd = sD[ti]; }
+    fills[n++] = ti; fills[n++] = c;
   }
   for (let i = 0; i < n; i += 2) co[fills[i]] = fills[i + 1];
 }
