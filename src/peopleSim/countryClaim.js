@@ -30,6 +30,24 @@ const NOISE_RESIST = 2.5;  // coherent jitter (×_claimNoise 0..1) → ragged/bu
 // founder (a country id can outlive the settlement it was named for).
 function headScore(s) { return (s.tier | 0) * 1e7 + (s.people || 0); }
 
+// The political territory a realm has actually GROWN over at tile `ti`: the
+// rendered claim (the border it has crawled across — see relaxClaim), or −1 for
+// wilderness/water. Settlements take their country from THIS, not from the
+// instantly-projected target (world._countryOwner): a town is claimed once the
+// border grows over it, never ahead of the visible front. That keeps growth
+// reading as ONE organic front creeping outward — and stops the runaway where a
+// frontier town, claimed off the target the moment a realm's reach merely
+// projected to it, became a fresh seed and lurched the whole claim outward a
+// reach-budget at a time (the "weird growth / claimed before the country gets
+// there" pathology). Falls back to the target only before the very first crawl
+// has run (step 1), when no claim array exists yet.
+export function grownOwnerAt(world, ti) {
+  const claim = world._countryClaim;
+  if (claim && claim.length === world.N) return claim[ti];
+  const co = world._countryOwner;
+  return co ? co[ti] : -1;
+}
+
 // Is this tile on the SAME LANDMASS as land country `cid` already claims? Land
 // becomes a realm's only as its border crawls into it from ground it holds, so a
 // settlement standing on unclaimed land must WAIT for the crawl rather than light

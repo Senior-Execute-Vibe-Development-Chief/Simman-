@@ -22,6 +22,7 @@
 
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
+import { grownOwnerAt } from "./countryClaim.js";
 import { T } from "./tuning.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
@@ -380,22 +381,26 @@ function closeRealmGaps(world, co, D) {
   for (let i = 0; i < n; i += 2) co[fills[i]] = fills[i + 1];
 }
 
-// Settlements take their politics from the territory:
+// Settlements take their politics from the GROWN territory — the country whose
+// border has actually CRAWLED over their tile (grownOwnerAt → world._countryClaim),
+// NOT the realm's instantly-projected reach (world._countryOwner). So a settlement
+// is claimed once the country grows over it, never ahead of the visible front:
 //   • CITY (tier ≥ CITY_TIER): a sovereign ANCHOR. Keeps its countryId (changed
 //     only by conquest / secession). A stateless city FOUNDS a country — its own
-//     id if it sits in wilderness, or joins the realm whose land it's on.
-//   • VILLAGE / TOWN: never sovereign — adopts the country owning its tile, or
-//     goes stateless (-1) on the open frontier. So spawning many villages just
-//     populates the map; it never adds a country or a fleck.
+//     id if the border hasn't reached it, or joins the realm whose land it's on.
+//   • VILLAGE / TOWN: never sovereign — adopts the country whose claim has grown
+//     over its tile, or stays stateless (-1) until the front arrives. So spawning
+//     many villages just populates the map; it never adds a country or a fleck,
+//     and a frontier town waits for the border instead of lighting up early.
 // (Cradles are seeded sovereign at genesis in state.js; secession mints city-led
 // countries in conquest.js — those are the only other country sources.)
 export function adoptAndFound(world) {
   const co = world._countryOwner, tw = world.tw, elev = world.elev;
-  if (!co) return;
+  if (!co) return;   // territory pass hasn't run yet — nothing to adopt from
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
-    const region = elev[ti] > 0 ? co[ti] : -1;
+    const region = elev[ti] > 0 ? grownOwnerAt(world, ti) : -1;
     // A CITY is a sovereign anchor; so is a frontier SEAT minted by
     // nucleateFrontierStates (a regional-leader town that founded a state — it
     // never reaches city tier in isolation, so it carries sovereignty by flag).

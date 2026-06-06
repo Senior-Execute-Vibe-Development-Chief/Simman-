@@ -21,6 +21,7 @@ import { isContinentalLand } from "./state.js";
 import { makeSettlement } from "./settlement.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
+import { grownOwnerAt } from "./countryClaim.js";
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
 const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) flood — a
@@ -303,13 +304,17 @@ export function maybeCrystallize(world) {
       // Inherited knowledge: blend from nearest settlement, weighted by
       // distance. Far sites start near baseline neolithic knowledge.
       const inherited = inheritKnowledgeAt(world, ti, td);
-      // A spawned village is NEVER its own country. It ADOPTS the country that
-      // owns the tile it's founded on (world._countryOwner), or is born STATELESS
-      // (-1) if that's open wilderness — a frontier hamlet that's just population
-      // until a state's territory reaches it (adoptAndFound) or it grows into a
-      // city and founds a realm. This is what keeps the political map clean
-      // however many villages spawn: villages add people, never countries/flecks.
-      const region = world._countryOwner ? world._countryOwner[ti] : -1;
+      // A spawned village is NEVER its own country. It ADOPTS the country whose
+      // border has actually GROWN over the tile it's founded on (grownOwnerAt →
+      // world._countryClaim), or is born STATELESS (-1) if the front hasn't
+      // reached here — a frontier hamlet that's just population until a state's
+      // territory crawls over it (adoptAndFound) or it grows into a city and
+      // founds a realm. Reading the GROWN claim (not the realm's projected reach,
+      // world._countryOwner) is what stops a hamlet spawning on land a country
+      // has merely projected toward from flying that flag ahead of the border.
+      // This keeps the political map clean however many villages spawn: villages
+      // add people, never countries/flecks.
+      const region = grownOwnerAt(world, ti);
       const born = makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: 18 + (rng.int(8)),
         knowledge: inherited,
