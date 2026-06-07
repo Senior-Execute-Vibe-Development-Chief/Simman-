@@ -369,6 +369,10 @@ const RANGE_BASE_T = 5, RANGE_LOGI = 24, RANGE_ADMIN = 2, RANGE_MOB_T = 4, RANGE
 // A/B override for the resolution-scaling of the hold reach (rebuildCountries):
 // unset → auto (resScaleFor, the fix); =1 → unscaled (reproduces the patchwork bug).
 const _holdScaleEnv = (typeof process !== "undefined" && process.env && +process.env.SIM_HOLD_SCALE) || 0;
+// Frontier-anchored secession (default on): a loose patch secedes only if it reaches
+// the realm's outer edge, so breakaways peel off the frontier as solid chunks instead
+// of carving holes out of the interior. SIM_FRONTIER_SECEDE=0 reverts (any loose patch sheds).
+const _frontierSecede = !(typeof process !== "undefined" && process.env && process.env.SIM_FRONTIER_SECEDE === "0");
 // (all ×1.02 re-anchor the 0.5-pivot expansionReachMul — personality.js;
 //  c.range = RANGE_expr × reachMul, so behaviour is identical to the old form)
 
@@ -760,20 +764,33 @@ function shedFrontier(world, c, seeds, tcosts, range, stress) {
     const lc = localCost ? localCost[ti] : 0;
     return cd + (isFinite(lc) ? lc : 0) > effReach;
   };
-  // Flood contiguous loose patches; a patch sheds only if it carries a restless seed.
+  // Flood contiguous loose patches. A patch secedes only if it (a) carries a restless
+  // seed AND (b) reaches the realm's FRONTIER — its outer border with wilderness, the
+  // sea, a rival, or the world edge. A purely INTERIOR loose pocket (a hard-to-reach
+  // massif ringed by held core, or anything far in cost from an off-centre capital) is
+  // NOT carved out: doing so punched a hole or cut the realm in two — the "secession in
+  // the middle / odd shape cutting all the way through" artefact. So a breakaway is
+  // always a contiguous chunk peeling off the EDGE; an unreachable interior just stays
+  // nominally held until the front itself recedes to it. (SIM_FRONTIER_SECEDE=0 reverts.)
   const seen = new Uint8Array(N);
   for (let s0 = 0; s0 < N; s0++) {
     if (seen[s0] || !looseAt(s0)) continue;
-    const stack = [s0]; seen[s0] = 1; let hasSeed = false; const members = [];
+    const stack = [s0]; seen[s0] = 1; let hasSeed = false, touchesEdge = false; const members = [];
     while (stack.length) {
       const ti = stack.pop();
       const hm = memberHome.get(ti);
       if (hm) { members.push(hm); if (seedSet.has(hm.id)) hasSeed = true; }
       const ty = (ti / tw) | 0, tx = ti - ty * tw, xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
       const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
-      for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni < 0 || seen[ni] || !looseAt(ni)) continue; seen[ni] = 1; stack.push(ni); }
+      for (let k = 0; k < 4; k++) {
+        const ni = ns[k];
+        if (ni < 0) { touchesEdge = true; continue; }     // world edge (pole) = frontier
+        if (co[ni] !== c.id) touchesEdge = true;          // neighbour is wilderness / sea / a rival → patch reaches the realm's edge
+        if (seen[ni] || !looseAt(ni)) continue;
+        seen[ni] = 1; stack.push(ni);
+      }
     }
-    if (hasSeed && members.length) shedPatch(world, c, members);
+    if (hasSeed && members.length && (touchesEdge || !_frontierSecede)) shedPatch(world, c, members);
   }
 }
 
