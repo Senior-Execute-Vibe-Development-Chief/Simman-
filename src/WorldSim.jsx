@@ -3535,7 +3535,7 @@ return(
   if(!psw)return null;
   const s=psw.settlements.find(x=>x&&x.id===selectedSettlementId&&x.mode==="settled");
   if(!s)return null;
-  const tierName=["village","town","city","metropolis"][s.tier]||"settlement";
+  const tierName=["farming region","town","city","metropolis"][s.tier]||"settlement";
   const TIER_THR=[0,80,400,2000];
   const nextThr=TIER_THR[s.tier+1];
   const progress=nextThr?Math.min(1,s.people/nextThr):1;
@@ -4241,7 +4241,7 @@ return(
       <Row k="moneyFlow" label="Money flow" />
       <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Settlements</div>
       <Row k="icons" label="Icons (master)" />
-      <Row k="village" label="· Villages" indent={10} />
+      <Row k="village" label="· Farming Regions" indent={10} />
       <Row k="town" label="· Towns" indent={10} />
       <Row k="city" label="· Cities" indent={10} />
       <Row k="metropolis" label="· Metropolises" indent={10} />

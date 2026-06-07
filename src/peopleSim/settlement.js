@@ -31,7 +31,7 @@ export function resetSettlementIds() { _nextId = 1; }
 // 5000 bar predated the density increase and is unreachable without trading the
 // dense countryside for fewer, larger settlements.
 const TIER_THRESHOLD = [0, 250, 1200, 3000];
-const TIER_NAME      = ["village", "town", "city", "metropolis"];
+const TIER_NAME      = ["farming region", "town", "city", "metropolis"];   // tier-0 = an abstraction for MANY small villages (a farmed region), not one village
 // Demotion hysteresis: a settlement loses a tier only once its population falls
 // below this fraction of its CURRENT tier's promotion floor — a deadband so a
 // city hovering at a threshold doesn't flicker between tiers, while a sustained
