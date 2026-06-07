@@ -269,22 +269,24 @@ export function computeCountryTerritory(world) {
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;
     const c = s.countryId;
-    if (_capitalOnly && capPos.get(c) !== s.pos) continue;   // CAPITAL-VORONOI: only the capital seeds → one clean cell per realm
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
     if (!(elev[ti] > 0 && cost[ti] > 0)) continue;
     const full = budget.get(c) || 0;
-    let sb = full;
-    if (!_capitalOnly) {
-      // Per-settlement seeding (legacy): every settlement carves its own basin, eased
-      // by recency (integrate ramp) and distance from the capital (the anchor). The
-      // union of these basins is what reads as a scalloped/bubbly edge.
-      const integMin = INTEGRATE_MIN * resScale;   // day-one basin is a tile distance → res-relative
-      const age = world.step - (s._integratedAt ?? -Infinity);
-      sb = age < INTEGRATE_TICKS
-        ? Math.min(full, integMin + Math.max(0, full - integMin) * (age / INTEGRATE_TICKS))
-        : full;
+    // EVERY settlement carves a basin — this is the COVERAGE, so populated land is
+    // never abandoned to wilderness (a settlement always holds at least its own ground;
+    // that's what stops a realm's outliers being stranded when the capital's reach dips).
+    // Recency eases a just-adopted settlement in. The capital anchor compacts the union
+    // into a blob — but in capital-COLOUR mode the recolor pass below reshapes the cells,
+    // so we skip the anchor there and let each settlement hold its FULL basin (max
+    // coverage), and let the recolor draw the smooth borders.
+    const integMin = INTEGRATE_MIN * resScale;   // day-one basin is a tile distance → res-relative
+    const age = world.step - (s._integratedAt ?? -Infinity);
+    let sb = age < INTEGRATE_TICKS
+      ? Math.min(full, integMin + Math.max(0, full - integMin) * (age / INTEGRATE_TICKS))
+      : full;
+    if (!_capitalOnly && anchor > 0) {
       const cp = capPos.get(c);
-      if (anchor > 0 && cp) {
+      if (cp) {
         let dx = Math.abs(s.pos.x - cp.x); if (dx > tw / 2) dx = tw - dx;
         const dy = s.pos.y - cp.y;
         const capDist = Math.sqrt(dx * dx + dy * dy);
@@ -322,9 +324,64 @@ export function computeCountryTerritory(world) {
       if (nd < cost[ni]) { cost[ni] = nd; co[ni] = c; seedBud[ni] = basinBud; heap.push(ni, nd, c); }
     }
   }
+  if (_capitalOnly) recolorByCapital(world, co, capPos, knOf, claimCap);
   closeRealmGaps(world, co, T.REALM_GAP_FILL);
   smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0);
   return co;
+}
+
+// ── Capital colouring ────────────────────────────────────────────────────────
+// Smooth borders WITHOUT stranding anyone. The per-settlement Voronoi above gives
+// full COVERAGE (every settlement holds ground, so populated land is never blank),
+// but its country-vs-country seam zig-zags between rival settlements — the bubbly
+// edge. So overlay a clean capital Voronoi: flood the whole landmass from every
+// realm's CAPITAL (same terrain edge-cost + noise, so it slumps onto coasts/rivers),
+// giving each land tile its NEAREST capital, then RECOLOUR every already-claimed tile
+// to that capital's realm. Coverage is untouched (a tile stays claimed iff a
+// settlement reached it) — only the COLOUR changes, so the border between two realms
+// becomes the smooth capital cost-bisector while no settlement is ever left on
+// wilderness. A border settlement nearer a RIVAL capital is recoloured to it (a
+// frontier town joins the closer power) rather than stranded — there is always a
+// successor, never blank ground.
+function recolorByCapital(world, co, capPos, knOf, claimCap) {
+  const { N, tw, th, elev } = world;
+  let capColor = world._capColor;
+  if (!capColor || capColor.length !== N) capColor = world._capColor = new Int32Array(N);
+  let capCost = world._capCostF;
+  if (!capCost || capCost.length !== N) capCost = world._capCostF = new Float64Array(N);
+  capColor.fill(-1); capCost.fill(Infinity);
+  const noise = claimNoise(world);
+  const heap = new MinHeap();
+  for (const [c, pos] of capPos) {
+    const ti = (pos.y | 0) * tw + (pos.x | 0);
+    if (elev[ti] <= 0) continue;
+    capCost[ti] = 0; capColor[ti] = c; heap.push(ti, 0, c);
+  }
+  while (heap.n > 0) {
+    const { ti, d, c } = heap.popMin();
+    if (d > capCost[ti]) continue;
+    const kn = knOf.get(c);
+    const cap = claimCap.get(c) || CLAIM_CAP_CEIL;
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+    const ns = [
+      ty * tw + xm, ty * tw + xp,
+      ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1,
+      ty > 0 ? (ty - 1) * tw + xm : -1, ty > 0 ? (ty - 1) * tw + xp : -1,
+      ty < th - 1 ? (ty + 1) * tw + xm : -1, ty < th - 1 ? (ty + 1) * tw + xp : -1,
+    ];
+    const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
+    for (let k = 0; k < 8; k++) {
+      const ni = ns[k]; if (ni < 0 || elev[ni] <= 0) continue;
+      let ec = localEdgeCost(world, ti, ni, kn, true);
+      if (ec === Infinity) continue;
+      if (ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;
+      ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);
+      const nd = d + ec * mul[k];
+      if (nd < capCost[ni]) { capCost[ni] = nd; capColor[ni] = c; heap.push(ni, nd, c); }
+    }
+  }
+  for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && capColor[ti] >= 0) co[ti] = capColor[ti];
 }
 
 // ── Border smoothing ─────────────────────────────────────────────────────────
