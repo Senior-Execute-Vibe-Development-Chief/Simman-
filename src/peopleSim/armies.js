@@ -509,6 +509,46 @@ export function advanceFronts(world) {
   }
   const offMulOf = (cc) => 1 / (1 + DEFENSE_DRAG * (defBurden.get(cc) || 0));
 
+  // ── Encirclement ─────────────────────────────────────────────────────
+  // A settlement assaulted from many DIRECTIONS must split its defence across
+  // them, so it falls faster — a surrounded salient or engulfed statelet can't
+  // hold ground pressed from every side. Tally the distinct compass octants the
+  // attacking fronts come from (per defender) and divide its effective defence by
+  // (1 + ENCIRCLE x (directions-1)). One clean front = full strength; pressed from
+  // all sides it crumbles — so the war system itself dissolves the strange
+  // surrounded shapes instead of leaving them marooned inside a neighbour.
+  const ENCIRCLE = T.ENCIRCLE_PENALTY ?? 0;
+  const halfTw = tw / 2;
+  // Source: scan the territory map once and, per settlement, record which compass
+  // octants of its OWN land border an ENEMY country (not wilderness or sea). A
+  // settlement facing foes on a couple of octants is a normal frontier; one ringed
+  // on most sides is surrounded. Geographic, so it doesn't matter whether one big
+  // neighbour or several border it.
+  const encMask = new Map();   // settlement id → bitmask of octants its land meets an enemy
+  if (ENCIRCLE > 0) {
+    for (let ti = 0; ti < N; ti++) {
+      const d = owner[ti]; if (d < 0) continue;
+      const D = byId.get(d); if (!D || D.mode !== "settled") continue;
+      const dcc = D.countryId; if (dcc < 0) continue;
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+      const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+      let enemy = false;
+      for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni < 0) continue; const o = owner[ni]; if (o < 0 || o === d) continue; const O = byId.get(o); if (O && O.countryId !== dcc) { enemy = true; break; } }
+      if (!enemy) continue;
+      let ddx = tx - (D.pos.x | 0); if (ddx > halfTw) ddx -= tw; else if (ddx < -halfTw) ddx += tw;
+      const oct = (((Math.atan2(ty - (D.pos.y | 0), ddx) + Math.PI) / (Math.PI / 4)) | 0) & 7;
+      encMask.set(d, (encMask.get(d) || 0) | (1 << oct));
+    }
+  }
+  const ENC_FREE = 4;   // a normal frontier settlement meets enemies on ~3-4 octants; the penalty applies only BEYOND that (genuinely surrounded)
+  const encMulOf = (def) => {
+    const m = encMask.get(def.id); if (!m) return 1;
+    let n = 0; for (let b = m; b; b >>= 1) n += b & 1;        // popcount = enemy-bordered directions
+    const over = n - ENC_FREE; if (over <= 0) return 1;       // ≤ normal frontier → no penalty
+    return 1 / (1 + ENCIRCLE * over);                          // surrounded → defence split, falls faster
+  };
+
   // Resolve each front: besiege the city if the front reached its
   // heartland; otherwise grind the countryside forward, tile by tile.
   for (const pc of pairs.values()) {
@@ -517,7 +557,8 @@ export function advanceFronts(world) {
     // The attacker's effective offensive might is throttled while it is itself
     // under attack — a realm fighting for its own heartland can't also expand.
     const attM = att._M * offMulOf(att.countryId);
-    const adv = attM / Math.max(1, def._M);
+    const em = encMulOf(def);                          // <1 if the defender is pressed from several sides (must split its garrison)
+    const adv = attM / Math.max(1, def._M * em);
 
     if (pc.canStorm) {
       // Front is at the heartland. The city defends with its garrison OR its
@@ -526,7 +567,7 @@ export function advanceFronts(world) {
       // still takes a real army to storm. This is the single biggest brake on
       // the boiling-map churn (see HOME_MILITIA_FRAC).
       const defHome = homeMight(def);
-      const advCity = attM / Math.max(1, defHome);   // throttled if the attacker is itself under attack
+      const advCity = attM / Math.max(1, defHome * em);   // throttled if the attacker is itself under attack; eased if the city is encircled
       // A recently-conquered city is still pacified (garrisoned) and can't be
       // besieged yet — that grace stops rival empires trading it back and forth.
       if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
@@ -538,7 +579,7 @@ export function advanceFronts(world) {
         // the (morale-weighted) citizen militia — homeMight recomputed on the
         // now-reduced garrison returns exactly that floor.
         const defNow = homeMight(def);
-        if (defNow <= att._M * SIEGE_BREAK) {
+        if (defNow * em <= att._M * SIEGE_BREAK) {   // a city encircled on many sides breaks sooner (its defence is split)
           // Was this the capital of its realm? (Decide before the flip.)
           const dc = world.countries && world.countries.get(def.countryId);
           const defWasCapital = !!(dc && dc.capitalId === def.id);

@@ -96,6 +96,8 @@ export const TUNING_SCHEMA = [
         desc: "Power ratio needed to besiege a city core. Up = cities hold out far longer." },
       { key: "ATTRITION", label: "War attrition", def: 0.035, min: 0, max: 0.2, step: 0.005,
         desc: "Army drained per warring front per pass. Up = offensives burn out fast (short, indecisive wars)." },
+      { key: "ENCIRCLE_PENALTY", label: "Encirclement penalty", def: 1.0, min: 0, max: 3, step: 0.1,
+        desc: "A settlement assaulted from many DIRECTIONS must split its defence across them, so it falls faster — a surrounded salient or engulfed statelet is hard to hold. Its effective defence is divided by (1 + this x (directions - 1)): one clean front = full strength, attacked from 4 sides = ~40% at the default. This dissolves the strange surrounded shapes through the war system instead of letting them persist. 0 = off (defence is the same however encircled)." },
       { key: "ARMY_SIZE_MULT", label: "Army size multiplier", def: 1.0, min: 0.25, max: 4.0, step: 0.05,
         desc: "Global scale on every garrison's population cap. Up = bigger armies everywhere (more decisive war)." },
       { key: "ARMY_GROW", label: "Recruitment speed", def: 0.05, min: 0.01, max: 0.4, step: 0.01,
