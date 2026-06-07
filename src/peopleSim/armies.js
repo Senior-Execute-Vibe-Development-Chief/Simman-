@@ -277,6 +277,12 @@ function armyCapFrac(world, s) {
   // A warlike realm keeps a bigger garrison for its size; a mercantile /
   // cautious one fields less (personality.js aggressionArmyMul).
   if (c && c.personality) f *= aggressionArmyMul(c.personality);
+  // A standing PROFESSIONAL army is an institution of an ORGANISED state. A neolithic
+  // chiefdom keeps only a small warrior band — for a big war it raises a temporary levy
+  // instead (conscription, a later stage); a literate, bureaucratic realm fields a large
+  // professional army for its size. PRO_ORG_FLOOR = what an org-0 realm fields vs org-1.
+  const org = Math.max(0, Math.min(1, (s.knowledge && s.knowledge.organization) || 0));
+  f *= T.PRO_ORG_FLOOR + (1 - T.PRO_ORG_FLOOR) * org;
   return f * T.ARMY_SIZE_MULT;   // global garrison-size dial (tuning.js)
 }
 
