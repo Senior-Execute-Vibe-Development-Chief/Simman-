@@ -224,6 +224,8 @@ export const TUNING_SCHEMA = [
         desc: "Duty a capital skims on cross-border trade through it. Up = lucrative gateway states, costlier foreign trade." },
       { key: "TAX_MAX", label: "Max tax rate", def: 0.22, min: 0.05, max: 0.6, step: 0.02,
         desc: "Hard ceiling on how much wealth a state can tax per pass. Up = states fund bigger wars but stoke unrest." },
+      { key: "FARM_RENT", label: "Rent / tithe on harvest", def: 0.4, min: 0, max: 2, step: 0.05,
+        desc: "Landlord + church levy on a settlement's farm OUTPUT (coin per unit of food it produces, taken to the state every pass). Unlike the wealth tax this hits INCOME at the source — a share of the harvest off the top — which is what kept real peasants poor (their surplus skimmed as grain, never a cash hoard) and what funded the towns. It falls only on farmed land (cities grow nothing, so they pay none), draining village wealth UP to the state and out to the cash-starved cities. 0 = off (villages keep their full food earnings and accumulate the hoards you saw)." },
       { key: "ARMY_WAGE", label: "Soldier wage", def: 60, min: 0, max: 200, step: 5,
         desc: "Treasury coin per soldier per polity pass. Up = militaries bankrupt their states (fiscal-military collapse)." },
       { key: "UNREST_GAIN", label: "Unrest sensitivity", def: 0.15, min: 0.02, max: 0.6, step: 0.02,

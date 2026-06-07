@@ -10,7 +10,7 @@ import { IN_LABELS, OUT_LABELS } from "../src/peopleSim/money.js";
 const STEP=+(process.argv[2]||10000), SEED=+(process.argv[3]||857691), W=+(process.argv[4]||1920), H=+(process.argv[5]||960);
 const w=generateWorld(W,H,SEED,"earth_sim",0.78,true,false,{});
 const tCrop=new Float32Array(W*H),tC=new Uint8Array(W*H),tE=new Float32Array(W*H),tT=new Float32Array(W*H),tM=new Float32Array(W*H);
-function tf(t,m,e){if(e>0.45)return 0.01;const tF=Math.min(1,t*1.5)*Math.min(1,1-Math.pow(Math.max(0,t-0.7),2)*4);const mF=Math.exp(-((m-0.45)*(m-0.45))/(2*0.22*0.22));return Math.max(0.01,tF*mF*(1-Math.max(0,e-0.15)*3));}
+function tf(t,m,e){if(e<=0)return 0;if(e>0.45)return 0.02;const tBell=Math.min(1,Math.max(0,(t-0.57)/0.13))*Math.min(1,1-Math.pow(Math.max(0,t-0.88),2)*1.5);const mBell=Math.exp(-((m-0.45)*(m-0.45))/(2*0.28*0.28));let crop=tBell*mBell;if(e>0.30)crop*=Math.max(0,1-(e-0.30)*2.0);return Math.max(0,Math.min(1,crop));}/*app cold-gated crop*/
 for(let i=0;i<W*H;i++){tE[i]=w.elevation[i];tT[i]=w.temperature[i];tM[i]=w.moisture[i];tC[i]=w.coastal[i]||0;tCrop[i]=tf(w.temperature[i],w.moisture[i],w.elevation[i]);}
 w.rivers=computeRivers(W,H,tE,tM,tT); w.deposits=generateResources(W,H,tE,tT,tM,tC,w,w._seed||SEED,w.rivers);
 const world=initPeopleSim(w,{seed:w._seed||SEED,tCrop,tileRes:1,deposits:w.deposits});

@@ -1507,6 +1507,15 @@ export function updatePolities(world) {
       }
       const give = Math.max(0, s.wealth || 0) * (gov._taxRate ?? TAX_BASE);
       if (give > 0) { s.wealth -= give; gov.treasury += give; gov._revenue += give; recordOut(s, OUT_TRIBUTE, give); }
+      // PRODUCE LEVY (rent + tithe on the HARVEST): a landlord/church share of a settlement's
+      // farm OUTPUT, taken off the top every pass — what kept real peasants poor (their surplus
+      // skimmed as a share of the crop, not their cash hoard) and what funds the towns. It falls
+      // on FARMED output (_landFood) only, so the agrarian countryside pays it and cities (which
+      // grow nothing) don't — draining the village hoards UP to the state, then out to the cities.
+      if (T.FARM_RENT > 0 && (s._landFood || 0) > 0) {
+        const rent = Math.min(Math.max(0, s.wealth || 0), (s._landFood || 0) * T.FARM_RENT * T.POLITY_INTERVAL);
+        if (rent > 0) { s.wealth -= rent; gov.treasury += rent; gov._revenue += rent; recordOut(s, OUT_TRIBUTE, rent); }
+      }
     }
     // EXPENDITURE: spend the treasury back out (army pay → garrisons, then
     // works/dole → provinces). Balanced budget ⇒ the throne stops hoarding.
