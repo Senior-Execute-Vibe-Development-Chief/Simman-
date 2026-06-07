@@ -37,6 +37,11 @@ const ARMY_CAPITAL_BONUS = 0.03 * 1.075;          // the capital fields a bit mo
 // ARMY_GROW (recruitment speed) is a runtime lever — see tuning.js (T.ARMY_GROW).
 const ARMY_DESERT   = 0.80;   // when food-starved, the garrison melts to this each muster
 const BANKRUPT_DESERT = 0.70; // when wholly unpaid (insolvent state), the garrison melts to this each muster
+// Conscription — the temporary WAR LEVY raised on top of the standing professional army.
+const CONSCRIPT_WINDOW = 200;  // ticks after a war-pass a realm still counts as mobilised
+const CONSCRIPT_DEF    = 0.5;  // mobilisation intensity per unit of DEFENSIVE load (heartland under assault → total war)
+const CONSCRIPT_OFF    = 0.18; // mobilisation intensity per OFFENSIVE front (a campaign of choice mobilises less)
+const MOBILIZE_SPEED   = 4;    // the levy musters in / disbands ×this faster than peacetime recruitment
 const WAR_SPOILS    = 0.6;    // war-weariness relief a realm banks each time it storms a city (conquest.js)
 export const MUSTER_INTERVAL   = 100;
 // CONQUEST_INTERVAL (war-pass cadence) is a runtime lever — tuning.js
@@ -324,8 +329,19 @@ export function musterArmies(world) {
     if (fed < (s._foodDemand || 0) * 0.98) {
       s.army = (s.army || 0) * ARMY_DESERT;
     } else {
-      const popCap = s.people * armyCapFrac(world, s);   // tier/political limit
-      s.army = (s.army || 0) + (popCap - (s.army || 0)) * T.ARMY_GROW;
+      // Standing professional army (org-scaled in armyCapFrac). In WAR the realm also raises
+      // a temporary CONSCRIPT levy on top — a slice of the populace called to the colours,
+      // scaled by how hard-pressed it is (fighting for the heartland mobilises far harder than
+      // nibbling a frontier). Conscripts cost food AND lost farm labour (the famine cycle, see
+      // updateFood), and the levy demobilises in peace as the cap drops back to the professional core.
+      let frac = armyCapFrac(world, s);
+      const c = world.countries && world.countries.get(s.countryId);
+      const atWar = c && (world.step - (c._warStamp ?? -1e9)) < CONSCRIPT_WINDOW;
+      if (atWar) frac += T.CONSCRIPT_FRAC * Math.min(1, CONSCRIPT_DEF * (c._defLoad || 0) + CONSCRIPT_OFF * (c._offFronts || 0));
+      const popCap = s.people * frac;
+      // The levy musters in and disbands faster than peacetime recruitment.
+      const grow = (atWar || (s.army || 0) > popCap) ? Math.min(0.6, T.ARMY_GROW * MOBILIZE_SPEED) : T.ARMY_GROW;
+      s.army = (s.army || 0) + (popCap - (s.army || 0)) * grow;
     }
     // Unpaid troops desert. The army is funded by the state treasury
     // (conquest.js); when the treasury can't cover the wage bill the realm is

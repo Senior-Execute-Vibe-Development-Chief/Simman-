@@ -107,6 +107,7 @@ const BUILD_RATE          = 0.045;  // housing/tick per construction-weighted bu
 // ── Army food cost ── A garrison consumes extra food (provisioning); it's
 // sized against the food surplus in musterArmies so the granary stays positive.
 export const ARMY_FOOD        = 0.003;  // extra food per soldier per tick (provisioning, above civilian)
+const ARMY_LABOR_FREE = 0.08;   // army up to this fraction of pop (the standing professional core) doesn't reduce farming; only the wartime CONSCRIPT surge beyond it empties the fields
 const LUX_RES = ["spices", "furs", "incense", "dyes"];
 const LUX_SUPPLY_RATE = 4.0;    // coin/tick a region can earn per luxury-unit × √pop
 const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends on luxury/tick
@@ -913,9 +914,16 @@ function updateFood(world, s) {
   // Only Farming Regions (tier ≤ FARM_MAX_TIER) farm the land; a town/city grows no
   // grain of its own — it BUYS what its countryside ships up the hierarchy. (Fish below
   // is unaffected — a coastal city still fishes.)
-  const landFood0 = (s.tier | 0) > (T.FARM_MAX_TIER | 0)
+  // Soldiers are MEN OFF THE LAND, but a standing PROFESSIONAL core (up to ARMY_LABOR_FREE of
+  // the population) is carried by the settled economy without hurting the harvest — it's the
+  // wartime CONSCRIPT surge BEYOND it that empties the fields. A heavy mobilisation thus farms
+  // less just as the host needs feeding MORE → the granary drains → famine forces demobilisation.
+  // This is the cycle that ends total wars (armies.js); peace carries no production drag.
+  const armyFrac = (s.army || 0) / Math.max(1, s.people);
+  const armyLabor = Math.max(0.2, 1 - Math.max(0, armyFrac - ARMY_LABOR_FREE) * T.ARMY_LABOR_FOOD);
+  const landFood0 = ((s.tier | 0) > (T.FARM_MAX_TIER | 0)
     ? 0
-    : (s._terrFertSum || 0) * T.FARM_YIELD_PER_FERT * techEff(s).farmYield;
+    : (s._terrFertSum || 0) * T.FARM_YIELD_PER_FERT * techEff(s).farmYield) * armyLabor;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
