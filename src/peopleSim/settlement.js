@@ -979,6 +979,7 @@ function updateFood(world, s) {
   s._foodSupply = supply;
   s._foodDemand = demand;          // total (civilian + garrison) — drains the granary
   s._civFoodDemand = civDemand;    // civilian only — army sizing reads this
+  s._landFood = landFood;          // LOCAL farm production only (no hierarchy imports, no fish) — for the food-viability overlay
   s._urbanFactor = urbanFactor;
   s.food += supply - demand;
 
