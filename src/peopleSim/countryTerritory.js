@@ -96,13 +96,15 @@ const RES_REF_W = 240;
 const _resScaleEnv = (typeof process !== "undefined" && process.env && +process.env.SIM_RES_SCALE) || 0;
 function resScaleFor(tw) { return _resScaleEnv > 0 ? _resScaleEnv : Math.max(1, tw / RES_REF_W); }
 export { resScaleFor };
-// Capital colouring (DEFAULT OFF — reverted): per-settlement coverage recoloured by
-// nearest capital for smooth borders. Reverted because, even with full coverage, the
-// political map still recedes wherever a settlement goes STATELESS (a stateless
-// settlement projects no territory). The real fix is upstream — don't let frontier
-// settlements be stateless (they found / join a country). Kept behind a toggle for
-// experiments. SIM_CAPITAL_ONLY=1 re-enables.
-const _capitalOnly = (typeof process !== "undefined" && process.env && process.env.SIM_CAPITAL_ONLY === "1");
+// Capital colouring (DEFAULT ON): per-settlement coverage (every settlement holds its own
+// ground, so populated land is never abandoned) RECOLOURED by nearest capital, so the
+// country↔country border is a smooth capital cost-bisector instead of the union of
+// per-settlement bubbles. The earlier "it just recedes" was NOT this — it was settlements
+// going STATELESS (a stateless settlement projects no territory); frontier TOWNS founding
+// city-states (adoptAndFound) fixes that upstream, so this reads clean now. The flood is
+// bounded to claimed land (recolorByCapital) so it adds no territory-pass hitch.
+// SIM_CAPITAL_ONLY=0 reverts to raw per-settlement seeding (bubbly).
+const _capitalOnly = !(typeof process !== "undefined" && process.env && process.env.SIM_CAPITAL_ONLY === "0");
 // ── Gradual integration of newly-acquired land ───────────────────────
 // A settlement that just joined this realm out of the WILD (adoptAndFound stamps
 // _integratedAt when a stateless settlement adopts a country, as the realm's
