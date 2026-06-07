@@ -14,6 +14,7 @@ if (process.env.SIM_VILLAGE_PARTNERS) T.VILLAGE_PARTNERS = +process.env.SIM_VILL
 if (process.env.SIM_LOCALITY) T.LOCALITY_MODE = +process.env.SIM_LOCALITY;
 if (process.env.SIM_LOCALITY_SPACING) T.LOCALITY_SPACING = +process.env.SIM_LOCALITY_SPACING;
 if (process.env.SIM_LAND_HUNGER) T.LAND_HUNGER = +process.env.SIM_LAND_HUNGER;
+if (process.env.SIM_CAPITAL_ANCHOR) T.CAPITAL_ANCHOR = +process.env.SIM_CAPITAL_ANCHOR;   // A/B territory compactness
 
 const STEPS = parseInt(process.argv[2] || "12000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);
