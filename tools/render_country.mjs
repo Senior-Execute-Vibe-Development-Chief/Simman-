@@ -8,6 +8,7 @@ import { generateResources } from "../src/resourceGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
 import { T } from "../src/peopleSim/tuning.js";
 if (process.env.SIM_CAPITAL_ANCHOR) T.CAPITAL_ANCHOR = +process.env.SIM_CAPITAL_ANCHOR;   // A/B territory compactness
+if (process.env.SIM_GAP_FILL !== undefined) T.REALM_GAP_FILL = +process.env.SIM_GAP_FILL;   // A/B the no-man's-land gap fill
 const STEP=+(process.argv[2]||12000), SEED=+(process.argv[3]||8817), W=+(process.argv[4]||1920),H=+(process.argv[5]||960);
 const crcT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
 const crc=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=crcT[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0;};

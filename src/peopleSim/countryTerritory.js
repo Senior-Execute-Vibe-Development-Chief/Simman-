@@ -386,17 +386,41 @@ function closeRealmGaps(world, co, D) {
   // countries. A pocket is open on no side, so it fills cleanly without fingers;
   // open frontiers and long buffers (open on a perpendicular axis) stay wilderness.
   // (gather first, write after, so fills don't seed off each other within a pass.)
+  // ── Smooth assignment ────────────────────────────────────────────────
+  // Each enclosed no-man's-land tile goes to the country nearest by an 8-connected
+  // flood from every country border — a real distance field, so the filled gaps
+  // meet on smooth Voronoi bisectors. The OLD rule handed each tile to the nearest
+  // of its four CARDINAL flanks; that axis-aligned metric made the bisectors cross
+  // in straight bars, stamping rectilinear "X"/"H" shapes into the no-man's-land
+  // (the worse the more gap the now-compact realms leave to fill). The 4-sweep test
+  // above still decides WHICH tiles are fillable (genuinely enclosed pockets), so
+  // open frontier and long buffers stay wild — only the COLOURING of the pockets
+  // changes. O(N): each tile enters the flood queue at most once.
+  let near = world._gapNear;
+  if (!near || near.length !== N) near = world._gapNear = new Int32Array(N);
+  let bq = world._gapQ;
+  if (!bq || bq.length !== N) bq = world._gapQ = new Int32Array(N);
+  let bd = world._gapBD;
+  if (!bd || bd.length !== N) bd = world._gapBD = new Int32Array(N);
+  near.fill(-1);
+  let qt = 0;
+  for (let ti = 0; ti < N; ti++) if (elev[ti] > 0 && co[ti] >= 0) { near[ti] = co[ti]; bd[ti] = 0; bq[qt++] = ti; }
+  for (let qh = 0; qh < qt; qh++) {
+    const ti = bq[qh]; const d = bd[ti]; if (d >= D) continue;     // bounded by the gap-fill range
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+    const ns = [ty*tw+xm, ty*tw+xp, ty>0?ti-tw:-1, ty<th-1?ti+tw:-1,
+                ty>0?(ty-1)*tw+xm:-1, ty>0?(ty-1)*tw+xp:-1, ty<th-1?(ty+1)*tw+xm:-1, ty<th-1?(ty+1)*tw+xp:-1];
+    for (let k = 0; k < 8; k++) { const ni = ns[k]; if (ni < 0 || elev[ni] <= 0 || near[ni] >= 0) continue; near[ni] = near[ti]; bd[ni] = d + 1; bq[qt++] = ni; }
+  }
   let fills = world._gapFills;
   if (!fills || fills.length < N) fills = world._gapFills = new Int32Array(N);
   let n = 0;
   for (let ti = 0; ti < N; ti++) {
     if (co[ti] >= 0 || elev[ti] <= 0) continue;
     if (wC[ti] < 0 || eC[ti] < 0 || nC[ti] < 0 || sC[ti] < 0) continue;   // not fully enclosed → leave wild (no fingers)
-    let c = wC[ti], cd = wD[ti];                                          // nearest of the four flanks wins the tile
-    if (eD[ti] < cd) { c = eC[ti]; cd = eD[ti]; }
-    if (nD[ti] < cd) { c = nC[ti]; cd = nD[ti]; }
-    if (sD[ti] < cd) { c = sC[ti]; cd = sD[ti]; }
-    fills[n++] = ti; fills[n++] = c;
+    const c = near[ti];                                                   // smooth nearest country (not the axis-aligned cardinal flank)
+    if (c >= 0) { fills[n++] = ti; fills[n++] = c; }
   }
   for (let i = 0; i < n; i += 2) co[fills[i]] = fills[i + 1];
 }
