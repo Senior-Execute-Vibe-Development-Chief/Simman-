@@ -67,6 +67,16 @@ const LOPSIDED_HEADROOM = 1.6;
 // up a fragment whose border is mostly one neighbour with a sliver touching a
 // third. (Regions containing a city are exempt — see eliminateEnclaves.)
 const ENCLAVE_DOMINANCE = 0.80;
+// A CITY-led region is normally only absorbed when FULLY (100%) enclosed — a seat
+// of government doesn't change hands lightly. But that left small city-states
+// DEEPLY ENGULFED by a great power persisting as parasitic specks marooned far
+// inside it, with unnatural borders. So a city-led enclave whose sealed perimeter
+// is ≥ CITY_ENCLAVE_DOMINANCE one realm, AND which that realm out-powers by
+// ≥ CITY_ENCLAVE_POWER×, is peacefully ANNEXED instead. A genuine state (multi-city,
+// not out-powered) still only changes hands by conquest. (SIM_CITY_ENCLAVE=0 reverts.)
+const CITY_ENCLAVE_DOMINANCE = 0.90;
+const CITY_ENCLAVE_POWER     = 1.5;
+const _cityEnclaveOff = (typeof process !== "undefined" && process.env && process.env.SIM_CITY_ENCLAVE === "0") || false;
 // Maximum per-polity-pass defection probability. Caps the rate at which
 // a sub-city settlement can flip to a touching foreign realm — even a
 // tiny village vs a massive cradle defects over multiple passes, never
@@ -1692,6 +1702,10 @@ function eliminateEnclaves(world, countries) {
     return s ? s.countryId : -1;
   };
   const visited = new Uint8Array(N);
+  // Per-country power, for the city-enclave annexation gate (a much stronger realm
+  // peacefully absorbs a small city-state it has engulfed).
+  const cPow = new Map();
+  for (const c of countries.values()) { let p = 0; for (const m of c.members) p += settlementPower(m); cPow.set(c.id, p); }
   const region = [];                               // reused per flood
   const q = [];
   for (let start = 0; start < N; start++) {
@@ -1748,7 +1762,13 @@ function eliminateEnclaves(world, countries) {
     if (intoId === selfCC) continue;                // region already that country
     let regionHasCity = false;
     for (const ti of region) { const o = owner[ti]; if (o >= 0) { const s = byId.get(o); if (s && (s.tier | 0) >= 2) { regionHasCity = true; break; } } }
-    const needFrac = regionHasCity ? 1.0 : ENCLAVE_DOMINANCE;
+    let needFrac = ENCLAVE_DOMINANCE;
+    if (regionHasCity) {
+      // City-state: needs FULL enclosure, UNLESS a much stronger realm deeply
+      // engulfs it (then it's peacefully annexed — see CITY_ENCLAVE_* note).
+      const domPow = cPow.get(intoId) || 0, selfP = cPow.get(selfCC) ?? Infinity;
+      needFrac = (!_cityEnclaveOff && domPow >= selfP * CITY_ENCLAVE_POWER) ? CITY_ENCLAVE_DOMINANCE : 1.0;
+    }
     if (bestBord < totBord * needFrac) continue;    // no realm clearly surrounds it → leave it
     const into = countries.get(intoId);
     if (!into) continue;
