@@ -403,50 +403,52 @@ function sackPenalty(s, worldStep) {
 export function computeExportValue(s, world) {
   const k = s.knowledge || {};
   const r = s.localRes || {};
-  let v = 1.0;
-  const oreAccess = Math.max(r.copper || 0, r.tin || 0, r.iron || 0, r.coal || 0);
-  if (oreAccess > 0.10) v += (k.metallurgy || 0) * 1.5;
-  const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
-  // Construction now covers building goods + crafted wares (formerly the
-  // toolmaking line) — the floor term gives a craft contribution even
-  // without raw materials.
-  v += (k.construction || 0) * (0.4 + matAccess * 0.8);
+  const tier = s.tier | 0;
+
+  // ── Agrarian / primary sector ─────────────────────────────────────────
+  // Grain surplus & farm produce, livestock, RAW materials (timber/stone),
+  // salt, seafood, base village products. This is what a Farming Region lives
+  // on — booked as "food & farm goods" when it trades (see sellGoods).
+  let ag = 1.0;                                          // base primary output
   const agScale = Math.min(1, (s._terrTiles || 0) / 120);
-  // Agriculture now covers grain surplus + wild-forest goods (formerly
-  // the foraging × timber line).
-  v += (k.agriculture || 0) * agScale * 0.6;
-  v += (k.agriculture || 0) * (r.timber || 0) * 0.4;
-  if ((s.waterAccess || 0) > 0) v += (k.navigation || 0) * s.waterAccess * 0.5;
-  // Fish / seafood — only the PRESERVED fraction (salt cod, etc.) trades
-  // for coin; most fish is eaten fresh and locally, so this is a minor
-  // good next to the storable grain staple. Needs navigation (preserving
-  // + shipping), so a shore-fishing village sells almost none.
-  if ((s.waterAccess || 0) > 0) v += s.waterAccess * (k.navigation || 0) * 0.3;
-  // Horses + mobility — horse trade and caravans.
+  ag += (k.agriculture || 0) * agScale * 0.6;            // grain surplus + wild-forest goods
+  ag += (k.agriculture || 0) * (r.timber || 0) * 0.4;
+  const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
+  ag += (k.construction || 0) * matAccess * 0.8;         // RAW building materials (timber/stone)
+  if ((s.waterAccess || 0) > 0) {
+    ag += (k.navigation || 0) * s.waterAccess * 0.5;     // coastal / river shipping
+    // Fish / seafood — only the PRESERVED fraction (salt cod, etc.) trades for
+    // coin; most is eaten fresh & locally, so it's minor next to the grain
+    // staple and needs navigation (a shore-fishing village sells almost none).
+    ag += s.waterAccess * (k.navigation || 0) * 0.3;
+  }
   const horses = r.horses || 0;
-  if (horses > 0.05) v += horses * 0.6 + (k.mobility || 0) * 0.4;
-  // Organization × log-scale population — bureaucracy / services / banking
-  // (now includes the old literacy contribution: scribes and records are
-  // a sub-function of an organised state with a clerical class).
+  if (horses > 0.05) ag += horses * 0.6 + (k.mobility || 0) * 0.4;   // horses & caravans
+  ag += (r.salt || 0) * 0.5;                             // salt
+  // Base village products — chickens, eggs, basket-weaving, hand-loomed cloth.
+  // 25 ppl → +0.14   1k → +0.30   10k → +0.40
+  ag += Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10);
+
+  // ── Manufactured / service sector ─────────────────────────────────────
+  // Metalwork, crafted wares, bureaucracy & banking — booked as "goods". A
+  // Farming Region does only FARM_CRAFT_FRAC of this; the loom, the forge and
+  // the counting-house concentrate in TOWNS, so it's a town+ activity.
+  let man = 0;
+  const oreAccess = Math.max(r.copper || 0, r.tin || 0, r.iron || 0, r.coal || 0);
+  if (oreAccess > 0.10) man += (k.metallurgy || 0) * 1.5;           // metalwork
+  man += (k.construction || 0) * 0.4;                               // crafted wares (the craft floor)
   const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
-  v += (k.organization || 0) * popScale * 0.8;
-  // Salt counts as a tradeable good.
-  v += (r.salt || 0) * 0.5;
-  // Base village products — every populated settlement has SOMETHING
-  // to sell: chickens, eggs, basket-weaving, surplus labour,
-  // hand-loomed cloth. Floor scales with log of pop so even a
-  // 25-person hamlet contributes a bit, a metropolis a lot.
-  // 25 ppl  → +0.14    1k ppl   → +0.30
-  // 100 ppl → +0.20    10k ppl  → +0.40
-  v += Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10);
-  // Soldiers don't produce trade goods — a heavily militarised settlement
-  // exports less (the workforce is under arms, not at the loom/forge).
+  man += (k.organization || 0) * popScale * 0.8;                    // bureaucracy / services / banking
+  if (tier < 1) man *= T.FARM_CRAFT_FRAC;                           // a village manufactures little
+
+  // Soldiers don't produce trade goods; a sacked settlement's output is depressed
+  // for a while (sackPenalty); tech scales the lot.
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
-  // Sack penalty: a forcibly-stormed settlement loses output for a while
-  // (see sackPenalty above). World-aware callers pass `world`; older callers
-  // get penalty=1 (no change). The trade pass and the inflation pass DO
-  // pass world, so the dynamics fire where it matters most.
-  return v * Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step) * techEff(s).tradeMult;
+  const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step) * techEff(s).tradeMult;
+  ag *= mult; man *= mult;
+  const v = ag + man;
+  s._exportAgrarianFrac = v > 0 ? ag / v : 1;           // share booked as food & farm goods (rest = manufactured goods)
+  return v;
 }
 
 // Per-tick memo of computeExportValue. It's a heavy function (several log/sqrt

@@ -9,7 +9,7 @@
 // Income channels.
 export const IN_MINING    = 0;   // precious extracted from local reserves
 export const IN_GOODS     = 1;   // sold its goods (exports) to trade partners
-export const IN_FOOD      = 2;   // sold surplus grain
+export const IN_FOOD      = 2;   // sold surplus grain (hierarchy) + farm produce traded on roads (agrarian export sector)
 export const IN_MATERIALS = 3;   // sold timber/stone to a building neighbour
 export const IN_TOLLS     = 4;   // transit tolls — trade routes passing through it
 export const IN_TARIFFS   = 5;   // customs duties it collects as a capital
@@ -21,7 +21,7 @@ const N_IN = 10;
 
 // Spending channels.
 export const OUT_GOODS    = 0;   // bought goods (imports)
-export const OUT_FOOD     = 1;   // bought grain
+export const OUT_FOOD     = 1;   // bought grain (hierarchy) + farm produce on roads (agrarian sector)
 export const OUT_MATERIALS= 2;   // bought timber/stone for construction
 export const OUT_TOLLS    = 3;   // tolls + freight paid moving its imports
 export const OUT_TARIFFS  = 4;   // import duties paid to a foreign state
@@ -33,12 +33,12 @@ export const OUT_LUXURY   = 9;   // bought luxury goods (elite consumption)
 const N_OUT = 10;
 
 export const IN_LABELS = [
-  "mining", "goods sold", "food sold", "materials sold",
+  "mining", "goods sold", "food & farm goods", "materials sold",
   "transit tolls", "customs duties", "tribute received", "colonial aid",
   "luxuries sold", "state pay",
 ];
 export const OUT_LABELS = [
-  "goods bought", "food bought", "construction", "freight & tolls",
+  "goods bought", "food & farm goods", "construction", "freight & tolls",
   "import duties", "tribute paid", "army upkeep", "colonial aid", "colony ship",
   "luxuries bought",
 ];

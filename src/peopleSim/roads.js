@@ -48,7 +48,7 @@ import { T } from "./tuning.js";
 import { exportValueOf, getWealthReserve } from "./settlement.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
-import { recordIn, recordOut, IN_GOODS, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
+import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 
 // ── Constants ──────────────────────────────────────────────────────
 const QUALITY_NEW         = 0.25;       // new road: 4× cheaper than plain
@@ -965,10 +965,19 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   const actual = available < want ? available : want;
   const scale = actual / want;
   buyer.wealth -= actual;
-  seller.wealth = (seller.wealth || 0) + goodsValue * scale;
-  recordOut(buyer, OUT_GOODS, goodsValue * scale);
+  const paid = goodsValue * scale;
+  seller.wealth = (seller.wealth || 0) + paid;
+  // Book the trade by SECTOR: the seller's agrarian fraction (computeExportValue)
+  // is farm produce — booked "food & farm goods"; the rest is manufactured wares —
+  // booked "goods". So a Farming Region reads as a farmer selling grain/livestock,
+  // a town as a workshop selling crafts.
+  const agFrac = seller._exportAgrarianFrac != null ? seller._exportAgrarianFrac : 1;
+  const agPaid = paid * agFrac;
+  recordIn(seller, IN_FOOD, agPaid);
+  recordIn(seller, IN_GOODS, paid - agPaid);
+  recordOut(buyer, OUT_FOOD, agPaid);
+  recordOut(buyer, OUT_GOODS, paid - agPaid);
   recordOut(buyer, OUT_TOLLS, (freight + totalToll) * scale);
-  recordIn(seller, IN_GOODS, goodsValue * scale);
   if (intermediates) {
     const tollPer = goodsValue * TOLL_RATE * scale;
     for (const inter of intermediates) { inter.wealth = (inter.wealth || 0) + tollPer; recordIn(inter, IN_TOLLS, tollPer); }
