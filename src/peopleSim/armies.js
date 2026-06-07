@@ -369,6 +369,23 @@ export function musterArmies(world) {
     if (scale.size) for (const s of world.settlements) { if (s.mode !== "settled") continue; const sc = scale.get(s.countryId); if (sc != null) s.army *= sc; }
     if (world.countries) for (const [cc, pop] of natPop) { const c = world.countries.get(cc); if (c) { c._manpower = mp.get(cc) || 0; c._manpowerCap = T.MANPOWER_FRAC * pop; } }
   }
+
+  // ── Explicit two-tier national army: PROFESSIONAL core vs CONSCRIPT levy ──────────
+  // The standing peacetime cap (armyCapFrac, org-scaled) is the permanent professional
+  // core; whatever a realm holds ABOVE it is its temporary wartime conscript levy. Track
+  // the two per realm so the panel reads as "regulars + levies" and the national army is
+  // an explicit pair, not an emergent sum of garrisons.
+  if (world.countries) {
+    const proSum = new Map(), conSum = new Map();
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s.countryId < 0) continue;
+      const army = s.army || 0;
+      const proBase = Math.min(army, s.people * armyCapFrac(world, s));
+      proSum.set(s.countryId, (proSum.get(s.countryId) || 0) + proBase);
+      conSum.set(s.countryId, (conSum.get(s.countryId) || 0) + (army - proBase));
+    }
+    for (const [cc, c] of world.countries) { c._armyPro = proSum.get(cc) || 0; c._armyCon = conSum.get(cc) || 0; }
+  }
 }
 
 // ── Periodic: advance every active war front by tile capture / storm ──

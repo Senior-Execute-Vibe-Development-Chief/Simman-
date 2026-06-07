@@ -3715,6 +3715,12 @@ return(
                 <span className="au-fade">state treasury {fmtGoldKg(treas)}{ctry._govSpend>0.01?` · spends ${fmtGoldKg(ctry._govSpend)}/pass`:""}{broke?` · INSOLVENT (army ${Math.round(sv*100)}% paid)`:""}</span>
               </div>
             );})()}
+            {(()=>{const pro=ctry._armyPro||0,con=ctry._armyCon||0;if(pro+con<1)return null;const mp=ctry._manpowerCap>0?(ctry._manpower||0)/ctry._manpowerCap:1;return(
+              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+                <span style={{width:9,height:9,borderRadius:2,background:con>0.5?"hsl(0,70%,52%)":"hsl(0,40%,50%)",flexShrink:0}}/>
+                <span className="au-fade">army {fmtPeople(pro+con)} — {fmtPeople(pro)} professional{con>0.5?` + ${fmtPeople(con)} conscript levy`:""} · manpower {Math.round(mp*100)}%{mp<0.5?" (bled)":""}</span>
+              </div>
+            );})()}
             {(()=>{const P=ctry._priceLevel;if(P==null||Math.abs(P-1)<0.04)return null;
               const inflating=P>1;return(
               <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
