@@ -65,7 +65,7 @@ const CAPTURE_SCALE     = 5;           // tiles/pass per unit of power-ratio adv
 const ASSAULT_MARGIN    = 2;           // front must reach within (defender core + this) of the home
 const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent taking a city
 // Offensive throttle & strategic depth now live in the NATIONAL WAR CAPACITY block
-// inside advanceFronts (WAR_CONCENTRATION / WAR_DEFENSE_DRAG / WAR_DEPTH / war-exhaustion):
+// inside advanceFronts (national field army × WAR_CONCENTRATION / WAR_DEFENSE_DRAG / WAR_DEF_SPLIT / war-exhaustion):
 // a realm has finite force split across its fronts, so it can't conquer on one while
 // overrun on another, nor knife many neighbours at once, and an established power
 // fields reserves a small upstart can't match.
@@ -495,22 +495,20 @@ export function advanceFronts(world) {
   if (besieged.size) dispatchReinforcements(world, besieged);
 
   // ── National war capacity ──────────────────────────────────────────────
-  // Conquest is no longer a private duel between two frontier garrisons: a realm
-  // has FINITE projectable force that must be split across ALL its fronts. Per
-  // realm, tally the distinct enemy NATIONS it is engaged with — separating
-  // OFFENSIVE fronts (it is attacking) from DEFENSIVE load (it is being assaulted,
-  // a besieged capital weighing most). From those:
-  //   • offMulPair — a front's offensive thrust: CONCENTRATED on the main effort
-  //     (secondary fronts merely hold), sapped while troops are pinned defending,
-  //     and worn down by accumulated war-exhaustion. A realm knifing one neighbour
-  //     pushes at full force; one fighting everywhere advances only on its priority.
-  //   • depthMulOf — an ESTABLISHED realm (large total military) funnels reserves
-  //     to a threatened front, so its frontier defends harder than the lone border
-  //     garrison would — but that reserve is itself split across its fronts. A
-  //     small upstart has almost none, so it can't punch above a big old power.
+  // Inter-state war is NOT a duel between two frontier garrisons — it is decided by
+  // NATIONAL FIELD ARMIES (natMight = Σ garrison×tech, capped by manpower + treasury).
+  // Per realm, tally the distinct enemy NATIONS it is engaged with — offensive fronts
+  // (it is attacking) vs defensive load/attackers (it is assaulted). From those:
+  //   • offMulPair — how the attacker ALLOCATES its national army to a front:
+  //     CONCENTRATED on the main effort (secondary fronts merely hold), sapped while
+  //     troops are pinned defending, worn by war-exhaustion. Times natMight = the force.
+  //   • defShareOf — how the defender SPLITS its national army across the fronts it is
+  //     attacked on (whole army vs one invader; divided among many). A border town's
+  //     garrison decides nothing in the open field — only the national armies do.
   const allEnemies = new Map();   // cc → Set(enemy cc) either direction (depth divisor)
   const defLoad    = new Map();   // cc → Σ defensive weight it is under (besieged capital heaviest)
   const attNat     = new Map();   // attacker cc → Map(enemy cc → {prio, serious, conc}) — its national fronts
+  const attackersOf= new Map();   // defender cc → Set(enemy cc) attacking it (defensive front count)
   const addEnemy = (cc, ecc) => { let s = allEnemies.get(cc); if (!s) allEnemies.set(cc, s = new Set()); s.add(ecc); };
   for (const pc of pairs.values()) {
     const acc = pc.att.countryId, dcc = pc.def.countryId;
@@ -521,6 +519,7 @@ export function advanceFronts(world) {
     const prio = (pc.canStorm ? 1e7 : 0) + pc.att._M;   // assault outranks a skirmish, then by army committed
     if (prio > f.prio) f.prio = prio;
     if (pc.canStorm) f.serious = true;
+    let da = attackersOf.get(dcc); if (!da) attackersOf.set(dcc, da = new Set()); da.add(acc);
     const dc = world.countries && world.countries.get(dcc);
     const isCap = !!(dc && dc.capitalId === pc.def.id);
     defLoad.set(dcc, (defLoad.get(dcc) || 0) + (pc.canStorm ? (isCap ? 1.6 : 1.0) : 0.4));
@@ -564,10 +563,18 @@ export function advanceFronts(world) {
     return (f ? f.conc : 1) * rested / tied;
   };
   const offMulPair = (pc) => concRestTied(pc.att.countryId, pc.def.countryId);
-  const depthMulOf = (cc) => {
-    const ne = allEnemies.get(cc);
-    return 1 + T.WAR_DEPTH * Math.log1p(natMight.get(cc) || 0) / (1 + (ne ? ne.size : 0));
+  // The NATIONAL FIELD ARMY is the force that decides a war — not the border garrison.
+  // A realm projects its whole army (natMight = Σ garrison×tech, itself capped by national
+  // MANPOWER and the treasury) onto a front, CONCENTRATED on its main effort. Its enemy
+  // resists with ITS national army, SPLIT across the fronts it is defending (a realm
+  // assailed by many divides its field army; one fighting a single war meets the invader
+  // whole). So who takes ground is the national-army RATIO on that front — manpower × tech
+  // × treasury — and a border town's garrison matters only as a fortress in a siege (below).
+  const defShareOf = (cc) => {
+    const a = attackersOf.get(cc);
+    return 1 / (1 + T.WAR_DEF_SPLIT * Math.max(0, (a ? a.size : 1) - 1));
   };
+  const fieldForce = (cc) => (natMight.get(cc) || 0);
 
   // ── Encirclement ─────────────────────────────────────────────────────
   // A settlement assaulted from many DIRECTIONS must split its defence across
@@ -616,10 +623,14 @@ export function advanceFronts(world) {
     if (att.mode !== "settled" || def.mode !== "settled" || att.countryId === def.countryId) continue;
     // The attacker's effective offensive might is throttled while it is itself
     // under attack — a realm fighting for its own heartland can't also expand.
-    const attM = att._M * offMulPair(pc);              // national capacity allocated to THIS front (concentration × war-weariness ÷ defensive tie-down)
-    const em = encMulOf(def);                          // <1 if the defender is pressed from several sides (must split its garrison)
-    const depth = depthMulOf(def.countryId);           // >1 if an established realm backs this frontier with reserves
-    const adv = attM / Math.max(1, def._M * em * depth);
+    const acc = att.countryId, dcc = def.countryId;
+    // The attacker projects its NATIONAL field army onto this front — concentrated on its
+    // main effort, worn by war-weariness, sapped while pinned defending. The defender meets
+    // it with its OWN national army, split across the fronts it defends and the directions
+    // it is pressed from. Who takes the countryside is the national-army ratio here.
+    const attForce = fieldForce(acc) * offMulPair(pc);
+    const em = encMulOf(def);                          // <1 if the defender is pressed from several sides
+    const adv = attForce / Math.max(1, fieldForce(dcc) * defShareOf(dcc) * em);
 
     if (pc.canStorm) {
       // Front is at the heartland. The city defends with its garrison OR its
@@ -627,8 +638,13 @@ export function advanceFronts(world) {
       // paid garrison deserted under bankruptcy is NOT free real estate; it
       // still takes a real army to storm. This is the single biggest brake on
       // the boiling-map churn (see HOME_MILITIA_FRAC).
+      // The capital is stormed only if the attacker's national assault force overcomes the
+      // defender's RELIEF army (the field army it can spare for this front) PLUS the city's
+      // own fortress — garrison or citizen-militia behind the walls (homeMight). So a
+      // relieved capital holds against a far larger invader; an isolated one (its field army
+      // spent or pinned elsewhere) falls to its walls alone.
       const defHome = homeMight(def);
-      const advCity = attM / Math.max(1, defHome * em * depth);   // throttled if the attacker is itself overextended; backed by the realm's reserves; eased if the city is encircled
+      const advCity = attForce / Math.max(1, (fieldForce(dcc) * defShareOf(dcc) + defHome) * em);
       // A recently-conquered city is still pacified (garrisoned) and can't be
       // besieged yet — that grace stops rival empires trading it back and forth.
       if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
