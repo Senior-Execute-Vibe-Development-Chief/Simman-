@@ -373,6 +373,7 @@ function recolorByCapital(world, co, capPos, knOf, claimCap) {
     const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
     for (let k = 0; k < 8; k++) {
       const ni = ns[k]; if (ni < 0 || elev[ni] <= 0) continue;
+      if (co[ni] < 0) continue;   // flood ONLY through claimed land — we only recolour claimed tiles, and bounding the flood here (vs flooding the whole map) keeps the pass cheap (no territory-pass hitch). Country↔country borders are still the smooth capital bisector; the claimed↔wilderness edge keeps the coverage shape.
       let ec = localEdgeCost(world, ti, ni, kn, true);
       if (ec === Infinity) continue;
       if (ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;
