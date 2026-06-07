@@ -921,9 +921,16 @@ function updateFood(world, s) {
   // This is the cycle that ends total wars (armies.js); peace carries no production drag.
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
   const armyLabor = Math.max(0.2, 1 - Math.max(0, armyFrac - ARMY_LABOR_FREE) * T.ARMY_LABOR_FOOD);
+  // FARM-LABOUR SUBSISTENCE: working land takes farmers, and they must eat. Each territory tile
+  // carries a per-tile labour cost (FARM_FERT_FLOOR, in fertility units) — the crops its farmers
+  // consume to work it — deducted from the gross BEFORE the surplus enters the food economy. So
+  // the NET food a region yields is (total fertility − area × floor) × yield, and land too
+  // marginal to feed the people required to farm it (average fertility below the floor) yields
+  // NOTHING and supports no settlement. The break-even fertility is exactly FARM_FERT_FLOOR.
+  const netFert = Math.max(0, (s._terrFertSum || 0) - (s._terrTiles || 0) * T.FARM_FERT_FLOOR);
   const landFood0 = ((s.tier | 0) > (T.FARM_MAX_TIER | 0)
     ? 0
-    : (s._terrFertSum || 0) * T.FARM_YIELD_PER_FERT * techEff(s).farmYield) * armyLabor;
+    : netFert * T.FARM_YIELD_PER_FERT * techEff(s).farmYield) * armyLabor;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
