@@ -96,13 +96,13 @@ const RES_REF_W = 240;
 const _resScaleEnv = (typeof process !== "undefined" && process.env && +process.env.SIM_RES_SCALE) || 0;
 function resScaleFor(tw) { return _resScaleEnv > 0 ? _resScaleEnv : Math.max(1, tw / RES_REF_W); }
 export { resScaleFor };
-// Capital-Voronoi: seed the cost-Voronoi from each realm's CAPITAL ONLY, so a country
-// is ONE clean Voronoi cell of its capital — smooth borders — instead of the union of
-// every settlement's circular basin (the "bubbly / scalloped" edge). The realm's other
-// settlements still set the cell's SIZE (the reach budget already scales with member
-// count); they just don't each carve their own bulge into the frontier. This is the
-// true power-Voronoi-of-capitals. SIM_CAPITAL_ONLY=0 reverts to per-settlement seeding.
-const _capitalOnly = !(typeof process !== "undefined" && process.env && process.env.SIM_CAPITAL_ONLY === "0");
+// Capital colouring (DEFAULT OFF — reverted): per-settlement coverage recoloured by
+// nearest capital for smooth borders. Reverted because, even with full coverage, the
+// political map still recedes wherever a settlement goes STATELESS (a stateless
+// settlement projects no territory). The real fix is upstream — don't let frontier
+// settlements be stateless (they found / join a country). Kept behind a toggle for
+// experiments. SIM_CAPITAL_ONLY=1 re-enables.
+const _capitalOnly = (typeof process !== "undefined" && process.env && process.env.SIM_CAPITAL_ONLY === "1");
 // ── Gradual integration of newly-acquired land ───────────────────────
 // A settlement that just joined this realm out of the WILD (adoptAndFound stamps
 // _integratedAt when a stateless settlement adopts a country, as the realm's
@@ -568,7 +568,17 @@ export function adoptAndFound(world) {
       }
       // a town/city with a country keeps it (sovereign)
     } else {
-      // village / town: follow the land (region), or stateless on the frontier
+      // A developed frontier settlement — a TOWN (tier ≥ 1) stranded in TRUE WILDERNESS
+      // (beyond EVERY realm's reach, co[ti] < 0, not merely outside the crawled border)
+      // — FOUNDS its own city-state instead of persisting as a stateless economy that
+      // builds roads and trades in no-man's-land. A mere hamlet (tier 0) stays as
+      // population until it develops or a realm's border reaches it — not every hamlet
+      // is a state, but a real town on the frontier is a polity.
+      if (s.countryId < 0 && region < 0 && (s.tier | 0) >= 1 && co[ti] < 0) {
+        s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
+        continue;
+      }
+      // otherwise village / town: follow the land (region), or stateless on the frontier
       if (s.countryId !== region) {
         if (s.countryId < 0 && region >= 0) s._integratedAt = world.step;   // wild → joined a realm: grow its basin in from the border, don't bloom
         s.countryId = region;
