@@ -337,7 +337,10 @@ export function musterArmies(world) {
       let frac = armyCapFrac(world, s);
       const c = world.countries && world.countries.get(s.countryId);
       const atWar = c && (world.step - (c._warStamp ?? -1e9)) < CONSCRIPT_WINDOW;
-      if (atWar) frac += T.CONSCRIPT_FRAC * Math.min(1, CONSCRIPT_DEF * (c._defLoad || 0) + CONSCRIPT_OFF * (c._offFronts || 0));
+      // Defence of the heartland is unconditional; the OFFENSIVE levy is gated by the
+      // realm's value-vs-cost war commitment (advanceFronts) — it won't bleed its people
+      // for a war it is losing or that isn't worth the cost, unless pride drives it on.
+      if (atWar) frac += T.CONSCRIPT_FRAC * Math.min(1, CONSCRIPT_DEF * (c._defLoad || 0) + CONSCRIPT_OFF * (c._offFronts || 0) * (c._warCommit ?? 1));
       const popCap = s.people * frac;
       // The levy musters in and disbands faster than peacetime recruitment.
       const grow = (atWar || (s.army || 0) > popCap) ? Math.min(0.6, T.ARMY_GROW * MOBILIZE_SPEED) : T.ARMY_GROW;
@@ -784,6 +787,29 @@ export function advanceFronts(world) {
       c._defLoad = defLoad.get(cc) || 0;
       c._warExhaust = exh.get(cc) || 0;
       c._warStamp = world.step;                 // freshness: engaged THIS pass
+
+      // ── Value-vs-cost war calculus (offensive commitment) ──────────────────
+      // How hard A will press its wars of CHOICE (defence of the homeland is
+      // unconditional). It weighs the PRIZE — an expansionist/warlike realm values
+      // conquest, but only while it's WINNING (its national-army ratio over its main
+      // foe), and a winning streak (momentum) inflates that — against the COST:
+      // war-exhaustion plus a drained manpower pool. A proud/WARLIKE realm DISCOUNTS
+      // the cost and fights a ruinous war on (the sunk-cost trap); a MERCANTILE one
+      // feels it fully and cuts its losses. Low commit ⇒ it stops conscripting for the
+      // offensive (musterArmies) — the campaign withers to a de-facto peace.
+      const p = c.personality;
+      if (p && m && m.size) {
+        let topE = -1, topPrio = -Infinity;
+        for (const [dcc, f] of m) if (f.prio > topPrio) { topPrio = f.prio; topE = dcc; }
+        const winning = Math.min(2, (natMight.get(cc) || 0) / Math.max(1, natMight.get(topE) || 0));
+        const appetite = Math.max(0, Math.min(1, 0.35 + 0.4 * (p.expansionism || 0) + 0.3 * (p.aggression || 0)));
+        const gov = world.governments && world.governments.get(cc);
+        const mom = Math.min(1, ((gov && gov._momentum) || 0) / Math.max(1, T.MOMENTUM_CAP || 1));
+        const mpR = c._manpowerCap > 0 ? (c._manpower || 0) / c._manpowerCap : 1;
+        const weariness = (exh.get(cc) || 0) + (1 - mpR);                                   // war-weariness + bled white
+        const sunkBlind = Math.max(0, Math.min(1, 0.5 + 0.5 * (p.aggression || 0) - 0.4 * (p.commerce || 0)));
+        c._warCommit = Math.max(0, Math.min(1.3, appetite * winning * (1 + 0.5 * mom) - weariness * (1 - sunkBlind)));
+      } else c._warCommit = 1;
     }
   }
 

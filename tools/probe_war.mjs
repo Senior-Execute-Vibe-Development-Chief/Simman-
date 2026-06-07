@@ -25,6 +25,7 @@ let invN=0, invMul=0;       // realms attacking WHILE invaded (offence+defence)
 let cleanN=0, cleanMul=0;   // realms attacking with a clear rear
 let maxEff=0, maxBorders=0, sumBorders=0, attackerPasses=0, samples=0;
 let warMpN=0, warMp=0, peaceMpN=0, peaceMp=0, minMp=9;   // manpower / cap, warring vs at-peace
+let freshN=0, freshC=0, wearyN=0, wearyC=0;              // war commitment: fresh vs war-weary attackers
 for(let t=Math.max(0,STEP-WIN); t<STEP; t+=INTV){
   stepPeopleSim(world, INTV); samples++;
   for(const c of world.countries.values()){
@@ -42,6 +43,8 @@ for(let t=Math.max(0,STEP-WIN); t<STEP; t+=INTV){
     if(eff>maxEff) maxEff=eff;
     bump(Math.min(3,Math.max(1,eff)), main);
     if((c._defLoad||0)>0){ invN++; invMul+=main; } else { cleanN++; cleanMul+=main; }
+    // value-vs-cost: war-weary attackers should COMMIT less (demobilise / sue for peace)
+    if(c._warCommit!=null){ if((c._warExhaust||0)>0.3){ wearyN++; wearyC+=c._warCommit; } else { freshN++; freshC+=c._warCommit; } }
   }
 }
 console.log(`\n=== war dynamics, seed ${SEED}, steps ${STEP-WIN}-${STEP} (${samples} passes) ===`);
@@ -54,3 +57,5 @@ console.log(`mean border fronts (geographic) per attacker: ${(sumBorders/Math.ma
 console.log(`max EFFECTIVE fronts a realm pushed at once: ${maxEff}  ← concentration caps real offensives`);
 console.log(`\nMANPOWER pool (men / ceiling):  at war ${warMpN?(warMp/warMpN).toFixed(2):"-"}   |   at peace ${peaceMpN?(peaceMp/peaceMpN).toFixed(2):"-"}   |   most-drained realm ${minMp<9?minMp.toFixed(2):"-"}`);
 console.log(`  (< 1 at war = bloody fighting hollowing out the army; ~1 at peace = reserve refilled)`);
+console.log(`\nWAR COMMITMENT (offensive):  fresh attacker ${freshN?(freshC/freshN).toFixed(2):"-"} (${freshN})   |   war-weary attacker ${wearyN?(wearyC/wearyN).toFixed(2):"-"} (${wearyN})`);
+console.log(`  (weary < fresh = realms backing off costly wars; the gap is the value-vs-cost brake)`);
