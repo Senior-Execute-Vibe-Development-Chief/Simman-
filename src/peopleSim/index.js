@@ -23,7 +23,7 @@ import { relaxClaim } from "./countryClaim.js";
 // tile-by-tile rather than snapping each territory pass.
 const CLAIM_RELAX_INTERVAL = 12;
 import { updatePolities } from "./conquest.js";
-import { musterArmies, advanceFronts, moveArmies, MUSTER_INTERVAL } from "./armies.js";
+import { musterArmies, advanceFronts, MUSTER_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
 import { updateShocks } from "./shocks.js";
 import { updateInflation } from "./inflation.js";
@@ -117,7 +117,6 @@ export function stepPeopleSim(world, n = 1) {
     // per-country Voronoi (computeCountryTerritory) re-draws its region cleanly.
     if (world.step % MUSTER_INTERVAL === 0) musterArmies(world);
     if (world.step % T.CONQUEST_INTERVAL === 0) advanceFronts(world);
-    moveArmies(world);   // marching reinforcement columns advance every tick
     mark("armies");
     // Maritime: colony ships sail every tick; the port→port sea-lane graph
     // (sea trade peers) and overseas colonisation are rebuilt periodically.

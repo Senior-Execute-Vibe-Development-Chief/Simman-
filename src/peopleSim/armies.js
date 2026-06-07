@@ -554,7 +554,8 @@ export function advanceFronts(world) {
     }
   }
   world._fronts = { stamp: world.step, byCountry: fronts };
-  if (besieged.size) dispatchReinforcements(world, besieged);
+  // (Siege relief is no longer a marching column — the national defensive-split already
+  // brings the realm's whole field army to bear on a besieged front; see defShareOf.)
 
   // ── National war capacity ──────────────────────────────────────────────
   // Inter-state war is NOT a duel between two frontier garrisons — it is decided by
