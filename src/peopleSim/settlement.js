@@ -908,7 +908,12 @@ function updateFood(world, s) {
   // city does NOT magically farm more; it grows by IMPORTING grain shipped
   // from its rural hinterland (see updatePopulation / the food trade), exactly
   // as real metropolises did (Rome's Egyptian grain, London's American wheat).
-  const landFood0 = (s._terrFertSum || 0) * T.FARM_YIELD_PER_FERT * techEff(s).farmYield;
+  // Only Farming Regions (tier ≤ FARM_MAX_TIER) farm the land; a town/city grows no
+  // grain of its own — it BUYS what its countryside ships up the hierarchy. (Fish below
+  // is unaffected — a coastal city still fishes.)
+  const landFood0 = (s.tier | 0) > (T.FARM_MAX_TIER | 0)
+    ? 0
+    : (s._terrFertSum || 0) * T.FARM_YIELD_PER_FERT * techEff(s).farmYield;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;

@@ -65,9 +65,7 @@ export function aggregateFoodHierarchy(world) {
   const byId = world._byId;
   if (!byId) return;
 
-  // ── 1. price + demand signal per settlement ─────────────────────────
-  // hunger = how food-limited it is (housing capacity it could fill if it had
-  // more grain); price = its tier's grain price scaled by local inflation.
+  // ── 1. price per settlement ─────────────────────────────────────────
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const hK = s._houseK || 0, fK = s._foodK || 0;
@@ -83,7 +81,7 @@ export function aggregateFoodHierarchy(world) {
   const roots = [];
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
-    s._foodUp = 0;
+    s._foodUp = 0; s._foodOffer = 0;
     const L = (s.liegeId >= 0 && s.countryId >= 0) ? byId.get(s.liegeId) : null;
     if (L && L.mode === "settled" && L.countryId === s.countryId && L.id !== s.id) {
       s._hasFoodParent = true; s._foodParent = L;
@@ -94,9 +92,22 @@ export function aggregateFoodHierarchy(world) {
     }
   }
 
-  // ── 2. grain flows UP (demand-modulated), iterative post-order ───────
-  // Children processed before their parent, with a seen-guard so a pathological
-  // liege cycle can't loop forever.
+  // ── spare-coin budget snapshot (so payment can't create coin) ────────
+  const budget = new Map();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    budget.set(s.id, Math.max(0, (s.wealth || 0) - getWealthReserve(s)));
+  }
+
+  // ── 2+3 integrated, post-order: grain only moves as far as it is BOUGHT ──
+  // Each node BUYS grain from its children, limited by its spare coin (STRICT: no
+  // coin, no grain — the un-bought grain stays with the seller, who keeps and eats
+  // it). It then OFFERS its own pool up for its parent to buy. So a city is fed by
+  // exactly the grain it can afford from its countryside, and a cash-poor centre
+  // simply gets less and is food-limited — no more free barter auto-ship. Coin flows
+  // seller-ward, the closed supply is exactly conserved (each pays from a snapshot of
+  // its spare coin, so it can't spend coin it only earns later by re-selling).
+  // net[s] = what s keeps after its own parent buys from it.
   const seen = new Set();
   for (const root of roots) {
     const stack = [[root, false]];
@@ -111,48 +122,29 @@ export function aggregateFoodHierarchy(world) {
         if (kids) for (const k of kids) if (!seen.has(k.id)) stack.push([k, false]);
       } else {
         stack.pop();
-        let pool = node._storableSupply || 0;
+        let pool = node._storableSupply || 0;                // own production (0 for tier > FARM_MAX_TIER)
+        let spare = budget.get(node.id) || 0;
         const kids = children.get(node.id);
-        if (kids) for (const k of kids) pool += k._foodUp || 0;
+        if (kids) for (const k of kids) {
+          const offer = k._foodOffer || 0;                   // grain the child put up for sale
+          if (offer <= 0) continue;
+          const price = k._grainPrice || 0;
+          const bought = price > 0 ? Math.min(offer, spare / price) : offer;   // afford only what coin allows
+          if (bought <= 0) continue;
+          const pay = bought * price;
+          node.wealth -= pay; k.wealth = (k.wealth || 0) + pay;
+          recordOut(node, OUT_FOOD, pay);   // money-flow panel: grain bought
+          recordIn(k, IN_FOOD, pay);        //                   grain sold
+          spare -= pay;
+          pool += bought;
+          k._foodNet = (k._foodNet || 0) - bought;           // child keeps less — it sold `bought`
+        }
         node._foodPool = pool;
-        const base = SHIP_FRAC_BY_TIER[Math.min(3, Math.max(0, node.tier | 0))];
-        // A hungrier market above pulls a larger fraction up (toward SHIP_FRAC_MAX);
-        // a satiated one pulls only the base fraction.
-        const parent = node._foodParent;
-        const pull = parent ? (1 + DEMAND_PULL * (parent._grainHunger || 0)) : 1;
-        const sf = node._hasFoodParent ? Math.min(SHIP_FRAC_MAX, base * pull) : 0;
-        const up = pool * sf * KEEP_PER_HOP;
-        node._foodUp = up;
-        node._foodNet = pool - up;                          // what it keeps for its own population
+        node._foodNet = pool;                                // keeps it all unless its OWN parent buys (when parent is processed)
+        const sf = node._hasFoodParent ? SHIP_FRAC_BY_TIER[Math.min(3, Math.max(0, node.tier | 0))] : 0;
+        node._foodOffer = pool * sf * KEEP_PER_HOP;          // put up for the parent to buy
+        node._foodUp = node._foodOffer;                      // (info panel / compatibility)
       }
-    }
-  }
-
-  // ── 3. coin flows DOWN: each market pays its suppliers ───────────────
-  // A parent buys each child's shipped grain at the CHILD's local price (cheap at
-  // the village gate), capped by the parent's spare coin THIS tick. Budgets are
-  // snapshotted up front so the order of payment can't let a node spend coin it
-  // only receives later — no coin is created, the supply is exactly conserved.
-  const budget = new Map();
-  for (const s of world.settlements) {
-    if (s.mode !== "settled") continue;
-    budget.set(s.id, Math.max(0, (s.wealth || 0) - getWealthReserve(s)));
-  }
-  for (const [pid, kids] of children) {
-    const P = byId.get(pid);
-    if (!P || P.mode !== "settled") continue;
-    let totalCost = 0;
-    for (const k of kids) totalCost += (k._foodUp || 0) * (k._grainPrice || 0);
-    if (totalCost <= 0) continue;
-    const scale = Math.min(1, (budget.get(pid) || 0) / totalCost);   // afford only what spare coin allows
-    if (scale <= 0) continue;
-    for (const k of kids) {
-      const pay = (k._foodUp || 0) * (k._grainPrice || 0) * scale;
-      if (pay <= 0) continue;
-      P.wealth -= pay;
-      k.wealth = (k.wealth || 0) + pay;
-      recordOut(P, OUT_FOOD, pay);     // money-flow panel: grain bought
-      recordIn(k, IN_FOOD, pay);       //                   grain sold
     }
   }
 }
