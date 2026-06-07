@@ -96,6 +96,13 @@ const RES_REF_W = 240;
 const _resScaleEnv = (typeof process !== "undefined" && process.env && +process.env.SIM_RES_SCALE) || 0;
 function resScaleFor(tw) { return _resScaleEnv > 0 ? _resScaleEnv : Math.max(1, tw / RES_REF_W); }
 export { resScaleFor };
+// Capital-Voronoi: seed the cost-Voronoi from each realm's CAPITAL ONLY, so a country
+// is ONE clean Voronoi cell of its capital — smooth borders — instead of the union of
+// every settlement's circular basin (the "bubbly / scalloped" edge). The realm's other
+// settlements still set the cell's SIZE (the reach budget already scales with member
+// count); they just don't each carve their own bulge into the frontier. This is the
+// true power-Voronoi-of-capitals. SIM_CAPITAL_ONLY=0 reverts to per-settlement seeding.
+const _capitalOnly = !(typeof process !== "undefined" && process.env && process.env.SIM_CAPITAL_ONLY === "0");
 // ── Gradual integration of newly-acquired land ───────────────────────
 // A settlement that just joined this realm out of the WILD (adoptAndFound stamps
 // _integratedAt when a stateless settlement adopts a country, as the realm's
@@ -261,29 +268,28 @@ export function computeCountryTerritory(world) {
   const anchor = T.CAPITAL_ANCHOR;
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;
+    const c = s.countryId;
+    if (_capitalOnly && capPos.get(c) !== s.pos) continue;   // CAPITAL-VORONOI: only the capital seeds → one clean cell per realm
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
     if (!(elev[ti] > 0 && cost[ti] > 0)) continue;
-    const c = s.countryId;
     const full = budget.get(c) || 0;
-    const integMin = INTEGRATE_MIN * resScale;   // day-one basin is a tile distance → res-relative
-    const age = world.step - (s._integratedAt ?? -Infinity);
-    let sb = age < INTEGRATE_TICKS
-      ? Math.min(full, integMin + Math.max(0, full - integMin) * (age / INTEGRATE_TICKS))
-      : full;
-    // CAPITAL ANCHOR: a settlement projects the realm's reach less the FARTHER it
-    // sits from the capital — authority radiates from one centre and fades with
-    // distance, so the territory pulls into a compact blob around the capital
-    // instead of sprawling to wherever any town happens to be. The capital itself
-    // (distance 0) projects the full reach; a far frontier town anchors only a
-    // small basin. So the union of basins reads as one centred region, not a
-    // scatter, and a far salient that a nearer RIVAL capital reaches more cheaply
-    // cedes to it — the power-Voronoi-of-capitals that makes real borders blobby.
-    const cp = capPos.get(c);
-    if (anchor > 0 && cp) {
-      let dx = Math.abs(s.pos.x - cp.x); if (dx > tw / 2) dx = tw - dx;
-      const dy = s.pos.y - cp.y;
-      const capDist = Math.sqrt(dx * dx + dy * dy);
-      sb *= 1 / (1 + anchor * capDist / (ANCHOR_SCALE * resScale));   // falloff distance is res-relative → blobs keep shape at any grid size
+    let sb = full;
+    if (!_capitalOnly) {
+      // Per-settlement seeding (legacy): every settlement carves its own basin, eased
+      // by recency (integrate ramp) and distance from the capital (the anchor). The
+      // union of these basins is what reads as a scalloped/bubbly edge.
+      const integMin = INTEGRATE_MIN * resScale;   // day-one basin is a tile distance → res-relative
+      const age = world.step - (s._integratedAt ?? -Infinity);
+      sb = age < INTEGRATE_TICKS
+        ? Math.min(full, integMin + Math.max(0, full - integMin) * (age / INTEGRATE_TICKS))
+        : full;
+      const cp = capPos.get(c);
+      if (anchor > 0 && cp) {
+        let dx = Math.abs(s.pos.x - cp.x); if (dx > tw / 2) dx = tw - dx;
+        const dy = s.pos.y - cp.y;
+        const capDist = Math.sqrt(dx * dx + dy * dy);
+        sb *= 1 / (1 + anchor * capDist / (ANCHOR_SCALE * resScale));
+      }
     }
     cost[ti] = 0; co[ti] = c; seedBud[ti] = sb; heap.push(ti, 0, c);
   }
@@ -317,7 +323,56 @@ export function computeCountryTerritory(world) {
     }
   }
   closeRealmGaps(world, co, T.REALM_GAP_FILL);
+  smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0);
   return co;
+}
+
+// ── Border smoothing ─────────────────────────────────────────────────────────
+// The per-settlement cost-Voronoi gives every realm a SCALLOPED edge: each
+// settlement claims a roughly circular basin, so a country's outline is the union
+// of bubbles — nothing like a real border, which runs along a coast / river / ridge
+// or as a clean negotiated line. Sweep a majority filter over the political map a
+// few times: a land tile becomes whichever country (or wilderness) holds a clear
+// majority of its 8 neighbours. Protrusions (a bubble poking out) erode, notches
+// fill, so the frontier straightens toward a clean line and single-tile flecks
+// dissolve — area roughly preserved. Settlement HOME tiles are pinned, so no realm
+// is ever smoothed out of existence (its basin regrows next pass). Iterations =
+// BORDER_SMOOTH. O(passes·N).
+function smoothCountryBorders(world, co, iters) {
+  if (!(iters > 0)) return;
+  const { N, tw, th, elev } = world;
+  let prot = world._smoothProt;
+  if (!prot || prot.length !== N) prot = world._smoothProt = new Uint8Array(N);
+  prot.fill(0);
+  for (const s of world.settlements) { if (s.mode === "settled") prot[(s.pos.y | 0) * tw + (s.pos.x | 0)] = 1; }
+  let snap = world._smoothSnap;
+  if (!snap || snap.length !== N) snap = world._smoothSnap = new Int32Array(N);
+  // tiny fixed-size tally over the ≤8 distinct neighbour values (cheaper than a Map)
+  const vals = new Int32Array(8), cnts = new Int32Array(8);
+  for (let it = 0; it < iters; it++) {
+    snap.set(co);                                   // frozen read; writes go to co
+    for (let ti = 0; ti < N; ti++) {
+      if (elev[ti] <= 0 || prot[ti]) continue;      // water + settlement homes are fixed
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+      const yu = ty - 1, yd = ty + 1;
+      const ns = [
+        ty * tw + xm, ty * tw + xp,
+        yu >= 0 ? yu * tw + tx : -1, yd < th ? yd * tw + tx : -1,
+        yu >= 0 ? yu * tw + xm : -1, yu >= 0 ? yu * tw + xp : -1,
+        yd < th ? yd * tw + xm : -1, yd < th ? yd * tw + xp : -1,
+      ];
+      let m = 0, best = snap[ti], bestC = 0;
+      for (let k = 0; k < 8; k++) {
+        const ni = ns[k]; if (ni < 0 || elev[ni] <= 0) continue;   // off-map / sea doesn't vote
+        const v = snap[ni];
+        let j = 0; for (; j < m; j++) if (vals[j] === v) break;
+        if (j === m) { vals[m] = v; cnts[m] = 1; m++; } else cnts[j]++;
+        if (cnts[j] > bestC) { bestC = cnts[j]; best = v; }
+      }
+      if (bestC >= 5 && best !== snap[ti]) co[ti] = best;          // clear majority of the 8-neighbourhood → adopt it
+    }
+  }
 }
 
 // ── Partition the gaps: no terra nullius between neighbours ──────────────────

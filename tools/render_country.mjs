@@ -10,6 +10,7 @@ import { T } from "../src/peopleSim/tuning.js";
 if (process.env.SIM_CAPITAL_ANCHOR) T.CAPITAL_ANCHOR = +process.env.SIM_CAPITAL_ANCHOR;   // A/B territory compactness
 if (process.env.SIM_GAP_FILL !== undefined) T.REALM_GAP_FILL = +process.env.SIM_GAP_FILL;   // A/B the no-man's-land gap fill
 if (process.env.SIM_ENCIRCLE !== undefined) T.ENCIRCLE_PENALTY = +process.env.SIM_ENCIRCLE;   // A/B encirclement
+if (process.env.SIM_BORDER_SMOOTH !== undefined) T.BORDER_SMOOTH = +process.env.SIM_BORDER_SMOOTH;   // A/B border smoothing
 const STEP=+(process.argv[2]||12000), SEED=+(process.argv[3]||8817), W=+(process.argv[4]||1920),H=+(process.argv[5]||960);
 const crcT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
 const crc=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=crcT[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0;};
@@ -31,15 +32,17 @@ const {hue,adj}=assignCountryColors(claim,tw,th,new Map());
 // distinctness metric
 let sum=0,n=0,mn=999;for(const[c,ns]of adj){for(const v of ns){let d=Math.abs(((hue.get(c)-hue.get(v)+540)%360)-180);sum+=d;n++;if(d<mn)mn=d;}}
 console.log(`countries=${hue.size}  border-pairs=${n/2|0}  avg neighbour hue gap=${(sum/n).toFixed(0)}°  min=${mn.toFixed(0)}°`);
-// render
-const SC=2,OW=tw*SC,OH=th*SC,rgb=Buffer.alloc(OW*OH*3);
+// render — optional SIM_CROP="x,y,w,h" (sim tiles) zooms into a region
+const _cr=process.env.SIM_CROP?process.env.SIM_CROP.split(",").map(Number):null;
+const cx=_cr?_cr[0]|0:0, cy=_cr?_cr[1]|0:0, cw=_cr?_cr[2]|0:tw, ch=_cr?_cr[3]|0:th;
+const SC=_cr?Math.max(4,Math.round(960/cw)):2, OW=cw*SC, OH=ch*SC, rgb=Buffer.alloc(OW*OH*3);
 const colByC=new Map();
-for(let ti=0;ti<claim.length;ti++){const py=(ti/tw)|0,px=ti-py*tw;const cc=claim[ti];let col;
-  if(elev[ti]<=0)col=[18,32,64];else if(cc<0)col=[150,140,120];else{col=colByC.get(cc);if(!col){col=hsl(hue.get(cc)||0,0.6,0.5);colByC.set(cc,col);}}
-  for(let dy=0;dy<SC;dy++)for(let dx=0;dx<SC;dx++){const o=((py*SC+dy)*OW+(px*SC+dx))*3;rgb[o]=col[0];rgb[o+1]=col[1];rgb[o+2]=col[2];}}
-// thick borders: darken boundary pixels (2px)
+const colAt=(ti)=>{const cc=claim[ti];if(elev[ti]<=0)return[18,32,64];if(cc<0)return[150,140,120];let col=colByC.get(cc);if(!col){col=hsl(hue.get(cc)||0,0.6,0.5);colByC.set(cc,col);}return col;};
+for(let gy=0;gy<ch;gy++)for(let gx=0;gx<cw;gx++){const px=cx+gx,py=cy+gy;const ti=py*tw+px;const col=colAt(ti);
+  for(let dy=0;dy<SC;dy++)for(let dx=0;dx<SC;dx++){const o=((gy*SC+dy)*OW+(gx*SC+dx))*3;rgb[o]=col[0];rgb[o+1]=col[1];rgb[o+2]=col[2];}}
+// thick borders: darken boundary pixels
 const dark=[8,8,12];
-for(let ti=0;ti<claim.length;ti++){const cc=claim[ti];if(cc<0)continue;const py=(ti/tw)|0,px=ti-py*tw;
-  const ro=claim[py*tw+(px===tw-1?0:px+1)];if(ro>=0&&ro!==cc){for(let dy=0;dy<SC;dy++)for(let k=-1;k<=0;k++){const ox=(px+1)*SC+k,oy=py*SC+dy;if(ox<OW&&oy<OH){const o=(oy*OW+ox)*3;rgb[o]=dark[0];rgb[o+1]=dark[1];rgb[o+2]=dark[2];}}}
-  if(py<th-1){const dno=claim[ti+tw];if(dno>=0&&dno!==cc){for(let dx=0;dx<SC;dx++)for(let k=-1;k<=0;k++){const ox=px*SC+dx,oy=(py+1)*SC+k;if(ox<OW&&oy<OH){const o=(oy*OW+ox)*3;rgb[o]=dark[0];rgb[o+1]=dark[1];rgb[o+2]=dark[2];}}}}}
+for(let gy=0;gy<ch;gy++)for(let gx=0;gx<cw;gx++){const px=cx+gx,py=cy+gy;const ti=py*tw+px;const cc=claim[ti];if(cc<0)continue;
+  const ro=claim[py*tw+(px===tw-1?0:px+1)];if(ro>=0&&ro!==cc){for(let dy=0;dy<SC;dy++)for(let k=-1;k<=0;k++){const ox=(gx+1)*SC+k,oy=gy*SC+dy;if(ox>=0&&ox<OW&&oy<OH){const o=(oy*OW+ox)*3;rgb[o]=dark[0];rgb[o+1]=dark[1];rgb[o+2]=dark[2];}}}
+  if(py<th-1){const dno=claim[ti+tw];if(dno>=0&&dno!==cc){for(let dx=0;dx<SC;dx++)for(let k=-1;k<=0;k++){const ox=gx*SC+dx,oy=(gy+1)*SC+k;if(ox<OW&&oy>=0&&oy<OH){const o=(oy*OW+ox)*3;rgb[o]=dark[0];rgb[o+1]=dark[1];rgb[o+2]=dark[2];}}}}}
 const OUT=process.argv[6]||"/tmp/country_view.png";writeFileSync(OUT,png(OW,OH,rgb));console.log("[png] "+OUT);
