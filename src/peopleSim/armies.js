@@ -282,6 +282,29 @@ function armyCapFrac(world, s) {
 
 // ── Periodic: grow + provision garrisons ──
 export function musterArmies(world) {
+  // National MANPOWER pool — the trained men a realm can field. It REGENERATES from
+  // POPULATION (recruits coming of age) toward a ceiling (a fraction of national pop),
+  // and is DRAINED by battle casualties (advanceFronts). The standing army can never
+  // exceed it, so a realm bled white in a long war can't instantly re-arm — it must wait
+  // a generation for its population to grow the men back. War now costs MEN, not just
+  // coin and morale. (MANPOWER_FRAC = 0 turns the whole pool off.)
+  let mp = world._manpower; if (!mp) mp = world._manpower = new Map();
+  const natPop = new Map();
+  if (T.MANPOWER_FRAC > 0) {
+    for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) natPop.set(s.countryId, (natPop.get(s.countryId) || 0) + (s.people || 0));
+    const seen = new Set();
+    for (const [cc, pop] of natPop) {
+      const cap = T.MANPOWER_FRAC * pop;
+      const cur = mp.has(cc) ? mp.get(cc) : cap;                 // a new realm starts with a full reserve
+      // Regrow toward the ceiling, but never ABOVE it — a realm that lost territory (its
+      // pop-based ceiling just dropped) sheds the surplus at once: those men live in the
+      // lost provinces now, not the rump.
+      mp.set(cc, Math.min(cap, cur + (cap - cur) * T.MANPOWER_REGEN));
+      seen.add(cc);
+    }
+    for (const cc of [...mp.keys()]) if (!seen.has(cc)) mp.delete(cc);   // drop dead realms
+  }
+
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     // Can the settlement actually FEED its garrison? The signal is an
@@ -308,6 +331,19 @@ export function musterArmies(world) {
     if (solvency < 0.999) s.army *= BANKRUPT_DESERT + (1 - BANKRUPT_DESERT) * solvency;
     if (s.army < 0) s.army = 0;
   }
+
+  // Cap the standing army at the manpower pool: if a realm's garrisons sum to more men
+  // than it has trained, scale them all back to fit — the reserve simply isn't there.
+  // (After a bloody war drained the pool, this is what keeps the army hollowed out until
+  // the population regrows it above.)
+  if (T.MANPOWER_FRAC > 0) {
+    const deployed = new Map();
+    for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) deployed.set(s.countryId, (deployed.get(s.countryId) || 0) + (s.army || 0));
+    const scale = new Map();
+    for (const [cc, dep] of deployed) { const cap = mp.get(cc) || 0; if (dep > cap && dep > 0) scale.set(cc, cap / dep); }
+    if (scale.size) for (const s of world.settlements) { if (s.mode !== "settled") continue; const sc = scale.get(s.countryId); if (sc != null) s.army *= sc; }
+    if (world.countries) for (const [cc, pop] of natPop) { const c = world.countries.get(cc); if (c) { c._manpower = mp.get(cc) || 0; c._manpowerCap = T.MANPOWER_FRAC * pop; } }
+  }
 }
 
 // ── Periodic: advance every active war front by tile capture / storm ──
@@ -324,11 +360,12 @@ export function advanceFronts(world) {
     capturedAt = world._tileCapturedAt = new Float64Array(N).fill(-Infinity);
   }
 
-  const natMight = new Map();   // countryId → Σ military might (a realm's establishment, for strategic depth)
+  const natMight = new Map();   // countryId → Σ might = the NATIONAL FIELD ARMY (Σ garrison × tech)
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     s._M = might(s);
     s._homeTi = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    s._armyStart = s.army || 0; s._ccStart = s.countryId;   // snapshot for the manpower casualty tally (end of pass)
     if (s.countryId >= 0) natMight.set(s.countryId, (natMight.get(s.countryId) || 0) + s._M);
   }
 
@@ -725,6 +762,21 @@ export function advanceFronts(world) {
       c._defLoad = defLoad.get(cc) || 0;
       c._warExhaust = exh.get(cc) || 0;
       c._warStamp = world.step;                 // freshness: engaged THIS pass
+    }
+  }
+
+  // MANPOWER casualties: every garrison that SHRANK this pass did so in battle (attrition,
+  // bombardment, a stormed city's losses) — those men are DEAD, so drain them from their
+  // realm's manpower pool (attributed to who owned them when they fell, before any conquest
+  // flip). The pool only regrows from population (musterArmies), so a bloody war leaves the
+  // realm unable to refield its army for a generation — lasting, demographic war-weariness.
+  if (T.MANPOWER_FRAC > 0) {
+    let mp = world._manpower; if (!mp) mp = world._manpower = new Map();
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      const cc = s._ccStart; if (cc == null || cc < 0) continue;
+      const loss = (s._armyStart || 0) - (s.army || 0);
+      if (loss > 0 && mp.has(cc)) mp.set(cc, Math.max(0, mp.get(cc) - loss));
     }
   }
 }

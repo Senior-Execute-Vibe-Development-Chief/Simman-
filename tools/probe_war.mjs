@@ -24,9 +24,16 @@ const bump=(b,main)=>{let r=hist.get(b);if(!r)hist.set(b,r={n:0,sumMain:0});r.n+
 let invN=0, invMul=0;       // realms attacking WHILE invaded (offence+defence)
 let cleanN=0, cleanMul=0;   // realms attacking with a clear rear
 let maxEff=0, maxBorders=0, sumBorders=0, attackerPasses=0, samples=0;
+let warMpN=0, warMp=0, peaceMpN=0, peaceMp=0, minMp=9;   // manpower / cap, warring vs at-peace
 for(let t=Math.max(0,STEP-WIN); t<STEP; t+=INTV){
   stepPeopleSim(world, INTV); samples++;
   for(const c of world.countries.values()){
+    // manpower depletion: recently-at-war realms should run their pool down
+    if(c._manpowerCap>0){
+      const r=(c._manpower||0)/c._manpowerCap;
+      const atWar=(world.step-(c._warStamp||-1e9))<200;
+      if(atWar){ warMpN++; warMp+=r; if(r<minMp) minMp=r; } else { peaceMpN++; peaceMp+=r; }
+    }
     if(c._warStamp!==world.step) continue;            // only realms engaged THIS pass
     const borders=c._offFronts||0; if(borders<=0) continue;   // only ones with a favourable border (attacking)
     const eff=c._effFronts||0, main=c._mainOffMul||0;
@@ -45,3 +52,5 @@ for(let b=1;b<=3;b++){ const r=hist.get(b); if(!r) continue;
 console.log(`\nmain-effort capacity:  CLEAR rear ${cleanN?(cleanMul/cleanN).toFixed(2):"-"} (${cleanN})   |   while INVADED ${invN?(invMul/invN).toFixed(2):"-"} (${invN})`);
 console.log(`mean border fronts (geographic) per attacker: ${(sumBorders/Math.max(1,attackerPasses)).toFixed(1)}  (max ${maxBorders})`);
 console.log(`max EFFECTIVE fronts a realm pushed at once: ${maxEff}  ← concentration caps real offensives`);
+console.log(`\nMANPOWER pool (men / ceiling):  at war ${warMpN?(warMp/warMpN).toFixed(2):"-"}   |   at peace ${peaceMpN?(peaceMp/peaceMpN).toFixed(2):"-"}   |   most-drained realm ${minMp<9?minMp.toFixed(2):"-"}`);
+console.log(`  (< 1 at war = bloody fighting hollowing out the army; ~1 at peace = reserve refilled)`);
