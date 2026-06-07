@@ -342,7 +342,11 @@ function computeLuxury(s, world) {
   const sp = sackPenalty(s, world && world.step);
   s._luxSupply = luxRes * LUX_SUPPLY_RATE * popF * sp * sp;
   const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
-  s._luxDemand = spare * LUX_SPEND_FRAC;
+  // Luxury is URBAN / elite consumption — silks, spices, furs for a town's wealthy class. A
+  // farming village (tier 0) is a subsistence peasant community: even a cash-rich one buys
+  // little luxury (it saves / reinvests in land + stock), so its appetite is LUX_VILLAGE_FRAC.
+  const luxClass = (s.tier | 0) >= 1 ? 1 : T.LUX_VILLAGE_FRAC;
+  s._luxDemand = spare * LUX_SPEND_FRAC * luxClass;
   s._luxSupplyLeft = s._luxSupply;   // drawn down across partners in the trade pass
   s._luxDemandLeft = s._luxDemand;
 }
@@ -412,8 +416,12 @@ export function computeExportValue(s, world) {
   // on — booked as "food & farm goods" when it trades (see sellGoods).
   let ag = 1.0;                                          // base primary output
   const agScale = Math.min(1, (s._terrTiles || 0) / 120);
-  ag += (k.agriculture || 0) * agScale * 0.6;            // grain surplus + wild-forest goods
-  ag += (k.agriculture || 0) * (r.timber || 0) * 0.4;
+  // Grain surplus + farm goods — ONLY the tiers that actually FARM the land (FARM_MAX_TIER);
+  // a town/city grows no food of its own, so it has no farm produce to sell (it BUYS grain).
+  if (tier <= (T.FARM_MAX_TIER | 0)) {
+    ag += (k.agriculture || 0) * agScale * 0.6;          // grain surplus + wild-forest goods
+    ag += (k.agriculture || 0) * (r.timber || 0) * 0.4;
+  }
   const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
   ag += (k.construction || 0) * matAccess * 0.8;         // RAW building materials (timber/stone)
   if ((s.waterAccess || 0) > 0) {
