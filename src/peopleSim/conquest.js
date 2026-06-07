@@ -17,7 +17,7 @@ import { shockUnrest } from "./shocks.js";
 import { localPByCountry } from "./inflation.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, prunePersonalities, driftPersonality, expansionReachMul } from "./personality.js";
-import { CITY_TIER } from "./countryTerritory.js";
+import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
 import { techEff } from "./settlement.js";
 import { T } from "./tuning.js";
 
@@ -356,6 +356,9 @@ const RANGE_BASE = 8 * 1.02, RANGE_ORG = 16 * 1.02, RANGE_MOB = 10 * 1.02, RANGE
 // SPREAD needs rail+telegraph. Diagnosis (probe_landconc) showed admin alone was
 // projecting empires across continents without the transport history required.
 const RANGE_BASE_T = 5, RANGE_LOGI = 24, RANGE_ADMIN = 2, RANGE_MOB_T = 4, RANGE_NAV_T = 3;
+// A/B override for the resolution-scaling of the hold reach (rebuildCountries):
+// unset → auto (resScaleFor, the fix); =1 → unscaled (reproduces the patchwork bug).
+const _holdScaleEnv = (typeof process !== "undefined" && process.env && +process.env.SIM_HOLD_SCALE) || 0;
 // (all ×1.02 re-anchor the 0.5-pivot expansionReachMul — personality.js;
 //  c.range = RANGE_expr × reachMul, so behaviour is identical to the old form)
 
@@ -404,6 +407,15 @@ function dist(world, ax, ay, bx, by) {
 // pass from the persistent s.countryId.
 export function rebuildCountries(world) {
   const countries = new Map();
+  // Resolution-invariant hold reach: the territorial reach (countryTerritory.js)
+  // scales with the map so a realm claims the same FRACTION of the world at any
+  // grid size — the admin/hold reach below MUST scale identically, or a big-map
+  // realm claims far more than its (unscaled) grip can hold and its whole frontier
+  // reads as chronically "loose", shedding scattered patches on every side every
+  // time a seed collapses (the "patchwork secession, multiple sections, 2 sides"
+  // artefact). At the 240-grid resScale=1 (unchanged); at the shipped 960 it's ×4.
+  // (SIM_HOLD_SCALE env forces a fixed value, for A/B against the unscaled bug.)
+  const resScale = _holdScaleEnv > 0 ? _holdScaleEnv : resScaleFor(world.tw);
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless frontier settlements belong to no country
     let c = countries.get(s.countryId);
@@ -427,6 +439,15 @@ export function rebuildCountries(world) {
     // environment the first time it's read.
     c.personality = personalityOf(world, c);
     c.range *= expansionReachMul(c.personality);
+    // GRIP (hold reach): c.range is the realm's hold-distance in raw tile-cost — it
+    // stays unscaled so it remains the Dijkstra SEARCH bound (maxCost = range×25),
+    // which must not blow up with the map size (a ×4 there floods 16× the area and
+    // froze the polity pass for seconds). The GRIP that's compared against actual
+    // map distances — the admin load (d/grip) and the secession reach (effReach) —
+    // is res-scaled so a big-map realm holds the same FRACTION it claims (the
+    // territorial reach is res-scaled too; without this the surplus frontier reads
+    // as chronically "loose" and sheds in scattered patches — see resScale note).
+    c.holdReach = c.range * resScale;
     c.hue = ((c.id * 61) % 360 + 360) % 360;
     buildHierarchy(world, c);
     assignProvinces(world, c);
@@ -920,7 +941,7 @@ function ravage(s, popMul, wealthMul, armyMul) {
 // The capital can't break from itself, so it RIOTS instead (damage, no
 // breakaway) — a starving throne loses people, shrinking the control budget.
 function rebel(world, c, seeds) {
-  const radius = Math.max(UNREST_RADIUS_MIN, c.range);
+  const radius = Math.max(UNREST_RADIUS_MIN, c.holdReach || c.range);   // rally radius is a map distance → res-scaled grip
   for (const seed of seeds) {
     if (seed.id === c.capitalId) {            // the throne riots, it doesn't secede
       ravage(seed, RIOT_POP, RIOT_WEALTH, RIOT_ARMY);
@@ -1208,7 +1229,8 @@ export function updatePolities(world) {
 
     const cap = c.capital;
     const capPower = settlementPower(cap);
-    const range = Math.max(1, c.range);
+    const range = Math.max(1, c.range);            // raw hold-distance → search/ceiling bounds (maxCost, reachCeil)
+    const holdRange = Math.max(1, c.holdReach || c.range);   // res-scaled grip → compared against map distances (admin load, secession reach)
     // Real per-member projection cost from the capital, via tech × terrain.
     // The Himalayas / oceans / rivers all drain the centre's reach budget
     // exactly the way they drain a column's movement. (Naval shortcuts are
@@ -1217,7 +1239,7 @@ export function updatePolities(world) {
     const _tt = _pf ? performance.now() : 0;
     const { cost: tcosts, cross: tcross } = capitalTransportCosts(world, c);
     if (_pf) _pf.transport += performance.now() - _tt;
-    const reachCeil = range * 25;   // matches the Dijkstra's bound
+    const reachCeil = holdRange * 25;   // load-space ceiling for an unreachable member (grip frame, like the load → load≈25 ⇒ secede); the Dijkstra SEARCH bound (maxCost) stays raw for perf
 
     // ── Control budget: what the centre can administer (reach-units) ──
     // The capital projects a base budget that grows with its own size; loyal
@@ -1348,7 +1370,7 @@ export function updatePolities(world) {
       const coerce  = Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
       const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
       const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
-      const load = (d / range) * sizeMul * recMul / coerce;
+      const load = (d / holdRange) * sizeMul * recMul / coerce;   // grip: res-scaled so the held FRACTION matches the (res-scaled) territorial reach
       s._adminLoad = load;            // for the info panel
       loads.push({ s, load });
     }
@@ -1401,7 +1423,7 @@ export function updatePolities(world) {
     // deep collapse loosens many provinces at once (see shedFrontier).
     if (seeds.length) {
       const stress = capacity > 0 ? Math.max(0, cum / capacity - 1) : 4;
-      shedFrontier(world, c, seeds, tcosts, range, stress);
+      shedFrontier(world, c, seeds, tcosts, holdRange, stress);   // grip = res-scaled hold reach (see holdRange)
     }
     // Boiled-over towns rise up (destructive, heartland-capable — see rebel()).
     if (rebelSeeds.length) rebel(world, c, rebelSeeds);
@@ -1424,7 +1446,7 @@ export function updatePolities(world) {
       const tcEff = (tc === undefined || !isFinite(tc)) ? reachCeil : tc;
       // A governor across a great river is "farther" too (same full-weight
       // river toll as the hold load) — so a far-bank seat schemes harder.
-      const far  = (eucl + Math.max(0, tcEff - eucl) + (tcross.get(s.id) || 0)) / range;
+      const far  = (eucl + Math.max(0, tcEff - eucl) + (tcross.get(s.id) || 0)) / holdRange;
       if (!seat || pacified || infant || ratio < AMBITION_RATIO || far < AMBITION_MIN_FAR) {
         if (s._ambition) s._ambition = Math.max(0, s._ambition - AMBITION_GAIN);   // fades when unqualified
         continue;
@@ -1521,7 +1543,7 @@ function estAbsorbLoad(world, c, m) {
   let dx = Math.abs(cap.pos.x - m.pos.x); if (dx > world.tw / 2) dx = world.tw - dx;
   const dy = cap.pos.y - m.pos.y;
   const eucl = Math.sqrt(dx * dx + dy * dy);
-  return Math.max(0.5, eucl / Math.max(1, c.range));
+  return Math.max(0.5, eucl / Math.max(1, c.holdReach || c.range));   // eucl is a map distance → res-scaled grip
 }
 
 // Org → highest target TIER a realm can administratively absorb. THE
