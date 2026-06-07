@@ -477,6 +477,7 @@ export function maybeBuildRoads(world) {
     world._planSnap = snap;
     world._planQueue = world.settlements.filter(s => {
       if (s.mode !== "settled" || s.people < MIN_POP_TO_PLAN) return false;
+      if ((s.tier | 0) < (T.ROAD_MIN_TIER | 0)) return false;   // grand scale: tier-0 Farming Regions don't lay roads (roads are trade-only trunk routes, town↔city)
       // A meaningful pop jump (or first-ever evaluation) makes it due now.
       if (s._planPop === undefined || s.people > s._planPop * 1.4) s._planNext = 0;
       return (s._planNext || 0) <= snap;
