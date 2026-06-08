@@ -7,9 +7,13 @@ import { computeRivers } from "../src/riverGen.js";
 import { cropSuitability } from "../src/cropGen.js";
 import { generateResources } from "../src/resourceGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
+import { applyTuning } from "../src/peopleSim/tuning.js";
 
 const STEP = +(process.argv[2] || "10000");
 const SEED = +(process.argv[3] || "8817");
+const FMT  = +(process.argv[4] || "0");        // FARM_MAX_TIER override (0 = cities import grain; 2 = towns+cities farm)
+applyTuning({ FARM_MAX_TIER: FMT });
+console.log(`[tuning] FARM_MAX_TIER=${FMT} (${FMT === 0 ? "only Farming Regions farm" : "tiers 0.." + FMT + " farm their land"})`);
 const W = 480, H = 240, N = W * H;
 const w = generateWorld(W, H, SEED, "earth_sim", 0.78, true, false, {});
 const tE = new Float32Array(N), tT = new Float32Array(N), tM = new Float32Array(N), tC = new Uint8Array(N), tCrop = new Float32Array(N);
@@ -45,14 +49,15 @@ for (let i = 0; i < NT; i++) {
   THRESH.forEach((t, j) => { if (f >= t) farmable[j]++; });
   const oid = own ? own[i] : -1;
   const ot = oid >= 0 ? (tier.has(oid) ? tier.get(oid) : -1) : -1;
+  const farms = ot >= 0 && ot <= FMT;   // does this tile's owner FARM (tier ≤ FARM_MAX_TIER)?
   const inC = co && co[i] >= 0;
   if (inC) inCountry++;
-  if (ot === 0) farmed++;
-  else if (ot >= 1) urbanOwned++;
+  if (farms) farmed++;
+  else if (ot >= 0) urbanOwned++;
   if (f >= 0.20) {
     fб++;
-    if (ot === 0) f_farmed++;
-    else if (ot >= 1) f_urban++;
+    if (farms) f_farmed++;
+    else if (ot >= 0) f_urban++;
     else if (inC) f_countryGap++;   // inside a country's borders but owned by no settlement
     else f_wild++;                  // no country at all
   }
