@@ -936,9 +936,14 @@ function updateFood(world, s) {
   // marginal to feed the people required to farm it (average fertility below the floor) yields
   // NOTHING and supports no settlement. The break-even fertility is exactly FARM_FERT_FLOOR.
   const netFert = Math.max(0, (s._terrFertSum || 0) - (s._terrTiles || 0) * T.FARM_FERT_FLOOR);
-  const landFood0 = ((s.tier | 0) > (T.FARM_MAX_TIER | 0)
-    ? 0
-    : netFert * T.FARM_YIELD_PER_FERT * techEff(s).farmYield) * armyLabor;
+  // MODEL B: EVERY settlement's territory (its rural hinterland) is farmed by the country
+  // folk who live on it — a city does not grow food in its packed urban core, but the land
+  // it controls IS worked and feeds it. So land food is produced from a settlement's territory
+  // regardless of tier; the tier instead sets how URBAN/concentrated its population is (below),
+  // and a city's dense population simply eats MORE than its hinterland grows, so it net-IMPORTS
+  // the shortfall up the hierarchy (Rome's Egyptian grain), while a rural region grows a surplus
+  // it ships up. No farmable land is wasted by sitting under an urban centre.
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * techEff(s).farmYield * armyLabor;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
