@@ -3620,7 +3620,7 @@ return(
 
   return(
     <div className="au-parchment au-pico au-elev"
-      style={{position:"absolute",left:14,top:14,width:248,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"90vh",overflowY:"auto",
+      style={{position:"absolute",left:14,top:14,width:248,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"calc(100vh - 28px)",overflowY:"auto",
         pointerEvents:"auto"/* au-pico sets pointer-events:none for the hover tooltip; this card is interactive */}}>
 
       {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
@@ -3628,11 +3628,18 @@ return(
       {chronicleOpen&&psw._chronicle&&psw._chronicle.countryId===s.countryId&&
         <ChronicleOverlay entries={psw._chronicle.entries} name={psw._chronicle.name} onClose={()=>setChronicleOpen(false)}/>}
 
-      {/* ── Header ── */}
+      {/* ── Header ── (the chronicle opener lives here so it's always visible
+          without scrolling the card — a long card can push a bottom section
+          out of easy reach) */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div className="au-pico-title" style={{fontSize:14,textTransform:"capitalize"}}>{s.name}</div>
-        <button onClick={()=>setSelectedSettlementId(-1)}
-          style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:16,lineHeight:1,padding:"0 2px"}}>×</button>
+        <div style={{display:"flex",alignItems:"center",gap:1,flexShrink:0}}>
+          {psw._chronicle&&psw._chronicle.countryId===s.countryId&&psw._chronicle.entries&&psw._chronicle.entries.length>0&&
+            <button onClick={()=>setChronicleOpen(true)} title={`Open chronicle — ${psw._chronicle.entries.length} events`}
+              style={{background:"transparent",border:"none",cursor:"pointer",fontSize:14,lineHeight:1,padding:"0 3px"}}>📜</button>}
+          <button onClick={()=>setSelectedSettlementId(-1)}
+            style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:16,lineHeight:1,padding:"0 2px"}}>×</button>
+        </div>
       </div>
       <div className="au-fade" style={{fontSize:10,textTransform:"capitalize",marginBottom:6}}>
         {tierName} · {era} · {waterLabel}
