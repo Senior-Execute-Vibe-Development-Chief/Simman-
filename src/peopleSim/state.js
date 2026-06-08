@@ -6,6 +6,7 @@
 import { mkRng } from "./rng.js";
 import { resetSettlementIds, makeSettlement } from "./settlement.js";
 import { resetShipIds } from "./sea.js";
+import { T } from "./tuning.js";
 
 const TILE_RES = 2;
 
@@ -41,6 +42,7 @@ export function createWorld(w, opts = {}) {
 
   const world = {
     worldRef: w,
+    preset: w.preset,
     width: w.width, height: w.height,
     tw, th, N, tileRes: TILE_RES,
 
@@ -224,9 +226,59 @@ function cradleSurround(world, ti) {
   return total > 0 ? { landBarrier: landBarrier / total, seaFrac: sea / total }
                    : { landBarrier: 0, seaFrac: 0 };
 }
+// EARTH MAP: the two historical Old-World hearths. On the real-Earth heightmap these
+// fractional map positions are fixed (equirectangular: x = (lon+180)/360, y = (90−lat)/180),
+// so we snap each to the best fertile river tile nearby. Seeding ONLY these two means
+// civilisation radiates from Egypt and China while the New World and Australia stay wild
+// until sea-borne colonisation (sea.js) reaches them — the "ungoverned until colonisation"
+// look. Extend this list (Indus, Mesopotamia, Mesoamerica, Andes) for more independent hearths.
+const EARTH_HEARTH_SITES = [
+  { name: "Nile",    fx: 0.580, fy: 0.329 },   // fertile ribbon through the Sahara to the Mediterranean delta
+  { name: "Yangtze", fx: 0.828, fy: 0.271 },   // temperate East-Asian river basin
+];
+function seedEarthHearths(world) {
+  const { tw, th, elev, temp, moist, fert, riverMag } = world;
+  let seeded = 0;
+  for (const site of EARTH_HEARTH_SITES) {
+    const cx = Math.round(site.fx * tw), cy = Math.round(site.fy * th);
+    const R = Math.max(6, Math.round(tw * 0.04));   // search radius ~4% of map width
+    let bestTi = -1, bestScore = -1;
+    for (let dy = -R; dy <= R; dy++) {
+      const ny = cy + dy; if (ny < 0 || ny >= th) continue;
+      for (let dx = -R; dx <= R; dx++) {
+        const nx = ((cx + dx) % tw + tw) % tw;
+        const ti = ny * tw + nx;
+        if (!isContinentalLand(world, ti) || elev[ti] > 0.30) continue;
+        const t = temp[ti]; if (t < 0.62 || t > 0.92) continue;     // warm (a frozen river is no cradle)
+        const f = fert[ti] || 0; if (f < 0.25) continue;            // fertile (river alluvium counts via tCrop)
+        const rm = riverMag ? riverMag[ti] : 0;
+        const distPen = Math.sqrt(dx * dx + dy * dy) / R;
+        // Prefer the major river, fertile, near the target site.
+        const score = rm * 2 + f * 1.5 + (1 - distPen) * 2 + (1 - Math.abs(t - 0.76));
+        if (score > bestScore) { bestScore = score; bestTi = ti; }
+      }
+    }
+    if (bestTi < 0) continue;
+    const bx = bestTi % tw, by = (bestTi / tw) | 0;
+    const name = seeded === 0 ? "cradle" : `cradle-${seeded + 1}`;
+    makeSettlement(world, bx + 0.5, by + 0.5, { people: 25, name });
+    const rm = riverMag ? riverMag[bestTi] : 0;
+    console.log(`[peopleSim] ${name} (${site.name}) at tile (${bx},${by}) frac(${(bx / tw).toFixed(2)},${(by / th).toFixed(2)}) ` +
+      `temp:${temp[bestTi].toFixed(2)} moist:${moist[bestTi].toFixed(2)} fert:${fert[bestTi].toFixed(2)}${rm >= 2 ? ` river(mag${rm})` : ""}`);
+    seeded++;
+  }
+  return seeded > 0;
+}
+
 function seedCradleVillage(world) {
   resetSettlementIds();
   const { tw, elev, temp, moist, fert, coast, riverMag, N } = world;
+  // EARTH MAP: force the two historical hearths (Nile + Yangtze) instead of the
+  // algorithmic top-N, so the New World stays wild until colonisation. (T.EARTH_HEARTHS off = algorithmic.)
+  if (T.EARTH_HEARTHS && (world.preset === "earth_sim" || world.preset === "earth")) {
+    if (seedEarthHearths(world)) return;
+    console.warn("[peopleSim] earth hearths found no site — falling back to algorithmic cradles");
+  }
   // Collect ALL viable candidates with their scores, then greedily pick the
   // top-scoring set with minimum separation.
   const candidates = [];
