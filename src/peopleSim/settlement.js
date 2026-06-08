@@ -322,6 +322,12 @@ export { techEff };
 // outward — that's how mined money spreads to the rest of the economy.
 // MINING_RATE -> runtime lever (tuning.js T.MINING_RATE)
 function updateWealth(world, s) {
+  // Coin-loss drain (Phase 1 — the honest micro-sink replacing the freight burn):
+  // a sliver of circulating specie leaves for good each tick — worn, shipwrecked,
+  // buried in hoards, melted to plate. Runs for EVERY settlement (before the
+  // mining-only return) so the money supply settles at an equilibrium between
+  // mint inflow and this realistic drain, instead of the freight burn.
+  if (T.COIN_LOSS_RATE > 0 && s.wealth > 0) s.wealth -= s.wealth * T.COIN_LOSS_RATE;
   const reserves = world.depositReserve;
   if (!reserves) return;
   const minable = s._minableTiles;
@@ -341,8 +347,18 @@ function updateWealth(world, s) {
     reserveArr[ti] = left - got;
     mined += got;
   }
-  s.wealth = (s.wealth || 0) + mined;
-  recordIn(s, IN_MINING, mined);
+  // Minting (Phase 1): the realm's MINT coins the new specie, taking SEIGNIORAGE
+  // to the treasury before paying the miner the rest — so money creation is a
+  // state act, not pure geology. A stateless miner (no government yet) keeps the
+  // lot (the cut is only taken when there is a treasury to receive it, so no coin
+  // is destroyed). govOf is inlined here to avoid a settlement↔conquest cycle.
+  let seig = 0;
+  if (T.SEIGNIORAGE_RATE > 0 && s.countryId >= 0 && world.governments) {
+    const g = world.governments.get(s.countryId);
+    if (g) { seig = mined * T.SEIGNIORAGE_RATE; g.treasury += seig; }
+  }
+  s.wealth = (s.wealth || 0) + mined - seig;
+  recordIn(s, IN_MINING, mined - seig);
   // Smoothed mining income, for the money-flow overlay's source markers
   // (mining is the only money entering the system).
   s._minedRate = (s._minedRate || 0) * 0.9 + mined * 0.1;

@@ -971,6 +971,12 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   buyer.wealth -= actual;
   const paid = goodsValue * scale;
   seller.wealth = (seller.wealth || 0) + paid;
+  // FREIGHT is the carrier's fee, NOT money burned (Phase 1): credit it to the
+  // seller's shipping/merchant sector (the "carrying trade" that enriched ports)
+  // so the closed specie supply is conserved. The supply is instead regulated by
+  // the realistic COIN_LOSS_RATE drain + depleting mines, not this burn.
+  const freightPaid = freight * scale;
+  if (freightPaid > 0) seller.wealth += freightPaid;
   // Book the trade by SECTOR (computeExportValue split the seller's exports into
   // food / raw materials / manufactured goods). A Farming Region reads as a
   // farmer selling grain & livestock, a town as a workshop selling crafts.
@@ -987,7 +993,7 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   const goodsPaid = paid - foodPaid - matPaid;
   recordIn(seller, IN_FOOD, foodPaid);
   recordIn(seller, IN_MATERIALS, matPaid);
-  recordIn(seller, IN_GOODS, goodsPaid);
+  recordIn(seller, IN_GOODS, goodsPaid + freightPaid);   // goods sold + the carrying-trade (freight) fee
   recordOut(buyer, OUT_FOOD, foodPaid);
   recordOut(buyer, OUT_MATERIALS, matPaid);
   recordOut(buyer, OUT_GOODS, goodsPaid);
@@ -999,9 +1005,10 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   // Customs duty funds the importing realm's STATE TREASURY (not the capital
   // city's purse) — the government then redistributes it (conquest.js).
   if (collector) { govOf(world, buyer.countryId).treasury += tariff * scale; recordOut(buyer, OUT_TARIFFS, tariff * scale); }
-  // Conservation: buyer loses `actual` = goodsValue*scale (to seller)
-  // + totalToll*scale (to intermediates) + tariff*scale (to the state)
-  // + freight*scale (consumed).
+  // Conservation: buyer loses `actual` = goodsValue*scale + freight*scale (both
+  // to the SELLER — goods price + carrying fee) + totalToll*scale (to the
+  // intermediates) + tariff*scale (to the state). Nothing is burned in trade; the
+  // money supply is regulated by COIN_LOSS_RATE + depleting mines instead.
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
