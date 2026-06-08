@@ -3979,7 +3979,10 @@ return(
         return(
           <PsSection id="chronicle" title="Chronicle" open={psCardOpen.chronicle} onToggle={togglePsCard}
             right={<span className="au-fade">{chron.entries.length}</span>}>
-            <div style={{maxHeight:158,overflowY:"auto",display:"flex",flexDirection:"column",gap:3,paddingRight:2}}>
+            {/* No inner scroll box — the entries flow and the whole card scrolls
+                as one surface (a nested scroll here traps the mouse wheel so the
+                card can't be scrolled past it). */}
+            <div style={{display:"flex",flexDirection:"column",gap:3,paddingRight:2}}>
               {entries.map((e,i)=>(
                 <div key={i} style={{display:"flex",gap:6,fontSize:10,lineHeight:1.3}}>
                   <span className="au-fade" style={{flexShrink:0,minWidth:48,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{yearStr(e.step)}</span>
