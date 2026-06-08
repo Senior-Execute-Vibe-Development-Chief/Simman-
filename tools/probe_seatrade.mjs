@@ -8,11 +8,13 @@ import { cropSuitability } from "../src/cropGen.js";
 import { generateResources } from "../src/resourceGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
 import { applyTuning } from "../src/peopleSim/tuning.js";
+import { localP } from "../src/peopleSim/inflation.js";
 
 const STEP = +(process.argv[2] || "8000");
 const SEED = +(process.argv[3] || "8817");
 if (process.argv[4] !== undefined) applyTuning({ SEA_TRADE_MULT: +process.argv[4] });
 if (process.argv[5] !== undefined) applyTuning({ COIN_LOSS_RATE: +process.argv[5] });
+if (process.argv[6] !== undefined) applyTuning({ HUME_ELASTICITY: +process.argv[6] });
 const W = 480, H = 240, N = W * H;
 const w = generateWorld(W, H, SEED, "earth_sim", 0.78, true, false, {});
 const tE = new Float32Array(N), tT = new Float32Array(N), tM = new Float32Array(N), tC = new Uint8Array(N), tCrop = new Float32Array(N);
@@ -24,6 +26,18 @@ const world = initPeopleSim(w, { seed: SEED, tCrop, tileRes: 1, deposits: w.depo
 world._wantMoneyFlows = true;
 for (let s = 1; s <= STEP; s++) stepPeopleSim(world, 1);
 console.log(`[stats]`, peopleSimStats(world));
+
+// Price-level dispersion across the world (population-weighted). Hume should
+// TIGHTEN this — specie self-distributes so regional price levels converge
+// instead of some regions hoarding coin and inflating away from the rest.
+{
+  let pw = 0, pmean = 0; const Ps = [];
+  for (const s of world.settlements) { if (s.mode !== "settled") continue; const p = localP(world, s); const w = Math.max(1, s.people); Ps.push([p, w]); pw += w; pmean += p * w; }
+  pmean /= Math.max(1, pw);
+  let pvar = 0, pmin = 9, pmax = 0; for (const [p, w] of Ps) { pvar += w * (p - pmean) ** 2; if (p < pmin) pmin = p; if (p > pmax) pmax = p; }
+  pvar /= Math.max(1, pw);
+  console.log(`[price level] mean ${pmean.toFixed(2)}  spread ${pmin.toFixed(2)}..${pmax.toFixed(2)}  CV ${(100 * Math.sqrt(pvar) / Math.max(0.01, pmean)).toFixed(1)}%  (lower CV = Hume equilibrating prices across regions)`);
+}
 
 const flows = world._moneyFlows || [];
 const acc = { land: { n: 0, mag: 0, tiles: 0 }, sea: { n: 0, mag: 0, tiles: 0 } };

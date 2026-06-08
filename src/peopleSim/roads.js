@@ -48,6 +48,7 @@ import { T } from "./tuning.js";
 import { exportValueOf, getWealthReserve } from "./settlement.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
+import { localP } from "./inflation.js";
 import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_MATERIALS, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_MATERIALS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -910,11 +911,25 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
   const transport = link.cost * TRANSPORT_PER_PATHCOST * stride;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;
+  // HUME price-specie-flow (Currency Phase 2): a region's export COMPETITIVENESS
+  // scales with how cheap it is vs its trade partner. A specie-rich region has a
+  // high price level (localP), so its goods are dear — it exports LESS and (as
+  // the partner's cheap goods undersell it) imports MORE, bleeding specie until
+  // its prices fall back. The scaling is RECIPROCAL (compA·compB = 1), so it
+  // shifts the trade BALANCE without changing total volume: specie self-
+  // distributes across regions and none hoards unboundedly. (Self-correcting, so
+  // it bounds the price-level spread rather than expanding the money supply —
+  // which is why it doesn't need the inflation-neutrality work.)
+  let compA = 1, compB = 1;
+  if (T.HUME_ELASTICITY > 0) {
+    const Pa = localP(world, a), Pb = localP(world, b);
+    if (Pa > 0 && Pb > 0 && Pa !== Pb) { compA = Math.pow(Pb / Pa, T.HUME_ELASTICITY); compB = 1 / compA; }
+  }
   // A's goods sold to B (B pays A), then B's goods sold to A (A pays B).
   // Each leg scales with the BUYER's buying power, so a rich node imports more
   // and relays its coin onward. Freight is split across the two legs.
-  sellGoods(world, a, b, exportValueOf(a, world) * vol * demandMul(b), transport * 0.5, intermediates, numInter);
-  sellGoods(world, b, a, exportValueOf(b, world) * vol * demandMul(a), transport * 0.5, intermediates, numInter);
+  sellGoods(world, a, b, exportValueOf(a, world) * vol * demandMul(b) * compA, transport * 0.5, intermediates, numInter);
+  sellGoods(world, b, a, exportValueOf(b, world) * vol * demandMul(a) * compB, transport * 0.5, intermediates, numInter);
 }
 
 // Luxury trade: a wealthy settlement spends coin importing luxury goods

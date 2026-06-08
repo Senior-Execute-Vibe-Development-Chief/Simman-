@@ -1,6 +1,8 @@
 # Money & Currency System — design spec
 
-Status: **spec / pre-build**. Goal agreed with owner: replace the current
+Status: **Phases 1-2 implemented** (default-on); Phase 3 (debasement) blocked on
+the inflation-neutrality work in §3 below; Phases 4-5 not started. Goal agreed
+with owner: replace the current
 "money is dug out of the ground and regulated by nothing" model with a system
 where money is **created by mines + statecraft**, **regulated by trade and
 credit**, and **self-balancing across regions** — modelled on how real economies
@@ -187,10 +189,21 @@ with credit-to-carrier. Add `COIN_LOSS_RATE`. Re-express food budgets/reserves i
 `localP` so inflation is neutral. *Ship gate:* population + city count stable vs
 baseline across seeds 8817 & 4242 (the test the naive sink-removal failed).
 
-**Phase 2 — Hume competitiveness.** Trade volume responds to relative price
-levels; specie self-distributes; no region hoards unboundedly. Verify with the
-`probe_seatrade`-style harness that per-region money equilibrates instead of
-running away.
+**Phase 2 — Hume competitiveness. ✅ DONE** (`T.HUME_ELASTICITY`, default 0.5).
+A region's export competitiveness scales with how cheap it is vs its partner
+(reciprocal, so total trade volume is unchanged — only the balance shifts), so a
+specie-rich/high-price region exports less and imports more and bleeds specie
+until its prices fall. Verified (`probe_seatrade`, seeds 8817 & 4242): the
+price-level spread TIGHTENS — max localP 2.03→1.36 and 1.88→1.09, CV 9.9%→7.1%
+and 13.1%→10.2% — specie self-distributes, cities stable, population flat-to-up.
+
+NOTE on §3: the inflation-neutrality attempt (scale trade price × localP, deflate
+demand & reserve to real terms) did NOT neutralise population's dependence on the
+money LEVEL — the root is the food hierarchy's STOCK-based affordability cap
+(`spare/price`), which ties a city's grain intake to its coin hoard. True
+neutrality needs that made FLOW-based (income-based), still coin-mediated, no
+barter. This blocks Phase 3 (debasement deliberately inflates) but NOT Phases 2/4
+(which only redistribute money). Reverted; documented here as the next sub-task.
 
 **Phase 3 — Seigniorage & debasement as fiscal levers.** A realm in deficit/war
 debases (`fineness ↓`) for revenue + money expansion, eating inflation. Ties the
