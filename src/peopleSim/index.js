@@ -29,7 +29,10 @@ import { updateShocks } from "./shocks.js";
 import { updateInflation } from "./inflation.js";
 import { foldMoney } from "./money.js";
 import { checkPeopleSimInvariants } from "./invariants.js";
+import { chronicleTick } from "./chronicle.js";
 import { T } from "./tuning.js";
+
+const CHRONICLE_INTERVAL = 300;   // ticks between per-country chronicle milestone checks
 
 // Territory / conquest / polity cadences are runtime levers (tuning.js:
 // T.TERRITORY_INTERVAL, T.CONQUEST_INTERVAL, T.POLITY_INTERVAL) — the step
@@ -127,6 +130,9 @@ export function stepPeopleSim(world, n = 1) {
     // over-extended members secede.
     if (world.step % T.POLITY_INTERVAL === 0) updatePolities(world);
     mark("polities");
+    // Country chronicle: the slow-drift events (a discovery, a growth/wealth
+    // milestone) that aren't a single discrete moment, checked periodically.
+    if (world.step % CHRONICLE_INTERVAL === 0) chronicleTick(world);
     // Fold this tick's categorised money flows (recorded across all the
     // passes above) into each settlement's smoothed in/out rate, for the
     // info panel's "where the money comes from / goes" breakdown.

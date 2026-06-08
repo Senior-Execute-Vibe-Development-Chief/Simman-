@@ -22,6 +22,7 @@ import { forEachNear } from "./spatialGrid.js";
 import { localEdgeCost } from "./transport.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
+import { chronicle, realmName } from "./chronicle.js";
 import { T } from "./tuning.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
@@ -744,6 +745,23 @@ export function advanceFronts(world) {
           // Defence broken — the throne-city falls to the attacker.
           def.countryId = att.countryId;
           recordOccupation(def, oldId, att.countryId, world.step);   // remember the nation it just lost (homeland)
+          // Chronicle the storm. Names resolve before the rebuild. Taking land
+          // from the stateless frontier (oldId < 0) is an annexation, not a war
+          // between realms — and the frontier keeps no chronicle, so only the
+          // victor's line is written.
+          {
+            const dName = def.name || "a settlement", isCity = (def.tier | 0) >= 2;
+            const cityOf = isCity ? "the city of " : "";
+            if (oldId < 0) {
+              chronicle(world, att.countryId, "conquest", `Brought the free ${isCity ? "city" : "town"} of ${dName} under its rule.`);
+            } else if (defWasCapital) {
+              chronicle(world, oldId, "war", `Its capital ${dName} fell to ${realmName(world, att.countryId)} — the realm collapsed.`);
+              chronicle(world, att.countryId, "conquest", `Stormed the enemy capital ${dName} and shattered the realm.`);
+            } else {
+              chronicle(world, oldId, "war", `Lost ${cityOf}${dName} to ${realmName(world, att.countryId)}.`);
+              chronicle(world, att.countryId, "conquest", `Captured ${cityOf}${dName} from ${realmName(world, oldId)}.`);
+            }
+          }
           if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(att.countryId, (g.get(att.countryId) || 0) + 1); }
           def._conqueredAt = world.step;
           def._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue

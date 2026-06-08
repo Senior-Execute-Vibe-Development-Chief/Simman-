@@ -11,6 +11,7 @@ import { seedLocalTerritory } from "./territory.js";
 import { techEffects } from "./tech.js";
 import { agriGate, bestPackageAt, pkgSuitAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
+import { chronicle } from "./chronicle.js";
 import { T } from "./tuning.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, OUT_GOODS, OUT_MATERIALS } from "./money.js";
 
@@ -216,6 +217,8 @@ export function makeSettlement(world, x, y, opts = {}) {
     }
     s._cropCeil = undefined;
   }
+  // Chronicle: a cradle is the founding of a realm at the dawn of history.
+  if (opts.cradle) chronicle(world, s.id, "founding", "Founded at the dawn of civilisation.");
   s._techEff = techEffects(s.knowledge, T.TECH_EFFECTS);   // tech bonuses available from tick 0 (refreshed in updateKnowledge)
   return s;
 }

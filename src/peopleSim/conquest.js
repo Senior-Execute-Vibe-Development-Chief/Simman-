@@ -18,6 +18,7 @@ import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, prunePersonalities, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
 import { techEff } from "./settlement.js";
+import { chronicle, realmName, archiveChronicle } from "./chronicle.js";
 import { T } from "./tuning.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
@@ -477,6 +478,12 @@ export function rebuildCountries(world) {
     buildHierarchy(world, c);
     assignProvinces(world, c);
   }
+  // Archive the chronicle of any realm that vanished this pass (its id is now held
+  // by no settlement → conquered/dissolved) so fallen empires keep their history.
+  // Done before the swap so the dead realm's name still resolves from the old map.
+  if (world._chronicles) {
+    for (const cid of world._chronicles.keys()) if (!countries.has(cid)) archiveChronicle(world, cid, "Conquered and erased from the map.");
+  }
   world.countries = countries;
   return countries;
 }
@@ -855,6 +862,8 @@ function shedPatch(world, c, members) {
       m._conqueredAt = world.step;                 // anti-flicker grace
       if (m.history) m.history.push({ step: world.step, type: m === seat ? "seceded" : "joined-secession", to: newId });
     }
+    chronicle(world, c.id, "secession", `Province ${(seat && seat.name) || "a city"} rose in revolt and broke away.`);
+    chronicle(world, newId, "founding", `Broke away from ${realmName(world, c.id)} in a war of secession.`);
   }
 }
 
@@ -1721,6 +1730,15 @@ function absorbWeakNeighbors(world, countries) {
     const oldCC = m.countryId;
     m.countryId = bestId;
     recordOccupation(m, oldCC, bestId, world.step);   // absorbed people keep their homeland identity
+    {
+      const mName = m.name || "a settlement";
+      if (oldCC < 0) {
+        chronicle(world, bestId, "annex", `The free settlement ${mName} joined the realm.`);
+      } else {
+        chronicle(world, bestId, "annex", `Peacefully absorbed ${mName} from ${realmName(world, oldCC)}.`);
+        chronicle(world, oldCC, "loss", `Ceded ${mName} to ${realmName(world, bestId)}.`);
+      }
+    }
     if (world.debug && world.debug.land) { world.debug.land.absorb++; const g = world.debug.land.gain; g.set(bestId, (g.get(bestId) || 0) + 1); }
     m.loyalty = 0.6;                          // absorbed, not yet truly part of the realm
     m._conqueredAt = world.step;              // brief grace to settle in

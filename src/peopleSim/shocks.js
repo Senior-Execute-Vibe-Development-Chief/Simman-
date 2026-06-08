@@ -11,6 +11,7 @@
 // past its tipping point.
 
 import { mkRng } from "./rng.js";
+import { chronicle } from "./chronicle.js";
 import { T } from "./tuning.js";
 
 // ── FAMINE — a regional bad-harvest event ──
@@ -75,6 +76,7 @@ export function updateShocks(world) {
         s._famineUntil = until;
         s._harvestMul = FAMINE_SEVERITY;
         if (s.history) s.history.push({ step: world.step, type: "famine" });
+        chronicle(world, s.countryId, "famine", "A famine gripped the land.");
       }
     }
   }
@@ -129,6 +131,7 @@ function infect(world, s) {
   s._plagueActive = true;
   world._plagued.add(s.id);
   if (s.history) s.history.push({ step: world.step, type: "plague-struck", people: Math.round(s.people) });
+  chronicle(world, s.countryId, "plague", "Plague swept through the realm.");
 }
 
 function spreadFrom(world, s, reach, mult, rng) {

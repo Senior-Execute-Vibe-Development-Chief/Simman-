@@ -1243,7 +1243,7 @@ const countryColorsRef=useRef(new Map());
 // Which collapsible sections of the settlement card are open. Persists
 // across re-renders (the card re-renders every few ticks) and across
 // selecting different settlements.
-const[psCardOpen,setPsCardOpen]=useState({food:true,tech:true,knowledge:false,resources:false,trade:true});
+const[psCardOpen,setPsCardOpen]=useState({food:true,tech:true,knowledge:false,resources:false,trade:true,chronicle:true});
 const togglePsCard=id=>setPsCardOpen(o=>({...o,[id]:!o[id]}));
 const[useRealWind,setUseRealWind]=useState(false);
 const useMercator=false;
@@ -2959,6 +2959,7 @@ const applySnapshot=useCallback((snap)=>{
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   psw.ships=snap.ships;psw.armies=snap.armies;
+  psw._chronicle=snap.chronicle||null;             // selected realm's history (null when nothing selected)
   const setts=snap.settlements||[];
   if(snap.selected){const sel=setts.find(x=>x.id===snap.selected.id);if(sel)Object.assign(sel,snap.selected);}
   psw.settlements=setts;
@@ -3946,6 +3947,31 @@ return(
             </>}
         </>
       </PsSection>
+
+      {/* ── Chronicle (the realm's history: foundings, wars, conquests,
+          plagues, famines, discoveries, growth & wealth milestones) ── */}
+      {(()=>{
+        const chron=psw._chronicle;
+        if(!chron||chron.countryId!==s.countryId||!chron.entries||!chron.entries.length)return null;
+        // Category → colour, matching the chronicle() event types.
+        const TYPE_COL={founding:"#3aa37a",discovery:"#5b9bd5",growth:"#3a9d54",wealth:"#caa24a",
+          war:"#d0533f",conquest:"#d2691e",annex:"#c0903a",secession:"#a06cd5",loss:"#c0673f",
+          plague:"#b05ad0",famine:"#c8843a",end:"#8a8f9c"};
+        const entries=chron.entries.slice().reverse();   // newest first
+        return(
+          <PsSection id="chronicle" title="Chronicle" open={psCardOpen.chronicle} onToggle={togglePsCard}
+            right={<span className="au-fade">{chron.entries.length}</span>}>
+            <div style={{maxHeight:158,overflowY:"auto",display:"flex",flexDirection:"column",gap:3,paddingRight:2}}>
+              {entries.map((e,i)=>(
+                <div key={i} style={{display:"flex",gap:6,fontSize:10,lineHeight:1.3}}>
+                  <span className="au-fade" style={{flexShrink:0,minWidth:48,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{yearStr(e.step)}</span>
+                  <span style={{color:TYPE_COL[e.type]||"#b7b2a6"}}>{e.text}</span>
+                </div>
+              ))}
+            </div>
+          </PsSection>
+        );
+      })()}
     </div>
   );
 })()}
