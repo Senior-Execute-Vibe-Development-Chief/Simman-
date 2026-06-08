@@ -902,7 +902,11 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
   // stride× volume + freight: this sweep stands in for `stride` ticks, so it
   // moves that many ticks' worth of goods (and pays that much freight), keeping
   // the average flow identical to the old every-tick pass.
-  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride;
+  // Maritime trade moved BULK far cheaper than ox-carts, so a sea lane carries
+  // several times the volume of the same overland link (T.SEA_TRADE_MULT) — the
+  // reason the great trading powers were ports. Without it ocean routes carried
+  // ~4% of all money flow. (Mirrors the grain trade's FOOD_HAUL_WATER bonus.)
+  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride * (link.sea ? T.SEA_TRADE_MULT : 1);
   const transport = link.cost * TRANSPORT_PER_PATHCOST * stride;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;

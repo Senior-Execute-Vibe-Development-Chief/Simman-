@@ -244,6 +244,8 @@ export const TUNING_SCHEMA = [
     params: [
       { key: "TRADE_RATE", label: "Trade volume", def: 0.025, min: 0.005, max: 0.1, step: 0.005,
         desc: "Scaling on goods traded between linked settlements. Up = richer, more interdependent economies." },
+      { key: "SEA_TRADE_MULT", label: "Maritime trade volume ×", def: 4.0, min: 1, max: 12, step: 0.5,
+        desc: "Volume multiplier on trade carried over a SEA LANE vs the same trade overland. Ships moved bulk goods 10-20× cheaper per ton than ox-carts, which is why the great trading powers were maritime (Venice, Alexandria, Canton, Amsterdam) — but the gravity trade otherwise gives a sea link the same √pop × trade-rate volume as a land link, so ocean routes carried only ~4% of all money flow (far too little). At 4× a coastal port trades several times more by sea than by road, ocean routes light up on the money overlay, and maritime hubs grow rich on it (the positive feedback that built real port cities). Mirrors the FOOD_HAUL_WATER bonus the grain trade already gets. 1 = sea trades like land (the old behaviour)." },
       { key: "TARIFF_RATE", label: "Customs tariff", def: 0.10, min: 0, max: 0.5, step: 0.02,
         desc: "Duty a capital skims on cross-border trade through it. Up = lucrative gateway states, costlier foreign trade." },
       { key: "TAX_MAX", label: "Max tax rate", def: 0.22, min: 0.05, max: 0.6, step: 0.02,
