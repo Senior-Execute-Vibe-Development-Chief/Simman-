@@ -48,7 +48,7 @@ import { T } from "./tuning.js";
 import { exportValueOf, getWealthReserve } from "./settlement.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
-import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
+import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_MATERIALS, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_MATERIALS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 
 // ── Constants ──────────────────────────────────────────────────────
 const QUALITY_NEW         = 0.25;       // new road: 4× cheaper than plain
@@ -967,16 +967,26 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   buyer.wealth -= actual;
   const paid = goodsValue * scale;
   seller.wealth = (seller.wealth || 0) + paid;
-  // Book the trade by SECTOR: the seller's agrarian fraction (computeExportValue)
-  // is farm produce — booked "food & farm goods"; the rest is manufactured wares —
-  // booked "goods". So a Farming Region reads as a farmer selling grain/livestock,
-  // a town as a workshop selling crafts.
-  const agFrac = seller._exportAgrarianFrac != null ? seller._exportAgrarianFrac : 1;
-  const agPaid = paid * agFrac;
-  recordIn(seller, IN_FOOD, agPaid);
-  recordIn(seller, IN_GOODS, paid - agPaid);
-  recordOut(buyer, OUT_FOOD, agPaid);
-  recordOut(buyer, OUT_GOODS, paid - agPaid);
+  // Book the trade by SECTOR (computeExportValue split the seller's exports into
+  // food / raw materials / manufactured goods). A Farming Region reads as a
+  // farmer selling grain & livestock, a town as a workshop selling crafts.
+  // CRUCIALLY the FOOD leg is booked only when the BUYER is actually food-short
+  // (supply < demand): a self-feeding settlement does not IMPORT food — its
+  // grain comes up the central-place HIERARCHY (foodHierarchy.js), not the
+  // horizontal gravity trade — so that fraction is re-booked as ordinary goods.
+  // This is what stops every town/city/region from both buying AND selling food.
+  const buyerShort = (buyer._foodSupply || 0) < (buyer._foodDemand || 0);
+  const foodFrac = buyerShort ? (seller._exportFoodFrac || 0) : 0;
+  const matFrac  = seller._exportMatFrac || 0;
+  const foodPaid = paid * foodFrac;
+  const matPaid  = paid * matFrac;
+  const goodsPaid = paid - foodPaid - matPaid;
+  recordIn(seller, IN_FOOD, foodPaid);
+  recordIn(seller, IN_MATERIALS, matPaid);
+  recordIn(seller, IN_GOODS, goodsPaid);
+  recordOut(buyer, OUT_FOOD, foodPaid);
+  recordOut(buyer, OUT_MATERIALS, matPaid);
+  recordOut(buyer, OUT_GOODS, goodsPaid);
   recordOut(buyer, OUT_TOLLS, (freight + totalToll) * scale);
   if (intermediates) {
     const tollPer = goodsValue * TOLL_RATE * scale;

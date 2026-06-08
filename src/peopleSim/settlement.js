@@ -431,33 +431,41 @@ export function computeExportValue(s, world) {
   const r = s.localRes || {};
   const tier = s.tier | 0;
 
-  // ── Agrarian / primary sector ─────────────────────────────────────────
-  // Grain surplus & farm produce, livestock, RAW materials (timber/stone),
-  // salt, seafood, base village products. This is what a Farming Region lives
-  // on — booked as "food & farm goods" when it trades (see sellGoods).
+  // ── Primary sector (ag) ───────────────────────────────────────────────
+  // The total `ag` is UNCHANGED, but it is split for the money panel into what
+  // is genuinely FOOD (agFood — grain, forage, seafood: only the tiers that
+  // FARM, plus its base subsistence surplus) vs RAW MATERIALS (agMat — timber /
+  // stone / salt / draught stock). A town/city grows no food, so its base
+  // output is urban goods, NOT "farm produce" — which is why a non-farming
+  // settlement used to read, wrongly, as SELLING food. (sellGoods books the
+  // three sectors; the food leg is suppressed unless the buyer is food-short.)
+  const baseIsFood = tier <= (T.FARM_MAX_TIER | 0);
   let ag = 1.0;                                          // base primary output
+  let agFood = baseIsFood ? 1.0 : 0;                     // farm village's base surplus is food; a town's base output is urban goods
+  let agMat = 0;
   const agScale = Math.min(1, (s._terrTiles || 0) / 120);
-  // Grain surplus + farm goods — ONLY the tiers that actually FARM the land (FARM_MAX_TIER);
-  // a town/city grows no food of its own, so it has no farm produce to sell (it BUYS grain).
-  if (tier <= (T.FARM_MAX_TIER | 0)) {
-    ag += (k.agriculture || 0) * agScale * 0.6;          // grain surplus + wild-forest goods
-    ag += (k.agriculture || 0) * (r.timber || 0) * 0.4;
+  if (baseIsFood) {
+    const grain = (k.agriculture || 0) * agScale * 0.6;  // grain surplus
+    const wild  = (k.agriculture || 0) * (r.timber || 0) * 0.4;   // wild-forest forage / game
+    ag += grain + wild; agFood += grain + wild;
   }
   const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
-  ag += (k.construction || 0) * matAccess * 0.8;         // RAW building materials (timber/stone)
+  const rawmat = (k.construction || 0) * matAccess * 0.8;          // RAW building materials (timber/stone)
+  ag += rawmat; agMat += rawmat;
   if ((s.waterAccess || 0) > 0) {
-    ag += (k.navigation || 0) * s.waterAccess * 0.5;     // coastal / river shipping
+    ag += (k.navigation || 0) * s.waterAccess * 0.5;     // coastal / river shipping — a SERVICE (booked as goods)
     // Fish / seafood — only the PRESERVED fraction (salt cod, etc.) trades for
-    // coin; most is eaten fresh & locally, so it's minor next to the grain
-    // staple and needs navigation (a shore-fishing village sells almost none).
-    ag += s.waterAccess * (k.navigation || 0) * 0.3;
+    // coin; most is eaten fresh & locally, so it's minor next to the grain staple.
+    const fish = s.waterAccess * (k.navigation || 0) * 0.3;
+    ag += fish; agFood += fish;
   }
   const horses = r.horses || 0;
-  if (horses > 0.05) ag += horses * 0.6 + (k.mobility || 0) * 0.4;   // horses & caravans
-  ag += (r.salt || 0) * 0.5;                             // salt
-  // Base village products — chickens, eggs, basket-weaving, hand-loomed cloth.
-  // 25 ppl → +0.14   1k → +0.30   10k → +0.40
-  ag += Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10);
+  if (horses > 0.05) { const h = horses * 0.6 + (k.mobility || 0) * 0.4; ag += h; agMat += h; }   // horses & draught stock → materials
+  const salt = (r.salt || 0) * 0.5; ag += salt; agMat += salt;     // salt → materials
+  // Base village/urban products — eggs & dairy (food) for a farm region, basketry
+  // & hand-loom cloth (goods) for a town. 25 ppl → +0.14  1k → +0.30  10k → +0.40
+  const base = Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10);
+  ag += base; if (baseIsFood) agFood += base;
 
   // ── Manufactured / service sector ─────────────────────────────────────
   // Metalwork, crafted wares, bureaucracy & banking — booked as "goods". A
@@ -475,9 +483,10 @@ export function computeExportValue(s, world) {
   // for a while (sackPenalty); tech scales the lot.
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
   const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step) * techEff(s).tradeMult;
-  ag *= mult; man *= mult;
+  ag *= mult; man *= mult; agFood *= mult; agMat *= mult;
   const v = ag + man;
-  s._exportAgrarianFrac = v > 0 ? ag / v : 1;           // share booked as food & farm goods (rest = manufactured goods)
+  s._exportFoodFrac = v > 0 ? agFood / v : 0;           // share booked as "food & farm goods"
+  s._exportMatFrac  = v > 0 ? agMat / v : 0;            // share booked as "materials" (rest = manufactured/service goods)
   return v;
 }
 
