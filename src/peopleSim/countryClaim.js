@@ -15,6 +15,19 @@
 // Rings the drawn border advances toward the target per relax call. 1 = slowest,
 // smoothest crawl. index.js calls relaxClaim every CLAIM_RELAX_INTERVAL ticks.
 const RINGS_PER_RELAX = 1;
+// ...but the crawl must keep PACE with a realm's growing territory regardless of
+// map size. At a fixed 1 ring/relax the border advances the same number of TILES
+// per tick on any map, so on the full-res world (≈4× wider than the test grid)
+// it covers ¼ the ground — and because a settlement is only claimed once the
+// border grows over it, realms can't bootstrap and the map freezes into a
+// confetti of stateless villages at ~0% claimed. So scale the rings with the map
+// width (reference RELAX_REF_W) so the front covers a consistent FRACTION of the
+// world per tick. (SIM_CLAIM_RINGS env overrides, for A/B.)
+const RELAX_REF_W = 240;
+const _ringsEnv = (typeof process !== "undefined" && process.env && +process.env.SIM_CLAIM_RINGS) || 0;
+function ringsPerRelax(tw) {
+  return _ringsEnv > 0 ? _ringsEnv : Math.max(RINGS_PER_RELAX, Math.round(RINGS_PER_RELAX * tw / RELAX_REF_W));
+}
 // Organic front: a tile on an advancing border accumulates breakthrough PRESSURE
 // each relax and only flips once it overcomes the tile's RESISTANCE. Open ground
 // resists ~1 (flips at once, as before); mountains resist far more (the front
@@ -29,6 +42,26 @@ const NOISE_RESIST = 2.5;  // coherent jitter (×_claimNoise 0..1) → ragged/bu
 // the single tile a brand-new realm's claim is born from. Robust to a dead
 // founder (a country id can outlive the settlement it was named for).
 function headScore(s) { return (s.tier | 0) * 1e7 + (s.people || 0); }
+
+// The political territory a realm has actually GROWN over at tile `ti`: the
+// rendered claim (the border it has crawled across — see relaxClaim), or −1 for
+// wilderness/water. Settlements take their country from THIS, not from the
+// instantly-projected target (world._countryOwner): a town is claimed once the
+// border grows over it, never ahead of the visible front. That keeps growth
+// reading as ONE organic front creeping outward — and stops the runaway where a
+// frontier town, claimed off the target the moment a realm's reach merely
+// projected to it, became a fresh seed and lurched the whole claim outward a
+// reach-budget at a time (the "weird growth / claimed before the country gets
+// there" pathology). Falls back to the target only before the very first crawl
+// has run (step 1), when no claim array exists yet.
+const _adoptTarget = (typeof process !== "undefined" && process.env && +process.env.SIM_ADOPT_TARGET) || 0;
+export function grownOwnerAt(world, ti) {
+  if (_adoptTarget) { const co = world._countryOwner; return co ? co[ti] : -1; }   // A/B: adopt off the projected target (old behaviour)
+  const claim = world._countryClaim;
+  if (claim && claim.length === world.N) return claim[ti];
+  const co = world._countryOwner;
+  return co ? co[ti] : -1;
+}
 
 // Is this tile on the SAME LANDMASS as land country `cid` already claims? Land
 // becomes a realm's only as its border crawls into it from ground it holds, so a
@@ -134,7 +167,8 @@ export function relaxClaim(world) {
   let press = world._claimPress;
   if (!press || press.length !== N) press = world._claimPress = new Float32Array(N);
   const noiseF = world._claimNoise;   // coherent value-noise field (countryTerritory.js); may be unset on the first pass
-  for (let r = 0; r < RINGS_PER_RELAX; r++) {
+  const rings = ringsPerRelax(tw);    // map-size-scaled so the front keeps pace at any resolution (see ringsPerRelax)
+  for (let r = 0; r < rings; r++) {
     const flips = [];
     for (let ti = 0; ti < N; ti++) {
       if (elev[ti] <= 0) { if (claim[ti] >= 0) claim[ti] = -1; press[ti] = 0; continue; }  // water is never claimed

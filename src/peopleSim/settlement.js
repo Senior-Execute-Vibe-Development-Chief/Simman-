@@ -9,6 +9,7 @@
 
 import { seedLocalTerritory } from "./territory.js";
 import { techEffects } from "./tech.js";
+import { agriGate } from "./agriculture.js";
 import { T } from "./tuning.js";
 import { recordIn, recordOut, IN_MINING, IN_MATERIALS, OUT_MATERIALS } from "./money.js";
 import { localP } from "./inflation.js";
@@ -31,7 +32,7 @@ export function resetSettlementIds() { _nextId = 1; }
 // 5000 bar predated the density increase and is unreachable without trading the
 // dense countryside for fewer, larger settlements.
 const TIER_THRESHOLD = [0, 250, 1200, 3000];
-const TIER_NAME      = ["village", "town", "city", "metropolis"];
+const TIER_NAME      = ["farming region", "town", "city", "metropolis"];   // tier-0 = an abstraction for MANY small villages (a farmed region), not one village
 // Demotion hysteresis: a settlement loses a tier only once its population falls
 // below this fraction of its CURRENT tier's promotion floor — a deadband so a
 // city hovering at a threshold doesn't flicker between tiers, while a sustained
@@ -85,6 +86,12 @@ const URBAN_ANTICIPATION_REF = 250;   // = TIER_THRESHOLD[town]; anticipation ki
 // materials is TRANSFERRED to the supplying partners, not destroyed.
 const INFRA_COST          = 80;     // coin per +1 housing of (imported) materials + labour
 const BUILD_RATE          = 0.045;  // housing/tick per construction-weighted builder (3x: at scale, build-lag was the binding constraint — settlements sat housing-limited far below their food potential, so few reached city size. Faster building lets FOOD drive scaling, as intended.)
+// Construction is resolved every T.DEV_STRIDE ticks at STRIDE× rate (temporal
+// LOD): a town's build pass walks its trade reach every tick to pay material
+// suppliers — the biggest slice of the per-settlement update — but housing grows
+// slowly, so bursting it keeps the same AVERAGE pace at ~STRIDE× less cost.
+// 1 = build every tick (original). (Towns are staggered by id so the cost is
+// even across ticks, not a spike.) T.DEV_STRIDE is a live Pacing lever (tuning.js).
 // Yield per (distance-weighted) fertility unit of territory, ×(1+ag·1.2).
 // Deliberately SUBSISTENCE-scale: a settlement's own land feeds only a
 // village-to-town population, so the countryside fills with small farming
@@ -101,6 +108,7 @@ const BUILD_RATE          = 0.045;  // housing/tick per construction-weighted bu
 // ── Army food cost ── A garrison consumes extra food (provisioning); it's
 // sized against the food surplus in musterArmies so the granary stays positive.
 export const ARMY_FOOD        = 0.003;  // extra food per soldier per tick (provisioning, above civilian)
+const ARMY_LABOR_FREE = 0.08;   // army up to this fraction of pop (the standing professional core) doesn't reduce farming; only the wartime CONSCRIPT surge beyond it empties the fields
 const LUX_RES = ["spices", "furs", "incense", "dyes"];
 const LUX_SUPPLY_RATE = 4.0;    // coin/tick a region can earn per luxury-unit × √pop
 const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends on luxury/tick
@@ -335,7 +343,11 @@ function computeLuxury(s, world) {
   const sp = sackPenalty(s, world && world.step);
   s._luxSupply = luxRes * LUX_SUPPLY_RATE * popF * sp * sp;
   const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
-  s._luxDemand = spare * LUX_SPEND_FRAC;
+  // Luxury is URBAN / elite consumption — silks, spices, furs for a town's wealthy class. A
+  // farming village (tier 0) is a subsistence peasant community: even a cash-rich one buys
+  // little luxury (it saves / reinvests in land + stock), so its appetite is LUX_VILLAGE_FRAC.
+  const luxClass = (s.tier | 0) >= 1 ? 1 : T.LUX_VILLAGE_FRAC;
+  s._luxDemand = spare * LUX_SPEND_FRAC * luxClass;
   s._luxSupplyLeft = s._luxSupply;   // drawn down across partners in the trade pass
   s._luxDemandLeft = s._luxDemand;
 }
@@ -397,50 +409,56 @@ function sackPenalty(s, worldStep) {
 export function computeExportValue(s, world) {
   const k = s.knowledge || {};
   const r = s.localRes || {};
-  let v = 1.0;
-  const oreAccess = Math.max(r.copper || 0, r.tin || 0, r.iron || 0, r.coal || 0);
-  if (oreAccess > 0.10) v += (k.metallurgy || 0) * 1.5;
-  const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
-  // Construction now covers building goods + crafted wares (formerly the
-  // toolmaking line) — the floor term gives a craft contribution even
-  // without raw materials.
-  v += (k.construction || 0) * (0.4 + matAccess * 0.8);
+  const tier = s.tier | 0;
+
+  // ── Agrarian / primary sector ─────────────────────────────────────────
+  // Grain surplus & farm produce, livestock, RAW materials (timber/stone),
+  // salt, seafood, base village products. This is what a Farming Region lives
+  // on — booked as "food & farm goods" when it trades (see sellGoods).
+  let ag = 1.0;                                          // base primary output
   const agScale = Math.min(1, (s._terrTiles || 0) / 120);
-  // Agriculture now covers grain surplus + wild-forest goods (formerly
-  // the foraging × timber line).
-  v += (k.agriculture || 0) * agScale * 0.6;
-  v += (k.agriculture || 0) * (r.timber || 0) * 0.4;
-  if ((s.waterAccess || 0) > 0) v += (k.navigation || 0) * s.waterAccess * 0.5;
-  // Fish / seafood — only the PRESERVED fraction (salt cod, etc.) trades
-  // for coin; most fish is eaten fresh and locally, so this is a minor
-  // good next to the storable grain staple. Needs navigation (preserving
-  // + shipping), so a shore-fishing village sells almost none.
-  if ((s.waterAccess || 0) > 0) v += s.waterAccess * (k.navigation || 0) * 0.3;
-  // Horses + mobility — horse trade and caravans.
+  // Grain surplus + farm goods — ONLY the tiers that actually FARM the land (FARM_MAX_TIER);
+  // a town/city grows no food of its own, so it has no farm produce to sell (it BUYS grain).
+  if (tier <= (T.FARM_MAX_TIER | 0)) {
+    ag += (k.agriculture || 0) * agScale * 0.6;          // grain surplus + wild-forest goods
+    ag += (k.agriculture || 0) * (r.timber || 0) * 0.4;
+  }
+  const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
+  ag += (k.construction || 0) * matAccess * 0.8;         // RAW building materials (timber/stone)
+  if ((s.waterAccess || 0) > 0) {
+    ag += (k.navigation || 0) * s.waterAccess * 0.5;     // coastal / river shipping
+    // Fish / seafood — only the PRESERVED fraction (salt cod, etc.) trades for
+    // coin; most is eaten fresh & locally, so it's minor next to the grain
+    // staple and needs navigation (a shore-fishing village sells almost none).
+    ag += s.waterAccess * (k.navigation || 0) * 0.3;
+  }
   const horses = r.horses || 0;
-  if (horses > 0.05) v += horses * 0.6 + (k.mobility || 0) * 0.4;
-  // Organization × log-scale population — bureaucracy / services / banking
-  // (now includes the old literacy contribution: scribes and records are
-  // a sub-function of an organised state with a clerical class).
+  if (horses > 0.05) ag += horses * 0.6 + (k.mobility || 0) * 0.4;   // horses & caravans
+  ag += (r.salt || 0) * 0.5;                             // salt
+  // Base village products — chickens, eggs, basket-weaving, hand-loomed cloth.
+  // 25 ppl → +0.14   1k → +0.30   10k → +0.40
+  ag += Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10);
+
+  // ── Manufactured / service sector ─────────────────────────────────────
+  // Metalwork, crafted wares, bureaucracy & banking — booked as "goods". A
+  // Farming Region does only FARM_CRAFT_FRAC of this; the loom, the forge and
+  // the counting-house concentrate in TOWNS, so it's a town+ activity.
+  let man = 0;
+  const oreAccess = Math.max(r.copper || 0, r.tin || 0, r.iron || 0, r.coal || 0);
+  if (oreAccess > 0.10) man += (k.metallurgy || 0) * 1.5;           // metalwork
+  man += (k.construction || 0) * 0.4;                               // crafted wares (the craft floor)
   const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
-  v += (k.organization || 0) * popScale * 0.8;
-  // Salt counts as a tradeable good.
-  v += (r.salt || 0) * 0.5;
-  // Base village products — every populated settlement has SOMETHING
-  // to sell: chickens, eggs, basket-weaving, surplus labour,
-  // hand-loomed cloth. Floor scales with log of pop so even a
-  // 25-person hamlet contributes a bit, a metropolis a lot.
-  // 25 ppl  → +0.14    1k ppl   → +0.30
-  // 100 ppl → +0.20    10k ppl  → +0.40
-  v += Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10);
-  // Soldiers don't produce trade goods — a heavily militarised settlement
-  // exports less (the workforce is under arms, not at the loom/forge).
+  man += (k.organization || 0) * popScale * 0.8;                    // bureaucracy / services / banking
+  if (tier < 1) man *= T.FARM_CRAFT_FRAC;                           // a village manufactures little
+
+  // Soldiers don't produce trade goods; a sacked settlement's output is depressed
+  // for a while (sackPenalty); tech scales the lot.
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
-  // Sack penalty: a forcibly-stormed settlement loses output for a while
-  // (see sackPenalty above). World-aware callers pass `world`; older callers
-  // get penalty=1 (no change). The trade pass and the inflation pass DO
-  // pass world, so the dynamics fire where it matters most.
-  return v * Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step) * techEff(s).tradeMult;
+  const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step) * techEff(s).tradeMult;
+  ag *= mult; man *= mult;
+  const v = ag + man;
+  s._exportAgrarianFrac = v > 0 ? ag / v : 1;           // share booked as food & farm goods (rest = manufactured goods)
+  return v;
 }
 
 // Per-tick memo of computeExportValue. It's a heavy function (several log/sqrt
@@ -902,7 +920,35 @@ function updateFood(world, s) {
   // city does NOT magically farm more; it grows by IMPORTING grain shipped
   // from its rural hinterland (see updatePopulation / the food trade), exactly
   // as real metropolises did (Rome's Egyptian grain, London's American wheat).
-  const landFood0 = (s._terrFertSum || 0) * T.FARM_YIELD_PER_FERT * techEff(s).farmYield;
+  // Only Farming Regions (tier ≤ FARM_MAX_TIER) farm the land; a town/city grows no
+  // grain of its own — it BUYS what its countryside ships up the hierarchy. (Fish below
+  // is unaffected — a coastal city still fishes.)
+  // Soldiers are MEN OFF THE LAND, but a standing PROFESSIONAL core (up to ARMY_LABOR_FREE of
+  // the population) is carried by the settled economy without hurting the harvest — it's the
+  // wartime CONSCRIPT surge BEYOND it that empties the fields. A heavy mobilisation thus farms
+  // less just as the host needs feeding MORE → the granary drains → famine forces demobilisation.
+  // This is the cycle that ends total wars (armies.js); peace carries no production drag.
+  const armyFrac = (s.army || 0) / Math.max(1, s.people);
+  const armyLabor = Math.max(0.2, 1 - Math.max(0, armyFrac - ARMY_LABOR_FREE) * T.ARMY_LABOR_FOOD);
+  // FARM-LABOUR SUBSISTENCE: working land takes farmers, and they must eat. Each territory tile
+  // carries a per-tile labour cost (FARM_FERT_FLOOR, in fertility units) — the crops its farmers
+  // consume to work it — deducted from the gross BEFORE the surplus enters the food economy. So
+  // the NET food a region yields is (total fertility − area × floor) × yield, and land too
+  // marginal to feed the people required to farm it (average fertility below the floor) yields
+  // NOTHING and supports no settlement. The break-even fertility is exactly FARM_FERT_FLOOR.
+  const netFert = Math.max(0, (s._terrFertSum || 0) - (s._terrTiles || 0) * T.FARM_FERT_FLOOR);
+  // MODEL B: EVERY settlement's territory (its rural hinterland) is farmed by the country
+  // folk who live on it — a city does not grow food in its packed urban core, but the land
+  // it controls IS worked and feeds it. So land food is produced from a settlement's territory
+  // regardless of tier; the tier instead sets how URBAN/concentrated its population is (below),
+  // and a city's dense population simply eats MORE than its hinterland grows, so it net-IMPORTS
+  // the shortfall up the hierarchy (Rome's Egyptian grain), while a rural region grows a surplus
+  // it ships up. No farmable land is wasted by sitting under an urban centre.
+  // AGRICULTURAL TRANSITION (agriculture.js): fertility is only FORAGING density until
+  // farming is invented/arrives (development) and only if the land can support it
+  // (domestication ceiling). This is what keeps a fresh/isolated frontier sparse and
+  // stateless — the whole map no longer farms at full yield from tick 0.
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * techEff(s).farmYield * agriGate(world, s) * armyLabor;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
@@ -958,6 +1004,7 @@ function updateFood(world, s) {
   s._foodSupply = supply;
   s._foodDemand = demand;          // total (civilian + garrison) — drains the granary
   s._civFoodDemand = civDemand;    // civilian only — army sizing reads this
+  s._landFood = landFood;          // LOCAL farm production only (no hierarchy imports, no fish) — for the food-viability overlay
   s._urbanFactor = urbanFactor;
   s.food += supply - demand;
 
@@ -1013,8 +1060,6 @@ export { housingCapacity };
 // supplying partners (a building boom enriches the material-rich
 // hinterland), never destroyed.
 function updateDevelopment(world, s) {
-  s._developRate = 0;
-  s._devReason = null;
   const houseK = s._houseK || 0, foodK = s._foodK || 0;
   // Cities lay out housing AHEAD of the food they have today; that empty
   // headroom is exactly what creates the demand to IMPORT grain (foodAppetite's
@@ -1022,8 +1067,20 @@ function updateDevelopment(world, s) {
   // to current foodK, houseK tracks population, growthNeed ~ 0, and the city
   // never pulls the grain that would let it grow, so metropolises never form.
   const target = s.people > URBAN_ANTICIPATION_REF ? foodK * URBAN_ANTICIPATION : foodK;
-  s._housingPressed = target > houseK * 1.02;
-  if (!s._housingPressed) return;
+  s._housingPressed = target > houseK * 1.02;     // set EVERY tick — conquest.js + food appetite read it
+  if (!s._housingPressed) { s._developRate = 0; s._devReason = null; return; }
+
+  // ── Construction is BATCHED (temporal LOD; see DEV_STRIDE) ──
+  // The materials gate + supplier-payment walk below iterate the trade reach every
+  // tick a town builds — the biggest slice of the per-settlement pass. Housing
+  // grows slowly, so resolve it every DEV_STRIDE ticks at DEV_STRIDE× rate: same
+  // average build pace + payments, ~DEV_STRIDE× cheaper. Only _housingPressed
+  // (above) stays per-tick; between bursts _developRate / _devReason keep their
+  // last value so the info-panel readout is steady. Staggered by id → even cost.
+  const stride = Math.max(1, T.DEV_STRIDE | 0);
+  if (stride > 1 && (world.step + s.id) % stride !== 0) return;
+  s._developRate = 0;
+  s._devReason = null;
 
   // Room to grow = up to whichever of the (anticipatory) housing target / SPACE
   // binds first.
@@ -1055,8 +1112,10 @@ function updateDevelopment(world, s) {
   const bestPartnerMat = s._devMat.bestPartnerMat, totalW = s._devMat.totalW;
   if (Math.max(localMat, bestPartnerMat) < 0.05) { s._devReason = "materials"; return; }
 
+  // ×stride: this burst stands in for `stride` ticks of building (so the average
+  // housing/tick — and the coin paid to suppliers — matches the per-tick original).
   const buildCap = (0.2 + (s.knowledge.construction || 0) * 2)
-    * Math.sqrt(Math.max(1, s.people)) * BUILD_RATE;
+    * Math.sqrt(Math.max(1, s.people)) * BUILD_RATE * stride;
   let add = Math.min(buildCap, room);
   if (add <= 0) return;
 
@@ -1095,7 +1154,7 @@ function updateDevelopment(world, s) {
     }
   }
   s.infrastructure = (s.infrastructure || 0) + add;
-  s._developRate = add;
+  s._developRate = add / stride;   // per-tick-equivalent (the burst built `add` over `stride` ticks)
   s._devReason = "expanding";
 }
 export { updateDevelopment };
@@ -1110,7 +1169,14 @@ function updatePopulation(world, s) {
   const perCapita = 0.003 * (s._urbanFactor || 1);
   const foodK = (s._foodSupply || 0) / perCapita;   // _foodSupply = food-hierarchy net (own + subtree intake − shipped up) + local fish
   const houseK = housingCapacity(s);
-  const K = Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
+  // LOCALITY model: population = whatever the farmable catchment feeds (foodK
+  // already folds in own land + any food routed in). Housing stops being the
+  // size cap — a locality IS its hinterland, so a rich-land centre simply holds
+  // more people (→ a city) and a poor one stays a town. Money is a separate
+  // closed layer (commerce/mining), unrelated to how big the place is.
+  const K = T.LOCALITY_MODE
+    ? Math.max(K_MIN_VIABLE, foodK)
+    : Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
   s._k = K;
   s._foodK = foodK;            // exposed so the info panel can show which limit binds
   s._houseK = houseK;
@@ -1141,20 +1207,33 @@ function updatePopulation(world, s) {
 
 // ── Tier ───────────────────────────────────────────────────────────
 function updateTier(world, s) {
+  // RELATIVE tiers: the bar to count as a town / city / metropolis SCALES with the world's
+  // total population, so as civilisation grows the size that qualifies as a "city" rises too
+  // (a 500-soul settlement is a large farming village in a populous world, a city in an empty
+  // one). This keeps the urban hierarchy proportional and the rural majority rural, instead of
+  // mislabelling mid-size farming settlements as "towns" once the world fills up. Cached once
+  // per tick. (TIER_SCALE_REF / TIER_SCALE_MAX tune it; =off by setting REF huge.)
+  let sc = world._tierScale;
+  if (world._tierScaleStep !== world.step) {
+    let tot = 0; for (const x of world.settlements) if (x.mode === "settled") tot += x.people || 0;
+    sc = world._tierScale = Math.max(0.4, Math.min(T.TIER_SCALE_MAX, tot / T.TIER_SCALE_REF));
+    world._tierScaleStep = world.step;
+  }
+  // The scale lifts ONLY the rural→town bar (tier 1) — that's where the mislabelling is, big
+  // farming villages counted as "towns". The city/metropolis bars stay ABSOLUTE so genuine
+  // urban centres still qualify (the world's settlements are size-compressed; scaling those
+  // bars too would leave nothing above them and erase cities entirely).
+  const bar = (t) => TIER_THRESHOLD[t] * (t === 1 ? sc : 1);
   // Promote to the highest tier whose population floor is met.
   for (let t = TIER_THRESHOLD.length - 1; t > s.tier; t--) {
-    if (s.people >= TIER_THRESHOLD[t]) {
+    if (s.people >= bar(t)) {
       s.tier = t;
       s.history.push({ step: world.step, type: "tier-up", tier: TIER_NAME[t], people: Math.round(s.people) });
       return;
     }
   }
-  // Demote one rung once population has fallen clearly below the current tier's
-  // floor (hysteresis band). updateTier runs every tick, so a real collapse
-  // walks the settlement down to its true bracket over a few ticks without
-  // threshold flicker — and a gutted metropolis stops being counted (and
-  // over-resourced: core/hinterland/garrison/seat) as one it no longer is.
-  if (s.tier > 0 && s.people < TIER_THRESHOLD[s.tier] * TIER_DEMOTE_FRAC) {
+  // Demote one rung once population has fallen clearly below the current tier's floor.
+  if (s.tier > 0 && s.people < bar(s.tier) * TIER_DEMOTE_FRAC) {
     s.tier -= 1;
     s.history.push({ step: world.step, type: "decline", tier: TIER_NAME[s.tier], people: Math.round(s.people) });
   }

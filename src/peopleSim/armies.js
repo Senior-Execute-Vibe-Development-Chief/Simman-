@@ -37,6 +37,11 @@ const ARMY_CAPITAL_BONUS = 0.03 * 1.075;          // the capital fields a bit mo
 // ARMY_GROW (recruitment speed) is a runtime lever — see tuning.js (T.ARMY_GROW).
 const ARMY_DESERT   = 0.80;   // when food-starved, the garrison melts to this each muster
 const BANKRUPT_DESERT = 0.70; // when wholly unpaid (insolvent state), the garrison melts to this each muster
+// Conscription — the temporary WAR LEVY raised on top of the standing professional army.
+const CONSCRIPT_WINDOW = 200;  // ticks after a war-pass a realm still counts as mobilised
+const CONSCRIPT_DEF    = 0.5;  // mobilisation intensity per unit of DEFENSIVE load (heartland under assault → total war)
+const CONSCRIPT_OFF    = 0.18; // mobilisation intensity per OFFENSIVE front (a campaign of choice mobilises less)
+const MOBILIZE_SPEED   = 4;    // the levy musters in / disbands ×this faster than peacetime recruitment
 const WAR_SPOILS    = 0.6;    // war-weariness relief a realm banks each time it storms a city (conquest.js)
 export const MUSTER_INTERVAL   = 100;
 // CONQUEST_INTERVAL (war-pass cadence) is a runtime lever — tuning.js
@@ -64,15 +69,11 @@ export const MUSTER_INTERVAL   = 100;
 const CAPTURE_SCALE     = 5;           // tiles/pass per unit of power-ratio advantage
 const ASSAULT_MARGIN    = 2;           // front must reach within (defender core + this) of the home
 const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent taking a city
-// Defensive drag on offense: a realm pinned defending its own ground commits its
-// army to survival, not conquest — so its offensive pushes are sapped in
-// proportion to its DEFENSIVE burden this pass (a besieged capital ≫ a town under
-// assault ≫ a countryside raid). offMul = 1/(1 + DEFENSE_DRAG·burden): one town
-// under assault ~0.4, a besieged capital ~0.2, a minor raid ~0.7, an untouched
-// dominant power 1.0 (it still conquers freely — Rome could hold the Rhine and
-// take Dacia). This stops the unrealistic case of a realm expanding on one front
-// while being overrun on another.
-const DEFENSE_DRAG      = 2.5;
+// Offensive throttle & strategic depth now live in the NATIONAL WAR CAPACITY block
+// inside advanceFronts (national field army × WAR_CONCENTRATION / WAR_DEFENSE_DRAG / WAR_DEF_SPLIT / war-exhaustion):
+// a realm has finite force split across its fronts, so it can't conquer on one while
+// overrun on another, nor knife many neighbours at once, and an established power
+// fields reserves a small upstart can't match.
 // Siege: once the front reaches the heartland the city does NOT fall at
 // once. The besiegers grind the garrison down over several passes (SIEGE_DMG
 // of the attacker's might per pass); the city is only stormed once its
@@ -281,11 +282,40 @@ function armyCapFrac(world, s) {
   // A warlike realm keeps a bigger garrison for its size; a mercantile /
   // cautious one fields less (personality.js aggressionArmyMul).
   if (c && c.personality) f *= aggressionArmyMul(c.personality);
+  // A standing PROFESSIONAL army is an institution of an ORGANISED state. A neolithic
+  // chiefdom keeps only a small warrior band — for a big war it raises a temporary levy
+  // instead (conscription, a later stage); a literate, bureaucratic realm fields a large
+  // professional army for its size. PRO_ORG_FLOOR = what an org-0 realm fields vs org-1.
+  const org = Math.max(0, Math.min(1, (s.knowledge && s.knowledge.organization) || 0));
+  f *= T.PRO_ORG_FLOOR + (1 - T.PRO_ORG_FLOOR) * org;
   return f * T.ARMY_SIZE_MULT;   // global garrison-size dial (tuning.js)
 }
 
 // ── Periodic: grow + provision garrisons ──
 export function musterArmies(world) {
+  // National MANPOWER pool — the trained men a realm can field. It REGENERATES from
+  // POPULATION (recruits coming of age) toward a ceiling (a fraction of national pop),
+  // and is DRAINED by battle casualties (advanceFronts). The standing army can never
+  // exceed it, so a realm bled white in a long war can't instantly re-arm — it must wait
+  // a generation for its population to grow the men back. War now costs MEN, not just
+  // coin and morale. (MANPOWER_FRAC = 0 turns the whole pool off.)
+  let mp = world._manpower; if (!mp) mp = world._manpower = new Map();
+  const natPop = new Map();
+  if (T.MANPOWER_FRAC > 0) {
+    for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) natPop.set(s.countryId, (natPop.get(s.countryId) || 0) + (s.people || 0));
+    const seen = new Set();
+    for (const [cc, pop] of natPop) {
+      const cap = T.MANPOWER_FRAC * pop;
+      const cur = mp.has(cc) ? mp.get(cc) : cap;                 // a new realm starts with a full reserve
+      // Regrow toward the ceiling, but never ABOVE it — a realm that lost territory (its
+      // pop-based ceiling just dropped) sheds the surplus at once: those men live in the
+      // lost provinces now, not the rump.
+      mp.set(cc, Math.min(cap, cur + (cap - cur) * T.MANPOWER_REGEN));
+      seen.add(cc);
+    }
+    for (const cc of [...mp.keys()]) if (!seen.has(cc)) mp.delete(cc);   // drop dead realms
+  }
+
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     // Can the settlement actually FEED its garrison? The signal is an
@@ -299,8 +329,22 @@ export function musterArmies(world) {
     if (fed < (s._foodDemand || 0) * 0.98) {
       s.army = (s.army || 0) * ARMY_DESERT;
     } else {
-      const popCap = s.people * armyCapFrac(world, s);   // tier/political limit
-      s.army = (s.army || 0) + (popCap - (s.army || 0)) * T.ARMY_GROW;
+      // Standing professional army (org-scaled in armyCapFrac). In WAR the realm also raises
+      // a temporary CONSCRIPT levy on top — a slice of the populace called to the colours,
+      // scaled by how hard-pressed it is (fighting for the heartland mobilises far harder than
+      // nibbling a frontier). Conscripts cost food AND lost farm labour (the famine cycle, see
+      // updateFood), and the levy demobilises in peace as the cap drops back to the professional core.
+      let frac = armyCapFrac(world, s);
+      const c = world.countries && world.countries.get(s.countryId);
+      const atWar = c && (world.step - (c._warStamp ?? -1e9)) < CONSCRIPT_WINDOW;
+      // Defence of the heartland is unconditional; the OFFENSIVE levy is gated by the
+      // realm's value-vs-cost war commitment (advanceFronts) — it won't bleed its people
+      // for a war it is losing or that isn't worth the cost, unless pride drives it on.
+      if (atWar) frac += T.CONSCRIPT_FRAC * Math.min(1, CONSCRIPT_DEF * (c._defLoad || 0) + CONSCRIPT_OFF * (c._offFronts || 0) * (c._warCommit ?? 1));
+      const popCap = s.people * frac;
+      // The levy musters in and disbands faster than peacetime recruitment.
+      const grow = (atWar || (s.army || 0) > popCap) ? Math.min(0.6, T.ARMY_GROW * MOBILIZE_SPEED) : T.ARMY_GROW;
+      s.army = (s.army || 0) + (popCap - (s.army || 0)) * grow;
     }
     // Unpaid troops desert. The army is funded by the state treasury
     // (conquest.js); when the treasury can't cover the wage bill the realm is
@@ -311,6 +355,36 @@ export function musterArmies(world) {
     const solvency = gov && gov._solvency != null ? gov._solvency : 1;
     if (solvency < 0.999) s.army *= BANKRUPT_DESERT + (1 - BANKRUPT_DESERT) * solvency;
     if (s.army < 0) s.army = 0;
+  }
+
+  // Cap the standing army at the manpower pool: if a realm's garrisons sum to more men
+  // than it has trained, scale them all back to fit — the reserve simply isn't there.
+  // (After a bloody war drained the pool, this is what keeps the army hollowed out until
+  // the population regrows it above.)
+  if (T.MANPOWER_FRAC > 0) {
+    const deployed = new Map();
+    for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) deployed.set(s.countryId, (deployed.get(s.countryId) || 0) + (s.army || 0));
+    const scale = new Map();
+    for (const [cc, dep] of deployed) { const cap = mp.get(cc) || 0; if (dep > cap && dep > 0) scale.set(cc, cap / dep); }
+    if (scale.size) for (const s of world.settlements) { if (s.mode !== "settled") continue; const sc = scale.get(s.countryId); if (sc != null) s.army *= sc; }
+    if (world.countries) for (const [cc, pop] of natPop) { const c = world.countries.get(cc); if (c) { c._manpower = mp.get(cc) || 0; c._manpowerCap = T.MANPOWER_FRAC * pop; } }
+  }
+
+  // ── Explicit two-tier national army: PROFESSIONAL core vs CONSCRIPT levy ──────────
+  // The standing peacetime cap (armyCapFrac, org-scaled) is the permanent professional
+  // core; whatever a realm holds ABOVE it is its temporary wartime conscript levy. Track
+  // the two per realm so the panel reads as "regulars + levies" and the national army is
+  // an explicit pair, not an emergent sum of garrisons.
+  if (world.countries) {
+    const proSum = new Map(), conSum = new Map();
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s.countryId < 0) continue;
+      const army = s.army || 0;
+      const proBase = Math.min(army, s.people * armyCapFrac(world, s));
+      proSum.set(s.countryId, (proSum.get(s.countryId) || 0) + proBase);
+      conSum.set(s.countryId, (conSum.get(s.countryId) || 0) + (army - proBase));
+    }
+    for (const [cc, c] of world.countries) { c._armyPro = proSum.get(cc) || 0; c._armyCon = conSum.get(cc) || 0; }
   }
 }
 
@@ -328,10 +402,13 @@ export function advanceFronts(world) {
     capturedAt = world._tileCapturedAt = new Float64Array(N).fill(-Infinity);
   }
 
+  const natMight = new Map();   // countryId → Σ might = the NATIONAL FIELD ARMY (Σ garrison × tech)
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     s._M = might(s);
     s._homeTi = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    s._armyStart = s.army || 0; s._ccStart = s.countryId;   // snapshot for the manpower casualty tally (end of pass)
+    if (s.countryId >= 0) natMight.set(s.countryId, (natMight.get(s.countryId) || 0) + s._M);
   }
 
   // Trade-dampened encroachment: a frontier with active cross-border trade
@@ -494,20 +571,130 @@ export function advanceFronts(world) {
     }
   }
   world._fronts = { stamp: world.step, byCountry: fronts };
-  if (besieged.size) dispatchReinforcements(world, besieged);
+  // (Siege relief is no longer a marching column — the national defensive-split already
+  // brings the realm's whole field army to bear on a besieged front; see defShareOf.)
 
-  // Defensive burden per realm this pass — a town under assault weighs heavily
-  // (its capital heaviest), a countryside raid lightly. A realm carrying burden
-  // has its OFFENSIVE thrust sapped (offMulOf), so it can't keep conquering while
-  // it's being overrun elsewhere (see DEFENSE_DRAG).
-  const defBurden = new Map();
+  // ── National war capacity ──────────────────────────────────────────────
+  // Inter-state war is NOT a duel between two frontier garrisons — it is decided by
+  // NATIONAL FIELD ARMIES (natMight = Σ garrison×tech, capped by manpower + treasury).
+  // Per realm, tally the distinct enemy NATIONS it is engaged with — offensive fronts
+  // (it is attacking) vs defensive load/attackers (it is assaulted). From those:
+  //   • offMulPair — how the attacker ALLOCATES its national army to a front:
+  //     CONCENTRATED on the main effort (secondary fronts merely hold), sapped while
+  //     troops are pinned defending, worn by war-exhaustion. Times natMight = the force.
+  //   • defShareOf — how the defender SPLITS its national army across the fronts it is
+  //     attacked on (whole army vs one invader; divided among many). A border town's
+  //     garrison decides nothing in the open field — only the national armies do.
+  const allEnemies = new Map();   // cc → Set(enemy cc) either direction (depth divisor)
+  const defLoad    = new Map();   // cc → Σ defensive weight it is under (besieged capital heaviest)
+  const attNat     = new Map();   // attacker cc → Map(enemy cc → {prio, serious, conc}) — its national fronts
+  const attackersOf= new Map();   // defender cc → Set(enemy cc) attacking it (defensive front count)
+  const addEnemy = (cc, ecc) => { let s = allEnemies.get(cc); if (!s) allEnemies.set(cc, s = new Set()); s.add(ecc); };
   for (const pc of pairs.values()) {
-    const dc = world.countries && world.countries.get(pc.def.countryId);
+    const acc = pc.att.countryId, dcc = pc.def.countryId;
+    if (acc === dcc) continue;
+    addEnemy(acc, dcc); addEnemy(dcc, acc);
+    let m = attNat.get(acc); if (!m) attNat.set(acc, m = new Map());
+    let f = m.get(dcc); if (!f) m.set(dcc, f = { prio: 0, serious: false, conc: 1 });
+    const prio = (pc.canStorm ? 1e7 : 0) + pc.att._M;   // assault outranks a skirmish, then by army committed
+    if (prio > f.prio) f.prio = prio;
+    if (pc.canStorm) f.serious = true;
+    let da = attackersOf.get(dcc); if (!da) attackersOf.set(dcc, da = new Set()); da.add(acc);
+    const dc = world.countries && world.countries.get(dcc);
     const isCap = !!(dc && dc.capitalId === pc.def.id);
-    const w = pc.canStorm ? (isCap ? 2.5 : 1.0) : 0.3;   // capital siege ≫ town assault ≫ countryside raid
-    defBurden.set(pc.def.countryId, (defBurden.get(pc.def.countryId) || 0) + w);
+    defLoad.set(dcc, (defLoad.get(dcc) || 0) + (pc.canStorm ? (isCap ? 1.6 : 1.0) : 0.4));
   }
-  const offMulOf = (cc) => 1 / (1 + DEFENSE_DRAG * (defBurden.get(cc) || 0));
+
+  // CONCENTRATION (main effort): a realm has finite command, supply and reserves, so
+  // however many borders it has it can wage only a FEW real wars at once. Rank each
+  // realm's enemy NATIONS (a heartland assault outranks a border skirmish, then by the
+  // army committed) and fall off geometrically (WAR_CONCENTRATION): the WHOLE front
+  // against the priority enemy pushes at full force, other enemies are merely held.
+  // So a realm fights 1–2 wars at a time, and the chosen one advances as a BROAD front
+  // (every frontier settlement against that enemy) — not all enemies feebly at once (old
+  // automaton), not a lone tile-spike (the spread/arrow), not nothing (even division).
+  const seriousOff = new Map();   // attacker cc → # of enemy NATIONS it is seriously assaulting (exhaustion)
+  for (const [acc, m] of attNat) {
+    const fronts = [...m.values()].sort((a, b) => b.prio - a.prio);
+    for (let i = 0; i < fronts.length; i++) fronts[i].conc = Math.pow(T.WAR_CONCENTRATION, i);
+    let sc = 0; for (const f of fronts) if (f.serious) sc++;
+    if (sc) seriousOff.set(acc, sc);
+  }
+
+  // War-exhaustion (persists on world): rises with SERIOUS war load (enemy nations it is
+  // assaulting + assaults it is under), decays toward zero in peace — so a long or
+  // many-fronted war grinds a realm to a de-facto standstill and rest restores its
+  // punch. (advanceFronts runs every CONQUEST_INTERVAL ticks = one pass.)
+  let exh = world._warExhaust; if (!exh) exh = world._warExhaust = new Map();
+  const seenCC = new Set();
+  for (const cc of allEnemies.keys()) {
+    const load = (seriousOff.get(cc) || 0) + (defLoad.get(cc) || 0);
+    exh.set(cc, Math.min(T.WAR_EXHAUST_MAX, (exh.get(cc) || 0) * T.WAR_EXHAUST_DECAY + T.WAR_EXHAUST_RATE * load));
+    seenCC.add(cc);
+  }
+  for (const [cc, e] of exh) if (!seenCC.has(cc)) { const v = e * T.WAR_EXHAUST_DECAY; if (v < 0.002) exh.delete(cc); else exh.set(cc, v); }
+
+  // A front's offensive multiplier: its enemy-nation concentration rank × war-weariness
+  // ÷ defensive tie-down (troops pinned defending can't also attack).
+  const concRestTied = (acc, dcc) => {
+    const m = attNat.get(acc); const f = m && m.get(dcc);
+    const tied = 1 + T.WAR_DEFENSE_DRAG * (defLoad.get(acc) || 0);
+    const rested = 1 - Math.min(0.9, exh.get(acc) || 0);
+    return (f ? f.conc : 1) * rested / tied;
+  };
+  const offMulPair = (pc) => concRestTied(pc.att.countryId, pc.def.countryId);
+  // The NATIONAL FIELD ARMY is the force that decides a war — not the border garrison.
+  // A realm projects its whole army (natMight = Σ garrison×tech, itself capped by national
+  // MANPOWER and the treasury) onto a front, CONCENTRATED on its main effort. Its enemy
+  // resists with ITS national army, SPLIT across the fronts it is defending (a realm
+  // assailed by many divides its field army; one fighting a single war meets the invader
+  // whole). So who takes ground is the national-army RATIO on that front — manpower × tech
+  // × treasury — and a border town's garrison matters only as a fortress in a siege (below).
+  const defShareOf = (cc) => {
+    const a = attackersOf.get(cc);
+    return 1 / (1 + T.WAR_DEF_SPLIT * Math.max(0, (a ? a.size : 1) - 1));
+  };
+  const fieldForce = (cc) => (natMight.get(cc) || 0);
+
+  // ── Encirclement ─────────────────────────────────────────────────────
+  // A settlement assaulted from many DIRECTIONS must split its defence across
+  // them, so it falls faster — a surrounded salient or engulfed statelet can't
+  // hold ground pressed from every side. Tally the distinct compass octants the
+  // attacking fronts come from (per defender) and divide its effective defence by
+  // (1 + ENCIRCLE x (directions-1)). One clean front = full strength; pressed from
+  // all sides it crumbles — so the war system itself dissolves the strange
+  // surrounded shapes instead of leaving them marooned inside a neighbour.
+  const ENCIRCLE = T.ENCIRCLE_PENALTY ?? 0;
+  const halfTw = tw / 2;
+  // Source: scan the territory map once and, per settlement, record which compass
+  // octants of its OWN land border an ENEMY country (not wilderness or sea). A
+  // settlement facing foes on a couple of octants is a normal frontier; one ringed
+  // on most sides is surrounded. Geographic, so it doesn't matter whether one big
+  // neighbour or several border it.
+  const encMask = new Map();   // settlement id → bitmask of octants its land meets an enemy
+  if (ENCIRCLE > 0) {
+    for (let ti = 0; ti < N; ti++) {
+      const d = owner[ti]; if (d < 0) continue;
+      const D = byId.get(d); if (!D || D.mode !== "settled") continue;
+      const dcc = D.countryId; if (dcc < 0) continue;
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+      const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+      let enemy = false;
+      for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni < 0) continue; const o = owner[ni]; if (o < 0 || o === d) continue; const O = byId.get(o); if (O && O.countryId !== dcc) { enemy = true; break; } }
+      if (!enemy) continue;
+      let ddx = tx - (D.pos.x | 0); if (ddx > halfTw) ddx -= tw; else if (ddx < -halfTw) ddx += tw;
+      const oct = (((Math.atan2(ty - (D.pos.y | 0), ddx) + Math.PI) / (Math.PI / 4)) | 0) & 7;
+      encMask.set(d, (encMask.get(d) || 0) | (1 << oct));
+    }
+  }
+  const ENC_FREE = 4;   // a normal frontier settlement meets enemies on ~3-4 octants; the penalty applies only BEYOND that (genuinely surrounded)
+  const encMulOf = (def) => {
+    const m = encMask.get(def.id); if (!m) return 1;
+    let n = 0; for (let b = m; b; b >>= 1) n += b & 1;        // popcount = enemy-bordered directions
+    const over = n - ENC_FREE; if (over <= 0) return 1;       // ≤ normal frontier → no penalty
+    return 1 / (1 + ENCIRCLE * over);                          // surrounded → defence split, falls faster
+  };
 
   // Resolve each front: besiege the city if the front reached its
   // heartland; otherwise grind the countryside forward, tile by tile.
@@ -516,8 +703,14 @@ export function advanceFronts(world) {
     if (att.mode !== "settled" || def.mode !== "settled" || att.countryId === def.countryId) continue;
     // The attacker's effective offensive might is throttled while it is itself
     // under attack — a realm fighting for its own heartland can't also expand.
-    const attM = att._M * offMulOf(att.countryId);
-    const adv = attM / Math.max(1, def._M);
+    const acc = att.countryId, dcc = def.countryId;
+    // The attacker projects its NATIONAL field army onto this front — concentrated on its
+    // main effort, worn by war-weariness, sapped while pinned defending. The defender meets
+    // it with its OWN national army, split across the fronts it defends and the directions
+    // it is pressed from. Who takes the countryside is the national-army ratio here.
+    const attForce = fieldForce(acc) * offMulPair(pc);
+    const em = encMulOf(def);                          // <1 if the defender is pressed from several sides
+    const adv = attForce / Math.max(1, fieldForce(dcc) * defShareOf(dcc) * em);
 
     if (pc.canStorm) {
       // Front is at the heartland. The city defends with its garrison OR its
@@ -525,8 +718,13 @@ export function advanceFronts(world) {
       // paid garrison deserted under bankruptcy is NOT free real estate; it
       // still takes a real army to storm. This is the single biggest brake on
       // the boiling-map churn (see HOME_MILITIA_FRAC).
+      // The capital is stormed only if the attacker's national assault force overcomes the
+      // defender's RELIEF army (the field army it can spare for this front) PLUS the city's
+      // own fortress — garrison or citizen-militia behind the walls (homeMight). So a
+      // relieved capital holds against a far larger invader; an isolated one (its field army
+      // spent or pinned elsewhere) falls to its walls alone.
       const defHome = homeMight(def);
-      const advCity = attM / Math.max(1, defHome);   // throttled if the attacker is itself under attack
+      const advCity = attForce / Math.max(1, (fieldForce(dcc) * defShareOf(dcc) + defHome) * em);
       // A recently-conquered city is still pacified (garrisoned) and can't be
       // besieged yet — that grace stops rival empires trading it back and forth.
       if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
@@ -538,7 +736,7 @@ export function advanceFronts(world) {
         // the (morale-weighted) citizen militia — homeMight recomputed on the
         // now-reduced garrison returns exactly that floor.
         const defNow = homeMight(def);
-        if (defNow <= att._M * SIEGE_BREAK) {
+        if (defNow * em <= att._M * SIEGE_BREAK) {   // a city encircled on many sides breaks sooner (its defence is split)
           // Was this the capital of its realm? (Decide before the flip.)
           const dc = world.countries && world.countries.get(def.countryId);
           const defWasCapital = !!(dc && dc.capitalId === def.id);
@@ -590,5 +788,61 @@ export function advanceFronts(world) {
     }
     att.army = Math.max(0, (att.army || 0) - def._M * T.ATTRITION / techMul(att));
     def.army = Math.max(0, (def.army || 0) - att._M * T.ATTRITION / techMul(def));
+  }
+
+  // Expose each warring realm's strategic state — for the info panel and probes:
+  // how many fronts it is attacking on, how hard it's pinned defending, its
+  // war-exhaustion, and the resulting offensive-capacity multiplier.
+  if (world.countries) {
+    for (const cc of allEnemies.keys()) {
+      const c = world.countries.get(cc); if (!c) continue;
+      const m = attNat.get(cc);
+      let mainMul = 0, eff = 0;
+      if (m) for (const dcc of m.keys()) { const mul = concRestTied(cc, dcc); if (mul > mainMul) mainMul = mul; if (mul > 0.3) eff++; }
+      c._offFronts = m ? m.size : 0;            // distinct enemy NATIONS it is attacking
+      c._effFronts = eff;                       // of those, how many it can actually PUSH (offMul > 0.3)
+      c._mainOffMul = mainMul;                  // its main-effort capacity
+      c._defLoad = defLoad.get(cc) || 0;
+      c._warExhaust = exh.get(cc) || 0;
+      c._warStamp = world.step;                 // freshness: engaged THIS pass
+
+      // ── Value-vs-cost war calculus (offensive commitment) ──────────────────
+      // How hard A will press its wars of CHOICE (defence of the homeland is
+      // unconditional). It weighs the PRIZE — an expansionist/warlike realm values
+      // conquest, but only while it's WINNING (its national-army ratio over its main
+      // foe), and a winning streak (momentum) inflates that — against the COST:
+      // war-exhaustion plus a drained manpower pool. A proud/WARLIKE realm DISCOUNTS
+      // the cost and fights a ruinous war on (the sunk-cost trap); a MERCANTILE one
+      // feels it fully and cuts its losses. Low commit ⇒ it stops conscripting for the
+      // offensive (musterArmies) — the campaign withers to a de-facto peace.
+      const p = c.personality;
+      if (p && m && m.size) {
+        let topE = -1, topPrio = -Infinity;
+        for (const [dcc, f] of m) if (f.prio > topPrio) { topPrio = f.prio; topE = dcc; }
+        const winning = Math.min(2, (natMight.get(cc) || 0) / Math.max(1, natMight.get(topE) || 0));
+        const appetite = Math.max(0, Math.min(1, 0.35 + 0.4 * (p.expansionism || 0) + 0.3 * (p.aggression || 0)));
+        const gov = world.governments && world.governments.get(cc);
+        const mom = Math.min(1, ((gov && gov._momentum) || 0) / Math.max(1, T.MOMENTUM_CAP || 1));
+        const mpR = c._manpowerCap > 0 ? (c._manpower || 0) / c._manpowerCap : 1;
+        const weariness = (exh.get(cc) || 0) + (1 - mpR);                                   // war-weariness + bled white
+        const sunkBlind = Math.max(0, Math.min(1, 0.5 + 0.5 * (p.aggression || 0) - 0.4 * (p.commerce || 0)));
+        c._warCommit = Math.max(0, Math.min(1.3, appetite * winning * (1 + 0.5 * mom) - weariness * (1 - sunkBlind)));
+      } else c._warCommit = 1;
+    }
+  }
+
+  // MANPOWER casualties: every garrison that SHRANK this pass did so in battle (attrition,
+  // bombardment, a stormed city's losses) — those men are DEAD, so drain them from their
+  // realm's manpower pool (attributed to who owned them when they fell, before any conquest
+  // flip). The pool only regrows from population (musterArmies), so a bloody war leaves the
+  // realm unable to refield its army for a generation — lasting, demographic war-weariness.
+  if (T.MANPOWER_FRAC > 0) {
+    let mp = world._manpower; if (!mp) mp = world._manpower = new Map();
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      const cc = s._ccStart; if (cc == null || cc < 0) continue;
+      const loss = (s._armyStart || 0) - (s.army || 0);
+      if (loss > 0 && mp.has(cc)) mp.set(cc, Math.max(0, mp.get(cc) - loss));
+    }
   }
 }

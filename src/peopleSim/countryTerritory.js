@@ -22,6 +22,7 @@
 
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
+import { grownOwnerAt } from "./countryClaim.js";
 import { T } from "./tuning.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
@@ -77,6 +78,33 @@ const REACH_SIZE_MIN = 0.25;  // a tiny realm still projects at least this fract
 // tiles, so territory hugs the capital and realms read as compact blobs instead of
 // sprawling along the settlement scatter. The strength is the CAPITAL_ANCHOR lever.
 const ANCHOR_SCALE = 40;
+// ── Resolution invariance ─────────────────────────────────────────────
+// The reach quantities here (the BASE/ORG budget, ANCHOR_SCALE, INTEGRATE_MIN)
+// are absolute travel-COST units ≈ tiles, and were tuned on the 240-wide test
+// grid. The SHIPPED world runs 4× wider (sim ≈960), where a fixed tile-budget
+// covers only ¼ the linear fraction of the map — so every realm collapsed to a
+// capital-sized blob and the political map shattered into a confetti of tiny
+// proto-states at ~6% claimed land (the full-res regression: "weird small proto
+// states, confettified, countries not growing"). It read fine only because the
+// constants were validated at the 240-wide test resolution — the blind spot. Fix:
+// normalise every tile-DISTANCE quantity by the map width, so a realm projects the
+// same FRACTION of the world at any resolution. At the test grid resScale=1
+// (behaviour unchanged, backwards-compatible); at the 960-wide world resScale=4.
+// (Per-EDGE costs like CLAIM_CAP are NOT scaled — crossing one mountain tile costs
+// the same however fine the grid; only cumulative reach distances scale.)
+const RES_REF_W = 240;
+const _resScaleEnv = (typeof process !== "undefined" && process.env && +process.env.SIM_RES_SCALE) || 0;
+function resScaleFor(tw) { return _resScaleEnv > 0 ? _resScaleEnv : Math.max(1, tw / RES_REF_W); }
+export { resScaleFor };
+// Capital colouring (DEFAULT ON): per-settlement coverage (every settlement holds its own
+// ground, so populated land is never abandoned) RECOLOURED by nearest capital, so the
+// country↔country border is a smooth capital cost-bisector instead of the union of
+// per-settlement bubbles. The earlier "it just recedes" was NOT this — it was settlements
+// going STATELESS (a stateless settlement projects no territory); frontier TOWNS founding
+// city-states (adoptAndFound) fixes that upstream, so this reads clean now. The flood is
+// bounded to claimed land (recolorByCapital) so it adds no territory-pass hitch.
+// SIM_CAPITAL_ONLY=0 reverts to raw per-settlement seeding (bubbly).
+const _capitalOnly = !(typeof process !== "undefined" && process.env && process.env.SIM_CAPITAL_ONLY === "0");
 // ── Gradual integration of newly-acquired land ───────────────────────
 // A settlement that just joined this realm out of the WILD (adoptAndFound stamps
 // _integratedAt when a stateless settlement adopts a country, as the realm's
@@ -164,6 +192,7 @@ function claimNoise(world) {
 // Clean per-country cost-Voronoi → world._countryOwner. Runs on the territory pass.
 export function computeCountryTerritory(world) {
   const { N, tw, th, elev } = world;
+  const resScale = resScaleFor(tw);   // tile budgets are res-relative → keep the same world-fraction at any grid size (see RES_REF_W)
   let co = world._countryOwner;
   if (!co || co.length !== N) co = world._countryOwner = new Int32Array(N);
   co.fill(-1);
@@ -192,7 +221,7 @@ export function computeCountryTerritory(world) {
       const cons = (s.knowledge && s.knowledge.construction) || 0;
       const logi = s._techEff ? s._techEff.logisticsLevel : cons * cons;
       const eraMul = 1 + (cons * cons * REACH_ERA) * (1 - T.TECH_EFFECTS) + (logi * LOGI_REACH) * T.TECH_EFFECTS;
-      budget.set(c, (COUNTRY_REACH_BASE + org * COUNTRY_REACH_ORG) * eraMul);
+      budget.set(c, (COUNTRY_REACH_BASE + org * COUNTRY_REACH_ORG) * eraMul * resScale);
       claimCap.set(c, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
     }
   }
@@ -219,7 +248,7 @@ export function computeCountryTerritory(world) {
   for (const [c, target] of budget) {
     const prev = ramp.get(c);
     const next = prev === undefined
-      ? ((inherit && inherit.has(c)) ? target : Math.min(target, COUNTRY_REACH_BASE))
+      ? ((inherit && inherit.has(c)) ? target : Math.min(target, COUNTRY_REACH_BASE * resScale))
       : prev + (target - prev) * BUDGET_RAMP;
     ramp.set(c, next);
     budget.set(c, next);
@@ -241,28 +270,30 @@ export function computeCountryTerritory(world) {
   const anchor = T.CAPITAL_ANCHOR;
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;
+    const c = s.countryId;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
     if (!(elev[ti] > 0 && cost[ti] > 0)) continue;
-    const c = s.countryId;
     const full = budget.get(c) || 0;
+    // EVERY settlement carves a basin — this is the COVERAGE, so populated land is
+    // never abandoned to wilderness (a settlement always holds at least its own ground;
+    // that's what stops a realm's outliers being stranded when the capital's reach dips).
+    // Recency eases a just-adopted settlement in. The capital anchor compacts the union
+    // into a blob — but in capital-COLOUR mode the recolor pass below reshapes the cells,
+    // so we skip the anchor there and let each settlement hold its FULL basin (max
+    // coverage), and let the recolor draw the smooth borders.
+    const integMin = INTEGRATE_MIN * resScale;   // day-one basin is a tile distance → res-relative
     const age = world.step - (s._integratedAt ?? -Infinity);
     let sb = age < INTEGRATE_TICKS
-      ? Math.min(full, INTEGRATE_MIN + Math.max(0, full - INTEGRATE_MIN) * (age / INTEGRATE_TICKS))
+      ? Math.min(full, integMin + Math.max(0, full - integMin) * (age / INTEGRATE_TICKS))
       : full;
-    // CAPITAL ANCHOR: a settlement projects the realm's reach less the FARTHER it
-    // sits from the capital — authority radiates from one centre and fades with
-    // distance, so the territory pulls into a compact blob around the capital
-    // instead of sprawling to wherever any town happens to be. The capital itself
-    // (distance 0) projects the full reach; a far frontier town anchors only a
-    // small basin. So the union of basins reads as one centred region, not a
-    // scatter, and a far salient that a nearer RIVAL capital reaches more cheaply
-    // cedes to it — the power-Voronoi-of-capitals that makes real borders blobby.
-    const cp = capPos.get(c);
-    if (anchor > 0 && cp) {
-      let dx = Math.abs(s.pos.x - cp.x); if (dx > tw / 2) dx = tw - dx;
-      const dy = s.pos.y - cp.y;
-      const capDist = Math.sqrt(dx * dx + dy * dy);
-      sb *= 1 / (1 + anchor * capDist / ANCHOR_SCALE);     // falloff: halves the basin at capDist = ANCHOR_SCALE/anchor
+    if (!_capitalOnly && anchor > 0) {
+      const cp = capPos.get(c);
+      if (cp) {
+        let dx = Math.abs(s.pos.x - cp.x); if (dx > tw / 2) dx = tw - dx;
+        const dy = s.pos.y - cp.y;
+        const capDist = Math.sqrt(dx * dx + dy * dy);
+        sb *= 1 / (1 + anchor * capDist / (ANCHOR_SCALE * resScale));
+      }
     }
     cost[ti] = 0; co[ti] = c; seedBud[ti] = sb; heap.push(ti, 0, c);
   }
@@ -295,8 +326,113 @@ export function computeCountryTerritory(world) {
       if (nd < cost[ni]) { cost[ni] = nd; co[ni] = c; seedBud[ni] = basinBud; heap.push(ni, nd, c); }
     }
   }
+  if (_capitalOnly) recolorByCapital(world, co, capPos, knOf, claimCap);
   closeRealmGaps(world, co, T.REALM_GAP_FILL);
+  smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0);
   return co;
+}
+
+// ── Capital colouring ────────────────────────────────────────────────────────
+// Smooth borders WITHOUT stranding anyone. The per-settlement Voronoi above gives
+// full COVERAGE (every settlement holds ground, so populated land is never blank),
+// but its country-vs-country seam zig-zags between rival settlements — the bubbly
+// edge. So overlay a clean capital Voronoi: flood the whole landmass from every
+// realm's CAPITAL (same terrain edge-cost + noise, so it slumps onto coasts/rivers),
+// giving each land tile its NEAREST capital, then RECOLOUR every already-claimed tile
+// to that capital's realm. Coverage is untouched (a tile stays claimed iff a
+// settlement reached it) — only the COLOUR changes, so the border between two realms
+// becomes the smooth capital cost-bisector while no settlement is ever left on
+// wilderness. A border settlement nearer a RIVAL capital is recoloured to it (a
+// frontier town joins the closer power) rather than stranded — there is always a
+// successor, never blank ground.
+function recolorByCapital(world, co, capPos, knOf, claimCap) {
+  const { N, tw, th, elev } = world;
+  let capColor = world._capColor;
+  if (!capColor || capColor.length !== N) capColor = world._capColor = new Int32Array(N);
+  let capCost = world._capCostF;
+  if (!capCost || capCost.length !== N) capCost = world._capCostF = new Float64Array(N);
+  capColor.fill(-1); capCost.fill(Infinity);
+  const noise = claimNoise(world);
+  const heap = new MinHeap();
+  for (const [c, pos] of capPos) {
+    const ti = (pos.y | 0) * tw + (pos.x | 0);
+    if (elev[ti] <= 0) continue;
+    capCost[ti] = 0; capColor[ti] = c; heap.push(ti, 0, c);
+  }
+  while (heap.n > 0) {
+    const { ti, d, c } = heap.popMin();
+    if (d > capCost[ti]) continue;
+    const kn = knOf.get(c);
+    const cap = claimCap.get(c) || CLAIM_CAP_CEIL;
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+    const ns = [
+      ty * tw + xm, ty * tw + xp,
+      ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1,
+      ty > 0 ? (ty - 1) * tw + xm : -1, ty > 0 ? (ty - 1) * tw + xp : -1,
+      ty < th - 1 ? (ty + 1) * tw + xm : -1, ty < th - 1 ? (ty + 1) * tw + xp : -1,
+    ];
+    const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
+    for (let k = 0; k < 8; k++) {
+      const ni = ns[k]; if (ni < 0 || elev[ni] <= 0) continue;
+      if (co[ni] < 0) continue;   // flood ONLY through claimed land — we only recolour claimed tiles, and bounding the flood here (vs flooding the whole map) keeps the pass cheap (no territory-pass hitch). Country↔country borders are still the smooth capital bisector; the claimed↔wilderness edge keeps the coverage shape.
+      let ec = localEdgeCost(world, ti, ni, kn, true);
+      if (ec === Infinity) continue;
+      if (ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;
+      ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);
+      const nd = d + ec * mul[k];
+      if (nd < capCost[ni]) { capCost[ni] = nd; capColor[ni] = c; heap.push(ni, nd, c); }
+    }
+  }
+  for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && capColor[ti] >= 0) co[ti] = capColor[ti];
+}
+
+// ── Border smoothing ─────────────────────────────────────────────────────────
+// The per-settlement cost-Voronoi gives every realm a SCALLOPED edge: each
+// settlement claims a roughly circular basin, so a country's outline is the union
+// of bubbles — nothing like a real border, which runs along a coast / river / ridge
+// or as a clean negotiated line. Sweep a majority filter over the political map a
+// few times: a land tile becomes whichever country (or wilderness) holds a clear
+// majority of its 8 neighbours. Protrusions (a bubble poking out) erode, notches
+// fill, so the frontier straightens toward a clean line and single-tile flecks
+// dissolve — area roughly preserved. Settlement HOME tiles are pinned, so no realm
+// is ever smoothed out of existence (its basin regrows next pass). Iterations =
+// BORDER_SMOOTH. O(passes·N).
+function smoothCountryBorders(world, co, iters) {
+  if (!(iters > 0)) return;
+  const { N, tw, th, elev } = world;
+  let prot = world._smoothProt;
+  if (!prot || prot.length !== N) prot = world._smoothProt = new Uint8Array(N);
+  prot.fill(0);
+  for (const s of world.settlements) { if (s.mode === "settled") prot[(s.pos.y | 0) * tw + (s.pos.x | 0)] = 1; }
+  let snap = world._smoothSnap;
+  if (!snap || snap.length !== N) snap = world._smoothSnap = new Int32Array(N);
+  // tiny fixed-size tally over the ≤8 distinct neighbour values (cheaper than a Map)
+  const vals = new Int32Array(8), cnts = new Int32Array(8);
+  for (let it = 0; it < iters; it++) {
+    snap.set(co);                                   // frozen read; writes go to co
+    for (let ti = 0; ti < N; ti++) {
+      if (elev[ti] <= 0 || prot[ti]) continue;      // water + settlement homes are fixed
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+      const yu = ty - 1, yd = ty + 1;
+      const ns = [
+        ty * tw + xm, ty * tw + xp,
+        yu >= 0 ? yu * tw + tx : -1, yd < th ? yd * tw + tx : -1,
+        yu >= 0 ? yu * tw + xm : -1, yu >= 0 ? yu * tw + xp : -1,
+        yd < th ? yd * tw + xm : -1, yd < th ? yd * tw + xp : -1,
+      ];
+      let m = 0, best = snap[ti], bestC = 0;
+      for (let k = 0; k < 8; k++) {
+        const ni = ns[k]; if (ni < 0 || elev[ni] <= 0) continue;   // off-map / sea doesn't vote
+        const v = snap[ni];
+        let j = 0; for (; j < m; j++) if (vals[j] === v) break;
+        if (j === m) { vals[m] = v; cnts[m] = 1; m++; } else cnts[j]++;
+        if (cnts[j] > bestC) { bestC = cnts[j]; best = v; }
+      }
+      if (bestC >= 5 && best !== snap[ti]) co[ti] = best;          // clear majority of the 8-neighbourhood → adopt it
+    }
+  }
 }
 
 // ── Partition the gaps: no terra nullius between neighbours ──────────────────
@@ -365,37 +501,65 @@ function closeRealmGaps(world, co, D) {
   // countries. A pocket is open on no side, so it fills cleanly without fingers;
   // open frontiers and long buffers (open on a perpendicular axis) stay wilderness.
   // (gather first, write after, so fills don't seed off each other within a pass.)
+  // ── Smooth assignment ────────────────────────────────────────────────
+  // Each enclosed no-man's-land tile goes to the country nearest by an 8-connected
+  // flood from every country border — a real distance field, so the filled gaps
+  // meet on smooth Voronoi bisectors. The OLD rule handed each tile to the nearest
+  // of its four CARDINAL flanks; that axis-aligned metric made the bisectors cross
+  // in straight bars, stamping rectilinear "X"/"H" shapes into the no-man's-land
+  // (the worse the more gap the now-compact realms leave to fill). The 4-sweep test
+  // above still decides WHICH tiles are fillable (genuinely enclosed pockets), so
+  // open frontier and long buffers stay wild — only the COLOURING of the pockets
+  // changes. O(N): each tile enters the flood queue at most once.
+  let near = world._gapNear;
+  if (!near || near.length !== N) near = world._gapNear = new Int32Array(N);
+  let bq = world._gapQ;
+  if (!bq || bq.length !== N) bq = world._gapQ = new Int32Array(N);
+  let bd = world._gapBD;
+  if (!bd || bd.length !== N) bd = world._gapBD = new Int32Array(N);
+  near.fill(-1);
+  let qt = 0;
+  for (let ti = 0; ti < N; ti++) if (elev[ti] > 0 && co[ti] >= 0) { near[ti] = co[ti]; bd[ti] = 0; bq[qt++] = ti; }
+  for (let qh = 0; qh < qt; qh++) {
+    const ti = bq[qh]; const d = bd[ti]; if (d >= D) continue;     // bounded by the gap-fill range
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+    const ns = [ty*tw+xm, ty*tw+xp, ty>0?ti-tw:-1, ty<th-1?ti+tw:-1,
+                ty>0?(ty-1)*tw+xm:-1, ty>0?(ty-1)*tw+xp:-1, ty<th-1?(ty+1)*tw+xm:-1, ty<th-1?(ty+1)*tw+xp:-1];
+    for (let k = 0; k < 8; k++) { const ni = ns[k]; if (ni < 0 || elev[ni] <= 0 || near[ni] >= 0) continue; near[ni] = near[ti]; bd[ni] = d + 1; bq[qt++] = ni; }
+  }
   let fills = world._gapFills;
   if (!fills || fills.length < N) fills = world._gapFills = new Int32Array(N);
   let n = 0;
   for (let ti = 0; ti < N; ti++) {
     if (co[ti] >= 0 || elev[ti] <= 0) continue;
     if (wC[ti] < 0 || eC[ti] < 0 || nC[ti] < 0 || sC[ti] < 0) continue;   // not fully enclosed → leave wild (no fingers)
-    let c = wC[ti], cd = wD[ti];                                          // nearest of the four flanks wins the tile
-    if (eD[ti] < cd) { c = eC[ti]; cd = eD[ti]; }
-    if (nD[ti] < cd) { c = nC[ti]; cd = nD[ti]; }
-    if (sD[ti] < cd) { c = sC[ti]; cd = sD[ti]; }
-    fills[n++] = ti; fills[n++] = c;
+    const c = near[ti];                                                   // smooth nearest country (not the axis-aligned cardinal flank)
+    if (c >= 0) { fills[n++] = ti; fills[n++] = c; }
   }
   for (let i = 0; i < n; i += 2) co[fills[i]] = fills[i + 1];
 }
 
-// Settlements take their politics from the territory:
+// Settlements take their politics from the GROWN territory — the country whose
+// border has actually CRAWLED over their tile (grownOwnerAt → world._countryClaim),
+// NOT the realm's instantly-projected reach (world._countryOwner). So a settlement
+// is claimed once the country grows over it, never ahead of the visible front:
 //   • CITY (tier ≥ CITY_TIER): a sovereign ANCHOR. Keeps its countryId (changed
 //     only by conquest / secession). A stateless city FOUNDS a country — its own
-//     id if it sits in wilderness, or joins the realm whose land it's on.
-//   • VILLAGE / TOWN: never sovereign — adopts the country owning its tile, or
-//     goes stateless (-1) on the open frontier. So spawning many villages just
-//     populates the map; it never adds a country or a fleck.
+//     id if the border hasn't reached it, or joins the realm whose land it's on.
+//   • VILLAGE / TOWN: never sovereign — adopts the country whose claim has grown
+//     over its tile, or stays stateless (-1) until the front arrives. So spawning
+//     many villages just populates the map; it never adds a country or a fleck,
+//     and a frontier town waits for the border instead of lighting up early.
 // (Cradles are seeded sovereign at genesis in state.js; secession mints city-led
 // countries in conquest.js — those are the only other country sources.)
 export function adoptAndFound(world) {
   const co = world._countryOwner, tw = world.tw, elev = world.elev;
-  if (!co) return;
+  if (!co) return;   // territory pass hasn't run yet — nothing to adopt from
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
-    const region = elev[ti] > 0 ? co[ti] : -1;
+    const region = elev[ti] > 0 ? grownOwnerAt(world, ti) : -1;
     // A CITY is a sovereign anchor; so is a frontier SEAT minted by
     // nucleateFrontierStates (a regional-leader town that founded a state — it
     // never reaches city tier in isolation, so it carries sovereignty by flag).
@@ -406,7 +570,17 @@ export function adoptAndFound(world) {
       }
       // a town/city with a country keeps it (sovereign)
     } else {
-      // village / town: follow the land (region), or stateless on the frontier
+      // A developed frontier settlement — a TOWN (tier ≥ 1) stranded in TRUE WILDERNESS
+      // (beyond EVERY realm's reach, co[ti] < 0, not merely outside the crawled border)
+      // — FOUNDS its own city-state instead of persisting as a stateless economy that
+      // builds roads and trades in no-man's-land. A mere hamlet (tier 0) stays as
+      // population until it develops or a realm's border reaches it — not every hamlet
+      // is a state, but a real town on the frontier is a polity.
+      if (s.countryId < 0 && region < 0 && (s.tier | 0) >= 1 && co[ti] < 0) {
+        s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
+        continue;
+      }
+      // otherwise village / town: follow the land (region), or stateless on the frontier
       if (s.countryId !== region) {
         if (s.countryId < 0 && region >= 0) s._integratedAt = world.step;   // wild → joined a realm: grow its basin in from the border, don't bloom
         s.countryId = region;

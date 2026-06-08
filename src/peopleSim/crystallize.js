@@ -21,6 +21,8 @@ import { isContinentalLand } from "./state.js";
 import { makeSettlement } from "./settlement.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
+import { grownOwnerAt } from "./countryClaim.js";
+import { T } from "./tuning.js";
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
 const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) flood — a
@@ -205,6 +207,14 @@ export function maybeCrystallize(world) {
   // saturated regions every candidate fails the tooClose / area-fert
   // checks, so spawn rate falls off naturally.
   const { N, tw, th, elev, fert, coast, riverMag, transportDist, rng } = world;
+  // LOCALITY model spaces centres farther apart (×LOCALITY_SPACING) so the map
+  // fills with fewer, larger localities — each farming a bigger catchment —
+  // instead of a dense village scatter.
+  const spMul = T.LOCALITY_MODE ? Math.max(1, T.LOCALITY_SPACING || 3) : 1;
+  const hardFloorSq = HARD_FLOOR_SQ * spMul * spMul;
+  const softDistSq  = SOFT_DIST_SQ  * spMul * spMul;
+  const hardFloor   = HARD_FLOOR * spMul;
+  const softDist    = SOFT_DIST  * spMul;
   for (let i = 0; i < CANDIDATES_PER_SWEEP; i++) {
     const ti = rng.int(N);
     if (!isContinentalLand(world, ti)) continue;
@@ -247,15 +257,15 @@ export function maybeCrystallize(world) {
       const tierBonus = 1 + (o.tier | 0);
       marketPull += tierBonus * Math.exp(-d / MARKET_RANGE);
     });
-    if (nearestSq < HARD_FLOOR_SQ) continue;       // hard reject — overlap
+    if (nearestSq < hardFloorSq) continue;         // hard reject — overlap
     // Linear ramp between HARD_FLOOR and SOFT_DIST on actual distance (not
     // squared, so it grows steeply near the floor and flattens out near the
     // soft boundary — matches the "very close = bad, modest distance =
-    // mostly fine" historical pattern).
+    // mostly fine" historical pattern). (Thresholds widen in LOCALITY mode.)
     let spacingFactor = 1;
-    if (nearestSq < SOFT_DIST_SQ) {
+    if (nearestSq < softDistSq) {
       const d = Math.sqrt(nearestSq);
-      spacingFactor = (d - HARD_FLOOR) / (SOFT_DIST - HARD_FLOOR);
+      spacingFactor = (d - hardFloor) / (softDist - hardFloor);
     }
     // Market pull: 1.0 at zero pull (frontier), grows with proximity to
     // existing settlements weighted by their tier. Multiplied into the
@@ -286,6 +296,14 @@ export function maybeCrystallize(world) {
     // Resource / network / geographic bonuses are still additive
     // contributions on top of the multiplied location score.
     let quality = fertilityScore * locMul;
+    // LAND-HUNGER: population pressure pushes settlers onto poorer land once the
+    // good sites NEARBY are taken. marketPull measures how settled the surroundings
+    // already are, so this lifts low-fertility tiles ONLY within populated regions
+    // (good land still fills first on an open frontier) — and being ADDITIVE it
+    // boosts a marginal site far more than an already-prime one. This is what lets
+    // the desert/upland interior of a mature region fill with sparse hamlets
+    // instead of staying empty forever. (T.LAND_HUNGER lever.)
+    quality += T.LAND_HUNGER * Math.min(3, marketPull);
     quality += resourceBonusFor(world, ti, resScarcity);
     quality += busyRoadBonusFor(world, ti, tx, ty);
     quality += geoBonusFor(world, ti, tx, ty);   // chokepoints / passes / sheltered harbours
@@ -303,13 +321,17 @@ export function maybeCrystallize(world) {
       // Inherited knowledge: blend from nearest settlement, weighted by
       // distance. Far sites start near baseline neolithic knowledge.
       const inherited = inheritKnowledgeAt(world, ti, td);
-      // A spawned village is NEVER its own country. It ADOPTS the country that
-      // owns the tile it's founded on (world._countryOwner), or is born STATELESS
-      // (-1) if that's open wilderness — a frontier hamlet that's just population
-      // until a state's territory reaches it (adoptAndFound) or it grows into a
-      // city and founds a realm. This is what keeps the political map clean
-      // however many villages spawn: villages add people, never countries/flecks.
-      const region = world._countryOwner ? world._countryOwner[ti] : -1;
+      // A spawned village is NEVER its own country. It ADOPTS the country whose
+      // border has actually GROWN over the tile it's founded on (grownOwnerAt →
+      // world._countryClaim), or is born STATELESS (-1) if the front hasn't
+      // reached here — a frontier hamlet that's just population until a state's
+      // territory crawls over it (adoptAndFound) or it grows into a city and
+      // founds a realm. Reading the GROWN claim (not the realm's projected reach,
+      // world._countryOwner) is what stops a hamlet spawning on land a country
+      // has merely projected toward from flying that flag ahead of the border.
+      // This keeps the political map clean however many villages spawn: villages
+      // add people, never countries/flecks.
+      const region = grownOwnerAt(world, ti);
       const born = makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: 18 + (rng.int(8)),
         knowledge: inherited,

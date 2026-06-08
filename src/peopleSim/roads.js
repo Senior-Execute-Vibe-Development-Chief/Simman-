@@ -48,7 +48,7 @@ import { T } from "./tuning.js";
 import { exportValueOf, getWealthReserve } from "./settlement.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
-import { recordIn, recordOut, IN_GOODS, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
+import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 
 // ── Constants ──────────────────────────────────────────────────────
 const QUALITY_NEW         = 0.25;       // new road: 4× cheaper than plain
@@ -182,6 +182,16 @@ const DEMAND_WEALTH_CAP            = 8;      // a very rich buyer imports up to 
 const TRANSPORT_PER_PATHCOST       = 0.012;
 const USAGE_PER_TRADE              = 0.04;   // flow added per tile per active trade tick
 const MONEY_FLOW_EPS               = 0.01;   // min net /tick for a link to register in the money-flow overlay
+// ── Trade throttle ──
+// The bilateral trade loop is O(pairs) and the single biggest per-tick cost of
+// the whole sim, yet a pair's transfer is tiny and the economy runs on EMAs +
+// granary buffers — it does NOT need resolving every tick. So run the pass once
+// every T.TRADE_STRIDE ticks at STRIDE× volume: same AVERAGE money / goods / road-
+// flow, ~STRIDE× cheaper amortised. This is the same throttle the knowledge pass
+// already uses (KNOW_INTERVAL). Road flow DECAY and PAVING still run every tick,
+// so the surface maintains smoothly between trade ticks. T.TRADE_STRIDE is a live
+// Pacing lever (tuning.js); 1 recovers the exact every-tick behaviour.
+const tradeStride = () => Math.max(1, T.TRADE_STRIDE | 0);
 
 // Tolls — when trade between A and B passes through a third
 // settlement C's home tile, C skims a cut of the trade value.
@@ -324,6 +334,15 @@ function computeReach(world, s, stMap) {
   const reach = new Map();
   const { tw, th, roadQuality: rq, N } = world;
   const startTi = (s.pos.y | 0) * tw + (s.pos.x | 0);
+  // A tier-0 VILLAGE keeps only its nearest T.VILLAGE_PARTNERS partners (local
+  // market trade) instead of the whole network. Same toll/tariff/tax machinery
+  // (money stays conserved — it's still real bilateral trade), but far cheaper:
+  // the reach Dijkstra stops sooner, and the per-pair trade / knowledge-diffusion
+  // / development-materials loops all iterate THIS reach. Towns+ always get the
+  // full set; default 12 = villages trade like everyone else (no change).
+  const cap = (s.tier | 0) < 1
+    ? Math.max(1, Math.min(MAX_PARTNERS, T.VILLAGE_PARTNERS | 0))
+    : MAX_PARTNERS;
   // Typed-array Dijkstra scratch (shared across settlements; a per-call stamp
   // means no Map overhead and no O(N) clear). This pass runs once per
   // settlement on every reach rebuild, so the Map version was a big spike.
@@ -352,7 +371,7 @@ function computeReach(world, s, stMap) {
       const link = { cost: d, tiles };
       link.inter = intermediatesOnPath(link, s.id, peer.id, stMap);
       reach.set(peer.id, link);
-      if (reach.size >= MAX_PARTNERS) break;     // nearest-first; we have enough
+      if (reach.size >= cap) break;              // nearest-first; we have enough (villages: fewer — see cap)
     }
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0      ? tw - 1 : tx - 1;
@@ -458,6 +477,7 @@ export function maybeBuildRoads(world) {
     world._planSnap = snap;
     world._planQueue = world.settlements.filter(s => {
       if (s.mode !== "settled" || s.people < MIN_POP_TO_PLAN) return false;
+      if ((s.tier | 0) < (T.ROAD_MIN_TIER | 0)) return false;   // grand scale: tier-0 Farming Regions don't lay roads (roads are trade-only trunk routes, town↔city)
       // A meaningful pop jump (or first-ever evaluation) makes it due now.
       if (s._planPop === undefined || s.people > s._planPop * 1.4) s._planNext = 0;
       return (s._planNext || 0) <= snap;
@@ -736,54 +756,12 @@ export function updateTrade(world) {
       else rf[ti] = v;
     }
   }
-  // Iterate settlements, then pair with their reach. Also snapshot, per
-  // actively-trading pair, the NET money that reached the peer this tick
-  // and along which tiles — consumed by the money-flow overlay to animate
-  // flow direction. Rebuilt fresh each tick (no staleness across the
-  // 240-tick reach rebuilds).
-  const moneyFlows = [];
-  const linkMoney = new Map();   // "loId:hiId" -> net money that reached the higher-id settlement
-  for (const s of world.settlements) {
-    if (s.mode !== "settled") continue;
-    // Trade peers = the road network reach PLUS any sea-lane peers
-    // (sea.js). Where both exist for a peer, take the cheaper link.
-    const reach = mergeReach(s);
-    if (!reach) continue;
-    for (const [peerId, link] of reach) {
-      if (peerId === s.id) continue;
-      const peer = findById(world, peerId);
-      if (!peer || peer.mode !== "settled") continue;
-      // Process each unordered pair exactly once. Normally the lower-id member
-      // runs it — but trade reach can be ASYMMETRIC (each settlement keeps only
-      // its nearest MAX_PARTNERS, and "b is among a's nearest" does NOT imply
-      // the reverse). So the lower id runs it, UNLESS the lower-id peer doesn't
-      // list us back — then WE run it, so a one-way-listed link still trades
-      // instead of being silently dropped (a peripheral breadbasket's grain
-      // reaching a city used to hinge on arbitrary id ordering).
-      if (peerId < s.id && reachHasPeer(peer, s.id)) continue;
-      const peerBefore = peer.wealth || 0;
-      runGeneralTradeBetween(world, s, peer, link);
-      runLuxuryTradeBetween(world, s, peer);
-      // Net coin that reached the peer (the end of link.tiles, oriented s→peer).
-      const net = (peer.wealth || 0) - peerBefore;
-      // Store under a canonical lo:hi key, oriented as "coin that reached the
-      // HIGHER-id settlement" (the convention getTradeProfile + the money-flow
-      // overlay expect) — the pair can now be run from either side, so we can't
-      // assume s is the lower id.
-      const lo = s.id < peerId ? s.id : peerId, hi = s.id < peerId ? peerId : s.id;
-      linkMoney.set(lo + ":" + hi, peerId === hi ? net : -net);
-      // Land trade wears its road path (flow drives paving + thickness);
-      // sea trade leaves no road, but both animate on the money overlay.
-      if (link.tiles && link.tiles.length > 0) {
-        if (!link.sea) { for (const ti of link.tiles) { rf[ti] += USAGE_PER_TRADE; flowTiles.add(ti); } }
-        if (link.tiles.length > 1 && Math.abs(net) > MONEY_FLOW_EPS) {
-          moneyFlows.push({ tiles: link.tiles, mag: Math.abs(net), toEnd: net >= 0, sea: !!link.sea });
-        }
-      }
-    }
-  }
-  world._moneyFlows = moneyFlows;
-  world._linkMoney = linkMoney;
+  // Throttle the O(pairs) bilateral trade to every T.TRADE_STRIDE ticks at STRIDE×
+  // volume (see tradeStride). On the skipped ticks _linkMoney / _moneyFlows keep
+  // the last sweep's (complete) contents — at most STRIDE-1 ticks stale, which the
+  // armies trade-peace read and the money overlay both tolerate.
+  const tStride = tradeStride();
+  if (world.step === 1 || world.step % tStride === 0) runTradePass(world, rf, flowTiles, tStride);
   // Quality evolution over the road set only:
   //   • busy tiles (flow ≥ ROAD_ABANDON_FLOW) pave further toward
   //     QUALITY_MAX, faster the higher the flow (capped at FLOW_FOR_PAVE,
@@ -810,6 +788,78 @@ export function updateTrade(world) {
     for (const ti of gone) roadTiles.delete(ti);
     if (gone.length) world._roadVersion = (world._roadVersion || 0) + 1;   // topology changed
   }
+}
+
+// One bilateral-trade sweep standing in for `stride` ticks (see TRADE_STRIDE).
+// Runs every pair once at stride× volume, so the average money / goods / road-
+// flow matches the old every-tick pass; the per-pair NET is divided back down to
+// a per-tick rate before it lands in _linkMoney / _moneyFlows, so the armies
+// trade-peace read and the money overlay see the same magnitudes as before.
+function runTradePass(world, rf, flowTiles, stride) {
+  // The luxury budgets (set per-tick by computeLuxury) must cover `stride` ticks
+  // now that this sweep stands in for that many — scale them up front so every
+  // luxLeg, from either side, draws against the larger pool.
+  if (stride !== 1) {
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      s._luxSupplyLeft = (s._luxSupplyLeft || 0) * stride;
+      s._luxDemandLeft = (s._luxDemandLeft || 0) * stride;
+    }
+  }
+  const usage = USAGE_PER_TRADE * stride;
+  const invStride = 1 / stride;
+  const moneyFlows = [];
+  const linkMoney = new Map();   // "loId:hiId" -> net /tick that reached the higher-id settlement
+  // The animated money-flow overlay (moneyFlows) is render-only and consumed ONLY
+  // in the money view; skip the per-pair object churn unless that view is active
+  // (the worker sets the flag from viewMode). _linkMoney is always built — armies.js
+  // reads it for the trade-peace dampener, so it's a sim input, not just an overlay.
+  const wantFlows = world._wantMoneyFlows !== false;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    // Trade peers = the road network reach PLUS any sea-lane peers
+    // (sea.js). Where both exist for a peer, take the cheaper link.
+    const reach = mergeReach(s);
+    if (!reach) continue;
+    for (const [peerId, link] of reach) {
+      if (peerId === s.id) continue;
+      const peer = findById(world, peerId);
+      if (!peer || peer.mode !== "settled") continue;
+      // Process each unordered pair exactly once. Normally the lower-id member
+      // runs it — but trade reach can be ASYMMETRIC (each settlement keeps only
+      // its nearest MAX_PARTNERS, and "b is among a's nearest" does NOT imply
+      // the reverse). So the lower id runs it, UNLESS the lower-id peer doesn't
+      // list us back — then WE run it, so a one-way-listed link still trades
+      // instead of being silently dropped (a peripheral breadbasket's grain
+      // reaching a city used to hinge on arbitrary id ordering).
+      if (peerId < s.id && reachHasPeer(peer, s.id)) continue;
+      const peerBefore = peer.wealth || 0;
+      runGeneralTradeBetween(world, s, peer, link, stride);
+      runLuxuryTradeBetween(world, s, peer);
+      // Net coin that reached the peer this SWEEP, divided back to a per-tick rate
+      // so downstream reads (armies trade-peace, money overlay) are stride-neutral.
+      const net = ((peer.wealth || 0) - peerBefore) * invStride;
+      // Store under a canonical lo:hi key, oriented as "coin /tick that reached the
+      // HIGHER-id settlement" (the convention getTradeProfile + the money-flow
+      // overlay expect) — the pair can now be run from either side, so we can't
+      // assume s is the lower id.
+      const lo = s.id < peerId ? s.id : peerId, hi = s.id < peerId ? peerId : s.id;
+      linkMoney.set(lo + ":" + hi, peerId === hi ? net : -net);
+      // Land trade wears its road path (flow drives paving + thickness);
+      // sea trade leaves no road, but both animate on the money overlay.
+      if (link.tiles && link.tiles.length > 0) {
+        // A tile only needs ADDING to the sparse flow-set when it was idle; a
+        // busy trunk shared by many pairs (and across ticks) is already in the
+        // set, so the cheap rf===0 test skips almost every redundant Set.add.
+        if (!link.sea) { for (const ti of link.tiles) { if (rf[ti] === 0) flowTiles.add(ti); rf[ti] += usage; } }
+        if (wantFlows && link.tiles.length > 1 && Math.abs(net) > MONEY_FLOW_EPS) {
+          moneyFlows.push({ tiles: link.tiles, mag: Math.abs(net), toEnd: net >= 0, sea: !!link.sea });
+        }
+      }
+    }
+  }
+  world._moneyFlows = moneyFlows;
+  world._linkMoney = linkMoney;
 }
 
 // Walk the path's tiles, collect each settlement whose home tile
@@ -847,10 +897,13 @@ function demandMul(buyer) {
   if (spare <= 0) return 1;
   return 1 + Math.min(DEMAND_WEALTH_CAP, spare / DEMAND_WEALTH_REF);
 }
-function runGeneralTradeBetween(world, a, b, link) {
+function runGeneralTradeBetween(world, a, b, link, stride = 1) {
   const minPop = Math.min(a.people, b.people);
-  const vol = Math.sqrt(minPop) * T.TRADE_RATE;
-  const transport = link.cost * TRANSPORT_PER_PATHCOST;
+  // stride× volume + freight: this sweep stands in for `stride` ticks, so it
+  // moves that many ticks' worth of goods (and pays that much freight), keeping
+  // the average flow identical to the old every-tick pass.
+  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride;
+  const transport = link.cost * TRANSPORT_PER_PATHCOST * stride;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;
   // A's goods sold to B (B pays A), then B's goods sold to A (A pays B).
@@ -912,10 +965,19 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   const actual = available < want ? available : want;
   const scale = actual / want;
   buyer.wealth -= actual;
-  seller.wealth = (seller.wealth || 0) + goodsValue * scale;
-  recordOut(buyer, OUT_GOODS, goodsValue * scale);
+  const paid = goodsValue * scale;
+  seller.wealth = (seller.wealth || 0) + paid;
+  // Book the trade by SECTOR: the seller's agrarian fraction (computeExportValue)
+  // is farm produce — booked "food & farm goods"; the rest is manufactured wares —
+  // booked "goods". So a Farming Region reads as a farmer selling grain/livestock,
+  // a town as a workshop selling crafts.
+  const agFrac = seller._exportAgrarianFrac != null ? seller._exportAgrarianFrac : 1;
+  const agPaid = paid * agFrac;
+  recordIn(seller, IN_FOOD, agPaid);
+  recordIn(seller, IN_GOODS, paid - agPaid);
+  recordOut(buyer, OUT_FOOD, agPaid);
+  recordOut(buyer, OUT_GOODS, paid - agPaid);
   recordOut(buyer, OUT_TOLLS, (freight + totalToll) * scale);
-  recordIn(seller, IN_GOODS, goodsValue * scale);
   if (intermediates) {
     const tollPer = goodsValue * TOLL_RATE * scale;
     for (const inter of intermediates) { inter.wealth = (inter.wealth || 0) + tollPer; recordIn(inter, IN_TOLLS, tollPer); }

@@ -51,12 +51,22 @@ export function reachBudget(s) {
   // cached effects (reachLevel tracks organization); falls back to continuous
   // organization if the cache isn't computed yet.
   const reach = s._techEff ? s._techEff.reachLevel : ((s.knowledge && s.knowledge.organization) || 0);
-  return TERRITORY_BASE + reach * T.ORG_REACH;
+  let b = TERRITORY_BASE + reach * T.ORG_REACH;
+  // LOCALITY model: centres are spaced LOCALITY_SPACING× farther apart, so widen
+  // each catchment to match — otherwise the freed land between them goes unfarmed
+  // (food + population collapse) and centres stay village-sized. A locality farms
+  // its whole hinterland.
+  if (T.LOCALITY_MODE) b *= Math.max(1, T.LOCALITY_SPACING || 3);
+  return b;
 }
 
 // Per-tile food weight by distance: 1 next to the centre, tailing off with
 // transport cost so a sprawling claim doesn't linearly inflate food.
-function foodFalloff(cost) { return 1 / (1 + cost * 0.5); }
+// Distance discount on a tile's food. Steep by default (a village farms what it
+// can walk to). In LOCALITY mode it's gentle: a locality's rural population is
+// spread ACROSS its catchment and works the whole thing, so far tiles still
+// count — otherwise widening the catchment just adds discounted-to-nothing land.
+function foodFalloff(cost) { return 1 / (1 + cost * (T.LOCALITY_MODE ? 0.04 : 0.5)); }
 
 // Plantability floor (same idea as before): below this fertility a tile
 // yields too little to feed anyone. Eased by agriculture knowledge.
@@ -88,7 +98,8 @@ const HINTERLAND_BY_TIER = [3, 4, 6, 8];
 export function hinterlandRadiusFor(s) {
   const t = s.tier | 0;
   const base = HINTERLAND_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
-  return Math.max(coreRadiusFor(s), Math.round(base * T.HINTERLAND_MULT));
+  const mul = T.LOCALITY_MODE ? T.HINTERLAND_MULT * Math.max(1, T.LOCALITY_SPACING || 3) : T.HINTERLAND_MULT;
+  return Math.max(coreRadiusFor(s), Math.round(base * mul));
 }
 
 class MinHeap {
