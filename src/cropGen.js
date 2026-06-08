@@ -17,7 +17,15 @@ export function cropSuitability(t, m, e, coast, riverMag, bDist) {
   if (e > 0.45) return 0.02;
   const rm = riverMag || 0;
   const tBell = Math.min(1, Math.max(0, (t - 0.57) / 0.13)) * Math.min(1, 1 - Math.pow(Math.max(0, t - 0.88), 2) * 1.5);
-  const mBell = Math.exp(-((m - 0.45) * (m - 0.45)) / (2 * 0.28 * 0.28));
+  // ARID GATE (the dry-side mirror of the cold gate): rain-fed crops FAIL in the desert.
+  // Hyper-arid land (m < 0.12 — the Sahara / Arabia / Australian-interior core) yields ~0,
+  // ramping to full suitability by m ≈ 0.30 (semi-arid steppe/savanna is marginal, not dead).
+  // Without this the moisture bell floored dry land at ~0.27, so deserts read as prime
+  // farmland, filled with villages and got carved into nations. The river/coast alluvial
+  // bonus below still threads GREEN RIBBONS through the sand (the Nile/Indus/Murray, oasis
+  // coasts), so desert INTERIORS go empty while their watered margins host isolated realms.
+  const aridGate = Math.min(1, Math.max(0, (m - 0.12) / 0.18));
+  const mBell = Math.exp(-((m - 0.45) * (m - 0.45)) / (2 * 0.28 * 0.28)) * aridGate;
   let crop = tBell * mBell;
   // Tropical lateritic-soil penalty, discounted by young soil (volcanic/orogenic, alluvial).
   if (t > 0.75 && m > 0.65) {
