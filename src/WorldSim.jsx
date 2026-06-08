@@ -39,7 +39,15 @@ const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688
 // can be rendered once to an offscreen canvas and blitted each frame instead
 // of rebuilt per-pixel. Sim-dependent views (population, transport, roads,
 // money, tribes) and atlas are excluded.
-const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","fertility","crop","crossing","resources","moisture","temperature","country"]);
+const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","fertility","crop","crossing","resources","moisture","temperature","country","atlas"]);
+// Sim-DYNAMIC data views: also cacheable (a GPU blit instead of a full-canvas
+// putImageData every frame — the reason these lagged next to the country view),
+// but their raster must refresh as the sim advances, so the cache key carries a
+// step bucket: rebuild every STEP_CACHE_REGEN sim-steps, blit between (the same
+// trick the political overlay uses). When paused the step is constant, so they
+// blit every frame and cost nothing.
+const STEP_CACHE_VIEWS = new Set(["population","money","roads","transport","tribes"]);
+const STEP_CACHE_REGEN = 8;
 let _mercator = false; // module-level flag for projection functions
 
 function screenYtoDataY(sy, ch, H) {
@@ -1793,8 +1801,13 @@ const lk=ter.rivers&&ter.rivers.lake?ter.rivers.lake:null;
 const N=CW*CH;
 // Static-base cache: blit the cached terrain raster instead of rebuilding it
 // per-pixel when nothing affecting it changed.
-const _staticBase=BASE_CACHE_VIEWS.has(vm)&&!isGlobe;
-const _baseKey=_staticBase?(vm+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+(activeResRef.current||'')+'|'+oceanLevelRef.current):null;
+const _stepCacheV=STEP_CACHE_VIEWS.has(vm);
+const _staticBase=(BASE_CACHE_VIEWS.has(vm)||_stepCacheV)&&!isGlobe;
+// Dynamic data views fold a coarse sim-step bucket into the key so the cached
+// raster refreshes as the world changes (and is stable/blitted while paused).
+const _simStep=(peopleRef.current&&peopleRef.current.step)||0;
+const _stepTag=_stepCacheV?('|s'+((_simStep/STEP_CACHE_REGEN)|0)):'';
+const _baseKey=_staticBase?(vm+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+(activeResRef.current||'')+'|'+oceanLevelRef.current+_stepTag):null;
 let _baseHit=false;
 if(_staticBase&&ctx&&baseLayerRef.current&&baseLayerRef.current.width===CW&&baseLayerRef.current.height===CH&&baseLayerKey.current===_baseKey){ctx.drawImage(baseLayerRef.current,0,0);_baseHit=true;}
 if(!_baseHit){
