@@ -20,6 +20,7 @@
 // edge (you tax/own the whole territory even if you don't farm it).
 
 import { localEdgeCost } from "./transport.js";
+import { forEachNear } from "./spatialGrid.js";
 import { T } from "./tuning.js";
 
 // Reach budget, in transport-cost units (a plain tile = 1.0). Pure
@@ -277,6 +278,36 @@ export function computeTerritory(world) {
   }
 
   tallyTerritory(world, owner, cost, byId);
+  if (T.URBAN_NODES) assignMinesByProximity(world, byId);
+}
+
+// URBAN_NODES: a mine is worked by whoever is NEAREST, not by who owns the
+// (usually infertile, now-unclaimed) mountain it sits on — so the specie supply
+// no longer collapses when cities stop owning broad reach-domains. This decouples
+// minting from the farming catchment: the countryside (or a nearby city) works
+// each deposit, and the silver spreads through trade, as it did historically.
+const MINE_RANGE = 8;    // tiles within which a settlement works a mine (≈ a settlement's natural
+                         // territory radius, so the worked-mine count — and thus the money supply —
+                         // tracks the owned-territory baseline instead of minting every mountain)
+function assignMinesByProximity(world, byId) {
+  // Mine-tile list (precious/gems deposits), built once and cached.
+  if (!world._mineTiles) {
+    const list = [];
+    const dep = world.deposits || {};
+    for (const id of ["precious", "gems"]) {
+      const arr = dep[id]; if (!arr) continue;
+      for (let ti = 0; ti < world.N; ti++) if (arr[ti] > 0.05) list.push([ti, id]);
+    }
+    world._mineTiles = list;
+  }
+  if (!world._settGrid) return;   // need the spatial index (built each tick before territory)
+  const tw = world.tw;
+  for (const m of world._mineTiles) {
+    const ti = m[0], mx = ti % tw, my = (ti / tw) | 0;
+    let best = null, bestD = Infinity;
+    forEachNear(world, mx + 0.5, my + 0.5, MINE_RANGE, (s, d2) => { if (d2 < bestD) { bestD = d2; best = s; } });
+    if (best) best._minableTiles.push(m);
+  }
 }
 
 // Walk every claimed tile once and accumulate each owner's food / resource
@@ -314,8 +345,13 @@ function tallyTerritory(world, owner, cost, byId) {
         const v = arr[ti] || 0;
         if (v > (acc[id] || 0)) acc[id] = v;
       }
-      if (deposits.precious && deposits.precious[ti] > 0.05) s._minableTiles.push([ti, "precious"]);
-      if (deposits.gems && deposits.gems[ti] > 0.05) s._minableTiles.push([ti, "gems"]);
+      // URBAN_NODES assigns mines by PROXIMITY (assignMinesByProximity) instead of
+      // ownership — a node city owns no mountains, so owned-tile mining would zero
+      // the money supply. Skip the owned-tile mineral grab in that mode.
+      if (!T.URBAN_NODES) {
+        if (deposits.precious && deposits.precious[ti] > 0.05) s._minableTiles.push([ti, "precious"]);
+        if (deposits.gems && deposits.gems[ti] > 0.05) s._minableTiles.push([ti, "gems"]);
+      }
     }
     // Borders: compare right + down neighbours (x wraps).
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
