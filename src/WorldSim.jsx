@@ -1308,6 +1308,11 @@ const atlasCache=useRef(null);
 // regenerate every PS_OVERLAY_REGEN sim-steps, blitting it otherwise.
 const psOverlayRef=useRef(null);
 const psOverlayMeta=useRef({step:-1,ch:0});
+// Reusable scratch for the money-flow coin particles (money view). Coins are
+// bucketed by link busyness so the whole overlay costs ~4 fillStyle changes
+// instead of one per link; the position arrays are reused across frames to
+// avoid per-frame allocation at 60fps.
+const moneyDotsRef=useRef(null);
 // Offscreen cache of the STATIC base raster (terrain etc.). Rebuilt only when
 // the view or a relevant toggle changes; blitted every frame otherwise — the
 // per-pixel terrain rebuild + putImageData was a big per-frame cost now that
@@ -2553,44 +2558,57 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         ctx.fillRect(px*TR,dataYtoScreenY(py*TR,H,CH),TR,TR);
       }
     }
-    // 2) Animated coin particles flowing along trade links in the net-
-    // money direction. Each link gets a SHARE of a global dot budget
-    // — but allocated by sqrt(mag) instead of mag, so a giant trunk
-    // doesn't drown out the dozens of small links. The budget is also
-    // large enough to keep the scene populated even when the world has
-    // few links: one dot ~= 0.3% of the world's current trade activity.
+    // 2) Animated coin particles streaming along trade links in the net-money
+    // direction. EVERY active link gets a stream of coins at a roughly constant
+    // spacing (busier links pack them tighter + brighter), so the whole live
+    // trade network reads as "money in motion". (The old code shared one global
+    // budget by sqrt(mag); with 1500+ links each link's share rounded to zero,
+    // so only the busiest ~100 links ever showed a single dot — the map looked
+    // empty despite a thriving economy.) Coins are binned into a few brightness
+    // buckets and drawn in batches, so thousands of them cost ~4 fillStyle
+    // changes instead of one per link.
     const flows=psw._moneyFlows;
     if(flows&&flows.length){
-      let totalRoot=0,maxMag=0;
-      for(const f of flows){totalRoot+=Math.sqrt(f.mag);if(f.mag>maxMag)maxMag=f.mag;}
-      const DOT_BUDGET=350;
-      // Noise floor low enough that genuinely active mid-tier links still
-      // get a dot. Anything above 3% of the busiest link is always visible.
-      const noiseFloor=maxMag*0.03;
+      let maxMag=0;for(const f of flows){if(f.mag>maxMag)maxMag=f.mag;}
+      const logMax=Math.log1p(maxMag);
+      const NB=4, CAPB=2600;                 // brightness buckets · per-bucket dot cap (perf safety)
+      let mb=moneyDotsRef.current;
+      if(!mb||mb.cap!==CAPB){mb={cap:CAPB,n:new Int32Array(NB),xy:Array.from({length:NB},()=>new Float32Array(CAPB*2))};moneyDotsRef.current=mb;}
+      for(let b=0;b<NB;b++)mb.n[b]=0;
       const now=performance.now();
+      const period=2600;                     // ms for a coin to traverse a link
       for(const f of flows){
         const pts=f.tiles;const np=pts.length;if(np<2)continue;
-        let dots=Math.round((Math.sqrt(f.mag)/Math.max(0.001,totalRoot))*DOT_BUDGET);
-        if(f.mag>=noiseFloor&&dots<1)dots=1;
-        if(dots<=0)continue;
-        dots=Math.min(dots,16);            // per-link cap so a single huge link doesn't eat the screen
-        // Brightness scales with the link's SHARE of the maximum (not raw
-        // magnitude), so dominant links pop relative to whatever scene you
-        // are looking at.
-        const share=f.mag/Math.max(0.001,maxMag);
-        const alpha=Math.max(0.35,Math.min(0.95,0.35+share*0.6));
-        ctx.fillStyle=`rgba(255,205,70,${alpha.toFixed(2)})`;
-        const period=2600;                 // ms for a coin to traverse the link
+        // busyness 0..1 (log so a giant trunk doesn't flatten the rest); sets
+        // both the brightness bucket and the coin spacing.
+        const busy=logMax>0?Math.log1p(f.mag)/logMax:0;
+        const b=Math.min(NB-1,(busy*NB)|0);
+        if(mb.n[b]>=mb.cap)continue;          // bucket full (faintest links drop first; trunks live in higher buckets)
+        const spacing=14-9*busy;             // tiles per coin: ~14 (faint) → ~5 (busiest)
+        let dots=Math.round(np/spacing);if(dots<1)dots=1;else if(dots>20)dots=20;
+        // Per-link phase from the start tile (golden-ratio hash) so the
+        // thousands of single-coin links don't all pulse in lockstep.
+        const ph=(pts[0]*0.6180339887)%1;
+        const arr=mb.xy[b];let cnt=mb.n[b];
         for(let j=0;j<dots;j++){
-          let u=((now/period)+(j/dots))%1;
-          if(!f.toEnd)u=1-u;               // reverse direction
+          let u=((now/period)+(j/dots)+ph)%1;
+          if(!f.toEnd)u=1-u;                 // reverse direction
           const fi=u*(np-1);const i0=fi|0;const i1=Math.min(np-1,i0+1);const fr=fi-i0;
           const x0=sx(pts[i0]),x1=sx(pts[i1]);
           const y0=sy(pts[i0]),y1=sy(pts[i1]);
           if(Math.abs(x1-x0)>CW*0.5)continue;   // skip segments that wrap the seam
-          const x=x0+(x1-x0)*fr,y=y0+(y1-y0)*fr;
-          ctx.beginPath();ctx.arc(x,y,1.7,0,Math.PI*2);ctx.fill();
+          if(cnt>=mb.cap)break;
+          arr[cnt*2]=x0+(x1-x0)*fr;arr[cnt*2+1]=y0+(y1-y0)*fr;cnt++;
         }
+        mb.n[b]=cnt;
+      }
+      // Batched draw: one fillStyle per brightness bucket, cheap fillRect coins.
+      const ALPHA=[0.42,0.60,0.77,0.95];
+      for(let b=0;b<NB;b++){
+        const cnt=mb.n[b];if(!cnt)continue;
+        ctx.fillStyle=`rgba(255,205,70,${ALPHA[b]})`;
+        const arr=mb.xy[b];
+        for(let q=0;q<cnt;q++)ctx.fillRect(arr[q*2]-1.1,arr[q*2+1]-1.1,2.2,2.2);
       }
     }
     // 3) Per-settlement markers (the net-wealth node dots and the gold
