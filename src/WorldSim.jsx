@@ -2593,29 +2593,9 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
       }
     }
-    // 3) Settlements: dot coloured by net wealth change (gold = gaining,
-    // red = losing, grey = steady) with a gold glow scaled to mining
-    // income (where money enters the system). Kept small so the trade
-    // FLOWS dominate the visual — this is the money-flow overlay, not
-    // the settlement overlay.
-    for(const s of psw.settlements){
-      if(!s||s.mode!=="settled")continue;
-      const x=s.pos.x*TR,y=dataYtoScreenY(s.pos.y*TR,H,CH);
-      const mined=s._minedRate||0;
-      if(mined>0.01){
-        const rad=2.5+Math.min(10,Math.sqrt(mined)*1.4);
-        const g=ctx.createRadialGradient(x,y,0,x,y,rad);
-        g.addColorStop(0,"rgba(255,210,80,0.55)");
-        g.addColorStop(1,"rgba(255,210,80,0)");
-        ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,rad,0,Math.PI*2);ctx.fill();
-      }
-      const d=s._wealthDelta||0;
-      const col=d>0.02?"#ffcf46":d<-0.02?"#e0563b":"#8a8f9c";
-      const r=1.2+Math.min(1.6,Math.sqrt(Math.abs(d))*0.35);
-      ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
-      ctx.fillStyle=col;ctx.fill();
-      ctx.lineWidth=0.4;ctx.strokeStyle="rgba(0,0,0,0.55)";ctx.stroke();
-    }
+    // 3) Per-settlement markers (the net-wealth node dots and the gold
+    // mining-source glow) are intentionally NOT drawn — this view shows ONLY
+    // the flowing money, so the trade itself is the whole picture.
   }
   if(psw&&ctx&&!vmRoads&&!vmMoney){
     const TR=psw.tileRes;
