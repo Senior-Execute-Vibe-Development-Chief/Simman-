@@ -907,7 +907,17 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
   // several times the volume of the same overland link (T.SEA_TRADE_MULT) — the
   // reason the great trading powers were ports. Without it ocean routes carried
   // ~4% of all money flow. (Mirrors the grain trade's FOOD_HAUL_WATER bonus.)
-  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride * (link.sea ? T.SEA_TRADE_MULT : 1);
+  // Currency strength (Phase 3): a DEBASED realm's weak coin is distrusted
+  // abroad, so its CROSS-BORDER trade shrinks — the international bite of
+  // debasement. (Read fineness directly; don't mint govs for stateless tiles.)
+  let fxMul = 1;
+  if (a.countryId !== b.countryId && world.governments) {
+    const ga = world.governments.get(a.countryId), gb = world.governments.get(b.countryId);
+    const fa = ga && ga.fineness !== undefined ? ga.fineness : 1;
+    const fb = gb && gb.fineness !== undefined ? gb.fineness : 1;
+    if (fa < 1 || fb < 1) fxMul = fa < fb ? fa : fb;
+  }
+  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride * (link.sea ? T.SEA_TRADE_MULT : 1) * fxMul;
   const transport = link.cost * TRANSPORT_PER_PATHCOST * stride;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;

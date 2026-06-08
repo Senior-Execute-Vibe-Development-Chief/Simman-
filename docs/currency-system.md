@@ -1,7 +1,7 @@
 # Money & Currency System — design spec
 
-Status: **Phases 1-2 + the (b) nominal-inflation model implemented** (default-on);
-Phase 3 (debasement) now UNBLOCKED; Phases 4-5 not started. Goal agreed
+Status: **Phases 1-3 + the (b) nominal-inflation model implemented** (default-on);
+Phase 4 (per-country currencies/FX) and Phase 5 (credit) not started. Goal agreed
 with owner: replace the current
 "money is dug out of the ground and regulated by nothing" model with a system
 where money is **created by mines + statecraft**, **regulated by trade and
@@ -215,9 +215,17 @@ depreciation + seigniorage revenue (the international channel), not by starving 
 realm's own cities. Verified healthy at the calibrated supply on seeds 8817 & 4242
 (8 / 9 cities). Long-run money neutrality — a standard result — by design.
 
-**Phase 3 — Seigniorage & debasement as fiscal levers.** A realm in deficit/war
-debases (`fineness ↓`) for revenue + money expansion, eating inflation. Ties the
-money supply to statecraft; gives a visible "inflation crisis" failure mode.
+**Phase 3 — Debasement. ✅ DONE** (`T.DEBASE_AGGRO`, default 0.5). A state that
+can't cover its army bill melts the coinage (`gov.fineness ↓`) for emergency
+seigniorage. The seigniorage is ∝ the fineness DROP, so it **self-limits at the
+floor** (no infinite minting). The cost lands ABROAD: a debased realm's weak coin
+is distrusted, so its cross-border trade volume shrinks (`roads.js` reads
+`gov.fineness`). Solvent realms restore the coin toward full fineness. Verified
+(seeds 8817 & 4242): ~80% of realms debase over a run (mean fineness ~0.85, some
+to the 0.35 floor — currencies genuinely diverge), the money supply grows ~46%
+(realistic debasement inflation, absorbed by the (b) model — cities stay 7-8),
+and `c._fineness` is exposed for the UI. The war-finance spiral, with the bite on
+foreign commerce instead of the realm's own cities.
 
 **Phase 4 — Per-country currencies + FX.** Each realm's `fineness × price level`
 sets an exchange rate; cross-border trade converts at it; debasement depreciates

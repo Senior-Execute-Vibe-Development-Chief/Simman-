@@ -95,6 +95,18 @@ const _cityEnclaveOff = (typeof process !== "undefined" && process.env && proces
 const WAR_SURCHARGE = 1.2;  // each level of war (defensive front / besieged capital) multiplies the army bill
 const RESERVE_PASSES = 3;   // war-chest the state keeps (passes of peacetime army pay) before funding works
 const SOLVENCY_FLOOR = 0.5; // a fully bankrupt state still retains this fraction of its control budget
+// ── Debasement (Currency Phase 3) ──────────────────────────────────────
+// A state that can't cover its army bill melts down the coinage — strikes
+// lighter coins for emergency revenue (seigniorage). Its currency FINENESS
+// falls, which weakens its foreign trade (roads.js reads gov.fineness), but the
+// minted coin keeps the army paid a while longer — the classic war-finance
+// spiral (Rome's denarius, every cash-strapped medieval crown). Solvent states
+// slowly restore the coinage toward full fineness. T.DEBASE_AGGRO gates it.
+const DEBASE_STEP       = 0.03;  // fineness lost per pass while debasing
+const DEBASE_SEIGN_SCALE = 10;   // seigniorage = (fineness drop) × army bill × this — so revenue is
+                                 // tied to the DROP and self-limits at the floor (no infinite minting)
+const DEBASE_RECOVER    = 0.012; // fineness restored per pass when comfortably solvent
+const FINENESS_MIN      = 0.35;  // floor — even a desperate mint keeps some metal in the coin
 
 // ── Variable taxation ─────────────────────────────────────────────────
 // The tax rate climbs under fiscal stress (war + insolvency) toward a cap — a
@@ -140,7 +152,7 @@ const SPOILS_DECAY = 0.85;   // war-weariness relief (banked on conquest in armi
 export function govOf(world, countryId) {
   if (!world.governments) world.governments = new Map();
   let g = world.governments.get(countryId);
-  if (!g) { g = { treasury: 0, _revenue: 0, _spend: 0 }; world.governments.set(countryId, g); }
+  if (!g) { g = { treasury: 0, _revenue: 0, _spend: 0, fineness: 1.0 }; world.governments.set(countryId, g); }
   return g;
 }
 
@@ -1061,6 +1073,20 @@ function disburseTreasury(world, c, gov, warLevel) {
   let totalArmy = 0;
   for (const s of members) if (s.countryId === c.id) totalArmy += s.army || 0;
   const armyBill = totalArmy * wage * (1 + effSurcharge * (warLevel || 0));
+  // DEBASEMENT (Phase 3): if the treasury can't cover the army bill, melt the
+  // coinage — mint emergency seigniorage (lowering fineness) to ease the
+  // shortfall; in comfortable times restore the coin toward full fineness.
+  if (T.DEBASE_AGGRO > 0 && armyBill > 0.01) {
+    const f0 = gov.fineness ?? 1;
+    if (gov.treasury < armyBill && f0 > FINENESS_MIN) {
+      const f1 = Math.max(FINENESS_MIN, f0 - DEBASE_STEP * T.DEBASE_AGGRO);
+      gov.fineness = f1;
+      const seigniorage = (f0 - f1) * armyBill * DEBASE_SEIGN_SCALE;   // ∝ the DROP → self-limits at the floor
+      gov.treasury += seigniorage; gov._revenue += seigniorage;
+    } else if (gov.treasury > armyBill * RESERVE_PASSES * 1.5 && f0 < 1) {
+      gov.fineness = Math.min(1, f0 + DEBASE_RECOVER);
+    }
+  }
   const armyPaid = Math.min(Math.max(0, gov.treasury), armyBill);
   gov._solvency = armyBill > 0.01 ? armyPaid / armyBill : 1;   // 1 = fully paid; < 1 = arrears
   if (armyPaid > 0 && totalArmy > 0) {
@@ -1523,6 +1549,7 @@ export function updatePolities(world) {
     // works/dole → provinces). Balanced budget ⇒ the throne stops hoarding.
     disburseTreasury(world, c, gov, warLevel);
     c._treasury = gov.treasury;
+    c._fineness = gov.fineness ?? 1;   // currency strength (1 = full metal; < 1 = debased) — for the UI
     c._govRevenue = gov._revenue; gov._revenue = 0;   // per-pass revenue, for the panel
     c._govSpend = gov._spend;
 

@@ -15,6 +15,7 @@ const SEED = +(process.argv[3] || "8817");
 if (process.argv[4] !== undefined) applyTuning({ SEA_TRADE_MULT: +process.argv[4] });
 if (process.argv[5] !== undefined) applyTuning({ COIN_LOSS_RATE: +process.argv[5] });
 if (process.argv[6] !== undefined) applyTuning({ HUME_ELASTICITY: +process.argv[6] });
+if (process.argv[7] !== undefined) applyTuning({ DEBASE_AGGRO: +process.argv[7] });
 const W = 480, H = 240, N = W * H;
 const w = generateWorld(W, H, SEED, "earth_sim", 0.78, true, false, {});
 const tE = new Float32Array(N), tT = new Float32Array(N), tM = new Float32Array(N), tC = new Uint8Array(N), tCrop = new Float32Array(N);
@@ -37,6 +38,12 @@ console.log(`[stats]`, peopleSimStats(world));
   let pvar = 0, pmin = 9, pmax = 0; for (const [p, w] of Ps) { pvar += w * (p - pmean) ** 2; if (p < pmin) pmin = p; if (p > pmax) pmax = p; }
   pvar /= Math.max(1, pw);
   console.log(`[price level] mean ${pmean.toFixed(2)}  spread ${pmin.toFixed(2)}..${pmax.toFixed(2)}  CV ${(100 * Math.sqrt(pvar) / Math.max(0.01, pmean)).toFixed(1)}%  (lower CV = Hume equilibrating prices across regions)`);
+}
+// Currency debasement (Phase 3): how many realms melted their coinage?
+if (world.countries) {
+  let n = 0, debased = 0, minF = 1, sumF = 0;
+  for (const c of world.countries.values()) { const f = c._fineness; if (f === undefined) continue; n++; sumF += f; if (f < 0.999) debased++; if (f < minF) minF = f; }
+  console.log(`[debasement] ${debased}/${n} realms debased  ·  min fineness ${minF.toFixed(2)}  ·  mean ${(sumF / Math.max(1, n)).toFixed(2)}  (1.0 = full metal)`);
 }
 
 const flows = world._moneyFlows || [];
