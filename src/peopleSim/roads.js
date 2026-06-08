@@ -907,17 +907,7 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
   // several times the volume of the same overland link (T.SEA_TRADE_MULT) — the
   // reason the great trading powers were ports. Without it ocean routes carried
   // ~4% of all money flow. (Mirrors the grain trade's FOOD_HAUL_WATER bonus.)
-  // Currency strength (Phase 3): a DEBASED realm's weak coin is distrusted
-  // abroad, so its CROSS-BORDER trade shrinks — the international bite of
-  // debasement. (Read fineness directly; don't mint govs for stateless tiles.)
-  let fxMul = 1;
-  if (a.countryId !== b.countryId && world.governments) {
-    const ga = world.governments.get(a.countryId), gb = world.governments.get(b.countryId);
-    const fa = ga && ga.fineness !== undefined ? ga.fineness : 1;
-    const fb = gb && gb.fineness !== undefined ? gb.fineness : 1;
-    if (fa < 1 || fb < 1) fxMul = fa < fb ? fa : fb;
-  }
-  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride * (link.sea ? T.SEA_TRADE_MULT : 1) * fxMul;
+  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride * (link.sea ? T.SEA_TRADE_MULT : 1);
   const transport = link.cost * TRANSPORT_PER_PATHCOST * stride;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;
@@ -935,11 +925,30 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
     const Pa = localP(world, a), Pb = localP(world, b);
     if (Pa > 0 && Pb > 0 && Pa !== Pb) { compA = Math.pow(Pb / Pa, T.HUME_ELASTICITY); compB = 1 / compA; }
   }
-  // A's goods sold to B (B pays A), then B's goods sold to A (A pays B).
-  // Each leg scales with the BUYER's buying power, so a rich node imports more
-  // and relays its coin onward. Freight is split across the two legs.
-  sellGoods(world, a, b, exportValueOf(a, world) * vol * demandMul(b) * compA, transport * 0.5, intermediates, numInter);
-  sellGoods(world, b, a, exportValueOf(b, world) * vol * demandMul(a) * compB, transport * 0.5, intermediates, numInter);
+  // FX / exchange rate (Currency Phase 4): on a FOREIGN purchase the buyer pays
+  // the exchange rate = seller's currency ÷ buyer's (their fineness ratio). A
+  // debased (weak-currency) buyer pays DEARER for imports and so affords fewer,
+  // while a strong-currency realm's coin buys more abroad; the premium is a
+  // conserved transfer to the seller (strong currencies profit from the exchange
+  // trade). Gently capped so debasement bites without a death-spiral. This is the
+  // proper exchange-rate version of the Phase-3 crude foreign-trade penalty.
+  // A's goods to B (buyer B), then B's to A (buyer A).
+  sellGoods(world, a, b, exportValueOf(a, world) * vol * demandMul(b) * compA * fxRate(world, b, a), transport * 0.5, intermediates, numInter);
+  sellGoods(world, b, a, exportValueOf(b, world) * vol * demandMul(a) * compB * fxRate(world, a, b), transport * 0.5, intermediates, numInter);
+}
+
+// Exchange rate applied to a foreign purchase: seller's-currency ÷ buyer's
+// (fineness ratio), so a weak-currency buyer pays more per unit. 1 for domestic
+// trade; gently capped to [0.8, 1.3] so a debased realm's terms of trade worsen
+// without spiralling. Reads fineness directly (no gov creation for stateless).
+function fxRate(world, buyer, seller) {
+  if (buyer.countryId === seller.countryId || !world.governments) return 1;
+  const gb = world.governments.get(buyer.countryId), gs = world.governments.get(seller.countryId);
+  const fb = gb && gb.fineness !== undefined ? gb.fineness : 1;
+  const fs = gs && gs.fineness !== undefined ? gs.fineness : 1;
+  if (fb === fs) return 1;
+  const r = fs / fb;
+  return r < 0.8 ? 0.8 : r > 1.3 ? 1.3 : r;
 }
 
 // Luxury trade: a wealthy settlement spends coin importing luxury goods

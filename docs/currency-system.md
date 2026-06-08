@@ -1,7 +1,7 @@
 # Money & Currency System — design spec
 
-Status: **Phases 1-3 + the (b) nominal-inflation model implemented** (default-on);
-Phase 4 (per-country currencies/FX) and Phase 5 (credit) not started. Goal agreed
+Status: **Phases 1-4 + the (b) nominal-inflation model implemented** (default-on);
+only Phase 5 (credit) remains. Goal agreed
 with owner: replace the current
 "money is dug out of the ground and regulated by nothing" model with a system
 where money is **created by mines + statecraft**, **regulated by trade and
@@ -227,10 +227,19 @@ to the 0.35 floor — currencies genuinely diverge), the money supply grows ~46%
 and `c._fineness` is exposed for the UI. The war-finance spiral, with the bite on
 foreign commerce instead of the realm's own cities.
 
-**Phase 4 — Per-country currencies + FX.** Each realm's `fineness × price level`
-sets an exchange rate; cross-border trade converts at it; debasement depreciates
-the currency and reprices foreign trade. This is the full "country-based
-currency" vision.
+**Phase 4 — Per-country currencies + FX. ✅ DONE** (terms-of-trade FX). Each realm's
+`gov.fineness` IS its currency value; on a FOREIGN purchase the buyer pays the
+exchange rate = seller's fineness ÷ buyer's (`roads.js fxRate`), so a debased
+realm pays DEARER for imports (and affords fewer) while a strong-currency realm's
+coin buys more abroad — the premium is a conserved transfer to the seller (strong
+currencies profit from the exchange trade). Gently capped to [0.8, 1.3] so
+debasement bites without a death-spiral. Replaced the Phase-3 crude
+foreign-trade-volume penalty. Verified (seeds 8817 & 4242, debasement on): stable
+— 10-11 cities, no spiral — with a real terms-of-trade gradient between strong
+and debased realms. (NOTE: this is terms-of-trade FX, not full per-currency wealth
+RE-DENOMINATION — wealth stays a common unit; the exchange rate is applied at the
+point of foreign trade, which avoids the conservation pitfalls of redenominating
+every settlement's hoard.)
 
 **Phase 5 (advanced, optional) — Credit & banking.** Elastic credit money in
 banking hubs; booms and busts; the dark-age contraction. Highest stability risk,
