@@ -23,9 +23,11 @@
 //      could grow if fed) — the demand signal that pulls grain harder.
 //
 //   2. GRAIN UP (post-order).  pool[s] = own production + Σ children shipped up;
-//      up[s] = pool × SHIP_BY_TIER[tier] × (1 + DEMAND_PULL·parent.hunger) × KEEP
-//      — a village ships most of its grain to market and stays small; a hungry
-//      city upstream pulls a larger fraction. net[s] = pool − up is what s keeps.
+//      offer[s] = pool × SHIP_BY_TIER[tier] × haulSurvival(s → its market) — a
+//      village ships most of its grain to its NEARBY market and stays small, but
+//      grain that can't reach a distant centre before it spoils just stays rural
+//      (see foodHaulArrive: distance / tech / water). net[s] = pool − what its
+//      parent buys is what s keeps.
 //
 //   3. COIN DOWN.  each market PAYS its suppliers for the grain they shipped it,
 //      at the SELLER's local price, capped by the buyer's spare coin (snapshotted
@@ -42,8 +44,42 @@
 import { localP } from "./inflation.js";
 import { getWealthReserve } from "./settlement.js";
 import { recordIn, recordOut, IN_FOOD, OUT_FOOD } from "./money.js";
+import { T } from "./tuning.js";
 
-const KEEP_PER_HOP = 0.9;   // fraction of shipped grain surviving each hop up the hierarchy
+// ── Grain haul: distance, tech & water gate (replaces the old flat per-hop loss) ──
+// Grain spoils and costs money to cart, so a region only ships up the food it can get
+// to market before it rots. The fraction that SURVIVES the haul to its market centre
+// decays exponentially with the transport distance to that centre, over a RANGE that
+// grows with: (a) the DESTINATION's tier — a city/metropolis aggregates a wider
+// hinterland than a market town (granaries, ports, professional carters); (b) the
+// shipper's TRANSPORT TECH — roads (construction) and wagons (mobility), with an
+// industrial-era leap for rail + refrigeration + canning as construction matures; and
+// (c) a WATER corridor bonus when both ends sit on a river/coast (grain by barge/ship
+// went vastly further than by ox-cart — Rome's Egyptian grain, the Baltic rye trade).
+// Beyond its range a region's surplus simply stays rural and feeds its own people.
+// (FOOD_HAUL_RANGE / FOOD_HAUL_TECH / FOOD_HAUL_WATER tune it.)
+const FOOD_RANGE_BY_TIER = [1.0, 1.0, 2.2, 3.6];   // destination-tier catchment multiplier (FR/town · town · city · metropolis)
+
+// Fraction of grain shipped from `child` that survives the haul to its market `parent`.
+function foodHaulArrive(world, child, parent) {
+  const tw = world.tw;
+  let dx = Math.abs(child.pos.x - parent.pos.x); if (dx > tw / 2) dx = tw - dx;
+  const dy = child.pos.y - parent.pos.y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  let range = T.FOOD_HAUL_RANGE * FOOD_RANGE_BY_TIER[Math.min(3, Math.max(0, parent.tier | 0))];
+  // Transport tech of the shipping region: roads (construction) + wagons (mobility),
+  // plus an industrial leap (rail / refrigeration / canning) as construction passes ~0.85.
+  const k = child.knowledge || {};
+  const cons = k.construction || 0, mob = k.mobility || 0, nav = k.navigation || 0;
+  range *= 1 + (cons * 0.6 + mob * 0.4 + Math.max(0, cons - 0.85) * 5) * T.FOOD_HAUL_TECH;
+  // Water corridor: both ends on a river/coast → grain moves by barge/ship, far further
+  // (full strength at high navigation, half-strength by river even at zero seafaring).
+  const ci = (child.pos.y | 0) * tw + (child.pos.x | 0);
+  const pi = (parent.pos.y | 0) * tw + (parent.pos.x | 0);
+  const onWater = (ti) => (world.coast && world.coast[ti]) || (world.riverMag && world.riverMag[ti] >= 2);
+  if (onWater(ci) && onWater(pi)) range *= 1 + (T.FOOD_HAUL_WATER - 1) * (0.5 + 0.5 * nav);
+  return Math.exp(-d / Math.max(1e-3, range));
+}
 // Fraction of its grain POOL a settlement ships up to its market centre, by tier
 // (village → town → city → metropolis). A village is a farm: it sends most of
 // its grain to market and stays small; a metropolis keeps nearly all that flows
@@ -142,7 +178,9 @@ export function aggregateFoodHierarchy(world) {
         node._foodPool = pool;
         node._foodNet = pool;                                // keeps it all unless its OWN parent buys (when parent is processed)
         const sf = node._hasFoodParent ? SHIP_FRAC_BY_TIER[Math.min(3, Math.max(0, node.tier | 0))] : 0;
-        node._foodOffer = pool * sf * KEEP_PER_HOP;          // put up for the parent to buy
+        const arrive = node._hasFoodParent ? foodHaulArrive(world, node, node._foodParent) : 0;
+        node._foodOffer = pool * sf * arrive;                // only grain that survives the haul to its market is offered up
+        node._foodHaul = arrive;                             // (info panel: this hop's haul-survival fraction)
         node._foodUp = node._foodOffer;                      // (info panel / compatibility)
       }
     }
