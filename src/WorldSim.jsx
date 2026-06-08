@@ -1359,7 +1359,7 @@ try{
   // Send ONLY the fields createWorld reads (structured-clone copies them; the
   // main thread keeps its own w arrays for terrain rendering). Avoids cloning
   // the full worldgen object, which may carry non-cloneable extras.
-  const initW={width:w.width,height:w.height,seed:w.seed,
+  const initW={width:w.width,height:w.height,seed:w.seed,preset:w.preset,
     elevation:w.elevation,temperature:w.temperature,moisture:w.moisture,coastal:w.coastal,
     windX:w.windX,windY:w.windY,
     rivers:(w.rivers&&w.rivers.riverMag)?{riverMag:w.rivers.riverMag}:null,
