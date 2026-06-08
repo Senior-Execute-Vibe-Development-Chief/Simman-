@@ -1,8 +1,8 @@
 # Money & Currency System — design spec
 
-Status: **Phases 1-4 + the (b) nominal-inflation model implemented** (default-on);
-only Phase 5 (credit) remains. Goal agreed
-with owner: replace the current
+Status: **Phases 1-4 + the (b) model implemented (default-on); Phase 5 (credit)
+implemented but default-OFF (experimental).** The full currency arc is built.
+Goal agreed with owner: replace the current
 "money is dug out of the ground and regulated by nothing" model with a system
 where money is **created by mines + statecraft**, **regulated by trade and
 credit**, and **self-balancing across regions** — modelled on how real economies
@@ -241,9 +241,16 @@ RE-DENOMINATION — wealth stays a common unit; the exchange rate is applied at 
 point of foreign trade, which avoids the conservation pitfalls of redenominating
 every settlement's hoard.)
 
-**Phase 5 (advanced, optional) — Credit & banking.** Elastic credit money in
-banking hubs; booms and busts; the dark-age contraction. Highest stability risk,
-so last.
+**Phase 5 — Credit & banking. ✅ DONE, default-OFF** (`T.CREDIT_RATE`, def 0;
+`CREDIT_MAX_MULT`, def 2). A settlement with Banking-era organisation + a wide
+trade network conjures credit money on top of its specie (up to CREDIT_MAX_MULT ×
+its backing); a commerce collapse calls it in and contracts the supply.
+Tracked separately on `s._credit` so expansion/contraction stays bounded (never
+pushes wealth negative or unwinds money it lacks). Verified ON (seed 8817):
+169 banking hubs conjure ~26% of all wealth as credit — money beyond specie, the
+Venice/Amsterdam layer. BUT it amplifies boom/bust volatility (pop 67k→49k,
+cities 11→7 — within the sim's chaotic band, but a real perturbation), so it's
+DEFAULT-OFF as the spec's "highest stability risk, build last" phase. Opt-in.
 
 ---
 

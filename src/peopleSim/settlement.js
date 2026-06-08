@@ -12,7 +12,7 @@ import { techEffects } from "./tech.js";
 import { agriGate, bestPackageAt, pkgSuitAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { T } from "./tuning.js";
-import { recordIn, recordOut, IN_MINING, IN_MATERIALS, OUT_MATERIALS } from "./money.js";
+import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, OUT_GOODS, OUT_MATERIALS } from "./money.js";
 
 let _nextId = 1;
 export function resetSettlementIds() { _nextId = 1; }
@@ -327,6 +327,23 @@ function updateWealth(world, s) {
   // mining-only return) so the money supply settles at an equilibrium between
   // mint inflow and this realistic drain, instead of the freight burn.
   if (T.COIN_LOSS_RATE > 0 && s.wealth > 0) s.wealth -= s.wealth * T.COIN_LOSS_RATE;
+  // CREDIT (Phase 5): a BANKING hub creates credit money on top of its specie —
+  // the fractional-reserve / bills-of-exchange layer that made Venice & Amsterdam
+  // rich with no mines. A settlement with Banking-era ORGANISATION and a wide
+  // TRADE network conjures credit up to CREDIT_MAX_MULT × its specie backing; when
+  // its commerce COLLAPSES the credit is called in and the money supply CONTRACTS
+  // (the dark-age crunch). Credit is tracked separately (s._credit) so it stays
+  // bounded — contraction never pushes wealth negative or unwinds money it lacks.
+  if (T.CREDIT_RATE > 0) {
+    const cur = s._credit || 0;
+    const base = Math.max(0, (s.wealth || 0) - cur);                      // specie backing the credit
+    const org = (s.knowledge && s.knowledge.organization) || 0;
+    const reachF = s._tradeReach ? Math.min(1, s._tradeReach.size / 12) : 0;
+    const bankF = Math.max(0, (org - 0.45) / 0.55) * reachF;             // needs Banking-era org + commerce
+    const delta = (base * (T.CREDIT_MAX_MULT - 1) * bankF - cur) * T.CREDIT_RATE;
+    if (delta > 0) { s._credit = cur + delta; s.wealth = (s.wealth || 0) + delta; recordIn(s, IN_GOODS, delta); }
+    else if (delta < 0) { const take = Math.min(-delta, s.wealth || 0, cur); if (take > 0) { s._credit = cur - take; s.wealth -= take; recordOut(s, OUT_GOODS, take); } }
+  }
   const reserves = world.depositReserve;
   if (!reserves) return;
   const minable = s._minableTiles;

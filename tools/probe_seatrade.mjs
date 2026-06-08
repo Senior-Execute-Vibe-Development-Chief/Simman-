@@ -16,6 +16,7 @@ if (process.argv[4] !== undefined) applyTuning({ SEA_TRADE_MULT: +process.argv[4
 if (process.argv[5] !== undefined) applyTuning({ COIN_LOSS_RATE: +process.argv[5] });
 if (process.argv[6] !== undefined) applyTuning({ HUME_ELASTICITY: +process.argv[6] });
 if (process.argv[7] !== undefined) applyTuning({ DEBASE_AGGRO: +process.argv[7] });
+if (process.argv[8] !== undefined) applyTuning({ CREDIT_RATE: +process.argv[8] });
 const W = 480, H = 240, N = W * H;
 const w = generateWorld(W, H, SEED, "earth_sim", 0.78, true, false, {});
 const tE = new Float32Array(N), tT = new Float32Array(N), tM = new Float32Array(N), tC = new Uint8Array(N), tCrop = new Float32Array(N);
@@ -44,6 +45,12 @@ if (world.countries) {
   let n = 0, debased = 0, minF = 1, sumF = 0;
   for (const c of world.countries.values()) { const f = c._fineness; if (f === undefined) continue; n++; sumF += f; if (f < 0.999) debased++; if (f < minF) minF = f; }
   console.log(`[debasement] ${debased}/${n} realms debased  ·  min fineness ${minF.toFixed(2)}  ·  mean ${(sumF / Math.max(1, n)).toFixed(2)}  (1.0 = full metal)`);
+}
+// Credit money (Phase 5): how much credit have banking hubs conjured?
+{
+  let credit = 0, hubs = 0, tw = 0;
+  for (const s of world.settlements) { if (s.mode !== "settled") continue; tw += Math.max(0, s.wealth || 0); if ((s._credit || 0) > 0.5) { credit += s._credit; hubs++; } }
+  console.log(`[credit] ${hubs} banking hubs hold ${credit.toFixed(0)} credit money  (${(100 * credit / Math.max(1, tw)).toFixed(0)}% of all wealth is bank credit, not specie)`);
 }
 
 const flows = world._moneyFlows || [];
