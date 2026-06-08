@@ -11,6 +11,7 @@
 import zlib from "node:zlib"; import { writeFileSync } from "node:fs";
 import { generateWorld } from "../src/worldgen.js";
 import { computeRivers } from "../src/riverGen.js";
+import { cropSuitability } from "../src/cropGen.js";
 import { T } from "../src/peopleSim/tuning.js";
 
 const FARMERS = +(process.argv[2] || 1), SEED = +(process.argv[3] || 857691);
@@ -50,7 +51,7 @@ let land=0,def=0,be=0,sur=0;
 for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){
   const i=ty*W+tx; let r,g,b;
   if(w.elevation[i]<=0){r=16;g=28;b=48;}                                  // sea
-  else{const fert=appCrop(w.temperature[i],w.moisture[i],w.elevation[i],w.coastal[i],rmag?rmag[i]:0);
+  else{const fert=cropSuitability(w.temperature[i],w.moisture[i],w.elevation[i],w.coastal[i],rmag?rmag[i]:0);
     const ratio=(fert*YIELD)/THRESH; [r,g,b]=via(ratio);
     land++; if(ratio<0.9)def++; else if(ratio>1.5)sur++; else be++;}
   for(let yy=0;yy<SCALE;yy++)for(let xx=0;xx<SCALE;xx++)set(tx*SCALE+xx,ty*SCALE+yy,r,g,b);

@@ -8,6 +8,7 @@ import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } f
 import { generateResources, tileResourceSummary, RESOURCES } from "./resourceGen.js";
 import { computeRivers, RIVER_NAMES, RIVER_STREAM } from "./riverGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
+import { cropSuitability } from "./cropGen.js";
 import { applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
@@ -611,52 +612,7 @@ if(e<=0){tCrop[ti]=0;tCross[ti]=1;continue;}
 // broad warm plateau (temperate breadbaskets → subtropics → watered tropics)
 // with only a gentle roll-off in extreme heat. Hot-wet laterite and aridity are
 // handled by the moisture bell + penalties below.
-let crop;
-if(e>0.45)crop=0.02;
-else{
-const tBell=Math.min(1,Math.max(0,(t-0.57)/0.13))*Math.min(1,1-Math.pow(Math.max(0,t-0.88),2)*1.5);
-const mBell=Math.exp(-((m-0.45)*(m-0.45))/(2*0.28*0.28));
-crop=tBell*mBell;
-// Tropical lateritic-soil penalty. The Amazon/Congo paradox: hot-wet
-// land on ancient cratonic interior leaches to laterite and is
-// agriculturally poor. But hot-wet land on YOUNG soil (volcanic
-// island arcs, orogenic foreland, river alluvium) is the most
-// productive ground on Earth — Java, Mekong, Bangladesh, Ganges.
-// So the penalty is discounted near plate boundaries (volcanic ash
-// + orogenic uplift), coasts (alluvial coastal plains, island
-// arcs), and major rivers (delta / floodplain).
-if(t>0.75&&m>0.65){
-let trop=Math.min(1,(t-0.75)/0.20)*Math.min(1,(m-0.65)/0.20);
-let youngSoil=0;
-if(bDist&&bDist[ti]<12)youngSoil+=(1-bDist[ti]/12)*0.85;
-if(tCoast[ti])youngSoil+=0.35;
-if(rivers&&rivers.riverMag){
-const rm=rivers.riverMag[ti];
-if(rm>=3)youngSoil+=0.50;else if(rm>=2)youngSoil+=0.20;}
-trop*=Math.max(0,1-Math.min(1,youngSoil));
-crop*=1-0.65*trop;}
-if(e>0.30)crop*=Math.max(0,1-(e-0.30)*2.0);
-// ── General river / coast bonus ──
-// Alluvial floodplain and coastal-plain soils are productive
-// across the climate spectrum: Nile, Indus, Yellow River turn
-// hot desert into the world's first breadbaskets. Mekong,
-// Bangladesh, Po, Mississippi, Niger ride their rivers through
-// otherwise mediocre or hot land. Coastal alluvium and island
-// arc volcanism does the same job for Java, Philippines, Japan.
-// Pull-toward-1.0 form so the bonus is strongest where the raw
-// climate is marginal (the Nile is a green ribbon through red
-// desert) and barely visible where climate is already optimal
-// (Iowa cornbelt doesn't need a bigger green).
-let alluvialBonus=0;
-if(rivers&&rivers.riverMag){
-const rm=rivers.riverMag[ti];
-if(rm>=3)alluvialBonus+=0.45;
-else if(rm>=2)alluvialBonus+=0.22;
-else if(rm>=1)alluvialBonus+=0.08;}
-if(tCoast[ti])alluvialBonus+=0.15;
-alluvialBonus=Math.min(0.65,alluvialBonus);
-crop=crop+(1-crop)*alluvialBonus;}
-tCrop[ti]=Math.max(0,Math.min(1,crop));
+tCrop[ti]=cropSuitability(t,m,e,tCoast[ti],rivers&&rivers.riverMag?rivers.riverMag[ti]:0,bDist?bDist[ti]:null);
 // Crossing difficulty: average edge cost from each land neighbour
 // into this tile. Edge-based so slope shows up; averaged so the
 // overlay is direction-agnostic.

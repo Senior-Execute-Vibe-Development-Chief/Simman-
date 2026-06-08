@@ -5,6 +5,7 @@
 //   SIM_TRADE_STRIDE=3 node tools/probe_econ.mjs 12000 8817 480 240   # throttled
 import { generateWorld } from "../src/worldgen.js";
 import { computeRivers } from "../src/riverGen.js";
+import { cropSuitability } from "../src/cropGen.js";
 import { generateResources } from "../src/resourceGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
 import { T } from "../src/peopleSim/tuning.js";
@@ -24,9 +25,10 @@ const TW = W, TH = H, INTERVAL = 2000;
 
 const w = generateWorld(W, H, SEED, "earth_sim", 0.78, true, false, {});
 const tElev=new Float32Array(TW*TH),tTemp=new Float32Array(TW*TH),tMoist=new Float32Array(TW*TH),tCoast=new Uint8Array(TW*TH),tCrop=new Float32Array(TW*TH);
-function tileFert(t,m,e){if(e<=0)return 0;if(e>0.45)return 0.02;const tBell=Math.min(1,Math.max(0,(t-0.57)/0.13))*Math.min(1,1-Math.pow(Math.max(0,t-0.88),2)*1.5);const mBell=Math.exp(-((m-0.45)*(m-0.45))/(2*0.28*0.28));let crop=tBell*mBell;if(e>0.30)crop*=Math.max(0,1-(e-0.30)*2.0);return Math.max(0,Math.min(1,crop));}/*app cold-gated crop (alluvial river/coast bonus omitted)*/
-for(let ty=0;ty<TH;ty++)for(let tx=0;tx<TW;tx++){const i=ty*W+tx,ti=ty*TW+tx;tElev[ti]=w.elevation[i];tTemp[ti]=w.temperature[i];tMoist[ti]=w.moisture[i];tCoast[ti]=w.coastal[ti]||0;tCrop[ti]=tileFert(w.temperature[i],w.moisture[i],w.elevation[i]);}
+for(let ty=0;ty<TH;ty++)for(let tx=0;tx<TW;tx++){const i=ty*W+tx,ti=ty*TW+tx;tElev[ti]=w.elevation[i];tTemp[ti]=w.temperature[i];tMoist[ti]=w.moisture[i];tCoast[ti]=w.coastal[ti]||0;}
 const rivers=computeRivers(TW,TH,tElev,tMoist,tTemp); w.rivers=rivers;
+const rmag=rivers&&rivers.riverMag?rivers.riverMag:null;
+for(let ti=0;ti<TW*TH;ti++)tCrop[ti]=cropSuitability(tTemp[ti],tMoist[ti],tElev[ti],tCoast[ti],rmag?rmag[ti]:0);   // shared crop module (src/cropGen.js) — one source of truth with the app
 const deposits=generateResources(TW,TH,tElev,tTemp,tMoist,tCoast,w,w._seed||SEED,rivers); w.deposits=deposits;
 const world=initPeopleSim(w,{seed:w._seed||SEED,tCrop,tileRes:1,deposits});
 
