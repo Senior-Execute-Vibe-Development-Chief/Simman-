@@ -9,6 +9,7 @@
 
 import { seedLocalTerritory } from "./territory.js";
 import { techEffects } from "./tech.js";
+import { agriGate } from "./agriculture.js";
 import { T } from "./tuning.js";
 import { recordIn, recordOut, IN_MINING, IN_MATERIALS, OUT_MATERIALS } from "./money.js";
 import { localP } from "./inflation.js";
@@ -943,7 +944,11 @@ function updateFood(world, s) {
   // and a city's dense population simply eats MORE than its hinterland grows, so it net-IMPORTS
   // the shortfall up the hierarchy (Rome's Egyptian grain), while a rural region grows a surplus
   // it ships up. No farmable land is wasted by sitting under an urban centre.
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * techEff(s).farmYield * armyLabor;
+  // AGRICULTURAL TRANSITION (agriculture.js): fertility is only FORAGING density until
+  // farming is invented/arrives (development) and only if the land can support it
+  // (domestication ceiling). This is what keeps a fresh/isolated frontier sparse and
+  // stateless — the whole map no longer farms at full yield from tick 0.
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * techEff(s).farmYield * agriGate(world, s) * armyLabor;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
