@@ -13,7 +13,6 @@ import { agriGate, bestPackageAt, pkgSuitAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { T } from "./tuning.js";
 import { recordIn, recordOut, IN_MINING, IN_MATERIALS, OUT_MATERIALS } from "./money.js";
-import { localP } from "./inflation.js";
 
 let _nextId = 1;
 export function resetSettlementIds() { _nextId = 1; }
@@ -1207,8 +1206,10 @@ function updateDevelopment(world, s) {
   // coin, transferred to them.
   const discount = Math.min(0.7, localMat * 0.5);
   // Building costs scale with the local price level (inflation.js): an
-  // inflated economy pays more in coin for the same imported materials.
-  let cost = add * INFRA_COST * (1 - discount) * localP(world, s);
+  // (b) NOMINAL-inflation model: building costs are REAL (base) — not × localP —
+  // so the absolute money level doesn't squeeze construction (and thus housing
+  // and population). localP stays for Hume competitiveness + the price ticker.
+  let cost = add * INFRA_COST * (1 - discount);
   if (cost > 0 && totalW > 0) {
     const spare = (s.wealth || 0) - getWealthReserve(s);
     if (spare <= 0) { s._devReason = "coin"; return; }   // needs to buy materials it lacks

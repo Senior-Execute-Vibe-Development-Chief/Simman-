@@ -14,7 +14,6 @@
 
 import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.js";
 import { shockUnrest } from "./shocks.js";
-import { localPByCountry } from "./inflation.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, prunePersonalities, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
@@ -1030,7 +1029,10 @@ function disburseTreasury(world, c, gov, warLevel) {
   // (inflation.js). An inflated economy needs more coin to pay the same
   // soldiers — Spain-after-Potosí dynamics — and the war-chest grows with
   // the wage bill so a state still has a couple of passes' buffer at any P.
-  const realmP = localPByCountry(world, c);
+  // (b) NOMINAL-inflation model: army wages are REAL (base), not × the price
+  // level — the absolute money supply doesn't bankrupt states. (localP still
+  // drives Hume + the ticker; debasement's bite comes via FX/seigniorage later.)
+  const realmP = 1;
   // Wages also scale with the AVERAGE TIER of the realm. A village's
   // soldiers are cheap militia (food + a little equipment), while a city
   // fields professional infantry that demand real pay. Without this, tiny
@@ -1500,7 +1502,7 @@ export function updatePolities(world) {
         if (food > 0) { c.capital.food -= food; s.food = (s.food || 0) + food; }
         // Colony subsidy scales with the realm's price level so a settlement
         // founded in an inflated economy gets a real (P-adjusted) endowment.
-        const grant = COLONY_SUPPLY_COIN * localPByCountry(world, c);
+        const grant = COLONY_SUPPLY_COIN;   // (b) real terms, not × the price level
         const coin = Math.min(grant, Math.max(0, gov.treasury));
         if (coin > 0) { gov.treasury -= coin; s.wealth = (s.wealth || 0) + coin; recordIn(s, IN_AID, coin); }
         continue;                                   // subsidised, not taxed

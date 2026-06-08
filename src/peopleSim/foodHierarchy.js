@@ -41,7 +41,6 @@
 // fresh _storableSupply / _houseK / _foodK), producing _foodNet for the NEXT
 // tick's updateFood — a 1-tick lag that's invisible (production drifts slowly).
 
-import { localP } from "./inflation.js";
 import { getWealthReserve } from "./settlement.js";
 import { recordIn, recordOut, IN_FOOD, OUT_FOOD } from "./money.js";
 import { T } from "./tuning.js";
@@ -106,7 +105,13 @@ export function aggregateFoodHierarchy(world) {
     if (s.mode !== "settled") continue;
     const hK = s._houseK || 0, fK = s._foodK || 0;
     s._grainHunger = hK > 0 ? Math.max(0, Math.min(1, (hK - fK) / hK)) : 0;
-    s._grainPrice = GRAIN_PRICE_BY_TIER[Math.min(3, Math.max(0, s.tier | 0))] * localP(world, s);
+    // (b) NOMINAL-inflation model: grain trades at its BASE price (real terms),
+    // NOT × localP. Money pools at producers (mines/exporters), which lifts the
+    // regional price level — but the grain-BUYING cities don't hold that coin, so
+    // pricing grain by localP squeezed them for money sitting elsewhere and made
+    // population depend on the money supply. Real decisions now ignore the
+    // absolute money level; localP still drives Hume competitiveness + the ticker.
+    s._grainPrice = GRAIN_PRICE_BY_TIER[Math.min(3, Math.max(0, s.tier | 0))];
   }
 
   // ── children lists from the CURRENT liege tree ──────────────────────

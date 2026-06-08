@@ -1,7 +1,7 @@
 # Money & Currency System — design spec
 
-Status: **Phases 1-2 implemented** (default-on); Phase 3 (debasement) blocked on
-the inflation-neutrality work in §3 below; Phases 4-5 not started. Goal agreed
+Status: **Phases 1-2 + the (b) nominal-inflation model implemented** (default-on);
+Phase 3 (debasement) now UNBLOCKED; Phases 4-5 not started. Goal agreed
 with owner: replace the current
 "money is dug out of the ground and regulated by nothing" model with a system
 where money is **created by mines + statecraft**, **regulated by trade and
@@ -197,13 +197,23 @@ until its prices fall. Verified (`probe_seatrade`, seeds 8817 & 4242): the
 price-level spread TIGHTENS — max localP 2.03→1.36 and 1.88→1.09, CV 9.9%→7.1%
 and 13.1%→10.2% — specie self-distributes, cities stable, population flat-to-up.
 
-NOTE on §3: the inflation-neutrality attempt (scale trade price × localP, deflate
-demand & reserve to real terms) did NOT neutralise population's dependence on the
-money LEVEL — the root is the food hierarchy's STOCK-based affordability cap
-(`spare/price`), which ties a city's grain intake to its coin hoard. True
-neutrality needs that made FLOW-based (income-based), still coin-mediated, no
-barter. This blocks Phase 3 (debasement deliberately inflates) but NOT Phases 2/4
-(which only redistribute money). Reverted; documented here as the next sub-task.
+**§3 — RESOLVED via the (b) nominal-inflation model. ✅ DONE.** Two failed attempts
+at *real* inflation-neutrality (scale trade income × localP; then also deflate
+demand & reserve to real terms) both made population MORE money-sensitive, not
+less. Investigation then showed the population-vs-money-supply variation is
+**CHAOS, not an inflation non-neutrality** — the sim's population is butterfly-
+sensitive to *any* parameter (it swings 35-73k for one seed across unrelated
+config changes), so no inflation fix can flatten it. So we took option (b): the
+sim's REAL decisions — grain price (foodHierarchy), building cost (settlement),
+army wages & colony grants (conquest) — now use BASE prices, NOT × localP. localP
+is kept ONLY for Hume competitiveness (relative, roads.js) and the display
+ticker (`_inflRaw`). Effect: inflation no longer SQUEEZES the domestic economy
+(the crash failure mode is gone — worst case across money levels is now ~48k, no
+collapse), prices still visibly rise on the ticker, and money still self-
+distributes (Hume). **This unblocks Phase 3:** debasement's bite now comes via FX
+depreciation + seigniorage revenue (the international channel), not by starving a
+realm's own cities. Verified healthy at the calibrated supply on seeds 8817 & 4242
+(8 / 9 cities). Long-run money neutrality — a standard result — by design.
 
 **Phase 3 — Seigniorage & debasement as fiscal levers.** A realm in deficit/war
 debases (`fineness ↓`) for revenue + money expansion, eating inflation. Ties the
