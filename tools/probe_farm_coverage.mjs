@@ -12,8 +12,9 @@ import { applyTuning } from "../src/peopleSim/tuning.js";
 const STEP = +(process.argv[2] || "10000");
 const SEED = +(process.argv[3] || "8817");
 const FMT  = +(process.argv[4] || "0");        // FARM_MAX_TIER override (0 = cities import grain; 2 = towns+cities farm)
-applyTuning({ FARM_MAX_TIER: FMT });
-console.log(`[tuning] FARM_MAX_TIER=${FMT} (${FMT === 0 ? "only Farming Regions farm" : "tiers 0.." + FMT + " farm their land"})`);
+const UN   = +(process.argv[5] || "0");        // URBAN_NODES override (1 = tier 1+ own only their core)
+applyTuning({ FARM_MAX_TIER: FMT, URBAN_NODES: UN });
+console.log(`[tuning] FARM_MAX_TIER=${FMT}  URBAN_NODES=${UN}${UN ? " (towns/cities own only their core; Farming Regions own the countryside)" : ""}`);
 const W = 480, H = 240, N = W * H;
 const w = generateWorld(W, H, SEED, "earth_sim", 0.78, true, false, {});
 const tE = new Float32Array(N), tT = new Float32Array(N), tM = new Float32Array(N), tC = new Uint8Array(N), tCrop = new Float32Array(N);

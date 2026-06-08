@@ -47,6 +47,13 @@ import { T } from "./tuning.js";
 const TERRITORY_BASE = 5;
 // ORG_REACH -> runtime lever (tuning.js T.ORG_REACH)
 export function reachBudget(s) {
+  // URBAN_NODES: towns/cities (tier 1+) are urban nodes, not farmland owners —
+  // they keep only their guaranteed core block, so the whole rural catchment
+  // falls to the tier-0 Farming Regions (which feed them via the hierarchy).
+  // Zero economic reach → the cost-Dijkstra adds nothing beyond the core. This
+  // touches ONLY the economic catchment; the political border layer
+  // (countryTerritory.js) has its own capital-anchored reach and is unaffected.
+  if (T.URBAN_NODES && (s.tier | 0) >= 1) return 0;
   // Admin reach now comes from the reach techs (tech.js) via the settlement's
   // cached effects (reachLevel tracks organization); falls back to continuous
   // organization if the cache isn't computed yet.
@@ -85,6 +92,11 @@ const SQRT2 = Math.SQRT2;
 const CORE_BY_TIER = [1, 2, 3, 4];
 export function coreRadiusFor(s) {
   const t = s.tier | 0;
+  // URBAN_NODES: a town/city is a NODE — its land is just a tight built-up
+  // footprint (the city sits ON the land, it doesn't farm a heartland). Keeping
+  // the big tier-scaled core would leave a city occupying a chunk of farmland;
+  // a radius-1 block (the urban core) hands the rest to the Farming Regions.
+  if (T.URBAN_NODES && t >= 1) return 1;
   return CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
 }
 
@@ -97,6 +109,9 @@ export function coreRadiusFor(s) {
 const HINTERLAND_BY_TIER = [3, 4, 6, 8];
 export function hinterlandRadiusFor(s) {
   const t = s.tier | 0;
+  // URBAN_NODES: a town/city gets no guaranteed farmland belt beyond its core —
+  // the countryside belongs to the Farming Regions (see reachBudget).
+  if (T.URBAN_NODES && t >= 1) return coreRadiusFor(s);
   const base = HINTERLAND_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
   const mul = T.LOCALITY_MODE ? T.HINTERLAND_MULT * Math.max(1, T.LOCALITY_SPACING || 3) : T.HINTERLAND_MULT;
   return Math.max(coreRadiusFor(s), Math.round(base * mul));
@@ -137,9 +152,17 @@ export function computeTerritory(world) {
   // wilderness, so neighbours can grow into the vacated land. Also
   // release any WATER tiles that lingered from an older code path —
   // borders shouldn't bleed into the ocean.
+  // URBAN_NODES: also release land held by tier-1+ NODES (a settlement keeps the
+  // catchment it claimed while still a tier-0 village even after it grows into a
+  // city — ownership is persistent — so without this the change is inert). Their
+  // CORE is re-stamped immediately below; the rest returns to wilderness for the
+  // Farming Regions to reclaim.
+  const releaseNodes = !!T.URBAN_NODES;
   for (let ti = 0; ti < N; ti++) {
     const o = owner[ti];
-    if (o >= 0 && (!byId.has(o) || world.elev[ti] <= 0)) owner[ti] = -1;
+    if (o < 0) continue;
+    if (!byId.has(o) || world.elev[ti] <= 0) { owner[ti] = -1; continue; }
+    if (releaseNodes) { const os = byId.get(o); if (os && (os.tier | 0) >= 1) owner[ti] = -1; }
   }
 
   // Guarantee each settlement its (tier-sized) core block, carving it from a
