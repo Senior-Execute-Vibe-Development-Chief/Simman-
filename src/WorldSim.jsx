@@ -248,6 +248,46 @@ function TechTreeOverlay({k,title,onClose}){
   );
 }
 
+// ── Chronicle overlay — a realm's full history in its own scrollable window ──
+// (the settlement card is too short to hold a long log; a modal escapes it).
+// `entries` are {step,type,text}; rendered newest-first, dated via yearStr and
+// colour-coded by event type (dark tones for contrast on the light parchment).
+const CHRON_COL={founding:"#1f7a55",discovery:"#2f6fa8",growth:"#2f7d3f",wealth:"#9c7414",
+  war:"#b23a28",conquest:"#b15212",annex:"#8a6420",secession:"#7a44b0",loss:"#a04a28",
+  plague:"#8a3aa8",famine:"#9c5a1e",end:"#5a4a32"};
+const CHRON_LABEL={founding:"Founding",discovery:"Discovery",growth:"Growth",wealth:"Wealth",
+  war:"War",conquest:"Conquest",annex:"Annexation",secession:"Secession",loss:"Loss",
+  plague:"Plague",famine:"Famine",end:"Fall"};
+function ChronicleOverlay({entries,name,onClose}){
+  const rows=(entries||[]).slice().reverse();   // newest first
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(580px,93vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexShrink:0}}>
+          <div className="au-pico-title" style={{fontSize:15}}>Chronicle{name?` — ${name}`:""}{" "}
+            <span className="au-fade" style={{fontSize:11}}>· {rows.length} events</span></div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
+        </div>
+        {/* minHeight:0 lets this flex child shrink so overflowY:auto actually
+            engages inside the maxHeight:88vh column (the flexbox scroll gotcha). */}
+        <div style={{overflowY:"auto",minHeight:0,paddingRight:6}}>
+          {rows.length===0
+            ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No events recorded yet.</div>
+            :<div style={{display:"grid",gridTemplateColumns:"auto auto 1fr",gap:"5px 10px",alignItems:"baseline",fontSize:12}}>
+              {rows.map((e,i)=>(
+                <Fragment key={i}>
+                  <span className="au-fade" style={{textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{yearStr(e.step)}</span>
+                  <span style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:CHRON_COL[e.type]||"#5a4a32",fontWeight:600,whiteSpace:"nowrap"}}>{CHRON_LABEL[e.type]||e.type}</span>
+                  <span style={{color:"#3a2614",lineHeight:1.4}}>{e.text}</span>
+                </Fragment>
+              ))}
+            </div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Atlas (olde-map) cartographic symbols — hand-drawn map iconography ──
 function atlasHash(a,b){let h=(a*374761393+b*668265263)>>>0;h=((h^(h>>>13))*1274126177)>>>0;return((h^(h>>>16))>>>0)/4294967296;}
 function atlasMountain(c,x,y,s,snow,tone){
@@ -1192,6 +1232,7 @@ const[selectedTribe,setSelectedTribe]=useState(-1);
 // peopleSim settlement selection — id of the clicked settlement, or -1.
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
 const[techTreeOpen,setTechTreeOpen]=useState(false);   // full tech-tree overlay (for the selected settlement)
+const[chronicleOpen,setChronicleOpen]=useState(false); // full chronicle (realm history) overlay
 // Ref mirror so draw() (memoized) sees the current selection without
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
@@ -3014,6 +3055,9 @@ useEffect(()=>{applySnapshotRef.current=applySnapshot;},[applySnapshot]);
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'control',playing,speed});},[playing,speed]);
 // Forward selection so the worker includes that settlement's full detail.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'select',id:selectedSettlementId});},[selectedSettlementId]);
+// Close the per-realm overlays when the selection changes, so they don't
+// auto-reopen (or show a stale realm) the next time a settlement is picked.
+useEffect(()=>{setChronicleOpen(false);setTechTreeOpen(false);},[selectedSettlementId]);
 // Tell the worker the current view so it ships money-flow / road-component extras only when shown.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'view',view:viewMode});},[viewMode]);
 // Terminate both workers on unmount so they don't leak across hot-reloads / route changes.
@@ -3581,6 +3625,8 @@ return(
 
       {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
       {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} onClose={()=>setTechTreeOpen(false)}/>}
+      {chronicleOpen&&psw._chronicle&&psw._chronicle.countryId===s.countryId&&
+        <ChronicleOverlay entries={psw._chronicle.entries} name={psw._chronicle.name} onClose={()=>setChronicleOpen(false)}/>}
 
       {/* ── Header ── */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -3971,24 +4017,23 @@ return(
       {(()=>{
         const chron=psw._chronicle;
         if(!chron||chron.countryId!==s.countryId||!chron.entries||!chron.entries.length)return null;
-        // Category → colour, matching the chronicle() event types.
-        const TYPE_COL={founding:"#3aa37a",discovery:"#5b9bd5",growth:"#3a9d54",wealth:"#caa24a",
-          war:"#d0533f",conquest:"#d2691e",annex:"#c0903a",secession:"#a06cd5",loss:"#c0673f",
-          plague:"#b05ad0",famine:"#c8843a",end:"#8a8f9c"};
-        const entries=chron.entries.slice().reverse();   // newest first
+        // The log itself opens in its own scrollable window (a long history
+        // doesn't fit the card); the section here is just an opener + the latest
+        // event as a teaser.
+        const latest=chron.entries[chron.entries.length-1];
         return(
           <PsSection id="chronicle" title="Chronicle" open={psCardOpen.chronicle} onToggle={togglePsCard}
             right={<span className="au-fade">{chron.entries.length}</span>}>
-            {/* No inner scroll box — the entries flow and the whole card scrolls
-                as one surface (a nested scroll here traps the mouse wheel so the
-                card can't be scrolled past it). */}
-            <div style={{display:"flex",flexDirection:"column",gap:3,paddingRight:2}}>
-              {entries.map((e,i)=>(
-                <div key={i} style={{display:"flex",gap:6,fontSize:10,lineHeight:1.3}}>
-                  <span className="au-fade" style={{flexShrink:0,minWidth:48,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{yearStr(e.step)}</span>
-                  <span style={{color:TYPE_COL[e.type]||"#b7b2a6"}}>{e.text}</span>
-                </div>
-              ))}
+            <div style={{fontSize:10}}>
+              <button onClick={()=>setChronicleOpen(true)}
+                style={{width:"100%",marginBottom:5,padding:"4px 6px",cursor:"pointer",borderRadius:4,
+                  background:"rgba(120,90,50,0.14)",border:"1px solid rgba(120,90,50,0.35)",color:"#3a2c18",fontSize:10.5}}>
+                📜 Open chronicle ({chron.entries.length} events)
+              </button>
+              <div style={{display:"flex",gap:6,lineHeight:1.3}}>
+                <span className="au-fade" style={{flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{yearStr(latest.step)}</span>
+                <span style={{color:CHRON_COL[latest.type]||"#5a4a32"}}>{latest.text}</span>
+              </div>
             </div>
           </PsSection>
         );
