@@ -9,7 +9,8 @@
 
 import { seedLocalTerritory } from "./territory.js";
 import { techEffects } from "./tech.js";
-import { agriGate } from "./agriculture.js";
+import { agriGate, bestPackageAt, pkgSuitAt } from "./agriculture.js";
+import { CROP_BY_ID } from "../cropPackages.js";
 import { T } from "./tuning.js";
 import { recordIn, recordOut, IN_MINING, IN_MATERIALS, OUT_MATERIALS } from "./money.js";
 import { localP } from "./inflation.js";
@@ -140,6 +141,11 @@ export function makeSettlement(world, x, y, opts = {}) {
       navigation:  0,           // gated by water access
       mobility:    0,           // gated by horses
     },
+    // Crop packages this settlement has (ids into src/cropPackages.js). Empty
+    // unless T.CROP_AXIS is on; seeded at creation (cradle domestication /
+    // parent inheritance) and grown by crop diffusion in updateKnowledge. The
+    // best STORABLE member at the home tile is the farming ceiling (cropCeil).
+    crops: [],
     // Maximum local deposit richness within transport reach, per
     // resource id. Populated from the settlement's TERRITORY (territory.js)
     // each territory pass; used by updateKnowledge to gate tech growth.
@@ -197,6 +203,20 @@ export function makeSettlement(world, x, y, opts = {}) {
   s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
   world.settlements.push(s);
   seedLocalTerritory(world, s);   // food/resource stats until the first full territory pass
+  // Crop-package ownership (T.CROP_AXIS). Off → stays empty (unused). A cradle
+  // domesticates its best local crop; a colony/daughter inherits its parent's
+  // crops (off-climate ones cost nothing — cropCeil reads suitability locally);
+  // a frontier village starts empty and acquires crops by diffusion / later
+  // mature domestication.
+  if (T.CROP_AXIS > 0) {
+    if (opts.crops) { for (const id of opts.crops) if (!s.crops.includes(id)) s.crops.push(id); }
+    else if (opts.cradle) { const b = bestPackageAt(world, (y | 0) * world.tw + (x | 0)); if (b) s.crops.push(b.id); }
+    else if (opts.parentId != null && opts.parentId >= 0) {
+      const par = findSettlementById(world, opts.parentId);
+      if (par && par.crops) for (const id of par.crops) if (!s.crops.includes(id)) s.crops.push(id);
+    }
+    s._cropCeil = undefined;
+  }
   s._techEff = techEffects(s.knowledge, T.TECH_EFFECTS);   // tech bonuses available from tick 0 (refreshed in updateKnowledge)
   return s;
 }
@@ -668,6 +688,14 @@ const KTRACKS = ["agriculture","construction","organization","metallurgy","navig
 // pace identical. This is the single biggest per-tick cost as the trade
 // network grows (it was O(reach) × every settlement × every tick).
 const KNOW_INTERVAL = 8;
+// Crop-package spread thresholds (T.CROP_AXIS): a settlement ADOPTS a trade
+// neighbour's crop if its own tile suits that crop above CROP_ESTABLISH; a
+// MATURE farming culture independently DOMESTICATES a strongly-suitable un-owned
+// crop above CROP_DOMESTICATE (a secondary hearth, so no good land stays forager
+// forever). Establish < domesticate: a crop spreads to marginal land far more
+// readily than it is invented from scratch.
+const CROP_ESTABLISH = 0.18;
+const CROP_DOMESTICATE = 0.45;
 //
 // ── Resource-gated knowledge growth ──
 //
@@ -887,6 +915,36 @@ function updateKnowledge(world, s) {
         }
       }
     }
+  }
+
+  // ── Crop diffusion + domestication (T.CROP_AXIS) ──────────────────────
+  // Crops SPREAD settlement-to-settlement but only ESTABLISH where the local
+  // climate suits them — the mechanism that makes farming radiate from the
+  // cradles along climate bands and stall at the hot/wet tropics (the
+  // continental axis, now emergent rather than a tuned multiplier). Throttled
+  // and staggered like the rest of the knowledge recompute.
+  if (T.CROP_AXIS > 0 && (world.step + s.id) % KNOW_INTERVAL === 0) {
+    if (!s.crops) s.crops = [];
+    const cti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
+    let cropsChanged = false;
+    // (a) acquire from trade neighbours any crop that suits THIS tile
+    if (s._tradeReach && s._tradeReach.size > 0 && world._byId) {
+      for (const pid of s._tradeReach.keys()) {
+        const p = world._byId.get(pid);
+        if (!p || !p.crops || p.crops.length === 0) continue;
+        for (const id of p.crops) {
+          if (s.crops.includes(id)) continue;
+          const pkg = CROP_BY_ID[id]; if (!pkg) continue;
+          if (pkgSuitAt(world, cti, pkg) > CROP_ESTABLISH) { s.crops.push(id); cropsChanged = true; }
+        }
+      }
+    }
+    // (b) independent domestication once farming is mature, on strongly-suitable land
+    if (k.agriculture >= T.AGRI_FULL_AT) {
+      const b = bestPackageAt(world, cti);
+      if (b && b.suit > CROP_DOMESTICATE && !s.crops.includes(b.id)) { s.crops.push(b.id); cropsChanged = true; }
+    }
+    if (cropsChanged) s._cropCeil = undefined;   // ceiling depends on owned crops
   }
 
   // Refresh the cached tech-effect bonuses the sim reads (food, density, …),

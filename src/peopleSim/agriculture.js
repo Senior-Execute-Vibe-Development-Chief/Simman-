@@ -23,6 +23,46 @@
 //      ceiling region never reaches full farming density — it stays a sparse frontier.
 
 import { T } from "./tuning.js";
+import { CROP_PACKAGES, CROP_BY_ID } from "../cropPackages.js";
+import { cropSuitabilityPkg } from "../cropGen.js";
+
+// ── Crop-package layer (T.CROP_AXIS) ──────────────────────────────────
+// Suitability of ONE package at a tile, read from the world's tile climate
+// arrays (cropSuitabilityPkg applies the shared arid / tropical-soil / elevation
+// / alluvial gates and the package's own climate bell).
+export function pkgSuitAt(world, ti, pkg) {
+  const e = world.elev[ti]; if (e <= 0) return 0;
+  const coast = world.coast ? world.coast[ti] : 0;
+  const rm = world.riverMag ? world.riverMag[ti] : 0;
+  return cropSuitabilityPkg(pkg, world.temp[ti], world.moist[ti], e, coast, rm, null);
+}
+
+// Best package at a tile by RAW suitability — what a cradle / mature culture
+// would domesticate here. Returns { id, suit } or null if nothing grows.
+export function bestPackageAt(world, ti) {
+  let best = null, bestS = 0;
+  for (const pkg of CROP_PACKAGES) { const s = pkgSuitAt(world, ti, pkg); if (s > bestS) { bestS = s; best = pkg; } }
+  return best ? { id: best.id, suit: bestS } : null;
+}
+
+// Crop-package agricultural CEILING for a settlement: the best STORABLE yield
+// (suit × storability) among the crops it OWNS, evaluated at its home tile. 0 =
+// it owns no crop that grows here — a forager (it may know farming TECHNIQUE,
+// but has nothing domesticated for this climate). The ×storability is what caps
+// the wet-tropic tuber zone low even where the land is lush. Carrying an
+// off-climate crop (e.g. inherited wheat in the tropics) costs nothing: its
+// local suitability is ~0, so it never sets the ceiling.
+export function cropCeil(world, s) {
+  const crops = s.crops; if (!crops || crops.length === 0) return 0;
+  const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
+  let best = 0;
+  for (const id of crops) {
+    const pkg = CROP_BY_ID[id]; if (!pkg) continue;
+    const v = pkgSuitAt(world, ti, pkg) * pkg.storability;
+    if (v > best) best = v;
+  }
+  return best;
+}
 
 // Per-tile domestication ceiling (computed once, cached on world._agriCeil).
 function computeAgriCeiling(world) {
@@ -77,9 +117,18 @@ function computeAgriCeiling(world) {
 // domestication ceiling caps the effective agriculture, so isolated/tropical regions
 // can never reach full farming density no matter how long they develop.
 export function agriGate(world, s) {
-  if (!world._agriCeil) world._agriCeil = computeAgriCeiling(world);
-  const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
-  const ceil = world._agriCeil[ti] || 0;
+  let ceil;
+  if (T.CROP_AXIS > 0) {
+    // Owned-crop ceiling. Cached (home tile + crops are static between changes);
+    // crop acquisition / domestication in settlement.js invalidates it by
+    // setting s._cropCeil = undefined.
+    if (s._cropCeil === undefined) s._cropCeil = cropCeil(world, s);
+    ceil = s._cropCeil;
+  } else {
+    if (!world._agriCeil) world._agriCeil = computeAgriCeiling(world);
+    const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
+    ceil = world._agriCeil[ti] || 0;
+  }
   const ag = Math.min((s.knowledge && s.knowledge.agriculture) || 0, ceil);
   const dev = Math.min(1, ag / Math.max(1e-3, T.AGRI_FULL_AT));   // 0 = foraging, 1 = full agriculture
   s._agriGate = T.AGRI_FORAGE_YIELD + (1 - T.AGRI_FORAGE_YIELD) * dev;   // (info panel)
