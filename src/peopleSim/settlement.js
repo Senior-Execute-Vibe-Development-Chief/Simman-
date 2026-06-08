@@ -1202,20 +1202,33 @@ function updatePopulation(world, s) {
 
 // ── Tier ───────────────────────────────────────────────────────────
 function updateTier(world, s) {
+  // RELATIVE tiers: the bar to count as a town / city / metropolis SCALES with the world's
+  // total population, so as civilisation grows the size that qualifies as a "city" rises too
+  // (a 500-soul settlement is a large farming village in a populous world, a city in an empty
+  // one). This keeps the urban hierarchy proportional and the rural majority rural, instead of
+  // mislabelling mid-size farming settlements as "towns" once the world fills up. Cached once
+  // per tick. (TIER_SCALE_REF / TIER_SCALE_MAX tune it; =off by setting REF huge.)
+  let sc = world._tierScale;
+  if (world._tierScaleStep !== world.step) {
+    let tot = 0; for (const x of world.settlements) if (x.mode === "settled") tot += x.people || 0;
+    sc = world._tierScale = Math.max(0.4, Math.min(T.TIER_SCALE_MAX, tot / T.TIER_SCALE_REF));
+    world._tierScaleStep = world.step;
+  }
+  // The scale lifts ONLY the rural→town bar (tier 1) — that's where the mislabelling is, big
+  // farming villages counted as "towns". The city/metropolis bars stay ABSOLUTE so genuine
+  // urban centres still qualify (the world's settlements are size-compressed; scaling those
+  // bars too would leave nothing above them and erase cities entirely).
+  const bar = (t) => TIER_THRESHOLD[t] * (t === 1 ? sc : 1);
   // Promote to the highest tier whose population floor is met.
   for (let t = TIER_THRESHOLD.length - 1; t > s.tier; t--) {
-    if (s.people >= TIER_THRESHOLD[t]) {
+    if (s.people >= bar(t)) {
       s.tier = t;
       s.history.push({ step: world.step, type: "tier-up", tier: TIER_NAME[t], people: Math.round(s.people) });
       return;
     }
   }
-  // Demote one rung once population has fallen clearly below the current tier's
-  // floor (hysteresis band). updateTier runs every tick, so a real collapse
-  // walks the settlement down to its true bracket over a few ticks without
-  // threshold flicker — and a gutted metropolis stops being counted (and
-  // over-resourced: core/hinterland/garrison/seat) as one it no longer is.
-  if (s.tier > 0 && s.people < TIER_THRESHOLD[s.tier] * TIER_DEMOTE_FRAC) {
+  // Demote one rung once population has fallen clearly below the current tier's floor.
+  if (s.tier > 0 && s.people < bar(s.tier) * TIER_DEMOTE_FRAC) {
     s.tier -= 1;
     s.history.push({ step: world.step, type: "decline", tier: TIER_NAME[s.tier], people: Math.round(s.people) });
   }
