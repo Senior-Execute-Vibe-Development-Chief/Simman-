@@ -12,7 +12,7 @@ import { cropSuitability } from "./cropGen.js";
 import { applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
-import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
+import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./peopleSim/settlement.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./peopleSim/money.js";
 import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectList, techTotalList } from "./peopleSim/tech.js";
 // tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
@@ -3548,8 +3548,12 @@ return(
   const s=psw.settlements.find(x=>x&&x.id===selectedSettlementId&&x.mode==="settled");
   if(!s)return null;
   const tierName=["farming region","town","city","metropolis"][s.tier]||"settlement";
-  const TIER_THR=[0,80,400,2000];
-  const nextThr=TIER_THR[s.tier+1];
+  // A farming region (tier 0) does NOT promote in place — it FOUNDS a town nearby
+  // once it fills out (urban genesis). Only urban nodes climb, at the sim's
+  // canonical TIER_THRESHOLD (town→city→metropolis); index [1] isn't a promotion
+  // gate (towns are spawned, not grown from regions), so progress is urban-only.
+  const isRegion=(s.tier|0)===0;
+  const nextThr=isRegion?0:TIER_THRESHOLD[s.tier+1];
   const progress=nextThr?Math.min(1,s.people/nextThr):1;
   const k=s.knowledge||{};
   const tech=techState(k);                 // Civ-like discovery layer derived from knowledge (tech.js)
@@ -3616,7 +3620,7 @@ return(
   // breakdown below comes from s._mInRate / s._mOutRate).
   const wealthDelta=s._wealthDelta||0;
   const moneyCol=v=>v>0.02?"#3a7":v<-0.02?"#c44":"#8a8f9c";
-  const nextName=["town","city","metropolis"][s.tier];
+  const nextName=isRegion?null:["town","city","metropolis"][s.tier];
 
   return(
     <div className="au-parchment au-pico au-elev"
@@ -3837,7 +3841,7 @@ return(
           <span className="au-fade" style={{fontSize:9,marginLeft:3}}>gold treasury</span>
         </div>
         <span className="au-fade" style={{fontSize:9}}>
-          {nextName?`${Math.round(progress*100)}% → ${nextName}`:"max tier"}
+          {isRegion?"rural · founds towns":nextName?`${Math.round(progress*100)}% → ${nextName}`:"max tier"}
         </span>
       </div>
 

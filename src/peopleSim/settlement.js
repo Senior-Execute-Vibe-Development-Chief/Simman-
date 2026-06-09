@@ -36,7 +36,7 @@ export function resetSettlementIds() { _nextId = 1; }
 // a single node aggregated everything, and left almost nothing above "town").
 // (TIER_THRESHOLD[1], the town bar, no longer gates anything — towns are born
 // tier-1 — but it's kept as the tier-1 demotion reference.)
-const TIER_THRESHOLD = [0, 150, 600, 1500];
+const TIER_THRESHOLD = [0, 150, 600, 1100];
 const TIER_NAME      = ["farming region", "town", "city", "metropolis"];   // tier-0 = an abstraction for MANY small villages (a farmed region), not one village
 // Rural ceiling: a FARMING REGION (tier 0) is a collection of villages — a rural
 // DISTRICT — not a proto-city. Its population is capped here so it can never pile
