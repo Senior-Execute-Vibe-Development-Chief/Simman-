@@ -683,7 +683,7 @@ tCross[ti]=Math.min(1,cAvg/CROSS_MAX);}
 
 // ── Natural resource deposits ──
 const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,rivers);
-// ── 3000 BC START: seed civilizations at the world's best river valley locations ──
+// ── NEOLITHIC START (~9000 BC): the first farmers crystallize at the world's best river valleys ──
 // Number of starting civs emerges from geography, not hardcoded.
 // Principle: state-level organization appears wherever dense farming populations
 // concentrate along major rivers in fertile lowlands. A world with one great
@@ -734,13 +734,12 @@ const k=initKnowledge();k.agriculture=0.4;k.metallurgy=0.15;
 tribeKnowledge.push(k);tribePopulation.push(0);// derived from bgPop on first step
 tribeKnownCoasts.push([]);tribePorts2.push([]);tribeBudgets.push(initBudget());}}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-// ── Background population at 3000 BC: graduated by valley quality ──
-// The best river valleys are already taken by starting civs. The NEXT best
-// valleys start just below crystallization threshold and grow into it over
-// 50-200 steps — matching the staggered appearance of real civilizations:
-//   ~2600 BC (step ~30): Indus (next-best valley) crystallizes
-//   ~2000 BC (step ~80): Minoan, early Hittites, Xia starting
-//   ~1500 BC (step ~125): acceleration — Shang, Mycenaean, etc.
+// ── Background population in the early Neolithic (~9000 BC): graduated by valley quality ──
+// The richest river valleys cross the farming-crystallization threshold first; the
+// NEXT-best valleys start just below it and grow into it over the following
+// 50-200 steps — the staggered way agriculture radiated outward from its first
+// hearths (the Fertile Crescent, then the Yangtze/Yellow, Indus, Nile…) into the
+// neighbouring fertile lowlands over the following centuries.
 //
 // bgPop is scaled relative to the best valley score so only the very top
 // areas are near-threshold, and everything else needs time to grow.
@@ -748,7 +747,7 @@ const bgPop=new Float32Array(tw*th);
 const bestValley=Math.max(0.01,...Array.from(valleyScore).filter(v=>v>0));
 for(let ti=0;ti<tw*th;ti++){if(tElev[ti]<=0||tTemp[ti]<0.05)continue;
 const fert=tFert[ti];const diff=tDiff[ti];
-// Base pop from fertility (everyone farms by 3000 BC in good areas)
+// Base pop from fertility (the good valleys are already farmed in these Neolithic hearths)
 let bp=fert*fert*0.4*(1-diff);// lower base than before
 // Valley bonus: areas with river valley clusters get extra pop, scaled to best
 const vRatio=bestValley>0?valleyScore[ti]/bestValley:0;
@@ -777,23 +776,45 @@ tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudg
 tribeTiles,frontier,frontierList,_landTiles,_coastalTiles,_nfBuf,_youngTiles:[],
 landCount:lc,settled:tribeSizes.length,tribeCount:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
 
-// ── Non-linear time: starts at 2000 BC, accelerates into modernity ──
-// The peopleSim step is far finer-grained than the legacy tribe sim this
-// curve was first written for, so steps are mapped onto the original
-// year-curve through YEAR_STEP_SCALE (≈ peopleSim steps per legacy
-// "year-step"). A mature, roughly-industrial world lands near ys≈1000
-// (≈2025 AD); past that we clamp to the present rather than invent a future.
-// Tune YEAR_STEP_SCALE to stretch / compress how fast the clock runs.
-const YEAR_STEP_SCALE = 18;
+// ── Calendar: a steady step-based clock, anchored so the era ladder lands on real
+// history. The sim seeds Neolithic farming cradles holding STONE tools — that is
+// ~9000 BC, not 2000 BC (when the real cradles were already bronze-age cities with
+// writing), so the long Stone/Neolithic opening spans the most calendar time even
+// though little changes, then the clock accelerates as the eras shorten, the way
+// history actually ran. YEAR_ANCHORS map peopleSim step → year (negative = BC,
+// positive = AD): on the reference world the leading civilisation reaches each era
+// near the step listed (measured against the current tech pace, not guessed).
+// CLOCK_STRETCH rescales the whole timeline for bigger/slower worlds — a
+// step-based clock is inherently map-dependent because the leading edge climbs
+// fewer eras per step on a large map. Raise it if the displayed year runs AHEAD of
+// your tech, lower it if BEHIND (≈1.0 fits a ~480-wide map; ≈1.6 the 1920 default).
+const CLOCK_STRETCH = 1.6;
+const PRESENT_YEAR  = 2025;
+const YEAR_ANCHORS = [   // [reference step, year]
+  [0,     -9000],   // Stone / Neolithic — cradles seeded with stone tools
+  [4000,  -3300],   // Bronze — first cities, the wheel, writing
+  [9000,   -500],   // Classical / Iron Age
+  [11000,   900],   // Medieval
+  [15000,  1500],   // Renaissance
+  [19000,  1800],   // Industrial
+  [24000,  1950],   // Modern
+];
 function stepToYear(step){
-const ys=Math.min(1000, step/YEAR_STEP_SCALE);   // clamp at the present day
-if(ys<=200)return 2000-ys*7;// 2000 BC → 600 BC
-if(ys<=500)return 600-(ys-200)*5;// 600 BC → 900 AD (negative = AD)
-if(ys<=800)return -(900+(ys-500)*2.5);// 900 AD → 1650 AD
-return -(1650+(ys-800)*1.875);// 1650 AD → 2025 AD
+  const A=YEAR_ANCHORS, n=A.length, s=step/CLOCK_STRETCH;
+  if(s<=0)return A[0][1];
+  for(let i=1;i<n;i++){
+    if(s<=A[i][0]){
+      const [s0,y0]=A[i-1], [s1,y1]=A[i];
+      return y0+(y1-y0)*(s-s0)/(s1-s0);
+    }
+  }
+  // Past the last era anchor: keep advancing at the final (modern) rate up to the
+  // present day, then clamp — we date history, not the future.
+  const [sp,yp]=A[n-2], [sl,yl]=A[n-1];
+  return Math.min(PRESENT_YEAR, yl+(yl-yp)/(sl-sp)*(s-sl));
 }
-function yearStr(step){const y=stepToYear(step);
-return y>0?`${Math.round(y)} BC`:`${Math.round(Math.abs(y))} AD`;}
+function yearStr(step){const y=Math.round(stepToYear(step));
+return y<0?`${-y} BC`:`${y} AD`;}
 
 // ── Transport TEST: standalone greedy claim by capital cost ──────────
 // Independent of the live sim. Each "test capital" runs a Dijkstra that
@@ -3344,7 +3365,7 @@ const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
 // ── Aggregate world stats for the chronicle ribbon ──
 const _ter=terRef.current;
 // The live clock is the peopleSim step (the legacy tribe sim is disabled, so
-// _ter.stepCount stays 0 — that's what froze the year at 2000 BC).
+// _ter.stepCount stays 0 — that's what froze the year at the 9000 BC start).
 const _step=(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
 const _ys=yearStr(_step);
 let _aAg=0,_aMt=0,_aNv=0,_aOg=0,_aliveK=0;
