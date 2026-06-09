@@ -25,15 +25,28 @@ export function resetSettlementIds() { _nextId = 1; }
 // uniform cities.
 //
 // The metropolis bar is 3000, not 5000: at the current (dense) settlement
-// density the world's fixed food is spread across hundreds of small village
-// catchments, so an import-fed city's stable ceiling is ~3500 — a city
-// aggregates grain only as fast as its import→housing→growth spiral turns, and
-// that fragmentation caps it. 3000 marks the genuine primate hubs that tower
-// over the villages (the realistic megacity tier for this map's scale); the old
-// 5000 bar predated the density increase and is unreachable without trading the
-// dense countryside for fewer, larger settlements.
-const TIER_THRESHOLD = [0, 250, 1200, 3000];
+// URBAN tier bars (sim-people), now that towns are SPAWNED (not promoted from a
+// region) and grow on the grain surplus of the capped rural districts around
+// them. A town tops out ~600-800 on its narrow tier-1 food catchment; crossing
+// the CITY bar widens that catchment (FOOD_RANGE_BY_TIER 1→2.2), which is what
+// lets a city pull grain from a whole region and grow on toward the METRO bar.
+// So the bars are set just below those natural ceilings — low enough that the
+// town→city→metropolis ladder is actually climbable in the slower, smaller
+// world (the old 1200/3000 bars were tuned for the in-place-promotion era, when
+// a single node aggregated everything, and left almost nothing above "town").
+// (TIER_THRESHOLD[1], the town bar, no longer gates anything — towns are born
+// tier-1 — but it's kept as the tier-1 demotion reference.)
+const TIER_THRESHOLD = [0, 150, 600, 1500];
 const TIER_NAME      = ["farming region", "town", "city", "metropolis"];   // tier-0 = an abstraction for MANY small villages (a farmed region), not one village
+// Rural ceiling: a FARMING REGION (tier 0) is a collection of villages — a rural
+// DISTRICT — not a proto-city. Its population is capped here so it can never pile
+// into a single giant "farming region" node. The surplus food its land grows
+// beyond this ceiling ships UP the hierarchy to feed TOWNS (foodHierarchy), and
+// because a capped region is neither hungry (it stops pulling grain) nor has any
+// urbanise room (migrants flow past it), the rural→urban concentration lands on
+// the spawned towns instead of fattening a region. Urban nodes (tier ≥ 1) are
+// uncapped — they grow on that imported surplus into cities and metropolises.
+const URBAN_CAP = 300;
 // Demotion hysteresis: a settlement loses a tier only once its population falls
 // below this fraction of its CURRENT tier's promotion floor — a deadband so a
 // city hovering at a threshold doesn't flicker between tiers, while a sustained
@@ -187,7 +200,11 @@ export function makeSettlement(world, x, y, opts = {}) {
     // and at the top boils over into a destructive REBELLION. Starts content.
     unrest: 0,
     army: 0,                      // garrison size (soldiers), see armies.js
-    tier: 0,
+    // tier 0 = rural farming region (a collection of villages); tiers 1+ are
+    // URBAN nodes (town/city/metropolis). A farming region never urbanises in
+    // place (updateTier) — it BIRTHS a separate town within its catchment
+    // (urban genesis, crystallize.js), seeded at tier 1 via opts.tier.
+    tier: opts.tier ?? 0,
     mode: "settled",
     lastFoundAttempt: world.step,
     history: [{ step: world.step, type: "founded", parent: opts.parentId ?? -1, pos: { x, y } }],
@@ -1271,8 +1288,16 @@ function updatePopulation(world, s) {
   //   foodK   = (local production + imports) / (0.003 × urbanFactor)
   //   houseK  = housingCapacity(s)  — economy + site, food-independent
   const perCapita = 0.003 * (s._urbanFactor || 1);
-  const foodK = (s._foodSupply || 0) / perCapita;   // _foodSupply = food-hierarchy net (own + subtree intake − shipped up) + local fish
-  const houseK = housingCapacity(s);
+  let foodK = (s._foodSupply || 0) / perCapita;   // _foodSupply = food-hierarchy net (own + subtree intake − shipped up) + local fish
+  let houseK = housingCapacity(s);
+  // RURAL CEILING: a tier-0 farming region holds only a rural district's worth
+  // of people (URBAN_CAP). Capping foodK AND houseK (not just K) is deliberate:
+  // it drops the region's grain HUNGER ((houseK−foodK)/houseK → ~0 once both sit
+  // at the ceiling) so it stops competing with towns for shipped grain, and it
+  // leaves no urbanise headroom (K−people → 0) so rural migrants flow on to the
+  // towns. The land still GROWS its full harvest — that surplus ships up the
+  // hierarchy (via _storableSupply, untouched here) to grow the towns.
+  if ((s.tier | 0) === 0) { foodK = Math.min(foodK, URBAN_CAP); houseK = Math.min(houseK, URBAN_CAP); }
   // LOCALITY model: population = whatever the farmable catchment feeds (foodK
   // already folds in own land + any food routed in). Housing stops being the
   // size cap — a locality IS its hinterland, so a rich-land centre simply holds
@@ -1328,7 +1353,13 @@ function updateTier(world, s) {
   // urban centres still qualify (the world's settlements are size-compressed; scaling those
   // bars too would leave nothing above them and erase cities entirely).
   const bar = (t) => TIER_THRESHOLD[t] * (t === 1 ? sc : 1);
-  // Promote to the highest tier whose population floor is met.
+  // Farming regions (tier 0) NEVER urbanise in place: a region is a collection
+  // of villages, not a proto-city. It instead BIRTHS a separate town within its
+  // catchment (urban genesis, crystallize.js). So the tier ladder here moves
+  // only ALREADY-URBAN nodes (tier ≥ 1) up and down — the rural→urban step is a
+  // spawn, not a relabel.
+  if ((s.tier | 0) === 0) return;
+  // Promote among the urban tiers (town → city → metropolis).
   for (let t = TIER_THRESHOLD.length - 1; t > s.tier; t--) {
     if (s.people >= bar(t)) {
       s.tier = t;
@@ -1336,8 +1367,11 @@ function updateTier(world, s) {
       return;
     }
   }
-  // Demote one rung once population has fallen clearly below the current tier's floor.
-  if (s.tier > 0 && s.people < bar(s.tier) * TIER_DEMOTE_FRAC) {
+  // Demote one rung once population has fallen clearly below the current tier's
+  // floor — but never below tier 1. An urban node stays urban: a failed town is
+  // removed by withering, it does not revert to a rural farming region (which
+  // would let genesis immediately re-spawn it — an oscillation).
+  if (s.tier > 1 && s.people < bar(s.tier) * TIER_DEMOTE_FRAC) {
     s.tier -= 1;
     s.history.push({ step: world.step, type: "decline", tier: TIER_NAME[s.tier], people: Math.round(s.people) });
   }

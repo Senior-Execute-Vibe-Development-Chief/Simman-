@@ -195,6 +195,11 @@ export function maybeCrystallize(world) {
   // axis, distinct from the random crystallisation sweep below).
   if (world.step % COLONY_CHECK_INTERVAL === 0) maybeSendSettlers(world, _alive);
 
+  // Urban genesis: a mature farming region births a TOWN within its catchment
+  // (the rural→urban transition is a spawn, not an in-place relabel). Gated at a
+  // multiple of CRYSTAL_INTERVAL so it actually fires past the early return above.
+  if (world.step % URBAN_CHECK_INTERVAL === 0) maybeUrbanGenesis(world);
+
   // Crystallisation saturation: settlement-count-dependent damper.
   const saturationDamper = 1 / (1 + (_alive / CRYSTAL_SATURATION_REF) ** 2);
 
@@ -598,6 +603,83 @@ function sendSettlers(world, parent) {
   });
   gridAdd(world, daughter);   // register for same-pass spacing queries
   if (parent.history) parent.history.push({ step: world.step, type: "colony-sent", to: daughter.id, settlers });
+}
+
+// ── Urban genesis (mode #2): a farming region BIRTHS a town ───────────
+// A tier-0 farming region is a collection of villages, not a proto-city, so it
+// never urbanises in place (updateTier returns early for tier 0). Instead, once
+// a region has filled out on its OWN land — a mature, surplus-producing rural
+// district — and no town yet serves its catchment, ONE of its villages thickens
+// into a market town: a NEW tier-1 settlement spawned a short walk away, seeded
+// with a village's worth of the region's people. The region carries on as the
+// rural hinterland around it, shipping its grain surplus up to the new town
+// (foodHierarchy.js), which grows on that surplus into a city and, in time, a
+// metropolis. One market town per catchment keeps towns appropriately sparse
+// over the many villages — the historical settlement pyramid.
+const URBANIZE_POP         = 180;  // a region this populous (~0.6 of the rural cap URBAN_CAP=300) is a filled-out district ready to spin off a market town
+const URBAN_CATCHMENT      = 10;   // one market town per ~10-tile cluster — dense enough for a proper many-towns pyramid (16 suppressed neighbours over too wide an area)
+const URBAN_CHECK_INTERVAL = 120;  // ticks between genesis rolls (multiple of CRYSTAL_INTERVAL=24)
+const URBAN_CHANCE         = 0.40; // probability an eligible region births a town on a roll
+const URBAN_SPACING        = 5;    // a founding town may sit this close to other settlements — the dense countryside packs ~8-10 apart, so MIN_SETT_DIST=8 left no room to plant one
+const URBAN_MIN_RANGE      = 5;    // candidate ring inner radius (just clear of the region's own node)
+const URBAN_RANGE          = 12;   // ...outer radius — within the region's catchment, a day's walk to market
+const URBAN_CANDIDATES     = 12;   // nearby sites sampled; the best (river/coast/fertile) wins
+const URBAN_SEED_FRAC      = 0.30; // share of the region's people that move into the founding town
+const URBAN_SEED_CAP       = 70;   // ...capped so the region isn't gutted — it stays the rural hinterland
+const URBAN_SEED_MIN       = 25;   // a founding town smaller than this isn't viable — skip the roll
+
+function maybeUrbanGenesis(world) {
+  const { tw, th, fert, coast, riverMag, rng } = world;
+  for (const region of world.settlements) {
+    if (region.mode !== "settled") continue;
+    if ((region.tier | 0) !== 0) continue;                 // only rural regions birth towns
+    if (region.people < URBANIZE_POP) continue;            // a filled-out district, ready to spin off a town
+    // One market town per catchment: skip if an urban node already serves nearby.
+    let served = false;
+    forEachNear(world, region.pos.x, region.pos.y, URBAN_CATCHMENT, (s) => { if ((s.tier | 0) >= 1) served = true; });
+    if (served) continue;
+    if (rng() >= URBAN_CHANCE) continue;
+    // Pick the best nearby site within the catchment (a ford, a harbour, the
+    // richest farmland edge) — where a village would thicken into a market.
+    const px = region.pos.x | 0, py = region.pos.y | 0;
+    let best = null, bestQ = -Infinity;
+    for (let i = 0; i < URBAN_CANDIDATES; i++) {
+      const ang = rng() * Math.PI * 2;
+      const r = URBAN_MIN_RANGE + rng() * (URBAN_RANGE - URBAN_MIN_RANGE);
+      const tx = ((px + Math.round(Math.cos(ang) * r)) % tw + tw) % tw;
+      const ty = py + Math.round(Math.sin(ang) * r);
+      if (ty < 1 || ty >= th - 1) continue;
+      const ti = ty * tw + tx;
+      if (!isContinentalLand(world, ti)) continue;
+      // Spacing: don't plant on top of another settlement (a looser floor than
+      // the colony rule — a market town belongs INSIDE its dense countryside).
+      let tooClose = false;
+      forEachNear(world, tx, ty, URBAN_SPACING, () => { tooClose = true; });
+      if (tooClose) continue;
+      let q = (fert[ti] || 0) * 1.5;
+      if (riverMag && riverMag[ti] >= 2) q += 1.5;   // a ford / river market
+      if (coast && coast[ti]) q += 0.8;              // a harbour
+      if (q > bestQ) { bestQ = q; best = { tx, ty }; }
+    }
+    if (!best) continue;
+    // Seed the town with a village's worth of the region's people; the region
+    // continues, slightly reduced, as the surrounding rural hinterland.
+    const seed = Math.min(URBAN_SEED_CAP, Math.round(region.people * URBAN_SEED_FRAC));
+    if (seed < URBAN_SEED_MIN) continue;
+    region.people -= seed;
+    const inherited = {};
+    for (const k of Object.keys(region.knowledge)) inherited[k] = region.knowledge[k];
+    const town = makeSettlement(world, best.tx + 0.5, best.ty + 0.5, {
+      people: seed,
+      tier: 1,                                  // born URBAN — a market town, not a village
+      knowledge: inherited,
+      parentId: region.id,
+      countryId: region.countryId,              // joins its hinterland's realm
+      name: "town-" + region.id + "-" + world.step,
+    });
+    gridAdd(world, town);   // register so same-pass spacing / catchment checks see it
+    if (region.history) region.history.push({ step: world.step, type: "spawned-town", to: town.id, seed });
+  }
 }
 
 // Pick the nearest settlement (by straight-line distance, cheap), then
