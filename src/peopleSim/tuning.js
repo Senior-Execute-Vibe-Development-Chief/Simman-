@@ -220,8 +220,8 @@ export const TUNING_SCHEMA = [
     category: "Knowledge & tech",
     blurb: "How fast the tech timeline advances and spreads.",
     params: [
-      { key: "LEARN_BASE", label: "Tech learning speed", def: 0.000040, min: 0.000005, max: 0.0002, step: 0.000005,
-        desc: "Master scaling on all knowledge growth. Up = the whole bronze→industrial arc plays out faster." },
+      { key: "LEARN_BASE", label: "Tech learning speed", def: 0.0000125, min: 0.000005, max: 0.0002, step: 0.000005,
+        desc: "Master scaling on all knowledge growth. Calibrated so the era ladder roughly tracks the displayed calendar — the leading civilisation reaches the Medieval era around year 1000 AD, the Industrial era around 1750, rather than racing to industry by the classical period (which produced anachronistic multi-million cities in antiquity). Up = the whole bronze→industrial arc plays out faster." },
       { key: "DIFFUSE_RATE", label: "Tech diffusion rate", def: 0.0006, min: 0, max: 0.005, step: 0.0002,
         desc: "How fast tech spreads between trading neighbours. Up = no lasting tech gaps; 0 = isolated innovators pull ahead." },
       { key: "SCI_SPREAD", label: "Emergent science spread", def: 1.0, min: 0, max: 2.0, step: 0.1,
