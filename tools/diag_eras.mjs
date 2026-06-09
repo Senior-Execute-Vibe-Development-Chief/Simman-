@@ -4,7 +4,7 @@ import { cropSuitability } from "../src/cropGen.js";
 import { generateResources } from "../src/resourceGen.js";
 import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
 import { techState, ERAS } from "../src/peopleSim/tech.js";
-const W=480,H=240,N=W*H;
+const W=+(process.argv[4]||480),H=W>>1,N=W*H;
 const SEED=+(process.argv[2]||8817);
 const CKPTS=(process.argv[3]||"8000,12000,16000,20000,24000").split(",").map(Number);
 const w=generateWorld(W,H,SEED,"earth_sim",0.78,true,false,{});

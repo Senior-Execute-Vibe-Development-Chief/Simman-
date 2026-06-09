@@ -52,6 +52,15 @@ const URBAN_CAP = 300;
 // city hovering at a threshold doesn't flicker between tiers, while a sustained
 // decline (plague, famine, sacking, out-migration) genuinely costs it its rank.
 const TIER_DEMOTE_FRAC = 0.8;
+// The metropolis bar floats with the world's largest urban centre: a settlement
+// is a metropolis once it reaches METRO_REL_FRAC of the biggest city (but never
+// below the absolute TIER_THRESHOLD floor, so early/slow worlds still mint their
+// first metros). Without this the bar is fixed while DEVELOPMENT lifts every
+// city's size, so eventually they ALL cross it and the metropolis tier balloons
+// past the city tier — an inverted pyramid. Tying it to the top keeps a
+// metropolis "one of the handful of largest cities in the world", whatever the
+// era, so the pyramid (many towns ▸ fewer cities ▸ a few metros) holds.
+const METRO_REL_FRAC = 0.8;
 
 // Pop growth slowed from 0.0045 → 0.0018 so settlements visibly take
 // many in-game years to grow from village to city. With 0.0018, a
@@ -923,28 +932,36 @@ function updateKnowledge(world, s) {
   k.organization = clamp01(k.organization + T.LEARN_BASE * sciMul * orgClim * orgHead
     * ((1 + popSqrt * 0.10) + litBranch));
 
-  // Metallurgy — hard-gated by ore. Paced so the eras (chalcolithic →
-  // bronze → iron → steel) are actually reachable within a game rather
-  // than plateauing in bronze.
+  // Metallurgy — gated by ore, but PACED to keep step with the rest of the tree.
+  // It used to crawl (∝ raw ore richness), so cultures reached the Renaissance
+  // still forging bronze — iron was nominally reachable but never actually
+  // reached. Now a thin deposit still smelts (you need SOME ore, not RICH ore,
+  // to learn the craft — iron came from modest bog ore), charcoal/coke fires the
+  // furnace, and more people means more smiths, so chalcolithic → bronze → iron
+  // → steel arrive roughly in step with construction/admin.
   if (metalCap > 0 && k.metallurgy < metalCap) {
     const oreRate = Math.max(cu, sn, fe, co);
+    const fuel = 1 + (r.timber || 0) * 0.3 + co * 0.4;             // charcoal / coke
     const headroom = 1 - k.metallurgy / metalCap;
     k.metallurgy = Math.min(metalCap, k.metallurgy +
-      T.LEARN_BASE * 2.6 * sciMul * headroom * oreRate * (1 + k.construction * 0.4));
+      T.LEARN_BASE * 2.6 * sciMul * headroom * (0.5 + 0.5 * oreRate) * fuel
+      * (1 + k.construction * 0.4 + popSqrt * 0.04));
   }
 
-  // Navigation — hard-gated by water; paced so coasts/great rivers grow
-  // into real naval powers.
+  // Navigation — gated by water, paced like metallurgy: even a river port or a
+  // modest coast grows real seamanship (helped by population — more shipwrights),
+  // so coasts and great rivers become naval powers in step with the rest of the
+  // tree instead of lagging centuries behind.
   if (wa > 0) {
-    k.navigation = clamp01(k.navigation + T.LEARN_BASE * 1.3 * sciMul * (1 - k.navigation)
-      * wa * (1 + k.construction * 0.6));
+    k.navigation = clamp01(k.navigation + T.LEARN_BASE * 1.9 * sciMul * (1 - k.navigation)
+      * (0.5 + 0.5 * wa) * (1 + k.construction * 0.6 + popSqrt * 0.04));
   }
 
-  // Mobility — hard-gated by horses; paced so horse country becomes
-  // cavalry country.
+  // Mobility — gated by horses, paced so even modest horse country becomes
+  // cavalry country in step with the tree.
   if (horses > horsesThr) {
-    k.mobility = clamp01(k.mobility + T.LEARN_BASE * 1.1 * sciMul * (1 - k.mobility)
-      * horses * (1 + k.construction * 0.4 + metalEff * 0.6));   // metal bits/shoes/tack — capability, not awareness
+    k.mobility = clamp01(k.mobility + T.LEARN_BASE * 1.5 * sciMul * (1 - k.mobility)
+      * (0.5 + 0.5 * horses) * (1 + k.construction * 0.4 + metalEff * 0.6));   // metal bits/shoes/tack — capability, not awareness
   }
 
   // ── Dark ages: knowledge is lost when a society collapses ─────────────
@@ -1392,17 +1409,26 @@ function updateTier(world, s) {
   // one). This keeps the urban hierarchy proportional and the rural majority rural, instead of
   // mislabelling mid-size farming settlements as "towns" once the world fills up. Cached once
   // per tick. (TIER_SCALE_REF / TIER_SCALE_MAX tune it; =off by setting REF huge.)
-  let sc = world._tierScale;
+  let sc = world._tierScale, topU = world._topUrban;
   if (world._tierScaleStep !== world.step) {
-    let tot = 0; for (const x of world.settlements) if (x.mode === "settled") tot += x.people || 0;
+    let tot = 0, top = 0;
+    for (const x of world.settlements) if (x.mode === "settled") {
+      tot += x.people || 0;
+      if ((x.tier | 0) >= 1 && (x.people || 0) > top) top = x.people;   // largest URBAN centre, for the floating metro bar
+    }
     sc = world._tierScale = Math.max(0.4, Math.min(T.TIER_SCALE_MAX, tot / T.TIER_SCALE_REF));
+    topU = world._topUrban = top;
     world._tierScaleStep = world.step;
   }
-  // The scale lifts ONLY the rural→town bar (tier 1) — that's where the mislabelling is, big
-  // farming villages counted as "towns". The city/metropolis bars stay ABSOLUTE so genuine
-  // urban centres still qualify (the world's settlements are size-compressed; scaling those
-  // bars too would leave nothing above them and erase cities entirely).
-  const bar = (t) => TIER_THRESHOLD[t] * (t === 1 ? sc : 1);
+  // Tier bars: the rural→TOWN bar (tier 1) scales with total population (big
+  // farming villages shouldn't read as "towns" once the world fills up). The CITY
+  // bar stays absolute — a genuine floor for "an urban centre". The METROPOLIS bar
+  // floats with the largest city (METRO_REL_FRAC of it, floored at the absolute
+  // base): "metropolis" means one of the handful of biggest cities of the age, so
+  // it stays rare as development lifts every city's size, instead of the whole
+  // city tier eventually crossing a fixed bar into a metro glut.
+  const metroBar = Math.max(TIER_THRESHOLD[3], topU * METRO_REL_FRAC);
+  const bar = (t) => t === 3 ? metroBar : TIER_THRESHOLD[t] * (t === 1 ? sc : 1);
   // Farming regions (tier 0) NEVER urbanise in place: a region is a collection
   // of villages, not a proto-city. It instead BIRTHS a separate town within its
   // catchment (urban genesis, crystallize.js). So the tier ladder here moves
