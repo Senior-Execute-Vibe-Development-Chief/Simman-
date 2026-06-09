@@ -164,7 +164,7 @@ export const TUNING_SCHEMA = [
     params: [
       { key: "SEA_RANGE_NAV", label: "Naval reach per nav tech", def: 160, min: 20, max: 400, step: 10,
         desc: "Extra sea-lane reach per point of navigation. Up = blue-water empires linking distant ports." },
-      { key: "SEA_MIN_POP", label: "Min port population", def: 40, min: 10, max: 400, step: 10,
+      { key: "SEA_MIN_POP", label: "Min port population", def: 20, min: 10, max: 400, step: 10,
         desc: "Population a port needs before it projects sea lanes. Down = even hamlets fish & trade by sea." },
       { key: "COLONY_MIN_POP", label: "Min colonising city size", def: 400, min: 100, max: 2000, step: 50,
         desc: "People a city needs before it launches an overseas colony expedition. Down = eager colonisation." },
@@ -246,8 +246,10 @@ export const TUNING_SCHEMA = [
     params: [
       { key: "TRADE_RATE", label: "Trade volume", def: 0.025, min: 0.005, max: 0.1, step: 0.005,
         desc: "Scaling on goods traded between linked settlements. Up = richer, more interdependent economies." },
-      { key: "SEA_TRADE_MULT", label: "Maritime trade volume ×", def: 4.0, min: 1, max: 12, step: 0.5,
-        desc: "Volume multiplier on trade carried over a SEA LANE vs the same trade overland. Ships moved bulk goods 10-20× cheaper per ton than ox-carts, which is why the great trading powers were maritime (Venice, Alexandria, Canton, Amsterdam) — but the gravity trade otherwise gives a sea link the same √pop × trade-rate volume as a land link, so ocean routes carried only ~4% of all money flow (far too little). At 4× a coastal port trades several times more by sea than by road, ocean routes light up on the money overlay, and maritime hubs grow rich on it (the positive feedback that built real port cities). Mirrors the FOOD_HAUL_WATER bonus the grain trade already gets. 1 = sea trades like land (the old behaviour)." },
+      { key: "SEA_TRADE_MULT", label: "Maritime trade volume ×", def: 8.0, min: 1, max: 16, step: 0.5,
+        desc: "Volume multiplier on trade carried over a SEA LANE vs the same trade overland. Ships moved bulk goods 10-20× cheaper per ton than ox-carts, which is why the great trading powers were maritime (Venice, Alexandria, Canton, Amsterdam) — but the gravity trade otherwise gives a sea link the same √pop × trade-rate volume as a land link, so ocean routes carried far too little of the money flow. At 8× a coastal port trades many times more by sea than by road, ocean routes light up on the money overlay, and maritime hubs grow rich on it (the positive feedback that built real port cities). Mirrors the FOOD_HAUL_WATER bonus the grain trade already gets. 1 = sea trades like land." },
+      { key: "RIVER_TRADE_MULT", label: "River trade volume ×", def: 3.5, min: 1, max: 12, step: 0.5,
+        desc: "Volume multiplier on trade carried along a NAVIGABLE RIVER (the Nile, Rhine, Yangtze, Mississippi) vs the same trade overland — boats on a great river moved bulk far cheaper than ox-carts, so river ports and the inland cities a river reaches traded richly. The river is also a cheap routing corridor in its own right, so trade follows it even without a road built along it. Set below SEA_TRADE_MULT because rivers are shorter-range. 1 = a river lane trades like a road." },
       { key: "TARIFF_RATE", label: "Customs tariff", def: 0.10, min: 0, max: 0.5, step: 0.02,
         desc: "Duty a capital skims on cross-border trade through it. Up = lucrative gateway states, costlier foreign trade." },
       { key: "SEIGNIORAGE_RATE", label: "Mint seigniorage", def: 0.05, min: 0, max: 0.3, step: 0.01,

@@ -331,9 +331,14 @@ export function buildNetworkComponents(world) {
 
 // ── Trade-reach: per-settlement Dijkstra through road network ──
 
+// A navigable-river tile is a cheap trade corridor in its own right (a boat on the
+// Nile / Rhine / Yangtze), so the reach Dijkstra flows along great rivers even with
+// no road on them — dearer than a worn arterial, far cheaper than bare land.
+const RIVER_STEP = 0.10;
+
 function computeReach(world, s, stMap) {
   const reach = new Map();
-  const { tw, th, roadQuality: rq, N } = world;
+  const { tw, th, roadQuality: rq, N, riverMag, elev } = world;
   const startTi = (s.pos.y | 0) * tw + (s.pos.x | 0);
   // A tier-0 VILLAGE keeps only its nearest T.VILLAGE_PARTNERS partners (local
   // market trade) instead of the whole network. Same toll/tariff/tax machinery
@@ -370,6 +375,11 @@ function computeReach(world, s, stMap) {
       while (cur !== -1) { tiles.push(cur); if (cur === startTi) break; cur = prev[cur]; }
       tiles.reverse();
       const link = { cost: d, tiles };
+      // River lane: if a good share of the path runs along a navigable river, the
+      // link carries boosted volume (T.RIVER_TRADE_MULT), the way sea links do.
+      let rvt = 0;
+      for (let j = 0; j < tiles.length; j++) { const t = tiles[j]; if (riverMag && riverMag[t] >= 3 && elev[t] > 0) rvt++; }
+      if (tiles.length > 0 && rvt >= tiles.length * 0.35) link.river = true;
       link.inter = intermediatesOnPath(link, s.id, peer.id, stMap);
       reach.set(peer.id, link);
       if (reach.size >= cap) break;              // nearest-first; we have enough (villages: fewer — see cap)
@@ -393,8 +403,9 @@ function computeReach(world, s, stMap) {
       const ni = ns[k];
       if (ni < 0) continue;
       const isRoad = rq[ni] < 1.0;
-      if (!isRoad && !stMap.has(ni)) continue;
-      const nd = d + (isRoad ? rq[ni] : 0.15) * mul[k];
+      const isRiver = !isRoad && riverMag && riverMag[ni] >= 3 && elev[ni] > 0;   // navigable river = cheap corridor, no road needed
+      if (!isRoad && !isRiver && !stMap.has(ni)) continue;
+      const nd = d + (isRoad ? rq[ni] : isRiver ? RIVER_STEP : 0.15) * mul[k];
       if (seen[ni] !== stamp || nd < dist[ni]) {
         dist[ni] = nd; seen[ni] = stamp; prev[ni] = ti;
         heap.push(ni, nd);
@@ -907,7 +918,7 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
   // several times the volume of the same overland link (T.SEA_TRADE_MULT) — the
   // reason the great trading powers were ports. Without it ocean routes carried
   // ~4% of all money flow. (Mirrors the grain trade's FOOD_HAUL_WATER bonus.)
-  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride * (link.sea ? T.SEA_TRADE_MULT : 1);
+  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride * (link.sea ? T.SEA_TRADE_MULT : link.river ? T.RIVER_TRADE_MULT : 1);
   const transport = link.cost * TRANSPORT_PER_PATHCOST * stride;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;
