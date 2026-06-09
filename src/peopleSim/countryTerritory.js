@@ -317,14 +317,21 @@ export function computeCountryTerritory(world) {
     ];
     const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
     for (let k = 0; k < 8; k++) {
-      const ni = ns[k]; if (ni < 0 || elev[ni] <= 0) continue;
-      let ec = localEdgeCost(world, ti, ni, kn, true);   // roads ignored
-      if (ec === Infinity) continue;
-      if (ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;  // soft cap: ease harsh terrain but keep its gradient (no straight-wall borders)
+      const ni = ns[k]; if (ni < 0) continue;
+      const water = elev[ni] <= 0;                       // sea / lake: traversable but never CLAIMED
+      let ec = localEdgeCost(world, ti, ni, kn, true);   // roads ignored; water → Infinity unless the realm has the nav floor, then the sail cost
+      if (ec === Infinity) continue;                     // pre-naval realms are still walled by the sea
+      // Soft-cap eases harsh TERRAIN so mountains don't hard-wall a border — but
+      // NOT water: the steep sail cost (× budget) is what confines a realm to short
+      // crossings (a strait, an enclosed sea) and keeps it out of the open ocean.
+      if (!water && ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;
       ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);     // organic meander → borders wander instead of cutting straight
       const nd = d + ec * mul[k];
-      if (nd > basinBud) continue;                       // basin's (recency-limited) reach budget
-      if (nd < cost[ni]) { cost[ni] = nd; co[ni] = c; seedBud[ni] = basinBud; heap.push(ni, nd, c); }
+      if (nd > basinBud) continue;                       // basin's (recency-limited) reach budget — also caps how far a realm sails its border
+      // Claim LAND; a water tile only propagates the cost frontier (a navy crossing
+      // it), so the two shores of a narrow sea knit into ONE contiguous realm
+      // without the sea itself flying a flag.
+      if (nd < cost[ni]) { cost[ni] = nd; if (!water) co[ni] = c; seedBud[ni] = basinBud; heap.push(ni, nd, c); }
     }
   }
   if (_capitalOnly) recolorByCapital(world, co, capPos, knOf, claimCap);
