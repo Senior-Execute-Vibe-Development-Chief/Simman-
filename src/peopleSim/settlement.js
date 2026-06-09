@@ -294,6 +294,22 @@ function effectiveLocalRes(world, s) {
 }
 export { effectiveLocalRes, findSettlementById };
 
+// Ore tier a resource bundle can support — the metallurgy that ore lets a site
+// actually PRACTISE (independent of what it KNOWS): copper 0.30 → +tin bronze
+// 0.65 → iron 0.90 → +coal steel 1.00, nothing without copper or iron. Used both
+// for the knowledge cap (over REACHABLE ore, effectiveLocalRes) and for export
+// metalwork (over PHYSICALLY-HELD ore, localRes — you forge from ore in hand).
+const ORE_THR = 0.10;
+function oreTier(res) {
+  const cu = res.copper || 0, sn = res.tin || 0, fe = res.iron || 0, co = res.coal || 0;
+  let cap = 0;
+  if (cu > ORE_THR)                 cap = 0.30;
+  if (cu > ORE_THR && sn > ORE_THR) cap = Math.max(cap, 0.65);
+  if (fe > ORE_THR)                 cap = Math.max(cap, 0.90);
+  if (fe > ORE_THR && co > ORE_THR) cap = 1.00;
+  return cap;
+}
+
 // Cache a settlement's home-tile climate — latitude band (0 = equator,
 // 1 = pole), temperature and moisture (worldgen's 0..1 scales). Terrain is
 // static, so this is computed once and reused by the knowledge model
@@ -314,8 +330,17 @@ function climateOf(world, s) {
 // continuous tracks (the tree gives the bonuses; the tracks earn the tree).
 // Refreshed every KNOW_INTERVAL ticks in updateKnowledge (knowledge drifts
 // slowly); filled lazily here for a settlement inspected before its first tick.
+// The knowledge the sim's EFFECTS may draw on: metalworking AWARENESS capped to
+// what the reachable ore lets a culture actually forge (metalCap). Knowing iron
+// ≠ holding it — so the tech BONUSES (military, tools, …) read this capped view,
+// while the tech TREE reads the raw knowledge (what the culture knows). Returns k
+// untouched when nothing is capped, so the common case allocates nothing.
+function practisedK(k, metalCap) {
+  if (k == null || metalCap == null || (k.metallurgy || 0) <= metalCap) return k;
+  return { ...k, metallurgy: metalCap };
+}
 function techEff(s) {
-  if (!s._techEff) s._techEff = techEffects(s.knowledge, T.TECH_EFFECTS);
+  if (!s._techEff) s._techEff = techEffects(practisedK(s.knowledge, s._metalCap), T.TECH_EFFECTS);
   return s._techEff;
 }
 export { techEff };
@@ -524,8 +549,8 @@ export function computeExportValue(s, world) {
   // Farming Region does only FARM_CRAFT_FRAC of this; the loom, the forge and
   // the counting-house concentrate in TOWNS, so it's a town+ activity.
   let man = 0;
-  const oreAccess = Math.max(r.copper || 0, r.tin || 0, r.iron || 0, r.coal || 0);
-  if (oreAccess > 0.10) man += (k.metallurgy || 0) * 1.5;           // metalwork
+  const physMetalCap = oreTier(r);   // forge from ore PHYSICALLY held (r = localRes), not merely known of
+  if (physMetalCap > 0) man += Math.min(k.metallurgy || 0, physMetalCap) * 1.5;   // metalwork — capped by ore in hand
   man += (k.construction || 0) * 0.4;                               // crafted wares (the craft floor)
   const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
   man += (k.organization || 0) * popScale * 0.8;                    // bureaucracy / services / banking
@@ -581,9 +606,9 @@ export function getExportBreakdown(s) {
   const k = s.knowledge || {};
   const r = s.localRes || {};
   const out = [{ label: "Baseline", value: 1.0 }];
-  const oreAccess = Math.max(r.copper || 0, r.tin || 0, r.iron || 0, r.coal || 0);
-  if (oreAccess > 0.10) {
-    const v = (k.metallurgy || 0) * 1.5;
+  const physMetalCap = oreTier(r);
+  if (physMetalCap > 0) {
+    const v = Math.min(k.metallurgy || 0, physMetalCap) * 1.5;
     if (v > 0.01) out.push({ label: "Metalwork", value: v });
   }
   const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
@@ -772,13 +797,17 @@ const CROP_DOMESTICATE = 0.45;
 // ── Resource-gated knowledge growth ──
 //
 // Each tech track grows in proportion to whatever inputs let it
-// progress. Some tracks are HARD-GATED: without the input, no
-// progress at all (metallurgy without ore, navigation without water).
-// Others are SOFT-BOOSTED: they progress everywhere but faster with
-// the right inputs (construction with timber, agriculture with
+// progress. Navigation/mobility are HARD-GATED: without water/horses no
+// progress at all, and the technique doesn't even diffuse in (the craft is
+// inseparable from the environment). Metallurgy is gated differently — its
+// KNOWLEDGE diffuses freely by contact (you can learn how iron is worked
+// without owning a mine), but independent INVENTION and all PRACTICE are
+// capped by reachable ore (metalCap → metalEff). Others are SOFT-BOOSTED:
+// faster with the right inputs (construction with timber, agriculture with
 // metal tools).
 //
-// metallurgy caps:
+// metallurgy caps (bound what can be PRACTISED & independently INVENTED —
+// NOT what can be learned of; awareness can diffuse past these):
 //   stone tools only            cap 0
 //   + copper                    cap 0.30  (chalcolithic — knives, ornaments)
 //   + copper + tin              cap 0.65  (bronze age — proper weapons + ploughs)
@@ -800,15 +829,23 @@ function updateKnowledge(world, s) {
   const horsesThr = 0.05;
   const horses = r.horses || 0;
 
-  // Ore tier cap (also caps how far a diffused metallurgy technique can
-  // actually be practised — you need the ore to use the knowledge).
+  // Ore tier cap — what the reachable ore lets this site actually PRACTISE.
+  // Knowledge of metalworking now spreads freely by contact (see diffusion
+  // below); metalCap instead gates what that knowledge can be USED for. Counts
+  // imported ore (r = effectiveLocalRes), so a trade-connected people isn't
+  // frozen on ore-poor ground.
   const cu = r.copper || 0, sn = r.tin || 0, fe = r.iron || 0, co = r.coal || 0;
-  const oreThr = 0.10;
-  let metalCap = 0;
-  if (cu > oreThr)                metalCap = Math.max(metalCap, 0.30);
-  if (cu > oreThr && sn > oreThr) metalCap = Math.max(metalCap, 0.65);
-  if (fe > oreThr)                metalCap = Math.max(metalCap, 0.90);
-  if (fe > oreThr && co > oreThr) metalCap = 1.00;
+  const metalCap = oreTier(r);   // over REACHABLE ore (imports count)
+  // AWARENESS vs CAPABILITY. k.metallurgy is what this culture KNOWS of
+  // metalworking — technique, which travels by contact far faster and wider than
+  // the ore does. metalEff is what it can actually FORGE: that awareness capped
+  // by the ore within reach. A connected but ore-poor people knows perfectly how
+  // iron is worked yet makes little of it — knowing ≠ holding the metal. So every
+  // PHYSICAL use of metallurgy (tools, weapons, the metal-tech bonuses) reads
+  // metalEff; only the tech-tree LEGIBILITY and the spread of technique read the
+  // raw awareness. (_metalCap is cached for techEff's lazy path.)
+  s._metalCap = metalCap;
+  const metalEff = Math.min(k.metallurgy, metalCap);
 
   // ── Emergent capacity (the science rate) ──────────────────────────────
   // What a society LEARNS per tick is not a constant: it scales with the
@@ -850,7 +887,7 @@ function updateKnowledge(world, s) {
   // agricultural surplus to free builders, and population.
   const buildMat = 1 + (r.timber || 0) * 0.8 + (r.stone || 0) * 0.6;
   const stoneBoost = 1 + (r.stone || 0) * 0.6;
-  const metalBoost = 1 + k.metallurgy * 1.8;
+  const metalBoost = 1 + metalEff * 1.8;             // metal TOOLS help building — the metal you can forge, not merely know of
   k.construction = clamp01(k.construction + T.LEARN_BASE * 1.0 * sciMul * (1 - k.construction)
     * buildMat * stoneBoost * metalBoost
     * (1 + k.agriculture * 0.6) * (1 + popSqrt * 0.06));
@@ -859,7 +896,7 @@ function updateKnowledge(world, s) {
   // gathering that supplements the early village (folds in the old
   // foraging track). The wild-food boost decays as metallurgy advances
   // — society moves off forage onto stored grain.
-  const wildBoost = 1 + (r.timber || 0) * 0.2 * (1 - k.metallurgy * 0.7);
+  const wildBoost = 1 + (r.timber || 0) * 0.2 * (1 - metalEff * 0.7);   // metal tools (not just the idea) move society off forage onto stored grain
   k.agriculture = clamp01(k.agriculture + T.LEARN_BASE * 1.2 * sciMul * agriClim * (1 - k.agriculture)
     * (1 + fc * 0.03) * (1 + k.construction * 0.5) * wildBoost);
 
@@ -907,7 +944,7 @@ function updateKnowledge(world, s) {
   // cavalry country.
   if (horses > horsesThr) {
     k.mobility = clamp01(k.mobility + T.LEARN_BASE * 1.1 * sciMul * (1 - k.mobility)
-      * horses * (1 + k.construction * 0.4 + k.metallurgy * 0.6));
+      * horses * (1 + k.construction * 0.4 + metalEff * 0.6));   // metal bits/shoes/tack — capability, not awareness
   }
 
   // ── Dark ages: knowledge is lost when a society collapses ─────────────
@@ -940,9 +977,12 @@ function updateKnowledge(world, s) {
   // among road-connected partners, FASTER the more ORGANISED this
   // society is (writing/records are now folded into organization, so a
   // literate-bureaucratic state absorbs technique 1–3× faster).
-  // Resource-gated tracks are capped by what THIS site can actually
-  // practise (ore tier / water / horses) — you can hear how iron is
-  // worked, but still need iron to do it.
+  // Metallurgy KNOWLEDGE spreads freely here — you can learn how iron is worked
+  // from a neighbour who works it, whether or not you hold any ore; the ore gates
+  // what you can DO with that knowledge (metalEff / metalCap), not whether you
+  // hear of it. Navigation and mobility stay capacity-gated: a landlocked people
+  // grows no deep-water craft and a horseless one no cavalry, because there the
+  // technique is inseparable from the environment that breeds it.
   // Diffusion is throttled to every KNOW_INTERVAL ticks (staggered by id),
   // with the rate scaled up to match — technique spreads over ~1700 ticks,
   // so an 8-tick cadence is indistinguishable while costing 8× less.
@@ -969,9 +1009,8 @@ function updateKnowledge(world, s) {
       for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) { km[t] = v; kmSim[t] = sim; } }
     }
     if (any) {
-      if (km.metallurgy > metalCap) km.metallurgy = metalCap;
-      if (wa <= 0) km.navigation = 0;
-      if (horses <= horsesThr) km.mobility = 0;
+      if (wa <= 0) km.navigation = 0;            // no sea → no naval technique to absorb
+      if (horses <= horsesThr) km.mobility = 0;  // no horses → no cavalry technique to absorb
       // Literate-state diffusion multiplier (was "literacy"; now reads off
       // the literate-state branch of organization, which only kicks in
       // past 0.30).
@@ -1021,7 +1060,7 @@ function updateKnowledge(world, s) {
 
   // Refresh the cached tech-effect bonuses the sim reads (food, density, …),
   // throttled like the rest of the knowledge recompute (knowledge drifts slowly).
-  if ((world.step + s.id) % KNOW_INTERVAL === 0) s._techEff = techEffects(k, T.TECH_EFFECTS);
+  if ((world.step + s.id) % KNOW_INTERVAL === 0) s._techEff = techEffects(practisedK(k, metalCap), T.TECH_EFFECTS);
 }
 
 function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
