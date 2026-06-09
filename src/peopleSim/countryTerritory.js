@@ -57,6 +57,17 @@ const CLAIM_CAP_FLOOR = 1.5;  // construction 1: even alpine/desert claimable at
 // "straight wall" carving across deserts/ranges). Keeping a little of the terrain
 // gradient lets the border still slump onto the real ridge/desert spine.
 const CLAIM_SOFT      = 0.12;
+// A realm's political claim HUGS habitable land. Beyond the raw transport cost of
+// crossing hostile ground, barren land (deep desert, bare alpine rock) has almost no
+// population to settle, tax or garrison, so a state can't run a border across it the
+// way it runs one up a green river valley or along a coast. We amplify the per-tile
+// CLAIM cost on low-fertility land only (movement and trade are untouched) — which is
+// what carves Egypt-/Chile-style RIBBON realms: the claim runs cheap along the fertile
+// corridor and stalls in the waste. The penalty bites only BELOW the reference
+// fertility (good land and ordinary frontier march pay nothing) and ramps with the
+// square of the shortfall, so only genuine wasteland resists hard.
+const CLAIM_FERT_REF  = 0.30;  // fertility at/above which a tile claims at full transport cost (no hostility penalty)
+const CLAIM_HOSTILITY = 3.0;   // ×(1 + this·deficit²) on barren land: 0 = old isotropic blob, up = tighter river/coast ribbons
 // How far a realm projects a CLAIM also grows with the era. In antiquity a state
 // was an island of territory in a sea of unclaimed land — most of the world
 // belonged to no polity (steppe, forest, desert, the deep interior). The modern
@@ -192,7 +203,7 @@ function claimNoise(world) {
 
 // Clean per-country cost-Voronoi → world._countryOwner. Runs on the territory pass.
 export function computeCountryTerritory(world) {
-  const { N, tw, th, elev } = world;
+  const { N, tw, th, elev, fert } = world;
   const resScale = resScaleFor(tw);   // tile budgets are res-relative → keep the same world-fraction at any grid size (see RES_REF_W)
   let co = world._countryOwner;
   if (!co || co.length !== N) co = world._countryOwner = new Int32Array(N);
@@ -325,6 +336,14 @@ export function computeCountryTerritory(world) {
       // NOT water: the steep sail cost (× budget) is what confines a realm to short
       // crossings (a strait, an enclosed sea) and keeps it out of the open ocean.
       if (!water && ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;
+      // Ribbon-hug: barren (low-fertility) land — deep desert, bare alpine rock — has
+      // no population to settle or garrison, so a border barely crosses it. Amplify the
+      // CLAIM cost there (only below CLAIM_FERT_REF, ∝ shortfall²) so a realm runs a long
+      // thin claim up a green river/coast and stalls in the waste. Water is exempt.
+      if (!water && CLAIM_HOSTILITY > 0) {
+        const fdef = (CLAIM_FERT_REF - (fert ? fert[ni] : CLAIM_FERT_REF)) / CLAIM_FERT_REF;
+        if (fdef > 0) ec *= 1 + CLAIM_HOSTILITY * fdef * fdef;
+      }
       ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);     // organic meander → borders wander instead of cutting straight
       const nd = d + ec * mul[k];
       if (nd > basinBud) continue;                       // basin's (recency-limited) reach budget — also caps how far a realm sails its border
