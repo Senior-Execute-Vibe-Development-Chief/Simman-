@@ -176,6 +176,13 @@ const RESOURCE_TIER_VALUE = {
 // (which is parent-driven and intentional) is NOT subject to this — the
 // mother country can still push outward into the frontier.
 const CRYSTAL_SATURATION_REF = 1500;  // density guard — much higher so the world keeps filling with villages (a denser, more alive map) instead of plateauing at a few hundred
+// Coverage tempo (applied as devFactor in maybeCrystallize): the habitable world
+// starts a SPARSE frontier and fills in gradually over the developmental arc,
+// instead of saturating at once. Ungated, crystallisation+colonisation grabbed all
+// the easy terrain by the classical era and then sat static; ramping the spread
+// rate up over the eras makes the wilderness recede the way it did historically.
+const COVERAGE_FLOOR = 0.22;   // stone-age frontier spread rate, as a fraction of full
+const COVERAGE_RAMP  = 17000;  // steps over which the spread rate ramps to full (~renaissance)
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
@@ -190,10 +197,16 @@ export function maybeCrystallize(world) {
   let _alive = 0;
   for (const s of world.settlements) if (s.mode === "settled") _alive++;
 
+  // Coverage tempo: settlement spreads GRADUALLY as civilisation matures rather
+  // than all at once (see COVERAGE_FLOOR / COVERAGE_RAMP). Scales both the random
+  // crystallisation sweep and mother-country colonisation, so the early map stays a
+  // sparse frontier and the wilderness recedes over the eras.
+  const devFactor = Math.min(1, COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * world.step / COVERAGE_RAMP);
+
   // Mother-country expansion: pressed towns send settler parties (see
   // sendSettlers — this is the entire "population pressure → new colony"
   // axis, distinct from the random crystallisation sweep below).
-  if (world.step % COLONY_CHECK_INTERVAL === 0) maybeSendSettlers(world, _alive);
+  if (world.step % COLONY_CHECK_INTERVAL === 0) maybeSendSettlers(world, _alive, devFactor);
 
   // Urban genesis: a mature farming region births a TOWN within its catchment
   // (the rural→urban transition is a spawn, not an in-place relabel). Gated at a
@@ -321,7 +334,7 @@ export function maybeCrystallize(world) {
     const td = transportDist[ti];
     const diffusionMul = isFinite(td) ? Math.exp(-td / KNOWLEDGE_DECAY_SCALE) * NEAR_RATE : 0;
     const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
-    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor;
+    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor * devFactor;
 
     if (rng() < p) {
       // Inherited knowledge: blend from nearest settlement, weighted by
@@ -557,7 +570,7 @@ function defensibilityFor(world, ti, tx, ty) {
 // founds a daughter joining the parent's realm. Cooldown stops a single town
 // from spamming colonies; settler-cost shaves the parent's population so
 // expansion has a real demographic cost (you trade headcount for territory).
-function maybeSendSettlers(world, alive) {
+function maybeSendSettlers(world, alive, devFactor = 1) {
   if (!world.transportDist) return;
   const { rng } = world;
   // Saturation: colonies get rarer as the map fills, so settlement density
@@ -583,7 +596,7 @@ function maybeSendSettlers(world, alive) {
     // people would otherwise sit at the ceiling. updatePopulation set s._k.
     const k = parent._k || 1;
     if (parent.people / k < COLONY_PRESS_FRAC) continue;
-    if (rng() >= COLONY_CHANCE * colonySat) continue;
+    if (rng() >= COLONY_CHANCE * colonySat * devFactor) continue;
     sendSettlers(world, parent);
   }
 }

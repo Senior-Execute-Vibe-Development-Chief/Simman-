@@ -794,11 +794,11 @@ const PRESENT_YEAR  = 2025;
 const YEAR_ANCHORS = [   // [reference step, year]
   [0,     -9000],   // Stone / Neolithic — cradles seeded with stone tools
   [4000,  -3300],   // Bronze — first cities, the wheel, writing
-  [9000,   -500],   // Classical / Iron Age
-  [11000,   900],   // Medieval
-  [15000,  1500],   // Renaissance
-  [19000,  1800],   // Industrial
-  [24000,  1950],   // Modern
+  [8500,   -500],   // Classical / Iron Age
+  [10000,   900],   // Medieval
+  [13000,  1500],   // Renaissance
+  [18000,  1800],   // Industrial
+  [22000,  1950],   // Modern
 ];
 function stepToYear(step){
   const A=YEAR_ANCHORS, n=A.length, s=step/CLOCK_STRETCH;
