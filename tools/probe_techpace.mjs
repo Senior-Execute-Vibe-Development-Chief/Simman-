@@ -43,7 +43,10 @@ for (let s = 1; s <= STEP; s++) {
     const cs = world.settlements.filter(x => x.mode === "settled").sort((a, b) => b.people - a.people);
     let o1 = 0, o2 = 0, tot = 0, lead = 0;
     for (const x of cs) { const d = x.people * PS; if (d >= 1e6) o1++; if (d >= 2e6) o2++; tot += x.people; const e = techState(x.knowledge || {}).era; if (e > lead) lead = e; }
-    snap1000 = { lead, o1, o2, tot, top: cs.slice(0, 5) };
+    // Snapshot VALUES — the sim keeps stepping and mutates these objects, so
+    // storing refs would print their final (step STEP) state, not year 1000's.
+    const top = cs.slice(0, 5).map(x => `${(x.people * PS / 1e6).toFixed(2)}M(${ERAS[techState(x.knowledge || {}).era].slice(0, 4)})`);
+    snap1000 = { lead, o1, o2, tot, top };
   }
 }
 console.log(`LEARN_BASE = ${LB !== undefined ? LB : "default"}  ·  earth seed ${SEED}  ·  to step ${STEP}\n`);
@@ -52,5 +55,5 @@ for (let e = 0; e < ERAS.length; e++)
   console.log(`  ${ERAS[e].padEnd(11)} ${firstEra[e] < 0 ? "never" : `step ${String(firstEra[e]).padStart(5)} (~${yr(firstEra[e])})`}`);
 if (snap1000) {
   console.log(`\nAt "year 1000 AD" (step ${YEAR1000}):  lead era ${ERAS[snap1000.lead]}  ·  worldPop ${(snap1000.tot * PS / 1e6).toFixed(1)}M  ·  cities ≥1M: ${snap1000.o1}  ≥2M: ${snap1000.o2}`);
-  console.log(`  biggest: ${snap1000.top.map(s => `${(s.people * PS / 1e6).toFixed(2)}M(${ERAS[techState(s.knowledge || {}).era].slice(0, 4)})`).join("  ")}`);
+  console.log(`  biggest: ${snap1000.top.join("  ")}`);
 }
