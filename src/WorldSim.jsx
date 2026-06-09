@@ -2535,6 +2535,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmRoads = viewRef.current === "roads";
   const vmMoney = viewRef.current === "money";
   const vmCountry = viewRef.current === "country";
+  const vmFR = viewRef.current === "frTerritory";
   if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
@@ -2695,7 +2696,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmFR?32:0);
     if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
@@ -2735,7 +2736,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         octx.stroke();
       }
-      if(!vmCountry&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmFR&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map();
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
@@ -2756,7 +2757,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
-      } else if(!vmCountry&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmFR&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -2785,6 +2786,40 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==oid&&ctryById[dno]!==co){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
+      }
+      // ── Farming-Region territory view: outline EACH settlement's economic
+      // catchment (_territoryOwner — the food-producing land it administers).
+      // With urban nodes releasing their land, these ARE the farming regions, so
+      // you can see how much land each rural region holds (often a country's
+      // de-facto core). Tint per region + a solid edge wherever the owner changes
+      // (including against wilderness), so every region's territory is outlined.
+      if(vmFR&&owner){
+        const tw=psw.tw,th=psw.th;
+        let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
+        const tintById=new Array(maxId+1);
+        for(const s of psw.settlements){if(s&&s.mode==="settled"){
+          const h=((s.id*97)%360+360)%360;
+          tintById[s.id]=`hsla(${h},55%,52%,${(s.tier|0)===0?0.42:0.24})`;
+        }}
+        let lastFs=null;
+        for(let ti=0;ti<owner.length;ti++){
+          const oid=owner[ti];if(oid<0)continue;
+          const fs=tintById[oid];if(fs===undefined)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+          octx.fillRect(sx,sy,TR+0.6,TR+0.6);
+        }
+        octx.strokeStyle="rgba(25,18,8,0.85)";octx.lineWidth=Math.max(1,TR*0.5);octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
+        for(let ti=0;ti<owner.length;ti++){
+          const oid=owner[ti];if(oid<0)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          const ro=owner[py*tw+(px===tw-1?0:px+1)];
+          if(ro!==oid){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(py<th-1){const dno=owner[ti+tw];if(dno!==oid){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+        }
+        octx.stroke();
       }
       // ── Province borders (Layers → Provinces) ──
       // Internal administrative divisions. A province follows the SIM's own
@@ -3386,7 +3421,7 @@ const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
-  ["crop","Crop"],["crossing","Crossing"],["country","Country"],["roads","Roads"],["money","Money"],
+  ["crop","Crop"],["crossing","Crossing"],["country","Country"],["frTerritory","Farm Regions"],["roads","Roads"],["money","Money"],
   ["resources","Resources"],["population","Pop"],["transport","Transport"],
   ["transport-test","Trans Test"],["tribes","Tribes"]
 ];
