@@ -784,11 +784,12 @@ landCount:lc,settled:tribeSizes.length,tribeCount:tribeSizes.length,origin:{x:tw
 // history actually ran. YEAR_ANCHORS map peopleSim step → year (negative = BC,
 // positive = AD): on the reference world the leading civilisation reaches each era
 // near the step listed (measured against the current tech pace, not guessed).
-// CLOCK_STRETCH rescales the whole timeline for bigger/slower worlds — a
-// step-based clock is inherently map-dependent because the leading edge climbs
-// fewer eras per step on a large map. Raise it if the displayed year runs AHEAD of
-// your tech, lower it if BEHIND (≈1.0 fits a ~480-wide map; ≈1.6 the 1920 default).
-const CLOCK_STRETCH = 1.6;
+// CLOCK_STRETCH is a manual fine-tune. The clock tracks the LEADING civilisation,
+// which develops at roughly the same per-step rate regardless of map size (only the
+// periphery lags on a big map), so ≈1.0 fits most worlds. Nudge it only if the
+// displayed year drifts from your tech: raise it if the year runs AHEAD of the tech,
+// lower it if BEHIND.
+const CLOCK_STRETCH = 1.0;
 const PRESENT_YEAR  = 2025;
 const YEAR_ANCHORS = [   // [reference step, year]
   [0,     -9000],   // Stone / Neolithic — cradles seeded with stone tools
