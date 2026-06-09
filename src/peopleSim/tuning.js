@@ -178,6 +178,8 @@ export const TUNING_SCHEMA = [
         desc: "Base per-tick population growth. The master demographics-speed dial — up = the world fills fast." },
       { key: "LAND_HUNGER", label: "Marginal-land tolerance", def: 1.5, min: 0, max: 6, step: 0.5,
         desc: "How readily new settlements spill onto LOW-quality land once the good sites nearby are already taken (population pressure / the historical frontier). 0 = settlers shun poor land forever, so deserts/uplands stay empty even late game; higher = marginal land WITHIN settled regions fills with sparse hamlets. Good land still fills first — this only lifts poor sites where the surroundings are already populated." },
+      { key: "SITE_DEFENSE", label: "Defensible-site pull", def: 1.0, min: 0, max: 3.0, step: 0.25,
+        desc: "How strongly DEFENSIBLE terrain attracts settlement on top of trade/fertility — commanding high ground (an acropolis / hill-fort), natural moats (river islands, peninsulas, water-girt necks) and mountain-backed flanks. 0 = terrain defence ignored (old behaviour, only trade geography mattered); up = hills, river islands and mountain valleys draw towns the way they did historically, and a brilliant defensive site can nucleate a town even on poor farmland." },
       { key: "FARM_YIELD_PER_FERT", label: "Farm yield", def: 0.035, min: 0.005, max: 0.08, step: 0.005,
         desc: "Food produced per unit of land fertility → carrying capacity. Up = denser, larger inland cities." },
       { key: "LUX_VILLAGE_FRAC", label: "Village luxury appetite", def: 0, min: 0, max: 1, step: 0.05,

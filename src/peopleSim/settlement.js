@@ -689,7 +689,15 @@ export function getTradeProfile(s, world) {
 const MIGRATE_RATE     = 0.004;  // per pass: base share of a town that drifts to its hub
 const MIGRATE_MIN_POP  = 25;     // a hamlet this small doesn't shed migrants
 const MIGRATE_GAP_CAP  = 6;      // a far-bigger hub pulls this much harder (capped)
-const MIGRATE_DRAIN_CAP = 0.04;  // never move more than this fraction of a village in one pass
+const MIGRATE_DRAIN_CAP = 0.04;  // never move more than this fraction of a village in one pass (peacetime)
+// REFUGE: in peace people drift cityward for OPPORTUNITY; in hard times — war,
+// raids, conscription, famine, heavy taxes, all of which spike a region's UNREST
+// — they FLEE the open land for the nearest defended town far faster. So unrest
+// multiplies both the drift rate and the per-pass drain cap: a war empties the
+// countryside into the walled towns (Jericho/Uruk), a long peace lets it spread
+// back out onto the land. Towns sit on defensible sites (crystallize.js), so the
+// hub people run to IS the stronghold. T.SITE_DEFENSE dials the whole effect.
+const REFUGE_PULL      = 2.0;    // unrest=1 → up to ×(1+2·SITE_DEFENSE) flight into the hub
 export function urbanise(world) {
   const byId = world._byId;
   if (!byId) return;
@@ -711,7 +719,10 @@ export function urbanise(world) {
     // starve, shrinking both the city and the villages it drained. Filling to
     // capacity lets the city grow exactly as fast as imported grain arrives.
     const room = Math.max(0, (best._k || best.people) - best.people);
-    let movers = Math.min(s.people * MIGRATE_RATE * gap, room, s.people * MIGRATE_DRAIN_CAP);
+    // Hard times accelerate the flight cityward (refuge), lifting both the drift
+    // rate and the drain cap; in peace (unrest ≈ 0) this is a no-op.
+    const refuge = 1 + REFUGE_PULL * (s.unrest || 0) * T.SITE_DEFENSE;
+    let movers = Math.min(s.people * MIGRATE_RATE * gap * refuge, room, s.people * MIGRATE_DRAIN_CAP * refuge);
     if (movers < 0.2) continue;
     s.people -= movers;
     best.people += movers;
