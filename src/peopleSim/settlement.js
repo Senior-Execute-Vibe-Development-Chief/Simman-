@@ -1017,9 +1017,10 @@ function updateKnowledge(world, s) {
       if (!p || p.mode !== "settled" || !p.knowledge) continue;
       any = true;
       const pk = p.knowledge;
-      // Continental-axis effect: technique crosses easily along a shared
-      // latitude/climate band (same day-length, soils, crops, seasons) and
-      // only slowly across them. Same-latitude neighbour → sim ≈ 1.
+      // Continental-axis climate similarity — used to gate AGRICULTURE only (see
+      // the diffusion loop). The farming PACKAGE crosses easily along a shared
+      // latitude/climate band (same day-length, soils, crops, seasons) and only
+      // slowly across them. Same-latitude neighbour → sim ≈ 1.
       climateOf(world, p);
       const dLat = s._climLat - p._climLat, dT = s._climTemp - p._climTemp;
       const sim = Math.exp(-(dLat * dLat) / (2 * 0.22 * 0.22) - (dT * dT) / (2 * 0.10 * 0.10));
@@ -1036,9 +1037,16 @@ function updateKnowledge(world, s) {
       for (const t of KTRACKS) {
         const gap = km[t] - k[t];
         if (gap > 0) {
-          // Axis bias: a lead held only across a climate band trickles in
-          // slowly (floor 5%); one from a same-band neighbour floods in.
-          const axisW = Math.max(0.05, 1 - T.AXIS_BIAS * (1 - kmSim[t]));
+          // Axis bias gates ONLY agriculture. Diamond's continental-axis claim is
+          // about the farming PACKAGE — crops and livestock are latitude-bound, so a
+          // lead held across a climate band trickles in slowly (floor 5%) while a
+          // same-band neighbour's floods in. Every other craft (metallurgy, masonry,
+          // organisation, seafaring, horsemanship) is the SAME in any climate and
+          // diffuses freely by contact; the axis still reaches it, but indirectly —
+          // by gating the farming base that feeds population and tech development.
+          const axisW = t === "agriculture"
+            ? Math.max(0.05, 1 - T.AXIS_BIAS * (1 - kmSim[t]))
+            : 1;
           k[t] = clamp01(k[t] + rate * axisW * gap);
         }
       }
