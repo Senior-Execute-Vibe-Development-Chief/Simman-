@@ -85,6 +85,31 @@ const LOGI_REACH = 2.2;       // budget ×(1 + logisticsLevel · LOGI_REACH): tr
 // it grows to a continental-scale state.
 const REACH_SIZE_REF = 32;    // settlements for full reach (was 20 — a realm must be bigger before it projects its whole tech-reach, so a few-city state stays regional)
 const REACH_SIZE_MIN = 0.25;  // a tiny realm still projects at least this fraction
+// Past the reference, scale keeps PAYING (sqrt, dampened) instead of clamping to 1.
+// The clamp was an equalizer: a 60-member empire projected the same claim as a
+// 32-member one, so every mature realm converged on the same regional size (the
+// country-size diagnostic showed max/median FALLING 24→2.4 over time, Gini 0.36 —
+// no dominant empires, ever). With the super-linear tail, members → budget →
+// adopted villages → members compounds for the realm that's already winning; the
+// loop stays bounded because member count itself is gated by the log2 hold
+// capacity and secession (conquest.js), so it amplifies a leader without minting
+// an immortal juggernaut.
+const REACH_SIZE_SUPER = 0.7; // budget mult at 4×REF = 1 + (√4−1)·0.7 = ×1.7
+// Personality into the claim: an Expansionist realm (personality.js, −1..1)
+// projects a meaningfully wider political claim, an Insular one pulls in. This is
+// a deliberate ASYMMETRY source — temperament is intrinsic, persistent over
+// centuries and defies geography, so it's what lets two equal-tech neighbours
+// diverge into a sprawling conqueror and a compact homebody (Rome vs the
+// city-states it ate). Appetite only — tech still sets what a realm CAN hold.
+const CLAIM_PERS_SPAN = 0.25; // ±25% budget at the expansionism poles
+// Enclosed-waste fill (the cartographer's rule): interior wasteland wholly
+// surrounded by ONE realm is coloured in — there is no rival claimant by
+// construction, and route/denial control over enclosed waste was real (the
+// Caliphate's inner deserts are drawn solid; Egypt's FRONTIER desert is not —
+// frontier waste still resists via the fertility-hostility, keeping the ribbon).
+// Capped relative to the realm's claimed size so a thin ring can't swallow a
+// continent-sized waste.
+const ENCLOSED_FILL_MAX = 1.0; // max filled-pocket size, × the realm's claimed tile count
 // CAPITAL ANCHOR: a settlement's projected reach falls off with its distance from
 // the capital (see seeding) — the basin HALVES at capDist = ANCHOR_SCALE / anchor
 // tiles, so territory hugs the capital and realms read as compact blobs instead of
@@ -244,8 +269,13 @@ export function computeCountryTerritory(world) {
   // of its tech-reach and earns the full continental projection only as it grows
   // to REACH_SIZE_REF settlements.
   for (const [c, b] of budget) {
-    const sf = Math.max(REACH_SIZE_MIN, Math.min(1, (members.get(c) || 1) / REACH_SIZE_REF));
-    budget.set(c, b * sf);
+    const rel = (members.get(c) || 1) / REACH_SIZE_REF;
+    const sf = rel >= 1
+      ? 1 + (Math.sqrt(rel) - 1) * REACH_SIZE_SUPER   // size keeps paying past the reference (see REACH_SIZE_SUPER)
+      : Math.max(REACH_SIZE_MIN, rel);
+    const pers = world.personalities && world.personalities.get(c);
+    const persMul = pers ? 1 + (pers.expansionism || 0) * CLAIM_PERS_SPAN : 1;
+    budget.set(c, b * sf * persMul);
   }
   // Ease each country's reach toward that (size-scaled tech) target so territory
   // grows in gradually instead of snapping to a continental claim in one pass
@@ -354,6 +384,7 @@ export function computeCountryTerritory(world) {
     }
   }
   if (_capitalOnly) recolorByCapital(world, co, capPos, knOf, claimCap);
+  fillEnclosedWaste(world, co);
   closeRealmGaps(world, co, T.REALM_GAP_FILL);
   smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0);
   return co;
@@ -412,6 +443,51 @@ function recolorByCapital(world, co, capPos, knOf, claimCap) {
     }
   }
   for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && capColor[ti] >= 0) co[ti] = capColor[ti];
+}
+
+// ── Enclosed-waste fill (the cartographer's rule) ──────────────────────
+// Flood each UNCLAIMED land pocket (4-neighbour, x wraps; water and the poles
+// seal). A pocket bordered by exactly ONE country — no rival claimant — is
+// coloured in as that country's interior waste, capped at ENCLOSED_FILL_MAX ×
+// the realm's claimed size. Pockets touching two countries (a contested march)
+// or the open wilderness (frontier waste) stay wild — that's what keeps the
+// Nile a ribbon while the Caliphate's inner desert is drawn solid. Filled
+// tiles keep cost=Infinity: they're assertion, not administration, and the
+// secession pass already treats settlement-less tiles as inert (conquest.js
+// looseAt: no administering basin → never loose).
+function fillEnclosedWaste(world, co) {
+  const { N, tw, th, elev } = world;
+  let seen = world._wasteSeen;
+  if (!seen || seen.length !== N) seen = world._wasteSeen = new Uint8Array(N);
+  seen.fill(0);
+  const claimed = new Map();
+  for (let ti = 0; ti < N; ti++) { const c = co[ti]; if (c >= 0) claimed.set(c, (claimed.get(c) || 0) + 1); }
+  if (claimed.size === 0) return;
+  const stack = [], comp = [];
+  for (let i = 0; i < N; i++) {
+    if (seen[i] || co[i] >= 0 || elev[i] <= 0) continue;
+    comp.length = 0; stack.length = 0;
+    stack.push(i); seen[i] = 1;
+    let border = -2;                       // -2 none yet · -1 contested (≥2 realms)
+    while (stack.length) {
+      const ti = stack.pop(); comp.push(ti);
+      const y = (ti / tw) | 0, x = ti - y * tw;
+      const ns4 = [
+        y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw),
+        y > 0 ? ti - tw : -1, y < th - 1 ? ti + tw : -1,
+      ];
+      for (let k = 0; k < 4; k++) {
+        const ni = ns4[k];
+        if (ni < 0 || elev[ni] <= 0) continue;             // pole / water seals
+        const oc = co[ni];
+        if (oc >= 0) { if (border === -2) border = oc; else if (border !== oc) border = -1; continue; }
+        if (!seen[ni]) { seen[ni] = 1; stack.push(ni); }
+      }
+    }
+    if (border < 0) continue;              // open, island, or contested — stays wild
+    if (comp.length > (claimed.get(border) || 0) * ENCLOSED_FILL_MAX) continue;
+    for (let k = 0; k < comp.length; k++) co[comp[k]] = border;
+  }
 }
 
 // ── Border smoothing ─────────────────────────────────────────────────────────
