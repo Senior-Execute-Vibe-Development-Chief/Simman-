@@ -408,6 +408,18 @@ export function advanceFronts(world) {
     capturedAt = world._tileCapturedAt = new Float64Array(N).fill(-Infinity);
   }
 
+  // Exhaustion CLOSES fronts (episodic war). The full-scale review found war was
+  // permanent — ~165/165 realms fighting at every checkpoint, exhaustion pinned at
+  // its cap — because exhaustion only weakened the punch (offMulPair) but never
+  // stopped an attack from qualifying, and the scan re-opens every profitable
+  // front every pass. Raising the ATTACK BAR with the attacker's exhaustion (last
+  // pass's value — it moves slowly) means a worn realm stops pushing, its fronts
+  // close, exhaustion decays through a real peace-window, and war turns episodic:
+  // campaign → a generation of peace → campaign. Defence is never gated. A warlike
+  // realm's aggMul still discounts the bar, so the proud fight on longest.
+  const exhPrev = world._warExhaust;
+  const warBarOf = (cc) => 1 + T.EXHAUST_WAR_BAR * (exhPrev ? (exhPrev.get(cc) || 0) : 0);
+
   const natMight = new Map();   // countryId → Σ might = the NATIONAL FIELD ARMY (Σ garrison × tech)
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
@@ -537,7 +549,7 @@ export function advanceFronts(world) {
     // one wants a clear advantage (personality.js aggressionAttackMul).
     const aCountry = world.countries && world.countries.get(A.countryId);
     const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
-    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX)) continue;
+    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId)) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -582,7 +594,7 @@ export function advanceFronts(world) {
         const key = A.id + ":" + pid;
         if (pairs.has(key)) continue;                        // already met on land
         const tf = tradeFactor(A.countryId, D.countryId);
-        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR) continue;
+        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId)) continue;
         const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key };
         let l = amphibByDef.get(pid); if (!l) amphibByDef.set(pid, l = []);
         l.push(pc);

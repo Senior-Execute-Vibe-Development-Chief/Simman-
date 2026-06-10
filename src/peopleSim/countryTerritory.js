@@ -257,7 +257,7 @@ export function computeCountryTerritory(world) {
 
   // Per-country reach budget + the knowledge used for edge cost — both taken
   // from the country's most-organised settlement (its de-facto capital).
-  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map(), eraBoost = new Map();
+  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map(), eraBoost = new Map(), hostOf = new Map();
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless settlements don't seed
     const c = s.countryId;
@@ -281,6 +281,15 @@ export function computeCountryTerritory(world) {
       // reach and the boost separately.
       budget.set(c, (COUNTRY_REACH_BASE + org * COUNTRY_REACH_ORG) * resScale);
       eraBoost.set(c, eraMul);
+      // The partition of the wastes is MODERN: pre-industrial states left the
+      // deep desert / high ranges / ice as unclaimed marches (nothing to tax),
+      // but the rail-and-telegraph era abolished terra nullius — straight
+      // treaty lines through the Sahara, watershed conventions through the
+      // Himalaya, polar claims — because empty land was claimed to PREEMPT
+      // rivals once nominal control became projectable. So the barren-land
+      // claim hostility FADES with logistics tech: medieval realms still hug
+      // the rivers; industrial ones partition the wasteland to the midline.
+      hostOf.set(c, CLAIM_HOSTILITY * Math.max(0, 1 - logi));
       claimCap.set(c, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
     }
   }
@@ -401,9 +410,12 @@ export function computeCountryTerritory(world) {
       // no population to settle or garrison, so a border barely crosses it. Amplify the
       // CLAIM cost there (only below CLAIM_FERT_REF, ∝ shortfall²) so a realm runs a long
       // thin claim up a green river/coast and stalls in the waste. Water is exempt.
-      if (!water && CLAIM_HOSTILITY > 0) {
+      // Per-claimant: the hostility fades with the realm's logistics tech (hostOf —
+      // the modern partition of the wastes; see the seeding loop).
+      const host = hostOf.get(c) ?? CLAIM_HOSTILITY;
+      if (!water && host > 0) {
         const fdef = (CLAIM_FERT_REF - (fert ? fert[ni] : CLAIM_FERT_REF)) / CLAIM_FERT_REF;
-        if (fdef > 0) ec *= 1 + CLAIM_HOSTILITY * fdef * fdef;
+        if (fdef > 0) ec *= 1 + host * fdef * fdef;
       }
       ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);     // organic meander → borders wander instead of cutting straight
       const nd = d + ec * mul[k];

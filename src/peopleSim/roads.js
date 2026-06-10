@@ -336,6 +336,11 @@ export function buildNetworkComponents(world) {
 // no road on them — dearer than a worn arterial, far cheaper than bare land.
 const RIVER_STEP = 0.10;
 
+// Steamship-era throughput: a sea link's volume multiplier grows up to ×(1+this)
+// with the endpoints' seaSpeed tech, so the maritime share of trade RISES with
+// era (sail ≈ T.SEA_TRADE_MULT, full steam ≈ 2.5× that) instead of staying flat.
+const SEA_TECH_VOL = 1.5;
+
 function computeReach(world, s, stMap) {
   const reach = new Map();
   const { tw, th, roadQuality: rq, N, riverMag, elev } = world;
@@ -918,7 +923,15 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
   // several times the volume of the same overland link (T.SEA_TRADE_MULT) — the
   // reason the great trading powers were ports. Without it ocean routes carried
   // ~4% of all money flow. (Mirrors the grain trade's FOOD_HAUL_WATER bonus.)
-  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride * (link.sea ? T.SEA_TRADE_MULT : link.river ? T.RIVER_TRADE_MULT : 1);
+  // Ship TECH multiplies it further (caravels → steamships): historically the
+  // sea's share of trade ROSE with era — by 1900 intercontinental trade was
+  // effectively all seaborne — but with a flat multiplier the share stayed
+  // ~20-28% from medieval to modern (land roads kept pace). seaSpeed is the
+  // throughput proxy; the better-shipped endpoint sets the carrier.
+  const shipTech = link.sea
+    ? Math.max((a._techEff && a._techEff.seaSpeed) || 0, (b._techEff && b._techEff.seaSpeed) || 0) : 0;
+  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride
+    * (link.sea ? T.SEA_TRADE_MULT * (1 + SEA_TECH_VOL * shipTech) : link.river ? T.RIVER_TRADE_MULT : 1);
   const transport = link.cost * TRANSPORT_PER_PATHCOST * stride;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;

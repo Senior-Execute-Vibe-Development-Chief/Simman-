@@ -122,6 +122,8 @@ export const TUNING_SCHEMA = [
         desc: "War-exhaustion gained per SERIOUS front per war-pass (a realm pressing or under heartland assault; mere border nibbling doesn't tire it). Sapped offence = x(1 - exhaustion). Drives long/multi-front wars toward a de-facto standstill — the historical war-weariness that ends endless conquest. 0 = wars never tire a realm." },
       { key: "WAR_EXHAUST_DECAY", label: "War-exhaustion recovery", def: 0.93, min: 0.5, max: 0.99, step: 0.01,
         desc: "Fraction of war-exhaustion RETAINED each pass at peace (rest/recovery). 0.93 = a tired realm recovers its offensive punch over ~20-40 passes of peace. Lower = recovers faster." },
+      { key: "EXHAUST_WAR_BAR", label: "Exhaustion ends wars", def: 1.2, min: 0, max: 4, step: 0.1,
+        desc: "How strongly war-exhaustion raises the power edge needed to KEEP attacking. Without it war was permanent (~all realms fighting at every moment, exhaustion pinned at its cap) because exhaustion only weakened the punch — it never closed a front. At the default a fully-exhausted realm needs ~2× superiority to keep pushing, so campaigns END, exhaustion decays through real peace-windows, hold capacity recovers (longer-lived great powers, less secession churn), and war turns episodic — campaign, a generation of peace, campaign: history's rhythm. 0 = the old permanent war." },
       { key: "WAR_EXHAUST_MAX", label: "War-exhaustion cap", def: 0.6, min: 0, max: 0.95, step: 0.05,
         desc: "Maximum war-exhaustion, i.e. the most a realm's offence can be sapped by weariness alone (0.6 = down to ~40% punch). Caps how completely a grinding war stalls an attacker." },
       { key: "ARMY_SIZE_MULT", label: "Army size multiplier", def: 1.0, min: 0.25, max: 4.0, step: 0.05,
