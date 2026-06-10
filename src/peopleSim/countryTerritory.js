@@ -103,6 +103,16 @@ const CLAIM_POP_REF = 1000;
 // capacity and secession (conquest.js), so it amplifies a leader without minting
 // an immortal juggernaut.
 const REACH_SIZE_SUPER = 0.7; // budget mult at 4×REF = 1 + (√4−1)·0.7 = ×1.7
+// Continental LOGISTICS (the rail/telegraph era reach multiplier) needs a NETWORK of
+// cities to project: a realm earns the full era-boost only at this many settlements,
+// and a smaller/CRUMBLING realm gets it proportionally — so a modern rump of one or
+// two cities reaches only regionally, not continentally. The hollow-husk fix: a
+// declining empire's claim deflates with it. The 3-seed full-scale review found 9–13
+// under-populated mega-claims per world (e.g. 1217 tiles held by ONE 533-person
+// settlement) — fallen empires still flying an imperial border because the budget
+// tracked TECH, which only ratchets up, not current size. Legit many-member sparse
+// realms (Mongol/thalassocracy) are above the reference and keep full reach.
+const LOGI_SIZE_REF = 12;
 // Personality into the claim: an Expansionist realm (personality.js, −1..1)
 // projects a meaningfully wider political claim, an Insular one pulls in. This is
 // a deliberate ASYMMETRY source — temperament is intrinsic, persistent over
@@ -247,7 +257,7 @@ export function computeCountryTerritory(world) {
 
   // Per-country reach budget + the knowledge used for edge cost — both taken
   // from the country's most-organised settlement (its de-facto capital).
-  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map();
+  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map(), eraBoost = new Map();
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless settlements don't seed
     const c = s.countryId;
@@ -266,7 +276,11 @@ export function computeCountryTerritory(world) {
       const cons = (s.knowledge && s.knowledge.construction) || 0;
       const logi = s._techEff ? s._techEff.logisticsLevel : cons * cons;
       const eraMul = 1 + (cons * cons * REACH_ERA) * (1 - T.TECH_EFFECTS) + (logi * LOGI_REACH) * T.TECH_EFFECTS;
-      budget.set(c, (COUNTRY_REACH_BASE + org * COUNTRY_REACH_ORG) * eraMul * resScale);
+      // eraMul (the continental-logistics boost) is applied SIZE-GATED below, so a
+      // one-city rump can't ride modern tech to a continental claim — store the base
+      // reach and the boost separately.
+      budget.set(c, (COUNTRY_REACH_BASE + org * COUNTRY_REACH_ORG) * resScale);
+      eraBoost.set(c, eraMul);
       claimCap.set(c, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
     }
   }
@@ -277,13 +291,17 @@ export function computeCountryTerritory(world) {
   // of its tech-reach and earns the full continental projection only as it grows
   // to REACH_SIZE_REF settlements.
   for (const [c, b] of budget) {
-    const rel = (members.get(c) || 1) / REACH_SIZE_REF;
+    const mem = members.get(c) || 1;
+    const rel = mem / REACH_SIZE_REF;
     const sf = rel >= 1
       ? 1 + (Math.sqrt(rel) - 1) * REACH_SIZE_SUPER   // size keeps paying past the reference (see REACH_SIZE_SUPER)
       : Math.max(REACH_SIZE_MIN, rel);
+    // Continental logistics needs a network of cities — gate the era-boost by size so
+    // a crumbling / one-city realm reaches only regionally (the hollow-husk fix).
+    const emGated = 1 + ((eraBoost.get(c) || 1) - 1) * Math.min(1, mem / LOGI_SIZE_REF);
     const pers = world.personalities && world.personalities.get(c);
     const persMul = pers ? 1 + (pers.expansionism || 0) * CLAIM_PERS_SPAN : 1;
-    budget.set(c, b * sf * persMul);
+    budget.set(c, b * emGated * sf * persMul);
   }
   // Ease each country's reach toward that (size-scaled tech) target so territory
   // grows in gradually instead of snapping to a continental claim in one pass
