@@ -85,6 +85,14 @@ const LOGI_REACH = 2.2;       // budget ×(1 + logisticsLevel · LOGI_REACH): tr
 // it grows to a continental-scale state.
 const REACH_SIZE_REF = 16;    // settlements for full reach (was 32 — but the log2 hold capacity caps realms at ~6–17 members, so the super-linear tail below NEVER FIRED; at 16 full reach + the compounding tail sit inside what a strong realm actually achieves. The original job — a 3-city cradle must not project a continental claim — is still done by the sub-reference ramp)
 const REACH_SIZE_MIN = 0.25;  // a tiny realm still projects at least this fraction
+// Each SETTLEMENT projects reach in proportion to its OWN population, not just the
+// nation's tech. Territory area ∝ basin², so basin ∝ √pop makes a settlement's claim
+// scale with its people: a city of CLAIM_POP_REF wields the full national reach, a
+// frontier hamlet only its neighbourhood. Without it, a realm collapsed to one tiny
+// settlement still projected a continental claim — the modern-era "pop-25 holds the
+// largest territory" artifact (a 25-person hamlet flying a 447-tile border). Floored
+// at the settlement's own ground (integMin), so coverage is never lost.
+const CLAIM_POP_REF = 1000;
 // Past the reference, scale keeps PAYING (sqrt, dampened) instead of clamping to 1.
 // The clamp was an equalizer: a 60-member empire projected the same claim as a
 // 32-member one, so every mature realm converged on the same regional size (the
@@ -324,10 +332,15 @@ export function computeCountryTerritory(world) {
     // so we skip the anchor there and let each settlement hold its FULL basin (max
     // coverage), and let the recolor draw the smooth borders.
     const integMin = INTEGRATE_MIN * resScale;   // day-one basin is a tile distance → res-relative
+    // This settlement's OWN reach: the national budget scaled by its size (√pop), but
+    // never below its own ground. A great city wields the full national reach; a
+    // frontier hamlet only its neighbourhood — so claims follow where the PEOPLE are,
+    // and a one-hamlet rump can't fly a continental border.
+    const reach = Math.max(integMin, full * Math.min(1, Math.sqrt((s.people || 0) / CLAIM_POP_REF)));
     const age = world.step - (s._integratedAt ?? -Infinity);
     let sb = age < INTEGRATE_TICKS
-      ? Math.min(full, integMin + Math.max(0, full - integMin) * (age / INTEGRATE_TICKS))
-      : full;
+      ? Math.min(reach, integMin + Math.max(0, reach - integMin) * (age / INTEGRATE_TICKS))
+      : reach;
     if (!_capitalOnly && anchor > 0) {
       const cp = capPos.get(c);
       if (cp) {
