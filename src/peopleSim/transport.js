@@ -145,8 +145,17 @@ function _paramsFromKnowledge(kn) {
     river: Math.max(0.15, 0.50 - cons * 0.30),                 // river-along (banded by mag)
     ride:  mob * T.OPEN_RIDE,                                  // open-country riding discount (steppe highway) — see land branch
     coast: Math.max(0.20, 0.70 - cons * 0.30 - nav * 0.25),    // coastal hop floor
+    // Open ocean (nav-gated). Steep slope ON PURPOSE: at the embark floor a
+    // crossing is a perilous hop (≈4–6/tile), by classical seafaring it rivals
+    // rough land (≈1.2), and at full navigation the open sea UNDERCUTS the
+    // plains (≈0.76 vs ≈0.6+relief) — Braudel's highway, and the same pricing
+    // the sea-lane TRADE pass already uses (sea.js SEA_STEP). Because claims,
+    // admin reach and armies all route through this one cost core, a naval
+    // realm reaches a far wilderness coast at its true sea distance — often
+    // CHEAPER than the overland way around — and claims it (the colonial
+    // coastal claim), while a foot realm still sees the sea as a wall.
     water: nav < T.NAV_EMBARK_THRESH ? Infinity
-         : Math.max(0.5, 2.5 / (0.3 + nav * 1.5)),             // open ocean (gated)
+         : Math.max(0.35, 2.5 / (0.3 + nav * 3.0)),
     port:  Math.max(0.5, 6   - cons * 5),                      // mode-change tax (6 → 1)
   };
 }

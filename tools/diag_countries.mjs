@@ -41,6 +41,33 @@ for(const ck of CKPTS){
   console.log(`  #1    size=${t0.sz} members=${t0.mem} capOrg=${t0.org.toFixed(2)} meanFert=${t0.mf.toFixed(2)}`);
   const tpm=rows.map(r=>r.sz/Math.max(1,r.mem));
   console.log(`  median members=${med(rows.map(r=>r.mem))} | tiles/member median=${med(tpm).toFixed(1)} | median capOrg=${med(rows.map(r=>r.org)).toFixed(2)}`);
+  // Cross-sea reach: landmass components (4-neighbour, x wraps), then count
+  // realms whose CLAIM spans ≥2 components (≥3 tiles each, to skip noise) and
+  // realms with MEMBERS on ≥2 components. Undercounts same-landmass gulf
+  // crossings (Eurasia+Africa can be one component) — it's an island/overseas signal.
+  if(!world._diagComp){
+    const comp=new Int32Array(N).fill(-1); const cstack=[];
+    for(let i=0;i<N;i++){
+      if(comp[i]>=0||world.elev[i]<=0)continue;
+      cstack.length=0;cstack.push(i);comp[i]=i;
+      while(cstack.length){const ti=cstack.pop();const y=(ti/W)|0,x=ti-y*W;
+        const ns=[y*W+((x+1)%W),y*W+((x-1+W)%W),y>0?ti-W:-1,y<H-1?ti+W:-1];
+        for(const ni of ns){if(ni<0||comp[ni]>=0||world.elev[ni]<=0)continue;comp[ni]=i;cstack.push(ni);}}
+    }
+    world._diagComp=comp;
+  }
+  {
+    const comp=world._diagComp, claimComps=new Map(), memComps=new Map();
+    for(let ti=0;ti<N;ti++){const c=co[ti];if(c<0||world.elev[ti]<=0)continue;
+      let m=claimComps.get(c);if(!m){m=new Map();claimComps.set(c,m);}m.set(comp[ti],(m.get(comp[ti])||0)+1);}
+    for(const s of world.settlements){if(s.mode!=="settled"||s.countryId<0)continue;
+      const ti=(s.pos.y|0)*W+(s.pos.x|0);let st=memComps.get(s.countryId);if(!st){st=new Set();memComps.set(s.countryId,st);}st.add(comp[ti]);}
+    let claimSpan=0,memSpan=0,best=null;
+    for(const [c,m] of claimComps){const sig=[...m.values()].filter(v=>v>=3);
+      if(sig.length>=2){claimSpan++;const tot=sig.reduce((a,b)=>a+b,0);if(!best||tot>best.tot)best={c,tot,parts:sig.length};}}
+    for(const st of memComps.values())if(st.size>=2)memSpan++;
+    console.log(`  cross-sea  claims spanning ≥2 landmasses: ${claimSpan}${best?` (best: ${best.tot} tiles over ${best.parts})`:""} | member-spanning realms: ${memSpan}`);
+  }
   const k=Math.max(1,nC>>3);                              // top / bottom eighth
   const big=rows.slice(0,k), small=rows.slice(-k);
   console.log(`  BIG vs SMALL (top vs bottom 1/8, ${k} each):`);
