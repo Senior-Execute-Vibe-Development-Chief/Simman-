@@ -395,6 +395,11 @@ export function musterArmies(world) {
 // its sea lanes reach (see the amphibious block in advanceFronts; bar = T.AMPHIB_BAR).
 const AMPHIB_NAV_MIN = 0.25;
 
+// A war ends in a treaty once either side's exhaustion crosses this (see the
+// truce block in advanceFronts). Below it, low-grade border raiding never
+// formally "ends" — the marches stay restless; only real wars sign peaces.
+const TRUCE_EXHAUST = 0.4;
+
 export function advanceFronts(world) {
   const owner = world._territoryOwner;
   const byId = world._byId;
@@ -419,6 +424,23 @@ export function advanceFronts(world) {
   // realm's aggMul still discounts the bar, so the proud fight on longest.
   const exhPrev = world._warExhaust;
   const warBarOf = (cc) => 1 + T.EXHAUST_WAR_BAR * (exhPrev ? (exhPrev.get(cc) || 0) : 0);
+
+  // Wars END IN A PEACE (dyadic truces). The exhaustion bar alone could not break
+  // the permanent-war equilibrium because it is MUSICAL CHAIRS: exhaustion stops a
+  // realm attacking, but someone nearby is always rested, and the rested attack the
+  // worn — so every realm stays under assault and pinned at max exhaustion. What
+  // history has that a fade-out lacks: a war ends in a TREATY that binds BOTH sides
+  // for a generation. When a war has worn either side past TRUCE_EXHAUST, the pair
+  // signs a truce for T.TRUCE_TICKS: neither can open a front on the other until it
+  // lapses. Low-grade border skirmishing (load too light to exhaust) never truces —
+  // the marches stay restless, as they were — but the big wars become episodic.
+  let truces = world._truces; if (!truces) truces = world._truces = new Map();
+  if (truces.size) for (const [k, until] of truces) { if (until <= world.step) truces.delete(k); }
+  const inTruce = (a, b) => {
+    if (truces.size === 0 || a < 0 || b < 0) return false;
+    const u = truces.get(a < b ? a + ":" + b : b + ":" + a);
+    return u !== undefined && u > world.step;
+  };
 
   const natMight = new Map();   // countryId → Σ might = the NATIONAL FIELD ARMY (Σ garrison × tech)
   for (const s of world.settlements) {
@@ -482,7 +504,8 @@ export function advanceFronts(world) {
       const ni = ns[k]; if (ni < 0) continue;
       const a = owner[ni]; if (a < 0 || a === d) continue;
       const A = byId.get(a);
-      if (!A || A.mode !== "settled" || A.countryId === D.countryId) continue;
+      if (!A || A.mode !== "settled" || A.countryId === D.countryId
+          || inTruce(A.countryId, D.countryId)) continue;   // a signed peace holds
       if (A._M > bestM) { bestM = A._M; bestA = a; }
     }
     if (bestA < 0) continue;
@@ -590,7 +613,8 @@ export function advanceFronts(world) {
       const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
       for (const pid of A._seaReach.keys()) {
         const D = byId.get(pid);
-        if (!D || D.mode !== "settled" || D.countryId === A.countryId) continue;
+        if (!D || D.mode !== "settled" || D.countryId === A.countryId
+            || inTruce(A.countryId, D.countryId)) continue;   // a signed peace holds at sea too
         const key = A.id + ":" + pid;
         if (pairs.has(key)) continue;                        // already met on land
         const tf = tradeFactor(A.countryId, D.countryId);
@@ -717,6 +741,20 @@ export function advanceFronts(world) {
     seenCC.add(cc);
   }
   for (const [cc, e] of exh) if (!seenCC.has(cc)) { const v = e * T.WAR_EXHAUST_DECAY; if (v < 0.002) exh.delete(cc); else exh.set(cc, v); }
+  // Sign the peaces: any warring pair where EITHER side has been worn past
+  // TRUCE_EXHAUST ends in a truce binding BOTH for T.TRUCE_TICKS (header above).
+  // Stateless raiders (countryId < 0) sign nothing — the wild marches stay wild.
+  if (T.TRUCE_TICKS > 0) {
+    for (const [cc, es] of allEnemies) {
+      if (cc < 0) continue;
+      const eA = exh.get(cc) || 0;
+      for (const ecc of es) {
+        if (ecc <= cc || ecc < 0) continue;          // each pair once
+        if (eA >= TRUCE_EXHAUST || (exh.get(ecc) || 0) >= TRUCE_EXHAUST)
+          truces.set(cc + ":" + ecc, world.step + T.TRUCE_TICKS);
+      }
+    }
+  }
 
   // A front's offensive multiplier: its enemy-nation concentration rank × war-weariness
   // ÷ defensive tie-down (troops pinned defending can't also attack).
