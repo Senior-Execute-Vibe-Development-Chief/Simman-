@@ -83,7 +83,7 @@ const LOGI_REACH = 2.2;       // budget ×(1 + logisticsLevel · LOGI_REACH): tr
 // REACH_SIZE_REF, REACH_SIZE_MIN, 1): a fledgling realm projects only a fraction
 // of its tech-reach (no continent-from-three-cities) and earns the full reach as
 // it grows to a continental-scale state.
-const REACH_SIZE_REF = 32;    // settlements for full reach (was 20 — a realm must be bigger before it projects its whole tech-reach, so a few-city state stays regional)
+const REACH_SIZE_REF = 16;    // settlements for full reach (was 32 — but the log2 hold capacity caps realms at ~6–17 members, so the super-linear tail below NEVER FIRED; at 16 full reach + the compounding tail sit inside what a strong realm actually achieves. The original job — a 3-city cradle must not project a continental claim — is still done by the sub-reference ramp)
 const REACH_SIZE_MIN = 0.25;  // a tiny realm still projects at least this fraction
 // Past the reference, scale keeps PAYING (sqrt, dampened) instead of clamping to 1.
 // The clamp was an equalizer: a 60-member empire projected the same claim as a

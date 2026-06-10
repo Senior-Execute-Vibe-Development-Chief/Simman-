@@ -1343,8 +1343,19 @@ export function updatePolities(world) {
     // plague, a sacked throne) shrinks capacity and the frontier sheds — and an
     // empire that conquers past this budget holds the excess only on pacification
     // grace, then fragments back toward it once the conquest stalls.
-    const peaceCapacity = CAP_K * Math.log2(1 + capPower / POW_REF)
-                        + Math.min(SEAT_BONUS_CAP, seatBonus);
+    //
+    // INSTITUTIONS move the ceiling itself (T.CAP_INST). The log2 keeps any
+    // GIVEN institutional level out-conquerable (no immortal juggernaut), but
+    // historically the curve ROSE with each delegation revolution — Assyria's
+    // provincial system, the satrapies, Rome's governors, Han commanderies —
+    // and a fixed coefficient pinned every era to "~a dozen seats" (the
+    // uniform-empire-size finding, tools/diag_countries.mjs). capCoh is the
+    // cohesion tech channel (mysticism → code of laws → feudalism → democracy
+    // → telegraph), so the multiplier climbs exactly when bureaucracy is
+    // invented; it scales the seat cap too — satrapies ARE the delegation.
+    const instMul = 1 + capCoh * T.CAP_INST;
+    const peaceCapacity = CAP_K * instMul * Math.log2(1 + capPower / POW_REF)
+                        + Math.min(SEAT_BONUS_CAP * instMul, seatBonus);
 
     // ── War duress: throttle the budget while the realm is fighting ────
     // (fronts are tallied in armies.js advanceFronts → world._fronts.)
