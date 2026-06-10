@@ -102,6 +102,8 @@ export const TUNING_SCHEMA = [
     params: [
       { key: "ATTACK_MIN_RATIO", label: "Attack threshold", def: 1.176, min: 1.0, max: 3.0, step: 0.02,
         desc: "Power advantage needed to push a front. Up = wars stalemate; down = relentless aggression." },
+      { key: "AMPHIB_BAR", label: "Amphibious assault bar", def: 1.8, min: 0, max: 5, step: 0.1,
+        desc: "Extra power multiplier (× the attack threshold) a port needs to open a BEACHHEAD front on an enemy port it can sail to. War can then cross water: the defender's shoreline becomes contestable and a port city can be stormed from the sea — the Punic Wars / Ottoman-crossing mechanic that turns an enclosed sea into a conquerable basin. Opposed landings were historically brutal, so the default demands near-2× the land advantage; up = the sea stays a wall, 0 = amphibious invasion OFF." },
       { key: "MAX_CAPTURE", label: "Max tiles per pass", def: 24, min: 1, max: 120, step: 1,
         desc: "Hard cap on tiles a front grabs per war pass. The raw conquest-speed knob." },
       { key: "CITY_STORM_RATIO", label: "City siege threshold", def: 1.6, min: 1.0, max: 4.0, step: 0.1,

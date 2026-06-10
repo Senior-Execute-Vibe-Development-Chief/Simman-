@@ -390,6 +390,11 @@ export function musterArmies(world) {
 }
 
 // ── Periodic: advance every active war front by tile capture / storm ──
+// Navigation below this carries no invasion force — coastal rafts ferry traders,
+// not armies. Above it, a port can open amphibious beachheads on the enemy ports
+// its sea lanes reach (see the amphibious block in advanceFronts; bar = T.AMPHIB_BAR).
+const AMPHIB_NAV_MIN = 0.25;
+
 export function advanceFronts(world) {
   const owner = world._territoryOwner;
   const byId = world._byId;
@@ -547,6 +552,72 @@ export function advanceFronts(world) {
     // in its post-capture hold, which keeps a stalled front from ping-ponging
     // the same border tiles back and forth every pass.
     else if (world.step - capturedAt[ti] >= T.TILE_CAPTURE_GRACE) pc.tiles.push({ ti, distHome });
+  }
+
+  // ── Amphibious assault (nav-gated beachheads) ──────────────────────────
+  // The scan above pairs only TILE-ADJACENT enemies, so war could never cross
+  // water: a populated far shore was unconquerable however dominant the navy
+  // (no Punic Wars, no crossing into the Balkans — cross-sea empire was limited
+  // to colonising wilderness). A port that can SAIL to an enemy port — the same
+  // sea-lane web the carrying trade uses; you invade where you can sail — opens
+  // a BEACHHEAD front: the defender's water-edge tiles become contestable as if
+  // adjacent, and a beach inside the city's assault radius lets the port itself
+  // be stormed from the sea. Gates: real seacraft (nav ≥ AMPHIB_NAV_MIN — rafts
+  // don't carry armies), an embarked army, and a power bar T.AMPHIB_BAR× the
+  // usual land threshold (an opposed landing wants overwhelming superiority).
+  // From the beachhead on, the normal front machinery — national field armies,
+  // concentration, exhaustion, reinforcement sailing — grinds inland or is
+  // thrown back, exactly as on land.
+  if (T.AMPHIB_BAR > 0) {
+    const amphibByDef = new Map();   // defender id → pending beachhead pairs onto it
+    for (const A of world.settlements) {
+      if (A.mode !== "settled" || !A._seaReach || A._seaReach.size === 0) continue;
+      if (!(A._M > 0)) continue;
+      if (((A.knowledge && A.knowledge.navigation) || 0) < AMPHIB_NAV_MIN) continue;
+      const aCountry = world.countries && world.countries.get(A.countryId);
+      const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
+      for (const pid of A._seaReach.keys()) {
+        const D = byId.get(pid);
+        if (!D || D.mode !== "settled" || D.countryId === A.countryId) continue;
+        const key = A.id + ":" + pid;
+        if (pairs.has(key)) continue;                        // already met on land
+        const tf = tradeFactor(A.countryId, D.countryId);
+        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR) continue;
+        const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key };
+        let l = amphibByDef.get(pid); if (!l) amphibByDef.set(pid, l = []);
+        l.push(pc);
+      }
+    }
+    if (amphibByDef.size) {
+      // One territory scan: collect each targeted defender's WATER-EDGE tiles
+      // (the landing beaches), with the same home-distance / storm-radius /
+      // capture-grace rules as the land scan.
+      const elevA = world.elev;
+      for (let ti = 0; ti < N; ti++) {
+        const d = owner[ti];
+        if (d < 0) continue;
+        const cands = amphibByDef.get(d); if (!cands) continue;
+        const ty = (ti / tw) | 0, tx = ti - ty * tw;
+        const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+        const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+        let beach = false;
+        for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && elevA[ni] <= 0) { beach = true; break; } }
+        if (!beach) continue;
+        const D = byId.get(d);
+        const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
+        let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
+        const ddy = ty - dhy;
+        const distHome = Math.sqrt(ddx * ddx + ddy * ddy);
+        const assaultDist = coreRadiusFor(D) + ASSAULT_MARGIN;
+        for (const pc of cands) {
+          if (distHome <= assaultDist) pc.canStorm = true;   // the port city fronts the water — stormable from the sea
+          else if (world.step - capturedAt[ti] >= T.TILE_CAPTURE_GRACE) pc.tiles.push({ ti, distHome });
+        }
+      }
+      for (const cands of amphibByDef.values())
+        for (const pc of cands)
+          if (pc.canStorm || pc.tiles.length) pairs.set(pc._key, pc);
+    }
   }
 
   // Realm-mates march to relieve every settlement under attack (over transit
