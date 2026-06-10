@@ -66,7 +66,7 @@ const CLAIM_SOFT      = 0.12;
 // corridor and stalls in the waste. The penalty bites only BELOW the reference
 // fertility (good land and ordinary frontier march pay nothing) and ramps with the
 // square of the shortfall, so only genuine wasteland resists hard.
-const CLAIM_FERT_REF  = 0.30;  // fertility at/above which a tile claims at full transport cost (no hostility penalty)
+const CLAIM_FERT_REF  = 0.12;  // fertility below which hostility starts. Deliberately LOW: only TRUE wasteland (deep desert, bare rock, fert→0) resists. Steppe/savanna/dry marginal land claims at plain transport cost — historically that was LOW-resistance land (open, sparse, nobody to fight), how Russia/the khanates/Sahel states got huge. Fertility caps POPULATION, not political reach.
 const CLAIM_HOSTILITY = 3.0;   // ×(1 + this·deficit²) on barren land: 0 = old isotropic blob, up = tighter river/coast ribbons
 // How far a realm projects a CLAIM also grows with the era. In antiquity a state
 // was an island of territory in a sea of unclaimed land — most of the world
