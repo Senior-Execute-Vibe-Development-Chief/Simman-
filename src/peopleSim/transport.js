@@ -143,6 +143,7 @@ function _paramsFromKnowledge(kn) {
     plain: Math.max(0.30, 1.0 - mob * 0.30 - cons * 0.10),    // wagons + roads
     harsh: Math.max(8,    35  - mob * 13   - cons * 10),       // slope coefficient (steep climbs)
     river: Math.max(0.15, 0.50 - cons * 0.30),                 // river-along (banded by mag)
+    ride:  mob * T.OPEN_RIDE,                                  // open-country riding discount (steppe highway) — see land branch
     coast: Math.max(0.20, 0.70 - cons * 0.30 - nav * 0.25),    // coastal hop floor
     water: nav < T.NAV_EMBARK_THRESH ? Infinity
          : Math.max(0.5, 2.5 / (0.3 + nav * 1.5)),             // open ocean (gated)
@@ -203,6 +204,19 @@ function _edgeCost(world, fromTi, toTi, params, ignoreRoads) {
     if (m > 0.70 && t > 0.4) base += (m - 0.70) * 6;               // hot wet
     if (world.coast && world.coast[toTi]) base = Math.min(base, params.coast);
     base *= T.LAND_COST_MULT;                // overall land-travel cost dial (tuning.js)
+    // Open-country rider (the steppe-highway effect). To a MOUNTED culture,
+    // flat unforested country — steppe, savanna, prairie — is not an obstacle
+    // but a freeway: low RESISTANCE, not high fertility, is what bred the
+    // sprawling horse empires (the khaganates, Russia's sweep east, Sahelian
+    // cavalry states). Openness needs ground dry enough for grass (the canopy
+    // closes by m≈0.65) and dies with relief (forest, hills, broken country
+    // snap the ride). Scales with mobility tech via the T.OPEN_RIDE lever;
+    // a foot culture sees the steppe exactly as before.
+    if (params.ride > 0) {
+      const open = (m < 0.45 ? 1 : Math.max(0, 1 - (m - 0.45) / 0.20))
+                 * Math.max(0, 1 - Math.max(0, relief - 0.6) / 1.4);
+      if (open > 0) base = Math.max(0.12, base * (1 - params.ride * open));
+    }
   }
 
   // Mode change pays the port tax. Construction shrinks it — this is

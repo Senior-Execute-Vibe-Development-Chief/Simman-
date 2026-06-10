@@ -152,6 +152,8 @@ export const TUNING_SCHEMA = [
         desc: "Multiplier on all overland movement cost. Down = faster armies, wider trade and reach." },
       { key: "MOUNTAIN_COST_MULT", label: "Mountain/slope cost", def: 1.0, min: 0.2, max: 4.0, step: 0.1,
         desc: "Multiplier on the mountain + steep-slope penalty. Up = ranges become hard walls fronts snap to." },
+      { key: "OPEN_RIDE", label: "Steppe-highway riding", def: 0.62, min: 0, max: 0.9, step: 0.02,
+        desc: "How much MOBILITY tech (horse domestication → cavalry) discounts travel over OPEN, FLAT, unforested land — steppe, savanna, prairie. At the default a full-mobility realm crosses open grassland at roughly a third of foot cost, so its claims, admin reach and armies sweep across it — the low-RESISTANCE land that bred the giant Mongol / Russian / Sahelian empires — while forests, mountains and broken country still resist. 0 = horses don't open the steppe (old behaviour)." },
       { key: "NAV_EMBARK_THRESH", label: "Seafaring tech gate", def: 0.10, min: 0.0, max: 0.5, step: 0.01,
         desc: "Navigation knowledge below which water is impassable. Down = civilizations take to the sea earlier." },
       { key: "SHIP_SPEED", label: "Ship speed", def: 0.7, min: 0.2, max: 2.5, step: 0.1,

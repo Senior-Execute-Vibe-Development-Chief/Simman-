@@ -1191,10 +1191,16 @@ const POL_MUL = [1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];
 function capitalTransportCosts(world, c) {
   const { tw, th } = world;
   const cap = c.capital;
-  // Pass navigation ONLY — strips the land tech-multipliers, keeps the
-  // water-embarkation gate. Land = baseEdgeCost; water = navigable iff
-  // nav ≥ 0.2 and at a cost that falls from ~12 to ~3 as nav rises.
-  const kn  = { navigation: (cap.knowledge && cap.knowledge.navigation) || 0 };
+  // Pass navigation + mobility ONLY — strips the generic land tech-multipliers
+  // (construction's road discount is budget-side), but keeps the two
+  // "environment becomes a highway" techs: navigation opens the SEA lane
+  // (embarkation gate; cost ~12→3 as nav rises) and mobility opens the STEPPE
+  // (open flat country rides at a fraction of foot cost — the yam-relay reach
+  // that let horse empires hold provinces across distances no foot bureaucracy
+  // could). Mobility's generic wagon discount also rides in (≤30% — fair:
+  // mounted couriers extended every empire's reach somewhat).
+  const kn  = { navigation: (cap.knowledge && cap.knowledge.navigation) || 0,
+                mobility:   (cap.knowledge && cap.knowledge.mobility)   || 0 };
   // Major-river crossings are tracked SEPARATELY (full-weight barrier, not
   // halved with generic terrain) and bridged down by the capital's
   // construction tech — see majorRiverToll.
