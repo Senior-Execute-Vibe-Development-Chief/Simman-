@@ -870,7 +870,10 @@ function updateKnowledge(world, s) {
   const surplusF = Math.max(0, Math.min(1, 0.5 * granF + 0.5 * Math.min(1, Math.max(0, (flow - 1) / 0.4))));
   const reachN = s._tradeReach ? s._tradeReach.size : 0;
   const tradeF = Math.min(1, reachN / 18);                                 // ~18 partners → 1
-  const sciMul = Math.max(0.25, Math.min(2.2,
+  // ×_dt folds the time-granularity step into EVERY technique-learning track at once
+  // (all five use sciMul as their rate multiplier), so tech develops 1/G as fast per
+  // tick — paced with the granularity-slowed population.
+  const sciMul = (world._dt || 1) * Math.max(0.25, Math.min(2.2,
     1 + T.SCI_SPREAD * (0.55 * popF + 0.45 * surplusF + 0.30 * tradeF + 0.20 * k.organization - 0.45)));
 
   // ── Environment specialization (climate-tied learning) ────────────────
@@ -1033,7 +1036,7 @@ function updateKnowledge(world, s) {
       // the literate-state branch of organization, which only kicks in
       // past 0.30).
       const litMul = 1 + Math.max(0, k.organization - 0.30) * 3;
-      const rate = T.DIFFUSE_RATE * KNOW_INTERVAL * litMul;
+      const rate = T.DIFFUSE_RATE * KNOW_INTERVAL * litMul * (world._dt || 1);   // granularity-scaled
       for (const t of KTRACKS) {
         const gap = km[t] - k[t];
         if (gap > 0) {
@@ -1385,10 +1388,11 @@ function updatePopulation(world, s) {
   s._foodK = foodK;            // exposed so the info panel can show which limit binds
   s._houseK = houseK;
 
+  const _dt = world._dt || 1;                         // time-granularity step (1/SIM_GRANULARITY)
   if (s.food <= 0.01 && s.people > 1) {
-    s.people *= 0.985;
+    s.people *= Math.pow(0.985, _dt);                 // famine die-off, per-tick → granularity-scaled
   } else {
-    s.people = s.people + T.SETT_GROWTH * s.people * (1 - s.people / K);
+    s.people = s.people + T.SETT_GROWTH * _dt * s.people * (1 - s.people / K);
   }
   if (s.people < 1.5) {
     s.mode = "dead";

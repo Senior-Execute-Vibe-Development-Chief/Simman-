@@ -64,11 +64,12 @@ export function updateShocks(world) {
   const rng = mkRng((world.seed ^ (world.step * 40503)) >>> 0);
 
   // ── Famine spawn ──
-  if (famineCheck && rng() < T.FAMINE_CHANCE) {
+  const _dt = world._dt || 1;                         // time-granularity step (1/SIM_GRANULARITY)
+  if (famineCheck && rng() < T.FAMINE_CHANCE * _dt) {
     const pool = world.settlements.filter(s => s.mode === "settled" && s.people >= FAMINE_MIN_POP);
     if (pool.length) {
       const seed = pool[(rng() * pool.length) | 0];
-      const dur = (FAMINE_MIN_DUR + rng() * (FAMINE_MAX_DUR - FAMINE_MIN_DUR)) | 0;
+      const dur = ((FAMINE_MIN_DUR + rng() * (FAMINE_MAX_DUR - FAMINE_MIN_DUR)) / _dt) | 0;   // ×G ticks → same span in history-time
       const until = world.step + dur;
       for (const s of world.settlements) {
         if (s.mode !== "settled") continue;
@@ -82,7 +83,7 @@ export function updateShocks(world) {
   }
 
   // ── Plague spawn ──
-  if (plagueCheck && rng() < T.PLAGUE_CHANCE) {
+  if (plagueCheck && rng() < T.PLAGUE_CHANCE * _dt) {
     const pool = world.settlements.filter(s =>
       s.mode === "settled" && s.people >= PLAGUE_MIN_POP &&
       world.step >= (s._plagueUntil || 0) && world.step >= (s._plagueImmuneUntil || 0));

@@ -10,11 +10,13 @@ import { cropSuitability } from "../src/cropGen.js";
 import { generateResources } from "../src/resourceGen.js";
 import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
 import { techState, ERAS } from "../src/peopleSim/tech.js";
+import { T } from "../src/peopleSim/tuning.js";
 
 const W=+(process.argv[4]||960),H=W>>1,N=W*H;
 const SEED=+(process.argv[2]||8817);
 const CKPTS=(process.argv[3]||"15000,30000,45000").split(",").map(Number);
 const OUT=process.argv[5]||`/tmp/full_${SEED}`;
+const G=+(process.argv[6]||1); if(G>1){T.SIM_GRANULARITY=G;console.log(`[granularity G=${G}]`);}
 const SAMPLE=1500;
 const w=generateWorld(W,H,SEED,"earth_sim",0.78,true,false,{});
 const tE=new Float32Array(N),tT=new Float32Array(N),tM=new Float32Array(N),tC=new Uint8Array(N),tCrop=new Float32Array(N);

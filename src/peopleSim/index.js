@@ -51,6 +51,18 @@ export function stepPeopleSim(world, n = 1) {
     const t0 = performance.now();
     if (prof) _pt = t0;
     world.step++;
+    // ── Time granularity (T.SIM_GRANULARITY = G) ──────────────────────────
+    // Run the sim in 1/G-size steps: every per-tick CLOCK (population growth,
+    // learning, diffusion, settling, shocks) advances dt = 1/G as much, so the
+    // SAME emergent history unfolds over G× more ticks in finer increments —
+    // slower wall-clock, smoother. Rate PASSES (conquest, polity, muster) stretch
+    // their tick-interval by G to stay paced with the slowed clock; RECOMPUTE
+    // passes (territory, border-crawl) keep their interval and so refresh G× more
+    // often per unit of history — free smoothness. G = 1 is the calibrated
+    // baseline, byte-for-byte unchanged.
+    const _G = Math.max(1, T.SIM_GRANULARITY || 1);
+    world._dt = 1 / _G;
+    const _ivl = (base) => Math.max(1, Math.round(base * _G));
     // Fast id → settlement lookup, rebuilt each tick. Replaces the
     // O(n) linear scans the trade / knowledge passes would otherwise
     // do per peer (effectiveLocalRes, findById, ...).
@@ -118,8 +130,8 @@ export function stepPeopleSim(world, n = 1) {
     // across borders, annexing a settlement when its heartland is stormed. Land
     // follows the cities: capturing a city flips it to the conqueror, and the
     // per-country Voronoi (computeCountryTerritory) re-draws its region cleanly.
-    if (world.step % MUSTER_INTERVAL === 0) musterArmies(world);
-    if (world.step % T.CONQUEST_INTERVAL === 0) advanceFronts(world);
+    if (world.step % _ivl(MUSTER_INTERVAL) === 0) musterArmies(world);
+    if (world.step % _ivl(T.CONQUEST_INTERVAL) === 0) advanceFronts(world);
     mark("armies");
     // Maritime: colony ships sail every tick; the port→port sea-lane graph
     // (sea trade peers) and overseas colonisation are rebuilt periodically.
@@ -128,7 +140,7 @@ export function stepPeopleSim(world, n = 1) {
     mark("sea");
     // Polities: group settlements into countries, tribute, and let
     // over-extended members secede.
-    if (world.step % T.POLITY_INTERVAL === 0) updatePolities(world);
+    if (world.step % _ivl(T.POLITY_INTERVAL) === 0) updatePolities(world);
     mark("polities");
     // Country chronicle: the slow-drift events (a discovery, a growth/wealth
     // milestone) that aren't a single discrete moment, checked periodically.

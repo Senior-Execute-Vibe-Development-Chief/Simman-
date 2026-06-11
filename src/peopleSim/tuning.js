@@ -22,6 +22,8 @@ export const TUNING_SCHEMA = [
     category: "Pacing",
     blurb: "How often the heavy systems tick. Lower = the system acts more often (snappier, more CPU).",
     params: [
+      { key: "SIM_GRANULARITY", label: "Time granularity", def: 1, min: 1, max: 8, step: 1,
+        desc: "Runs the whole simulation in finer time-steps. At G, every per-tick CLOCK (population growth, technique learning, tech diffusion, new-settlement founding, famines & plagues) advances 1/G as much, and the war / politics / muster passes stretch their interval by G — so the SAME emergent history plays out over G× more ticks in smaller, smoother increments (territory and the border-crawl auto-refine, since they refresh G× more often per unit of history). G = 2 is half-speed and twice as fine-grained, G = 4 quarter-speed, and so on — costing G× the ticks (and CPU) for the same span of history. G = 1 is the calibrated baseline, untouched. NB this re-times the SIM; it doesn't change the app's frame rate." },
       { key: "CONQUEST_INTERVAL", label: "War pass interval", def: 50, min: 10, max: 200, step: 5,
         desc: "Ticks between war-front advances. Lower = fronts move faster and more smoothly." },
       { key: "POLITY_INTERVAL", label: "Politics pass interval", def: 150, min: 30, max: 400, step: 10,

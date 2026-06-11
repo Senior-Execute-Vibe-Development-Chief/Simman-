@@ -751,7 +751,7 @@ export function advanceFronts(world) {
       for (const ecc of es) {
         if (ecc <= cc || ecc < 0) continue;          // each pair once
         if (eA >= TRUCE_EXHAUST || (exh.get(ecc) || 0) >= TRUCE_EXHAUST)
-          truces.set(cc + ":" + ecc, world.step + T.TRUCE_TICKS);
+          truces.set(cc + ":" + ecc, world.step + T.TRUCE_TICKS / (world._dt || 1));   // ×G ticks: same peace span in history-time
       }
     }
   }
