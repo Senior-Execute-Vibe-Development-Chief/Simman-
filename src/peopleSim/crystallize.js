@@ -176,6 +176,13 @@ const RESOURCE_TIER_VALUE = {
 // (which is parent-driven and intentional) is NOT subject to this — the
 // mother country can still push outward into the frontier.
 const CRYSTAL_SATURATION_REF = 1500;  // density guard — much higher so the world keeps filling with villages (a denser, more alive map) instead of plateauing at a few hundred
+// Coverage tempo (applied as devFactor in maybeCrystallize): the habitable world
+// starts a SPARSE frontier and fills in gradually over the developmental arc,
+// instead of saturating at once. Ungated, crystallisation+colonisation grabbed all
+// the easy terrain by the classical era and then sat static; ramping the spread
+// rate up over the eras makes the wilderness recede the way it did historically.
+const COVERAGE_FLOOR = 0.22;   // stone-age frontier spread rate, as a fraction of full
+const COVERAGE_RAMP  = 17000;  // steps over which the spread rate ramps to full (~renaissance)
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
@@ -190,10 +197,21 @@ export function maybeCrystallize(world) {
   let _alive = 0;
   for (const s of world.settlements) if (s.mode === "settled") _alive++;
 
+  // Coverage tempo: settlement spreads GRADUALLY as civilisation matures rather
+  // than all at once (see COVERAGE_FLOOR / COVERAGE_RAMP). Scales both the random
+  // crystallisation sweep and mother-country colonisation, so the early map stays a
+  // sparse frontier and the wilderness recedes over the eras.
+  const devFactor = Math.min(1, COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * world.step / COVERAGE_RAMP);
+
   // Mother-country expansion: pressed towns send settler parties (see
   // sendSettlers — this is the entire "population pressure → new colony"
   // axis, distinct from the random crystallisation sweep below).
-  if (world.step % COLONY_CHECK_INTERVAL === 0) maybeSendSettlers(world, _alive);
+  if (world.step % COLONY_CHECK_INTERVAL === 0) maybeSendSettlers(world, _alive, devFactor);
+
+  // Urban genesis: a mature farming region births a TOWN within its catchment
+  // (the rural→urban transition is a spawn, not an in-place relabel). Gated at a
+  // multiple of CRYSTAL_INTERVAL so it actually fires past the early return above.
+  if (world.step % URBAN_CHECK_INTERVAL === 0) maybeUrbanGenesis(world);
 
   // Crystallisation saturation: settlement-count-dependent damper.
   const saturationDamper = 1 / (1 + (_alive / CRYSTAL_SATURATION_REF) ** 2);
@@ -307,6 +325,7 @@ export function maybeCrystallize(world) {
     quality += resourceBonusFor(world, ti, resScarcity);
     quality += busyRoadBonusFor(world, ti, tx, ty);
     quality += geoBonusFor(world, ti, tx, ty);   // chokepoints / passes / sheltered harbours
+    quality += defensibilityFor(world, ti, tx, ty);  // hills / river islands / mountain-backed sites
 
     // Transport-distance modifier. Finite td → diffusion from the land
     // network plus the normal independent floor. Infinite td (across water,
@@ -315,7 +334,7 @@ export function maybeCrystallize(world) {
     const td = transportDist[ti];
     const diffusionMul = isFinite(td) ? Math.exp(-td / KNOWLEDGE_DECAY_SCALE) * NEAR_RATE : 0;
     const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
-    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor;
+    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor * devFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
     if (rng() < p) {
       // Inherited knowledge: blend from nearest settlement, weighted by
@@ -503,14 +522,55 @@ function geoBonusFor(world, ti, tx, ty) {
   return bonus;
 }
 
-// ── Settler colonisation (mode #1): parent-driven founding ───────────
+// ── Defensibility bonus ──
+// The "this site can be HELD" factor — why so many old cities sit on hills,
+// river islands, peninsulas and mountain-girt valleys rather than open plain.
+// geoBonusFor above captures TRADE geography (confluences, harbours, necks);
+// this captures DEFENCE, three classic forms, all cheap from one 3×3 sweep:
+//   • COMMANDING GROUND — a local high point (an acropolis / hill-fort): the
+//     tile stands above its neighbours while still itself habitable.
+//   • NATURAL MOAT      — sea, a great river channel or impassable peaks wrap
+//     several sides (a river island, a peninsula, a guarded neck): hard to reach.
+//   • MOUNTAIN-BACKED   — at least one impassable neighbour: a flank the enemy
+//     cannot turn (a valley town backed against the range).
+// Gated by T.SITE_DEFENSE (0 = terrain defence ignored, the old behaviour).
+const MOUNTAIN_ELEV = 0.6;   // elev ≥ this is impassable mountain (matches habitable < 0.6 elsewhere)
+function defensibilityFor(world, ti, tx, ty) {
+  if (T.SITE_DEFENSE <= 0) return 0;
+  const { tw, th, elev, riverMag } = world;
+  const e0 = elev[ti];
+  if (e0 <= 0 || e0 >= MOUNTAIN_ELEV) return 0;        // the site itself must be habitable land
+  let sumE = 0, n = 0, moat = 0, mtn = 0;
+  for (let dy = -1; dy <= 1; dy++) {
+    const ny = ty + dy;
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      if (ny < 0 || ny >= th) { moat++; continue; }    // map edge ≈ open water
+      const nx = ((tx + dx) % tw + tw) % tw;
+      const ne = elev[ny * tw + nx];
+      sumE += ne; n++;
+      if (ne <= 0) moat++;                               // sea / lake flank
+      else if (ne >= MOUNTAIN_ELEV) { mtn++; moat++; }   // a peak is also a wall
+      else if (riverMag && riverMag[ny * tw + nx] >= 3) moat++;  // a great river channel
+    }
+  }
+  let bonus = 0;
+  // Commanding ground: the tile rises above its surroundings (an acropolis).
+  const prominence = e0 - (n ? sumE / n : e0);
+  if (prominence > 0.04) bonus += Math.min(1.2, prominence * 12);
+  // Natural moat: water / peaks wrap several sides (island, peninsula, neck).
+  if (moat >= 3) bonus += 0.6 + Math.min(0.9, (moat - 3) * 0.3);
+  // A mountain-backed flank (a single guarded side already helps).
+  if (mtn >= 1) bonus += 0.4;
+  return bonus * T.SITE_DEFENSE;
+}
 // Each pass, every viable parent town that's both population-pressed and off
 // cooldown rolls to send a settler party. The party walks up to COLONY_RANGE
 // tiles to a viable empty site (picks the best one out of a small sample) and
 // founds a daughter joining the parent's realm. Cooldown stops a single town
 // from spamming colonies; settler-cost shaves the parent's population so
 // expansion has a real demographic cost (you trade headcount for territory).
-function maybeSendSettlers(world, alive) {
+function maybeSendSettlers(world, alive, devFactor = 1) {
   if (!world.transportDist) return;
   const { rng } = world;
   // Saturation: colonies get rarer as the map fills, so settlement density
@@ -536,7 +596,7 @@ function maybeSendSettlers(world, alive) {
     // people would otherwise sit at the ceiling. updatePopulation set s._k.
     const k = parent._k || 1;
     if (parent.people / k < COLONY_PRESS_FRAC) continue;
-    if (rng() >= COLONY_CHANCE * colonySat) continue;
+    if (rng() >= COLONY_CHANCE * colonySat * devFactor) continue;
     sendSettlers(world, parent);
   }
 }
@@ -598,6 +658,101 @@ function sendSettlers(world, parent) {
   });
   gridAdd(world, daughter);   // register for same-pass spacing queries
   if (parent.history) parent.history.push({ step: world.step, type: "colony-sent", to: daughter.id, settlers });
+}
+
+// ── Urban genesis (mode #2): a farming region BIRTHS a town ───────────
+// A tier-0 farming region is a collection of villages, not a proto-city, so it
+// never urbanises in place (updateTier returns early for tier 0). Instead, once
+// a region has filled out on its OWN land — a mature, surplus-producing rural
+// district — and no town yet serves its catchment, ONE of its villages thickens
+// into a market town: a NEW tier-1 settlement spawned a short walk away, seeded
+// with a village's worth of the region's people. The region carries on as the
+// rural hinterland around it, shipping its grain surplus up to the new town
+// (foodHierarchy.js), which grows on that surplus into a city and, in time, a
+// metropolis. One market town per catchment keeps towns appropriately sparse
+// over the many villages — the historical settlement pyramid.
+//
+// TRADE-NODE / FORTRESS birth: a town doesn't only grow out of rich FARMLAND. A
+// brilliant TRADE site (a river confluence, a sheltered harbour, a pass) or a
+// commanding DEFENSIVE site (a hill, a river island, a mountain-girt neck) drew
+// a town even on poor soil — it lived on commerce or as a stronghold, importing
+// its grain (Venice, a caravan city, a hill-fort capital). So the population a
+// region needs to spin off a town is DISCOUNTED by the best nearby site's
+// trade+defence value: a great site nucleates a town from a far smaller district.
+const URBANIZE_POP         = 180;  // people a region needs to spin off a town on PLAIN ground (~0.6 of the rural cap URBAN_CAP=300)
+const URBAN_MIN_POP        = 90;   // ...but never fewer than this — a town must seed a viable founding population from the region
+const URBAN_SITE_DISCOUNT  = 25;   // each point of a site's trade+defence value lowers the population bar by this much (a brilliant site needs little farmland)
+const URBAN_CATCHMENT      = 10;   // one market town per ~10-tile cluster — dense enough for a proper many-towns pyramid (16 suppressed neighbours over too wide an area)
+const URBAN_CHECK_INTERVAL = 120;  // ticks between genesis rolls (multiple of CRYSTAL_INTERVAL=24)
+const URBAN_CHANCE         = 0.40; // probability an eligible region births a town on a roll
+const URBAN_SPACING        = 5;    // a founding town may sit this close to other settlements — the dense countryside packs ~8-10 apart, so MIN_SETT_DIST=8 left no room to plant one
+const URBAN_MIN_RANGE      = 5;    // candidate ring inner radius (just clear of the region's own node)
+const URBAN_RANGE          = 12;   // ...outer radius — within the region's catchment, a day's walk to market
+const URBAN_CANDIDATES     = 12;   // nearby sites sampled; the best (river/coast/fertile) wins
+const URBAN_SEED_FRAC      = 0.30; // share of the region's people that move into the founding town
+const URBAN_SEED_CAP       = 70;   // ...capped so the region isn't gutted — it stays the rural hinterland
+const URBAN_SEED_MIN       = 25;   // a founding town smaller than this isn't viable — skip the roll
+
+function maybeUrbanGenesis(world) {
+  const { tw, th, fert, coast, riverMag, rng } = world;
+  for (const region of world.settlements) {
+    if (region.mode !== "settled") continue;
+    if ((region.tier | 0) !== 0) continue;                 // only rural regions birth towns
+    if (region.people < URBAN_MIN_POP) continue;           // cheap floor: too small to seed any town (the site discount can't go below this)
+    // One market town per catchment: skip if an urban node already serves nearby.
+    let served = false;
+    forEachNear(world, region.pos.x, region.pos.y, URBAN_CATCHMENT, (s) => { if ((s.tier | 0) >= 1) served = true; });
+    if (served) continue;
+    // Pick the best nearby site within the catchment — a ford, a harbour, a hill,
+    // the richest farmland edge — where a village would thicken into a market or a
+    // stronghold. Track its TRADE+DEFENCE value separately (siteVal): that, not
+    // fertility, is what lets a brilliant site nucleate a town on poor soil.
+    const px = region.pos.x | 0, py = region.pos.y | 0;
+    let best = null, bestQ = -Infinity, bestSV = 0;
+    for (let i = 0; i < URBAN_CANDIDATES; i++) {
+      const ang = rng() * Math.PI * 2;
+      const r = URBAN_MIN_RANGE + rng() * (URBAN_RANGE - URBAN_MIN_RANGE);
+      const tx = ((px + Math.round(Math.cos(ang) * r)) % tw + tw) % tw;
+      const ty = py + Math.round(Math.sin(ang) * r);
+      if (ty < 1 || ty >= th - 1) continue;
+      const ti = ty * tw + tx;
+      if (!isContinentalLand(world, ti)) continue;
+      // Spacing: don't plant on top of another settlement (a looser floor than
+      // the colony rule — a market town belongs INSIDE its dense countryside).
+      let tooClose = false;
+      forEachNear(world, tx, ty, URBAN_SPACING, () => { tooClose = true; });
+      if (tooClose) continue;
+      // Trade + defence value of the site (commerce/stronghold potential).
+      const siteVal = geoBonusFor(world, ti, tx, ty) + defensibilityFor(world, ti, tx, ty)
+        + ((riverMag && riverMag[ti] >= 2) ? 1.2 : 0)   // river: a ford / quay
+        + ((coast && coast[ti]) ? 0.8 : 0);             // a harbour
+      const q = (fert[ti] || 0) * 1.5 + siteVal;        // overall site pick still weighs farmland
+      if (q > bestQ) { bestQ = q; best = { tx, ty }; bestSV = siteVal; }
+    }
+    if (!best) continue;
+    // A great trade/defence site lowers the population a region needs to spin off
+    // a town (it lives on commerce or as a stronghold, importing its grain).
+    const need = Math.max(URBAN_MIN_POP, URBANIZE_POP - bestSV * URBAN_SITE_DISCOUNT);
+    if (region.people < need) continue;
+    if (rng() >= URBAN_CHANCE) continue;
+    // Seed the town with a village's worth of the region's people; the region
+    // continues, slightly reduced, as the surrounding rural hinterland.
+    const seed = Math.min(URBAN_SEED_CAP, Math.round(region.people * URBAN_SEED_FRAC));
+    if (seed < URBAN_SEED_MIN) continue;
+    region.people -= seed;
+    const inherited = {};
+    for (const k of Object.keys(region.knowledge)) inherited[k] = region.knowledge[k];
+    const town = makeSettlement(world, best.tx + 0.5, best.ty + 0.5, {
+      people: seed,
+      tier: 1,                                  // born URBAN — a market town, not a village
+      knowledge: inherited,
+      parentId: region.id,
+      countryId: region.countryId,              // joins its hinterland's realm
+      name: "town-" + region.id + "-" + world.step,
+    });
+    gridAdd(world, town);   // register so same-pass spacing / catchment checks see it
+    if (region.history) region.history.push({ step: world.step, type: "spawned-town", to: town.id, seed });
+  }
 }
 
 // Pick the nearest settlement (by straight-line distance, cheap), then

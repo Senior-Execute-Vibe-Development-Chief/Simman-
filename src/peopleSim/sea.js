@@ -48,7 +48,7 @@ export const SEA_INTERVAL = 600;   // ticks between sea-lane / colony passes. Th
 // (TRANSPORT_PER_PATHCOST). Water is a cheap highway per tile; what limits
 // a port is RANGE, which scales with navigation — a pre-ship culture hops
 // a strait, a maritime power crosses an ocean.
-const SEA_STEP        = 0.35;    // cost per water tile (×√2 on diagonals)
+const SEA_STEP        = 0.24;    // cost per water tile (×√2 on diagonals) — below road quality, so sea lanes win more long routes (ships beat carts on bulk)
 const SEA_RANGE_BASE  = 10;      // sea reach (cost units) at navigation 0
 // SEA_RANGE_NAV -> runtime lever (tuning.js T.SEA_RANGE_NAV)
 // Wind. A leg sailed with the wind is cheaper, against it dearer (tacking).

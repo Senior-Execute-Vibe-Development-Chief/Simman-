@@ -12,7 +12,7 @@ import { cropSuitability } from "./cropGen.js";
 import { applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
 import { baseEdgeCost } from "./peopleSim/transport.js";
-import { getExportBreakdown, getTradeProfile, getWealthReserve } from "./peopleSim/settlement.js";
+import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./peopleSim/settlement.js";
 import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./peopleSim/money.js";
 import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectList, techTotalList } from "./peopleSim/tech.js";
 // tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
@@ -39,7 +39,15 @@ const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688
 // can be rendered once to an offscreen canvas and blitted each frame instead
 // of rebuilt per-pixel. Sim-dependent views (population, transport, roads,
 // money, tribes) and atlas are excluded.
-const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","fertility","crop","crossing","resources","moisture","temperature","country"]);
+const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","fertility","crop","crossing","resources","moisture","temperature","country","atlas"]);
+// Sim-DYNAMIC data views: also cacheable (a GPU blit instead of a full-canvas
+// putImageData every frame — the reason these lagged next to the country view),
+// but their raster must refresh as the sim advances, so the cache key carries a
+// step bucket: rebuild every STEP_CACHE_REGEN sim-steps, blit between (the same
+// trick the political overlay uses). When paused the step is constant, so they
+// blit every frame and cost nothing.
+const STEP_CACHE_VIEWS = new Set(["population","money","roads","transport","tribes"]);
+const STEP_CACHE_REGEN = 8;
 let _mercator = false; // module-level flag for projection functions
 
 function screenYtoDataY(sy, ch, H) {
@@ -236,6 +244,46 @@ function TechTreeOverlay({k,title,onClose}){
           {t.prereq.length>0&&<div style={{fontSize:9.5,color:"#7a6a48"}}>Requires: {t.prereq.map(p=>TECHS[TECH_IDX[p]].name).join(" + ")}</div>}
         </div>);
       })()}
+    </div>
+  );
+}
+
+// ── Chronicle overlay — a realm's full history in its own scrollable window ──
+// (the settlement card is too short to hold a long log; a modal escapes it).
+// `entries` are {step,type,text}; rendered newest-first, dated via yearStr and
+// colour-coded by event type (dark tones for contrast on the light parchment).
+const CHRON_COL={founding:"#1f7a55",discovery:"#2f6fa8",growth:"#2f7d3f",wealth:"#9c7414",
+  war:"#b23a28",conquest:"#b15212",annex:"#8a6420",secession:"#7a44b0",loss:"#a04a28",
+  plague:"#8a3aa8",famine:"#9c5a1e",end:"#5a4a32"};
+const CHRON_LABEL={founding:"Founding",discovery:"Discovery",growth:"Growth",wealth:"Wealth",
+  war:"War",conquest:"Conquest",annex:"Annexation",secession:"Secession",loss:"Loss",
+  plague:"Plague",famine:"Famine",end:"Fall"};
+function ChronicleOverlay({entries,name,onClose}){
+  const rows=(entries||[]).slice().reverse();   // newest first
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(580px,93vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexShrink:0}}>
+          <div className="au-pico-title" style={{fontSize:15}}>Chronicle{name?` — ${name}`:""}{" "}
+            <span className="au-fade" style={{fontSize:11}}>· {rows.length} events</span></div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
+        </div>
+        {/* minHeight:0 lets this flex child shrink so overflowY:auto actually
+            engages inside the maxHeight:88vh column (the flexbox scroll gotcha). */}
+        <div style={{overflowY:"auto",minHeight:0,paddingRight:6}}>
+          {rows.length===0
+            ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No events recorded yet.</div>
+            :<div style={{display:"grid",gridTemplateColumns:"auto auto 1fr",gap:"5px 10px",alignItems:"baseline",fontSize:12}}>
+              {rows.map((e,i)=>(
+                <Fragment key={i}>
+                  <span className="au-fade" style={{textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{yearStr(e.step)}</span>
+                  <span style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:CHRON_COL[e.type]||"#5a4a32",fontWeight:600,whiteSpace:"nowrap"}}>{CHRON_LABEL[e.type]||e.type}</span>
+                  <span style={{color:"#3a2614",lineHeight:1.4}}>{e.text}</span>
+                </Fragment>
+              ))}
+            </div>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -635,7 +683,7 @@ tCross[ti]=Math.min(1,cAvg/CROSS_MAX);}
 
 // ── Natural resource deposits ──
 const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,rivers);
-// ── 3000 BC START: seed civilizations at the world's best river valley locations ──
+// ── NEOLITHIC START (~9000 BC): the first farmers crystallize at the world's best river valleys ──
 // Number of starting civs emerges from geography, not hardcoded.
 // Principle: state-level organization appears wherever dense farming populations
 // concentrate along major rivers in fertile lowlands. A world with one great
@@ -686,13 +734,12 @@ const k=initKnowledge();k.agriculture=0.4;k.metallurgy=0.15;
 tribeKnowledge.push(k);tribePopulation.push(0);// derived from bgPop on first step
 tribeKnownCoasts.push([]);tribePorts2.push([]);tribeBudgets.push(initBudget());}}
 let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-// ── Background population at 3000 BC: graduated by valley quality ──
-// The best river valleys are already taken by starting civs. The NEXT best
-// valleys start just below crystallization threshold and grow into it over
-// 50-200 steps — matching the staggered appearance of real civilizations:
-//   ~2600 BC (step ~30): Indus (next-best valley) crystallizes
-//   ~2000 BC (step ~80): Minoan, early Hittites, Xia starting
-//   ~1500 BC (step ~125): acceleration — Shang, Mycenaean, etc.
+// ── Background population in the early Neolithic (~9000 BC): graduated by valley quality ──
+// The richest river valleys cross the farming-crystallization threshold first; the
+// NEXT-best valleys start just below it and grow into it over the following
+// 50-200 steps — the staggered way agriculture radiated outward from its first
+// hearths (the Fertile Crescent, then the Yangtze/Yellow, Indus, Nile…) into the
+// neighbouring fertile lowlands over the following centuries.
 //
 // bgPop is scaled relative to the best valley score so only the very top
 // areas are near-threshold, and everything else needs time to grow.
@@ -700,7 +747,7 @@ const bgPop=new Float32Array(tw*th);
 const bestValley=Math.max(0.01,...Array.from(valleyScore).filter(v=>v>0));
 for(let ti=0;ti<tw*th;ti++){if(tElev[ti]<=0||tTemp[ti]<0.05)continue;
 const fert=tFert[ti];const diff=tDiff[ti];
-// Base pop from fertility (everyone farms by 3000 BC in good areas)
+// Base pop from fertility (the good valleys are already farmed in these Neolithic hearths)
 let bp=fert*fert*0.4*(1-diff);// lower base than before
 // Valley bonus: areas with river valley clusters get extra pop, scaled to best
 const vRatio=bestValley>0?valleyScore[ti]/bestValley:0;
@@ -729,23 +776,46 @@ tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudg
 tribeTiles,frontier,frontierList,_landTiles,_coastalTiles,_nfBuf,_youngTiles:[],
 landCount:lc,settled:tribeSizes.length,tribeCount:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
 
-// ── Non-linear time: starts at 2000 BC, accelerates into modernity ──
-// The peopleSim step is far finer-grained than the legacy tribe sim this
-// curve was first written for, so steps are mapped onto the original
-// year-curve through YEAR_STEP_SCALE (≈ peopleSim steps per legacy
-// "year-step"). A mature, roughly-industrial world lands near ys≈1000
-// (≈2025 AD); past that we clamp to the present rather than invent a future.
-// Tune YEAR_STEP_SCALE to stretch / compress how fast the clock runs.
-const YEAR_STEP_SCALE = 18;
+// ── Calendar: a steady step-based clock, anchored so the era ladder lands on real
+// history. The sim seeds Neolithic farming cradles holding STONE tools — that is
+// ~9000 BC, not 2000 BC (when the real cradles were already bronze-age cities with
+// writing), so the long Stone/Neolithic opening spans the most calendar time even
+// though little changes, then the clock accelerates as the eras shorten, the way
+// history actually ran. YEAR_ANCHORS map peopleSim step → year (negative = BC,
+// positive = AD): on the reference world the leading civilisation reaches each era
+// near the step listed (measured against the current tech pace, not guessed).
+// CLOCK_STRETCH is a manual fine-tune. The clock tracks the LEADING civilisation,
+// which develops at roughly the same per-step rate regardless of map size (only the
+// periphery lags on a big map), so ≈1.0 fits most worlds. Nudge it only if the
+// displayed year drifts from your tech: raise it if the year runs AHEAD of the tech,
+// lower it if BEHIND.
+const CLOCK_STRETCH = 1.0;
+const PRESENT_YEAR  = 2025;
+const YEAR_ANCHORS = [   // [reference step, year]
+  [0,     -9000],   // Stone / Neolithic — cradles seeded with stone tools
+  [4000,  -3300],   // Bronze — first cities, the wheel, writing
+  [8500,   -500],   // Classical / Iron Age
+  [10000,   900],   // Medieval
+  [13000,  1500],   // Renaissance
+  [18000,  1800],   // Industrial
+  [22000,  1950],   // Modern
+];
 function stepToYear(step){
-const ys=Math.min(1000, step/YEAR_STEP_SCALE);   // clamp at the present day
-if(ys<=200)return 2000-ys*7;// 2000 BC → 600 BC
-if(ys<=500)return 600-(ys-200)*5;// 600 BC → 900 AD (negative = AD)
-if(ys<=800)return -(900+(ys-500)*2.5);// 900 AD → 1650 AD
-return -(1650+(ys-800)*1.875);// 1650 AD → 2025 AD
+  const A=YEAR_ANCHORS, n=A.length, s=step/CLOCK_STRETCH;
+  if(s<=0)return A[0][1];
+  for(let i=1;i<n;i++){
+    if(s<=A[i][0]){
+      const [s0,y0]=A[i-1], [s1,y1]=A[i];
+      return y0+(y1-y0)*(s-s0)/(s1-s0);
+    }
+  }
+  // Past the last era anchor: keep advancing at the final (modern) rate up to the
+  // present day, then clamp — we date history, not the future.
+  const [sp,yp]=A[n-2], [sl,yl]=A[n-1];
+  return Math.min(PRESENT_YEAR, yl+(yl-yp)/(sl-sp)*(s-sl));
 }
-function yearStr(step){const y=stepToYear(step);
-return y>0?`${Math.round(y)} BC`:`${Math.round(Math.abs(y))} AD`;}
+function yearStr(step){const y=Math.round(stepToYear(step));
+return y<0?`${-y} BC`:`${y} AD`;}
 
 // ── Transport TEST: standalone greedy claim by capital cost ──────────
 // Independent of the live sim. Each "test capital" runs a Dijkstra that
@@ -1184,6 +1254,7 @@ const[selectedTribe,setSelectedTribe]=useState(-1);
 // peopleSim settlement selection — id of the clicked settlement, or -1.
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
 const[techTreeOpen,setTechTreeOpen]=useState(false);   // full tech-tree overlay (for the selected settlement)
+const[chronicleOpen,setChronicleOpen]=useState(false); // full chronicle (realm history) overlay
 // Ref mirror so draw() (memoized) sees the current selection without
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
@@ -1235,7 +1306,7 @@ const countryColorsRef=useRef(new Map());
 // Which collapsible sections of the settlement card are open. Persists
 // across re-renders (the card re-renders every few ticks) and across
 // selecting different settlements.
-const[psCardOpen,setPsCardOpen]=useState({food:true,tech:true,knowledge:false,resources:false,trade:true});
+const[psCardOpen,setPsCardOpen]=useState({food:true,tech:true,knowledge:false,resources:false,trade:true,chronicle:true});
 const togglePsCard=id=>setPsCardOpen(o=>({...o,[id]:!o[id]}));
 const[useRealWind,setUseRealWind]=useState(false);
 const useMercator=false;
@@ -1300,6 +1371,11 @@ const atlasCache=useRef(null);
 // regenerate every PS_OVERLAY_REGEN sim-steps, blitting it otherwise.
 const psOverlayRef=useRef(null);
 const psOverlayMeta=useRef({step:-1,ch:0});
+// Reusable scratch for the money-flow coin particles (money view). Coins are
+// bucketed by link busyness so the whole overlay costs ~4 fillStyle changes
+// instead of one per link; the position arrays are reused across frames to
+// avoid per-frame allocation at 60fps.
+const moneyDotsRef=useRef(null);
 // Offscreen cache of the STATIC base raster (terrain etc.). Rebuilt only when
 // the view or a relevant toggle changes; blitted every frame otherwise — the
 // per-pixel terrain rebuild + putImageData was a big per-frame cost now that
@@ -1793,8 +1869,13 @@ const lk=ter.rivers&&ter.rivers.lake?ter.rivers.lake:null;
 const N=CW*CH;
 // Static-base cache: blit the cached terrain raster instead of rebuilding it
 // per-pixel when nothing affecting it changed.
-const _staticBase=BASE_CACHE_VIEWS.has(vm)&&!isGlobe;
-const _baseKey=_staticBase?(vm+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+(activeResRef.current||'')+'|'+oceanLevelRef.current):null;
+const _stepCacheV=STEP_CACHE_VIEWS.has(vm);
+const _staticBase=(BASE_CACHE_VIEWS.has(vm)||_stepCacheV)&&!isGlobe;
+// Dynamic data views fold a coarse sim-step bucket into the key so the cached
+// raster refreshes as the world changes (and is stable/blitted while paused).
+const _simStep=(peopleRef.current&&peopleRef.current.step)||0;
+const _stepTag=_stepCacheV?('|s'+((_simStep/STEP_CACHE_REGEN)|0)):'';
+const _baseKey=_staticBase?(vm+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+(activeResRef.current||'')+'|'+oceanLevelRef.current+_stepTag):null;
 let _baseHit=false;
 if(_staticBase&&ctx&&baseLayerRef.current&&baseLayerRef.current.width===CW&&baseLayerRef.current.height===CH&&baseLayerKey.current===_baseKey){ctx.drawImage(baseLayerRef.current,0,0);_baseHit=true;}
 if(!_baseHit){
@@ -2454,6 +2535,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmRoads = viewRef.current === "roads";
   const vmMoney = viewRef.current === "money";
   const vmCountry = viewRef.current === "country";
+  const vmFR = viewRef.current === "frTerritory";
   if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
@@ -2540,69 +2622,62 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         ctx.fillRect(px*TR,dataYtoScreenY(py*TR,H,CH),TR,TR);
       }
     }
-    // 2) Animated coin particles flowing along trade links in the net-
-    // money direction. Each link gets a SHARE of a global dot budget
-    // — but allocated by sqrt(mag) instead of mag, so a giant trunk
-    // doesn't drown out the dozens of small links. The budget is also
-    // large enough to keep the scene populated even when the world has
-    // few links: one dot ~= 0.3% of the world's current trade activity.
+    // 2) Animated coin particles streaming along trade links in the net-money
+    // direction. EVERY active link gets a stream of coins at a roughly constant
+    // spacing (busier links pack them tighter + brighter), so the whole live
+    // trade network reads as "money in motion". (The old code shared one global
+    // budget by sqrt(mag); with 1500+ links each link's share rounded to zero,
+    // so only the busiest ~100 links ever showed a single dot — the map looked
+    // empty despite a thriving economy.) Coins are binned into a few brightness
+    // buckets and drawn in batches, so thousands of them cost ~4 fillStyle
+    // changes instead of one per link.
     const flows=psw._moneyFlows;
     if(flows&&flows.length){
-      let totalRoot=0,maxMag=0;
-      for(const f of flows){totalRoot+=Math.sqrt(f.mag);if(f.mag>maxMag)maxMag=f.mag;}
-      const DOT_BUDGET=350;
-      // Noise floor low enough that genuinely active mid-tier links still
-      // get a dot. Anything above 3% of the busiest link is always visible.
-      const noiseFloor=maxMag*0.03;
+      let maxMag=0;for(const f of flows){if(f.mag>maxMag)maxMag=f.mag;}
+      const logMax=Math.log1p(maxMag);
+      const NB=4, CAPB=2600;                 // brightness buckets · per-bucket dot cap (perf safety)
+      let mb=moneyDotsRef.current;
+      if(!mb||mb.cap!==CAPB){mb={cap:CAPB,n:new Int32Array(NB),xy:Array.from({length:NB},()=>new Float32Array(CAPB*2))};moneyDotsRef.current=mb;}
+      for(let b=0;b<NB;b++)mb.n[b]=0;
       const now=performance.now();
+      const period=2600;                     // ms for a coin to traverse a link
       for(const f of flows){
         const pts=f.tiles;const np=pts.length;if(np<2)continue;
-        let dots=Math.round((Math.sqrt(f.mag)/Math.max(0.001,totalRoot))*DOT_BUDGET);
-        if(f.mag>=noiseFloor&&dots<1)dots=1;
-        if(dots<=0)continue;
-        dots=Math.min(dots,16);            // per-link cap so a single huge link doesn't eat the screen
-        // Brightness scales with the link's SHARE of the maximum (not raw
-        // magnitude), so dominant links pop relative to whatever scene you
-        // are looking at.
-        const share=f.mag/Math.max(0.001,maxMag);
-        const alpha=Math.max(0.35,Math.min(0.95,0.35+share*0.6));
-        ctx.fillStyle=`rgba(255,205,70,${alpha.toFixed(2)})`;
-        const period=2600;                 // ms for a coin to traverse the link
+        // busyness 0..1 (log so a giant trunk doesn't flatten the rest); sets
+        // both the brightness bucket and the coin spacing.
+        const busy=logMax>0?Math.log1p(f.mag)/logMax:0;
+        const b=Math.min(NB-1,(busy*NB)|0);
+        if(mb.n[b]>=mb.cap)continue;          // bucket full (faintest links drop first; trunks live in higher buckets)
+        const spacing=14-9*busy;             // tiles per coin: ~14 (faint) → ~5 (busiest)
+        let dots=Math.round(np/spacing);if(dots<1)dots=1;else if(dots>20)dots=20;
+        // Per-link phase from the start tile (golden-ratio hash) so the
+        // thousands of single-coin links don't all pulse in lockstep.
+        const ph=(pts[0]*0.6180339887)%1;
+        const arr=mb.xy[b];let cnt=mb.n[b];
         for(let j=0;j<dots;j++){
-          let u=((now/period)+(j/dots))%1;
-          if(!f.toEnd)u=1-u;               // reverse direction
+          let u=((now/period)+(j/dots)+ph)%1;
+          if(!f.toEnd)u=1-u;                 // reverse direction
           const fi=u*(np-1);const i0=fi|0;const i1=Math.min(np-1,i0+1);const fr=fi-i0;
           const x0=sx(pts[i0]),x1=sx(pts[i1]);
           const y0=sy(pts[i0]),y1=sy(pts[i1]);
           if(Math.abs(x1-x0)>CW*0.5)continue;   // skip segments that wrap the seam
-          const x=x0+(x1-x0)*fr,y=y0+(y1-y0)*fr;
-          ctx.beginPath();ctx.arc(x,y,1.7,0,Math.PI*2);ctx.fill();
+          if(cnt>=mb.cap)break;
+          arr[cnt*2]=x0+(x1-x0)*fr;arr[cnt*2+1]=y0+(y1-y0)*fr;cnt++;
         }
+        mb.n[b]=cnt;
+      }
+      // Batched draw: one fillStyle per brightness bucket, cheap fillRect coins.
+      const ALPHA=[0.42,0.60,0.77,0.95];
+      for(let b=0;b<NB;b++){
+        const cnt=mb.n[b];if(!cnt)continue;
+        ctx.fillStyle=`rgba(255,205,70,${ALPHA[b]})`;
+        const arr=mb.xy[b];
+        for(let q=0;q<cnt;q++)ctx.fillRect(arr[q*2]-1.1,arr[q*2+1]-1.1,2.2,2.2);
       }
     }
-    // 3) Settlements: dot coloured by net wealth change (gold = gaining,
-    // red = losing, grey = steady) with a gold glow scaled to mining
-    // income (where money enters the system). Kept small so the trade
-    // FLOWS dominate the visual — this is the money-flow overlay, not
-    // the settlement overlay.
-    for(const s of psw.settlements){
-      if(!s||s.mode!=="settled")continue;
-      const x=s.pos.x*TR,y=dataYtoScreenY(s.pos.y*TR,H,CH);
-      const mined=s._minedRate||0;
-      if(mined>0.01){
-        const rad=2.5+Math.min(10,Math.sqrt(mined)*1.4);
-        const g=ctx.createRadialGradient(x,y,0,x,y,rad);
-        g.addColorStop(0,"rgba(255,210,80,0.55)");
-        g.addColorStop(1,"rgba(255,210,80,0)");
-        ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,rad,0,Math.PI*2);ctx.fill();
-      }
-      const d=s._wealthDelta||0;
-      const col=d>0.02?"#ffcf46":d<-0.02?"#e0563b":"#8a8f9c";
-      const r=1.2+Math.min(1.6,Math.sqrt(Math.abs(d))*0.35);
-      ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
-      ctx.fillStyle=col;ctx.fill();
-      ctx.lineWidth=0.4;ctx.strokeStyle="rgba(0,0,0,0.55)";ctx.stroke();
-    }
+    // 3) Per-settlement markers (the net-wealth node dots and the gold
+    // mining-source glow) are intentionally NOT drawn — this view shows ONLY
+    // the flowing money, so the trade itself is the whole picture.
   }
   if(psw&&ctx&&!vmRoads&&!vmMoney){
     const TR=psw.tileRes;
@@ -2621,7 +2696,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmFR?32:0);
     if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
@@ -2661,7 +2736,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         octx.stroke();
       }
-      if(!vmCountry&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmFR&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map();
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
@@ -2682,7 +2757,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
-      } else if(!vmCountry&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmFR&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -2711,6 +2786,40 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==oid&&ctryById[dno]!==co){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
+      }
+      // ── Farming-Region territory view: outline EACH settlement's economic
+      // catchment (_territoryOwner — the food-producing land it administers).
+      // With urban nodes releasing their land, these ARE the farming regions, so
+      // you can see how much land each rural region holds (often a country's
+      // de-facto core). Tint per region + a solid edge wherever the owner changes
+      // (including against wilderness), so every region's territory is outlined.
+      if(vmFR&&owner){
+        const tw=psw.tw,th=psw.th;
+        let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
+        const tintById=new Array(maxId+1);
+        for(const s of psw.settlements){if(s&&s.mode==="settled"){
+          const h=((s.id*97)%360+360)%360;
+          tintById[s.id]=`hsla(${h},55%,52%,${(s.tier|0)===0?0.42:0.24})`;
+        }}
+        let lastFs=null;
+        for(let ti=0;ti<owner.length;ti++){
+          const oid=owner[ti];if(oid<0)continue;
+          const fs=tintById[oid];if(fs===undefined)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+          octx.fillRect(sx,sy,TR+0.6,TR+0.6);
+        }
+        octx.strokeStyle="rgba(25,18,8,0.85)";octx.lineWidth=Math.max(1,TR*0.5);octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
+        for(let ti=0;ti<owner.length;ti++){
+          const oid=owner[ti];if(oid<0)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          const ro=owner[py*tw+(px===tw-1?0:px+1)];
+          if(ro!==oid){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(py<th-1){const dno=owner[ti+tw];if(dno!==oid){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+        }
+        octx.stroke();
       }
       // ── Province borders (Layers → Provinces) ──
       // Internal administrative divisions. A province follows the SIM's own
@@ -2966,6 +3075,7 @@ const applySnapshot=useCallback((snap)=>{
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   psw.ships=snap.ships;psw.armies=snap.armies;
+  psw._chronicle=snap.chronicle||null;             // selected realm's history (null when nothing selected)
   const setts=snap.settlements||[];
   if(snap.selected){const sel=setts.find(x=>x.id===snap.selected.id);if(sel)Object.assign(sel,snap.selected);}
   psw.settlements=setts;
@@ -3002,6 +3112,9 @@ useEffect(()=>{applySnapshotRef.current=applySnapshot;},[applySnapshot]);
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'control',playing,speed});},[playing,speed]);
 // Forward selection so the worker includes that settlement's full detail.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'select',id:selectedSettlementId});},[selectedSettlementId]);
+// Close the per-realm overlays when the selection changes, so they don't
+// auto-reopen (or show a stale realm) the next time a settlement is picked.
+useEffect(()=>{setChronicleOpen(false);setTechTreeOpen(false);},[selectedSettlementId]);
 // Tell the worker the current view so it ships money-flow / road-component extras only when shown.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'view',view:viewMode});},[viewMode]);
 // Terminate both workers on unmount so they don't leak across hot-reloads / route changes.
@@ -3288,7 +3401,7 @@ const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
 // ── Aggregate world stats for the chronicle ribbon ──
 const _ter=terRef.current;
 // The live clock is the peopleSim step (the legacy tribe sim is disabled, so
-// _ter.stepCount stays 0 — that's what froze the year at 2000 BC).
+// _ter.stepCount stays 0 — that's what froze the year at the 9000 BC start).
 const _step=(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
 const _ys=yearStr(_step);
 let _aAg=0,_aMt=0,_aNv=0,_aOg=0,_aliveK=0;
@@ -3308,7 +3421,7 @@ const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
-  ["crop","Crop"],["crossing","Crossing"],["country","Country"],["roads","Roads"],["money","Money"],
+  ["crop","Crop"],["crossing","Crossing"],["country","Country"],["frTerritory","Farm Regions"],["roads","Roads"],["money","Money"],
   ["resources","Resources"],["population","Pop"],["transport","Transport"],
   ["transport-test","Trans Test"],["tribes","Tribes"]
 ];
@@ -3492,8 +3605,12 @@ return(
   const s=psw.settlements.find(x=>x&&x.id===selectedSettlementId&&x.mode==="settled");
   if(!s)return null;
   const tierName=["farming region","town","city","metropolis"][s.tier]||"settlement";
-  const TIER_THR=[0,80,400,2000];
-  const nextThr=TIER_THR[s.tier+1];
+  // A farming region (tier 0) does NOT promote in place — it FOUNDS a town nearby
+  // once it fills out (urban genesis). Only urban nodes climb, at the sim's
+  // canonical TIER_THRESHOLD (town→city→metropolis); index [1] isn't a promotion
+  // gate (towns are spawned, not grown from regions), so progress is urban-only.
+  const isRegion=(s.tier|0)===0;
+  const nextThr=isRegion?0:TIER_THRESHOLD[s.tier+1];
   const progress=nextThr?Math.min(1,s.people/nextThr):1;
   const k=s.knowledge||{};
   const tech=techState(k);                 // Civ-like discovery layer derived from knowledge (tech.js)
@@ -3560,21 +3677,30 @@ return(
   // breakdown below comes from s._mInRate / s._mOutRate).
   const wealthDelta=s._wealthDelta||0;
   const moneyCol=v=>v>0.02?"#3a7":v<-0.02?"#c44":"#8a8f9c";
-  const nextName=["town","city","metropolis"][s.tier];
+  const nextName=isRegion?null:["town","city","metropolis"][s.tier];
 
   return(
     <div className="au-parchment au-pico au-elev"
-      style={{position:"absolute",left:14,top:14,width:248,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"90vh",overflowY:"auto",
+      style={{position:"absolute",left:14,top:14,width:248,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"calc(100vh - 28px)",overflowY:"auto",
         pointerEvents:"auto"/* au-pico sets pointer-events:none for the hover tooltip; this card is interactive */}}>
 
       {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
       {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} onClose={()=>setTechTreeOpen(false)}/>}
+      {chronicleOpen&&psw._chronicle&&psw._chronicle.countryId===s.countryId&&
+        <ChronicleOverlay entries={psw._chronicle.entries} name={psw._chronicle.name} onClose={()=>setChronicleOpen(false)}/>}
 
-      {/* ── Header ── */}
+      {/* ── Header ── (the chronicle opener lives here so it's always visible
+          without scrolling the card — a long card can push a bottom section
+          out of easy reach) */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div className="au-pico-title" style={{fontSize:14,textTransform:"capitalize"}}>{s.name}</div>
-        <button onClick={()=>setSelectedSettlementId(-1)}
-          style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:16,lineHeight:1,padding:"0 2px"}}>×</button>
+        <div style={{display:"flex",alignItems:"center",gap:1,flexShrink:0}}>
+          {psw._chronicle&&psw._chronicle.countryId===s.countryId&&psw._chronicle.entries&&psw._chronicle.entries.length>0&&
+            <button onClick={()=>setChronicleOpen(true)} title={`Open chronicle — ${psw._chronicle.entries.length} events`}
+              style={{background:"transparent",border:"none",cursor:"pointer",fontSize:14,lineHeight:1,padding:"0 3px"}}>📜</button>}
+          <button onClick={()=>setSelectedSettlementId(-1)}
+            style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:16,lineHeight:1,padding:"0 2px"}}>×</button>
+        </div>
       </div>
       <div className="au-fade" style={{fontSize:10,textTransform:"capitalize",marginBottom:6}}>
         {tierName} · {era} · {waterLabel}
@@ -3772,7 +3898,7 @@ return(
           <span className="au-fade" style={{fontSize:9,marginLeft:3}}>gold treasury</span>
         </div>
         <span className="au-fade" style={{fontSize:9}}>
-          {nextName?`${Math.round(progress*100)}% → ${nextName}`:"max tier"}
+          {isRegion?"rural · founds towns":nextName?`${Math.round(progress*100)}% → ${nextName}`:"max tier"}
         </span>
       </div>
 
@@ -3953,6 +4079,33 @@ return(
             </>}
         </>
       </PsSection>
+
+      {/* ── Chronicle (the realm's history: foundings, wars, conquests,
+          plagues, famines, discoveries, growth & wealth milestones) ── */}
+      {(()=>{
+        const chron=psw._chronicle;
+        if(!chron||chron.countryId!==s.countryId||!chron.entries||!chron.entries.length)return null;
+        // The log itself opens in its own scrollable window (a long history
+        // doesn't fit the card); the section here is just an opener + the latest
+        // event as a teaser.
+        const latest=chron.entries[chron.entries.length-1];
+        return(
+          <PsSection id="chronicle" title="Chronicle" open={psCardOpen.chronicle} onToggle={togglePsCard}
+            right={<span className="au-fade">{chron.entries.length}</span>}>
+            <div style={{fontSize:10}}>
+              <button onClick={()=>setChronicleOpen(true)}
+                style={{width:"100%",marginBottom:5,padding:"4px 6px",cursor:"pointer",borderRadius:4,
+                  background:"rgba(120,90,50,0.14)",border:"1px solid rgba(120,90,50,0.35)",color:"#3a2c18",fontSize:10.5}}>
+                📜 Open chronicle ({chron.entries.length} events)
+              </button>
+              <div style={{display:"flex",gap:6,lineHeight:1.3}}>
+                <span className="au-fade" style={{flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{yearStr(latest.step)}</span>
+                <span style={{color:CHRON_COL[latest.type]||"#5a4a32"}}>{latest.text}</span>
+              </div>
+            </div>
+          </PsSection>
+        );
+      })()}
     </div>
   );
 })()}

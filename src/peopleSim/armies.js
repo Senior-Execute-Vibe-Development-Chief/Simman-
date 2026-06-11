@@ -22,6 +22,7 @@ import { forEachNear } from "./spatialGrid.js";
 import { localEdgeCost } from "./transport.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
+import { chronicle, realmName } from "./chronicle.js";
 import { T } from "./tuning.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
@@ -389,6 +390,16 @@ export function musterArmies(world) {
 }
 
 // ── Periodic: advance every active war front by tile capture / storm ──
+// Navigation below this carries no invasion force — coastal rafts ferry traders,
+// not armies. Above it, a port can open amphibious beachheads on the enemy ports
+// its sea lanes reach (see the amphibious block in advanceFronts; bar = T.AMPHIB_BAR).
+const AMPHIB_NAV_MIN = 0.25;
+
+// A war ends in a treaty once either side's exhaustion crosses this (see the
+// truce block in advanceFronts). Below it, low-grade border raiding never
+// formally "ends" — the marches stay restless; only real wars sign peaces.
+const TRUCE_EXHAUST = 0.4;
+
 export function advanceFronts(world) {
   const owner = world._territoryOwner;
   const byId = world._byId;
@@ -401,6 +412,35 @@ export function advanceFronts(world) {
   if (!capturedAt || capturedAt.length !== N) {
     capturedAt = world._tileCapturedAt = new Float64Array(N).fill(-Infinity);
   }
+
+  // Exhaustion CLOSES fronts (episodic war). The full-scale review found war was
+  // permanent — ~165/165 realms fighting at every checkpoint, exhaustion pinned at
+  // its cap — because exhaustion only weakened the punch (offMulPair) but never
+  // stopped an attack from qualifying, and the scan re-opens every profitable
+  // front every pass. Raising the ATTACK BAR with the attacker's exhaustion (last
+  // pass's value — it moves slowly) means a worn realm stops pushing, its fronts
+  // close, exhaustion decays through a real peace-window, and war turns episodic:
+  // campaign → a generation of peace → campaign. Defence is never gated. A warlike
+  // realm's aggMul still discounts the bar, so the proud fight on longest.
+  const exhPrev = world._warExhaust;
+  const warBarOf = (cc) => 1 + T.EXHAUST_WAR_BAR * (exhPrev ? (exhPrev.get(cc) || 0) : 0);
+
+  // Wars END IN A PEACE (dyadic truces). The exhaustion bar alone could not break
+  // the permanent-war equilibrium because it is MUSICAL CHAIRS: exhaustion stops a
+  // realm attacking, but someone nearby is always rested, and the rested attack the
+  // worn — so every realm stays under assault and pinned at max exhaustion. What
+  // history has that a fade-out lacks: a war ends in a TREATY that binds BOTH sides
+  // for a generation. When a war has worn either side past TRUCE_EXHAUST, the pair
+  // signs a truce for T.TRUCE_TICKS: neither can open a front on the other until it
+  // lapses. Low-grade border skirmishing (load too light to exhaust) never truces —
+  // the marches stay restless, as they were — but the big wars become episodic.
+  let truces = world._truces; if (!truces) truces = world._truces = new Map();
+  if (truces.size) for (const [k, until] of truces) { if (until <= world.step) truces.delete(k); }
+  const inTruce = (a, b) => {
+    if (truces.size === 0 || a < 0 || b < 0) return false;
+    const u = truces.get(a < b ? a + ":" + b : b + ":" + a);
+    return u !== undefined && u > world.step;
+  };
 
   const natMight = new Map();   // countryId → Σ might = the NATIONAL FIELD ARMY (Σ garrison × tech)
   for (const s of world.settlements) {
@@ -464,7 +504,8 @@ export function advanceFronts(world) {
       const ni = ns[k]; if (ni < 0) continue;
       const a = owner[ni]; if (a < 0 || a === d) continue;
       const A = byId.get(a);
-      if (!A || A.mode !== "settled" || A.countryId === D.countryId) continue;
+      if (!A || A.mode !== "settled" || A.countryId === D.countryId
+          || inTruce(A.countryId, D.countryId)) continue;   // a signed peace holds
       if (A._M > bestM) { bestM = A._M; bestA = a; }
     }
     if (bestA < 0) continue;
@@ -531,7 +572,7 @@ export function advanceFronts(world) {
     // one wants a clear advantage (personality.js aggressionAttackMul).
     const aCountry = world.countries && world.countries.get(A.countryId);
     const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
-    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX)) continue;
+    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId)) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -546,6 +587,73 @@ export function advanceFronts(world) {
     // in its post-capture hold, which keeps a stalled front from ping-ponging
     // the same border tiles back and forth every pass.
     else if (world.step - capturedAt[ti] >= T.TILE_CAPTURE_GRACE) pc.tiles.push({ ti, distHome });
+  }
+
+  // ── Amphibious assault (nav-gated beachheads) ──────────────────────────
+  // The scan above pairs only TILE-ADJACENT enemies, so war could never cross
+  // water: a populated far shore was unconquerable however dominant the navy
+  // (no Punic Wars, no crossing into the Balkans — cross-sea empire was limited
+  // to colonising wilderness). A port that can SAIL to an enemy port — the same
+  // sea-lane web the carrying trade uses; you invade where you can sail — opens
+  // a BEACHHEAD front: the defender's water-edge tiles become contestable as if
+  // adjacent, and a beach inside the city's assault radius lets the port itself
+  // be stormed from the sea. Gates: real seacraft (nav ≥ AMPHIB_NAV_MIN — rafts
+  // don't carry armies), an embarked army, and a power bar T.AMPHIB_BAR× the
+  // usual land threshold (an opposed landing wants overwhelming superiority).
+  // From the beachhead on, the normal front machinery — national field armies,
+  // concentration, exhaustion, reinforcement sailing — grinds inland or is
+  // thrown back, exactly as on land.
+  if (T.AMPHIB_BAR > 0) {
+    const amphibByDef = new Map();   // defender id → pending beachhead pairs onto it
+    for (const A of world.settlements) {
+      if (A.mode !== "settled" || !A._seaReach || A._seaReach.size === 0) continue;
+      if (!(A._M > 0)) continue;
+      if (((A.knowledge && A.knowledge.navigation) || 0) < AMPHIB_NAV_MIN) continue;
+      const aCountry = world.countries && world.countries.get(A.countryId);
+      const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
+      for (const pid of A._seaReach.keys()) {
+        const D = byId.get(pid);
+        if (!D || D.mode !== "settled" || D.countryId === A.countryId
+            || inTruce(A.countryId, D.countryId)) continue;   // a signed peace holds at sea too
+        const key = A.id + ":" + pid;
+        if (pairs.has(key)) continue;                        // already met on land
+        const tf = tradeFactor(A.countryId, D.countryId);
+        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId)) continue;
+        const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key };
+        let l = amphibByDef.get(pid); if (!l) amphibByDef.set(pid, l = []);
+        l.push(pc);
+      }
+    }
+    if (amphibByDef.size) {
+      // One territory scan: collect each targeted defender's WATER-EDGE tiles
+      // (the landing beaches), with the same home-distance / storm-radius /
+      // capture-grace rules as the land scan.
+      const elevA = world.elev;
+      for (let ti = 0; ti < N; ti++) {
+        const d = owner[ti];
+        if (d < 0) continue;
+        const cands = amphibByDef.get(d); if (!cands) continue;
+        const ty = (ti / tw) | 0, tx = ti - ty * tw;
+        const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+        const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+        let beach = false;
+        for (let k = 0; k < 4; k++) { const ni = ns[k]; if (ni >= 0 && elevA[ni] <= 0) { beach = true; break; } }
+        if (!beach) continue;
+        const D = byId.get(d);
+        const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
+        let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
+        const ddy = ty - dhy;
+        const distHome = Math.sqrt(ddx * ddx + ddy * ddy);
+        const assaultDist = coreRadiusFor(D) + ASSAULT_MARGIN;
+        for (const pc of cands) {
+          if (distHome <= assaultDist) pc.canStorm = true;   // the port city fronts the water — stormable from the sea
+          else if (world.step - capturedAt[ti] >= T.TILE_CAPTURE_GRACE) pc.tiles.push({ ti, distHome });
+        }
+      }
+      for (const cands of amphibByDef.values())
+        for (const pc of cands)
+          if (pc.canStorm || pc.tiles.length) pairs.set(pc._key, pc);
+    }
   }
 
   // Realm-mates march to relieve every settlement under attack (over transit
@@ -633,6 +741,20 @@ export function advanceFronts(world) {
     seenCC.add(cc);
   }
   for (const [cc, e] of exh) if (!seenCC.has(cc)) { const v = e * T.WAR_EXHAUST_DECAY; if (v < 0.002) exh.delete(cc); else exh.set(cc, v); }
+  // Sign the peaces: any warring pair where EITHER side has been worn past
+  // TRUCE_EXHAUST ends in a truce binding BOTH for T.TRUCE_TICKS (header above).
+  // Stateless raiders (countryId < 0) sign nothing — the wild marches stay wild.
+  if (T.TRUCE_TICKS > 0) {
+    for (const [cc, es] of allEnemies) {
+      if (cc < 0) continue;
+      const eA = exh.get(cc) || 0;
+      for (const ecc of es) {
+        if (ecc <= cc || ecc < 0) continue;          // each pair once
+        if (eA >= TRUCE_EXHAUST || (exh.get(ecc) || 0) >= TRUCE_EXHAUST)
+          truces.set(cc + ":" + ecc, world.step + T.TRUCE_TICKS / (world._dt || 1));   // ×G ticks: same peace span in history-time
+      }
+    }
+  }
 
   // A front's offensive multiplier: its enemy-nation concentration rank × war-weariness
   // ÷ defensive tie-down (troops pinned defending can't also attack).
@@ -744,6 +866,23 @@ export function advanceFronts(world) {
           // Defence broken — the throne-city falls to the attacker.
           def.countryId = att.countryId;
           recordOccupation(def, oldId, att.countryId, world.step);   // remember the nation it just lost (homeland)
+          // Chronicle the storm. Names resolve before the rebuild. Taking land
+          // from the stateless frontier (oldId < 0) is an annexation, not a war
+          // between realms — and the frontier keeps no chronicle, so only the
+          // victor's line is written.
+          {
+            const dName = def.name || "a settlement", isCity = (def.tier | 0) >= 2;
+            const cityOf = isCity ? "the city of " : "";
+            if (oldId < 0) {
+              chronicle(world, att.countryId, "conquest", `Brought the free ${isCity ? "city" : "town"} of ${dName} under its rule.`);
+            } else if (defWasCapital) {
+              chronicle(world, oldId, "war", `Its capital ${dName} fell to ${realmName(world, att.countryId)} — the realm collapsed.`);
+              chronicle(world, att.countryId, "conquest", `Stormed the enemy capital ${dName} and shattered the realm.`);
+            } else {
+              chronicle(world, oldId, "war", `Lost ${cityOf}${dName} to ${realmName(world, att.countryId)}.`);
+              chronicle(world, att.countryId, "conquest", `Captured ${cityOf}${dName} from ${realmName(world, oldId)}.`);
+            }
+          }
           if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(att.countryId, (g.get(att.countryId) || 0) + 1); }
           def._conqueredAt = world.step;
           def._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue

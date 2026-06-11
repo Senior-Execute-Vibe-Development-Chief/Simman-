@@ -23,6 +23,7 @@
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
 import { grownOwnerAt } from "./countryClaim.js";
+import { chronicle } from "./chronicle.js";
 import { T } from "./tuning.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
@@ -56,6 +57,17 @@ const CLAIM_CAP_FLOOR = 1.5;  // construction 1: even alpine/desert claimable at
 // "straight wall" carving across deserts/ranges). Keeping a little of the terrain
 // gradient lets the border still slump onto the real ridge/desert spine.
 const CLAIM_SOFT      = 0.12;
+// A realm's political claim HUGS habitable land. Beyond the raw transport cost of
+// crossing hostile ground, barren land (deep desert, bare alpine rock) has almost no
+// population to settle, tax or garrison, so a state can't run a border across it the
+// way it runs one up a green river valley or along a coast. We amplify the per-tile
+// CLAIM cost on low-fertility land only (movement and trade are untouched) — which is
+// what carves Egypt-/Chile-style RIBBON realms: the claim runs cheap along the fertile
+// corridor and stalls in the waste. The penalty bites only BELOW the reference
+// fertility (good land and ordinary frontier march pay nothing) and ramps with the
+// square of the shortfall, so only genuine wasteland resists hard.
+const CLAIM_FERT_REF  = 0.12;  // fertility below which hostility starts. Deliberately LOW: only TRUE wasteland (deep desert, bare rock, fert→0) resists. Steppe/savanna/dry marginal land claims at plain transport cost — historically that was LOW-resistance land (open, sparse, nobody to fight), how Russia/the khanates/Sahel states got huge. Fertility caps POPULATION, not political reach.
+const CLAIM_HOSTILITY = 3.0;   // ×(1 + this·deficit²) on barren land: 0 = old isotropic blob, up = tighter river/coast ribbons
 // How far a realm projects a CLAIM also grows with the era. In antiquity a state
 // was an island of territory in a sea of unclaimed land — most of the world
 // belonged to no polity (steppe, forest, desert, the deep interior). The modern
@@ -71,8 +83,51 @@ const LOGI_REACH = 2.2;       // budget ×(1 + logisticsLevel · LOGI_REACH): tr
 // REACH_SIZE_REF, REACH_SIZE_MIN, 1): a fledgling realm projects only a fraction
 // of its tech-reach (no continent-from-three-cities) and earns the full reach as
 // it grows to a continental-scale state.
-const REACH_SIZE_REF = 32;    // settlements for full reach (was 20 — a realm must be bigger before it projects its whole tech-reach, so a few-city state stays regional)
+const REACH_SIZE_REF = 16;    // settlements for full reach (was 32 — but the log2 hold capacity caps realms at ~6–17 members, so the super-linear tail below NEVER FIRED; at 16 full reach + the compounding tail sit inside what a strong realm actually achieves. The original job — a 3-city cradle must not project a continental claim — is still done by the sub-reference ramp)
 const REACH_SIZE_MIN = 0.25;  // a tiny realm still projects at least this fraction
+// Each SETTLEMENT projects reach in proportion to its OWN population, not just the
+// nation's tech. Territory area ∝ basin², so basin ∝ √pop makes a settlement's claim
+// scale with its people: a city of CLAIM_POP_REF wields the full national reach, a
+// frontier hamlet only its neighbourhood. Without it, a realm collapsed to one tiny
+// settlement still projected a continental claim — the modern-era "pop-25 holds the
+// largest territory" artifact (a 25-person hamlet flying a 447-tile border). Floored
+// at the settlement's own ground (integMin), so coverage is never lost.
+const CLAIM_POP_REF = 1000;
+// Past the reference, scale keeps PAYING (sqrt, dampened) instead of clamping to 1.
+// The clamp was an equalizer: a 60-member empire projected the same claim as a
+// 32-member one, so every mature realm converged on the same regional size (the
+// country-size diagnostic showed max/median FALLING 24→2.4 over time, Gini 0.36 —
+// no dominant empires, ever). With the super-linear tail, members → budget →
+// adopted villages → members compounds for the realm that's already winning; the
+// loop stays bounded because member count itself is gated by the log2 hold
+// capacity and secession (conquest.js), so it amplifies a leader without minting
+// an immortal juggernaut.
+const REACH_SIZE_SUPER = 0.7; // budget mult at 4×REF = 1 + (√4−1)·0.7 = ×1.7
+// Continental LOGISTICS (the rail/telegraph era reach multiplier) needs a NETWORK of
+// cities to project: a realm earns the full era-boost only at this many settlements,
+// and a smaller/CRUMBLING realm gets it proportionally — so a modern rump of one or
+// two cities reaches only regionally, not continentally. The hollow-husk fix: a
+// declining empire's claim deflates with it. The 3-seed full-scale review found 9–13
+// under-populated mega-claims per world (e.g. 1217 tiles held by ONE 533-person
+// settlement) — fallen empires still flying an imperial border because the budget
+// tracked TECH, which only ratchets up, not current size. Legit many-member sparse
+// realms (Mongol/thalassocracy) are above the reference and keep full reach.
+const LOGI_SIZE_REF = 12;
+// Personality into the claim: an Expansionist realm (personality.js, −1..1)
+// projects a meaningfully wider political claim, an Insular one pulls in. This is
+// a deliberate ASYMMETRY source — temperament is intrinsic, persistent over
+// centuries and defies geography, so it's what lets two equal-tech neighbours
+// diverge into a sprawling conqueror and a compact homebody (Rome vs the
+// city-states it ate). Appetite only — tech still sets what a realm CAN hold.
+const CLAIM_PERS_SPAN = 0.25; // ±25% budget at the expansionism poles
+// Enclosed-waste fill (the cartographer's rule): interior wasteland wholly
+// surrounded by ONE realm is coloured in — there is no rival claimant by
+// construction, and route/denial control over enclosed waste was real (the
+// Caliphate's inner deserts are drawn solid; Egypt's FRONTIER desert is not —
+// frontier waste still resists via the fertility-hostility, keeping the ribbon).
+// Capped relative to the realm's claimed size so a thin ring can't swallow a
+// continent-sized waste.
+const ENCLOSED_FILL_MAX = 1.0; // max filled-pocket size, × the realm's claimed tile count
 // CAPITAL ANCHOR: a settlement's projected reach falls off with its distance from
 // the capital (see seeding) — the basin HALVES at capDist = ANCHOR_SCALE / anchor
 // tiles, so territory hugs the capital and realms read as compact blobs instead of
@@ -191,7 +246,7 @@ function claimNoise(world) {
 
 // Clean per-country cost-Voronoi → world._countryOwner. Runs on the territory pass.
 export function computeCountryTerritory(world) {
-  const { N, tw, th, elev } = world;
+  const { N, tw, th, elev, fert } = world;
   const resScale = resScaleFor(tw);   // tile budgets are res-relative → keep the same world-fraction at any grid size (see RES_REF_W)
   let co = world._countryOwner;
   if (!co || co.length !== N) co = world._countryOwner = new Int32Array(N);
@@ -202,7 +257,7 @@ export function computeCountryTerritory(world) {
 
   // Per-country reach budget + the knowledge used for edge cost — both taken
   // from the country's most-organised settlement (its de-facto capital).
-  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map();
+  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map(), eraBoost = new Map(), hostOf = new Map();
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless settlements don't seed
     const c = s.countryId;
@@ -221,7 +276,20 @@ export function computeCountryTerritory(world) {
       const cons = (s.knowledge && s.knowledge.construction) || 0;
       const logi = s._techEff ? s._techEff.logisticsLevel : cons * cons;
       const eraMul = 1 + (cons * cons * REACH_ERA) * (1 - T.TECH_EFFECTS) + (logi * LOGI_REACH) * T.TECH_EFFECTS;
-      budget.set(c, (COUNTRY_REACH_BASE + org * COUNTRY_REACH_ORG) * eraMul * resScale);
+      // eraMul (the continental-logistics boost) is applied SIZE-GATED below, so a
+      // one-city rump can't ride modern tech to a continental claim — store the base
+      // reach and the boost separately.
+      budget.set(c, (COUNTRY_REACH_BASE + org * COUNTRY_REACH_ORG) * resScale);
+      eraBoost.set(c, eraMul);
+      // The partition of the wastes is MODERN: pre-industrial states left the
+      // deep desert / high ranges / ice as unclaimed marches (nothing to tax),
+      // but the rail-and-telegraph era abolished terra nullius — straight
+      // treaty lines through the Sahara, watershed conventions through the
+      // Himalaya, polar claims — because empty land was claimed to PREEMPT
+      // rivals once nominal control became projectable. So the barren-land
+      // claim hostility FADES with logistics tech: medieval realms still hug
+      // the rivers; industrial ones partition the wasteland to the midline.
+      hostOf.set(c, CLAIM_HOSTILITY * Math.max(0, 1 - logi));
       claimCap.set(c, CLAIM_CAP_FLOOR + (CLAIM_CAP_CEIL - CLAIM_CAP_FLOOR) * Math.max(0, 1 - cons));
     }
   }
@@ -232,8 +300,17 @@ export function computeCountryTerritory(world) {
   // of its tech-reach and earns the full continental projection only as it grows
   // to REACH_SIZE_REF settlements.
   for (const [c, b] of budget) {
-    const sf = Math.max(REACH_SIZE_MIN, Math.min(1, (members.get(c) || 1) / REACH_SIZE_REF));
-    budget.set(c, b * sf);
+    const mem = members.get(c) || 1;
+    const rel = mem / REACH_SIZE_REF;
+    const sf = rel >= 1
+      ? 1 + (Math.sqrt(rel) - 1) * REACH_SIZE_SUPER   // size keeps paying past the reference (see REACH_SIZE_SUPER)
+      : Math.max(REACH_SIZE_MIN, rel);
+    // Continental logistics needs a network of cities — gate the era-boost by size so
+    // a crumbling / one-city realm reaches only regionally (the hollow-husk fix).
+    const emGated = 1 + ((eraBoost.get(c) || 1) - 1) * Math.min(1, mem / LOGI_SIZE_REF);
+    const pers = world.personalities && world.personalities.get(c);
+    const persMul = pers ? 1 + (pers.expansionism || 0) * CLAIM_PERS_SPAN : 1;
+    budget.set(c, b * emGated * sf * persMul);
   }
   // Ease each country's reach toward that (size-scaled tech) target so territory
   // grows in gradually instead of snapping to a continental claim in one pass
@@ -282,10 +359,15 @@ export function computeCountryTerritory(world) {
     // so we skip the anchor there and let each settlement hold its FULL basin (max
     // coverage), and let the recolor draw the smooth borders.
     const integMin = INTEGRATE_MIN * resScale;   // day-one basin is a tile distance → res-relative
+    // This settlement's OWN reach: the national budget scaled by its size (√pop), but
+    // never below its own ground. A great city wields the full national reach; a
+    // frontier hamlet only its neighbourhood — so claims follow where the PEOPLE are,
+    // and a one-hamlet rump can't fly a continental border.
+    const reach = Math.max(integMin, full * Math.min(1, Math.sqrt((s.people || 0) / CLAIM_POP_REF)));
     const age = world.step - (s._integratedAt ?? -Infinity);
     let sb = age < INTEGRATE_TICKS
-      ? Math.min(full, integMin + Math.max(0, full - integMin) * (age / INTEGRATE_TICKS))
-      : full;
+      ? Math.min(reach, integMin + Math.max(0, reach - integMin) * (age / INTEGRATE_TICKS))
+      : reach;
     if (!_capitalOnly && anchor > 0) {
       const cp = capPos.get(c);
       if (cp) {
@@ -316,17 +398,36 @@ export function computeCountryTerritory(world) {
     ];
     const mul = [1, 1, 1, 1, SQRT2, SQRT2, SQRT2, SQRT2];
     for (let k = 0; k < 8; k++) {
-      const ni = ns[k]; if (ni < 0 || elev[ni] <= 0) continue;
-      let ec = localEdgeCost(world, ti, ni, kn, true);   // roads ignored
-      if (ec === Infinity) continue;
-      if (ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;  // soft cap: ease harsh terrain but keep its gradient (no straight-wall borders)
+      const ni = ns[k]; if (ni < 0) continue;
+      const water = elev[ni] <= 0;                       // sea / lake: traversable but never CLAIMED
+      let ec = localEdgeCost(world, ti, ni, kn, true);   // roads ignored; water → Infinity unless the realm has the nav floor, then the sail cost
+      if (ec === Infinity) continue;                     // pre-naval realms are still walled by the sea
+      // Soft-cap eases harsh TERRAIN so mountains don't hard-wall a border — but
+      // NOT water: the steep sail cost (× budget) is what confines a realm to short
+      // crossings (a strait, an enclosed sea) and keeps it out of the open ocean.
+      if (!water && ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;
+      // Ribbon-hug: barren (low-fertility) land — deep desert, bare alpine rock — has
+      // no population to settle or garrison, so a border barely crosses it. Amplify the
+      // CLAIM cost there (only below CLAIM_FERT_REF, ∝ shortfall²) so a realm runs a long
+      // thin claim up a green river/coast and stalls in the waste. Water is exempt.
+      // Per-claimant: the hostility fades with the realm's logistics tech (hostOf —
+      // the modern partition of the wastes; see the seeding loop).
+      const host = hostOf.get(c) ?? CLAIM_HOSTILITY;
+      if (!water && host > 0) {
+        const fdef = (CLAIM_FERT_REF - (fert ? fert[ni] : CLAIM_FERT_REF)) / CLAIM_FERT_REF;
+        if (fdef > 0) ec *= 1 + host * fdef * fdef;
+      }
       ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);     // organic meander → borders wander instead of cutting straight
       const nd = d + ec * mul[k];
-      if (nd > basinBud) continue;                       // basin's (recency-limited) reach budget
-      if (nd < cost[ni]) { cost[ni] = nd; co[ni] = c; seedBud[ni] = basinBud; heap.push(ni, nd, c); }
+      if (nd > basinBud) continue;                       // basin's (recency-limited) reach budget — also caps how far a realm sails its border
+      // Claim LAND; a water tile only propagates the cost frontier (a navy crossing
+      // it), so the two shores of a narrow sea knit into ONE contiguous realm
+      // without the sea itself flying a flag.
+      if (nd < cost[ni]) { cost[ni] = nd; if (!water) co[ni] = c; seedBud[ni] = basinBud; heap.push(ni, nd, c); }
     }
   }
   if (_capitalOnly) recolorByCapital(world, co, capPos, knOf, claimCap);
+  fillEnclosedWaste(world, co);
   closeRealmGaps(world, co, T.REALM_GAP_FILL);
   smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0);
   return co;
@@ -385,6 +486,51 @@ function recolorByCapital(world, co, capPos, knOf, claimCap) {
     }
   }
   for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && capColor[ti] >= 0) co[ti] = capColor[ti];
+}
+
+// ── Enclosed-waste fill (the cartographer's rule) ──────────────────────
+// Flood each UNCLAIMED land pocket (4-neighbour, x wraps; water and the poles
+// seal). A pocket bordered by exactly ONE country — no rival claimant — is
+// coloured in as that country's interior waste, capped at ENCLOSED_FILL_MAX ×
+// the realm's claimed size. Pockets touching two countries (a contested march)
+// or the open wilderness (frontier waste) stay wild — that's what keeps the
+// Nile a ribbon while the Caliphate's inner desert is drawn solid. Filled
+// tiles keep cost=Infinity: they're assertion, not administration, and the
+// secession pass already treats settlement-less tiles as inert (conquest.js
+// looseAt: no administering basin → never loose).
+function fillEnclosedWaste(world, co) {
+  const { N, tw, th, elev } = world;
+  let seen = world._wasteSeen;
+  if (!seen || seen.length !== N) seen = world._wasteSeen = new Uint8Array(N);
+  seen.fill(0);
+  const claimed = new Map();
+  for (let ti = 0; ti < N; ti++) { const c = co[ti]; if (c >= 0) claimed.set(c, (claimed.get(c) || 0) + 1); }
+  if (claimed.size === 0) return;
+  const stack = [], comp = [];
+  for (let i = 0; i < N; i++) {
+    if (seen[i] || co[i] >= 0 || elev[i] <= 0) continue;
+    comp.length = 0; stack.length = 0;
+    stack.push(i); seen[i] = 1;
+    let border = -2;                       // -2 none yet · -1 contested (≥2 realms)
+    while (stack.length) {
+      const ti = stack.pop(); comp.push(ti);
+      const y = (ti / tw) | 0, x = ti - y * tw;
+      const ns4 = [
+        y * tw + ((x + 1) % tw), y * tw + ((x - 1 + tw) % tw),
+        y > 0 ? ti - tw : -1, y < th - 1 ? ti + tw : -1,
+      ];
+      for (let k = 0; k < 4; k++) {
+        const ni = ns4[k];
+        if (ni < 0 || elev[ni] <= 0) continue;             // pole / water seals
+        const oc = co[ni];
+        if (oc >= 0) { if (border === -2) border = oc; else if (border !== oc) border = -1; continue; }
+        if (!seen[ni]) { seen[ni] = 1; stack.push(ni); }
+      }
+    }
+    if (border < 0) continue;              // open, island, or contested — stays wild
+    if (comp.length > (claimed.get(border) || 0) * ENCLOSED_FILL_MAX) continue;
+    for (let k = 0; k < comp.length; k++) co[comp[k]] = border;
+  }
 }
 
 // ── Border smoothing ─────────────────────────────────────────────────────────
@@ -642,6 +788,7 @@ export function nucleateFrontierStates(world) {
     for (const p of placed) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; if (dx * dx + dy * dy < (NUCLEATE_R * 2) ** 2) { tooClose = true; break; } }
     if (tooClose) continue;
     s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
+    chronicle(world, s.id, "founding", `${s.name || "A frontier town"} declared itself a sovereign realm.`);
     placed.push({ x: s.pos.x, y: s.pos.y }); n++;
   }
 }

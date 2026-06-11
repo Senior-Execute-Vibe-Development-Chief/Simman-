@@ -14,11 +14,11 @@
 
 import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.js";
 import { shockUnrest } from "./shocks.js";
-import { localPByCountry } from "./inflation.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, prunePersonalities, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
 import { techEff } from "./settlement.js";
+import { chronicle, realmName, archiveChronicle } from "./chronicle.js";
 import { T } from "./tuning.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
@@ -96,6 +96,18 @@ const _cityEnclaveOff = (typeof process !== "undefined" && process.env && proces
 const WAR_SURCHARGE = 1.2;  // each level of war (defensive front / besieged capital) multiplies the army bill
 const RESERVE_PASSES = 3;   // war-chest the state keeps (passes of peacetime army pay) before funding works
 const SOLVENCY_FLOOR = 0.5; // a fully bankrupt state still retains this fraction of its control budget
+// ── Debasement (Currency Phase 3) ──────────────────────────────────────
+// A state that can't cover its army bill melts down the coinage — strikes
+// lighter coins for emergency revenue (seigniorage). Its currency FINENESS
+// falls, which weakens its foreign trade (roads.js reads gov.fineness), but the
+// minted coin keeps the army paid a while longer — the classic war-finance
+// spiral (Rome's denarius, every cash-strapped medieval crown). Solvent states
+// slowly restore the coinage toward full fineness. T.DEBASE_AGGRO gates it.
+const DEBASE_STEP       = 0.03;  // fineness lost per pass while debasing
+const DEBASE_SEIGN_SCALE = 10;   // seigniorage = (fineness drop) × army bill × this — so revenue is
+                                 // tied to the DROP and self-limits at the floor (no infinite minting)
+const DEBASE_RECOVER    = 0.012; // fineness restored per pass when comfortably solvent
+const FINENESS_MIN      = 0.35;  // floor — even a desperate mint keeps some metal in the coin
 
 // ── Variable taxation ─────────────────────────────────────────────────
 // The tax rate climbs under fiscal stress (war + insolvency) toward a cap — a
@@ -141,7 +153,7 @@ const SPOILS_DECAY = 0.85;   // war-weariness relief (banked on conquest in armi
 export function govOf(world, countryId) {
   if (!world.governments) world.governments = new Map();
   let g = world.governments.get(countryId);
-  if (!g) { g = { treasury: 0, _revenue: 0, _spend: 0 }; world.governments.set(countryId, g); }
+  if (!g) { g = { treasury: 0, _revenue: 0, _spend: 0, fineness: 1.0 }; world.governments.set(countryId, g); }
   return g;
 }
 
@@ -465,6 +477,12 @@ export function rebuildCountries(world) {
     c.hue = ((c.id * 61) % 360 + 360) % 360;
     buildHierarchy(world, c);
     assignProvinces(world, c);
+  }
+  // Archive the chronicle of any realm that vanished this pass (its id is now held
+  // by no settlement → conquered/dissolved) so fallen empires keep their history.
+  // Done before the swap so the dead realm's name still resolves from the old map.
+  if (world._chronicles) {
+    for (const cid of world._chronicles.keys()) if (!countries.has(cid)) archiveChronicle(world, cid, "Conquered and erased from the map.");
   }
   world.countries = countries;
   return countries;
@@ -844,6 +862,8 @@ function shedPatch(world, c, members) {
       m._conqueredAt = world.step;                 // anti-flicker grace
       if (m.history) m.history.push({ step: world.step, type: m === seat ? "seceded" : "joined-secession", to: newId });
     }
+    chronicle(world, c.id, "secession", `Province ${(seat && seat.name) || "a city"} rose in revolt and broke away.`);
+    chronicle(world, newId, "founding", `Broke away from ${realmName(world, c.id)} in a war of secession.`);
   }
 }
 
@@ -1030,7 +1050,10 @@ function disburseTreasury(world, c, gov, warLevel) {
   // (inflation.js). An inflated economy needs more coin to pay the same
   // soldiers — Spain-after-Potosí dynamics — and the war-chest grows with
   // the wage bill so a state still has a couple of passes' buffer at any P.
-  const realmP = localPByCountry(world, c);
+  // (b) NOMINAL-inflation model: army wages are REAL (base), not × the price
+  // level — the absolute money supply doesn't bankrupt states. (localP still
+  // drives Hume + the ticker; debasement's bite comes via FX/seigniorage later.)
+  const realmP = 1;
   // Wages also scale with the AVERAGE TIER of the realm. A village's
   // soldiers are cheap militia (food + a little equipment), while a city
   // fields professional infantry that demand real pay. Without this, tiny
@@ -1059,6 +1082,20 @@ function disburseTreasury(world, c, gov, warLevel) {
   let totalArmy = 0;
   for (const s of members) if (s.countryId === c.id) totalArmy += s.army || 0;
   const armyBill = totalArmy * wage * (1 + effSurcharge * (warLevel || 0));
+  // DEBASEMENT (Phase 3): if the treasury can't cover the army bill, melt the
+  // coinage — mint emergency seigniorage (lowering fineness) to ease the
+  // shortfall; in comfortable times restore the coin toward full fineness.
+  if (T.DEBASE_AGGRO > 0 && armyBill > 0.01) {
+    const f0 = gov.fineness ?? 1;
+    if (gov.treasury < armyBill && f0 > FINENESS_MIN) {
+      const f1 = Math.max(FINENESS_MIN, f0 - DEBASE_STEP * T.DEBASE_AGGRO);
+      gov.fineness = f1;
+      const seigniorage = (f0 - f1) * armyBill * DEBASE_SEIGN_SCALE;   // ∝ the DROP → self-limits at the floor
+      gov.treasury += seigniorage; gov._revenue += seigniorage;
+    } else if (gov.treasury > armyBill * RESERVE_PASSES * 1.5 && f0 < 1) {
+      gov.fineness = Math.min(1, f0 + DEBASE_RECOVER);
+    }
+  }
   const armyPaid = Math.min(Math.max(0, gov.treasury), armyBill);
   gov._solvency = armyBill > 0.01 ? armyPaid / armyBill : 1;   // 1 = fully paid; < 1 = arrears
   if (armyPaid > 0 && totalArmy > 0) {
@@ -1154,10 +1191,16 @@ const POL_MUL = [1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2];
 function capitalTransportCosts(world, c) {
   const { tw, th } = world;
   const cap = c.capital;
-  // Pass navigation ONLY — strips the land tech-multipliers, keeps the
-  // water-embarkation gate. Land = baseEdgeCost; water = navigable iff
-  // nav ≥ 0.2 and at a cost that falls from ~12 to ~3 as nav rises.
-  const kn  = { navigation: (cap.knowledge && cap.knowledge.navigation) || 0 };
+  // Pass navigation + mobility ONLY — strips the generic land tech-multipliers
+  // (construction's road discount is budget-side), but keeps the two
+  // "environment becomes a highway" techs: navigation opens the SEA lane
+  // (embarkation gate; cost ~12→3 as nav rises) and mobility opens the STEPPE
+  // (open flat country rides at a fraction of foot cost — the yam-relay reach
+  // that let horse empires hold provinces across distances no foot bureaucracy
+  // could). Mobility's generic wagon discount also rides in (≤30% — fair:
+  // mounted couriers extended every empire's reach somewhat).
+  const kn  = { navigation: (cap.knowledge && cap.knowledge.navigation) || 0,
+                mobility:   (cap.knowledge && cap.knowledge.mobility)   || 0 };
   // Major-river crossings are tracked SEPARATELY (full-weight barrier, not
   // halved with generic terrain) and bridged down by the capital's
   // construction tech — see majorRiverToll.
@@ -1300,8 +1343,19 @@ export function updatePolities(world) {
     // plague, a sacked throne) shrinks capacity and the frontier sheds — and an
     // empire that conquers past this budget holds the excess only on pacification
     // grace, then fragments back toward it once the conquest stalls.
-    const peaceCapacity = CAP_K * Math.log2(1 + capPower / POW_REF)
-                        + Math.min(SEAT_BONUS_CAP, seatBonus);
+    //
+    // INSTITUTIONS move the ceiling itself (T.CAP_INST). The log2 keeps any
+    // GIVEN institutional level out-conquerable (no immortal juggernaut), but
+    // historically the curve ROSE with each delegation revolution — Assyria's
+    // provincial system, the satrapies, Rome's governors, Han commanderies —
+    // and a fixed coefficient pinned every era to "~a dozen seats" (the
+    // uniform-empire-size finding, tools/diag_countries.mjs). capCoh is the
+    // cohesion tech channel (mysticism → code of laws → feudalism → democracy
+    // → telegraph), so the multiplier climbs exactly when bureaucracy is
+    // invented; it scales the seat cap too — satrapies ARE the delegation.
+    const instMul = 1 + capCoh * T.CAP_INST;
+    const peaceCapacity = CAP_K * instMul * Math.log2(1 + capPower / POW_REF)
+                        + Math.min(SEAT_BONUS_CAP * instMul, seatBonus);
 
     // ── War duress: throttle the budget while the realm is fighting ────
     // (fronts are tallied in armies.js advanceFronts → world._fronts.)
@@ -1500,7 +1554,7 @@ export function updatePolities(world) {
         if (food > 0) { c.capital.food -= food; s.food = (s.food || 0) + food; }
         // Colony subsidy scales with the realm's price level so a settlement
         // founded in an inflated economy gets a real (P-adjusted) endowment.
-        const grant = COLONY_SUPPLY_COIN * localPByCountry(world, c);
+        const grant = COLONY_SUPPLY_COIN;   // (b) real terms, not × the price level
         const coin = Math.min(grant, Math.max(0, gov.treasury));
         if (coin > 0) { gov.treasury -= coin; s.wealth = (s.wealth || 0) + coin; recordIn(s, IN_AID, coin); }
         continue;                                   // subsidised, not taxed
@@ -1521,6 +1575,7 @@ export function updatePolities(world) {
     // works/dole → provinces). Balanced budget ⇒ the throne stops hoarding.
     disburseTreasury(world, c, gov, warLevel);
     c._treasury = gov.treasury;
+    c._fineness = gov.fineness ?? 1;   // currency strength (1 = full metal; < 1 = debased) — for the UI
     c._govRevenue = gov._revenue; gov._revenue = 0;   // per-pass revenue, for the panel
     c._govSpend = gov._spend;
 
@@ -1692,6 +1747,15 @@ function absorbWeakNeighbors(world, countries) {
     const oldCC = m.countryId;
     m.countryId = bestId;
     recordOccupation(m, oldCC, bestId, world.step);   // absorbed people keep their homeland identity
+    {
+      const mName = m.name || "a settlement";
+      if (oldCC < 0) {
+        chronicle(world, bestId, "annex", `The free settlement ${mName} joined the realm.`);
+      } else {
+        chronicle(world, bestId, "annex", `Peacefully absorbed ${mName} from ${realmName(world, oldCC)}.`);
+        chronicle(world, oldCC, "loss", `Ceded ${mName} to ${realmName(world, bestId)}.`);
+      }
+    }
     if (world.debug && world.debug.land) { world.debug.land.absorb++; const g = world.debug.land.gain; g.set(bestId, (g.get(bestId) || 0) + 1); }
     m.loyalty = 0.6;                          // absorbed, not yet truly part of the realm
     m._conqueredAt = world.step;              // brief grace to settle in

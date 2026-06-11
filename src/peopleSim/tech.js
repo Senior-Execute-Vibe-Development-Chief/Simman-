@@ -7,13 +7,15 @@
 // Bronze Working; Gunpowder needs the Blast Furnace and Alchemy; Steam Power
 // needs Clockwork and the Scientific Method).
 //
-// It needs no resource lookup because the resource-gated tracks already encode
-// their inputs in their LEVEL: metallurgy is hard-gated by ore (copper → bronze
-// → iron → steel access), navigation by water, mobility by horses. So the six
-// knowledge values alone place a culture on the tree — a landlocked, ore-poor
-// people simply never lights up the naval or metal branches, exactly as
-// geography dictated in history (Diamond). Pure legibility: the tree changes
-// nothing in the sim, it only VISUALISES the knowledge a settlement holds.
+// It needs no resource lookup because the knowledge values already encode their
+// inputs in their LEVEL: navigation by water, mobility by horses (no sea/horses,
+// the technique never even diffuses in). Metallurgy is the one split case — its
+// KNOWLEDGE spreads by contact (a connected ore-poor people DOES light up the
+// metal branch here: it knows how iron is worked), but the metal BONUSES are
+// computed from a capability-capped view of metallurgy (settlement.js practisedK
+// → only the ore you can reach lets you forge it). So the tree is pure
+// legibility — it VISUALISES what a culture KNOWS — while geography still decides
+// what it can DO with that knowledge, exactly as history dictated (Diamond).
 //
 // The eras span the reachable arc — from knapped flint to the early-modern /
 // industrial frontier the knowledge model tops out at (organization ≈ science

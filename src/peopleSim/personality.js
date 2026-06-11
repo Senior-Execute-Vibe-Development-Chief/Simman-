@@ -315,13 +315,16 @@ export function commerceMul(p) {
   return 1 + p.commerce * (0.80 / (2 * 1.20));
 }
 
-// Administrative reach: an expansionist realm projects authority a little
-// farther; an inward (negative) one pulls in. Deliberately MILD — knowledge
-// sets the real reach; personality only colours it. (RANGE_* in conquest.js
-// are ×1.02.)
+// Administrative reach: an expansionist realm projects authority farther; an
+// inward (negative) one pulls in. Widened from the original mild ±17% to ±27%:
+// temperament is the sim's persistent, geography-defying asymmetry, and with
+// tech levels converging by diffusion it's what lets one of two equal-tech
+// realms become the sprawling conqueror while the other stays a compact
+// homebody. Knowledge still sets the scale; personality picks who pushes it.
+// (RANGE_* in conquest.js are ×1.02.)
 export function expansionReachMul(p) {
   if (!p) return 1;
-  return 1 + p.expansionism * (0.34 / (2 * 1.02));
+  return 1 + p.expansionism * (0.55 / (2 * 1.02));
 }
 
 // Colony drive: how eager a realm is to seed overseas/frontier colonies; an

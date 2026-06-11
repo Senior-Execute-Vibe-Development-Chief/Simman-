@@ -20,6 +20,7 @@
 // edge (you tax/own the whole territory even if you don't farm it).
 
 import { localEdgeCost } from "./transport.js";
+import { forEachNear } from "./spatialGrid.js";
 import { T } from "./tuning.js";
 
 // Reach budget, in transport-cost units (a plain tile = 1.0). Pure
@@ -47,6 +48,13 @@ import { T } from "./tuning.js";
 const TERRITORY_BASE = 5;
 // ORG_REACH -> runtime lever (tuning.js T.ORG_REACH)
 export function reachBudget(s) {
+  // URBAN_NODES: towns/cities (tier 1+) are urban nodes, not farmland owners —
+  // they keep only their guaranteed core block, so the whole rural catchment
+  // falls to the tier-0 Farming Regions (which feed them via the hierarchy).
+  // Zero economic reach → the cost-Dijkstra adds nothing beyond the core. This
+  // touches ONLY the economic catchment; the political border layer
+  // (countryTerritory.js) has its own capital-anchored reach and is unaffected.
+  if (T.URBAN_NODES && (s.tier | 0) >= 1) return 0;
   // Admin reach now comes from the reach techs (tech.js) via the settlement's
   // cached effects (reachLevel tracks organization); falls back to continuous
   // organization if the cache isn't computed yet.
@@ -85,6 +93,11 @@ const SQRT2 = Math.SQRT2;
 const CORE_BY_TIER = [1, 2, 3, 4];
 export function coreRadiusFor(s) {
   const t = s.tier | 0;
+  // URBAN_NODES: a town/city is a NODE — its land is just a tight built-up
+  // footprint (the city sits ON the land, it doesn't farm a heartland). Keeping
+  // the big tier-scaled core would leave a city occupying a chunk of farmland;
+  // a radius-1 block (the urban core) hands the rest to the Farming Regions.
+  if (T.URBAN_NODES && t >= 1) return 1;
   return CORE_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
 }
 
@@ -97,6 +110,9 @@ export function coreRadiusFor(s) {
 const HINTERLAND_BY_TIER = [3, 4, 6, 8];
 export function hinterlandRadiusFor(s) {
   const t = s.tier | 0;
+  // URBAN_NODES: a town/city gets no guaranteed farmland belt beyond its core —
+  // the countryside belongs to the Farming Regions (see reachBudget).
+  if (T.URBAN_NODES && t >= 1) return coreRadiusFor(s);
   const base = HINTERLAND_BY_TIER[t < 0 ? 0 : t > 3 ? 3 : t];
   const mul = T.LOCALITY_MODE ? T.HINTERLAND_MULT * Math.max(1, T.LOCALITY_SPACING || 3) : T.HINTERLAND_MULT;
   return Math.max(coreRadiusFor(s), Math.round(base * mul));
@@ -137,9 +153,17 @@ export function computeTerritory(world) {
   // wilderness, so neighbours can grow into the vacated land. Also
   // release any WATER tiles that lingered from an older code path —
   // borders shouldn't bleed into the ocean.
+  // URBAN_NODES: also release land held by tier-1+ NODES (a settlement keeps the
+  // catchment it claimed while still a tier-0 village even after it grows into a
+  // city — ownership is persistent — so without this the change is inert). Their
+  // CORE is re-stamped immediately below; the rest returns to wilderness for the
+  // Farming Regions to reclaim.
+  const releaseNodes = !!T.URBAN_NODES;
   for (let ti = 0; ti < N; ti++) {
     const o = owner[ti];
-    if (o >= 0 && (!byId.has(o) || world.elev[ti] <= 0)) owner[ti] = -1;
+    if (o < 0) continue;
+    if (!byId.has(o) || world.elev[ti] <= 0) { owner[ti] = -1; continue; }
+    if (releaseNodes) { const os = byId.get(o); if (os && (os.tier | 0) >= 1) owner[ti] = -1; }
   }
 
   // Guarantee each settlement its (tier-sized) core block, carving it from a
@@ -254,6 +278,36 @@ export function computeTerritory(world) {
   }
 
   tallyTerritory(world, owner, cost, byId);
+  if (T.URBAN_NODES) assignMinesByProximity(world, byId);
+}
+
+// URBAN_NODES: a mine is worked by whoever is NEAREST, not by who owns the
+// (usually infertile, now-unclaimed) mountain it sits on — so the specie supply
+// no longer collapses when cities stop owning broad reach-domains. This decouples
+// minting from the farming catchment: the countryside (or a nearby city) works
+// each deposit, and the silver spreads through trade, as it did historically.
+const MINE_RANGE = 8;    // tiles within which a settlement works a mine (≈ a settlement's natural
+                         // territory radius, so the worked-mine count — and thus the money supply —
+                         // tracks the owned-territory baseline instead of minting every mountain)
+function assignMinesByProximity(world, byId) {
+  // Mine-tile list (precious/gems deposits), built once and cached.
+  if (!world._mineTiles) {
+    const list = [];
+    const dep = world.deposits || {};
+    for (const id of ["precious", "gems"]) {
+      const arr = dep[id]; if (!arr) continue;
+      for (let ti = 0; ti < world.N; ti++) if (arr[ti] > 0.05) list.push([ti, id]);
+    }
+    world._mineTiles = list;
+  }
+  if (!world._settGrid) return;   // need the spatial index (built each tick before territory)
+  const tw = world.tw;
+  for (const m of world._mineTiles) {
+    const ti = m[0], mx = ti % tw, my = (ti / tw) | 0;
+    let best = null, bestD = Infinity;
+    forEachNear(world, mx + 0.5, my + 0.5, MINE_RANGE, (s, d2) => { if (d2 < bestD) { bestD = d2; best = s; } });
+    if (best) best._minableTiles.push(m);
+  }
 }
 
 // Walk every claimed tile once and accumulate each owner's food / resource
@@ -291,8 +345,13 @@ function tallyTerritory(world, owner, cost, byId) {
         const v = arr[ti] || 0;
         if (v > (acc[id] || 0)) acc[id] = v;
       }
-      if (deposits.precious && deposits.precious[ti] > 0.05) s._minableTiles.push([ti, "precious"]);
-      if (deposits.gems && deposits.gems[ti] > 0.05) s._minableTiles.push([ti, "gems"]);
+      // URBAN_NODES assigns mines by PROXIMITY (assignMinesByProximity) instead of
+      // ownership — a node city owns no mountains, so owned-tile mining would zero
+      // the money supply. Skip the owned-tile mineral grab in that mode.
+      if (!T.URBAN_NODES) {
+        if (deposits.precious && deposits.precious[ti] > 0.05) s._minableTiles.push([ti, "precious"]);
+        if (deposits.gems && deposits.gems[ti] > 0.05) s._minableTiles.push([ti, "gems"]);
+      }
     }
     // Borders: compare right + down neighbours (x wraps).
     const ty = (ti / tw) | 0, tx = ti - ty * tw;

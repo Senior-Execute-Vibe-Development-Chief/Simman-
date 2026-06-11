@@ -16,6 +16,7 @@
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { getTradeProfile } from "./peopleSim/settlement.js";
 import { displayPByCountry } from "./peopleSim/inflation.js";
+import { getChronicle, realmName } from "./peopleSim/chronicle.js";
 import { applyTuning, resetTuning } from "./peopleSim/tuning.js";
 
 let world = null;
@@ -159,11 +160,19 @@ function buildSnapshot() {
     }
   }
 
-  // Selected settlement: full detail for the info card.
-  let selected = null;
+  // Selected settlement: full detail for the info card, plus its realm's
+  // chronicle (per-country history) so the card can show the realm's story.
+  // Both are sent only while a settlement is inspected.
+  let selected = null, chronicle = null;
   if (selId >= 0 && world._byId) {
     const s = world._byId.get(selId);
-    if (s && s.mode === "settled") selected = packSelected(s);
+    if (s && s.mode === "settled") {
+      selected = packSelected(s);
+      if (s.countryId >= 0) {
+        const log = getChronicle(world, s.countryId);
+        if (log && log.length) chronicle = { countryId: s.countryId, name: realmName(world, s.countryId), entries: log.slice(-60) };
+      }
+    }
   }
 
   // Transferable copies of the big per-tile arrays (zero-copy move to main).
@@ -238,5 +247,6 @@ function buildSnapshot() {
     ships: world.ships ? world.ships.map(sh => ({ x: sh.x, y: sh.y, landTi: sh.landTi, countryId: sh.countryId })) : null,
     armies: world.armies ? world.armies.map(m => ({ x: m.x, y: m.y, countryId: m.countryId, troops: m.troops })) : null,
     selected,
+    chronicle,
   }, transfer);
 }

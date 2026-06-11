@@ -48,7 +48,8 @@ import { T } from "./tuning.js";
 import { exportValueOf, getWealthReserve } from "./settlement.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
-import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
+import { localP } from "./inflation.js";
+import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_MATERIALS, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_MATERIALS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
 
 // ── Constants ──────────────────────────────────────────────────────
 const QUALITY_NEW         = 0.25;       // new road: 4× cheaper than plain
@@ -330,9 +331,19 @@ export function buildNetworkComponents(world) {
 
 // ── Trade-reach: per-settlement Dijkstra through road network ──
 
+// A navigable-river tile is a cheap trade corridor in its own right (a boat on the
+// Nile / Rhine / Yangtze), so the reach Dijkstra flows along great rivers even with
+// no road on them — dearer than a worn arterial, far cheaper than bare land.
+const RIVER_STEP = 0.10;
+
+// Steamship-era throughput: a sea link's volume multiplier grows up to ×(1+this)
+// with the endpoints' seaSpeed tech, so the maritime share of trade RISES with
+// era (sail ≈ T.SEA_TRADE_MULT, full steam ≈ 2.5× that) instead of staying flat.
+const SEA_TECH_VOL = 1.5;
+
 function computeReach(world, s, stMap) {
   const reach = new Map();
-  const { tw, th, roadQuality: rq, N } = world;
+  const { tw, th, roadQuality: rq, N, riverMag, elev } = world;
   const startTi = (s.pos.y | 0) * tw + (s.pos.x | 0);
   // A tier-0 VILLAGE keeps only its nearest T.VILLAGE_PARTNERS partners (local
   // market trade) instead of the whole network. Same toll/tariff/tax machinery
@@ -369,6 +380,11 @@ function computeReach(world, s, stMap) {
       while (cur !== -1) { tiles.push(cur); if (cur === startTi) break; cur = prev[cur]; }
       tiles.reverse();
       const link = { cost: d, tiles };
+      // River lane: if a good share of the path runs along a navigable river, the
+      // link carries boosted volume (T.RIVER_TRADE_MULT), the way sea links do.
+      let rvt = 0;
+      for (let j = 0; j < tiles.length; j++) { const t = tiles[j]; if (riverMag && riverMag[t] >= 3 && elev[t] > 0) rvt++; }
+      if (tiles.length > 0 && rvt >= tiles.length * 0.35) link.river = true;
       link.inter = intermediatesOnPath(link, s.id, peer.id, stMap);
       reach.set(peer.id, link);
       if (reach.size >= cap) break;              // nearest-first; we have enough (villages: fewer — see cap)
@@ -392,8 +408,9 @@ function computeReach(world, s, stMap) {
       const ni = ns[k];
       if (ni < 0) continue;
       const isRoad = rq[ni] < 1.0;
-      if (!isRoad && !stMap.has(ni)) continue;
-      const nd = d + (isRoad ? rq[ni] : 0.15) * mul[k];
+      const isRiver = !isRoad && riverMag && riverMag[ni] >= 3 && elev[ni] > 0;   // navigable river = cheap corridor, no road needed
+      if (!isRoad && !isRiver && !stMap.has(ni)) continue;
+      const nd = d + (isRoad ? rq[ni] : isRiver ? RIVER_STEP : 0.15) * mul[k];
       if (seen[ni] !== stamp || nd < dist[ni]) {
         dist[ni] = nd; seen[ni] = stamp; prev[ni] = ti;
         heap.push(ni, nd);
@@ -902,15 +919,60 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
   // stride× volume + freight: this sweep stands in for `stride` ticks, so it
   // moves that many ticks' worth of goods (and pays that much freight), keeping
   // the average flow identical to the old every-tick pass.
-  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride;
+  // Maritime trade moved BULK far cheaper than ox-carts, so a sea lane carries
+  // several times the volume of the same overland link (T.SEA_TRADE_MULT) — the
+  // reason the great trading powers were ports. Without it ocean routes carried
+  // ~4% of all money flow. (Mirrors the grain trade's FOOD_HAUL_WATER bonus.)
+  // Ship TECH multiplies it further (caravels → steamships): historically the
+  // sea's share of trade ROSE with era — by 1900 intercontinental trade was
+  // effectively all seaborne — but with a flat multiplier the share stayed
+  // ~20-28% from medieval to modern (land roads kept pace). seaSpeed is the
+  // throughput proxy; the better-shipped endpoint sets the carrier.
+  const shipTech = link.sea
+    ? Math.max((a._techEff && a._techEff.seaSpeed) || 0, (b._techEff && b._techEff.seaSpeed) || 0) : 0;
+  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride * (world._dt || 1)   // granularity: finer trade per tick
+    * (link.sea ? T.SEA_TRADE_MULT * (1 + SEA_TECH_VOL * shipTech) : link.river ? T.RIVER_TRADE_MULT : 1);
   const transport = link.cost * TRANSPORT_PER_PATHCOST * stride;
   const intermediates = link.inter || null;          // precomputed at reach build
   const numInter = intermediates ? intermediates.length : 0;
-  // A's goods sold to B (B pays A), then B's goods sold to A (A pays B).
-  // Each leg scales with the BUYER's buying power, so a rich node imports more
-  // and relays its coin onward. Freight is split across the two legs.
-  sellGoods(world, a, b, exportValueOf(a, world) * vol * demandMul(b), transport * 0.5, intermediates, numInter);
-  sellGoods(world, b, a, exportValueOf(b, world) * vol * demandMul(a), transport * 0.5, intermediates, numInter);
+  // HUME price-specie-flow (Currency Phase 2): a region's export COMPETITIVENESS
+  // scales with how cheap it is vs its trade partner. A specie-rich region has a
+  // high price level (localP), so its goods are dear — it exports LESS and (as
+  // the partner's cheap goods undersell it) imports MORE, bleeding specie until
+  // its prices fall back. The scaling is RECIPROCAL (compA·compB = 1), so it
+  // shifts the trade BALANCE without changing total volume: specie self-
+  // distributes across regions and none hoards unboundedly. (Self-correcting, so
+  // it bounds the price-level spread rather than expanding the money supply —
+  // which is why it doesn't need the inflation-neutrality work.)
+  let compA = 1, compB = 1;
+  if (T.HUME_ELASTICITY > 0) {
+    const Pa = localP(world, a), Pb = localP(world, b);
+    if (Pa > 0 && Pb > 0 && Pa !== Pb) { compA = Math.pow(Pb / Pa, T.HUME_ELASTICITY); compB = 1 / compA; }
+  }
+  // FX / exchange rate (Currency Phase 4): on a FOREIGN purchase the buyer pays
+  // the exchange rate = seller's currency ÷ buyer's (their fineness ratio). A
+  // debased (weak-currency) buyer pays DEARER for imports and so affords fewer,
+  // while a strong-currency realm's coin buys more abroad; the premium is a
+  // conserved transfer to the seller (strong currencies profit from the exchange
+  // trade). Gently capped so debasement bites without a death-spiral. This is the
+  // proper exchange-rate version of the Phase-3 crude foreign-trade penalty.
+  // A's goods to B (buyer B), then B's to A (buyer A).
+  sellGoods(world, a, b, exportValueOf(a, world) * vol * demandMul(b) * compA * fxRate(world, b, a), transport * 0.5, intermediates, numInter);
+  sellGoods(world, b, a, exportValueOf(b, world) * vol * demandMul(a) * compB * fxRate(world, a, b), transport * 0.5, intermediates, numInter);
+}
+
+// Exchange rate applied to a foreign purchase: seller's-currency ÷ buyer's
+// (fineness ratio), so a weak-currency buyer pays more per unit. 1 for domestic
+// trade; gently capped to [0.8, 1.3] so a debased realm's terms of trade worsen
+// without spiralling. Reads fineness directly (no gov creation for stateless).
+function fxRate(world, buyer, seller) {
+  if (buyer.countryId === seller.countryId || !world.governments) return 1;
+  const gb = world.governments.get(buyer.countryId), gs = world.governments.get(seller.countryId);
+  const fb = gb && gb.fineness !== undefined ? gb.fineness : 1;
+  const fs = gs && gs.fineness !== undefined ? gs.fineness : 1;
+  if (fb === fs) return 1;
+  const r = fs / fb;
+  return r < 0.8 ? 0.8 : r > 1.3 ? 1.3 : r;
 }
 
 // Luxury trade: a wealthy settlement spends coin importing luxury goods
@@ -967,16 +1029,32 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   buyer.wealth -= actual;
   const paid = goodsValue * scale;
   seller.wealth = (seller.wealth || 0) + paid;
-  // Book the trade by SECTOR: the seller's agrarian fraction (computeExportValue)
-  // is farm produce — booked "food & farm goods"; the rest is manufactured wares —
-  // booked "goods". So a Farming Region reads as a farmer selling grain/livestock,
-  // a town as a workshop selling crafts.
-  const agFrac = seller._exportAgrarianFrac != null ? seller._exportAgrarianFrac : 1;
-  const agPaid = paid * agFrac;
-  recordIn(seller, IN_FOOD, agPaid);
-  recordIn(seller, IN_GOODS, paid - agPaid);
-  recordOut(buyer, OUT_FOOD, agPaid);
-  recordOut(buyer, OUT_GOODS, paid - agPaid);
+  // FREIGHT is the carrier's fee, NOT money burned (Phase 1): credit it to the
+  // seller's shipping/merchant sector (the "carrying trade" that enriched ports)
+  // so the closed specie supply is conserved. The supply is instead regulated by
+  // the realistic COIN_LOSS_RATE drain + depleting mines, not this burn.
+  const freightPaid = freight * scale;
+  if (freightPaid > 0) seller.wealth += freightPaid;
+  // Book the trade by SECTOR (computeExportValue split the seller's exports into
+  // food / raw materials / manufactured goods). A Farming Region reads as a
+  // farmer selling grain & livestock, a town as a workshop selling crafts.
+  // CRUCIALLY the FOOD leg is booked only when the BUYER is actually food-short
+  // (supply < demand): a self-feeding settlement does not IMPORT food — its
+  // grain comes up the central-place HIERARCHY (foodHierarchy.js), not the
+  // horizontal gravity trade — so that fraction is re-booked as ordinary goods.
+  // This is what stops every town/city/region from both buying AND selling food.
+  const buyerShort = (buyer._foodSupply || 0) < (buyer._foodDemand || 0);
+  const foodFrac = buyerShort ? (seller._exportFoodFrac || 0) : 0;
+  const matFrac  = seller._exportMatFrac || 0;
+  const foodPaid = paid * foodFrac;
+  const matPaid  = paid * matFrac;
+  const goodsPaid = paid - foodPaid - matPaid;
+  recordIn(seller, IN_FOOD, foodPaid);
+  recordIn(seller, IN_MATERIALS, matPaid);
+  recordIn(seller, IN_GOODS, goodsPaid + freightPaid);   // goods sold + the carrying-trade (freight) fee
+  recordOut(buyer, OUT_FOOD, foodPaid);
+  recordOut(buyer, OUT_MATERIALS, matPaid);
+  recordOut(buyer, OUT_GOODS, goodsPaid);
   recordOut(buyer, OUT_TOLLS, (freight + totalToll) * scale);
   if (intermediates) {
     const tollPer = goodsValue * TOLL_RATE * scale;
@@ -985,9 +1063,10 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   // Customs duty funds the importing realm's STATE TREASURY (not the capital
   // city's purse) — the government then redistributes it (conquest.js).
   if (collector) { govOf(world, buyer.countryId).treasury += tariff * scale; recordOut(buyer, OUT_TARIFFS, tariff * scale); }
-  // Conservation: buyer loses `actual` = goodsValue*scale (to seller)
-  // + totalToll*scale (to intermediates) + tariff*scale (to the state)
-  // + freight*scale (consumed).
+  // Conservation: buyer loses `actual` = goodsValue*scale + freight*scale (both
+  // to the SELLER — goods price + carrying fee) + totalToll*scale (to the
+  // intermediates) + tariff*scale (to the state). Nothing is burned in trade; the
+  // money supply is regulated by COIN_LOSS_RATE + depleting mines instead.
 }
 
 // ── Helpers ────────────────────────────────────────────────────────

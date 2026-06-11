@@ -261,7 +261,7 @@ function seedEarthHearths(world) {
     if (bestTi < 0) continue;
     const bx = bestTi % tw, by = (bestTi / tw) | 0;
     const name = seeded === 0 ? "cradle" : `cradle-${seeded + 1}`;
-    makeSettlement(world, bx + 0.5, by + 0.5, { people: 25, name });
+    makeSettlement(world, bx + 0.5, by + 0.5, { people: 25, name, cradle: true });
     const rm = riverMag ? riverMag[bestTi] : 0;
     console.log(`[peopleSim] ${name} (${site.name}) at tile (${bx},${by}) frac(${(bx / tw).toFixed(2)},${(by / th).toFixed(2)}) ` +
       `temp:${temp[bestTi].toFixed(2)} moist:${moist[bestTi].toFixed(2)} fert:${fert[bestTi].toFixed(2)}${rm >= 2 ? ` river(mag${rm})` : ""}`);
@@ -337,7 +337,7 @@ function seedCradleVillage(world) {
   for (let i = 0; i < picked.length; i++) {
     const p = picked[i];
     const name = i === 0 ? "cradle" : `cradle-${i + 1}`;
-    makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: 25, name });
+    makeSettlement(world, p.tx + 0.5, p.ty + 0.5, { people: 25, name, cradle: true });
     const e = elev[p.ti].toFixed(2), t = temp[p.ti].toFixed(2);
     const m = moist[p.ti].toFixed(2), f = fert[p.ti].toFixed(2);
     const rm = riverMag ? riverMag[p.ti] : 0;
