@@ -930,7 +930,7 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
   // throughput proxy; the better-shipped endpoint sets the carrier.
   const shipTech = link.sea
     ? Math.max((a._techEff && a._techEff.seaSpeed) || 0, (b._techEff && b._techEff.seaSpeed) || 0) : 0;
-  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride
+  const vol = Math.sqrt(minPop) * T.TRADE_RATE * stride * (world._dt || 1)   // granularity: finer trade per tick
     * (link.sea ? T.SEA_TRADE_MULT * (1 + SEA_TECH_VOL * shipTech) : link.river ? T.RIVER_TRADE_MULT : 1);
   const transport = link.cost * TRANSPORT_PER_PATHCOST * stride;
   const intermediates = link.inter || null;          // precomputed at reach build

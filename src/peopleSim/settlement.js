@@ -380,7 +380,7 @@ function updateWealth(world, s) {
   // buried in hoards, melted to plate. Runs for EVERY settlement (before the
   // mining-only return) so the money supply settles at an equilibrium between
   // mint inflow and this realistic drain, instead of the freight burn.
-  if (T.COIN_LOSS_RATE > 0 && s.wealth > 0) s.wealth -= s.wealth * T.COIN_LOSS_RATE;
+  if (T.COIN_LOSS_RATE > 0 && s.wealth > 0) s.wealth -= s.wealth * T.COIN_LOSS_RATE * (world._dt || 1);   // per-tick specie drain → granularity-scaled
   // CREDIT (Phase 5): a BANKING hub creates credit money on top of its specie —
   // the fractional-reserve / bills-of-exchange layer that made Venice & Amsterdam
   // rich with no mines. A settlement with Banking-era ORGANISATION and a wide
@@ -412,7 +412,7 @@ function updateWealth(world, s) {
     const left = reserveArr[ti];
     if (left <= 0) continue;
     const richness = (world.deposits[id] && world.deposits[id][ti]) || 0;
-    const want = T.MINING_RATE * richness * popFactor * orgMul;
+    const want = T.MINING_RATE * richness * popFactor * orgMul * (world._dt || 1);   // mining income per tick → granularity-scaled
     const got = want < left ? want : left;
     reserveArr[ti] = left - got;
     mined += got;
