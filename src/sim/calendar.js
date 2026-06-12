@@ -39,3 +39,18 @@ export function stepToYear(step){
 }
 export function yearStr(step){const y=Math.round(stepToYear(step));
 return y<0?`${-y} BC`:`${y} AD`;}
+
+// Inverse mapping: year → step (piecewise-linear inverse of stepToYear).
+// Used by the dynasty layer to give a person born "A years ago" a birth step.
+export function yearToStep(year){
+  const A=YEAR_ANCHORS, n=A.length;
+  if(year<=A[0][1])return A[0][0];
+  for(let i=1;i<n;i++){
+    if(year<=A[i][1]){
+      const [s0,y0]=A[i-1], [s1,y1]=A[i];
+      return (s0+(s1-s0)*(year-y0)/(y1-y0))*CLOCK_STRETCH;
+    }
+  }
+  const [sp,yp]=A[n-2], [sl,yl]=A[n-1];
+  return (sl+(sl-sp)/(yl-yp)*(year-yl))*CLOCK_STRETCH;
+}

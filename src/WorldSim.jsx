@@ -2389,7 +2389,7 @@ const applySnapshot=useCallback((snap)=>{
   for(const c of (snap.countries||[])){
     const members=c.memberIds.map(id=>byId.get(id)).filter(Boolean);
     const capital=byId.get(c.capitalId)||members[0]||null;
-    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_momentum:c._momentum,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel,personality:c.personality});
+    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,name:c.name,ruler:c.ruler,faithId:c.faithId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_momentum:c._momentum,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel,personality:c.personality});
   }
   psw.countries=countries;
   // HUD state updates re-render the whole component, so throttle them to ~5Hz
@@ -3066,6 +3066,20 @@ return(
           const treas=ctry._treasury;
           return(
             <>
+            {ctry.ruler&&(
+              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+                <span style={{width:9,height:9,borderRadius:2,background:"hsl(280,40%,52%)",flexShrink:0}}/>
+                <span><span className="au-fade">{ctry.ruler.female?"queen ":"king "}</span>{ctry.ruler.name}
+                  <span className="au-fade"> of house </span>{ctry.ruler.house||"?"}
+                  <span className="au-fade"> · age {ctry.ruler.age}</span></span>
+              </div>
+            )}
+            {(()=>{const f=psw.faiths&&ctry.faithId>=0?psw.faiths.get(ctry.faithId):null;if(!f)return null;return(
+              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+                <span style={{width:9,height:9,borderRadius:2,background:`hsl(${f.hue|0},55%,50%)`,flexShrink:0}}/>
+                <span className="au-fade">state faith <span style={{color:"var(--au-ink)"}}>{f.name}</span></span>
+              </div>
+            );})()}
             <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
               <span style={{width:9,height:9,borderRadius:2,background:over?"hsl(8,70%,52%)":"hsl(140,45%,45%)",flexShrink:0}}/>
               <span className="au-fade">control {load.toFixed(1)}/{cap.toFixed(1)} ({pct}%){over?" · over-extended":""}{strain}</span>

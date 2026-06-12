@@ -21,14 +21,15 @@ export function eventsOf(world) {
 
 function indexKeys(ev) {
   const keys = [];
-  if (ev.polity != null && ev.polity >= 0) keys.push("p:" + ev.polity);
-  if (ev.from != null && ev.from >= 0) keys.push("p:" + ev.from);
-  if (ev.to != null && ev.to >= 0 && ev.to !== ev.from) keys.push("p:" + ev.to);
-  if (ev.s != null && ev.s >= 0) keys.push("s:" + ev.s);
-  if (ev.s2 != null && ev.s2 >= 0) keys.push("s:" + ev.s2);
-  if (ev.culture != null && ev.culture >= 0) keys.push("c:" + ev.culture);
-  if (ev.faith != null && ev.faith >= 0) keys.push("f:" + ev.faith);
-  if (ev.dynasty != null && ev.dynasty >= 0) keys.push("d:" + ev.dynasty);
+  const push = (k) => { if (!keys.includes(k)) keys.push(k); };
+  if (ev.polity != null && ev.polity >= 0) push("p:" + ev.polity);
+  if (ev.from != null && ev.from >= 0) push("p:" + ev.from);
+  if (ev.to != null && ev.to >= 0 && ev.to !== ev.from) push("p:" + ev.to);
+  if (ev.s != null && ev.s >= 0) push("s:" + ev.s);
+  if (ev.s2 != null && ev.s2 >= 0) push("s:" + ev.s2);
+  if (ev.culture != null && ev.culture >= 0) push("c:" + ev.culture);
+  if (ev.faith != null && ev.faith >= 0) push("f:" + ev.faith);
+  if (ev.dynasty != null && ev.dynasty >= 0) push("d:" + ev.dynasty);
   return keys;
 }
 
@@ -128,6 +129,34 @@ const NARRATE = {
   "famine.struck"(ev) { void ev; return "A famine gripped the land."; },
   "plague.outbreak"(ev) { return ev.sName ? `Plague broke out in ${ev.sName} and swept through the realm.` : "Plague swept through the realm."; },
   "era.reached"(ev) { return `Reached the ${ev.eraName} era.`; },
+  "war.began"(ev, as) {
+    const why = ev.crisis ? " as the succession failed" : ev.faithClash ? " under the banner of the faith" : "";
+    if (as === ev.to) return `${ev.name || "An enemy"} marched against the realm${why}.`;
+    return `Marched to war against ${ev.defName || "a neighbour"}${why}.`;
+  },
+  "ruler.crowned"(ev) {
+    const t = ev.female ? "Queen" : "King";
+    if (ev.how === "first") return `${t} ${ev.personName} of house ${ev.dynastyName || "?"} took the throne — the first recorded sovereign.`;
+    if (ev.how === "crisis") return `Out of the interregnum, ${t.toLowerCase()} ${ev.personName} of the new house ${ev.dynastyName || "?"} seized the throne.`;
+    if (ev.how === "regency") return `The child ${ev.personName} took the throne of house ${ev.dynastyName || "?"} at ${ev.age}, under a regency council.`;
+    if (ev.how === "sibling") return `${t} ${ev.personName}, ${ev.female ? "sister" : "brother"} of the late sovereign, took up the crown of house ${ev.dynastyName || "?"}.`;
+    return `${t} ${ev.personName} succeeded to the throne of house ${ev.dynastyName || "?"} at ${ev.age}.`;
+  },
+  "ruler.died"(ev) {
+    return `${ev.personName} died at ${ev.age}, after a reign of ${ev.reign} years.`;
+  },
+  "succession.crisis"(ev) {
+    void ev; return "The royal line failed — an interregnum of rival claimants.";
+  },
+  "dynasty.founded"(ev) {
+    return `${ev.personName} founded house ${ev.dynastyName}.`;
+  },
+  "dynasty.extinct"(ev) {
+    return `House ${ev.dynastyName} died out.`;
+  },
+  "dynasty.union"(ev) {
+    return `${ev.personName} wed ${ev.person2Name} of a foreign court — the houses are joined.`;
+  },
   "faith.founded"(ev) {
     return `A new faith arose in ${ev.sName || "a great town"} — the priesthood of ${ev.faithName}.`;
   },
@@ -179,6 +208,10 @@ export function categoryOf(ev, as = -1) {
     case "culture.born": case "culture.diverged": return "founding";
     case "faith.founded": case "polity.adoptedFaith": return "discovery";
     case "faith.schism": return "secession";
+    case "war.began": return as === ev.to ? "war" : "conquest";
+    case "ruler.crowned": case "dynasty.founded": case "dynasty.union": return "growth";
+    case "ruler.died": case "dynasty.extinct": return "loss";
+    case "succession.crisis": return "secession";
     case "settlement.lapsed": return as === ev.from ? "loss" : "growth";
     default: return "growth";
   }

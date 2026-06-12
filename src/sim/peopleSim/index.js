@@ -32,6 +32,7 @@ import { chronicleTick } from "./chronicle.js";
 import { techState } from "./tech.js";
 import { updateCultures, CULTURE_INTERVAL } from "./cultures.js";
 import { updateFaiths, FAITH_INTERVAL } from "./faiths.js";
+import { updateDynasties, DYNASTY_INTERVAL } from "./dynasties.js";
 import { T } from "./tuning.js";
 
 const CHRONICLE_INTERVAL = 300;   // ticks between per-country chronicle milestone checks
@@ -151,6 +152,8 @@ export function stepPeopleSim(world, n = 1) {
     // Faiths: folk-faith seeding, organized genesis, trade-graph conversion,
     // state adoption + legitimacy, schisms (faiths.js).
     if (world.step % _ivl(FAITH_INTERVAL) === 0) updateFaiths(world);
+    // Thrones: rulers age/marry/die, succession + crises (dynasties.js).
+    if (world.step % _ivl(DYNASTY_INTERVAL) === 0) updateDynasties(world);
     // Country chronicle: the slow-drift events (a discovery, a growth/wealth
     // milestone) that aren't a single discrete moment, checked periodically.
     if (world.step % CHRONICLE_INTERVAL === 0) chronicleTick(world);

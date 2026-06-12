@@ -21,6 +21,8 @@ import { displayPByCountry } from "./sim/peopleSim/inflation.js";
 import { getChronicle, realmName } from "./sim/peopleSim/chronicle.js";
 import { applyTuning, resetTuning } from "./sim/peopleSim/tuning.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
+import { getPolity } from "./sim/peopleSim/entities.js";
+import { getPerson, getDynasty, ageOf } from "./sim/peopleSim/dynasties.js";
 
 let world = null;
 let genMeta = {};      // oceanLevel / tecParams — recorded into saves
@@ -180,8 +182,13 @@ function buildSnapshot() {
             aggression: c.personality.aggression, commerce: c.personality.commerce,
             expansionism: c.personality.expansionism }
         : null;
+      const pol = getPolity(world, c.id);
+      const ruler = pol && pol.rulerId >= 0 ? getPerson(world, pol.rulerId) : null;
+      const dyn = ruler ? getDynasty(world, ruler.dynastyId) : null;
       countries.push({
         id: c.id, capitalId: c.capitalId, name: realmName(world, c.id),
+        ruler: ruler && ruler.died < 0 ? { name: ruler.name, female: !!ruler.female, age: Math.round(ageOf(world, ruler)), house: dyn ? dyn.name : null } : null,
+        faithId: pol ? pol.faithId : -1,
         memberIds: c.members.map(m => m.id),
         hue: c.hue, range: c.range,
         _capacity: c._capacity, _loadTotal: c._loadTotal, _momentum: c._momentum,

@@ -20,6 +20,8 @@ import { techEff } from "./settlement.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { realmName } from "./chronicle.js";
+import { inCrisis } from "./dynasties.js";
+import { getPolity as _getPolity } from "./entities.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { T } from "./tuning.js";
@@ -538,6 +540,37 @@ export function advanceFronts(world) {
     }
   }
   world._fronts = { stamp: world.step, byCountry: fronts };
+  // New WARS (a pair newly at serious blows since the last pass) get a cause-
+  // annotated event: the structured log records WHY this war was plausible —
+  // a succession crisis in the victim, a clash of state faiths, the
+  // attacker's temperament — so later historiography has motives to cite.
+  {
+    // Hysteresis: a front that pauses and re-forms within living memory is
+    // the SAME war, not a new one — log war.began only for genuinely fresh
+    // (or long-dormant) pairs.
+    const WAR_MEMORY = 900;
+    if (!world._warSeenAt) world._warSeenAt = new Map();
+    const seen = world._warSeenAt;
+    for (const [defId, set] of fronts) for (const attId of set) {
+      const key = attId + ":" + defId;
+      const last = seen.get(key);
+      seen.set(key, world.step);
+      if (last !== undefined && world.step - last < WAR_MEMORY / (world._dt || 1)) continue;
+      const pa = _getPolity(world, attId), pd = _getPolity(world, defId);
+      const fa = pa ? pa.faithId : -1, fd = pd ? pd.faithId : -1;
+      const pers = pa && pa.personality;
+      logEvent(world, "war.began", {
+        from: attId, to: defId,
+        name: realmName(world, attId), defName: realmName(world, defId),
+        crisis: inCrisis(world, defId) ? 1 : 0,
+        faithClash: fa >= 0 && fd >= 0 && fa !== fd ? 1 : 0,
+        aggression: pers ? +(pers.aggression || 0).toFixed(2) : 0,
+      });
+    }
+    if (seen.size > 4000) {   // prune stale pairs so the map can't grow unbounded
+      for (const [k, st] of seen) if (world.step - st > (WAR_MEMORY * 3) / (world._dt || 1)) seen.delete(k);
+    }
+  }
   // (Siege relief is no longer a marching column — the national defensive-split already
   // brings the realm's whole field army to bear on a besieged front; see defShareOf.)
 
