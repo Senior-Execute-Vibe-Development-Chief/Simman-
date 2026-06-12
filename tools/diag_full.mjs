@@ -4,11 +4,8 @@
 // ocean shape, economy/wealth, per-track technology, military, politics,
 // personality, longevity. Prints readable sections AND writes a JSON record.
 import fs from "fs";
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { cropSuitability } from "../src/cropGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
+import { buildSim } from "./_harness.mjs";
+import { stepPeopleSim } from "../src/peopleSim/index.js";
 import { techState, ERAS } from "../src/peopleSim/tech.js";
 import { T } from "../src/peopleSim/tuning.js";
 
@@ -18,13 +15,9 @@ const CKPTS=(process.argv[3]||"15000,30000,45000").split(",").map(Number);
 const OUT=process.argv[5]||`/tmp/full_${SEED}`;
 const G=+(process.argv[6]||1); if(G>1){T.SIM_GRANULARITY=G;console.log(`[granularity G=${G}]`);}
 const SAMPLE=1500;
-const w=generateWorld(W,H,SEED,"earth_sim",0.78,true,false,{});
-const tE=new Float32Array(N),tT=new Float32Array(N),tM=new Float32Array(N),tC=new Uint8Array(N),tCrop=new Float32Array(N);
-for(let i=0;i<N;i++){tE[i]=w.elevation[i];tT[i]=w.temperature[i];tM[i]=w.moisture[i];tC[i]=w.coastal[i]||0;}
-const rivers=computeRivers(W,H,tE,tM,tT);w.rivers=rivers;
-for(let i=0;i<N;i++)tCrop[i]=cropSuitability(tT[i],tM[i],tE[i],tC[i],rivers.riverMag?rivers.riverMag[i]:0);
-w.deposits=generateResources(W,H,tE,tT,tM,tC,w,SEED,rivers);
-const world=initPeopleSim(w,{seed:SEED,tCrop,tileRes:1,deposits:w.deposits});
+// App-identical pipeline (river/lake moisture boosts + bDist feed tCrop) —
+// the old hand-rolled version here measured a world the app never simulates.
+const world=buildSim({W,H,seed:SEED});
 
 const sum=a=>a.reduce((x,y)=>x+y,0);
 const mean=a=>a.length?sum(a)/a.length:0;
