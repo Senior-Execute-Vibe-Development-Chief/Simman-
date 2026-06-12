@@ -26,16 +26,18 @@ import { langWord } from "../language.js";
 
 export const FAITH_INTERVAL = 150;       // cadence (≈ polity/culture passes)
 const ORGANIZED_ORG_MIN = 0.30;          // founder settlement's organization floor
-const ORGANIZED_POP_MIN = 350;           // a movement needs a real town
+const ORGANIZED_POP_MIN = 600;           // a movement needs a real CITY-bound town
 const GENESIS_CHANCE = 0.015;            // per eligible settlement per pass
 const GENESIS_CULTURE_COOLDOWN = 4000;   // min ticks between new faiths within one culture
+const GENESIS_WORLD_COOLDOWN = 7000;     // min ticks between new churches ANYWHERE — world religions are rare
+const SCHISM_MIN_REALMS = 4;             // only a faith spanning several realms can schism
 const SPREAD_RATE = 0.055;               // per-pass share shift toward the pulling faith
 const STATE_PRESSURE = 2.4;              // extra pull weight of the ruler's faith
 const ORGANIZED_PULL = 2.2;              // organized faiths proselytize; folk faiths don't travel
 const FOLK_PULL = 0.45;
-const SCHISM_MIN_AGE = 1800;             // a young faith doesn't schism
-const SCHISM_CHANCE = 0.05;              // per distant follower-realm per pass
-const SCHISM_MIN_DIST = 70;              // map distance from origin see (tiles)
+const SCHISM_MIN_AGE = 4200;             // a young faith doesn't schism
+const SCHISM_CHANCE = 0.022;             // per distant follower-realm per pass
+const SCHISM_MIN_DIST = 110;             // map distance from origin see (tiles)
 const LOYAL_MATCH = 0.0012;              // per-pass loyalty nudge for shared faith
 const LOYAL_CLASH = 0.0022;              // per-pass loyalty bleed under a rival organized faith
 
@@ -104,10 +106,18 @@ function newFaith(world, fields) {
   return f;
 }
 
-/** The unnamed-gods folk faith of a culture (lazily created). */
+/** The folk faith of a culture FAMILY: daughters keep their root stock's
+ *  hearth-gods (folk practice diverges far slower than ethnicity), so the
+ *  faith map stays broad instead of fragmenting with every new people. */
 export function folkFaithOf(world, cultureId) {
-  const cul = getCulture(world, cultureId);
+  let cul = getCulture(world, cultureId);
   if (!cul) return null;
+  let hops = 0;
+  while (cul.parentCultureId >= 0 && hops++ < 16) {
+    const up = getCulture(world, cul.parentCultureId);
+    if (!up) break;
+    cul = up;
+  }
   if (cul.folkFaithId != null && cul.folkFaithId >= 0) return getFaith(world, cul.folkFaithId);
   const lang = languageOf(world, cul);
   const f = newFaith(world, {
@@ -167,8 +177,9 @@ export function updateFaiths(world) {
   // and a culture that just organized one doesn't immediately spawn another
   // (the niche is taken; later movements arrive as SCHISMS instead).
   let genesisDone = false;
+  const worldCooldown = world.step - (world._lastFaithGenesisAt ?? -Infinity) < GENESIS_WORLD_COOLDOWN / (world._dt || 1);
   for (const s of world.settlements) {
-    if (genesisDone) break;
+    if (genesisDone || worldCooldown) break;
     if (s.mode !== "settled" || (s.tier | 0) < 1) continue;
     const org = (s.knowledge && s.knowledge.organization) || 0;
     if (org < ORGANIZED_ORG_MIN || (s.people || 0) < ORGANIZED_POP_MIN) continue;
@@ -198,6 +209,7 @@ export function updateFaiths(world) {
     });
     mixFaithToward(s, f.id, 0.9);                         // the movement sweeps its birthplace
     cul._lastFaithGenesis = world.step;
+    world._lastFaithGenesisAt = world.step;
     genesisDone = true;
     logEvent(world, "faith.founded", {
       faith: f.id, faithName: f.name, s: s.id, sName: s.name,
@@ -208,6 +220,16 @@ export function updateFaiths(world) {
 
   // 3. spread along the trade graph + state pressure
   //    (computed against the PRE-pass dominant faiths, applied after)
+  // Network effect: an established church out-pulls a sect — conversion begets
+  // conversion, so faiths consolidate into a few broad communions (the
+  // peoples-scale spreads of real history) instead of a patchwork of village rites.
+  const followers = new Map();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    const df0 = dominantFaith(s);
+    if (df0 >= 0) followers.set(df0, (followers.get(df0) || 0) + 1);
+  }
+  const sizePull = (fid) => 0.55 + Math.min(1.6, Math.sqrt(followers.get(fid) || 0) / 7);
   const pulls = [];
   for (const s of world.settlements) {
     if (s.mode !== "settled" || !s.faithMix || !s.faithMix.length) continue;
@@ -219,7 +241,7 @@ export function updateFaiths(world) {
       const pf = dominantFaith(peer);
       const f = getFaith(world, pf);
       if (!f) return;
-      let w = f.kind === "organized" ? ORGANIZED_PULL * (0.5 + (f.doctrine ? f.doctrine.zeal : 0.5)) : FOLK_PULL;
+      let w = f.kind === "organized" ? ORGANIZED_PULL * (0.5 + (f.doctrine ? f.doctrine.zeal : 0.5)) * sizePull(pf) : FOLK_PULL;
       if (peer.countryId === s.countryId && s.countryId >= 0) w *= 1.4;
       addPull(pf, w);
     };
@@ -310,6 +332,12 @@ export function updateFaiths(world) {
     const origin = byId && byId.get(f.originSettlementId);
     if (!origin) continue;
     if (!world.countries) continue;
+    let span = 0;
+    if (world.countries) for (const c of world.countries.values()) {
+      const p0 = getPolity(world, c.id);
+      if (p0 && p0.faithId === f.id) span++;
+    }
+    if (span < SCHISM_MIN_REALMS) continue;               // a sect can't schism — only a communion can
     for (const c of world.countries.values()) {
       const p = getPolity(world, c.id);
       if (!p || p.faithId !== f.id || !c.capital) continue;

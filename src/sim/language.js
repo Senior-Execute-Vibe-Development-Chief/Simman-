@@ -62,14 +62,22 @@ export function foundLanguage(world, { seed, parentId = -1, flavorHint } = {}) {
   const cons = [...pickN(rng, C_STOPS, F.stops), ...pickN(rng, C_NASAL, F.nas), ...pickN(rng, C_FRIC, F.fric),
     ...pickN(rng, C_LIQ, F.liq), ...pickN(rng, C_GLIDE, F.gli)];
   for (const c of F.extra) if (!cons.includes(c)) cons.push(c);
+  // Orthographic identity: each tongue spells itself differently, so two
+  // families never LOOK alike even where sounds overlap.
+  const ORTH = [["k","c"],["k","q"],["sh","x"],["kh","ch"],["y","j"],["w","v"],["ts","z"],["f","ph"],["u","oo"],["i","y"]];
+  const orth = pickN(rng, ORTH, 1 + rng.int(2)).filter(()=>rng()<0.8);
   const lang = {
     id, seed: s, flavor, parentId, bornStep: world.step | 0, gen: 0,
     cons, vows: pickN(rng, ALL_V, F.vows),
     coda: F.coda, cluster: !!F.cluster, sylMax: F.sylMax,
     realmSufs: pickN(rng, REALM_SUFS[rng.int(REALM_SUFS.length)], 2),
     dynSuf: DYN_SUFS[rng.int(DYN_SUFS.length)],
+    orth,
   };
   languagesOf(world).set(id, lang);
+  // A ROOT tongue (no parent) gets a few extra centuries of private drift,
+  // so even same-flavour cradles sound nothing alike.
+  if (parentId < 0) for (let i = 0; i < 2 + rng.int(3); i++) driftLanguage(world, lang);
   return lang;
 }
 
@@ -93,17 +101,31 @@ export function driftLanguage(world, lang) {
   lang.gen++;
 }
 
-/** A daughter tongue: the parent plus a few centuries of divergence. */
-export function branchLanguage(world, parent) {
+/** A daughter tongue. `divergence` 0..1 — how far the new people stand
+ *  from their stock: neighbours speak a near-dialect (1-2 sound changes),
+ *  a people across an ocean or a climate divide speak something whole
+ *  generations removed (many changes, new spelling habits, sometimes a
+ *  drifted suffix fashion). */
+export function branchLanguage(world, parent, divergence = 0.4) {
   const child = foundLanguage(world, { seed: hash32(parent.seed, "branch", parent.gen, world.step), flavorHint: parent.flavor });
-  // start from the parent's living inventory, then drift apart
+  // start from the parent's living speech, then drift apart with distance
   child.cons = parent.cons.slice();
   child.vows = parent.vows.slice();
   child.coda = parent.coda; child.cluster = parent.cluster; child.sylMax = parent.sylMax;
   child.realmSufs = parent.realmSufs.slice();
   child.dynSuf = parent.dynSuf;
+  child.orth = parent.orth ? parent.orth.slice() : [];
   child.parentId = parent.id;
-  for (let i = 0; i < 3; i++) driftLanguage(world, child);
+  const d = Math.max(0, Math.min(1, divergence));
+  const steps = 1 + Math.round(d * 7);
+  for (let i = 0; i < steps; i++) driftLanguage(world, child);
+  if (d > 0.55) {
+    const rng = mkRng(hash32(child.seed, "far"));
+    const ORTH = [["k","c"],["sh","x"],["y","j"],["w","v"],["u","oo"],["f","ph"]];
+    child.orth = [ORTH[rng.int(ORTH.length)]];
+    if (rng() < 0.5) child.realmSufs = pickN(rng, REALM_SUFS[rng.int(REALM_SUFS.length)], 2);
+    if (rng() < 0.4) child.dynSuf = DYN_SUFS[rng.int(DYN_SUFS.length)];
+  }
   return child;
 }
 
@@ -137,6 +159,7 @@ export function langWord(lang, n) {
   let w = "";
   for (let i = 0; i < nS; i++) w += syllable(rng, lang, i === 0, i === nS - 1);
   w = w.replace(/(.)\1\1+/g, "$1$1");
+  if (lang.orth) for (const [a, b] of lang.orth) w = w.split(a).join(b);
   return cap(w);
 }
 export function langRealmName(lang, n, base) {

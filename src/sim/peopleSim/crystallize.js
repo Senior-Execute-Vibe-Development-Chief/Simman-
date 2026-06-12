@@ -375,7 +375,10 @@ export function maybeCrystallize(world) {
           const climDelta = Math.abs((world.temp[ti] || 0) - (world.temp[dTi] || 0)) * 1.4
                           + Math.abs((world.moist[ti] || 0) - (world.moist[dTi] || 0));
           if (td > 70 || (td > 38 && climDelta > 0.34)) {
-            const cul = foundCulture(world, { origin: born, parentCultureId: dCul });
+            // proximity → derivation: a near offshoot speaks a dialect of its
+            // stock; a far one is generations removed
+            const divergence = Math.max(0.15, Math.min(1, (td - 38) / 90 + climDelta * 0.5));
+            const cul = foundCulture(world, { origin: born, parentCultureId: dCul, divergence });
             seedCulture(world, born, cul.id);
             born.name = nameFor(world, cul, "settlement");
           }

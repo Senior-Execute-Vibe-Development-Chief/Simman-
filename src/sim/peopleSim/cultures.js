@@ -55,7 +55,7 @@ export function nameFor(world, culture, kind, base) {
   return langWord(lang, n);
 }
 
-export function foundCulture(world, { origin, parentCultureId = -1 } = {}) {
+export function foundCulture(world, { origin, parentCultureId = -1, divergence = 0.5 } = {}) {
   const reg = culturesOf(world);
   const id = world._nextCultureId || 1;
   world._nextCultureId = id + 1;
@@ -73,10 +73,14 @@ export function foundCulture(world, { origin, parentCultureId = -1 } = {}) {
   // (a dialect hardening into a language); a root people gets a fresh one.
   const parent = getCulture(world, parentCultureId);
   const plang = parent ? languageOf(world, parent) : null;
-  const lang = plang ? branchLanguage(world, plang) : foundLanguage(world, { seed: langSeed });
+  const lang = plang ? branchLanguage(world, plang, divergence) : foundLanguage(world, { seed: langSeed });
   c.languageId = lang.id;
-  // A culture names ITSELF in its own tongue (endonym).
-  c.name = langWord(lang, 0);
+  // A culture names ITSELF in its own tongue (endonym) — and never shares
+  // another people's name (collisions read as bugs, not history).
+  let nm = langWord(lang, 0), tries = 1;
+  const taken = new Set([...reg.values()].map(x => x.name));
+  while (taken.has(nm) && tries < 12) nm = langWord(lang, tries++);
+  c.name = nm;
   reg.set(id, c);
   logEvent(world, "culture.born", {
     culture: id, cultureName: c.name,
@@ -206,7 +210,8 @@ export function updateCultures(world) {
       const divAfter = (s._isColony ? DIVERGE_AFTER : DIVERGE_AFTER * 2.2) / (world._dt || 1);
       if (world.step - s._isolatedSince > divAfter) {
         const parent = getCulture(world, myCul);
-        const daughter = foundCulture(world, { origin: s, parentCultureId: myCul });
+        const daughter = foundCulture(world, { origin: s, parentCultureId: myCul,
+          divergence: s._isColony ? 0.85 : 0.6 });
         // language relationship is implicit: daughter seeds a fresh tongue,
         // history records the lineage (parentCultureId + culture.born event)
         seedCulture(world, s, daughter.id);
