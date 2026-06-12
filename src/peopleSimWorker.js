@@ -20,8 +20,10 @@ import { getTradeProfile } from "./sim/peopleSim/settlement.js";
 import { displayPByCountry } from "./sim/peopleSim/inflation.js";
 import { getChronicle, realmName } from "./sim/peopleSim/chronicle.js";
 import { applyTuning, resetTuning } from "./sim/peopleSim/tuning.js";
+import { serializeWorld, loadWorld } from "./sim/persist.js";
 
 let world = null;
+let genMeta = {};      // oceanLevel / tecParams — recorded into saves
 let playing = false;
 let speed = 5;
 let selId = -1;
@@ -37,6 +39,7 @@ self.onmessage = (e) => {
   const m = e.data;
   if (m.type === "init") {
     try {
+      genMeta = m.genMeta || {};
       world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tileRes: m.tileRes, deposits: m.w.deposits });
       world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
       // Re-init resets the per-run snapshot/selection state. playing/speed/view
@@ -62,6 +65,22 @@ self.onmessage = (e) => {
     viewMode = m.view;
     if (world) world._wantMoneyFlows = (viewMode === "money");   // gate the per-tick money-flow overlay build
     if (!playing && world) buildSnapshot();          // refresh extras for the new view
+  } else if (m.type === "save") {
+    if (world) {
+      try { self.postMessage({ type: "saveData", json: serializeWorld(world, genMeta), step: world.step }); }
+      catch (err) { self.postMessage({ type: "error", message: "save failed: " + (err && err.message), stack: err && err.stack }); }
+    }
+  } else if (m.type === "load") {
+    try {
+      if (m.genMeta) genMeta = m.genMeta;
+      world = loadWorld(m.json);
+      world._wantMoneyFlows = (viewMode === "money");
+      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1;
+      buildSnapshot();
+      if (playing) scheduleTick();
+    } catch (err) {
+      self.postMessage({ type: "error", message: "load failed: " + (err && err.message), stack: err && err.stack });
+    }
   } else if (m.type === "tune") {
     // Live gameplay tuning. m.reset wipes back to defaults; m.values is a
     // partial { KEY: number } override map. Applied to the shared tuning

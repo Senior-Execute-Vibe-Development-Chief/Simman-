@@ -7,6 +7,7 @@ import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } f
 import { tileResourceSummary, RESOURCES } from "./sim/resourceGen.js";
 import { RIVER_NAMES } from "./sim/riverGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
+import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { applyTuning, resetTuning, tuningDefaults } from "./sim/peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
 import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./sim/peopleSim/settlement.js";
@@ -903,7 +904,7 @@ const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0}
 const psHistoryRef=useRef([]);
 const [chartsOpen,setChartsOpen]=useState(false);
 const [statsCopied,setStatsCopied]=useState(false);
-const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
+const oceanLevelRef=useRef(0.78);const pendingSaveRef=useRef(null);const downloadSaveRef=useRef(null);const saveFileRef=useRef(null);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
 const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
 const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
@@ -959,6 +960,7 @@ try{
   sw.onmessage=(e)=>{
     const d=e.data;
     if(d.type==='snapshot'){if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    else if(d.type==='saveData'){downloadSaveRef.current&&downloadSaveRef.current(d.json,d.step);}
     else if(d.type==='error'){console.error('[SimWorker]',d.message,d.stack);}
   };
   sw.onerror=(err)=>{
@@ -979,7 +981,10 @@ try{
     windX:w.windX,windY:w.windY,
     rivers:(w.rivers&&w.rivers.riverMag)?{riverMag:w.rivers.riverMag}:null,
     deposits:w.deposits};
-  sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tileRes:RES,seed:w.seed});
+  const _gm={oceanLevel:oceanLevelRef.current,tecParams:_tecParams};
+  const _pend=pendingSaveRef.current;
+  if(_pend){pendingSaveRef.current=null;sw.postMessage({type:'load',json:_pend,genMeta:_gm});}
+  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tileRes:RES,seed:w.seed,genMeta:_gm});
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
   sw.postMessage({type:'view',view:viewRef.current});
@@ -988,7 +993,9 @@ try{
   usedWorker=true;
 }catch(e){console.warn('[SimWorker] init failed — main-thread sim:',e);}
 if(!usedWorker){
-  peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
+  const _pend2=pendingSaveRef.current;
+  if(_pend2){pendingSaveRef.current=null;peopleRef.current=loadWorld(_pend2);}
+  else peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
   setPsStats(peopleSimStats(peopleRef.current));
 }
 setPlaying(false);playRef.current=false;
@@ -2700,6 +2707,39 @@ return(
 
 <div style={{flex:1}} />
 <div className="au-rule" />
+{/* Save / Load: the full world state — settlements, polities, the event
+    log, money, roads — as a versioned JSON file. Terrain regenerates from
+    the recorded seed on load. */}
+<div style={{display:"flex",gap:4}}>
+  <button className="au-btn au-flat" style={{flex:1,fontSize:11}} title="Save the running world to a file"
+    onClick={()=>{
+      downloadSaveRef.current=(json,step)=>{
+        const blob=new Blob([json],{type:"application/json"});
+        const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+        a.download=`simman-${presetRef.current}-s${seed}-t${step??""}.json`;a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+      };
+      if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"save"});
+      else if(peopleRef.current&&!peopleRef.current._isMirror){
+        downloadSaveRef.current(serializeWorld(peopleRef.current,{oceanLevel:oceanLevelRef.current,tecParams:_tecParams}),peopleRef.current.step);
+      }
+    }}>💾 Save</button>
+  <button className="au-btn au-flat" style={{flex:1,fontSize:11}} title="Load a saved world"
+    onClick={()=>saveFileRef.current?.click()}>📂 Load</button>
+  <input ref={saveFileRef} type="file" accept=".json" style={{display:"none"}}
+    onChange={async(e)=>{
+      const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
+      try{
+        const json=await f.text();
+        const meta=JSON.parse(json).meta;
+        if(!meta)throw new Error("not a Simman save");
+        pendingSaveRef.current=json;
+        presetRef.current=meta.preset;setPreset(meta.preset);
+        oceanLevelRef.current=meta.oceanLevel??0.78;
+        if(meta.seed===seed)generate(seed);else setSeed(meta.seed);
+      }catch(err){console.error("load failed:",err);alert("Could not load save: "+err.message);}
+    }} />
+</div>
 <button onClick={()=>setSeed(Math.floor(Math.random()*999999))}
   className="au-btn au-block au-flat" style={{fontSize:11}} title="Roll new seed">⚄ Roll</button>
 <span className="au-fade" style={{fontSize:9,textAlign:"center",fontFamily:"'Courier New',monospace"}}>Seed {seed}</span>

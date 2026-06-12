@@ -79,6 +79,26 @@ console.log(`[smoke] invariant run: ${RUN_STEPS} steps with checks on`);
   console.log(`  info step ${st.step} · ${st.settlements} settlements · pop ${st.totalPeople} · wealth ${st.totalWealth} · ${st.countries} countries · claimed ${(st.landPct * 100).toFixed(1)}% of land`);
 }
 
+console.log(`[smoke] save/load: roundtrip identity + functional resume`);
+{
+  const { serializeWorld, loadWorld, hashWorld } = await import("../src/sim/persist.js");
+  const world = buildSim({ W, H, seed: SEED, preset: PRESET });
+  stepPeopleSim(world, 1500);
+  const h0 = hashWorld(world);
+  const json = serializeWorld(world);
+  const loaded = loadWorld(json);
+  const h1 = hashWorld(loaded);
+  check("loaded state hashes identical", h0 === h1, `${h0} vs ${h1}`);
+  check(`save size sane (${(json.length / 1024).toFixed(0)}KB)`, json.length < 30e6);
+  loaded._checkInvariants = true;
+  stepPeopleSim(loaded, 500);
+  const st = peopleSimStats(loaded);
+  const hits = loaded.debug && loaded.debug.invariantHits;
+  let hitTotal = 0; if (hits) for (const k of Object.keys(hits)) hitTotal += hits[k];
+  check("loaded world resumes cleanly", hitTotal === 0 && st.settlements > 0 && Number.isFinite(st.totalWealth),
+    `${st.settlements} settlements, hits ${JSON.stringify(hits)}`);
+}
+
 const secs = ((performance.now() - t0) / 1000).toFixed(1);
 if (failures > 0) {
   console.error(`[smoke] ${failures} check(s) FAILED in ${secs}s`);
