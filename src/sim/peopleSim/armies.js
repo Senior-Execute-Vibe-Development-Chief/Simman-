@@ -19,7 +19,9 @@ import { coreRadiusFor } from "./territory.js";
 import { techEff } from "./settlement.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
-import { chronicle, realmName } from "./chronicle.js";
+import { realmName } from "./chronicle.js";
+import { logEvent } from "./events.js";
+import { getPolity } from "./entities.js";
 import { T } from "./tuning.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
@@ -208,7 +210,7 @@ export function musterArmies(world) {
     // insolvent (gov._solvency < 1) and its garrisons melt away in proportion
     // to the shortfall — the fiscal-military collapse trigger. (City-states
     // have no treasury and field food-fed militias, so they never go bankrupt.)
-    const gov = world.governments && world.governments.get(s.countryId);
+    const gov = getPolity(world, s.countryId);
     const solvency = gov && gov._solvency != null ? gov._solvency : 1;
     if (solvency < 0.999) s.army *= BANKRUPT_DESERT + (1 - BANKRUPT_DESERT) * solvency;
     if (s.army < 0) s.army = 0;
@@ -723,21 +725,18 @@ export function advanceFronts(world) {
           // Defence broken — the throne-city falls to the attacker.
           def.countryId = att.countryId;
           recordOccupation(def, oldId, att.countryId, world.step);   // remember the nation it just lost (homeland)
-          // Chronicle the storm. Names resolve before the rebuild. Taking land
-          // from the stateless frontier (oldId < 0) is an annexation, not a war
-          // between realms — and the frontier keeps no chronicle, so only the
-          // victor's line is written.
+          // Record the storm as a structured event. Names are captured at
+          // event time so the log reads as contemporaries knew the actors.
           {
-            const dName = def.name || "a settlement", isCity = (def.tier | 0) >= 2;
-            const cityOf = isCity ? "the city of " : "";
-            if (oldId < 0) {
-              chronicle(world, att.countryId, "conquest", `Brought the free ${isCity ? "city" : "town"} of ${dName} under its rule.`);
-            } else if (defWasCapital) {
-              chronicle(world, oldId, "war", `Its capital ${dName} fell to ${realmName(world, att.countryId)} — the realm collapsed.`);
-              chronicle(world, att.countryId, "conquest", `Stormed the enemy capital ${dName} and shattered the realm.`);
+            const dName = def.name || "a settlement";
+            const toName = realmName(world, att.countryId);
+            if (defWasCapital && oldId >= 0) {
+              logEvent(world, "polity.shattered", { polity: oldId, to: att.countryId, toName,
+                s: def.id, sName: dName, x: def.pos.x | 0, y: def.pos.y | 0 });
             } else {
-              chronicle(world, oldId, "war", `Lost ${cityOf}${dName} to ${realmName(world, att.countryId)}.`);
-              chronicle(world, att.countryId, "conquest", `Captured ${cityOf}${dName} from ${realmName(world, oldId)}.`);
+              logEvent(world, "settlement.captured", { s: def.id, sName: dName, tier: def.tier | 0,
+                from: oldId, fromName: oldId >= 0 ? realmName(world, oldId) : undefined,
+                to: att.countryId, toName, x: def.pos.x | 0, y: def.pos.y | 0 });
             }
           }
           if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(att.countryId, (g.get(att.countryId) || 0) + 1); }
@@ -747,9 +746,8 @@ export function advanceFronts(world) {
           def._ambition = 0;    // a freshly subdued city isn't plotting (yet)
           def.unrest = 0;       // the conquered populace is cowed for now
           // Spoils of war ease the victor's war-weariness (conquest.js unrest).
-          const ag = world.governments && world.governments.get(att.countryId);
+          const ag = getPolity(world, att.countryId);
           if (ag) ag._spoils = Math.min(2, (ag._spoils || 0) + WAR_SPOILS);
-          if (def.history) def.history.push({ step: world.step, type: "conquered", by: att.id });
           // Sack: the storm burns institutions, records and workshops. A
           // stormed CAPITAL loses its whole administrative apparatus — the
           // classic dark-age trigger (the fall of Rome, the Bronze-Age
@@ -824,7 +822,7 @@ export function advanceFronts(world) {
         for (const [dcc, f] of m) if (f.prio > topPrio) { topPrio = f.prio; topE = dcc; }
         const winning = Math.min(2, (natMight.get(cc) || 0) / Math.max(1, natMight.get(topE) || 0));
         const appetite = Math.max(0, Math.min(1, 0.35 + 0.4 * (p.expansionism || 0) + 0.3 * (p.aggression || 0)));
-        const gov = world.governments && world.governments.get(cc);
+        const gov = getPolity(world, cc);
         const mom = Math.min(1, ((gov && gov._momentum) || 0) / Math.max(1, T.MOMENTUM_CAP || 1));
         const mpR = c._manpowerCap > 0 ? (c._manpower || 0) / c._manpowerCap : 1;
         const weariness = (exh.get(cc) || 0) + (1 - mpR);                                   // war-weariness + bled white

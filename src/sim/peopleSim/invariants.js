@@ -83,8 +83,10 @@ export function checkPeopleSimInvariants(world) {
   // PERSISTENT, so tiles legitimately reference a dead settlement until the
   // next computeTerritory pass releases them — that transient is by design.)
   // State treasuries hold coin too — fold them into the supply total.
-  if (world.governments) {
-    for (const g of world.governments.values()) coin += Math.max(0, g.treasury || 0);
+  if (world.polities) {
+    // Alive polities only — a fallen realm's leftover chest is out of
+    // circulation (it returns only on restoration).
+    for (const p of world.polities.values()) if (p.endedStep < 0) coin += Math.max(0, p.treasury || 0);
   }
   // Visibility (not assertions): watch the closed money supply + headcount.
   world.debug.totalCoin = coin;

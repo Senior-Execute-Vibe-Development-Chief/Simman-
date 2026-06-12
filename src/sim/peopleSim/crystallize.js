@@ -19,6 +19,7 @@
 
 import { isContinentalLand } from "./state.js";
 import { makeSettlement } from "./settlement.js";
+import { getPolity } from "./entities.js";
 import { passRng } from "./rng.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
@@ -592,7 +593,7 @@ function maybeSendSettlers(world, alive, devFactor = 1) {
     const c = world.countries && world.countries.get(parent.countryId);
     if (c && c._capacity != null && c._loadTotal != null
         && c._loadTotal > c._capacity * COLONY_HEADROOM) continue;
-    const gov = world.governments && world.governments.get(parent.countryId);
+    const gov = getPolity(world, parent.countryId);
     if (gov && (gov._solvency ?? 1) < COLONY_MIN_SOLVENCY) continue;
     // Pressed: at or near carrying capacity (either food or housing) — the
     // people would otherwise sit at the ceiling. updatePopulation set s._k.
@@ -657,10 +658,10 @@ function sendSettlers(world, parent) {
     knowledge: inherited,
     parentId: parent.id,
     countryId: parent.countryId,                   // joins the parent's realm immediately
+    kind: "settlers",
     name: "colony-" + parent.id + "-" + world.step,
   });
   gridAdd(world, daughter);   // register for same-pass spacing queries
-  if (parent.history) parent.history.push({ step: world.step, type: "colony-sent", to: daughter.id, settlers });
 }
 
 // ── Urban genesis (mode #2): a farming region BIRTHS a town ───────────
@@ -752,10 +753,10 @@ function maybeUrbanGenesis(world) {
       knowledge: inherited,
       parentId: region.id,
       countryId: region.countryId,              // joins its hinterland's realm
+      kind: "town",
       name: "town-" + region.id + "-" + world.step,
     });
     gridAdd(world, town);   // register so same-pass spacing / catchment checks see it
-    if (region.history) region.history.push({ step: world.step, type: "spawned-town", to: town.id, seed });
   }
 }
 

@@ -3042,8 +3042,8 @@ return(
       {(()=>{
         const isPort=!!s._isPort;
         const seaPeers=s._seaReachSize??(s._seaReach?s._seaReach.size:0);
-        const sent=s.history?s.history.filter(h=>h.type==="colony-launched").length:0;
-        const isColony=s.history?s.history.some(h=>h.type==="colony-founded"):false;
+        const sent=s._coloniesSent||0;
+        const isColony=!!s._isColony;
         if(!isPort&&seaPeers===0&&sent===0&&!isColony)return null;
         const bits=[];
         if(isPort)bits.push("port");

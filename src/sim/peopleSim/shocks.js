@@ -11,7 +11,7 @@
 // past its tipping point.
 
 import { passRng } from "./rng.js";
-import { chronicle } from "./chronicle.js";
+import { logEvent } from "./events.js";
 import { T } from "./tuning.js";
 
 // ── FAMINE — a regional bad-harvest event ──
@@ -71,14 +71,18 @@ export function updateShocks(world) {
       const seed = pool[(rng() * pool.length) | 0];
       const dur = ((FAMINE_MIN_DUR + rng() * (FAMINE_MAX_DUR - FAMINE_MIN_DUR)) / _dt) | 0;   // ×G ticks → same span in history-time
       const until = world.step + dur;
+      const hitPolities = new Set();
       for (const s of world.settlements) {
         if (s.mode !== "settled") continue;
         if (torusDist(world, seed.pos.x, seed.pos.y, s.pos.x, s.pos.y) > FAMINE_RADIUS) continue;
         s._famineUntil = until;
         s._harvestMul = FAMINE_SEVERITY;
-        if (s.history) s.history.push({ step: world.step, type: "famine" });
-        chronicle(world, s.countryId, "famine", "A famine gripped the land.");
+        if (s.countryId >= 0) hitPolities.add(s.countryId);
       }
+      // One event per afflicted realm per outbreak (the outbreak is the story,
+      // not each village's bad harvest).
+      for (const cid of hitPolities)
+        logEvent(world, "famine.struck", { polity: cid, x: seed.pos.x | 0, y: seed.pos.y | 0 });
     }
   }
 
@@ -108,7 +112,6 @@ export function updateShocks(world) {
         s._plagueActive = false;
         s._plagueImmuneUntil = world.step + PLAGUE_IMMUNE / _dt;   // ×G ticks → same immunity span in history-time
         recovered.push(id);
-        if (s.history) s.history.push({ step: world.step, type: "plague-passed", people: Math.round(s.people) });
         continue;
       }
       // Mortality (worse in crowded cities). ×_dt: per-tick rates scale with the
@@ -134,8 +137,17 @@ function infect(world, s) {
   s._plagueUntil = world.step + PLAGUE_DUR / (world._dt || 1);   // ×G ticks → same infectious span in history-time
   s._plagueActive = true;
   world._plagued.add(s.id);
-  if (s.history) s.history.push({ step: world.step, type: "plague-struck", people: Math.round(s.people) });
-  chronicle(world, s.countryId, "plague", "Plague swept through the realm.");
+  // One outbreak event per realm per epidemic wave (an epidemic infects many
+  // towns over many ticks; the realm's chronicle wants the WAVE, not each).
+  if (s.countryId >= 0) {
+    if (!world._plagueEvAt) world._plagueEvAt = new Map();
+    const last = world._plagueEvAt.get(s.countryId) ?? -Infinity;
+    if (world.step - last > (PLAGUE_DUR * 3) / (world._dt || 1)) {
+      world._plagueEvAt.set(s.countryId, world.step);
+      logEvent(world, "plague.outbreak", { polity: s.countryId, s: s.id, sName: s.name,
+        x: s.pos.x | 0, y: s.pos.y | 0 });
+    }
+  }
 }
 
 function spreadFrom(world, s, reach, mult, rng) {

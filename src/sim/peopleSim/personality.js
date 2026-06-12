@@ -35,12 +35,14 @@
 //   • Successor states INHERIT the parent's temperament with a small drift,
 //     so lineages stay coherent while diverging over generations.
 //
-// Personalities live in world.personalities, a Map keyed by countryId — the
-// SAME persistence pattern as world.governments: stable across capital
-// changes, pruned when a country dies. The traits feed real levers via the
-// behaviour multipliers at the bottom of this file.
+// Personalities live ON the persistent polity record (entities.js) — stable
+// across capital changes and NEVER pruned: a fallen nation keeps its
+// character, so a later restoration is recognisably the same people (restored
+// Poland is Poland). The traits feed real levers via the behaviour
+// multipliers at the bottom of this file.
 
 import { entityRng } from "./rng.js";
+import { ensurePolity, getPolity } from "./entities.js";
 
 // Three INDEPENDENT outward-drive axes, each in −1..1 with 0 = neutral
 // (uncorrelated — so a realm can be high on two at once: the warlike merchant,
@@ -155,16 +157,16 @@ function makePersonality(world, c, rng) {
   return p;
 }
 
-// Get (or lazily create) a country's personality.
+// Get (or lazily create) a country's personality, stored on its polity record.
 export function personalityOf(world, c) {
-  if (!world.personalities) world.personalities = new Map();
-  let p = world.personalities.get(c.id);
-  if (!p) {
-    p = makePersonality(world, c, countryRng(world, c.id));
+  const pol = ensurePolity(world, c.id, { silent: true, seat: c.capital });
+  if (!pol) return null;
+  if (!pol.personality) {
+    const p = makePersonality(world, c, countryRng(world, c.id));
     p._size = c.members.length;
-    world.personalities.set(c.id, p);
+    pol.personality = p;
   }
-  return p;
+  return pol.personality;
 }
 
 // Slow, event-driven drift — called once per polity pass per multi-member
@@ -175,7 +177,8 @@ export function personalityOf(world, c) {
 // ticks), so character shifts over centuries — a Tokugawa→Meiji turn, not a
 // mood swing.
 export function driftPersonality(world, c, signals) {
-  const p = world.personalities && world.personalities.get(c.id);
+  const pol = getPolity(world, c.id);
+  const p = pol && pol.personality;
   if (!p || !p._base) return;
   const atWar    = (signals.warLevel || 0) > 0;
   const solvent  = (signals.solvency ?? 1) > 0.9;
@@ -204,11 +207,14 @@ export function driftPersonality(world, c, signals) {
 // drifted), so the lineage's character persists. If the parent has no recorded
 // personality yet, the child is left to lazily self-seed.
 export function inheritPersonality(world, parentCountryId, childCountryId) {
-  if (!world.personalities) world.personalities = new Map();
-  if (world.personalities.has(childCountryId)) return;       // already set
-  if (revivePersonality(world, childCountryId)) return;      // an old nation re-forming under its own id keeps its own character
-  const parent = world.personalities.get(parentCountryId);
-  if (!parent) return;                                        // child self-seeds later
+  const childPol = ensurePolity(world, childCountryId, { silent: true });
+  if (!childPol) return;
+  if (childPol.personality) return;   // already set — including an old nation
+                                      // re-forming under its own id, which keeps
+                                      // its own character (records never prune)
+  const parentPol = getPolity(world, parentCountryId);
+  const parent = parentPol && parentPol.personality;
+  if (!parent) return;                // child self-seeds later
   const rng = countryRng(world, childCountryId);
   const child = { _base: {} };
   for (const t of TRAITS) {
@@ -220,43 +226,11 @@ export function inheritPersonality(world, parentCountryId, childCountryId) {
     child._base[t] = clampv(((parent._base && parent._base[t]) ?? parent[t] ?? 0) + baseJ, -1, 1);
   }
   child._label = labelFor(child);
-  world.personalities.set(childCountryId, child);
+  childPol.personality = child;
 }
 
-// Drop personalities of realms that no longer exist (called from the polity
-// pass alongside the governments prune, so the map can't grow unbounded).
-// The pruned temperaments are ARCHIVED (capped) rather than discarded: a
-// conquered nation that later RE-EMERGES under its old id (conquest.js
-// restoreNations / homeland memory) gets its own character back, instead of
-// re-inheriting a drifted copy of its OCCUPIER's — restored Poland should be
-// recognisably Poland.
-const DEAD_PERSONALITY_CAP = 512;   // ≈ HOMELAND_MEMORY-scale population of fallen realms
-export function prunePersonalities(world, countries) {
-  if (!world.personalities) return;
-  let dead = world._deadPersonalities;
-  for (const id of world.personalities.keys()) {
-    if (!countries.has(id)) {
-      if (!dead) dead = world._deadPersonalities = new Map();
-      dead.delete(id);                                  // re-insert at the back (freshest)
-      dead.set(id, world.personalities.get(id));
-      world.personalities.delete(id);
-    }
-  }
-  if (dead && dead.size > DEAD_PERSONALITY_CAP) {
-    for (const id of dead.keys()) { dead.delete(id); if (dead.size <= DEAD_PERSONALITY_CAP) break; }
-  }
-}
-
-// A fallen nation rising again under its old id reclaims its archived
-// temperament. Returns true if revived (callers then skip inheritance).
-export function revivePersonality(world, countryId) {
-  const dead = world._deadPersonalities;
-  if (!dead || !dead.has(countryId)) return false;
-  if (!world.personalities) world.personalities = new Map();
-  if (!world.personalities.has(countryId)) world.personalities.set(countryId, dead.get(countryId));
-  dead.delete(countryId);
-  return true;
-}
+// (No prune / revive machinery: polity records persist forever, so a fallen
+// nation's temperament simply waits on its record for a restoration.)
 
 // Human-readable archetype — BLEND-AWARE, so the personalities we actually
 // simulate read on screen. The three outward drives are independent, so a

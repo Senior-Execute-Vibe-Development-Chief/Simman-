@@ -140,7 +140,7 @@ function packSelected(s) {
     foundedStep: s.foundedStep, parentSettlementId: s.parentSettlementId,
     _seaReachSize: s._seaReach ? s._seaReach.size : 0,
     _tradeProfile: getTradeProfile(s, world),
-    history: s.history ? s.history.slice(-200) : [],
+    _coloniesSent: s._coloniesSent || 0, _isColony: !!s._isColony,
   };
 }
 
@@ -160,7 +160,7 @@ function buildSnapshot() {
             expansionism: c.personality.expansionism }
         : null;
       countries.push({
-        id: c.id, capitalId: c.capitalId,
+        id: c.id, capitalId: c.capitalId, name: realmName(world, c.id),
         memberIds: c.members.map(m => m.id),
         hue: c.hue, range: c.range,
         _capacity: c._capacity, _loadTotal: c._loadTotal, _momentum: c._momentum,

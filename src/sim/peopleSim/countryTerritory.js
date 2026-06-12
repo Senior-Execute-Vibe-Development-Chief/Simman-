@@ -23,7 +23,7 @@
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
 import { grownOwnerAt } from "./countryClaim.js";
-import { chronicle } from "./chronicle.js";
+import { ensurePolity } from "./entities.js";
 import { T } from "./tuning.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
@@ -748,6 +748,7 @@ export function adoptAndFound(world) {
       // is a state, but a real town on the frontier is a polity.
       if (s.countryId < 0 && region < 0 && (s.tier | 0) >= 1 && co[ti] < 0) {
         s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
+        ensurePolity(world, s.id, { how: "frontier", seat: s });
         continue;
       }
       // otherwise village / town: follow the land (region), or stateless on the frontier
@@ -812,7 +813,7 @@ export function nucleateFrontierStates(world) {
     for (const p of placed) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; if (dx * dx + dy * dy < (NUCLEATE_R * 2) ** 2) { tooClose = true; break; } }
     if (tooClose) continue;
     s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
-    chronicle(world, s.id, "founding", `${s.name || "A frontier town"} declared itself a sovereign realm.`);
+    ensurePolity(world, s.id, { how: "frontier", seat: s });
     placed.push({ x: s.pos.x, y: s.pos.y }); n++;
   }
 }

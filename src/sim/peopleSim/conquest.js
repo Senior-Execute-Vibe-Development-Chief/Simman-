@@ -15,10 +15,12 @@
 import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.js";
 import { shockUnrest } from "./shocks.js";
 import { localEdgeCost } from "./transport.js";
-import { personalityOf, inheritPersonality, prunePersonalities, revivePersonality, driftPersonality, expansionReachMul } from "./personality.js";
+import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
 import { techEff } from "./settlement.js";
-import { chronicle, realmName, archiveChronicle } from "./chronicle.js";
+import { realmName } from "./chronicle.js";
+import { logEvent } from "./events.js";
+import { ensurePolity, endPolity, getPolity, reconcilePolities } from "./entities.js";
 import { T } from "./tuning.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
@@ -90,8 +92,8 @@ const _cityEnclaveOff = (typeof process !== "undefined" && process.env && proces
 // public works to the provinces. Because the state taxes and spends at the
 // same high bandwidth (it touches every member directly, unlike throughput-
 // limited trade), a roughly balanced budget keeps coin circulating to the
-// periphery instead of pooling at the throne. Treasury lives in
-// world.governments keyed by countryId (stable across capital changes).
+// periphery instead of pooling at the throne. Treasury lives on the
+// persistent polity record (entities.js — stable across capital changes).
 // ARMY_WAGE -> runtime lever (tuning.js T.ARMY_WAGE)
 const WAR_SURCHARGE = 1.2;  // each level of war (defensive front / besieged capital) multiplies the army bill
 const RESERVE_PASSES = 3;   // war-chest the state keeps (passes of peacetime army pay) before funding works
@@ -150,11 +152,11 @@ const FAILED_REVOLT_WEALTH = 0.55;
 const FAILED_REVOLT_ARMY   = 0.35;
 const SPOILS_DECAY = 0.85;   // war-weariness relief (banked on conquest in armies.js) fades per pass
 
+// The fiscal record IS the persistent polity entity (entities.js): treasury,
+// revenue/spend, momentum and tax state all live on it and survive capital
+// changes, conquest, and restoration.
 export function govOf(world, countryId) {
-  if (!world.governments) world.governments = new Map();
-  let g = world.governments.get(countryId);
-  if (!g) { g = { treasury: 0, _revenue: 0, _spend: 0, fineness: 1.0 }; world.governments.set(countryId, g); }
-  return g;
+  return ensurePolity(world, countryId, { silent: true });
 }
 
 // Bank conquest momentum onto the conquering country (armies.js calls this
@@ -478,12 +480,6 @@ export function rebuildCountries(world) {
     buildHierarchy(world, c);
     assignProvinces(world, c);
   }
-  // Archive the chronicle of any realm that vanished this pass (its id is now held
-  // by no settlement → conquered/dissolved) so fallen empires keep their history.
-  // Done before the swap so the dead realm's name still resolves from the old map.
-  if (world._chronicles) {
-    for (const cid of world._chronicles.keys()) if (!countries.has(cid)) archiveChronicle(world, cid, "Conquered and erased from the map.");
-  }
   world.countries = countries;
   return countries;
 }
@@ -722,16 +718,17 @@ function restoreNations(world, members, ownerId, requireBorder) {
     const bloc = filterToConnectedBloc(world, group, seat, Infinity);   // the WHOLE connected nation
     if (bloc.length < 2) continue;
     if (requireBorder && !hasOutsideBorder(world, ownerId, bloc)) continue;
-    // A restored nation is ITSELF first: reclaim its archived temperament; only
-    // a nation with no surviving character inherits (drifted) from the occupier.
-    if (!revivePersonality(world, H)) inheritPersonality(world, ownerId, H);
+    // Re-open the nation's persistent record (logs polity.restored); its
+    // temperament is still on it, so inherit only fills a genuine void
+    // (a nation that fell before it ever had a recorded character).
+    ensurePolity(world, H, { how: "restored", seat, from: ownerId, fromName: realmName(world, ownerId) });
+    inheritPersonality(world, ownerId, H);
     snapClaim(world, H);
     if (world.debug) world.debug.restored = (world.debug.restored || 0) + 1;
     for (const m of bloc) {
       m.countryId = H; m._homeland = -1; m._homelandFell = -1;    // home again
       m.loyalty = m === seat ? 1 : 0.85; m._ambition = 0; m._conqueredAt = world.step;
       restored.add(m.id);
-      if (m.history) m.history.push({ step: world.step, type: "restored", nation: H });
     }
   }
   return restored;
@@ -837,7 +834,7 @@ function shedPatch(world, c, members) {
     for (const m of members) {
       if (m.countryId !== c.id) continue;
       m.countryId = -1; m.loyalty = 1; m._ambition = 0; m._conqueredAt = world.step;   // falls stateless; tiles revert
-      if (m.history) m.history.push({ step: world.step, type: "abandoned", from: c.id });
+      logEvent(world, "settlement.lapsed", { s: m.id, sName: m.name, from: c.id, fromName: realmName(world, c.id) });
     }
     return;
   }
@@ -854,6 +851,7 @@ function shedPatch(world, c, members) {
     if (!grp || !grp.length) continue;
     const newId = freshCountryId(c, [seat, ...grp.filter(m => m !== seat)]);   // the seat leads (its own id, unless that IS the parent)
     if (newId < 0) continue;
+    ensurePolity(world, newId, { silent: true, seat });
     inheritPersonality(world, c.id, newId);        // successor inherits the parent's temperament (with drift)
     snapClaim(world, newId);                       // the cell is its own that day (instant, not a slow wave)
     for (const m of grp) {
@@ -862,10 +860,9 @@ function shedPatch(world, c, members) {
       m.loyalty = m === seat ? 1 : 0.8;
       m._ambition = 0;
       m._conqueredAt = world.step;                 // anti-flicker grace
-      if (m.history) m.history.push({ step: world.step, type: m === seat ? "seceded" : "joined-secession", to: newId });
     }
-    chronicle(world, c.id, "secession", `Province ${(seat && seat.name) || "a city"} rose in revolt and broke away.`);
-    chronicle(world, newId, "founding", `Broke away from ${realmName(world, c.id)} in a war of secession.`);
+    logEvent(world, "polity.seceded", { polity: newId, from: c.id, fromName: realmName(world, c.id),
+      seatName: seat && seat.name, x: seat ? seat.pos.x | 0 : undefined, y: seat ? seat.pos.y | 0 : undefined });
   }
 }
 
@@ -879,8 +876,9 @@ export function fragmentRealm(world, oldId, excludeId) {
   // Only zero the dead chest once it has actually been CREDITED somewhere; if
   // the conqueror can't be resolved the coin stays put (and rides along if the
   // nation is later restored under the same id) instead of being destroyed.
-  if (world.governments) {
-    const dead = world.governments.get(oldId);
+  const deadName = realmName(world, oldId);
+  {
+    const dead = getPolity(world, oldId);
     if (dead && dead.treasury > 0) {
       const conq = world._byId ? world._byId.get(excludeId) : null;
       if (conq && conq.countryId != null && conq.countryId >= 0) {
@@ -888,6 +886,11 @@ export function fragmentRealm(world, oldId, excludeId) {
         dead.treasury = 0;
       }
     }
+  }
+  {
+    const conq = world._byId ? world._byId.get(excludeId) : null;
+    const by = conq && conq.countryId != null ? conq.countryId : -1;
+    endPolity(world, oldId, "conquest", by, by >= 0 ? realmName(world, by) : undefined);
   }
   let survivors = [];
   for (const s of world.settlements) {
@@ -902,10 +905,10 @@ export function fragmentRealm(world, oldId, excludeId) {
   if (survivors.length === 0) return;
   if (survivors.length === 1) {
     const s = survivors[0];
+    ensurePolity(world, s.id, { how: "fragment", seat: s, from: oldId, fromName: deadName });
     inheritPersonality(world, oldId, s.id);       // lone successor keeps the old realm's temperament
     snapClaim(world, s.id);                        // the realm shatters at once, not as a wave
     s.countryId = s.id; s.loyalty = 1; s._conqueredAt = world.step;
-    if (s.history) s.history.push({ step: world.step, type: "successor", of: oldId });
     return;
   }
   // Successor capitals: the strongest surviving cities, spread apart so the
@@ -928,7 +931,11 @@ export function fragmentRealm(world, oldId, excludeId) {
   }
   // Each successor realm inherits the dead empire's temperament (with drift),
   // so the Diadochi share their predecessor's character before diverging.
-  for (const cap of capitals) { inheritPersonality(world, oldId, cap.id); snapClaim(world, cap.id); }
+  for (const cap of capitals) {
+    ensurePolity(world, cap.id, { how: "fragment", seat: cap, from: oldId, fromName: deadName });
+    inheritPersonality(world, oldId, cap.id);
+    snapClaim(world, cap.id);
+  }
   // Each survivor joins its nearest successor capital.
   for (const s of survivors) {
     let best = capitals[0], bd = Infinity;
@@ -939,7 +946,6 @@ export function fragmentRealm(world, oldId, excludeId) {
     s.countryId = best.id;
     s.loyalty = s.id === best.id ? 1 : 0.9;
     s._conqueredAt = world.step;                  // successors get breathing room (grace)
-    if (s.history) s.history.push({ step: world.step, type: "successor", of: oldId });
   }
 }
 
@@ -966,10 +972,10 @@ function declareIndependence(world, c, seed) {
       m._ambition = 0;
       m.loyalty = 0.5;
       m._conqueredAt = world.step;
-      if (m.history) m.history.push({ step: world.step, type: "failed-revolt" });
     }
     return;
   }
+  ensurePolity(world, newId, { silent: true, seat: seed });
   inheritPersonality(world, c.id, newId);        // the breakaway carries its parent's temperament (with drift)
   snapClaim(world, newId);                        // instantaneous secession
   for (const m of bloc) {
@@ -977,8 +983,9 @@ function declareIndependence(world, c, seed) {
     m._conqueredAt = world.step;                 // the breakaway realm gets breathing room (grace)
     m._ambition = 0;
     m.loyalty = m === seed ? 1 : 0.9;            // vassals are committed to their lord's new realm
-    if (m.history) m.history.push({ step: world.step, type: m === seed ? "declared-independence" : "followed-lord", to: newId });
   }
+  logEvent(world, "polity.seceded", { polity: newId, from: c.id, fromName: realmName(world, c.id),
+    seatName: seed && seed.name, x: seed ? seed.pos.x | 0 : undefined, y: seed ? seed.pos.y | 0 : undefined });
 }
 
 // Damage a town in a rising — people die or flee, wealth is looted, the
@@ -1000,7 +1007,6 @@ function rebel(world, c, seeds) {
     if (seed.id === c.capitalId) {            // the throne riots, it doesn't secede
       ravage(seed, RIOT_POP, RIOT_WEALTH, RIOT_ARMY);
       seed.unrest = 0;
-      if (seed.history) seed.history.push({ step: world.step, type: "riot" });
       continue;
     }
     if (seed.countryId !== c.id) continue;    // already swept into an earlier rising this pass
@@ -1030,19 +1036,20 @@ function rebel(world, c, seeds) {
         m.unrest = 0;
         m.loyalty = 0.5;
         m._conqueredAt = world.step;
-        if (m.history) m.history.push({ step: world.step, type: "failed-revolt" });
       }
       continue;
     }
     snapClaim(world, newId);                   // a rebellion seizes its territory at once
+    ensurePolity(world, newId, { silent: true, seat: seed });
     for (const m of bloc) {
       ravage(m, REBEL_POP, REBEL_WEALTH, REBEL_ARMY);
       m.countryId = newId;
       m.unrest = 0;                            // the rising vents the grievance
       m.loyalty = 1;                           // loyal to the new rebel realm
       m._conqueredAt = world.step;             // resists immediate re-annex (anti-flicker)
-      if (m.history) m.history.push({ step: world.step, type: m === seed ? "rebellion" : "joined-rebellion", to: newId });
     }
+    logEvent(world, "polity.seceded", { polity: newId, from: c.id, fromName: realmName(world, c.id),
+      seatName: seed && seed.name, x: seed ? seed.pos.x | 0 : undefined, y: seed ? seed.pos.y | 0 : undefined });
   }
 }
 
@@ -1604,13 +1611,10 @@ export function updatePolities(world) {
   absorbWeakNeighbors(world, countries);
   if (_pf) _pf.absorb = performance.now() - _pt;
 
-  // Drop treasuries of realms that no longer exist (conquest seizure already
-  // moved the coin of conquered capitals; this just stops the map growing).
-  if (world.governments) {
-    for (const id of world.governments.keys()) if (!countries.has(id)) world.governments.delete(id);
-  }
-  // Same for personalities — prune temperaments of dead realms.
-  prunePersonalities(world, countries);
+  // Reconcile the persistent polity registry against the live view: register
+  // substantial newcomers, close the records of realms that vanished. (No
+  // pruning — fallen realms keep their record, history and temperament.)
+  reconcilePolities(world, countries);
 }
 
 // Does this realm have administrative room for one more province? A realm
@@ -1754,20 +1758,13 @@ function absorbWeakNeighbors(world, countries) {
     const oldCC = m.countryId;
     m.countryId = bestId;
     recordOccupation(m, oldCC, bestId, world.step);   // absorbed people keep their homeland identity
-    {
-      const mName = m.name || "a settlement";
-      if (oldCC < 0) {
-        chronicle(world, bestId, "annex", `The free settlement ${mName} joined the realm.`);
-      } else {
-        chronicle(world, bestId, "annex", `Peacefully absorbed ${mName} from ${realmName(world, oldCC)}.`);
-        chronicle(world, oldCC, "loss", `Ceded ${mName} to ${realmName(world, bestId)}.`);
-      }
-    }
+    logEvent(world, "settlement.annexed", { s: m.id, sName: m.name || "a settlement",
+      from: oldCC, fromName: oldCC >= 0 ? realmName(world, oldCC) : undefined,
+      to: bestId, toName: realmName(world, bestId) });
     if (world.debug && world.debug.land) { world.debug.land.absorb++; const g = world.debug.land.gain; g.set(bestId, (g.get(bestId) || 0) + 1); }
     m.loyalty = 0.6;                          // absorbed, not yet truly part of the realm
     m._conqueredAt = world.step;              // brief grace to settle in
     absorbedLoad.set(bestId, committed + estAbsorbLoad(world, target, m));
-    if (m.history) m.history.push({ step: world.step, type: "absorbed", into: bestId });
   }
 
   // ── Enclave elimination ─────────────────────────────────────────────
@@ -1889,7 +1886,6 @@ function eliminateEnclaves(world, countries) {
         s.countryId = intoId;
         s.loyalty = 0.6;
         s._conqueredAt = world.step;
-        if (s.history) s.history.push({ step: world.step, type: "absorbed", into: intoId });
       }
     }
   }

@@ -45,6 +45,7 @@
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
 import { T } from "./tuning.js";
+import { getPolity } from "./entities.js";
 import { exportValueOf, getWealthReserve } from "./settlement.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
@@ -596,7 +597,6 @@ function linkCloseNeighbours(world, s) {
     for (const ti of path.tiles) if (paintRoad(world, ti)) didChange = true;
     if (didChange) {
       anyBuilt = true;
-      if (s.history) s.history.push({ step: world.step, type: "local-link", to: peer.id, tiles: path.tiles.length });
     }
   });
   return anyBuilt;
@@ -664,7 +664,7 @@ function tryAddRoad(world, s) {
   // most of it; shortcut probes against already-connected peers get a
   // tight cap so a stable network doesn't re-path every peer every cycle.
   const rq = world.roadQuality;
-  let bestPartner = null, bestScore = -Infinity, bestPath = null, bestNewFrac = 0;
+  let bestPartner = null, bestScore = -Infinity, bestPath = null;
   let newEvals = 0, shortcutEvals = 0;
   for (const cand of ranked) {
     if (newEvals >= MAX_NEW_EVALS && shortcutEvals >= MAX_SHORTCUT_EVALS) break;
@@ -715,7 +715,6 @@ function tryAddRoad(world, s) {
       bestScore = score;
       bestPartner = peer;
       bestPath = path;
-      bestNewFrac = newFrac;
     }
   }
   if (!bestPartner) return false;
@@ -742,11 +741,6 @@ function tryAddRoad(world, s) {
     if (paintRoad(world, ti)) didChange = true;
   }
   if (!didChange) return false;
-  if (s.history) s.history.push({
-    step: world.step, type: "road-built",
-    to: bestPartner.id, tiles: physicalTiles.length,
-    pathCost: Math.round(bestPath.cost), newFrac: +bestNewFrac.toFixed(2),
-  });
   return true;
 }
 
@@ -970,8 +964,8 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
 // trade; gently capped to [0.8, 1.3] so a debased realm's terms of trade worsen
 // without spiralling. Reads fineness directly (no gov creation for stateless).
 function fxRate(world, buyer, seller) {
-  if (buyer.countryId === seller.countryId || !world.governments) return 1;
-  const gb = world.governments.get(buyer.countryId), gs = world.governments.get(seller.countryId);
+  if (buyer.countryId === seller.countryId || !world.polities) return 1;
+  const gb = getPolity(world, buyer.countryId), gs = getPolity(world, seller.countryId);
   const fb = gb && gb.fineness !== undefined ? gb.fineness : 1;
   const fs = gs && gs.fineness !== undefined ? gs.fineness : 1;
   if (fb === fs) return 1;

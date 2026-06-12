@@ -30,6 +30,7 @@
 // regardless of how many ports exist — far cheaper than a per-port flood.
 
 import { makeSettlement, techEff } from "./settlement.js";
+import { logEvent } from "./events.js";
 import { T } from "./tuning.js";
 import { isContinentalLand } from "./state.js";
 import { recordOut, OUT_COLONY } from "./money.js";
@@ -390,7 +391,8 @@ function tryColonize(world, A, cands, prev) {
     idx: 0, speed: T.SHIP_SPEED * (1 + techEff(A).seaSpeed),
     x: A.pos.x, y: A.pos.y,
   });
-  if (A.history) A.history.push({ step: world.step, type: "colony-launched", landTi: chosen.landTi });
+  A._coloniesSent = (A._coloniesSent || 0) + 1;
+  logEvent(world, "colony.departed", { s: A.id, sName: A.name, polity: A.countryId });
 }
 
 // A landing tile is clear if no settlement sits within COLONY_MIN_DIST. The
@@ -445,7 +447,6 @@ function foundColony(world, sh) {
     if (home && home.mode === "settled") {
       home.people = (home.people || 0) + (sh.people || 0);
       home.wealth = (home.wealth || 0) + (sh.wealth || 0);
-      if (home.history) home.history.push({ step: world.step, type: "colony-recalled", coin: Math.round(sh.wealth || 0) });
     }
     return;
   }
@@ -453,9 +454,10 @@ function foundColony(world, sh) {
     people: sh.people,
     knowledge: { ...sh.knowledge },
     parentId: sh.owner,
+    kind: "colony",
     name: "colony",
   });
   colony.countryId = sh.countryId;        // colonial allegiance to the founder's realm
   colony.wealth = sh.wealth || 0;
-  if (colony.history) colony.history.push({ step: world.step, type: "colony-founded", parent: sh.owner });
+  colony._isColony = true;
 }

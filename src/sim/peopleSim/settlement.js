@@ -11,7 +11,8 @@ import { seedLocalTerritory } from "./territory.js";
 import { techEffects } from "./tech.js";
 import { agriGate, bestPackageAt, pkgSuitAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
-import { chronicle } from "./chronicle.js";
+import { logEvent } from "./events.js";
+import { ensurePolity, getPolity } from "./entities.js";
 import { T } from "./tuning.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, OUT_GOODS, OUT_MATERIALS } from "./money.js";
 
@@ -222,7 +223,7 @@ export function makeSettlement(world, x, y, opts = {}) {
     tier: opts.tier ?? 0,
     mode: "settled",
     lastFoundAttempt: world.step,
-    history: [{ step: world.step, type: "founded", parent: opts.parentId ?? -1, pos: { x, y } }],
+
   };
   // Migrate older knowledge objects (e.g. crystallization inheritance)
   // that don't have the new fields.
@@ -249,8 +250,14 @@ export function makeSettlement(world, x, y, opts = {}) {
     }
     s._cropCeil = undefined;
   }
-  // Chronicle: a cradle is the founding of a realm at the dawn of history.
-  if (opts.cradle) chronicle(world, s.id, "founding", "Founded at the dawn of civilisation.");
+  // Record the birth in the world's event log; a cradle also founds the
+  // first polity of its river valley.
+  logEvent(world, "settlement.founded", {
+    s: s.id, sName: s.name, x: s.pos.x | 0, y: s.pos.y | 0,
+    kind: opts.cradle ? "cradle" : (opts.kind || (opts.parentId != null && opts.parentId >= 0 ? "settled" : "crystallized")),
+    parent: opts.parentId ?? -1, polity: opts.countryId ?? -1,
+  });
+  if (opts.cradle) ensurePolity(world, s.id, { how: "cradle", seat: s });
   s._techEff = techEffects(s.knowledge, T.TECH_EFFECTS);   // tech bonuses available from tick 0 (refreshed in updateKnowledge)
   return s;
 }
@@ -438,8 +445,8 @@ function updateWealth(world, s) {
   // lot (the cut is only taken when there is a treasury to receive it, so no coin
   // is destroyed). govOf is inlined here to avoid a settlement↔conquest cycle.
   let seig = 0;
-  if (T.SEIGNIORAGE_RATE > 0 && s.countryId >= 0 && world.governments) {
-    const g = world.governments.get(s.countryId);
+  if (T.SEIGNIORAGE_RATE > 0 && s.countryId >= 0 && world.polities) {
+    const g = getPolity(world, s.countryId);
     if (g) { seig = mined * T.SEIGNIORAGE_RATE; g.treasury += seig; }
   }
   s.wealth = (s.wealth || 0) + mined - seig;
@@ -1439,7 +1446,7 @@ function updatePopulation(world, s) {
   }
   if (s.people < 1.5) {
     s.mode = "dead";
-    s.history.push({ step: world.step, type: "abandoned" });
+    logEvent(world, "settlement.abandoned", { s: s.id, sName: s.name, polity: s.countryId });
     return;
   }
   // Withering: a settlement stuck below 8 people for too long (a stillborn
@@ -1449,7 +1456,7 @@ function updatePopulation(world, s) {
     if (s._witherSince === undefined) s._witherSince = world.step;
     if (world.step - s._witherSince > 2000 / _dt) {   // same wither-window in history-time at any granularity
       s.mode = "dead";
-      s.history.push({ step: world.step, type: "withered" });
+      logEvent(world, "settlement.withered", { s: s.id, sName: s.name, polity: s.countryId });
     }
   } else {
     s._witherSince = undefined;
@@ -1494,7 +1501,8 @@ function updateTier(world, s) {
   for (let t = TIER_THRESHOLD.length - 1; t > s.tier; t--) {
     if (s.people >= bar(t)) {
       s.tier = t;
-      s.history.push({ step: world.step, type: "tier-up", tier: TIER_NAME[t], people: Math.round(s.people) });
+      logEvent(world, "settlement.tier", { s: s.id, sName: s.name, polity: s.countryId,
+        tier: t, tierName: TIER_NAME[t], up: 1, people: Math.round(s.people) });
       return;
     }
   }
@@ -1504,7 +1512,8 @@ function updateTier(world, s) {
   // would let genesis immediately re-spawn it — an oscillation).
   if (s.tier > 1 && s.people < bar(s.tier) * TIER_DEMOTE_FRAC) {
     s.tier -= 1;
-    s.history.push({ step: world.step, type: "decline", tier: TIER_NAME[s.tier], people: Math.round(s.people) });
+    logEvent(world, "settlement.tier", { s: s.id, sName: s.name, polity: s.countryId,
+      tier: s.tier, tierName: TIER_NAME[s.tier], up: 0, people: Math.round(s.people) });
   }
 }
 
