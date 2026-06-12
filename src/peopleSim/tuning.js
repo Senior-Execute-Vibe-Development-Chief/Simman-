@@ -23,7 +23,7 @@ export const TUNING_SCHEMA = [
     blurb: "How often the heavy systems tick. Lower = the system acts more often (snappier, more CPU).",
     params: [
       { key: "SIM_GRANULARITY", label: "Time granularity", def: 1, min: 1, max: 8, step: 1,
-        desc: "Runs the whole simulation in finer time-steps. At G, every per-tick CLOCK (population growth, technique learning, tech diffusion, new-settlement founding, famines & plagues) advances 1/G as much, and the war / politics / muster passes stretch their interval by G — so the SAME emergent history plays out over G× more ticks in smaller, smoother increments (territory and the border-crawl auto-refine, since they refresh G× more often per unit of history). G = 2 is half-speed and twice as fine-grained, G = 4 quarter-speed, and so on — costing G× the ticks (and CPU) for the same span of history. G = 1 is the calibrated baseline, untouched. Validated G=2 vs G=1: development, territory, demographics and wealth stocks reproduce; total wealth drifts ~20% low at G=2 (second-order per-tick flows) and per-tick rate READOUTS (trade-flow overlay) read ~1/G — a tick is 1/G as much history. NB this re-times the SIM; it doesn't change the app's frame rate." },
+        desc: "Runs the whole simulation in finer time-steps. At G, every per-tick CLOCK (population growth, technique learning, tech diffusion, new-settlement founding, migration, famines & plagues, ship voyages) advances 1/G as much, and the war / politics / muster passes stretch their interval by G — so the SAME emergent history plays out over G× more ticks in smaller, smoother increments (territory and the border-crawl auto-refine, since they refresh G× more often per unit of history). G = 2 is half-speed and twice as fine-grained, G = 4 quarter-speed, and so on — costing G× the ticks (and CPU) for the same span of history. G = 1 is the calibrated baseline, untouched. Validated G=2 vs G=1: development, territory, demographics and wealth stocks reproduce; total wealth drifts ~20% low at G=2 — the still-unscaled second-order flows are granary accrual, construction bursts and the polity-pass windows (RECENCY/GRACE etc., which stretch with the pass cadence instead) — and per-tick rate READOUTS (trade-flow overlay) read ~1/G, since a tick is 1/G as much history. NB this re-times the SIM; it doesn't change the app's frame rate." },
       { key: "CONQUEST_INTERVAL", label: "War pass interval", def: 50, min: 10, max: 200, step: 5,
         desc: "Ticks between war-front advances. Lower = fronts move faster and more smoothly." },
       { key: "POLITY_INTERVAL", label: "Politics pass interval", def: 150, min: 30, max: 400, step: 10,
@@ -62,10 +62,6 @@ export const TUNING_SCHEMA = [
         desc: "Cap on a bordering statelet's per-pass chance of defecting into a strong neighbour. Down = slower, more gradual erosion of small states (less snowballing)." },
       { key: "ABSORB_RATE", label: "Absorption pressure", def: 0.025, min: 0.005, max: 0.1, step: 0.005,
         desc: "How sharply a power imbalance translates into defection pressure. Down = even much-stronger neighbours absorb their small rivals only slowly." },
-      { key: "CAP_POP", label: "Big-capital bonus", def: 0.4, min: 0, max: 8, step: 0.25,
-        desc: "Extra control capacity a large capital projects (scales with its population). Down = a giant metropolis can't administer a giant empire, so conquests over-extend and shed." },
-      { key: "CAP_ORG", label: "Bureaucratic capacity", def: 1.0, min: 0, max: 24, step: 0.5,
-        desc: "Extra control capacity per point of the capital's ORGANIZATION tech — administrative depth that lets an advanced state govern more provinces. Up = bigger late empires; down = even advanced empires stay modest. (One of four org-cohesion dials; together they set how large/durable empires get.)" },
       { key: "ABSORB_DOMINANCE", label: "Absorption dominance gate", def: 2.6, min: 1.05, max: 5.0, step: 0.05,
         desc: "How many times stronger a realm must be than a neighbour before it peacefully absorbs that neighbour's frontier settlements. DOWN = aggressive consolidation, fewer & larger nations; UP = only lopsided mismatches erode, so the map stays more multipolar with many nations." },
       { key: "LOYAL_ORG_HOLD", label: "Imperial cohesion (loyalty)", def: 0.35, min: 0, max: 0.9, step: 0.05,
@@ -209,9 +205,9 @@ export const TUNING_SCHEMA = [
       { key: "AGRI_TROPIC_PENALTY", label: "Wet-tropic agriculture cap", def: 0.4, min: 0, max: 0.8, step: 0.05,
         desc: "How much the WET TROPICS lower the domestication ceiling (above) — hot, wet land (disease burden, leached soils, root crops rather than storable taxable cereals: the Congo/Amazon/New-Guinea pattern). At 0.4 the hottest, wettest land loses up to 40% of its agricultural ceiling, keeping the deep equatorial belt sparse and stateless even on a big landmass. 0 = the wet tropics develop agriculture as freely as anywhere." },
       { key: "TIER_SCALE_REF", label: "Tier-scale reference pop", def: 29000, min: 1000, max: 200000, step: 1000,
-        desc: "RELATIVE TIERS: the population bar to count as a TOWN scales with the WORLD's total population ÷ this reference (capped by TIER_SCALE_MAX). As civilisation grows, the size that qualifies as a 'town' rises too, so the urban hierarchy stays proportional and the rural majority stays rural — instead of mid-size farming villages being mislabelled 'towns' once the world fills up. At the default (29000) a typical ~90k-pop world gives a scale of ~3.1, so a 'town' needs ~790 people (vs the base 250) — calibrating the urban share to ~17%, in the historical pre-industrial band of ~10-20% (a 500-soul settlement was a large farming village, not a town). Lower = the bar rises faster (more rural, fewer/larger towns). Set huge to disable (fixed absolute thresholds, the old behaviour)." },
+        desc: "RELATIVE TIERS: the population bar to count as a TOWN scales with the WORLD's total population ÷ this reference (capped by TIER_SCALE_MAX). As civilisation grows, the size that qualifies as a 'town' rises too, so the urban hierarchy stays proportional and the rural majority stays rural — instead of mid-size farming villages being mislabelled 'towns' once the world fills up. At the default (29000) a typical ~90k-pop world gives a scale of ~3.1, so a 'town' needs ~470 people (vs the base 150, settlement.js TIER_THRESHOLD) — keeping the urban share in the historical pre-industrial band of ~10-20% (a 500-soul settlement was a large farming village, not a town). Lower = the bar rises faster (more rural, fewer/larger towns). Set huge to disable (fixed absolute thresholds, the old behaviour)." },
       { key: "TIER_SCALE_MAX", label: "Tier-scale cap", def: 3.5, min: 1, max: 6, step: 0.25,
-        desc: "Ceiling on the relative-tier multiplier (above), so the town bar can't rise so far that genuine towns vanish in a huge world. Only the rural→TOWN bar scales (the city/metropolis bars stay absolute at 1200/3000, so real urban centres always qualify — scaling those too would erase cities). At 3.5 the town bar tops out at ~3.5×250 ≈ 875. Up = a harsher cut toward rural; down = towns appear at smaller sizes." },
+        desc: "Ceiling on the relative-tier multiplier (above), so the town bar can't rise so far that genuine towns vanish in a huge world. Only the rural→TOWN bar scales (the CITY bar stays absolute at 600 and the METROPOLIS bar floats with the largest city — settlement.js TIER_THRESHOLD / METRO_REL_FRAC — so real urban centres always qualify). At 3.5 the town bar tops out at ~3.5×150 ≈ 525. Up = a harsher cut toward rural; down = towns appear at smaller sizes." },
       { key: "FOOD_HAUL_RANGE", label: "Grain haul range", def: 14, min: 3, max: 60, step: 1,
         desc: "GRAIN SPOILAGE / DISTANCE GATE: the e-folding distance (in tiles) a region can ship grain up to its market town before spoilage and cartage eat it — the survival of a haul is exp(−distance / range). At the default 14 a farm ~14 tiles from its market delivers ~37% of what it ships, ~10 tiles ~49%, and surplus much further away simply STAYS RURAL and feeds its own people (food no longer teleports up the hierarchy). This range is then widened by the destination's tier (a city/metropolis aggregates a wider hinterland than a market town), by transport tech (FOOD_HAUL_TECH), and by water corridors (FOOD_HAUL_WATER). Down = food is intensely local and the countryside keeps more (fewer/smaller cities, more rural); up = grain travels freely (the old near-teleport). Set very high to recover the old distance-blind behaviour." },
       { key: "FOOD_HAUL_TECH", label: "Transport-tech haul bonus", def: 1.0, min: 0, max: 3, step: 0.1,
@@ -307,6 +303,11 @@ for (const cat of TUNING_SCHEMA) for (const p of cat.params) DEFAULTS[p.key] = p
 // Live, mutable values the sim reads. Starts at defaults (== old constants).
 export const T = { ...DEFAULTS };
 
+// Monotonic version stamp, bumped on every lever change. Lets per-tick caches
+// derived from T (e.g. transport.js edge-cost params) invalidate immediately
+// when a slider moves, instead of serving stale numbers for the rest of a tick.
+export const TUNING_VERSION = { v: 1 };
+
 // Apply a partial override map (from the Tuning menu / worker message). Only
 // known keys are accepted, and only finite numbers — a malformed message can
 // never poison the sim.
@@ -317,10 +318,11 @@ export function applyTuning(overrides) {
     const v = Number(overrides[k]);
     if (Number.isFinite(v)) T[k] = v;
   }
+  TUNING_VERSION.v++;
 }
 
 // Reset every lever to its hand-tuned default.
-export function resetTuning() { Object.assign(T, DEFAULTS); }
+export function resetTuning() { Object.assign(T, DEFAULTS); TUNING_VERSION.v++; }
 
 // The defaults, for the menu's "reset" affordance / change indicators.
 export function tuningDefaults() { return { ...DEFAULTS }; }

@@ -106,19 +106,22 @@ export function updateShocks(world) {
       if (!s || s.mode !== "settled") { recovered.push(id); continue; }
       if (world.step >= (s._plagueUntil || 0)) {            // burns out → immune
         s._plagueActive = false;
-        s._plagueImmuneUntil = world.step + PLAGUE_IMMUNE;
+        s._plagueImmuneUntil = world.step + PLAGUE_IMMUNE / _dt;   // ×G ticks → same immunity span in history-time
         recovered.push(id);
         if (s.history) s.history.push({ step: world.step, type: "plague-passed", people: Math.round(s.people) });
         continue;
       }
-      // Mortality (worse in crowded cities).
+      // Mortality (worse in crowded cities). ×_dt: per-tick rates scale with the
+      // time-granularity step so a plague kills the same share of a city per
+      // unit of HISTORY at any SIM_GRANULARITY, not G× more.
       const urban = Math.max(0, Math.log10(Math.max(1, s.people) / 100));
-      const mort = T.PLAGUE_MORT * (1 + PLAGUE_URBAN * urban);
+      const mort = T.PLAGUE_MORT * (1 + PLAGUE_URBAN * urban) * _dt;
       s.people = Math.max(1, s.people * (1 - mort));
       // Spread along the trade graph (road reach + sea lanes). The very links
-      // that carry grain and coin carry the contagion.
-      spreadFrom(world, s, s._tradeReach, 1, rng);
-      spreadFrom(world, s, s._seaReach, PLAGUE_SEA_MULT, rng);
+      // that carry grain and coin carry the contagion. Per-tick infection odds
+      // are _dt-scaled for the same reason as mortality.
+      spreadFrom(world, s, s._tradeReach, _dt, rng);
+      spreadFrom(world, s, s._seaReach, PLAGUE_SEA_MULT * _dt, rng);
     }
     for (const id of recovered) world._plagued.delete(id);
   }
@@ -128,7 +131,7 @@ function infect(world, s) {
   if (!s || s.mode !== "settled") return;
   if (world.step < (s._plagueImmuneUntil || 0)) return;     // resistant survivors
   if (world.step < (s._plagueUntil || 0)) return;           // already infected
-  s._plagueUntil = world.step + PLAGUE_DUR;
+  s._plagueUntil = world.step + PLAGUE_DUR / (world._dt || 1);   // ×G ticks → same infectious span in history-time
   s._plagueActive = true;
   world._plagued.add(s.id);
   if (s.history) s.history.push({ step: world.step, type: "plague-struck", people: Math.round(s.people) });

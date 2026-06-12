@@ -1,4 +1,4 @@
-import { T } from "./tuning.js";
+import { T, TUNING_VERSION } from "./tuning.js";
 // Transport distance map: for every land tile, the minimum cumulative
 // terrain-weighted cost to reach the nearest settlement. Used by the
 // crystallization sweep to bias new settlements toward sites already
@@ -68,7 +68,9 @@ class _MinHeap {
     }
   }
   popMin() {
-    if (this.n === 0) return -1;
+    // Callers must guard on n > 0; an empty pop returns a sentinel object (not
+    // -1 — destructuring a number silently yields undefined fields).
+    if (this.n === 0) return { ti: -1, d: Infinity };
     const ti = this.ti[0], d = this.d[0];
     this.n--;
     if (this.n === 0) return { ti, d };
@@ -131,6 +133,30 @@ class _MinHeap {
 // Both delegate to one core function so the rules can never drift.
 
 // NAV_EMBARK_THRESH (seafaring tech gate) is a runtime lever — tuning.js T.NAV_EMBARK_THRESH.
+
+// ── Per-(knowledge, tick) parameter cache ─────────────────────────────
+// localEdgeCost used to rebuild its params object on EVERY edge relaxation —
+// millions of allocations + T.* reads per territory / claim / polity / A*
+// pass, the single hottest allocation site in the sim. Knowledge drifts by
+// ~1e-5/tick, so the params are constant within a tick: cache them per
+// knowledge OBJECT per (step, tuning-version). The WeakMap keys on the live
+// knowledge object (knOf maps / s.knowledge hand the same reference around a
+// pass), so a stale entry simply refreshes on the next tick — and a tuning
+// slider bumps TUNING_VERSION, invalidating mid-tick as the live-lever
+// contract promises. Zero-knowledge callers share one sentinel key.
+const _paramCache = new WeakMap();
+const _ZERO_KN = {};
+function _paramsFor(world, kn) {
+  const key = kn || _ZERO_KN;
+  const step = (world && world.step) | 0;
+  const tv = TUNING_VERSION.v;
+  let e = _paramCache.get(key);
+  if (!e || e.step !== step || e.tv !== tv) {
+    e = { step, tv, params: _paramsFromKnowledge(kn) };
+    _paramCache.set(key, e);
+  }
+  return e.params;
+}
 
 function _paramsFromKnowledge(kn) {
   const k = kn || {};
@@ -230,15 +256,21 @@ function _edgeCost(world, fromTi, toTi, params, ignoreRoads) {
 
   // Mode change pays the port tax. Construction shrinks it — this is
   // why a high-construction realm can bridge rivers cheaply while a
-  // neolithic one is walled by them.
+  // neolithic one is walled by them. NOTE the tax is per mode CHANGE, so
+  // crossing a river perpendicular pays it twice (step on + step off) —
+  // intentional: a ford/bridge has two banks, and travel ALONG the river
+  // pays nothing. (conquest.js majorRiverToll is a separate, admin-reach-
+  // only surcharge on top for mag≥3 rivers.)
   if (toMode !== fromMode) base += params.port;
   return base;
 }
 
 // Zero-tech cost (for global transport distance map + crossing overlay).
-const _ZERO_PARAMS = _paramsFromKnowledge({});
+// Routed through the per-tick cache (not a frozen module-load snapshot) so
+// the zero-tech baseline honours live tuning levers like NAV_EMBARK_THRESH /
+// the *_COST_MULT dials on its next pass.
 export function baseEdgeCost(world, fromTi, toTi) {
-  return _edgeCost(world, fromTi, toTi, _ZERO_PARAMS);
+  return _edgeCost(world, fromTi, toTi, _paramsFor(world, null));
 }
 
 // Tech-aware cost (per-settlement reach, march speed, conquest range). Pass
@@ -246,7 +278,7 @@ export function baseEdgeCost(world, fromTi, toTi) {
 // projection) so borders follow terrain, not roads; leave it off for movement
 // and trade, which legitimately speed up on roads.
 export function localEdgeCost(world, fromTi, toTi, kn, ignoreRoads) {
-  return _edgeCost(world, fromTi, toTi, _paramsFromKnowledge(kn), ignoreRoads);
+  return _edgeCost(world, fromTi, toTi, _paramsFor(world, kn), ignoreRoads);
 }
 
 export function computeTransport(world) {

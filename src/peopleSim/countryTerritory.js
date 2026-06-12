@@ -255,17 +255,24 @@ export function computeCountryTerritory(world) {
   if (!cost || cost.length !== N) cost = world._countryCost = new Float64Array(N);
   cost.fill(Infinity);
 
-  // Per-country reach budget + the knowledge used for edge cost — both taken
-  // from the country's most-organised settlement (its de-facto capital).
+  // Per-country reach budget + the knowledge used for edge cost — taken from
+  // the country's POLITICAL capital (rebuildCountries' pick, when a polity
+  // pass has run) so the border anchor radiates from the same city the rest
+  // of the sim calls the capital; before the first polity pass — or if the
+  // capital died between passes — fall back to the most-organised settlement.
   const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map(), eraBoost = new Map(), hostOf = new Map();
+  const politicalCap = new Map();   // countryId → capital settlement id (conquest.js rebuildCountries)
+  if (world.countries) for (const [cid, c] of world.countries) if (c && c.capitalId != null) politicalCap.set(cid, c.capitalId);
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless settlements don't seed
     const c = s.countryId;
     members.set(c, (members.get(c) || 0) + 1);
+    const isPolCap = politicalCap.get(c) === s.id;
     const org = s._techEff ? s._techEff.reachLevel : ((s.knowledge && s.knowledge.organization) || 0);   // admin reach from techs (tech.js)
-    if (!capOrg.has(c) || org > capOrg.get(c)) {
-      capOrg.set(c, org);
-      capPos.set(c, s.pos);          // the most-organised settlement = the realm's de-facto capital (the anchor reach radiates from)
+    const rank = isPolCap ? Infinity : org;                  // the throne outranks any org score (selection only — budgets use the real org)
+    if (!capOrg.has(c) || rank > capOrg.get(c)) {
+      capOrg.set(c, rank);
+      capPos.set(c, s.pos);          // the capital — the anchor authority radiates from
       knOf.set(c, s.knowledge || {});
       // Empire SIZE is unlocked by TRANSPORT & COMMUNICATION tech, not raw
       // construction: a road-less realm stays regional however many monuments it
@@ -603,22 +610,39 @@ function closeRealmGaps(world, co, D) {
     wD: new Int32Array(N), eD: new Int32Array(N), nD: new Int32Array(N), sD: new Int32Array(N) };
   const { wC, eC, nC, sC, wD, eD, nD, sD } = buf;
   const FAR = 1 << 28;
+  // The W/E sweeps WRAP (longitude is periodic — every other pass in this file
+  // wraps, and an unwrapped sweep left gap-fill artifacts hugging the
+  // antimeridian seam): each row is scanned twice, the second sweep carrying
+  // the seam state across x=0 so a country just west of the seam flanks land
+  // just east of it. N/S clamp (the poles don't wrap).
   for (let y = 0; y < th; y++) {                       // ← nearest country to the WEST
     let last = -1, lastP = -1e9; const row = y * tw;
-    for (let x = 0; x < tw; x++) { const ti = row + x;
-      if (elev[ti] <= 0) { last = -1; lastP = -1e9; wC[ti] = -1; wD[ti] = FAR; continue; }
-      const d = x - lastP;
-      if (last >= 0 && d <= D) { wC[ti] = last; wD[ti] = d; } else { wC[ti] = -1; wD[ti] = FAR; }
-      if (co[ti] >= 0) { last = co[ti]; lastP = x; }
+    for (let p = 0; p < 2; p++) {
+      if (p === 1) { if (last < 0) break; lastP -= tw; }   // carry across the seam
+      for (let x = 0; x < tw; x++) { const ti = row + x;
+        if (elev[ti] <= 0) { last = -1; lastP = -1e9; if (p === 0) { wC[ti] = -1; wD[ti] = FAR; } continue; }
+        const d = x - lastP;
+        if (last >= 0 && d <= D) {
+          if (p === 0 || d < wD[ti]) { wC[ti] = last; wD[ti] = d; }
+        } else if (p === 0) { wC[ti] = -1; wD[ti] = FAR; }
+        else break;                                        // second sweep only matters within D of the seam
+        if (co[ti] >= 0) { last = co[ti]; lastP = x; if (p === 1) { p = 2; break; } }
+      }
     }
   }
   for (let y = 0; y < th; y++) {                       // → nearest country to the EAST
     let last = -1, lastP = 1e9; const row = y * tw;
-    for (let x = tw - 1; x >= 0; x--) { const ti = row + x;
-      if (elev[ti] <= 0) { last = -1; lastP = 1e9; eC[ti] = -1; eD[ti] = FAR; continue; }
-      const d = lastP - x;
-      if (last >= 0 && d <= D) { eC[ti] = last; eD[ti] = d; } else { eC[ti] = -1; eD[ti] = FAR; }
-      if (co[ti] >= 0) { last = co[ti]; lastP = x; }
+    for (let p = 0; p < 2; p++) {
+      if (p === 1) { if (last < 0) break; lastP += tw; }   // carry across the seam
+      for (let x = tw - 1; x >= 0; x--) { const ti = row + x;
+        if (elev[ti] <= 0) { last = -1; lastP = 1e9; if (p === 0) { eC[ti] = -1; eD[ti] = FAR; } continue; }
+        const d = lastP - x;
+        if (last >= 0 && d <= D) {
+          if (p === 0 || d < eD[ti]) { eC[ti] = last; eD[ti] = d; }
+        } else if (p === 0) { eC[ti] = -1; eD[ti] = FAR; }
+        else break;
+        if (co[ti] >= 0) { last = co[ti]; lastP = x; if (p === 1) { p = 2; break; } }
+      }
     }
   }
   for (let x = 0; x < tw; x++) {                       // ↓ nearest country to the NORTH

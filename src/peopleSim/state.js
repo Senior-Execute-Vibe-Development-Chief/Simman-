@@ -4,8 +4,8 @@
 // ownership — just terrain plus the entity arrays.
 
 import { mkRng } from "./rng.js";
-import { resetSettlementIds, makeSettlement } from "./settlement.js";
-import { resetShipIds } from "./sea.js";
+import { makeSettlement } from "./settlement.js";
+import { resetInvariantState } from "./invariants.js";
 import { T } from "./tuning.js";
 
 const TILE_RES = 2;
@@ -23,14 +23,16 @@ function isContinentalLand(world, ti) {
   const ty = (ti / tw) | 0;
   if (ty <= 0 || ty >= th - 1) return false;
   // Left / right wrap in longitude (x is periodic); up / down don't.
+  // Neighbours use the same 0.005 floor as the centre tile, so a ring of
+  // downsample-noise specks can't certify each other as continental.
   const tx = ti - ty * tw;
   const left  = ty * tw + (tx === 0 ? tw - 1 : tx - 1);
   const right = ty * tw + (tx === tw - 1 ? 0 : tx + 1);
   let n = 0;
-  if (elev[left]    > 0) n++;
-  if (elev[right]   > 0) n++;
-  if (elev[ti - tw] > 0) n++;
-  if (elev[ti + tw] > 0) n++;
+  if (elev[left]    > 0.005) n++;
+  if (elev[right]   > 0.005) n++;
+  if (elev[ti - tw] > 0.005) n++;
+  if (elev[ti + tw] > 0.005) n++;
   return n >= 2;
 }
 export { isContinentalLand };
@@ -74,7 +76,7 @@ export function createWorld(w, opts = {}) {
   initRiverMag(world, w);
   initWind(world, w);
   initDeposits(world, w, opts.deposits);
-  resetShipIds();
+  resetInvariantState(world);   // fresh run starts with no warning-throttle memory
   seedCradleVillage(world);
   return world;
 }
@@ -107,10 +109,10 @@ function bellFert(t, m, e) {
 
 // Downsample worldgen's per-pixel deposit arrays into peopleSim's
 // tile space. Sample at the same offset used for elev/temp/moist so
-// everything lines up. Only resources relevant to the knowledge
-// system are downsampled (the worldgen also has precious / oil /
-// gems / salt which feed wealth/trade systems, kept here for future
-// use but not gated on currently).
+// everything lines up. Tracks every resource the sim consumes — the
+// knowledge gates (ores/horses), the wealth faucet (precious/gems)
+// and the luxury trade goods (spices/furs/incense/dyes). Worldgen's
+// 'oil' deposit is the one layer with no sim consumer yet.
 const TRACKED_RES = ['timber','stone','copper','tin','iron','coal','horses','salt','precious','gems','spices','furs','incense','dyes'];
 function initDeposits(world, w, deposits) {
   if (!deposits) return;
@@ -271,7 +273,6 @@ function seedEarthHearths(world) {
 }
 
 function seedCradleVillage(world) {
-  resetSettlementIds();
   const { tw, elev, temp, moist, fert, coast, riverMag, N } = world;
   // EARTH MAP: force the two historical hearths (Nile + Yangtze) instead of the
   // algorithmic top-N, so the New World stays wild until colonisation. (T.EARTH_HEARTHS off = algorithmic.)

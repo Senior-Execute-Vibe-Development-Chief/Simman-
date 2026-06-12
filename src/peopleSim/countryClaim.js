@@ -69,27 +69,35 @@ export function grownOwnerAt(world, ti) {
 // up its own tile — otherwise a realm's scattered or not-yet-reached towns appear
 // as disconnected dots ahead of the border. The one case that legitimately needs
 // its own seed is a settlement the border can NEVER crawl to: one cut off by
-// WATER (an overseas colony / island), since the crawl never crosses sea. So flood
-// the landmass from `startTi` over land; if it reaches a tile the realm already
-// claims, the border will arrive on its own (no foothold — it fills in
-// contiguously); if the flood is walled in by water without finding one, this is a
-// separate landmass and needs a birth foothold. Bounded so a continent exits cheap.
-function landConnectedToClaim(world, claim, startTi, cid) {
-  const { tw, th, elev } = world;
-  const MAX = 4000;
-  const seen = new Set([startTi]); const q = [startTi]; let visited = 0;
-  while (q.length && visited < MAX) {
-    const ti = q.pop(); visited++;
-    if (claim[ti] === cid) return true;                  // same landmass as ground the realm already holds
-    const ty = (ti / tw) | 0, tx = ti - ty * tw;
-    const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
-    const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
-    for (let k = 0; k < 4; k++) {
-      const ni = ns[k]; if (ni < 0 || seen.has(ni) || elev[ni] <= 0) continue;   // water walls the flood
-      seen.add(ni); q.push(ni);
+// WATER (an overseas colony / island), since the crawl never crosses sea.
+//
+// Answered EXACTLY via a static landmass-component map (terrain never changes,
+// so it's computed once per world) plus a per-relax index of which components
+// each realm's claim touches. The old implementation flooded outward with a
+// 4000-tile budget and treated a budget-exhausted search as "different
+// landmass" — on a big continent whose claim sat far away that planted exactly
+// the disconnected dots this function exists to prevent.
+function landComp(world) {
+  let comp = world._landComp;
+  if (comp && comp.length === world.N) return comp;
+  const { N, tw, th, elev } = world;
+  comp = world._landComp = new Int32Array(N).fill(-1);
+  const stack = [];
+  for (let seed = 0; seed < N; seed++) {
+    if (comp[seed] >= 0 || elev[seed] <= 0) continue;
+    stack.length = 0; stack.push(seed); comp[seed] = seed;   // 4-neighbour, x wraps — matches the crawl's connectivity
+    while (stack.length) {
+      const ti = stack.pop();
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const ns = [ty * tw + (tx === 0 ? tw - 1 : tx - 1), ty * tw + (tx === tw - 1 ? 0 : tx + 1),
+                  ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+      for (let k = 0; k < 4; k++) {
+        const ni = ns[k]; if (ni < 0 || comp[ni] >= 0 || elev[ni] <= 0) continue;
+        comp[ni] = seed; stack.push(ni);
+      }
     }
   }
-  return false;
+  return comp;
 }
 
 
@@ -133,7 +141,17 @@ export function relaxClaim(world) {
   // First: which countries already hold ground, and (for those that don't yet)
   // their head settlement.
   const present = new Set();
-  for (let ti = 0; ti < N; ti++) { const v = claim[ti]; if (v >= 0) present.add(v); }
+  // Which landmass COMPONENTS each present realm's claim touches — built in the
+  // same O(N) scan, so the foothold test below ("does my realm hold ground on
+  // MY landmass?") is an exact O(1) lookup instead of a bounded flood.
+  const comp = landComp(world);
+  const claimComps = new Map();
+  for (let ti = 0; ti < N; ti++) {
+    const v = claim[ti]; if (v < 0) continue;
+    present.add(v);
+    let s2 = claimComps.get(v); if (!s2) claimComps.set(v, s2 = new Set());
+    s2.add(comp[ti]);
+  }
   const headOf = new Map();
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0 || present.has(s.countryId)) continue;
@@ -157,7 +175,8 @@ export function relaxClaim(world) {
       // (an overseas colony the crawl can never cross water to reach). A town on
       // the same landmass — even one not yet reached — waits for the border, so
       // it never shows as a disconnected dot ahead of the advance.
-      if (!landConnectedToClaim(world, claim, ti, s.countryId)) claim[ti] = s.countryId;
+      const held = claimComps.get(s.countryId);
+      if (!held || !held.has(comp[ti])) claim[ti] = s.countryId;
     } else if (headOf.get(s.countryId) === s) {
       claim[ti] = s.countryId;                               // the realm's single BIRTH foothold
       present.add(s.countryId);                              // it now exists; everyone else waits for the crawl

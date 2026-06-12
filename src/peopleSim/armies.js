@@ -17,9 +17,6 @@
 
 import { coreRadiusFor } from "./territory.js";
 import { techEff } from "./settlement.js";
-import { findPath } from "./roads.js";
-import { forEachNear } from "./spatialGrid.js";
-import { localEdgeCost } from "./transport.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { chronicle, realmName } from "./chronicle.js";
@@ -130,151 +127,10 @@ function homeMight(s) {
   return Math.max(s.army || 0, militia) * techMul(s);
 }
 
-// ── Marching reinforcements ──
-// When a settlement is besieged, its realm-mates detach part of their garrison
-// and MARCH it to the front along roads (slow over wilderness, fast on roads),
-// arriving after a real transit delay. So a small frontier town gets overrun
-// before help comes, while a connected capital can relieve a siege — and the
-// senders are weakened while their troops are away. Modelled as moving units
-// (world.armies), same as colony ships.
-const MARCH_SPEED        = 0.6;   // base path-tiles advanced per tick
-const ROAD_MARCH_MULT    = 2.5;   // marching along a road is this much faster
-const REINFORCE_SEND_FRAC = 0.4;  // fraction of a sender's garrison dispatched
-const REINFORCE_COOLDOWN  = 200;  // ticks before a settlement sends again
-const REINFORCE_MAX_SENDERS = 5;  // nearest realm-mates that respond to one siege
-const REINFORCE_MIN_ARMY  = 3;    // a sender needs at least this many troops to bother
-const MAX_MARCHES         = 240;  // global cap on in-flight columns (perf)
-// Only NEARBY realm-mates can relieve a siege in time: a column marches at
-// MARCH_SPEED and a siege lasts a handful of conquest passes, so a sender across
-// the map never arrives. Bounding the sender search to this radius also lets the
-// spatial grid answer it locally instead of scanning every settlement (the
-// O(besieged × settlements) scan was part of the late-game blow-up).
-const REINFORCE_RANGE     = 90;
-// Hard cap on relief PATHFINDS per conquest pass. Late game can have hundreds of
-// simultaneous sieges, and each sender needs a full-map A* route — unbounded,
-// that single pass dominated the whole tick (multi-second spikes). With a budget
-// the cost is bounded; sieges left unrelieved this pass simply get another shot
-// next conquest pass (they persist for many passes), and the budget is spent on
-// the most important sieges first (triage below).
-const MAX_REINFORCE_PATHS = 64;
-
-// Besieged settlements call their nearest realm-mates to march troops in. Cost
-// is bounded three ways: senders are found via the spatial grid within
-// REINFORCE_RANGE, only the nearest few are pathed per siege, and a global
-// per-pass pathfind budget caps the total work (capitals/large cities first).
-function dispatchReinforcements(world, besieged) {
-  if (!world.armies) world.armies = [];
-  if (world.armies.length >= MAX_MARCHES) return;
-  const tw = world.tw;
-  // Triage: spend the limited relief budget on the most important sieges first
-  // (the throne, then larger settlements), so a swamped frontier can't starve
-  // the capital of reinforcements.
-  const order = [...besieged].sort((a, b) => {
-    const ca = world.countries && world.countries.get(a.countryId);
-    const cb = world.countries && world.countries.get(b.countryId);
-    const capA = ca && ca.capitalId === a.id ? 1 : 0;
-    const capB = cb && cb.capitalId === b.id ? 1 : 0;
-    if (capA !== capB) return capB - capA;
-    return (b.people || 0) - (a.people || 0);
-  });
-  let pathBudget = MAX_REINFORCE_PATHS;
-  for (const def of order) {
-    if (pathBudget <= 0 || world.armies.length >= MAX_MARCHES) break;
-    // Nearby same-realm senders with troops to spare and off cooldown — gathered
-    // from the spatial grid (local, not a full-settlement scan).
-    const cands = [];
-    forEachNear(world, def.pos.x, def.pos.y, REINFORCE_RANGE, (m, d2) => {
-      if (m.id === def.id || m.countryId !== def.countryId) return;
-      if ((m.army || 0) < REINFORCE_MIN_ARMY) return;
-      if (world.step - (m._lastReinforce ?? -Infinity) < REINFORCE_COOLDOWN) return;
-      cands.push({ m, d2 });
-    });
-    if (cands.length === 0) continue;
-    cands.sort((a, b) => a.d2 - b.d2);
-    // Path only the nearest few candidates (each is one A*), capped by the global
-    // budget — so a single siege can never path the whole realm.
-    let sent = 0;
-    const tries = Math.min(cands.length, REINFORCE_MAX_SENDERS);
-    for (let i = 0; i < tries; i++) {
-      if (sent >= REINFORCE_MAX_SENDERS || pathBudget <= 0 || world.armies.length >= MAX_MARCHES) break;
-      const m = cands[i].m;
-      pathBudget--;
-      const path = findPath(world, m, def);          // road-aware route (none → can't relieve)
-      if (!path || path.tiles.length < 2) continue;
-      const troops = (m.army || 0) * REINFORCE_SEND_FRAC;
-      if (troops < 1) continue;
-      m.army -= troops;                               // committed: gone from home until they arrive
-      m._lastReinforce = world.step;
-      // Snapshot the dispatching settlement's tech so the column moves at
-      // the speed its TRAINING earned (the troops carry their doctrine with
-      // them, not the home town's). Keeping the raw tile indices on the path
-      // lets moveArmies look up terrain cost per step.
-      const k = m.knowledge || {};
-      world.armies.push({
-        owner: m.id, countryId: m.countryId, troops, targetId: def.id,
-        path: path.tiles.map(ti => ({ x: (ti % tw) + 0.5, y: ((ti / tw) | 0) + 0.5 })),
-        pathTiles: path.tiles,
-        knowledge: { construction: k.construction||0,
-                     organization: k.organization||0, mobility: k.mobility||0,
-                     navigation: k.navigation||0 },
-        idx: 0, x: m.pos.x, y: m.pos.y,
-      });
-      sent++;
-    }
-  }
-}
-
-// ── Per tick: advance every marching column; merge into the garrison on arrival ──
-// March speed reads the per-tile terrain cost via localEdgeCost (transport.js)
-// modulated by the column's own knowledge snapshot — so a Mongol cavalry horde
-// gallops across plains while a stone-age levy plods through mountains. Roads
-// dominate (cost ≈ 0.08-0.25, so ~4-12× the base speed). The same edge-cost
-// function the trade pathfinder uses, applied symmetrically to military movement.
-export function moveArmies(world) {
-  const arr = world.armies;
-  if (!arr || arr.length === 0) return;
-  const { tw, th } = world;
-  const live = [];
-  for (const m of arr) {
-    const path = m.path, pathTiles = m.pathTiles;
-    if (!path || path.length < 2 || m.idx >= path.length - 1) {
-      // Arrived: the column joins its target's garrison (if it still stands
-      // and is still friendly). Otherwise the relief force is lost.
-      const def = world._byId ? world._byId.get(m.targetId) : null;
-      if (def && def.mode === "settled" && def.countryId === m.countryId) def.army = (def.army || 0) + m.troops;
-      continue;
-    }
-    // Per-step movement cost: integer tile we're about to leave → next tile.
-    // Higher cost = slower step (m.idx advances less).
-    const i0 = m.idx | 0, i1 = Math.min(path.length - 1, i0 + 1);
-    let stepMul = 1;
-    if (pathTiles && pathTiles.length === path.length) {
-      const c = localEdgeCost(world, pathTiles[i0], pathTiles[i1], m.knowledge);
-      // Speed scales as 1/√c so the spread stays moderate:
-      //   road (c≈0.10) → ~3.2× speed
-      //   plain, base tech (c≈1.0) → 1.0× speed
-      //   plain, max tech (c≈0.25) → 2.0× speed
-      //   hills (c≈3) → 0.58× speed
-      //   high mountain (c≈10) → 0.32× speed
-      // Bounded above so a perfect worn road doesn't blow past sane limits.
-      stepMul = isFinite(c) ? Math.min(4, 1 / Math.sqrt(Math.max(0.05, c))) : 0.5;
-    } else {
-      // Backwards-compatibility: legacy columns without pathTiles fall back
-      // to a flat road check (the pre-terrain behaviour).
-      const ti = (Math.max(0, Math.min(th - 1, m.y | 0))) * tw + (((m.x | 0) % tw + tw) % tw);
-      const onRoad = world.roadQuality && world.roadQuality[ti] < 1.0;
-      stepMul = onRoad ? ROAD_MARCH_MULT : 1;
-    }
-    m.idx += MARCH_SPEED * stepMul;
-    const fr = m.idx - i0;
-    const p0 = path[i0], p1 = path[i1];
-    let dxp = p1.x - p0.x; if (dxp > tw / 2) dxp -= tw; else if (dxp < -tw / 2) dxp += tw;
-    m.x = ((p0.x + dxp * fr) % tw + tw) % tw;
-    m.y = Math.max(0, Math.min(th - 1, p0.y + (p1.y - p0.y) * fr));
-    live.push(m);
-  }
-  world.armies = live;
-}
+// (The old marching-reinforcement columns — dispatchReinforcements/moveArmies
+// and world.armies — were removed: nothing called them since siege relief moved
+// to the national defensive-split model (defShareOf), so columns never spawned
+// and the renderer's marching-army overlay could never fire.)
 
 function armyCapFrac(world, s) {
   let f = ARMY_TIER_FRAC[s.tier | 0] ?? ARMY_TIER_FRAC[0];
@@ -422,7 +278,9 @@ export function advanceFronts(world) {
   // close, exhaustion decays through a real peace-window, and war turns episodic:
   // campaign → a generation of peace → campaign. Defence is never gated. A warlike
   // realm's aggMul still discounts the bar, so the proud fight on longest.
-  const exhPrev = world._warExhaust;
+  // A real COPY (not an alias of world._warExhaust): the bar must read last
+  // pass's values even after the update loop below mutates the live map.
+  const exhPrev = world._warExhaust ? new Map(world._warExhaust) : null;
   const warBarOf = (cc) => 1 + T.EXHAUST_WAR_BAR * (exhPrev ? (exhPrev.get(cc) || 0) : 0);
 
   // Wars END IN A PEACE (dyadic truces). The exhaustion bar alone could not break
@@ -656,8 +514,7 @@ export function advanceFronts(world) {
     }
   }
 
-  // Realm-mates march to relieve every settlement under attack (over transit
-  // time — see dispatchReinforcements / moveArmies). While here, stamp each
+  // Stamp each
   // defender with the current step (a war/siege clock the polity pass reads to
   // throttle a realm's control budget) and tally, per country, the distinct
   // enemy countries it's engaged with — its front count, for the multi-front
@@ -919,11 +776,18 @@ export function advanceFronts(world) {
     if (budget >= 1 && pc.tiles.length) {
       // Advance the front BROADLY: take the outermost contested tiles first
       // so the defender's countryside erodes ring by ring (visible) instead
-      // of a thin salient spiking straight to the capital.
+      // of a thin salient spiking straight to the capital. Tile lists were
+      // collected in one pre-pass scan, so a tile can appear in TWO attackers'
+      // lists — re-check it still belongs to this defender before flipping,
+      // or the second attacker double-captures it (and double-banks momentum).
       pc.tiles.sort((p, q) => q.distHome - p.distHome);
-      const n = Math.min(budget, pc.tiles.length);
-      for (let i = 0; i < n; i++) { const cti = pc.tiles[i].ti; owner[cti] = att.id; capturedAt[cti] = world.step; }
-      bankMomentum(world, att.countryId, n * MOMENTUM_PER_TILE);   // captured countryside feeds the streak
+      let captured = 0;
+      for (let i = 0; i < pc.tiles.length && captured < budget; i++) {
+        const cti = pc.tiles[i].ti;
+        if (owner[cti] !== def.id) continue;   // already taken earlier this pass
+        owner[cti] = att.id; capturedAt[cti] = world.step; captured++;
+      }
+      if (captured > 0) bankMomentum(world, att.countryId, captured * MOMENTUM_PER_TILE);   // captured countryside feeds the streak
     }
     att.army = Math.max(0, (att.army || 0) - def._M * T.ATTRITION / techMul(att));
     def.army = Math.max(0, (def.army || 0) - att._M * T.ATTRITION / techMul(def));

@@ -1,12 +1,11 @@
 // Public API for the people simulator (settlements-only model).
 //
-//   initPeopleSim(worldGen, opts)  — build world + seed cradle village
+//   initPeopleSim(worldGen, opts)  — build world + seed cradle villages
 //   stepPeopleSim(world, n=1)      — advance N ticks
-//   getEntities(world)             — { settlements, caravans, armies }
 //   peopleSimStats(world)          — quick numbers for HUD / debug
 //
 // No bands — settlements are the atomic visible entity. New ones come
-// from daughter colonies founded by existing settlements.
+// from crystallisation, settler parties and overseas colonies.
 
 import { createWorld, pruneDead } from "./state.js";
 import { updateSettlement, urbanise } from "./settlement.js";
@@ -30,6 +29,7 @@ import { updateInflation } from "./inflation.js";
 import { foldMoney } from "./money.js";
 import { checkPeopleSimInvariants } from "./invariants.js";
 import { chronicleTick } from "./chronicle.js";
+import { techState } from "./tech.js";
 import { T } from "./tuning.js";
 
 const CHRONICLE_INTERVAL = 300;   // ticks between per-country chronicle milestone checks
@@ -63,10 +63,11 @@ export function stepPeopleSim(world, n = 1) {
     const _G = Math.max(1, T.SIM_GRANULARITY || 1);
     world._dt = 1 / _G;
     const _ivl = (base) => Math.max(1, Math.round(base * _G));
-    // Fast id → settlement lookup, rebuilt each tick. Replaces the
-    // O(n) linear scans the trade / knowledge passes would otherwise
-    // do per peer (effectiveLocalRes, findById, ...).
-    world._byId = new Map();
+    // Fast id → settlement lookup, refreshed each tick (the Map instance is
+    // reused — clear+refill — so this allocates nothing per tick). Replaces
+    // the O(n) linear scans the trade / knowledge passes would otherwise do
+    // per peer (effectiveLocalRes, findById, ...).
+    if (world._byId) world._byId.clear(); else world._byId = new Map();
     for (let i = 0; i < world.settlements.length; i++) {
       const s = world.settlements[i];
       world._byId.set(s.id, s);
@@ -160,10 +161,6 @@ export function stepPeopleSim(world, n = 1) {
   return world;
 }
 
-export function getEntities(world) {
-  return { settlements: world.settlements };
-}
-
 export function peopleSimStats(world) {
   let sPeople = 0, sWealth = 0, aliveSettlements = 0, territoryTiles = 0, sArmy = 0;
   const tierCounts = [0, 0, 0, 0];
@@ -200,9 +197,18 @@ export function peopleSimStats(world) {
     }
     world._landStatsCache = { step: world.step, claimedTiles, landTiles, largestEmpire };
   }
-  if (world.countries) for (const c of world.countries.values()) treasury += c._treasury || 0;
+  // Leading era: the most advanced capital's tech era — drives the HUD ribbon
+  // (the mirror's settlement records don't carry knowledge, so this must be
+  // computed worker-side). Capitals only, so it's a few dozen techState calls.
+  let leadingEra = 0;
+  if (world.countries) for (const c of world.countries.values()) {
+    treasury += c._treasury || 0;
+    const k = c.capital && c.capital.knowledge;
+    if (k) { const e = techState(k).era; if (e > leadingEra) leadingEra = e; }
+  }
   return {
     step: world.step,
+    leadingEra,
     settlements: aliveSettlements,
     villages:    tierCounts[0],
     towns:       tierCounts[1],

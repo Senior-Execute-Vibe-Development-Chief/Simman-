@@ -42,7 +42,7 @@
 // route (genuine shortcut worth the effort). New tiles are
 // painted into roadQuality; nothing else is created.
 
-import { localEdgeCost, baseEdgeCost } from "./transport.js";
+import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
 import { T } from "./tuning.js";
 import { exportValueOf, getWealthReserve } from "./settlement.js";
@@ -257,14 +257,19 @@ function paintRoad(world, ti) {
   return false;
 }
 
-// Map: settlementId → its home tile index. Inverse lookup tile → settlement.
+// Map: home tile index → settlement. Cached per tick (one shared Map instance,
+// clear+refill — it used to be re-allocated every tick by staggerReachRebuild
+// AND per components rebuild).
 function buildSettlementTileMap(world) {
-  const map = new Map();
+  if (world._stMapStep === world.step && world._stMap) return world._stMap;
+  let map = world._stMap;
+  if (map) map.clear(); else map = world._stMap = new Map();
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
     map.set(ti, s);
   }
+  world._stMapStep = world.step;
   return map;
 }
 
@@ -435,10 +440,9 @@ function computeReach(world, s, stMap) {
 // pass + reach rebuilds) is hundreds of pathfinds — doing it all on one tick
 // caused a periodic multi-hundred-ms FREEZE that grew with the map, the main
 // cause of "starts fast, then rapidly slows". Instead the cycle is now SPREAD
-// across PLAN_SPREAD ticks: a snapshot is taken each PLAN_INTERVAL, then a
-// small slice of candidates is evaluated per tick, so the same total work is
-// amortised into smooth per-tick cost with no stutter.
-const PLAN_SPREAD = 120;   // ticks to spread one plan cycle over (< PLAN_INTERVAL)
+// out over many ticks: a snapshot queue is taken each PLAN_INTERVAL, then
+// exactly ONE candidate settlement is evaluated per tick (see maybeBuildRoads),
+// so the same total work is amortised into smooth per-tick cost with no stutter.
 
 // Network COMPONENTS only need rebuilding when the topology changed (a road
 // was built / decayed, or the settlement set changed). In a settled world

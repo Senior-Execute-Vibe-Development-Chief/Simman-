@@ -201,7 +201,7 @@ export function maybeCrystallize(world) {
   // than all at once (see COVERAGE_FLOOR / COVERAGE_RAMP). Scales both the random
   // crystallisation sweep and mother-country colonisation, so the early map stays a
   // sparse frontier and the wilderness recedes over the eras.
-  const devFactor = Math.min(1, COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * world.step / COVERAGE_RAMP);
+  const devFactor = Math.min(1, COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * (world.step * (world._dt || 1)) / COVERAGE_RAMP);   // ramp over HISTORY, not raw ticks (SIM_GRANULARITY)
 
   // Mother-country expansion: pressed towns send settler parties (see
   // sendSettlers — this is the entire "population pressure → new colony"

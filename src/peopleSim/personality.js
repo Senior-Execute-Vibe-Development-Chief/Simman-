@@ -207,6 +207,7 @@ export function driftPersonality(world, c, signals) {
 export function inheritPersonality(world, parentCountryId, childCountryId) {
   if (!world.personalities) world.personalities = new Map();
   if (world.personalities.has(childCountryId)) return;       // already set
+  if (revivePersonality(world, childCountryId)) return;      // an old nation re-forming under its own id keeps its own character
   const parent = world.personalities.get(parentCountryId);
   if (!parent) return;                                        // child self-seeds later
   const rng = countryRng(world, childCountryId);
@@ -225,11 +226,37 @@ export function inheritPersonality(world, parentCountryId, childCountryId) {
 
 // Drop personalities of realms that no longer exist (called from the polity
 // pass alongside the governments prune, so the map can't grow unbounded).
+// The pruned temperaments are ARCHIVED (capped) rather than discarded: a
+// conquered nation that later RE-EMERGES under its old id (conquest.js
+// restoreNations / homeland memory) gets its own character back, instead of
+// re-inheriting a drifted copy of its OCCUPIER's — restored Poland should be
+// recognisably Poland.
+const DEAD_PERSONALITY_CAP = 512;   // ≈ HOMELAND_MEMORY-scale population of fallen realms
 export function prunePersonalities(world, countries) {
   if (!world.personalities) return;
+  let dead = world._deadPersonalities;
   for (const id of world.personalities.keys()) {
-    if (!countries.has(id)) world.personalities.delete(id);
+    if (!countries.has(id)) {
+      if (!dead) dead = world._deadPersonalities = new Map();
+      dead.delete(id);                                  // re-insert at the back (freshest)
+      dead.set(id, world.personalities.get(id));
+      world.personalities.delete(id);
+    }
   }
+  if (dead && dead.size > DEAD_PERSONALITY_CAP) {
+    for (const id of dead.keys()) { dead.delete(id); if (dead.size <= DEAD_PERSONALITY_CAP) break; }
+  }
+}
+
+// A fallen nation rising again under its old id reclaims its archived
+// temperament. Returns true if revived (callers then skip inheritance).
+export function revivePersonality(world, countryId) {
+  const dead = world._deadPersonalities;
+  if (!dead || !dead.has(countryId)) return false;
+  if (!world.personalities) world.personalities = new Map();
+  if (!world.personalities.has(countryId)) world.personalities.set(countryId, dead.get(countryId));
+  dead.delete(countryId);
+  return true;
 }
 
 // Human-readable archetype — BLEND-AWARE, so the personalities we actually

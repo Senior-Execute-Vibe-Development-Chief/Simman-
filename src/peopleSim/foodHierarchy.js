@@ -16,11 +16,13 @@
 //
 // Each tick, three cheap passes over the liege tree (all O(settlements)):
 //
-//   1. PRICE + DEMAND.  grainPrice[s] = PRICE_BY_TIER[tier] × localP — grain is
-//      cheap at the village gate and dear in the city, so the gradient rising up
-//      the tree is the margin a market town earns (buy low from villages, sell
-//      dear to the city). hunger[s] = how food-limited s is (houseK > foodK → it
-//      could grow if fed) — the demand signal that pulls grain harder.
+//   1. PRICE + DEMAND.  grainPrice[s] = PRICE_BY_TIER[tier] (real terms — the
+//      (b) nominal-inflation model deliberately does NOT scale grain by localP).
+//      Grain is cheap at the village gate and dear in the city, so the gradient
+//      rising up the tree is the margin a market town earns (buy low from
+//      villages, sell dear to the city). hunger[s] (_grainHunger) measures how
+//      food-limited s is (houseK > foodK → it could grow if fed); it's exposed
+//      for the info panel — the BUYING itself is coin-gated, not hunger-pulled.
 //
 //   2. GRAIN UP (post-order).  pool[s] = own production + Σ children shipped up;
 //      offer[s] = pool × SHIP_BY_TIER[tier] × haulSurvival(s → its market) — a
@@ -85,15 +87,13 @@ function foodHaulArrive(world, child, parent) {
 // to it and grows. Pool is land-based (independent of population), so a fixed
 // fraction can't cause the pinning feedback a "pool − current demand" rule would.
 const SHIP_FRAC_BY_TIER = [0.8, 0.5, 0.2, 0.05];
-const SHIP_FRAC_MAX = 0.95;   // demand can pull no more than this up (a settlement always keeps a seed of grain)
-const DEMAND_PULL   = 0.6;    // how strongly a hungry market upstream raises the fraction shipped to it
-// Grain's market price by the SELLER's tier (× local price level). The gradient
+// Grain's market price by the SELLER's tier. The gradient
 // must be STEEP: a market town ships only ~a third of the grain it takes in
 // further up (it feeds its own people with the rest) yet pays its villages for
 // ALL of it, so a gentle markup leaves the town a net buyer. A big farm-gate→
 // market step-up (village grain is cheap; a town's collected, market-ready grain
 // is dear) is what lets the town capture the entrepôt margin instead of pumping
-// coin into the countryside. (× localP so grain trades higher in a wealthy region.)
+// coin into the countryside.
 const GRAIN_PRICE_BY_TIER = [2, 8, 14, 22];
 
 export function aggregateFoodHierarchy(world) {

@@ -9,9 +9,11 @@
 //   { type:'init', w, tCrop, tileRes, seed }   — build + start the sim
 //   { type:'control', playing, speed }          — play/pause + speed
 //   { type:'select', id }                       — selected settlement (gets full detail)
+//   { type:'view', view }                       — current view (gates per-view extras)
+//   { type:'tune', values, reset }              — live tuning levers
 // Messages OUT:
-//   { type:'snapshot', ... }                    — see buildSnapshot()
-//   { type:'stats', stats }                     — occasional HUD stats
+//   { type:'snapshot', ... }                    — see buildSnapshot() (stats embedded)
+//   { type:'error', message, stack }            — init/step failure
 
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
 import { getTradeProfile } from "./peopleSim/settlement.js";
@@ -37,8 +39,13 @@ self.onmessage = (e) => {
     try {
       world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tileRes: m.tileRes, deposits: m.w.deposits });
       world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
-      lastSnap = 0;
+      // Re-init resets the per-run snapshot/selection state. playing/speed/view
+      // are NOT reset (the main thread re-sends its current values right after
+      // init) — but if a previous world was mid-play, keep stepping the new one
+      // rather than silently freezing until the next control message.
+      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1;
       buildSnapshot();            // immediate first frame
+      if (playing) scheduleTick();
     } catch (err) {
       self.postMessage({ type: "error", message: err && err.message, stack: err && err.stack });
     }
@@ -68,8 +75,14 @@ self.onmessage = (e) => {
 // While PLAYING the worker self-schedules a step/snapshot loop. While paused
 // it stops entirely (snapshots are posted on demand from onmessage), so it
 // burns no CPU and copies no buffers when nothing is advancing.
+// Yield via a MessageChannel, not setTimeout(0): nested timers are clamped to
+// ~4ms, which silently capped the sim at ~250 slices/sec however high the
+// speed slider went. A channel post re-enters immediately while still
+// yielding to incoming messages.
 let scheduled = false;
-function scheduleTick() { if (!scheduled && playing) { scheduled = true; setTimeout(tick, 0); } }
+const _tickChan = new MessageChannel();
+_tickChan.port1.onmessage = () => tick();
+function scheduleTick() { if (!scheduled && playing) { scheduled = true; _tickChan.port2.postMessage(0); } }
 
 function tick() {
   scheduled = false;
@@ -245,7 +258,6 @@ function buildSnapshot() {
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last
     ships: world.ships ? world.ships.map(sh => ({ x: sh.x, y: sh.y, landTi: sh.landTi, countryId: sh.countryId })) : null,
-    armies: world.armies ? world.armies.map(m => ({ x: m.x, y: m.y, countryId: m.countryId, troops: m.troops })) : null,
     selected,
     chronicle,
   }, transfer);

@@ -43,7 +43,7 @@ const RAW_MAX            = 20.0;      // — lets the wheat-price ticker show re
                                       // Europe ~6x). Cap at 20x just so the
                                       // number doesn't run off the screen during
                                       // pathological pre-calibration noise.
-const P_REF              = 1.0;       // anchored baseline; calibrated below
+// (The baseline M/T reference is calibrated live — world._inflRef below.)
 // Response curve: instead of a flat linear y = 1 + (x-1) * RESPONSE that
 // hits the SIM cap and stays there (looks static to the user), use a log-
 // shaped curve that keeps nudging up logarithmically even at high raw M/T.

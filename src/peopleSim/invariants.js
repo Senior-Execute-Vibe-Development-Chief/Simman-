@@ -45,6 +45,8 @@ export function resetInvariantState(world) {
   if (world && world.debug) world.debug.invariantHits = {};
 }
 
+const KTRACKS = ["agriculture", "construction", "organization", "metallurgy", "navigation", "mobility"];
+
 export function checkPeopleSimInvariants(world) {
   let coin = 0, people = 0, alive = 0;
   for (const s of world.settlements) {
@@ -59,9 +61,27 @@ export function checkPeopleSimInvariants(world) {
     if (w < -1e-6)    { warnOnce(world, "negwealth#" + s.id, `negative wealth ${w}`); bump(world, "negwealth"); }
     const t = s.tier | 0;
     if (t < 0 || t > 3) { warnOnce(world, "tier#" + s.id, `tier out of range ${s.tier}`); bump(world, "tier"); }
+    // Knowledge tracks live in [0,1] by construction (clamp01 / metalCap) — a
+    // value outside that, or NaN, means a learning formula leaked.
+    if (s.knowledge) for (const k of KTRACKS) {
+      const v = s.knowledge[k];
+      if (v !== undefined && (!Number.isFinite(v) || v < -1e-9 || v > 1 + 1e-9)) {
+        warnOnce(world, "know#" + s.id + k, `knowledge.${k} out of range ${v}`); bump(world, "knowledge");
+      }
+    }
+    // Loyalty / unrest are [0,1] stocks (conquest.js).
+    if (s.loyalty !== undefined && (!Number.isFinite(s.loyalty) || s.loyalty < -1e-9 || s.loyalty > 1 + 1e-9)) {
+      warnOnce(world, "loyal#" + s.id, `loyalty out of range ${s.loyalty}`); bump(world, "loyalty");
+    }
+    if (s.unrest !== undefined && (!Number.isFinite(s.unrest) || s.unrest < -1e-9 || s.unrest > 1 + 1e-9)) {
+      warnOnce(world, "unrest#" + s.id, `unrest out of range ${s.unrest}`); bump(world, "unrest");
+    }
     coin += Math.max(0, w);
     people += Math.max(0, p);
   }
+  // (No owner-array liveness check here on purpose: territory ownership is
+  // PERSISTENT, so tiles legitimately reference a dead settlement until the
+  // next computeTerritory pass releases them — that transient is by design.)
   // State treasuries hold coin too — fold them into the supply total.
   if (world.governments) {
     for (const g of world.governments.values()) coin += Math.max(0, g.treasury || 0);

@@ -36,8 +36,8 @@ import { recordOut, OUT_COLONY } from "./money.js";
 import { expansionColonyMul } from "./personality.js";
 import { forEachNear } from "./spatialGrid.js";
 
-let _shipId = 1;
-export function resetShipIds() { _shipId = 1; }
+// Ship ids count up per world (world._nextShipId) — see the settlement-id
+// note in settlement.js for why module-scope counters are off limits.
 
 export const SEA_INTERVAL = 600;   // ticks between sea-lane / colony passes. This is
                                    // a global ocean flood (O(map)) — a frame spike at
@@ -381,7 +381,7 @@ function tryColonize(world, A, cands, prev) {
 
   if (!world.ships) world.ships = [];
   world.ships.push({
-    id: _shipId++, kind: "colony",
+    id: (world._nextShipId = (world._nextShipId || 0) + 1), kind: "colony",
     owner: A.id, countryId: A.countryId,
     knowledge: { ...A.knowledge },
     people: COLONY_PEOPLE, wealth: endow,
@@ -412,8 +412,9 @@ export function moveShips(world) {
   if (!ships || ships.length === 0) return;
   const { tw, th } = world;
   const live = [];
+  const _dt = world._dt || 1;   // granularity: a voyage covers the same history-span at any SIM_GRANULARITY
   for (const sh of ships) {
-    sh.idx += sh.speed;
+    sh.idx += sh.speed * _dt;
     const path = sh.path;
     if (!path || path.length < 2 || sh.idx >= path.length - 1) {
       foundColony(world, sh);

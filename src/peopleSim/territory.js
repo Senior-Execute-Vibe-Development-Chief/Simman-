@@ -301,9 +301,11 @@ function assignMinesByProximity(world, byId) {
     world._mineTiles = list;
   }
   if (!world._settGrid) return;   // need the spatial index (built each tick before territory)
-  const tw = world.tw;
+  const tw = world.tw, reserve = world.depositReserve;
   for (const m of world._mineTiles) {
-    const ti = m[0], mx = ti % tw, my = (ti / tw) | 0;
+    const ti = m[0], id = m[1];
+    if (reserve && reserve[id] && reserve[id][ti] <= 0) continue;   // dried-up mine — nobody works it
+    const mx = ti % tw, my = (ti / tw) | 0;
     let best = null, bestD = Infinity;
     forEachNear(world, mx + 0.5, my + 0.5, MINE_RANGE, (s, d2) => { if (d2 < bestD) { bestD = d2; best = s; } });
     if (best) best._minableTiles.push(m);
@@ -324,17 +326,30 @@ function tallyTerritory(world, owner, cost, byId) {
   for (const s of byId.values()) {
     s._terrFertSum = 0;
     s._terrTiles = 0;
+    s._terrWorkTiles = 0;
     s._terrMinFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
     s._terrResAcc = {};
     s._minableTiles = [];
   }
   const haveDep = deposits && Object.keys(deposits).length > 0;
+  const reserve = world.depositReserve;
+  // A mine only counts while its finite reserve still holds metal — a dried-up
+  // deposit stays on the map but no longer grants luxury budgets / value-cling.
+  const mineLive = (id, ti) => !reserve || !reserve[id] || reserve[id][ti] > 0;
   for (let ti = 0; ti < N; ti++) {
     const oid = owner[ti];
     if (oid < 0) continue;
     const s = byId.get(oid);
     if (!s) continue;
     s._terrTiles++;
+    // WORKED tiles are those the settlement can actually reach this pass
+    // (finite transport cost). Disconnected fragments — land kept by the
+    // persistent-ownership rule after a front cut them off — contribute no
+    // food, so they must not be charged the FARM_FERT_FLOOR labour cost
+    // either (they used to actively REDUCE net food, a phantom workforce
+    // farming land nobody could get to). updateFood reads _terrWorkTiles.
+    const reachable = cost[ti] < Infinity;
+    if (reachable) s._terrWorkTiles++;
     const f = fert[ti] || 0;
     if (f >= s._terrMinFert) s._terrFertSum += f * foodFalloff(cost[ti]);
     if (haveDep) {
@@ -349,8 +364,8 @@ function tallyTerritory(world, owner, cost, byId) {
       // ownership — a node city owns no mountains, so owned-tile mining would zero
       // the money supply. Skip the owned-tile mineral grab in that mode.
       if (!T.URBAN_NODES) {
-        if (deposits.precious && deposits.precious[ti] > 0.05) s._minableTiles.push([ti, "precious"]);
-        if (deposits.gems && deposits.gems[ti] > 0.05) s._minableTiles.push([ti, "gems"]);
+        if (deposits.precious && deposits.precious[ti] > 0.05 && mineLive("precious", ti)) s._minableTiles.push([ti, "precious"]);
+        if (deposits.gems && deposits.gems[ti] > 0.05 && mineLive("gems", ti)) s._minableTiles.push([ti, "gems"]);
       }
     }
     // Borders: compare right + down neighbours (x wraps).
@@ -374,6 +389,8 @@ export function seedLocalTerritory(world, s) {
   const res = {};
   const minable = [];
   const haveDep = deposits && Object.keys(deposits).length > 0;
+  const reserve = world.depositReserve;
+  const mineLive = (id, ti) => !reserve || !reserve[id] || reserve[id][ti] > 0;
   for (let dy = -3; dy <= 3; dy++) {
     const ny = sy + dy; if (ny < 0 || ny >= th) continue;
     for (let dx = -3; dx <= 3; dx++) {
@@ -386,13 +403,14 @@ export function seedLocalTerritory(world, s) {
       if (f >= minFert) fertSum += f * foodFalloff(cost);
       if (haveDep) {
         for (const id of TERR_RES) { const arr = deposits[id]; if (!arr) continue; const v = arr[ti] || 0; if (v > (res[id] || 0)) res[id] = v; }
-        if (deposits.precious && deposits.precious[ti] > 0.05) minable.push([ti, "precious"]);
-        if (deposits.gems && deposits.gems[ti] > 0.05) minable.push([ti, "gems"]);
+        if (deposits.precious && deposits.precious[ti] > 0.05 && mineLive("precious", ti)) minable.push([ti, "precious"]);
+        if (deposits.gems && deposits.gems[ti] > 0.05 && mineLive("gems", ti)) minable.push([ti, "gems"]);
       }
     }
   }
   s._terrFertSum = fertSum;
   s._terrTiles = tiles;
+  s._terrWorkTiles = tiles;   // local seed box is all walkable — everything counts as worked
   s.localRes = res;
   s._minableTiles = minable;
 }

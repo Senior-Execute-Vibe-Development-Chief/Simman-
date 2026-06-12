@@ -15,7 +15,7 @@
 import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.js";
 import { shockUnrest } from "./shocks.js";
 import { localEdgeCost } from "./transport.js";
-import { personalityOf, inheritPersonality, prunePersonalities, driftPersonality, expansionReachMul } from "./personality.js";
+import { personalityOf, inheritPersonality, prunePersonalities, revivePersonality, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
 import { techEff } from "./settlement.js";
 import { chronicle, realmName, archiveChronicle } from "./chronicle.js";
@@ -722,7 +722,9 @@ function restoreNations(world, members, ownerId, requireBorder) {
     const bloc = filterToConnectedBloc(world, group, seat, Infinity);   // the WHOLE connected nation
     if (bloc.length < 2) continue;
     if (requireBorder && !hasOutsideBorder(world, ownerId, bloc)) continue;
-    inheritPersonality(world, ownerId, H);
+    // A restored nation is ITSELF first: reclaim its archived temperament; only
+    // a nation with no surviving character inherits (drifted) from the occupier.
+    if (!revivePersonality(world, H)) inheritPersonality(world, ownerId, H);
     snapClaim(world, H);
     if (world.debug) world.debug.restored = (world.debug.restored || 0) + 1;
     for (const m of bloc) {
@@ -874,12 +876,17 @@ function shedPatch(world, c, members) {
 export function fragmentRealm(world, oldId, excludeId) {
   // The conqueror sacks the treasury — the fallen state's war-chest is seized
   // into the victor's coffers (keeps the coin conserved + a great war prize).
+  // Only zero the dead chest once it has actually been CREDITED somewhere; if
+  // the conqueror can't be resolved the coin stays put (and rides along if the
+  // nation is later restored under the same id) instead of being destroyed.
   if (world.governments) {
     const dead = world.governments.get(oldId);
     if (dead && dead.treasury > 0) {
-      const conqId = world._byId ? (world._byId.get(excludeId) || {}).countryId : null;
-      if (conqId != null) govOf(world, conqId).treasury += dead.treasury;
-      dead.treasury = 0;
+      const conq = world._byId ? world._byId.get(excludeId) : null;
+      if (conq && conq.countryId != null && conq.countryId >= 0) {
+        govOf(world, conq.countryId).treasury += dead.treasury;
+        dead.treasury = 0;
+      }
     }
   }
   let survivors = [];
@@ -1294,12 +1301,12 @@ export function updatePolities(world) {
   }
 
   for (const c of countries.values()) {
-    if (c.members.length === 1) { c.members[0].loyalty = 1; continue; }   // city-state: loyal to itself
-    if (c.members.length <= 1) continue;
+    if (c.members.length <= 1) { if (c.members[0]) c.members[0].loyalty = 1; continue; }   // city-state: loyal to itself
 
     const cap = c.capital;
     const capPower = settlementPower(cap);
-    const range = Math.max(1, c.range);            // raw hold-distance → search/ceiling bounds (maxCost, reachCeil)
+    // (The raw hold-distance c.range bounds the Dijkstra search inside
+    // capitalTransportCosts; everything HERE compares against the res-scaled grip.)
     const holdRange = Math.max(1, c.holdReach || c.range);   // res-scaled grip → compared against map distances (admin load, secession reach)
     // Real per-member projection cost from the capital, via tech × terrain.
     // The Himalayas / oceans / rivers all drain the centre's reach budget
@@ -1862,20 +1869,28 @@ function eliminateEnclaves(world, countries) {
     if (bestBord < totBord * needFrac) continue;    // no realm clearly surrounds it → leave it
     const into = countries.get(intoId);
     if (!into) continue;
-    // Claim it: flip any settlements in the region, stamp wild tiles.
+    // Claim it POLITICALLY: flip the settlements in the region. The land
+    // itself follows on the next territory pass — settlements that changed
+    // country re-seed the country Voronoi, and computeTerritory grows the
+    // economic catchments into the wild pocket organically. We deliberately
+    // do NOT stamp the per-settlement ECONOMIC owner[] array here any more:
+    // dumping the (often infertile, transport-unreachable) enclave tiles onto
+    // the surrounder's CAPITAL inflated its _terrTiles with land it could
+    // never farm, and under FARM_FERT_FLOOR that phantom acreage actively
+    // REDUCED the capital's net food every pass — absorbing an enclave made
+    // the empire hungrier. Political fill of true wilderness pockets is
+    // already handled by fillEnclosedWaste / closeRealmGaps (countryTerritory).
     for (const ti of region) {
       if (elev[ti] <= 0) continue;
       const oid = owner[ti];
-      if (oid >= 0) {
-        const s = byId.get(oid);
-        if (s && s.countryId !== intoId) {
-          s.countryId = intoId;
-          s.loyalty = 0.6;
-          s._conqueredAt = world.step;
-          if (s.history) s.history.push({ step: world.step, type: "absorbed", into: intoId });
-        }
+      if (oid < 0) continue;
+      const s = byId.get(oid);
+      if (s && s.countryId !== intoId) {
+        s.countryId = intoId;
+        s.loyalty = 0.6;
+        s._conqueredAt = world.step;
+        if (s.history) s.history.push({ step: world.step, type: "absorbed", into: intoId });
       }
-      owner[ti] = into.capitalId;                   // wild / fragment tile → surrounder's land
     }
   }
 }

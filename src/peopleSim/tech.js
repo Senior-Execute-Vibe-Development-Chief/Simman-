@@ -135,9 +135,10 @@ const prereqsMet = (t, have) => { for (const p of t.prereq) if (!have[TECH_IDX[p
 // Discovered-tech membership (a Uint8Array: have[i] = 1 if tech i is known) +
 // the culture's era (highest reached) + count. A FIXED-POINT pass resolves the
 // DAG regardless of authoring order: keep sweeping until no new tech unlocks
-// (prereqs met AND knowledge thresholds met). Called only for the inspected
-// settlement at render time, never in the sim loop, so the O(n²) worst case is
-// irrelevant. No 31-tech ceiling (it is a byte array, not a 32-bit mask).
+// (prereqs met AND knowledge thresholds met). NOTE this IS on a sim hot path —
+// techEffects() calls it for every settlement's KNOW_INTERVAL refresh
+// (settlement.js updateKnowledge), which is why techEffects memoises below;
+// the O(n²) worst case only bites on a cache miss.
 export function techState(k) {
   const n = TECHS.length;
   const have = new Uint8Array(n);
@@ -390,7 +391,22 @@ const lvl = (sum, ch) => FX_TOTAL[ch] > 0 ? sum / FX_TOTAL[ch] : 0;   // raw cha
 // (0 = exactly the previous sim, 1 = fully tech-driven). The returned object is
 // what the sim reads — farmYield/fishFactor/buildLevel/military/reach/… — so the
 // continuous tracks no longer hand out bonuses directly; the techs do.
+//
+// MEMOISED on the exact (six tracks, blend) tuple: knowledge only changes on a
+// settlement's staggered KNOW_INTERVAL refresh, yet several passes ask for the
+// effects in between (techEff lazies, settlementPower, makeSettlement bursts),
+// and identical young settlements share inputs. Exact keys keep the function
+// bit-identical to the uncached version (no quantisation drift); the cache is
+// bounded and simply cleared when full. Treat the returned object as frozen —
+// every consumer reads it, none mutate it.
+const _fxCache = new Map();
+const _FX_CACHE_MAX = 4096;
 export function techEffects(k, blend = 1) {
+  const _k = k || {};
+  const _key = (_k.agriculture || 0) + "," + (_k.construction || 0) + "," + (_k.organization || 0) + ","
+             + (_k.metallurgy || 0) + "," + (_k.navigation || 0) + "," + (_k.mobility || 0) + "|" + blend;
+  const _hit = _fxCache.get(_key);
+  if (_hit) return _hit;
   const have = techState(k).have;
   const ch = {}; for (const c of FX_CH) ch[c] = 0;
   const can = {}; for (const a of FX_ABIL) can[a] = false;
@@ -411,9 +427,9 @@ export function techEffects(k, blend = 1) {
       else if (key in ch) ch[key] += v * credit;
     }
   }
-  const ag = k.agriculture || 0, cn = k.construction || 0, nav = k.navigation || 0,
-        met = k.metallurgy || 0, mob = k.mobility || 0, org = k.organization || 0;
-  return {
+  const ag = _k.agriculture || 0, cn = _k.construction || 0, nav = _k.navigation || 0,
+        met = _k.metallurgy || 0, mob = _k.mobility || 0, org = _k.organization || 0;
+  const out = {
     have, ch, ...can,
     farmYield:  1 + lerp(ag * 1.2, ch.farm, blend),            // ×land food   (old 1+ag·1.2)
     fishFactor: 0.3 + lerp(nav * 1.2, ch.fish, blend),          // ×fishery     (old 0.3+nav·1.2)
@@ -432,6 +448,9 @@ export function techEffects(k, blend = 1) {
     tradeMult:  1 + blend * lvl(ch.trade, "trade") * 0.5,
     wealthMult: 1 + blend * lvl(ch.wealth, "wealth") * 0.5,     // exposed for later (treasury/mining); not yet wired
   };
+  if (_fxCache.size >= _FX_CACHE_MAX) _fxCache.clear();
+  _fxCache.set(_key, out);
+  return out;
 }
 
 // Human-readable one-line summary of a tech's effect, for the tree tooltip.

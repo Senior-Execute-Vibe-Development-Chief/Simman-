@@ -15,8 +15,10 @@ import { chronicle } from "./chronicle.js";
 import { T } from "./tuning.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, OUT_GOODS, OUT_MATERIALS } from "./money.js";
 
-let _nextId = 1;
-export function resetSettlementIds() { _nextId = 1; }
+// Settlement ids count up PER WORLD (world._nextSettlementId), not at module
+// scope: country ids are settlement ids and the personality RNG is seeded from
+// them, so a shared module counter would make two worlds in one process (tools,
+// tests, future multi-map UI) interfere and break same-seed reproducibility.
 
 // Pop thresholds for village / town / city / metropolis. Set so that with
 // subsistence farm yields most settlements are small farming VILLAGES, towns
@@ -101,7 +103,9 @@ const DENSITY_BASE        = 6;      // people per buildable tile at zero constru
 // real urban growth. Applied only above town size, so villages/towns stay
 // pinned to their own food (the dense rural map is untouched).
 const URBAN_ANTICIPATION     = 1.6;   // a city builds housing up to 1.6x its current food capacity
-const URBAN_ANTICIPATION_REF = 250;   // = TIER_THRESHOLD[town]; anticipation kicks in above town size
+const URBAN_ANTICIPATION_REF = 250;   // anticipation kicks in above this population — deliberately
+                                      // ABOVE the town bar (TIER_THRESHOLD[1] = 150) so only towns
+                                      // already growing past their founding size build ahead of food
 // DENSITY_PER_CONSTR -> runtime lever (tuning.js T.DENSITY_PER_CONSTR)
 // Development: build housing up toward the space ceiling. Needs materials
 // (timber/stone — own, or bought from suppliers with coin) and labour;
@@ -144,13 +148,15 @@ const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends 
 // FISH_RATE -> runtime lever (tuning.js T.FISH_RATE)
 
 export function makeSettlement(world, x, y, opts = {}) {
+  const id = world._nextSettlementId || 1;
+  world._nextSettlementId = id + 1;
   const s = {
-    id: _nextId++,
+    id,
     kind: "settlement",
     pos: { x: Math.floor(x) + 0.5, y: Math.floor(y) + 0.5 },
     foundedStep: world.step,
     parentSettlementId: opts.parentId ?? -1,
-    name: opts.name || `settlement-${_nextId - 1}`,
+    name: opts.name || `settlement-${id}`,
     people: opts.people ?? 25,
     // Start at the tier-0 storage cap (see storageCap in updateFood);
     // a larger value would just be clamped away on the first tick.
@@ -250,8 +256,9 @@ export function makeSettlement(world, x, y, opts = {}) {
 }
 
 // Water-access score: 0 (landlocked, no river) to ~1 (coastal city
-// on a great river). Coast contributes 0.5; river magnitude scales
-// linearly: mag 1 → 0.2, mag 3 → 0.6, mag 4 → 0.8. Capped at 1.
+// on a great river), scanned over the 3×3 block around home. Coast
+// contributes 0.5; river magnitude scales linearly: mag 1 → 0.2,
+// mag 3 → 0.6, mag 4 → 0.8. Capped at 1.
 function computeWaterAccess(world, sx, sy) {
   const { tw, th, coast, riverMag } = world;
   let coastBit = 0, bestMag = 0;
@@ -364,8 +371,8 @@ export { techEff };
 // SOURCE — mining. Each tick a settlement extracts from precious / gem
 // tiles in reach, drawing on finite per-tile reserves (set on world
 // init at richness × scale). When a tile's reserve hits 0 the mine is
-// dry forever. This is how fresh money enters the system; founding
-// endowments (makeSettlement) seed a little more.
+// dry forever. This is how fresh money enters the system; every
+// settlement otherwise starts at ZERO coin (makeSettlement — barter).
 //
 // CIRCULATION — bilateral trade. On every road both partners sell their
 // goods to each other, so money flows BOTH ways and keeps moving by
@@ -398,6 +405,14 @@ function updateWealth(world, s) {
     if (delta > 0) { s._credit = cur + delta; s.wealth = (s.wealth || 0) + delta; recordIn(s, IN_GOODS, delta); }
     else if (delta < 0) { const take = Math.min(-delta, s.wealth || 0, cur); if (take > 0) { s._credit = cur - take; s.wealth -= take; recordOut(s, OUT_GOODS, take); } }
   }
+  // Luxury budgets refresh for EVERY settlement, every tick — supply from the
+  // luxury resources its territory holds, demand from its spare coin. This must
+  // run BEFORE the mining-only early-returns below: it used to sit after them,
+  // which silently disabled the whole luxury economy for any settlement without
+  // a precious/gem mine (≈97% of the map — only 6 of 185 settlements earned any
+  // luxury coin in an 8k-step probe) and left STALE budgets compounding ×stride
+  // on settlements that had lost their mines.
+  computeLuxury(s, world);
   const reserves = world.depositReserve;
   if (!reserves) return;
   const minable = s._minableTiles;
@@ -432,7 +447,6 @@ function updateWealth(world, s) {
   // Smoothed mining income, for the money-flow overlay's source markers
   // (mining is the only money entering the system).
   s._minedRate = (s._minedRate || 0) * 0.9 + mined * 0.1;
-  computeLuxury(s, world);
 }
 
 // Per-tick luxury supply (coin a region can earn selling its luxury goods)
@@ -609,42 +623,56 @@ export function getWealthReserve(s) {
 // Decomposition of exportValue — returns a sorted list of
 // { label, value } for each contributor. Used by the settlement
 // info card to show WHAT the settlement actually exports, not
-// just the headline number. Mirrors computeExportValue's
-// structure.
-export function getExportBreakdown(s) {
+// just the headline number. Mirrors computeExportValue's structure
+// INCLUDING the multipliers (FARM_CRAFT_FRAC on the manufactured/
+// service sector, the army-labour / sack / tech multipliers on the
+// lot) — so the panel's composition sums to the same scale the trade
+// pass actually sells at, instead of the raw pre-multiplier recipe.
+// `world` is optional (the sack penalty needs the current step; a
+// worker-mirror settlement without world still gets the rest right).
+export function getExportBreakdown(s, world) {
   const k = s.knowledge || {};
   const r = s.localRes || {};
-  const out = [{ label: "Baseline", value: 1.0 }];
+  const tier = s.tier | 0;
+  const craftFrac = tier < 1 ? T.FARM_CRAFT_FRAC : 1;      // a village manufactures little (computeExportValue)
+  const armyFrac = (s.army || 0) / Math.max(1, s.people);
+  const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step) * techEff(s).tradeMult;
+  const out = [{ label: "Baseline", value: 1.0 * mult }];
   const physMetalCap = oreTier(r);
   if (physMetalCap > 0) {
-    const v = Math.min(k.metallurgy || 0, physMetalCap) * 1.5;
+    const v = Math.min(k.metallurgy || 0, physMetalCap) * 1.5 * craftFrac * mult;
     if (v > 0.01) out.push({ label: "Metalwork", value: v });
   }
   const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
-  const construction = (k.construction || 0) * (0.4 + matAccess * 0.8);
+  // Raw building materials (an ag-sector good) + crafted wares (manufactured,
+  // tier-scaled) — merged under one label as before, but each leg scaled the
+  // way computeExportValue actually books it.
+  const construction = ((k.construction || 0) * matAccess * 0.8 + (k.construction || 0) * 0.4 * craftFrac) * mult;
   if (construction > 0.01) out.push({ label: "Building & crafted goods", value: construction });
   const agScale = Math.min(1, (s._terrTiles || 0) / 120);
-  const agriculture = (k.agriculture || 0) * agScale * 0.6;
-  if (agriculture > 0.01) out.push({ label: "Grain surplus", value: agriculture });
+  if (tier <= (T.FARM_MAX_TIER | 0)) {
+    const agriculture = (k.agriculture || 0) * agScale * 0.6 * mult;
+    if (agriculture > 0.01) out.push({ label: "Grain surplus", value: agriculture });
+    const wild = (k.agriculture || 0) * (r.timber || 0) * 0.4 * mult;
+    if (wild > 0.01) out.push({ label: "Wild goods", value: wild });
+  }
   if ((s.waterAccess || 0) > 0) {
-    const v = (k.navigation || 0) * s.waterAccess * 0.5;
+    const v = (k.navigation || 0) * s.waterAccess * 0.5 * mult;
     if (v > 0.01) out.push({ label: "Ship goods", value: v });
-    const fish = s.waterAccess * (k.navigation || 0) * 0.3;
+    const fish = s.waterAccess * (k.navigation || 0) * 0.3 * mult;
     if (fish > 0.01) out.push({ label: "Salt fish", value: fish });
   }
-  const wild = (k.agriculture || 0) * (r.timber || 0) * 0.4;
-  if (wild > 0.01) out.push({ label: "Wild goods", value: wild });
   const horses = r.horses || 0;
   if (horses > 0.05) {
-    const v = horses * 0.6 + (k.mobility || 0) * 0.4;
+    const v = (horses * 0.6 + (k.mobility || 0) * 0.4) * mult;
     if (v > 0.01) out.push({ label: "Horse trade", value: v });
   }
   const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
-  const services = (k.organization || 0) * popScale * 0.8;
+  const services = (k.organization || 0) * popScale * 0.8 * craftFrac * mult;
   if (services > 0.01) out.push({ label: "Services & records", value: services });
-  const salt = (r.salt || 0) * 0.5;
+  const salt = (r.salt || 0) * 0.5 * mult;
   if (salt > 0.01) out.push({ label: "Salt", value: salt });
-  const base = Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10);
+  const base = Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10) * mult;
   if (base > 0.01) out.push({ label: "Village products", value: base });
   return out.sort((a, b) => b.value - a.value);
 }
@@ -756,7 +784,8 @@ export function urbanise(world) {
     // Hard times accelerate the flight cityward (refuge), lifting both the drift
     // rate and the drain cap; in peace (unrest ≈ 0) this is a no-op.
     const refuge = 1 + REFUGE_PULL * (s.unrest || 0) * T.SITE_DEFENSE;
-    let movers = Math.min(s.people * MIGRATE_RATE * gap * refuge, room, s.people * MIGRATE_DRAIN_CAP * refuge);
+    const _dt = world._dt || 1;   // granularity: drift the same share of people per unit of HISTORY
+    let movers = Math.min(s.people * MIGRATE_RATE * gap * refuge * _dt, room, s.people * MIGRATE_DRAIN_CAP * refuge * _dt);
     if (movers < 0.2) continue;
     s.people -= movers;
     best.people += movers;
@@ -976,11 +1005,14 @@ function updateKnowledge(world, s) {
   // once the survivors stabilise at their new, smaller scale — a dark age, not
   // a permanent reset. Organization and the crafts go first; subsistence
   // agriculture is the stickiest. T.KNOW_DECAY dials it (0 = off).
-  s._popPeak = Math.max(pop, (s._popPeak || pop) * 0.9997 + pop * 0.0003);
+  {
+    const _r = Math.pow(0.9997, world._dt || 1);   // granularity-scaled peak decay (same history-rate at any G)
+    s._popPeak = Math.max(pop, (s._popPeak || pop) * _r + pop * (1 - _r));
+  }
   const drawdown = 1 - pop / Math.max(1, s._popPeak);               // fraction of peak lost
   // Isolation only bites an ESTABLISHED settlement that has genuinely been cut
   // off — not a new frontier village that simply hasn't built roads yet.
-  const cutOff = reachN === 0 && (world.step - (s.foundedStep || 0)) > 2000;
+  const cutOff = reachN === 0 && (world.step - (s.foundedStep || 0)) > 2000 / (world._dt || 1);
   const regress = Math.max(0, drawdown - 0.15) + (cutOff ? 0.12 : 0);  // small dips absorbed
   if (T.KNOW_DECAY > 0 && regress > 0) {
     const dec = T.LEARN_BASE * 12 * T.KNOW_DECAY * regress;
@@ -1133,7 +1165,10 @@ function updateFood(world, s) {
   // the NET food a region yields is (total fertility − area × floor) × yield, and land too
   // marginal to feed the people required to farm it (average fertility below the floor) yields
   // NOTHING and supports no settlement. The break-even fertility is exactly FARM_FERT_FLOOR.
-  const netFert = Math.max(0, (s._terrFertSum || 0) - (s._terrTiles || 0) * T.FARM_FERT_FLOOR);
+  // The labour floor is charged on WORKED tiles only (_terrWorkTiles — tiles the
+  // settlement can actually reach; territory.js): a fragment cut off by a war
+  // front grows nothing, so it costs no farmhands either.
+  const netFert = Math.max(0, (s._terrFertSum || 0) - (s._terrWorkTiles ?? s._terrTiles ?? 0) * T.FARM_FERT_FLOOR);
   // MODEL B: EVERY settlement's territory (its rural hinterland) is farmed by the country
   // folk who live on it — a city does not grow food in its packed urban core, but the land
   // it controls IS worked and feeds it. So land food is produced from a settlement's territory
@@ -1293,7 +1328,7 @@ function updateDevelopment(world, s) {
   const localMat = (own.timber || 0) + (own.stone || 0);
   const partnerWeight = p => { const pr = p.localRes || {}; return (pr.timber || 0) + (pr.stone || 0) + 0.05; };
   if (!s._devMat || (world.step + s.id) % KNOW_INTERVAL === 0) {
-    let bpm = 0, tw = 0;
+    let bpm = 0;
     if (s._tradeReach && world._byId) {
       for (const pid of s._tradeReach.keys()) {
         const p = world._byId.get(pid);
@@ -1301,12 +1336,11 @@ function updateDevelopment(world, s) {
         const pr = p.localRes || {};
         const pm = (pr.timber || 0) + (pr.stone || 0);
         if (pm > bpm) bpm = pm;
-        tw += partnerWeight(p);
       }
     }
-    s._devMat = { bestPartnerMat: bpm, totalW: tw };
+    s._devMat = { bestPartnerMat: bpm };
   }
-  const bestPartnerMat = s._devMat.bestPartnerMat, totalW = s._devMat.totalW;
+  const bestPartnerMat = s._devMat.bestPartnerMat;
   if (Math.max(localMat, bestPartnerMat) < 0.05) { s._devReason = "materials"; return; }
 
   // ×stride: this burst stands in for `stride` ticks of building (so the average
@@ -1325,11 +1359,7 @@ function updateDevelopment(world, s) {
   // so the absolute money level doesn't squeeze construction (and thus housing
   // and population). localP stays for Hume competitiveness + the price ticker.
   let cost = add * INFRA_COST * (1 - discount);
-  if (cost > 0 && totalW > 0) {
-    const spare = (s.wealth || 0) - getWealthReserve(s);
-    if (spare <= 0) { s._devReason = "coin"; return; }   // needs to buy materials it lacks
-    if (cost > spare) { add *= spare / cost; cost = spare; }
-    if (add <= 0) return;
+  if (cost > 0) {
     // Pay the suppliers ACTUALLY in reach this tick, distributing by a weight
     // sum recomputed over exactly those recipients. The cached _devMat.totalW
     // can be stale (a partner died / reach shifted since the KNOW_INTERVAL
@@ -1337,12 +1367,18 @@ function updateDevelopment(world, s) {
     // silently leak or mint coin — but the money supply is meant to be closed
     // (inflation.js depends on it). Recomputing liveW here keeps Σshare == cost.
     let liveW = 0; const recips = [];
-    for (const pid of s._tradeReach.keys()) {
-      const p = world._byId.get(pid);
-      if (!p || p.mode !== "settled") continue;
-      const w = partnerWeight(p); liveW += w; recips.push([p, w]);
+    if (s._tradeReach && world._byId) {
+      for (const pid of s._tradeReach.keys()) {
+        const p = world._byId.get(pid);
+        if (!p || p.mode !== "settled") continue;
+        const w = partnerWeight(p); liveW += w; recips.push([p, w]);
+      }
     }
     if (liveW > 0) {
+      const spare = (s.wealth || 0) - getWealthReserve(s);
+      if (spare <= 0) { s._devReason = "coin"; return; }   // needs to buy materials it lacks
+      if (cost > spare) { add *= spare / cost; cost = spare; }
+      if (add <= 0) return;
       s.wealth -= cost;
       recordOut(s, OUT_MATERIALS, cost);
       for (const [p, w] of recips) {
@@ -1350,6 +1386,13 @@ function updateDevelopment(world, s) {
         p.wealth = (p.wealth || 0) + share;
         recordIn(p, IN_MATERIALS, share);
       }
+    } else {
+      // No live suppliers to buy the imported share from. An isolated town
+      // can only build what its OWN forests/quarries cover (the discount
+      // fraction) — it can't conjure the bought share for free, which used
+      // to let cut-off settlements out-build connected ones at zero coin.
+      add *= discount;
+      if (add <= 0.0001) { s._devReason = "materials"; return; }
     }
   }
   s.infrastructure = (s.infrastructure || 0) + add;
@@ -1404,7 +1447,7 @@ function updatePopulation(world, s) {
   // Stable small forage hamlets sit at ~10–15 and never trip the timer.
   if (s.people < 8) {
     if (s._witherSince === undefined) s._witherSince = world.step;
-    if (world.step - s._witherSince > 2000) {
+    if (world.step - s._witherSince > 2000 / _dt) {   // same wither-window in history-time at any granularity
       s.mode = "dead";
       s.history.push({ step: world.step, type: "withered" });
     }
