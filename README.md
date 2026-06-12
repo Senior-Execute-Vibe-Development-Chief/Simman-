@@ -25,15 +25,27 @@ Requires Node 20+. The production build is a single self-contained HTML file
 
 ## Using the app
 
-The app has two tabs:
+The map is the app. A top bar carries the run controls (play + speed
+steps), the era/year readout, a live ticker of the latest world event,
+the globe toggle, the **New World** dialog, and the menu
+(save/load/export, advanced tuning). Press a number key to switch lens,
+Space to pause, Esc to close panels.
 
-- **World** — the main attraction. Pick a preset, roll a seed, press play.
+- **World** — pick a preset in ⊕ New World, roll a seed, press play.
   - Presets: **Earth (Sim)** (real Earth heightmap + simulated climate; can
     optionally use real NCEP wind data), **Tectonic** (plate simulation from
     scratch), plus continents/archipelago-style noise presets and an **Import**
     mode (Azgaar Full-JSON exports or grayscale heightmap images).
-  - View modes render terrain, biomes, crop suitability, political borders,
-    trade flow, technology, and more. A 3D globe view can be toggled.
+  - The left rail holds map **lenses** — Terrain (map/atlas), Politics,
+    Peoples, Faiths, Economy (trade/money/resources/cropland) — with
+    overlay toggles beneath (rivers, lakes, plates, layers). Worldgen
+    diagnostics (wind/moisture/temperature/depth/crossing) appear with
+    ?dev in the URL.
+  - The right **World Panel** has five tabs: World (history charts + the
+    scrolling event feed — click an event to jump the camera), Realms (a
+    sortable browser; click through to a realm inspector with throne,
+    faith, temperament, fisc and chronicle), Peoples and Faiths (live
+    registries with lineage), and Inspect (the selected settlement).
   - Click a settlement for its full panel: economy (food, money flows, trade
     partners, tech tracks), its people and faith mixtures, and its realm —
     ruler, house, state faith, and the realm's chronicle. The chronicle
@@ -47,8 +59,6 @@ The app has two tabs:
   - The **Levers** panel exposes the simulation's tuning constants live —
     growth rates, war pacing, trade friction, simulation granularity — and
     applies them to the running world.
-- **Language** — a standalone procedural conlang generator (phonology,
-  morphology, sample sentences with gloss).
 
 ## Architecture
 

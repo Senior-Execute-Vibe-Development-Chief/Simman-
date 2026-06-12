@@ -2207,7 +2207,14 @@ const riverMag=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.ri
 const riverAccum=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.flowAccum[terTi]:0;
 const isLake=terTi>=0&&terRef.current&&terRef.current.rivers&&terRef.current.rivers.lake?terRef.current.rivers.lake[terTi]>=0:false;
 const lakeSize=isLake?terRef.current.rivers.lakeInfo[terRef.current.rivers.lake[terTi]].size:0;
-setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize});
+// Who lives here / whose realm: territory owner + national claim at this tile.
+let hovOwner=null,hovRealm=null;
+{const psw=peopleRef.current;
+ if(psw&&terTi>=0){
+   if(psw._territoryOwner&&psw._byId){const oid=psw._territoryOwner[terTi];if(oid>=0){const o=psw._byId.get(oid);if(o)hovOwner=o.name;}}
+   if(psw._countryClaim&&psw.countries){const cc=psw._countryClaim[terTi];if(cc>=0){const c=psw.countries.get(cc);if(c)hovRealm=c.name||(c.capital&&c.capital.name);}}
+ }}
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,owner:hovOwner,realm:hovRealm});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const onCanvasClick=useCallback((ev)=>{
@@ -2312,6 +2319,19 @@ const pickLens=(id)=>{
 };
 const pickSub=(v)=>{subMemRef.current[lens]=v;setViewMode(v);viewRef.current=v;};
 const curLens=LENSES.find(x=>x.id===lens)||LENSES[0];
+// Keyboard: space = play/pause, 1-9 = lenses, Esc = close everything.
+// (Re-subscribed each render so the handlers see fresh closures — cheap.)
+useEffect(()=>{
+  const onKey=(e)=>{
+    const t=e.target;
+    if(t&&(t.tagName==="INPUT"||t.tagName==="SELECT"||t.tagName==="TEXTAREA"))return;
+    if(e.code==="Space"){e.preventDefault();togglePlay();}
+    else if(e.key==="Escape"){setMenuOpen(false);setNewWorldOpen(false);setChronicleOpen(false);setTechTreeOpen(false);setLayersOpen(false);setSelectedSettlementId(-1);}
+    else{const n=+e.key;if(n>=1&&n<=LENSES.length)pickLens(LENSES[n-1].id);}
+  };
+  window.addEventListener("keydown",onKey);
+  return()=>window.removeEventListener("keydown",onKey);
+});
 
 // ── Aggregate world stats for the chronicle ribbon ──
 const _step=(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
@@ -2667,7 +2687,7 @@ const renderInspect=()=>{
           let strain="";
           if(ctry._capitalBesieged)strain=" · capital besieged";
           else if((ctry._fronts||0)>1)strain=` · ${ctry._fronts}-front war`;
-          const treas=ctry._treasury;
+
           return(
             <>
             <button onClick={()=>{setRealmSel(s.countryId);setPanelTab("realms");if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:s.countryId});}}
@@ -2690,31 +2710,6 @@ const renderInspect=()=>{
               <span style={{width:9,height:9,borderRadius:2,background:over?"hsl(8,70%,52%)":"hsl(140,45%,45%)",flexShrink:0}}/>
               <span className="au-fade">control {load.toFixed(1)}/{cap.toFixed(1)} ({pct}%){over?" · over-extended":""}{strain}</span>
             </div>
-            {(()=>{const mom=ctry._momentum||0;if(mom<1)return null;return(
-              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-                <span style={{width:9,height:9,borderRadius:2,background:"hsl(28,80%,52%)",flexShrink:0}}/>
-                <span className="au-fade">conquest momentum +{mom.toFixed(1)} · holding on the offensive (fades if the advance stalls)</span>
-              </div>
-            );})()}
-            {treas!=null&&(()=>{const sv=ctry._solvency??1;const broke=sv<0.99;return(
-              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-                <span style={{width:9,height:9,borderRadius:2,background:broke?"hsl(8,75%,52%)":"hsl(48,65%,48%)",flexShrink:0}}/>
-                <span className="au-fade">state treasury {fmtGoldKg(treas)}{ctry._govSpend>0.01?` · spends ${fmtGoldKg(ctry._govSpend)}/pass`:""}{broke?` · INSOLVENT (army ${Math.round(sv*100)}% paid)`:""}</span>
-              </div>
-            );})()}
-            {(()=>{const pro=ctry._armyPro||0,con=ctry._armyCon||0;if(pro+con<1)return null;const mp=ctry._manpowerCap>0?(ctry._manpower||0)/ctry._manpowerCap:1;return(
-              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-                <span style={{width:9,height:9,borderRadius:2,background:con>0.5?"hsl(0,70%,52%)":"hsl(0,40%,50%)",flexShrink:0}}/>
-                <span className="au-fade">army {fmtPeople(pro+con)} — {fmtPeople(pro)} professional{con>0.5?` + ${fmtPeople(con)} conscript levy`:""} · manpower {Math.round(mp*100)}%{mp<0.5?" (bled)":""}</span>
-              </div>
-            );})()}
-            {(()=>{const P=ctry._priceLevel;if(P==null||Math.abs(P-1)<0.04)return null;
-              const inflating=P>1;return(
-              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-                <span style={{width:9,height:9,borderRadius:2,background:inflating?"hsl(28,75%,50%)":"hsl(200,65%,50%)",flexShrink:0}}/>
-                <span className="au-fade">price level ×{P.toFixed(2)} · {inflating?"inflating":"deflating"}</span>
-              </div>
-            );})()}
             </>
           );
         }
@@ -3289,6 +3284,11 @@ return(
   </div>
   {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
     {RIVER_NAMES[hoverInfo.river]}
+  </div>}
+  {(hoverInfo.owner||hoverInfo.realm)&&<div style={{fontSize:11}}>
+    {hoverInfo.owner&&<span style={{textTransform:"capitalize"}}>{hoverInfo.owner}</span>}
+    {hoverInfo.owner&&hoverInfo.realm&&hoverInfo.realm!==hoverInfo.owner&&<span className="au-fade"> · </span>}
+    {hoverInfo.realm&&hoverInfo.realm!==hoverInfo.owner&&<span className="au-fade">{hoverInfo.realm}</span>}
   </div>}
   <div className="au-fade" style={{fontSize:9,marginTop:2,fontStyle:"italic"}}>click for full info</div>
 </div>}
