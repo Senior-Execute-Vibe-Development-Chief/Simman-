@@ -128,6 +128,15 @@ const NARRATE = {
   "famine.struck"(ev) { void ev; return "A famine gripped the land."; },
   "plague.outbreak"(ev) { return ev.sName ? `Plague broke out in ${ev.sName} and swept through the realm.` : "Plague swept through the realm."; },
   "era.reached"(ev) { return `Reached the ${ev.eraName} era.`; },
+  "faith.founded"(ev) {
+    return `A new faith arose in ${ev.sName || "a great town"} — the priesthood of ${ev.faithName}.`;
+  },
+  "faith.schism"(ev) {
+    return `The ${ev.faithName} rite broke communion with the ${ev.parentName} church — a schism declared from ${ev.sName || "the capital"}.`;
+  },
+  "polity.adoptedFaith"(ev) {
+    return `The court embraced the ${ev.faithName} faith.`;
+  },
   "culture.born"(ev) {
     return ev.parent >= 0
       ? `A new people, the ${ev.cultureName}, emerged from the ${ev.parentName || "old stock"}.`
@@ -168,6 +177,8 @@ export function categoryOf(ev, as = -1) {
     case "wealth.milestone": return "wealth";
     case "settlement.founded": case "colony.departed": return "founding";
     case "culture.born": case "culture.diverged": return "founding";
+    case "faith.founded": case "polity.adoptedFaith": return "discovery";
+    case "faith.schism": return "secession";
     case "settlement.lapsed": return as === ev.from ? "loss" : "growth";
     default: return "growth";
   }

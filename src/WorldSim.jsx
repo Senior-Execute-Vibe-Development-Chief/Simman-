@@ -1810,6 +1810,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmMoney = viewRef.current === "money";
   const vmCountry = viewRef.current === "country";
   const vmCulture = viewRef.current === "culture";
+  const vmFaith = viewRef.current === "faith";
   const vmFR = viewRef.current === "frTerritory";
   if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
@@ -1971,7 +1972,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmFR?32:0)|(vmCulture?64:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmFR?32:0)|(vmCulture?64:0)|(vmFaith?128:0);
     if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
@@ -1983,20 +1984,23 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       const owner=psw._territoryOwner, claimArr=psw._countryClaim;
       // ── Country view: BOLD opaque political map with thick borders + live,
       // maximally-distinct neighbour colours (assignCountryColors). ──
-      // ── Culture view: who LIVES on each tile (dominant culture of the
-      // settlement whose territory it is) — peoples, not states. ──
-      if(vmCulture&&owner){
+      // ── Culture / Faith views: who LIVES on each tile (dominant culture
+      // or faith of the settlement whose territory it is) — peoples and
+      // creeds, not states. Same machinery, different per-settlement key. ──
+      if((vmCulture||vmFaith)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0;for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const fillById=new Array(maxId+1);const culById=new Int32Array(maxId+1).fill(-1);
         const fillByCulture=new Map();
+        const reg=vmFaith?psw.faiths:psw.cultures;
         for(const s of psw.settlements){if(!s||s.mode!=="settled")continue;
-          const cid=s.cultureId??-1;culById[s.id]=cid;
+          const cid=(vmFaith?s.faithId:s.cultureId)??-1;culById[s.id]=cid;
           let fs=fillByCulture.get(cid);
           if(fs===undefined){
-            const cul=psw.cultures&&psw.cultures.get(cid);
+            const cul=reg&&reg.get(cid);
             const h=cul?cul.hue|0:((cid*97)%360+360)%360;
-            fs=cid<0?"hsla(40,8%,55%,0.6)":`hsl(${h},58%,52%)`;fillByCulture.set(cid,fs);}
+            const sat=vmFaith&&cul&&cul.kind!=="organized"?30:58;
+            fs=cid<0?"hsla(40,8%,55%,0.6)":`hsl(${h},${sat}%,52%)`;fillByCulture.set(cid,fs);}
           fillById[s.id]=fs;}
         let lastFs=null;
         for(let ti=0;ti<owner.length;ti++){
@@ -2374,6 +2378,7 @@ const applySnapshot=useCallback((snap)=>{
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   if(snap.cultures){const cm=new Map();for(const c of snap.cultures)cm.set(c.id,c);psw.cultures=cm;}
+  if(snap.faiths){const fm=new Map();for(const f of snap.faiths)fm.set(f.id,f);psw.faiths=fm;}
   psw.ships=snap.ships;
   psw._chronicle=snap.chronicle||null;             // selected realm's history (null when nothing selected)
   const setts=snap.settlements||[];
@@ -2683,7 +2688,7 @@ const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
-  ["crop","Crop"],["crossing","Crossing"],["country","Country"],["culture","Culture"],["frTerritory","Farm Regions"],["roads","Roads"],["money","Money"],
+  ["crop","Crop"],["crossing","Crossing"],["country","Country"],["culture","Culture"],["faith","Faith"],["frTerritory","Farm Regions"],["roads","Roads"],["money","Money"],
   ["resources","Resources"],["transport-test","Trans Test"]
 ];
 
@@ -2970,6 +2975,19 @@ return(
         if(!parts.length)return null;
         return <div style={{fontSize:10,marginBottom:6}}>
           <span className="au-fade">people </span>{parts.join(" · ")}
+        </div>;
+      })()}
+      {/* ── Faith mixture ── */}
+      {(()=>{
+        const mix=s.faithMix;
+        if(!mix||!mix.length||!psw.faiths)return null;
+        const parts=mix.filter(([,sh])=>sh>0.03).map(([fid,sh])=>{
+          const f=psw.faiths.get(fid);
+          return f?`${f.name}${f.kind==="organized"?"":" (folk)"}${sh<0.97?` ${Math.round(sh*100)}%`:""}`:null;
+        }).filter(Boolean);
+        if(!parts.length)return null;
+        return <div style={{fontSize:10,marginBottom:6}}>
+          <span className="au-fade">faith </span>{parts.join(" · ")}
         </div>;
       })()}
 

@@ -31,6 +31,7 @@ import { checkPeopleSimInvariants } from "./invariants.js";
 import { chronicleTick } from "./chronicle.js";
 import { techState } from "./tech.js";
 import { updateCultures, CULTURE_INTERVAL } from "./cultures.js";
+import { updateFaiths, FAITH_INTERVAL } from "./faiths.js";
 import { T } from "./tuning.js";
 
 const CHRONICLE_INTERVAL = 300;   // ticks between per-country chronicle milestone checks
@@ -147,6 +148,9 @@ export function stepPeopleSim(world, n = 1) {
     // Peoples: assimilation toward the ruler's culture, colonial divergence,
     // per-polity culture refresh (cultures.js).
     if (world.step % _ivl(CULTURE_INTERVAL) === 0) updateCultures(world);
+    // Faiths: folk-faith seeding, organized genesis, trade-graph conversion,
+    // state adoption + legitimacy, schisms (faiths.js).
+    if (world.step % _ivl(FAITH_INTERVAL) === 0) updateFaiths(world);
     // Country chronicle: the slow-drift events (a discovery, a growth/wealth
     // milestone) that aren't a single discrete moment, checked periodically.
     if (world.step % CHRONICLE_INTERVAL === 0) chronicleTick(world);
