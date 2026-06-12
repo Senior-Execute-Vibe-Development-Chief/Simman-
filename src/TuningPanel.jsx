@@ -144,7 +144,7 @@ export default function TuningPanel({ noiseFns, seed, params, onParamsChange, on
     }
   }, []);
 
-  useEffect(() => { doGenerate(baseParams, group, spread, candCount); }, []); // eslint-disable-line
+  useEffect(() => { doGenerate(baseParams, group, spread, candCount); }, []);
 
   const handleSelect = (idx) => {
     const newBase = { ...candidates[idx] };

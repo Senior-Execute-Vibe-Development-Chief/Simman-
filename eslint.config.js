@@ -18,7 +18,10 @@ export default [
       parserOptions: { ecmaFeatures: { jsx: true } },
       // Browser (the React app) + worker (peopleSimWorker / worldGenWorker run
       // in Web Workers and use self/postMessage) + the JS built-ins.
-      globals: { ...globals.browser, ...globals.worker, ...globals.es2021 },
+      // `process` is read-only: sim modules use guarded
+      // `typeof process !== "undefined" && process.env.SIM_*` env flags so the
+      // same files run under the node probes in tools/.
+      globals: { ...globals.browser, ...globals.worker, ...globals.es2021, process: "readonly" },
     },
     rules: {
       "no-undef": "error",
