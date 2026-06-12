@@ -252,6 +252,19 @@ function TechTreeOverlay({k,title,onClose}){
 // (the settlement card is too short to hold a long log; a modal escapes it).
 // `entries` are {step,type,text}; rendered newest-first, dated via yearStr and
 // colour-coded by event type (dark tones for contrast on the light parchment).
+// ── Map lenses ──────────────────────────────────────────────────────
+// Grouped views: each lens is one way of READING the world; sub-modes are
+// variations within it. Worldgen diagnostics live behind a ?dev URL flag.
+const DEV=typeof location!=="undefined"&&new URLSearchParams(location.search).has("dev");
+const LENSES=[
+  {id:"terrain", label:"Terrain", subs:[["terrain","Map"],["atlas","Atlas"]]},
+  {id:"politics",label:"Politics",subs:[["country","Realms"]]},
+  {id:"peoples", label:"Peoples", subs:[["culture","Cultures"]]},
+  {id:"faiths",  label:"Faiths",  subs:[["faith","Faiths"]]},
+  {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["resources","Resources"],["crop","Cropland"]]},
+  ...(DEV?[{id:"dev",label:"Dev",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
+];
+
 const CHRON_COL={founding:"#1f7a55",discovery:"#2f6fa8",growth:"#2f7d3f",wealth:"#9c7414",
   war:"#b23a28",conquest:"#b15212",annex:"#8a6420",secession:"#7a44b0",loss:"#a04a28",
   plague:"#8a3aa8",famine:"#9c5a1e",end:"#5a4a32"};
@@ -527,6 +540,10 @@ const[showTuning,setShowTuning]=useState(false);
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
 const[techTreeOpen,setTechTreeOpen]=useState(false);   // full tech-tree overlay (for the selected settlement)
 const[chronicleOpen,setChronicleOpen]=useState(false); // full chronicle (realm history) overlay
+const[lens,setLens]=useState("terrain");const subMemRef=useRef({});
+const[panelTab,setPanelTab]=useState("world");   // World Panel tab: world|realms|peoples|faiths|inspect
+const[newWorldOpen,setNewWorldOpen]=useState(false);
+const[menuOpen,setMenuOpen]=useState(false);
 // Ref mirror so draw() (memoized) sees the current selection without
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
@@ -544,7 +561,6 @@ const[layers,setLayers]=useState({
   village:true, town:true, city:true, metropolis:true,
 });
 const[layersOpen,setLayersOpen]=useState(false);
-const[boardOpen,setBoardOpen]=useState(false);
 const[leversOpen,setLeversOpen]=useState(false);
 const[tuneVals,setTuneVals]=useState(()=>tuningDefaults());
 const tuneValsRef=useRef(tuneVals);
@@ -629,7 +645,6 @@ const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0}
 // in a ref (no re-render on every sample); the charts read it on the regular
 // psStats-driven re-render. Sampled every HISTORY_INTERVAL sim steps.
 const psHistoryRef=useRef([]);
-const [chartsOpen,setChartsOpen]=useState(false);
 const [statsCopied,setStatsCopied]=useState(false);
 const oceanLevelRef=useRef(0.78);const pendingSaveRef=useRef(null);const downloadSaveRef=useRef(null);const saveFileRef=useRef(null);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
 const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
@@ -2050,6 +2065,7 @@ useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'s
 // Close the per-realm overlays when the selection changes, so they don't
 // auto-reopen (or show a stale realm) the next time a settlement is picked.
 useEffect(()=>{setChronicleOpen(false);setTechTreeOpen(false);},[selectedSettlementId]);
+useEffect(()=>{if(selectedSettlementId>=0)setPanelTab("inspect");},[selectedSettlementId]);
 // Tell the worker the current view so it ships money-flow / road-component extras only when shown.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'view',view:viewMode});},[viewMode]);
 // Terminate both workers on unmount so they don't leak across hot-reloads / route changes.
@@ -2276,6 +2292,16 @@ const resetView=useCallback(()=>{
 },[draw]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
 
+// ── Lenses: grouped map views (sub-modes share one underlying viewMode) ──
+const pickLens=(id)=>{
+  setLens(id);
+  const L=LENSES.find(x=>x.id===id);
+  const v=subMemRef.current[id]||L.subs[0][0];
+  setViewMode(v);viewRef.current=v;
+};
+const pickSub=(v)=>{subMemRef.current[lens]=v;setViewMode(v);viewRef.current=v;};
+const curLens=LENSES.find(x=>x.id===lens)||LENSES[0];
+
 // ── Aggregate world stats for the chronicle ribbon ──
 const _step=(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
 const _ys=yearStr(_step);
@@ -2286,197 +2312,68 @@ const _era=ERAS[psStats.leadingEra||0]||ERAS[0];
 const _psw=peopleRef.current;
 const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 
-// View modes for the right rail
-// Map lenses. Worldgen diagnostics (depth/wind/moisture/temperature/
-// crossing) are developer views — add ?dev to the URL to expose them.
-const DEV=typeof location!=="undefined"&&new URLSearchParams(location.search).has("dev");
-const VIEW_MODES=[
-  ["terrain","Terrain"],["atlas","Atlas"],
-  ["country","Country"],["culture","Culture"],["faith","Faith"],
-  ["roads","Roads"],["money","Money"],["resources","Resources"],["crop","Crop"],
-  ...(DEV?[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]:[]),
-];
 
-return(
-<div className="au-root" style={{width:"100vw",height:"100vh",
-  background:"var(--au-table-dark)",overflow:"hidden",display:"flex",position:"relative"}}>
+// ── World Panel panes (relocated leaderboard / charts / settlement card) ──
+// Peoples / Faiths browsers: aggregated live from the mirror.
+const renderPeoples=()=>{
+  const psw=peopleRef.current;
+  if(!psw||!psw.cultures||!psw.settlements)return <div className="au-fade" style={{padding:16,fontSize:11,fontStyle:"italic"}}>No peoples yet.</div>;
+  const agg=new Map();
+  for(const st of psw.settlements){
+    if(!st||st.mode!=="settled")continue;
+    const cid=st.cultureId??-1;if(cid<0)continue;
+    let a=agg.get(cid);if(!a)agg.set(cid,a={setts:0,pop:0});
+    a.setts++;a.pop+=st.people||0;
+  }
+  const rows=[...psw.cultures.values()].map(c=>({c,a:agg.get(c.id)||{setts:0,pop:0}}))
+    .sort((x,y)=>y.a.pop-x.a.pop);
+  return(
+    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
+      {rows.map(({c,a})=>(
+        <div key={c.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"4px 0",borderBottom:"1px solid rgba(58,38,20,0.10)"}}>
+          <span style={{width:10,height:10,borderRadius:2,background:`hsl(${c.hue|0},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
+          <span style={{fontWeight:600,fontSize:12}}>{c.name}</span>
+          {c.parent>=0&&psw.cultures.get(c.parent)&&<span className="au-fade" style={{fontSize:9}}>← {psw.cultures.get(c.parent).name}</span>}
+          <div style={{flex:1}}/>
+          <span className="au-fade">{a.setts} settlements · {fmtPeople(a.pop)}</span>
+        </div>
+      ))}
+      <div className="au-fade" style={{fontSize:9,marginTop:8,fontStyle:"italic"}}>
+        A people is carried by population — conquest changes rulers, not peoples. Use the Peoples lens to see where each lives.</div>
+    </div>
+  );
+};
+const renderFaiths=()=>{
+  const psw=peopleRef.current;
+  if(!psw||!psw.faiths||!psw.settlements)return <div className="au-fade" style={{padding:16,fontSize:11,fontStyle:"italic"}}>No faiths yet.</div>;
+  const agg=new Map();
+  for(const st of psw.settlements){
+    if(!st||st.mode!=="settled")continue;
+    const fid=st.faithId??-1;if(fid<0)continue;
+    let a=agg.get(fid);if(!a)agg.set(fid,a={setts:0,pop:0});
+    a.setts++;a.pop+=st.people||0;
+  }
+  const rows=[...psw.faiths.values()].map(f=>({f,a:agg.get(f.id)||{setts:0,pop:0}}))
+    .filter(({f,a})=>a.setts>0||f.kind==="organized")
+    .sort((x,y)=>y.a.pop-x.a.pop);
+  return(
+    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
+      {rows.map(({f,a})=>(
+        <div key={f.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"4px 0",borderBottom:"1px solid rgba(58,38,20,0.10)"}}>
+          <span style={{width:10,height:10,borderRadius:f.kind==="organized"?"50%":2,background:`hsl(${f.hue|0},55%,50%)`,flexShrink:0,alignSelf:"center"}}/>
+          <span style={{fontWeight:600,fontSize:12}}>{f.name}</span>
+          <span className="au-fade" style={{fontSize:9}}>{f.kind}{f.parent>=0&&psw.faiths.get(f.parent)?` ← ${psw.faiths.get(f.parent).name}`:""}</span>
+          <div style={{flex:1}}/>
+          <span className="au-fade">{a.setts>0?`${a.setts} · ${fmtPeople(a.pop)}`:"faded"}</span>
+        </div>
+      ))}
+      <div className="au-fade" style={{fontSize:9,marginTop:8,fontStyle:"italic"}}>
+        Organized faiths spread along trade routes, convert courts, and schism across distance. The Faiths lens maps them.</div>
+    </div>
+  );
+};
 
-{/* ══════════ LEFT SPINE ══════════ */}
-<aside className="au-parchment au-scroll" style={{
-  width:142,minWidth:142,margin:"6px 3px 6px 6px",padding:"10px 8px",
-  display:"flex",flexDirection:"column",gap:5,overflowY:"auto"}}>
-
-<button onClick={togglePlay}
-  className={"au-btn au-block"+(playing?" au-wax au-active":"")}
-  style={{padding:"8px 6px",fontSize:13,fontFamily:"'Cinzel',Georgia,serif",letterSpacing:"0.10em"}}>
-  {playing?"❚❚  Pause":"▶  Play"}
-</button>
-
-<div style={{display:"flex",alignItems:"center",gap:6,padding:"2px 4px"}}>
-  <span className="au-sc au-fade" style={{fontSize:10}}>Speed</span>
-  <input type="range" min={1} max={30} value={speed}
-    onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value;}}
-    style={{flex:1}} />
-  <span className="au-mute" style={{fontSize:10,width:18,textAlign:"right"}}>{speed}</span>
-</div>
-
-<div className="au-rule" />
-<div className="au-sc au-fade au-heading" style={{fontSize:10,padding:"2px 4px 0"}}>World</div>
-
-<button onClick={()=>setPresetAndGo("earth_sim")}
-  className={"au-btn au-block"+(preset==="earth_sim"?" au-active":"")}>Earth (Sim)</button>
-{preset==="earth_sim"&&
-  <label style={{fontSize:10,padding:"0 4px",cursor:"pointer",display:"flex",alignItems:"center",gap:4}} className="au-fade">
-    <input type="checkbox" checked={useRealWind}
-      onChange={e=>{setUseRealWind(e.target.checked);useRealWindRef.current=e.target.checked;generate(seed);}}
-      style={{width:11,height:11}} />
-    {isRealWindAvailable()?"Real Winds":"Real Winds (n/a)"}
-  </label>}
-
-<button onClick={()=>setPresetAndGo("tectonic")}
-  className={"au-btn au-block"+(preset==="tectonic"?" au-active":"")}>Tectonic</button>
-{preset==="tectonic"&&<>
-  <select value={tecPresetName} onChange={e=>{
-    const name=e.target.value;setTecPresetName(name);
-    if(name==="Default"){_tecParams={};generate(seed);}
-    else{const presets=loadPresets();if(presets[name]){_tecParams=presets[name];generate(seed);}}
-  }} style={{width:"100%",marginTop:2}}>
-    <option value="Default">Default</option>
-    {Object.keys(loadPresets()).map(name=><option key={name} value={name}>{name}</option>)}
-  </select>
-  {tecPresetName!=="Default"&&<button onClick={()=>{
-    if(confirm("Delete '"+tecPresetName+"'?")){deletePreset(tecPresetName);setTecPresetName("Default");_tecParams={};generate(seed);}}}
-    className="au-btn au-block au-wax" style={{fontSize:10}}>Delete Preset</button>}
-</>}
-
-<input ref={fileRef} type="file" accept=".json,.map,.png,.jpg,.jpeg,.webp"
-  style={{display:"none"}} onChange={handleImport} />
-<button onClick={()=>fileRef.current?.click()} className="au-btn au-block">Import</button>
-{importStatus&&<span className="au-fade" style={{fontSize:9,wordBreak:"break-all",padding:"0 4px"}}>{importStatus}</span>}
-
-<div style={{flex:1}} />
-<div className="au-rule" />
-{/* Save / Load: the full world state — settlements, polities, the event
-    log, money, roads — as a versioned JSON file. Terrain regenerates from
-    the recorded seed on load. */}
-<div style={{display:"flex",gap:4}}>
-  <button className="au-btn au-flat" style={{flex:1,fontSize:11}} title="Save the running world to a file"
-    onClick={()=>{
-      downloadSaveRef.current=(json,step)=>{
-        const blob=new Blob([json],{type:"application/json"});
-        const a=document.createElement("a");a.href=URL.createObjectURL(blob);
-        a.download=`simman-${presetRef.current}-s${seed}-t${step??""}.json`;a.click();
-        setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-      };
-      if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"save"});
-      else if(peopleRef.current&&!peopleRef.current._isMirror){
-        downloadSaveRef.current(serializeWorld(peopleRef.current,{oceanLevel:oceanLevelRef.current,tecParams:_tecParams}),peopleRef.current.step);
-      }
-    }}>💾 Save</button>
-  <button className="au-btn au-flat" style={{flex:1,fontSize:11}} title="Load a saved world"
-    onClick={()=>saveFileRef.current?.click()}>📂 Load</button>
-  <input ref={saveFileRef} type="file" accept=".json" style={{display:"none"}}
-    onChange={async(e)=>{
-      const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
-      try{
-        const json=await f.text();
-        const meta=JSON.parse(json).meta;
-        if(!meta)throw new Error("not a Simman save");
-        pendingSaveRef.current=json;
-        presetRef.current=meta.preset;setPreset(meta.preset);
-        oceanLevelRef.current=meta.oceanLevel??0.78;
-        if(meta.seed===seed)generate(seed);else setSeed(meta.seed);
-      }catch(err){console.error("load failed:",err);alert("Could not load save: "+err.message);}
-    }} />
-</div>
-<button className="au-btn au-block au-flat" style={{fontSize:11}}
-  title="Download the full event log, registries, and each great realm's chronicle (true + as its scribes kept it)"
-  onClick={()=>{
-    if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"export-history"});
-    else if(peopleRef.current&&!peopleRef.current._isMirror){
-      import("./sim/peopleSim/historiography.js").then(h=>{
-        const json=JSON.stringify(h.exportHistory(peopleRef.current));
-        const blob=new Blob([json],{type:"application/json"});
-        const a=document.createElement("a");a.href=URL.createObjectURL(blob);
-        a.download=`simman-history-t${peopleRef.current.step}.json`;a.click();
-        setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-      });
-    }
-  }}>📜 Export History</button>
-<button onClick={()=>setSeed(Math.floor(Math.random()*999999))}
-  className="au-btn au-block au-flat" style={{fontSize:11}} title="Roll new seed">⚄ Roll</button>
-<span className="au-fade" style={{fontSize:9,textAlign:"center",fontFamily:"'Courier New',monospace"}}>Seed {seed}</span>
-</aside>
-
-{/* ══════════ CENTER COLUMN ══════════ */}
-<div style={{flex:1,display:"flex",flexDirection:"column",padding:"6px 3px",gap:6,minWidth:0}}>
-
-{/* Chronicle ribbon */}
-<div className="au-parchment au-chronicle" style={{flexShrink:0}}>
-  <span className="au-era">{_era}</span>
-  <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
-  <span className="au-year">{_ys}</span>
-  <span className="au-fade" style={{fontSize:11}}>Step {_step.toLocaleString()}</span>
-  <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
-  <span style={{fontSize:13}}>{_countryCount} <span className="au-sc au-fade" style={{fontSize:11}}>nations</span></span>
-  <span style={{fontSize:13}}>{Math.round((psStats.landPct||0)*100)}<span className="au-fade">%</span> <span className="au-sc au-fade" style={{fontSize:11}}>claimed</span></span>
-  {(()=>{
-    // Wheat-price ticker — population-weighted global price level. The number
-    // shown is the price of 1 unit of farmed wheat relative to its baseline.
-    // (The displayed number is `globalP × baselineFOOD_PRICE`.)
-    const psw=peopleRef.current;
-    const P=psw&&isFinite(psw.globalP)?psw.globalP:null;
-    if(P==null)return null;
-    const price=(5*P).toFixed(2);
-    const dir=P>1.04?"▲":P<0.96?"▼":"·";
-    const col=P>1.1?"hsl(8,75%,55%)":P<0.9?"hsl(195,65%,50%)":"var(--au-ink)";
-    return(
-      <>
-        <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
-        <span style={{fontSize:13}} title={`global price level ×${P.toFixed(2)} (1.00 = baseline)`}>
-          <span className="au-sc au-fade" style={{fontSize:11,marginRight:4}}>Wheat</span>
-          <span style={{color:col,fontWeight:600}}>{price}</span>
-          <span className="au-fade" style={{fontSize:11,marginLeft:3}}>{dir}</span>
-        </span>
-      </>
-    );
-  })()}
-  <div style={{flex:1}} />
-</div>
-
-{/* Map area */}
-<div style={{flex:1,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",minHeight:0,overflow:"hidden"}}>
-
-{showGlobe?
-  <div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
-    <GlobeView terrainBuf={globeBuf} version={globeVer} world={world} CW={globeTexSize.w} CH={globeTexSize.h} />
-  </div>:
-  <canvas ref={canvasRef} width={CW} height={CH}
-    onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
-    onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
-    style={{display:"block",imageRendering:"pixelated",
-      maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
-      boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
-}
-
-{/* ─── Pico hover card ─── */}
-{hoverInfo&&<div className="au-parchment au-pico"
-  style={{left:hoverInfo.x+14,top:hoverInfo.y-12}}>
-  <div className="au-pico-title" style={{
-    color:hoverInfo.isLake?"var(--au-verdigris)":hoverInfo.elevM<=0?"var(--au-verdigris)":"var(--au-ink)"}}>
-    {hoverInfo.isLake?`Lake (${hoverInfo.lakeSize}t)`:hoverInfo.biome}
-  </div>
-  <div className="au-fade" style={{fontSize:11}}>
-    {hoverInfo.elevM}m · {hoverInfo.tempC}°C · {(hoverInfo.moist*100|0)}% moist
-  </div>
-  {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
-    {RIVER_NAMES[hoverInfo.river]}
-  </div>}
-  <div className="au-fade" style={{fontSize:9,marginTop:2,fontStyle:"italic"}}>click for full info</div>
-</div>}
-
-{/* ─── peopleSim settlement card ─── */}
-{(()=>{
+const renderInspect=()=>{
   if(selectedSettlementId<0)return null;
   const psw=peopleRef.current;
   if(!psw)return null;
@@ -2558,8 +2455,8 @@ return(
   const nextName=isRegion?null:["town","city","metropolis"][s.tier];
 
   return(
-    <div className="au-parchment au-pico au-elev"
-      style={{position:"absolute",left:14,top:14,width:248,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"calc(100vh - 28px)",overflowY:"auto",
+    <div className="au-scroll"
+      style={{flex:1,minHeight:0,padding:"10px 12px",fontSize:11,overflowY:"auto",
         pointerEvents:"auto"/* au-pico sets pointer-events:none for the hover tooltip; this card is interactive */}}>
 
       {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
@@ -3032,7 +2929,271 @@ return(
       })()}
     </div>
   );
-})()}
+};
+
+const renderBoard=()=>{
+  // Leaderboard. Pulls live data from the mirror (peopleRef.current) — same
+  // structure draw() reads — so the panel always reflects the current snapshot.
+  const psw=peopleRef.current;
+  if(!psw||!psw.settlements)return null;
+  const setts=psw.settlements.filter(s=>s&&s.mode==="settled");
+  const countries=psw.countries?Array.from(psw.countries.values()):[];
+
+  // Sort keys per mode. Functions return a number (descending sort).
+  const SETT_SORTS={
+    population:[s=>s.people,"Population",fmtPeople],
+    wealth:[s=>s.wealth||0,"Wealth",fmtGoldKg],
+    army:[s=>s.army||0,"Garrison",fmtPeople],
+    mining:[s=>s._minedRate||0,"Mining rate",fmtGoldKg],
+    vassals:[s=>s._vassalCount||0,"Vassals"],
+    income:[s=>s._wealthDelta||0,"Income (gold/tick)",fmtGoldKg],
+  };
+  const CNT_SORTS={
+    size:[c=>c.members?c.members.length:0,"Size (settlements)"],
+    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Population",fmtPeople],
+    wealth:[c=>(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0),"Total wealth",fmtGoldKg],
+    treasury:[c=>c._treasury||0,"State treasury",fmtGoldKg],
+    army:[c=>(c.members||[]).reduce((a,m)=>a+(m.army||0),0),"Standing army",fmtPeople],
+    capacity:[c=>c._capacity||0,"Control capacity"],
+  };
+  const sorts=boardMode==="settlements"?SETT_SORTS:CNT_SORTS;
+  const sortKey=sorts[boardSort]?boardSort:Object.keys(sorts)[0];
+  const [sortFn,sortLabel,sortFmt]=sorts[sortKey];
+  const rows=(boardMode==="settlements"?setts:countries).slice()
+    .sort((a,b)=>sortFn(b)-sortFn(a)).slice(0,15);
+
+  const fmt=v=>{
+    if(!isFinite(v))return "-";
+    const a=Math.abs(v);
+    if(a>=1e6)return (v/1e6).toFixed(1)+"M";
+    if(a>=1e3)return (v/1e3).toFixed(1)+"k";
+    if(a>=10)return Math.round(v).toString();
+    return v.toFixed(1);
+  };
+
+  return(
+    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"8px 0"}}>
+      <div style={{display:"flex",alignItems:"baseline",marginBottom:6,padding:"0 12px"}}>
+        <span className="au-heading au-sc" style={{fontSize:12}}>Leaderboard</span>
+        <div style={{flex:1}} />
+      </div>
+      <div style={{display:"flex",gap:4,padding:"0 12px 6px"}}>
+        {["countries","settlements"].map(m=>(
+          <button key={m} onClick={()=>setBoardMode(m)}
+            className={"au-rail-tab"+(boardMode===m?" au-active":"")}
+            style={{flex:1,fontSize:11,textTransform:"capitalize"}}>{m}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:3,padding:"0 12px 6px"}}>
+        {Object.entries(sorts).map(([k,[,label]])=>(
+          <button key={k} onClick={()=>setBoardSort(k)}
+            className={"au-rail-tab"+(sortKey===k?" au-active":"")}
+            style={{fontSize:10,padding:"3px 7px",textTransform:"none"}}>{label}</button>
+        ))}
+      </div>
+      <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
+        <thead>
+          <tr style={{color:"var(--au-fade)",textAlign:"left"}}>
+            <th style={{padding:"2px 6px 2px 12px",width:24}}>#</th>
+            <th style={{padding:"2px 4px"}}>{boardMode==="settlements"?"Settlement":"Country"}</th>
+            <th style={{padding:"2px 12px 2px 4px",textAlign:"right"}}>{sortLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r,i)=>{
+            if(boardMode==="settlements"){
+              const ctry=psw.countries&&psw.countries.get(r.countryId);
+              const hue=((r.countryId*61)%360+360)%360;
+              return(
+                <tr key={r.id}
+                  onClick={()=>setSelectedSettlementId(r.id)}
+                  style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
+                  <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
+                  <td style={{padding:"3px 4px"}}>
+                    <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
+                      background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
+                    <span style={{textTransform:"capitalize"}}>{r.name}</span>
+                    {ctry&&ctry.capitalId===r.id&&<span style={{color:"var(--au-fade)",marginLeft:4}}>· capital</span>}
+                  </td>
+                  <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
+                </tr>
+              );
+            }
+            const cap=r.capital||(r.members&&r.members[0]);
+            const hue=((r.id*61)%360+360)%360;
+            return(
+              <tr key={r.id}
+                onClick={()=>{if(cap)setSelectedSettlementId(cap.id);}}
+                style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
+                <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
+                <td style={{padding:"3px 4px"}}>
+                  <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
+                    background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
+                  <span style={{textTransform:"capitalize"}}>{cap?cap.name:"realm-"+r.id}</span>
+                </td>
+                <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
+              </tr>
+            );
+          })}
+          {rows.length===0&&<tr><td colSpan={3} style={{padding:"10px 12px",color:"var(--au-fade)",fontStyle:"italic"}}>no data yet</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const renderCharts=()=>{
+  const H=psHistoryRef.current;
+  const copy=()=>{ const t=buildHistoryExport(H);
+    try{navigator.clipboard.writeText(t);}catch{/* clipboard blocked — ignore */}
+    setStatsCopied(true); setTimeout(()=>setStatsCopied(false),1500); };
+  const curStep=H.length?H[H.length-1].step:0;
+  return(
+    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"8px 0"}}>
+      <div style={{display:"flex",alignItems:"baseline",marginBottom:4,padding:"0 12px"}}>
+        <span className="au-heading au-sc" style={{fontSize:12}}>History</span>
+        <span className="au-fade" style={{fontSize:9,marginLeft:6}}>step {curStep}</span>
+        <div style={{flex:1}} />
+      </div>
+      <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
+      <MiniChart data={H} get={d=>d.gold}           label="Gold (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
+      <MiniChart data={H} get={d=>d.landPct*100}    label="Land claimed"             color="#5a9367" fmtY={v=>v.toFixed(0)+"%"}/>
+      <MiniChart data={H} get={d=>d.countries}      label="Countries"                color="#7a6da8" fmtY={v=>Math.round(v).toString()}/>
+      <MiniChart data={H} get={d=>d.cities+d.metros} label="Cities + metropolises"   color="#b5562f" fmtY={v=>Math.round(v).toString()}/>
+      <MiniChart data={H} get={d=>d.sett}           label="Settlements"              color="#8a8f9c" fmtY={v=>Math.round(v).toString()}/>
+      <MiniChart data={H} get={d=>d.largest}        label="Largest empire (tiles)"   color="#4a78a8" fmtY={v=>Math.round(v).toLocaleString()}/>
+      <div style={{padding:"6px 10px 2px",borderTop:"1px solid rgba(0,0,0,0.08)",marginTop:4}}>
+        <button onClick={copy} className="au-rail-tab au-active" style={{width:"100%",fontSize:11,padding:"5px 0"}}>
+          {statsCopied?"Copied ✓":"Copy stats rundown"}
+        </button>
+        <div className="au-fade" style={{fontSize:9,marginTop:3,lineHeight:1.35}}>
+          Copies a markdown table of the run so far (~40 rows) — paste it back for a full breakdown over time.
+        </div>
+      </div>
+    </div>
+  );
+};
+
+return(
+<div className="au-root" style={{width:"100vw",height:"100vh",
+  background:"var(--au-table-dark)",overflow:"hidden",display:"flex",position:"relative"}}>
+
+{/* ══════════ TOP BAR ══════════ */}
+<header className="au-parchment" style={{display:"flex",alignItems:"center",gap:12,margin:"6px 6px 0",padding:"5px 14px",flexShrink:0,zIndex:45,position:"relative"}}>
+  <button onClick={togglePlay} className={"au-btn"+(playing?" au-wax au-active":"")}
+    style={{padding:"4px 14px",fontSize:13,fontFamily:"'Cinzel',Georgia,serif"}} title="Space">{playing?"❚❚":"▶"}</button>
+  <div style={{display:"flex",gap:2}}>
+    {[[1,"1×"],[5,"2×"],[12,"5×"],[30,"Max"]].map(([v,l])=>(
+      <button key={v} onClick={()=>{setSpeed(v);speedRef.current=v;}}
+        className={"au-btn au-flat"+(speed===v?" au-active":"")} style={{padding:"3px 9px",fontSize:11}}>{l}</button>
+    ))}
+  </div>
+  <span className="au-vrule" style={{height:20}}/>
+  <span className="au-era" style={{fontSize:14}}>{_era}</span>
+  <span className="au-year" style={{fontSize:13}}>{_ys}</span>
+  <span className="au-fade" style={{fontSize:10}}>step {_step.toLocaleString()}</span>
+  <span className="au-vrule" style={{height:20}}/>
+  <span style={{fontSize:12}}>{_countryCount} <span className="au-sc au-fade" style={{fontSize:10}}>realms</span></span>
+  <span style={{fontSize:12}}>{Math.round((psStats.landPct||0)*100)}<span className="au-fade">%</span> <span className="au-sc au-fade" style={{fontSize:10}}>claimed</span></span>
+  {lens==="economy"&&(()=>{
+    const psw=peopleRef.current;
+    const P=psw&&isFinite(psw.globalP)?psw.globalP:null;
+    if(P==null)return null;
+    const col=P>1.1?"hsl(8,75%,45%)":P<0.9?"hsl(195,65%,35%)":"var(--au-ink)";
+    return <span style={{fontSize:12}} title={`global price level ×${P.toFixed(2)}`}>
+      <span className="au-sc au-fade" style={{fontSize:10,marginRight:4}}>wheat</span>
+      <span style={{color:col,fontWeight:600}}>{(5*P).toFixed(2)}</span></span>;
+  })()}
+  <div style={{flex:1,minWidth:0}}/>
+  <button onClick={()=>setShowGlobe(!showGlobe)} className={"au-btn au-flat"+(showGlobe?" au-active":"")}
+    style={{fontSize:12,padding:"3px 8px"}} title="3D globe">🌍</button>
+  <button onClick={()=>setNewWorldOpen(true)} className="au-btn au-flat" style={{fontSize:12,padding:"3px 8px"}}
+    title="New world — presets, seed, import">⊕ World</button>
+  <button onClick={()=>setMenuOpen(v=>!v)} className={"au-btn au-flat"+(menuOpen?" au-active":"")}
+    style={{fontSize:12,padding:"3px 10px"}} title="Save / load / export / advanced">≡</button>
+</header>
+<input ref={saveFileRef} type="file" accept=".json" style={{display:"none"}}
+        onChange={async(e)=>{
+          const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
+          try{
+            const json=await f.text();
+            const meta=JSON.parse(json).meta;
+            if(!meta)throw new Error("not a Simman save");
+            pendingSaveRef.current=json;
+            presetRef.current=meta.preset;setPreset(meta.preset);
+            oceanLevelRef.current=meta.oceanLevel??0.78;
+            if(meta.seed===seed)generate(seed);else setSeed(meta.seed);
+          }catch(err){console.error("load failed:",err);alert("Could not load save: "+err.message);}
+        }}/>
+
+<div style={{flex:1,display:"flex",minHeight:0,position:"relative"}}>
+
+{/* ══════════ LENS RAIL ══════════ */}
+<aside className="au-parchment au-scroll" style={{width:112,minWidth:112,margin:"6px 3px 6px 6px",
+  padding:"8px 0",display:"flex",flexDirection:"column",overflowY:"auto"}}>
+  <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"0 12px 4px"}}>Lens</div>
+  {LENSES.map(L=>(
+    <button key={L.id} onClick={()=>pickLens(L.id)}
+      className={"au-rail-tab"+(lens===L.id?" au-active":"")}>{L.label}</button>
+  ))}
+  {curLens.subs.length>1&&<>
+    <div className="au-rule"/>
+    {curLens.subs.map(([v,l])=>(
+      <button key={v} onClick={()=>pickSub(v)}
+        className={"au-rail-tab"+(viewMode===v?" au-active":"")}
+        style={{paddingLeft:20,fontSize:11}}>{l}</button>
+    ))}
+  </>}
+  <div className="au-rule"/>
+  <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"4px 12px 2px"}}>Overlays</div>
+  <button onClick={()=>{setShowRivers(v=>!v);showRiversRef.current=!showRiversRef.current;}}
+    className={"au-rail-tab"+(showRivers?" au-active":"")}>Rivers</button>
+  {showRivers&&<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
+    className={"au-rail-tab"+(showStreams?" au-active":"")} style={{paddingLeft:20,fontSize:11}}>· Streams</button>}
+  <button onClick={()=>{setShowLakes(v=>!v);showLakesRef.current=!showLakesRef.current;}}
+    className={"au-rail-tab"+(showLakes?" au-active":"")}>Lakes</button>
+  {world&&world.pixPlate&&<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
+    className={"au-rail-tab"+(showPlates?" au-active":"")}>Plates</button>}
+  <button onClick={()=>setLayersOpen(v=>!v)}
+    className={"au-rail-tab"+(layersOpen?" au-active":"")}>Layers…</button>
+  <div style={{flex:1}}/>
+  <span className="au-fade" style={{fontSize:9,textAlign:"center",fontFamily:"'Courier New',monospace"}}>seed {seed}</span>
+</aside>
+
+{/* ══════════ CENTER COLUMN ══════════ */}
+<div style={{flex:1,display:"flex",flexDirection:"column",padding:"6px 3px",gap:6,minWidth:0}}>
+
+{/* Map area */}
+<div style={{flex:1,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",minHeight:0,overflow:"hidden"}}>
+
+{showGlobe?
+  <div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
+    <GlobeView terrainBuf={globeBuf} version={globeVer} world={world} CW={globeTexSize.w} CH={globeTexSize.h} />
+  </div>:
+  <canvas ref={canvasRef} width={CW} height={CH}
+    onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
+    onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
+    style={{display:"block",imageRendering:"pixelated",
+      maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
+      boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
+}
+
+{/* ─── Pico hover card ─── */}
+{hoverInfo&&<div className="au-parchment au-pico"
+  style={{left:hoverInfo.x+14,top:hoverInfo.y-12}}>
+  <div className="au-pico-title" style={{
+    color:hoverInfo.isLake?"var(--au-verdigris)":hoverInfo.elevM<=0?"var(--au-verdigris)":"var(--au-ink)"}}>
+    {hoverInfo.isLake?`Lake (${hoverInfo.lakeSize}t)`:hoverInfo.biome}
+  </div>
+  <div className="au-fade" style={{fontSize:11}}>
+    {hoverInfo.elevM}m · {hoverInfo.tempC}°C · {(hoverInfo.moist*100|0)}% moist
+  </div>
+  {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
+    {RIVER_NAMES[hoverInfo.river]}
+  </div>}
+  <div className="au-fade" style={{fontSize:9,marginTop:2,fontStyle:"italic"}}>click for full info</div>
+</div>}
+
 
 
 {/* ─── Bottom-left collapsible legend ─── */}
@@ -3111,47 +3272,24 @@ return(
 
 </div>{/* end center column */}
 
-{/* ══════════ RIGHT RAIL ══════════ */}
-<aside className="au-parchment au-scroll" style={{
-  width:128,minWidth:128,margin:"6px 6px 6px 3px",padding:"10px 0",
-  display:"flex",flexDirection:"column",gap:1,overflowY:"auto"}}>
-
-<div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"0 14px 4px"}}>View</div>
-{VIEW_MODES.map(([k,label])=>(
-  <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
-    className={"au-rail-tab"+(viewMode===k?" au-active":"")}>{label}</button>
-))}
-
-<div className="au-rule" />
-<div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"6px 14px 4px"}}>Overlay</div>
-<button onClick={()=>{setShowRivers(v=>!v);showRiversRef.current=!showRiversRef.current;}}
-  className={"au-rail-tab"+(showRivers?" au-active":"")}>Rivers</button>
-{showRivers&&<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
-  className={"au-rail-tab"+(showStreams?" au-active":"")} style={{paddingLeft:22,fontSize:11}}>· Streams</button>}
-<button onClick={()=>{setShowLakes(v=>!v);showLakesRef.current=!showLakesRef.current;}}
-  className={"au-rail-tab"+(showLakes?" au-active":"")}>Lakes</button>
-{world&&world.pixPlate&&<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
-  className={"au-rail-tab"+(showPlates?" au-active":"")}>Plates</button>}
-<button onClick={()=>setShowGlobe(!showGlobe)}
-  className={"au-rail-tab"+(showGlobe?" au-active":"")}>Globe</button>
-<button onClick={()=>setLayersOpen(v=>!v)}
-  className={"au-rail-tab"+(layersOpen?" au-active":"")}>Layers</button>
-<button onClick={()=>setBoardOpen(v=>!v)}
-  className={"au-rail-tab"+(boardOpen?" au-active":"")}>Leaderboard</button>
-<button onClick={()=>setChartsOpen(v=>!v)}
-  className={"au-rail-tab"+(chartsOpen?" au-active":"")}>History</button>
-
-{(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
-<div className="au-rule" />
-<div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"6px 14px 4px"}}>Tools</div>
-{preset!=="tectonic"&&<button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
-  className={"au-rail-tab"+(rightPanel==="params"?" au-active":"")}>Params</button>}
-{preset==="tectonic"&&<button onClick={()=>setShowTuning(true)}
-  className="au-rail-tab">Tune</button>}
-{preset==="earth_sim"&&<button onClick={()=>setLeversOpen(v=>!v)}
-  className={"au-rail-tab"+(leversOpen?" au-active":"")}>Sim Levers</button>}
-</>}
+{/* ══════════ WORLD PANEL ══════════ */}
+<aside className="au-parchment" style={{width:302,minWidth:302,margin:"6px 6px 6px 3px",
+  display:"flex",flexDirection:"column",minHeight:0}}>
+  <div style={{display:"flex",flexShrink:0,borderBottom:"1px solid rgba(58,38,20,0.28)"}}>
+    {[["world","World"],["realms","Realms"],["peoples","Peoples"],["faiths","Faiths"],["inspect","Inspect"]].map(([k,l])=>(
+      <button key={k} onClick={()=>setPanelTab(k)}
+        className={"au-tab"+(panelTab===k?" au-active":"")} style={{flex:1,padding:"7px 0"}}>{l}</button>
+    ))}
+  </div>
+  {panelTab==="world"&&renderCharts()}
+  {panelTab==="realms"&&renderBoard()}
+  {panelTab==="peoples"&&renderPeoples()}
+  {panelTab==="faiths"&&renderFaiths()}
+  {panelTab==="inspect"&&(renderInspect()||
+    <div className="au-fade" style={{padding:16,fontSize:11,fontStyle:"italic"}}>Click a settlement on the map to inspect it.</div>)}
 </aside>
+
+</div>{/* main row */}
 
 {/* ══════════ PARAMS DRAWER ══════════ */}
 {layersOpen&&(()=>{
@@ -3163,7 +3301,7 @@ return(
   );
   return(
     <aside className="au-parchment au-scroll" style={{
-      position:"absolute",right:142,top:6,width:220,maxHeight:"80vh",
+      position:"absolute",left:124,top:8,width:220,maxHeight:"80vh",
       padding:"10px 0",overflowY:"auto",zIndex:30}}>
       <div style={{display:"flex",alignItems:"baseline",marginBottom:4,padding:"0 12px"}}>
         <span className="au-heading au-sc" style={{fontSize:12}}>Layers</span>
@@ -3191,160 +3329,11 @@ return(
   );
 })()}
 
-{boardOpen&&(()=>{
-  // Leaderboard. Pulls live data from the mirror (peopleRef.current) — same
-  // structure draw() reads — so the panel always reflects the current snapshot.
-  const psw=peopleRef.current;
-  if(!psw||!psw.settlements)return null;
-  const setts=psw.settlements.filter(s=>s&&s.mode==="settled");
-  const countries=psw.countries?Array.from(psw.countries.values()):[];
 
-  // Sort keys per mode. Functions return a number (descending sort).
-  const SETT_SORTS={
-    population:[s=>s.people,"Population",fmtPeople],
-    wealth:[s=>s.wealth||0,"Wealth",fmtGoldKg],
-    army:[s=>s.army||0,"Garrison",fmtPeople],
-    mining:[s=>s._minedRate||0,"Mining rate",fmtGoldKg],
-    vassals:[s=>s._vassalCount||0,"Vassals"],
-    income:[s=>s._wealthDelta||0,"Income (gold/tick)",fmtGoldKg],
-  };
-  const CNT_SORTS={
-    size:[c=>c.members?c.members.length:0,"Size (settlements)"],
-    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Population",fmtPeople],
-    wealth:[c=>(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0),"Total wealth",fmtGoldKg],
-    treasury:[c=>c._treasury||0,"State treasury",fmtGoldKg],
-    army:[c=>(c.members||[]).reduce((a,m)=>a+(m.army||0),0),"Standing army",fmtPeople],
-    capacity:[c=>c._capacity||0,"Control capacity"],
-  };
-  const sorts=boardMode==="settlements"?SETT_SORTS:CNT_SORTS;
-  const sortKey=sorts[boardSort]?boardSort:Object.keys(sorts)[0];
-  const [sortFn,sortLabel,sortFmt]=sorts[sortKey];
-  const rows=(boardMode==="settlements"?setts:countries).slice()
-    .sort((a,b)=>sortFn(b)-sortFn(a)).slice(0,15);
-
-  const fmt=v=>{
-    if(!isFinite(v))return "-";
-    const a=Math.abs(v);
-    if(a>=1e6)return (v/1e6).toFixed(1)+"M";
-    if(a>=1e3)return (v/1e3).toFixed(1)+"k";
-    if(a>=10)return Math.round(v).toString();
-    return v.toFixed(1);
-  };
-
-  return(
-    <aside className="au-parchment au-scroll" style={{
-      position:"absolute",right:142,top:6,width:340,maxHeight:"80vh",
-      padding:"10px 0",overflowY:"auto",zIndex:30}}>
-      <div style={{display:"flex",alignItems:"baseline",marginBottom:6,padding:"0 12px"}}>
-        <span className="au-heading au-sc" style={{fontSize:12}}>Leaderboard</span>
-        <div style={{flex:1}} />
-        <span onClick={()=>setBoardOpen(false)}
-          style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
-      </div>
-      <div style={{display:"flex",gap:4,padding:"0 12px 6px"}}>
-        {["countries","settlements"].map(m=>(
-          <button key={m} onClick={()=>setBoardMode(m)}
-            className={"au-rail-tab"+(boardMode===m?" au-active":"")}
-            style={{flex:1,fontSize:11,textTransform:"capitalize"}}>{m}</button>
-        ))}
-      </div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:3,padding:"0 12px 6px"}}>
-        {Object.entries(sorts).map(([k,[,label]])=>(
-          <button key={k} onClick={()=>setBoardSort(k)}
-            className={"au-rail-tab"+(sortKey===k?" au-active":"")}
-            style={{fontSize:10,padding:"3px 7px",textTransform:"none"}}>{label}</button>
-        ))}
-      </div>
-      <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
-        <thead>
-          <tr style={{color:"var(--au-fade)",textAlign:"left"}}>
-            <th style={{padding:"2px 6px 2px 12px",width:24}}>#</th>
-            <th style={{padding:"2px 4px"}}>{boardMode==="settlements"?"Settlement":"Country"}</th>
-            <th style={{padding:"2px 12px 2px 4px",textAlign:"right"}}>{sortLabel}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r,i)=>{
-            if(boardMode==="settlements"){
-              const ctry=psw.countries&&psw.countries.get(r.countryId);
-              const hue=((r.countryId*61)%360+360)%360;
-              return(
-                <tr key={r.id}
-                  onClick={()=>setSelectedSettlementId(r.id)}
-                  style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
-                  <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
-                  <td style={{padding:"3px 4px"}}>
-                    <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
-                      background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
-                    <span style={{textTransform:"capitalize"}}>{r.name}</span>
-                    {ctry&&ctry.capitalId===r.id&&<span style={{color:"var(--au-fade)",marginLeft:4}}>· capital</span>}
-                  </td>
-                  <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
-                </tr>
-              );
-            }
-            const cap=r.capital||(r.members&&r.members[0]);
-            const hue=((r.id*61)%360+360)%360;
-            return(
-              <tr key={r.id}
-                onClick={()=>{if(cap)setSelectedSettlementId(cap.id);}}
-                style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
-                <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
-                <td style={{padding:"3px 4px"}}>
-                  <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
-                    background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
-                  <span style={{textTransform:"capitalize"}}>{cap?cap.name:"realm-"+r.id}</span>
-                </td>
-                <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
-              </tr>
-            );
-          })}
-          {rows.length===0&&<tr><td colSpan={3} style={{padding:"10px 12px",color:"var(--au-fade)",fontStyle:"italic"}}>no data yet</td></tr>}
-        </tbody>
-      </table>
-    </aside>
-  );
-})()}
-
-{chartsOpen&&(()=>{
-  const H=psHistoryRef.current;
-  const copy=()=>{ const t=buildHistoryExport(H);
-    try{navigator.clipboard.writeText(t);}catch{/* clipboard blocked — ignore */}
-    setStatsCopied(true); setTimeout(()=>setStatsCopied(false),1500); };
-  const curStep=H.length?H[H.length-1].step:0;
-  return(
-    <aside className="au-parchment au-scroll" style={{
-      position:"absolute",right:142,top:6,width:316,maxHeight:"88vh",
-      padding:"10px 0",overflowY:"auto",zIndex:31}}>
-      <div style={{display:"flex",alignItems:"baseline",marginBottom:4,padding:"0 12px"}}>
-        <span className="au-heading au-sc" style={{fontSize:12}}>History</span>
-        <span className="au-fade" style={{fontSize:9,marginLeft:6}}>step {curStep}</span>
-        <div style={{flex:1}} />
-        <span onClick={()=>setChartsOpen(false)}
-          style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
-      </div>
-      <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
-      <MiniChart data={H} get={d=>d.gold}           label="Gold (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
-      <MiniChart data={H} get={d=>d.landPct*100}    label="Land claimed"             color="#5a9367" fmtY={v=>v.toFixed(0)+"%"}/>
-      <MiniChart data={H} get={d=>d.countries}      label="Countries"                color="#7a6da8" fmtY={v=>Math.round(v).toString()}/>
-      <MiniChart data={H} get={d=>d.cities+d.metros} label="Cities + metropolises"   color="#b5562f" fmtY={v=>Math.round(v).toString()}/>
-      <MiniChart data={H} get={d=>d.sett}           label="Settlements"              color="#8a8f9c" fmtY={v=>Math.round(v).toString()}/>
-      <MiniChart data={H} get={d=>d.largest}        label="Largest empire (tiles)"   color="#4a78a8" fmtY={v=>Math.round(v).toLocaleString()}/>
-      <div style={{padding:"6px 10px 2px",borderTop:"1px solid rgba(0,0,0,0.08)",marginTop:4}}>
-        <button onClick={copy} className="au-rail-tab au-active" style={{width:"100%",fontSize:11,padding:"5px 0"}}>
-          {statsCopied?"Copied ✓":"Copy stats rundown"}
-        </button>
-        <div className="au-fade" style={{fontSize:9,marginTop:3,lineHeight:1.35}}>
-          Copies a markdown table of the run so far (~40 rows) — paste it back for a full breakdown over time.
-        </div>
-      </div>
-    </aside>
-  );
-})()}
 
 {rightPanel==="params"&&(preset==="earth"||preset==="earth_sim")&&
 <aside className="au-parchment au-scroll" style={{
-  position:"absolute",right:142,top:6,bottom:6,width:300,
+  position:"absolute",right:316,top:6,bottom:6,width:300,
   padding:"10px 12px",overflowY:"auto",zIndex:30}}>
 <div style={{display:"flex",alignItems:"baseline",marginBottom:6}}>
   <span className="au-heading au-sc" style={{fontSize:12}}>{preset==="tectonic"?"Parameters":"Wind & Moisture"}</span>
@@ -3356,6 +3345,96 @@ return(
   onChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
   groups={preset==="earth"?["wind"]:preset==="earth_sim"?["wind","moisture"]:undefined} />
 </aside>}
+
+{/* ══════════ NEW WORLD MODAL ══════════ */}
+{newWorldOpen&&(
+  <div onClick={()=>setNewWorldOpen(false)} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.7)",zIndex:220,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"14px 18px",width:"min(420px,92vw)"}}>
+      <div style={{display:"flex",alignItems:"center",marginBottom:10}}>
+        <span className="au-pico-title" style={{fontSize:15}}>New World</span>
+        <div style={{flex:1}}/>
+        <button onClick={()=>setNewWorldOpen(false)} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18}}>×</button>
+      </div>
+      <div style={{display:"flex",gap:6,marginBottom:8}}>
+        <button onClick={()=>{setPresetAndGo("earth_sim");setNewWorldOpen(false);}}
+          className={"au-btn"+(preset==="earth_sim"?" au-active":"")} style={{flex:1,padding:"10px 4px"}}>Earth (Sim)</button>
+        <button onClick={()=>{setPresetAndGo("tectonic");setNewWorldOpen(false);}}
+          className={"au-btn"+(preset==="tectonic"?" au-active":"")} style={{flex:1,padding:"10px 4px"}}>Tectonic</button>
+      </div>
+      {preset==="earth_sim"&&
+        <label style={{fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:5,marginBottom:6}} className="au-fade">
+          <input type="checkbox" checked={useRealWind}
+            onChange={e=>{setUseRealWind(e.target.checked);useRealWindRef.current=e.target.checked;generate(seed);}}/>
+          {isRealWindAvailable()?"Use real NCEP winds":"Real winds (data not available)"}
+        </label>}
+      {preset==="tectonic"&&<div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
+        <span className="au-fade" style={{fontSize:10}}>preset</span>
+        <select value={tecPresetName} style={{flex:1}} onChange={e=>{
+          const name=e.target.value;setTecPresetName(name);
+          if(name==="Default"){_tecParams={};generate(seed);}
+          else{const ps=loadPresets();if(ps[name]){_tecParams=ps[name];generate(seed);}}
+        }}>
+          <option value="Default">Default</option>
+          {Object.keys(loadPresets()).map(n=><option key={n} value={n}>{n}</option>)}
+        </select>
+        {tecPresetName!=="Default"&&<button className="au-btn au-wax" style={{fontSize:10}}
+          onClick={()=>{if(confirm("Delete '"+tecPresetName+"'?")){deletePreset(tecPresetName);setTecPresetName("Default");_tecParams={};generate(seed);}}}>✕</button>}
+      </div>}
+      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+        <span className="au-fade" style={{fontSize:11}}>seed</span>
+        <span style={{fontFamily:"'Courier New',monospace",fontSize:12}}>{seed}</span>
+        <button onClick={()=>setSeed(Math.floor(Math.random()*999999))} className="au-btn au-flat" style={{fontSize:11}}>⚄ Roll &amp; generate</button>
+        <div style={{flex:1}}/>
+        <button onClick={()=>fileRef.current?.click()} className="au-btn au-flat" style={{fontSize:11}}>Import…</button>
+      </div>
+      <input ref={fileRef} type="file" accept=".json,.map,.png,.jpg,.jpeg,.webp" style={{display:"none"}} onChange={handleImport}/>
+      {importStatus&&<div className="au-fade" style={{fontSize:9,wordBreak:"break-all"}}>{importStatus}</div>}
+      <div className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>
+        Picking a preset rolls a fresh seed and generates immediately. Import accepts Azgaar Full-JSON or grayscale heightmaps.</div>
+    </div>
+  </div>
+)}
+
+{/* ══════════ MENU POPOVER ══════════ */}
+{menuOpen&&(
+  <div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:210}}>
+    <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{position:"absolute",right:10,top:44,width:230,padding:"8px 0",display:"flex",flexDirection:"column"}}>
+      <button className="au-rail-tab" onClick={()=>{
+        downloadSaveRef.current=(json,step)=>{
+          const blob=new Blob([json],{type:"application/json"});
+          const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+          a.download=`simman-${presetRef.current}-s${seed}-t${step??""}.json`;a.click();
+          setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+        };
+        if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"save"});
+        else if(peopleRef.current&&!peopleRef.current._isMirror){
+          downloadSaveRef.current(serializeWorld(peopleRef.current,{oceanLevel:oceanLevelRef.current,tecParams:_tecParams}),peopleRef.current.step);
+        }
+        setMenuOpen(false);
+      }}>💾 Save world</button>
+      <button className="au-rail-tab" onClick={()=>{saveFileRef.current?.click();setMenuOpen(false);}}>📂 Load world…</button>
+
+      <button className="au-rail-tab" onClick={()=>{
+        if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"export-history"});
+        else if(peopleRef.current&&!peopleRef.current._isMirror){
+          import("./sim/peopleSim/historiography.js").then(h=>{
+            const json=JSON.stringify(h.exportHistory(peopleRef.current));
+            const blob=new Blob([json],{type:"application/json"});
+            const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+            a.download=`simman-history-t${peopleRef.current.step}.json`;a.click();
+            setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+          });
+        }
+        setMenuOpen(false);
+      }}>📜 Export history</button>
+      <div className="au-rule"/>
+      {preset==="earth_sim"&&<button className="au-rail-tab" onClick={()=>{setLeversOpen(v=>!v);setMenuOpen(false);}}>⚖ Sim levers</button>}
+      {(preset==="earth"||preset==="earth_sim")&&<button className="au-rail-tab" onClick={()=>{setRightPanel(rightPanel==="params"?"":"params");setMenuOpen(false);}}>🌬 Wind &amp; moisture</button>}
+      {preset==="tectonic"&&<button className="au-rail-tab" onClick={()=>{setShowTuning(true);setMenuOpen(false);}}>⚙ Worldgen tuning</button>}
+      {!DEV&&<div className="au-fade" style={{fontSize:9,padding:"6px 14px 2px",fontStyle:"italic"}}>add ?dev to the URL for worldgen diagnostic lenses</div>}
+    </div>
+  </div>
+)}
 
 {/* ══════════ SIM LEVERS PANEL ══════════ */}
 {leversOpen&&<SimLevers values={tuneVals} onChange={onLeverChange}
