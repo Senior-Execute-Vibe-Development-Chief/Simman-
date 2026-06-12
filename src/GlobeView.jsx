@@ -3,11 +3,14 @@ import {
   Scene, PerspectiveCamera, WebGLRenderer,
   SphereGeometry, MeshPhongMaterial, Mesh,
   CanvasTexture, AmbientLight, DirectionalLight, Color,
-  BackSide, ShaderMaterial, AdditiveBlending,
+  ShaderMaterial, AdditiveBlending,
   NearestFilter, Quaternion, Vector3
 } from "three";
 
-export default function GlobeView({ terrainBuf, world, CW, CH }) {
+// `version` ticks whenever the (reused) terrainBuf's CONTENTS changed — the
+// buffer itself keeps one identity so the caller doesn't allocate 25MB per
+// frame, so the texture effect keys on the version, not the reference.
+export default function GlobeView({ terrainBuf, world, CW, CH, version = 0 }) {
   const containerRef = useRef(null);
   const stateRef = useRef(null);
 
@@ -176,6 +179,8 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
       mat.dispose();
       texture.dispose();
       specTexture.dispose();
+      scatterGeo.dispose();
+      scatterMat.dispose();
       if (el.contains(renderer.domElement)) el.removeChild(renderer.domElement);
     };
   }, []);
@@ -184,7 +189,7 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
   useEffect(() => {
     const s = stateRef.current;
     if (!s || !terrainBuf) return;
-    const { texCtx, texCanvas, texture } = s;
+    const { texCtx, texture } = s;
     const img = texCtx.createImageData(CW, CH);
     const d = img.data;
     // Boost saturation + contrast for 3D rendering (lighting washes out flat colors)
@@ -227,7 +232,7 @@ export default function GlobeView({ terrainBuf, world, CW, CH }) {
       specCtx.putImageData(specImg, 0, 0);
       specTexture.needsUpdate = true;
     }
-  }, [terrainBuf, CW, CH, world]);
+  }, [terrainBuf, version, CW, CH, world]);
 
   return (
     <div ref={containerRef} style={{

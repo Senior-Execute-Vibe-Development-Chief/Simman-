@@ -4,7 +4,7 @@
 // staircase can be tuned to hug the old curve (balance preserved) before any of
 // it is wired into the sim.
 //   node tools/probe_techeffects.mjs
-import { techEffects, techState, TECHS } from "../src/peopleSim/tech.js";
+import { techEffects, techState, TECHS } from "../src/sim/peopleSim/tech.js";
 
 const f2 = n => n.toFixed(2).padStart(6);
 function row(label, k) {

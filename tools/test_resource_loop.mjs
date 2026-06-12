@@ -8,8 +8,8 @@
 //     resources (resAccess), stockpile, and any shortages
 //   - Aggregate: how many settlements have access to each resource
 
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { generateResources, RESOURCES } from "../src/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { generateResources, RESOURCES } from "../src/sim/resourceGen.js";
 
 const RES_IDS = ["timber","stone","copper","tin","iron","coal","horses","salt"];
 

@@ -3,11 +3,11 @@
 // reports the per-seed population ratio plus the mean, so a real balance shift
 // is distinguishable from butterfly noise.
 //   node tools/probe_techab_multi.mjs [steps] [W] [H] [seed1,seed2,...]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { T } from "../src/peopleSim/tuning.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { T } from "../src/sim/peopleSim/tuning.js";
 
 const STEPS = parseInt(process.argv[2] || "8000", 10);
 const W = parseInt(process.argv[3] || "360", 10), H = parseInt(process.argv[4] || "180", 10);

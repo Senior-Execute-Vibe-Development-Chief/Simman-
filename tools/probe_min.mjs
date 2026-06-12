@@ -1,7 +1,7 @@
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 const STEPS=+(process.argv[2]||8000),SEED=+(process.argv[3]||857691),W=+(process.argv[4]||1920),H=+(process.argv[5]||960);
 const w=generateWorld(W,H,SEED,"earth_sim",0.78,true,false,{});
 const tE=new Float32Array(W*H),tT=new Float32Array(W*H),tM=new Float32Array(W*H),tC=new Uint8Array(W*H),tCrop=new Float32Array(W*H);

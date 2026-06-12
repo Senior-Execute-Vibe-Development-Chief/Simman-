@@ -2,14 +2,14 @@
 // toggle OFF then ON to the same step, and reports settlements / population /
 // crop ownership so we can see (a) OFF is unchanged and (b) ON spreads crops
 // from the cradles by climate band.  node tools/probe_crop_axis.mjs [step] [seed]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { cropSuitability } from "../src/cropGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { applyTuning, resetTuning } from "../src/peopleSim/tuning.js";
-import { pkgSuitAt } from "../src/peopleSim/agriculture.js";
-import { CROP_PACKAGES, CROP_BY_ID } from "../src/cropPackages.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { cropSuitability } from "../src/sim/cropGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { applyTuning, resetTuning } from "../src/sim/peopleSim/tuning.js";
+import { pkgSuitAt } from "../src/sim/peopleSim/agriculture.js";
+import { CROP_PACKAGES, CROP_BY_ID } from "../src/sim/cropPackages.js";
 
 // The crop that actually SETS a settlement's ceiling = best suit×storability at
 // its tile among the crops it owns (what cropCeil uses). Cleaner than crops[0].

@@ -4,11 +4,11 @@
 // ownership invariants stay clean (no settlement claims a tile it doesn't own,
 // every settled non-stateless settlement maps to a live country owner).
 //   node tools/probe_homeland.mjs [steps] [W] [H] [seed]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { T } from "../src/peopleSim/tuning.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { T } from "../src/sim/peopleSim/tuning.js";
 if (process.env.TE !== undefined) T.TECH_EFFECTS = parseFloat(process.env.TE);
 
 const STEPS = parseInt(process.argv[2] || "12000", 10);

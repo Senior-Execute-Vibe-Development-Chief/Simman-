@@ -1,7 +1,7 @@
 // Preview of the tree's "Stacked tech bonuses" strip for a few civilisations.
 //   node tools/render_totals.mjs   (then cairosvg)
 import { writeFileSync } from "fs";
-import { techState, techTotalList } from "../src/peopleSim/tech.js";
+import { techState, techTotalList } from "../src/sim/peopleSim/tech.js";
 
 const FX_COLOR = { farm:"#5f7d33",fish:"#2f7d8a",build:"#9a6f38",military:"#9c3a36",reach:"#6a4a8d",cohesion:"#9a6a33",defense:"#566089",trade:"#2f7d5a",wealth:"#9a7a24",seaSpeed:"#2f6d8a",seaRange:"#2f6d8a",embark:"#2f7d8a",ocean:"#2a6a8a",colonize:"#2a6a8a",walls:"#566089",market:"#2f7d5a" };
 const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");

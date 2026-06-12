@@ -1,9 +1,9 @@
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { cropSuitability } from "../src/cropGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
-import { techEffects, techState } from "../src/peopleSim/tech.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { cropSuitability } from "../src/sim/cropGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
+import { techEffects, techState } from "../src/sim/peopleSim/tech.js";
 const W=480,H=240,N=W*H;
 const STEP=+(process.argv[2]||9720), SEED=+(process.argv[3]||8817);
 const w=generateWorld(W,H,SEED,"earth_sim",0.78,true,false,{});

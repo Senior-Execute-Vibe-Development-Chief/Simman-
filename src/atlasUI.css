@@ -7,19 +7,19 @@
 
 :root {
   --au-paper: #e6d2a3;
-  --au-paper-light: #f0dcb0;
-  --au-paper-dark: #cdb178;
   --au-paper-aged: #a88c5c;
   --au-paper-deep: #8a6c40;
   --au-ink: #3a2614;
   --au-ink-faded: #6b4f37;
   --au-ink-light: #8b7556;
   --au-wax-red: #7a2820;
-  --au-wax-red-bright: #a23028;
   --au-verdigris: #3a5a48;
   --au-gold: #a07832;
   --au-shadow: rgba(40, 26, 12, 0.45);
   --au-table-dark: #1a0f04;
+  /* Used from inline JSX styles (WorldSim) as var() values, not classes. */
+  --au-fade: var(--au-ink-faded);
+  --au-line: rgba(58, 38, 20, 0.22);
 }
 
 body { margin: 0; background: var(--au-table-dark); }
@@ -93,12 +93,6 @@ body { margin: 0; background: var(--au-table-dark); }
   opacity: 0.35;
   margin: 6px 2px;
 }
-.au-rule-thick {
-  height: 2px;
-  background: linear-gradient(to right, transparent 0%, var(--au-ink) 8%, var(--au-ink) 92%, transparent 100%);
-  opacity: 0.55;
-  margin: 8px 2px;
-}
 .au-vrule {
   width: 1px;
   align-self: stretch;
@@ -129,7 +123,6 @@ body { margin: 0; background: var(--au-table-dark); }
 .au-btn:focus { outline: none; }
 .au-btn.au-flat { background: transparent; border-color: transparent; }
 .au-btn.au-flat:hover { background: rgba(120,80,40,0.10); }
-.au-btn.au-ghost { background: transparent; }
 .au-btn.au-wax { border-color: var(--au-wax-red); color: var(--au-wax-red); }
 .au-btn.au-wax.au-active { background: rgba(122,40,32,0.18); color: var(--au-wax-red); }
 .au-btn.au-block { width: 100%; }
@@ -175,38 +168,11 @@ body { margin: 0; background: var(--au-table-dark); }
 .au-tab:hover { color: var(--au-ink-faded); }
 .au-tab.au-active { color: var(--au-ink); border-bottom-color: var(--au-wax-red); }
 
-/* ── Wax seal (tribe color disk) ── */
-.au-wax-seal {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow:
-    inset 0 0 5px rgba(20,4,0,0.45),
-    inset -2px -3px 4px rgba(20,4,0,0.35),
-    0 1px 2px rgba(20,4,0,0.4);
-  border: 1.5px solid rgba(40,12,4,0.45);
-  color: rgba(255,250,240,0.92);
-  font-size: 12px;
-  font-weight: 700;
-  font-family: 'Cinzel', serif;
-  flex-shrink: 0;
-  text-shadow: 0 1px 1px rgba(20,4,0,0.5);
-}
-
-.au-wax-seal.au-small {
-  width: 14px; height: 14px; font-size: 8px; border-width: 1px;
-}
-
 /* ── Text colors ── */
 .au-fade { color: var(--au-ink-faded); }
 .au-mute { color: var(--au-ink-light); }
-.au-wax-text { color: var(--au-wax-red); }
 .au-gold-text { color: var(--au-gold); font-weight: 600; }
 .au-verde-text { color: var(--au-verdigris); }
-.au-deep { color: var(--au-paper-deep); }
 
 /* ── Scrollbar ── */
 .au-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -262,21 +228,6 @@ body { margin: 0; background: var(--au-table-dark); }
   accent-color: var(--au-wax-red);
 }
 
-/* ── Bar / chart bits ── */
-.au-bar-track {
-  flex: 1;
-  height: 5px;
-  background: rgba(58,38,20,0.18);
-  border-radius: 2px;
-  overflow: hidden;
-  border: 1px solid rgba(58,38,20,0.20);
-}
-.au-bar-fill {
-  height: 100%;
-  border-radius: 1px;
-  transition: width 0.3s;
-}
-
 /* ── Era ribbon (top chronicle) ── */
 .au-chronicle {
   display: flex;
@@ -329,53 +280,6 @@ body { margin: 0; background: var(--au-table-dark); }
   border-color: var(--au-paper-deep);
 }
 
-/* ── Tribe floating card ── */
-.au-tribe-card {
-  position: absolute;
-  z-index: 50;
-  width: 340px;
-  padding: 14px 18px 12px;
-  pointer-events: auto;
-  user-select: none;
-}
-.au-tribe-card .au-drag-handle {
-  cursor: move;
-  margin: -14px -18px 6px;
-  padding: 12px 18px 8px;
-  border-bottom: 1px solid rgba(58,38,20,0.22);
-}
-.au-tribe-card .au-x {
-  cursor: pointer;
-  color: var(--au-ink-light);
-  font-family: 'Cinzel', serif;
-  font-size: 18px;
-  line-height: 1;
-  margin-left: auto;
-  padding: 0 4px;
-}
-.au-tribe-card .au-x:hover { color: var(--au-wax-red); }
-.au-tribe-card .au-tribename {
-  font-family: 'Cinzel', Georgia, serif;
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0.06em;
-  color: var(--au-ink);
-}
-
-.au-stat-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px 14px;
-  font-size: 12px;
-  color: var(--au-ink);
-}
-.au-stat-grid .au-stat-label {
-  color: var(--au-ink-light);
-  font-variant: small-caps;
-  letter-spacing: 0.06em;
-  font-size: 11px;
-}
-
 /* ── Pico hover card ── */
 .au-pico {
   position: fixed;
@@ -403,30 +307,4 @@ body { margin: 0; background: var(--au-table-dark); }
 .au-key-swatch {
   width: 14px; height: 9px; border-radius: 1px; flex-shrink: 0;
   border: 1px solid rgba(58,38,20,0.30);
-}
-
-/* ── Tooltip-y top ribbon stat colors ── */
-.au-dot {
-  display: inline-block;
-  width: 9px; height: 9px;
-  border-radius: 2px;
-  vertical-align: middle;
-  border: 1px solid rgba(40,20,4,0.35);
-}
-
-/* ── SVG radar ── */
-.au-radar-axis { stroke: rgba(58,38,20,0.30); stroke-width: 1; fill: none; }
-.au-radar-grid { stroke: rgba(58,38,20,0.20); stroke-width: 1; fill: none; }
-.au-radar-fill { fill: rgba(122,40,32,0.32); stroke: var(--au-wax-red); stroke-width: 1.4; }
-.au-radar-label {
-  font-family: 'Cinzel', Georgia, serif;
-  font-size: 10px;
-  fill: var(--au-ink);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-}
-.au-radar-value {
-  font-family: 'IM Fell English', Georgia, serif;
-  font-size: 9px;
-  fill: var(--au-ink-light);
 }

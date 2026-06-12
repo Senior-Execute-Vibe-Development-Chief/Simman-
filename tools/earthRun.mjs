@@ -18,11 +18,9 @@
 // (plate-boundary adjustments, the young-soil discount), pull more of
 // createTerritory in.
 
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { settlementPower } from "../src/peopleSim/conquest.js";
+import { buildWorld } from "./_harness.mjs";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { settlementPower } from "../src/sim/peopleSim/conquest.js";
 
 const STEPS = parseInt(process.argv[2] || "10000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);
@@ -41,62 +39,25 @@ const TW = Math.ceil(W / RES), TH = Math.ceil(H / RES);
 
 console.log(`[earthRun] seed=${SEED} steps=${STEPS} W=${W} H=${H}`);
 
-// ── 1. Worldgen ──────────────────────────────────────────────────────
+// ── 1-5. Worldgen → rivers → tCrop → deposits → sim (app-identical) ──
+// All built by tools/_harness.mjs, which mirrors WorldSim's createTerritory
+// (river/lake moisture boosts feed tCrop; deposits see boosted moisture).
 let t0 = performance.now();
-const w = generateWorld(W, H, SEED, "earth_sim", 0.78, true, false, {});
-console.log(`[earthRun] worldgen done in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
+const { w, rivers, tCrop, deposits } = buildWorld({ W, H, seed: SEED });
+console.log(`[earthRun] worldgen+rivers+resources done in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
 let land = 0; for (let i = 0; i < W * H; i++) if (w.elevation[i] > 0) land++;
 console.log(`[earthRun] land tiles: ${land} (${Math.round(land * 100 / (W * H))}% of map)`);
-
-// ── 2. Post-worldgen tile data (minimal createTerritory equivalent) ──
-// Downsample to tile space. At RES=1 this is identity.
-const tElev = new Float32Array(TW * TH), tTemp = new Float32Array(TW * TH);
-const tMoist = new Float32Array(TW * TH), tCoast = new Uint8Array(TW * TH);
-const tCrop = new Float32Array(TW * TH);
-
-function tileFert(t, m, e) {
-  if (e > 0.45) return 0.01;
-  const tFactor = Math.min(1, t * 1.5) * Math.min(1, 1 - Math.pow(Math.max(0, t - 0.7), 2) * 4);
-  const mFactor = Math.exp(-((m - 0.45) * (m - 0.45)) / (2 * 0.22 * 0.22));
-  const base = tFactor * mFactor;
-  return Math.max(0.01, base * (1 - Math.max(0, e - 0.15) * 3));
-}
-
-for (let ty = 0; ty < TH; ty++) {
-  for (let tx = 0; tx < TW; tx++) {
-    const px = Math.min(W - 1, tx * RES), py = Math.min(H - 1, ty * RES);
-    const ti = ty * TW + tx, i = py * W + px;
-    tElev[ti] = w.elevation[i];
-    tTemp[ti] = w.temperature[i];
-    tMoist[ti] = w.moisture[i];
-    tCoast[ti] = w.coastal[ti] || 0;
-    tCrop[ti] = tileFert(w.temperature[i], w.moisture[i], w.elevation[i]);
-  }
-}
-
-// ── 3. Rivers ────────────────────────────────────────────────────────
-t0 = performance.now();
-const rivers = computeRivers(TW, TH, tElev, tMoist, tTemp);
-w.rivers = rivers;
 let riverTiles = 0;
 if (rivers && rivers.riverMag) for (let i = 0; i < rivers.riverMag.length; i++) if (rivers.riverMag[i] >= 2) riverTiles++;
-console.log(`[earthRun] rivers done in ${((performance.now() - t0) / 1000).toFixed(1)}s — ${riverTiles} river tiles`);
-
-// ── 4. Resources ─────────────────────────────────────────────────────
-t0 = performance.now();
-const deposits = generateResources(TW, TH, tElev, tTemp, tMoist, tCoast, w, w._seed || SEED, rivers);
-w.deposits = deposits;
+console.log(`[earthRun] ${riverTiles} river tiles`);
 const depCounts = {};
 for (const id in deposits) {
   let n = 0; for (let i = 0; i < deposits[id].length; i++) if (deposits[id][i] > 0.1) n++;
   depCounts[id] = n;
 }
-console.log(`[earthRun] resources done in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
 console.log(`[earthRun] deposits (richness>0.1):`, depCounts);
-
-// ── 5. Init peopleSim ────────────────────────────────────────────────
 t0 = performance.now();
-const world = initPeopleSim(w, { seed: w._seed || SEED, tCrop, tileRes: RES, deposits });
+const world = initPeopleSim(w, { seed: w.seed, tCrop, tileRes: RES, deposits });
 console.log(`[earthRun] peopleSim init done in ${((performance.now() - t0) / 1000).toFixed(1)}s — cradle planted`);
 
 // ── 6. Step + report ─────────────────────────────────────────────────

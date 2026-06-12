@@ -8,11 +8,11 @@
 //   4. CLIMATE SPECIALIZATION — arid river valleys lead in agriculture,
 //      cold/short-season sites lag.
 //   node tools/probe_knowledge.mjs [steps] [seed] [W] [H]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { techState, ERAS } from "../src/peopleSim/tech.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { techState, ERAS } from "../src/sim/peopleSim/tech.js";
 
 const STEPS = parseInt(process.argv[2] || "20000", 10);
 const SEED = parseInt(process.argv[3] || "8817", 10);

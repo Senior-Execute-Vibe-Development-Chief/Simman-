@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { generateTectonicWorld } from "./tectonicGen.js";
+import { generateTectonicWorld } from "./sim/tectonicGen.js";
 import { PARAMS, generateCandidates, savePreset } from "./paramDefs.js";
 
 // ── Preview rendering with multiple view modes ──
@@ -144,7 +144,7 @@ export default function TuningPanel({ noiseFns, seed, params, onParamsChange, on
     }
   }, []);
 
-  useEffect(() => { doGenerate(baseParams, group, spread, candCount); }, []); // eslint-disable-line
+  useEffect(() => { doGenerate(baseParams, group, spread, candCount); }, []);
 
   const handleSelect = (idx) => {
     const newBase = { ...candidates[idx] };

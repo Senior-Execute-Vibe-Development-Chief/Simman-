@@ -6,10 +6,10 @@
 // the suspected "parasite spawning inside an empire"). Smaller scale by default
 // so the explosion→decline arc is visible in ~2-3 min for fast iteration.
 //   node tools/probe_dynamics.mjs [steps] [seed] [W] [H]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 
 const STEPS = parseInt(process.argv[2] || "16000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);

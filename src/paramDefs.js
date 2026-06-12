@@ -1,4 +1,9 @@
 // ── Shared tectonic parameter definitions + preset management ──
+//
+// `def` values MUST match the code defaults in tectonicGen.js / windSolver.js /
+// moistureSolver.js (their `p(key, default)` reads) — the editor shows `def`
+// when a param is absent, so a mismatch means "touching a slider at its shown
+// default silently changes the world".
 
 const STORAGE_KEY = "simman_tec_presets";
 
@@ -8,11 +13,13 @@ export function loadPresets() {
 }
 export function savePreset(name, params) {
   const p = loadPresets(); p[name] = params;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); }
+  catch { console.warn("Preset not saved — localStorage unavailable (private browsing / blocked)."); }
 }
 export function deletePreset(name) {
   const p = loadPresets(); delete p[name];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); }
+  catch { console.warn("Preset not deleted — localStorage unavailable (private browsing / blocked)."); }
 }
 
 export const PARAMS = {
@@ -95,9 +102,9 @@ export const PARAMS = {
         desc: "How gradually coastal mountains fade inland." },
       { key: "blurSigma", def: 14, min: 4, max: 30, step: 1, label: "Plateau blur sigma",
         desc: "Gaussian blur applied to the mountain field. Higher = smoother, wider plateaus." },
-      { key: "plateauMult", def: 1.65, min: 0.5, max: 4.0, label: "Plateau height mult",
+      { key: "plateauMult", def: 1.5, min: 0.5, max: 4.0, label: "Plateau height mult",
         desc: "Height multiplier for the broad plateau. Directly scales plateau elevation." },
-      { key: "peaksMult", def: 2.2, min: 0.5, max: 5.0, label: "Peak height mult",
+      { key: "peaksMult", def: 1.9, min: 0.5, max: 5.0, label: "Peak height mult",
         desc: "Height multiplier for ridgeline peaks at plate boundaries." },
       { key: "mtnBumpStr", def: 0.10, min: 0.0, max: 0.25, label: "Mountain bumpiness",
         desc: "Noisy texture within mountain zones. Higher = more variation between peaks and valleys." },
@@ -131,7 +138,7 @@ export const PARAMS = {
   erosion: {
     label: "Hydraulic Erosion", color: "140,170,130",
     params: [
-      { key: "erodeDropsPerPixel", def: 1.0, min: 0.0, max: 6.0, label: "Rain density",
+      { key: "erodeDropsPerPixel", def: 1.5, min: 0.0, max: 6.0, label: "Rain density",
         desc: "Raindrops per coarse cell. More drops = stronger erosion. 0 = no erosion. Runs on 4x-downscaled grid for speed." },
       { key: "erodeInertia", def: 0.3, min: 0.0, max: 0.9, label: "Flow inertia",
         desc: "How much water keeps its current direction vs following the slope. Low = water follows gradient exactly (sharp valleys). High = smoother, meandering paths." },
@@ -178,7 +185,7 @@ export const PARAMS = {
         desc: "How much to amplify wind above the gust threshold. The excess speed over threshold is multiplied by this and added. 0.3 = 30% boost on the excess. Higher = stronger fast winds, wider speed range." },
       { key: "gapFunneling", def: 0.0, min: 0.0, max: 1.5, label: "Gap funneling",
         desc: "Venturi effect through mountain passes and valleys. Wind accelerates through narrow gaps between terrain. Higher = stronger acceleration in gaps." },
-      { key: "curlBoost", def: 2.0, min: 0.0, max: 8.0, label: "Curl boost",
+      { key: "curlBoost", def: 0.0, min: 0.0, max: 8.0, label: "Curl boost",
         desc: "Speed boost in areas with high rotation (vorticity). Ocean only — cyclones intensify over warm ocean, weaken over land. 0 = no effect. 2.0 = moderate cyclone intensification." },
       { key: "curlThreshold", def: 0.08, min: 0.0, max: 0.5, label: "Curl threshold",
         desc: "Minimum normalized rotation before curl boost kicks in. Typical values: 0.01-0.5. At 0.08, only moderately strong swirls get boosted. At 0 = all rotation boosted." },

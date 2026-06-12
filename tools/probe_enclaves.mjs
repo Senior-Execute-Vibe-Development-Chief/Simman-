@@ -3,10 +3,10 @@
 // and never touches sea/edge (a speck marooned inside a neighbour). Run with
 // SIM_CITY_ENCLAVE=0 (off) vs default (fix on) to see the fix's effect.
 //   node tools/probe_enclaves.mjs [step] [seed] [W] [H]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 const STEP=+(process.argv[2]||10000), SEED=+(process.argv[3]||857691), W=+(process.argv[4]||1920), H=+(process.argv[5]||960);
 const w=generateWorld(W,H,SEED,"earth_sim",0.78,true,false,{});
 const tCrop=new Float32Array(W*H),tC=new Uint8Array(W*H),tE=new Float32Array(W*H),tT=new Float32Array(W*H),tM=new Float32Array(W*H);

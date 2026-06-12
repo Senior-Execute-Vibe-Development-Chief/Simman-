@@ -4,11 +4,11 @@
 // how many stateless settlements sit at each tier (are there stateless CITIES
 // that fail to found, or do frontier settlements never reach city tier?).
 //   node tools/probe_genesis.mjs [steps] [W] [H] [seed]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { T } from "../src/peopleSim/tuning.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { T } from "../src/sim/peopleSim/tuning.js";
 if (process.env.TE !== undefined) T.TECH_EFFECTS = parseFloat(process.env.TE);   // TE=0 → old construction² empire reach; TE=1 → logistics-gated
 
 const STEPS = parseInt(process.argv[2] || "12000", 10);

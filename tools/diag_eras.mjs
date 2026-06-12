@@ -1,9 +1,9 @@
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { cropSuitability } from "../src/cropGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
-import { techState, ERAS } from "../src/peopleSim/tech.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { cropSuitability } from "../src/sim/cropGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
+import { techState, ERAS } from "../src/sim/peopleSim/tech.js";
 const W=+(process.argv[4]||480),H=W>>1,N=W*H;
 const SEED=+(process.argv[2]||8817);
 const CKPTS=(process.argv[3]||"8000,12000,16000,20000,24000").split(",").map(Number);

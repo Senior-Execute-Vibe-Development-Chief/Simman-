@@ -3,11 +3,11 @@
 // comparing demographics, city tiers and the largest settlement. If the two
 // columns are close, the discrete tech bonuses preserve the tuned balance.
 //   node tools/probe_techab.mjs [steps] [seed] [W] [H]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { T } from "../src/peopleSim/tuning.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { T } from "../src/sim/peopleSim/tuning.js";
 
 const STEPS = parseInt(process.argv[2] || "10000", 10);
 const SEED = parseInt(process.argv[3] || "8817", 10);

@@ -2,10 +2,10 @@
 // history events each settlement records, per time window. Tells us whether the
 // boiling map is driven by conquest, secession, absorption, fragmentation, or
 // enclave capture — so we fix the dominant driver, not a symptom.
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
 
 const STEPS = parseInt(process.argv[2] || "20000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);

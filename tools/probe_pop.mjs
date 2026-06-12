@@ -3,11 +3,11 @@
 // growing (updateDevelopment's _devReason), and the food/house/space numbers for
 // the biggest settlements — to find why so few reach city tier.
 //   node tools/probe_pop.mjs [steps] [seed] [W] [H]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { spaceCapacity, housingCapacity } from "../src/peopleSim/settlement.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { spaceCapacity, housingCapacity } from "../src/sim/peopleSim/settlement.js";
 
 const STEPS = parseInt(process.argv[2] || "16000", 10);
 const SEED = parseInt(process.argv[3] || "8817", 10);

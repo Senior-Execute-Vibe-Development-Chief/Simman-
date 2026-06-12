@@ -4,10 +4,10 @@
 // (offence + defence at once). If the layer works, offMul falls as fronts rise,
 // and a realm pinned defending can't also conquer at full strength.
 //   node tools/probe_war.mjs [step] [seed] [W] [H] [window]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
 const STEP=+(process.argv[2]||9000), SEED=+(process.argv[3]||857691), W=+(process.argv[4]||1920), H=+(process.argv[5]||960), WIN=+(process.argv[6]||3000);
 const w=generateWorld(W,H,SEED,"earth_sim",0.78,true,false,{});
 const tCrop=new Float32Array(W*H),tC=new Uint8Array(W*H),tE=new Float32Array(W*H),tT=new Float32Array(W*H),tM=new Float32Array(W*H);

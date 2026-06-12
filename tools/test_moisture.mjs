@@ -102,7 +102,7 @@ function sampleWind(x, y, W, H) {
 
 // ── Import moisture solver ──
 // We need to dynamically import the ES module
-const moistMod = await import('../src/moistureSolver.js');
+const moistMod = await import('../src/sim/moistureSolver.js');
 const { solveMoisture } = moistMod;
 
 // ── Build Earth elevation + wind arrays ──

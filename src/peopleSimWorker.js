@@ -9,20 +9,28 @@
 //   { type:'init', w, tCrop, tileRes, seed }   — build + start the sim
 //   { type:'control', playing, speed }          — play/pause + speed
 //   { type:'select', id }                       — selected settlement (gets full detail)
+//   { type:'view', view }                       — current view (gates per-view extras)
+//   { type:'tune', values, reset }              — live tuning levers
 // Messages OUT:
-//   { type:'snapshot', ... }                    — see buildSnapshot()
-//   { type:'stats', stats }                     — occasional HUD stats
+//   { type:'snapshot', ... }                    — see buildSnapshot() (stats embedded)
+//   { type:'error', message, stack }            — init/step failure
 
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
-import { getTradeProfile } from "./peopleSim/settlement.js";
-import { displayPByCountry } from "./peopleSim/inflation.js";
-import { getChronicle, realmName } from "./peopleSim/chronicle.js";
-import { applyTuning, resetTuning } from "./peopleSim/tuning.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
+import { getTradeProfile } from "./sim/peopleSim/settlement.js";
+import { displayPByCountry } from "./sim/peopleSim/inflation.js";
+import { getChronicle, realmName } from "./sim/peopleSim/chronicle.js";
+import { perspectiveChronicle, exportHistory } from "./sim/peopleSim/historiography.js";
+import { applyTuning, resetTuning } from "./sim/peopleSim/tuning.js";
+import { serializeWorld, loadWorld } from "./sim/persist.js";
+import { getPolity } from "./sim/peopleSim/entities.js";
+import { getPerson, getDynasty, ageOf } from "./sim/peopleSim/dynasties.js";
 
 let world = null;
+let genMeta = {};      // oceanLevel / tecParams — recorded into saves
 let playing = false;
 let speed = 5;
 let selId = -1;
+let chronPerspective = false; // chronicle rendered as the realm's scribes kept it
 let viewMode = "terrain";    // main thread tells us the view so we only ship
                              // the money-flow / road-component extras when shown
 let lastSnap = 0;
@@ -35,10 +43,16 @@ self.onmessage = (e) => {
   const m = e.data;
   if (m.type === "init") {
     try {
+      genMeta = m.genMeta || {};
       world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tileRes: m.tileRes, deposits: m.w.deposits });
       world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
-      lastSnap = 0;
+      // Re-init resets the per-run snapshot/selection state. playing/speed/view
+      // are NOT reset (the main thread re-sends its current values right after
+      // init) — but if a previous world was mid-play, keep stepping the new one
+      // rather than silently freezing until the next control message.
+      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1;
       buildSnapshot();            // immediate first frame
+      if (playing) scheduleTick();
     } catch (err) {
       self.postMessage({ type: "error", message: err && err.message, stack: err && err.stack });
     }
@@ -55,6 +69,30 @@ self.onmessage = (e) => {
     viewMode = m.view;
     if (world) world._wantMoneyFlows = (viewMode === "money");   // gate the per-tick money-flow overlay build
     if (!playing && world) buildSnapshot();          // refresh extras for the new view
+  } else if (m.type === "chronicle-mode") {
+    chronPerspective = !!m.perspective;
+    if (!playing && world) buildSnapshot();          // refresh the open panel
+  } else if (m.type === "export-history") {
+    if (world) {
+      try { self.postMessage({ type: "historyData", json: JSON.stringify(exportHistory(world)), step: world.step }); }
+      catch (err) { self.postMessage({ type: "error", message: "export failed: " + (err && err.message), stack: err && err.stack }); }
+    }
+  } else if (m.type === "save") {
+    if (world) {
+      try { self.postMessage({ type: "saveData", json: serializeWorld(world, genMeta), step: world.step }); }
+      catch (err) { self.postMessage({ type: "error", message: "save failed: " + (err && err.message), stack: err && err.stack }); }
+    }
+  } else if (m.type === "load") {
+    try {
+      if (m.genMeta) genMeta = m.genMeta;
+      world = loadWorld(m.json);
+      world._wantMoneyFlows = (viewMode === "money");
+      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1;
+      buildSnapshot();
+      if (playing) scheduleTick();
+    } catch (err) {
+      self.postMessage({ type: "error", message: "load failed: " + (err && err.message), stack: err && err.stack });
+    }
   } else if (m.type === "tune") {
     // Live gameplay tuning. m.reset wipes back to defaults; m.values is a
     // partial { KEY: number } override map. Applied to the shared tuning
@@ -68,8 +106,14 @@ self.onmessage = (e) => {
 // While PLAYING the worker self-schedules a step/snapshot loop. While paused
 // it stops entirely (snapshots are posted on demand from onmessage), so it
 // burns no CPU and copies no buffers when nothing is advancing.
+// Yield via a MessageChannel, not setTimeout(0): nested timers are clamped to
+// ~4ms, which silently capped the sim at ~250 slices/sec however high the
+// speed slider went. A channel post re-enters immediately while still
+// yielding to incoming messages.
 let scheduled = false;
-function scheduleTick() { if (!scheduled && playing) { scheduled = true; setTimeout(tick, 0); } }
+const _tickChan = new MessageChannel();
+_tickChan.port1.onmessage = () => tick();
+function scheduleTick() { if (!scheduled && playing) { scheduled = true; _tickChan.port2.postMessage(0); } }
 
 function tick() {
   scheduled = false;
@@ -99,7 +143,8 @@ function packSettlement(s) {
   return {
     id: s.id, name: s.name, mode: s.mode,
     pos: { x: s.pos.x, y: s.pos.y },
-    people: s.people, tier: s.tier, countryId: s.countryId,
+    people: s.people, tier: s.tier, countryId: s.countryId, cultureId: s.cultureId ?? -1,
+    faithId: s.faithMix && s.faithMix.length ? s.faithMix[0][0] : -1,
     wealth: s.wealth, _wealthDelta: s._wealthDelta, _minedRate: s._minedRate,
     _isPort: s._isPort, _vassalCount: s._vassalCount, liegeId: s.liegeId,
     army: s.army,         // for the leaderboard's "biggest armies" sort
@@ -127,7 +172,8 @@ function packSelected(s) {
     foundedStep: s.foundedStep, parentSettlementId: s.parentSettlementId,
     _seaReachSize: s._seaReach ? s._seaReach.size : 0,
     _tradeProfile: getTradeProfile(s, world),
-    history: s.history ? s.history.slice(-200) : [],
+    _coloniesSent: s._coloniesSent || 0, _isColony: !!s._isColony,
+    culMix: s.culMix || null, faithMix: s.faithMix || null,
   };
 }
 
@@ -146,8 +192,13 @@ function buildSnapshot() {
             aggression: c.personality.aggression, commerce: c.personality.commerce,
             expansionism: c.personality.expansionism }
         : null;
+      const pol = getPolity(world, c.id);
+      const ruler = pol && pol.rulerId >= 0 ? getPerson(world, pol.rulerId) : null;
+      const dyn = ruler ? getDynasty(world, ruler.dynastyId) : null;
       countries.push({
-        id: c.id, capitalId: c.capitalId,
+        id: c.id, capitalId: c.capitalId, name: realmName(world, c.id),
+        ruler: ruler && ruler.died < 0 ? { name: ruler.name, female: !!ruler.female, age: Math.round(ageOf(world, ruler)), house: dyn ? dyn.name : null } : null,
+        faithId: pol ? pol.faithId : -1,
         memberIds: c.members.map(m => m.id),
         hue: c.hue, range: c.range,
         _capacity: c._capacity, _loadTotal: c._loadTotal, _momentum: c._momentum,
@@ -169,8 +220,10 @@ function buildSnapshot() {
     if (s && s.mode === "settled") {
       selected = packSelected(s);
       if (s.countryId >= 0) {
-        const log = getChronicle(world, s.countryId);
-        if (log && log.length) chronicle = { countryId: s.countryId, name: realmName(world, s.countryId), entries: log.slice(-60) };
+        const log = chronPerspective
+          ? perspectiveChronicle(world, s.countryId, 80)
+          : getChronicle(world, s.countryId);
+        if (log && log.length) chronicle = { countryId: s.countryId, name: realmName(world, s.countryId), entries: log.slice(-80), perspective: chronPerspective };
       }
     }
   }
@@ -244,8 +297,9 @@ function buildSnapshot() {
     settlements: setts,
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last
+    cultures: sendStatic && world.cultures ? [...world.cultures.values()].map(c => ({ id: c.id, name: c.name, hue: c.hue, parent: c.parentCultureId })) : null,
+    faiths: sendStatic && world.faiths ? [...world.faiths.values()].map(f => ({ id: f.id, name: f.name, hue: f.hue, kind: f.kind, parent: f.parentFaithId })) : null,
     ships: world.ships ? world.ships.map(sh => ({ x: sh.x, y: sh.y, landTi: sh.landTi, countryId: sh.countryId })) : null,
-    armies: world.armies ? world.armies.map(m => ({ x: m.x, y: m.y, countryId: m.countryId, troops: m.troops })) : null,
     selected,
     chronicle,
   }, transfer);

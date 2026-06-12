@@ -31,11 +31,18 @@ def main():
     u_url = "https://downloads.psl.noaa.gov/Datasets/ncep.reanalysis.derived/surface_gauss/uwnd.10m.mon.ltm.1991-2020.nc"
     v_url = "https://downloads.psl.noaa.gov/Datasets/ncep.reanalysis.derived/surface_gauss/vwnd.10m.mon.ltm.1991-2020.nc"
 
-    u_path = "/tmp/uwnd_ltm.nc"
-    v_path = "/tmp/vwnd_ltm.nc"
-
-    download(u_url, u_path)
-    download(v_url, v_path)
+    # A copy of the source NetCDF files ships in data/ — use it when present
+    # so regeneration works offline; otherwise download to /tmp.
+    u_local = "data/uwnd.10m.mon.ltm.1991-2020.nc"
+    v_local = "data/vwnd.10m.mon.ltm.1991-2020.nc"
+    if os.path.exists(u_local) and os.path.exists(v_local):
+        print("Using local NetCDF files from data/")
+        u_path, v_path = u_local, v_local
+    else:
+        u_path = "/tmp/uwnd_ltm.nc"
+        v_path = "/tmp/vwnd_ltm.nc"
+        download(u_url, u_path)
+        download(v_url, v_path)
 
     print("Reading NetCDF files...")
     ds_u = xr.open_dataset(u_path)
@@ -81,10 +88,11 @@ def main():
     size = os.path.getsize(out_path)
     print(f"\nWrote {out_path}: {size:,} bytes ({size/1024:.0f} KB)")
 
-    # Clean up NetCDF files
-    os.remove(u_path)
-    os.remove(v_path)
-    print("Cleaned up .nc files")
+    # Clean up downloaded NetCDF files (keep the data/ copies)
+    if u_path.startswith("/tmp/"):
+        os.remove(u_path)
+        os.remove(v_path)
+        print("Cleaned up downloaded .nc files")
 
 if __name__ == "__main__":
     main()

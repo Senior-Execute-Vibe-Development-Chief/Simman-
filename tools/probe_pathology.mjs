@@ -4,10 +4,10 @@
 //   3. ENCLAVES / EXCLAVES (bits of countries stuck inside other countries)
 //
 // Reuses the earthRun world pipeline.
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
 
 const STEPS = parseInt(process.argv[2] || "20000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);

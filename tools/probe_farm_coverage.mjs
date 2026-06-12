@@ -2,12 +2,12 @@
 // tier-0 Farming Region) vs claimed-but-unfarmed vs wild? Answers: do Farming
 // Regions cover the majority of a country's farmable land, leaving only the
 // truly unfarmable blank?   node tools/probe_farm_coverage.mjs [step] [seed]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { cropSuitability } from "../src/cropGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { applyTuning } from "../src/peopleSim/tuning.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { cropSuitability } from "../src/sim/cropGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { applyTuning } from "../src/sim/peopleSim/tuning.js";
 
 const STEP = +(process.argv[2] || "10000");
 const SEED = +(process.argv[3] || "8817");

@@ -1,0 +1,328 @@
+// ── Runtime gameplay tuning ──────────────────────────────────────────
+//
+// A single live registry of the gameplay "levers" exposed in the in-game
+// Tuning menu. Every sim module imports { T } from here and reads T.KEY at
+// USE TIME (inside its passes), so dragging a slider mutates T and the next
+// pass picks it up — no restart. Defaults below reproduce the hand-tuned
+// behaviour exactly, so an untouched world is byte-identical to before —
+// EXCEPT the four knowledge-realism levers (SCI_SPREAD, AXIS_BIAS, KNOW_DECAY,
+// ENV_SPEC), which default to their new ACTIVE setting; set each to 0 to
+// recover the old behaviour for that effect.
+//
+// To add a lever: add one entry to TUNING_SCHEMA (key/label/desc/min/max/
+// step/def), then read T.KEY where the old const used to live. That's it.
+//
+// NOTE: a few keys are NEW multipliers (default 1.0) layered on existing
+// formulas — they didn't exist as constants before (ARMY_SIZE_MULT, the
+// *_COST_MULT movement dials) — so the sim can be steered without rewriting
+// the underlying tech-discount maths.
+
+export const TUNING_SCHEMA = [
+  {
+    category: "Pacing",
+    blurb: "How often the heavy systems tick. Lower = the system acts more often (snappier, more CPU).",
+    params: [
+      { key: "SIM_GRANULARITY", label: "Time granularity", def: 1, min: 1, max: 8, step: 1,
+        desc: "Runs the whole simulation in finer time-steps. At G, every per-tick CLOCK (population growth, technique learning, tech diffusion, new-settlement founding, migration, famines & plagues, ship voyages) advances 1/G as much, and the war / politics / muster passes stretch their interval by G — so the SAME emergent history plays out over G× more ticks in smaller, smoother increments (territory and the border-crawl auto-refine, since they refresh G× more often per unit of history). G = 2 is half-speed and twice as fine-grained, G = 4 quarter-speed, and so on — costing G× the ticks (and CPU) for the same span of history. G = 1 is the calibrated baseline, untouched. Validated G=2 vs G=1: development, territory, demographics and wealth stocks reproduce; total wealth drifts ~20% low at G=2 — the still-unscaled second-order flows are granary accrual, construction bursts and the polity-pass windows (RECENCY/GRACE etc., which stretch with the pass cadence instead) — and per-tick rate READOUTS (trade-flow overlay) read ~1/G, since a tick is 1/G as much history. NB this re-times the SIM; it doesn't change the app's frame rate." },
+      { key: "CONQUEST_INTERVAL", label: "War pass interval", def: 50, min: 10, max: 200, step: 5,
+        desc: "Ticks between war-front advances. Lower = fronts move faster and more smoothly." },
+      { key: "POLITY_INTERVAL", label: "Politics pass interval", def: 150, min: 30, max: 400, step: 10,
+        desc: "Ticks between polity passes (tax, loyalty, secession, control budget). The empire-politics clock." },
+      { key: "TERRITORY_INTERVAL", label: "Territory recompute interval", def: 144, min: 24, max: 400, step: 12,
+        desc: "Ticks between full territory (Voronoi) recomputes. Lower = borders track changes more closely." },
+      { key: "TRADE_STRIDE", label: "Trade pass stride", def: 3, min: 1, max: 6, step: 1,
+        desc: "Resolve bilateral trade every N ticks at N× volume — same AVERAGE money/goods flow, ~N× cheaper. The biggest single CPU dial: 1 = every tick (max fidelity); 3 (default) ≈ 23% faster ticks; higher = faster still, money flow slightly lumpier." },
+      { key: "DEV_STRIDE", label: "Construction stride", def: 3, min: 1, max: 6, step: 1,
+        desc: "Resolve town construction (housing + material purchases) every N ticks at N× rate — same AVERAGE building. 1 = every tick; 3 (default) trims the per-settlement pass; higher = faster, housing grows in bursts." },
+      { key: "VILLAGE_PARTNERS", label: "Village trade partners", def: 12, min: 1, max: 12, step: 1,
+        desc: "How many trade partners a tier-0 VILLAGE keeps (towns/cities always keep the full set). Lower = villages trade only LOCALLY (their market town) instead of across the whole network — much cheaper, and arguably more realistic (a subsistence countryside feeding trading cities), while tolls, tariffs, taxes and the food shipped to cities all keep working unchanged. 12 = villages trade like everyone else (original)." },
+      { key: "ROAD_MIN_TIER", label: "Road builders (min tier)", def: 1, min: 0, max: 2, step: 1,
+        desc: "Only settlements at or above this tier BUILD roads. Roads are trade-only (they never affect borders/territory/reach — those ignore roads), so on a grand scale a village's footpaths are noise; the trunk network that matters runs town-to-city. 1 = only TOWNS+ build roads (a tier-0 Farming Region is an abstraction for many small villages — it farms and sells food up the hierarchy, but doesn't lay highways). 0 = everyone builds (original)." },
+      { key: "FARM_MAX_TIER", label: "Land farmers (max tier)", def: 0, min: 0, max: 3, step: 1,
+        desc: "Only settlements at or below this tier FARM the land (produce grain from their territory). 0 = only tier-0 Farming Regions farm; TOWNS and CITIES grow no food of their own and must BUY grain shipped up the hierarchy from the countryside (as real cities did — Rome's Egyptian grain). Fish (coastal/river) is unaffected. 3 = everyone farms their own catchment (original)." },
+      { key: "URBAN_NODES", label: "Urban nodes (no city territory) — experimental", def: 0, min: 0, max: 1, step: 1,
+        desc: "EXPERIMENTAL territory model. 1 = towns/cities/metropolises (tier 1+) are urban NODES that own only their built-up CORE, not a farming hinterland — ALL the countryside is owned and worked by tier-0 Farming Regions, which feed the cities up the central-place hierarchy. Matches reality (a city sits amid village-farmed land; it is not itself a landowner-farmer) and removes the blank 'city owns fertile land but grows nothing' belts. BORDERS are unaffected — the political map is a separate capital-anchored layer (countryTerritory.js); only the per-settlement ECONOMIC catchment changes. Cities still develop tech & crafts from the resources in their TRADE network (effectiveLocalRes). 0 = every settlement owns a farming catchment (current model). Applies on the next territory pass." },
+      { key: "FARM_CRAFT_FRAC", label: "Farming-Region craft fraction", def: 0.2, min: 0, max: 1, step: 0.05,
+        desc: "How much of the MANUFACTURED/service export sector (metalwork, crafted wares, bureaucracy & banking) a tier-0 Farming Region does, vs a town. 0.2 = a village does ~a fifth as much manufacturing as its trade would otherwise imply — its wealth comes from FARMING (grain, livestock, raw materials), and metalwork/crafts/services are a TOWN+ activity. Farm exports are booked as 'food & farm goods', manufactured exports as 'goods'. 1 = villages manufacture as much as anyone (original — which made Farming Regions read as goods-merchants, not farmers)." },
+      { key: "LOCALITY_MODE", label: "Locality model (experimental)", def: 0, min: 0, max: 1, step: 1,
+        desc: "EXPERIMENTAL. 1 = no villages: a settlement's POPULATION is whatever its farmable catchment feeds (land → people → city size), so cities land on rich terrain and money becomes a separate closed commerce layer. Far fewer entities → much faster. 0 = original (housing-capped) model." },
+      { key: "LOCALITY_SPACING", label: "Locality spacing ×", def: 3, min: 1, max: 6, step: 0.5,
+        desc: "Only with Locality model on: how much farther apart centres spawn (×original spacing). Higher = fewer, larger localities each farming a bigger catchment." },
+    ],
+  },
+  {
+    category: "Empire size & cohesion",
+    blurb: "How large an empire one capital can hold together before the frontier rebels. Max empire size is dynamic, not a fixed radius.",
+    params: [
+      { key: "CAP_BASE", label: "Capital base reach", def: 1.2, min: 1, max: 30, step: 0.5,
+        desc: "Reach-units a lone capital can administer. THE master dial for empire size — up = bigger empires hold." },
+      { key: "ABSORB_ORG_MIN", label: "Absorption tech gate", def: 0.48, min: 0.1, max: 0.95, step: 0.02,
+        desc: "Organization tech a city needs before it can peacefully vacuum neighbouring village/town statelets into its realm. UP = small city-states survive far longer; the map stays fragmented through the early/classical era." },
+      { key: "ABSORB_PROB_MAX", label: "Absorption max rate", def: 0.06, min: 0.01, max: 0.3, step: 0.01,
+        desc: "Cap on a bordering statelet's per-pass chance of defecting into a strong neighbour. Down = slower, more gradual erosion of small states (less snowballing)." },
+      { key: "ABSORB_RATE", label: "Absorption pressure", def: 0.025, min: 0.005, max: 0.1, step: 0.005,
+        desc: "How sharply a power imbalance translates into defection pressure. Down = even much-stronger neighbours absorb their small rivals only slowly." },
+      { key: "ABSORB_DOMINANCE", label: "Absorption dominance gate", def: 2.6, min: 1.05, max: 5.0, step: 0.05,
+        desc: "How many times stronger a realm must be than a neighbour before it peacefully absorbs that neighbour's frontier settlements. DOWN = aggressive consolidation, fewer & larger nations; UP = only lopsided mismatches erode, so the map stays more multipolar with many nations." },
+      { key: "LOYAL_ORG_HOLD", label: "Imperial cohesion (loyalty)", def: 0.35, min: 0, max: 0.9, step: 0.05,
+        desc: "How much the capital's ORGANIZATION slows an over-budget province's slide to revolt. THE empire-LIFESPAN dial: 0 = even advanced empires fragment fast (a churning, short-lived-empire world); high = great powers hold their overstretch for ages (long-lived, hard-to-kill empires). At ~0.9 empires become near-immortal — back off if they never fall." },
+      { key: "DURESS_RESILIENCE", label: "Wartime resilience (org)", def: 0.4, min: 0, max: 0.9, step: 0.05,
+        desc: "How much an organised state shrugs off the war/insolvency capacity throttle. 0 = any frontier war can collapse an empire's grip (volatile, war-driven rise & fall); high = advanced empires weather wars without shedding provinces. Pairs with Imperial cohesion to set how mortal empires are." },
+      { key: "CAP_SEAT", label: "Regional seat capacity", def: 0.3, min: 0, max: 4, step: 0.1,
+        desc: "Extra control each loyal regional city adds (sub-administration). Up = sprawling federations stay glued." },
+      { key: "CAP_INST", label: "Institutional capacity ×", def: 1.3, min: 0, max: 3, step: 0.1,
+        desc: "How much INSTITUTIONAL tech (the cohesion channel: mysticism → code of laws → feudalism → democracy → telegraph) multiplies the centre's hold capacity AND the regional-seat cap. Historically each delegation revolution raised how many provinces one throne could govern — Assyria's provincial system, the Achaemenid satrapies, Rome's governors, Han commanderies — so the ceiling should move with bureaucracy, not sit fixed across all eras. At the default a fully-institutional capital holds ~2.3× the provinces of a chiefdom with the same raw power; early realms are untouched (the ancient map stays fragmented) and rise-and-fall survives — war duress, insolvency and recency still sap the bigger budget. 0 = the old fixed ceiling (~a dozen seats forever)." },
+      { key: "MOMENTUM_CAP", label: "Conquest snowball cap", def: 8, min: 0, max: 30, step: 1,
+        desc: "Max bonus capacity a winning war-streak grants (lets a conqueror temporarily over-hold). Down = freshly conquered empires fragment sooner once the conquering pauses — more rise-and-fall." },
+      { key: "SIZE_LOAD", label: "Big-province burden", def: 0.4, min: 0, max: 1.5, step: 0.05,
+        desc: "How much harder a populous province is to govern. Down = easy to swallow large cities whole." },
+      { key: "ORG_REACH", label: "Reach per organization tech", def: 7, min: 5, max: 120, step: 5,
+        desc: "Tiles of land-claim & admin reach gained per point of organization knowledge. Scales empire size with the era." },
+      { key: "LOYAL_DECAY", label: "Disloyalty speed", def: 0.12, min: 0.01, max: 0.5, step: 0.01,
+        desc: "How fast an over-extended (uncovered) province bleeds loyalty toward revolt. Up = fragile frontiers, empires shed land and rise/fall faster." },
+      { key: "RECENCY_TICKS", label: "Conquest digestion time", def: 4000, min: 500, max: 12000, step: 250,
+        desc: "How long a freshly-conquered province stays extra-costly to hold. Up = blitz conquest destabilises longer." },
+      { key: "FRONTIER_FOUNDING", label: "Frontier state founding", def: 1.0, min: 0, max: 3.0, step: 0.25,
+        desc: "Primary state formation: how readily a developed cluster of stateless frontier settlements crystallises into a NEW country (its largest town becomes the sovereign seat). 0 = off — new countries come only from secession (old behaviour); >1 = lower the size/distance bar so frontier states appear more freely. Far-from-capitals and viable-cluster gates keep the country count in check." },
+      { key: "CAPITAL_ANCHOR", label: "Country compactness", def: 3.0, min: 0, max: 5, step: 0.1,
+        desc: "Pulls a realm's territory into a compact BLOB around its capital instead of sprawling along wherever its towns happen to sit. Authority radiates from the capital and fades with distance: a settlement projects the realm's full reach at the centre but only a small basin far out (the basin halves ~40/this-many tiles from the capital). So the union of basins reads as one centred region, and a far salient a nearer RIVAL capital reaches more cheaply cedes to it — the power-Voronoi-of-capitals that makes real borders squarish blobs. UP = rounder, more compact countries (far provinces harder to hold); 0 = off (territory sprawls to every town equally, weird tendrilled shapes)." },
+      { key: "SECEDE_GRIP", label: "Frontier shedding", def: 1.6, min: 0, max: 5, step: 0.1,
+        desc: "How readily an over-stretched empire's grip pulls inward, shedding frontier tiles. Secession is tile-driven: authority decays with transport distance from the capital, and tiles outside the (stress-shrunk) reach go loose and break away — a loose patch with a city secedes as a successor, one with none reverts to wilderness. UP = the rim peels off at the first sign of overstretch (fragile, churning frontiers); DOWN = empires hold their overstretch far longer before the edges crumble. Severity sets the SCALE: a mild overstretch peels the rim, a deep collapse loosens many provinces into several successors at once." },
+      { key: "REALM_GAP_FILL", label: "Gap fill (no man's land)", def: 18, min: 0, max: 30, step: 1,
+        desc: "Partitions the unclaimed land that sits BETWEEN claimed territory: a wilderness tile flanked by a country on both sides of an axis (N&S or E&W) within this many tiles is handed to the NEARER neighbour. Interior gaps of a realm fill solid, AND the no-man's-land between two realms is split so they border directly — a wall-to-wall political map rather than a sea of blank buffer. What stays wilderness is the genuinely OPEN frontier (a country within reach on only one side, facing a large uninhabited expanse — deep desert/ice/interior). UP = fills wider gaps (less wilderness, neighbours meet sooner); 0 = off (raw cost-Voronoi basins, lots of blank between realms)." },
+      { key: "BORDER_SMOOTH", label: "Border smoothing", def: 0, min: 0, max: 8, step: 1,
+        desc: "Rounds off the SCALLOPED look of the cost-Voronoi: each settlement claims a roughly circular basin, so a realm's raw edge is a union of bubbles. This many passes of a majority filter (a border tile that is mostly one neighbour's becomes that neighbour's; protrusions erode, notches fill, area roughly preserved) straightens the frontier toward a clean political line and dissolves single-tile flecks. Settlement home tiles are pinned so no realm is smoothed out of existence. UP = smoother, straighter borders; 0 = off (raw bubbly basins)." },
+    ],
+  },
+  {
+    category: "Military & conquest",
+    blurb: "Aggression, war speed, sieges, and how stable the political map is.",
+    params: [
+      { key: "ATTACK_MIN_RATIO", label: "Attack threshold", def: 1.176, min: 1.0, max: 3.0, step: 0.02,
+        desc: "Power advantage needed to push a front. Up = wars stalemate; down = relentless aggression." },
+      { key: "AMPHIB_BAR", label: "Amphibious assault bar", def: 1.8, min: 0, max: 5, step: 0.1,
+        desc: "Extra power multiplier (× the attack threshold) a port needs to open a BEACHHEAD front on an enemy port it can sail to. War can then cross water: the defender's shoreline becomes contestable and a port city can be stormed from the sea — the Punic Wars / Ottoman-crossing mechanic that turns an enclosed sea into a conquerable basin. Opposed landings were historically brutal, so the default demands near-2× the land advantage; up = the sea stays a wall, 0 = amphibious invasion OFF." },
+      { key: "MAX_CAPTURE", label: "Max tiles per pass", def: 24, min: 1, max: 120, step: 1,
+        desc: "Hard cap on tiles a front grabs per war pass. The raw conquest-speed knob." },
+      { key: "CITY_STORM_RATIO", label: "City siege threshold", def: 1.6, min: 1.0, max: 4.0, step: 0.1,
+        desc: "Power ratio needed to besiege a city core. Up = cities hold out far longer." },
+      { key: "ATTRITION", label: "War attrition", def: 0.035, min: 0, max: 0.2, step: 0.005,
+        desc: "Army drained per warring front per pass. Up = offensives burn out fast (short, indecisive wars)." },
+      { key: "ENCIRCLE_PENALTY", label: "Encirclement penalty", def: 1.0, min: 0, max: 3, step: 0.1,
+        desc: "A settlement assaulted from many DIRECTIONS must split its defence across them, so it falls faster — a surrounded salient or engulfed statelet is hard to hold. Its effective defence is divided by (1 + this x (directions - 1)): one clean front = full strength, attacked from 4 sides = ~40% at the default. This dissolves the strange surrounded shapes through the war system instead of letting them persist. 0 = off (defence is the same however encircled)." },
+      { key: "WAR_CONCENTRATION", label: "Main-effort focus", def: 0.5, min: 0.1, max: 1, step: 0.05,
+        desc: "A realm has finite command/supply, so however many borders it has it can press only a FEW real offensives at once. Its fronts are RANKED (a heartland assault first, then by army committed) and each gets this fraction of the last: the priority front attacks at full force, the 2nd at this x, the 3rd at this^2, etc. 0.5 = a power conquers hard on ONE front and at half-strength on a second while merely holding the rest — so it can't knife five neighbours at once, but (unlike dividing evenly) a big realm hemmed by many small ones can still win on its chosen front. 1 = no focus, every favourable border pushes at full strength (the old per-tile automaton)." },
+      { key: "WAR_DEFENSE_DRAG", label: "Defensive tie-down", def: 2.5, min: 0, max: 8, step: 0.25,
+        desc: "How much being ASSAULTED saps a realm's own offensive thrust — troops pinned defending can't also conquer. Effective offence is divided by (1 + this x defensive-load), a besieged capital weighing heaviest. This is why a power being eaten from one side can't keep blithely conquering on the other. 0 = a two-front war drains nothing from your offence." },
+      { key: "WAR_DEF_SPLIT", label: "Defensive split", def: 0.5, min: 0, max: 2, step: 0.1,
+        desc: "Inter-state war is decided by NATIONAL field armies, not border garrisons: a realm projects its whole army (natMight = sum of garrisons x tech, itself capped by national manpower + treasury) onto a front, and its enemy defends with ITS national army SPLIT across the fronts it is attacked on — divided by (1 + this x extra-attackers). 0.5 = a realm fighting one war meets the invader with its whole army; attacked by 3 it defends each front at ~half (overstretched). So who takes ground is the national-army RATIO (manpower x tech x treasury), and a small upstart can't overrun a big established power at a point of contact, while a fortified CITY (its garrison/militia behind walls) can still hold against a larger army until its relief army is gone. 0 = a realm defends every front with its whole army (impossible to overstretch defensively)." },
+      { key: "WAR_EXHAUST_RATE", label: "War-exhaustion rate", def: 0.015, min: 0, max: 0.2, step: 0.005,
+        desc: "War-exhaustion gained per SERIOUS front per war-pass (a realm pressing or under heartland assault; mere border nibbling doesn't tire it). Sapped offence = x(1 - exhaustion). Drives long/multi-front wars toward a de-facto standstill — the historical war-weariness that ends endless conquest. 0 = wars never tire a realm." },
+      { key: "WAR_EXHAUST_DECAY", label: "War-exhaustion recovery", def: 0.93, min: 0.5, max: 0.99, step: 0.01,
+        desc: "Fraction of war-exhaustion RETAINED each pass at peace (rest/recovery). 0.93 = a tired realm recovers its offensive punch over ~20-40 passes of peace. Lower = recovers faster." },
+      { key: "TRUCE_TICKS", label: "Peace-treaty duration", def: 1500, min: 0, max: 6000, step: 100,
+        desc: "When a war has worn either side past the exhaustion threshold, the two realms sign a TRUCE binding BOTH for this many ticks — neither can open a front on the other until it lapses. This is what actually breaks the permanent-war equilibrium: the exhaustion attack-bar alone is musical chairs (the rested always attack the worn, so everyone stays pinned at max exhaustion), but treaties give each dyad a real war→peace→war cycle, recovery windows for hold capacity (longer-lived powers, less secession churn), and room for FOCUSED sequential conquest. Border skirmishing too light to exhaust never truces — the marches stay restless. 0 = no treaties (permanent war)." },
+      { key: "EXHAUST_WAR_BAR", label: "Exhaustion ends wars", def: 1.2, min: 0, max: 4, step: 0.1,
+        desc: "How strongly war-exhaustion raises the power edge needed to KEEP attacking. Without it war was permanent (~all realms fighting at every moment, exhaustion pinned at its cap) because exhaustion only weakened the punch — it never closed a front. At the default a fully-exhausted realm needs ~2× superiority to keep pushing, so campaigns END, exhaustion decays through real peace-windows, hold capacity recovers (longer-lived great powers, less secession churn), and war turns episodic — campaign, a generation of peace, campaign: history's rhythm. 0 = the old permanent war." },
+      { key: "WAR_EXHAUST_MAX", label: "War-exhaustion cap", def: 0.6, min: 0, max: 0.95, step: 0.05,
+        desc: "Maximum war-exhaustion, i.e. the most a realm's offence can be sapped by weariness alone (0.6 = down to ~40% punch). Caps how completely a grinding war stalls an attacker." },
+      { key: "ARMY_SIZE_MULT", label: "Army size multiplier", def: 1.0, min: 0.25, max: 4.0, step: 0.05,
+        desc: "Global scale on every garrison's population cap. Up = bigger armies everywhere (more decisive war)." },
+      { key: "ARMY_GROW", label: "Recruitment speed", def: 0.05, min: 0.01, max: 0.4, step: 0.01,
+        desc: "How fast a fed garrison grows toward its cap each muster. Up = realms re-arm quickly after a war." },
+      { key: "MANPOWER_FRAC", label: "Manpower reserve", def: 0.15, min: 0, max: 0.5, step: 0.01,
+        desc: "The national MANPOWER pool — trained men a realm can field — has a ceiling of this fraction of its POPULATION, and the standing army can never exceed the pool. Battle casualties DRAIN the pool (the dead don't come back); it regrows only as population does (MANPOWER_REGEN). At 0.15, a realm holds a reserve a few times its peacetime army, so manpower only bites after SUSTAINED bloodshed — then a realm bled white can't refield its army until a generation grows back (lasting, demographic war-weariness). 0 = OFF: armies are limited only by garrison caps + treasury and re-arm instantly after any slaughter." },
+      { key: "MANPOWER_REGEN", label: "Manpower recovery", def: 0.03, min: 0.002, max: 0.2, step: 0.002,
+        desc: "How fast the manpower pool regrows toward its population ceiling each muster (recruits coming of age). 0.03 = a war-drained realm takes ~a generation (~1-2k ticks) to refill its reserve. Up = faster recovery / shorter shadow of a bloody war." },
+      { key: "PRO_ORG_FLOOR", label: "Pro army at org-0", def: 0.55, min: 0.1, max: 1, step: 0.05,
+        desc: "A standing PROFESSIONAL army is an institution of an ORGANISED state. This sets how large a force a totally UN-organised realm (knowledge.organization = 0, a neolithic chiefdom) fields, as a fraction of what a fully-organised one (org = 1, a literate bureaucratic state) does for the same population — army size scales linearly between. 0.55 = an early chiefdom keeps ~half the standing army of an advanced realm and leans on temporary war levies (conscription) instead; an organised state fields a large permanent professional army. 1 = off (organisation doesn't affect army size — the old behaviour)." },
+      { key: "CONSCRIPT_FRAC", label: "War conscript levy", def: 0.12, min: 0, max: 0.4, step: 0.01,
+        desc: "In WAR a realm raises a temporary CONSCRIPT levy ON TOP of its standing professional army — up to this fraction of population called to the colours when fighting flat-out for its heartland (less for a war of choice). This is how a poorly-organised realm with a small professional army still fields a mass for a major war. The levy disbands in peace. 0.12 = a hard-pressed realm can put ~an eighth of its people under arms. Conscripts cost food, pay, and lost farm labour (ARMY_LABOR_FOOD) — the famine that ends total wars. 0 = no conscription (standing armies only)." },
+      { key: "ARMY_LABOR_FOOD", label: "Army farm-labour drain", def: 1.0, min: 0, max: 2, step: 0.1,
+        desc: "Soldiers are men off the land: a settlement's food output is cut by (army / population) x this — so a big wartime mobilisation makes the country FARM LESS just as the army needs feeding MORE, draining the granary toward famine and forcing demobilisation (the cycle that ends long total wars). 1.0 = the farm-labour lost is proportional to the share of the populace under arms (mobilise 15% of your people and lose ~15% of your harvest). 0 = off (armies cost food to feed but don't reduce production)." },
+      { key: "CONQUEST_GRACE", label: "City pacification", def: 500, min: 0, max: 4000, step: 100,
+        desc: "Ticks a stormed city is locked (can't be re-stormed or secede). The single biggest political-map stabiliser." },
+      { key: "TILE_CAPTURE_GRACE", label: "Tile hold time", def: 400, min: 0, max: 2000, step: 50,
+        desc: "Ticks a captured countryside tile is held before it can flip back. Up = less border flicker, stickier fronts." },
+      { key: "HOME_MILITIA_FRAC", label: "Home militia defence", def: 0.035, min: 0, max: 0.15, step: 0.005,
+        desc: "Fraction of a city's people who defend their own walls even when the paid garrison has deserted (bankruptcy), scaled by the city's morale. The brake on the boiling map: 0 = a bankrupt city is free to storm (over-extension → insolvency → defenceless cities → the whole map churns). UP = cities are hard nuts once solvency fails, so empires fragment less and consolidate slower." },
+    ],
+  },
+  {
+    category: "Movement & water crossing",
+    blurb: "Per-tile travel cost by terrain. These gate reach, march speed, trade range and where fronts snap. Apply at the next transport refresh (~480 ticks).",
+    params: [
+      { key: "WATER_COST_MULT", label: "Open-water cost", def: 1.0, min: 0.2, max: 4.0, step: 0.1,
+        desc: "Multiplier on open-ocean crossing cost. DOWN = faster water crossing / easier overseas reach (your 'water crossing speed')." },
+      { key: "LAND_COST_MULT", label: "Land travel cost", def: 1.0, min: 0.3, max: 3.0, step: 0.1,
+        desc: "Multiplier on all overland movement cost. Down = faster armies, wider trade and reach." },
+      { key: "MOUNTAIN_COST_MULT", label: "Mountain/slope cost", def: 1.0, min: 0.2, max: 4.0, step: 0.1,
+        desc: "Multiplier on the mountain + steep-slope penalty. Up = ranges become hard walls fronts snap to." },
+      { key: "OPEN_RIDE", label: "Steppe-highway riding", def: 0.62, min: 0, max: 0.9, step: 0.02,
+        desc: "How much MOBILITY tech (horse domestication → cavalry) discounts travel over OPEN, FLAT, unforested land — steppe, savanna, prairie. At the default a full-mobility realm crosses open grassland at roughly a third of foot cost, so its claims, admin reach and armies sweep across it — the low-RESISTANCE land that bred the giant Mongol / Russian / Sahelian empires — while forests, mountains and broken country still resist. 0 = horses don't open the steppe (old behaviour)." },
+      { key: "NAV_EMBARK_THRESH", label: "Seafaring tech gate", def: 0.10, min: 0.0, max: 0.5, step: 0.01,
+        desc: "Navigation knowledge below which water is impassable. Down = civilizations take to the sea earlier." },
+      { key: "SHIP_SPEED", label: "Ship speed", def: 0.7, min: 0.2, max: 2.5, step: 0.1,
+        desc: "Base path-tiles a colony/relief ship sails per tick (×(1+navigation)). Up = faster fleets." },
+    ],
+  },
+  {
+    category: "Sea & colonisation",
+    blurb: "How far navies project and how readily empires settle across water.",
+    params: [
+      { key: "SEA_RANGE_NAV", label: "Naval reach per nav tech", def: 160, min: 20, max: 400, step: 10,
+        desc: "Extra sea-lane reach per point of navigation. Up = blue-water empires linking distant ports." },
+      { key: "SEA_MIN_POP", label: "Min port population", def: 20, min: 10, max: 400, step: 10,
+        desc: "Population a port needs before it projects sea lanes. Down = even hamlets fish & trade by sea." },
+      { key: "COLONY_MIN_POP", label: "Min colonising city size", def: 400, min: 100, max: 2000, step: 50,
+        desc: "People a city needs before it launches an overseas colony expedition. Down = eager colonisation." },
+    ],
+  },
+  {
+    category: "Settlements & demographics",
+    blurb: "Population growth, food, density and the resource economy of a town.",
+    params: [
+      { key: "SETT_GROWTH", label: "Population growth rate", def: 0.0018, min: 0.0002, max: 0.01, step: 0.0002,
+        desc: "Base per-tick population growth. The master demographics-speed dial — up = the world fills fast." },
+      { key: "LAND_HUNGER", label: "Marginal-land tolerance", def: 1.5, min: 0, max: 6, step: 0.5,
+        desc: "How readily new settlements spill onto LOW-quality land once the good sites nearby are already taken (population pressure / the historical frontier). 0 = settlers shun poor land forever, so deserts/uplands stay empty even late game; higher = marginal land WITHIN settled regions fills with sparse hamlets. Good land still fills first — this only lifts poor sites where the surroundings are already populated." },
+      { key: "SITE_DEFENSE", label: "Defensible-site pull", def: 1.0, min: 0, max: 3.0, step: 0.25,
+        desc: "How strongly DEFENSIBLE terrain attracts settlement on top of trade/fertility — commanding high ground (an acropolis / hill-fort), natural moats (river islands, peninsulas, water-girt necks) and mountain-backed flanks. 0 = terrain defence ignored (old behaviour, only trade geography mattered); up = hills, river islands and mountain valleys draw towns the way they did historically, and a brilliant defensive site can nucleate a town even on poor farmland." },
+      { key: "FARM_YIELD_PER_FERT", label: "Farm yield", def: 0.035, min: 0.005, max: 0.08, step: 0.005,
+        desc: "Food produced per unit of land fertility → carrying capacity. Up = denser, larger inland cities." },
+      { key: "LUX_VILLAGE_FRAC", label: "Village luxury appetite", def: 0, min: 0, max: 1, step: 0.05,
+        desc: "Luxury goods (silk, spices, furs, dyes) are URBAN/elite consumption — the merchants, officials and landlords of a town or city. A tier-0 farming village is a subsistence peasant community; its surplus goes to land, stock, tools and rent, NOT imported luxury. 0 (default) = villages buy no luxury. Raise it for a trickle (a prosperous-village exception): 0.1 = ~a tenth of a town's appetite; 1 = villages buy like cities (the old behaviour, where wealthy villages oddly imported spices)." },
+      { key: "FARM_FERT_FLOOR", label: "Farm subsistence floor", def: 0.05, min: 0, max: 0.2, step: 0.005,
+        desc: "Per-tile FARM-LABOUR cost (in fertility units): the crops the farmers needed to work a tile consume, deducted from a region's gross before any surplus feeds the wider economy. Net food = (total fertility − area × this) × yield. So land whose AVERAGE fertility is below this floor can't even feed the people required to farm it — it yields no net food and supports no settlement (frontier deserts, tundra, high mountains stay empty/sparse instead of filling with import-fed deficit regions). The break-even fertility = this value; 1 farmer/tile at the default demand/yield ≈ 0.086. 0 = off (the old labour-free model: any fertility, however marginal, supports population)." },
+      { key: "EARTH_HEARTHS", label: "Earth: fixed Nile+Yangtze cradles", def: 1, min: 0, max: 1, step: 1,
+        desc: "EARTH MAP ONLY: 1 = seed exactly two civilisation cradles at the historical Old-World hearths — the Nile and the Yangtze — instead of the algorithmic top-10 scoring sites. Civilisation then radiates out of Egypt and China, the rest of the Old World fills by land diffusion, and the New World + Australia stay wild until sea-borne colonisation reaches them (the 'ungoverned until colonisation' look). 0 = algorithmic cradle selection (up to 10 best river-valley sites worldwide, the original behaviour). Applied once at world creation — takes effect on a fresh world, not mid-run. (Ignored on non-Earth presets, which have no Nile.)" },
+      { key: "AGRI_FORAGE_YIELD", label: "Forager carrying capacity", def: 0.15, min: 0.02, max: 1, step: 0.01,
+        desc: "THE AGRICULTURAL TRANSITION (agriculture.js): a settlement with NO agriculture knowledge produces only this fraction of its land's full farming food — i.e. hunter-gatherer density. Fertility alone is now just FORAGING; the land only becomes a dense, state-capable farm economy once agriculture is invented at a cradle and DEVELOPS/DIFFUSES to it (rising to full yield at AGRI_FULL_AT). At 0.15 a fresh, farming-less frontier supports ~1/7 the population of a developed one, so civilisation RADIATES out of the hearths and isolated regions (Australia, the deep interior) stay sparse and stateless until farming reaches them — instead of the whole planet farming at full yield from tick 0. 1 = off (the old model: full food everywhere regardless of agriculture)." },
+      { key: "AGRI_FULL_AT", label: "Agriculture maturity point", def: 0.7, min: 0.3, max: 1, step: 0.05,
+        desc: "The agriculture-knowledge level at which land food reaches its FULL value (the forager→farmer ramp completes). Below it, yield scales linearly from the forager floor; the remaining knowledge above it still helps via the tech bonuses (heavy plough, crop rotation). Lower = societies reach full farming density at a more primitive stage (the transition is quicker/easier); higher = a long climb from foraging to full agriculture." },
+      { key: "AGRI_CEIL_FLOOR", label: "Isolated-land domestication ceiling", def: 0.35, min: 0.1, max: 1, step: 0.05,
+        desc: "DOMESTICATION GEOGRAPHY (Diamond): the cap on how far agriculture can develop AT ALL on the most isolated land (small continents and islands), as a fraction of the cap on the largest connected landmass (which reaches 1.0). A region's ceiling scales with √(its landmass size ÷ the biggest landmass's), so the giant Old-World-analog mass farms fully, the Americas-analog sits a notch below, and an Australia-analog is capped near this floor — its fertile land can NEVER reach full farming density no matter how long it develops, so it stays a sparse frontier (the 'no domesticable species' effect). 1 = no geographic ceiling (every landmass can fully develop)." },
+      { key: "AGRI_TROPIC_PENALTY", label: "Wet-tropic agriculture cap", def: 0.4, min: 0, max: 0.8, step: 0.05,
+        desc: "How much the WET TROPICS lower the domestication ceiling (above) — hot, wet land (disease burden, leached soils, root crops rather than storable taxable cereals: the Congo/Amazon/New-Guinea pattern). At 0.4 the hottest, wettest land loses up to 40% of its agricultural ceiling, keeping the deep equatorial belt sparse and stateless even on a big landmass. 0 = the wet tropics develop agriculture as freely as anywhere." },
+      { key: "TIER_SCALE_REF", label: "Tier-scale reference pop", def: 29000, min: 1000, max: 200000, step: 1000,
+        desc: "RELATIVE TIERS: the population bar to count as a TOWN scales with the WORLD's total population ÷ this reference (capped by TIER_SCALE_MAX). As civilisation grows, the size that qualifies as a 'town' rises too, so the urban hierarchy stays proportional and the rural majority stays rural — instead of mid-size farming villages being mislabelled 'towns' once the world fills up. At the default (29000) a typical ~90k-pop world gives a scale of ~3.1, so a 'town' needs ~470 people (vs the base 150, settlement.js TIER_THRESHOLD) — keeping the urban share in the historical pre-industrial band of ~10-20% (a 500-soul settlement was a large farming village, not a town). Lower = the bar rises faster (more rural, fewer/larger towns). Set huge to disable (fixed absolute thresholds, the old behaviour)." },
+      { key: "TIER_SCALE_MAX", label: "Tier-scale cap", def: 3.5, min: 1, max: 6, step: 0.25,
+        desc: "Ceiling on the relative-tier multiplier (above), so the town bar can't rise so far that genuine towns vanish in a huge world. Only the rural→TOWN bar scales (the CITY bar stays absolute at 600 and the METROPOLIS bar floats with the largest city — settlement.js TIER_THRESHOLD / METRO_REL_FRAC — so real urban centres always qualify). At 3.5 the town bar tops out at ~3.5×150 ≈ 525. Up = a harsher cut toward rural; down = towns appear at smaller sizes." },
+      { key: "FOOD_HAUL_RANGE", label: "Grain haul range", def: 14, min: 3, max: 60, step: 1,
+        desc: "GRAIN SPOILAGE / DISTANCE GATE: the e-folding distance (in tiles) a region can ship grain up to its market town before spoilage and cartage eat it — the survival of a haul is exp(−distance / range). At the default 14 a farm ~14 tiles from its market delivers ~37% of what it ships, ~10 tiles ~49%, and surplus much further away simply STAYS RURAL and feeds its own people (food no longer teleports up the hierarchy). This range is then widened by the destination's tier (a city/metropolis aggregates a wider hinterland than a market town), by transport tech (FOOD_HAUL_TECH), and by water corridors (FOOD_HAUL_WATER). Down = food is intensely local and the countryside keeps more (fewer/smaller cities, more rural); up = grain travels freely (the old near-teleport). Set very high to recover the old distance-blind behaviour." },
+      { key: "FOOD_HAUL_TECH", label: "Transport-tech haul bonus", def: 1.0, min: 0, max: 3, step: 0.1,
+        desc: "How much TRANSPORT TECH extends the grain-haul range (above). Scales the contribution of the shipping region's roads (construction) and wagons (mobility), plus an industrial-era leap for rail + refrigeration + canning as construction matures past ~0.85. At 1.0 a classical road-builder roughly doubles its haul vs a neolithic one, and a fully industrial realm can ship grain several times further (the railway/refrigerated era that let distant breadbaskets feed far-off cities). 0 = tech doesn't help (grain haul stays at the neolithic base range forever)." },
+      { key: "FOOD_HAUL_WATER", label: "Water-corridor haul ×", def: 3.0, min: 1, max: 10, step: 0.5,
+        desc: "Grain-haul range multiplier when BOTH the shipper and its market sit on a river or coast — moving grain by barge or ship was far cheaper and longer-range than by ox-cart (the Nile, the Rhine, the Baltic and Mediterranean grain trades). At 3.0 a river/coastal haul reaches up to 3× as far as the same haul overland (full strength at high navigation tech, ~half-strength by river even with no seafaring). 1 = water gives no advantage." },
+      { key: "HINTERLAND_MULT", label: "Farmland hinterland", def: 1.0, min: 0.3, max: 2.5, step: 0.1,
+        desc: "Scales the guaranteed farmland belt every settlement holds beyond its core. Up = each town owns more countryside (and carries more land when it secedes); down = territory hugs the cores." },
+      { key: "FISH_RATE", label: "Coastal fishing yield", def: 11.0, min: 0, max: 40, step: 1,
+        desc: "Food a water-adjacent settlement lands. Up = thriving maritime cities; 0 = no fishing economy." },
+      { key: "DENSITY_PER_CONSTR", label: "Urban density per construction", def: 5, min: 0, max: 20, step: 1,
+        desc: "Extra residents per buildable tile per point of construction tech. Up = sky-high megacities late game." },
+      { key: "MINING_RATE", label: "Specie mining rate", def: 5.0, min: 0, max: 20, step: 0.5,
+        desc: "Precious-metal extraction multiplier → hard-currency wealth. Up = gold-rush economies." },
+      { key: "SACK_PRODUCTION_FLOOR", label: "Sacked-city output floor", def: 0.3, min: 0, max: 1.0, step: 0.05,
+        desc: "Fraction of normal output a freshly-sacked town keeps. Down = conquest wrecks economies harder." },
+    ],
+  },
+  {
+    category: "Knowledge & tech",
+    blurb: "How fast the tech timeline advances and spreads.",
+    params: [
+      { key: "LEARN_BASE", label: "Tech learning speed", def: 0.0000125, min: 0.000005, max: 0.0002, step: 0.000005,
+        desc: "Master scaling on all knowledge growth. Calibrated so the era ladder roughly tracks the displayed calendar — the leading civilisation reaches the Medieval era around year 1000 AD, the Industrial era around 1750, rather than racing to industry by the classical period (which produced anachronistic multi-million cities in antiquity). Up = the whole bronze→industrial arc plays out faster. On a large map the leading edge tracks the calendar but the periphery lags it — raise DIFFUSE_RATE (not this) to pull the hinterland up without making the leaders anachronistic." },
+      { key: "DIFFUSE_RATE", label: "Tech diffusion rate", def: 0.0006, min: 0, max: 0.005, step: 0.0002,
+        desc: "How fast tech spreads between trading neighbours. Up = no lasting tech gaps; 0 = isolated innovators pull ahead." },
+      { key: "SCI_SPREAD", label: "Emergent science spread", def: 1.0, min: 0, max: 2.0, step: 0.1,
+        desc: "How strongly population, food surplus, trade contact and organization swing a settlement's invention rate. 0 = the old uniform pace (everywhere learns alike); up = fed, populous, connected hubs race ahead while isolated backwaters stall." },
+      { key: "AXIS_BIAS", label: "Continental-axis diffusion", def: 1.0, min: 0, max: 1.0, step: 0.1,
+        desc: "How much a shared climate gates the spread of FARMING. 0 = the crop/livestock package diffuses equally in every direction; 1 = it flows fast east–west along a latitude band and only crawls across climates — Diamond's continental-axis effect (why Eurasia outran the Americas). General technique (metallurgy, masonry, organisation) is climate-independent and always diffuses freely by contact; the axis reaches it only indirectly, through the farming base it gates." },
+      { key: "CROP_AXIS", label: "Crop-package model (experimental)", def: 0, min: 0, max: 1, step: 1,
+        desc: "EXPERIMENTAL concrete crop-types layer (src/cropPackages.js). 0 = OFF: the farming ceiling is the landmass-connectivity + wet-tropic proxy in agriculture.js (current behaviour). 1 = a settlement OWNS crop packages (wheat / rice / maize / sorghum / tubers), each a climate envelope + storability; its ceiling is the best STORABLE yield among the crops it owns that SUIT its home tile, and crops SPREAD settlement-to-settlement only where the destination climate suits them. The continental axis then EMERGES: wheat races east–west along the temperate band and cannot cross the hot/wet tropics, the wet tropics cap low (tubers grow but don't store or tax → no surplus state), and colonists carry their crops overseas (the Columbian exchange). Cradles domesticate their best local crop; a mature farming culture can independently domesticate a strongly-suitable un-owned staple (a secondary hearth). Replaces the AXIS_BIAS slice on agriculture with real mechanics; leave AXIS_BIAS on for the non-farming tracks. Toggle takes effect on a fresh world." },
+      { key: "KNOW_DECAY", label: "Knowledge loss (dark ages)", def: 1.0, min: 0, max: 3.0, step: 0.1,
+        desc: "How fast a COLLAPSING or cut-off society forgets technique. 0 = knowledge never regresses (old behaviour); up = depopulation (plague/famine/war), a sacked capital, and severed trade trigger real dark-age regressions that the tech tree visibly loses." },
+      { key: "ENV_SPEC", label: "Climate specialization", def: 1.0, min: 0, max: 2.0, step: 0.1,
+        desc: "How much local CLIMATE biases which techniques a culture perfects — arid river valleys pioneer irrigation farming, the humid tropics lag in cereal farming, short cold seasons cap it, temperate maritime coasts grow trade-administration. 0 = climate-blind learning (old behaviour)." },
+      { key: "TECH_EFFECTS", label: "Tech-driven bonuses", def: 1.0, min: 0, max: 1.0, step: 0.1,
+        desc: "How much the discrete TECHS (vs the raw continuous tracks) grant the sim's bonuses & abilities. 1 = fully tech-driven, Civ-style — a discovery is what gives the bonus; 0 = the old continuous-knowledge formulas. Calibrated so the two match at full tech. Currently wired to food, fishing and city size." },
+    ],
+  },
+  {
+    category: "Economy & state",
+    blurb: "Trade volume, taxation, military upkeep and civil unrest.",
+    params: [
+      { key: "TRADE_RATE", label: "Trade volume", def: 0.025, min: 0.005, max: 0.1, step: 0.005,
+        desc: "Scaling on goods traded between linked settlements. Up = richer, more interdependent economies." },
+      { key: "SEA_TRADE_MULT", label: "Maritime trade volume ×", def: 8.0, min: 1, max: 16, step: 0.5,
+        desc: "Volume multiplier on trade carried over a SEA LANE vs the same trade overland. Ships moved bulk goods 10-20× cheaper per ton than ox-carts, which is why the great trading powers were maritime (Venice, Alexandria, Canton, Amsterdam) — but the gravity trade otherwise gives a sea link the same √pop × trade-rate volume as a land link, so ocean routes carried far too little of the money flow. At 8× a coastal port trades many times more by sea than by road, ocean routes light up on the money overlay, and maritime hubs grow rich on it (the positive feedback that built real port cities). Mirrors the FOOD_HAUL_WATER bonus the grain trade already gets. 1 = sea trades like land." },
+      { key: "RIVER_TRADE_MULT", label: "River trade volume ×", def: 3.5, min: 1, max: 12, step: 0.5,
+        desc: "Volume multiplier on trade carried along a NAVIGABLE RIVER (the Nile, Rhine, Yangtze, Mississippi) vs the same trade overland — boats on a great river moved bulk far cheaper than ox-carts, so river ports and the inland cities a river reaches traded richly. The river is also a cheap routing corridor in its own right, so trade follows it even without a road built along it. Set below SEA_TRADE_MULT because rivers are shorter-range. 1 = a river lane trades like a road." },
+      { key: "TARIFF_RATE", label: "Customs tariff", def: 0.10, min: 0, max: 0.5, step: 0.02,
+        desc: "Duty a capital skims on cross-border trade through it. Up = lucrative gateway states, costlier foreign trade." },
+      { key: "SEIGNIORAGE_RATE", label: "Mint seigniorage", def: 0.05, min: 0, max: 0.3, step: 0.01,
+        desc: "CURRENCY (docs/currency-system.md, Phase 1): the STATE's cut when newly-mined specie is coined into money. Mining no longer drops coin straight into the miner's purse — the realm's mint takes this fraction to the treasury (and pays the miner the rest), so money creation is a state act, not pure geology. A stateless miner (no government yet) keeps the lot. 0 = the old behaviour (miner keeps everything; no state cut)." },
+      { key: "HUME_ELASTICITY", label: "Trade price-specie flow", def: 0.5, min: 0, max: 2, step: 0.1,
+        desc: "CURRENCY (docs/currency-system.md, Phase 2): Hume's price-specie-flow — how strongly trade responds to the price gap between two regions. A specie-rich region has dear prices (high localP), so it exports less and imports more, bleeding specie until its prices fall; a cheap region undersells and gains specie. The scaling is reciprocal, so it shifts the trade BALANCE (who exports more) without changing total volume — specie self-DISTRIBUTES across the world and no region hoards it unboundedly, the classic self-correcting mechanism. 0 = off (trade ignores relative prices); higher = a sharper rebalancing pull. Bounds the price-level SPREAD, doesn't expand the money supply." },
+      { key: "CREDIT_RATE", label: "Bank credit creation (experimental)", def: 0, min: 0, max: 0.3, step: 0.01,
+        desc: "CURRENCY (docs/currency-system.md, Phase 5): how fast a BANKING hub creates credit money on top of its specie — the fractional-reserve / bills-of-exchange layer that made Venice & Amsterdam rich with no mines. A settlement with Banking-era ORGANISATION and a wide TRADE network conjures credit up to CREDIT_MAX_MULT × its specie; when its commerce COLLAPSES (a sack, plague, severed trade) the credit is called in and the money supply CONTRACTS — the dark-age money crunch. Elastic money by design; the (b) model keeps the boom/bust from wrecking the real economy (it shows as inflation/deflation + richer/poorer hubs). 0 = off (no credit; pure specie)." },
+      { key: "CREDIT_MAX_MULT", label: "Credit multiplier cap", def: 2.0, min: 1, max: 5, step: 0.25,
+        desc: "CURRENCY (Phase 5): the most credit money a banking hub can hold as a multiple of its specie backing (1 = no credit; 2 = up to 1× its specie in credit, doubling its money). The fractional-reserve ceiling. Higher = bigger credit booms (and busts)." },
+      { key: "DEBASE_AGGRO", label: "Currency debasement", def: 0.5, min: 0, max: 1.5, step: 0.1,
+        desc: "CURRENCY (docs/currency-system.md, Phase 3): how readily a cash-strapped state DEBASES its coinage. When a treasury can't cover its army bill, the mint strikes lighter coins for emergency revenue (seigniorage) — its currency FINENESS drops, which shrinks its foreign trade (a debased realm's coin is distrusted abroad), but the minted coin keeps the army paid a while longer. The war-finance spiral (Rome's denarius; every broke medieval crown). Solvent states slowly restore the coin toward full fineness. The bite lands ABROAD (FX/trade), not on the realm's own cities — safe because inflation is non-squeezing (the (b) model). 0 = off (no debasement; currencies stay at full metal)." },
+      { key: "COIN_LOSS_RATE", label: "Coin loss / drain", def: 0.0004, min: 0, max: 0.01, step: 0.0001,
+        desc: "CURRENCY (Phase 1): the honest micro-sink that regulates the money supply — a tiny fraction of circulating specie lost each tick to wear, shipwreck, buried hoards and coin melted to plate. This REPLACES the (wrong) freight-burn sink: freight is now paid to carriers, and the money supply instead finds equilibrium between mint inflow and this realistic drain (plus depleting mines). Calibrated so the total supply ≈ its old level — too low and money balloons (inflation starves the coin-gated food economy), too high and it deflates. 0 = no drain (supply only ever grows with mining)." },
+      { key: "TAX_MAX", label: "Max tax rate", def: 0.22, min: 0.05, max: 0.6, step: 0.02,
+        desc: "Hard ceiling on how much wealth a state can tax per pass. Up = states fund bigger wars but stoke unrest." },
+      { key: "FARM_RENT", label: "Rent / tithe on harvest", def: 0.4, min: 0, max: 2, step: 0.05,
+        desc: "Landlord + church levy on a settlement's farm OUTPUT (coin per unit of food it produces, taken to the state every pass). Unlike the wealth tax this hits INCOME at the source — a share of the harvest off the top — which is what kept real peasants poor (their surplus skimmed as grain, never a cash hoard) and what funded the towns. It falls only on farmed land (cities grow nothing, so they pay none), draining village wealth UP to the state and out to the cash-starved cities. 0 = off (villages keep their full food earnings and accumulate the hoards you saw)." },
+      { key: "ARMY_WAGE", label: "Soldier wage", def: 60, min: 0, max: 200, step: 5,
+        desc: "Treasury coin per soldier per polity pass. Up = militaries bankrupt their states (fiscal-military collapse)." },
+      { key: "UNREST_GAIN", label: "Unrest sensitivity", def: 0.15, min: 0.02, max: 0.6, step: 0.02,
+        desc: "How fast grievances (hunger, overtax, war-weariness) boil into revolt. Up = volatile, rebellion-prone realms." },
+    ],
+  },
+  {
+    category: "Shocks: famine & plague",
+    blurb: "Frequency and severity of the exogenous disasters that punctuate the timeline.",
+    params: [
+      { key: "FAMINE_CHANCE", label: "Famine likelihood", def: 0.35, min: 0, max: 1.0, step: 0.05,
+        desc: "Probability a famine-spawn roll actually strikes a region. Up = recurrent harvest crises." },
+      { key: "PLAGUE_CHANCE", label: "Plague likelihood", def: 0.55, min: 0, max: 1.0, step: 0.05,
+        desc: "Probability a (generational) plague-spawn roll ignites an outbreak. Up = frequent pandemics." },
+      { key: "PLAGUE_MORT", label: "Plague lethality", def: 0.0016, min: 0, max: 0.01, step: 0.0002,
+        desc: "Base per-tick mortality of an active outbreak. Up = Black-Death-scale population collapses." },
+    ],
+  },
+];
+
+// Build the live value object and the immutable defaults from the schema.
+const DEFAULTS = {};
+for (const cat of TUNING_SCHEMA) for (const p of cat.params) DEFAULTS[p.key] = p.def;
+
+// Live, mutable values the sim reads. Starts at defaults (== old constants).
+export const T = { ...DEFAULTS };
+
+// Monotonic version stamp, bumped on every lever change. Lets per-tick caches
+// derived from T (e.g. transport.js edge-cost params) invalidate immediately
+// when a slider moves, instead of serving stale numbers for the rest of a tick.
+export const TUNING_VERSION = { v: 1 };
+
+// Apply a partial override map (from the Tuning menu / worker message). Only
+// known keys are accepted, and only finite numbers — a malformed message can
+// never poison the sim.
+export function applyTuning(overrides) {
+  if (!overrides) return;
+  for (const k in overrides) {
+    if (!(k in DEFAULTS)) continue;
+    const v = Number(overrides[k]);
+    if (Number.isFinite(v)) T[k] = v;
+  }
+  TUNING_VERSION.v++;
+}
+
+// Reset every lever to its hand-tuned default.
+export function resetTuning() { Object.assign(T, DEFAULTS); TUNING_VERSION.v++; }
+
+// The defaults, for the menu's "reset" affordance / change indicators.
+export function tuningDefaults() { return { ...DEFAULTS }; }

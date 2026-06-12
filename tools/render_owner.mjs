@@ -3,11 +3,11 @@
 // frag-probe counts. Country colour = its id-hue (same convention as the sim).
 //   node tools/render_owner.mjs [step] [seed] [W] [H]
 import zlib from "node:zlib"; import { writeFileSync } from "node:fs";
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
-import { T } from "../src/peopleSim/tuning.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
+import { T } from "../src/sim/peopleSim/tuning.js";
 if (process.env.ANCHOR !== undefined) T.CAPITAL_ANCHOR = parseFloat(process.env.ANCHOR);
 if (process.env.GAPD !== undefined) T.REALM_GAP_FILL = parseFloat(process.env.GAPD);
 const STEP=+(process.argv[2]||6000), SEED=+(process.argv[3]||8817), W=+(process.argv[4]||480), H=+(process.argv[5]||240);

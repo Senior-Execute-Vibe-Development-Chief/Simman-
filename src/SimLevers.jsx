@@ -7,7 +7,7 @@
 // Pure presentation: it owns no sim state. The parent holds `values` (the
 // current { KEY: number } map) and pushes changes to the worker.
 
-import { TUNING_SCHEMA, tuningDefaults } from "./peopleSim/tuning.js";
+import { TUNING_SCHEMA, tuningDefaults } from "./sim/peopleSim/tuning.js";
 
 const DEFAULTS = tuningDefaults();
 

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback } from "react";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // IMPROVED FORMANT SPEECH SYNTHESIZER
@@ -127,8 +127,6 @@ const totalSamples = Math.ceil(totalDur * sr);
 const output = new Float32Array(totalSamples);
 
 // Sentence-level intonation
-const totalSegs = segInfo.filter(s => s.type === "seg").length;
-
 function getF0(segIndex, totalCount) {
 const pos = segIndex / Math.max(totalCount, 1);
 // Declination scaled by language's pitch range
@@ -146,7 +144,6 @@ const fStates = [{y1:0,y2:0},{y1:0,y2:0},{y1:0,y2:0}];
 const nState = {y1:0,y2:0}; // for anti-formant
 
 let t = 0.03;
-let segCount = 0;
 let glottalPhase = 0;
 let prevFormants = [500, 1500, 2500];
 
@@ -216,7 +213,6 @@ if (isVow || isNas || isLiqGli) {
     // Interpolate formants: ease in from previous, ease out toward next
     const easeIn = Math.min(1, pos * 4); // first 25%
     const easeOut = Math.min(1, (1 - pos) * 4); // last 25%
-    const blend = easeIn * easeOut; // in the middle = 1
     const curF = [0, 1, 2].map(fi =>
       prevFormants[fi] + (targetF[fi] - prevFormants[fi]) * easeIn * 0.7 +
       (nextF[fi] - targetF[fi]) * (1 - easeOut) * 0.3
@@ -345,7 +341,6 @@ if (isVow || isNas || isLiqGli) {
   }
 }
 
-segCount++;
 t += dur;
 
 }
@@ -466,18 +461,8 @@ function romanize(ipa){let o="",i=0;while(i<ipa.length){if(i+1<ipa.length){const
 function romanizeWord(sf){return romanize(sf.replace(/\./g,""));}
 
 const IRREG_PAST={"see":"saw","eat":"ate","run":"ran","give":"gave","take":"took","sleep":"slept","sing":"sang","make":"made","fall":"fell","grow":"grew","fly":"flew","swim":"swam","break":"broke","hold":"held","throw":"threw","burn":"burnt","drink":"drank","know":"knew","cut":"cut","find":"found","dig":"dug","hide":"hid"};
-function englishTranslation(subj,verb,obj,adj,tense,subjPl,objPl,useDet){
-const art=useDet?"the ":"";
-const adjS=adj?adj.meaning+" ":"";
-const sn=subjPl?(subj.meaning==="fish"||subj.meaning==="deer"?subj.meaning:subj.meaning+"s"):subj.meaning;
-const on=objPl?(obj.meaning==="fish"||obj.meaning==="deer"?obj.meaning:obj.meaning+"s"):obj.meaning;
-const sNP=art+adjS+sn;
-const oNP=(subjPl?"the ":"a ")+on;
-let vb=verb.meaning;
-if(tense==="FUT")vb="will "+verb.meaning;
-else if(tense==="PST")vb=IRREG_PAST[verb.meaning]||(verb.meaning.endsWith("e")?verb.meaning+"d":verb.meaning+"ed");
-else if(!subjPl)vb=verb.meaning.endsWith("s")||verb.meaning.endsWith("sh")?verb.meaning+"es":verb.meaning+"s";
-return sNP.charAt(0).toUpperCase()+sNP.slice(1)+" "+vb+" "+oNP+".";}
+// (an earlier standalone English-renderer was removed — generateSentence builds its own English line)
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LANGUAGE GENERATION WITH FLAVOR PRESETS
@@ -792,15 +777,6 @@ if(ci!==null&&L.nClasses[ci])u+=L.nClasses[ci].adjAgree;
 return u;
 }
 
-// Get class-specific pronoun or determiner
-function classPronoun(L,nounMeaning){
-if(L.nClassCount>0){
-const ci=L.assignNounClass(nounMeaning);
-if(ci!==null&&L.nClasses[ci]&&L.nClasses[ci].pronoun)return L.nClasses[ci].pronoun;
-}
-return L.pronouns["3sg"];
-}
-
 function classDet(L,nounMeaning){
 if(L.nClassCount>0){
 const ci=L.assignNounClass(nounMeaning);
@@ -874,8 +850,6 @@ morphs:[{label:noun.meaning,uf:nUF,sf:nW.sf,stem:noun.ipa,affixes:nUF.slice(noun
 
 // English pronoun mapping
 const EN_PRON={"1sg":"I","2sg":"you","3sg":"he","1pl":"we","2pl":"you","3pl":"they"};
-const EN_PRON_OBJ={"1sg":"me","2sg":"you","3sg":"him","1pl":"us","2pl":"you","3pl":"them"};
-const EN_PRON_POSS={"1sg":"my","2sg":"your","3sg":"his","1pl":"our","2pl":"your","3pl":"their"};
 
 function findAlternations(uf,sf,w){
 const ufSegs=parseIPA(uf);
@@ -1016,14 +990,19 @@ const ARTICLES=new Set(["the","a","an","this","that","these","those"]);
 const EN_TO_PERSON={"i":"1sg","me":"1sg","my":"1sg","you":"2sg","your":"2sg","he":"3sg","him":"3sg","his":"3sg","she":"3sg","her":"3sg","it":"3sg","its":"3sg","we":"1pl","us":"1pl","our":"1pl","they":"3pl","them":"3pl","their":"3pl"};
 const SKIP_WORDS=new Set(["the","a","an","this","that","these","those","is","are","am","was","were","be","do","does","did","not","very","really","also","just","then","so","but","and","or","if","when","while","because","of","about"]);
 const EN_ADPOSITIONS=new Set(["in","on","to","from","with","for","near","under","over","between","at","by","into","onto","through","across","along","around","behind","beside","beneath","above","below","against","among","within","without","upon","toward","towards"]);
-const BE_FORMS=new Set(["is","are","am","was","were","be"]);
 const PLURAL_MAP={"children":"child","women":"woman","men":"man","fish":"fish","deer":"deer","wolves":"wolf","knives":"knife","leaves":"leaf","mice":"mouse","geese":"goose","teeth":"tooth","feet":"foot","foxes":"fox","horses":"horse","snakes":"snake","bears":"bear","lambs":"lamb","birds":"bird","stars":"star","trees":"tree","eyes":"eye","bones":"bone","seeds":"seed","paths":"path","houses":"house","rivers":"river","mountains":"mountain","stones":"stone","hands":"hand","dogs":"dog","cats":"cat","rats":"rat","goats":"goat","cows":"cow","pigs":"pig","lions":"lion","eagles":"eagle","owls":"owl","frogs":"frog","ants":"ant","bees":"bee","roots":"root","flowers":"flower","grains":"grain","hearts":"heart","heads":"head","arms":"arm","legs":"leg","swords":"sword","shields":"shield","boats":"boat","ropes":"rope","wheels":"wheel","doors":"door","walls":"wall","roofs":"roof","floors":"floor","beds":"bed","chairs":"chair","tables":"table","cups":"cup","pots":"pot","baskets":"basket","cloths":"cloth","threads":"thread","needles":"needle","rings":"ring","drums":"drum","flutes":"flute","songs":"song","words":"word","names":"name","voices":"voice","dreams":"dream","deaths":"death","lives":"life","wars":"war","kings":"king","queens":"queen","friends":"friend","enemies":"enemy","mothers":"mother","fathers":"father","brothers":"brother","sisters":"sister","babies":"baby","villages":"village","cities":"city","islands":"island","seas":"sea","lakes":"lake","forests":"forest","deserts":"desert","caves":"cave","bridges":"bridge","roads":"road","gates":"gate","towers":"tower","fields":"field","gardens":"garden","shadows":"shadow","lights":"light","nights":"night","days":"day","dawns":"dawn","storms":"storm","flames":"flame","waves":"wave","clouds":"cloud","eggs":"egg","arrows":"arrow","spears":"spear","bows":"bow","axes":"axe","hammers":"hammer","bells":"bell","flags":"flag","maps":"map","books":"book","stories":"story","laws":"law","gods":"god","ghosts":"ghost","spirits":"spirit","souls":"soul","gifts":"gift","trades":"trade","works":"work","feasts":"feast","fights":"fight","prayers":"prayer","curses":"curse","blessings":"blessing","colors":"color","shapes":"shape","sounds":"sound","smells":"smell","tastes":"taste","times":"time","places":"place","things":"thing","ways":"way","ends":"end","homes":"home","secrets":"secret"};
 
 function depluralize(w){
 if(PLURAL_MAP[w])return{base:PLURAL_MAP[w],pl:true};
 if(w.endsWith("ies"))return{base:w.slice(0,-3)+"y",pl:true};
 if(w.endsWith("ves"))return{base:w.slice(0,-3)+"fe",pl:true};
-if(w.endsWith("es"))return{base:w.slice(0,-2),pl:true};
+// e-stem plurals ("places","bridges","houses") are stem+"s", NOT stem+"es" —
+// cutting two letters mangled them to "plac"/"bridg". Only true -es plurals
+// (sibilant stems: "foxes","churches") drop both letters.
+if(w.endsWith("es")){
+const sib=/(s|x|z|ch|sh)es$/.test(w);
+return{base:sib?w.slice(0,-2):w.slice(0,-1),pl:true};
+}
 if(w.endsWith("s")&&!w.endsWith("ss"))return{base:w.slice(0,-1),pl:true};
 return{base:w,pl:false};
 }
@@ -1325,7 +1304,6 @@ const adj2=findA(adjs.filter(a=>a!==adj1.meaning).sort(()=>Math.random()-0.5));
 const adj3=findA(adjs.filter(a=>a!==adj1.meaning&&a!==adj2.meaning).sort(()=>Math.random()-0.5));
 const enemy=findN(["wolf","bear","lion","snake","enemy","thief","warrior"].sort(()=>Math.random()-0.5));
 
-const person="3sg";
 const slots={hero,hero2,animal,place,place2,object,weapon,enemy,adj:adj1,adj2,adj3};
 
 // Generate each sentence from template
@@ -1341,7 +1319,7 @@ eng=eng.replace(/{pro}/g,usedHeroFull?"he":"the "+hero.meaning);
 // Replace slots
 for(const[k,v] of Object.entries(slots)){
 if(typeof v==="object"&&v.meaning){
-eng=eng.replace(new RegExp("\{"+k+"\}","g"),v.meaning);
+eng=eng.split("{"+k+"}").join(v.meaning);   // plain split/join — no regex-metachar fragility
 }
 }
 // Clean up

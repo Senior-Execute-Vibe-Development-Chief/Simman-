@@ -1,20 +1,18 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
-import { generateTectonicWorld } from "./tectonicGen.js";
-import { isRealWindAvailable } from "./realWindData.js";
+import { isRealWindAvailable, fillRealWind } from "./realWindData.js";
 import GlobeView from "./GlobeView.jsx";
-import TuningPanel, { ParamEditor, renderPreview } from "./TuningPanel.jsx";
+import TuningPanel, { ParamEditor } from "./TuningPanel.jsx";
 import { loadPresets, deletePreset } from "./paramDefs.js";
 import { parseAzgaarJSON, rasterizeAzgaar, rasterizeHeightmap, loadImageFile } from "./mapImport.js";
-import { generateResources, tileResourceSummary, RESOURCES } from "./resourceGen.js";
-import { computeRivers, RIVER_NAMES, RIVER_STREAM } from "./riverGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
-import { cropSuitability } from "./cropGen.js";
-import { applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js";
+import { tileResourceSummary, RESOURCES } from "./sim/resourceGen.js";
+import { RIVER_NAMES } from "./sim/riverGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
+import { serializeWorld, loadWorld } from "./sim/persist.js";
+import { applyTuning, resetTuning, tuningDefaults } from "./sim/peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
-import { baseEdgeCost } from "./peopleSim/transport.js";
-import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./peopleSim/settlement.js";
-import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./peopleSim/money.js";
-import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectList, techTotalList } from "./peopleSim/tech.js";
+import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./sim/peopleSim/settlement.js";
+import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./sim/peopleSim/money.js";
+import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectList, techTotalList } from "./sim/peopleSim/tech.js";
 // tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
 const ERA_BG=["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
 // effect-chip colour per channel (food=green, naval=teal, build=tan, war=red, admin=violet, trade=jade, wealth=gold)
@@ -24,7 +22,7 @@ import PeopleSimWorker from "./peopleSimWorker.js?worker&inline";
 
 // Noise + PRNG utilities moved to src/worldgenUtils.js so worldgen code can
 // also run headlessly (Node tests, future tooling) without dragging React in.
-import { initNoise, noise2D, fbm, ridged, worley } from "./worldgenUtils.js";
+import { initNoise, noise2D, fbm, ridged, worley } from "./sim/worldgenUtils.js";
 
 const RES=1;
 // ── Mercator projection helpers ──
@@ -46,7 +44,7 @@ const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","fertility","crop","c
 // step bucket: rebuild every STEP_CACHE_REGEN sim-steps, blit between (the same
 // trick the political overlay uses). When paused the step is constant, so they
 // blit every frame and cost nothing.
-const STEP_CACHE_VIEWS = new Set(["population","money","roads","transport","tribes"]);
+const STEP_CACHE_VIEWS = new Set(["money","roads"]);
 const STEP_CACHE_REGEN = 8;
 let _mercator = false; // module-level flag for projection functions
 
@@ -68,11 +66,10 @@ function dataYtoScreenY(dy, H, ch) {
 
 let _tecParams = {};
 
-// Static climate: no ice ages or sea level changes
-const CLIMATE={tempMod:0,seaLevel:0,wet:0.7};
-
 // generateWorld extracted to ./worldgen.js so worldgen can run headlessly.
-import { generateWorld } from "./worldgen.js";
+import { generateWorld } from "./sim/worldgen.js";
+import { buildTerritory, tileFert, DIRS } from "./sim/pipeline.js";
+import { yearStr } from "./sim/calendar.js";
 
 const BC=[
 [10,22,56],      // 0  Deep Ocean
@@ -119,9 +116,6 @@ function getBiomeD(e,m,t,sl){
 }
 function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
-function tribeRGB(id){const h=((id*67+20)%360)/360,s=(60+((id*31)%25))/100,l=(45+((id*17)%25))/100;
-const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;const hr=(pp,qq,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return pp+(qq-pp)*6*t;if(t<1/2)return qq;if(t<2/3)return pp+(qq-pp)*(2/3-t)*6;return pp;};
-return[Math.round(hr(p,q,h+1/3)*255),Math.round(hr(p,q,h)*255),Math.round(hr(p,q,h-1/3)*255)];}
 
 // ── Live country colouring (Country view) ───────────────────────────
 // Give every country a hue as DISTINCT as possible from the countries it borders,
@@ -142,8 +136,14 @@ function assignCountryColors(claimArr,tw,th,prev){
     if(py<th-1){const dno=claimArr[ti+tw];if(dno>=0&&dno!==cc)link(cc,dno);}
   }
   const hue=new Map();
-  for(const c of present)hue.set(c,prev.has(c)?prev.get(c):((c*61)%360+360)%360);
-  for(let it=0;it<60;it++){
+  let seeded=0;
+  for(const c of present){const had=prev.has(c);if(had)seeded++;hue.set(c,had?prev.get(c):((c*61)%360+360)%360);}
+  // First solve needs the full relaxation to untangle the (c*61)%360 seeds;
+  // once almost everything carries its previous hue, a short settle pass is
+  // enough to absorb the handful of new countries — this runs per claim
+  // refresh, so the steady-state cost matters.
+  const iters=seeded>=present.length*0.9?14:60;
+  for(let it=0;it<iters;it++){
     const nudge=[];
     for(const c of present){
       const ns=adj.get(c);if(!ns||ns.size===0){nudge.push(0);continue;}
@@ -258,14 +258,21 @@ const CHRON_COL={founding:"#1f7a55",discovery:"#2f6fa8",growth:"#2f7d3f",wealth:
 const CHRON_LABEL={founding:"Founding",discovery:"Discovery",growth:"Growth",wealth:"Wealth",
   war:"War",conquest:"Conquest",annex:"Annexation",secession:"Secession",loss:"Loss",
   plague:"Plague",famine:"Famine",end:"Fall"};
-function ChronicleOverlay({entries,name,onClose}){
+function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose}){
   const rows=(entries||[]).slice().reverse();   // newest first
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(580px,93vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexShrink:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexShrink:0,gap:8}}>
           <div className="au-pico-title" style={{fontSize:15}}>Chronicle{name?` — ${name}`:""}{" "}
             <span className="au-fade" style={{fontSize:11}}>· {rows.length} events</span></div>
+          {/* True record vs the realm's own tradition: same events, different
+              survivors — the scribes' version drops what burned, never heard
+              the distant news, and flatters the court. */}
+          <button onClick={onTogglePerspective} className={"au-btn"+(perspective?" au-active":"")}
+            style={{fontSize:10,whiteSpace:"nowrap"}}
+            title="Toggle between the omniscient record and what this realm's own scribes kept">
+            {perspective?"scribes' version":"true record"}</button>
           <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
         </div>
         {/* minHeight:0 lets this flex child shrink so overflowY:auto actually
@@ -381,441 +388,7 @@ c.arc(x,y-s*0.4,s*0.54,0,6.2832);
 c.fillStyle=`rgba(${(84+tone*34)|0},${(96+tone*26)|0},${(56+tone*20)|0},0.72)`;c.fill();
 c.strokeStyle='rgba(42,48,28,0.6)';c.lineWidth=Math.max(0.3,s*0.12);c.stroke();}
 
-// Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
-// Temperature fitness uses a COLD GATE (calibrated air-temp scale t=0.60+°C/100):
-// near-zero below ~-3°C (short-season high latitudes — far-N Europe, Siberia are
-// marginal), full by ~+10°C, broad warm plateau, gentle roll-off in extreme heat.
-// Kept in sync with the tCrop bell below. Moisture bell peaks at 0.45.
-function tileFert(t,m,e){if(e>0.45)return 0.01;
-const tFactor=Math.min(1,Math.max(0,(t-0.57)/0.13))*Math.min(1,1-Math.pow(Math.max(0,t-0.88),2)*1.5);
-const mFactor=Math.exp(-((m-0.45)*(m-0.45))/(2*0.22*0.22));
-const base=tFactor*mFactor;
-return Math.max(0.01,base*(1-Math.max(0,e-0.15)*3));}
 
-const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
-// LEAPS kept as fallback geometry for voyage pathing
-const LEAPS=[];for(let r=5;r<=13;r++)for(let a=0;a<8;a++){const ang=a*Math.PI/4;LEAPS.push([Math.round(Math.cos(ang)*r),Math.round(Math.sin(ang)*r)]);}
-
-// ── Knowledge System: emergent technological development ──
-// No artificial eras. Knowledge is a continuous fluid (0→1) that grows from local conditions
-// and diffuses between neighbors. "Eras" emerge as an observation, not a programmed state.
-function initKnowledge(){return{agriculture:0,metallurgy:0,navigation:0,construction:0,organization:0,trade:0};}
-
-// ── Budget + Personality System ──
-// Each tribe allocates capacity across military/growth/commerce/exploration/survival.
-// Allocation is driven by geography + situation + a random temperament factor.
-function initBudget(){
-// Temperament: random biases that make each tribe unique (Sparta, Venice, Mongols)
-// Range -0.8 to +0.8 per category. Large enough to create outliers (Sparta, Venice).
-const r=()=>(Math.random()-0.5)*1.6;
-return{military:0.2,growth:0.3,commerce:0.2,exploration:0.15,survival:0.15,
-total:0,wealth:0,personality:"",
-// Temperament: permanent random bias per tribe (cultural DNA)
-tMil:r(),tGro:r(),tCom:r(),tExp:r()};}
-
-// ── War state ─────────────────────────────────────────────────────────
-// `ter.wars` is a sparse map keyed by "min(a,b),max(a,b)". Each entry
-// records who started the war, when, and a running tally of flips. This
-// replaces _recentConflicts as the source of truth for 'at war' status
-// (the recency map is still updated as a back-compat shim).
-//
-// War flow:
-//   1. War decider declares a war (or first hostile flip auto-declares).
-//   2. While the war is live, the per-tile conflict block runs at full
-//      probability between these two and conquest cascades fire on flips.
-//   3. War expires when nothing fires for ~60 steps (mutual exhaustion)
-//      or when the war-ending logic forces peace / total conquest.
-function warKey(a,b){return a<b?a+","+b:b+","+a;}
-function atWar(ter,a,b){
-  if(a===b||!ter.wars)return false;
-  const w=ter.wars[warKey(a,b)];return !!w&&w.active;
-}
-
-// Compute relationship between two tribes: 'fight','trade','friendly','neutral'
-function tribeRelation(ter,a,b){
-if(a===b||!ter._borderContacts)return'neutral';
-if(atWar(ter,a,b))return'fight';
-const key=Math.min(a,b)+','+Math.max(a,b);
-if(ter._recentConflicts&&ter._recentConflicts[key]&&ter.stepCount-ter._recentConflicts[key]<50)return'fight';
-const ka=ter.tribeKnowledge[a],kb=ter.tribeKnowledge[b];
-const contactsA=ter._borderContacts[a];
-const hasBorder=contactsA&&contactsA[b]>0;
-let hasMaritimeLink=false;
-if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[a]){for(const kc of ter.tribeKnownCoasts[a]){if(kc.owner===b){hasMaritimeLink=true;break;}}}
-if((hasBorder||hasMaritimeLink)&&ka&&kb&&ka.trade>0.15&&kb.trade>0.15)return'trade';
-if(hasBorder)return'friendly';
-return'neutral';}
-
-// ── Settlement tier thresholds (cityPop in thousands) ──
-// Tech gates max city size; tier is just a reading of how many people are there
-const SETTLE_TIERS=[
-{name:'village',  min:0.05, icon:1},  //  50+ people gathering
-{name:'town',     min:0.5,  icon:1.5},//  500+ people
-{name:'small',    min:3,    icon:2},  //  3k+ (Ur, early Memphis)
-{name:'medium',   min:20,   icon:2.5},//  20k+ (classical Athens)
-{name:'large',    min:100,  icon:3},  //  100k+ (Rome, Chang'an)
-{name:'mega',     min:500,  icon:3.5},//  500k+ (industrial London)
-];
-function settleTier(cityPop){
-for(let i=SETTLE_TIERS.length-1;i>=0;i--)if(cityPop>=SETTLE_TIERS[i].min)return SETTLE_TIERS[i];
-return null;}
-
-function createTerritory(w){
-const tw=Math.ceil(w.width/RES),th=Math.ceil(w.height/RES);
-const tElev=new Float32Array(tw*th),tTemp=new Float32Array(tw*th),tMoist=new Float32Array(tw*th),tFert=new Float32Array(tw*th);
-const tCoast=new Uint8Array(tw*th),tDiff=new Float32Array(tw*th),owner=new Int16Array(tw*th).fill(-1),tribeSizes=[],tribeStrength=[],tribeCenters=[];
-// Pass 1: base tile data + climate fertility
-for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){const px=Math.min(w.width-1,tx*RES),py=Math.min(w.height-1,ty*RES),i=py*w.width+px;
-const ti=ty*tw+tx;tElev[ti]=w.elevation[i];tTemp[ti]=w.temperature[i];tMoist[ti]=w.moisture[i];tCoast[ti]=w.coastal[ti];
-const e=w.elevation[i],t=w.temperature[i],m=w.moisture[i];let diff=0;
-if(e>0.35)diff=Math.max(diff,Math.min(1,(e-0.35)*3));if(t>0.5&&m<0.2)diff=Math.max(diff,Math.min(0.85,(0.2-m)*3*(t-0.3)));
-if(t<0.2)diff=Math.max(diff,Math.min(0.9,(0.2-t)*4));tDiff[ti]=diff;tFert[ti]=tileFert(t,m,e);
-// Swamp bonus
-{let hasSwamp=false;
-for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
-const wi=Math.min(w.height-1,py+dy)*w.width+Math.min(w.width-1,px+dx);
-if(w.swamp&&w.swamp[wi])hasSwamp=true;}
-if(hasSwamp){tFert[ti]=Math.min(1,tFert[ti]+0.2);tDiff[ti]=Math.min(1,tDiff[ti]+0.25);}}}
-
-// ── River hydrology ──
-const rivers=computeRivers(tw,th,tElev,tMoist,tTemp);
-
-// ── River moisture boost: rivers raise local moisture, then fertility recalculates ──
-// This is the physically correct approach: rivers bring water → soil moisture rises →
-// fertility formula (bell curve) naturally produces good values.
-// Biome classification, resources, and all downstream systems react correctly.
-const riverMoist=new Float32Array(tw*th);
-{// Tributary+ rivers get moisture gradient. Streams are too small for map-scale effect.
-const riverRadius=[0,0,1,2,3];// NONE,STREAM,TRIB,MAJOR,GREAT (~21km/tile)
-const riverMoistPeak=[0,0,0.25,0.40,0.55];
-for(let ti=0;ti<tw*th;ti++){
-const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;
-const R=riverRadius[mag],peak=riverMoistPeak[mag];
-if(R<1)continue;
-const sx=ti%tw,sy=(ti-sx)/tw;
-for(let dy=-R;dy<=R;dy++){const ny=sy+dy;if(ny<0||ny>=th)continue;
-for(let dx=-R;dx<=R;dx++){const nx=(sx+dx+tw)%tw;
-const ni=ny*tw+nx;
-if(tElev[ni]<=0)continue;
-let ddx=Math.abs(dx);if(ddx>tw/2)ddx=tw-ddx;
-const dist=Math.sqrt(ddx*ddx+dy*dy);
-if(dist>R)continue;
-// Clamp minimum distance so center tile blends with surroundings (no biome spike)
-const effDist=Math.max(dist,0.8);
-const t2=effDist/R;const falloff=0.5+0.5*Math.cos(t2*Math.PI);
-const v=peak*falloff;
-riverMoist[ni]=Math.max(riverMoist[ni],v);}}}
-// Apply moisture boost and recompute fertility
-for(let ti=0;ti<tw*th;ti++){
-if(riverMoist[ti]<0.01)continue;
-const rm=riverMoist[ti];
-const oldMoist=tMoist[ti];
-// Cap moisture boost so it approaches but doesn't overshoot the bell curve peak.
-// In dry areas: full boost toward 0.50 (near peak).
-// In wet areas: minimal boost (land already has water, river just levels terrain).
-if(oldMoist<0.45){
-tMoist[ti]=Math.min(0.50,oldMoist+rm);
-}else{
-tMoist[ti]=Math.min(1,oldMoist+rm*0.08);
-}
-tFert[ti]=tileFert(tTemp[ti],tMoist[ti],tElev[ti]);}}
-
-// ── Lake moisture boost: lakes act as local moisture sources ──
-if(rivers.lake){
-const lakeRadius=3;const lakeMoistPeak=0.20;
-for(let ti=0;ti<tw*th;ti++){
-if(rivers.lake[ti]<0)continue;
-const sx=ti%tw,sy=(ti-sx)/tw;
-for(let dy=-lakeRadius;dy<=lakeRadius;dy++){const ny=sy+dy;if(ny<0||ny>=th)continue;
-for(let dx=-lakeRadius;dx<=lakeRadius;dx++){const nx=(sx+dx+tw)%tw;
-const ni=ny*tw+nx;
-if(tElev[ni]<=0||rivers.lake[ni]>=0)continue;// skip ocean and other lake tiles
-let ddx=Math.abs(dx);if(ddx>tw/2)ddx=tw-ddx;
-const dist=Math.sqrt(ddx*ddx+dy*dy);
-if(dist>lakeRadius)continue;
-const effDist=Math.max(dist,0.8);
-const falloff=0.5+0.5*Math.cos(effDist/lakeRadius*Math.PI);
-const boost=lakeMoistPeak*falloff;
-const oldM=tMoist[ni];
-if(oldM<0.45){tMoist[ni]=Math.min(0.50,oldM+boost);}
-else{tMoist[ni]=Math.min(1,oldM+boost*0.08);}
-tFert[ni]=tileFert(tTemp[ni],tMoist[ni],tElev[ni]);}}}
-// Lake tiles themselves: water, not land — zero fertility, impassable
-for(let ti=0;ti<tw*th;ti++){
-if(rivers.lake[ti]>=0){tMoist[ti]=0.8;tFert[ti]=0;tDiff[ti]=1.0;}}}
-
-// ── Pass 2: Geological fertility modifiers ──
-// These require neighbor access so run after base pass.
-
-// 2a: Tropical soil penalty — laterite soils in hot wet regions are nutrient-poor.
-// The Amazon/Congo paradox: lush forest but terrible soil for agriculture.
-// Exception: river floodplains have fresh alluvial silt, not leached laterite.
-for(let ti=0;ti<tw*th;ti++){
-const t=tTemp[ti],m=tMoist[ti],e=tElev[ti];
-if(e<=0)continue;
-if(t>0.65&&m>0.50){
-const tropicality=Math.min(1,(t-0.65)/0.25)*Math.min(1,(m-0.50)/0.35);
-// River floodplains resist laterization: fresh silt replaces leached soil annually
-const riverProtect=riverMoist[ti]>0.01?Math.min(0.8,riverMoist[ti]*2.5):0;
-tFert[ti]*=(1-tropicality*0.55*(1-riverProtect));}}
-
-// 2b: Temperate grassland bonus — chernozem/mollisol deep topsoil.
-// Moderate temp, moderate moisture, low elevation = breadbasket zones.
-for(let ti=0;ti<tw*th;ti++){
-const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
-if(e<=0||e>0.15)continue;
-// Temperate sweet spot: not too hot, not too cold
-const tempFit=Math.exp(-((t-0.45)*(t-0.45))/(2*0.10*0.10));// peak at t=0.45
-// Semi-arid to moderate moisture: grassland/steppe zone (not forest, not desert)
-const moistFit=Math.exp(-((m-0.28)*(m-0.28))/(2*0.10*0.10));// peak at m=0.28
-const bonus=tempFit*moistFit*0.30;// up to +30%
-if(bonus>0.02)tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}
-
-// 2d: Volcanic soil bonus — near plate boundaries in tectonic mode.
-// Andisols from volcanic ash are mineral-rich, excellent for agriculture.
-// bDist (plate-boundary distance) is also exposed to Pass 3's tCrop
-// so the tropical penalty can spare young volcanic / orogenic tropical
-// regions (Java, Mekong, Ganges) that escape Amazon-style lateritic
-// soil leaching.
-let bDist=null;
-if(w.pixPlate){const W=w.width,H=w.height;
-// Build a plate-boundary distance map at tile resolution
-const plateBound=new Uint8Array(tw*th);
-for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
-const px=Math.min(W-1,tx*RES),py=Math.min(H-1,ty*RES);
-const myP=w.pixPlate[py*W+px];let isBoundary=false;
-for(const[dx,dy]of DIRS){const nx2=Math.min(W-1,Math.max(0,px+dx*RES)),ny2=Math.min(H-1,Math.max(0,py+dy*RES));
-if(w.pixPlate[ny2*W+nx2]!==myP){isBoundary=true;break;}}
-if(isBoundary)plateBound[ty*tw+tx]=1;}
-// Expand boundary influence: BFS to get distance from plate boundaries.
-// Radius 15 so tCrop can see "near-orogenic" regions far enough inland
-// to cover Ganges plain / Indochina interior; volcanic bonus still
-// gates itself at <7 so its behavior is unchanged.
-bDist=new Uint8Array(tw*th);bDist.fill(255);
-const bdQ=[];
-for(let i=0;i<tw*th;i++)if(plateBound[i]&&tElev[i]>0){bDist[i]=0;bdQ.push(i);}
-for(let qi=0;qi<bdQ.length;qi++){const ci=bdQ[qi],cd=bDist[ci],cx=ci%tw,cy=(ci-cx)/tw;
-if(cd>=15)continue;// max 15-tile influence radius
-for(const[dx,dy]of DIRS){const nx=(cx+dx+tw)%tw,ny=cy+dy;if(ny<0||ny>=th)continue;
-const ni=ny*tw+nx;if(bDist[ni]<=cd+1||tElev[ni]<=0)continue;
-bDist[ni]=cd+1;bdQ.push(ni);}}
-// Apply volcanic bonus: strongest at boundary, decays with distance
-for(let ti=0;ti<tw*th;ti++){if(bDist[ti]>=7||tElev[ti]<=0)continue;
-// Only apply where there's enough moisture for agriculture
-if(tMoist[ti]<0.15)continue;
-const proximity=1-bDist[ti]/7;// 1.0 at boundary, 0 at distance 7
-// Mountains near boundaries get less bonus (already high elevation)
-const elevPenalty=tElev[ti]>0.25?Math.max(0,1-(tElev[ti]-0.25)*4):1;
-const bonus=proximity*elevPenalty*0.40;// up to +40%
-tFert[ti]=Math.min(1,tFert[ti]+tFert[ti]*bonus);}}
-
-// 2e: Coastal fertility bonus — fishing, salt, trade access.
-for(let ti=0;ti<tw*th;ti++){
-if(tCoast[ti]&&tElev[ti]>0)tFert[ti]=Math.min(1,tFert[ti]+0.06);}
-
-// ── Pass 3: Analytical overlays (Crop suitability + Crossing difficulty) ──
-// Two derived maps the user can toggle to inspect *why* settlements
-// behave where they do. Stored separately from tFert so the sim's
-// food-production math is untouched.
-//
-// tCrop — agronomic crop potential (primitive-tech baseline).
-//   Differs from tFert:
-//     - tighter moisture window (crops dislike waterlogging more than
-//       biomass does — chernozem semi-humid > rainforest)
-//     - HARDER tropical lateritic penalty (×0.25 at the rainforest
-//       core, vs ×0.45 in tFert). The Amazon/Congo paradox writ large.
-//     - hill / upland penalty (terracing without construction tech).
-//   Temperate forest zones still rate high — they ARE prime cropland,
-//   the clearing cost is a transport/construction issue handled
-//   elsewhere, not an inherent crop-quality issue.
-//
-// tCross — average per-edge crossing cost across the 4 land
-//   neighbours, using the same continuous baseEdgeCost as the sim's
-//   transport map (peopleSim/transport.js). The slope component is
-//   real — climbing a steep face costs more than walking a flat
-//   plateau even at the same absolute elevation — so the rendered
-//   gradient varies continuously rather than stair-stepping at the
-//   old e=0.20 / e=0.35 thresholds. Normalized against CROSS_MAX so
-//   most land falls in the visible mid-range; rivers / coast push to
-//   the easy end, peaks + cold / peaks + desert sit at the brutal end.
-const tCrop=new Float32Array(tw*th);
-const tCross=new Float32Array(tw*th);
-// Normalisation ceiling. With the wider cost spread, typical land
-// reads between ~1.0 (plains) and ~6 (mid-mountains); peaks + climb
-// can hit 12+. CROSS_MAX=6 maps that into the full green→yellow→red
-// gradient — plains stay bright green, hills go yellow, real
-// mountains hit red.
-const CROSS_MAX=6.0;
-const crossWorld={elev:tElev,temp:tTemp,moist:tMoist,coast:tCoast,
-                  riverMag:rivers&&rivers.riverMag?rivers.riverMag:null};
-for(let ti=0;ti<tw*th;ti++){
-const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
-if(e<=0){tCrop[ti]=0;tCross[ti]=1;continue;}
-// Crop suitability. Temperature is now calibrated to real annual-mean air temp
-// (t = 0.60 + °C/100, see tools/probe_temperature.mjs), so the optimum is a
-// realistic agricultural band rather than the old wide bell (which, tuned to the
-// previous hot scale, peaked in the cold and wrongly rated far-northern Europe /
-// Siberia as prime farmland). A COLD GATE rules out short-season high latitudes
-// (annual mean below ~-3°C ≈ 0; rising to full suitability by ~+10°C), then a
-// broad warm plateau (temperate breadbaskets → subtropics → watered tropics)
-// with only a gentle roll-off in extreme heat. Hot-wet laterite and aridity are
-// handled by the moisture bell + penalties below.
-tCrop[ti]=cropSuitability(t,m,e,tCoast[ti],rivers&&rivers.riverMag?rivers.riverMag[ti]:0,bDist?bDist[ti]:null);
-// Crossing difficulty: average edge cost from each land neighbour
-// into this tile. Edge-based so slope shows up; averaged so the
-// overlay is direction-agnostic.
-const ty=(ti/tw)|0,tx=ti-ty*tw;
-const left=ty*tw+(tx===0?tw-1:tx-1);
-const right=ty*tw+(tx===tw-1?0:tx+1);
-const up=ty>0?(ty-1)*tw+tx:-1;
-const down=ty<th-1?(ty+1)*tw+tx:-1;
-let csum=0,cnt=0;
-const nbrs=[left,right,up,down];
-for(let k=0;k<4;k++){
-const ni=nbrs[k];
-if(ni<0)continue;
-if(tElev[ni]<=0)continue;// approach across water doesn't count
-const c=baseEdgeCost(crossWorld,ni,ti);
-if(c===Infinity)continue;
-csum+=c;cnt++;}
-const cAvg=cnt>0?csum/cnt:1.0;
-tCross[ti]=Math.min(1,cAvg/CROSS_MAX);}
-
-// ── Natural resource deposits ──
-const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,rivers);
-// ── NEOLITHIC START (~9000 BC): the first farmers crystallize at the world's best river valleys ──
-// Number of starting civs emerges from geography, not hardcoded.
-// Principle: state-level organization appears wherever dense farming populations
-// concentrate along major rivers in fertile lowlands. A world with one great
-// river valley gets 1 civ. A world with five scattered fertile crescents gets 5.
-const minSpacing=Math.round(tw*0.08);
-// Pre-compute river valley density: how many river tiles + fertile tiles in radius 6.
-// A single river tile in desert scores low. A 30-tile stretch of major river through
-// fertile lowland scores high. This is what makes Nile/Euphrates/Indus stand out.
-const R_VALLEY=6;
-const valleyScore=new Float32Array(tw*th);
-for(let ty2=R_VALLEY;ty2<th-R_VALLEY;ty2++)for(let tx=0;tx<tw;tx++){
-const ti=ty2*tw+tx;if(tElev[ti]<=0)continue;
-let riverCount=0,fertSum=0,majorRiver=0,lakeCount=0;
-for(let dy=-R_VALLEY;dy<=R_VALLEY;dy++){const ny=ty2+dy;if(ny<0||ny>=th)continue;
-for(let dx=-R_VALLEY;dx<=R_VALLEY;dx++){
-if(dx*dx+dy*dy>R_VALLEY*R_VALLEY)continue;// circular area
-const nx=((tx+dx)%tw+tw)%tw;const ni=ny*tw+nx;
-if(tElev[ni]<=0)continue;
-fertSum+=tFert[ni];
-// Streams count slightly (small water source), tributaries+ full weight
-if(rivers&&rivers.riverMag[ni]>=1)riverCount+=rivers.riverMag[ni]>=2?1:0.3;// streams=0.3, trib+=1.0
-// Major/Great rivers are the real civ drivers (Nile, Euphrates scale)
-if(rivers&&rivers.riverMag[ni]>=3)majorRiver++;
-// Lakes count as water sources (Lake Chad, Sea of Galilee, Titicaca)
-if(rivers&&rivers.lake&&rivers.lake[ni]>=0)lakeCount++;}}
-// Water score: rivers + lakes. Both contribute to freshwater access.
-const waterCount=riverCount+lakeCount*0.5;// lakes count at half weight (less transport value)
-const majorWater=majorRiver+Math.min(3,lakeCount*0.3);// large lakes add some "major" score
-// Valley score: water density × fertility density. Both must be present.
-valleyScore[ti]=waterCount*majorWater*0.01*fertSum*0.02;}
-// ── NO SEED CIVILIZATIONS ──
-// All tribes emerge naturally via crystallization from background population.
-// The first civs will crystallize at the highest-scoring river valley locations
-// (Nile, Euphrates, etc.) within the first few simulation steps.
-// Imported maps can still specify tribe seeds.
-const tenure=new Uint16Array(tw*th);const frontier=new Uint8Array(tw*th);const frontierList=[];
-const tribeKnowledge=[],tribePopulation=[];const tribeKnownCoasts=[];const tribePorts2=[];const tribeBudgets=[];
-if(w.preset==="import"&&w.tribeSeeds&&w.tribeSeeds.length>0){
-for(let i=0;i<w.tribeSeeds.length;i++){
-const ts=w.tribeSeeds[i];
-const tx=Math.min(tw-1,Math.max(0,Math.round(ts.x/RES))),ty2=Math.min(th-1,Math.max(0,Math.round(ts.y/RES)));
-if(tElev[ty2*tw+tx]<=0)continue;
-const ti=ty2*tw+tx;
-tribeSizes.push(1);tribeStrength.push(tFert[ti]);
-tribeCenters.push([{x:tx,y:ty2,prestige:1.0,founded:0}]);
-owner[ti]=i;tenure[ti]=100;frontier[ti]=1;frontierList.push(ti);
-const k=initKnowledge();k.agriculture=0.4;k.metallurgy=0.15;
-tribeKnowledge.push(k);tribePopulation.push(0);// derived from bgPop on first step
-tribeKnownCoasts.push([]);tribePorts2.push([]);tribeBudgets.push(initBudget());}}
-let lc=0;for(let i=0;i<tw*th;i++)if(tElev[i]>0)lc++;
-// ── Background population in the early Neolithic (~9000 BC): graduated by valley quality ──
-// The richest river valleys cross the farming-crystallization threshold first; the
-// NEXT-best valleys start just below it and grow into it over the following
-// 50-200 steps — the staggered way agriculture radiated outward from its first
-// hearths (the Fertile Crescent, then the Yangtze/Yellow, Indus, Nile…) into the
-// neighbouring fertile lowlands over the following centuries.
-//
-// bgPop is scaled relative to the best valley score so only the very top
-// areas are near-threshold, and everything else needs time to grow.
-const bgPop=new Float32Array(tw*th);
-const bestValley=Math.max(0.01,...Array.from(valleyScore).filter(v=>v>0));
-for(let ti=0;ti<tw*th;ti++){if(tElev[ti]<=0||tTemp[ti]<0.05)continue;
-const fert=tFert[ti];const diff=tDiff[ti];
-// Base pop from fertility (the good valleys are already farmed in these Neolithic hearths)
-let bp=fert*fert*0.4*(1-diff);// lower base than before
-// Valley bonus: areas with river valley clusters get extra pop, scaled to best
-const vRatio=bestValley>0?valleyScore[ti]/bestValley:0;
-// Top valleys (vRatio>0.5): start near crystallization threshold (~0.2-0.24)
-// Medium valleys (0.2-0.5): start well below (~0.08-0.15), crystallize in 100-300 steps
-// Low valleys (<0.2): barely populated, crystallize very late or never
-bp+=vRatio*vRatio*0.18;// quadratic — only top valleys get meaningful boost
-bgPop[ti]=Math.max(0,bp);}
-// bgPop persists on owned tiles — don't zero it. It represents rural population density.
-// cityPop: urban population stored in settlements (separate from bgPop)
-const cityPop=new Float32Array(tw*th);
-// Pre-build expensive indices during createTerritory (not lazily during sim)
-const _landTiles_arr=[];const _coastalTiles_arr=[];
-for(let ti=0;ti<tw*th;ti++){
-if(tElev[ti]>0&&tTemp[ti]>=0.05)_landTiles_arr.push(ti);
-if(tElev[ti]>0&&tCoast[ti])_coastalTiles_arr.push(ti);}
-const _landTiles=new Int32Array(_landTiles_arr);
-const _coastalTiles=_coastalTiles_arr;
-const _nfBuf=new Uint8Array(tw*th);
-// Per-tribe tile index: tribeTiles[id] = Set of tile indices owned by tribe id
-const tribeTiles=[];
-for(let i=0;i<tribeSizes.length;i++)tribeTiles.push(new Set());
-for(let ti=0;ti<tw*th;ti++){if(owner[ti]>=0)tribeTiles[owner[ti]].add(ti);}
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,owner,tenure,tribeCenters,tribeSizes,tribeStrength,
-tribeKnowledge,tribePopulation,tribeKnownCoasts,tribePorts:tribePorts2,tribeBudget:tribeBudgets,bgPop,cityPop,
-tribeTiles,frontier,frontierList,_landTiles,_coastalTiles,_nfBuf,_youngTiles:[],
-landCount:lc,settled:tribeSizes.length,tribeCount:tribeSizes.length,origin:{x:tw/2,y:th/2},stepCount:0};}
-
-// ── Calendar: a steady step-based clock, anchored so the era ladder lands on real
-// history. The sim seeds Neolithic farming cradles holding STONE tools — that is
-// ~9000 BC, not 2000 BC (when the real cradles were already bronze-age cities with
-// writing), so the long Stone/Neolithic opening spans the most calendar time even
-// though little changes, then the clock accelerates as the eras shorten, the way
-// history actually ran. YEAR_ANCHORS map peopleSim step → year (negative = BC,
-// positive = AD): on the reference world the leading civilisation reaches each era
-// near the step listed (measured against the current tech pace, not guessed).
-// CLOCK_STRETCH is a manual fine-tune. The clock tracks the LEADING civilisation,
-// which develops at roughly the same per-step rate regardless of map size (only the
-// periphery lags on a big map), so ≈1.0 fits most worlds. Nudge it only if the
-// displayed year drifts from your tech: raise it if the year runs AHEAD of the tech,
-// lower it if BEHIND.
-const CLOCK_STRETCH = 1.0;
-const PRESENT_YEAR  = 2025;
-const YEAR_ANCHORS = [   // [reference step, year]
-  [0,     -9000],   // Stone / Neolithic — cradles seeded with stone tools
-  [4000,  -3300],   // Bronze — first cities, the wheel, writing
-  [8500,   -500],   // Classical / Iron Age
-  [10000,   900],   // Medieval
-  [13000,  1500],   // Renaissance
-  [18000,  1800],   // Industrial
-  [22000,  1950],   // Modern
-];
-function stepToYear(step){
-  const A=YEAR_ANCHORS, n=A.length, s=step/CLOCK_STRETCH;
-  if(s<=0)return A[0][1];
-  for(let i=1;i<n;i++){
-    if(s<=A[i][0]){
-      const [s0,y0]=A[i-1], [s1,y1]=A[i];
-      return y0+(y1-y0)*(s-s0)/(s1-s0);
-    }
-  }
-  // Past the last era anchor: keep advancing at the final (modern) rate up to the
-  // present day, then clamp — we date history, not the future.
-  const [sp,yp]=A[n-2], [sl,yl]=A[n-1];
-  return Math.min(PRESENT_YEAR, yl+(yl-yp)/(sl-sp)*(s-sl));
-}
-function yearStr(step){const y=Math.round(stepToYear(step));
-return y<0?`${-y} BC`:`${y} AD`;}
 
 // ── Transport TEST: standalone greedy claim by capital cost ──────────
 // Independent of the live sim. Each "test capital" runs a Dijkstra that
@@ -1059,23 +632,6 @@ function findRoute(ter, startTile, endTile, params){
   return{path,totalCost:cost[endTi]};
 }
 
-// ── Cultural era derived from average tribe knowledge ──
-function deriveEra(aAg,aMt,aNv,aOg){
-  if(aMt>=0.65&&aOg>=0.55)return"Industrial Age";
-  if(aMt>=0.50&&aOg>=0.42)return"Age of Empires";
-  if(aMt>=0.38)return"Iron Age";
-  if(aMt>=0.22)return"Bronze Age";
-  if(aMt>=0.08)return"Copper Age";
-  if(aAg>=0.30)return"Agrarian Age";
-  if(aAg>=0.12)return"Neolithic";
-  return"Stone Age";
-}
-function fmtPop(p){
-  if(p>=1_000_000)return(p/1_000_000).toFixed(1)+"M";
-  if(p>=1000)return(p/1000).toFixed(p>=10000?0:1)+"k";
-  if(p>=1)return p.toFixed(0);
-  return"<1";
-}
 // ── Display units (peopleSim) ───────────────────────────────────────
 // The sim runs on compact internal units; these scale them to realistic,
 // human-readable figures at the DISPLAY layer ONLY — the simulation math is
@@ -1194,7 +750,6 @@ export default function WorldSim(){
 const canvasRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
 const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
-const[coverage,setCoverage]=useState(0);const[tribeCount,setTribeCount]=useState(1);const[dominant,setDominant]=useState(null);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("tectonic");
 // Transport-test mode state. Each click in this view places a capital;
 // the BFS re-runs whenever params or capitals change.
@@ -1237,20 +792,17 @@ useEffect(()=>{ttCapitalsRef.current=ttCapitals;
   ttResultRef.current=runTransportTest(terRef.current,ttCapitals,ttParams);
   draw(terRef.current);
 },[ttCapitals,ttCost,viewMode]);
-const[oceanLevel,setOceanLevel]=useState(0.78);
 const[depthFromSea,setDepthFromSea]=useState(false);
 const[depthCeil,setDepthCeil]=useState(1.0);
 const[showPlates,setShowPlates]=useState(false);
 const[showRivers,setShowRivers]=useState(false);
 const[showStreams,setShowStreams]=useState(false);
 const[showLakes,setShowLakes]=useState(false);
-const[showPower,setShowPower]=useState(false);
 const[importStatus,setImportStatus]=useState(null);
 const[hoverInfo,setHoverInfo]=useState(null);
 const[tecPresetName,setTecPresetName]=useState("Default");
 const[rightPanel,setRightPanel]=useState("");  // "" | "params" | "tribes"
 const[showTuning,setShowTuning]=useState(false);
-const[selectedTribe,setSelectedTribe]=useState(-1);
 // peopleSim settlement selection — id of the clicked settlement, or -1.
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
 const[techTreeOpen,setTechTreeOpen]=useState(false);   // full tech-tree overlay (for the selected settlement)
@@ -1268,7 +820,7 @@ useEffect(()=>{selectedSettlementIdRef.current=selectedSettlementId;},[selectedS
 // values without needing them in its deps.
 const[layers,setLayers]=useState({
   icons:true, tints:true, borders:true, provinces:false, roads:true, seaLanes:true,
-  moneyFlow:true, ships:true, armies:true, shocks:true,
+  moneyFlow:true, ships:true, shocks:true,
   village:true, town:true, city:true, metropolis:true,
 });
 const[layersOpen,setLayersOpen]=useState(false);
@@ -1312,10 +864,12 @@ const[useRealWind,setUseRealWind]=useState(false);
 const useMercator=false;
 const[showGlobe,setShowGlobe]=useState(false);
 const[globeBuf,setGlobeBuf]=useState(null);
+const[globeVer,setGlobeVer]=useState(0);          // bumps when the (reused) globe buffer's contents changed
+const globeBufScratchRef=useRef(null);            // the one 25MB texture buffer, reused across rebuilds
+const globeStampRef=useRef(0);                    // last globe rebuild time (throttle)
 const[globeTexSize,setGlobeTexSize]=useState({w:4096,h:2048});
 const CH=useMercator?CH_MERC:CH_FLAT;
 _mercator=useMercator;
-const[mapCount,setMapCount]=useState(1);
 const[activeRes,setActiveRes]=useState(()=>{const s={};for(const r of RESOURCES)s[r.id]=true;return s;});
 const[keyOpen,setKeyOpen]=useState(true);
 useEffect(()=>{
@@ -1327,8 +881,6 @@ useEffect(()=>{
   return()=>window.removeEventListener("mouseup",up);
 },[]);
 const activeResRef=useRef(null);activeResRef.current=activeRes;
-const extraCanvasRefs=useRef([]);
-const extraWorldsRef=useRef([]);
 const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
 // ── Pan / zoom view transform ────────────────────────────────────────
 // All map drawing applies `ctx.translate(panX,panY); ctx.scale(zoom,zoom)`
@@ -1338,6 +890,7 @@ const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=u
 // frame so we don't need React state for these to repaint.
 const viewXRef=useRef(0),viewYRef=useRef(0),viewZRef=useRef(1);
 const panDragRef=useRef(null);   // {sx,sy,vx,vy} during a middle/right or drag-from-empty-space pan
+const hoverThrottleRef=useRef({ti:-2,t:0,x:0,y:0});   // hover-card re-render throttle (see onCanvasMove)
 const ZOOM_MIN=0.5,ZOOM_MAX=8;
 // peopleSim world — entity-based replacement for the legacy tribe system.
 // Bands, settlements, etc. live here. The legacy `ter` object is kept
@@ -1358,7 +911,7 @@ const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0}
 const psHistoryRef=useRef([]);
 const [chartsOpen,setChartsOpen]=useState(false);
 const [statsCopied,setStatsCopied]=useState(false);
-const oceanLevelRef=useRef(0.78);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
+const oceanLevelRef=useRef(0.78);const pendingSaveRef=useRef(null);const downloadSaveRef=useRef(null);const saveFileRef=useRef(null);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
 const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
 const useRealWindRef=useRef(false);
 // Cache terrain RGB to avoid recomputing every frame
@@ -1390,19 +943,13 @@ const W=1920,H=960,CW=CW_FLAT;
 const workerRef=useRef(null);
 // Helper: finalize a generated world (shared by worker + main thread paths)
 const finalizeWorld=useCallback((w)=>{
-setWorld(w);worldRef.current=w;const t=createTerritory(w);
-// Erase the legacy initial tribes from the `ter` object. createTerritory
-// seeded them at fertile tiles and the draw() pipeline would render them
-// as settlement dots, competing visually with peopleSim bands. We keep
-// the shell of `ter` alive for UI panels that still reference it, but
-// zero out anything that would paint on the canvas.
-if(t.tribeSizes){for(let i=0;i<t.tribeSizes.length;i++)t.tribeSizes[i]=0;}
-if(t.tribeStrength){for(let i=0;i<t.tribeStrength.length;i++)t.tribeStrength[i]=0;}
-if(t.tribeCenters){for(let i=0;i<t.tribeCenters.length;i++)t.tribeCenters[i]=[];}
-if(t.owner){t.owner.fill(-1);}
-t.settled=0;
+// generateWorld stamps the seed as `_seed`; everything downstream (people-sim
+// RNG, resource placement) reads `w.seed`. Without this alias the sim's RNG
+// silently fell back to seed 1 for EVERY world.
+if(w.seed==null)w.seed=w._seed??1;
+setWorld(w);worldRef.current=w;const t=buildTerritory(w,RES);
 terRef.current=t;
-// Rivers (and deposits) are computed inside createTerritory and stored
+// Rivers (and deposits) are computed inside buildTerritory and stored
 // on the `ter` object, not on the raw worldgen output. peopleSim reads
 // from `w` — so re-export those onto `w` so the cradle finder + settle
 // check + later trade/port phases can see water access.
@@ -1420,11 +967,18 @@ try{
   sw.onmessage=(e)=>{
     const d=e.data;
     if(d.type==='snapshot'){if(applySnapshotRef.current)applySnapshotRef.current(d);}
+    else if(d.type==='saveData'){downloadSaveRef.current&&downloadSaveRef.current(d.json,d.step);}
+    else if(d.type==='historyData'){
+      const blob=new Blob([d.json],{type:"application/json"});
+      const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+      a.download=`simman-history-t${d.step??""}.json`;a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    }
     else if(d.type==='error'){console.error('[SimWorker]',d.message,d.stack);}
   };
   sw.onerror=(err)=>{
     console.warn('[SimWorker] error — falling back to main-thread sim:',err.message);
-    try{if(simWorkerRef.current){simWorkerRef.current.terminate();}}catch(_){}
+    try{if(simWorkerRef.current){simWorkerRef.current.terminate();}}catch{/* already dead */}
     simWorkerRef.current=null;
     peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
     setPsStats(peopleSimStats(peopleRef.current));
@@ -1440,7 +994,10 @@ try{
     windX:w.windX,windY:w.windY,
     rivers:(w.rivers&&w.rivers.riverMag)?{riverMag:w.rivers.riverMag}:null,
     deposits:w.deposits};
-  sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tileRes:RES,seed:w.seed});
+  const _gm={oceanLevel:oceanLevelRef.current,tecParams:_tecParams};
+  const _pend=pendingSaveRef.current;
+  if(_pend){pendingSaveRef.current=null;sw.postMessage({type:'load',json:_pend,genMeta:_gm});}
+  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tileRes:RES,seed:w.seed,genMeta:_gm});
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
   sw.postMessage({type:'view',view:viewRef.current});
@@ -1449,53 +1006,42 @@ try{
   usedWorker=true;
 }catch(e){console.warn('[SimWorker] init failed — main-thread sim:',e);}
 if(!usedWorker){
-  peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
+  const _pend2=pendingSaveRef.current;
+  if(_pend2){pendingSaveRef.current=null;peopleRef.current=loadWorld(_pend2);}
+  else peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
   setPsStats(peopleSimStats(peopleRef.current));
 }
-setCoverage(0);setTribeCount(t.tribeCount||0);setPlaying(false);playRef.current=false;
+setPlaying(false);playRef.current=false;
 terrainCache.current=null;atlasCache.current=null;imgRef.current=null;},[]);
 const generate=useCallback((s,ol)=>{
 // Import path
 if(presetRef.current==="import"&&importedWorldRef.current){
 const w=importedWorldRef.current;importedWorldRef.current=null;finalizeWorld(w);return;}
-// Tectonic: use Web Worker for off-main-thread generation
-if(presetRef.current==="tectonic"){
+const _ol=ol!==undefined?ol:oceanLevelRef.current;
+// Real-wind Earth-Sim stays on the main thread: the NCEP data set lives in
+// this bundle only (duplicating 2.3MB of JSON into the worker isn't worth a
+// rare power-user toggle). EVERYTHING else generates in the worker — the old
+// main-thread path froze the UI 2-5s for every non-tectonic preset.
+const _realWind=presetRef.current==="earth_sim"&&useRealWindRef.current&&isRealWindAvailable();
+if(!_realWind){
 try{
 if(workerRef.current)workerRef.current.terminate();
 const worker=new WorldGenWorker();workerRef.current=worker;
 worker.onmessage=(e)=>{
 if(e.data.type==='result'){console.log(`[Worker] Done in ${e.data.time?.toFixed(0)}ms`);finalizeWorld(e.data.world);}
 else{console.warn('[Worker]',e.data.type,e.data.message||'');
-finalizeWorld(generateWorld(W,H,s,'tectonic',ol!==undefined?ol:oceanLevelRef.current,true,false,_tecParams));}};
+finalizeWorld(generateWorld(W,H,s,presetRef.current,_ol,true,false,_tecParams));}};
 worker.onerror=(err)=>{console.warn('[Worker] Error:',err.message);
-finalizeWorld(generateWorld(W,H,s,'tectonic',ol!==undefined?ol:oceanLevelRef.current,true,false,_tecParams));};
-worker.postMessage({type:'generate',W,H,seed:s,preset:'tectonic',oceanLevel:ol!==undefined?ol:oceanLevelRef.current,tecParams:_tecParams});
+finalizeWorld(generateWorld(W,H,s,presetRef.current,_ol,true,false,_tecParams));};
+worker.postMessage({type:'generate',W,H,seed:s,preset:presetRef.current,oceanLevel:_ol,tecParams:_tecParams});
 return;}catch(e){console.warn('[Worker] Init failed:',e);}}
-// All other presets: main thread
-finalizeWorld(generateWorld(W,H,s,presetRef.current,ol!==undefined?ol:oceanLevelRef.current,true,useRealWindRef.current,_tecParams));},[finalizeWorld]);
+// Main thread: real-wind Earth-Sim (or worker init failure fallback).
+finalizeWorld(generateWorld(W,H,s,presetRef.current,_ol,true,_realWind,_tecParams,{isRealWindAvailable,fillRealWind}));},[finalizeWorld]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 // Clear caches when globe toggled off (canvas remounts)
 useEffect(()=>{if(!showGlobe){terrainCache.current=null;imgRef.current=null;windParticlesRef.current=null;}
 },[showGlobe]);
-
-// Generate extra seed preview maps (same params, different seeds)
-const PW=480,PH=240;
-const generateExtraMaps=useCallback(()=>{
-if(mapCount<=1||presetRef.current!=="tectonic")return;
-const nf={initNoise,fbm,ridged,noise2D,worley};
-let idx=0;
-const genNext=()=>{
-if(idx>=mapCount-1)return;
-const extraSeed=seed+idx+1;
-const world=generateTectonicWorld(PW,PH,extraSeed,nf,_tecParams);
-extraWorldsRef.current[idx]={seed:extraSeed,world};
-const canvas=extraCanvasRefs.current[idx];
-if(canvas)renderPreview(canvas,world,PW,PH);
-idx++;requestAnimationFrame(genNext);};
-requestAnimationFrame(genNext);
-},[seed,mapCount]);
-useEffect(()=>{generateExtraMaps();},[seed,mapCount,generateExtraMaps]);
 
 // Build terrain RGB cache at tile resolution (one entry per tile)
 const updateTerrainCache=useCallback((w,ter)=>{
@@ -1528,7 +1074,6 @@ const cv=document.createElement("canvas");cv.width=CW;cv.height=CH;
 const octx=cv.getContext("2d");
 const img=new ImageData(CW,CH);const d=img.data;
 const N=CW*CH,tw=ter.tw,th=ter.th;
-const rm=ter.rivers?ter.rivers.riverMag:null;
 const lk=ter.rivers&&ter.rivers.lake?ter.rivers.lake:null;
 // Per-screen-pixel data index + water mask; find land elevation ceiling
 const dataIdx=new Int32Array(N),water=new Uint8Array(N);
@@ -1924,73 +1469,6 @@ const tr=(tc[ti*3]*landDim)|0,tg=(tc[ti*3+1]*landDim)|0,tb=(tc[ti*3+2]*landDim)|
 r=(r*heatW+tr*(1-heatW))|0;g=(g*heatW+tg*(1-heatW))|0;b=(b*heatW+tb*(1-heatW))|0;
 }
 d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
-}else if(vm==="population"){
-// Population density heatmap: dark→blue→cyan→green→yellow→orange→red→white
-// Uses bgPop + cityPop per tile. Log scale so villages and cities both visible.
-if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
-const tc=terrainCache.current;
-const ptw=ter.tw,pth=ter.th;const pCityPop=ter.cityPop;
-// Find max total pop for normalization (log scale)
-let maxPop=1;for(let pti=0;pti<ptw*pth;pti++){
-const tp=ter.bgPop[pti]+(pCityPop?pCityPop[pti]:0);if(tp>maxPop)maxPop=tp;}
-const logMax=Math.log(maxPop+1);
-for(let ti=0;ti<N;ti++){const tx=ti%CW,ty2=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty2,CH,H))),si=sy*W+sx;
-const e=w.elevation[si];const pi4=ti<<2;
-if(e<=sl){d[pi4]=4;d[pi4+1]=5;d[pi4+2]=12;d[pi4+3]=255;continue;}
-// Map to tile coords
-const ttx=Math.min(ptw-1,tx),tty=Math.min(pth-1,Math.round(screenYtoDataY(ty2,CH,H)/RES));
-const tti=tty*ptw+ttx;
-const pop=(ter.bgPop[tti]||0)+(pCityPop?pCityPop[tti]:0);
-if(pop<0.01){// empty land — dim terrain
-const tr2=(tc[ti*3]*0.2)|0,tg2=(tc[ti*3+1]*0.2)|0,tb2=(tc[ti*3+2]*0.2)|0;
-d[pi4]=tr2;d[pi4+1]=tg2;d[pi4+2]=tb2;d[pi4+3]=255;continue;}
-// Log-scale normalization: 0→1
-const t=Math.min(1,Math.log(pop+1)/logMax);
-let r,g,b;
-// Dark navy → blue → cyan → green → yellow → orange → red → white
-if(t<0.08){const s=t/0.08;r=(5+s*10)|0;g=(5+s*15)|0;b=(30+s*60)|0;}
-else if(t<0.18){const s=(t-0.08)/0.10;r=(15)|0;g=(20+s*80)|0;b=(90+s*80)|0;}
-else if(t<0.30){const s=(t-0.18)/0.12;r=(15-s*5)|0;g=(100+s*80)|0;b=(170-s*50)|0;}
-else if(t<0.45){const s=(t-0.30)/0.15;r=(10+s*80)|0;g=(180+s*50)|0;b=(120-s*90)|0;}
-else if(t<0.60){const s=(t-0.45)/0.15;r=(90+s*160)|0;g=(230+s*20)|0;b=(30-s*20)|0;}
-else if(t<0.75){const s=(t-0.60)/0.15;r=(250)|0;g=(250-s*100)|0;b=(10+s*10)|0;}
-else if(t<0.90){const s=(t-0.75)/0.15;r=(250)|0;g=(150-s*100)|0;b=(20+s*10)|0;}
-else{const s=(t-0.90)/0.10;r=(250+s*5)|0;g=(50+s*150)|0;b=(30+s*180)|0;}// white-hot
-// Slight terrain blend for topographic context
-const landDim=0.15;const heatW=0.80;
-const tr=(tc[ti*3]*landDim)|0,tg=(tc[ti*3+1]*landDim)|0,tb=(tc[ti*3+2]*landDim)|0;
-r=(r*heatW+tr*(1-heatW))|0;g=(g*heatW+tg*(1-heatW))|0;b=(b*heatW+tb*(1-heatW))|0;
-d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
-}else if(vm==="transport"){
-// Transport cost heatmap from each tribe's CAPITAL: green(cheap/close)
-// → yellow → red(expensive) → black(unreachable from capital).
-// Distinct from the food/trade `transportCost` field which counts any
-// city as a source; this one shows reach from the seat of power.
-if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
-const tc=terrainCache.current;const ptw=ter.tw,pth=ter.th;
-const trc=ter.transportFromCap||ter.transportCost;
-for(let ti=0;ti<N;ti++){const tx=ti%CW,ty2=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty2,CH,H))),si=sy*W+sx;
-const e=w.elevation[si];const pi4=ti<<2;
-if(e<=0){d[pi4]=4;d[pi4+1]=5;d[pi4+2]=12;d[pi4+3]=255;continue;}
-const ttx=Math.min(ptw-1,tx),tty=Math.min(pth-1,Math.round(screenYtoDataY(ty2,CH,H)/RES));
-const tti=tty*ptw+ttx;
-const cost2=trc?trc[tti]:999;
-if(cost2>=999){// unreachable
-d[pi4]=(tc[ti*3]*0.15)|0;d[pi4+1]=(tc[ti*3+1]*0.15)|0;d[pi4+2]=(tc[ti*3+2]*0.15)|0;d[pi4+3]=255;continue;}
-// Log scale shows terrain variation clearly. Plains-only path cost
-// grows ~1.5 per tile, so a 100-tile journey is ~150; mountains 5-6x.
-// Normalize at log10(cost+1) / log10(401) so 0..400 maps to 0..1.
-const t=Math.min(1,Math.log10(cost2+1)/2.6);let r,g,b;
-if(t<0.2){const s=t/0.2;r=(20+s*30)|0;g=(180-s*20)|0;b=(40-s*20)|0;}
-else if(t<0.5){const s=(t-0.2)/0.3;r=(50+s*180)|0;g=(160-s*60)|0;b=(20+s*10)|0;}
-else if(t<0.8){const s=(t-0.5)/0.3;r=(230-s*80)|0;g=(100-s*70)|0;b=(30-s*10)|0;}
-else{const s=(t-0.8)/0.2;r=(150-s*100)|0;g=(30-s*20)|0;b=(20-s*10)|0;}
-const landDim=0.15;const heatW=0.80;
-const tr2=(tc[ti*3]*landDim)|0,tg2=(tc[ti*3+1]*landDim)|0,tb2=(tc[ti*3+2]*landDim)|0;
-r=(r*heatW+tr2*(1-heatW))|0;g=(g*heatW+tg2*(1-heatW))|0;b=(b*heatW+tb2*(1-heatW))|0;
-d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="transport-test"){
 // Standalone test: each click placed a capital; the BFS claims tileLimit
 // tiles per capital by cheapest transport cost using the test params.
@@ -2053,72 +1531,6 @@ for(const ep of epts){
     const pi=(py*CW+px)<<2;d[pi]=255;d[pi+1]=255;d[pi+2]=180;d[pi+3]=255;
   }
 }
-}else if(vm==="tribes"){
-const eraColor=(k)=>{if(!k)return[55,48,38];
-const ag=k.agriculture,mt=k.metallurgy,org=k.organization;
-if(mt>0.83&&org>0.55)return[90,75,100];
-if(org>0.5&&mt>0.4)return[130,55,55];
-if(mt>0.5)return[100,100,110];
-if(mt>0.3)return[155,120,55];
-if(mt>0.15)return[170,110,55];
-if(ag>0.3)return[90,110,50];
-if(ag>0.1)return[75,82,45];
-return[55,48,38];};
-const eraR=new Uint8Array(ter.tribeCenters.length),eraG=new Uint8Array(ter.tribeCenters.length),eraB=new Uint8Array(ter.tribeCenters.length);
-for(let t2=0;t2<ter.tribeCenters.length;t2++){
-const k2=ter.tribeKnowledge&&ter.tribeKnowledge[t2]?ter.tribeKnowledge[t2]:null;
-const[er2,eg2,eb2]=eraColor(k2);eraR[t2]=er2;eraG[t2]=eg2;eraB[t2]=eb2;}
-// ── FOCUSED TRIBE VIEW: when a tribe is selected ──
-const sel=ter._selectedTribe;
-const focused=sel>=0&&ter.tribeSizes[sel]>0;
-// Pre-compute relationships and awareness for focused tribe
-let knownTribes=null,relColors=null;
-if(focused){
-knownTribes=new Set();knownTribes.add(sel);relColors={};
-// Known via border contact
-if(ter._borderContacts&&ter._borderContacts[sel]){
-for(const nid in ter._borderContacts[sel]){const j=parseInt(nid);
-if(ter.tribeSizes[j]>0){knownTribes.add(j);relColors[j]=tribeRelation(ter,sel,j);}}}
-// Known via maritime (known coasts)
-if(ter.tribeKnownCoasts&&ter.tribeKnownCoasts[sel]){
-for(const kc of ter.tribeKnownCoasts[sel]){
-if(kc.owner>=0&&ter.tribeSizes[kc.owner]>0){knownTribes.add(kc.owner);
-if(!relColors[kc.owner])relColors[kc.owner]=tribeRelation(ter,sel,kc.owner);}}}}
-for(let ti=0;ti<N;ti++){
-const e=ter.tElev[ti],ow=ter.owner[ti];let r,g,b;
-if(e<=sl){r=6;g=8;b=16;}
-else if(ow<0){r=focused?15:25;g=focused?14:23;b=focused?13:20;}// darker unowned in focused
-else{
-const tx3=ti%ter.tw,ty3=(ti-tx3)/ter.tw;let isBorder=false;let borderNeighbor=-1;
-for(let di=0;di<4;di++){
-const dnx=((tx3+DIRS[di][0])%ter.tw+ter.tw)%ter.tw,dny=ty3+DIRS[di][1];
-if(dny<0||dny>=ter.th){isBorder=true;break;}
-const nOwner=ter.owner[dny*ter.tw+dnx];
-if(nOwner!==ow){isBorder=true;if(nOwner>=0)borderNeighbor=nOwner;break;}}
-if(focused){
-// FOCUSED VIEW: no era colors — pure relationship-based coloring
-if(ow===sel){
-// Selected tribe: light cream fill, white borders
-if(isBorder){r=220;g=215;b=200;}
-else{r=180;g=175;b=160;}
-}else if(knownTribes&&knownTribes.has(ow)){
-// Known tribe: FULL relationship color fill (not just borders)
-const rel=relColors[ow]||'neutral';
-if(rel==='fight'){// Red — at war
-if(isBorder){r=200;g=50;b=40;}else{r=140;g=40;b=35;}}
-else if(rel==='trade'){// Gold — trading
-if(isBorder){r=200;g=180;b=50;}else{r=140;g=125;b=40;}}
-else if(rel==='friendly'){// Green — friendly
-if(isBorder){r=60;g=160;b=60;}else{r=45;g=110;b=45;}}
-else{// Neutral (known but no relationship)
-if(isBorder){r=120;g=115;b=105;}else{r=70;g=68;b=62;}}
-}else{
-// Unknown: fog of war
-r=18;g=16;b=14;}}
-else{// Normal (no focus): white borders, era fill
-if(isBorder){r=200;g=195;b=185;}
-else{r=eraR[ow];g=eraG[ow];b=eraB[ow];}}}
-const pi4=ti<<2;d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
 }else if(vm==="fertility"){
 // Fertility overlay — green (high) → yellow → red (low)
 for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
@@ -2300,10 +1712,17 @@ if(mag>=4&&rivers){d[pi4]=55;d[pi4+1]=150;d[pi4+2]=245;}
 else if(mag>=3&&rivers){d[pi4]=45;d[pi4+1]=120;d[pi4+2]=220;}
 else if(mag>=2&&rivers){d[pi4]=35;d[pi4+1]=95;d[pi4+2]=190;}
 else if(mag===1&&streams){const a=0.45;d[pi4]=(d[pi4]*(1-a)+25*a)|0;d[pi4+1]=(d[pi4+1]*(1-a)+65*a)|0;d[pi4+2]=(d[pi4+2]*(1-a)+150*a)|0;}}}}
-// Update globe texture from rendered canvas data (supports all view modes)
+// Update globe texture from rendered canvas data (supports all view modes).
+// The 25MB buffer is allocated ONCE and reused, and the rebuild is throttled
+// to ~4Hz — building + re-uploading a 4096×2048 texture on every snapshot
+// (30/s) churned ~750MB/s of allocations while the globe was open.
 if(showGlobeRef.current){
+const _gNow=performance.now();
+if(_gNow-(globeStampRef.current||0)>=250){
+globeStampRef.current=_gNow;
 const gW=4096,gH=2048;
-const buf=new Uint8Array(gW*gH*3);
+let buf=globeBufScratchRef.current;
+if(!buf||buf.length!==gW*gH*3){buf=globeBufScratchRef.current=new Uint8Array(gW*gH*3);}
 for(let gy=0;gy<gH;gy++){
 const lat=Math.abs(gy/gH-0.5)*2;
 const polarBlend=Math.max(0,Math.min(1,(lat-0.83)/0.17));
@@ -2321,7 +1740,8 @@ let b=(d[p00+2]*(1-fx)+d[p10+2]*fx)*(1-fy)+(d[p01+2]*(1-fx)+d[p11+2]*fx)*fy;
 if(polarBlend>0){const pr=220,pg=225,pb=235;
 r=r*(1-polarBlend)+pr*polarBlend;g=g*(1-polarBlend)+pg*polarBlend;b=b*(1-polarBlend)+pb*polarBlend;}
 const ti3=(gy*gW+gx)*3;buf[ti3]=r|0;buf[ti3+1]=g|0;buf[ti3+2]=b|0;}}
-setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});}
+setGlobeBuf(buf);setGlobeTexSize({w:gW,h:gH});setGlobeVer(v=>v+1);}
+}
 }
 if(!ctx)return;
 if(!_baseHit){
@@ -2339,137 +1759,6 @@ if(!_baseHit){
     _bl.getContext('2d').putImageData(img,0,0);ctx.drawImage(_bl,0,0);
   }
 }
-// Draw settlements — size scales continuously with log(population)
-{const selSt=ter._selectedTribe;const hasSel=selSt>=0&&ter.tribeSizes[selSt]>0&&vm==="tribes";
-for(let st=0;st<ter.tribeCenters.length;st++){const centers=ter.tribeCenters[st];
-if(!centers||ter.tribeSizes[st]<=0)continue;
-const isSelected=st===selSt;
-const dimmed=hasSel&&!isSelected;
-// Render top 100 centers max per tribe (sorted by pop, largest first)
-const drawLimit=isSelected?200:(dimmed?20:100);
-for(let ci=0;ci<Math.min(centers.length,drawLimit);ci++){const cx2=centers[ci].x+0.5,cy2=dataYtoScreenY(centers[ci].y*RES,H,CH)+0.5;
-const isCapital=ci===0;
-const cPop=centers[ci].pop||0;
-// Radius: log scale. village(0.05)→0.7, town(0.5)→1.3, city(3)→1.8, large(100)→3.7
-const r2=cPop>0?Math.max(0.5,Math.min(5,0.5+Math.log(cPop+1)*0.7)):0.5;
-if(dimmed&&r2<1.0)continue;// skip tiny settlements of other tribes in focused mode
-ctx.beginPath();ctx.arc(cx2,cy2,dimmed?r2*0.5:r2,0,Math.PI*2);
-if(dimmed){ctx.fillStyle="rgba(120,115,105,0.2)";ctx.fill();}
-else if(isSelected){
-const tc2=tribeRGB(st);const bri=isCapital?1.3:1.0;
-ctx.fillStyle=`rgba(${Math.min(255,tc2[0]*bri|0)},${Math.min(255,tc2[1]*bri|0)},${Math.min(255,tc2[2]*bri|0)},0.95)`;
-ctx.fill();
-if(r2>=0.8){ctx.beginPath();ctx.arc(cx2,cy2,r2+0.7,0,Math.PI*2);
-ctx.strokeStyle=isCapital?"rgba(255,255,255,0.8)":"rgba(255,255,255,0.35)";ctx.lineWidth=isCapital?1:0.5;ctx.stroke();}
-if(isCapital&&r2>=1){ctx.beginPath();ctx.arc(cx2,cy2,r2+1.8,0,Math.PI*2);
-ctx.strokeStyle="rgba(255,255,220,0.3)";ctx.lineWidth=0.5;ctx.stroke();}
-}else{
-const tier=settleTier(cPop);const tn=tier?tier.name:'';
-const alpha=isCapital?0.9:Math.max(0.25,Math.min(0.85,0.15+r2*0.18));
-if(isCapital)ctx.fillStyle=`rgba(240,235,220,${alpha})`;
-else if(tn==='large'||tn==='mega')ctx.fillStyle=`rgba(220,200,160,${alpha})`;
-else if(tn==='medium'||tn==='small')ctx.fillStyle=`rgba(195,190,175,${alpha})`;
-else ctx.fillStyle=`rgba(160,155,145,${alpha})`;
-ctx.fill();
-if(isCapital||r2>=1.8){ctx.beginPath();ctx.arc(cx2,cy2,r2+0.7,0,Math.PI*2);
-ctx.strokeStyle=isCapital?"rgba(60,55,45,0.6)":"rgba(80,75,65,0.3)";ctx.lineWidth=isCapital?0.8:0.5;ctx.stroke();}
-}}// end else, for(ci)
-// ── Info label at capital (skip in focused mode — too cluttered) ──
-const focusedMode=hasSel;
-if(!focusedMode&&ter.tribeSizes[st]>=4){
-const cap=centers[0];const cx2=cap.x+0.5,cy2=dataYtoScreenY(cap.y*RES,H,CH)+0.5;
-const k=ter.tribeKnowledge&&ter.tribeKnowledge[st]?ter.tribeKnowledge[st]:null;
-const pop=ter.tribePopulation?Math.round(ter.tribePopulation[st]):0;
-const sz=ter.tribeSizes[st];
-// Era label
-let era="Stone";
-if(k){if(k.metallurgy>0.85&&k.organization>0.6)era="Industrial";
-else if(k.organization>0.5&&k.metallurgy>0.4)era="Empire";
-else if(k.metallurgy>0.5)era="Iron";
-else if(k.metallurgy>0.3)era="Bronze";
-else if(k.metallurgy>0.15)era="Copper";
-else if(k.agriculture>0.3)era="Farming";
-else if(k.agriculture>0.1)era="Neolithic";}
-// Population label, scaled to real people (see fmtPeople / POP_SCALE).
-const popStr=fmtPeople(pop);
-// Two-line label: era + personality | pop + tiles
-const pers=ter.tribeBudget&&ter.tribeBudget[st]?ter.tribeBudget[st].personality:"";
-const line1=pers?`${era} ${pers}`:era;
-const line2=`${popStr}  ${sz}t`;
-ctx.font="bold 6px sans-serif";
-const w1=ctx.measureText(line1).width;
-ctx.font="5px sans-serif";
-const w2=ctx.measureText(line2).width;
-const boxW=Math.max(w1,w2)+6;
-const boxH=15;
-const bx=cx2-boxW/2,by=cy2+5;
-// Background box
-ctx.fillStyle="rgba(6,8,16,0.8)";
-ctx.beginPath();
-ctx.roundRect(bx,by,boxW,boxH,2);ctx.fill();
-ctx.strokeStyle="rgba(200,195,185,0.3)";ctx.lineWidth=0.5;
-ctx.beginPath();ctx.roundRect(bx,by,boxW,boxH,2);ctx.stroke();
-// Era name (bold, white)
-ctx.font="bold 6px sans-serif";
-ctx.fillStyle="rgba(220,215,200,0.95)";
-ctx.fillText(line1,cx2-w1/2,by+6.5);
-// Stats line (smaller, dimmer)
-ctx.font="5px sans-serif";
-ctx.fillStyle="rgba(180,175,160,0.75)";
-ctx.fillText(line2,cx2-w2/2,by+12.5);
-}}// end if(!focusedMode), for(st)
-}// end block scope for settlement drawing
-// ── Draw ports (enhanced in focused mode) ──
-{const focSel=ter._selectedTribe;const isFocused=focSel>=0&&ter.tribeSizes[focSel]>0&&vm==="tribes";
-if(ter.tribePorts){
-for(let st=0;st<ter.tribePorts.length;st++){
-if(!ter.tribePorts[st]||ter.tribeSizes[st]<=0)continue;
-// In focused mode: only show selected tribe's ports (large) and known tribe ports (small)
-if(isFocused&&st!==focSel){
-const fKnown=ter._borderContacts&&ter._borderContacts[focSel]&&ter._borderContacts[focSel][st];
-const fMaritime=ter.tribeKnownCoasts&&ter.tribeKnownCoasts[focSel]&&ter.tribeKnownCoasts[focSel].some(kc=>kc.owner===st);
-if(!fKnown&&!fMaritime)continue;}// skip unknown tribe's ports
-const isSelected=st===focSel;
-for(const port of ter.tribePorts[st]){
-const px=port.x+0.5,py=dataYtoScreenY(port.y*RES,H,CH)+0.5;
-const sz2=isSelected&&isFocused?2.5:1.2;// bigger ports for selected tribe
-ctx.save();ctx.translate(px,py);ctx.rotate(Math.PI/4);
-ctx.fillStyle=isSelected?"rgba(60,160,255,0.95)":"rgba(100,160,220,0.6)";
-ctx.fillRect(-sz2,-sz2,sz2*2,sz2*2);
-if(isSelected&&isFocused){ctx.strokeStyle="rgba(200,230,255,0.8)";ctx.lineWidth=0.6;
-ctx.strokeRect(-sz2-0.5,-sz2-0.5,sz2*2+1,sz2*2+1);}
-ctx.restore();}}}}
-// ── Draw maritime discovery markers: dots at each known coast location ──
-// No lines — just markers at discovered coastal locations. Each marker is on a real coast tile.
-// The chain of markers shows the exploration route without any land-crossing artifacts.
-{const focSel2=ter._selectedTribe;const isFocused2=focSel2>=0&&ter.tribeSizes[focSel2]>0&&vm==="tribes";
-if(ter.tribeKnownCoasts){
-for(let st=0;st<ter.tribeKnownCoasts.length;st++){
-if(!ter.tribeKnownCoasts[st]||ter.tribeSizes[st]<=0)continue;
-if(isFocused2&&st!==focSel2)continue;
-const know=ter.tribeKnowledge&&ter.tribeKnowledge[st]?ter.tribeKnowledge[st]:null;
-if(!know||know.navigation<0.1)continue;
-for(const kc of ter.tribeKnownCoasts[st]){
-const sx=kc.x+0.5,sy=dataYtoScreenY(kc.y*RES,H,CH)+0.5;
-let col='100,160,220';let alpha=0.5;let dotR=0.8;
-if(isFocused2){dotR=2.0;alpha=0.85;
-if(kc.owner>=0&&kc.owner!==st){const rel=tribeRelation(ter,st,kc.owner);
-col=rel==='fight'?'220,80,60':rel==='trade'?'220,200,80':rel==='friendly'?'80,180,80':'100,160,220';}
-else if(kc.owner<0){col='180,230,255';alpha=0.7;}}// unowned — light blue
-ctx.fillStyle=`rgba(${col},${alpha})`;
-ctx.beginPath();ctx.arc(sx,sy,dotR,0,Math.PI*2);ctx.fill();
-// In focused mode, draw a ring around the dot for visibility
-if(isFocused2){ctx.strokeStyle=`rgba(${col},${alpha*0.5})`;ctx.lineWidth=0.5;
-ctx.beginPath();ctx.arc(sx,sy,dotR+1,0,Math.PI*2);ctx.stroke();}}}}}
-// ── Highlight selected tribe (only when NOT in focused tribes view — focused view handles it inline) ──
-if(ter._selectedTribe>=0&&ter.tribeSizes[ter._selectedTribe]>0&&vm!=="tribes"){
-const sel=ter._selectedTribe;
-for(let ti=0;ti<N;ti++){if(ter.owner[ti]!==sel)continue;
-const tx3=ti%ter.tw,ty3=(ti-tx3)/ter.tw;
-for(const[dx,dy]of DIRS){const nx=((tx3+dx)%ter.tw+ter.tw)%ter.tw,ny3=ty3+dy;
-if(ny3<0||ny3>=ter.th)continue;
-if(ter.owner[ny3*ter.tw+nx]!==sel){
-ctx.fillStyle="rgba(255,230,100,0.6)";ctx.fillRect(tx3,dataYtoScreenY(ty3*RES,H,CH),1,1);break;}}}}
 // Wind particles — animated white streaks that flow along wind vectors
 if(vm==="wind"&&w.windX&&w.windY){
 const NUM_PARTICLES=3000;const TRAIL_LEN=12;const MAX_AGE=80;
@@ -2522,8 +1811,6 @@ const headAlpha=brightness*0.9;
 ctx.fillStyle=`rgba(255,255,255,${headAlpha.toFixed(2)})`;
 ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
 }
-// Power view removed — replaced by era-based rendering and focused view
-// Power centers removed — centers already drawn in main center loop above}
 // ── peopleSim entity overlay ────────────────────────────────────────
 // When vm === "roads", render ONLY the road network — no farmland,
 // no settlement icons. Each disconnected network (closed graph of
@@ -2535,6 +1822,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmRoads = viewRef.current === "roads";
   const vmMoney = viewRef.current === "money";
   const vmCountry = viewRef.current === "country";
+  const vmCulture = viewRef.current === "culture";
+  const vmFaith = viewRef.current === "faith";
   const vmFR = viewRef.current === "frTerritory";
   if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
@@ -2696,7 +1985,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmFR?32:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmFR?32:0)|(vmCulture?64:0)|(vmFaith?128:0);
     if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
@@ -2708,6 +1997,46 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       const owner=psw._territoryOwner, claimArr=psw._countryClaim;
       // ── Country view: BOLD opaque political map with thick borders + live,
       // maximally-distinct neighbour colours (assignCountryColors). ──
+      // ── Culture / Faith views: who LIVES on each tile (dominant culture
+      // or faith of the settlement whose territory it is) — peoples and
+      // creeds, not states. Same machinery, different per-settlement key. ──
+      if((vmCulture||vmFaith)&&owner){
+        const tw=psw.tw,th=psw.th;
+        let maxId=0;for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
+        const fillById=new Array(maxId+1);const culById=new Int32Array(maxId+1).fill(-1);
+        const fillByCulture=new Map();
+        const reg=vmFaith?psw.faiths:psw.cultures;
+        for(const s of psw.settlements){if(!s||s.mode!=="settled")continue;
+          const cid=(vmFaith?s.faithId:s.cultureId)??-1;culById[s.id]=cid;
+          let fs=fillByCulture.get(cid);
+          if(fs===undefined){
+            const cul=reg&&reg.get(cid);
+            const h=cul?cul.hue|0:((cid*97)%360+360)%360;
+            const sat=vmFaith&&cul&&cul.kind!=="organized"?30:58;
+            fs=cid<0?"hsla(40,8%,55%,0.6)":`hsl(${h},${sat}%,52%)`;fillByCulture.set(cid,fs);}
+          fillById[s.id]=fs;}
+        let lastFs=null;
+        for(let ti=0;ti<owner.length;ti++){
+          const oid=owner[ti];if(oid<0||oid>maxId)continue;
+          const fs=fillById[oid];if(fs===undefined)continue;
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+          octx.fillRect(sx,sy,TR+0.6,TR+0.6);
+        }
+        // borders where the dominant PEOPLE changes
+        octx.strokeStyle="rgba(8,8,12,0.85)";octx.lineWidth=Math.max(1.2,TR*0.8);octx.beginPath();
+        for(let ti=0;ti<owner.length;ti++){
+          const oid=owner[ti];if(oid<0||oid>maxId)continue;
+          const cc=culById[oid];
+          const py=(ti/tw)|0,px=ti-py*tw;
+          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          const ro=owner[py*tw+(px===tw-1?0:px+1)];
+          if(ro>=0&&ro<=maxId&&culById[ro]!==cc){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(py<th-1){const dno=owner[ti+tw];if(dno>=0&&dno<=maxId&&culById[dno]!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+        }
+        octx.stroke();
+      }
       if(vmCountry&&claimArr){
         const tw=psw.tw,th=psw.th;
         const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current);
@@ -2736,7 +2065,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         octx.stroke();
       }
-      if(!vmCountry&&!vmFR&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmFR&&!vmCulture&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map();
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
@@ -2757,7 +2086,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
-      } else if(!vmCountry&&!vmFR&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmFR&&!vmCulture&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -3043,19 +2372,6 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       ctx.restore();
     }
   }
-  // ── Marching reinforcement columns ── small chevrons in the realm's colour
-  // moving along roads toward a besieged settlement (size hints troop count).
-  if(psw&&ctx&&psw.armies&&psw.armies.length&&layersRef.current.armies){
-    const TR=psw.tileRes;
-    for(const m of psw.armies){
-      const mx=m.x*TR,my=dataYtoScreenY(m.y*TR,H,CH);
-      const hue=((m.countryId*61)%360+360)%360;
-      const r=1.8+Math.min(3,Math.sqrt(Math.max(1,m.troops))*0.4);
-      ctx.beginPath();ctx.moveTo(mx,my-r);ctx.lineTo(mx+r,my+r);ctx.lineTo(mx-r,my+r);ctx.closePath();
-      ctx.fillStyle=`hsl(${hue},70%,45%)`;ctx.fill();
-      ctx.lineWidth=0.6;ctx.strokeStyle="rgba(20,10,0,0.85)";ctx.stroke();
-    }
-  }
 }
 },[updateTerrainCache,buildAtlas,CH]);
 
@@ -3074,7 +2390,9 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.countryClaim)psw._countryClaim=snap.countryClaim;  // capital-claim prototype (Capital Claim view); keep last
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
-  psw.ships=snap.ships;psw.armies=snap.armies;
+  if(snap.cultures){const cm=new Map();for(const c of snap.cultures)cm.set(c.id,c);psw.cultures=cm;}
+  if(snap.faiths){const fm=new Map();for(const f of snap.faiths)fm.set(f.id,f);psw.faiths=fm;}
+  psw.ships=snap.ships;
   psw._chronicle=snap.chronicle||null;             // selected realm's history (null when nothing selected)
   const setts=snap.settlements||[];
   if(snap.selected){const sel=setts.find(x=>x.id===snap.selected.id);if(sel)Object.assign(sel,snap.selected);}
@@ -3084,13 +2402,13 @@ const applySnapshot=useCallback((snap)=>{
   for(const c of (snap.countries||[])){
     const members=c.memberIds.map(id=>byId.get(id)).filter(Boolean);
     const capital=byId.get(c.capitalId)||members[0]||null;
-    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_momentum:c._momentum,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel,personality:c.personality});
+    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,name:c.name,ruler:c.ruler,faithId:c.faithId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_momentum:c._momentum,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel,personality:c.personality});
   }
   psw.countries=countries;
   // HUD state updates re-render the whole component, so throttle them to ~5Hz
   // (the sim numbers don't need 30Hz); drawing still happens every snapshot.
   psw._snapN=(psw._snapN||0)+1;
-  if(psw._snapN%6===1){if(snap.stats)setPsStats(snap.stats);setTribeCount(setts.length);}
+  if(psw._snapN%6===1){if(snap.stats)setPsStats(snap.stats);}
   // History sample for the charts/export (gated by sim-step, reset on new run).
   if(snap.stats){
     const H=psHistoryRef.current, st=snap.step, last=H[H.length-1];
@@ -3120,7 +2438,7 @@ useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'v
 // Terminate both workers on unmount so they don't leak across hot-reloads / route changes.
 useEffect(()=>()=>{try{simWorkerRef.current?.terminate();}catch{}try{workerRef.current?.terminate();}catch{}},[]);
 
-useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showPower,showGlobe,activeRes,layers]);
+useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showGlobe,activeRes,layers]);
 
 useEffect(()=>{let fid,acc=0,last=performance.now(),drawSkip=0;
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
@@ -3152,36 +2470,25 @@ if(performance.now()-_simStart>8)break;
 if(peopleRef.current&&peopleRef.current.step%5===0){
   setPsStats(peopleSimStats(peopleRef.current));
 }
-// Legacy tribe stats kept zero — these used to drive panels which still
-// exist but no longer reflect anything real. To be migrated to entity
-// readouts in a follow-up.
-setCoverage(0);setTribeCount(peopleRef.current?peopleRef.current.settlements.length:0);setDominant(null);
 // Only redraw every 3rd sim frame to save 10-30ms/frame on CPU canvas rendering
 drawSkip++;
 if(drawSkip>=3){drawSkip=0;
 try{draw(terRef.current);}catch(e){console.error('[DRAW CRASH]',e.message,e.stack);playRef.current=false;}}}};
 fid=requestAnimationFrame(loop);return()=>cancelAnimationFrame(fid);},[draw]);
 
-// Wind particle animation loop — redraws at ~30fps when in wind view
-useEffect(()=>{let wfid;
-const windLoop=()=>{wfid=requestAnimationFrame(windLoop);
-if(viewRef.current!=="wind"||!worldRef.current||!terRef.current)return;
+// Animation loop for the views with per-frame motion (wind particle streaks,
+// money-flow coins) — one shared rAF instead of one per view; it no-ops on
+// every other view, and keeps animating while the sim is paused (so a frozen
+// economy can still be studied).
+useEffect(()=>{let afid;
+const animLoop=()=>{afid=requestAnimationFrame(animLoop);
+const v=viewRef.current;
+if((v!=="wind"&&v!=="money")||!worldRef.current||!terRef.current)return;
 draw(terRef.current);};
-wfid=requestAnimationFrame(windLoop);
-return()=>cancelAnimationFrame(wfid);},[draw]);
+afid=requestAnimationFrame(animLoop);
+return()=>cancelAnimationFrame(afid);},[draw]);
 
-// Money-flow animation loop — redraws so the coin particles move, even
-// while the sim is paused (so you can study a frozen economy).
-useEffect(()=>{let mfid;
-const moneyLoop=()=>{mfid=requestAnimationFrame(moneyLoop);
-if(viewRef.current!=="money"||!worldRef.current||!terRef.current)return;
-draw(terRef.current);};
-mfid=requestAnimationFrame(moneyLoop);
-return()=>cancelAnimationFrame(mfid);},[draw]);
-
-const togglePlay=()=>{if(!playing&&terRef.current&&terRef.current.settled>=terRef.current.landCount){
-const t=createTerritory(worldRef.current);terRef.current=t;setTribeCount(t.tribeCount);setCoverage(0);setDominant(null);setSelectedTribe(-1);terrainCache.current=null;atlasCache.current=null;draw(t);}
-playRef.current=!playRef.current;setPlaying(p=>!p);};
+const togglePlay=()=>{playRef.current=!playRef.current;setPlaying(p=>!p);};
 const handleImport=useCallback(async(e)=>{const file=e.target.files?.[0];if(!file)return;
 e.target.value="";
 setImportStatus("Loading...");
@@ -3252,31 +2559,20 @@ const wkmh=Math.round(wspd*100); // normalized → km/h (median ~18 km/h)
 // Direction = where the wind is blowing TO
 const wdeg=((Math.atan2(-wdy,wdx)*180/Math.PI)+360)%360;
 const wdir=["E","NE","N","NW","W","SW","S","SE"][Math.round(wdeg/45)%8];
+// Throttle: hovering re-renders the WHOLE (large) component via setHoverInfo,
+// so only push a new card when the cursor moved to a different tile or ~90ms
+// passed (the card position still tracks smoothly at that rate).
+const _hv=hoverThrottleRef.current;
+const _now=performance.now();
+if(_hv.ti===terTi&&_now-_hv.t<90){_hv.x=ev.clientX;_hv.y=ev.clientY;return;}
+_hv.ti=terTi;_hv.t=_now;
 // Resource info at this tile
 const tileRes=terTi>=0&&terRef.current&&terRef.current.deposits?tileResourceSummary(terRef.current.deposits,terTi):[];
 const riverMag=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.riverMag[terTi]:0;
 const riverAccum=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.flowAccum[terTi]:0;
 const isLake=terTi>=0&&terRef.current&&terRef.current.rivers&&terRef.current.rivers.lake?terRef.current.rivers.lake[terTi]>=0:false;
 const lakeSize=isLake?terRef.current.rivers.lakeInfo[terRef.current.rivers.lake[terTi]].size:0;
-// Tribe info at this tile
-const ter=terRef.current;
-let tribeInfo=null;
-if(ter&&terTi>=0&&ter.owner[terTi]>=0){
-const ow2=ter.owner[terTi];
-const them=ter.tribes?.[ow2];
-if(them&&them.alive){
-const k=them.knowledge||null;
-const bud2=them.budget||null;
-// Compute relationship with selected tribe if any
-const selT=selectedTribe;
-let relation='';
-const meSel=selT>=0?ter.tribes?.[selT]:null;
-if(meSel&&meSel.alive&&selT!==ow2)relation=tribeRelation(ter,selT,ow2);
-tribeInfo={id:ow2,size:them.size,pop:Math.round(them.pop),
-knowledge:k?{ag:k.agriculture,mt:k.metallurgy,nv:k.navigation,cn:k.construction,og:k.organization,tr:k.trade}:null,
-personality:them.personality,budget:bud2?{mil:bud2.military,gro:bud2.growth,com:bud2.commerce,exp:bud2.exploration,sur:bud2.survival}:null,
-relation,settlements:them.settleCounts,ports:them.ports.length,knownCoasts:them.knownCoasts.length};}}
-setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,tribeInfo});
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const onCanvasClick=useCallback((ev)=>{
@@ -3329,23 +2625,17 @@ if(psw){
     if(d2<bestD2){bestD2=d2;best=s;}
   }
   // Pick within ~6 tile radius (handles small icons and slop).
+  // Sync the ref BEFORE the immediate redraw (the effect that mirrors the
+  // state into the ref runs after render, so the halo used to lag one frame).
   if(best&&bestD2<36){
+    selectedSettlementIdRef.current=best.id;
     setSelectedSettlementId(best.id);
-    draw(ter);
-    return;
   }else{
+    selectedSettlementIdRef.current=-1;
     setSelectedSettlementId(-1);
-    draw(ter);
-    return;
   }
+  draw(ter);
 }
-// Legacy tribe selection path (vestigial — kept so the old code paths
-// don't error out if someone clicks while legacy ter is still in use).
-const tileOwner=ter.owner[tty*ter.tw+ttx];
-if(tileOwner>=0&&ter.tribes?.[tileOwner]?.alive){
-setSelectedTribe(tileOwner);ter._selectedTribe=tileOwner;
-setRightPanel("tribes");draw(ter);
-}else{setSelectedTribe(-1);if(ter)ter._selectedTribe=-1;draw(ter);}
 },[CW,CH,draw,viewMode,ttSubMode]);
 // ── Pan / zoom mouse handlers ────────────────────────────────────────
 // Wheel: zoom around the cursor (Google-Maps style). Pan: middle-button or
@@ -3396,24 +2686,14 @@ useEffect(()=>{
   draw(terRef.current);
 },[ttRoute,ttCost,ttSubMode,viewMode]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
-const gridCols=mapCount<=1?1:mapCount<=4?2:mapCount<=6?3:mapCount<=9?3:5;
 
 // ── Aggregate world stats for the chronicle ribbon ──
-const _ter=terRef.current;
-// The live clock is the peopleSim step (the legacy tribe sim is disabled, so
-// _ter.stepCount stays 0 — that's what froze the year at the 9000 BC start).
 const _step=(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
 const _ys=yearStr(_step);
-let _aAg=0,_aMt=0,_aNv=0,_aOg=0,_aliveK=0;
-if(_ter&&_ter.tribes){
-  for(const t of _ter.tribes){
-    if(!t.alive||!t.knowledge)continue;_aliveK++;const _k=t.knowledge;
-    _aAg+=_k.agriculture;_aMt+=_k.metallurgy;_aNv+=_k.navigation;_aOg+=_k.organization;}
-  if(_aliveK>0){_aAg/=_aliveK;_aMt/=_aliveK;_aNv/=_aliveK;_aOg/=_aliveK;}}
-const _era=deriveEra(_aAg,_aMt,_aNv,_aOg);
-// Nation count = peopleSim countries (active polities). The chronicle
-// previously read tribeCount, which the worker snapshot was setting to
-// the number of settlements — wrong scale for "nations."
+// Leading era comes from the WORKER stats (the most advanced capital's tech
+// era) — the old ribbon averaged the dead tribe arrays and so sat frozen on
+// "Stone Age" forever.
+const _era=ERAS[psStats.leadingEra||0]||ERAS[0];
 const _psw=peopleRef.current;
 const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 
@@ -3421,9 +2701,8 @@ const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 const VIEW_MODES=[
   ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
   ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
-  ["crop","Crop"],["crossing","Crossing"],["country","Country"],["frTerritory","Farm Regions"],["roads","Roads"],["money","Money"],
-  ["resources","Resources"],["population","Pop"],["transport","Transport"],
-  ["transport-test","Trans Test"],["tribes","Tribes"]
+  ["crop","Crop"],["crossing","Crossing"],["country","Country"],["culture","Culture"],["faith","Faith"],["frTerritory","Farm Regions"],["roads","Roads"],["money","Money"],
+  ["resources","Resources"],["transport-test","Trans Test"]
 ];
 
 return(
@@ -3485,6 +2764,53 @@ return(
 
 <div style={{flex:1}} />
 <div className="au-rule" />
+{/* Save / Load: the full world state — settlements, polities, the event
+    log, money, roads — as a versioned JSON file. Terrain regenerates from
+    the recorded seed on load. */}
+<div style={{display:"flex",gap:4}}>
+  <button className="au-btn au-flat" style={{flex:1,fontSize:11}} title="Save the running world to a file"
+    onClick={()=>{
+      downloadSaveRef.current=(json,step)=>{
+        const blob=new Blob([json],{type:"application/json"});
+        const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+        a.download=`simman-${presetRef.current}-s${seed}-t${step??""}.json`;a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+      };
+      if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"save"});
+      else if(peopleRef.current&&!peopleRef.current._isMirror){
+        downloadSaveRef.current(serializeWorld(peopleRef.current,{oceanLevel:oceanLevelRef.current,tecParams:_tecParams}),peopleRef.current.step);
+      }
+    }}>💾 Save</button>
+  <button className="au-btn au-flat" style={{flex:1,fontSize:11}} title="Load a saved world"
+    onClick={()=>saveFileRef.current?.click()}>📂 Load</button>
+  <input ref={saveFileRef} type="file" accept=".json" style={{display:"none"}}
+    onChange={async(e)=>{
+      const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
+      try{
+        const json=await f.text();
+        const meta=JSON.parse(json).meta;
+        if(!meta)throw new Error("not a Simman save");
+        pendingSaveRef.current=json;
+        presetRef.current=meta.preset;setPreset(meta.preset);
+        oceanLevelRef.current=meta.oceanLevel??0.78;
+        if(meta.seed===seed)generate(seed);else setSeed(meta.seed);
+      }catch(err){console.error("load failed:",err);alert("Could not load save: "+err.message);}
+    }} />
+</div>
+<button className="au-btn au-block au-flat" style={{fontSize:11}}
+  title="Download the full event log, registries, and each great realm's chronicle (true + as its scribes kept it)"
+  onClick={()=>{
+    if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"export-history"});
+    else if(peopleRef.current&&!peopleRef.current._isMirror){
+      import("./sim/peopleSim/historiography.js").then(h=>{
+        const json=JSON.stringify(h.exportHistory(peopleRef.current));
+        const blob=new Blob([json],{type:"application/json"});
+        const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+        a.download=`simman-history-t${peopleRef.current.step}.json`;a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+      });
+    }
+  }}>📜 Export History</button>
 <button onClick={()=>setSeed(Math.floor(Math.random()*999999))}
   className="au-btn au-block au-flat" style={{fontSize:11}} title="Roll new seed">⚄ Roll</button>
 <span className="au-fade" style={{fontSize:9,textAlign:"center",fontFamily:"'Courier New',monospace"}}>Seed {seed}</span>
@@ -3501,7 +2827,7 @@ return(
   <span className="au-fade" style={{fontSize:11}}>Step {_step.toLocaleString()}</span>
   <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
   <span style={{fontSize:13}}>{_countryCount} <span className="au-sc au-fade" style={{fontSize:11}}>nations</span></span>
-  <span style={{fontSize:13}}>{coverage}<span className="au-fade">%</span> <span className="au-sc au-fade" style={{fontSize:11}}>claimed</span></span>
+  <span style={{fontSize:13}}>{Math.round((psStats.landPct||0)*100)}<span className="au-fade">%</span> <span className="au-sc au-fade" style={{fontSize:11}}>claimed</span></span>
   {(()=>{
     // Wheat-price ticker — population-weighted global price level. The number
     // shown is the price of 1 unit of farmed wheat relative to its baseline.
@@ -3523,57 +2849,23 @@ return(
       </>
     );
   })()}
-  {dominant&&<>
-    <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
-    <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
-      <span className="au-wax-seal au-small"
-        style={{background:`rgb(${tribeRGB(dominant.id).join(",")})`}}>{dominant.id}</span>
-      <span className="au-sc au-fade" style={{fontSize:11}}>Dominant</span>
-      <span>{dominant.size}t</span>
-    </span>
-  </>}
   <div style={{flex:1}} />
-  {_aliveK>0&&<span className="au-fade" style={{fontSize:10,fontFamily:"'Courier New',monospace"}}>
-    Ag {(_aAg*100|0)} · Mt {(_aMt*100|0)} · Nv {(_aNv*100|0)} · Og {(_aOg*100|0)}
-  </span>}
 </div>
 
 {/* Map area */}
 <div style={{flex:1,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",minHeight:0,overflow:"hidden"}}>
 
-{mapCount<=1?(
-  showGlobe?
-    <div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
-      <GlobeView terrainBuf={globeBuf} world={world} CW={globeTexSize.w} CH={globeTexSize.h} />
-    </div>:
-    <canvas ref={canvasRef} width={CW} height={CH}
-      onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
-      onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
-      style={{display:"block",imageRendering:"pixelated",
-        maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
-        boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
-):(
-  <div style={{width:"100%",height:"100%",display:"grid",
-    gridTemplateColumns:`repeat(${gridCols},1fr)`,gap:4,padding:2}}>
-    {Array.from({length:mapCount}).map((_,mi)=>{
-      const extraSeed=seed+mi;
-      return(
-        <div key={mi} style={{position:"relative",overflow:"hidden",display:"flex",
-          alignItems:"center",justifyContent:"center",cursor:mi>0?"pointer":"default",
-          border:mi===0?"1px solid var(--au-paper-deep)":"1px solid rgba(168,140,92,0.4)"}}
-          onClick={()=>{if(mi>0)setSeed(extraSeed);}}>
-          {mi===0?
-            <canvas ref={canvasRef} width={CW} height={CH}
-              onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
-      onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
-              style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`}} />:
-            <canvas ref={el=>extraCanvasRefs.current[mi-1]=el} width={PW} height={PH}
-              style={{display:"block",imageRendering:"pixelated",maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${PW}/${PH}`}} />}
-          {mi>0&&<div style={{position:"absolute",bottom:2,left:0,right:0,textAlign:"center",
-            color:"var(--au-paper)",fontSize:10,textShadow:"0 1px 2px rgba(0,0,0,0.8)",pointerEvents:"none"}}>Seed {extraSeed}</div>}
-        </div>);})}
-  </div>
-)}
+{showGlobe?
+  <div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
+    <GlobeView terrainBuf={globeBuf} version={globeVer} world={world} CW={globeTexSize.w} CH={globeTexSize.h} />
+  </div>:
+  <canvas ref={canvasRef} width={CW} height={CH}
+    onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
+    onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
+    style={{display:"block",imageRendering:"pixelated",
+      maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
+      boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
+}
 
 {/* ─── Pico hover card ─── */}
 {hoverInfo&&<div className="au-parchment au-pico"
@@ -3587,12 +2879,6 @@ return(
   </div>
   {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
     {RIVER_NAMES[hoverInfo.river]}
-  </div>}
-  {hoverInfo.tribeInfo&&<div style={{fontSize:11,marginTop:2,display:"flex",alignItems:"center",gap:5}}>
-    <span className="au-wax-seal au-small" style={{background:`rgb(${tribeRGB(hoverInfo.tribeInfo.id).join(",")})`}} />
-    <span>#{hoverInfo.tribeInfo.id} <span className="au-fade">{fmtPop(hoverInfo.tribeInfo.pop)}</span></span>
-    {hoverInfo.tribeInfo.relation==='fight'&&<span style={{color:"var(--au-wax-red)",fontWeight:600,fontSize:10}}>⚔</span>}
-    {hoverInfo.tribeInfo.relation==='trade'&&<span style={{color:"var(--au-gold)",fontWeight:600,fontSize:10}}>⚜</span>}
   </div>}
   <div className="au-fade" style={{fontSize:9,marginTop:2,fontStyle:"italic"}}>click for full info</div>
 </div>}
@@ -3687,7 +2973,13 @@ return(
       {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
       {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} onClose={()=>setTechTreeOpen(false)}/>}
       {chronicleOpen&&psw._chronicle&&psw._chronicle.countryId===s.countryId&&
-        <ChronicleOverlay entries={psw._chronicle.entries} name={psw._chronicle.name} onClose={()=>setChronicleOpen(false)}/>}
+        <ChronicleOverlay entries={psw._chronicle.entries} name={psw._chronicle.name}
+          perspective={!!psw._chronicle.perspective}
+          onTogglePerspective={()=>{
+            const next=!psw._chronicle.perspective;
+            if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"chronicle-mode",perspective:next});
+          }}
+          onClose={()=>setChronicleOpen(false)}/>}
 
       {/* ── Header ── (the chronicle opener lives here so it's always visible
           without scrolling the card — a long card can push a bottom section
@@ -3705,6 +2997,32 @@ return(
       <div className="au-fade" style={{fontSize:10,textTransform:"capitalize",marginBottom:6}}>
         {tierName} · {era} · {waterLabel}
       </div>
+      {/* ── People: the culture mixture living here ── */}
+      {(()=>{
+        const mix=s.culMix&&s.culMix.length?s.culMix:(s.cultureId>=0?[[s.cultureId,1]]:null);
+        if(!mix||!psw.cultures)return null;
+        const parts=mix.filter(([,sh])=>sh>0.02).map(([cid,sh])=>{
+          const cul=psw.cultures.get(cid);
+          return cul?`${cul.name}${sh<0.98?` ${Math.round(sh*100)}%`:""}`:null;
+        }).filter(Boolean);
+        if(!parts.length)return null;
+        return <div style={{fontSize:10,marginBottom:6}}>
+          <span className="au-fade">people </span>{parts.join(" · ")}
+        </div>;
+      })()}
+      {/* ── Faith mixture ── */}
+      {(()=>{
+        const mix=s.faithMix;
+        if(!mix||!mix.length||!psw.faiths)return null;
+        const parts=mix.filter(([,sh])=>sh>0.03).map(([fid,sh])=>{
+          const f=psw.faiths.get(fid);
+          return f?`${f.name}${f.kind==="organized"?"":" (folk)"}${sh<0.97?` ${Math.round(sh*100)}%`:""}`:null;
+        }).filter(Boolean);
+        if(!parts.length)return null;
+        return <div style={{fontSize:10,marginBottom:6}}>
+          <span className="au-fade">faith </span>{parts.join(" · ")}
+        </div>;
+      })()}
 
       {/* ── Country / polity (with administrative lineage) ── */}
       {(()=>{
@@ -3781,6 +3099,20 @@ return(
           const treas=ctry._treasury;
           return(
             <>
+            {ctry.ruler&&(
+              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+                <span style={{width:9,height:9,borderRadius:2,background:"hsl(280,40%,52%)",flexShrink:0}}/>
+                <span><span className="au-fade">{ctry.ruler.female?"queen ":"king "}</span>{ctry.ruler.name}
+                  <span className="au-fade"> of house </span>{ctry.ruler.house||"?"}
+                  <span className="au-fade"> · age {ctry.ruler.age}</span></span>
+              </div>
+            )}
+            {(()=>{const f=psw.faiths&&ctry.faithId>=0?psw.faiths.get(ctry.faithId):null;if(!f)return null;return(
+              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
+                <span style={{width:9,height:9,borderRadius:2,background:`hsl(${f.hue|0},55%,50%)`,flexShrink:0}}/>
+                <span className="au-fade">state faith <span style={{color:"var(--au-ink)"}}>{f.name}</span></span>
+              </div>
+            );})()}
             <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
               <span style={{width:9,height:9,borderRadius:2,background:over?"hsl(8,70%,52%)":"hsl(140,45%,45%)",flexShrink:0}}/>
               <span className="au-fade">control {load.toFixed(1)}/{cap.toFixed(1)} ({pct}%){over?" · over-extended":""}{strain}</span>
@@ -3867,8 +3199,8 @@ return(
       {(()=>{
         const isPort=!!s._isPort;
         const seaPeers=s._seaReachSize??(s._seaReach?s._seaReach.size:0);
-        const sent=s.history?s.history.filter(h=>h.type==="colony-launched").length:0;
-        const isColony=s.history?s.history.some(h=>h.type==="colony-founded"):false;
+        const sent=s._coloniesSent||0;
+        const isColony=!!s._isColony;
         if(!isPort&&seaPeers===0&&sent===0&&!isColony)return null;
         const bits=[];
         if(isPort)bits.push("port");
@@ -4204,7 +3536,7 @@ return(
       else setTtRoute({start:null,end:null});
     }}>{ttSubMode==="capitals"?"Clear capitals":"Clear route"}</button>
 </div>}
-{(viewMode==="terrain"||viewMode==="atlas"||viewMode==="tribes"||viewMode==="resources")&&
+{(viewMode==="terrain"||viewMode==="atlas"||viewMode==="resources")&&
 <div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
   padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:200,zIndex:20}}>
 <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:5,
@@ -4222,12 +3554,6 @@ return(
     <div key={l} className="au-key-row">
       <span className="au-key-swatch" style={{background:c}} />
       <span>{l}</span>
-    </div>))}
-  {viewMode==="tribes"&&[["Stone",[50,45,35]],["Neolithic",[70,75,40]],["Farming",[80,100,45]],["Copper",[160,100,50]],
-    ["Bronze",[140,110,50]],["Iron",[90,90,100]],["Empire",[120,50,50]],["Industrial",[80,70,90]]].map(([name,col])=>(
-    <div key={name} className="au-key-row">
-      <span className="au-key-swatch" style={{background:`rgb(${col[0]},${col[1]},${col[2]})`}} />
-      <span>{name}</span>
     </div>))}
   {viewMode==="resources"&&<div>
     {RESOURCES.map(r=>{const on=activeRes[r.id];return(
@@ -4308,8 +3634,6 @@ return(
   className={"au-rail-tab"+(showPlates?" au-active":"")}>Plates</button>}
 <button onClick={()=>setShowGlobe(!showGlobe)}
   className={"au-rail-tab"+(showGlobe?" au-active":"")}>Globe</button>
-{viewMode==="tribes"&&<button onClick={()=>setShowPower(v=>!v)}
-  className={"au-rail-tab"+(showPower?" au-active":"")}>Power</button>}
 <button onClick={()=>setLayersOpen(v=>!v)}
   className={"au-rail-tab"+(layersOpen?" au-active":"")}>Layers</button>
 <button onClick={()=>setBoardOpen(v=>!v)}
@@ -4363,7 +3687,6 @@ return(
       <Row k="shocks" label="Plague / famine outlines" />
       <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"8px 14px 2px"}}>Moving</div>
       <Row k="ships" label="Colony ships" />
-      <Row k="armies" label="Marching armies" />
     </aside>
   );
 })()}
@@ -4486,7 +3809,7 @@ return(
 {chartsOpen&&(()=>{
   const H=psHistoryRef.current;
   const copy=()=>{ const t=buildHistoryExport(H);
-    try{navigator.clipboard.writeText(t);}catch(e){/* clipboard blocked — ignore */}
+    try{navigator.clipboard.writeText(t);}catch{/* clipboard blocked — ignore */}
     setStatsCopied(true); setTimeout(()=>setStatsCopied(false),1500); };
   const curStep=H.length?H[H.length-1].step:0;
   return(

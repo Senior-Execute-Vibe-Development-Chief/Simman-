@@ -2,10 +2,10 @@
 // over a long timeline so we can see whether empires RISE AND FALL (the largest
 // realm's id changes) or persist forever (same id = immortal). No enclave
 // analysis, so it runs to deep time quickly.
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
 
 const STEPS = parseInt(process.argv[2] || "40000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);

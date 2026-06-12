@@ -3,7 +3,7 @@
 //   node tools/render_biome.mjs [seed] [W] [H] [out]
 import zlib from "node:zlib";
 import { writeFileSync } from "node:fs";
-import { generateWorld } from "../src/worldgen.js";
+import { generateWorld } from "../src/sim/worldgen.js";
 
 const SEED = parseInt(process.argv[2] || "8817", 10);
 const W = parseInt(process.argv[3] || "960", 10), H = parseInt(process.argv[4] || "480", 10);

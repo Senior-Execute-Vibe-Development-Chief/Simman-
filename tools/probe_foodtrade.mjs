@@ -1,12 +1,12 @@
 // Quantify the "everyone both buys AND sells food" artifact. Runs the default
 // sim and reports, per tier, the smoothed IN_FOOD vs OUT_FOOD money rates and
 // how many settlements book BOTH.  node tools/probe_foodtrade.mjs [step] [seed]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { cropSuitability } from "../src/cropGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
-import { IN_FOOD, OUT_FOOD } from "../src/peopleSim/money.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { cropSuitability } from "../src/sim/cropGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
+import { IN_FOOD, OUT_FOOD } from "../src/sim/peopleSim/money.js";
 
 const STEP = +(process.argv[2] || "8000");
 const SEED = +(process.argv[3] || "8817");
