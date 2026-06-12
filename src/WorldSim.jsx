@@ -68,7 +68,7 @@ let _tecParams = {};
 
 // generateWorld extracted to ./worldgen.js so worldgen can run headlessly.
 import { generateWorld } from "./sim/worldgen.js";
-import { buildTerritory, tileFert, DIRS } from "./sim/pipeline.js";
+import { buildTerritory, tileFert } from "./sim/pipeline.js";
 import { yearStr } from "./sim/calendar.js";
 
 const BC=[
@@ -1327,23 +1327,14 @@ if(!atlasCache.current||atlasCache.current.seed!==w._seed||atlasCache.current.ch
 atlasCache.current={img:buildAtlas(w,ter),seed:w._seed,ch:CH};}
 d.set(atlasCache.current.img.data);
 }else{
-// Default terrain view with white tribe borders
+// Base terrain (also the base layer under the political/economic overlays).
+// (The old tribe-border tinting here read ter.owner — an array the tribe
+// system's removal deleted — and crashed the first draw of every world.)
 if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
 const tc=terrainCache.current;
-for(let ti=0;ti<N;ti++){const ow=ter.owner[ti];
+for(let ti=0;ti<N;ti++){
 const pi4=ti<<2,ti3=ti*3;
-const tr=tc[ti3],tg=tc[ti3+1],tb=tc[ti3+2];
-if(ow>=0&&ter.tElev[ti]>sl){
-const tx3=ti%ter.tw,ty3=(ti-tx3)/ter.tw;let isBorder=false;
-for(let di=0;di<4;di++){
-const dnx=((tx3+DIRS[di][0])%ter.tw+ter.tw)%ter.tw,dny=ty3+DIRS[di][1];
-if(dny<0||dny>=ter.th){isBorder=true;break;}
-if(ter.owner[dny*ter.tw+dnx]!==ow){isBorder=true;break;}}
-if(isBorder){// White border over terrain
-d[pi4]=(tr*0.4+200*0.6+.5)|0;d[pi4+1]=(tg*0.4+195*0.6+.5)|0;d[pi4+2]=(tb*0.4+185*0.6+.5)|0;
-}else{d[pi4]=tr;d[pi4+1]=tg;d[pi4+2]=tb;}// pure terrain inside
-}else{d[pi4]=tr;d[pi4+1]=tg;d[pi4+2]=tb;}
-d[pi4+3]=255;}}
+d[pi4]=tc[ti3];d[pi4+1]=tc[ti3+1];d[pi4+2]=tc[ti3+2];d[pi4+3]=255;}}
 // Plate boundary overlay — domain-warped lookup for organic boundaries
 if(showPlatesRef.current&&w.pixPlate&&vm!=="atlas"){
 const plateAt=(px,py)=>{
@@ -3166,7 +3157,7 @@ const renderCharts=()=>{
 
 return(
 <div className="au-root" style={{width:"100vw",height:"100vh",
-  background:"var(--au-table-dark)",overflow:"hidden",display:"flex",position:"relative"}}>
+  background:"var(--au-table-dark)",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
 
 {/* ══════════ TOP BAR ══════════ */}
 <header className="au-parchment" style={{display:"flex",alignItems:"center",gap:12,margin:"6px 6px 0",padding:"5px 14px",flexShrink:0,zIndex:45,position:"relative"}}>
