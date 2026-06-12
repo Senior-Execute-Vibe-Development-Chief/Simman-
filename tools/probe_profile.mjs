@@ -2,11 +2,11 @@
 // Warms up to WARM, then profiles PROF steps at full res, reporting median vs
 // worst single-step time and the pass breakdown of the worst step.
 //   node tools/probe_profile.mjs [warm] [prof] [seed] [W] [H]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
-import { T } from "../src/peopleSim/tuning.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
+import { T } from "../src/sim/peopleSim/tuning.js";
 if (process.env.SIM_TERRITORY_INTERVAL) T.TERRITORY_INTERVAL = +process.env.SIM_TERRITORY_INTERVAL;
 if (process.env.SIM_RES_SCALE) {/* read by countryTerritory directly */}
 

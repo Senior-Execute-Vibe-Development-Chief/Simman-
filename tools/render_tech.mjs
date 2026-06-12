@@ -4,7 +4,7 @@
 // SVG per sample to /tmp; convert to PNG with cairosvg in the shell.
 //   node tools/render_tech.mjs
 import { writeFileSync } from "fs";
-import { TECHS, ERAS, TECH_IDX, techState, techNodeState, techLayout, techEdgePath } from "../src/peopleSim/tech.js";
+import { TECHS, ERAS, TECH_IDX, techState, techNodeState, techLayout, techEdgePath } from "../src/sim/peopleSim/tech.js";
 
 const ERA_BG = ["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
 const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");

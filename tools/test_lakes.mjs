@@ -11,7 +11,7 @@ const earthData=Buffer.from(b64Match[1],'base64');
 const EARTH_W=720,EARTH_H=360;
 function sampleEarth(data,sw,sh,x,y,tw,th){const fx=(x/tw)*sw,fy=(y/th)*sh;const x0=Math.floor(fx),y0=Math.floor(fy);const x1=Math.min(sw-1,x0+1),y1=Math.min(sh-1,y0+1);const dx=fx-x0,dy=fy-y0;return data[y0*sw+(x0%sw)]*(1-dx)*(1-dy)+data[y0*sw+(x1%sw)]*dx*(1-dy)+data[y1*sw+(x0%sw)]*(1-dx)*dy+data[y1*sw+(x1%sw)]*dx*dy;}
 
-const{computeRivers}=await import('../src/riverGen.js');
+const{computeRivers}=await import('../src/sim/riverGen.js');
 
 const W=1920,H=960,RES=1;
 const elevation=new Float32Array(W*H),temperature=new Float32Array(W*H),moisture=new Float32Array(W*H);

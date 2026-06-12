@@ -15,10 +15,10 @@
 //   node tools/render_crops.mjs [seed] [W] [H] [out.png]
 import zlib from "node:zlib";
 import { writeFileSync } from "node:fs";
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { CROP_PACKAGES, CROP_BY_ID } from "../src/cropPackages.js";
-import { cropSuitabilityPkg } from "../src/cropGen.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { CROP_PACKAGES, CROP_BY_ID } from "../src/sim/cropPackages.js";
+import { cropSuitabilityPkg } from "../src/sim/cropGen.js";
 
 const SEED = +(process.argv[2] || "8817");
 const W = +(process.argv[3] || "480");

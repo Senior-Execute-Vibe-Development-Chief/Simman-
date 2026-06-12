@@ -1,11 +1,11 @@
 // Dump per-country chronicles as plain text — verify the history log reads as a
 // sensible blow-by-blow.  node tools/probe_chronicle.mjs [step] [seed]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { cropSuitability } from "../src/cropGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { getChronicle, realmName } from "../src/peopleSim/chronicle.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { cropSuitability } from "../src/sim/cropGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { getChronicle, realmName } from "../src/sim/peopleSim/chronicle.js";
 
 const STEP = +(process.argv[2] || "12000");
 const SEED = +(process.argv[3] || "8817");

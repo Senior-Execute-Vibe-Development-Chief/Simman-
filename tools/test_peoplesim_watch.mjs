@@ -3,7 +3,7 @@
 // print per-settlement stats at each checkpoint so we can watch how
 // the population, farmland, knowledge, and tier-up actually evolve.
 
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 
 function makeWorld(W = 512, H = 256) {
   const elevation   = new Float32Array(W * H);

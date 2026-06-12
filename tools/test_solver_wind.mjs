@@ -46,11 +46,11 @@ for (let y=0;y<H;y++) for (let x=0;x<W;x++) {
 }
 
 console.log('Running wind solver...');
-const { solveWind } = await import('../src/windSolver.js');
+const { solveWind } = await import('../src/sim/windSolver.js');
 const wind = solveWind(W, H, elevation, fbm, {}, 42*0.0137);
 
 console.log('Running moisture solver...');
-const { solveMoisture } = await import('../src/moistureSolver.js');
+const { solveMoisture } = await import('../src/sim/moistureSolver.js');
 const t0 = Date.now();
 const moisture = solveMoisture(W, H, elevation, wind.windX, wind.windY, temperature, {});
 console.log(`Done in ${Date.now()-t0}ms\n`);

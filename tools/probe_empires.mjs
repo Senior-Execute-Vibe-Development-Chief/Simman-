@@ -1,9 +1,9 @@
 // Diagnostic: how big do empires get, and at WHAT tech era?
 // Reuses the earthRun pipeline but focuses on era-vs-size of top countries.
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
 
 const STEPS = parseInt(process.argv[2] || "25000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);

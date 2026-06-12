@@ -2,12 +2,12 @@
 // rate (_mInRate, money.js) by tier × category, so we can see whether Farming Regions
 // live off food, towns off the grain margin/trade, cities off luxury/industry, etc.
 //   node tools/probe_wealth.mjs [step] [seed] [W] [H]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { cropSuitability } from "../src/cropGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
-import { IN_LABELS, OUT_LABELS } from "../src/peopleSim/money.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { cropSuitability } from "../src/sim/cropGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
+import { IN_LABELS, OUT_LABELS } from "../src/sim/peopleSim/money.js";
 const STEP=+(process.argv[2]||10000), SEED=+(process.argv[3]||857691), W=+(process.argv[4]||1920), H=+(process.argv[5]||960);
 const w=generateWorld(W,H,SEED,"earth_sim",0.78,true,false,{});
 const tCrop=new Float32Array(W*H),tC=new Uint8Array(W*H),tE=new Float32Array(W*H),tT=new Float32Array(W*H),tM=new Float32Array(W*H);

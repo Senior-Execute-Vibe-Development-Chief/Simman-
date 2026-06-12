@@ -2,13 +2,13 @@
 // the trade links the money overlay draws (world._moneyFlows), split by link.sea.
 // Answers whether ocean routes genuinely carry little money or just render thin.
 //   node tools/probe_seatrade.mjs [step] [seed]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { cropSuitability } from "../src/cropGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { applyTuning } from "../src/peopleSim/tuning.js";
-import { localP } from "../src/peopleSim/inflation.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { cropSuitability } from "../src/sim/cropGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { applyTuning } from "../src/sim/peopleSim/tuning.js";
+import { localP } from "../src/sim/peopleSim/inflation.js";
 
 const STEP = +(process.argv[2] || "8000");
 const SEED = +(process.argv[3] || "8817");

@@ -4,12 +4,12 @@
 // Light debug counters in armies.js / conquest.js tag conquest vs absorb; founding
 // & frontier-adoption are inferred from countryId transitions.
 //   node tools/probe_landconc.mjs [steps] [W] [H] [seed]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { T } from "../src/peopleSim/tuning.js";
-import { techEffects } from "../src/peopleSim/tech.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { T } from "../src/sim/peopleSim/tuning.js";
+import { techEffects } from "../src/sim/peopleSim/tech.js";
 if (process.env.TE !== undefined) T.TECH_EFFECTS = parseFloat(process.env.TE);
 
 const STEPS = parseInt(process.argv[2] || "12000", 10);

@@ -4,7 +4,7 @@
 // lands on the right continent. Includes land/ocean/mountain ANCHORS first to
 // confirm the coordinate mapping, then the cities.
 //   node tools/probe_cities.mjs [seed] [W] [H]
-import { generateWorld } from "../src/worldgen.js";
+import { generateWorld } from "../src/sim/worldgen.js";
 
 const SEED = parseInt(process.argv[2] || "8817", 10);
 const W = parseInt(process.argv[3] || "960", 10), H = parseInt(process.argv[4] || "480", 10);

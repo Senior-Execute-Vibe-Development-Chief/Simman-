@@ -11,7 +11,7 @@
 // Returns: postMessage({ type: 'result', world: { elevation, moisture, temperature, ... } })
 //       or postMessage({ type: 'error', message, stack })
 
-import { generateWorld } from './worldgen.js';
+import { generateWorld } from './sim/worldgen.js';
 
 self.onmessage = function (e) {
   const { type, W, H, seed, preset, oceanLevel, tecParams } = e.data;

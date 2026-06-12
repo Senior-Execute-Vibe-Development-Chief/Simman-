@@ -263,7 +263,7 @@ const earthMetrics = computeMetrics(earthElev, 'REAL EARTH');
 printMetrics(earthMetrics);
 
 // Generate tectonic worlds
-const { generateTectonicWorld } = await import('../src/tectonicGen.js');
+const { generateTectonicWorld } = await import('../src/sim/tectonicGen.js');
 
 const NUM_SEEDS = 3;
 const allGenMetrics = [];

@@ -19,8 +19,8 @@
 // createTerritory in.
 
 import { buildWorld } from "./_harness.mjs";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { settlementPower } from "../src/peopleSim/conquest.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { settlementPower } from "../src/sim/peopleSim/conquest.js";
 
 const STEPS = parseInt(process.argv[2] || "10000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);

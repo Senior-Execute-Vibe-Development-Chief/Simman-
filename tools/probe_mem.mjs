@@ -1,10 +1,10 @@
 // Memory footprint probe — runs the sim and reports actual process memory
 // (RSS + heap) alongside settlement/tile counts, to see how much RAM the sim
 // really holds vs the device total. node tools/probe_mem.mjs [steps] [seed] [W] [H]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 
 const STEPS = parseInt(process.argv[2] || "8000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);

@@ -9,10 +9,10 @@
 // FARMERS_PER_TILE is a chosen reference so we can ASK the question the model doesn't.
 //   node tools/render_food.mjs [farmersPerTile=1] [seed]   → /tmp/land_food.png  (no sim run)
 import zlib from "node:zlib"; import { writeFileSync } from "node:fs";
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { cropSuitability } from "../src/cropGen.js";
-import { T } from "../src/peopleSim/tuning.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { cropSuitability } from "../src/sim/cropGen.js";
+import { T } from "../src/sim/peopleSim/tuning.js";
 
 const FARMERS = +(process.argv[2] || 1), SEED = +(process.argv[3] || 857691);
 const W = 960, H = 480, SCALE = 2, SURPLUS_REF = 5;     // ratio that saturates to full green

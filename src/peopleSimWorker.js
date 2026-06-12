@@ -15,11 +15,11 @@
 //   { type:'snapshot', ... }                    — see buildSnapshot() (stats embedded)
 //   { type:'error', message, stack }            — init/step failure
 
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./peopleSim/index.js";
-import { getTradeProfile } from "./peopleSim/settlement.js";
-import { displayPByCountry } from "./peopleSim/inflation.js";
-import { getChronicle, realmName } from "./peopleSim/chronicle.js";
-import { applyTuning, resetTuning } from "./peopleSim/tuning.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/index.js";
+import { getTradeProfile } from "./sim/peopleSim/settlement.js";
+import { displayPByCountry } from "./sim/peopleSim/inflation.js";
+import { getChronicle, realmName } from "./sim/peopleSim/chronicle.js";
+import { applyTuning, resetTuning } from "./sim/peopleSim/tuning.js";
 
 let world = null;
 let playing = false;

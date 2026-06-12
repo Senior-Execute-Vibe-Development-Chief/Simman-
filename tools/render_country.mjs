@@ -2,11 +2,11 @@
 // distinct colours via assignCountryColors + thick borders) and report the
 // neighbour-distinctness metric. node tools/render_country.mjs [step] [seed]
 import zlib from "node:zlib"; import { writeFileSync } from "node:fs";
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
-import { T } from "../src/peopleSim/tuning.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { T } from "../src/sim/peopleSim/tuning.js";
 if (process.env.SIM_CAPITAL_ANCHOR) T.CAPITAL_ANCHOR = +process.env.SIM_CAPITAL_ANCHOR;   // A/B territory compactness
 if (process.env.SIM_GAP_FILL !== undefined) T.REALM_GAP_FILL = +process.env.SIM_GAP_FILL;   // A/B the no-man's-land gap fill
 if (process.env.SIM_ENCIRCLE !== undefined) T.ENCIRCLE_PENALTY = +process.env.SIM_ENCIRCLE;   // A/B encirclement

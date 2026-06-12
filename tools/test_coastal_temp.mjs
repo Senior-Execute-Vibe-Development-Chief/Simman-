@@ -82,7 +82,7 @@ function sampleWind(x, y, W, H) {
 }
 
 // ── Import solvers ──
-const { solveMoisture } = await import('../src/moistureSolver.js');
+const { solveMoisture } = await import('../src/sim/moistureSolver.js');
 
 // ── Build Earth elevation + wind ──
 const W = 1920, H = 960;

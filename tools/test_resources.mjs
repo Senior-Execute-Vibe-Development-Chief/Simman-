@@ -19,8 +19,8 @@ function sampleEarth(data,sw,sh,x,y,tw,th){const fx=(x/tw)*sw,fy=(y/th)*sh;const
 const windData=JSON.parse(readFileSync('data/global_wind.json','utf8'));
 function sampleWind(x,y,W,H){const lats=windData.lat,lons=windData.lon,nLat=lats.length,nLon=lons.length;const lat=90-(y/(H-1))*180,lon=((x/W)*360+180)%360;let latIdx0=0;for(let i=0;i<nLat-1;i++){if(lats[i]>=lat&&lats[i+1]<lat){latIdx0=i;break;}}const latIdx1=Math.min(nLat-1,latIdx0+1);const latRange=lats[latIdx1]-lats[latIdx0];const latFrac=latRange!==0?(lat-lats[latIdx0])/latRange:0;let lonIdx0=0;for(let i=0;i<nLon-1;i++){if(lons[i]<=lon&&lons[i+1]>lon){lonIdx0=i;break;}if(i===nLon-2)lonIdx0=i;}const lonIdx1=(lonIdx0+1)%nLon;const lonRange=lonIdx1>lonIdx0?lons[lonIdx1]-lons[lonIdx0]:(360-lons[lonIdx0]+lons[lonIdx1]);const lonFrac=lonRange!==0?((lon-lons[lonIdx0]+360)%360)/lonRange:0;let u00=0,u10=0,u01=0,u11=0,v00=0,v10=0,v01=0,v11=0;for(let m=0;m<12;m++){const md=windData[String(m)];u00+=md.u[latIdx0][lonIdx0];u10+=md.u[latIdx0][lonIdx1];u01+=md.u[latIdx1][lonIdx0];u11+=md.u[latIdx1][lonIdx1];v00+=md.v[latIdx0][lonIdx0];v10+=md.v[latIdx0][lonIdx1];v01+=md.v[latIdx1][lonIdx0];v11+=md.v[latIdx1][lonIdx1];}const inv12=1/12;u00*=inv12;u10*=inv12;u01*=inv12;u11*=inv12;v00*=inv12;v10*=inv12;v01*=inv12;v11*=inv12;const lf=Math.max(0,Math.min(1,latFrac)),xf=Math.max(0,Math.min(1,lonFrac));return{u:(u00*(1-xf)+u10*xf)*(1-lf)+(u01*(1-xf)+u11*xf)*lf,v:(v00*(1-xf)+v10*xf)*(1-lf)+(v01*(1-xf)+v11*xf)*lf};}
 
-const{solveMoisture}=await import('../src/moistureSolver.js');
-const{generateResources,RESOURCES}=await import('../src/resourceGen.js');
+const{solveMoisture}=await import('../src/sim/moistureSolver.js');
+const{generateResources,RESOURCES}=await import('../src/sim/resourceGen.js');
 
 const W=1920,H=960,RES=2;
 const elevation=new Float32Array(W*H),temperature=new Float32Array(W*H);

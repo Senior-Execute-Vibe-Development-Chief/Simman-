@@ -2,12 +2,12 @@
 // income by category, so we can see whether cities live on RESOURCE EXTRACTION
 // (mining) or on MANUFACTURING + TRADE + TOLLS (as real cities did).
 //   node tools/probe_city_income.mjs [step] [seed]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { cropSuitability } from "../src/cropGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
-import { IN_LABELS } from "../src/peopleSim/money.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { cropSuitability } from "../src/sim/cropGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
+import { IN_LABELS } from "../src/sim/peopleSim/money.js";
 
 const STEP = +(process.argv[2] || "10000");
 const SEED = +(process.argv[3] || "8817");

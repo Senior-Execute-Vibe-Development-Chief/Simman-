@@ -4,10 +4,10 @@
 // country's colour. White-ringed dots = "claimed ahead" (flag != land under it).
 //   node tools/render_claimlag.mjs [step] [seed] [out.png]
 import zlib from "node:zlib"; import { writeFileSync } from "node:fs";
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
 
 const STEP=+(process.argv[2]||8000), SEED=+(process.argv[3]||8817), OUT=process.argv[4]||"/tmp/claimlag.png", W=480,H=240;
 const crcT=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();

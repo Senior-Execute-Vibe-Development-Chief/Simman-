@@ -5,9 +5,9 @@
 // personality, longevity. Prints readable sections AND writes a JSON record.
 import fs from "fs";
 import { buildSim } from "./_harness.mjs";
-import { stepPeopleSim } from "../src/peopleSim/index.js";
-import { techState, ERAS } from "../src/peopleSim/tech.js";
-import { T } from "../src/peopleSim/tuning.js";
+import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
+import { techState, ERAS } from "../src/sim/peopleSim/tech.js";
+import { T } from "../src/sim/peopleSim/tuning.js";
 
 const W=+(process.argv[4]||960),H=W>>1,N=W*H;
 const SEED=+(process.argv[2]||8817);

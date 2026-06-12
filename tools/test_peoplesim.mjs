@@ -2,7 +2,7 @@
 // cradle village seeds, daughter colonies spread, no crashes over a
 // long run.
 
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 
 function makeFakeWorld(W = 128, H = 64) {
   const elevation   = new Float32Array(W * H);

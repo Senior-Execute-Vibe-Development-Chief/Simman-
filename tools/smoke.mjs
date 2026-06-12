@@ -7,7 +7,7 @@
 // Exits non-zero with a labelled message on the first failure.
 
 import { buildWorld, buildSim } from "./_harness.mjs";
-import { stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
+import { stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 
 const W = 320, H = 160, SEED = 4242, PRESET = "earth_sim";
 const DET_STEPS = 600;      // determinism comparison window

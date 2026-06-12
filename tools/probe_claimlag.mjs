@@ -4,10 +4,10 @@
 // border the country has actually crawled over). A settlement whose flag doesn't
 // match the land it stands on was claimed AHEAD of the visible border.
 //   node tools/probe_claimlag.mjs [steps] [seed] [W] [H]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 
 const STEPS = parseInt(process.argv[2] || "12000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);

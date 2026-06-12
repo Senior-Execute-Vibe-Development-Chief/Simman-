@@ -3,13 +3,13 @@
 // reached, plus the biggest cities at "year 1000 AD" (step 9720). Calibrates
 // LEARN_BASE so industrial-scale (multi-million) cities don't appear in antiquity.
 //   node tools/probe_techpace.mjs [maxStep=18000] [LEARN_BASE override] [seed]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { cropSuitability } from "../src/cropGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
-import { techState, ERAS } from "../src/peopleSim/tech.js";
-import { applyTuning } from "../src/peopleSim/tuning.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { cropSuitability } from "../src/sim/cropGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
+import { techState, ERAS } from "../src/sim/peopleSim/tech.js";
+import { applyTuning } from "../src/sim/peopleSim/tuning.js";
 
 const STEP = +(process.argv[2] || "18000");
 const LB   = process.argv[3] !== undefined ? +process.argv[3] : undefined;

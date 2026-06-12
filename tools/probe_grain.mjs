@@ -3,10 +3,10 @@
 // CHAIN signature (villages sell, towns earn a margin, the capital is the top
 // buyer funding the chain). Reports per-tier the smoothed food-coin sold/bought.
 //   node tools/probe_grain.mjs [steps] [seed] [W] [H]
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 
 const STEPS = parseInt(process.argv[2] || "12000", 10);
 const SEED = parseInt(process.argv[3] || "8817", 10);

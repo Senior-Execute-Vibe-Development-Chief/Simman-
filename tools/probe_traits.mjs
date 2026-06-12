@@ -2,10 +2,10 @@
 // by dominant label and report mean land / wealth / wars / conquests /
 // colonies, so we can see whether warlike => more war, commercial => more
 // gold, expansionist => more land actually holds in the sim.
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
 
 const STEPS = parseInt(process.argv[2] || "25000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);

@@ -1,8 +1,8 @@
 // Track the biggest empire over time + its momentum, to see rise-and-shatter.
-import { generateWorld } from "../src/worldgen.js";
-import { computeRivers } from "../src/riverGen.js";
-import { generateResources } from "../src/resourceGen.js";
-import { initPeopleSim, stepPeopleSim } from "../src/peopleSim/index.js";
+import { generateWorld } from "../src/sim/worldgen.js";
+import { computeRivers } from "../src/sim/riverGen.js";
+import { generateResources } from "../src/sim/resourceGen.js";
+import { initPeopleSim, stepPeopleSim } from "../src/sim/peopleSim/index.js";
 
 const STEPS=+(process.argv[2]||30000), SEED=+(process.argv[3]||8817);
 const W=+(process.env.EARTH_W||480), H=+(process.env.EARTH_H||240), TW=W, TH=H;
