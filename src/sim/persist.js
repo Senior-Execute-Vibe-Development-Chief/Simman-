@@ -34,7 +34,7 @@ const SETT_FIELDS = [
   "_popPeak", "_witherSince", "lastFoundAttempt", "_lastColony", "_lastColonySent",
   "_coloniesSent", "_isColony",
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
-  "cultureId", "culMix", "faithMix",
+  "cultureId", "culMix", "faithMix", "_isColony", "_isolatedSince", "_diverged",
 ];
 
 // ── typed-array <-> base64 ──────────────────────────────────────────────
@@ -93,10 +93,11 @@ export function saveWorld(world, meta = {}) {
       preset: world.preset, oceanLevel: meta.oceanLevel ?? 0.78, tecParams: meta.tecParams || {},
     },
     step: world.step,
-    counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0 },
+    counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1 },
     tuning,
     settlements,
     polities,
+    cultures: world.cultures ? [...world.cultures.entries()] : [],
     events: world.events || [],
     ships: world.ships || [],
     maps: {
@@ -149,6 +150,8 @@ export function loadWorld(data) {
   world.step = data.step | 0;
   world._nextSettlementId = data.counters.settlement;
   world._nextShipId = data.counters.ship;
+  world._nextCultureId = data.counters.culture || 1;
+  world.cultures = new Map(data.cultures || []);
 
   for (const rec of data.settlements) {
     const s = { kind: "settlement", localRes: {}, _tradeReach: null, crops: [], ...rec };

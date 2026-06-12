@@ -20,6 +20,7 @@
 import { isContinentalLand } from "./state.js";
 import { makeSettlement } from "./settlement.js";
 import { getPolity } from "./entities.js";
+import { dominantCulture } from "./cultures.js";
 import { passRng } from "./rng.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
@@ -358,6 +359,7 @@ export function maybeCrystallize(world) {
         people: 18 + (rng.int(8)),
         knowledge: inherited,
         countryId: region >= 0 ? region : -1,
+        cultureId: world._lastInheritDonor ? dominantCulture(world._lastInheritDonor) : -1,
       });
       gridAdd(world, born);   // same-pass candidates must see (and space off) it
     }
@@ -659,7 +661,7 @@ function sendSettlers(world, parent) {
     parentId: parent.id,
     countryId: parent.countryId,                   // joins the parent's realm immediately
     kind: "settlers",
-    name: "colony-" + parent.id + "-" + world.step,
+    cultureId: dominantCulture(parent),
   });
   gridAdd(world, daughter);   // register for same-pass spacing queries
 }
@@ -754,7 +756,7 @@ function maybeUrbanGenesis(world) {
       parentId: region.id,
       countryId: region.countryId,              // joins its hinterland's realm
       kind: "town",
-      name: "town-" + region.id + "-" + world.step,
+      cultureId: dominantCulture(region),
     });
     gridAdd(world, town);   // register so same-pass spacing / catchment checks see it
   }
@@ -765,6 +767,7 @@ function maybeUrbanGenesis(world) {
 // is in transport terms. Settlements that crystallise right next to a
 // city inherit most of its tech; isolated cradles start near baseline.
 function inheritKnowledgeAt(world, ti, td) {
+  world._lastInheritDonor = null;
   const { tw } = world;
   const ty = (ti / tw) | 0, tx = ti - ty * tw;
   let nearest = null, bestD2 = Infinity;
@@ -795,6 +798,7 @@ function inheritKnowledgeAt(world, ti, td) {
     construction: 0.1,
     organization: 0.1,
   };
+  world._lastInheritDonor = nearest;   // culture rides the same lineage (caller reads this)
   if (!nearest) return baseline;
   // Inheritance fraction by transport distance: 90 % at td=0, 30 % at
   // td=60, ~5 % far away. Distant sites mostly invent on their own.

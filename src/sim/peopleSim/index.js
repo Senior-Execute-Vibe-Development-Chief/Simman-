@@ -30,6 +30,7 @@ import { foldMoney } from "./money.js";
 import { checkPeopleSimInvariants } from "./invariants.js";
 import { chronicleTick } from "./chronicle.js";
 import { techState } from "./tech.js";
+import { updateCultures, CULTURE_INTERVAL } from "./cultures.js";
 import { T } from "./tuning.js";
 
 const CHRONICLE_INTERVAL = 300;   // ticks between per-country chronicle milestone checks
@@ -143,6 +144,9 @@ export function stepPeopleSim(world, n = 1) {
     // over-extended members secede.
     if (world.step % _ivl(T.POLITY_INTERVAL) === 0) updatePolities(world);
     mark("polities");
+    // Peoples: assimilation toward the ruler's culture, colonial divergence,
+    // per-polity culture refresh (cultures.js).
+    if (world.step % _ivl(CULTURE_INTERVAL) === 0) updateCultures(world);
     // Country chronicle: the slow-drift events (a discovery, a growth/wealth
     // milestone) that aren't a single discrete moment, checked periodically.
     if (world.step % CHRONICLE_INTERVAL === 0) chronicleTick(world);

@@ -131,7 +131,7 @@ function packSettlement(s) {
   return {
     id: s.id, name: s.name, mode: s.mode,
     pos: { x: s.pos.x, y: s.pos.y },
-    people: s.people, tier: s.tier, countryId: s.countryId,
+    people: s.people, tier: s.tier, countryId: s.countryId, cultureId: s.cultureId ?? -1,
     wealth: s.wealth, _wealthDelta: s._wealthDelta, _minedRate: s._minedRate,
     _isPort: s._isPort, _vassalCount: s._vassalCount, liegeId: s.liegeId,
     army: s.army,         // for the leaderboard's "biggest armies" sort
@@ -160,6 +160,7 @@ function packSelected(s) {
     _seaReachSize: s._seaReach ? s._seaReach.size : 0,
     _tradeProfile: getTradeProfile(s, world),
     _coloniesSent: s._coloniesSent || 0, _isColony: !!s._isColony,
+    culMix: s.culMix || null,
   };
 }
 
@@ -276,6 +277,7 @@ function buildSnapshot() {
     settlements: setts,
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last
+    cultures: sendStatic && world.cultures ? [...world.cultures.values()].map(c => ({ id: c.id, name: c.name, hue: c.hue, parent: c.parentCultureId })) : null,
     ships: world.ships ? world.ships.map(sh => ({ x: sh.x, y: sh.y, landTi: sh.landTi, countryId: sh.countryId })) : null,
     selected,
     chronicle,

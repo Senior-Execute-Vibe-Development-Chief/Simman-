@@ -16,6 +16,7 @@
 // The polity id remains the founding-capital settlement id (unchanged scheme).
 
 import { logEvent } from "./events.js";
+import { getCulture, nameFor, dominantCulture } from "./cultures.js";
 
 export function politiesOf(world) {
   return world.polities || (world.polities = new Map());
@@ -44,9 +45,17 @@ export function ensurePolity(world, id, opts = {}) {
     }
     return p;
   }
+  // Name the realm in its founding people's tongue, derived from the seat
+  // (Velara the city begets Velarath the realm).
+  let name = null, cultureId = -1;
+  if (opts.seat) {
+    cultureId = dominantCulture(opts.seat);
+    const cul = getCulture(world, cultureId);
+    if (cul) name = nameFor(world, cul, "realm", opts.seat.name);
+  }
   p = {
     id,
-    name: null,                    // set by the naming service when a culture exists
+    name,
     foundedStep: world.step | 0,
     endedStep: -1,
     capitalId: opts.seat ? opts.seat.id : id,
@@ -56,13 +65,13 @@ export function ensurePolity(world, id, opts = {}) {
     personality: null,
     // chronicle milestone memory (the old world._chronMeta)
     chron: { era: -1, cities: 0, wealthBand: -1 },
-    // attachments (later phases)
-    cultureId: -1, faithId: -1, dynastyId: -1,
+    // attachments
+    cultureId, faithId: -1, dynastyId: -1,
   };
   reg.set(id, p);
   if (!opts.silent) {
     logEvent(world, "polity.founded", {
-      polity: id, how: opts.how || "emerged",
+      polity: id, name: p.name, how: opts.how || "emerged",
       seat: opts.seat ? opts.seat.id : id, seatName: opts.seat ? opts.seat.name : undefined,
       from: opts.from ?? -1, fromName: opts.fromName,
       x: opts.seat ? opts.seat.pos.x | 0 : undefined, y: opts.seat ? opts.seat.pos.y | 0 : undefined,

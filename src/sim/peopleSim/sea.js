@@ -31,6 +31,7 @@
 
 import { makeSettlement, techEff } from "./settlement.js";
 import { logEvent } from "./events.js";
+import { dominantCulture } from "./cultures.js";
 import { T } from "./tuning.js";
 import { isContinentalLand } from "./state.js";
 import { recordOut, OUT_COLONY } from "./money.js";
@@ -383,7 +384,7 @@ function tryColonize(world, A, cands, prev) {
   if (!world.ships) world.ships = [];
   world.ships.push({
     id: (world._nextShipId = (world._nextShipId || 0) + 1), kind: "colony",
-    owner: A.id, countryId: A.countryId,
+    owner: A.id, countryId: A.countryId, cultureId: dominantCulture(A),
     knowledge: { ...A.knowledge },
     people: COLONY_PEOPLE, wealth: endow,
     landTi: chosen.landTi,
@@ -455,7 +456,7 @@ function foundColony(world, sh) {
     knowledge: { ...sh.knowledge },
     parentId: sh.owner,
     kind: "colony",
-    name: "colony",
+    cultureId: sh.cultureId ?? -1,
   });
   colony.countryId = sh.countryId;        // colonial allegiance to the founder's realm
   colony.wealth = sh.wealth || 0;

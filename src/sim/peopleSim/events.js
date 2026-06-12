@@ -128,6 +128,18 @@ const NARRATE = {
   "famine.struck"(ev) { void ev; return "A famine gripped the land."; },
   "plague.outbreak"(ev) { return ev.sName ? `Plague broke out in ${ev.sName} and swept through the realm.` : "Plague swept through the realm."; },
   "era.reached"(ev) { return `Reached the ${ev.eraName} era.`; },
+  "culture.born"(ev) {
+    return ev.parent >= 0
+      ? `A new people, the ${ev.cultureName}, emerged from the ${ev.parentName || "old stock"}.`
+      : `The ${ev.cultureName} people emerged.`;
+  },
+  "culture.diverged"(ev) {
+    return `Generations of isolation made ${ev.sName || "the colony"}'s folk a people of their own — the ${ev.cultureName}.`;
+  },
+  "settlement.lapsed"(ev, as) {
+    if (as === ev.from) return `Lost its grip on ${ev.sName || "a frontier town"} — the province went its own way.`;
+    return `${ev.sName || "A town"} slipped free of ${ev.fromName || "its realm"}.`;
+  },
   "growth.cities"(ev) { return ev.n === 1 ? "Its first city rose." : `Grew to ${ev.n} cities.`; },
   "wealth.milestone"(ev) { return `Treasury swelled past ${ev.label}.`; },
 };
@@ -155,6 +167,8 @@ export function categoryOf(ev, as = -1) {
     case "growth.cities": return "growth";
     case "wealth.milestone": return "wealth";
     case "settlement.founded": case "colony.departed": return "founding";
+    case "culture.born": case "culture.diverged": return "founding";
+    case "settlement.lapsed": return as === ev.from ? "loss" : "growth";
     default: return "growth";
   }
 }

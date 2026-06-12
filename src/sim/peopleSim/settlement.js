@@ -13,6 +13,7 @@ import { agriGate, bestPackageAt, pkgSuitAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, getPolity } from "./entities.js";
+import { foundCulture, getCulture, seedCulture, nameFor } from "./cultures.js";
 import { T } from "./tuning.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, OUT_GOODS, OUT_MATERIALS } from "./money.js";
 
@@ -232,6 +233,16 @@ export function makeSettlement(world, x, y, opts = {}) {
   }
   // Compute water access score from the home tile + 4 neighbours.
   s.countryId = opts.countryId ?? s.id;             // joins parent's realm if specified, else own city-state
+  // ── Who lives here: culture stock + a name in that people's tongue ──
+  // A cradle is the birth of a PEOPLE (founds a culture); everything else
+  // carries its founder stock's culture. Explicit opts.name wins (imports).
+  {
+    let cul = null;
+    if (opts.cradle) cul = foundCulture(world, { origin: s });
+    else if (opts.cultureId != null && opts.cultureId >= 0) cul = getCulture(world, opts.cultureId);
+    seedCulture(world, s, cul ? cul.id : -1);
+    if (cul && !opts.name) s.name = nameFor(world, cul, "settlement");
+  }
   s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
   s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
   world.settlements.push(s);
