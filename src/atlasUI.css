@@ -250,36 +250,6 @@ body { margin: 0; background: var(--au-table-dark); }
   color: var(--au-ink);
 }
 
-/* ── App-level tab nav restyle ── */
-.au-app-tabs {
-  display: flex;
-  justify-content: center;
-  gap: 4px;
-  padding: 8px 12px 0;
-  background: linear-gradient(180deg, #160c04 0%, #1a0f04 100%);
-  border-bottom: 2px solid var(--au-paper-deep);
-}
-.au-app-tab {
-  padding: 7px 22px;
-  font-size: 12px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  font-family: 'Cinzel', Georgia, serif;
-  border: 1px solid rgba(168,140,92,0.18);
-  border-bottom: none;
-  border-radius: 4px 4px 0 0;
-  background: transparent;
-  color: rgba(232,212,164,0.45);
-  cursor: pointer;
-  font-weight: 600;
-  position: relative; bottom: -1px;
-}
-.au-app-tab.au-active {
-  background: var(--au-paper);
-  color: var(--au-ink);
-  border-color: var(--au-paper-deep);
-}
-
 /* ── Pico hover card ── */
 .au-pico {
   position: fixed;

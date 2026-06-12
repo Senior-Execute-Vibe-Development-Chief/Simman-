@@ -37,7 +37,7 @@ const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688
 // can be rendered once to an offscreen canvas and blitted each frame instead
 // of rebuilt per-pixel. Sim-dependent views (population, transport, roads,
 // money, tribes) and atlas are excluded.
-const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","fertility","crop","crossing","resources","moisture","temperature","country","atlas"]);
+const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","crop","crossing","resources","moisture","temperature","country","atlas"]);
 // Sim-DYNAMIC data views: also cacheable (a GPU blit instead of a full-canvas
 // putImageData every frame — the reason these lagged next to the country view),
 // but their raster must refresh as the sim advances, so the cache key carries a
@@ -252,6 +252,19 @@ function TechTreeOverlay({k,title,onClose}){
 // (the settlement card is too short to hold a long log; a modal escapes it).
 // `entries` are {step,type,text}; rendered newest-first, dated via yearStr and
 // colour-coded by event type (dark tones for contrast on the light parchment).
+// ── Map lenses ──────────────────────────────────────────────────────
+// Grouped views: each lens is one way of READING the world; sub-modes are
+// variations within it. Worldgen diagnostics live behind a ?dev URL flag.
+const DEV=typeof location!=="undefined"&&new URLSearchParams(location.search).has("dev");
+const LENSES=[
+  {id:"terrain", label:"Terrain", subs:[["terrain","Map"],["atlas","Atlas"]]},
+  {id:"politics",label:"Politics",subs:[["country","Realms"]]},
+  {id:"peoples", label:"Peoples", subs:[["culture","Cultures"]]},
+  {id:"faiths",  label:"Faiths",  subs:[["faith","Faiths"]]},
+  {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["resources","Resources"],["crop","Cropland"]]},
+  ...(DEV?[{id:"dev",label:"Dev",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
+];
+
 const CHRON_COL={founding:"#1f7a55",discovery:"#2f6fa8",growth:"#2f7d3f",wealth:"#9c7414",
   war:"#b23a28",conquest:"#b15212",annex:"#8a6420",secession:"#7a44b0",loss:"#a04a28",
   plague:"#8a3aa8",famine:"#9c5a1e",end:"#5a4a32"};
@@ -390,247 +403,6 @@ c.strokeStyle='rgba(42,48,28,0.6)';c.lineWidth=Math.max(0.3,s*0.12);c.stroke();}
 
 
 
-// ── Transport TEST: standalone greedy claim by capital cost ──────────
-// Independent of the live sim. Each "test capital" runs a Dijkstra that
-// expands through:
-//   - land (cost from params, terrain-modulated)
-//   - water (cost / nav, only if nav > 0)
-//   - mode-change transitions pay a port-load cost on top of the next
-//     tile's cost
-// Tiles are claimed by whichever capital reaches them at lowest cost,
-// until each capital has hit tileLimit. Returns {cost, ownerArr} where
-// ownerArr[ti] is the index of the capital that claimed it (or -1).
-function runTransportTest(ter, capitals, params){
-  const tw=ter.tw,th=ter.th,N=tw*th;
-  const tElev=ter.tElev,tDiff=ter.tDiff,tCoast=ter.tCoast,tTemp=ter.tTemp,tMoist=ter.tMoist;
-  const riverMag=ter.rivers?ter.rivers.riverMag:null;
-  const cost=new Float32Array(N);cost.fill(999);
-  const ownerArr=new Int16Array(N);ownerArr.fill(-1);
-  const visited=new Uint8Array(N);
-  const claimed=new Int32Array(capitals.length);
-  const TILE_LIMIT=params.tileLimit;
-  // Deterministic per-tile noise (xorshift-style hash on tile index).
-  // Used to perturb costs so borders aren't perfectly Voronoi-straight in
-  // flat terrain. Deterministic so the BFS is stable across runs.
-  function tileNoise(ti){
-    let h=(ti+0x9E3779B9)|0;
-    h^=h>>>15;h=Math.imul(h,2246822519);
-    h^=h>>>13;h=Math.imul(h,3266489917);
-    h^=h>>>16;
-    return ((h>>>0)/4294967295);// 0..1
-  }
-  function modeOf(ti){
-    const e=tElev[ti];
-    if(e<=0)return 2;
-    if(riverMag&&riverMag[ti]>=2)return 1;
-    return 0;
-  }
-  function moveCost(ni,ciMode,ciElev){
-    const niMode=modeOf(ni);
-    let base;
-    if(niMode===2){
-      if(params.nav<=0.01)return 999;
-      base=params.water/Math.max(0.3,params.nav);
-    }else if(niMode===1){
-      const rm=riverMag[ni];
-      base=rm>=4?params.river:rm>=3?params.river*1.3:params.river*2;
-    }else{
-      const e=tElev[ni],diff=tDiff[ni],t=tTemp[ni],m=tMoist[ni];
-      base=params.plain;
-      if(e>0.25)base+=(e-0.25)*params.elev;
-      base+=diff*diff*params.harsh;
-      if(t>0.55&&m<0.25)base+=(t-0.55)*5+(0.25-m)*4;
-      if(t<0.18)base+=(0.18-t)*8;
-      if(m>0.7&&t>0.4)base+=(m-0.7)*6;
-      if(tCoast[ni])base=Math.min(base,params.coast);
-      if(ciElev>0){
-        const slope=Math.abs(e-ciElev);
-        if(slope>0.05)base+=(slope-0.05)*params.slope;
-      }
-    }
-    if(niMode!==ciMode)base+=params.port;
-    // Deterministic noise perturbation — scales cost by (1 ± noise/2).
-    // At noise=0.3 each tile is between 0.85x and 1.15x its base cost.
-    if(params.noise>0){
-      base*=(1+(tileNoise(ni)-0.5)*params.noise);
-    }
-    return base;
-  }
-  // Heap (ti, cost, tribe) as parallel arrays
-  const heapTi=new Int32Array(N*2);
-  const heapCost=new Float32Array(N*2);
-  const heapTribe=new Int16Array(N*2);
-  let heapSize=0;
-  function hPush(ti,c,t){
-    let i=heapSize++;
-    heapTi[i]=ti;heapCost[i]=c;heapTribe[i]=t;
-    while(i>0){const p=(i-1)>>1;if(heapCost[p]<=heapCost[i])break;
-      const tt=heapTi[p],tc=heapCost[p],tb=heapTribe[p];
-      heapTi[p]=heapTi[i];heapCost[p]=heapCost[i];heapTribe[p]=heapTribe[i];
-      heapTi[i]=tt;heapCost[i]=tc;heapTribe[i]=tb;i=p;}
-  }
-  let _ti=0,_cost=0,_tribe=0;
-  function hPop(){
-    _ti=heapTi[0];_cost=heapCost[0];_tribe=heapTribe[0];
-    heapSize--;
-    if(heapSize===0)return;
-    heapTi[0]=heapTi[heapSize];heapCost[0]=heapCost[heapSize];heapTribe[0]=heapTribe[heapSize];
-    let i=0;for(;;){const l=i*2+1,r=l+1;let s=i;
-      if(l<heapSize&&heapCost[l]<heapCost[s])s=l;
-      if(r<heapSize&&heapCost[r]<heapCost[s])s=r;
-      if(s===i)break;
-      const tt=heapTi[s],tc=heapCost[s],tb=heapTribe[s];
-      heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];heapTribe[s]=heapTribe[i];
-      heapTi[i]=tt;heapCost[i]=tc;heapTribe[i]=tb;i=s;}
-  }
-  const DX4=[-1,1,0,0],DY4=[0,0,-1,1];
-  // Seed each capital
-  for(let i=0;i<capitals.length;i++){
-    const c=capitals[i];const ti=c.y*tw+c.x;
-    if(ti<0||ti>=N||tElev[ti]<=0)continue;// can't seed in water
-    hPush(ti,0,i);
-  }
-  let totalClaimed=0;
-  const totalTarget=capitals.length*TILE_LIMIT;
-  while(heapSize>0&&totalClaimed<totalTarget){
-    hPop();
-    const ti=_ti,cc=_cost,tribe=_tribe;
-    if(visited[ti])continue;
-    if(claimed[tribe]>=TILE_LIMIT)continue;
-    visited[ti]=1;
-    ownerArr[ti]=tribe;
-    cost[ti]=cc;
-    claimed[tribe]++;totalClaimed++;
-    const cx=ti%tw,cy=(ti-cx)/tw;
-    const ciMode=modeOf(ti);
-    const ciElev=tElev[ti];
-    for(let d=0;d<4;d++){
-      const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
-      if(ny<0||ny>=th)continue;
-      const ni=ny*tw+nx;
-      if(visited[ni])continue;
-      const mc=moveCost(ni,ciMode,ciElev);
-      if(mc>=999)continue;
-      hPush(ni,cc+mc,tribe);
-    }
-  }
-  return{cost,ownerArr,claimed};
-}
-
-// Find the cheapest path between two tile coordinates using the same
-// cost function as runTransportTest. Returns {path: [tileIndices...],
-// totalCost} or null if no path exists. Used by the "route" sub-mode
-// in the transport-test view.
-function findRoute(ter, startTile, endTile, params){
-  const tw=ter.tw,th=ter.th,N=tw*th;
-  const tElev=ter.tElev,tDiff=ter.tDiff,tCoast=ter.tCoast,tTemp=ter.tTemp,tMoist=ter.tMoist;
-  const riverMag=ter.rivers?ter.rivers.riverMag:null;
-  const cost=new Float32Array(N);cost.fill(Infinity);
-  const parent=new Int32Array(N);parent.fill(-1);
-  const visited=new Uint8Array(N);
-  function tileNoise(ti){
-    let h=(ti+0x9E3779B9)|0;
-    h^=h>>>15;h=Math.imul(h,2246822519);
-    h^=h>>>13;h=Math.imul(h,3266489917);
-    h^=h>>>16;return ((h>>>0)/4294967295);
-  }
-  function modeOf(ti){
-    const e=tElev[ti];
-    if(e<=0)return 2;
-    if(riverMag&&riverMag[ti]>=2)return 1;
-    return 0;
-  }
-  function moveCost(ni,ciMode,ciElev){
-    const niMode=modeOf(ni);
-    let base;
-    if(niMode===2){
-      if(params.nav<=0.01)return Infinity;
-      base=params.water/Math.max(0.3,params.nav);
-    }else if(niMode===1){
-      const rm=riverMag[ni];
-      base=rm>=4?params.river:rm>=3?params.river*1.3:params.river*2;
-    }else{
-      const e=tElev[ni],diff=tDiff[ni],t=tTemp[ni],m=tMoist[ni];
-      base=params.plain;
-      if(e>0.25)base+=(e-0.25)*params.elev;
-      base+=diff*diff*params.harsh;
-      if(t>0.55&&m<0.25)base+=(t-0.55)*5+(0.25-m)*4;
-      if(t<0.18)base+=(0.18-t)*8;
-      if(m>0.7&&t>0.4)base+=(m-0.7)*6;
-      if(tCoast[ni])base=Math.min(base,params.coast);
-      if(ciElev>0){
-        const slope=Math.abs(e-ciElev);
-        if(slope>0.05)base+=(slope-0.05)*params.slope;
-      }
-    }
-    if(niMode!==ciMode)base+=params.port;
-    if(params.noise>0)base*=(1+(tileNoise(ni)-0.5)*params.noise);
-    return base;
-  }
-  const heapTi=new Int32Array(N*2);
-  const heapCost=new Float32Array(N*2);
-  let heapSize=0;
-  function hPush(ti,c){
-    let i=heapSize++;heapTi[i]=ti;heapCost[i]=c;
-    while(i>0){const p=(i-1)>>1;if(heapCost[p]<=heapCost[i])break;
-      const tt=heapTi[p],tc=heapCost[p];
-      heapTi[p]=heapTi[i];heapCost[p]=heapCost[i];
-      heapTi[i]=tt;heapCost[i]=tc;i=p;}
-  }
-  let _ti=0,_cost=0;
-  function hPop(){
-    _ti=heapTi[0];_cost=heapCost[0];heapSize--;
-    if(heapSize===0)return;
-    heapTi[0]=heapTi[heapSize];heapCost[0]=heapCost[heapSize];
-    let i=0;for(;;){const l=i*2+1,r=l+1;let s=i;
-      if(l<heapSize&&heapCost[l]<heapCost[s])s=l;
-      if(r<heapSize&&heapCost[r]<heapCost[s])s=r;
-      if(s===i)break;
-      const tt=heapTi[s],tc=heapCost[s];
-      heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];
-      heapTi[i]=tt;heapCost[i]=tc;i=s;}
-  }
-  const DX4=[-1,1,0,0],DY4=[0,0,-1,1];
-  const startTi=startTile.y*tw+startTile.x;
-  const endTi=endTile.y*tw+endTile.x;
-  if(startTi<0||startTi>=N||endTi<0||endTi>=N)return null;
-  cost[startTi]=0;
-  hPush(startTi,0);
-  while(heapSize>0){
-    hPop();const ti=_ti,cc=_cost;
-    if(visited[ti])continue;
-    visited[ti]=1;
-    if(ti===endTi)break;
-    if(cc>cost[ti])continue;
-    const cx=ti%tw,cy=(ti-cx)/tw;
-    const ciMode=modeOf(ti);
-    const ciElev=tElev[ti];
-    for(let d=0;d<4;d++){
-      const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
-      if(ny<0||ny>=th)continue;
-      const ni=ny*tw+nx;
-      if(visited[ni])continue;
-      const mc=moveCost(ni,ciMode,ciElev);
-      if(!isFinite(mc))continue;
-      const newCost=cc+mc;
-      if(newCost<cost[ni]){
-        cost[ni]=newCost;
-        parent[ni]=ti;
-        hPush(ni,newCost);
-      }
-    }
-  }
-  if(!visited[endTi])return null;
-  const path=[];
-  let cur=endTi;let safety=N;
-  while(cur>=0&&safety-->0){
-    path.push(cur);
-    if(cur===startTi)break;
-    cur=parent[cur];
-  }
-  if(cur!==startTi)return null;
-  return{path,totalCost:cost[endTi]};
-}
 
 // ── Display units (peopleSim) ───────────────────────────────────────
 // The sim runs on compact internal units; these scale them to realistic,
@@ -753,45 +525,6 @@ const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("tectonic");
 // Transport-test mode state. Each click in this view places a capital;
 // the BFS re-runs whenever params or capitals change.
-const[ttCapitals,setTtCapitals]=useState([]);
-// Transport-test cost model — RAW per-terrain / per-mode travel costs, dialed
-// DIRECTLY. This view exposes the EXACT cost of each tile/terrain type and of
-// the mode changes, instead of abstract tech points:
-//   plain    flat land, per tile
-//   rough    rough-terrain coefficient (× slope-variance²)
-//   mountain elevation penalty coefficient (above e=0.25)
-//   slope    per-step climb penalty coefficient
-//   river    moving ALONG a river (mag≥4; mag-3 ×1.3, mag-2 ×2)
-//   coast    hugging a coastline
-//   water    crossing open SEA, per tile ("sea passable" off ⇒ impassable)
-//   port     MODE CHANGE — the tax to step on/off water, or land↔river
-const[ttCost,setTtCost]=useState({
-  tileLimit:6000, plain:0.95, rough:14, mountain:6, slope:8,
-  river:0.35, coast:0.5, water:3.5, port:5, seaPassable:true,
-});
-// The BFS reads these raw costs straight (no tech derivation). nav is just the
-// on/off switch for sea travel; water carries the actual per-tile sea cost.
-const ttParams={
-  tileLimit:ttCost.tileLimit, plain:ttCost.plain, harsh:ttCost.rough,
-  elev:ttCost.mountain, slope:ttCost.slope, river:ttCost.river, coast:ttCost.coast,
-  water:ttCost.seaPassable?ttCost.water:999, nav:ttCost.seaPassable?1:0,
-  port:ttCost.port, noise:0,
-};
-const ttResultRef=useRef(null);
-const ttCapitalsRef=useRef([]);
-// Sub-mode: "capitals" places tribe seeds and runs claim BFS;
-// "route" places two endpoints and shows the cheapest path between them.
-const[ttSubMode,setTtSubMode]=useState("capitals");
-const[ttRoute,setTtRoute]=useState({start:null,end:null});
-const ttRouteResultRef=useRef(null);
-useEffect(()=>{ttCapitalsRef.current=ttCapitals;
-  // Re-run BFS whenever capitals or tech change AND we're in test mode
-  if(viewMode!=="transport-test"){ttResultRef.current=null;return;}
-  if(!terRef.current||ttCapitals.length===0){ttResultRef.current=null;
-    if(terRef.current)draw(terRef.current);return;}
-  ttResultRef.current=runTransportTest(terRef.current,ttCapitals,ttParams);
-  draw(terRef.current);
-},[ttCapitals,ttCost,viewMode]);
 const[depthFromSea,setDepthFromSea]=useState(false);
 const[depthCeil,setDepthCeil]=useState(1.0);
 const[showPlates,setShowPlates]=useState(false);
@@ -807,6 +540,11 @@ const[showTuning,setShowTuning]=useState(false);
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
 const[techTreeOpen,setTechTreeOpen]=useState(false);   // full tech-tree overlay (for the selected settlement)
 const[chronicleOpen,setChronicleOpen]=useState(false); // full chronicle (realm history) overlay
+const[lens,setLens]=useState("terrain");const subMemRef=useRef({});
+const[panelTab,setPanelTab]=useState("world");   // World Panel tab: world|realms|peoples|faiths|inspect
+const[newWorldOpen,setNewWorldOpen]=useState(false);
+const[menuOpen,setMenuOpen]=useState(false);
+const[realmSel,setRealmSel]=useState(-1);   // realm inspected in the Realms tab
 // Ref mirror so draw() (memoized) sees the current selection without
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
@@ -824,7 +562,6 @@ const[layers,setLayers]=useState({
   village:true, town:true, city:true, metropolis:true,
 });
 const[layersOpen,setLayersOpen]=useState(false);
-const[boardOpen,setBoardOpen]=useState(false);
 const[leversOpen,setLeversOpen]=useState(false);
 const[tuneVals,setTuneVals]=useState(()=>tuningDefaults());
 const tuneValsRef=useRef(tuneVals);
@@ -909,7 +646,6 @@ const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0}
 // in a ref (no re-render on every sample); the charts read it on the regular
 // psStats-driven re-render. Sampled every HISTORY_INTERVAL sim steps.
 const psHistoryRef=useRef([]);
-const [chartsOpen,setChartsOpen]=useState(false);
 const [statsCopied,setStatsCopied]=useState(false);
 const oceanLevelRef=useRef(0.78);const pendingSaveRef=useRef(null);const downloadSaveRef=useRef(null);const saveFileRef=useRef(null);const depthFromSeaRef=useRef(false);const depthCeilRef=useRef(1.0);const showPlatesRef=useRef(false);const showRiversRef=useRef(false);const showStreamsRef=useRef(false);const showLakesRef=useRef(false);const showGlobeRef=useRef(false);
 const presetRef=useRef("tectonic");const fileRef=useRef(null);const importedWorldRef=useRef(null);
@@ -1469,80 +1205,6 @@ const tr=(tc[ti*3]*landDim)|0,tg=(tc[ti*3+1]*landDim)|0,tb=(tc[ti*3+2]*landDim)|
 r=(r*heatW+tr*(1-heatW))|0;g=(g*heatW+tg*(1-heatW))|0;b=(b*heatW+tb*(1-heatW))|0;
 }
 d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
-}else if(vm==="transport-test"){
-// Standalone test: each click placed a capital; the BFS claims tileLimit
-// tiles per capital by cheapest transport cost using the test params.
-// Tiles painted per-capital colour with brightness = inverse cost.
-if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
-const tc=terrainCache.current;const ptw=ter.tw,pth=ter.th;
-const res=ttResultRef.current;
-const palette=[[230,80,80],[80,170,230],[110,210,110],[230,200,80],[200,120,220],[230,150,80],[100,220,200],[230,100,160]];
-// Track per-tribe max cost for normalisation
-let maxCost=1;if(res){for(let qi=0;qi<res.cost.length;qi++){if(res.ownerArr[qi]>=0&&res.cost[qi]<999&&res.cost[qi]>maxCost)maxCost=res.cost[qi];}}
-for(let ti=0;ti<N;ti++){const tx=ti%CW,ty2=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty2,CH,H))),si=sy*W+sx;
-const e=w.elevation[si];const pi4=ti<<2;
-if(e<=0){d[pi4]=4;d[pi4+1]=5;d[pi4+2]=12;d[pi4+3]=255;continue;}
-const ttx=Math.min(ptw-1,tx),tty=Math.min(pth-1,Math.round(screenYtoDataY(ty2,CH,H)/RES));
-const tti=tty*ptw+ttx;
-const ownerT=res?res.ownerArr[tti]:-1;
-if(ownerT<0){
-  // unclaimed — dim terrain
-  d[pi4]=(tc[ti*3]*0.18)|0;d[pi4+1]=(tc[ti*3+1]*0.18)|0;d[pi4+2]=(tc[ti*3+2]*0.18)|0;d[pi4+3]=255;continue;
-}
-const col=palette[ownerT%palette.length];
-const cc2=res.cost[tti];
-// log-scale brightness: 0→full, maxCost→dim
-const t=Math.min(1,Math.log10(cc2+1)/Math.log10(maxCost+1));
-const bright=1-t*0.7;// dimmest 30% of full
-d[pi4]=(col[0]*bright)|0;d[pi4+1]=(col[1]*bright)|0;d[pi4+2]=(col[2]*bright)|0;d[pi4+3]=255;
-}
-// Mark capitals with white dots
-if(ttCapitalsRef.current){
-  for(const c of ttCapitalsRef.current){
-    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
-      const cx=c.x+dx,cy=c.y+dy;if(cy<0||cy>=pth)continue;
-      const px=cx%CW,py=Math.min(CH-1,Math.round(dataYtoScreenY(cy,CH,H)));
-      if(px<0||px>=CW||py<0||py>=CH)continue;
-      const pi=(py*CW+px)<<2;d[pi]=240;d[pi+1]=240;d[pi+2]=240;d[pi+3]=255;
-    }
-  }
-}
-// Route mode: paint the path in cyan; endpoints in white
-const rr=ttRouteResultRef.current;
-if(rr&&rr.path){
-  for(const pti of rr.path){
-    const px2=pti%ptw,py2=(pti-px2)/ptw;
-    const sx2=px2%CW,sy2=Math.min(CH-1,Math.round(dataYtoScreenY(py2,CH,H)));
-    if(sx2<0||sx2>=CW||sy2<0||sy2>=CH)continue;
-    const pi=(sy2*CW+sx2)<<2;d[pi]=30;d[pi+1]=220;d[pi+2]=240;d[pi+3]=255;
-  }
-}
-// Endpoint markers
-const epts=[];
-if(ttRoute.start)epts.push(ttRoute.start);
-if(ttRoute.end)epts.push(ttRoute.end);
-for(const ep of epts){
-  for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){
-    if(Math.abs(dx)+Math.abs(dy)>4)continue;
-    const cx=ep.x+dx,cy=ep.y+dy;if(cy<0||cy>=pth)continue;
-    const px=cx%CW,py=Math.min(CH-1,Math.round(dataYtoScreenY(cy,CH,H)));
-    if(px<0||px>=CW||py<0||py>=CH)continue;
-    const pi=(py*CW+px)<<2;d[pi]=255;d[pi+1]=255;d[pi+2]=180;d[pi+3]=255;
-  }
-}
-}else if(vm==="fertility"){
-// Fertility overlay — green (high) → yellow → red (low)
-for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
-const e=w.elevation[si];const pi4=ti<<2;
-if(e<=sl){d[pi4]=8;d[pi4+1]=12;d[pi4+2]=22;d[pi4+3]=255;continue;}
-const v=Math.max(0,Math.min(1,ter.tFert[ti]));
-let r,g,b;
-if(v>0.5){const t2=(v-0.5)*2;r=((1-t2)*255)|0;g=200;b=((t2)*40)|0;}
-else{const t2=v*2;r=220;g=(t2*200)|0;b=0;}
-const shade=1-Math.max(0,e-0.1)*0.5;
-d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else if(vm==="crop"){
 // Crop suitability overlay — agronomic potential, sharper than tFert.
 // Same green→yellow→red gradient as fertility; differences vs fert
@@ -1824,8 +1486,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmCountry = viewRef.current === "country";
   const vmCulture = viewRef.current === "culture";
   const vmFaith = viewRef.current === "faith";
-  const vmFR = viewRef.current === "frTerritory";
-  if(psw&&ctx&&vmRoads){
+    if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
     // component-root ids. On the REAL world it's stamp-validated (only valid
@@ -1985,7 +1646,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmFR?32:0)|(vmCulture?64:0)|(vmFaith?128:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0);
     if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
@@ -2065,7 +1726,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         octx.stroke();
       }
-      if(!vmCountry&&!vmFR&&!vmCulture&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmCulture&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map();
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
@@ -2086,7 +1747,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
-      } else if(!vmCountry&&!vmFR&&!vmCulture&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmCulture&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -2122,34 +1783,6 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // you can see how much land each rural region holds (often a country's
       // de-facto core). Tint per region + a solid edge wherever the owner changes
       // (including against wilderness), so every region's territory is outlined.
-      if(vmFR&&owner){
-        const tw=psw.tw,th=psw.th;
-        let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
-        const tintById=new Array(maxId+1);
-        for(const s of psw.settlements){if(s&&s.mode==="settled"){
-          const h=((s.id*97)%360+360)%360;
-          tintById[s.id]=`hsla(${h},55%,52%,${(s.tier|0)===0?0.42:0.24})`;
-        }}
-        let lastFs=null;
-        for(let ti=0;ti<owner.length;ti++){
-          const oid=owner[ti];if(oid<0)continue;
-          const fs=tintById[oid];if(fs===undefined)continue;
-          const py=(ti/tw)|0,px=ti-py*tw;
-          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-          octx.fillRect(sx,sy,TR+0.6,TR+0.6);
-        }
-        octx.strokeStyle="rgba(25,18,8,0.85)";octx.lineWidth=Math.max(1,TR*0.5);octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
-        for(let ti=0;ti<owner.length;ti++){
-          const oid=owner[ti];if(oid<0)continue;
-          const py=(ti/tw)|0,px=ti-py*tw;
-          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-          const ro=owner[py*tw+(px===tw-1?0:px+1)];
-          if(ro!==oid){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
-          if(py<th-1){const dno=owner[ti+tw];if(dno!==oid){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
-        }
-        octx.stroke();
-      }
       // ── Province borders (Layers → Provinces) ──
       // Internal administrative divisions. A province follows the SIM's own
       // territory, not a fresh geometric guess: every tile is taken by the
@@ -2394,6 +2027,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.faiths){const fm=new Map();for(const f of snap.faiths)fm.set(f.id,f);psw.faiths=fm;}
   psw.ships=snap.ships;
   psw._chronicle=snap.chronicle||null;             // selected realm's history (null when nothing selected)
+  if(snap.feed&&snap.feed.length){const F=psw._feed||(psw._feed=[]);F.push(...snap.feed);if(F.length>250)F.splice(0,F.length-250);}
   const setts=snap.settlements||[];
   if(snap.selected){const sel=setts.find(x=>x.id===snap.selected.id);if(sel)Object.assign(sel,snap.selected);}
   psw.settlements=setts;
@@ -2433,6 +2067,7 @@ useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'s
 // Close the per-realm overlays when the selection changes, so they don't
 // auto-reopen (or show a stale realm) the next time a settlement is picked.
 useEffect(()=>{setChronicleOpen(false);setTechTreeOpen(false);},[selectedSettlementId]);
+useEffect(()=>{if(selectedSettlementId>=0)setPanelTab("inspect");},[selectedSettlementId]);
 // Tell the worker the current view so it ships money-flow / road-component extras only when shown.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'view',view:viewMode});},[viewMode]);
 // Terminate both workers on unmount so they don't leak across hot-reloads / route changes.
@@ -2572,7 +2207,14 @@ const riverMag=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.ri
 const riverAccum=terTi>=0&&terRef.current&&terRef.current.rivers?terRef.current.rivers.flowAccum[terTi]:0;
 const isLake=terTi>=0&&terRef.current&&terRef.current.rivers&&terRef.current.rivers.lake?terRef.current.rivers.lake[terTi]>=0:false;
 const lakeSize=isLake?terRef.current.rivers.lakeInfo[terRef.current.rivers.lake[terTi]].size:0;
-setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize});
+// Who lives here / whose realm: territory owner + national claim at this tile.
+let hovOwner=null,hovRealm=null;
+{const psw=peopleRef.current;
+ if(psw&&terTi>=0){
+   if(psw._territoryOwner&&psw._byId){const oid=psw._territoryOwner[terTi];if(oid>=0){const o=psw._byId.get(oid);if(o)hovOwner=o.name;}}
+   if(psw._countryClaim&&psw.countries){const cc=psw._countryClaim[terTi];if(cc>=0){const c=psw.countries.get(cc);if(c)hovRealm=c.name||(c.capital&&c.capital.name);}}
+ }}
+setHoverInfo({x:ev.clientX,y:ev.clientY,elevM,tempC,moist,biome:biomeName,fert:fertVal,lat,wspd,wdir,wkmh,resources:tileRes,river:riverMag,riverAccum,isLake,lakeSize,owner:hovOwner,realm:hovRealm});
 },[CW,CH]);
 const onCanvasLeave=useCallback(()=>setHoverInfo(null),[]);
 const onCanvasClick=useCallback((ev)=>{
@@ -2590,26 +2232,6 @@ const sx=_sc.sx,sy=_sc.sy;
 const wx=Math.floor(sx),wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const ter=terRef.current;if(!ter)return;
 const ttx=Math.min(ter.tw-1,(wx/RES)|0),tty=Math.min(ter.th-1,(wy/RES)|0);
-// Transport-test mode: capitals sub-mode places tribe seeds; route
-// sub-mode places two endpoints and shows the cheapest path.
-if(viewMode==="transport-test"){
-  if(ev.shiftKey){
-    if(ttSubMode==="capitals")setTtCapitals([]);
-    else setTtRoute({start:null,end:null});
-    return;
-  }
-  if(ttSubMode==="capitals"){
-    if(ter.tElev[tty*ter.tw+ttx]<=0)return;
-    setTtCapitals(prev=>[...prev,{x:ttx,y:tty}]);
-  }else{
-    // route mode
-    setTtRoute(prev=>{
-      if(!prev.start||(prev.start&&prev.end))return{start:{x:ttx,y:tty},end:null};
-      return{...prev,end:{x:ttx,y:tty}};
-    });
-  }
-  return;
-}
 // peopleSim mode: find the closest settlement to the click. Match
 // against the peopleSim tile-space (tw=960, half of canvas width).
 const psw=peopleRef.current;
@@ -2636,7 +2258,7 @@ if(psw){
   }
   draw(ter);
 }
-},[CW,CH,draw,viewMode,ttSubMode]);
+},[CW,CH,draw,viewMode]);
 // ── Pan / zoom mouse handlers ────────────────────────────────────────
 // Wheel: zoom around the cursor (Google-Maps style). Pan: middle-button or
 // shift+left-button drag (left-only drag is reserved for settlement clicks).
@@ -2672,20 +2294,44 @@ const onCanvasMouseDown=useCallback((ev)=>{
     panDragRef.current={mx:ev.clientX,my:ev.clientY,vx:viewXRef.current,vy:viewYRef.current,moved:false};
   }
 },[]);
+// Jump the camera to a map tile (event feed / chronicle click-throughs).
+const jumpTo=useCallback((x,y)=>{
+  if(x==null||y==null)return;
+  const psw=peopleRef.current;const TRl=(psw&&psw.tileRes)||1;
+  const z=Math.max(viewZRef.current,2.4);viewZRef.current=z;
+  viewXRef.current=CW/2-(x*TRl)*z;
+  viewYRef.current=CH/2-dataYtoScreenY(y*TRl,H,CH)*z;
+  if(terRef.current)draw(terRef.current);
+},[CW,CH,draw]);
 // Reset view (double-click to recentre at zoom 1).
 const resetView=useCallback(()=>{
   viewXRef.current=0;viewYRef.current=0;viewZRef.current=1;
   if(terRef.current)draw(terRef.current);
 },[draw]);
-// Re-run route Dijkstra whenever endpoints or tech change
-useEffect(()=>{
-  if(viewMode!=="transport-test"||ttSubMode!=="route"){ttRouteResultRef.current=null;return;}
-  if(!terRef.current||!ttRoute.start||!ttRoute.end){ttRouteResultRef.current=null;
-    if(terRef.current)draw(terRef.current);return;}
-  ttRouteResultRef.current=findRoute(terRef.current,ttRoute.start,ttRoute.end,ttParams);
-  draw(terRef.current);
-},[ttRoute,ttCost,ttSubMode,viewMode]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
+
+// ── Lenses: grouped map views (sub-modes share one underlying viewMode) ──
+const pickLens=(id)=>{
+  setLens(id);
+  const L=LENSES.find(x=>x.id===id);
+  const v=subMemRef.current[id]||L.subs[0][0];
+  setViewMode(v);viewRef.current=v;
+};
+const pickSub=(v)=>{subMemRef.current[lens]=v;setViewMode(v);viewRef.current=v;};
+const curLens=LENSES.find(x=>x.id===lens)||LENSES[0];
+// Keyboard: space = play/pause, 1-9 = lenses, Esc = close everything.
+// (Re-subscribed each render so the handlers see fresh closures — cheap.)
+useEffect(()=>{
+  const onKey=(e)=>{
+    const t=e.target;
+    if(t&&(t.tagName==="INPUT"||t.tagName==="SELECT"||t.tagName==="TEXTAREA"))return;
+    if(e.code==="Space"){e.preventDefault();togglePlay();}
+    else if(e.key==="Escape"){setMenuOpen(false);setNewWorldOpen(false);setChronicleOpen(false);setTechTreeOpen(false);setLayersOpen(false);setSelectedSettlementId(-1);}
+    else{const n=+e.key;if(n>=1&&n<=LENSES.length)pickLens(LENSES[n-1].id);}
+  };
+  window.addEventListener("keydown",onKey);
+  return()=>window.removeEventListener("keydown",onKey);
+});
 
 // ── Aggregate world stats for the chronicle ribbon ──
 const _step=(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
@@ -2697,194 +2343,147 @@ const _era=ERAS[psStats.leadingEra||0]||ERAS[0];
 const _psw=peopleRef.current;
 const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 
-// View modes for the right rail
-const VIEW_MODES=[
-  ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
-  ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
-  ["crop","Crop"],["crossing","Crossing"],["country","Country"],["culture","Culture"],["faith","Faith"],["frTerritory","Farm Regions"],["roads","Roads"],["money","Money"],
-  ["resources","Resources"],["transport-test","Trans Test"]
-];
 
-return(
-<div className="au-root" style={{width:"100vw",height:"calc(100vh - 40px)",
-  background:"var(--au-table-dark)",overflow:"hidden",display:"flex",position:"relative"}}>
+// ── World Panel panes (relocated leaderboard / charts / settlement card) ──
+// Realm inspector: a polity as a first-class subject — identity, throne,
+// faith, temperament, fisc, members — with its chronicle one click away.
+const renderRealmDetail=()=>{
+  const psw=peopleRef.current;
+  const c=psw&&psw.countries?psw.countries.get(realmSel):null;
+  const back=()=>{setRealmSel(-1);if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:-1});};
+  if(!c)return(
+    <div style={{padding:16,fontSize:11}}>
+      <button onClick={back} className="au-btn au-flat" style={{fontSize:10,marginBottom:8}}>← realms</button>
+      <div className="au-fade" style={{fontStyle:"italic"}}>This realm has fallen — its story survives in the chronicle of whoever conquered it.</div>
+    </div>);
+  const hue=((c.id*61)%360+360)%360;
+  const pop=(c.members||[]).reduce((a,m)=>a+(m.people||0),0);
+  const wealth=(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0);
+  const army=(c.members||[]).reduce((a,m)=>a+(m.army||0),0);
+  const faith=psw.faiths&&c.faithId>=0?psw.faiths.get(c.faithId):null;
+  const capCul=c.capital&&psw.cultures?psw.cultures.get(c.capital.cultureId):null;
+  const pers=c.personality;
+  const members=(c.members||[]).slice().sort((a,b)=>(b.people||0)-(a.people||0));
+  return(
+    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
+      <button onClick={back} className="au-btn au-flat" style={{fontSize:10,marginBottom:6}}>← realms</button>
+      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:2}}>
+        <span style={{width:12,height:12,borderRadius:2,background:`hsl(${hue},60%,50%)`,flexShrink:0}}/>
+        <span className="au-pico-title" style={{fontSize:15}}>{c.name||(c.capital?c.capital.name:"realm "+c.id)}</span>
+        <div style={{flex:1}}/>
+        <button onClick={()=>setChronicleOpen(true)} title="The realm's chronicle"
+          style={{background:"transparent",border:"none",cursor:"pointer",fontSize:14}}>📜</button>
+      </div>
+      <div className="au-fade" style={{fontSize:10,marginBottom:8}}>
+        {c.members.length} settlements · {fmtPeople(pop)} souls{capCul?` · ${capCul.name} people`:""}{pers?` · ${pers.label}`:""}
+      </div>
+      {c.ruler&&<div style={{fontSize:11,marginBottom:6}}>
+        <span className="au-fade">{c.ruler.female?"queen ":"king "}</span>{c.ruler.name}
+        <span className="au-fade"> of house </span>{c.ruler.house||"?"}
+        <span className="au-fade"> · age {c.ruler.age}</span>
+      </div>}
+      {faith&&<div style={{fontSize:11,marginBottom:6}}>
+        <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:`hsl(${faith.hue|0},55%,50%)`,marginRight:5}}/>
+        <span className="au-fade">state faith </span>{faith.name}
+      </div>}
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10,marginBottom:8}}>
+        <span className="au-fade">Control</span><span>{(c._loadTotal||0).toFixed(1)}/{(c._capacity||0).toFixed(1)}{(c._loadTotal||0)>(c._capacity||0)?" · over-extended":""}</span>
+        {(c._momentum||0)>=1&&<><span className="au-fade">Momentum</span><span>+{(c._momentum||0).toFixed(1)}</span></>}
+        <span className="au-fade">Treasury</span><span>{fmtGoldKg(c._treasury||0)}{(c._solvency??1)<0.99?" · INSOLVENT":""}</span>
+        <span className="au-fade">Tax rate</span><span>{Math.round((c._taxRate||0)*100)}%</span>
+        <span className="au-fade">Army</span><span>{fmtPeople(army)}</span>
+        <span className="au-fade">Wealth (all towns)</span><span>{fmtGoldKg(wealth)}</span>
+        {(c._fronts||0)>0&&<><span className="au-fade">At war</span><span>{c._fronts} front{c._fronts>1?"s":""}{c._capitalBesieged?" · capital besieged":""}</span></>}
+      </div>
+      {pers&&<div style={{marginBottom:8}}>
+        <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:2}}>Temperament — {pers.label}</div>
+        {[["aggression",pers.aggression],["commerce",pers.commerce],["expansionism",pers.expansionism]].map(([k,v])=>(
+          <div key={k} style={{display:"flex",alignItems:"center",gap:6,fontSize:9}}>
+            <span className="au-fade" style={{width:74,textTransform:"capitalize"}}>{k}</span>
+            <div style={{flex:1,height:4,background:"rgba(58,38,20,0.15)",borderRadius:2,position:"relative"}}>
+              <div style={{position:"absolute",left:"50%",top:-1,bottom:-1,width:1,background:"rgba(58,38,20,0.4)"}}/>
+              <div style={{position:"absolute",left:v>=0?"50%":`${50+v*50}%`,width:`${Math.abs(v)*50}%`,top:0,bottom:0,
+                background:v>=0?"hsl(8,60%,45%)":"hsl(200,45%,45%)",borderRadius:2}}/>
+            </div>
+            <span style={{width:30,textAlign:"right"}}>{(v>=0?"+":"")+v.toFixed(2)}</span>
+          </div>
+        ))}
+      </div>}
+      <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:2}}>Settlements</div>
+      {members.slice(0,20).map(m=>(
+        <div key={m.id} onClick={()=>setSelectedSettlementId(m.id)}
+          style={{display:"flex",gap:6,fontSize:10,padding:"2px 0",cursor:"pointer",borderBottom:"1px solid rgba(58,38,20,0.07)"}}>
+          <span style={{textTransform:"capitalize"}}>{m.name}</span>
+          {c.capitalId===m.id&&<span className="au-fade">· capital</span>}
+          <div style={{flex:1}}/>
+          <span className="au-fade">{fmtPeople(m.people||0)}</span>
+        </div>
+      ))}
+      {members.length>20&&<div className="au-fade" style={{fontSize:9,marginTop:2}}>… and {members.length-20} more</div>}
+    </div>
+  );
+};
 
-{/* ══════════ LEFT SPINE ══════════ */}
-<aside className="au-parchment au-scroll" style={{
-  width:142,minWidth:142,margin:"6px 3px 6px 6px",padding:"10px 8px",
-  display:"flex",flexDirection:"column",gap:5,overflowY:"auto"}}>
+// Peoples / Faiths browsers: aggregated live from the mirror.
+const renderPeoples=()=>{
+  const psw=peopleRef.current;
+  if(!psw||!psw.cultures||!psw.settlements)return <div className="au-fade" style={{padding:16,fontSize:11,fontStyle:"italic"}}>No peoples yet.</div>;
+  const agg=new Map();
+  for(const st of psw.settlements){
+    if(!st||st.mode!=="settled")continue;
+    const cid=st.cultureId??-1;if(cid<0)continue;
+    let a=agg.get(cid);if(!a)agg.set(cid,a={setts:0,pop:0});
+    a.setts++;a.pop+=st.people||0;
+  }
+  const rows=[...psw.cultures.values()].map(c=>({c,a:agg.get(c.id)||{setts:0,pop:0}}))
+    .sort((x,y)=>y.a.pop-x.a.pop);
+  return(
+    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
+      {rows.map(({c,a})=>(
+        <div key={c.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"4px 0",borderBottom:"1px solid rgba(58,38,20,0.10)"}}>
+          <span style={{width:10,height:10,borderRadius:2,background:`hsl(${c.hue|0},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
+          <span style={{fontWeight:600,fontSize:12}}>{c.name}</span>
+          {c.parent>=0&&psw.cultures.get(c.parent)&&<span className="au-fade" style={{fontSize:9}}>← {psw.cultures.get(c.parent).name}</span>}
+          <div style={{flex:1}}/>
+          <span className="au-fade">{a.setts} settlements · {fmtPeople(a.pop)}</span>
+        </div>
+      ))}
+      <div className="au-fade" style={{fontSize:9,marginTop:8,fontStyle:"italic"}}>
+        A people is carried by population — conquest changes rulers, not peoples. Use the Peoples lens to see where each lives.</div>
+    </div>
+  );
+};
+const renderFaiths=()=>{
+  const psw=peopleRef.current;
+  if(!psw||!psw.faiths||!psw.settlements)return <div className="au-fade" style={{padding:16,fontSize:11,fontStyle:"italic"}}>No faiths yet.</div>;
+  const agg=new Map();
+  for(const st of psw.settlements){
+    if(!st||st.mode!=="settled")continue;
+    const fid=st.faithId??-1;if(fid<0)continue;
+    let a=agg.get(fid);if(!a)agg.set(fid,a={setts:0,pop:0});
+    a.setts++;a.pop+=st.people||0;
+  }
+  const rows=[...psw.faiths.values()].map(f=>({f,a:agg.get(f.id)||{setts:0,pop:0}}))
+    .filter(({f,a})=>a.setts>0||f.kind==="organized")
+    .sort((x,y)=>y.a.pop-x.a.pop);
+  return(
+    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
+      {rows.map(({f,a})=>(
+        <div key={f.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"4px 0",borderBottom:"1px solid rgba(58,38,20,0.10)"}}>
+          <span style={{width:10,height:10,borderRadius:f.kind==="organized"?"50%":2,background:`hsl(${f.hue|0},55%,50%)`,flexShrink:0,alignSelf:"center"}}/>
+          <span style={{fontWeight:600,fontSize:12}}>{f.name}</span>
+          <span className="au-fade" style={{fontSize:9}}>{f.kind}{f.parent>=0&&psw.faiths.get(f.parent)?` ← ${psw.faiths.get(f.parent).name}`:""}</span>
+          <div style={{flex:1}}/>
+          <span className="au-fade">{a.setts>0?`${a.setts} · ${fmtPeople(a.pop)}`:"faded"}</span>
+        </div>
+      ))}
+      <div className="au-fade" style={{fontSize:9,marginTop:8,fontStyle:"italic"}}>
+        Organized faiths spread along trade routes, convert courts, and schism across distance. The Faiths lens maps them.</div>
+    </div>
+  );
+};
 
-<button onClick={togglePlay}
-  className={"au-btn au-block"+(playing?" au-wax au-active":"")}
-  style={{padding:"8px 6px",fontSize:13,fontFamily:"'Cinzel',Georgia,serif",letterSpacing:"0.10em"}}>
-  {playing?"❚❚  Pause":"▶  Play"}
-</button>
-
-<div style={{display:"flex",alignItems:"center",gap:6,padding:"2px 4px"}}>
-  <span className="au-sc au-fade" style={{fontSize:10}}>Speed</span>
-  <input type="range" min={1} max={30} value={speed}
-    onChange={e=>{setSpeed(+e.target.value);speedRef.current=+e.target.value;}}
-    style={{flex:1}} />
-  <span className="au-mute" style={{fontSize:10,width:18,textAlign:"right"}}>{speed}</span>
-</div>
-
-<div className="au-rule" />
-<div className="au-sc au-fade au-heading" style={{fontSize:10,padding:"2px 4px 0"}}>World</div>
-
-<button onClick={()=>setPresetAndGo("earth_sim")}
-  className={"au-btn au-block"+(preset==="earth_sim"?" au-active":"")}>Earth (Sim)</button>
-{preset==="earth_sim"&&
-  <label style={{fontSize:10,padding:"0 4px",cursor:"pointer",display:"flex",alignItems:"center",gap:4}} className="au-fade">
-    <input type="checkbox" checked={useRealWind}
-      onChange={e=>{setUseRealWind(e.target.checked);useRealWindRef.current=e.target.checked;generate(seed);}}
-      style={{width:11,height:11}} />
-    {isRealWindAvailable()?"Real Winds":"Real Winds (n/a)"}
-  </label>}
-
-<button onClick={()=>setPresetAndGo("tectonic")}
-  className={"au-btn au-block"+(preset==="tectonic"?" au-active":"")}>Tectonic</button>
-{preset==="tectonic"&&<>
-  <select value={tecPresetName} onChange={e=>{
-    const name=e.target.value;setTecPresetName(name);
-    if(name==="Default"){_tecParams={};generate(seed);}
-    else{const presets=loadPresets();if(presets[name]){_tecParams=presets[name];generate(seed);}}
-  }} style={{width:"100%",marginTop:2}}>
-    <option value="Default">Default</option>
-    {Object.keys(loadPresets()).map(name=><option key={name} value={name}>{name}</option>)}
-  </select>
-  {tecPresetName!=="Default"&&<button onClick={()=>{
-    if(confirm("Delete '"+tecPresetName+"'?")){deletePreset(tecPresetName);setTecPresetName("Default");_tecParams={};generate(seed);}}}
-    className="au-btn au-block au-wax" style={{fontSize:10}}>Delete Preset</button>}
-</>}
-
-<input ref={fileRef} type="file" accept=".json,.map,.png,.jpg,.jpeg,.webp"
-  style={{display:"none"}} onChange={handleImport} />
-<button onClick={()=>fileRef.current?.click()} className="au-btn au-block">Import</button>
-{importStatus&&<span className="au-fade" style={{fontSize:9,wordBreak:"break-all",padding:"0 4px"}}>{importStatus}</span>}
-
-<div style={{flex:1}} />
-<div className="au-rule" />
-{/* Save / Load: the full world state — settlements, polities, the event
-    log, money, roads — as a versioned JSON file. Terrain regenerates from
-    the recorded seed on load. */}
-<div style={{display:"flex",gap:4}}>
-  <button className="au-btn au-flat" style={{flex:1,fontSize:11}} title="Save the running world to a file"
-    onClick={()=>{
-      downloadSaveRef.current=(json,step)=>{
-        const blob=new Blob([json],{type:"application/json"});
-        const a=document.createElement("a");a.href=URL.createObjectURL(blob);
-        a.download=`simman-${presetRef.current}-s${seed}-t${step??""}.json`;a.click();
-        setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-      };
-      if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"save"});
-      else if(peopleRef.current&&!peopleRef.current._isMirror){
-        downloadSaveRef.current(serializeWorld(peopleRef.current,{oceanLevel:oceanLevelRef.current,tecParams:_tecParams}),peopleRef.current.step);
-      }
-    }}>💾 Save</button>
-  <button className="au-btn au-flat" style={{flex:1,fontSize:11}} title="Load a saved world"
-    onClick={()=>saveFileRef.current?.click()}>📂 Load</button>
-  <input ref={saveFileRef} type="file" accept=".json" style={{display:"none"}}
-    onChange={async(e)=>{
-      const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
-      try{
-        const json=await f.text();
-        const meta=JSON.parse(json).meta;
-        if(!meta)throw new Error("not a Simman save");
-        pendingSaveRef.current=json;
-        presetRef.current=meta.preset;setPreset(meta.preset);
-        oceanLevelRef.current=meta.oceanLevel??0.78;
-        if(meta.seed===seed)generate(seed);else setSeed(meta.seed);
-      }catch(err){console.error("load failed:",err);alert("Could not load save: "+err.message);}
-    }} />
-</div>
-<button className="au-btn au-block au-flat" style={{fontSize:11}}
-  title="Download the full event log, registries, and each great realm's chronicle (true + as its scribes kept it)"
-  onClick={()=>{
-    if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"export-history"});
-    else if(peopleRef.current&&!peopleRef.current._isMirror){
-      import("./sim/peopleSim/historiography.js").then(h=>{
-        const json=JSON.stringify(h.exportHistory(peopleRef.current));
-        const blob=new Blob([json],{type:"application/json"});
-        const a=document.createElement("a");a.href=URL.createObjectURL(blob);
-        a.download=`simman-history-t${peopleRef.current.step}.json`;a.click();
-        setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-      });
-    }
-  }}>📜 Export History</button>
-<button onClick={()=>setSeed(Math.floor(Math.random()*999999))}
-  className="au-btn au-block au-flat" style={{fontSize:11}} title="Roll new seed">⚄ Roll</button>
-<span className="au-fade" style={{fontSize:9,textAlign:"center",fontFamily:"'Courier New',monospace"}}>Seed {seed}</span>
-</aside>
-
-{/* ══════════ CENTER COLUMN ══════════ */}
-<div style={{flex:1,display:"flex",flexDirection:"column",padding:"6px 3px",gap:6,minWidth:0}}>
-
-{/* Chronicle ribbon */}
-<div className="au-parchment au-chronicle" style={{flexShrink:0}}>
-  <span className="au-era">{_era}</span>
-  <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
-  <span className="au-year">{_ys}</span>
-  <span className="au-fade" style={{fontSize:11}}>Step {_step.toLocaleString()}</span>
-  <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
-  <span style={{fontSize:13}}>{_countryCount} <span className="au-sc au-fade" style={{fontSize:11}}>nations</span></span>
-  <span style={{fontSize:13}}>{Math.round((psStats.landPct||0)*100)}<span className="au-fade">%</span> <span className="au-sc au-fade" style={{fontSize:11}}>claimed</span></span>
-  {(()=>{
-    // Wheat-price ticker — population-weighted global price level. The number
-    // shown is the price of 1 unit of farmed wheat relative to its baseline.
-    // (The displayed number is `globalP × baselineFOOD_PRICE`.)
-    const psw=peopleRef.current;
-    const P=psw&&isFinite(psw.globalP)?psw.globalP:null;
-    if(P==null)return null;
-    const price=(5*P).toFixed(2);
-    const dir=P>1.04?"▲":P<0.96?"▼":"·";
-    const col=P>1.1?"hsl(8,75%,55%)":P<0.9?"hsl(195,65%,50%)":"var(--au-ink)";
-    return(
-      <>
-        <span className="au-vrule" style={{height:20,margin:"0 2px"}} />
-        <span style={{fontSize:13}} title={`global price level ×${P.toFixed(2)} (1.00 = baseline)`}>
-          <span className="au-sc au-fade" style={{fontSize:11,marginRight:4}}>Wheat</span>
-          <span style={{color:col,fontWeight:600}}>{price}</span>
-          <span className="au-fade" style={{fontSize:11,marginLeft:3}}>{dir}</span>
-        </span>
-      </>
-    );
-  })()}
-  <div style={{flex:1}} />
-</div>
-
-{/* Map area */}
-<div style={{flex:1,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",minHeight:0,overflow:"hidden"}}>
-
-{showGlobe?
-  <div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
-    <GlobeView terrainBuf={globeBuf} version={globeVer} world={world} CW={globeTexSize.w} CH={globeTexSize.h} />
-  </div>:
-  <canvas ref={canvasRef} width={CW} height={CH}
-    onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
-    onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
-    style={{display:"block",imageRendering:"pixelated",
-      maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
-      boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
-}
-
-{/* ─── Pico hover card ─── */}
-{hoverInfo&&<div className="au-parchment au-pico"
-  style={{left:hoverInfo.x+14,top:hoverInfo.y-12}}>
-  <div className="au-pico-title" style={{
-    color:hoverInfo.isLake?"var(--au-verdigris)":hoverInfo.elevM<=0?"var(--au-verdigris)":"var(--au-ink)"}}>
-    {hoverInfo.isLake?`Lake (${hoverInfo.lakeSize}t)`:hoverInfo.biome}
-  </div>
-  <div className="au-fade" style={{fontSize:11}}>
-    {hoverInfo.elevM}m · {hoverInfo.tempC}°C · {(hoverInfo.moist*100|0)}% moist
-  </div>
-  {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
-    {RIVER_NAMES[hoverInfo.river]}
-  </div>}
-  <div className="au-fade" style={{fontSize:9,marginTop:2,fontStyle:"italic"}}>click for full info</div>
-</div>}
-
-{/* ─── peopleSim settlement card ─── */}
-{(()=>{
+const renderInspect=()=>{
   if(selectedSettlementId<0)return null;
   const psw=peopleRef.current;
   if(!psw)return null;
@@ -2966,20 +2565,12 @@ return(
   const nextName=isRegion?null:["town","city","metropolis"][s.tier];
 
   return(
-    <div className="au-parchment au-pico au-elev"
-      style={{position:"absolute",left:14,top:14,width:248,padding:"10px 12px",fontSize:11,zIndex:30,maxHeight:"calc(100vh - 28px)",overflowY:"auto",
+    <div className="au-scroll"
+      style={{flex:1,minHeight:0,padding:"10px 12px",fontSize:11,overflowY:"auto",
         pointerEvents:"auto"/* au-pico sets pointer-events:none for the hover tooltip; this card is interactive */}}>
 
       {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
       {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} onClose={()=>setTechTreeOpen(false)}/>}
-      {chronicleOpen&&psw._chronicle&&psw._chronicle.countryId===s.countryId&&
-        <ChronicleOverlay entries={psw._chronicle.entries} name={psw._chronicle.name}
-          perspective={!!psw._chronicle.perspective}
-          onTogglePerspective={()=>{
-            const next=!psw._chronicle.perspective;
-            if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"chronicle-mode",perspective:next});
-          }}
-          onClose={()=>setChronicleOpen(false)}/>}
 
       {/* ── Header ── (the chronicle opener lives here so it's always visible
           without scrolling the card — a long card can push a bottom section
@@ -3096,9 +2687,11 @@ return(
           let strain="";
           if(ctry._capitalBesieged)strain=" · capital besieged";
           else if((ctry._fronts||0)>1)strain=` · ${ctry._fronts}-front war`;
-          const treas=ctry._treasury;
+
           return(
             <>
+            <button onClick={()=>{setRealmSel(s.countryId);setPanelTab("realms");if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:s.countryId});}}
+              className="au-btn au-flat" style={{fontSize:10,padding:"2px 8px",marginBottom:5}}>→ open realm</button>
             {ctry.ruler&&(
               <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
                 <span style={{width:9,height:9,borderRadius:2,background:"hsl(280,40%,52%)",flexShrink:0}}/>
@@ -3117,31 +2710,6 @@ return(
               <span style={{width:9,height:9,borderRadius:2,background:over?"hsl(8,70%,52%)":"hsl(140,45%,45%)",flexShrink:0}}/>
               <span className="au-fade">control {load.toFixed(1)}/{cap.toFixed(1)} ({pct}%){over?" · over-extended":""}{strain}</span>
             </div>
-            {(()=>{const mom=ctry._momentum||0;if(mom<1)return null;return(
-              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-                <span style={{width:9,height:9,borderRadius:2,background:"hsl(28,80%,52%)",flexShrink:0}}/>
-                <span className="au-fade">conquest momentum +{mom.toFixed(1)} · holding on the offensive (fades if the advance stalls)</span>
-              </div>
-            );})()}
-            {treas!=null&&(()=>{const sv=ctry._solvency??1;const broke=sv<0.99;return(
-              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-                <span style={{width:9,height:9,borderRadius:2,background:broke?"hsl(8,75%,52%)":"hsl(48,65%,48%)",flexShrink:0}}/>
-                <span className="au-fade">state treasury {fmtGoldKg(treas)}{ctry._govSpend>0.01?` · spends ${fmtGoldKg(ctry._govSpend)}/pass`:""}{broke?` · INSOLVENT (army ${Math.round(sv*100)}% paid)`:""}</span>
-              </div>
-            );})()}
-            {(()=>{const pro=ctry._armyPro||0,con=ctry._armyCon||0;if(pro+con<1)return null;const mp=ctry._manpowerCap>0?(ctry._manpower||0)/ctry._manpowerCap:1;return(
-              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-                <span style={{width:9,height:9,borderRadius:2,background:con>0.5?"hsl(0,70%,52%)":"hsl(0,40%,50%)",flexShrink:0}}/>
-                <span className="au-fade">army {fmtPeople(pro+con)} — {fmtPeople(pro)} professional{con>0.5?` + ${fmtPeople(con)} conscript levy`:""} · manpower {Math.round(mp*100)}%{mp<0.5?" (bled)":""}</span>
-              </div>
-            );})()}
-            {(()=>{const P=ctry._priceLevel;if(P==null||Math.abs(P-1)<0.04)return null;
-              const inflating=P>1;return(
-              <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-                <span style={{width:9,height:9,borderRadius:2,background:inflating?"hsl(28,75%,50%)":"hsl(200,65%,50%)",flexShrink:0}}/>
-                <span className="au-fade">price level ×{P.toFixed(2)} · {inflating?"inflating":"deflating"}</span>
-              </div>
-            );})()}
             </>
           );
         }
@@ -3440,102 +3008,294 @@ return(
       })()}
     </div>
   );
-})()}
+};
+
+const renderBoard=()=>{
+  // Leaderboard. Pulls live data from the mirror (peopleRef.current) — same
+  // structure draw() reads — so the panel always reflects the current snapshot.
+  const psw=peopleRef.current;
+  if(!psw||!psw.settlements)return null;
+  const setts=psw.settlements.filter(s=>s&&s.mode==="settled");
+  const countries=psw.countries?Array.from(psw.countries.values()):[];
+
+  // Sort keys per mode. Functions return a number (descending sort).
+  const SETT_SORTS={
+    population:[s=>s.people,"Population",fmtPeople],
+    wealth:[s=>s.wealth||0,"Wealth",fmtGoldKg],
+    army:[s=>s.army||0,"Garrison",fmtPeople],
+    mining:[s=>s._minedRate||0,"Mining rate",fmtGoldKg],
+    vassals:[s=>s._vassalCount||0,"Vassals"],
+    income:[s=>s._wealthDelta||0,"Income (gold/tick)",fmtGoldKg],
+  };
+  const CNT_SORTS={
+    size:[c=>c.members?c.members.length:0,"Size (settlements)"],
+    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Population",fmtPeople],
+    wealth:[c=>(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0),"Total wealth",fmtGoldKg],
+    treasury:[c=>c._treasury||0,"State treasury",fmtGoldKg],
+    army:[c=>(c.members||[]).reduce((a,m)=>a+(m.army||0),0),"Standing army",fmtPeople],
+    capacity:[c=>c._capacity||0,"Control capacity"],
+  };
+  const sorts=boardMode==="settlements"?SETT_SORTS:CNT_SORTS;
+  const sortKey=sorts[boardSort]?boardSort:Object.keys(sorts)[0];
+  const [sortFn,sortLabel,sortFmt]=sorts[sortKey];
+  const rows=(boardMode==="settlements"?setts:countries).slice()
+    .sort((a,b)=>sortFn(b)-sortFn(a)).slice(0,15);
+
+  const fmt=v=>{
+    if(!isFinite(v))return "-";
+    const a=Math.abs(v);
+    if(a>=1e6)return (v/1e6).toFixed(1)+"M";
+    if(a>=1e3)return (v/1e3).toFixed(1)+"k";
+    if(a>=10)return Math.round(v).toString();
+    return v.toFixed(1);
+  };
+
+  return(
+    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"8px 0"}}>
+      <div style={{display:"flex",alignItems:"baseline",marginBottom:6,padding:"0 12px"}}>
+        <span className="au-heading au-sc" style={{fontSize:12}}>Leaderboard</span>
+        <div style={{flex:1}} />
+      </div>
+      <div style={{display:"flex",gap:4,padding:"0 12px 6px"}}>
+        {["countries","settlements"].map(m=>(
+          <button key={m} onClick={()=>setBoardMode(m)}
+            className={"au-rail-tab"+(boardMode===m?" au-active":"")}
+            style={{flex:1,fontSize:11,textTransform:"capitalize"}}>{m}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:3,padding:"0 12px 6px"}}>
+        {Object.entries(sorts).map(([k,[,label]])=>(
+          <button key={k} onClick={()=>setBoardSort(k)}
+            className={"au-rail-tab"+(sortKey===k?" au-active":"")}
+            style={{fontSize:10,padding:"3px 7px",textTransform:"none"}}>{label}</button>
+        ))}
+      </div>
+      <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
+        <thead>
+          <tr style={{color:"var(--au-fade)",textAlign:"left"}}>
+            <th style={{padding:"2px 6px 2px 12px",width:24}}>#</th>
+            <th style={{padding:"2px 4px"}}>{boardMode==="settlements"?"Settlement":"Country"}</th>
+            <th style={{padding:"2px 12px 2px 4px",textAlign:"right"}}>{sortLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r,i)=>{
+            if(boardMode==="settlements"){
+              const ctry=psw.countries&&psw.countries.get(r.countryId);
+              const hue=((r.countryId*61)%360+360)%360;
+              return(
+                <tr key={r.id}
+                  onClick={()=>setSelectedSettlementId(r.id)}
+                  style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
+                  <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
+                  <td style={{padding:"3px 4px"}}>
+                    <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
+                      background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
+                    <span style={{textTransform:"capitalize"}}>{r.name}</span>
+                    {ctry&&ctry.capitalId===r.id&&<span style={{color:"var(--au-fade)",marginLeft:4}}>· capital</span>}
+                  </td>
+                  <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
+                </tr>
+              );
+            }
+            const cap=r.capital||(r.members&&r.members[0]);
+            const hue=((r.id*61)%360+360)%360;
+            return(
+              <tr key={r.id}
+                onClick={()=>{setRealmSel(r.id);if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:r.id});}}
+                style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
+                <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
+                <td style={{padding:"3px 4px"}}>
+                  <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
+                    background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
+                  <span style={{textTransform:"capitalize"}}>{cap?cap.name:"realm-"+r.id}</span>
+                </td>
+                <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
+              </tr>
+            );
+          })}
+          {rows.length===0&&<tr><td colSpan={3} style={{padding:"10px 12px",color:"var(--au-fade)",fontStyle:"italic"}}>no data yet</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const renderCharts=()=>{
+  const H=psHistoryRef.current;
+  const copy=()=>{ const t=buildHistoryExport(H);
+    try{navigator.clipboard.writeText(t);}catch{/* clipboard blocked — ignore */}
+    setStatsCopied(true); setTimeout(()=>setStatsCopied(false),1500); };
+  const curStep=H.length?H[H.length-1].step:0;
+  return(
+    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"8px 0"}}>
+      <div style={{display:"flex",alignItems:"baseline",marginBottom:4,padding:"0 12px"}}>
+        <span className="au-heading au-sc" style={{fontSize:12}}>History</span>
+        <span className="au-fade" style={{fontSize:9,marginLeft:6}}>step {curStep}</span>
+        <div style={{flex:1}} />
+      </div>
+      {(()=>{const F=peopleRef.current&&peopleRef.current._feed;if(!F||!F.length)return null;
+        return <div style={{padding:"0 10px 8px"}}>
+          <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:3}}>Latest events</div>
+          <div className="au-scroll" style={{maxHeight:170,overflowY:"auto"}}>
+            {F.slice(-60).reverse().map((e,i)=>(
+              <div key={F.length-i} onClick={()=>jumpTo(e.x,e.y)}
+                style={{fontSize:10,padding:"2px 0",cursor:e.x!=null?"pointer":"default",borderBottom:"1px solid rgba(58,38,20,0.08)",lineHeight:1.35}}>
+                <span className="au-fade" style={{marginRight:5}}>{yearStr(e.step)}</span>{e.text}
+              </div>))}
+          </div>
+        </div>;})()}
+      <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
+      <MiniChart data={H} get={d=>d.gold}           label="Gold (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
+      <MiniChart data={H} get={d=>d.landPct*100}    label="Land claimed"             color="#5a9367" fmtY={v=>v.toFixed(0)+"%"}/>
+      <MiniChart data={H} get={d=>d.countries}      label="Countries"                color="#7a6da8" fmtY={v=>Math.round(v).toString()}/>
+      <MiniChart data={H} get={d=>d.cities+d.metros} label="Cities + metropolises"   color="#b5562f" fmtY={v=>Math.round(v).toString()}/>
+      <MiniChart data={H} get={d=>d.sett}           label="Settlements"              color="#8a8f9c" fmtY={v=>Math.round(v).toString()}/>
+      <MiniChart data={H} get={d=>d.largest}        label="Largest empire (tiles)"   color="#4a78a8" fmtY={v=>Math.round(v).toLocaleString()}/>
+      <div style={{padding:"6px 10px 2px",borderTop:"1px solid rgba(0,0,0,0.08)",marginTop:4}}>
+        <button onClick={copy} className="au-rail-tab au-active" style={{width:"100%",fontSize:11,padding:"5px 0"}}>
+          {statsCopied?"Copied ✓":"Copy stats rundown"}
+        </button>
+        <div className="au-fade" style={{fontSize:9,marginTop:3,lineHeight:1.35}}>
+          Copies a markdown table of the run so far (~40 rows) — paste it back for a full breakdown over time.
+        </div>
+      </div>
+    </div>
+  );
+};
+
+return(
+<div className="au-root" style={{width:"100vw",height:"100vh",
+  background:"var(--au-table-dark)",overflow:"hidden",display:"flex",position:"relative"}}>
+
+{/* ══════════ TOP BAR ══════════ */}
+<header className="au-parchment" style={{display:"flex",alignItems:"center",gap:12,margin:"6px 6px 0",padding:"5px 14px",flexShrink:0,zIndex:45,position:"relative"}}>
+  <button onClick={togglePlay} className={"au-btn"+(playing?" au-wax au-active":"")}
+    style={{padding:"4px 14px",fontSize:13,fontFamily:"'Cinzel',Georgia,serif"}} title="Space">{playing?"❚❚":"▶"}</button>
+  <div style={{display:"flex",gap:2}}>
+    {[[1,"1×"],[5,"2×"],[12,"5×"],[30,"Max"]].map(([v,l])=>(
+      <button key={v} onClick={()=>{setSpeed(v);speedRef.current=v;}}
+        className={"au-btn au-flat"+(speed===v?" au-active":"")} style={{padding:"3px 9px",fontSize:11}}>{l}</button>
+    ))}
+  </div>
+  <span className="au-vrule" style={{height:20}}/>
+  <span className="au-era" style={{fontSize:14}}>{_era}</span>
+  <span className="au-year" style={{fontSize:13}}>{_ys}</span>
+  <span className="au-fade" style={{fontSize:10}}>step {_step.toLocaleString()}</span>
+  <span className="au-vrule" style={{height:20}}/>
+  <span style={{fontSize:12}}>{_countryCount} <span className="au-sc au-fade" style={{fontSize:10}}>realms</span></span>
+  <span style={{fontSize:12}}>{Math.round((psStats.landPct||0)*100)}<span className="au-fade">%</span> <span className="au-sc au-fade" style={{fontSize:10}}>claimed</span></span>
+  {lens==="economy"&&(()=>{
+    const psw=peopleRef.current;
+    const P=psw&&isFinite(psw.globalP)?psw.globalP:null;
+    if(P==null)return null;
+    const col=P>1.1?"hsl(8,75%,45%)":P<0.9?"hsl(195,65%,35%)":"var(--au-ink)";
+    return <span style={{fontSize:12}} title={`global price level ×${P.toFixed(2)}`}>
+      <span className="au-sc au-fade" style={{fontSize:10,marginRight:4}}>wheat</span>
+      <span style={{color:col,fontWeight:600}}>{(5*P).toFixed(2)}</span></span>;
+  })()}
+  <div style={{flex:1,minWidth:0}}/>
+  {(()=>{const F=peopleRef.current&&peopleRef.current._feed;const last=F&&F[F.length-1];if(!last)return null;
+    return <span onClick={()=>setPanelTab("world")} className="au-fade"
+      style={{fontSize:11,fontStyle:"italic",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:360,cursor:"pointer",flexShrink:1}}
+      title="Open the world feed">📜 {last.text}</span>;})()}
+  <button onClick={()=>setShowGlobe(!showGlobe)} className={"au-btn au-flat"+(showGlobe?" au-active":"")}
+    style={{fontSize:12,padding:"3px 8px"}} title="3D globe">🌍</button>
+  <button onClick={()=>setNewWorldOpen(true)} className="au-btn au-flat" style={{fontSize:12,padding:"3px 8px"}}
+    title="New world — presets, seed, import">⊕ World</button>
+  <button onClick={()=>setMenuOpen(v=>!v)} className={"au-btn au-flat"+(menuOpen?" au-active":"")}
+    style={{fontSize:12,padding:"3px 10px"}} title="Save / load / export / advanced">≡</button>
+</header>
+<input ref={saveFileRef} type="file" accept=".json" style={{display:"none"}}
+        onChange={async(e)=>{
+          const f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
+          try{
+            const json=await f.text();
+            const meta=JSON.parse(json).meta;
+            if(!meta)throw new Error("not a Simman save");
+            pendingSaveRef.current=json;
+            presetRef.current=meta.preset;setPreset(meta.preset);
+            oceanLevelRef.current=meta.oceanLevel??0.78;
+            if(meta.seed===seed)generate(seed);else setSeed(meta.seed);
+          }catch(err){console.error("load failed:",err);alert("Could not load save: "+err.message);}
+        }}/>
+
+<div style={{flex:1,display:"flex",minHeight:0,position:"relative"}}>
+
+{/* ══════════ LENS RAIL ══════════ */}
+<aside className="au-parchment au-scroll" style={{width:112,minWidth:112,margin:"6px 3px 6px 6px",
+  padding:"8px 0",display:"flex",flexDirection:"column",overflowY:"auto"}}>
+  <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"0 12px 4px"}}>Lens</div>
+  {LENSES.map(L=>(
+    <button key={L.id} onClick={()=>pickLens(L.id)}
+      className={"au-rail-tab"+(lens===L.id?" au-active":"")}>{L.label}</button>
+  ))}
+  {curLens.subs.length>1&&<>
+    <div className="au-rule"/>
+    {curLens.subs.map(([v,l])=>(
+      <button key={v} onClick={()=>pickSub(v)}
+        className={"au-rail-tab"+(viewMode===v?" au-active":"")}
+        style={{paddingLeft:20,fontSize:11}}>{l}</button>
+    ))}
+  </>}
+  <div className="au-rule"/>
+  <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"4px 12px 2px"}}>Overlays</div>
+  <button onClick={()=>{setShowRivers(v=>!v);showRiversRef.current=!showRiversRef.current;}}
+    className={"au-rail-tab"+(showRivers?" au-active":"")}>Rivers</button>
+  {showRivers&&<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
+    className={"au-rail-tab"+(showStreams?" au-active":"")} style={{paddingLeft:20,fontSize:11}}>· Streams</button>}
+  <button onClick={()=>{setShowLakes(v=>!v);showLakesRef.current=!showLakesRef.current;}}
+    className={"au-rail-tab"+(showLakes?" au-active":"")}>Lakes</button>
+  {world&&world.pixPlate&&<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
+    className={"au-rail-tab"+(showPlates?" au-active":"")}>Plates</button>}
+  <button onClick={()=>setLayersOpen(v=>!v)}
+    className={"au-rail-tab"+(layersOpen?" au-active":"")}>Layers…</button>
+  <div style={{flex:1}}/>
+  <span className="au-fade" style={{fontSize:9,textAlign:"center",fontFamily:"'Courier New',monospace"}}>seed {seed}</span>
+</aside>
+
+{/* ══════════ CENTER COLUMN ══════════ */}
+<div style={{flex:1,display:"flex",flexDirection:"column",padding:"6px 3px",gap:6,minWidth:0}}>
+
+{/* Map area */}
+<div style={{flex:1,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",minHeight:0,overflow:"hidden"}}>
+
+{showGlobe?
+  <div style={{width:"100%",aspectRatio:"4/3",maxHeight:"100%"}}>
+    <GlobeView terrainBuf={globeBuf} version={globeVer} world={world} CW={globeTexSize.w} CH={globeTexSize.h} />
+  </div>:
+  <canvas ref={canvasRef} width={CW} height={CH}
+    onMouseMove={onCanvasMove} onMouseLeave={onCanvasLeave} onClick={onCanvasClick}
+    onMouseDown={onCanvasMouseDown} onDoubleClick={resetView}
+    style={{display:"block",imageRendering:"pixelated",
+      maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
+      boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
+}
+
+{/* ─── Pico hover card ─── */}
+{hoverInfo&&<div className="au-parchment au-pico"
+  style={{left:hoverInfo.x+14,top:hoverInfo.y-12}}>
+  <div className="au-pico-title" style={{
+    color:hoverInfo.isLake?"var(--au-verdigris)":hoverInfo.elevM<=0?"var(--au-verdigris)":"var(--au-ink)"}}>
+    {hoverInfo.isLake?`Lake (${hoverInfo.lakeSize}t)`:hoverInfo.biome}
+  </div>
+  <div className="au-fade" style={{fontSize:11}}>
+    {hoverInfo.elevM}m · {hoverInfo.tempC}°C · {(hoverInfo.moist*100|0)}% moist
+  </div>
+  {hoverInfo.river>0&&<div className="au-verde-text" style={{fontSize:11}}>
+    {RIVER_NAMES[hoverInfo.river]}
+  </div>}
+  {(hoverInfo.owner||hoverInfo.realm)&&<div style={{fontSize:11}}>
+    {hoverInfo.owner&&<span style={{textTransform:"capitalize"}}>{hoverInfo.owner}</span>}
+    {hoverInfo.owner&&hoverInfo.realm&&hoverInfo.realm!==hoverInfo.owner&&<span className="au-fade"> · </span>}
+    {hoverInfo.realm&&hoverInfo.realm!==hoverInfo.owner&&<span className="au-fade">{hoverInfo.realm}</span>}
+  </div>}
+  <div className="au-fade" style={{fontSize:9,marginTop:2,fontStyle:"italic"}}>click for full info</div>
+</div>}
+
 
 
 {/* ─── Bottom-left collapsible legend ─── */}
-{viewMode==="transport-test"&&
-<div className="au-parchment" style={{position:"absolute",top:8,left:8,
-  padding:"8px 12px",fontSize:11,width:240,zIndex:20,maxHeight:"calc(100vh - 80px)",overflowY:"auto"}}>
-  <div className="au-heading au-sc" style={{fontSize:12,marginBottom:6,borderBottom:"1px solid rgba(58,38,20,0.25)",paddingBottom:4}}>Transport Test</div>
-  {/* Era presets — set all RAW cost sliders to era-appropriate values. */}
-  <div className="au-sc au-fade" style={{fontSize:9,marginBottom:3}}>Era preset (sets raw costs)</div>
-  <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
-    {[
-      ["Stone",      {tileLimit:1500, plain:1.30,rough:22,mountain:9,slope:12,river:0.50,coast:0.80,water:8.0,port:9,seaPassable:false}],
-      ["Neolithic",  {tileLimit:3000, plain:1.15,rough:18,mountain:8,slope:10,river:0.45,coast:0.65,water:6.0,port:7,seaPassable:false}],
-      ["Bronze",     {tileLimit:6000, plain:0.95,rough:14,mountain:6,slope:8, river:0.35,coast:0.50,water:3.5,port:5,seaPassable:true}],
-      ["Iron",       {tileLimit:9000, plain:0.75,rough:11,mountain:5,slope:6, river:0.28,coast:0.40,water:2.2,port:3.5,seaPassable:true}],
-      ["Medieval",   {tileLimit:11000,plain:0.60,rough:9, mountain:4,slope:5, river:0.22,coast:0.32,water:1.6,port:2.5,seaPassable:true}],
-      ["Industrial", {tileLimit:15000,plain:0.40,rough:6, mountain:3,slope:3, river:0.18,coast:0.25,water:1.0,port:1.5,seaPassable:true}],
-    ].map(([name,t])=>(
-      <button key={name} className="au-btn"
-        style={{fontSize:10,padding:"2px 5px",flex:"1 1 30%"}}
-        onClick={()=>setTtCost(t)}>{name}</button>
-    ))}
-  </div>
-  {/* Sub-mode toggle */}
-  <div style={{display:"flex",gap:4,marginBottom:6}}>
-    <button className={"au-btn"+(ttSubMode==="capitals"?" au-active":"")}
-      style={{flex:1,fontSize:11,padding:"3px 6px"}}
-      onClick={()=>setTtSubMode("capitals")}>Capitals</button>
-    <button className={"au-btn"+(ttSubMode==="route"?" au-active":"")}
-      style={{flex:1,fontSize:11,padding:"3px 6px"}}
-      onClick={()=>setTtSubMode("route")}>Route</button>
-  </div>
-  {ttSubMode==="capitals" ? (
-    <>
-      <div className="au-fade" style={{fontSize:10,marginBottom:6,lineHeight:1.3}}>
-        Click on land to place a capital. Shift-click clears.<br/>
-        Each capital greedy-claims tiles by cheapest path.
-      </div>
-      <div style={{fontSize:10,marginBottom:8}}>
-        Capitals: <b>{ttCapitals.length}</b>
-        {ttResultRef.current && <> · claimed: {Array.from(ttResultRef.current.claimed).join(" / ")}</>}
-      </div>
-    </>
-  ) : (
-    <>
-      <div className="au-fade" style={{fontSize:10,marginBottom:6,lineHeight:1.3}}>
-        Click two points. The cheapest path is drawn in cyan.<br/>
-        Shift-click clears. Third click starts over.
-      </div>
-      <div style={{fontSize:10,marginBottom:8}}>
-        Start: <b>{ttRoute.start?`(${ttRoute.start.x},${ttRoute.start.y})`:"—"}</b><br/>
-        End: <b>{ttRoute.end?`(${ttRoute.end.x},${ttRoute.end.y})`:"—"}</b>
-        {ttRouteResultRef.current && <><br/>
-          Length: <b>{ttRouteResultRef.current.path.length} tiles</b><br/>
-          Total cost: <b>{ttRouteResultRef.current.totalCost.toFixed(1)}</b>
-        </>}
-      </div>
-    </>
-  )}
-  {/* Raw travel-cost sliders — the EXACT per-terrain / per-mode costs the BFS
-      charges. Grouped: land terrain, then water/river, then the mode-change. */}
-  <div className="au-sc au-fade" style={{fontSize:9,margin:"2px 0 3px"}}>Travel cost per tile</div>
-  {/* Sea-passable toggle (going on/off water at all). */}
-  <button className={"au-btn au-block"+(ttCost.seaPassable?" au-active":"")} style={{fontSize:10,marginBottom:5}}
-    onClick={()=>setTtCost(p=>({...p,seaPassable:!p.seaPassable}))}>
-    Sea {ttCost.seaPassable?"passable":"IMPASSABLE"}
-  </button>
-  {[
-    ["tileLimit","Tiles / capital",100,15000,100,"how much each capital claims"],
-    ["plain","Plain (flat land)",0.2,3,0.05,"open level ground, per tile"],
-    ["rough","Rough terrain",0,30,0.5,"× local slope-variance² (hills, badlands)"],
-    ["mountain","Mountain (elevation)",0,20,0.5,"penalty above e=0.25"],
-    ["slope","Slope climb",0,20,0.5,"per-step elevation change"],
-    ["river","River (along)",0.1,2,0.05,"travelling along a major river"],
-    ["coast","Coast",0.1,2,0.05,"hugging the shoreline"],
-    ["water","Sea crossing",0.3,20,0.1,"open ocean, per tile (if passable)"],
-    ["port","Mode change ⇄",0,15,0.25,"on/off water · land↔river"],
-  ].map(([k,label,min,max,step,hint])=>(
-    <div key={k} style={{marginBottom:4}} title={hint}>
-      <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
-        <span>{label}</span><b>{ttCost[k].toFixed(k==="tileLimit"?0:2)}</b>
-      </div>
-      <input type="range" min={min} max={max} step={step}
-        value={ttCost[k]} disabled={k==="water"&&!ttCost.seaPassable}
-        onChange={e=>setTtCost(p=>({...p,[k]:parseFloat(e.target.value)}))}
-        style={{width:"100%",opacity:(k==="water"&&!ttCost.seaPassable)?0.4:1}}/>
-      <div className="au-fade" style={{fontSize:8.5,lineHeight:1.1,marginTop:-1}}>{hint}</div>
-    </div>
-  ))}
-  <button className="au-btn au-block" style={{marginTop:6,fontSize:11}}
-    onClick={()=>{
-      if(ttSubMode==="capitals")setTtCapitals([]);
-      else setTtRoute({start:null,end:null});
-    }}>{ttSubMode==="capitals"?"Clear capitals":"Clear route"}</button>
-</div>}
 {(viewMode==="terrain"||viewMode==="atlas"||viewMode==="resources")&&
 <div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
   padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:200,zIndex:20}}>
@@ -3611,47 +3371,24 @@ return(
 
 </div>{/* end center column */}
 
-{/* ══════════ RIGHT RAIL ══════════ */}
-<aside className="au-parchment au-scroll" style={{
-  width:128,minWidth:128,margin:"6px 6px 6px 3px",padding:"10px 0",
-  display:"flex",flexDirection:"column",gap:1,overflowY:"auto"}}>
-
-<div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"0 14px 4px"}}>View</div>
-{VIEW_MODES.map(([k,label])=>(
-  <button key={k} onClick={()=>{setViewMode(k);viewRef.current=k;}}
-    className={"au-rail-tab"+(viewMode===k?" au-active":"")}>{label}</button>
-))}
-
-<div className="au-rule" />
-<div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"6px 14px 4px"}}>Overlay</div>
-<button onClick={()=>{setShowRivers(v=>!v);showRiversRef.current=!showRiversRef.current;}}
-  className={"au-rail-tab"+(showRivers?" au-active":"")}>Rivers</button>
-{showRivers&&<button onClick={()=>{setShowStreams(v=>!v);showStreamsRef.current=!showStreamsRef.current;}}
-  className={"au-rail-tab"+(showStreams?" au-active":"")} style={{paddingLeft:22,fontSize:11}}>· Streams</button>}
-<button onClick={()=>{setShowLakes(v=>!v);showLakesRef.current=!showLakesRef.current;}}
-  className={"au-rail-tab"+(showLakes?" au-active":"")}>Lakes</button>
-{world&&world.pixPlate&&<button onClick={()=>{setShowPlates(v=>!v);showPlatesRef.current=!showPlatesRef.current;}}
-  className={"au-rail-tab"+(showPlates?" au-active":"")}>Plates</button>}
-<button onClick={()=>setShowGlobe(!showGlobe)}
-  className={"au-rail-tab"+(showGlobe?" au-active":"")}>Globe</button>
-<button onClick={()=>setLayersOpen(v=>!v)}
-  className={"au-rail-tab"+(layersOpen?" au-active":"")}>Layers</button>
-<button onClick={()=>setBoardOpen(v=>!v)}
-  className={"au-rail-tab"+(boardOpen?" au-active":"")}>Leaderboard</button>
-<button onClick={()=>setChartsOpen(v=>!v)}
-  className={"au-rail-tab"+(chartsOpen?" au-active":"")}>History</button>
-
-{(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
-<div className="au-rule" />
-<div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"6px 14px 4px"}}>Tools</div>
-<button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
-  className={"au-rail-tab"+(rightPanel==="params"?" au-active":"")}>Params</button>
-{preset==="tectonic"&&<button onClick={()=>setShowTuning(true)}
-  className="au-rail-tab">Tune</button>}
-{preset==="earth_sim"&&<button onClick={()=>setLeversOpen(v=>!v)}
-  className={"au-rail-tab"+(leversOpen?" au-active":"")}>Sim Levers</button>}
-</>}
+{/* ══════════ WORLD PANEL ══════════ */}
+<aside className="au-parchment" style={{width:302,minWidth:302,margin:"6px 6px 6px 3px",
+  display:"flex",flexDirection:"column",minHeight:0}}>
+  <div style={{display:"flex",flexShrink:0,borderBottom:"1px solid rgba(58,38,20,0.28)"}}>
+    {[["world","World"],["realms","Realms"],["peoples","Peoples"],["faiths","Faiths"],["inspect","Inspect"]].map(([k,l])=>(
+      <button key={k} onClick={()=>setPanelTab(k)}
+        className={"au-tab"+(panelTab===k?" au-active":"")} style={{flex:1,padding:"7px 0"}}>{l}</button>
+    ))}
+  </div>
+  {panelTab==="world"&&renderCharts()}
+  {panelTab==="realms"&&(realmSel>=0?renderRealmDetail():renderBoard())}
+  {panelTab==="peoples"&&renderPeoples()}
+  {panelTab==="faiths"&&renderFaiths()}
+  {panelTab==="inspect"&&(renderInspect()||
+    <div className="au-fade" style={{padding:16,fontSize:11,fontStyle:"italic"}}>Click a settlement on the map to inspect it.</div>)}
 </aside>
+
+</div>{/* main row */}
 
 {/* ══════════ PARAMS DRAWER ══════════ */}
 {layersOpen&&(()=>{
@@ -3663,7 +3400,7 @@ return(
   );
   return(
     <aside className="au-parchment au-scroll" style={{
-      position:"absolute",right:142,top:6,width:220,maxHeight:"80vh",
+      position:"absolute",left:124,top:8,width:220,maxHeight:"80vh",
       padding:"10px 0",overflowY:"auto",zIndex:30}}>
       <div style={{display:"flex",alignItems:"baseline",marginBottom:4,padding:"0 12px"}}>
         <span className="au-heading au-sc" style={{fontSize:12}}>Layers</span>
@@ -3691,160 +3428,11 @@ return(
   );
 })()}
 
-{boardOpen&&(()=>{
-  // Leaderboard. Pulls live data from the mirror (peopleRef.current) — same
-  // structure draw() reads — so the panel always reflects the current snapshot.
-  const psw=peopleRef.current;
-  if(!psw||!psw.settlements)return null;
-  const setts=psw.settlements.filter(s=>s&&s.mode==="settled");
-  const countries=psw.countries?Array.from(psw.countries.values()):[];
 
-  // Sort keys per mode. Functions return a number (descending sort).
-  const SETT_SORTS={
-    population:[s=>s.people,"Population",fmtPeople],
-    wealth:[s=>s.wealth||0,"Wealth",fmtGoldKg],
-    army:[s=>s.army||0,"Garrison",fmtPeople],
-    mining:[s=>s._minedRate||0,"Mining rate",fmtGoldKg],
-    vassals:[s=>s._vassalCount||0,"Vassals"],
-    income:[s=>s._wealthDelta||0,"Income (gold/tick)",fmtGoldKg],
-  };
-  const CNT_SORTS={
-    size:[c=>c.members?c.members.length:0,"Size (settlements)"],
-    population:[c=>(c.members||[]).reduce((a,m)=>a+(m.people||0),0),"Population",fmtPeople],
-    wealth:[c=>(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0),"Total wealth",fmtGoldKg],
-    treasury:[c=>c._treasury||0,"State treasury",fmtGoldKg],
-    army:[c=>(c.members||[]).reduce((a,m)=>a+(m.army||0),0),"Standing army",fmtPeople],
-    capacity:[c=>c._capacity||0,"Control capacity"],
-  };
-  const sorts=boardMode==="settlements"?SETT_SORTS:CNT_SORTS;
-  const sortKey=sorts[boardSort]?boardSort:Object.keys(sorts)[0];
-  const [sortFn,sortLabel,sortFmt]=sorts[sortKey];
-  const rows=(boardMode==="settlements"?setts:countries).slice()
-    .sort((a,b)=>sortFn(b)-sortFn(a)).slice(0,15);
 
-  const fmt=v=>{
-    if(!isFinite(v))return "-";
-    const a=Math.abs(v);
-    if(a>=1e6)return (v/1e6).toFixed(1)+"M";
-    if(a>=1e3)return (v/1e3).toFixed(1)+"k";
-    if(a>=10)return Math.round(v).toString();
-    return v.toFixed(1);
-  };
-
-  return(
-    <aside className="au-parchment au-scroll" style={{
-      position:"absolute",right:142,top:6,width:340,maxHeight:"80vh",
-      padding:"10px 0",overflowY:"auto",zIndex:30}}>
-      <div style={{display:"flex",alignItems:"baseline",marginBottom:6,padding:"0 12px"}}>
-        <span className="au-heading au-sc" style={{fontSize:12}}>Leaderboard</span>
-        <div style={{flex:1}} />
-        <span onClick={()=>setBoardOpen(false)}
-          style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
-      </div>
-      <div style={{display:"flex",gap:4,padding:"0 12px 6px"}}>
-        {["countries","settlements"].map(m=>(
-          <button key={m} onClick={()=>setBoardMode(m)}
-            className={"au-rail-tab"+(boardMode===m?" au-active":"")}
-            style={{flex:1,fontSize:11,textTransform:"capitalize"}}>{m}</button>
-        ))}
-      </div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:3,padding:"0 12px 6px"}}>
-        {Object.entries(sorts).map(([k,[,label]])=>(
-          <button key={k} onClick={()=>setBoardSort(k)}
-            className={"au-rail-tab"+(sortKey===k?" au-active":"")}
-            style={{fontSize:10,padding:"3px 7px",textTransform:"none"}}>{label}</button>
-        ))}
-      </div>
-      <table style={{width:"100%",fontSize:11,borderCollapse:"collapse"}}>
-        <thead>
-          <tr style={{color:"var(--au-fade)",textAlign:"left"}}>
-            <th style={{padding:"2px 6px 2px 12px",width:24}}>#</th>
-            <th style={{padding:"2px 4px"}}>{boardMode==="settlements"?"Settlement":"Country"}</th>
-            <th style={{padding:"2px 12px 2px 4px",textAlign:"right"}}>{sortLabel}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r,i)=>{
-            if(boardMode==="settlements"){
-              const ctry=psw.countries&&psw.countries.get(r.countryId);
-              const hue=((r.countryId*61)%360+360)%360;
-              return(
-                <tr key={r.id}
-                  onClick={()=>setSelectedSettlementId(r.id)}
-                  style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
-                  <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
-                  <td style={{padding:"3px 4px"}}>
-                    <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
-                      background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
-                    <span style={{textTransform:"capitalize"}}>{r.name}</span>
-                    {ctry&&ctry.capitalId===r.id&&<span style={{color:"var(--au-fade)",marginLeft:4}}>· capital</span>}
-                  </td>
-                  <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
-                </tr>
-              );
-            }
-            const cap=r.capital||(r.members&&r.members[0]);
-            const hue=((r.id*61)%360+360)%360;
-            return(
-              <tr key={r.id}
-                onClick={()=>{if(cap)setSelectedSettlementId(cap.id);}}
-                style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
-                <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
-                <td style={{padding:"3px 4px"}}>
-                  <span style={{display:"inline-block",width:7,height:7,borderRadius:2,
-                    background:`hsl(${hue},55%,50%)`,marginRight:6,verticalAlign:"middle"}}/>
-                  <span style={{textTransform:"capitalize"}}>{cap?cap.name:"realm-"+r.id}</span>
-                </td>
-                <td style={{padding:"3px 12px 3px 4px",textAlign:"right"}}>{(sortFmt||fmt)(sortFn(r))}</td>
-              </tr>
-            );
-          })}
-          {rows.length===0&&<tr><td colSpan={3} style={{padding:"10px 12px",color:"var(--au-fade)",fontStyle:"italic"}}>no data yet</td></tr>}
-        </tbody>
-      </table>
-    </aside>
-  );
-})()}
-
-{chartsOpen&&(()=>{
-  const H=psHistoryRef.current;
-  const copy=()=>{ const t=buildHistoryExport(H);
-    try{navigator.clipboard.writeText(t);}catch{/* clipboard blocked — ignore */}
-    setStatsCopied(true); setTimeout(()=>setStatsCopied(false),1500); };
-  const curStep=H.length?H[H.length-1].step:0;
-  return(
-    <aside className="au-parchment au-scroll" style={{
-      position:"absolute",right:142,top:6,width:316,maxHeight:"88vh",
-      padding:"10px 0",overflowY:"auto",zIndex:31}}>
-      <div style={{display:"flex",alignItems:"baseline",marginBottom:4,padding:"0 12px"}}>
-        <span className="au-heading au-sc" style={{fontSize:12}}>History</span>
-        <span className="au-fade" style={{fontSize:9,marginLeft:6}}>step {curStep}</span>
-        <div style={{flex:1}} />
-        <span onClick={()=>setChartsOpen(false)}
-          style={{cursor:"pointer",fontSize:18,color:"var(--au-ink-light)"}}>×</span>
-      </div>
-      <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
-      <MiniChart data={H} get={d=>d.gold}           label="Gold (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
-      <MiniChart data={H} get={d=>d.landPct*100}    label="Land claimed"             color="#5a9367" fmtY={v=>v.toFixed(0)+"%"}/>
-      <MiniChart data={H} get={d=>d.countries}      label="Countries"                color="#7a6da8" fmtY={v=>Math.round(v).toString()}/>
-      <MiniChart data={H} get={d=>d.cities+d.metros} label="Cities + metropolises"   color="#b5562f" fmtY={v=>Math.round(v).toString()}/>
-      <MiniChart data={H} get={d=>d.sett}           label="Settlements"              color="#8a8f9c" fmtY={v=>Math.round(v).toString()}/>
-      <MiniChart data={H} get={d=>d.largest}        label="Largest empire (tiles)"   color="#4a78a8" fmtY={v=>Math.round(v).toLocaleString()}/>
-      <div style={{padding:"6px 10px 2px",borderTop:"1px solid rgba(0,0,0,0.08)",marginTop:4}}>
-        <button onClick={copy} className="au-rail-tab au-active" style={{width:"100%",fontSize:11,padding:"5px 0"}}>
-          {statsCopied?"Copied ✓":"Copy stats rundown"}
-        </button>
-        <div className="au-fade" style={{fontSize:9,marginTop:3,lineHeight:1.35}}>
-          Copies a markdown table of the run so far (~40 rows) — paste it back for a full breakdown over time.
-        </div>
-      </div>
-    </aside>
-  );
-})()}
-
-{rightPanel==="params"&&(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&
+{rightPanel==="params"&&(preset==="earth"||preset==="earth_sim")&&
 <aside className="au-parchment au-scroll" style={{
-  position:"absolute",right:142,top:6,bottom:6,width:300,
+  position:"absolute",right:316,top:6,bottom:6,width:300,
   padding:"10px 12px",overflowY:"auto",zIndex:30}}>
 <div style={{display:"flex",alignItems:"baseline",marginBottom:6}}>
   <span className="au-heading au-sc" style={{fontSize:12}}>{preset==="tectonic"?"Parameters":"Wind & Moisture"}</span>
@@ -3856,6 +3444,106 @@ return(
   onChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
   groups={preset==="earth"?["wind"]:preset==="earth_sim"?["wind","moisture"]:undefined} />
 </aside>}
+
+{/* ══════════ CHRONICLE OVERLAY (follows the inspected realm) ══════════ */}
+{chronicleOpen&&peopleRef.current&&peopleRef.current._chronicle&&(
+  <ChronicleOverlay entries={peopleRef.current._chronicle.entries} name={peopleRef.current._chronicle.name}
+    perspective={!!peopleRef.current._chronicle.perspective}
+    onTogglePerspective={()=>{
+      const next=!peopleRef.current._chronicle.perspective;
+      if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"chronicle-mode",perspective:next});
+    }}
+    onClose={()=>setChronicleOpen(false)}/>)}
+
+{/* ══════════ NEW WORLD MODAL ══════════ */}
+{newWorldOpen&&(
+  <div onClick={()=>setNewWorldOpen(false)} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.7)",zIndex:220,display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"14px 18px",width:"min(420px,92vw)"}}>
+      <div style={{display:"flex",alignItems:"center",marginBottom:10}}>
+        <span className="au-pico-title" style={{fontSize:15}}>New World</span>
+        <div style={{flex:1}}/>
+        <button onClick={()=>setNewWorldOpen(false)} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18}}>×</button>
+      </div>
+      <div style={{display:"flex",gap:6,marginBottom:8}}>
+        <button onClick={()=>{setPresetAndGo("earth_sim");setNewWorldOpen(false);}}
+          className={"au-btn"+(preset==="earth_sim"?" au-active":"")} style={{flex:1,padding:"10px 4px"}}>Earth (Sim)</button>
+        <button onClick={()=>{setPresetAndGo("tectonic");setNewWorldOpen(false);}}
+          className={"au-btn"+(preset==="tectonic"?" au-active":"")} style={{flex:1,padding:"10px 4px"}}>Tectonic</button>
+      </div>
+      {preset==="earth_sim"&&
+        <label style={{fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",gap:5,marginBottom:6}} className="au-fade">
+          <input type="checkbox" checked={useRealWind}
+            onChange={e=>{setUseRealWind(e.target.checked);useRealWindRef.current=e.target.checked;generate(seed);}}/>
+          {isRealWindAvailable()?"Use real NCEP winds":"Real winds (data not available)"}
+        </label>}
+      {preset==="tectonic"&&<div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
+        <span className="au-fade" style={{fontSize:10}}>preset</span>
+        <select value={tecPresetName} style={{flex:1}} onChange={e=>{
+          const name=e.target.value;setTecPresetName(name);
+          if(name==="Default"){_tecParams={};generate(seed);}
+          else{const ps=loadPresets();if(ps[name]){_tecParams=ps[name];generate(seed);}}
+        }}>
+          <option value="Default">Default</option>
+          {Object.keys(loadPresets()).map(n=><option key={n} value={n}>{n}</option>)}
+        </select>
+        {tecPresetName!=="Default"&&<button className="au-btn au-wax" style={{fontSize:10}}
+          onClick={()=>{if(confirm("Delete '"+tecPresetName+"'?")){deletePreset(tecPresetName);setTecPresetName("Default");_tecParams={};generate(seed);}}}>✕</button>}
+      </div>}
+      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+        <span className="au-fade" style={{fontSize:11}}>seed</span>
+        <span style={{fontFamily:"'Courier New',monospace",fontSize:12}}>{seed}</span>
+        <button onClick={()=>setSeed(Math.floor(Math.random()*999999))} className="au-btn au-flat" style={{fontSize:11}}>⚄ Roll &amp; generate</button>
+        <div style={{flex:1}}/>
+        <button onClick={()=>fileRef.current?.click()} className="au-btn au-flat" style={{fontSize:11}}>Import…</button>
+      </div>
+      <input ref={fileRef} type="file" accept=".json,.map,.png,.jpg,.jpeg,.webp" style={{display:"none"}} onChange={handleImport}/>
+      {importStatus&&<div className="au-fade" style={{fontSize:9,wordBreak:"break-all"}}>{importStatus}</div>}
+      <div className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>
+        Picking a preset rolls a fresh seed and generates immediately. Import accepts Azgaar Full-JSON or grayscale heightmaps.</div>
+    </div>
+  </div>
+)}
+
+{/* ══════════ MENU POPOVER ══════════ */}
+{menuOpen&&(
+  <div onClick={()=>setMenuOpen(false)} style={{position:"fixed",inset:0,zIndex:210}}>
+    <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{position:"absolute",right:10,top:44,width:230,padding:"8px 0",display:"flex",flexDirection:"column"}}>
+      <button className="au-rail-tab" onClick={()=>{
+        downloadSaveRef.current=(json,step)=>{
+          const blob=new Blob([json],{type:"application/json"});
+          const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+          a.download=`simman-${presetRef.current}-s${seed}-t${step??""}.json`;a.click();
+          setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+        };
+        if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"save"});
+        else if(peopleRef.current&&!peopleRef.current._isMirror){
+          downloadSaveRef.current(serializeWorld(peopleRef.current,{oceanLevel:oceanLevelRef.current,tecParams:_tecParams}),peopleRef.current.step);
+        }
+        setMenuOpen(false);
+      }}>💾 Save world</button>
+      <button className="au-rail-tab" onClick={()=>{saveFileRef.current?.click();setMenuOpen(false);}}>📂 Load world…</button>
+
+      <button className="au-rail-tab" onClick={()=>{
+        if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"export-history"});
+        else if(peopleRef.current&&!peopleRef.current._isMirror){
+          import("./sim/peopleSim/historiography.js").then(h=>{
+            const json=JSON.stringify(h.exportHistory(peopleRef.current));
+            const blob=new Blob([json],{type:"application/json"});
+            const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+            a.download=`simman-history-t${peopleRef.current.step}.json`;a.click();
+            setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+          });
+        }
+        setMenuOpen(false);
+      }}>📜 Export history</button>
+      <div className="au-rule"/>
+      {preset==="earth_sim"&&<button className="au-rail-tab" onClick={()=>{setLeversOpen(v=>!v);setMenuOpen(false);}}>⚖ Sim levers</button>}
+      {(preset==="earth"||preset==="earth_sim")&&<button className="au-rail-tab" onClick={()=>{setRightPanel(rightPanel==="params"?"":"params");setMenuOpen(false);}}>🌬 Wind &amp; moisture</button>}
+      {preset==="tectonic"&&<button className="au-rail-tab" onClick={()=>{setShowTuning(true);setMenuOpen(false);}}>⚙ Worldgen tuning</button>}
+      {!DEV&&<div className="au-fade" style={{fontSize:9,padding:"6px 14px 2px",fontStyle:"italic"}}>add ?dev to the URL for worldgen diagnostic lenses</div>}
+    </div>
+  </div>
+)}
 
 {/* ══════════ SIM LEVERS PANEL ══════════ */}
 {leversOpen&&<SimLevers values={tuneVals} onChange={onLeverChange}
