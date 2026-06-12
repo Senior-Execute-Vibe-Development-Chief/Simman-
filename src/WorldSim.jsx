@@ -544,6 +544,7 @@ const[lens,setLens]=useState("terrain");const subMemRef=useRef({});
 const[panelTab,setPanelTab]=useState("world");   // World Panel tab: world|realms|peoples|faiths|inspect
 const[newWorldOpen,setNewWorldOpen]=useState(false);
 const[menuOpen,setMenuOpen]=useState(false);
+const[realmSel,setRealmSel]=useState(-1);   // realm inspected in the Realms tab
 // Ref mirror so draw() (memoized) sees the current selection without
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
@@ -2026,6 +2027,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.faiths){const fm=new Map();for(const f of snap.faiths)fm.set(f.id,f);psw.faiths=fm;}
   psw.ships=snap.ships;
   psw._chronicle=snap.chronicle||null;             // selected realm's history (null when nothing selected)
+  if(snap.feed&&snap.feed.length){const F=psw._feed||(psw._feed=[]);F.push(...snap.feed);if(F.length>250)F.splice(0,F.length-250);}
   const setts=snap.settlements||[];
   if(snap.selected){const sel=setts.find(x=>x.id===snap.selected.id);if(sel)Object.assign(sel,snap.selected);}
   psw.settlements=setts;
@@ -2285,6 +2287,15 @@ const onCanvasMouseDown=useCallback((ev)=>{
     panDragRef.current={mx:ev.clientX,my:ev.clientY,vx:viewXRef.current,vy:viewYRef.current,moved:false};
   }
 },[]);
+// Jump the camera to a map tile (event feed / chronicle click-throughs).
+const jumpTo=useCallback((x,y)=>{
+  if(x==null||y==null)return;
+  const psw=peopleRef.current;const TRl=(psw&&psw.tileRes)||1;
+  const z=Math.max(viewZRef.current,2.4);viewZRef.current=z;
+  viewXRef.current=CW/2-(x*TRl)*z;
+  viewYRef.current=CH/2-dataYtoScreenY(y*TRl,H,CH)*z;
+  if(terRef.current)draw(terRef.current);
+},[CW,CH,draw]);
 // Reset view (double-click to recentre at zoom 1).
 const resetView=useCallback(()=>{
   viewXRef.current=0;viewYRef.current=0;viewZRef.current=1;
@@ -2314,6 +2325,85 @@ const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 
 
 // ── World Panel panes (relocated leaderboard / charts / settlement card) ──
+// Realm inspector: a polity as a first-class subject — identity, throne,
+// faith, temperament, fisc, members — with its chronicle one click away.
+const renderRealmDetail=()=>{
+  const psw=peopleRef.current;
+  const c=psw&&psw.countries?psw.countries.get(realmSel):null;
+  const back=()=>{setRealmSel(-1);if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:-1});};
+  if(!c)return(
+    <div style={{padding:16,fontSize:11}}>
+      <button onClick={back} className="au-btn au-flat" style={{fontSize:10,marginBottom:8}}>← realms</button>
+      <div className="au-fade" style={{fontStyle:"italic"}}>This realm has fallen — its story survives in the chronicle of whoever conquered it.</div>
+    </div>);
+  const hue=((c.id*61)%360+360)%360;
+  const pop=(c.members||[]).reduce((a,m)=>a+(m.people||0),0);
+  const wealth=(c.members||[]).reduce((a,m)=>a+(m.wealth||0),0);
+  const army=(c.members||[]).reduce((a,m)=>a+(m.army||0),0);
+  const faith=psw.faiths&&c.faithId>=0?psw.faiths.get(c.faithId):null;
+  const capCul=c.capital&&psw.cultures?psw.cultures.get(c.capital.cultureId):null;
+  const pers=c.personality;
+  const members=(c.members||[]).slice().sort((a,b)=>(b.people||0)-(a.people||0));
+  return(
+    <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
+      <button onClick={back} className="au-btn au-flat" style={{fontSize:10,marginBottom:6}}>← realms</button>
+      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:2}}>
+        <span style={{width:12,height:12,borderRadius:2,background:`hsl(${hue},60%,50%)`,flexShrink:0}}/>
+        <span className="au-pico-title" style={{fontSize:15}}>{c.name||(c.capital?c.capital.name:"realm "+c.id)}</span>
+        <div style={{flex:1}}/>
+        <button onClick={()=>setChronicleOpen(true)} title="The realm's chronicle"
+          style={{background:"transparent",border:"none",cursor:"pointer",fontSize:14}}>📜</button>
+      </div>
+      <div className="au-fade" style={{fontSize:10,marginBottom:8}}>
+        {c.members.length} settlements · {fmtPeople(pop)} souls{capCul?` · ${capCul.name} people`:""}{pers?` · ${pers.label}`:""}
+      </div>
+      {c.ruler&&<div style={{fontSize:11,marginBottom:6}}>
+        <span className="au-fade">{c.ruler.female?"queen ":"king "}</span>{c.ruler.name}
+        <span className="au-fade"> of house </span>{c.ruler.house||"?"}
+        <span className="au-fade"> · age {c.ruler.age}</span>
+      </div>}
+      {faith&&<div style={{fontSize:11,marginBottom:6}}>
+        <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:`hsl(${faith.hue|0},55%,50%)`,marginRight:5}}/>
+        <span className="au-fade">state faith </span>{faith.name}
+      </div>}
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"2px 8px",fontSize:10,marginBottom:8}}>
+        <span className="au-fade">Control</span><span>{(c._loadTotal||0).toFixed(1)}/{(c._capacity||0).toFixed(1)}{(c._loadTotal||0)>(c._capacity||0)?" · over-extended":""}</span>
+        {(c._momentum||0)>=1&&<><span className="au-fade">Momentum</span><span>+{(c._momentum||0).toFixed(1)}</span></>}
+        <span className="au-fade">Treasury</span><span>{fmtGoldKg(c._treasury||0)}{(c._solvency??1)<0.99?" · INSOLVENT":""}</span>
+        <span className="au-fade">Tax rate</span><span>{Math.round((c._taxRate||0)*100)}%</span>
+        <span className="au-fade">Army</span><span>{fmtPeople(army)}</span>
+        <span className="au-fade">Wealth (all towns)</span><span>{fmtGoldKg(wealth)}</span>
+        {(c._fronts||0)>0&&<><span className="au-fade">At war</span><span>{c._fronts} front{c._fronts>1?"s":""}{c._capitalBesieged?" · capital besieged":""}</span></>}
+      </div>
+      {pers&&<div style={{marginBottom:8}}>
+        <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:2}}>Temperament — {pers.label}</div>
+        {[["aggression",pers.aggression],["commerce",pers.commerce],["expansionism",pers.expansionism]].map(([k,v])=>(
+          <div key={k} style={{display:"flex",alignItems:"center",gap:6,fontSize:9}}>
+            <span className="au-fade" style={{width:74,textTransform:"capitalize"}}>{k}</span>
+            <div style={{flex:1,height:4,background:"rgba(58,38,20,0.15)",borderRadius:2,position:"relative"}}>
+              <div style={{position:"absolute",left:"50%",top:-1,bottom:-1,width:1,background:"rgba(58,38,20,0.4)"}}/>
+              <div style={{position:"absolute",left:v>=0?"50%":`${50+v*50}%`,width:`${Math.abs(v)*50}%`,top:0,bottom:0,
+                background:v>=0?"hsl(8,60%,45%)":"hsl(200,45%,45%)",borderRadius:2}}/>
+            </div>
+            <span style={{width:30,textAlign:"right"}}>{(v>=0?"+":"")+v.toFixed(2)}</span>
+          </div>
+        ))}
+      </div>}
+      <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:2}}>Settlements</div>
+      {members.slice(0,20).map(m=>(
+        <div key={m.id} onClick={()=>setSelectedSettlementId(m.id)}
+          style={{display:"flex",gap:6,fontSize:10,padding:"2px 0",cursor:"pointer",borderBottom:"1px solid rgba(58,38,20,0.07)"}}>
+          <span style={{textTransform:"capitalize"}}>{m.name}</span>
+          {c.capitalId===m.id&&<span className="au-fade">· capital</span>}
+          <div style={{flex:1}}/>
+          <span className="au-fade">{fmtPeople(m.people||0)}</span>
+        </div>
+      ))}
+      {members.length>20&&<div className="au-fade" style={{fontSize:9,marginTop:2}}>… and {members.length-20} more</div>}
+    </div>
+  );
+};
+
 // Peoples / Faiths browsers: aggregated live from the mirror.
 const renderPeoples=()=>{
   const psw=peopleRef.current;
@@ -2461,14 +2551,6 @@ const renderInspect=()=>{
 
       {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
       {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} onClose={()=>setTechTreeOpen(false)}/>}
-      {chronicleOpen&&psw._chronicle&&psw._chronicle.countryId===s.countryId&&
-        <ChronicleOverlay entries={psw._chronicle.entries} name={psw._chronicle.name}
-          perspective={!!psw._chronicle.perspective}
-          onTogglePerspective={()=>{
-            const next=!psw._chronicle.perspective;
-            if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"chronicle-mode",perspective:next});
-          }}
-          onClose={()=>setChronicleOpen(false)}/>}
 
       {/* ── Header ── (the chronicle opener lives here so it's always visible
           without scrolling the card — a long card can push a bottom section
@@ -2588,6 +2670,8 @@ const renderInspect=()=>{
           const treas=ctry._treasury;
           return(
             <>
+            <button onClick={()=>{setRealmSel(s.countryId);setPanelTab("realms");if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:s.countryId});}}
+              className="au-btn au-flat" style={{fontSize:10,padding:"2px 8px",marginBottom:5}}>→ open realm</button>
             {ctry.ruler&&(
               <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
                 <span style={{width:9,height:9,borderRadius:2,background:"hsl(280,40%,52%)",flexShrink:0}}/>
@@ -3023,7 +3107,7 @@ const renderBoard=()=>{
             const hue=((r.id*61)%360+360)%360;
             return(
               <tr key={r.id}
-                onClick={()=>{if(cap)setSelectedSettlementId(cap.id);}}
+                onClick={()=>{setRealmSel(r.id);if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"selectRealm",id:r.id});}}
                 style={{cursor:"pointer",borderTop:"1px solid rgba(0,0,0,0.06)"}}>
                 <td style={{padding:"3px 6px 3px 12px",color:"var(--au-fade)"}}>{i+1}</td>
                 <td style={{padding:"3px 4px"}}>
@@ -3055,6 +3139,17 @@ const renderCharts=()=>{
         <span className="au-fade" style={{fontSize:9,marginLeft:6}}>step {curStep}</span>
         <div style={{flex:1}} />
       </div>
+      {(()=>{const F=peopleRef.current&&peopleRef.current._feed;if(!F||!F.length)return null;
+        return <div style={{padding:"0 10px 8px"}}>
+          <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:3}}>Latest events</div>
+          <div className="au-scroll" style={{maxHeight:170,overflowY:"auto"}}>
+            {F.slice(-60).reverse().map((e,i)=>(
+              <div key={F.length-i} onClick={()=>jumpTo(e.x,e.y)}
+                style={{fontSize:10,padding:"2px 0",cursor:e.x!=null?"pointer":"default",borderBottom:"1px solid rgba(58,38,20,0.08)",lineHeight:1.35}}>
+                <span className="au-fade" style={{marginRight:5}}>{yearStr(e.step)}</span>{e.text}
+              </div>))}
+          </div>
+        </div>;})()}
       <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
       <MiniChart data={H} get={d=>d.gold}           label="Gold (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
       <MiniChart data={H} get={d=>d.landPct*100}    label="Land claimed"             color="#5a9367" fmtY={v=>v.toFixed(0)+"%"}/>
@@ -3105,6 +3200,10 @@ return(
       <span style={{color:col,fontWeight:600}}>{(5*P).toFixed(2)}</span></span>;
   })()}
   <div style={{flex:1,minWidth:0}}/>
+  {(()=>{const F=peopleRef.current&&peopleRef.current._feed;const last=F&&F[F.length-1];if(!last)return null;
+    return <span onClick={()=>setPanelTab("world")} className="au-fade"
+      style={{fontSize:11,fontStyle:"italic",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:360,cursor:"pointer",flexShrink:1}}
+      title="Open the world feed">📜 {last.text}</span>;})()}
   <button onClick={()=>setShowGlobe(!showGlobe)} className={"au-btn au-flat"+(showGlobe?" au-active":"")}
     style={{fontSize:12,padding:"3px 8px"}} title="3D globe">🌍</button>
   <button onClick={()=>setNewWorldOpen(true)} className="au-btn au-flat" style={{fontSize:12,padding:"3px 8px"}}
@@ -3282,7 +3381,7 @@ return(
     ))}
   </div>
   {panelTab==="world"&&renderCharts()}
-  {panelTab==="realms"&&renderBoard()}
+  {panelTab==="realms"&&(realmSel>=0?renderRealmDetail():renderBoard())}
   {panelTab==="peoples"&&renderPeoples()}
   {panelTab==="faiths"&&renderFaiths()}
   {panelTab==="inspect"&&(renderInspect()||
@@ -3345,6 +3444,16 @@ return(
   onChange={(p)=>{_tecParams=p;setTecPresetName("(unsaved)");generate(seed);}}
   groups={preset==="earth"?["wind"]:preset==="earth_sim"?["wind","moisture"]:undefined} />
 </aside>}
+
+{/* ══════════ CHRONICLE OVERLAY (follows the inspected realm) ══════════ */}
+{chronicleOpen&&peopleRef.current&&peopleRef.current._chronicle&&(
+  <ChronicleOverlay entries={peopleRef.current._chronicle.entries} name={peopleRef.current._chronicle.name}
+    perspective={!!peopleRef.current._chronicle.perspective}
+    onTogglePerspective={()=>{
+      const next=!peopleRef.current._chronicle.perspective;
+      if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"chronicle-mode",perspective:next});
+    }}
+    onClose={()=>setChronicleOpen(false)}/>)}
 
 {/* ══════════ NEW WORLD MODAL ══════════ */}
 {newWorldOpen&&(

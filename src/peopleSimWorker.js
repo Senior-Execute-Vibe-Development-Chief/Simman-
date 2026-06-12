@@ -19,6 +19,7 @@ import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/in
 import { getTradeProfile } from "./sim/peopleSim/settlement.js";
 import { displayPByCountry } from "./sim/peopleSim/inflation.js";
 import { getChronicle, realmName } from "./sim/peopleSim/chronicle.js";
+import { narrate } from "./sim/peopleSim/events.js";
 import { perspectiveChronicle, exportHistory } from "./sim/peopleSim/historiography.js";
 import { applyTuning, resetTuning } from "./sim/peopleSim/tuning.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
@@ -35,6 +36,8 @@ let viewMode = "terrain";    // main thread tells us the view so we only ship
                              // the money-flow / road-component extras when shown
 let lastSnap = 0;
 let snapCount = 0;
+let lastEvSent = 0;          // event-feed cursor (incremental narration to the UI)
+let selRealmId = -1;         // realm whose chronicle the panel is reading (-1 = follow selection)
 let staticSent = false;      // owner/roadQuality sent at least once?
 const SNAP_MS = 33;          // ~30 snapshots/sec, independent of sim speed
 const STEP_BUDGET_MS = 12;   // step at most this long per scheduling slice, then yield
@@ -50,7 +53,7 @@ self.onmessage = (e) => {
       // are NOT reset (the main thread re-sends its current values right after
       // init) — but if a previous world was mid-play, keep stepping the new one
       // rather than silently freezing until the next control message.
-      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1;
+      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1;
       buildSnapshot();            // immediate first frame
       if (playing) scheduleTick();
     } catch (err) {
@@ -65,6 +68,9 @@ self.onmessage = (e) => {
   } else if (m.type === "select") {
     selId = m.id;
     if (!playing && world) buildSnapshot();          // show the selection's detail now
+  } else if (m.type === "selectRealm") {
+    selRealmId = m.id != null ? m.id : -1;           // panel reads this realm's chronicle
+    if (!playing && world) buildSnapshot();
   } else if (m.type === "view") {
     viewMode = m.view;
     if (world) world._wantMoneyFlows = (viewMode === "money");   // gate the per-tick money-flow overlay build
@@ -87,7 +93,7 @@ self.onmessage = (e) => {
       if (m.genMeta) genMeta = m.genMeta;
       world = loadWorld(m.json);
       world._wantMoneyFlows = (viewMode === "money");
-      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1;
+      lastSnap = 0; snapCount = 0; staticSent = false; selId = -1; lastEvSent = 0; selRealmId = -1;
       buildSnapshot();
       if (playing) scheduleTick();
     } catch (err) {
@@ -211,20 +217,37 @@ function buildSnapshot() {
     }
   }
 
-  // Selected settlement: full detail for the info card, plus its realm's
-  // chronicle (per-country history) so the card can show the realm's story.
-  // Both are sent only while a settlement is inspected.
+  // Selected settlement: full detail for the info card. The chronicle follows
+  // the explicitly inspected realm (selectRealm) when set, else the selected
+  // settlement's realm.
   let selected = null, chronicle = null;
   if (selId >= 0 && world._byId) {
     const s = world._byId.get(selId);
-    if (s && s.mode === "settled") {
-      selected = packSelected(s);
-      if (s.countryId >= 0) {
-        const log = chronPerspective
-          ? perspectiveChronicle(world, s.countryId, 80)
-          : getChronicle(world, s.countryId);
-        if (log && log.length) chronicle = { countryId: s.countryId, name: realmName(world, s.countryId), entries: log.slice(-80), perspective: chronPerspective };
+    if (s && s.mode === "settled") selected = packSelected(s);
+  }
+  let chronCid = selRealmId;
+  if (chronCid < 0 && selId >= 0 && world._byId) {
+    const s = world._byId.get(selId);
+    if (s && s.countryId >= 0) chronCid = s.countryId;
+  }
+  if (chronCid >= 0) {
+    const log = chronPerspective
+      ? perspectiveChronicle(world, chronCid, 80)
+      : getChronicle(world, chronCid);
+    if (log && log.length) chronicle = { countryId: chronCid, name: realmName(world, chronCid), entries: log.slice(-80), perspective: chronPerspective };
+  }
+  // Incremental event feed: only NEW events since the last snapshot are
+  // narrated and shipped; the UI accumulates them into the live ticker.
+  let feed = null;
+  {
+    const evs = world.events || [];
+    if (evs.length > lastEvSent) {
+      feed = [];
+      for (let i = Math.max(lastEvSent, evs.length - 40); i < evs.length; i++) {
+        const ev = evs[i];
+        feed.push({ step: ev.step, type: ev.type, text: narrate(world, ev, -1), x: ev.x, y: ev.y });
       }
+      lastEvSent = evs.length;
     }
   }
 
@@ -302,5 +325,6 @@ function buildSnapshot() {
     ships: world.ships ? world.ships.map(sh => ({ x: sh.x, y: sh.y, landTi: sh.landTi, countryId: sh.countryId })) : null,
     selected,
     chronicle,
+    feed,
   }, transfer);
 }
