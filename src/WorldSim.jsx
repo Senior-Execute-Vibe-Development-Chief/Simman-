@@ -37,7 +37,7 @@ const CH_MERC = Math.round(2 * MERC_MAX * CH_FLAT / Math.PI); // ~688
 // can be rendered once to an offscreen canvas and blitted each frame instead
 // of rebuilt per-pixel. Sim-dependent views (population, transport, roads,
 // money, tribes) and atlas are excluded.
-const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","fertility","crop","crossing","resources","moisture","temperature","country","atlas"]);
+const BASE_CACHE_VIEWS = new Set(["terrain","depth","wind","crop","crossing","resources","moisture","temperature","country","atlas"]);
 // Sim-DYNAMIC data views: also cacheable (a GPU blit instead of a full-canvas
 // putImageData every frame — the reason these lagged next to the country view),
 // but their raster must refresh as the sim advances, so the cache key carries a
@@ -390,247 +390,6 @@ c.strokeStyle='rgba(42,48,28,0.6)';c.lineWidth=Math.max(0.3,s*0.12);c.stroke();}
 
 
 
-// ── Transport TEST: standalone greedy claim by capital cost ──────────
-// Independent of the live sim. Each "test capital" runs a Dijkstra that
-// expands through:
-//   - land (cost from params, terrain-modulated)
-//   - water (cost / nav, only if nav > 0)
-//   - mode-change transitions pay a port-load cost on top of the next
-//     tile's cost
-// Tiles are claimed by whichever capital reaches them at lowest cost,
-// until each capital has hit tileLimit. Returns {cost, ownerArr} where
-// ownerArr[ti] is the index of the capital that claimed it (or -1).
-function runTransportTest(ter, capitals, params){
-  const tw=ter.tw,th=ter.th,N=tw*th;
-  const tElev=ter.tElev,tDiff=ter.tDiff,tCoast=ter.tCoast,tTemp=ter.tTemp,tMoist=ter.tMoist;
-  const riverMag=ter.rivers?ter.rivers.riverMag:null;
-  const cost=new Float32Array(N);cost.fill(999);
-  const ownerArr=new Int16Array(N);ownerArr.fill(-1);
-  const visited=new Uint8Array(N);
-  const claimed=new Int32Array(capitals.length);
-  const TILE_LIMIT=params.tileLimit;
-  // Deterministic per-tile noise (xorshift-style hash on tile index).
-  // Used to perturb costs so borders aren't perfectly Voronoi-straight in
-  // flat terrain. Deterministic so the BFS is stable across runs.
-  function tileNoise(ti){
-    let h=(ti+0x9E3779B9)|0;
-    h^=h>>>15;h=Math.imul(h,2246822519);
-    h^=h>>>13;h=Math.imul(h,3266489917);
-    h^=h>>>16;
-    return ((h>>>0)/4294967295);// 0..1
-  }
-  function modeOf(ti){
-    const e=tElev[ti];
-    if(e<=0)return 2;
-    if(riverMag&&riverMag[ti]>=2)return 1;
-    return 0;
-  }
-  function moveCost(ni,ciMode,ciElev){
-    const niMode=modeOf(ni);
-    let base;
-    if(niMode===2){
-      if(params.nav<=0.01)return 999;
-      base=params.water/Math.max(0.3,params.nav);
-    }else if(niMode===1){
-      const rm=riverMag[ni];
-      base=rm>=4?params.river:rm>=3?params.river*1.3:params.river*2;
-    }else{
-      const e=tElev[ni],diff=tDiff[ni],t=tTemp[ni],m=tMoist[ni];
-      base=params.plain;
-      if(e>0.25)base+=(e-0.25)*params.elev;
-      base+=diff*diff*params.harsh;
-      if(t>0.55&&m<0.25)base+=(t-0.55)*5+(0.25-m)*4;
-      if(t<0.18)base+=(0.18-t)*8;
-      if(m>0.7&&t>0.4)base+=(m-0.7)*6;
-      if(tCoast[ni])base=Math.min(base,params.coast);
-      if(ciElev>0){
-        const slope=Math.abs(e-ciElev);
-        if(slope>0.05)base+=(slope-0.05)*params.slope;
-      }
-    }
-    if(niMode!==ciMode)base+=params.port;
-    // Deterministic noise perturbation — scales cost by (1 ± noise/2).
-    // At noise=0.3 each tile is between 0.85x and 1.15x its base cost.
-    if(params.noise>0){
-      base*=(1+(tileNoise(ni)-0.5)*params.noise);
-    }
-    return base;
-  }
-  // Heap (ti, cost, tribe) as parallel arrays
-  const heapTi=new Int32Array(N*2);
-  const heapCost=new Float32Array(N*2);
-  const heapTribe=new Int16Array(N*2);
-  let heapSize=0;
-  function hPush(ti,c,t){
-    let i=heapSize++;
-    heapTi[i]=ti;heapCost[i]=c;heapTribe[i]=t;
-    while(i>0){const p=(i-1)>>1;if(heapCost[p]<=heapCost[i])break;
-      const tt=heapTi[p],tc=heapCost[p],tb=heapTribe[p];
-      heapTi[p]=heapTi[i];heapCost[p]=heapCost[i];heapTribe[p]=heapTribe[i];
-      heapTi[i]=tt;heapCost[i]=tc;heapTribe[i]=tb;i=p;}
-  }
-  let _ti=0,_cost=0,_tribe=0;
-  function hPop(){
-    _ti=heapTi[0];_cost=heapCost[0];_tribe=heapTribe[0];
-    heapSize--;
-    if(heapSize===0)return;
-    heapTi[0]=heapTi[heapSize];heapCost[0]=heapCost[heapSize];heapTribe[0]=heapTribe[heapSize];
-    let i=0;for(;;){const l=i*2+1,r=l+1;let s=i;
-      if(l<heapSize&&heapCost[l]<heapCost[s])s=l;
-      if(r<heapSize&&heapCost[r]<heapCost[s])s=r;
-      if(s===i)break;
-      const tt=heapTi[s],tc=heapCost[s],tb=heapTribe[s];
-      heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];heapTribe[s]=heapTribe[i];
-      heapTi[i]=tt;heapCost[i]=tc;heapTribe[i]=tb;i=s;}
-  }
-  const DX4=[-1,1,0,0],DY4=[0,0,-1,1];
-  // Seed each capital
-  for(let i=0;i<capitals.length;i++){
-    const c=capitals[i];const ti=c.y*tw+c.x;
-    if(ti<0||ti>=N||tElev[ti]<=0)continue;// can't seed in water
-    hPush(ti,0,i);
-  }
-  let totalClaimed=0;
-  const totalTarget=capitals.length*TILE_LIMIT;
-  while(heapSize>0&&totalClaimed<totalTarget){
-    hPop();
-    const ti=_ti,cc=_cost,tribe=_tribe;
-    if(visited[ti])continue;
-    if(claimed[tribe]>=TILE_LIMIT)continue;
-    visited[ti]=1;
-    ownerArr[ti]=tribe;
-    cost[ti]=cc;
-    claimed[tribe]++;totalClaimed++;
-    const cx=ti%tw,cy=(ti-cx)/tw;
-    const ciMode=modeOf(ti);
-    const ciElev=tElev[ti];
-    for(let d=0;d<4;d++){
-      const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
-      if(ny<0||ny>=th)continue;
-      const ni=ny*tw+nx;
-      if(visited[ni])continue;
-      const mc=moveCost(ni,ciMode,ciElev);
-      if(mc>=999)continue;
-      hPush(ni,cc+mc,tribe);
-    }
-  }
-  return{cost,ownerArr,claimed};
-}
-
-// Find the cheapest path between two tile coordinates using the same
-// cost function as runTransportTest. Returns {path: [tileIndices...],
-// totalCost} or null if no path exists. Used by the "route" sub-mode
-// in the transport-test view.
-function findRoute(ter, startTile, endTile, params){
-  const tw=ter.tw,th=ter.th,N=tw*th;
-  const tElev=ter.tElev,tDiff=ter.tDiff,tCoast=ter.tCoast,tTemp=ter.tTemp,tMoist=ter.tMoist;
-  const riverMag=ter.rivers?ter.rivers.riverMag:null;
-  const cost=new Float32Array(N);cost.fill(Infinity);
-  const parent=new Int32Array(N);parent.fill(-1);
-  const visited=new Uint8Array(N);
-  function tileNoise(ti){
-    let h=(ti+0x9E3779B9)|0;
-    h^=h>>>15;h=Math.imul(h,2246822519);
-    h^=h>>>13;h=Math.imul(h,3266489917);
-    h^=h>>>16;return ((h>>>0)/4294967295);
-  }
-  function modeOf(ti){
-    const e=tElev[ti];
-    if(e<=0)return 2;
-    if(riverMag&&riverMag[ti]>=2)return 1;
-    return 0;
-  }
-  function moveCost(ni,ciMode,ciElev){
-    const niMode=modeOf(ni);
-    let base;
-    if(niMode===2){
-      if(params.nav<=0.01)return Infinity;
-      base=params.water/Math.max(0.3,params.nav);
-    }else if(niMode===1){
-      const rm=riverMag[ni];
-      base=rm>=4?params.river:rm>=3?params.river*1.3:params.river*2;
-    }else{
-      const e=tElev[ni],diff=tDiff[ni],t=tTemp[ni],m=tMoist[ni];
-      base=params.plain;
-      if(e>0.25)base+=(e-0.25)*params.elev;
-      base+=diff*diff*params.harsh;
-      if(t>0.55&&m<0.25)base+=(t-0.55)*5+(0.25-m)*4;
-      if(t<0.18)base+=(0.18-t)*8;
-      if(m>0.7&&t>0.4)base+=(m-0.7)*6;
-      if(tCoast[ni])base=Math.min(base,params.coast);
-      if(ciElev>0){
-        const slope=Math.abs(e-ciElev);
-        if(slope>0.05)base+=(slope-0.05)*params.slope;
-      }
-    }
-    if(niMode!==ciMode)base+=params.port;
-    if(params.noise>0)base*=(1+(tileNoise(ni)-0.5)*params.noise);
-    return base;
-  }
-  const heapTi=new Int32Array(N*2);
-  const heapCost=new Float32Array(N*2);
-  let heapSize=0;
-  function hPush(ti,c){
-    let i=heapSize++;heapTi[i]=ti;heapCost[i]=c;
-    while(i>0){const p=(i-1)>>1;if(heapCost[p]<=heapCost[i])break;
-      const tt=heapTi[p],tc=heapCost[p];
-      heapTi[p]=heapTi[i];heapCost[p]=heapCost[i];
-      heapTi[i]=tt;heapCost[i]=tc;i=p;}
-  }
-  let _ti=0,_cost=0;
-  function hPop(){
-    _ti=heapTi[0];_cost=heapCost[0];heapSize--;
-    if(heapSize===0)return;
-    heapTi[0]=heapTi[heapSize];heapCost[0]=heapCost[heapSize];
-    let i=0;for(;;){const l=i*2+1,r=l+1;let s=i;
-      if(l<heapSize&&heapCost[l]<heapCost[s])s=l;
-      if(r<heapSize&&heapCost[r]<heapCost[s])s=r;
-      if(s===i)break;
-      const tt=heapTi[s],tc=heapCost[s];
-      heapTi[s]=heapTi[i];heapCost[s]=heapCost[i];
-      heapTi[i]=tt;heapCost[i]=tc;i=s;}
-  }
-  const DX4=[-1,1,0,0],DY4=[0,0,-1,1];
-  const startTi=startTile.y*tw+startTile.x;
-  const endTi=endTile.y*tw+endTile.x;
-  if(startTi<0||startTi>=N||endTi<0||endTi>=N)return null;
-  cost[startTi]=0;
-  hPush(startTi,0);
-  while(heapSize>0){
-    hPop();const ti=_ti,cc=_cost;
-    if(visited[ti])continue;
-    visited[ti]=1;
-    if(ti===endTi)break;
-    if(cc>cost[ti])continue;
-    const cx=ti%tw,cy=(ti-cx)/tw;
-    const ciMode=modeOf(ti);
-    const ciElev=tElev[ti];
-    for(let d=0;d<4;d++){
-      const nx=((cx+DX4[d])%tw+tw)%tw,ny=cy+DY4[d];
-      if(ny<0||ny>=th)continue;
-      const ni=ny*tw+nx;
-      if(visited[ni])continue;
-      const mc=moveCost(ni,ciMode,ciElev);
-      if(!isFinite(mc))continue;
-      const newCost=cc+mc;
-      if(newCost<cost[ni]){
-        cost[ni]=newCost;
-        parent[ni]=ti;
-        hPush(ni,newCost);
-      }
-    }
-  }
-  if(!visited[endTi])return null;
-  const path=[];
-  let cur=endTi;let safety=N;
-  while(cur>=0&&safety-->0){
-    path.push(cur);
-    if(cur===startTi)break;
-    cur=parent[cur];
-  }
-  if(cur!==startTi)return null;
-  return{path,totalCost:cost[endTi]};
-}
 
 // ── Display units (peopleSim) ───────────────────────────────────────
 // The sim runs on compact internal units; these scale them to realistic,
@@ -753,45 +512,6 @@ const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("tectonic");
 // Transport-test mode state. Each click in this view places a capital;
 // the BFS re-runs whenever params or capitals change.
-const[ttCapitals,setTtCapitals]=useState([]);
-// Transport-test cost model — RAW per-terrain / per-mode travel costs, dialed
-// DIRECTLY. This view exposes the EXACT cost of each tile/terrain type and of
-// the mode changes, instead of abstract tech points:
-//   plain    flat land, per tile
-//   rough    rough-terrain coefficient (× slope-variance²)
-//   mountain elevation penalty coefficient (above e=0.25)
-//   slope    per-step climb penalty coefficient
-//   river    moving ALONG a river (mag≥4; mag-3 ×1.3, mag-2 ×2)
-//   coast    hugging a coastline
-//   water    crossing open SEA, per tile ("sea passable" off ⇒ impassable)
-//   port     MODE CHANGE — the tax to step on/off water, or land↔river
-const[ttCost,setTtCost]=useState({
-  tileLimit:6000, plain:0.95, rough:14, mountain:6, slope:8,
-  river:0.35, coast:0.5, water:3.5, port:5, seaPassable:true,
-});
-// The BFS reads these raw costs straight (no tech derivation). nav is just the
-// on/off switch for sea travel; water carries the actual per-tile sea cost.
-const ttParams={
-  tileLimit:ttCost.tileLimit, plain:ttCost.plain, harsh:ttCost.rough,
-  elev:ttCost.mountain, slope:ttCost.slope, river:ttCost.river, coast:ttCost.coast,
-  water:ttCost.seaPassable?ttCost.water:999, nav:ttCost.seaPassable?1:0,
-  port:ttCost.port, noise:0,
-};
-const ttResultRef=useRef(null);
-const ttCapitalsRef=useRef([]);
-// Sub-mode: "capitals" places tribe seeds and runs claim BFS;
-// "route" places two endpoints and shows the cheapest path between them.
-const[ttSubMode,setTtSubMode]=useState("capitals");
-const[ttRoute,setTtRoute]=useState({start:null,end:null});
-const ttRouteResultRef=useRef(null);
-useEffect(()=>{ttCapitalsRef.current=ttCapitals;
-  // Re-run BFS whenever capitals or tech change AND we're in test mode
-  if(viewMode!=="transport-test"){ttResultRef.current=null;return;}
-  if(!terRef.current||ttCapitals.length===0){ttResultRef.current=null;
-    if(terRef.current)draw(terRef.current);return;}
-  ttResultRef.current=runTransportTest(terRef.current,ttCapitals,ttParams);
-  draw(terRef.current);
-},[ttCapitals,ttCost,viewMode]);
 const[depthFromSea,setDepthFromSea]=useState(false);
 const[depthCeil,setDepthCeil]=useState(1.0);
 const[showPlates,setShowPlates]=useState(false);
@@ -1469,80 +1189,6 @@ const tr=(tc[ti*3]*landDim)|0,tg=(tc[ti*3+1]*landDim)|0,tb=(tc[ti*3+2]*landDim)|
 r=(r*heatW+tr*(1-heatW))|0;g=(g*heatW+tg*(1-heatW))|0;b=(b*heatW+tb*(1-heatW))|0;
 }
 d[pi4]=r;d[pi4+1]=g;d[pi4+2]=b;d[pi4+3]=255;}
-}else if(vm==="transport-test"){
-// Standalone test: each click placed a capital; the BFS claims tileLimit
-// tiles per capital by cheapest transport cost using the test params.
-// Tiles painted per-capital colour with brightness = inverse cost.
-if(!terrainCache.current){terrainCache.current=updateTerrainCache(w,ter);}
-const tc=terrainCache.current;const ptw=ter.tw,pth=ter.th;
-const res=ttResultRef.current;
-const palette=[[230,80,80],[80,170,230],[110,210,110],[230,200,80],[200,120,220],[230,150,80],[100,220,200],[230,100,160]];
-// Track per-tribe max cost for normalisation
-let maxCost=1;if(res){for(let qi=0;qi<res.cost.length;qi++){if(res.ownerArr[qi]>=0&&res.cost[qi]<999&&res.cost[qi]>maxCost)maxCost=res.cost[qi];}}
-for(let ti=0;ti<N;ti++){const tx=ti%CW,ty2=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty2,CH,H))),si=sy*W+sx;
-const e=w.elevation[si];const pi4=ti<<2;
-if(e<=0){d[pi4]=4;d[pi4+1]=5;d[pi4+2]=12;d[pi4+3]=255;continue;}
-const ttx=Math.min(ptw-1,tx),tty=Math.min(pth-1,Math.round(screenYtoDataY(ty2,CH,H)/RES));
-const tti=tty*ptw+ttx;
-const ownerT=res?res.ownerArr[tti]:-1;
-if(ownerT<0){
-  // unclaimed — dim terrain
-  d[pi4]=(tc[ti*3]*0.18)|0;d[pi4+1]=(tc[ti*3+1]*0.18)|0;d[pi4+2]=(tc[ti*3+2]*0.18)|0;d[pi4+3]=255;continue;
-}
-const col=palette[ownerT%palette.length];
-const cc2=res.cost[tti];
-// log-scale brightness: 0→full, maxCost→dim
-const t=Math.min(1,Math.log10(cc2+1)/Math.log10(maxCost+1));
-const bright=1-t*0.7;// dimmest 30% of full
-d[pi4]=(col[0]*bright)|0;d[pi4+1]=(col[1]*bright)|0;d[pi4+2]=(col[2]*bright)|0;d[pi4+3]=255;
-}
-// Mark capitals with white dots
-if(ttCapitalsRef.current){
-  for(const c of ttCapitalsRef.current){
-    for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
-      const cx=c.x+dx,cy=c.y+dy;if(cy<0||cy>=pth)continue;
-      const px=cx%CW,py=Math.min(CH-1,Math.round(dataYtoScreenY(cy,CH,H)));
-      if(px<0||px>=CW||py<0||py>=CH)continue;
-      const pi=(py*CW+px)<<2;d[pi]=240;d[pi+1]=240;d[pi+2]=240;d[pi+3]=255;
-    }
-  }
-}
-// Route mode: paint the path in cyan; endpoints in white
-const rr=ttRouteResultRef.current;
-if(rr&&rr.path){
-  for(const pti of rr.path){
-    const px2=pti%ptw,py2=(pti-px2)/ptw;
-    const sx2=px2%CW,sy2=Math.min(CH-1,Math.round(dataYtoScreenY(py2,CH,H)));
-    if(sx2<0||sx2>=CW||sy2<0||sy2>=CH)continue;
-    const pi=(sy2*CW+sx2)<<2;d[pi]=30;d[pi+1]=220;d[pi+2]=240;d[pi+3]=255;
-  }
-}
-// Endpoint markers
-const epts=[];
-if(ttRoute.start)epts.push(ttRoute.start);
-if(ttRoute.end)epts.push(ttRoute.end);
-for(const ep of epts){
-  for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){
-    if(Math.abs(dx)+Math.abs(dy)>4)continue;
-    const cx=ep.x+dx,cy=ep.y+dy;if(cy<0||cy>=pth)continue;
-    const px=cx%CW,py=Math.min(CH-1,Math.round(dataYtoScreenY(cy,CH,H)));
-    if(px<0||px>=CW||py<0||py>=CH)continue;
-    const pi=(py*CW+px)<<2;d[pi]=255;d[pi+1]=255;d[pi+2]=180;d[pi+3]=255;
-  }
-}
-}else if(vm==="fertility"){
-// Fertility overlay — green (high) → yellow → red (low)
-for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
-const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H))),si=sy*W+sx;
-const e=w.elevation[si];const pi4=ti<<2;
-if(e<=sl){d[pi4]=8;d[pi4+1]=12;d[pi4+2]=22;d[pi4+3]=255;continue;}
-const v=Math.max(0,Math.min(1,ter.tFert[ti]));
-let r,g,b;
-if(v>0.5){const t2=(v-0.5)*2;r=((1-t2)*255)|0;g=200;b=((t2)*40)|0;}
-else{const t2=v*2;r=220;g=(t2*200)|0;b=0;}
-const shade=1-Math.max(0,e-0.1)*0.5;
-d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 }else if(vm==="crop"){
 // Crop suitability overlay — agronomic potential, sharper than tFert.
 // Same green→yellow→red gradient as fertility; differences vs fert
@@ -1824,8 +1470,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmCountry = viewRef.current === "country";
   const vmCulture = viewRef.current === "culture";
   const vmFaith = viewRef.current === "faith";
-  const vmFR = viewRef.current === "frTerritory";
-  if(psw&&ctx&&vmRoads){
+    if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
     // component-root ids. On the REAL world it's stamp-validated (only valid
@@ -1985,7 +1630,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmFR?32:0)|(vmCulture?64:0)|(vmFaith?128:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0);
     if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
@@ -2065,7 +1710,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         octx.stroke();
       }
-      if(!vmCountry&&!vmFR&&!vmCulture&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmCulture&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map();
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
@@ -2086,7 +1731,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
-      } else if(!vmCountry&&!vmFR&&!vmCulture&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmCulture&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -2122,34 +1767,6 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // you can see how much land each rural region holds (often a country's
       // de-facto core). Tint per region + a solid edge wherever the owner changes
       // (including against wilderness), so every region's territory is outlined.
-      if(vmFR&&owner){
-        const tw=psw.tw,th=psw.th;
-        let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
-        const tintById=new Array(maxId+1);
-        for(const s of psw.settlements){if(s&&s.mode==="settled"){
-          const h=((s.id*97)%360+360)%360;
-          tintById[s.id]=`hsla(${h},55%,52%,${(s.tier|0)===0?0.42:0.24})`;
-        }}
-        let lastFs=null;
-        for(let ti=0;ti<owner.length;ti++){
-          const oid=owner[ti];if(oid<0)continue;
-          const fs=tintById[oid];if(fs===undefined)continue;
-          const py=(ti/tw)|0,px=ti-py*tw;
-          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-          octx.fillRect(sx,sy,TR+0.6,TR+0.6);
-        }
-        octx.strokeStyle="rgba(25,18,8,0.85)";octx.lineWidth=Math.max(1,TR*0.5);octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
-        for(let ti=0;ti<owner.length;ti++){
-          const oid=owner[ti];if(oid<0)continue;
-          const py=(ti/tw)|0,px=ti-py*tw;
-          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-          const ro=owner[py*tw+(px===tw-1?0:px+1)];
-          if(ro!==oid){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
-          if(py<th-1){const dno=owner[ti+tw];if(dno!==oid){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
-        }
-        octx.stroke();
-      }
       // ── Province borders (Layers → Provinces) ──
       // Internal administrative divisions. A province follows the SIM's own
       // territory, not a fresh geometric guess: every tile is taken by the
@@ -2590,26 +2207,6 @@ const sx=_sc.sx,sy=_sc.sy;
 const wx=Math.floor(sx),wy=Math.round(screenYtoDataY(Math.floor(sy),CH,H));
 const ter=terRef.current;if(!ter)return;
 const ttx=Math.min(ter.tw-1,(wx/RES)|0),tty=Math.min(ter.th-1,(wy/RES)|0);
-// Transport-test mode: capitals sub-mode places tribe seeds; route
-// sub-mode places two endpoints and shows the cheapest path.
-if(viewMode==="transport-test"){
-  if(ev.shiftKey){
-    if(ttSubMode==="capitals")setTtCapitals([]);
-    else setTtRoute({start:null,end:null});
-    return;
-  }
-  if(ttSubMode==="capitals"){
-    if(ter.tElev[tty*ter.tw+ttx]<=0)return;
-    setTtCapitals(prev=>[...prev,{x:ttx,y:tty}]);
-  }else{
-    // route mode
-    setTtRoute(prev=>{
-      if(!prev.start||(prev.start&&prev.end))return{start:{x:ttx,y:tty},end:null};
-      return{...prev,end:{x:ttx,y:tty}};
-    });
-  }
-  return;
-}
 // peopleSim mode: find the closest settlement to the click. Match
 // against the peopleSim tile-space (tw=960, half of canvas width).
 const psw=peopleRef.current;
@@ -2636,7 +2233,7 @@ if(psw){
   }
   draw(ter);
 }
-},[CW,CH,draw,viewMode,ttSubMode]);
+},[CW,CH,draw,viewMode]);
 // ── Pan / zoom mouse handlers ────────────────────────────────────────
 // Wheel: zoom around the cursor (Google-Maps style). Pan: middle-button or
 // shift+left-button drag (left-only drag is reserved for settlement clicks).
@@ -2677,14 +2274,6 @@ const resetView=useCallback(()=>{
   viewXRef.current=0;viewYRef.current=0;viewZRef.current=1;
   if(terRef.current)draw(terRef.current);
 },[draw]);
-// Re-run route Dijkstra whenever endpoints or tech change
-useEffect(()=>{
-  if(viewMode!=="transport-test"||ttSubMode!=="route"){ttRouteResultRef.current=null;return;}
-  if(!terRef.current||!ttRoute.start||!ttRoute.end){ttRouteResultRef.current=null;
-    if(terRef.current)draw(terRef.current);return;}
-  ttRouteResultRef.current=findRoute(terRef.current,ttRoute.start,ttRoute.end,ttParams);
-  draw(terRef.current);
-},[ttRoute,ttCost,ttSubMode,viewMode]);
 const setPresetAndGo=(p)=>{presetRef.current=p;setPreset(p);setSeed(Math.floor(Math.random()*999999));};
 
 // ── Aggregate world stats for the chronicle ribbon ──
@@ -2698,15 +2287,18 @@ const _psw=peopleRef.current;
 const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 
 // View modes for the right rail
+// Map lenses. Worldgen diagnostics (depth/wind/moisture/temperature/
+// crossing) are developer views — add ?dev to the URL to expose them.
+const DEV=typeof location!=="undefined"&&new URLSearchParams(location.search).has("dev");
 const VIEW_MODES=[
-  ["terrain","Terrain"],["atlas","Atlas"],["depth","Depth"],["wind","Wind"],
-  ["moisture","Moisture"],["temperature","Temp"],["fertility","Fertility"],
-  ["crop","Crop"],["crossing","Crossing"],["country","Country"],["culture","Culture"],["faith","Faith"],["frTerritory","Farm Regions"],["roads","Roads"],["money","Money"],
-  ["resources","Resources"],["transport-test","Trans Test"]
+  ["terrain","Terrain"],["atlas","Atlas"],
+  ["country","Country"],["culture","Culture"],["faith","Faith"],
+  ["roads","Roads"],["money","Money"],["resources","Resources"],["crop","Crop"],
+  ...(DEV?[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]:[]),
 ];
 
 return(
-<div className="au-root" style={{width:"100vw",height:"calc(100vh - 40px)",
+<div className="au-root" style={{width:"100vw",height:"100vh",
   background:"var(--au-table-dark)",overflow:"hidden",display:"flex",position:"relative"}}>
 
 {/* ══════════ LEFT SPINE ══════════ */}
@@ -3444,98 +3036,6 @@ return(
 
 
 {/* ─── Bottom-left collapsible legend ─── */}
-{viewMode==="transport-test"&&
-<div className="au-parchment" style={{position:"absolute",top:8,left:8,
-  padding:"8px 12px",fontSize:11,width:240,zIndex:20,maxHeight:"calc(100vh - 80px)",overflowY:"auto"}}>
-  <div className="au-heading au-sc" style={{fontSize:12,marginBottom:6,borderBottom:"1px solid rgba(58,38,20,0.25)",paddingBottom:4}}>Transport Test</div>
-  {/* Era presets — set all RAW cost sliders to era-appropriate values. */}
-  <div className="au-sc au-fade" style={{fontSize:9,marginBottom:3}}>Era preset (sets raw costs)</div>
-  <div style={{display:"flex",flexWrap:"wrap",gap:3,marginBottom:6}}>
-    {[
-      ["Stone",      {tileLimit:1500, plain:1.30,rough:22,mountain:9,slope:12,river:0.50,coast:0.80,water:8.0,port:9,seaPassable:false}],
-      ["Neolithic",  {tileLimit:3000, plain:1.15,rough:18,mountain:8,slope:10,river:0.45,coast:0.65,water:6.0,port:7,seaPassable:false}],
-      ["Bronze",     {tileLimit:6000, plain:0.95,rough:14,mountain:6,slope:8, river:0.35,coast:0.50,water:3.5,port:5,seaPassable:true}],
-      ["Iron",       {tileLimit:9000, plain:0.75,rough:11,mountain:5,slope:6, river:0.28,coast:0.40,water:2.2,port:3.5,seaPassable:true}],
-      ["Medieval",   {tileLimit:11000,plain:0.60,rough:9, mountain:4,slope:5, river:0.22,coast:0.32,water:1.6,port:2.5,seaPassable:true}],
-      ["Industrial", {tileLimit:15000,plain:0.40,rough:6, mountain:3,slope:3, river:0.18,coast:0.25,water:1.0,port:1.5,seaPassable:true}],
-    ].map(([name,t])=>(
-      <button key={name} className="au-btn"
-        style={{fontSize:10,padding:"2px 5px",flex:"1 1 30%"}}
-        onClick={()=>setTtCost(t)}>{name}</button>
-    ))}
-  </div>
-  {/* Sub-mode toggle */}
-  <div style={{display:"flex",gap:4,marginBottom:6}}>
-    <button className={"au-btn"+(ttSubMode==="capitals"?" au-active":"")}
-      style={{flex:1,fontSize:11,padding:"3px 6px"}}
-      onClick={()=>setTtSubMode("capitals")}>Capitals</button>
-    <button className={"au-btn"+(ttSubMode==="route"?" au-active":"")}
-      style={{flex:1,fontSize:11,padding:"3px 6px"}}
-      onClick={()=>setTtSubMode("route")}>Route</button>
-  </div>
-  {ttSubMode==="capitals" ? (
-    <>
-      <div className="au-fade" style={{fontSize:10,marginBottom:6,lineHeight:1.3}}>
-        Click on land to place a capital. Shift-click clears.<br/>
-        Each capital greedy-claims tiles by cheapest path.
-      </div>
-      <div style={{fontSize:10,marginBottom:8}}>
-        Capitals: <b>{ttCapitals.length}</b>
-        {ttResultRef.current && <> · claimed: {Array.from(ttResultRef.current.claimed).join(" / ")}</>}
-      </div>
-    </>
-  ) : (
-    <>
-      <div className="au-fade" style={{fontSize:10,marginBottom:6,lineHeight:1.3}}>
-        Click two points. The cheapest path is drawn in cyan.<br/>
-        Shift-click clears. Third click starts over.
-      </div>
-      <div style={{fontSize:10,marginBottom:8}}>
-        Start: <b>{ttRoute.start?`(${ttRoute.start.x},${ttRoute.start.y})`:"—"}</b><br/>
-        End: <b>{ttRoute.end?`(${ttRoute.end.x},${ttRoute.end.y})`:"—"}</b>
-        {ttRouteResultRef.current && <><br/>
-          Length: <b>{ttRouteResultRef.current.path.length} tiles</b><br/>
-          Total cost: <b>{ttRouteResultRef.current.totalCost.toFixed(1)}</b>
-        </>}
-      </div>
-    </>
-  )}
-  {/* Raw travel-cost sliders — the EXACT per-terrain / per-mode costs the BFS
-      charges. Grouped: land terrain, then water/river, then the mode-change. */}
-  <div className="au-sc au-fade" style={{fontSize:9,margin:"2px 0 3px"}}>Travel cost per tile</div>
-  {/* Sea-passable toggle (going on/off water at all). */}
-  <button className={"au-btn au-block"+(ttCost.seaPassable?" au-active":"")} style={{fontSize:10,marginBottom:5}}
-    onClick={()=>setTtCost(p=>({...p,seaPassable:!p.seaPassable}))}>
-    Sea {ttCost.seaPassable?"passable":"IMPASSABLE"}
-  </button>
-  {[
-    ["tileLimit","Tiles / capital",100,15000,100,"how much each capital claims"],
-    ["plain","Plain (flat land)",0.2,3,0.05,"open level ground, per tile"],
-    ["rough","Rough terrain",0,30,0.5,"× local slope-variance² (hills, badlands)"],
-    ["mountain","Mountain (elevation)",0,20,0.5,"penalty above e=0.25"],
-    ["slope","Slope climb",0,20,0.5,"per-step elevation change"],
-    ["river","River (along)",0.1,2,0.05,"travelling along a major river"],
-    ["coast","Coast",0.1,2,0.05,"hugging the shoreline"],
-    ["water","Sea crossing",0.3,20,0.1,"open ocean, per tile (if passable)"],
-    ["port","Mode change ⇄",0,15,0.25,"on/off water · land↔river"],
-  ].map(([k,label,min,max,step,hint])=>(
-    <div key={k} style={{marginBottom:4}} title={hint}>
-      <div style={{display:"flex",justifyContent:"space-between",fontSize:10}}>
-        <span>{label}</span><b>{ttCost[k].toFixed(k==="tileLimit"?0:2)}</b>
-      </div>
-      <input type="range" min={min} max={max} step={step}
-        value={ttCost[k]} disabled={k==="water"&&!ttCost.seaPassable}
-        onChange={e=>setTtCost(p=>({...p,[k]:parseFloat(e.target.value)}))}
-        style={{width:"100%",opacity:(k==="water"&&!ttCost.seaPassable)?0.4:1}}/>
-      <div className="au-fade" style={{fontSize:8.5,lineHeight:1.1,marginTop:-1}}>{hint}</div>
-    </div>
-  ))}
-  <button className="au-btn au-block" style={{marginTop:6,fontSize:11}}
-    onClick={()=>{
-      if(ttSubMode==="capitals")setTtCapitals([]);
-      else setTtRoute({start:null,end:null});
-    }}>{ttSubMode==="capitals"?"Clear capitals":"Clear route"}</button>
-</div>}
 {(viewMode==="terrain"||viewMode==="atlas"||viewMode==="resources")&&
 <div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
   padding:keyOpen?"6px 10px 8px":"4px 10px",fontSize:11,maxWidth:200,zIndex:20}}>
@@ -3644,8 +3144,8 @@ return(
 {(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&<>
 <div className="au-rule" />
 <div className="au-heading au-sc au-fade" style={{fontSize:10,padding:"6px 14px 4px"}}>Tools</div>
-<button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
-  className={"au-rail-tab"+(rightPanel==="params"?" au-active":"")}>Params</button>
+{preset!=="tectonic"&&<button onClick={()=>setRightPanel(rightPanel==="params"?"":"params")}
+  className={"au-rail-tab"+(rightPanel==="params"?" au-active":"")}>Params</button>}
 {preset==="tectonic"&&<button onClick={()=>setShowTuning(true)}
   className="au-rail-tab">Tune</button>}
 {preset==="earth_sim"&&<button onClick={()=>setLeversOpen(v=>!v)}
@@ -3842,7 +3342,7 @@ return(
   );
 })()}
 
-{rightPanel==="params"&&(preset==="tectonic"||preset==="earth"||preset==="earth_sim")&&
+{rightPanel==="params"&&(preset==="earth"||preset==="earth_sim")&&
 <aside className="au-parchment au-scroll" style={{
   position:"absolute",right:142,top:6,bottom:6,width:300,
   padding:"10px 12px",overflowY:"auto",zIndex:30}}>
