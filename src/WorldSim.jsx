@@ -258,14 +258,21 @@ const CHRON_COL={founding:"#1f7a55",discovery:"#2f6fa8",growth:"#2f7d3f",wealth:
 const CHRON_LABEL={founding:"Founding",discovery:"Discovery",growth:"Growth",wealth:"Wealth",
   war:"War",conquest:"Conquest",annex:"Annexation",secession:"Secession",loss:"Loss",
   plague:"Plague",famine:"Famine",end:"Fall"};
-function ChronicleOverlay({entries,name,onClose}){
+function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose}){
   const rows=(entries||[]).slice().reverse();   // newest first
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(580px,93vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexShrink:0}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexShrink:0,gap:8}}>
           <div className="au-pico-title" style={{fontSize:15}}>Chronicle{name?` — ${name}`:""}{" "}
             <span className="au-fade" style={{fontSize:11}}>· {rows.length} events</span></div>
+          {/* True record vs the realm's own tradition: same events, different
+              survivors — the scribes' version drops what burned, never heard
+              the distant news, and flatters the court. */}
+          <button onClick={onTogglePerspective} className={"au-btn"+(perspective?" au-active":"")}
+            style={{fontSize:10,whiteSpace:"nowrap"}}
+            title="Toggle between the omniscient record and what this realm's own scribes kept">
+            {perspective?"scribes' version":"true record"}</button>
           <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
         </div>
         {/* minHeight:0 lets this flex child shrink so overflowY:auto actually
@@ -961,6 +968,12 @@ try{
     const d=e.data;
     if(d.type==='snapshot'){if(applySnapshotRef.current)applySnapshotRef.current(d);}
     else if(d.type==='saveData'){downloadSaveRef.current&&downloadSaveRef.current(d.json,d.step);}
+    else if(d.type==='historyData'){
+      const blob=new Blob([d.json],{type:"application/json"});
+      const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+      a.download=`simman-history-t${d.step??""}.json`;a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    }
     else if(d.type==='error'){console.error('[SimWorker]',d.message,d.stack);}
   };
   sw.onerror=(err)=>{
@@ -2784,6 +2797,20 @@ return(
       }catch(err){console.error("load failed:",err);alert("Could not load save: "+err.message);}
     }} />
 </div>
+<button className="au-btn au-block au-flat" style={{fontSize:11}}
+  title="Download the full event log, registries, and each great realm's chronicle (true + as its scribes kept it)"
+  onClick={()=>{
+    if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"export-history"});
+    else if(peopleRef.current&&!peopleRef.current._isMirror){
+      import("./sim/peopleSim/historiography.js").then(h=>{
+        const json=JSON.stringify(h.exportHistory(peopleRef.current));
+        const blob=new Blob([json],{type:"application/json"});
+        const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+        a.download=`simman-history-t${peopleRef.current.step}.json`;a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+      });
+    }
+  }}>📜 Export History</button>
 <button onClick={()=>setSeed(Math.floor(Math.random()*999999))}
   className="au-btn au-block au-flat" style={{fontSize:11}} title="Roll new seed">⚄ Roll</button>
 <span className="au-fade" style={{fontSize:9,textAlign:"center",fontFamily:"'Courier New',monospace"}}>Seed {seed}</span>
@@ -2946,7 +2973,13 @@ return(
       {/* Full tech-tree overlay (fixed-position; escapes the panel) */}
       {techTreeOpen&&<TechTreeOverlay k={k} title={s.name} onClose={()=>setTechTreeOpen(false)}/>}
       {chronicleOpen&&psw._chronicle&&psw._chronicle.countryId===s.countryId&&
-        <ChronicleOverlay entries={psw._chronicle.entries} name={psw._chronicle.name} onClose={()=>setChronicleOpen(false)}/>}
+        <ChronicleOverlay entries={psw._chronicle.entries} name={psw._chronicle.name}
+          perspective={!!psw._chronicle.perspective}
+          onTogglePerspective={()=>{
+            const next=!psw._chronicle.perspective;
+            if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"chronicle-mode",perspective:next});
+          }}
+          onClose={()=>setChronicleOpen(false)}/>}
 
       {/* ── Header ── (the chronicle opener lives here so it's always visible
           without scrolling the card — a long card can push a bottom section

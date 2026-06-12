@@ -19,6 +19,7 @@ import { initPeopleSim, stepPeopleSim, peopleSimStats } from "./sim/peopleSim/in
 import { getTradeProfile } from "./sim/peopleSim/settlement.js";
 import { displayPByCountry } from "./sim/peopleSim/inflation.js";
 import { getChronicle, realmName } from "./sim/peopleSim/chronicle.js";
+import { perspectiveChronicle, exportHistory } from "./sim/peopleSim/historiography.js";
 import { applyTuning, resetTuning } from "./sim/peopleSim/tuning.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { getPolity } from "./sim/peopleSim/entities.js";
@@ -29,6 +30,7 @@ let genMeta = {};      // oceanLevel / tecParams — recorded into saves
 let playing = false;
 let speed = 5;
 let selId = -1;
+let chronPerspective = false; // chronicle rendered as the realm's scribes kept it
 let viewMode = "terrain";    // main thread tells us the view so we only ship
                              // the money-flow / road-component extras when shown
 let lastSnap = 0;
@@ -67,6 +69,14 @@ self.onmessage = (e) => {
     viewMode = m.view;
     if (world) world._wantMoneyFlows = (viewMode === "money");   // gate the per-tick money-flow overlay build
     if (!playing && world) buildSnapshot();          // refresh extras for the new view
+  } else if (m.type === "chronicle-mode") {
+    chronPerspective = !!m.perspective;
+    if (!playing && world) buildSnapshot();          // refresh the open panel
+  } else if (m.type === "export-history") {
+    if (world) {
+      try { self.postMessage({ type: "historyData", json: JSON.stringify(exportHistory(world)), step: world.step }); }
+      catch (err) { self.postMessage({ type: "error", message: "export failed: " + (err && err.message), stack: err && err.stack }); }
+    }
   } else if (m.type === "save") {
     if (world) {
       try { self.postMessage({ type: "saveData", json: serializeWorld(world, genMeta), step: world.step }); }
@@ -210,8 +220,10 @@ function buildSnapshot() {
     if (s && s.mode === "settled") {
       selected = packSelected(s);
       if (s.countryId >= 0) {
-        const log = getChronicle(world, s.countryId);
-        if (log && log.length) chronicle = { countryId: s.countryId, name: realmName(world, s.countryId), entries: log.slice(-60) };
+        const log = chronPerspective
+          ? perspectiveChronicle(world, s.countryId, 80)
+          : getChronicle(world, s.countryId);
+        if (log && log.length) chronicle = { countryId: s.countryId, name: realmName(world, s.countryId), entries: log.slice(-80), perspective: chronPerspective };
       }
     }
   }
