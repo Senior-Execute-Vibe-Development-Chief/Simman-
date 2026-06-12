@@ -35,9 +35,11 @@ export async function loadRealWindData() {
       windData = d;
       console.log(`Real wind data loaded: ${windData.lat.length} lat × ${windData.lon.length} lon, 12 months`);
       return true;
-    } catch (e) {
+    } catch {
       console.warn("Real wind data not available (run: python3 tools/convert_wind_data.py)");
-      loadFailed = false; // Allow retry
+      // Allow a real retry: clear the cached promise too, or every later call
+      // would return this same settled-false promise and never re-attempt.
+      loadPromise = null;
       return false;
     }
   })();

@@ -16,7 +16,6 @@ const rng = () => { rngState = (rngState * 16807) % 2147483647; return (rngState
 const elevation = new Float32Array(W * H);
 const moisture = new Float32Array(W * H);
 const temperature = new Float32Array(W * H);
-const RES = 2;
 
 // ═══════════════════════════════════════════════════════
 // STEP 1: Coarse simulation grid
@@ -110,8 +109,6 @@ const _psx = p('plateStretchX', 1.3), _psy = p('plateStretchY', 0.8);
 for (let py = 0; py < ppH; py++) for (let px = 0; px < ppW; px++) {
   const x = px * PS, y = py * PS;
   const nx = x / W, ny = y / H;
-  // Latitude correction for plate distance (geometry), not noise
-  const cL = Math.max(0.15, Math.cos((ny - 0.5) * Math.PI));
   const warpX = fbm(nx * 2 + 13.7, ny * 2 + 13.7, 3, 2, 0.5) * _ws1
     + fbm(nx * 6 + 37.1, ny * 6 + 37.1, 3, 2, 0.5) * _ws2;
   const warpY = fbm(nx * 2 + 63.7, ny * 2 + 63.7, 3, 2, 0.5) * _ws1
@@ -248,7 +245,6 @@ const rawElevCoarse = new Float32Array(ewW * ewH);
 for (let ey = 0; ey < ewH; ey++) for (let ex = 0; ex < ewW; ex++) {
   const x = ex * ES, y = ey * ES;
   const nx = x / W, ny = y / H;
-  const cL = Math.max(0.15, Math.cos((ny - 0.5) * Math.PI));
   let e = 0;
 
   // Iterative domain warping (double Quilez warp)
@@ -742,9 +738,6 @@ const nfMtnBump = precompute((nx, ny) => fbm(nx * 8 + s2 + 30, ny * 8 + s2 + 30,
 const nfCoastEN = precompute((nx, ny) => fbm(nx * 10 + s3 + 40, ny * 10 + s3 + 40, 2, 2, 0.5));
 const nfTemp = precompute((nx, ny) => fbm(nx * 3 + 80, ny * 3 + 80, 3, 2, 0.5));
 const nfTempBroad = precompute((nx, ny) => fbm(nx * 1.2 + s1 + 55, ny * 1.2 + s1 + 55, 3, 2, 0.55));
-const nfMoistOce = precompute((nx, ny) => fbm(nx * 3 + 30, ny * 3 + 30, 2, 2, 0.5));
-const nfMoistLand = precompute((nx, ny) => fbm(nx * 4 + 50, ny * 4 + 50, 4, 2, 0.55));
-const nfMoistBroad = precompute((nx, ny) => fbm(nx * 1.5 + s2 + 90, ny * 1.5 + s2 + 90, 3, 2, 0.55));
 const nfShield = precompute((nx, ny) => fbm(nx * 1.4 + s1 + 30, ny * 1.4 + s1 + 30, 2, 2, 0.6));
 const nfBasin = precompute((nx, ny) => {
   const [wx, wy] = warp(nx, ny, 2, 2, 0.03, s2 + 40, s2 + 90);
@@ -776,7 +769,6 @@ const nfFineTerrain = precompute((nx, ny) => {
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
   const nx = x / W, ny = y / H;
-  const lat = Math.abs(ny - 0.5) * 2;
 
   const stampE = (rawElev[i] - sl) * 0.3;
 
@@ -812,7 +804,6 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const cd = cdist[Math.min(dh - 1, (y / DG) | 0) * dw + Math.min(dw - 1, (x / DG) | 0)];
     const interior = Math.min(1, cd / 15);
 
-    const sharpVal = sampleCoarse(mtnEffect, twx, twy);
     const broadVal = sampleCoarse(mtnBroad, twx, twy);
 
     const plateauNoise = 0.7 + 0.6 * sg(nfPlateau, x, y);
@@ -1117,6 +1108,13 @@ if (p('erodeDropsPerPixel', 1.5) > 0) {
     };
     shiftField(elevation);
     shiftField(pixPlate);
+    shiftField(isLandArr);
+    // cdist (coast distance, computed in STEP 7b) feeds the maritime/continental
+    // temperature terms in STEP 8d — it MUST rotate with the elevation it
+    // describes, or every coast-distance read lands bestX columns off and the
+    // climate's maritime moderation / interior extremes apply at the wrong
+    // longitudes (the rotation bug this block used to have).
+    shiftField(cdist);
   }
 }
 
@@ -1219,8 +1217,7 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
 // ═══════════════════════════════════════════════════════
 for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
   const i = y * W + x;
-  const nx = x / W, ny = y / H;
-  const lat = Math.abs(ny - 0.5) * 2;
+  const ny = y / H;
   const e = elevation[i];
 
   // Maritime temperature moderation + continental heating

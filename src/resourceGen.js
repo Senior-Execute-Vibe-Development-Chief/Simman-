@@ -234,9 +234,7 @@ export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, s
     const isMountain = e > 0.25;
     const isHighland = e > 0.15;
     const isLowland = e < 0.08;
-    const bd = boundDist[ti];
     const cd = coastDist[ti];
-    const hasBoundary = bd < 12;
 
     // ── TIMBER ──
     // Forest biomes with regional variation — not every forest tile has harvestable timber

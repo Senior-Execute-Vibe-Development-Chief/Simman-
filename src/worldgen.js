@@ -21,11 +21,18 @@ import { EARTH_ELEV, EARTH_W, EARTH_H, decodeEarth, sampleEarth } from "./earthD
 import { generateTectonicWorld } from "./tectonicGen.js";
 import { solveWind } from "./windSolver.js";
 import { solveMoisture } from "./moistureSolver.js";
-import { isRealWindAvailable, fillRealWind } from "./realWindData.js";
 
 const RES = 1;
 
-export function generateWorld(W, H, seed, preset, oceanLevel, _unused = true, realWind = false, _tecParams = {}) {
+// `realWindFns` is INJECTED ({ isRealWindAvailable, fillRealWind } from
+// realWindData.js) rather than imported: realWindData statically pulls the
+// 2.3MB NCEP wind JSON into whichever bundle imports it, and worldgen also
+// runs inside worldGenWorker — importing it here would inline that data into
+// the worker bundle a second time. Callers that want real winds (the main
+// thread's Earth-Sim checkbox) pass the functions in; everyone else omits
+// them and the solver wind is used. `_legacyArg` keeps the old positional
+// signature stable for the ~60 node probes in tools/.
+export function generateWorld(W, H, seed, preset, oceanLevel, _legacyArg = true, realWind = false, _tecParams = {}, realWindFns = null) {
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
 let tecPlates=null,tecWindX=null,tecWindY=null;
@@ -83,7 +90,7 @@ tecWindX=earthWind.windX;tecWindY=earthWind.windY;
 // ── Earth (Sim) mode: real heightmap + full wind-based climate simulation ──
 // Uses same elevation as Earth mode but applies wind-advected moisture/temperature
 const eData=decodeEarth(EARTH_ELEV);
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H,lat=Math.abs(ny-.5)*2;
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H;
 const he=sampleEarth(eData,EARTH_W,EARTH_H,x,y,W,H);
 const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.006;
 if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
@@ -103,9 +110,9 @@ for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
 const nx2=(cx+dx+CDW)%CDW,ny2=cy+dy;if(ny2<0||ny2>=CDH)continue;
 const ni=ny2*CDW+nx2,nd=cd+1;if(nd<cdist[ni]&&elevation[Math.min(H-1,ny2*CDT)*W+Math.min(W-1,nx2*CDT)]>0){cdist[ni]=nd;cdQ.push(ni);}}}
 // Wind: use real NCEP/NCAR data if available and toggled, otherwise solver
-if(realWind&&isRealWindAvailable()){
+if(realWind&&realWindFns&&realWindFns.isRealWindAvailable()){
 tecWindX=new Float32Array(W*H);tecWindY=new Float32Array(W*H);
-fillRealWind(W,H,tecWindX,tecWindY);
+realWindFns.fillRealWind(W,H,tecWindX,tecWindY);
 console.log("Earth (Sim): using real NCEP/NCAR wind data");
 }else{
 const esWind=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137);
@@ -215,9 +222,9 @@ const wt=windTemp[i];
 // The wind-advected field (wt) homogenises the latitude gradient over its 60
 // iterations — useful for current-driven flavour (warm NW-Europe coasts) but it
 // flattens the equator-to-pole spread if it dominates. So the accurate base
-// latitude curve (mt) leads; wt only nudges. Ocean takes a bit more wt (currents).
-const isOcean=e<=0;
-temperature[i]=Math.max(0,Math.min(1,isOcean?mt*0.92+wt*0.08:mt*0.92+wt*0.08));
+// latitude curve (mt) leads; wt only nudges (8% everywhere — an ocean-specific
+// weighting was tried and abandoned; this is the calibrated blend).
+temperature[i]=Math.max(0,Math.min(1,mt*0.92+wt*0.08));
 moisture[i]=mo;}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──

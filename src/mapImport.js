@@ -196,7 +196,8 @@ export function rasterizeHeightmap(imageData, imgW, imgH, W, H) {
   const temperature = new Float32Array(W * H);
 
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    // Bilinear sample from image
+    // Nearest-pixel sample from the image (cheap and plenty for a heightmap
+    // that's usually at or above the sim resolution).
     const sx = x / W * imgW, sy = y / H * imgH;
     const ix = Math.min(imgW - 1, Math.floor(sx)), iy = Math.min(imgH - 1, Math.floor(sy));
     const pi = (iy * imgW + ix) * 4;
