@@ -20,7 +20,7 @@
 import { isContinentalLand } from "./state.js";
 import { makeSettlement } from "./settlement.js";
 import { getPolity } from "./entities.js";
-import { dominantCulture } from "./cultures.js";
+import { dominantCulture, foundCulture, seedCulture, nameFor } from "./cultures.js";
 import { passRng } from "./rng.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
@@ -362,6 +362,25 @@ export function maybeCrystallize(world) {
         cultureId: world._lastInheritDonor ? dominantCulture(world._lastInheritDonor) : -1,
       });
       gridAdd(world, born);   // same-pass candidates must see (and space off) it
+      // ── Ethnogenesis: a frontier community far from its founding stock —
+      // by sheer transport distance, or across a real climate divide — is a
+      // NEW people from the start (the donor's daughter culture). This is
+      // what carves the map into regional peoples instead of two cradle
+      // monocultures: environment + connection define the peoples.
+      {
+        const donor = world._lastInheritDonor;
+        const dCul = donor ? dominantCulture(donor) : -1;
+        if (donor && dCul >= 0) {
+          const dTi = (donor.pos.y | 0) * tw + (donor.pos.x | 0);
+          const climDelta = Math.abs((world.temp[ti] || 0) - (world.temp[dTi] || 0)) * 1.4
+                          + Math.abs((world.moist[ti] || 0) - (world.moist[dTi] || 0));
+          if (td > 70 || (td > 38 && climDelta > 0.34)) {
+            const cul = foundCulture(world, { origin: born, parentCultureId: dCul });
+            seedCulture(world, born, cul.id);
+            born.name = nameFor(world, cul, "settlement");
+          }
+        }
+      }
     }
   }
 }

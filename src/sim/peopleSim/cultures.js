@@ -15,10 +15,11 @@
 // Cultures never die — a people can fade from every mixture, but the
 // record (and its history) persists.
 
-import { makeLanguage } from "../names.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, getLanguage, langWord, langRealmName, langPersonName, langDynastyName } from "../language.js";
 import { hash32, entityRng } from "./rng.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
+import { forEachNear } from "./spatialGrid.js";
 
 export const CULTURE_INTERVAL = 150;      // ticks between assimilation/divergence passes (≈ polity cadence)
 const ASSIM_RATE = 0.012;                 // per-pass share shift toward the state culture (×org, ×interval/150)
@@ -32,22 +33,26 @@ export function getCulture(world, id) {
   return id != null && id >= 0 && world.cultures ? world.cultures.get(id) || null : null;
 }
 
-const _langCache = new Map();   // langSeed → language (pure, shareable across worlds)
-export function languageOf(culture) {
-  let l = _langCache.get(culture.langSeed);
-  if (!l) { l = makeLanguage(culture.langSeed); _langCache.set(culture.langSeed, l); }
+// A culture's tongue is a LIVING entity (world.languages, language.js):
+// it drifts, branches when peoples diverge, and borrows under contact.
+export function languageOf(world, culture) {
+  let l = getLanguage(world, culture.languageId);
+  if (!l) {
+    l = foundLanguage(world, { seed: culture.langSeed });
+    culture.languageId = l.id;
+  }
   return l;
 }
 
 /** Coin a name in this culture's tongue; the per-culture counter keeps
  *  names order-independent and (within a world) collision-free. */
 export function nameFor(world, culture, kind, base) {
-  const lang = languageOf(culture);
+  const lang = languageOf(world, culture);
   const n = culture.nameCounter++;
-  if (kind === "realm") return lang.realmName(n, base);
-  if (kind === "person") return lang.personName(n, base === "f");
-  if (kind === "dynasty") return lang.dynastyName(n, base);
-  return lang.word(n);
+  if (kind === "realm") return langRealmName(lang, n, base);
+  if (kind === "person") return langPersonName(lang, n, base === "f");
+  if (kind === "dynasty") return langDynastyName(lang, n, base);
+  return langWord(lang, n);
 }
 
 export function foundCulture(world, { origin, parentCultureId = -1 } = {}) {
@@ -56,7 +61,7 @@ export function foundCulture(world, { origin, parentCultureId = -1 } = {}) {
   world._nextCultureId = id + 1;
   const langSeed = hash32(world.seed || 1, "lang", id);
   const c = {
-    id, langSeed,
+    id, langSeed, languageId: -1,
     name: null,
     parentCultureId,
     originSettlementId: origin ? origin.id : -1,
@@ -64,8 +69,14 @@ export function foundCulture(world, { origin, parentCultureId = -1 } = {}) {
     nameCounter: 1,
     hue: (id * 137.508) % 360,            // golden-angle spread
   };
+  // The tongue: a daughter people's language BRANCHES from the parent's
+  // (a dialect hardening into a language); a root people gets a fresh one.
+  const parent = getCulture(world, parentCultureId);
+  const plang = parent ? languageOf(world, parent) : null;
+  const lang = plang ? branchLanguage(world, plang) : foundLanguage(world, { seed: langSeed });
+  c.languageId = lang.id;
   // A culture names ITSELF in its own tongue (endonym).
-  c.name = languageOf(c).word(0);
+  c.name = langWord(lang, 0);
   reg.set(id, c);
   logEvent(world, "culture.born", {
     culture: id, cultureName: c.name,
@@ -121,7 +132,33 @@ export function seedCulture(world, s, cultureId) {
 // bureaucracy, never instant (centuries, not passes). Divergence: an
 // overseas colony out of living contact with its own people for
 // DIVERGE_AFTER ticks becomes a NEW people (daughter culture).
+const LANG_DRIFT_EVERY = 2600;     // ≈ ticks between sound changes per tongue
 export function updateCultures(world) {
+  // ── living languages: slow sound change; borrowing under contact ──
+  if (world.cultures) {
+    for (const cul of world.cultures.values()) {
+      const lang = languageOf(world, cul);
+      const due = (cul._lastDrift ?? cul.foundedStep) + LANG_DRIFT_EVERY / (world._dt || 1);
+      if (world.step >= due) {
+        cul._lastDrift = world.step;
+        const before = langWord(lang, 1);
+        driftLanguage(world, lang);
+        logEvent(world, "language.shift", { culture: cul.id, cultureName: cul.name,
+          was: before, now: langWord(lang, 1) });
+      }
+    }
+    // contact: a settlement whose population is a real MIXTURE of two
+    // peoples lets the larger group's tongue borrow from the smaller's.
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || !s.culMix || s.culMix.length < 2) continue;
+      if (s.culMix[1][1] < 0.25) continue;
+      if ((s._lastBorrow ?? 0) + 6000 / (world._dt || 1) > world.step) continue;
+      const a = getCulture(world, s.culMix[0][0]), b = getCulture(world, s.culMix[1][0]);
+      if (!a || !b) continue;
+      s._lastBorrow = world.step;
+      borrowFrom(world, languageOf(world, a), languageOf(world, b));
+    }
+  }
   // (Called every _ivl(CULTURE_INTERVAL) ticks — the interval stretches with
   // SIM_GRANULARITY, so per-pass rates below stay calibrated per history-time.)
   // refresh each polity's culture from its capital's dominant people
@@ -146,9 +183,10 @@ export function updateCultures(world) {
       }
     }
 
-    // overseas divergence: a colony whose people have no same-culture trade
-    // contact diverges once living memory of home fades.
-    if (s._isColony && !s._diverged) {
+    // divergence: ANY community out of living contact with its own people
+    // becomes a people of its own in time (overseas colonies fastest —
+    // an ocean is the sharpest isolator).
+    if (!s._diverged) {
       const myCul = dominantCulture(s);
       let contact = false;
       if (s._tradeReach) {
@@ -165,13 +203,21 @@ export function updateCultures(world) {
       }
       if (contact) { s._isolatedSince = undefined; continue; }
       if (s._isolatedSince === undefined) { s._isolatedSince = world.step; continue; }
-      if (world.step - s._isolatedSince > DIVERGE_AFTER / (world._dt || 1)) {
+      const divAfter = (s._isColony ? DIVERGE_AFTER : DIVERGE_AFTER * 2.2) / (world._dt || 1);
+      if (world.step - s._isolatedSince > divAfter) {
         const parent = getCulture(world, myCul);
         const daughter = foundCulture(world, { origin: s, parentCultureId: myCul });
         // language relationship is implicit: daughter seeds a fresh tongue,
         // history records the lineage (parentCultureId + culture.born event)
         seedCulture(world, s, daughter.id);
         s._diverged = true;
+        // the new people's homeland: same-stock neighbours join the daughter
+        forEachNear(world, s.pos.x, s.pos.y, 16, (nb) => {
+          if (nb !== s && nb.mode === "settled" && dominantCulture(nb) === myCul) {
+            seedCulture(world, nb, daughter.id);
+            nb._diverged = true;
+          }
+        });
         logEvent(world, "culture.diverged", {
           culture: daughter.id, cultureName: daughter.name,
           parent: myCul, parentName: parent ? parent.name : undefined,

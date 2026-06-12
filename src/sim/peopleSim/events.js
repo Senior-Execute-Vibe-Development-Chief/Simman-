@@ -158,7 +158,10 @@ const NARRATE = {
     return `${ev.personName} wed ${ev.person2Name} of a foreign court — the houses are joined.`;
   },
   "faith.founded"(ev) {
-    return `A new faith arose in ${ev.sName || "a great town"} — the priesthood of ${ev.faithName}.`;
+    return `A new faith arose in ${ev.sName || "a great town"} — the ${ev.character ? ev.character + " " : ""}priesthood of ${ev.faithName}.`;
+  },
+  "language.shift"(ev) {
+    return `The tongue of the ${ev.cultureName} shifted with the generations — what was "${ev.was}" is now "${ev.now}".`;
   },
   "faith.schism"(ev) {
     return `The ${ev.faithName} rite broke communion with the ${ev.parentName} church — a schism declared from ${ev.sName || "the capital"}.`;
@@ -206,6 +209,7 @@ export function categoryOf(ev, as = -1) {
     case "wealth.milestone": return "wealth";
     case "settlement.founded": case "colony.departed": return "founding";
     case "culture.born": case "culture.diverged": return "founding";
+    case "language.shift": return "growth";
     case "faith.founded": case "polity.adoptedFaith": return "discovery";
     case "faith.schism": return "secession";
     case "war.began": return as === ev.to ? "war" : "conquest";

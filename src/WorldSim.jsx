@@ -782,13 +782,26 @@ useEffect(()=>{if(!showGlobe){terrainCache.current=null;imgRef.current=null;wind
 // Build terrain RGB cache at tile resolution (one entry per tile)
 const updateTerrainCache=useCallback((w,ter)=>{
 const buf=new Uint8Array(CW*CH*3);const sl=0;
+// Smooth the boosted tile-moisture for RENDERING only: the river/lake
+// boosts arrive in small integer-radius rings, and unsmoothed they flip
+// biome colors in blocky stepped blobs (the "low-res layer" artifact).
+let smoothM=null;
+if(ter&&ter.tMoist){
+  const tw2=ter.tw,th2=ter.th;smoothM=new Float32Array(tw2*th2);
+  const tm=ter.tMoist;
+  for(let y2=0;y2<th2;y2++)for(let x2=0;x2<tw2;x2++){
+    let acc=0,n2=0;
+    for(let dy=-1;dy<=1;dy++){const ny=y2+dy;if(ny<0||ny>=th2)continue;
+      for(let dx=-1;dx<=1;dx++){const nx=(x2+dx+tw2)%tw2;acc+=tm[ny*tw2+nx];n2++;}}
+    smoothM[y2*tw2+x2]=acc/n2;}
+}
 for(let ty=0;ty<CH;ty++){
 const dataY=Math.round(screenYtoDataY(ty,CH,H));
 for(let tx=0;tx<CW;tx++){
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,dataY);
 const si=sy*W+sx;const e=w.elevation[si];
 let m=w.moisture[si];
-if(ter&&ter.tMoist){const tti=Math.min(ter.th-1,(sy/RES)|0)*ter.tw+Math.min(ter.tw-1,(sx/RES)|0);m=ter.tMoist[tti];}
+if(smoothM){const tti=Math.min(ter.th-1,(sy/RES)|0)*ter.tw+Math.min(ter.tw-1,(sx/RES)|0);m=smoothM[tti];}
 const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
@@ -1654,6 +1667,29 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // creeds, not states. Same machinery, different per-settlement key. ──
       if((vmCulture||vmFaith)&&owner){
         const tw=psw.tw,th=psw.th;
+        // ── Broad wash first: every CLAIMED tile takes its realm capital's
+        // culture/faith, so peoples and creeds read as connected regions
+        // instead of scattered worked-tile speckles; settlement territories
+        // then overpaint with full-strength local detail.
+        if(claimArr&&psw.countries){
+          const fillByCC=new Map();let lastFs2=null;
+          for(let ti=0;ti<claimArr.length;ti++){
+            const cc=claimArr[ti];if(cc<0)continue;
+            let fs=fillByCC.get(cc);
+            if(fs===undefined){
+              const c=psw.countries.get(cc);const capS=c&&c.capital;
+              const kid=capS?(vmFaith?capS.faithId:capS.cultureId)??-1:-1;
+              const reg0=vmFaith?psw.faiths:psw.cultures;
+              const ent=reg0&&reg0.get(kid);
+              fs=kid<0?null:`hsla(${ent?ent.hue|0:((kid*97)%360+360)%360},${vmFaith&&ent&&ent.kind!=="organized"?40:60}%,52%,0.55)`;
+              fillByCC.set(cc,fs);}
+            if(!fs)continue;
+            const py=(ti/tw)|0,px=ti-py*tw;
+            const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+            if(fs!==lastFs2){octx.fillStyle=fs;lastFs2=fs;}
+            octx.fillRect(sx,sy,TR+0.6,TR+0.6);
+          }
+        }
         let maxId=0;for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const fillById=new Array(maxId+1);const culById=new Int32Array(maxId+1).fill(-1);
         const fillByCulture=new Map();
@@ -1664,7 +1700,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           if(fs===undefined){
             const cul=reg&&reg.get(cid);
             const h=cul?cul.hue|0:((cid*97)%360+360)%360;
-            const sat=vmFaith&&cul&&cul.kind!=="organized"?30:58;
+            const sat=vmFaith&&cul&&cul.kind!=="organized"?45:62;
             fs=cid<0?"hsla(40,8%,55%,0.6)":`hsl(${h},${sat}%,52%)`;fillByCulture.set(cid,fs);}
           fillById[s.id]=fs;}
         let lastFs=null;
@@ -2463,7 +2499,7 @@ const renderFaiths=()=>{
         <div key={f.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"4px 0",borderBottom:"1px solid rgba(58,38,20,0.10)"}}>
           <span style={{width:10,height:10,borderRadius:f.kind==="organized"?"50%":2,background:`hsl(${f.hue|0},55%,50%)`,flexShrink:0,alignSelf:"center"}}/>
           <span style={{fontWeight:600,fontSize:12}}>{f.name}</span>
-          <span className="au-fade" style={{fontSize:9}}>{f.kind}{f.parent>=0&&psw.faiths.get(f.parent)?` ← ${psw.faiths.get(f.parent).name}`:""}</span>
+          <span className="au-fade" style={{fontSize:9}}>{f.character||f.kind}{f.parent>=0&&psw.faiths.get(f.parent)?` ← ${psw.faiths.get(f.parent).name}`:""}</span>
           <div style={{flex:1}}/>
           <span className="au-fade">{a.setts>0?`${a.setts} · ${fmtPeople(a.pop)}`:"faded"}</span>
         </div>
@@ -3364,7 +3400,7 @@ return(
 
 {/* ══════════ WORLD PANEL ══════════ */}
 <aside className="au-parchment" style={{width:302,minWidth:302,margin:"6px 6px 6px 3px",
-  display:"flex",flexDirection:"column",minHeight:0}}>
+  display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden",overscrollBehavior:"contain"}}>
   <div style={{display:"flex",flexShrink:0,borderBottom:"1px solid rgba(58,38,20,0.28)"}}>
     {[["world","World"],["realms","Realms"],["peoples","Peoples"],["faiths","Faiths"],["inspect","Inspect"]].map(([k,l])=>(
       <button key={k} onClick={()=>setPanelTab(k)}

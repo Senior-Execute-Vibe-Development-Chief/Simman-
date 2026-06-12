@@ -93,11 +93,12 @@ export function saveWorld(world, meta = {}) {
       preset: world.preset, oceanLevel: meta.oceanLevel ?? 0.78, tecParams: meta.tecParams || {},
     },
     step: world.step,
-    counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1 },
+    counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1, language: world._nextLanguageId || 1 },
     tuning,
     settlements,
     polities,
     cultures: world.cultures ? [...world.cultures.entries()] : [],
+    languages: world.languages ? [...world.languages.entries()] : [],
     faiths: world.faiths ? [...world.faiths.entries()] : [],
     persons: world.persons ? [...world.persons.entries()] : [],
     dynasties: world.dynasties ? [...world.dynasties.entries()] : [],
@@ -158,6 +159,8 @@ export function loadWorld(data) {
   world._nextPersonId = data.counters.person || 1;
   world._nextDynastyId = data.counters.dynasty || 1;
   world.cultures = new Map(data.cultures || []);
+  world.languages = new Map(data.languages || []);
+  world._nextLanguageId = (data.counters && data.counters.language) || 1;
   world.faiths = new Map(data.faiths || []);
   world.persons = new Map(data.persons || []);
   world.dynasties = new Map(data.dynasties || []);
