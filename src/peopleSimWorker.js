@@ -24,6 +24,7 @@ import { perspectiveChronicle, exportHistory } from "./sim/peopleSim/historiogra
 import { applyTuning, resetTuning } from "./sim/peopleSim/tuning.js";
 import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { getPolity } from "./sim/peopleSim/entities.js";
+import { doctrineLabel } from "./sim/peopleSim/faiths.js";
 import { getPerson, getDynasty, ageOf } from "./sim/peopleSim/dynasties.js";
 
 let world = null;
@@ -321,7 +322,7 @@ function buildSnapshot() {
     countries,
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last
     cultures: sendStatic && world.cultures ? [...world.cultures.values()].map(c => ({ id: c.id, name: c.name, hue: c.hue, parent: c.parentCultureId })) : null,
-    faiths: sendStatic && world.faiths ? [...world.faiths.values()].map(f => ({ id: f.id, name: f.name, hue: f.hue, kind: f.kind, parent: f.parentFaithId })) : null,
+    faiths: sendStatic && world.faiths ? [...world.faiths.values()].map(f => ({ id: f.id, name: f.name, hue: f.hue, kind: f.kind, parent: f.parentFaithId, character: f.kind === "organized" ? doctrineLabel(f) : null })) : null,
     ships: world.ships ? world.ships.map(sh => ({ x: sh.x, y: sh.y, landTi: sh.landTi, countryId: sh.countryId })) : null,
     selected,
     chronicle,
