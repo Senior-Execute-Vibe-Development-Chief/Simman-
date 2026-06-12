@@ -19,6 +19,7 @@
 
 import { isContinentalLand } from "./state.js";
 import { makeSettlement } from "./settlement.js";
+import { passRng } from "./rng.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
 import { grownOwnerAt } from "./countryClaim.js";
@@ -224,7 +225,8 @@ export function maybeCrystallize(world) {
   // (MIN_SETT_DIST) and the fertility filters limit density. In
   // saturated regions every candidate fails the tooClose / area-fert
   // checks, so spawn rate falls off naturally.
-  const { N, tw, th, elev, fert, coast, riverMag, transportDist, rng } = world;
+  const { N, tw, th, elev, fert, coast, riverMag, transportDist } = world;
+  const rng = passRng(world, "crystallize");
   // LOCALITY model spaces centres farther apart (×LOCALITY_SPACING) so the map
   // fills with fewer, larger localities — each farming a bigger catchment —
   // instead of a dense village scatter.
@@ -572,7 +574,7 @@ function defensibilityFor(world, ti, tx, ty) {
 // expansion has a real demographic cost (you trade headcount for territory).
 function maybeSendSettlers(world, alive, devFactor = 1) {
   if (!world.transportDist) return;
-  const { rng } = world;
+  const rng = passRng(world, "settlers");
   // Saturation: colonies get rarer as the map fills, so settlement density
   // plateaus instead of climbing forever (see COLONY_SATURATION_REF).
   const colonySat = 1 / (1 + (alive / COLONY_SATURATION_REF) ** 2);
@@ -604,7 +606,8 @@ function maybeSendSettlers(world, alive, devFactor = 1) {
 function sendSettlers(world, parent) {
   // Find a viable empty site within walking range. Score by quality (same
   // ingredients as the random sweep) and pick the best.
-  const { tw, th, elev, fert, coast, riverMag, rng } = world;
+  const { tw, th, elev, fert, coast, riverMag } = world;
+  const rng = passRng(world, "settlers.site");
   const px = parent.pos.x | 0, py = parent.pos.y | 0;
   let best = null, bestQ = -Infinity;
   for (let i = 0; i < COLONY_CANDIDATES; i++) {
@@ -694,7 +697,8 @@ const URBAN_SEED_CAP       = 70;   // ...capped so the region isn't gutted — i
 const URBAN_SEED_MIN       = 25;   // a founding town smaller than this isn't viable — skip the roll
 
 function maybeUrbanGenesis(world) {
-  const { tw, th, fert, coast, riverMag, rng } = world;
+  const { tw, th, fert, coast, riverMag } = world;
+  const rng = passRng(world, "urban");
   for (const region of world.settlements) {
     if (region.mode !== "settled") continue;
     if ((region.tier | 0) !== 0) continue;                 // only rural regions birth towns

@@ -10,7 +10,7 @@
 // machinery (hunger→unrest→rebellion; population crash→capacity→fragmentation)
 // past its tipping point.
 
-import { mkRng } from "./rng.js";
+import { passRng } from "./rng.js";
 import { chronicle } from "./chronicle.js";
 import { T } from "./tuning.js";
 
@@ -61,7 +61,7 @@ export function updateShocks(world) {
   // is re-seeded from world.step each tick and only ever consumed on these
   // ticks anyway, so not allocating it on the rest is behaviour-identical.
   if (!famineCheck && !plagueCheck && world._plagued.size === 0) return;
-  const rng = mkRng((world.seed ^ (world.step * 40503)) >>> 0);
+  const rng = passRng(world, "shocks");
 
   // ── Famine spawn ──
   const _dt = world._dt || 1;                         // time-granularity step (1/SIM_GRANULARITY)

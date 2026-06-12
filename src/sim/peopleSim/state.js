@@ -3,7 +3,6 @@
 // and downsamples to tile resolution; no political state, no per-tile
 // ownership — just terrain plus the entity arrays.
 
-import { mkRng } from "./rng.js";
 import { makeSettlement } from "./settlement.js";
 import { resetInvariantState } from "./invariants.js";
 import { T } from "./tuning.js";
@@ -67,7 +66,8 @@ export function createWorld(w, opts = {}) {
 
     step: 0,
     seed: opts.seed || w.seed || 1,
-    rng: mkRng(opts.seed || w.seed || 1),
+    // NO shared world.rng stream: randomness is drawn per system via
+    // passRng/entityRng (rng.js) so systems never perturb each other's dice.
 
     debug:  { tickMs: 0 },
   };

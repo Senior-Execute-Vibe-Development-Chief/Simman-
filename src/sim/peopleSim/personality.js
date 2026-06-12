@@ -40,7 +40,7 @@
 // changes, pruned when a country dies. The traits feed real levers via the
 // behaviour multipliers at the bottom of this file.
 
-import { mkRng } from "./rng.js";
+import { entityRng } from "./rng.js";
 
 // Three INDEPENDENT outward-drive axes, each in −1..1 with 0 = neutral
 // (uncorrelated — so a realm can be high on two at once: the warlike merchant,
@@ -91,8 +91,7 @@ function clampv(x, lo, hi) { return x < lo ? lo : x > hi ? hi : x; }
 // given world always produces the same temperaments (reproducible), but each
 // country is independent.
 function countryRng(world, countryId) {
-  const base = (world.seed || 1) * 2654435761;
-  return mkRng((base ^ (countryId * 40503)) >>> 0);
+  return entityRng(world, "personality", countryId);
 }
 
 // A spread roll in −1..1 with a gentle central bias toward 0 (sum of two
