@@ -15,7 +15,7 @@
 // Cultures never die — a people can fade from every mixture, but the
 // record (and its history) persists.
 
-import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, getLanguage, langWord, langRealmName, langPersonName, langDynastyName } from "../language.js";
+import { foundLanguage, branchLanguage, driftLanguage, borrowFrom, getLanguage, langWord, langPlaceName, langRealmName, langPersonName, langDynastyName } from "../language.js";
 import { hash32, entityRng } from "./rng.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
@@ -52,6 +52,7 @@ export function nameFor(world, culture, kind, base) {
   if (kind === "realm") return langRealmName(lang, n, base);
   if (kind === "person") return langPersonName(lang, n, base === "f");
   if (kind === "dynasty") return langDynastyName(lang, n, base);
+  if (kind === "settlement") return langPlaceName(lang, n);
   return langWord(lang, n);
 }
 
@@ -83,7 +84,12 @@ export function foundCulture(world, { origin, parentCultureId = -1, divergence =
   // (a dialect hardening into a language); a root people gets a fresh one.
   const parent = getCulture(world, parentCultureId);
   const plang = parent ? languageOf(world, parent) : null;
-  const lang = plang ? branchLanguage(world, plang, divergence) : foundLanguage(world, { seed: langSeed });
+  let climate = null;
+  if (origin && world.temp && world.moist) {
+    const ti = (origin.pos.y | 0) * world.tw + (origin.pos.x | 0);
+    climate = { temp: world.temp[ti] || 0.6, moist: world.moist[ti] || 0.5 };
+  }
+  const lang = plang ? branchLanguage(world, plang, divergence) : foundLanguage(world, { seed: langSeed, climate });
   c.languageId = lang.id;
   // A culture names ITSELF in its own tongue (endonym) — and never shares
   // another people's name (collisions read as bugs, not history).
