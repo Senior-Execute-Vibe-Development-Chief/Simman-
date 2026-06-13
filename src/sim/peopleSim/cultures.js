@@ -84,12 +84,7 @@ export function foundCulture(world, { origin, parentCultureId = -1, divergence =
   // (a dialect hardening into a language); a root people gets a fresh one.
   const parent = getCulture(world, parentCultureId);
   const plang = parent ? languageOf(world, parent) : null;
-  let climate = null;
-  if (origin && world.temp && world.moist) {
-    const ti = (origin.pos.y | 0) * world.tw + (origin.pos.x | 0);
-    climate = { temp: world.temp[ti] || 0.6, moist: world.moist[ti] || 0.5 };
-  }
-  const lang = plang ? branchLanguage(world, plang, divergence) : foundLanguage(world, { seed: langSeed, climate });
+  const lang = plang ? branchLanguage(world, plang, divergence) : foundLanguage(world, { seed: langSeed });
   c.languageId = lang.id;
   // A culture names ITSELF in its own tongue (endonym) — and never shares
   // another people's name (collisions read as bugs, not history).
