@@ -1,46 +1,97 @@
-// ── Languages: seeded, evolving, branching tongues ──
+// ── Languages: typological archetypes that actually sound different ──
 //
-// The phonological core of the original LanguageGen — flavour profiles
-// (harsh / flowing / clipped / semitic / polynesian...), consonant and
-// vowel banks, syllable templates with codas and clusters — rebuilt as
-// deterministic, JSON-serializable LANGUAGE ENTITIES that live in
-// world.languages and EVOLVE:
+// The earlier generator drew every tongue from ONE C(C)V(C) template over a
+// shared phoneme pool, so they all read as the same generic "exotic conlang"
+// — there was no London-vs-Beijing-vs-Honolulu contrast. Real languages differ
+// FIRST in structure: syllable shape (strict CV vs heavy consonant clusters),
+// characteristic sounds, word length, and recurring place-name suffixes.
 //
-//   DRIFT  — sound change with the generations: a consonant falls out of
-//            use, a vowel shifts, codas soften. Names coined after a
-//            shift sound different; names already written in the event
-//            log keep their old spelling — exactly like real history.
-//   BRANCH — a daughter culture's tongue starts as its parent's language
-//            plus several drift steps (a dialect hardening into a
-//            language); the family tree is recorded.
-//   BORROW — heavy contact between peoples lets a language adopt
-//            phonemes from a neighbour (the areal-feature effect).
+// So each language is instantiated from a typological ARCHETYPE — a full
+// profile (onset/coda shapes, vowel system, syllable-count, prefixes, suffixes)
+// loosely modelled on a real family but not named after it. The archetype gives
+// the STRUCTURE; the instance picks a specific subset of phonemes and suffixes
+// (so two languages of one archetype still differ), and then EVOLVES:
+//
+//   DRIFT  — sound change with the generations (a sound falls out of use, a new
+//            one enters, codas shift, words lengthen). Names already in the log
+//            keep their old spelling; new ones sound shifted.
+//   BRANCH — a daughter people's tongue = the parent's, drifted by DISTANCE
+//            (a near dialect ≈ the parent; a far branch is generations removed).
+//   BORROW — heavy contact lets a tongue adopt a sound from a neighbour.
+//
+// Archetype choice is biased by homeland CLIMATE (areal typology — deserts tend
+// guttural, cold lands clustered, tropics open/CV), so a region's languages
+// share a family resemblance.
 
 import { mkRng, hash32 } from "./peopleSim/rng.js";
 
-const C_STOPS = ["p", "b", "t", "d", "k", "g"];
-const C_NASAL = ["m", "n", "ng"];
-const C_FRIC = ["f", "v", "s", "z", "sh", "kh", "h", "th"];
-const C_LIQ = ["l", "r"];
-const C_GLIDE = ["y", "w"];
-const ALL_V = ["a", "e", "i", "o", "u", "ai", "ei", "ou", "ia", "ua"];
-const ALL_C = [...C_STOPS, ...C_NASAL, ...C_FRIC, ...C_LIQ, ...C_GLIDE, "q", "ts", "ch"];
-
-// Flavour profiles (from the original generator): inventory sizes and
-// syllable habits that give each family a recognisable sound.
-export const FLAVORS = {
-  harsh:      { stops: 6, nas: 2, fric: 3, liq: 1, gli: 0, vows: 4, coda: 0.7, cluster: false, sylMax: 2, extra: ["q", "kh"] },
-  flowing:    { stops: 2, nas: 3, fric: 2, liq: 2, gli: 2, vows: 5, coda: 0.1, cluster: false, sylMax: 3, extra: [] },
-  clipped:    { stops: 5, nas: 2, fric: 3, liq: 1, gli: 0, vows: 4, coda: 0.8, cluster: false, sylMax: 2, extra: [] },
-  open:       { stops: 2, nas: 2, fric: 1, liq: 1, gli: 1, vows: 5, coda: 0.0, cluster: false, sylMax: 3, extra: [] },
-  clustered:  { stops: 5, nas: 3, fric: 4, liq: 2, gli: 1, vows: 5, coda: 0.6, cluster: true,  sylMax: 2, extra: [] },
-  semitic:    { stops: 4, nas: 2, fric: 5, liq: 2, gli: 1, vows: 3, coda: 0.65, cluster: false, sylMax: 2, extra: ["q", "kh"] },
-  nasal:      { stops: 4, nas: 3, fric: 2, liq: 2, gli: 1, vows: 5, coda: 0.45, cluster: false, sylMax: 3, extra: [] },
-  sibilant:   { stops: 3, nas: 2, fric: 5, liq: 2, gli: 1, vows: 4, coda: 0.4, cluster: false, sylMax: 3, extra: ["ts", "sh"] },
+// ── Typological archetypes ───────────────────────────────────────────────
+// onsets/codas hold whole strings (incl. clusters like "str","nd"); "" = none.
+// nuclei may bake in nasal finals ("ang","ing") for languages with no coda slot.
+const ARCHETYPES = {
+  // Short, CV with nasal finals, sibilant/palatal onsets, no clusters — a
+  // monosyllabic-morpheme feel. (Chang-an, Bei-jing, Luo-yang.)
+  meridian: {
+    onsets: ["", "b", "p", "d", "t", "g", "k", "m", "n", "l", "h", "zh", "ch", "sh", "x", "q", "j", "y", "w"],
+    nuclei: ["a", "e", "i", "o", "u", "ai", "ao", "ei", "ou", "ia", "an", "ang", "ong", "eng", "ing", "un", "iao"],
+    codas: [""], syl: [1, 2], redup: false,
+    realmSuf: ["", "guo", "zhou", "shan", "xia"], citySuf: ["", "jing", "yang", "zhou", "an"], dynSuf: ["", "shi", "tang"],
+  },
+  // Closed, clustered, coda stops, "th" — heavy and stony. (London, Hamburg,
+  // Strand, York.) Recurring -burg/-ton/-stad city endings.
+  nordling: {
+    onsets: ["b", "d", "f", "g", "h", "k", "l", "m", "n", "r", "s", "t", "v", "w", "st", "str", "sp", "sk", "br", "gr", "dr", "tr", "fr", "sl", "sw", "th"],
+    nuclei: ["a", "e", "i", "o", "u", "au", "ei", "ou", "y"],
+    codas: ["", "n", "d", "t", "k", "rk", "nd", "ng", "rg", "ld", "lm", "st", "rn", "th", "ll"],
+    syl: [1, 2], redup: false,
+    realmSuf: ["land", "mark", "heim", "gard", "by"], citySuf: ["burg", "ton", "stad", "holm", "ford", "wick"], dynSuf: ["son", "ing", "sen"],
+  },
+  // Open, soft, vowel-final, light -ia/-ona endings. (Roma, Valencia, Firenze.)
+  meridional: {
+    onsets: ["b", "c", "d", "f", "g", "l", "m", "n", "p", "r", "s", "t", "v", "gl", "br", "tr", "gr", "fl", "ch", "gn"],
+    nuclei: ["a", "e", "i", "o", "u", "ia", "io", "ie", "ua"],
+    codas: ["", "n", "r", "l", "s"], syl: [2, 3], redup: false,
+    realmSuf: ["ia", "ona", "enza", "ria", "agna"], citySuf: ["a", "o", "ino", "ano", "ella", "enza"], dynSuf: ["i", "ezzi", "ano", "elli"],
+  },
+  // Guttural, triconsonantal, 3-vowel. (Qasr, Khartoum, Hama, Najran.)
+  desertic: {
+    onsets: ["b", "d", "f", "h", "k", "l", "m", "n", "q", "r", "s", "t", "z", "sh", "kh", "gh", "'", "j", "w", "y"],
+    nuclei: ["a", "i", "u", "aa", "ii", "uu"],
+    codas: ["", "b", "d", "r", "m", "n", "s", "sh", "q", "t", "kh"], syl: [2, 2], redup: false,
+    realmSuf: ["", "at", "iyya", "an"], citySuf: ["", "a", "an", "iyah"], dynSuf: ["i", "id", "ani", "un"],
+  },
+  // Clustered, hard, -sk/-grad/-ov. (Novgorod, Gdansk, Minsk, Brno.)
+  borean: {
+    onsets: ["b", "d", "g", "k", "l", "m", "n", "p", "r", "s", "t", "v", "z", "vl", "gr", "kr", "pr", "sk", "st", "zr", "dz", "ch", "zh", "sh"],
+    nuclei: ["a", "e", "i", "o", "u", "y"],
+    codas: ["", "n", "r", "v", "sk", "st", "ts", "ch", "zh", "rg"], syl: [2, 3], redup: false,
+    realmSuf: ["ia", "grad", "sk", "ovia"], citySuf: ["ov", "sk", "grad", "ets", "ino", "itsa"], dynSuf: ["ov", "ich", "sky", "in"],
+  },
+  // Strict CV, tiny inventory, long words, reduplication. (Honolulu, Rarotonga,
+  // Tahiti, Pago-Pago.)
+  islander: {
+    onsets: ["", "p", "t", "k", "m", "n", "h", "l", "w", "f", "ng", "r"],
+    nuclei: ["a", "e", "i", "o", "u"],
+    codas: [""], syl: [3, 4], redup: true,
+    realmSuf: ["", "nui", "roa", "loa"], citySuf: ["", "a", "hiva"], dynSuf: ["", "i", "tea"],
+  },
+  // Prenasal CV, noun-class prefixes, reduplication. (Mombasa, Bukavu,
+  // Kilimanjaro, Ouagadou.)
+  savannic: {
+    onsets: ["b", "d", "g", "k", "m", "n", "p", "t", "l", "mb", "nd", "ng", "mp", "nk", "ny", "ngw", "kw", "gw", "s", "z", "w"],
+    nuclei: ["a", "e", "i", "o", "u"],
+    codas: [""], syl: [2, 3], redup: true, prefix: ["", "u", "ki", "m", "ka", "bu", "wa"],
+    realmSuf: ["", "land", "we"], citySuf: ["", "i", "u"], dynSuf: ["", "a"],
+  },
+  // Aspirated/retroflex, -pur/-abad/-nagar. (Jaipur, Kandahar, Patna, Mysore.)
+  monsoonic: {
+    onsets: ["b", "bh", "d", "dh", "g", "gh", "k", "kh", "p", "ph", "t", "th", "j", "ch", "m", "n", "r", "l", "s", "sh", "h", "v", "y"],
+    nuclei: ["a", "i", "u", "e", "o", "aa", "ee"],
+    codas: ["", "n", "r", "m", "sh", "t", "nd"], syl: [2, 3], redup: false,
+    realmSuf: ["", "desh", "stan", "varta"], citySuf: ["pur", "abad", "nagar", "garh", "patnam", "ore"], dynSuf: ["a", "an", "i", "varman"],
+  },
 };
-const FLAVOR_KEYS = Object.keys(FLAVORS);
-const REALM_SUFS = [["ia", "ara", "oria", "ana"], ["eth", "oth", "ath", "und"], ["mark", "gard", "heim"], ["dor", "var", "mor", "tan"], ["esse", "aine", "elle"]];
-const DYN_SUFS = ["id", "ene", "ar", "ian", "ite", "ald"];
+const ARCHE_KEYS = Object.keys(ARCHETYPES);
 
 function pickN(rng, arr, n) {
   const pool = arr.slice(), out = [];
@@ -48,136 +99,194 @@ function pickN(rng, arr, n) {
   return out;
 }
 
+// Climate-biased archetype choice — areal typology. Always leaves a baseline
+// chance for every archetype so a region can surprise you.
+function pickArchetype(rng, climate) {
+  const pool = ARCHE_KEYS.slice();   // baseline: one ticket each
+  if (climate) {
+    const t = climate.temp ?? 0.6, m = climate.moist ?? 0.5;
+    const add = (k, w) => { for (let i = 0; i < w; i++) pool.push(k); };
+    if (t > 0.78 && m < 0.38) add("desertic", 6);
+    if (t > 0.74 && m > 0.6) { add("savannic", 4); add("islander", 3); add("monsoonic", 3); }
+    if (t < 0.46) { add("borean", 5); add("nordling", 4); }
+    if (t >= 0.5 && t <= 0.72) { add("meridional", 3); add("nordling", 2); add("borean", 1); }
+    if (t >= 0.62 && t <= 0.82 && m > 0.45) add("meridian", 4);
+    if (m > 0.7 && t > 0.6) add("islander", 2);
+  }
+  return pool[rng.int(pool.length)];
+}
+
 export function languagesOf(world) { return world.languages || (world.languages = new Map()); }
 export function getLanguage(world, id) { return id >= 0 && world.languages ? world.languages.get(id) || null : null; }
 
-/** A fresh root language. Flavour can be nudged by homeland climate. */
-export function foundLanguage(world, { seed, parentId = -1, flavorHint } = {}) {
+/** A fresh root language from a climate-chosen archetype. */
+export function foundLanguage(world, { seed, parentId = -1, climate, archeHint } = {}) {
   const id = world._nextLanguageId || 1;
   world._nextLanguageId = id + 1;
   const s = (seed ?? hash32(world.seed || 1, "lang", id)) >>> 0;
   const rng = mkRng(s);
-  const flavor = flavorHint && FLAVORS[flavorHint] ? flavorHint : FLAVOR_KEYS[rng.int(FLAVOR_KEYS.length)];
-  const F = FLAVORS[flavor];
-  const cons = [...pickN(rng, C_STOPS, F.stops), ...pickN(rng, C_NASAL, F.nas), ...pickN(rng, C_FRIC, F.fric),
-    ...pickN(rng, C_LIQ, F.liq), ...pickN(rng, C_GLIDE, F.gli)];
-  for (const c of F.extra) if (!cons.includes(c)) cons.push(c);
-  // Orthographic identity: each tongue spells itself differently, so two
-  // families never LOOK alike even where sounds overlap.
-  const ORTH = [["k","c"],["k","q"],["sh","x"],["kh","ch"],["y","j"],["w","v"],["ts","z"],["f","ph"],["u","oo"],["i","y"]];
-  const orth = pickN(rng, ORTH, 1 + rng.int(2)).filter(()=>rng()<0.8);
+  const arche = (archeHint && ARCHETYPES[archeHint]) ? archeHint : pickArchetype(rng, climate);
+  const A = ARCHETYPES[arche];
+  // Instance subset: keep most of the archetype's phonemes, drop a few, so two
+  // tongues of one family share a sound but aren't identical.
+  const sub = (arr, keepMin) => {
+    if (arr.length <= keepMin) return arr.slice();
+    const keep = Math.max(keepMin, Math.round(arr.length * (0.6 + rng() * 0.3)));
+    return pickN(rng, arr, Math.min(keep, arr.length));
+  };
   const lang = {
-    id, seed: s, flavor, parentId, bornStep: world.step | 0, gen: 0,
-    cons, vows: pickN(rng, ALL_V, F.vows),
-    coda: F.coda, cluster: !!F.cluster, sylMax: F.sylMax,
-    realmSufs: pickN(rng, REALM_SUFS[rng.int(REALM_SUFS.length)], 2),
-    dynSuf: DYN_SUFS[rng.int(DYN_SUFS.length)],
-    orth,
+    id, seed: s, arche, flavor: arche, parentId, bornStep: world.step | 0, gen: 0,
+    onsets: sub(A.onsets, 5),
+    nuclei: sub(A.nuclei, 3),
+    codas: A.codas.length > 1 ? sub(A.codas, 2) : A.codas.slice(),
+    syl: A.syl.slice(),
+    redup: !!A.redup,
+    prefix: A.prefix ? A.prefix.slice() : null,
+    realmSufs: pickN(rng, A.realmSuf, Math.min(3, A.realmSuf.length)),
+    citySufs: A.citySuf ? pickN(rng, A.citySuf, Math.min(3, A.citySuf.length)) : [""],
+    dynSufs: A.dynSuf ? A.dynSuf.slice() : ["id"],
   };
   languagesOf(world).set(id, lang);
-  // A ROOT tongue (no parent) gets a few extra centuries of private drift,
-  // so even same-flavour cradles sound nothing alike.
-  if (parentId < 0) for (let i = 0; i < 2 + rng.int(3); i++) driftLanguage(world, lang);
+  // A root tongue gets a little private drift so even same-archetype cradles
+  // diverge.
+  if (parentId < 0) for (let i = 0; i < 1 + rng.int(2); i++) driftLanguage(world, lang);
   return lang;
 }
 
-/** One step of sound change. Mutates the language in place; gen++ so the
- *  same name-stream yields new forms after the shift. */
+/** One step of sound change WITHIN the archetype (keeps the family feel). */
 export function driftLanguage(world, lang) {
   const rng = mkRng(hash32(lang.seed, "drift", lang.gen + 1));
+  const A = ARCHETYPES[lang.arche] || ARCHETYPES.meridional;
   const roll = rng();
-  if (roll < 0.35 && lang.cons.length > 5) {            // a consonant falls silent
-    lang.cons.splice(rng.int(lang.cons.length), 1);
-  } else if (roll < 0.6) {                              // a new sound enters fashion
-    const cand = ALL_C.filter(c => !lang.cons.includes(c));
-    if (cand.length) lang.cons.push(cand[rng.int(cand.length)]);
-  } else if (roll < 0.8) {                              // vowel shift
-    const cand = ALL_V.filter(v => !lang.vows.includes(v));
-    if (cand.length && lang.vows.length > 3 && rng() < 0.5) lang.vows[rng.int(lang.vows.length)] = cand[rng.int(cand.length)];
-    else if (cand.length) lang.vows.push(cand[rng.int(cand.length)]);
-  } else {                                              // codas soften or harden
-    lang.coda = Math.max(0, Math.min(0.85, lang.coda + (rng() - 0.5) * 0.3));
+  if (roll < 0.30 && lang.onsets.length > 6) {                 // a sound falls silent
+    lang.onsets.splice(rng.int(lang.onsets.length), 1);
+  } else if (roll < 0.55) {                                    // a new onset enters fashion
+    const c = A.onsets.filter(x => !lang.onsets.includes(x));
+    if (c.length) lang.onsets.push(c[rng.int(c.length)]);
+  } else if (roll < 0.74) {                                    // vowel shift
+    const c = A.nuclei.filter(x => !lang.nuclei.includes(x));
+    if (c.length && rng() < 0.6) lang.nuclei.push(c[rng.int(c.length)]);
+    else if (lang.nuclei.length > 3) lang.nuclei.splice(rng.int(lang.nuclei.length), 1);
+  } else if (roll < 0.90 && A.codas.length > 1) {              // coda system shifts
+    const c = A.codas.filter(x => !lang.codas.includes(x));
+    if (c.length && rng() < 0.6) lang.codas.push(c[rng.int(c.length)]);
+    else if (lang.codas.length > 1) lang.codas.splice(rng.int(lang.codas.length), 1);
+  } else {                                                     // word-length fashion
+    if (rng() < 0.5 && lang.syl[1] < lang.syl[0] + 3) lang.syl[1]++;
+    else if (lang.syl[1] > lang.syl[0]) lang.syl[1]--;
   }
   lang.gen++;
 }
 
-/** A daughter tongue. `divergence` 0..1 — how far the new people stand
- *  from their stock: neighbours speak a near-dialect (1-2 sound changes),
- *  a people across an ocean or a climate divide speak something whole
- *  generations removed (many changes, new spelling habits, sometimes a
- *  drifted suffix fashion). */
+/** A daughter tongue: the parent, drifted by DISTANCE (0..1). */
 export function branchLanguage(world, parent, divergence = 0.4) {
-  const child = foundLanguage(world, { seed: hash32(parent.seed, "branch", parent.gen, world.step), flavorHint: parent.flavor });
-  // start from the parent's living speech, then drift apart with distance
-  child.cons = parent.cons.slice();
-  child.vows = parent.vows.slice();
-  child.coda = parent.coda; child.cluster = parent.cluster; child.sylMax = parent.sylMax;
-  child.realmSufs = parent.realmSufs.slice();
-  child.dynSuf = parent.dynSuf;
-  child.orth = parent.orth ? parent.orth.slice() : [];
-  child.parentId = parent.id;
+  const id = world._nextLanguageId || 1;
+  world._nextLanguageId = id + 1;
+  const s = hash32(parent.seed, "branch", parent.gen, world.step) >>> 0;
+  const child = {
+    id, seed: s, arche: parent.arche, flavor: parent.arche, parentId: parent.id,
+    bornStep: world.step | 0, gen: 0,
+    onsets: parent.onsets.slice(), nuclei: parent.nuclei.slice(), codas: parent.codas.slice(),
+    syl: parent.syl.slice(), redup: parent.redup, prefix: parent.prefix ? parent.prefix.slice() : null,
+    realmSufs: parent.realmSufs.slice(), citySufs: parent.citySufs.slice(), dynSufs: parent.dynSufs.slice(),
+  };
+  languagesOf(world).set(id, child);
   const d = Math.max(0, Math.min(1, divergence));
-  const steps = 1 + Math.round(d * 7);
+  const steps = 1 + Math.round(d * 8);
   for (let i = 0; i < steps; i++) driftLanguage(world, child);
+  // A far branch also evolves its own naming FASHION (new place-suffix set) —
+  // the family resemblance stays, the surface look shifts.
   if (d > 0.55) {
-    const rng = mkRng(hash32(child.seed, "far"));
-    const ORTH = [["k","c"],["sh","x"],["y","j"],["w","v"],["u","oo"],["f","ph"]];
-    child.orth = [ORTH[rng.int(ORTH.length)]];
-    if (rng() < 0.5) child.realmSufs = pickN(rng, REALM_SUFS[rng.int(REALM_SUFS.length)], 2);
-    if (rng() < 0.4) child.dynSuf = DYN_SUFS[rng.int(DYN_SUFS.length)];
+    const rng = mkRng(hash32(s, "fashion"));
+    const A = ARCHETYPES[child.arche];
+    if (rng() < 0.7 && A.citySuf) child.citySufs = pickN(rng, A.citySuf, Math.min(3, A.citySuf.length));
+    if (rng() < 0.5) child.realmSufs = pickN(rng, A.realmSuf, Math.min(3, A.realmSuf.length));
   }
   return child;
 }
 
-/** Areal contact: adopt a phoneme or two from a neighbour's speech. */
+/** Areal contact: adopt a sound from a neighbour's speech (within reason). */
 export function borrowFrom(world, lang, donor) {
   const rng = mkRng(hash32(lang.seed, "borrow", donor.id, lang.gen));
-  const cand = donor.cons.filter(c => !lang.cons.includes(c));
-  if (cand.length) { lang.cons.push(cand[rng.int(cand.length)]); lang.gen++; }
+  const cand = donor.onsets.filter(c => c && !lang.onsets.includes(c));
+  if (cand.length) { lang.onsets.push(cand[rng.int(cand.length)]); lang.gen++; }
 }
 
-// ── word synthesis (deterministic per (language state, stream n)) ──────
-function syllable(rng, lang, isFirst, isLast) {
-  let s = "";
-  if (rng() < 0.88) s += lang.cons[rng.int(lang.cons.length)];
-  if (lang.cluster && isFirst && s && rng() < 0.3) {
-    const liq = lang.cons.filter(c => "lrwy".includes(c));
-    if (liq.length) s += liq[rng.int(liq.length)];
-  }
-  s += lang.vows[rng.int(lang.vows.length)];
-  if (rng() < lang.coda * (isLast ? 1 : 0.45)) {
-    const codas = lang.cons.filter(c => !"hwy".includes(c));
-    if (codas.length) s += codas[rng.int(codas.length)];
-  }
-  return s;
-}
+// ── word synthesis ───────────────────────────────────────────────────────
+// Phonotactics: clusters are allowed but not PILED — an onset cluster only at
+// word start, a coda cluster only word-final, never a coda directly before a
+// cluster onset (no "Slyllnyldholm"). Real languages constrain exactly this.
 const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
 
-export function langWord(lang, n) {
-  const rng = mkRng(hash32(lang.seed, "w", lang.gen, n));
-  const nS = 1 + ((rng() < 0.8 ? 1 : 0)) + (rng() < (lang.sylMax >= 3 ? 0.45 : 0.12) ? 1 : 0);
+function rawWord(lang, streamSeed) {
+  const rng = mkRng(streamSeed >>> 0);
+  const [lo, hi] = lang.syl;
+  const nS = lo + (hi > lo ? rng.int(hi - lo + 1) : 0);
+  const singles = lang.onsets.filter(c => c.length <= 1);     // pure single consonants (incl "")
+  const shortCodas = lang.codas.filter(c => c.length <= 1);
   let w = "";
-  for (let i = 0; i < nS; i++) w += syllable(rng, lang, i === 0, i === nS - 1);
-  w = w.replace(/(.)\1\1+/g, "$1$1");
-  if (lang.orth) for (const [a, b] of lang.orth) w = w.split(a).join(b);
+  if (lang.prefix && lang.prefix.length && rng() < 0.5) w += lang.prefix[rng.int(lang.prefix.length)];
+  let prevCoda = false;
+  for (let i = 0; i < nS; i++) {
+    const isLast = i === nS - 1;
+    // onset — no cluster right after a coda; long clusters only word-initial
+    let on;
+    if (prevCoda) on = singles.length ? singles[rng.int(singles.length)] : "";
+    else {
+      on = lang.onsets[rng.int(lang.onsets.length)];
+      if (i > 0 && on.length >= 3 && singles.length && rng() < 0.75) on = singles[rng.int(singles.length)];
+    }
+    const nu = lang.nuclei[rng.int(lang.nuclei.length)];
+    // coda — full set (incl clusters) only word-final; mid-word rare and single
+    let co = "";
+    if (lang.codas.length > 1) {
+      if (isLast) co = lang.codas[rng.int(lang.codas.length)];
+      else if (rng() < 0.26 && shortCodas.length) co = shortCodas[rng.int(shortCodas.length)];
+    }
+    prevCoda = co.length > 0;
+    w += on + nu + co;
+  }
+  if (lang.redup && nS <= 2 && rng() < 0.3) w += w;            // reduplication (Pago-Pago, Wagga)
+  return w.replace(/(.)\1\1+/g, "$1$1");
+}
+
+export function langWord(lang, n) {
+  return cap(rawWord(lang, hash32(lang.seed, "w", lang.gen, n)));
+}
+
+/** A settlement name — a word plus (often) the family's place-suffix, which is
+ *  what makes a region's cities recognisably kin (-burg, -pur, -grad, -jing). */
+export function langPlaceName(lang, n) {
+  const rng = mkRng(hash32(lang.seed, "place", lang.gen, n));
+  let w = rawWord(lang, hash32(lang.seed, "pw", lang.gen, n));
+  const suf = lang.citySufs[rng.int(lang.citySufs.length)];
+  if (suf) {
+    if (/[aeiou]$/i.test(w) && /^[aeiou]/i.test(suf)) w = w.slice(0, -1);
+    w += suf;
+  }
   return cap(w);
 }
+
 export function langRealmName(lang, n, base) {
   const rng = mkRng(hash32(lang.seed, "r", lang.gen, n));
   const suf = lang.realmSufs[rng.int(lang.realmSufs.length)];
-  let stem = base ? String(base) : langWord(lang, n * 7 + 3);
-  if (/[aeiou]$/i.test(stem) && /^[aeiou]/i.test(suf)) stem = stem.slice(0, -1);
+  let stem = base ? String(base).replace(/(burg|ton|stad|pur|abad|grad|jing|ov|sk)$/i, "") : rawWord(lang, hash32(lang.seed, "rw", lang.gen, n));
+  if (suf && /[aeiou]$/i.test(stem) && /^[aeiou]/i.test(suf)) stem = stem.slice(0, -1);
   return cap(stem + suf);
 }
+
 export function langPersonName(lang, n, female) {
   const rng = mkRng(hash32(lang.seed, "p", lang.gen, n));
-  let w = langWord(lang, n * 13 + 5);
-  if (female) { if (!/[aeiou]$/i.test(w)) w += lang.vows[rng.int(lang.vows.length)].slice(0, 1); }
-  else if (/[aeiou]$/i.test(w) && rng() < 0.6) w += "lrnsd"[rng.int(5)];
+  let w = rawWord(lang, hash32(lang.seed, "pn", lang.gen, n));
+  if (female) { if (!/[aeiou]$/i.test(w)) w += lang.nuclei.filter(v => v.length === 1)[0] || "a"; }
+  else if (/[aeiou]$/i.test(w) && rng() < 0.6) { const cods = lang.codas.filter(c => c && c.length === 1); if (cods.length) w += cods[rng.int(cods.length)]; }
   return cap(w);
 }
+
 export function langDynastyName(lang, n, founder) {
-  let stem = founder ? String(founder) : langWord(lang, n * 17 + 11);
-  if (/[aeiou]$/i.test(stem)) stem = stem.slice(0, -1);
-  return cap(stem + lang.dynSuf);
+  const rng = mkRng(hash32(lang.seed, "d", lang.gen, n));
+  const suf = lang.dynSufs[rng.int(lang.dynSufs.length)] || "";
+  let stem = founder ? String(founder) : rawWord(lang, hash32(lang.seed, "dw", lang.gen, n));
+  if (suf && /[aeiou]$/i.test(stem)) stem = stem.slice(0, -1);
+  return cap(stem + suf);
 }
