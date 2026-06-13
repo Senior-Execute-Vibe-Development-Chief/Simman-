@@ -259,7 +259,7 @@ const DEV=typeof location!=="undefined"&&new URLSearchParams(location.search).ha
 const LENSES=[
   {id:"terrain", label:"Terrain", subs:[["terrain","Map"],["atlas","Atlas"]]},
   {id:"politics",label:"Politics",subs:[["country","Realms"]]},
-  {id:"peoples", label:"Peoples", subs:[["culture","Cultures"]]},
+  {id:"peoples", label:"Peoples", subs:[["culture","Peoples"],["language","Languages"]]},
   {id:"faiths",  label:"Faiths",  subs:[["faith","Faiths"]]},
   {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["resources","Resources"],["crop","Cropland"]]},
   ...(DEV?[{id:"dev",label:"Dev",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
@@ -660,6 +660,7 @@ const atlasCache=useRef(null);
 // regenerate every PS_OVERLAY_REGEN sim-steps, blitting it otherwise.
 const psOverlayRef=useRef(null);
 const psOverlayMeta=useRef({step:-1,ch:0});
+const identityFillRef=useRef(null);   // cached nearest-settlement map for the people/faith/language overlays
 // Reusable scratch for the money-flow coin particles (money view). Coins are
 // bucketed by link busyness so the whole overlay costs ~4 fillStyle changes
 // instead of one per link; the position arrays are reused across frames to
@@ -1339,6 +1340,16 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 if(!atlasCache.current||atlasCache.current.seed!==w._seed||atlasCache.current.ch!==CH){
 atlasCache.current={img:buildAtlas(w,ter),seed:w._seed,ch:CH};}
 d.set(atlasCache.current.img.data);
+}else if(vm==="culture"||vm==="faith"||vm==="language"){
+// Neutral grey base for the people / faith / language overlays — dark grey
+// ocean, flat grey land — so the coloured identity regions read clearly
+// without the terrain colours competing. Faint elevation keeps coasts legible.
+for(let ti=0;ti<N;ti++){const tx=ti%CW,ty=(ti/CW)|0;
+const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,Math.round(screenYtoDataY(ty,CH,H)));
+const e=w.elevation[sy*W+sx];const pi4=ti<<2;
+if(e<=sl){d[pi4]=20;d[pi4+1]=22;d[pi4+2]=27;}
+else{const v=(118-Math.max(0,e-0.1)*64)|0;d[pi4]=v;d[pi4+1]=v;d[pi4+2]=(v+6)|0;}
+d[pi4+3]=255;}
 }else{
 // Base terrain (also the base layer under the political/economic overlays).
 // (The old tribe-border tinting here read ter.owner — an array the tribe
@@ -1490,6 +1501,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmCountry = viewRef.current === "country";
   const vmCulture = viewRef.current === "culture";
   const vmFaith = viewRef.current === "faith";
+  const vmLanguage = viewRef.current === "language";
     if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
@@ -1650,7 +1662,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0);
     if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
@@ -1665,65 +1677,67 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // ── Culture / Faith views: who LIVES on each tile (dominant culture
       // or faith of the settlement whose territory it is) — peoples and
       // creeds, not states. Same machinery, different per-settlement key. ──
-      if((vmCulture||vmFaith)&&owner){
-        const tw=psw.tw,th=psw.th;
-        // ── Broad wash first: every CLAIMED tile takes its realm capital's
-        // culture/faith, so peoples and creeds read as connected regions
-        // instead of scattered worked-tile speckles; settlement territories
-        // then overpaint with full-strength local detail.
-        if(claimArr&&psw.countries){
-          const fillByCC=new Map();let lastFs2=null;
-          for(let ti=0;ti<claimArr.length;ti++){
-            const cc=claimArr[ti];if(cc<0)continue;
-            let fs=fillByCC.get(cc);
-            if(fs===undefined){
-              const c=psw.countries.get(cc);const capS=c&&c.capital;
-              const kid=capS?(vmFaith?capS.faithId:capS.cultureId)??-1:-1;
-              const reg0=vmFaith?psw.faiths:psw.cultures;
-              const ent=reg0&&reg0.get(kid);
-              fs=kid<0?null:`hsla(${ent?ent.hue|0:((kid*97)%360+360)%360},${vmFaith&&ent&&ent.kind!=="organized"?40:60}%,52%,0.55)`;
-              fillByCC.set(cc,fs);}
-            if(!fs)continue;
-            const py=(ti/tw)|0,px=ti-py*tw;
-            const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-            if(fs!==lastFs2){octx.fillStyle=fs;lastFs2=fs;}
-            octx.fillRect(sx,sy,TR+0.6,TR+0.6);
-          }
+      if((vmCulture||vmFaith||vmLanguage)&&psw.settlements){
+        const tw=psw.tw,th=psw.th,N2=tw*th;
+        // Resolve a settlement's overlay colour [h,s,l] + grouping KEY (borders
+        // drawn where the key changes). Peoples → one hue each; Faiths → faith
+        // hue (folk desaturated); Languages → the FAMILY hue with a per-tongue
+        // lightness shade, so related languages read as one colour region with
+        // daughter-language variation within it.
+        const colorOf=(st)=>{
+          if(vmFaith){const fid=st.faithId??-1;const f=fid>=0&&psw.faiths?psw.faiths.get(fid):null;
+            if(!f)return null;return{key:fid,h:f.hue|0,s:f.kind!=="organized"?40:58,l:52};}
+          const cid=st.cultureId??-1;const c=cid>=0&&psw.cultures?psw.cultures.get(cid):null;
+          if(!c)return null;
+          if(vmLanguage){const root=c.root??c.id;const fh=((root*2654435761)>>>0)%360;return{key:root,h:fh,s:50,l:36+((c.id*7)%6)*7};}
+          return{key:cid,h:c.hue|0,s:60,l:52};
+        };
+        // ── Whole-area fill: assign EVERY land tile to its nearest settlement
+        // (multi-source BFS over land, torus-wrapped), so peoples/faiths/tongues
+        // paint continuous regions across the map instead of lighting up only
+        // worked tiles. Cached (regions drift slowly) and recoloured each rebuild.
+        // Land mask at the SIM tile resolution (the overlay grid, tw×th) by
+        // sampling the higher-res territory elevation down — the sim runs at a
+        // coarser tile grid than the terrain canvas, so we can't index tElev
+        // directly.
+        const TRr=ter&&ter.tw?Math.max(1,Math.round(ter.tw/tw)):1;
+        const haveTer=ter&&ter.tElev&&ter.tw>0;
+        const setts=[];for(const s of psw.settlements){if(s&&s.mode==="settled")setts.push(s);}
+        const nfKey=tw+'x'+th+'|'+setts.length+'|'+Math.floor(stepNow/150);
+        let nf=identityFillRef.current;
+        if(haveTer&&(!nf||nf.key!==nfKey)){
+          const land=new Uint8Array(N2);
+          for(let y=0;y<th;y++){const py=Math.min(ter.th-1,y*TRr)*ter.tw;for(let x=0;x<tw;x++){const px=Math.min(ter.tw-1,x*TRr);land[y*tw+x]=ter.tElev[py+px]>0?1:0;}}
+          const nearest=new Int32Array(N2).fill(-1);
+          const q=new Int32Array(N2);let head=0,tail=0;
+          for(const s of setts){const ti=(s.pos.y|0)*tw+(s.pos.x|0);if(ti>=0&&ti<N2&&land[ti]&&nearest[ti]<0){nearest[ti]=s.id;q[tail++]=ti;}}
+          while(head<tail){const ti=q[head++];const sid=nearest[ti];const y=(ti/tw)|0,x=ti-y*tw;
+            const r=((x+1)%tw)+y*tw,l=((x-1+tw)%tw)+y*tw,u=y>0?ti-tw:-1,dn=y<th-1?ti+tw:-1;
+            if(nearest[r]<0&&land[r]){nearest[r]=sid;q[tail++]=r;}
+            if(nearest[l]<0&&land[l]){nearest[l]=sid;q[tail++]=l;}
+            if(u>=0&&nearest[u]<0&&land[u]){nearest[u]=sid;q[tail++]=u;}
+            if(dn>=0&&nearest[dn]<0&&land[dn]){nearest[dn]=sid;q[tail++]=dn;}}
+          nf=identityFillRef.current={nearest,key:nfKey};
         }
-        let maxId=0;for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
-        const fillById=new Array(maxId+1);const culById=new Int32Array(maxId+1).fill(-1);
-        const fillByCulture=new Map();
-        const reg=vmFaith?psw.faiths:psw.cultures;
-        for(const s of psw.settlements){if(!s||s.mode!=="settled")continue;
-          const cid=(vmFaith?s.faithId:s.cultureId)??-1;culById[s.id]=cid;
-          let fs=fillByCulture.get(cid);
-          if(fs===undefined){
-            const cul=reg&&reg.get(cid);
-            const h=cul?cul.hue|0:((cid*97)%360+360)%360;
-            const sat=vmFaith&&cul&&cul.kind!=="organized"?45:62;
-            fs=cid<0?"hsla(40,8%,55%,0.6)":`hsl(${h},${sat}%,52%)`;fillByCulture.set(cid,fs);}
-          fillById[s.id]=fs;}
-        let lastFs=null;
-        for(let ti=0;ti<owner.length;ti++){
-          const oid=owner[ti];if(oid<0||oid>maxId)continue;
-          const fs=fillById[oid];if(fs===undefined)continue;
-          const py=(ti/tw)|0,px=ti-py*tw;
-          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
-          octx.fillRect(sx,sy,TR+0.6,TR+0.6);
+        if(nf){
+          const nearest=nf.nearest;
+          const byId=psw._byId;const fcache=new Map(),kcache=new Map();
+          const fillFor=(sid)=>{let c=fcache.get(sid);if(c!==undefined)return c;
+            const st=byId&&byId.get(sid);const col=st?colorOf(st):null;
+            c=col?`hsl(${col.h},${col.s}%,${col.l}%)`:null;fcache.set(sid,c);kcache.set(sid,col?col.key:-1);return c;};
+          let lastFs=null;
+          for(let ti=0;ti<N2;ti++){const sid=nearest[ti];if(sid<0)continue;const fs=fillFor(sid);if(!fs)continue;
+            const y=(ti/tw)|0,x=ti-y*tw;const sx=x*TR,sy=dataYtoScreenY(y*TR,H,CH);
+            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+            octx.fillRect(sx,sy,TR+0.7,TR+0.7);}
+          // soft borders where the dominant GROUP changes (legible but not segmented)
+          octx.strokeStyle="rgba(10,10,14,0.34)";octx.lineWidth=Math.max(0.8,TR*0.5);octx.beginPath();
+          for(let ti=0;ti<N2;ti++){const sid=nearest[ti];if(sid<0)continue;const k=kcache.get(sid);
+            const y=(ti/tw)|0,x=ti-y*tw;const sx=x*TR,sy=dataYtoScreenY(y*TR,H,CH);
+            const rsid=nearest[((x+1)%tw)+y*tw];if(rsid>=0&&kcache.get(rsid)!==k){const ex=(x+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+            if(y<th-1){const dsid=nearest[ti+tw];if(dsid>=0&&kcache.get(dsid)!==k){const by=dataYtoScreenY((y+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
+          octx.stroke();
         }
-        // borders where the dominant PEOPLE changes
-        octx.strokeStyle="rgba(8,8,12,0.85)";octx.lineWidth=Math.max(1.2,TR*0.8);octx.beginPath();
-        for(let ti=0;ti<owner.length;ti++){
-          const oid=owner[ti];if(oid<0||oid>maxId)continue;
-          const cc=culById[oid];
-          const py=(ti/tw)|0,px=ti-py*tw;
-          const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-          const ro=owner[py*tw+(px===tw-1?0:px+1)];
-          if(ro>=0&&ro<=maxId&&culById[ro]!==cc){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
-          if(py<th-1){const dno=owner[ti+tw];if(dno>=0&&dno<=maxId&&culById[dno]!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
-        }
-        octx.stroke();
       }
       if(vmCountry&&claimArr){
         const tw=psw.tw,th=psw.th;
@@ -1753,7 +1767,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         octx.stroke();
       }
-      if(!vmCountry&&!vmCulture&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map();
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
@@ -1774,7 +1788,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
-      } else if(!vmCountry&&!vmCulture&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -1862,7 +1876,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         octx.setLineDash([]);
       }
       // Roads — thickness + alpha from current flow.
-      if(L.roads&&psw.roadQuality&&psw.roadFlow){
+      if(L.roads&&!vmCulture&&!vmFaith&&!vmLanguage&&psw.roadQuality&&psw.roadFlow){
         const rq=psw.roadQuality,rf=psw.roadFlow,FLOW_FULL=50;
         for(let ti=0;ti<rq.length;ti++){
           if(rq[ti]>=1.0)continue;
@@ -1910,7 +1924,13 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // Per-tier visibility (Layers panel). When all tiers are off the loop
     // does nothing — same as turning icons off entirely.
     const _L=layersRef.current;
-    const tierShow=[_L.icons&&_L.village,_L.icons&&_L.town,_L.icons&&_L.city,_L.icons&&_L.metropolis];
+    const _identity=vmCulture||vmFaith||vmLanguage;
+    // Identity overlays (peoples/faiths/languages) show WHOLE filled regions —
+    // drop the village/town dot-speckle so the areas read clean; keep only the
+    // major cities/metropolises as landmarks.
+    const tierShow=_identity
+      ?[false,false,_L.icons&&_L.city,_L.icons&&_L.metropolis]
+      :[_L.icons&&_L.village,_L.icons&&_L.town,_L.icons&&_L.city,_L.icons&&_L.metropolis];
     for(const s of psw.settlements){
       if(!s||s.mode!=="settled")continue;
       if(!tierShow[s.tier|0])continue;
