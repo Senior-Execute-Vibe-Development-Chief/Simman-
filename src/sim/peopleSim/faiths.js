@@ -20,7 +20,7 @@
 import { passRng, entityRng, hash32 } from "./rng.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
-import { getCulture, languageOf, dominantCulture, familyOf } from "./cultures.js";
+import { getCulture, languageOf, dominantCulture, familyOf, folkAnchorOf } from "./cultures.js";
 import { forEachNear } from "./spatialGrid.js";
 import { langWord } from "../language.js";
 
@@ -138,23 +138,18 @@ function newFaith(world, fields) {
   return f;
 }
 
-/** The folk faith of a culture FAMILY: daughters keep their root stock's
- *  hearth-gods (folk practice diverges far slower than ethnicity), so the
- *  faith map stays broad instead of fragmenting with every new people. */
+/** The folk faith a people practises — shared up the lineage to the first
+ *  divergence "anchor" (folkAnchorOf): near dialects share a broad ancestral
+ *  religion, but a deeply-diverged or independent people has its own gods. */
 export function folkFaithOf(world, cultureId) {
-  let cul = getCulture(world, cultureId);
+  const anchorId = folkAnchorOf(world, cultureId);
+  const cul = getCulture(world, anchorId);
   if (!cul) return null;
-  let hops = 0;
-  while (cul.parentCultureId >= 0 && hops++ < 16) {
-    const up = getCulture(world, cul.parentCultureId);
-    if (!up) break;
-    cul = up;
-  }
   if (cul.folkFaithId != null && cul.folkFaithId >= 0) return getFaith(world, cul.folkFaithId);
   const lang = languageOf(world, cul);
   const f = newFaith(world, {
-    kind: "folk", cultureId,
-    name: langWord(lang, hash32("folkfaith", cultureId) % 100000),
+    kind: "folk", cultureId: anchorId,
+    name: langWord(lang, hash32("folkfaith", anchorId) % 100000),
   });
   cul.folkFaithId = f.id;
   // folk faiths are a background hum, not an event — history starts caring

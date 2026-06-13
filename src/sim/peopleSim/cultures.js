@@ -71,6 +71,9 @@ export function foundCulture(world, { origin, parentCultureId = -1, divergence =
     id, langSeed, languageId: -1,
     name: null,
     parentCultureId, rootCultureId,
+    // how far this people stands from its parent at founding (1 for a root) —
+    // a deep branch carries its own gods, a near dialect shares the parent's
+    divergence: parentCultureId >= 0 ? divergence : 1,
     originSettlementId: origin ? origin.id : -1,
     foundedStep: world.step | 0,
     nameCounter: 1,
@@ -110,11 +113,31 @@ export function familyOf(world, cultureId) {
   }
   return cul.id;
 }
+// The culture whose FOLK FAITH a people practises: walk up the lineage to
+// the first "anchor" — a root, or a branch divergent enough to have grown its
+// own gods (FOLK_SPLIT). So near dialects share a broad ancestral religion
+// (the faith map stays broad), but a deeply-diverged people — or an
+// independent origin — worships on its own (the user's Europe-vs-Nile case).
+const FOLK_SPLIT = 0.5;
+export function folkAnchorOf(world, cultureId) {
+  let cul = getCulture(world, cultureId);
+  if (!cul) return cultureId;
+  let hops = 0;
+  while (hops++ < 24) {
+    if (cul.parentCultureId < 0 || (cul.divergence ?? 1) >= FOLK_SPLIT) return cul.id;
+    const up = getCulture(world, cul.parentCultureId);
+    if (!up) return cul.id;
+    cul = up;
+  }
+  return cul.id;
+}
 export function familyName(world, cultureId) {
   const root = getCulture(world, familyOf(world, cultureId));
   if (!root) return "?";
-  // a family is named for its stock with a "-ic" stem (Velaric, Kuvic…)
-  const base = root.name.replace(/(a|e|i|o|u|ia|ua)$/i, "");
+  // a family is named for its stock with a "-ic" stem (Velaric, Kuvic…) —
+  // only strip a trailing vowel from longer names, so short roots like "Ga"
+  // and "Go" don't both collapse to the same "Gic".
+  const base = root.name.length > 4 ? root.name.replace(/(a|e|i|o|u|ia|ua)$/i, "") : root.name;
   return base + "ic";
 }
 

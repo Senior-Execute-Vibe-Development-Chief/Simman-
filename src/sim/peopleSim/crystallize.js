@@ -106,7 +106,14 @@ const INDEPENDENT_RATE          = 0.020;
 // non-zero rate keeps the door open for the occasional independent overseas
 // genesis (the Mesoamerica/Andes pattern) without letting empty continents
 // fill before colonists can sail to them.
-const OVERSEAS_INDEPENDENT_RATE = 0.0015;
+const OVERSEAS_INDEPENDENT_RATE = 0.02;
+// Transport-cost beyond which a new community is an INDEPENDENT ORIGIN — its
+// own root people, language family and gods — rather than a divergent branch
+// of a distant stock. A whole connected landmass stays one FAMILY of related
+// peoples (Indo-European spreads across a continent by land); only a genuine
+// barrier — open water (transportDist = Infinity) or an extreme interior
+// beyond this cost — breeds a separate civilisation.
+const INDEPENDENT_DIST          = 185;
 const NEAR_RATE                 = 1.50;
 const BASE_RATE                 = 0.030;   // 3x — the world settles ~3x faster/denser (a fuller map of villages); the saturation guard (REF) sets where it plateaus
 // A settlement spontaneously arising on a STATE'S land (its core or claimed
@@ -355,34 +362,48 @@ export function maybeCrystallize(world) {
       // This keeps the political map clean however many villages spawn: villages
       // add people, never countries/flecks.
       const region = grownOwnerAt(world, ti);
+      // ── Culture by CONNECTION (independent origins) ────────────────────
+      // Who these people ARE depends on whether they have a living link to an
+      // existing people:
+      //   • DISCONNECTED (across water, transport-unreachable, or beyond the
+      //     independence range) → an INDEPENDENT ORIGIN: a fresh ROOT people
+      //     with its OWN language family and folk gods. A civilisation that
+      //     arose on its own continent owes nothing to one it never met — this
+      //     is what gives separate landmasses (and deep interiors) their own
+      //     stocks instead of every people descending from the cradles.
+      //   • connected but distant / across a climate divide → a divergent
+      //     BRANCH of the donor's people (a daughter language of the same
+      //     family — Europe from the Near East).
+      //   • near → the donor's people simply extends onto new ground.
+      const donor = world._lastInheritDonor;
+      const dCul = donor ? dominantCulture(donor) : -1;
+      const connected = !!donor && dCul >= 0 && isFinite(td) && td <= INDEPENDENT_DIST;
+      let climDelta = 0;
+      if (connected) {
+        const dTi = (donor.pos.y | 0) * tw + (donor.pos.x | 0);
+        climDelta = Math.abs((world.temp[ti] || 0) - (world.temp[dTi] || 0)) * 1.4
+                  + Math.abs((world.moist[ti] || 0) - (world.moist[dTi] || 0));
+      }
+      const isBranch = connected && (td > 70 || (td > 38 && climDelta > 0.34));
       const born = makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: 18 + (rng.int(8)),
         knowledge: inherited,
         countryId: region >= 0 ? region : -1,
-        cultureId: world._lastInheritDonor ? dominantCulture(world._lastInheritDonor) : -1,
+        // near spread keeps the donor's people; otherwise we assign below
+        cultureId: (connected && !isBranch) ? dCul : -1,
       });
       gridAdd(world, born);   // same-pass candidates must see (and space off) it
-      // ── Ethnogenesis: a frontier community far from its founding stock —
-      // by sheer transport distance, or across a real climate divide — is a
-      // NEW people from the start (the donor's daughter culture). This is
-      // what carves the map into regional peoples instead of two cradle
-      // monocultures: environment + connection define the peoples.
-      {
-        const donor = world._lastInheritDonor;
-        const dCul = donor ? dominantCulture(donor) : -1;
-        if (donor && dCul >= 0) {
-          const dTi = (donor.pos.y | 0) * tw + (donor.pos.x | 0);
-          const climDelta = Math.abs((world.temp[ti] || 0) - (world.temp[dTi] || 0)) * 1.4
-                          + Math.abs((world.moist[ti] || 0) - (world.moist[dTi] || 0));
-          if (td > 70 || (td > 38 && climDelta > 0.34)) {
-            // proximity → derivation: a near offshoot speaks a dialect of its
-            // stock; a far one is generations removed
-            const divergence = Math.max(0.15, Math.min(1, (td - 38) / 90 + climDelta * 0.5));
-            const cul = foundCulture(world, { origin: born, parentCultureId: dCul, divergence });
-            seedCulture(world, born, cul.id);
-            born.name = nameFor(world, cul, "settlement");
-          }
-        }
+      if (!connected) {
+        const cul = foundCulture(world, { origin: born });          // independent root: own family, language, gods
+        seedCulture(world, born, cul.id);
+        born.name = nameFor(world, cul, "settlement");
+      } else if (isBranch) {
+        // proximity → derivation: a near offshoot speaks a dialect of its
+        // stock; a far one is generations removed (and earns its own gods)
+        const divergence = Math.max(0.15, Math.min(1, (td - 38) / 90 + climDelta * 0.5));
+        const cul = foundCulture(world, { origin: born, parentCultureId: dCul, divergence });
+        seedCulture(world, born, cul.id);
+        born.name = nameFor(world, cul, "settlement");
       }
     }
   }
