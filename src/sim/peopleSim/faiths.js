@@ -20,24 +20,48 @@
 import { passRng, entityRng, hash32 } from "./rng.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
-import { getCulture, languageOf, dominantCulture } from "./cultures.js";
+import { getCulture, languageOf, dominantCulture, familyOf } from "./cultures.js";
 import { forEachNear } from "./spatialGrid.js";
 import { langWord } from "../language.js";
 
+// ── Timing: an AXIAL AGE, then bounded branching (the real pattern) ──
+// Real religious history isn't a flat trickle. Organized faith is impossible
+// in the neolithic (no cities, no writing, no priesthood), then bursts in a
+// WINDOW once civilisations urbanise and become literate — the Axial Age, when
+// Zoroaster, the Hebrew prophets, the Buddha, Mahavira, Confucius, Laozi, the
+// Greek philosophers (and later Christianity, Mani, Islam) all arose across the
+// literate world within a few centuries, amid cities, trade, and social stress.
+// AFTER that window, from-scratch foundings become rare; new major religions
+// arrive mostly by SCHISM/reform of existing ones (Orthodox/Catholic/Protestant,
+// Sunni/Shia, Theravada/Mahayana) and occasionally by SYNCRETISM (a blend of two
+// — Sikhism, Manichaeism). Meanwhile most faiths DIE, absorbed by larger ones,
+// so the count plateaus instead of exploding. This file models all four:
+// founding (front-loaded, saturating), schism (bounded), syncretism, and cull.
 export const FAITH_INTERVAL = 150;       // cadence (≈ polity/culture passes)
-const ORGANIZED_ORG_MIN = 0.30;          // founder settlement's organization floor
-const ORGANIZED_POP_MIN = 600;           // a movement needs a real CITY-bound town
-const GENESIS_CHANCE = 0.015;            // per eligible settlement per pass
-const GENESIS_CULTURE_COOLDOWN = 4000;   // min ticks between new faiths within one culture
-const GENESIS_WORLD_COOLDOWN = 7000;     // min ticks between new churches ANYWHERE — world religions are rare
-const SCHISM_MIN_REALMS = 4;             // only a faith spanning several realms can schism
+const ORGANIZED_ORG_MIN = 0.26;          // organization floor for a priesthood (opens the axial window)
+const ORGANIZED_POP_MIN = 450;           // a movement needs a real town
+const GENESIS_BASE = 0.11;               // base per-eligible-city founding rate (scaled by urbanisation × stress × open niche)
+const GENESIS_CULTURE_COOLDOWN = 1500;   // min ticks between new faiths within one PEOPLE
+const MAX_FOUNDINGS_PER_PASS = 3;        // the window bursts, but not a single-tick flood
 const SPREAD_RATE = 0.055;               // per-pass share shift toward the pulling faith
 const STATE_PRESSURE = 2.4;              // extra pull weight of the ruler's faith
 const ORGANIZED_PULL = 2.2;              // organized faiths proselytize; folk faiths don't travel
 const FOLK_PULL = 0.45;
-const SCHISM_MIN_AGE = 4200;             // a young faith doesn't schism
-const SCHISM_CHANCE = 0.022;             // per distant follower-realm per pass
-const SCHISM_MIN_DIST = 110;             // map distance from origin see (tiles)
+// Branching (schism) — bounded so the late game doesn't fission exponentially.
+const SCHISM_MIN_REALMS = 3;             // only a faith spanning several realms can schism
+const SCHISM_MIN_AGE = 3000;             // a young faith doesn't schism
+const SCHISM_CHANCE = 0.05;              // base per distant follower-realm per pass (then strongly damped)
+const SCHISM_MIN_DIST = 95;              // map distance from origin see (tiles)
+const MAX_BRANCHES_PER_ROOT = 6;         // a religion fissions into a few great branches, not endlessly
+const SCHISM_ROOT_COOLDOWN = 1400;       // min ticks between schisms within one religion family
+const MAX_SCHISMS_PER_PASS = 2;          // global brake on late-game fissioning
+// Syncretism — a new faith born where two organized creeds deeply mix.
+const SYNCRETISM_WORLD_COOLDOWN = 5000;  // genuinely-new blended religions are rare
+const SYNCRETISM_MIN_SHARE = 0.30;       // each parent must hold this share in the meeting-place
+// Cull — a faith with almost no followers and no state fades (the long tail of
+// dead cults that consolidation erases), so the total count stays bounded.
+const CULL_GRACE = 2600;                 // a young faith is spared the cull
+const CULL_FLOOR = 2;                    // fewer dominant settlements than this → at risk
 const LOYAL_MATCH = 0.0012;              // per-pass loyalty nudge for shared faith
 const LOYAL_CLASH = 0.0022;              // per-pass loyalty bleed under a rival organized faith
 
@@ -101,7 +125,15 @@ function newFaith(world, fields) {
     hue: (40 + id * 67.5) % 360,
     ...fields,
   };
-  f.doctrine = rollDoctrine(world, id, f.kind, getFaith(world, f.parentFaithId));
+  const parent = getFaith(world, f.parentFaithId);
+  f.doctrine = f.doctrine || rollDoctrine(world, id, f.kind, parent);
+  // rootFaithId: the religion FAMILY a creed belongs to. A schism keeps its
+  // parent's root (Protestantism is still of the Christian root); a de-novo
+  // founding or a syncretic blend starts a NEW root. Lets us bound how many
+  // branches one religion fissions into.
+  f.rootFaithId = (f.kind === "organized" && parent && parent.kind === "organized" && !f.syncretic)
+    ? (parent.rootFaithId ?? parent.id) : f.id;
+  f.endedStep = -1;
   reg.set(id, f);
   return f;
 }
@@ -172,34 +204,52 @@ export function updateFaiths(world) {
     if (folk) s.faithMix = [[folk.id, 1]];
   }
 
-  // 2. organized genesis: a literate town's mysteries become a church.
-  // Rare and rate-limited — at most one new movement per pass world-wide,
-  // and a culture that just organized one doesn't immediately spawn another
-  // (the niche is taken; later movements arrive as SCHISMS instead).
-  let genesisDone = false;
-  const worldCooldown = world.step - (world._lastFaithGenesisAt ?? -Infinity) < GENESIS_WORLD_COOLDOWN / (world._dt || 1);
+  // 2. organized genesis — the AXIAL WAVE. A prophet's movement crystallises
+  // in a literate, urban, STRESSED city whose PEOPLE haven't yet found an
+  // organized faith. This is front-loaded by construction: many cities cross
+  // the literacy floor together as the classical era dawns, so a burst of
+  // foundings appears in that window; then the niche SATURATES (most of each
+  // people already follows an organized creed) and foundings taper to the rare
+  // reformer. No serial world-cooldown — overlapping faiths can be born in one
+  // age, as they were in India and the Mediterranean.
+  //
+  // Per-family saturation: once a stock's population mostly follows organized
+  // religion, the appetite for a brand-new revelation there is largely spent.
+  const famTotal = new Map(), famOrg = new Map();
   for (const s of world.settlements) {
-    if (genesisDone || worldCooldown) break;
+    if (s.mode !== "settled") continue;
+    const cid = dominantCulture(s); if (cid < 0) continue;
+    const fam = familyOf(world, cid);
+    famTotal.set(fam, (famTotal.get(fam) || 0) + 1);
+    const df0 = getFaith(world, dominantFaith(s));
+    if (df0 && df0.kind === "organized") famOrg.set(fam, (famOrg.get(fam) || 0) + 1);
+  }
+  let founded = 0;
+  for (const s of world.settlements) {
+    if (founded >= MAX_FOUNDINGS_PER_PASS) break;
     if (s.mode !== "settled" || (s.tier | 0) < 1) continue;
     const org = (s.knowledge && s.knowledge.organization) || 0;
     if (org < ORGANIZED_ORG_MIN || (s.people || 0) < ORGANIZED_POP_MIN) continue;
     const df = getFaith(world, dominantFaith(s));
-    if (df && df.kind === "organized") continue;          // already converted
+    if (df && df.kind === "organized") continue;          // already an organized-faith city
     const culId = dominantCulture(s);
     const cul = getCulture(world, culId);
     if (!cul) continue;
     if (world.step - (cul._lastFaithGenesis ?? -Infinity) < GENESIS_CULTURE_COOLDOWN / (world._dt || 1)) continue;
-    // an organized faith already knocking on the door? let conversion work
-    let orgNearby = false;
-    if (s._tradeReach && byId) {
-      for (const pid of s._tradeReach.keys()) {
-        const peer = byId.get(typeof pid === "number" ? pid : +pid);
-        const pf = peer && getFaith(world, dominantFaith(peer));
-        if (pf && pf.kind === "organized") { orgNearby = true; break; }
-      }
-    }
-    if (orgNearby) continue;
-    if (rng() > GENESIS_CHANCE) continue;
+    const fam = familyOf(world, culId);
+    const sat = (famOrg.get(fam) || 0) / Math.max(1, famTotal.get(fam) || 1);   // open niche → 0, saturated → 1
+    // Social stress fertilises new religion (cities, inequality, war, plague,
+    // famine — the "religions of the oppressed"). Urbanisation raises the odds
+    // a great city is the cradle.
+    const p = s.countryId >= 0 ? getPolity(world, s.countryId) : null;
+    const c = s.countryId >= 0 && world.countries ? world.countries.get(s.countryId) : null;
+    const stress = 0.4 + (s.unrest || 0)
+      + (c && (c._fronts || 0) > 0 ? 0.3 : 0)
+      + (world.step < (s._famineUntil || 0) ? 0.3 : 0)
+      + (s._plagueActive ? 0.3 : 0);
+    const urban = 0.5 + Math.min(1.1, Math.max(0, Math.log10((s.people || 1) / 300)));
+    const prob = GENESIS_BASE * urban * stress * (1 - 0.5 * sat);
+    if (rng() > prob) continue;
     const lang = languageOf(world, cul);
     const f = newFaith(world, {
       kind: "organized", cultureId: culId,
@@ -209,11 +259,11 @@ export function updateFaiths(world) {
     });
     mixFaithToward(s, f.id, 0.9);                         // the movement sweeps its birthplace
     cul._lastFaithGenesis = world.step;
-    world._lastFaithGenesisAt = world.step;
-    genesisDone = true;
+    famOrg.set(fam, (famOrg.get(fam) || 0) + 1);          // this people is now a touch more saturated
+    founded++;
     logEvent(world, "faith.founded", {
       faith: f.id, faithName: f.name, s: s.id, sName: s.name,
-      polity: s.countryId, culture: culId, character: doctrineLabel(f),
+      polity: p ? p.id : s.countryId, culture: culId, character: doctrineLabel(f),
       x: s.pos.x | 0, y: s.pos.y | 0,
     });
   }
@@ -325,45 +375,143 @@ export function updateFaiths(world) {
     }
   }
 
-  // 5. schism: a follower-realm far from the founding see breaks communion
-  for (const f of faithsOf(world).values()) {
-    if (f.kind !== "organized") continue;
-    if (world.step - f.foundedStep < SCHISM_MIN_AGE / (world._dt || 1)) continue;
-    const origin = byId && byId.get(f.originSettlementId);
-    if (!origin) continue;
-    if (!world.countries) continue;
-    let span = 0;
-    if (world.countries) for (const c of world.countries.values()) {
-      const p0 = getPolity(world, c.id);
-      if (p0 && p0.faithId === f.id) span++;
+  // 5. schism: BRANCHING, bounded. A communion fissions when a follower-realm
+  // far from the founding see (and estranged by war or a broken succession)
+  // breaks away — but each religion fissions into only a FEW great branches,
+  // the rate decays sharply as branches accumulate, and a global per-pass brake
+  // stops the late game from fissioning exponentially. (This is the dominant
+  // source of NEW major faiths after the axial window — the Reformation, the
+  // Sunni/Shia split, the Buddhist vehicles.)
+  if (world.countries) {
+    // living branch count per religion family, and realm-span per faith
+    const branches = new Map(), span = new Map();
+    for (const f of faithsOf(world).values()) {
+      if (f.kind !== "organized" || f.endedStep >= 0) continue;
+      branches.set(f.rootFaithId, (branches.get(f.rootFaithId) || 0) + 1);
     }
-    if (span < SCHISM_MIN_REALMS) continue;               // a sect can't schism — only a communion can
     for (const c of world.countries.values()) {
-      const p = getPolity(world, c.id);
-      if (!p || p.faithId !== f.id || !c.capital) continue;
-      if (origin.countryId === c.id) continue;            // the home realm itself
-      let dx = Math.abs(c.capital.pos.x - origin.pos.x);
-      if (dx > world.tw / 2) dx = world.tw - dx;
-      const dy = c.capital.pos.y - origin.pos.y;
-      if (Math.sqrt(dx * dx + dy * dy) < SCHISM_MIN_DIST) continue;
-      const r = entityRng(world, "schism", hash32(f.id, c.id, world.step));
-      // a tightly hierarchical church holds communion together longer
-      if (r() > SCHISM_CHANCE * (1.2 - 0.8 * (f.doctrine ? f.doctrine.hierarchy : 0.5))) continue;
-      const culId = dominantCulture(c.capital);
+      const p0 = getPolity(world, c.id);
+      if (p0 && p0.faithId >= 0) span.set(p0.faithId, (span.get(p0.faithId) || 0) + 1);
+    }
+    let schisms = 0;
+    if (!world._schismAt) world._schismAt = new Map();
+    for (const f of faithsOf(world).values()) {
+      if (schisms >= MAX_SCHISMS_PER_PASS) break;
+      if (f.kind !== "organized" || f.endedStep >= 0) continue;
+      if (world.step - f.foundedStep < SCHISM_MIN_AGE / (world._dt || 1)) continue;
+      if ((span.get(f.id) || 0) < SCHISM_MIN_REALMS) continue;
+      const nBranch = branches.get(f.rootFaithId) || 1;
+      if (nBranch >= MAX_BRANCHES_PER_ROOT) continue;     // this religion has fissioned enough
+      const lastRoot = world._schismAt.get(f.rootFaithId) ?? -Infinity;
+      if (world.step - lastRoot < SCHISM_ROOT_COOLDOWN / (world._dt || 1)) continue;
+      const origin = byId && byId.get(f.originSettlementId);
+      if (!origin) continue;
+      // chance decays strongly with how many branches already exist
+      const damp = Math.pow(nBranch, 1.4);
+      const hierMul = 1.2 - 0.8 * (f.doctrine ? f.doctrine.hierarchy : 0.5);
+      for (const c of world.countries.values()) {
+        if (schisms >= MAX_SCHISMS_PER_PASS) break;
+        const p = getPolity(world, c.id);
+        if (!p || p.faithId !== f.id || !c.capital) continue;
+        if (origin.countryId === c.id) continue;
+        let dx = Math.abs(c.capital.pos.x - origin.pos.x);
+        if (dx > world.tw / 2) dx = world.tw - dx;
+        const dy = c.capital.pos.y - origin.pos.y;
+        if (Math.sqrt(dx * dx + dy * dy) < SCHISM_MIN_DIST) continue;
+        // a real estrangement helps light the reform: war or a failed throne
+        const estranged = (c._fronts || 0) > 0 || (p._crisisAt != null && world.step - p._crisisAt < 1200 / (world._dt || 1));
+        const trigger = estranged ? 1 : 0.45;
+        const r = entityRng(world, "schism", hash32(f.id, c.id, world.step));
+        if (r() > (SCHISM_CHANCE / damp) * hierMul * trigger) continue;
+        const culId = dominantCulture(c.capital);
+        const cul = getCulture(world, culId);
+        const lang = cul ? languageOf(world, cul) : null;
+        const nf = newFaith(world, {
+          kind: "organized", cultureId: culId,
+          originSettlementId: c.capital.id, parentFaithId: f.id,
+          name: lang ? langWord(lang, hash32("schism", f.id, c.id) % 1000000) : (f.name + " Rite"),
+        });
+        mixFaithToward(c.capital, nf.id, 0.7);
+        p.faithId = nf.id;
+        world._schismAt.set(f.rootFaithId, world.step);
+        branches.set(f.rootFaithId, nBranch + 1);
+        schisms++;
+        logEvent(world, "faith.schism", {
+          faith: nf.id, faithName: nf.name, parentFaith: f.id, parentName: f.name,
+          character: doctrineLabel(nf),
+          polity: c.id, name: p.name, s: c.capital.id, sName: c.capital.name,
+        });
+        break;   // at most one schism per faith per pass
+      }
+    }
+  }
+
+  // 6. syncretism: a genuinely NEW religion born where two organized creeds
+  // deeply intermingle — a great trade city, a long-held borderland — and a
+  // prophet fuses them (Sikhism from Hindu + Muslim, Manichaeism from
+  // Zoroastrian + Christian + Buddhist). Rare; starts its own root lineage.
+  if (world.step - (world._lastSyncretismAt ?? -Infinity) >= SYNCRETISM_WORLD_COOLDOWN / (world._dt || 1)) {
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || (s.tier | 0) < 2 || !s.faithMix || s.faithMix.length < 2) continue;
+      const [a, b] = s.faithMix;
+      if (a[1] < SYNCRETISM_MIN_SHARE || b[1] < SYNCRETISM_MIN_SHARE) continue;
+      const fa = getFaith(world, a[0]), fb = getFaith(world, b[0]);
+      if (!fa || !fb || fa.kind !== "organized" || fb.kind !== "organized") continue;
+      if (fa.rootFaithId === fb.rootFaithId) continue;     // same religion family — that's a schism, not a fusion
+      const r = entityRng(world, "syncretism", hash32(s.id, world.step));
+      if (r() > 0.5) continue;
+      const culId = dominantCulture(s);
       const cul = getCulture(world, culId);
       const lang = cul ? languageOf(world, cul) : null;
+      const doctrine = {};
+      for (const k of DOCTRINE_KEYS) doctrine[k] = Math.max(0, Math.min(1, ((fa.doctrine[k] + fb.doctrine[k]) / 2) + (r() - 0.5) * 0.2));
+      doctrine.syncretism = Math.max(doctrine.syncretism, 0.7);   // a fusion is, by nature, syncretic
       const nf = newFaith(world, {
-        kind: "organized", cultureId: culId,
-        originSettlementId: c.capital.id, parentFaithId: f.id,
-        name: lang ? langWord(lang, hash32("schism", f.id, c.id) % 1000000) : (f.name + " Rite"),
+        kind: "organized", cultureId: culId, syncretic: true, doctrine,
+        originSettlementId: s.id, parentFaithId: a[0], parentFaith2: b[0],
+        name: lang ? langWord(lang, hash32("syncretism", s.id) % 1000000) : (fa.name + "-" + fb.name),
       });
-      mixFaithToward(c.capital, nf.id, 0.7);
-      p.faithId = nf.id;
-      logEvent(world, "faith.schism", {
-        faith: nf.id, faithName: nf.name, parentFaith: f.id, parentName: f.name,
-        polity: c.id, name: p.name, s: c.capital.id, sName: c.capital.name,
+      mixFaithToward(s, nf.id, 0.8);
+      world._lastSyncretismAt = world.step;
+      logEvent(world, "faith.syncretized", {
+        faith: nf.id, faithName: nf.name, parentFaith: a[0], parentName: fa.name,
+        parent2Name: fb.name, character: doctrineLabel(nf),
+        polity: s.countryId, s: s.id, sName: s.name, x: s.pos.x | 0, y: s.pos.y | 0,
       });
-      break;   // at most one schism per faith per pass
+      break;   // one fusion per pass at most
+    }
+  }
+
+  // 7. cull: the long tail of dying cults. A faith older than its grace period
+  // with almost no dominant settlements and no state patron FADES — its last
+  // adherents reabsorbed by the locally dominant faith. This is the bounding
+  // force that stops the count growing without limit (consolidation erases the
+  // thousands of antique cults down to a handful of world religions).
+  {
+    const dom = new Map(), stateFaiths = new Set();
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      const d = dominantFaith(s); if (d >= 0) dom.set(d, (dom.get(d) || 0) + 1);
+    }
+    if (world.countries) for (const c of world.countries.values()) {
+      const p = getPolity(world, c.id); if (p && p.faithId >= 0) stateFaiths.add(p.faithId);
+    }
+    for (const f of faithsOf(world).values()) {
+      if (f.kind !== "organized" || f.endedStep >= 0) continue;
+      if (world.step - f.foundedStep < CULL_GRACE / (world._dt || 1)) continue;
+      if ((dom.get(f.id) || 0) >= CULL_FLOOR || stateFaiths.has(f.id)) continue;
+      // fade it: strip from every mixture, let the rest renormalise
+      for (const s of world.settlements) {
+        if (!s.faithMix || !s.faithMix.length) continue;
+        const before = s.faithMix.length;
+        s.faithMix = s.faithMix.filter(e => e[0] !== f.id);
+        if (s.faithMix.length !== before) {
+          if (!s.faithMix.length) { const folk = folkFaithOf(world, dominantCulture(s)); if (folk) s.faithMix = [[folk.id, 1]]; }
+          else normalizeMix(s.faithMix);
+        }
+      }
+      f.endedStep = world.step | 0;
+      logEvent(world, "faith.faded", { faith: f.id, faithName: f.name, character: doctrineLabel(f) });
     }
   }
 }

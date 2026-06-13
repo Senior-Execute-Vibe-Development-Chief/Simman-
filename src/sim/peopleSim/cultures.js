@@ -60,10 +60,17 @@ export function foundCulture(world, { origin, parentCultureId = -1, divergence =
   const id = world._nextCultureId || 1;
   world._nextCultureId = id + 1;
   const langSeed = hash32(world.seed || 1, "lang", id);
+  // The FAMILY (stock): the cradle ancestor this people descends from. A
+  // "people" here is an ETHNOLINGUISTIC group (shared tongue, names, identity)
+  // — not a genetic race; its family is the broad stock it branched from (the
+  // Indo-European / Bantu / Semitic level), so the Peoples view nests
+  // people-within-family the way real ethnography does.
+  const parentRec = parentCultureId >= 0 ? getCulture(world, parentCultureId) : null;
+  const rootCultureId = parentRec ? (parentRec.rootCultureId ?? parentRec.id) : id;
   const c = {
     id, langSeed, languageId: -1,
     name: null,
-    parentCultureId,
+    parentCultureId, rootCultureId,
     originSettlementId: origin ? origin.id : -1,
     foundedStep: world.step | 0,
     nameCounter: 1,
@@ -89,6 +96,26 @@ export function foundCulture(world, { origin, parentCultureId = -1, divergence =
     x: origin ? origin.pos.x | 0 : undefined, y: origin ? origin.pos.y | 0 : undefined,
   });
   return c;
+}
+
+// The family (stock) a people belongs to: walk up to the cradle ancestor.
+export function familyOf(world, cultureId) {
+  let cul = getCulture(world, cultureId);
+  if (!cul) return -1;
+  if (cul.rootCultureId != null) return cul.rootCultureId;
+  let hops = 0;
+  while (cul.parentCultureId >= 0 && hops++ < 16) {
+    const up = getCulture(world, cul.parentCultureId);
+    if (!up) break; cul = up;
+  }
+  return cul.id;
+}
+export function familyName(world, cultureId) {
+  const root = getCulture(world, familyOf(world, cultureId));
+  if (!root) return "?";
+  // a family is named for its stock with a "-ic" stem (Velaric, Kuvic…)
+  const base = root.name.replace(/(a|e|i|o|u|ia|ua)$/i, "");
+  return base + "ic";
 }
 
 // ── population mixture helpers ───────────────────────────────────────────

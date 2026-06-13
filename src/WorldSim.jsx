@@ -2462,21 +2462,40 @@ const renderPeoples=()=>{
     let a=agg.get(cid);if(!a)agg.set(cid,a={setts:0,pop:0});
     a.setts++;a.pop+=st.people||0;
   }
-  const rows=[...psw.cultures.values()].map(c=>({c,a:agg.get(c.id)||{setts:0,pop:0}}))
-    .sort((x,y)=>y.a.pop-x.a.pop);
+  // Group peoples under their FAMILY (the cradle stock they branched from) —
+  // people-within-family, the way real ethnography nests ethnic groups inside
+  // language families.
+  const fams=new Map();
+  for(const c of psw.cultures.values()){
+    const root=c.root??c.id;
+    if(!fams.has(root))fams.set(root,{name:c.family||"?",rows:[],pop:0});
+    const a=agg.get(c.id)||{setts:0,pop:0};
+    const fe=fams.get(root);fe.rows.push({c,a});fe.pop+=a.pop;
+    if(root===c.id)fe.name=c.family||fe.name;
+  }
+  const famList=[...fams.values()].sort((x,y)=>y.pop-x.pop);
+  for(const f of famList)f.rows.sort((x,y)=>y.a.pop-x.a.pop);
   return(
     <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
-      {rows.map(({c,a})=>(
-        <div key={c.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"4px 0",borderBottom:"1px solid rgba(58,38,20,0.10)"}}>
-          <span style={{width:10,height:10,borderRadius:2,background:`hsl(${c.hue|0},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
-          <span style={{fontWeight:600,fontSize:12}}>{c.name}</span>
-          {c.parent>=0&&psw.cultures.get(c.parent)&&<span className="au-fade" style={{fontSize:9}}>← {psw.cultures.get(c.parent).name}</span>}
-          <div style={{flex:1}}/>
-          <span className="au-fade">{a.setts} settlements · {fmtPeople(a.pop)}</span>
+      <div className="au-fade" style={{fontSize:9,marginBottom:8,lineHeight:1.4}}>
+        A <b>people</b> is an ethnolinguistic group — one tongue, names and identity, carried by population (not genetics). Peoples branch from a common <b>family</b> (their cradle stock), assimilate under shared rule, and diverge in isolation.
+      </div>
+      {famList.map((f,fi)=>(
+        <div key={fi} style={{marginBottom:8}}>
+          <div className="au-heading au-sc" style={{fontSize:11,marginBottom:2,color:"var(--au-ink)"}}>
+            {f.name} <span className="au-fade" style={{fontSize:9}}>family · {f.rows.length} {f.rows.length===1?"people":"peoples"} · {fmtPeople(f.pop)}</span>
+          </div>
+          {f.rows.map(({c,a})=>(
+            <div key={c.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(58,38,20,0.08)"}}>
+              <span style={{width:9,height:9,borderRadius:2,background:`hsl(${c.hue|0},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
+              <span style={{fontWeight:600}}>{c.name}</span>
+              {c.parent>=0&&psw.cultures.get(c.parent)&&<span className="au-fade" style={{fontSize:9}}>← {psw.cultures.get(c.parent).name}</span>}
+              <div style={{flex:1}}/>
+              <span className="au-fade">{a.setts} · {fmtPeople(a.pop)}</span>
+            </div>
+          ))}
         </div>
       ))}
-      <div className="au-fade" style={{fontSize:9,marginTop:8,fontStyle:"italic"}}>
-        A people is carried by population — conquest changes rulers, not peoples. Use the Peoples lens to see where each lives.</div>
     </div>
   );
 };

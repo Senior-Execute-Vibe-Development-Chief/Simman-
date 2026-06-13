@@ -166,6 +166,12 @@ const NARRATE = {
   "faith.schism"(ev) {
     return `The ${ev.faithName} rite broke communion with the ${ev.parentName} church — a schism declared from ${ev.sName || "the capital"}.`;
   },
+  "faith.syncretized"(ev) {
+    return `In ${ev.sName || "a great city"}, where the ${ev.parentName} and ${ev.parent2Name} faiths had long mingled, a new ${ev.character ? ev.character + " " : ""}creed was born — ${ev.faithName}.`;
+  },
+  "faith.faded"(ev) {
+    return `The ${ev.faithName} faith dwindled away, its last temples fallen silent.`;
+  },
   "polity.adoptedFaith"(ev) {
     return `The court embraced the ${ev.faithName} faith.`;
   },
@@ -210,8 +216,9 @@ export function categoryOf(ev, as = -1) {
     case "settlement.founded": case "colony.departed": return "founding";
     case "culture.born": case "culture.diverged": return "founding";
     case "language.shift": return "growth";
-    case "faith.founded": case "polity.adoptedFaith": return "discovery";
+    case "faith.founded": case "polity.adoptedFaith": case "faith.syncretized": return "discovery";
     case "faith.schism": return "secession";
+    case "faith.faded": return "loss";
     case "war.began": return as === ev.to ? "war" : "conquest";
     case "ruler.crowned": case "dynasty.founded": case "dynasty.union": return "growth";
     case "ruler.died": case "dynasty.extinct": return "loss";
