@@ -28,6 +28,14 @@ export const CULTURE_INTERVAL = 150;      // ticks between assimilation/divergen
 const ASSIM_RATE = 0.05;                  // per-pass share shift of SPEECH toward the prestige language (×org, ×distFactor)
 const CULTURE_LAG = 0.10;                 // ethnic identity assimilates at only this fraction of the language rate (people lag tongue by generations)
 const DIVERGE_AFTER = 6000;               // ticks of overseas isolation before a colony's culture diverges
+// Political ethnogenesis: a people fragments along durable STATE lines even WITHOUT
+// isolation — the post-Roman Latin world becoming France/Spain/Italy, rather than
+// one connected megapeople. (Without this, a well-connected landmass never loses
+// contact, so the whole Mediterranean rim reads as a single people — the inverse
+// of reality, where connectivity made it the most ethnically varied region.)
+const ETHNO_AFTER    = 9000;              // ticks a region must sit under its own durable, language-shifted state before its people forks
+const ETHNO_LANG_MIN = 0.5;              // …and at least this share already speaking that state's prestige tongue
+const ETHNO_MIN_BLOC = 3;                // …and be a real region (≥ this many settlements), not a lone town
 const MIX_K = 4;                          // mixture components kept per settlement (rest folds into dominant)
 
 export function culturesOf(world) {
@@ -60,7 +68,7 @@ export function nameFor(world, culture, kind, base) {
   return langWord(lang, n);
 }
 
-export function foundCulture(world, { origin, parentCultureId = -1, divergence = 0.5 } = {}) {
+export function foundCulture(world, { origin, parentCultureId = -1, divergence = 0.5, branchFromLangId = -1 } = {}) {
   const reg = culturesOf(world);
   const id = world._nextCultureId || 1;
   world._nextCultureId = id + 1;
@@ -84,11 +92,14 @@ export function foundCulture(world, { origin, parentCultureId = -1, divergence =
     nameCounter: 1,
     hue: (id * 137.508) % 360,            // golden-angle spread
   };
-  // The tongue: a daughter people's language BRANCHES from the parent's
-  // (a dialect hardening into a language); a root people gets a fresh one.
+  // The tongue: an isolated daughter BRANCHES from its PARENT people's tongue (a
+  // dialect hardening into a language); a politically-forked nation branches the
+  // PRESTIGE language it already speaks (branchFromLangId — Old French hardening
+  // out of the realm's Latin); a root people gets a fresh one.
   const parent = getCulture(world, parentCultureId);
-  const plang = parent ? languageOf(world, parent) : null;
-  const lang = plang ? branchLanguage(world, plang, divergence) : foundLanguage(world, { seed: langSeed });
+  const branchBase = branchFromLangId >= 0 ? getLanguage(world, branchFromLangId)
+                   : (parent ? languageOf(world, parent) : null);
+  const lang = branchBase ? branchLanguage(world, branchBase, divergence) : foundLanguage(world, { seed: langSeed });
   c.languageId = lang.id;
   // A culture names ITSELF in its own tongue (endonym) — and never shares
   // another people's name (collisions read as bugs, not history).
@@ -364,6 +375,66 @@ export function updateCultures(world) {
           s: s.id, sName: s.name, polity: s.countryId,
         });
       }
+    }
+  }
+
+  // ── political ethnogenesis: a people fragments along DURABLE state lines ──
+  // The isolation path above needs a community to lose ALL living contact, so a
+  // big, well-connected landmass (the Mediterranean rim) never splits and reads as
+  // one megapeople. But peoples also differentiate WITHOUT isolation, along
+  // POLITICS: a region held by its own durable state, away from its people's
+  // demographic core and already speaking that state's prestige tongue, hardens
+  // over generations into a NEW people centred on the state — France/Spain/Italy
+  // out of the post-Roman Latin world. Transient conquest forks nothing (the timer
+  // resets the moment a region rejoins its core or its realm collapses); only
+  // sustained distinct statehood does. The largest block keeps the parent identity;
+  // each durably-separated block becomes its own nation, speaking a branch of the
+  // tongue it adopted — so the Peoples map fragments boldly while the Languages map
+  // shows the daughters as one family (French/Spanish/Italian are all Romance).
+  if (world.countries && world.countries.size) {
+    // each people's CORE country = where most of it lives; that block stays the parent
+    const core = new Map();          // cultureId → { country, pop }
+    const popCC = new Map();         // `cid|country` → pop
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s.countryId < 0) continue;
+      const cid = dominantCulture(s); if (cid < 0) continue;
+      const key = cid + "|" + s.countryId;
+      const pop = (popCC.get(key) || 0) + Math.max(1, s.people || 0);
+      popCC.set(key, pop);
+      const c0 = core.get(cid);
+      if (!c0 || pop > c0.pop) core.set(cid, { country: s.countryId, pop });
+    }
+    // per-settlement durability timer for "exiled from the core + language-shifted",
+    // tallying the (people, country) blocks that have stayed that way long enough
+    const blocs = new Map();         // `cid|country` → { cid, k, seed, n }
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s.countryId < 0 || s._diverged) continue;
+      const cid = dominantCulture(s); if (cid < 0) continue;
+      const cc = core.get(cid), k = s.countryId;
+      const capLang = capLangByCountry.has(k) ? capLangByCountry.get(k) : -1;
+      const shifted = capLang >= 0 && langShareOf(s, capLang) >= ETHNO_LANG_MIN;
+      if (!cc || k === cc.country || !shifted) { s._ethnoSince = undefined; continue; }   // at home / not yet shifted → no clock
+      if (s._ethnoSince === undefined) { s._ethnoSince = world.step; continue; }
+      if (world.step - s._ethnoSince <= ETHNO_AFTER / (world._dt || 1)) continue;
+      const key = cid + "|" + k;
+      let b = blocs.get(key); if (!b) blocs.set(key, b = { cid, k, seed: s, n: 0 });
+      b.n++;
+    }
+    // fork each substantial, timed-out block into ONE new people
+    for (const b of blocs.values()) {
+      if (b.n < ETHNO_MIN_BLOC) continue;
+      const parent = getCulture(world, b.cid);
+      const daughter = foundCulture(world, { origin: b.seed, parentCultureId: b.cid,
+        divergence: 0.55, branchFromLangId: capLangByCountry.get(b.k) });
+      // convert the whole same-(people, country) block — gather BEFORE mutating
+      const members = [];
+      for (const s of world.settlements) if (s.mode === "settled" && s.countryId === b.k && dominantCulture(s) === b.cid) members.push(s);
+      for (const s of members) { seedCulture(world, s, daughter.id); s._ethnoSince = undefined; }
+      logEvent(world, "culture.diverged", {
+        culture: daughter.id, cultureName: daughter.name,
+        parent: b.cid, parentName: parent ? parent.name : undefined,
+        s: b.seed.id, sName: b.seed.name, polity: b.k,
+      });
     }
   }
 }
