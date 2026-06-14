@@ -22,7 +22,11 @@ import { getPolity } from "./entities.js";
 import { forEachNear } from "./spatialGrid.js";
 
 export const CULTURE_INTERVAL = 150;      // ticks between assimilation/divergence passes (≈ polity cadence)
-const ASSIM_RATE = 0.012;                 // per-pass share shift toward the state culture (×org, ×interval/150)
+// Language standardizes FAST enough to flip a core province within a realm's
+// lifetime (realms rise and fall — too slow and the political map churns before
+// any tongue consolidates, so the Languages map never pulls away from Peoples).
+const ASSIM_RATE = 0.05;                  // per-pass share shift of SPEECH toward the prestige language (×org, ×distFactor)
+const CULTURE_LAG = 0.10;                 // ethnic identity assimilates at only this fraction of the language rate (people lag tongue by generations)
 const DIVERGE_AFTER = 6000;               // ticks of overseas isolation before a colony's culture diverges
 const MIX_K = 4;                          // mixture components kept per settlement (rest folds into dominant)
 
@@ -174,22 +178,69 @@ export function mixToward(s, cid, frac) {
   s.cultureId = mix[0][0];
 }
 
-/** Initialize a newborn settlement's culture from its founder stock. */
+// ── language layer (a settlement's SPOKEN tongue, separate from its people) ──
+// Language is its OWN population layer (s.langMix = [[languageId, share],...]),
+// not a 1:1 readout of the people. It begins as the people's own tongue, but
+// shifts FASTER than ethnic identity under state prestige: a conquered province
+// comes to speak its ruler's (the capital's) language while remaining its own
+// people for generations. So the Languages map shows realm-spanning prestige
+// tongues crossing the slower ethnic (Peoples) map — the way Latin, Arabic,
+// Turkish and English each spread across many distinct peoples in reality.
+export function dominantLanguage(s) {
+  return s.langMix && s.langMix.length ? s.langMix[0][0] : -1;
+}
+/** The languageId a culture natively carries (its own tongue). */
+export function langIdOfCulture(world, cultureId) {
+  const cul = getCulture(world, cultureId);
+  return cul ? languageOf(world, cul).id : -1;
+}
+/** Share of a settlement's speakers using language `lid` (0 if none). */
+function langShareOf(s, lid) {
+  if (lid < 0 || !s.langMix) return 0;
+  for (const e of s.langMix) if (e[0] === lid) return e[1];
+  return 0;
+}
+/** Shift `frac` of a settlement's SPEAKERS toward language `lid`. */
+export function mixLangToward(s, lid, frac) {
+  if (lid == null || lid < 0 || !(frac > 0)) return;
+  if (!s.langMix || !s.langMix.length) { s.langMix = [[lid, 1]]; return; }
+  const mix = s.langMix, scale = 1 - frac;
+  let entry = null;
+  for (const e of mix) { e[1] *= scale; if (e[0] === lid) entry = e; }
+  if (entry) entry[1] += frac; else mix.push([lid, frac]);
+  normalizeMix(mix);
+}
+/** Seed a settlement's spoken language from its dominant people, if unset. */
+export function seedLangFromCulture(world, s) {
+  if (s.langMix && s.langMix.length) return;
+  const lid = langIdOfCulture(world, dominantCulture(s));
+  if (lid >= 0) s.langMix = [[lid, 1]];
+}
+
+/** Initialize a newborn settlement's culture (and spoken tongue) from its founder stock. */
 export function seedCulture(world, s, cultureId) {
   s.cultureId = cultureId ?? -1;
   s.culMix = cultureId != null && cultureId >= 0 ? [[cultureId, 1]] : [];
   if (!s.faithMix) s.faithMix = [];
+  // spoken language starts as the founding people's tongue; it diverges later
+  // from the people under state prestige (above) — they are separate layers.
+  const lid = cultureId != null && cultureId >= 0 ? langIdOfCulture(world, cultureId) : -1;
+  s.langMix = lid >= 0 ? [[lid, 1]] : [];
 }
 
 // ── the periodic culture pass ───────────────────────────────────────────
-// State-prestige standardization: a settlement whose dominant culture differs
-// from its ruler's drifts toward the STATE culture — the capital's court/prestige
-// tongue — never instant (centuries, not passes). The pull scales with the
-// state's ORGANIZATION/literacy (a bureaucratic empire standardizes hard; a loose
-// chiefdom barely at all) and DECAYS with transport distance from the capital, so
-// the connected heartland adopts the capital's speech while the remote marches
-// resist. Divergence: an overseas colony out of living contact with its own
-// people for DIVERGE_AFTER ticks becomes a NEW people (daughter culture).
+// Two SEPARATE layers move here, at different speeds — which is what keeps the
+// Languages map from being a recolour of the Peoples map:
+//   • LANGUAGE (s.langMix) standardizes toward the capital's prestige tongue,
+//     pulled by the state's ORGANIZATION/literacy and decaying with transport
+//     distance from the capital (heartland fast, marches slow). A conquered
+//     province adopts its ruler's language across the whole realm.
+//   • PEOPLE (s.culMix) — ethnic identity — assimilates toward the ruling people
+//     FAR more slowly, and only as fast as the language has ALREADY shifted, so
+//     identity LAGS the tongue by generations (the Irish stayed Irish speaking
+//     English; Gaul spoke Latin long before it felt Roman).
+// Divergence: an overseas colony out of living contact with its own people for
+// DIVERGE_AFTER ticks becomes a NEW people with a NEW tongue (daughter culture).
 const LANG_DRIFT_EVERY = 2600;     // ≈ ticks between sound changes per tongue
 export function updateCultures(world) {
   // ── living languages: slow sound change; borrowing under contact ──
@@ -219,45 +270,55 @@ export function updateCultures(world) {
   }
   // (Called every _ivl(CULTURE_INTERVAL) ticks — the interval stretches with
   // SIM_GRANULARITY, so per-pass rates below stay calibrated per history-time.)
-  // refresh each polity's culture from its capital's dominant people
+  // refresh each polity's culture from its capital's dominant people, and read
+  // off the capital's prestige LANGUAGE (the standardization target for the realm)
+  const capLangByCountry = new Map();
   if (world.countries) {
     for (const c of world.countries.values()) {
       const p = getPolity(world, c.id);
       if (p && c.capital) p.cultureId = dominantCulture(c.capital);
+      if (c.capital) { seedLangFromCulture(world, c.capital); capLangByCountry.set(c.id, dominantLanguage(c.capital)); }
     }
   }
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     if (!s.culMix || !s.culMix.length) continue;
+    seedLangFromCulture(world, s);                 // ensure a spoken-language layer exists
 
-    // ── state-prestige standardization toward the capital's tongue ──
-    // A realm's provinces converge on the CAPITAL's people (stateCul, refreshed
-    // above from the capital's dominant culture) — and with them, on the
-    // capital's LANGUAGE, since a culture carries its tongue. Two real effects
-    // fall out of pulling every realm toward a different prestige centre:
-    //   • a smooth dialect continuum flattens into a STEP at a political border
-    //     (each side standardizes on its own capital — "a language is a dialect
-    //     with an army and a navy");
-    //   • a conquering empire ASSIMILATES its subjects' speech, core-first and
-    //     frontier-last, over generations.
+    // ── state prestige: the LANGUAGE shifts, then the PEOPLE slowly follow ──
     if (s.countryId >= 0) {
+      const ctry = world.countries && world.countries.get(s.countryId);
+      const capS = ctry && ctry.capital;
+      const org = capS && capS.knowledge ? (capS.knowledge.organization || 0) : 0;
+      // Transport-distance decay: _capCost is the capital-relative transport cost
+      // stamped by the polity pass (conquest.js), in the realm's grip units
+      // (holdReach). A province AT the edge of reach standardizes at ~half rate;
+      // one well beyond it (a far march, an overseas holding, the wrong side of a
+      // range) barely at all — the heartland Latinizes, the frontier keeps its speech.
+      const reach = ctry ? Math.max(8, ctry.holdReach || ctry.range || 20) : 20;
+      const cost = s._capCostId === s.countryId ? s._capCost : reach;   // stale / unstamped → assume mid-reach
+      const x = isFinite(cost) ? cost / reach : 6;                      // unreachable ⇒ far out on the curve (tiny pull)
+      const distFactor = 1 / (1 + x * x);                              // 1 at the capital, 0.5 at the edge, →0 in the marches
+
+      // LANGUAGE → the capital's prestige tongue (the visible, faster layer). This
+      // is what flattens a dialect continuum into a STEP at a political border, and
+      // spreads a conqueror's language across its subject peoples ("a language is a
+      // dialect with an army and a navy").
+      const capLang = capLangByCountry.has(s.countryId) ? capLangByCountry.get(s.countryId) : -1;
+      if (capLang >= 0 && langShareOf(s, capLang) < 1) {
+        mixLangToward(s, capLang, ASSIM_RATE * (0.4 + org) * distFactor);
+      }
+
+      // PEOPLE → the ruling people, but only AS FAST AS the tongue has already
+      // shifted (langShare) and at a fraction (CULTURE_LAG) of the language rate, so
+      // ethnic identity TRAILS the language by generations and the Peoples map stays
+      // distinct from the Languages map (a conquered people keeps its name long
+      // after it adopts the ruler's speech).
       const p = getPolity(world, s.countryId);
       const stateCul = p ? p.cultureId : -1;
-      if (stateCul >= 0 && dominantCulture(s) !== stateCul) {
-        const ctry = world.countries && world.countries.get(s.countryId);
-        const capS = ctry && ctry.capital;
-        const org = capS && capS.knowledge ? (capS.knowledge.organization || 0) : 0;
-        // Transport-distance decay: _capCost is the capital-relative transport
-        // cost stamped by the polity pass (conquest.js), in the same units as
-        // the realm's grip (holdReach). A province sitting AT the edge of
-        // administrative reach is standardized at ~half rate; one well beyond it
-        // (a far march, an overseas holding, the wrong side of a range) barely at
-        // all — so the heartland Latinizes while the frontier keeps its speech.
-        const reach = ctry ? Math.max(8, ctry.holdReach || ctry.range || 20) : 20;
-        const cost = s._capCostId === s.countryId ? s._capCost : reach;   // stale / unstamped → assume mid-reach
-        const x = isFinite(cost) ? cost / reach : 6;                      // unreachable ⇒ far out on the curve (tiny pull)
-        const distFactor = 1 / (1 + x * x);                              // 1 at the capital, 0.5 at the edge, →0 in the marches
-        mixToward(s, stateCul, ASSIM_RATE * (0.4 + org) * distFactor);
+      if (stateCul >= 0 && capLang >= 0 && dominantCulture(s) !== stateCul) {
+        const langShare = langShareOf(s, capLang);
+        if (langShare > 0) mixToward(s, stateCul, ASSIM_RATE * CULTURE_LAG * (0.4 + org) * distFactor * langShare);
       }
     }
 

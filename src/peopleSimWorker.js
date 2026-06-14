@@ -153,6 +153,7 @@ function packSettlement(s) {
     pos: { x: s.pos.x, y: s.pos.y },
     people: s.people, tier: s.tier, countryId: s.countryId, cultureId: s.cultureId ?? -1,
     faithId: s.faithMix && s.faithMix.length ? s.faithMix[0][0] : -1,
+    langId: s.langMix && s.langMix.length ? s.langMix[0][0] : -1,   // SPOKEN tongue (separate layer from the people)
     wealth: s.wealth, _wealthDelta: s._wealthDelta, _minedRate: s._minedRate,
     _isPort: s._isPort, _vassalCount: s._vassalCount, liegeId: s.liegeId,
     army: s.army,         // for the leaderboard's "biggest armies" sort
@@ -181,7 +182,7 @@ function packSelected(s) {
     _seaReachSize: s._seaReach ? s._seaReach.size : 0,
     _tradeProfile: getTradeProfile(s, world),
     _coloniesSent: s._coloniesSent || 0, _isColony: !!s._isColony,
-    culMix: s.culMix || null, faithMix: s.faithMix || null,
+    culMix: s.culMix || null, faithMix: s.faithMix || null, langMix: s.langMix || null,
   };
 }
 
@@ -324,6 +325,15 @@ function buildSnapshot() {
     seaLanes: sendStatic ? (world._seaLanes || []) : null,   // changes slowly; mirror keeps last
     cultures: sendStatic && world.cultures ? [...world.cultures.values()].map(c => ({ id: c.id, name: c.name, hue: c.hue, parent: c.parentCultureId, root: familyOf(world, c.id), family: familyName(world, c.id) })) : null,
     faiths: sendStatic && world.faiths ? [...world.faiths.values()].filter(f => !(f.endedStep >= 0)).map(f => ({ id: f.id, name: f.name, hue: f.hue, kind: f.kind, parent: f.parentFaithId, root: f.rootFaithId, character: f.kind === "organized" ? doctrineLabel(f) : null })) : null,
+    // Languages: id → FAMILY (rootId, for the map's family colour) + a name (the
+    // namesake people, since each tongue is 1:1 with the culture that coined it).
+    // The Languages map keys off each settlement's langId, NOT its cultureId, so it
+    // diverges from the Peoples map wherever a people has shifted its speech.
+    languages: sendStatic && world.languages ? (() => {
+      const ownerByLang = new Map();
+      if (world.cultures) for (const c of world.cultures.values()) if (c.languageId >= 0 && !ownerByLang.has(c.languageId)) ownerByLang.set(c.languageId, c.name);
+      return [...world.languages.values()].map(l => ({ id: l.id, root: l.rootId ?? l.id, name: ownerByLang.get(l.id) || null }));
+    })() : null,
     ships: world.ships ? world.ships.map(sh => ({ x: sh.x, y: sh.y, landTi: sh.landTi, countryId: sh.countryId })) : null,
     selected,
     chronicle,

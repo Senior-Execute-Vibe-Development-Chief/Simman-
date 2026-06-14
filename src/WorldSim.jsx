@@ -1688,9 +1688,19 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         const colorOf=(st)=>{
           if(vmFaith){const fid=st.faithId??-1;const f=fid>=0&&psw.faiths?psw.faiths.get(fid):null;
             if(!f)return null;return{key:fid,h:f.hue|0,s:f.kind!=="organized"?40:58,l:52};}
+          if(vmLanguage){
+            // Languages key off the SPOKEN tongue (st.langId), NOT the people —
+            // coloured by language FAMILY (root) with a per-tongue lightness, and
+            // a border wherever the spoken tongue changes. This is what makes the
+            // map diverge from Peoples where a people has shifted its speech. Fall
+            // back to the people's own tongue only until the language layer seeds.
+            const lid=st.langId??-1;const lg=lid>=0&&psw.languages?psw.languages.get(lid):null;
+            if(lg){const root=lg.root??lg.id;const fh=((root*2654435761)>>>0)%360;return{key:lid,h:fh,s:50,l:36+((lg.id*7)%6)*7};}
+            const cid0=st.cultureId??-1;const c0=cid0>=0&&psw.cultures?psw.cultures.get(cid0):null;
+            if(!c0)return null;const root0=c0.root??c0.id;const fh0=((root0*2654435761)>>>0)%360;return{key:cid0,h:fh0,s:50,l:36+((c0.id*7)%6)*7};
+          }
           const cid=st.cultureId??-1;const c=cid>=0&&psw.cultures?psw.cultures.get(cid):null;
           if(!c)return null;
-          if(vmLanguage){const root=c.root??c.id;const fh=((root*2654435761)>>>0)%360;return{key:root,h:fh,s:50,l:36+((c.id*7)%6)*7};}
           return{key:cid,h:c.hue|0,s:60,l:52};
         };
         // ── Whole-area fill: assign EVERY land tile to its nearest settlement
@@ -2080,6 +2090,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   if(snap.cultures){const cm=new Map();for(const c of snap.cultures)cm.set(c.id,c);psw.cultures=cm;}
   if(snap.faiths){const fm=new Map();for(const f of snap.faiths)fm.set(f.id,f);psw.faiths=fm;}
+  if(snap.languages){const lm=new Map();for(const l of snap.languages)lm.set(l.id,l);psw.languages=lm;}
   psw.ships=snap.ships;
   psw._chronicle=snap.chronicle||null;             // selected realm's history (null when nothing selected)
   if(snap.feed&&snap.feed.length){const F=psw._feed||(psw._feed=[]);F.push(...snap.feed);if(F.length>250)F.splice(0,F.length-250);}
@@ -2506,7 +2517,7 @@ const renderPeoples=()=>{
   return(
     <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
       <div className="au-fade" style={{fontSize:9,marginBottom:8,lineHeight:1.4}}>
-        A <b>people</b> is an ethnolinguistic group — one tongue, names and identity, carried by population (not genetics). Peoples branch from a common <b>family</b> (their cradle stock), assimilate under shared rule, and diverge in isolation.
+        A <b>people</b> is an ethnic identity — names, descent and culture, carried by population (not genetics). Its <b>language</b> is a SEPARATE, faster-moving layer (the Languages lens): under a foreign crown a people keeps its name long after it adopts the ruler's tongue, so the two maps diverge. Peoples branch from a common <b>family</b> (their cradle stock), assimilate slowly under shared rule, and diverge in isolation.
       </div>
       {famList.map((f,fi)=>(
         <div key={fi} style={{marginBottom:8}}>
@@ -2673,6 +2684,20 @@ const renderInspect=()=>{
         if(!parts.length)return null;
         return <div style={{fontSize:10,marginBottom:6}}>
           <span className="au-fade">people </span>{parts.join(" · ")}
+        </div>;
+      })()}
+      {/* ── Spoken language (a SEPARATE layer from the people: a conquered
+            province speaks its ruler's tongue while staying its own people) ── */}
+      {(()=>{
+        const mix=s.langMix;
+        if(!mix||!mix.length||!psw.languages)return null;
+        const parts=mix.filter(([,sh])=>sh>0.03).map(([lid,sh])=>{
+          const lg=psw.languages.get(lid);
+          return lg?`${lg.name||"tongue"}${sh<0.97?` ${Math.round(sh*100)}%`:""}`:null;
+        }).filter(Boolean);
+        if(!parts.length)return null;
+        return <div style={{fontSize:10,marginBottom:6}}>
+          <span className="au-fade">speech </span>{parts.join(" · ")}
         </div>;
       })()}
       {/* ── Faith mixture ── */}

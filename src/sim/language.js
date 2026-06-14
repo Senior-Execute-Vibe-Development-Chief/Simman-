@@ -167,6 +167,7 @@ export function foundLanguage(world, { seed, parentId = -1 } = {}) {
   const ph = buildPhonology(rng);
   const lang = {
     id, seed: s, parentId, bornStep: world.step | 0, gen: 0,
+    rootId: parentId >= 0 ? ((getLanguage(world, parentId) || {}).rootId ?? parentId) : id,   // language FAMILY (for the Languages map)
     onsets: ph.active.onsets, nuclei: ph.active.nuclei, codas: ph.active.codas,
     _pool: ph.pool, syl: ph.syl, redup: ph.redup, prefix: ph.prefix,
     citySufs: genSuffixSet(rng, ph.active, 3, true, 0.3),
@@ -210,6 +211,7 @@ export function branchLanguage(world, parent, divergence = 0.4) {
   const s = hash32(parent.seed, "branch", parent.gen, world.step) >>> 0;
   const child = {
     id, seed: s, parentId: parent.id, bornStep: world.step | 0, gen: 0,
+    rootId: parent.rootId ?? parent.id,                       // stays in the parent's language family
     onsets: parent.onsets.slice(), nuclei: parent.nuclei.slice(), codas: parent.codas.slice(),
     _pool: { onsets: parent._pool.onsets.slice(), nuclei: parent._pool.nuclei.slice(), codas: parent._pool.codas.slice() },
     syl: parent.syl.slice(), redup: parent.redup, prefix: parent.prefix ? parent.prefix.slice() : null,
