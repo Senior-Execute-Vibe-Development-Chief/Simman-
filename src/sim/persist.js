@@ -34,7 +34,7 @@ const SETT_FIELDS = [
   "_popPeak", "_witherSince", "lastFoundAttempt", "_lastColony", "_lastColonySent",
   "_coloniesSent", "_isColony",
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
-  "cultureId", "culMix", "faithMix", "langMix", "_isColony", "_isolatedSince", "_ethnoSince", "_diverged",
+  "cultureId", "culMix", "faithMix", "langMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
 ];
 
 // ── typed-array <-> base64 ──────────────────────────────────────────────
