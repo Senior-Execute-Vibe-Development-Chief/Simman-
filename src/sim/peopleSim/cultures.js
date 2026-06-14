@@ -50,6 +50,12 @@ const COHESION_CAP       = 2.5;          // cap on the connectivity sum
 const COHESION_MIN       = 4;            // floor radius (tiles)
 const DRIFT_AFTER        = 5000;         // ticks a settlement sits beyond its people's reach before it drifts off
 const SPLIT_MIN          = 5;            // a people needs ≥ this many settlements before its rim drifts away (keeps peoples from crumbling to dust)
+// National language: an ORGANISED realm crowns its own standard tongue (a branch of
+// its capital's), so sibling states DIVERGE linguistically and the Languages map
+// follows political borders instead of one tongue spanning many realms.
+const NAT_LANG_MIN_MEMBERS = 4;          // a realm needs this many settlements to be a real state worth a standard
+const NAT_LANG_MIN_ORG     = 0.25;       // …and a literate/bureaucratic capital (writing, scribes) to impose one
+const NAT_LANG_DIVERGE     = 0.45;       // how far the national standard branches from the parent tongue
 const MIX_K = 4;                          // mixture components kept per settlement (rest folds into dominant)
 
 export function culturesOf(world) {
@@ -310,7 +316,25 @@ export function updateCultures(world) {
     for (const c of world.countries.values()) {
       const p = getPolity(world, c.id);
       if (p && c.capital) p.cultureId = dominantCulture(c.capital);
-      if (c.capital) { seedLangFromCulture(world, c.capital); capLangByCountry.set(c.id, dominantLanguage(c.capital)); }
+      if (!c.capital) continue;
+      seedLangFromCulture(world, c.capital);
+      // National language: a real, organised state crowns its OWN standard — a
+      // branch of its capital's tongue — so each realm's speech diverges from its
+      // neighbours' and the Languages map follows political borders (rather than one
+      // tongue blanketing many realms). Kept on the polity, so it survives capital
+      // changes; conquered land then standardizes onto the conqueror's standard.
+      let natLang = p ? (p.langId ?? -1) : -1;
+      if (natLang >= 0 && !getLanguage(world, natLang)) natLang = -1;     // stale record
+      const org = c.capital.knowledge ? (c.capital.knowledge.organization || 0) : 0;
+      if (p && natLang < 0 && c.members.length >= NAT_LANG_MIN_MEMBERS && org >= NAT_LANG_MIN_ORG) {
+        const base = getLanguage(world, dominantLanguage(c.capital));
+        if (base) {
+          natLang = branchLanguage(world, base, NAT_LANG_DIVERGE).id;
+          p.langId = natLang;
+          c.capital.langMix = [[natLang, 1]];        // the court adopts its own standard
+        }
+      }
+      capLangByCountry.set(c.id, natLang >= 0 ? natLang : dominantLanguage(c.capital));
     }
   }
   for (const s of world.settlements) {
