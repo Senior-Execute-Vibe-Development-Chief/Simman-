@@ -1695,7 +1695,9 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             // map diverge from Peoples where a people has shifted its speech. Fall
             // back to the people's own tongue only until the language layer seeds.
             const lid=st.langId??-1;const lg=lid>=0&&psw.languages?psw.languages.get(lid):null;
-            if(lg){const root=lg.root??lg.id;const fh=((root*2654435761)>>>0)%360;return{key:lid,h:fh,s:50,l:36+((lg.id*7)%6)*7};}
+            // Distinct hue PER LANGUAGE (not per family) so each tongue reads as its
+            // own region — a family-wide hue made unrelated realms look identical.
+            if(lg){const fh=((lg.id*2654435761)>>>0)%360;return{key:lg.id,h:fh,s:58,l:50};}
             const cid0=st.cultureId??-1;const c0=cid0>=0&&psw.cultures?psw.cultures.get(cid0):null;
             if(!c0)return null;const root0=c0.root??c0.id;const fh0=((root0*2654435761)>>>0)%360;return{key:cid0,h:fh0,s:50,l:36+((c0.id*7)%6)*7};
           }
