@@ -36,6 +36,20 @@ const DIVERGE_AFTER = 6000;               // ticks of overseas isolation before 
 const ETHNO_AFTER    = 9000;              // ticks a region must sit under its own durable, language-shifted state before its people forks
 const ETHNO_LANG_MIN = 0.5;              // …and at least this share already speaking that state's prestige tongue
 const ETHNO_MIN_BLOC = 3;                // …and be a real region (≥ this many settlements), not a lone town
+// Distance drift — the PREHISTORIC / baseline differentiator the old model lacked.
+// A people fragments at its edges when it spreads beyond what its era can hold
+// together, with NO isolation or state required: a dialect continuum across a
+// connected landmass. The cohesion RADIUS grows with the techs that carry a
+// standard across distance (organization/writing, mobility, construction/roads),
+// so the stone age fragments into many small tongues and later eras CONSOLIDATE
+// (lingua francas) — the right way round. Without this a connected basin stayed
+// one people+tongue forever (the Nile-to-Sweden megapeople).
+const COHESION_BASE_FRAC = 0.02;         // stone-age cohesion radius, as a fraction of map width
+const COHESION_TECH      = 0.05;         // …extended per unit of connectivity tech
+const COHESION_CAP       = 2.5;          // cap on the connectivity sum
+const COHESION_MIN       = 4;            // floor radius (tiles)
+const DRIFT_AFTER        = 5000;         // ticks a settlement sits beyond its people's reach before it drifts off
+const SPLIT_MIN          = 5;            // a people needs ≥ this many settlements before its rim drifts away (keeps peoples from crumbling to dust)
 const MIX_K = 4;                          // mixture components kept per settlement (rest folds into dominant)
 
 export function culturesOf(world) {
@@ -253,6 +267,14 @@ export function seedCulture(world, s, cultureId) {
 // Divergence: an overseas colony out of living contact with its own people for
 // DIVERGE_AFTER ticks becomes a NEW people with a NEW tongue (daughter culture).
 const LANG_DRIFT_EVERY = 2600;     // ≈ ticks between sound changes per tongue
+// How far a people can hold together as ONE, in tiles — small for a stone-age
+// people (foot travel, no writing), large once tech carries a standard across
+// distance. Resolution-invariant (a fraction of map width).
+function cohesionRadius(world, s) {
+  const k = s.knowledge || {};
+  const conn = (k.organization || 0) + (k.mobility || 0) + (k.construction || 0) * 0.7;
+  return Math.max(COHESION_MIN, (COHESION_BASE_FRAC + COHESION_TECH * Math.min(COHESION_CAP, conn)) * world.tw);
+}
 export function updateCultures(world) {
   // ── living languages: slow sound change; borrowing under contact ──
   if (world.cultures) {
@@ -375,6 +397,61 @@ export function updateCultures(world) {
           s: s.id, sName: s.name, polity: s.countryId,
         });
       }
+    }
+  }
+
+  // ── distance drift: a far-flung people fragments into a CONTINUUM ──
+  // Even in unbroken contact, a people spread beyond what its era's communication
+  // and mobility can hold together drifts apart at the edges — a dialect continuum
+  // hardening into separate tongues and identities. This needs neither isolation
+  // NOR a state, so it fires in deep prehistory (when the stone age held THOUSANDS
+  // of small languages, not one); and because the cohesion radius grows with tech,
+  // peoples consolidate over history. The far rim drifts off; the cohesive middle
+  // stays the parent — so a long-spread people becomes a CHAIN of related peoples.
+  {
+    const coreS = new Map(), pcount = new Map();   // people → its most-populous settlement + settlement count
+    for (const s of world.settlements) {
+      if (s.mode !== "settled") continue;
+      const cid = dominantCulture(s); if (cid < 0) continue;
+      pcount.set(cid, (pcount.get(cid) || 0) + 1);
+      const cur = coreS.get(cid);
+      if (!cur || (s.people || 0) > (cur.people || 0)) coreS.set(cid, s);
+    }
+    const driftSeeds = [];
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s._diverged) continue;
+      const cid = dominantCulture(s); if (cid < 0) continue;
+      const core = coreS.get(cid);
+      if (!core || core === s || (pcount.get(cid) || 0) < SPLIT_MIN) { s._driftSince = undefined; continue; }
+      const radius = cohesionRadius(world, s);
+      let dx = Math.abs(s.pos.x - core.pos.x); if (dx > world.tw / 2) dx = world.tw - dx;
+      const dy = s.pos.y - core.pos.y;
+      if (dx * dx + dy * dy <= radius * radius) { s._driftSince = undefined; continue; }   // within the people's reach → cohesive
+      if (s._driftSince === undefined) { s._driftSince = world.step; continue; }
+      if (world.step - s._driftSince > DRIFT_AFTER / (world._dt || 1)) driftSeeds.push(s);
+    }
+    const claimed = new Set();
+    for (const s of driftSeeds) {
+      if (claimed.has(s) || s._diverged) continue;
+      const cid = dominantCulture(s);
+      const core = coreS.get(cid); if (!core) continue;
+      const parent = getCulture(world, cid);
+      const daughter = foundCulture(world, { origin: s, parentCultureId: cid, divergence: 0.6 });
+      seedCulture(world, s, daughter.id); s._driftSince = undefined; claimed.add(s);
+      // its homeland: same-people neighbours that are ALSO beyond the old core's
+      // reach join the daughter; the cohesive middle is left with the parent.
+      forEachNear(world, s.pos.x, s.pos.y, cohesionRadius(world, s), (nb) => {
+        if (nb === s || nb.mode !== "settled" || nb._diverged || claimed.has(nb) || dominantCulture(nb) !== cid) return;
+        let dx2 = Math.abs(nb.pos.x - core.pos.x); if (dx2 > world.tw / 2) dx2 = world.tw - dx2;
+        const dy2 = nb.pos.y - core.pos.y, nr = cohesionRadius(world, nb);
+        if (dx2 * dx2 + dy2 * dy2 <= nr * nr) return;   // still within the parent's reach — leave it
+        seedCulture(world, nb, daughter.id); nb._driftSince = undefined; claimed.add(nb);
+      });
+      logEvent(world, "culture.diverged", {
+        culture: daughter.id, cultureName: daughter.name,
+        parent: cid, parentName: parent ? parent.name : undefined,
+        s: s.id, sName: s.name, polity: s.countryId,
+      });
     }
   }
 
