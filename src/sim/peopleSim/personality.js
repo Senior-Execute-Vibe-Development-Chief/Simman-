@@ -81,6 +81,16 @@ const DRIFT_LOSS_EXP   = 0.008;  // losing members (secession/conquest) turns a 
                                  // INWARD — expansionism ebbs (the "breeds caution"
                                  // effect, now expressed as withdrawal → derives Insular)
 const DRIFT_GROW_EXP   = 0.004;  // steadily gaining members emboldens expansionism
+// How strongly a polity's STATE FAITH pulls its character toward the faith's own
+// temperament each faith pass (faiths.js calls faithShapePersonality). Gentle —
+// centuries to land — and balanced against DRIFT_REVERT's pull back to the
+// intrinsic anchor, so a creed holds its people at an OFFSET from their nature
+// WHILE they keep it (a crusading kingdom, an insular monastic realm) and they
+// revert if they ever abandon it. At equilibrium against DRIFT_REVERT a trait
+// sits ~¾ of the way from the anchor toward the faith's pole — a strong, felt
+// colouring (the user's "its people will tend towards that"), never a takeover:
+// the intrinsic anchor still pulls, so a people keeps its own flavour.
+const FAITH_SHAPE_RATE = 0.030;
 
 // Luxury / specie resource ids read off the capital's territory for the
 // (weak) commerce prior. Mirrors settlement.js LUX_RES + specie deposits.
@@ -198,6 +208,26 @@ export function driftPersonality(world, c, signals) {
 
   for (const t of TRAITS) p[t] = clampv(p[t], -1, 1);
   p._size = c.members.length;
+  p._label = labelFor(p);
+}
+
+// A polity's STATE FAITH slowly shapes its temperament: a militant creed hardens
+// it toward war, a missionary one toward expansion, an ascetic / world-renouncing
+// one turns it inward (the historical feedback — the crusading kingdom, the
+// mercantile church-state, the insular monastic realm; the user's "if a religion
+// is very insular, its people will tend towards that"). `target` is the faith's
+// temperament in the SAME −1..1 trait space (faiths.js faithTemperament). The
+// live trait eases toward it while mean-reverting drift (driftPersonality) pulls
+// back toward the intrinsic anchor — so the effect is a bounded, REVERSIBLE
+// offset, never an override. Called once per faith pass per state-faith realm.
+export function faithShapePersonality(world, c, target, rate = FAITH_SHAPE_RATE) {
+  if (!target) return;
+  const p = personalityOf(world, c);
+  if (!p) return;
+  for (const t of TRAITS) {
+    const want = clampv(target[t] ?? 0, -1, 1);
+    p[t] = clampv(p[t] + (want - p[t]) * rate, -1, 1);
+  }
   p._label = labelFor(p);
 }
 

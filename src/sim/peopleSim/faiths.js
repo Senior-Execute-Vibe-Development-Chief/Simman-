@@ -21,6 +21,7 @@ import { passRng, entityRng, hash32 } from "./rng.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { getCulture, languageOf, dominantCulture, familyOf, folkAnchorOf } from "./cultures.js";
+import { faithShapePersonality } from "./personality.js";
 import { forEachNear } from "./spatialGrid.js";
 import { langWord } from "../language.js";
 
@@ -113,6 +114,61 @@ export function doctrineLabel(f) {
   if (d.worldliness > 0.7) traits.push("worldly");
   if (!traits.length) traits.push(d.hierarchy > 0.5 ? "orthodox" : "mystical");
   return traits.slice(0, 2).join(", ");
+}
+
+// ── Faith ↔ temperament bridge ─────────────────────────────────────────
+// A creed's doctrine maps onto the SAME outward-drive axes a realm/people carries
+// (personality.js: aggression, commerce, expansionism). This shared space is what
+// lets a religion (a) be BORN in its founder's image — an expansionist people
+// coins a missionary, highly-spreadable faith; (b) APPEAL to congenial peoples,
+// so it spreads fastest among hosts whose character matches it; and (c) SHAPE its
+// adherents, bending a realm that adopts it toward its own temperament. The most
+// contagious creeds still spread broadest (zeal drives the base pull); affinity
+// only sorts them to the peoples they fit, and feedback makes the fit deepen.
+function fClamp(x, lo, hi) { return x < lo ? lo : x > hi ? hi : x; }
+function fClamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+
+// Doctrine → the −1..1 temperament a faith expresses (and instils in its realms).
+// Centred so a typical organized creed lands near neutral; the extremes (a fierce
+// missionary church, an ascetic world-renouncing order) read strongly.
+export function faithTemperament(d) {
+  if (!d) return { aggression: 0, commerce: 0, expansionism: 0 };
+  const excl = 0.5 - (d.syncretism ?? 0.5);                                         // exclusivist (+) vs syncretic (−)
+  return {
+    aggression:   fClamp((d.militancy - 0.4) * 1.4 + excl * 0.6, -1, 1),            // holy war + exclusivity → warlike
+    commerce:     fClamp((d.worldliness - 0.45) * 1.2 - (d.asceticism - 0.4) * 0.8, -1, 1),  // engaged − renunciation → mercantile
+    expansionism: fClamp((d.zeal - 0.5) * 1.4 - (d.asceticism - 0.35) * 0.7, -1, 1),         // missionary − renunciation → outward
+  };
+}
+
+// How strongly a faith of temperament `ft` APPEALS to a people of personality
+// `pp` — the dot of the two temperaments mapped to a spread multiplier. A creed
+// matched to its host (a militant faith reaching a warlike realm, an ascetic one
+// reaching an insular people) pulls harder; a mismatch is resisted. Bland faiths
+// or peoples (near 0 on every axis) barely care — only pronounced characters
+// sort, which is exactly the intent.
+const AFFINITY_W = 0.9;
+function affinityMul(ft, pp) {
+  if (!ft || !pp) return 1;
+  const align = ft.aggression * (pp.aggression || 0)
+              + ft.commerce * (pp.commerce || 0)
+              + ft.expansionism * (pp.expansionism || 0);
+  return fClamp(1 + AFFINITY_W * align, 0.4, 2.0);   // a well-matched creed pulls up to 2×, a clashing one down to 0.4×
+}
+
+// Born in the founder's image: nudge a freshly-rolled doctrine toward the founding
+// people's temperament — an EXPANSIONIST people coins a high-ZEAL (spreadable)
+// creed, a warlike one a MILITANT creed, a merchant one a WORLDLY creed, an inward
+// one a renunciatory, low-reach faith. (The user's "make an expansionist people
+// have a highly spreadable religion.") A gentle bias ON TOP of the random roll, so
+// founders of the same temperament still produce distinct creeds.
+function biasDoctrineToFounder(d, pp) {
+  if (!d || !pp) return d;
+  d.zeal        = fClamp01(d.zeal        + (pp.expansionism || 0) * 0.32);
+  d.militancy   = fClamp01(d.militancy   + (pp.aggression   || 0) * 0.34);
+  d.worldliness = fClamp01(d.worldliness + (pp.commerce     || 0) * 0.26);
+  if ((pp.expansionism || 0) < 0) d.asceticism = fClamp01(d.asceticism - pp.expansionism * 0.24);  // inward founder → renunciatory creed
+  return d;
 }
 
 function newFaith(world, fields) {
@@ -252,6 +308,7 @@ export function updateFaiths(world) {
       parentFaithId: dominantFaith(s),
       name: langWord(lang, hash32("faith", s.id, world.step) % 1000000),
     });
+    if (c && c.personality) biasDoctrineToFounder(f.doctrine, c.personality);   // born in the founding realm's image
     mixFaithToward(s, f.id, 0.9);                         // the movement sweeps its birthplace
     cul._lastFaithGenesis = world.step;
     famOrg.set(fam, (famOrg.get(fam) || 0) + 1);          // this people is now a touch more saturated
@@ -275,10 +332,21 @@ export function updateFaiths(world) {
     if (df0 >= 0) followers.set(df0, (followers.get(df0) || 0) + 1);
   }
   const sizePull = (fid) => 0.55 + Math.min(1.6, Math.sqrt(followers.get(fid) || 0) / 7);
+  // memoised faith → temperament, for the affinity multiplier (one per faith per pass)
+  const ftCache = new Map();
+  const ftOf = (fid) => {
+    let t = ftCache.get(fid);
+    if (t === undefined) { const f = getFaith(world, fid); t = f && f.doctrine ? faithTemperament(f.doctrine) : null; ftCache.set(fid, t); }
+    return t;
+  };
   const pulls = [];
   for (const s of world.settlements) {
     if (s.mode !== "settled" || !s.faithMix || !s.faithMix.length) continue;
     const own = dominantFaith(s);
+    // The RECEIVING people's character: a creed that suits them converts them
+    // faster, one that grates on them slower (affinity). Stateless → neutral.
+    const rc = s.countryId >= 0 && world.countries ? world.countries.get(s.countryId) : null;
+    const recvPers = rc ? rc.personality : null;
     const pull = new Map();
     const addPull = (fid, w) => { if (fid >= 0 && fid !== own) pull.set(fid, (pull.get(fid) || 0) + w); };
     const weighPeer = (peer) => {
@@ -288,6 +356,7 @@ export function updateFaiths(world) {
       if (!f) return;
       let w = f.kind === "organized" ? ORGANIZED_PULL * (0.5 + (f.doctrine ? f.doctrine.zeal : 0.5)) * sizePull(pf) : FOLK_PULL;
       if (peer.countryId === s.countryId && s.countryId >= 0) w *= 1.4;
+      w *= affinityMul(ftOf(pf), recvPers);              // a faith appeals more to a congenial people
       addPull(pf, w);
     };
     if (s._tradeReach && byId) for (const pid of s._tradeReach.keys()) weighPeer(byId.get(typeof pid === "number" ? pid : +pid));
@@ -298,7 +367,7 @@ export function updateFaiths(world) {
       const p = getPolity(world, s.countryId);
       if (p && p.faithId >= 0) {
         const f = getFaith(world, p.faithId);
-        if (f && f.kind === "organized") addPull(p.faithId, STATE_PRESSURE * (0.6 + 0.8 * (f.doctrine ? f.doctrine.zeal : 0.5)));
+        if (f && f.kind === "organized") addPull(p.faithId, STATE_PRESSURE * (0.6 + 0.8 * (f.doctrine ? f.doctrine.zeal : 0.5)) * affinityMul(ftOf(p.faithId), recvPers));
       }
     }
     if (!pull.size) continue;
@@ -330,11 +399,11 @@ export function updateFaiths(world) {
       }
       // legitimacy: members sharing the state faith hold a little tighter
       if (p.faithId >= 0) {
+        const sf = getFaith(world, p.faithId);
+        const sd = sf && sf.doctrine ? sf.doctrine : null;
         for (const m of c.members) {
           if (m.id === c.capitalId) continue;
           const mf = dominantFaith(m);
-          const sf = getFaith(world, p.faithId);
-          const sd = sf && sf.doctrine ? sf.doctrine : null;
           if (mf === p.faithId) m.loyalty = Math.min(1, (m.loyalty ?? 1) + LOYAL_MATCH * (sd ? 0.5 + sd.hierarchy : 1));
           else {
             const mff = getFaith(world, mf);
@@ -347,6 +416,11 @@ export function updateFaiths(world) {
             }
           }
         }
+        // faith → temperament: the established state creed slowly bends the
+        // realm's character toward its own (militant→warlike, missionary→
+        // expansionist, ascetic/world-renouncing→insular). Reversible — balanced
+        // by each realm's mean-reverting drift toward its intrinsic anchor.
+        if (sf && sf.kind === "organized" && sd) faithShapePersonality(world, c, faithTemperament(sd));
       }
     }
   }
@@ -426,6 +500,7 @@ export function updateFaiths(world) {
           originSettlementId: c.capital.id, parentFaithId: f.id,
           name: lang ? langWord(lang, hash32("schism", f.id, c.id) % 1000000) : (f.name + " Rite"),
         });
+        if (c.personality) biasDoctrineToFounder(nf.doctrine, c.personality);   // the breakaway realm's character colours its reform
         mixFaithToward(c.capital, nf.id, 0.7);
         p.faithId = nf.id;
         world._schismAt.set(f.rootFaithId, world.step);
@@ -466,6 +541,8 @@ export function updateFaiths(world) {
         originSettlementId: s.id, parentFaithId: a[0], parentFaith2: b[0],
         name: lang ? langWord(lang, hash32("syncretism", s.id) % 1000000) : (fa.name + "-" + fb.name),
       });
+      const sc = s.countryId >= 0 && world.countries ? world.countries.get(s.countryId) : null;
+      if (sc && sc.personality) biasDoctrineToFounder(nf.doctrine, sc.personality);   // born in the meeting-realm's image
       mixFaithToward(s, nf.id, 0.8);
       world._lastSyncretismAt = world.step;
       logEvent(world, "faith.syncretized", {
