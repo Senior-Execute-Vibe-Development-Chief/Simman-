@@ -259,7 +259,8 @@ const DEV=typeof location!=="undefined"&&new URLSearchParams(location.search).ha
 const LENSES=[
   {id:"terrain", label:"Terrain", subs:[["terrain","Map"],["atlas","Atlas"]]},
   {id:"politics",label:"Politics",subs:[["country","Realms"]]},
-  {id:"peoples", label:"Peoples", subs:[["culture","Peoples"],["language","Languages"]]},
+  {id:"peoples", label:"Peoples", subs:[["culture","Peoples"]]},
+  {id:"languages",label:"Languages",subs:[["language","Languages"]]},
   {id:"faiths",  label:"Faiths",  subs:[["faith","Faiths"]]},
   {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["resources","Resources"],["crop","Cropland"]]},
   ...(DEV?[{id:"dev",label:"Dev",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
@@ -1708,15 +1709,22 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         if(haveTer&&(!nf||nf.key!==nfKey)){
           const land=new Uint8Array(N2);
           for(let y=0;y<th;y++){const py=Math.min(ter.th-1,y*TRr)*ter.tw;for(let x=0;x<tw;x++){const px=Math.min(ter.tw-1,x*TRr);land[y*tw+x]=ter.tElev[py+px]>0?1:0;}}
+          // BOUNDED flood: each settlement colours only the land it actually
+          // occupies — a disk sized by its importance (tier) — so the map shows
+          // POPULATED land, not the whole partitioned world. Dense settlement
+          // merges into continuous regions; deep wilderness stays grey.
           const nearest=new Int32Array(N2).fill(-1);
+          const dist=new Uint16Array(N2);
           const q=new Int32Array(N2);let head=0,tail=0;
-          for(const s of setts){const ti=(s.pos.y|0)*tw+(s.pos.x|0);if(ti>=0&&ti<N2&&land[ti]&&nearest[ti]<0){nearest[ti]=s.id;q[tail++]=ti;}}
-          while(head<tail){const ti=q[head++];const sid=nearest[ti];const y=(ti/tw)|0,x=ti-y*tw;
+          const RAD=[6,10,15,20];   // village / town / city / metropolis reach (sim tiles)
+          const radiusOf=new Map();
+          for(const s of setts){const ti=(s.pos.y|0)*tw+(s.pos.x|0);if(ti>=0&&ti<N2&&land[ti]&&nearest[ti]<0){nearest[ti]=s.id;dist[ti]=0;radiusOf.set(s.id,RAD[Math.min(3,s.tier|0)]);q[tail++]=ti;}}
+          while(head<tail){const ti=q[head++];const sid=nearest[ti];const dd=dist[ti]+1;if(dd>(radiusOf.get(sid)||6))continue;const y=(ti/tw)|0,x=ti-y*tw;
             const r=((x+1)%tw)+y*tw,l=((x-1+tw)%tw)+y*tw,u=y>0?ti-tw:-1,dn=y<th-1?ti+tw:-1;
-            if(nearest[r]<0&&land[r]){nearest[r]=sid;q[tail++]=r;}
-            if(nearest[l]<0&&land[l]){nearest[l]=sid;q[tail++]=l;}
-            if(u>=0&&nearest[u]<0&&land[u]){nearest[u]=sid;q[tail++]=u;}
-            if(dn>=0&&nearest[dn]<0&&land[dn]){nearest[dn]=sid;q[tail++]=dn;}}
+            if(nearest[r]<0&&land[r]){nearest[r]=sid;dist[r]=dd;q[tail++]=r;}
+            if(nearest[l]<0&&land[l]){nearest[l]=sid;dist[l]=dd;q[tail++]=l;}
+            if(u>=0&&nearest[u]<0&&land[u]){nearest[u]=sid;dist[u]=dd;q[tail++]=u;}
+            if(dn>=0&&nearest[dn]<0&&land[dn]){nearest[dn]=sid;dist[dn]=dd;q[tail++]=dn;}}
           nf=identityFillRef.current={nearest,key:nfKey};
         }
         if(nf){
@@ -3201,15 +3209,16 @@ const renderCharts=()=>{
         <div style={{flex:1}} />
       </div>
       {(()=>{const F=peopleRef.current&&peopleRef.current._feed;if(!F||!F.length)return null;
+        // No inner scroll — the feed flows in the tab's single scroll (a nested
+        // scrollbox here made the whole panel feel un-scrollable). Show the most
+        // recent ~28 events; the full chronicle lives in the realm view.
         return <div style={{padding:"0 10px 8px"}}>
           <div className="au-heading au-sc au-fade" style={{fontSize:10,marginBottom:3}}>Latest events</div>
-          <div className="au-scroll" style={{maxHeight:170,overflowY:"auto"}}>
-            {F.slice(-60).reverse().map((e,i)=>(
-              <div key={F.length-i} onClick={()=>jumpTo(e.x,e.y)}
-                style={{fontSize:10,padding:"2px 0",cursor:e.x!=null?"pointer":"default",borderBottom:"1px solid rgba(58,38,20,0.08)",lineHeight:1.35}}>
-                <span className="au-fade" style={{marginRight:5}}>{yearStr(e.step)}</span>{e.text}
-              </div>))}
-          </div>
+          {F.slice(-28).reverse().map((e,i)=>(
+            <div key={F.length-i} onClick={()=>jumpTo(e.x,e.y)}
+              style={{fontSize:10,padding:"2px 0",cursor:e.x!=null?"pointer":"default",borderBottom:"1px solid rgba(58,38,20,0.08)",lineHeight:1.35}}>
+              <span className="au-fade" style={{marginRight:5}}>{yearStr(e.step)}</span>{e.text}
+            </div>))}
         </div>;})()}
       <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
       <MiniChart data={H} get={d=>d.gold}           label="Gold (coin + treasuries)" color="#d8b13a" fmtY={fmtGoldKg}/>
