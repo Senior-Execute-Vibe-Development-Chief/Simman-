@@ -182,11 +182,14 @@ export function seedCulture(world, s, cultureId) {
 }
 
 // ── the periodic culture pass ───────────────────────────────────────────
-// Assimilation: a settlement whose dominant culture differs from its
-// ruler's drifts toward the state culture — faster under an organized
-// bureaucracy, never instant (centuries, not passes). Divergence: an
-// overseas colony out of living contact with its own people for
-// DIVERGE_AFTER ticks becomes a NEW people (daughter culture).
+// State-prestige standardization: a settlement whose dominant culture differs
+// from its ruler's drifts toward the STATE culture — the capital's court/prestige
+// tongue — never instant (centuries, not passes). The pull scales with the
+// state's ORGANIZATION/literacy (a bureaucratic empire standardizes hard; a loose
+// chiefdom barely at all) and DECAYS with transport distance from the capital, so
+// the connected heartland adopts the capital's speech while the remote marches
+// resist. Divergence: an overseas colony out of living contact with its own
+// people for DIVERGE_AFTER ticks becomes a NEW people (daughter culture).
 const LANG_DRIFT_EVERY = 2600;     // ≈ ticks between sound changes per tongue
 export function updateCultures(world) {
   // ── living languages: slow sound change; borrowing under contact ──
@@ -227,14 +230,34 @@ export function updateCultures(world) {
     if (s.mode !== "settled") continue;
     if (!s.culMix || !s.culMix.length) continue;
 
-    // assimilation toward the state culture
+    // ── state-prestige standardization toward the capital's tongue ──
+    // A realm's provinces converge on the CAPITAL's people (stateCul, refreshed
+    // above from the capital's dominant culture) — and with them, on the
+    // capital's LANGUAGE, since a culture carries its tongue. Two real effects
+    // fall out of pulling every realm toward a different prestige centre:
+    //   • a smooth dialect continuum flattens into a STEP at a political border
+    //     (each side standardizes on its own capital — "a language is a dialect
+    //     with an army and a navy");
+    //   • a conquering empire ASSIMILATES its subjects' speech, core-first and
+    //     frontier-last, over generations.
     if (s.countryId >= 0) {
       const p = getPolity(world, s.countryId);
       const stateCul = p ? p.cultureId : -1;
       if (stateCul >= 0 && dominantCulture(s) !== stateCul) {
-        const cap = world.countries && world.countries.get(s.countryId);
-        const org = cap && cap.capital && cap.capital.knowledge ? (cap.capital.knowledge.organization || 0) : 0;
-        mixToward(s, stateCul, ASSIM_RATE * (0.4 + org));
+        const ctry = world.countries && world.countries.get(s.countryId);
+        const capS = ctry && ctry.capital;
+        const org = capS && capS.knowledge ? (capS.knowledge.organization || 0) : 0;
+        // Transport-distance decay: _capCost is the capital-relative transport
+        // cost stamped by the polity pass (conquest.js), in the same units as
+        // the realm's grip (holdReach). A province sitting AT the edge of
+        // administrative reach is standardized at ~half rate; one well beyond it
+        // (a far march, an overseas holding, the wrong side of a range) barely at
+        // all — so the heartland Latinizes while the frontier keeps its speech.
+        const reach = ctry ? Math.max(8, ctry.holdReach || ctry.range || 20) : 20;
+        const cost = s._capCostId === s.countryId ? s._capCost : reach;   // stale / unstamped → assume mid-reach
+        const x = isFinite(cost) ? cost / reach : 6;                      // unreachable ⇒ far out on the curve (tiny pull)
+        const distFactor = 1 / (1 + x * x);                              // 1 at the capital, 0.5 at the edge, →0 in the marches
+        mixToward(s, stateCul, ASSIM_RATE * (0.4 + org) * distFactor);
       }
     }
 

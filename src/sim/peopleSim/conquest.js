@@ -1444,7 +1444,7 @@ export function updatePolities(world) {
     // ── Per-member admin load (cost to hold) ──────────────────────────
     const loads = [];
     for (const s of c.members) {
-      if (s.id === c.capitalId) { s.loyalty = 1; s._ambition = 0; continue; }
+      if (s.id === c.capitalId) { s.loyalty = 1; s._ambition = 0; s._capCost = 0; s._capCostId = c.id; continue; }
       // Distance the CENTRE must project authority across. Start from the
       // straight-line reading, then add HALF the terrain surcharge over
       // that baseline (mountains and water hurt; easy terrain doesn't help —
@@ -1454,6 +1454,13 @@ export function updatePolities(world) {
       // farther; a province across plain reads at its true distance.
       const eucl = dist(world, cap.pos.x, cap.pos.y, s.pos.x, s.pos.y);
       const tc   = tcosts.get(s.id);
+      // Stamp the capital-relative transport cost for the culture pass's
+      // prestige standardization (cultures.js): the connected heartland adopts
+      // the capital's tongue, the remote / unreachable marches resist. Same
+      // units as holdRange (the load below compares tc directly against it), so
+      // cultures.js can scale the pull by tc / holdReach.
+      s._capCost = (tc === undefined || !isFinite(tc)) ? Infinity : tc;
+      s._capCostId = c.id;
       const tcEff = (tc === undefined || !isFinite(tc)) ? reachCeil : tc;
       const surcharge = Math.max(0, tcEff - eucl);
       // Major-river crossings are a FULL-weight, construction-gated barrier
