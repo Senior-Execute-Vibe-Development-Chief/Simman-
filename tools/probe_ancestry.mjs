@@ -22,7 +22,7 @@ for (let r = 0; r < ROWS; r++) {
   for (let c = 0; c < COLS; c++) {
     const tx = Math.min(tw - 1, Math.floor(c / COLS * tw)), ty = Math.min(th - 1, Math.floor(r / ROWS * th));
     const ti = ty * tw + tx;
-    line += tElev[ti] <= 0 ? "." : (GL[tAncestry[ti] % GL.length] || "?");
+    line += tAncestry[ti] < 0 ? "." : (GL[tAncestry[ti] % GL.length] || "?");
   }
   out += line + "\n";
 }

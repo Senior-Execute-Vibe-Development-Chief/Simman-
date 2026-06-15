@@ -39,10 +39,12 @@ export const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
 // ancestry of its cheapest-to-reach anchor, so boundaries fall on the barriers
 // and blend along the corridors. Civilisation's peoples and tongues later spread
 // OVER this; the blood stays put (a conquered land keeps its deep ancestry).
-const ANC_SEP_FRAC  = 0.15;   // anchor min-separation, as a fraction of map width (sets how many deep populations)
-const ANC_BARRIER_W = 6;      // mountains / desert / cold (tDiff) resistance to gene flow
-const ANC_OCEAN_STEP= 9;      // per-tile cost to cross open water — near islands share the mainland, oceans separate
-const ANC_CLIMATE_W = 7;      // resistance per unit of climate (temp+moisture) change across an edge
+const ANC_SEP_FRAC  = 0.07;   // anchor min-separation, as a fraction of map width (sets how many deep populations)
+const ANC_BARRIER_W = 11;     // mountains / desert (tDiff) resistance to gene flow — strong, so boundaries fall on real barriers
+const ANC_OCEAN_STEP= 11;     // per-tile cost to cross open water — near islands share the mainland, oceans separate continents
+const ANC_CLIMATE_W = 9;      // resistance per unit of climate (temp+moisture) change across an edge (Sahara vs Sahel vs Med)
+const ANC_ICE_TEMP  = 0.33;   // below this ≈ permanent ice (uninhabited in prehistory): no anchors, no ancestry
+const ANC_ICE_STEP  = 13;     // …and ice is a strong barrier to migration
 function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, seed) {
   const N = tw * th;
   const anc = new Int16Array(N); anc.fill(-1);
@@ -50,7 +52,7 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, seed) {
   // 1. anchors — deep population centres, greedy min-separation on land (seeded)
   const minSep = Math.max(6, ANC_SEP_FRAC * tw), minSep2 = minSep * minSep;
   const land = [];
-  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0) land.push(ti);
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP) land.push(ti);   // anchors only on habitable land, never ice
   for (let k = land.length - 1; k > 0; k--) { const j = rng.int(k + 1); const t = land[k]; land[k] = land[j]; land[j] = t; }
   const ax = [], ay = [];
   for (const ti of land) {
@@ -79,14 +81,14 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, seed) {
       const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue;
       const nx = (tx + DIRS[k][0] + tw) % tw, ni = ny * tw + nx;
       const diag = (DIRS[k][0] && DIRS[k][1]) ? Math.SQRT2 : 1;
-      const step = tElev[ni] <= 0
-        ? ANC_OCEAN_STEP * diag
+      const step = tElev[ni] <= 0 ? ANC_OCEAN_STEP * diag
+        : tTemp[ni] < ANC_ICE_TEMP ? ANC_ICE_STEP * diag
         : (1 + tDiff[ni] * ANC_BARRIER_W + (Math.abs(tTemp[ni] - myT) + Math.abs(tMoist[ni] - myM)) * ANC_CLIMATE_W) * diag;
       const nd = d + step;
       if (nd < dist[ni]) { dist[ni] = nd; anc[ni] = myA; push(ni, nd); }
     }
   }
-  for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0) anc[ti] = -1;   // water only CARRIED gene flow (to reach islands); it has no ancestry of its own
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0 || tTemp[ti] < ANC_ICE_TEMP) anc[ti] = -1;   // sea + permanent ice carry gene flow but hold no ancestry
   return { tAncestry: anc, ancestryCount: K };
 }
 
