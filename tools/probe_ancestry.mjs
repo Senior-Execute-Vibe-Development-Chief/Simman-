@@ -4,7 +4,10 @@ import { buildWorld } from "./_harness.mjs";
 
 const W = 320, H = 160, SEED = 4242;
 const { ter } = buildWorld({ W, H, seed: SEED, preset: "earth_sim" });
-const { tAncestry, ancestryCount, tw, th, tElev } = ter;
+const { tAncestry, ancestryCount, tw, th, tElev, ancOriginFx, ancOriginFy } = ter;
+const ogx = Math.round((ancOriginFx ?? 0) * tw), ogy = Math.round((ancOriginFy ?? 0) * th);
+const oLon = (ancOriginFx ?? 0) * 360 - 180, oLat = 90 - (ancOriginFy ?? 0) * 180;
+console.log(`[probe] genesis origin — tile (${ogx},${ogy})  ≈ ${oLat.toFixed(1)}°${oLat>=0?"N":"S"} ${oLon.toFixed(1)}°${oLon>=0?"E":"W"}  (East African Rift ≈ 4°N 37°E)`);
 
 const counts = new Map(); let land = 0;
 for (let ti = 0; ti < tw * th; ti++) { if (tElev[ti] <= 0) continue; land++; const a = tAncestry[ti]; counts.set(a, (counts.get(a) || 0) + 1); }
@@ -22,6 +25,7 @@ for (let r = 0; r < ROWS; r++) {
   for (let c = 0; c < COLS; c++) {
     const tx = Math.min(tw - 1, Math.floor(c / COLS * tw)), ty = Math.min(th - 1, Math.floor(r / ROWS * th));
     const ti = ty * tw + tx;
+    if (Math.abs(tx - ogx) <= tw / COLS / 2 && Math.abs(ty - ogy) <= th / ROWS / 2) { line += "@"; continue; }
     line += tAncestry[ti] < 0 ? "." : (GL[tAncestry[ti] % GL.length] || "?");
   }
   out += line + "\n";

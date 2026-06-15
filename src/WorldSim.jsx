@@ -663,6 +663,7 @@ const atlasCache=useRef(null);
 const psOverlayRef=useRef(null);
 const psOverlayMeta=useRef({step:-1,ch:0});
 const identityFillRef=useRef(null);   // cached nearest-settlement map for the people/faith/language overlays
+const ancRevealRef=useRef({start:0,active:false});   // deep-ancestry "peopling" replay: wavefront spread time + whether animating
 // Reusable scratch for the money-flow coin particles (money view). Coins are
 // bucketed by link busyness so the whole overlay costs ~4 fillStyle changes
 // instead of one per link; the position arrays are reused across frames to
@@ -1666,7 +1667,10 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
     const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0);
-    if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
+    // While the ancestry spread is replaying we rebuild the overlay every frame
+    // (the revealed wavefront advances) instead of the lazy every-30-steps cache.
+    const ancAnimating=vmAncestry&&ter&&ter.tArrival&&ancRevealRef.current.active;
+    if(ancAnimating||meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
       octx.clearRect(0,0,CW,CH);
@@ -1764,23 +1768,42 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // ── Ancestry: the deep genetic substrate, a per-tile worldgen field over ALL
       // land (not just settled). Coloured per-ancestry; civ overlays sit on top of it. ──
       if(vmAncestry&&ter&&ter.tAncestry){
-        const tw=psw.tw,th=psw.th,anc=ter.tAncestry;
+        const tw=psw.tw,th=psw.th,anc=ter.tAncestry,arr=ter.tArrival;
         const TRr=ter.tw?Math.max(1,Math.round(ter.tw/tw)):1;
-        const at=(px,py)=>anc[Math.min(ter.th-1,py*TRr)*ter.tw+Math.min(ter.tw-1,px*TRr)];
+        const idx=(px,py)=>Math.min(ter.th-1,py*TRr)*ter.tw+Math.min(ter.tw-1,px*TRr);
+        const at=(px,py)=>anc[idx(px,py)];
+        // Peopling replay: a tile shows only once the migration wavefront has
+        // reached it. arr = normalised arrival time (0 at the cradle → 1 at the
+        // last frontier); prog sweeps 0→1 over ANC_REVEAL_MS, so the mosaic paints
+        // itself on outward from East Africa just as humanity actually spread.
+        const ANC_REVEAL_MS=10000;
+        const rv=ancRevealRef.current;
+        const prog=(arr&&rv.active)?Math.min(1,(performance.now()-rv.start)/ANC_REVEAL_MS):1;
+        const shown=(px,py)=>{const a=at(px,py);if(a<0)return -1;return(!arr||arr[idx(px,py)]<=prog)?a:-1;};
         const fill=new Map();let lastFs=null;
         for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
-          const a=at(px,py);if(a<0)continue;
+          const a=shown(px,py);if(a<0)continue;
           let fs=fill.get(a);if(fs===undefined){const h=((a*2654435761)>>>0)%360;fs=`hsl(${h},52%,52%)`;fill.set(a,fs);}
           if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
           octx.fillRect(px*TR,dataYtoScreenY(py*TR,H,CH),TR+0.7,TR+0.7);
         }
         octx.strokeStyle="rgba(8,8,12,0.34)";octx.lineWidth=Math.max(0.8,TR*0.5);octx.beginPath();
         for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
-          const a=at(px,py);if(a<0)continue;const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-          const ra=at((px+1)%tw,py);if(ra>=0&&ra!==a){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
-          if(py<th-1){const da=at(px,py+1);if(da>=0&&da!==a){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+          const a=shown(px,py);if(a<0)continue;const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          const ra=shown((px+1)%tw,py);if(ra>=0&&ra!==a){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(py<th-1){const da=shown(px,py+1);if(da>=0&&da!==a){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         octx.stroke();
+        // The cradle — a soft pulsing beacon at the genesis point while it plays
+        // (prog<1 only, so the final cached frame is a clean map with no marker).
+        if(arr&&rv.active&&prog<1&&ter.ancOriginFx!=null){
+          const ox=ter.ancOriginFx*tw*TR, oy=dataYtoScreenY(ter.ancOriginFy*th*TR,H,CH);
+          const ph=(performance.now()/700)%1, rr=TR*1.5+ph*TR*7;
+          octx.strokeStyle=`rgba(255,244,210,${(0.75*(1-ph)).toFixed(3)})`;octx.lineWidth=Math.max(1.2,TR*0.7);
+          octx.beginPath();octx.arc(ox,oy,rr,0,6.2832);octx.stroke();
+          octx.fillStyle="rgba(255,248,224,0.95)";octx.beginPath();octx.arc(ox,oy,Math.max(1.6,TR*1.3),0,6.2832);octx.fill();
+        }
+        if(prog>=1)rv.active=false;   // spread complete — release the per-frame rebuild
       }
       if(vmCountry&&claimArr){
         const tw=psw.tw,th=psw.th;
@@ -2166,6 +2189,10 @@ useEffect(()=>()=>{try{simWorkerRef.current?.terminate();}catch{}try{workerRef.c
 
 useEffect(()=>{viewRef.current=viewMode;depthFromSeaRef.current=depthFromSea;depthCeilRef.current=depthCeil;showPlatesRef.current=showPlates;showRiversRef.current=showRivers;showStreamsRef.current=showStreams;showLakesRef.current=showLakes;showGlobeRef.current=showGlobe;if(world&&terRef.current)draw(terRef.current);},[world,draw,viewMode,depthFromSea,depthCeil,showPlates,showRivers,showStreams,showLakes,showGlobe,activeRes,layers]);
 
+// Opening the Ancestry lens replays the peopling of the world: the wavefront
+// spreads from the East-African cradle outward over ~10s (animLoop drives it).
+useEffect(()=>{if(viewMode==="ancestry"&&terRef.current&&terRef.current.tArrival)ancRevealRef.current={start:performance.now(),active:true};},[viewMode]);
+
 useEffect(()=>{let fid,acc=0,last=performance.now(),drawSkip=0;
 const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.current||!worldRef.current){last=now;return;}
 // Worker mode: the sim runs off-thread and drives drawing via snapshots, so
@@ -2208,8 +2235,9 @@ fid=requestAnimationFrame(loop);return()=>cancelAnimationFrame(fid);},[draw]);
 // economy can still be studied).
 useEffect(()=>{let afid;
 const animLoop=()=>{afid=requestAnimationFrame(animLoop);
-const v=viewRef.current;
-if((v!=="wind"&&v!=="money")||!worldRef.current||!terRef.current)return;
+const v=viewRef.current;if(!worldRef.current||!terRef.current)return;
+const ancA=v==="ancestry"&&ancRevealRef.current.active;   // peopling spread still painting on
+if(v!=="wind"&&v!=="money"&&!ancA)return;
 draw(terRef.current);};
 afid=requestAnimationFrame(animLoop);
 return()=>cancelAnimationFrame(afid);},[draw]);

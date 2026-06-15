@@ -49,7 +49,7 @@ const ANC_ICE_STEP  = 13;     // …and ice is a strong barrier to migration
 const ANC_SEP_DENSE = 0.045;  // anchor separation in the LONGEST-settled, most habitable land (≈ Africa) — many small peoples
 const ANC_SEP_SPARSE= 0.16;   // …in the youngest / thinnest land (the Americas, arid & cold margins) — few broad peoples
 const ANC_POLAR_LAT = 0.80;   // a landmass whose northernmost tile is below this (fraction of height) is polar/uninhabited (Antarctica)
-function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed) {
+function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, preset) {
   const N = tw * th;
   const anc = new Int16Array(N); anc.fill(-1);
   const rng = mkRng(hash32(seed >>> 0, "ancestry"));
@@ -106,12 +106,35 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed) {
       compSize.push(sz); compMinRow.push(minRow); } }
   const polar = compMinRow.map(mr => mr > th * ANC_POLAR_LAT);   // a landmass entirely in the deep south (Antarctica) — uninhabited
   let maxComp = 1; for (const sz of compSize) if (sz > maxComp) maxComp = sz;
-  let origin = -1, best = -Infinity;
-  for (let ti = 0; ti < N; ti++) {
-    if (tElev[ti] <= 0 || tTemp[ti] < ANC_ICE_TEMP) continue;
-    const warm = Math.exp(-((tTemp[ti] - 0.74) * (tTemp[ti] - 0.74)) / (2 * 0.12 * 0.12));   // deep-tropical optimum
-    const score = warm * (0.3 + 0.7 * Math.min(1, tFert[ti] / 0.5)) * Math.min(36, distSea[ti]) * (compSize[comp[ti]] / maxComp) * (0.85 + 0.3 * rng());
-    if (score > best) { best = score; origin = ti; }
+  // On Earth maps, hard-code the cradle of Homo sapiens at the East African Rift
+  // (Lake Turkana / Omo basin, ≈4°N 37°E) where the fossil record actually places
+  // our genesis. Equirectangular projection: x=(lon+180)/360, y=(90−lat)/180,
+  // north at top — snapping outward to the nearest warm tile of the main landmass
+  // so a coarse grid that puts that pixel just offshore still lands in Africa.
+  // On procedural worlds Earth coordinates are meaningless, so fall back to the
+  // computed cradle: warm, watered, deep inside the largest continent.
+  let origin = -1;
+  if (preset === "earth" || preset === "earth_sim") {
+    const cx = Math.round(((37 + 180) / 360) * tw), cy = Math.round(((90 - 4) / 180) * th);
+    for (let r = 0; r <= Math.max(tw, th) && origin < 0; r++) {
+      let bestTi = -1, bestSz = -1;
+      for (let dy = -r; dy <= r; dy++) { const y = cy + dy; if (y < 0 || y >= th) continue;
+        for (let dx = -r; dx <= r; dx++) { if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;   // ring at radius r
+          const x = ((cx + dx) % tw + tw) % tw, ti = y * tw + x;
+          if (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && comp[ti] >= 0 && !polar[comp[ti]]) {
+            const sz = compSize[comp[ti]]; if (sz > bestSz) { bestSz = sz; bestTi = ti; }   // prefer Afro-Eurasia over an island
+          } } }
+      if (bestTi >= 0) origin = bestTi;
+    }
+  }
+  if (origin < 0) {
+    let best = -Infinity;
+    for (let ti = 0; ti < N; ti++) {
+      if (tElev[ti] <= 0 || tTemp[ti] < ANC_ICE_TEMP) continue;
+      const warm = Math.exp(-((tTemp[ti] - 0.74) * (tTemp[ti] - 0.74)) / (2 * 0.12 * 0.12));   // deep-tropical optimum
+      const score = warm * (0.3 + 0.7 * Math.min(1, tFert[ti] / 0.5)) * Math.min(36, distSea[ti]) * (compSize[comp[ti]] / maxComp) * (0.85 + 0.3 * rng());
+      if (score > best) { best = score; origin = ti; }
+    }
   }
   if (origin < 0) return { tAncestry: anc, ancestryCount: 0 };
 
@@ -144,7 +167,12 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed) {
 
   // 5. sea, permanent ice and polar landmasses carried gene flow but hold no ancestry.
   for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0 || tTemp[ti] < ANC_ICE_TEMP || (comp[ti] >= 0 && polar[comp[ti]])) anc[ti] = -1;
-  return { tAncestry: anc, ancestryCount: K };
+  // Normalised arrival time of the peopling wavefront (0 at the cradle → 1 at the
+  // last-reached frontier) so the spread can be replayed as a watchable animation;
+  // −1 on tiles that hold no ancestry (sea/ice/polar).
+  const tArrival = new Float32Array(N);
+  for (let ti = 0; ti < N; ti++) tArrival[ti] = anc[ti] < 0 ? -1 : Math.min(1, Math.max(0, arrival[ti] / maxArr));
+  return { tAncestry: anc, ancestryCount: K, tArrival, ancOriginFx: (origin % tw) / tw, ancOriginFy: ((origin / tw) | 0) / th };
 }
 
 export function buildTerritory(w,RES=1){
@@ -379,8 +407,8 @@ const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,ri
 if(w.seed==null)w.seed=w._seed??1;
 w.rivers=rivers;w.deposits=deposits;
 // Deep ancestry substrate (the pre-civilisation genetic map), from geography.
-const{tAncestry,ancestryCount}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1));
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,tAncestry,ancestryCount,stepCount:0};}
+const{tAncestry,ancestryCount,tArrival,ancOriginFx,ancOriginFy}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1),w.preset);
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,tAncestry,ancestryCount,tArrival,ancOriginFx,ancOriginFy,stepCount:0};}
 
 // Full headless compose: generateWorld + buildTerritory in one call.
 export function buildWorld({W=480,H=W>>1,seed=1,preset="earth_sim",oceanLevel=0.78,tecParams={}}={}){
