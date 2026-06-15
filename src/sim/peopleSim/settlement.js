@@ -149,6 +149,36 @@ const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends 
 // site gets nothing.
 // FISH_RATE -> runtime lever (tuning.js T.FISH_RATE)
 
+// ── Ancestry (deep genetic stock) ──────────────────────────────────────────
+// s.ancMix = [[ancId, share], ...] summing to 1, dominant first — the genetic
+// substrate a settlement's population descends from. Seeded from the worldgen
+// field; admixed only by MIGRATION (founding), never by conquest/culture, so it
+// is the slow bedrock the peoples/languages drift away from.
+const ANC_ADMIX = 0.6;   // a colony's ancestry = this much founders' stock + the rest the local substrate it absorbs
+export function dominantAnc(s) { return s.ancMix && s.ancMix.length ? s.ancMix[0][0] : -1; }
+function normAnc(pairs) {
+  let t = 0; for (const e of pairs) t += e[1]; if (t <= 0) return [];
+  const out = pairs.map(([id, sh]) => [id, sh / t]).filter(e => e[1] > 0.012);
+  let t2 = 0; for (const e of out) t2 += e[1]; for (const e of out) e[1] /= t2;
+  out.sort((a, b) => b[1] - a[1]);
+  return out.slice(0, 5);                 // keep the top handful of stocks
+}
+function blendAnc(a, wA, b, wB) {
+  const m = new Map();
+  if (a) for (const [id, sh] of a) m.set(id, (m.get(id) || 0) + sh * wA);
+  if (b) for (const [id, sh] of b) m.set(id, (m.get(id) || 0) + sh * wB);
+  return normAnc([...m.entries()]);
+}
+function seedAncestry(world, s, opts) {
+  const anc = world.ancestry;
+  const localId = anc ? anc[(s.pos.y | 0) * world.tw + (s.pos.x | 0)] : -1;
+  const local = localId >= 0 ? [[localId, 1]] : [];
+  const par = opts.parentId != null && opts.parentId >= 0 ? findSettlementById(world, opts.parentId) : null;
+  // A colony carries its FOUNDER's stock, admixed with the substrate it settles
+  // on; for a near spread the founder's stock ≈ the local one, so nothing shifts.
+  s.ancMix = (par && par.ancMix && par.ancMix.length) ? blendAnc(par.ancMix, ANC_ADMIX, local, 1 - ANC_ADMIX) : local;
+}
+
 export function makeSettlement(world, x, y, opts = {}) {
   const id = world._nextSettlementId || 1;
   world._nextSettlementId = id + 1;
@@ -243,6 +273,7 @@ export function makeSettlement(world, x, y, opts = {}) {
     seedCulture(world, s, cul ? cul.id : -1);
     if (cul && !opts.name) s.name = nameFor(world, cul, "settlement");
   }
+  seedAncestry(world, s, opts);   // deep genetic stock: local substrate, admixed if founded from afar
   s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
   s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
   world.settlements.push(s);

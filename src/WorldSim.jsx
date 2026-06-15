@@ -720,7 +720,7 @@ try{
     console.warn('[SimWorker] error — falling back to main-thread sim:',err.message);
     try{if(simWorkerRef.current){simWorkerRef.current.terminate();}}catch{/* already dead */}
     simWorkerRef.current=null;
-    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
+    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount});
     setPsStats(peopleSimStats(peopleRef.current));
   };
   simWorkerRef.current=sw;
@@ -737,7 +737,7 @@ try{
   const _gm={oceanLevel:oceanLevelRef.current,tecParams:_tecParams};
   const _pend=pendingSaveRef.current;
   if(_pend){pendingSaveRef.current=null;sw.postMessage({type:'load',json:_pend,genMeta:_gm});}
-  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tileRes:RES,seed:w.seed,genMeta:_gm});
+  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tileRes:RES,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount});
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
   sw.postMessage({type:'view',view:viewRef.current});
@@ -748,7 +748,7 @@ try{
 if(!usedWorker){
   const _pend2=pendingSaveRef.current;
   if(_pend2){pendingSaveRef.current=null;peopleRef.current=loadWorld(_pend2);}
-  else peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits});
+  else peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount});
   setPsStats(peopleSimStats(peopleRef.current));
 }
 setPlaying(false);playRef.current=false;
@@ -1684,7 +1684,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // ── Culture / Faith views: who LIVES on each tile (dominant culture
       // or faith of the settlement whose territory it is) — peoples and
       // creeds, not states. Same machinery, different per-settlement key. ──
-      if((vmCulture||vmFaith||vmLanguage)&&psw.settlements){
+      if((vmCulture||vmFaith||vmLanguage||vmAncestry)&&psw.settlements){
         const tw=psw.tw,th=psw.th,N2=tw*th;
         // Resolve a settlement's overlay colour [h,s,l] + grouping KEY (borders
         // drawn where the key changes). Peoples → one hue each; Faiths → faith
@@ -1745,7 +1745,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dn>=0&&nearest[dn]<0&&land[dn]){nearest[dn]=sid;dist[dn]=dd;q[tail++]=dn;}}
           nf=identityFillRef.current={nearest,key:nfKey};
         }
-        if(nf){
+        if(nf&&(vmCulture||vmFaith||vmLanguage)){   // ancestry reuses the SAME fill but renders in its own block below
           const nearest=nf.nearest;
           const byId=psw._byId;const fcache=new Map(),kcache=new Map();
           const fillFor=(sid)=>{let c=fcache.get(sid);if(c!==undefined)return c;
@@ -1781,7 +1781,15 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         const rv=ancRevealRef.current;
         const prog=(arr&&rv.active)?Math.min(1,(performance.now()-rv.start)/ANC_REVEAL_MS):1;
         const lineageAt=(a)=>{if(!birth)return a;while(a>=0&&birth[a]>prog&&parent[a]>=0)a=parent[a];return a;};
-        const shown=(px,py)=>{const i=idx(px,py);const a=anc[i];if(a<0)return -1;if(arr&&arr[i]>prog)return -1;return prog<1?lineageAt(a):a;};
+        // LIVE ancestry: once the replay has run, settled tiles show the dominant
+        // (admixed) stock the SIM has carried there by migration — the substrate
+        // shifts under colonisation while staying put under mere conquest; deep
+        // wilderness keeps the worldgen bedrock. Reuses the identity flood above.
+        const nfA=identityFillRef.current;
+        const ancBySid=new Map();
+        if(nfA&&psw.settlements)for(const s of psw.settlements){if(!s||s.mode!=="settled")continue;const a=s.ancId!=null?s.ancId:(s.ancMix&&s.ancMix.length?s.ancMix[0][0]:-1);if(a>=0)ancBySid.set(s.id,a);}
+        const liveAt=(px,py)=>{if(!nfA)return -1;const sid=nfA.nearest[py*tw+px];if(sid<0)return -1;const a=ancBySid.get(sid);return a==null?-1:a;};
+        const shown=(px,py)=>{const i=idx(px,py);const a=anc[i];if(a<0)return -1;if(arr&&arr[i]>prog)return -1;if(prog<1)return lineageAt(a);const lv=liveAt(px,py);return lv>=0?lv:a;};
         const fill=new Map();let lastFs=null;
         for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
           const a=shown(px,py);if(a<0)continue;

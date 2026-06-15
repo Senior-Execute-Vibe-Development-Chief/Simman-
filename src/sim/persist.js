@@ -34,7 +34,7 @@ const SETT_FIELDS = [
   "_popPeak", "_witherSince", "lastFoundAttempt", "_lastColony", "_lastColonySent",
   "_coloniesSent", "_isColony",
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
-  "cultureId", "culMix", "faithMix", "langMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
+  "cultureId", "culMix", "faithMix", "langMix", "ancMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
 ];
 
 // ── typed-array <-> base64 ──────────────────────────────────────────────
@@ -141,7 +141,7 @@ export function loadWorld(data) {
   // Tuning first: granularity / cadence levers shape createWorld behavior.
   resetTuning();
   applyTuning(data.tuning);
-  const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tileRes: 1, deposits: ter.deposits });
+  const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount });
 
   // Drop the freshly-seeded state (cradles + their events); the save replaces it.
   world.settlements.length = 0;

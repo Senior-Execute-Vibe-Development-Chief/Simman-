@@ -389,6 +389,7 @@ export function maybeCrystallize(world) {
         people: 18 + (rng.int(8)),
         knowledge: inherited,
         countryId: region >= 0 ? region : -1,
+        parentId: donor.id,   // carries the donor's ancestry; a long jump admixes with the local substrate
         // near spread keeps the donor's people; otherwise we assign below
         cultureId: (connected && !isBranch) ? dCul : -1,
       });
