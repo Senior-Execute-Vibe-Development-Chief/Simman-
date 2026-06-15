@@ -226,20 +226,29 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
   // drifting a little per generation and shading by sub-lineage. So the map reads
   // as ancestry families radiating out of Africa — the deepest, most-subdivided
   // African trees spread widest in hue, while the shallow frontier stays uniform.
+  // Colour by RELATEDNESS via a circular layout of the lineage tree. Each subtree
+  // owns an arc of the hue wheel sized by its DIVERGENCE (older lineages weigh
+  // more), so the deep, early African splits fan across a wide span of hues while
+  // the shallow, recent out-of-Africa branches stay clustered — the genetic truth
+  // that the biggest differences in humanity are WITHIN Africa. Sibling lineages
+  // sit on neighbouring hues; lineages an old split apart land far across the wheel.
   const ancHue = new Float32Array(K), ancLight = new Float32Array(K);
-  { const roots = []; for (let a = 0; a < K; a++) if (aParent[a] < 0) roots.push(a);
-    roots.sort((p, q) => aBirth[p] - aBirth[q]);                                       // Africa-origin founder first → hue 12 (red)
-    const rootHue = new Map();
-    for (let i = 0; i < roots.length; i++) rootHue.set(roots[i], (i * 137.508 + 12) % 360);   // golden angle → every family distinct
-    const jit = (id) => ((Math.imul(id + 1, 2654435761) >>> 0) / 4294967296) - 0.5;   // deterministic −0.5..0.5
-    for (let a = 0; a < K; a++) {
-      let cur = a; const path = [];
-      while (aParent[cur] >= 0) { path.push(cur); cur = aParent[cur]; }
-      let h = rootHue.has(cur) ? rootHue.get(cur) : ((Math.imul(cur + 1, 2654435761) >>> 0) % 360);
-      for (let k = path.length - 1; k >= 0; k--) h += jit(path[k]) * 18;             // hue drift per generation — deep (African) trees spread widest
-      ancHue[a] = ((h % 360) + 360) % 360;
-      ancLight[a] = 50 + jit(a) * 18;                                                 // sub-lineage shade ~41–59%
-    }
+  { const kids = Array.from({ length: K }, () => []); const rootsL = [];
+    for (let a = 0; a < K; a++) { if (aParent[a] < 0) rootsL.push(a); else kids[aParent[a]].push(a); }
+    const subW = new Float32Array(K);
+    const wOf = (n) => { let w = (1 - aBirth[n]) + 0.2; for (const c of kids[n]) w += wOf(c); subW[n] = w; return w; };   // older lineages weigh more → wider arc
+    for (const r of rootsL) wOf(r);
+    const layout = (n, lo, hi) => {
+      ancHue[n] = ((lo + hi) / 2) % 360;
+      const cs = kids[n].slice().sort((a, b) => aBirth[a] - aBirth[b]);
+      let tot = 0; for (const c of cs) tot += subW[c];
+      let cur = lo; for (const c of cs) { const w = (hi - lo) * subW[c] / (tot || 1); layout(c, cur, cur + w); cur += w; }
+    };
+    const rs = rootsL.slice().sort((a, b) => aBirth[a] - aBirth[b]);
+    let tot = 0; for (const r of rs) tot += subW[r];
+    let cur = 0; for (const r of rs) { const w = 360 * subW[r] / (tot || 1); layout(r, cur, cur + w); cur += w; }
+    const jit = (id) => ((Math.imul(id + 1, 2654435761) >>> 0) / 4294967296) - 0.5;
+    for (let a = 0; a < K; a++) ancLight[a] = 52 + jit(a) * 12;                       // slight per-lineage shade ~46–58%
   }
   return { tAncestry: anc, ancestryCount: K, tArrival, ancBirth: Float32Array.from(aBirth), ancParent: Int32Array.from(aParent), ancHue, ancLight, ancOriginFx: (origin % tw) / tw, ancOriginFy: ((origin / tw) | 0) / th };
 }
