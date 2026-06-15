@@ -1763,24 +1763,20 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       }
       // ── Ancestry: the deep genetic substrate, a per-tile worldgen field over ALL
       // land (not just settled). Coloured per-ancestry; civ overlays sit on top of it. ──
-      if(vmAncestry&&ter&&ter.tAncestry){
-        const tw=psw.tw,th=psw.th,anc=ter.tAncestry;
+      if(vmAncestry&&ter&&ter.tAncestryColor){
+        // Smooth genetic clines: render the per-tile BLENDED colour field directly
+        // (no hard borders — the gradient is the boundary). anc<0 = sea/ice/polar.
+        const tw=psw.tw,th=psw.th,col=ter.tAncestryColor,anc=ter.tAncestry;
         const TRr=ter.tw?Math.max(1,Math.round(ter.tw/tw)):1;
-        const at=(px,py)=>anc[Math.min(ter.th-1,py*TRr)*ter.tw+Math.min(ter.tw-1,px*TRr)];
-        const fill=new Map();let lastFs=null;
+        const idx=(px,py)=>Math.min(ter.th-1,py*TRr)*ter.tw+Math.min(ter.tw-1,px*TRr);
+        const cache=new Map();let lastFs=null;
         for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
-          const a=at(px,py);if(a<0)continue;
-          let fs=fill.get(a);if(fs===undefined){const h=((a*2654435761)>>>0)%360;fs=`hsl(${h},52%,52%)`;fill.set(a,fs);}
+          const t2=idx(px,py);if(anc[t2]<0)continue;const c=col[t2];
+          const ck=c&0xf8f8f8;let fs=cache.get(ck);
+          if(fs===undefined){fs=`rgb(${(c>>16)&255},${(c>>8)&255},${c&255})`;cache.set(ck,fs);}
           if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
           octx.fillRect(px*TR,dataYtoScreenY(py*TR,H,CH),TR+0.7,TR+0.7);
         }
-        octx.strokeStyle="rgba(8,8,12,0.34)";octx.lineWidth=Math.max(0.8,TR*0.5);octx.beginPath();
-        for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
-          const a=at(px,py);if(a<0)continue;const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
-          const ra=at((px+1)%tw,py);if(ra>=0&&ra!==a){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
-          if(py<th-1){const da=at(px,py+1);if(da>=0&&da!==a){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
-        }
-        octx.stroke();
       }
       if(vmCountry&&claimArr){
         const tw=psw.tw,th=psw.th;

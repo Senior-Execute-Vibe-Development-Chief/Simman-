@@ -48,6 +48,15 @@ const ANC_ICE_TEMP  = 0.33;   // below this ≈ permanent ice: no anchors, no an
 const ANC_ICE_STEP  = 13;     // …and ice is a strong barrier to migration
 const ANC_SEP_DENSE = 0.045;  // anchor separation in the LONGEST-settled, most habitable land (≈ Africa) — many small peoples
 const ANC_SEP_SPARSE= 0.16;   // …in the youngest / thinnest land (the Americas, arid & cold margins) — few broad peoples
+const ANC_BLEND_W   = 10;     // cline half-width, in cost-units: how far a region blends toward the one across its nearest boundary
+const ANC_POLAR_LAT = 0.80;   // a landmass whose northernmost tile is below this (fraction of height) is polar/uninhabited (Antarctica)
+function hsl2rgb(h, s, l) {   // h∈[0,360), s,l∈[0,1] → [r,g,b] in 0..255
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; } else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; } else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+}
 function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed) {
   const N = tw * th;
   const anc = new Int16Array(N); anc.fill(-1);
@@ -62,7 +71,7 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed) {
   );
   // Reusable binary-heap Dijkstra. `sources`: seed tiles. If `label` is given, each
   // tile is stamped with its nearest source's index. Returns the cost field.
-  const dijkstra = (sources, label) => {
+  const dijkstra = (sources, label, seedLabels) => {
     const dist = new Float64Array(N); dist.fill(Infinity);
     let cap = N + 16, hti = new Int32Array(cap), hd = new Float64Array(cap), hn = 0;
     const push = (ti, d) => {
@@ -70,7 +79,7 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed) {
       let i = ++hn; hti[i] = ti; hd[i] = d;
       while (i > 1) { const p = i >> 1; if (hd[p] <= hd[i]) break; const a = hti[p], b = hd[p]; hti[p] = hti[i]; hd[p] = hd[i]; hti[i] = a; hd[i] = b; i = p; }
     };
-    for (let s = 0; s < sources.length; s++) { const ti = sources[s]; dist[ti] = 0; if (label) label[ti] = s; push(ti, 0); }
+    for (let s = 0; s < sources.length; s++) { const ti = sources[s]; dist[ti] = 0; if (label) label[ti] = seedLabels ? seedLabels[s] : s; push(ti, 0); }
     while (hn > 0) {
       const ti = hti[1], d = hd[1];
       hti[1] = hti[hn]; hd[1] = hd[hn]; hn--;
@@ -91,18 +100,19 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed) {
   // landmass (≈ Africa on an Earth map). Interior-ness via distance to the sea,
   // weighted by landmass size so a big tropical continent beats a small one.
   const distSea = new Int32Array(N); distSea.fill(0x3fffffff);
-  const comp = new Int32Array(N); comp.fill(-1); const compSize = [];
+  const comp = new Int32Array(N); comp.fill(-1); const compSize = [], compMinRow = [];
   { const q = new Int32Array(N); let h = 0, t = 0;
     for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0) { distSea[ti] = 0; q[t++] = ti; }
     while (h < t) { const ti = q[h++], d = distSea[ti] + 1, ty = (ti / tw) | 0, tx = ti - ty * tw;
       for (let k = 0; k < 4; k++) { const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue; const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
         if (distSea[ni] > d) { distSea[ni] = d; q[t++] = ni; } } }
     for (let s = 0; s < N; s++) { if (tElev[s] <= 0 || comp[s] >= 0) continue;
-      const cid = compSize.length; let sz = 0; h = 0; t = 0; q[t++] = s; comp[s] = cid;
-      while (h < t) { const ti = q[h++]; sz++; const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const cid = compSize.length; let sz = 0, minRow = th; h = 0; t = 0; q[t++] = s; comp[s] = cid;
+      while (h < t) { const ti = q[h++]; sz++; const ty = (ti / tw) | 0, tx = ti - ty * tw; if (ty < minRow) minRow = ty;
         for (let k = 0; k < 8; k++) { const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue; const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
           if (tElev[ni] > 0 && comp[ni] < 0) { comp[ni] = cid; q[t++] = ni; } } }
-      compSize.push(sz); } }
+      compSize.push(sz); compMinRow.push(minRow); } }
+  const polar = compMinRow.map(mr => mr > th * ANC_POLAR_LAT);   // a landmass entirely in the deep south (Antarctica) — uninhabited
   let maxComp = 1; for (const sz of compSize) if (sz > maxComp) maxComp = sz;
   let origin = -1, best = -Infinity;
   for (let ti = 0; ti < N; ti++) {
@@ -120,7 +130,7 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed) {
 
   // 3. ANCHORS — density ∝ RESIDENCE (1 at origin → 0 at frontier) × habitability.
   const land = [];
-  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && isFinite(arrival[ti])) land.push(ti);
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && !polar[comp[ti]] && isFinite(arrival[ti])) land.push(ti);
   for (let k = land.length - 1; k > 0; k--) { const j = rng.int(k + 1); const tt = land[k]; land[k] = land[j]; land[j] = tt; }
   const ax = [], ay = [];
   for (const ti of land) {
@@ -140,9 +150,34 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed) {
   const src = new Array(K); for (let a = 0; a < K; a++) src[a] = ay[a] * tw + ax[a];
   dijkstra(src, anc);
 
-  // 5. sea + permanent ice carried gene flow but hold no ancestry of their own.
-  for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0 || tTemp[ti] < ANC_ICE_TEMP) anc[ti] = -1;
-  return { tAncestry: anc, ancestryCount: K };
+  // 5. sea, permanent ice and polar landmasses carried gene flow but hold no ancestry.
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0 || tTemp[ti] < ANC_ICE_TEMP || (comp[ti] >= 0 && polar[comp[ti]])) anc[ti] = -1;
+
+  // 6. CLINAL BLEND — turn the hard Voronoi into smooth genetic CLINES. Each land
+  // tile blends its own region with the region across its NEAREST boundary, by the
+  // cost-distance to that boundary: since that distance is barrier-aware the cline
+  // is WIDE across open interiors and NARROW (a sharp step) at oceans, ranges and
+  // deserts — the real shape of a genetic gradient. (Stored as a per-tile colour.)
+  const ar = new Float64Array(K), ag = new Float64Array(K), ab = new Float64Array(K);
+  for (let a = 0; a < K; a++) { const rgb = hsl2rgb(((a * 2654435761) >>> 0) % 360, 0.52, 0.52); ar[a] = rgb[0]; ag[a] = rgb[1]; ab[a] = rgb[2]; }
+  const bsrc = [], blab = [];                       // boundary tiles + the region across each
+  for (let ti = 0; ti < N; ti++) {
+    const a = anc[ti]; if (a < 0) continue; const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    for (let k = 0; k < 4; k++) { const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue; const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
+      if (anc[ni] >= 0 && anc[ni] !== a) { bsrc.push(ti); blab.push(anc[ni]); break; } }
+  }
+  const across = new Int16Array(N); across.fill(-1);
+  const bdist = bsrc.length ? dijkstra(bsrc, across, blab) : null;
+  const tAncestryColor = new Uint32Array(N);
+  for (let ti = 0; ti < N; ti++) {
+    const a = anc[ti]; if (a < 0) continue;
+    let r = ar[a], g = ag[a], b = ab[a];
+    const acr = across[ti];
+    if (acr >= 0 && bdist) { const w = 0.5 * Math.max(0, 1 - bdist[ti] / ANC_BLEND_W);   // 0.5 at the boundary → 0 deep inside
+      r += (ar[acr] - r) * w; g += (ag[acr] - g) * w; b += (ab[acr] - b) * w; }
+    tAncestryColor[ti] = ((r | 0) << 16) | ((g | 0) << 8) | (b | 0);
+  }
+  return { tAncestry: anc, ancestryCount: K, tAncestryColor };
 }
 
 export function buildTerritory(w,RES=1){
@@ -377,8 +412,8 @@ const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,ri
 if(w.seed==null)w.seed=w._seed??1;
 w.rivers=rivers;w.deposits=deposits;
 // Deep ancestry substrate (the pre-civilisation genetic map), from geography.
-const{tAncestry,ancestryCount}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1));
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,tAncestry,ancestryCount,stepCount:0};}
+const{tAncestry,ancestryCount,tAncestryColor}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1));
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,tAncestry,tAncestryColor,ancestryCount,stepCount:0};}
 
 // Full headless compose: generateWorld + buildTerritory in one call.
 export function buildWorld({W=480,H=W>>1,seed=1,preset="earth_sim",oceanLevel=0.78,tecParams={}}={}){
