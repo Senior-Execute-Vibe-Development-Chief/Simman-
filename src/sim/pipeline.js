@@ -54,6 +54,7 @@ const ANC_SEP_SPARSE= 0.17;   // broadest spacing in barren land (desert, tundra
 const ANC_SEP_FOUND = 0.090;  // founder spacing in rich land (the broad migration-wave layer; capacity widens it toward SPARSE)
 const ANC_ISO_W     = 1.3;    // broken terrain (tDiff) packs in more peoples — but only where there's capacity to feed them
 const ANC_HEAT_ARID = 0.35;   // how much heat raises evaporative demand (aridity): separates hot desert from hot rainforest
+const ANC_FRONTIER_THIN = 0.85;  // serial-founder genetic bottleneck: deep-ancestry richness lost with distance from Africa (quadratic, so it bites the late frontier — Americas/Australia — and spares the Old World, which holds few DEEP lineages however many tribes the land could feed)
 const ANC_POLAR_LAT = 0.80;   // a landmass whose northernmost tile is below this (fraction of height) is polar/uninhabited (Antarctica)
 function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, preset) {
   const N = tw * th;
@@ -207,7 +208,7 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
   // placement still guarantees at least one per isolated landmass.
   for (const ti of land) {
     const x = ti % tw, y = (ti / tw) | 0;
-    const fdens = Math.min(1, Math.pow(cap[ti], 1.3) * (1 + 0.5 * Math.min(1, tDiff[ti])));
+    const fdens = Math.min(1, Math.pow(cap[ti], 1.3) * (1 + 0.5 * Math.min(1, tDiff[ti])) * (1 - ANC_FRONTIER_THIN * arrN[ti] * arrN[ti]));
     const fsep = Math.min(ANC_SEP_SPARSE, ANC_SEP_FOUND / Math.sqrt(Math.max(fdens, 0.05))) * tw;
     const [par, bd] = nearestAnchor(x, y);
     if (par >= 0 && bd < fsep * fsep) continue;
@@ -219,7 +220,7 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
   const subs = [];
   for (const ti of land) {
     const x = ti % tw, y = (ti / tw) | 0;
-    const dens = Math.min(1, Math.pow(cap[ti], 1.7) * (1 + ANC_ISO_W * Math.min(1, tDiff[ti])));   // effective carrying capacity (sharpened)
+    const dens = Math.min(1, Math.pow(cap[ti], 1.7) * (1 + ANC_ISO_W * Math.min(1, tDiff[ti])) * (1 - ANC_FRONTIER_THIN * arrN[ti] * arrN[ti]));   // capacity × serial-founder diversity
     if (dens < 0.05) continue;
     const birth = arrN[ti] + (1 - arrN[ti]) * rng();
     const sep = Math.min(ANC_SEP_SPARSE, ANC_SEP_DENSE / Math.sqrt(dens)) * tw;
