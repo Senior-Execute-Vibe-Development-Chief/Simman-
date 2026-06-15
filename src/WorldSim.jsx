@@ -2094,7 +2094,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.faiths){const fm=new Map();for(const f of snap.faiths)fm.set(f.id,f);psw.faiths=fm;}
   if(snap.languages){const lm=new Map();for(const l of snap.languages)lm.set(l.id,l);psw.languages=lm;}
   psw.ships=snap.ships;
-  psw._chronicle=snap.chronicle||null;             // selected realm's history (null when nothing selected)
+  if(snap.chronicle!==undefined)psw._chronicle=snap.chronicle;   // full realm history; undefined = unchanged (keep), null = cleared
   if(snap.feed&&snap.feed.length){const F=psw._feed||(psw._feed=[]);F.push(...snap.feed);if(F.length>250)F.splice(0,F.length-250);}
   const setts=snap.settlements||[];
   if(snap.selected){const sel=setts.find(x=>x.id===snap.selected.id);if(sel)Object.assign(sel,snap.selected);}

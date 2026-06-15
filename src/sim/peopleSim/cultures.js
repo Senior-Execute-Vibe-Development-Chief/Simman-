@@ -56,6 +56,15 @@ const SPLIT_MIN          = 5;            // a people needs ≥ this many settlem
 const NAT_LANG_MIN_MEMBERS = 4;          // a realm needs this many settlements to be a real state worth a standard
 const NAT_LANG_MIN_ORG     = 0.25;       // …and a literate/bureaucratic capital (writing, scribes) to impose one
 const NAT_LANG_DIVERGE     = 0.45;       // how far the national standard branches from the parent tongue
+// Language CONVERGENCE — the counter-force to drift the old model lacked. Strongly
+// CONNECTED places (trade, roads) adopt a shared regional tongue — a lingua franca
+// emerging with no state — so as the world links up over history, convergence
+// overtakes drift and tongues CONSOLIDATE (the right arrow: most diversity early,
+// fewer tongues later). Isolated settlements have no peers to converge with, so
+// they keep their own speech.
+const CONVERGE_RATE      = 0.03;         // per-pass share shift toward the dominant tongue among trade peers
+const CONVERGE_MIN_PEERS = 2;            // need at least this many links before any pull (a lone village keeps its own)
+const CONVERGE_REF       = 6;            // peer count at which convergence reaches full strength
 const MIX_K = 4;                          // mixture components kept per settlement (rest folds into dominant)
 
 export function culturesOf(world) {
@@ -422,6 +431,32 @@ export function updateCultures(world) {
         });
       }
     }
+  }
+
+  // ── language convergence: connected places adopt a common tongue ──
+  // The counter-force to drift. Where settlements are linked by trade and roads,
+  // their SPEECH is pulled toward the dominant tongue among those links — a regional
+  // lingua franca forming with NO state. Weakly-linked / isolated places feel little
+  // pull and keep their own speech. As the world connects over history this overtakes
+  // drift, so tongues consolidate (max diversity early, fewer later — the right way
+  // round). Gentler than the state standard above, so within a realm the national
+  // tongue still wins and the Languages map keeps following borders.
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || !s.langMix || !s.langMix.length) continue;
+    const own = dominantLanguage(s);
+    const byLang = new Map(); let n = 0;
+    const weigh = (peer) => {
+      if (!peer || peer.mode !== "settled") return;
+      const pl = dominantLanguage(peer); if (pl < 0) return;
+      byLang.set(pl, (byLang.get(pl) || 0) + 1); n++;
+    };
+    if (s._tradeReach && world._byId) for (const pid of s._tradeReach.keys()) weigh(world._byId.get(typeof pid === "number" ? pid : +pid));
+    if (s._seaReach && world._byId) for (const pid of s._seaReach.keys()) weigh(world._byId.get(typeof pid === "number" ? pid : +pid));
+    if (n < CONVERGE_MIN_PEERS) continue;                 // too weakly linked — keeps its own tongue
+    let best = -1, bw = 0; for (const [l, w] of byLang) if (w > bw) { bw = w; best = l; }
+    if (best < 0 || best === own) continue;
+    const frac = bw / n;                                   // how dominant the regional tongue is among the links
+    mixLangToward(s, best, CONVERGE_RATE * Math.min(1, n / CONVERGE_REF) * frac);
   }
 
   // ── distance drift: a far-flung people fragments into a CONTINUUM ──
