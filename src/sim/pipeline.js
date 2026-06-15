@@ -86,6 +86,7 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, seed) {
       if (nd < dist[ni]) { dist[ni] = nd; anc[ni] = myA; push(ni, nd); }
     }
   }
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0) anc[ti] = -1;   // water only CARRIED gene flow (to reach islands); it has no ancestry of its own
   return { tAncestry: anc, ancestryCount: K };
 }
 
