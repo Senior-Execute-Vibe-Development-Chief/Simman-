@@ -1771,7 +1771,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         const tw=psw.tw,th=psw.th,anc=ter.tAncestry,arr=ter.tArrival;
         const TRr=ter.tw?Math.max(1,Math.round(ter.tw/tw)):1;
         const idx=(px,py)=>Math.min(ter.th-1,py*TRr)*ter.tw+Math.min(ter.tw-1,px*TRr);
-        const birth=ter.ancBirth,parent=ter.ancParent;
+        const birth=ter.ancBirth,parent=ter.ancParent,hue=ter.ancHue,light=ter.ancLight;
         // Peopling replay: a tile lights up once the wavefront reaches it (arr ≤
         // prog) and then shows the LINEAGE alive there at that moment — walk up
         // the fission tree to the most recent ancestor already born by `prog`, so
@@ -1785,7 +1785,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         const fill=new Map();let lastFs=null;
         for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
           const a=shown(px,py);if(a<0)continue;
-          let fs=fill.get(a);if(fs===undefined){const h=((a*2654435761)>>>0)%360;fs=`hsl(${h},52%,52%)`;fill.set(a,fs);}
+          let fs=fill.get(a);if(fs===undefined){const h=hue?hue[a]|0:((a*2654435761)>>>0)%360;const l=light?light[a]|0:52;fs=`hsl(${h},53%,${l}%)`;fill.set(a,fs);}
           if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
           octx.fillRect(px*TR,dataYtoScreenY(py*TR,H,CH),TR+0.7,TR+0.7);
         }

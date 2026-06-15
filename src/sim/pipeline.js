@@ -220,7 +220,28 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
   for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0 || tTemp[ti] < ANC_ICE_TEMP || (comp[ti] >= 0 && polar[comp[ti]])) anc[ti] = -1;
   const tArrival = new Float32Array(N);
   for (let ti = 0; ti < N; ti++) tArrival[ti] = anc[ti] < 0 ? -1 : (arrN[ti] < Infinity ? arrN[ti] : 1);
-  return { tAncestry: anc, ancestryCount: K, tArrival, ancBirth: Float32Array.from(aBirth), ancParent: Int32Array.from(aParent), ancOriginFx: (origin % tw) / tw, ancOriginFy: ((origin / tw) | 0) / th };
+
+  // Colour by RELATEDNESS: founders sorted by birth (Africa first) get base hues
+  // spread around the wheel; every descendant keeps its founder's family hue,
+  // drifting a little per generation and shading by sub-lineage. So the map reads
+  // as ancestry families radiating out of Africa — the deepest, most-subdivided
+  // African trees spread widest in hue, while the shallow frontier stays uniform.
+  const ancHue = new Float32Array(K), ancLight = new Float32Array(K);
+  { const roots = []; for (let a = 0; a < K; a++) if (aParent[a] < 0) roots.push(a);
+    roots.sort((p, q) => aBirth[p] - aBirth[q]);                                       // Africa-origin founder first → hue 12 (red)
+    const rootHue = new Map();
+    for (let i = 0; i < roots.length; i++) rootHue.set(roots[i], (i * 137.508 + 12) % 360);   // golden angle → every family distinct
+    const jit = (id) => ((Math.imul(id + 1, 2654435761) >>> 0) / 4294967296) - 0.5;   // deterministic −0.5..0.5
+    for (let a = 0; a < K; a++) {
+      let cur = a; const path = [];
+      while (aParent[cur] >= 0) { path.push(cur); cur = aParent[cur]; }
+      let h = rootHue.has(cur) ? rootHue.get(cur) : ((Math.imul(cur + 1, 2654435761) >>> 0) % 360);
+      for (let k = path.length - 1; k >= 0; k--) h += jit(path[k]) * 18;             // hue drift per generation — deep (African) trees spread widest
+      ancHue[a] = ((h % 360) + 360) % 360;
+      ancLight[a] = 50 + jit(a) * 18;                                                 // sub-lineage shade ~41–59%
+    }
+  }
+  return { tAncestry: anc, ancestryCount: K, tArrival, ancBirth: Float32Array.from(aBirth), ancParent: Int32Array.from(aParent), ancHue, ancLight, ancOriginFx: (origin % tw) / tw, ancOriginFy: ((origin / tw) | 0) / th };
 }
 
 export function buildTerritory(w,RES=1){
@@ -455,8 +476,8 @@ const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,ri
 if(w.seed==null)w.seed=w._seed??1;
 w.rivers=rivers;w.deposits=deposits;
 // Deep ancestry substrate (the pre-civilisation genetic map), from geography.
-const{tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancOriginFx,ancOriginFy}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1),w.preset);
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancOriginFx,ancOriginFy,stepCount:0};}
+const{tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1),w.preset);
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy,stepCount:0};}
 
 // Full headless compose: generateWorld + buildTerritory in one call.
 export function buildWorld({W=480,H=W>>1,seed=1,preset="earth_sim",oceanLevel=0.78,tecParams={}}={}){
