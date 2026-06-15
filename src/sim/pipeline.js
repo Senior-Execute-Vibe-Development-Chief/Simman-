@@ -11,6 +11,7 @@ import { computeRivers, RIVER_STREAM } from "./riverGen.js";
 import { cropSuitability } from "./cropGen.js";
 import { generateResources } from "./resourceGen.js";
 import { baseEdgeCost } from "./peopleSim/transport.js";
+import { mkRng, hash32 } from "./peopleSim/rng.js";
 
 // Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
 // Temperature fitness uses a COLD GATE (calibrated air-temp scale t=0.60+°C/100):
@@ -24,6 +25,69 @@ const base=tFactor*mFactor;
 return Math.max(0.01,base*(1-Math.max(0,e-0.15)*3));}
 
 export const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
+
+// ── Deep ancestry: the pre-civilisation genetic substrate ──────────────────
+// Humans filled the world tens of millennia before farming, so ancestry is laid
+// down HERE, at worldgen, from GEOGRAPHY — not from the agricultural cradles
+// (which seed civilisation, a far later overlay). The real driver is ISOLATION
+// BY DISTANCE (genetic distance ≈ walking distance, the out-of-Africa serial
+// founder effect): a smooth cline, steepened into distinct populations wherever
+// gene flow is throttled — across open OCEAN, high MOUNTAINS, and DESERTS (all
+// captured by tDiff), and across sharp CLIMATE gradients (populations adapted to
+// very different climates mixed less). We grow regions out from scattered deep-
+// population anchors by a barrier-aware cost-distance: each land tile takes the
+// ancestry of its cheapest-to-reach anchor, so boundaries fall on the barriers
+// and blend along the corridors. Civilisation's peoples and tongues later spread
+// OVER this; the blood stays put (a conquered land keeps its deep ancestry).
+const ANC_SEP_FRAC  = 0.15;   // anchor min-separation, as a fraction of map width (sets how many deep populations)
+const ANC_BARRIER_W = 6;      // mountains / desert / cold (tDiff) resistance to gene flow
+const ANC_OCEAN_STEP= 9;      // per-tile cost to cross open water — near islands share the mainland, oceans separate
+const ANC_CLIMATE_W = 7;      // resistance per unit of climate (temp+moisture) change across an edge
+function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, seed) {
+  const N = tw * th;
+  const anc = new Int16Array(N); anc.fill(-1);
+  const rng = mkRng(hash32(seed >>> 0, "ancestry"));
+  // 1. anchors — deep population centres, greedy min-separation on land (seeded)
+  const minSep = Math.max(6, ANC_SEP_FRAC * tw), minSep2 = minSep * minSep;
+  const land = [];
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0) land.push(ti);
+  for (let k = land.length - 1; k > 0; k--) { const j = rng.int(k + 1); const t = land[k]; land[k] = land[j]; land[j] = t; }
+  const ax = [], ay = [];
+  for (const ti of land) {
+    const x = ti % tw, y = (ti / tw) | 0; let ok = true;
+    for (let a = 0; a < ax.length; a++) { let dx = Math.abs(x - ax[a]); if (dx > tw / 2) dx = tw - dx; const dy = y - ay[a]; if (dx * dx + dy * dy < minSep2) { ok = false; break; } }
+    if (ok) { ax.push(x); ay.push(y); }
+  }
+  const K = ax.length;
+  if (!K) return { tAncestry: anc, ancestryCount: 0 };
+  // 2. multi-source Dijkstra — nearest anchor by barrier-aware cost
+  const dist = new Float64Array(N); dist.fill(Infinity);
+  let cap = N + 16, hti = new Int32Array(cap), hd = new Float64Array(cap), hn = 0;
+  const push = (ti, d) => {
+    if (hn + 1 >= cap) { cap *= 2; const t1 = new Int32Array(cap); t1.set(hti); hti = t1; const t2 = new Float64Array(cap); t2.set(hd); hd = t2; }
+    let i = ++hn; hti[i] = ti; hd[i] = d;
+    while (i > 1) { const p = i >> 1; if (hd[p] <= hd[i]) break; const a = hti[p], b = hd[p]; hti[p] = hti[i]; hd[p] = hd[i]; hti[i] = a; hd[i] = b; i = p; }
+  };
+  for (let a = 0; a < K; a++) { const ti = ay[a] * tw + ax[a]; dist[ti] = 0; anc[ti] = a; push(ti, 0); }
+  while (hn > 0) {
+    const ti = hti[1], d = hd[1];
+    hti[1] = hti[hn]; hd[1] = hd[hn]; hn--;
+    { let i = 1; for (;;) { const l = i * 2, r = l + 1; let b = i; if (l <= hn && hd[l] < hd[b]) b = l; if (r <= hn && hd[r] < hd[b]) b = r; if (b === i) break; const a = hti[b], c = hd[b]; hti[b] = hti[i]; hd[b] = hd[i]; hti[i] = a; hd[i] = c; i = b; } }
+    if (d > dist[ti]) continue;
+    const ty = (ti / tw) | 0, tx = ti - ty * tw, myT = tTemp[ti], myM = tMoist[ti], myA = anc[ti];
+    for (let k = 0; k < 8; k++) {
+      const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue;
+      const nx = (tx + DIRS[k][0] + tw) % tw, ni = ny * tw + nx;
+      const diag = (DIRS[k][0] && DIRS[k][1]) ? Math.SQRT2 : 1;
+      const step = tElev[ni] <= 0
+        ? ANC_OCEAN_STEP * diag
+        : (1 + tDiff[ni] * ANC_BARRIER_W + (Math.abs(tTemp[ni] - myT) + Math.abs(tMoist[ni] - myM)) * ANC_CLIMATE_W) * diag;
+      const nd = d + step;
+      if (nd < dist[ni]) { dist[ni] = nd; anc[ni] = myA; push(ni, nd); }
+    }
+  }
+  return { tAncestry: anc, ancestryCount: K };
+}
 
 export function buildTerritory(w,RES=1){
 const tw=Math.ceil(w.width/RES),th=Math.ceil(w.height/RES);
@@ -256,7 +320,9 @@ const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,ri
 // seed (generateWorld stamps _seed; everything downstream reads w.seed).
 if(w.seed==null)w.seed=w._seed??1;
 w.rivers=rivers;w.deposits=deposits;
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,stepCount:0};}
+// Deep ancestry substrate (the pre-civilisation genetic map), from geography.
+const{tAncestry,ancestryCount}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,(w._seed??w.seed??1));
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,tAncestry,ancestryCount,stepCount:0};}
 
 // Full headless compose: generateWorld + buildTerritory in one call.
 export function buildWorld({W=480,H=W>>1,seed=1,preset="earth_sim",oceanLevel=0.78,tecParams={}}={}){

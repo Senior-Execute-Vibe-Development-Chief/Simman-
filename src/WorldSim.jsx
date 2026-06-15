@@ -260,6 +260,7 @@ const LENSES=[
   {id:"terrain", label:"Terrain", subs:[["terrain","Map"],["atlas","Atlas"]]},
   {id:"politics",label:"Politics",subs:[["country","Realms"]]},
   {id:"peoples", label:"Peoples", subs:[["culture","Peoples"]]},
+  {id:"ancestry",label:"Ancestry",subs:[["ancestry","Ancestry"]]},
   {id:"languages",label:"Languages",subs:[["language","Languages"]]},
   {id:"faiths",  label:"Faiths",  subs:[["faith","Faiths"]]},
   {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["resources","Resources"],["crop","Cropland"]]},
@@ -1341,7 +1342,7 @@ d[pi4]=(r*shade)|0;d[pi4+1]=(g*shade)|0;d[pi4+2]=(b*shade)|0;d[pi4+3]=255;}
 if(!atlasCache.current||atlasCache.current.seed!==w._seed||atlasCache.current.ch!==CH){
 atlasCache.current={img:buildAtlas(w,ter),seed:w._seed,ch:CH};}
 d.set(atlasCache.current.img.data);
-}else if(vm==="culture"||vm==="faith"||vm==="language"){
+}else if(vm==="culture"||vm==="faith"||vm==="language"||vm==="ancestry"){
 // Neutral grey base for the people / faith / language overlays — dark grey
 // ocean, flat grey land — so the coloured identity regions read clearly
 // without the terrain colours competing. Faint elevation keeps coasts legible.
@@ -1503,6 +1504,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmCulture = viewRef.current === "culture";
   const vmFaith = viewRef.current === "faith";
   const vmLanguage = viewRef.current === "language";
+  const vmAncestry = viewRef.current === "ancestry";
     if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
@@ -1663,7 +1665,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0);
     if(meta.step<0||meta.ch!==CH||stepNow<meta.step||stepNow-meta.step>=PS_OVERLAY_REGEN||meta.layerKey!==layerKey){
       meta.layerKey=layerKey;
       const octx=ov.getContext('2d');
@@ -1759,6 +1761,27 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           octx.stroke();
         }
       }
+      // ── Ancestry: the deep genetic substrate, a per-tile worldgen field over ALL
+      // land (not just settled). Coloured per-ancestry; civ overlays sit on top of it. ──
+      if(vmAncestry&&ter&&ter.tAncestry){
+        const tw=psw.tw,th=psw.th,anc=ter.tAncestry;
+        const TRr=ter.tw?Math.max(1,Math.round(ter.tw/tw)):1;
+        const at=(px,py)=>anc[Math.min(ter.th-1,py*TRr)*ter.tw+Math.min(ter.tw-1,px*TRr)];
+        const fill=new Map();let lastFs=null;
+        for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
+          const a=at(px,py);if(a<0)continue;
+          let fs=fill.get(a);if(fs===undefined){const h=((a*2654435761)>>>0)%360;fs=`hsl(${h},52%,52%)`;fill.set(a,fs);}
+          if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+          octx.fillRect(px*TR,dataYtoScreenY(py*TR,H,CH),TR+0.7,TR+0.7);
+        }
+        octx.strokeStyle="rgba(8,8,12,0.34)";octx.lineWidth=Math.max(0.8,TR*0.5);octx.beginPath();
+        for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
+          const a=at(px,py);if(a<0)continue;const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
+          const ra=at((px+1)%tw,py);if(ra>=0&&ra!==a){const ex=(px+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+          if(py<th-1){const da=at(px,py+1);if(da>=0&&da!==a){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
+        }
+        octx.stroke();
+      }
       if(vmCountry&&claimArr){
         const tw=psw.tw,th=psw.th;
         const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current);
@@ -1787,7 +1810,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         octx.stroke();
       }
-      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map();
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
@@ -1808,7 +1831,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
-      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -1896,7 +1919,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         octx.setLineDash([]);
       }
       // Roads — thickness + alpha from current flow.
-      if(L.roads&&!vmCulture&&!vmFaith&&!vmLanguage&&psw.roadQuality&&psw.roadFlow){
+      if(L.roads&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&psw.roadQuality&&psw.roadFlow){
         const rq=psw.roadQuality,rf=psw.roadFlow,FLOW_FULL=50;
         for(let ti=0;ti<rq.length;ti++){
           if(rq[ti]>=1.0)continue;
@@ -1944,7 +1967,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // Per-tier visibility (Layers panel). When all tiers are off the loop
     // does nothing — same as turning icons off entirely.
     const _L=layersRef.current;
-    const _identity=vmCulture||vmFaith||vmLanguage;
+    const _identity=vmCulture||vmFaith||vmLanguage||vmAncestry;
     // Identity overlays (peoples/faiths/languages) show WHOLE filled regions —
     // drop the village/town dot-speckle so the areas read clean; keep only the
     // major cities/metropolises as landmarks.
