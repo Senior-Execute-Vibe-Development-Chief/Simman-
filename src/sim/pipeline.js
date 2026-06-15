@@ -26,69 +26,122 @@ return Math.max(0.01,base*(1-Math.max(0,e-0.15)*3));}
 
 export const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
 
-// ── Deep ancestry: the pre-civilisation genetic substrate ──────────────────
-// Humans filled the world tens of millennia before farming, so ancestry is laid
-// down HERE, at worldgen, from GEOGRAPHY — not from the agricultural cradles
-// (which seed civilisation, a far later overlay). The real driver is ISOLATION
-// BY DISTANCE (genetic distance ≈ walking distance, the out-of-Africa serial
-// founder effect): a smooth cline, steepened into distinct populations wherever
-// gene flow is throttled — across open OCEAN, high MOUNTAINS, and DESERTS (all
-// captured by tDiff), and across sharp CLIMATE gradients (populations adapted to
-// very different climates mixed less). We grow regions out from scattered deep-
-// population anchors by a barrier-aware cost-distance: each land tile takes the
-// ancestry of its cheapest-to-reach anchor, so boundaries fall on the barriers
-// and blend along the corridors. Civilisation's peoples and tongues later spread
-// OVER this; the blood stays put (a conquered land keeps its deep ancestry).
-const ANC_SEP_FRAC  = 0.07;   // anchor min-separation, as a fraction of map width (sets how many deep populations)
-const ANC_BARRIER_W = 11;     // mountains / desert (tDiff) resistance to gene flow — strong, so boundaries fall on real barriers
-const ANC_OCEAN_STEP= 11;     // per-tile cost to cross open water — near islands share the mainland, oceans separate continents
-const ANC_CLIMATE_W = 9;      // resistance per unit of climate (temp+moisture) change across an edge (Sahara vs Sahel vs Med)
-const ANC_ICE_TEMP  = 0.33;   // below this ≈ permanent ice (uninhabited in prehistory): no anchors, no ancestry
+// ── Deep ancestry: a pre-history PEOPLING simulation ───────────────────────
+// Homo sapiens filled the world tens of millennia BEFORE farming, so ancestry is
+// laid down here, at worldgen — civilisation (the cradles) is a far later overlay.
+// Instead of scattering populations evenly, we SIMULATE the peopling: one origin
+// in the deep tropics spreads as a wavefront across the habitable world over "deep
+// time" — slowed by mountains/desert, needing coastal HOPS over water, crossing the
+// cold north and narrow straits (Bering / Sahul land-bridges) only LATE, so the
+// Americas and deep Pacific are reached last. Each tile records its ARRIVAL time;
+// RESIDENCE (time-since-settled) is how long that region has had to branch into
+// distinct peoples. Anchors are then seeded with density ∝ residence × habitability,
+// so long-settled livable land (Africa, the fertile belts) holds MANY small peoples
+// while the late-reached frontier (the Americas) or thin land (arid Australia, the
+// high north) holds a FEW broad ones — the real shape of human genetic diversity.
+// Regions grow from the anchors by the same barrier-aware cost-distance, so their
+// boundaries fall on oceans, ranges and deserts.
+const ANC_BARRIER_W = 11;     // mountains / desert (tDiff) resistance to gene flow
+const ANC_OCEAN_STEP= 11;     // per-tile cost to cross open water (coastal hops; narrow straits cheap, oceans dear)
+const ANC_CLIMATE_W = 9;      // resistance per unit of climate (temp+moisture) change across an edge
+const ANC_ICE_TEMP  = 0.33;   // below this ≈ permanent ice: no anchors, no ancestry (uninhabited)
 const ANC_ICE_STEP  = 13;     // …and ice is a strong barrier to migration
-function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, seed) {
+const ANC_SEP_DENSE = 0.045;  // anchor separation in the LONGEST-settled, most habitable land (≈ Africa) — many small peoples
+const ANC_SEP_SPARSE= 0.16;   // …in the youngest / thinnest land (the Americas, arid & cold margins) — few broad peoples
+function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed) {
   const N = tw * th;
   const anc = new Int16Array(N); anc.fill(-1);
   const rng = mkRng(hash32(seed >>> 0, "ancestry"));
-  // 1. anchors — deep population centres, greedy min-separation on land (seeded)
-  const minSep = Math.max(6, ANC_SEP_FRAC * tw), minSep2 = minSep * minSep;
+  // Barrier-aware step cost between adjacent tiles, shared by the peopling spread
+  // and the ancestry growth: mountains/desert slow gene flow; open water and ice
+  // are strong but PASSABLE barriers (coastal hops, ice-age land-bridges).
+  const stepCost = (from, to, diag) => (
+    tElev[to] <= 0 ? ANC_OCEAN_STEP * diag
+    : tTemp[to] < ANC_ICE_TEMP ? ANC_ICE_STEP * diag
+    : (1 + tDiff[to] * ANC_BARRIER_W + (Math.abs(tTemp[to] - tTemp[from]) + Math.abs(tMoist[to] - tMoist[from])) * ANC_CLIMATE_W) * diag
+  );
+  // Reusable binary-heap Dijkstra. `sources`: seed tiles. If `label` is given, each
+  // tile is stamped with its nearest source's index. Returns the cost field.
+  const dijkstra = (sources, label) => {
+    const dist = new Float64Array(N); dist.fill(Infinity);
+    let cap = N + 16, hti = new Int32Array(cap), hd = new Float64Array(cap), hn = 0;
+    const push = (ti, d) => {
+      if (hn + 1 >= cap) { cap *= 2; const a1 = new Int32Array(cap); a1.set(hti); hti = a1; const a2 = new Float64Array(cap); a2.set(hd); hd = a2; }
+      let i = ++hn; hti[i] = ti; hd[i] = d;
+      while (i > 1) { const p = i >> 1; if (hd[p] <= hd[i]) break; const a = hti[p], b = hd[p]; hti[p] = hti[i]; hd[p] = hd[i]; hti[i] = a; hd[i] = b; i = p; }
+    };
+    for (let s = 0; s < sources.length; s++) { const ti = sources[s]; dist[ti] = 0; if (label) label[ti] = s; push(ti, 0); }
+    while (hn > 0) {
+      const ti = hti[1], d = hd[1];
+      hti[1] = hti[hn]; hd[1] = hd[hn]; hn--;
+      { let i = 1; for (;;) { const l = i * 2, r = l + 1; let b = i; if (l <= hn && hd[l] < hd[b]) b = l; if (r <= hn && hd[r] < hd[b]) b = r; if (b === i) break; const a = hti[b], c = hd[b]; hti[b] = hti[i]; hd[b] = hd[i]; hti[i] = a; hd[i] = c; i = b; } }
+      if (d > dist[ti]) continue;
+      const ty = (ti / tw) | 0, tx = ti - ty * tw, lab = label ? label[ti] : 0;
+      for (let k = 0; k < 8; k++) {
+        const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue;
+        const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
+        const nd = d + stepCost(ti, ni, (DIRS[k][0] && DIRS[k][1]) ? Math.SQRT2 : 1);
+        if (nd < dist[ni]) { dist[ni] = nd; if (label) label[ni] = lab; push(ni, nd); }
+      }
+    }
+    return dist;
+  };
+
+  // 1. ORIGIN — the cradle of the species: warm, watered, deep inside the LARGEST
+  // landmass (≈ Africa on an Earth map). Interior-ness via distance to the sea,
+  // weighted by landmass size so a big tropical continent beats a small one.
+  const distSea = new Int32Array(N); distSea.fill(0x3fffffff);
+  const comp = new Int32Array(N); comp.fill(-1); const compSize = [];
+  { const q = new Int32Array(N); let h = 0, t = 0;
+    for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0) { distSea[ti] = 0; q[t++] = ti; }
+    while (h < t) { const ti = q[h++], d = distSea[ti] + 1, ty = (ti / tw) | 0, tx = ti - ty * tw;
+      for (let k = 0; k < 4; k++) { const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue; const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
+        if (distSea[ni] > d) { distSea[ni] = d; q[t++] = ni; } } }
+    for (let s = 0; s < N; s++) { if (tElev[s] <= 0 || comp[s] >= 0) continue;
+      const cid = compSize.length; let sz = 0; h = 0; t = 0; q[t++] = s; comp[s] = cid;
+      while (h < t) { const ti = q[h++]; sz++; const ty = (ti / tw) | 0, tx = ti - ty * tw;
+        for (let k = 0; k < 8; k++) { const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue; const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
+          if (tElev[ni] > 0 && comp[ni] < 0) { comp[ni] = cid; q[t++] = ni; } } }
+      compSize.push(sz); } }
+  let maxComp = 1; for (const sz of compSize) if (sz > maxComp) maxComp = sz;
+  let origin = -1, best = -Infinity;
+  for (let ti = 0; ti < N; ti++) {
+    if (tElev[ti] <= 0 || tTemp[ti] < ANC_ICE_TEMP) continue;
+    const warm = Math.exp(-((tTemp[ti] - 0.74) * (tTemp[ti] - 0.74)) / (2 * 0.12 * 0.12));   // deep-tropical optimum
+    const score = warm * (0.3 + 0.7 * Math.min(1, tFert[ti] / 0.5)) * Math.min(36, distSea[ti]) * (compSize[comp[ti]] / maxComp) * (0.85 + 0.3 * rng());
+    if (score > best) { best = score; origin = ti; }
+  }
+  if (origin < 0) return { tAncestry: anc, ancestryCount: 0 };
+
+  // 2. PEOPLING — spread the origin population over the world; arrival = cost-time.
+  const arrival = dijkstra([origin], null);
+  let maxArr = 1e-9;
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && isFinite(arrival[ti]) && arrival[ti] > maxArr) maxArr = arrival[ti];
+
+  // 3. ANCHORS — density ∝ RESIDENCE (1 at origin → 0 at frontier) × habitability.
   const land = [];
-  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP) land.push(ti);   // anchors only on habitable land, never ice
-  for (let k = land.length - 1; k > 0; k--) { const j = rng.int(k + 1); const t = land[k]; land[k] = land[j]; land[j] = t; }
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && isFinite(arrival[ti])) land.push(ti);
+  for (let k = land.length - 1; k > 0; k--) { const j = rng.int(k + 1); const tt = land[k]; land[k] = land[j]; land[j] = tt; }
   const ax = [], ay = [];
   for (const ti of land) {
-    const x = ti % tw, y = (ti / tw) | 0; let ok = true;
-    for (let a = 0; a < ax.length; a++) { let dx = Math.abs(x - ax[a]); if (dx > tw / 2) dx = tw - dx; const dy = y - ay[a]; if (dx * dx + dy * dy < minSep2) { ok = false; break; } }
+    const x = ti % tw, y = (ti / tw) | 0;
+    const res = Math.max(0, 1 - arrival[ti] / maxArr);          // time-since-settled, 0..1
+    const hab = Math.min(1, tFert[ti] / 0.45);
+    const drive = res * (0.35 + 0.65 * hab);                     // long-settled AND livable → many peoples
+    const sep = (ANC_SEP_SPARSE - (ANC_SEP_SPARSE - ANC_SEP_DENSE) * drive) * tw;
+    const sep2 = sep * sep; let ok = true;
+    for (let a = 0; a < ax.length; a++) { let dx = Math.abs(x - ax[a]); if (dx > tw / 2) dx = tw - dx; const dy = y - ay[a]; if (dx * dx + dy * dy < sep2) { ok = false; break; } }
     if (ok) { ax.push(x); ay.push(y); }
   }
   const K = ax.length;
   if (!K) return { tAncestry: anc, ancestryCount: 0 };
-  // 2. multi-source Dijkstra — nearest anchor by barrier-aware cost
-  const dist = new Float64Array(N); dist.fill(Infinity);
-  let cap = N + 16, hti = new Int32Array(cap), hd = new Float64Array(cap), hn = 0;
-  const push = (ti, d) => {
-    if (hn + 1 >= cap) { cap *= 2; const t1 = new Int32Array(cap); t1.set(hti); hti = t1; const t2 = new Float64Array(cap); t2.set(hd); hd = t2; }
-    let i = ++hn; hti[i] = ti; hd[i] = d;
-    while (i > 1) { const p = i >> 1; if (hd[p] <= hd[i]) break; const a = hti[p], b = hd[p]; hti[p] = hti[i]; hd[p] = hd[i]; hti[i] = a; hd[i] = b; i = p; }
-  };
-  for (let a = 0; a < K; a++) { const ti = ay[a] * tw + ax[a]; dist[ti] = 0; anc[ti] = a; push(ti, 0); }
-  while (hn > 0) {
-    const ti = hti[1], d = hd[1];
-    hti[1] = hti[hn]; hd[1] = hd[hn]; hn--;
-    { let i = 1; for (;;) { const l = i * 2, r = l + 1; let b = i; if (l <= hn && hd[l] < hd[b]) b = l; if (r <= hn && hd[r] < hd[b]) b = r; if (b === i) break; const a = hti[b], c = hd[b]; hti[b] = hti[i]; hd[b] = hd[i]; hti[i] = a; hd[i] = c; i = b; } }
-    if (d > dist[ti]) continue;
-    const ty = (ti / tw) | 0, tx = ti - ty * tw, myT = tTemp[ti], myM = tMoist[ti], myA = anc[ti];
-    for (let k = 0; k < 8; k++) {
-      const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue;
-      const nx = (tx + DIRS[k][0] + tw) % tw, ni = ny * tw + nx;
-      const diag = (DIRS[k][0] && DIRS[k][1]) ? Math.SQRT2 : 1;
-      const step = tElev[ni] <= 0 ? ANC_OCEAN_STEP * diag
-        : tTemp[ni] < ANC_ICE_TEMP ? ANC_ICE_STEP * diag
-        : (1 + tDiff[ni] * ANC_BARRIER_W + (Math.abs(tTemp[ni] - myT) + Math.abs(tMoist[ni] - myM)) * ANC_CLIMATE_W) * diag;
-      const nd = d + step;
-      if (nd < dist[ni]) { dist[ni] = nd; anc[ni] = myA; push(ni, nd); }
-    }
-  }
-  for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0 || tTemp[ti] < ANC_ICE_TEMP) anc[ti] = -1;   // sea + permanent ice carry gene flow but hold no ancestry
+
+  // 4. GROW ancestry regions from the anchors (nearest by the same barrier cost).
+  const src = new Array(K); for (let a = 0; a < K; a++) src[a] = ay[a] * tw + ax[a];
+  dijkstra(src, anc);
+
+  // 5. sea + permanent ice carried gene flow but hold no ancestry of their own.
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0 || tTemp[ti] < ANC_ICE_TEMP) anc[ti] = -1;
   return { tAncestry: anc, ancestryCount: K };
 }
 
@@ -324,7 +377,7 @@ const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,ri
 if(w.seed==null)w.seed=w._seed??1;
 w.rivers=rivers;w.deposits=deposits;
 // Deep ancestry substrate (the pre-civilisation genetic map), from geography.
-const{tAncestry,ancestryCount}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,(w._seed??w.seed??1));
+const{tAncestry,ancestryCount}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1));
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,tAncestry,ancestryCount,stepCount:0};}
 
 // Full headless compose: generateWorld + buildTerritory in one call.
