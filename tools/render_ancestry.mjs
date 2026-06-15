@@ -25,9 +25,15 @@ for (let py = 0; py < th; py++) {
     if (a >= 0) { [r, g, b] = hslToRgb(hue[a], 53, light[a]); }
     else if (tElev[py * tw + px] > 0) { r = g = b = 110; }   // masked land (ice/polar) = grey
     else { r = g = b = 22; }                                  // ocean
+    // dark border where the lineage changes (right / down neighbour)
+    const rN = anc[py * tw + ((px + 1) % tw)], dN = py < th - 1 ? anc[(py + 1) * tw + px] : a;
+    const edge = a >= 0 && ((rN >= 0 && rN !== a) || (dN >= 0 && dN !== a));
     for (let sy = 0; sy < SCALE; sy++) {
       const row = py * SCALE + sy, off = row * (1 + W * 3) + 1 + px * SCALE * 3;
-      for (let sx = 0; sx < SCALE; sx++) { raw[off + sx * 3] = r; raw[off + sx * 3 + 1] = g; raw[off + sx * 3 + 2] = b; }
+      for (let sx = 0; sx < SCALE; sx++) {
+        const onEdge = edge && (sx >= SCALE - 1 || sy >= SCALE - 1);
+        raw[off + sx * 3] = onEdge ? 12 : r; raw[off + sx * 3 + 1] = onEdge ? 12 : g; raw[off + sx * 3 + 2] = onEdge ? 12 : b;
+      }
     }
   }
 }

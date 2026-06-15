@@ -49,9 +49,11 @@ const ANC_OCEAN_DEEP= 1.8;    // …multiplied by this PER TILE of distance from
 const ANC_CLIMATE_W = 9;      // resistance per unit of climate (temp+moisture) change across an edge
 const ANC_ICE_TEMP  = 0.33;   // below this ≈ permanent ice: no anchors, no ancestry (uninhabited)
 const ANC_ICE_STEP  = 13;     // …and ice is a strong barrier to migration
-const ANC_SEP_DENSE = 0.04;   // finest lineage spacing in the LONGEST-settled, most habitable land (≈ Africa) — many small peoples
-const ANC_SEP_SPARSE= 0.16;   // founder spacing & the floor in young/thin land (the Americas, arid & cold margins) — few broad peoples
-const ANC_DIV_RATE  = 1.15;   // subdivision rate; kept low enough that drive doesn't SATURATE in mid-age land, so density tracks residence-duration cleanly (Africa ≫ Eurasia ≫ the frontier)
+const ANC_SEP_DENSE = 0.030;  // finest people-spacing where carrying capacity is highest (wet tropics, New Guinea highlands)
+const ANC_SEP_SPARSE= 0.17;   // broadest spacing in barren land (desert, tundra) — the floor for both founders and the fill
+const ANC_SEP_FOUND = 0.090;  // founder spacing in rich land (the broad migration-wave layer; capacity widens it toward SPARSE)
+const ANC_ISO_W     = 1.3;    // broken terrain (tDiff) packs in more peoples — but only where there's capacity to feed them
+const ANC_HEAT_ARID = 0.35;   // how much heat raises evaporative demand (aridity): separates hot desert from hot rainforest
 const ANC_POLAR_LAT = 0.80;   // a landmass whose northernmost tile is below this (fraction of height) is polar/uninhabited (Antarctica)
 function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, preset) {
   const N = tw * th;
@@ -170,14 +172,27 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
   const arrN = new Float32Array(N);
   for (let ti = 0; ti < N; ti++) arrN[ti] = (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && isFinite(arrival[ti])) ? Math.min(1, arrival[ti] / maxArr) : Infinity;
 
-  // 3. LINEAGES — a serial-founder spread, then in-place DIVERSIFICATION. Every
-  // lineage is tagged with a BIRTH time and the PARENT it split from, so the
-  // peopling replays as progressive fission rather than a pre-baked mosaic.
-  //   Pass A (founders): a few broad lineages seeded across the world, each born
-  //     the moment the wavefront reaches its ground.
-  //   Pass B (subdivision): long-settled, fertile land keeps splitting into finer
-  //     sub-lineages through the remaining time; the just-reached frontier has no
-  //     time to, so it stays coarse — diversity tracks RESIDENCE DURATION.
+  // 3. LINEAGES — peoples placed by CARRYING CAPACITY; divergence set by TIME.
+  // Forager carrying capacity (≈ net primary productivity: warm × wet — rich in the
+  // wet tropics, poor in desert & tundra; NOT agricultural tFert, which scorns the
+  // rainforest) sets how MANY peoples a land holds. Each is a local population of
+  // ~fixed size, so its territory scales as 1/capacity — New Guinea & Amazonia pack
+  // dense mosaics, the Sahara & outback hold a few sprawling groups. WHEN a lineage
+  // splits (birth, any time after its ground was settled) sets how DEEPLY it has
+  // diverged, which the colouring shows: Africa's old splits run deep, recent
+  // frontiers stay shallow. Every lineage keeps a BIRTH time and a PARENT for the
+  // fission replay and the relatedness palette.
+  const cap = new Float32Array(N);
+  for (let ti = 0; ti < N; ti++) {
+    if (arrN[ti] >= Infinity) { cap[ti] = 0; continue; }
+    const warm = Math.min(1, Math.max(0, (tTemp[ti] - 0.34) / 0.40));   // cold → 0, warm-temperate and up → 1
+    // Aridity index: heat raises evaporative demand, so the same rainfall feeds
+    // fewer in a hot place. This separates hot DESERTS (Sahara, outback) from hot
+    // RAINFOREST (Congo, Amazon) that the flat simulated moisture alone cannot.
+    const effMoist = tMoist[ti] - ANC_HEAT_ARID * Math.max(0, tTemp[ti] - 0.55);
+    const wet  = Math.min(1, Math.max(0, (effMoist - 0.28) / 0.45));    // arid → 0, wet → 1 (Liebig: both needed)
+    cap[ti] = warm * wet;
+  }
   const ax = [], ay = [], aBirth = [], aParent = [];
   const land = [];
   for (let ti = 0; ti < N; ti++) if (arrN[ti] < Infinity && !polar[comp[ti]]) land.push(ti);
@@ -186,21 +201,28 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
   const nearestAnchor = (x, y) => { let best = -1, bd = Infinity;
     for (let a = 0; a < ax.length; a++) { let dx = Math.abs(x - ax[a]); if (dx > tw / 2) dx = tw - dx; const dy = y - ay[a]; const d = dx * dx + dy * dy; if (d < bd) { bd = d; best = a; } }
     return [best, bd]; };
-  const fSep2 = (ANC_SEP_SPARSE * tw) * (ANC_SEP_SPARSE * tw);
-  for (const ti of land) {                                      // Pass A — founders (roots)
-    const x = ti % tw, y = (ti / tw) | 0;
-    const [par, bd] = nearestAnchor(x, y);
-    if (par >= 0 && bd < fSep2) continue;
-    ax.push(x); ay.push(y); aBirth.push(arrN[ti] < Infinity ? arrN[ti] : 1); aParent.push(-1);
-  }
-  const subs = [];                                              // Pass B — gather candidate splits
+  // Pass A — founders: the broad lineages seeded as the wavefront passes (born
+  // when their ground is first reached). Spacing also widens where the land is
+  // barren, so a desert/tundra carries only a sprawling people or two; greedy
+  // placement still guarantees at least one per isolated landmass.
   for (const ti of land) {
     const x = ti % tw, y = (ti / tw) | 0;
-    const hab = Math.min(1, tFert[ti] / 0.45);
-    const drive = Math.min(1, (1 - arrN[ti]) * ANC_DIV_RATE * (0.35 + 0.65 * hab));   // settled-time × carrying capacity
-    if (drive <= 0) continue;
-    const birth = arrN[ti] + (1 - arrN[ti]) * rng();            // splits off sometime after this ground was settled
-    const sep = (ANC_SEP_SPARSE - (ANC_SEP_SPARSE - ANC_SEP_DENSE) * drive) * tw;
+    const fdens = Math.min(1, Math.pow(cap[ti], 1.3) * (1 + 0.5 * Math.min(1, tDiff[ti])));
+    const fsep = Math.min(ANC_SEP_SPARSE, ANC_SEP_FOUND / Math.sqrt(Math.max(fdens, 0.05))) * tw;
+    const [par, bd] = nearestAnchor(x, y);
+    if (par >= 0 && bd < fsep * fsep) continue;
+    ax.push(x); ay.push(y); aBirth.push(arrN[ti] < Infinity ? arrN[ti] : 1); aParent.push(-1);
+  }
+  // Pass B — population fill: extra peoples where the land can FEED them, spacing
+  // ∝ 1/√capacity so the COUNT tracks population not area, tightened by terrain
+  // isolation. Born some time after settling, splitting off the nearest older line.
+  const subs = [];
+  for (const ti of land) {
+    const x = ti % tw, y = (ti / tw) | 0;
+    const dens = Math.min(1, Math.pow(cap[ti], 1.7) * (1 + ANC_ISO_W * Math.min(1, tDiff[ti])));   // effective carrying capacity (sharpened)
+    if (dens < 0.05) continue;
+    const birth = arrN[ti] + (1 - arrN[ti]) * rng();
+    const sep = Math.min(ANC_SEP_SPARSE, ANC_SEP_DENSE / Math.sqrt(dens)) * tw;
     subs.push([x, y, birth, sep * sep]);
   }
   subs.sort((p, q) => p[2] - q[2]);                             // oldest splits first → parents exist before children
