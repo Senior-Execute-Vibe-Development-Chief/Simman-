@@ -46,8 +46,9 @@ const ANC_OCEAN_STEP= 11;     // per-tile cost to cross open water (coastal hops
 const ANC_CLIMATE_W = 9;      // resistance per unit of climate (temp+moisture) change across an edge
 const ANC_ICE_TEMP  = 0.33;   // below this ≈ permanent ice: no anchors, no ancestry (uninhabited)
 const ANC_ICE_STEP  = 13;     // …and ice is a strong barrier to migration
-const ANC_SEP_DENSE = 0.045;  // anchor separation in the LONGEST-settled, most habitable land (≈ Africa) — many small peoples
-const ANC_SEP_SPARSE= 0.16;   // …in the youngest / thinnest land (the Americas, arid & cold margins) — few broad peoples
+const ANC_SEP_DENSE = 0.04;   // finest lineage spacing in the LONGEST-settled, most habitable land (≈ Africa) — many small peoples
+const ANC_SEP_SPARSE= 0.16;   // founder spacing & the floor in young/thin land (the Americas, arid & cold margins) — few broad peoples
+const ANC_DIV_RATE  = 1.15;   // subdivision rate; kept low enough that drive doesn't SATURATE in mid-age land, so density tracks residence-duration cleanly (Africa ≫ Eurasia ≫ the frontier)
 const ANC_POLAR_LAT = 0.80;   // a landmass whose northernmost tile is below this (fraction of height) is polar/uninhabited (Antarctica)
 function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, preset) {
   const N = tw * th;
@@ -143,36 +144,62 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
   let maxArr = 1e-9;
   for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && isFinite(arrival[ti]) && arrival[ti] > maxArr) maxArr = arrival[ti];
 
-  // 3. ANCHORS — density ∝ RESIDENCE (1 at origin → 0 at frontier) × habitability.
+  // Normalised arrival time of the peopling wavefront (0 at the cradle → 1 at the
+  // last-reached frontier): WHEN each tile is first peopled. Infinity = no ancestry.
+  const arrN = new Float32Array(N);
+  for (let ti = 0; ti < N; ti++) arrN[ti] = (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && isFinite(arrival[ti])) ? Math.min(1, arrival[ti] / maxArr) : Infinity;
+
+  // 3. LINEAGES — a serial-founder spread, then in-place DIVERSIFICATION. Every
+  // lineage is tagged with a BIRTH time and the PARENT it split from, so the
+  // peopling replays as progressive fission rather than a pre-baked mosaic.
+  //   Pass A (founders): a few broad lineages seeded across the world, each born
+  //     the moment the wavefront reaches its ground.
+  //   Pass B (subdivision): long-settled, fertile land keeps splitting into finer
+  //     sub-lineages through the remaining time; the just-reached frontier has no
+  //     time to, so it stays coarse — diversity tracks RESIDENCE DURATION.
+  const ax = [], ay = [], aBirth = [], aParent = [];
   const land = [];
-  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && !polar[comp[ti]] && isFinite(arrival[ti])) land.push(ti);
+  for (let ti = 0; ti < N; ti++) if (arrN[ti] < Infinity && !polar[comp[ti]]) land.push(ti);
   for (let k = land.length - 1; k > 0; k--) { const j = rng.int(k + 1); const tt = land[k]; land[k] = land[j]; land[j] = tt; }
-  const ax = [], ay = [];
+  // nearest existing lineage to (x,y) → [index, squared tile distance] (torus x)
+  const nearestAnchor = (x, y) => { let best = -1, bd = Infinity;
+    for (let a = 0; a < ax.length; a++) { let dx = Math.abs(x - ax[a]); if (dx > tw / 2) dx = tw - dx; const dy = y - ay[a]; const d = dx * dx + dy * dy; if (d < bd) { bd = d; best = a; } }
+    return [best, bd]; };
+  const fSep2 = (ANC_SEP_SPARSE * tw) * (ANC_SEP_SPARSE * tw);
+  for (const ti of land) {                                      // Pass A — founders (roots)
+    const x = ti % tw, y = (ti / tw) | 0;
+    const [par, bd] = nearestAnchor(x, y);
+    if (par >= 0 && bd < fSep2) continue;
+    ax.push(x); ay.push(y); aBirth.push(arrN[ti] < Infinity ? arrN[ti] : 1); aParent.push(-1);
+  }
+  const subs = [];                                              // Pass B — gather candidate splits
   for (const ti of land) {
     const x = ti % tw, y = (ti / tw) | 0;
-    const res = Math.max(0, 1 - arrival[ti] / maxArr);          // time-since-settled, 0..1
     const hab = Math.min(1, tFert[ti] / 0.45);
-    const drive = res * (0.35 + 0.65 * hab);                     // long-settled AND livable → many peoples
+    const drive = Math.min(1, (1 - arrN[ti]) * ANC_DIV_RATE * (0.35 + 0.65 * hab));   // settled-time × carrying capacity
+    if (drive <= 0) continue;
+    const birth = arrN[ti] + (1 - arrN[ti]) * rng();            // splits off sometime after this ground was settled
     const sep = (ANC_SEP_SPARSE - (ANC_SEP_SPARSE - ANC_SEP_DENSE) * drive) * tw;
-    const sep2 = sep * sep; let ok = true;
-    for (let a = 0; a < ax.length; a++) { let dx = Math.abs(x - ax[a]); if (dx > tw / 2) dx = tw - dx; const dy = y - ay[a]; if (dx * dx + dy * dy < sep2) { ok = false; break; } }
-    if (ok) { ax.push(x); ay.push(y); }
+    subs.push([x, y, birth, sep * sep]);
+  }
+  subs.sort((p, q) => p[2] - q[2]);                             // oldest splits first → parents exist before children
+  for (const s of subs) {
+    const [par, bd] = nearestAnchor(s[0], s[1]);
+    if (par >= 0 && bd < s[3]) continue;
+    ax.push(s[0]); ay.push(s[1]); aBirth.push(s[2]); aParent.push(par);
   }
   const K = ax.length;
   if (!K) return { tAncestry: anc, ancestryCount: 0 };
 
-  // 4. GROW ancestry regions from the anchors (nearest by the same barrier cost).
+  // 4. GROW lineage regions from the anchors (nearest by the same barrier cost).
   const src = new Array(K); for (let a = 0; a < K; a++) src[a] = ay[a] * tw + ax[a];
   dijkstra(src, anc);
 
   // 5. sea, permanent ice and polar landmasses carried gene flow but hold no ancestry.
   for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0 || tTemp[ti] < ANC_ICE_TEMP || (comp[ti] >= 0 && polar[comp[ti]])) anc[ti] = -1;
-  // Normalised arrival time of the peopling wavefront (0 at the cradle → 1 at the
-  // last-reached frontier) so the spread can be replayed as a watchable animation;
-  // −1 on tiles that hold no ancestry (sea/ice/polar).
   const tArrival = new Float32Array(N);
-  for (let ti = 0; ti < N; ti++) tArrival[ti] = anc[ti] < 0 ? -1 : Math.min(1, Math.max(0, arrival[ti] / maxArr));
-  return { tAncestry: anc, ancestryCount: K, tArrival, ancOriginFx: (origin % tw) / tw, ancOriginFy: ((origin / tw) | 0) / th };
+  for (let ti = 0; ti < N; ti++) tArrival[ti] = anc[ti] < 0 ? -1 : (arrN[ti] < Infinity ? arrN[ti] : 1);
+  return { tAncestry: anc, ancestryCount: K, tArrival, ancBirth: Float32Array.from(aBirth), ancParent: Int32Array.from(aParent), ancOriginFx: (origin % tw) / tw, ancOriginFy: ((origin / tw) | 0) / th };
 }
 
 export function buildTerritory(w,RES=1){
@@ -407,8 +434,8 @@ const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,ri
 if(w.seed==null)w.seed=w._seed??1;
 w.rivers=rivers;w.deposits=deposits;
 // Deep ancestry substrate (the pre-civilisation genetic map), from geography.
-const{tAncestry,ancestryCount,tArrival,ancOriginFx,ancOriginFy}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1),w.preset);
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,tAncestry,ancestryCount,tArrival,ancOriginFx,ancOriginFy,stepCount:0};}
+const{tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancOriginFx,ancOriginFy}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1),w.preset);
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancOriginFx,ancOriginFy,stepCount:0};}
 
 // Full headless compose: generateWorld + buildTerritory in one call.
 export function buildWorld({W=480,H=W>>1,seed=1,preset="earth_sim",oceanLevel=0.78,tecParams={}}={}){

@@ -1771,15 +1771,17 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         const tw=psw.tw,th=psw.th,anc=ter.tAncestry,arr=ter.tArrival;
         const TRr=ter.tw?Math.max(1,Math.round(ter.tw/tw)):1;
         const idx=(px,py)=>Math.min(ter.th-1,py*TRr)*ter.tw+Math.min(ter.tw-1,px*TRr);
-        const at=(px,py)=>anc[idx(px,py)];
-        // Peopling replay: a tile shows only once the migration wavefront has
-        // reached it. arr = normalised arrival time (0 at the cradle → 1 at the
-        // last frontier); prog sweeps 0→1 over ANC_REVEAL_MS, so the mosaic paints
-        // itself on outward from East Africa just as humanity actually spread.
+        const birth=ter.ancBirth,parent=ter.ancParent;
+        // Peopling replay: a tile lights up once the wavefront reaches it (arr ≤
+        // prog) and then shows the LINEAGE alive there at that moment — walk up
+        // the fission tree to the most recent ancestor already born by `prog`, so
+        // long-settled lands visibly split into sub-lineages as the clock runs
+        // while the just-reached frontier stays one broad founder colour.
         const ANC_REVEAL_MS=10000;
         const rv=ancRevealRef.current;
         const prog=(arr&&rv.active)?Math.min(1,(performance.now()-rv.start)/ANC_REVEAL_MS):1;
-        const shown=(px,py)=>{const a=at(px,py);if(a<0)return -1;return(!arr||arr[idx(px,py)]<=prog)?a:-1;};
+        const lineageAt=(a)=>{if(!birth)return a;while(a>=0&&birth[a]>prog&&parent[a]>=0)a=parent[a];return a;};
+        const shown=(px,py)=>{const i=idx(px,py);const a=anc[i];if(a<0)return -1;if(arr&&arr[i]>prog)return -1;return prog<1?lineageAt(a):a;};
         const fill=new Map();let lastFs=null;
         for(let py=0;py<th;py++)for(let px=0;px<tw;px++){
           const a=shown(px,py);if(a<0)continue;
