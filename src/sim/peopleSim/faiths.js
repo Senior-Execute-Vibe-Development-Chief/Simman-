@@ -48,6 +48,8 @@ const SPREAD_RATE = 0.055;               // per-pass share shift toward the pull
 const STATE_PRESSURE = 2.4;              // extra pull weight of the ruler's faith
 const ORGANIZED_PULL = 2.2;              // organized faiths proselytize; folk faiths don't travel
 const FOLK_PULL = 0.45;
+const CONFORMITY = 2.1;                  // in-group pull a settlement exerts toward its OWN faith, ∝ how dominant it already is — makes a unit CONSOLIDATE to one creed (real settlements are ~homogeneous; only nations span faiths) rather than resting at a 50/50 border mix
+const MIX_FLOOR = 0.05;                  // drop faith shares below this so a consolidated settlement reads as single-faith
 // Branching (schism) — bounded so the late game doesn't fission exponentially.
 const SCHISM_MIN_REALMS = 3;             // only a faith spanning several realms can schism
 const SCHISM_MIN_AGE = 3000;             // a young faith doesn't schism
@@ -226,6 +228,9 @@ function normalizeMix(mix) {
     mix.length = MIX_K;
     mix[0][1] += tail;
   }
+  // drop negligible tails so a settlement that has consolidated reads as a single
+  // faith rather than carrying a permanent 1-2% ghost minority.
+  while (mix.length > 1 && mix[mix.length - 1][1] < MIX_FLOOR) mix.pop();
   let sum = 0;
   for (const e of mix) sum += e[1];
   if (sum > 0 && Math.abs(sum - 1) > 1e-9) for (const e of mix) e[1] /= sum;
@@ -348,7 +353,10 @@ export function updateFaiths(world) {
     const rc = s.countryId >= 0 && world.countries ? world.countries.get(s.countryId) : null;
     const recvPers = rc ? rc.personality : null;
     const pull = new Map();
-    const addPull = (fid, w) => { if (fid >= 0 && fid !== own) pull.set(fid, (pull.get(fid) || 0) + w); };
+    // own faith is NOT excluded: same-faith neighbours and the state reinforce the
+    // local majority, which (with the conformity term below) lets a settlement
+    // consolidate to one creed instead of oscillating about a border 50/50.
+    const addPull = (fid, w) => { if (fid >= 0) pull.set(fid, (pull.get(fid) || 0) + w); };
     const weighPeer = (peer) => {
       if (!peer || peer.mode !== "settled") return;
       const pf = dominantFaith(peer);
@@ -370,6 +378,11 @@ export function updateFaiths(world) {
         if (f && f.kind === "organized") addPull(p.faithId, STATE_PRESSURE * (0.6 + 0.8 * (f.doctrine ? f.doctrine.zeal : 0.5)) * affinityMul(ftOf(p.faithId), recvPers));
       }
     }
+    // In-group conformity: the settlement's own creed pulls toward itself in
+    // proportion to how dominant it already is — a clear majority snowballs to
+    // homogeneity, a near-tie stays contested and can still flip to a stronger
+    // neighbour/state faith. This is what tips a unit to ONE faith.
+    if (own >= 0) pull.set(own, (pull.get(own) || 0) + CONFORMITY * s.faithMix[0][1]);
     if (!pull.size) continue;
     let best = -1, bw = 0;
     for (const [fid, w] of pull) if (w > bw) { bw = w; best = fid; }
