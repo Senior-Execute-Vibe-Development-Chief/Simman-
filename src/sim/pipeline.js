@@ -42,7 +42,10 @@ export const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
 // Regions grow from the anchors by the same barrier-aware cost-distance, so their
 // boundaries fall on oceans, ranges and deserts.
 const ANC_BARRIER_W = 11;     // mountains / desert (tDiff) resistance to gene flow
-const ANC_OCEAN_STEP= 11;     // per-tile cost to cross open water (coastal hops; narrow straits cheap, oceans dear)
+const ANC_OCEAN_STEP= 11;     // base per-tile cost to cross water at the shoreline (a coastal hop / narrow strait)
+const ANC_OCEAN_DEEP= 1.8;    // …multiplied by this PER TILE of distance from the nearest shore, so wide oceans
+                              // (mid-Atlantic, deep Pacific) grow exponentially dear and stay uncrossable until boats,
+                              // while short straits (Bering, Gibraltar, Bab-el-Mandeb, the Sunda→Sahul island hops) stay cheap
 const ANC_CLIMATE_W = 9;      // resistance per unit of climate (temp+moisture) change across an edge
 const ANC_ICE_TEMP  = 0.33;   // below this ≈ permanent ice: no anchors, no ancestry (uninhabited)
 const ANC_ICE_STEP  = 13;     // …and ice is a strong barrier to migration
@@ -54,11 +57,23 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
   const N = tw * th;
   const anc = new Int16Array(N); anc.fill(-1);
   const rng = mkRng(hash32(seed >>> 0, "ancestry"));
+  // Distance (in tiles) from every water tile to the nearest shore — 0 on land,
+  // 1 for coastal water, growing out into the open ocean. Drives the crossing
+  // penalty: a strait stays a 1-tile hop, but the middle of an ocean is far from
+  // any land and therefore astronomically costly to reach.
+  const distLand = new Int32Array(N);
+  { const q = new Int32Array(N); let h = 0, t = 0;
+    for (let ti = 0; ti < N; ti++) { if (tElev[ti] > 0) { distLand[ti] = 0; q[t++] = ti; } else distLand[ti] = 0x3fffffff; }
+    while (h < t) { const ti = q[h++], d = distLand[ti] + 1, ty = (ti / tw) | 0, tx = ti - ty * tw;
+      for (let k = 0; k < 4; k++) { const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue; const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
+        if (distLand[ni] > d) { distLand[ni] = d; q[t++] = ni; } } } }
   // Barrier-aware step cost between adjacent tiles, shared by the peopling spread
-  // and the ancestry growth: mountains/desert slow gene flow; open water and ice
-  // are strong but PASSABLE barriers (coastal hops, ice-age land-bridges).
+  // and the ancestry growth: mountains/desert slow gene flow; ice is a strong but
+  // passable barrier; open water costs ANC_OCEAN_STEP at the shore and rises by
+  // ANC_OCEAN_DEEP for every tile further out, so coastal hops and narrow straits
+  // pass while open oceans don't (no trans-Atlantic peopling before boats).
   const stepCost = (from, to, diag) => (
-    tElev[to] <= 0 ? ANC_OCEAN_STEP * diag
+    tElev[to] <= 0 ? ANC_OCEAN_STEP * Math.pow(ANC_OCEAN_DEEP, Math.min(distLand[to] - 1, 16)) * diag
     : tTemp[to] < ANC_ICE_TEMP ? ANC_ICE_STEP * diag
     : (1 + tDiff[to] * ANC_BARRIER_W + (Math.abs(tTemp[to] - tTemp[from]) + Math.abs(tMoist[to] - tMoist[from])) * ANC_CLIMATE_W) * diag
   );
@@ -139,10 +154,16 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
   }
   if (origin < 0) return { tAncestry: anc, ancestryCount: 0 };
 
-  // 2. PEOPLING — spread the origin population over the world; arrival = cost-time.
+  // 2. PEOPLING — spread the origin population from the cradle; arrival = cost-time.
   const arrival = dijkstra([origin], null);
-  let maxArr = 1e-9;
-  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && isFinite(arrival[ti]) && arrival[ti] > maxArr) maxArr = arrival[ti];
+  // Normalise by the 98th-percentile land arrival, NOT the raw max: a few very
+  // remote islands (reachable only by long open-water voyages, now hugely costly)
+  // would otherwise blow up the scale and squash every continent toward "just
+  // settled". Anything past the percentile clamps to 1 (the last frontier).
+  const arrSorted = [];
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && !polar[comp[ti]] && isFinite(arrival[ti])) arrSorted.push(arrival[ti]);
+  arrSorted.sort((a, b) => a - b);
+  const maxArr = Math.max(1e-9, arrSorted.length ? arrSorted[Math.floor((arrSorted.length - 1) * 0.98)] : 1e-9);
 
   // Normalised arrival time of the peopling wavefront (0 at the cradle → 1 at the
   // last-reached frontier): WHEN each tile is first peopled. Infinity = no ancestry.
