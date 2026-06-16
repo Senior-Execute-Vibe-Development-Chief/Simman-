@@ -42,7 +42,7 @@ export const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
 // Regions grow from the anchors by the same barrier-aware cost-distance, so their
 // boundaries fall on oceans, ranges and deserts.
 const ANC_BARRIER_W = 11;     // mountains / desert (tDiff) resistance to gene flow
-const ANC_OCEAN_STEP= 11;     // base per-tile cost to cross water at the shoreline (a coastal hop / narrow strait)
+const ANC_OCEAN_STEP= 6;      // base per-tile cost to cross water at the shoreline (a coastal hop / narrow strait)
 const ANC_OCEAN_DEEP= 1.8;    // …multiplied by this PER TILE of distance from the nearest shore, so wide oceans
                               // (mid-Atlantic, deep Pacific) grow exponentially dear and stay uncrossable until boats,
                               // while short straits (Bering, Gibraltar, Bab-el-Mandeb, the Sunda→Sahul island hops) stay cheap
@@ -56,6 +56,10 @@ const ANC_ISO_W     = 1.3;    // broken terrain (tDiff) packs in more peoples �
 const ANC_HEAT_ARID = 0.35;   // how much heat raises evaporative demand (aridity): separates hot desert from hot rainforest
 const ANC_FRONTIER_THIN = 0.85;  // serial-founder genetic bottleneck: deep-ancestry richness lost with distance from Africa (quadratic, so it bites the late frontier — Americas/Australia — and spares the Old World, which holds few DEEP lineages however many tribes the land could feed)
 const ANC_POLAR_LAT = 0.80;   // a landmass whose northernmost tile is below this (fraction of height) is polar/uninhabited (Antarctica)
+const ANC_COAST_FAST = 0.24;  // warm coastal land migrates faster — the prehistoric "beachcomber" highway: the southern coastal route ran along WARM shorelines (rich shellfish/forage) far quicker than the interior, carrying people to SE Asia and on to Sahul early, while the cold northern route to Beringia/the Americas got no such boost (so the Americas stay the LAST frontier)
+const ANC_COAST_WARM = 0.45;  // …only coasts at least this warm count as the beachcomber highway (a frozen Arctic shore is no fast lane)
+const ANC_HOP_FREE   = 4;     // near-shore water (≤ this many tiles from land) crosses at the flat shore cost — island-hopping a strait; the open-ocean exponential only bites BEYOND it, so Wallacea is passable early while the wide Atlantic/Pacific stay shut
+const ANC_RESIDENCE_P = 1.3;  // in-situ subdivision ACCUMULATES with residence time: a region's peoples ∝ (time inhabited)^this, so the ancient homeland fragments deeply while a freshly-peopled frontier stays coarse however rich the land
 function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, preset) {
   const N = tw * th;
   const anc = new Int16Array(N); anc.fill(-1);
@@ -70,15 +74,23 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
     while (h < t) { const ti = q[h++], d = distLand[ti] + 1, ty = (ti / tw) | 0, tx = ti - ty * tw;
       for (let k = 0; k < 4; k++) { const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue; const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
         if (distLand[ni] > d) { distLand[ni] = d; q[t++] = ni; } } } }
+  // Coastal land (a land tile touching the sea): the prehistoric migration highway.
+  // The southern "beachcomber" route ran along the shore far faster than through the
+  // interior — the mechanism that carried people across southern Asia to Sahul early,
+  // long before the continental interiors (Siberia, central Asia) filled in.
+  const isCoast = new Uint8Array(N);
+  for (let ti = 0; ti < N; ti++) { if (tElev[ti] <= 0) continue; const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    for (let k = 0; k < 4; k++) { const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue; const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
+      if (tElev[ni] <= 0) { isCoast[ti] = 1; break; } } }
   // Barrier-aware step cost between adjacent tiles, shared by the peopling spread
   // and the ancestry growth: mountains/desert slow gene flow; ice is a strong but
   // passable barrier; open water costs ANC_OCEAN_STEP at the shore and rises by
   // ANC_OCEAN_DEEP for every tile further out, so coastal hops and narrow straits
   // pass while open oceans don't (no trans-Atlantic peopling before boats).
   const stepCost = (from, to, diag) => (
-    tElev[to] <= 0 ? ANC_OCEAN_STEP * Math.pow(ANC_OCEAN_DEEP, Math.min(distLand[to] - 1, 16)) * diag
+    tElev[to] <= 0 ? ANC_OCEAN_STEP * Math.pow(ANC_OCEAN_DEEP, Math.min(Math.max(0, distLand[to] - ANC_HOP_FREE), 16)) * diag
     : tTemp[to] < ANC_ICE_TEMP ? ANC_ICE_STEP * diag
-    : (1 + tDiff[to] * ANC_BARRIER_W + (Math.abs(tTemp[to] - tTemp[from]) + Math.abs(tMoist[to] - tMoist[from])) * ANC_CLIMATE_W) * diag
+    : (1 + tDiff[to] * ANC_BARRIER_W + (Math.abs(tTemp[to] - tTemp[from]) + Math.abs(tMoist[to] - tMoist[from])) * ANC_CLIMATE_W) * (isCoast[to] && tTemp[to] >= ANC_COAST_WARM ? ANC_COAST_FAST : 1) * diag
   );
   // Reusable binary-heap Dijkstra. `sources`: seed tiles. If `label` is given, each
   // tile is stamped with its nearest source's index. Returns the cost field.
@@ -220,7 +232,13 @@ function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, pres
   const subs = [];
   for (const ti of land) {
     const x = ti % tw, y = (ti / tw) | 0;
-    const dens = Math.min(1, Math.pow(cap[ti], 1.7) * (1 + ANC_ISO_W * Math.min(1, tDiff[ti])) * (1 - ANC_FRONTIER_THIN * arrN[ti] * arrN[ti]));   // capacity × serial-founder diversity
+    // In-situ diversification ACCUMULATES with residence time: a region peopled at
+    // genesis fragments into a deep mosaic over the millennia, while a freshly-reached
+    // frontier holds only its founders however rich the land. (1−arrN) is the time
+    // inhabited; capacity × terrain isolation set the diversification RATE. This is
+    // what makes the ancient homeland far more subdivided than the recent frontier
+    // (instead of capacity alone, which let rich New-World land match Africa).
+    const dens = Math.min(1, Math.pow(cap[ti], 1.7) * (1 + ANC_ISO_W * Math.min(1, tDiff[ti])) * Math.pow(1 - arrN[ti], ANC_RESIDENCE_P));
     if (dens < 0.05) continue;
     const birth = arrN[ti] + (1 - arrN[ti]) * rng();
     const sep = Math.min(ANC_SEP_SPARSE, ANC_SEP_DENSE / Math.sqrt(dens)) * tw;
