@@ -202,6 +202,19 @@ const SEAT_BONUS_CAP = 10;   // total seat contribution is capped (admin has dim
 // great powers persist AND shed their over-extension.
 const CAP_K   = 2.6;
 const POW_REF = 380;
+// Dominant-empire tail: a capital whose coercive power stands well ABOVE the typical
+// capital of its age projects authority over a disproportionately larger realm — the
+// few great powers (Rome, the Caliphate, the Mongol khans, Britain) that tower over a
+// fragmented pack instead of the log2 compressing everyone to one uniform ceiling.
+// Measured RELATIVE to the era's mean capital power (world._meanCapPower), so the
+// global demographic scaling (index.js _eraProd) can't wash it out; bounded so the
+// hegemon is dominant, not all-consuming, and self-limiting — a rising giant lifts the
+// mean it is measured against.
+const CAP_DOM_W   = 0.9;   // extra capacity per (above-average power)^P
+const CAP_DOM_P   = 1.5;   // CONVEX: only genuine OUTLIERS tower — a power-law tail of a few great
+                           // powers, not a uniformly bigger pack (sustainable size ≈ capacity^⅔, so
+                           // the top core needs ~6–8× capacity to reach a Rome-scale share of the map)
+const CAP_DOM_MAX = 8.0;   // ceiling on the dominance multiplier (a hegemon, not an immortal world-eater)
 // Empire size is NOT capped. It emerges from the existing over-extension
 // mechanism: provinces past a realm's REACH bleed loyalty and revolt. We gate
 // that reach (`range`, the admin-load denominator) hard on transport tech below —
@@ -1313,6 +1326,15 @@ export function updatePolities(world) {
   // friction below. The axis of conflict it emphasises shifts with the calendar:
   // faith in the medieval, language across the bureaucratic eras, peoples in the modern.
   const idW = identityWeightsNow(world);
+  // MEDIAN capital power across the REAL states (multi-member) this pass — the era
+  // baseline the dominant-empire boost is measured against (see CAP_DOM_W). The median
+  // (not the mean) is deliberate: it is robust to the hegemon's OWN outsized core, so a
+  // great power keeps its dominance for ages instead of deflating the very average it is
+  // measured against and self-fragmenting — persistent Romes, not one-era flashes.
+  { const cps = [];
+    for (const c of countries.values()) if (c.capital && c.members.length > 1) cps.push(settlementPower(c.capital));
+    cps.sort((a, b) => a - b);
+    world._refCapPower = cps.length ? cps[cps.length >> 1] : 1; }
   for (const c of countries.values()) {
     if (c.members.length <= 1) { if (c.members[0]) c.members[0].loyalty = 1; continue; }   // city-state: loyal to itself
 
@@ -1374,8 +1396,13 @@ export function updatePolities(world) {
     // → telegraph), so the multiplier climbs exactly when bureaucracy is
     // invented; it scales the seat cap too — satrapies ARE the delegation.
     const instMul = 1 + capCoh * T.CAP_INST;
-    const peaceCapacity = CAP_K * instMul * Math.log2(1 + capPower / POW_REF)
-                        + Math.min(SEAT_BONUS_CAP * instMul, seatBonus);
+    // Dominance: a capital far above the era's mean sustains a disproportionately
+    // larger realm (the great-power tail), bounded and self-limiting (CAP_DOM_*).
+    const relPow = capPower / Math.max(1, world._refCapPower || capPower);
+    const dominance = Math.min(CAP_DOM_MAX, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
+    c._dominance = dominance;   // info panel: how far this realm out-cores the age
+    const peaceCapacity = (CAP_K * instMul * Math.log2(1 + capPower / POW_REF)
+                        + Math.min(SEAT_BONUS_CAP * instMul, seatBonus)) * dominance;
 
     // ── War duress: throttle the budget while the realm is fighting ────
     // (fronts are tallied in armies.js advanceFronts → world._fronts.)

@@ -92,6 +92,10 @@ const LOGI_REACH = 2.2;       // budget ×(1 + logisticsLevel · LOGI_REACH): tr
 // snaps to 100% overnight AND over-extends realms into collapse. Tuned so the fill
 // climbs across ~1845–1900 (the real Scramble) and tops out near-complete by ~1930.
 const FRONTIER_CLOSE = 80;    // wilderness-claim budget at era 1 = FRONTIER_CLOSE · resScale · era²
+const FRONTIER_DOM   = 0.7;   // a DOMINANT realm pushes its wilderness-claim frontier farther (budget × dominance^this):
+                              // the great powers partition the open interior into continental empires (Russia, the USA,
+                              // the Raj, the Scramble) instead of every realm grabbing an equal slice — bounded by the
+                              // competitive midline where rival floods meet (conquest.js _dominance)
 const FRONTIER_YEAR0 = 1760;  // the close BEGINS (era 0) — pre-industrial world keeps its open marches / terra nullius
 const FRONTIER_YEAR1 = 1930;  // era 1 — the whole partitioned world (Scramble for Africa done ~1914)
 // Reach is also scaled by how BIG the realm is, so a claim is backed by real
@@ -493,6 +497,14 @@ function recolorByCapital(world, co, capPos, knOf, claimCap, frontierBudget = 0)
   if (!capCost || capCost.length !== N) capCost = world._capCostF = new Float64Array(N);
   capColor.fill(-1); capCost.fill(Infinity);
   const noise = claimNoise(world);
+  // Dominant realms partition a LARGER share of the open interior (continental empires).
+  // Per-capital frontier budget = base × dominance^FRONTIER_DOM; 1 for ordinary realms.
+  const domBudget = new Map();
+  if (frontierBudget > 0 && world.countries) for (const [c] of capPos) {
+    const cc = world.countries.get(c);
+    domBudget.set(c, frontierBudget * (cc && cc._dominance ? Math.pow(cc._dominance, FRONTIER_DOM) : 1));
+  }
+  const budgetOf = (c) => domBudget.get(c) ?? frontierBudget;
   const heap = new MinHeap();
   for (const [c, pos] of capPos) {
     const ti = (pos.y | 0) * tw + (pos.x | 0);
@@ -524,7 +536,7 @@ function recolorByCapital(world, co, capPos, knOf, claimCap, frontierBudget = 0)
       // WILDERNESS is flooded only within the frontier-close budget — 0 in
       // antiquity (so the pass stays a recolour), growing to map-spanning by the
       // industrial era so the continents partition to the midline (no terra nullius).
-      if (co[ni] < 0 && nd >= frontierBudget) continue;
+      if (co[ni] < 0 && nd >= budgetOf(c)) continue;
       if (nd < capCost[ni]) { capCost[ni] = nd; capColor[ni] = c; heap.push(ni, nd, c); }
     }
   }
