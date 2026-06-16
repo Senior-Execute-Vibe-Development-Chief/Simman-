@@ -51,6 +51,13 @@ const TIER_NAME      = ["farming region", "town", "city", "metropolis"];   // ti
 // the spawned towns instead of fattening a region. Urban nodes (tier ≥ 1) are
 // uncapped — they grow on that imported surplus into cities and metropolises.
 const URBAN_CAP = 300;
+// The rural ceiling RISES with farm yield — intensive modern agriculture (the
+// fertiliser/mechanisation/green-revolution surge) lets a rural district hold far
+// more people, so the COUNTRYSIDE densifies in the industrial era instead of every
+// village staying pinned at the medieval cap. Dampened (<farmYield) so abundant
+// surplus still ships up to grow the cities/metros rather than all of it staying rural.
+const RURAL_YIELD_BASE = 2.0;     // ≈ medieval farmYield — densification only kicks in ABOVE this
+const URBAN_DENSITY_GAIN = 0.42;  // rural cap = URBAN_CAP × (1 + GAIN × (farmYield − BASE))
 // Demotion hysteresis: a settlement loses a tier only once its population falls
 // below this fraction of its CURRENT tier's promotion floor — a deadband so a
 // city hovering at a threshold doesn't flicker between tiers, while a sustained
@@ -1229,7 +1236,8 @@ function updateFood(world, s) {
   // farming is invented/arrives (development) and only if the land can support it
   // (domestication ceiling). This is what keeps a fresh/isolated frontier sparse and
   // stateless — the whole map no longer farms at full yield from tick 0.
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * techEff(s).farmYield * agriGate(world, s) * armyLabor;
+  const fy = techEff(s).farmYield; s._farmYield = fy;   // stored for the rural-density ceiling (updatePopulation)
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agriGate(world, s) * armyLabor;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
@@ -1467,7 +1475,10 @@ function updatePopulation(world, s) {
   // leaves no urbanise headroom (K−people → 0) so rural migrants flow on to the
   // towns. The land still GROWS its full harvest — that surplus ships up the
   // hierarchy (via _storableSupply, untouched here) to grow the towns.
-  if ((s.tier | 0) === 0) { foodK = Math.min(foodK, URBAN_CAP); houseK = Math.min(houseK, URBAN_CAP); }
+  if ((s.tier | 0) === 0) {
+    const ruralCap = URBAN_CAP * (1 + URBAN_DENSITY_GAIN * Math.max(0, (s._farmYield || 1) - RURAL_YIELD_BASE));
+    foodK = Math.min(foodK, ruralCap); houseK = Math.min(houseK, ruralCap);
+  }
   // LOCALITY model: population = whatever the farmable catchment feeds (foodK
   // already folds in own land + any food routed in). Housing stops being the
   // size cap — a locality IS its hinterland, so a rich-land centre simply holds

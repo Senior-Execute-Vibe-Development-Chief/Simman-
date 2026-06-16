@@ -287,14 +287,17 @@ export const TECH_FX = {
   calendar:     { farm:0.04 },
   crop_rotation:{ farm:0.19 },
   heavy_plough: { farm:0.12 },
-  fertilizers:  { farm:0.22 },
-  chemistry:    { farm:0.05, military:0.04 },
+  fertilizers:  { farm:0.70 },
+  chemistry:    { farm:0.20, military:0.04 },
   // modern agricultural revolution — gated on INDUSTRY/SCIENCE, not raw farming
   // knowledge, so industrialisation is the historical escape from the ~+91%
-  // pre-modern (Malthusian) ceiling. A steel-and-science civ pulls into abundance.
-  selective_breed:  { farm:0.12 },
-  mechanized_farm:  { farm:0.18, build:0.02 },
-  green_revolution: { farm:0.25 },
+  // pre-modern (Malthusian) ceiling. A steel-and-science civ pulls into abundance:
+  // these lift farmYield from ~1.9 (medieval) to ~5 (post-green-revolution) — a
+  // ~2.7× carrying-capacity surge that drives the modern population explosion +
+  // urbanisation, instead of the food cap flatlining the industrial era.
+  selective_breed:  { farm:0.35 },
+  mechanized_farm:  { farm:0.60, build:0.02 },
+  green_revolution: { farm:1.30 },
   // — naval / water —  (fish sums ≈ 1.18, ≈ old nav·1.2)
   sailing:      { fish:0.32, seaSpeed:0.20, embark:true },
   galleys:      { fish:0.32, seaRange:0.30, military:0.05 },
