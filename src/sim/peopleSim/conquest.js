@@ -21,6 +21,7 @@ import { techEff } from "./settlement.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, reconcilePolities } from "./entities.js";
+import { identityWeightsNow, identityGrievance, adminFriction, identityGrievanceCause } from "./cohesion.js";
 import { T } from "./tuning.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
@@ -1307,6 +1308,11 @@ export function updatePolities(world) {
     }
   }
 
+  // Era-weighted salience of the four identity layers (cohesion.js). One read per
+  // pass — the year is global — shared by the unrest grievance and the admin-load
+  // friction below. The axis of conflict it emphasises shifts with the calendar:
+  // faith in the medieval, language across the bureaucratic eras, peoples in the modern.
+  const idW = identityWeightsNow(world);
   for (const c of countries.values()) {
     if (c.members.length <= 1) { if (c.members[0]) c.members[0].loyalty = 1; continue; }   // city-state: loyal to itself
 
@@ -1431,8 +1437,10 @@ export function updatePolities(world) {
       const conscript = Math.min(1, ((s.army || 0) / Math.max(1, s.people)) / CONSCRIPT_REF);
       const gH = hunger * HUNGER_W, gC = conscript * CONSCRIPT_W, gW = warFat * WARFAT_W, gT = taxOver * OVERTAX_W;
       const gS = shockUnrest(world, s);   // direct famine/plague distress (shocks.js)
-      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS) * T.UNREST_GAIN - UNREST_RELIEF));
+      const gI = identityGrievance(cap, s, idW);   // heterodox-faith / foreign-people grievance vs the state core (era-weighted, cohesion.js)
+      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI) * T.UNREST_GAIN - UNREST_RELIEF));
       s._unrestCause = s._plagueActive ? "plague"
+                     : gI >= gH && gI >= gT && gI >= gW && gI >= gC ? identityGrievanceCause(cap, s, idW)
                      : gH >= gC && gH >= gW && gH >= gT ? "famine"
                      : gT >= gC && gT >= gW ? "taxes"
                      : gW >= gC ? "war fatigue" : "conscription";
@@ -1472,7 +1480,9 @@ export function updatePolities(world) {
       const coerce  = Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
       const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
       const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
-      const load = (d / holdRange) * sizeMul * recMul / coerce;   // grip: res-scaled so the held FRACTION matches the (res-scaled) territorial reach
+      const langMul = 1 + adminFriction(cap, s, idW);   // a foreign-tongue province is costlier to govern → polyglot empires overreach sooner (cohesion.js)
+      const load = (d / holdRange) * sizeMul * recMul * langMul / coerce;   // grip: res-scaled so the held FRACTION matches the (res-scaled) territorial reach
+      s._langFriction = langMul - 1;   // info panel: administrative friction from tongue mismatch
       s._adminLoad = load;            // for the info panel
       loads.push({ s, load });
     }
