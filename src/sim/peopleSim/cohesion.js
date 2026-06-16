@@ -77,3 +77,28 @@ export function identityGrievanceCause(cap, s, w) {
   const p = w.people * layerMis(cap.culMix, s.culMix);
   return p >= f ? "nationalism" : "religion";
 }
+
+// ── War-targeting casus belli (armies.js) ──────────────────────────────────
+// A MULTIPLIER on the attack bar between two states: < 1 makes the war RIGHTEOUS
+// (the bar is easier to clear) — a foreign-faith neighbour in the religious age, a
+// foreign nation in the modern, or a province of the attacker's OWN people under
+// foreign rule (irredentism). > 1 is KINSHIP RESTRAINT — co-religionists and
+// co-nationals are spared. Era-weighted, so it is ~neutral in antiquity and shifts
+// axis with the calendar exactly like the loyalty/unrest hooks.
+const CASUS_W = 0.30;   // strength of the righteous-war / kinship-restraint bar shift
+const IRRED_W = 0.25;   // extra eagerness to "liberate" a co-national province held by a foreign state
+export function casusBelliMul(aCap, dCap, tileOwner, w) {
+  if (!aCap || !dCap) return 1;
+  const dom = (mix) => (mix && mix.length ? mix[0][0] : -1);
+  // signed per axis: +1 wholly foreign (righteous), −1 same identity (kin → restraint)
+  const sgn = (coreMix, otherMix) => { const id = dom(coreMix); return id < 0 ? 0 : 1 - 2 * mixShare(otherMix, id); };
+  let R = w.faith  * sgn(aCap.faithMix, dCap.faithMix)
+        + w.people * sgn(aCap.culMix,   dCap.culMix)
+        + w.anc    * sgn(aCap.ancMix,   dCap.ancMix);
+  // irredentist pull: the contested province's OWN people are the attacker's nation
+  // under foreign rule — eagerly reclaimed in the national age (reads the tile owner).
+  const pid = dom(aCap.culMix);
+  if (pid >= 0 && tileOwner) R += IRRED_W * w.people * mixShare(tileOwner.culMix, pid);
+  return Math.max(0.6, Math.min(1.6, 1 - CASUS_W * R));   // R>0 righteous → lower bar; R<0 kin → higher bar
+}
+

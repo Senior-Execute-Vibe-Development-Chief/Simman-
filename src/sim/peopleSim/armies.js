@@ -19,6 +19,7 @@ import { coreRadiusFor } from "./territory.js";
 import { techEff } from "./settlement.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
+import { identityWeightsNow, casusBelliMul } from "./cohesion.js";
 import { realmName } from "./chronicle.js";
 import { inCrisis } from "./dynasties.js";
 import { getPolity as _getPolity } from "./entities.js";
@@ -287,6 +288,16 @@ export function advanceFronts(world) {
   const exhPrev = world._warExhaust ? new Map(world._warExhaust) : null;
   const warBarOf = (cc) => 1 + T.EXHAUST_WAR_BAR * (exhPrev ? (exhPrev.get(cc) || 0) : 0);
 
+  // Casus belli (cohesion.js): a righteous war against a foreign-faith (medieval) or
+  // foreign-people (modern) neighbour clears the attack bar more easily; co-religionist
+  // / co-national kinship restrains it; a province of the attacker's OWN people under
+  // foreign rule is eagerly liberated. Era-weighted → ~neutral in antiquity. The state
+  // CORE is the capital's dominant identity, looked up per country once per pass.
+  const idW = identityWeightsNow(world);
+  const capOf = new Map();
+  if (world.countries) for (const c of world.countries.values()) if (c.capital) capOf.set(c.id, c.capital);
+  const casusOf = (attCC, defCC, tileOwner) => casusBelliMul(capOf.get(attCC), capOf.get(defCC), tileOwner, idW);
+
   // Wars END IN A PEACE (dyadic truces). The exhaustion bar alone could not break
   // the permanent-war equilibrium because it is MUSICAL CHAIRS: exhaustion stops a
   // realm attacking, but someone nearby is always rested, and the rested attack the
@@ -434,7 +445,7 @@ export function advanceFronts(world) {
     // one wants a clear advantage (personality.js aggressionAttackMul).
     const aCountry = world.countries && world.countries.get(A.countryId);
     const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
-    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId)) continue;
+    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D)) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -480,7 +491,7 @@ export function advanceFronts(world) {
         const key = A.id + ":" + pid;
         if (pairs.has(key)) continue;                        // already met on land
         const tf = tradeFactor(A.countryId, D.countryId);
-        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId)) continue;
+        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D)) continue;
         const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key };
         let l = amphibByDef.get(pid); if (!l) amphibByDef.set(pid, l = []);
         l.push(pc);
