@@ -93,6 +93,8 @@ export function saveWorld(world, meta = {}) {
       preset: world.preset, oceanLevel: meta.oceanLevel ?? 0.78, tecParams: meta.tecParams || {},
     },
     step: world.step,
+    eraProd: world._eraProd,          // demographic anchor: global productivity index
+    popTotal: world._popTotal,        // last tick's world total (anchor input)
     counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1, language: world._nextLanguageId || 1 },
     tuning,
     settlements,
@@ -152,6 +154,8 @@ export function loadWorld(data) {
   world.ships = [];
 
   world.step = data.step | 0;
+  world._eraProd = data.eraProd ?? 1;        // demographic anchor (index.js): restore so post-load ticks match
+  world._popTotal = data.popTotal ?? 0;
   world._nextSettlementId = data.counters.settlement;
   world._nextShipId = data.counters.ship;
   world._nextCultureId = data.counters.culture || 1;

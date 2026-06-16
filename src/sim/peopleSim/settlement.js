@@ -1237,7 +1237,12 @@ function updateFood(world, s) {
   // (domestication ceiling). This is what keeps a fresh/isolated frontier sparse and
   // stateless — the whole map no longer farms at full yield from tick 0.
   const fy = techEff(s).farmYield; s._farmYield = fy;   // stored for the rural-density ceiling (updatePopulation)
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agriGate(world, s) * armyLabor;
+  // _eraProd is the global historical-productivity index (index.js demographic
+  // anchor): scaling LAND FOOD here lifts every settlement's carrying capacity
+  // together so the world total tracks recorded population, while the spatial
+  // distribution stays emergent and the food economy (surplus, trade, army
+  // labour all derived from this flow) stays internally consistent.
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agriGate(world, s) * armyLabor * (world._eraProd || 1);
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
@@ -1250,7 +1255,10 @@ function updateFood(world, s) {
   // coastal city — which the housing cap already lets grow large — feed
   // itself from the sea instead of relying entirely on shipped-in grain.
   const wa = s.waterAccess || 0;
-  const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor : 0;
+  // ×_eraProd as for land food: scaling the water harvest too keeps a coastal /
+  // forager settlement's capacity responsive to the global productivity index,
+  // so the demographic anchor has no dead-zone to wind up against.
+  const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor * (world._eraProd || 1) : 0;
   s._fishYield = fish;
 
   // Land food is STORABLE — it fills granaries and ships across the world
@@ -1467,7 +1475,13 @@ function updatePopulation(world, s) {
   //   houseK  = housingCapacity(s)  — economy + site, food-independent
   const perCapita = 0.003 * (s._urbanFactor || 1);
   let foodK = (s._foodSupply || 0) / perCapita;   // _foodSupply = food-hierarchy net (own + subtree intake − shipped up) + local fish
-  let houseK = housingCapacity(s);
+  // ×_eraProd: the housing/site ceiling rises with the same global productivity
+  // index as food, representing denser settlement (intensive rural occupation,
+  // vertical urban growth) in later eras. Without this the population would stay
+  // pinned at the medieval SITE cap while food scaled freely — the carrying
+  // capacity must be linear in _eraProd end-to-end or the anchor (index.js)
+  // winds up against the housing dead-zone.
+  let houseK = housingCapacity(s) * (world._eraProd || 1);
   // RURAL CEILING: a tier-0 farming region holds only a rural district's worth
   // of people (URBAN_CAP). Capping foodK AND houseK (not just K) is deliberate:
   // it drops the region's grain HUNGER ((houseK−foodK)/houseK → ~0 once both sit
@@ -1476,7 +1490,10 @@ function updatePopulation(world, s) {
   // towns. The land still GROWS its full harvest — that surplus ships up the
   // hierarchy (via _storableSupply, untouched here) to grow the towns.
   if ((s.tier | 0) === 0) {
-    const ruralCap = URBAN_CAP * (1 + URBAN_DENSITY_GAIN * Math.max(0, (s._farmYield || 1) - RURAL_YIELD_BASE));
+    // ×_eraProd: the rural ceiling rises with the same global productivity index
+    // as land food (updateFood), so the countryside scales WITH the cities and
+    // the rural/urban balance is preserved as the world total tracks history.
+    const ruralCap = URBAN_CAP * (1 + URBAN_DENSITY_GAIN * Math.max(0, (s._farmYield || 1) - RURAL_YIELD_BASE)) * (world._eraProd || 1);
     foodK = Math.min(foodK, ruralCap); houseK = Math.min(houseK, ruralCap);
   }
   // LOCALITY model: population = whatever the farmable catchment feeds (foodK

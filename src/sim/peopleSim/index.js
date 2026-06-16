@@ -34,6 +34,7 @@ import { updateCultures, CULTURE_INTERVAL } from "./cultures.js";
 import { updateFaiths, FAITH_INTERVAL } from "./faiths.js";
 import { updateDynasties, DYNASTY_INTERVAL } from "./dynasties.js";
 import { T } from "./tuning.js";
+import { stepToYear } from "../calendar.js";
 
 const CHRONICLE_INTERVAL = 300;   // ticks between per-country chronicle milestone checks
 
@@ -43,6 +44,64 @@ const CHRONICLE_INTERVAL = 300;   // ticks between per-country chronicle milesto
 
 export function initPeopleSim(worldGen, opts = {}) {
   return createWorld(worldGen, opts);
+}
+
+// ── Real-history population anchor ───────────────────────────────────────
+// The emergent food economy gets the SHAPE of early growth right but badly
+// undershoots the modern explosion — left alone it stays near-flat from
+// antiquity while the real world grew ~50× between 1 AD and 1950. So, exactly
+// as the calendar anchors year↔step, we calibrate ONE global productivity index
+// (world._eraProd) to recorded world population and let the per-settlement
+// distribution stay fully emergent. _eraProd scales BOTH food production
+// (settlement.js updateFood) and the rural ceiling (updatePopulation), so the
+// food economy — trade, surplus, army labour — stays internally consistent and
+// only the overall SCALE of civilisation tracks history.
+//
+// Anchors are [year, world population in MILLIONS] (standard historical
+// estimates). 1 sim-person ≙ 1000 people, so the sim-unit target is
+// millions × 1000. Interpolated in LOG space, since population grows
+// geometrically.
+const POP_ANCHORS = [
+  [-9000,    2], [-5000,    5], [-3000,   14], [-1000,   50],
+  [1,      200], [500,     190], [1000,   290], [1500,   450],
+  [1700,   600], [1800,    990], [1850,  1260], [1900,  1650],
+  [1950,  2520],
+];
+function realWorldPopSim(year) {
+  const A = POP_ANCHORS, n = A.length;
+  let m;
+  if (year <= A[0][0]) m = A[0][1];
+  else if (year >= A[n - 1][0]) m = A[n - 1][1];
+  else { let i = 1; while (i < n && year > A[i][0]) i++;
+    const a = A[i - 1], b = A[i], t = (year - a[0]) / (b[0] - a[0]);
+    m = Math.exp(Math.log(a[1]) + (Math.log(b[1]) - Math.log(a[1])) * t); }   // log-linear
+  return m * 1000;   // millions → sim-units (people / 1000)
+}
+const ANCHOR_MIN = 0.5, ANCHOR_MAX = 240, ANCHOR_SLEW = 0.02, ANCHOR_HEADROOM = 4;
+function applyDemographicAnchor(world, popTotal, capTotal) {
+  world._popTotal = popTotal;
+  if (world._eraProd === undefined) world._eraProd = 1;
+  if (capTotal <= 0 || popTotal <= 1) return;   // need a live population to steer by
+  const target = realWorldPopSim(stepToYear(world.step));
+  if (target <= 0) return;
+  // Integral control: nudge the global productivity index so the world TOTAL
+  // population converges on the historical curve. Carrying capacity is linear in
+  // _eraProd (food, fish, housing and the rural ceiling all scale with it), so
+  // this feedback is bounded, and the integrator's infinite DC gain removes the
+  // steady lag that pinning capacity directly leaves — population forever chasing
+  // a rising ceiling — so the total lands ON the curve, not a fixed fraction below.
+  //   ANTI-WIND-UP: cap how far total capacity may LEAD population (≤ HEADROOM×).
+  // In the deep past a handful of seed villages fill in only at the logistic
+  // rate, so target/pop is briefly enormous; without this the integrator would
+  // wind straight to the clamp and then overshoot. Capping the lead lets
+  // population grow at near-max rate while _eraProd stays only as high as it can
+  // actually use — and where a steep stretch of the curve outruns the logistic
+  // ceiling, the total simply lags gracefully instead of oscillating.
+  const wantPop = target / popTotal;                       // drive pop → target
+  const wantCap = ANCHOR_HEADROOM * popTotal / capTotal;   // but lead pop by ≤ HEADROOM×
+  const want = world._eraProd * Math.min(wantPop, wantCap);
+  const lo = world._eraProd * (1 - ANCHOR_SLEW), hi = world._eraProd * (1 + ANCHOR_SLEW);
+  world._eraProd = Math.max(ANCHOR_MIN, Math.min(ANCHOR_MAX, Math.max(lo, Math.min(hi, want))));
 }
 
 export function stepPeopleSim(world, n = 1) {
@@ -71,11 +130,14 @@ export function stepPeopleSim(world, n = 1) {
     // the O(n) linear scans the trade / knowledge passes would otherwise do
     // per peer (effectiveLocalRes, findById, ...).
     if (world._byId) world._byId.clear(); else world._byId = new Map();
+    let _popSum = 0, _capSum = 0;
     for (let i = 0; i < world.settlements.length; i++) {
       const s = world.settlements[i];
       world._byId.set(s.id, s);
       s._wPrev = s.wealth || 0;   // baseline for the money-flow net-change readout
+      if (s.mode !== "dead") { _popSum += s.people; _capSum += s._k || 0; }   // world totals for the demographic anchor
     }
+    applyDemographicAnchor(world, _popSum, _capSum);   // calibrate _eraProd to the historical population curve
     buildSettlementGrid(world);   // spatial index for near-settlement queries (crystallise / roads)
     mark("byId");
     // Recompute territory periodically: each settlement claims the land it
