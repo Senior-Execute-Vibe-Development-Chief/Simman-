@@ -357,8 +357,14 @@ const tropicalCool=tLat<0.3?cp*0.005:0;// faint coastal sea-breeze cooling — e
 // the solver + a gentle continentality nudge.
 const beltLat=Math.exp(-((tLat-0.275)*(tLat-0.275))/(2*0.072*0.072));
 const equatorGuard=Math.max(0,Math.min(1,(tLat-0.16)/0.06));// 0 below ~14°, 1 above ~20°
-const monsoonSpare=1-0.9*eastWet[i];
-const subtropDry=e>0?beltLat*equatorGuard*(0.55+0.45*inland)*0.42*monsoonSpare:0;
+// Spare ONLY the strongly east-coastal humid subtropics (eastWet ≳ 0.45 → SE US,
+// SE China, SE Brazil, Natal, E Australia). A marginal east sea like the Persian
+// Gulf (eastWet ~0.46 for Arabia) must NOT count, or the great trade-wind deserts
+// that happen to border a warm sea (Arabia, the Horn) come out green.
+const monsoonSpare=1-0.92*Math.min(1,Math.max(0,(eastWet[i]-0.5)/0.2));
+// Gate only weakly on inland-ness (0.70+0.30) so deserts that are nearly surrounded
+// by water — Arabia between the Red Sea, Gulf and Arabian Sea — still dry out.
+const subtropDry=e>0?beltLat*equatorGuard*(0.70+0.30*inland)*0.42*monsoonSpare:0;
 // Continental interiors (rain-shadow + far from any ocean) dry into the mid-latitude
 // steppes and prairies — the Great Plains, the Eurasian steppe, the Pampas,
 // Patagonia. Focused on ~23-61° so it doesn't over-dry the equatorial tropics into
@@ -376,7 +382,7 @@ const contDry=e>0?inland*inland*contBand*0.05*monsoonSpare:0;
 // equatorward-tapered (the everwet ITCZ rainforest at 0-8° untouched) and east-coast
 // spared — opens up the savanna belt between the rainforest and the deserts.
 const savBelt=Math.exp(-((tLat-0.18)*(tLat-0.18))/(2*0.07*0.07))*Math.max(0,Math.min(1,(tLat-0.07)/0.05));
-const savDry=e>0?savBelt*(0.4+0.6*inland)*0.20*monsoonSpare:0;
+const savDry=e>0?savBelt*(0.4+0.6*inland)*0.10*monsoonSpare:0;
 const mo=Math.max(0.02,windMoisture[i]-subtropDry-contDry-savDry);
 const dry=Math.max(0,1-mo/0.35);// 1 = bone-dry, 0 = humid
 const desertHeat=dry*0.09*Math.exp(-((tLat-0.22)*(tLat-0.22))/(2*0.13*0.13));// peaks on the 13-30° HOT-DESERT belt (Sahel, Sahara, Arabia — Earth's hottest annual means), not the 33° subtropics
