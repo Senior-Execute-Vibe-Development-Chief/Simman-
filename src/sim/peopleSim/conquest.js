@@ -12,7 +12,7 @@
 // captured right at the frontier would secede the very next pass and get
 // re-taken, making the borders flicker.
 
-import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.js";
+import { recordIn, recordOut, IN_AID, IN_STATE_PAY, IN_TARIFFS, OUT_TRIBUTE } from "./money.js";
 import { shockUnrest } from "./shocks.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
@@ -122,6 +122,11 @@ const TAX_BASE     = 0.06;   // baseline share of a member's wealth taxed per pa
 const TAX_WAR      = 0.025;  // extra rate per level of war
 const TAX_BANKRUPT = 0.12;   // extra rate × how insolvent the state was last pass
 const TAX_DRIFT    = 0.25;   // how fast the actual rate moves toward its target (no whipsaw)
+const COURT_SHARE  = 0.55;   // share of the realm's tax REVENUE consumed at the capital — the court,
+                             // the central bureaucracy, the capital's monuments & clientele. This is what
+                             // made a capital live on TAXES, not its own workshops (Versailles, Rome on
+                             // provincial grain, the Forbidden City), so the seat reads as tax-funded. The
+                             // REST funds the army & provincial works (disburseTreasury), the guns-vs-court tension.
 
 // ── Popular unrest → rebellion ────────────────────────────────────────
 // Unrest is a SECOND stock alongside loyalty (kept separate so neither masks
@@ -1628,6 +1633,14 @@ export function updatePolities(world) {
         const rent = Math.min(Math.max(0, s.wealth || 0), (s._landFood || 0) * T.FARM_RENT * T.POLITY_INTERVAL);
         if (rent > 0) { s.wealth -= rent; gov.treasury += rent; gov._revenue += rent; recordOut(s, OUT_TRIBUTE, rent); }
       }
+    }
+    // COURT & CAPITAL: a share of this pass's tax revenue is consumed AT the seat —
+    // the court, the central bureaucracy, the capital's works & clientele — so the
+    // capital reads as a TAX-funded seat rather than a merchant. Taken from the
+    // treasury (conserved) before the rest is disbursed to the army & provinces.
+    if (cap && gov._revenue > 0) {
+      const court = Math.min(Math.max(0, gov.treasury), gov._revenue * COURT_SHARE);
+      if (court > 0) { gov.treasury -= court; cap.wealth = (cap.wealth || 0) + court; recordIn(cap, IN_TARIFFS, court); }
     }
     // EXPENDITURE: spend the treasury back out (army pay → garrisons, then
     // works/dole → provinces). Balanced budget ⇒ the throne stops hoarding.

@@ -206,7 +206,10 @@ const tradeStride = () => Math.max(1, T.TRADE_STRIDE | 0);
 // Food trade has a lower rate: famine-era food tolls were
 // politically charged, and a 5% toll on grain to a starving city
 // would be unconscionable.
-const TOLL_RATE       = 0.05;
+const TOLL_RATE       = 0.18;   // transit toll skimmed by each settlement a trade route passes through
+const TOLL_CHOKE_W    = 3.0;    // …multiplied for a settlement that controls a CROSSING (river ford/bridge,
+                                // coastal strait/port — high waterAccess): trade must funnel through it, so a
+                                // chokepoint town lives on tolls (the Rhine castles, the Bosphorus, the Sound Dues)
 // Cross-border customs: when goods are sold INTO a different country, that
 // country's state (its capital) levies an import duty on top of the price.
 // It raises the cost of foreign trade — so commerce within one realm is
@@ -1013,7 +1016,11 @@ function customsCollector(world, seller, buyer) {
 // import duty collected by the buyer's state.
 function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, numInter) {
   if (goodsValue <= 0) return;
-  const totalToll = goodsValue * TOLL_RATE * numInter;
+  // Each intermediate's toll scales with how much of a CROSSING it controls
+  // (waterAccess — a ford, bridge, strait or port that trade must funnel through).
+  let tollSum = 0;
+  if (intermediates) for (const inter of intermediates) tollSum += 1 + TOLL_CHOKE_W * Math.min(1, inter.waterAccess || 0);
+  const totalToll = goodsValue * TOLL_RATE * tollSum;
   const collector = customsCollector(world, seller, buyer);
   const tariff = collector ? goodsValue * T.TARIFF_RATE : 0;
   // Don't ship goods worth less than the cost to move + clear them.
@@ -1041,8 +1048,14 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   // grain comes up the central-place HIERARCHY (foodHierarchy.js), not the
   // horizontal gravity trade — so that fraction is re-booked as ordinary goods.
   // This is what stops every town/city/region from both buying AND selling food.
+  // The FOOD leg books as agrarian income when the buyer is food-short OR the
+  // SELLER is a farming region (its surplus genuinely IS food/agrarian produce —
+  // grain, livestock, wine, wool — so the countryside reads as a grain seller, not
+  // a generic goods vendor). A town (export-food-fraction ≈ 0) still books goods
+  // either way, so this can't make a workshop read as a farmer.
+  const sellerFarm = (seller.tier | 0) <= (T.FARM_MAX_TIER | 0);
   const buyerShort = (buyer._foodSupply || 0) < (buyer._foodDemand || 0);
-  const foodFrac = buyerShort ? (seller._exportFoodFrac || 0) : 0;
+  const foodFrac = (buyerShort || sellerFarm) ? (seller._exportFoodFrac || 0) : 0;
   const matFrac  = seller._exportMatFrac || 0;
   const foodPaid = paid * foodFrac;
   const matPaid  = paid * matFrac;
@@ -1055,8 +1068,10 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   recordOut(buyer, OUT_GOODS, goodsPaid);
   recordOut(buyer, OUT_TOLLS, (freight + totalToll) * scale);
   if (intermediates) {
-    const tollPer = goodsValue * TOLL_RATE * scale;
-    for (const inter of intermediates) { inter.wealth = (inter.wealth || 0) + tollPer; recordIn(inter, IN_TOLLS, tollPer); }
+    for (const inter of intermediates) {
+      const tollPer = goodsValue * TOLL_RATE * (1 + TOLL_CHOKE_W * Math.min(1, inter.waterAccess || 0)) * scale;
+      inter.wealth = (inter.wealth || 0) + tollPer; recordIn(inter, IN_TOLLS, tollPer);
+    }
   }
   // Customs duty funds the importing realm's STATE TREASURY (not the capital
   // city's purse) — the government then redistributes it (conquest.js).

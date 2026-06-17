@@ -381,6 +381,32 @@ function oreTier(res) {
   if (fe > ORE_THR && co > ORE_THR) cap = 1.00;
   return cap;
 }
+// Craft-sector weights. TEXTILES were the LARGEST pre-modern manufacture by far
+// (Flemish/Florentine wool, Indian cotton, Chinese silk) — the universal town
+// industry — so they're the default "goods". METALWORK is now an ore-gated
+// SPECIALTY (Toledo, the Ruhr), not the thing every town read as. Pottery /
+// woodcraft / leather are the broad everyday crafts.
+const TEXTILE_W = 3.0;   // the loom — the default urban good (the largest pre-modern manufacture)
+const METAL_W   = 1.8;   // the forge — ore-gated specialty: only the richest ore+coal regions out-earn the loom
+const POTTERY_W = 0.6;   // pottery / woodcraft / leather — broad everyday crafts
+// Shared craft recipe so computeExportValue and getExportBreakdown can't drift.
+// Returns the manufactured-sector legs (pre craftFrac / mult), keyed by label.
+function craftLegs(s, k, r) {
+  const popScale = Math.min(1, Math.log(Math.max(1, s.people || 0)) / 8);
+  const craft = 0.4 + (k.construction || 0) * 0.5;                  // general artisanship
+  const temp = s._climTemp ?? 0.5, moist = s._climMoist ?? 0.5;
+  const wool   = Math.max(0, 1 - Math.abs(temp - 0.45) * 2.2);      // temperate pasture
+  const cotton = Math.max(0, (temp - 0.55) * 2.2) * Math.max(0, (moist - 0.4) * 2);   // warm & wet
+  const fibre  = 0.35 + 0.65 * Math.min(1, wool + cotton + (k.agriculture || 0) * 0.3);
+  const physMetalCap = oreTier(r);
+  return {
+    "Textiles":          TEXTILE_W * fibre * (0.55 + 0.45 * popScale) * craft,
+    "Metalwork":         physMetalCap > 0 ? Math.min(k.metallurgy || 0, physMetalCap) * METAL_W : 0,
+    "Pottery & leather": POTTERY_W * popScale * (0.4 + (r.timber || 0) * 0.3 + (r.horses || 0) * 0.3),
+    "Crafted wares":     (k.construction || 0) * 0.3,
+    "Services & records": (k.organization || 0) * popScale * 0.8,
+  };
+}
 
 // Cache a settlement's home-tile climate — latitude band (0 = equator,
 // 1 = pole), temperature and moisture (worldgen's 0..1 scales). Terrain is
@@ -624,15 +650,13 @@ export function computeExportValue(s, world) {
   ag += base; if (baseIsFood) agFood += base;
 
   // ── Manufactured / service sector ─────────────────────────────────────
-  // Metalwork, crafted wares, bureaucracy & banking — booked as "goods". A
-  // Farming Region does only FARM_CRAFT_FRAC of this; the loom, the forge and
-  // the counting-house concentrate in TOWNS, so it's a town+ activity.
+  // Diverse crafts (booked as "goods"): TEXTILES are the universal town industry,
+  // METALWORK an ore-gated specialty, plus pottery, crafted wares and the
+  // counting-house (craftLegs). A Farming Region does only FARM_CRAFT_FRAC of
+  // this; the loom, the forge and the clerks concentrate in TOWNS.
   let man = 0;
-  const physMetalCap = oreTier(r);   // forge from ore PHYSICALLY held (r = localRes), not merely known of
-  if (physMetalCap > 0) man += Math.min(k.metallurgy || 0, physMetalCap) * 1.5;   // metalwork — capped by ore in hand
-  man += (k.construction || 0) * 0.4;                               // crafted wares (the craft floor)
-  const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
-  man += (k.organization || 0) * popScale * 0.8;                    // bureaucracy / services / banking
+  const legs = craftLegs(s, k, r);
+  for (const key in legs) man += legs[key];
   if (tier < 1) man *= T.FARM_CRAFT_FRAC;                           // a village manufactures little
 
   // Soldiers don't produce trade goods; a sacked settlement's output is depressed
@@ -694,17 +718,15 @@ export function getExportBreakdown(s, world) {
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
   const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step) * techEff(s).tradeMult;
   const out = [{ label: "Baseline", value: 1.0 * mult }];
-  const physMetalCap = oreTier(r);
-  if (physMetalCap > 0) {
-    const v = Math.min(k.metallurgy || 0, physMetalCap) * 1.5 * craftFrac * mult;
-    if (v > 0.01) out.push({ label: "Metalwork", value: v });
-  }
+  // Manufactured / service crafts — textiles (the universal town good), the
+  // ore-gated metalwork specialty, pottery/leather, crafted wares and the
+  // counting-house (craftLegs, shared with computeExportValue so the panel can't
+  // drift from the economy). Each is tier-scaled and tech/army/sack-scaled.
+  const legs = craftLegs(s, k, r);
+  for (const key in legs) { const v = legs[key] * craftFrac * mult; if (v > 0.01) out.push({ label: key, value: v }); }
   const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
-  // Raw building materials (an ag-sector good) + crafted wares (manufactured,
-  // tier-scaled) — merged under one label as before, but each leg scaled the
-  // way computeExportValue actually books it.
-  const construction = ((k.construction || 0) * matAccess * 0.8 + (k.construction || 0) * 0.4 * craftFrac) * mult;
-  if (construction > 0.01) out.push({ label: "Building & crafted goods", value: construction });
+  const buildMat = (k.construction || 0) * matAccess * 0.8 * mult;   // RAW building materials (ag-sector)
+  if (buildMat > 0.01) out.push({ label: "Building materials", value: buildMat });
   const agScale = Math.min(1, (s._terrTiles || 0) / 120);
   if (tier <= (T.FARM_MAX_TIER | 0)) {
     const agriculture = (k.agriculture || 0) * agScale * 0.6 * mult;
@@ -723,9 +745,6 @@ export function getExportBreakdown(s, world) {
     const v = (horses * 0.6 + (k.mobility || 0) * 0.4) * mult;
     if (v > 0.01) out.push({ label: "Horse trade", value: v });
   }
-  const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
-  const services = (k.organization || 0) * popScale * 0.8 * craftFrac * mult;
-  if (services > 0.01) out.push({ label: "Services & records", value: services });
   const salt = (r.salt || 0) * 0.5 * mult;
   if (salt > 0.01) out.push({ label: "Salt", value: salt });
   const base = Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10) * mult;
