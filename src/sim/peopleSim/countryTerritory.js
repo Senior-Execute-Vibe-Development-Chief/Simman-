@@ -96,6 +96,12 @@ const FRONTIER_DOM   = 0.7;   // a DOMINANT realm pushes its wilderness-claim fr
                               // the great powers partition the open interior into continental empires (Russia, the USA,
                               // the Raj, the Scramble) instead of every realm grabbing an equal slice — bounded by the
                               // competitive midline where rival floods meet (conquest.js _dominance)
+const DOM_HINTERLAND = 2;     // a dominant core also claims its regional HINTERLAND ahead of the industrial close
+                              // (budget × resScale × (dominance−1) × hinterland-era): an ordinary realm gets 0 (open
+                              // marches preserved), but a Rome / Persia / Mongol fills its near-wilderness, so the
+                              // classical & medieval great powers tower regionally, not just the modern continental ones
+const HINTER_YEAR0   = -1000; // hinterland-claim begins (deep antiquity keeps its empty marches even under a strong core)
+const HINTER_YEAR1   = 200;   // …full by the classical era (the age of Rome, Han, Persia, the Maurya)
 const FRONTIER_YEAR0 = 1760;  // the close BEGINS (era 0) — pre-industrial world keeps its open marches / terra nullius
 const FRONTIER_YEAR1 = 1930;  // era 1 — the whole partitioned world (Scramble for Africa done ~1914)
 // Reach is also scaled by how BIG the realm is, so a claim is backed by real
@@ -497,12 +503,17 @@ function recolorByCapital(world, co, capPos, knOf, claimCap, frontierBudget = 0)
   if (!capCost || capCost.length !== N) capCost = world._capCostF = new Float64Array(N);
   capColor.fill(-1); capCost.fill(Infinity);
   const noise = claimNoise(world);
-  // Dominant realms partition a LARGER share of the open interior (continental empires).
-  // Per-capital frontier budget = base × dominance^FRONTIER_DOM; 1 for ordinary realms.
+  // Dominant realms partition a LARGER share of the open interior (continental empires),
+  // and a dominant core ALSO claims its regional hinterland ahead of the industrial close
+  // (DOM_HINTERLAND, present in every era; 0 for ordinary realms, which keep open marches).
+  const rs = resScaleFor(world.tw);
+  const hYr = stepToYear(world.step);
+  const hinterEra = Math.max(0, Math.min(1, (hYr - HINTER_YEAR0) / (HINTER_YEAR1 - HINTER_YEAR0)));   // 0 in deep antiquity → 1 by the classical age
   const domBudget = new Map();
-  if (frontierBudget > 0 && world.countries) for (const [c] of capPos) {
+  if (world.countries) for (const [c] of capPos) {
     const cc = world.countries.get(c);
-    domBudget.set(c, frontierBudget * (cc && cc._dominance ? Math.pow(cc._dominance, FRONTIER_DOM) : 1));
+    const dom = cc && cc._dominance ? cc._dominance : 1;
+    domBudget.set(c, frontierBudget * Math.pow(dom, FRONTIER_DOM) + DOM_HINTERLAND * rs * hinterEra * Math.max(0, dom - 1));
   }
   const budgetOf = (c) => domBudget.get(c) ?? frontierBudget;
   const heap = new MinHeap();

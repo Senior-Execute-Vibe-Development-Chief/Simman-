@@ -73,6 +73,9 @@ const CAPTURE_SCALE     = 5;           // tiles/pass per unit of power-ratio adv
 const DOM_ATTACK_P      = 0.45;        // a DOMINANT realm (conquest.js _dominance) attacks on a slimmer margin —
                                        // bar ÷ dominance^this — so a great power expands by conquest where the pack
                                        // stalls (Rome, the Mongols, the Ottomans). Bounded by the dominance cap.
+const DOM_CAPTURE_P     = 0.4;         // …and BLITZES: its fronts take more countryside per pass (rate & per-front cap
+                                       // × dominance^this), so a hegemon's conquest sweeps a region in a campaign
+                                       // instead of nibbling it over centuries — the decisive pre-modern expansion.
 const ASSAULT_MARGIN    = 2;           // front must reach within (defender core + this) of the home
 const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent taking a city
 // Offensive throttle & strategic depth now live in the NATIONAL WAR CAPACITY block
@@ -303,6 +306,7 @@ export function advanceFronts(world) {
   // A dominant realm projects military power — it attacks on a slimmer margin, so a
   // great power expands by conquest where the pack stalls (Rome, the Mongols).
   const domBarOf = (attCC) => { const c = world.countries && world.countries.get(attCC); const d = c && c._dominance ? c._dominance : 1; return 1 / Math.pow(Math.max(1, d), DOM_ATTACK_P); };
+  const domCaptureOf = (attCC) => { const c = world.countries && world.countries.get(attCC); const d = c && c._dominance ? c._dominance : 1; return Math.pow(Math.max(1, d), DOM_CAPTURE_P); };
 
   // Wars END IN A PEACE (dyadic truces). The exhaustion bar alone could not break
   // the permanent-war equilibrium because it is MUSICAL CHAIRS: exhaustion stops a
@@ -820,7 +824,8 @@ export function advanceFronts(world) {
       continue;   // front's at the core — no countryside left to nibble here
     }
 
-    const budget = Math.min(T.MAX_CAPTURE, Math.floor((adv - 1) * CAPTURE_SCALE));
+    const domCap = domCaptureOf(acc);   // a dominant realm sweeps more countryside per pass (Mongol-style blitz)
+    const budget = Math.min(Math.round(T.MAX_CAPTURE * domCap), Math.floor((adv - 1) * CAPTURE_SCALE * domCap));
     if (budget >= 1 && pc.tiles.length) {
       // Advance the front BROADLY: take the outermost contested tiles first
       // so the defender's countryside erodes ring by ring (visible) instead
