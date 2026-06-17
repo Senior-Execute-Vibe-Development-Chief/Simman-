@@ -24,6 +24,27 @@ import { solveMoisture } from "./moistureSolver.js";
 
 const RES = 1;
 
+// Directional distance field, O(W·H) via a running sweep (replaces O(W·H·scan)
+// per-tile scans — at 1920×960 those cost ~12s of worldgen). For each tile returns
+// the pixel distance to the nearest `mask` tile in a direction, capped at `cap`+1:
+//   dir>0 sweeps L→R → distance to the nearest mask tile to the WEST
+//   dir<0 sweeps R→L → distance to the nearest mask tile to the EAST
+// X wraps (toroidal): we sweep two laps and only record on the second.
+function dirDist(mask, W, H, dir, cap) {
+  const out = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) {
+    const row = y * W;
+    let d = cap + 1;
+    for (let s = 0; s < 2 * W; s++) {
+      const xx = dir > 0 ? (s % W) : (W - 1 - (s % W));
+      const i = row + xx;
+      if (mask[i]) d = 0; else if (d <= cap) d++;
+      if (s >= W) out[i] = Math.min(d, cap + 1);
+    }
+  }
+  return out;
+}
+
 // `realWindFns` is INJECTED ({ isRealWindAvailable, fillRealWind } from
 // realWindData.js) rather than imported: realWindData statically pulls the
 // 2.3MB NCEP wind JSON into whichever bundle imports it, and worldgen also
@@ -52,7 +73,7 @@ elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
 // Greenland/Antarctica ice still comes from the lat-amplified elevation penalty.
 // Softer elevation lapse penalty + southern-polar cooling (see earth_sim for the
 // rationale): keeps Tibet/Andes from glaciating and makes all of Antarctica ice.
-temperature[i]=Math.max(0,Math.min(1,0.85-0.66*lat*lat+0.18*lat*lat*lat*lat+Math.exp(-((lat-0.12)*(lat-0.12))/(2*0.14*0.14))*0.030-Math.max(0,elevation[i])*(.30+.45*lat)-Math.max(0,(ny-0.5)*2-0.53)*0.85+fbm(nx*3+80,ny*3+80,3,2,.5)*.03));}
+temperature[i]=Math.max(0,Math.min(1,0.85-0.66*lat*lat+0.18*lat*lat*lat*lat+Math.exp(-((lat-0.12)*(lat-0.12))/(2*0.14*0.14))*0.030-Math.max(0,elevation[i])*(.48+.12*lat)-Math.max(0,(ny-0.5)*2-0.53)*0.85+fbm(nx*3+80,ny*3+80,3,2,.5)*.03));}
 // Pass 2: coast-distance BFS at tile resolution for continentality
 const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
 const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);
@@ -111,58 +132,97 @@ for(let qi=0;qi<cdQ.length;qi++){const ci=cdQ[qi],cd=cdist[ci],cx=ci%CDW,cy=(ci-
 for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
 const nx2=(cx+dx+CDW)%CDW,ny2=cy+dy;if(ny2<0||ny2>=CDH)continue;
 const ni=ny2*CDW+nx2,nd=cd+1;if(nd<cdist[ni]&&elevation[Math.min(H-1,ny2*CDT)*W+Math.min(W-1,nx2*CDT)]>0){cdist[ni]=nd;cdQ.push(ni);}}}
+// Land/ocean masks + an "open ocean" mask (ocean that stays ocean ~7° further east,
+// so narrow seas — Red Sea, Persian Gulf, Yellow Sea, Mediterranean — don't read as
+// open basins). Shared by the windward-proximity and ocean-current fields below.
+const degPx=360/W,openRun=Math.max(1,Math.round(W*7/360));
+const oceanMask=new Uint8Array(W*H),landMask=new Uint8Array(W*H),openMask=new Uint8Array(W*H);
+for(let i=0;i<W*H;i++){const o=elevation[i]<=0?1:0;oceanMask[i]=o;landMask[i]=o?0:1;}
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(oceanMask[i]&&oceanMask[y*W+((x+openRun)%W)])openMask[i]=1;}
 // East-coast (windward) ocean proximity — the single most important signal for
 // where the subtropical deserts AREN'T. Humid subtropics (SE US, SE China, SE
 // Brazil, E Australia, Natal) sit on the EAST side of continents: warm western-
 // boundary currents + onshore summer flow keep them wet at the same latitude
 // where the WEST sides and interiors (Sahara, Arabia, Atacama, Namib, W Australia,
-// SW US) are bone-dry. Coast distance alone can't tell them apart; the DIRECTION
-// to the nearest ocean can. Scan ~14° east of each land tile; eastWet→1 on an east
-// coast, →0 for interiors and west coasts. Later it spares those coasts from the
-// subtropical drying so the deserts can be pushed hard everywhere else.
-const eastScan=Math.max(1,Math.round(W*14/360)),openRun=Math.max(1,Math.round(W*7/360));
+// SW US) are bone-dry. eastWet→1 on an east coast (open ocean within ~18° east),
+// →0 for interiors and west coasts; later it spares those coasts from the drying.
+const eastScan=Math.max(1,Math.round(W*18/360));
+const _eastDist=dirDist(openMask,W,H,-1,eastScan);// px east to the nearest OPEN ocean
 const eastWet=new Float32Array(W*H);
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(elevation[i]<=0)continue;
-// First OPEN ocean to the east: the hit must still be ocean ~7° further on, so
-// narrow seas (Red Sea, Persian Gulf, Mediterranean straits) don't count as a
-// moisture source — otherwise the hyperarid eastern Sahara/Arabia would be spared.
-let found=0;for(let k=1;k<=eastScan;k++){if(elevation[y*W+((x+k)%W)]<=0&&elevation[y*W+((x+k+openRun)%W)]<=0){found=k;break;}}
-eastWet[i]=found>0?Math.max(0,1-(found-1)/eastScan):0;}
+for(let i=0;i<W*H;i++)eastWet[i]=landMask[i]&&_eastDist[i]<=eastScan?Math.max(0,1-(_eastDist[i]-1)/eastScan):0;
 // ── Ocean currents (SST anomalies) ──────────────────────────────────────────
 // The base sea-surface temperature was purely zonal — latitude bands, no basin
-// structure, so the famous currents simply weren't there. Two gyre limbs carry
-// most of the heat:
-//   • WARM western-boundary currents (Gulf Stream, Kuroshio, Brazil, Agulhas, East
-//     Australian) run poleward along the EAST coasts of continents (= the WEST side
-//     of each ocean basin) and drift east across the mid-latitudes — this is what
-//     keeps the NW Atlantic and NW Pacific, and downwind NW Europe, mild for their
-//     latitude. Detected by land lying to the WEST of an ocean tile.
-//   • COLD eastern-boundary currents + upwelling (Canary, California, Humboldt,
-//     Benguela) run equatorward along the WEST coasts (= EAST side of basins) and
-//     chill the shores off the great west-coast deserts. Detected by land to the EAST.
-// currentAnom is added to ocean SST below; coastCur spills it onto the coasts the
-// current bathes (a fraction, decaying inland) so the land feels it too.
-const ocScan=Math.max(1,Math.round(W*60/360));
+// structure. Real ocean climate is set by the gyres, modelled here as four limbs,
+// each keyed on which way the nearest coast lies and how open the basin is on the
+// far side (so enclosed seas — Yellow Sea, Mediterranean, Hudson Bay — don't get
+// open-ocean currents):
+//   WESTERN boundary (coast to the WEST, open ocean to the EAST):
+//     • WARM subtropical (~30°): Gulf Stream, Kuroshio, Brazil, Agulhas, E Australian.
+//     • COLD subpolar (~54°): Labrador, Oyashio, E Greenland — these are why
+//       Newfoundland and NE Asia are far colder than NW Europe at the same latitude.
+//   EASTERN boundary (coast to the EAST, open ocean to the WEST):
+//     • COLD subtropical (~23°, upwelling): California, Canary, Humboldt, Benguela —
+//       the chill behind the great west-coast deserts.
+//     • WARM subpolar drift (~53°): North Atlantic Drift, Alaska, S Chile, NZ — this
+//       is what keeps NW Europe (Bergen, Britain) mild far past its latitude.
+// currentAnom is added to ocean SST below; coastCur spills it onto the shores the
+// current bathes so the land feels it too.
+const ocScan=Math.max(1,Math.round(W*70/360));
+const _landDistW=dirDist(landMask,W,H,1,ocScan),_landDistE=dirDist(landMask,W,H,-1,ocScan);
 const currentAnom=new Float32Array(W*H);
 for(let y=0;y<H;y++){const aLat=Math.abs(y/H-0.5)*2*90;
-const wbBand=Math.exp(-((aLat-42)*(aLat-42))/(2*14*14));// warm western-boundary band, ~28-56°
-const ebBand=Math.exp(-((aLat-22)*(aLat-22))/(2*15*15));// cold eastern-boundary band, ~7-37°
+const subtropW=Math.exp(-((aLat-30)*(aLat-30))/(2*9*9));  // warm western boundary, ~21-39°
+const subpolarW=Math.exp(-((aLat-54)*(aLat-54))/(2*9*9)); // cold western boundary, ~45-63°
+const subtropE=Math.exp(-((aLat-23)*(aLat-23))/(2*13*13));// cold eastern boundary,  ~10-36°
+const driftE=Math.exp(-((aLat-53)*(aLat-53))/(2*11*11));  // warm eastern drift,     ~42-64°
 for(let x=0;x<W;x++){const i=y*W+x;if(elevation[i]>0)continue;
-let dw=ocScan+1;for(let k=1;k<=ocScan;k++){if(elevation[y*W+((x-k+W)%W)]>0){dw=k;break;}}
-let de=ocScan+1;for(let k=1;k<=ocScan;k++){if(elevation[y*W+((x+k)%W)]>0){de=k;break;}}
-const wbWarm=wbBand*Math.max(0,1-(dw*360/W)/80)*0.115;// drifts most of the way across the basin
-const ebCold=ebBand*Math.max(0,1-(de*360/W)/16)*0.075;// tight to the west-coast upwelling zone
-currentAnom[i]=wbWarm-ebCold;}}
-// Spill onto the coasts (max-spread inland with decay): Gulf Stream → mild NW
-// Europe; Benguela/Humboldt/California → chilly desert shores.
+const dwDeg=_landDistW[i]*degPx,deDeg=_landDistE[i]*degPx;
+const nearW=Math.max(0,1-dwDeg/14),nearE=Math.max(0,1-deDeg/14);// within ~14° of that coast
+// "open basin" needs a WIDE fetch (>~10°), so marginal seas — North Sea, Sea of
+// Japan, Mediterranean — don't spawn Gulf-Stream/Labrador-scale boundary currents
+// (that was wrongly chilling Britain via a fake cold current in the North Sea).
+const openE=Math.min(1,Math.max(0,deDeg-10)/26),openW=Math.min(1,Math.max(0,dwDeg-10)/26);
+const wbWarm=nearW*openE*subtropW*0.125;
+const wbCold=nearW*openE*subpolarW*0.095;
+const ebCold=nearE*openW*subtropE*0.080;
+const ebWarm=nearE*openW*driftE*0.105;
+currentAnom[i]=wbWarm-wbCold-ebCold+ebWarm;}}
+// Spill the current onto land. At 30-65° the WESTERLIES carry marine air far
+// eastward, so the warm North-Atlantic Drift penetrates deep into W Europe (mild
+// Paris, Berlin, even Moscow) while cold mid-ocean water (Iceland) only warms its
+// own shore. Modelled as an anisotropic max-spread: near-lossless toward the EAST
+// in the westerly belt, ordinary decaying spread otherwise. Off the westerly belt
+// (tropics, high Arctic) the current just hugs the coast.
 const coastCur=new Float32Array(currentAnom);
 const _ccPrev=new Float32Array(W*H);
+// (a) Isotropic coastal spill (all latitudes) — carries each current, warm OR cold,
+//     onto the shore it bathes (cold Labrador/Humboldt stay coast-trapped here).
 for(let pass=0;pass<6;pass++){_ccPrev.set(coastCur);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(elevation[i]<=0)continue;
 let v=_ccPrev[i];
 for(let d=0;d<4;d++){const xx=(x+(d===0?1:d===1?-1:0)+W)%W,yy=y+(d===2?1:d===3?-1:0);if(yy<0||yy>=H)continue;
-const nv=_ccPrev[yy*W+xx];if(Math.abs(nv)>Math.abs(v))v=nv;}
-coastCur[i]=v*0.82;}}// ~18% decay per ring inland
+const nv=_ccPrev[yy*W+xx]*0.85;if(Math.abs(nv)>Math.abs(v))v=nv;}
+coastCur[i]=v;}}
+// (b) Eastward westerly advection of WARM marine air — one L→R running sweep per row
+//     in the 30-65° belt, carrying a decaying reservoir refreshed over warm ocean.
+//     This is what mildens W Europe deep inland (Paris, Berlin) without warming the
+//     cold mid-ocean (Iceland) or bleeding cold upwelling over the lee ranges.
+for(let y=0;y<H;y++){const aLat=Math.abs(y/H-0.5)*2;if(aLat<=0.33||aLat>=0.74)continue;
+let carry=0;
+for(let s=0;s<W+W;s++){const xx=s%W,i=y*W+xx;
+if(elevation[i]<=0){const c=currentAnom[i];if(c>carry)carry=c;carry*=0.998;}// warm ocean refreshes
+else{carry*=0.988;if(carry>coastCur[i])coastCur[i]=carry;}}}// land: ~5%/° decay, apply if warmer
+// Westerly continentality: distance (°) west to the upwind open ocean. The 30-65°
+// belt is driven by the westerlies, so a SHORT west-fetch (W Europe, Pacific NW,
+// W Patagonia) bathes in mild marine air that reaches far inland, while a LONG
+// fetch — deep interiors and the EAST coasts that sit downwind of a whole continent
+// (Manchuria, interior Asia/Canada) — gives cold-winter continental climates with a
+// markedly lower annual-mean temperature. This (not plain coast distance) is what
+// separates mild W Europe from frigid Manchuria at the same latitude.
+const wfScan=Math.max(1,Math.round(W*75/360));
+const _oceanDistW=dirDist(oceanMask,W,H,1,wfScan);// px west to the upwind ocean
+const westFetch=new Float32Array(W*H);
+for(let i=0;i<W*H;i++)if(landMask[i])westFetch[i]=Math.min(_oceanDistW[i],wfScan)*degPx;
 // Wind: use real NCEP/NCAR data if available and toggled, otherwise solver
 if(realWind&&realWindFns&&realWindFns.isRealWindAvailable()){
 tecWindX=new Float32Array(W*H);tecWindY=new Float32Array(W*H);
@@ -185,14 +245,14 @@ const lt=Math.abs(py/H-0.5)*2,e2=elevation[py*W+px];
 // Elevation penalty: lapse-rate cooling. The old (.45+.8*lt) ran ~2× too steep
 // for low-latitude high terrain — it froze the Tibetan Plateau / Andes / Rockies
 // into Greenland-style ICE sheets (~25% of all land was elevation-ice). A gentler,
-// less latitude-scaled penalty (.30+.45*lt) keeps Tibet cold-but-not-glaciated
+// near-constant lapse-rate penalty (.48+.12*lt) keeps Tibet cold-but-not-glaciated
 // (~−6°C alpine steppe) while Greenland (high AND polar) still freezes.
 // Southern-hemisphere polar cooling: the base curve is hemisphere-symmetric, but
 // real Antarctica is far colder than the Arctic at the same latitude (isolated
 // continent, circumpolar current, no oceanic heat transport). Without this the
 // low-elevation Antarctic coast/peninsula sat above the ice threshold → forest.
 const shCool=Math.max(0,(py/H-0.5)*2-0.53)*0.85;
-tGrid[my*mW2+mx]=Math.max(0,Math.min(1,0.85-0.66*lt*lt+0.18*lt*lt*lt*lt+Math.exp(-((lt-0.15)*(lt-0.15))/(2*0.10*0.10))*0.035-Math.max(0,e2)*(.30+.45*lt)-shCool));}
+tGrid[my*mW2+mx]=Math.max(0,Math.min(1,0.85-0.66*lt*lt+0.18*lt*lt*lt*lt+Math.exp(-((lt-0.15)*(lt-0.15))/(2*0.10*0.10))*0.035-Math.max(0,e2)*(.48+.12*lt)-shCool));}
 for(let step=0;step<60;step++){const prev=new Float32Array(tGrid);// 60 iterations for deep heat transport
 for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
@@ -210,7 +270,7 @@ let upT=(prev[syC*mW2+sx]*(1-fdx)+prev[syC*mW2+sxr]*fdx)*(1-fdy)
 // Prevent ocean tiles from pulling hot land temps (causes coast shearing)
 // If this is ocean but the source sample is very different from local, dampen it
 const e2=elevation[fi],lt=Math.abs(py/H-0.5)*2;
-const locT=Math.max(0,Math.min(1,0.85-0.66*lt*lt+0.18*lt*lt*lt*lt+Math.exp(-((lt-0.15)*(lt-0.15))/(2*0.10*0.10))*0.035-Math.max(0,e2)*(.30+.45*lt)-Math.max(0,(py/H-0.5)*2-0.53)*0.85));
+const locT=Math.max(0,Math.min(1,0.85-0.66*lt*lt+0.18*lt*lt*lt*lt+Math.exp(-((lt-0.15)*(lt-0.15))/(2*0.10*0.10))*0.035-Math.max(0,e2)*(.48+.12*lt)-Math.max(0,(py/H-0.5)*2-0.53)*0.85));
 if(e2<=0&&Math.abs(upT-prev[my*mW2+mx])>0.15){
 // Dampen extreme jumps at coast boundaries
 upT=prev[my*mW2+mx]*0.7+upT*0.3;}
@@ -252,17 +312,20 @@ const shE=Math.exp(-((tLat-0.12)*(tLat-0.12))/(2*0.14*0.14))*0.030;// equatorial
 // Accurate annual-mean latitude curve (see tools/probe_temperature.mjs): nearly
 // flat near the equator, steep through mid-latitudes, FLATTENING toward the pole
 // (-23°C at 90°, not the old -60°C). Greenland/Antarctica ice via the elev penalty.
-// Elevation penalty softened (.30+.45*tLat, was .45+.8) so high terrain at low/mid
+// Elevation penalty (.48+.12*tLat, was .45+.8) ~ a real 6.5°C/km lapse rate, only faintly lat-scaled so high terrain at low/mid
 // latitudes (Tibet, Andes, Rockies) is cold alpine steppe, not a fake ice cap;
 // southern-polar cooling (shCool) makes all of Antarctica ice, not just its high
 // interior. See the wind-temp grid above for the full rationale.
 const shCool=Math.max(0,(ny-0.5)*2-0.53)*0.85;
-const bt=0.85-0.66*tLat*tLat+0.18*tLat*tLat*tLat*tLat+shE-Math.max(0,e)*(.30+.45*tLat)-shCool+fbm(nx*3+80,ny*3+80,3,2,.5)*.02+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.025;
+const bt=0.85-0.66*tLat*tLat+0.18*tLat*tLat*tLat*tLat+shE-Math.max(0,e)*(.48+.12*tLat)-shCool+fbm(nx*3+80,ny*3+80,3,2,.5)*.02+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.025;
 const inland=Math.max(0,1-cp);
-// Maritime effect: coasts are WARMER at high latitudes (Gulf Stream, ocean heat release)
-// and slightly COOLER in tropics (sea breeze). Inland is MORE extreme (hot summers, cold winters).
-// At 40-65° lat: coastal areas up to +10°C warmer than inland (London vs Moscow)
-const maritimeWarm=tLat>0.3?Math.min(0.08,((tLat-0.3)*0.4))*cp:0;// warming from ocean proximity at high lat (London/Reykjavik milder than inland)
+// Westerly continentality (see westFetch above): 0 = oceanic, 1 = deep continental.
+const conti=Math.min(1,westFetch[i]/45);
+// Oceanic high latitudes run MILD (marine air off the upwind ocean — W Europe,
+// Pacific NW, S Chile, NZ); the ocean-current drift on top of this carries the
+// extra Gulf-Stream warmth. Replaces the old blanket coast warming that wrongly
+// also warmed the cold-current east coasts.
+const maritimeWarm=e>0?(1-conti)*Math.max(0,tLat-0.33)*0.16:0;
 const tropicalCool=tLat<0.3?cp*0.005:0;// faint coastal sea-breeze cooling — equatorial coasts sit right on the curve
 // Continentality is SIGNED and moisture-gated (a plain latitude curve can't see
 // this): DRY SUBTROPICAL interiors run HOT (deserts — Sahara, Sonoran, Arabian),
@@ -283,7 +346,7 @@ const tropicalCool=tLat<0.3?cp*0.005:0;// faint coastal sea-breeze cooling — e
 const beltLat=Math.exp(-((tLat-0.30)*(tLat-0.30))/(2*0.105*0.105));
 const equatorGuard=Math.max(0,Math.min(1,(tLat-0.18)/0.06));// 0 below ~16°, 1 above ~22°
 const monsoonSpare=1-0.9*eastWet[i];
-const subtropDry=e>0?beltLat*equatorGuard*(0.45+0.55*inland)*0.95*monsoonSpare:0;
+const subtropDry=e>0?beltLat*equatorGuard*(0.45+0.55*inland)*0.85*monsoonSpare:0;
 // Continental interiors (rain-shadow + far from any ocean) dry into the mid-latitude
 // steppes and prairies — the Great Plains, the Eurasian steppe, the Pampas,
 // Patagonia. Focused on ~23-61° so it doesn't over-dry the equatorial tropics into
@@ -291,14 +354,27 @@ const subtropDry=e>0?beltLat*equatorGuard*(0.45+0.55*inland)*0.95*monsoonSpare:0
 // cold, not dryness, sets the biome. (Tropical savanna — the Sahel, East Africa —
 // stays under-represented: it needs wet/dry monsoon seasonality the annual-mean
 // solver doesn't model, and widening the savanna biome band would ripple into the
-// resource/agriculture sim, so it's deliberately left for a future pass.)
+// resource/agriculture sim, so the biome band was widened instead — together with
+// the savanna-belt drying below.)
 const contBand=Math.max(0,Math.min(1,(tLat-0.26)/0.08))*Math.max(0,Math.min(1,(0.68-tLat)/0.12));
-const contDry=e>0?inland*contBand*0.28*monsoonSpare:0;
-const mo=Math.max(0.02,windMoisture[i]-subtropDry-contDry);
+const contDry=e>0?inland*contBand*0.16*monsoonSpare:0;
+// Tropical savanna belt (~9-22°): a long DRY SEASON the annual-mean solver can't
+// see leaves the Sahel, Cerrado, Llanos, N-Australian and Sudanian savannas far too
+// wet (rainforest). A moderate drying here — inland-gated (humid coasts spared),
+// equatorward-tapered (the everwet ITCZ rainforest at 0-8° untouched) and east-coast
+// spared — opens up the savanna belt between the rainforest and the deserts.
+const savBelt=Math.exp(-((tLat-0.18)*(tLat-0.18))/(2*0.07*0.07))*Math.max(0,Math.min(1,(tLat-0.07)/0.05));
+const savDry=e>0?savBelt*(0.4+0.6*inland)*0.34*monsoonSpare:0;
+const mo=Math.max(0.02,windMoisture[i]-subtropDry-contDry-savDry);
 const dry=Math.max(0,1-mo/0.35);// 1 = bone-dry, 0 = humid
 const desertHeat=dry*0.09*Math.exp(-((tLat-0.22)*(tLat-0.22))/(2*0.13*0.13));// peaks on the 13-30° HOT-DESERT belt (Sahel, Sahara, Arabia — Earth's hottest annual means), not the 33° subtropics
-const interiorCold=Math.max(0,tLat-0.55)*0.45;// ramps in past ~50° latitude
-const continental=e>0?inland*(desertHeat-interiorCold):0;
+// Continental winters depress the ANNUAL mean only where summers can't compensate,
+// i.e. it ramps in quadratically with latitude (negligible at 40° — Beijing's hot
+// summers balance its cold winters to near its zonal mean — but severe by 55-65°:
+// interior Siberia/Canada). Scaled by WEST-FETCH (conti) so maritime west coasts at
+// the same latitude are spared.
+const interiorCold=Math.min(0.06,conti*Math.pow(Math.max(0,tLat-0.40),2)*1.8);
+const continental=e>0?inland*desertHeat-interiorCold:0;
 const mt=bt+maritimeWarm-tropicalCool+continental+Math.max(0,0.60-bt)*cp*0.05;// coastal moderation: warms COLD maritime coasts toward ~0°C, never cools warm ones
 const wt=windTemp[i];
 // The wind-advected field (wt) homogenises the latitude gradient over its 60
@@ -309,7 +385,7 @@ const wt=windTemp[i];
 // Ocean-current SST anomaly: full on open water, a decaying coastal fraction on
 // the shores the current bathes (so e.g. NW Europe runs mild, the Namib/Atacama
 // coasts run chilly) — see the current model up top.
-const curAnom=e<=0?currentAnom[i]:coastCur[i]*0.5;
+const curAnom=e<=0?currentAnom[i]:coastCur[i]*0.7;
 temperature[i]=Math.max(0,Math.min(1,mt*0.92+wt*0.08+curAnom));
 moisture[i]=mo;}
 }else if(preset==="pangaea"){

@@ -28,9 +28,9 @@ function getBiomeD(e, m, t, sl) {
   if (t < .52) return em > .4 ? 6 : em > .08 ? 4 : 18;
   if (t < .58) return em > .35 ? 6 : em > .08 ? 4 : 18;
   if (t < .65) return em > .45 ? 7 : em > .25 ? 6 : em > .08 ? 4 : 18;
-  if (t < .78) return em > .55 ? 9 : em > .35 ? 8 : em > .15 ? 12 : 13;
-  if (t < .85) return em > .5 ? 17 : em > .3 ? 15 : em > .18 ? 11 : em > .1 ? 14 : 13;
-  return em > .5 ? 10 : em > .3 ? 15 : em > .18 ? 11 : em > .1 ? 12 : 13;
+  if (t < .78) return em>.58?9:em>.40?8:em>.14?12:13;
+  if (t < .85) return em>.54?17:em>.36?15:em>.16?11:em>.09?14:13;
+  return em>.56?10:em>.38?15:em>.16?11:em>.09?12:13;
 }
 
 const eData = decodeEarth(EARTH_ELEV);

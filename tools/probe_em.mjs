@@ -11,9 +11,9 @@ function biome(e, m, t) {
   if (t < .45) b = 5; else if (t < .52) b = em > .4 ? 6 : em > .08 ? 4 : 18;
   else if (t < .58) b = em > .35 ? 6 : em > .08 ? 4 : 18;
   else if (t < .65) b = em > .45 ? 7 : em > .25 ? 6 : em > .08 ? 4 : 18;
-  else if (t < .78) b = em > .55 ? 9 : em > .35 ? 8 : em > .15 ? 12 : 13;
-  else if (t < .85) b = em > .5 ? 17 : em > .3 ? 15 : em > .18 ? 11 : em > .1 ? 14 : 13;
-  else b = em > .5 ? 10 : em > .3 ? 15 : em > .18 ? 11 : em > .1 ? 12 : 13;
+  else if (t < .78) b = em>.58?9:em>.40?8:em>.14?12:13;
+  else if (t < .85) b = em>.54?17:em>.36?15:em>.16?11:em>.09?14:13;
+  else b = em>.56?10:em>.38?15:em>.16?11:em>.09?12:13;
   return { em, b };
 }
 const w = generateWorld(W, H, 8817, "earth_sim", 0.78, true, false, {});
