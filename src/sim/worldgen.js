@@ -209,9 +209,11 @@ coastCur[i]=v;}}
 //     cold mid-ocean (Iceland) or bleeding cold upwelling over the lee ranges.
 for(let y=0;y<H;y++){const aLat=Math.abs(y/H-0.5)*2;if(aLat<=0.33||aLat>=0.74)continue;
 let carry=0;
+// per-pixel decays derived from per-DEGREE rates so the reach is resolution-independent
+const oceanKeep=Math.pow(0.96,360/W),landDecay=Math.pow(0.94,360/W);// ~4%/° over sea, ~6%/° over land
 for(let s=0;s<W+W;s++){const xx=s%W,i=y*W+xx;
-if(elevation[i]<=0){const c=currentAnom[i];if(c>carry)carry=c;carry*=0.998;}// warm ocean refreshes
-else{carry*=0.988;if(carry>coastCur[i])coastCur[i]=carry;}}}// land: ~5%/° decay, apply if warmer
+if(elevation[i]<=0){const c=currentAnom[i];if(c>carry)carry=c;carry*=oceanKeep;}// warm ocean refreshes
+else{carry*=landDecay;if(carry>coastCur[i])coastCur[i]=carry;}}}// land: apply if warmer
 // Westerly continentality: distance (°) west to the upwind open ocean. The 30-65°
 // belt is driven by the westerlies, so a SHORT west-fetch (W Europe, Pacific NW,
 // W Patagonia) bathes in mild marine air that reaches far inland, while a LONG
@@ -306,7 +308,11 @@ windTemp[y*W+x]=(tGrid[iy*mW2+ix]*(1-dx2)+tGrid[iy*mW2+Math.min(mW2-1,ix+1)]*dx2
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x,nx=x/W,ny=y/H;
 const e=elevation[i];
 const cd=cdist[Math.min(CDH-1,Math.floor(y/CDT))*CDW+Math.min(CDW-1,Math.floor(x/CDT))];
-const cp=Math.max(0,1-cd/8);
+// Coast proximity in DEGREES, not pixels: cd is in CDT(=4px) units, so the raw
+// cd/8 ramp reached 0 at 8° inland at 1440-wide but only 6° at the app's 1920-wide
+// — making everything read as "more inland" and over-drying the interiors at the
+// resolution the app actually runs. (cd·CDT·360/W)/8° is resolution-independent.
+const cp=Math.max(0,1-cd*(CDT*360/W)/8);
 const tLat=Math.abs(ny-0.5)*2;// equator at map center (standard equirectangular)
 const shE=Math.exp(-((tLat-0.12)*(tLat-0.12))/(2*0.14*0.14))*0.030;// equatorial+subtropical lift (humid tropics sit ~27°C); fades out by ~40° so it doesn't warm mid-latitudes
 // Accurate annual-mean latitude curve (see tools/probe_temperature.mjs): nearly
