@@ -50,7 +50,9 @@ elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
 // +26°C at the equator, flattening to ~-23°C at the pole (the real Arctic mean,
 // not the old -60°C). A small subtropical shoulder lifts the 10-20° band; the
 // Greenland/Antarctica ice still comes from the lat-amplified elevation penalty.
-temperature[i]=Math.max(0,Math.min(1,0.85-0.66*lat*lat+0.18*lat*lat*lat*lat+Math.exp(-((lat-0.12)*(lat-0.12))/(2*0.14*0.14))*0.030-Math.max(0,elevation[i])*(.4+.8*lat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.03));}
+// Softer elevation lapse penalty + southern-polar cooling (see earth_sim for the
+// rationale): keeps Tibet/Andes from glaciating and makes all of Antarctica ice.
+temperature[i]=Math.max(0,Math.min(1,0.85-0.66*lat*lat+0.18*lat*lat*lat*lat+Math.exp(-((lat-0.12)*(lat-0.12))/(2*0.14*0.14))*0.030-Math.max(0,elevation[i])*(.30+.45*lat)-Math.max(0,(ny-0.5)*2-0.53)*0.85+fbm(nx*3+80,ny*3+80,3,2,.5)*.03));}
 // Pass 2: coast-distance BFS at tile resolution for continentality
 const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
 const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);
@@ -109,6 +111,58 @@ for(let qi=0;qi<cdQ.length;qi++){const ci=cdQ[qi],cd=cdist[ci],cx=ci%CDW,cy=(ci-
 for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;
 const nx2=(cx+dx+CDW)%CDW,ny2=cy+dy;if(ny2<0||ny2>=CDH)continue;
 const ni=ny2*CDW+nx2,nd=cd+1;if(nd<cdist[ni]&&elevation[Math.min(H-1,ny2*CDT)*W+Math.min(W-1,nx2*CDT)]>0){cdist[ni]=nd;cdQ.push(ni);}}}
+// East-coast (windward) ocean proximity — the single most important signal for
+// where the subtropical deserts AREN'T. Humid subtropics (SE US, SE China, SE
+// Brazil, E Australia, Natal) sit on the EAST side of continents: warm western-
+// boundary currents + onshore summer flow keep them wet at the same latitude
+// where the WEST sides and interiors (Sahara, Arabia, Atacama, Namib, W Australia,
+// SW US) are bone-dry. Coast distance alone can't tell them apart; the DIRECTION
+// to the nearest ocean can. Scan ~14° east of each land tile; eastWet→1 on an east
+// coast, →0 for interiors and west coasts. Later it spares those coasts from the
+// subtropical drying so the deserts can be pushed hard everywhere else.
+const eastScan=Math.max(1,Math.round(W*14/360)),openRun=Math.max(1,Math.round(W*7/360));
+const eastWet=new Float32Array(W*H);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(elevation[i]<=0)continue;
+// First OPEN ocean to the east: the hit must still be ocean ~7° further on, so
+// narrow seas (Red Sea, Persian Gulf, Mediterranean straits) don't count as a
+// moisture source — otherwise the hyperarid eastern Sahara/Arabia would be spared.
+let found=0;for(let k=1;k<=eastScan;k++){if(elevation[y*W+((x+k)%W)]<=0&&elevation[y*W+((x+k+openRun)%W)]<=0){found=k;break;}}
+eastWet[i]=found>0?Math.max(0,1-(found-1)/eastScan):0;}
+// ── Ocean currents (SST anomalies) ──────────────────────────────────────────
+// The base sea-surface temperature was purely zonal — latitude bands, no basin
+// structure, so the famous currents simply weren't there. Two gyre limbs carry
+// most of the heat:
+//   • WARM western-boundary currents (Gulf Stream, Kuroshio, Brazil, Agulhas, East
+//     Australian) run poleward along the EAST coasts of continents (= the WEST side
+//     of each ocean basin) and drift east across the mid-latitudes — this is what
+//     keeps the NW Atlantic and NW Pacific, and downwind NW Europe, mild for their
+//     latitude. Detected by land lying to the WEST of an ocean tile.
+//   • COLD eastern-boundary currents + upwelling (Canary, California, Humboldt,
+//     Benguela) run equatorward along the WEST coasts (= EAST side of basins) and
+//     chill the shores off the great west-coast deserts. Detected by land to the EAST.
+// currentAnom is added to ocean SST below; coastCur spills it onto the coasts the
+// current bathes (a fraction, decaying inland) so the land feels it too.
+const ocScan=Math.max(1,Math.round(W*60/360));
+const currentAnom=new Float32Array(W*H);
+for(let y=0;y<H;y++){const aLat=Math.abs(y/H-0.5)*2*90;
+const wbBand=Math.exp(-((aLat-42)*(aLat-42))/(2*14*14));// warm western-boundary band, ~28-56°
+const ebBand=Math.exp(-((aLat-22)*(aLat-22))/(2*15*15));// cold eastern-boundary band, ~7-37°
+for(let x=0;x<W;x++){const i=y*W+x;if(elevation[i]>0)continue;
+let dw=ocScan+1;for(let k=1;k<=ocScan;k++){if(elevation[y*W+((x-k+W)%W)]>0){dw=k;break;}}
+let de=ocScan+1;for(let k=1;k<=ocScan;k++){if(elevation[y*W+((x+k)%W)]>0){de=k;break;}}
+const wbWarm=wbBand*Math.max(0,1-(dw*360/W)/80)*0.115;// drifts most of the way across the basin
+const ebCold=ebBand*Math.max(0,1-(de*360/W)/16)*0.075;// tight to the west-coast upwelling zone
+currentAnom[i]=wbWarm-ebCold;}}
+// Spill onto the coasts (max-spread inland with decay): Gulf Stream → mild NW
+// Europe; Benguela/Humboldt/California → chilly desert shores.
+const coastCur=new Float32Array(currentAnom);
+const _ccPrev=new Float32Array(W*H);
+for(let pass=0;pass<6;pass++){_ccPrev.set(coastCur);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(elevation[i]<=0)continue;
+let v=_ccPrev[i];
+for(let d=0;d<4;d++){const xx=(x+(d===0?1:d===1?-1:0)+W)%W,yy=y+(d===2?1:d===3?-1:0);if(yy<0||yy>=H)continue;
+const nv=_ccPrev[yy*W+xx];if(Math.abs(nv)>Math.abs(v))v=nv;}
+coastCur[i]=v*0.82;}}// ~18% decay per ring inland
 // Wind: use real NCEP/NCAR data if available and toggled, otherwise solver
 if(realWind&&realWindFns&&realWindFns.isRealWindAvailable()){
 tecWindX=new Float32Array(W*H);tecWindY=new Float32Array(W*H);
@@ -128,7 +182,17 @@ const tGrid=new Float32Array(mW2*mH2);
 for(let my=0;my<mH2;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2);
 const lt=Math.abs(py/H-0.5)*2,e2=elevation[py*W+px];
-tGrid[my*mW2+mx]=Math.max(0,Math.min(1,0.85-0.66*lt*lt+0.18*lt*lt*lt*lt+Math.exp(-((lt-0.15)*(lt-0.15))/(2*0.10*0.10))*0.035-Math.max(0,e2)*(.45+.8*lt)));}
+// Elevation penalty: lapse-rate cooling. The old (.45+.8*lt) ran ~2× too steep
+// for low-latitude high terrain — it froze the Tibetan Plateau / Andes / Rockies
+// into Greenland-style ICE sheets (~25% of all land was elevation-ice). A gentler,
+// less latitude-scaled penalty (.30+.45*lt) keeps Tibet cold-but-not-glaciated
+// (~−6°C alpine steppe) while Greenland (high AND polar) still freezes.
+// Southern-hemisphere polar cooling: the base curve is hemisphere-symmetric, but
+// real Antarctica is far colder than the Arctic at the same latitude (isolated
+// continent, circumpolar current, no oceanic heat transport). Without this the
+// low-elevation Antarctic coast/peninsula sat above the ice threshold → forest.
+const shCool=Math.max(0,(py/H-0.5)*2-0.53)*0.85;
+tGrid[my*mW2+mx]=Math.max(0,Math.min(1,0.85-0.66*lt*lt+0.18*lt*lt*lt*lt+Math.exp(-((lt-0.15)*(lt-0.15))/(2*0.10*0.10))*0.035-Math.max(0,e2)*(.30+.45*lt)-shCool));}
 for(let step=0;step<60;step++){const prev=new Float32Array(tGrid);// 60 iterations for deep heat transport
 for(let my=1;my<mH2-1;my++)for(let mx=0;mx<mW2;mx++){
 const px=Math.min(W-1,mx*2),py=Math.min(H-1,my*2),fi=py*W+px;
@@ -146,7 +210,7 @@ let upT=(prev[syC*mW2+sx]*(1-fdx)+prev[syC*mW2+sxr]*fdx)*(1-fdy)
 // Prevent ocean tiles from pulling hot land temps (causes coast shearing)
 // If this is ocean but the source sample is very different from local, dampen it
 const e2=elevation[fi],lt=Math.abs(py/H-0.5)*2;
-const locT=Math.max(0,Math.min(1,0.85-0.66*lt*lt+0.18*lt*lt*lt*lt+Math.exp(-((lt-0.15)*(lt-0.15))/(2*0.10*0.10))*0.035-Math.max(0,e2)*(.45+.8*lt)));
+const locT=Math.max(0,Math.min(1,0.85-0.66*lt*lt+0.18*lt*lt*lt*lt+Math.exp(-((lt-0.15)*(lt-0.15))/(2*0.10*0.10))*0.035-Math.max(0,e2)*(.30+.45*lt)-Math.max(0,(py/H-0.5)*2-0.53)*0.85));
 if(e2<=0&&Math.abs(upT-prev[my*mW2+mx])>0.15){
 // Dampen extreme jumps at coast boundaries
 upT=prev[my*mW2+mx]*0.7+upT*0.3;}
@@ -188,7 +252,12 @@ const shE=Math.exp(-((tLat-0.12)*(tLat-0.12))/(2*0.14*0.14))*0.030;// equatorial
 // Accurate annual-mean latitude curve (see tools/probe_temperature.mjs): nearly
 // flat near the equator, steep through mid-latitudes, FLATTENING toward the pole
 // (-23°C at 90°, not the old -60°C). Greenland/Antarctica ice via the elev penalty.
-const bt=0.85-0.66*tLat*tLat+0.18*tLat*tLat*tLat*tLat+shE-Math.max(0,e)*(.45+.8*tLat)+fbm(nx*3+80,ny*3+80,3,2,.5)*.02+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.025;
+// Elevation penalty softened (.30+.45*tLat, was .45+.8) so high terrain at low/mid
+// latitudes (Tibet, Andes, Rockies) is cold alpine steppe, not a fake ice cap;
+// southern-polar cooling (shCool) makes all of Antarctica ice, not just its high
+// interior. See the wind-temp grid above for the full rationale.
+const shCool=Math.max(0,(ny-0.5)*2-0.53)*0.85;
+const bt=0.85-0.66*tLat*tLat+0.18*tLat*tLat*tLat*tLat+shE-Math.max(0,e)*(.30+.45*tLat)-shCool+fbm(nx*3+80,ny*3+80,3,2,.5)*.02+fbm(nx*1.2+55,ny*1.2+55,3,2,.55)*.025;
 const inland=Math.max(0,1-cp);
 // Maritime effect: coasts are WARMER at high latitudes (Gulf Stream, ocean heat release)
 // and slightly COOLER in tropics (sea breeze). Inland is MORE extreme (hot summers, cold winters).
@@ -199,20 +268,33 @@ const tropicalCool=tLat<0.3?cp*0.005:0;// faint coastal sea-breeze cooling — e
 // this): DRY SUBTROPICAL interiors run HOT (deserts — Sahara, Sonoran, Arabian),
 // HIGH-LATITUDE interiors run COLD (Siberia, interior Canada). Open ocean is
 // maritime — no continental effect at all.
-// Subtropical high-pressure aridity dries the great deserts (Sahara, Arabia,
-// Australia) — descending air at ~15-30°, strongest in continental interiors away
-// from the equatorial ITCZ. The wind solver underplays it, so apply it here; the
-// DRIED moisture both feeds the dryness-gated desert heat below AND becomes the
-// tile's final moisture. Land only — oceans stay humid.
-// ...gated by CONTINENTALITY (∝ inland), NOT by latitude alone. The great
-// subtropical deserts are DEEP CONTINENTAL INTERIORS (Sahara, Arabia, Australia,
-// Gobi, Kalahari), while the monsoon/humid subtropics at the same latitudes
-// (India, Indochina, southern China, SE Brazil) are COASTAL. Drying ∝ inland^1.3
-// leaves the coasts wet and only desiccates the interiors — so it can't override
-// the monsoon. Coastal deserts that exist by cold currents (Atacama, Namib) are
-// already bone-dry in the wind solver and don't need this.
-const subtropDry=e>0?Math.exp(-((tLat-0.25)*(tLat-0.25))/(2*0.09*0.09))*0.65*Math.pow(inland,1.3):0;
-const mo=Math.max(0.02,windMoisture[i]-subtropDry);
+// Subtropical (Hadley-subsidence) aridity — this is what builds the great deserts.
+// Descending air on the ~18-38° belt kills rainfall; the wind solver badly
+// underplays it (deserts come out at moisture 0.3-0.55, indistinguishable from the
+// monsoon belt), so it's applied explicitly here. Two corrections over the old
+// inland^1.3 gate, which left every coast wet and made the deserts far too small:
+//  • Only LIGHTLY inland-gated (0.45 + 0.55*inland) so the drying reaches the SEA —
+//    the eastern Sahara, Arabia, Atacama and Namib are bone-dry right to the coast.
+//  • SPARED where it shouldn't apply: on EAST coasts (eastWet → warm-current humid
+//    subtropics: SE US, SE China, SE Brazil, E Australia) and equatorward of ~18°
+//    (equatorGuard → the ITCZ/monsoon tropics: S India, Indochina, the Sahel).
+// Without the spares a uniform belt would desertify the populated humid subtropics;
+// without the reach the deserts stay puddles. Together they give east-wet/west-dry.
+const beltLat=Math.exp(-((tLat-0.30)*(tLat-0.30))/(2*0.105*0.105));
+const equatorGuard=Math.max(0,Math.min(1,(tLat-0.18)/0.06));// 0 below ~16°, 1 above ~22°
+const monsoonSpare=1-0.9*eastWet[i];
+const subtropDry=e>0?beltLat*equatorGuard*(0.45+0.55*inland)*0.95*monsoonSpare:0;
+// Continental interiors (rain-shadow + far from any ocean) dry into the mid-latitude
+// steppes and prairies — the Great Plains, the Eurasian steppe, the Pampas,
+// Patagonia. Focused on ~23-61° so it doesn't over-dry the equatorial tropics into
+// false desert; spared on humid east coasts; faded out of the boreal north where
+// cold, not dryness, sets the biome. (Tropical savanna — the Sahel, East Africa —
+// stays under-represented: it needs wet/dry monsoon seasonality the annual-mean
+// solver doesn't model, and widening the savanna biome band would ripple into the
+// resource/agriculture sim, so it's deliberately left for a future pass.)
+const contBand=Math.max(0,Math.min(1,(tLat-0.26)/0.08))*Math.max(0,Math.min(1,(0.68-tLat)/0.12));
+const contDry=e>0?inland*contBand*0.28*monsoonSpare:0;
+const mo=Math.max(0.02,windMoisture[i]-subtropDry-contDry);
 const dry=Math.max(0,1-mo/0.35);// 1 = bone-dry, 0 = humid
 const desertHeat=dry*0.09*Math.exp(-((tLat-0.22)*(tLat-0.22))/(2*0.13*0.13));// peaks on the 13-30° HOT-DESERT belt (Sahel, Sahara, Arabia — Earth's hottest annual means), not the 33° subtropics
 const interiorCold=Math.max(0,tLat-0.55)*0.45;// ramps in past ~50° latitude
@@ -224,7 +306,11 @@ const wt=windTemp[i];
 // flattens the equator-to-pole spread if it dominates. So the accurate base
 // latitude curve (mt) leads; wt only nudges (8% everywhere — an ocean-specific
 // weighting was tried and abandoned; this is the calibrated blend).
-temperature[i]=Math.max(0,Math.min(1,mt*0.92+wt*0.08));
+// Ocean-current SST anomaly: full on open water, a decaying coastal fraction on
+// the shores the current bathes (so e.g. NW Europe runs mild, the Namib/Atacama
+// coasts run chilly) — see the current model up top.
+const curAnom=e<=0?currentAnom[i]:coastCur[i]*0.5;
+temperature[i]=Math.max(0,Math.min(1,mt*0.92+wt*0.08+curAnom));
 moisture[i]=mo;}
 }else if(preset==="pangaea"){
 // ── Pangaea mode: 100% land with mountains, valleys, climate ──
