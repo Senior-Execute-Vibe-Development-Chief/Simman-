@@ -835,6 +835,17 @@ const MIGRATE_DRAIN_CAP = 0.04;  // never move more than this fraction of a vill
 // back out onto the land. Towns sit on defensible sites (crystallize.js), so the
 // hub people run to IS the stronghold. T.SITE_DEFENSE dials the whole effect.
 const REFUGE_PULL      = 2.0;    // unrest=1 → up to ×(1+2·SITE_DEFENSE) flight into the hub
+// FARM-LABOUR ANCHOR: pre-modern agriculture is LABOUR-intensive — most people must
+// farm, and only the small SURPLUS can move to the cities, so the world stayed
+// ~85–90% rural until the 1800s and ~70% rural even in 1950. As farm YIELD rises (the
+// agricultural revolution: heavy plough → crop rotation → fertiliser → mechanisation)
+// fewer farmers feed more, the surplus grows, and the countryside finally empties into
+// the cities — the urban transition. So a farming region retains a rural share that
+// FALLS with its farm yield; the city can never drain it below that.
+const URBAN_BASE_RURAL = 0.90;   // pre-industrial retained rural share (most people farm)
+const URBAN_YIELD0     = 3.0;    // farm yield below which the countryside stays ~full (pre-industrial: ~90% rural)
+const URBAN_GAIN       = 0.13;   // share of farmers freed to the cities per unit of yield ABOVE that (→ ~70% rural by 1950)
+const URBAN_MIN_RURAL  = 0.55;   // floor on the retained rural share even at peak modern yield
 export function urbanise(world) {
   const byId = world._byId;
   if (!byId) return;
@@ -861,6 +872,14 @@ export function urbanise(world) {
     const refuge = 1 + REFUGE_PULL * (s.unrest || 0) * T.SITE_DEFENSE;
     const _dt = world._dt || 1;   // granularity: drift the same share of people per unit of HISTORY
     let movers = Math.min(s.people * MIGRATE_RATE * gap * refuge * _dt, room, s.people * MIGRATE_DRAIN_CAP * refuge * _dt);
+    // Farm-labour anchor: a farming region keeps the farmers who work its land — only
+    // the surplus above the (yield-dependent) rural floor can leave for the cities, so
+    // the world stays ~85% rural until the agricultural revolution lets it urbanise.
+    if ((s.tier | 0) <= (T.FARM_MAX_TIER | 0)) {
+      const fy = s._farmYield || 1;
+      const ruralFrac = Math.max(URBAN_MIN_RURAL, URBAN_BASE_RURAL - URBAN_GAIN * Math.max(0, fy - URBAN_YIELD0));
+      movers = Math.min(movers, Math.max(0, s.people - ruralFrac * (s._k || s.people)));
+    }
     if (movers < 0.2) continue;
     s.people -= movers;
     best.people += movers;
