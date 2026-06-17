@@ -12,7 +12,7 @@
 // captured right at the frontier would secede the very next pass and get
 // re-taken, making the borders flicker.
 
-import { recordIn, recordOut, IN_AID, IN_STATE_PAY, OUT_TRIBUTE } from "./money.js";
+import { recordIn, recordOut, IN_AID, IN_STATE_PAY, IN_TARIFFS, OUT_TRIBUTE } from "./money.js";
 import { shockUnrest } from "./shocks.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
@@ -21,6 +21,7 @@ import { techEff } from "./settlement.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, reconcilePolities } from "./entities.js";
+import { identityWeightsNow, identityGrievance, adminFriction, identityGrievanceCause } from "./cohesion.js";
 import { T } from "./tuning.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
@@ -121,6 +122,11 @@ const TAX_BASE     = 0.06;   // baseline share of a member's wealth taxed per pa
 const TAX_WAR      = 0.025;  // extra rate per level of war
 const TAX_BANKRUPT = 0.12;   // extra rate × how insolvent the state was last pass
 const TAX_DRIFT    = 0.25;   // how fast the actual rate moves toward its target (no whipsaw)
+const COURT_SHARE  = 0.55;   // share of the realm's tax REVENUE consumed at the capital — the court,
+                             // the central bureaucracy, the capital's monuments & clientele. This is what
+                             // made a capital live on TAXES, not its own workshops (Versailles, Rome on
+                             // provincial grain, the Forbidden City), so the seat reads as tax-funded. The
+                             // REST funds the army & provincial works (disburseTreasury), the guns-vs-court tension.
 
 // ── Popular unrest → rebellion ────────────────────────────────────────
 // Unrest is a SECOND stock alongside loyalty (kept separate so neither masks
@@ -201,6 +207,19 @@ const SEAT_BONUS_CAP = 10;   // total seat contribution is capped (admin has dim
 // great powers persist AND shed their over-extension.
 const CAP_K   = 2.6;
 const POW_REF = 380;
+// Dominant-empire tail: a capital whose coercive power stands well ABOVE the typical
+// capital of its age projects authority over a disproportionately larger realm — the
+// few great powers (Rome, the Caliphate, the Mongol khans, Britain) that tower over a
+// fragmented pack instead of the log2 compressing everyone to one uniform ceiling.
+// Measured RELATIVE to the era's mean capital power (world._meanCapPower), so the
+// global demographic scaling (index.js _eraProd) can't wash it out; bounded so the
+// hegemon is dominant, not all-consuming, and self-limiting — a rising giant lifts the
+// mean it is measured against.
+const CAP_DOM_W   = 0.9;   // extra capacity per (above-average power)^P
+const CAP_DOM_P   = 1.5;   // CONVEX: only genuine OUTLIERS tower — a power-law tail of a few great
+                           // powers, not a uniformly bigger pack (sustainable size ≈ capacity^⅔, so
+                           // the top core needs ~6–8× capacity to reach a Rome-scale share of the map)
+const CAP_DOM_MAX = 8.0;   // ceiling on the dominance multiplier (a hegemon, not an immortal world-eater)
 // Empire size is NOT capped. It emerges from the existing over-extension
 // mechanism: provinces past a realm's REACH bleed loyalty and revolt. We gate
 // that reach (`range`, the admin-load denominator) hard on transport tech below —
@@ -1307,6 +1326,20 @@ export function updatePolities(world) {
     }
   }
 
+  // Era-weighted salience of the four identity layers (cohesion.js). One read per
+  // pass — the year is global — shared by the unrest grievance and the admin-load
+  // friction below. The axis of conflict it emphasises shifts with the calendar:
+  // faith in the medieval, language across the bureaucratic eras, peoples in the modern.
+  const idW = identityWeightsNow(world);
+  // MEDIAN capital power across the REAL states (multi-member) this pass — the era
+  // baseline the dominant-empire boost is measured against (see CAP_DOM_W). The median
+  // (not the mean) is deliberate: it is robust to the hegemon's OWN outsized core, so a
+  // great power keeps its dominance for ages instead of deflating the very average it is
+  // measured against and self-fragmenting — persistent Romes, not one-era flashes.
+  { const cps = [];
+    for (const c of countries.values()) if (c.capital && c.members.length > 1) cps.push(settlementPower(c.capital));
+    cps.sort((a, b) => a - b);
+    world._refCapPower = cps.length ? cps[cps.length >> 1] : 1; }
   for (const c of countries.values()) {
     if (c.members.length <= 1) { if (c.members[0]) c.members[0].loyalty = 1; continue; }   // city-state: loyal to itself
 
@@ -1368,8 +1401,13 @@ export function updatePolities(world) {
     // → telegraph), so the multiplier climbs exactly when bureaucracy is
     // invented; it scales the seat cap too — satrapies ARE the delegation.
     const instMul = 1 + capCoh * T.CAP_INST;
-    const peaceCapacity = CAP_K * instMul * Math.log2(1 + capPower / POW_REF)
-                        + Math.min(SEAT_BONUS_CAP * instMul, seatBonus);
+    // Dominance: a capital far above the era's mean sustains a disproportionately
+    // larger realm (the great-power tail), bounded and self-limiting (CAP_DOM_*).
+    const relPow = capPower / Math.max(1, world._refCapPower || capPower);
+    const dominance = Math.min(CAP_DOM_MAX, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
+    c._dominance = dominance;   // info panel: how far this realm out-cores the age
+    const peaceCapacity = (CAP_K * instMul * Math.log2(1 + capPower / POW_REF)
+                        + Math.min(SEAT_BONUS_CAP * instMul, seatBonus)) * dominance;
 
     // ── War duress: throttle the budget while the realm is fighting ────
     // (fronts are tallied in armies.js advanceFronts → world._fronts.)
@@ -1431,8 +1469,10 @@ export function updatePolities(world) {
       const conscript = Math.min(1, ((s.army || 0) / Math.max(1, s.people)) / CONSCRIPT_REF);
       const gH = hunger * HUNGER_W, gC = conscript * CONSCRIPT_W, gW = warFat * WARFAT_W, gT = taxOver * OVERTAX_W;
       const gS = shockUnrest(world, s);   // direct famine/plague distress (shocks.js)
-      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS) * T.UNREST_GAIN - UNREST_RELIEF));
+      const gI = identityGrievance(cap, s, idW);   // heterodox-faith / foreign-people grievance vs the state core (era-weighted, cohesion.js)
+      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI) * T.UNREST_GAIN - UNREST_RELIEF));
       s._unrestCause = s._plagueActive ? "plague"
+                     : gI >= gH && gI >= gT && gI >= gW && gI >= gC ? identityGrievanceCause(cap, s, idW)
                      : gH >= gC && gH >= gW && gH >= gT ? "famine"
                      : gT >= gC && gT >= gW ? "taxes"
                      : gW >= gC ? "war fatigue" : "conscription";
@@ -1472,7 +1512,9 @@ export function updatePolities(world) {
       const coerce  = Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
       const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
       const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
-      const load = (d / holdRange) * sizeMul * recMul / coerce;   // grip: res-scaled so the held FRACTION matches the (res-scaled) territorial reach
+      const langMul = 1 + adminFriction(cap, s, idW);   // a foreign-tongue province is costlier to govern → polyglot empires overreach sooner (cohesion.js)
+      const load = (d / holdRange) * sizeMul * recMul * langMul / coerce;   // grip: res-scaled so the held FRACTION matches the (res-scaled) territorial reach
+      s._langFriction = langMul - 1;   // info panel: administrative friction from tongue mismatch
       s._adminLoad = load;            // for the info panel
       loads.push({ s, load });
     }
@@ -1591,6 +1633,14 @@ export function updatePolities(world) {
         const rent = Math.min(Math.max(0, s.wealth || 0), (s._landFood || 0) * T.FARM_RENT * T.POLITY_INTERVAL);
         if (rent > 0) { s.wealth -= rent; gov.treasury += rent; gov._revenue += rent; recordOut(s, OUT_TRIBUTE, rent); }
       }
+    }
+    // COURT & CAPITAL: a share of this pass's tax revenue is consumed AT the seat —
+    // the court, the central bureaucracy, the capital's works & clientele — so the
+    // capital reads as a TAX-funded seat rather than a merchant. Taken from the
+    // treasury (conserved) before the rest is disbursed to the army & provinces.
+    if (cap && gov._revenue > 0) {
+      const court = Math.min(Math.max(0, gov.treasury), gov._revenue * COURT_SHARE);
+      if (court > 0) { gov.treasury -= court; cap.wealth = (cap.wealth || 0) + court; recordIn(cap, IN_TARIFFS, court); }
     }
     // EXPENDITURE: spend the treasury back out (army pay → garrisons, then
     // works/dole → provinces). Balanced budget ⇒ the throne stops hoarding.

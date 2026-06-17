@@ -73,6 +73,7 @@ export function createWorld(w, opts = {}) {
   };
 
   initTerrain(world, w, opts.tCrop);
+  initAncestry(world, w, opts);
   initRiverMag(world, w);
   initWind(world, w);
   initDeposits(world, w, opts.deposits);
@@ -96,6 +97,25 @@ function initTerrain(world, w, tCrop) {
       // where you SEE green is where settlements actually thrive. Falls
       // back to the local bellFert formula if tCrop wasn't supplied.
       fert[ti] = tCrop ? tCrop[wi] : bellFert(t, m, e);
+    }
+  }
+}
+
+// Deep genetic substrate (worldgen ancestry) downsampled to sim tiles. Each
+// settlement seeds its ancestry from here; migration then admixes it. The sim
+// never mutates this field — it's the bedrock the faster layers drift away from.
+// −1 = no ancestry (sea / ice / polar). Robust to ter being a different grid.
+function initAncestry(world, w, opts) {
+  const { tw, th, N } = world;
+  const anc = world.ancestry = new Int16Array(N); anc.fill(-1);
+  world.ancestryCount = opts.ancestryCount || 0;
+  const src = opts.tAncestry; if (!src) return;
+  const stw = opts.terTw || w.width, sth = opts.terTh || w.height;
+  for (let ty = 0; ty < th; ty++) {
+    for (let tx = 0; tx < tw; tx++) {
+      const ax = Math.min(stw - 1, ((tx * TILE_RES / w.width) * stw) | 0);
+      const ay = Math.min(sth - 1, ((ty * TILE_RES / w.height) * sth) | 0);
+      anc[ty * tw + tx] = src[ay * stw + ax];
     }
   }
 }

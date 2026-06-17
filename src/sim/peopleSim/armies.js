@@ -19,6 +19,7 @@ import { coreRadiusFor } from "./territory.js";
 import { techEff } from "./settlement.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
+import { identityWeightsNow, casusBelliMul } from "./cohesion.js";
 import { realmName } from "./chronicle.js";
 import { inCrisis } from "./dynasties.js";
 import { getPolity as _getPolity } from "./entities.js";
@@ -69,6 +70,12 @@ export const MUSTER_INTERVAL   = 100;
 // (tuning.js). ATTACK_MIN_RATIO's old 1.12×1.05 re-anchored the 0.5-pivot
 // aggressionAttackMul — its tuning default (1.176) preserves that exactly.
 const CAPTURE_SCALE     = 5;           // tiles/pass per unit of power-ratio advantage
+const DOM_ATTACK_P      = 0.45;        // a DOMINANT realm (conquest.js _dominance) attacks on a slimmer margin —
+                                       // bar ÷ dominance^this — so a great power expands by conquest where the pack
+                                       // stalls (Rome, the Mongols, the Ottomans). Bounded by the dominance cap.
+const DOM_CAPTURE_P     = 0.4;         // …and BLITZES: its fronts take more countryside per pass (rate & per-front cap
+                                       // × dominance^this), so a hegemon's conquest sweeps a region in a campaign
+                                       // instead of nibbling it over centuries — the decisive pre-modern expansion.
 const ASSAULT_MARGIN    = 2;           // front must reach within (defender core + this) of the home
 const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent taking a city
 // Offensive throttle & strategic depth now live in the NATIONAL WAR CAPACITY block
@@ -287,6 +294,20 @@ export function advanceFronts(world) {
   const exhPrev = world._warExhaust ? new Map(world._warExhaust) : null;
   const warBarOf = (cc) => 1 + T.EXHAUST_WAR_BAR * (exhPrev ? (exhPrev.get(cc) || 0) : 0);
 
+  // Casus belli (cohesion.js): a righteous war against a foreign-faith (medieval) or
+  // foreign-people (modern) neighbour clears the attack bar more easily; co-religionist
+  // / co-national kinship restrains it; a province of the attacker's OWN people under
+  // foreign rule is eagerly liberated. Era-weighted → ~neutral in antiquity. The state
+  // CORE is the capital's dominant identity, looked up per country once per pass.
+  const idW = identityWeightsNow(world);
+  const capOf = new Map();
+  if (world.countries) for (const c of world.countries.values()) if (c.capital) capOf.set(c.id, c.capital);
+  const casusOf = (attCC, defCC, tileOwner) => casusBelliMul(capOf.get(attCC), capOf.get(defCC), tileOwner, idW);
+  // A dominant realm projects military power — it attacks on a slimmer margin, so a
+  // great power expands by conquest where the pack stalls (Rome, the Mongols).
+  const domBarOf = (attCC) => { const c = world.countries && world.countries.get(attCC); const d = c && c._dominance ? c._dominance : 1; return 1 / Math.pow(Math.max(1, d), DOM_ATTACK_P); };
+  const domCaptureOf = (attCC) => { const c = world.countries && world.countries.get(attCC); const d = c && c._dominance ? c._dominance : 1; return Math.pow(Math.max(1, d), DOM_CAPTURE_P); };
+
   // Wars END IN A PEACE (dyadic truces). The exhaustion bar alone could not break
   // the permanent-war equilibrium because it is MUSICAL CHAIRS: exhaustion stops a
   // realm attacking, but someone nearby is always rested, and the rested attack the
@@ -434,7 +455,7 @@ export function advanceFronts(world) {
     // one wants a clear advantage (personality.js aggressionAttackMul).
     const aCountry = world.countries && world.countries.get(A.countryId);
     const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
-    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId)) continue;
+    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId)) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -480,7 +501,7 @@ export function advanceFronts(world) {
         const key = A.id + ":" + pid;
         if (pairs.has(key)) continue;                        // already met on land
         const tf = tradeFactor(A.countryId, D.countryId);
-        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId)) continue;
+        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId)) continue;
         const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key };
         let l = amphibByDef.get(pid); if (!l) amphibByDef.set(pid, l = []);
         l.push(pc);
@@ -803,7 +824,8 @@ export function advanceFronts(world) {
       continue;   // front's at the core — no countryside left to nibble here
     }
 
-    const budget = Math.min(T.MAX_CAPTURE, Math.floor((adv - 1) * CAPTURE_SCALE));
+    const domCap = domCaptureOf(acc);   // a dominant realm sweeps more countryside per pass (Mongol-style blitz)
+    const budget = Math.min(Math.round(T.MAX_CAPTURE * domCap), Math.floor((adv - 1) * CAPTURE_SCALE * domCap));
     if (budget >= 1 && pc.tiles.length) {
       // Advance the front BROADLY: take the outermost contested tiles first
       // so the defender's countryside erodes ring by ring (visible) instead

@@ -12,7 +12,7 @@ export const IN_GOODS     = 1;   // sold its goods (exports) to trade partners
 export const IN_FOOD      = 2;   // sold surplus grain (hierarchy) + farm produce traded on roads (agrarian export sector)
 export const IN_MATERIALS = 3;   // sold timber/stone to a building neighbour
 export const IN_TOLLS     = 4;   // transit tolls — trade routes passing through it
-export const IN_TARIFFS   = 5;   // customs duties it collects as a capital
+export const IN_TARIFFS   = 5;   // taxes & customs a CAPITAL lives on (court share of state revenue)
 export const IN_TRIBUTE   = 6;   // tribute received from its vassals
 export const IN_AID       = 7;   // colonial support received from the mother country
 export const IN_LUXURY    = 8;   // sold luxury goods (spices/furs/incense/dyes) to wealthy buyers
@@ -34,7 +34,7 @@ const N_OUT = 10;
 
 export const IN_LABELS = [
   "mining", "goods sold", "food & farm goods", "materials sold",
-  "transit tolls", "customs duties", "tribute received", "colonial aid",
+  "transit tolls", "taxes & customs", "tribute received", "colonial aid",
   "luxuries sold", "state pay",
 ];
 export const OUT_LABELS = [

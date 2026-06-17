@@ -51,6 +51,13 @@ const TIER_NAME      = ["farming region", "town", "city", "metropolis"];   // ti
 // the spawned towns instead of fattening a region. Urban nodes (tier ≥ 1) are
 // uncapped — they grow on that imported surplus into cities and metropolises.
 const URBAN_CAP = 300;
+// The rural ceiling RISES with farm yield — intensive modern agriculture (the
+// fertiliser/mechanisation/green-revolution surge) lets a rural district hold far
+// more people, so the COUNTRYSIDE densifies in the industrial era instead of every
+// village staying pinned at the medieval cap. Dampened (<farmYield) so abundant
+// surplus still ships up to grow the cities/metros rather than all of it staying rural.
+const RURAL_YIELD_BASE = 2.0;     // ≈ medieval farmYield — densification only kicks in ABOVE this
+const URBAN_DENSITY_GAIN = 0.42;  // rural cap = URBAN_CAP × (1 + GAIN × (farmYield − BASE))
 // Demotion hysteresis: a settlement loses a tier only once its population falls
 // below this fraction of its CURRENT tier's promotion floor — a deadband so a
 // city hovering at a threshold doesn't flicker between tiers, while a sustained
@@ -149,6 +156,36 @@ const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends 
 // site gets nothing.
 // FISH_RATE -> runtime lever (tuning.js T.FISH_RATE)
 
+// ── Ancestry (deep genetic stock) ──────────────────────────────────────────
+// s.ancMix = [[ancId, share], ...] summing to 1, dominant first — the genetic
+// substrate a settlement's population descends from. Seeded from the worldgen
+// field; admixed only by MIGRATION (founding), never by conquest/culture, so it
+// is the slow bedrock the peoples/languages drift away from.
+const ANC_ADMIX = 0.6;   // a colony's ancestry = this much founders' stock + the rest the local substrate it absorbs
+export function dominantAnc(s) { return s.ancMix && s.ancMix.length ? s.ancMix[0][0] : -1; }
+function normAnc(pairs) {
+  let t = 0; for (const e of pairs) t += e[1]; if (t <= 0) return [];
+  const out = pairs.map(([id, sh]) => [id, sh / t]).filter(e => e[1] > 0.012);
+  let t2 = 0; for (const e of out) t2 += e[1]; for (const e of out) e[1] /= t2;
+  out.sort((a, b) => b[1] - a[1]);
+  return out.slice(0, 5);                 // keep the top handful of stocks
+}
+function blendAnc(a, wA, b, wB) {
+  const m = new Map();
+  if (a) for (const [id, sh] of a) m.set(id, (m.get(id) || 0) + sh * wA);
+  if (b) for (const [id, sh] of b) m.set(id, (m.get(id) || 0) + sh * wB);
+  return normAnc([...m.entries()]);
+}
+function seedAncestry(world, s, opts) {
+  const anc = world.ancestry;
+  const localId = anc ? anc[(s.pos.y | 0) * world.tw + (s.pos.x | 0)] : -1;
+  const local = localId >= 0 ? [[localId, 1]] : [];
+  const par = opts.parentId != null && opts.parentId >= 0 ? findSettlementById(world, opts.parentId) : null;
+  // A colony carries its FOUNDER's stock, admixed with the substrate it settles
+  // on; for a near spread the founder's stock ≈ the local one, so nothing shifts.
+  s.ancMix = (par && par.ancMix && par.ancMix.length) ? blendAnc(par.ancMix, ANC_ADMIX, local, 1 - ANC_ADMIX) : local;
+}
+
 export function makeSettlement(world, x, y, opts = {}) {
   const id = world._nextSettlementId || 1;
   world._nextSettlementId = id + 1;
@@ -243,6 +280,7 @@ export function makeSettlement(world, x, y, opts = {}) {
     seedCulture(world, s, cul ? cul.id : -1);
     if (cul && !opts.name) s.name = nameFor(world, cul, "settlement");
   }
+  seedAncestry(world, s, opts);   // deep genetic stock: local substrate, admixed if founded from afar
   s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
   s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
   world.settlements.push(s);
@@ -342,6 +380,32 @@ function oreTier(res) {
   if (fe > ORE_THR)                 cap = Math.max(cap, 0.90);
   if (fe > ORE_THR && co > ORE_THR) cap = 1.00;
   return cap;
+}
+// Craft-sector weights. TEXTILES were the LARGEST pre-modern manufacture by far
+// (Flemish/Florentine wool, Indian cotton, Chinese silk) — the universal town
+// industry — so they're the default "goods". METALWORK is now an ore-gated
+// SPECIALTY (Toledo, the Ruhr), not the thing every town read as. Pottery /
+// woodcraft / leather are the broad everyday crafts.
+const TEXTILE_W = 3.0;   // the loom — the default urban good (the largest pre-modern manufacture)
+const METAL_W   = 1.8;   // the forge — ore-gated specialty: only the richest ore+coal regions out-earn the loom
+const POTTERY_W = 0.6;   // pottery / woodcraft / leather — broad everyday crafts
+// Shared craft recipe so computeExportValue and getExportBreakdown can't drift.
+// Returns the manufactured-sector legs (pre craftFrac / mult), keyed by label.
+function craftLegs(s, k, r) {
+  const popScale = Math.min(1, Math.log(Math.max(1, s.people || 0)) / 8);
+  const craft = 0.4 + (k.construction || 0) * 0.5;                  // general artisanship
+  const temp = s._climTemp ?? 0.5, moist = s._climMoist ?? 0.5;
+  const wool   = Math.max(0, 1 - Math.abs(temp - 0.45) * 2.2);      // temperate pasture
+  const cotton = Math.max(0, (temp - 0.55) * 2.2) * Math.max(0, (moist - 0.4) * 2);   // warm & wet
+  const fibre  = 0.35 + 0.65 * Math.min(1, wool + cotton + (k.agriculture || 0) * 0.3);
+  const physMetalCap = oreTier(r);
+  return {
+    "Textiles":          TEXTILE_W * fibre * (0.55 + 0.45 * popScale) * craft,
+    "Metalwork":         physMetalCap > 0 ? Math.min(k.metallurgy || 0, physMetalCap) * METAL_W : 0,
+    "Pottery & leather": POTTERY_W * popScale * (0.4 + (r.timber || 0) * 0.3 + (r.horses || 0) * 0.3),
+    "Crafted wares":     (k.construction || 0) * 0.3,
+    "Services & records": (k.organization || 0) * popScale * 0.8,
+  };
 }
 
 // Cache a settlement's home-tile climate — latitude band (0 = equator,
@@ -586,15 +650,13 @@ export function computeExportValue(s, world) {
   ag += base; if (baseIsFood) agFood += base;
 
   // ── Manufactured / service sector ─────────────────────────────────────
-  // Metalwork, crafted wares, bureaucracy & banking — booked as "goods". A
-  // Farming Region does only FARM_CRAFT_FRAC of this; the loom, the forge and
-  // the counting-house concentrate in TOWNS, so it's a town+ activity.
+  // Diverse crafts (booked as "goods"): TEXTILES are the universal town industry,
+  // METALWORK an ore-gated specialty, plus pottery, crafted wares and the
+  // counting-house (craftLegs). A Farming Region does only FARM_CRAFT_FRAC of
+  // this; the loom, the forge and the clerks concentrate in TOWNS.
   let man = 0;
-  const physMetalCap = oreTier(r);   // forge from ore PHYSICALLY held (r = localRes), not merely known of
-  if (physMetalCap > 0) man += Math.min(k.metallurgy || 0, physMetalCap) * 1.5;   // metalwork — capped by ore in hand
-  man += (k.construction || 0) * 0.4;                               // crafted wares (the craft floor)
-  const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
-  man += (k.organization || 0) * popScale * 0.8;                    // bureaucracy / services / banking
+  const legs = craftLegs(s, k, r);
+  for (const key in legs) man += legs[key];
   if (tier < 1) man *= T.FARM_CRAFT_FRAC;                           // a village manufactures little
 
   // Soldiers don't produce trade goods; a sacked settlement's output is depressed
@@ -656,17 +718,15 @@ export function getExportBreakdown(s, world) {
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
   const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step) * techEff(s).tradeMult;
   const out = [{ label: "Baseline", value: 1.0 * mult }];
-  const physMetalCap = oreTier(r);
-  if (physMetalCap > 0) {
-    const v = Math.min(k.metallurgy || 0, physMetalCap) * 1.5 * craftFrac * mult;
-    if (v > 0.01) out.push({ label: "Metalwork", value: v });
-  }
+  // Manufactured / service crafts — textiles (the universal town good), the
+  // ore-gated metalwork specialty, pottery/leather, crafted wares and the
+  // counting-house (craftLegs, shared with computeExportValue so the panel can't
+  // drift from the economy). Each is tier-scaled and tech/army/sack-scaled.
+  const legs = craftLegs(s, k, r);
+  for (const key in legs) { const v = legs[key] * craftFrac * mult; if (v > 0.01) out.push({ label: key, value: v }); }
   const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
-  // Raw building materials (an ag-sector good) + crafted wares (manufactured,
-  // tier-scaled) — merged under one label as before, but each leg scaled the
-  // way computeExportValue actually books it.
-  const construction = ((k.construction || 0) * matAccess * 0.8 + (k.construction || 0) * 0.4 * craftFrac) * mult;
-  if (construction > 0.01) out.push({ label: "Building & crafted goods", value: construction });
+  const buildMat = (k.construction || 0) * matAccess * 0.8 * mult;   // RAW building materials (ag-sector)
+  if (buildMat > 0.01) out.push({ label: "Building materials", value: buildMat });
   const agScale = Math.min(1, (s._terrTiles || 0) / 120);
   if (tier <= (T.FARM_MAX_TIER | 0)) {
     const agriculture = (k.agriculture || 0) * agScale * 0.6 * mult;
@@ -685,9 +745,6 @@ export function getExportBreakdown(s, world) {
     const v = (horses * 0.6 + (k.mobility || 0) * 0.4) * mult;
     if (v > 0.01) out.push({ label: "Horse trade", value: v });
   }
-  const popScale = Math.min(1, Math.log(Math.max(1, s.people)) / 8);
-  const services = (k.organization || 0) * popScale * 0.8 * craftFrac * mult;
-  if (services > 0.01) out.push({ label: "Services & records", value: services });
   const salt = (r.salt || 0) * 0.5 * mult;
   if (salt > 0.01) out.push({ label: "Salt", value: salt });
   const base = Math.min(0.5, Math.log10(Math.max(1, s.people)) / 10) * mult;
@@ -778,6 +835,17 @@ const MIGRATE_DRAIN_CAP = 0.04;  // never move more than this fraction of a vill
 // back out onto the land. Towns sit on defensible sites (crystallize.js), so the
 // hub people run to IS the stronghold. T.SITE_DEFENSE dials the whole effect.
 const REFUGE_PULL      = 2.0;    // unrest=1 → up to ×(1+2·SITE_DEFENSE) flight into the hub
+// FARM-LABOUR ANCHOR: pre-modern agriculture is LABOUR-intensive — most people must
+// farm, and only the small SURPLUS can move to the cities, so the world stayed
+// ~85–90% rural until the 1800s and ~70% rural even in 1950. As farm YIELD rises (the
+// agricultural revolution: heavy plough → crop rotation → fertiliser → mechanisation)
+// fewer farmers feed more, the surplus grows, and the countryside finally empties into
+// the cities — the urban transition. So a farming region retains a rural share that
+// FALLS with its farm yield; the city can never drain it below that.
+const URBAN_BASE_RURAL = 0.90;   // pre-industrial retained rural share (most people farm)
+const URBAN_YIELD0     = 3.0;    // farm yield below which the countryside stays ~full (pre-industrial: ~90% rural)
+const URBAN_GAIN       = 0.13;   // share of farmers freed to the cities per unit of yield ABOVE that (→ ~70% rural by 1950)
+const URBAN_MIN_RURAL  = 0.55;   // floor on the retained rural share even at peak modern yield
 export function urbanise(world) {
   const byId = world._byId;
   if (!byId) return;
@@ -804,6 +872,14 @@ export function urbanise(world) {
     const refuge = 1 + REFUGE_PULL * (s.unrest || 0) * T.SITE_DEFENSE;
     const _dt = world._dt || 1;   // granularity: drift the same share of people per unit of HISTORY
     let movers = Math.min(s.people * MIGRATE_RATE * gap * refuge * _dt, room, s.people * MIGRATE_DRAIN_CAP * refuge * _dt);
+    // Farm-labour anchor: a farming region keeps the farmers who work its land — only
+    // the surplus above the (yield-dependent) rural floor can leave for the cities, so
+    // the world stays ~85% rural until the agricultural revolution lets it urbanise.
+    if ((s.tier | 0) <= (T.FARM_MAX_TIER | 0)) {
+      const fy = s._farmYield || 1;
+      const ruralFrac = Math.max(URBAN_MIN_RURAL, URBAN_BASE_RURAL - URBAN_GAIN * Math.max(0, fy - URBAN_YIELD0));
+      movers = Math.min(movers, Math.max(0, s.people - ruralFrac * (s._k || s.people)));
+    }
     if (movers < 0.2) continue;
     s.people -= movers;
     best.people += movers;
@@ -1198,7 +1274,13 @@ function updateFood(world, s) {
   // farming is invented/arrives (development) and only if the land can support it
   // (domestication ceiling). This is what keeps a fresh/isolated frontier sparse and
   // stateless — the whole map no longer farms at full yield from tick 0.
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * techEff(s).farmYield * agriGate(world, s) * armyLabor;
+  const fy = techEff(s).farmYield; s._farmYield = fy;   // stored for the rural-density ceiling (updatePopulation)
+  // _eraProd is the global historical-productivity index (index.js demographic
+  // anchor): scaling LAND FOOD here lifts every settlement's carrying capacity
+  // together so the world total tracks recorded population, while the spatial
+  // distribution stays emergent and the food economy (surplus, trade, army
+  // labour all derived from this flow) stays internally consistent.
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agriGate(world, s) * armyLabor * (world._eraProd || 1);
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
@@ -1211,7 +1293,10 @@ function updateFood(world, s) {
   // coastal city — which the housing cap already lets grow large — feed
   // itself from the sea instead of relying entirely on shipped-in grain.
   const wa = s.waterAccess || 0;
-  const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor : 0;
+  // ×_eraProd as for land food: scaling the water harvest too keeps a coastal /
+  // forager settlement's capacity responsive to the global productivity index,
+  // so the demographic anchor has no dead-zone to wind up against.
+  const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor * (world._eraProd || 1) : 0;
   s._fishYield = fish;
 
   // Land food is STORABLE — it fills granaries and ships across the world
@@ -1428,7 +1513,13 @@ function updatePopulation(world, s) {
   //   houseK  = housingCapacity(s)  — economy + site, food-independent
   const perCapita = 0.003 * (s._urbanFactor || 1);
   let foodK = (s._foodSupply || 0) / perCapita;   // _foodSupply = food-hierarchy net (own + subtree intake − shipped up) + local fish
-  let houseK = housingCapacity(s);
+  // ×_eraProd: the housing/site ceiling rises with the same global productivity
+  // index as food, representing denser settlement (intensive rural occupation,
+  // vertical urban growth) in later eras. Without this the population would stay
+  // pinned at the medieval SITE cap while food scaled freely — the carrying
+  // capacity must be linear in _eraProd end-to-end or the anchor (index.js)
+  // winds up against the housing dead-zone.
+  let houseK = housingCapacity(s) * (world._eraProd || 1);
   // RURAL CEILING: a tier-0 farming region holds only a rural district's worth
   // of people (URBAN_CAP). Capping foodK AND houseK (not just K) is deliberate:
   // it drops the region's grain HUNGER ((houseK−foodK)/houseK → ~0 once both sit
@@ -1436,7 +1527,13 @@ function updatePopulation(world, s) {
   // leaves no urbanise headroom (K−people → 0) so rural migrants flow on to the
   // towns. The land still GROWS its full harvest — that surplus ships up the
   // hierarchy (via _storableSupply, untouched here) to grow the towns.
-  if ((s.tier | 0) === 0) { foodK = Math.min(foodK, URBAN_CAP); houseK = Math.min(houseK, URBAN_CAP); }
+  if ((s.tier | 0) === 0) {
+    // ×_eraProd: the rural ceiling rises with the same global productivity index
+    // as land food (updateFood), so the countryside scales WITH the cities and
+    // the rural/urban balance is preserved as the world total tracks history.
+    const ruralCap = URBAN_CAP * (1 + URBAN_DENSITY_GAIN * Math.max(0, (s._farmYield || 1) - RURAL_YIELD_BASE)) * (world._eraProd || 1);
+    foodK = Math.min(foodK, ruralCap); houseK = Math.min(houseK, ruralCap);
+  }
   // LOCALITY model: population = whatever the farmable catchment feeds (foodK
   // already folds in own land + any food routed in). Housing stops being the
   // size cap — a locality IS its hinterland, so a rich-land centre simply holds

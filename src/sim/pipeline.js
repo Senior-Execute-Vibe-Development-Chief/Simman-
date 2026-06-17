@@ -11,6 +11,7 @@ import { computeRivers, RIVER_STREAM } from "./riverGen.js";
 import { cropSuitability } from "./cropGen.js";
 import { generateResources } from "./resourceGen.js";
 import { baseEdgeCost } from "./peopleSim/transport.js";
+import { mkRng, hash32 } from "./peopleSim/rng.js";
 
 // Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
 // Temperature fitness uses a COLD GATE (calibrated air-temp scale t=0.60+°C/100):
@@ -24,6 +25,274 @@ const base=tFactor*mFactor;
 return Math.max(0.01,base*(1-Math.max(0,e-0.15)*3));}
 
 export const DIRS=[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]];
+
+// ── Deep ancestry: a pre-history PEOPLING simulation ───────────────────────
+// Homo sapiens filled the world tens of millennia BEFORE farming, so ancestry is
+// laid down here, at worldgen — civilisation (the cradles) is a far later overlay.
+// Instead of scattering populations evenly, we SIMULATE the peopling: one origin
+// in the deep tropics spreads as a wavefront across the habitable world over "deep
+// time" — slowed by mountains/desert, needing coastal HOPS over water, crossing the
+// cold north and narrow straits (Bering / Sahul land-bridges) only LATE, so the
+// Americas and deep Pacific are reached last. Each tile records its ARRIVAL time;
+// RESIDENCE (time-since-settled) is how long that region has had to branch into
+// distinct peoples. Anchors are then seeded with density ∝ residence × habitability,
+// so long-settled livable land (Africa, the fertile belts) holds MANY small peoples
+// while the late-reached frontier (the Americas) or thin land (arid Australia, the
+// high north) holds a FEW broad ones — the real shape of human genetic diversity.
+// Regions grow from the anchors by the same barrier-aware cost-distance, so their
+// boundaries fall on oceans, ranges and deserts.
+const ANC_BARRIER_W = 11;     // mountains / desert (tDiff) resistance to gene flow
+const ANC_OCEAN_STEP= 6;      // base per-tile cost to cross water at the shoreline (a coastal hop / narrow strait)
+const ANC_OCEAN_DEEP= 1.8;    // …multiplied by this PER TILE of distance from the nearest shore, so wide oceans
+                              // (mid-Atlantic, deep Pacific) grow exponentially dear and stay uncrossable until boats,
+                              // while short straits (Bering, Gibraltar, Bab-el-Mandeb, the Sunda→Sahul island hops) stay cheap
+const ANC_CLIMATE_W = 9;      // resistance per unit of climate (temp+moisture) change across an edge
+const ANC_ICE_TEMP  = 0.33;   // below this ≈ permanent ice: no anchors, no ancestry (uninhabited)
+const ANC_ICE_STEP  = 13;     // …and ice is a strong barrier to migration
+const ANC_SEP_DENSE = 0.030;  // finest people-spacing where carrying capacity is highest (wet tropics, New Guinea highlands)
+const ANC_SEP_SPARSE= 0.17;   // broadest spacing in barren land (desert, tundra) — the floor for both founders and the fill
+const ANC_SEP_FOUND = 0.090;  // founder spacing in rich land (the broad migration-wave layer; capacity widens it toward SPARSE)
+const ANC_ISO_W     = 1.3;    // broken terrain (tDiff) packs in more peoples — but only where there's capacity to feed them
+const ANC_HEAT_ARID = 0.35;   // how much heat raises evaporative demand (aridity): separates hot desert from hot rainforest
+const ANC_FRONTIER_THIN = 0.85;  // serial-founder genetic bottleneck: deep-ancestry richness lost with distance from Africa (quadratic, so it bites the late frontier — Americas/Australia — and spares the Old World, which holds few DEEP lineages however many tribes the land could feed)
+const ANC_POLAR_LAT = 0.80;   // a landmass whose northernmost tile is below this (fraction of height) is polar/uninhabited (Antarctica)
+const ANC_COAST_FAST = 0.24;  // warm coastal land migrates faster — the prehistoric "beachcomber" highway: the southern coastal route ran along WARM shorelines (rich shellfish/forage) far quicker than the interior, carrying people to SE Asia and on to Sahul early, while the cold northern route to Beringia/the Americas got no such boost (so the Americas stay the LAST frontier)
+const ANC_COAST_WARM = 0.45;  // …only coasts at least this warm count as the beachcomber highway (a frozen Arctic shore is no fast lane)
+const ANC_HOP_FREE   = 4;     // near-shore water (≤ this many tiles from land) crosses at the flat shore cost — island-hopping a strait; the open-ocean exponential only bites BEYOND it, so Wallacea is passable early while the wide Atlantic/Pacific stay shut
+const ANC_RESIDENCE_P = 1.3;  // in-situ subdivision ACCUMULATES with residence time: a region's peoples ∝ (time inhabited)^this, so the ancient homeland fragments deeply while a freshly-peopled frontier stays coarse however rich the land
+function generateAncestry(tw, th, tElev, tTemp, tMoist, tDiff, tFert, seed, preset) {
+  const N = tw * th;
+  const anc = new Int16Array(N); anc.fill(-1);
+  const rng = mkRng(hash32(seed >>> 0, "ancestry"));
+  // Distance (in tiles) from every water tile to the nearest shore — 0 on land,
+  // 1 for coastal water, growing out into the open ocean. Drives the crossing
+  // penalty: a strait stays a 1-tile hop, but the middle of an ocean is far from
+  // any land and therefore astronomically costly to reach.
+  const distLand = new Int32Array(N);
+  { const q = new Int32Array(N); let h = 0, t = 0;
+    for (let ti = 0; ti < N; ti++) { if (tElev[ti] > 0) { distLand[ti] = 0; q[t++] = ti; } else distLand[ti] = 0x3fffffff; }
+    while (h < t) { const ti = q[h++], d = distLand[ti] + 1, ty = (ti / tw) | 0, tx = ti - ty * tw;
+      for (let k = 0; k < 4; k++) { const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue; const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
+        if (distLand[ni] > d) { distLand[ni] = d; q[t++] = ni; } } } }
+  // Coastal land (a land tile touching the sea): the prehistoric migration highway.
+  // The southern "beachcomber" route ran along the shore far faster than through the
+  // interior — the mechanism that carried people across southern Asia to Sahul early,
+  // long before the continental interiors (Siberia, central Asia) filled in.
+  const isCoast = new Uint8Array(N);
+  for (let ti = 0; ti < N; ti++) { if (tElev[ti] <= 0) continue; const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    for (let k = 0; k < 4; k++) { const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue; const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
+      if (tElev[ni] <= 0) { isCoast[ti] = 1; break; } } }
+  // Barrier-aware step cost between adjacent tiles, shared by the peopling spread
+  // and the ancestry growth: mountains/desert slow gene flow; ice is a strong but
+  // passable barrier; open water costs ANC_OCEAN_STEP at the shore and rises by
+  // ANC_OCEAN_DEEP for every tile further out, so coastal hops and narrow straits
+  // pass while open oceans don't (no trans-Atlantic peopling before boats).
+  const stepCost = (from, to, diag) => (
+    tElev[to] <= 0 ? ANC_OCEAN_STEP * Math.pow(ANC_OCEAN_DEEP, Math.min(Math.max(0, distLand[to] - ANC_HOP_FREE), 16)) * diag
+    : tTemp[to] < ANC_ICE_TEMP ? ANC_ICE_STEP * diag
+    : (1 + tDiff[to] * ANC_BARRIER_W + (Math.abs(tTemp[to] - tTemp[from]) + Math.abs(tMoist[to] - tMoist[from])) * ANC_CLIMATE_W) * (isCoast[to] && tTemp[to] >= ANC_COAST_WARM ? ANC_COAST_FAST : 1) * diag
+  );
+  // Reusable binary-heap Dijkstra. `sources`: seed tiles. If `label` is given, each
+  // tile is stamped with its nearest source's index. Returns the cost field.
+  const dijkstra = (sources, label) => {
+    const dist = new Float64Array(N); dist.fill(Infinity);
+    let cap = N + 16, hti = new Int32Array(cap), hd = new Float64Array(cap), hn = 0;
+    const push = (ti, d) => {
+      if (hn + 1 >= cap) { cap *= 2; const a1 = new Int32Array(cap); a1.set(hti); hti = a1; const a2 = new Float64Array(cap); a2.set(hd); hd = a2; }
+      let i = ++hn; hti[i] = ti; hd[i] = d;
+      while (i > 1) { const p = i >> 1; if (hd[p] <= hd[i]) break; const a = hti[p], b = hd[p]; hti[p] = hti[i]; hd[p] = hd[i]; hti[i] = a; hd[i] = b; i = p; }
+    };
+    for (let s = 0; s < sources.length; s++) { const ti = sources[s]; dist[ti] = 0; if (label) label[ti] = s; push(ti, 0); }
+    while (hn > 0) {
+      const ti = hti[1], d = hd[1];
+      hti[1] = hti[hn]; hd[1] = hd[hn]; hn--;
+      { let i = 1; for (;;) { const l = i * 2, r = l + 1; let b = i; if (l <= hn && hd[l] < hd[b]) b = l; if (r <= hn && hd[r] < hd[b]) b = r; if (b === i) break; const a = hti[b], c = hd[b]; hti[b] = hti[i]; hd[b] = hd[i]; hti[i] = a; hd[i] = c; i = b; } }
+      if (d > dist[ti]) continue;
+      const ty = (ti / tw) | 0, tx = ti - ty * tw, lab = label ? label[ti] : 0;
+      for (let k = 0; k < 8; k++) {
+        const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue;
+        const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
+        const nd = d + stepCost(ti, ni, (DIRS[k][0] && DIRS[k][1]) ? Math.SQRT2 : 1);
+        if (nd < dist[ni]) { dist[ni] = nd; if (label) label[ni] = lab; push(ni, nd); }
+      }
+    }
+    return dist;
+  };
+
+  // 1. ORIGIN — the cradle of the species: warm, watered, deep inside the LARGEST
+  // landmass (≈ Africa on an Earth map). Interior-ness via distance to the sea,
+  // weighted by landmass size so a big tropical continent beats a small one.
+  const distSea = new Int32Array(N); distSea.fill(0x3fffffff);
+  const comp = new Int32Array(N); comp.fill(-1); const compSize = [], compMinRow = [];
+  { const q = new Int32Array(N); let h = 0, t = 0;
+    for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0) { distSea[ti] = 0; q[t++] = ti; }
+    while (h < t) { const ti = q[h++], d = distSea[ti] + 1, ty = (ti / tw) | 0, tx = ti - ty * tw;
+      for (let k = 0; k < 4; k++) { const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue; const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
+        if (distSea[ni] > d) { distSea[ni] = d; q[t++] = ni; } } }
+    for (let s = 0; s < N; s++) { if (tElev[s] <= 0 || comp[s] >= 0) continue;
+      const cid = compSize.length; let sz = 0, minRow = th; h = 0; t = 0; q[t++] = s; comp[s] = cid;
+      while (h < t) { const ti = q[h++]; sz++; const ty = (ti / tw) | 0, tx = ti - ty * tw; if (ty < minRow) minRow = ty;
+        for (let k = 0; k < 8; k++) { const ny = ty + DIRS[k][1]; if (ny < 0 || ny >= th) continue; const ni = ny * tw + ((tx + DIRS[k][0] + tw) % tw);
+          if (tElev[ni] > 0 && comp[ni] < 0) { comp[ni] = cid; q[t++] = ni; } } }
+      compSize.push(sz); compMinRow.push(minRow); } }
+  const polar = compMinRow.map(mr => mr > th * ANC_POLAR_LAT);   // a landmass entirely in the deep south (Antarctica) — uninhabited
+  let maxComp = 1; for (const sz of compSize) if (sz > maxComp) maxComp = sz;
+  // On Earth maps, hard-code the cradle of Homo sapiens at the East African Rift
+  // (Lake Turkana / Omo basin, ≈4°N 37°E) where the fossil record actually places
+  // our genesis. Equirectangular projection: x=(lon+180)/360, y=(90−lat)/180,
+  // north at top — snapping outward to the nearest warm tile of the main landmass
+  // so a coarse grid that puts that pixel just offshore still lands in Africa.
+  // On procedural worlds Earth coordinates are meaningless, so fall back to the
+  // computed cradle: warm, watered, deep inside the largest continent.
+  let origin = -1;
+  if (preset === "earth" || preset === "earth_sim") {
+    const cx = Math.round(((37 + 180) / 360) * tw), cy = Math.round(((90 - 4) / 180) * th);
+    for (let r = 0; r <= Math.max(tw, th) && origin < 0; r++) {
+      let bestTi = -1, bestSz = -1;
+      for (let dy = -r; dy <= r; dy++) { const y = cy + dy; if (y < 0 || y >= th) continue;
+        for (let dx = -r; dx <= r; dx++) { if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;   // ring at radius r
+          const x = ((cx + dx) % tw + tw) % tw, ti = y * tw + x;
+          if (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && comp[ti] >= 0 && !polar[comp[ti]]) {
+            const sz = compSize[comp[ti]]; if (sz > bestSz) { bestSz = sz; bestTi = ti; }   // prefer Afro-Eurasia over an island
+          } } }
+      if (bestTi >= 0) origin = bestTi;
+    }
+  }
+  if (origin < 0) {
+    let best = -Infinity;
+    for (let ti = 0; ti < N; ti++) {
+      if (tElev[ti] <= 0 || tTemp[ti] < ANC_ICE_TEMP) continue;
+      const warm = Math.exp(-((tTemp[ti] - 0.74) * (tTemp[ti] - 0.74)) / (2 * 0.12 * 0.12));   // deep-tropical optimum
+      const score = warm * (0.3 + 0.7 * Math.min(1, tFert[ti] / 0.5)) * Math.min(36, distSea[ti]) * (compSize[comp[ti]] / maxComp) * (0.85 + 0.3 * rng());
+      if (score > best) { best = score; origin = ti; }
+    }
+  }
+  if (origin < 0) return { tAncestry: anc, ancestryCount: 0 };
+
+  // 2. PEOPLING — spread the origin population from the cradle; arrival = cost-time.
+  const arrival = dijkstra([origin], null);
+  // Normalise by the 98th-percentile land arrival, NOT the raw max: a few very
+  // remote islands (reachable only by long open-water voyages, now hugely costly)
+  // would otherwise blow up the scale and squash every continent toward "just
+  // settled". Anything past the percentile clamps to 1 (the last frontier).
+  const arrSorted = [];
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && !polar[comp[ti]] && isFinite(arrival[ti])) arrSorted.push(arrival[ti]);
+  arrSorted.sort((a, b) => a - b);
+  const maxArr = Math.max(1e-9, arrSorted.length ? arrSorted[Math.floor((arrSorted.length - 1) * 0.98)] : 1e-9);
+
+  // Normalised arrival time of the peopling wavefront (0 at the cradle → 1 at the
+  // last-reached frontier): WHEN each tile is first peopled. Infinity = no ancestry.
+  const arrN = new Float32Array(N);
+  for (let ti = 0; ti < N; ti++) arrN[ti] = (tElev[ti] > 0 && tTemp[ti] >= ANC_ICE_TEMP && isFinite(arrival[ti])) ? Math.min(1, arrival[ti] / maxArr) : Infinity;
+
+  // 3. LINEAGES — peoples placed by CARRYING CAPACITY; divergence set by TIME.
+  // Forager carrying capacity (≈ net primary productivity: warm × wet — rich in the
+  // wet tropics, poor in desert & tundra; NOT agricultural tFert, which scorns the
+  // rainforest) sets how MANY peoples a land holds. Each is a local population of
+  // ~fixed size, so its territory scales as 1/capacity — New Guinea & Amazonia pack
+  // dense mosaics, the Sahara & outback hold a few sprawling groups. WHEN a lineage
+  // splits (birth, any time after its ground was settled) sets how DEEPLY it has
+  // diverged, which the colouring shows: Africa's old splits run deep, recent
+  // frontiers stay shallow. Every lineage keeps a BIRTH time and a PARENT for the
+  // fission replay and the relatedness palette.
+  const cap = new Float32Array(N);
+  for (let ti = 0; ti < N; ti++) {
+    if (arrN[ti] >= Infinity) { cap[ti] = 0; continue; }
+    const warm = Math.min(1, Math.max(0, (tTemp[ti] - 0.34) / 0.40));   // cold → 0, warm-temperate and up → 1
+    // Aridity index: heat raises evaporative demand, so the same rainfall feeds
+    // fewer in a hot place. This separates hot DESERTS (Sahara, outback) from hot
+    // RAINFOREST (Congo, Amazon) that the flat simulated moisture alone cannot.
+    const effMoist = tMoist[ti] - ANC_HEAT_ARID * Math.max(0, tTemp[ti] - 0.55);
+    const wet  = Math.min(1, Math.max(0, (effMoist - 0.28) / 0.45));    // arid → 0, wet → 1 (Liebig: both needed)
+    cap[ti] = warm * wet;
+  }
+  const ax = [], ay = [], aBirth = [], aParent = [];
+  const land = [];
+  for (let ti = 0; ti < N; ti++) if (arrN[ti] < Infinity && !polar[comp[ti]]) land.push(ti);
+  for (let k = land.length - 1; k > 0; k--) { const j = rng.int(k + 1); const tt = land[k]; land[k] = land[j]; land[j] = tt; }
+  // nearest existing lineage to (x,y) → [index, squared tile distance] (torus x)
+  const nearestAnchor = (x, y) => { let best = -1, bd = Infinity;
+    for (let a = 0; a < ax.length; a++) { let dx = Math.abs(x - ax[a]); if (dx > tw / 2) dx = tw - dx; const dy = y - ay[a]; const d = dx * dx + dy * dy; if (d < bd) { bd = d; best = a; } }
+    return [best, bd]; };
+  // Pass A — founders: the broad lineages seeded as the wavefront passes (born
+  // when their ground is first reached). Spacing also widens where the land is
+  // barren, so a desert/tundra carries only a sprawling people or two; greedy
+  // placement still guarantees at least one per isolated landmass.
+  for (const ti of land) {
+    const x = ti % tw, y = (ti / tw) | 0;
+    const fdens = Math.min(1, Math.pow(cap[ti], 1.3) * (1 + 0.5 * Math.min(1, tDiff[ti])) * (1 - ANC_FRONTIER_THIN * arrN[ti] * arrN[ti]));
+    const fsep = Math.min(ANC_SEP_SPARSE, ANC_SEP_FOUND / Math.sqrt(Math.max(fdens, 0.05))) * tw;
+    const [par, bd] = nearestAnchor(x, y);
+    if (par >= 0 && bd < fsep * fsep) continue;
+    ax.push(x); ay.push(y); aBirth.push(arrN[ti] < Infinity ? arrN[ti] : 1); aParent.push(-1);
+  }
+  // Pass B — population fill: extra peoples where the land can FEED them, spacing
+  // ∝ 1/√capacity so the COUNT tracks population not area, tightened by terrain
+  // isolation. Born some time after settling, splitting off the nearest older line.
+  const subs = [];
+  for (const ti of land) {
+    const x = ti % tw, y = (ti / tw) | 0;
+    // In-situ diversification ACCUMULATES with residence time: a region peopled at
+    // genesis fragments into a deep mosaic over the millennia, while a freshly-reached
+    // frontier holds only its founders however rich the land. (1−arrN) is the time
+    // inhabited; capacity × terrain isolation set the diversification RATE. This is
+    // what makes the ancient homeland far more subdivided than the recent frontier
+    // (instead of capacity alone, which let rich New-World land match Africa).
+    const dens = Math.min(1, Math.pow(cap[ti], 1.7) * (1 + ANC_ISO_W * Math.min(1, tDiff[ti])) * Math.pow(1 - arrN[ti], ANC_RESIDENCE_P));
+    if (dens < 0.05) continue;
+    const birth = arrN[ti] + (1 - arrN[ti]) * rng();
+    const sep = Math.min(ANC_SEP_SPARSE, ANC_SEP_DENSE / Math.sqrt(dens)) * tw;
+    subs.push([x, y, birth, sep * sep]);
+  }
+  subs.sort((p, q) => p[2] - q[2]);                             // oldest splits first → parents exist before children
+  for (const s of subs) {
+    const [par, bd] = nearestAnchor(s[0], s[1]);
+    if (par >= 0 && bd < s[3]) continue;
+    ax.push(s[0]); ay.push(s[1]); aBirth.push(s[2]); aParent.push(par);
+  }
+  const K = ax.length;
+  if (!K) return { tAncestry: anc, ancestryCount: 0 };
+
+  // 4. GROW lineage regions from the anchors (nearest by the same barrier cost).
+  const src = new Array(K); for (let a = 0; a < K; a++) src[a] = ay[a] * tw + ax[a];
+  dijkstra(src, anc);
+
+  // 5. sea, permanent ice and polar landmasses carried gene flow but hold no ancestry.
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] <= 0 || tTemp[ti] < ANC_ICE_TEMP || (comp[ti] >= 0 && polar[comp[ti]])) anc[ti] = -1;
+  const tArrival = new Float32Array(N);
+  for (let ti = 0; ti < N; ti++) tArrival[ti] = anc[ti] < 0 ? -1 : (arrN[ti] < Infinity ? arrN[ti] : 1);
+
+  // Colour by RELATEDNESS: founders sorted by birth (Africa first) get base hues
+  // spread around the wheel; every descendant keeps its founder's family hue,
+  // drifting a little per generation and shading by sub-lineage. So the map reads
+  // as ancestry families radiating out of Africa — the deepest, most-subdivided
+  // African trees spread widest in hue, while the shallow frontier stays uniform.
+  // Colour by RELATEDNESS via a circular layout of the lineage tree. Each subtree
+  // owns an arc of the hue wheel sized by its DIVERGENCE (older lineages weigh
+  // more), so the deep, early African splits fan across a wide span of hues while
+  // the shallow, recent out-of-Africa branches stay clustered — the genetic truth
+  // that the biggest differences in humanity are WITHIN Africa. Sibling lineages
+  // sit on neighbouring hues; lineages an old split apart land far across the wheel.
+  const ancHue = new Float32Array(K), ancLight = new Float32Array(K);
+  { const kids = Array.from({ length: K }, () => []); const rootsL = [];
+    for (let a = 0; a < K; a++) { if (aParent[a] < 0) rootsL.push(a); else kids[aParent[a]].push(a); }
+    const subW = new Float32Array(K);
+    const wOf = (n) => { let w = (1 - aBirth[n]) + 0.2; for (const c of kids[n]) w += wOf(c); subW[n] = w; return w; };   // older lineages weigh more → wider arc
+    for (const r of rootsL) wOf(r);
+    const layout = (n, lo, hi) => {
+      ancHue[n] = ((lo + hi) / 2) % 360;
+      const cs = kids[n].slice().sort((a, b) => aBirth[a] - aBirth[b]);
+      let tot = 0; for (const c of cs) tot += subW[c];
+      let cur = lo; for (const c of cs) { const w = (hi - lo) * subW[c] / (tot || 1); layout(c, cur, cur + w); cur += w; }
+    };
+    const rs = rootsL.slice().sort((a, b) => aBirth[a] - aBirth[b]);
+    let tot = 0; for (const r of rs) tot += subW[r];
+    let cur = 0; for (const r of rs) { const w = 360 * subW[r] / (tot || 1); layout(r, cur, cur + w); cur += w; }
+    const jit = (id) => ((Math.imul(id + 1, 2654435761) >>> 0) / 4294967296) - 0.5;
+    for (let a = 0; a < K; a++) ancLight[a] = 52 + jit(a) * 12;                       // slight per-lineage shade ~46–58%
+  }
+  return { tAncestry: anc, ancestryCount: K, tArrival, ancBirth: Float32Array.from(aBirth), ancParent: Int32Array.from(aParent), ancHue, ancLight, ancOriginFx: (origin % tw) / tw, ancOriginFy: ((origin / tw) | 0) / th };
+}
 
 export function buildTerritory(w,RES=1){
 const tw=Math.ceil(w.width/RES),th=Math.ceil(w.height/RES);
@@ -256,7 +525,9 @@ const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,ri
 // seed (generateWorld stamps _seed; everything downstream reads w.seed).
 if(w.seed==null)w.seed=w._seed??1;
 w.rivers=rivers;w.deposits=deposits;
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,stepCount:0};}
+// Deep ancestry substrate (the pre-civilisation genetic map), from geography.
+const{tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1),w.preset);
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy,stepCount:0};}
 
 // Full headless compose: generateWorld + buildTerritory in one call.
 export function buildWorld({W=480,H=W>>1,seed=1,preset="earth_sim",oceanLevel=0.78,tecParams={}}={}){

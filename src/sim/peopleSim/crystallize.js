@@ -212,6 +212,13 @@ export function maybeCrystallize(world) {
   // crystallisation sweep and mother-country colonisation, so the early map stays a
   // sparse frontier and the wilderness recedes over the eras.
   const devFactor = Math.min(1, COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * (world.step * (world._dt || 1)) / COVERAGE_RAMP);   // ramp over HISTORY, not raw ticks (SIM_GRANULARITY)
+  // Spread is measured in TILES, so a finer-resolution map must scale it like the
+  // territory reach does (countryTerritory's RES_REF_W = 240) — otherwise the
+  // frontier crawls the same ABSOLUTE tiles/step and a big map fills a far smaller
+  // FRACTION per year (the "full-size map barely settles by 1900" bug: 24% claimed
+  // at 1950 vs ~40% on the quarter-width reference). resScale = 1 at/below the
+  // reference width, so small maps and the determinism tests are untouched.
+  const resScale = Math.max(1, world.tw / 240);
 
   // Mother-country expansion: pressed towns send settler parties (see
   // sendSettlers — this is the entire "population pressure → new colony"
@@ -343,7 +350,7 @@ export function maybeCrystallize(world) {
     // unreachable by land) → only the much smaller overseas-invention rate,
     // so other landmasses wait to be colonised rather than self-populating.
     const td = transportDist[ti];
-    const diffusionMul = isFinite(td) ? Math.exp(-td / KNOWLEDGE_DECAY_SCALE) * NEAR_RATE : 0;
+    const diffusionMul = isFinite(td) ? Math.exp(-td / (KNOWLEDGE_DECAY_SCALE * resScale)) * NEAR_RATE : 0;   // diffusion REACHES proportionally farther on a finer map
     const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
     const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor * devFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
@@ -389,6 +396,7 @@ export function maybeCrystallize(world) {
         people: 18 + (rng.int(8)),
         knowledge: inherited,
         countryId: region >= 0 ? region : -1,
+        parentId: donor.id,   // carries the donor's ancestry; a long jump admixes with the local substrate
         // near spread keeps the donor's people; otherwise we assign below
         cultureId: (connected && !isBranch) ? dCul : -1,
       });

@@ -72,7 +72,7 @@ export const TUNING_SCHEMA = [
         desc: "Extra control each loyal regional city adds (sub-administration). Up = sprawling federations stay glued." },
       { key: "CAP_INST", label: "Institutional capacity ×", def: 1.3, min: 0, max: 3, step: 0.1,
         desc: "How much INSTITUTIONAL tech (the cohesion channel: mysticism → code of laws → feudalism → democracy → telegraph) multiplies the centre's hold capacity AND the regional-seat cap. Historically each delegation revolution raised how many provinces one throne could govern — Assyria's provincial system, the Achaemenid satrapies, Rome's governors, Han commanderies — so the ceiling should move with bureaucracy, not sit fixed across all eras. At the default a fully-institutional capital holds ~2.3× the provinces of a chiefdom with the same raw power; early realms are untouched (the ancient map stays fragmented) and rise-and-fall survives — war duress, insolvency and recency still sap the bigger budget. 0 = the old fixed ceiling (~a dozen seats forever)." },
-      { key: "MOMENTUM_CAP", label: "Conquest snowball cap", def: 8, min: 0, max: 30, step: 1,
+      { key: "MOMENTUM_CAP", label: "Conquest snowball cap", def: 16, min: 0, max: 30, step: 1,
         desc: "Max bonus capacity a winning war-streak grants (lets a conqueror temporarily over-hold). Down = freshly conquered empires fragment sooner once the conquering pauses — more rise-and-fall." },
       { key: "SIZE_LOAD", label: "Big-province burden", def: 0.4, min: 0, max: 1.5, step: 0.05,
         desc: "How much harder a populous province is to govern. Down = easy to swallow large cities whole." },
