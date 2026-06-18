@@ -356,15 +356,49 @@ const tropicalCool=tLat<0.3?cp*0.005:0;// faint coastal sea-breeze cooling — e
 // solver gave it a sensible ~0.4; this tight Gaussian leaves the mid-latitudes to
 // the solver + a gentle continentality nudge.
 const beltLat=Math.exp(-((tLat-0.275)*(tLat-0.275))/(2*0.072*0.072));
-const equatorGuard=Math.max(0,Math.min(1,(tLat-0.16)/0.06));// 0 below ~14°, 1 above ~20°
-// Spare ONLY the strongly east-coastal humid subtropics (eastWet ≳ 0.45 → SE US,
-// SE China, SE Brazil, Natal, E Australia). A marginal east sea like the Persian
-// Gulf (eastWet ~0.46 for Arabia) must NOT count, or the great trade-wind deserts
-// that happen to border a warm sea (Arabia, the Horn) come out green.
-const monsoonSpare=1-0.92*Math.min(1,Math.max(0,(eastWet[i]-0.5)/0.2));
+// equatorGuard keeps the everwet ITCZ tropics (0-~9°: the Congo/Amazon/Borneo
+// rainforests) out of the subtropical desert drying. It opens up by ~14° (was ~20°)
+// because the great TRADE-WIND deserts reach the low teens — the Arabian peninsula
+// is bone-dry down to ~13°N (Rub al Khali, Yemen interior), the Horn of Africa to
+// the equator. The genuinely wet monsoon coasts at those latitudes (Guinea, the
+// Indian west coast, Indochina) are held by monsoonSpare + their own high rainfall.
+const equatorGuard=Math.max(0,Math.min(1,(tLat-0.10)/0.05));// 0 below ~9°, 1 above ~13.5°
+// Spare the WARM-CURRENT humid subtropics — SE US, SE China, SE Brazil, E Australia —
+// which are strongly east-coastal (eastWet ≳ 0.5) AND poleward of ~22° (humidSubtrop).
+// The latitude gate is what stops the spare from leaking onto the TROPICAL east
+// shores that are actually arid: the Oman/Yemen Arabian-Sea coast (summer upwelling),
+// the Horn, NE-Brazil's Sertão. Those border a warm sea yet are true desert, so they
+// must dry out with the rest of the trade-wind belt rather than read as green.
+const humidSubtrop=Math.min(1,Math.max(0,(tLat-0.23)/0.05));// 0 below ~21°, 1 above ~25°
+const monsoonSpare=1-0.92*Math.min(1,Math.max(0,(eastWet[i]-0.5)/0.2))*humidSubtrop;
 // Gate only weakly on inland-ness (0.70+0.30) so deserts that are nearly surrounded
 // by water — Arabia between the Red Sea, Gulf and Arabian Sea — still dry out.
-const subtropDry=e>0?beltLat*equatorGuard*(0.70+0.30*inland)*0.42*monsoonSpare:0;
+// Monsoon spillover: a subtropical cell sitting poleward of rainforest-wet tropics is
+// reached by summer-monsoon moisture the annual-mean solver underplays — the Gran
+// Chaco and Paraná below the Amazon, SE Brazil — so it is savanna/dry-forest, not the
+// hyperarid sand the bare subtropical-high subsidence would carve. Sample the tropics
+// ~8° equatorward; where they read rainforest-wet, relax the desert drying. The
+// strong fixed drag is what keeps the true deserts hard-edged: the Sahara's poleward
+// fringe sees the dry Sahara equatorward (no spillover → stays desert), as do interior
+// Australia and the US Southwest. monsoonFed is 0 unless real tropical moisture lies
+// directly equatorward, so it can't green a desert that has only dry land below it.
+const eqStep=Math.round(H*8/180);
+const eqY=ny<0.5?Math.min(H-1,y+eqStep):Math.max(0,y-eqStep);
+let monsoonFed=Math.max(0,Math.min(1,(windMoisture[eqY*W+x]-0.62)/0.2));// 0 below 0.62, 1 at 0.82+
+// South American low-level jet: the Andes block zonal flow and channel Amazon
+// moisture poleward down their eastern flank into the Chaco/Paraná lowlands. It is the
+// one thing that makes subtropical eastern S. America savanna/dry-forest where the
+// same latitude in Africa/Australia (no such barrier) is true desert — and the
+// annual-mean moisture field can't tell the Chaco from the southern Sahara (their
+// equatorward gradients are identical), so the jet is restored as a bounded spare over
+// the lee-of-Andes subtropics. Gated to LOW ground so it greens the Chaco floor but
+// not the high cold Atacama/Altiplano 8° to its west (a genuine desert).
+const lonDeg=nx*360-180,latS=(ny-0.5)*2;
+const llj=Math.exp(-((latS-0.265)*(latS-0.265))/(2*0.085*0.085))// ~15-32°S
+  *Math.exp(-((lonDeg+61)*(lonDeg+61))/(2*6*6))                 // lee of the Andes, ~55-67°W
+  *Math.max(0,1-Math.max(0,e-0.05)*7);                          // low ground only
+monsoonFed=Math.max(monsoonFed,0.9*llj);
+const subtropDry=e>0?beltLat*equatorGuard*(0.70+0.30*inland)*0.42*monsoonSpare*(1-0.7*monsoonFed):0;
 // Continental interiors (rain-shadow + far from any ocean) dry into the mid-latitude
 // steppes and prairies — the Great Plains, the Eurasian steppe, the Pampas,
 // Patagonia. Focused on ~23-61° so it doesn't over-dry the equatorial tropics into
@@ -383,7 +417,28 @@ const contDry=e>0?inland*inland*contBand*0.05*monsoonSpare:0;
 // spared — opens up the savanna belt between the rainforest and the deserts.
 const savBelt=Math.exp(-((tLat-0.18)*(tLat-0.18))/(2*0.07*0.07))*Math.max(0,Math.min(1,(tLat-0.07)/0.05));
 const savDry=e>0?savBelt*(0.4+0.6*inland)*0.10*monsoonSpare:0;
-const mo=Math.max(0.02,windMoisture[i]-subtropDry-contDry-savDry);
+// ── Saharo-Arabian / Horn aridity ─────────────────────────────────────────────
+// The annual-mean solver floods the warm seas ringing Arabia and the Horn (Red Sea,
+// Persian Gulf, Arabian Sea) with evaporated moisture that never rains out in reality:
+// the summer-monsoon flow runs PARALLEL to these coasts (the Somali jet), driving
+// upwelling, so the peninsula stays hyperarid down to ~13°N despite water on three
+// sides AND the wet Ethiopian highlands just to its south. No latitude/continentality
+// rule separates this from the genuine monsoon coasts at the same latitude (the solver
+// even reads Yemen wetter than the Sahel), so it is an explicit geographic correction
+// over the Afro-Arabian desert — centred on the Empty Quarter (~46°E, ~21°N), tapering
+// smoothly to nothing by the Nile to the west and the Indus to the east.
+const araLon=Math.exp(-((lonDeg-46)*(lonDeg-46))/(2*9*9));
+const araLat=Math.exp(-((tLat-0.235)*(tLat-0.235))/(2*0.088*0.088));
+const arabiaDry=e>0?araLon*araLat*0.50:0;
+// ── Combine the drying ──
+// Subtropical subsidence and the Arabian term build the true deserts (floor 0.02).
+// CONTINENTAL and SAVANNA drying, by contrast, only thin forest into steppe/savanna;
+// they bottom out at a grassland floor (~0.14) rather than the desert floor, so they
+// never manufacture hyperarid sand out of a moisture-fed interior (the Eurasian
+// steppe, the North-/South-American prairies, the Pampas and the Gran Chaco).
+let mo=Math.max(0.02,windMoisture[i]-subtropDry-arabiaDry);
+const steppeDry=contDry+savDry,steppeFloor=0.14;
+mo=mo>steppeFloor?Math.max(steppeFloor,mo-steppeDry):mo;
 const dry=Math.max(0,1-mo/0.35);// 1 = bone-dry, 0 = humid
 const desertHeat=dry*0.09*Math.exp(-((tLat-0.22)*(tLat-0.22))/(2*0.13*0.13));// peaks on the 13-30° HOT-DESERT belt (Sahel, Sahara, Arabia — Earth's hottest annual means), not the 33° subtropics
 // Continental winters depress the ANNUAL mean only where summers can't compensate,
