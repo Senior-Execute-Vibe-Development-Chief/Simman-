@@ -428,7 +428,7 @@ const contDry=e>0?inland*inland*contBand*0.05*(1-0.85*monsoon):0;
 // equatorward-tapered (the everwet ITCZ rainforest at 0-8° untouched) and east-coast
 // spared — opens up the savanna belt between the rainforest and the deserts.
 const savBelt=Math.exp(-((tLat-0.18)*(tLat-0.18))/(2*0.07*0.07))*Math.max(0,Math.min(1,(tLat-0.07)/0.05));
-const savDry=e>0?savBelt*(0.4+0.6*inland)*0.10*(1-0.7*monsoon):0;
+const savDry=e>0?savBelt*(0.25+0.75*inland)*0.20*(1-0.4*monsoon):0;
 // ── Saharo-Arabian / Horn aridity ─────────────────────────────────────────────
 // The annual-mean solver floods the warm seas ringing Arabia and the Horn (Red Sea,
 // Persian Gulf, Arabian Sea) with evaporated moisture that never rains out in reality:
@@ -443,14 +443,31 @@ const savDry=e>0?savBelt*(0.4+0.6*inland)*0.10*(1-0.7*monsoon):0;
 const araLon=Math.exp(-((lonDeg-46)*(lonDeg-46))/(2*9*9));
 const araLat=Math.exp(-((tLat-0.235)*(tLat-0.235))/(2*0.088*0.088));
 const arabiaDry=e>0?araLon*araLat*0.78:0;
+// ── Savanna seasonality ─────────────────────────────────────────────────────────
+// A long DRY SEASON thins tropical forest into savanna/grassland, but the wet-season
+// blend reads wet-summer/dry-winter savanna (N. Australia, East Africa, the Cerrado,
+// the Indian Deccan) as rainforest. Penalise by the wet/dry CONTRAST the two-season
+// solve actually resolves — thresholded, so the everwet rainforests (Amazon/Congo, a
+// small contrast) and the wet monsoon coasts (Western Ghats, wet in BOTH halves) are
+// left alone — within the warm latitudes where savanna forms.
+const drySeason=ny<0.5?moistWin[i]:moistSum[i];
+const savWarm=Math.max(0,Math.min(1,(0.34-tLat)/0.10));// warm tropics/subtropics only
+// Moderate strength: enough to open the savanna belt (Deccan, Cerrado, N-Australian
+// interior → dry-forest/savanna) without driving the very wet windward monsoon coasts
+// (Western Ghats) below forest. The everwet rainforests are spared by the threshold
+// (their wet/dry contrast is small).
+const savSeasonDry=e>0?Math.max(0,(summerWet-drySeason)-0.16)*0.80*savWarm:0;
+// ── Patagonian / Monte rain shadow ──────────────────────────────────────────────
+// The real southern Andes (2-3 km) wring the westerlies into steppe-to-desert from
+// ~35-52°S; but the heightmap renders that cordillera at barely 0.1 elevation, too low
+// for the moisture solver's föhn drying to bite, so the lee comes out a temperate
+// rainforest. Restore the shadow as a bounded drying in the lee, east of the true crest.
+const patShadow=e>0?Math.exp(-((latS-0.49)*(latS-0.49))/(2*0.095*0.095))*Math.exp(-((lonDeg+66)*(lonDeg+66))/(2*3.2*3.2))*Math.max(0,1-Math.max(0,e-0.05)*4)*0.62:0;
 // ── Combine the drying ──
-// Subtropical subsidence and the Arabian term build the true deserts (floor 0.02).
-// CONTINENTAL and SAVANNA drying, by contrast, only thin forest into steppe/savanna;
-// they bottom out at a grassland floor (~0.14) rather than the desert floor, so they
-// never manufacture hyperarid sand out of a moisture-fed interior (the Eurasian
-// steppe, the North-/South-American prairies, the Pampas and the Gran Chaco).
-let mo=Math.max(0.02,windMoisture[i]-subtropDry-arabiaDry);
-const steppeDry=contDry+savDry,steppeFloor=0.15;
+// Subtropical subsidence + the Arabian/Patagonian terms build the true deserts (0.02).
+// Continental + savanna drying only thin forest into steppe/savanna (grassland floor).
+let mo=Math.max(0.02,windMoisture[i]-subtropDry-arabiaDry-patShadow);
+const steppeDry=contDry+savDry+savSeasonDry,steppeFloor=0.15;
 mo=mo>steppeFloor?Math.max(steppeFloor,mo-steppeDry):mo;
 // Interior-Asia alpine/steppe lift. The high cold knot of inner Asia — the eastern
 // Tibetan plateau, the Pamir/Tian Shan/Kunlun ranges, the Mongolian/Loess margins — is

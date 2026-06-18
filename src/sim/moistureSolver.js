@@ -230,13 +230,20 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       const wideSubsidence = Math.exp(-(subtropDist * subtropDist) / (2 * 14 * 14));
       const subsidenceFactor = coreSubsidence * 0.7 + wideSubsidence * 0.3;
 
-      // a) Orographic: wind pushing uphill
+      // a) Orographic: wind pushing uphill rains out; descending the lee dries (föhn)
       if (ws > 0.0005) {
         const upslope = dirX * gradX[ci] + dirY * gradY[ci];
         if (upslope > 0) {
           const oroRate = Math.min(0.3, upslope * _moistTBlock * 4);
           precip += moist * oroRate;
           moist *= (1 - oroRate);
+        } else if (upslope < 0) {
+          // Leeward descent — föhn / rain shadow. Air sinking the lee slope warms and
+          // dries. This was entirely missing (only the windward rain-out existed), so
+          // lee basins stayed as wet as the windward side: it is what was leaving
+          // Patagonia (lee of the Andes), the Great Basin (lee of the Sierra/Cascades)
+          // and the Tarim (lee of the Pamir) far too green.
+          moist *= 1 - Math.min(0.42, -upslope * _moistTBlock * 9);
         }
       }
 
