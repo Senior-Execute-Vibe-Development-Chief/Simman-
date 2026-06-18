@@ -90,9 +90,9 @@ function getBiome(e, m, t) {
   if (t < 0.52) return em > 0.4 ? B_TAIGA : em > 0.08 ? B_TUNDRA : B_COLD_DESERT;
   if (t < 0.58) return em > 0.35 ? B_TAIGA : em > 0.08 ? B_TUNDRA : B_COLD_DESERT;
   if (t < 0.65) return em > 0.45 ? B_BOREAL : em > 0.25 ? B_TAIGA : em > 0.08 ? B_TUNDRA : B_COLD_DESERT;
-  if (t < 0.78) return em > 0.55 ? B_TEMP_RAIN : em > 0.35 ? B_TEMP_FOREST : em > 0.15 ? B_GRASSLAND : B_DESERT;
-  if (t < 0.85) return em > 0.5 ? B_SUBTROP : em > 0.3 ? B_TROP_DRY : em > 0.18 ? B_SAVANNA : em > 0.1 ? B_SHRUBLAND : B_DESERT;
-  return em > 0.5 ? B_TROP_RAIN : em > 0.3 ? B_TROP_DRY : em > 0.18 ? B_SAVANNA : em > 0.1 ? B_GRASSLAND : B_DESERT;
+  if (t < 0.78) return em > 0.58 ? B_TEMP_RAIN : em > 0.40 ? B_TEMP_FOREST : em > 0.14 ? B_GRASSLAND : B_DESERT;
+  if (t < 0.85) return em > 0.54 ? B_SUBTROP : em > 0.36 ? B_TROP_DRY : em > 0.16 ? B_SAVANNA : em > 0.09 ? B_SHRUBLAND : B_DESERT;
+  return em > 0.56 ? B_TROP_RAIN : em > 0.38 ? B_TROP_DRY : em > 0.16 ? B_SAVANNA : em > 0.09 ? B_GRASSLAND : B_DESERT;
 }
 
 export function generateResources(tw, th, tElev, tTemp, tMoist, tCoast, world, seed, rivers) {

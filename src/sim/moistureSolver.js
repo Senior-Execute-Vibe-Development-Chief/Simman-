@@ -135,7 +135,12 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   // Phase 2: Iterative transport with precipitation
   // ═══════════════════════════════════════════════════════
   const STEPS = _moistSteps;
-  const baseReach = 1.5 + _moistAdvW * 3.0; // 1.5 - 4.5 cells
+  // baseReach is calibrated in CELLS at the 1440-wide reference (mW=720 → 0.5°/cell).
+  // Moisture must advect the same number of DEGREES inland per step at any
+  // resolution, otherwise a wider grid (the app runs 1920) penetrates fewer degrees
+  // and desiccates every continental interior. Scale the reach by mW so °/step is
+  // constant (this is what made the app far more desert than the 1440 test renders).
+  const baseReach = (1.5 + _moistAdvW * 3.0) * (mW / 720); // 1.5-4.5 cells @ mW=720, scaled
 
   for (let step = 0; step < STEPS; step++) {
     atmosPrev.set(atmos);
