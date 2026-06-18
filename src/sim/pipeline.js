@@ -319,9 +319,11 @@ const rivers=computeRivers(tw,th,tElev,tMoist,tTemp);
 // fertility formula (bell curve) naturally produces good values.
 // Biome classification, resources, and all downstream systems react correctly.
 const riverMoist=new Float32Array(tw*th);
-{// Tributary+ rivers get moisture gradient. Streams are too small for map-scale effect.
-const riverRadius=[0,0,1,2,3];// NONE,STREAM,TRIB,MAJOR,GREAT (~21km/tile)
-const riverMoistPeak=[0,0,0.25,0.40,0.55];
+{// Every river down to a STREAM waters a floodplain — the band where farming
+// concentrates. Widened and strengthened: a river's valley is its breadbasket, so it
+// must be broad enough and wet enough to read as prime cropland, not a one-tile thread.
+const riverRadius=[0,1,2,3,3];// NONE,STREAM,TRIB,MAJOR,GREAT (~21-42km/tile)
+const riverMoistPeak=[0,0.22,0.45,0.52,0.58];
 for(let ti=0;ti<tw*th;ti++){
 const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;
 const R=riverRadius[mag],peak=riverMoistPeak[mag];
@@ -352,7 +354,15 @@ tMoist[ti]=Math.min(0.50,oldMoist+rm);
 }else{
 tMoist[ti]=Math.min(1,oldMoist+rm*0.08);
 }
-tFert[ti]=tileFert(tTemp[ti],tMoist[ti],tElev[ti]);}}
+tFert[ti]=tileFert(tTemp[ti],tMoist[ti],tElev[ti]);
+// Alluvial silt bonus: a floodplain is renewed with fresh nutrient-rich silt each
+// flood, so it out-produces what its moisture alone (the bell curve) implies — the
+// thin Nile/Indus/Mesopotamian ribbons fed the first dense civilisations from a strip
+// of desert. A direct fertility lift on the wetted floodplain, strongest on DRY-land
+// valleys (the river is the only water → irrigation transforms it) and gentle in
+// already-wet land (the river just levels the terrain). tCoast deltas are richest.
+const allu=rm*(oldMoist<0.30?0.55:oldMoist<0.45?0.30:0.10);
+tFert[ti]=Math.min(1,tFert[ti]+allu);}}
 
 // ── Lake moisture boost: lakes act as local moisture sources ──
 if(rivers.lake){

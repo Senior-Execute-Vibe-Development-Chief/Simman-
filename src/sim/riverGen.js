@@ -310,7 +310,18 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     // Use the stream threshold from percentile classification
     // Require at least some river flow entering the basin (90th percentile = modest stream)
     const minInflow = accums.length > 0 ? accums[Math.min(accums.length - 1, Math.floor(accums.length * 0.93))] : 1;
-    if (maxInflow >= minInflow) {
+    // ── Evaporation gate ──
+    // A lake in a HOT basin loses far more water to evaporation than a cold one, so it
+    // needs proportionally more river inflow to stay open water rather than drying to a
+    // salt pan / playa. This is why the Sahara, the Australian interior and the Iranian
+    // plateau have dry depressions (Qattara, Lake Eyre, the Dasht-e Kavir) instead of
+    // lakes, even though rivers do trickle in. Cold high-latitude basins (the Siberian /
+    // Canadian lake country) need only the base inflow; a hot desert basin needs ~7×,
+    // which only a genuine through-flowing great river (not local desert runoff) supplies.
+    let basinTemp = 0;
+    for (const bt of candidate.tiles) if (tTemp[bt] > basinTemp) basinTemp = tTemp[bt];
+    const evapMul = 1 + Math.max(0, basinTemp - 0.5) * 18;
+    if (maxInflow >= minInflow * evapMul) {
       // Only keep the deep core of the depression, not shallow margins
       // Tiles must be raised by at least 40% of the max depth
       const depthCutoff = candidate.maxDepth * 0.3;
