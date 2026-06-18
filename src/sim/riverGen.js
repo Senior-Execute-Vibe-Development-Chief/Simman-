@@ -184,12 +184,20 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     inDegree[ny * tw + nx]++;
   }
 
-  // Each land tile contributes runoff = moisture minus evaporation
+  // Each land tile contributes runoff = moisture minus evaporation, PLUS mountain melt.
   const flowAccum = new Float32Array(N);
   for (let ti = 0; ti < N; ti++) {
     if (tElev[ti] > 0 && tTemp[ti] >= 0.12) {
       const evapLoss = Math.max(0, tTemp[ti] - 0.3) * 0.3;
-      flowAccum[ti] = Math.max(0.05, tMoist[ti] - evapLoss);
+      // Mountain runoff: a high massif sheds FAR more water than its (rain-shadowed,
+      // coarse) moisture reading shows — orographic capture on the windward slopes plus
+      // stored snow / glacier melt released downstream. Without it the great EXOTIC
+      // rivers, which rise in dry-looking mountains and cross deserts (the Indus &
+      // Ganges off the Himalaya, the Tigris/Euphrates off the Anatolian–Zagros
+      // highlands, the Colorado off the Rockies, the Amu Darya off the Pamir), get no
+      // headwater and never form. Scales with height above the snow/orographic line.
+      const snowmelt = Math.max(0, tElev[ti] - 0.15) * 1.6;
+      flowAccum[ti] = Math.max(0.05, tMoist[ti] - evapLoss) + snowmelt;
     }
   }
 
