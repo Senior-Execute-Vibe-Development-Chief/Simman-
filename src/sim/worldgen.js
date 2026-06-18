@@ -225,18 +225,38 @@ const wfScan=Math.max(1,Math.round(W*75/360));
 const _oceanDistW=dirDist(oceanMask,W,H,1,wfScan);// px west to the upwind ocean
 const westFetch=new Float32Array(W*H);
 for(let i=0;i<W*H;i++)if(landMask[i])westFetch[i]=Math.min(_oceanDistW[i],wfScan)*degPx;
-// Wind: use real NCEP/NCAR data if available and toggled, otherwise solver
+// ── Two-season climate: the monsoon needs a seasonal cycle ──────────────────────
+// An annual-mean wind has NO monsoon — the summer onshore inflow and the winter
+// offshore outflow cancel, starving India, SE Asia and East China (Earth's wettest
+// monsoon lands) into desert. So solve a boreal-SUMMER (July) and boreal-WINTER
+// (January) wind, advect moisture under each (with the rain belt shifted into the
+// summer hemisphere), and let the WETTER half-year set each cell's moisture — rain
+// falls in the wet season no matter how dry the other half is. Temperature stays the
+// annual mean, advected by the season-averaged wind.
+let sumWX,sumWY,winWX,winWY;
 if(realWind&&realWindFns&&realWindFns.isRealWindAvailable()){
-tecWindX=new Float32Array(W*H);tecWindY=new Float32Array(W*H);
-realWindFns.fillRealWind(W,H,tecWindX,tecWindY);
+// Real NCEP winds are an annual climatology — use the one field for both half-years
+// (the seasonal ITCZ shift in the moisture pass still recovers the monsoon rain belt).
+const rwX=new Float32Array(W*H),rwY=new Float32Array(W*H);
+realWindFns.fillRealWind(W,H,rwX,rwY);
+sumWX=winWX=rwX;sumWY=winWY=rwY;
 console.log("Earth (Sim): using real NCEP/NCAR wind data");
 }else{
-const esWind=solveWind(W,H,elevation,fbm,_tecParams,seed*0.0137);
-tecWindX=esWind.windX;tecWindY=esWind.windY;
+const sumWind=solveWind(W,H,elevation,fbm,{..._tecParams,season:1},seed*0.0137);
+const winWind=solveWind(W,H,elevation,fbm,{..._tecParams,season:-1},seed*0.0137);
+sumWX=sumWind.windX;sumWY=sumWind.windY;winWX=winWind.windX;winWY=winWind.windY;
 }
+// Annual wind = mean of the two seasons (the monsoon cancels, the persistent
+// westerlies / trades / gyres survive) — drives temperature & ocean-current advection.
+tecWindX=new Float32Array(W*H);tecWindY=new Float32Array(W*H);
+for(let i=0;i<W*H;i++){tecWindX[i]=(sumWX[i]+winWX[i])*0.5;tecWindY[i]=(sumWY[i]+winWY[i])*0.5;}
 const fWX=tecWindX,fWY=tecWindY;
-// Moisture solver — physically-grounded evaporation → transport → precipitation
-const windMoisture=solveMoisture(W,H,elevation,fWX,fWY,temperature,_tecParams);
+// Seasonal moisture (ITCZ + Hadley descent shifted ±13° with the sun), then keep the
+// WETTER half-year (lightly blended so a bone-dry season still pulls a cell down).
+const moistSum=solveMoisture(W,H,elevation,sumWX,sumWY,temperature,{..._tecParams,itczLat:13});
+const moistWin=solveMoisture(W,H,elevation,winWX,winWY,temperature,{..._tecParams,itczLat:-13});
+const windMoisture=new Float32Array(W*H);
+for(let i=0;i<W*H;i++){const a=moistSum[i],b=moistWin[i];windMoisture[i]=Math.max(a,b)*0.82+Math.min(a,b)*0.18;}
 // Wind-advected temperature
 const mW2=Math.ceil(W/2),mH2=Math.ceil(H/2);
 const windTemp=new Float32Array(W*H);
@@ -355,7 +375,7 @@ const tropicalCool=tLat<0.3?cp*0.005:0;// faint coastal sea-breeze cooling — e
 // 40°N and desertified the whole interior down to the 0.02 floor even though the
 // solver gave it a sensible ~0.4; this tight Gaussian leaves the mid-latitudes to
 // the solver + a gentle continentality nudge.
-const beltLat=Math.exp(-((tLat-0.275)*(tLat-0.275))/(2*0.072*0.072));
+const beltLat=Math.exp(-((tLat-0.275)*(tLat-0.275))/(2*0.095*0.095));// subtropical-high belt, widened to ~16-36° so it also reaches the poleward deserts (US SW, N Iran, Patagonia) now that the monsoon spare protects the wet subtropics
 // equatorGuard keeps the everwet ITCZ tropics (0-~9°: the Congo/Amazon/Borneo
 // rainforests) out of the subtropical desert drying. It opens up by ~14° (was ~20°)
 // because the great TRADE-WIND deserts reach the low teens — the Arabian peninsula
@@ -363,42 +383,34 @@ const beltLat=Math.exp(-((tLat-0.275)*(tLat-0.275))/(2*0.072*0.072));
 // the equator. The genuinely wet monsoon coasts at those latitudes (Guinea, the
 // Indian west coast, Indochina) are held by monsoonSpare + their own high rainfall.
 const equatorGuard=Math.max(0,Math.min(1,(tLat-0.10)/0.05));// 0 below ~9°, 1 above ~13.5°
-// Spare the WARM-CURRENT humid subtropics — SE US, SE China, SE Brazil, E Australia —
-// which are strongly east-coastal (eastWet ≳ 0.5) AND poleward of ~22° (humidSubtrop).
-// The latitude gate is what stops the spare from leaking onto the TROPICAL east
-// shores that are actually arid: the Oman/Yemen Arabian-Sea coast (summer upwelling),
-// the Horn, NE-Brazil's Sertão. Those border a warm sea yet are true desert, so they
-// must dry out with the rest of the trade-wind belt rather than read as green.
-const humidSubtrop=Math.min(1,Math.max(0,(tLat-0.23)/0.05));// 0 below ~21°, 1 above ~25°
-const monsoonSpare=1-0.92*Math.min(1,Math.max(0,(eastWet[i]-0.5)/0.2))*humidSubtrop;
-// Gate only weakly on inland-ness (0.70+0.30) so deserts that are nearly surrounded
-// by water — Arabia between the Red Sea, Gulf and Arabian Sea — still dry out.
-// Monsoon spillover: a subtropical cell sitting poleward of rainforest-wet tropics is
-// reached by summer-monsoon moisture the annual-mean solver underplays — the Gran
-// Chaco and Paraná below the Amazon, SE Brazil — so it is savanna/dry-forest, not the
-// hyperarid sand the bare subtropical-high subsidence would carve. Sample the tropics
-// ~8° equatorward; where they read rainforest-wet, relax the desert drying. The
-// strong fixed drag is what keeps the true deserts hard-edged: the Sahara's poleward
-// fringe sees the dry Sahara equatorward (no spillover → stays desert), as do interior
-// Australia and the US Southwest. monsoonFed is 0 unless real tropical moisture lies
-// directly equatorward, so it can't green a desert that has only dry land below it.
-const eqStep=Math.round(H*8/180);
-const eqY=ny<0.5?Math.min(H-1,y+eqStep):Math.max(0,y-eqStep);
-let monsoonFed=Math.max(0,Math.min(1,(windMoisture[eqY*W+x]-0.62)/0.2));// 0 below 0.62, 1 at 0.82+
-// South American low-level jet: the Andes block zonal flow and channel Amazon
-// moisture poleward down their eastern flank into the Chaco/Paraná lowlands. It is the
-// one thing that makes subtropical eastern S. America savanna/dry-forest where the
-// same latitude in Africa/Australia (no such barrier) is true desert — and the
-// annual-mean moisture field can't tell the Chaco from the southern Sahara (their
-// equatorward gradients are identical), so the jet is restored as a bounded spare over
-// the lee-of-Andes subtropics. Gated to LOW ground so it greens the Chaco floor but
-// not the high cold Atacama/Altiplano 8° to its west (a genuine desert).
+// ── Monsoon strength, straight from the two-season solve ────────────────────────
+// summerWet is the wet half-year's moisture (July for the N hemisphere, January for
+// the S) — a DIRECT physical measure of whether a real monsoon waters this cell.
+// India / SE Asia / E China / the US Southeast / the Gran Chaco get a drenching wet
+// season (≳0.5); the trade-wind deserts (Sahara, Arabia, US SW, interior Australia,
+// the Kalahari) stay dry in BOTH halves. It SPARES the explicit belt drying exactly
+// where the monsoon earns it — so India (20°N, monsoon) stays wet while the US SW
+// (33°N, no monsoon) dries to desert at the SAME belt strength. This one signal
+// replaces the geographic hacks (east-coast spare, equatorward spillover, the Andes
+// low-level jet) the annual-mean solve needed to fake seasonal rain it couldn't see.
+const summerWet=ny<0.5?moistSum[i]:moistWin[i];
 const lonDeg=nx*360-180,latS=(ny-0.5)*2;
+// The monsoon spare is now the MAX of three signals:
+//  (a) the genuine monsoon, straight from the two-season wet-season moisture;
+//  (b) the WARM-CURRENT humid subtropics (SE US, SE China, SE Brazil, E Australia) —
+//      east-coastal + poleward of ~22°, humid off the western-boundary currents even
+//      where the monsoon proper is weak (this is what separates humid Atlanta from
+//      desert Arizona at the same latitude, which wet-season moisture alone cannot);
+//  (c) the Andes low-level jet — the Andes channel Amazon moisture south into the
+//      Chaco/Paraná, a sub-grid feature the coarse summer monsoon can't resolve.
+const humidSubtrop=Math.min(1,Math.max(0,(tLat-0.23)/0.05));
 const llj=Math.exp(-((latS-0.30)*(latS-0.30))/(2*0.11*0.11))    // ~15-39°S (Chaco→Pampas)
   *Math.exp(-((lonDeg+60)*(lonDeg+60))/(2*7*7))                 // lee of the Andes, ~53-67°W
   *Math.max(0,1-Math.max(0,e-0.05)*7);                          // low ground only
-monsoonFed=Math.max(monsoonFed,llj);
-const subtropDry=e>0?beltLat*equatorGuard*(0.70+0.30*inland)*0.42*monsoonSpare*(1-0.82*monsoonFed):0;
+const monsoon=Math.max(
+  Math.max(0,Math.min(1,(summerWet-0.45)/0.22)),
+  Math.max(llj, Math.min(1,Math.max(0,(eastWet[i]-0.5)/0.2))*humidSubtrop));
+const subtropDry=e>0?beltLat*equatorGuard*(0.70+0.30*inland)*0.58*(1-0.9*monsoon):0;
 // Continental interiors (rain-shadow + far from any ocean) dry into the mid-latitude
 // steppes and prairies — the Great Plains, the Eurasian steppe, the Pampas,
 // Patagonia. Focused on ~23-61° so it doesn't over-dry the equatorial tropics into
@@ -409,14 +421,14 @@ const subtropDry=e>0?beltLat*equatorGuard*(0.70+0.30*inland)*0.42*monsoonSpare*(
 // resource/agriculture sim, so the biome band was widened instead — together with
 // the savanna-belt drying below.)
 const contBand=Math.max(0,Math.min(1,(tLat-0.26)/0.08))*Math.max(0,Math.min(1,(0.68-tLat)/0.12));
-const contDry=e>0?inland*inland*contBand*0.05*monsoonSpare:0;
+const contDry=e>0?inland*inland*contBand*0.05*(1-0.85*monsoon):0;
 // Tropical savanna belt (~9-22°): a long DRY SEASON the annual-mean solver can't
 // see leaves the Sahel, Cerrado, Llanos, N-Australian and Sudanian savannas far too
 // wet (rainforest). A moderate drying here — inland-gated (humid coasts spared),
 // equatorward-tapered (the everwet ITCZ rainforest at 0-8° untouched) and east-coast
 // spared — opens up the savanna belt between the rainforest and the deserts.
 const savBelt=Math.exp(-((tLat-0.18)*(tLat-0.18))/(2*0.07*0.07))*Math.max(0,Math.min(1,(tLat-0.07)/0.05));
-const savDry=e>0?savBelt*(0.4+0.6*inland)*0.10*monsoonSpare:0;
+const savDry=e>0?savBelt*(0.4+0.6*inland)*0.10*(1-0.7*monsoon):0;
 // ── Saharo-Arabian / Horn aridity ─────────────────────────────────────────────
 // The annual-mean solver floods the warm seas ringing Arabia and the Horn (Red Sea,
 // Persian Gulf, Arabian Sea) with evaporated moisture that never rains out in reality:
@@ -426,10 +438,11 @@ const savDry=e>0?savBelt*(0.4+0.6*inland)*0.10*monsoonSpare:0;
 // rule separates this from the genuine monsoon coasts at the same latitude (the solver
 // even reads Yemen wetter than the Sahel), so it is an explicit geographic correction
 // over the Afro-Arabian desert — centred on the Empty Quarter (~46°E, ~21°N), tapering
-// smoothly to nothing by the Nile to the west and the Indus to the east.
+// smoothly to nothing by the Nile to the west and the Indus to the east. Strengthened
+// for the two-season solve because the shifted summer ITCZ now also reaches into Yemen.
 const araLon=Math.exp(-((lonDeg-46)*(lonDeg-46))/(2*9*9));
 const araLat=Math.exp(-((tLat-0.235)*(tLat-0.235))/(2*0.088*0.088));
-const arabiaDry=e>0?araLon*araLat*0.50:0;
+const arabiaDry=e>0?araLon*araLat*0.78:0;
 // ── Combine the drying ──
 // Subtropical subsidence and the Arabian term build the true deserts (floor 0.02).
 // CONTINENTAL and SAVANNA drying, by contrast, only thin forest into steppe/savanna;
@@ -437,25 +450,15 @@ const arabiaDry=e>0?araLon*araLat*0.50:0;
 // never manufacture hyperarid sand out of a moisture-fed interior (the Eurasian
 // steppe, the North-/South-American prairies, the Pampas and the Gran Chaco).
 let mo=Math.max(0.02,windMoisture[i]-subtropDry-arabiaDry);
-const steppeDry=contDry+savDry,steppeFloor=0.16;
+const steppeDry=contDry+savDry,steppeFloor=0.15;
 mo=mo>steppeFloor?Math.max(steppeFloor,mo-steppeDry):mo;
-// Mid-latitude continental STEPPE floor. A cell the solver actually fed moisture to
-// (windMoisture well above the desert baseline) but the belt/continental drying then
-// over-dried is steppe/prairie, not sand — the Eurasian steppe, the Anatolian/Iranian
-// uplands, the Loess plateau, the Pampas. Lift those back to a grassland floor. The
-// genuine mid-latitude deserts (Taklamakan, Gobi, the Iranian Kavir/Lut, the Great
-// Basin) sit in rain shadows with LOW solver moisture, so they fall below the gate and
-// stay desert. Gated POLEWARD of the subtropical desert belt (tLat>0.34, ~31°) so it
-// can't green the hot deserts (Sahara, Arabia, Australia), which sit equatorward.
-if(tLat>0.34&&windMoisture[i]>0.28)mo=Math.max(mo,0.17);
-// Interior-Asia alpine/steppe lift. The annual-mean solver leaves the whole high
-// cold knot of inner Asia — the eastern Tibetan plateau, the Pamir/Tian Shan/Kunlun
-// ranges, the Mongolian and Loess steppe margins — bone-dry, so it reads as one vast
-// grey cold-desert. In reality the eastern plateau and the ranges catch summer-monsoon
-// and orographic moisture (alpine meadow, montane steppe). A bounded lift over inner
-// Asia (lon ~60-110°E, lat ~30-48°N) thins that grey toward tundra/steppe. It tapers
-// to nothing before the Iranian deserts to the west and adds only a little to the
-// genuinely-arid Taklamakan/Gobi floors (which read grassland here already).
+// Interior-Asia alpine/steppe lift. The high cold knot of inner Asia — the eastern
+// Tibetan plateau, the Pamir/Tian Shan/Kunlun ranges, the Mongolian/Loess margins — is
+// in the monsoon's RAIN SHADOW (the Himalaya wrings it out), so even the two-season
+// solve leaves it bone-dry and it reads as one vast grey cold-desert. In reality the
+// eastern plateau and the ranges still catch orographic and spillover moisture (alpine
+// meadow, montane steppe). A bounded lift (lon ~60-110°E, lat ~30-48°N) thins that grey
+// toward tundra/steppe; it tapers out before the Iranian deserts to the west.
 const asiaLon=Math.exp(-((lonDeg-86)*(lonDeg-86))/(2*15*15));
 const asiaLat=Math.exp(-((tLat-0.42)*(tLat-0.42))/(2*0.10*0.10));
 mo=Math.min(1,mo+asiaLon*asiaLat*0.12);

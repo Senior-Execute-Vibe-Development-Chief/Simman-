@@ -16,6 +16,11 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   const _moistConvective = p('moistConvective', 0.04);
   const _moistSubsidLat  = p('moistSubsidenceLat', 28);
   const _moistSubsidStr  = p('moistSubsidenceStr', 0.03);
+  // ITCZ latitude (degrees, +N): 0 = annual mean (default, byte-identical to before).
+  // For a seasonal solve the rain belt and the Hadley descent follow the sun into the
+  // summer hemisphere (+ in boreal summer), so the monsoon tropics get convective rain
+  // and escape the subtropical subsidence that an annual mean parks on them.
+  const _itczLat         = p('itczLat', 0);
 
   // Work on 2x coarse grid for performance
   const mW = Math.ceil(W / 2), mH = Math.ceil(H / 2);
@@ -209,12 +214,18 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       const py = Math.min(H - 1, my * 2);
       const lat = Math.abs(py / H - 0.5) * 2;
       const latDeg = lat * 90;
+      const latSgn = (0.5 - py / H) * 180; // signed latitude, +N
 
       // Subtropical subsidence: Hadley cell descent at ~20-35°
       // Bimodal subsidence: sharp core (width 6°) for extreme deserts +
       // gentle wide shoulder (width 14°) for semi-arid margins.
       // Core dominates at 20-35°, shoulder extends to ~40° at reduced strength.
-      const subtropDist = latDeg - _moistSubsidLat;
+      // The descending branch sits poleward of the ITCZ in each hemisphere, so it
+      // drifts with the season (_itczLat): in boreal summer the NH belt slides poleward
+      // (off India/the Sahel) while the SH belt slides equatorward — which is what lets
+      // the summer-hemisphere monsoon lands rain instead of sitting under subsidence.
+      const subsidCenter = _moistSubsidLat + 0.20 * _itczLat * Math.sign(latSgn || 1);
+      const subtropDist = Math.abs(latSgn) - subsidCenter;
       const coreSubsidence = Math.exp(-(subtropDist * subtropDist) / (2 * 6 * 6));
       const wideSubsidence = Math.exp(-(subtropDist * subtropDist) / (2 * 14 * 14));
       const subsidenceFactor = coreSubsidence * 0.7 + wideSubsidence * 0.3;
@@ -233,7 +244,7 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       // ITCZ width 8° — narrow band representing annual-mean position.
       // IRL the ITCZ migrates seasonally but only brings sustained rain to ~±8°.
       if (temp[ci] > 0.45 && moist > 0.05) {
-        const itczFactor = Math.exp(-(latDeg * latDeg) / (2 * 8 * 8));
+        const itczFactor = Math.exp(-((latSgn - _itczLat) * (latSgn - _itczLat)) / (2 * 8 * 8));
         const subtropSuppress = 1 - subsidenceFactor * 0.9;
         const midlatFactor = Math.exp(-((latDeg - 45) * (latDeg - 45)) / (2 * 12 * 12)) * 0.3;
         const convFactor = (itczFactor + midlatFactor) * subtropSuppress;
