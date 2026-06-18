@@ -469,6 +469,19 @@ const patShadow=e>0?Math.exp(-((latS-0.49)*(latS-0.49))/(2*0.095*0.095))*Math.ex
 let mo=Math.max(0.02,windMoisture[i]-subtropDry-arabiaDry-patShadow);
 const steppeDry=contDry+savDry+savSeasonDry,steppeFloor=0.15;
 mo=mo>steppeFloor?Math.max(steppeFloor,mo-steppeDry):mo;
+// ── South Asian monsoon foreland ───────────────────────────────────────────────
+// The Indo-Gangetic plain, Bengal/Assam and the Irrawaddy are among the wettest, most
+// fertile lands on Earth — drenched by the summer monsoon off the Bay of Bengal. But
+// the solver's summer wind there blows ZONALLY (and even offshore against the Himalaya)
+// instead of driving that moisture north up the valleys, so Bengal/the Ganges come out
+// arid (Jmoist ~0.15) and Myanmar — wet at the source — is then over-dried by the belt
+// and savanna terms. Restore the monsoon rainfall as a wet FLOOR over the foreland
+// (south of the Himalaya, east of the Thar), low-ground-gated so it never wets the
+// Tibetan plateau immediately to its north.
+const foreland=Math.exp(-((latS+0.244)*(latS+0.244))/(2*0.078*0.078))  // ~22°N (latS<0 is N)
+  *Math.exp(-((lonDeg-91)*(lonDeg-91))/(2*8*8))                        // Ganges→Bengal→Irrawaddy
+  *Math.max(0,1-Math.max(0,e-0.06)*5);                                 // low ground only
+if(e>0)mo=Math.max(mo,foreland*0.72);
 // Interior-Asia alpine/steppe lift. The high cold knot of inner Asia — the eastern
 // Tibetan plateau, the Pamir/Tian Shan/Kunlun ranges, the Mongolian/Loess margins — is
 // in the monsoon's RAIN SHADOW (the Himalaya wrings it out), so even the two-season
