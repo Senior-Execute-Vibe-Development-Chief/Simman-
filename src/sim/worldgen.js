@@ -394,11 +394,11 @@ let monsoonFed=Math.max(0,Math.min(1,(windMoisture[eqY*W+x]-0.62)/0.2));// 0 bel
 // the lee-of-Andes subtropics. Gated to LOW ground so it greens the Chaco floor but
 // not the high cold Atacama/Altiplano 8° to its west (a genuine desert).
 const lonDeg=nx*360-180,latS=(ny-0.5)*2;
-const llj=Math.exp(-((latS-0.265)*(latS-0.265))/(2*0.085*0.085))// ~15-32°S
-  *Math.exp(-((lonDeg+61)*(lonDeg+61))/(2*6*6))                 // lee of the Andes, ~55-67°W
+const llj=Math.exp(-((latS-0.30)*(latS-0.30))/(2*0.11*0.11))    // ~15-39°S (Chaco→Pampas)
+  *Math.exp(-((lonDeg+60)*(lonDeg+60))/(2*7*7))                 // lee of the Andes, ~53-67°W
   *Math.max(0,1-Math.max(0,e-0.05)*7);                          // low ground only
-monsoonFed=Math.max(monsoonFed,0.9*llj);
-const subtropDry=e>0?beltLat*equatorGuard*(0.70+0.30*inland)*0.42*monsoonSpare*(1-0.7*monsoonFed):0;
+monsoonFed=Math.max(monsoonFed,llj);
+const subtropDry=e>0?beltLat*equatorGuard*(0.70+0.30*inland)*0.42*monsoonSpare*(1-0.82*monsoonFed):0;
 // Continental interiors (rain-shadow + far from any ocean) dry into the mid-latitude
 // steppes and prairies — the Great Plains, the Eurasian steppe, the Pampas,
 // Patagonia. Focused on ~23-61° so it doesn't over-dry the equatorial tropics into
@@ -437,8 +437,28 @@ const arabiaDry=e>0?araLon*araLat*0.50:0;
 // never manufacture hyperarid sand out of a moisture-fed interior (the Eurasian
 // steppe, the North-/South-American prairies, the Pampas and the Gran Chaco).
 let mo=Math.max(0.02,windMoisture[i]-subtropDry-arabiaDry);
-const steppeDry=contDry+savDry,steppeFloor=0.14;
+const steppeDry=contDry+savDry,steppeFloor=0.16;
 mo=mo>steppeFloor?Math.max(steppeFloor,mo-steppeDry):mo;
+// Mid-latitude continental STEPPE floor. A cell the solver actually fed moisture to
+// (windMoisture well above the desert baseline) but the belt/continental drying then
+// over-dried is steppe/prairie, not sand — the Eurasian steppe, the Anatolian/Iranian
+// uplands, the Loess plateau, the Pampas. Lift those back to a grassland floor. The
+// genuine mid-latitude deserts (Taklamakan, Gobi, the Iranian Kavir/Lut, the Great
+// Basin) sit in rain shadows with LOW solver moisture, so they fall below the gate and
+// stay desert. Gated POLEWARD of the subtropical desert belt (tLat>0.34, ~31°) so it
+// can't green the hot deserts (Sahara, Arabia, Australia), which sit equatorward.
+if(tLat>0.34&&windMoisture[i]>0.28)mo=Math.max(mo,0.17);
+// Interior-Asia alpine/steppe lift. The annual-mean solver leaves the whole high
+// cold knot of inner Asia — the eastern Tibetan plateau, the Pamir/Tian Shan/Kunlun
+// ranges, the Mongolian and Loess steppe margins — bone-dry, so it reads as one vast
+// grey cold-desert. In reality the eastern plateau and the ranges catch summer-monsoon
+// and orographic moisture (alpine meadow, montane steppe). A bounded lift over inner
+// Asia (lon ~60-110°E, lat ~30-48°N) thins that grey toward tundra/steppe. It tapers
+// to nothing before the Iranian deserts to the west and adds only a little to the
+// genuinely-arid Taklamakan/Gobi floors (which read grassland here already).
+const asiaLon=Math.exp(-((lonDeg-86)*(lonDeg-86))/(2*15*15));
+const asiaLat=Math.exp(-((tLat-0.42)*(tLat-0.42))/(2*0.10*0.10));
+mo=Math.min(1,mo+asiaLon*asiaLat*0.12);
 const dry=Math.max(0,1-mo/0.35);// 1 = bone-dry, 0 = humid
 const desertHeat=dry*0.09*Math.exp(-((tLat-0.22)*(tLat-0.22))/(2*0.13*0.13));// peaks on the 13-30° HOT-DESERT belt (Sahel, Sahara, Arabia — Earth's hottest annual means), not the 33° subtropics
 // Continental winters depress the ANNUAL mean only where summers can't compensate,
