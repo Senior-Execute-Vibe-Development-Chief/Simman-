@@ -170,9 +170,10 @@ Headless node scripts for measuring the sim live in `tools/`:
 
 ## Data
 
-- `src/sim/earthData.js` — packed Earth heightmap (1440×720; three-globe
-  topology relief detail over the original Tangram land/sea mask, quantile-matched
-  to the original elevation scale; source reference images in `data/`).
+- `src/sim/earthData.js` — packed Earth heightmap (1920×960; land/sea mask and
+  relief both from the three-globe topology DEM — ocean by border flood-fill so
+  straits/islands resolve, relief quantile-matched to the original Tangram
+  elevation scale; source reference images in `data/`).
 - `data/global_wind.json` — NCEP/NCAR 10 m climatological winds, 12 monthly
   U/V grids, used by the optional "real wind" toggle in Earth (Sim).
 
