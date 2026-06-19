@@ -281,6 +281,14 @@ export function makeSettlement(world, x, y, opts = {}) {
     if (cul && !opts.name) s.name = nameFor(world, cul, "settlement");
   }
   seedAncestry(world, s, opts);   // deep genetic stock: local substrate, admixed if founded from afar
+  // Heritable organisation aptitude: a colony's founders carry their parent's
+  // aptitude in FULL (they ARE that people); a fresh cradle/frontier starts at
+  // zero and only the right climate ratchets it up (seasonalSelect, ratcheted in
+  // updateKnowledge). Diluted afterwards only by in-migration of other stock.
+  {
+    const aptPar = (opts.parentId != null && opts.parentId >= 0) ? findSettlementById(world, opts.parentId) : null;
+    s._orgApt = aptPar ? (aptPar._orgApt || 0) : 0;
+  }
   s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
   s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
   world.settlements.push(s);
@@ -882,6 +890,13 @@ export function urbanise(world) {
     }
     if (movers < 0.2) continue;
     s.people -= movers;
+    // Migrants carry their heritable aptitude into the destination, blending it
+    // pop-weighted with the residents — the one thing that DILUTES a high-aptitude
+    // stock (intermarriage), since the trait itself never decays in place.
+    if (T.ORG_APTITUDE > 0) {
+      const bp = best.people, ba = best._orgApt || 0, sa = s._orgApt || 0;
+      if (bp + movers > 0) best._orgApt = (ba * bp + sa * movers) / (bp + movers);
+    }
     best.people += movers;
   }
 }
@@ -946,6 +961,26 @@ const CROP_DOMESTICATE = 0.45;
 //   + iron                      cap 0.90  (iron age)
 //   + iron + coal               cap 1.00  (steel / industrial)
 //
+// ── Heritable organisation aptitude ("bountiful hardship" selection) ──────
+// The thesis: a population under mild summers + HARSH winters + a reliable
+// growing season is selected, over generations, for the foresight, storage and
+// coordination a stored-surplus winter economy demands. Modelled as a heritable,
+// per-population aptitude that RATCHETS up under that climate and never falls (a
+// permanent trait), rides with colonists/migrants in full (founder-carried — see
+// makeSettlement + the migration blend — but never transferred by conquest, like
+// the ancestry stock), and pays out as faster ORGANISATION learning + extra
+// STATE CAPACITY (admin reach). seasonalSelect is the per-tile selection TARGET:
+// it peaks in the cool-temperate / continental band (a real winter, a workable
+// summer), and is ~0 in the tropics (no winter), desert and polar margins (no
+// reliable, storable surplus to select on). Dialled by T.ORG_APTITUDE.
+const APT_T_OPT = 0.45, APT_T_TOL = 0.12;
+const APT_M_MIN = 0.32, APT_M_SPAN = 0.30;
+function seasonalSelect(temp, moist) {
+  const winter = Math.exp(-((temp - APT_T_OPT) ** 2) / (2 * APT_T_TOL * APT_T_TOL));
+  const grow   = Math.min(1, Math.max(0, (moist - APT_M_MIN) / APT_M_SPAN));
+  return winter * grow;
+}
+
 function updateKnowledge(world, s) {
   const k = s.knowledge;
   // Trade brings remote resources into the local tech equation —
@@ -1015,6 +1050,17 @@ function updateKnowledge(world, s) {
   const agriClim = Math.max(0.2, 1 + T.ENV_SPEC * (irrig * 1.1 - tropical * 0.45 - cold * 0.5));
   const orgClim  = Math.max(0.4, 1 + T.ENV_SPEC * (maritime * 0.3 - tropical * 0.40));
 
+  // ── Heritable aptitude: selection ratchet ────────────────────────────
+  // Under a mild-summer/harsh-winter/reliable-growing-season climate the
+  // population's heritable organisation aptitude climbs toward the selection
+  // target over generations — and NEVER falls (permanent ratchet), so a people
+  // that earned it keeps it when they spread to climates that select for nothing.
+  if (T.ORG_APTITUDE > 0) {
+    const aptTarget = seasonalSelect(s._climTemp, s._climMoist);
+    const apt = s._orgApt || 0;
+    if (aptTarget > apt) s._orgApt = apt + T.ORG_APT_SELECT * (aptTarget - apt) * (world._dt || 1);
+  }
+
   // ── Local learning ──────────────────────────────────────────────
   // Construction: covers buildings, roads, wagons, bridges (the old
   // toolmaking track folded in here — they're all "things built by
@@ -1055,8 +1101,12 @@ function updateKnowledge(world, s) {
   const litBranch = k.organization > 0.30
     ? 0.6 * k.organization * (1 + popSqrt * 0.06)
     : 0;
+  // Heritable aptitude pays out as FASTER organisation learning (boost #1): a
+  // high-aptitude people builds institutions quicker (still capped by orgEraCap —
+  // it can't outrun the material era, only reach it sooner).
+  const aptLearn = T.ORG_APTITUDE > 0 ? 1 + T.ORG_APT_LEARN * (s._orgApt || 0) : 1;
   k.organization = clamp01(k.organization + T.LEARN_BASE * sciMul * orgClim * orgHead
-    * ((1 + popSqrt * 0.10) + litBranch));
+    * ((1 + popSqrt * 0.10) + litBranch) * aptLearn);
 
   // Metallurgy — gated by ore, but PACED to keep step with the rest of the tree.
   // It used to crawl (∝ raw ore richness), so cultures reached the Renaissance

@@ -298,7 +298,7 @@ export function computeCountryTerritory(world) {
   // pass has run) so the border anchor radiates from the same city the rest
   // of the sim calls the capital; before the first polity pass — or if the
   // capital died between passes — fall back to the most-organised settlement.
-  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map(), eraBoost = new Map(), hostOf = new Map();
+  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map(), eraBoost = new Map(), hostOf = new Map(), capApt = new Map();
   const politicalCap = new Map();   // countryId → capital settlement id (conquest.js rebuildCountries)
   let maxLogi = 0;                   // world's highest logistics level — gates the industrial frontier-close
   if (world.countries) for (const [cid, c] of world.countries) if (c && c.capitalId != null) politicalCap.set(cid, c.capitalId);
@@ -311,6 +311,7 @@ export function computeCountryTerritory(world) {
     const rank = isPolCap ? Infinity : org;                  // the throne outranks any org score (selection only — budgets use the real org)
     if (!capOrg.has(c) || rank > capOrg.get(c)) {
       capOrg.set(c, rank);
+      capApt.set(c, s._orgApt || 0); // the ruling stock's heritable organisation aptitude
       capPos.set(c, s.pos);          // the capital — the anchor authority radiates from
       knOf.set(c, s.knowledge || {});
       // Empire SIZE is unlocked by TRANSPORT & COMMUNICATION tech, not raw
@@ -357,7 +358,11 @@ export function computeCountryTerritory(world) {
     const emGated = 1 + ((eraBoost.get(c) || 1) - 1) * Math.min(1, mem / LOGI_SIZE_REF);
     const pers = world.personalities && world.personalities.get(c);
     const persMul = pers ? 1 + (pers.expansionism || 0) * CLAIM_PERS_SPAN : 1;
-    budget.set(c, b * emGated * sf * persMul);
+    // Heritable aptitude pays out as extra STATE CAPACITY (boost #2): a realm run
+    // by a high-aptitude stock projects administrative reach further for the same
+    // tech — the institutional edge of the "winter peoples" made territorial.
+    const aptMul = T.ORG_APTITUDE > 0 ? 1 + T.ORG_APT_CAP * (capApt.get(c) || 0) : 1;
+    budget.set(c, b * emGated * sf * persMul * aptMul);
   }
   // Ease each country's reach toward that (size-scaled tech) target so territory
   // grows in gradually instead of snapping to a continental claim in one pass
