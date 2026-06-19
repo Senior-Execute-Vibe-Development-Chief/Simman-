@@ -291,6 +291,8 @@ export function makeSettlement(world, x, y, opts = {}) {
   }
   s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
   s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
+  s._confine = computeConfinement(world, x | 0, y | 0);   // circumscription (static terrain)
+  s._rivalN = 0;                                           // distinct rival polities in contact (refreshed in updateKnowledge)
   world.settlements.push(s);
   seedLocalTerritory(world, s);   // food/resource stats until the first full territory pass
   // Crop-package ownership (T.CROP_AXIS). Off → stays empty (unused). A cradle
@@ -981,6 +983,36 @@ function seasonalSelect(temp, moist) {
   return winter * grow;
 }
 
+// ── Circumscription (Carneiro): confinement forces organisation ──────────
+// A fertile pocket hemmed in by INHOSPITABLE land — the Nile walled by desert,
+// a valley ringed by mountains, an island — cannot answer population pressure by
+// dispersing, so it answers with INTENSIFICATION: irrigation, hierarchy, the
+// coordinated state. computeConfinement scores how walled-in a site is (the
+// fraction of its surroundings that is sea / high mountain / frozen / true
+// desert — land you cannot just walk off into and farm). Cached at creation
+// (terrain is static); pays out as faster organisation learning (T.CONFINE).
+function computeConfinement(world, x, y) {
+  const { tw, th, elev, temp, moist } = world;
+  const R = 6; let bar = 0, tot = 0;
+  for (let dy = -R; dy <= R; dy++) {
+    const ny = (y | 0) + dy; if (ny < 0 || ny >= th) continue;
+    for (let dx = -R; dx <= R; dx++) {
+      const d2 = dx * dx + dy * dy; if (d2 === 0 || d2 > R * R) continue;
+      const nx = (((x | 0) + dx) % tw + tw) % tw, ni = ny * tw + nx;
+      tot++;
+      const e = elev[ni], t = temp ? temp[ni] : 0.5, m = moist ? moist[ni] : 0.5;
+      if (e <= 0 || e > 0.55 || t < 0.30 || (m < 0.12 && t > 0.5)) bar++;   // sea / mountain / ice / desert
+    }
+  }
+  return tot > 0 ? bar / tot : 0;
+}
+
+// Competition (fractious-polity innovation): a settlement in contact with many
+// DISTINCT rival polities sits in a competitive, pluralistic world (fragmented
+// Europe, the warring states) and innovates faster; one deep inside a single
+// monolithic empire does not. COMPETE_REF rival neighbours → full effect.
+const COMPETE_REF = 4;
+
 function updateKnowledge(world, s) {
   const k = s.knowledge;
   // Trade brings remote resources into the local tech equation —
@@ -1028,11 +1060,15 @@ function updateKnowledge(world, s) {
   const surplusF = Math.max(0, Math.min(1, 0.5 * granF + 0.5 * Math.min(1, Math.max(0, (flow - 1) / 0.4))));
   const reachN = s._tradeReach ? s._tradeReach.size : 0;
   const tradeF = Math.min(1, reachN / 18);                                 // ~18 partners → 1
+  // Competition: contact with many DISTINCT rival polities (fractious frontier /
+  // warring states) spurs faster innovation; monolithic-empire interiors don't.
+  const competF = Math.min(1, (s._rivalN || 0) / COMPETE_REF);
   // ×_dt folds the time-granularity step into EVERY technique-learning track at once
   // (all five use sciMul as their rate multiplier), so tech develops 1/G as fast per
   // tick — paced with the granularity-slowed population.
   const sciMul = (world._dt || 1) * Math.max(0.25, Math.min(2.2,
-    1 + T.SCI_SPREAD * (0.55 * popF + 0.45 * surplusF + 0.30 * tradeF + 0.20 * k.organization - 0.45)));
+    1 + T.SCI_SPREAD * (0.55 * popF + 0.45 * surplusF + 0.30 * tradeF + 0.20 * k.organization
+      + T.COMPETE * competF - 0.45)));
 
   // ── Environment specialization (climate-tied learning) ────────────────
   // Beyond the resource gates, the LOCAL CLIMATE biases which techniques a
@@ -1105,8 +1141,9 @@ function updateKnowledge(world, s) {
   // high-aptitude people builds institutions quicker (still capped by orgEraCap —
   // it can't outrun the material era, only reach it sooner).
   const aptLearn = T.ORG_APTITUDE > 0 ? 1 + T.ORG_APT_LEARN * (s._orgApt || 0) : 1;
+  const confineMul = 1 + T.CONFINE * (s._confine || 0);   // circumscription forces intensification → organisation
   k.organization = clamp01(k.organization + T.LEARN_BASE * sciMul * orgClim * orgHead
-    * ((1 + popSqrt * 0.10) + litBranch) * aptLearn);
+    * ((1 + popSqrt * 0.10) + litBranch) * aptLearn * confineMul);
 
   // Metallurgy — gated by ore, but PACED to keep step with the rest of the tree.
   // It used to crawl (∝ raw ore richness), so cultures reached the Renaissance
@@ -1191,10 +1228,12 @@ function updateKnowledge(world, s) {
     const kmSim = { agriculture:1, construction:1, organization:1,
                     metallurgy:1, navigation:1, mobility:1 };
     let any = false;
+    const rivals = new Set();
     for (const pid of s._tradeReach.keys()) {
       const p = world._byId.get(pid);
       if (!p || p.mode !== "settled" || !p.knowledge) continue;
       any = true;
+      if (p.countryId >= 0 && p.countryId !== s.countryId) rivals.add(p.countryId);   // competition signal
       const pk = p.knowledge;
       // Continental-axis climate similarity — used to gate AGRICULTURE only (see
       // the diffusion loop). The farming PACKAGE crosses easily along a shared
@@ -1205,6 +1244,7 @@ function updateKnowledge(world, s) {
       const sim = Math.exp(-(dLat * dLat) / (2 * 0.22 * 0.22) - (dT * dT) / (2 * 0.10 * 0.10));
       for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) { km[t] = v; kmSim[t] = sim; } }
     }
+    s._rivalN = rivals.size;   // distinct rival polities in contact → competition term in sciMul next pass
     if (any) {
       if (wa <= 0) km.navigation = 0;            // no sea → no naval technique to absorb
       if (horses <= horsesThr) km.mobility = 0;  // no horses → no cavalry technique to absorb
