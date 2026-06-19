@@ -840,6 +840,18 @@ const NUCLEATE_SEAT_POP   = 160;    // the seat must be a real regional centre (
 const NUCLEATE_CLUSTER_POP= 400;    // total stateless population nearby to be a viable state
 const NUCLEATE_CAP_DIST   = 8;      // ...and at least this far from any existing capital
 const NUCLEATE_MAX_PASS   = 4;      // cap new states minted per territory pass (anti-bloom)
+// State-capacity gate (Diamond/Scott): a STATE needs a storable, taxable surplus,
+// not just bodies. Forager-dense but low-surplus land (the wet tropics, leached
+// rainforest, thin steppe) supported plenty of PEOPLE but few STATES — so the
+// founding bar scales UP where the land's carrying capacity is low. A fertile
+// river valley crystallises a state off a few hundred people; the Congo or the
+// outback needs several times that, and so mostly stays peopled-but-stateless —
+// a sparse frontier rather than the uniform statelet-patchwork that filled every
+// habitable tile before. Capacity is read from the seat's fertility (which the
+// alluvial boost already makes high on a fertile-river-in-desert cradle and low
+// in already-wet rainforest).
+const NUCLEATE_CAP_FERT_REF = 0.55;  // fertility at/above which the founding bar is at its floor
+const NUCLEATE_CAP_SPREAD   = 3.0;   // low-capacity land needs up to (1+this)× the population to form a state
 export function nucleateFrontierStates(world) {
   const lever = T.FRONTIER_FOUNDING;          // 0 = off (old behaviour), 1 = default, >1 = easier
   if (!(lever > 0)) return;
@@ -848,9 +860,16 @@ export function nucleateFrontierStates(world) {
   const capD2 = (NUCLEATE_CAP_DIST / Math.sqrt(lever)) ** 2;
   const caps = [];
   if (world.countries) for (const c of world.countries.values()) if (c.capital && c.capital.mode === "settled") caps.push(c.capital.pos);
+  const fert = world.fert;
   const cand = [];
   for (const s of world.settlements) {
-    if (s.mode !== "settled" || s.countryId >= 0 || (s.people || 0) < seatPop) continue;
+    if (s.mode !== "settled" || s.countryId >= 0) continue;
+    // State-capacity multiplier: low-fertility land needs a far bigger cluster
+    // to crystallise a state (so it stays a sparse stateless frontier).
+    const seatTi = (s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw;
+    const capNorm = fert ? Math.min(1, Math.max(0, fert[seatTi] / NUCLEATE_CAP_FERT_REF)) : 1;
+    const capMul = 1 + NUCLEATE_CAP_SPREAD * (1 - capNorm);
+    if ((s.people || 0) < seatPop * capMul) continue;
     let dCap = Infinity;                        // isolation from existing states' heartlands
     for (const p of caps) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; const d2 = dx * dx + dy * dy; if (d2 < dCap) dCap = d2; }
     if (caps.length && dCap < capD2) continue;
@@ -861,7 +880,7 @@ export function nucleateFrontierStates(world) {
       const op = o.people || 0, sp = s.people || 0;
       if (op > sp || (op === sp && o.id < s.id)) isLeader = false;
     });
-    if (isLeader && cp >= clusterPop) cand.push({ s, cp });
+    if (isLeader && cp >= clusterPop * capMul) cand.push({ s, cp });
   }
   if (!cand.length) return;
   cand.sort((a, b) => b.cp - a.cp);             // most-developed clusters first
