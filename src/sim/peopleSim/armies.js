@@ -125,7 +125,10 @@ const SIEGE_BREAK       = 0.15;
 const MILITIA_MORALE_FLOOR = 0.2;   // even a mutinous city musters this fraction
 
 function techMul(s) {
-  return techEff(s).military;   // combat multiplier from the discovered war techs (tech.js)
+  // Combat multiplier from the discovered war techs (tech.js), lifted for mounted
+  // pastoral nomads — open-steppe horse peoples fight as cavalry hosts far above
+  // their numbers (the steppe-conqueror edge; see s._nomad in settlement.js).
+  return techEff(s).military * (1 + T.NOMAD_MIL * (s._nomad || 0));
 }
 function might(s) { return (s.army || 0) * techMul(s); }
 // Effective defensive might of a settlement holding its OWN core: the greater

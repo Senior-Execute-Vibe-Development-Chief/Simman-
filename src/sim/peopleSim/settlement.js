@@ -292,6 +292,7 @@ export function makeSettlement(world, x, y, opts = {}) {
   s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
   s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
   s._confine = computeConfinement(world, x | 0, y | 0);   // circumscription (static terrain)
+  s._rugged  = computeRuggedness(world, x | 0, y | 0);    // broken terrain → fragmentation (static)
   s._rivalN = 0;                                           // distinct rival polities in contact (refreshed in updateKnowledge)
   world.settlements.push(s);
   seedLocalTerritory(world, s);   // food/resource stats until the first full territory pass
@@ -1007,6 +1008,29 @@ function computeConfinement(world, x, y) {
   return tot > 0 ? bar / tot : 0;
 }
 
+// Terrain ruggedness: local elevation roughness (standard deviation of height in
+// a small window). Broken, compartmented country — the Aegean, Italy, the
+// Caucasus, the Swiss cantons — splinters into many small competing polities
+// because no centre can cheaply project power across the ranges; smooth plains
+// consolidate into few large realms. Cached at creation (terrain is static);
+// eases frontier-state nucleation (countryTerritory.js) so rugged land carries
+// MORE, smaller states. The reach flood's mountain transport cost already does
+// half this job; ruggedness makes the polity-COUNT effect explicit.
+function computeRuggedness(world, x, y) {
+  const { tw, th, elev } = world;
+  const R = 4; let n = 0, sum = 0, sum2 = 0;
+  for (let dy = -R; dy <= R; dy++) {
+    const ny = (y | 0) + dy; if (ny < 0 || ny >= th) continue;
+    for (let dx = -R; dx <= R; dx++) {
+      const nx = (((x | 0) + dx) % tw + tw) % tw, e = Math.max(0, elev[ny * tw + nx]);
+      n++; sum += e; sum2 += e * e;
+    }
+  }
+  if (n === 0) return 0;
+  const mean = sum / n;
+  return Math.min(1, Math.sqrt(Math.max(0, sum2 / n - mean * mean)) / 0.20);
+}
+
 // Livestock / herding suitability from climate: open grassland, savanna and
 // temperate pasture are prime; bare desert (no graze), rainforest/swamp (no open
 // range, tsetse, foot-rot) and frozen ground are not. Combined in updateFood with
@@ -1108,6 +1132,17 @@ function updateKnowledge(world, s) {
     const apt = s._orgApt || 0;
     if (aptTarget > apt) s._orgApt = apt + T.ORG_APT_SELECT * (aptTarget - apt) * (world._dt || 1);
   }
+
+  // ── Nomadism: the mounted-pastoralist path ───────────────────────────
+  // Open horse-country grassland that never took up dense farming breeds MOUNTED
+  // PASTORALISTS — sparse (low farm carrying capacity) but martially formidable:
+  // cavalry hosts that raid and conquer far richer settled realms (Scythians,
+  // Huns, Mongols). High where open graze + horses meet LOW agriculture; fades to
+  // nothing as farming takes hold and the people settle. Powers the military
+  // bonus in armies.js (techMul).
+  s._nomad = T.NOMAD_MIL > 0
+    ? livestockClimate(s._climTemp, s._climMoist) * Math.min(1, horses / 0.15) * Math.max(0, 1 - k.agriculture * 1.4)
+    : 0;
 
   // ── Local learning ──────────────────────────────────────────────
   // Construction: covers buildings, roads, wagons, bridges (the old
