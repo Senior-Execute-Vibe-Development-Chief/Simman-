@@ -69,6 +69,18 @@ const CLAIM_SOFT      = 0.12;
 // square of the shortfall, so only genuine wasteland resists hard.
 const CLAIM_FERT_REF  = 0.12;  // fertility below which hostility starts. Deliberately LOW: only TRUE wasteland (deep desert, bare rock, fert→0) resists. Steppe/savanna/dry marginal land claims at plain transport cost — historically that was LOW-resistance land (open, sparse, nobody to fight), how Russia/the khanates/Sahel states got huge. Fertility caps POPULATION, not political reach.
 const CLAIM_HOSTILITY = 3.0;   // ×(1 + this·deficit²) on barren land: 0 = old isotropic blob, up = tighter river/coast ribbons
+// Wet-tropic claim resistance: hot AND wet rainforest (the Congo, the Amazon, New
+// Guinea) was easy to walk through but near-impossible to ADMINISTER — disease,
+// no roads, leached soil, no storable surplus to tax or garrison. So it amplifies
+// CLAIM cost like a soft waste, leaving the deep wet tropics a sparse stateless
+// frontier rather than another wall-to-wall statelet patchwork. Crucially it keys
+// on hot+WET, so the open hot+DRY steppe/savanna (Sahel, the khanates' grass sea)
+// is untouched and still claims cheap. Scaled by the realm's `host` factor, so it
+// fades with logistics tech — pre-modern realms stall at the jungle edge, the
+// industrial/colonial era finally penetrates it.
+const WET_TROPIC_RESIST = 1.0;
+const WET_TROPIC_T0 = 0.78, WET_TROPIC_TSPAN = 0.10;   // temperature ramp (matches the agri wet-tropic penalty)
+const WET_TROPIC_M0 = 0.60, WET_TROPIC_MSPAN = 0.25;   // moisture ramp
 // How far a realm projects a CLAIM also grows with the era. In antiquity a state
 // was an island of territory in a sea of unclaimed land — most of the world
 // belonged to no polity (steppe, forest, desert, the deep interior). The modern
@@ -272,7 +284,7 @@ function claimNoise(world) {
 
 // Clean per-country cost-Voronoi → world._countryOwner. Runs on the territory pass.
 export function computeCountryTerritory(world) {
-  const { N, tw, th, elev, fert } = world;
+  const { N, tw, th, elev, fert, temp, moist } = world;
   const resScale = resScaleFor(tw);   // tile budgets are res-relative → keep the same world-fraction at any grid size (see RES_REF_W)
   let co = world._countryOwner;
   if (!co || co.length !== N) co = world._countryOwner = new Int32Array(N);
@@ -451,6 +463,13 @@ export function computeCountryTerritory(world) {
       if (!water && host > 0) {
         const fdef = (CLAIM_FERT_REF - (fert ? fert[ni] : CLAIM_FERT_REF)) / CLAIM_FERT_REF;
         if (fdef > 0) ec *= 1 + host * fdef * fdef;
+        // Wet-tropic resistance: hot+wet rainforest stalls a border (sparse,
+        // stateless deep tropics); hot+dry steppe is untouched.
+        if (temp && moist) {
+          const wt = Math.min(1, Math.max(0, (temp[ni] - WET_TROPIC_T0) / WET_TROPIC_TSPAN))
+                   * Math.min(1, Math.max(0, (moist[ni] - WET_TROPIC_M0) / WET_TROPIC_MSPAN));
+          if (wt > 0) ec *= 1 + host * WET_TROPIC_RESIST * wt;
+        }
       }
       ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);     // organic meander → borders wander instead of cutting straight
       const nd = d + ec * mul[k];
