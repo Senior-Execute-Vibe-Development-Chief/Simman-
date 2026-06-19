@@ -1007,6 +1007,18 @@ function computeConfinement(world, x, y) {
   return tot > 0 ? bar / tot : 0;
 }
 
+// Livestock / herding suitability from climate: open grassland, savanna and
+// temperate pasture are prime; bare desert (no graze), rainforest/swamp (no open
+// range, tsetse, foot-rot) and frozen ground are not. Combined in updateFood with
+// the regional domesticate-availability gate (the agri ceiling — isolated New-World
+// landmasses and the wet tropics score low, Diamond's "no large domesticates").
+function livestockClimate(temp, moist) {
+  const dryOK  = Math.min(1, Math.max(0, (moist - 0.10) / 0.18));   // not bare desert
+  const wetOK  = Math.min(1, Math.max(0, (0.82 - moist) / 0.28));   // not rainforest / swamp
+  const warmOK = Math.min(1, Math.max(0, (temp - 0.26) / 0.16));    // not frozen
+  return dryOK * wetOK * warmOK;
+}
+
 // Competition (fractious-polity innovation): a settlement in contact with many
 // DISTINCT rival polities sits in a competitive, pluralistic world (fragmented
 // Europe, the warring states) and innovates faster; one deep inside a single
@@ -1114,8 +1126,14 @@ function updateKnowledge(world, s) {
   // foraging track). The wild-food boost decays as metallurgy advances
   // — society moves off forage onto stored grain.
   const wildBoost = 1 + (r.timber || 0) * 0.2 * (1 - metalEff * 0.7);   // metal tools (not just the idea) move society off forage onto stored grain
+  // Forager bounty DELAYS farming: where wild food is abundant — rich fisheries,
+  // game-filled open grassland (the New World's bison, the salmon coasts) — the
+  // pressure to take up cereal farming is weak, so the transition drags until the
+  // wild surplus is outgrown. Fades to nothing as agriculture matures.
+  const forageEase = Math.min(1, wa * 0.5 + livestockClimate(s._climTemp, s._climMoist) * 0.5) * (1 - k.agriculture);
+  const foragePull = 1 - T.FORAGE_EASE * forageEase;
   k.agriculture = clamp01(k.agriculture + T.LEARN_BASE * 1.2 * sciMul * agriClim * (1 - k.agriculture)
-    * (1 + fc * 0.03) * (1 + k.construction * 0.5) * wildBoost);
+    * (1 + fc * 0.03) * (1 + k.construction * 0.5) * wildBoost * foragePull);
 
   // Organization: pop-driven admin burden + a literate-state branch
   // (folded in from the old literacy track) that kicks in once the
@@ -1365,12 +1383,29 @@ function updateFood(world, s) {
   // (domestication ceiling). This is what keeps a fresh/isolated frontier sparse and
   // stateless — the whole map no longer farms at full yield from tick 0.
   const fy = techEff(s).farmYield; s._farmYield = fy;   // stored for the rural-density ceiling (updatePopulation)
+  const agg = agriGate(world, s);   // also builds world._agriCeil (used for the livestock regional gate)
+  // ── Animal husbandry: livestock secondary products ──────────────────
+  // Oxen (traction), manure (fertiliser) and dairy/meat lift the food a worked
+  // hinterland yields — but only where the climate suits herding AND the region
+  // actually HAD large domesticable stock. Regional availability reuses the agri
+  // ceiling, so isolated landmasses (the New World) and the disease-ridden wet
+  // tropics get little (Diamond's missing-domesticates / tsetse effect), while
+  // the Old-World temperate-grassland belt gets the full plough-and-manure lift.
+  // Develops with farming (agriculture knowledge ≈ the husbandry proxy).
+  let livestockBonus = 1;
+  if (T.LIVESTOCK > 0) {
+    climateOf(world, s);
+    const lti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
+    const ceilReg = world._agriCeil ? (world._agriCeil[lti] || 0) : 1;
+    s._livestock = livestockClimate(s._climTemp, s._climMoist) * ceilReg;
+    livestockBonus = 1 + T.LIVESTOCK * s._livestock * ((s.knowledge && s.knowledge.agriculture) || 0);
+  }
   // _eraProd is the global historical-productivity index (index.js demographic
   // anchor): scaling LAND FOOD here lifts every settlement's carrying capacity
   // together so the world total tracks recorded population, while the spatial
   // distribution stays emergent and the food economy (surplus, trade, army
   // labour all derived from this flow) stays internally consistent.
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agriGate(world, s) * armyLabor * (world._eraProd || 1);
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (world._eraProd || 1) * livestockBonus;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
@@ -1433,7 +1468,13 @@ function updateFood(world, s) {
   s._urbanFactor = urbanFactor;
   s.food += supply - demand;
 
-  const storageCap = 80 + s.tier * 200;
+  // Seasonality → storage: a mild-summer/harsh-winter climate MUST bank the
+  // harvest to survive winter, so it builds deeper granaries (root cellars,
+  // smokehouses) — a larger buffer against famine/siege than a tropics where
+  // food is gathered year-round. (A storage-economy proxy, not a full annual
+  // cycle.) Reuses the cool-temperate selection target.
+  const seasonStore = T.SEASON_STORE > 0 ? 1 + T.SEASON_STORE * seasonalSelect(s._climTemp || 0.5, s._climMoist || 0.5) : 1;
+  const storageCap = (80 + s.tier * 200) * seasonStore;
   if (s.food > storageCap) s.food = storageCap;
   if (s.food < 0) s.food = 0;
 }
