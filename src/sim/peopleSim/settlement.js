@@ -1435,12 +1435,32 @@ function updateFood(world, s) {
     s._livestock = livestockClimate(s._climTemp, s._climMoist) * ceilReg;
     livestockBonus = 1 + T.LIVESTOCK * s._livestock * ((s.knowledge && s.knowledge.agriculture) || 0);
   }
+  // ── Wet-tropic disease & soil burden (carrying-capacity brake) ──────────
+  // Endemic disease (falciparum malaria, sleeping sickness) and leached,
+  // quickly-exhausted rainforest soils held tropical population DENSITY far
+  // below the temperate world even where the land looked lush — Diamond's
+  // wet-tropic brake, and THE reason a fertile-looking equatorial belt (the
+  // Congo, West Africa, Amazonia, New Guinea) stayed sparse and stateless while
+  // temperate Eurasia filled. It needs BOTH heat AND damp (malaria wants warmth
+  // + standing water): the dry-hot subtropics and river breadbaskets (the Nile,
+  // the Sahel) and the cool-wet temperate core escape, so it bites the wet
+  // tropics specifically. A continuous drag on DENSITY itself — distinct from
+  // the agricultural CEILING (a tech limit, agriGate) and from plague (an event).
+  let diseaseBurden = 1;
+  if (T.TROPICAL_DISEASE > 0 || T.STATE_DISEASE > 0) {
+    climateOf(world, s);
+    const heat = Math.min(1, Math.max(0, (s._climTemp - 0.68) / 0.18));
+    const damp = Math.min(1, Math.max(0, (s._climMoist - 0.35) / 0.35));
+    s._wetTropic = heat * damp;                      // raw wet-tropic intensity (0 temperate/dry → 1 deep rainforest)
+    s._disease = T.TROPICAL_DISEASE * s._wetTropic;   // drives the carrying-capacity drag; STATE_DISEASE reuses _wetTropic for state formation
+    diseaseBurden = 1 - s._disease;
+  }
   // _eraProd is the global historical-productivity index (index.js demographic
   // anchor): scaling LAND FOOD here lifts every settlement's carrying capacity
   // together so the world total tracks recorded population, while the spatial
   // distribution stays emergent and the food economy (surplus, trade, army
   // labour all derived from this flow) stays internally consistent.
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (world._eraProd || 1) * livestockBonus;
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (world._eraProd || 1) * livestockBonus * diseaseBurden;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;

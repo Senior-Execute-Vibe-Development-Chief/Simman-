@@ -894,8 +894,13 @@ export function nucleateFrontierStates(world) {
     const capNorm = fert ? Math.min(1, Math.max(0, fert[seatTi] / NUCLEATE_CAP_FERT_REF)) : 1;
     // Broken, compartmented terrain splinters into many small states (the Aegean,
     // Italy, the Caucasus): ruggedness EASES the founding bar, so a smaller pocket
-    // can hold out as its own polity.
-    const capMul = (1 + NUCLEATE_CAP_SPREAD * (1 - capNorm)) / (1 + T.FRAGMENT * (s._rugged || 0));
+    // can hold out as its own polity. The disease-ridden wet tropics RAISE it: the
+    // Congo / West-Africa / Amazon belt stayed segmentary and stateless far longer
+    // than the temperate world or the warm-DRY river cradles (the Nile, Mesopotamia,
+    // which carry no wet-tropic burden), so a centralised state needs a much bigger
+    // population there to coalesce — leaving more land unclaimed (Diamond's thesis).
+    const capMul = (1 + NUCLEATE_CAP_SPREAD * (1 - capNorm)) * (1 + T.STATE_DISEASE * (s._wetTropic || 0))
+                 / (1 + T.FRAGMENT * (s._rugged || 0));
     if ((s.people || 0) < seatPop * capMul) continue;
     let dCap = Infinity;                        // isolation from existing states' heartlands
     for (const p of caps) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; const d2 = dx * dx + dy * dy; if (d2 < dCap) dCap = d2; }
