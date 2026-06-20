@@ -292,6 +292,13 @@ export function updateSea(world) {
     const A = world._byId ? world._byId.get(lo) : null;
     const B = world._byId ? world._byId.get(hi) : null;
     if (!A || !B) continue;
+    // A DIRECT lane is a SINGLE voyage — one port must be able to sail the WHOLE
+    // way (trade was never done mid-ocean). The flood lets two ports' waters MEET
+    // at their combined range, but a lane only stands if ONE of them could cross
+    // the whole gap: cost ≤ max(rangeA, rangeB). Longer hauls aren't direct — they
+    // RELAY through a chain of ports (the transitive closure below), each leg a
+    // real voyage. This is the stepping-stone structure (Lisbon→Cape→Goa→Indies).
+    if (e.cost > Math.max(budget.get(lo) || 0, budget.get(hi) || 0)) continue;
     // Path lo → hi: lo.home, lo.embark…tiA, tiB…hi.embark, hi.home.
     const aSide = reconstruct(prev, e.tiA);            // lo.embark → tiA
     const bSide = reconstruct(prev, e.tiB);            // hi.embark → tiB
