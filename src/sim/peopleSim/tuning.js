@@ -172,6 +172,10 @@ export const TUNING_SCHEMA = [
     params: [
       { key: "SEA_RANGE_NAV", label: "Naval reach per nav tech", def: 160, min: 20, max: 400, step: 10,
         desc: "Extra sea-lane reach per point of navigation. Up = blue-water empires linking distant ports." },
+      { key: "SEA_MAX_PEERS", label: "Sea trade partners per port", def: 24, min: 6, max: 64, step: 2,
+        desc: "How many sea-lane partners a port keeps — chosen by the VALUE it derives from each (the partner's economic size + the luxury it can source there, discounted by freight), not merely by nearness. Higher = a great trading port (Venice, Amsterdam) sustains a wider far-flung network, so a seafaring nation's reach is no longer capped to its neighbours. Costs scale ~linearly (the trade pass is O(ports × peers), plus route-tile memory), so very high values slow the sim." },
+      { key: "SEA_LUX_PULL", label: "Distant-luxury route pull", def: 8, min: 0, max: 40, step: 1,
+        desc: "How strongly a partner's LUXURY export (spices/silk/furs/incense/dyes — the scarce, high-value goods) pulls a long sea route into a port's partner list, over and above raw gravity. This is what mints the spice-run / VOC pattern: a wealthy port reaches past its neighbours to a distant island that ALONE produces the prize, because the scarce good's value beats the freight. 0 = partners chosen on size + distance only (no special pull toward distant luxury sources)." },
       { key: "SEA_MIN_POP", label: "Min port population", def: 20, min: 10, max: 400, step: 10,
         desc: "Population a port needs before it projects sea lanes. Down = even hamlets fish & trade by sea." },
       { key: "COLONY_MIN_POP", label: "Min colonising city size", def: 400, min: 100, max: 2000, step: 50,

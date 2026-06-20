@@ -64,10 +64,14 @@ const EMBARK_RADIUS   = 4;       // tiles to search around home for water
 // SEA_MIN_POP -> runtime lever (tuning.js T.SEA_MIN_POP)
 const MAX_SEA_VISITS  = 300000;  // global flood pop cap (one flood per pass)
 const MAX_ROUTE_TILES = 1200;    // cap on a sea path's stored tile count
-// A port keeps only its nearest sea partners (by route cost). Without this,
-// a fully navigable ocean would connect every port to every other, making
-// the per-tick trade pass O(ports²); real trade also favours nearer ports.
-const SEA_MAX_PEERS   = 12;
+// A port keeps a bounded set of sea partners (the per-tick trade pass is
+// O(ports × peers); a fully navigable ocean would otherwise connect every port
+// to every other). It keeps the ones it derives the MOST VALUE from — gravity
+// (the partner's economic size) + the LUXURY it can source there — discounted by
+// freight, NOT merely the nearest. That is what lets a wealthy port reach a
+// DISTANT scarce-luxury source (the spice run / VOC route). T.SEA_MAX_PEERS sets
+// the count (a bigger fleet/economy sustains more far-flung links).
+const SEA_FREIGHT_K = 0.02;   // how much a partner's route cost discounts its trade value in peer selection
 
 // Colonisation. Tuned to be reasonably common: a navigation-capable city
 // mounts expeditions fairly often, and a young colony is supplied from
@@ -322,11 +326,21 @@ export function updateSea(world) {
         if (nd < (pd.get(e.to) ?? Infinity)) { pd.set(e.to, nd); ph.push(e.to, nd); }
       }
     }
-    // Keep only the nearest SEA_MAX_PEERS partners (by route cost).
+    // Keep the partners this port derives the MOST VALUE from — gravity (the
+    // partner's economic size) plus the LUXURY it can source there, discounted by
+    // freight — not merely the nearest. A distant metropolis or a scarce-spice
+    // island can now outrank a near hamlet, so long high-value routes form.
     const reached = [];
-    for (const [pid, cost] of pd) if (pid !== src.id) reached.push([pid, cost]);
-    reached.sort((a, b) => a[1] - b[1]);
-    const keep = reached.length > SEA_MAX_PEERS ? SEA_MAX_PEERS : reached.length;
+    for (const [pid, cost] of pd) {
+      if (pid === src.id) continue;
+      const peer = world._byId ? world._byId.get(pid) : null;
+      if (!peer) continue;
+      const gravity = Math.sqrt(Math.max(1, peer.people || 0));
+      const value = (gravity + T.SEA_LUX_PULL * (peer._luxSupply || 0)) / (1 + cost * SEA_FREIGHT_K);
+      reached.push([pid, cost, value]);
+    }
+    reached.sort((a, b) => b[2] - a[2]);   // most valuable first
+    const keep = reached.length > T.SEA_MAX_PEERS ? T.SEA_MAX_PEERS : reached.length;
     for (let i = 0; i < keep; i++) {
       const pid = reached[i][0], cost = reached[i][1];
       const peer = world._byId ? world._byId.get(pid) : null;
