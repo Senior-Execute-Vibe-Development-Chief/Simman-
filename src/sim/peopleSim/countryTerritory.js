@@ -33,7 +33,7 @@ import { stepToYear } from "../calendar.js";
 // stay compact (the early map fragments into small city-states with wilderness
 // between) and high-org empires reach far (consolidation with the era). Beyond
 // it, land is wilderness — which is where stateless frontier hamlets live.
-const COUNTRY_REACH_BASE = 8;
+const COUNTRY_REACH_BASE = 4;   // small base so ORGANISATION dominates reach — a weak chiefdom holds a tiny core, an empire projects far (was 8: even org→0 states sprawled)
 const COUNTRY_REACH_ORG  = 14;   // reach per organisation tech (was 20 — empires were continental too early)
 // ── Frontier-fill: claiming the harsh interior as engineering matures ──
 // For most of history great regions were politically EMPTY — no state claimed
@@ -103,7 +103,7 @@ const LOGI_REACH = 2.2;       // budget ×(1 + logisticsLevel · LOGI_REACH): tr
 // THROUGH the critical range over the industrial era — a sudden huge budget both
 // snaps to 100% overnight AND over-extends realms into collapse. Tuned so the fill
 // climbs across ~1845–1900 (the real Scramble) and tops out near-complete by ~1930.
-const FRONTIER_CLOSE = 80;    // wilderness-claim budget at era 1 = FRONTIER_CLOSE · resScale · era²
+const FRONTIER_CLOSE = 28;    // wilderness-claim budget at era 1 = FRONTIER_CLOSE · resScale · era² (was 80: the modern era colonised ALL the wastes, abolishing terra nullius — eased so undeveloped frontiers keep their unclaimed wilderness)
 const FRONTIER_DOM   = 0.7;   // a DOMINANT realm pushes its wilderness-claim frontier farther (budget × dominance^this):
                               // the great powers partition the open interior into continental empires (Russia, the USA,
                               // the Raj, the Scramble) instead of every realm grabbing an equal slice — bounded by the
