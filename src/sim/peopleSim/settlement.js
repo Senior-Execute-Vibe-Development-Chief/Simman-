@@ -1099,10 +1099,20 @@ function updateKnowledge(world, s) {
   // Competition: contact with many DISTINCT rival polities (fractious frontier /
   // warring states) spurs faster innovation; monolithic-empire interiors don't.
   const competF = Math.min(1, (s._rivalN || 0) / COMPETE_REF);
+  // ── Winter aptitude → learning SPEED (buff / debuff) ──────────────────
+  // "Winter peoples" — those whose climate selected for the foresight, storage
+  // and coordination a hard seasonal cycle demands (seasonalSelect, carried as
+  // the heritable s._orgApt) — learn ALL techniques FASTER; year-round-tropical
+  // peoples, never under that selection pressure, learn SLOWER. winterness is the
+  // heritable aptitude normalised to 0 (pure tropics) .. 1 (full winter); the
+  // multiplier swings symmetrically about 1 so it is a true buff AND debuff.
+  const winterness = T.ORG_APTITUDE > 0 ? Math.min(1, Math.max(0, (s._orgApt || 0) / T.ORG_APT_FULL)) : 0.5;
+  const winterSci = Math.max(0.1, 1 + T.WINTER_LEARN * (2 * winterness - 1));   // >1 winter, <1 tropics
   // ×_dt folds the time-granularity step into EVERY technique-learning track at once
   // (all five use sciMul as their rate multiplier), so tech develops 1/G as fast per
-  // tick — paced with the granularity-slowed population.
-  const sciMul = (world._dt || 1) * Math.max(0.25, Math.min(2.2,
+  // tick — paced with the granularity-slowed population. ×winterSci slows/speeds
+  // the WHOLE tree for non-winter / winter peoples at once.
+  const sciMul = winterSci * (world._dt || 1) * Math.max(0.25, Math.min(2.2,
     1 + T.SCI_SPREAD * (0.55 * popF + 0.45 * surplusF + 0.30 * tradeF + 0.20 * k.organization
       + T.COMPETE * competF - 0.45)));
 
@@ -1190,10 +1200,12 @@ function updateKnowledge(world, s) {
   const litBranch = k.organization > 0.30
     ? 0.6 * k.organization * (1 + popSqrt * 0.06)
     : 0;
-  // Heritable aptitude pays out as FASTER organisation learning (boost #1): a
-  // high-aptitude people builds institutions quicker (still capped by orgEraCap —
-  // it can't outrun the material era, only reach it sooner).
-  const aptLearn = T.ORG_APTITUDE > 0 ? 1 + T.ORG_APT_LEARN * (s._orgApt || 0) : 1;
+  // Heritable winter aptitude as a BUFF / DEBUFF on organisation learning: a
+  // winter people (high aptitude) builds institutions faster, a non-winter people
+  // slower (still capped by orgEraCap — it sets the PACE to the era ceiling, not
+  // the ceiling itself). This is ON TOP of winterSci in sciMul, so organisation is
+  // the most winter-sensitive track of all.
+  const aptLearn = T.ORG_APTITUDE > 0 ? Math.max(0.05, 1 + T.ORG_APT_LEARN * (2 * winterness - 1)) : 1;
   const confineMul = 1 + T.CONFINE * (s._confine || 0);   // circumscription forces intensification → organisation
   k.organization = clamp01(k.organization + T.LEARN_BASE * sciMul * orgClim * orgHead
     * ((1 + popSqrt * 0.10) + litBranch) * aptLearn * confineMul);
