@@ -829,7 +829,8 @@ export function adoptAndFound(world) {
       // builds roads and trades in no-man's-land. A mere hamlet (tier 0) stays as
       // population until it develops or a realm's border reaches it — not every hamlet
       // is a state, but a real town on the frontier is a polity.
-      if (s.countryId < 0 && region < 0 && (s.tier | 0) >= 1 && co[ti] < 0) {
+      if (s.countryId < 0 && region < 0 && (s.tier | 0) >= 1 && co[ti] < 0
+          && ((s.knowledge && s.knowledge.organization) || 0) >= T.ORG_STATE_MIN) {   // a frontier town founds a state only with the statecraft for it
         s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
         ensurePolity(world, s.id, { how: "frontier", seat: s });
         continue;
@@ -888,6 +889,11 @@ export function nucleateFrontierStates(world) {
   const cand = [];
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId >= 0) continue;
+    // STATECRAFT GATE: a people without the organisation for territorial rule stays
+    // STATELESS — a chiefdom/tribe that holds no bordered land (most of the pre-modern
+    // world). Only once organisation crosses the threshold does a bordered realm
+    // crystallise, so undeveloped frontiers no longer carve the map wall-to-wall.
+    if (((s.knowledge && s.knowledge.organization) || 0) < T.ORG_STATE_MIN) continue;
     // State-capacity multiplier: low-fertility land needs a far bigger cluster
     // to crystallise a state (so it stays a sparse stateless frontier).
     const seatTi = (s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw;
