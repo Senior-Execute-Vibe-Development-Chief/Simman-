@@ -53,6 +53,26 @@ function dirDist(mask, W, H, dir, cap) {
 // thread's Earth-Sim checkbox) pass the functions in; everyone else omits
 // them and the solver wind is used. `_legacyArg` keeps the old positional
 // signature stable for the ~60 node probes in tools/.
+// Sub-pixel narrow straits seal shut on the ~20 km/pixel Earth heightmap (the
+// Strait of Gibraltar is ~14 km — finer than one pixel), turning real seas into
+// closed lakes: the Mediterranean otherwise has NO naval link to the Atlantic.
+// Carve the key ones open as shallow channels so sea connectivity matches Earth.
+// Box scaled to the strait (in degrees → tiles), min 1 tile so it still opens at
+// low render/validator resolutions. Only land tiles are opened; ocean untouched.
+const EARTH_STRAITS = [
+  { lat: 35.95, lon: -5.4, dLon: 1.2, dLat: 0.5 },   // Gibraltar — Mediterranean ↔ Atlantic
+];
+function carveStraits(elevation, W, H) {
+  for (const s of EARTH_STRAITS) {
+    const cx = Math.round((s.lon + 180) / 360 * W), cy = Math.round((90 - s.lat) / 180 * H);
+    const wx = Math.max(1, Math.round(s.dLon / 360 * W)), wy = Math.max(1, Math.round(s.dLat / 180 * H));
+    for (let dy = -wy; dy <= wy; dy++) for (let dx = -wx; dx <= wx; dx++) {
+      const x = ((cx + dx) % W + W) % W, y = Math.min(H - 1, Math.max(0, cy + dy)), i = y * W + x;
+      if (elevation[i] > 0) elevation[i] = -0.02;   // open the land plug as a shallow strait
+    }
+  }
+}
+
 export function generateWorld(W, H, seed, preset, oceanLevel, _legacyArg = true, realWind = false, _tecParams = {}, realWindFns = null) {
 initNoise(seed);const rng=mkRng(seed);
 const rawElev=new Float32Array(W*H),elevation=new Float32Array(W*H),moisture=new Float32Array(W*H),temperature=new Float32Array(W*H);
@@ -119,6 +139,7 @@ const noise=fbm(nx*20+3.7,ny*20+3.7,3,2,.5)*.012+fbm(nx*40+7,ny*40+7,2,2,.4)*.00
 if(he<3){const depth=fbm(nx*8+50,ny*8+50,3,2,.5)*.04;
 elevation[i]=Math.max(-0.04,-0.03-Math.max(0,(1-he/3))*0.12+depth);
 }else{let e=(he-3)/252*0.55+0.005+noise;elevation[i]=Math.max(0.001,e);}}
+carveStraits(elevation,W,H);   // open Gibraltar etc. so the Mediterranean links to the ocean (sub-pixel straits otherwise seal it into a lake)
 // Coast distance BFS
 const CDT=4,CDW=Math.ceil(W/CDT),CDH=Math.ceil(H/CDT);
 const cdist=new Uint8Array(CDW*CDH);cdist.fill(255);const cdQ=[];
