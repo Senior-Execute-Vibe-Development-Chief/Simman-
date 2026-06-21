@@ -58,7 +58,14 @@ const SEA_RANGE_BASE  = 10;      // sea reach (cost units) at navigation 0
 // strength so doldrums barely matter and trade-wind belts shape the routes.
 const WIND_AID  = 0.5;    // max ± cost swing from a full-strength head/tail wind
 const WIND_STR  = 1.6;    // how quickly wind magnitude saturates to full effect
-const WIND_MULT_MIN = 0.45, WIND_MULT_MAX = 1.7;
+const WIND_MULT_MAX = 1.7;   // dearest a full headwind makes a tile (tacking)
+// The cheapest a full TAILWIND can make a tile is the runtime lever
+// T.WIND_TAIL_FLOOR. It caps the wind SUBSIDY: too generous a tailwind
+// discount lets a voyage win by detouring far into a wind belt (the Southern
+// Ocean westerlies, the trade-wind gyre) instead of taking the short path —
+// the "stop at Antarctica on the way to Canberra" artifact. A higher floor
+// keeps the headwind penalty (avoid beating into the wind) while reining in
+// gross wind-chasing detours.
 const MIN_NAV_FOR_SEA = 0.04;    // below this a settlement has no seacraft
 const EMBARK_RADIUS   = 4;       // tiles to search around home for water
 // SEA_MIN_POP -> runtime lever (tuning.js T.SEA_MIN_POP)
@@ -102,7 +109,24 @@ function windMul(world, ni, dx, dy) {
   const align = (dx * wvx + dy * wvy) / (dmag * wmag);   // [-1,1]
   const strength = Math.min(1, wmag * WIND_STR);
   let m = 1 - WIND_AID * align * strength;
-  return m < WIND_MULT_MIN ? WIND_MULT_MIN : m > WIND_MULT_MAX ? WIND_MULT_MAX : m;
+  const lo = T.WIND_TAIL_FLOOR;
+  return m < lo ? lo : m > WIND_MULT_MAX ? WIND_MULT_MAX : m;
+}
+
+// Polar pack-ice / storm cost. The deep Southern Ocean (the Furious Fifties,
+// Screaming Sixties) and the ice-choked Arctic were death to sailing trade, so
+// open-water cost ramps up steeply toward the poles. With the capped tailwind
+// subsidy above, this stops the flood routing a voyage on a wild detour to the
+// Antarctic coast just to ride the westerlies east. The ramp is quadratic —
+// gentle through the Forties (the legitimate clipper belt), brutal past the
+// Sixties — and begins well poleward of any real trade lane, so the Cape route
+// (~35°S) and the North Atlantic (<57°N) are untouched.
+function iceMul(world, ti) {
+  const span = Math.max(1, T.SEA_ICE_LAT1 - T.SEA_ICE_LAT0);
+  const absLat = Math.abs(90 - ((ti / world.tw) | 0) / world.th * 180);
+  if (absLat <= T.SEA_ICE_LAT0) return 1;
+  const f = absLat >= T.SEA_ICE_LAT1 ? 1 : (absLat - T.SEA_ICE_LAT0) / span;
+  return 1 + T.SEA_ICE_PEN * f * f;
 }
 // SHIP_SPEED -> runtime lever (tuning.js T.SHIP_SPEED)
 
@@ -252,7 +276,7 @@ export function updateSea(world) {
       }
       const no = owner[ni];
       if (no >= 0 && no !== oid) continue;       // another port's water (boundary handled below)
-      const nd = d + SEA_STEP * mul[k] * windMul(world, ni, DX[k], DY[k]);
+      const nd = d + SEA_STEP * mul[k] * windMul(world, ni, DX[k], DY[k]) * iceMul(world, ni);
       if (nd > bud) continue;                    // beyond this port's range
       if (nd < dist[ni]) { dist[ni] = nd; owner[ni] = oid; prev[ni] = ti; heap.push(ni, nd); }
     }
@@ -278,7 +302,7 @@ export function updateSea(world) {
       if (!c) continue;
       const nj = c[0], no = owner[nj];
       if (no < 0 || no === oid) continue;
-      const cost = dist[ti] + SEA_STEP * c[1] + dist[nj];
+      const cost = dist[ti] + SEA_STEP * c[1] * iceMul(world, nj) + dist[nj];
       const lo = oid < no ? oid : no, hi = oid < no ? no : oid;
       const tiLo = oid < no ? ti : nj, tiHi = oid < no ? nj : ti;
       const key = lo + ":" + hi;
