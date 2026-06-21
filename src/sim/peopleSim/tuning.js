@@ -190,6 +190,8 @@ export const TUNING_SCHEMA = [
         desc: "Latitude (N or S) where the polar pack-ice cost begins to bite. Set poleward of the real trade lanes — the Cape route tops out near 35°S and North Atlantic shipping stays below ~57°N — so legitimate routes are untouched and only deep-polar detours pay the penalty. Lower = even the temperate-edge oceans (the Roaring Forties) start to cost; higher = only the truly polar seas." },
       { key: "SEA_ICE_LAT1", label: "Polar-ice saturation latitude", def: 72, min: 50, max: 89, step: 1,
         desc: "Latitude (N or S) where the polar pack-ice cost reaches its full SEA_ICE_PEN value. Between this and SEA_ICE_LAT0 the cost ramps up quadratically (gentle at first, brutal near the pole). Narrowing the gap to the onset makes the ice wall sharper; widening it makes the deterrent more gradual." },
+      { key: "SEA_WOBBLE", label: "Sea-lane wobble", def: 0.15, min: 0, max: 0.5, step: 0.05,
+        desc: "A faint, smooth random cost field over the ocean so sea lanes MEANDER like real sailing tracks instead of running dead straight. The path bends gently toward 'cheaper' water and back — a few tiles off the rhumb line, with no change to where it ends up. 0 = perfectly straight rhumb/staircase lanes; higher = curvier, more wandering routes. The field is deterministic (value noise hashed from tile + world seed), so a given world's lanes always wobble the same way and never jitter between passes." },
       { key: "COLONY_MIN_POP", label: "Min colonising city size", def: 400, min: 100, max: 2000, step: 50,
         desc: "People a city needs before it launches an overseas colony expedition. Down = eager colonisation." },
     ],

@@ -235,6 +235,35 @@ export function updateSea(world) {
   }
   owner.fill(-1); dist.fill(Infinity); prev.fill(-1);
 
+  // Faint coherent cost field so lanes MEANDER like real sailing tracks instead
+  // of running dead straight. It's value noise — a smooth low-frequency field —
+  // computed ONCE per world (a fixed function of tile + seed, so it's
+  // deterministic and stable across passes, never jittering frame to frame). We
+  // store the signed [-1,1] field and apply the live amplitude T.SEA_WOBBLE at
+  // flood time, so the path bends gently toward cheaper water and back without
+  // changing where it ultimately goes.
+  let wobble = world._seaWobble;
+  if (!wobble || wobble.length !== N) {
+    wobble = world._seaWobble = new Float32Array(N);
+    const seed = (world._seed | 0) || 1;
+    const SCALE = 6;   // tiles per noise lattice cell (wobble wavelength ≈ 2×)
+    const h2 = (x, y) => {
+      let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, 0x9E3779B1)) | 0;
+      h = Math.imul(h ^ (h >>> 13), 1274126177);
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+    };
+    for (let ti = 0; ti < N; ti++) {
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const fx = tx / SCALE, fy = ty / SCALE;
+      const x0 = Math.floor(fx), y0 = Math.floor(fy);
+      const ax = fx - x0, ay = fy - y0;
+      const sx = ax * ax * (3 - 2 * ax), sy = ay * ay * (3 - 2 * ay);   // smoothstep
+      const n00 = h2(x0, y0), n10 = h2(x0 + 1, y0), n01 = h2(x0, y0 + 1), n11 = h2(x0 + 1, y0 + 1);
+      const nx0 = n00 + (n10 - n00) * sx, nx1 = n01 + (n11 - n01) * sx;
+      wobble[ti] = (nx0 + (nx1 - nx0) * sy) * 2 - 1;   // [-1,1]
+    }
+  }
+
   // ── Single multi-source flood over the ocean ──
   const heap = new MinHeap();
   for (const p of ports) {
@@ -276,7 +305,7 @@ export function updateSea(world) {
       }
       const no = owner[ni];
       if (no >= 0 && no !== oid) continue;       // another port's water (boundary handled below)
-      const nd = d + SEA_STEP * mul[k] * windMul(world, ni, DX[k], DY[k]) * iceMul(world, ni);
+      const nd = d + SEA_STEP * mul[k] * windMul(world, ni, DX[k], DY[k]) * iceMul(world, ni) * (1 + T.SEA_WOBBLE * wobble[ni]);
       if (nd > bud) continue;                    // beyond this port's range
       if (nd < dist[ni]) { dist[ni] = nd; owner[ni] = oid; prev[ni] = ti; heap.push(ni, nd); }
     }
