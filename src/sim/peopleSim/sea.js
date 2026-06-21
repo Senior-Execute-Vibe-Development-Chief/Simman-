@@ -187,9 +187,16 @@ export function updateSea(world) {
     const pc = world.countries && world.countries.get(p.countryId);
     const colonyMul = (pc && pc.personality) ? expansionColonyMul(pc.personality) : 1;
     const cooldown = COLONY_COOLDOWN / colonyMul;
-    if ((p.people || 0) >= T.COLONY_MIN_POP &&
-        (p.knowledge.navigation || 0) >= COLONY_MIN_NAV &&
-        world.step - (p._lastColony ?? -Infinity) >= cooldown) {
+    p._questGoal = null;
+    if ((p.knowledge.navigation || 0) < COLONY_MIN_NAV ||
+        world.step - (p._lastColony ?? -Infinity) < cooldown) continue;
+    const pop = p.people || 0;
+    // A spice quest lets a mid-size port (≥ COLONY_QUEST_MIN_POP, below the full
+    // colony bar) found a trading OUTPOST to extend a luxury-route chain — so the
+    // chain marches outward without each link first growing into a city.
+    const qgoal = (T.SEA_LUX_QUEST > 0 && pop >= T.COLONY_QUEST_MIN_POP) ? luxuryGoal(world, p) : null;
+    p._questGoal = qgoal;
+    if (pop >= T.COLONY_MIN_POP || qgoal) {
       eligible.add(p.id);
       shoreCand.set(p.id, []);
     }
@@ -380,15 +387,58 @@ function linkSea(src, peer, cost, tiles) {
 
 // Pick the best unsettled shore in port A's reachable waters and launch a
 // colony ship toward it. Colonists + a coin endowment migrate out of A.
+// ── Directed colonisation: the spice quest ──────────────────────────────
+// A wealthy port that craves luxury it can neither produce nor yet reach by sea
+// seeks the nearest KNOWN luxury source it cannot reach, and founds its next
+// outpost as far TOWARD that prize as it can — the stepping-stone push that built
+// the trade empires (Lisbon → the African forts → the Cape → Goa → the Indies).
+// Each outpost repeats from its new shore, so the chain marches to the source and
+// the resupply-relay route opens. Returns the target settlement, or null.
+const SEA_LUX_RES     = ["spices", "furs", "incense", "dyes"];
+const LUX_QUEST_MIN   = 1;     // minimum spare luxury demand to mount a quest
+const LUX_SOURCE_MIN  = 0.20;  // a settlement on this much luxury RESOURCE is a "known source"
+const OUTPOST_FERT_MIN = 0.02; // a quest outpost needs only a toehold — it lives on trade + the mother's supply, not soil
+function luxResOf(s) { const lr = s.localRes || {}; let v = 0; for (const id of SEA_LUX_RES) v += lr[id] || 0; return v; }
+function luxuryGoal(world, A) {
+  if ((A._luxDemand || 0) < LUX_QUEST_MIN || luxResOf(A) >= LUX_SOURCE_MIN) return null;   // not seeking, or makes its own
+  const byId = world._byId;
+  // SATED only if the luxury SUPPLY it can already reach by sea MEETS its demand —
+  // reaching one minor source doesn't sate a hungry market (Europe reached the
+  // Levant yet still craved the Indies). So the questers are the wealthy ports FAR
+  // from luxury — the Atlantic powers — exactly who drove the spice trade.
+  let reachSupply = 0;
+  if (A._seaReach && byId) for (const pid of A._seaReach.keys()) {
+    const p = byId.get(typeof pid === "number" ? pid : +pid);
+    if (p) reachSupply += p._luxSupply || 0;
+  }
+  if (reachSupply >= (A._luxDemand || 0)) return null;   // demand met by reachable sources — no quest
+  const tw = world.tw, ax = A.pos.x, ay = A.pos.y;
+  let goal = null, best = Infinity;
+  for (const p of world.settlements) {
+    if (p.mode !== "settled" || luxResOf(p) < LUX_SOURCE_MIN) continue;
+    if (A._seaReach && A._seaReach.has(p.id)) continue;    // already reachable
+    let dx = Math.abs(p.pos.x - ax); if (dx > tw / 2) dx = tw - dx; const dy = p.pos.y - ay;
+    const d = dx * dx + dy * dy;
+    if (d < best) { best = d; goal = p; }
+  }
+  return goal;
+}
+
 function tryColonize(world, A, cands, prev) {
   if (!cands || cands.length === 0) return;
   const { tw } = world;
-  // Best fertile land first; spacing-check until one is clear.
-  cands.sort((p, q) => q.f - p.f);
+  // DIRECTED toward a distant luxury source (the spice quest, cached in the
+  // eligibility pass) if the port craves one; otherwise opportunistic — best shore.
+  const goal = A._questGoal || null;
   let chosen = null;
-  for (const c of cands) {
-    if (c.f < 0.05) break;
-    if (siteIsClear(world, c.landTi)) { chosen = c; break; }
+  if (goal) {
+    const gx = goal.pos.x, gy = goal.pos.y;
+    const gd = (c) => { const cy = (c.landTi / tw) | 0, cx = c.landTi - cy * tw; let dx = Math.abs(cx - gx); if (dx > tw / 2) dx = tw - dx; const dy = cy - gy; return dx * dx + dy * dy; };
+    cands.sort((p, q) => gd(p) - gd(q));   // the reachable shore NEAREST the prize → march toward it
+    for (const c of cands) { if (c.f < OUTPOST_FERT_MIN) continue; if (siteIsClear(world, c.landTi)) { chosen = c; break; } }
+  } else {
+    cands.sort((p, q) => q.f - p.f);       // best fertile shore first
+    for (const c of cands) { if (c.f < 0.05) break; if (siteIsClear(world, c.landTi)) { chosen = c; break; } }
   }
   if (!chosen) return;
 
