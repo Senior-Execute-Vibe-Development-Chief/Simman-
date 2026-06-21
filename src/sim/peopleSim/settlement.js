@@ -1198,7 +1198,7 @@ function updateKnowledge(world, s) {
   const orgEraCap = clamp01(0.15 + metalCap * 0.95 + k.construction * 0.15);
   const orgHead = Math.max(0, orgEraCap - k.organization);
   const litBranch = k.organization > 0.30
-    ? 0.6 * k.organization * (1 + popSqrt * 0.06)
+    ? T.ORG_LIT_BRANCH * k.organization * (1 + popSqrt * 0.06)
     : 0;
   // Heritable winter aptitude as a BUFF / DEBUFF on organisation learning: a
   // winter people (high aptitude) builds institutions faster, a non-winter people
