@@ -1870,7 +1870,12 @@ function updatePopulation(world, s) {
     // ×_eraProd: the rural ceiling rises with the same global productivity index
     // as land food (updateFood), so the countryside scales WITH the cities and
     // the rural/urban balance is preserved as the world total tracks history.
-    const ruralCap = URBAN_CAP * (1 + URBAN_DENSITY_GAIN * Math.max(0, (s._farmYield || 1) - RURAL_YIELD_BASE)) * (s._eraProd || 1);
+    // ×_eraProd^RURAL_ERA_POW (emergent): damping the rural HOUSING ceiling below land
+    // food's full _eraProd means a modern countryside FEEDS more than it can HOUSE, so the
+    // surplus ships up the hierarchy to grow TOWNS instead of piling into ever-denser
+    // villages — the farm→city drift that urbanises the modern era. Linear under the anchor.
+    const rEra = T.ANCHOR_POP > 0 ? (s._eraProd || 1) : Math.pow(s._eraProd || 1, T.RURAL_ERA_POW);
+    const ruralCap = URBAN_CAP * (1 + URBAN_DENSITY_GAIN * Math.max(0, (s._farmYield || 1) - RURAL_YIELD_BASE)) * rEra;
     foodK = Math.min(foodK, ruralCap); houseK = Math.min(houseK, ruralCap);
   }
   // LOCALITY model: population = whatever the farmable catchment feeds (foodK
