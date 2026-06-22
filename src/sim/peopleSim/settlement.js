@@ -1194,8 +1194,19 @@ function updateKnowledge(world, s) {
   // wild surplus is outgrown. Fades to nothing as agriculture matures.
   const forageEase = Math.min(1, wa * 0.5 + livestockClimate(s._climTemp, s._climMoist) * 0.5) * (1 - k.agriculture);
   const foragePull = 1 - T.FORAGE_EASE * forageEase;
+  // INDUSTRIAL AGRONOMY: a settlement that has industrialised (organisation AND
+  // metallurgy both climbing past ~0.78 — the chemistry, machinery and scientific
+  // base) learns agriculture markedly FASTER — the historical break from the Malthusian
+  // yield ceiling (synthetic nitrogen, mechanisation, scientific breeding). This pushes
+  // an industrial civ's agriculture past the ~0.9 plateau into the green-revolution
+  // techs, so yields and _eraProd (which tracks agriculture) keep climbing through the
+  // modern era instead of flat-lining — the modern explosion is EARNED by industrialising,
+  // while a pre-industrial society stays capped at subsistence.
+  const indAgri = 1 + T.AGRI_INDUSTRIAL
+    * Math.min(1, Math.max(0, (k.organization - 0.78) / 0.18))
+    * Math.min(1, Math.max(0, (k.metallurgy   - 0.78) / 0.18));
   k.agriculture = clamp01(k.agriculture + T.LEARN_BASE * 1.2 * sciMul * agriClim * (1 - k.agriculture)
-    * (1 + fc * 0.03) * (1 + k.construction * 0.5) * wildBoost * foragePull);
+    * (1 + fc * 0.03) * (1 + k.construction * 0.5) * wildBoost * foragePull * indAgri);
 
   // Organization: pop-driven admin burden + a literate-state branch
   // (folded in from the old literacy track) that kicks in once the
