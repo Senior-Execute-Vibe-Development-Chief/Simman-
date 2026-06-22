@@ -502,6 +502,7 @@ export function maybeBuildRoads(world) {
     world._planSnap = snap;
     world._planQueue = world.settlements.filter(s => {
       if (s.mode !== "settled" || s.people < MIN_POP_TO_PLAN) return false;
+      if (s.countryId < 0) return false;   // stateless settlements lay no roads — only a state builds and protects trunk routes (not of a nation)
       if ((s.tier | 0) < (T.ROAD_MIN_TIER | 0)) return false;   // grand scale: tier-0 Farming Regions don't lay roads (roads are trade-only trunk routes, town↔city)
       // A meaningful pop jump (or first-ever evaluation) makes it due now.
       if (s._planPop === undefined || s.people > s._planPop * 1.4) s._planNext = 0;
@@ -580,6 +581,7 @@ function isGabrielEdge(world, a, b, dAB2) {
 
 function linkCloseNeighbours(world, s) {
   if (s.people < MIN_POP_TO_LINK) return false;
+  if (s.countryId < 0) return false;   // stateless settlements lay no roads (not of a nation)
   const comp = world._networkComponents;
   const myComp = comp && comp.get(s.id) !== undefined ? comp.get(s.id) : s.id;
   let anyBuilt = false;
@@ -588,6 +590,7 @@ function linkCloseNeighbours(world, s) {
   // full O(settlements) scan per settled town each tick.
   forEachNear(world, s.pos.x, s.pos.y, CLOSE_NEIGHBOUR_DIST, (peer, dAB2) => {
     if (peer.id === s.id || peer.people < MIN_POP_TO_LINK) return;
+    if (peer.countryId < 0) return;   // don't road to a stateless neighbour
     const pc = comp && comp.get(peer.id) !== undefined ? comp.get(peer.id) : peer.id;
     // Unconnected close neighbours are bridged for connectivity. ALREADY-connected
     // ones still get a DIRECT road when they are true mesh neighbours (a Gabriel
@@ -643,6 +646,7 @@ function tryAddRoad(world, s) {
   // cost once the map got dense). forEachNear hands back the squared distance.
   forEachNear(world, s.pos.x, s.pos.y, reach, (peer, peerDistSq) => {
     if (peer.id === s.id) return;
+    if (peer.countryId < 0) return;   // don't road to a stateless settlement (not of a nation)
     const peerRes = peer.localRes || {};
     let resGain = 0;
     for (const n of missing) {

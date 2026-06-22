@@ -178,8 +178,13 @@ export function updateSea(world) {
   const portByEmbark = new Map();
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
-    if (s._embarkTile === undefined) s._embarkTile = findEmbarkTile(world, s);
     s._seaReach = null;
+    // Only settlements that belong to a NATION project sea lanes. A stateless
+    // farming region or town (countryId < 0) has no state to mount or protect
+    // shipping, so it neither sails nor is reached — it sits outside the
+    // maritime trade network until a realm annexes or colonises it.
+    if (s.countryId < 0) { s._isPort = false; continue; }
+    if (s._embarkTile === undefined) s._embarkTile = findEmbarkTile(world, s);
     s._isPort = s._embarkTile >= 0;
     if (s._isPort && !portByEmbark.has(s._embarkTile)) { ports.push(s); portByEmbark.set(s._embarkTile, s); }
   }
