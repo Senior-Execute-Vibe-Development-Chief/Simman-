@@ -202,6 +202,8 @@ export const TUNING_SCHEMA = [
     params: [
       { key: "SETT_GROWTH", label: "Population growth rate", def: 0.0018, min: 0.0002, max: 0.01, step: 0.0002,
         desc: "Base per-tick population growth. The master demographics-speed dial — up = the world fills fast." },
+      { key: "ERA_PROD_BASE", label: "Emergent productivity floor", def: 2.5, min: 1, max: 12, step: 0.5,
+        desc: "ANCHOR_POP=0 only. Uniform FLOOR of _eraProd = BASE + SCALE·agri^POW·devGate. Climate-NEUTRAL, so it carries the cradle-correct base distribution (fertility / rivers / the farming transition) and gives even undeveloped land enough population to FOUND AND GROW STATES — without it the development gate drove undeveloped ground to bare subsistence and starved state formation (sparse, stateless, inert map). Higher = a livelier, more populous pre-state world (and a higher early-antiquity population); too high re-floods the map regardless of development." },
       { key: "ERA_PROD_SCALE", label: "Emergent productivity scale", def: 260, min: 0, max: 1000, step: 8,
         desc: "ANCHOR_POP=0 only. Peak of the emergent productivity index: a settlement at full agriculture (knowledge=1) gets _eraProd = 1 + this, multiplying its carrying capacity (land food, fish, housing, rural ceiling). Set so a modern-agriculture civilisation supports ~hundreds× a forager — aggregate-realistic (farming+industry lifted Earth's human carrying capacity ~100-1000×). Up = a bigger modern population boom; 0 = no emergent lift (raw land×farmYield only, the world stays ~1/16 of historical scale)." },
       { key: "ERA_PROD_POW", label: "Emergent productivity back-loading", def: 6, min: 1, max: 16, step: 0.5,

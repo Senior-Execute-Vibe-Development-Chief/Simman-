@@ -1547,7 +1547,14 @@ function updateFood(world, s) {
     }
     if (s.knowledge && s.knowledge.organization > devOrg) devOrg = s.knowledge.organization;   // a stateless but organising city counts too
     const devGate = Math.min(1, Math.max(0, (devOrg - T.ERA_PROD_DEV0) / (T.ERA_PROD_DEV1 - T.ERA_PROD_DEV0)));
-    s._eraProd = 1 + T.ERA_PROD_SCALE * Math.pow(agri, T.ERA_PROD_POW) * devGate;
+    // BASE is a uniform floor (climate-NEUTRAL): it carries the ORIGINAL cradle-correct
+    // distribution (fertility / rivers / the farming transition — NOT farm-climate), so
+    // even undeveloped land holds enough people to found and grow STATES. Without it the
+    // dev-gate drove undeveloped ground to bare subsistence (eraProd=1), which starved
+    // state formation — the map went sparse and stateless. The agri^POW·devGate term then
+    // adds the DEVELOPMENT-driven bloom on top, so the cradles still out-grow the rest as
+    // they organise, but the world isn't inert while it gets there.
+    s._eraProd = T.ERA_PROD_BASE + T.ERA_PROD_SCALE * Math.pow(agri, T.ERA_PROD_POW) * devGate;
   }
   const agg = agriGate(world, s);   // also builds world._agriCeil (used for the livestock regional gate)
   // ── Animal husbandry: livestock secondary products ──────────────────
