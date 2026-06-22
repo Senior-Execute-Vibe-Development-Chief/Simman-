@@ -292,9 +292,10 @@ export const TECH_FX = {
   // modern agricultural revolution — gated on INDUSTRY/SCIENCE, not raw farming
   // knowledge, so industrialisation is the historical escape from the ~+91%
   // pre-modern (Malthusian) ceiling. A steel-and-science civ pulls into abundance:
-  // these lift farmYield from ~1.9 (medieval) to ~5 (post-green-revolution) — a
-  // ~2.7× carrying-capacity surge that drives the modern population explosion +
-  // urbanisation, instead of the food cap flatlining the industrial era.
+  // these lift farmYield from ~1.9 (medieval) to ~5 (post-green-revolution). The
+  // modern population BOOM proper is carried by _eraProd (the emergent productivity
+  // index, settlement.js), not by inflating these per-acre yields — keeping farmYield
+  // modest here keeps urban density (which keys off farmYield) historically sane.
   selective_breed:  { farm:0.35 },
   mechanized_farm:  { farm:0.60, build:0.02 },
   green_revolution: { farm:1.30 },

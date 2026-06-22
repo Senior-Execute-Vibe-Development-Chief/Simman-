@@ -15,7 +15,6 @@
 // ANCESTRY is a faint, ever-present floor: a deeply foreign subject is harder to
 // reconcile than a cousin people, but no one rallies to a haplogroup. The same
 // model reads as a casus belli for war-targeting (armies.js).
-import { stepToYear } from "../calendar.js";
 
 // Share of identity `id` within a [[id, share], ...] mixture (0 if absent).
 export function mixShare(mix, id) {
@@ -31,7 +30,12 @@ function layerMis(coreMix, sMix) {
   return core < 0 ? 0 : 1 - mixShare(sMix, core);
 }
 
-// Era-dependent SALIENCE of each identity layer as a political force.
+// Era-dependent SALIENCE of each identity layer as a political force. The `year`
+// passed in is the DEVELOPMENT pseudo-year (world._civYear, mapped from the leading
+// state's organisation in index.js), not the wall-clock — so nationalism crests when
+// civilisation actually reaches the industrial age, whenever that is, rather than on a
+// fixed date. The ramp anchors still read as historical years because the mapping is
+// calibrated to the historical organisation-vs-time curve.
 export function eraIdentityWeights(year) {
   const ramp = (a, b) => Math.max(0, Math.min(1, (year - a) / (b - a)));
   return {
@@ -49,7 +53,7 @@ export function eraIdentityWeights(year) {
     anc:    0.12,
   };
 }
-export function identityWeightsNow(world) { return eraIdentityWeights(stepToYear(world.step)); }
+export function identityWeightsNow(world) { return eraIdentityWeights(world._civYear ?? -9000); }
 
 const GRIEVANCE_W = 0.6;   // peak identity contribution to a province's unrest (hunger still dominates)
 const FRICTION_W  = 0.6;   // peak language surcharge on admin load (a wholly foreign-tongue province ≈ +0.45×)

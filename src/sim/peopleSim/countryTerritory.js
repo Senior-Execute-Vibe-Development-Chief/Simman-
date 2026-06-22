@@ -25,7 +25,6 @@ import { forEachNear } from "./spatialGrid.js";
 import { grownOwnerAt } from "./countryClaim.js";
 import { ensurePolity } from "./entities.js";
 import { T } from "./tuning.js";
-import { stepToYear } from "../calendar.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
 // claims land out to COUNTRY_REACH_BASE + capital-organisation × COUNTRY_REACH_ORG
@@ -490,13 +489,14 @@ export function computeCountryTerritory(world) {
   // Engage only above FRONTIER_LOGI, then ramp quadratically to a map-spanning budget
   // by full industrialisation (~1900). Zero through antiquity and the medieval world.
   world._maxLogi = maxLogi;
-  // The closing of the frontier is a calendar event (~1650→1920: the colonial
-  // scramble + the abolition of terra nullius). The calendar is itself tech-pace
-  // calibrated (stepToYear tracks the LEADING civilisation), so gating on the year
-  // gives a tech-driven close that reliably fires by the industrial era — the raw
-  // logistics level plateaus too low to threshold on. era² ⇒ back-loaded (sharp
-  // ~1900), matching how fast the world actually partitioned.
-  const yr = stepToYear(world.step);
+  // The frontier closes as the world INDUSTRIALISES (the colonial scramble + the
+  // abolition of terra nullius). Driven by the leading state's DEVELOPMENT, not the
+  // calendar: world._civYear is the pseudo-year mapped from the most advanced civ's
+  // organisation (index.js), so the close fires when some civ actually reaches the
+  // industrial era — whenever that happens — and never if none does. The raw logistics
+  // level plateaus too low to threshold on. era² ⇒ back-loaded (sharp), matching how
+  // fast the world actually partitioned.
+  const yr = world._civYear ?? -9000;
   const era = Math.max(0, Math.min(1, (yr - FRONTIER_YEAR0) / (FRONTIER_YEAR1 - FRONTIER_YEAR0)));
   const frontierBudget = FRONTIER_CLOSE * resScale * era * era;
   if (_capitalOnly) recolorByCapital(world, co, capPos, knOf, claimCap, frontierBudget);
@@ -531,7 +531,7 @@ function recolorByCapital(world, co, capPos, knOf, claimCap, frontierBudget = 0)
   // and a dominant core ALSO claims its regional hinterland ahead of the industrial close
   // (DOM_HINTERLAND, present in every era; 0 for ordinary realms, which keep open marches).
   const rs = resScaleFor(world.tw);
-  const hYr = stepToYear(world.step);
+  const hYr = world._civYear ?? -9000;   // leading-state development as a pseudo-year (index.js), NOT the wall-clock
   const hinterEra = Math.max(0, Math.min(1, (hYr - HINTER_YEAR0) / (HINTER_YEAR1 - HINTER_YEAR0)));   // 0 in deep antiquity → 1 by the classical age
   const domBudget = new Map();
   if (world.countries) for (const [c] of capPos) {
