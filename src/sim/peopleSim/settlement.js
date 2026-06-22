@@ -965,23 +965,40 @@ const CROP_DOMESTICATE = 0.45;
 //   + iron + coal               cap 1.00  (steel / industrial)
 //
 // ── Heritable organisation aptitude ("bountiful hardship" selection) ──────
-// The thesis: a population under mild summers + HARSH winters + a reliable
-// growing season is selected, over generations, for the foresight, storage and
-// coordination a stored-surplus winter economy demands. Modelled as a heritable,
-// per-population aptitude that RATCHETS up under that climate and never falls (a
-// permanent trait), rides with colonists/migrants in full (founder-carried — see
-// makeSettlement + the migration blend — but never transferred by conquest, like
-// the ancestry stock), and pays out as faster ORGANISATION learning + extra
-// STATE CAPACITY (admin reach). seasonalSelect is the per-tile selection TARGET:
-// it peaks in the cool-temperate / continental band (a real winter, a workable
-// summer), and is ~0 in the tropics (no winter), desert and polar margins (no
-// reliable, storable surplus to select on). Dialled by T.ORG_APTITUDE.
-const APT_T_OPT = 0.45, APT_T_TOL = 0.12;
-const APT_M_MIN = 0.32, APT_M_SPAN = 0.30;
+// The thesis: a population that must put by a STORABLE SURPLUS to cross a harsh
+// season is selected, over generations, for the foresight, storage and
+// coordination a state runs on. Modelled as a heritable, per-population aptitude
+// that RATCHETS up under that climate and never falls (a permanent trait), rides
+// with colonists/migrants in full (founder-carried — see makeSettlement + the
+// migration blend — but never transferred by conquest, like the ancestry stock),
+// and pays out as faster ORGANISATION learning + extra STATE CAPACITY (admin reach).
+//
+// TWO climates impose that storage pressure, and seasonalSelect rewards BOTH:
+//   • COLD WINTER  — a cool-temperate / continental winter with a moist growing
+//                    season (Northern Europe, North China): store against the frost.
+//   • DRY SUMMER   — a WARM Mediterranean / semi-arid climate with a pronounced
+//                    RAINLESS season (the Fertile Crescent, the Nile, the Maghreb,
+//                    the Mediterranean littoral, the Indus): grain must be stored
+//                    against the dry months, and the dry heat KEEPS it. This is the
+//                    "bountiful hardship" that built the FIRST states — and an
+//                    earlier cold-ONLY score wrongly read it as "no winter → no
+//                    aptitude", debuffing the very cradle of civilisation.
+// It is ~0 only where there is no storable surplus to select on: the year-round-wet
+// TROPICS (no harsh season, food any day) and the true DESERT / POLAR margins
+// (no growing season at all). Dialled by T.ORG_APTITUDE.
+const APT_T_OPT = 0.45, APT_T_TOL = 0.15;        // cold-winter lobe: cool-temperate (wide enough for temperate-monsoon Asia)
+const APT_M_MIN = 0.32, APT_M_SPAN = 0.30;       // ...with a moist growing season
+const APT_MEDI_T = 0.58, APT_MEDI_T_SPAN = 0.14; // dry-summer lobe: warm enough for a hot rainless season
+const APT_MEDI_M = 0.30, APT_MEDI_M_TOL = 0.15;  // ...peaking at SEMI-ARID (falls off for wet tropics and true desert)
+const APT_CROP_M = 0.12, APT_CROP_SPAN = 0.12;   // ...but a growing season must exist at all (excludes the bone-dry desert)
 function seasonalSelect(temp, moist) {
-  const winter = Math.exp(-((temp - APT_T_OPT) ** 2) / (2 * APT_T_TOL * APT_T_TOL));
-  const grow   = Math.min(1, Math.max(0, (moist - APT_M_MIN) / APT_M_SPAN));
-  return winter * grow;
+  const cold = Math.exp(-((temp - APT_T_OPT) ** 2) / (2 * APT_T_TOL * APT_T_TOL))
+             * Math.min(1, Math.max(0, (moist - APT_M_MIN) / APT_M_SPAN));
+  const warm     = Math.min(1, Math.max(0, (temp - APT_MEDI_T) / APT_MEDI_T_SPAN));
+  const semiArid = Math.exp(-((moist - APT_MEDI_M) ** 2) / (2 * APT_MEDI_M_TOL * APT_MEDI_M_TOL));
+  const crop     = Math.min(1, Math.max(0, (moist - APT_CROP_M) / APT_CROP_SPAN));
+  const medi     = warm * semiArid * crop;        // Mediterranean / dry-summer storage pressure
+  return Math.min(1, Math.max(cold, medi));
 }
 
 // ── Circumscription (Carneiro): confinement forces organisation ──────────
