@@ -824,8 +824,13 @@ function maybeUrbanGenesis(world) {
     }
     if (!best) continue;
     // A great trade/defence site lowers the population a region needs to spin off
-    // a town (it lives on commerce or as a stronghold, importing its grain).
-    const need = Math.max(URBAN_MIN_POP, URBANIZE_POP - bestSV * URBAN_SITE_DISCOUNT);
+    // a town (it lives on commerce or as a stronghold, importing its grain). A
+    // country's CAPITAL needs only a viable founding population: a state's seat
+    // founds its capital town as soon as it can (the court then relocates to it,
+    // below), so the realm's seat stops sitting as a farming region.
+    const need = (region._isCapital && T.CAPITAL_COURT_MOVE > 0)
+      ? URBAN_MIN_POP
+      : Math.max(URBAN_MIN_POP, URBANIZE_POP - bestSV * URBAN_SITE_DISCOUNT);
     if (region.people < need) continue;
     if (rng() >= URBAN_CHANCE) continue;
     // Seed the town with a village's worth of the region's people; the region
@@ -845,6 +850,22 @@ function maybeUrbanGenesis(world) {
       cultureId: dominantCulture(region),
     });
     gridAdd(world, town);   // register so same-pass spacing / catchment checks see it
+    // ── Court relocation: a rural seat founds its CAPITAL town ──
+    // If this region is the realm's CAPITAL, the town it founds becomes the new
+    // SEAT: the court's treasury and the capital garrison move there, so at the
+    // next rebuildCountries pass the town — not the rural region — is the realm's
+    // highest-power member (its capital). It then grows into the capital city by
+    // NORMAL, bounded town dynamics (fed up the food hierarchy), while the region
+    // carries on as its rural hinterland. So the capital urbanises WITHOUT a
+    // rural-ceiling exemption — the rural/urban balance and world population hold.
+    if (region._isCapital && T.CAPITAL_COURT_MOVE > 0) {
+      const f = T.CAPITAL_COURT_MOVE;
+      const wMove = (region.wealth || 0) * f;
+      region.wealth = (region.wealth || 0) - wMove; town.wealth = (town.wealth || 0) + wMove;
+      const aMove = (region.army || 0) * f;
+      region.army = (region.army || 0) - aMove; town.army = (town.army || 0) + aMove;
+      region._isCapital = false; town._isCapital = true;   // within-pass hint; rebuildCountries reconfirms by power next pass
+    }
   }
 }
 

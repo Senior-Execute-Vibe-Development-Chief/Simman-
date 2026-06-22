@@ -202,6 +202,8 @@ export const TUNING_SCHEMA = [
     params: [
       { key: "SETT_GROWTH", label: "Population growth rate", def: 0.0018, min: 0.0002, max: 0.01, step: 0.0002,
         desc: "Base per-tick population growth. The master demographics-speed dial — up = the world fills fast." },
+      { key: "CAPITAL_COURT_MOVE", label: "Capital seat relocation", def: 0.7, min: 0, max: 1, step: 0.05,
+        desc: "Fixes 'the capital is a farming region': when a realm's CAPITAL is still a rural region, it founds a SEAT-town (urban genesis) and this fraction of its treasury and garrison RELOCATES to that town — the court moving to its new seat. The town then outweighs the region and becomes the capital at the next pass, growing into the capital city by NORMAL bounded town dynamics (no rural-ceiling exemption, so the rural/urban balance and world population are preserved). Higher = the seat flips to the town more reliably (even for a populous or militarised region); 0 = OFF (capitals may sit as farming regions, the old behaviour)." },
       { key: "LAND_HUNGER", label: "Marginal-land tolerance", def: 1.5, min: 0, max: 6, step: 0.5,
         desc: "How readily new settlements spill onto LOW-quality land once the good sites nearby are already taken (population pressure / the historical frontier). 0 = settlers shun poor land forever, so deserts/uplands stay empty even late game; higher = marginal land WITHIN settled regions fills with sparse hamlets. Good land still fills first — this only lifts poor sites where the surroundings are already populated." },
       { key: "SITE_DEFENSE", label: "Defensible-site pull", def: 1.0, min: 0, max: 3.0, step: 0.25,

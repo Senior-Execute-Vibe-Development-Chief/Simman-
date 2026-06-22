@@ -464,16 +464,30 @@ export function rebuildCountries(world) {
   // (SIM_HOLD_SCALE env forces a fixed value, for A/B against the unscaled bug.)
   const resScale = _holdScaleEnv > 0 ? _holdScaleEnv : resScaleFor(world.tw);
   for (const s of world.settlements) {
-    if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless frontier settlements belong to no country
+    if (s.mode !== "settled") continue;
+    s._isCapital = false;                                     // cleared; re-stamped on each realm's seat below
+    if (s.countryId < 0) continue;   // stateless frontier settlements belong to no country
     let c = countries.get(s.countryId);
     if (!c) { c = { id: s.countryId, members: [], capital: null }; countries.set(s.countryId, c); }
     c.members.push(s);
   }
   for (const c of countries.values()) {
-    let best = null, bp = -1;
-    for (const s of c.members) { const p = settlementPower(s); if (p > bp) { bp = p; best = s; } }
+    let best = null, bp = -1, urb = null, bpu = -1;
+    for (const s of c.members) {
+      const p = settlementPower(s);
+      if (p > bp) { bp = p; best = s; }
+      if ((s.tier | 0) >= 1 && p > bpu) { bpu = p; urb = s; }   // the realm's leading URBAN centre
+    }
+    // A state's SEAT is its leading town/city — the court, market and garrison sit in
+    // an urban centre, not a rural district. So prefer the top URBAN member; only a
+    // WHOLLY rural realm seats at its largest region, until that region founds its
+    // capital town (crystallize.js capital genesis + court relocation), after which
+    // the town outranks the region here and becomes the seat. This is what stops a
+    // realm's capital reading as a "farming region" once it has any town at all.
+    best = urb || best;
     c.capital = best;
     c.capitalId = best.id;
+    if (best) best._isCapital = true;
     const k = best.knowledge || {};
     const bE = techEff(best), bMob = k.mobility || 0, bNav = k.navigation || 0;
     const rangeOld = RANGE_BASE + bE.reachLevel * RANGE_ORG + bMob * RANGE_MOB + bNav * RANGE_NAV;
