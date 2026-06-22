@@ -137,7 +137,8 @@ export function stepPeopleSim(world, n = 1) {
       s._wPrev = s.wealth || 0;   // baseline for the money-flow net-change readout
       if (s.mode !== "dead") { _popSum += s.people; _capSum += s._k || 0; }   // world totals for the demographic anchor
     }
-    applyDemographicAnchor(world, _popSum, _capSum);   // calibrate _eraProd to the historical population curve
+    if (T.ANCHOR_POP > 0) applyDemographicAnchor(world, _popSum, _capSum);   // calibrate _eraProd to the historical population curve
+    else { world._popTotal = _popSum; world._eraProd = 1; }                  // FULLY EMERGENT: no pinning — carrying capacity is whatever local tech + land support
     buildSettlementGrid(world);   // spatial index for near-settlement queries (crystallise / roads)
     mark("byId");
     // Recompute territory periodically: each settlement claims the land it
