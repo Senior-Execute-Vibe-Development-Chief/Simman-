@@ -8,7 +8,7 @@
 // from crystallisation, settler parties and overseas colonies.
 
 import { createWorld, pruneDead } from "./state.js";
-import { updateSettlement, urbanise } from "./settlement.js";
+import { updateSettlement, urbanise, updateSoil, SOIL_INTERVAL } from "./settlement.js";
 import { aggregateFoodHierarchy } from "./foodHierarchy.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
@@ -204,6 +204,8 @@ export function stepPeopleSim(world, n = 1) {
     moveShips(world);
     if (world.step % SEA_INTERVAL === 0) updateSea(world);
     mark("sea");
+    if (world.step % SOIL_INTERVAL === 0) updateSoil(world);   // soil exhaustion / salinisation (settlement.js)
+    mark("soil");
     // Polities: group settlements into countries, tribute, and let
     // over-extended members secede.
     if (world.step % _ivl(T.POLITY_INTERVAL) === 0) updatePolities(world);

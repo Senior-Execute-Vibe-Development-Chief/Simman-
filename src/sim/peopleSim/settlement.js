@@ -1408,6 +1408,70 @@ function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 // updatePopulation), so the gain from foraging is *additive supply*,
 // not *higher K*. A village stuck on forage alone stays at K=20 and
 // just doesn't starve.
+// ── Soil-exhaustion sweep (periodic): salinisation + nutrient depletion ───
+// Cumulative per-TILE soil fatigue, read by updateFood as a carrying-capacity
+// drag (soilBurden). The LAND remembers (the field is keyed to the tile, not the
+// settlement), so a region that wrecked its soil stays poor even as settlements
+// come and go. Two halves run each SOIL_INTERVAL ticks (a slow, millennial pace):
+//   GAIN — each FARMING settlement tires its home tile in proportion to its
+//          FRAGILITY (SOIL_BASE_FRAG for robust rain-fed land; up to +SOIL_ARID_FRAG
+//          for irrigated ARID land — the salinisation case) and its INTENSITY
+//          (active farming, MITIGATED once crop rotation / drainage arrives — so
+//          ancient irrigation salinises but later agronomy recovers the soil).
+//   HEAL — every tile recovers slowly toward pristine (fallow / abandonment), so
+//          only SUSTAINED intensive farming on FRAGILE land stays exhausted.
+// The emergent payoff: the arid-irrigated cradle blooms first, then plateaus and
+// declines as it salinises, while the durable rain-fed temperate belt sustains and
+// overtakes — the shift of civilisation's centre, with no scripted decline.
+export const SOIL_INTERVAL = 600; // ticks between soil passes (a slow process; rates are calibrated to this)
+const SOIL_CATCH_R = 3;           // catchment radius (tiles) a settlement farms & tires — the farmed REGION, not one point
+export function updateSoil(world) {
+  if (!(T.SOIL_EXHAUST > 0)) return;
+  const N = world.N, tw = world.tw;
+  let f = world._soilFatigue;
+  if (!f || f.length !== N) f = world._soilFatigue = new Float32Array(N);
+  // HEAL — slow recovery toward pristine everywhere.
+  const keep = T.SOIL_RECOVER;
+  if (keep < 1) for (let i = 0; i < N; i++) { const v = f[i]; if (v > 0) f[i] = v * keep; }
+  // GAIN — each farming settlement tires the soil of its CATCHMENT (not just one
+  // tile, so the farmed REGION degrades as a whole and an expanding frontier can't
+  // dilute it away), and caches the catchment-mean fatigue on the settlement for
+  // updateFood's cheap per-tick penalty read.
+  const th = world.th, elev = world.elev, R = SOIL_CATCH_R, R2 = R * R;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    climateOf(world, s);
+    // FRAGILITY: HOT land under irrigation / intensive tillage degrades — salt left
+    // by evaporating irrigation water (the arid cradles) and accelerated weathering
+    // of hot soils — while COOL temperate rain-fed land is robust. Heat is the clean
+    // signal (a river masks a desert's low rainfall in _climMoist, but not its heat),
+    // gated above ~0.70 so temperate China/Europe stay durable and the hot cradles
+    // (Nile, Mesopotamia, the Indus) carry the fragility. Water access scales it:
+    // irrigated hot land salinises fastest.
+    const heat = Math.min(1, Math.max(0, ((s._climTemp ?? 0.5) - 0.70) / 0.18));
+    const wa   = s.waterAccess || 0;
+    const fragility = T.SOIL_BASE_FRAG + T.SOIL_ARID_FRAG * heat * (0.35 + 0.65 * wa);
+    const ag = (s.knowledge && s.knowledge.agriculture) || 0;
+    const farm = Math.min(1, Math.max(0, (ag - 0.20) / 0.20));          // foragers don't till; farming ramps in
+    const rotation = Math.min(1, Math.max(0, (ag - 0.72) / 0.28));      // crop_rotation (tech.js, agri≥0.72): drainage/legumes mitigate
+    const intensity = farm * Math.max(0.15, 1 - T.SOIL_ROTATION * rotation);
+    const gain = T.SOIL_GAIN * fragility * intensity;
+    const x0 = s.pos.x | 0, y0 = s.pos.y | 0;
+    let sum = 0, cnt = 0;
+    for (let dy = -R; dy <= R; dy++) {
+      const y = y0 + dy; if (y < 0 || y >= th) continue;
+      for (let dx = -R; dx <= R; dx++) {
+        if (dx * dx + dy * dy > R2) continue;
+        const x = ((x0 + dx) % tw + tw) % tw, ti = y * tw + x;
+        if (elev[ti] <= 0) continue;                                    // farm soil only
+        const v = f[ti] + gain; const fv = v > 1 ? 1 : v;
+        f[ti] = fv; sum += fv; cnt++;
+      }
+    }
+    s._soilFatigue = cnt ? sum / cnt : 0;                               // catchment mean → updateFood penalty
+  }
+}
+
 function updateFood(world, s) {
   // Land food from the controlled TERRITORY: the distance-weighted sum of
   // claimed arable fertility (computed in territory.js), times yield and
@@ -1489,7 +1553,18 @@ function updateFood(world, s) {
   // together so the world total tracks recorded population, while the spatial
   // distribution stays emergent and the food economy (surplus, trade, army
   // labour all derived from this flow) stays internally consistent.
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (world._eraProd || 1) * livestockBonus * diseaseBurden;
+  // ── Soil exhaustion (salinisation / nutrient depletion) ──────────────────
+  // Long, intensive farming TIRES the land — and irrigated ARID land tires FAST
+  // (the Fertile-Crescent / Nile salinisation: irrigation water evaporates and
+  // leaves its salt, with no rain to flush it), while rain-fed temperate land is
+  // robust. A cumulative per-tile fatigue (updateSoil, below) drags the land's
+  // food here, so a cradle blooms first and then PLATEAUS/DECLINES as its soil
+  // exhausts, while the durable rain-fed belt sustains and overtakes — the
+  // historical shift of the centre of civilisation, emergent (no scripted decline;
+  // and because the demographic anchor only refills ABSOLUTE penalties, this
+  // RELATIVE one surfaces as a centre-of-gravity shift, not a population crash).
+  const soilBurden = T.SOIL_EXHAUST > 0 ? 1 - T.SOIL_EXHAUST * (s._soilFatigue || 0) : 1;
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (world._eraProd || 1) * livestockBonus * diseaseBurden * soilBurden;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
