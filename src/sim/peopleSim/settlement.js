@@ -1524,18 +1524,31 @@ function updateFood(world, s) {
   const fy = techEff(s).farmYield; s._farmYield = fy;   // stored for the rural-density ceiling (updatePopulation)
   // _eraProd — the productivity index that scales carrying capacity (land food, fish,
   // housing, rural ceiling). ANCHOR_POP=1 → the global historical anchor (index.js,
-  // steered to a recorded population curve). ANCHOR_POP=0 (EMERGENT) → driven by THIS
-  // settlement's OWN agriculture knowledge: farming+industry raised human carrying
-  // capacity ~100-1000× over foraging, and a settlement realises that lift as its
-  // agriculture climbs the tree. agri^POW is steeply back-loaded, so productivity (and
-  // hence the population BOOM) stays near 1 through the forager/early-farming era and
-  // surges only as agriculture MODERNISES — the modern explosion EMERGES from each
-  // civilisation's own farming tech (no calendar, no forced curve), concentrated where
-  // agriculture actually reaches the top of the tree. The lift feeds back through
-  // bigger cities → more mining + thicker states → metallurgy/organisation climb to
-  // the industrial thresholds, which is what the low-population world stalls on.
-  s._eraProd = T.ANCHOR_POP > 0 ? (world._eraProd || 1)
-    : 1 + T.ERA_PROD_SCALE * Math.pow((s.knowledge && s.knowledge.agriculture) || 0, T.ERA_PROD_POW);
+  // steered to a recorded population curve). ANCHOR_POP=0 (EMERGENT) → driven by a
+  // settlement's OWN agriculture knowledge (farming+industry raised human carrying
+  // capacity ~100-1000× over foraging) — BUT gated on its civilisation having actually
+  // DEVELOPED, not on farming CLIMATE. Agriculture knowledge is learned fastest in good
+  // rain-fed farming climates, so keying the lift on agronomy ALONE balloons fertile
+  // temperate land (Europe) in the stone age while the arid early cradles (Egypt, Sumer)
+  // — whose advantage was IRRIGATION and early STATES, not rainfall — stay empty. The
+  // development GATE (the settlement's country's organisation) fixes that: undeveloped /
+  // stateless / stone-age land sits at bare subsistence no matter how fertile, the first
+  // ORGANISED civilisations bloom first, and the centre of gravity follows DEVELOPMENT —
+  // then shifts as development does. agri^POW keeps the lift back-loaded so the modern
+  // BOOM still rides agriculture's climb to the top of the tree.
+  if (T.ANCHOR_POP > 0) {
+    s._eraProd = world._eraProd || 1;
+  } else {
+    const agri = (s.knowledge && s.knowledge.agriculture) || 0;
+    let devOrg = 0;   // the settlement's civilisation's development — its country capital's organisation
+    if (s.countryId >= 0 && world.countries) {
+      const c = world.countries.get(s.countryId);
+      if (c && c.capital && c.capital.knowledge) devOrg = c.capital.knowledge.organization;
+    }
+    if (s.knowledge && s.knowledge.organization > devOrg) devOrg = s.knowledge.organization;   // a stateless but organising city counts too
+    const devGate = Math.min(1, Math.max(0, (devOrg - T.ERA_PROD_DEV0) / (T.ERA_PROD_DEV1 - T.ERA_PROD_DEV0)));
+    s._eraProd = 1 + T.ERA_PROD_SCALE * Math.pow(agri, T.ERA_PROD_POW) * devGate;
+  }
   const agg = agriGate(world, s);   // also builds world._agriCeil (used for the livestock regional gate)
   // ── Animal husbandry: livestock secondary products ──────────────────
   // Oxen (traction), manure (fertiliser) and dairy/meat lift the food a worked
