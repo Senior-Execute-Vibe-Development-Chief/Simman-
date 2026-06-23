@@ -255,8 +255,9 @@ function cradleSurround(world, ti) {
 // until sea-borne colonisation (sea.js) reaches them — the "ungoverned until colonisation"
 // look. Extend this list (Indus, Mesopotamia, Mesoamerica, Andes) for more independent hearths.
 const EARTH_HEARTH_SITES = [
-  { name: "Nile",    fx: 0.580, fy: 0.329 },   // fertile ribbon through the Sahara to the Mediterranean delta
-  { name: "Yangtze", fx: 0.828, fy: 0.271 },   // temperate East-Asian river basin
+  { name: "Nile",        fx: 0.580, fy: 0.329 },   // fertile ribbon through the Sahara to the Mediterranean delta
+  { name: "Mesopotamia", fx: 0.640, fy: 0.300 },   // Tigris-Euphrates — Sumer, the first cities; the Fertile Crescent's eastern arm
+  { name: "Yangtze",     fx: 0.828, fy: 0.271 },   // temperate East-Asian river basin
 ];
 function seedEarthHearths(world) {
   const { tw, th, elev, temp, moist, fert, riverMag } = world;

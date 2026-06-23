@@ -289,7 +289,7 @@ export function makeSettlement(world, x, y, opts = {}) {
     const aptPar = (opts.parentId != null && opts.parentId >= 0) ? findSettlementById(world, opts.parentId) : null;
     s._orgApt = aptPar ? (aptPar._orgApt || 0) : 0;
   }
-  s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
+  { const _wa = computeWaterAccess(world, x | 0, y | 0); s.waterAccess = _wa.wa; s._riverAcc = _wa.river; }
   s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
   s._confine = computeConfinement(world, x | 0, y | 0);   // circumscription (static terrain)
   s._rugged  = computeRuggedness(world, x | 0, y | 0);    // broken terrain → fragmentation (static)
@@ -342,7 +342,9 @@ function computeWaterAccess(world, sx, sy) {
       }
     }
   }
-  return Math.min(1, coastBit * 0.5 + bestMag * 0.2);
+  // .wa = combined coast+river access (fishing/shipping); .river = RIVER-only access
+  // (irrigation — a managed river through dry land, NOT the sea/coast).
+  return { wa: Math.min(1, coastBit * 0.5 + bestMag * 0.2), river: Math.min(1, bestMag * 0.3) };
 }
 
 // Local resources (s.localRes) and mineable tiles (s._minableTiles) are
@@ -1642,7 +1644,23 @@ function updateFood(world, s) {
     workable = 1 - T.LAND_TOOL_GATE * locked;
   }
   s._workable = workable;
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * soilBurden * workable;
+  // IRRIGATION — an arid RIVER valley (the Nile, the Euphrates, the Indus) is a fertile
+  // ribbon through desert: a managed river makes it extraordinarily productive per acre,
+  // which is why the first dense civilisations rose there despite the surrounding aridity.
+  // Rain-fed or COASTAL land draws its water from the sky/sea, not a controlled river, so it
+  // gets no such concentration. This is the cradles' head-start — it keeps the arid Middle-
+  // Eastern river valleys ahead of their better-watered coastal/temperate neighbours early,
+  // and fades (relatively) as the rest of the world develops the tools to farm its own land.
+  let irrigation = 1;
+  if (T.IRRIG_BOOST > 0) {
+    climateOf(world, s);
+    const arid = Math.max(0, Math.min(1, (T.IRRIG_ARID0 - (s._climMoist ?? 0.5)) / 0.20));   // DRY land only — not the rainy/coastal belt
+    const river = s._riverAcc || 0;                                                          // a managed RIVER, not the sea/coast
+    const farmTech = Math.min(1, ((s.knowledge && s.knowledge.agriculture) || 0) / 0.5);     // needs the farming/irrigation know-how
+    irrigation = 1 + T.IRRIG_BOOST * arid * river * farmTech;
+  }
+  s._irrigation = irrigation;
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * soilBurden * workable * irrigation;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
