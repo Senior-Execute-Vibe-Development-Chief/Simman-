@@ -281,8 +281,19 @@ export function makeSettlement(world, x, y, opts = {}) {
     if (cul && !opts.name) s.name = nameFor(world, cul, "settlement");
   }
   seedAncestry(world, s, opts);   // deep genetic stock: local substrate, admixed if founded from afar
-  s.waterAccess = computeWaterAccess(world, x | 0, y | 0);
+  // Heritable organisation aptitude: a colony's founders carry their parent's
+  // aptitude in FULL (they ARE that people); a fresh cradle/frontier starts at
+  // zero and only the right climate ratchets it up (seasonalSelect, ratcheted in
+  // updateKnowledge). Diluted afterwards only by in-migration of other stock.
+  {
+    const aptPar = (opts.parentId != null && opts.parentId >= 0) ? findSettlementById(world, opts.parentId) : null;
+    s._orgApt = aptPar ? (aptPar._orgApt || 0) : 0;
+  }
+  { const _wa = computeWaterAccess(world, x | 0, y | 0); s.waterAccess = _wa.wa; s._riverAcc = _wa.river; }
   s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
+  s._confine = computeConfinement(world, x | 0, y | 0);   // circumscription (static terrain)
+  s._rugged  = computeRuggedness(world, x | 0, y | 0);    // broken terrain → fragmentation (static)
+  s._rivalN = 0;                                           // distinct rival polities in contact (refreshed in updateKnowledge)
   world.settlements.push(s);
   seedLocalTerritory(world, s);   // food/resource stats until the first full territory pass
   // Crop-package ownership (T.CROP_AXIS). Off → stays empty (unused). A cradle
@@ -331,7 +342,9 @@ function computeWaterAccess(world, sx, sy) {
       }
     }
   }
-  return Math.min(1, coastBit * 0.5 + bestMag * 0.2);
+  // .wa = combined coast+river access (fishing/shipping); .river = RIVER-only access
+  // (irrigation — a managed river through dry land, NOT the sea/coast).
+  return { wa: Math.min(1, coastBit * 0.5 + bestMag * 0.2), river: Math.min(1, bestMag * 0.3) };
 }
 
 // Local resources (s.localRes) and mineable tiles (s._minableTiles) are
@@ -882,6 +895,13 @@ export function urbanise(world) {
     }
     if (movers < 0.2) continue;
     s.people -= movers;
+    // Migrants carry their heritable aptitude into the destination, blending it
+    // pop-weighted with the residents — the one thing that DILUTES a high-aptitude
+    // stock (intermarriage), since the trait itself never decays in place.
+    if (T.ORG_APTITUDE > 0) {
+      const bp = best.people, ba = best._orgApt || 0, sa = s._orgApt || 0;
+      if (bp + movers > 0) best._orgApt = (ba * bp + sa * movers) / (bp + movers);
+    }
     best.people += movers;
   }
 }
@@ -946,6 +966,108 @@ const CROP_DOMESTICATE = 0.45;
 //   + iron                      cap 0.90  (iron age)
 //   + iron + coal               cap 1.00  (steel / industrial)
 //
+// ── Heritable organisation aptitude ("bountiful hardship" selection) ──────
+// The thesis: a population that must put by a STORABLE SURPLUS to cross a harsh
+// season is selected, over generations, for the foresight, storage and
+// coordination a state runs on. Modelled as a heritable, per-population aptitude
+// that RATCHETS up under that climate and never falls (a permanent trait), rides
+// with colonists/migrants in full (founder-carried — see makeSettlement + the
+// migration blend — but never transferred by conquest, like the ancestry stock),
+// and pays out as faster ORGANISATION learning + extra STATE CAPACITY (admin reach).
+//
+// TWO climates impose that storage pressure, and seasonalSelect rewards BOTH:
+//   • COLD WINTER  — a cool-temperate / continental winter with a moist growing
+//                    season (Northern Europe, North China): store against the frost.
+//   • DRY SUMMER   — a WARM Mediterranean / semi-arid climate with a pronounced
+//                    RAINLESS season (the Fertile Crescent, the Nile, the Maghreb,
+//                    the Mediterranean littoral, the Indus): grain must be stored
+//                    against the dry months, and the dry heat KEEPS it. This is the
+//                    "bountiful hardship" that built the FIRST states — and an
+//                    earlier cold-ONLY score wrongly read it as "no winter → no
+//                    aptitude", debuffing the very cradle of civilisation.
+// It is ~0 only where there is no storable surplus to select on: the year-round-wet
+// TROPICS (no harsh season, food any day) and the true DESERT / POLAR margins
+// (no growing season at all). Dialled by T.ORG_APTITUDE.
+const APT_T_OPT = 0.45, APT_T_TOL = 0.15;        // cold-winter lobe: cool-temperate (wide enough for temperate-monsoon Asia)
+const APT_M_MIN = 0.32, APT_M_SPAN = 0.30;       // ...with a moist growing season
+const APT_MEDI_T = 0.58, APT_MEDI_T_SPAN = 0.14; // dry-summer lobe: warm enough for a hot rainless season
+const APT_MEDI_M = 0.30, APT_MEDI_M_TOL = 0.15;  // ...peaking at SEMI-ARID (falls off for wet tropics and true desert)
+const APT_CROP_M = 0.12, APT_CROP_SPAN = 0.12;   // ...but a growing season must exist at all (excludes the bone-dry desert)
+function seasonalSelect(temp, moist) {
+  const cold = Math.exp(-((temp - APT_T_OPT) ** 2) / (2 * APT_T_TOL * APT_T_TOL))
+             * Math.min(1, Math.max(0, (moist - APT_M_MIN) / APT_M_SPAN));
+  const warm     = Math.min(1, Math.max(0, (temp - APT_MEDI_T) / APT_MEDI_T_SPAN));
+  const semiArid = Math.exp(-((moist - APT_MEDI_M) ** 2) / (2 * APT_MEDI_M_TOL * APT_MEDI_M_TOL));
+  const crop     = Math.min(1, Math.max(0, (moist - APT_CROP_M) / APT_CROP_SPAN));
+  const medi     = warm * semiArid * crop;        // Mediterranean / dry-summer storage pressure
+  return Math.min(1, Math.max(cold, medi));
+}
+
+// ── Circumscription (Carneiro): confinement forces organisation ──────────
+// A fertile pocket hemmed in by INHOSPITABLE land — the Nile walled by desert,
+// a valley ringed by mountains, an island — cannot answer population pressure by
+// dispersing, so it answers with INTENSIFICATION: irrigation, hierarchy, the
+// coordinated state. computeConfinement scores how walled-in a site is (the
+// fraction of its surroundings that is sea / high mountain / frozen / true
+// desert — land you cannot just walk off into and farm). Cached at creation
+// (terrain is static); pays out as faster organisation learning (T.CONFINE).
+function computeConfinement(world, x, y) {
+  const { tw, th, elev, temp, moist } = world;
+  const R = 6; let bar = 0, tot = 0;
+  for (let dy = -R; dy <= R; dy++) {
+    const ny = (y | 0) + dy; if (ny < 0 || ny >= th) continue;
+    for (let dx = -R; dx <= R; dx++) {
+      const d2 = dx * dx + dy * dy; if (d2 === 0 || d2 > R * R) continue;
+      const nx = (((x | 0) + dx) % tw + tw) % tw, ni = ny * tw + nx;
+      tot++;
+      const e = elev[ni], t = temp ? temp[ni] : 0.5, m = moist ? moist[ni] : 0.5;
+      if (e <= 0 || e > 0.55 || t < 0.30 || (m < 0.12 && t > 0.5)) bar++;   // sea / mountain / ice / desert
+    }
+  }
+  return tot > 0 ? bar / tot : 0;
+}
+
+// Terrain ruggedness: local elevation roughness (standard deviation of height in
+// a small window). Broken, compartmented country — the Aegean, Italy, the
+// Caucasus, the Swiss cantons — splinters into many small competing polities
+// because no centre can cheaply project power across the ranges; smooth plains
+// consolidate into few large realms. Cached at creation (terrain is static);
+// eases frontier-state nucleation (countryTerritory.js) so rugged land carries
+// MORE, smaller states. The reach flood's mountain transport cost already does
+// half this job; ruggedness makes the polity-COUNT effect explicit.
+function computeRuggedness(world, x, y) {
+  const { tw, th, elev } = world;
+  const R = 4; let n = 0, sum = 0, sum2 = 0;
+  for (let dy = -R; dy <= R; dy++) {
+    const ny = (y | 0) + dy; if (ny < 0 || ny >= th) continue;
+    for (let dx = -R; dx <= R; dx++) {
+      const nx = (((x | 0) + dx) % tw + tw) % tw, e = Math.max(0, elev[ny * tw + nx]);
+      n++; sum += e; sum2 += e * e;
+    }
+  }
+  if (n === 0) return 0;
+  const mean = sum / n;
+  return Math.min(1, Math.sqrt(Math.max(0, sum2 / n - mean * mean)) / 0.20);
+}
+
+// Livestock / herding suitability from climate: open grassland, savanna and
+// temperate pasture are prime; bare desert (no graze), rainforest/swamp (no open
+// range, tsetse, foot-rot) and frozen ground are not. Combined in updateFood with
+// the regional domesticate-availability gate (the agri ceiling — isolated New-World
+// landmasses and the wet tropics score low, Diamond's "no large domesticates").
+function livestockClimate(temp, moist) {
+  const dryOK  = Math.min(1, Math.max(0, (moist - 0.10) / 0.18));   // not bare desert
+  const wetOK  = Math.min(1, Math.max(0, (0.82 - moist) / 0.28));   // not rainforest / swamp
+  const warmOK = Math.min(1, Math.max(0, (temp - 0.26) / 0.16));    // not frozen
+  return dryOK * wetOK * warmOK;
+}
+
+// Competition (fractious-polity innovation): a settlement in contact with many
+// DISTINCT rival polities sits in a competitive, pluralistic world (fragmented
+// Europe, the warring states) and innovates faster; one deep inside a single
+// monolithic empire does not. COMPETE_REF rival neighbours → full effect.
+const COMPETE_REF = 4;
+
 function updateKnowledge(world, s) {
   const k = s.knowledge;
   // Trade brings remote resources into the local tech equation —
@@ -987,17 +1109,31 @@ function updateKnowledge(world, s) {
   // invents fast; a starving, isolated hamlet barely moves. Centred so a
   // typical developing settlement learns at ≈ the old flat pace; T.SCI_SPREAD
   // dials the swing (0 = the old uniform rate everywhere).
-  const popF = Math.min(1, popSqrt / 45);                                   // ~2000 souls → 1
+  const popF = Math.min(1, popSqrt / T.SCI_POP_REF);                        // sqrt(people) at which a settlement learns at full speed
   const granF = Math.min(1, (s.food || 0) / (80 + s.tier * 200));          // banked surplus
   const flow = (s._foodSupply || 0) / Math.max(0.01, s._foodDemand || 0);  // 1 = break-even
   const surplusF = Math.max(0, Math.min(1, 0.5 * granF + 0.5 * Math.min(1, Math.max(0, (flow - 1) / 0.4))));
   const reachN = s._tradeReach ? s._tradeReach.size : 0;
   const tradeF = Math.min(1, reachN / 18);                                 // ~18 partners → 1
+  // Competition: contact with many DISTINCT rival polities (fractious frontier /
+  // warring states) spurs faster innovation; monolithic-empire interiors don't.
+  const competF = Math.min(1, (s._rivalN || 0) / COMPETE_REF);
+  // ── Winter aptitude → learning SPEED (buff / debuff) ──────────────────
+  // "Winter peoples" — those whose climate selected for the foresight, storage
+  // and coordination a hard seasonal cycle demands (seasonalSelect, carried as
+  // the heritable s._orgApt) — learn ALL techniques FASTER; year-round-tropical
+  // peoples, never under that selection pressure, learn SLOWER. winterness is the
+  // heritable aptitude normalised to 0 (pure tropics) .. 1 (full winter); the
+  // multiplier swings symmetrically about 1 so it is a true buff AND debuff.
+  const winterness = T.ORG_APTITUDE > 0 ? Math.min(1, Math.max(0, (s._orgApt || 0) / T.ORG_APT_FULL)) : 0.5;
+  const winterSci = Math.max(0.1, 1 + T.WINTER_LEARN * (2 * winterness - 1));   // >1 winter, <1 tropics
   // ×_dt folds the time-granularity step into EVERY technique-learning track at once
   // (all five use sciMul as their rate multiplier), so tech develops 1/G as fast per
-  // tick — paced with the granularity-slowed population.
-  const sciMul = (world._dt || 1) * Math.max(0.25, Math.min(2.2,
-    1 + T.SCI_SPREAD * (0.55 * popF + 0.45 * surplusF + 0.30 * tradeF + 0.20 * k.organization - 0.45)));
+  // tick — paced with the granularity-slowed population. ×winterSci slows/speeds
+  // the WHOLE tree for non-winter / winter peoples at once.
+  const sciMul = winterSci * (world._dt || 1) * Math.max(0.25, Math.min(2.2,
+    1 + T.SCI_SPREAD * (0.55 * popF + 0.45 * surplusF + 0.30 * tradeF + 0.20 * k.organization
+      + T.COMPETE * competF - 0.45)));
 
   // ── Environment specialization (climate-tied learning) ────────────────
   // Beyond the resource gates, the LOCAL CLIMATE biases which techniques a
@@ -1014,6 +1150,28 @@ function updateKnowledge(world, s) {
   const maritime = wa * Math.max(0, 1 - Math.abs(s._climTemp - 0.62) / 0.25);   // temperate coast
   const agriClim = Math.max(0.2, 1 + T.ENV_SPEC * (irrig * 1.1 - tropical * 0.45 - cold * 0.5));
   const orgClim  = Math.max(0.4, 1 + T.ENV_SPEC * (maritime * 0.3 - tropical * 0.40));
+
+  // ── Heritable aptitude: selection ratchet ────────────────────────────
+  // Under a mild-summer/harsh-winter/reliable-growing-season climate the
+  // population's heritable organisation aptitude climbs toward the selection
+  // target over generations — and NEVER falls (permanent ratchet), so a people
+  // that earned it keeps it when they spread to climates that select for nothing.
+  if (T.ORG_APTITUDE > 0) {
+    const aptTarget = seasonalSelect(s._climTemp, s._climMoist);
+    const apt = s._orgApt || 0;
+    if (aptTarget > apt) s._orgApt = apt + T.ORG_APT_SELECT * (aptTarget - apt) * (world._dt || 1);
+  }
+
+  // ── Nomadism: the mounted-pastoralist path ───────────────────────────
+  // Open horse-country grassland that never took up dense farming breeds MOUNTED
+  // PASTORALISTS — sparse (low farm carrying capacity) but martially formidable:
+  // cavalry hosts that raid and conquer far richer settled realms (Scythians,
+  // Huns, Mongols). High where open graze + horses meet LOW agriculture; fades to
+  // nothing as farming takes hold and the people settle. Powers the military
+  // bonus in armies.js (techMul).
+  s._nomad = T.NOMAD_MIL > 0
+    ? livestockClimate(s._climTemp, s._climMoist) * Math.min(1, horses / 0.15) * Math.max(0, 1 - k.agriculture * 1.4)
+    : 0;
 
   // ── Local learning ──────────────────────────────────────────────
   // Construction: covers buildings, roads, wagons, bridges (the old
@@ -1032,8 +1190,25 @@ function updateKnowledge(world, s) {
   // foraging track). The wild-food boost decays as metallurgy advances
   // — society moves off forage onto stored grain.
   const wildBoost = 1 + (r.timber || 0) * 0.2 * (1 - metalEff * 0.7);   // metal tools (not just the idea) move society off forage onto stored grain
+  // Forager bounty DELAYS farming: where wild food is abundant — rich fisheries,
+  // game-filled open grassland (the New World's bison, the salmon coasts) — the
+  // pressure to take up cereal farming is weak, so the transition drags until the
+  // wild surplus is outgrown. Fades to nothing as agriculture matures.
+  const forageEase = Math.min(1, wa * 0.5 + livestockClimate(s._climTemp, s._climMoist) * 0.5) * (1 - k.agriculture);
+  const foragePull = 1 - T.FORAGE_EASE * forageEase;
+  // INDUSTRIAL AGRONOMY: a settlement that has industrialised (organisation AND
+  // metallurgy both climbing past ~0.78 — the chemistry, machinery and scientific
+  // base) learns agriculture markedly FASTER — the historical break from the Malthusian
+  // yield ceiling (synthetic nitrogen, mechanisation, scientific breeding). This pushes
+  // an industrial civ's agriculture past the ~0.9 plateau into the green-revolution
+  // techs, so yields and _eraProd (which tracks agriculture) keep climbing through the
+  // modern era instead of flat-lining — the modern explosion is EARNED by industrialising,
+  // while a pre-industrial society stays capped at subsistence.
+  const indAgri = 1 + T.AGRI_INDUSTRIAL
+    * Math.min(1, Math.max(0, (k.organization - 0.78) / 0.18))
+    * Math.min(1, Math.max(0, (k.metallurgy   - 0.78) / 0.18));
   k.agriculture = clamp01(k.agriculture + T.LEARN_BASE * 1.2 * sciMul * agriClim * (1 - k.agriculture)
-    * (1 + fc * 0.03) * (1 + k.construction * 0.5) * wildBoost);
+    * (1 + fc * 0.03) * (1 + k.construction * 0.5) * wildBoost * foragePull * indAgri);
 
   // Organization: pop-driven admin burden + a literate-state branch
   // (folded in from the old literacy track) that kicks in once the
@@ -1053,10 +1228,17 @@ function updateKnowledge(world, s) {
   const orgEraCap = clamp01(0.15 + metalCap * 0.95 + k.construction * 0.15);
   const orgHead = Math.max(0, orgEraCap - k.organization);
   const litBranch = k.organization > 0.30
-    ? 0.6 * k.organization * (1 + popSqrt * 0.06)
+    ? T.ORG_LIT_BRANCH * k.organization * (1 + popSqrt * 0.06)
     : 0;
+  // Heritable winter aptitude as a BUFF / DEBUFF on organisation learning: a
+  // winter people (high aptitude) builds institutions faster, a non-winter people
+  // slower (still capped by orgEraCap — it sets the PACE to the era ceiling, not
+  // the ceiling itself). This is ON TOP of winterSci in sciMul, so organisation is
+  // the most winter-sensitive track of all.
+  const aptLearn = T.ORG_APTITUDE > 0 ? Math.max(0.05, 1 + T.ORG_APT_LEARN * (2 * winterness - 1)) : 1;
+  const confineMul = 1 + T.CONFINE * (s._confine || 0);   // circumscription forces intensification → organisation
   k.organization = clamp01(k.organization + T.LEARN_BASE * sciMul * orgClim * orgHead
-    * ((1 + popSqrt * 0.10) + litBranch));
+    * ((1 + popSqrt * 0.10) + litBranch) * aptLearn * confineMul);
 
   // Metallurgy — gated by ore, but PACED to keep step with the rest of the tree.
   // It used to crawl (∝ raw ore richness), so cultures reached the Renaissance
@@ -1141,10 +1323,12 @@ function updateKnowledge(world, s) {
     const kmSim = { agriculture:1, construction:1, organization:1,
                     metallurgy:1, navigation:1, mobility:1 };
     let any = false;
+    const rivals = new Set();
     for (const pid of s._tradeReach.keys()) {
       const p = world._byId.get(pid);
       if (!p || p.mode !== "settled" || !p.knowledge) continue;
       any = true;
+      if (p.countryId >= 0 && p.countryId !== s.countryId) rivals.add(p.countryId);   // competition signal
       const pk = p.knowledge;
       // Continental-axis climate similarity — used to gate AGRICULTURE only (see
       // the diffusion loop). The farming PACKAGE crosses easily along a shared
@@ -1155,6 +1339,7 @@ function updateKnowledge(world, s) {
       const sim = Math.exp(-(dLat * dLat) / (2 * 0.22 * 0.22) - (dT * dT) / (2 * 0.10 * 0.10));
       for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) { km[t] = v; kmSim[t] = sim; } }
     }
+    s._rivalN = rivals.size;   // distinct rival polities in contact → competition term in sciMul next pass
     if (any) {
       if (wa <= 0) km.navigation = 0;            // no sea → no naval technique to absorb
       if (horses <= horsesThr) km.mobility = 0;  // no horses → no cavalry technique to absorb
@@ -1236,6 +1421,70 @@ function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 // updatePopulation), so the gain from foraging is *additive supply*,
 // not *higher K*. A village stuck on forage alone stays at K=20 and
 // just doesn't starve.
+// ── Soil-exhaustion sweep (periodic): salinisation + nutrient depletion ───
+// Cumulative per-TILE soil fatigue, read by updateFood as a carrying-capacity
+// drag (soilBurden). The LAND remembers (the field is keyed to the tile, not the
+// settlement), so a region that wrecked its soil stays poor even as settlements
+// come and go. Two halves run each SOIL_INTERVAL ticks (a slow, millennial pace):
+//   GAIN — each FARMING settlement tires its home tile in proportion to its
+//          FRAGILITY (SOIL_BASE_FRAG for robust rain-fed land; up to +SOIL_ARID_FRAG
+//          for irrigated ARID land — the salinisation case) and its INTENSITY
+//          (active farming, MITIGATED once crop rotation / drainage arrives — so
+//          ancient irrigation salinises but later agronomy recovers the soil).
+//   HEAL — every tile recovers slowly toward pristine (fallow / abandonment), so
+//          only SUSTAINED intensive farming on FRAGILE land stays exhausted.
+// The emergent payoff: the arid-irrigated cradle blooms first, then plateaus and
+// declines as it salinises, while the durable rain-fed temperate belt sustains and
+// overtakes — the shift of civilisation's centre, with no scripted decline.
+export const SOIL_INTERVAL = 600; // ticks between soil passes (a slow process; rates are calibrated to this)
+const SOIL_CATCH_R = 3;           // catchment radius (tiles) a settlement farms & tires — the farmed REGION, not one point
+export function updateSoil(world) {
+  if (!(T.SOIL_EXHAUST > 0)) return;
+  const N = world.N, tw = world.tw;
+  let f = world._soilFatigue;
+  if (!f || f.length !== N) f = world._soilFatigue = new Float32Array(N);
+  // HEAL — slow recovery toward pristine everywhere.
+  const keep = T.SOIL_RECOVER;
+  if (keep < 1) for (let i = 0; i < N; i++) { const v = f[i]; if (v > 0) f[i] = v * keep; }
+  // GAIN — each farming settlement tires the soil of its CATCHMENT (not just one
+  // tile, so the farmed REGION degrades as a whole and an expanding frontier can't
+  // dilute it away), and caches the catchment-mean fatigue on the settlement for
+  // updateFood's cheap per-tick penalty read.
+  const th = world.th, elev = world.elev, R = SOIL_CATCH_R, R2 = R * R;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    climateOf(world, s);
+    // FRAGILITY: HOT land under irrigation / intensive tillage degrades — salt left
+    // by evaporating irrigation water (the arid cradles) and accelerated weathering
+    // of hot soils — while COOL temperate rain-fed land is robust. Heat is the clean
+    // signal (a river masks a desert's low rainfall in _climMoist, but not its heat),
+    // gated above ~0.70 so temperate China/Europe stay durable and the hot cradles
+    // (Nile, Mesopotamia, the Indus) carry the fragility. Water access scales it:
+    // irrigated hot land salinises fastest.
+    const heat = Math.min(1, Math.max(0, ((s._climTemp ?? 0.5) - 0.70) / 0.18));
+    const wa   = s.waterAccess || 0;
+    const fragility = T.SOIL_BASE_FRAG + T.SOIL_ARID_FRAG * heat * (0.35 + 0.65 * wa);
+    const ag = (s.knowledge && s.knowledge.agriculture) || 0;
+    const farm = Math.min(1, Math.max(0, (ag - 0.20) / 0.20));          // foragers don't till; farming ramps in
+    const rotation = Math.min(1, Math.max(0, (ag - 0.72) / 0.28));      // crop_rotation (tech.js, agri≥0.72): drainage/legumes mitigate
+    const intensity = farm * Math.max(0.15, 1 - T.SOIL_ROTATION * rotation);
+    const gain = T.SOIL_GAIN * fragility * intensity;
+    const x0 = s.pos.x | 0, y0 = s.pos.y | 0;
+    let sum = 0, cnt = 0;
+    for (let dy = -R; dy <= R; dy++) {
+      const y = y0 + dy; if (y < 0 || y >= th) continue;
+      for (let dx = -R; dx <= R; dx++) {
+        if (dx * dx + dy * dy > R2) continue;
+        const x = ((x0 + dx) % tw + tw) % tw, ti = y * tw + x;
+        if (elev[ti] <= 0) continue;                                    // farm soil only
+        const v = f[ti] + gain; const fv = v > 1 ? 1 : v;
+        f[ti] = fv; sum += fv; cnt++;
+      }
+    }
+    s._soilFatigue = cnt ? sum / cnt : 0;                               // catchment mean → updateFood penalty
+  }
+}
+
 function updateFood(world, s) {
   // Land food from the controlled TERRITORY: the distance-weighted sum of
   // claimed arable fertility (computed in territory.js), times yield and
@@ -1275,12 +1524,147 @@ function updateFood(world, s) {
   // (domestication ceiling). This is what keeps a fresh/isolated frontier sparse and
   // stateless — the whole map no longer farms at full yield from tick 0.
   const fy = techEff(s).farmYield; s._farmYield = fy;   // stored for the rural-density ceiling (updatePopulation)
+  // _eraProd — the productivity index that scales carrying capacity (land food, fish,
+  // housing, rural ceiling). ANCHOR_POP=1 → the global historical anchor (index.js,
+  // steered to a recorded population curve). ANCHOR_POP=0 (EMERGENT) → driven by a
+  // settlement's OWN agriculture knowledge (farming+industry raised human carrying
+  // capacity ~100-1000× over foraging) — BUT gated on its civilisation having actually
+  // DEVELOPED, not on farming CLIMATE. Agriculture knowledge is learned fastest in good
+  // rain-fed farming climates, so keying the lift on agronomy ALONE balloons fertile
+  // temperate land (Europe) in the stone age while the arid early cradles (Egypt, Sumer)
+  // — whose advantage was IRRIGATION and early STATES, not rainfall — stay empty. The
+  // development GATE (the settlement's country's organisation) fixes that: undeveloped /
+  // stateless / stone-age land sits at bare subsistence no matter how fertile, the first
+  // ORGANISED civilisations bloom first, and the centre of gravity follows DEVELOPMENT —
+  // then shifts as development does. agri^POW keeps the lift back-loaded so the modern
+  // BOOM still rides agriculture's climb to the top of the tree.
+  if (T.ANCHOR_POP > 0) {
+    s._eraProd = world._eraProd || 1;
+  } else {
+    const agri = (s.knowledge && s.knowledge.agriculture) || 0;
+    // Density requires being in a DEVELOPED STATE, not just personal organisation: read the
+    // settlement's COUNTRY's development (its capital's organisation). A stateless settlement
+    // gets devOrg 0 → no lift → it stays a sparse tribe (eraProd≈BASE) until it FOUNDS or JOINS
+    // a state. (A capital reads its own org, since it IS its country's capital.) This is what
+    // keeps significant/dense settlements always part of a nation — undeveloped, stateless
+    // ground can't bloom on fertility alone, however rich it is.
+    let devOrg = 0;
+    if (s.countryId >= 0 && world.countries) {
+      const c = world.countries.get(s.countryId);
+      if (c && c.capital && c.capital.knowledge) devOrg = c.capital.knowledge.organization;
+    }
+    const devGate = Math.min(1, Math.max(0, (devOrg - T.ERA_PROD_DEV0) / (T.ERA_PROD_DEV1 - T.ERA_PROD_DEV0)));
+    // BASE is a uniform floor (climate-NEUTRAL): it carries the ORIGINAL cradle-correct
+    // distribution (fertility / rivers / the farming transition — NOT farm-climate), so
+    // even undeveloped land holds enough people to found and grow STATES. Without it the
+    // dev-gate drove undeveloped ground to bare subsistence (eraProd=1), which starved
+    // state formation — the map went sparse and stateless. The agri^POW·devGate term then
+    // adds the DEVELOPMENT-driven bloom on top, so the cradles still out-grow the rest as
+    // they organise, but the world isn't inert while it gets there.
+    s._eraProd = T.ERA_PROD_BASE + T.ERA_PROD_SCALE * Math.pow(agri, T.ERA_PROD_POW) * devGate;
+  }
+  const agg = agriGate(world, s);   // also builds world._agriCeil (used for the livestock regional gate)
+  // ── Animal husbandry: livestock secondary products ──────────────────
+  // Oxen (traction), manure (fertiliser) and dairy/meat lift the food a worked
+  // hinterland yields — but only where the climate suits herding AND the region
+  // actually HAD large domesticable stock. Regional availability reuses the agri
+  // ceiling, so isolated landmasses (the New World) and the disease-ridden wet
+  // tropics get little (Diamond's missing-domesticates / tsetse effect), while
+  // the Old-World temperate-grassland belt gets the full plough-and-manure lift.
+  // Develops with farming (agriculture knowledge ≈ the husbandry proxy).
+  let livestockBonus = 1;
+  if (T.LIVESTOCK > 0) {
+    climateOf(world, s);
+    const lti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
+    const ceilReg = world._agriCeil ? (world._agriCeil[lti] || 0) : 1;
+    s._livestock = livestockClimate(s._climTemp, s._climMoist) * ceilReg;
+    livestockBonus = 1 + T.LIVESTOCK * s._livestock * ((s.knowledge && s.knowledge.agriculture) || 0);
+  }
+  // ── Wet-tropic disease & soil burden (carrying-capacity brake) ──────────
+  // Endemic disease (falciparum malaria, sleeping sickness) and leached,
+  // quickly-exhausted rainforest soils held tropical population DENSITY far
+  // below the temperate world even where the land looked lush — Diamond's
+  // wet-tropic brake, and THE reason a fertile-looking equatorial belt (the
+  // Congo, West Africa, Amazonia, New Guinea) stayed sparse and stateless while
+  // temperate Eurasia filled. It needs BOTH heat AND damp (malaria wants warmth
+  // + standing water): the dry-hot subtropics and river breadbaskets (the Nile,
+  // the Sahel) and the cool-wet temperate core escape, so it bites the wet
+  // tropics specifically. A continuous drag on DENSITY itself — distinct from
+  // the agricultural CEILING (a tech limit, agriGate) and from plague (an event).
+  let diseaseBurden = 1;
+  if (T.TROPICAL_DISEASE > 0 || T.STATE_DISEASE > 0) {
+    climateOf(world, s);
+    const heat = Math.min(1, Math.max(0, (s._climTemp - 0.68) / 0.18));
+    const damp = Math.min(1, Math.max(0, (s._climMoist - 0.35) / 0.35));
+    s._wetTropic = heat * damp;                      // raw wet-tropic intensity (0 temperate/dry → 1 deep rainforest)
+    s._disease = T.TROPICAL_DISEASE * s._wetTropic;   // drives the carrying-capacity drag; STATE_DISEASE reuses _wetTropic for state formation
+    diseaseBurden = 1 - s._disease;
+  }
   // _eraProd is the global historical-productivity index (index.js demographic
   // anchor): scaling LAND FOOD here lifts every settlement's carrying capacity
   // together so the world total tracks recorded population, while the spatial
   // distribution stays emergent and the food economy (surplus, trade, army
   // labour all derived from this flow) stays internally consistent.
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agriGate(world, s) * armyLabor * (world._eraProd || 1);
+  // ── Soil exhaustion (salinisation / nutrient depletion) ──────────────────
+  // Long, intensive farming TIRES the land — and irrigated ARID land tires FAST
+  // (the Fertile-Crescent / Nile salinisation: irrigation water evaporates and
+  // leaves its salt, with no rain to flush it), while rain-fed temperate land is
+  // robust. A cumulative per-tile fatigue (updateSoil, below) drags the land's
+  // food here, so a cradle blooms first and then PLATEAUS/DECLINES as its soil
+  // exhausts, while the durable rain-fed belt sustains and overtakes — the
+  // historical shift of the centre of civilisation, emergent (no scripted decline;
+  // and because the demographic anchor only refills ABSOLUTE penalties, this
+  // RELATIVE one surfaces as a centre-of-gravity shift, not a population crash).
+  const soilBurden = T.SOIL_EXHAUST > 0 ? 1 - T.SOIL_EXHAUST * (s._soilFatigue || 0) : 1;
+  // LAND WORKABILITY — you can only farm land your TOOLS can open. Open, light, WATERED
+  // ground (river-valley alluvium) and dry grassland are farmable from the first digging
+  // stick, so the river cradles (Nile, Mesopotamia, Indus, Yellow R.) bloom first. But
+  // fertile land OFF the rivers is FORESTED and HEAVY: the woodland must be CLEARED (metal
+  // axes — bronze, then iron) and the heavy soil broken by the mouldboard PLOUGH before it
+  // yields. So the rich temperate plains (Europe) sit near-empty until a civilisation has
+  // the metallurgy AND the plough — which is why farming radiated OUTWARD from the cradles
+  // as tools spread, not wherever the soil was richest. The land OPENS as the tools arrive.
+  let workable = 1;
+  if (T.LAND_TOOL_GATE > 0) {
+    climateOf(world, s);
+    const kk = s.knowledge || {};
+    // A river VALLEY is open alluvium — farmable from the first digging stick (the cradles sit
+    // on rivers). RIVER-only (s._riverAcc), NOT waterAccess: a forested COAST is not open ground —
+    // NW Europe's coastal woodland still had to be felled. Keying this on waterAccess (which
+    // counts coast as 0.5) wrongly exempted every coastal forest and gutted the gate, which is
+    // why temperate Europe still bloomed in the bronze age with the gate nominally on.
+    const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
+    const moist = s._climMoist ?? 0.5;
+    const tiles = s._terrWorkTiles ?? s._terrTiles ?? 1;
+    const meanFert = (s._terrFertSum || 0) / Math.max(1, tiles);
+    // FOREST: woodland starts at ~0.40 effective moisture (the sim's own biome line). It must be
+    // CLEARED with metal axes. Dry grassland/steppe (<0.40) and river valleys are open.
+    const forest = Math.max(0, Math.min(1, (moist - 0.38) / 0.20)) * (1 - riverOpen);
+    // HEAVY soil: very rich ground off the rivers (clay plains) — needs the plough; river alluvium is light.
+    const heavy  = Math.max(0, Math.min(1, (meanFert - 0.6) / 0.30)) * (1 - riverOpen);
+    const axes   = Math.min(1, (kk.metallurgy || 0) / T.LAND_CLEAR_METAL);              // bronze→iron clears forest
+    const plough = Math.min(1, Math.max(0, ((kk.agriculture || 0) - 0.45) / 0.40));     // the_plough→heavy_plough breaks heavy soil
+    const locked = Math.min(0.92, Math.max(forest * (1 - axes), heavy * (1 - plough))); // the binding lock holds back this share of the land
+    workable = 1 - T.LAND_TOOL_GATE * locked;
+  }
+  s._workable = workable;
+  // IRRIGATION — an arid RIVER valley (the Nile, the Euphrates, the Indus) is a fertile
+  // ribbon through desert: a managed river makes it extraordinarily productive per acre,
+  // which is why the first dense civilisations rose there despite the surrounding aridity.
+  // Rain-fed or COASTAL land draws its water from the sky/sea, not a controlled river, so it
+  // gets no such concentration. This is the cradles' head-start — it keeps the arid Middle-
+  // Eastern river valleys ahead of their better-watered coastal/temperate neighbours early,
+  // and fades (relatively) as the rest of the world develops the tools to farm its own land.
+  let irrigation = 1;
+  if (T.IRRIG_BOOST > 0) {
+    climateOf(world, s);
+    const arid = Math.max(0, Math.min(1, (T.IRRIG_ARID0 - (s._climMoist ?? 0.5)) / 0.20));   // DRY land only — not the rainy/coastal belt
+    const river = s._riverAcc || 0;                                                          // a managed RIVER, not the sea/coast
+    const farmTech = Math.min(1, ((s.knowledge && s.knowledge.agriculture) || 0) / 0.5);     // needs the farming/irrigation know-how
+    irrigation = 1 + T.IRRIG_BOOST * arid * river * farmTech;
+  }
+  s._irrigation = irrigation;
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * soilBurden * workable * irrigation;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
@@ -1296,7 +1680,7 @@ function updateFood(world, s) {
   // ×_eraProd as for land food: scaling the water harvest too keeps a coastal /
   // forager settlement's capacity responsive to the global productivity index,
   // so the demographic anchor has no dead-zone to wind up against.
-  const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor * (world._eraProd || 1) : 0;
+  const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor * (s._eraProd || 1) : 0;
   s._fishYield = fish;
 
   // Land food is STORABLE — it fills granaries and ships across the world
@@ -1343,7 +1727,13 @@ function updateFood(world, s) {
   s._urbanFactor = urbanFactor;
   s.food += supply - demand;
 
-  const storageCap = 80 + s.tier * 200;
+  // Seasonality → storage: a mild-summer/harsh-winter climate MUST bank the
+  // harvest to survive winter, so it builds deeper granaries (root cellars,
+  // smokehouses) — a larger buffer against famine/siege than a tropics where
+  // food is gathered year-round. (A storage-economy proxy, not a full annual
+  // cycle.) Reuses the cool-temperate selection target.
+  const seasonStore = T.SEASON_STORE > 0 ? 1 + T.SEASON_STORE * seasonalSelect(s._climTemp || 0.5, s._climMoist || 0.5) : 1;
+  const storageCap = (80 + s.tier * 200) * seasonStore;
   if (s.food > storageCap) s.food = storageCap;
   if (s.food < 0) s.food = 0;
 }
@@ -1519,7 +1909,18 @@ function updatePopulation(world, s) {
   // pinned at the medieval SITE cap while food scaled freely — the carrying
   // capacity must be linear in _eraProd end-to-end or the anchor (index.js)
   // winds up against the housing dead-zone.
-  let houseK = housingCapacity(s) * (world._eraProd || 1);
+  // Under the anchor (ANCHOR_POP=1) housing must scale LINEARLY in _eraProd or the
+  // controller winds up against a housing dead-zone. Under EMERGENT productivity
+  // (ANCHOR_POP=0) per-settlement _eraProd reaches into the hundreds, and applying it
+  // linearly to a single city's housing lets one high-agriculture capital absorb a
+  // whole region into an unphysical 70M+ megacity (and makes the world fragile — when
+  // that one city falls the global total craters). City INFRASTRUCTURE can't scale as
+  // fast as farm OUTPUT, so housing takes a DAMPENED power (HOUSE_ERA_POW≈0.45): the
+  // surplus food the capped city can't house stays in the hinterland feeding RURAL
+  // population (ruralCap keeps full _eraProd), so the modern boom spreads across the
+  // land and many towns instead of piling into one metropolis.
+  const houseEra = T.ANCHOR_POP > 0 ? (s._eraProd || 1) : Math.pow(s._eraProd || 1, T.HOUSE_ERA_POW);
+  let houseK = housingCapacity(s) * houseEra;
   // RURAL CEILING: a tier-0 farming region holds only a rural district's worth
   // of people (URBAN_CAP). Capping foodK AND houseK (not just K) is deliberate:
   // it drops the region's grain HUNGER ((houseK−foodK)/houseK → ~0 once both sit
@@ -1531,7 +1932,12 @@ function updatePopulation(world, s) {
     // ×_eraProd: the rural ceiling rises with the same global productivity index
     // as land food (updateFood), so the countryside scales WITH the cities and
     // the rural/urban balance is preserved as the world total tracks history.
-    const ruralCap = URBAN_CAP * (1 + URBAN_DENSITY_GAIN * Math.max(0, (s._farmYield || 1) - RURAL_YIELD_BASE)) * (world._eraProd || 1);
+    // ×_eraProd^RURAL_ERA_POW (emergent): damping the rural HOUSING ceiling below land
+    // food's full _eraProd means a modern countryside FEEDS more than it can HOUSE, so the
+    // surplus ships up the hierarchy to grow TOWNS instead of piling into ever-denser
+    // villages — the farm→city drift that urbanises the modern era. Linear under the anchor.
+    const rEra = T.ANCHOR_POP > 0 ? (s._eraProd || 1) : Math.pow(s._eraProd || 1, T.RURAL_ERA_POW);
+    const ruralCap = URBAN_CAP * (1 + URBAN_DENSITY_GAIN * Math.max(0, (s._farmYield || 1) - RURAL_YIELD_BASE)) * rEra;
     foodK = Math.min(foodK, ruralCap); houseK = Math.min(houseK, ruralCap);
   }
   // LOCALITY model: population = whatever the farmable catchment feeds (foodK

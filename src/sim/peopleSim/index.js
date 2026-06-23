@@ -8,7 +8,7 @@
 // from crystallisation, settler parties and overseas colonies.
 
 import { createWorld, pruneDead } from "./state.js";
-import { updateSettlement, urbanise } from "./settlement.js";
+import { updateSettlement, urbanise, updateSoil, SOIL_INTERVAL } from "./settlement.js";
 import { aggregateFoodHierarchy } from "./foodHierarchy.js";
 import { maybeCrystallize } from "./crystallize.js";
 import { maybeBuildRoads, updateTrade } from "./roads.js";
@@ -104,6 +104,28 @@ function applyDemographicAnchor(world, popTotal, capTotal) {
   world._eraProd = Math.max(ANCHOR_MIN, Math.min(ANCHOR_MAX, Math.max(lo, Math.min(hi, want))));
 }
 
+// Civilisational development → pseudo-year. The era gates that used to read the
+// wall-clock (frontier close, hinterland claim, identity salience) instead read how
+// far the LEADING state has climbed the organisation ladder (a smooth 0→1 proxy for
+// developmental stage), mapped here to the "year" a real civilisation at that stage
+// would sit at. So those gates fire on REACHED DEVELOPMENT, not on a date: a world
+// that industrialises early gets its frontier close early; one that stalls in
+// antiquity never closes it. The anchor points trace organisation against the
+// historical timeline, so a typical run still lines the gates up with real history —
+// but nothing is pinned to the calendar; it is the tech that drives the clock.
+const CIV_ORG_YEAR = [
+  [0.10, -6000], [0.18, -3300], [0.38, -800], [0.50, 200], [0.62, 1100],
+  [0.81, 1560], [0.88, 1680], [0.94, 1800], [0.98, 1875], [0.995, 1960],
+];
+export function civYearFromOrg(org) {
+  const A = CIV_ORG_YEAR;
+  if (org <= A[0][0]) return A[0][1];
+  if (org >= A[A.length - 1][0]) return A[A.length - 1][1];
+  let i = 1; while (i < A.length && org > A[i][0]) i++;
+  const a = A[i - 1], b = A[i], t = (org - a[0]) / (b[0] - a[0]);
+  return a[1] + (b[1] - a[1]) * t;
+}
+
 export function stepPeopleSim(world, n = 1) {
   // Optional per-pass timing (set world._dbgProfile to capture a breakdown of
   // the most expensive passes into world.debug.pass). Zero cost when off.
@@ -137,9 +159,21 @@ export function stepPeopleSim(world, n = 1) {
       s._wPrev = s.wealth || 0;   // baseline for the money-flow net-change readout
       if (s.mode !== "dead") { _popSum += s.people; _capSum += s._k || 0; }   // world totals for the demographic anchor
     }
-    applyDemographicAnchor(world, _popSum, _capSum);   // calibrate _eraProd to the historical population curve
+    if (T.ANCHOR_POP > 0) applyDemographicAnchor(world, _popSum, _capSum);   // calibrate _eraProd to the historical population curve
+    else { world._popTotal = _popSum; world._eraProd = 1; }                  // FULLY EMERGENT: no pinning — carrying capacity is whatever local tech + land support
     buildSettlementGrid(world);   // spatial index for near-settlement queries (crystallise / roads)
     mark("byId");
+    // Civilisational development signal for the de-pinned era gates (frontier close,
+    // hinterland claim, identity salience): the leading capital's ORGANISATION mapped
+    // to a pseudo-year. Computed from last step's countries (a slow signal — a one-tick
+    // lag is immaterial), so the gates downstream read REACHED DEVELOPMENT, not a date.
+    let leadOrg = 0;
+    if (world.countries) for (const c of world.countries.values()) {
+      const k = c.capital && c.capital.knowledge;
+      if (k && k.organization > leadOrg) leadOrg = k.organization;
+    }
+    world._leadOrg = leadOrg;
+    world._civYear = civYearFromOrg(leadOrg);
     // Recompute territory periodically: each settlement claims the land it
     // reaches cheapest, and its food / resources are tallied from it.
     if (world.step === 1 || world.step % T.TERRITORY_INTERVAL === 0) {
@@ -204,6 +238,8 @@ export function stepPeopleSim(world, n = 1) {
     moveShips(world);
     if (world.step % SEA_INTERVAL === 0) updateSea(world);
     mark("sea");
+    if (world.step % SOIL_INTERVAL === 0) updateSoil(world);   // soil exhaustion / salinisation (settlement.js)
+    mark("soil");
     // Polities: group settlements into countries, tribute, and let
     // over-extended members secede.
     if (world.step % _ivl(T.POLITY_INTERVAL) === 0) updatePolities(world);

@@ -58,16 +58,27 @@ const SEA_RANGE_BASE  = 10;      // sea reach (cost units) at navigation 0
 // strength so doldrums barely matter and trade-wind belts shape the routes.
 const WIND_AID  = 0.5;    // max ± cost swing from a full-strength head/tail wind
 const WIND_STR  = 1.6;    // how quickly wind magnitude saturates to full effect
-const WIND_MULT_MIN = 0.45, WIND_MULT_MAX = 1.7;
+const WIND_MULT_MAX = 1.7;   // dearest a full headwind makes a tile (tacking)
+// The cheapest a full TAILWIND can make a tile is the runtime lever
+// T.WIND_TAIL_FLOOR. It caps the wind SUBSIDY: too generous a tailwind
+// discount lets a voyage win by detouring far into a wind belt (the Southern
+// Ocean westerlies, the trade-wind gyre) instead of taking the short path —
+// the "stop at Antarctica on the way to Canberra" artifact. A higher floor
+// keeps the headwind penalty (avoid beating into the wind) while reining in
+// gross wind-chasing detours.
 const MIN_NAV_FOR_SEA = 0.04;    // below this a settlement has no seacraft
 const EMBARK_RADIUS   = 4;       // tiles to search around home for water
 // SEA_MIN_POP -> runtime lever (tuning.js T.SEA_MIN_POP)
 const MAX_SEA_VISITS  = 300000;  // global flood pop cap (one flood per pass)
 const MAX_ROUTE_TILES = 1200;    // cap on a sea path's stored tile count
-// A port keeps only its nearest sea partners (by route cost). Without this,
-// a fully navigable ocean would connect every port to every other, making
-// the per-tick trade pass O(ports²); real trade also favours nearer ports.
-const SEA_MAX_PEERS   = 12;
+// A port keeps a bounded set of sea partners (the per-tick trade pass is
+// O(ports × peers); a fully navigable ocean would otherwise connect every port
+// to every other). It keeps the ones it derives the MOST VALUE from — gravity
+// (the partner's economic size) + the LUXURY it can source there — discounted by
+// freight, NOT merely the nearest. That is what lets a wealthy port reach a
+// DISTANT scarce-luxury source (the spice run / VOC route). T.SEA_MAX_PEERS sets
+// the count (a bigger fleet/economy sustains more far-flung links).
+const SEA_FREIGHT_K = 0.02;   // how much a partner's route cost discounts its trade value in peer selection
 
 // Colonisation. Tuned to be reasonably common: a navigation-capable city
 // mounts expeditions fairly often, and a young colony is supplied from
@@ -98,7 +109,24 @@ function windMul(world, ni, dx, dy) {
   const align = (dx * wvx + dy * wvy) / (dmag * wmag);   // [-1,1]
   const strength = Math.min(1, wmag * WIND_STR);
   let m = 1 - WIND_AID * align * strength;
-  return m < WIND_MULT_MIN ? WIND_MULT_MIN : m > WIND_MULT_MAX ? WIND_MULT_MAX : m;
+  const lo = T.WIND_TAIL_FLOOR;
+  return m < lo ? lo : m > WIND_MULT_MAX ? WIND_MULT_MAX : m;
+}
+
+// Polar pack-ice / storm cost. The deep Southern Ocean (the Furious Fifties,
+// Screaming Sixties) and the ice-choked Arctic were death to sailing trade, so
+// open-water cost ramps up steeply toward the poles. With the capped tailwind
+// subsidy above, this stops the flood routing a voyage on a wild detour to the
+// Antarctic coast just to ride the westerlies east. The ramp is quadratic —
+// gentle through the Forties (the legitimate clipper belt), brutal past the
+// Sixties — and begins well poleward of any real trade lane, so the Cape route
+// (~35°S) and the North Atlantic (<57°N) are untouched.
+function iceMul(world, ti) {
+  const span = Math.max(1, T.SEA_ICE_LAT1 - T.SEA_ICE_LAT0);
+  const absLat = Math.abs(90 - ((ti / world.tw) | 0) / world.th * 180);
+  if (absLat <= T.SEA_ICE_LAT0) return 1;
+  const f = absLat >= T.SEA_ICE_LAT1 ? 1 : (absLat - T.SEA_ICE_LAT0) / span;
+  return 1 + T.SEA_ICE_PEN * f * f;
 }
 // SHIP_SPEED -> runtime lever (tuning.js T.SHIP_SPEED)
 
@@ -150,8 +178,13 @@ export function updateSea(world) {
   const portByEmbark = new Map();
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
-    if (s._embarkTile === undefined) s._embarkTile = findEmbarkTile(world, s);
     s._seaReach = null;
+    // Only settlements that belong to a NATION project sea lanes. A stateless
+    // farming region or town (countryId < 0) has no state to mount or protect
+    // shipping, so it neither sails nor is reached — it sits outside the
+    // maritime trade network until a realm annexes or colonises it.
+    if (s.countryId < 0) { s._isPort = false; continue; }
+    if (s._embarkTile === undefined) s._embarkTile = findEmbarkTile(world, s);
     s._isPort = s._embarkTile >= 0;
     if (s._isPort && !portByEmbark.has(s._embarkTile)) { ports.push(s); portByEmbark.set(s._embarkTile, s); }
   }
@@ -183,9 +216,16 @@ export function updateSea(world) {
     const pc = world.countries && world.countries.get(p.countryId);
     const colonyMul = (pc && pc.personality) ? expansionColonyMul(pc.personality) : 1;
     const cooldown = COLONY_COOLDOWN / colonyMul;
-    if ((p.people || 0) >= T.COLONY_MIN_POP &&
-        (p.knowledge.navigation || 0) >= COLONY_MIN_NAV &&
-        world.step - (p._lastColony ?? -Infinity) >= cooldown) {
+    p._questGoal = null;
+    if ((p.knowledge.navigation || 0) < COLONY_MIN_NAV ||
+        world.step - (p._lastColony ?? -Infinity) < cooldown) continue;
+    const pop = p.people || 0;
+    // A spice quest lets a mid-size port (≥ COLONY_QUEST_MIN_POP, below the full
+    // colony bar) found a trading OUTPOST to extend a luxury-route chain — so the
+    // chain marches outward without each link first growing into a city.
+    const qgoal = (T.SEA_LUX_QUEST > 0 && pop >= T.COLONY_QUEST_MIN_POP) ? luxuryGoal(world, p) : null;
+    p._questGoal = qgoal;
+    if (pop >= T.COLONY_MIN_POP || qgoal) {
       eligible.add(p.id);
       shoreCand.set(p.id, []);
     }
@@ -199,6 +239,35 @@ export function updateSea(world) {
     prev  = world._seaPrev  = new Int32Array(N);
   }
   owner.fill(-1); dist.fill(Infinity); prev.fill(-1);
+
+  // Faint coherent cost field so lanes MEANDER like real sailing tracks instead
+  // of running dead straight. It's value noise — a smooth low-frequency field —
+  // computed ONCE per world (a fixed function of tile + seed, so it's
+  // deterministic and stable across passes, never jittering frame to frame). We
+  // store the signed [-1,1] field and apply the live amplitude T.SEA_WOBBLE at
+  // flood time, so the path bends gently toward cheaper water and back without
+  // changing where it ultimately goes.
+  let wobble = world._seaWobble;
+  if (!wobble || wobble.length !== N) {
+    wobble = world._seaWobble = new Float32Array(N);
+    const seed = (world._seed | 0) || 1;
+    const SCALE = 6;   // tiles per noise lattice cell (wobble wavelength ≈ 2×)
+    const h2 = (x, y) => {
+      let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, 0x9E3779B1)) | 0;
+      h = Math.imul(h ^ (h >>> 13), 1274126177);
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+    };
+    for (let ti = 0; ti < N; ti++) {
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const fx = tx / SCALE, fy = ty / SCALE;
+      const x0 = Math.floor(fx), y0 = Math.floor(fy);
+      const ax = fx - x0, ay = fy - y0;
+      const sx = ax * ax * (3 - 2 * ax), sy = ay * ay * (3 - 2 * ay);   // smoothstep
+      const n00 = h2(x0, y0), n10 = h2(x0 + 1, y0), n01 = h2(x0, y0 + 1), n11 = h2(x0 + 1, y0 + 1);
+      const nx0 = n00 + (n10 - n00) * sx, nx1 = n01 + (n11 - n01) * sx;
+      wobble[ti] = (nx0 + (nx1 - nx0) * sy) * 2 - 1;   // [-1,1]
+    }
+  }
 
   // ── Single multi-source flood over the ocean ──
   const heap = new MinHeap();
@@ -241,7 +310,7 @@ export function updateSea(world) {
       }
       const no = owner[ni];
       if (no >= 0 && no !== oid) continue;       // another port's water (boundary handled below)
-      const nd = d + SEA_STEP * mul[k] * windMul(world, ni, DX[k], DY[k]);
+      const nd = d + SEA_STEP * mul[k] * windMul(world, ni, DX[k], DY[k]) * iceMul(world, ni) * (1 + T.SEA_WOBBLE * wobble[ni]);
       if (nd > bud) continue;                    // beyond this port's range
       if (nd < dist[ni]) { dist[ni] = nd; owner[ni] = oid; prev[ni] = ti; heap.push(ni, nd); }
     }
@@ -267,7 +336,7 @@ export function updateSea(world) {
       if (!c) continue;
       const nj = c[0], no = owner[nj];
       if (no < 0 || no === oid) continue;
-      const cost = dist[ti] + SEA_STEP * c[1] + dist[nj];
+      const cost = dist[ti] + SEA_STEP * c[1] * iceMul(world, nj) + dist[nj];
       const lo = oid < no ? oid : no, hi = oid < no ? no : oid;
       const tiLo = oid < no ? ti : nj, tiHi = oid < no ? nj : ti;
       const key = lo + ":" + hi;
@@ -288,6 +357,13 @@ export function updateSea(world) {
     const A = world._byId ? world._byId.get(lo) : null;
     const B = world._byId ? world._byId.get(hi) : null;
     if (!A || !B) continue;
+    // A DIRECT lane is a SINGLE voyage — one port must be able to sail the WHOLE
+    // way (trade was never done mid-ocean). The flood lets two ports' waters MEET
+    // at their combined range, but a lane only stands if ONE of them could cross
+    // the whole gap: cost ≤ max(rangeA, rangeB). Longer hauls aren't direct — they
+    // RELAY through a chain of ports (the transitive closure below), each leg a
+    // real voyage. This is the stepping-stone structure (Lisbon→Cape→Goa→Indies).
+    if (e.cost > Math.max(budget.get(lo) || 0, budget.get(hi) || 0)) continue;
     // Path lo → hi: lo.home, lo.embark…tiA, tiB…hi.embark, hi.home.
     const aSide = reconstruct(prev, e.tiA);            // lo.embark → tiA
     const bSide = reconstruct(prev, e.tiB);            // hi.embark → tiB
@@ -322,11 +398,21 @@ export function updateSea(world) {
         if (nd < (pd.get(e.to) ?? Infinity)) { pd.set(e.to, nd); ph.push(e.to, nd); }
       }
     }
-    // Keep only the nearest SEA_MAX_PEERS partners (by route cost).
+    // Keep the partners this port derives the MOST VALUE from — gravity (the
+    // partner's economic size) plus the LUXURY it can source there, discounted by
+    // freight — not merely the nearest. A distant metropolis or a scarce-spice
+    // island can now outrank a near hamlet, so long high-value routes form.
     const reached = [];
-    for (const [pid, cost] of pd) if (pid !== src.id) reached.push([pid, cost]);
-    reached.sort((a, b) => a[1] - b[1]);
-    const keep = reached.length > SEA_MAX_PEERS ? SEA_MAX_PEERS : reached.length;
+    for (const [pid, cost] of pd) {
+      if (pid === src.id) continue;
+      const peer = world._byId ? world._byId.get(pid) : null;
+      if (!peer) continue;
+      const gravity = Math.sqrt(Math.max(1, peer.people || 0));
+      const value = (gravity + T.SEA_LUX_PULL * (peer._luxSupply || 0)) / (1 + cost * SEA_FREIGHT_K);
+      reached.push([pid, cost, value]);
+    }
+    reached.sort((a, b) => b[2] - a[2]);   // most valuable first
+    const keep = reached.length > T.SEA_MAX_PEERS ? T.SEA_MAX_PEERS : reached.length;
     for (let i = 0; i < keep; i++) {
       const pid = reached[i][0], cost = reached[i][1];
       const peer = world._byId ? world._byId.get(pid) : null;
@@ -359,15 +445,58 @@ function linkSea(src, peer, cost, tiles) {
 
 // Pick the best unsettled shore in port A's reachable waters and launch a
 // colony ship toward it. Colonists + a coin endowment migrate out of A.
+// ── Directed colonisation: the spice quest ──────────────────────────────
+// A wealthy port that craves luxury it can neither produce nor yet reach by sea
+// seeks the nearest KNOWN luxury source it cannot reach, and founds its next
+// outpost as far TOWARD that prize as it can — the stepping-stone push that built
+// the trade empires (Lisbon → the African forts → the Cape → Goa → the Indies).
+// Each outpost repeats from its new shore, so the chain marches to the source and
+// the resupply-relay route opens. Returns the target settlement, or null.
+const SEA_LUX_RES     = ["spices", "furs", "incense", "dyes"];
+const LUX_QUEST_MIN   = 1;     // minimum spare luxury demand to mount a quest
+const LUX_SOURCE_MIN  = 0.20;  // a settlement on this much luxury RESOURCE is a "known source"
+const OUTPOST_FERT_MIN = 0.02; // a quest outpost needs only a toehold — it lives on trade + the mother's supply, not soil
+function luxResOf(s) { const lr = s.localRes || {}; let v = 0; for (const id of SEA_LUX_RES) v += lr[id] || 0; return v; }
+function luxuryGoal(world, A) {
+  if ((A._luxDemand || 0) < LUX_QUEST_MIN || luxResOf(A) >= LUX_SOURCE_MIN) return null;   // not seeking, or makes its own
+  const byId = world._byId;
+  // SATED only if the luxury SUPPLY it can already reach by sea MEETS its demand —
+  // reaching one minor source doesn't sate a hungry market (Europe reached the
+  // Levant yet still craved the Indies). So the questers are the wealthy ports FAR
+  // from luxury — the Atlantic powers — exactly who drove the spice trade.
+  let reachSupply = 0;
+  if (A._seaReach && byId) for (const pid of A._seaReach.keys()) {
+    const p = byId.get(typeof pid === "number" ? pid : +pid);
+    if (p) reachSupply += p._luxSupply || 0;
+  }
+  if (reachSupply >= (A._luxDemand || 0)) return null;   // demand met by reachable sources — no quest
+  const tw = world.tw, ax = A.pos.x, ay = A.pos.y;
+  let goal = null, best = Infinity;
+  for (const p of world.settlements) {
+    if (p.mode !== "settled" || luxResOf(p) < LUX_SOURCE_MIN) continue;
+    if (A._seaReach && A._seaReach.has(p.id)) continue;    // already reachable
+    let dx = Math.abs(p.pos.x - ax); if (dx > tw / 2) dx = tw - dx; const dy = p.pos.y - ay;
+    const d = dx * dx + dy * dy;
+    if (d < best) { best = d; goal = p; }
+  }
+  return goal;
+}
+
 function tryColonize(world, A, cands, prev) {
   if (!cands || cands.length === 0) return;
   const { tw } = world;
-  // Best fertile land first; spacing-check until one is clear.
-  cands.sort((p, q) => q.f - p.f);
+  // DIRECTED toward a distant luxury source (the spice quest, cached in the
+  // eligibility pass) if the port craves one; otherwise opportunistic — best shore.
+  const goal = A._questGoal || null;
   let chosen = null;
-  for (const c of cands) {
-    if (c.f < 0.05) break;
-    if (siteIsClear(world, c.landTi)) { chosen = c; break; }
+  if (goal) {
+    const gx = goal.pos.x, gy = goal.pos.y;
+    const gd = (c) => { const cy = (c.landTi / tw) | 0, cx = c.landTi - cy * tw; let dx = Math.abs(cx - gx); if (dx > tw / 2) dx = tw - dx; const dy = cy - gy; return dx * dx + dy * dy; };
+    cands.sort((p, q) => gd(p) - gd(q));   // the reachable shore NEAREST the prize → march toward it
+    for (const c of cands) { if (c.f < OUTPOST_FERT_MIN) continue; if (siteIsClear(world, c.landTi)) { chosen = c; break; } }
+  } else {
+    cands.sort((p, q) => q.f - p.f);       // best fertile shore first
+    for (const c of cands) { if (c.f < 0.05) break; if (siteIsClear(world, c.landTi)) { chosen = c; break; } }
   }
   if (!chosen) return;
 

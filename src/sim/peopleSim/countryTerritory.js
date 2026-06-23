@@ -25,7 +25,6 @@ import { forEachNear } from "./spatialGrid.js";
 import { grownOwnerAt } from "./countryClaim.js";
 import { ensurePolity } from "./entities.js";
 import { T } from "./tuning.js";
-import { stepToYear } from "../calendar.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
 // claims land out to COUNTRY_REACH_BASE + capital-organisation × COUNTRY_REACH_ORG
@@ -33,7 +32,7 @@ import { stepToYear } from "../calendar.js";
 // stay compact (the early map fragments into small city-states with wilderness
 // between) and high-org empires reach far (consolidation with the era). Beyond
 // it, land is wilderness — which is where stateless frontier hamlets live.
-const COUNTRY_REACH_BASE = 8;
+const COUNTRY_REACH_BASE = 4;   // small base so ORGANISATION dominates reach — a weak chiefdom holds a tiny core, an empire projects far (was 8: even org→0 states sprawled)
 const COUNTRY_REACH_ORG  = 14;   // reach per organisation tech (was 20 — empires were continental too early)
 // ── Frontier-fill: claiming the harsh interior as engineering matures ──
 // For most of history great regions were politically EMPTY — no state claimed
@@ -69,6 +68,18 @@ const CLAIM_SOFT      = 0.12;
 // square of the shortfall, so only genuine wasteland resists hard.
 const CLAIM_FERT_REF  = 0.12;  // fertility below which hostility starts. Deliberately LOW: only TRUE wasteland (deep desert, bare rock, fert→0) resists. Steppe/savanna/dry marginal land claims at plain transport cost — historically that was LOW-resistance land (open, sparse, nobody to fight), how Russia/the khanates/Sahel states got huge. Fertility caps POPULATION, not political reach.
 const CLAIM_HOSTILITY = 3.0;   // ×(1 + this·deficit²) on barren land: 0 = old isotropic blob, up = tighter river/coast ribbons
+// Wet-tropic claim resistance: hot AND wet rainforest (the Congo, the Amazon, New
+// Guinea) was easy to walk through but near-impossible to ADMINISTER — disease,
+// no roads, leached soil, no storable surplus to tax or garrison. So it amplifies
+// CLAIM cost like a soft waste, leaving the deep wet tropics a sparse stateless
+// frontier rather than another wall-to-wall statelet patchwork. Crucially it keys
+// on hot+WET, so the open hot+DRY steppe/savanna (Sahel, the khanates' grass sea)
+// is untouched and still claims cheap. Scaled by the realm's `host` factor, so it
+// fades with logistics tech — pre-modern realms stall at the jungle edge, the
+// industrial/colonial era finally penetrates it.
+const WET_TROPIC_RESIST = 1.0;
+const WET_TROPIC_T0 = 0.78, WET_TROPIC_TSPAN = 0.10;   // temperature ramp (matches the agri wet-tropic penalty)
+const WET_TROPIC_M0 = 0.60, WET_TROPIC_MSPAN = 0.25;   // moisture ramp
 // How far a realm projects a CLAIM also grows with the era. In antiquity a state
 // was an island of territory in a sea of unclaimed land — most of the world
 // belonged to no polity (steppe, forest, desert, the deep interior). The modern
@@ -91,7 +102,7 @@ const LOGI_REACH = 2.2;       // budget ×(1 + logisticsLevel · LOGI_REACH): tr
 // THROUGH the critical range over the industrial era — a sudden huge budget both
 // snaps to 100% overnight AND over-extends realms into collapse. Tuned so the fill
 // climbs across ~1845–1900 (the real Scramble) and tops out near-complete by ~1930.
-const FRONTIER_CLOSE = 80;    // wilderness-claim budget at era 1 = FRONTIER_CLOSE · resScale · era²
+const FRONTIER_CLOSE = 28;    // wilderness-claim budget at era 1 = FRONTIER_CLOSE · resScale · era² (was 80: the modern era colonised ALL the wastes, abolishing terra nullius — eased so undeveloped frontiers keep their unclaimed wilderness)
 const FRONTIER_DOM   = 0.7;   // a DOMINANT realm pushes its wilderness-claim frontier farther (budget × dominance^this):
                               // the great powers partition the open interior into continental empires (Russia, the USA,
                               // the Raj, the Scramble) instead of every realm grabbing an equal slice — bounded by the
@@ -272,7 +283,7 @@ function claimNoise(world) {
 
 // Clean per-country cost-Voronoi → world._countryOwner. Runs on the territory pass.
 export function computeCountryTerritory(world) {
-  const { N, tw, th, elev, fert } = world;
+  const { N, tw, th, elev, fert, temp, moist } = world;
   const resScale = resScaleFor(tw);   // tile budgets are res-relative → keep the same world-fraction at any grid size (see RES_REF_W)
   let co = world._countryOwner;
   if (!co || co.length !== N) co = world._countryOwner = new Int32Array(N);
@@ -286,7 +297,7 @@ export function computeCountryTerritory(world) {
   // pass has run) so the border anchor radiates from the same city the rest
   // of the sim calls the capital; before the first polity pass — or if the
   // capital died between passes — fall back to the most-organised settlement.
-  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map(), eraBoost = new Map(), hostOf = new Map();
+  const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map(), eraBoost = new Map(), hostOf = new Map(), capApt = new Map();
   const politicalCap = new Map();   // countryId → capital settlement id (conquest.js rebuildCountries)
   let maxLogi = 0;                   // world's highest logistics level — gates the industrial frontier-close
   if (world.countries) for (const [cid, c] of world.countries) if (c && c.capitalId != null) politicalCap.set(cid, c.capitalId);
@@ -299,6 +310,7 @@ export function computeCountryTerritory(world) {
     const rank = isPolCap ? Infinity : org;                  // the throne outranks any org score (selection only — budgets use the real org)
     if (!capOrg.has(c) || rank > capOrg.get(c)) {
       capOrg.set(c, rank);
+      capApt.set(c, s._orgApt || 0); // the ruling stock's heritable organisation aptitude
       capPos.set(c, s.pos);          // the capital — the anchor authority radiates from
       knOf.set(c, s.knowledge || {});
       // Empire SIZE is unlocked by TRANSPORT & COMMUNICATION tech, not raw
@@ -345,7 +357,11 @@ export function computeCountryTerritory(world) {
     const emGated = 1 + ((eraBoost.get(c) || 1) - 1) * Math.min(1, mem / LOGI_SIZE_REF);
     const pers = world.personalities && world.personalities.get(c);
     const persMul = pers ? 1 + (pers.expansionism || 0) * CLAIM_PERS_SPAN : 1;
-    budget.set(c, b * emGated * sf * persMul);
+    // Heritable aptitude pays out as extra STATE CAPACITY (boost #2): a realm run
+    // by a high-aptitude stock projects administrative reach further for the same
+    // tech — the institutional edge of the "winter peoples" made territorial.
+    const aptMul = T.ORG_APTITUDE > 0 ? 1 + T.ORG_APT_CAP * (capApt.get(c) || 0) : 1;
+    budget.set(c, b * emGated * sf * persMul * aptMul);
   }
   // Ease each country's reach toward that (size-scaled tech) target so territory
   // grows in gradually instead of snapping to a continental claim in one pass
@@ -451,6 +467,13 @@ export function computeCountryTerritory(world) {
       if (!water && host > 0) {
         const fdef = (CLAIM_FERT_REF - (fert ? fert[ni] : CLAIM_FERT_REF)) / CLAIM_FERT_REF;
         if (fdef > 0) ec *= 1 + host * fdef * fdef;
+        // Wet-tropic resistance: hot+wet rainforest stalls a border (sparse,
+        // stateless deep tropics); hot+dry steppe is untouched.
+        if (temp && moist) {
+          const wt = Math.min(1, Math.max(0, (temp[ni] - WET_TROPIC_T0) / WET_TROPIC_TSPAN))
+                   * Math.min(1, Math.max(0, (moist[ni] - WET_TROPIC_M0) / WET_TROPIC_MSPAN));
+          if (wt > 0) ec *= 1 + host * WET_TROPIC_RESIST * wt;
+        }
       }
       ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);     // organic meander → borders wander instead of cutting straight
       const nd = d + ec * mul[k];
@@ -466,13 +489,14 @@ export function computeCountryTerritory(world) {
   // Engage only above FRONTIER_LOGI, then ramp quadratically to a map-spanning budget
   // by full industrialisation (~1900). Zero through antiquity and the medieval world.
   world._maxLogi = maxLogi;
-  // The closing of the frontier is a calendar event (~1650→1920: the colonial
-  // scramble + the abolition of terra nullius). The calendar is itself tech-pace
-  // calibrated (stepToYear tracks the LEADING civilisation), so gating on the year
-  // gives a tech-driven close that reliably fires by the industrial era — the raw
-  // logistics level plateaus too low to threshold on. era² ⇒ back-loaded (sharp
-  // ~1900), matching how fast the world actually partitioned.
-  const yr = stepToYear(world.step);
+  // The frontier closes as the world INDUSTRIALISES (the colonial scramble + the
+  // abolition of terra nullius). Driven by the leading state's DEVELOPMENT, not the
+  // calendar: world._civYear is the pseudo-year mapped from the most advanced civ's
+  // organisation (index.js), so the close fires when some civ actually reaches the
+  // industrial era — whenever that happens — and never if none does. The raw logistics
+  // level plateaus too low to threshold on. era² ⇒ back-loaded (sharp), matching how
+  // fast the world actually partitioned.
+  const yr = world._civYear ?? -9000;
   const era = Math.max(0, Math.min(1, (yr - FRONTIER_YEAR0) / (FRONTIER_YEAR1 - FRONTIER_YEAR0)));
   const frontierBudget = FRONTIER_CLOSE * resScale * era * era;
   if (_capitalOnly) recolorByCapital(world, co, capPos, knOf, claimCap, frontierBudget);
@@ -507,7 +531,7 @@ function recolorByCapital(world, co, capPos, knOf, claimCap, frontierBudget = 0)
   // and a dominant core ALSO claims its regional hinterland ahead of the industrial close
   // (DOM_HINTERLAND, present in every era; 0 for ordinary realms, which keep open marches).
   const rs = resScaleFor(world.tw);
-  const hYr = stepToYear(world.step);
+  const hYr = world._civYear ?? -9000;   // leading-state development as a pseudo-year (index.js), NOT the wall-clock
   const hinterEra = Math.max(0, Math.min(1, (hYr - HINTER_YEAR0) / (HINTER_YEAR1 - HINTER_YEAR0)));   // 0 in deep antiquity → 1 by the classical age
   const domBudget = new Map();
   if (world.countries) for (const [c] of capPos) {
@@ -799,13 +823,21 @@ export function adoptAndFound(world) {
       }
       // a town/city with a country keeps it (sovereign)
     } else {
-      // A developed frontier settlement — a TOWN (tier ≥ 1) stranded in TRUE WILDERNESS
-      // (beyond EVERY realm's reach, co[ti] < 0, not merely outside the crawled border)
-      // — FOUNDS its own city-state instead of persisting as a stateless economy that
-      // builds roads and trades in no-man's-land. A mere hamlet (tier 0) stays as
-      // population until it develops or a realm's border reaches it — not every hamlet
-      // is a state, but a real town on the frontier is a polity.
-      if (s.countryId < 0 && region < 0 && (s.tier | 0) >= 1 && co[ti] < 0) {
+      // A developed frontier settlement stranded in TRUE WILDERNESS (beyond EVERY realm's
+      // reach, co[ti] < 0, not merely outside the crawled border) — FOUNDS its own city-state
+      // instead of persisting as a stateless economy in no-man's-land. The "real settlement"
+      // bar is a TOWN (tier ≥ 1) OR a TIER-LOCKED CENTRE: a settlement developed enough to be a
+      // town (organisation past the tier-1 statecraft threshold ≈0.60, tierCapForOrg) and grown
+      // past regional-centre size, but pinned at tier 0 BECAUSE it is stateless (tier promotion
+      // needs a state's hierarchy). Without that second clause such a settlement could NEVER
+      // meet the founding bar — statelessness locked its tier, the tier gate blocked founding —
+      // so it stayed nationless and, in the modern carrying-capacity boom, ballooned into a
+      // multi-million-soul NATIONLESS MEGACITY (the pathology this guards against). A mere
+      // hamlet (tier 0, undeveloped or small) still just waits — not every hamlet is a state.
+      const org = (s.knowledge && s.knowledge.organization) || 0;
+      const tierLockedCentre = (s.tier | 0) >= 1 || (org >= 0.60 && (s.people || 0) >= NUCLEATE_SEAT_POP);
+      if (s.countryId < 0 && region < 0 && tierLockedCentre && co[ti] < 0
+          && org >= T.ORG_STATE_MIN) {   // a frontier town founds a state only with the statecraft for it
         s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
         ensurePolity(world, s.id, { how: "frontier", seat: s });
         continue;
@@ -840,6 +872,18 @@ const NUCLEATE_SEAT_POP   = 160;    // the seat must be a real regional centre (
 const NUCLEATE_CLUSTER_POP= 400;    // total stateless population nearby to be a viable state
 const NUCLEATE_CAP_DIST   = 8;      // ...and at least this far from any existing capital
 const NUCLEATE_MAX_PASS   = 4;      // cap new states minted per territory pass (anti-bloom)
+// State-capacity gate (Diamond/Scott): a STATE needs a storable, taxable surplus,
+// not just bodies. Forager-dense but low-surplus land (the wet tropics, leached
+// rainforest, thin steppe) supported plenty of PEOPLE but few STATES — so the
+// founding bar scales UP where the land's carrying capacity is low. A fertile
+// river valley crystallises a state off a few hundred people; the Congo or the
+// outback needs several times that, and so mostly stays peopled-but-stateless —
+// a sparse frontier rather than the uniform statelet-patchwork that filled every
+// habitable tile before. Capacity is read from the seat's fertility (which the
+// alluvial boost already makes high on a fertile-river-in-desert cradle and low
+// in already-wet rainforest).
+const NUCLEATE_CAP_FERT_REF = 0.55;  // fertility at/above which the founding bar is at its floor
+const NUCLEATE_CAP_SPREAD   = 3.0;   // low-capacity land needs up to (1+this)× the population to form a state
 export function nucleateFrontierStates(world) {
   const lever = T.FRONTIER_FOUNDING;          // 0 = off (old behaviour), 1 = default, >1 = easier
   if (!(lever > 0)) return;
@@ -848,9 +892,29 @@ export function nucleateFrontierStates(world) {
   const capD2 = (NUCLEATE_CAP_DIST / Math.sqrt(lever)) ** 2;
   const caps = [];
   if (world.countries) for (const c of world.countries.values()) if (c.capital && c.capital.mode === "settled") caps.push(c.capital.pos);
+  const fert = world.fert;
   const cand = [];
   for (const s of world.settlements) {
-    if (s.mode !== "settled" || s.countryId >= 0 || (s.people || 0) < seatPop) continue;
+    if (s.mode !== "settled" || s.countryId >= 0) continue;
+    // STATECRAFT GATE: a people without the organisation for territorial rule stays
+    // STATELESS — a chiefdom/tribe that holds no bordered land (most of the pre-modern
+    // world). Only once organisation crosses the threshold does a bordered realm
+    // crystallise, so undeveloped frontiers no longer carve the map wall-to-wall.
+    if (((s.knowledge && s.knowledge.organization) || 0) < T.ORG_STATE_MIN) continue;
+    // State-capacity multiplier: low-fertility land needs a far bigger cluster
+    // to crystallise a state (so it stays a sparse stateless frontier).
+    const seatTi = (s.pos.y | 0) * tw + (((s.pos.x | 0) % tw) + tw) % tw;
+    const capNorm = fert ? Math.min(1, Math.max(0, fert[seatTi] / NUCLEATE_CAP_FERT_REF)) : 1;
+    // Broken, compartmented terrain splinters into many small states (the Aegean,
+    // Italy, the Caucasus): ruggedness EASES the founding bar, so a smaller pocket
+    // can hold out as its own polity. The disease-ridden wet tropics RAISE it: the
+    // Congo / West-Africa / Amazon belt stayed segmentary and stateless far longer
+    // than the temperate world or the warm-DRY river cradles (the Nile, Mesopotamia,
+    // which carry no wet-tropic burden), so a centralised state needs a much bigger
+    // population there to coalesce — leaving more land unclaimed (Diamond's thesis).
+    const capMul = (1 + NUCLEATE_CAP_SPREAD * (1 - capNorm)) * (1 + T.STATE_DISEASE * (s._wetTropic || 0))
+                 / (1 + T.FRAGMENT * (s._rugged || 0));
+    if ((s.people || 0) < seatPop * capMul) continue;
     let dCap = Infinity;                        // isolation from existing states' heartlands
     for (const p of caps) { let dx = Math.abs(p.x - s.pos.x); if (dx > halfTw) dx = tw - dx; const dy = p.y - s.pos.y; const d2 = dx * dx + dy * dy; if (d2 < dCap) dCap = d2; }
     if (caps.length && dCap < capD2) continue;
@@ -861,7 +925,7 @@ export function nucleateFrontierStates(world) {
       const op = o.people || 0, sp = s.people || 0;
       if (op > sp || (op === sp && o.id < s.id)) isLeader = false;
     });
-    if (isLeader && cp >= clusterPop) cand.push({ s, cp });
+    if (isLeader && cp >= clusterPop * capMul) cand.push({ s, cp });
   }
   if (!cand.length) return;
   cand.sort((a, b) => b.cp - a.cp);             // most-developed clusters first

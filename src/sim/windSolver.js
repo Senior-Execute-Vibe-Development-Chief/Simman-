@@ -35,6 +35,11 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
   const _gustBoost       = p("gustBoost", 0.45);
   const _curlBoost       = p("curlBoost", 0.0);
   const _itczOffset      = p("itczOffset", 0.033);
+  // Season: 0 = annual mean (default, byte-identical to before — every other preset
+  // and the temperature-advection path rely on this). +1 = boreal summer (July),
+  // -1 = boreal winter (January). Drives the seasonal land-sea thermal contrast that
+  // is the engine of the monsoon, which an annual mean averages away.
+  const _season          = p("season", 0);
 
   // ── Coarse grid (4x downscale) ──
   const WG = 4;
@@ -92,6 +97,20 @@ export function solveWind(W, H, elevation, fbm, params = {}, noiseSeed = 42) {
       // Creates continental thermal lows (Saharan heat low, Asian heat low)
       const subtropFactor = Math.exp(-((absLat * 90 - 25) * (absLat * 90 - 25)) / 600);
       T += lf * _thermalContrast * (0.15 * subtropFactor + 0.03);
+
+      // Seasonal land-sea thermal contrast — the monsoon engine. Land has little heat
+      // capacity, so it swings HOT in its summer (a deep continental thermal low that
+      // sucks moist ocean air onshore) and COLD in its winter (a thermal high that
+      // pushes dry air offshore); the ocean barely changes. Averaged over a year these
+      // cancel, which is exactly why an annual-mean solve has no monsoon. Scaled by
+      // land fraction (continentality) and growing with latitude (bigger continental
+      // swing poleward); the hemisphere sign flips it across the equator so July heats
+      // Asia and cools Australia, January the reverse.
+      if (_season !== 0) {
+        const hemi = latFrac >= 0 ? 1 : -1;
+        const latW = Math.min(1.25, (absLat * 90) / 22); // ~0 at equator → 1 by 22°
+        T += _season * hemi * lf * 0.30 * latW;
+      }
 
       // Lapse rate cooling — affects temperature but NOT pressure directly.
       // In reality, cold high-altitude air is denser → higher surface pressure.

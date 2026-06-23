@@ -110,7 +110,7 @@ export const TECHS = [
   { id:"railroad",      era:5, name:"Railroad",        prereq:["steam_power","steel"],  req:k=>k.metallurgy>=0.92&&k.construction>=0.88,    gate:["metallurgy",0.92],   desc:"Iron rails bind the nation and its markets." },
   { id:"steamship",     era:5, name:"Steamship",       prereq:["steam_power","ocean_nav"], req:k=>k.navigation>=0.92,                       gate:["navigation",0.92],   desc:"Iron-hulled steamers free the sea from the wind." },
   { id:"rifling",       era:5, name:"Rifled Guns",     prereq:["steel","musketry"],     req:k=>k.metallurgy>=0.94,                          gate:["metallurgy",0.94],   desc:"Rifled steel artillery and breech-loading arms." },
-  { id:"fertilizers",   era:5, name:"Fertilizers",     prereq:["crop_rotation","chemistry","the_factory"], req:k=>k.agriculture>=0.92,      gate:["agriculture",0.92],  desc:"Synthetic fertiliser and machines — the farm revolution." },
+  { id:"fertilizers",   era:5, name:"Fertilizers",     prereq:["crop_rotation","chemistry","the_factory"], req:k=>k.agriculture>=0.88,      gate:["agriculture",0.88],  desc:"Synthetic fertiliser and machines — the farm revolution." },
   { id:"democracy",     era:5, name:"Democracy",       prereq:["sci_method","printing","economics"], req:k=>k.organization>=0.90,            gate:["organization",0.90], desc:"Rights, constitutions, parties and the ballot." },
   { id:"telegraph",     era:5, name:"Telegraph",       prereq:["the_factory","sci_method"], req:k=>k.organization>=0.92&&k.metallurgy>=0.90, gate:["organization",0.92], desc:"Messages race the continent down copper wires." },
   { id:"selective_breed",era:5,name:"Selective Breeding",prereq:["crop_rotation","sci_method"], req:k=>k.organization>=0.84,                 gate:["organization",0.84], desc:"Bakewell's stockbreeding and scientific husbandry lift yields." },
@@ -123,8 +123,8 @@ export const TECHS = [
   { id:"mass_prod",     era:6, name:"Mass Production",  prereq:["the_factory","electricity"], req:k=>k.construction>=0.95&&k.organization>=0.94, gate:["construction",0.95], desc:"Electrified assembly lines for the millions." },
   { id:"flight",        era:6, name:"Flight",          prereq:["combustion"],           req:k=>k.construction>=0.96&&k.metallurgy>=0.97,    gate:["construction",0.96], desc:"Heavier-than-air machines take the sky." },
   { id:"computing",     era:6, name:"Computing",       prereq:["electricity","mass_prod"], req:k=>k.organization>=0.97&&k.metallurgy>=0.97, gate:["organization",0.97], desc:"Logic engines begin to automate thought itself." },
-  { id:"mechanized_farm",era:6,name:"Mechanized Farms", prereq:["fertilizers","combustion"], req:k=>k.metallurgy>=0.97,                       gate:["metallurgy",0.97],   desc:"Tractors and combines replace the ox — the diesel harvest." },
-  { id:"green_revolution",era:6,name:"Green Revolution", prereq:["fertilizers","chemistry"], req:k=>k.organization>=0.96,                     gate:["organization",0.96], desc:"High-yield cultivars and agrochemistry — Borlaug's harvest." },
+  { id:"mechanized_farm",era:6,name:"Mechanized Farms", prereq:["fertilizers","combustion"], req:k=>k.metallurgy>=0.94,                       gate:["metallurgy",0.94],   desc:"Tractors and combines replace the ox — the diesel harvest." },
+  { id:"green_revolution",era:6,name:"Green Revolution", prereq:["fertilizers","chemistry"], req:k=>k.organization>=0.94,                     gate:["organization",0.94], desc:"High-yield cultivars and agrochemistry — Borlaug's harvest." },
 ];
 
 export const TECH_IDX = {}; TECHS.forEach((t, i) => { TECH_IDX[t.id] = i; });
@@ -292,9 +292,10 @@ export const TECH_FX = {
   // modern agricultural revolution — gated on INDUSTRY/SCIENCE, not raw farming
   // knowledge, so industrialisation is the historical escape from the ~+91%
   // pre-modern (Malthusian) ceiling. A steel-and-science civ pulls into abundance:
-  // these lift farmYield from ~1.9 (medieval) to ~5 (post-green-revolution) — a
-  // ~2.7× carrying-capacity surge that drives the modern population explosion +
-  // urbanisation, instead of the food cap flatlining the industrial era.
+  // these lift farmYield from ~1.9 (medieval) to ~5 (post-green-revolution). The
+  // modern population BOOM proper is carried by _eraProd (the emergent productivity
+  // index, settlement.js), not by inflating these per-acre yields — keeping farmYield
+  // modest here keeps urban density (which keys off farmYield) historically sane.
   selective_breed:  { farm:0.35 },
   mechanized_farm:  { farm:0.60, build:0.02 },
   green_revolution: { farm:1.30 },

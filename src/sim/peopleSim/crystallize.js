@@ -65,9 +65,7 @@ const MIN_AREA_FERT             = 1.0;    // 5×5 box must have *some* support
 // Edo-shitamachi, the classic dual market settlements) while typical
 // fertility-tier candidates still get pushed apart.
 const HARD_FLOOR                = 4;          // absolutely no settlement closer than this
-const HARD_FLOOR_SQ             = HARD_FLOOR * HARD_FLOOR;
 const SOFT_DIST                 = 10;         // beyond this, the spacing factor is 1 (no penalty) — tighter so villages pack denser
-const SOFT_DIST_SQ              = SOFT_DIST * SOFT_DIST;
 // ── Market-town pull ──
 // A new settlement is more likely to crystallise WITHIN the catchment area
 // of an existing town/city — markets, labour pools, defence, and trade
@@ -91,6 +89,39 @@ const MARKET_PULL_WEIGHT        = 0.4;   // modest pull so clusters form but don
 // hard reject because mother-country colony parties already pick deliberately
 // (the founder doesn't accidentally plant at 4 tiles).
 const MIN_SETT_DIST             = 8;          // daughter-colony spacing floor (grid near-query radius)
+// ── Density ∝ carrying capacity ───────────────────────────────────────
+// Without this, spacing was a fixed distance, so EVERY habitable tile filled
+// to the same settlement density — the low-capacity wet tropics (Congo, the
+// Amazon) and marginal frontier packed as tightly as the fertile Nile, giving
+// a uniform wall-to-wall patchwork. Real settlement density tracked the land's
+// carrying capacity: dense villages in fertile river valleys, a thin sparse
+// scatter across rainforest, steppe and outback. So spacing now SCALES with the
+// tile's own fertility — which already encodes the right contrast, because the
+// alluvial boost lifts a fertile river-in-desert (the Nile, fert→1, stays dense)
+// but barely touches a river in already-wet rainforest (Congo, fert→0.2, goes
+// sparse). capacitySpacingMul: 1 at a lush site (FERT_REF+), up to 1+SPARSE_SPREAD
+// on barren land — which spaces settlements (1+SPARSE_SPREAD)× farther apart, so
+// ~1/(1+SPARSE_SPREAD)² the density.
+const CAP_FERT_REF              = 0.5;   // fertility at/above which a site packs at full density
+const SPARSE_SPREAD             = 1.5;   // barren land spaces up to this many × farther apart
+// Wet-tropic intensity (heat × damp) at a tile — mirrors the disease signal in
+// settlement.js. The disease-ridden wet tropics (Congo, Amazon, New Guinea) had
+// leached soils and endemic disease that held SETTLEMENT density far below what
+// their lush fertility implied, so they end a thin scatter, not a dense web.
+function wetTropicAt(world, ti) {
+  const heat = Math.min(1, Math.max(0, ((world.temp[ti]  ?? 0.5) - 0.68) / 0.18));
+  const damp = Math.min(1, Math.max(0, ((world.moist[ti] ?? 0.5) - 0.35) / 0.35));
+  return heat * damp;
+}
+function capacitySpacingMul(fertTile, wetTropic) {
+  // Disease discounts EFFECTIVE fertility for spacing — geometric spacing is the
+  // one density lever the global productivity anchor (index.js _eraProd) can't
+  // wash out (it scales food, not how far apart villages sit). So this, not the
+  // carrying-capacity drag, is what actually thins the rainforest on the map.
+  const effFert = fertTile * (1 - T.TROPIC_SPARSE * (wetTropic || 0));
+  const capNorm = Math.min(1, Math.max(0, effFert / CAP_FERT_REF));
+  return 1 + SPARSE_SPREAD * (1 - capNorm);
+}
 const KNOWLEDGE_DECAY_SCALE     = 30;
 // Radius for the spatial-grid fast path in inheritKnowledgeAt. Generous enough
 // that any non-isolated spawn finds its nearest neighbour in the grid (so the
@@ -247,8 +278,6 @@ export function maybeCrystallize(world) {
   // fills with fewer, larger localities — each farming a bigger catchment —
   // instead of a dense village scatter.
   const spMul = T.LOCALITY_MODE ? Math.max(1, T.LOCALITY_SPACING || 3) : 1;
-  const hardFloorSq = HARD_FLOOR_SQ * spMul * spMul;
-  const softDistSq  = SOFT_DIST_SQ  * spMul * spMul;
   const hardFloor   = HARD_FLOOR * spMul;
   const softDist    = SOFT_DIST  * spMul;
   for (let i = 0; i < CANDIDATES_PER_SWEEP; i++) {
@@ -293,15 +322,19 @@ export function maybeCrystallize(world) {
       const tierBonus = 1 + (o.tier | 0);
       marketPull += tierBonus * Math.exp(-d / MARKET_RANGE);
     });
-    if (nearestSq < hardFloorSq) continue;         // hard reject — overlap
-    // Linear ramp between HARD_FLOOR and SOFT_DIST on actual distance (not
-    // squared, so it grows steeply near the floor and flattens out near the
-    // soft boundary — matches the "very close = bad, modest distance =
-    // mostly fine" historical pattern). (Thresholds widen in LOCALITY mode.)
+    // Capacity-scaled spacing: a low-fertility site demands more elbow room,
+    // so marginal land (rainforest, steppe, outback) ends up a sparse scatter
+    // while fertile valleys pack tight.
+    const capSp = capacitySpacingMul(f, wetTropicAt(world, ty * world.tw + tx));
+    const hf = hardFloor * capSp, sd = softDist * capSp;
+    if (nearestSq < hf * hf) continue;             // hard reject — overlap
+    // Linear ramp between hf and sd on actual distance (not squared, so it
+    // grows steeply near the floor and flattens out near the soft boundary —
+    // matches the "very close = bad, modest distance = mostly fine" pattern).
     let spacingFactor = 1;
-    if (nearestSq < softDistSq) {
+    if (nearestSq < sd * sd) {
       const d = Math.sqrt(nearestSq);
-      spacingFactor = (d - hardFloor) / (softDist - hardFloor);
+      spacingFactor = (d - hf) / (sd - hf);
     }
     // Market pull: 1.0 at zero pull (frontier), grows with proximity to
     // existing settlements weighted by their tier. Multiplied into the
@@ -675,10 +708,12 @@ function sendSettlers(world, parent) {
     const ti = ty * tw + tx;
     if (!isContinentalLand(world, ti)) continue;
     if (fert[ti] < MIN_FERT) continue;
-    // Spacing check against existing settlements (grid-bounded near query —
-    // any settled neighbour within MIN_SETT_DIST disqualifies the site).
+    // Spacing check against existing settlements (grid-bounded near query — any
+    // settled neighbour within the capacity-scaled spacing disqualifies the
+    // site, so low-fertility frontier spreads its colonies far thinner).
+    const spacing = MIN_SETT_DIST * capacitySpacingMul(fert[ti], wetTropicAt(world, ti));
     let tooClose = false;
-    forEachNear(world, tx, ty, MIN_SETT_DIST, () => { tooClose = true; });
+    forEachNear(world, tx, ty, spacing, () => { tooClose = true; });
     if (tooClose) continue;
     let areaFert = 0;
     for (let dy = -2; dy <= 2; dy++) {
@@ -789,8 +824,13 @@ function maybeUrbanGenesis(world) {
     }
     if (!best) continue;
     // A great trade/defence site lowers the population a region needs to spin off
-    // a town (it lives on commerce or as a stronghold, importing its grain).
-    const need = Math.max(URBAN_MIN_POP, URBANIZE_POP - bestSV * URBAN_SITE_DISCOUNT);
+    // a town (it lives on commerce or as a stronghold, importing its grain). A
+    // country's CAPITAL needs only a viable founding population: a state's seat
+    // founds its capital town as soon as it can (the court then relocates to it,
+    // below), so the realm's seat stops sitting as a farming region.
+    const need = (region._isCapital && T.CAPITAL_COURT_MOVE > 0)
+      ? URBAN_MIN_POP
+      : Math.max(URBAN_MIN_POP, URBANIZE_POP - bestSV * URBAN_SITE_DISCOUNT);
     if (region.people < need) continue;
     if (rng() >= URBAN_CHANCE) continue;
     // Seed the town with a village's worth of the region's people; the region
@@ -810,6 +850,22 @@ function maybeUrbanGenesis(world) {
       cultureId: dominantCulture(region),
     });
     gridAdd(world, town);   // register so same-pass spacing / catchment checks see it
+    // ── Court relocation: a rural seat founds its CAPITAL town ──
+    // If this region is the realm's CAPITAL, the town it founds becomes the new
+    // SEAT: the court's treasury and the capital garrison move there, so at the
+    // next rebuildCountries pass the town — not the rural region — is the realm's
+    // highest-power member (its capital). It then grows into the capital city by
+    // NORMAL, bounded town dynamics (fed up the food hierarchy), while the region
+    // carries on as its rural hinterland. So the capital urbanises WITHOUT a
+    // rural-ceiling exemption — the rural/urban balance and world population hold.
+    if (region._isCapital && T.CAPITAL_COURT_MOVE > 0) {
+      const f = T.CAPITAL_COURT_MOVE;
+      const wMove = (region.wealth || 0) * f;
+      region.wealth = (region.wealth || 0) - wMove; town.wealth = (town.wealth || 0) + wMove;
+      const aMove = (region.army || 0) * f;
+      region.army = (region.army || 0) - aMove; town.army = (town.army || 0) + aMove;
+      region._isCapital = false; town._isCapital = true;   // within-pass hint; rebuildCountries reconfirms by power next pass
+    }
   }
 }
 

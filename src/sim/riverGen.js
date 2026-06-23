@@ -184,12 +184,20 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     inDegree[ny * tw + nx]++;
   }
 
-  // Each land tile contributes runoff = moisture minus evaporation
+  // Each land tile contributes runoff = moisture minus evaporation, PLUS mountain melt.
   const flowAccum = new Float32Array(N);
   for (let ti = 0; ti < N; ti++) {
     if (tElev[ti] > 0 && tTemp[ti] >= 0.12) {
       const evapLoss = Math.max(0, tTemp[ti] - 0.3) * 0.3;
-      flowAccum[ti] = Math.max(0.05, tMoist[ti] - evapLoss);
+      // Mountain runoff: a high massif sheds FAR more water than its (rain-shadowed,
+      // coarse) moisture reading shows — orographic capture on the windward slopes plus
+      // stored snow / glacier melt released downstream. Without it the great EXOTIC
+      // rivers, which rise in dry-looking mountains and cross deserts (the Indus &
+      // Ganges off the Himalaya, the Tigris/Euphrates off the Anatolian–Zagros
+      // highlands, the Colorado off the Rockies, the Amu Darya off the Pamir), get no
+      // headwater and never form. Scales with height above the snow/orographic line.
+      const snowmelt = Math.max(0, tElev[ti] - 0.15) * 1.6;
+      flowAccum[ti] = Math.max(0.05, tMoist[ti] - evapLoss) + snowmelt;
     }
   }
 
@@ -310,7 +318,18 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     // Use the stream threshold from percentile classification
     // Require at least some river flow entering the basin (90th percentile = modest stream)
     const minInflow = accums.length > 0 ? accums[Math.min(accums.length - 1, Math.floor(accums.length * 0.93))] : 1;
-    if (maxInflow >= minInflow) {
+    // ── Evaporation gate ──
+    // A lake in a HOT basin loses far more water to evaporation than a cold one, so it
+    // needs proportionally more river inflow to stay open water rather than drying to a
+    // salt pan / playa. This is why the Sahara, the Australian interior and the Iranian
+    // plateau have dry depressions (Qattara, Lake Eyre, the Dasht-e Kavir) instead of
+    // lakes, even though rivers do trickle in. Cold high-latitude basins (the Siberian /
+    // Canadian lake country) need only the base inflow; a hot desert basin needs ~7×,
+    // which only a genuine through-flowing great river (not local desert runoff) supplies.
+    let basinTemp = 0;
+    for (const bt of candidate.tiles) if (tTemp[bt] > basinTemp) basinTemp = tTemp[bt];
+    const evapMul = 1 + Math.max(0, basinTemp - 0.5) * 18;
+    if (maxInflow >= minInflow * evapMul) {
       // Only keep the deep core of the depression, not shallow margins
       // Tiles must be raised by at least 40% of the max depth
       const depthCutoff = candidate.maxDepth * 0.3;
