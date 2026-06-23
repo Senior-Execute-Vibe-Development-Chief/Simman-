@@ -1540,12 +1540,17 @@ function updateFood(world, s) {
     s._eraProd = world._eraProd || 1;
   } else {
     const agri = (s.knowledge && s.knowledge.agriculture) || 0;
-    let devOrg = 0;   // the settlement's civilisation's development — its country capital's organisation
+    // Density requires being in a DEVELOPED STATE, not just personal organisation: read the
+    // settlement's COUNTRY's development (its capital's organisation). A stateless settlement
+    // gets devOrg 0 → no lift → it stays a sparse tribe (eraProd≈BASE) until it FOUNDS or JOINS
+    // a state. (A capital reads its own org, since it IS its country's capital.) This is what
+    // keeps significant/dense settlements always part of a nation — undeveloped, stateless
+    // ground can't bloom on fertility alone, however rich it is.
+    let devOrg = 0;
     if (s.countryId >= 0 && world.countries) {
       const c = world.countries.get(s.countryId);
       if (c && c.capital && c.capital.knowledge) devOrg = c.capital.knowledge.organization;
     }
-    if (s.knowledge && s.knowledge.organization > devOrg) devOrg = s.knowledge.organization;   // a stateless but organising city counts too
     const devGate = Math.min(1, Math.max(0, (devOrg - T.ERA_PROD_DEV0) / (T.ERA_PROD_DEV1 - T.ERA_PROD_DEV0)));
     // BASE is a uniform floor (climate-NEUTRAL): it carries the ORIGINAL cradle-correct
     // distribution (fertility / rivers / the farming transition — NOT farm-climate), so
