@@ -1109,7 +1109,7 @@ function updateKnowledge(world, s) {
   // invents fast; a starving, isolated hamlet barely moves. Centred so a
   // typical developing settlement learns at ≈ the old flat pace; T.SCI_SPREAD
   // dials the swing (0 = the old uniform rate everywhere).
-  const popF = Math.min(1, popSqrt / 45);                                   // ~2000 souls → 1
+  const popF = Math.min(1, popSqrt / T.SCI_POP_REF);                        // sqrt(people) at which a settlement learns at full speed
   const granF = Math.min(1, (s.food || 0) / (80 + s.tier * 200));          // banked surplus
   const flow = (s._foodSupply || 0) / Math.max(0.01, s._foodDemand || 0);  // 1 = break-even
   const surplusF = Math.max(0, Math.min(1, 0.5 * granF + 0.5 * Math.min(1, Math.max(0, (flow - 1) / 0.4))));
@@ -1628,8 +1628,12 @@ function updateFood(world, s) {
   if (T.LAND_TOOL_GATE > 0) {
     climateOf(world, s);
     const kk = s.knowledge || {};
-    const wa = Math.min(1, s.waterAccess || 0);
-    const riverOpen = Math.min(1, wa / 0.45);   // a river valley is open alluvium — farmable from the start (the cradles sit on rivers)
+    // A river VALLEY is open alluvium — farmable from the first digging stick (the cradles sit
+    // on rivers). RIVER-only (s._riverAcc), NOT waterAccess: a forested COAST is not open ground —
+    // NW Europe's coastal woodland still had to be felled. Keying this on waterAccess (which
+    // counts coast as 0.5) wrongly exempted every coastal forest and gutted the gate, which is
+    // why temperate Europe still bloomed in the bronze age with the gate nominally on.
+    const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
     const moist = s._climMoist ?? 0.5;
     const tiles = s._terrWorkTiles ?? s._terrTiles ?? 1;
     const meanFert = (s._terrFertSum || 0) / Math.max(1, tiles);
