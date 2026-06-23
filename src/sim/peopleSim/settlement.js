@@ -1614,7 +1614,35 @@ function updateFood(world, s) {
   // and because the demographic anchor only refills ABSOLUTE penalties, this
   // RELATIVE one surfaces as a centre-of-gravity shift, not a population crash).
   const soilBurden = T.SOIL_EXHAUST > 0 ? 1 - T.SOIL_EXHAUST * (s._soilFatigue || 0) : 1;
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * soilBurden;
+  // LAND WORKABILITY — you can only farm land your TOOLS can open. Open, light, WATERED
+  // ground (river-valley alluvium) and dry grassland are farmable from the first digging
+  // stick, so the river cradles (Nile, Mesopotamia, Indus, Yellow R.) bloom first. But
+  // fertile land OFF the rivers is FORESTED and HEAVY: the woodland must be CLEARED (metal
+  // axes — bronze, then iron) and the heavy soil broken by the mouldboard PLOUGH before it
+  // yields. So the rich temperate plains (Europe) sit near-empty until a civilisation has
+  // the metallurgy AND the plough — which is why farming radiated OUTWARD from the cradles
+  // as tools spread, not wherever the soil was richest. The land OPENS as the tools arrive.
+  let workable = 1;
+  if (T.LAND_TOOL_GATE > 0) {
+    climateOf(world, s);
+    const kk = s.knowledge || {};
+    const wa = Math.min(1, s.waterAccess || 0);
+    const riverOpen = Math.min(1, wa / 0.45);   // a river valley is open alluvium — farmable from the start (the cradles sit on rivers)
+    const moist = s._climMoist ?? 0.5;
+    const tiles = s._terrWorkTiles ?? s._terrTiles ?? 1;
+    const meanFert = (s._terrFertSum || 0) / Math.max(1, tiles);
+    // FOREST: woodland starts at ~0.40 effective moisture (the sim's own biome line). It must be
+    // CLEARED with metal axes. Dry grassland/steppe (<0.40) and river valleys are open.
+    const forest = Math.max(0, Math.min(1, (moist - 0.38) / 0.20)) * (1 - riverOpen);
+    // HEAVY soil: very rich ground off the rivers (clay plains) — needs the plough; river alluvium is light.
+    const heavy  = Math.max(0, Math.min(1, (meanFert - 0.6) / 0.30)) * (1 - riverOpen);
+    const axes   = Math.min(1, (kk.metallurgy || 0) / T.LAND_CLEAR_METAL);              // bronze→iron clears forest
+    const plough = Math.min(1, Math.max(0, ((kk.agriculture || 0) - 0.45) / 0.40));     // the_plough→heavy_plough breaks heavy soil
+    const locked = Math.min(0.92, Math.max(forest * (1 - axes), heavy * (1 - plough))); // the binding lock holds back this share of the land
+    workable = 1 - T.LAND_TOOL_GATE * locked;
+  }
+  s._workable = workable;
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * soilBurden * workable;
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
