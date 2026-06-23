@@ -823,14 +823,21 @@ export function adoptAndFound(world) {
       }
       // a town/city with a country keeps it (sovereign)
     } else {
-      // A developed frontier settlement — a TOWN (tier ≥ 1) stranded in TRUE WILDERNESS
-      // (beyond EVERY realm's reach, co[ti] < 0, not merely outside the crawled border)
-      // — FOUNDS its own city-state instead of persisting as a stateless economy that
-      // builds roads and trades in no-man's-land. A mere hamlet (tier 0) stays as
-      // population until it develops or a realm's border reaches it — not every hamlet
-      // is a state, but a real town on the frontier is a polity.
-      if (s.countryId < 0 && region < 0 && (s.tier | 0) >= 1 && co[ti] < 0
-          && ((s.knowledge && s.knowledge.organization) || 0) >= T.ORG_STATE_MIN) {   // a frontier town founds a state only with the statecraft for it
+      // A developed frontier settlement stranded in TRUE WILDERNESS (beyond EVERY realm's
+      // reach, co[ti] < 0, not merely outside the crawled border) — FOUNDS its own city-state
+      // instead of persisting as a stateless economy in no-man's-land. The "real settlement"
+      // bar is a TOWN (tier ≥ 1) OR a TIER-LOCKED CENTRE: a settlement developed enough to be a
+      // town (organisation past the tier-1 statecraft threshold ≈0.60, tierCapForOrg) and grown
+      // past regional-centre size, but pinned at tier 0 BECAUSE it is stateless (tier promotion
+      // needs a state's hierarchy). Without that second clause such a settlement could NEVER
+      // meet the founding bar — statelessness locked its tier, the tier gate blocked founding —
+      // so it stayed nationless and, in the modern carrying-capacity boom, ballooned into a
+      // multi-million-soul NATIONLESS MEGACITY (the pathology this guards against). A mere
+      // hamlet (tier 0, undeveloped or small) still just waits — not every hamlet is a state.
+      const org = (s.knowledge && s.knowledge.organization) || 0;
+      const tierLockedCentre = (s.tier | 0) >= 1 || (org >= 0.60 && (s.people || 0) >= NUCLEATE_SEAT_POP);
+      if (s.countryId < 0 && region < 0 && tierLockedCentre && co[ti] < 0
+          && org >= T.ORG_STATE_MIN) {   // a frontier town founds a state only with the statecraft for it
         s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
         ensurePolity(world, s.id, { how: "frontier", seat: s });
         continue;
