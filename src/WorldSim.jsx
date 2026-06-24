@@ -1785,8 +1785,10 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
               if(fld[ti]<0)continue;   // outside any county → leave grey (no per-settlement specks)
               const dc=colById(fld[ti]);if(!dc)continue;
               c1=dc.fs;key=dc.key;
-              const sid2=fldSec?fldSec[ti]:-1;
-              if(sid2>=0){const sc=colById(sid2);if(sc&&sc.key!==key)c2=sc.fs;}
+              // Field tiles render their DOMINANT identity only — clean regions with
+              // soft borders. (No top-two checkerboard: the diffusion makes most
+              // border tiles a 2-mix, and checkerboarding them all reads as pixel
+              // static. The gradient shows as the dominant shifting across the band.)
             }else{                 // field not shipped yet (or first frame) → nearest-settlement flood
               const sid=nearest[ti];if(sid<0)continue;const pr=fillFor(sid);if(!pr)continue;
               c1=pr.c1;c2=pr.c2;key=kcache.get(sid);
