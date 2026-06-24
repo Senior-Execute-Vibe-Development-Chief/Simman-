@@ -79,6 +79,19 @@ console.log(`[smoke] invariant run: ${RUN_STEPS} steps with checks on`);
   console.log(`  info step ${st.step} · ${st.settlements} settlements · pop ${st.totalPeople} · wealth ${st.totalWealth} · ${st.countries} countries · claimed ${(st.landPct * 100).toFixed(1)}% of land`);
 }
 
+console.log(`[smoke] identity field: per-tile mirror tracks the entities`);
+{
+  const { mirrorIdentityField, auditIdentityField } = await import("../src/sim/peopleSim/identityField.js");
+  const world = buildSim({ W, H, seed: SEED, preset: PRESET });
+  stepPeopleSim(world, 3000);
+  mirrorIdentityField(world);                 // exact comparison at a known point
+  const rep = auditIdentityField(world);
+  check(`field covers owned land (${rep.checked} tiles)`, rep.checked > 100, `${rep.checked} checked`);
+  check("field culture matches entities", rep.mismatches.culture === 0, `${rep.mismatches.culture} mismatched`);
+  check("field faith matches entities", rep.mismatches.faith === 0, `${rep.mismatches.faith} mismatched`);
+  check("field language matches entities", rep.mismatches.language === 0, `${rep.mismatches.language} mismatched`);
+}
+
 console.log(`[smoke] save/load: roundtrip identity + functional resume`);
 {
   const { serializeWorld, loadWorld, hashWorld } = await import("../src/sim/persist.js");
