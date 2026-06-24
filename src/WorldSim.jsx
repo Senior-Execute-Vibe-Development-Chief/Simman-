@@ -1760,22 +1760,47 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         if(nf&&(vmCulture||vmFaith||vmLanguage)){   // ancestry reuses the SAME fill but renders in its own block below
           const nearest=nf.nearest;
           const byId=psw._byId;const fcache=new Map(),kcache=new Map();
+          // STAGE 1: colour from the per-tile identity FIELD where it covers a tile
+          // (its territory catchment), and fall back to the settlement-point flood
+          // only for the surrounding halo. The field is the grid substrate that
+          // later stages let diffuse on its own; for now it mirrors the entities,
+          // so owned tiles render identically — this just moves the SOURCE onto the
+          // grid. Used only when the shipped field matches the active lens.
+          const fld=((vmCulture&&psw._fieldLayer==="culture")||(vmFaith&&psw._fieldLayer==="faith")||(vmLanguage&&psw._fieldLayer==="language"))?psw._fieldDom:null;
+          const fldSec=fld?psw._fieldSec:null;
+          // colour for ONE id in the ACTIVE layer (the field carries that layer's id directly)
+          const colForActive=(id)=>id<0?null:(vmFaith?colFor(id,-1,-1):vmLanguage?colFor(-1,id,-1):colFor(-1,-1,id));
+          const idCol=new Map();   // active-layer id → {fs,key} (or null)
+          const colById=(id)=>{if(id<0)return null;let e=idCol.get(id);if(e!==undefined)return e;
+            const col=colForActive(id);e=col?{fs:`hsl(${col.h},${col.s}%,${col.l}%)`,key:col.key}:null;idCol.set(id,e);return e;};
           const fillFor=(sid)=>{let c=fcache.get(sid);if(c!==undefined)return c;
             const st=byId&&byId.get(sid);const col=st?colorOf(st):null;
             c=col?{c1:`hsl(${col.h},${col.s}%,${col.l}%)`,c2:col.key2!=null?`hsl(${col.h2},${col.s2}%,${col.l2}%)`:null}:null;
             fcache.set(sid,c);kcache.set(sid,col?col.key:-1);return c;};
+          const keyOf=new Int32Array(N2);keyOf.fill(-2147483648);   // per-tile group key, for borders
           let lastFs=null;
-          for(let ti=0;ti<N2;ti++){const sid=nearest[ti];if(sid<0)continue;const pr=fillFor(sid);if(!pr)continue;
+          for(let ti=0;ti<N2;ti++){
+            let c1,c2=null,key;
+            if(fld&&fld[ti]>=0){   // field path — colour from the grid
+              const dc=colById(fld[ti]);if(!dc)continue;
+              c1=dc.fs;key=dc.key;
+              const sid2=fldSec?fldSec[ti]:-1;
+              if(sid2>=0){const sc=colById(sid2);if(sc&&sc.key!==key)c2=sc.fs;}
+            }else{                 // halo fallback — nearest-settlement flood
+              const sid=nearest[ti];if(sid<0)continue;const pr=fillFor(sid);if(!pr)continue;
+              c1=pr.c1;c2=pr.c2;key=kcache.get(sid);
+            }
+            keyOf[ti]=key;
             const y=(ti/tw)|0,x=ti-y*tw;const sx=x*TR,sy=dataYtoScreenY(y*TR,H,CH);
-            const fs=(pr.c2&&((x+y)&1))?pr.c2:pr.c1;   // mixed unit → checkerboard top-two colours
+            const fs=(c2&&((x+y)&1))?c2:c1;   // mixed unit → checkerboard top-two colours
             if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
             octx.fillRect(sx,sy,TR+0.7,TR+0.7);}
           // soft borders where the dominant GROUP changes (legible but not segmented)
           octx.strokeStyle="rgba(10,10,14,0.34)";octx.lineWidth=Math.max(0.8,TR*0.5);octx.beginPath();
-          for(let ti=0;ti<N2;ti++){const sid=nearest[ti];if(sid<0)continue;const k=kcache.get(sid);
+          for(let ti=0;ti<N2;ti++){const k=keyOf[ti];if(k===-2147483648)continue;
             const y=(ti/tw)|0,x=ti-y*tw;const sx=x*TR,sy=dataYtoScreenY(y*TR,H,CH);
-            const rsid=nearest[((x+1)%tw)+y*tw];if(rsid>=0&&kcache.get(rsid)!==k){const ex=(x+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
-            if(y<th-1){const dsid=nearest[ti+tw];if(dsid>=0&&kcache.get(dsid)!==k){const by=dataYtoScreenY((y+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
+            const rk=keyOf[((x+1)%tw)+y*tw];if(rk!==-2147483648&&rk!==k){const ex=(x+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+            if(y<th-1){const dk=keyOf[ti+tw];if(dk!==-2147483648&&dk!==k){const by=dataYtoScreenY((y+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
           octx.stroke();
         }
       }
@@ -2158,6 +2183,10 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
   if(snap.countryClaim)psw._countryClaim=snap.countryClaim;  // capital-claim prototype (Capital Claim view); keep last
+  // Per-tile identity field for the active people/faith/language lens. Sent only
+  // on the static cadence and only while an identity lens is up; keyed by the
+  // layer it was built for, so a stale field from a previous lens is ignored.
+  if(snap.fieldDom){psw._fieldDom=snap.fieldDom;psw._fieldSec=snap.fieldSec;psw._fieldLayer=snap.fieldLayer;}
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   if(snap.cultures){const cm=new Map();for(const c of snap.cultures)cm.set(c.id,c);psw.cultures=cm;}
