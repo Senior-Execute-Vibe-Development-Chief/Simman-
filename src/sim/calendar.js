@@ -4,10 +4,10 @@
 // pinning to "real history", no acceleration. Step 0 is START_YEAR; each step
 // adds YEARS_PER_STEP. That's the whole clock.
 //
-//   YEARS_PER_STEP = 0.5  →  1 year every 2 ticks (so a ~22000-step run spans
-//   ~11000 years, 9000 BC → ~2000 AD). Change the two constants to retune the
-//   rate or the epoch; the mapping stays linear either way.
-const START_YEAR     = -9000;   // the year at step 0 (Neolithic cradles, stone tools)
+//   START_YEAR = -3000, YEARS_PER_STEP = 0.5  →  the clock starts at 3000 BC and
+//   adds 1 year every 2 ticks. Change the two constants to retune the epoch or
+//   the rate; the mapping stays linear either way.
+const START_YEAR     = -3000;   // the year at step 0
 const YEARS_PER_STEP = 0.5;     // years added per tick — constant, forever
 
 export function stepToYear(step){ return START_YEAR + step * YEARS_PER_STEP; }
