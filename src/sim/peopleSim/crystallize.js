@@ -528,7 +528,12 @@ function computeResourceScarcity(world) {
 // this bonus speeds up their spawning so the pattern is visible
 // across the sim timescale.
 const FLOW_FOR_BUSY = 50;
-const BUSY_ROAD_MAX_BONUS = 1.5;
+// How strongly a busy trade road pulls new settlement onto it. Kept MODEST: at
+// the old 1.5 it rivalled the fertility score, so towns bunched along the road
+// network (and on the margin just outside an existing cluster's spacing) instead
+// of spreading into open good cropland. Now it's a tiebreaker that nudges a town
+// toward a trade artery, not the dominant siting force.
+const BUSY_ROAD_MAX_BONUS = 0.5;
 function busyRoadBonusFor(world, ti, tx, ty) {
   const rf = world.roadFlow;
   if (!rf) return 0;
