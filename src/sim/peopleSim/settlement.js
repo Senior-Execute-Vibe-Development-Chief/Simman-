@@ -1978,6 +1978,18 @@ function updatePopulation(world, s) {
   } else {
     s._witherSince = undefined;
   }
+  // ── Province split ── a settlement's people = its town's URBAN core + the
+  // surrounding RURAL countryside it administers (its province). The rural share
+  // is high pre-industrially and falls as farm yield frees labour to the towns,
+  // so urbanisation rises over history. This is what makes a big farming province
+  // read as mostly rural rather than mislabelling its whole population "urban".
+  if (T.DISSOLVE_FARMS) {
+    const ruralFrac = Math.max(URBAN_MIN_RURAL, URBAN_BASE_RURAL - URBAN_GAIN * Math.max(0, (s._farmYield || 1) - URBAN_YIELD0));
+    s._ruralPop = s.people * ruralFrac;
+    s._urbanPop = s.people - s._ruralPop;
+  } else {
+    s._ruralPop = 0; s._urbanPop = s.people;
+  }
 }
 
 // ── Tier ───────────────────────────────────────────────────────────
