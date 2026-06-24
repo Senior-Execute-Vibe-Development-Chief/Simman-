@@ -1781,12 +1781,13 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           let lastFs=null;
           for(let ti=0;ti<N2;ti++){
             let c1,c2=null,key;
-            if(fld&&fld[ti]>=0){   // field path — colour from the grid
+            if(fld){              // field present → counties are the ONLY source
+              if(fld[ti]<0)continue;   // outside any county → leave grey (no per-settlement specks)
               const dc=colById(fld[ti]);if(!dc)continue;
               c1=dc.fs;key=dc.key;
               const sid2=fldSec?fldSec[ti]:-1;
               if(sid2>=0){const sc=colById(sid2);if(sc&&sc.key!==key)c2=sc.fs;}
-            }else{                 // halo fallback — nearest-settlement flood
+            }else{                 // field not shipped yet (or first frame) → nearest-settlement flood
               const sid=nearest[ti];if(sid<0)continue;const pr=fillFor(sid);if(!pr)continue;
               c1=pr.c1;c2=pr.c2;key=kcache.get(sid);
             }
