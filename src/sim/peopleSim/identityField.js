@@ -94,13 +94,17 @@ export function mirrorIdentityField(world) {
 // ── Diffusion: the field gains its OWN dynamics ──────────────────────────
 // A seeded stencil that relaxes the per-tile mixture toward its neighbours,
 // while OWNED tiles stay pinned (a strong anchor) to the settlement that lives
-// there. The effect: settled cores keep their identity (the map's bulk reads as
-// before), borders between peoples soften into a GRADIENT band, and identity
-// bleeds a few tiles into the surrounding wilderness and fades — the continuous
-// dialect / faith continua the entity model can't show. Deterministic (no RNG,
-// fixed weights); nothing in the SIM reads the field, so this is render-only and
-// cannot perturb history, determinism, or saves.
-const SELF_W = 3;       // a tile's own inertia
+// there. Two steps, both deterministic (no RNG):
+//   1. FLOOD — a multi-source BFS over land from the owned (mirrored) tiles
+//      fills each landmass continuously: every land tile takes the identity of
+//      the nearest settlement, so peoples read as broad REGIONS (the inhabited
+//      land, not scattered settlement dots). Ocean and landmasses with no
+//      settlement stay empty (grey).
+//   2. BLUR — a few vote-stencil passes soften the flood's hard Voronoi seams
+//      into GRADIENT bands, while the anchor holds settled cores crisp.
+// Nothing in the SIM reads the field, so this is render-only and cannot perturb
+// history, determinism, or saves.
+const SELF_W = 3;       // a tile's own inertia in the blur
 const ANCHOR_W = 12;    // an owned tile's pull toward its settlement's mix (so cores barely move)
 const SEC_MIN_OUT = 51; // floor share (×255) to keep a secondary slot after a pass
 
@@ -110,14 +114,45 @@ const LAYER_ARRS = {
   language: { id: "tileLangId",  shr: "tileLangShr",  mix: "langMix" },
 };
 
+// Step 1: flood the mirrored identity across each landmass. Multi-source BFS
+// from every owned/mirrored tile; an unfilled LAND neighbour copies the mix of
+// the tile that reached it (so each tile ends with its nearest settlement's
+// identity). The field itself is the visited mask (slot 0 ≥ 0 = filled), so no
+// extra allocation beyond the reused queue. Ocean (elev ≤ 0.005) is never
+// entered, so islands without a settlement stay empty.
+function floodFillLand(world, L) {
+  const N = world.N, K = IDENTITY_K, tw = world.tw, th = world.th;
+  const elev = world.elev, idA = world[L.id], shA = world[L.shr];
+  const q = world._idfQueue && world._idfQueue.length === N ? world._idfQueue : (world._idfQueue = new Int32Array(N));
+  let head = 0, tail = 0;
+  for (let ti = 0; ti < N; ti++) if (idA[ti * K] >= 0) q[tail++] = ti;   // seeds = mirrored owned tiles
+  while (head < tail) {
+    const ti = q[head++], base = ti * K;
+    const y = (ti / tw) | 0, x = ti - y * tw;
+    const r = y * tw + (x === tw - 1 ? 0 : x + 1);
+    const l = y * tw + (x === 0 ? tw - 1 : x - 1);
+    const u = y > 0 ? ti - tw : -1;
+    const d = y < th - 1 ? ti + tw : -1;
+    for (let n = 0; n < 4; n++) {
+      const nt = n === 0 ? r : n === 1 ? l : n === 2 ? u : d;
+      if (nt < 0 || idA[nt * K] >= 0 || elev[nt] <= 0.005) continue;   // off-grid / filled / ocean
+      const nb = nt * K;
+      for (let k = 0; k < K; k++) { idA[nb + k] = idA[base + k]; shA[nb + k] = shA[base + k]; }
+      q[tail++] = nt;
+    }
+  }
+}
+
 /**
- * Diffuse ONE identity layer in place over `passes` steps. Render-only: call
- * after mirrorIdentityField for the lens currently in view. Allocation-free
- * (reused scratch buffers + a small per-tile vote accumulator).
+ * Spread ONE identity layer across the land in place: flood the inhabited
+ * landmass, then blur the seams over `passes` steps. Render-only: call after
+ * mirrorIdentityField for the lens currently in view. Allocation-free beyond
+ * reused scratch buffers.
  */
-export function diffuseIdentityField(world, layerName, passes = 5) {
+export function diffuseIdentityField(world, layerName, passes = 4) {
   const L = LAYER_ARRS[layerName];
   if (!L || !world[L.id]) return;
+  floodFillLand(world, L);   // step 1: continuous regions
   const N = world.N, K = IDENTITY_K, tw = world.tw, th = world.th, NK = N * K;
   const owner = world._territoryOwner, byId = world._byId, mixKey = L.mix;
   // anchor = the freshly-mirrored field (read-only this call); ping-pong A↔B
