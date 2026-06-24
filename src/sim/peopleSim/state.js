@@ -112,6 +112,16 @@ function initTerrain(world, w, tCrop) {
         }
         fert[ti] = f;
       } else fert[ti] = bellFert(t, m, e);
+      // FLOODPLAIN moisture: a fertile-but-DRY tile is irrigated alluvium — an arid
+      // river's floodplain (the Nile / Indus / Euphrates), watered by the river, not
+      // by rain. It must read as WET, because the transport-cost core charges a
+      // hot-dry penalty (transport.js) on land with low moisture, and the food model
+      // discounts a tile by transport cost. Without this the cradle OWNS its fertile
+      // valley but every tile reads as costly desert, so foodFalloff collapses the
+      // worked catchment to ~1 tile however fertile the land is. Keying on high crop
+      // value + low base moisture isolates exactly the irrigated valleys (nowhere else
+      // is prime farmland also bone-dry); also greens the biome correctly.
+      if (fert[ti] > 0.85 && moist[ti] < 0.30) moist[ti] = Math.max(moist[ti], 0.45);
     }
   }
 }
