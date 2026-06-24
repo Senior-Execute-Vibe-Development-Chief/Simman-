@@ -2007,7 +2007,12 @@ function updateTier(world, s) {
   // it stays rare as development lifts every city's size, instead of the whole
   // city tier eventually crossing a fixed bar into a metro glut.
   const metroBar = Math.max(TIER_THRESHOLD[3], topU * METRO_REL_FRAC);
-  const bar = (t) => t === 3 ? metroBar : TIER_THRESHOLD[t] * (t === 1 ? sc : 1);
+  // DISSOLVE_FARMS: a settlement bundles its rural hinterland + urban core into one
+  // entity, so they run large — scale the CITY bar with world population too (as the
+  // town bar already does), or every big farming region mislabels as a "city" and
+  // urbanisation reads ~90%. Now "city" means a genuine concentration of its age.
+  const cityScale = T.DISSOLVE_FARMS ? sc : 1;
+  const bar = (t) => t === 3 ? metroBar : TIER_THRESHOLD[t] * (t === 1 ? sc : t === 2 ? cityScale : 1);
   // Farming regions (tier 0) NEVER urbanise in place: a region is a collection
   // of villages, not a proto-city. It instead BIRTHS a separate town within its
   // catchment (urban genesis, crystallize.js). So the tier ladder here moves

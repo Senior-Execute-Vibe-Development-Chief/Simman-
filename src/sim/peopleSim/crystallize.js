@@ -279,7 +279,9 @@ export function maybeCrystallize(world) {
   // LOCALITY model spaces centres farther apart (×LOCALITY_SPACING) so the map
   // fills with fewer, larger localities — each farming a bigger catchment —
   // instead of a dense village scatter.
-  const spMul = (T.LOCALITY_MODE || T.DISSOLVE_FARMS) ? Math.max(1, T.LOCALITY_SPACING || 3) : 1;
+  const spMul = T.LOCALITY_MODE ? Math.max(1, T.LOCALITY_SPACING || 3)
+              : T.DISSOLVE_FARMS ? 2     // tuned: fewer/larger town-regions, but keeping a rural town layer so urbanisation stays realistic (~60%)
+              : 1;
   const hardFloor   = HARD_FLOOR * spMul;
   const softDist    = SOFT_DIST  * spMul;
   const floodTiles = world._floodTiles, nFlood = floodTiles ? floodTiles.length : 0;
