@@ -121,30 +121,29 @@ const LAYER_ARRS = {
 // seeds from every town+ (tier ≥ 1) settlement carrying its identity, and a tile
 // is claimed by the nearest town OF ITS OWN COUNTRY. So every in-border tile
 // belongs to some town (counties tile the realm; sizes vary with town spacing)
-// and a county never crosses a national border. Beyond the borders the spread is
-// bounded to a short frontier hinterland — stateless towns still show land and a
-// realm bleeds a little into the wild — but deep unclaimed land stays empty (grey).
+// and a county never crosses a national border. Identity covers NATION-ED LAND
+// ONLY: the fill stays strictly inside the realm's drawn border — no bleed into
+// the stateless frontier, and stateless settlements (no realm) seed nothing — so
+// uninhabited / unclaimed land stays empty (grey).
 // The field itself is the visited mask (slot 0 ≥ 0 = filled). Ocean is never entered.
 function floodCounties(world, L) {
   const N = world.N, K = IDENTITY_K, tw = world.tw, th = world.th;
   const elev = world.elev, idA = world[L.id], shA = world[L.shr], mixKey = L.mix;
-  const cc = world._countryClaim;   // per-tile country (-1 unclaimed) — the borders the user sees
+  const cc = world._countryOwner || world._countryClaim;   // per-tile realm TERRITORY (-1 = unclaimed); the nation's land, claimed frontier included
   const q = world._idfQueue && world._idfQueue.length === N ? world._idfQueue : (world._idfQueue = new Int32Array(N));
-  const dist = world._idfDist && world._idfDist.length === N ? world._idfDist : (world._idfDist = new Uint16Array(N));
   const claimCC = world._idfClaimCC && world._idfClaimCC.length === N ? world._idfClaimCC : (world._idfClaimCC = new Int32Array(N));
-  const MAX_SPREAD = Math.max(12, Math.round(0.05 * tw));   // a town's hinterland reach (≈ how far its county extends)
   idA.fill(-1); shA.fill(0);
   let head = 0, tail = 0;
   for (const s of world.settlements) {
-    if (s.mode !== "settled" || (s.tier | 0) < 1) continue;        // towns and up manage the land
+    if (s.mode !== "settled" || (s.tier | 0) < 1 || s.countryId < 0) continue;   // national towns manage the land; stateless ones colour nothing
     const mix = s[mixKey]; if (!mix || !mix.length) continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
     if (ti < 0 || ti >= N || elev[ti] <= 0.005 || idA[ti * K] >= 0) continue;
     writeMix(idA, shA, ti * K, mix);
-    claimCC[ti] = s.countryId; dist[ti] = 0; q[tail++] = ti;
+    claimCC[ti] = s.countryId; q[tail++] = ti;
   }
   while (head < tail) {
-    const ti = q[head++], base = ti * K, myCC = claimCC[ti], dd = dist[ti];
+    const ti = q[head++], base = ti * K, myCC = claimCC[ti];
     const y = (ti / tw) | 0, x = ti - y * tw;
     const r = y * tw + (x === tw - 1 ? 0 : x + 1);
     const l = y * tw + (x === 0 ? tw - 1 : x - 1);
@@ -153,14 +152,10 @@ function floodCounties(world, L) {
     for (let n = 0; n < 4; n++) {
       const nt = n === 0 ? r : n === 1 ? l : n === 2 ? u : d;
       if (nt < 0 || idA[nt * K] >= 0 || elev[nt] <= 0.005) continue;   // off-grid / filled / ocean
-      const nbCC = cc ? cc[nt] : -1;
-      let nd;
-      if (myCC >= 0 && nbCC === myCC) nd = dd;                          // same realm → fill it (unbounded)
-      else if (nbCC === -1) { nd = dd + 1; if (nd > MAX_SPREAD) continue; }   // frontier → bounded bleed
-      else continue;                                                    // a different realm → stop at the border
+      if ((cc ? cc[nt] : -1) !== myCC) continue;                       // stay strictly inside this realm's border
       const nb = nt * K;
       for (let k = 0; k < K; k++) { idA[nb + k] = idA[base + k]; shA[nb + k] = shA[base + k]; }
-      claimCC[nt] = myCC; dist[nt] = nd; q[tail++] = nt;
+      claimCC[nt] = myCC; q[tail++] = nt;
     }
   }
 }
@@ -177,6 +172,7 @@ export function diffuseIdentityField(world, layerName, passes = 4) {
   ensureIdentityField(world);   // allocate the field arrays if this is the first call
   floodCounties(world, L);   // step 1: tile each realm into town counties
   const N = world.N, K = IDENTITY_K, tw = world.tw, th = world.th, NK = N * K, elev = world.elev;
+  const cc = world._countryOwner || world._countryClaim;   // realm territory mask — identity stays on nation-ed land
   // anchor = the flooded county field (read-only this call); ping-pong A↔B
   const ancId = world[L.id], ancShr = world[L.shr];
   const A_id = world._idfA_id && world._idfA_id.length === NK ? world._idfA_id : (world._idfA_id = new Int16Array(NK));
@@ -199,10 +195,11 @@ export function diffuseIdentityField(world, layerName, passes = 4) {
   for (let p = 0; p < passes; p++) {
     for (let ti = 0; ti < N; ti++) {
       const base = ti * K;
-      // Identity never spreads onto OCEAN — peoples live on land. (The blur stencil
-      // would otherwise bleed coastal identity out to sea: long coastlines × a few
-      // passes washes colour across whole basins.) Keep ocean tiles empty.
-      if (elev[ti] <= 0.005) { for (let k = 0; k < K; k++) { nxtId[base + k] = -1; nxtShr[base + k] = 0; } continue; }
+      // Identity stays on NATION-ED LAND. The blur would otherwise bleed past the
+      // border (into ocean — long coastlines wash whole basins — and into unclaimed
+      // wilderness). Keep ocean and un-owned tiles empty, so the field tracks the
+      // realm territory only.
+      if (elev[ti] <= 0.005 || (cc && cc[ti] < 0)) { for (let k = 0; k < K; k++) { nxtId[base + k] = -1; nxtShr[base + k] = 0; } continue; }
       m = 0;
       vote(base, SELF_W, curId, curShr);
       const y = (ti / tw) | 0, x = ti - y * tw;

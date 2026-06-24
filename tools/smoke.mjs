@@ -100,29 +100,31 @@ console.log(`[smoke] identity counties: deterministic, border-respecting, town-a
   // identityField only runs for the active lens (worker-set); mimic that headlessly
   world._identityLens = "culture";
   stepPeopleSim(world, 3000);
-  const N = world.N, K = IDENTITY_K, tw = world.tw, owner = world._territoryOwner, cc = world._countryClaim;
-  // baseline: claimed catchment tiles (the old per-settlement coverage)
-  let catchCov = 0; for (let ti = 0; ti < N; ti++) if (owner[ti] >= 0) catchCov++;
+  const N = world.N, K = IDENTITY_K, tw = world.tw, terr = world._countryOwner || world._countryClaim;
   diffuseIdentityField(world, "culture");
   const r1 = world.tileCulId.slice();
   diffuseIdentityField(world, "culture");
   let same = true; for (let i = 0; i < r1.length && same; i++) if (r1[i] !== world.tileCulId[i]) same = false;
   check("counties deterministic", same);
-  // validity + coverage: counties tile far more than the bare catchments
-  let cov = 0, badSum = 0, badOrder = 0;
+  // validity + the core invariant: identity covers NATION-ED LAND ONLY (every
+  // covered tile lies in a realm's territory; ocean stays clear elsewhere)
+  let cov = 0, badSum = 0, badOrder = 0, offNation = 0;
   for (let ti = 0; ti < N; ti++) {
     const b = ti * K; if (world.tileCulId[b] < 0) continue;
     cov++; let s = 0, prev = 256;
     for (let k = 0; k < K; k++) { const id = world.tileCulId[b + k]; if (id < 0) break; const sh = world.tileCulShr[b + k]; s += sh; if (sh > prev) badOrder++; prev = sh; }
     if (Math.abs(s - 255) > 1) badSum++;
+    if (!terr || terr[ti] < 0) offNation++;
   }
   check(`county shares valid (${cov} tiles)`, badSum === 0 && badOrder === 0, `${badSum} bad sums, ${badOrder} mis-ordered`);
-  check(`counties tile the realms (${catchCov}→${cov})`, cov >= catchCov, `catchment ${catchCov}, counties ${cov}`);
-  // town cores: each town+ home tile keeps its OWN dominant people (it seeds its county)
+  check(`identity covers nation-ed land only (${offNation} off-nation)`, cov > 0 && offNation === 0, `${offNation} covered tiles outside any realm`);
+  // town cores: each NATIONAL town's home tile keeps its OWN dominant people (it seeds its county)
   let towns = 0, kept = 0;
   for (const s of world.settlements) {
-    if (s.mode !== "settled" || (s.tier | 0) < 1 || dominantCulture(s) < 0) continue;
-    const ti = (s.pos.y | 0) * tw + (s.pos.x | 0); towns++;
+    if (s.mode !== "settled" || (s.tier | 0) < 1 || s.countryId < 0 || dominantCulture(s) < 0) continue;
+    const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    if (!terr || terr[ti] < 0) continue;   // home tile not yet in its realm's territory (border lag) — field is masked there
+    towns++;
     if (world.tileCulId[ti * K] === dominantCulture(s)) kept++;
   }
   check(`town cores anchored (${towns ? (100 * kept / towns).toFixed(1) : 0}% kept)`, towns === 0 || kept / towns >= 0.85, `${kept}/${towns}`);
