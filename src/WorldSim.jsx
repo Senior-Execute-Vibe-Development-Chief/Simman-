@@ -90,14 +90,16 @@ const BC=[
 [78,118,48],     // 15 Tropical Dry Forest — muted olive-green
 [152,145,135],   // 16 Barren / Alpine — gray-brown rock
 [42,110,38],     // 17 Subtropical Forest — warm humid (SE US, S China, SE Brazil)
-[195,190,180]    // 18 Cold Desert / Polar Desert — pale gray-tan
+[195,190,180],   // 18 Cold Desert / Polar Desert — pale gray-tan
+[34,104,56]      // 19 Floodplain — vivid irrigated alluvium (the Nile/Indus green ribbon through desert)
 ];
 const BN=['Deep Ocean','Shallow Ocean','Coastal Water','Beach','Tundra','Snow / Ice','Taiga',
 'Boreal Forest','Temperate Forest','Temperate Rainforest','Tropical Rainforest','Savanna',
 'Grassland','Desert','Shrubland','Tropical Dry Forest','Barren / Alpine',
-'Subtropical Forest','Cold Desert'];
-function getBiomeD(e,m,t,sl){
+'Subtropical Forest','Cold Desert','Floodplain'];
+function getBiomeD(e,m,t,sl,flood){
   if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
+  if(flood)return 19;   // arid-river floodplain: its own biome, not the savanna its t+m alone reads as
   // Effective moisture: cold regions retain moisture (low evaporation),
   // hot regions lose it to evaporation (Holdridge PET principle).
   const demand=.5+t*.5;
@@ -114,7 +116,7 @@ function getBiomeD(e,m,t,sl){
   if(t<.85)return em>.54?17:em>.36?15:em>.16?11:em>.09?14:13;  // subtropical (wider savanna)
   return em>.56?10:em>.38?15:em>.16?11:em>.09?12:13;           // tropical (wider savanna belt)
 }
-function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
+function getColorD(e,m,t,sl,flood){const c=BC[getBiomeD(e,m,t,sl,flood)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
 
 // ── Live country colouring (Country view) ───────────────────────────
@@ -805,11 +807,12 @@ for(let tx=0;tx<CW;tx++){
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,dataY);
 const si=sy*W+sx;const e=w.elevation[si];
 let m=w.moisture[si];
-if(smoothM){const tti=Math.min(ter.th-1,(sy/RES)|0)*ter.tw+Math.min(ter.tw-1,(sx/RES)|0);m=smoothM[tti];}
+let flood=false;
+if(smoothM){const tti=Math.min(ter.th-1,(sy/RES)|0)*ter.tw+Math.min(ter.tw-1,(sx/RES)|0);m=smoothM[tti];if(ter.tFlood)flood=ter.tFlood[tti]===1;}
 const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
-}else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
+}else{const c=getColorD(e,m,t,sl,flood);r=c[0];g=c[1];b=c[2];}
 // Swamp overlay
 let hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
@@ -2321,7 +2324,8 @@ const elev=w.elevation[i]||0;
 const temp=w.temperature[i]||0;
 const terTi=terRef.current?Math.min(terRef.current.th-1,(wy/RES)|0)*terRef.current.tw+Math.min(terRef.current.tw-1,(wx/RES)|0):-1;
 const moist=terTi>=0&&terRef.current?terRef.current.tMoist[terTi]:(w.moisture[i]||0);
-const biome=getBiomeD(elev,moist,temp,0);
+const isFlood=terTi>=0&&terRef.current&&terRef.current.tFlood?terRef.current.tFlood[terTi]===1:false;
+const biome=getBiomeD(elev,moist,temp,0,isFlood);
 const biomeName=BN[biome]||"Ocean";
 const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
 const tempC=Math.round(temp*100-60);// range: -60°C to +40°C
