@@ -104,8 +104,8 @@ export function mirrorIdentityField(world) {
 //      into GRADIENT bands, while the anchor holds settled cores crisp.
 // Nothing in the SIM reads the field, so this is render-only and cannot perturb
 // history, determinism, or saves.
-const SELF_W = 3;       // a tile's own inertia in the blur
-const ANCHOR_W = 12;    // an owned tile's pull toward its settlement's mix (so cores barely move)
+const SELF_W = 2;       // a tile's own inertia in the blur
+const ANCHOR_W = 4;     // pull toward a tile's own flooded county (keeps counties; blur only softens seams)
 const SEC_MIN_OUT = 51; // floor share (×255) to keep a secondary slot after a pass
 
 const LAYER_ARRS = {
@@ -117,25 +117,34 @@ const LAYER_ARRS = {
 // Step 1: flood the mirrored identity across each landmass. Multi-source BFS
 // from every owned/mirrored tile; an unfilled LAND neighbour copies the mix of
 // the tile that reached it (so each tile ends with its nearest settlement's
-// identity). The field itself is the visited mask (slot 0 ≥ 0 = filled), so no
-// extra allocation beyond the reused queue + a distance buffer. Ocean (elev ≤
-// 0.005) is never entered, and the spread is BOUNDED to a hinterland radius
-// around the claimed catchment, so each town reads as real territory and
-// neighbours merge into regions, while deep wilderness beyond anyone's reach
-// stays empty (grey) instead of being sprayed with the nearest people.
-function floodFillLand(world, L) {
+// identity). Each REALM is partitioned into town COUNTIES: a multi-source BFS
+// seeds from every town+ (tier ≥ 1) settlement carrying its identity, and a tile
+// is claimed by the nearest town OF ITS OWN COUNTRY. So every in-border tile
+// belongs to some town (counties tile the realm; sizes vary with town spacing)
+// and a county never crosses a national border. Beyond the borders the spread is
+// bounded to a short frontier hinterland — stateless towns still show land and a
+// realm bleeds a little into the wild — but deep unclaimed land stays empty (grey).
+// The field itself is the visited mask (slot 0 ≥ 0 = filled). Ocean is never entered.
+function floodCounties(world, L) {
   const N = world.N, K = IDENTITY_K, tw = world.tw, th = world.th;
-  const elev = world.elev, idA = world[L.id], shA = world[L.shr];
+  const elev = world.elev, idA = world[L.id], shA = world[L.shr], mixKey = L.mix;
+  const cc = world._countryClaim;   // per-tile country (-1 unclaimed) — the borders the user sees
   const q = world._idfQueue && world._idfQueue.length === N ? world._idfQueue : (world._idfQueue = new Int32Array(N));
   const dist = world._idfDist && world._idfDist.length === N ? world._idfDist : (world._idfDist = new Uint16Array(N));
-  // hinterland reach beyond the catchment, resolution-invariant (a fraction of
-  // map width): how far a settlement's land extends past the food tiles it works
-  const MAX_SPREAD = Math.max(8, Math.round(0.03 * tw));
+  const claimCC = world._idfClaimCC && world._idfClaimCC.length === N ? world._idfClaimCC : (world._idfClaimCC = new Int32Array(N));
+  const MAX_SPREAD = Math.max(12, Math.round(0.05 * tw));   // a town's hinterland reach (≈ how far its county extends)
+  idA.fill(-1); shA.fill(0);
   let head = 0, tail = 0;
-  for (let ti = 0; ti < N; ti++) if (idA[ti * K] >= 0) { dist[ti] = 0; q[tail++] = ti; }   // seeds = mirrored catchment tiles
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || (s.tier | 0) < 1) continue;        // towns and up manage the land
+    const mix = s[mixKey]; if (!mix || !mix.length) continue;
+    const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    if (ti < 0 || ti >= N || elev[ti] <= 0.005 || idA[ti * K] >= 0) continue;
+    writeMix(idA, shA, ti * K, mix);
+    claimCC[ti] = s.countryId; dist[ti] = 0; q[tail++] = ti;
+  }
   while (head < tail) {
-    const ti = q[head++], base = ti * K, dd = dist[ti] + 1;
-    if (dd > MAX_SPREAD) continue;   // past the hinterland → leave the rest grey
+    const ti = q[head++], base = ti * K, myCC = claimCC[ti], dd = dist[ti];
     const y = (ti / tw) | 0, x = ti - y * tw;
     const r = y * tw + (x === tw - 1 ? 0 : x + 1);
     const l = y * tw + (x === 0 ? tw - 1 : x - 1);
@@ -144,9 +153,14 @@ function floodFillLand(world, L) {
     for (let n = 0; n < 4; n++) {
       const nt = n === 0 ? r : n === 1 ? l : n === 2 ? u : d;
       if (nt < 0 || idA[nt * K] >= 0 || elev[nt] <= 0.005) continue;   // off-grid / filled / ocean
+      const nbCC = cc ? cc[nt] : -1;
+      let nd;
+      if (myCC >= 0 && nbCC === myCC) nd = dd;                          // same realm → fill it (unbounded)
+      else if (nbCC === -1) { nd = dd + 1; if (nd > MAX_SPREAD) continue; }   // frontier → bounded bleed
+      else continue;                                                    // a different realm → stop at the border
       const nb = nt * K;
       for (let k = 0; k < K; k++) { idA[nb + k] = idA[base + k]; shA[nb + k] = shA[base + k]; }
-      dist[nt] = dd; q[tail++] = nt;
+      claimCC[nt] = myCC; dist[nt] = nd; q[tail++] = nt;
     }
   }
 }
@@ -159,11 +173,11 @@ function floodFillLand(world, L) {
  */
 export function diffuseIdentityField(world, layerName, passes = 4) {
   const L = LAYER_ARRS[layerName];
-  if (!L || !world[L.id]) return;
-  floodFillLand(world, L);   // step 1: continuous regions
+  if (!L) return;
+  ensureIdentityField(world);   // allocate the field arrays if this is the first call
+  floodCounties(world, L);   // step 1: tile each realm into town counties
   const N = world.N, K = IDENTITY_K, tw = world.tw, th = world.th, NK = N * K;
-  const owner = world._territoryOwner, byId = world._byId, mixKey = L.mix;
-  // anchor = the freshly-mirrored field (read-only this call); ping-pong A↔B
+  // anchor = the flooded county field (read-only this call); ping-pong A↔B
   const ancId = world[L.id], ancShr = world[L.shr];
   const A_id = world._idfA_id && world._idfA_id.length === NK ? world._idfA_id : (world._idfA_id = new Int16Array(NK));
   const A_shr = world._idfA_shr && world._idfA_shr.length === NK ? world._idfA_shr : (world._idfA_shr = new Uint8Array(NK));
@@ -192,16 +206,14 @@ export function diffuseIdentityField(world, layerName, passes = 4) {
       vote(y * tw + (x === 0 ? tw - 1 : x - 1), 1, curId, curShr);   // left (wrap)
       if (y > 0)      vote(ti - tw, 1, curId, curShr);               // up
       if (y < th - 1) vote(ti + tw, 1, curId, curShr);               // down
-      // anchor: an owned tile is held to the settlement that lives there
-      const oid = owner ? owner[ti] : -1;
-      if (oid >= 0 && byId) {
-        const s = byId.get(oid), mix = s && s.mode === "settled" ? s[mixKey] : null;
-        if (mix) for (let k = 0; k < mix.length && k < K; k++) {
-          const id = mix[k][0], w = ANCHOR_W * mix[k][1];
-          if (id < 0 || w <= 0) continue;
-          let j = 0; for (; j < m; j++) if (accId[j] === id) { accW[j] += w; break; }
-          if (j === m && m < 64) { accId[m] = id; accW[m] = w; m++; }
-        }
+      // anchor: hold the tile toward its OWN flooded county identity, so the
+      // blur softens the seams between counties without eroding them
+      for (let k = 0; k < K; k++) {
+        const id = ancId[base + k]; if (id < 0) break;
+        const w = ANCHOR_W * (ancShr[base + k] / 255);
+        if (w <= 0) continue;
+        let j = 0; for (; j < m; j++) if (accId[j] === id) { accW[j] += w; break; }
+        if (j === m && m < 64) { accId[m] = id; accW[m] = w; m++; }
       }
       if (m === 0) {   // empty everywhere around → tile stays empty
         for (let k = 0; k < K; k++) { nxtId[base + k] = -1; nxtShr[base + k] = 0; }

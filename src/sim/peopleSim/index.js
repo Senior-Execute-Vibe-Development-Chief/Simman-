@@ -33,7 +33,7 @@ import { techState } from "./tech.js";
 import { updateCultures, CULTURE_INTERVAL } from "./cultures.js";
 import { updateFaiths, FAITH_INTERVAL } from "./faiths.js";
 import { updateDynasties, DYNASTY_INTERVAL } from "./dynasties.js";
-import { mirrorIdentityField, diffuseIdentityField } from "./identityField.js";
+import { diffuseIdentityField } from "./identityField.js";
 import { T } from "./tuning.js";
 import { stepToYear } from "../calendar.js";
 
@@ -258,15 +258,12 @@ export function stepPeopleSim(world, n = 1) {
     if (world.step % _ivl(FAITH_INTERVAL) === 0) updateFaiths(world);
     // Thrones: rulers age/marry/die, succession + crises (dynasties.js).
     if (world.step % _ivl(DYNASTY_INTERVAL) === 0) updateDynasties(world);
-    // Per-tile identity field (identityField.js): mirror the moved identity
-    // mixes onto the grid, then — for the lens the user is viewing — let the
-    // field DIFFUSE (Stage 2: continuous dialect/faith gradients, softened
-    // borders, identity bleeding into the near wilderness). Render-only: nothing
-    // in the sim reads the field, so it can't perturb history/determinism/saves.
-    // _identityLens is set by the worker from the active view; unset (headless /
-    // non-identity lens) → the field stays a pure mirror and diffusion is skipped.
+    // Per-tile identity field (identityField.js): for the lens the user is
+    // viewing, partition each realm into town COUNTIES and blur the seams into
+    // gradients (Stage 2). Render-only: nothing in the sim reads the field, so it
+    // can't perturb history/determinism/saves. _identityLens is set by the worker
+    // from the active view; unset (headless / non-identity lens) → skipped.
     if (world._identityLens && (world.step === 1 || world.step % _ivl(IDENTITY_MIRROR_INTERVAL) === 0)) {
-      mirrorIdentityField(world);
       diffuseIdentityField(world, world._identityLens);
     }
     // Country chronicle: the slow-drift events (a discovery, a growth/wealth

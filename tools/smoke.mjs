@@ -92,24 +92,23 @@ console.log(`[smoke] identity field: per-tile mirror tracks the entities`);
   check("field language matches entities", rep.mismatches.language === 0, `${rep.mismatches.language} mismatched`);
 }
 
-console.log(`[smoke] identity diffusion: deterministic, anchored, spreads`);
+console.log(`[smoke] identity counties: deterministic, border-respecting, town-anchored`);
 {
-  const { mirrorIdentityField, diffuseIdentityField, IDENTITY_K } = await import("../src/sim/peopleSim/identityField.js");
+  const { diffuseIdentityField, IDENTITY_K } = await import("../src/sim/peopleSim/identityField.js");
   const { dominantCulture } = await import("../src/sim/peopleSim/cultures.js");
   const world = buildSim({ W, H, seed: SEED, preset: PRESET });
+  // identityField only runs for the active lens (worker-set); mimic that headlessly
+  world._identityLens = "culture";
   stepPeopleSim(world, 3000);
-  const N = world.N, K = IDENTITY_K, owner = world._territoryOwner, byId = world._byId;
-  // coverage of the pure mirror (owned land only)
-  mirrorIdentityField(world);
-  let mirrorCov = 0; for (let ti = 0; ti < N; ti++) if (world.tileCulId[ti * K] >= 0) mirrorCov++;
+  const N = world.N, K = IDENTITY_K, tw = world.tw, owner = world._territoryOwner, cc = world._countryClaim;
+  // baseline: claimed catchment tiles (the old per-settlement coverage)
+  let catchCov = 0; for (let ti = 0; ti < N; ti++) if (owner[ti] >= 0) catchCov++;
   diffuseIdentityField(world, "culture");
-  const r1 = world.tileCulId.slice();   // result of run 1
-  // determinism: re-mirror + re-diffuse must reproduce byte-for-byte
-  mirrorIdentityField(world);
+  const r1 = world.tileCulId.slice();
   diffuseIdentityField(world, "culture");
   let same = true; for (let i = 0; i < r1.length && same; i++) if (r1[i] !== world.tileCulId[i]) same = false;
-  check("diffusion deterministic", same);
-  // validity: every covered tile's shares sum to 255 (dominant-first)
+  check("counties deterministic", same);
+  // validity + coverage: counties tile far more than the bare catchments
   let cov = 0, badSum = 0, badOrder = 0;
   for (let ti = 0; ti < N; ti++) {
     const b = ti * K; if (world.tileCulId[b] < 0) continue;
@@ -117,15 +116,16 @@ console.log(`[smoke] identity diffusion: deterministic, anchored, spreads`);
     for (let k = 0; k < K; k++) { const id = world.tileCulId[b + k]; if (id < 0) break; const sh = world.tileCulShr[b + k]; s += sh; if (sh > prev) badOrder++; prev = sh; }
     if (Math.abs(s - 255) > 1) badSum++;
   }
-  check(`diffusion shares valid (${cov} tiles)`, badSum === 0 && badOrder === 0, `${badSum} bad sums, ${badOrder} mis-ordered`);
-  check(`diffusion spreads beyond catchments (${mirrorCov}→${cov})`, cov >= mirrorCov, `mirror ${mirrorCov}, diffused ${cov}`);
-  // anchor: owned tiles overwhelmingly keep their settlement's dominant people
-  let owned = 0, kept = 0;
-  for (let ti = 0; ti < N; ti++) {
-    const oid = owner[ti]; if (oid < 0) continue; const st = byId.get(oid); if (!st || st.mode !== "settled") continue;
-    owned++; if (world.tileCulId[ti * K] === dominantCulture(st)) kept++;
+  check(`county shares valid (${cov} tiles)`, badSum === 0 && badOrder === 0, `${badSum} bad sums, ${badOrder} mis-ordered`);
+  check(`counties tile the realms (${catchCov}→${cov})`, cov >= catchCov, `catchment ${catchCov}, counties ${cov}`);
+  // town cores: each town+ home tile keeps its OWN dominant people (it seeds its county)
+  let towns = 0, kept = 0;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || (s.tier | 0) < 1 || dominantCulture(s) < 0) continue;
+    const ti = (s.pos.y | 0) * tw + (s.pos.x | 0); towns++;
+    if (world.tileCulId[ti * K] === dominantCulture(s)) kept++;
   }
-  check(`diffusion anchors owned cores (${owned ? (100 * kept / owned).toFixed(1) : 0}% kept)`, owned === 0 || kept / owned >= 0.85, `${kept}/${owned}`);
+  check(`town cores anchored (${towns ? (100 * kept / towns).toFixed(1) : 0}% kept)`, towns === 0 || kept / towns >= 0.85, `${kept}/${towns}`);
 }
 
 console.log(`[smoke] save/load: roundtrip identity + functional resume`);
