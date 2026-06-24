@@ -118,16 +118,24 @@ const LAYER_ARRS = {
 // from every owned/mirrored tile; an unfilled LAND neighbour copies the mix of
 // the tile that reached it (so each tile ends with its nearest settlement's
 // identity). The field itself is the visited mask (slot 0 ≥ 0 = filled), so no
-// extra allocation beyond the reused queue. Ocean (elev ≤ 0.005) is never
-// entered, so islands without a settlement stay empty.
+// extra allocation beyond the reused queue + a distance buffer. Ocean (elev ≤
+// 0.005) is never entered, and the spread is BOUNDED to a hinterland radius
+// around the claimed catchment, so each town reads as real territory and
+// neighbours merge into regions, while deep wilderness beyond anyone's reach
+// stays empty (grey) instead of being sprayed with the nearest people.
 function floodFillLand(world, L) {
   const N = world.N, K = IDENTITY_K, tw = world.tw, th = world.th;
   const elev = world.elev, idA = world[L.id], shA = world[L.shr];
   const q = world._idfQueue && world._idfQueue.length === N ? world._idfQueue : (world._idfQueue = new Int32Array(N));
+  const dist = world._idfDist && world._idfDist.length === N ? world._idfDist : (world._idfDist = new Uint16Array(N));
+  // hinterland reach beyond the catchment, resolution-invariant (a fraction of
+  // map width): how far a settlement's land extends past the food tiles it works
+  const MAX_SPREAD = Math.max(8, Math.round(0.03 * tw));
   let head = 0, tail = 0;
-  for (let ti = 0; ti < N; ti++) if (idA[ti * K] >= 0) q[tail++] = ti;   // seeds = mirrored owned tiles
+  for (let ti = 0; ti < N; ti++) if (idA[ti * K] >= 0) { dist[ti] = 0; q[tail++] = ti; }   // seeds = mirrored catchment tiles
   while (head < tail) {
-    const ti = q[head++], base = ti * K;
+    const ti = q[head++], base = ti * K, dd = dist[ti] + 1;
+    if (dd > MAX_SPREAD) continue;   // past the hinterland → leave the rest grey
     const y = (ti / tw) | 0, x = ti - y * tw;
     const r = y * tw + (x === tw - 1 ? 0 : x + 1);
     const l = y * tw + (x === 0 ? tw - 1 : x - 1);
@@ -138,7 +146,7 @@ function floodFillLand(world, L) {
       if (nt < 0 || idA[nt * K] >= 0 || elev[nt] <= 0.005) continue;   // off-grid / filled / ocean
       const nb = nt * K;
       for (let k = 0; k < K; k++) { idA[nb + k] = idA[base + k]; shA[nb + k] = shA[base + k]; }
-      q[tail++] = nt;
+      dist[nt] = dd; q[tail++] = nt;
     }
   }
 }
