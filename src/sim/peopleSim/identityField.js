@@ -63,35 +63,131 @@ function writeMix(idArr, shrArr, base, mix) {
 
 /**
  * Mirror every settlement's identity mixtures onto the tiles it owns.
- * Tiles with no owner (or owned by a settlement with an empty mix) are reset
- * to empty. O(N·K) — the shape of the existing per-tile solvers — so it runs
- * on an interval, not per tick.
+ * The field is cleared first, so unowned tiles end fully empty (all K slots
+ * −1) — diffuseIdentityField reads the whole field, so a stale lower slot
+ * would corrupt the spread. O(N·K) — the shape of the existing per-tile
+ * solvers — so it runs on an interval, not per tick.
  */
 export function mirrorIdentityField(world) {
   ensureIdentityField(world);
   const owner = world._territoryOwner;
-  const N = world.N, K = IDENTITY_K;
+  const K = IDENTITY_K;
+  // Start clean every pass: -1 ids, 0 shares. Cheap typed-array fills.
+  for (const L of LAYERS) { world[L.id].fill(-1); world[L.shr].fill(0); }
+  if (!owner) return;   // no territory yet → empty field
+  const N = world.N, byId = world._byId;
   const culId = world.tileCulId, culShr = world.tileCulShr;
   const faiId = world.tileFaithId, faiShr = world.tileFaithShr;
   const lanId = world.tileLangId, lanShr = world.tileLangShr;
-  // No territory computed yet → leave the (empty) field as-is.
-  if (!owner) return;
-  const byId = world._byId;
   for (let ti = 0; ti < N; ti++) {
-    const base = ti * K;
     const oid = owner[ti];
-    const s = oid >= 0 && byId ? byId.get(oid) : null;
-    if (!s || s.mode !== "settled") {
-      // unowned / dead — clear slot 0 (cheap sentinel; the rest is stale but
-      // unread, and a re-mirror with an owner overwrites all K slots anyway)
-      culId[base] = -1; faiId[base] = -1; lanId[base] = -1;
-      culShr[base] = 0; faiShr[base] = 0; lanShr[base] = 0;
-      continue;
-    }
+    if (oid < 0) continue;
+    const s = byId ? byId.get(oid) : null;
+    if (!s || s.mode !== "settled") continue;
+    const base = ti * K;
     writeMix(culId, culShr, base, s.culMix);
     writeMix(faiId, faiShr, base, s.faithMix);
     writeMix(lanId, lanShr, base, s.langMix);
   }
+}
+
+// ── Diffusion: the field gains its OWN dynamics ──────────────────────────
+// A seeded stencil that relaxes the per-tile mixture toward its neighbours,
+// while OWNED tiles stay pinned (a strong anchor) to the settlement that lives
+// there. The effect: settled cores keep their identity (the map's bulk reads as
+// before), borders between peoples soften into a GRADIENT band, and identity
+// bleeds a few tiles into the surrounding wilderness and fades — the continuous
+// dialect / faith continua the entity model can't show. Deterministic (no RNG,
+// fixed weights); nothing in the SIM reads the field, so this is render-only and
+// cannot perturb history, determinism, or saves.
+const SELF_W = 3;       // a tile's own inertia
+const ANCHOR_W = 12;    // an owned tile's pull toward its settlement's mix (so cores barely move)
+const SEC_MIN_OUT = 51; // floor share (×255) to keep a secondary slot after a pass
+
+const LAYER_ARRS = {
+  culture:  { id: "tileCulId",   shr: "tileCulShr",   mix: "culMix" },
+  faith:    { id: "tileFaithId", shr: "tileFaithShr", mix: "faithMix" },
+  language: { id: "tileLangId",  shr: "tileLangShr",  mix: "langMix" },
+};
+
+/**
+ * Diffuse ONE identity layer in place over `passes` steps. Render-only: call
+ * after mirrorIdentityField for the lens currently in view. Allocation-free
+ * (reused scratch buffers + a small per-tile vote accumulator).
+ */
+export function diffuseIdentityField(world, layerName, passes = 5) {
+  const L = LAYER_ARRS[layerName];
+  if (!L || !world[L.id]) return;
+  const N = world.N, K = IDENTITY_K, tw = world.tw, th = world.th, NK = N * K;
+  const owner = world._territoryOwner, byId = world._byId, mixKey = L.mix;
+  // anchor = the freshly-mirrored field (read-only this call); ping-pong A↔B
+  const ancId = world[L.id], ancShr = world[L.shr];
+  const A_id = world._idfA_id && world._idfA_id.length === NK ? world._idfA_id : (world._idfA_id = new Int16Array(NK));
+  const A_shr = world._idfA_shr && world._idfA_shr.length === NK ? world._idfA_shr : (world._idfA_shr = new Uint8Array(NK));
+  const B_id = world._idfB_id && world._idfB_id.length === NK ? world._idfB_id : (world._idfB_id = new Int16Array(NK));
+  const B_shr = world._idfB_shr && world._idfB_shr.length === NK ? world._idfB_shr : (world._idfB_shr = new Uint8Array(NK));
+  A_id.set(ancId); A_shr.set(ancShr);
+  let curId = A_id, curShr = A_shr, nxtId = B_id, nxtShr = B_shr;
+  const accId = new Int32Array(64), accW = new Float64Array(64);   // per-tile vote scratch
+  let m = 0;   // live vote count for the tile in hand (shared with vote())
+  const vote = (b, weight, idArr, shrArr) => {
+    for (let k = 0; k < K; k++) {
+      const id = idArr[b + k]; if (id < 0) break;
+      const w = weight * (shrArr[b + k] / 255);
+      if (w <= 0) continue;
+      let j = 0; for (; j < m; j++) if (accId[j] === id) { accW[j] += w; break; }
+      if (j === m && m < 64) { accId[m] = id; accW[m] = w; m++; }
+    }
+  };
+  for (let p = 0; p < passes; p++) {
+    for (let ti = 0; ti < N; ti++) {
+      const base = ti * K;
+      m = 0;
+      vote(base, SELF_W, curId, curShr);
+      const y = (ti / tw) | 0, x = ti - y * tw;
+      vote(y * tw + (x === tw - 1 ? 0 : x + 1), 1, curId, curShr);   // right (wrap)
+      vote(y * tw + (x === 0 ? tw - 1 : x - 1), 1, curId, curShr);   // left (wrap)
+      if (y > 0)      vote(ti - tw, 1, curId, curShr);               // up
+      if (y < th - 1) vote(ti + tw, 1, curId, curShr);               // down
+      // anchor: an owned tile is held to the settlement that lives there
+      const oid = owner ? owner[ti] : -1;
+      if (oid >= 0 && byId) {
+        const s = byId.get(oid), mix = s && s.mode === "settled" ? s[mixKey] : null;
+        if (mix) for (let k = 0; k < mix.length && k < K; k++) {
+          const id = mix[k][0], w = ANCHOR_W * mix[k][1];
+          if (id < 0 || w <= 0) continue;
+          let j = 0; for (; j < m; j++) if (accId[j] === id) { accW[j] += w; break; }
+          if (j === m && m < 64) { accId[m] = id; accW[m] = w; m++; }
+        }
+      }
+      if (m === 0) {   // empty everywhere around → tile stays empty
+        for (let k = 0; k < K; k++) { nxtId[base + k] = -1; nxtShr[base + k] = 0; }
+        continue;
+      }
+      // top-K by weight (partial selection sort), then quantise to 255
+      const lim = m < K ? m : K;
+      let total = 0;
+      for (let a = 0; a < lim; a++) {
+        let bi = a; for (let b2 = a + 1; b2 < m; b2++) if (accW[b2] > accW[bi]) bi = b2;
+        if (bi !== a) { const it = accId[a]; accId[a] = accId[bi]; accId[bi] = it; const wt = accW[a]; accW[a] = accW[bi]; accW[bi] = wt; }
+        total += accW[a];
+      }
+      if (total <= 0) { for (let k = 0; k < K; k++) { nxtId[base + k] = -1; nxtShr[base + k] = 0; } continue; }
+      let wrote = 0, accShr = 0;
+      for (let k = 0; k < lim; k++) {
+        const q = Math.round((accW[k] / total) * 255);
+        if (k > 0 && q < SEC_MIN_OUT) break;   // drop negligible tail → consolidated tiles read single-identity
+        nxtId[base + wrote] = accId[k]; nxtShr[base + wrote] = q; accShr += q; wrote++;
+      }
+      // fold the rounding remainder into the dominant (clamped to a byte); clear unused slots
+      if (wrote > 0) { const dom = nxtShr[base] + (255 - accShr); nxtShr[base] = dom < 0 ? 0 : dom > 255 ? 255 : dom; }
+      for (let k = wrote; k < K; k++) { nxtId[base + k] = -1; nxtShr[base + k] = 0; }
+    }
+    const t1 = curId; curId = nxtId; nxtId = t1;
+    const t2 = curShr; curShr = nxtShr; nxtShr = t2;
+  }
+  // land the result back in the field arrays the renderer ships
+  if (curId !== ancId) { ancId.set(curId); ancShr.set(curShr); }
 }
 
 /**

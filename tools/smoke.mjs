@@ -92,6 +92,42 @@ console.log(`[smoke] identity field: per-tile mirror tracks the entities`);
   check("field language matches entities", rep.mismatches.language === 0, `${rep.mismatches.language} mismatched`);
 }
 
+console.log(`[smoke] identity diffusion: deterministic, anchored, spreads`);
+{
+  const { mirrorIdentityField, diffuseIdentityField, IDENTITY_K } = await import("../src/sim/peopleSim/identityField.js");
+  const { dominantCulture } = await import("../src/sim/peopleSim/cultures.js");
+  const world = buildSim({ W, H, seed: SEED, preset: PRESET });
+  stepPeopleSim(world, 3000);
+  const N = world.N, K = IDENTITY_K, owner = world._territoryOwner, byId = world._byId;
+  // coverage of the pure mirror (owned land only)
+  mirrorIdentityField(world);
+  let mirrorCov = 0; for (let ti = 0; ti < N; ti++) if (world.tileCulId[ti * K] >= 0) mirrorCov++;
+  diffuseIdentityField(world, "culture");
+  const r1 = world.tileCulId.slice();   // result of run 1
+  // determinism: re-mirror + re-diffuse must reproduce byte-for-byte
+  mirrorIdentityField(world);
+  diffuseIdentityField(world, "culture");
+  let same = true; for (let i = 0; i < r1.length && same; i++) if (r1[i] !== world.tileCulId[i]) same = false;
+  check("diffusion deterministic", same);
+  // validity: every covered tile's shares sum to 255 (dominant-first)
+  let cov = 0, badSum = 0, badOrder = 0;
+  for (let ti = 0; ti < N; ti++) {
+    const b = ti * K; if (world.tileCulId[b] < 0) continue;
+    cov++; let s = 0, prev = 256;
+    for (let k = 0; k < K; k++) { const id = world.tileCulId[b + k]; if (id < 0) break; const sh = world.tileCulShr[b + k]; s += sh; if (sh > prev) badOrder++; prev = sh; }
+    if (Math.abs(s - 255) > 1) badSum++;
+  }
+  check(`diffusion shares valid (${cov} tiles)`, badSum === 0 && badOrder === 0, `${badSum} bad sums, ${badOrder} mis-ordered`);
+  check(`diffusion spreads beyond catchments (${mirrorCov}→${cov})`, cov >= mirrorCov, `mirror ${mirrorCov}, diffused ${cov}`);
+  // anchor: owned tiles overwhelmingly keep their settlement's dominant people
+  let owned = 0, kept = 0;
+  for (let ti = 0; ti < N; ti++) {
+    const oid = owner[ti]; if (oid < 0) continue; const st = byId.get(oid); if (!st || st.mode !== "settled") continue;
+    owned++; if (world.tileCulId[ti * K] === dominantCulture(st)) kept++;
+  }
+  check(`diffusion anchors owned cores (${owned ? (100 * kept / owned).toFixed(1) : 0}% kept)`, owned === 0 || kept / owned >= 0.85, `${kept}/${owned}`);
+}
+
 console.log(`[smoke] save/load: roundtrip identity + functional resume`);
 {
   const { serializeWorld, loadWorld, hashWorld } = await import("../src/sim/persist.js");
