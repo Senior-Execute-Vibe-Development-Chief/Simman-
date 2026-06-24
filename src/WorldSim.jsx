@@ -269,6 +269,18 @@ const LENSES=[
   ...(DEV?[{id:"dev",label:"Dev",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
 ];
 
+// Country-editor field lists + a compact slider row.
+const ED_KFIELDS=[["agriculture","Agriculture"],["construction","Construction"],["organization","Organization"],["metallurgy","Metallurgy"],["navigation","Navigation"],["mobility","Mobility"]];
+const ED_PFIELDS=[["aggression","Aggression"],["commerce","Commerce"],["expansionism","Expansionism"]];
+function EdRow({label,value,min,max,step,onChange,fmt}){
+  return <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"0 6px",alignItems:"center",marginBottom:2}}>
+    <span className="au-fade" style={{fontSize:10}}>{label}</span>
+    <span style={{fontSize:10,fontVariantNumeric:"tabular-nums"}}>{fmt(value)}</span>
+    <input type="range" min={min} max={max} step={step} value={value}
+      onChange={e=>onChange(+e.target.value)} style={{gridColumn:"1 / 3",width:"100%",height:13}}/>
+  </div>;
+}
+
 const CHRON_COL={founding:"#1f7a55",discovery:"#2f6fa8",growth:"#2f7d3f",wealth:"#9c7414",
   war:"#b23a28",conquest:"#b15212",annex:"#8a6420",secession:"#7a44b0",loss:"#a04a28",
   plague:"#8a3aa8",famine:"#9c5a1e",end:"#5a4a32"};
@@ -549,6 +561,16 @@ const[panelTab,setPanelTab]=useState("world");   // World Panel tab: world|realm
 const[newWorldOpen,setNewWorldOpen]=useState(false);
 const[menuOpen,setMenuOpen]=useState(false);
 const[realmSel,setRealmSel]=useState(-1);   // realm inspected in the Realms tab
+// ── Country editor: arm placement, then click the map to drop a seed capital
+// with the chosen tech/knowledge/personality and watch what it grows into. ──
+const[editorOpen,setEditorOpen]=useState(false);   // panel visible
+const[editorArmed,setEditorArmed]=useState(false); // next map click PLACES instead of selects
+const[edParams,setEdParams]=useState({tier:2,people:500,
+  knowledge:{agriculture:0.6,construction:0.3,organization:0.4,metallurgy:0.3,navigation:0.1,mobility:0.2},
+  personality:{aggression:0,commerce:0,expansionism:0}});
+const editorArmedRef=useRef(false);const edParamsRef=useRef(edParams);
+useEffect(()=>{editorArmedRef.current=editorArmed;},[editorArmed]);
+useEffect(()=>{edParamsRef.current=edParams;},[edParams]);
 // Ref mirror so draw() (memoized) sees the current selection without
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
@@ -2413,6 +2435,13 @@ const ttx=Math.min(ter.tw-1,(wx/RES)|0),tty=Math.min(ter.th-1,(wy/RES)|0);
 const psw=peopleRef.current;
 if(psw){
   const psTx=ttx/psw.tileRes,psTy=tty/psw.tileRes;
+  // Country editor: an armed click DROPS a seed capital here instead of selecting.
+  if(editorArmedRef.current&&simWorkerRef.current){
+    const p=edParamsRef.current;
+    simWorkerRef.current.postMessage({type:'editor.placeCountry',x:psTx,y:psTy,
+      tier:p.tier,people:p.people,knowledge:p.knowledge,personality:p.personality});
+    return;
+  }
   let best=null,bestD2=Infinity;
   for(const s of psw.settlements){
     if(!s||s.mode!=="settled")continue;
@@ -3460,6 +3489,8 @@ return(
     style={{fontSize:12,padding:"3px 8px"}} title="3D globe">🌍</button>
   <button onClick={()=>setNewWorldOpen(true)} className="au-btn au-flat" style={{fontSize:12,padding:"3px 8px"}}
     title="New world — presets, seed, import">⊕ World</button>
+  <button onClick={()=>{setEditorOpen(v=>!v);if(editorArmed)setEditorArmed(false);}} className={"au-btn au-flat"+(editorOpen?" au-active":"")}
+    style={{fontSize:12,padding:"3px 8px"}} title="Country editor — place a seed capital with chosen tech & character">🏛 Editor</button>
   <button onClick={()=>setMenuOpen(v=>!v)} className={"au-btn au-flat"+(menuOpen?" au-active":"")}
     style={{fontSize:12,padding:"3px 10px"}} title="Save / load / export / advanced">≡</button>
 </header>
@@ -3528,6 +3559,35 @@ return(
       maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
       boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
 }
+
+{/* ─── Country editor panel ─── */}
+{editorOpen&&<div className="au-parchment" style={{position:"absolute",top:48,left:8,width:228,
+  maxHeight:"calc(100% - 64px)",overflowY:"auto",padding:"8px 10px",fontSize:11,zIndex:30}}>
+  <div className="au-heading au-sc" style={{fontSize:11,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+    <span>Country Editor</span>
+    <span onClick={()=>{setEditorOpen(false);setEditorArmed(false);}} style={{cursor:"pointer"}}>✕</span>
+  </div>
+  <button onClick={()=>setEditorArmed(v=>!v)} className={"au-rail-tab"+(editorArmed?" au-active":"")}
+    style={{width:"100%",fontSize:11,padding:"5px 0",marginBottom:7}}>
+    {editorArmed?"● Click the map to place":"Arm placement"}</button>
+  <div style={{marginBottom:5}}><span className="au-fade" style={{fontSize:10}}>Seat tier</span>
+    <div style={{display:"flex",gap:4,marginTop:2}}>
+      {[[1,"Town"],[2,"City"],[3,"Metro"]].map(([t,l])=>(
+        <button key={t} onClick={()=>setEdParams(p=>({...p,tier:t}))}
+          className={"au-rail-tab"+(edParams.tier===t?" au-active":"")} style={{flex:1,fontSize:10,padding:"2px 0"}}>{l}</button>))}
+    </div>
+  </div>
+  <EdRow label="Starting people" value={edParams.people} min={20} max={5000} step={10}
+    onChange={v=>setEdParams(p=>({...p,people:v}))} fmt={v=>Math.round(v)}/>
+  <div className="au-fade" style={{margin:"6px 0 2px",fontWeight:600,fontSize:10}}>Knowledge / tech</div>
+  {ED_KFIELDS.map(([k,l])=><EdRow key={k} label={l} value={edParams.knowledge[k]} min={0} max={1} step={0.05}
+    onChange={v=>setEdParams(p=>({...p,knowledge:{...p.knowledge,[k]:v}}))} fmt={v=>(v*100|0)+"%"}/>)}
+  <div className="au-fade" style={{margin:"6px 0 2px",fontWeight:600,fontSize:10}}>Character (−1 … +1)</div>
+  {ED_PFIELDS.map(([k,l])=><EdRow key={k} label={l} value={edParams.personality[k]} min={-1} max={1} step={0.05}
+    onChange={v=>setEdParams(p=>({...p,personality:{...p.personality,[k]:v}}))} fmt={v=>v.toFixed(2)}/>)}
+  <div className="au-fade" style={{fontSize:9,marginTop:7,fontStyle:"italic"}}>
+    Arm, click a land tile to drop the capital, then ▶ play to watch its size, cities and towns emerge. Drop more to compare.</div>
+</div>}
 
 {/* ─── Pico hover card ─── */}
 {hoverInfo&&<div className="au-parchment au-pico"
