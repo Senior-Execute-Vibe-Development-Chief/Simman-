@@ -51,6 +51,7 @@ export function createWorld(w, opts = {}) {
     temp:  new Float32Array(N),
     moist: new Float32Array(N),
     fert:  new Float32Array(N),
+    tFlood: new Uint8Array(N),   // arid-river floodplain mask (Nile/Indus valley) — drives dense valley settlement + the floodplain biome
     coast: new Uint8Array(N),
     riverMag: null,
 
@@ -73,6 +74,11 @@ export function createWorld(w, opts = {}) {
   };
 
   initTerrain(world, w, opts.tCrop);
+  // List of floodplain tiles so crystallisation can fill the river valley directly
+  // (a thin ribbon is almost never hit by the random tile sweep — the Nile would
+  // stay empty otherwise). Built once; the mask is static after worldgen.
+  world._floodTiles = [];
+  for (let i = 0; i < N; i++) if (world.tFlood[i]) world._floodTiles.push(i);
   initAncestry(world, w, opts);
   initRiverMag(world, w);
   initWind(world, w);
@@ -121,7 +127,7 @@ function initTerrain(world, w, tCrop) {
       // worked catchment to ~1 tile however fertile the land is. Keying on high crop
       // value + low base moisture isolates exactly the irrigated valleys (nowhere else
       // is prime farmland also bone-dry); also greens the biome correctly.
-      if (fert[ti] > 0.85 && moist[ti] < 0.30) moist[ti] = Math.max(moist[ti], 0.45);
+      if (fert[ti] > 0.85 && moist[ti] < 0.30) { world.tFlood[ti] = 1; moist[ti] = Math.max(moist[ti], 0.45); }
     }
   }
 }

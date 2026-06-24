@@ -32,6 +32,8 @@ const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) fl
                                           // frame spike at high speed; it drives only spawn
                                           // weighting and drifts slowly, so refresh rarely
 const CANDIDATES_PER_SWEEP      = 120;    // wider net per sweep (was 80)
+const FLOOD_SAMPLE_FRAC         = 0.4;    // share of sweep candidates drawn from the arid-river FLOODPLAIN tile list directly — a thin ribbon is almost never hit by the uniform random sweep, so the Nile/Indus valley would stay empty otherwise
+const FLOOD_SPACING_MUL         = 0.5;    // floodplain packs DENSE: a real irrigated river valley was a near-continuous chain of villages, so halve the spacing floor there (the one place we want tighter-than-default packing)
 
 // Permissive fertility gates. Earth had hamlets in desert, tundra,
 // steppe, jungle — they just stayed small because the land couldn't
@@ -280,8 +282,13 @@ export function maybeCrystallize(world) {
   const spMul = T.LOCALITY_MODE ? Math.max(1, T.LOCALITY_SPACING || 3) : 1;
   const hardFloor   = HARD_FLOOR * spMul;
   const softDist    = SOFT_DIST  * spMul;
+  const floodTiles = world._floodTiles, nFlood = floodTiles ? floodTiles.length : 0;
   for (let i = 0; i < CANDIDATES_PER_SWEEP; i++) {
-    const ti = rng.int(N);
+    // Draw a share of candidates straight from the FLOODPLAIN ribbon so the arid
+    // river valley actually fills — the uniform random sweep almost never lands on
+    // a 1–5-tile-wide strip, which is why the Nile stayed empty despite being prime
+    // cropland. Everything downstream (river magnet, spacing, quality) is unchanged.
+    const ti = (nFlood && rng() < FLOOD_SAMPLE_FRAC) ? floodTiles[rng.int(nFlood)] : rng.int(N);
     if (!isContinentalLand(world, ti)) continue;
     const f = fert[ti];
     if (f < MIN_FERT) continue;
@@ -326,7 +333,8 @@ export function maybeCrystallize(world) {
     // so marginal land (rainforest, steppe, outback) ends up a sparse scatter
     // while fertile valleys pack tight.
     const capSp = capacitySpacingMul(f, wetTropicAt(world, ty * world.tw + tx));
-    const hf = hardFloor * capSp, sd = softDist * capSp;
+    const floodSp = (world.tFlood && world.tFlood[ti]) ? FLOOD_SPACING_MUL : 1;   // dense chain down the river valley
+    const hf = hardFloor * capSp * floodSp, sd = softDist * capSp * floodSp;
     if (nearestSq < hf * hf) continue;             // hard reject — overlap
     // Linear ramp between hf and sd on actual distance (not squared, so it
     // grows steeply near the floor and flattens out near the soft boundary —
