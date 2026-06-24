@@ -287,7 +287,11 @@ function cradleSurround(world, ti) {
 // look. Extend this list (Indus, Mesopotamia, Mesoamerica, Andes) for more independent hearths.
 const EARTH_HEARTH_SITES = [
   { name: "Nile",        fx: 0.580, fy: 0.329 },   // fertile ribbon through the Sahara to the Mediterranean delta
-  { name: "Mesopotamia", fx: 0.640, fy: 0.300 },   // Tigris-Euphrates — Sumer, the first cities; the Fertile Crescent's eastern arm
+  { name: "Mesopotamia", fx: 0.622, fy: 0.330, r: 0.02 },   // Tigris-Euphrates / the Fertile Crescent. TIGHT search radius: the wide
+                                                            // default let it drift ~14° NE to the nearest big river — which on the
+                                                            // generated earth sits up by the CASPIAN — seeding "Mesopotamia" on an
+                                                            // inland sea. The tight radius keeps it in the Crescent (a dry-fertile
+                                                            // irrigation cradle, like the real one) instead of chasing the Caspian river.
   { name: "Yangtze",     fx: 0.828, fy: 0.271 },   // temperate East-Asian river basin
 ];
 function seedEarthHearths(world) {
@@ -295,7 +299,7 @@ function seedEarthHearths(world) {
   let seeded = 0;
   for (const site of EARTH_HEARTH_SITES) {
     const cx = Math.round(site.fx * tw), cy = Math.round(site.fy * th);
-    const R = Math.max(6, Math.round(tw * 0.04));   // search radius ~4% of map width
+    const R = Math.max(6, Math.round(tw * (site.r ?? 0.04)));   // search radius (per-site override; default ~4% of map width)
     let bestTi = -1, bestScore = -1;
     for (let dy = -R; dy <= R; dy++) {
       const ny = cy + dy; if (ny < 0 || ny >= th) continue;
