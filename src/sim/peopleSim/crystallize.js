@@ -279,7 +279,7 @@ export function maybeCrystallize(world) {
   // LOCALITY model spaces centres farther apart (×LOCALITY_SPACING) so the map
   // fills with fewer, larger localities — each farming a bigger catchment —
   // instead of a dense village scatter.
-  const spMul = T.LOCALITY_MODE ? Math.max(1, T.LOCALITY_SPACING || 3) : 1;
+  const spMul = (T.LOCALITY_MODE || T.DISSOLVE_FARMS) ? Math.max(1, T.LOCALITY_SPACING || 3) : 1;
   const hardFloor   = HARD_FLOOR * spMul;
   const softDist    = SOFT_DIST  * spMul;
   const floodTiles = world._floodTiles, nFlood = floodTiles ? floodTiles.length : 0;
@@ -440,6 +440,7 @@ export function maybeCrystallize(world) {
         parentId: donor.id,   // carries the donor's ancestry; a long jump admixes with the local substrate
         // near spread keeps the donor's people; otherwise we assign below
         cultureId: (connected && !isBranch) ? dCul : -1,
+        tier: T.DISSOLVE_FARMS ? 1 : 0,   // DISSOLVE: there are no farming regions — new settlements are towns
       });
       gridAdd(world, born);   // same-pass candidates must see (and space off) it
       if (!connected) {
@@ -794,6 +795,7 @@ const URBAN_SEED_CAP       = 70;   // ...capped so the region isn't gutted — i
 const URBAN_SEED_MIN       = 25;   // a founding town smaller than this isn't viable — skip the roll
 
 function maybeUrbanGenesis(world) {
+  if (T.DISSOLVE_FARMS) return;   // no tier-0 regions to birth towns from — towns grow/promote in place
   const { tw, th, fert, coast, riverMag } = world;
   const rng = passRng(world, "urban");
   for (const region of world.settlements) {

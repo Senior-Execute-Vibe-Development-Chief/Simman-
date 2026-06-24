@@ -148,6 +148,28 @@ console.log(`[smoke] save/load: roundtrip identity + functional resume`);
     `${st.settlements} settlements, hits ${JSON.stringify(hits)}`);
 }
 
+console.log(`[smoke] DISSOLVE_FARMS lever: no tier-0, deterministic, alive`);
+{
+  const { applyTuning, resetTuning } = await import("../src/sim/peopleSim/tuning.js");
+  applyTuning({ DISSOLVE_FARMS: 1 });
+  try {
+    const a = buildSim({ W, H, seed: SEED, preset: PRESET }); a._checkInvariants = true;
+    const b = buildSim({ W, H, seed: SEED, preset: PRESET });
+    stepPeopleSim(a, 3000); stepPeopleSim(b, 3000);
+    const sa = peopleSimStats(a), sb = peopleSimStats(b); delete sa.tickMs; delete sb.tickMs;
+    check("dissolve: deterministic", JSON.stringify(sa) === JSON.stringify(sb));
+    const setts = a.settlements.filter(s => s.mode === "settled");
+    const t0 = setts.filter(s => (s.tier | 0) === 0).length;
+    check(`dissolve: no farming regions (t0=${t0})`, t0 === 0, `${t0} tier-0 remain`);
+    const hits = a.debug && a.debug.invariantHits; let hitTotal = 0; if (hits) for (const k of Object.keys(hits)) hitTotal += hits[k];
+    check("dissolve: zero invariant violations", hitTotal === 0, hits ? JSON.stringify(hits) : "");
+    check(`dissolve: civilization alive (${sa.settlements} settlements)`, sa.settlements >= 5 && sa.totalPeople > 500);
+    check(`dissolve: fewer entities than farming-region model (${sa.settlements})`, sa.settlements < 60, `${sa.settlements} settlements`);
+  } finally {
+    resetTuning();   // restore defaults so nothing downstream sees the lever
+  }
+}
+
 const secs = ((performance.now() - t0) / 1000).toFixed(1);
 if (failures > 0) {
   console.error(`[smoke] ${failures} check(s) FAILED in ${secs}s`);

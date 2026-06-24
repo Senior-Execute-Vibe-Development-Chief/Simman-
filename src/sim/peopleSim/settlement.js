@@ -634,7 +634,7 @@ export function computeExportValue(s, world) {
   // output is urban goods, NOT "farm produce" — which is why a non-farming
   // settlement used to read, wrongly, as SELLING food. (sellGoods books the
   // three sectors; the food leg is suppressed unless the buyer is food-short.)
-  const baseIsFood = tier <= (T.FARM_MAX_TIER | 0);
+  const baseIsFood = tier <= (T.DISSOLVE_FARMS ? 3 : (T.FARM_MAX_TIER | 0));   // DISSOLVE_FARMS: every town farms its own catchment
   let ag = 1.0;                                          // base primary output
   let agFood = baseIsFood ? 1.0 : 0;                     // farm village's base surplus is food; a town's base output is urban goods
   let agMat = 0;
@@ -888,7 +888,7 @@ export function urbanise(world) {
     // Farm-labour anchor: a farming region keeps the farmers who work its land — only
     // the surplus above the (yield-dependent) rural floor can leave for the cities, so
     // the world stays ~85% rural until the agricultural revolution lets it urbanise.
-    if ((s.tier | 0) <= (T.FARM_MAX_TIER | 0)) {
+    if ((s.tier | 0) <= (T.DISSOLVE_FARMS ? 1 : (T.FARM_MAX_TIER | 0))) {   // DISSOLVE: only the small farming TOWNS keep farmers rural; cities shed freely
       const fy = s._farmYield || 1;
       const ruralFrac = Math.max(URBAN_MIN_RURAL, URBAN_BASE_RURAL - URBAN_GAIN * Math.max(0, fy - URBAN_YIELD0));
       movers = Math.min(movers, Math.max(0, s.people - ruralFrac * (s._k || s.people)));
@@ -1928,7 +1928,10 @@ function updatePopulation(world, s) {
   // leaves no urbanise headroom (K−people → 0) so rural migrants flow on to the
   // towns. The land still GROWS its full harvest — that surplus ships up the
   // hierarchy (via _storableSupply, untouched here) to grow the towns.
-  if ((s.tier | 0) === 0) {
+  if ((s.tier | 0) === 0 && !T.DISSOLVE_FARMS) {
+    // (DISSOLVE_FARMS lifts this cap entirely: a town's size is set by what its
+    // catchment FEEDS — see the Locality K below — so a big/rich catchment grows
+    // into a city and a poor one stays a town, with no fixed rural ceiling.)
     // ×_eraProd: the rural ceiling rises with the same global productivity index
     // as land food (updateFood), so the countryside scales WITH the cities and
     // the rural/urban balance is preserved as the world total tracks history.
@@ -1945,7 +1948,7 @@ function updatePopulation(world, s) {
   // size cap — a locality IS its hinterland, so a rich-land centre simply holds
   // more people (→ a city) and a poor one stays a town. Money is a separate
   // closed layer (commerce/mining), unrelated to how big the place is.
-  const K = T.LOCALITY_MODE
+  const K = (T.LOCALITY_MODE || T.DISSOLVE_FARMS)
     ? Math.max(K_MIN_VIABLE, foodK)
     : Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
   s._k = K;
@@ -2010,7 +2013,7 @@ function updateTier(world, s) {
   // catchment (urban genesis, crystallize.js). So the tier ladder here moves
   // only ALREADY-URBAN nodes (tier ≥ 1) up and down — the rural→urban step is a
   // spawn, not a relabel.
-  if ((s.tier | 0) === 0) return;
+  if ((s.tier | 0) === 0 && !T.DISSOLVE_FARMS) return;   // (no tier-0 exists under DISSOLVE; towns promote normally)
   // Promote among the urban tiers (town → city → metropolis).
   for (let t = TIER_THRESHOLD.length - 1; t > s.tier; t--) {
     if (s.people >= bar(t)) {
