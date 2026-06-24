@@ -93,10 +93,25 @@ function initTerrain(world, w, tCrop) {
       const e = w.elevation[wi], t = w.temperature[wi], m = w.moisture[wi];
       elev[ti] = e; temp[ti] = t; moist[ti] = m;
       coast[ti] = w.coastal ? (w.coastal[wi] ? 1 : 0) : 0;
-      // Use the same crop-suitability array the overlay renders, so
-      // where you SEE green is where settlements actually thrive. Falls
-      // back to the local bellFert formula if tCrop wasn't supplied.
-      fert[ti] = tCrop ? tCrop[wi] : bellFert(t, m, e);
+      // FERTILITY: max-pool over the TILE_RES×TILE_RES worldgen block, not a point
+      // sample. Point-sampling every TILE_RES-th pixel DROPS thin fertile features —
+      // a one-to-few-tile river floodplain (the Nile / Indus valley) falls between
+      // samples and vanishes, leaving the cradle farming a single pixel. The block
+      // MAX preserves the valley (any farmable sub-tile carries the cell) while barely
+      // changing uniform land (where max ≈ the sample). Same crop-suitability array
+      // the overlay renders, so where you SEE green is where settlements thrive.
+      if (tCrop) {
+        let f = 0;
+        for (let oy = 0; oy < TILE_RES; oy++) {
+          const sy = Math.min(w.height - 1, ty * TILE_RES + oy);
+          for (let ox = 0; ox < TILE_RES; ox++) {
+            const sx = Math.min(w.width - 1, tx * TILE_RES + ox);
+            const v = tCrop[sy * w.width + sx];
+            if (v > f) f = v;
+          }
+        }
+        fert[ti] = f;
+      } else fert[ti] = bellFert(t, m, e);
     }
   }
 }
