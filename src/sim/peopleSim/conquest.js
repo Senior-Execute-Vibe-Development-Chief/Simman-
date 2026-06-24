@@ -1643,8 +1643,14 @@ export function updatePolities(world) {
       // skimmed as a share of the crop, not their cash hoard) and what funds the towns. It falls
       // on FARMED output (_landFood) only, so the agrarian countryside pays it and cities (which
       // grow nothing) don't — draining the village hoards UP to the state, then out to the cities.
+      // The levy now tracks the realm's VARIABLE tax rate (war / insolvency push it
+      // up), so a state at war taxes its countryside's HARVEST harder — not just its
+      // cash — and that over-extraction feeds the over-tax grievance into revolt
+      // (the "raise taxes for the war → the provinces rise up" loop). 1× at the base
+      // rate, scaling up toward TAX_MAX/TAX_BASE in a hard war.
       if (T.FARM_RENT > 0 && (s._landFood || 0) > 0) {
-        const rent = Math.min(Math.max(0, s.wealth || 0), (s._landFood || 0) * T.FARM_RENT * T.POLITY_INTERVAL);
+        const taxMul = (gov._taxRate ?? TAX_BASE) / TAX_BASE;
+        const rent = Math.min(Math.max(0, s.wealth || 0), (s._landFood || 0) * T.FARM_RENT * taxMul * T.POLITY_INTERVAL);
         if (rent > 0) { s.wealth -= rent; gov.treasury += rent; gov._revenue += rent; recordOut(s, OUT_TRIBUTE, rent); }
       }
     }
