@@ -176,7 +176,7 @@ export function diffuseIdentityField(world, layerName, passes = 4) {
   if (!L) return;
   ensureIdentityField(world);   // allocate the field arrays if this is the first call
   floodCounties(world, L);   // step 1: tile each realm into town counties
-  const N = world.N, K = IDENTITY_K, tw = world.tw, th = world.th, NK = N * K;
+  const N = world.N, K = IDENTITY_K, tw = world.tw, th = world.th, NK = N * K, elev = world.elev;
   // anchor = the flooded county field (read-only this call); ping-pong A↔B
   const ancId = world[L.id], ancShr = world[L.shr];
   const A_id = world._idfA_id && world._idfA_id.length === NK ? world._idfA_id : (world._idfA_id = new Int16Array(NK));
@@ -199,6 +199,10 @@ export function diffuseIdentityField(world, layerName, passes = 4) {
   for (let p = 0; p < passes; p++) {
     for (let ti = 0; ti < N; ti++) {
       const base = ti * K;
+      // Identity never spreads onto OCEAN — peoples live on land. (The blur stencil
+      // would otherwise bleed coastal identity out to sea: long coastlines × a few
+      // passes washes colour across whole basins.) Keep ocean tiles empty.
+      if (elev[ti] <= 0.005) { for (let k = 0; k < K; k++) { nxtId[base + k] = -1; nxtShr[base + k] = 0; } continue; }
       m = 0;
       vote(base, SELF_W, curId, curShr);
       const y = (ti / tw) | 0, x = ti - y * tw;
