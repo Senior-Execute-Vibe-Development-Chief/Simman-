@@ -435,10 +435,23 @@ export function maybeCrystallize(world) {
                   + Math.abs((world.moist[ti] || 0) - (world.moist[dTi] || 0));
       }
       const isBranch = connected && (td > 70 || (td > 38 && climDelta > 0.34));
+      // Found settlements only INSIDE a nation or as a nation's FRONTIER EXTENSION —
+      // never a stateless hamlet in the deep wilderness. A candidate is allowed if
+      // the tile already lies in a realm's drawn border (region ≥ 0), OR it is a
+      // CONNECTED extension of a nearby realm settlement (the donor), in which case
+      // it joins that realm and grows its frontier. A DISCONNECTED site (independent
+      // origin: another continent, across water, beyond reach) has no nation to join,
+      // so it is NOT founded — only a colony party (maybeSendSettlers, carrying its
+      // parent's flag) can plant the first settlement on virgin land. Cradles are
+      // seeded at world-gen, so the world still bootstraps. (Existing settlements may
+      // still become stateless when their realm collapses — a separate path.)
+      const donorCountry = connected && donor && donor.mode === "settled" ? donor.countryId : -1;
+      const joinCountry = region >= 0 ? region : donorCountry;
+      if (joinCountry < 0) continue;
       const born = makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: 18 + (rng.int(8)),
         knowledge: inherited,
-        countryId: region >= 0 ? region : -1,
+        countryId: joinCountry,   // born into the realm it sits in / extends — never stateless
         parentId: donor.id,   // carries the donor's ancestry; a long jump admixes with the local substrate
         // near spread keeps the donor's people; otherwise we assign below
         cultureId: (connected && !isBranch) ? dCul : -1,
