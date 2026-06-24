@@ -3569,15 +3569,8 @@ return(
   </div>
   <button onClick={()=>setEditorArmed(v=>!v)} className={"au-rail-tab"+(editorArmed?" au-active":"")}
     style={{width:"100%",fontSize:11,padding:"5px 0",marginBottom:7}}>
-    {editorArmed?"● Click the map to place":"Arm placement"}</button>
-  <div style={{marginBottom:5}}><span className="au-fade" style={{fontSize:10}}>Seat tier</span>
-    <div style={{display:"flex",gap:4,marginTop:2}}>
-      {[[1,"Town"],[2,"City"],[3,"Metro"]].map(([t,l])=>(
-        <button key={t} onClick={()=>setEdParams(p=>({...p,tier:t}))}
-          className={"au-rail-tab"+(edParams.tier===t?" au-active":"")} style={{flex:1,fontSize:10,padding:"2px 0"}}>{l}</button>))}
-    </div>
-  </div>
-  <EdRow label="Starting people" value={edParams.people} min={20} max={5000} step={10}
+    {editorArmed?"● Click a land tile to place":"Arm placement"}</button>
+  <EdRow label="Capital size (people)" value={edParams.people} min={500} max={8000} step={50}
     onChange={v=>setEdParams(p=>({...p,people:v}))} fmt={v=>Math.round(v)}/>
   <div className="au-fade" style={{margin:"6px 0 2px",fontWeight:600,fontSize:10}}>Knowledge / tech</div>
   {ED_KFIELDS.map(([k,l])=><EdRow key={k} label={l} value={edParams.knowledge[k]} min={0} max={1} step={0.05}
@@ -3586,7 +3579,7 @@ return(
   {ED_PFIELDS.map(([k,l])=><EdRow key={k} label={l} value={edParams.personality[k]} min={-1} max={1} step={0.05}
     onChange={v=>setEdParams(p=>({...p,personality:{...p.personality,[k]:v}}))} fmt={v=>v.toFixed(2)}/>)}
   <div className="au-fade" style={{fontSize:9,marginTop:7,fontStyle:"italic"}}>
-    Arm, click a land tile to drop the capital, then ▶ play to watch its size, cities and towns emerge. Drop more to compare.</div>
+    Arm, then click a land tile: a fully-formed realm appears, filled with cities and towns out to the extent its tech allows it to hold. Drop several to compare. (Takes a moment to settle.)</div>
 </div>}
 
 {/* ─── Pico hover card ─── */}

@@ -399,6 +399,21 @@ const RANGE_BASE = 8 * 1.02, RANGE_ORG = 16 * 1.02, RANGE_MOB = 10 * 1.02, RANGE
 // SPREAD needs rail+telegraph. Diagnosis (probe_landconc) showed admin alone was
 // projecting empires across continents without the transport history required.
 const RANGE_BASE_T = 5, RANGE_LOGI = 24, RANGE_ADMIN = 2, RANGE_MOB_T = 4, RANGE_NAV_T = 3;
+
+// Editor helper: the territorial hold-reach (in map tiles) a realm seated at
+// `seat` would project from its tech + personality — the same formula
+// rebuildCountries uses (above), so the country editor can fill a realm to the
+// outer extent its tech actually allows.
+export function estimateCountryRange(world, seat, personality) {
+  const k = seat.knowledge || {};
+  const bE = techEff(seat), bMob = k.mobility || 0, bNav = k.navigation || 0;
+  const rangeOld = RANGE_BASE + bE.reachLevel * RANGE_ORG + bMob * RANGE_MOB + bNav * RANGE_NAV;
+  const rangeNew = RANGE_BASE_T + bE.logisticsLevel * RANGE_LOGI + bE.reachLevel * RANGE_ADMIN + bMob * RANGE_MOB_T + bNav * RANGE_NAV_T;
+  let range = rangeOld + (rangeNew - rangeOld) * T.TECH_EFFECTS;
+  if (personality) range *= expansionReachMul(personality);
+  const rs = _holdScaleEnv > 0 ? _holdScaleEnv : resScaleFor(world.tw);
+  return range * rs;
+}
 // A/B override for the resolution-scaling of the hold reach (rebuildCountries):
 // unset → auto (resScaleFor, the fix); =1 → unscaled (reproduces the patchwork bug).
 const _holdScaleEnv = (typeof process !== "undefined" && process.env && +process.env.SIM_HOLD_SCALE) || 0;
