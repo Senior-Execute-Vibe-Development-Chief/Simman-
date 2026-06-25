@@ -21,7 +21,7 @@ import { techEff } from "./settlement.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, reconcilePolities } from "./entities.js";
-import { identityWeightsNow, identityGrievance, adminFriction, identityGrievanceCause } from "./cohesion.js";
+import { identityWeightsNow, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
 import { T } from "./tuning.js";
 import { hash32 } from "./rng.js";
 
@@ -1386,6 +1386,17 @@ export function updatePolities(world) {
     // The realm's mustered force (sum of member garrisons) — its monopoly on
     // organised violence, the thing that actually SUPPRESSES a province's revolt.
     let natArmy = 0; for (const m of c.members) natArmy += (m.army || 0);
+    // Cultural heterogeneity the realm must garrison: each foreign-identity province
+    // ties down part of the national army (see coerce below), so a POLYGLOT empire
+    // spreads its force thin and can't suppress simultaneous nationalist revolts —
+    // the imperial overstretch that fractured Austria-Hungary and the Ottomans into
+    // nation-states — while a culturally-UNIFIED realm keeps its army concentrated and
+    // holds firm. Era-weighted off emergent development (absorbResistance/cohesion.js):
+    // near-silent in antiquity (multi-ethnic empires hold), cresting in the national age.
+    let natForeign = 0;
+    if (T.HOLD_ARMY && T.NAT_OVERREACH > 0) {
+      for (const m of c.members) { if (m.id === c.capitalId) continue; natForeign += absorbResistance(cap, m, idW); }
+    }
     // (The raw hold-distance c.range bounds the Dijkstra search inside
     // capitalTransportCosts; everything HERE compares against the res-scaled grip.)
     const holdRange = Math.max(1, c.holdReach || c.range);   // res-scaled grip → compared against map distances (admin load, secession reach)
@@ -1578,9 +1589,25 @@ export function updatePolities(world) {
       // or insolvent desertion (both already shrink s.army) — can break away. The
       // MOTIVE (loyalty/unrest) is the trigger handled below; this is the FEASIBILITY.
       // HOLD_ARMY=0 reverts to the old economic capital-vs-province ratio.
-      const provForce = (s.army || 0) + (s.people || 0) * T.REBEL_LEVY;
+      // NATIONALIST LEVY: a province foreign to its ruler's people/tongue/faith raises
+      // a far larger militia when it rises — the whole people mobilises on identity
+      // lines (1848, the Ottoman Balkans, the breakup of Austria-Hungary), which regular
+      // suppression can't match. So cultural distance multiplies the rebel levy, letting
+      // foreign-identity provinces break military holding and secede into nation-states,
+      // while a co-cultural province stays at the base levy and is held firmly. Pairs
+      // with the absorption-resistance gate: foreign cities are both hard to absorb AND
+      // hard to hold, so realms settle on their cultural core. Era-weighted off emergent
+      // development (cohesion.js) — silent in antiquity (multi-ethnic empires hold),
+      // cresting in the national age — never time-gated.
+      const natRes = (T.HOLD_ARMY && (T.REBEL_IDENTITY > 0 || T.NAT_OVERREACH > 0)) ? absorbResistance(cap, s, idW) : 0;
+      const provForce = (s.army || 0) + (s.people || 0) * T.REBEL_LEVY * (1 + T.REBEL_IDENTITY * natRes);
+      // The army that can actually be brought to bear HERE is the national force minus
+      // what's tied down suppressing the realm's OTHER foreign provinces (natForeign −
+      // this one's own share): a unified realm concentrates its whole army on each
+      // revolt, a polyglot empire divides it across every restive march.
+      const armyAvail = natArmy / (1 + T.NAT_OVERREACH * Math.max(0, natForeign - natRes));
       const coerce = T.HOLD_ARMY
-        ? Math.min(COERCE_CAP, Math.sqrt((natArmy * (holdRange / (holdRange + d)) + 1) / Math.max(1, provForce)))
+        ? Math.min(COERCE_CAP, Math.sqrt((armyAvail * (holdRange / (holdRange + d)) + 1) / Math.max(1, provForce)))
         : Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
       const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
       const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
@@ -1863,6 +1890,9 @@ function absorbWeakNeighbors(world, countries) {
   // hasAbsorbHeadroom — without this the gate checks every candidate against
   // the same stale pre-pass load and the realm over-extends in one tick).
   const absorbedLoad = new Map();
+  // Era-weighted identity salience for the cultural-resistance gate below (one read
+  // per pass). See cohesion.js absorbResistance — keyed on emergent development.
+  const idW = identityWeightsNow(world);
   for (const [settId, scoreMap] of perSett) {
     const m = byId.get(settId);
     if (!m || m.mode !== "settled") continue;
@@ -1894,6 +1924,17 @@ function absorbWeakNeighbors(world, countries) {
     const ratio = bestScore / myPower;
     let prob = Math.min(T.ABSORB_PROB_MAX, ratio * T.ABSORB_RATE);
     if (lopsided) prob = Math.max(prob, ENGULF_PROB);
+    // CULTURAL RESISTANCE: a city of the absorber's OWN people/tongue/faith slides
+    // into its orbit (building a national core); a foreign one clings to independence
+    // and must be taken by direct CONQUEST (armies.js) instead of peacefully defecting.
+    // This is what stops one realm engulfing every neighbour it out-powers across two
+    // dozen cultures — realms coalesce into culturally-coherent nation-states. Applied
+    // AFTER the lopsided floor so even a great power can't peacefully vacuum up a wholly
+    // foreign city. Era-weighted (cohesion.js), so antiquity still permits multi-ethnic
+    // empires and the national age fractures them — emergent, never time-gated.
+    if (T.ABSORB_IDENTITY > 0 && target && target.capital) {
+      prob *= 1 - T.ABSORB_IDENTITY * absorbResistance(target.capital, m, idW);
+    }
     // Deterministic per-(seed, settlement, step) roll via the shared avalanche
     // hash. Unlike the old linear-congruential hash it varies with the WORLD SEED
     // (defections used to be identical across every seed) and doesn't correlate
