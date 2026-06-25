@@ -634,7 +634,7 @@ export function computeExportValue(s, world) {
   // output is urban goods, NOT "farm produce" — which is why a non-farming
   // settlement used to read, wrongly, as SELLING food. (sellGoods books the
   // three sectors; the food leg is suppressed unless the buyer is food-short.)
-  const baseIsFood = tier <= (T.FARM_MAX_TIER | 0);
+  const baseIsFood = tier <= (T.DISSOLVE_FARMS ? 3 : (T.FARM_MAX_TIER | 0));   // DISSOLVE_FARMS: every town farms its own catchment
   let ag = 1.0;                                          // base primary output
   let agFood = baseIsFood ? 1.0 : 0;                     // farm village's base surplus is food; a town's base output is urban goods
   let agMat = 0;
@@ -888,7 +888,7 @@ export function urbanise(world) {
     // Farm-labour anchor: a farming region keeps the farmers who work its land — only
     // the surplus above the (yield-dependent) rural floor can leave for the cities, so
     // the world stays ~85% rural until the agricultural revolution lets it urbanise.
-    if ((s.tier | 0) <= (T.FARM_MAX_TIER | 0)) {
+    if ((s.tier | 0) <= (T.DISSOLVE_FARMS ? 1 : (T.FARM_MAX_TIER | 0))) {   // DISSOLVE: only the small farming TOWNS keep farmers rural; cities shed freely
       const fy = s._farmYield || 1;
       const ruralFrac = Math.max(URBAN_MIN_RURAL, URBAN_BASE_RURAL - URBAN_GAIN * Math.max(0, fy - URBAN_YIELD0));
       movers = Math.min(movers, Math.max(0, s.people - ruralFrac * (s._k || s.people)));
@@ -1080,6 +1080,18 @@ function updateKnowledge(world, s) {
   const fc = s._terrTiles || 0;
   const pop = s.people;
   const popSqrt = Math.sqrt(pop);
+  // Specialist-class techs (institutions, metallurgy, seamanship, literacy) are
+  // built by the URBAN CORE — the scribes, smiths and shipwrights of a city, not
+  // the peasantry. Under DISSOLVE_FARMS a settlement's `people` bundles its whole
+  // rural province, so keying tech growth off raw population let a big farming
+  // region race up the tech ladder — and, because _civYear tracks the leading
+  // capital's organisation, dragged the WORLD CLOCK forward centuries, firing the
+  // modern frontier-close (the partition of the wastes) far too early and
+  // ballooning every realm. Scale the "more minds" term by the urban core
+  // instead, so development paces to a CITY of that size, not a province (mirrors
+  // the urban-core reach scaling in countryTerritory.js). Agriculture keeps the
+  // full population below — peasants are exactly who improve farming.
+  const sciSqrt = T.DISSOLVE_FARMS && s._urbanPop != null ? Math.sqrt(s._urbanPop) : popSqrt;
   const horsesThr = 0.05;
   const horses = r.horses || 0;
 
@@ -1109,7 +1121,7 @@ function updateKnowledge(world, s) {
   // invents fast; a starving, isolated hamlet barely moves. Centred so a
   // typical developing settlement learns at ≈ the old flat pace; T.SCI_SPREAD
   // dials the swing (0 = the old uniform rate everywhere).
-  const popF = Math.min(1, popSqrt / T.SCI_POP_REF);                        // sqrt(people) at which a settlement learns at full speed
+  const popF = Math.min(1, sciSqrt / T.SCI_POP_REF);                        // sqrt(urban core) at which a settlement learns at full speed
   const granF = Math.min(1, (s.food || 0) / (80 + s.tier * 200));          // banked surplus
   const flow = (s._foodSupply || 0) / Math.max(0.01, s._foodDemand || 0);  // 1 = break-even
   const surplusF = Math.max(0, Math.min(1, 0.5 * granF + 0.5 * Math.min(1, Math.max(0, (flow - 1) / 0.4))));
@@ -1228,7 +1240,7 @@ function updateKnowledge(world, s) {
   const orgEraCap = clamp01(0.15 + metalCap * 0.95 + k.construction * 0.15);
   const orgHead = Math.max(0, orgEraCap - k.organization);
   const litBranch = k.organization > 0.30
-    ? T.ORG_LIT_BRANCH * k.organization * (1 + popSqrt * 0.06)
+    ? T.ORG_LIT_BRANCH * k.organization * (1 + sciSqrt * 0.06)
     : 0;
   // Heritable winter aptitude as a BUFF / DEBUFF on organisation learning: a
   // winter people (high aptitude) builds institutions faster, a non-winter people
@@ -1238,7 +1250,7 @@ function updateKnowledge(world, s) {
   const aptLearn = T.ORG_APTITUDE > 0 ? Math.max(0.05, 1 + T.ORG_APT_LEARN * (2 * winterness - 1)) : 1;
   const confineMul = 1 + T.CONFINE * (s._confine || 0);   // circumscription forces intensification → organisation
   k.organization = clamp01(k.organization + T.LEARN_BASE * sciMul * orgClim * orgHead
-    * ((1 + popSqrt * 0.10) + litBranch) * aptLearn * confineMul);
+    * ((1 + sciSqrt * 0.10) + litBranch) * aptLearn * confineMul);
 
   // Metallurgy — gated by ore, but PACED to keep step with the rest of the tree.
   // It used to crawl (∝ raw ore richness), so cultures reached the Renaissance
@@ -1253,7 +1265,7 @@ function updateKnowledge(world, s) {
     const headroom = 1 - k.metallurgy / metalCap;
     k.metallurgy = Math.min(metalCap, k.metallurgy +
       T.LEARN_BASE * 2.6 * sciMul * headroom * (0.5 + 0.5 * oreRate) * fuel
-      * (1 + k.construction * 0.4 + popSqrt * 0.04));
+      * (1 + k.construction * 0.4 + sciSqrt * 0.04));
   }
 
   // Navigation — gated by water, paced like metallurgy: even a river port or a
@@ -1262,7 +1274,7 @@ function updateKnowledge(world, s) {
   // tree instead of lagging centuries behind.
   if (wa > 0) {
     k.navigation = clamp01(k.navigation + T.LEARN_BASE * 1.9 * sciMul * (1 - k.navigation)
-      * (0.5 + 0.5 * wa) * (1 + k.construction * 0.6 + popSqrt * 0.04));
+      * (0.5 + 0.5 * wa) * (1 + k.construction * 0.6 + sciSqrt * 0.04));
   }
 
   // Mobility — gated by horses, paced so even modest horse country becomes
@@ -1928,7 +1940,10 @@ function updatePopulation(world, s) {
   // leaves no urbanise headroom (K−people → 0) so rural migrants flow on to the
   // towns. The land still GROWS its full harvest — that surplus ships up the
   // hierarchy (via _storableSupply, untouched here) to grow the towns.
-  if ((s.tier | 0) === 0) {
+  if ((s.tier | 0) === 0 && !T.DISSOLVE_FARMS) {
+    // (DISSOLVE_FARMS lifts this cap entirely: a town's size is set by what its
+    // catchment FEEDS — see the Locality K below — so a big/rich catchment grows
+    // into a city and a poor one stays a town, with no fixed rural ceiling.)
     // ×_eraProd: the rural ceiling rises with the same global productivity index
     // as land food (updateFood), so the countryside scales WITH the cities and
     // the rural/urban balance is preserved as the world total tracks history.
@@ -1945,7 +1960,7 @@ function updatePopulation(world, s) {
   // size cap — a locality IS its hinterland, so a rich-land centre simply holds
   // more people (→ a city) and a poor one stays a town. Money is a separate
   // closed layer (commerce/mining), unrelated to how big the place is.
-  const K = T.LOCALITY_MODE
+  const K = (T.LOCALITY_MODE || T.DISSOLVE_FARMS)
     ? Math.max(K_MIN_VIABLE, foodK)
     : Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
   s._k = K;
@@ -1974,6 +1989,18 @@ function updatePopulation(world, s) {
     }
   } else {
     s._witherSince = undefined;
+  }
+  // ── Province split ── a settlement's people = its town's URBAN core + the
+  // surrounding RURAL countryside it administers (its province). The rural share
+  // is high pre-industrially and falls as farm yield frees labour to the towns,
+  // so urbanisation rises over history. This is what makes a big farming province
+  // read as mostly rural rather than mislabelling its whole population "urban".
+  if (T.DISSOLVE_FARMS) {
+    const ruralFrac = Math.max(URBAN_MIN_RURAL, URBAN_BASE_RURAL - URBAN_GAIN * Math.max(0, (s._farmYield || 1) - URBAN_YIELD0));
+    s._ruralPop = s.people * ruralFrac;
+    s._urbanPop = s.people - s._ruralPop;
+  } else {
+    s._ruralPop = 0; s._urbanPop = s.people;
   }
 }
 
@@ -2004,13 +2031,18 @@ function updateTier(world, s) {
   // it stays rare as development lifts every city's size, instead of the whole
   // city tier eventually crossing a fixed bar into a metro glut.
   const metroBar = Math.max(TIER_THRESHOLD[3], topU * METRO_REL_FRAC);
-  const bar = (t) => t === 3 ? metroBar : TIER_THRESHOLD[t] * (t === 1 ? sc : 1);
+  // DISSOLVE_FARMS: a settlement bundles its rural hinterland + urban core into one
+  // entity, so they run large — scale the CITY bar with world population too (as the
+  // town bar already does), or every big farming region mislabels as a "city" and
+  // urbanisation reads ~90%. Now "city" means a genuine concentration of its age.
+  const cityScale = T.DISSOLVE_FARMS ? sc : 1;
+  const bar = (t) => t === 3 ? metroBar : TIER_THRESHOLD[t] * (t === 1 ? sc : t === 2 ? cityScale : 1);
   // Farming regions (tier 0) NEVER urbanise in place: a region is a collection
   // of villages, not a proto-city. It instead BIRTHS a separate town within its
   // catchment (urban genesis, crystallize.js). So the tier ladder here moves
   // only ALREADY-URBAN nodes (tier ≥ 1) up and down — the rural→urban step is a
   // spawn, not a relabel.
-  if ((s.tier | 0) === 0) return;
+  if ((s.tier | 0) === 0 && !T.DISSOLVE_FARMS) return;   // (no tier-0 exists under DISSOLVE; towns promote normally)
   // Promote among the urban tiers (town → city → metropolis).
   for (let t = TIER_THRESHOLD.length - 1; t > s.tier; t--) {
     if (s.people >= bar(t)) {

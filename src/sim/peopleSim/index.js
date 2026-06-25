@@ -33,10 +33,16 @@ import { techState } from "./tech.js";
 import { updateCultures, CULTURE_INTERVAL } from "./cultures.js";
 import { updateFaiths, FAITH_INTERVAL } from "./faiths.js";
 import { updateDynasties, DYNASTY_INTERVAL } from "./dynasties.js";
+import { diffuseIdentityField } from "./identityField.js";
 import { T } from "./tuning.js";
 import { stepToYear } from "../calendar.js";
 
 const CHRONICLE_INTERVAL = 300;   // ticks between per-country chronicle milestone checks
+// Per-tile identity field (identityField.js): mirror each settlement's
+// culture/faith/language mix onto the tiles it owns. Stage 0 — a passive
+// mirror that nothing reads yet — paced with the culture cadence so it
+// refreshes right after the identity passes have moved the entity mixes.
+const IDENTITY_MIRROR_INTERVAL = 150;
 
 // Territory / conquest / polity cadences are runtime levers (tuning.js:
 // T.TERRITORY_INTERVAL, T.CONQUEST_INTERVAL, T.POLITY_INTERVAL) — the step
@@ -252,6 +258,14 @@ export function stepPeopleSim(world, n = 1) {
     if (world.step % _ivl(FAITH_INTERVAL) === 0) updateFaiths(world);
     // Thrones: rulers age/marry/die, succession + crises (dynasties.js).
     if (world.step % _ivl(DYNASTY_INTERVAL) === 0) updateDynasties(world);
+    // Per-tile identity field (identityField.js): for the lens the user is
+    // viewing, partition each realm into town COUNTIES and blur the seams into
+    // gradients (Stage 2). Render-only: nothing in the sim reads the field, so it
+    // can't perturb history/determinism/saves. _identityLens is set by the worker
+    // from the active view; unset (headless / non-identity lens) → skipped.
+    if (world._identityLens && (world.step === 1 || world.step % _ivl(IDENTITY_MIRROR_INTERVAL) === 0)) {
+      diffuseIdentityField(world, world._identityLens);
+    }
     // Country chronicle: the slow-drift events (a discovery, a growth/wealth
     // milestone) that aren't a single discrete moment, checked periodically.
     if (world.step % CHRONICLE_INTERVAL === 0) chronicleTick(world);

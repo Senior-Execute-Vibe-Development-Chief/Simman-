@@ -79,6 +79,57 @@ console.log(`[smoke] invariant run: ${RUN_STEPS} steps with checks on`);
   console.log(`  info step ${st.step} · ${st.settlements} settlements · pop ${st.totalPeople} · wealth ${st.totalWealth} · ${st.countries} countries · claimed ${(st.landPct * 100).toFixed(1)}% of land`);
 }
 
+console.log(`[smoke] identity field: per-tile mirror tracks the entities`);
+{
+  const { mirrorIdentityField, auditIdentityField } = await import("../src/sim/peopleSim/identityField.js");
+  const world = buildSim({ W, H, seed: SEED, preset: PRESET });
+  stepPeopleSim(world, 3000);
+  mirrorIdentityField(world);                 // exact comparison at a known point
+  const rep = auditIdentityField(world);
+  check(`field covers owned land (${rep.checked} tiles)`, rep.checked > 100, `${rep.checked} checked`);
+  check("field culture matches entities", rep.mismatches.culture === 0, `${rep.mismatches.culture} mismatched`);
+  check("field faith matches entities", rep.mismatches.faith === 0, `${rep.mismatches.faith} mismatched`);
+  check("field language matches entities", rep.mismatches.language === 0, `${rep.mismatches.language} mismatched`);
+}
+
+console.log(`[smoke] identity counties: deterministic, border-respecting, town-anchored`);
+{
+  const { diffuseIdentityField, IDENTITY_K } = await import("../src/sim/peopleSim/identityField.js");
+  const { dominantCulture } = await import("../src/sim/peopleSim/cultures.js");
+  const world = buildSim({ W, H, seed: SEED, preset: PRESET });
+  // identityField only runs for the active lens (worker-set); mimic that headlessly
+  world._identityLens = "culture";
+  stepPeopleSim(world, 3000);
+  const N = world.N, K = IDENTITY_K, tw = world.tw, terr = world._countryOwner || world._countryClaim;
+  diffuseIdentityField(world, "culture");
+  const r1 = world.tileCulId.slice();
+  diffuseIdentityField(world, "culture");
+  let same = true; for (let i = 0; i < r1.length && same; i++) if (r1[i] !== world.tileCulId[i]) same = false;
+  check("counties deterministic", same);
+  // validity + the core invariant: identity covers NATION-ED LAND ONLY (every
+  // covered tile lies in a realm's territory; ocean stays clear elsewhere)
+  let cov = 0, badSum = 0, badOrder = 0, offNation = 0;
+  for (let ti = 0; ti < N; ti++) {
+    const b = ti * K; if (world.tileCulId[b] < 0) continue;
+    cov++; let s = 0, prev = 256;
+    for (let k = 0; k < K; k++) { const id = world.tileCulId[b + k]; if (id < 0) break; const sh = world.tileCulShr[b + k]; s += sh; if (sh > prev) badOrder++; prev = sh; }
+    if (Math.abs(s - 255) > 1) badSum++;
+    if (!terr || terr[ti] < 0) offNation++;
+  }
+  check(`county shares valid (${cov} tiles)`, badSum === 0 && badOrder === 0, `${badSum} bad sums, ${badOrder} mis-ordered`);
+  check(`identity covers nation-ed land only (${offNation} off-nation)`, cov > 0 && offNation === 0, `${offNation} covered tiles outside any realm`);
+  // town cores: each NATIONAL town's home tile keeps its OWN dominant people (it seeds its county)
+  let towns = 0, kept = 0;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || (s.tier | 0) < 1 || s.countryId < 0 || dominantCulture(s) < 0) continue;
+    const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+    if (!terr || terr[ti] < 0) continue;   // home tile not yet in its realm's territory (border lag) — field is masked there
+    towns++;
+    if (world.tileCulId[ti * K] === dominantCulture(s)) kept++;
+  }
+  check(`town cores anchored (${towns ? (100 * kept / towns).toFixed(1) : 0}% kept)`, towns === 0 || kept / towns >= 0.85, `${kept}/${towns}`);
+}
+
 console.log(`[smoke] save/load: roundtrip identity + functional resume`);
 {
   const { serializeWorld, loadWorld, hashWorld } = await import("../src/sim/persist.js");
@@ -97,6 +148,28 @@ console.log(`[smoke] save/load: roundtrip identity + functional resume`);
   let hitTotal = 0; if (hits) for (const k of Object.keys(hits)) hitTotal += hits[k];
   check("loaded world resumes cleanly", hitTotal === 0 && st.settlements > 0 && Number.isFinite(st.totalWealth),
     `${st.settlements} settlements, hits ${JSON.stringify(hits)}`);
+}
+
+console.log(`[smoke] DISSOLVE_FARMS lever: no tier-0, deterministic, alive`);
+{
+  const { applyTuning, resetTuning } = await import("../src/sim/peopleSim/tuning.js");
+  applyTuning({ DISSOLVE_FARMS: 1 });
+  try {
+    const a = buildSim({ W, H, seed: SEED, preset: PRESET }); a._checkInvariants = true;
+    const b = buildSim({ W, H, seed: SEED, preset: PRESET });
+    stepPeopleSim(a, 3000); stepPeopleSim(b, 3000);
+    const sa = peopleSimStats(a), sb = peopleSimStats(b); delete sa.tickMs; delete sb.tickMs;
+    check("dissolve: deterministic", JSON.stringify(sa) === JSON.stringify(sb));
+    const setts = a.settlements.filter(s => s.mode === "settled");
+    const t0 = setts.filter(s => (s.tier | 0) === 0).length;
+    check(`dissolve: no farming regions (t0=${t0})`, t0 === 0, `${t0} tier-0 remain`);
+    const hits = a.debug && a.debug.invariantHits; let hitTotal = 0; if (hits) for (const k of Object.keys(hits)) hitTotal += hits[k];
+    check("dissolve: zero invariant violations", hitTotal === 0, hits ? JSON.stringify(hits) : "");
+    check(`dissolve: civilization alive (${sa.settlements} settlements)`, sa.settlements >= 5 && sa.totalPeople > 500);
+    check(`dissolve: fewer entities than farming-region model (${sa.settlements})`, sa.settlements < 60, `${sa.settlements} settlements`);
+  } finally {
+    resetTuning();   // restore defaults so nothing downstream sees the lever
+  }
 }
 
 const secs = ((performance.now() - t0) / 1000).toFixed(1);

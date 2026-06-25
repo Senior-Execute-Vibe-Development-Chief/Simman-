@@ -319,6 +319,7 @@ const rivers=computeRivers(tw,th,tElev,tMoist,tTemp);
 // fertility formula (bell curve) naturally produces good values.
 // Biome classification, resources, and all downstream systems react correctly.
 const riverMoist=new Float32Array(tw*th);
+const tFlood=new Uint8Array(tw*th);   // arid-river floodplain mask (Nile/Indus/Euphrates valley): its own biome + prime cropland
 {// Every river down to a STREAM waters a floodplain — the band where farming
 // concentrates. Widened and strengthened: a river's valley is its breadbasket, so it
 // must be broad enough and wet enough to read as prime cropland, not a one-tile thread.
@@ -362,7 +363,13 @@ tFert[ti]=tileFert(tTemp[ti],tMoist[ti],tElev[ti]);
 // valleys (the river is the only water → irrigation transforms it) and gentle in
 // already-wet land (the river just levels the terrain). tCoast deltas are richest.
 const allu=rm*(oldMoist<0.30?0.55:oldMoist<0.45?0.30:0.10);
-tFert[ti]=Math.min(1,tFert[ti]+allu);}}
+tFert[ti]=Math.min(1,tFert[ti]+allu);
+// FLOODPLAIN: where a river runs through genuinely DRY land it lays a fertile
+// alluvial valley — a distinct ecosystem, not the savanna the moisture boost
+// alone reads as. Mark the whole wetted GREEN corridor (boosted moisture past the
+// vegetation line) when the underlying land is arid — the Nile / Indus / Euphrates
+// ribbon through desert, the full width that reads as non-desert.
+if(oldMoist<0.32&&tMoist[ti]>0.14&&rm>0.04)tFlood[ti]=1;}}
 
 // ── Lake moisture boost: lakes act as local moisture sources ──
 if(rivers.lake){
@@ -505,6 +512,11 @@ if(e<=0){tCrop[ti]=0;tCross[ti]=1;continue;}
 // with only a gentle roll-off in extreme heat. Hot-wet laterite and aridity are
 // handled by the moisture bell + penalties below.
 tCrop[ti]=cropSuitability(t,m,e,tCoast[ti],rivers&&rivers.riverMag?rivers.riverMag[ti]:0,bDist?bDist[ti]:null);
+// An arid-river FLOODPLAIN is prime irrigated cropland (the Nile / Mesopotamia /
+// Indus alluvium — the most productive farmland there was), whatever the bare
+// climate would rate the hot dry valley as. The hottest cradles' later
+// salinisation (SOIL_EXHAUST, settlement.js) still applies the historical decline.
+if(tFlood[ti])tCrop[ti]=Math.max(tCrop[ti],0.92);
 // Crossing difficulty: average edge cost from each land neighbour
 // into this tile. Edge-based so slope shows up; averaged so the
 // overlay is direction-agnostic.
@@ -537,7 +549,7 @@ if(w.seed==null)w.seed=w._seed??1;
 w.rivers=rivers;w.deposits=deposits;
 // Deep ancestry substrate (the pre-civilisation genetic map), from geography.
 const{tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1),w.preset);
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,deposits,rivers,tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy,stepCount:0};}
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,tFlood,deposits,rivers,tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy,stepCount:0};}
 
 // Full headless compose: generateWorld + buildTerritory in one call.
 export function buildWorld({W=480,H=W>>1,seed=1,preset="earth_sim",oceanLevel=0.78,tecParams={}}={}){

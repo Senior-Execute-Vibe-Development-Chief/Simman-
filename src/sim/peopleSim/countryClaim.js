@@ -210,5 +210,23 @@ export function relaxClaim(world) {
     if (flips.length === 0) break;
     for (const ti of flips) { claim[ti] = target[ti]; press[ti] = 0; }
   }
+  // ── Across-water territory: SNAP (the land front can't cross the sea) ──
+  // A realm whose cost-Voronoi reaches the far shore of an enclosed sea or a
+  // strait (a mare nostrum) holds that land in _countryOwner, but the crawl above
+  // is land-only, so it would never SHOW — only settled colony footholds appeared.
+  // Paint owned WILDERNESS that sits on a landmass the realm's land-claim doesn't
+  // touch: its far-shore / overseas holdings appear at once (no land path to
+  // animate). Never transfers another realm's already-drawn land (that's conquest).
+  {
+    const touch = new Map();
+    for (let ti = 0; ti < N; ti++) { const v = claim[ti]; if (v < 0 || elev[ti] <= 0) continue; let s2 = touch.get(v); if (!s2) touch.set(v, s2 = new Set()); s2.add(comp[ti]); }
+    for (let ti = 0; ti < N; ti++) {
+      if (elev[ti] <= 0) continue;
+      const tg = target[ti];
+      if (tg < 0 || claim[ti] >= 0) continue;      // unowned, or already drawn (don't snatch across water)
+      const held = touch.get(tg);
+      if (!held || !held.has(comp[ti])) claim[ti] = tg;   // far-shore land the crawl can't reach
+    }
+  }
   return claim;
 }

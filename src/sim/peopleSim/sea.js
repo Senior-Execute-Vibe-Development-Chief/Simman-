@@ -37,6 +37,7 @@ import { isContinentalLand } from "./state.js";
 import { recordOut, OUT_COLONY } from "./money.js";
 import { expansionColonyMul } from "./personality.js";
 import { forEachNear } from "./spatialGrid.js";
+import { resScaleFor } from "./countryTerritory.js";
 
 // Ship ids count up per world (world._nextShipId) — see the settlement-id
 // note in settlement.js for why module-scope counters are off limits.
@@ -191,6 +192,14 @@ export function updateSea(world) {
   world._seaLanes = [];
   if (ports.length < 1) return;
 
+  // Sea reach is a CUMULATIVE travel distance (cost units accumulated tile by
+  // tile), so — exactly like land territory reach (countryTerritory's RES_REF_W)
+  // — it must scale with grid resolution or the SAME fleet crosses a smaller
+  // fraction of the globe on a finer map. Without this, a budget that spans the
+  // Atlantic at 240-wide only reaches Iceland at the UI's 1920-wide grid (each
+  // ocean tile is the same SEA_STEP cost, but there are 8× more of them per
+  // degree). resScaleFor anchors the calibration at the 240-wide reference.
+  const resScale = resScaleFor(tw);
   // Per-port sea budget (range). A port that can't sail (no navigation, or
   // too small) still seeds the flood as a DESTINATION (budget 0: it owns
   // only its embark tile and projects nothing), so advanced fleets can
@@ -201,7 +210,7 @@ export function updateSea(world) {
     const canSail = nav >= MIN_NAV_FOR_SEA && (p.people || 0) >= T.SEA_MIN_POP;
     // Sea-lane reach now scales with the naval techs (Galleys → Caravels → Ocean
     // Sailing → Steamship), not raw navigation (tech.js seaRange channel).
-    budget.set(p.id, canSail ? SEA_RANGE_BASE + techEff(p).seaRange * T.SEA_RANGE_NAV : 0);
+    budget.set(p.id, canSail ? (SEA_RANGE_BASE + techEff(p).seaRange * T.SEA_RANGE_NAV) * resScale : 0);
   }
 
   // Colony-eligible ports (we only collect shore candidates for these, to
@@ -276,8 +285,13 @@ export function updateSea(world) {
     if (e < 0 || elev[e] > 0) continue;
     if (dist[e] > 0) { dist[e] = 0; owner[e] = p.id; prev[e] = -1; heap.push(e, 0); }
   }
+  // The flood covers the ocean, whose tile count grows with AREA (~resScale²), so
+  // scale the visit cap likewise — otherwise at a fine grid the global cap is
+  // exhausted before the flood reaches a far shore (the transatlantic tiles never
+  // get popped), and ports go blind to the New World. Never exceed the map.
+  const visitCap = Math.min(N, MAX_SEA_VISITS * resScale * resScale);
   let visited = 0;
-  while (heap.n > 0 && visited < MAX_SEA_VISITS) {
+  while (heap.n > 0 && visited < visitCap) {
     const { ti, d } = heap.popMin();
     if (d > dist[ti]) continue;
     visited++;

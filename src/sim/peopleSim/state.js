@@ -51,6 +51,7 @@ export function createWorld(w, opts = {}) {
     temp:  new Float32Array(N),
     moist: new Float32Array(N),
     fert:  new Float32Array(N),
+    tFlood: new Uint8Array(N),   // arid-river floodplain mask (Nile/Indus valley) — drives dense valley settlement + the floodplain biome
     coast: new Uint8Array(N),
     riverMag: null,
 
@@ -73,6 +74,11 @@ export function createWorld(w, opts = {}) {
   };
 
   initTerrain(world, w, opts.tCrop);
+  // List of floodplain tiles so crystallisation can fill the river valley directly
+  // (a thin ribbon is almost never hit by the random tile sweep — the Nile would
+  // stay empty otherwise). Built once; the mask is static after worldgen.
+  world._floodTiles = [];
+  for (let i = 0; i < N; i++) if (world.tFlood[i]) world._floodTiles.push(i);
   initAncestry(world, w, opts);
   initRiverMag(world, w);
   initWind(world, w);
@@ -93,10 +99,35 @@ function initTerrain(world, w, tCrop) {
       const e = w.elevation[wi], t = w.temperature[wi], m = w.moisture[wi];
       elev[ti] = e; temp[ti] = t; moist[ti] = m;
       coast[ti] = w.coastal ? (w.coastal[wi] ? 1 : 0) : 0;
-      // Use the same crop-suitability array the overlay renders, so
-      // where you SEE green is where settlements actually thrive. Falls
-      // back to the local bellFert formula if tCrop wasn't supplied.
-      fert[ti] = tCrop ? tCrop[wi] : bellFert(t, m, e);
+      // FERTILITY: max-pool over the TILE_RES×TILE_RES worldgen block, not a point
+      // sample. Point-sampling every TILE_RES-th pixel DROPS thin fertile features —
+      // a one-to-few-tile river floodplain (the Nile / Indus valley) falls between
+      // samples and vanishes, leaving the cradle farming a single pixel. The block
+      // MAX preserves the valley (any farmable sub-tile carries the cell) while barely
+      // changing uniform land (where max ≈ the sample). Same crop-suitability array
+      // the overlay renders, so where you SEE green is where settlements thrive.
+      if (tCrop) {
+        let f = 0;
+        for (let oy = 0; oy < TILE_RES; oy++) {
+          const sy = Math.min(w.height - 1, ty * TILE_RES + oy);
+          for (let ox = 0; ox < TILE_RES; ox++) {
+            const sx = Math.min(w.width - 1, tx * TILE_RES + ox);
+            const v = tCrop[sy * w.width + sx];
+            if (v > f) f = v;
+          }
+        }
+        fert[ti] = f;
+      } else fert[ti] = bellFert(t, m, e);
+      // FLOODPLAIN moisture: a fertile-but-DRY tile is irrigated alluvium — an arid
+      // river's floodplain (the Nile / Indus / Euphrates), watered by the river, not
+      // by rain. It must read as WET, because the transport-cost core charges a
+      // hot-dry penalty (transport.js) on land with low moisture, and the food model
+      // discounts a tile by transport cost. Without this the cradle OWNS its fertile
+      // valley but every tile reads as costly desert, so foodFalloff collapses the
+      // worked catchment to ~1 tile however fertile the land is. Keying on high crop
+      // value + low base moisture isolates exactly the irrigated valleys (nowhere else
+      // is prime farmland also bone-dry); also greens the biome correctly.
+      if (fert[ti] > 0.85 && moist[ti] < 0.30) { world.tFlood[ti] = 1; moist[ti] = Math.max(moist[ti], 0.45); }
     }
   }
 }
@@ -256,7 +287,11 @@ function cradleSurround(world, ti) {
 // look. Extend this list (Indus, Mesopotamia, Mesoamerica, Andes) for more independent hearths.
 const EARTH_HEARTH_SITES = [
   { name: "Nile",        fx: 0.580, fy: 0.329 },   // fertile ribbon through the Sahara to the Mediterranean delta
-  { name: "Mesopotamia", fx: 0.640, fy: 0.300 },   // Tigris-Euphrates — Sumer, the first cities; the Fertile Crescent's eastern arm
+  { name: "Mesopotamia", fx: 0.622, fy: 0.330, r: 0.02 },   // Tigris-Euphrates / the Fertile Crescent. TIGHT search radius: the wide
+                                                            // default let it drift ~14° NE to the nearest big river — which on the
+                                                            // generated earth sits up by the CASPIAN — seeding "Mesopotamia" on an
+                                                            // inland sea. The tight radius keeps it in the Crescent (a dry-fertile
+                                                            // irrigation cradle, like the real one) instead of chasing the Caspian river.
   { name: "Yangtze",     fx: 0.828, fy: 0.271 },   // temperate East-Asian river basin
 ];
 function seedEarthHearths(world) {
@@ -264,7 +299,7 @@ function seedEarthHearths(world) {
   let seeded = 0;
   for (const site of EARTH_HEARTH_SITES) {
     const cx = Math.round(site.fx * tw), cy = Math.round(site.fy * th);
-    const R = Math.max(6, Math.round(tw * 0.04));   // search radius ~4% of map width
+    const R = Math.max(6, Math.round(tw * (site.r ?? 0.04)));   // search radius (per-site override; default ~4% of map width)
     let bestTi = -1, bestScore = -1;
     for (let dy = -R; dy <= R; dy++) {
       const ny = cy + dy; if (ny < 0 || ny >= th) continue;

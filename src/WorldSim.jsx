@@ -90,14 +90,16 @@ const BC=[
 [78,118,48],     // 15 Tropical Dry Forest — muted olive-green
 [152,145,135],   // 16 Barren / Alpine — gray-brown rock
 [42,110,38],     // 17 Subtropical Forest — warm humid (SE US, S China, SE Brazil)
-[195,190,180]    // 18 Cold Desert / Polar Desert — pale gray-tan
+[195,190,180],   // 18 Cold Desert / Polar Desert — pale gray-tan
+[34,104,56]      // 19 Floodplain — vivid irrigated alluvium (the Nile/Indus green ribbon through desert)
 ];
 const BN=['Deep Ocean','Shallow Ocean','Coastal Water','Beach','Tundra','Snow / Ice','Taiga',
 'Boreal Forest','Temperate Forest','Temperate Rainforest','Tropical Rainforest','Savanna',
 'Grassland','Desert','Shrubland','Tropical Dry Forest','Barren / Alpine',
-'Subtropical Forest','Cold Desert'];
-function getBiomeD(e,m,t,sl){
+'Subtropical Forest','Cold Desert','Floodplain'];
+function getBiomeD(e,m,t,sl,flood){
   if(e<=sl)return e<sl-.08?0:e<sl-.01?1:2;
+  if(flood)return 19;   // arid-river floodplain: its own biome, not the savanna its t+m alone reads as
   // Effective moisture: cold regions retain moisture (low evaporation),
   // hot regions lose it to evaporation (Holdridge PET principle).
   const demand=.5+t*.5;
@@ -114,7 +116,7 @@ function getBiomeD(e,m,t,sl){
   if(t<.85)return em>.54?17:em>.36?15:em>.16?11:em>.09?14:13;  // subtropical (wider savanna)
   return em>.56?10:em>.38?15:em>.16?11:em>.09?12:13;           // tropical (wider savanna belt)
 }
-function getColorD(e,m,t,sl){const c=BC[getBiomeD(e,m,t,sl)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
+function getColorD(e,m,t,sl,flood){const c=BC[getBiomeD(e,m,t,sl,flood)],v=((e*37.7+m*17.3+t*53.1)%1+1)%1;
 return[(c[0]+(v-.5)*10)|0,(c[1]+(v-.5)*10)|0,(c[2]+(v-.5)*8)|0];}
 
 // ── Live country colouring (Country view) ───────────────────────────
@@ -266,6 +268,18 @@ const LENSES=[
   {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["resources","Resources"],["crop","Cropland"]]},
   ...(DEV?[{id:"dev",label:"Dev",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
 ];
+
+// Country-editor field lists + a compact slider row.
+const ED_KFIELDS=[["agriculture","Agriculture"],["construction","Construction"],["organization","Organization"],["metallurgy","Metallurgy"],["navigation","Navigation"],["mobility","Mobility"]];
+const ED_PFIELDS=[["aggression","Aggression"],["commerce","Commerce"],["expansionism","Expansionism"]];
+function EdRow({label,value,min,max,step,onChange,fmt}){
+  return <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"0 6px",alignItems:"center",marginBottom:2}}>
+    <span className="au-fade" style={{fontSize:10}}>{label}</span>
+    <span style={{fontSize:10,fontVariantNumeric:"tabular-nums"}}>{fmt(value)}</span>
+    <input type="range" min={min} max={max} step={step} value={value}
+      onChange={e=>onChange(+e.target.value)} style={{gridColumn:"1 / 3",width:"100%",height:13}}/>
+  </div>;
+}
 
 const CHRON_COL={founding:"#1f7a55",discovery:"#2f6fa8",growth:"#2f7d3f",wealth:"#9c7414",
   war:"#b23a28",conquest:"#b15212",annex:"#8a6420",secession:"#7a44b0",loss:"#a04a28",
@@ -547,6 +561,16 @@ const[panelTab,setPanelTab]=useState("world");   // World Panel tab: world|realm
 const[newWorldOpen,setNewWorldOpen]=useState(false);
 const[menuOpen,setMenuOpen]=useState(false);
 const[realmSel,setRealmSel]=useState(-1);   // realm inspected in the Realms tab
+// ── Country editor: arm placement, then click the map to drop a seed capital
+// with the chosen tech/knowledge/personality and watch what it grows into. ──
+const[editorOpen,setEditorOpen]=useState(false);   // panel visible
+const[editorArmed,setEditorArmed]=useState(false); // next map click PLACES instead of selects
+const[edParams,setEdParams]=useState({tier:2,people:500,
+  knowledge:{agriculture:0.6,construction:0.3,organization:0.4,metallurgy:0.3,navigation:0.1,mobility:0.2},
+  personality:{aggression:0,commerce:0,expansionism:0}});
+const editorArmedRef=useRef(false);const edParamsRef=useRef(edParams);
+useEffect(()=>{editorArmedRef.current=editorArmed;},[editorArmed]);
+useEffect(()=>{edParamsRef.current=edParams;},[edParams]);
 // Ref mirror so draw() (memoized) sees the current selection without
 // needing the state in its dep list.
 const selectedSettlementIdRef=useRef(-1);
@@ -805,11 +829,12 @@ for(let tx=0;tx<CW;tx++){
 const sx=Math.min(W-1,tx*RES),sy=Math.min(H-1,dataY);
 const si=sy*W+sx;const e=w.elevation[si];
 let m=w.moisture[si];
-if(smoothM){const tti=Math.min(ter.th-1,(sy/RES)|0)*ter.tw+Math.min(ter.tw-1,(sx/RES)|0);m=smoothM[tti];}
+let flood=false;
+if(smoothM){const tti=Math.min(ter.th-1,(sy/RES)|0)*ter.tw+Math.min(ter.tw-1,(sx/RES)|0);m=smoothM[tti];if(ter.tFlood)flood=ter.tFlood[tti]===1;}
 const t=w.temperature[si];let r,g,b;
 if(e<=sl){const df=Math.min(1,Math.max(0,(sl-e)/0.15));
 r=Math.round(32-df*24);g=Math.round(72-df*50);b=Math.round(120-df*60);
-}else{const c=getColorD(e,m,t,sl);r=c[0];g=c[1];b=c[2];}
+}else{const c=getColorD(e,m,t,sl,flood);r=c[0];g=c[1];b=c[2];}
 // Swamp overlay
 let hasSwamp=false;
 for(let dy=0;dy<RES;dy++)for(let dx=0;dx<RES;dx++){
@@ -1757,22 +1782,50 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         if(nf&&(vmCulture||vmFaith||vmLanguage)){   // ancestry reuses the SAME fill but renders in its own block below
           const nearest=nf.nearest;
           const byId=psw._byId;const fcache=new Map(),kcache=new Map();
+          // STAGE 1: colour from the per-tile identity FIELD where it covers a tile
+          // (its territory catchment), and fall back to the settlement-point flood
+          // only for the surrounding halo. The field is the grid substrate that
+          // later stages let diffuse on its own; for now it mirrors the entities,
+          // so owned tiles render identically — this just moves the SOURCE onto the
+          // grid. Used only when the shipped field matches the active lens.
+          const fld=((vmCulture&&psw._fieldLayer==="culture")||(vmFaith&&psw._fieldLayer==="faith")||(vmLanguage&&psw._fieldLayer==="language"))?psw._fieldDom:null;
+          const fldSec=fld?psw._fieldSec:null;
+          // colour for ONE id in the ACTIVE layer (the field carries that layer's id directly)
+          const colForActive=(id)=>id<0?null:(vmFaith?colFor(id,-1,-1):vmLanguage?colFor(-1,id,-1):colFor(-1,-1,id));
+          const idCol=new Map();   // active-layer id → {fs,key} (or null)
+          const colById=(id)=>{if(id<0)return null;let e=idCol.get(id);if(e!==undefined)return e;
+            const col=colForActive(id);e=col?{fs:`hsl(${col.h},${col.s}%,${col.l}%)`,key:col.key}:null;idCol.set(id,e);return e;};
           const fillFor=(sid)=>{let c=fcache.get(sid);if(c!==undefined)return c;
             const st=byId&&byId.get(sid);const col=st?colorOf(st):null;
             c=col?{c1:`hsl(${col.h},${col.s}%,${col.l}%)`,c2:col.key2!=null?`hsl(${col.h2},${col.s2}%,${col.l2}%)`:null}:null;
             fcache.set(sid,c);kcache.set(sid,col?col.key:-1);return c;};
+          const keyOf=new Int32Array(N2);keyOf.fill(-2147483648);   // per-tile group key, for borders
           let lastFs=null;
-          for(let ti=0;ti<N2;ti++){const sid=nearest[ti];if(sid<0)continue;const pr=fillFor(sid);if(!pr)continue;
+          for(let ti=0;ti<N2;ti++){
+            let c1,c2=null,key;
+            if(fld){              // field present → counties are the ONLY source
+              if(fld[ti]<0)continue;   // outside any county → leave grey (no per-settlement specks)
+              const dc=colById(fld[ti]);if(!dc)continue;
+              c1=dc.fs;key=dc.key;
+              // Field tiles render their DOMINANT identity only — clean regions with
+              // soft borders. (No top-two checkerboard: the diffusion makes most
+              // border tiles a 2-mix, and checkerboarding them all reads as pixel
+              // static. The gradient shows as the dominant shifting across the band.)
+            }else{                 // field not shipped yet (or first frame) → nearest-settlement flood
+              const sid=nearest[ti];if(sid<0)continue;const pr=fillFor(sid);if(!pr)continue;
+              c1=pr.c1;c2=pr.c2;key=kcache.get(sid);
+            }
+            keyOf[ti]=key;
             const y=(ti/tw)|0,x=ti-y*tw;const sx=x*TR,sy=dataYtoScreenY(y*TR,H,CH);
-            const fs=(pr.c2&&((x+y)&1))?pr.c2:pr.c1;   // mixed unit → checkerboard top-two colours
+            const fs=(c2&&((x+y)&1))?c2:c1;   // mixed unit → checkerboard top-two colours
             if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
             octx.fillRect(sx,sy,TR+0.7,TR+0.7);}
           // soft borders where the dominant GROUP changes (legible but not segmented)
           octx.strokeStyle="rgba(10,10,14,0.34)";octx.lineWidth=Math.max(0.8,TR*0.5);octx.beginPath();
-          for(let ti=0;ti<N2;ti++){const sid=nearest[ti];if(sid<0)continue;const k=kcache.get(sid);
+          for(let ti=0;ti<N2;ti++){const k=keyOf[ti];if(k===-2147483648)continue;
             const y=(ti/tw)|0,x=ti-y*tw;const sx=x*TR,sy=dataYtoScreenY(y*TR,H,CH);
-            const rsid=nearest[((x+1)%tw)+y*tw];if(rsid>=0&&kcache.get(rsid)!==k){const ex=(x+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
-            if(y<th-1){const dsid=nearest[ti+tw];if(dsid>=0&&kcache.get(dsid)!==k){const by=dataYtoScreenY((y+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
+            const rk=keyOf[((x+1)%tw)+y*tw];if(rk!==-2147483648&&rk!==k){const ex=(x+1)*TR;octx.moveTo(ex,sy);octx.lineTo(ex,sy+TR);}
+            if(y<th-1){const dk=keyOf[ti+tw];if(dk!==-2147483648&&dk!==k){const by=dataYtoScreenY((y+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
           octx.stroke();
         }
       }
@@ -2155,6 +2208,10 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.tileComp)psw._tileComp=snap.tileComp;   // network-component map (roads view); keep last
   psw._tileCompSeen=undefined;                     // mirror's tileComp is already clean (-1 = none)
   if(snap.countryClaim)psw._countryClaim=snap.countryClaim;  // capital-claim prototype (Capital Claim view); keep last
+  // Per-tile identity field for the active people/faith/language lens. Sent only
+  // on the static cadence and only while an identity lens is up; keyed by the
+  // layer it was built for, so a stale field from a previous lens is ignored.
+  if(snap.fieldDom){psw._fieldDom=snap.fieldDom;psw._fieldSec=snap.fieldSec;psw._fieldLayer=snap.fieldLayer;}
   psw._moneyFlows=snap.moneyFlows||null;           // animated coin flows (money view)
   if(snap.seaLanes)psw._seaLanes=snap.seaLanes;   // null between static sends → keep last
   if(snap.cultures){const cm=new Map();for(const c of snap.cultures)cm.set(c.id,c);psw.cultures=cm;}
@@ -2321,7 +2378,8 @@ const elev=w.elevation[i]||0;
 const temp=w.temperature[i]||0;
 const terTi=terRef.current?Math.min(terRef.current.th-1,(wy/RES)|0)*terRef.current.tw+Math.min(terRef.current.tw-1,(wx/RES)|0):-1;
 const moist=terTi>=0&&terRef.current?terRef.current.tMoist[terTi]:(w.moisture[i]||0);
-const biome=getBiomeD(elev,moist,temp,0);
+const isFlood=terTi>=0&&terRef.current&&terRef.current.tFlood?terRef.current.tFlood[terTi]===1:false;
+const biome=getBiomeD(elev,moist,temp,0,isFlood);
 const biomeName=BN[biome]||"Ocean";
 const elevM=elev<=0?Math.round(elev*4000):Math.round(elev*8000);
 const tempC=Math.round(temp*100-60);// range: -60°C to +40°C
@@ -2377,6 +2435,13 @@ const ttx=Math.min(ter.tw-1,(wx/RES)|0),tty=Math.min(ter.th-1,(wy/RES)|0);
 const psw=peopleRef.current;
 if(psw){
   const psTx=ttx/psw.tileRes,psTy=tty/psw.tileRes;
+  // Country editor: an armed click DROPS a seed capital here instead of selecting.
+  if(editorArmedRef.current&&simWorkerRef.current){
+    const p=edParamsRef.current;
+    simWorkerRef.current.postMessage({type:'editor.placeCountry',x:psTx,y:psTy,
+      tier:p.tier,people:p.people,knowledge:p.knowledge,personality:p.personality});
+    return;
+  }
   let best=null,bestD2=Infinity;
   for(const s of psw.settlements){
     if(!s||s.mode!=="settled")continue;
@@ -3424,6 +3489,8 @@ return(
     style={{fontSize:12,padding:"3px 8px"}} title="3D globe">🌍</button>
   <button onClick={()=>setNewWorldOpen(true)} className="au-btn au-flat" style={{fontSize:12,padding:"3px 8px"}}
     title="New world — presets, seed, import">⊕ World</button>
+  <button onClick={()=>{setEditorOpen(v=>!v);if(editorArmed)setEditorArmed(false);}} className={"au-btn au-flat"+(editorOpen?" au-active":"")}
+    style={{fontSize:12,padding:"3px 8px"}} title="Country editor — place a seed capital with chosen tech & character">🏛 Editor</button>
   <button onClick={()=>setMenuOpen(v=>!v)} className={"au-btn au-flat"+(menuOpen?" au-active":"")}
     style={{fontSize:12,padding:"3px 10px"}} title="Save / load / export / advanced">≡</button>
 </header>
@@ -3492,6 +3559,28 @@ return(
       maxWidth:"100%",maxHeight:"100%",width:"auto",height:"auto",aspectRatio:`${CW}/${CH}`,
       boxShadow:"0 8px 36px rgba(0,0,0,0.7)",border:"1px solid var(--au-paper-deep)"}} />
 }
+
+{/* ─── Country editor panel ─── */}
+{editorOpen&&<div className="au-parchment" style={{position:"absolute",top:48,left:8,width:228,
+  maxHeight:"calc(100% - 64px)",overflowY:"auto",padding:"8px 10px",fontSize:11,zIndex:30}}>
+  <div className="au-heading au-sc" style={{fontSize:11,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+    <span>Country Editor</span>
+    <span onClick={()=>{setEditorOpen(false);setEditorArmed(false);}} style={{cursor:"pointer"}}>✕</span>
+  </div>
+  <button onClick={()=>setEditorArmed(v=>!v)} className={"au-rail-tab"+(editorArmed?" au-active":"")}
+    style={{width:"100%",fontSize:11,padding:"5px 0",marginBottom:7}}>
+    {editorArmed?"● Click a land tile to place":"Arm placement"}</button>
+  <EdRow label="Capital size (people)" value={edParams.people} min={500} max={8000} step={50}
+    onChange={v=>setEdParams(p=>({...p,people:v}))} fmt={v=>Math.round(v)}/>
+  <div className="au-fade" style={{margin:"6px 0 2px",fontWeight:600,fontSize:10}}>Knowledge / tech</div>
+  {ED_KFIELDS.map(([k,l])=><EdRow key={k} label={l} value={edParams.knowledge[k]} min={0} max={1} step={0.05}
+    onChange={v=>setEdParams(p=>({...p,knowledge:{...p.knowledge,[k]:v}}))} fmt={v=>(v*100|0)+"%"}/>)}
+  <div className="au-fade" style={{margin:"6px 0 2px",fontWeight:600,fontSize:10}}>Character (−1 … +1)</div>
+  {ED_PFIELDS.map(([k,l])=><EdRow key={k} label={l} value={edParams.personality[k]} min={-1} max={1} step={0.05}
+    onChange={v=>setEdParams(p=>({...p,personality:{...p.personality,[k]:v}}))} fmt={v=>v.toFixed(2)}/>)}
+  <div className="au-fade" style={{fontSize:9,marginTop:7,fontStyle:"italic"}}>
+    Arm, then click a land tile: a fully-formed realm appears, filled with cities and towns out to the extent its tech allows it to hold. Drop several to compare. (Takes a moment to settle.)</div>
+</div>}
 
 {/* ─── Pico hover card ─── */}
 {hoverInfo&&<div className="au-parchment au-pico"

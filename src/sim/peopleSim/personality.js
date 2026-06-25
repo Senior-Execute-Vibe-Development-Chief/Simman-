@@ -282,7 +282,7 @@ const COMBO = {
   "aggression+expansionism": "Conqueror",        // Rome / the Mongols / Macedon
   "commerce+expansionism":   "Trading Empire",   // the Dutch / Portuguese / maritime colonial powers
 };
-function labelFor(p) {
+export function labelFor(p) {
   const drives = [
     ["aggression",   p.aggression],
     ["commerce",     p.commerce],

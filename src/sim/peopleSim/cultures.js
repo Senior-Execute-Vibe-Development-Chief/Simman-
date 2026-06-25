@@ -45,11 +45,11 @@ const ETHNO_MIN_BLOC = 3;                // …and be a real region (≥ this ma
 // (lingua francas) — the right way round. Without this a connected basin stayed
 // one people+tongue forever (the Nile-to-Sweden megapeople).
 const COHESION_BASE_FRAC = 0.02;         // stone-age cohesion radius, as a fraction of map width
-const COHESION_TECH      = 0.05;         // …extended per unit of connectivity tech
-const COHESION_CAP       = 2.5;          // cap on the connectivity sum
+const COHESION_TECH      = 0.02;         // …extended per unit of connectivity tech (lowered: high-tech realms were holding one people across ~70 tiles, so a few cradle stocks blanketed the world — fewer, larger settlements made the old value far too cohesive)
+const COHESION_CAP       = 1.5;          // cap on the connectivity sum (lowered with it, so a developed people still fragments over distance into a family of daughter peoples rather than staying monolithic)
 const COHESION_MIN       = 4;            // floor radius (tiles)
 const DRIFT_AFTER        = 5000;         // ticks a settlement sits beyond its people's reach before it drifts off
-const SPLIT_MIN          = 5;            // a people needs ≥ this many settlements before its rim drifts away (keeps peoples from crumbling to dust)
+const SPLIT_MIN          = 3;            // a people needs ≥ this many settlements before its rim drifts away (lowered: the dissolved world has far fewer, larger settlements, so the old floor of 5 left most peoples too small to ever fragment — the world read as a handful of monocultures)
 // National language: an ORGANISED realm crowns its own standard tongue (a branch of
 // its capital's), so sibling states DIVERGE linguistically and the Languages map
 // follows political borders instead of one tongue spanning many realms.

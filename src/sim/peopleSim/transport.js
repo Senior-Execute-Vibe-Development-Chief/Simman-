@@ -198,7 +198,7 @@ function _tileMode(world, ti) {
 // ignoreRoads is set, used by the territory/claim/admin-reach passes so that
 // political reach follows TERRAIN, not roads (a realm shouldn't sprawl its
 // borders down a trade road). Movement/trade callers keep the road discount.
-function _edgeCost(world, fromTi, toTi, params, ignoreRoads) {
+function _edgeCost(world, fromTi, toTi, params, ignoreRoads, noPortTax) {
   if (!ignoreRoads) {
     const rq = world.roadQuality;
     if (rq) {
@@ -261,7 +261,14 @@ function _edgeCost(world, fromTi, toTi, params, ignoreRoads) {
   // intentional: a ford/bridge has two banks, and travel ALONG the river
   // pays nothing. (conquest.js majorRiverToll is a separate, admin-reach-
   // only surcharge on top for mag≥3 rivers.)
-  if (toMode !== fromMode) base += params.port;
+  // Mode-change port tax (boat ↔ land cargo transfer). Skipped for the FOOD
+  // CATCHMENT reach (noPortTax): a settlement farms its hinterland on foot, so
+  // loading-dock cost is irrelevant to which land it can work — and without this a
+  // settlement sitting ON a river channel couldn't afford to step onto its own
+  // floodplain bank (port tax > a fresh cradle's whole reach budget), starving the
+  // valley cradles. The river's own mode cost still applies, so a far bank is still
+  // harder than a near one.
+  if (toMode !== fromMode && !noPortTax) base += params.port;
   return base;
 }
 
@@ -277,8 +284,8 @@ export function baseEdgeCost(world, fromTi, toTi) {
 // ignoreRoads=true for political REACH (territory / national claim / admin
 // projection) so borders follow terrain, not roads; leave it off for movement
 // and trade, which legitimately speed up on roads.
-export function localEdgeCost(world, fromTi, toTi, kn, ignoreRoads) {
-  return _edgeCost(world, fromTi, toTi, _paramsFor(world, kn), ignoreRoads);
+export function localEdgeCost(world, fromTi, toTi, kn, ignoreRoads, noPortTax) {
+  return _edgeCost(world, fromTi, toTi, _paramsFor(world, kn), ignoreRoads, noPortTax);
 }
 
 export function computeTransport(world) {

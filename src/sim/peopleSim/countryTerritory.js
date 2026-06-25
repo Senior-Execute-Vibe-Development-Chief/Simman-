@@ -414,7 +414,19 @@ export function computeCountryTerritory(world) {
     // never below its own ground. A great city wields the full national reach; a
     // frontier hamlet only its neighbourhood — so claims follow where the PEOPLE are,
     // and a one-hamlet rump can't fly a continental border.
-    const reach = Math.max(integMin, full * Math.min(1, Math.sqrt((s.people || 0) / CLAIM_POP_REF)));
+    // DISSOLVE_FARMS: a settlement's `people` bundles its rural countryside, so a
+    // big farming province would wield the FULL national reach and realms balloon to
+    // span continents. Scale reach by the URBAN CORE instead — administrative reach
+    // follows the city/court, not the peasantry — so only genuine cities project far
+    // and a realm's extent stays bounded (as the many small farming regions bounded
+    // it in the old model).
+    // …and a higher pop reference under DISSOLVE: with far fewer (but bigger)
+    // settlements, each covering its full reach over-claims the world, so a city
+    // must be ~2.5× as populous to wield the full national reach. Together these
+    // keep the largest realm a believable empire, not a continent-spanner.
+    const claimPop = T.DISSOLVE_FARMS ? (s._urbanPop != null ? s._urbanPop : (s.people || 0)) : (s.people || 0);
+    const ref = CLAIM_POP_REF * (T.DISSOLVE_FARMS ? 2.5 : 1);
+    const reach = Math.max(integMin, full * Math.min(1, Math.sqrt(claimPop / ref)));
     const age = world.step - (s._integratedAt ?? -Infinity);
     let sb = age < INTEGRATE_TICKS
       ? Math.min(reach, integMin + Math.max(0, reach - integMin) * (age / INTEGRATE_TICKS))
@@ -807,7 +819,7 @@ function closeRealmGaps(world, co, D) {
 // (Cradles are seeded sovereign at genesis in state.js; secession mints city-led
 // countries in conquest.js — those are the only other country sources.)
 export function adoptAndFound(world) {
-  const co = world._countryOwner, tw = world.tw, elev = world.elev;
+  const co = world._countryOwner, tw = world.tw, elev = world.elev, moist = world.moist;
   if (!co) return;   // territory pass hasn't run yet — nothing to adopt from
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
@@ -836,8 +848,18 @@ export function adoptAndFound(world) {
       // hamlet (tier 0, undeveloped or small) still just waits — not every hamlet is a state.
       const org = (s.knowledge && s.knowledge.organization) || 0;
       const tierLockedCentre = (s.tier | 0) >= 1 || (org >= 0.60 && (s.people || 0) >= NUCLEATE_SEAT_POP);
+      // FOREST/IRON gate (same as nucleateFrontierStates): an unbroken temperate forest
+      // can be perfectly clever yet stay a stateless tribe until metallurgy clears it —
+      // so a forested no-iron centre needs far more people before it founds a realm, even
+      // a developed one. River valleys / open ground / iron-bearing forests are unaffected.
+      const moistAt   = s._climMoist ?? (moist ? moist[ti] : 0.5);
+      const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
+      const ironReady = Math.min(1, ((s.knowledge && s.knowledge.metallurgy) || 0) / (T.LAND_CLEAR_METAL || 0.55));
+      const forestLk  = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * (1 - riverOpen) * (1 - ironReady);
+      const forestBar = NUCLEATE_SEAT_POP * (1 + T.STATE_FOREST * forestLk);
       if (s.countryId < 0 && region < 0 && tierLockedCentre && co[ti] < 0
-          && org >= T.ORG_STATE_MIN) {   // a frontier town founds a state only with the statecraft for it
+          && org >= T.ORG_STATE_MIN                       // the statecraft for territorial rule
+          && (s.people || 0) >= forestBar) {              // and the people to clear+farm forest without iron
         s.countryId = s.id; s._sovereignSeat = world.step; s.loyalty = 1; s._integratedAt = world.step;
         ensurePolity(world, s.id, { how: "frontier", seat: s });
         continue;
@@ -892,7 +914,7 @@ export function nucleateFrontierStates(world) {
   const capD2 = (NUCLEATE_CAP_DIST / Math.sqrt(lever)) ** 2;
   const caps = [];
   if (world.countries) for (const c of world.countries.values()) if (c.capital && c.capital.mode === "settled") caps.push(c.capital.pos);
-  const fert = world.fert;
+  const fert = world.fert, moist = world.moist;
   const cand = [];
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId >= 0) continue;
@@ -912,7 +934,18 @@ export function nucleateFrontierStates(world) {
     // than the temperate world or the warm-DRY river cradles (the Nile, Mesopotamia,
     // which carry no wet-tropic burden), so a centralised state needs a much bigger
     // population there to coalesce — leaving more land unclaimed (Diamond's thesis).
+    // FOREST/IRON gate: an unbroken temperate forest can be high-tech yet stay a
+    // stateless tribe until metallurgy gives it the axes + heavy plough to clear and
+    // farm the woodland — why N. Europe / Russia / the N. American forest belt lagged
+    // the open river cradles. River valleys (open alluvium) and already-cleared land
+    // are exempt; the lock lifts as iron (metallurgy → LAND_CLEAR_METAL) arrives.
+    const moistAt   = s._climMoist ?? (moist ? moist[seatTi] : 0.5);
+    const riverOpen = Math.min(1, (s._riverAcc || 0) / 0.30);
+    const forest    = Math.max(0, Math.min(1, (moistAt - 0.38) / 0.20)) * (1 - riverOpen);
+    const ironReady = Math.min(1, ((s.knowledge && s.knowledge.metallurgy) || 0) / (T.LAND_CLEAR_METAL || 0.55));
+    const forestLocked = forest * (1 - ironReady);
     const capMul = (1 + NUCLEATE_CAP_SPREAD * (1 - capNorm)) * (1 + T.STATE_DISEASE * (s._wetTropic || 0))
+                 * (1 + T.STATE_FOREST * forestLocked)
                  / (1 + T.FRAGMENT * (s._rugged || 0));
     if ((s.people || 0) < seatPop * capMul) continue;
     let dCap = Infinity;                        // isolation from existing states' heartlands

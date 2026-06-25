@@ -32,6 +32,8 @@ const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) fl
                                           // frame spike at high speed; it drives only spawn
                                           // weighting and drifts slowly, so refresh rarely
 const CANDIDATES_PER_SWEEP      = 120;    // wider net per sweep (was 80)
+const FLOOD_SAMPLE_FRAC         = 0.4;    // share of sweep candidates drawn from the arid-river FLOODPLAIN tile list directly — a thin ribbon is almost never hit by the uniform random sweep, so the Nile/Indus valley would stay empty otherwise
+const FLOOD_SPACING_MUL         = 0.5;    // floodplain packs DENSE: a real irrigated river valley was a near-continuous chain of villages, so halve the spacing floor there (the one place we want tighter-than-default packing)
 
 // Permissive fertility gates. Earth had hamlets in desert, tundra,
 // steppe, jungle — they just stayed small because the land couldn't
@@ -277,11 +279,18 @@ export function maybeCrystallize(world) {
   // LOCALITY model spaces centres farther apart (×LOCALITY_SPACING) so the map
   // fills with fewer, larger localities — each farming a bigger catchment —
   // instead of a dense village scatter.
-  const spMul = T.LOCALITY_MODE ? Math.max(1, T.LOCALITY_SPACING || 3) : 1;
+  const spMul = T.LOCALITY_MODE ? Math.max(1, T.LOCALITY_SPACING || 3)
+              : T.DISSOLVE_FARMS ? 2     // tuned: fewer/larger town-regions, but keeping a rural town layer so urbanisation stays realistic (~60%)
+              : 1;
   const hardFloor   = HARD_FLOOR * spMul;
   const softDist    = SOFT_DIST  * spMul;
+  const floodTiles = world._floodTiles, nFlood = floodTiles ? floodTiles.length : 0;
   for (let i = 0; i < CANDIDATES_PER_SWEEP; i++) {
-    const ti = rng.int(N);
+    // Draw a share of candidates straight from the FLOODPLAIN ribbon so the arid
+    // river valley actually fills — the uniform random sweep almost never lands on
+    // a 1–5-tile-wide strip, which is why the Nile stayed empty despite being prime
+    // cropland. Everything downstream (river magnet, spacing, quality) is unchanged.
+    const ti = (nFlood && rng() < FLOOD_SAMPLE_FRAC) ? floodTiles[rng.int(nFlood)] : rng.int(N);
     if (!isContinentalLand(world, ti)) continue;
     const f = fert[ti];
     if (f < MIN_FERT) continue;
@@ -326,7 +335,8 @@ export function maybeCrystallize(world) {
     // so marginal land (rainforest, steppe, outback) ends up a sparse scatter
     // while fertile valleys pack tight.
     const capSp = capacitySpacingMul(f, wetTropicAt(world, ty * world.tw + tx));
-    const hf = hardFloor * capSp, sd = softDist * capSp;
+    const floodSp = (world.tFlood && world.tFlood[ti]) ? FLOOD_SPACING_MUL : 1;   // dense chain down the river valley
+    const hf = hardFloor * capSp * floodSp, sd = softDist * capSp * floodSp;
     if (nearestSq < hf * hf) continue;             // hard reject — overlap
     // Linear ramp between hf and sd on actual distance (not squared, so it
     // grows steeply near the floor and flattens out near the soft boundary —
@@ -425,13 +435,27 @@ export function maybeCrystallize(world) {
                   + Math.abs((world.moist[ti] || 0) - (world.moist[dTi] || 0));
       }
       const isBranch = connected && (td > 70 || (td > 38 && climDelta > 0.34));
+      // Found settlements only INSIDE a nation or as a nation's FRONTIER EXTENSION —
+      // never a stateless hamlet in the deep wilderness. A candidate is allowed if
+      // the tile already lies in a realm's drawn border (region ≥ 0), OR it is a
+      // CONNECTED extension of a nearby realm settlement (the donor), in which case
+      // it joins that realm and grows its frontier. A DISCONNECTED site (independent
+      // origin: another continent, across water, beyond reach) has no nation to join,
+      // so it is NOT founded — only a colony party (maybeSendSettlers, carrying its
+      // parent's flag) can plant the first settlement on virgin land. Cradles are
+      // seeded at world-gen, so the world still bootstraps. (Existing settlements may
+      // still become stateless when their realm collapses — a separate path.)
+      const donorCountry = connected && donor && donor.mode === "settled" ? donor.countryId : -1;
+      const joinCountry = region >= 0 ? region : donorCountry;
+      if (joinCountry < 0) continue;
       const born = makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: 18 + (rng.int(8)),
         knowledge: inherited,
-        countryId: region >= 0 ? region : -1,
+        countryId: joinCountry,   // born into the realm it sits in / extends — never stateless
         parentId: donor.id,   // carries the donor's ancestry; a long jump admixes with the local substrate
         // near spread keeps the donor's people; otherwise we assign below
         cultureId: (connected && !isBranch) ? dCul : -1,
+        tier: T.DISSOLVE_FARMS ? 1 : 0,   // DISSOLVE: there are no farming regions — new settlements are towns
       });
       gridAdd(world, born);   // same-pass candidates must see (and space off) it
       if (!connected) {
@@ -504,7 +528,12 @@ function computeResourceScarcity(world) {
 // this bonus speeds up their spawning so the pattern is visible
 // across the sim timescale.
 const FLOW_FOR_BUSY = 50;
-const BUSY_ROAD_MAX_BONUS = 1.5;
+// How strongly a busy trade road pulls new settlement onto it. Kept MODEST: at
+// the old 1.5 it rivalled the fertility score, so towns bunched along the road
+// network (and on the margin just outside an existing cluster's spacing) instead
+// of spreading into open good cropland. Now it's a tiebreaker that nudges a town
+// toward a trade artery, not the dominant siting force.
+const BUSY_ROAD_MAX_BONUS = 0.5;
 function busyRoadBonusFor(world, ti, tx, ty) {
   const rf = world.roadFlow;
   if (!rf) return 0;
@@ -786,6 +815,7 @@ const URBAN_SEED_CAP       = 70;   // ...capped so the region isn't gutted — i
 const URBAN_SEED_MIN       = 25;   // a founding town smaller than this isn't viable — skip the roll
 
 function maybeUrbanGenesis(world) {
+  if (T.DISSOLVE_FARMS) return;   // no tier-0 regions to birth towns from — towns grow/promote in place
   const { tw, th, fert, coast, riverMag } = world;
   const rng = passRng(world, "urban");
   for (const region of world.settlements) {

@@ -130,8 +130,12 @@ const st = peopleSimStats(world);
 
 // ── 6. Urbanization ──
 {
+  // With the province model (DISSOLVE), a settlement's people = urban core +
+  // rural countryside, so "urban" is the sum of urban cores. Falls back to the
+  // tier>=2 measure for the old farming-region model.
+  const hasRural = setts.some(s => (s._ruralPop || 0) > 0);
   let urban = 0, total = 0;
-  for (const s of setts) { total += s.people; if ((s.tier | 0) >= 2) urban += s.people; }
+  for (const s of setts) { total += s.people; urban += hasRural ? (s._urbanPop || 0) : ((s.tier | 0) >= 2 ? s.people : 0); }
   const pct = total > 0 ? (urban / total) * 100 : 0;
   score("urbanization", pct.toFixed(1) + "%", pct >= 2 && pct <= 65, false, "pre-modern history: a minority in cities");
 }
