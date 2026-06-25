@@ -249,6 +249,11 @@ function mixFaithToward(s, fid, frac) {
 export function updateFaiths(world) {
   const rng = passRng(world, "religion");
   const byId = world._byId;
+  // Iterate a stable id-sorted snapshot for the RNG-drawing genesis loop, so
+  // faith outcomes never depend on world.settlements' array order (it is created
+  // id-ascending today, so this is a no-op now — it just keeps reproducibility
+  // robust if the array is ever spatially reordered).
+  const setts = world.settlements.slice().sort((a, b) => a.id - b.id);
 
   // 1. seed empty mixtures from the people's folk faith (newborns, first pass)
   for (const s of world.settlements) {
@@ -281,7 +286,7 @@ export function updateFaiths(world) {
     if (df0 && df0.kind === "organized") famOrg.set(fam, (famOrg.get(fam) || 0) + 1);
   }
   let founded = 0;
-  for (const s of world.settlements) {
+  for (const s of setts) {
     if (founded >= MAX_FOUNDINGS_PER_PASS) break;
     if (s.mode !== "settled" || (s.tier | 0) < 1) continue;
     const org = (s.knowledge && s.knowledge.organization) || 0;

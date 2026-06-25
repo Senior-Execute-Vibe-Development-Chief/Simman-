@@ -79,7 +79,7 @@ export function updateInflation(world) {
   // weighted mean M/T is a meaningful baseline). Stored on world._inflRef
   // and used forever after — the whole point is that *changes* from this
   // baseline are what inflation/deflation report.
-  if (world._inflRef === undefined && world.step >= 5000) {
+  if (world._inflRef === undefined && world.step >= 5000 && M.size >= 3) {
     let totalM = 0, totalT = 0;
     for (const [root, m] of M) {
       const t = T.get(root) || 1;

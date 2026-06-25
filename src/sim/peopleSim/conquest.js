@@ -810,7 +810,7 @@ function shedFrontier(world, c, seeds, tcosts, range, stress) {
   }
   const co = world._countryOwner, owner = world._territoryOwner, localCost = world._countryCost;
   if (!co || !owner) return;
-  const tw = world.tw, th = world.th, N = world.N;
+  const tw = world.tw, th = world.th;
   // The grip shrinks with stress (over-extension + war + insolvency are all folded
   // into the capacity the stress was measured against): the more over-stretched the
   // realm, the more of it falls outside reach and goes loose.
@@ -838,10 +838,16 @@ function shedFrontier(world, c, seeds, tcosts, range, stress) {
   // the middle / odd shape cutting all the way through" artefact. So a breakaway is
   // always a contiguous chunk peeling off the EDGE; an unreachable interior just stays
   // nominally held until the front itself recedes to it. (SIM_FRONTIER_SECEDE=0 reverts.)
-  const seen = new Uint8Array(N);
-  for (let s0 = 0; s0 < N; s0++) {
-    if (seen[s0] || !looseAt(s0)) continue;
-    const stack = [s0]; seen[s0] = 1; let hasSeed = false, touchesEdge = false; const members = [];
+  // Flood only the realm's own loose patches, seeded from its MEMBER home tiles —
+  // not a full-map O(N) scan. A patch can only secede if it carries a restless
+  // seed (a member), so a patch with no member on it is never shed; seeding from
+  // member tiles therefore reaches every sheddable patch while touching only the
+  // realm's land. `seen` is a Set (patch-sized), not a per-call Uint8Array(N).
+  const seen = new Set();
+  for (const m0 of memberHome.values()) {
+    const s0 = (m0.pos.y | 0) * tw + (m0.pos.x | 0);
+    if (seen.has(s0) || !looseAt(s0)) continue;
+    const stack = [s0]; seen.add(s0); let hasSeed = false, touchesEdge = false; const members = [];
     while (stack.length) {
       const ti = stack.pop();
       const hm = memberHome.get(ti);
@@ -852,8 +858,8 @@ function shedFrontier(world, c, seeds, tcosts, range, stress) {
         const ni = ns[k];
         if (ni < 0) { touchesEdge = true; continue; }     // world edge (pole) = frontier
         if (co[ni] !== c.id) touchesEdge = true;          // neighbour is wilderness / sea / a rival → patch reaches the realm's edge
-        if (seen[ni] || !looseAt(ni)) continue;
-        seen[ni] = 1; stack.push(ni);
+        if (seen.has(ni) || !looseAt(ni)) continue;
+        seen.add(ni); stack.push(ni);
       }
     }
     if (hasSeed && members.length && (touchesEdge || !_frontierSecede)) shedPatch(world, c, members);

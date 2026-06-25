@@ -33,9 +33,24 @@ function indexKeys(ev) {
   return keys;
 }
 
+// Bound the live log on pathological (multi-100k-step) runs. Events are
+// referenced BY POSITION (ev.id === array index; _evIndex stores positions), so
+// compaction drops the oldest, reassigns ids = new positions, then reindexes.
+// The cap sits far above any normal run (~0.4 events/step → a 15k-step validate
+// makes ~6k), so it never fires in tests; it's a memory safety-valve, and
+// historiography already models the loss of the deep past (archive loss).
+const EVENT_CAP = 200000, EVENT_KEEP = 150000;
+function compactEvents(world) {
+  const events = world.events;
+  events.splice(0, events.length - EVENT_KEEP);
+  for (let i = 0; i < events.length; i++) events[i].id = i;
+  reindexEvents(world);
+}
+
 /** Append one event. Returns its id. `fields` is spread flat onto the record. */
 export function logEvent(world, type, fields) {
   const events = eventsOf(world);
+  if (events.length >= EVENT_CAP) compactEvents(world);   // keep the live log bounded
   const ev = { id: events.length, step: world.step | 0, type, ...fields };
   events.push(ev);
   if (!world._evIndex) world._evIndex = new Map();
