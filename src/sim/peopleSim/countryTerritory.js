@@ -414,7 +414,19 @@ export function computeCountryTerritory(world) {
     // never below its own ground. A great city wields the full national reach; a
     // frontier hamlet only its neighbourhood — so claims follow where the PEOPLE are,
     // and a one-hamlet rump can't fly a continental border.
-    const reach = Math.max(integMin, full * Math.min(1, Math.sqrt((s.people || 0) / CLAIM_POP_REF)));
+    // DISSOLVE_FARMS: a settlement's `people` bundles its rural countryside, so a
+    // big farming province would wield the FULL national reach and realms balloon to
+    // span continents. Scale reach by the URBAN CORE instead — administrative reach
+    // follows the city/court, not the peasantry — so only genuine cities project far
+    // and a realm's extent stays bounded (as the many small farming regions bounded
+    // it in the old model).
+    // …and a higher pop reference under DISSOLVE: with far fewer (but bigger)
+    // settlements, each covering its full reach over-claims the world, so a city
+    // must be ~2.5× as populous to wield the full national reach. Together these
+    // keep the largest realm a believable empire, not a continent-spanner.
+    const claimPop = T.DISSOLVE_FARMS ? (s._urbanPop != null ? s._urbanPop : (s.people || 0)) : (s.people || 0);
+    const ref = CLAIM_POP_REF * (T.DISSOLVE_FARMS ? 2.5 : 1);
+    const reach = Math.max(integMin, full * Math.min(1, Math.sqrt(claimPop / ref)));
     const age = world.step - (s._integratedAt ?? -Infinity);
     let sb = age < INTEGRATE_TICKS
       ? Math.min(reach, integMin + Math.max(0, reach - integMin) * (age / INTEGRATE_TICKS))
