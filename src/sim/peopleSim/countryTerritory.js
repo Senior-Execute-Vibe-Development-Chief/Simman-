@@ -24,6 +24,7 @@ import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
 import { grownOwnerAt } from "./countryClaim.js";
 import { ensurePolity } from "./entities.js";
+import { settlementPower } from "./conquest.js";
 import { T } from "./tuning.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
@@ -130,6 +131,10 @@ const REACH_SIZE_MIN = 0.25;  // a tiny realm still projects at least this fract
 // largest territory" artifact (a 25-person hamlet flying a 447-tile border). Floored
 // at the settlement's own ground (integMin), so coverage is never lost.
 const CLAIM_POP_REF = 1000;
+// Power-weighted borders (T.CLAIM_POW): clamp on the per-realm claim weight, so a
+// hegemon dominates its marches (×CLAIM_W_MAX reach / border push) but can't swallow
+// the continent in one pass, and a weakling still holds a small core (×CLAIM_W_MIN).
+const CLAIM_W_MIN = 0.6, CLAIM_W_MAX = 2.2;
 // Past the reference, scale keeps PAYING (sqrt, dampened) instead of clamping to 1.
 // The clamp was an equalizer: a 60-member empire projected the same claim as a
 // 32-member one, so every mature realm converged on the same regional size (the
@@ -442,12 +447,35 @@ export function computeCountryTerritory(world) {
     }
     cost[ti] = 0; co[ti] = c; seedBud[ti] = sb; heap.push(ti, 0, c);
   }
+  // POWER-WEIGHTED BORDERS: a per-realm claim weight from its STRENGTH (capital
+  // power: people × military × org). A stronger realm's flood accumulates cost more
+  // slowly (ec / weight), so its boundary with a weaker neighbour falls PAST the
+  // geometric midpoint — the strong push their sphere into the weak's frontier
+  // (settled tiles are cost-0 sources, so cities still need conquest). Weight =
+  // (strength / median strength)^CLAIM_POW, compressed and clamped so a hegemon
+  // dominates its marches without eating the map. CLAIM_POW=0 → the old midpoint.
+  const claimW = new Map();
+  if (T.CLAIM_POW > 0) {
+    const powByCountry = new Map();
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s.countryId < 0) continue;
+      const p = settlementPower(s);
+      if (p > (powByCountry.get(s.countryId) || 0)) powByCountry.set(s.countryId, p);
+    }
+    const vals = [...powByCountry.values()].sort((a, b) => a - b);
+    const ref = vals.length ? vals[vals.length >> 1] : 1;   // the MEDIAN realm strength is the neutral ×1 weight
+    for (const [cid, p] of powByCountry) {
+      const w = Math.pow(Math.max(1e-6, p / Math.max(1e-6, ref)), T.CLAIM_POW);
+      claimW.set(cid, w < CLAIM_W_MIN ? CLAIM_W_MIN : w > CLAIM_W_MAX ? CLAIM_W_MAX : w);
+    }
+  }
   // Multi-source Dijkstra: every land tile goes to the nearest country (by travel
   // cost) within that country's reach budget; another country's tile is just a
-  // cheaper claim, so the boundary lands on the cost-bisector (clean border).
+  // cheaper claim, so the boundary lands on the (power-weighted) cost-bisector.
   while (heap.n > 0) {
     const { ti, d, c } = heap.popMin();
     if (d > cost[ti]) continue;
+    const wc = claimW.get(c) || 1;   // power weight: strong realms accumulate cost slower
     const basinBud = seedBud[ti];                    // this basin's reach cap (recency-limited for new land)
     const kn = knOf.get(c);
     const cap = claimCap.get(c) || CLAIM_CAP_CEIL;   // construction-eased per-tile claim cost ceiling
@@ -488,7 +516,7 @@ export function computeCountryTerritory(world) {
         }
       }
       ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);     // organic meander → borders wander instead of cutting straight
-      const nd = d + ec * mul[k];
+      const nd = d + ec * mul[k] / wc;                   // power-weighted: a stronger realm pushes its border past the midpoint
       if (nd > basinBud) continue;                       // basin's (recency-limited) reach budget — also caps how far a realm sails its border
       // Claim LAND; a water tile only propagates the cost frontier (a navy crossing
       // it), so the two shores of a narrow sea knit into ONE contiguous realm
