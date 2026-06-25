@@ -1383,6 +1383,9 @@ export function updatePolities(world) {
 
     const cap = c.capital;
     const capPower = settlementPower(cap);
+    // The realm's mustered force (sum of member garrisons) — its monopoly on
+    // organised violence, the thing that actually SUPPRESSES a province's revolt.
+    let natArmy = 0; for (const m of c.members) natArmy += (m.army || 0);
     // (The raw hold-distance c.range bounds the Dijkstra search inside
     // capitalTransportCosts; everything HERE compares against the res-scaled grip.)
     const holdRange = Math.max(1, c.holdReach || c.range);   // res-scaled grip → compared against map distances (admin load, secession reach)
@@ -1567,7 +1570,18 @@ export function updatePolities(world) {
       const riverToll = tcross.get(s.id) || 0;
       let d = eucl + surcharge + riverToll;   // FULL route cost: detouring around a rival (rivals impassable) costs its true extra distance
       d /= holdPull(s);                                               // value cling
-      const coerce  = Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
+      // ABILITY to hold (motive + opportunity secession): the realm's NATIONAL ARMY
+      // suppresses a province's own rebel capacity (garrison + a militia levy from its
+      // people), decayed by the distance the army must march. A rich megacity has no
+      // army of its own to match the nation's, so a solvent, unified state holds it;
+      // a far province — or one whose realm's army has been drained by war casualties
+      // or insolvent desertion (both already shrink s.army) — can break away. The
+      // MOTIVE (loyalty/unrest) is the trigger handled below; this is the FEASIBILITY.
+      // HOLD_ARMY=0 reverts to the old economic capital-vs-province ratio.
+      const provForce = (s.army || 0) + (s.people || 0) * T.REBEL_LEVY;
+      const coerce = T.HOLD_ARMY
+        ? Math.min(COERCE_CAP, Math.sqrt((natArmy * (holdRange / (holdRange + d)) + 1) / Math.max(1, provForce)))
+        : Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
       const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
       const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
       const langMul = 1 + adminFriction(cap, s, idW);   // a foreign-tongue province is costlier to govern → polyglot empires overreach sooner (cohesion.js)
