@@ -1824,7 +1824,13 @@ function absorbWeakNeighbors(world, countries) {
       const F = countries.get(ncc); if (!F || !F.capital) continue;   // a realm mid-collapse can have no capital this pass
       const fOrg = techEff(F.capital).reachLevel;   // foreign realm's statecraft, from its admin techs (reachLevel tracks org)
       if (fOrg < T.ABSORB_ORG_MIN) continue;
-      if (myTier > tierCapForOrg(fOrg)) continue;            // too developed for F's statecraft
+      if (myTier > tierCapForOrg(fOrg)) {
+        // ...UNLESS F overwhelmingly out-powers m's WHOLE country: brute force takes a
+        // developed neighbour's land too (a hegemon conquers what it cannot slowly
+        // administer), so great powers consolidate even ADVANCED statelets late game
+        // instead of leaving a sea of untouchable city-states. Army/power → land.
+        if ((countryPower.get(ncc) || 1) < myCountryPow * T.ABSORB_FORCE) continue;
+      }
       if ((countryPower.get(F.id) || 1) < myCountryPow * T.ABSORB_DOMINANCE) continue;  // not dominant enough
       const orgFactor = Math.min(1, (fOrg - T.ABSORB_ORG_MIN) / (1 - T.ABSORB_ORG_MIN));
       let perCc = perSett.get(m.id);
