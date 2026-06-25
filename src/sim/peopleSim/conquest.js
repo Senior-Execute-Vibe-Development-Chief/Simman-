@@ -220,7 +220,9 @@ const CAP_DOM_W   = 0.9;   // extra capacity per (above-average power)^P
 const CAP_DOM_P   = 1.5;   // CONVEX: only genuine OUTLIERS tower — a power-law tail of a few great
                            // powers, not a uniformly bigger pack (sustainable size ≈ capacity^⅔, so
                            // the top core needs ~6–8× capacity to reach a Rome-scale share of the map)
-const CAP_DOM_MAX = 8.0;   // ceiling on the dominance multiplier (a hegemon, not an immortal world-eater)
+// (the dominance ceiling is now the T.CAP_DOM_MAX lever.) Imperial-hysteresis rates:
+const CAP_IMP_RISE  = 0.04;   // imperial-capacity stock rises toward live capacity (institutions accrete)
+const CAP_IMP_DECAY = 0.010;  // ...and decays ~4× slower when power falls (institutions persist → hysteresis)
 // Empire size is NOT capped. It emerges from the existing over-extension
 // mechanism: provinces past a realm's REACH bleed loyalty and revolt. We gate
 // that reach (`range`, the admin-load denominator) hard on transport tech below —
@@ -1440,10 +1442,31 @@ export function updatePolities(world) {
     // Dominance: a capital far above the era's mean sustains a disproportionately
     // larger realm (the great-power tail), bounded and self-limiting (CAP_DOM_*).
     const relPow = capPower / Math.max(1, world._refCapPower || capPower);
-    const dominance = Math.min(CAP_DOM_MAX, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
+    const dominance = Math.min(T.CAP_DOM_MAX, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
     c._dominance = dominance;   // info panel: how far this realm out-cores the age
-    const peaceCapacity = (CAP_K * instMul * Math.log2(1 + capPower / POW_REF)
-                        + Math.min(SEAT_BONUS_CAP * instMul, seatBonus)) * dominance;
+    // GEOGRAPHIC CORE (absolute, founding-location advantage): a capital on a rich
+    // river-valley / floodplain heartland projects power further than one on marginal
+    // ground, in EVERY era — static geography, so a Nile/Mesopotamia/Yellow-River core
+    // holds a structurally larger empire than a steppe-centred realm. A path-INDEPENDENT
+    // source of size VARIETY that stops every realm relaxing to one characteristic size.
+    const capTi = (cap.pos.y | 0) * world.tw + (cap.pos.x | 0);
+    const geoCore = (world.fert ? world.fert[capTi] || 0 : 0.5)
+                  + 0.5 * (world.tFlood && world.tFlood[capTi] ? 1 : 0)
+                  + 0.3 * Math.min(1, (world.riverMag ? world.riverMag[capTi] || 0 : 0) / 3);
+    const geoMul = 1 + T.CAP_GEO * geoCore;
+    let peaceCapacity = (CAP_K * instMul * Math.log2(1 + capPower / POW_REF)
+                        + Math.min(SEAT_BONUS_CAP * instMul, seatBonus)) * dominance * geoMul;
+    // IMPERIAL HYSTERESIS (path dependence): the administrative reach, roads and
+    // legitimacy a large realm accretes PERSIST after its raw power dips, so a once-
+    // great empire holds together longer than its live strength alone would justify.
+    // A slow stock on the persistent polity (rises fast, decays ~4× slower) floors the
+    // capacity at a fraction of its recent imperial peak — turning the memoryless,
+    // RELATIVE capacity into a path-dependent, ABSOLUTE one: durable Romes, not
+    // one-era flashes, and the source of a lasting size hierarchy over a uniform field.
+    const gov = govOf(world, c.id);
+    const prevImp = gov._impCapacity || 0;
+    gov._impCapacity = prevImp + (peaceCapacity - prevImp) * (peaceCapacity > prevImp ? CAP_IMP_RISE : CAP_IMP_DECAY);
+    peaceCapacity = Math.max(peaceCapacity, gov._impCapacity * T.CAP_IMP_FLOOR);
 
     // ── War duress: throttle the budget while the realm is fighting ────
     // (fronts are tallied in armies.js advanceFronts → world._fronts.)
@@ -1461,7 +1484,6 @@ export function updatePolities(world) {
     // pass's solvency, from disburseTreasury) loses its grip on the frontier.
     // Lose provinces → lose tax revenue → can't pay → capacity falls → lose
     // more — the self-reinforcing collapse.
-    const gov = govOf(world, c.id);
     const solvency = gov._solvency ?? 1;
     let fiscalDuress = SOLVENCY_FLOOR + solvency * (1 - SOLVENCY_FLOOR);
     // Organised states weather both war and insolvency far better — ease both
