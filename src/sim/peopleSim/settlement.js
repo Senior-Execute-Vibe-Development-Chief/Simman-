@@ -634,7 +634,7 @@ export function computeExportValue(s, world) {
   // output is urban goods, NOT "farm produce" — which is why a non-farming
   // settlement used to read, wrongly, as SELLING food. (sellGoods books the
   // three sectors; the food leg is suppressed unless the buyer is food-short.)
-  const baseIsFood = tier <= (T.DISSOLVE_FARMS ? 3 : (T.FARM_MAX_TIER | 0));   // DISSOLVE_FARMS: every town farms its own catchment
+  const baseIsFood = farmsLand(s);   // DISSOLVE_FARMS: every town farms its own catchment
   let ag = 1.0;                                          // base primary output
   let agFood = baseIsFood ? 1.0 : 0;                     // farm village's base surplus is food; a town's base output is urban goods
   let agMat = 0;
@@ -698,6 +698,14 @@ export function exportValueOf(s, world) {
   return s._exportValue;
 }
 
+// Does this settlement FARM its own land (so its base output is food)? Under
+// DISSOLVE_FARMS every town up to a metropolis works its own catchment;
+// otherwise only tier-0 Farming Regions (≤ FARM_MAX_TIER) do. ONE predicate so
+// the economy (computeExportValue) and its info-panel breakdown can't drift.
+export function farmsLand(s) {
+  return (s.tier | 0) <= (T.DISSOLVE_FARMS ? 3 : (T.FARM_MAX_TIER | 0));
+}
+
 // Wealth reserve = "rainy day fund" the settlement holds back from
 // active spending. Scales with population — bigger settlements have
 // more obligations (granary stockpiles, watch wages, ceremonial
@@ -741,7 +749,7 @@ export function getExportBreakdown(s, world) {
   const buildMat = (k.construction || 0) * matAccess * 0.8 * mult;   // RAW building materials (ag-sector)
   if (buildMat > 0.01) out.push({ label: "Building materials", value: buildMat });
   const agScale = Math.min(1, (s._terrTiles || 0) / 120);
-  if (tier <= (T.FARM_MAX_TIER | 0)) {
+  if (farmsLand(s)) {   // SAME food gate as computeExportValue — panel can't drift from the economy
     const agriculture = (k.agriculture || 0) * agScale * 0.6 * mult;
     if (agriculture > 0.01) out.push({ label: "Grain surplus", value: agriculture });
     const wild = (k.agriculture || 0) * (r.timber || 0) * 0.4 * mult;
@@ -859,6 +867,13 @@ const URBAN_BASE_RURAL = 0.90;   // pre-industrial retained rural share (most pe
 const URBAN_YIELD0     = 3.0;    // farm yield below which the countryside stays ~full (pre-industrial: ~90% rural)
 const URBAN_GAIN       = 0.13;   // share of farmers freed to the cities per unit of yield ABOVE that (→ ~70% rural by 1950)
 const URBAN_MIN_RURAL  = 0.55;   // floor on the retained rural share even at peak modern yield
+// Retained rural share of a settlement's people: high pre-industrially, falling
+// as farm yield frees labour to the towns. ONE source of truth for both the
+// urbanise farm-labour anchor and the province rural/urban split.
+export function ruralShare(s) {
+  const fy = s._farmYield || 1;
+  return Math.max(URBAN_MIN_RURAL, URBAN_BASE_RURAL - URBAN_GAIN * Math.max(0, fy - URBAN_YIELD0));
+}
 export function urbanise(world) {
   const byId = world._byId;
   if (!byId) return;
@@ -889,8 +904,7 @@ export function urbanise(world) {
     // the surplus above the (yield-dependent) rural floor can leave for the cities, so
     // the world stays ~85% rural until the agricultural revolution lets it urbanise.
     if ((s.tier | 0) <= (T.DISSOLVE_FARMS ? 1 : (T.FARM_MAX_TIER | 0))) {   // DISSOLVE: only the small farming TOWNS keep farmers rural; cities shed freely
-      const fy = s._farmYield || 1;
-      const ruralFrac = Math.max(URBAN_MIN_RURAL, URBAN_BASE_RURAL - URBAN_GAIN * Math.max(0, fy - URBAN_YIELD0));
+      const ruralFrac = ruralShare(s);
       movers = Math.min(movers, Math.max(0, s.people - ruralFrac * (s._k || s.people)));
     }
     if (movers < 0.2) continue;
@@ -1996,7 +2010,7 @@ function updatePopulation(world, s) {
   // so urbanisation rises over history. This is what makes a big farming province
   // read as mostly rural rather than mislabelling its whole population "urban".
   if (T.DISSOLVE_FARMS) {
-    const ruralFrac = Math.max(URBAN_MIN_RURAL, URBAN_BASE_RURAL - URBAN_GAIN * Math.max(0, (s._farmYield || 1) - URBAN_YIELD0));
+    const ruralFrac = ruralShare(s);
     s._ruralPop = s.people * ruralFrac;
     s._urbanPop = s.people - s._ruralPop;
   } else {

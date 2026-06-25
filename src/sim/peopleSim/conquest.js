@@ -1656,8 +1656,10 @@ export function updatePolities(world) {
       // PRODUCE LEVY (rent + tithe on the HARVEST): a landlord/church share of a settlement's
       // farm OUTPUT, taken off the top every pass — what kept real peasants poor (their surplus
       // skimmed as a share of the crop, not their cash hoard) and what funds the towns. It falls
-      // on FARMED output (_landFood) only, so the agrarian countryside pays it and cities (which
-      // grow nothing) don't — draining the village hoards UP to the state, then out to the cities.
+      // on FARMED output (_landFood): the agrarian countryside pays it. Under the legacy model
+      // cities grew nothing and were exempt; under DISSOLVE_FARMS every town works its own
+      // catchment, so a city is tithed on its hinterland's HARVEST too — draining the rural
+      // hoards UP to the state, then out to the great cities.
       // The levy now tracks the realm's VARIABLE tax rate (war / insolvency push it
       // up), so a state at war taxes its countryside's HARVEST harder — not just its
       // cash — and that over-extraction feeds the over-tax grievance into revolt

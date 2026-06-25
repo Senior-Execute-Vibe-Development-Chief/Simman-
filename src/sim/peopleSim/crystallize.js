@@ -777,6 +777,7 @@ function sendSettlers(world, parent) {
     countryId: parent.countryId,                   // joins the parent's realm immediately
     kind: "settlers",
     cultureId: dominantCulture(parent),
+    tier: T.DISSOLVE_FARMS ? 1 : 0,   // DISSOLVE: colonies are towns too — never mint a tier-0 region
   });
   gridAdd(world, daughter);   // register for same-pass spacing queries
 }
