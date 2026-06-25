@@ -863,7 +863,7 @@ const REFUGE_PULL      = 2.0;    // unrest=1 → up to ×(1+2·SITE_DEFENSE) fli
 // fewer farmers feed more, the surplus grows, and the countryside finally empties into
 // the cities — the urban transition. So a farming region retains a rural share that
 // FALLS with its farm yield; the city can never drain it below that.
-const URBAN_BASE_RURAL = 0.90;   // pre-industrial retained rural share (most people farm)
+export const URBAN_BASE_RURAL = 0.90;   // pre-industrial retained rural share (most people farm)
 const URBAN_YIELD0     = 3.0;    // farm yield below which the countryside stays ~full (pre-industrial: ~90% rural)
 const URBAN_GAIN       = 0.13;   // share of farmers freed to the cities per unit of yield ABOVE that (→ ~70% rural by 1950)
 const URBAN_MIN_RURAL  = 0.55;   // floor on the retained rural share even at peak modern yield

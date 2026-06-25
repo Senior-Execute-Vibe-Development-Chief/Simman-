@@ -16,7 +16,7 @@
 // stall and the front ebbs and flows.
 
 import { coreRadiusFor } from "./territory.js";
-import { techEff } from "./settlement.js";
+import { techEff, URBAN_BASE_RURAL } from "./settlement.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsNow, casusBelliMul } from "./cohesion.js";
@@ -211,8 +211,23 @@ export function musterArmies(world) {
       // Defence of the heartland is unconditional; the OFFENSIVE levy is gated by the
       // realm's value-vs-cost war commitment (advanceFronts) — it won't bleed its people
       // for a war it is losing or that isn't worth the cost, unless pride drives it on.
-      if (atWar) frac += T.CONSCRIPT_FRAC * Math.min(1, CONSCRIPT_DEF * (c._defLoad || 0) + CONSCRIPT_OFF * (c._offFronts || 0) * (c._warCommit ?? 1));
-      const popCap = s.people * frac;
+      // The PROFESSIONAL core scales with the settlement's WHOLE population (it is
+      // paid from the treasury, raised in town and country alike). The wartime
+      // CONSCRIPT levy is a PEASANT levy — it comes from the RURAL countryside, not
+      // the towns — so a heavily urbanised realm can mass far fewer conscripts and
+      // must lean on its regulars: the historical drift from feudal levy to standing
+      // army as cities grow. (Legacy non-DISSOLVE model: _ruralPop is 0, so the levy
+      // falls back to the whole populace and this is algebraically unchanged.)
+      let popCap = s.people * frac;
+      if (atWar) {
+        const levyFrac = T.CONSCRIPT_FRAC * Math.min(1, CONSCRIPT_DEF * (c._defLoad || 0) + CONSCRIPT_OFF * (c._offFronts || 0) * (c._warCommit ?? 1));
+        // Normalise the rural levy to the pre-industrial baseline (URBAN_BASE_RURAL):
+        // a ~90%-rural agrarian realm levies its FULL peasant share (unchanged from
+        // the old whole-population levy), and only a realm that urbanises BELOW that
+        // baseline loses conscript capacity. Clamp so it never exceeds the populace.
+        const levyPop = T.DISSOLVE_FARMS ? Math.min(s.people, (s._ruralPop || 0) / URBAN_BASE_RURAL) : s.people;
+        popCap += levyPop * levyFrac;
+      }
       // The levy musters in and disbands faster than peacetime recruitment.
       const grow = (atWar || (s.army || 0) > popCap) ? Math.min(0.6, T.ARMY_GROW * MOBILIZE_SPEED) : T.ARMY_GROW;
       s.army = (s.army || 0) + (popCap - (s.army || 0)) * grow;
