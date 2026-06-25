@@ -28,7 +28,7 @@ export const SAVE_VERSION = 1;
 const SETT_FIELDS = [
   "id", "name", "foundedStep", "parentSettlementId", "mode", "tier",
   "people", "food", "wealth", "army", "infrastructure", "waterAccess", "_buildableArea",
-  "crops", "countryId", "loyalty", "unrest", "liegeId",
+  "crops", "countryId", "loyalty", "unrest", "liegeId", "_foodNet",
   "_homeland", "_homelandFell", "_sovereignSeat", "_integratedAt", "_conqueredAt",
   "_sackedAt", "_siegeAt", "_warAt", "_ambition",
   "_popPeak", "_witherSince", "lastFoundAttempt", "_lastColony", "_lastColonySent",
@@ -229,7 +229,7 @@ export function hashWorld(world) {
   for (const s of setts) {
     mixNum(s.id); mixStr(s.mode); mixStr(s.name); mixNum(s.tier); mixNum(s.countryId);
     mixNum(s.people); mixNum(s.food); mixNum(s.wealth); mixNum(s.army);
-    mixNum(s.loyalty); mixNum(s.unrest); mixNum(s.infrastructure);
+    mixNum(s.loyalty); mixNum(s.unrest); mixNum(s.infrastructure); mixNum(s._foodNet);
     if (s.knowledge) for (const k of Object.keys(s.knowledge).sort()) mixNum(s.knowledge[k]);
   }
   if (world.polities) {

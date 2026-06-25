@@ -581,22 +581,25 @@ export function updateFaiths(world) {
     if (world.countries) for (const c of world.countries.values()) {
       const p = getPolity(world, c.id); if (p && p.faithId >= 0) stateFaiths.add(p.faithId);
     }
+    // Decide which faiths fade, then strip them from every mixture in ONE pass
+    // over settlements (was O(culled × settlements) — a full re-scan per faith).
+    const culled = new Set();
     for (const f of faithsOf(world).values()) {
       if (f.kind !== "organized" || f.endedStep >= 0) continue;
       if (world.step - f.foundedStep < CULL_GRACE / (world._dt || 1)) continue;
       if ((dom.get(f.id) || 0) >= CULL_FLOOR || stateFaiths.has(f.id)) continue;
-      // fade it: strip from every mixture, let the rest renormalise
-      for (const s of world.settlements) {
-        if (!s.faithMix || !s.faithMix.length) continue;
-        const before = s.faithMix.length;
-        s.faithMix = s.faithMix.filter(e => e[0] !== f.id);
-        if (s.faithMix.length !== before) {
-          if (!s.faithMix.length) { const folk = folkFaithOf(world, dominantCulture(s)); if (folk) s.faithMix = [[folk.id, 1]]; }
-          else normalizeMix(s.faithMix);
-        }
-      }
+      culled.add(f.id);
       f.endedStep = world.step | 0;
       logEvent(world, "faith.faded", { faith: f.id, faithName: f.name, character: doctrineLabel(f) });
+    }
+    if (culled.size) for (const s of world.settlements) {
+      if (!s.faithMix || !s.faithMix.length) continue;
+      const before = s.faithMix.length;
+      s.faithMix = s.faithMix.filter(e => !culled.has(e[0]));
+      if (s.faithMix.length !== before) {
+        if (!s.faithMix.length) { const folk = folkFaithOf(world, dominantCulture(s)); if (folk) s.faithMix = [[folk.id, 1]]; }
+        else normalizeMix(s.faithMix);
+      }
     }
   }
 }

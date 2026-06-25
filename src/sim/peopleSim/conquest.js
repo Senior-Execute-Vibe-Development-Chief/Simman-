@@ -23,6 +23,7 @@ import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, reconcilePolities } from "./entities.js";
 import { identityWeightsNow, identityGrievance, adminFriction, identityGrievanceCause } from "./cohesion.js";
 import { T } from "./tuning.js";
+import { hash32 } from "./rng.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
 // (T.POLITY_INTERVAL); index.js gates the pass on it.
@@ -1792,7 +1793,7 @@ function absorbWeakNeighbors(world, countries) {
       if (no >= 0) { const fs = byId.get(no); if (!fs) continue; ncc = fs.countryId; }
       else { ncc = co ? co[ni] : -1; }
       if (ncc < 0 || ncc === myCC) continue;
-      const F = countries.get(ncc); if (!F) continue;
+      const F = countries.get(ncc); if (!F || !F.capital) continue;   // a realm mid-collapse can have no capital this pass
       const fOrg = techEff(F.capital).reachLevel;   // foreign realm's statecraft, from its admin techs (reachLevel tracks org)
       if (fOrg < T.ABSORB_ORG_MIN) continue;
       if (myTier > tierCapForOrg(fOrg)) continue;            // too developed for F's statecraft
@@ -1845,9 +1846,11 @@ function absorbWeakNeighbors(world, countries) {
     const ratio = bestScore / myPower;
     let prob = Math.min(T.ABSORB_PROB_MAX, ratio * T.ABSORB_RATE);
     if (lopsided) prob = Math.max(prob, ENGULF_PROB);
-    // Deterministic hash on (id, step) — same input always rolls the same
-    // outcome, so debugging is reproducible and there's no jitter.
-    const r = ((m.id * 9301 + world.step * 49297 + 7) % 233280) / 233280;
+    // Deterministic per-(seed, settlement, step) roll via the shared avalanche
+    // hash. Unlike the old linear-congruential hash it varies with the WORLD SEED
+    // (defections used to be identical across every seed) and doesn't correlate
+    // consecutive ids (which made runs of neighbouring villages flip in lockstep).
+    const r = hash32(world.seed || 1, "absorbDefect", m.id, world.step) / 4294967296;
     if (r > prob) continue;
     const oldCC = m.countryId;
     m.countryId = bestId;

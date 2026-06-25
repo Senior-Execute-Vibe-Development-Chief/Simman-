@@ -90,6 +90,13 @@ export function createWorld(w, opts = {}) {
 
 function initTerrain(world, w, tCrop, tFloodSrc) {
   const { tw, th, elev, temp, moist, fert, coast } = world;
+  // The fert max-pool and the floodplain block-OR index the source arrays at full
+  // pixel resolution (stride w.width). They are only correct when territory was
+  // built at RES=1 (tCrop/tFlood are pixel-res). Assert it rather than silently
+  // mis-sample if a caller ever passes a coarser-res array.
+  const NPIX = w.width * w.height;
+  if (tCrop && tCrop.length !== NPIX) throw new Error(`initTerrain: tCrop must be pixel-res (${NPIX}), got ${tCrop.length} — build territory at RES=1`);
+  if (tFloodSrc && tFloodSrc.length !== NPIX) throw new Error(`initTerrain: tFlood must be pixel-res (${NPIX}), got ${tFloodSrc.length}`);
   for (let ty = 0; ty < th; ty++) {
     for (let tx = 0; tx < tw; tx++) {
       const px = Math.min(w.width - 1, tx * TILE_RES);
