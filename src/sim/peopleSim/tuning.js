@@ -386,6 +386,10 @@ export const TUNING_SCHEMA = [
     category: "Shocks: famine & plague",
     blurb: "Frequency and severity of the exogenous disasters that punctuate the timeline.",
     params: [
+      { key: "CLIMATE_VAR", label: "Dynamic climate", def: 1, min: 0, max: 1, step: 1,
+        desc: "1 = the climate DRIFTS over deep time (climate.js): a slow global random walk of warm/cold, wet/dry centuries plus rare volcanic winters, scaling fertility per tile — hardest at high latitudes — so harvests across a whole latitude band fail TOGETHER in the bad centuries (the Bronze-Age collapse, the Little Ice Age) instead of each region dicing its own private famine. 0 = the frozen-worldgen climate (no variation)." },
+      { key: "CLIMATE_AMP", label: "Climate swing amplitude", def: 1.0, min: 0, max: 2.0, step: 0.1,
+        desc: "Scales how hard dynamic climate (CLIMATE_VAR) bites. 1 = the tuned default (a harsh century knocks ~10–20% off high-latitude harvests, a volcanic winter more); higher = sharper rises and falls; 0 = no effect even with CLIMATE_VAR on." },
       { key: "FAMINE_CHANCE", label: "Famine likelihood", def: 0.35, min: 0, max: 1.0, step: 0.05,
         desc: "Probability a famine-spawn roll actually strikes a region. Up = recurrent harvest crises." },
       { key: "PLAGUE_CHANCE", label: "Plague likelihood", def: 0.55, min: 0, max: 1.0, step: 0.05,

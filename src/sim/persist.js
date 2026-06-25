@@ -94,6 +94,7 @@ export function saveWorld(world, meta = {}) {
     },
     step: world.step,
     eraProd: world._eraProd,          // demographic anchor: global productivity index
+    climIndex: world._climIndex, climShock: world._climShock,   // dynamic-climate state (climate.js)
     popTotal: world._popTotal,        // last tick's world total (anchor input)
     counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1, language: world._nextLanguageId || 1 },
     tuning,
@@ -155,6 +156,7 @@ export function loadWorld(data) {
 
   world.step = data.step | 0;
   world._eraProd = data.eraProd ?? 1;        // demographic anchor (index.js): restore so post-load ticks match
+  world._climIndex = data.climIndex ?? 0; world._climShock = data.climShock ?? 0;   // dynamic-climate state
   world._popTotal = data.popTotal ?? 0;
   world._nextSettlementId = data.counters.settlement;
   world._nextShipId = data.counters.ship;

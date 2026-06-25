@@ -25,6 +25,7 @@ import { updatePolities } from "./conquest.js";
 import { musterArmies, advanceFronts, MUSTER_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
 import { updateShocks } from "./shocks.js";
+import { updateClimate, CLIMATE_INTERVAL } from "./climate.js";
 import { updateInflation } from "./inflation.js";
 import { foldMoney } from "./money.js";
 import { checkPeopleSimInvariants } from "./invariants.js";
@@ -180,6 +181,10 @@ export function stepPeopleSim(world, n = 1) {
     }
     world._leadOrg = leadOrg;
     world._civYear = civYearFromOrg(leadOrg);
+    // Dynamic climate: advance the slow global state + per-tile fertility overlay
+    // BEFORE the territory pass tallies food (territory.js multiplies fert by climMod),
+    // so a harsh century is felt across every realm's catchment at once.
+    if (world.step === 1 || world.step % CLIMATE_INTERVAL === 0) updateClimate(world);
     // Recompute territory periodically: each settlement claims the land it
     // reaches cheapest, and its food / resources are tallied from it.
     if (world.step === 1 || world.step % T.TERRITORY_INTERVAL === 0) {
