@@ -18,6 +18,7 @@
 // ground the other systems stand on.
 
 import { passRng, entityRng, hash32 } from "./rng.js";
+import { T } from "./tuning.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { getCulture, languageOf, dominantCulture, familyOf, folkAnchorOf } from "./cultures.js";
@@ -41,10 +42,9 @@ import { langWord } from "../language.js";
 export const FAITH_INTERVAL = 150;       // cadence (≈ polity/culture passes)
 const ORGANIZED_ORG_MIN = 0.26;          // organization floor for a priesthood (opens the axial window)
 const ORGANIZED_POP_MIN = 450;           // a movement needs a real town
-const GENESIS_BASE = 0.11;               // base per-eligible-city founding rate (scaled by urbanisation × stress × open niche)
 const GENESIS_CULTURE_COOLDOWN = 1500;   // min ticks between new faiths within one PEOPLE
+//  founding rate, conversion speed, schism chance → live levers (T.FAITH_*)
 const MAX_FOUNDINGS_PER_PASS = 3;        // the window bursts, but not a single-tick flood
-const SPREAD_RATE = 0.055;               // per-pass share shift toward the pulling faith
 const STATE_PRESSURE = 2.4;              // extra pull weight of the ruler's faith
 const ORGANIZED_PULL = 2.2;              // organized faiths proselytize; folk faiths don't travel
 const FOLK_PULL = 0.45;
@@ -53,7 +53,6 @@ const MIX_FLOOR = 0.05;                  // drop faith shares below this so a co
 // Branching (schism) — bounded so the late game doesn't fission exponentially.
 const SCHISM_MIN_REALMS = 3;             // only a faith spanning several realms can schism
 const SCHISM_MIN_AGE = 3000;             // a young faith doesn't schism
-const SCHISM_CHANCE = 0.05;              // base per distant follower-realm per pass (then strongly damped)
 const SCHISM_MIN_DIST = 95;              // map distance from origin see (tiles)
 const MAX_BRANCHES_PER_ROOT = 6;         // a religion fissions into a few great branches, not endlessly
 const SCHISM_ROOT_COOLDOWN = 1400;       // min ticks between schisms within one religion family
@@ -309,7 +308,7 @@ export function updateFaiths(world) {
       + (world.step < (s._famineUntil || 0) ? 0.3 : 0)
       + (s._plagueActive ? 0.3 : 0);
     const urban = 0.5 + Math.min(1.1, Math.max(0, Math.log10((s.people || 1) / 300)));
-    const prob = GENESIS_BASE * urban * stress * (1 - 0.5 * sat);
+    const prob = T.FAITH_GENESIS_RATE * urban * stress * (1 - 0.5 * sat);
     if (rng() > prob) continue;
     const lang = languageOf(world, cul);
     const f = newFaith(world, {
@@ -393,7 +392,7 @@ export function updateFaiths(world) {
     for (const [fid, w] of pull) if (w > bw) { bw = w; best = fid; }
     if (best >= 0) pulls.push([s, best, Math.min(0.5, bw / 3)]);
   }
-  for (const [s, fid, str] of pulls) mixFaithToward(s, fid, SPREAD_RATE * str * 3);
+  for (const [s, fid, str] of pulls) mixFaithToward(s, fid, T.FAITH_SPREAD_RATE * str * 3);
 
   // 4. state adoption + legitimacy coupling
   if (world.countries) {
@@ -509,7 +508,7 @@ export function updateFaiths(world) {
         const estranged = (c._fronts || 0) > 0 || (p._crisisAt != null && world.step - p._crisisAt < 1200 / (world._dt || 1));
         const trigger = estranged ? 1 : 0.45;
         const r = entityRng(world, "schism", hash32(f.id, c.id, world.step));
-        if (r() > (SCHISM_CHANCE / damp) * hierMul * trigger) continue;
+        if (r() > (T.FAITH_SCHISM_CHANCE / damp) * hierMul * trigger) continue;
         const culId = dominantCulture(c.capital);
         const cul = getCulture(world, culId);
         const lang = cul ? languageOf(world, cul) : null;
