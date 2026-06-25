@@ -143,7 +143,7 @@ export function loadWorld(data) {
   // Tuning first: granularity / cadence levers shape createWorld behavior.
   resetTuning();
   applyTuning(data.tuning);
-  const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount });
+  const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tFlood: ter.tFlood, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount });
 
   // Drop the freshly-seeded state (cradles + their events); the save replaces it.
   world.settlements.length = 0;
