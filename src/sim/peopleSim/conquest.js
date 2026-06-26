@@ -118,7 +118,11 @@ const FINENESS_MIN      = 0.35;  // floor — even a desperate mint keeps some m
 // desperate treasury squeezes harder. That funds the army, but the
 // overtaxation feeds POPULAR UNREST: the classic trap where taxing to pay for
 // a war drives the people to revolt (France 1789, late Ming, late Rome).
-const TAX_BASE     = 0.06;   // baseline share of a member's wealth taxed per pass
+// TAX_BASE -> runtime lever (tuning.js T.TAX_BASE): baseline share of a member's
+// wealth taxed per pass. Lowered from the old 0.06 — at 0.06 the state recycled more
+// coin per pass (as army pay) than the private trade economy generated, so "state pay"
+// was almost every settlement's largest income; at the lever default most settlements
+// now visibly live on their TRADE (goods/food/luxuries/tolls) instead.
 // TAX_MAX -> runtime lever (tuning.js T.TAX_MAX)
 const TAX_WAR      = 0.025;  // extra rate per level of war
 const TAX_BANKRUPT = 0.12;   // extra rate × how insolvent the state was last pass
@@ -1523,14 +1527,14 @@ export function updatePolities(world) {
 
     // Variable taxation: war + insolvency push the rate up toward a cap. Recent
     // conquests bank war-weariness relief (_spoils, in armies.js) that fades.
-    const targetTax = Math.min(T.TAX_MAX, TAX_BASE + TAX_WAR * warLevel + TAX_BANKRUPT * (1 - solvency));
-    gov._taxRate = (gov._taxRate ?? TAX_BASE) + (targetTax - (gov._taxRate ?? TAX_BASE)) * TAX_DRIFT;
+    const targetTax = Math.min(T.TAX_MAX, T.TAX_BASE + TAX_WAR * warLevel + TAX_BANKRUPT * (1 - solvency));
+    gov._taxRate = (gov._taxRate ?? T.TAX_BASE) + (targetTax - (gov._taxRate ?? T.TAX_BASE)) * TAX_DRIFT;
     gov._spoils = (gov._spoils || 0) * SPOILS_DECAY;
     c._taxRate = gov._taxRate;
 
     // ── Popular unrest: hardship piles up; peace + plenty + light taxes cool it.
     // At the top it boils over into a rebellion (rebel(), fired after secession).
-    const taxOver = Math.max(0, (gov._taxRate - TAX_BASE) / (T.TAX_MAX - TAX_BASE));
+    const taxOver = Math.max(0, (gov._taxRate - T.TAX_BASE) / (T.TAX_MAX - T.TAX_BASE));
     const warFat = Math.min(1, warLevel * 0.4) * (1 - Math.min(1, gov._spoils || 0));
     const rebelSeeds = [];
     for (const s of c.members) {
@@ -1721,7 +1725,7 @@ export function updatePolities(world) {
         if (coin > 0) { gov.treasury -= coin; s.wealth = (s.wealth || 0) + coin; recordIn(s, IN_AID, coin); }
         continue;                                   // subsidised, not taxed
       }
-      const give = Math.max(0, s.wealth || 0) * (gov._taxRate ?? TAX_BASE);
+      const give = Math.max(0, s.wealth || 0) * (gov._taxRate ?? T.TAX_BASE);
       if (give > 0) { s.wealth -= give; gov.treasury += give; gov._revenue += give; recordOut(s, OUT_TRIBUTE, give); }
       // PRODUCE LEVY (rent + tithe on the HARVEST): a landlord/church share of a settlement's
       // farm OUTPUT, taken off the top every pass — what kept real peasants poor (their surplus
@@ -1736,7 +1740,7 @@ export function updatePolities(world) {
       // (the "raise taxes for the war → the provinces rise up" loop). 1× at the base
       // rate, scaling up toward TAX_MAX/TAX_BASE in a hard war.
       if (T.FARM_RENT > 0 && (s._landFood || 0) > 0) {
-        const taxMul = (gov._taxRate ?? TAX_BASE) / TAX_BASE;
+        const taxMul = (gov._taxRate ?? T.TAX_BASE) / T.TAX_BASE;
         const rent = Math.min(Math.max(0, s.wealth || 0), (s._landFood || 0) * T.FARM_RENT * taxMul * T.POLITY_INTERVAL);
         if (rent > 0) { s.wealth -= rent; gov.treasury += rent; gov._revenue += rent; recordOut(s, OUT_TRIBUTE, rent); }
       }
