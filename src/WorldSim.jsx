@@ -360,34 +360,59 @@ function PersonCard({n}){
 const GOV_META={monarchy:{icon:"♔",col:"#b8902f",label:"Crown"},
   theocracy:{icon:"☩",col:"#5566b0",label:"Theocracy"},
   republic:{icon:"⚖",col:"#2f8a78",label:"Council"}};
-// The blood tree of the reigning house.
+// Standard top-down genealogy: each generation a row, parents centred above
+// their children, sibling/parent connectors drawn in pure CSS (classes below).
+const FT_LN="rgba(120,100,70,0.45)";
+const FT_CSS=`
+.ft-wrap{display:inline-flex;flex-direction:column;gap:16px;min-width:100%;padding:4px 2px 8px;align-items:center}
+.ft-tree ul{position:relative;padding-top:18px;display:flex;justify-content:center;margin:0}
+.ft-tree li{list-style:none;position:relative;padding:18px 7px 0;display:flex;flex-direction:column;align-items:center}
+.ft-tree li::before,.ft-tree li::after{content:'';position:absolute;top:0;right:50%;border-top:2px solid ${FT_LN};width:50%;height:18px}
+.ft-tree li::after{right:auto;left:50%;border-left:2px solid ${FT_LN}}
+.ft-tree li:only-child::after,.ft-tree li:only-child::before{display:none}
+.ft-tree li:only-child{padding-top:18px}
+.ft-tree li:first-child::before,.ft-tree li:last-child::after{border:0 none}
+.ft-tree li:last-child::before{border-right:2px solid ${FT_LN}}
+.ft-tree ul ul::before{content:'';position:absolute;top:0;left:50%;border-left:2px solid ${FT_LN};width:0;height:18px}
+.ft-tree>ul{padding-top:0}
+.ft-tree>ul>li:only-child{padding-top:0}`;
+// One person (with their married-in partner, if any) as a tree node.
+function Couple({n,sp}){
+  return(
+    <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
+      <PersonCard n={n}/>
+      {sp&&<><span className="au-fade" style={{fontSize:11,alignSelf:"center"}}>⚭</span><PersonCard n={sp}/></>}
+    </div>
+  );
+}
 function FamilyTree({nodes}){
   const byId=new Map(nodes.map(n=>[n.id,n]));
   const kidsOf=new Map();
   for(const n of nodes)if(n.parentId>=0){if(!kidsOf.has(n.parentId))kidsOf.set(n.parentId,[]);kidsOf.get(n.parentId).push(n.id);}
   for(const arr of kidsOf.values())arr.sort((a,b)=>byId.get(a).bornY-byId.get(b).bornY);
   const drawn=new Set();
-  const renderLine=(id)=>{
+  // a <li> holding the couple's card and, beneath, a <ul> of their children
+  const renderLi=(id)=>{
     if(drawn.has(id))return null;
     drawn.add(id);
     const n=byId.get(id);if(!n)return null;
     const sp=n.spouseId>=0&&byId.has(n.spouseId)&&!drawn.has(n.spouseId)?byId.get(n.spouseId):null;
     if(sp)drawn.add(sp.id);
-    const kids=(kidsOf.get(id)||[]).concat(sp?(kidsOf.get(sp.id)||[]):[]);
+    const kids=((kidsOf.get(id)||[]).concat(sp?(kidsOf.get(sp.id)||[]):[])).filter(k=>!drawn.has(k));
     return(
-      <div key={id} style={{marginTop:6}}>
-        <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <PersonCard n={n}/>
-          {sp&&<><span className="au-fade" style={{fontSize:11}}>⚭</span><PersonCard n={sp}/></>}
-        </div>
-        {kids.length>0&&<div style={{marginLeft:16,paddingLeft:12,borderLeft:"2px solid rgba(120,100,70,0.35)"}}>
-          {kids.map(k=>renderLine(k))}
-        </div>}
-      </div>
+      <li key={id}>
+        <Couple n={n} sp={sp}/>
+        {kids.length>0&&<ul>{kids.map(k=>renderLi(k))}</ul>}
+      </li>
     );
   };
+  // each independent line (the founder's, plus any unconnected adoptees) is its
+  // own top-down tree, stacked vertically
   const roots=nodes.filter(n=>n.parentId<0&&!n.foreign).sort((a,b)=>a.bornY-b.bornY);
-  return <div>{[...roots.map(r=>renderLine(r.id)),...nodes.filter(n=>!drawn.has(n.id)).map(n=>renderLine(n.id))]}</div>;
+  const trees=[];
+  for(const r of roots){ if(drawn.has(r.id))continue; trees.push(<div key={r.id} className="ft-tree"><ul>{renderLi(r.id)}</ul></div>); }
+  for(const n of nodes){ if(drawn.has(n.id)||n.foreign)continue; trees.push(<div key={n.id} className="ft-tree"><ul>{renderLi(n.id)}</ul></div>); }
+  return <div className="ft-wrap">{trees}</div>;
 }
 // Everyone who ever ruled the nation — across houses, councils and theocracies —
 // in order, grouped by house with a banner when the form of rule itself changes.
@@ -422,25 +447,34 @@ function SuccessionRoll({roll}){
 }
 function DynastyOverlay({tree,onClose}){
   const[mode,setMode]=useState("tree");
-  const nodes=(tree&&tree.nodes)||[];
-  const roll=(tree&&tree.roll)||[];
+  // FREEZE a snapshot so the chart doesn't reflow under the reader as the sim
+  // ticks (people age/are born/die every frame). Capture the first frame and on
+  // a realm change; a manual refresh re-captures the live state.
+  const[snap,setSnap]=useState(tree);
+  useEffect(()=>{if(tree&&(!snap||snap.countryId!==tree.countryId))setSnap(tree);},[tree,snap]);
+  const data=snap||tree;
+  const nodes=(data&&data.nodes)||[];
+  const roll=(data&&data.roll)||[];
   const Tab=({id,label})=>(
     <button onClick={()=>setMode(id)} className={"au-btn"+(mode===id?" au-active":"")}
       style={{fontSize:10,whiteSpace:"nowrap"}}>{label}</button>);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(680px,94vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
+      <style>{FT_CSS}</style>
+      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(860px,95vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4,flexShrink:0,gap:8}}>
-          <div className="au-pico-title" style={{fontSize:15}}>House {tree?tree.houseName||"—":"—"}
-            {tree&&<span className="au-fade" style={{fontSize:11}}> · {tree.govLabel}</span>}</div>
+          <div className="au-pico-title" style={{fontSize:15}}>House {data?data.houseName||"—":"—"}
+            {data&&<span className="au-fade" style={{fontSize:11}}> · {data.govLabel}</span>}</div>
           <div style={{display:"flex",gap:5,alignItems:"center"}}>
             <Tab id="tree" label="Family tree"/>
             <Tab id="roll" label={`Succession${roll.length?` (${roll.length})`:""}`}/>
+            <button onClick={()=>setSnap(tree)} title="Refresh to the present" className="au-btn"
+              style={{fontSize:10,whiteSpace:"nowrap"}}>↻</button>
             <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
           </div>
         </div>
         <div className="au-fade" style={{fontSize:10,marginBottom:8,flexShrink:0}}>
-          {tree?<>succession law: {tree.lawLabel}{tree.rulerTitle?` · the ${tree.rulerTitle.toLowerCase()} reigns`:""}</>:"no ruling house"}
+          {data?<>succession law: {data.lawLabel}{data.rulerTitle?` · the ${data.rulerTitle.toLowerCase()} reigns`:""} · <span style={{fontStyle:"italic"}}>snapshot — ↻ to update</span></>:"no ruling house"}
         </div>
         <div style={{overflow:"auto",minHeight:0,paddingRight:6}}>
           {mode==="tree"

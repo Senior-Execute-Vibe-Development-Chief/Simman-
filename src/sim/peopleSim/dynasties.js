@@ -287,13 +287,17 @@ function deriveTarget(world, c, polity) {
   const aggr01 = clamp01(((pers.aggression || 0) + 1) / 2);
   const comm01 = clamp01(((pers.commerce || 0) + 1) / 2);
 
-  // THEOCRACY — a dominant, hierarchical, zealous state faith at the capital.
-  let theoScore = 0;
+  // THEOCRACY — the rare realm where the PRIESTHOOD itself rules, not merely a
+  // pious crown. Almost every organized church has clergy (high hierarchy by
+  // design), so hierarchy alone can't distinguish one — it takes a COMMANDING
+  // priestly hierarchy AND fervent zeal over a faith that dominates the capital.
+  // Most religious states stayed monarchies; this is the exception.
+  let theo = false;
   const faith = polity.faithId >= 0 ? getFaith(world, polity.faithId) : null;
   if (faith && faith.doctrine && dominantFaith(cap) === polity.faithId) {
     const share = (cap.faithMix && cap.faithMix.length) ? cap.faithMix[0][1] : 0;
     const d = faith.doctrine;
-    theoScore = share * (0.35 + 0.65 * (d.hierarchy || 0)) * (0.5 + 0.5 * (d.zeal || 0));
+    theo = share >= 0.68 && (d.hierarchy || 0) >= 0.8 && (d.zeal || 0) >= 0.72;
   }
 
   // REPUBLIC — the merchant city-state: a COMMERCIAL, un-warlike burgher polity
@@ -308,7 +312,7 @@ function deriveTarget(world, c, polity) {
   let repScore = (0.6 * comm01 + 0.4 * (1 - aggr01)) * (0.85 + 0.15 * (1 - primacy));
 
   let gov = GOV_MONARCHY;
-  if (theoScore >= 0.42 && theoScore >= repScore) gov = GOV_THEOCRACY;
+  if (theo) gov = GOV_THEOCRACY;
   else if (comm01 >= 0.55 && aggr01 < 0.55 && repScore >= 0.55) gov = GOV_REPUBLIC;
 
   // Succession law — who may inherit.
