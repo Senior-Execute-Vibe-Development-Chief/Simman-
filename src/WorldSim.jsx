@@ -11,7 +11,7 @@ import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { applyTuning, resetTuning, tuningDefaults } from "./sim/peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
 import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./sim/peopleSim/settlement.js";
-import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./sim/peopleSim/money.js";
+import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE } from "./sim/peopleSim/money.js";
 import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectList, techTotalList } from "./sim/peopleSim/tech.js";
 // tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
 const ERA_BG=["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
@@ -265,7 +265,7 @@ const LENSES=[
   {id:"ancestry",label:"Ancestry",subs:[["ancestry","Ancestry"]]},
   {id:"languages",label:"Languages",subs:[["language","Languages"]]},
   {id:"faiths",  label:"Faiths",  subs:[["faith","Faiths"]]},
-  {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["resources","Resources"],["crop","Cropland"]]},
+  {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["society","Labour"],["resources","Resources"],["crop","Cropland"]]},
   ...(DEV?[{id:"dev",label:"Dev",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
 ];
 
@@ -1531,6 +1531,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmFaith = viewRef.current === "faith";
   const vmLanguage = viewRef.current === "language";
   const vmAncestry = viewRef.current === "ancestry";
+  const vmSociety = viewRef.current === "society";
     if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
@@ -1691,7 +1692,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0);
     // While the ancestry spread is replaying we rebuild the overlay every frame
     // (the revealed wavefront advances) instead of the lazy every-30-steps cache.
     const ancAnimating=vmAncestry&&ter&&ter.tArrival&&ancRevealRef.current.active;
@@ -1709,7 +1710,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // ── Culture / Faith views: who LIVES on each tile (dominant culture
       // or faith of the settlement whose territory it is) — peoples and
       // creeds, not states. Same machinery, different per-settlement key. ──
-      if((vmCulture||vmFaith||vmLanguage||vmAncestry)&&psw.settlements){
+      if((vmCulture||vmFaith||vmLanguage||vmAncestry||vmSociety)&&psw.settlements){
         const tw=psw.tw,th=psw.th,N2=tw*th;
         // Resolve a settlement's overlay colour [h,s,l] + grouping KEY (borders
         // drawn where the key changes). Peoples → one hue each; Faiths → faith
@@ -1828,6 +1829,21 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(y<th-1){const dk=keyOf[ti+tw];if(dk!==-2147483648&&dk!==k){const by=dataYtoScreenY((y+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
           octx.stroke();
         }
+        // ── Society: coerced-labour heat ── muted parchment (free) → crimson (bound),
+        // by each settlement's _coerce (slaves as a share of people + serfdom + cash-crop
+        // plantation land). Shows the slave coast / plantation belt / serf periphery at a glance.
+        if(nf&&vmSociety){
+          const nearest=nf.nearest,byId=psw._byId,coCache=new Map();
+          const coerceCol=(sid)=>{let c=coCache.get(sid);if(c!==undefined)return c;
+            const st=byId&&byId.get(sid);const v=st?Math.min(1,st._coerce||0):0;
+            c=v<0.05?"#5e626b":`hsl(${Math.round(30-26*v)},${Math.round(50+38*v)}%,${Math.round(50-16*v)}%)`;
+            coCache.set(sid,c);return c;};
+          let lastFs=null;
+          for(let ti=0;ti<N2;ti++){const sid=nearest[ti];if(sid<0)continue;
+            const fs=coerceCol(sid);const y=(ti/tw)|0,x=ti-y*tw;
+            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+            octx.fillRect(x*TR,dataYtoScreenY(y*TR,H,CH),TR+0.7,TR+0.7);}
+        }
       }
       // ── Ancestry: the deep genetic substrate, a per-tile worldgen field over ALL
       // land (not just settled). Coloured per-ancestry; civ overlays sit on top of it. ──
@@ -1907,7 +1923,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         octx.stroke();
       }
-      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map();
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
@@ -1928,7 +1944,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
-      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -2016,7 +2032,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         octx.setLineDash([]);
       }
       // Roads — thickness + alpha from current flow.
-      if(L.roads&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&psw.roadQuality&&psw.roadFlow){
+      if(L.roads&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&psw.roadQuality&&psw.roadFlow){
         const rq=psw.roadQuality,rf=psw.roadFlow,FLOW_FULL=50;
         for(let ti=0;ti<rq.length;ti++){
           if(rq[ti]>=1.0)continue;
@@ -2064,7 +2080,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // Per-tier visibility (Layers panel). When all tiers are off the loop
     // does nothing — same as turning icons off entirely.
     const _L=layersRef.current;
-    const _identity=vmCulture||vmFaith||vmLanguage||vmAncestry;
+    const _identity=vmCulture||vmFaith||vmLanguage||vmAncestry||vmSociety;
     // Identity overlays (peoples/faiths/languages) show WHOLE filled regions —
     // drop the village/town dot-speckle so the areas read clean; keep only the
     // major cities/metropolises as landmarks.
@@ -3262,6 +3278,33 @@ const renderInspect=()=>{
                 })}
               </div>
             </>}
+          {/* ── Society & labour: economic archetype, craft specialty, coerced labour ── */}
+          {(()=>{
+            const a=s._mInRate; let topIdx=-1,topV=0; if(a)for(let i=0;i<a.length;i++)if(a[i]>topV){topV=a[i];topIdx=i;}
+            const unfree=Math.round(s._unfree||0),captives=Math.round(s._captives||0),serf=s._serf||0,cashFrac=s._cashFrac||0;
+            let archetype=null;
+            if(topIdx===IN_SLAVE_TRADE)archetype="Slaver city — sells captives";
+            else if(topIdx===IN_PILGRIM)archetype="Holy city — lives on pilgrims";
+            else if(topIdx===IN_CARRY)archetype="Entrepôt — the carrying trade";
+            else if(topIdx===IN_FINANCE)archetype="Financier — lends to the crown";
+            else if(unfree>200&&cashFrac>0.2)archetype="Plantation economy";
+            else if(unfree>200&&topIdx===IN_MINING)archetype="Slave-worked mines";
+            else if(topIdx===IN_MINING)archetype="Mining town";
+            else if(serf>0.3)archetype="Serf estate";
+            const spec=(s._specKey&&(s._specStr||0)>0.1)?[s._specKey,Math.round((s._specStr||0)*100)]:null;
+            if(!archetype&&!spec&&unfree<50&&captives<50&&serf<0.1)return null;
+            return(
+              <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid var(--au-line,#0002)"}}>
+                <div className="au-fade" style={{fontSize:9}}>Society & labour</div>
+                {archetype&&<div style={{fontSize:10,color:"#caa24a",marginTop:1}}>{archetype}</div>}
+                {spec&&<div style={{fontSize:10,marginTop:1}}>Specialises in <b>{spec[0]}</b> <span className="au-fade">({spec[1]}% established)</span></div>}
+                {unfree>50&&<div style={{fontSize:10,marginTop:1,color:"#b06a4a"}}>Unfree labour: {unfree.toLocaleString()} <span className="au-fade">({Math.round((s._unfreeRatio||0)*100)}% of the population)</span></div>}
+                {cashFrac>0.1&&<div style={{fontSize:10,marginTop:1}}>Cash crops: {Math.round(cashFrac*100)}% of land <span className="au-fade">(grows for export, imports food)</span></div>}
+                {captives>50&&<div style={{fontSize:10,marginTop:1,color:"#b06a4a"}}>Captives held: {captives.toLocaleString()} <span className="au-fade">for the slave market</span></div>}
+                {serf>0.1&&<div style={{fontSize:10,marginTop:1}}>Serfdom: {Math.round(serf*100)}% <span className="au-fade">bound peasantry</span></div>}
+              </div>
+            );
+          })()}
         </>
       </PsSection>
 
@@ -3674,6 +3717,23 @@ return(
     Dot density on each link is its share of THIS tick's total activity, so
     the busiest links pop and quiet ones go silent regardless of the world's
     absolute money supply. The world starts on barter (no coins shown).
+  </div>
+</div>}
+
+{viewMode==="society"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
+  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:240}}>
+  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Coerced labour</div>
+  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
+    <span style={{display:"flex",flexShrink:0}}>
+      <span style={{width:16,height:11,background:"#5e626b"}}/>
+      <span style={{width:16,height:11,background:"hsl(17,69%,42%)"}}/>
+      <span style={{width:16,height:11,background:"hsl(4,88%,34%)"}}/>
+    </span>
+    <span>free → bound</span></div>
+  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
+    How coerced a settlement's labour is — slaves as a share of its people,
+    serfdom, and cash-crop plantation land combined. The deep-red bands are
+    the slave coasts, plantation belts and serf peripheries; grey land is free.
   </div>
 </div>}
 

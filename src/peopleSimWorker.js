@@ -239,6 +239,9 @@ function packSettlement(s) {
     army: s.army,         // for the leaderboard's "biggest armies" sort
     _shock: s._plagueActive ? 2 : (world.step < (s._famineUntil || 0) ? 1 : 0),
     _homeland: s._homeland ?? -1, _provinceCity: s._provinceCity ?? -1,   // Provinces overlay: captured-nation + admin seat
+    // Coerced-labour intensity 0..1 for the Society lens: how bound the labour is
+    // (slaves as a share of people, serfdom, cash-crop plantation land).
+    _coerce: Math.min(1, (s._unfreeRatio || 0) + 0.6 * (s._serf || 0) + 0.4 * (s._cashFrac || 0)),
   };
 }
 
@@ -258,6 +261,9 @@ function packSelected(s) {
     _developRate: s._developRate, _devReason: s._devReason, _housingPressed: s._housingPressed,
     _houseK: s._houseK, _foodK: s._foodK,
     _mInRate: s._mInRate, _mOutRate: s._mOutRate,
+    _specKey: s._specKey, _specStr: s._specStr,                          // agglomeration: locked-in craft specialty
+    _unfree: s._unfree, _captives: s._captives, _unfreeRatio: s._unfreeRatio,   // coerced labour
+    _cashFrac: s._cashFrac, _cashSuit: s._cashSuit, _cashOut: s._cashOut, _serf: s._serf,
     foundedStep: s.foundedStep, parentSettlementId: s.parentSettlementId,
     _seaReachSize: s._seaReach ? s._seaReach.size : 0,
     _tradeProfile: getTradeProfile(s, world),
