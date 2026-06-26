@@ -12,12 +12,12 @@
 // captured right at the frontier would secede the very next pass and get
 // re-taken, making the borders flicker.
 
-import { recordIn, recordOut, IN_AID, IN_STATE_PAY, IN_TARIFFS, OUT_TRIBUTE } from "./money.js";
+import { recordIn, recordOut, IN_AID, IN_STATE_PAY, IN_TARIFFS, IN_FINANCE, OUT_TRIBUTE } from "./money.js";
 import { shockUnrest } from "./shocks.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
-import { techEff } from "./settlement.js";
+import { techEff, getWealthReserve } from "./settlement.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, reconcilePolities } from "./entities.js";
@@ -100,6 +100,12 @@ const _cityEnclaveOff = (typeof process !== "undefined" && process.env && proces
 const WAR_SURCHARGE = 1.2;  // each level of war (defensive front / besieged capital) multiplies the army bill
 const RESERVE_PASSES = 3;   // war-chest the state keeps (passes of peacetime army pay) before funding works
 const SOLVENCY_FLOOR = 0.5; // a fully bankrupt state still retains this fraction of its control budget
+// ── Government spending (monuments / infrastructure / debt) ─────────────
+const MONUMENT_DECAY = 0.9985; // the monuments/legitimacy stock fades very slowly — a cathedral or
+                               // forum keeps overawing the people for ages after it's built
+const DEBT_INTEREST  = 0.03;   // interest per pass on outstanding state debt (paid to the financier city)
+const DEBT_CAP_MULT  = 6;      // a state may owe at most this many peacetime army bills before creditors cut it off
+const MONUMENT_REF   = 0.6;    // monuments-stock per head at which legitimacy is half-saturated (calibration)
 // ── Debasement (Currency Phase 3) ──────────────────────────────────────
 // A state that can't cover its army bill melts down the coinage — strikes
 // lighter coins for emergency revenue (seigniorage). Its currency FINENESS
@@ -1149,6 +1155,15 @@ function disburseTreasury(world, c, gov, warLevel) {
   for (const s of members) if ((s.tier | 0) >= 2) { hasCity = true; break; }
   const effSurcharge = hasCity ? WAR_SURCHARGE : 0;
   let spent = 0;
+  const cap = c.capital;
+  // The FINANCIER: the realm's wealthiest city — the bankers who lend the crown its
+  // war money and live off the interest (Genoa, Augsburg, Amsterdam). A whole income
+  // archetype: a great merchant city that grows rich financing the state.
+  let financier = null;
+  for (const s of members) {
+    if (s.countryId !== c.id) continue;
+    if (!financier || (s.wealth || 0) > (financier.wealth || 0)) financier = s;
+  }
 
   // ── 1. ARMY PAY (first claim) ──
   // War multiplies the bill: campaigning/being besieged costs far more than a
@@ -1157,9 +1172,22 @@ function disburseTreasury(world, c, gov, warLevel) {
   let totalArmy = 0;
   for (const s of members) if (s.countryId === c.id) totalArmy += s.army || 0;
   const armyBill = totalArmy * wage * (1 + effSurcharge * (warLevel || 0));
-  // DEBASEMENT (Phase 3): if the treasury can't cover the army bill, melt the
-  // coinage — mint emergency seigniorage (lowering fineness) to ease the
-  // shortfall; in comfortable times restore the coin toward full fineness.
+  const debtCap = totalArmy * wage * DEBT_CAP_MULT;
+  // WAR LOANS (the FIRST recourse when short): the crown borrows the gap from its
+  // financier city (up to a debt ceiling) — war on credit. The lender's coin pays the
+  // army now; the crown owes it back with interest (serviced below). Borrowing comes
+  // BEFORE debasement — a state melts its coinage only as a last resort, when even its
+  // bankers won't extend more credit — so existing credit REPLACES minting rather than
+  // adding to it (avoids an inflationary debt+debasement double-faucet).
+  if (T.STATE_DEBT > 0 && financier && armyBill > gov.treasury) {
+    const room = Math.max(0, debtCap - (gov._debt || 0));
+    const lendable = Math.max(0, (financier.wealth || 0) - getWealthReserve(financier));
+    const loan = Math.min(armyBill - gov.treasury, room, lendable);
+    if (loan > 0.01) { financier.wealth -= loan; gov.treasury += loan; gov._debt = (gov._debt || 0) + loan; }
+  }
+  // DEBASEMENT (Phase 3): if the treasury STILL can't cover the army bill (credit
+  // exhausted), melt the coinage — mint emergency seigniorage (lowering fineness) to
+  // ease the shortfall; in comfortable times restore the coin toward full fineness.
   if (T.DEBASE_AGGRO > 0 && armyBill > 0.01) {
     const f0 = gov.fineness ?? 1;
     if (gov.treasury < armyBill && f0 > FINENESS_MIN) {
@@ -1182,30 +1210,95 @@ function disburseTreasury(world, c, gov, warLevel) {
     gov.treasury -= armyPaid; spent += armyPaid;
   }
 
-  // ── 2. PUBLIC WORKS / DOLE — only the surplus above the war-chest reserve ──
-  // The reserve is sized on the PEACETIME bill (built up in peace, drawn down
-  // by a war's surcharge) so a solvent state can ride out a war for a while
-  // before going bankrupt. It's also the coin a conqueror seizes.
+  // ── 1.5 DEBT SERVICE ── interest on the crown's debt, paid to the financier city as
+  // its 'war loans' income. Unpaid interest CAPITALISES (clamped to the ceiling): a
+  // state that keeps borrowing for war slides into a debt trap (Habsburg Spain's serial
+  // defaults), its revenue increasingly eaten by interest instead of guns or works.
+  if ((gov._debt || 0) > 0.01) {
+    const interest = gov._debt * DEBT_INTEREST;
+    const payI = Math.min(Math.max(0, gov.treasury), interest);
+    if (payI > 0 && financier) { gov.treasury -= payI; financier.wealth = (financier.wealth || 0) + payI; recordIn(financier, IN_FINANCE, payI); spent += payI; }
+    gov._debt = Math.min(debtCap, gov._debt + (interest - payI));   // shortfall capitalises, bounded
+  }
+
+  // ── 2. SURPLUS — debt repayment, then PURPOSEFUL spending ──
+  // The reserve is the war-chest (peacetime bill × passes), built in peace, drawn down
+  // in war; also the coin a conqueror seizes. Above it, a solvent throne doesn't just
+  // dole coin per head — it deleverages, then BUILDS: monuments & games at the seat
+  // (legitimacy that cools unrest realm-wide), infrastructure (roads that cheapen its
+  // trade), and relief to provinces in distress. Concentrating spending this way, rather
+  // than a universal per-capita dole, is also why the throne isn't every town's paymaster.
   const reserve = totalArmy * wage * RESERVE_PASSES;
   let budget = gov.treasury - reserve;
   if (budget > 0.01) {
-    let totW = 0;
-    for (const s of members) {
-      if (s.countryId !== c.id || s.id === c.capitalId) continue;
-      const boost = (s._housingPressed ? 0.5 : 0) + ((s._foodDemand || 0) > (s._foodSupply || 0) ? 0.5 : 0);
-      s._govW = Math.max(0, s.people || 0) * (1 + boost);
-      totW += s._govW;
+    // Repay principal in good times (deleverage) before discretionary works — not booked
+    // as the financier's income (it's their capital returned, not interest earned).
+    if ((gov._debt || 0) > 0.01 && financier) {
+      const repay = Math.min(budget * 0.5, gov._debt);
+      if (repay > 0.01) { gov.treasury -= repay; financier.wealth = (financier.wealth || 0) + repay; gov._debt -= repay; spent += repay; budget -= repay; }
     }
-    if (totW > 0) {
+    // MONUMENTS & GAMES at the seat → a slowly-fading legitimacy stock the unrest pass
+    // reads (bread & circuses); booked as state pay to the capital (the works' labour).
+    const mon = budget * T.SPEND_MONUMENT;
+    if (mon > 0.01 && cap) {
+      cap.wealth = (cap.wealth || 0) + mon; recordIn(cap, IN_STATE_PAY, mon);
+      gov._monuments = (gov._monuments || 0) * MONUMENT_DECAY + mon;
+      gov.treasury -= mon; spent += mon;
+    }
+    // INFRASTRUCTURE → roads (cheaper trade) + public-works employment for the members.
+    const infra = budget * T.SPEND_INFRA;
+    if (infra > 0.01) spent += spendInfrastructure(world, c, gov, infra);
+    // RELIEF / dole → the remainder, weighted HEAVILY toward provinces in actual
+    // distress (housing-pressed / food-short) so it reads as famine relief, not a wage.
+    const relief = Math.min(Math.max(0, gov.treasury - reserve), budget * T.SPEND_RELIEF);
+    if (relief > 0.01) {
+      let totW = 0;
       for (const s of members) {
         if (s.countryId !== c.id || s.id === c.capitalId) continue;
-        const share = budget * (s._govW / totW);
-        s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
+        const boost = (s._housingPressed ? 1.5 : 0) + ((s._foodDemand || 0) > (s._foodSupply || 0) ? 1.5 : 0);
+        s._govW = Math.max(0, s.people || 0) * (0.2 + boost);   // small per-capita floor + heavy need weighting
+        totW += s._govW;
       }
-      gov.treasury -= budget; spent += budget;
+      if (totW > 0) {
+        for (const s of members) {
+          if (s.countryId !== c.id || s.id === c.capitalId) continue;
+          const share = relief * (s._govW / totW);
+          s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
+        }
+        gov.treasury -= relief; spent += relief;
+      }
     }
+    // Whatever is left stays as TREASURE (hoard above the war chest) — recirculated when
+    // a conqueror seizes the treasury.
   }
   gov._spend = gov._spend * 0.9 + spent * 0.1;
+}
+
+// Public works: roads & canals. Booked as state pay (the labour) to the members,
+// weighted by size, and improves the road quality on their tiles — a developmental
+// state gradually cheapens its own trade. Bounded: roads improve slowly and never past
+// the worn-arterial floor (0.08), so this can't explode the trade economy.
+function spendInfrastructure(world, c, gov, budget) {
+  const members = c.members;
+  let totP = 0;
+  for (const s of members) if (s.countryId === c.id) totP += Math.max(0, s.people || 0);
+  if (totP <= 0) return 0;
+  const rq = world.roadQuality, tw = world.tw;
+  let spent = 0;
+  for (const s of members) {
+    if (s.countryId !== c.id) continue;
+    const share = budget * Math.max(0, s.people || 0) / totP;
+    if (share <= 0) continue;
+    s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
+    spent += share;
+    if (rq && s.pos) {
+      const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+      const improve = Math.min(0.015, (share / Math.max(1, s.people || 0)) * T.INFRA_ROAD);
+      if (improve > 0) rq[ti] = Math.max(0.08, rq[ti] - improve);
+    }
+  }
+  gov.treasury -= spent;
+  return spent;
 }
 
 // ── Capital → member transport cost (terrain + naval) ────────────────
@@ -1536,6 +1629,15 @@ export function updatePolities(world) {
     // At the top it boils over into a rebellion (rebel(), fired after secession).
     const taxOver = Math.max(0, (gov._taxRate - T.TAX_BASE) / (T.TAX_MAX - T.TAX_BASE));
     const warFat = Math.min(1, warLevel * 0.4) * (1 - Math.min(1, gov._spoils || 0));
+    // MONUMENT LEGITIMACY (bread & circuses): the seat's accumulated monuments & games
+    // (gov._monuments, built in disburseTreasury) overawe the people and cool unrest
+    // across the realm — saturating, and relative to population so a vast empire needs
+    // ever-grander works to keep the same legitimacy. A real reason to spend on cathedrals.
+    let realmPop = 0;
+    for (const s of c.members) if (s.countryId === c.id) realmPop += Math.max(0, s.people || 0);
+    const legit = (gov._monuments || 0) > 0 ? gov._monuments / (gov._monuments + MONUMENT_REF * Math.max(1, realmPop)) : 0;
+    c._legitimacy = legit;                         // info panel
+    const monRelief = T.MONUMENT_LEGIT * legit;    // extra unrest cooling from prestige works
     const rebelSeeds = [];
     for (const s of c.members) {
       if (s.countryId !== c.id) continue;
@@ -1546,7 +1648,7 @@ export function updatePolities(world) {
       const gH = hunger * HUNGER_W, gC = conscript * CONSCRIPT_W, gW = warFat * WARFAT_W, gT = taxOver * OVERTAX_W;
       const gS = shockUnrest(world, s);   // direct famine/plague distress (shocks.js)
       const gI = identityGrievance(cap, s, idW);   // heterodox-faith / foreign-people grievance vs the state core (era-weighted, cohesion.js)
-      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI) * T.UNREST_GAIN - UNREST_RELIEF));
+      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI) * T.UNREST_GAIN - UNREST_RELIEF - monRelief));
       s._unrestCause = s._plagueActive ? "plague"
                      : gI >= gH && gI >= gT && gI >= gW && gI >= gC ? identityGrievanceCause(cap, s, idW)
                      : gH >= gC && gH >= gW && gH >= gT ? "famine"

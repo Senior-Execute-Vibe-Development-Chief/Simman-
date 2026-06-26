@@ -19,7 +19,8 @@ export const IN_LUXURY    = 8;   // sold luxury goods (spices/furs/incense/dyes)
 export const IN_STATE_PAY  = 9;   // received from the state treasury (army pay / public works / dole)
 export const IN_PILGRIM   = 10;  // offerings & pilgrim traffic at a faith's holy see (Mecca/Rome/Varanasi)
 export const IN_CARRY     = 11;  // the carrying trade — brokerage/re-export earned moving OTHERS' goods (Venice/Amsterdam)
-const N_IN = 12;
+export const IN_FINANCE   = 12;  // interest earned lending to the state — the bankers' city (Genoa/Augsburg/Amsterdam)
+const N_IN = 13;
 
 // Spending channels.
 export const OUT_GOODS    = 0;   // bought goods (imports)
@@ -38,7 +39,7 @@ const N_OUT = 11;
 export const IN_LABELS = [
   "mining", "goods sold", "food & farm goods", "materials sold",
   "transit tolls", "taxes & customs", "tribute received", "colonial aid",
-  "luxuries sold", "state pay", "pilgrim offerings", "carrying trade",
+  "luxuries sold", "state pay", "pilgrim offerings", "carrying trade", "war loans",
 ];
 export const OUT_LABELS = [
   "goods bought", "food & farm goods", "construction", "freight & tolls",
