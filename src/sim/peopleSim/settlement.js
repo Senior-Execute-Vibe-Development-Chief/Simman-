@@ -399,9 +399,18 @@ function oreTier(res) {
 // industry — so they're the default "goods". METALWORK is now an ore-gated
 // SPECIALTY (Toledo, the Ruhr), not the thing every town read as. Pottery /
 // woodcraft / leather are the broad everyday crafts.
-const TEXTILE_W = 3.0;   // the loom — the default urban good (the largest pre-modern manufacture)
-const METAL_W   = 1.8;   // the forge — ore-gated specialty: only the richest ore+coal regions out-earn the loom
+// Craft weights. Textiles were the largest pre-modern manufacture, but they are a
+// CLIMATE specialty (wool needs temperate pasture, cotton warm-wet ground), NOT a
+// universal floor every town shares — a fibre-poor desert/tundra/rainforest town
+// leads with something else. Metalwork is the ore specialty; SERVICES (the counting-
+// house, entrepôt trade, the chancery) are the BIG-CITY specialty that makes a
+// Venice/Amsterdam lead on commerce, not cloth; pottery/leather/wares are the broad
+// everyday crafts. Differentiated so a settlement's GEOGRAPHY (climate, ore, coast,
+// size, farmland) picks which sector leads — economic variety across the map.
+const TEXTILE_W = 2.4;   // the loom — leads where fibre (wool/cotton) is genuinely abundant
+const METAL_W   = 1.9;   // the forge — ore-gated: rich ore regions out-earn the loom
 const POTTERY_W = 0.6;   // pottery / woodcraft / leather — broad everyday crafts
+const SERVICE_W = 1.4;   // counting-house / entrepôt — leads in large, organised commercial cities
 // Shared craft recipe so computeExportValue and getExportBreakdown can't drift.
 // Returns the manufactured-sector legs (pre craftFrac / mult), keyed by label.
 function craftLegs(s, k, r) {
@@ -410,14 +419,18 @@ function craftLegs(s, k, r) {
   const temp = s._climTemp ?? 0.5, moist = s._climMoist ?? 0.5;
   const wool   = Math.max(0, 1 - Math.abs(temp - 0.45) * 2.2);      // temperate pasture
   const cotton = Math.max(0, (temp - 0.55) * 2.2) * Math.max(0, (moist - 0.4) * 2);   // warm & wet
-  const fibre  = 0.35 + 0.65 * Math.min(1, wool + cotton + (k.agriculture || 0) * 0.3);
+  // Fibre is a CLIMATE endowment (wool + cotton), with only a small flax/agri floor —
+  // so cloth is a regional specialty, not the universal default it used to be.
+  const fibre  = 0.2 + 0.8 * Math.min(1, wool + cotton + (k.agriculture || 0) * 0.15);
   const physMetalCap = oreTier(r);
   return {
     "Textiles":          TEXTILE_W * fibre * (0.55 + 0.45 * popScale) * craft,
     "Metalwork":         physMetalCap > 0 ? Math.min(k.metallurgy || 0, physMetalCap) * METAL_W : 0,
     "Pottery & leather": POTTERY_W * popScale * (0.4 + (r.timber || 0) * 0.3 + (r.horses || 0) * 0.3),
     "Crafted wares":     (k.construction || 0) * 0.3,
-    "Services & records": (k.organization || 0) * popScale * 0.8,
+    // Services scale super-linearly with city size (popScale²): a great metropolis is a
+    // commercial/financial hub whose trade & administration dwarf its workshops.
+    "Services & records": SERVICE_W * (k.organization || 0) * popScale * popScale,
   };
 }
 
@@ -640,7 +653,15 @@ export function computeExportValue(s, world) {
   let agMat = 0;
   const agScale = Math.min(1, (s._terrTiles || 0) / 120);
   if (baseIsFood) {
-    const grain = (k.agriculture || 0) * agScale * 0.6;  // grain surplus
+    // Grain surplus scales with LOCAL FERTILITY: a rich river-valley breadbasket (Nile,
+    // Sicily, the Black Earth) out-produces marginal ground many times over and STAYS a
+    // grain exporter even after it grows and industrialises — so food remains a leading
+    // export where the soil is genuinely rich, instead of fading everywhere as crafts
+    // rise. Economic role follows geography. (Export attribution only — actual feeding
+    // is foodHierarchy.js.)
+    const homeTi = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
+    const fert = world && world.fert ? (world.fert[homeTi] || 0.5) : 0.5;
+    const grain = (k.agriculture || 0) * agScale * (0.45 + 1.25 * fert);  // grain surplus, fertility-scaled
     const wild  = (k.agriculture || 0) * (r.timber || 0) * 0.4;   // wild-forest forage / game
     ag += grain + wild; agFood += grain + wild;
   }

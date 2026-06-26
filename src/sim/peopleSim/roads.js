@@ -1057,7 +1057,13 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   // grain, livestock, wine, wool — so the countryside reads as a grain seller, not
   // a generic goods vendor). A town (export-food-fraction ≈ 0) still books goods
   // either way, so this can't make a workshop read as a farmer.
-  const sellerFarm = (seller.tier | 0) <= (T.FARM_MAX_TIER | 0);
+  // A seller reads as an agrarian/grain producer when EITHER it's a low-tier farm
+  // region (legacy model) OR — the part that matters under DISSOLVE_FARMS — its own
+  // export mix is genuinely food-dominated (a breadbasket whose output is mostly
+  // grain, even after it grows past tier 0). Without the second clause every grown
+  // farm town is mislabelled a goods-merchant and the whole map reads as "goods sold".
+  const sellerFarm = (seller.tier | 0) <= (T.FARM_MAX_TIER | 0)
+                   || (seller._exportFoodFrac || 0) >= T.FOOD_SELLER_FRAC;
   const buyerShort = (buyer._foodSupply || 0) < (buyer._foodDemand || 0);
   const foodFrac = (buyerShort || sellerFarm) ? (seller._exportFoodFrac || 0) : 0;
   const matFrac  = seller._exportMatFrac || 0;
