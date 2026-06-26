@@ -567,7 +567,10 @@ function updateWealth(world, s) {
     const left = reserveArr[ti];
     if (left <= 0) continue;
     const richness = (world.deposits[id] && world.deposits[id][ti]) || 0;
-    const want = T.MINING_RATE * richness * popFactor * orgMul * (world._dt || 1);   // mining income per tick → granularity-scaled
+    // Coerced labour intensifies extraction — more specie out, reserves depleted FASTER
+    // (Potosí's mita): a deadly mining boom that burns through both the seam and its slaves.
+    const coerceMine = T.SLAVERY ? 1 + T.MINE_COERCE * Math.min(2, (s._unfree || 0) / Math.max(1, s.people || 1)) : 1;
+    const want = T.MINING_RATE * richness * popFactor * orgMul * coerceMine * (world._dt || 1);   // mining income per tick → granularity-scaled
     const got = want < left ? want : left;
     reserveArr[ti] = left - got;
     mined += got;
@@ -612,6 +615,77 @@ function computeLuxury(s, world) {
   s._luxDemandLeft = s._luxDemand;
 }
 export { updateWealth };
+
+// ── Coerced labour: slaves, cash crops & intensified mining ──────────────────
+// Coerced labour is NOT a relabel of population — it does what free pop structurally
+// can't: work land for CASH CROPS (so the land stops feeding itself and must import
+// food), intensify mining, and pump owner-concentrated wealth without becoming citizens
+// — at the cost of a death-sink and revolt risk. See docs/coerced-labor.md. Everything
+// gates on climate / deposits / wealth / food — never on time/era (the cardinal rule).
+//
+// Tropical export-crop suitability (sugar & coffee want it hot AND wet; cotton warm).
+// ~0 in temperate / cold / arid land — the geography that made the plantation zones.
+function cashSuit(s) {
+  const t = s._climTemp ?? 0.5, m = s._climMoist ?? 0.5;
+  const sugar  = Math.max(0, (t - 0.55) * 2.2) * Math.max(0, (m - 0.45) * 2.2);              // hot & wet
+  const cotton = Math.max(0, (t - 0.5) * 1.6) * Math.max(0, 1 - Math.abs(m - 0.45) * 2.2);   // warm
+  return Math.min(1.5, sugar + 0.5 * cotton);
+}
+const SLAVE_ACQUIRE   = 0.01;   // drift rate of the unfree stock toward its demand target
+const CASHCROP_LAND   = 0.85;   // fraction of arable a fully-cash-cropped settlement pulls OFF food
+const SLAVE_MINE_PULL = 0.6;    // mining's coerced-labour demand weight
+
+// Evolve a settlement's coerced-labour stock, its cash-crop land allocation, and its
+// plantation output. Called once per tick from updateSettlement (after updateWealth, so
+// it reads fresh wealth; mining/food read last tick's _unfree, which drifts slowly).
+export function updateCoercedLabour(world, s) {
+  if (!T.SLAVERY || s.mode !== "settled") { if (s._unfree) { s._unfree = 0; s._cashFrac = 0; } return; }
+  const cs = cashSuit(s); s._cashSuit = cs;
+  const hasMine = (s._minableTiles && s._minableTiles.length) ? 1 : 0;
+  const labourDemand = cs + SLAVE_MINE_PULL * hasMine;          // coerced labour this site could USE
+  // Food security: can it feed extra mouths AND afford to stop growing its own food?
+  // surplus on hand + a trade link to import grain (a plantation must import food).
+  const surplus = Math.max(0, (s._foodSupply || 0) - (s._foodDemand || 0));
+  const reachF = s._tradeReach ? Math.min(0.7, s._tradeReach.size / 12) : 0;
+  const foodSec = Math.min(1, surplus / Math.max(1, s._foodDemand || 1) + reachF);
+  // Wealth gates how much coerced labour it can buy & maintain (a cost proxy — the real
+  // slave TRADE that sources it is Step 2; here the stock drifts to an affordable target).
+  const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
+  const afford = Math.min(1, spare / (150 + (s._unfree || 0) * 3));
+  // Sized by the settlement's economy (people as the land/capital proxy), NOT sqrt — a
+  // plantation/mine can hold MORE unfree than free (the Caribbean was ~80% enslaved); the
+  // revolt cap below keeps the ratio from running to 100%.
+  const target = T.SLAVE_TARGET * labourDemand * Math.max(1, s.people || 0) * foodSec * afford;
+  let u = (s._unfree || 0) + SLAVE_ACQUIRE * (target - (s._unfree || 0));
+  // Attrition — the death sink: mines & plantations are lethal, so the unfree must be
+  // resupplied (this is what sustains the slave trade); mild for domestic/mixed work.
+  const harsh = 0.25 + 0.75 * Math.min(1, cs + 0.5 * hasMine);
+  u *= (1 - T.SLAVE_DEATH * harsh * (world._dt || 1));
+  // Revolt: a high unfree ratio with too little free population to police it boils over —
+  // the estate is wrecked and most of the unfree are lost (Haiti, the Zanj rebellion).
+  const ratio = u / Math.max(1, (s.people || 0) + u);
+  s._unfreeRatio = ratio;
+  if (ratio > 0.6 && u > 50) {
+    const r = hash32(world.seed || 1, "slaveRevolt", s.id, world.step) / 4294967296;
+    if (r < T.SLAVE_UNREST * (ratio - 0.6) * 0.02 * (world._dt || 1)) {
+      u *= 0.25; s._sackedAt = world.step;                      // the revolt craters output
+      logEvent(world, "slave.revolt", { s: s.id, sName: s.name || "a settlement" });
+    }
+  }
+  s._unfree = Math.max(0, u);
+  // Cash-crop land allocation drifts toward what's suitable, food-secure & labour-backed.
+  const labourBacked = Math.min(1, u / Math.max(1, 0.25 * (s.people || 1)));
+  const cashTarget = cs > 0.05 ? Math.min(1, cs) * foodSec * labourBacked : 0;
+  s._cashFrac = (s._cashFrac || 0) + 0.04 * (cashTarget - (s._cashFrac || 0));
+  // Cash-crop OUTPUT → folded into the LUXURY supply (sugar/tobacco/coffee were the
+  // colonial luxuries), so it trades as luxury income to the OWNER. Coerced labour
+  // multiplies it into a real plantation; free peasants grow only a little.
+  const arableScale = Math.min(1, (s._terrTiles || 0) / 120);
+  const coerceMul = T.COERCE_CASH * Math.min(2, u / Math.max(1, s.people || 1));
+  const cashOut = T.CASHCROP_W * cs * (s._cashFrac || 0) * arableScale * (0.25 + coerceMul) * (s._eraProd || 1);
+  s._cashOut = cashOut;
+  if (cashOut > 0) { s._luxSupply = (s._luxSupply || 0) + cashOut; s._luxSupplyLeft = (s._luxSupplyLeft || 0) + cashOut; }
+}
 
 // Export-value = how many GOODS this settlement has to sell on a
 // road. NOT wealth itself — precious metals and gems are CURRENCY
@@ -998,6 +1072,7 @@ export function updateSettlement(world, s) {
   updatePopulation(world, s);
   if (s.mode !== "settled") return;        // died this tick (famine / wither)
   updateWealth(world, s);
+  updateCoercedLabour(world, s);   // slaves, cash crops, mine intensification (reads fresh wealth)
   updateDevelopment(world, s);
   updateKnowledge(world, s);
   updateTier(world, s);
@@ -1762,7 +1837,10 @@ function updateFood(world, s) {
     irrigation = 1 + T.IRRIG_BOOST * arid * river * farmTech;
   }
   s._irrigation = irrigation;
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * soilBurden * workable * irrigation;
+  // CASH CROPS displace food: arable turned over to sugar/cotton/tobacco grows no grain,
+  // so a plantation settlement must IMPORT food (the new dynamic — see updateCoercedLabour).
+  const cashLand = T.SLAVERY ? (s._cashFrac || 0) * CASHCROP_LAND : 0;
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * soilBurden * workable * irrigation * (1 - cashLand);
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
@@ -1815,7 +1893,10 @@ function updateFood(world, s) {
   // town (guns vs. butter). The army is SIZED against this surplus in
   // musterArmies, so the granary still nets positive in steady state.
   const armyFood = (s.army || 0) * ARMY_FOOD;
-  const demand = civDemand + armyFood;
+  // The unfree eat too — fed at subsistence by the owner (≤ free per-capita). A big
+  // plantation/mine workforce adds real food demand the settlement must cover or import.
+  const slaveFood = T.SLAVERY ? (s._unfree || 0) * 0.0030 * T.SLAVE_FEED : 0;
+  const demand = civDemand + armyFood + slaveFood;
   // Expose rates so the food-trade pass can compute surplus/deficit
   // per road without recomputing forage + farmland sums.
   s._foodSupply = supply;
