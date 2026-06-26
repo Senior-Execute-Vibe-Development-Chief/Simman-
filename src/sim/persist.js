@@ -37,6 +37,7 @@ const SETT_FIELDS = [
   "cultureId", "culMix", "faithMix", "langMix", "ancMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
   "_specKey", "_specStr",   // agglomeration: the town's locked-in craft specialty + its strength
   "_unfree", "_cashFrac", "_captives",   // coerced labour: unfree workforce, cash-crop land, unsold captives
+  "_serf",                               // serfdom: land-tenure coercion level (0..1)
 ];
 
 // ── typed-array <-> base64 ──────────────────────────────────────────────

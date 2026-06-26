@@ -1648,7 +1648,28 @@ export function updatePolities(world) {
       const gH = hunger * HUNGER_W, gC = conscript * CONSCRIPT_W, gW = warFat * WARFAT_W, gT = taxOver * OVERTAX_W;
       const gS = shockUnrest(world, s);   // direct famine/plague distress (shocks.js)
       const gI = identityGrievance(cap, s, idW);   // heterodox-faith / foreign-people grievance vs the state core (era-weighted, cohesion.js)
-      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI) * T.UNREST_GAIN - UNREST_RELIEF - monRelief));
+      // SERFDOM (land-tenure coercion): bound peasants owing heavy labour-rent. It forms
+      // where a settlement's GRAIN is in demand (export pull) and a STRONG realm can bind
+      // the peasants (coercion), set against their ability to EXIT to towns/commerce. The
+      // PLAGUE FORK: when a plague makes labour scarce, a strong-coercion realm binds the
+      // survivors TIGHTER (the second serfdom — Eastern Europe) while a commercial/weak one
+      // lets them bargain FREE (the West) — same shock, opposite institutions, never timed.
+      let gSerf = 0;
+      if (T.SERFDOM) {
+        const exportPull = s._exportFoodFrac || 0;                          // a grain producer
+        const coercion = Math.min(1, (c._dominance || 1) / 4);              // a strong realm can bind
+        // EXIT: how easily peasants escape — to nearby towns/commerce. Weighted toward
+        // LOCAL connectivity (trade reach) so it varies place-to-place, giving a spatial fork.
+        const exit = Math.min(1, (s._tradeReach ? s._tradeReach.size / 12 : 0) * 0.65 + ((s.knowledge && s.knowledge.organization) || 0) * 0.35);
+        let serfTarget = Math.min(1, T.SERF_FORM * exportPull * coercion * (1 - 0.7 * exit));
+        const scarce = s._plagueActive || ((s._plagueUntil || 0) > 0 && world.step < (s._plagueUntil || 0) + 2000);
+        // The fork: a labour-scarce shock BINDS where the lord is strong and exit is poor
+        // (coercion + isolation outweigh escape), else DISSOLVES serfdom (the West).
+        if (scarce) serfTarget = (coercion + (1 - exit)) >= 1.0 ? Math.min(1, serfTarget + T.SERF_PLAGUE) : 0;
+        s._serf = Math.max(0, Math.min(1, (s._serf || 0) + 0.02 * (serfTarget - (s._serf || 0))));
+        gSerf = T.SERF_UNREST * s._serf;
+      }
+      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI + gSerf) * T.UNREST_GAIN - UNREST_RELIEF - monRelief));
       s._unrestCause = s._plagueActive ? "plague"
                      : gI >= gH && gI >= gT && gI >= gW && gI >= gC ? identityGrievanceCause(cap, s, idW)
                      : gH >= gC && gH >= gW && gH >= gT ? "famine"
@@ -1843,7 +1864,10 @@ export function updatePolities(world) {
       // rate, scaling up toward TAX_MAX/TAX_BASE in a hard war.
       if (T.FARM_RENT > 0 && (s._landFood || 0) > 0) {
         const taxMul = (gov._taxRate ?? T.TAX_BASE) / T.TAX_BASE;
-        const rent = Math.min(Math.max(0, s.wealth || 0), (s._landFood || 0) * T.FARM_RENT * taxMul * T.POLITY_INTERVAL);
+        // Serfdom skims a HEAVIER share of the harvest — bound peasants kept at subsistence,
+        // their surplus extracted as labour-rent up to the lord/state (the serf breadbasket).
+        const serfMul = T.SERFDOM ? 1 + T.SERF_RENT * (s._serf || 0) : 1;
+        const rent = Math.min(Math.max(0, s.wealth || 0), (s._landFood || 0) * T.FARM_RENT * serfMul * taxMul * T.POLITY_INTERVAL);
         if (rent > 0) { s.wealth -= rent; gov.treasury += rent; gov._revenue += rent; recordOut(s, OUT_TRIBUTE, rent); }
       }
     }
