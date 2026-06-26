@@ -356,8 +356,12 @@ function PersonCard({n}){
     </div>
   );
 }
-function DynastyOverlay({tree,onClose}){
-  const nodes=(tree&&tree.nodes)||[];
+// Per-government styling for the succession roll (crown / theocracy / council).
+const GOV_META={monarchy:{icon:"♔",col:"#b8902f",label:"Crown"},
+  theocracy:{icon:"☩",col:"#5566b0",label:"Theocracy"},
+  republic:{icon:"⚖",col:"#2f8a78",label:"Council"}};
+// The blood tree of the reigning house.
+function FamilyTree({nodes}){
   const byId=new Map(nodes.map(n=>[n.id,n]));
   const kidsOf=new Map();
   for(const n of nodes)if(n.parentId>=0){if(!kidsOf.has(n.parentId))kidsOf.set(n.parentId,[]);kidsOf.get(n.parentId).push(n.id);}
@@ -382,28 +386,75 @@ function DynastyOverlay({tree,onClose}){
       </div>
     );
   };
-  // blood roots first (top of each line), oldest first; then any orphans
   const roots=nodes.filter(n=>n.parentId<0&&!n.foreign).sort((a,b)=>a.bornY-b.bornY);
-  const body=[...roots.map(r=>renderLine(r.id)),...nodes.filter(n=>!drawn.has(n.id)).map(n=>renderLine(n.id))];
+  return <div>{[...roots.map(r=>renderLine(r.id)),...nodes.filter(n=>!drawn.has(n.id)).map(n=>renderLine(n.id))]}</div>;
+}
+// Everyone who ever ruled the nation — across houses, councils and theocracies —
+// in order, grouped by house with a banner when the form of rule itself changes.
+function SuccessionRoll({roll}){
+  const rows=[];
+  let lastHouse=null,lastGov=null;
+  roll.forEach((e,i)=>{
+    const gm=GOV_META[e.gov]||GOV_META.monarchy;
+    if(e.gov!==lastGov){
+      rows.push(<div key={"g"+i} style={{margin:"10px 0 3px",fontSize:10,letterSpacing:0.4,textTransform:"uppercase",fontWeight:700,color:gm.col}}>
+        {gm.icon} {gm.label==="Crown"?"Monarchy":gm.label}{lastGov?" — the order changes":""}</div>);
+      lastHouse=null;
+    }
+    if(e.house!==lastHouse){
+      rows.push(<div key={"h"+i} className="au-fade" style={{margin:"5px 0 1px",fontSize:10,fontStyle:"italic"}}>House {e.house||"—"}</div>);
+    }
+    lastHouse=e.house;lastGov=e.gov;
+    rows.push(
+      <div key={i} style={{display:"grid",gridTemplateColumns:"auto auto 1fr",gap:"2px 9px",alignItems:"baseline",fontSize:12,
+        padding:"1px 4px",borderLeft:`3px solid ${gm.col}`,marginLeft:4,background:e.current?"rgba(184,144,47,0.12)":"transparent"}}>
+        <span className="au-fade" style={{fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",fontSize:11}}>{fy(e.fromY)}–{e.toY>=0?fy(e.toY):"now"}</span>
+        <span style={{color:e.female?"#9c4a82":"#3a5a9c",fontWeight:700}}>{e.female?"♀":"♂"}</span>
+        <span style={{color:"#2a1c0e"}}>
+          <span className="au-fade">{e.title?e.title+" ":""}</span>
+          <b style={{fontWeight:e.current?700:600}}>{e.name}</b>{e.epithet?` ${e.epithet}`:""}
+          {e.current&&<span style={{color:gm.col,fontWeight:700}}> · reigning</span>}
+        </span>
+      </div>
+    );
+  });
+  return <div>{rows}</div>;
+}
+function DynastyOverlay({tree,onClose}){
+  const[mode,setMode]=useState("tree");
+  const nodes=(tree&&tree.nodes)||[];
+  const roll=(tree&&tree.roll)||[];
+  const Tab=({id,label})=>(
+    <button onClick={()=>setMode(id)} className={"au-btn"+(mode===id?" au-active":"")}
+      style={{fontSize:10,whiteSpace:"nowrap"}}>{label}</button>);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(680px,94vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4,flexShrink:0,gap:8}}>
           <div className="au-pico-title" style={{fontSize:15}}>House {tree?tree.houseName||"—":"—"}
             {tree&&<span className="au-fade" style={{fontSize:11}}> · {tree.govLabel}</span>}</div>
-          <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
+          <div style={{display:"flex",gap:5,alignItems:"center"}}>
+            <Tab id="tree" label="Family tree"/>
+            <Tab id="roll" label={`Succession${roll.length?` (${roll.length})`:""}`}/>
+            <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
+          </div>
         </div>
         <div className="au-fade" style={{fontSize:10,marginBottom:8,flexShrink:0}}>
-          {tree?<>succession: {tree.lawLabel}{tree.rulerTitle?` · the ${tree.rulerTitle.toLowerCase()} reigns`:""}</>:"no ruling house"}
+          {tree?<>succession law: {tree.lawLabel}{tree.rulerTitle?` · the ${tree.rulerTitle.toLowerCase()} reigns`:""}</>:"no ruling house"}
         </div>
         <div style={{overflow:"auto",minHeight:0,paddingRight:6}}>
-          {nodes.length===0
-            ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No reigning house — the realm keeps no king-list yet.</div>
-            :<div>{body}</div>}
+          {mode==="tree"
+            ?(nodes.length===0
+              ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No reigning house — the realm keeps no king-list yet.</div>
+              :<FamilyTree nodes={nodes}/>)
+            :(roll.length===0
+              ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No sovereigns recorded yet.</div>
+              :<SuccessionRoll roll={roll}/>)}
         </div>
         <div className="au-fade" style={{fontSize:9.5,marginTop:8,flexShrink:0,display:"flex",gap:12,flexWrap:"wrap",borderTop:"1px solid rgba(90,74,50,0.2)",paddingTop:6}}>
-          <span>♔ reigning</span><span>♀ / ♂</span><span>⚭ married</span>
-          <span style={{fontStyle:"italic"}}>dashed = bastard</span><span>faded = married in / deceased</span>
+          {mode==="tree"
+            ?<><span>♔ reigning</span><span>♀ / ♂</span><span>⚭ married</span><span style={{fontStyle:"italic"}}>dashed = bastard</span><span>faded = married in / deceased</span></>
+            :<><span style={{color:GOV_META.monarchy.col}}>♔ crown</span><span style={{color:GOV_META.theocracy.col}}>☩ theocracy</span><span style={{color:GOV_META.republic.col}}>⚖ council</span><span>every sovereign, oldest first</span></>}
         </div>
       </div>
     </div>

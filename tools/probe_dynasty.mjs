@@ -58,4 +58,11 @@ for (const c of realms.slice(0, 2)) {
     for (const k of (kids.get(id) || [])) line(k, d + 1);
   };
   for (const r of roots) line(r, 0);
+  // the full roll of sovereigns (all houses / forms of rule)
+  console.log(`    ── succession roll (${t.roll.length}) ──`);
+  let lg = null;
+  for (const e of t.roll) {
+    if (e.gov !== lg) { console.log(`      « ${e.gov} »`); lg = e.gov; }
+    console.log(`      ${e.fromY}–${e.toY >= 0 ? e.toY : "now"}  ${e.title || ""} ${e.name}${e.epithet ? " " + e.epithet : ""}  [${e.house || "—"}]${e.current ? "  ←reigning" : ""}`);
+  }
 }

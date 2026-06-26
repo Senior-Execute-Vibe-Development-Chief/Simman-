@@ -283,8 +283,6 @@ function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
 
 function deriveTarget(world, c, polity) {
   const cap = c.capital;
-  const k = (cap && cap.knowledge) || {};
-  const org = k.organization || 0;
   const pers = polity.personality || {};
   const aggr01 = clamp01(((pers.aggression || 0) + 1) / 2);
   const comm01 = clamp01(((pers.commerce || 0) + 1) / 2);
@@ -298,23 +296,20 @@ function deriveTarget(world, c, polity) {
     theoScore = share * (0.35 + 0.65 * (d.hierarchy || 0)) * (0.5 + 0.5 * (d.zeal || 0));
   }
 
-  // REPUBLIC — literate, commercial, and POLYCENTRIC (no single dominant city).
-  let cities = 0, totalPop = 0, capPop = cap ? (cap.people || 0) : 0;
-  if (c.members) for (const s of c.members) {
-    if (s.mode !== "settled") continue;
-    totalPop += s.people || 0;
-    if ((s.tier | 0) >= 2) cities++;
-  }
-  const primacy = totalPop > 0 ? capPop / totalPop : 1;     // 1 = one city holds everyone
-  const orgF = clamp01((org - 0.45) / 0.35);                // needs codes-of-law / currency era
-  let repScore = 0;
-  if (cities >= 2 && orgF > 0) {
-    repScore = comm01 * (1 - primacy) * orgF * (0.5 + 0.5 * (1 - aggr01));
-  }
+  // REPUBLIC — the merchant city-state: a COMMERCIAL, un-warlike burgher polity
+  // where a civic class governs through an elected council. It need not be big or
+  // polycentric (Venice was a single dominant city) — a strong trading town will
+  // do; what it must NOT be is a martial conquest-state. (Literacy is already
+  // required for any recorded government, in the caller.) Primacy only lightly
+  // tempers a sprawling realm toward a crown.
+  let totalPop = 0, capPop = cap ? (cap.people || 0) : 0;
+  if (c.members) for (const s of c.members) { if (s.mode === "settled") totalPop += s.people || 0; }
+  const primacy = totalPop > 0 ? capPop / totalPop : 1;
+  let repScore = (0.6 * comm01 + 0.4 * (1 - aggr01)) * (0.85 + 0.15 * (1 - primacy));
 
   let gov = GOV_MONARCHY;
   if (theoScore >= 0.42 && theoScore >= repScore) gov = GOV_THEOCRACY;
-  else if (repScore >= 0.28) gov = GOV_REPUBLIC;
+  else if (comm01 >= 0.55 && aggr01 < 0.55 && repScore >= 0.55) gov = GOV_REPUBLIC;
 
   // Succession law — who may inherit.
   const militancy = faith && faith.doctrine ? (faith.doctrine.militancy || 0) : 0;
@@ -499,6 +494,17 @@ function crown(world, polity, person, how, gov) {
   polity.dynastyId = person.dynastyId;
   person._title = titleFor(gov, person.female);
   const d = getDynasty(world, person.dynastyId);
+
+  // The realm's ROLL of sovereigns — the king-list that spans every house and
+  // form of rule (dynasties, elected councils, theocratic lines). Denormalised so
+  // it survives the person-prune; the open entry closes when the next is crowned.
+  const curY = stepToYear(world.step) | 0;
+  if (!polity.rulers) polity.rulers = [];
+  const roll = polity.rulers;
+  for (let i = roll.length - 1; i >= 0; i--) { if (roll[i].toY < 0) { roll[i].toY = curY; break; } }
+  roll.push({ id: person.id, name: person.name, female: person.female ? 1 : 0,
+    house: d ? d.name : null, title: person._title, gov, how, fromY: curY, toY: -1, epithet: null });
+  if (roll.length > 400) roll.splice(0, roll.length - 400);
 
   // What's worth chronicling: the founding of a house ("first"/"crisis"), a
   // newly-elected magistracy from a fresh house (republics alternate — the
@@ -725,6 +731,10 @@ export function updateDynasties(world) {
       const gov0 = polity.gov || GOV_MONARCHY;
       // the name history keeps them by — earned from the deeds of their reign
       ruler.epithet = epithetFor(ruler, polity, reignY, countCities(c) - (polity._reignCities || 0), gov0);
+      // stamp it onto the realm's roll (the reign closes when the heir is crowned)
+      if (polity.rulers) for (let i = polity.rulers.length - 1; i >= 0; i--) {
+        if (polity.rulers[i].id === ruler.id) { polity.rulers[i].epithet = ruler.epithet; if (polity.rulers[i].toY < 0) polity.rulers[i].toY = ruler.reignTo; break; }
+      }
       if (reignY >= LONG_REIGN_YEARS) {
         logEvent(world, "ruler.died", {
           polity: cid, name: polity.name, person: ruler.id, personName: ruler.name,
@@ -845,11 +855,27 @@ export function getDynastyTree(world, countryId, cap = 80) {
     };
   });
   const r = rulerId >= 0 ? getPerson(world, rulerId) : null;
+  // The roll of sovereigns: everyone who ever ruled this realm, across every house
+  // and form of government. Denormalised on the polity; we ensure the sitting ruler
+  // is present (older saves predate the roll).
+  const roll = (polity.rulers || []).map(e => ({
+    name: e.name || "?", female: !!e.female, house: e.house || null, title: e.title || null,
+    gov: e.gov || GOV_MONARCHY, fromY: e.fromY | 0, toY: e.toY < 0 ? -1 : e.toY | 0,
+    epithet: e.epithet || null, current: e.toY < 0 && e.id === rulerId,
+  }));
+  const lastOpen = roll.length ? roll[roll.length - 1] : null;
+  if (r && !(lastOpen && lastOpen.current)) {
+    roll.push({
+      name: r.name || "?", female: !!r.female, house: dyn ? dyn.name : null,
+      title: r._title || titleFor(polity.gov, r.female), gov: polity.gov || GOV_MONARCHY,
+      fromY: r.reignFrom >= 0 ? r.reignFrom : nowY, toY: -1, epithet: null, current: true,
+    });
+  }
   return {
     countryId, houseName: dyn ? dyn.name : null,
     gov: polity.gov || GOV_MONARCHY, govLabel: governanceLabel(polity.gov),
     law: polity.succLaw || LAW_MALE_PREF, lawLabel: lawLabel(polity.succLaw),
     rulerTitle: r ? (r._title || titleFor(polity.gov, r.female)) : null,
-    nodes,
+    nodes, roll,
   };
 }
