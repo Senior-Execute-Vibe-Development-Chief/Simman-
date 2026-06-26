@@ -814,6 +814,12 @@ export function advanceFronts(world) {
           if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(att.countryId, (g.get(att.countryId) || 0) + 1); }
           def._conqueredAt = world.step;
           def._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue
+          // Captives: the sack of a city carries off part of its people into bondage —
+          // war as the primary supply of the slave trade (the captor sells/works them).
+          if (T.SLAVERY && T.CAPTURE_FRAC > 0 && (def.people || 0) > 0) {
+            const taken = (def.people || 0) * T.CAPTURE_FRAC;
+            def.people -= taken; att._captives = (att._captives || 0) + taken;
+          }
           def.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)
           def._ambition = 0;    // a freshly subdued city isn't plotting (yet)
           def.unrest = 0;       // the conquered populace is cowed for now

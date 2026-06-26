@@ -631,7 +631,6 @@ function cashSuit(s) {
   const cotton = Math.max(0, (t - 0.5) * 1.6) * Math.max(0, 1 - Math.abs(m - 0.45) * 2.2);   // warm
   return Math.min(1.5, sugar + 0.5 * cotton);
 }
-const SLAVE_ACQUIRE   = 0.01;   // drift rate of the unfree stock toward its demand target
 const CASHCROP_LAND   = 0.85;   // fraction of arable a fully-cash-cropped settlement pulls OFF food
 const SLAVE_MINE_PULL = 0.6;    // mining's coerced-labour demand weight
 
@@ -648,15 +647,19 @@ export function updateCoercedLabour(world, s) {
   const surplus = Math.max(0, (s._foodSupply || 0) - (s._foodDemand || 0));
   const reachF = s._tradeReach ? Math.min(0.7, s._tradeReach.size / 12) : 0;
   const foodSec = Math.min(1, surplus / Math.max(1, s._foodDemand || 1) + reachF);
-  // Wealth gates how much coerced labour it can buy & maintain (a cost proxy — the real
-  // slave TRADE that sources it is Step 2; here the stock drifts to an affordable target).
+  // Wealth gates how much coerced labour it can buy & maintain (a cost proxy).
   const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
   const afford = Math.min(1, spare / (150 + (s._unfree || 0) * 3));
   // Sized by the settlement's economy (people as the land/capital proxy), NOT sqrt — a
   // plantation/mine can hold MORE unfree than free (the Caribbean was ~80% enslaved); the
   // revolt cap below keeps the ratio from running to 100%.
   const target = T.SLAVE_TARGET * labourDemand * Math.max(1, s.people || 0) * foodSec * afford;
-  let u = (s._unfree || 0) + SLAVE_ACQUIRE * (target - (s._unfree || 0));
+  let u = s._unfree || 0;
+  // The workforce comes from the slave TRADE (slavery.js), not thin air: work your OWN
+  // captives first (a raider that also has plantations/mines uses what it seizes), then
+  // post the residual as market DEMAND for slavery.js to fill from others' captives.
+  const cap = s._captives || 0;
+  if (cap > 0 && u < target) { const useLocal = Math.min(cap, target - u); u += useLocal; s._captives = cap - useLocal; }
   // Attrition — the death sink: mines & plantations are lethal, so the unfree must be
   // resupplied (this is what sustains the slave trade); mild for domestic/mixed work.
   const harsh = 0.25 + 0.75 * Math.min(1, cs + 0.5 * hasMine);
@@ -673,6 +676,7 @@ export function updateCoercedLabour(world, s) {
     }
   }
   s._unfree = Math.max(0, u);
+  s._slaveDemand = Math.max(0, target - u);   // residual demand → bought on the market (slavery.js)
   // Cash-crop land allocation drifts toward what's suitable, food-secure & labour-backed.
   const labourBacked = Math.min(1, u / Math.max(1, 0.25 * (s.people || 1)));
   const cashTarget = cs > 0.05 ? Math.min(1, cs) * foodSec * labourBacked : 0;
