@@ -28,7 +28,14 @@ import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { getCulture, nameFor, dominantCulture } from "./cultures.js";
 import { getFaith, dominantFaith } from "./faiths.js";
-import { stepToYear, yearToStep } from "../calendar.js";
+// The dynasty layer runs on the DYNASTY clock — a separate, slower UNIFORM clock
+// (see calendar.js). Uniform so a king reigns ~50 years regardless of how fast the
+// world develops; slower (half the mechanic rate) so the count of sovereigns fits
+// the displayed ~5000-year span (~100 across a realm's life, not ~200 crammed in)
+// and the tree's years sit in the same 3000 BC → ~2000 AD range as the display
+// calendar. The DISPLAY calendar itself is era-anchored and non-uniform, so it
+// can't time durations — this clock tracks it only approximately, by design.
+import { dynYear as stepToYear, dynStep as yearToStep } from "../calendar.js";
 
 export const DYNASTY_INTERVAL = 25;     // small pass, runs often (reigns span a few passes)
 const LITERACY_MIN = 0.22;              // organization needed for recorded dynastic history
