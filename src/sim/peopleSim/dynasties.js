@@ -57,6 +57,81 @@ const MATERNAL_HAZARD = 0.06;           // mother's death per birth (acute, roll
 const PLAGUE_HAZARD_Y = 0.05;           // annual extra death hazard for kin in a plague-struck capital
 const HEALTH_DEV_W    = 0.55;           // how far development can cut mortality
 
+// ── Character: the traits a ruler is born with, and what they earn ───────────
+// Four axes in [-1, 1]: vigor (health → long life, many children), wit (shrewd
+// rule → development & order), boldness (courage → wars of choice), ruthlessness
+// (an iron grip → fewer revolts). A house's FOUNDER rises on merit and is dealt a
+// capable hand; each generation REGRESSES toward the random mean, so the
+// founder's edge washes out down the line (kept ~40% per generation).
+const TRAIT_KEYS = ["vigor", "wit", "boldness", "ruthlessness"];
+function clampT(v) { return v < -1 ? -1 : v > 1 ? 1 : v; }
+function sampleTraits(rng, kind, parent) {
+  const t = {};
+  for (const key of TRAIT_KEYS) {
+    let v;
+    if (kind === "founder") v = 0.2 + rng() * 0.7;                 // capable: ~0.2…0.9
+    else if (kind === "child" && parent && parent.traits) v = (parent.traits[key] || 0) * 0.4 + (rng() * 2 - 1) * 0.55;
+    else v = (rng() * 2 - 1) * 0.7;                                // an ordinary newcomer, mean 0
+    t[key] = clampT(v);
+  }
+  return t;
+}
+
+// A short descriptor of a living ruler's most pronounced bent (for the card).
+export function traitLabel(t) {
+  if (!t) return null;
+  const picks = [];
+  if (t.vigor <= -0.45) picks.push("sickly"); else if (t.vigor >= 0.55) picks.push("hale");
+  if (t.wit >= 0.5) picks.push("shrewd"); else if (t.wit <= -0.45) picks.push("dull");
+  if (t.boldness >= 0.5) picks.push("bold"); else if (t.boldness <= -0.45) picks.push("timid");
+  if (t.ruthlessness >= 0.55) picks.push("ruthless"); else if (t.ruthlessness <= -0.5) picks.push("gentle");
+  return picks.slice(0, 2).join(", ") || "even-tempered";
+}
+
+// The epithet a ruler is remembered by — earned from WHAT THEY DID (reign length,
+// realms won or lost, wars, monuments) tempered by their nature. Assigned at death.
+function epithetFor(ruler, polity, reignY, citiesDelta, gov) {
+  const t = ruler.traits || {};
+  const wars = polity._reignWars || 0;
+  const monBuilt = (polity._monuments || 0) - (polity._reignMon0 || 0);
+  if (t.vigor <= -0.45 && reignY < 18) return "the Sickly";
+  if (reignY >= 35 && citiesDelta >= 2 && (t.wit || 0) > 0.15) return "the Great";
+  if (citiesDelta >= 3 || (wars >= 4 && citiesDelta >= 1)) return "the Conqueror";
+  if (citiesDelta <= -3) return "the Unready";
+  if ((t.ruthlessness || 0) >= 0.5 && (wars >= 3 || citiesDelta < 0 || (t.wit || 0) < -0.1)) return "the Terrible";
+  if ((t.wit || 0) >= 0.5) return "the Wise";
+  if ((t.boldness || 0) <= -0.45 && citiesDelta < 0) return "the Coward";
+  if ((t.boldness || 0) >= 0.55 && wars >= 2) return "the Bold";
+  if (gov === GOV_THEOCRACY) return "the Pious";
+  if (monBuilt > 2000) return "the Builder";
+  if ((t.vigor || 0) >= 0.5) return "the Hale";
+  if ((t.wit || 0) <= -0.45) return "the Foolish";
+  if (reignY >= 55) return "the Old";                    // only exceptional longevity, else a bland nickname
+  // an unremarkable reign — a bland or unkind nickname (varied, deterministic by id)
+  const dull = ["the Bland", "the Fat", "the Quiet", "the Idle", "the Unremarkable", "the Plain", "the Lesser"];
+  return dull[Math.abs((ruler.id * 2654435761) | 0) % dull.length];
+}
+
+function countCities(c) {
+  let n = 0;
+  if (c && c.members) for (const s of c.members) if (s.mode === "settled" && (s.tier | 0) >= 2) n++;
+  return n;
+}
+// A ruler's character, projected onto the levers other passes read (refreshed each
+// pass on the country record): boldness → wars of choice, wit → development & order,
+// wit+ruthlessness → an extra grip on unrest. Neutral (1, 0) during an interregnum.
+function applyRulerMods(c, ruler) {
+  const t = (ruler && ruler.traits) || null;
+  if (!t) { c._rulerWar = 1; c._rulerWit = 1; c._rulerRelief = 0; return; }
+  c._rulerWar = 1 + (t.boldness || 0) * 0.30;                                  // 0.70 … 1.30
+  c._rulerWit = 1 + (t.wit || 0) * 0.15;                                       // 0.85 … 1.15
+  c._rulerRelief = ((t.wit || 0) * 0.5 + (t.ruthlessness || 0) * 0.5) * 0.013; // ±0.013 unrest relief
+}
+function vigorFertility(p) {
+  const v = (p && p.traits && p.traits.vigor) || 0;
+  return 0.7 + 0.6 * ((v + 1) / 2);            // sickly 0.7 … hale 1.3
+}
+
 // mortF: 1 at low development → ~0.45 when highly developed. Drives both
 // childhood death share and the adult mean.
 function sampleLifespan(rng, mortF, adultOnly) {
@@ -87,6 +162,7 @@ function newPerson(world, fields) {
     id, name: null, female: false, born: world.step | 0, died: -1,
     dynastyId: -1, cultureId: -1, parentId: -1, spouseId: -1, children: [],
     bastard: false, foreign: false, reignFrom: -1, reignTo: -1, lifespan: -1,
+    traits: null, epithet: null,
     ...fields,
   };
   personsOf(world).set(id, p);
@@ -126,17 +202,18 @@ function bornYearsAgo(world, years) {
   return Math.round(yearToStep(stepToYear(world.step) - years));
 }
 
-function makeAdult(world, cultureId, female, rng, ageYears, extra, mortF = 0.78) {
+function makeAdult(world, cultureId, female, rng, ageYears, extra, mortF = 0.78, traitKind = "random") {
   const cul = getCulture(world, cultureId);
   const age = ageYears ?? (CROWN_AGE_MIN + rng() * CROWN_AGE_SPAN);
-  // an adult already survived childhood — sample an adult-only span, no shorter
-  // than their current age
-  let life = sampleLifespan(rng, mortF, true);
+  const traits = sampleTraits(rng, traitKind, null);
+  // an adult already survived childhood — sample an adult-only span (vigour shifts
+  // it), no shorter than their current age
+  let life = sampleLifespan(rng, mortF, true) + Math.round((traits.vigor || 0) * 14);
   if (life < age + 1) life = Math.round(age + 1 + rng() * 20);
   return newPerson(world, {
     cultureId, female,
     name: cul ? nameFor(world, cul, "person", female ? "f" : "m") : (female ? "Queen" : "King"),
-    born: bornYearsAgo(world, age), lifespan: life,
+    born: bornYearsAgo(world, age), lifespan: life, traits,
     ...extra,
   });
 }
@@ -180,10 +257,13 @@ function marry(world, person, polityId, rng, isRuler, mortF) {
 }
 
 function birth(world, parent, rng, bastard, mortF) {
+  const traits = sampleTraits(rng, "child", parent);
+  let life = sampleLifespan(rng, mortF ?? 0.78, false) + Math.round((traits.vigor || 0) * 14);
+  if (life < 0) life = 0;
   const child = newPerson(world, {
     cultureId: parent.cultureId, female: rng() < 0.5,
     parentId: parent.id, dynastyId: parent.dynastyId, bastard: !!bastard,
-    lifespan: sampleLifespan(rng, mortF ?? 0.78, false),
+    lifespan: life, traits,
   });
   const cul = getCulture(world, child.cultureId);
   child.name = cul ? nameFor(world, cul, "person", child.female ? "f" : "m") : "Heir";
@@ -361,7 +441,7 @@ function selectTheocrat(world, c, polity, dyn, law, rng) {
   // a new man from the priesthood, crowned late in life — adopted INTO the
   // continuing sacred house (the temple endures even when the office isn't blood)
   const culId = dominantCulture(c.capital);
-  const person = makeAdult(world, culId, womenOk && rng() < 0.12, rng, 38 + rng() * 18);
+  const person = makeAdult(world, culId, womenOk && rng() < 0.12, rng, 38 + rng() * 18, undefined, 0.78, "founder");
   return { person, fresh: true };
 }
 
@@ -397,7 +477,7 @@ function selectElected(world, c, polity, rng) {
     break;
   } }
   const culId = dominantCulture(c.capital);
-  const person = makeAdult(world, culId, womenOk && rng() < 0.18, rng, 40 + rng() * 15);
+  const person = makeAdult(world, culId, womenOk && rng() < 0.18, rng, 40 + rng() * 15, undefined, 0.78, "founder");
   return { person, fresh: true };
 }
 
@@ -410,6 +490,11 @@ function crown(world, polity, person, how, gov) {
   polity._reignSince = world.step;
   person.reignFrom = stepToYear(world.step) | 0;
   person.reignTo = -1;
+  // open the reign's deed ledger (read back at death to earn an epithet)
+  const cc = world.countries ? world.countries.get(polity.id) : null;
+  polity._reignCities = countCities(cc);
+  polity._reignWars = 0;
+  polity._reignMon0 = polity._monuments || 0;
   if (person.dynastyId < 0) newDynasty(world, person, polity.id);
   polity.dynastyId = person.dynastyId;
   person._title = titleFor(gov, person.female);
@@ -505,7 +590,7 @@ function growCadets(world, c, polity, dyn, over, mortF, rng) {
     if ((p.children || []).length >= MAX_CHILDREN) continue;
     const mAge = p.female ? age : ageOf(world, spouse);
     if (mAge > FERTILE_MAX) continue;
-    if (rng() < over(CADET_BIRTH_Y)) {
+    if (rng() < over(CADET_BIRTH_Y * 0.5 * (vigorFertility(p) + vigorFertility(spouse)))) {
       birth(world, p, rng, false, mortF);
       births++;
       // childbirth could take the mother (dev-scaled)
@@ -592,17 +677,22 @@ export function updateDynasties(world) {
     // an empty throne with no house at all: found one (first literacy, or after a
     // crisis), by the realm's form of government
     if (!ruler) {
+      applyRulerMods(c, null);                    // interregnum — neutral leadership
       if (polity.gov === GOV_THEOCRACY || polity.gov === GOV_REPUBLIC) {
         fillThrone(world, c, polity, dyn, law, rng);
       } else {
         const culId = dominantCulture(c.capital);
         // founders are male by default; women found houses only where the law admits
         const femChance = law === LAW_ABSOLUTE ? 0.4 : law === LAW_AGNATIC ? 0 : 0.1;
-        const person = makeAdult(world, culId, rng() < femChance, rng);
+        // a founder rises on merit — dealt a capable hand of traits
+        const person = makeAdult(world, culId, rng() < femChance, rng, undefined, undefined, mortF, "founder");
         crown(world, polity, person, polity.dynastyId >= 0 ? "crisis" : "first", polity.gov || GOV_MONARCHY);
       }
       continue;
     }
+
+    // the ruler's character drives the realm this pass (war, rule, order)
+    applyRulerMods(c, ruler);
 
     // the living house: marry & breed the monarch, grow cadet branches, reap all
     const plague = !!c.capital._plagueActive;
@@ -611,7 +701,8 @@ export function updateDynasties(world) {
     const rAge = ageOf(world, ruler);
     if (spouse && spouse.died < 0 && (ruler.children || []).length < MAX_CHILDREN) {
       const mAge = ruler.female ? rAge : ageOf(world, spouse);
-      if (mAge <= FERTILE_MAX && rng() < over(BIRTH_RATE_Y)) {
+      const fert = BIRTH_RATE_Y * 0.5 * (vigorFertility(ruler) + vigorFertility(spouse));   // sickly lines breed less
+      if (mAge <= FERTILE_MAX && rng() < over(fert)) {
         birth(world, ruler, rng, false, mortF);
         const mother = ruler.female ? ruler : spouse;
         if (mother && mother.died < 0 && mother.id !== ruler.id && rng() < MATERNAL_HAZARD * mortF) mother.died = world.step | 0;
@@ -631,10 +722,13 @@ export function updateDynasties(world) {
       ruler.died = world.step | 0;
       ruler.reignTo = stepToYear(world.step) | 0;
       const reignY = Math.round(ruler.reignTo - stepToYear(polity._reignSince ?? ruler.born));
+      const gov0 = polity.gov || GOV_MONARCHY;
+      // the name history keeps them by — earned from the deeds of their reign
+      ruler.epithet = epithetFor(ruler, polity, reignY, countCities(c) - (polity._reignCities || 0), gov0);
       if (reignY >= LONG_REIGN_YEARS) {
         logEvent(world, "ruler.died", {
           polity: cid, name: polity.name, person: ruler.id, personName: ruler.name,
-          dynasty: ruler.dynastyId, age: Math.round(rAge), reign: reignY, title: ruler._title,
+          dynasty: ruler.dynastyId, age: Math.round(rAge), reign: reignY, title: ruler._title, epithet: ruler.epithet,
         });
       }
 
@@ -745,6 +839,9 @@ export function getDynastyTree(world, countryId, cap = 80) {
       reignTo: p.reignFrom >= 0 ? (p.reignTo >= 0 ? p.reignTo : nowY) : -1,
       isRuler: p.id === rulerId,
       title: p.id === rulerId ? p._title : undefined,
+      epithet: p.epithet || null,
+      traits: p.traits ? { vigor: +(p.traits.vigor || 0).toFixed(2), wit: +(p.traits.wit || 0).toFixed(2), boldness: +(p.traits.boldness || 0).toFixed(2), ruthlessness: +(p.traits.ruthlessness || 0).toFixed(2) } : null,
+      trait: traitLabel(p.traits),
     };
   });
   const r = rulerId >= 0 ? getPerson(world, rulerId) : null;

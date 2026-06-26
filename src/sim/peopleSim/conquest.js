@@ -1669,7 +1669,8 @@ export function updatePolities(world) {
         s._serf = Math.max(0, Math.min(1, (s._serf || 0) + 0.02 * (serfTarget - (s._serf || 0))));
         gSerf = T.SERF_UNREST * s._serf;
       }
-      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI + gSerf) * T.UNREST_GAIN - UNREST_RELIEF - monRelief));
+      // a shrewd, firm ruler keeps better order; a foolish, weak one lets it fray (dynasties.js c._rulerRelief, ±)
+      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI + gSerf) * T.UNREST_GAIN - UNREST_RELIEF - monRelief - (c._rulerRelief || 0)));
       s._unrestCause = s._plagueActive ? "plague"
                      : gI >= gH && gI >= gT && gI >= gW && gI >= gC ? identityGrievanceCause(cap, s, idW)
                      : gH >= gC && gH >= gW && gH >= gT ? "famine"

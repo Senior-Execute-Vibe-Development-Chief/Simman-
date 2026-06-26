@@ -173,7 +173,8 @@ const NARRATE = {
     return `The order of the realm changed — it became ${to}.`;
   },
   "ruler.died"(ev) {
-    return `${ev.title || ""} ${ev.personName} died at ${ev.age}, after a reign of ${ev.reign} years.`.trim();
+    const who = `${ev.title || ""} ${ev.personName}${ev.epithet ? " " + ev.epithet : ""}`.trim();
+    return `${who} died at ${ev.age}, after a reign of ${ev.reign} years.`;
   },
   "succession.crisis"(ev) {
     void ev; return "The royal line failed — an interregnum of rival claimants.";

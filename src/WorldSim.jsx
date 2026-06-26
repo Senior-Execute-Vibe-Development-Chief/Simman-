@@ -331,24 +331,28 @@ function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose}
 // their parents along a vine, the sitting sovereign crowned, bastards on a dashed
 // border, married-in partners faded, the deceased greyed with their lifespans.
 function fy(y){return y<0?`${-y} BC`:`${y} AD`;}
+const TRAIT_DEF=[["vigor","Vig"],["wit","Wit"],["boldness","Bold"],["ruthlessness","Ruth"]];
+function traitTip(t){return t?TRAIT_DEF.map(([k,l])=>`${l} ${t[k]>0?"+":""}${t[k]}`).join("  "):"";}
 function PersonCard({n}){
   const dead=n.diedY>=0;
   const border=n.isRuler?"2px solid #b8902f":n.bastard?"1px dashed #9a7b52":"1px solid rgba(90,74,50,0.4)";
   const bg=n.isRuler?"rgba(184,144,47,0.16)":n.foreign?"rgba(90,74,50,0.05)":"rgba(255,255,255,0.45)";
+  const reigned=n.reignFrom>=0;
   return(
-    <div title={n.foreign?"married into the house":n.bastard?"born out of wedlock":undefined}
-      style={{border,background:bg,borderRadius:5,padding:"3px 7px",minWidth:96,opacity:dead?0.62:1,fontSize:11}}>
+    <div title={[n.trait&&!n.foreign?n.trait:"",n.traits?traitTip(n.traits):"",n.foreign?"married into the house":n.bastard?"born out of wedlock":""].filter(Boolean).join("\n")||undefined}
+      style={{border,background:bg,borderRadius:5,padding:"3px 7px",minWidth:96,opacity:dead&&!reigned?0.6:1,fontSize:11}}>
       <div style={{display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
         <span style={{color:n.female?"#9c4a82":"#3a5a9c",fontWeight:700}}>{n.female?"♀":"♂"}</span>
         {n.isRuler&&<span title="reigning" style={{fontSize:12}}>♔</span>}
-        <span style={{fontWeight:n.isRuler?700:500,color:"#2a1c0e"}}>{n.name}</span>
+        <span style={{fontWeight:n.isRuler||reigned?700:500,color:"#2a1c0e"}}>{n.name}{n.epithet?` ${n.epithet}`:""}</span>
         {n.bastard&&<span className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>bastard</span>}
       </div>
       {n.isRuler&&n.title&&<div style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:"#8a6a1a",fontWeight:600}}>{n.title}</div>}
       <div className="au-fade" style={{fontSize:9.5,fontVariantNumeric:"tabular-nums"}}>
         {dead?`${fy(n.bornY)} – ${fy(n.diedY)} · ${n.age}y`:`b. ${fy(n.bornY)} · ${n.age}y`}
       </div>
-      {n.reignFrom>=0&&<div style={{fontSize:9,color:"#8a6a1a",fontVariantNumeric:"tabular-nums"}}>reigned {fy(n.reignFrom)}–{n.reignTo>=0?fy(n.reignTo):"now"}</div>}
+      {reigned&&<div style={{fontSize:9,color:"#8a6a1a",fontVariantNumeric:"tabular-nums"}}>reigned {fy(n.reignFrom)}–{n.reignTo>=0?fy(n.reignTo):"now"}</div>}
+      {!n.foreign&&n.trait&&<div className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>{n.trait}</div>}
     </div>
   );
 }
@@ -2692,6 +2696,7 @@ const renderRealmDetail=()=>{
         <span className="au-fade"> of house </span>{c.ruler.house||"?"}
         <span className="au-fade"> · age {c.ruler.age}</span>
         {c.ruler.gov&&c.ruler.gov!=="monarchy"&&<span className="au-fade"> · {c.ruler.gov}</span>}
+        {c.ruler.trait&&<span className="au-fade" style={{fontStyle:"italic"}}> · {c.ruler.trait}</span>}
       </div>}
       {faith&&<div style={{fontSize:11,marginBottom:6}}>
         <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:`hsl(${faith.hue|0},55%,50%)`,marginRight:5}}/>

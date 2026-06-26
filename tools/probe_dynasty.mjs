@@ -52,7 +52,9 @@ for (const c of realms.slice(0, 2)) {
     const tags = [n.female ? "♀" : "♂", n.isRuler ? `★${n.title}` : "", n.bastard ? "bastard" : "", n.foreign ? "(married in)" : ""].filter(Boolean).join(" ");
     const life = n.diedY >= 0 ? `${n.bornY}–${n.diedY}` : `b.${n.bornY}, age ${n.age}`;
     const reign = n.reignFrom >= 0 ? ` reigned ${n.reignFrom}–${n.reignTo >= 0 ? n.reignTo : "now"}` : "";
-    console.log(`    ${"  ".repeat(d)}• ${n.name} ${tags} [${life}]${reign}`);
+    const nm = n.name + (n.epithet ? ` ${n.epithet}` : "");
+    const ch = !n.foreign && n.trait ? ` {${n.trait}}` : "";
+    console.log(`    ${"  ".repeat(d)}• ${nm} ${tags} [${life}]${reign}${ch}`);
     for (const k of (kids.get(id) || [])) line(k, d + 1);
   };
   for (const r of roots) line(r, 0);

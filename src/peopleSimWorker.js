@@ -26,7 +26,7 @@ import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { getPolity } from "./sim/peopleSim/entities.js";
 import { familyOf, familyName } from "./sim/peopleSim/cultures.js";
 import { doctrineLabel } from "./sim/peopleSim/faiths.js";
-import { getPerson, getDynasty, ageOf, getDynastyTree } from "./sim/peopleSim/dynasties.js";
+import { getPerson, getDynasty, ageOf, getDynastyTree, traitLabel } from "./sim/peopleSim/dynasties.js";
 import { IDENTITY_K, diffuseIdentityField } from "./sim/peopleSim/identityField.js";
 import { makeSettlement } from "./sim/peopleSim/settlement.js";
 import { ensurePolity } from "./sim/peopleSim/entities.js";
@@ -296,7 +296,7 @@ function buildSnapshot() {
       const dyn = ruler ? getDynasty(world, ruler.dynastyId) : null;
       countries.push({
         id: c.id, capitalId: c.capitalId, name: realmName(world, c.id),
-        ruler: ruler && ruler.died < 0 ? { name: ruler.name, female: !!ruler.female, age: Math.round(ageOf(world, ruler)), house: dyn ? dyn.name : null, title: ruler._title || null, gov: pol ? pol.gov || "monarchy" : "monarchy" } : null,
+        ruler: ruler && ruler.died < 0 ? { name: ruler.name, female: !!ruler.female, age: Math.round(ageOf(world, ruler)), house: dyn ? dyn.name : null, title: ruler._title || null, gov: pol ? pol.gov || "monarchy" : "monarchy", trait: traitLabel(ruler.traits) } : null,
         faithId: pol ? pol.faithId : -1,
         memberIds: c.members.map(m => m.id),
         hue: c.hue, range: c.range,

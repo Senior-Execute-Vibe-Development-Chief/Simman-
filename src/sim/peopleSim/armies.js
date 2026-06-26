@@ -605,6 +605,7 @@ export function advanceFronts(world) {
         faithClash: fa >= 0 && fd >= 0 && fa !== fd ? 1 : 0,
         aggression: pers ? +(pers.aggression || 0).toFixed(2) : 0,
       });
+      if (pa) pa._reignWars = (pa._reignWars || 0) + 1;   // a war of the reigning ruler's making (epithet deeds)
     }
     if (seen.size > 4000) {   // prune stale pairs so the map can't grow unbounded
       for (const [k, st] of seen) if (world.step - st > (WAR_MEMORY * 3) / (world._dt || 1)) seen.delete(k);
@@ -900,7 +901,8 @@ export function advanceFronts(world) {
         let topE = -1, topPrio = -Infinity;
         for (const [dcc, f] of m) if (f.prio > topPrio) { topPrio = f.prio; topE = dcc; }
         const winning = Math.min(2, (natMight.get(cc) || 0) / Math.max(1, natMight.get(topE) || 0));
-        const appetite = Math.max(0, Math.min(1, 0.35 + 0.4 * (p.expansionism || 0) + 0.3 * (p.aggression || 0)));
+        // a bold ruler presses wars of choice; a timid one holds back (dynasties.js c._rulerWar)
+        const appetite = Math.max(0, Math.min(1, (0.35 + 0.4 * (p.expansionism || 0) + 0.3 * (p.aggression || 0)) * (c._rulerWar || 1)));
         const gov = getPolity(world, cc);
         const mom = Math.min(1, ((gov && gov._momentum) || 0) / Math.max(1, T.MOMENTUM_CAP || 1));
         const mpR = c._manpowerCap > 0 ? (c._manpower || 0) / c._manpowerCap : 1;

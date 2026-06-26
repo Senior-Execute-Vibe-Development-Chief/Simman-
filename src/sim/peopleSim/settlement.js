@@ -1414,8 +1414,11 @@ function updateKnowledge(world, s) {
   // the most winter-sensitive track of all.
   const aptLearn = T.ORG_APTITUDE > 0 ? Math.max(0.05, 1 + T.ORG_APT_LEARN * (2 * winterness - 1)) : 1;
   const confineMul = 1 + T.CONFINE * (s._confine || 0);   // circumscription forces intensification → organisation
+  // a shrewd sovereign builds institutions faster at the seat of rule (dynasties.js c._rulerWit)
+  let rulerLearn = 1;
+  if (s.countryId >= 0 && world.countries) { const cc = world.countries.get(s.countryId); if (cc && cc.capitalId === s.id) rulerLearn = cc._rulerWit || 1; }
   k.organization = clamp01(k.organization + T.LEARN_BASE * sciMul * orgClim * orgHead
-    * ((1 + sciSqrt * 0.10) + litBranch) * aptLearn * confineMul);
+    * ((1 + sciSqrt * 0.10) + litBranch) * aptLearn * confineMul * rulerLearn);
 
   // Metallurgy — gated by ore, but PACED to keep step with the rest of the tree.
   // It used to crawl (∝ raw ore richness), so cultures reached the Renaissance
