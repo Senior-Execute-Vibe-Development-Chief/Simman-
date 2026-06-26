@@ -283,10 +283,12 @@ function EdRow({label,value,min,max,step,onChange,fmt}){
 
 const CHRON_COL={founding:"#1f7a55",discovery:"#2f6fa8",growth:"#2f7d3f",wealth:"#9c7414",
   war:"#b23a28",conquest:"#b15212",annex:"#8a6420",secession:"#7a44b0",loss:"#a04a28",
-  plague:"#8a3aa8",famine:"#9c5a1e",end:"#5a4a32"};
+  plague:"#8a3aa8",famine:"#9c5a1e",end:"#5a4a32",
+  industry:"#5a7488",trade:"#2f8a78",faith:"#5566b0",society:"#9a5a48"};
 const CHRON_LABEL={founding:"Founding",discovery:"Discovery",growth:"Growth",wealth:"Wealth",
   war:"War",conquest:"Conquest",annex:"Annexation",secession:"Secession",loss:"Loss",
-  plague:"Plague",famine:"Famine",end:"Fall"};
+  plague:"Plague",famine:"Famine",end:"Fall",
+  industry:"Industry",trade:"Trade",faith:"Faith",society:"Society"};
 function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose}){
   const rows=(entries||[]).slice().reverse();   // newest first
   return(

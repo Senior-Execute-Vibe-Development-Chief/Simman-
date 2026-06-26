@@ -16,7 +16,6 @@ import { settlementPower } from "./conquest.js";
 import { recordIn, recordOut, IN_SLAVE_TRADE, OUT_SLAVE } from "./money.js";
 import { getWealthReserve } from "./settlement.js";
 import { T } from "./tuning.js";
-import { logEvent } from "./events.js";
 
 export const SLAVE_INTERVAL = 50;     // ticks between slave-trade passes (slow flow)
 const RAID_RANGE     = 28;            // tiles a slaver's raiding parties reach
@@ -43,10 +42,7 @@ export function updateSlaveTrade(world) {
         if (grab < 1) return;
         v.people -= grab; took += grab;                                // the victim region bleeds
       });
-      if (took > 0) {
-        r._captives = (r._captives || 0) + took;
-        logEvent(world, "slave.raid", { s: r.id, sName: r.name || "a raider", n: Math.round(took) });
-      }
+      if (took > 0) r._captives = (r._captives || 0) + took;   // (a raider becoming a notable slaver is announced once, in chronicle.js)
     }
   }
 

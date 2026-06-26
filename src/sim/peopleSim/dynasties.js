@@ -28,6 +28,7 @@ const MAX_CHILDREN = 6;
 const FOREIGN_MATCH = 0.25;             // chance a royal spouse comes from another court
 const CRISIS_LOYALTY_HIT = 0.10;        // members' loyalty shock when the line fails
 const CRISIS_UNREST_HIT = 0.18;         // capital unrest spike on a failed succession
+const LONG_REIGN_YEARS = 40;            // a reign this long is remembered; ordinary ones aren't chronicled
 
 export function personsOf(world) { return world.persons || (world.persons = new Map()); }
 export function dynastiesOf(world) { return world.dynasties || (world.dynasties = new Map()); }
@@ -111,12 +112,18 @@ function crown(world, polity, person, c, how) {
   if (person.dynastyId < 0) newDynasty(world, person, polity.id);
   polity.dynastyId = person.dynastyId;
   const d = getDynasty(world, person.dynastyId);
-  logEvent(world, "ruler.crowned", {
-    polity: polity.id, name: polity.name,
-    person: person.id, personName: person.name, female: person.female ? 1 : 0,
-    dynasty: person.dynastyId, dynastyName: d ? d.name : undefined,
-    age: Math.round(ageOf(world, person)), how,
-  });
+  // Only dynasty-founding moments are individually chronicled — a new house at
+  // first literacy ("first") or a new house raised after the old line collapsed
+  // ("crisis"). Ordinary successions within an established line are not notable
+  // enough to record; the realm's memory keeps to founders and great reigns.
+  if (how === "first" || how === "crisis") {
+    logEvent(world, "ruler.crowned", {
+      polity: polity.id, name: polity.name,
+      person: person.id, personName: person.name, female: person.female ? 1 : 0,
+      dynasty: person.dynastyId, dynastyName: d ? d.name : undefined,
+      age: Math.round(ageOf(world, person)), how,
+    });
+  }
   void c;
 }
 
@@ -211,11 +218,16 @@ export function updateDynasties(world) {
     let pDeath = over(c.capital._plagueActive ? Math.min(0.9, hazard * 3 + 0.05) : hazard);
     if (rng() < pDeath) {
       ruler.died = world.step | 0;
-      logEvent(world, "ruler.died", {
-        polity: cid, name: polity.name, person: ruler.id, personName: ruler.name,
-        dynasty: ruler.dynastyId, age: Math.round(rAge),
-        reign: Math.round(stepToYear(world.step) - stepToYear(polity._reignSince ?? ruler.born)),
-      });
+      // A death is chronicled only when the reign was long enough to be
+      // remembered — the great monarchs. Ordinary deaths pass unrecorded;
+      // a death that ends the dynasty is captured by the crisis events below.
+      const reignY = Math.round(stepToYear(world.step) - stepToYear(polity._reignSince ?? ruler.born));
+      if (reignY >= LONG_REIGN_YEARS) {
+        logEvent(world, "ruler.died", {
+          polity: cid, name: polity.name, person: ruler.id, personName: ruler.name,
+          dynasty: ruler.dynastyId, age: Math.round(rAge), reign: reignY,
+        });
+      }
       const succ = heirOf(world, ruler);
       if (succ) {
         crown(world, polity, succ.heir, c, succ.how);

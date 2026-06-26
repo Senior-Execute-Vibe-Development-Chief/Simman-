@@ -204,6 +204,19 @@ const NARRATE = {
   },
   "growth.cities"(ev) { return ev.n === 1 ? "Its first city rose." : `Grew to ${ev.n} cities.`; },
   "wealth.milestone"(ev) { return `Treasury swelled past ${ev.label}.`; },
+  // ── Economy / industry / society ──
+  "industry.specialty"(ev) { return `${ev.sName} grew renowned for its ${String(ev.craft || "crafts").toLowerCase()}.`; },
+  "city.holy"(ev) { return `${ev.sName} rose as a great seat of pilgrimage, rich with the offerings of the faithful.`; },
+  "city.entrepot"(ev) { return `${ev.sName} became a great entrepôt, fattening on the carrying trade.`; },
+  "city.financier"(ev) { return `The money-lenders of ${ev.sName} rose to bankroll the crown.`; },
+  "city.slaver"(ev) { return `${ev.sName} grew rich as a market of the slave trade.`; },
+  "city.plantation"(ev) { return `The fields of ${ev.sName} were given over to plantation, worked by the unfree.`; },
+  "mine.boom"(ev) { return `Rich veins were struck at ${ev.sName} — a mining boom.`; },
+  "society.serfdom"(ev) { void ev; return "The peasantry were bound to the land — serfdom took hold across the realm."; },
+  "society.emancipation"(ev) { void ev; return "The old bonds were broken — the realm's serfs won their freedom."; },
+  "slave.revolt"(ev) { return `The unfree of ${ev.sName || "an estate"} rose in revolt, and the labour was lost.`; },
+  "crown.debt"(ev) { return `The crown sank deeper into debt to its financiers${ev.label ? ` (owing ${ev.label})` : ""}.`; },
+  "realm.monument"(ev) { void ev; return "Great monuments rose to the glory of the realm."; },
 };
 
 export function narrate(world, ev, as = -1) {
@@ -239,6 +252,14 @@ export function categoryOf(ev, as = -1) {
     case "ruler.died": case "dynasty.extinct": return "loss";
     case "succession.crisis": return "secession";
     case "settlement.lapsed": return as === ev.from ? "loss" : "growth";
+    case "industry.specialty": return "industry";
+    case "mine.boom": return "industry";
+    case "city.entrepot": case "city.financier": return "trade";
+    case "city.holy": return "faith";
+    case "city.slaver": case "city.plantation": case "society.serfdom":
+    case "society.emancipation": case "slave.revolt": return "society";
+    case "crown.debt": return "loss";
+    case "realm.monument": return "wealth";
     default: return "growth";
   }
 }

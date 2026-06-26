@@ -38,6 +38,8 @@ const SETT_FIELDS = [
   "_specKey", "_specStr",   // agglomeration: the town's locked-in craft specialty + its strength
   "_unfree", "_cashFrac", "_captives",   // coerced labour: unfree workforce, cash-crop land, unsold captives
   "_serf",                               // serfdom: land-tenure coercion level (0..1)
+  "_chronFlags",                         // chronicle: which "became X" archetype events have fired
+  "_peakTier",                           // chronicle: highest tier ever reached (so growth is announced once)
 ];
 
 // ── typed-array <-> base64 ──────────────────────────────────────────────

@@ -2223,19 +2223,23 @@ function updateTier(world, s) {
   for (let t = TIER_THRESHOLD.length - 1; t > s.tier; t--) {
     if (s.people >= bar(t)) {
       s.tier = t;
-      logEvent(world, "settlement.tier", { s: s.id, sName: s.name, polity: s.countryId,
-        tier: t, tierName: TIER_NAME[t], up: 1, people: Math.round(s.people) });
+      // Announce "grew into a city/metropolis" only the FIRST time this rung is reached
+      // (s._peakTier), not on every flicker. Settlements cluster at the relative city bar
+      // and flip tier 1↔2 harmlessly (the flip barely affects behaviour) — logging each
+      // crossing drowned the chronicle in thousands of grew/declined lines.
+      if (t > (s._peakTier | 0)) {
+        s._peakTier = t;
+        logEvent(world, "settlement.tier", { s: s.id, sName: s.name, polity: s.countryId,
+          tier: t, tierName: TIER_NAME[t], up: 1, people: Math.round(s.people) });
+      }
       return;
     }
   }
   // Demote one rung once population has fallen clearly below the current tier's
-  // floor — but never below tier 1. An urban node stays urban: a failed town is
-  // removed by withering, it does not revert to a rural farming region (which
-  // would let genesis immediately re-spawn it — an oscillation).
+  // floor — but never below tier 1. SILENT: a town slipping a rung at the floating
+  // bar isn't chronicle-worthy and would only flicker against the re-promotion.
   if (s.tier > 1 && s.people < bar(s.tier) * TIER_DEMOTE_FRAC) {
     s.tier -= 1;
-    logEvent(world, "settlement.tier", { s: s.id, sName: s.name, polity: s.countryId,
-      tier: s.tier, tierName: TIER_NAME[s.tier], up: 0, people: Math.round(s.people) });
   }
 }
 
