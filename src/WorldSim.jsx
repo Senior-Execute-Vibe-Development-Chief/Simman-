@@ -455,7 +455,7 @@ function DynastyOverlay({tree,onClose}){
   const[snap,setSnap]=useState(tree);
   useEffect(()=>{if(tree&&(!snap||snap.countryId!==tree.countryId))setSnap(tree);},[tree,snap]);
   const data=snap||tree;
-  const nodes=(data&&data.nodes)||[];
+  const houses=(data&&data.houses)||[];
   const roll=(data&&data.roll)||[];
   const Tab=({id,label})=>(
     <button onClick={()=>setMode(id)} className={"au-btn"+(mode===id?" au-active":"")}
@@ -480,9 +480,19 @@ function DynastyOverlay({tree,onClose}){
         </div>
         <div style={{overflow:"auto",minHeight:0,paddingRight:6}}>
           {mode==="tree"
-            ?(nodes.length===0
+            ?(houses.length===0
               ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No reigning house — the realm keeps no king-list yet.</div>
-              :<FamilyTree nodes={nodes}/>)
+              :houses.map((h,i)=>(
+                <div key={h.dynastyId} style={{marginBottom:14,opacity:h.isCurrent?1:0.92}}>
+                  <div style={{display:"flex",alignItems:"baseline",gap:8,borderBottom:"1px solid rgba(90,74,50,0.25)",paddingBottom:2,marginBottom:2,marginTop:i?10:0}}>
+                    <span className="au-pico-title" style={{fontSize:13}}>House {h.name}</span>
+                    <span className="au-fade" style={{fontSize:10}}>
+                      {h.isCurrent?"reigning":"former"} · {fy(h.founded)}–{h.ended>=0?fy(h.ended):"now"}
+                    </span>
+                  </div>
+                  <FamilyTree nodes={h.nodes}/>
+                </div>))
+            )
             :(roll.length===0
               ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No sovereigns recorded yet.</div>
               :<SuccessionRoll roll={roll}/>)}

@@ -30,7 +30,7 @@ for (const c of realms) {
   const t = getDynastyTree(world, c.id);
   if (!t) continue;
   govCount[t.gov] = (govCount[t.gov] || 0) + 1;
-  const r = t.nodes.find(n => n.isRuler);
+  const r = (t.houses[0] && t.houses[0].nodes || []).find(n => n.isRuler);
   if (r) { total++; if (r.female) women++; }
 }
 console.log(`\n[governance] ${JSON.stringify(govCount)} · female rulers ${women}/${total}`);
@@ -40,24 +40,24 @@ for (const c of realms.slice(0, 2)) {
   const t = getDynastyTree(world, c.id);
   if (!t) continue;
   console.log(`\n═══ ${realmName(world, c.id)} — ${t.govLabel} · house ${t.houseName} · law: ${t.lawLabel} ═══`);
-  console.log(`    ruler: ${t.rulerTitle || ""} (${t.nodes.length} tracked kin)`);
-  // print as generational outline rooted at members with no tracked parent
-  const byId = new Map(t.nodes.map(n => [n.id, n]));
-  const kids = new Map(); for (const n of t.nodes) if (n.parentId >= 0) (kids.get(n.parentId) || kids.set(n.parentId, []).get(n.parentId)).push(n.id);
-  const roots = t.nodes.filter(n => n.parentId < 0).map(n => n.id);
-  const seen = new Set();
-  const line = (id, d) => {
-    if (seen.has(id)) return; seen.add(id);
-    const n = byId.get(id);
-    const tags = [n.female ? "♀" : "♂", n.isRuler ? `★${n.title}` : "", n.bastard ? "bastard" : "", n.foreign ? "(married in)" : ""].filter(Boolean).join(" ");
-    const life = n.diedY >= 0 ? `${n.bornY}–${n.diedY}` : `b.${n.bornY}, age ${n.age}`;
-    const reign = n.reignFrom >= 0 ? ` reigned ${n.reignFrom}–${n.reignTo >= 0 ? n.reignTo : "now"}` : "";
-    const nm = n.name + (n.epithet ? ` ${n.epithet}` : "");
-    const ch = !n.foreign && n.trait ? ` {${n.trait}}` : "";
-    console.log(`    ${"  ".repeat(d)}• ${nm} ${tags} [${life}]${reign}${ch}`);
-    for (const k of (kids.get(id) || [])) line(k, d + 1);
-  };
-  for (const r of roots) line(r, 0);
+  for (const h of t.houses) {
+    console.log(`  ── House ${h.name} (${h.isCurrent ? "reigning" : "former"} · ${h.founded}–${h.ended >= 0 ? h.ended : "now"} · ${h.nodes.length} kin) ──`);
+    const byId = new Map(h.nodes.map(n => [n.id, n]));
+    const kids = new Map(); for (const n of h.nodes) if (n.parentId >= 0) (kids.get(n.parentId) || kids.set(n.parentId, []).get(n.parentId)).push(n.id);
+    const roots = h.nodes.filter(n => n.parentId < 0).map(n => n.id);
+    const seen = new Set();
+    const line = (id, d) => {
+      if (seen.has(id)) return; seen.add(id);
+      const n = byId.get(id);
+      const tags = [n.female ? "♀" : "♂", n.isRuler ? `★${n.title}` : "", n.bastard ? "bastard" : "", n.foreign ? "(married in)" : ""].filter(Boolean).join(" ");
+      const life = n.diedY >= 0 ? `${n.bornY}–${n.diedY}` : `b.${n.bornY}, age ${n.age}`;
+      const reign = n.reignFrom >= 0 ? ` reigned ${n.reignFrom}–${n.reignTo >= 0 ? n.reignTo : "now"}` : "";
+      const nm = n.name + (n.epithet ? ` ${n.epithet}` : "");
+      console.log(`    ${"  ".repeat(d)}• ${nm} ${tags} [${life}]${reign}`);
+      for (const k of (kids.get(id) || [])) line(k, d + 1);
+    };
+    for (const r of roots) line(r, 0);
+  }
   // the full roll of sovereigns (all houses / forms of rule)
   console.log(`    ── succession roll (${t.roll.length}) ──`);
   let lg = null;

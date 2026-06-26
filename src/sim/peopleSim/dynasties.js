@@ -572,6 +572,13 @@ function crown(world, polity, person, how, gov) {
   person._title = titleFor(gov, person.female);
   const d = getDynasty(world, person.dynastyId);
 
+  // Track the ordered roll of HOUSES that have ruled this realm (most recent last),
+  // so the family-tree view can show the previous royal families too — not just
+  // the sitting one. Consecutive same-house reigns don't repeat.
+  if (!polity.houses) polity.houses = [];
+  if (polity.houses[polity.houses.length - 1] !== person.dynastyId) polity.houses.push(person.dynastyId);
+  if (polity.houses.length > 10) polity.houses.splice(0, polity.houses.length - 10);
+
   // The realm's ROLL of sovereigns — the king-list that spans every house and
   // form of rule (dynasties, elected councils, theocratic lines). Denormalised so
   // it survives the person-prune; the open entry closes when the next is crowned.
@@ -686,16 +693,28 @@ function growCadets(world, c, polity, dyn, over, mortF, rng) {
   }
 }
 
-// Bound memory over very long games: drop dead persons who belong to no living
-// line. Every living member's ancestry (the spine the tree climbs), every house
-// founder, the in-laws and the sitting rulers are preserved; only extinct
-// side-branches are forgotten. Uses no randomness — determinism is untouched.
+// Bound memory over very long games: drop dead persons who belong to no remembered
+// royal line. We preserve — for every LIVING realm — the recent roll of sovereigns
+// WITH each one's children (so the tree shows every monarch's offspring, not just
+// the heir who continued the line) and the spine back to each house's founder, plus
+// living members and married-in partners. Only deep, extinct, no-longer-royal
+// branches are forgotten. Uses no randomness — determinism is untouched.
+const ROLL_GENEALOGY_KEEP = 140;   // recent reigns per realm whose families ride in the tree
 function prunePersons(world) {
   if (!world.persons || world.persons.size < 4000) return;
   const keep = new Set();
   const keepLine = (id) => {
     let p = getPerson(world, id), guard = 0;
     while (p && !keep.has(p.id) && guard++ < 80) { keep.add(p.id); p = p.parentId >= 0 ? getPerson(world, p.parentId) : null; }
+  };
+  // a remembered sovereign: their ancestry spine, their children (the heir AND the
+  // siblings), and their spouse
+  const keepRoyalFamily = (id) => {
+    const p = getPerson(world, id);
+    if (!p) return;
+    keepLine(id);
+    if (p.spouseId >= 0) keep.add(p.spouseId);
+    for (const k of p.children || []) keep.add(k);
   };
   if (world.dynasties) for (const d of world.dynasties.values()) {
     if (d.founderId >= 0) keepLine(d.founderId);
@@ -704,7 +723,12 @@ function prunePersons(world) {
   }
   for (const c of world.countries.values()) {
     const pol = getPolity(world, c.id);
-    if (pol && pol.rulerId >= 0) keepLine(pol.rulerId);
+    if (!pol || pol.endedStep >= 0) continue;
+    if (pol.rulerId >= 0) keepLine(pol.rulerId);
+    const roll = pol.rulers;
+    if (roll) for (let i = Math.max(0, roll.length - ROLL_GENEALOGY_KEEP); i < roll.length; i++) {
+      if (roll[i] && roll[i].id != null) keepRoyalFamily(roll[i].id);
+    }
   }
   for (const id of [...keep]) { const p = getPerson(world, id); if (p && p.spouseId >= 0) keep.add(p.spouseId); }
   for (const [id, p] of world.persons) if (p.died >= 0 && !keep.has(id)) world.persons.delete(id);
@@ -889,53 +913,32 @@ export function legitLabel(v) {
        : v >= 0.3 ? "shaky" : "contested";
 }
 
-export function getDynastyTree(world, countryId, cap = 80) {
+export function getDynastyTree(world, countryId, capPerHouse = 90) {
   const polity = getPolity(world, countryId);
   if (!polity) return null;
-  const dyn = polity.dynastyId >= 0 ? getDynasty(world, polity.dynastyId) : null;
   const rulerId = polity.rulerId;
-  const want = new Set();
-  const add = (id) => { if (id != null && id >= 0) want.add(id); };
-
-  // seed: every living blood member, plus the founder and the sitting ruler
-  if (dyn && dyn.members) for (const id of dyn.members) add(id);
-  if (dyn) add(dyn.founderId);
-  add(rulerId);
-  // climb each seed to the founder so the generations connect
-  for (const id of [...want]) {
-    let p = getPerson(world, id), guard = 0;
-    while (p && p.parentId >= 0 && guard++ < 40) { add(p.parentId); p = getPerson(world, p.parentId); }
-  }
-  // pull in spouses (married-in partners) so couples render together
-  for (const id of [...want]) {
-    const p = getPerson(world, id);
-    if (p && p.spouseId >= 0) add(p.spouseId);
-  }
-  // bound the node count: keep the ruler's recent ancestry + living members first
-  let idsArr = [...want];
-  if (idsArr.length > cap) {
-    const score = (id) => {
-      const p = getPerson(world, id); if (!p) return -1;
-      let s = 0;
-      if (id === rulerId) s += 1000;
-      if (p.died < 0) s += 100;                 // living first
-      if (dyn && id === dyn.founderId) s += 50;
-      s += Math.max(0, 40 - (stepToYear(world.step) - stepToYear(p.born)) / 5);
-      return s;
-    };
-    idsArr.sort((a, b) => score(b) - score(a));
-    idsArr = idsArr.slice(0, cap);
-  }
-  const keep = new Set(idsArr);
   const nowY = stepToYear(world.step) | 0;
-  const nodes = idsArr.map(id => {
-    const p = getPerson(world, id);
+
+  // index every surviving person by their house (one scan)
+  const byDyn = new Map();
+  if (world.persons) for (const p of world.persons.values()) {
+    if (p.dynastyId >= 0) { let a = byDyn.get(p.dynastyId); if (!a) byDyn.set(p.dynastyId, a = []); a.push(p); }
+  }
+
+  // the houses that have ruled this realm — the sitting one first, then the
+  // previous families (most recent first), each rendered as its OWN tree
+  const order = [], seenH = new Set();
+  const pushH = (id) => { if (id != null && id >= 0 && !seenH.has(id)) { seenH.add(id); order.push(id); } };
+  pushH(polity.dynastyId);
+  if (polity.houses) for (let i = polity.houses.length - 1; i >= 0; i--) pushH(polity.houses[i]);
+
+  const nodeOf = (p, keepSet) => {
     const bornY = stepToYear(p.born) | 0;
     return {
       id: p.id, name: p.name || "?", female: !!p.female,
       bastard: !!p.bastard, foreign: !!p.foreign,
-      parentId: keep.has(p.parentId) ? p.parentId : -1,
-      spouseId: keep.has(p.spouseId) ? p.spouseId : -1,
+      parentId: keepSet.has(p.parentId) ? p.parentId : -1,
+      spouseId: keepSet.has(p.spouseId) ? p.spouseId : -1,
       bornY, age: p.died >= 0 ? (stepToYear(p.died) | 0) - bornY : nowY - bornY,
       diedY: p.died >= 0 ? stepToYear(p.died) | 0 : -1,
       reignFrom: p.reignFrom >= 0 ? p.reignFrom : -1,
@@ -946,7 +949,42 @@ export function getDynastyTree(world, countryId, cap = 80) {
       traits: p.traits ? { vigor: +(p.traits.vigor || 0).toFixed(2), wit: +(p.traits.wit || 0).toFixed(2), boldness: +(p.traits.boldness || 0).toFixed(2), ruthlessness: +(p.traits.ruthlessness || 0).toFixed(2) } : null,
       trait: traitLabel(p.traits),
     };
-  });
+  };
+
+  const houses = [];
+  for (const dynId of order.slice(0, 6)) {
+    const d = getDynasty(world, dynId);
+    const members = byDyn.get(dynId) || [];
+    if (!members.length) continue;
+    const want = new Set(members.map(p => p.id));
+    for (const p of members) if (p.spouseId >= 0) want.add(p.spouseId);   // married-in partners
+    let ids = [...want];
+    if (ids.length > capPerHouse) {
+      // keep the sovereigns, the founder, the living, and the most recent first
+      const score = (id) => {
+        const p = getPerson(world, id); if (!p) return -1;
+        let s = 0;
+        if (id === rulerId) s += 1000;
+        if (p.reignFrom >= 0) s += 200;
+        if (p.died < 0) s += 80;
+        if (d && id === d.founderId) s += 60;
+        s += Math.max(0, 50 - (nowY - (stepToYear(p.born) | 0)) / 8);
+        return s;
+      };
+      ids.sort((a, b) => score(b) - score(a));
+      ids = ids.slice(0, capPerHouse);
+    }
+    const keepSet = new Set(ids);
+    const nodes = ids.map(id => nodeOf(getPerson(world, id), keepSet));
+    houses.push({
+      dynastyId: dynId, name: d ? d.name : (members[0] && members[0].name) || "?",
+      isCurrent: dynId === polity.dynastyId,
+      founded: d ? stepToYear(d.foundedStep) | 0 : (nodes.length ? Math.min(...nodes.map(n => n.bornY)) : 0),
+      ended: d && d.endedStep >= 0 ? stepToYear(d.endedStep) | 0 : -1,
+      nodes,
+    });
+  }
+  const dyn = polity.dynastyId >= 0 ? getDynasty(world, polity.dynastyId) : null;
   const r = rulerId >= 0 ? getPerson(world, rulerId) : null;
   // The roll of sovereigns: everyone who ever ruled this realm, across every house
   // and form of government. Denormalised on the polity; we ensure the sitting ruler
@@ -965,12 +1003,12 @@ export function getDynastyTree(world, countryId, cap = 80) {
     });
   }
   return {
-    countryId, houseName: dyn ? dyn.name : null,
+    countryId, houseName: dyn ? dyn.name : (houses[0] ? houses[0].name : null),
     gov: polity.gov || GOV_MONARCHY, govLabel: governanceLabel(polity.gov),
     law: polity.succLaw || LAW_MALE_PREF, lawLabel: lawLabel(polity.succLaw),
     rulerTitle: r ? (r._title || titleFor(polity.gov, r.female)) : null,
     legit: polity._dynLegit != null ? +polity._dynLegit.toFixed(2) : null,
     legitLabel: legitLabel(polity._dynLegit),
-    nodes, roll,
+    houses, roll,
   };
 }
