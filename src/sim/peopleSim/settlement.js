@@ -2213,7 +2213,12 @@ function updateTier(world, s) {
   // catchment (urban genesis, crystallize.js). So the tier ladder here moves
   // only ALREADY-URBAN nodes (tier ≥ 1) up and down — the rural→urban step is a
   // spawn, not a relabel.
-  if ((s.tier | 0) === 0 && !T.DISSOLVE_FARMS) return;   // (no tier-0 exists under DISSOLVE; towns promote normally)
+  // Under DISSOLVE_FARMS the smallest settlement IS a town: no tier-0 farming regions
+  // ever exist. Any path that mints one anyway (cradles start small; a colony created
+  // without an explicit tier) is floored to a town here, so it can't linger as a
+  // "farming region" once the relative town-bar rises above its size mid-game.
+  if (T.DISSOLVE_FARMS) { if ((s.tier | 0) < 1) s.tier = 1; }
+  else if ((s.tier | 0) === 0) return;   // legacy model: tier-0 regions birth towns, don't relabel
   // Promote among the urban tiers (town → city → metropolis).
   for (let t = TIER_THRESHOLD.length - 1; t > s.tier; t--) {
     if (s.people >= bar(t)) {

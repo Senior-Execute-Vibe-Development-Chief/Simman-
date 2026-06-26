@@ -599,6 +599,7 @@ function foundColony(world, sh) {
     knowledge: { ...sh.knowledge },
     parentId: sh.owner,
     kind: "colony",
+    tier: T.DISSOLVE_FARMS ? 1 : 0,   // DISSOLVE: overseas colonies are towns too — never mint a tier-0 farming region
     cultureId: sh.cultureId ?? -1,
   });
   colony.countryId = sh.countryId;        // colonial allegiance to the founder's realm
