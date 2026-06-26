@@ -16,6 +16,7 @@ import { ensurePolity, getPolity } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor } from "./cultures.js";
 import { T } from "./tuning.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, OUT_GOODS, OUT_MATERIALS } from "./money.js";
+import { hash32 } from "./rng.js";
 
 // Settlement ids count up PER WORLD (world._nextSettlementId), not at module
 // scope: country ids are settlement ids and the personality RNG is seeded from
@@ -411,8 +412,19 @@ const TEXTILE_W = 2.4;   // the loom — leads where fibre (wool/cotton) is genu
 const METAL_W   = 1.9;   // the forge — ore-gated: rich ore regions out-earn the loom
 const POTTERY_W = 0.6;   // pottery / woodcraft / leather — broad everyday crafts
 const SERVICE_W = 1.4;   // counting-house / entrepôt — leads in large, organised commercial cities
+// Reference "fully-realised" output for each craft, used to pick a town's COMPARATIVE
+// advantage (legs[k] / ref) — the sector it's closest to maxing out — rather than its
+// absolute-largest leg. A pure ore town then locks into metal even though cloth might
+// out-earn it in raw coin, exactly as real towns specialised in what they were
+// RELATIVELY best at and traded for the rest. This is what spreads specialties across
+// the map instead of every town chasing the single globally-strongest sector.
+const CRAFT_REF = {
+  "Textiles": 2.0, "Metalwork": 1.9, "Pottery & leather": 0.6,
+  "Crafted wares": 0.3, "Services & records": 1.4,
+};
 // Shared craft recipe so computeExportValue and getExportBreakdown can't drift.
-// Returns the manufactured-sector legs (pre craftFrac / mult), keyed by label.
+// Returns the RAW manufactured-sector legs (pre craftFrac / mult / cluster-boost),
+// keyed by label, including each town's fixed idiosyncratic edge.
 function craftLegs(s, k, r) {
   const popScale = Math.min(1, Math.log(Math.max(1, s.people || 0)) / 8);
   const craft = 0.4 + (k.construction || 0) * 0.5;                  // general artisanship
@@ -423,7 +435,7 @@ function craftLegs(s, k, r) {
   // so cloth is a regional specialty, not the universal default it used to be.
   const fibre  = 0.2 + 0.8 * Math.min(1, wool + cotton + (k.agriculture || 0) * 0.15);
   const physMetalCap = oreTier(r);
-  return {
+  const legs = {
     "Textiles":          TEXTILE_W * fibre * (0.55 + 0.45 * popScale) * craft,
     "Metalwork":         physMetalCap > 0 ? Math.min(k.metallurgy || 0, physMetalCap) * METAL_W : 0,
     "Pottery & leather": POTTERY_W * popScale * (0.4 + (r.timber || 0) * 0.3 + (r.horses || 0) * 0.3),
@@ -432,6 +444,26 @@ function craftLegs(s, k, r) {
     // commercial/financial hub whose trade & administration dwarf its workshops.
     "Services & records": SERVICE_W * (k.organization || 0) * popScale * popScale,
   };
+  // Idiosyncratic founding edge — a fixed, deterministic per-town bias on each sector
+  // (the master weaver / smith who happened to settle here). Breaks ties so towns with
+  // identical geography still differ; small enough that real geography still dominates.
+  if (T.AGGLOM_IDIO > 0) {
+    const sid = s.id || 1;
+    for (const key in legs) legs[key] *= Math.max(0, 1 + T.AGGLOM_IDIO * (hash32(sid, key) / 4294967296 - 0.5) * 2);
+  }
+  return legs;
+}
+// AGGLOMERATION lock-in (increasing returns): multiply a town's ESTABLISHED specialty
+// (_specKey, the comparative-advantage sector it has committed to, strength _specStr)
+// so the cluster compounds — Florence→wool, Toledo→steel, Murano→glass. Applied by
+// BOTH the economy (computeExportValue) and the panel (getExportBreakdown) so they
+// can't drift. Separate from craftLegs so the comparative-advantage PICK reads the raw
+// geographic profile (lets industry move when the geography changes), not the boost.
+function applyClusterBoost(legs, s) {
+  if (T.AGGLOM_W > 0 && s._specKey && legs[s._specKey] != null) {
+    legs[s._specKey] *= 1 + T.AGGLOM_W * (s._specStr || 0);
+  }
+  return legs;
 }
 
 // Cache a settlement's home-tile climate — latitude band (0 = equator,
@@ -690,6 +722,25 @@ export function computeExportValue(s, world) {
   // this; the loom, the forge and the clerks concentrate in TOWNS.
   let man = 0;
   const legs = craftLegs(s, k, r);
+  // Evolve the agglomeration cluster ONCE per tick (computeExportValue is memoised per
+  // step via exportValueOf). The town drifts toward its COMPARATIVE-advantage sector —
+  // the one it's closest to maxing out (legs[k] / CRAFT_REF[k]) on its RAW geographic
+  // profile — and that specialty STRENGTHENS while held (capped), decaying if the
+  // comparative lead moves (a mine plays out, a rival out-competes). Picking on the raw
+  // profile (not the boosted output) is what lets industry relocate and keeps the map
+  // diverse instead of every town chasing the single absolute-strongest craft.
+  if (world && T.AGGLOM_W > 0) {
+    let topK = null, topScore = -1;
+    for (const key in legs) { const sc = legs[key] / (CRAFT_REF[key] || 1); if (sc > topScore) { topScore = sc; topK = key; } }
+    if (topK) {
+      if (s._specKey === topK) s._specStr = Math.min(1, (s._specStr || 0) + T.AGGLOM_RISE * (1 - (s._specStr || 0)));
+      else {
+        s._specStr = (s._specStr || 0) * (1 - T.AGGLOM_DECAY);
+        if (s._specStr < 0.05) { s._specKey = topK; s._specStr = 0.05; }   // the new trade takes hold
+      }
+    }
+  }
+  applyClusterBoost(legs, s);                                      // established cluster compounds its sector
   for (const key in legs) man += legs[key];
   if (tier < 1) man *= T.FARM_CRAFT_FRAC;                           // a village manufactures little
 
@@ -764,7 +815,7 @@ export function getExportBreakdown(s, world) {
   // ore-gated metalwork specialty, pottery/leather, crafted wares and the
   // counting-house (craftLegs, shared with computeExportValue so the panel can't
   // drift from the economy). Each is tier-scaled and tech/army/sack-scaled.
-  const legs = craftLegs(s, k, r);
+  const legs = applyClusterBoost(craftLegs(s, k, r), s);   // same cluster lock-in the economy applies
   for (const key in legs) { const v = legs[key] * craftFrac * mult; if (v > 0.01) out.push({ label: key, value: v }); }
   const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
   const buildMat = (k.construction || 0) * matAccess * 0.8 * mult;   // RAW building materials (ag-sector)

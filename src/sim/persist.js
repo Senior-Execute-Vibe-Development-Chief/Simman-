@@ -35,6 +35,7 @@ const SETT_FIELDS = [
   "_coloniesSent", "_isColony",
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
   "cultureId", "culMix", "faithMix", "langMix", "ancMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
+  "_specKey", "_specStr",   // agglomeration: the town's locked-in craft specialty + its strength
 ];
 
 // ── typed-array <-> base64 ──────────────────────────────────────────────
