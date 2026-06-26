@@ -117,15 +117,21 @@ function countCities(c) {
   if (c && c.members) for (const s of c.members) if (s.mode === "settled" && (s.tier | 0) >= 2) n++;
   return n;
 }
-// A ruler's character, projected onto the levers other passes read (refreshed each
-// pass on the country record): boldness → wars of choice, wit → development & order,
-// wit+ruthlessness → an extra grip on unrest. Neutral (1, 0) during an interregnum.
-function applyRulerMods(c, ruler) {
+// The FORM of government and the PERSON on the throne, projected together onto the
+// levers other passes read (refreshed each pass on the country record). The form
+// sets the realm's baseline (a republic develops fast and fights little; a despotism
+// the reverse); the ruler's character then swings it — but only as far as the form
+// lets one person matter (`ruler`: a crown/strongman ride on the individual, an
+// institution dampens them). During an interregnum only the form's baseline applies.
+function applyRulerMods(c, ruler, gov) {
+  const fx = GOV_FX[gov] || GOV_FX.monarchy;
   const t = (ruler && ruler.traits) || null;
-  if (!t) { c._rulerWar = 1; c._rulerWit = 1; c._rulerRelief = 0; return; }
-  c._rulerWar = 1 + (t.boldness || 0) * 0.30;                                  // 0.70 … 1.30
-  c._rulerWit = 1 + (t.wit || 0) * 0.15;                                       // 0.85 … 1.15
-  c._rulerRelief = ((t.wit || 0) * 0.5 + (t.ruthlessness || 0) * 0.5) * 0.013; // ±0.013 unrest relief
+  const rw = fx.ruler;
+  const bold = t ? (t.boldness || 0) : 0, wit = t ? (t.wit || 0) : 0, ruth = t ? (t.ruthlessness || 0) : 0;
+  c._rulerWar    = fx.war * (1 + bold * 0.30 * rw);
+  c._rulerWit    = fx.dev * (1 + wit * 0.15 * rw);
+  c._rulerRelief = fx.order + (wit * 0.5 + ruth * 0.5) * 0.013 * rw;
+  c._govStab     = fx.stab;                       // succession turbulence (read in the death handler)
 }
 function vigorFertility(p) {
   const v = (p && p.traits && p.traits.vigor) || 0;
@@ -275,9 +281,26 @@ function birth(world, parent, rng, bastard, mortF) {
 // ── Governance: derive how a realm is ruled from its STATE ───────────────────
 // All scores read current development, faith and economy. Hysteresis (a sticky
 // counter on the polity) keeps a realm from flickering between forms.
-const GOV_MONARCHY = "monarchy", GOV_THEOCRACY = "theocracy", GOV_REPUBLIC = "republic";
+const GOV_MONARCHY = "monarchy", GOV_THEOCRACY = "theocracy",
+      GOV_REPUBLIC = "republic", GOV_DESPOTISM = "despotism";
 const LAW_AGNATIC = "agnatic", LAW_MALE_PREF = "male-pref", LAW_ABSOLUTE = "absolute";
 const GOV_SWITCH_PASSES = 3;            // a new form must win this many passes running to take hold
+
+// What each form DOES, not just how it picks a ruler. These feed the same realm
+// levers ruler character already moves, so a form's bonuses/penalties stack with
+// (and scale) the person on the throne:
+//   war    — appetite for wars of choice (× the realm's base)
+//   dev    — pace of institutional development at the capital (×)
+//   order  — standing relief on popular unrest (+, can be negative = unrest)
+//   ruler  — how much the INDIVIDUAL ruler's character swings the realm (a crown
+//            or a strongman ride on one person; an institution dampens them)
+//   stab   — succession stability (×, <1 = turbulent, brittle accessions)
+const GOV_FX = {
+  monarchy:  { war: 1.00, dev: 1.00, order:  0.000, ruler: 1.00, stab: 1.00 },
+  theocracy: { war: 0.82, dev: 0.86, order: +0.018, ruler: 0.45, stab: 1.20 },  // pious, calm, stagnant; the office rules
+  republic:  { war: 0.78, dev: 1.16, order: -0.008, ruler: 0.50, stab: 0.90 },  // mercantile, advancing, faction-prone
+  despotism: { war: 1.30, dev: 0.85, order: +0.014, ruler: 1.25, stab: 0.72 },  // martial, cowed, stagnant; brittle at the top
+};
 
 function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
 
@@ -314,6 +337,9 @@ function deriveTarget(world, c, polity) {
   let gov = GOV_MONARCHY;
   if (theo) gov = GOV_THEOCRACY;
   else if (comm01 >= 0.55 && aggr01 < 0.55 && repScore >= 0.55) gov = GOV_REPUBLIC;
+  // DESPOTISM — a martial, un-mercantile realm where power rests on the sword:
+  // a strongman and his soldiery, not law or commerce. Forged by aggression.
+  else if (aggr01 >= 0.6 && comm01 < 0.5) gov = GOV_DESPOTISM;
 
   // Succession law — who may inherit.
   const militancy = faith && faith.doctrine ? (faith.doctrine.militancy || 0) : 0;
@@ -343,7 +369,8 @@ function updateGovernance(world, c, polity) {
 
 function titleFor(gov, female) {
   if (gov === GOV_THEOCRACY) return female ? "High Priestess" : "High Priest";
-  if (gov === GOV_REPUBLIC) return female ? "Consul" : "Consul";
+  if (gov === GOV_REPUBLIC) return "Consul";
+  if (gov === GOV_DESPOTISM) return female ? "Autarch" : "Despot";
   return female ? "Queen" : "King";
 }
 
@@ -433,15 +460,16 @@ function selectTheocrat(world, c, polity, dyn, law, rng) {
     ? dyn.members.map(id => getPerson(world, id)).filter(p =>
         p && p.died < 0 && ageOf(world, p) >= 35 && (womenOk || !p.female))
     : [];
-  if (elders.length && rng() < 0.7) {
+  // the office is NOT hereditary: only sometimes does it stay in the sitting house;
+  // more often a new man rises, and about half the time he founds a fresh sacerdotal
+  // line — so the mitre visibly passes between houses over the generations.
+  if (elders.length && rng() < 0.4) {
     elders.sort((a, b) => a.born - b.born);     // the eldest — priesthoods favour age
     return { person: elders[0], fresh: false };
   }
-  // a new man from the priesthood, crowned late in life — adopted INTO the
-  // continuing sacred house (the temple endures even when the office isn't blood)
   const culId = dominantCulture(c.capital);
   const person = makeAdult(world, culId, womenOk && rng() < 0.12, rng, 38 + rng() * 18, undefined, 0.78, "founder");
-  return { person, fresh: true };
+  return { person, fresh: true, foundNew: rng() < 0.55 };
 }
 
 // Republic: the magistracy is ELECTED for life; great houses put forward elders
@@ -462,13 +490,14 @@ function selectElected(world, c, polity, rng) {
         if (!p || p.died >= 0 || ageOf(world, p) < 35) continue;
         if (!womenOk && p.female) continue;
         let w = 6 + (ageOf(world, p) - 35) * 0.2;
-        if (p.dynastyId === polity.dynastyId) w *= 0.4;   // the incumbent house is resented
+        if (p.dynastyId === polity.dynastyId) w *= 0.25;   // the incumbent house is resented (rotation)
         cands.push([p, w]); seen.add(p.id);
       }
     }
   }
-  // a self-made notable can stand, but established houses usually prevail
-  cands.push([null, cands.length ? 3 : 8]);
+  // a self-made notable can stand, and the lists turn over briskly — a council is
+  // not a dynasty
+  cands.push([null, cands.length ? 5 : 8]);
   let tot = 0; for (const [, w] of cands) tot += w;
   let pick = rng() * tot;
   for (const [p, w] of cands) { pick -= w; if (pick <= 0) {
@@ -532,10 +561,10 @@ function crown(world, polity, person, how, gov) {
 function fillThrone(world, c, polity, dyn, law, rng) {
   const gov = polity.gov || GOV_MONARCHY;
   if (gov === GOV_THEOCRACY) {
-    const { person, fresh } = selectTheocrat(world, c, polity, dyn, law, rng);
-    if (fresh && dyn) { person.dynastyId = dyn.id; enroll(world, person); }   // adopted into the sacred house
-    else if (fresh) person.dynastyId = -1;                                    // first theocrat founds it
-    crown(world, polity, person, dyn ? "elevated" : "first", gov);
+    const { person, fresh, foundNew } = selectTheocrat(world, c, polity, dyn, law, rng);
+    if (fresh && (foundNew || !dyn)) person.dynastyId = -1;                    // a new sacerdotal line rises
+    else if (fresh) { person.dynastyId = dyn.id; enroll(world, person); }      // adopted into the sitting house
+    crown(world, polity, person, (fresh && (foundNew || !dyn)) ? (dyn ? "crisis" : "first") : "elevated", gov);
     return true;
   }
   if (gov === GOV_REPUBLIC) {
@@ -687,7 +716,7 @@ export function updateDynasties(world) {
     // an empty throne with no house at all: found one (first literacy, or after a
     // crisis), by the realm's form of government
     if (!ruler) {
-      applyRulerMods(c, null);                    // interregnum — neutral leadership
+      applyRulerMods(c, null, polity.gov);        // interregnum — only the form's baseline
       if (polity.gov === GOV_THEOCRACY || polity.gov === GOV_REPUBLIC) {
         fillThrone(world, c, polity, dyn, law, rng);
       } else {
@@ -701,8 +730,8 @@ export function updateDynasties(world) {
       continue;
     }
 
-    // the ruler's character drives the realm this pass (war, rule, order)
-    applyRulerMods(c, ruler);
+    // the form + the ruler's character drive the realm this pass (war, dev, order)
+    applyRulerMods(c, ruler, polity.gov);
 
     // the living house: marry & breed the monarch, grow cadet branches, reap all
     const plague = !!c.capital._plagueActive;
@@ -752,14 +781,18 @@ export function updateDynasties(world) {
         fillThrone(world, c, polity, dyn, law, rng);
         continue;
       }
-      // monarchy: claim-based heir over the whole house
+      // monarchy & despotism: claim-based heir over the whole house. The form's
+      // stability decides how violently the throne changes hands — a despot's death
+      // always unsettles the soldiery (brittle), a settled crown barely ripples.
+      const instab = 2 - (c._govStab || 1);     // monarchy 1.0, despotism ~1.28
       const succ = dyn ? heirByLaw(world, ruler, dyn, law) : null;
       if (succ) {
         crown(world, polity, succ.heir, succ.minor ? (succ.how === "bastard" ? "bastard" : "regency") : succ.how, gov);
-        if (succ.contested) {
-          // a disputed accession (collateral, minor or bastard) is a softer shock
+        let shock = succ.contested ? DISPUTE_UNREST_HIT : 0;            // a disputed accession
+        if (gov === GOV_DESPOTISM) shock = Math.max(shock, DISPUTE_UNREST_HIT * 0.7);   // strongman handover
+        if (shock > 0) {
           polity._crisisAt = world.step;
-          c.capital.unrest = Math.min(1, (c.capital.unrest || 0) + DISPUTE_UNREST_HIT);
+          c.capital.unrest = Math.min(1, (c.capital.unrest || 0) + shock * instab);
         }
       } else {
         // the whole house has failed — succession crisis: a new line next pass
@@ -772,9 +805,9 @@ export function updateDynasties(world) {
         logEvent(world, "succession.crisis", { polity: cid, name: polity.name, dynasty: ruler.dynastyId });
         for (const m of c.members) {
           if (m.id === c.capitalId) continue;
-          m.loyalty = Math.max(0, (m.loyalty ?? 1) - CRISIS_LOYALTY_HIT * (0.5 + rng()));
+          m.loyalty = Math.max(0, (m.loyalty ?? 1) - CRISIS_LOYALTY_HIT * (0.5 + rng()) * instab);
         }
-        c.capital.unrest = Math.min(1, (c.capital.unrest || 0) + CRISIS_UNREST_HIT);
+        c.capital.unrest = Math.min(1, (c.capital.unrest || 0) + CRISIS_UNREST_HIT * instab);
       }
     }
   }
@@ -792,7 +825,8 @@ export function inCrisis(world, polityId, window = 600) {
 // ancestry back to the founder, recently-dead members that knit the tree, and
 // the spouses that married in. Bounded so a long-lived house stays legible.
 export function governanceLabel(gov) {
-  return gov === GOV_THEOCRACY ? "Theocracy" : gov === GOV_REPUBLIC ? "Republic" : "Monarchy";
+  return gov === GOV_THEOCRACY ? "Theocracy" : gov === GOV_REPUBLIC ? "Republic"
+       : gov === GOV_DESPOTISM ? "Despotism" : "Monarchy";
 }
 export function lawLabel(law) {
   return law === LAW_AGNATIC ? "agnatic (men only)"

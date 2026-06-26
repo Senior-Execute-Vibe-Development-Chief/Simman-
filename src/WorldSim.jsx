@@ -359,7 +359,8 @@ function PersonCard({n}){
 // Per-government styling for the succession roll (crown / theocracy / council).
 const GOV_META={monarchy:{icon:"♔",col:"#b8902f",label:"Crown"},
   theocracy:{icon:"☩",col:"#5566b0",label:"Theocracy"},
-  republic:{icon:"⚖",col:"#2f8a78",label:"Council"}};
+  republic:{icon:"⚖",col:"#2f8a78",label:"Council"},
+  despotism:{icon:"⚔",col:"#a8402f",label:"Despotism"}};
 // Standard top-down genealogy: each generation a row, parents centred above
 // their children, sibling/parent connectors drawn in pure CSS (classes below).
 const FT_LN="rgba(120,100,70,0.45)";
@@ -488,7 +489,7 @@ function DynastyOverlay({tree,onClose}){
         <div className="au-fade" style={{fontSize:9.5,marginTop:8,flexShrink:0,display:"flex",gap:12,flexWrap:"wrap",borderTop:"1px solid rgba(90,74,50,0.2)",paddingTop:6}}>
           {mode==="tree"
             ?<><span>♔ reigning</span><span>♀ / ♂</span><span>⚭ married</span><span style={{fontStyle:"italic"}}>dashed = bastard</span><span>faded = married in / deceased</span></>
-            :<><span style={{color:GOV_META.monarchy.col}}>♔ crown</span><span style={{color:GOV_META.theocracy.col}}>☩ theocracy</span><span style={{color:GOV_META.republic.col}}>⚖ council</span><span>every sovereign, oldest first</span></>}
+            :<><span style={{color:GOV_META.monarchy.col}}>♔ crown</span><span style={{color:GOV_META.theocracy.col}}>☩ theocracy</span><span style={{color:GOV_META.republic.col}}>⚖ council</span><span style={{color:GOV_META.despotism.col}}>⚔ despotism</span><span>oldest first</span></>}
         </div>
       </div>
     </div>

@@ -169,6 +169,7 @@ const NARRATE = {
   "gov.changed"(ev) {
     const to = ev.to === "theocracy" ? "a theocracy ruled by its priesthood"
              : ev.to === "republic" ? "a republic, its magistrate elected"
+             : ev.to === "despotism" ? "a despotism, ruled by the sword"
              : "a monarchy under a single crown";
     return `The order of the realm changed — it became ${to}.`;
   },
