@@ -161,7 +161,9 @@ const NARRATE = {
     return `${t} ${ev.personName} succeeded to the throne of house ${h} at ${ev.age}.`;
   },
   "ruler.elected"(ev) {
-    return `${ev.personName} of house ${ev.dynastyName || "?"} was elected ${ev.title || "Consul"} of the republic.`;
+    const t = ev.title || "Consul";
+    const where = t === "Consul" ? " of the republic" : "";
+    return `${ev.personName} of house ${ev.dynastyName || "?"} was elected ${t}${where}.`;
   },
   "ruler.elevated"(ev) {
     return `${ev.personName} was raised as ${ev.title || "High Priest"}, to rule in the faith's name.`;
@@ -170,6 +172,7 @@ const NARRATE = {
     const to = ev.to === "theocracy" ? "a theocracy ruled by its priesthood"
              : ev.to === "republic" ? "a republic, its magistrate elected"
              : ev.to === "despotism" ? "a despotism, ruled by the sword"
+             : ev.to === "elective" ? "an elective monarchy, its king chosen by the magnates"
              : "a monarchy under a single crown";
     return `The order of the realm changed — it became ${to}.`;
   },

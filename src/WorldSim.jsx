@@ -360,7 +360,8 @@ function PersonCard({n}){
 const GOV_META={monarchy:{icon:"♔",col:"#b8902f",label:"Crown"},
   theocracy:{icon:"☩",col:"#5566b0",label:"Theocracy"},
   republic:{icon:"⚖",col:"#2f8a78",label:"Council"},
-  despotism:{icon:"⚔",col:"#a8402f",label:"Despotism"}};
+  despotism:{icon:"⚔",col:"#a8402f",label:"Despotism"},
+  elective:{icon:"♛",col:"#9c7a2f",label:"Elective Monarchy"}};
 // Standard top-down genealogy: each generation a row, parents centred above
 // their children, sibling/parent connectors drawn in pure CSS (classes below).
 const FT_LN="rgba(120,100,70,0.45)";
@@ -475,7 +476,7 @@ function DynastyOverlay({tree,onClose}){
           </div>
         </div>
         <div className="au-fade" style={{fontSize:10,marginBottom:8,flexShrink:0}}>
-          {data?<>succession law: {data.lawLabel}{data.rulerTitle?` · the ${data.rulerTitle.toLowerCase()} reigns`:""} · <span style={{fontStyle:"italic"}}>snapshot — ↻ to update</span></>:"no ruling house"}
+          {data?<>succession law: {data.lawLabel}{data.legitLabel?` · legitimacy ${data.legitLabel}`:""}{data.rulerTitle?` · the ${data.rulerTitle.toLowerCase()} reigns`:""} · <span style={{fontStyle:"italic"}}>snapshot — ↻ to update</span></>:"no ruling house"}
         </div>
         <div style={{overflow:"auto",minHeight:0,paddingRight:6}}>
           {mode==="tree"

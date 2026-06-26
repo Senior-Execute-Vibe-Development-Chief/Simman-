@@ -138,6 +138,42 @@ function vigorFertility(p) {
   return 0.7 + 0.6 * ((v + 1) / 2);            // sickly 0.7 … hale 1.3
 }
 
+// ── Dynastic legitimacy: the stability dividend of an unbroken hereditary line ──
+// THIS is the calm that settled succession buys. It accrues — slowly — with the
+// HOUSE's tenure (how long it has held the throne), the current reign's length,
+// and the presence of a clear adult heir; hereditary forms earn far more of it
+// than elected ones (a chosen king never banks the blood-legitimacy of a long
+// dynasty — the elective-monarchy problem). High legitimacy keeps the realm calm
+// and smooths the next handover; a broken succession shatters it. Gated on
+// emergent DURATIONS (tenure, reign), never on the calendar.
+function houseHasAdultHeir(world, dyn, rulerId, law) {
+  if (!dyn || !dyn.members) return false;
+  for (const id of dyn.members) {
+    if (id === rulerId) continue;
+    const p = getPerson(world, id);
+    if (p && p.died < 0 && !p.bastard && ageOf(world, p) >= 16 && (law !== LAW_AGNATIC || !p.female)) return true;
+  }
+  return false;
+}
+function legitFormBase(gov) {
+  return gov === GOV_MONARCHY ? 0.55 : gov === GOV_THEOCRACY ? 0.50
+       : gov === GOV_DESPOTISM ? 0.40 : gov === GOV_ELECTIVE ? 0.38 : 0.42;   // republic 0.42
+}
+function applyLegitimacy(world, c, polity, dyn, ruler, gov, law) {
+  const hereditary = gov === GOV_MONARCHY || gov === GOV_THEOCRACY;
+  const dynAgeY = dyn ? Math.max(0, stepToYear(world.step) - stepToYear(dyn.foundedStep)) : 0;
+  const tenure = hereditary ? Math.min(0.25, dynAgeY / 600) : Math.min(0.08, dynAgeY / 900);
+  const reignY = ruler ? Math.max(0, stepToYear(world.step) - stepToYear(polity._reignSince ?? world.step)) : 0;
+  const reignStab = Math.min(0.10, reignY / 400);
+  const heir = houseHasAdultHeir(world, dyn, ruler ? ruler.id : -1, law)
+    ? 0.10 : (hereditary ? -0.15 : 0);          // a clear heir reassures; an empty cradle unsettles a crown
+  const target = clamp01(legitFormBase(gov) + tenure + reignStab + heir);
+  const cur = polity._dynLegit == null ? target : polity._dynLegit;
+  polity._dynLegit = cur + (target - cur) * 0.15;        // drifts slowly
+  // a legitimate, settled house keeps the realm calm; a shaky one frays it
+  c._rulerRelief += (polity._dynLegit - 0.45) * 0.028;   // ~ -0.013 … +0.015
+}
+
 // mortF: 1 at low development → ~0.45 when highly developed. Drives both
 // childhood death share and the adult mean.
 function sampleLifespan(rng, mortF, adultOnly) {
@@ -282,7 +318,7 @@ function birth(world, parent, rng, bastard, mortF) {
 // All scores read current development, faith and economy. Hysteresis (a sticky
 // counter on the polity) keeps a realm from flickering between forms.
 const GOV_MONARCHY = "monarchy", GOV_THEOCRACY = "theocracy",
-      GOV_REPUBLIC = "republic", GOV_DESPOTISM = "despotism";
+      GOV_REPUBLIC = "republic", GOV_DESPOTISM = "despotism", GOV_ELECTIVE = "elective";
 const LAW_AGNATIC = "agnatic", LAW_MALE_PREF = "male-pref", LAW_ABSOLUTE = "absolute";
 const GOV_SWITCH_PASSES = 3;            // a new form must win this many passes running to take hold
 
@@ -300,6 +336,7 @@ const GOV_FX = {
   theocracy: { war: 0.82, dev: 0.86, order: +0.018, ruler: 0.45, stab: 1.20 },  // pious, calm, stagnant; the office rules
   republic:  { war: 0.78, dev: 1.16, order: -0.008, ruler: 0.50, stab: 0.90 },  // mercantile, advancing, faction-prone
   despotism: { war: 1.30, dev: 0.85, order: +0.014, ruler: 1.25, stab: 0.72 },  // martial, cowed, stagnant; brittle at the top
+  elective:  { war: 1.02, dev: 1.00, order: -0.004, ruler: 0.85, stab: 0.78 },  // aristocratic crown, but each election is a contest
 };
 
 function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
@@ -340,6 +377,11 @@ function deriveTarget(world, c, polity) {
   // DESPOTISM — a martial, un-mercantile realm where power rests on the sword:
   // a strongman and his soldiery, not law or commerce. Forged by aggression.
   else if (aggr01 >= 0.6 && comm01 < 0.5) gov = GOV_DESPOTISM;
+  // ELECTIVE MONARCHY — a crowned but POLYCENTRIC realm where power is spread
+  // among comparable noble seats (low primacy): the magnates ELECT the king
+  // rather than inheriting him. Keeps the trappings of monarchy, forgoes its
+  // hereditary stability — every reign ends in a contested election.
+  else if (primacy < 0.6 && comm01 < 0.58 && aggr01 < 0.62) gov = GOV_ELECTIVE;
 
   // Succession law — who may inherit.
   const militancy = faith && faith.doctrine ? (faith.doctrine.militancy || 0) : 0;
@@ -371,8 +413,10 @@ function titleFor(gov, female) {
   if (gov === GOV_THEOCRACY) return female ? "High Priestess" : "High Priest";
   if (gov === GOV_REPUBLIC) return "Consul";
   if (gov === GOV_DESPOTISM) return female ? "Autarch" : "Despot";
-  return female ? "Queen" : "King";
+  return female ? "Queen" : "King";   // monarchy & elective monarchy both crown a king
 }
+// Forms where the throne is FILLED by selection/election rather than inherited.
+function isSelected(gov) { return gov === GOV_THEOCRACY || gov === GOV_REPUBLIC || gov === GOV_ELECTIVE; }
 
 // ── Succession by law: claim ranking over the whole house ────────────────────
 function eligible(world, p, law, allowBastard) {
@@ -545,7 +589,7 @@ function crown(world, polity, person, how, gov) {
   // successions within an established line are not individually notable.
   const notable = how === "first" || how === "crisis" || how === "elected" || how === "elevated";
   if (notable) {
-    const evtype = gov === GOV_REPUBLIC ? "ruler.elected"
+    const evtype = (gov === GOV_REPUBLIC || gov === GOV_ELECTIVE) ? "ruler.elected"
                  : gov === GOV_THEOCRACY ? "ruler.elevated"
                  : "ruler.crowned";
     logEvent(world, evtype, {
@@ -567,9 +611,9 @@ function fillThrone(world, c, polity, dyn, law, rng) {
     crown(world, polity, person, (fresh && (foundNew || !dyn)) ? (dyn ? "crisis" : "first") : "elevated", gov);
     return true;
   }
-  if (gov === GOV_REPUBLIC) {
+  if (gov === GOV_REPUBLIC || gov === GOV_ELECTIVE) {
     const { person, fresh } = selectElected(world, c, polity, rng);
-    if (fresh) person.dynastyId = -1;          // a self-made magistrate founds a new house
+    if (fresh) person.dynastyId = -1;          // a self-made magistrate / a new royal house
     crown(world, polity, person, dyn ? "elected" : "first", gov);
     return true;
   }
@@ -717,7 +761,8 @@ export function updateDynasties(world) {
     // crisis), by the realm's form of government
     if (!ruler) {
       applyRulerMods(c, null, polity.gov);        // interregnum — only the form's baseline
-      if (polity.gov === GOV_THEOCRACY || polity.gov === GOV_REPUBLIC) {
+      applyLegitimacy(world, c, polity, dyn, null, polity.gov, law);
+      if (isSelected(polity.gov)) {
         fillThrone(world, c, polity, dyn, law, rng);
       } else {
         const culId = dominantCulture(c.capital);
@@ -732,6 +777,7 @@ export function updateDynasties(world) {
 
     // the form + the ruler's character drive the realm this pass (war, dev, order)
     applyRulerMods(c, ruler, polity.gov);
+    applyLegitimacy(world, c, polity, dyn, ruler, polity.gov, law);
 
     // the living house: marry & breed the monarch, grow cadet branches, reap all
     const plague = !!c.capital._plagueActive;
@@ -776,7 +822,7 @@ export function updateDynasties(world) {
       }
 
       const gov = polity.gov || GOV_MONARCHY;
-      if (gov === GOV_THEOCRACY || gov === GOV_REPUBLIC) {
+      if (isSelected(gov)) {
         // selection / election rather than blood
         fillThrone(world, c, polity, dyn, law, rng);
         continue;
@@ -784,12 +830,15 @@ export function updateDynasties(world) {
       // monarchy & despotism: claim-based heir over the whole house. The form's
       // stability decides how violently the throne changes hands — a despot's death
       // always unsettles the soldiery (brittle), a settled crown barely ripples.
-      const instab = 2 - (c._govStab || 1);     // monarchy 1.0, despotism ~1.28
+      // a legitimate, long-settled house smooths the handover; a shaky one doesn't
+      const legitSmooth = 1 - 0.45 * (polity._dynLegit || 0.5);
+      const instab = (2 - (c._govStab || 1)) * legitSmooth;     // monarchy 1.0, despotism ~1.28, ÷ legitimacy
       const succ = dyn ? heirByLaw(world, ruler, dyn, law) : null;
       if (succ) {
         crown(world, polity, succ.heir, succ.minor ? (succ.how === "bastard" ? "bastard" : "regency") : succ.how, gov);
         let shock = succ.contested ? DISPUTE_UNREST_HIT : 0;            // a disputed accession
         if (gov === GOV_DESPOTISM) shock = Math.max(shock, DISPUTE_UNREST_HIT * 0.7);   // strongman handover
+        if (succ.contested) polity._dynLegit = (polity._dynLegit || 0.5) * 0.8;   // a disputed claim dents legitimacy
         if (shock > 0) {
           polity._crisisAt = world.step;
           c.capital.unrest = Math.min(1, (c.capital.unrest || 0) + shock * instab);
@@ -802,6 +851,7 @@ export function updateDynasties(world) {
         }
         polity.rulerId = -1;
         polity._crisisAt = world.step;
+        polity._dynLegit = (polity._dynLegit || 0.5) * 0.5;   // the broken line shatters legitimacy
         logEvent(world, "succession.crisis", { polity: cid, name: polity.name, dynasty: ruler.dynastyId });
         for (const m of c.members) {
           if (m.id === c.capitalId) continue;
@@ -826,12 +876,17 @@ export function inCrisis(world, polityId, window = 600) {
 // the spouses that married in. Bounded so a long-lived house stays legible.
 export function governanceLabel(gov) {
   return gov === GOV_THEOCRACY ? "Theocracy" : gov === GOV_REPUBLIC ? "Republic"
-       : gov === GOV_DESPOTISM ? "Despotism" : "Monarchy";
+       : gov === GOV_DESPOTISM ? "Despotism" : gov === GOV_ELECTIVE ? "Elective Monarchy" : "Monarchy";
 }
 export function lawLabel(law) {
   return law === LAW_AGNATIC ? "agnatic (men only)"
        : law === LAW_ABSOLUTE ? "absolute (eldest of either sex)"
        : "male-preference";
+}
+export function legitLabel(v) {
+  if (v == null) return null;
+  return v >= 0.75 ? "unquestioned" : v >= 0.6 ? "secure" : v >= 0.45 ? "settled"
+       : v >= 0.3 ? "shaky" : "contested";
 }
 
 export function getDynastyTree(world, countryId, cap = 80) {
@@ -914,6 +969,8 @@ export function getDynastyTree(world, countryId, cap = 80) {
     gov: polity.gov || GOV_MONARCHY, govLabel: governanceLabel(polity.gov),
     law: polity.succLaw || LAW_MALE_PREF, lawLabel: lawLabel(polity.succLaw),
     rulerTitle: r ? (r._title || titleFor(polity.gov, r.female)) : null,
+    legit: polity._dynLegit != null ? +polity._dynLegit.toFixed(2) : null,
+    legitLabel: legitLabel(polity._dynLegit),
     nodes, roll,
   };
 }
