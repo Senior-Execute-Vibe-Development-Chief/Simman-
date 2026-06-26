@@ -26,7 +26,7 @@ import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { getPolity } from "./sim/peopleSim/entities.js";
 import { familyOf, familyName } from "./sim/peopleSim/cultures.js";
 import { doctrineLabel } from "./sim/peopleSim/faiths.js";
-import { getPerson, getDynasty, ageOf } from "./sim/peopleSim/dynasties.js";
+import { getPerson, getDynasty, ageOf, getDynastyTree } from "./sim/peopleSim/dynasties.js";
 import { IDENTITY_K, diffuseIdentityField } from "./sim/peopleSim/identityField.js";
 import { makeSettlement } from "./sim/peopleSim/settlement.js";
 import { ensurePolity } from "./sim/peopleSim/entities.js";
@@ -97,6 +97,7 @@ let playing = false;
 let speed = 5;
 let selId = -1;
 let chronPerspective = false; // chronicle rendered as the realm's scribes kept it
+let dynastyOpen = false;      // the family-tree overlay is open — ship the ruling house graph
 let viewMode = "terrain";    // main thread tells us the view so we only ship
                              // the money-flow / road-component extras when shown
 let lastSnap = 0;
@@ -152,6 +153,9 @@ self.onmessage = (e) => {
   } else if (m.type === "chronicle-mode") {
     chronPerspective = !!m.perspective;
     if (!playing && world) buildSnapshot();          // refresh the open panel
+  } else if (m.type === "dynasty-open") {
+    dynastyOpen = !!m.open;                           // family-tree overlay shown/hidden
+    if (!playing && world) buildSnapshot();           // ship/refresh the tree now
   } else if (m.type === "export-history") {
     if (world) {
       try { self.postMessage({ type: "historyData", json: JSON.stringify(exportHistory(world)), step: world.step }); }
@@ -292,7 +296,7 @@ function buildSnapshot() {
       const dyn = ruler ? getDynasty(world, ruler.dynastyId) : null;
       countries.push({
         id: c.id, capitalId: c.capitalId, name: realmName(world, c.id),
-        ruler: ruler && ruler.died < 0 ? { name: ruler.name, female: !!ruler.female, age: Math.round(ageOf(world, ruler)), house: dyn ? dyn.name : null } : null,
+        ruler: ruler && ruler.died < 0 ? { name: ruler.name, female: !!ruler.female, age: Math.round(ageOf(world, ruler)), house: dyn ? dyn.name : null, title: ruler._title || null, gov: pol ? pol.gov || "monarchy" : "monarchy" } : null,
         faithId: pol ? pol.faithId : -1,
         memberIds: c.members.map(m => m.id),
         hue: c.hue, range: c.range,
@@ -334,6 +338,11 @@ function buildSnapshot() {
       }
     }
   }
+  // Ruling family tree — only when the overlay is open (cheap: it walks the house
+  // roster + ancestry, not the whole person map). undefined = unchanged/closed.
+  let dynasty;
+  if (dynastyOpen) dynasty = chronCid >= 0 ? getDynastyTree(world, chronCid) : null;
+
   // Incremental event feed: only NEW events since the last snapshot are
   // narrated and shipped; the UI accumulates them into the live ticker.
   let feed = null;
@@ -457,6 +466,7 @@ function buildSnapshot() {
     ships: world.ships ? world.ships.map(sh => ({ x: sh.x, y: sh.y, landTi: sh.landTi, countryId: sh.countryId })) : null,
     selected,
     chronicle,
+    dynasty,
     feed,
   }, transfer);
 }

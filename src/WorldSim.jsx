@@ -326,6 +326,86 @@ function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose}
   );
 }
 
+// ── Ruling family tree overlay ──────────────────────────────────────────────
+// Renders the reigning house as a genealogy: couples, children indented beneath
+// their parents along a vine, the sitting sovereign crowned, bastards on a dashed
+// border, married-in partners faded, the deceased greyed with their lifespans.
+function fy(y){return y<0?`${-y} BC`:`${y} AD`;}
+function PersonCard({n}){
+  const dead=n.diedY>=0;
+  const border=n.isRuler?"2px solid #b8902f":n.bastard?"1px dashed #9a7b52":"1px solid rgba(90,74,50,0.4)";
+  const bg=n.isRuler?"rgba(184,144,47,0.16)":n.foreign?"rgba(90,74,50,0.05)":"rgba(255,255,255,0.45)";
+  return(
+    <div title={n.foreign?"married into the house":n.bastard?"born out of wedlock":undefined}
+      style={{border,background:bg,borderRadius:5,padding:"3px 7px",minWidth:96,opacity:dead?0.62:1,fontSize:11}}>
+      <div style={{display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
+        <span style={{color:n.female?"#9c4a82":"#3a5a9c",fontWeight:700}}>{n.female?"♀":"♂"}</span>
+        {n.isRuler&&<span title="reigning" style={{fontSize:12}}>♔</span>}
+        <span style={{fontWeight:n.isRuler?700:500,color:"#2a1c0e"}}>{n.name}</span>
+        {n.bastard&&<span className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>bastard</span>}
+      </div>
+      {n.isRuler&&n.title&&<div style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:"#8a6a1a",fontWeight:600}}>{n.title}</div>}
+      <div className="au-fade" style={{fontSize:9.5,fontVariantNumeric:"tabular-nums"}}>
+        {dead?`${fy(n.bornY)} – ${fy(n.diedY)} · ${n.age}y`:`b. ${fy(n.bornY)} · ${n.age}y`}
+      </div>
+      {n.reignFrom>=0&&<div style={{fontSize:9,color:"#8a6a1a",fontVariantNumeric:"tabular-nums"}}>reigned {fy(n.reignFrom)}–{n.reignTo>=0?fy(n.reignTo):"now"}</div>}
+    </div>
+  );
+}
+function DynastyOverlay({tree,onClose}){
+  const nodes=(tree&&tree.nodes)||[];
+  const byId=new Map(nodes.map(n=>[n.id,n]));
+  const kidsOf=new Map();
+  for(const n of nodes)if(n.parentId>=0){if(!kidsOf.has(n.parentId))kidsOf.set(n.parentId,[]);kidsOf.get(n.parentId).push(n.id);}
+  for(const arr of kidsOf.values())arr.sort((a,b)=>byId.get(a).bornY-byId.get(b).bornY);
+  const drawn=new Set();
+  const renderLine=(id)=>{
+    if(drawn.has(id))return null;
+    drawn.add(id);
+    const n=byId.get(id);if(!n)return null;
+    const sp=n.spouseId>=0&&byId.has(n.spouseId)&&!drawn.has(n.spouseId)?byId.get(n.spouseId):null;
+    if(sp)drawn.add(sp.id);
+    const kids=(kidsOf.get(id)||[]).concat(sp?(kidsOf.get(sp.id)||[]):[]);
+    return(
+      <div key={id} style={{marginTop:6}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <PersonCard n={n}/>
+          {sp&&<><span className="au-fade" style={{fontSize:11}}>⚭</span><PersonCard n={sp}/></>}
+        </div>
+        {kids.length>0&&<div style={{marginLeft:16,paddingLeft:12,borderLeft:"2px solid rgba(120,100,70,0.35)"}}>
+          {kids.map(k=>renderLine(k))}
+        </div>}
+      </div>
+    );
+  };
+  // blood roots first (top of each line), oldest first; then any orphans
+  const roots=nodes.filter(n=>n.parentId<0&&!n.foreign).sort((a,b)=>a.bornY-b.bornY);
+  const body=[...roots.map(r=>renderLine(r.id)),...nodes.filter(n=>!drawn.has(n.id)).map(n=>renderLine(n.id))];
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(680px,94vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4,flexShrink:0,gap:8}}>
+          <div className="au-pico-title" style={{fontSize:15}}>House {tree?tree.houseName||"—":"—"}
+            {tree&&<span className="au-fade" style={{fontSize:11}}> · {tree.govLabel}</span>}</div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
+        </div>
+        <div className="au-fade" style={{fontSize:10,marginBottom:8,flexShrink:0}}>
+          {tree?<>succession: {tree.lawLabel}{tree.rulerTitle?` · the ${tree.rulerTitle.toLowerCase()} reigns`:""}</>:"no ruling house"}
+        </div>
+        <div style={{overflow:"auto",minHeight:0,paddingRight:6}}>
+          {nodes.length===0
+            ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No reigning house — the realm keeps no king-list yet.</div>
+            :<div>{body}</div>}
+        </div>
+        <div className="au-fade" style={{fontSize:9.5,marginTop:8,flexShrink:0,display:"flex",gap:12,flexWrap:"wrap",borderTop:"1px solid rgba(90,74,50,0.2)",paddingTop:6}}>
+          <span>♔ reigning</span><span>♀ / ♂</span><span>⚭ married</span>
+          <span style={{fontStyle:"italic"}}>dashed = bastard</span><span>faded = married in / deceased</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Atlas (olde-map) cartographic symbols — hand-drawn map iconography ──
 function atlasHash(a,b){let h=(a*374761393+b*668265263)>>>0;h=((h^(h>>>13))*1274126177)>>>0;return((h^(h>>>16))>>>0)/4294967296;}
 function atlasMountain(c,x,y,s,snow,tone){
@@ -558,6 +638,7 @@ const[showTuning,setShowTuning]=useState(false);
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
 const[techTreeOpen,setTechTreeOpen]=useState(false);   // full tech-tree overlay (for the selected settlement)
 const[chronicleOpen,setChronicleOpen]=useState(false); // full chronicle (realm history) overlay
+const[dynastyOpen,setDynastyOpen]=useState(false);     // ruling family-tree overlay
 const[lens,setLens]=useState("terrain");const subMemRef=useRef({});
 const[panelTab,setPanelTab]=useState("world");   // World Panel tab: world|realms|peoples|faiths|inspect
 const[newWorldOpen,setNewWorldOpen]=useState(false);
@@ -2237,6 +2318,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.languages){const lm=new Map();for(const l of snap.languages)lm.set(l.id,l);psw.languages=lm;}
   psw.ships=snap.ships;
   if(snap.chronicle!==undefined)psw._chronicle=snap.chronicle;   // full realm history; undefined = unchanged (keep), null = cleared
+  if(snap.dynasty!==undefined)psw._dynasty=snap.dynasty;         // ruling family tree (only while the overlay is open)
   if(snap.feed&&snap.feed.length){const F=psw._feed||(psw._feed=[]);F.push(...snap.feed);if(F.length>250)F.splice(0,F.length-250);}
   const setts=snap.settlements||[];
   if(snap.selected){const sel=setts.find(x=>x.id===snap.selected.id);if(sel)Object.assign(sel,snap.selected);}
@@ -2276,7 +2358,9 @@ useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'c
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'select',id:selectedSettlementId});},[selectedSettlementId]);
 // Close the per-realm overlays when the selection changes, so they don't
 // auto-reopen (or show a stale realm) the next time a settlement is picked.
-useEffect(()=>{setChronicleOpen(false);setTechTreeOpen(false);},[selectedSettlementId]);
+useEffect(()=>{setChronicleOpen(false);setTechTreeOpen(false);setDynastyOpen(false);},[selectedSettlementId]);
+// Tell the worker to start/stop shipping the ruling-house tree as the overlay opens/closes.
+useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"dynasty-open",open:dynastyOpen});},[dynastyOpen]);
 useEffect(()=>{if(selectedSettlementId>=0)setPanelTab("inspect");},[selectedSettlementId]);
 // Tell the worker the current view so it ships money-flow / road-component extras only when shown.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'view',view:viewMode});},[viewMode]);
@@ -2549,7 +2633,7 @@ useEffect(()=>{
     const t=e.target;
     if(t&&(t.tagName==="INPUT"||t.tagName==="SELECT"||t.tagName==="TEXTAREA"))return;
     if(e.code==="Space"){e.preventDefault();togglePlay();}
-    else if(e.key==="Escape"){setMenuOpen(false);setNewWorldOpen(false);setChronicleOpen(false);setTechTreeOpen(false);setLayersOpen(false);setSelectedSettlementId(-1);}
+    else if(e.key==="Escape"){setMenuOpen(false);setNewWorldOpen(false);setChronicleOpen(false);setDynastyOpen(false);setTechTreeOpen(false);setLayersOpen(false);setSelectedSettlementId(-1);}
     else{const n=+e.key;if(n>=1&&n<=LENSES.length)pickLens(LENSES[n-1].id);}
   };
   window.addEventListener("keydown",onKey);
@@ -2594,16 +2678,20 @@ const renderRealmDetail=()=>{
         <span style={{width:12,height:12,borderRadius:2,background:`hsl(${hue},60%,50%)`,flexShrink:0}}/>
         <span className="au-pico-title" style={{fontSize:15}}>{c.name||(c.capital?c.capital.name:"realm "+c.id)}</span>
         <div style={{flex:1}}/>
+        {c.ruler&&<button onClick={()=>setDynastyOpen(true)} title="The ruling family tree"
+          style={{background:"transparent",border:"none",cursor:"pointer",fontSize:14}}>🌳</button>}
         <button onClick={()=>setChronicleOpen(true)} title="The realm's chronicle"
           style={{background:"transparent",border:"none",cursor:"pointer",fontSize:14}}>📜</button>
       </div>
       <div className="au-fade" style={{fontSize:10,marginBottom:8}}>
         {c.members.length} settlements · {fmtPeople(pop)} souls{capCul?` · ${capCul.name} people`:""}{pers?` · ${pers.label}`:""}
       </div>
-      {c.ruler&&<div style={{fontSize:11,marginBottom:6}}>
-        <span className="au-fade">{c.ruler.female?"queen ":"king "}</span>{c.ruler.name}
+      {c.ruler&&<div onClick={()=>setDynastyOpen(true)} title="Open the ruling family tree"
+        style={{fontSize:11,marginBottom:6,cursor:"pointer"}}>
+        <span className="au-fade">{(c.ruler.title||(c.ruler.female?"Queen":"King"))+" "}</span>{c.ruler.name}
         <span className="au-fade"> of house </span>{c.ruler.house||"?"}
         <span className="au-fade"> · age {c.ruler.age}</span>
+        {c.ruler.gov&&c.ruler.gov!=="monarchy"&&<span className="au-fade"> · {c.ruler.gov}</span>}
       </div>}
       {faith&&<div style={{fontSize:11,marginBottom:6}}>
         <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:`hsl(${faith.hue|0},55%,50%)`,marginRight:5}}/>
@@ -2998,7 +3086,7 @@ const renderInspect=()=>{
             {ctry.ruler&&(
               <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
                 <span style={{width:9,height:9,borderRadius:2,background:"hsl(280,40%,52%)",flexShrink:0}}/>
-                <span><span className="au-fade">{ctry.ruler.female?"queen ":"king "}</span>{ctry.ruler.name}
+                <span><span className="au-fade">{(ctry.ruler.title||(ctry.ruler.female?"Queen":"King"))+" "}</span>{ctry.ruler.name}
                   <span className="au-fade"> of house </span>{ctry.ruler.house||"?"}
                   <span className="au-fade"> · age {ctry.ruler.age}</span></span>
               </div>
@@ -3827,6 +3915,11 @@ return(
       if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"chronicle-mode",perspective:next});
     }}
     onClose={()=>setChronicleOpen(false)}/>)}
+
+{/* ══════════ RULING FAMILY TREE OVERLAY (follows the inspected realm) ══════════ */}
+{dynastyOpen&&(
+  <DynastyOverlay tree={peopleRef.current&&peopleRef.current._dynasty}
+    onClose={()=>setDynastyOpen(false)}/>)}
 
 {/* ══════════ NEW WORLD MODAL ══════════ */}
 {newWorldOpen&&(

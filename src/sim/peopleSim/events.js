@@ -150,15 +150,30 @@ const NARRATE = {
     return `Marched to war against ${ev.defName || "a neighbour"}${why}.`;
   },
   "ruler.crowned"(ev) {
-    const t = ev.female ? "Queen" : "King";
-    if (ev.how === "first") return `${t} ${ev.personName} of house ${ev.dynastyName || "?"} took the throne — the first recorded sovereign.`;
-    if (ev.how === "crisis") return `Out of the interregnum, ${t.toLowerCase()} ${ev.personName} of the new house ${ev.dynastyName || "?"} seized the throne.`;
-    if (ev.how === "regency") return `The child ${ev.personName} took the throne of house ${ev.dynastyName || "?"} at ${ev.age}, under a regency council.`;
-    if (ev.how === "sibling") return `${t} ${ev.personName}, ${ev.female ? "sister" : "brother"} of the late sovereign, took up the crown of house ${ev.dynastyName || "?"}.`;
-    return `${t} ${ev.personName} succeeded to the throne of house ${ev.dynastyName || "?"} at ${ev.age}.`;
+    const t = ev.title || (ev.female ? "Queen" : "King");
+    const h = ev.dynastyName || "?";
+    if (ev.how === "first") return `${t} ${ev.personName} of house ${h} took the throne — the first recorded sovereign.`;
+    if (ev.how === "crisis") return `Out of the interregnum, ${t} ${ev.personName} of the new house ${h} seized the throne.`;
+    if (ev.how === "regency") return `The child ${ev.personName} took the throne of house ${h} at ${ev.age}, under a regency council.`;
+    if (ev.how === "bastard") return `For want of a true-born heir, the bastard ${ev.personName} was raised to the throne of house ${h}.`;
+    if (ev.how === "sibling") return `${t} ${ev.personName}, ${ev.female ? "sister" : "brother"} of the late sovereign, took up the crown of house ${h}.`;
+    if (ev.how === "collateral") return `With the senior line spent, ${t} ${ev.personName} of a cadet branch of house ${h} took the crown.`;
+    return `${t} ${ev.personName} succeeded to the throne of house ${h} at ${ev.age}.`;
+  },
+  "ruler.elected"(ev) {
+    return `${ev.personName} of house ${ev.dynastyName || "?"} was elected ${ev.title || "Consul"} of the republic.`;
+  },
+  "ruler.elevated"(ev) {
+    return `${ev.personName} was raised as ${ev.title || "High Priest"}, to rule in the faith's name.`;
+  },
+  "gov.changed"(ev) {
+    const to = ev.to === "theocracy" ? "a theocracy ruled by its priesthood"
+             : ev.to === "republic" ? "a republic, its magistrate elected"
+             : "a monarchy under a single crown";
+    return `The order of the realm changed — it became ${to}.`;
   },
   "ruler.died"(ev) {
-    return `${ev.personName} died at ${ev.age}, after a reign of ${ev.reign} years.`;
+    return `${ev.title || ""} ${ev.personName} died at ${ev.age}, after a reign of ${ev.reign} years.`.trim();
   },
   "succession.crisis"(ev) {
     void ev; return "The royal line failed — an interregnum of rival claimants.";
@@ -248,7 +263,9 @@ export function categoryOf(ev, as = -1) {
     case "faith.schism": return "secession";
     case "faith.faded": return "loss";
     case "war.began": return as === ev.to ? "war" : "conquest";
-    case "ruler.crowned": case "dynasty.founded": case "dynasty.union": return "growth";
+    case "ruler.crowned": case "dynasty.founded": case "dynasty.union":
+    case "ruler.elected": case "ruler.elevated": return "growth";
+    case "gov.changed": return "society";
     case "ruler.died": case "dynasty.extinct": return "loss";
     case "succession.crisis": return "secession";
     case "settlement.lapsed": return as === ev.from ? "loss" : "growth";
