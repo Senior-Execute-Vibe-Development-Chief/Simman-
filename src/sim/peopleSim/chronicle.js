@@ -8,7 +8,7 @@
 // event log never forgets.
 
 import { techState, ERAS } from "./tech.js";
-import { logEvent, eventsFor, narrate, categoryOf } from "./events.js";
+import { logEvent, eventsFor, narrate, categoryOf, condenseChronicle } from "./events.js";
 import { getPolity, ensurePolity } from "./entities.js";
 import { IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE } from "./money.js";
 
@@ -23,9 +23,9 @@ export function getChronicle(world, countryId, limit = 0) {
   const evs = eventsFor(world, "p:" + countryId, limit);
   const out = [];
   for (const ev of evs) {
-    out.push({ step: ev.step, type: categoryOf(ev, countryId), text: narrate(world, ev, countryId) });
+    out.push({ step: ev.step, type: categoryOf(ev, countryId), text: narrate(world, ev, countryId), evType: ev.type });
   }
-  return out;
+  return condenseChronicle(out);
 }
 
 // A realm's display name: its persistent entity name (naming service), else

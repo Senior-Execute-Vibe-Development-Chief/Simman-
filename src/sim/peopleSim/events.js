@@ -285,3 +285,28 @@ export function categoryOf(ev, as = -1) {
     default: return "growth";
   }
 }
+
+// Collapse chronicle noise before it reaches the reader. A militarist hegemon
+// opens many fronts in a single season — the chronicle shouldn't list each as
+// its own line. A run of same-step, same-direction war declarations becomes one
+// entry with a "(— and N other fronts)" tail. Entries must carry `evType` (set
+// by the chronicle builders, stripped here).
+export function condenseChronicle(entries) {
+  const out = [];
+  const strip = (e) => { const { evType: _evType, ...rest } = e; return rest; };
+  for (let i = 0; i < entries.length; ) {
+    const e = entries[i];
+    if (e.evType === "war.began") {
+      let j = i + 1, n = 1;
+      while (j < entries.length && entries[j].evType === "war.began"
+             && entries[j].step === e.step && entries[j].type === e.type) { j++; n++; }
+      if (n > 1) {
+        const more = n - 1;
+        out.push({ step: e.step, type: e.type, rumor: e.rumor,
+          text: e.text.replace(/\s*\.?\s*$/, "") + ` — and ${more} other front${more > 1 ? "s" : ""}.` });
+      } else out.push(strip(e));
+      i = j;
+    } else { out.push(strip(e)); i++; }
+  }
+  return out;
+}

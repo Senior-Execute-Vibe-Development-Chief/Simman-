@@ -21,7 +21,7 @@
 // realm's tradition is stable across reads and across save/load.
 
 import { hash32 } from "./rng.js";
-import { eventsOf, eventsFor, narrate, categoryOf } from "./events.js";
+import { eventsOf, eventsFor, narrate, categoryOf, condenseChronicle } from "./events.js";
 import { getPolity } from "./entities.js";
 import { getFaith } from "./faiths.js";
 import { getDynasty } from "./dynasties.js";
@@ -186,7 +186,7 @@ export function perspectiveChronicle(world, viewerId, limit = 0) {
     } else {
       text = biasedNarrate(world, ev, viewerId);
     }
-    out.push({ step: ev.step, type: categoryOf(ev, viewerId), text, rumor });
+    out.push({ step: ev.step, type: categoryOf(ev, viewerId), text, rumor, evType: ev.type });
   }
 
   // a burned founding is retold as myth; an intact early record stands
@@ -199,7 +199,8 @@ export function perspectiveChronicle(world, viewerId, limit = 0) {
     }
     out.sort((a, b) => a.step - b.step);
   }
-  return limit > 0 && out.length > limit ? out.slice(-limit) : out;
+  const cond = condenseChronicle(out);
+  return limit > 0 && cond.length > limit ? cond.slice(-limit) : cond;
 }
 
 /** Plain-text render (probes / exports). */

@@ -335,7 +335,7 @@ const GOV_FX = {
   monarchy:  { war: 1.00, dev: 1.00, order:  0.000, ruler: 1.00, stab: 1.00 },
   theocracy: { war: 0.82, dev: 0.86, order: +0.018, ruler: 0.45, stab: 1.20 },  // pious, calm, stagnant; the office rules
   republic:  { war: 0.78, dev: 1.16, order: -0.008, ruler: 0.50, stab: 0.90 },  // mercantile, advancing, faction-prone
-  despotism: { war: 1.30, dev: 0.85, order: +0.014, ruler: 1.25, stab: 0.72 },  // martial, cowed, stagnant; brittle at the top
+  despotism: { war: 1.30, dev: 0.85, order: +0.014, ruler: 1.25, stab: 0.82 },  // martial, cowed, stagnant; brittle at the top
   elective:  { war: 1.02, dev: 1.00, order: -0.004, ruler: 0.85, stab: 0.78 },  // aristocratic crown, but each election is a contest
 };
 
@@ -531,17 +531,20 @@ function selectElected(world, c, polity, rng) {
       if (d.endedStep >= 0 || d.cultureId !== polity.cultureId || !d.members) continue;
       for (const id of d.members) {
         const p = getPerson(world, id);
-        if (!p || p.died >= 0 || ageOf(world, p) < 35) continue;
+        if (!p || p.died >= 0 || ageOf(world, p) < 30) continue;
         if (!womenOk && p.female) continue;
-        let w = 6 + (ageOf(world, p) - 35) * 0.2;
-        if (p.dynastyId === polity.dynastyId) w *= 0.25;   // the incumbent house is resented (rotation)
+        // favour candidates in their PRIME (≈42) — electing the eldest greybeard
+        // gives 5-year reigns and a carousel of magistrates; a vigorous man in his
+        // forties serves a real term
+        let w = Math.max(1, 11 - Math.abs(ageOf(world, p) - 42) * 0.4);
+        if (p.dynastyId === polity.dynastyId) w *= 0.3;    // the incumbent house is resented (rotation)
         cands.push([p, w]); seen.add(p.id);
       }
     }
   }
-  // a self-made notable can stand, and the lists turn over briskly — a council is
-  // not a dynasty
-  cands.push([null, cands.length ? 5 : 8]);
+  // a self-made notable can stand, and the lists turn over — but a council is not a
+  // dynasty; established houses usually prevail
+  cands.push([null, cands.length ? 4 : 8]);
   let tot = 0; for (const [, w] of cands) tot += w;
   let pick = rng() * tot;
   for (const [p, w] of cands) { pick -= w; if (pick <= 0) {
@@ -549,7 +552,7 @@ function selectElected(world, c, polity, rng) {
     break;
   } }
   const culId = dominantCulture(c.capital);
-  const person = makeAdult(world, culId, womenOk && rng() < 0.18, rng, 40 + rng() * 15, undefined, 0.78, "founder");
+  const person = makeAdult(world, culId, womenOk && rng() < 0.18, rng, 36 + rng() * 10, undefined, 0.78, "founder");
   return { person, fresh: true };
 }
 
@@ -567,7 +570,8 @@ function crown(world, polity, person, how, gov) {
   polity._reignCities = countCities(cc);
   polity._reignWars = 0;
   polity._reignMon0 = polity._monuments || 0;
-  if (person.dynastyId < 0) newDynasty(world, person, polity.id);
+  const newHouse = person.dynastyId < 0;            // a brand-new family takes power
+  if (newHouse) newDynasty(world, person, polity.id);
   polity.dynastyId = person.dynastyId;
   person._title = titleFor(gov, person.female);
   const d = getDynasty(world, person.dynastyId);
@@ -590,11 +594,13 @@ function crown(world, polity, person, how, gov) {
     house: d ? d.name : null, title: person._title, gov, how, fromY: curY, toY: -1, epithet: null });
   if (roll.length > 400) roll.splice(0, roll.length - 400);
 
-  // What's worth chronicling: the founding of a house ("first"/"crisis"), a
-  // newly-elected magistracy from a fresh house (republics alternate — the
-  // turnover IS the story), and a new theocratic line. Ordinary hereditary
-  // successions within an established line are not individually notable.
-  const notable = how === "first" || how === "crisis" || how === "elected" || how === "elevated";
+  // What's worth chronicling: the founding of a realm ("first"), a new line after
+  // a crisis, and — for elected/clerical offices — only when a NEW family rises to
+  // power. A republic re-electing among its established houses, or rotating its
+  // magistracy every reign, is not each individually notable (the succession roll
+  // keeps the full list); the chronicle marks when power changes HANDS, not seats.
+  const notable = how === "first" || how === "crisis"
+    || ((how === "elected" || how === "elevated") && newHouse);
   if (notable) {
     const evtype = (gov === GOV_REPUBLIC || gov === GOV_ELECTIVE) ? "ruler.elected"
                  : gov === GOV_THEOCRACY ? "ruler.elevated"
@@ -693,6 +699,34 @@ function growCadets(world, c, polity, dyn, over, mortF, rng) {
   }
 }
 
+// Keep an ARISTOCRACY alive under the elected forms. A family that has held the
+// office (it sits in polity.houses) endures as a noble house — small, slowly
+// breeding — so the magistracy ROTATES among a stable set of great families
+// (Venice's patrician dynasties) instead of minting a brand-new house every reign.
+// Without this the noble pool collapses and every election raises a self-made man.
+const NOBLE_CAP = 8;
+function nobleUpkeep(world, c, polity, over, mortF, rng) {
+  if (!polity.houses) return;
+  const ruling = polity.dynastyId, seen = new Set();
+  for (const did of polity.houses) {
+    if (did === ruling || seen.has(did)) continue;
+    seen.add(did);
+    const d = getDynasty(world, did);
+    if (!d || d.endedStep >= 0 || !d.members || !d.members.length || d.members.length >= NOBLE_CAP) continue;
+    for (const id of d.members.slice()) {
+      if (d.members.length >= NOBLE_CAP) break;
+      const p = getPerson(world, id);
+      if (!p || p.died >= 0) continue;
+      const age = ageOf(world, p);
+      if (age < 18 || age > FERTILE_MAX) continue;
+      if (p.spouseId < 0) { if (age <= 40 && rng() < 0.4) marry(world, p, c.id, rng, false, mortF); continue; }
+      const sp = getPerson(world, p.spouseId);
+      if (!sp || sp.died >= 0 || (p.children || []).length >= 4) continue;
+      if (rng() < over(CADET_BIRTH_Y * 0.25 * (vigorFertility(p) + vigorFertility(sp)))) { birth(world, p, rng, false, mortF); break; }
+    }
+  }
+}
+
 // Bound memory over very long games: drop dead persons who belong to no remembered
 // royal line. We preserve — for every LIVING realm — the recent roll of sovereigns
 // WITH each one's children (so the tree shows every monarch's offspring, not just
@@ -734,9 +768,27 @@ function prunePersons(world) {
   for (const [id, p] of world.persons) if (p.died >= 0 && !keep.has(id)) world.persons.delete(id);
 }
 
+// Reap the members of NON-ruling houses by their sampled lifespan. The ruling
+// house is reaped in the main loop; without this, a house that loses the throne
+// (an elective rotation, a fallen realm) would never die — its members aging into
+// immortal greybeards that clog the election lists. Deterministic (pure lifespan).
+function reapIdleHouses(world) {
+  if (!world.dynasties) return;
+  const ruling = new Set();
+  for (const c of world.countries.values()) { const pol = getPolity(world, c.id); if (pol && pol.dynastyId >= 0) ruling.add(pol.dynastyId); }
+  for (const d of world.dynasties.values()) {
+    if (!d.members || ruling.has(d.id)) continue;
+    const overdue = (p) => p && p.died < 0 && p.lifespan >= 0 && ageOf(world, p) >= p.lifespan;
+    const reap = (p) => { p.died = world.step | 0; if (p.reignTo < 0 && p.reignFrom >= 0) p.reignTo = stepToYear(world.step) | 0; };
+    d.members = d.members.filter(id => { const p = getPerson(world, id); if (!p || p.died >= 0) return false; if (overdue(p)) { reap(p); return false; } return true; });
+    if (d.inlaws) d.inlaws = d.inlaws.filter(id => { const p = getPerson(world, id); if (!p || p.died >= 0) return false; if (overdue(p)) { reap(p); return false; } return true; });
+  }
+}
+
 export function updateDynasties(world) {
   if (!world.countries) return;
   const rng = passRng(world, "dynasty");
+  reapIdleHouses(world);
   if (world.step % (DYNASTY_INTERVAL * 24) === 0) prunePersons(world);
   // Years elapsed since the last pass — the step→year mapping compresses early
   // eras, so every per-pass rate below is computed from ANNUAL hazards raised to
@@ -775,6 +827,7 @@ export function updateDynasties(world) {
 
     updateGovernance(world, c, polity);
     const law = polity.succLaw || LAW_MALE_PREF;
+    if (isSelected(polity.gov)) nobleUpkeep(world, c, polity, over, mortF, rng);   // keep the aristocracy alive to elect from
 
     let ruler = polity.rulerId >= 0 ? getPerson(world, polity.rulerId) : null;
     if (ruler && ruler.died >= 0) ruler = null;
@@ -860,13 +913,17 @@ export function updateDynasties(world) {
       const succ = dyn ? heirByLaw(world, ruler, dyn, law) : null;
       if (succ) {
         crown(world, polity, succ.heir, succ.minor ? (succ.how === "bastard" ? "bastard" : "regency") : succ.how, gov);
-        let shock = succ.contested ? DISPUTE_UNREST_HIT : 0;            // a disputed accession
-        if (gov === GOV_DESPOTISM) shock = Math.max(shock, DISPUTE_UNREST_HIT * 0.7);   // strongman handover
-        if (succ.contested) polity._dynLegit = (polity._dynLegit || 0.5) * 0.8;   // a disputed claim dents legitimacy
-        if (shock > 0) {
+        // A DISPUTED accession (a minor under regency, a raised bastard) is a real
+        // crisis — it sets the crisis clock the war-historians read. An orderly
+        // handover, even a despot's, only ripples (unrest), so "the throne stood
+        // empty" stays a meaningful, rare phrase rather than tagging every reign.
+        let shock = succ.contested ? DISPUTE_UNREST_HIT : 0;
+        if (gov === GOV_DESPOTISM) shock = Math.max(shock, DISPUTE_UNREST_HIT * 0.5);   // strongman handover unsettles
+        if (succ.contested) {
+          polity._dynLegit = (polity._dynLegit || 0.5) * 0.8;
           polity._crisisAt = world.step;
-          c.capital.unrest = Math.min(1, (c.capital.unrest || 0) + shock * instab);
         }
+        if (shock > 0) c.capital.unrest = Math.min(1, (c.capital.unrest || 0) + shock * instab);
       } else {
         // the whole house has failed — succession crisis: a new line next pass
         if (dyn && dyn.endedStep < 0) {
@@ -888,8 +945,10 @@ export function updateDynasties(world) {
 }
 
 // Deterministic helper for war-cause annotation (armies.js): was this realm in a
-// succession crisis (or a disputed accession) recently?
-export function inCrisis(world, polityId, window = 600) {
+// genuine succession crisis (a failed line or a disputed accession) recently? A
+// tight window so "the throne stood empty" marks the actual interregnum, not the
+// decades after every handover.
+export function inCrisis(world, polityId, window = 320) {
   const p = getPolity(world, polityId);
   return !!(p && p._crisisAt != null && world.step - p._crisisAt < window / (world._dt || 1));
 }
