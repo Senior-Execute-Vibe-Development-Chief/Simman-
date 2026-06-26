@@ -444,6 +444,7 @@ function buildSnapshot() {
   self.postMessage({
     type: "snapshot",
     step: world.step,
+    eraAt: world._eraAt,             // display-calendar timeline (era → step it was reached)
     tw: world.tw, th: world.th, tileRes: world.tileRes, N: world.N,
     stats: peopleSimStats(world),
     globalP,

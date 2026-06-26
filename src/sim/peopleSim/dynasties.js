@@ -976,7 +976,11 @@ export function getDynastyTree(world, countryId, capPerHouse = 90) {
   const polity = getPolity(world, countryId);
   if (!polity) return null;
   const rulerId = polity.rulerId;
-  const nowY = stepToYear(world.step) | 0;
+  // The tree shows DURATIONS (lifespans, reign lengths) side by side with the
+  // years, so it must stay on the mechanic clock — the era-anchored display
+  // calendar compresses later eras and would crush a 50-year reign into "5 years".
+  // (The chronicle ribbon, which shows absolute position only, uses displayYear.)
+  const nowMech = stepToYear(world.step) | 0;
 
   // index every surviving person by their house (one scan)
   const byDyn = new Map();
@@ -992,16 +996,16 @@ export function getDynastyTree(world, countryId, capPerHouse = 90) {
   if (polity.houses) for (let i = polity.houses.length - 1; i >= 0; i--) pushH(polity.houses[i]);
 
   const nodeOf = (p, keepSet) => {
-    const bornY = stepToYear(p.born) | 0;
+    const bornMech = stepToYear(p.born) | 0;
     return {
       id: p.id, name: p.name || "?", female: !!p.female,
       bastard: !!p.bastard, foreign: !!p.foreign,
       parentId: keepSet.has(p.parentId) ? p.parentId : -1,
       spouseId: keepSet.has(p.spouseId) ? p.spouseId : -1,
-      bornY, age: p.died >= 0 ? (stepToYear(p.died) | 0) - bornY : nowY - bornY,
+      bornY: bornMech, age: p.died >= 0 ? (stepToYear(p.died) | 0) - bornMech : nowMech - bornMech,
       diedY: p.died >= 0 ? stepToYear(p.died) | 0 : -1,
       reignFrom: p.reignFrom >= 0 ? p.reignFrom : -1,
-      reignTo: p.reignFrom >= 0 ? (p.reignTo >= 0 ? p.reignTo : nowY) : -1,
+      reignTo: p.reignFrom >= 0 ? (p.reignTo >= 0 ? p.reignTo : nowMech) : -1,
       isRuler: p.id === rulerId,
       title: p.id === rulerId ? p._title : undefined,
       epithet: p.epithet || null,
@@ -1027,7 +1031,7 @@ export function getDynastyTree(world, countryId, capPerHouse = 90) {
         if (p.reignFrom >= 0) s += 200;
         if (p.died < 0) s += 80;
         if (d && id === d.founderId) s += 60;
-        s += Math.max(0, 50 - (nowY - (stepToYear(p.born) | 0)) / 8);
+        s += Math.max(0, 50 - (nowMech - (stepToYear(p.born) | 0)) / 8);
         return s;
       };
       ids.sort((a, b) => score(b) - score(a));
@@ -1058,7 +1062,7 @@ export function getDynastyTree(world, countryId, capPerHouse = 90) {
     roll.push({
       name: r.name || "?", female: !!r.female, house: dyn ? dyn.name : null,
       title: r._title || titleFor(polity.gov, r.female), gov: polity.gov || GOV_MONARCHY,
-      fromY: r.reignFrom >= 0 ? r.reignFrom : nowY, toY: -1, epithet: null, current: true,
+      fromY: r.reignFrom >= 0 ? r.reignFrom : nowMech, toY: -1, epithet: null, current: true,
     });
   }
   return {

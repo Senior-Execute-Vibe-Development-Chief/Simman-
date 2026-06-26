@@ -49,6 +49,7 @@ export function realmName(world, countryId) {
 // persistent polity record (polity.chron).
 export function chronicleTick(world) {
   if (!world.countries) return;
+  let leadEra = 0;
   for (const c of world.countries.values()) {
     if (!c || !c.capital) continue;
     const p = ensurePolity(world, c.id, { silent: true, seat: c.capital });
@@ -56,6 +57,7 @@ export function chronicleTick(world) {
     const m = p.chron;
 
     const era = techState(c.capital.knowledge || {}).era;
+    if (era > leadEra) leadEra = era;
     if (era > m.era) {
       if (m.era >= 0 && ERAS[era]) logEvent(world, "era.reached", { polity: c.id, name: realmName(world, c.id), era, eraName: ERAS[era] });
       m.era = era;
@@ -111,6 +113,12 @@ export function chronicleTick(world) {
     const mon = p._monuments || 0;
     if (mon > 5000) { const b = Math.floor(Math.log2(mon / 5000)); if (b > (m.monBand ?? -1)) { logEvent(world, "realm.monument", { polity: c.id }); m.monBand = b; } }
   }
+
+  // Record the DISPLAY calendar's era timeline: the step the leading civilisation
+  // first reached each era. The cosmetic year (calendar.js displayYear) is pinned
+  // to this — read-only, never an input to a mechanic.
+  if (!world._eraAt) world._eraAt = [0];
+  for (let e = world._eraAt.length; e <= leadEra; e++) world._eraAt[e] = world.step | 0;
 }
 
 function fmtCoin(v) {

@@ -69,7 +69,7 @@ let _tecParams = {};
 // generateWorld extracted to ./worldgen.js so worldgen can run headlessly.
 import { generateWorld } from "./sim/worldgen.js";
 import { buildTerritory, tileFert } from "./sim/pipeline.js";
-import { yearStr } from "./sim/calendar.js";
+import { yearStr, displayYearStr } from "./sim/calendar.js";
 
 const BC=[
 [10,22,56],      // 0  Deep Ocean
@@ -289,8 +289,9 @@ const CHRON_LABEL={founding:"Founding",discovery:"Discovery",growth:"Growth",wea
   war:"War",conquest:"Conquest",annex:"Annexation",secession:"Secession",loss:"Loss",
   plague:"Plague",famine:"Famine",end:"Fall",
   industry:"Industry",trade:"Trade",faith:"Faith",society:"Society"};
-function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose}){
+function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose,eraAt}){
   const rows=(entries||[]).slice().reverse();   // newest first
+  const yr=(step)=>eraAt?displayYearStr(eraAt,step):yearStr(step);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(580px,93vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
@@ -314,7 +315,7 @@ function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose}
             :<div style={{display:"grid",gridTemplateColumns:"auto auto 1fr",gap:"5px 10px",alignItems:"baseline",fontSize:12}}>
               {rows.map((e,i)=>(
                 <Fragment key={i}>
-                  <span className="au-fade" style={{textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{yearStr(e.step)}</span>
+                  <span className="au-fade" style={{textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{yr(e.step)}</span>
                   <span style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:CHRON_COL[e.type]||"#5a4a32",fontWeight:600,whiteSpace:"nowrap"}}>{CHRON_LABEL[e.type]||e.type}</span>
                   <span style={{color:"#3a2614",lineHeight:1.4}}>{e.text}</span>
                 </Fragment>
@@ -2401,6 +2402,7 @@ const applySnapshot=useCallback((snap)=>{
   let psw=peopleRef.current;
   if(!psw||!psw._isMirror){psw=peopleRef.current={_isMirror:true};}
   psw.step=snap.step;psw.tw=snap.tw;psw.th=snap.th;psw.tileRes=snap.tileRes;psw.N=snap.N;
+  if(snap.eraAt)psw._eraAt=snap.eraAt;   // display-calendar timeline
   psw.globalP=snap.globalP;
   if(snap.owner)psw._territoryOwner=snap.owner;
   if(snap.roadQuality)psw.roadQuality=snap.roadQuality;
@@ -2742,8 +2744,12 @@ useEffect(()=>{
 });
 
 // ── Aggregate world stats for the chronicle ribbon ──
+// The displayed year tracks the EMERGENT tech era (calendar.js displayYear),
+// pinned to history — not the runaway linear clock. `yr(step)` formats any step.
+const _eraAt=(peopleRef.current&&peopleRef.current._eraAt)||null;
+const yr=(step)=>_eraAt?displayYearStr(_eraAt,step):yearStr(step);
 const _step=(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
-const _ys=yearStr(_step);
+const _ys=yr(_step);
 // Leading era comes from the WORKER stats (the most advanced capital's tech
 // era) — the old ribbon averaged the dead tribe arrays and so sat frozen on
 // "Stone Age" forever.
@@ -3519,7 +3525,7 @@ const renderInspect=()=>{
                 📜 Open chronicle ({chron.entries.length} events)
               </button>
               <div style={{display:"flex",gap:6,lineHeight:1.3}}>
-                <span className="au-fade" style={{flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{yearStr(latest.step)}</span>
+                <span className="au-fade" style={{flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{yr(latest.step)}</span>
                 <span style={{color:CHRON_COL[latest.type]||"#5a4a32"}}>{latest.text}</span>
               </div>
             </div>
@@ -3663,7 +3669,7 @@ const renderCharts=()=>{
           {F.slice(-28).reverse().map((e,i)=>(
             <div key={F.length-i} onClick={()=>jumpTo(e.x,e.y)}
               style={{fontSize:10,padding:"2px 0",cursor:e.x!=null?"pointer":"default",borderBottom:"1px solid rgba(58,38,20,0.08)",lineHeight:1.35}}>
-              <span className="au-fade" style={{marginRight:5}}>{yearStr(e.step)}</span>{e.text}
+              <span className="au-fade" style={{marginRight:5}}>{yr(e.step)}</span>{e.text}
             </div>))}
         </div>;})()}
       <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
@@ -4011,6 +4017,7 @@ return(
 {/* ══════════ CHRONICLE OVERLAY (follows the inspected realm) ══════════ */}
 {chronicleOpen&&peopleRef.current&&peopleRef.current._chronicle&&(
   <ChronicleOverlay entries={peopleRef.current._chronicle.entries} name={peopleRef.current._chronicle.name}
+    eraAt={peopleRef.current._eraAt}
     perspective={!!peopleRef.current._chronicle.perspective}
     onTogglePerspective={()=>{
       const next=!peopleRef.current._chronicle.perspective;
