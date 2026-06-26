@@ -50,7 +50,17 @@ import { exportValueOf, getWealthReserve } from "./settlement.js";
 import { govOf } from "./conquest.js";
 import { commerceMul } from "./personality.js";
 import { localP } from "./inflation.js";
-import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_MATERIALS, IN_TOLLS, IN_LUXURY, OUT_GOODS, OUT_FOOD, OUT_MATERIALS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
+import { recordIn, recordOut, IN_GOODS, IN_FOOD, IN_MATERIALS, IN_TOLLS, IN_LUXURY, IN_CARRY, OUT_GOODS, OUT_FOOD, OUT_MATERIALS, OUT_TOLLS, OUT_TARIFFS, OUT_LUXURY } from "./money.js";
+
+// Entrepôt share (0..1): how much of an entrepôt a hub is — port access (a harbour or
+// strait trade must funnel through) times market size (a great mart re-sells what it
+// lands). A big coastal city ≈ 1 (Venice, Amsterdam, Malacca); a small inland ford ≈ 0.
+// Scales the re-export brokerage it skims off goods passing through it.
+function entrepotShare(s) {
+  const port = Math.min(1, s.waterAccess || 0);
+  const market = Math.min(1, Math.log10(Math.max(1, s.people || 0)) / 4);   // ~0 at a hamlet, ~1 at 10k+
+  return (0.3 + 0.7 * port) * market;
+}
 
 // ── Constants ──────────────────────────────────────────────────────
 const QUALITY_NEW         = 0.25;       // new road: 4× cheaper than plain
@@ -1022,14 +1032,23 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   if (goodsValue <= 0) return;
   // Each intermediate's toll scales with how much of a CROSSING it controls
   // (waterAccess — a ford, bridge, strait or port that trade must funnel through).
-  let tollSum = 0;
-  if (intermediates) for (const inter of intermediates) tollSum += 1 + TOLL_CHOKE_W * Math.min(1, inter.waterAccess || 0);
+  let tollSum = 0, brokerSum = 0;
+  if (intermediates) for (const inter of intermediates) {
+    tollSum += 1 + TOLL_CHOKE_W * Math.min(1, inter.waterAccess || 0);   // chokepoint transit toll
+    brokerSum += entrepotShare(inter);                                    // market re-export brokerage (0..1 per hub)
+  }
   const totalToll = goodsValue * TOLL_RATE * tollSum;
+  // CARRYING TRADE (entrepôt): a re-export MARGIN on the goods' value charged by the
+  // great market hubs they pass through — the brokerage that made Venice and Amsterdam
+  // rich on goods they never produced. Paid by the buyer (goods routed through a mart
+  // cost more — conserved), captured by the hubs in proportion to how much of an
+  // entrepôt each is (port access × market size). Distinct from the flat transit toll.
+  const totalBroker = goodsValue * T.ENTREPOT_W * brokerSum;
   const collector = customsCollector(world, seller, buyer);
   const tariff = collector ? goodsValue * T.TARIFF_RATE : 0;
   // Don't ship goods worth less than the cost to move + clear them.
-  if (goodsValue <= freight + totalToll + tariff) return;
-  const want = goodsValue + freight + totalToll + tariff;
+  if (goodsValue <= freight + totalToll + totalBroker + tariff) return;
+  const want = goodsValue + freight + totalToll + totalBroker + tariff;
   const reserve = getWealthReserve(buyer);
   const available = Math.max(0, (buyer.wealth || 0) - reserve);
   if (available <= 0) return;
@@ -1043,7 +1062,7 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   // so the closed specie supply is conserved. The supply is instead regulated by
   // the realistic COIN_LOSS_RATE drain + depleting mines, not this burn.
   const freightPaid = freight * scale;
-  if (freightPaid > 0) seller.wealth += freightPaid;
+  if (freightPaid > 0) seller.wealth += freightPaid;   // carrier fee (the seller's own shipping)
   // Book the trade by SECTOR (computeExportValue split the seller's exports into
   // food / raw materials / manufactured goods). A Farming Region reads as a
   // farmer selling grain & livestock, a town as a workshop selling crafts.
@@ -1072,15 +1091,20 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   const goodsPaid = paid - foodPaid - matPaid;
   recordIn(seller, IN_FOOD, foodPaid);
   recordIn(seller, IN_MATERIALS, matPaid);
-  recordIn(seller, IN_GOODS, goodsPaid + freightPaid);   // goods sold + the carrying-trade (freight) fee
+  recordIn(seller, IN_GOODS, goodsPaid + freightPaid);   // goods sold + the seller's own shipping fee
   recordOut(buyer, OUT_FOOD, foodPaid);
   recordOut(buyer, OUT_MATERIALS, matPaid);
   recordOut(buyer, OUT_GOODS, goodsPaid);
-  recordOut(buyer, OUT_TOLLS, (freight + totalToll) * scale);
+  recordOut(buyer, OUT_TOLLS, (freight + totalToll + totalBroker) * scale);
   if (intermediates) {
     for (const inter of intermediates) {
       const tollPer = goodsValue * TOLL_RATE * (1 + TOLL_CHOKE_W * Math.min(1, inter.waterAccess || 0)) * scale;
       inter.wealth = (inter.wealth || 0) + tollPer; recordIn(inter, IN_TOLLS, tollPer);
+      // Re-export brokerage: the great market hubs (high entrepôt share) capture a
+      // margin on the goods' value — a coastal mart on a busy route reads as a
+      // carrying-trade hub, a backwater ford as a mere toll post.
+      const brokerPer = goodsValue * T.ENTREPOT_W * entrepotShare(inter) * scale;
+      if (brokerPer > 0) { inter.wealth += brokerPer; recordIn(inter, IN_CARRY, brokerPer); }
     }
   }
   // Customs duty funds the importing realm's STATE TREASURY (not the capital

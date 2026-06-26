@@ -17,7 +17,9 @@ export const IN_TRIBUTE   = 6;   // tribute received from its vassals
 export const IN_AID       = 7;   // colonial support received from the mother country
 export const IN_LUXURY    = 8;   // sold luxury goods (spices/furs/incense/dyes) to wealthy buyers
 export const IN_STATE_PAY  = 9;   // received from the state treasury (army pay / public works / dole)
-const N_IN = 10;
+export const IN_PILGRIM   = 10;  // offerings & pilgrim traffic at a faith's holy see (Mecca/Rome/Varanasi)
+export const IN_CARRY     = 11;  // the carrying trade — brokerage/re-export earned moving OTHERS' goods (Venice/Amsterdam)
+const N_IN = 12;
 
 // Spending channels.
 export const OUT_GOODS    = 0;   // bought goods (imports)
@@ -30,17 +32,18 @@ export const OUT_MILITARY = 6;   // army upkeep
 export const OUT_AID      = 7;   // colonial support sent to its colonies
 export const OUT_COLONY   = 8;   // endowment for a departing colony ship
 export const OUT_LUXURY   = 9;   // bought luxury goods (elite consumption)
-const N_OUT = 10;
+export const OUT_PILGRIM  = 10;  // offerings & the cost of pilgrimage paid by the faithful
+const N_OUT = 11;
 
 export const IN_LABELS = [
   "mining", "goods sold", "food & farm goods", "materials sold",
   "transit tolls", "taxes & customs", "tribute received", "colonial aid",
-  "luxuries sold", "state pay",
+  "luxuries sold", "state pay", "pilgrim offerings", "carrying trade",
 ];
 export const OUT_LABELS = [
   "goods bought", "food & farm goods", "construction", "freight & tolls",
   "import duties", "tribute paid", "army upkeep", "colonial aid", "colony ship",
-  "luxuries bought",
+  "luxuries bought", "pilgrimage",
 ];
 
 const DECAY = 0.95;   // EMA smoothing (~20-tick window)

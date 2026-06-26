@@ -32,7 +32,7 @@ import { checkPeopleSimInvariants } from "./invariants.js";
 import { chronicleTick } from "./chronicle.js";
 import { techState } from "./tech.js";
 import { updateCultures, CULTURE_INTERVAL } from "./cultures.js";
-import { updateFaiths, FAITH_INTERVAL } from "./faiths.js";
+import { updateFaiths, FAITH_INTERVAL, updatePilgrimage, PILGRIM_INTERVAL } from "./faiths.js";
 import { updateDynasties, DYNASTY_INTERVAL } from "./dynasties.js";
 import { diffuseIdentityField } from "./identityField.js";
 import { T } from "./tuning.js";
@@ -261,6 +261,9 @@ export function stepPeopleSim(world, n = 1) {
     // Faiths: folk-faith seeding, organized genesis, trade-graph conversion,
     // state adoption + legitimacy, schisms (faiths.js).
     if (world.step % _ivl(FAITH_INTERVAL) === 0) updateFaiths(world);
+    // Pilgrimage economy: the faithful send offerings to each creed's holy see
+    // (faiths.js) — a holy city grows rich on devotion, no local production needed.
+    if (world.step % _ivl(PILGRIM_INTERVAL) === 0) updatePilgrimage(world);
     // Thrones: rulers age/marry/die, succession + crises (dynasties.js).
     if (world.step % _ivl(DYNASTY_INTERVAL) === 0) updateDynasties(world);
     // Per-tile identity field (identityField.js): for the lens the user is

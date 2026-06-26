@@ -25,6 +25,8 @@ import { getCulture, languageOf, dominantCulture, familyOf, folkAnchorOf } from 
 import { faithShapePersonality } from "./personality.js";
 import { forEachNear } from "./spatialGrid.js";
 import { langWord } from "../language.js";
+import { recordIn, recordOut, IN_PILGRIM, OUT_PILGRIM } from "./money.js";
+import { getWealthReserve } from "./settlement.js";
 
 // ── Timing: an AXIAL AGE, then bounded branching (the real pattern) ──
 // Real religious history isn't a flat trickle. Organized faith is impossible
@@ -605,5 +607,43 @@ export function updateFaiths(world) {
         else normalizeMix(s.faithMix);
       }
     }
+  }
+}
+
+// ── Pilgrimage economy ──────────────────────────────────────────────────────
+// A faith's founding SEE (originSettlementId) is its holy city. The faithful across
+// the world send offerings and make pilgrimage to it, so a city that birthed a great,
+// widely-followed creed grows rich on devotion alone — Mecca, Rome, Jerusalem, Varanasi,
+// Lhasa — an economic archetype with NO local production behind it. Conservative: coin
+// is TRANSFERRED from the faithful (a sliver of their spendable wealth, by their share
+// of the faith) to the holy see, never minted. The bigger and richer a faith's flock,
+// the wealthier its holy city — emergent from the faith's spread, never time-gated.
+export const PILGRIM_INTERVAL = 50;   // ticks between pilgrimage passes (slow devotional flow)
+export function updatePilgrimage(world) {
+  if (T.PILGRIM_W <= 0) return;
+  const byId = world._byId;
+  if (!byId || !world.faiths || !world.faiths.size) return;
+  const pot = new Map();   // holy-city id → offerings collected this pass
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || !s.faithMix || !s.faithMix.length) continue;
+    const spendable = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
+    if (spendable <= 0) continue;
+    let spent = 0;
+    for (const [fid, sh] of s.faithMix) {
+      const f = world.faiths.get(fid);
+      const origin = f ? (f.originSettlementId ?? -1) : -1;
+      if (origin < 0 || origin === s.id) continue;          // no see, or this IS the see
+      const holy = byId.get(origin);
+      if (!holy || holy.mode !== "settled") continue;
+      const give = spendable * T.PILGRIM_W * sh;            // offering ∝ devotion (faith share)
+      if (give <= 0) continue;
+      pot.set(origin, (pot.get(origin) || 0) + give);
+      spent += give;
+    }
+    if (spent > 0) { s.wealth -= spent; recordOut(s, OUT_PILGRIM, spent); }
+  }
+  for (const [holyId, coin] of pot) {
+    const holy = byId.get(holyId);
+    if (holy) { holy.wealth = (holy.wealth || 0) + coin; recordIn(holy, IN_PILGRIM, coin); }
   }
 }
