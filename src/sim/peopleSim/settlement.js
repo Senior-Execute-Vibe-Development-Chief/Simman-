@@ -1894,10 +1894,18 @@ function updateFood(world, s) {
     const frozen = Math.max(0, Math.min(1, (0.60 - (s._climTemp ?? 0.7)) / 0.10));
     iceFree = 1 - T.COLD_FISH * frozen;
   }
-  // ×_eraProd as for land food: scaling the water harvest too keeps a coastal /
-  // forager settlement's capacity responsive to the global productivity index,
-  // so the demographic anchor has no dead-zone to wind up against.
-  const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor * (s._eraProd || 1) * iceFree : 0;
+  // Productivity scaling, but with DIMINISHING RETURNS (FISH_ERAPROD_POW < 1). A
+  // fishery is a finite renewable stock with a maximum sustainable yield: better
+  // boats, nets and preservation let a developed people approach and store that
+  // yield, but cannot multiply the fish in the water the way intensive farming
+  // multiplies a field's output. Scaling fish by the FULL _eraProd lift (as land
+  // food is) made the late-game fishery balloon ~60×, so every major coastal city
+  // became 80-100% fish-fed and the best water site bred a runaway primate. A
+  // sub-linear exponent keeps low-tech foragers unchanged (eraProd≈1) while taming
+  // the high-tech tail, so farmed land — not a single coastal tile — sets the
+  // carrying capacity of great cities, as it did historically.
+  const fishProd = Math.pow(s._eraProd || 1, T.FISH_ERAPROD_POW);
+  const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor * fishProd * iceFree : 0;
   s._fishYield = fish;
 
   // Land food is STORABLE — it fills granaries and ships across the world
