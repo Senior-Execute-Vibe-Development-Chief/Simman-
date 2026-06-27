@@ -556,21 +556,33 @@ export function updateCultures(world) {
       let b = blocs.get(key); if (!b) blocs.set(key, b = { cid, k, seed: s, n: 0 });
       b.n++;
     }
-    // fork each substantial, timed-out block into ONE new people
-    for (const b of blocs.values()) {
-      if (b.n < ETHNO_MIN_BLOC) continue;
-      const parent = getCulture(world, b.cid);
-      const daughter = foundCulture(world, { origin: b.seed, parentCultureId: b.cid,
-        divergence: 0.55, branchFromLangId: capLangByCountry.get(b.k) });
-      // convert the whole same-(people, country) block — gather BEFORE mutating
-      const members = [];
-      for (const s of world.settlements) if (s.mode === "settled" && s.countryId === b.k && dominantCulture(s) === b.cid) members.push(s);
-      for (const s of members) { seedCulture(world, s, daughter.id); s._ethnoSince = undefined; }
-      logEvent(world, "culture.diverged", {
-        culture: daughter.id, cultureName: daughter.name,
-        parent: b.cid, parentName: parent ? parent.name : undefined,
-        s: b.seed.id, sName: b.seed.name, polity: b.k,
-      });
+    // fork each substantial, timed-out block into ONE new people. Gather the
+    // members of every forking (people, country) block in ONE settlement pass
+    // (was a full re-scan per block), BEFORE mutating any culture. Blocks have
+    // disjoint (people|country) keys, so a single up-front map is exact.
+    const forking = [];
+    for (const b of blocs.values()) if (b.n >= ETHNO_MIN_BLOC) forking.push(b);
+    if (forking.length) {
+      const memberMap = new Map();   // `cid|country` → settlements of that people in that realm
+      for (const s of world.settlements) {
+        if (s.mode !== "settled" || s.countryId < 0) continue;
+        const cid = dominantCulture(s); if (cid < 0) continue;
+        const key = cid + "|" + s.countryId;
+        let arr = memberMap.get(key); if (!arr) memberMap.set(key, arr = []);
+        arr.push(s);
+      }
+      for (const b of forking) {
+        const parent = getCulture(world, b.cid);
+        const daughter = foundCulture(world, { origin: b.seed, parentCultureId: b.cid,
+          divergence: 0.55, branchFromLangId: capLangByCountry.get(b.k) });
+        const members = memberMap.get(b.cid + "|" + b.k) || [];
+        for (const s of members) { seedCulture(world, s, daughter.id); s._ethnoSince = undefined; }
+        logEvent(world, "culture.diverged", {
+          culture: daughter.id, cultureName: daughter.name,
+          parent: b.cid, parentName: parent ? parent.name : undefined,
+          s: b.seed.id, sName: b.seed.name, polity: b.k,
+        });
+      }
     }
   }
 }

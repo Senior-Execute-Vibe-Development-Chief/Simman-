@@ -15,7 +15,9 @@ import { logEvent } from "./events.js";
 import { ensurePolity, getPolity } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor } from "./cultures.js";
 import { T } from "./tuning.js";
+import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, OUT_GOODS, OUT_MATERIALS } from "./money.js";
+import { hash32 } from "./rng.js";
 
 // Settlement ids count up PER WORLD (world._nextSettlementId), not at module
 // scope: country ids are settlement ids and the personality RNG is seeded from
@@ -399,26 +401,70 @@ function oreTier(res) {
 // industry — so they're the default "goods". METALWORK is now an ore-gated
 // SPECIALTY (Toledo, the Ruhr), not the thing every town read as. Pottery /
 // woodcraft / leather are the broad everyday crafts.
-const TEXTILE_W = 3.0;   // the loom — the default urban good (the largest pre-modern manufacture)
-const METAL_W   = 1.8;   // the forge — ore-gated specialty: only the richest ore+coal regions out-earn the loom
+// Craft weights. Textiles were the largest pre-modern manufacture, but they are a
+// CLIMATE specialty (wool needs temperate pasture, cotton warm-wet ground), NOT a
+// universal floor every town shares — a fibre-poor desert/tundra/rainforest town
+// leads with something else. Metalwork is the ore specialty; SERVICES (the counting-
+// house, entrepôt trade, the chancery) are the BIG-CITY specialty that makes a
+// Venice/Amsterdam lead on commerce, not cloth; pottery/leather/wares are the broad
+// everyday crafts. Differentiated so a settlement's GEOGRAPHY (climate, ore, coast,
+// size, farmland) picks which sector leads — economic variety across the map.
+const TEXTILE_W = 2.4;   // the loom — leads where fibre (wool/cotton) is genuinely abundant
+const METAL_W   = 1.9;   // the forge — ore-gated: rich ore regions out-earn the loom
 const POTTERY_W = 0.6;   // pottery / woodcraft / leather — broad everyday crafts
+const SERVICE_W = 1.4;   // counting-house / entrepôt — leads in large, organised commercial cities
+// Reference "fully-realised" output for each craft, used to pick a town's COMPARATIVE
+// advantage (legs[k] / ref) — the sector it's closest to maxing out — rather than its
+// absolute-largest leg. A pure ore town then locks into metal even though cloth might
+// out-earn it in raw coin, exactly as real towns specialised in what they were
+// RELATIVELY best at and traded for the rest. This is what spreads specialties across
+// the map instead of every town chasing the single globally-strongest sector.
+const CRAFT_REF = {
+  "Textiles": 2.0, "Metalwork": 1.9, "Pottery & leather": 0.6,
+  "Crafted wares": 0.3, "Services & records": 1.4,
+};
 // Shared craft recipe so computeExportValue and getExportBreakdown can't drift.
-// Returns the manufactured-sector legs (pre craftFrac / mult), keyed by label.
+// Returns the RAW manufactured-sector legs (pre craftFrac / mult / cluster-boost),
+// keyed by label, including each town's fixed idiosyncratic edge.
 function craftLegs(s, k, r) {
   const popScale = Math.min(1, Math.log(Math.max(1, s.people || 0)) / 8);
   const craft = 0.4 + (k.construction || 0) * 0.5;                  // general artisanship
   const temp = s._climTemp ?? 0.5, moist = s._climMoist ?? 0.5;
   const wool   = Math.max(0, 1 - Math.abs(temp - 0.45) * 2.2);      // temperate pasture
   const cotton = Math.max(0, (temp - 0.55) * 2.2) * Math.max(0, (moist - 0.4) * 2);   // warm & wet
-  const fibre  = 0.35 + 0.65 * Math.min(1, wool + cotton + (k.agriculture || 0) * 0.3);
+  // Fibre is a CLIMATE endowment (wool + cotton), with only a small flax/agri floor —
+  // so cloth is a regional specialty, not the universal default it used to be.
+  const fibre  = 0.2 + 0.8 * Math.min(1, wool + cotton + (k.agriculture || 0) * 0.15);
   const physMetalCap = oreTier(r);
-  return {
+  const legs = {
     "Textiles":          TEXTILE_W * fibre * (0.55 + 0.45 * popScale) * craft,
     "Metalwork":         physMetalCap > 0 ? Math.min(k.metallurgy || 0, physMetalCap) * METAL_W : 0,
     "Pottery & leather": POTTERY_W * popScale * (0.4 + (r.timber || 0) * 0.3 + (r.horses || 0) * 0.3),
     "Crafted wares":     (k.construction || 0) * 0.3,
-    "Services & records": (k.organization || 0) * popScale * 0.8,
+    // Services scale super-linearly with city size (popScale²): a great metropolis is a
+    // commercial/financial hub whose trade & administration dwarf its workshops.
+    "Services & records": SERVICE_W * (k.organization || 0) * popScale * popScale,
   };
+  // Idiosyncratic founding edge — a fixed, deterministic per-town bias on each sector
+  // (the master weaver / smith who happened to settle here). Breaks ties so towns with
+  // identical geography still differ; small enough that real geography still dominates.
+  if (T.AGGLOM_IDIO > 0) {
+    const sid = s.id || 1;
+    for (const key in legs) legs[key] *= Math.max(0, 1 + T.AGGLOM_IDIO * (hash32(sid, key) / 4294967296 - 0.5) * 2);
+  }
+  return legs;
+}
+// AGGLOMERATION lock-in (increasing returns): multiply a town's ESTABLISHED specialty
+// (_specKey, the comparative-advantage sector it has committed to, strength _specStr)
+// so the cluster compounds — Florence→wool, Toledo→steel, Murano→glass. Applied by
+// BOTH the economy (computeExportValue) and the panel (getExportBreakdown) so they
+// can't drift. Separate from craftLegs so the comparative-advantage PICK reads the raw
+// geographic profile (lets industry move when the geography changes), not the boost.
+function applyClusterBoost(legs, s) {
+  if (T.AGGLOM_W > 0 && s._specKey && legs[s._specKey] != null) {
+    legs[s._specKey] *= 1 + T.AGGLOM_W * (s._specStr || 0);
+  }
+  return legs;
 }
 
 // Cache a settlement's home-tile climate — latitude band (0 = equator,
@@ -522,7 +568,10 @@ function updateWealth(world, s) {
     const left = reserveArr[ti];
     if (left <= 0) continue;
     const richness = (world.deposits[id] && world.deposits[id][ti]) || 0;
-    const want = T.MINING_RATE * richness * popFactor * orgMul * (world._dt || 1);   // mining income per tick → granularity-scaled
+    // Coerced labour intensifies extraction — more specie out, reserves depleted FASTER
+    // (Potosí's mita): a deadly mining boom that burns through both the seam and its slaves.
+    const coerceMine = T.SLAVERY ? 1 + T.MINE_COERCE * Math.min(2, (s._unfree || 0) / Math.max(1, s.people || 1)) : 1;
+    const want = T.MINING_RATE * richness * popFactor * orgMul * coerceMine * (world._dt || 1);   // mining income per tick → granularity-scaled
     const got = want < left ? want : left;
     reserveArr[ti] = left - got;
     mined += got;
@@ -567,6 +616,81 @@ function computeLuxury(s, world) {
   s._luxDemandLeft = s._luxDemand;
 }
 export { updateWealth };
+
+// ── Coerced labour: slaves, cash crops & intensified mining ──────────────────
+// Coerced labour is NOT a relabel of population — it does what free pop structurally
+// can't: work land for CASH CROPS (so the land stops feeding itself and must import
+// food), intensify mining, and pump owner-concentrated wealth without becoming citizens
+// — at the cost of a death-sink and revolt risk. See docs/coerced-labor.md. Everything
+// gates on climate / deposits / wealth / food — never on time/era (the cardinal rule).
+//
+// Tropical export-crop suitability (sugar & coffee want it hot AND wet; cotton warm).
+// ~0 in temperate / cold / arid land — the geography that made the plantation zones.
+function cashSuit(s) {
+  const t = s._climTemp ?? 0.5, m = s._climMoist ?? 0.5;
+  const sugar  = Math.max(0, (t - 0.55) * 2.2) * Math.max(0, (m - 0.45) * 2.2);              // hot & wet
+  const cotton = Math.max(0, (t - 0.5) * 1.6) * Math.max(0, 1 - Math.abs(m - 0.45) * 2.2);   // warm
+  return Math.min(1.5, sugar + 0.5 * cotton);
+}
+const CASHCROP_LAND   = 0.85;   // fraction of arable a fully-cash-cropped settlement pulls OFF food
+const SLAVE_MINE_PULL = 0.6;    // mining's coerced-labour demand weight
+
+// Evolve a settlement's coerced-labour stock, its cash-crop land allocation, and its
+// plantation output. Called once per tick from updateSettlement (after updateWealth, so
+// it reads fresh wealth; mining/food read last tick's _unfree, which drifts slowly).
+export function updateCoercedLabour(world, s) {
+  if (!T.SLAVERY || s.mode !== "settled") { if (s._unfree) { s._unfree = 0; s._cashFrac = 0; } return; }
+  const cs = cashSuit(s); s._cashSuit = cs;
+  const hasMine = (s._minableTiles && s._minableTiles.length) ? 1 : 0;
+  const labourDemand = cs + SLAVE_MINE_PULL * hasMine;          // coerced labour this site could USE
+  // Food security: can it feed extra mouths AND afford to stop growing its own food?
+  // surplus on hand + a trade link to import grain (a plantation must import food).
+  const surplus = Math.max(0, (s._foodSupply || 0) - (s._foodDemand || 0));
+  const reachF = s._tradeReach ? Math.min(0.7, s._tradeReach.size / 12) : 0;
+  const foodSec = Math.min(1, surplus / Math.max(1, s._foodDemand || 1) + reachF);
+  // Wealth gates how much coerced labour it can buy & maintain (a cost proxy).
+  const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
+  const afford = Math.min(1, spare / (150 + (s._unfree || 0) * 3));
+  // Sized by the settlement's economy (people as the land/capital proxy), NOT sqrt — a
+  // plantation/mine can hold MORE unfree than free (the Caribbean was ~80% enslaved); the
+  // revolt cap below keeps the ratio from running to 100%.
+  const target = T.SLAVE_TARGET * labourDemand * Math.max(1, s.people || 0) * foodSec * afford;
+  let u = s._unfree || 0;
+  // The workforce comes from the slave TRADE (slavery.js), not thin air: work your OWN
+  // captives first (a raider that also has plantations/mines uses what it seizes), then
+  // post the residual as market DEMAND for slavery.js to fill from others' captives.
+  const cap = s._captives || 0;
+  if (cap > 0 && u < target) { const useLocal = Math.min(cap, target - u); u += useLocal; s._captives = cap - useLocal; }
+  // Attrition — the death sink: mines & plantations are lethal, so the unfree must be
+  // resupplied (this is what sustains the slave trade); mild for domestic/mixed work.
+  const harsh = 0.25 + 0.75 * Math.min(1, cs + 0.5 * hasMine);
+  u *= (1 - T.SLAVE_DEATH * harsh * (world._dt || 1));
+  // Revolt: a high unfree ratio with too little free population to police it boils over —
+  // the estate is wrecked and most of the unfree are lost (Haiti, the Zanj rebellion).
+  const ratio = u / Math.max(1, (s.people || 0) + u);
+  s._unfreeRatio = ratio;
+  if (ratio > 0.6 && u > 50) {
+    const r = hash32(world.seed || 1, "slaveRevolt", s.id, world.step) / 4294967296;
+    if (r < T.SLAVE_UNREST * (ratio - 0.6) * 0.02 * (world._dt || 1)) {
+      u *= 0.25; s._sackedAt = world.step;                      // the revolt craters output
+      logEvent(world, "slave.revolt", { s: s.id, sName: s.name || "a settlement" });
+    }
+  }
+  s._unfree = Math.max(0, u);
+  s._slaveDemand = Math.max(0, target - u);   // residual demand → bought on the market (slavery.js)
+  // Cash-crop land allocation drifts toward what's suitable, food-secure & labour-backed.
+  const labourBacked = Math.min(1, u / Math.max(1, 0.25 * (s.people || 1)));
+  const cashTarget = cs > 0.05 ? Math.min(1, cs) * foodSec * labourBacked : 0;
+  s._cashFrac = (s._cashFrac || 0) + 0.04 * (cashTarget - (s._cashFrac || 0));
+  // Cash-crop OUTPUT → folded into the LUXURY supply (sugar/tobacco/coffee were the
+  // colonial luxuries), so it trades as luxury income to the OWNER. Coerced labour
+  // multiplies it into a real plantation; free peasants grow only a little.
+  const arableScale = Math.min(1, (s._terrTiles || 0) / 120);
+  const coerceMul = T.COERCE_CASH * Math.min(2, u / Math.max(1, s.people || 1));
+  const cashOut = T.CASHCROP_W * cs * (s._cashFrac || 0) * arableScale * (0.25 + coerceMul) * (s._eraProd || 1);
+  s._cashOut = cashOut;
+  if (cashOut > 0) { s._luxSupply = (s._luxSupply || 0) + cashOut; s._luxSupplyLeft = (s._luxSupplyLeft || 0) + cashOut; }
+}
 
 // Export-value = how many GOODS this settlement has to sell on a
 // road. NOT wealth itself — precious metals and gems are CURRENCY
@@ -634,13 +758,21 @@ export function computeExportValue(s, world) {
   // output is urban goods, NOT "farm produce" — which is why a non-farming
   // settlement used to read, wrongly, as SELLING food. (sellGoods books the
   // three sectors; the food leg is suppressed unless the buyer is food-short.)
-  const baseIsFood = tier <= (T.DISSOLVE_FARMS ? 3 : (T.FARM_MAX_TIER | 0));   // DISSOLVE_FARMS: every town farms its own catchment
+  const baseIsFood = farmsLand(s);   // DISSOLVE_FARMS: every town farms its own catchment
   let ag = 1.0;                                          // base primary output
   let agFood = baseIsFood ? 1.0 : 0;                     // farm village's base surplus is food; a town's base output is urban goods
   let agMat = 0;
   const agScale = Math.min(1, (s._terrTiles || 0) / 120);
   if (baseIsFood) {
-    const grain = (k.agriculture || 0) * agScale * 0.6;  // grain surplus
+    // Grain surplus scales with LOCAL FERTILITY: a rich river-valley breadbasket (Nile,
+    // Sicily, the Black Earth) out-produces marginal ground many times over and STAYS a
+    // grain exporter even after it grows and industrialises — so food remains a leading
+    // export where the soil is genuinely rich, instead of fading everywhere as crafts
+    // rise. Economic role follows geography. (Export attribution only — actual feeding
+    // is foodHierarchy.js.)
+    const homeTi = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
+    const fert = world && world.fert ? (world.fert[homeTi] || 0.5) : 0.5;
+    const grain = (k.agriculture || 0) * agScale * (0.45 + 1.25 * fert);  // grain surplus, fertility-scaled
     const wild  = (k.agriculture || 0) * (r.timber || 0) * 0.4;   // wild-forest forage / game
     ag += grain + wild; agFood += grain + wild;
   }
@@ -669,6 +801,25 @@ export function computeExportValue(s, world) {
   // this; the loom, the forge and the clerks concentrate in TOWNS.
   let man = 0;
   const legs = craftLegs(s, k, r);
+  // Evolve the agglomeration cluster ONCE per tick (computeExportValue is memoised per
+  // step via exportValueOf). The town drifts toward its COMPARATIVE-advantage sector —
+  // the one it's closest to maxing out (legs[k] / CRAFT_REF[k]) on its RAW geographic
+  // profile — and that specialty STRENGTHENS while held (capped), decaying if the
+  // comparative lead moves (a mine plays out, a rival out-competes). Picking on the raw
+  // profile (not the boosted output) is what lets industry relocate and keeps the map
+  // diverse instead of every town chasing the single absolute-strongest craft.
+  if (world && T.AGGLOM_W > 0) {
+    let topK = null, topScore = -1;
+    for (const key in legs) { const sc = legs[key] / (CRAFT_REF[key] || 1); if (sc > topScore) { topScore = sc; topK = key; } }
+    if (topK) {
+      if (s._specKey === topK) s._specStr = Math.min(1, (s._specStr || 0) + T.AGGLOM_RISE * (1 - (s._specStr || 0)));
+      else {
+        s._specStr = (s._specStr || 0) * (1 - T.AGGLOM_DECAY);
+        if (s._specStr < 0.05) { s._specKey = topK; s._specStr = 0.05; }   // the new trade takes hold
+      }
+    }
+  }
+  applyClusterBoost(legs, s);                                      // established cluster compounds its sector
   for (const key in legs) man += legs[key];
   if (tier < 1) man *= T.FARM_CRAFT_FRAC;                           // a village manufactures little
 
@@ -696,6 +847,14 @@ export function exportValueOf(s, world) {
     s._evStep = world.step;
   }
   return s._exportValue;
+}
+
+// Does this settlement FARM its own land (so its base output is food)? Under
+// DISSOLVE_FARMS every town up to a metropolis works its own catchment;
+// otherwise only tier-0 Farming Regions (≤ FARM_MAX_TIER) do. ONE predicate so
+// the economy (computeExportValue) and its info-panel breakdown can't drift.
+export function farmsLand(s) {
+  return (s.tier | 0) <= (T.DISSOLVE_FARMS ? 3 : (T.FARM_MAX_TIER | 0));
 }
 
 // Wealth reserve = "rainy day fund" the settlement holds back from
@@ -735,13 +894,13 @@ export function getExportBreakdown(s, world) {
   // ore-gated metalwork specialty, pottery/leather, crafted wares and the
   // counting-house (craftLegs, shared with computeExportValue so the panel can't
   // drift from the economy). Each is tier-scaled and tech/army/sack-scaled.
-  const legs = craftLegs(s, k, r);
+  const legs = applyClusterBoost(craftLegs(s, k, r), s);   // same cluster lock-in the economy applies
   for (const key in legs) { const v = legs[key] * craftFrac * mult; if (v > 0.01) out.push({ label: key, value: v }); }
   const matAccess = ((r.timber || 0) + (r.stone || 0)) * 0.5;
   const buildMat = (k.construction || 0) * matAccess * 0.8 * mult;   // RAW building materials (ag-sector)
   if (buildMat > 0.01) out.push({ label: "Building materials", value: buildMat });
   const agScale = Math.min(1, (s._terrTiles || 0) / 120);
-  if (tier <= (T.FARM_MAX_TIER | 0)) {
+  if (farmsLand(s)) {   // SAME food gate as computeExportValue — panel can't drift from the economy
     const agriculture = (k.agriculture || 0) * agScale * 0.6 * mult;
     if (agriculture > 0.01) out.push({ label: "Grain surplus", value: agriculture });
     const wild = (k.agriculture || 0) * (r.timber || 0) * 0.4 * mult;
@@ -855,10 +1014,17 @@ const REFUGE_PULL      = 2.0;    // unrest=1 → up to ×(1+2·SITE_DEFENSE) fli
 // fewer farmers feed more, the surplus grows, and the countryside finally empties into
 // the cities — the urban transition. So a farming region retains a rural share that
 // FALLS with its farm yield; the city can never drain it below that.
-const URBAN_BASE_RURAL = 0.90;   // pre-industrial retained rural share (most people farm)
+export const URBAN_BASE_RURAL = 0.90;   // pre-industrial retained rural share (most people farm)
 const URBAN_YIELD0     = 3.0;    // farm yield below which the countryside stays ~full (pre-industrial: ~90% rural)
 const URBAN_GAIN       = 0.13;   // share of farmers freed to the cities per unit of yield ABOVE that (→ ~70% rural by 1950)
 const URBAN_MIN_RURAL  = 0.55;   // floor on the retained rural share even at peak modern yield
+// Retained rural share of a settlement's people: high pre-industrially, falling
+// as farm yield frees labour to the towns. ONE source of truth for both the
+// urbanise farm-labour anchor and the province rural/urban split.
+export function ruralShare(s) {
+  const fy = s._farmYield || 1;
+  return Math.max(URBAN_MIN_RURAL, URBAN_BASE_RURAL - URBAN_GAIN * Math.max(0, fy - URBAN_YIELD0));
+}
 export function urbanise(world) {
   const byId = world._byId;
   if (!byId) return;
@@ -889,8 +1055,7 @@ export function urbanise(world) {
     // the surplus above the (yield-dependent) rural floor can leave for the cities, so
     // the world stays ~85% rural until the agricultural revolution lets it urbanise.
     if ((s.tier | 0) <= (T.DISSOLVE_FARMS ? 1 : (T.FARM_MAX_TIER | 0))) {   // DISSOLVE: only the small farming TOWNS keep farmers rural; cities shed freely
-      const fy = s._farmYield || 1;
-      const ruralFrac = Math.max(URBAN_MIN_RURAL, URBAN_BASE_RURAL - URBAN_GAIN * Math.max(0, fy - URBAN_YIELD0));
+      const ruralFrac = ruralShare(s);
       movers = Math.min(movers, Math.max(0, s.people - ruralFrac * (s._k || s.people)));
     }
     if (movers < 0.2) continue;
@@ -912,6 +1077,7 @@ export function updateSettlement(world, s) {
   updatePopulation(world, s);
   if (s.mode !== "settled") return;        // died this tick (famine / wither)
   updateWealth(world, s);
+  updateCoercedLabour(world, s);   // slaves, cash crops, mine intensification (reads fresh wealth)
   updateDevelopment(world, s);
   updateKnowledge(world, s);
   updateTier(world, s);
@@ -1059,7 +1225,13 @@ function livestockClimate(temp, moist) {
   const dryOK  = Math.min(1, Math.max(0, (moist - 0.10) / 0.18));   // not bare desert
   const wetOK  = Math.min(1, Math.max(0, (0.82 - moist) / 0.28));   // not rainforest / swamp
   const warmOK = Math.min(1, Math.max(0, (temp - 0.26) / 0.16));    // not frozen
-  return dryOK * wetOK * warmOK;
+  // TSETSE BELT: subtract the warm sub-humid woodland-savanna where the fly killed
+  // cattle, horses and oxen — the model used to hand this belt a livestock BONUS
+  // (warm + moderate moisture scored high above), which is exactly the African
+  // savanna that historically could keep no draft animals. This turns that bonus
+  // into the real handicap; the dry grassland (Sahel fringe, steppe) is spared.
+  const tsetse = 1 - T.TSETSE * tsetseSignal(temp, moist);
+  return dryOK * wetOK * warmOK * Math.max(0, tsetse);
 }
 
 // Competition (fractious-polity innovation): a settlement in contact with many
@@ -1249,8 +1421,11 @@ function updateKnowledge(world, s) {
   // the most winter-sensitive track of all.
   const aptLearn = T.ORG_APTITUDE > 0 ? Math.max(0.05, 1 + T.ORG_APT_LEARN * (2 * winterness - 1)) : 1;
   const confineMul = 1 + T.CONFINE * (s._confine || 0);   // circumscription forces intensification → organisation
+  // a shrewd sovereign builds institutions faster at the seat of rule (dynasties.js c._rulerWit)
+  let rulerLearn = 1;
+  if (s.countryId >= 0 && world.countries) { const cc = world.countries.get(s.countryId); if (cc && cc.capitalId === s.id) rulerLearn = cc._rulerWit || 1; }
   k.organization = clamp01(k.organization + T.LEARN_BASE * sciMul * orgClim * orgHead
-    * ((1 + sciSqrt * 0.10) + litBranch) * aptLearn * confineMul);
+    * ((1 + sciSqrt * 0.10) + litBranch) * aptLearn * confineMul * rulerLearn);
 
   // Metallurgy — gated by ore, but PACED to keep step with the rest of the tree.
   // It used to crawl (∝ raw ore richness), so cultures reached the Renaissance
@@ -1606,11 +1781,23 @@ function updateFood(world, s) {
   let diseaseBurden = 1;
   if (T.TROPICAL_DISEASE > 0 || T.STATE_DISEASE > 0) {
     climateOf(world, s);
-    const heat = Math.min(1, Math.max(0, (s._climTemp - 0.68) / 0.18));
-    const damp = Math.min(1, Math.max(0, (s._climMoist - 0.35) / 0.35));
-    s._wetTropic = heat * damp;                      // raw wet-tropic intensity (0 temperate/dry → 1 deep rainforest)
+    // BROADENED disease signal: warm + at-least-sub-humid (the savanna woodland
+    // carried malaria & sleeping sickness too, not only the deep rainforest), so
+    // this now thins the savanna as well — see habitability.js malariaSignal.
+    s._wetTropic = malariaSignal(s._climTemp, s._climMoist);   // disease intensity (0 dry/cool → 1 hot-wet)
     s._disease = T.TROPICAL_DISEASE * s._wetTropic;   // drives the carrying-capacity drag; STATE_DISEASE reuses _wetTropic for state formation
     diseaseBurden = 1 - s._disease;
+  }
+  // ── Hot rain-fed aridity (Sahel / dry savanna) ──────────────────────────
+  // Erratic, unreliable rainfall held the dry savanna to sparse pastoralism, never
+  // dense farming. A drag on carrying capacity that FADES with river access — a
+  // managed river through the desert (the Nile) escapes and gets the irrigation
+  // lift instead. Distinct from the wet-tropic disease brake above.
+  let aridBurden = 1;
+  if (T.ARID_PENALTY > 0) {
+    climateOf(world, s);
+    s._aridity = aridSignal(s._climTemp, s._climMoist, s._riverAcc || 0);
+    aridBurden = 1 - T.ARID_PENALTY * s._aridity;
   }
   // _eraProd is the global historical-productivity index (index.js demographic
   // anchor): scaling LAND FOOD here lifts every settlement's carrying capacity
@@ -1676,7 +1863,10 @@ function updateFood(world, s) {
     irrigation = 1 + T.IRRIG_BOOST * arid * river * farmTech;
   }
   s._irrigation = irrigation;
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * soilBurden * workable * irrigation;
+  // CASH CROPS displace food: arable turned over to sugar/cotton/tobacco grows no grain,
+  // so a plantation settlement must IMPORT food (the new dynamic — see updateCoercedLabour).
+  const cashLand = T.SLAVERY ? (s._cashFrac || 0) * CASHCROP_LAND : 0;
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * aridBurden * soilBurden * workable * irrigation * (1 - cashLand);
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
@@ -1729,7 +1919,10 @@ function updateFood(world, s) {
   // town (guns vs. butter). The army is SIZED against this surplus in
   // musterArmies, so the granary still nets positive in steady state.
   const armyFood = (s.army || 0) * ARMY_FOOD;
-  const demand = civDemand + armyFood;
+  // The unfree eat too — fed at subsistence by the owner (≤ free per-capita). A big
+  // plantation/mine workforce adds real food demand the settlement must cover or import.
+  const slaveFood = T.SLAVERY ? (s._unfree || 0) * 0.0030 * T.SLAVE_FEED : 0;
+  const demand = civDemand + armyFood + slaveFood;
   // Expose rates so the food-trade pass can compute surplus/deficit
   // per road without recomputing forage + farmland sums.
   s._foodSupply = supply;
@@ -1996,7 +2189,7 @@ function updatePopulation(world, s) {
   // so urbanisation rises over history. This is what makes a big farming province
   // read as mostly rural rather than mislabelling its whole population "urban".
   if (T.DISSOLVE_FARMS) {
-    const ruralFrac = Math.max(URBAN_MIN_RURAL, URBAN_BASE_RURAL - URBAN_GAIN * Math.max(0, (s._farmYield || 1) - URBAN_YIELD0));
+    const ruralFrac = ruralShare(s);
     s._ruralPop = s.people * ruralFrac;
     s._urbanPop = s.people - s._ruralPop;
   } else {
@@ -2042,24 +2235,33 @@ function updateTier(world, s) {
   // catchment (urban genesis, crystallize.js). So the tier ladder here moves
   // only ALREADY-URBAN nodes (tier ≥ 1) up and down — the rural→urban step is a
   // spawn, not a relabel.
-  if ((s.tier | 0) === 0 && !T.DISSOLVE_FARMS) return;   // (no tier-0 exists under DISSOLVE; towns promote normally)
+  // Under DISSOLVE_FARMS the smallest settlement IS a town: no tier-0 farming regions
+  // ever exist. Any path that mints one anyway (cradles start small; a colony created
+  // without an explicit tier) is floored to a town here, so it can't linger as a
+  // "farming region" once the relative town-bar rises above its size mid-game.
+  if (T.DISSOLVE_FARMS) { if ((s.tier | 0) < 1) s.tier = 1; }
+  else if ((s.tier | 0) === 0) return;   // legacy model: tier-0 regions birth towns, don't relabel
   // Promote among the urban tiers (town → city → metropolis).
   for (let t = TIER_THRESHOLD.length - 1; t > s.tier; t--) {
     if (s.people >= bar(t)) {
       s.tier = t;
-      logEvent(world, "settlement.tier", { s: s.id, sName: s.name, polity: s.countryId,
-        tier: t, tierName: TIER_NAME[t], up: 1, people: Math.round(s.people) });
+      // Announce "grew into a city/metropolis" only the FIRST time this rung is reached
+      // (s._peakTier), not on every flicker. Settlements cluster at the relative city bar
+      // and flip tier 1↔2 harmlessly (the flip barely affects behaviour) — logging each
+      // crossing drowned the chronicle in thousands of grew/declined lines.
+      if (t > (s._peakTier | 0)) {
+        s._peakTier = t;
+        logEvent(world, "settlement.tier", { s: s.id, sName: s.name, polity: s.countryId,
+          tier: t, tierName: TIER_NAME[t], up: 1, people: Math.round(s.people) });
+      }
       return;
     }
   }
   // Demote one rung once population has fallen clearly below the current tier's
-  // floor — but never below tier 1. An urban node stays urban: a failed town is
-  // removed by withering, it does not revert to a rural farming region (which
-  // would let genesis immediately re-spawn it — an oscillation).
+  // floor — but never below tier 1. SILENT: a town slipping a rung at the floating
+  // bar isn't chronicle-worthy and would only flicker against the re-promotion.
   if (s.tier > 1 && s.people < bar(s.tier) * TIER_DEMOTE_FRAC) {
     s.tier -= 1;
-    logEvent(world, "settlement.tier", { s: s.id, sName: s.name, polity: s.countryId,
-      tier: s.tier, tierName: TIER_NAME[s.tier], up: 0, people: Math.round(s.people) });
   }
 }
 

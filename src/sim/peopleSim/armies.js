@@ -16,7 +16,7 @@
 // stall and the front ebbs and flows.
 
 import { coreRadiusFor } from "./territory.js";
-import { techEff } from "./settlement.js";
+import { techEff, URBAN_BASE_RURAL } from "./settlement.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsNow, casusBelliMul } from "./cohesion.js";
@@ -211,8 +211,23 @@ export function musterArmies(world) {
       // Defence of the heartland is unconditional; the OFFENSIVE levy is gated by the
       // realm's value-vs-cost war commitment (advanceFronts) — it won't bleed its people
       // for a war it is losing or that isn't worth the cost, unless pride drives it on.
-      if (atWar) frac += T.CONSCRIPT_FRAC * Math.min(1, CONSCRIPT_DEF * (c._defLoad || 0) + CONSCRIPT_OFF * (c._offFronts || 0) * (c._warCommit ?? 1));
-      const popCap = s.people * frac;
+      // The PROFESSIONAL core scales with the settlement's WHOLE population (it is
+      // paid from the treasury, raised in town and country alike). The wartime
+      // CONSCRIPT levy is a PEASANT levy — it comes from the RURAL countryside, not
+      // the towns — so a heavily urbanised realm can mass far fewer conscripts and
+      // must lean on its regulars: the historical drift from feudal levy to standing
+      // army as cities grow. (Legacy non-DISSOLVE model: _ruralPop is 0, so the levy
+      // falls back to the whole populace and this is algebraically unchanged.)
+      let popCap = s.people * frac;
+      if (atWar) {
+        const levyFrac = T.CONSCRIPT_FRAC * Math.min(1, CONSCRIPT_DEF * (c._defLoad || 0) + CONSCRIPT_OFF * (c._offFronts || 0) * (c._warCommit ?? 1));
+        // Normalise the rural levy to the pre-industrial baseline (URBAN_BASE_RURAL):
+        // a ~90%-rural agrarian realm levies its FULL peasant share (unchanged from
+        // the old whole-population levy), and only a realm that urbanises BELOW that
+        // baseline loses conscript capacity. Clamp so it never exceeds the populace.
+        const levyPop = T.DISSOLVE_FARMS ? Math.min(s.people, (s._ruralPop || 0) / URBAN_BASE_RURAL) : s.people;
+        popCap += levyPop * levyFrac;
+      }
       // The levy musters in and disbands faster than peacetime recruitment.
       const grow = (atWar || (s.army || 0) > popCap) ? Math.min(0.6, T.ARMY_GROW * MOBILIZE_SPEED) : T.ARMY_GROW;
       s.army = (s.army || 0) + (popCap - (s.army || 0)) * grow;
@@ -590,6 +605,7 @@ export function advanceFronts(world) {
         faithClash: fa >= 0 && fd >= 0 && fa !== fd ? 1 : 0,
         aggression: pers ? +(pers.aggression || 0).toFixed(2) : 0,
       });
+      if (pa) pa._reignWars = (pa._reignWars || 0) + 1;   // a war of the reigning ruler's making (epithet deeds)
     }
     if (seen.size > 4000) {   // prune stale pairs so the map can't grow unbounded
       for (const [k, st] of seen) if (world.step - st > (WAR_MEMORY * 3) / (world._dt || 1)) seen.delete(k);
@@ -799,6 +815,12 @@ export function advanceFronts(world) {
           if (world.debug && world.debug.land) { world.debug.land.conquest++; const g = world.debug.land.gain; g.set(att.countryId, (g.get(att.countryId) || 0) + 1); }
           def._conqueredAt = world.step;
           def._sackedAt = world.step;   // stormed by force — production penalty in computeExportValue
+          // Captives: the sack of a city carries off part of its people into bondage —
+          // war as the primary supply of the slave trade (the captor sells/works them).
+          if (T.SLAVERY && T.CAPTURE_FRAC > 0 && (def.people || 0) > 0) {
+            const taken = (def.people || 0) * T.CAPTURE_FRAC;
+            def.people -= taken; att._captives = (att._captives || 0) + taken;
+          }
           def.loyalty = 0.35;   // a fresh conquest starts restless (conquest.js)
           def._ambition = 0;    // a freshly subdued city isn't plotting (yet)
           def.unrest = 0;       // the conquered populace is cowed for now
@@ -879,7 +901,8 @@ export function advanceFronts(world) {
         let topE = -1, topPrio = -Infinity;
         for (const [dcc, f] of m) if (f.prio > topPrio) { topPrio = f.prio; topE = dcc; }
         const winning = Math.min(2, (natMight.get(cc) || 0) / Math.max(1, natMight.get(topE) || 0));
-        const appetite = Math.max(0, Math.min(1, 0.35 + 0.4 * (p.expansionism || 0) + 0.3 * (p.aggression || 0)));
+        // a bold ruler presses wars of choice; a timid one holds back (dynasties.js c._rulerWar)
+        const appetite = Math.max(0, Math.min(1, (0.35 + 0.4 * (p.expansionism || 0) + 0.3 * (p.aggression || 0)) * (c._rulerWar || 1)));
         const gov = getPolity(world, cc);
         const mom = Math.min(1, ((gov && gov._momentum) || 0) / Math.max(1, T.MOMENTUM_CAP || 1));
         const mpR = c._manpowerCap > 0 ? (c._manpower || 0) / c._manpowerCap : 1;

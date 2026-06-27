@@ -16,5 +16,103 @@ export function yearStr(step){ const y=Math.round(stepToYear(step));
   return y<0?`${-y} BC`:`${y} AD`; }
 
 // Inverse mapping: year → step (exact inverse of stepToYear).
-// Used by the dynasty layer to give a person born "A years ago" a birth step.
 export function yearToStep(year){ return (year - START_YEAR) / YEARS_PER_STEP; }
+
+// ── Dynasty clock — a SEPARATE, slower uniform clock for human lifespans ──
+// The dynasty layer (ages, reigns, lifespans, succession) runs on this, NOT on
+// stepToYear above. It must be UNIFORM (so a king reigns ~50 years whatever the
+// pace) — the era-anchored display calendar below has a spiky rate and cannot
+// time durations. Its rate is HALF the mechanic clock so a full run spans roughly
+// 3000 BC → ~2000 AD: the count of sovereigns then fits the displayed history
+// (~100 across a realm's life, not ~200 crammed in) and its years sit in the same
+// range as the display calendar. Kept separate from stepToYear so retuning ruler
+// turnover never disturbs the demographic anchor (which reads stepToYear).
+const DYN_START = -3000, DYN_RATE = 0.25;
+export function dynYear(step){ return DYN_START + step * DYN_RATE; }
+export function dynStep(year){ return (year - DYN_START) / DYN_RATE; }
+
+// ── DISPLAY calendar: THE clock, anchored to the EMERGENT tech era ──
+// The displayed year — and everything timed against it (a ruler's age, a reign's
+// length, how often thrones turn over) — tracks how far the world has actually
+// DEVELOPED, not a fixed linear count that drifts to "10250 AD". It's pinned to
+// the historical date each era was reached and interpolated between. Because the
+// dynasty layer measures time on THIS calendar too, reigns and successions pace
+// with the displayed years and FIT the displayed history (~100 sovereigns across
+// 3000 BC → ~1950 AD, not 200 crammed in). This is read-only — derived from
+// emergent development, never an input to a mechanic — exactly as the calendar is
+// meant to be used.
+//
+// `eraAt` (world._eraAt) is the step the LEADING civ first reached each era. The
+// curve is piecewise-linear and STRICTLY INCREASING (a floor guarantees time
+// never stalls — no immortal rulers — so a slow world's eras simply land late).
+const ERA_ANCHOR = [-3300, -3000, -700, 500, 1450, 1800, 1950];
+const ERA_FLOOR = 0.04;        // min display-years per step (time never stops; slow worlds drift their eras later)
+const ERA_OPEN_STEPS = 2600;   // expected steps to cross an era, for dating the CURRENT (open-ended) era
+const ERA_MODERN_CAP = 2200;   // the Modern frontier heads toward this date
+
+function anchor(e){ return ERA_ANCHOR[e < 0 ? 0 : e >= ERA_ANCHOR.length ? ERA_ANCHOR.length - 1 : e]; }
+
+// The display year at the START of each reached era — the historical anchor, but
+// never less than what the floor has accrued (so a long, stalled era pushes its
+// successors later instead of flat-lining). Strictly increasing.
+function eraBoundaries(eraAt){
+  const n = eraAt.length, y = new Array(n);
+  y[0] = anchor(0);
+  for (let e = 1; e < n; e++){
+    const span = Math.max(1, eraAt[e] - eraAt[e - 1]);
+    y[e] = Math.max(anchor(e), y[e - 1] + ERA_FLOOR * span);
+  }
+  return y;
+}
+
+export function displayYear(eraAt, step){
+  if (!eraAt || !eraAt.length) return anchor(0) + Math.max(0, step) * ERA_FLOOR;
+  const y = eraBoundaries(eraAt), n = eraAt.length;
+  if (step <= eraAt[0]) return y[0] + (step - eraAt[0]) * ERA_FLOOR;
+  let e = 0; for (let i = 0; i < n; i++){ if (eraAt[i] <= step) e = i; else break; }
+  if (e < n - 1){                                  // completed era → linear interp between boundaries
+    const span = Math.max(1, eraAt[e + 1] - eraAt[e]);
+    return y[e] + (y[e + 1] - y[e]) * Math.min(1, (step - eraAt[e]) / span);
+  }
+  // The open, leading era: the world is HERE and has NOT reached the next era yet,
+  // so the year must stay inside THIS era's date range. It eases toward the next
+  // anchor (or, for Modern, the cap) and SATURATES there — it never crosses into a
+  // later era's dates while the world is still in this one. A world stuck in the
+  // Bronze Age creeps toward ~700 BC but never shows an AD year until it actually
+  // advances; the moment it reaches the next era, that anchor becomes a real
+  // boundary and the curve resumes from there. (This is why the year is genuinely
+  // tied to development, not to raw step count.)
+  const base = y[n - 1], dstep = Math.max(0, step - eraAt[n - 1]);
+  const last = e >= ERA_ANCHOR.length - 1;
+  const target = last ? ERA_MODERN_CAP : anchor(e + 1);
+  const tau = last ? ERA_OPEN_STEPS * 2 : ERA_OPEN_STEPS;
+  const span = target - base;
+  if (span <= 0) return base + ERA_FLOOR * dstep;       // floored past its own anchor: slow creep
+  return base + span * (1 - Math.exp(-dstep / tau));    // ease toward the anchor, never beyond
+}
+
+// Inverse: a display year → the step it falls on (for "born N years ago").
+export function displayStep(eraAt, year){
+  if (!eraAt || !eraAt.length) return (year - anchor(0)) / ERA_FLOOR;
+  const y = eraBoundaries(eraAt), n = eraAt.length;
+  if (year <= y[0]) return eraAt[0] + (year - y[0]) / ERA_FLOOR;
+  for (let e = 0; e < n - 1; e++){
+    if (year <= y[e + 1]){
+      const f = y[e + 1] > y[e] ? (year - y[e]) / (y[e + 1] - y[e]) : 0;
+      return eraAt[e] + (eraAt[e + 1] - eraAt[e]) * (f < 0 ? 0 : f > 1 ? 1 : f);
+    }
+  }
+  const base = y[n - 1];                                   // open era: invert the saturating ease
+  const last = (n - 1) >= ERA_ANCHOR.length - 1;
+  const target = last ? ERA_MODERN_CAP : anchor(n);
+  const tau = last ? ERA_OPEN_STEPS * 2 : ERA_OPEN_STEPS;
+  const span = target - base;
+  if (span <= 0) return eraAt[n - 1] + (year - base) / ERA_FLOOR;
+  const frac = Math.min(0.999, Math.max(0, (year - base) / span));   // clamp: the anchor is an asymptote
+  return eraAt[n - 1] - tau * Math.log(1 - frac);
+}
+
+export function displayYearStr(eraAt, step){
+  const y = Math.round(displayYear(eraAt, step));
+  return y < 0 ? `${-y} BC` : `${y} AD`;
+}

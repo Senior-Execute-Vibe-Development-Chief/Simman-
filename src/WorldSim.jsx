@@ -11,7 +11,7 @@ import { serializeWorld, loadWorld } from "./sim/persist.js";
 import { applyTuning, resetTuning, tuningDefaults } from "./sim/peopleSim/tuning.js";
 import SimLevers from "./SimLevers.jsx";
 import { getExportBreakdown, getTradeProfile, getWealthReserve, TIER_THRESHOLD } from "./sim/peopleSim/settlement.js";
-import { IN_LABELS, OUT_LABELS, IN_GOODS } from "./sim/peopleSim/money.js";
+import { IN_LABELS, OUT_LABELS, IN_GOODS, IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE } from "./sim/peopleSim/money.js";
 import { TECHS, ERAS, TECH_IDX, techState, techNodeState, nextTechs, techLayout, techEdgePath, techEffectList, techTotalList } from "./sim/peopleSim/tech.js";
 // tech-chip tint per era: stone · bronze · classical · medieval · renaissance · industrial · modern
 const ERA_BG=["#b7b0a2","#cf9a63","#dab347","#86a98f","#b596c4","#8fa6bb","#d9e2ea"];
@@ -69,7 +69,7 @@ let _tecParams = {};
 // generateWorld extracted to ./worldgen.js so worldgen can run headlessly.
 import { generateWorld } from "./sim/worldgen.js";
 import { buildTerritory, tileFert } from "./sim/pipeline.js";
-import { yearStr } from "./sim/calendar.js";
+import { yearStr, displayYearStr } from "./sim/calendar.js";
 
 const BC=[
 [10,22,56],      // 0  Deep Ocean
@@ -265,7 +265,7 @@ const LENSES=[
   {id:"ancestry",label:"Ancestry",subs:[["ancestry","Ancestry"]]},
   {id:"languages",label:"Languages",subs:[["language","Languages"]]},
   {id:"faiths",  label:"Faiths",  subs:[["faith","Faiths"]]},
-  {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["resources","Resources"],["crop","Cropland"]]},
+  {id:"economy", label:"Economy", subs:[["roads","Trade"],["money","Money"],["society","Labour"],["resources","Resources"],["crop","Cropland"]]},
   ...(DEV?[{id:"dev",label:"Dev",subs:[["depth","Depth"],["wind","Wind"],["moisture","Moisture"],["temperature","Temp"],["crossing","Crossing"]]}]:[]),
 ];
 
@@ -283,12 +283,15 @@ function EdRow({label,value,min,max,step,onChange,fmt}){
 
 const CHRON_COL={founding:"#1f7a55",discovery:"#2f6fa8",growth:"#2f7d3f",wealth:"#9c7414",
   war:"#b23a28",conquest:"#b15212",annex:"#8a6420",secession:"#7a44b0",loss:"#a04a28",
-  plague:"#8a3aa8",famine:"#9c5a1e",end:"#5a4a32"};
+  plague:"#8a3aa8",famine:"#9c5a1e",end:"#5a4a32",
+  industry:"#5a7488",trade:"#2f8a78",faith:"#5566b0",society:"#9a5a48"};
 const CHRON_LABEL={founding:"Founding",discovery:"Discovery",growth:"Growth",wealth:"Wealth",
   war:"War",conquest:"Conquest",annex:"Annexation",secession:"Secession",loss:"Loss",
-  plague:"Plague",famine:"Famine",end:"Fall"};
-function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose}){
+  plague:"Plague",famine:"Famine",end:"Fall",
+  industry:"Industry",trade:"Trade",faith:"Faith",society:"Society"};
+function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose,eraAt}){
   const rows=(entries||[]).slice().reverse();   // newest first
+  const yr=(step)=>eraAt?displayYearStr(eraAt,step):yearStr(step);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(580px,93vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
@@ -312,12 +315,193 @@ function ChronicleOverlay({entries,name,perspective,onTogglePerspective,onClose}
             :<div style={{display:"grid",gridTemplateColumns:"auto auto 1fr",gap:"5px 10px",alignItems:"baseline",fontSize:12}}>
               {rows.map((e,i)=>(
                 <Fragment key={i}>
-                  <span className="au-fade" style={{textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{yearStr(e.step)}</span>
+                  <span className="au-fade" style={{textAlign:"right",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>{yr(e.step)}</span>
                   <span style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:CHRON_COL[e.type]||"#5a4a32",fontWeight:600,whiteSpace:"nowrap"}}>{CHRON_LABEL[e.type]||e.type}</span>
                   <span style={{color:"#3a2614",lineHeight:1.4}}>{e.text}</span>
                 </Fragment>
               ))}
             </div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Ruling family tree overlay ──────────────────────────────────────────────
+// Renders the reigning house as a genealogy: couples, children indented beneath
+// their parents along a vine, the sitting sovereign crowned, bastards on a dashed
+// border, married-in partners faded, the deceased greyed with their lifespans.
+function fy(y){return y<0?`${-y} BC`:`${y} AD`;}
+const TRAIT_DEF=[["vigor","Vig"],["wit","Wit"],["boldness","Bold"],["ruthlessness","Ruth"]];
+function traitTip(t){return t?TRAIT_DEF.map(([k,l])=>`${l} ${t[k]>0?"+":""}${t[k]}`).join("  "):"";}
+function PersonCard({n}){
+  const dead=n.diedY>=0;
+  const border=n.isRuler?"2px solid #b8902f":n.bastard?"1px dashed #9a7b52":"1px solid rgba(90,74,50,0.4)";
+  const bg=n.isRuler?"rgba(184,144,47,0.16)":n.foreign?"rgba(90,74,50,0.05)":"rgba(255,255,255,0.45)";
+  const reigned=n.reignFrom>=0;
+  return(
+    <div title={[n.trait&&!n.foreign?n.trait:"",n.traits?traitTip(n.traits):"",n.foreign?"married into the house":n.bastard?"born out of wedlock":""].filter(Boolean).join("\n")||undefined}
+      style={{border,background:bg,borderRadius:5,padding:"3px 7px",minWidth:96,opacity:dead&&!reigned?0.6:1,fontSize:11}}>
+      <div style={{display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
+        <span style={{color:n.female?"#9c4a82":"#3a5a9c",fontWeight:700}}>{n.female?"♀":"♂"}</span>
+        {n.isRuler&&<span title="reigning" style={{fontSize:12}}>♔</span>}
+        <span style={{fontWeight:n.isRuler||reigned?700:500,color:"#2a1c0e"}}>{n.name}{n.epithet?` ${n.epithet}`:""}</span>
+        {n.bastard&&<span className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>bastard</span>}
+      </div>
+      {n.isRuler&&n.title&&<div style={{fontSize:9,letterSpacing:0.3,textTransform:"uppercase",color:"#8a6a1a",fontWeight:600}}>{n.title}</div>}
+      <div className="au-fade" style={{fontSize:9.5,fontVariantNumeric:"tabular-nums"}}>
+        {dead?`${fy(n.bornY)} – ${fy(n.diedY)} · ${n.age}y`:`b. ${fy(n.bornY)} · ${n.age}y`}
+      </div>
+      {reigned&&<div style={{fontSize:9,color:"#8a6a1a",fontVariantNumeric:"tabular-nums"}}>reigned {fy(n.reignFrom)}–{n.reignTo>=0?fy(n.reignTo):"now"}</div>}
+      {!n.foreign&&n.trait&&<div className="au-fade" style={{fontSize:9,fontStyle:"italic"}}>{n.trait}</div>}
+    </div>
+  );
+}
+// Per-government styling for the succession roll (crown / theocracy / council).
+const GOV_META={monarchy:{icon:"♔",col:"#b8902f",label:"Crown"},
+  theocracy:{icon:"☩",col:"#5566b0",label:"Theocracy"},
+  republic:{icon:"⚖",col:"#2f8a78",label:"Council"},
+  despotism:{icon:"⚔",col:"#a8402f",label:"Despotism"},
+  elective:{icon:"♛",col:"#9c7a2f",label:"Elective Monarchy"}};
+// Standard top-down genealogy: each generation a row, parents centred above
+// their children, sibling/parent connectors drawn in pure CSS (classes below).
+const FT_LN="rgba(120,100,70,0.45)";
+const FT_CSS=`
+.ft-wrap{display:inline-flex;flex-direction:column;gap:16px;min-width:100%;padding:4px 2px 8px;align-items:center}
+.ft-tree ul{position:relative;padding-top:18px;display:flex;justify-content:center;margin:0}
+.ft-tree li{list-style:none;position:relative;padding:18px 7px 0;display:flex;flex-direction:column;align-items:center}
+.ft-tree li::before,.ft-tree li::after{content:'';position:absolute;top:0;right:50%;border-top:2px solid ${FT_LN};width:50%;height:18px}
+.ft-tree li::after{right:auto;left:50%;border-left:2px solid ${FT_LN}}
+.ft-tree li:only-child::after,.ft-tree li:only-child::before{display:none}
+.ft-tree li:only-child{padding-top:18px}
+.ft-tree li:first-child::before,.ft-tree li:last-child::after{border:0 none}
+.ft-tree li:last-child::before{border-right:2px solid ${FT_LN}}
+.ft-tree ul ul::before{content:'';position:absolute;top:0;left:50%;border-left:2px solid ${FT_LN};width:0;height:18px}
+.ft-tree>ul{padding-top:0}
+.ft-tree>ul>li:only-child{padding-top:0}`;
+// One person (with their married-in partner, if any) as a tree node.
+function Couple({n,sp}){
+  return(
+    <div style={{display:"flex",alignItems:"flex-start",gap:4}}>
+      <PersonCard n={n}/>
+      {sp&&<><span className="au-fade" style={{fontSize:11,alignSelf:"center"}}>⚭</span><PersonCard n={sp}/></>}
+    </div>
+  );
+}
+function FamilyTree({nodes}){
+  const byId=new Map(nodes.map(n=>[n.id,n]));
+  const kidsOf=new Map();
+  for(const n of nodes)if(n.parentId>=0){if(!kidsOf.has(n.parentId))kidsOf.set(n.parentId,[]);kidsOf.get(n.parentId).push(n.id);}
+  for(const arr of kidsOf.values())arr.sort((a,b)=>byId.get(a).bornY-byId.get(b).bornY);
+  const drawn=new Set();
+  // a <li> holding the couple's card and, beneath, a <ul> of their children
+  const renderLi=(id)=>{
+    if(drawn.has(id))return null;
+    drawn.add(id);
+    const n=byId.get(id);if(!n)return null;
+    const sp=n.spouseId>=0&&byId.has(n.spouseId)&&!drawn.has(n.spouseId)?byId.get(n.spouseId):null;
+    if(sp)drawn.add(sp.id);
+    const kids=((kidsOf.get(id)||[]).concat(sp?(kidsOf.get(sp.id)||[]):[])).filter(k=>!drawn.has(k));
+    return(
+      <li key={id}>
+        <Couple n={n} sp={sp}/>
+        {kids.length>0&&<ul>{kids.map(k=>renderLi(k))}</ul>}
+      </li>
+    );
+  };
+  // each independent line (the founder's, plus any unconnected adoptees) is its
+  // own top-down tree, stacked vertically
+  const roots=nodes.filter(n=>n.parentId<0&&!n.foreign).sort((a,b)=>a.bornY-b.bornY);
+  const trees=[];
+  for(const r of roots){ if(drawn.has(r.id))continue; trees.push(<div key={r.id} className="ft-tree"><ul>{renderLi(r.id)}</ul></div>); }
+  for(const n of nodes){ if(drawn.has(n.id)||n.foreign)continue; trees.push(<div key={n.id} className="ft-tree"><ul>{renderLi(n.id)}</ul></div>); }
+  return <div className="ft-wrap">{trees}</div>;
+}
+// Everyone who ever ruled the nation — across houses, councils and theocracies —
+// in order, grouped by house with a banner when the form of rule itself changes.
+function SuccessionRoll({roll}){
+  const rows=[];
+  let lastHouse=null,lastGov=null;
+  roll.forEach((e,i)=>{
+    const gm=GOV_META[e.gov]||GOV_META.monarchy;
+    if(e.gov!==lastGov){
+      rows.push(<div key={"g"+i} style={{margin:"10px 0 3px",fontSize:10,letterSpacing:0.4,textTransform:"uppercase",fontWeight:700,color:gm.col}}>
+        {gm.icon} {gm.label==="Crown"?"Monarchy":gm.label}{lastGov?" — the order changes":""}</div>);
+      lastHouse=null;
+    }
+    if(e.house!==lastHouse){
+      rows.push(<div key={"h"+i} className="au-fade" style={{margin:"5px 0 1px",fontSize:10,fontStyle:"italic"}}>House {e.house||"—"}</div>);
+    }
+    lastHouse=e.house;lastGov=e.gov;
+    rows.push(
+      <div key={i} style={{display:"grid",gridTemplateColumns:"auto auto 1fr",gap:"2px 9px",alignItems:"baseline",fontSize:12,
+        padding:"1px 4px",borderLeft:`3px solid ${gm.col}`,marginLeft:4,background:e.current?"rgba(184,144,47,0.12)":"transparent"}}>
+        <span className="au-fade" style={{fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",fontSize:11}}>{fy(e.fromY)}–{e.toY>=0?fy(e.toY):"now"}</span>
+        <span style={{color:e.female?"#9c4a82":"#3a5a9c",fontWeight:700}}>{e.female?"♀":"♂"}</span>
+        <span style={{color:"#2a1c0e"}}>
+          <span className="au-fade">{e.title?e.title+" ":""}</span>
+          <b style={{fontWeight:e.current?700:600}}>{e.name}</b>{e.epithet?` ${e.epithet}`:""}
+          {e.current&&<span style={{color:gm.col,fontWeight:700}}> · reigning</span>}
+        </span>
+      </div>
+    );
+  });
+  return <div>{rows}</div>;
+}
+function DynastyOverlay({tree,onClose}){
+  const[mode,setMode]=useState("tree");
+  // FREEZE a snapshot so the chart doesn't reflow under the reader as the sim
+  // ticks (people age/are born/die every frame). Capture the first frame and on
+  // a realm change; a manual refresh re-captures the live state.
+  const[snap,setSnap]=useState(tree);
+  useEffect(()=>{if(tree&&(!snap||snap.countryId!==tree.countryId))setSnap(tree);},[tree,snap]);
+  const data=snap||tree;
+  const houses=(data&&data.houses)||[];
+  const roll=(data&&data.roll)||[];
+  const Tab=({id,label})=>(
+    <button onClick={()=>setMode(id)} className={"au-btn"+(mode===id?" au-active":"")}
+      style={{fontSize:10,whiteSpace:"nowrap"}}>{label}</button>);
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(10,8,6,0.74)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <style>{FT_CSS}</style>
+      <div onClick={e=>e.stopPropagation()} className="au-parchment au-elev" style={{padding:"12px 16px",width:"min(860px,95vw)",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4,flexShrink:0,gap:8}}>
+          <div className="au-pico-title" style={{fontSize:15}}>House {data?data.houseName||"—":"—"}
+            {data&&<span className="au-fade" style={{fontSize:11}}> · {data.govLabel}</span>}</div>
+          <div style={{display:"flex",gap:5,alignItems:"center"}}>
+            <Tab id="tree" label="Family tree"/>
+            <Tab id="roll" label={`Succession${roll.length?` (${roll.length})`:""}`}/>
+            <button onClick={()=>setSnap(tree)} title="Refresh to the present" className="au-btn"
+              style={{fontSize:10,whiteSpace:"nowrap"}}>↻</button>
+            <button onClick={onClose} style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--au-fade)",fontSize:18,lineHeight:1,padding:"0 2px"}}>×</button>
+          </div>
+        </div>
+        <div className="au-fade" style={{fontSize:10,marginBottom:8,flexShrink:0}}>
+          {data?<>succession law: {data.lawLabel}{data.legitLabel?` · legitimacy ${data.legitLabel}`:""}{data.rulerTitle?` · the ${data.rulerTitle.toLowerCase()} reigns`:""} · <span style={{fontStyle:"italic"}}>snapshot — ↻ to update</span></>:"no ruling house"}
+        </div>
+        <div style={{overflow:"auto",minHeight:0,paddingRight:6}}>
+          {mode==="tree"
+            ?(houses.length===0
+              ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No reigning house — the realm keeps no king-list yet.</div>
+              :houses.map((h,i)=>(
+                <div key={h.dynastyId} style={{marginBottom:14,opacity:h.isCurrent?1:0.92}}>
+                  <div style={{display:"flex",alignItems:"baseline",gap:8,borderBottom:"1px solid rgba(90,74,50,0.25)",paddingBottom:2,marginBottom:2,marginTop:i?10:0}}>
+                    <span className="au-pico-title" style={{fontSize:13}}>House {h.name}</span>
+                    <span className="au-fade" style={{fontSize:10}}>
+                      {h.isCurrent?"reigning":"former"} · {fy(h.founded)}–{h.ended>=0?fy(h.ended):"now"}
+                    </span>
+                  </div>
+                  <FamilyTree nodes={h.nodes}/>
+                </div>))
+            )
+            :(roll.length===0
+              ?<div className="au-fade" style={{fontSize:12,fontStyle:"italic"}}>No sovereigns recorded yet.</div>
+              :<SuccessionRoll roll={roll}/>)}
+        </div>
+        <div className="au-fade" style={{fontSize:9.5,marginTop:8,flexShrink:0,display:"flex",gap:12,flexWrap:"wrap",borderTop:"1px solid rgba(90,74,50,0.2)",paddingTop:6}}>
+          {mode==="tree"
+            ?<><span>♔ reigning</span><span>♀ / ♂</span><span>⚭ married</span><span style={{fontStyle:"italic"}}>dashed = bastard</span><span>faded = married in / deceased</span></>
+            :<><span style={{color:GOV_META.monarchy.col}}>♔ crown</span><span style={{color:GOV_META.theocracy.col}}>☩ theocracy</span><span style={{color:GOV_META.republic.col}}>⚖ council</span><span style={{color:GOV_META.despotism.col}}>⚔ despotism</span><span>oldest first</span></>}
         </div>
       </div>
     </div>
@@ -537,7 +721,7 @@ function PsSection({ id, title, right, open, onToggle, children }) {
 export default function WorldSim(){
 const canvasRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
-const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
+const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// speed = target ticks/sec (30 ≈ 1 step per frame)
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("tectonic");
 // Transport-test mode state. Each click in this view places a capital;
 // the BFS re-runs whenever params or capitals change.
@@ -556,6 +740,7 @@ const[showTuning,setShowTuning]=useState(false);
 const[selectedSettlementId,setSelectedSettlementId]=useState(-1);
 const[techTreeOpen,setTechTreeOpen]=useState(false);   // full tech-tree overlay (for the selected settlement)
 const[chronicleOpen,setChronicleOpen]=useState(false); // full chronicle (realm history) overlay
+const[dynastyOpen,setDynastyOpen]=useState(false);     // ruling family-tree overlay
 const[lens,setLens]=useState("terrain");const subMemRef=useRef({});
 const[panelTab,setPanelTab]=useState("world");   // World Panel tab: world|realms|peoples|faiths|inspect
 const[newWorldOpen,setNewWorldOpen]=useState(false);
@@ -644,7 +829,7 @@ useEffect(()=>{
   return()=>window.removeEventListener("mouseup",up);
 },[]);
 const activeResRef=useRef(null);activeResRef.current=activeRes;
-const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
+const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(30),viewRef=useRef("terrain");
 // ── Pan / zoom view transform ────────────────────────────────────────
 // All map drawing applies `ctx.translate(panX,panY); ctx.scale(zoom,zoom)`
 // so the existing draw code can stay in canvas-pixel coordinates; only the
@@ -668,6 +853,9 @@ const peopleRef=useRef(null);
 const simWorkerRef=useRef(null);
 const applySnapshotRef=useRef(null);
 const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
+// Live step counter, refreshed EVERY snapshot (~30Hz) so the year/step in the top
+// bar visibly counts up tick-by-tick; the heavier psStats stays throttled to ~5Hz.
+const [liveStep,setLiveStep]=useState(0);
 // Time-series of global metrics for the History charts + copyable export. Kept
 // in a ref (no re-render on every sample); the charts read it on the regular
 // psStats-driven re-render. Sampled every HISTORY_INTERVAL sim steps.
@@ -744,7 +932,7 @@ try{
     console.warn('[SimWorker] error — falling back to main-thread sim:',err.message);
     try{if(simWorkerRef.current){simWorkerRef.current.terminate();}}catch{/* already dead */}
     simWorkerRef.current=null;
-    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount});
+    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount});
     setPsStats(peopleSimStats(peopleRef.current));
   };
   simWorkerRef.current=sw;
@@ -761,7 +949,7 @@ try{
   const _gm={oceanLevel:oceanLevelRef.current,tecParams:_tecParams};
   const _pend=pendingSaveRef.current;
   if(_pend){pendingSaveRef.current=null;sw.postMessage({type:'load',json:_pend,genMeta:_gm});}
-  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tileRes:RES,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount});
+  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount});
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
   sw.postMessage({type:'view',view:viewRef.current});
@@ -772,7 +960,7 @@ try{
 if(!usedWorker){
   const _pend2=pendingSaveRef.current;
   if(_pend2){pendingSaveRef.current=null;peopleRef.current=loadWorld(_pend2);}
-  else peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount});
+  else peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount});
   setPsStats(peopleSimStats(peopleRef.current));
 }
 setPlaying(false);playRef.current=false;
@@ -1531,6 +1719,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
   const vmFaith = viewRef.current === "faith";
   const vmLanguage = viewRef.current === "language";
   const vmAncestry = viewRef.current === "ancestry";
+  const vmSociety = viewRef.current === "society";
     if(psw&&ctx&&vmRoads){
     const TR=psw.tileRes;
     // ── Network components per tile ── world._tileComp is an Int32Array of
@@ -1691,7 +1880,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     const L=layersRef.current;
     // Toggle key — when any of the rendered-into-overlay layers flips on/off
     // we must rebuild, otherwise the cached image stays stale.
-    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0);
+    const layerKey=(L.tints?1:0)|(L.borders?2:0)|(L.roads?4:0)|(L.provinces?8:0)|(vmCountry?16:0)|(vmCulture?64:0)|(vmFaith?128:0)|(vmLanguage?256:0)|(vmAncestry?512:0)|(vmSociety?1024:0);
     // While the ancestry spread is replaying we rebuild the overlay every frame
     // (the revealed wavefront advances) instead of the lazy every-30-steps cache.
     const ancAnimating=vmAncestry&&ter&&ter.tArrival&&ancRevealRef.current.active;
@@ -1709,7 +1898,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
       // ── Culture / Faith views: who LIVES on each tile (dominant culture
       // or faith of the settlement whose territory it is) — peoples and
       // creeds, not states. Same machinery, different per-settlement key. ──
-      if((vmCulture||vmFaith||vmLanguage||vmAncestry)&&psw.settlements){
+      if((vmCulture||vmFaith||vmLanguage||vmAncestry||vmSociety)&&psw.settlements){
         const tw=psw.tw,th=psw.th,N2=tw*th;
         // Resolve a settlement's overlay colour [h,s,l] + grouping KEY (borders
         // drawn where the key changes). Peoples → one hue each; Faiths → faith
@@ -1828,6 +2017,21 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(y<th-1){const dk=keyOf[ti+tw];if(dk!==-2147483648&&dk!==k){const by=dataYtoScreenY((y+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}}
           octx.stroke();
         }
+        // ── Society: coerced-labour heat ── muted parchment (free) → crimson (bound),
+        // by each settlement's _coerce (slaves as a share of people + serfdom + cash-crop
+        // plantation land). Shows the slave coast / plantation belt / serf periphery at a glance.
+        if(nf&&vmSociety){
+          const nearest=nf.nearest,byId=psw._byId,coCache=new Map();
+          const coerceCol=(sid)=>{let c=coCache.get(sid);if(c!==undefined)return c;
+            const st=byId&&byId.get(sid);const v=st?Math.min(1,st._coerce||0):0;
+            c=v<0.05?"#5e626b":`hsl(${Math.round(30-26*v)},${Math.round(50+38*v)}%,${Math.round(50-16*v)}%)`;
+            coCache.set(sid,c);return c;};
+          let lastFs=null;
+          for(let ti=0;ti<N2;ti++){const sid=nearest[ti];if(sid<0)continue;
+            const fs=coerceCol(sid);const y=(ti/tw)|0,x=ti-y*tw;
+            if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
+            octx.fillRect(x*TR,dataYtoScreenY(y*TR,H,CH),TR+0.7,TR+0.7);}
+        }
       }
       // ── Ancestry: the deep genetic substrate, a per-tile worldgen field over ALL
       // land (not just settled). Coloured per-ancestry; civ overlays sit on top of it. ──
@@ -1907,7 +2111,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         }
         octx.stroke();
       }
-      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&(L.tints||L.borders)&&claimArr){
+      if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&(L.tints||L.borders)&&claimArr){
         const tw=psw.tw,th=psw.th,tintByCountry=new Map();
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
@@ -1928,7 +2132,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
-      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&(L.tints||L.borders)&&owner){
+      } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
         const tintById=new Array(maxId+1); const ctryById=new Int32Array(maxId+1).fill(-1);
@@ -2016,7 +2220,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         octx.setLineDash([]);
       }
       // Roads — thickness + alpha from current flow.
-      if(L.roads&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&psw.roadQuality&&psw.roadFlow){
+      if(L.roads&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&psw.roadQuality&&psw.roadFlow){
         const rq=psw.roadQuality,rf=psw.roadFlow,FLOW_FULL=50;
         for(let ti=0;ti<rq.length;ti++){
           if(rq[ti]>=1.0)continue;
@@ -2064,7 +2268,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
     // Per-tier visibility (Layers panel). When all tiers are off the loop
     // does nothing — same as turning icons off entirely.
     const _L=layersRef.current;
-    const _identity=vmCulture||vmFaith||vmLanguage||vmAncestry;
+    const _identity=vmCulture||vmFaith||vmLanguage||vmAncestry||vmSociety;
     // Identity overlays (peoples/faiths/languages) show WHOLE filled regions —
     // drop the village/town dot-speckle so the areas read clean; keep only the
     // major cities/metropolises as landmarks.
@@ -2201,6 +2405,8 @@ const applySnapshot=useCallback((snap)=>{
   let psw=peopleRef.current;
   if(!psw||!psw._isMirror){psw=peopleRef.current={_isMirror:true};}
   psw.step=snap.step;psw.tw=snap.tw;psw.th=snap.th;psw.tileRes=snap.tileRes;psw.N=snap.N;
+  setLiveStep(snap.step);   // 30Hz step display (no-op when unchanged → no extra render)
+  if(snap.eraAt)psw._eraAt=snap.eraAt;   // display-calendar timeline
   psw.globalP=snap.globalP;
   if(snap.owner)psw._territoryOwner=snap.owner;
   if(snap.roadQuality)psw.roadQuality=snap.roadQuality;
@@ -2219,6 +2425,7 @@ const applySnapshot=useCallback((snap)=>{
   if(snap.languages){const lm=new Map();for(const l of snap.languages)lm.set(l.id,l);psw.languages=lm;}
   psw.ships=snap.ships;
   if(snap.chronicle!==undefined)psw._chronicle=snap.chronicle;   // full realm history; undefined = unchanged (keep), null = cleared
+  if(snap.dynasty!==undefined)psw._dynasty=snap.dynasty;         // ruling family tree (only while the overlay is open)
   if(snap.feed&&snap.feed.length){const F=psw._feed||(psw._feed=[]);F.push(...snap.feed);if(F.length>250)F.splice(0,F.length-250);}
   const setts=snap.settlements||[];
   if(snap.selected){const sel=setts.find(x=>x.id===snap.selected.id);if(sel)Object.assign(sel,snap.selected);}
@@ -2258,7 +2465,9 @@ useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'c
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'select',id:selectedSettlementId});},[selectedSettlementId]);
 // Close the per-realm overlays when the selection changes, so they don't
 // auto-reopen (or show a stale realm) the next time a settlement is picked.
-useEffect(()=>{setChronicleOpen(false);setTechTreeOpen(false);},[selectedSettlementId]);
+useEffect(()=>{setChronicleOpen(false);setTechTreeOpen(false);setDynastyOpen(false);},[selectedSettlementId]);
+// Tell the worker to start/stop shipping the ruling-house tree as the overlay opens/closes.
+useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"dynasty-open",open:dynastyOpen});},[dynastyOpen]);
 useEffect(()=>{if(selectedSettlementId>=0)setPanelTab("inspect");},[selectedSettlementId]);
 // Tell the worker the current view so it ships money-flow / road-component extras only when shown.
 useEffect(()=>{if(simWorkerRef.current)simWorkerRef.current.postMessage({type:'view',view:viewMode});},[viewMode]);
@@ -2276,16 +2485,15 @@ const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.cu
 // Worker mode: the sim runs off-thread and drives drawing via snapshots, so
 // this loop does nothing. Only the main-thread FALLBACK steps + draws here.
 if(simWorkerRef.current){last=now;return;}
-acc+=now-last;last=now;const iv=Math.max(8,100/speedRef.current);
-if(acc>=iv){acc=0;
-// Adaptive step rate: early history flies by, modern era slows down.
-// Uses current step count to determine how many sim steps per frame.
-const curStep=terRef.current.stepCount;
-// Early game (<200 steps = pre-agriculture): fast. Late game (>800): slow.
-// Scaled by user speed setting.
-// Early Bronze Age runs faster, modern era slower
-const eraFactor=curStep<100?3:curStep<200?2:curStep<500?1.5:1;
-const sub=Math.min(12,Math.max(1,Math.ceil(speedRef.current/3*eraFactor)));// cap raised so high-speed actually accelerates the sim
+// speed = target ticks/sec (mirrors the worker). Step however many ticks the
+// elapsed real time earned, via a fractional accumulator, so the pace matches
+// the chosen speed regardless of frame rate; the Max sentinel just runs a
+// budgeted batch each frame.
+const dt=Math.min(250,now-last);last=now;
+const tps=speedRef.current;
+let sub;
+if(tps>=100000){sub=64;}else{acc+=dt/1000*tps;sub=Math.floor(acc);acc-=sub;}
+if(sub>0){
 // Time-budgeted sim: stop stepping if we've used >8ms this frame
 const _simStart=performance.now();
 for(let s=0;s<sub;s++){
@@ -2297,6 +2505,7 @@ try{if(peopleRef.current)stepPeopleSim(peopleRef.current,1);}
 catch(e){console.error('[PEOPLESIM CRASH]',e.message,e.stack);playRef.current=false;return;}
 if(performance.now()-_simStart>8)break;
 }
+if(peopleRef.current)setLiveStep(peopleRef.current.step);   // 30Hz step display
 // peopleSim stats — drives the HUD instead of legacy tribe metrics.
 if(peopleRef.current&&peopleRef.current.step%5===0){
   setPsStats(peopleSimStats(peopleRef.current));
@@ -2531,7 +2740,7 @@ useEffect(()=>{
     const t=e.target;
     if(t&&(t.tagName==="INPUT"||t.tagName==="SELECT"||t.tagName==="TEXTAREA"))return;
     if(e.code==="Space"){e.preventDefault();togglePlay();}
-    else if(e.key==="Escape"){setMenuOpen(false);setNewWorldOpen(false);setChronicleOpen(false);setTechTreeOpen(false);setLayersOpen(false);setSelectedSettlementId(-1);}
+    else if(e.key==="Escape"){setMenuOpen(false);setNewWorldOpen(false);setChronicleOpen(false);setDynastyOpen(false);setTechTreeOpen(false);setLayersOpen(false);setSelectedSettlementId(-1);}
     else{const n=+e.key;if(n>=1&&n<=LENSES.length)pickLens(LENSES[n-1].id);}
   };
   window.addEventListener("keydown",onKey);
@@ -2539,8 +2748,12 @@ useEffect(()=>{
 });
 
 // ── Aggregate world stats for the chronicle ribbon ──
-const _step=(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
-const _ys=yearStr(_step);
+// The displayed year tracks the EMERGENT tech era (calendar.js displayYear),
+// pinned to history — not the runaway linear clock. `yr(step)` formats any step.
+const _eraAt=(peopleRef.current&&peopleRef.current._eraAt)||null;
+const yr=(step)=>_eraAt?displayYearStr(_eraAt,step):yearStr(step);
+const _step=liveStep||(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
+const _ys=yr(_step);
 // Leading era comes from the WORKER stats (the most advanced capital's tech
 // era) — the old ribbon averaged the dead tribe arrays and so sat frozen on
 // "Stone Age" forever.
@@ -2576,16 +2789,21 @@ const renderRealmDetail=()=>{
         <span style={{width:12,height:12,borderRadius:2,background:`hsl(${hue},60%,50%)`,flexShrink:0}}/>
         <span className="au-pico-title" style={{fontSize:15}}>{c.name||(c.capital?c.capital.name:"realm "+c.id)}</span>
         <div style={{flex:1}}/>
+        {c.ruler&&<button onClick={()=>setDynastyOpen(true)} title="The ruling family tree"
+          style={{background:"transparent",border:"none",cursor:"pointer",fontSize:14}}>🌳</button>}
         <button onClick={()=>setChronicleOpen(true)} title="The realm's chronicle"
           style={{background:"transparent",border:"none",cursor:"pointer",fontSize:14}}>📜</button>
       </div>
       <div className="au-fade" style={{fontSize:10,marginBottom:8}}>
         {c.members.length} settlements · {fmtPeople(pop)} souls{capCul?` · ${capCul.name} people`:""}{pers?` · ${pers.label}`:""}
       </div>
-      {c.ruler&&<div style={{fontSize:11,marginBottom:6}}>
-        <span className="au-fade">{c.ruler.female?"queen ":"king "}</span>{c.ruler.name}
+      {c.ruler&&<div onClick={()=>setDynastyOpen(true)} title="Open the ruling family tree"
+        style={{fontSize:11,marginBottom:6,cursor:"pointer"}}>
+        <span className="au-fade">{(c.ruler.title||(c.ruler.female?"Queen":"King"))+" "}</span>{c.ruler.name}
         <span className="au-fade"> of house </span>{c.ruler.house||"?"}
         <span className="au-fade"> · age {c.ruler.age}</span>
+        {c.ruler.gov&&c.ruler.gov!=="monarchy"&&<span className="au-fade"> · {c.ruler.gov}</span>}
+        {c.ruler.trait&&<span className="au-fade" style={{fontStyle:"italic"}}> · {c.ruler.trait}</span>}
       </div>}
       {faith&&<div style={{fontSize:11,marginBottom:6}}>
         <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:`hsl(${faith.hue|0},55%,50%)`,marginRight:5}}/>
@@ -2980,7 +3198,7 @@ const renderInspect=()=>{
             {ctry.ruler&&(
               <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
                 <span style={{width:9,height:9,borderRadius:2,background:"hsl(280,40%,52%)",flexShrink:0}}/>
-                <span><span className="au-fade">{ctry.ruler.female?"queen ":"king "}</span>{ctry.ruler.name}
+                <span><span className="au-fade">{(ctry.ruler.title||(ctry.ruler.female?"Queen":"King"))+" "}</span>{ctry.ruler.name}
                   <span className="au-fade"> of house </span>{ctry.ruler.house||"?"}
                   <span className="au-fade"> · age {ctry.ruler.age}</span></span>
               </div>
@@ -3262,6 +3480,33 @@ const renderInspect=()=>{
                 })}
               </div>
             </>}
+          {/* ── Society & labour: economic archetype, craft specialty, coerced labour ── */}
+          {(()=>{
+            const a=s._mInRate; let topIdx=-1,topV=0; if(a)for(let i=0;i<a.length;i++)if(a[i]>topV){topV=a[i];topIdx=i;}
+            const unfree=Math.round(s._unfree||0),captives=Math.round(s._captives||0),serf=s._serf||0,cashFrac=s._cashFrac||0;
+            let archetype=null;
+            if(topIdx===IN_SLAVE_TRADE)archetype="Slaver city — sells captives";
+            else if(topIdx===IN_PILGRIM)archetype="Holy city — lives on pilgrims";
+            else if(topIdx===IN_CARRY)archetype="Entrepôt — the carrying trade";
+            else if(topIdx===IN_FINANCE)archetype="Financier — lends to the crown";
+            else if(unfree>200&&cashFrac>0.2)archetype="Plantation economy";
+            else if(unfree>200&&topIdx===IN_MINING)archetype="Slave-worked mines";
+            else if(topIdx===IN_MINING)archetype="Mining town";
+            else if(serf>0.3)archetype="Serf estate";
+            const spec=(s._specKey&&(s._specStr||0)>0.1)?[s._specKey,Math.round((s._specStr||0)*100)]:null;
+            if(!archetype&&!spec&&unfree<50&&captives<50&&serf<0.1)return null;
+            return(
+              <div style={{marginTop:6,paddingTop:5,borderTop:"1px solid var(--au-line,#0002)"}}>
+                <div className="au-fade" style={{fontSize:9}}>Society & labour</div>
+                {archetype&&<div style={{fontSize:10,color:"#caa24a",marginTop:1}}>{archetype}</div>}
+                {spec&&<div style={{fontSize:10,marginTop:1}}>Specialises in <b>{spec[0]}</b> <span className="au-fade">({spec[1]}% established)</span></div>}
+                {unfree>50&&<div style={{fontSize:10,marginTop:1,color:"#b06a4a"}}>Unfree labour: {unfree.toLocaleString()} <span className="au-fade">({Math.round((s._unfreeRatio||0)*100)}% of the population)</span></div>}
+                {cashFrac>0.1&&<div style={{fontSize:10,marginTop:1}}>Cash crops: {Math.round(cashFrac*100)}% of land <span className="au-fade">(grows for export, imports food)</span></div>}
+                {captives>50&&<div style={{fontSize:10,marginTop:1,color:"#b06a4a"}}>Captives held: {captives.toLocaleString()} <span className="au-fade">for the slave market</span></div>}
+                {serf>0.1&&<div style={{fontSize:10,marginTop:1}}>Serfdom: {Math.round(serf*100)}% <span className="au-fade">bound peasantry</span></div>}
+              </div>
+            );
+          })()}
         </>
       </PsSection>
 
@@ -3284,7 +3529,7 @@ const renderInspect=()=>{
                 📜 Open chronicle ({chron.entries.length} events)
               </button>
               <div style={{display:"flex",gap:6,lineHeight:1.3}}>
-                <span className="au-fade" style={{flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{yearStr(latest.step)}</span>
+                <span className="au-fade" style={{flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{yr(latest.step)}</span>
                 <span style={{color:CHRON_COL[latest.type]||"#5a4a32"}}>{latest.text}</span>
               </div>
             </div>
@@ -3428,7 +3673,7 @@ const renderCharts=()=>{
           {F.slice(-28).reverse().map((e,i)=>(
             <div key={F.length-i} onClick={()=>jumpTo(e.x,e.y)}
               style={{fontSize:10,padding:"2px 0",cursor:e.x!=null?"pointer":"default",borderBottom:"1px solid rgba(58,38,20,0.08)",lineHeight:1.35}}>
-              <span className="au-fade" style={{marginRight:5}}>{yearStr(e.step)}</span>{e.text}
+              <span className="au-fade" style={{marginRight:5}}>{yr(e.step)}</span>{e.text}
             </div>))}
         </div>;})()}
       <MiniChart data={H} get={d=>d.pop}            label="Population"               color="#c98a3a" fmtY={fmtPeople}/>
@@ -3459,9 +3704,13 @@ return(
   <button onClick={togglePlay} className={"au-btn"+(playing?" au-wax au-active":"")}
     style={{padding:"4px 14px",fontSize:13,fontFamily:"'Cinzel',Georgia,serif"}} title="Space">{playing?"❚❚":"▶"}</button>
   <div style={{display:"flex",gap:2}}>
-    {[[1,"1×"],[5,"2×"],[12,"5×"],[30,"Max"]].map(([v,l])=>(
+    {/* speed = target ticks/sec. 30 ≈ one step per frame (the step counter ticks
+        up one-by-one); lower watches it crawl, higher packs more per frame, Max
+        runs flat-out. */}
+    {[[8,"¼×"],[30,"1×"],[120,"4×"],[480,"16×"],[100000,"Max"]].map(([v,l])=>(
       <button key={v} onClick={()=>{setSpeed(v);speedRef.current=v;}}
-        className={"au-btn au-flat"+(speed===v?" au-active":"")} style={{padding:"3px 9px",fontSize:11}}>{l}</button>
+        className={"au-btn au-flat"+(speed===v?" au-active":"")} style={{padding:"3px 9px",fontSize:11}}
+        title={v>=100000?"as fast as possible":`~${v} ticks/sec`}>{l}</button>
     ))}
   </div>
   <span className="au-vrule" style={{height:20}}/>
@@ -3677,6 +3926,23 @@ return(
   </div>
 </div>}
 
+{viewMode==="society"&&<div className="au-parchment" style={{position:"absolute",bottom:8,left:8,
+  padding:"8px 12px",fontSize:11,zIndex:20,maxWidth:240}}>
+  <div className="au-pico-title" style={{fontSize:12,marginBottom:4}}>Coerced labour</div>
+  <div style={{display:"flex",alignItems:"center",gap:6,margin:"3px 0"}}>
+    <span style={{display:"flex",flexShrink:0}}>
+      <span style={{width:16,height:11,background:"#5e626b"}}/>
+      <span style={{width:16,height:11,background:"hsl(17,69%,42%)"}}/>
+      <span style={{width:16,height:11,background:"hsl(4,88%,34%)"}}/>
+    </span>
+    <span>free → bound</span></div>
+  <div className="au-fade" style={{fontSize:9,fontStyle:"italic",marginTop:4}}>
+    How coerced a settlement's labour is — slaves as a share of its people,
+    serfdom, and cash-crop plantation land combined. The deep-red bands are
+    the slave coasts, plantation belts and serf peripheries; grey land is free.
+  </div>
+</div>}
+
 </div>{/* end map area */}
 
 </div>{/* end center column */}
@@ -3759,12 +4025,18 @@ return(
 {/* ══════════ CHRONICLE OVERLAY (follows the inspected realm) ══════════ */}
 {chronicleOpen&&peopleRef.current&&peopleRef.current._chronicle&&(
   <ChronicleOverlay entries={peopleRef.current._chronicle.entries} name={peopleRef.current._chronicle.name}
+    eraAt={peopleRef.current._eraAt}
     perspective={!!peopleRef.current._chronicle.perspective}
     onTogglePerspective={()=>{
       const next=!peopleRef.current._chronicle.perspective;
       if(simWorkerRef.current)simWorkerRef.current.postMessage({type:"chronicle-mode",perspective:next});
     }}
     onClose={()=>setChronicleOpen(false)}/>)}
+
+{/* ══════════ RULING FAMILY TREE OVERLAY (follows the inspected realm) ══════════ */}
+{dynastyOpen&&(
+  <DynastyOverlay tree={peopleRef.current&&peopleRef.current._dynasty}
+    onClose={()=>setDynastyOpen(false)}/>)}
 
 {/* ══════════ NEW WORLD MODAL ══════════ */}
 {newWorldOpen&&(

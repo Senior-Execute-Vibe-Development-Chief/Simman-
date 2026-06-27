@@ -336,6 +336,7 @@ function tallyTerritory(world, owner, cost, byId) {
   // A mine only counts while its finite reserve still holds metal — a dried-up
   // deposit stays on the map but no longer grants luxury budgets / value-cling.
   const mineLive = (id, ti) => !reserve || !reserve[id] || reserve[id][ti] > 0;
+  const cm = world.climMod;   // dynamic-climate fertility overlay (undefined = none → ×1)
   for (let ti = 0; ti < N; ti++) {
     const oid = owner[ti];
     if (oid < 0) continue;
@@ -350,7 +351,7 @@ function tallyTerritory(world, owner, cost, byId) {
     // farming land nobody could get to). updateFood reads _terrWorkTiles.
     const reachable = cost[ti] < Infinity;
     if (reachable) s._terrWorkTiles++;
-    const f = fert[ti] || 0;
+    const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);   // climate scales the harvestable fertility
     if (f >= s._terrMinFert) s._terrFertSum += f * foodFalloff(cost[ti]);
     if (haveDep) {
       const acc = s._terrResAcc;
@@ -383,6 +384,7 @@ function tallyTerritory(world, owner, cost, byId) {
 // around home.
 export function seedLocalTerritory(world, s) {
   const { tw, th, fert, deposits } = world;
+  const cm = world.climMod;
   const sx = s.pos.x | 0, sy = s.pos.y | 0;
   const minFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
   let fertSum = 0, tiles = 0;
@@ -398,7 +400,7 @@ export function seedLocalTerritory(world, s) {
       const ti = ny * tw + nx;
       if ((world.elev[ti] || 0) <= 0) continue;
       tiles++;
-      const f = fert[ti] || 0;
+      const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);
       const cost = Math.sqrt(dx * dx + dy * dy);
       if (f >= minFert) fertSum += f * foodFalloff(cost);
       if (haveDep) {

@@ -12,17 +12,18 @@
 // captured right at the frontier would secede the very next pass and get
 // re-taken, making the borders flicker.
 
-import { recordIn, recordOut, IN_AID, IN_STATE_PAY, IN_TARIFFS, OUT_TRIBUTE } from "./money.js";
+import { recordIn, recordOut, IN_AID, IN_STATE_PAY, IN_TARIFFS, IN_FINANCE, OUT_TRIBUTE } from "./money.js";
 import { shockUnrest } from "./shocks.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
-import { techEff } from "./settlement.js";
+import { techEff, getWealthReserve } from "./settlement.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, reconcilePolities } from "./entities.js";
-import { identityWeightsNow, identityGrievance, adminFriction, identityGrievanceCause } from "./cohesion.js";
+import { identityWeightsNow, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
 import { T } from "./tuning.js";
+import { hash32 } from "./rng.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
 // (T.POLITY_INTERVAL); index.js gates the pass on it.
@@ -99,6 +100,12 @@ const _cityEnclaveOff = (typeof process !== "undefined" && process.env && proces
 const WAR_SURCHARGE = 1.2;  // each level of war (defensive front / besieged capital) multiplies the army bill
 const RESERVE_PASSES = 3;   // war-chest the state keeps (passes of peacetime army pay) before funding works
 const SOLVENCY_FLOOR = 0.5; // a fully bankrupt state still retains this fraction of its control budget
+// ── Government spending (monuments / infrastructure / debt) ─────────────
+const MONUMENT_DECAY = 0.9985; // the monuments/legitimacy stock fades very slowly — a cathedral or
+                               // forum keeps overawing the people for ages after it's built
+const DEBT_INTEREST  = 0.03;   // interest per pass on outstanding state debt (paid to the financier city)
+const DEBT_CAP_MULT  = 6;      // a state may owe at most this many peacetime army bills before creditors cut it off
+const MONUMENT_REF   = 0.6;    // monuments-stock per head at which legitimacy is half-saturated (calibration)
 // ── Debasement (Currency Phase 3) ──────────────────────────────────────
 // A state that can't cover its army bill melts down the coinage — strikes
 // lighter coins for emergency revenue (seigniorage). Its currency FINENESS
@@ -117,7 +124,11 @@ const FINENESS_MIN      = 0.35;  // floor — even a desperate mint keeps some m
 // desperate treasury squeezes harder. That funds the army, but the
 // overtaxation feeds POPULAR UNREST: the classic trap where taxing to pay for
 // a war drives the people to revolt (France 1789, late Ming, late Rome).
-const TAX_BASE     = 0.06;   // baseline share of a member's wealth taxed per pass
+// TAX_BASE -> runtime lever (tuning.js T.TAX_BASE): baseline share of a member's
+// wealth taxed per pass. Lowered from the old 0.06 — at 0.06 the state recycled more
+// coin per pass (as army pay) than the private trade economy generated, so "state pay"
+// was almost every settlement's largest income; at the lever default most settlements
+// now visibly live on their TRADE (goods/food/luxuries/tolls) instead.
 // TAX_MAX -> runtime lever (tuning.js T.TAX_MAX)
 const TAX_WAR      = 0.025;  // extra rate per level of war
 const TAX_BANKRUPT = 0.12;   // extra rate × how insolvent the state was last pass
@@ -219,7 +230,9 @@ const CAP_DOM_W   = 0.9;   // extra capacity per (above-average power)^P
 const CAP_DOM_P   = 1.5;   // CONVEX: only genuine OUTLIERS tower — a power-law tail of a few great
                            // powers, not a uniformly bigger pack (sustainable size ≈ capacity^⅔, so
                            // the top core needs ~6–8× capacity to reach a Rome-scale share of the map)
-const CAP_DOM_MAX = 8.0;   // ceiling on the dominance multiplier (a hegemon, not an immortal world-eater)
+// (the dominance ceiling is now the T.CAP_DOM_MAX lever.) Imperial-hysteresis rates:
+const CAP_IMP_RISE  = 0.04;   // imperial-capacity stock rises toward live capacity (institutions accrete)
+const CAP_IMP_DECAY = 0.010;  // ...and decays ~4× slower when power falls (institutions persist → hysteresis)
 // Empire size is NOT capped. It emerges from the existing over-extension
 // mechanism: provinces past a realm's REACH bleed loyalty and revolt. We gate
 // that reach (`range`, the admin-load denominator) hard on transport tech below —
@@ -809,7 +822,7 @@ function shedFrontier(world, c, seeds, tcosts, range, stress) {
   }
   const co = world._countryOwner, owner = world._territoryOwner, localCost = world._countryCost;
   if (!co || !owner) return;
-  const tw = world.tw, th = world.th, N = world.N;
+  const tw = world.tw, th = world.th;
   // The grip shrinks with stress (over-extension + war + insolvency are all folded
   // into the capacity the stress was measured against): the more over-stretched the
   // realm, the more of it falls outside reach and goes loose.
@@ -837,10 +850,16 @@ function shedFrontier(world, c, seeds, tcosts, range, stress) {
   // the middle / odd shape cutting all the way through" artefact. So a breakaway is
   // always a contiguous chunk peeling off the EDGE; an unreachable interior just stays
   // nominally held until the front itself recedes to it. (SIM_FRONTIER_SECEDE=0 reverts.)
-  const seen = new Uint8Array(N);
-  for (let s0 = 0; s0 < N; s0++) {
-    if (seen[s0] || !looseAt(s0)) continue;
-    const stack = [s0]; seen[s0] = 1; let hasSeed = false, touchesEdge = false; const members = [];
+  // Flood only the realm's own loose patches, seeded from its MEMBER home tiles —
+  // not a full-map O(N) scan. A patch can only secede if it carries a restless
+  // seed (a member), so a patch with no member on it is never shed; seeding from
+  // member tiles therefore reaches every sheddable patch while touching only the
+  // realm's land. `seen` is a Set (patch-sized), not a per-call Uint8Array(N).
+  const seen = new Set();
+  for (const m0 of memberHome.values()) {
+    const s0 = (m0.pos.y | 0) * tw + (m0.pos.x | 0);
+    if (seen.has(s0) || !looseAt(s0)) continue;
+    const stack = [s0]; seen.add(s0); let hasSeed = false, touchesEdge = false; const members = [];
     while (stack.length) {
       const ti = stack.pop();
       const hm = memberHome.get(ti);
@@ -851,8 +870,8 @@ function shedFrontier(world, c, seeds, tcosts, range, stress) {
         const ni = ns[k];
         if (ni < 0) { touchesEdge = true; continue; }     // world edge (pole) = frontier
         if (co[ni] !== c.id) touchesEdge = true;          // neighbour is wilderness / sea / a rival → patch reaches the realm's edge
-        if (seen[ni] || !looseAt(ni)) continue;
-        seen[ni] = 1; stack.push(ni);
+        if (seen.has(ni) || !looseAt(ni)) continue;
+        seen.add(ni); stack.push(ni);
       }
     }
     if (hasSeed && members.length && (touchesEdge || !_frontierSecede)) shedPatch(world, c, members);
@@ -1136,6 +1155,15 @@ function disburseTreasury(world, c, gov, warLevel) {
   for (const s of members) if ((s.tier | 0) >= 2) { hasCity = true; break; }
   const effSurcharge = hasCity ? WAR_SURCHARGE : 0;
   let spent = 0;
+  const cap = c.capital;
+  // The FINANCIER: the realm's wealthiest city — the bankers who lend the crown its
+  // war money and live off the interest (Genoa, Augsburg, Amsterdam). A whole income
+  // archetype: a great merchant city that grows rich financing the state.
+  let financier = null;
+  for (const s of members) {
+    if (s.countryId !== c.id) continue;
+    if (!financier || (s.wealth || 0) > (financier.wealth || 0)) financier = s;
+  }
 
   // ── 1. ARMY PAY (first claim) ──
   // War multiplies the bill: campaigning/being besieged costs far more than a
@@ -1144,9 +1172,22 @@ function disburseTreasury(world, c, gov, warLevel) {
   let totalArmy = 0;
   for (const s of members) if (s.countryId === c.id) totalArmy += s.army || 0;
   const armyBill = totalArmy * wage * (1 + effSurcharge * (warLevel || 0));
-  // DEBASEMENT (Phase 3): if the treasury can't cover the army bill, melt the
-  // coinage — mint emergency seigniorage (lowering fineness) to ease the
-  // shortfall; in comfortable times restore the coin toward full fineness.
+  const debtCap = totalArmy * wage * DEBT_CAP_MULT;
+  // WAR LOANS (the FIRST recourse when short): the crown borrows the gap from its
+  // financier city (up to a debt ceiling) — war on credit. The lender's coin pays the
+  // army now; the crown owes it back with interest (serviced below). Borrowing comes
+  // BEFORE debasement — a state melts its coinage only as a last resort, when even its
+  // bankers won't extend more credit — so existing credit REPLACES minting rather than
+  // adding to it (avoids an inflationary debt+debasement double-faucet).
+  if (T.STATE_DEBT > 0 && financier && armyBill > gov.treasury) {
+    const room = Math.max(0, debtCap - (gov._debt || 0));
+    const lendable = Math.max(0, (financier.wealth || 0) - getWealthReserve(financier));
+    const loan = Math.min(armyBill - gov.treasury, room, lendable);
+    if (loan > 0.01) { financier.wealth -= loan; gov.treasury += loan; gov._debt = (gov._debt || 0) + loan; }
+  }
+  // DEBASEMENT (Phase 3): if the treasury STILL can't cover the army bill (credit
+  // exhausted), melt the coinage — mint emergency seigniorage (lowering fineness) to
+  // ease the shortfall; in comfortable times restore the coin toward full fineness.
   if (T.DEBASE_AGGRO > 0 && armyBill > 0.01) {
     const f0 = gov.fineness ?? 1;
     if (gov.treasury < armyBill && f0 > FINENESS_MIN) {
@@ -1169,30 +1210,95 @@ function disburseTreasury(world, c, gov, warLevel) {
     gov.treasury -= armyPaid; spent += armyPaid;
   }
 
-  // ── 2. PUBLIC WORKS / DOLE — only the surplus above the war-chest reserve ──
-  // The reserve is sized on the PEACETIME bill (built up in peace, drawn down
-  // by a war's surcharge) so a solvent state can ride out a war for a while
-  // before going bankrupt. It's also the coin a conqueror seizes.
+  // ── 1.5 DEBT SERVICE ── interest on the crown's debt, paid to the financier city as
+  // its 'war loans' income. Unpaid interest CAPITALISES (clamped to the ceiling): a
+  // state that keeps borrowing for war slides into a debt trap (Habsburg Spain's serial
+  // defaults), its revenue increasingly eaten by interest instead of guns or works.
+  if ((gov._debt || 0) > 0.01) {
+    const interest = gov._debt * DEBT_INTEREST;
+    const payI = Math.min(Math.max(0, gov.treasury), interest);
+    if (payI > 0 && financier) { gov.treasury -= payI; financier.wealth = (financier.wealth || 0) + payI; recordIn(financier, IN_FINANCE, payI); spent += payI; }
+    gov._debt = Math.min(debtCap, gov._debt + (interest - payI));   // shortfall capitalises, bounded
+  }
+
+  // ── 2. SURPLUS — debt repayment, then PURPOSEFUL spending ──
+  // The reserve is the war-chest (peacetime bill × passes), built in peace, drawn down
+  // in war; also the coin a conqueror seizes. Above it, a solvent throne doesn't just
+  // dole coin per head — it deleverages, then BUILDS: monuments & games at the seat
+  // (legitimacy that cools unrest realm-wide), infrastructure (roads that cheapen its
+  // trade), and relief to provinces in distress. Concentrating spending this way, rather
+  // than a universal per-capita dole, is also why the throne isn't every town's paymaster.
   const reserve = totalArmy * wage * RESERVE_PASSES;
   let budget = gov.treasury - reserve;
   if (budget > 0.01) {
-    let totW = 0;
-    for (const s of members) {
-      if (s.countryId !== c.id || s.id === c.capitalId) continue;
-      const boost = (s._housingPressed ? 0.5 : 0) + ((s._foodDemand || 0) > (s._foodSupply || 0) ? 0.5 : 0);
-      s._govW = Math.max(0, s.people || 0) * (1 + boost);
-      totW += s._govW;
+    // Repay principal in good times (deleverage) before discretionary works — not booked
+    // as the financier's income (it's their capital returned, not interest earned).
+    if ((gov._debt || 0) > 0.01 && financier) {
+      const repay = Math.min(budget * 0.5, gov._debt);
+      if (repay > 0.01) { gov.treasury -= repay; financier.wealth = (financier.wealth || 0) + repay; gov._debt -= repay; spent += repay; budget -= repay; }
     }
-    if (totW > 0) {
+    // MONUMENTS & GAMES at the seat → a slowly-fading legitimacy stock the unrest pass
+    // reads (bread & circuses); booked as state pay to the capital (the works' labour).
+    const mon = budget * T.SPEND_MONUMENT;
+    if (mon > 0.01 && cap) {
+      cap.wealth = (cap.wealth || 0) + mon; recordIn(cap, IN_STATE_PAY, mon);
+      gov._monuments = (gov._monuments || 0) * MONUMENT_DECAY + mon;
+      gov.treasury -= mon; spent += mon;
+    }
+    // INFRASTRUCTURE → roads (cheaper trade) + public-works employment for the members.
+    const infra = budget * T.SPEND_INFRA;
+    if (infra > 0.01) spent += spendInfrastructure(world, c, gov, infra);
+    // RELIEF / dole → the remainder, weighted HEAVILY toward provinces in actual
+    // distress (housing-pressed / food-short) so it reads as famine relief, not a wage.
+    const relief = Math.min(Math.max(0, gov.treasury - reserve), budget * T.SPEND_RELIEF);
+    if (relief > 0.01) {
+      let totW = 0;
       for (const s of members) {
         if (s.countryId !== c.id || s.id === c.capitalId) continue;
-        const share = budget * (s._govW / totW);
-        s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
+        const boost = (s._housingPressed ? 1.5 : 0) + ((s._foodDemand || 0) > (s._foodSupply || 0) ? 1.5 : 0);
+        s._govW = Math.max(0, s.people || 0) * (0.2 + boost);   // small per-capita floor + heavy need weighting
+        totW += s._govW;
       }
-      gov.treasury -= budget; spent += budget;
+      if (totW > 0) {
+        for (const s of members) {
+          if (s.countryId !== c.id || s.id === c.capitalId) continue;
+          const share = relief * (s._govW / totW);
+          s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
+        }
+        gov.treasury -= relief; spent += relief;
+      }
     }
+    // Whatever is left stays as TREASURE (hoard above the war chest) — recirculated when
+    // a conqueror seizes the treasury.
   }
   gov._spend = gov._spend * 0.9 + spent * 0.1;
+}
+
+// Public works: roads & canals. Booked as state pay (the labour) to the members,
+// weighted by size, and improves the road quality on their tiles — a developmental
+// state gradually cheapens its own trade. Bounded: roads improve slowly and never past
+// the worn-arterial floor (0.08), so this can't explode the trade economy.
+function spendInfrastructure(world, c, gov, budget) {
+  const members = c.members;
+  let totP = 0;
+  for (const s of members) if (s.countryId === c.id) totP += Math.max(0, s.people || 0);
+  if (totP <= 0) return 0;
+  const rq = world.roadQuality, tw = world.tw;
+  let spent = 0;
+  for (const s of members) {
+    if (s.countryId !== c.id) continue;
+    const share = budget * Math.max(0, s.people || 0) / totP;
+    if (share <= 0) continue;
+    s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
+    spent += share;
+    if (rq && s.pos) {
+      const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
+      const improve = Math.min(0.015, (share / Math.max(1, s.people || 0)) * T.INFRA_ROAD);
+      if (improve > 0) rq[ti] = Math.max(0.08, rq[ti] - improve);
+    }
+  }
+  gov.treasury -= spent;
+  return spent;
 }
 
 // ── Capital → member transport cost (terrain + naval) ────────────────
@@ -1374,6 +1480,20 @@ export function updatePolities(world) {
 
     const cap = c.capital;
     const capPower = settlementPower(cap);
+    // The realm's mustered force (sum of member garrisons) — its monopoly on
+    // organised violence, the thing that actually SUPPRESSES a province's revolt.
+    let natArmy = 0; for (const m of c.members) natArmy += (m.army || 0);
+    // Cultural heterogeneity the realm must garrison: each foreign-identity province
+    // ties down part of the national army (see coerce below), so a POLYGLOT empire
+    // spreads its force thin and can't suppress simultaneous nationalist revolts —
+    // the imperial overstretch that fractured Austria-Hungary and the Ottomans into
+    // nation-states — while a culturally-UNIFIED realm keeps its army concentrated and
+    // holds firm. Era-weighted off emergent development (absorbResistance/cohesion.js):
+    // near-silent in antiquity (multi-ethnic empires hold), cresting in the national age.
+    let natForeign = 0;
+    if (T.HOLD_ARMY && T.NAT_OVERREACH > 0) {
+      for (const m of c.members) { if (m.id === c.capitalId) continue; natForeign += absorbResistance(cap, m, idW); }
+    }
     // (The raw hold-distance c.range bounds the Dijkstra search inside
     // capitalTransportCosts; everything HERE compares against the res-scaled grip.)
     const holdRange = Math.max(1, c.holdReach || c.range);   // res-scaled grip → compared against map distances (admin load, secession reach)
@@ -1433,10 +1553,31 @@ export function updatePolities(world) {
     // Dominance: a capital far above the era's mean sustains a disproportionately
     // larger realm (the great-power tail), bounded and self-limiting (CAP_DOM_*).
     const relPow = capPower / Math.max(1, world._refCapPower || capPower);
-    const dominance = Math.min(CAP_DOM_MAX, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
+    const dominance = Math.min(T.CAP_DOM_MAX, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
     c._dominance = dominance;   // info panel: how far this realm out-cores the age
-    const peaceCapacity = (CAP_K * instMul * Math.log2(1 + capPower / POW_REF)
-                        + Math.min(SEAT_BONUS_CAP * instMul, seatBonus)) * dominance;
+    // GEOGRAPHIC CORE (absolute, founding-location advantage): a capital on a rich
+    // river-valley / floodplain heartland projects power further than one on marginal
+    // ground, in EVERY era — static geography, so a Nile/Mesopotamia/Yellow-River core
+    // holds a structurally larger empire than a steppe-centred realm. A path-INDEPENDENT
+    // source of size VARIETY that stops every realm relaxing to one characteristic size.
+    const capTi = (cap.pos.y | 0) * world.tw + (cap.pos.x | 0);
+    const geoCore = (world.fert ? world.fert[capTi] || 0 : 0.5)
+                  + 0.5 * (world.tFlood && world.tFlood[capTi] ? 1 : 0)
+                  + 0.3 * Math.min(1, (world.riverMag ? world.riverMag[capTi] || 0 : 0) / 3);
+    const geoMul = 1 + T.CAP_GEO * geoCore;
+    let peaceCapacity = (CAP_K * instMul * Math.log2(1 + capPower / POW_REF)
+                        + Math.min(SEAT_BONUS_CAP * instMul, seatBonus)) * dominance * geoMul;
+    // IMPERIAL HYSTERESIS (path dependence): the administrative reach, roads and
+    // legitimacy a large realm accretes PERSIST after its raw power dips, so a once-
+    // great empire holds together longer than its live strength alone would justify.
+    // A slow stock on the persistent polity (rises fast, decays ~4× slower) floors the
+    // capacity at a fraction of its recent imperial peak — turning the memoryless,
+    // RELATIVE capacity into a path-dependent, ABSOLUTE one: durable Romes, not
+    // one-era flashes, and the source of a lasting size hierarchy over a uniform field.
+    const gov = govOf(world, c.id);
+    const prevImp = gov._impCapacity || 0;
+    gov._impCapacity = prevImp + (peaceCapacity - prevImp) * (peaceCapacity > prevImp ? CAP_IMP_RISE : CAP_IMP_DECAY);
+    peaceCapacity = Math.max(peaceCapacity, gov._impCapacity * T.CAP_IMP_FLOOR);
 
     // ── War duress: throttle the budget while the realm is fighting ────
     // (fronts are tallied in armies.js advanceFronts → world._fronts.)
@@ -1454,7 +1595,6 @@ export function updatePolities(world) {
     // pass's solvency, from disburseTreasury) loses its grip on the frontier.
     // Lose provinces → lose tax revenue → can't pay → capacity falls → lose
     // more — the self-reinforcing collapse.
-    const gov = govOf(world, c.id);
     const solvency = gov._solvency ?? 1;
     let fiscalDuress = SOLVENCY_FLOOR + solvency * (1 - SOLVENCY_FLOOR);
     // Organised states weather both war and insolvency far better — ease both
@@ -1480,15 +1620,24 @@ export function updatePolities(world) {
 
     // Variable taxation: war + insolvency push the rate up toward a cap. Recent
     // conquests bank war-weariness relief (_spoils, in armies.js) that fades.
-    const targetTax = Math.min(T.TAX_MAX, TAX_BASE + TAX_WAR * warLevel + TAX_BANKRUPT * (1 - solvency));
-    gov._taxRate = (gov._taxRate ?? TAX_BASE) + (targetTax - (gov._taxRate ?? TAX_BASE)) * TAX_DRIFT;
+    const targetTax = Math.min(T.TAX_MAX, T.TAX_BASE + TAX_WAR * warLevel + TAX_BANKRUPT * (1 - solvency));
+    gov._taxRate = (gov._taxRate ?? T.TAX_BASE) + (targetTax - (gov._taxRate ?? T.TAX_BASE)) * TAX_DRIFT;
     gov._spoils = (gov._spoils || 0) * SPOILS_DECAY;
     c._taxRate = gov._taxRate;
 
     // ── Popular unrest: hardship piles up; peace + plenty + light taxes cool it.
     // At the top it boils over into a rebellion (rebel(), fired after secession).
-    const taxOver = Math.max(0, (gov._taxRate - TAX_BASE) / (T.TAX_MAX - TAX_BASE));
+    const taxOver = Math.max(0, (gov._taxRate - T.TAX_BASE) / (T.TAX_MAX - T.TAX_BASE));
     const warFat = Math.min(1, warLevel * 0.4) * (1 - Math.min(1, gov._spoils || 0));
+    // MONUMENT LEGITIMACY (bread & circuses): the seat's accumulated monuments & games
+    // (gov._monuments, built in disburseTreasury) overawe the people and cool unrest
+    // across the realm — saturating, and relative to population so a vast empire needs
+    // ever-grander works to keep the same legitimacy. A real reason to spend on cathedrals.
+    let realmPop = 0;
+    for (const s of c.members) if (s.countryId === c.id) realmPop += Math.max(0, s.people || 0);
+    const legit = (gov._monuments || 0) > 0 ? gov._monuments / (gov._monuments + MONUMENT_REF * Math.max(1, realmPop)) : 0;
+    c._legitimacy = legit;                         // info panel
+    const monRelief = T.MONUMENT_LEGIT * legit;    // extra unrest cooling from prestige works
     const rebelSeeds = [];
     for (const s of c.members) {
       if (s.countryId !== c.id) continue;
@@ -1499,7 +1648,29 @@ export function updatePolities(world) {
       const gH = hunger * HUNGER_W, gC = conscript * CONSCRIPT_W, gW = warFat * WARFAT_W, gT = taxOver * OVERTAX_W;
       const gS = shockUnrest(world, s);   // direct famine/plague distress (shocks.js)
       const gI = identityGrievance(cap, s, idW);   // heterodox-faith / foreign-people grievance vs the state core (era-weighted, cohesion.js)
-      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI) * T.UNREST_GAIN - UNREST_RELIEF));
+      // SERFDOM (land-tenure coercion): bound peasants owing heavy labour-rent. It forms
+      // where a settlement's GRAIN is in demand (export pull) and a STRONG realm can bind
+      // the peasants (coercion), set against their ability to EXIT to towns/commerce. The
+      // PLAGUE FORK: when a plague makes labour scarce, a strong-coercion realm binds the
+      // survivors TIGHTER (the second serfdom — Eastern Europe) while a commercial/weak one
+      // lets them bargain FREE (the West) — same shock, opposite institutions, never timed.
+      let gSerf = 0;
+      if (T.SERFDOM) {
+        const exportPull = s._exportFoodFrac || 0;                          // a grain producer
+        const coercion = Math.min(1, (c._dominance || 1) / 4);              // a strong realm can bind
+        // EXIT: how easily peasants escape — to nearby towns/commerce. Weighted toward
+        // LOCAL connectivity (trade reach) so it varies place-to-place, giving a spatial fork.
+        const exit = Math.min(1, (s._tradeReach ? s._tradeReach.size / 12 : 0) * 0.65 + ((s.knowledge && s.knowledge.organization) || 0) * 0.35);
+        let serfTarget = Math.min(1, T.SERF_FORM * exportPull * coercion * (1 - 0.7 * exit));
+        const scarce = s._plagueActive || ((s._plagueUntil || 0) > 0 && world.step < (s._plagueUntil || 0) + 2000);
+        // The fork: a labour-scarce shock BINDS where the lord is strong and exit is poor
+        // (coercion + isolation outweigh escape), else DISSOLVES serfdom (the West).
+        if (scarce) serfTarget = (coercion + (1 - exit)) >= 1.0 ? Math.min(1, serfTarget + T.SERF_PLAGUE) : 0;
+        s._serf = Math.max(0, Math.min(1, (s._serf || 0) + 0.02 * (serfTarget - (s._serf || 0))));
+        gSerf = T.SERF_UNREST * s._serf;
+      }
+      // a shrewd, firm ruler keeps better order; a foolish, weak one lets it fray (dynasties.js c._rulerRelief, ±)
+      s.unrest = Math.max(0, Math.min(1, (s.unrest || 0) + (gH + gC + gW + gT + gS + gI + gSerf) * T.UNREST_GAIN - UNREST_RELIEF - monRelief - (c._rulerRelief || 0)));
       s._unrestCause = s._plagueActive ? "plague"
                      : gI >= gH && gI >= gT && gI >= gW && gI >= gC ? identityGrievanceCause(cap, s, idW)
                      : gH >= gC && gH >= gW && gH >= gT ? "famine"
@@ -1538,7 +1709,34 @@ export function updatePolities(world) {
       const riverToll = tcross.get(s.id) || 0;
       let d = eucl + surcharge + riverToll;   // FULL route cost: detouring around a rival (rivals impassable) costs its true extra distance
       d /= holdPull(s);                                               // value cling
-      const coerce  = Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
+      // ABILITY to hold (motive + opportunity secession): the realm's NATIONAL ARMY
+      // suppresses a province's own rebel capacity (garrison + a militia levy from its
+      // people), decayed by the distance the army must march. A rich megacity has no
+      // army of its own to match the nation's, so a solvent, unified state holds it;
+      // a far province — or one whose realm's army has been drained by war casualties
+      // or insolvent desertion (both already shrink s.army) — can break away. The
+      // MOTIVE (loyalty/unrest) is the trigger handled below; this is the FEASIBILITY.
+      // HOLD_ARMY=0 reverts to the old economic capital-vs-province ratio.
+      // NATIONALIST LEVY: a province foreign to its ruler's people/tongue/faith raises
+      // a far larger militia when it rises — the whole people mobilises on identity
+      // lines (1848, the Ottoman Balkans, the breakup of Austria-Hungary), which regular
+      // suppression can't match. So cultural distance multiplies the rebel levy, letting
+      // foreign-identity provinces break military holding and secede into nation-states,
+      // while a co-cultural province stays at the base levy and is held firmly. Pairs
+      // with the absorption-resistance gate: foreign cities are both hard to absorb AND
+      // hard to hold, so realms settle on their cultural core. Era-weighted off emergent
+      // development (cohesion.js) — silent in antiquity (multi-ethnic empires hold),
+      // cresting in the national age — never time-gated.
+      const natRes = (T.HOLD_ARMY && (T.REBEL_IDENTITY > 0 || T.NAT_OVERREACH > 0)) ? absorbResistance(cap, s, idW) : 0;
+      const provForce = (s.army || 0) + (s.people || 0) * T.REBEL_LEVY * (1 + T.REBEL_IDENTITY * natRes);
+      // The army that can actually be brought to bear HERE is the national force minus
+      // what's tied down suppressing the realm's OTHER foreign provinces (natForeign −
+      // this one's own share): a unified realm concentrates its whole army on each
+      // revolt, a polyglot empire divides it across every restive march.
+      const armyAvail = natArmy / (1 + T.NAT_OVERREACH * Math.max(0, natForeign - natRes));
+      const coerce = T.HOLD_ARMY
+        ? Math.min(COERCE_CAP, Math.sqrt((armyAvail * (holdRange / (holdRange + d)) + 1) / Math.max(1, provForce)))
+        : Math.min(COERCE_CAP, Math.sqrt(capPower / Math.max(1, settlementPower(s))));
       const sizeMul = 1 + T.SIZE_LOAD * Math.min(3, Math.log2(1 + (s.people || 0) / SIZE_REF));
       const recMul  = 1 + RECENCY_LOAD * recencyFactor(world, s);
       const langMul = 1 + adminFriction(cap, s, idW);   // a foreign-tongue province is costlier to govern → polyglot empires overreach sooner (cohesion.js)
@@ -1651,21 +1849,26 @@ export function updatePolities(world) {
         if (coin > 0) { gov.treasury -= coin; s.wealth = (s.wealth || 0) + coin; recordIn(s, IN_AID, coin); }
         continue;                                   // subsidised, not taxed
       }
-      const give = Math.max(0, s.wealth || 0) * (gov._taxRate ?? TAX_BASE);
+      const give = Math.max(0, s.wealth || 0) * (gov._taxRate ?? T.TAX_BASE);
       if (give > 0) { s.wealth -= give; gov.treasury += give; gov._revenue += give; recordOut(s, OUT_TRIBUTE, give); }
       // PRODUCE LEVY (rent + tithe on the HARVEST): a landlord/church share of a settlement's
       // farm OUTPUT, taken off the top every pass — what kept real peasants poor (their surplus
       // skimmed as a share of the crop, not their cash hoard) and what funds the towns. It falls
-      // on FARMED output (_landFood) only, so the agrarian countryside pays it and cities (which
-      // grow nothing) don't — draining the village hoards UP to the state, then out to the cities.
+      // on FARMED output (_landFood): the agrarian countryside pays it. Under the legacy model
+      // cities grew nothing and were exempt; under DISSOLVE_FARMS every town works its own
+      // catchment, so a city is tithed on its hinterland's HARVEST too — draining the rural
+      // hoards UP to the state, then out to the great cities.
       // The levy now tracks the realm's VARIABLE tax rate (war / insolvency push it
       // up), so a state at war taxes its countryside's HARVEST harder — not just its
       // cash — and that over-extraction feeds the over-tax grievance into revolt
       // (the "raise taxes for the war → the provinces rise up" loop). 1× at the base
       // rate, scaling up toward TAX_MAX/TAX_BASE in a hard war.
       if (T.FARM_RENT > 0 && (s._landFood || 0) > 0) {
-        const taxMul = (gov._taxRate ?? TAX_BASE) / TAX_BASE;
-        const rent = Math.min(Math.max(0, s.wealth || 0), (s._landFood || 0) * T.FARM_RENT * taxMul * T.POLITY_INTERVAL);
+        const taxMul = (gov._taxRate ?? T.TAX_BASE) / T.TAX_BASE;
+        // Serfdom skims a HEAVIER share of the harvest — bound peasants kept at subsistence,
+        // their surplus extracted as labour-rent up to the lord/state (the serf breadbasket).
+        const serfMul = T.SERFDOM ? 1 + T.SERF_RENT * (s._serf || 0) : 1;
+        const rent = Math.min(Math.max(0, s.wealth || 0), (s._landFood || 0) * T.FARM_RENT * serfMul * taxMul * T.POLITY_INTERVAL);
         if (rent > 0) { s.wealth -= rent; gov.treasury += rent; gov._revenue += rent; recordOut(s, OUT_TRIBUTE, rent); }
       }
     }
@@ -1790,10 +1993,16 @@ function absorbWeakNeighbors(world, countries) {
       if (no >= 0) { const fs = byId.get(no); if (!fs) continue; ncc = fs.countryId; }
       else { ncc = co ? co[ni] : -1; }
       if (ncc < 0 || ncc === myCC) continue;
-      const F = countries.get(ncc); if (!F) continue;
+      const F = countries.get(ncc); if (!F || !F.capital) continue;   // a realm mid-collapse can have no capital this pass
       const fOrg = techEff(F.capital).reachLevel;   // foreign realm's statecraft, from its admin techs (reachLevel tracks org)
       if (fOrg < T.ABSORB_ORG_MIN) continue;
-      if (myTier > tierCapForOrg(fOrg)) continue;            // too developed for F's statecraft
+      if (myTier > tierCapForOrg(fOrg)) {
+        // ...UNLESS F overwhelmingly out-powers m's WHOLE country: brute force takes a
+        // developed neighbour's land too (a hegemon conquers what it cannot slowly
+        // administer), so great powers consolidate even ADVANCED statelets late game
+        // instead of leaving a sea of untouchable city-states. Army/power → land.
+        if ((countryPower.get(ncc) || 1) < myCountryPow * T.ABSORB_FORCE) continue;
+      }
       if ((countryPower.get(F.id) || 1) < myCountryPow * T.ABSORB_DOMINANCE) continue;  // not dominant enough
       const orgFactor = Math.min(1, (fOrg - T.ABSORB_ORG_MIN) / (1 - T.ABSORB_ORG_MIN));
       let perCc = perSett.get(m.id);
@@ -1812,6 +2021,9 @@ function absorbWeakNeighbors(world, countries) {
   // hasAbsorbHeadroom — without this the gate checks every candidate against
   // the same stale pre-pass load and the realm over-extends in one tick).
   const absorbedLoad = new Map();
+  // Era-weighted identity salience for the cultural-resistance gate below (one read
+  // per pass). See cohesion.js absorbResistance — keyed on emergent development.
+  const idW = identityWeightsNow(world);
   for (const [settId, scoreMap] of perSett) {
     const m = byId.get(settId);
     if (!m || m.mode !== "settled") continue;
@@ -1843,9 +2055,22 @@ function absorbWeakNeighbors(world, countries) {
     const ratio = bestScore / myPower;
     let prob = Math.min(T.ABSORB_PROB_MAX, ratio * T.ABSORB_RATE);
     if (lopsided) prob = Math.max(prob, ENGULF_PROB);
-    // Deterministic hash on (id, step) — same input always rolls the same
-    // outcome, so debugging is reproducible and there's no jitter.
-    const r = ((m.id * 9301 + world.step * 49297 + 7) % 233280) / 233280;
+    // CULTURAL RESISTANCE: a city of the absorber's OWN people/tongue/faith slides
+    // into its orbit (building a national core); a foreign one clings to independence
+    // and must be taken by direct CONQUEST (armies.js) instead of peacefully defecting.
+    // This is what stops one realm engulfing every neighbour it out-powers across two
+    // dozen cultures — realms coalesce into culturally-coherent nation-states. Applied
+    // AFTER the lopsided floor so even a great power can't peacefully vacuum up a wholly
+    // foreign city. Era-weighted (cohesion.js), so antiquity still permits multi-ethnic
+    // empires and the national age fractures them — emergent, never time-gated.
+    if (T.ABSORB_IDENTITY > 0 && target && target.capital) {
+      prob *= 1 - T.ABSORB_IDENTITY * absorbResistance(target.capital, m, idW);
+    }
+    // Deterministic per-(seed, settlement, step) roll via the shared avalanche
+    // hash. Unlike the old linear-congruential hash it varies with the WORLD SEED
+    // (defections used to be identical across every seed) and doesn't correlate
+    // consecutive ids (which made runs of neighbouring villages flip in lockstep).
+    const r = hash32(world.seed || 1, "absorbDefect", m.id, world.step) / 4294967296;
     if (r > prob) continue;
     const oldCC = m.countryId;
     m.countryId = bestId;

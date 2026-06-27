@@ -18,12 +18,15 @@
 // ground the other systems stand on.
 
 import { passRng, entityRng, hash32 } from "./rng.js";
+import { T } from "./tuning.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { getCulture, languageOf, dominantCulture, familyOf, folkAnchorOf } from "./cultures.js";
 import { faithShapePersonality } from "./personality.js";
 import { forEachNear } from "./spatialGrid.js";
 import { langWord } from "../language.js";
+import { recordIn, recordOut, IN_PILGRIM, OUT_PILGRIM } from "./money.js";
+import { getWealthReserve } from "./settlement.js";
 
 // ── Timing: an AXIAL AGE, then bounded branching (the real pattern) ──
 // Real religious history isn't a flat trickle. Organized faith is impossible
@@ -41,10 +44,9 @@ import { langWord } from "../language.js";
 export const FAITH_INTERVAL = 150;       // cadence (≈ polity/culture passes)
 const ORGANIZED_ORG_MIN = 0.26;          // organization floor for a priesthood (opens the axial window)
 const ORGANIZED_POP_MIN = 450;           // a movement needs a real town
-const GENESIS_BASE = 0.11;               // base per-eligible-city founding rate (scaled by urbanisation × stress × open niche)
 const GENESIS_CULTURE_COOLDOWN = 1500;   // min ticks between new faiths within one PEOPLE
+//  founding rate, conversion speed, schism chance → live levers (T.FAITH_*)
 const MAX_FOUNDINGS_PER_PASS = 3;        // the window bursts, but not a single-tick flood
-const SPREAD_RATE = 0.055;               // per-pass share shift toward the pulling faith
 const STATE_PRESSURE = 2.4;              // extra pull weight of the ruler's faith
 const ORGANIZED_PULL = 2.2;              // organized faiths proselytize; folk faiths don't travel
 const FOLK_PULL = 0.45;
@@ -53,7 +55,6 @@ const MIX_FLOOR = 0.05;                  // drop faith shares below this so a co
 // Branching (schism) — bounded so the late game doesn't fission exponentially.
 const SCHISM_MIN_REALMS = 3;             // only a faith spanning several realms can schism
 const SCHISM_MIN_AGE = 3000;             // a young faith doesn't schism
-const SCHISM_CHANCE = 0.05;              // base per distant follower-realm per pass (then strongly damped)
 const SCHISM_MIN_DIST = 95;              // map distance from origin see (tiles)
 const MAX_BRANCHES_PER_ROOT = 6;         // a religion fissions into a few great branches, not endlessly
 const SCHISM_ROOT_COOLDOWN = 1400;       // min ticks between schisms within one religion family
@@ -249,6 +250,11 @@ function mixFaithToward(s, fid, frac) {
 export function updateFaiths(world) {
   const rng = passRng(world, "religion");
   const byId = world._byId;
+  // Iterate a stable id-sorted snapshot for the RNG-drawing genesis loop, so
+  // faith outcomes never depend on world.settlements' array order (it is created
+  // id-ascending today, so this is a no-op now — it just keeps reproducibility
+  // robust if the array is ever spatially reordered).
+  const setts = world.settlements.slice().sort((a, b) => a.id - b.id);
 
   // 1. seed empty mixtures from the people's folk faith (newborns, first pass)
   for (const s of world.settlements) {
@@ -281,7 +287,7 @@ export function updateFaiths(world) {
     if (df0 && df0.kind === "organized") famOrg.set(fam, (famOrg.get(fam) || 0) + 1);
   }
   let founded = 0;
-  for (const s of world.settlements) {
+  for (const s of setts) {
     if (founded >= MAX_FOUNDINGS_PER_PASS) break;
     if (s.mode !== "settled" || (s.tier | 0) < 1) continue;
     const org = (s.knowledge && s.knowledge.organization) || 0;
@@ -304,7 +310,7 @@ export function updateFaiths(world) {
       + (world.step < (s._famineUntil || 0) ? 0.3 : 0)
       + (s._plagueActive ? 0.3 : 0);
     const urban = 0.5 + Math.min(1.1, Math.max(0, Math.log10((s.people || 1) / 300)));
-    const prob = GENESIS_BASE * urban * stress * (1 - 0.5 * sat);
+    const prob = T.FAITH_GENESIS_RATE * urban * stress * (1 - 0.5 * sat);
     if (rng() > prob) continue;
     const lang = languageOf(world, cul);
     const f = newFaith(world, {
@@ -388,7 +394,7 @@ export function updateFaiths(world) {
     for (const [fid, w] of pull) if (w > bw) { bw = w; best = fid; }
     if (best >= 0) pulls.push([s, best, Math.min(0.5, bw / 3)]);
   }
-  for (const [s, fid, str] of pulls) mixFaithToward(s, fid, SPREAD_RATE * str * 3);
+  for (const [s, fid, str] of pulls) mixFaithToward(s, fid, T.FAITH_SPREAD_RATE * str * 3);
 
   // 4. state adoption + legitimacy coupling
   if (world.countries) {
@@ -504,7 +510,7 @@ export function updateFaiths(world) {
         const estranged = (c._fronts || 0) > 0 || (p._crisisAt != null && world.step - p._crisisAt < 1200 / (world._dt || 1));
         const trigger = estranged ? 1 : 0.45;
         const r = entityRng(world, "schism", hash32(f.id, c.id, world.step));
-        if (r() > (SCHISM_CHANCE / damp) * hierMul * trigger) continue;
+        if (r() > (T.FAITH_SCHISM_CHANCE / damp) * hierMul * trigger) continue;
         const culId = dominantCulture(c.capital);
         const cul = getCulture(world, culId);
         const lang = cul ? languageOf(world, cul) : null;
@@ -581,22 +587,63 @@ export function updateFaiths(world) {
     if (world.countries) for (const c of world.countries.values()) {
       const p = getPolity(world, c.id); if (p && p.faithId >= 0) stateFaiths.add(p.faithId);
     }
+    // Decide which faiths fade, then strip them from every mixture in ONE pass
+    // over settlements (was O(culled × settlements) — a full re-scan per faith).
+    const culled = new Set();
     for (const f of faithsOf(world).values()) {
       if (f.kind !== "organized" || f.endedStep >= 0) continue;
       if (world.step - f.foundedStep < CULL_GRACE / (world._dt || 1)) continue;
       if ((dom.get(f.id) || 0) >= CULL_FLOOR || stateFaiths.has(f.id)) continue;
-      // fade it: strip from every mixture, let the rest renormalise
-      for (const s of world.settlements) {
-        if (!s.faithMix || !s.faithMix.length) continue;
-        const before = s.faithMix.length;
-        s.faithMix = s.faithMix.filter(e => e[0] !== f.id);
-        if (s.faithMix.length !== before) {
-          if (!s.faithMix.length) { const folk = folkFaithOf(world, dominantCulture(s)); if (folk) s.faithMix = [[folk.id, 1]]; }
-          else normalizeMix(s.faithMix);
-        }
-      }
+      culled.add(f.id);
       f.endedStep = world.step | 0;
       logEvent(world, "faith.faded", { faith: f.id, faithName: f.name, character: doctrineLabel(f) });
     }
+    if (culled.size) for (const s of world.settlements) {
+      if (!s.faithMix || !s.faithMix.length) continue;
+      const before = s.faithMix.length;
+      s.faithMix = s.faithMix.filter(e => !culled.has(e[0]));
+      if (s.faithMix.length !== before) {
+        if (!s.faithMix.length) { const folk = folkFaithOf(world, dominantCulture(s)); if (folk) s.faithMix = [[folk.id, 1]]; }
+        else normalizeMix(s.faithMix);
+      }
+    }
+  }
+}
+
+// ── Pilgrimage economy ──────────────────────────────────────────────────────
+// A faith's founding SEE (originSettlementId) is its holy city. The faithful across
+// the world send offerings and make pilgrimage to it, so a city that birthed a great,
+// widely-followed creed grows rich on devotion alone — Mecca, Rome, Jerusalem, Varanasi,
+// Lhasa — an economic archetype with NO local production behind it. Conservative: coin
+// is TRANSFERRED from the faithful (a sliver of their spendable wealth, by their share
+// of the faith) to the holy see, never minted. The bigger and richer a faith's flock,
+// the wealthier its holy city — emergent from the faith's spread, never time-gated.
+export const PILGRIM_INTERVAL = 50;   // ticks between pilgrimage passes (slow devotional flow)
+export function updatePilgrimage(world) {
+  if (T.PILGRIM_W <= 0) return;
+  const byId = world._byId;
+  if (!byId || !world.faiths || !world.faiths.size) return;
+  const pot = new Map();   // holy-city id → offerings collected this pass
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || !s.faithMix || !s.faithMix.length) continue;
+    const spendable = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
+    if (spendable <= 0) continue;
+    let spent = 0;
+    for (const [fid, sh] of s.faithMix) {
+      const f = world.faiths.get(fid);
+      const origin = f ? (f.originSettlementId ?? -1) : -1;
+      if (origin < 0 || origin === s.id) continue;          // no see, or this IS the see
+      const holy = byId.get(origin);
+      if (!holy || holy.mode !== "settled") continue;
+      const give = spendable * T.PILGRIM_W * sh;            // offering ∝ devotion (faith share)
+      if (give <= 0) continue;
+      pot.set(origin, (pot.get(origin) || 0) + give);
+      spent += give;
+    }
+    if (spent > 0) { s.wealth -= spent; recordOut(s, OUT_PILGRIM, spent); }
+  }
+  for (const [holyId, coin] of pot) {
+    const holy = byId.get(holyId);
+    if (holy) { holy.wealth = (holy.wealth || 0) + coin; recordIn(holy, IN_PILGRIM, coin); }
   }
 }

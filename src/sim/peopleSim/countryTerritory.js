@@ -24,7 +24,9 @@ import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
 import { grownOwnerAt } from "./countryClaim.js";
 import { ensurePolity } from "./entities.js";
+import { settlementPower } from "./conquest.js";
 import { T } from "./tuning.js";
+import { claimHostility } from "./habitability.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
 // claims land out to COUNTRY_REACH_BASE + capital-organisation × COUNTRY_REACH_ORG
@@ -77,9 +79,7 @@ const CLAIM_HOSTILITY = 3.0;   // ×(1 + this·deficit²) on barren land: 0 = ol
 // is untouched and still claims cheap. Scaled by the realm's `host` factor, so it
 // fades with logistics tech — pre-modern realms stall at the jungle edge, the
 // industrial/colonial era finally penetrates it.
-const WET_TROPIC_RESIST = 1.0;
-const WET_TROPIC_T0 = 0.78, WET_TROPIC_TSPAN = 0.10;   // temperature ramp (matches the agri wet-tropic penalty)
-const WET_TROPIC_M0 = 0.60, WET_TROPIC_MSPAN = 0.25;   // moisture ramp
+const WET_TROPIC_RESIST = 1.0;   // strength of the disease/tsetse-belt claim drag (see claimHostility)
 // How far a realm projects a CLAIM also grows with the era. In antiquity a state
 // was an island of territory in a sea of unclaimed land — most of the world
 // belonged to no polity (steppe, forest, desert, the deep interior). The modern
@@ -90,31 +90,16 @@ const WET_TROPIC_M0 = 0.60, WET_TROPIC_MSPAN = 0.25;   // moisture ramp
 // the modern wall-to-wall partition as the centuries pass.
 const REACH_ERA = 2;          // budget ×(1 + construction² · REACH_ERA): ~×1 ancient, ~×3 modern (was 3 — eased so realms don't balloon mid-era). OLD-path (TECH_EFFECTS=0) only.
 const LOGI_REACH = 2.2;       // budget ×(1 + logisticsLevel · LOGI_REACH): transport/comms-gated era scaling (Roads≈Rome-scale, Rail+Telegraph≈continental). NEW path.
-// The industrial "closing of the frontier": once rail+telegraph make nominal
-// control projectable, states partition ALL contiguous land to the nearest
-// capital (no terra nullius ~1900). Modelled cheaply in recolorByCapital as a
-// wilderness-claim cost budget that GROWS (quadratically, so it bites only the
-// late industrial era) with the world's logistics level — pre-modern realms still
-// hug rivers/coasts; industrial ones fill the continents to the midline. The flood
-// is one O(land) pass, so this is far cheaper than projecting bigger reach-disks.
-// The multi-source capital Voronoi saturates at a SMALL budget (each capital only
-// has to reach the midpoint to its neighbours), so the budget is modest and ramps
-// THROUGH the critical range over the industrial era — a sudden huge budget both
-// snaps to 100% overnight AND over-extends realms into collapse. Tuned so the fill
-// climbs across ~1845–1900 (the real Scramble) and tops out near-complete by ~1930.
-const FRONTIER_CLOSE = 28;    // wilderness-claim budget at era 1 = FRONTIER_CLOSE · resScale · era² (was 80: the modern era colonised ALL the wastes, abolishing terra nullius — eased so undeveloped frontiers keep their unclaimed wilderness)
-const FRONTIER_DOM   = 0.7;   // a DOMINANT realm pushes its wilderness-claim frontier farther (budget × dominance^this):
-                              // the great powers partition the open interior into continental empires (Russia, the USA,
-                              // the Raj, the Scramble) instead of every realm grabbing an equal slice — bounded by the
-                              // competitive midline where rival floods meet (conquest.js _dominance)
-const DOM_HINTERLAND = 2;     // a dominant core also claims its regional HINTERLAND ahead of the industrial close
-                              // (budget × resScale × (dominance−1) × hinterland-era): an ordinary realm gets 0 (open
-                              // marches preserved), but a Rome / Persia / Mongol fills its near-wilderness, so the
-                              // classical & medieval great powers tower regionally, not just the modern continental ones
-const HINTER_YEAR0   = -1000; // hinterland-claim begins (deep antiquity keeps its empty marches even under a strong core)
-const HINTER_YEAR1   = 200;   // …full by the classical era (the age of Rome, Han, Persia, the Maurya)
-const FRONTIER_YEAR0 = 1760;  // the close BEGINS (era 0) — pre-industrial world keeps its open marches / terra nullius
-const FRONTIER_YEAR1 = 1930;  // era 1 — the whole partitioned world (Scramble for Africa done ~1914)
+// There is NO synthetic "frontier close". The ancient archipelago of realms becomes
+// the modern wall-to-wall partition PURELY through each realm's own reach growing as
+// it develops: the per-settlement reach budget above is multiplied by eraMul, which
+// climbs with LOGISTICS tech (LOGI_REACH — roads→rail→telegraph→steamship), so an
+// industrialised realm naturally projects its border far enough to swallow the open
+// interior, while a pre-rail world keeps its terra nullius because its reach simply
+// can't span it. Coverage is therefore an emergent consequence of development, never
+// a special global flood keyed on a year, an era index, or a logistics threshold.
+// (Interior wastes fully enclosed by a single realm still fill — see
+// fillEnclosedWaste — but that's a topological cartographer's rule, not a time gate.)
 // Reach is also scaled by how BIG the realm is, so a claim is backed by real
 // settlements rather than the capital's tech alone. budget ×= clamp(members /
 // REACH_SIZE_REF, REACH_SIZE_MIN, 1): a fledgling realm projects only a fraction
@@ -130,6 +115,10 @@ const REACH_SIZE_MIN = 0.25;  // a tiny realm still projects at least this fract
 // largest territory" artifact (a 25-person hamlet flying a 447-tile border). Floored
 // at the settlement's own ground (integMin), so coverage is never lost.
 const CLAIM_POP_REF = 1000;
+// Power-weighted borders (T.CLAIM_POW): clamp on the per-realm claim weight, so a
+// hegemon dominates its marches (×CLAIM_W_MAX reach / border push) but can't swallow
+// the continent in one pass, and a weakling still holds a small core (×CLAIM_W_MIN).
+const CLAIM_W_MIN = 0.6, CLAIM_W_MAX = 2.2;
 // Past the reference, scale keeps PAYING (sqrt, dampened) instead of clamping to 1.
 // The clamp was an equalizer: a 60-member empire projected the same claim as a
 // 32-member one, so every mature realm converged on the same regional size (the
@@ -299,7 +288,6 @@ export function computeCountryTerritory(world) {
   // capital died between passes — fall back to the most-organised settlement.
   const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map(), eraBoost = new Map(), hostOf = new Map(), capApt = new Map();
   const politicalCap = new Map();   // countryId → capital settlement id (conquest.js rebuildCountries)
-  let maxLogi = 0;                   // world's highest logistics level — gates the industrial frontier-close
   if (world.countries) for (const [cid, c] of world.countries) if (c && c.capitalId != null) politicalCap.set(cid, c.capitalId);
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless settlements don't seed
@@ -321,7 +309,6 @@ export function computeCountryTerritory(world) {
       // construction² curve by TECH_EFFECTS so the lever still reverts cleanly.
       const cons = (s.knowledge && s.knowledge.construction) || 0;
       const logi = s._techEff ? s._techEff.logisticsLevel : cons * cons;
-      if (logi > maxLogi) maxLogi = logi;   // the world's leading logistics level → drives the frontier-closing budget
       const eraMul = 1 + (cons * cons * REACH_ERA) * (1 - T.TECH_EFFECTS) + (logi * LOGI_REACH) * T.TECH_EFFECTS;
       // eraMul (the continental-logistics boost) is applied SIZE-GATED below, so a
       // one-city rump can't ride modern tech to a continental claim — store the base
@@ -442,12 +429,35 @@ export function computeCountryTerritory(world) {
     }
     cost[ti] = 0; co[ti] = c; seedBud[ti] = sb; heap.push(ti, 0, c);
   }
+  // POWER-WEIGHTED BORDERS: a per-realm claim weight from its STRENGTH (capital
+  // power: people × military × org). A stronger realm's flood accumulates cost more
+  // slowly (ec / weight), so its boundary with a weaker neighbour falls PAST the
+  // geometric midpoint — the strong push their sphere into the weak's frontier
+  // (settled tiles are cost-0 sources, so cities still need conquest). Weight =
+  // (strength / median strength)^CLAIM_POW, compressed and clamped so a hegemon
+  // dominates its marches without eating the map. CLAIM_POW=0 → the old midpoint.
+  const claimW = new Map();
+  if (T.CLAIM_POW > 0) {
+    const powByCountry = new Map();
+    for (const s of world.settlements) {
+      if (s.mode !== "settled" || s.countryId < 0) continue;
+      const p = settlementPower(s);
+      if (p > (powByCountry.get(s.countryId) || 0)) powByCountry.set(s.countryId, p);
+    }
+    const vals = [...powByCountry.values()].sort((a, b) => a - b);
+    const ref = vals.length ? vals[vals.length >> 1] : 1;   // the MEDIAN realm strength is the neutral ×1 weight
+    for (const [cid, p] of powByCountry) {
+      const w = Math.pow(Math.max(1e-6, p / Math.max(1e-6, ref)), T.CLAIM_POW);
+      claimW.set(cid, w < CLAIM_W_MIN ? CLAIM_W_MIN : w > CLAIM_W_MAX ? CLAIM_W_MAX : w);
+    }
+  }
   // Multi-source Dijkstra: every land tile goes to the nearest country (by travel
   // cost) within that country's reach budget; another country's tile is just a
-  // cheaper claim, so the boundary lands on the cost-bisector (clean border).
+  // cheaper claim, so the boundary lands on the (power-weighted) cost-bisector.
   while (heap.n > 0) {
     const { ti, d, c } = heap.popMin();
     if (d > cost[ti]) continue;
+    const wc = claimW.get(c) || 1;   // power weight: strong realms accumulate cost slower
     const basinBud = seedBud[ti];                    // this basin's reach cap (recency-limited for new land)
     const kn = knOf.get(c);
     const cap = claimCap.get(c) || CLAIM_CAP_CEIL;   // construction-eased per-tile claim cost ceiling
@@ -479,16 +489,18 @@ export function computeCountryTerritory(world) {
       if (!water && host > 0) {
         const fdef = (CLAIM_FERT_REF - (fert ? fert[ni] : CLAIM_FERT_REF)) / CLAIM_FERT_REF;
         if (fdef > 0) ec *= 1 + host * fdef * fdef;
-        // Wet-tropic resistance: hot+wet rainforest stalls a border (sparse,
-        // stateless deep tropics); hot+dry steppe is untouched.
+        // Disease/tsetse claim resistance: the humid malaria + tsetse belt stalls a
+        // border (sparse, stateless, near-impossible to administer); the open DRY
+        // Sahel/steppe is untouched and still claims cheap (Mali, Songhai, the
+        // khanates ran huge across the grass sea). Broadened from rainforest-only to
+        // the savanna woodland — see habitability.js claimHostility.
         if (temp && moist) {
-          const wt = Math.min(1, Math.max(0, (temp[ni] - WET_TROPIC_T0) / WET_TROPIC_TSPAN))
-                   * Math.min(1, Math.max(0, (moist[ni] - WET_TROPIC_M0) / WET_TROPIC_MSPAN));
+          const wt = claimHostility(temp[ni], moist[ni]);
           if (wt > 0) ec *= 1 + host * WET_TROPIC_RESIST * wt;
         }
       }
       ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);     // organic meander → borders wander instead of cutting straight
-      const nd = d + ec * mul[k];
+      const nd = d + ec * mul[k] / wc;                   // power-weighted: a stronger realm pushes its border past the midpoint
       if (nd > basinBud) continue;                       // basin's (recency-limited) reach budget — also caps how far a realm sails its border
       // Claim LAND; a water tile only propagates the cost frontier (a navy crossing
       // it), so the two shores of a narrow sea knit into ONE contiguous realm
@@ -496,22 +508,11 @@ export function computeCountryTerritory(world) {
       if (nd < cost[ni]) { cost[ni] = nd; if (!water) co[ni] = c; seedBud[ni] = basinBud; heap.push(ni, nd, c); }
     }
   }
-  // Industrial frontier-close: nominal control only becomes projectable with RAIL +
-  // TELEGRAPH (high logistics) — roads gave Rome its marches, not a closed frontier.
-  // Engage only above FRONTIER_LOGI, then ramp quadratically to a map-spanning budget
-  // by full industrialisation (~1900). Zero through antiquity and the medieval world.
-  world._maxLogi = maxLogi;
-  // The frontier closes as the world INDUSTRIALISES (the colonial scramble + the
-  // abolition of terra nullius). Driven by the leading state's DEVELOPMENT, not the
-  // calendar: world._civYear is the pseudo-year mapped from the most advanced civ's
-  // organisation (index.js), so the close fires when some civ actually reaches the
-  // industrial era — whenever that happens — and never if none does. The raw logistics
-  // level plateaus too low to threshold on. era² ⇒ back-loaded (sharp), matching how
-  // fast the world actually partitioned.
-  const yr = world._civYear ?? -9000;
-  const era = Math.max(0, Math.min(1, (yr - FRONTIER_YEAR0) / (FRONTIER_YEAR1 - FRONTIER_YEAR0)));
-  const frontierBudget = FRONTIER_CLOSE * resScale * era * era;
-  if (_capitalOnly) recolorByCapital(world, co, capPos, knOf, claimCap, frontierBudget);
+  // The capital pass only SMOOTHS borders (recolours already-claimed tiles to their
+  // nearest capital). It claims no wilderness — coverage came entirely from the
+  // per-settlement reach flood above, whose budget grows with each realm's own
+  // logistics tech, so the continents fill (or don't) as development actually warrants.
+  if (_capitalOnly) recolorByCapital(world, co, capPos, knOf, claimCap);
   fillEnclosedWaste(world, co);
   closeRealmGaps(world, co, T.REALM_GAP_FILL);
   smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0);
@@ -531,7 +532,7 @@ export function computeCountryTerritory(world) {
 // wilderness. A border settlement nearer a RIVAL capital is recoloured to it (a
 // frontier town joins the closer power) rather than stranded — there is always a
 // successor, never blank ground.
-function recolorByCapital(world, co, capPos, knOf, claimCap, frontierBudget = 0) {
+function recolorByCapital(world, co, capPos, knOf, claimCap) {
   const { N, tw, th, elev } = world;
   let capColor = world._capColor;
   if (!capColor || capColor.length !== N) capColor = world._capColor = new Int32Array(N);
@@ -539,19 +540,6 @@ function recolorByCapital(world, co, capPos, knOf, claimCap, frontierBudget = 0)
   if (!capCost || capCost.length !== N) capCost = world._capCostF = new Float64Array(N);
   capColor.fill(-1); capCost.fill(Infinity);
   const noise = claimNoise(world);
-  // Dominant realms partition a LARGER share of the open interior (continental empires),
-  // and a dominant core ALSO claims its regional hinterland ahead of the industrial close
-  // (DOM_HINTERLAND, present in every era; 0 for ordinary realms, which keep open marches).
-  const rs = resScaleFor(world.tw);
-  const hYr = world._civYear ?? -9000;   // leading-state development as a pseudo-year (index.js), NOT the wall-clock
-  const hinterEra = Math.max(0, Math.min(1, (hYr - HINTER_YEAR0) / (HINTER_YEAR1 - HINTER_YEAR0)));   // 0 in deep antiquity → 1 by the classical age
-  const domBudget = new Map();
-  if (world.countries) for (const [c] of capPos) {
-    const cc = world.countries.get(c);
-    const dom = cc && cc._dominance ? cc._dominance : 1;
-    domBudget.set(c, frontierBudget * Math.pow(dom, FRONTIER_DOM) + DOM_HINTERLAND * rs * hinterEra * Math.max(0, dom - 1));
-  }
-  const budgetOf = (c) => domBudget.get(c) ?? frontierBudget;
   const heap = new MinHeap();
   for (const [c, pos] of capPos) {
     const ti = (pos.y | 0) * tw + (pos.x | 0);
@@ -579,15 +567,14 @@ function recolorByCapital(world, co, capPos, knOf, claimCap, frontierBudget = 0)
       if (ec > cap) ec = cap + (ec - cap) * CLAIM_SOFT;
       ec *= 1 + (noise[ni] - 0.5) * (2 * NOISE_AMP);
       const nd = d + ec * mul[k];
-      // Claimed land is always traversable (recolour to the nearest capital);
-      // WILDERNESS is flooded only within the frontier-close budget — 0 in
-      // antiquity (so the pass stays a recolour), growing to map-spanning by the
-      // industrial era so the continents partition to the midline (no terra nullius).
-      if (co[ni] < 0 && nd >= budgetOf(c)) continue;
+      // Recolour ONLY already-claimed land (to its nearest capital). Wilderness is
+      // never annexed here — coverage is whatever the per-settlement reach flood
+      // actually reached, so this pass changes colours, never the claimed extent.
+      if (co[ni] < 0) continue;
       if (nd < capCost[ni]) { capCost[ni] = nd; capColor[ni] = c; heap.push(ni, nd, c); }
     }
   }
-  for (let ti = 0; ti < N; ti++) if (capColor[ti] >= 0) co[ti] = capColor[ti];   // claim every tile the flood reached — claimed land recoloured, budgeted wilderness annexed
+  for (let ti = 0; ti < N; ti++) if (capColor[ti] >= 0) co[ti] = capColor[ti];   // recolour every claimed tile the flood reached to its nearest capital
 }
 
 // ── Enclosed-waste fill (the cartographer's rule) ──────────────────────

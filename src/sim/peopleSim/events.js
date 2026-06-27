@@ -33,9 +33,24 @@ function indexKeys(ev) {
   return keys;
 }
 
+// Bound the live log on pathological (multi-100k-step) runs. Events are
+// referenced BY POSITION (ev.id === array index; _evIndex stores positions), so
+// compaction drops the oldest, reassigns ids = new positions, then reindexes.
+// The cap sits far above any normal run (~0.4 events/step → a 15k-step validate
+// makes ~6k), so it never fires in tests; it's a memory safety-valve, and
+// historiography already models the loss of the deep past (archive loss).
+const EVENT_CAP = 200000, EVENT_KEEP = 150000;
+function compactEvents(world) {
+  const events = world.events;
+  events.splice(0, events.length - EVENT_KEEP);
+  for (let i = 0; i < events.length; i++) events[i].id = i;
+  reindexEvents(world);
+}
+
 /** Append one event. Returns its id. `fields` is spread flat onto the record. */
 export function logEvent(world, type, fields) {
   const events = eventsOf(world);
+  if (events.length >= EVENT_CAP) compactEvents(world);   // keep the live log bounded
   const ev = { id: events.length, step: world.step | 0, type, ...fields };
   events.push(ev);
   if (!world._evIndex) world._evIndex = new Map();
@@ -135,15 +150,35 @@ const NARRATE = {
     return `Marched to war against ${ev.defName || "a neighbour"}${why}.`;
   },
   "ruler.crowned"(ev) {
-    const t = ev.female ? "Queen" : "King";
-    if (ev.how === "first") return `${t} ${ev.personName} of house ${ev.dynastyName || "?"} took the throne — the first recorded sovereign.`;
-    if (ev.how === "crisis") return `Out of the interregnum, ${t.toLowerCase()} ${ev.personName} of the new house ${ev.dynastyName || "?"} seized the throne.`;
-    if (ev.how === "regency") return `The child ${ev.personName} took the throne of house ${ev.dynastyName || "?"} at ${ev.age}, under a regency council.`;
-    if (ev.how === "sibling") return `${t} ${ev.personName}, ${ev.female ? "sister" : "brother"} of the late sovereign, took up the crown of house ${ev.dynastyName || "?"}.`;
-    return `${t} ${ev.personName} succeeded to the throne of house ${ev.dynastyName || "?"} at ${ev.age}.`;
+    const t = ev.title || (ev.female ? "Queen" : "King");
+    const h = ev.dynastyName || "?";
+    if (ev.how === "first") return `${t} ${ev.personName} of house ${h} took the throne — the first recorded sovereign.`;
+    if (ev.how === "crisis") return `Out of the interregnum, ${t} ${ev.personName} of the new house ${h} seized the throne.`;
+    if (ev.how === "regency") return `The child ${ev.personName} took the throne of house ${h} at ${ev.age}, under a regency council.`;
+    if (ev.how === "bastard") return `For want of a true-born heir, the bastard ${ev.personName} was raised to the throne of house ${h}.`;
+    if (ev.how === "sibling") return `${t} ${ev.personName}, ${ev.female ? "sister" : "brother"} of the late sovereign, took up the crown of house ${h}.`;
+    if (ev.how === "collateral") return `With the senior line spent, ${t} ${ev.personName} of a cadet branch of house ${h} took the crown.`;
+    return `${t} ${ev.personName} succeeded to the throne of house ${h} at ${ev.age}.`;
+  },
+  "ruler.elected"(ev) {
+    const t = ev.title || "Consul";
+    const where = t === "Consul" ? " of the republic" : "";
+    return `${ev.personName} of house ${ev.dynastyName || "?"} was elected ${t}${where}.`;
+  },
+  "ruler.elevated"(ev) {
+    return `${ev.personName} was raised as ${ev.title || "High Priest"}, to rule in the faith's name.`;
+  },
+  "gov.changed"(ev) {
+    const to = ev.to === "theocracy" ? "a theocracy ruled by its priesthood"
+             : ev.to === "republic" ? "a republic, its magistrate elected"
+             : ev.to === "despotism" ? "a despotism, ruled by the sword"
+             : ev.to === "elective" ? "an elective monarchy, its king chosen by the magnates"
+             : "a monarchy under a single crown";
+    return `The order of the realm changed — it became ${to}.`;
   },
   "ruler.died"(ev) {
-    return `${ev.personName} died at ${ev.age}, after a reign of ${ev.reign} years.`;
+    const who = `${ev.title || ""} ${ev.personName}${ev.epithet ? " " + ev.epithet : ""}`.trim();
+    return `${who} died at ${ev.age}, after a reign of ${ev.reign} years.`;
   },
   "succession.crisis"(ev) {
     void ev; return "The royal line failed — an interregnum of rival claimants.";
@@ -189,6 +224,19 @@ const NARRATE = {
   },
   "growth.cities"(ev) { return ev.n === 1 ? "Its first city rose." : `Grew to ${ev.n} cities.`; },
   "wealth.milestone"(ev) { return `Treasury swelled past ${ev.label}.`; },
+  // ── Economy / industry / society ──
+  "industry.specialty"(ev) { return `${ev.sName} grew renowned for its ${String(ev.craft || "crafts").toLowerCase()}.`; },
+  "city.holy"(ev) { return `${ev.sName} rose as a great seat of pilgrimage, rich with the offerings of the faithful.`; },
+  "city.entrepot"(ev) { return `${ev.sName} became a great entrepôt, fattening on the carrying trade.`; },
+  "city.financier"(ev) { return `The money-lenders of ${ev.sName} rose to bankroll the crown.`; },
+  "city.slaver"(ev) { return `${ev.sName} grew rich as a market of the slave trade.`; },
+  "city.plantation"(ev) { return `The fields of ${ev.sName} were given over to plantation, worked by the unfree.`; },
+  "mine.boom"(ev) { return `Rich veins were struck at ${ev.sName} — a mining boom.`; },
+  "society.serfdom"(ev) { void ev; return "The peasantry were bound to the land — serfdom took hold across the realm."; },
+  "society.emancipation"(ev) { void ev; return "The old bonds were broken — the realm's serfs won their freedom."; },
+  "slave.revolt"(ev) { return `The unfree of ${ev.sName || "an estate"} rose in revolt, and the labour was lost.`; },
+  "crown.debt"(ev) { return `The crown sank deeper into debt to its financiers${ev.label ? ` (owing ${ev.label})` : ""}.`; },
+  "realm.monument"(ev) { void ev; return "Great monuments rose to the glory of the realm."; },
 };
 
 export function narrate(world, ev, as = -1) {
@@ -220,10 +268,45 @@ export function categoryOf(ev, as = -1) {
     case "faith.schism": return "secession";
     case "faith.faded": return "loss";
     case "war.began": return as === ev.to ? "war" : "conquest";
-    case "ruler.crowned": case "dynasty.founded": case "dynasty.union": return "growth";
+    case "ruler.crowned": case "dynasty.founded": case "dynasty.union":
+    case "ruler.elected": case "ruler.elevated": return "growth";
+    case "gov.changed": return "society";
     case "ruler.died": case "dynasty.extinct": return "loss";
     case "succession.crisis": return "secession";
     case "settlement.lapsed": return as === ev.from ? "loss" : "growth";
+    case "industry.specialty": return "industry";
+    case "mine.boom": return "industry";
+    case "city.entrepot": case "city.financier": return "trade";
+    case "city.holy": return "faith";
+    case "city.slaver": case "city.plantation": case "society.serfdom":
+    case "society.emancipation": case "slave.revolt": return "society";
+    case "crown.debt": return "loss";
+    case "realm.monument": return "wealth";
     default: return "growth";
   }
+}
+
+// Collapse chronicle noise before it reaches the reader. A militarist hegemon
+// opens many fronts in a single season — the chronicle shouldn't list each as
+// its own line. A run of same-step, same-direction war declarations becomes one
+// entry with a "(— and N other fronts)" tail. Entries must carry `evType` (set
+// by the chronicle builders, stripped here).
+export function condenseChronicle(entries) {
+  const out = [];
+  const strip = (e) => { const { evType: _evType, ...rest } = e; return rest; };
+  for (let i = 0; i < entries.length; ) {
+    const e = entries[i];
+    if (e.evType === "war.began") {
+      let j = i + 1, n = 1;
+      while (j < entries.length && entries[j].evType === "war.began"
+             && entries[j].step === e.step && entries[j].type === e.type) { j++; n++; }
+      if (n > 1) {
+        const more = n - 1;
+        out.push({ step: e.step, type: e.type, rumor: e.rumor,
+          text: e.text.replace(/\s*\.?\s*$/, "") + ` — and ${more} other front${more > 1 ? "s" : ""}.` });
+      } else out.push(strip(e));
+      i = j;
+    } else { out.push(strip(e)); i++; }
+  }
+  return out;
 }

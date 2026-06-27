@@ -25,17 +25,18 @@ import { updatePolities } from "./conquest.js";
 import { musterArmies, advanceFronts, MUSTER_INTERVAL } from "./armies.js";
 import { updateSea, moveShips, SEA_INTERVAL } from "./sea.js";
 import { updateShocks } from "./shocks.js";
+import { updateClimate, CLIMATE_INTERVAL } from "./climate.js";
 import { updateInflation } from "./inflation.js";
 import { foldMoney } from "./money.js";
 import { checkPeopleSimInvariants } from "./invariants.js";
 import { chronicleTick } from "./chronicle.js";
 import { techState } from "./tech.js";
 import { updateCultures, CULTURE_INTERVAL } from "./cultures.js";
-import { updateFaiths, FAITH_INTERVAL } from "./faiths.js";
+import { updateFaiths, FAITH_INTERVAL, updatePilgrimage, PILGRIM_INTERVAL } from "./faiths.js";
+import { updateSlaveTrade, SLAVE_INTERVAL } from "./slavery.js";
 import { updateDynasties, DYNASTY_INTERVAL } from "./dynasties.js";
 import { diffuseIdentityField } from "./identityField.js";
 import { T } from "./tuning.js";
-import { stepToYear } from "../calendar.js";
 
 const CHRONICLE_INTERVAL = 300;   // ticks between per-country chronicle milestone checks
 // Per-tile identity field (identityField.js): mirror each settlement's
@@ -88,7 +89,18 @@ function applyDemographicAnchor(world, popTotal, capTotal) {
   world._popTotal = popTotal;
   if (world._eraProd === undefined) world._eraProd = 1;
   if (capTotal <= 0 || popTotal <= 1) return;   // need a live population to steer by
-  const target = realWorldPopSim(stepToYear(world.step));
+  // Target the population a civilisation at the world's DEVELOPMENT level would have
+  // — NOT the wall clock. Keying this on stepToYear was the two-clock landmine the
+  // cardinal rule warns about: the linear calendar runs to "6000 AD" by step 18000
+  // while the world is still developmentally medieval, so realWorldPopSim demanded a
+  // far-future population and the integrator cranked _eraProd toward its ceiling —
+  // inflating the single best-fertility settlement into a runaway primate mega-city
+  // (the "civilisation always blooms in that one strip" artifact). world._civYear is
+  // the emergent development pseudo-year (civYearFromOrg), so the target now tracks
+  // what the world has BECOME: a world stuck in antiquity keeps an ancient
+  // population forever, one that industrialises early grows early. (One-tick lag —
+  // _civYear is set just after this call — is immaterial to the slow integrator.)
+  const target = realWorldPopSim(world._civYear ?? -6000);
   if (target <= 0) return;
   // Integral control: nudge the global productivity index so the world TOTAL
   // population converges on the historical curve. Carrying capacity is linear in
@@ -180,6 +192,10 @@ export function stepPeopleSim(world, n = 1) {
     }
     world._leadOrg = leadOrg;
     world._civYear = civYearFromOrg(leadOrg);
+    // Dynamic climate: advance the slow global state + per-tile fertility overlay
+    // BEFORE the territory pass tallies food (territory.js multiplies fert by climMod),
+    // so a harsh century is felt across every realm's catchment at once.
+    if (world.step === 1 || world.step % CLIMATE_INTERVAL === 0) updateClimate(world);
     // Recompute territory periodically: each settlement claims the land it
     // reaches cheapest, and its food / resources are tallied from it.
     if (world.step === 1 || world.step % T.TERRITORY_INTERVAL === 0) {
@@ -256,6 +272,12 @@ export function stepPeopleSim(world, n = 1) {
     // Faiths: folk-faith seeding, organized genesis, trade-graph conversion,
     // state adoption + legitimacy, schisms (faiths.js).
     if (world.step % _ivl(FAITH_INTERVAL) === 0) updateFaiths(world);
+    // Pilgrimage economy: the faithful send offerings to each creed's holy see
+    // (faiths.js) — a holy city grows rich on devotion, no local production needed.
+    if (world.step % _ivl(PILGRIM_INTERVAL) === 0) updatePilgrimage(world);
+    // Slave trade: raiding captures people from weaker neighbours; the market clears
+    // captives into coerced labour where it's demanded (slavery.js, coerced-labour step 2).
+    if (world.step % _ivl(SLAVE_INTERVAL) === 0) updateSlaveTrade(world);
     // Thrones: rulers age/marry/die, succession + crises (dynasties.js).
     if (world.step % _ivl(DYNASTY_INTERVAL) === 0) updateDynasties(world);
     // Per-tile identity field (identityField.js): for the lens the user is

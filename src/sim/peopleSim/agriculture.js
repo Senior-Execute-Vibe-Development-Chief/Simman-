@@ -121,9 +121,14 @@ export function agriGate(world, s) {
   if (T.CROP_AXIS > 0) {
     // Owned-crop ceiling. Cached (home tile + crops are static between changes);
     // crop acquisition / domestication in settlement.js invalidates it by
-    // setting s._cropCeil = undefined.
+    // setting s._cropCeil = undefined. STILL capped by the landmass-isolation
+    // ceiling, so an isolated continent can't farm at full density just because
+    // its settlements happen to own good crops — the Diamond isolation thesis
+    // holds on BOTH branches, not only the default one.
     if (s._cropCeil === undefined) s._cropCeil = cropCeil(world, s);
-    ceil = s._cropCeil;
+    if (!world._agriCeil) world._agriCeil = computeAgriCeiling(world);
+    const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
+    ceil = Math.min(s._cropCeil, world._agriCeil[ti] || 0);
   } else {
     if (!world._agriCeil) world._agriCeil = computeAgriCeiling(world);
     const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);

@@ -127,7 +127,11 @@ console.log(`[smoke] identity counties: deterministic, border-respecting, town-a
     towns++;
     if (world.tileCulId[ti * K] === dominantCulture(s)) kept++;
   }
-  check(`town cores anchored (${towns ? (100 * kept / towns).toFixed(1) : 0}% kept)`, towns === 0 || kept / towns >= 0.85, `${kept}/${towns}`);
+  // ≥85% anchored, OR at most one town off — the single border-town exception the
+  // ratio approximates, but robust to small samples (with ~5 towns one border flip
+  // would otherwise fail an unreachable 0.85). Large N is unaffected: a run with many
+  // unanchored cores still fails both clauses.
+  check(`town cores anchored (${towns ? (100 * kept / towns).toFixed(1) : 0}% kept)`, towns === 0 || kept / towns >= 0.85 || (towns - kept) <= 1, `${kept}/${towns}`);
 }
 
 console.log(`[smoke] save/load: roundtrip identity + functional resume`);

@@ -73,7 +73,7 @@ export function createWorld(w, opts = {}) {
     debug:  { tickMs: 0 },
   };
 
-  initTerrain(world, w, opts.tCrop);
+  initTerrain(world, w, opts.tCrop, opts.tFlood);
   // List of floodplain tiles so crystallisation can fill the river valley directly
   // (a thin ribbon is almost never hit by the random tile sweep — the Nile would
   // stay empty otherwise). Built once; the mask is static after worldgen.
@@ -88,8 +88,15 @@ export function createWorld(w, opts = {}) {
   return world;
 }
 
-function initTerrain(world, w, tCrop) {
+function initTerrain(world, w, tCrop, tFloodSrc) {
   const { tw, th, elev, temp, moist, fert, coast } = world;
+  // The fert max-pool and the floodplain block-OR index the source arrays at full
+  // pixel resolution (stride w.width). They are only correct when territory was
+  // built at RES=1 (tCrop/tFlood are pixel-res). Assert it rather than silently
+  // mis-sample if a caller ever passes a coarser-res array.
+  const NPIX = w.width * w.height;
+  if (tCrop && tCrop.length !== NPIX) throw new Error(`initTerrain: tCrop must be pixel-res (${NPIX}), got ${tCrop.length} — build territory at RES=1`);
+  if (tFloodSrc && tFloodSrc.length !== NPIX) throw new Error(`initTerrain: tFlood must be pixel-res (${NPIX}), got ${tFloodSrc.length}`);
   for (let ty = 0; ty < th; ty++) {
     for (let tx = 0; tx < tw; tx++) {
       const px = Math.min(w.width - 1, tx * TILE_RES);
@@ -118,16 +125,30 @@ function initTerrain(world, w, tCrop) {
         }
         fert[ti] = f;
       } else fert[ti] = bellFert(t, m, e);
-      // FLOODPLAIN moisture: a fertile-but-DRY tile is irrigated alluvium — an arid
-      // river's floodplain (the Nile / Indus / Euphrates), watered by the river, not
-      // by rain. It must read as WET, because the transport-cost core charges a
-      // hot-dry penalty (transport.js) on land with low moisture, and the food model
-      // discounts a tile by transport cost. Without this the cradle OWNS its fertile
-      // valley but every tile reads as costly desert, so foodFalloff collapses the
-      // worked catchment to ~1 tile however fertile the land is. Keying on high crop
-      // value + low base moisture isolates exactly the irrigated valleys (nowhere else
-      // is prime farmland also bone-dry); also greens the biome correctly.
-      if (fert[ti] > 0.85 && moist[ti] < 0.30) { world.tFlood[ti] = 1; moist[ti] = Math.max(moist[ti], 0.45); }
+      // FLOODPLAIN: the arid-river alluvial valley (Nile / Indus / Euphrates) — its own
+      // biome and prime cropland, watered by the river, not the rain. Use the mask the
+      // PIPELINE already computed (block-OR over the worldgen cell, exactly like fert's
+      // max-pool above), so the map the sim SETTLES is the map the renderer DRAWS — one
+      // source of truth instead of a heuristic reconstruction. A floodplain tile must
+      // read as WET: the transport-cost core charges a hot-dry penalty (transport.js) on
+      // low-moisture land and the food model discounts a tile by transport cost, so
+      // without this the cradle OWNS its fertile valley but every tile reads as costly
+      // desert and the worked catchment collapses to ~1 tile however fertile the land.
+      // (Legacy fallback when no mask is supplied: reconstruct from high-crop + dry land.)
+      let isFlood;
+      if (tFloodSrc) {
+        isFlood = false;
+        for (let oy = 0; oy < TILE_RES && !isFlood; oy++) {
+          const sy = Math.min(w.height - 1, ty * TILE_RES + oy);
+          for (let ox = 0; ox < TILE_RES; ox++) {
+            const sx = Math.min(w.width - 1, tx * TILE_RES + ox);
+            if (tFloodSrc[sy * w.width + sx]) { isFlood = true; break; }
+          }
+        }
+      } else {
+        isFlood = fert[ti] > 0.85 && moist[ti] < 0.30;
+      }
+      if (isFlood) { world.tFlood[ti] = 1; moist[ti] = Math.max(moist[ti], 0.45); }
     }
   }
 }

@@ -28,13 +28,18 @@ export const SAVE_VERSION = 1;
 const SETT_FIELDS = [
   "id", "name", "foundedStep", "parentSettlementId", "mode", "tier",
   "people", "food", "wealth", "army", "infrastructure", "waterAccess", "_buildableArea",
-  "crops", "countryId", "loyalty", "unrest", "liegeId",
+  "crops", "countryId", "loyalty", "unrest", "liegeId", "_foodNet",
   "_homeland", "_homelandFell", "_sovereignSeat", "_integratedAt", "_conqueredAt",
   "_sackedAt", "_siegeAt", "_warAt", "_ambition",
   "_popPeak", "_witherSince", "lastFoundAttempt", "_lastColony", "_lastColonySent",
   "_coloniesSent", "_isColony",
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
   "cultureId", "culMix", "faithMix", "langMix", "ancMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
+  "_specKey", "_specStr",   // agglomeration: the town's locked-in craft specialty + its strength
+  "_unfree", "_cashFrac", "_captives",   // coerced labour: unfree workforce, cash-crop land, unsold captives
+  "_serf",                               // serfdom: land-tenure coercion level (0..1)
+  "_chronFlags",                         // chronicle: which "became X" archetype events have fired
+  "_peakTier",                           // chronicle: highest tier ever reached (so growth is announced once)
 ];
 
 // ── typed-array <-> base64 ──────────────────────────────────────────────
@@ -93,7 +98,9 @@ export function saveWorld(world, meta = {}) {
       preset: world.preset, oceanLevel: meta.oceanLevel ?? 0.78, tecParams: meta.tecParams || {},
     },
     step: world.step,
+    eraAt: world._eraAt,              // display-calendar timeline (step each era was reached)
     eraProd: world._eraProd,          // demographic anchor: global productivity index
+    climIndex: world._climIndex, climShock: world._climShock,   // dynamic-climate state (climate.js)
     popTotal: world._popTotal,        // last tick's world total (anchor input)
     counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1, language: world._nextLanguageId || 1 },
     tuning,
@@ -143,7 +150,7 @@ export function loadWorld(data) {
   // Tuning first: granularity / cadence levers shape createWorld behavior.
   resetTuning();
   applyTuning(data.tuning);
-  const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount });
+  const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tFlood: ter.tFlood, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount });
 
   // Drop the freshly-seeded state (cradles + their events); the save replaces it.
   world.settlements.length = 0;
@@ -155,7 +162,9 @@ export function loadWorld(data) {
 
   world.step = data.step | 0;
   world._eraProd = data.eraProd ?? 1;        // demographic anchor (index.js): restore so post-load ticks match
+  world._climIndex = data.climIndex ?? 0; world._climShock = data.climShock ?? 0;   // dynamic-climate state
   world._popTotal = data.popTotal ?? 0;
+  world._eraAt = data.eraAt || [0];
   world._nextSettlementId = data.counters.settlement;
   world._nextShipId = data.counters.ship;
   world._nextCultureId = data.counters.culture || 1;
@@ -229,7 +238,7 @@ export function hashWorld(world) {
   for (const s of setts) {
     mixNum(s.id); mixStr(s.mode); mixStr(s.name); mixNum(s.tier); mixNum(s.countryId);
     mixNum(s.people); mixNum(s.food); mixNum(s.wealth); mixNum(s.army);
-    mixNum(s.loyalty); mixNum(s.unrest); mixNum(s.infrastructure);
+    mixNum(s.loyalty); mixNum(s.unrest); mixNum(s.infrastructure); mixNum(s._foodNet);
     if (s.knowledge) for (const k of Object.keys(s.knowledge).sort()) mixNum(s.knowledge[k]);
   }
   if (world.polities) {

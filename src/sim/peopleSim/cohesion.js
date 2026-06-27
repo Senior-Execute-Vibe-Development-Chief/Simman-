@@ -74,6 +74,29 @@ export function adminFriction(cap, s, w) {
   return FRICTION_W * w.lang * layerMis(cap.langMix, s.langMix);
 }
 
+// Resistance of a settlement to being PEACEFULLY ABSORBED into a foreign realm
+// (conquest.js absorbWeakNeighbors). A city of the absorber's own people, tongue
+// and faith slides into its orbit readily (building a national CORE); a wholly
+// foreign one clings to independence and is only taken by force. Returns the
+// era-weighted MEAN mismatch across all four identity axes, normalized to [0,1]
+// (0 = kin, integrates freely; 1 = wholly foreign on every salient axis).
+//
+// Because the weights are era-derived from emergent development (identityWeightsNow
+// reads _civYear, mapped from the leading state's organisation — NOT the wall-clock),
+// this self-calibrates: in antiquity the salient axes are faith/tongue and the people
+// axis is near-silent, so classical empires can still be multi-ethnic (Rome, Persia,
+// the Mongols); as development reaches the national age the people axis crests and
+// polyglot empires fracture into nation-states — emergent, never time-gated.
+export function absorbResistance(absorberCap, s, w) {
+  if (!absorberCap || absorberCap === s || !s) return 0;
+  const m = w.faith  * layerMis(absorberCap.faithMix, s.faithMix)
+          + w.people * layerMis(absorberCap.culMix,   s.culMix)
+          + w.lang   * layerMis(absorberCap.langMix,  s.langMix)
+          + w.anc    * layerMis(absorberCap.ancMix,   s.ancMix);
+  const wsum = w.faith + w.people + w.lang + w.anc;
+  return wsum > 0 ? Math.min(1, m / wsum) : 0;
+}
+
 // Label when identity is the LEADING grievance (info panel): which axis dominates.
 export function identityGrievanceCause(cap, s, w) {
   if (!cap || cap === s) return "unrest";
