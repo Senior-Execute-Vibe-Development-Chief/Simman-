@@ -92,29 +92,39 @@ const REACH_ERA = 2;          // budget ×(1 + construction² · REACH_ERA): ~×
 const LOGI_REACH = 2.2;       // budget ×(1 + logisticsLevel · LOGI_REACH): transport/comms-gated era scaling (Roads≈Rome-scale, Rail+Telegraph≈continental). NEW path.
 // The industrial "closing of the frontier": once rail+telegraph make nominal
 // control projectable, states partition ALL contiguous land to the nearest
-// capital (no terra nullius ~1900). Modelled cheaply in recolorByCapital as a
+// capital (no terra nullius). Modelled cheaply in recolorByCapital as a
 // wilderness-claim cost budget that GROWS (quadratically, so it bites only the
-// late industrial era) with the world's logistics level — pre-modern realms still
+// deep industrial range) with the world's LOGISTICS LEVEL — pre-modern realms still
 // hug rivers/coasts; industrial ones fill the continents to the midline. The flood
 // is one O(land) pass, so this is far cheaper than projecting bigger reach-disks.
 // The multi-source capital Voronoi saturates at a SMALL budget (each capital only
 // has to reach the midpoint to its neighbours), so the budget is modest and ramps
-// THROUGH the critical range over the industrial era — a sudden huge budget both
-// snaps to 100% overnight AND over-extends realms into collapse. Tuned so the fill
-// climbs across ~1845–1900 (the real Scramble) and tops out near-complete by ~1930.
-const FRONTIER_CLOSE = 28;    // wilderness-claim budget at era 1 = FRONTIER_CLOSE · resScale · era² (was 80: the modern era colonised ALL the wastes, abolishing terra nullius — eased so undeveloped frontiers keep their unclaimed wilderness)
+// THROUGH the critical range as logistics tech matures.
+//
+// GATED ON EMERGENT TECH, NEVER THE CALENDAR. The close is driven by maxLogi — the
+// world's highest logistics level (roads→rail→telegraph→steamship, the very techs
+// that made nominal control of an interior projectable). It engages only once some
+// civ actually develops rail/telegraph-grade logistics — whenever that happens, on
+// any seed — and NEVER if none does (a world that never industrialises keeps its
+// open marches and terra nullius forever). No year, no era index, no clock.
+const FRONTIER_CLOSE = 28;    // wilderness-claim budget at full close = FRONTIER_CLOSE · resScale · closeT² (was 80: the modern era colonised ALL the wastes — eased so undeveloped frontiers keep their unclaimed wilderness)
 const FRONTIER_DOM   = 0.7;   // a DOMINANT realm pushes its wilderness-claim frontier farther (budget × dominance^this):
                               // the great powers partition the open interior into continental empires (Russia, the USA,
                               // the Raj, the Scramble) instead of every realm grabbing an equal slice — bounded by the
                               // competitive midline where rival floods meet (conquest.js _dominance)
 const DOM_HINTERLAND = 2;     // a dominant core also claims its regional HINTERLAND ahead of the industrial close
-                              // (budget × resScale × (dominance−1) × hinterland-era): an ordinary realm gets 0 (open
+                              // (budget × resScale × (dominance−1) × hinterT): an ordinary realm gets 0 (open
                               // marches preserved), but a Rome / Persia / Mongol fills its near-wilderness, so the
                               // classical & medieval great powers tower regionally, not just the modern continental ones
-const HINTER_YEAR0   = -1000; // hinterland-claim begins (deep antiquity keeps its empty marches even under a strong core)
-const HINTER_YEAR1   = 200;   // …full by the classical era (the age of Rome, Han, Persia, the Maurya)
-const FRONTIER_YEAR0 = 1760;  // the close BEGINS (era 0) — pre-industrial world keeps its open marches / terra nullius
-const FRONTIER_YEAR1 = 1930;  // era 1 — the whole partitioned world (Scramble for Africa done ~1914)
+// Logistics thresholds (on logisticsLevel 0..1 — see tech.js). The hinterland claim
+// needs only ROADS (the classical road-state, maxLogi ≈ 0.17 at roads); the full
+// frontier-close needs RAIL + TELEGRAPH (maxLogi ≈ 0.85+). Both ramp on emergent
+// development, so deep antiquity (pre-roads) keeps empty marches and a world that
+// never reaches rail never closes its frontier.
+const LOGI_HINTER0   = 0.14;  // a dominant core can begin claiming its hinterland once roads appear
+const LOGI_HINTER1   = 0.30;  // …full classical road-state hinterland
+const LOGI_CLOSE0    = 0.50;  // the frontier BEGINS to close as rail/steamship arrive
+const LOGI_CLOSE1    = 0.85;  // …fully closed under a rail + telegraph network (nominal control everywhere)
 // Reach is also scaled by how BIG the realm is, so a claim is backed by real
 // settlements rather than the capital's tech alone. budget ×= clamp(members /
 // REACH_SIZE_REF, REACH_SIZE_MIN, 1): a fledgling realm projects only a fraction
@@ -531,15 +541,15 @@ export function computeCountryTerritory(world) {
   // by full industrialisation (~1900). Zero through antiquity and the medieval world.
   world._maxLogi = maxLogi;
   // The frontier closes as the world INDUSTRIALISES (the colonial scramble + the
-  // abolition of terra nullius). Driven by the leading state's DEVELOPMENT, not the
-  // calendar: world._civYear is the pseudo-year mapped from the most advanced civ's
-  // organisation (index.js), so the close fires when some civ actually reaches the
-  // industrial era — whenever that happens — and never if none does. The raw logistics
-  // level plateaus too low to threshold on. era² ⇒ back-loaded (sharp), matching how
-  // fast the world actually partitioned.
-  const yr = world._civYear ?? -9000;
-  const era = Math.max(0, Math.min(1, (yr - FRONTIER_YEAR0) / (FRONTIER_YEAR1 - FRONTIER_YEAR0)));
-  const frontierBudget = FRONTIER_CLOSE * resScale * era * era;
+  // abolition of terra nullius). Driven by the world's actual LOGISTICS TECH — the
+  // rail/telegraph/steamship that made nominal control of an interior projectable —
+  // NOT the calendar: closeT ramps from LOGI_CLOSE0 (rail/steamship appearing) to
+  // LOGI_CLOSE1 (a mature rail+telegraph network), so the close fires exactly when
+  // some civ reaches that logistics level (whenever that is, on any seed) and never
+  // if none does — a world that never industrialises keeps its open marches forever.
+  // closeT² ⇒ back-loaded (sharp), matching how fast the world actually partitioned.
+  const closeT = Math.max(0, Math.min(1, (maxLogi - LOGI_CLOSE0) / (LOGI_CLOSE1 - LOGI_CLOSE0)));
+  const frontierBudget = FRONTIER_CLOSE * resScale * closeT * closeT;
   if (_capitalOnly) recolorByCapital(world, co, capPos, knOf, claimCap, frontierBudget);
   fillEnclosedWaste(world, co);
   closeRealmGaps(world, co, T.REALM_GAP_FILL);
@@ -572,13 +582,16 @@ function recolorByCapital(world, co, capPos, knOf, claimCap, frontierBudget = 0)
   // and a dominant core ALSO claims its regional hinterland ahead of the industrial close
   // (DOM_HINTERLAND, present in every era; 0 for ordinary realms, which keep open marches).
   const rs = resScaleFor(world.tw);
-  const hYr = world._civYear ?? -9000;   // leading-state development as a pseudo-year (index.js), NOT the wall-clock
-  const hinterEra = Math.max(0, Math.min(1, (hYr - HINTER_YEAR0) / (HINTER_YEAR1 - HINTER_YEAR0)));   // 0 in deep antiquity → 1 by the classical age
+  // Hinterland claim ramps on ROADS-grade logistics (maxLogi), not the calendar:
+  // 0 in deep antiquity (pre-roads) → 1 once the classical road network exists, so a
+  // strong core fills its near-wilderness only once it can actually administer it.
+  const maxLogi = world._maxLogi ?? 0;
+  const hinterT = Math.max(0, Math.min(1, (maxLogi - LOGI_HINTER0) / (LOGI_HINTER1 - LOGI_HINTER0)));
   const domBudget = new Map();
   if (world.countries) for (const [c] of capPos) {
     const cc = world.countries.get(c);
     const dom = cc && cc._dominance ? cc._dominance : 1;
-    domBudget.set(c, frontierBudget * Math.pow(dom, FRONTIER_DOM) + DOM_HINTERLAND * rs * hinterEra * Math.max(0, dom - 1));
+    domBudget.set(c, frontierBudget * Math.pow(dom, FRONTIER_DOM) + DOM_HINTERLAND * rs * hinterT * Math.max(0, dom - 1));
   }
   const budgetOf = (c) => domBudget.get(c) ?? frontierBudget;
   const heap = new MinHeap();
