@@ -23,14 +23,15 @@ console.log(`[gen] ${W}x${H} seed=${SEED}`);
 const { ter } = buildWorld({ W, H, seed: SEED });
 const { tw, th, tElev, tMoist, rivers: R } = ter;
 
+const MIN_MAG = +(process.env.MIN_MAG || 2);          // app draws mag≥2 by default (streams off)
 function colorAt(i) {
   if (tElev[i] <= 0) return [30, 60, 110];           // ocean
   if (R.lake[i] >= 0) return [60, 140, 230];         // lake (bright blue)
   const m = R.riverMag[i];
   if (m >= 4) return [0, 200, 255];                  // great
   if (m >= 3) return [40, 180, 240];                 // major
-  if (m >= 2) return [80, 170, 220];                 // tributary
-  if (m >= 1) return [120, 175, 205];                // stream
+  if (m >= 2 && MIN_MAG <= 2) return [80, 170, 220]; // tributary
+  if (m >= 1 && MIN_MAG <= 1) return [120, 175, 205];// stream
   // land: shade by elevation, tinted by moisture (green wet → tan dry)
   const e = tElev[i];
   const dry = Math.max(0, Math.min(1, (0.35 - (tMoist[i] || 0)) / 0.30));

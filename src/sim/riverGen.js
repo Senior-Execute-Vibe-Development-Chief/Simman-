@@ -30,15 +30,17 @@ export const RIVER_NAMES = ['', 'Stream', 'Tributary', 'Major River', 'Great Riv
 const ENDO_EVAP = 2.0;
 
 // Transmission loss (Step 3): the share of through-flow a river loses PER TILE to
-// evaporation and bed seepage as it crosses ARID, warm land. Real exotic rivers shed
-// most of their volume crossing a desert (the Nile below Khartoum, the Tarim, the Amu
-// Darya all dwindle downstream), so a channel fed by far-off snowmelt cannot stay a
-// great river across a whole desert, and the terminal lake it feeds is small. Gated
-// hard on dryness so humid-region rivers (Amazon, Congo, Mississippi) lose ~nothing —
-// this is the targeted version of a per-tile loss that was once applied globally and
-// reverted for thinning every river. Compounds along the path, so a long desert
-// crossing attenuates strongly while a few arid tiles barely register.
-const TRANS_LOSS = 0.10;
+// evaporation and bed seepage as it crosses ARID, warm land — so a channel fed by
+// far-off snowmelt dwindles instead of staying a great river across a whole desert.
+// Gated TWO ways: (1) only on flow bound for a TERMINAL sink — a closed basin or an
+// INLAND sea (the Caspian) — so every river that reaches the world ocean is untouched,
+// the arid cradle rivers included (the Nile, Tigris-Euphrates and Indus cross desert but
+// drain to the sea); and (2) scaled by local dryness+warmth, so humid stretches barely
+// register. This is the targeted form of a per-tile loss that was once applied globally
+// and reverted for thinning EVERY river; confining it to terminal drainage is what makes
+// it safe. Compounds along the path, so the long desert run of the spurious Caspian /
+// Aral / Tarim channels attenuates strongly.
+const TRANS_LOSS = 0.30;
 
 export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   const N = tw * th;
@@ -112,6 +114,31 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
         isRaised[ni] = 1; // this tile is in a natural depression
       }
       heapPush(ni);
+    }
+  }
+
+  // ── Step 1c: Inland seas — ocean connectivity from the map border ──
+  // Some below-sea-level water is NOT joined to the world ocean: the Caspian, and the
+  // Black Sea behind a Bosphorus too narrow to resolve. A river reaching such an INLAND
+  // sea is endorheic — it should dwindle crossing the desert to get there, exactly like
+  // one ending in a terminal lake — whereas a river reaching the TRUE ocean (the Nile to
+  // the Mediterranean, the Tigris to the Persian Gulf) keeps its water. Flood-fill the
+  // ocean from the edges; any sub-sea tile not reached is an inland sea.
+  const trueOcean = new Uint8Array(N);
+  {
+    const oq = [];
+    for (let x = 0; x < tw; x++) for (const y of [0, th - 1]) {
+      const i = y * tw + x; if (tElev[i] <= 0 && !trueOcean[i]) { trueOcean[i] = 1; oq.push(i); }
+    }
+    let oh = 0;
+    while (oh < oq.length) {
+      const ti = oq[oh++], tx = ti % tw, ty = (ti - tx) / tw;
+      for (let d = 0; d < 8; d++) {
+        const nx = (tx + D8_DX[d] + tw) % tw, ny = ty + D8_DY[d];
+        if (ny < 0 || ny >= th) continue;
+        const ni = ny * tw + nx;
+        if (tElev[ni] <= 0 && !trueOcean[ni]) { trueOcean[ni] = 1; oq.push(ni); }
+      }
     }
   }
 
@@ -328,7 +355,7 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
         const tx = ti % tw, ty = (ti - tx) / tw, ny = ty + D8_DY[d];
         if (ny < 0 || ny >= th) { verdict = 0; break; }
         const ni = ny * tw + ((tx + D8_DX[d] + tw) % tw);
-        if (tElev[ni] <= 0) { verdict = 0; break; }      // reached the ocean
+        if (tElev[ni] <= 0) { verdict = trueOcean[ni] ? 0 : 1; break; } // true ocean=exorheic, inland sea=terminal
         ti = ni;
       }
       if (ti >= 0 && drainsTerminal[ti] !== -1) verdict = drainsTerminal[ti];
