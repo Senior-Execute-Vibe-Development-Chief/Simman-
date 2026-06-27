@@ -1879,10 +1879,25 @@ function updateFood(world, s) {
   // coastal city — which the housing cap already lets grow large — feed
   // itself from the sea instead of relying entirely on shipped-in grain.
   const wa = s.waterAccess || 0;
+  // ICE COVER — a frozen, high-latitude waterbody yields little fish: the ice-free
+  // season is short and the catch can't feed a dense population. Gate the water
+  // harvest on the annual-mean temperature (t = 0.60 + °C/100): no effect at/above
+  // 0°C (t≥0.60), reaching the full COLD_FISH cut by ~-10°C (t≈0.50). Without this a
+  // developed colony on a frozen 60°N+ river/lake drew a metropolis's worth of fish
+  // — the climate-neutral _eraProd lift scaled it — blooming a runaway primate on
+  // tundra that can neither farm (the land is already cold-gated) nor, at pre-modern
+  // haul range, import enough grain. Land farmland is untouched, so the cold-but-
+  // farmable temperate wheat belts (Ukraine, the Canadian prairies) are unaffected.
+  let iceFree = 1;
+  if (T.COLD_FISH > 0) {
+    climateOf(world, s);
+    const frozen = Math.max(0, Math.min(1, (0.60 - (s._climTemp ?? 0.7)) / 0.10));
+    iceFree = 1 - T.COLD_FISH * frozen;
+  }
   // ×_eraProd as for land food: scaling the water harvest too keeps a coastal /
   // forager settlement's capacity responsive to the global productivity index,
   // so the demographic anchor has no dead-zone to wind up against.
-  const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor * (s._eraProd || 1) : 0;
+  const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor * (s._eraProd || 1) * iceFree : 0;
   s._fishYield = fish;
 
   // Land food is STORABLE — it fills granaries and ships across the world

@@ -298,6 +298,8 @@ export const TUNING_SCHEMA = [
         desc: "Scales the guaranteed farmland belt every settlement holds beyond its core. Up = each town owns more countryside (and carries more land when it secedes); down = territory hugs the cores." },
       { key: "FISH_RATE", label: "Coastal fishing yield", def: 11.0, min: 0, max: 40, step: 1,
         desc: "Food a water-adjacent settlement lands. Up = thriving maritime cities; 0 = no fishing economy." },
+      { key: "COLD_FISH", label: "Frozen-water fishing brake", def: 0.6, min: 0, max: 1, step: 0.05,
+        desc: "How hard sub-freezing water (ice cover) cuts the fish harvest. A frozen high-latitude inland river/lake has a short ice-free season and can't feed a dense population — so without this a developed colony on a 60°N+ waterbody drew a metropolis's worth of fish (the climate-neutral _eraProd lift scaled it), blooming a runaway PRIMATE on tundra that could neither farm (the land is already cold-gated) nor, at pre-modern haul range, import enough grain. Keyed on the settlement's annual-mean temperature: no effect at/above 0°C, ramping to its full cut by ~-10°C (at 0.6, a ~60% reduction in the deep cold). Emergent (temperature state, never latitude/era). 0 = water fishes as well frozen as warm." },
       { key: "DENSITY_PER_CONSTR", label: "Urban density per construction", def: 5, min: 0, max: 20, step: 1,
         desc: "Extra residents per buildable tile per point of construction tech. Up = sky-high megacities late game." },
       { key: "MINING_RATE", label: "Specie mining rate", def: 5.0, min: 0, max: 20, step: 0.5,
