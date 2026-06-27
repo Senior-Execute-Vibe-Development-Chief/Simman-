@@ -65,13 +65,6 @@ function eraBoundaries(eraAt){
   return y;
 }
 
-// The rate (display-years/step) of the CURRENT open era — heads toward the next
-// anchor over ~ERA_OPEN_STEPS, never below the floor.
-function openRate(base, e){
-  const target = anchor(e + 1);
-  return Math.max(ERA_FLOOR, (target - base) / ERA_OPEN_STEPS);
-}
-
 export function displayYear(eraAt, step){
   if (!eraAt || !eraAt.length) return anchor(0) + Math.max(0, step) * ERA_FLOOR;
   const y = eraBoundaries(eraAt), n = eraAt.length;
@@ -81,10 +74,21 @@ export function displayYear(eraAt, step){
     const span = Math.max(1, eraAt[e + 1] - eraAt[e]);
     return y[e] + (y[e + 1] - y[e]) * Math.min(1, (step - eraAt[e]) / span);
   }
-  const base = y[n - 1], dstep = step - eraAt[n - 1];   // the open, leading era
-  if (e >= ERA_ANCHOR.length - 1)                                       // Modern: head toward the cap (floored)
-    return base + Math.max(ERA_FLOOR, (ERA_MODERN_CAP - base) / (ERA_OPEN_STEPS * 2)) * dstep;
-  return base + openRate(base, e) * dstep;
+  // The open, leading era: the world is HERE and has NOT reached the next era yet,
+  // so the year must stay inside THIS era's date range. It eases toward the next
+  // anchor (or, for Modern, the cap) and SATURATES there — it never crosses into a
+  // later era's dates while the world is still in this one. A world stuck in the
+  // Bronze Age creeps toward ~700 BC but never shows an AD year until it actually
+  // advances; the moment it reaches the next era, that anchor becomes a real
+  // boundary and the curve resumes from there. (This is why the year is genuinely
+  // tied to development, not to raw step count.)
+  const base = y[n - 1], dstep = Math.max(0, step - eraAt[n - 1]);
+  const last = e >= ERA_ANCHOR.length - 1;
+  const target = last ? ERA_MODERN_CAP : anchor(e + 1);
+  const tau = last ? ERA_OPEN_STEPS * 2 : ERA_OPEN_STEPS;
+  const span = target - base;
+  if (span <= 0) return base + ERA_FLOOR * dstep;       // floored past its own anchor: slow creep
+  return base + span * (1 - Math.exp(-dstep / tau));    // ease toward the anchor, never beyond
 }
 
 // Inverse: a display year → the step it falls on (for "born N years ago").
@@ -98,11 +102,14 @@ export function displayStep(eraAt, year){
       return eraAt[e] + (eraAt[e + 1] - eraAt[e]) * (f < 0 ? 0 : f > 1 ? 1 : f);
     }
   }
-  const base = y[n - 1];
-  const rate = (n - 1 >= ERA_ANCHOR.length - 1)
-    ? Math.max(ERA_FLOOR, (ERA_MODERN_CAP - base) / (ERA_OPEN_STEPS * 2))
-    : openRate(base, n - 1);
-  return eraAt[n - 1] + (year - base) / rate;
+  const base = y[n - 1];                                   // open era: invert the saturating ease
+  const last = (n - 1) >= ERA_ANCHOR.length - 1;
+  const target = last ? ERA_MODERN_CAP : anchor(n);
+  const tau = last ? ERA_OPEN_STEPS * 2 : ERA_OPEN_STEPS;
+  const span = target - base;
+  if (span <= 0) return eraAt[n - 1] + (year - base) / ERA_FLOOR;
+  const frac = Math.min(0.999, Math.max(0, (year - base) / span));   // clamp: the anchor is an asymptote
+  return eraAt[n - 1] - tau * Math.log(1 - frac);
 }
 
 export function displayYearStr(eraAt, step){
