@@ -42,6 +42,11 @@ const ENDO_EVAP = 2.0;
 // Aral / Tarim channels attenuates strongly.
 const TRANS_LOSS = 0.30;
 
+// River-classification generosity (Step 4): how far DOWN the percentile thresholds shift
+// for OCEAN-bound rivers, so their trunk reads as a visible river far upstream instead of
+// a short stub near the mouth. Terminal-bound flow is unaffected (keeps the strict cut).
+const RIVER_GEN = 2;
+
 export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   const N = tw * th;
 
@@ -290,6 +295,7 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   // so flow pools inside (a terminal lake forms) and never reaches the ocean. Cold/wet
   // basins still overflow (the Great Lakes → the St-Lawrence); hot and/or arid basins
   // stay terminal. Keyed on temperature + dryness (state), never latitude/era.
+  const drainsTerminal = new Int8Array(N).fill(-1); // -1 unknown, 0 ocean-bound, 1 terminal (set in 3b, read in Step 4)
   {
     const basinId = new Int32Array(N).fill(-1);
     const basins = [];
@@ -344,7 +350,6 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     }
     // Mark every tile whose flow ENDS in a terminal land sink (rather than the ocean),
     // by tracing downstream once per tile with memoisation.
-    const drainsTerminal = new Int8Array(N).fill(-1); // -1 unknown, 0 ocean-bound, 1 terminal
     for (let s = 0; s < N; s++) {
       if (tElev[s] <= 0 || drainsTerminal[s] !== -1) continue;
       const path = []; let ti = s, verdict = 0;
@@ -399,18 +404,26 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
 
   if (maxAccum > 0 && accums.length > 0) {
     // Top 5% = stream, 1% = tributary, 0.2% = major, 0.02% = great
-    const tStream = pct(95);
-    const tTributary = pct(99);
-    const tMajor = pct(99.8);
-    const tGreat = pct(99.98);
-
+    // Two-tier thresholds. OCEAN-bound rivers get a GENEROUS cut so their main stem stays
+    // a visible river far upstream (the Mississippi, the Amazon, the Ob run thousands of km
+    // inland, not a stub near the mouth). TERMINAL-bound flow keeps the STRICT cut, so the
+    // desert channels that dwindle toward a closed sink / inland sea (the spurious Caspian
+    // run) drop out of the visible network instead of threading the whole interior.
+    const _g = RIVER_GEN;
+    const tStream = pct(95 - _g * 3),   tStreamS = pct(95);
+    const tTrib   = pct(99 - _g),       tTribS   = pct(99);
+    const tMajor  = pct(99.8 - _g*0.3), tMajorS  = pct(99.8);
+    const tGreat  = pct(99.98 - _g*0.03), tGreatS = pct(99.98);
     for (let ti = 0; ti < N; ti++) {
       if (tElev[ti] <= 0) continue;
       const a = flowAccum[ti];
-      if (a >= tGreat) riverMag[ti] = RIVER_GREAT;
-      else if (a >= tMajor) riverMag[ti] = RIVER_MAJOR;
-      else if (a >= tTributary) riverMag[ti] = RIVER_TRIBUTARY;
-      else if (a >= tStream) riverMag[ti] = RIVER_STREAM;
+      const term = drainsTerminal[ti] === 1;
+      const tG = term ? tGreatS : tGreat, tM = term ? tMajorS : tMajor;
+      const tT = term ? tTribS : tTrib,   tS = term ? tStreamS : tStream;
+      if (a >= tG) riverMag[ti] = RIVER_GREAT;
+      else if (a >= tM) riverMag[ti] = RIVER_MAJOR;
+      else if (a >= tT) riverMag[ti] = RIVER_TRIBUTARY;
+      else if (a >= tS) riverMag[ti] = RIVER_STREAM;
     }
 
     // ── Downstream consistency: a river can never shrink along its flow path ──
