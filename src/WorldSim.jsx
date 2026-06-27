@@ -721,7 +721,7 @@ function PsSection({ id, title, right, open, onToggle, children }) {
 export default function WorldSim(){
 const canvasRef=useRef(null);
 const[seed,setSeed]=useState(8817);const[world,setWorld]=useState(null);
-const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(5);
+const[playing,setPlaying]=useState(false);const[speed,setSpeed]=useState(30);// speed = target ticks/sec (30 ≈ 1 step per frame)
 const[viewMode,setViewMode]=useState("terrain");const[preset,setPreset]=useState("tectonic");
 // Transport-test mode state. Each click in this view places a capital;
 // the BFS re-runs whenever params or capitals change.
@@ -829,7 +829,7 @@ useEffect(()=>{
   return()=>window.removeEventListener("mouseup",up);
 },[]);
 const activeResRef=useRef(null);activeResRef.current=activeRes;
-const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(5),viewRef=useRef("terrain");
+const playRef=useRef(false),worldRef=useRef(null),terRef=useRef(null),speedRef=useRef(30),viewRef=useRef("terrain");
 // ── Pan / zoom view transform ────────────────────────────────────────
 // All map drawing applies `ctx.translate(panX,panY); ctx.scale(zoom,zoom)`
 // so the existing draw code can stay in canvas-pixel coordinates; only the
@@ -853,6 +853,9 @@ const peopleRef=useRef(null);
 const simWorkerRef=useRef(null);
 const applySnapshotRef=useRef(null);
 const [psStats,setPsStats]=useState({step:0,bands:0,settlements:0,totalPeople:0});
+// Live step counter, refreshed EVERY snapshot (~30Hz) so the year/step in the top
+// bar visibly counts up tick-by-tick; the heavier psStats stays throttled to ~5Hz.
+const [liveStep,setLiveStep]=useState(0);
 // Time-series of global metrics for the History charts + copyable export. Kept
 // in a ref (no re-render on every sample); the charts read it on the regular
 // psStats-driven re-render. Sampled every HISTORY_INTERVAL sim steps.
@@ -2402,6 +2405,7 @@ const applySnapshot=useCallback((snap)=>{
   let psw=peopleRef.current;
   if(!psw||!psw._isMirror){psw=peopleRef.current={_isMirror:true};}
   psw.step=snap.step;psw.tw=snap.tw;psw.th=snap.th;psw.tileRes=snap.tileRes;psw.N=snap.N;
+  setLiveStep(snap.step);   // 30Hz step display (no-op when unchanged → no extra render)
   if(snap.eraAt)psw._eraAt=snap.eraAt;   // display-calendar timeline
   psw.globalP=snap.globalP;
   if(snap.owner)psw._territoryOwner=snap.owner;
@@ -2481,16 +2485,15 @@ const loop=now=>{fid=requestAnimationFrame(loop);if(!playRef.current||!terRef.cu
 // Worker mode: the sim runs off-thread and drives drawing via snapshots, so
 // this loop does nothing. Only the main-thread FALLBACK steps + draws here.
 if(simWorkerRef.current){last=now;return;}
-acc+=now-last;last=now;const iv=Math.max(8,100/speedRef.current);
-if(acc>=iv){acc=0;
-// Adaptive step rate: early history flies by, modern era slows down.
-// Uses current step count to determine how many sim steps per frame.
-const curStep=terRef.current.stepCount;
-// Early game (<200 steps = pre-agriculture): fast. Late game (>800): slow.
-// Scaled by user speed setting.
-// Early Bronze Age runs faster, modern era slower
-const eraFactor=curStep<100?3:curStep<200?2:curStep<500?1.5:1;
-const sub=Math.min(12,Math.max(1,Math.ceil(speedRef.current/3*eraFactor)));// cap raised so high-speed actually accelerates the sim
+// speed = target ticks/sec (mirrors the worker). Step however many ticks the
+// elapsed real time earned, via a fractional accumulator, so the pace matches
+// the chosen speed regardless of frame rate; the Max sentinel just runs a
+// budgeted batch each frame.
+const dt=Math.min(250,now-last);last=now;
+const tps=speedRef.current;
+let sub;
+if(tps>=100000){sub=64;}else{acc+=dt/1000*tps;sub=Math.floor(acc);acc-=sub;}
+if(sub>0){
 // Time-budgeted sim: stop stepping if we've used >8ms this frame
 const _simStart=performance.now();
 for(let s=0;s<sub;s++){
@@ -2502,6 +2505,7 @@ try{if(peopleRef.current)stepPeopleSim(peopleRef.current,1);}
 catch(e){console.error('[PEOPLESIM CRASH]',e.message,e.stack);playRef.current=false;return;}
 if(performance.now()-_simStart>8)break;
 }
+if(peopleRef.current)setLiveStep(peopleRef.current.step);   // 30Hz step display
 // peopleSim stats — drives the HUD instead of legacy tribe metrics.
 if(peopleRef.current&&peopleRef.current.step%5===0){
   setPsStats(peopleSimStats(peopleRef.current));
@@ -2748,7 +2752,7 @@ useEffect(()=>{
 // pinned to history — not the runaway linear clock. `yr(step)` formats any step.
 const _eraAt=(peopleRef.current&&peopleRef.current._eraAt)||null;
 const yr=(step)=>_eraAt?displayYearStr(_eraAt,step):yearStr(step);
-const _step=(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
+const _step=liveStep||(peopleRef.current&&peopleRef.current.step)||psStats.step||0;
 const _ys=yr(_step);
 // Leading era comes from the WORKER stats (the most advanced capital's tech
 // era) — the old ribbon averaged the dead tribe arrays and so sat frozen on
@@ -3700,9 +3704,13 @@ return(
   <button onClick={togglePlay} className={"au-btn"+(playing?" au-wax au-active":"")}
     style={{padding:"4px 14px",fontSize:13,fontFamily:"'Cinzel',Georgia,serif"}} title="Space">{playing?"❚❚":"▶"}</button>
   <div style={{display:"flex",gap:2}}>
-    {[[1,"1×"],[5,"2×"],[12,"5×"],[30,"Max"]].map(([v,l])=>(
+    {/* speed = target ticks/sec. 30 ≈ one step per frame (the step counter ticks
+        up one-by-one); lower watches it crawl, higher packs more per frame, Max
+        runs flat-out. */}
+    {[[8,"¼×"],[30,"1×"],[120,"4×"],[480,"16×"],[100000,"Max"]].map(([v,l])=>(
       <button key={v} onClick={()=>{setSpeed(v);speedRef.current=v;}}
-        className={"au-btn au-flat"+(speed===v?" au-active":"")} style={{padding:"3px 9px",fontSize:11}}>{l}</button>
+        className={"au-btn au-flat"+(speed===v?" au-active":"")} style={{padding:"3px 9px",fontSize:11}}
+        title={v>=100000?"as fast as possible":`~${v} ticks/sec`}>{l}</button>
     ))}
   </div>
   <span className="au-vrule" style={{height:20}}/>

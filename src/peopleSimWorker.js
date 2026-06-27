@@ -94,7 +94,7 @@ function clamp01(v, dflt) { v = v == null ? dflt : +v; return v < 0 ? 0 : v > 1 
 let world = null;
 let genMeta = {};      // oceanLevel / tecParams — recorded into saves
 let playing = false;
-let speed = 5;
+let speed = 30;        // TARGET ticks-per-second (see scheduleTick); 30 = ~1 step per snapshot
 let selId = -1;
 let chronPerspective = false; // chronicle rendered as the realm's scribes kept it
 let dynastyOpen = false;      // the family-tree overlay is open — ship the ruling house graph
@@ -130,6 +130,7 @@ self.onmessage = (e) => {
     const wasPlaying = playing;
     if (m.playing !== undefined) playing = m.playing;
     if (m.speed !== undefined) speed = m.speed;
+    tickAccum = 0; lastTickWall = performance.now();  // reset the pacer so a speed/play change doesn't dump a burst
     if (playing && !wasPlaying) scheduleTick();      // (re)start stepping
     else if (!playing && world) buildSnapshot();     // refresh the paused frame
   } else if (m.type === "select") {
@@ -196,29 +197,53 @@ self.onmessage = (e) => {
 // ~4ms, which silently capped the sim at ~250 slices/sec however high the
 // speed slider went. A channel post re-enters immediately while still
 // yielding to incoming messages.
-let scheduled = false;
+// `speed` is the TARGET ticks-per-second the UI requests, so the displayed step
+// advances at a predictable, watchable rate instead of "as fast as the CPU runs":
+// at 30 tps it ticks up ~one step per snapshot (snapshots are ~30/s — see SNAP_MS),
+// so you can actually read it counting up; lower values tick slower, higher ones
+// pack several steps per snapshot. A sentinel >= UNBOUNDED_TPS means "as fast as
+// possible" (the old behaviour). Paced modes wake ~once per snapshot and step
+// however many ticks the elapsed wall-time has earned (a fractional accumulator,
+// so e.g. 8 tps cleanly yields a step roughly every fourth snapshot); unbounded
+// mode busy-loops via the MessageChannel (timers clamp to ~4ms, which would cap it).
+const UNBOUNDED_TPS = 100000;
+let scheduled = false, tickAccum = 0, lastTickWall = performance.now();
 const _tickChan = new MessageChannel();
 _tickChan.port1.onmessage = () => tick();
-function scheduleTick() { if (!scheduled && playing) { scheduled = true; _tickChan.port2.postMessage(0); } }
+function scheduleTick() {
+  if (scheduled || !playing) return;
+  scheduled = true;
+  if (speed >= UNBOUNDED_TPS) _tickChan.port2.postMessage(0);   // unbounded: re-enter immediately
+  else setTimeout(tick, SNAP_MS);                               // paced: wake roughly once per snapshot
+}
 
 function tick() {
   scheduled = false;
   if (!world || !playing) return;
-  // Adaptive steps-per-slice from the speed setting (mirrors the old main-
-  // thread loop), bounded by a wall-clock budget so the worker keeps posting
-  // snapshots even when a single step spikes — that spike stays off the main
-  // (render) thread, which is the whole point.
-  const curStep = world.step;
-  const eraFactor = curStep < 100 ? 3 : curStep < 200 ? 2 : curStep < 500 ? 1.5 : 1;
-  const maxSub = Math.min(12, Math.max(1, Math.ceil(speed / 3 * eraFactor)));
+  // How many steps to run this slice. Unbounded → as many as the wall-clock budget
+  // allows; paced → earned from elapsed real time × the target rate (so timer
+  // jitter never changes the pace). Either way the budget below keeps a single
+  // spiking step from blocking the snapshot cadence — and that spike stays off the
+  // main (render) thread, which is the whole point of the worker.
+  const now = performance.now();
+  let steps;
+  if (speed >= UNBOUNDED_TPS) {
+    steps = Infinity;
+  } else {
+    const dt = Math.min(250, now - lastTickWall);   // clamp long gaps (tab unfocused) so we don't dump a flood
+    tickAccum += dt / 1000 * speed;
+    steps = Math.floor(tickAccum);
+    tickAccum -= steps;
+  }
+  lastTickWall = now;
   const start = performance.now();
-  for (let i = 0; i < maxSub; i++) {
+  for (let i = 0; i < steps; i++) {
     try { stepPeopleSim(world, 1); }
     catch (err) { self.postMessage({ type: "error", message: err && err.message, stack: err && err.stack }); playing = false; break; }
     if (performance.now() - start > STEP_BUDGET_MS) break;
   }
-  const now = performance.now();
-  if (now - lastSnap >= SNAP_MS) { buildSnapshot(); lastSnap = now; }
+  const t = performance.now();
+  if (t - lastSnap >= SNAP_MS) { buildSnapshot(); lastSnap = t; }
   scheduleTick();
 }
 
