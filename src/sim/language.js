@@ -165,9 +165,13 @@ export function foundLanguage(world, { seed, parentId = -1 } = {}) {
   const s = (seed ?? hash32(world.seed || 1, "lang", id)) >>> 0;
   const rng = mkRng(s);
   const ph = buildPhonology(rng);
+  const _ph = parentId >= 0 ? getLanguage(world, parentId) : null;
   const lang = {
     id, seed: s, parentId, bornStep: world.step | 0, gen: 0,
-    rootId: parentId >= 0 ? ((getLanguage(world, parentId) || {}).rootId ?? parentId) : id,   // language FAMILY (for the Languages map)
+    rootId: parentId >= 0 ? ((_ph || {}).rootId ?? parentId) : id,   // language FAMILY (for the Languages map)
+    // Likeness colour: a daughter tongue drifts a little from its parent's hue; a fresh
+    // root family is golden-angle spread away. So one language family reads as one colour.
+    hue: _ph ? (((_ph.hue + (hash32(s, "lhue") / 4294967296 - 0.5) * 44) % 360) + 360) % 360 : (id * 137.508 + 80) % 360,
     onsets: ph.active.onsets, nuclei: ph.active.nuclei, codas: ph.active.codas,
     _pool: ph.pool, syl: ph.syl, redup: ph.redup, prefix: ph.prefix,
     citySufs: genSuffixSet(rng, ph.active, 3, true, 0.3),
@@ -212,6 +216,8 @@ export function branchLanguage(world, parent, divergence = 0.4) {
   const child = {
     id, seed: s, parentId: parent.id, bornStep: world.step | 0, gen: 0,
     rootId: parent.rootId ?? parent.id,                       // stays in the parent's language family
+    // drift the hue from the parent tongue, further the deeper the branch (likeness colour)
+    hue: (((parent.hue ?? (parent.id * 137.508 + 80)) + (hash32(s, "lhue") / 4294967296 - 0.5) * 44 * Math.max(0.25, Math.min(1, divergence))) % 360 + 360) % 360,
     onsets: parent.onsets.slice(), nuclei: parent.nuclei.slice(), codas: parent.codas.slice(),
     _pool: { onsets: parent._pool.onsets.slice(), nuclei: parent._pool.nuclei.slice(), codas: parent._pool.codas.slice() },
     syl: parent.syl.slice(), redup: parent.redup, prefix: parent.prefix ? parent.prefix.slice() : null,

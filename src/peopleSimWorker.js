@@ -487,7 +487,7 @@ function buildSnapshot() {
     languages: sendStatic && world.languages ? (() => {
       const ownerByLang = new Map();
       if (world.cultures) for (const c of world.cultures.values()) if (c.languageId >= 0 && !ownerByLang.has(c.languageId)) ownerByLang.set(c.languageId, c.name);
-      return [...world.languages.values()].map(l => ({ id: l.id, root: l.rootId ?? l.id, name: ownerByLang.get(l.id) || null }));
+      return [...world.languages.values()].map(l => ({ id: l.id, root: l.rootId ?? l.id, hue: l.hue, name: ownerByLang.get(l.id) || null }));
     })() : null,
     ships: world.ships ? world.ships.map(sh => ({ x: sh.x, y: sh.y, landTi: sh.landTi, countryId: sh.countryId })) : null,
     selected,

@@ -1914,7 +1914,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             // each tongue reads as its own region; fall back to the people's own
             // tongue only until the language layer seeds.
             const lg=lid>=0&&psw.languages?psw.languages.get(lid):null;
-            if(lg){const fh=((lg.id*2654435761)>>>0)%360;return{key:lg.id,h:fh,s:58,l:50};}
+            if(lg){const fh=(lg.hue!=null?lg.hue:((lg.id*2654435761)>>>0)%360)|0;return{key:lg.id,h:fh,s:58,l:50};}
             const c0=cid>=0&&psw.cultures?psw.cultures.get(cid):null;
             if(!c0)return null;const root0=c0.root??c0.id;const fh0=((root0*2654435761)>>>0)%360;return{key:cid,h:fh0,s:50,l:36+((c0.id*7)%6)*7};
           }
@@ -2946,7 +2946,7 @@ const renderLanguages=()=>{
   const live=(f)=>f.rows.filter(r=>r.a.setts>0);
   const famList=[...fams.values()].filter(f=>live(f).length>0).sort((x,y)=>y.pop-x.pop);
   for(const f of famList)f.rows.sort((x,y)=>y.a.pop-x.a.pop);
-  const hueOf=(id)=>((id*2654435761)>>>0)%360;   // SAME formula the Languages lens uses
+  const hueOf=(l)=>((l&&l.hue!=null?l.hue:((((l&&l.id)||0)*2654435761)>>>0)%360))|0;   // SAME likeness hue the Languages lens uses
   const famName=(f)=>{const r=psw.languages.get(f.rootId);return (r&&r.name)||"?";};
   return(
     <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
@@ -2960,7 +2960,7 @@ const renderLanguages=()=>{
           </div>
           {ls.map(({l,a})=>(
             <div key={l.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(58,38,20,0.08)"}}>
-              <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hueOf(l.id)},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
+              <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hueOf(l)},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
               <span style={{fontWeight:600}}>{l.name||"(tongue)"}</span>
               <div style={{flex:1}}/>
               <span className="au-fade">{a.setts} · {fmtPeople(a.pop)}</span>

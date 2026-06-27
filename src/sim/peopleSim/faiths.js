@@ -186,6 +186,13 @@ function newFaith(world, fields) {
   };
   const parent = getFaith(world, f.parentFaithId);
   f.doctrine = f.doctrine || rollDoctrine(world, id, f.kind, parent);
+  // Likeness colour: a SCHISM keeps close to its parent creed's hue (a reform reads as
+  // a shade of the same religion), while a de-novo faith is golden-angle spread away —
+  // so one religion FAMILY reads as one colour band, its sects as nearby shades.
+  if (parent && !f.syncretic)
+    f.hue = (((parent.hue + (hash32(world.seed || 1, "fhue", id) / 4294967296 - 0.5) * 40) % 360) + 360) % 360;
+  else if (f.parentFaithId < 0)
+    f.hue = (id * 137.508 + 40) % 360;
   // rootFaithId: the religion FAMILY a creed belongs to. A schism keeps its
   // parent's root (Protestantism is still of the Christian root); a de-novo
   // founding or a syncretic blend starts a NEW root. Lets us bound how many

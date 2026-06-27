@@ -119,7 +119,13 @@ export function foundCulture(world, { origin, parentCultureId = -1, divergence =
     originSettlementId: origin ? origin.id : -1,
     foundedStep: world.step | 0,
     nameCounter: 1,
-    hue: (id * 137.508) % 360,            // golden-angle spread
+    // Likeness colour: a daughter people DRIFTS a little from its PARENT's hue —
+    // further the deeper it branched — so a whole stock reads as one colour family
+    // (reds shading into oranges), while a fresh root stock is golden-angle spread
+    // away from every other family. Closely related peoples therefore look alike.
+    hue: parentRec
+      ? (((parentRec.hue + (hash32(world.seed || 1, "hue", id) / 4294967296 - 0.5) * 48 * Math.min(1, divergence)) % 360) + 360) % 360
+      : (id * 137.508) % 360,
   };
   // The tongue: an isolated daughter BRANCHES from its PARENT people's tongue (a
   // dialect hardening into a language); a politically-forked nation branches the
