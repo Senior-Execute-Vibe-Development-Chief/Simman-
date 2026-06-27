@@ -37,7 +37,6 @@ import { updateSlaveTrade, SLAVE_INTERVAL } from "./slavery.js";
 import { updateDynasties, DYNASTY_INTERVAL } from "./dynasties.js";
 import { diffuseIdentityField } from "./identityField.js";
 import { T } from "./tuning.js";
-import { stepToYear } from "../calendar.js";
 
 const CHRONICLE_INTERVAL = 300;   // ticks between per-country chronicle milestone checks
 // Per-tile identity field (identityField.js): mirror each settlement's
@@ -90,7 +89,18 @@ function applyDemographicAnchor(world, popTotal, capTotal) {
   world._popTotal = popTotal;
   if (world._eraProd === undefined) world._eraProd = 1;
   if (capTotal <= 0 || popTotal <= 1) return;   // need a live population to steer by
-  const target = realWorldPopSim(stepToYear(world.step));
+  // Target the population a civilisation at the world's DEVELOPMENT level would have
+  // — NOT the wall clock. Keying this on stepToYear was the two-clock landmine the
+  // cardinal rule warns about: the linear calendar runs to "6000 AD" by step 18000
+  // while the world is still developmentally medieval, so realWorldPopSim demanded a
+  // far-future population and the integrator cranked _eraProd toward its ceiling —
+  // inflating the single best-fertility settlement into a runaway primate mega-city
+  // (the "civilisation always blooms in that one strip" artifact). world._civYear is
+  // the emergent development pseudo-year (civYearFromOrg), so the target now tracks
+  // what the world has BECOME: a world stuck in antiquity keeps an ancient
+  // population forever, one that industrialises early grows early. (One-tick lag —
+  // _civYear is set just after this call — is immaterial to the slow integrator.)
+  const target = realWorldPopSim(world._civYear ?? -6000);
   if (target <= 0) return;
   // Integral control: nudge the global productivity index so the world TOTAL
   // population converges on the historical curve. Carrying capacity is linear in
