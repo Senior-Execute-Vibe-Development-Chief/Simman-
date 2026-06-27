@@ -26,6 +26,7 @@ import { grownOwnerAt } from "./countryClaim.js";
 import { ensurePolity } from "./entities.js";
 import { settlementPower } from "./conquest.js";
 import { T } from "./tuning.js";
+import { claimHostility } from "./habitability.js";
 
 // Per-country reach (transport-cost) projected from its settlements: a country
 // claims land out to COUNTRY_REACH_BASE + capital-organisation × COUNTRY_REACH_ORG
@@ -78,9 +79,7 @@ const CLAIM_HOSTILITY = 3.0;   // ×(1 + this·deficit²) on barren land: 0 = ol
 // is untouched and still claims cheap. Scaled by the realm's `host` factor, so it
 // fades with logistics tech — pre-modern realms stall at the jungle edge, the
 // industrial/colonial era finally penetrates it.
-const WET_TROPIC_RESIST = 1.0;
-const WET_TROPIC_T0 = 0.78, WET_TROPIC_TSPAN = 0.10;   // temperature ramp (matches the agri wet-tropic penalty)
-const WET_TROPIC_M0 = 0.60, WET_TROPIC_MSPAN = 0.25;   // moisture ramp
+const WET_TROPIC_RESIST = 1.0;   // strength of the disease/tsetse-belt claim drag (see claimHostility)
 // How far a realm projects a CLAIM also grows with the era. In antiquity a state
 // was an island of territory in a sea of unclaimed land — most of the world
 // belonged to no polity (steppe, forest, desert, the deep interior). The modern
@@ -507,11 +506,13 @@ export function computeCountryTerritory(world) {
       if (!water && host > 0) {
         const fdef = (CLAIM_FERT_REF - (fert ? fert[ni] : CLAIM_FERT_REF)) / CLAIM_FERT_REF;
         if (fdef > 0) ec *= 1 + host * fdef * fdef;
-        // Wet-tropic resistance: hot+wet rainforest stalls a border (sparse,
-        // stateless deep tropics); hot+dry steppe is untouched.
+        // Disease/tsetse claim resistance: the humid malaria + tsetse belt stalls a
+        // border (sparse, stateless, near-impossible to administer); the open DRY
+        // Sahel/steppe is untouched and still claims cheap (Mali, Songhai, the
+        // khanates ran huge across the grass sea). Broadened from rainforest-only to
+        // the savanna woodland — see habitability.js claimHostility.
         if (temp && moist) {
-          const wt = Math.min(1, Math.max(0, (temp[ni] - WET_TROPIC_T0) / WET_TROPIC_TSPAN))
-                   * Math.min(1, Math.max(0, (moist[ni] - WET_TROPIC_M0) / WET_TROPIC_MSPAN));
+          const wt = claimHostility(temp[ni], moist[ni]);
           if (wt > 0) ec *= 1 + host * WET_TROPIC_RESIST * wt;
         }
       }

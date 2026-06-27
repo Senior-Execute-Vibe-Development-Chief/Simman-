@@ -26,6 +26,7 @@ import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
 import { grownOwnerAt } from "./countryClaim.js";
 import { T } from "./tuning.js";
+import { settleHostility } from "./habitability.js";
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
 const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) flood — a
@@ -106,21 +107,22 @@ const MIN_SETT_DIST             = 8;          // daughter-colony spacing floor (
 // ~1/(1+SPARSE_SPREAD)² the density.
 const CAP_FERT_REF              = 0.5;   // fertility at/above which a site packs at full density
 const SPARSE_SPREAD             = 1.5;   // barren land spaces up to this many × farther apart
-// Wet-tropic intensity (heat × damp) at a tile — mirrors the disease signal in
-// settlement.js. The disease-ridden wet tropics (Congo, Amazon, New Guinea) had
-// leached soils and endemic disease that held SETTLEMENT density far below what
-// their lush fertility implied, so they end a thin scatter, not a dense web.
-function wetTropicAt(world, ti) {
-  const heat = Math.min(1, Math.max(0, ((world.temp[ti]  ?? 0.5) - 0.68) / 0.18));
-  const damp = Math.min(1, Math.max(0, ((world.moist[ti] ?? 0.5) - 0.35) / 0.35));
-  return heat * damp;
+// Habitability HOSTILITY at a tile — mirrors the brakes in settlement.js. The
+// disease-ridden tropics AND the tsetse savanna AND the hot rain-fed Sahel all
+// held SETTLEMENT density far below what raw fertility implied, so they end a thin
+// scatter, not a dense web (habitability.js settleHostility). riverAcc is
+// approximated from the river-magnitude field so a managed river escapes aridity.
+function hostilityAt(world, ti) {
+  const t = world.temp[ti]  ?? 0.5, m = world.moist[ti] ?? 0.5;
+  const riverAcc = (world.riverMag && world.riverMag[ti] >= 2) ? 0.4 : 0;
+  return settleHostility(t, m, riverAcc);
 }
-function capacitySpacingMul(fertTile, wetTropic) {
-  // Disease discounts EFFECTIVE fertility for spacing — geometric spacing is the
+function capacitySpacingMul(fertTile, hostility) {
+  // Hostility discounts EFFECTIVE fertility for spacing — geometric spacing is the
   // one density lever the global productivity anchor (index.js _eraProd) can't
   // wash out (it scales food, not how far apart villages sit). So this, not the
-  // carrying-capacity drag, is what actually thins the rainforest on the map.
-  const effFert = fertTile * (1 - T.TROPIC_SPARSE * (wetTropic || 0));
+  // carrying-capacity drag, is what actually thins harsh land on the map.
+  const effFert = fertTile * (1 - T.TROPIC_SPARSE * (hostility || 0));
   const capNorm = Math.min(1, Math.max(0, effFert / CAP_FERT_REF));
   return 1 + SPARSE_SPREAD * (1 - capNorm);
 }
@@ -334,7 +336,7 @@ export function maybeCrystallize(world) {
     // Capacity-scaled spacing: a low-fertility site demands more elbow room,
     // so marginal land (rainforest, steppe, outback) ends up a sparse scatter
     // while fertile valleys pack tight.
-    const capSp = capacitySpacingMul(f, wetTropicAt(world, ty * world.tw + tx));
+    const capSp = capacitySpacingMul(f, hostilityAt(world, ty * world.tw + tx));
     const floodSp = (world.tFlood && world.tFlood[ti]) ? FLOOD_SPACING_MUL : 1;   // dense chain down the river valley
     const hf = hardFloor * capSp * floodSp, sd = softDist * capSp * floodSp;
     if (nearestSq < hf * hf) continue;             // hard reject — overlap
@@ -740,7 +742,7 @@ function sendSettlers(world, parent) {
     // Spacing check against existing settlements (grid-bounded near query — any
     // settled neighbour within the capacity-scaled spacing disqualifies the
     // site, so low-fertility frontier spreads its colonies far thinner).
-    const spacing = MIN_SETT_DIST * capacitySpacingMul(fert[ti], wetTropicAt(world, ti));
+    const spacing = MIN_SETT_DIST * capacitySpacingMul(fert[ti], hostilityAt(world, ti));
     let tooClose = false;
     forEachNear(world, tx, ty, spacing, () => { tooClose = true; });
     if (tooClose) continue;

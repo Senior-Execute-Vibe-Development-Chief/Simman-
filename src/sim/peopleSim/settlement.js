@@ -15,6 +15,7 @@ import { logEvent } from "./events.js";
 import { ensurePolity, getPolity } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor } from "./cultures.js";
 import { T } from "./tuning.js";
+import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, OUT_GOODS, OUT_MATERIALS } from "./money.js";
 import { hash32 } from "./rng.js";
 
@@ -1224,7 +1225,13 @@ function livestockClimate(temp, moist) {
   const dryOK  = Math.min(1, Math.max(0, (moist - 0.10) / 0.18));   // not bare desert
   const wetOK  = Math.min(1, Math.max(0, (0.82 - moist) / 0.28));   // not rainforest / swamp
   const warmOK = Math.min(1, Math.max(0, (temp - 0.26) / 0.16));    // not frozen
-  return dryOK * wetOK * warmOK;
+  // TSETSE BELT: subtract the warm sub-humid woodland-savanna where the fly killed
+  // cattle, horses and oxen — the model used to hand this belt a livestock BONUS
+  // (warm + moderate moisture scored high above), which is exactly the African
+  // savanna that historically could keep no draft animals. This turns that bonus
+  // into the real handicap; the dry grassland (Sahel fringe, steppe) is spared.
+  const tsetse = 1 - T.TSETSE * tsetseSignal(temp, moist);
+  return dryOK * wetOK * warmOK * Math.max(0, tsetse);
 }
 
 // Competition (fractious-polity innovation): a settlement in contact with many
@@ -1774,11 +1781,23 @@ function updateFood(world, s) {
   let diseaseBurden = 1;
   if (T.TROPICAL_DISEASE > 0 || T.STATE_DISEASE > 0) {
     climateOf(world, s);
-    const heat = Math.min(1, Math.max(0, (s._climTemp - 0.68) / 0.18));
-    const damp = Math.min(1, Math.max(0, (s._climMoist - 0.35) / 0.35));
-    s._wetTropic = heat * damp;                      // raw wet-tropic intensity (0 temperate/dry → 1 deep rainforest)
+    // BROADENED disease signal: warm + at-least-sub-humid (the savanna woodland
+    // carried malaria & sleeping sickness too, not only the deep rainforest), so
+    // this now thins the savanna as well — see habitability.js malariaSignal.
+    s._wetTropic = malariaSignal(s._climTemp, s._climMoist);   // disease intensity (0 dry/cool → 1 hot-wet)
     s._disease = T.TROPICAL_DISEASE * s._wetTropic;   // drives the carrying-capacity drag; STATE_DISEASE reuses _wetTropic for state formation
     diseaseBurden = 1 - s._disease;
+  }
+  // ── Hot rain-fed aridity (Sahel / dry savanna) ──────────────────────────
+  // Erratic, unreliable rainfall held the dry savanna to sparse pastoralism, never
+  // dense farming. A drag on carrying capacity that FADES with river access — a
+  // managed river through the desert (the Nile) escapes and gets the irrigation
+  // lift instead. Distinct from the wet-tropic disease brake above.
+  let aridBurden = 1;
+  if (T.ARID_PENALTY > 0) {
+    climateOf(world, s);
+    s._aridity = aridSignal(s._climTemp, s._climMoist, s._riverAcc || 0);
+    aridBurden = 1 - T.ARID_PENALTY * s._aridity;
   }
   // _eraProd is the global historical-productivity index (index.js demographic
   // anchor): scaling LAND FOOD here lifts every settlement's carrying capacity
@@ -1847,7 +1866,7 @@ function updateFood(world, s) {
   // CASH CROPS displace food: arable turned over to sugar/cotton/tobacco grows no grain,
   // so a plantation settlement must IMPORT food (the new dynamic — see updateCoercedLabour).
   const cashLand = T.SLAVERY ? (s._cashFrac || 0) * CASHCROP_LAND : 0;
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * soilBurden * workable * irrigation * (1 - cashLand);
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * aridBurden * soilBurden * workable * irrigation * (1 - cashLand);
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFood = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
