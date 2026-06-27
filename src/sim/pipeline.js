@@ -514,9 +514,15 @@ if(e<=0){tCrop[ti]=0;tCross[ti]=1;continue;}
 tCrop[ti]=cropSuitability(t,m,e,tCoast[ti],rivers&&rivers.riverMag?rivers.riverMag[ti]:0,bDist?bDist[ti]:null);
 // An arid-river FLOODPLAIN is prime irrigated cropland (the Nile / Mesopotamia /
 // Indus alluvium — the most productive farmland there was), whatever the bare
-// climate would rate the hot dry valley as. The hottest cradles' later
-// salinisation (SOIL_EXHAUST, settlement.js) still applies the historical decline.
-if(tFlood[ti])tCrop[ti]=Math.max(tCrop[ti],0.92);
+// climate would rate the hot dry valley as — BUT only where it is warm enough to
+// farm. A floodplain in a short-season high-latitude interior (a frozen Siberian
+// river valley) is NOT the Nile, so gate the override by the SAME cold gate
+// cropSuitability uses. Without this, drying a cold continental interior (which
+// turns its river valleys "arid" and so flags them tFlood) would mint subarctic
+// breadbaskets that bypass the cold gate entirely — a runaway-primate landmine.
+// The hottest cradles' later salinisation (SOIL_EXHAUST, settlement.js) still
+// applies the historical decline.
+if(tFlood[ti]){const coldGate=Math.min(1,Math.max(0,(t-0.57)/0.13));tCrop[ti]=Math.max(tCrop[ti],0.92*coldGate);}
 // Crossing difficulty: average edge cost from each land neighbour
 // into this tile. Edge-based so slope shows up; averaged so the
 // overlay is direction-agnostic.

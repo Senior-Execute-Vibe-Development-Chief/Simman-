@@ -113,10 +113,10 @@ export const PARAMS = {
   moisture: {
     label: "Moisture", color: "100,160,180",
     params: [
-      { key: "moistDecay", def: 0.996, min: 0.95, max: 1.0, label: "Inland retention",
-        desc: "How much atmospheric moisture survives per transport step over land. Lower = faster continental drying. Higher = moisture penetrates deeper inland." },
+      { key: "moistDiffuse", def: 0.55, min: 0.2, max: 0.95, label: "Inland spread",
+        desc: "Lossy lateral spread of moisture between neighbouring land cells (the synoptic/seasonal transport the mean wind misses). Below 1 so it can't flood interiors — the lower it is, the more depleting the spread and the drier deep continental interiors become." },
       { key: "moistRecycling", def: 0.25, min: 0.0, max: 0.5, label: "Transpiration recycling",
-        desc: "How much precipitation on warm land re-evaporates back into the atmosphere. Amazon recycles ~40% of its rainfall. Higher = wetter continental interiors." },
+        desc: "How much precipitation on warm land re-evaporates back into the atmosphere. Amazon recycles ~40% of its rainfall. Higher = wetter warm continental interiors (rainforests recharge their own air column)." },
       { key: "moistAdvectWeight", def: 0.60, min: 0.2, max: 1.0, label: "Advection reach",
         desc: "How far wind carries moisture per step. Higher = moisture transported further from ocean sources. Affects how deep inland moisture penetrates." },
       { key: "moistOceanWeight", def: 0.20, min: 0.0, max: 0.5, label: "Ocean evaporation",
