@@ -22,6 +22,13 @@ export const RIVER_GREAT = 4;      // Amazon, Nile, Congo scale
 
 export const RIVER_NAMES = ['', 'Stream', 'Tributary', 'Major River', 'Great River'];
 
+// Endorheic evaporation coefficient (Step 3b): per filled-basin tile, the share of a
+// reference river's flow that the open-water brim would evaporate, scaled by basin heat
+// and dryness. Higher ⇒ more interiors stay terminal (no sea outlet). Calibrated so the
+// arid closed interiors (Central Asia, the Caspian/Aral/Tarim, the Great Basin) seal
+// while cold/wet basins still overflow to the sea.
+const ENDO_EVAP = 2.0;
+
 export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   const N = tw * th;
 
@@ -173,19 +180,8 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   }
 
   // ── Step 3: Flow accumulation (topological sort) ──
-  const inDegree = new Uint16Array(N);
-  for (let ti = 0; ti < N; ti++) {
-    const d = flowDir[ti];
-    if (d === 255) continue;
-    const tx = ti % tw, ty = (ti - tx) / tw;
-    const nx = (tx + D8_DX[d] + tw) % tw;
-    const ny = ty + D8_DY[d];
-    if (ny < 0 || ny >= th) continue;
-    inDegree[ny * tw + nx]++;
-  }
-
   // Each land tile contributes runoff = moisture minus evaporation, PLUS mountain melt.
-  const flowAccum = new Float32Array(N);
+  const runoff = new Float32Array(N);
   for (let ti = 0; ti < N; ti++) {
     if (tElev[ti] > 0 && tTemp[ti] >= 0.12) {
       const evapLoss = Math.max(0, tTemp[ti] - 0.3) * 0.3;
@@ -197,28 +193,112 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
       // highlands, the Colorado off the Rockies, the Amu Darya off the Pamir), get no
       // headwater and never form. Scales with height above the snow/orographic line.
       const snowmelt = Math.max(0, tElev[ti] - 0.15) * 1.6;
-      flowAccum[ti] = Math.max(0.05, tMoist[ti] - evapLoss) + snowmelt;
+      runoff[ti] = Math.max(0.05, tMoist[ti] - evapLoss) + snowmelt;
     }
   }
 
-  const queue = [];
-  for (let ti = 0; ti < N; ti++) {
-    if (tElev[ti] > 0 && inDegree[ti] === 0) queue.push(ti);
+  // Accumulate runoff downstream along flowDir (Kahn topological sort). Re-runnable:
+  // the endorheic pass below edits flowDir and calls this again, so it always restarts
+  // from the per-tile runoff rather than a half-accumulated buffer.
+  const flowAccum = new Float32Array(N);
+  function accumulate() {
+    flowAccum.set(runoff);
+    const inDegree = new Uint16Array(N);
+    for (let ti = 0; ti < N; ti++) {
+      const d = flowDir[ti];
+      if (d === 255) continue;
+      const tx = ti % tw, ty = (ti - tx) / tw;
+      const nx = (tx + D8_DX[d] + tw) % tw;
+      const ny = ty + D8_DY[d];
+      if (ny < 0 || ny >= th) continue;
+      inDegree[ny * tw + nx]++;
+    }
+    const queue = [];
+    for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0 && inDegree[ti] === 0) queue.push(ti);
+    let head = 0;
+    while (head < queue.length) {
+      const ti = queue[head++];
+      const d = flowDir[ti];
+      if (d === 255) continue;
+      const tx = ti % tw, ty = (ti - tx) / tw;
+      const nx = (tx + D8_DX[d] + tw) % tw;
+      const ny = ty + D8_DY[d];
+      if (ny < 0 || ny >= th) continue;
+      const ni = ny * tw + nx;
+      flowAccum[ni] += flowAccum[ti];
+      inDegree[ni]--;
+      if (inDegree[ni] === 0) queue.push(ni);
+    }
   }
+  accumulate();
 
-  let head = 0;
-  while (head < queue.length) {
-    const ti = queue[head++];
-    const d = flowDir[ti];
-    if (d === 255) continue;
-    const tx = ti % tw, ty = (ti - tx) / tw;
-    const nx = (tx + D8_DX[d] + tw) % tw;
-    const ny = ty + D8_DY[d];
-    if (ny < 0 || ny >= th) continue;
-    const ni = ny * tw + nx;
-    flowAccum[ni] += flowAccum[ti];
-    inDegree[ni]--;
-    if (inDegree[ni] === 0) queue.push(ni);
+  // ── Step 3b: Endorheic basins — terminate flow in closed arid sinks ──
+  // The priority-flood (Step 1) fills EVERY depression so all land drains to the ocean.
+  // That is wrong for INTERNALLY-DRAINING basins: real Central Asia, the Caspian/Aral/
+  // Tarim, the Great Basin and Lake Eyre collect their rivers into terminal lakes/playas
+  // that EVAPORATE — there is no outlet to the sea. Forcing them to spill routed the
+  // highland snowmelt as a through-river across the desert (the Caspian↔Himalaya
+  // corridor) and strung spurious lakes along it. A closed basin keeps its sea outlet
+  // ONLY if the water reaching its spill exceeds what the full basin would lose to
+  // evaporation when filled to the brim; otherwise it is endorheic — every exit is cut
+  // so flow pools inside (a terminal lake forms) and never reaches the ocean. Cold/wet
+  // basins still overflow (the Great Lakes → the St-Lawrence); hot and/or arid basins
+  // stay terminal. Keyed on temperature + dryness (state), never latitude/era.
+  {
+    const basinId = new Int32Array(N).fill(-1);
+    const basins = [];
+    for (let ti = 0; ti < N; ti++) {
+      if (!isRaised[ti] || basinId[ti] >= 0 || tElev[ti] <= 0) continue;
+      const id = basins.length;
+      const q = [ti]; basinId[ti] = id; let h = 0;
+      const tiles = []; let tempSum = 0, moistSum = 0;
+      while (h < q.length) {
+        const ci = q[h++]; tiles.push(ci); tempSum += tTemp[ci]; moistSum += tMoist[ci];
+        const cx = ci % tw, cy = (ci - cx) / tw;
+        for (let d = 0; d < 8; d++) {
+          const nx = (cx + D8_DX[d] + tw) % tw, ny = cy + D8_DY[d];
+          if (ny < 0 || ny >= th) continue;
+          const ni = ny * tw + nx;
+          if (isRaised[ni] && basinId[ni] < 0 && tElev[ni] > 0) { basinId[ni] = id; q.push(ni); }
+        }
+      }
+      basins.push({ tiles, footprint: tiles.length, temp: tempSum / tiles.length, moist: moistSum / tiles.length });
+    }
+    // Edges that leave a basin (a basin tile flowing to a tile of a different / no basin).
+    const exitsOf = (b) => {
+      const exits = [];
+      let spillFlow = 0;
+      for (const ti of b.tiles) {
+        const d = flowDir[ti];
+        if (d === 255) continue;
+        const tx = ti % tw, ty = (ti - tx) / tw;
+        const nx = (tx + D8_DX[d] + tw) % tw, ny = ty + D8_DY[d];
+        if (ny < 0 || ny >= th) continue;
+        if (basinId[ny * tw + nx] === basinId[ti]) continue;
+        exits.push(ti);
+        if (flowAccum[ti] > spillFlow) spillFlow = flowAccum[ti];
+      }
+      return { exits, spillFlow };
+    };
+    let cut = 0;
+    for (const b of basins) {
+      const { exits, spillFlow } = exitsOf(b);
+      if (!exits.length) continue;
+      // Evaporative demand of the basin at the brim: the whole footprint is open water,
+      // and hot, dry air pulls far more from it than cold or humid air. A basin overflows
+      // only if the water reaching the spill beats this; otherwise it is a terminal sink.
+      // Dryness is the dominant lever — it is what separates an arid closed sink (the
+      // Tarim, the Aral, Lake Chad, Lake Eyre — all terminal) from a humid one that
+      // overflows (the Pannonian basin → the Danube).
+      const heat = 0.30 + Math.max(0, b.temp - 0.30) * 1.2;     // cold→0.30, hot→~0.9
+      const dry  = 0.20 + Math.max(0, 0.42 - b.moist) * 3.0;    // humid→0.20, desert→~1.1
+      const evapDemand = b.footprint * ENDO_EVAP * heat * dry;
+      if (spillFlow < evapDemand) {
+        for (const ti of exits) flowDir[ti] = 255; // terminate — flow pools inside
+        cut++;
+      }
+    }
+    if (cut > 0) accumulate(); // re-route with the endorheic basins sealed
   }
 
   // ── Step 4: Classify river magnitude ──
