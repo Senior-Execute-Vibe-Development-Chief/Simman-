@@ -29,6 +29,17 @@ export const RIVER_NAMES = ['', 'Stream', 'Tributary', 'Major River', 'Great Riv
 // while cold/wet basins still overflow to the sea.
 const ENDO_EVAP = 2.0;
 
+// Transmission loss (Step 3): the share of through-flow a river loses PER TILE to
+// evaporation and bed seepage as it crosses ARID, warm land. Real exotic rivers shed
+// most of their volume crossing a desert (the Nile below Khartoum, the Tarim, the Amu
+// Darya all dwindle downstream), so a channel fed by far-off snowmelt cannot stay a
+// great river across a whole desert, and the terminal lake it feeds is small. Gated
+// hard on dryness so humid-region rivers (Amazon, Congo, Mississippi) lose ~nothing —
+// this is the targeted version of a per-tile loss that was once applied globally and
+// reverted for thinning every river. Compounds along the path, so a long desert
+// crossing attenuates strongly while a few arid tiles barely register.
+const TRANS_LOSS = 0.10;
+
 export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   const N = tw * th;
 
@@ -197,9 +208,17 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     }
   }
 
-  // Accumulate runoff downstream along flowDir (Kahn topological sort). Re-runnable:
-  // the endorheic pass below edits flowDir and calls this again, so it always restarts
-  // from the per-tile runoff rather than a half-accumulated buffer.
+  // Per-tile through-flow SURVIVAL (1 − transmission loss). Filled in AFTER the endorheic
+  // pass below: a river loses water to evaporation/seepage crossing arid land, but ONLY on
+  // flow bound for a terminal (endorheic) sink. Rivers that reach the SEA — every exotic
+  // cradle river included (the Nile, the Tigris-Euphrates, the Indus all cross desert yet
+  // drain to the ocean) — keep all their water, so this never thins the rivers the
+  // civilisation sim depends on. Starts at 1 (lossless) for the detection pass.
+  const transmit = new Float32Array(N).fill(1);
+
+  // Accumulate runoff downstream along flowDir (Kahn topological sort), applying the
+  // transmission loss as water leaves each tile. Re-runnable: the endorheic pass below
+  // edits flowDir and the transmit field, then calls this again for the final field.
   const flowAccum = new Float32Array(N);
   function accumulate() {
     flowAccum.set(runoff);
@@ -225,7 +244,7 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
       const ny = ty + D8_DY[d];
       if (ny < 0 || ny >= th) continue;
       const ni = ny * tw + nx;
-      flowAccum[ni] += flowAccum[ti];
+      flowAccum[ni] += flowAccum[ti] * transmit[ti];   // lose a share crossing arid land
       inDegree[ni]--;
       if (inDegree[ni] === 0) queue.push(ni);
     }
@@ -280,7 +299,6 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
       }
       return { exits, spillFlow };
     };
-    let cut = 0;
     for (const b of basins) {
       const { exits, spillFlow } = exitsOf(b);
       if (!exits.length) continue;
@@ -295,10 +313,38 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
       const evapDemand = b.footprint * ENDO_EVAP * heat * dry;
       if (spillFlow < evapDemand) {
         for (const ti of exits) flowDir[ti] = 255; // terminate — flow pools inside
-        cut++;
       }
     }
-    if (cut > 0) accumulate(); // re-route with the endorheic basins sealed
+    // Mark every tile whose flow ENDS in a terminal land sink (rather than the ocean),
+    // by tracing downstream once per tile with memoisation.
+    const drainsTerminal = new Int8Array(N).fill(-1); // -1 unknown, 0 ocean-bound, 1 terminal
+    for (let s = 0; s < N; s++) {
+      if (tElev[s] <= 0 || drainsTerminal[s] !== -1) continue;
+      const path = []; let ti = s, verdict = 0;
+      while (ti >= 0 && drainsTerminal[ti] === -1) {
+        path.push(ti);
+        const d = flowDir[ti];
+        if (d === 255) { verdict = 1; break; }          // land tile with no outlet = terminal sink
+        const tx = ti % tw, ty = (ti - tx) / tw, ny = ty + D8_DY[d];
+        if (ny < 0 || ny >= th) { verdict = 0; break; }
+        const ni = ny * tw + ((tx + D8_DX[d] + tw) % tw);
+        if (tElev[ni] <= 0) { verdict = 0; break; }      // reached the ocean
+        ti = ni;
+      }
+      if (ti >= 0 && drainsTerminal[ti] !== -1) verdict = drainsTerminal[ti];
+      for (const p of path) drainsTerminal[p] = verdict;
+    }
+    // Apply transmission loss ONLY to terminal-draining arid/warm tiles, then re-accumulate
+    // for the final field. The sealed routing + the loss together shrink the closed-basin
+    // rivers (the Tarim/Central-Asian snowmelt) and starve their oversized terminal lakes,
+    // while every sea-bound river — the cradles included — is untouched.
+    for (let ti = 0; ti < N; ti++) {
+      if (tElev[ti] <= 0 || drainsTerminal[ti] !== 1) continue;
+      const aridity = Math.max(0, Math.min(1, (0.30 - tMoist[ti]) / 0.30));        // 0 if moist≥0.30 → 1 bone-dry
+      const warmth = 0.4 + 0.6 * Math.max(0, Math.min(1, (tTemp[ti] - 0.40) / 0.25)); // cold sink 0.4 → hot 1.0
+      transmit[ti] = 1 - TRANS_LOSS * aridity * warmth;
+    }
+    accumulate(); // final field: endorheic basins sealed + terminal-bound desert loss
   }
 
   // ── Step 4: Classify river magnitude ──
