@@ -34,8 +34,20 @@ import { claimHostility } from "./habitability.js";
 // stay compact (the early map fragments into small city-states with wilderness
 // between) and high-org empires reach far (consolidation with the era). Beyond
 // it, land is wilderness — which is where stateless frontier hamlets live.
-const COUNTRY_REACH_BASE = 4;   // small base so ORGANISATION dominates reach — a weak chiefdom holds a tiny core, an empire projects far (was 8: even org→0 states sprawled)
-const COUNTRY_REACH_ORG  = 14;   // reach per organisation tech (was 20 — empires were continental too early)
+const _envNum = (k, d) => (typeof process !== "undefined" && process.env && +process.env[k]) || d;
+const COUNTRY_REACH_BASE = _envNum("SIM_REACH_BASE", 4);   // small base so ORGANISATION dominates reach — a weak chiefdom holds a tiny core, an empire projects far (was 8: even org→0 states sprawled)
+// Reach per organisation tech. Raised 14→26: the historical arc is sparse antiquity
+// (city-states with terra nullius between) RISING to a near-full land partition by the
+// modern era (the colonial-era abolition of terra nullius — empty land claimed to
+// preempt rivals once control became projectable). At 14 the modern world stalled at
+// ~50% claimed — half the habitable map left as permanent wilderness even at near-max
+// development, which never happened. 26 carries the developed era to ~78% claimed at
+// org≈0.97 while ANTIQUITY stays fragmented (the classical era barely moves — it's held
+// down by the size-gate below, not this coefficient) and the world stays MANY countries
+// (no monolithic world-empire). The old "continental too early" worry that forced the
+// 20→14 cut predates the size-gate + BUDGET_RAMP + gradual integration added since,
+// which now keep a young/small realm compact regardless of this value. Gates stay green.
+const COUNTRY_REACH_ORG  = _envNum("SIM_REACH_ORG", 26);
 // ── Frontier-fill: claiming the harsh interior as engineering matures ──
 // For most of history great regions were politically EMPTY — no state claimed
 // the deep Sahara, the high Himalaya, the Amazon, interior Africa. They filled
