@@ -48,8 +48,8 @@ for (let i = 0; i < tw * th; i++) { const c = colorAt(i); rgb[i*3]=c[0]; rgb[i*3
 writeFileSync(`${OUT}_full.png`, png(tw, th, rgb));
 console.log(`[out] ${OUT}_full.png`);
 
-// zoom: Caspian–Central Asia–Himalaya, 25-58N, 40-105E, upscaled 3x
-const latHi=58,latLo=25,lonLo=40,lonHi=105;
+// zoom: Caspian–Central Asia–Himalaya, 25-58N, 40-105E, upscaled 3x (env-overridable)
+const latHi=+(process.env.LAT_HI||58),latLo=+(process.env.LAT_LO||25),lonLo=+(process.env.LON_LO||40),lonHi=+(process.env.LON_HI||105);
 const y0=Math.max(0,Math.round((0.5-latHi/180)*th)), y1=Math.min(th,Math.round((0.5-latLo/180)*th));
 const x0=Math.round((lonLo+180)/360*tw), x1=Math.round((lonHi+180)/360*tw);
 const zw=(x1-x0), zh=(y1-y0), S=3;

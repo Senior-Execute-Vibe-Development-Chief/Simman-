@@ -47,6 +47,16 @@ const TRANS_LOSS = 0.30;
 // a short stub near the mouth. Terminal-bound flow is unaffected (keeps the strict cut).
 const RIVER_GEN = 2;
 
+// Mountain snowmelt volume (Step 3): converts the snow/glacier fraction × relief into
+// headwater runoff. Calibrated so the Himalaya/Pamir keep their old ~0.5 melt while the
+// cold mid-latitude massifs that the old elevation-only term missed (the Anatolian–Zagros
+// highlands behind Mesopotamia, the Rockies, the Alps) finally shed water downstream.
+const SNOWMELT_K = 3.0;
+// Continental winter cooling: the WINTER mean runs this far (×0.38 = ~38°C at the pole, in
+// the t-scale where 0.01 = 1°C) below the ANNUAL mean, scaled by latitude — the seasonal
+// half-amplitude that makes a cold-winter mountain bank a snowpack the annual mean hides.
+const SNOWMELT_WINTER = 0.38;
+
 export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   const N = tw * th;
 
@@ -234,8 +244,26 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
       // rivers, which rise in dry-looking mountains and cross deserts (the Indus &
       // Ganges off the Himalaya, the Tigris/Euphrates off the Anatolian–Zagros
       // highlands, the Colorado off the Rockies, the Amu Darya off the Pamir), get no
-      // headwater and never form. Scales with height above the snow/orographic line.
-      const snowmelt = Math.max(0, tElev[ti] - 0.15) * 1.6;
+      // headwater and never form.
+      //
+      // Gated on COLD × RELIEF, not raw elevation. The old elevation-only term keyed melt
+      // to height alone, so it fed the towering tropical Himalaya but starved the cold but
+      // only moderately high mid-latitude massifs — exactly the Anatolian–Zagros highlands
+      // that birth the Tigris-Euphrates, which then arrived in Mesopotamia as a trickle. A
+      // mountain banks a meltwater snowpack because its WINTER is below freezing, which the
+      // annual-mean temperature hides at mid-latitudes (a continental winter runs tens of
+      // °C colder than the mean). We reconstruct that winter mean from latitude, and also
+      // keep a latitude-independent glacier term so very high tropical peaks (the Andes)
+      // still shed permanent ice. Either path × the relief above the foothill line × a
+      // moisture weight (a bone-dry massif yields less) gives the headwater volume.
+      const ty = (ti / tw) | 0;
+      const aLat = Math.abs((0.5 - ty / th) * 180);
+      const winterTemp = tTemp[ti] - (aLat / 90) * SNOWMELT_WINTER;
+      const snowpack = Math.max(0, Math.min(1, (0.60 - winterTemp) / 0.15));   // cold-winter snow
+      const glacier = Math.max(0, Math.min(1, (tElev[ti] - 0.32) / 0.20));     // permanent high-alt ice
+      const snowFrac = Math.max(snowpack, glacier);
+      const relief = Math.max(0, tElev[ti] - 0.04);
+      const snowmelt = snowFrac * relief * SNOWMELT_K * (0.35 + 0.65 * tMoist[ti]);
       runoff[ti] = Math.max(0.05, tMoist[ti] - evapLoss) + snowmelt;
     }
   }
