@@ -37,20 +37,6 @@ import { claimHostility } from "./habitability.js";
 const _envNum = (k, d) => (typeof process !== "undefined" && process.env && +process.env[k]) || d;
 const COUNTRY_REACH_BASE = _envNum("SIM_REACH_BASE", 4);   // small base so ORGANISATION dominates reach — a weak chiefdom holds a tiny core, an empire projects far (was 8: even org→0 states sprawled)
 const COUNTRY_REACH_ORG  = _envNum("SIM_REACH_ORG", 14);   // reach per organisation tech (was 20 — empires were continental too early; a 14→26 trial over-inflated empires at APP resolution and was reverted — empire size is resolution-sensitive via the size-gate, so it must be calibrated at the shipped width, not the 240-wide gate)
-// Major-river corridor unification (the EGYPT effect): a great river bound its
-// whole valley into ONE state in the bronze age (Egypt unified the ~1000 km Nile
-// c.3100 BC) long before any OVERLAND realm of that size — boats made the valley
-// cheap to administer end-to-end, and the flanking desert (circumscription) left
-// nowhere to splinter off to. The size-gate below normally throttles a realm with
-// few cities to a dot, which is right for landlocked antiquity (city-states) but
-// WRONG on a great river: the river does the integrating that would otherwise need
-// a network of cities. So a country seeded on / reaching a major river (mag≥RIVER_
-// UNIFY_MAG) has its size-throttle RELAXED toward RIVER_UNIFY_FLOOR — it projects
-// near-full reach ALONG the cheap river corridor with just one or two cities, so the
-// valley consolidates early. Emergent (keys on the river + its own development),
-// targeted (only river valleys; the rest of antiquity stays fragmented).
-const RIVER_UNIFY_MAG   = 3;    // "great river" threshold (Major/Great — the Nile, Indus, Tigris-Euphrates trunk)
-const RIVER_UNIFY_FLOOR = 0.85; // a river realm's size-throttle is lifted to at least this (vs REACH_SIZE_MIN for a landlocked one) — the river integrates the valley without a city network
 // ── Frontier-fill: claiming the harsh interior as engineering matures ──
 // For most of history great regions were politically EMPTY — no state claimed
 // the deep Sahara, the high Himalaya, the Amazon, interior Africa. They filled
@@ -285,23 +271,6 @@ function claimNoise(world) {
   return noise;
 }
 
-// Does a settlement sit ON (or one tile beside) a GREAT-river channel? Scans the
-// home tile + its 4 orthogonal neighbours of world.riverMag — a riverbank cradle
-// (the home tile is alluvium next to the channel, not the channel itself) still
-// counts. Marks its country a valley realm (RIVER_UNIFY_*).
-function onGreatRiver(world, s) {
-  const rm = world.riverMag; if (!rm) return false;
-  const tw = world.tw, th = world.th;
-  const x = ((s.pos.x | 0) % tw + tw) % tw, y = s.pos.y | 0;
-  if (y < 0 || y >= th) return false;
-  if (rm[y * tw + x] >= RIVER_UNIFY_MAG) return true;
-  if (rm[y * tw + ((x + 1) % tw)] >= RIVER_UNIFY_MAG) return true;
-  if (rm[y * tw + ((x - 1 + tw) % tw)] >= RIVER_UNIFY_MAG) return true;
-  if (y > 0 && rm[(y - 1) * tw + x] >= RIVER_UNIFY_MAG) return true;
-  if (y < th - 1 && rm[(y + 1) * tw + x] >= RIVER_UNIFY_MAG) return true;
-  return false;
-}
-
 // Clean per-country cost-Voronoi → world._countryOwner. Runs on the territory pass.
 export function computeCountryTerritory(world) {
   const { N, tw, th, elev, fert, temp, moist } = world;
@@ -319,16 +288,12 @@ export function computeCountryTerritory(world) {
   // of the sim calls the capital; before the first polity pass — or if the
   // capital died between passes — fall back to the most-organised settlement.
   const budget = new Map(), knOf = new Map(), capOrg = new Map(), claimCap = new Map(), members = new Map(), capPos = new Map(), eraBoost = new Map(), hostOf = new Map(), capApt = new Map();
-  const riverRealm = new Map();   // countryId → 1 if any settlement sits on a great river (the Egypt effect — see RIVER_UNIFY_*)
   const politicalCap = new Map();   // countryId → capital settlement id (conquest.js rebuildCountries)
   if (world.countries) for (const [cid, c] of world.countries) if (c && c.capitalId != null) politicalCap.set(cid, c.capitalId);
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;   // stateless settlements don't seed
     const c = s.countryId;
     members.set(c, (members.get(c) || 0) + 1);
-    // River-realm flag: a settlement on (or beside) a great-river channel marks its
-    // country as a valley state that unifies without a city network (the Egypt effect).
-    if (!riverRealm.get(c) && onGreatRiver(world, s)) riverRealm.set(c, 1);
     const isPolCap = politicalCap.get(c) === s.id;
     const org = s._techEff ? s._techEff.reachLevel : ((s.knowledge && s.knowledge.organization) || 0);   // admin reach from techs (tech.js)
     const rank = isPolCap ? Infinity : org;                  // the throne outranks any org score (selection only — budgets use the real org)
@@ -372,14 +337,9 @@ export function computeCountryTerritory(world) {
   for (const [c, b] of budget) {
     const mem = members.get(c) || 1;
     const rel = mem / REACH_SIZE_REF;
-    let sf = rel >= 1
+    const sf = rel >= 1
       ? 1 + (Math.sqrt(rel) - 1) * REACH_SIZE_SUPER   // size keeps paying past the reference (see REACH_SIZE_SUPER)
       : Math.max(REACH_SIZE_MIN, rel);
-    // The Egypt effect: a great river integrates its valley, so a river realm escapes
-    // the few-cities throttle — it projects near-full reach along the cheap water
-    // corridor with just one or two cities (org still gates the MAGNITUDE, so this
-    // yields a bronze-age valley ribbon, not an early continental claim).
-    if (riverRealm.get(c)) sf = Math.max(sf, RIVER_UNIFY_FLOOR);
     // Continental logistics needs a network of cities — gate the era-boost by size so
     // a crumbling / one-city realm reaches only regionally (the hollow-husk fix).
     const emGated = 1 + ((eraBoost.get(c) || 1) - 1) * Math.min(1, mem / LOGI_SIZE_REF);
@@ -454,19 +414,7 @@ export function computeCountryTerritory(world) {
     // keep the largest realm a believable empire, not a continent-spanner.
     const claimPop = T.DISSOLVE_FARMS ? (s._urbanPop != null ? s._urbanPop : (s.people || 0)) : (s.people || 0);
     const ref = CLAIM_POP_REF * (T.DISSOLVE_FARMS ? 2.5 : 1);
-    // Per-settlement reach normally scales with the CITY's own size (√pop) — a small
-    // town administers only its neighbourhood. But a settlement ON a great river
-    // administers the whole VALLEY regardless of its size, because the river (boats)
-    // does the carrying — the reason a modest Nile town held the ribbon end-to-end.
-    // So a river settlement's reach floor is lifted to RIVER_UNIFY_FLOOR of the national
-    // budget (itself org-gated, so still a bronze-age ribbon, not a continental claim).
-    // GATED on the realm being SMALL (below the size reference): this only BOOTSTRAPS a
-    // young valley state past the few-cities throttle. Once the realm has the city
-    // network to project reach on its own, the river bonus switches off — so it does NOT
-    // keep inflating a mature empire's reach along every river it later annexes.
-    let popFac = Math.min(1, Math.sqrt(claimPop / ref));
-    if ((members.get(c) || 1) < REACH_SIZE_REF && onGreatRiver(world, s)) popFac = Math.max(popFac, RIVER_UNIFY_FLOOR);
-    const reach = Math.max(integMin, full * popFac);
+    const reach = Math.max(integMin, full * Math.min(1, Math.sqrt(claimPop / ref)));
     const age = world.step - (s._integratedAt ?? -Infinity);
     let sb = age < INTEGRATE_TICKS
       ? Math.min(reach, integMin + Math.max(0, reach - integMin) * (age / INTEGRATE_TICKS))
