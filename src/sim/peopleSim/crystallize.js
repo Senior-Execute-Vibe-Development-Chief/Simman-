@@ -337,8 +337,16 @@ export function maybeCrystallize(world) {
     // so marginal land (rainforest, steppe, outback) ends up a sparse scatter
     // while fertile valleys pack tight.
     const capSp = capacitySpacingMul(f, hostilityAt(world, ty * world.tw + tx));
-    const floodSp = (world.tFlood && world.tFlood[ti]) ? FLOOD_SPACING_MUL : 1;   // dense chain down the river valley
-    const hf = hardFloor * capSp * floodSp, sd = softDist * capSp * floodSp;
+    const onFlood = !!(world.tFlood && world.tFlood[ti]);
+    // The irrigated floodplain was a near-continuous chain of villages — denser than
+    // the farming-region abstraction assumes — so its spacing comes off the BASE floor,
+    // NOT the DISSOLVE/LOCALITY-doubled one (spMul), then FLOOD_SPACING_MUL packs it
+    // tighter still. Without the exemption spMul exactly cancels the dense-pack intent,
+    // leaving the floodplain at ordinary density (the Nile/Indus stayed a lone cradle).
+    const floodSp = onFlood ? FLOOD_SPACING_MUL : 1;
+    const baseFloor = onFlood ? HARD_FLOOR : hardFloor;
+    const baseSoft  = onFlood ? SOFT_DIST  : softDist;
+    const hf = baseFloor * capSp * floodSp, sd = baseSoft * capSp * floodSp;
     if (nearestSq < hf * hf) continue;             // hard reject — overlap
     // Linear ramp between hf and sd on actual distance (not squared, so it
     // grows steeply near the floor and flattens out near the soft boundary —
