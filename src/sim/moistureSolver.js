@@ -27,6 +27,14 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   // so it lifts the rainforests without re-wetting cold/dry continental interiors.
   const _moistRecyclRate = p('moistRecyclRate', 0.24);
   const _moistRecyclCap  = p('moistRecyclCap', 0.30);
+  // Winter extratropical storm track (frontal/cyclonic rain). The sole rain source of
+  // Mediterranean (Cs) climates — absent from the model, which left the Levant, the
+  // Fertile-Crescent highlands, California and central Chile as desert. Fires only in
+  // the seasonal solves, in the WINTER hemisphere's ~30-45° band, fed by the upwind sea.
+  const _frontLat        = p('moistFrontLat', 37);   // band centre (degrees of latitude)
+  const _frontWidth      = p('moistFrontWidth', 7);  // band half-width (degrees)
+  const _frontStr        = p('moistFrontStr', 0.18);
+  const _frontReach      = p('moistFrontReach', 5);  // ocean-distance decay (cells) — keeps interiors dry
   const _moistSteps      = Math.round(p('moistSteps', 140));
   const _moistConvective = p('moistConvective', 0.04);
   const _moistSubsidLat  = p('moistSubsidenceLat', 28);
@@ -148,6 +156,25 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       const evap = (0.4 + temp[i] * 0.55) * (0.7 + 0.3 * wsN) * (0.5 + _moistOcnW * 2.5);
       oceanMoist[i] = Math.min(0.95, Math.max(0.35, evap));
       atmos[i] = oceanMoist[i];
+    }
+  }
+
+  // Distance (in cells) from each land tile to the nearest ocean — multi-source BFS,
+  // capped. Used by the winter storm-track term so its frontal rain reaches coasts and
+  // shrinking seas (the Mediterranean → the Levant) but fades out over deep interiors.
+  const distToOcean = new Int16Array(mN).fill(999);
+  {
+    const distCap = Math.round(12 * mW / 240); // ~18° of reach, resolution-independent
+    const dq = [];
+    for (let i = 0; i < mN; i++) if (isOcean[i]) { distToOcean[i] = 0; dq.push(i); }
+    let dh = 0;
+    while (dh < dq.length) {
+      const ci = dq[dh++], d = distToOcean[ci];
+      if (d >= distCap) continue;
+      const cx = ci % mW, cy = (ci - cx) / mW;
+      const nb = [cy * mW + ((cx + 1) % mW), cy * mW + ((cx - 1 + mW) % mW),
+        (cy + 1 < mH ? (cy + 1) * mW + cx : -1), (cy > 0 ? (cy - 1) * mW + cx : -1)];
+      for (const ni of nb) if (ni >= 0 && distToOcean[ni] === 999) { distToOcean[ni] = d + 1; dq.push(ni); }
     }
   }
 
@@ -312,6 +339,24 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       // At 38° (factor=0.10): drain=0.9% → 0.991^90 ≈ 0.44 (barely affected)
       if (subsidenceFactor > 0.05) {
         moist *= 1 - subsidenceFactor * _moistSubsidStr * 5;
+      }
+
+      // ── Winter extratropical storm track (frontal rain) ──
+      // In the WINTER hemisphere the westerly storm track swings equatorward into ~30-45°
+      // and its frontal cyclones drop ocean moisture as winter rain — the rain that makes
+      // the Mediterranean (Cs) climates: the Levant and the Med basin, California, central
+      // Chile, the Cape, SW Australia, and the Anatolian/Zagros highlands that feed the
+      // Tigris-Euphrates. The model had no such term, so all of these were desert. Only in
+      // the seasonal solves (itczLat≠0); the latitude window sits ABOVE the subtropical-
+      // high deserts (the Atacama/Namib at ~23° get nothing), and the ocean-distance decay
+      // keeps it off deep interiors (Central Asia), so it adds only where it should.
+      if (_itczLat !== 0 && latSgn * _itczLat < 0) {              // this hemisphere is in winter
+        const aLat = Math.abs(latSgn);
+        const front = Math.exp(-((aLat - _frontLat) * (aLat - _frontLat)) / (2 * _frontWidth * _frontWidth));
+        if (front > 0.03) {
+          moist += front * _frontStr * Math.exp(-distToOcean[ci] / (_frontReach * mW / 240));
+          if (moist > tempCapacity) { precip += moist - tempCapacity; moist = tempCapacity; }
+        }
       }
 
       // ── Transpiration / evapotranspiration recycling ──
