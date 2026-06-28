@@ -4,6 +4,13 @@ import { generateWorld } from "../src/sim/worldgen.js";
 import { computeRivers } from "../src/sim/riverGen.js";
 import { generateResources } from "../src/sim/resourceGen.js";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
+import { applyTuning } from "../src/sim/peopleSim/tuning.js";
+
+// sweep knobs via env (applyTuning ignores unknown/non-finite)
+const ov = {};
+for (const k of ["FISH_RATE","FISH_ERAPROD_POW","LIVESTOCK","LIVESTOCK_FOOD"]) if (process.env[k] !== undefined) ov[k] = +process.env[k];
+applyTuning(ov);
+if (Object.keys(ov).length) console.log("[override]", JSON.stringify(ov));
 
 const STEPS = parseInt(process.argv[2] || "15000", 10);
 const SEED = parseInt(process.argv[3] || "8817", 10);
@@ -34,6 +41,20 @@ const buckets = [0,0,0,0,0]; // 0-20,20-40,40-60,60-80,80-100
 for (const s of setts) { const f = share(s); totPop += s.people; if (f>0.5) fishPop += s.people; buckets[Math.min(4, Math.floor(f*5))]++; }
 console.log(`settlements by fish-share bucket: 0-20%:${buckets[0]} 20-40%:${buckets[1]} 40-60%:${buckets[2]} 60-80%:${buckets[3]} 80-100%:${buckets[4]}`);
 console.log(`population living where fish>50% of food: ${(100*fishPop/totPop).toFixed(1)}%\n`);
+
+// pastoral belts: top settlements by pastoral food (should be dry grassland/steppe,
+// modest pop — NOT a farming-grade primate)
+const past = [...setts].filter(s=>(s._pastoral||0)>0.01).sort((a,b)=>(b._pastoral||0)-(a._pastoral||0)).slice(0,8);
+console.log('\nTOP PASTORAL SETTLEMENTS (herd-fed grassland):');
+console.log('name        pop   pastoral land  fish  climT climM');
+past.forEach(s=>console.log(`${(s.name||'').padEnd(11)} ${String(Math.round(s.people)).padStart(5)} ${(s._pastoral||0).toFixed(1).padStart(7)} ${(s._landFood||0).toFixed(1).padStart(5)} ${(s._fishYield||0).toFixed(1).padStart(5)} ${(s._climTemp||0).toFixed(2).padStart(5)} ${(s._climMoist||0).toFixed(2).padStart(5)}`));
+
+// detailed limiter dump for the biggest settlements
+console.log('\nLIMITER DUMP (biggest 6):');
+console.log('name        pop    land   fish  netFert eraProd irrig livestk agg  agriK climT climM');
+[...setts].sort((a,b)=>b.people-a.people).slice(0,6).forEach(s=>{
+  console.log(`${(s.name||'').padEnd(11)} ${String(Math.round(s.people)).padStart(5)} ${(s._landFood||0).toFixed(1).padStart(6)} ${(s._fishYield||0).toFixed(1).padStart(5)} ${(s._terrFertSum||0).toFixed(1).padStart(7)} ${(s._eraProd||0).toFixed(1).padStart(6)} ${(s._irrigation||1).toFixed(2).padStart(5)} ${(s._livestock||0).toFixed(2).padStart(6)} ${(s._agg||0).toFixed(2).padStart(4)} ${((s.knowledge&&s.knowledge.agriculture)||0).toFixed(2).padStart(5)} ${(s._climTemp||0).toFixed(2).padStart(5)} ${(s._climMoist||0).toFixed(2).padStart(5)}`);
+});
 
 // top settlements by pop, with their fish share
 const top = [...setts].sort((a,b)=>b.people-a.people).slice(0, 25);

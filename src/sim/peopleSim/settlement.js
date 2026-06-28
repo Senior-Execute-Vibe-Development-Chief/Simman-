@@ -1868,8 +1868,26 @@ function updateFood(world, s) {
   const cashLand = T.SLAVERY ? (s._cashFrac || 0) * CASHCROP_LAND : 0;
   const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * aridBurden * soilBurden * workable * irrigation * (1 - cashLand);
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
-  const landFood = world.step < (s._famineUntil || 0)
+  const landFarm = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
+  // ── Pastoral calories: the herd itself as FOOD (dairy, meat, blood) ──────
+  // Distinct from livestockBonus (oxen/manure LIFTING a farmed field): on open
+  // pasture too dry, too marginal or too disease-bound for dense cereal farming —
+  // the Eurasian steppe, the Sahel, the East-African cattle belt — people lived
+  // OFF the herd directly. A land-food source that does NOT need fertile cropland,
+  // so it feeds exactly the grassland the farm term leaves empty, scaled by the same
+  // herding suitability + domesticate-availability + tsetse gate already in
+  // s._livestock, the grazed territory, and development. LOW density (a steppe feeds
+  // far fewer per tile than a wheat field), so it never breeds a farming-grade
+  // primate; and it survives famine (herds are the classic crop-failure hedge), so
+  // it's added AFTER the harvest cut as a stable floor.
+  const agriK = (s.knowledge && s.knowledge.agriculture) || 0;
+  const grazeTiles = s._terrWorkTiles ?? s._terrTiles ?? 0;
+  const pastoral = T.LIVESTOCK_FOOD > 0
+    ? T.LIVESTOCK_FOOD * (s._livestock || 0) * grazeTiles * (s._eraProd || 1) * armyLabor * (0.3 + 0.7 * agriK)
+    : 0;
+  s._pastoral = pastoral;
+  const landFood = landFarm + pastoral;
 
   // Fish: coastal/river settlements draw food from the water, scaled by
   // water access (the site: minor river → great-river port) and by
@@ -1894,16 +1912,20 @@ function updateFood(world, s) {
     const frozen = Math.max(0, Math.min(1, (0.60 - (s._climTemp ?? 0.7)) / 0.10));
     iceFree = 1 - T.COLD_FISH * frozen;
   }
-  // Productivity scaling, but with DIMINISHING RETURNS (FISH_ERAPROD_POW < 1). A
-  // fishery is a finite renewable stock with a maximum sustainable yield: better
-  // boats, nets and preservation let a developed people approach and store that
+  // Productivity scaling, but with STRONG DIMINISHING RETURNS (FISH_ERAPROD_POW well
+  // below 1). A fishery is a finite renewable stock with a maximum sustainable yield:
+  // better boats, nets and preservation let a developed people approach and store that
   // yield, but cannot multiply the fish in the water the way intensive farming
-  // multiplies a field's output. Scaling fish by the FULL _eraProd lift (as land
-  // food is) made the late-game fishery balloon ~60×, so every major coastal city
-  // became 80-100% fish-fed and the best water site bred a runaway primate. A
-  // sub-linear exponent keeps low-tech foragers unchanged (eraProd≈1) while taming
-  // the high-tech tail, so farmed land — not a single coastal tile — sets the
-  // carrying capacity of great cities, as it did historically.
+  // multiplies a field's output. Scaling fish by the FULL _eraProd lift (as land food
+  // is) made the late-game fishery balloon ~60×, so every major coastal/river city —
+  // even good wheat/rice country and the irrigated cradles — became 80-100% fish-fed,
+  // historically backwards (pre-modern diets were overwhelmingly GRAIN, with fish a
+  // minor protein; Egypt was the granary of the ancient world, not a fishery). The
+  // exponent was trimmed from 0.65 to 0.40 so the fishery saturates far faster than
+  // farmland intensifies: a low-tech forager coast is unchanged (eraProd≈1) and can
+  // still be fish-fed (sparse), but as a society develops its LAND food (farm +
+  // pastoral) outgrows the water and fish falls back to the supplement it was —
+  // farmed land, not a single coastal tile, sets the carrying capacity of great cities.
   const fishProd = Math.pow(s._eraProd || 1, T.FISH_ERAPROD_POW);
   const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor * fishProd * iceFree : 0;
   s._fishYield = fish;

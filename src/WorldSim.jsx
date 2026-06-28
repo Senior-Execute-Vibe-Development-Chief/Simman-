@@ -3312,6 +3312,7 @@ const renderInspect=()=>{
           <span className="au-fade">Grain stored</span><span>{fmtFood(s.food)}</span>
           <span className="au-fade">Produced /tick</span><span>{fmtFood(supply)}</span>
           {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{fmtFood(s._fishYield||0)}</span></>)}
+          {(s._pastoral||0)>0.01&&(<><span className="au-fade">· of which herds</span><span className="au-fade">{fmtFood(s._pastoral||0)}</span></>)}
           {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span>+{fmtFood(importRate)}</span></>)}
           <span className="au-fade">Consumed /tick</span><span>{fmtFood(demand)}</span>
           <span style={{color:statusColor}}>Balance</span>
