@@ -1224,7 +1224,15 @@ function computeRuggedness(world, x, y) {
 function livestockClimate(temp, moist) {
   const dryOK  = Math.min(1, Math.max(0, (moist - 0.10) / 0.18));   // not bare desert
   const wetOK  = Math.min(1, Math.max(0, (0.82 - moist) / 0.28));   // not rainforest / swamp
-  const warmOK = Math.min(1, Math.max(0, (temp - 0.26) / 0.16));    // not frozen
+  // Grazing needs a real growing/warm season: cattle, horses and oxen are a COOL-
+  // TEMPERATE steppe thing (annual mean ~0 °C and up — Mongolia, the Kazakh and
+  // Pontic steppe), not a taiga/tundra one. The old cutoff saturated to full support
+  // at −18 °C and only died at −34 °C, which fed dense herding (and, via livestockBonus,
+  // farm yield) deep into −12 °C Siberia — settling cold land that was near-empty in
+  // reality. Pull the band up: full at/above 0 °C (t≥0.60), fading to nothing by ~−15 °C
+  // (t≈0.45), so the steppe belt keeps its herds but the boreal north does not.
+  const warmOK = Math.min(1, Math.max(0, (temp - 0.45) / 0.15));    // not frozen
+
   // TSETSE BELT: subtract the warm sub-humid woodland-savanna where the fly killed
   // cattle, horses and oxen — the model used to hand this belt a livestock BONUS
   // (warm + moderate moisture scored high above), which is exactly the African

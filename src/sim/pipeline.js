@@ -362,7 +362,14 @@ tFert[ti]=tileFert(tTemp[ti],tMoist[ti],tElev[ti]);
 // of desert. A direct fertility lift on the wetted floodplain, strongest on DRY-land
 // valleys (the river is the only water → irrigation transforms it) and gentle in
 // already-wet land (the river just levels the terrain). tCoast deltas are richest.
-const allu=rm*(oldMoist<0.30?0.55:oldMoist<0.45?0.30:0.10);
+// Cold-gated like the base fertility (tileFert's tFactor): a FROZEN floodplain is not
+// prime cropland — the silt is there but the ground is frozen and the season too short
+// to work it. Without this, cold great-river valleys (the Lena, Ob, Yenisei) read as
+// alluvial breadbaskets and settle densely up into the Siberian taiga, which was in
+// reality near-empty. Warm cradles (the Nile +22°C, even the Yellow River +12°C) keep
+// full silt; the boreal north loses it.
+const alluCold=Math.min(1,Math.max(0,(tTemp[ti]-0.57)/0.13));
+const allu=rm*(oldMoist<0.30?0.55:oldMoist<0.45?0.30:0.10)*alluCold;
 tFert[ti]=Math.min(1,tFert[ti]+allu);
 // FLOODPLAIN: where a river runs through genuinely DRY land it lays a fertile
 // alluvial valley — a distinct ecosystem, not the savanna the moisture boost
