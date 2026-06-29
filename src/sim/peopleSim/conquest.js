@@ -335,6 +335,18 @@ export const BALANCE_CAP = 3.0;   // ceiling on that backing (a coalition deters
 const ALLY_TRADE_REF = 6;     // cross-border money/tick at which two realms are "mutual-benefit" allies regardless of threat
 const ALLIANCE_EVERY = 600;   // recompute the (slow-drifting) alliance map this often
 
+// ── Colonial dependencies: a self-governing colony bound to an overlord ───────
+// An overseas colony (sea.js) is founded as its OWN realm — own capital, own LOCAL
+// administrative reach, so it holds and rolls its own frontier instead of stalling as
+// an unsheddable far province on the metropole's admin budget — but it is a DEPENDENCY
+// of its founder (polity._overlord): the two never fight and stand together as one bloc,
+// the colony's weight counts toward the metropole's empire, and goods/tribute flow home
+// while protection and tech flow out. It breaks free — one clean political INDEPENDENCE,
+// not per-province secession — once it has OUTGROWN the metropole (the US/Latin-America
+// arc), which emerges from their relative power, never from a date.
+const INDEPENDENCE_EVERY  = 600;   // how often the independence check runs (perf cadence)
+const INDEP_POWER_RATIO   = 0.8;   // a dependency this fraction of its overlord's power has outgrown the apron strings → independence
+
 const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capacity by (1 + this)
 const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
 const WAR_CAPACITY_MULT   = 0.8;   // capital's countryside merely raided → mild throttle
@@ -1502,11 +1514,14 @@ function updateAlliances(world) {
     tradePair.set(k, (tradePair.get(k) || 0) + Math.abs(net));
   }
   const tradeOf = (a, b) => tradePair.get(Math.min(a, b) + ":" + Math.max(a, b)) || 0;
-  // 4. each realm's dominant THREAT — the strongest neighbour that towers over it.
+  // 4. each realm's dominant THREAT — the strongest neighbour that towers over it (but never
+  //    its own overlord/dependency — a colony does not balance against its metropole).
+  const ovT = world._overlordOf;
+  const bonded = (a, b) => ovT && (ovT.get(a) === b || ovT.get(b) === a);
   const threat = new Map();
   for (const [id, nb] of adj) {
     const myPow = pow.get(id) || 1; let bestT = -1, bestR = THREAT_RATIO;
-    for (const n of nb.keys()) { const r = (pow.get(n) || 1) / myPow; if (r > bestR) { bestR = r; bestT = n; } }
+    for (const n of nb.keys()) { if (bonded(id, n)) continue; const r = (pow.get(n) || 1) / myPow; if (r > bestR) { bestR = r; bestT = n; } }
     threat.set(id, bestT);
   }
   // 5. allies = realms with a COMMON threat (balance against the same hegemon), PLUS
@@ -1520,6 +1535,13 @@ function updateAlliances(world) {
         || tradeOf(id, n) >= ALLY_TRADE_REF) { ally(id, n); ally(n, id); }   // or mutual benefit
     }
   }
+  // 5b. Colonial blocs: an overlord and its dependencies stand together and never fight, and
+  //     co-dependencies of the same metropole are bloc-mates too (the empire holds its colonies).
+  const ov = world._overlordOf;
+  if (ov) for (const [dep, over] of ov) {
+    ally(dep, over); ally(over, dep);
+    for (const [dep2, over2] of ov) if (over2 === over && dep2 !== dep) { ally(dep, dep2); }
+  }
   // 6. coalition strength arrayed against each hegemon = Σ power of everyone balancing against it.
   const bloc = new Map();
   for (const [id, t] of threat) if (t >= 0) bloc.set(t, (bloc.get(t) || 0) + (pow.get(id) || 1));
@@ -1531,6 +1553,49 @@ export function updatePolities(world) {
   let _pt = _pf ? performance.now() : 0;
   const countries = rebuildCountries(world);
   if (_pf) { _pf.rebuild = performance.now() - _pt; _pt = performance.now(); }
+
+  // ── Colonial dependencies: wire new colonies, validate links, grant independence ──
+  {
+    const blocPow = (c) => { let p = 0; for (const m of c.members) if (m.mode === "settled" && m.countryId === c.id) p += settlementPower(m); return p; };
+    // (a) Wire the founding marker (sea.js) → the durable polity link, once.
+    for (const s of world.settlements) {
+      if (s._overlordCC == null) continue;
+      const over = s._overlordCC; s._overlordCC = undefined;       // consume the marker
+      if (s.countryId !== s.id || over < 0 || over === s.id) continue;
+      const pol = getPolity(world, s.id);
+      if (pol && pol._overlord == null && countries.has(over)) {
+        pol._overlord = over;
+        inheritPersonality(world, over, s.id);                     // the colony carries the metropole's temperament
+        snapClaim(world, s.id);                                    // it administers its own ground at once
+        logEvent(world, "colony.founded", { polity: s.id, from: over, fromName: realmName(world, over),
+          seatName: s.name, x: s.pos.x | 0, y: s.pos.y | 0 });
+      }
+    }
+    // (b) Live overlord map + validation: an overlord whose realm has died frees its
+    //     dependencies; a self-referential or orphaned link is dropped.
+    const overlordOf = world._overlordOf = new Map();
+    for (const c of countries.values()) {
+      const pol = getPolity(world, c.id);
+      if (!pol || pol._overlord == null) continue;
+      if (pol._overlord === c.id || !countries.has(pol._overlord)) { pol._overlord = undefined; continue; }
+      overlordOf.set(c.id, pol._overlord);
+    }
+    // (c) INDEPENDENCE — emergent, never timed. A dependency cuts the apron strings once it
+    //     has OUTGROWN the metropole: its own coercive power rivals its overlord's, so the
+    //     metropole can no longer hold it (the American/Latin-American independence arc).
+    if (overlordOf.size && world.step % INDEPENDENCE_EVERY === 0) {
+      for (const [dep, over] of [...overlordOf]) {
+        const dc = countries.get(dep), oc = countries.get(over);
+        if (!dc || !oc) continue;
+        if (blocPow(dc) >= INDEP_POWER_RATIO * blocPow(oc)) {
+          const pol = getPolity(world, dep); if (pol) pol._overlord = undefined;
+          overlordOf.delete(dep);
+          logEvent(world, "colony.independent", { polity: dep, from: over,
+            fromName: realmName(world, over), name: realmName(world, dep) });
+        }
+      }
+    }
+  }
 
   // Assimilation: a people held beyond living memory (HOMELAND_MEMORY) lose their
   // old national identity and become natives of their current ruler — so a LATE

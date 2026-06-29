@@ -602,7 +602,14 @@ function foundColony(world, sh) {
     tier: T.DISSOLVE_FARMS ? 1 : 0,   // DISSOLVE: overseas colonies are towns too — never mint a tier-0 farming region
     cultureId: sh.cultureId ?? -1,
   });
-  colony.countryId = sh.countryId;        // colonial allegiance to the founder's realm
+  // A self-governing DEPENDENCY: the overseas colony is its OWN realm (own capital, own
+  // LOCAL administrative reach — so it holds and rolls its own frontier without
+  // over-extending the metropole across an ocean), but bound to its founder as overlord
+  // (tribute + protection; wired to the colony's polity in the next polity pass via the
+  // marker below). This is what lets colonies spread inland instead of stalling at the
+  // landing as an unsheddable far province of the parent. Independence can later sever it.
+  colony.countryId = colony.id;            // its own realm from day one (a colonial administration)
+  colony._overlordCC = sh.countryId;       // ...but a dependency of the founder (wired next polity pass)
   colony.wealth = sh.wealth || 0;
   colony._isColony = true;
 }

@@ -32,7 +32,7 @@ const SETT_FIELDS = [
   "_homeland", "_homelandFell", "_sovereignSeat", "_integratedAt", "_conqueredAt",
   "_sackedAt", "_siegeAt", "_warAt", "_ambition",
   "_popPeak", "_witherSince", "lastFoundAttempt", "_lastColony", "_lastColonySent",
-  "_coloniesSent", "_isColony",
+  "_coloniesSent", "_isColony", "_overlordCC",
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
   "cultureId", "culMix", "faithMix", "langMix", "ancMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
   "_specKey", "_specStr",   // agglomeration: the town's locked-in craft specialty + its strength
