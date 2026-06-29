@@ -340,6 +340,7 @@ export function advanceFronts(world) {
   const allianceTarget = world._allianceTarget, blocMight = world._blocMight, countryPow = world._countryPow, alliesMap = world._allies;
   const areAllies = (a, b) => { if (a === b) return false; const s = alliesMap && alliesMap.get(a); return !!(s && s.has(b)); };
   const ALLY_BAR = 4;   // an ally requires ~4× the usual edge before a bloc member breaks ranks to attack it
+  const overlordOf = world._overlordOf;
   const coalitionBarOf = (attCC, defCC) => {
     let mul = 1;
     if (areAllies(attCC, defCC)) mul *= ALLY_BAR;               // bloc cohesion: hard to fight an ally, not impossible
@@ -347,6 +348,16 @@ export function advanceFronts(world) {
       const bloc = (blocMight && blocMight.get(attCC)) || 0;
       const hp = (countryPow && countryPow.get(attCC)) || 1;
       mul *= 1 + BALANCE_W * Math.min(BALANCE_CAP, bloc / hp);  // coalition weight backs the threatened member's defence
+    }
+    // Colonial PROTECTION: the metropole defends its colony — an attacker on a dependency must
+    // also reckon with the mother country's might (a relief fleet/army from home).
+    if (overlordOf) {
+      const over = overlordOf.get(defCC);
+      if (over != null && over !== attCC) {
+        const op = (countryPow && countryPow.get(over)) || 0;
+        const hp = (countryPow && countryPow.get(attCC)) || 1;
+        mul *= 1 + BALANCE_W * Math.min(BALANCE_CAP, op / hp);
+      }
     }
     return mul;
   };

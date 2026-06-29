@@ -12,7 +12,7 @@
 // captured right at the frontier would secede the very next pass and get
 // re-taken, making the borders flicker.
 
-import { recordIn, recordOut, IN_AID, IN_STATE_PAY, IN_TARIFFS, IN_FINANCE, OUT_TRIBUTE } from "./money.js";
+import { recordIn, recordOut, IN_AID, IN_TRIBUTE, IN_STATE_PAY, IN_TARIFFS, IN_FINANCE, OUT_TRIBUTE, OUT_AID } from "./money.js";
 import { shockUnrest } from "./shocks.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
@@ -346,6 +346,8 @@ const ALLIANCE_EVERY = 600;   // recompute the (slow-drifting) alliance map this
 // arc), which emerges from their relative power, never from a date.
 const INDEPENDENCE_EVERY  = 600;   // how often the independence check runs (perf cadence)
 const INDEP_POWER_RATIO   = 0.8;   // a dependency this fraction of its overlord's power has outgrown the apron strings → independence
+const TRIBUTE_FRAC        = 0.15;  // share of a MATURE dependency's treasury remitted home to the overlord each polity pass
+const COLONY_TECH_DIFFUSE = 0.06;  // per-pass rate the colony seat's knowledge is pulled toward the metropole's (engineers, books)
 
 const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capacity by (1 + this)
 const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
@@ -1594,6 +1596,35 @@ export function updatePolities(world) {
             fromName: realmName(world, over), name: realmName(world, dep) });
         }
       }
+    }
+    // (d) The colonial ECONOMY, both directions. The metropole INVESTS in a young or
+    //     struggling dependency — coin from its treasury, grain from its capital granary —
+    //     so a raw frontier survives (the COLONY_SUPPLY that used to flow inside one country
+    //     now flows ACROSS the overlord link, since a colony is its own realm). A MATURE,
+    //     solvent dependency pays TRIBUTE home — a share of its treasury. The net flow
+    //     reverses as the colony grows: investment out, then wealth extracted back — the arc
+    //     of empire. (Goods flow already happens for free via the cross-border carrying trade.)
+    for (const [dep, over] of overlordOf) {
+      const dpol = getPolity(world, dep), opol = getPolity(world, over);
+      const dc = countries.get(dep), oc = countries.get(over);
+      if (!dpol || !opol || !dc || !oc || !dc.capital || !oc.capital) continue;
+      const young = world.step - (dc.capital.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      if (young || (dpol.treasury || 0) < COLONY_SUPPLY_COIN) {
+        const coin = Math.min(COLONY_SUPPLY_COIN, Math.max(0, opol.treasury));
+        if (coin > 0) { opol.treasury -= coin; dpol.treasury += coin; recordIn(dc.capital, IN_AID, coin); recordOut(oc.capital, OUT_AID, coin); }
+        const need = (dc.capital._foodDemand || 0) - (dc.capital.food || 0);
+        const food = Math.min(COLONY_SUPPLY_FOOD, Math.max(0, (oc.capital.food || 0) - 20));
+        if (need > 0 && food > 0) { oc.capital.food -= food; dc.capital.food = (dc.capital.food || 0) + food; }
+      } else {
+        const trib = TRIBUTE_FRAC * Math.max(0, dpol.treasury);
+        if (trib > 0) { dpol.treasury -= trib; opol.treasury += trib; recordOut(dc.capital, OUT_TRIBUTE, trib); recordIn(oc.capital, IN_TRIBUTE, trib); }
+      }
+      // TECH TRANSFER: the metropole sends engineers, books and administrators, so a colony
+      // keeps pace with the mother country rather than regressing in isolation — the colonial
+      // knowledge channel. Pull the colony seat's knowledge toward the overlord seat's; it then
+      // diffuses onward through the colony's own settlements by the normal channel.
+      const ok = oc.capital.knowledge, dk = dc.capital.knowledge;
+      if (ok && dk) for (const key in ok) { const gap = ok[key] - (dk[key] || 0); if (gap > 0) dk[key] = (dk[key] || 0) + gap * COLONY_TECH_DIFFUSE; }
     }
   }
 
