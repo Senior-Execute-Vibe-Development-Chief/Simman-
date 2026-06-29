@@ -230,7 +230,12 @@ const CAP_DOM_W   = 0.9;   // extra capacity per (above-average power)^P
 const CAP_DOM_P   = 1.5;   // CONVEX: only genuine OUTLIERS tower — a power-law tail of a few great
                            // powers, not a uniformly bigger pack (sustainable size ≈ capacity^⅔, so
                            // the top core needs ~6–8× capacity to reach a Rome-scale share of the map)
-// (the dominance ceiling is now the T.CAP_DOM_MAX lever.) Imperial-hysteresis rates:
+// The dominance CEILING emerges from institutional development: T.CAP_DOM_MAX is the
+// MATURE-bureaucracy ceiling; a primitive realm (capCoh→0) saturates at this far
+// lower base instead (see the domCeil derivation in updatePolities). Not a fixed
+// era-blind clamp — the most a hegemon can tower scales with its delegation tech.
+const CAP_DOM_CEIL_BASE = 4;   // primitive (capCoh→0) dominance ceiling — early hegemons stay bounded
+// Imperial-hysteresis rates:
 const CAP_IMP_RISE  = 0.04;   // imperial-capacity stock rises toward live capacity (institutions accrete)
 const CAP_IMP_DECAY = 0.010;  // ...and decays ~4× slower when power falls (institutions persist → hysteresis)
 // Empire size is NOT capped. It emerges from the existing over-extension
@@ -1637,7 +1642,16 @@ export function updatePolities(world) {
     // Dominance: a capital far above the era's mean sustains a disproportionately
     // larger realm (the great-power tail), bounded and self-limiting (CAP_DOM_*).
     const relPow = capPower / Math.max(1, world._refCapPower || capPower);
-    const dominance = Math.min(T.CAP_DOM_MAX, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
+    // The ceiling is NOT a fixed, era-blind number — administrative dominance ROSE
+    // with each delegation revolution (satrapies → Roman governors → Han commanderies
+    // → modern bureaucracy), so the MOST a capital can tower over its peers EMERGES
+    // from its institutional development (capCoh), exactly as capacity does (instMul).
+    // A bronze-age hegemon saturates low (Sargon's Akkad was vast but fragile); a
+    // literate-bureaucratic empire towers far higher. This replaces the flat clamp
+    // with an emergent bound — no anachronistic continent-eating chiefdom, and the
+    // late-game ceiling still resolves to T.CAP_DOM_MAX as cohesion matures.
+    const domCeil = CAP_DOM_CEIL_BASE + capCoh * (T.CAP_DOM_MAX - CAP_DOM_CEIL_BASE);
+    const dominance = Math.min(domCeil, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
     c._dominance = dominance;   // info panel: how far this realm out-cores the age
     // GEOGRAPHIC CORE (absolute, founding-location advantage): a capital on a rich
     // river-valley / floodplain heartland projects power further than one on marginal
