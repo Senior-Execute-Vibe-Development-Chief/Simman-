@@ -34,7 +34,7 @@ const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) fl
                                           // weighting and drifts slowly, so refresh rarely
 const CANDIDATES_PER_SWEEP      = 120;    // wider net per sweep (was 80)
 const FLOOD_SAMPLE_FRAC         = 0.4;    // share of sweep candidates drawn from the arid-river FLOODPLAIN tile list directly — a thin ribbon is almost never hit by the uniform random sweep, so the Nile/Indus valley would stay empty otherwise
-const FLOOD_SPACING_MUL         = 0.5;    // floodplain packs DENSE: a real irrigated river valley was a near-continuous chain of villages, so halve the spacing floor there (the one place we want tighter-than-default packing)
+const FLOOD_SPACING_MUL         = 0.75;   // floodplain packs somewhat denser than ordinary land (a watered valley held more villages) — but only ×0.75, NOT the ×0.5 first tried: combined with the base-floor exemption below, ×0.5 gave a ~2-tile chain that over-packed the rivers (≈55% of ALL settlements crowded onto the ~1% floodplain — a stiff bead-string look). ×0.75 (≈3-tile spacing) keeps the valley a modest chain, not a lone cradle, while pulling the floodplain share back to ~45%.
 
 // Permissive fertility gates. Earth had hamlets in desert, tundra,
 // steppe, jungle — they just stayed small because the land couldn't
