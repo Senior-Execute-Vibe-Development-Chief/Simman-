@@ -345,9 +345,18 @@ const ALLIANCE_EVERY = 600;   // recompute the (slow-drifting) alliance map this
 // not per-province secession — once it has OUTGROWN the metropole (the US/Latin-America
 // arc), which emerges from their relative power, never from a date.
 const INDEPENDENCE_EVERY  = 600;   // how often the independence check runs (perf cadence)
-const INDEP_POWER_RATIO   = 0.8;   // a dependency this fraction of its overlord's power has outgrown the apron strings → independence
+const INDEP_POWER_RATIO   = 0.8;   // a dependency whose power reaches this fraction of the force the metropole can PROJECT to it has outgrown the apron strings → independence
 const TRIBUTE_FRAC        = 0.15;  // share of a MATURE dependency's treasury remitted home to the overlord each polity pass
-const COLONY_TECH_DIFFUSE = 0.06;  // per-pass rate the colony seat's knowledge is pulled toward the metropole's (engineers, books)
+const COLONY_TECH_DIFFUSE = 0.06;  // base per-pass rate the colony seat's knowledge is pulled toward the metropole's (× the metropole's reach)
+// Naval power projection: a metropole protects, supplies and holds a colony only as far as
+// its navy can REACH — projection DECAYS with distance and RISES with naval-logistics tech
+// (Spain's tenuous Pacific grip vs Britain's steam-navy global reach). proj = navalReach /
+// (navalReach + distance) ∈ (0,1]; it governs EVERY parent→colony flow and the independence
+// line, so protection and support are neither automatic nor perfect — the realistic limit on
+// how far, and how strongly, an empire can hold across the sea. This is WHY distant colonies
+// broke away: the metropole simply could not project enough force to hold them.
+const NAVAL_REACH_BASE    = 8;     // tiles a metropole can project with no naval tech (coastal reach)
+const NAVAL_REACH_NAV     = 70;    // extra projection tiles at full navigation tech
 
 const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capacity by (1 + this)
 const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
@@ -1582,14 +1591,32 @@ export function updatePolities(world) {
       if (pol._overlord === c.id || !countries.has(pol._overlord)) { pol._overlord = undefined; continue; }
       overlordOf.set(c.id, pol._overlord);
     }
-    // (c) INDEPENDENCE — emergent, never timed. A dependency cuts the apron strings once it
-    //     has OUTGROWN the metropole: its own coercive power rivals its overlord's, so the
-    //     metropole can no longer hold it (the American/Latin-American independence arc).
+    // (b2) The metropole's naval REACH to each colony — how much force/supply it can project
+    //      across the distance, scaled by its naval-logistics tech. Governs protection, support
+    //      AND the independence line below, so nothing about the link is automatic or perfect.
+    const reachOf = world._overlordReach = new Map();
+    const tw = world.tw;
+    for (const [dep, over] of overlordOf) {
+      const dc = countries.get(dep), oc = countries.get(over);
+      if (!dc || !oc || !dc.capital || !oc.capital) { reachOf.set(dep, 0); continue; }
+      let dx = Math.abs(dc.capital.pos.x - oc.capital.pos.x); if (dx > tw / 2) dx = tw - dx;   // longitude wraps
+      const dy = dc.capital.pos.y - oc.capital.pos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const nav = (oc.capital.knowledge && oc.capital.knowledge.navigation) || 0;
+      const navalReach = NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV;
+      reachOf.set(dep, navalReach / (navalReach + dist));
+    }
+    // (c) INDEPENDENCE — emergent, never timed. A dependency cuts the apron strings once its own
+    //     power exceeds the force the metropole can PROJECT to it (its power × naval reach), not
+    //     the metropole's total: a DISTANT colony, which the navy can barely reach, breaks free at
+    //     far less relative strength than a near one. This is the American/Latin-American arc —
+    //     the metropole loses what it cannot hold across the sea, sooner the farther it is.
     if (overlordOf.size && world.step % INDEPENDENCE_EVERY === 0) {
       for (const [dep, over] of [...overlordOf]) {
         const dc = countries.get(dep), oc = countries.get(over);
         if (!dc || !oc) continue;
-        if (blocPow(dc) >= INDEP_POWER_RATIO * blocPow(oc)) {
+        const projForce = blocPow(oc) * (reachOf.get(dep) ?? 0);   // what the metropole can actually bring to bear
+        if (blocPow(dc) >= INDEP_POWER_RATIO * projForce) {
           const pol = getPolity(world, dep); if (pol) pol._overlord = undefined;
           overlordOf.delete(dep);
           logEvent(world, "colony.independent", { polity: dep, from: over,
@@ -1608,23 +1635,25 @@ export function updatePolities(world) {
       const dpol = getPolity(world, dep), opol = getPolity(world, over);
       const dc = countries.get(dep), oc = countries.get(over);
       if (!dpol || !opol || !dc || !oc || !dc.capital || !oc.capital) continue;
+      const proj = reachOf.get(dep) ?? 0;   // how much the metropole can ship across the distance
       const young = world.step - (dc.capital.foundedStep || 0) < COLONY_SUPPLY_TICKS;
       if (young || (dpol.treasury || 0) < COLONY_SUPPLY_COIN) {
-        const coin = Math.min(COLONY_SUPPLY_COIN, Math.max(0, opol.treasury));
+        // Investment is limited by what the navy can carry — a colony beyond easy reach gets little.
+        const coin = Math.min(COLONY_SUPPLY_COIN * proj, Math.max(0, opol.treasury));
         if (coin > 0) { opol.treasury -= coin; dpol.treasury += coin; recordIn(dc.capital, IN_AID, coin); recordOut(oc.capital, OUT_AID, coin); }
         const need = (dc.capital._foodDemand || 0) - (dc.capital.food || 0);
-        const food = Math.min(COLONY_SUPPLY_FOOD, Math.max(0, (oc.capital.food || 0) - 20));
+        const food = Math.min(COLONY_SUPPLY_FOOD * proj, Math.max(0, (oc.capital.food || 0) - 20));
         if (need > 0 && food > 0) { oc.capital.food -= food; dc.capital.food = (dc.capital.food || 0) + food; }
       } else {
         const trib = TRIBUTE_FRAC * Math.max(0, dpol.treasury);
         if (trib > 0) { dpol.treasury -= trib; opol.treasury += trib; recordOut(dc.capital, OUT_TRIBUTE, trib); recordIn(oc.capital, IN_TRIBUTE, trib); }
       }
-      // TECH TRANSFER: the metropole sends engineers, books and administrators, so a colony
-      // keeps pace with the mother country rather than regressing in isolation — the colonial
-      // knowledge channel. Pull the colony seat's knowledge toward the overlord seat's; it then
-      // diffuses onward through the colony's own settlements by the normal channel.
+      // TECH TRANSFER: the metropole sends engineers, books and administrators — but only as fast
+      // as it can REACH the colony, so a colony just within range keeps pace while a remote one
+      // drifts technologically. Pull the colony seat's knowledge toward the overlord seat's
+      // (× reach); it then diffuses onward through the colony's own settlements by the normal channel.
       const ok = oc.capital.knowledge, dk = dc.capital.knowledge;
-      if (ok && dk) for (const key in ok) { const gap = ok[key] - (dk[key] || 0); if (gap > 0) dk[key] = (dk[key] || 0) + gap * COLONY_TECH_DIFFUSE; }
+      if (ok && dk) for (const key in ok) { const gap = ok[key] - (dk[key] || 0); if (gap > 0) dk[key] = (dk[key] || 0) + gap * COLONY_TECH_DIFFUSE * proj; }
     }
   }
 

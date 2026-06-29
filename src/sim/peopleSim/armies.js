@@ -340,7 +340,7 @@ export function advanceFronts(world) {
   const allianceTarget = world._allianceTarget, blocMight = world._blocMight, countryPow = world._countryPow, alliesMap = world._allies;
   const areAllies = (a, b) => { if (a === b) return false; const s = alliesMap && alliesMap.get(a); return !!(s && s.has(b)); };
   const ALLY_BAR = 4;   // an ally requires ~4× the usual edge before a bloc member breaks ranks to attack it
-  const overlordOf = world._overlordOf;
+  const overlordOf = world._overlordOf, overlordReach = world._overlordReach;
   const coalitionBarOf = (attCC, defCC) => {
     let mul = 1;
     if (areAllies(attCC, defCC)) mul *= ALLY_BAR;               // bloc cohesion: hard to fight an ally, not impossible
@@ -349,14 +349,17 @@ export function advanceFronts(world) {
       const hp = (countryPow && countryPow.get(attCC)) || 1;
       mul *= 1 + BALANCE_W * Math.min(BALANCE_CAP, bloc / hp);  // coalition weight backs the threatened member's defence
     }
-    // Colonial PROTECTION: the metropole defends its colony — an attacker on a dependency must
-    // also reckon with the mother country's might (a relief fleet/army from home).
+    // Colonial PROTECTION: the metropole defends its colony — but only with the force its navy
+    // can PROJECT across the distance (conquest.js _overlordReach), not its full might. A colony
+    // just offshore is shielded by the whole mother country; one an ocean away, barely at all —
+    // so an attacker on a remote, weakly-held colony faces little more than the colony itself.
     if (overlordOf) {
       const over = overlordOf.get(defCC);
       if (over != null && over !== attCC) {
         const op = (countryPow && countryPow.get(over)) || 0;
         const hp = (countryPow && countryPow.get(attCC)) || 1;
-        mul *= 1 + BALANCE_W * Math.min(BALANCE_CAP, op / hp);
+        const proj = (overlordReach && overlordReach.get(defCC)) || 0;
+        mul *= 1 + BALANCE_W * Math.min(BALANCE_CAP, (op / hp) * proj);
       }
     }
     return mul;
