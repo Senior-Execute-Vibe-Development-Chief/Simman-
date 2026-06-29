@@ -17,7 +17,7 @@
 
 import { coreRadiusFor } from "./territory.js";
 import { techEff, URBAN_BASE_RURAL } from "./settlement.js";
-import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation } from "./conquest.js";
+import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsNow, casusBelliMul } from "./cohesion.js";
 import { realmName } from "./chronicle.js";
@@ -326,6 +326,31 @@ export function advanceFronts(world) {
   const domBarOf = (attCC) => { const c = world.countries && world.countries.get(attCC); const d = c && c._dominance ? c._dominance : 1; return 1 / Math.pow(Math.max(1, d), DOM_ATTACK_P); };
   const domCaptureOf = (attCC) => { const c = world.countries && world.countries.get(attCC); const d = c && c._dominance ? c._dominance : 1; return Math.pow(Math.max(1, d), DOM_CAPTURE_P); };
 
+  // ── Balance of power (conquest.js updateAlliances) ───────────────────────────
+  // The emergent brake on the runaway hegemon, replacing hard anti-runaway caps.
+  // When the DEFENDER balances against THIS attacker (it sees the attacker as the
+  // regional threat), a COALITION of everyone who fears the same hegemon backs the
+  // defence — the attack bar rises in proportion to how big that bloc is RELATIVE to
+  // the hegemon (blocMight / hegemonPower). A giant facing a matching coalition stalls;
+  // one facing only sparse, fragmented neighbours (no bloc can form) keeps rolling.
+  // ALLIES are strongly RELUCTANT to attack each other — a standing bloc holds its
+  // internal borders — but not INCAPABLE: an overwhelming intra-bloc imbalance can
+  // still erupt (a hard skip froze the top tier into a dead, deathless stalemate;
+  // history's coalitions fought internally even while arrayed against a common foe).
+  const allianceTarget = world._allianceTarget, blocMight = world._blocMight, countryPow = world._countryPow, alliesMap = world._allies;
+  const areAllies = (a, b) => { if (a === b) return false; const s = alliesMap && alliesMap.get(a); return !!(s && s.has(b)); };
+  const ALLY_BAR = 4;   // an ally requires ~4× the usual edge before a bloc member breaks ranks to attack it
+  const coalitionBarOf = (attCC, defCC) => {
+    let mul = 1;
+    if (areAllies(attCC, defCC)) mul *= ALLY_BAR;               // bloc cohesion: hard to fight an ally, not impossible
+    if (allianceTarget && allianceTarget.get(defCC) === attCC) {
+      const bloc = (blocMight && blocMight.get(attCC)) || 0;
+      const hp = (countryPow && countryPow.get(attCC)) || 1;
+      mul *= 1 + BALANCE_W * Math.min(BALANCE_CAP, bloc / hp);  // coalition weight backs the threatened member's defence
+    }
+    return mul;
+  };
+
   // Wars END IN A PEACE (dyadic truces). The exhaustion bar alone could not break
   // the permanent-war equilibrium because it is MUSICAL CHAIRS: exhaustion stops a
   // realm attacking, but someone nearby is always rested, and the rested attack the
@@ -473,7 +498,7 @@ export function advanceFronts(world) {
     // one wants a clear advantage (personality.js aggressionAttackMul).
     const aCountry = world.countries && world.countries.get(A.countryId);
     const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
-    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId)) continue;
+    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -519,7 +544,7 @@ export function advanceFronts(world) {
         const key = A.id + ":" + pid;
         if (pairs.has(key)) continue;                        // already met on land
         const tf = tradeFactor(A.countryId, D.countryId);
-        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId)) continue;
+        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
         const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key };
         let l = amphibByDef.get(pid); if (!l) amphibByDef.set(pid, l = []);
         l.push(pc);

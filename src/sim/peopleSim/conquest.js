@@ -312,6 +312,24 @@ const FRAG_SEPARATION = 18;   // successor capitals must be at least this far ap
 // budget + contagion) the moment it's pressured — the dynamic trigger for
 // overextension. The effect lingers a window past the last front, then the
 // budget recovers as the realm consolidates in peace.
+// ── Balance of power: emergent alliances against the regional threat ──────────
+// The missing self-correcting force. A realm grows by conquest where it out-powers
+// its neighbours — but in reality that very growth turns the neighbours into a
+// COALITION: weak and similar-sized powers that fear the same rising hegemon band
+// together, and their combined weight backs each member's defence, so the giant's
+// expansion stalls exactly when it has grown threatening enough to alarm a matching
+// bloc (Europe balancing Habsburg/Bourbon/Napoleonic France). Where no such bloc
+// can form — a realm facing only sparse, fragmented, far-weaker neighbours or empty
+// land (Russia into Siberia, the US across the plains) — nothing balances it and it
+// runs away. So empire size emerges from the NEIGHBOURHOOD, not a hard ceiling: the
+// coalition's strength relative to the hegemon IS the cap, and it is whatever the
+// map makes it. This replaces the stack of "can't swallow the continent" constants.
+const THREAT_RATIO   = 1.25;  // a bordering realm this many× your power is a "threat" you balance against
+export const BALANCE_W   = 1.1;   // how hard a coalition backs a member it defends (× the attack bar, ∝ bloc/hegemon power)
+export const BALANCE_CAP = 3.0;   // ceiling on that backing (a coalition deters, it doesn't make a member invincible)
+const ALLY_TRADE_REF = 6;     // cross-border money/tick at which two realms are "mutual-benefit" allies regardless of threat
+const ALLIANCE_EVERY = 600;   // recompute the (slow-drifting) alliance map this often
+
 const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capacity by (1 + this)
 const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
 const WAR_CAPACITY_MULT   = 0.8;   // capital's countryside merely raided → mild throttle
@@ -1441,6 +1459,68 @@ function capitalTransportCosts(world, c) {
   return { cost: out, cross };
 }
 
+// Recompute the balance-of-power alliance map (slow-drifting → amortised on
+// ALLIANCE_EVERY). Writes three world fields read by the war pass (armies.js):
+//   _allianceTarget : countryId → the hegemon it balances AGAINST (-1 = none)
+//   _allies         : countryId → Set of allied countryIds (won't attack each other)
+//   _blocMight      : hegemonId → total power of the coalition arrayed against it
+// and _countryPow (countryId → national coercive power) for the front-bar scaling.
+function updateAlliances(world) {
+  const countries = world.countries, owner = world._territoryOwner, byId = world._byId;
+  if (!countries || !owner || !byId) return;
+  const { tw, th } = world;
+  // Resolve a tile's SETTLEMENT owner to its COUNTRY — the war pass works on this
+  // granular per-settlement territory map (_territoryOwner), not the sparse cored
+  // _countryOwner (which barely touches between realms, so adjacency on it is empty).
+  const ccAt = (i) => { const o = owner[i]; if (o < 0) return -1; const s = byId.get(o); return s ? s.countryId : -1; };
+  // 1. national power = Σ settlementPower over every settled member of a realm (its whole
+  //    coercive weight, not just the capital — a big multi-city empire is more threatening).
+  const pow = new Map();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || s.countryId < 0) continue;
+    pow.set(s.countryId, (pow.get(s.countryId) || 0) + settlementPower(s));
+  }
+  // 2. adjacency (shared-border length) from the granular territory map.
+  const adj = new Map();   // id → Map(neighbourId → border tiles)
+  const bump = (a, b) => { if (a === b || a < 0 || b < 0) return; let m = adj.get(a); if (!m) adj.set(a, m = new Map()); m.set(b, (m.get(b) || 0) + 1); };
+  for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
+    const c = ccAt(y * tw + x); if (c < 0) continue;
+    const r = ccAt(y * tw + ((x + 1) % tw)); if (r !== c) { bump(c, r); bump(r, c); }
+    if (y + 1 < th) { const d = ccAt((y + 1) * tw + x); if (d !== c) { bump(c, d); bump(d, c); } }
+  }
+  // 3. cross-border trade per country pair (mutual benefit) from the carrying trade.
+  const tradePair = new Map(); const lm = world._linkMoney;
+  if (lm && byId) for (const [key, net] of lm) {
+    const colon = key.indexOf(":"); const Sa = byId.get(+key.slice(0, colon)), Sb = byId.get(+key.slice(colon + 1));
+    if (!Sa || !Sb || Sa.countryId < 0 || Sb.countryId < 0 || Sa.countryId === Sb.countryId) continue;
+    const k = Math.min(Sa.countryId, Sb.countryId) + ":" + Math.max(Sa.countryId, Sb.countryId);
+    tradePair.set(k, (tradePair.get(k) || 0) + Math.abs(net));
+  }
+  const tradeOf = (a, b) => tradePair.get(Math.min(a, b) + ":" + Math.max(a, b)) || 0;
+  // 4. each realm's dominant THREAT — the strongest neighbour that towers over it.
+  const threat = new Map();
+  for (const [id, nb] of adj) {
+    const myPow = pow.get(id) || 1; let bestT = -1, bestR = THREAT_RATIO;
+    for (const n of nb.keys()) { const r = (pow.get(n) || 1) / myPow; if (r > bestR) { bestR = r; bestT = n; } }
+    threat.set(id, bestT);
+  }
+  // 5. allies = realms with a COMMON threat (balance against the same hegemon), PLUS
+  //    mutual-benefit partners (heavy trade) — but never your own threat.
+  const allies = new Map(); const ally = (a, b) => { if (a === b) return; let s = allies.get(a); if (!s) allies.set(a, s = new Set()); s.add(b); };
+  for (const [id, nb] of adj) {
+    const t = threat.get(id);
+    for (const n of nb.keys()) {
+      if (n === t || threat.get(n) === id) continue;          // your hegemon is no ally
+      if ((t >= 0 && threat.get(n) === t)                     // common enemy → coalition
+        || tradeOf(id, n) >= ALLY_TRADE_REF) { ally(id, n); ally(n, id); }   // or mutual benefit
+    }
+  }
+  // 6. coalition strength arrayed against each hegemon = Σ power of everyone balancing against it.
+  const bloc = new Map();
+  for (const [id, t] of threat) if (t >= 0) bloc.set(t, (bloc.get(t) || 0) + (pow.get(id) || 1));
+  world._allianceTarget = threat; world._allies = allies; world._blocMight = bloc; world._countryPow = pow;
+}
+
 export function updatePolities(world) {
   const _pf = world._dbgProfile ? (world.debug.pol = { rebuild: 0, transport: 0, loop: 0, absorb: 0 }) : null;
   let _pt = _pf ? performance.now() : 0;
@@ -1475,6 +1555,10 @@ export function updatePolities(world) {
     for (const c of countries.values()) if (c.capital && c.members.length > 1) cps.push(settlementPower(c.capital));
     cps.sort((a, b) => a - b);
     world._refCapPower = cps.length ? cps[cps.length >> 1] : 1; }
+  // Balance of power: recompute the (slow-drifting) alliance map periodically — and
+  // once on first run so the war pass never reads an undefined map. Self-calibrating,
+  // not time-gated: it's a perf cadence (how OFTEN), the content is pure world state.
+  if (!world._allianceTarget || world.step % ALLIANCE_EVERY === 0) updateAlliances(world);
   for (const c of countries.values()) {
     if (c.members.length <= 1) { if (c.members[0]) c.members[0].loyalty = 1; continue; }   // city-state: loyal to itself
 
