@@ -18,9 +18,9 @@
 // near the cradle baseline.
 
 import { isContinentalLand } from "./state.js";
-import { makeSettlement } from "./settlement.js";
+import { makeSettlement, dominantAnc } from "./settlement.js";
 import { getPolity } from "./entities.js";
-import { dominantCulture, foundCulture, seedCulture, nameFor } from "./cultures.js";
+import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
 import { passRng } from "./rng.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
@@ -471,9 +471,22 @@ export function maybeCrystallize(world) {
         tier: T.DISSOLVE_FARMS ? 1 : 0,   // DISSOLVE: there are no farming regions — new settlements are towns
       });
       gridAdd(world, born);   // same-pass candidates must see (and space off) it
+      // Whose PEOPLE is this? Anchored to the DEEP ANCESTRY of the ground, not to whoever
+      // colonised nearby first. If the local stock differs from the donor people's stock, the
+      // settlement crystallised among a DIFFERENT people — it roots in that local ancestry (its
+      // own family/tongue/gods), so the cradle peoples don't flood the world; only their
+      // CIVILISATION diffuses across (the bootload). Same stock → the donor people genuinely
+      // extends onto its own ground.
+      const localAnc = world.ancestry ? world.ancestry[ti] : -1;
+      const foreignSoil = connected && localAnc >= 0 && donor && localAnc !== dominantAnc(donor);
       if (!connected) {
         const cul = foundCulture(world, { origin: born });          // independent root: own family, language, gods
         seedCulture(world, born, cul.id);
+        born.name = nameFor(world, cul, "settlement");
+      } else if (foreignSoil) {
+        const cul = ancestryCulture(world, localAnc, born);         // the LOCAL people of this stock
+        seedCulture(world, born, cul.id);
+        born.cultureId = cul.id;
         born.name = nameFor(world, cul, "settlement");
       } else if (isBranch) {
         // proximity → derivation: a near offshoot speaks a dialect of its

@@ -152,6 +152,29 @@ export function foundCulture(world, { origin, parentCultureId = -1, divergence =
   return c;
 }
 
+// Get-or-found the ROOT people of a deep-ancestry lineage. A settlement crystallising on land
+// whose deep ancestry differs from the colonist's people belongs to a DIFFERENT stock — so its
+// culture roots in THAT ancestry (its own family, tongue and gods), never as a branch of the
+// coloniser's cradle. This is what grounds peoples in the deep substrate (African peoples in
+// Africa, indigenous peoples in the Americas) instead of flooding the 3 cradle lineages outward;
+// CIVILISATION (prestige language, religion, tech) still diffuses across them from the cradles
+// (the "bootload"), but the PEOPLE is local. Cultures are tagged ._anc so the map rebuilds on load.
+export function ancestryCulture(world, ancId, origin) {
+  if (ancId < 0) return null;
+  let map = world._ancCulture;
+  if (!map) {
+    map = world._ancCulture = new Map();
+    const reg = culturesOf(world);
+    for (const [id, c] of reg) if (c._anc != null) map.set(c._anc, id);
+  }
+  const have = map.get(ancId);
+  if (have != null && culturesOf(world).has(have)) return getCulture(world, have);
+  const cul = foundCulture(world, { origin });   // a fresh root stock for this lineage
+  cul._anc = ancId;
+  map.set(ancId, cul.id);
+  return cul;
+}
+
 // The family (stock) a people belongs to: walk up to the cradle ancestor.
 export function familyOf(world, cultureId) {
   let cul = getCulture(world, cultureId);
