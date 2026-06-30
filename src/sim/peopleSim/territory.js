@@ -47,6 +47,34 @@ import { T } from "./tuning.js";
 // can hop across coastal water at ~3 cost per tile and reach further.
 const TERRITORY_BASE = 5;
 // ORG_REACH -> runtime lever (tuning.js T.ORG_REACH)
+
+// ── Per-tile DESIRABILITY ("value") field ────────────────────────────────
+// A tile has TWO independent spatial properties: how HARD it is to reach/hold (the transport
+// COST — terrain, aridity, the river highway; localEdgeCost) and how much it is WORTH holding
+// (its food potential — this field). They are kept SEPARATE and both mutable, so each can shift
+// in-sim on its own: difficulty drops as a civ gets roads/ships; value climbs as it learns to
+// irrigate a desert valley. The territory claim weighs value ÷ difficulty, which is the force
+// that pulls a border DOWN a fertile valley instead of leaving it in the cheapest-nearest blob.
+//
+// Seeded from fertility, with the river FLOODPLAIN lifted to prime-cropland value even where its
+// bare desert fertility is patchy — an irrigated alluvial valley (the Nile's black land) is worth
+// far more than its raw soil reads, and that is exactly the land a cradle should reach to annex.
+const FLOOD_VALUE = 0.90;   // a floodplain is prime cropland — worth holding regardless of patchy bare fert
+const RIVER_VALUE = 0.55;   // the river corridor itself is a valued artery (banks, fishing, transport)
+// VALUE_PULL -> runtime lever (tuning.js T.VALUE_PULL): how strongly value extends/redirects reach.
+export function initTileValue(world) {
+  const N = world.tw * world.th;
+  const fert = world.fert, flood = world.tFlood, rm = world.riverMag, elev = world.elev;
+  const val = world._tileValue = new Float32Array(N);
+  for (let ti = 0; ti < N; ti++) {
+    if (elev[ti] <= 0) continue;                 // water is worth nothing to hold
+    let v = fert[ti] || 0;
+    if (flood && flood[ti]) v = Math.max(v, FLOOD_VALUE);
+    else if (rm && rm[ti] >= 2) v = Math.max(v, RIVER_VALUE);
+    val[ti] = v > 1 ? 1 : v;
+  }
+  return val;
+}
 export function reachBudget(s) {
   // URBAN_NODES: towns/cities (tier 1+) are urban nodes, not farmland owners —
   // they keep only their guaranteed core block, so the whole rural catchment
@@ -135,9 +163,17 @@ export function computeTerritory(world) {
   if (!owner || owner.length !== N) { owner = world._territoryOwner = new Int32Array(N); owner.fill(-1); }
   let cost = world._territoryCost;
   if (!cost || cost.length !== N) cost = world._territoryCost = new Float32Array(N);
+  // EFFORT (value-discounted cost) drives the claim frontier + reach gate; TRUE haul cost is
+  // tracked alongside for the food-distance falloff (value buys REACH, not free transport).
+  let tcost = world._territoryTrueCost;
+  if (!tcost || tcost.length !== N) tcost = world._territoryTrueCost = new Float32Array(N);
+  // Per-tile DESIRABILITY field — built once (lazily, so a loaded save is covered without a
+  // persist field, since it's derived from fert/flood/river which are reconstructed on load).
+  const val = world._tileValue && world._tileValue.length === N ? world._tileValue : initTileValue(world);
   // Reset COST every pass (roads / budgets shift the food falloff) but keep
   // OWNER — ownership is persistent, that's what stabilises the borders.
   cost.fill(Infinity);
+  tcost.fill(Infinity);
 
   const byId = new Map();
   const budget = new Map();
@@ -189,7 +225,7 @@ export function computeTerritory(world) {
       }
     }
     const home = sy * tw + sx;
-    if (elev[home] > 0) { cost[home] = 0; heap.push(home, 0); }
+    if (elev[home] > 0) { cost[home] = 0; tcost[home] = 0; heap.push(home, 0); }
   }
 
   // ── Guaranteed farmland hinterland (nearest-wins distance Voronoi) ──
@@ -237,6 +273,7 @@ export function computeTerritory(world) {
     const oid = owner[ti];
     const bud = budget.get(oid) || 0;
     const kn  = knOf.get(oid);
+    const tcHere = tcost[ti];
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1;
     const xp = tx === tw - 1 ? 0 : tx + 1;
@@ -263,10 +300,17 @@ export function computeTerritory(world) {
       // they cost ~3-12 (sail) and the claim can hop offshore.
       const c = localEdgeCost(world, ti, ni, kn, true, true);  // reach ignores roads + the boat/land port tax (a settlement farms its hinterland on foot)
       if (c === Infinity) continue;
-      const nd = d + c * mul[k];
-      if (nd > bud) continue;                // owner can't reach further
+      const step = c * mul[k];
+      // VALUE PULL: a tile worth holding is worth reaching for. Discount the EFFORT of claiming
+      // it by its desirability, so the reach budget is spent toward valuable land (the floodplain)
+      // rather than the cheapest-nearest waste — value ÷ difficulty, the force that pulls a border
+      // down a fertile valley. The TRUE haul cost is accumulated separately (undiscounted) for the
+      // food-distance falloff: value buys REACH, not free transport.
+      const nd = d + step / (1 + T.VALUE_PULL * (val[ni] || 0));
+      if (nd > bud) continue;                // owner can't reach further (in value-weighted effort)
       if (nd < cost[ni]) {
         cost[ni] = nd;
+        tcost[ni] = tcHere + step;
         // Walk THROUGH water (so a navy reaches the far shore) but don't
         // CLAIM water tiles — borders shouldn't bleed into the ocean.
         // Land tiles are claimed normally; water tiles just propagate
@@ -277,7 +321,7 @@ export function computeTerritory(world) {
     }
   }
 
-  tallyTerritory(world, owner, cost, byId);
+  tallyTerritory(world, owner, tcost, byId);   // food falloff uses TRUE haul cost, not value-discounted effort
   if (T.URBAN_NODES) assignMinesByProximity(world, byId);
 }
 
