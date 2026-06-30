@@ -171,6 +171,9 @@ export function ancestryCulture(world, ancId, origin) {
   if (have != null && culturesOf(world).has(have)) return getCulture(world, have);
   const cul = foundCulture(world, { origin });   // a fresh root stock for this lineage
   cul._anc = ancId;
+  // Take the deep-ancestry's own colour, so the PEOPLES map visibly relates to the ANCESTRY map
+  // (a region's people is coloured by the stock it descends from, not a fresh arbitrary hue).
+  if (world.ancHue && ancId < world.ancHue.length) cul.hue = ((world.ancHue[ancId] % 360) + 360) % 360;
   map.set(ancId, cul.id);
   return cul;
 }

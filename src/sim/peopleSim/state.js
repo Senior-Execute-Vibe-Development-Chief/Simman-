@@ -161,13 +161,22 @@ function initAncestry(world, w, opts) {
   const { tw, th, N } = world;
   const anc = world.ancestry = new Int16Array(N); anc.fill(-1);
   world.ancestryCount = opts.ancestryCount || 0;
+  // Per-lineage HUE (peoples take their deep-ancestry colour so the Peoples map relates to the
+  // Ancestry map) and per-tile RESIDENCE time (0 = long-settled cradle of humanity → 1 = freshly
+  // reached frontier). The resident population a colony admixes with is dense where residence is
+  // long, sparse on a just-peopled frontier — the demographic lever behind blend/replace/bootload.
+  world.ancHue = opts.ancHue || null;
   const src = opts.tAncestry; if (!src) return;
   const stw = opts.terTw || w.width, sth = opts.terTh || w.height;
+  const arr = opts.tArrival || null;
+  const tArr = arr ? (world.tArrival = new Float32Array(N)) : null;
   for (let ty = 0; ty < th; ty++) {
     for (let tx = 0; tx < tw; tx++) {
       const ax = Math.min(stw - 1, ((tx * TILE_RES / w.width) * stw) | 0);
       const ay = Math.min(sth - 1, ((ty * TILE_RES / w.height) * sth) | 0);
-      anc[ty * tw + tx] = src[ay * stw + ax];
+      const si = ay * stw + ax, di = ty * tw + tx;
+      anc[di] = src[si];
+      if (tArr) tArr[di] = arr[si];
     }
   }
 }

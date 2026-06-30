@@ -163,7 +163,9 @@ const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends 
 // substrate a settlement's population descends from. Seeded from the worldgen
 // field; admixed only by MIGRATION (founding), never by conquest/culture, so it
 // is the slow bedrock the peoples/languages drift away from.
-const ANC_ADMIX = 0.6;   // a colony's ancestry = this much founders' stock + the rest the local substrate it absorbs
+// How much of the LOCAL stock a new settlement absorbs, by residence density (tArrival):
+const ANC_LOCAL_FRONTIER = 0.22;  // on a just-peopled frontier (sparse residents) the founders dominate → replacement-leaning
+const ANC_LOCAL_SETTLED  = 0.85;  // on ancient, densely-settled land the incomers are absorbed → the place keeps its stock (bootload)
 export function dominantAnc(s) { return s.ancMix && s.ancMix.length ? s.ancMix[0][0] : -1; }
 function normAnc(pairs) {
   let t = 0; for (const e of pairs) t += e[1]; if (t <= 0) return [];
@@ -180,12 +182,21 @@ function blendAnc(a, wA, b, wB) {
 }
 function seedAncestry(world, s, opts) {
   const anc = world.ancestry;
-  const localId = anc ? anc[(s.pos.y | 0) * world.tw + (s.pos.x | 0)] : -1;
+  const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
+  const localId = anc ? anc[ti] : -1;
   const local = localId >= 0 ? [[localId, 1]] : [];
   const par = opts.parentId != null && opts.parentId >= 0 ? findSettlementById(world, opts.parentId) : null;
-  // A colony carries its FOUNDER's stock, admixed with the substrate it settles
-  // on; for a near spread the founder's stock ≈ the local one, so nothing shifts.
-  s.ancMix = (par && par.ancMix && par.ancMix.length) ? blendAnc(par.ancMix, ANC_ADMIX, local, 1 - ANC_ADMIX) : local;
+  if (!(par && par.ancMix && par.ancMix.length)) { s.ancMix = local; return; }
+  // DEMOGRAPHIC admixture — the share of LOCAL stock the settlement takes scales with how densely
+  // the destination is ALREADY peopled, read from residence time (tArrival: 0 = the ancient, deeply
+  // settled cradle of humanity → 1 = a frontier the wavefront only just reached). Long-settled land
+  // has a large resident population that ABSORBS the incomers (high local share → BOOTLOAD: Africa
+  // keeps its stock while adopting Old-World crops/iron); a thinly-peopled frontier is dominated by
+  // the FOUNDERS (low local share → REPLACEMENT-leaning: the settler Americas/Australia). Comparable
+  // weights → a real BLEND. The mode thus emerges from geography, never a per-region tag.
+  const arr = world.tArrival ? Math.max(0, Math.min(1, world.tArrival[ti])) : 0.5;
+  const localShare = localId >= 0 ? ANC_LOCAL_FRONTIER + (ANC_LOCAL_SETTLED - ANC_LOCAL_FRONTIER) * (1 - arr) : 0;
+  s.ancMix = localShare > 0 ? blendAnc(par.ancMix, 1 - localShare, local, localShare) : par.ancMix.slice();
 }
 
 export function makeSettlement(world, x, y, opts = {}) {
