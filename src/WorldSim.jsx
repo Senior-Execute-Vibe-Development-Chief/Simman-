@@ -2095,7 +2095,15 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const py=(ti/tw)|0,px=ti-py*tw;
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           let fs=fillByCountry.get(cc);
-          if(fs===undefined){const h=(hues.get(cc)??((cc*61)%360+360)%360)|0;fs=`hsl(${h},60%,50%)`;fillByCountry.set(cc,fs);}
+          if(fs===undefined){
+            // A colony renders in its METROPOLE's hue, lighter + desaturated, so it reads as
+            // a dependency of the mother country instead of an unrelated new state.
+            const cobj=psw.countries&&psw.countries.get(cc);
+            const over=cobj&&cobj._overlord>=0?cobj._overlord:-1;
+            if(over>=0){const h=(hues.get(over)??((over*61)%360+360)%360)|0;fs=`hsl(${h},42%,66%)`;}
+            else{const h=(hues.get(cc)??((cc*61)%360+360)%360)|0;fs=`hsl(${h},60%,50%)`;}
+            fillByCountry.set(cc,fs);
+          }
           if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
           octx.fillRect(sx,sy,TR+0.6,TR+0.6);   // slight overdraw kills inter-tile seams
         }
@@ -2121,7 +2129,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           if(L.tints){
             let fs=tintByCountry.get(cc);
-            if(fs===undefined){const h=((cc*61)%360+360)%360;fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
+            if(fs===undefined){const co=psw.countries&&psw.countries.get(cc);const ovc=co&&co._overlord>=0?co._overlord:cc;const h=((ovc*61)%360+360)%360;fs=`hsla(${h},50%,50%,${ovc!==cc?0.22:0.34})`;tintByCountry.set(cc,fs);}
             if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
             octx.fillRect(sx,sy,TR,TR);
           }
@@ -3122,13 +3130,21 @@ const renderInspect=()=>{
       {(()=>{
         const ctry=psw.countries&&psw.countries.get(s.countryId);
         const n=ctry?ctry.members.length:1;
-        const hue=((s.countryId*61)%360+360)%360;
+        // A colonial dependency takes its METROPOLE's hue (the map colours it as a shade of the
+        // mother country), and is named as that country's colony rather than an independent state.
+        const overlord=(ctry&&ctry._overlord>=0)?ctry._overlord:-1;
+        const overCtry=overlord>=0&&psw.countries?psw.countries.get(overlord):null;
+        const overName=overlord>=0?((overCtry&&overCtry.name)||"its mother country"):null;
+        const hue=((((overlord>=0?overlord:s.countryId))*61)%360+360)%360;
         const cap=ctry&&ctry.capital;
         const isCap=cap&&cap.id===s.id;
         const byId=psw._byId||(()=>{const m=new Map();for(const o of psw.settlements)m.set(o.id,o);return m;})();
         const liege=(!isCap&&s.liegeId>=0)?byId.get(s.liegeId):null;
         let label;
-        if(n<=1)label="independent city-state";
+        if(overlord>=0){
+          label=(n<=1)?`colony of ${overName}`:(isCap?`colonial capital · ${n} settlements · answers to ${overName}`:`colonial settlement · realm of ${cap?cap.name:"?"}`);
+        }
+        else if(n<=1)label="independent city-state";
         else if(isCap)label=`national capital · ${n} settlements`;
         else{
           const role=(s._vassalCount>0)?"provincial seat":(tierName||"settlement");
@@ -3137,7 +3153,7 @@ const renderInspect=()=>{
         }
         return(
           <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0}}/>
+            <span style={{width:9,height:9,borderRadius:2,background:overlord>=0?`hsl(${hue},42%,66%)`:`hsl(${hue},55%,50%)`,flexShrink:0}}/>
             <span className="au-fade" style={{textTransform:"capitalize"}}>{label}</span>
           </div>
         );
