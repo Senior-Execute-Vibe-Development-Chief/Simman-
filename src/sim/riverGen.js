@@ -155,34 +155,44 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   // ocean from the edges; any sub-sea tile not reached is an inland sea.
   const trueOcean = new Uint8Array(N);
   {
-    const oq = [];
-    for (let x = 0; x < tw; x++) for (const y of [0, th - 1]) {
-      const i = y * tw + x; if (tElev[i] <= 0 && !trueOcean[i]) { trueOcean[i] = 1; oq.push(i); }
-    }
-    let oh = 0;
-    while (oh < oq.length) {
-      const ti = oq[oh++], tx = ti % tw, ty = (ti - tx) / tw;
-      for (let d = 0; d < 8; d++) {
-        const nx = (tx + D8_DX[d] + tw) % tw, ny = ty + D8_DY[d];
-        if (ny < 0 || ny >= th) continue;
-        const ni = ny * tw + nx;
-        if (tElev[ni] <= 0 && !trueOcean[ni]) { trueOcean[ni] = 1; oq.push(ni); }
-        else if (tElev[ni] > 0) {
-          // BRIDGE a 1-tile strait: a coarse grid pinches narrow ocean straits (Hormuz, the
-          // Bosphorus, Gibraltar) shut into solid land, so the basin behind them (the Persian
-          // Gulf, the Black Sea) reads as a CLOSED inland sea — which wrongly makes its EXORHEIC
-          // cradle rivers (the Tigris-Euphrates) terminal and subjects them to the closed-basin
-          // corridor suppression. If the tile just BEYOND this 1-tile land barrier is sub-sea,
-          // it is really part of the world ocean — connect it. A genuine inland sea (the Caspian,
-          // Aral) is walled off by HUNDREDS of km of land, never a single tile, so it never bridges.
-          const fy = ty + 2 * D8_DY[d];
-          if (fy >= 0 && fy < th) {
-            const fi = fy * tw + ((tx + 2 * D8_DX[d] + tw) % tw);
-            if (tElev[fi] <= 0 && !trueOcean[fi]) { trueOcean[fi] = 1; oq.push(fi); }
-          }
+    // ── Phase 1: the OPEN ocean — sub-sea water connected to the map edge by water alone.
+    //    (Includes any sea joined by a strait wide enough to resolve as water: the Bosphorus.)
+    const flood = (seed) => {
+      const q = seed.slice(); let h = 0;
+      while (h < q.length) {
+        const ti = q[h++], tx = ti % tw, ty = (ti - tx) / tw;
+        for (let d = 0; d < 8; d++) {
+          const ny = ty + D8_DY[d]; if (ny < 0 || ny >= th) continue;
+          const ni = ny * tw + ((tx + D8_DX[d] + tw) % tw);
+          if (tElev[ni] <= 0 && !trueOcean[ni]) { trueOcean[ni] = 1; q.push(ni); }
         }
       }
+    };
+    const edge = [];
+    for (let x = 0; x < tw; x++) for (const y of [0, th - 1]) {
+      const i = y * tw + x; if (tElev[i] <= 0 && !trueOcean[i]) { trueOcean[i] = 1; edge.push(i); }
     }
+    const oceanCore = [...edge]; flood(oceanCore);
+    for (let i = 0; i < N; i++) if (trueOcean[i]) oceanCore.push(i);   // every open-ocean tile may originate a bridge
+    // ── Phase 2: bridge 1-tile straits OUT of the open ocean, exactly ONCE. A sub-sea basin
+    //    cut off by a SINGLE land tile (the Strait of Hormuz, pinched shut by the grid) is part
+    //    of the ocean — flood it. But a bridged basin does NOT itself originate further bridges,
+    //    so a genuinely CLOSED sea reachable only by a CHAIN of 1-tile gaps across a dry low
+    //    corridor (the Caspian via the Kuma-Manych depression) stays terminal. This is what
+    //    stops the bridge from quietly opening the Caspian to the sea at fine resolutions —
+    //    which removed the closed-basin suppression and let the Himalaya→Caspian corridor return.
+    const bridged = [];
+    for (const ti of oceanCore) {
+      const tx = ti % tw, ty = (ti - tx) / tw;
+      for (let d = 0; d < 8; d++) {
+        const my = ty + D8_DY[d]; if (my < 0 || my >= th) continue;
+        const mi = my * tw + ((tx + D8_DX[d] + tw) % tw); if (tElev[mi] <= 0) continue;   // step ON a land tile
+        const fy = ty + 2 * D8_DY[d]; if (fy < 0 || fy >= th) continue;
+        const fi = fy * tw + ((tx + 2 * D8_DX[d] + tw) % tw);
+        if (tElev[fi] <= 0 && !trueOcean[fi]) { trueOcean[fi] = 1; bridged.push(fi); }
+      }
+    }
+    flood(bridged);   // fill each bridged basin (contiguous water), but these never bridge again
   }
 
   // ── Step 1b: Detect candidate lake depressions ──
