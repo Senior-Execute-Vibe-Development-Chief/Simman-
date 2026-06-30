@@ -34,6 +34,7 @@ const SETT_FIELDS = [
   "_popPeak", "_witherSince", "lastFoundAttempt", "_lastColony", "_lastColonySent",
   "_coloniesSent", "_isColony", "_overlordCC",
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
+  "_diseaseLoad", "_contacted", "_virginUntil",   // endemic immunity load + virgin-soil (Columbian) contact state
   "cultureId", "culMix", "faithMix", "langMix", "ancMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
   "_specKey", "_specStr",   // agglomeration: the town's locked-in craft specialty + its strength
   "_unfree", "_cashFrac", "_captives",   // coerced labour: unfree workforce, cash-crop land, unsold captives
