@@ -803,6 +803,17 @@ useEffect(()=>{layersRef.current=layers;},[layers]);
 // Country view: live per-country hue assignment (seeded by the previous solve so
 // colours drift smoothly as borders shift). Map: countryId → hue 0..360.
 const countryColorsRef=useRef(new Map());
+// Diagonal black-stripe pattern overlaid on COLONY territory (a dependency is drawn in its
+// metropole's colour, striped to mark it). Built once, lazily, from a tiny tile.
+const stripePatRef=useRef(null);
+function getStripePattern(ctx){
+  if(stripePatRef.current)return stripePatRef.current;
+  const pc=document.createElement("canvas");pc.width=pc.height=8;const pg=pc.getContext("2d");
+  pg.strokeStyle="rgba(0,0,0,0.62)";pg.lineWidth=2.4;pg.lineCap="square";
+  pg.beginPath();pg.moveTo(-2,6);pg.lineTo(6,-2);pg.moveTo(2,10);pg.lineTo(10,2);pg.stroke();   // 45° stripes
+  stripePatRef.current=ctx.createPattern(pc,"repeat");
+  return stripePatRef.current;
+}
 // Which collapsible sections of the settlement card are open. Persists
 // across re-renders (the card re-renders every few ticks) and across
 // selecting different settlements.
@@ -2087,7 +2098,8 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         const tw=psw.tw,th=psw.th;
         const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current);
         countryColorsRef.current=hues;
-        const fillByCountry=new Map();
+        const fillByCountry=new Map(),colonyByCC=new Map();
+        const colonyCells=[];   // sx,sy pairs of colony tiles → striped overlay below
         // opaque bold fills (cover the terrain so the colours read clean)
         let lastFs=null;
         for(let ti=0;ti<claimArr.length;ti++){
@@ -2096,16 +2108,23 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           let fs=fillByCountry.get(cc);
           if(fs===undefined){
-            // A colony renders in its METROPOLE's hue, lighter + desaturated, so it reads as
-            // a dependency of the mother country instead of an unrelated new state.
+            // A colony is drawn in its METROPOLE's exact colour (striped below to mark it),
+            // so it clearly reads as that empire's dependency, not an unrelated new state.
             const cobj=psw.countries&&psw.countries.get(cc);
             const over=cobj&&cobj._overlord>=0?cobj._overlord:-1;
-            if(over>=0){const h=(hues.get(over)??((over*61)%360+360)%360)|0;fs=`hsl(${h},42%,66%)`;}
-            else{const h=(hues.get(cc)??((cc*61)%360+360)%360)|0;fs=`hsl(${h},60%,50%)`;}
+            colonyByCC.set(cc,over>=0);
+            const h=(over>=0?(hues.get(over)??((over*61)%360+360)%360):(hues.get(cc)??((cc*61)%360+360)%360))|0;
+            fs=`hsl(${h},60%,50%)`;
             fillByCountry.set(cc,fs);
           }
           if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
           octx.fillRect(sx,sy,TR+0.6,TR+0.6);   // slight overdraw kills inter-tile seams
+          if(colonyByCC.get(cc)){colonyCells.push(sx,sy);}
+        }
+        // Black diagonal stripes over colonies (same colour as the metropole underneath).
+        if(colonyCells.length){
+          const pat=getStripePattern(octx);
+          if(pat){octx.fillStyle=pat;for(let i=0;i<colonyCells.length;i+=2)octx.fillRect(colonyCells[i],colonyCells[i+1],TR+0.6,TR+0.6);}
         }
         // thick dark borders between neighbouring countries
         octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=Math.max(1.6,TR*1.1);octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
@@ -2120,7 +2139,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         octx.stroke();
       }
       if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&(L.tints||L.borders)&&claimArr){
-        const tw=psw.tw,th=psw.th,tintByCountry=new Map();
+        const tw=psw.tw,th=psw.th,tintByCountry=new Map(),colonyByCC=new Map(),colonyCells=[];
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
         for(let ti=0;ti<claimArr.length;ti++){
@@ -2129,9 +2148,10 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           if(L.tints){
             let fs=tintByCountry.get(cc);
-            if(fs===undefined){const co=psw.countries&&psw.countries.get(cc);const ovc=co&&co._overlord>=0?co._overlord:cc;const h=((ovc*61)%360+360)%360;fs=`hsla(${h},50%,50%,${ovc!==cc?0.22:0.34})`;tintByCountry.set(cc,fs);}
+            if(fs===undefined){const co=psw.countries&&psw.countries.get(cc);const over=co&&co._overlord>=0?co._overlord:-1;colonyByCC.set(cc,over>=0);const h=(((over>=0?over:cc)*61)%360+360)%360;fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
             if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
             octx.fillRect(sx,sy,TR,TR);
+            if(colonyByCC.get(cc)){colonyCells.push(sx,sy);}
           }
           if(!L.borders)continue;
           const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
@@ -2140,6 +2160,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
+        if(L.tints&&colonyCells.length){const pat=getStripePattern(octx);if(pat){octx.globalAlpha=0.5;octx.fillStyle=pat;for(let i=0;i<colonyCells.length;i+=2)octx.fillRect(colonyCells[i],colonyCells[i+1],TR,TR);octx.globalAlpha=1;}}
       } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
@@ -3153,7 +3174,8 @@ const renderInspect=()=>{
         }
         return(
           <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-            <span style={{width:9,height:9,borderRadius:2,background:overlord>=0?`hsl(${hue},42%,66%)`:`hsl(${hue},55%,50%)`,flexShrink:0}}/>
+            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0,
+              backgroundImage:overlord>=0?"repeating-linear-gradient(45deg,rgba(0,0,0,0.65) 0 1.5px,transparent 1.5px 4px)":undefined}}/>
             <span className="au-fade" style={{textTransform:"capitalize"}}>{label}</span>
           </div>
         );
