@@ -170,6 +170,7 @@ export function computeTerritory(world) {
   // Per-tile DESIRABILITY field — built once (lazily, so a loaded save is covered without a
   // persist field, since it's derived from fert/flood/river which are reconstructed on load).
   const val = world._tileValue && world._tileValue.length === N ? world._tileValue : initTileValue(world);
+  const riverMag = world.riverMag;   // the navigable spine — reach rides it cheaply (RIVER_REACH)
   // Reset COST every pass (roads / budgets shift the food falloff) but keep
   // OWNER — ownership is persistent, that's what stabilises the borders.
   cost.fill(Infinity);
@@ -300,13 +301,19 @@ export function computeTerritory(world) {
       // they cost ~3-12 (sail) and the claim can hop offshore.
       const c = localEdgeCost(world, ti, ni, kn, true, true);  // reach ignores roads + the boat/land port tax (a settlement farms its hinterland on foot)
       if (c === Infinity) continue;
-      const step = c * mul[k];
-      // VALUE PULL: a tile worth holding is worth reaching for. Discount the EFFORT of claiming
-      // it by its desirability, so the reach budget is spent toward valuable land (the floodplain)
-      // rather than the cheapest-nearest waste — value ÷ difficulty, the force that pulls a border
-      // down a fertile valley. The TRUE haul cost is accumulated separately (undiscounted) for the
-      // food-distance falloff: value buys REACH, not free transport.
-      const nd = d + step / (1 + T.VALUE_PULL * (val[ni] || 0));
+      const step = c * mul[k];               // TRUE haul cost (the river is already cheap via localEdgeCost)
+      // Two forces shrink the EFFORT of advancing the border (the reach gate), leaving the true haul
+      // cost untouched for the food-distance falloff:
+      //   RIVER HIGHWAY — a navigable river is an administrative SPINE; advancing reach ALONG it is far
+      //   cheaper than overland, so a polity's catchment runs UP and DOWN the valley. This is what let a
+      //   single state govern the 1000 km Nile — the river carried officials, grain and troops the length
+      //   of it. The fertile BANKS the reach rides past are then annexed by the value pull.
+      //   VALUE PULL — a tile worth holding is worth reaching for, so the border is spent toward the
+      //   floodplain rather than the cheapest-nearest waste (value ÷ difficulty).
+      let eff = step;
+      if (riverMag && riverMag[ni] >= 2) eff /= (1 + T.RIVER_REACH);     // ride the navigable spine
+      eff /= (1 + T.VALUE_PULL * (val[ni] || 0));                        // pull onto the valued banks
+      const nd = d + eff;
       if (nd > bud) continue;                // owner can't reach further (in value-weighted effort)
       if (nd < cost[ni]) {
         cost[ni] = nd;
