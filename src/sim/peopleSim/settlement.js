@@ -659,6 +659,8 @@ function cashSuit(s) {
   return Math.min(1.5, sugar + 0.5 * cotton);
 }
 const CASHCROP_LAND   = 0.85;   // fraction of arable a fully-cash-cropped settlement pulls OFF food
+const ALLUVIUM_COAST  = 0.5;    // coastal lowland gets this share of a river floodplain's silt-fertility lift (delta/plain/polder farming)
+const FISH_LAND_REF   = 8.0;    // land-food-per-tile above which farming is rich enough that fish stops mattering (the cradles sit well above)
 const SLAVE_MINE_PULL = 0.6;    // mining's coerced-labour demand weight
 
 // Evolve a settlement's coerced-labour stock, its cash-crop land allocation, and its
@@ -1897,10 +1899,27 @@ function updateFood(world, s) {
     irrigation = 1 + T.IRRIG_BOOST * arid * river * farmTech;
   }
   s._irrigation = irrigation;
+  // ALLUVIAL FLOODPLAIN — a river's annual flood lays down fresh silt, making the valley floor rich
+  // cropland regardless of rainfall. This is the flood-farming GRAIN that actually fed the first
+  // civilisations — the Nile's black land, the Mesopotamian/Indus/Yellow-River/Yangtze floodplains,
+  // the wet-rice river deltas of monsoon Asia. Where IRRIGATION above models only the ARID valley's
+  // water-concentration edge, this models the silt fertility EVERY floodplain gets, wet or dry, so a
+  // river CRADLE feeds its dense population from its own LAND (the granary, not the fishery). Coastal
+  // lowland — deltas, plains, reclaimed polder — shares a fraction of the lift. The river valley is the
+  // densely-settled breadbasket; the political union of those settlements IS the valley state.
+  let alluvium = 1;
+  if (T.ALLUVIUM > 0) {
+    const river = s._riverAcc || 0;                                                        // river floodplain — full silt fertility
+    const coast = Math.max(0, (s.waterAccess || 0) - river);                               // coastal lowland: delta, plain, reclaimed marsh
+    const lowland = river + ALLUVIUM_COAST * coast;
+    const farmTech = Math.min(1, ((s.knowledge && s.knowledge.agriculture) || 0) / 0.5);   // worked by a farming people
+    alluvium = 1 + T.ALLUVIUM * lowland * farmTech;
+  }
+  s._alluvium = alluvium;
   // CASH CROPS displace food: arable turned over to sugar/cotton/tobacco grows no grain,
   // so a plantation settlement must IMPORT food (the new dynamic — see updateCoercedLabour).
   const cashLand = T.SLAVERY ? (s._cashFrac || 0) * CASHCROP_LAND : 0;
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * aridBurden * soilBurden * workable * irrigation * (1 - cashLand);
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * aridBurden * soilBurden * workable * irrigation * alluvium * (1 - cashLand);
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
   const landFarm = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
@@ -1923,45 +1942,33 @@ function updateFood(world, s) {
   s._pastoral = pastoral;
   const landFood = landFarm + pastoral;
 
-  // Fish: coastal/river settlements draw food from the water, scaled by
-  // water access (the site: minor river → great-river port) and by
-  // navigation (shore-gathering → deep-sea fleets). A fixed local-fishery
-  // flow, not pop-scaled, so it sets how many people the water alone can
-  // feed; a maritime city beyond that still imports. This is what lets a
-  // coastal city — which the housing cap already lets grow large — feed
-  // itself from the sea instead of relying entirely on shipped-in grain.
-  const wa = s.waterAccess || 0;
-  // ICE COVER — a frozen, high-latitude waterbody yields little fish: the ice-free
-  // season is short and the catch can't feed a dense population. Gate the water
-  // harvest on the annual-mean temperature (t = 0.60 + °C/100): no effect at/above
-  // 0°C (t≥0.60), reaching the full COLD_FISH cut by ~-10°C (t≈0.50). Without this a
-  // developed colony on a frozen 60°N+ river/lake drew a metropolis's worth of fish
-  // — the climate-neutral _eraProd lift scaled it — blooming a runaway primate on
-  // tundra that can neither farm (the land is already cold-gated) nor, at pre-modern
-  // haul range, import enough grain. Land farmland is untouched, so the cold-but-
-  // farmable temperate wheat belts (Ukraine, the Canadian prairies) are unaffected.
-  let iceFree = 1;
-  if (T.COLD_FISH > 0) {
+  // FISH — a LOCAL marine supplement, never a staple. History is emphatic: the great agrarian
+  // empires (Egypt, Mesopotamia, China, Rome) ran on GRAIN; fish was caloric noise to them. But fish
+  // WAS the foundation of a distinct class of societies — the cold-temperate fishing coasts where the
+  // sea teemed and the land farmed poorly: Norway's cod, the North-Sea/Baltic herring, the Pacific-
+  // Northwest salmon peoples (complex, sedentary, monument-building, NO agriculture), the Humboldt-
+  // anchovy coast that may have underwritten Caral, the oldest American civilisation. So fish here
+  // emerges exactly where it mattered and nowhere else: it scales UP where the SEA is rich and the
+  // LAND is poor, and falls to ~0 in the fertile river cradles and the nutrient-poor tropics.
+  const sea = Math.max(0, (s.waterAccess || 0) - (s._riverAcc || 0));   // SEA (coast) access — rivers are GRAIN-fed (alluvium), not fished
+  let fish = 0;
+  if (T.FISH_RATE > 0 && sea > 0.02) {
     climateOf(world, s);
-    const frozen = Math.max(0, Math.min(1, (0.60 - (s._climTemp ?? 0.7)) / 0.10));
-    iceFree = 1 - T.COLD_FISH * frozen;
+    const t = s._climTemp ?? 0.7;
+    // Marine productivity: the world's great fisheries are COLD-temperate/subpolar (cold, nutrient-
+    // churned water teems); warm tropical seas are clear and barren; permanent ice locks the surface.
+    // So the catch peaks in the cool, ice-free band (~0–15°C) and tails off either side.
+    const iceCut  = Math.max(0, Math.min(1, (0.60 - t) / 0.10));         // sub-freezing → ice-locked, short season
+    const tropCut = Math.max(0, Math.min(1, (t - 0.80) / 0.15));         // warm tropical sea → nutrient-poor
+    const seaRich = (1 - T.COLD_FISH * iceCut) * (1 - 0.7 * tropCut);
+    // LAND-POOR gate: fish only supplements where the farmed LAND can't carry the people. landFood
+    // per workable tile measures how rich the local farming is — high in a cradle, low on a marginal
+    // coast — so a fertile valley draws ~no fish while a cold/barren shore leans on the sea.
+    const tiles = s._terrWorkTiles ?? s._terrTiles ?? 1;
+    const landPerTile = landFood / Math.max(1, tiles);
+    const poor = Math.max(0, Math.min(1, 1 - landPerTile / FISH_LAND_REF));
+    fish = T.FISH_RATE * sea * seaRich * poor;
   }
-  // Productivity scaling, but with STRONG DIMINISHING RETURNS (FISH_ERAPROD_POW well
-  // below 1). A fishery is a finite renewable stock with a maximum sustainable yield:
-  // better boats, nets and preservation let a developed people approach and store that
-  // yield, but cannot multiply the fish in the water the way intensive farming
-  // multiplies a field's output. Scaling fish by the FULL _eraProd lift (as land food
-  // is) made the late-game fishery balloon ~60×, so every major coastal/river city —
-  // even good wheat/rice country and the irrigated cradles — became 80-100% fish-fed,
-  // historically backwards (pre-modern diets were overwhelmingly GRAIN, with fish a
-  // minor protein; Egypt was the granary of the ancient world, not a fishery). The
-  // exponent was trimmed from 0.65 to 0.40 so the fishery saturates far faster than
-  // farmland intensifies: a low-tech forager coast is unchanged (eraProd≈1) and can
-  // still be fish-fed (sparse), but as a society develops its LAND food (farm +
-  // pastoral) outgrows the water and fish falls back to the supplement it was —
-  // farmed land, not a single coastal tile, sets the carrying capacity of great cities.
-  const fishProd = Math.pow(s._eraProd || 1, T.FISH_ERAPROD_POW);
-  const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor * fishProd * iceFree : 0;
   s._fishYield = fish;
 
   // Land food is STORABLE — it fills granaries and ships across the world
