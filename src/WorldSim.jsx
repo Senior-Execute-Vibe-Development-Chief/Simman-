@@ -803,16 +803,25 @@ useEffect(()=>{layersRef.current=layers;},[layers]);
 // Country view: live per-country hue assignment (seeded by the previous solve so
 // colours drift smoothly as borders shift). Map: countryId → hue 0..360.
 const countryColorsRef=useRef(new Map());
-// Diagonal black-stripe pattern overlaid on COLONY territory (a dependency is drawn in its
-// metropole's colour, striped to mark it). Built once, lazily, from a tiny tile.
-const stripePatRef=useRef(null);
-function getStripePattern(ctx){
-  if(stripePatRef.current)return stripePatRef.current;
-  const pc=document.createElement("canvas");pc.width=pc.height=8;const pg=pc.getContext("2d");
-  pg.strokeStyle="rgba(0,0,0,0.62)";pg.lineWidth=2.4;pg.lineCap="square";
-  pg.beginPath();pg.moveTo(-2,6);pg.lineTo(6,-2);pg.moveTo(2,10);pg.lineTo(10,2);pg.stroke();   // 45° stripes
-  stripePatRef.current=ctx.createPattern(pc,"repeat");
-  return stripePatRef.current;
+// Black diagonal stripes overlaid on COLONY territory (a dependency is drawn in its metropole's
+// colour, striped to mark it). A repeating canvas pattern anchored at the origin can miss a tiny
+// one-tile colony entirely — it lands in a gap between stripes and shows nothing — so instead we
+// CLIP to the colony cells and stroke parallel 45° lines whose spacing scales with the tile size.
+// That guarantees visible, continuous stripes on a colony of any size, down to a single tile.
+function stripeCells(ctx,cells,TR,alpha){
+  if(!cells||!cells.length)return;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  ctx.save();
+  ctx.beginPath();
+  for(let i=0;i<cells.length;i+=2){const x=cells[i],y=cells[i+1];ctx.rect(x,y,TR+0.6,TR+0.6);
+    if(x<minX)minX=x;if(y<minY)minY=y;if(x+TR>maxX)maxX=x+TR;if(y+TR>maxY)maxY=y+TR;}
+  ctx.clip();                                                 // stripes only fall on colony ground
+  const gap=Math.max(2.6,TR*0.9);                             // stripe spacing follows the zoom
+  ctx.strokeStyle=`rgba(0,0,0,${alpha})`;ctx.lineWidth=Math.max(1,TR*0.42);ctx.lineCap="butt";
+  ctx.beginPath();
+  for(let c=minX+minY;c<=maxX+maxY+gap;c+=gap){ctx.moveTo(c-minY,minY);ctx.lineTo(c-maxY,maxY);}  // x+y=c → 45°
+  ctx.stroke();
+  ctx.restore();
 }
 // Which collapsible sections of the settlement card are open. Persists
 // across re-renders (the card re-renders every few ticks) and across
@@ -2122,10 +2131,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           if(colonyByCC.get(cc)){colonyCells.push(sx,sy);}
         }
         // Black diagonal stripes over colonies (same colour as the metropole underneath).
-        if(colonyCells.length){
-          const pat=getStripePattern(octx);
-          if(pat){octx.fillStyle=pat;for(let i=0;i<colonyCells.length;i+=2)octx.fillRect(colonyCells[i],colonyCells[i+1],TR+0.6,TR+0.6);}
-        }
+        stripeCells(octx,colonyCells,TR,0.62);
         // thick dark borders between neighbouring countries
         octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=Math.max(1.6,TR*1.1);octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
         for(let ti=0;ti<claimArr.length;ti++){
@@ -2160,7 +2166,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
-        if(L.tints&&colonyCells.length){const pat=getStripePattern(octx);if(pat){octx.globalAlpha=0.5;octx.fillStyle=pat;for(let i=0;i<colonyCells.length;i+=2)octx.fillRect(colonyCells[i],colonyCells[i+1],TR,TR);octx.globalAlpha=1;}}
+        if(L.tints)stripeCells(octx,colonyCells,TR,0.5);
       } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
