@@ -436,11 +436,19 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     // for the final field. The sealed routing + the loss together shrink the closed-basin
     // rivers (the Tarim/Central-Asian snowmelt) and starve their oversized terminal lakes,
     // while every sea-bound river — the cradles included — is untouched.
+    // Terminal-bound (closed-basin) flow loses water crossing dry ground — and ONLY terminal flow
+    // does, so with the Persian Gulf now correctly OCEAN (the strait-bridge), the cradle rivers
+    // are exorheic and untouched. That frees the loss to be modelled in full: it bites across the
+    // SEMI-ARID interior (moist<0.45, not just true desert), and it has a temperature-independent
+    // SEEPAGE floor (0.7) because a river soaks into permeable ground even where it's cold — which
+    // is what finally drains the spurious through-river that threads cold arid Central Asia toward
+    // the Caspian over thousands of km, while a genuinely WET endorheic river (the Volga, moist≈0.5,
+    // aridity 0) loses nothing and stays a great river to its inland sea.
     for (let ti = 0; ti < N; ti++) {
       if (tElev[ti] <= 0 || drainsTerminal[ti] !== 1) continue;
-      const aridity = Math.max(0, Math.min(1, (0.30 - tMoist[ti]) / 0.30));        // 0 if moist≥0.30 → 1 bone-dry
-      const warmth = 0.4 + 0.6 * Math.max(0, Math.min(1, (tTemp[ti] - 0.40) / 0.25)); // cold sink 0.4 → hot 1.0
-      transmit[ti] = 1 - TRANS_LOSS * aridity * warmth;
+      const aridity = Math.max(0, Math.min(1, (0.45 - tMoist[ti]) / 0.45));        // 0 if moist≥0.45 → 1 bone-dry
+      const seepEvap = 0.7 + 0.3 * Math.max(0, Math.min(1, (tTemp[ti] - 0.40) / 0.25)); // seepage floor 0.7 → +evaporation to 1.0
+      transmit[ti] = 1 - TRANS_LOSS * aridity * seepEvap;
     }
     accumulate(); // final field: endorheic basins sealed + terminal-bound desert loss
   }
