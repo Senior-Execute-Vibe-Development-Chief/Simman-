@@ -77,8 +77,12 @@ export function createWorld(w, opts = {}) {
   // List of floodplain tiles so crystallisation can fill the river valley directly
   // (a thin ribbon is almost never hit by the random tile sweep — the Nile would
   // stay empty otherwise). Built once; the mask is static after worldgen.
+  // FERTILE tiles only: the tFlood mask spans the wetted corridor including barren
+  // hot-desert margins (near-zero fert) — almost half the mask — which the spawn
+  // sweep would then reject for f<MIN_FERT, wasting the oversampling. Restrict it to
+  // the actual green cropland ribbon so every oversampled draw lands on settleable land.
   world._floodTiles = [];
-  for (let i = 0; i < N; i++) if (world.tFlood[i]) world._floodTiles.push(i);
+  for (let i = 0; i < N; i++) if (world.tFlood[i] && (world.fert[i] || 0) >= 0.25) world._floodTiles.push(i);
   initAncestry(world, w, opts);
   initRiverMag(world, w);
   initWind(world, w);
