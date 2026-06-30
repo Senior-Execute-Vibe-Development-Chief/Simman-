@@ -166,6 +166,8 @@ const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends 
 // How much of the LOCAL stock a new settlement absorbs, by residence density (tArrival):
 const ANC_LOCAL_FRONTIER = 0.22;  // on a just-peopled frontier (sparse residents) the founders dominate → replacement-leaning
 const ANC_LOCAL_SETTLED  = 0.85;  // on ancient, densely-settled land the incomers are absorbed → the place keeps its stock (bootload)
+const SETTLER_BARRIER    = 0.85;  // strength of the "white man's grave": how far an endemic-disease gap the incomers
+                                  // have no immunity to pushes the stock back toward the adapted locals (0 = none, 1 = total)
 export function dominantAnc(s) { return s.ancMix && s.ancMix.length ? s.ancMix[0][0] : -1; }
 function normAnc(pairs) {
   let t = 0; for (const e of pairs) t += e[1]; if (t <= 0) return [];
@@ -195,7 +197,20 @@ function seedAncestry(world, s, opts) {
   // the FOUNDERS (low local share → REPLACEMENT-leaning: the settler Americas/Australia). Comparable
   // weights → a real BLEND. The mode thus emerges from geography, never a per-region tag.
   const arr = world.tArrival ? Math.max(0, Math.min(1, world.tArrival[ti])) : 0.5;
-  const localShare = localId >= 0 ? ANC_LOCAL_FRONTIER + (ANC_LOCAL_SETTLED - ANC_LOCAL_FRONTIER) * (1 - arr) : 0;
+  let localShare = localId >= 0 ? ANC_LOCAL_FRONTIER + (ANC_LOCAL_SETTLED - ANC_LOCAL_FRONTIER) * (1 - arr) : 0;
+  // SETTLER DISEASE BARRIER — "the white man's grave". The incomers carry immunity matched to their
+  // HOME pathogen burden; dropped into a land whose endemic tropical disease (malaria, yellow fever,
+  // sleeping sickness — habitability.js malariaSignal) far exceeds it, they die before they can
+  // establish a dense settler society, so the long-adapted LOCAL stock keeps the land even on a
+  // frontier (the Congo, the Amazon, New Guinea stay indigenous). A founder from an EQUALLY tropical
+  // home (a Bantu farmer expanding through the forest) carries that immunity → no barrier → they
+  // settle and admix freely. It is the disease-burden GAP, never a per-region tag, that does the work
+  // — and it is asymmetric (it bars the outsider, not the adapted local), which is the whole point.
+  if (localShare > 0 && world.temp && world.moist) {
+    const pti = (par.pos.y | 0) * world.tw + (par.pos.x | 0);
+    const barrier = Math.max(0, malariaSignal(world.temp[ti], world.moist[ti]) - malariaSignal(world.temp[pti], world.moist[pti]));
+    localShare = localShare + (1 - localShare) * barrier * SETTLER_BARRIER;
+  }
   s.ancMix = localShare > 0 ? blendAnc(par.ancMix, 1 - localShare, local, localShare) : par.ancMix.slice();
 }
 
