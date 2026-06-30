@@ -42,10 +42,24 @@ const ENDO_EVAP = 2.0;
 // Aral / Tarim channels attenuates strongly.
 const TRANS_LOSS = 0.30;
 
-// River-classification generosity (Step 4): how far DOWN the percentile thresholds shift
-// for OCEAN-bound rivers, so their trunk reads as a visible river far upstream instead of
-// a short stub near the mouth. Terminal-bound flow is unaffected (keeps the strict cut).
-const RIVER_GEN = 2;
+// River classification (Step 4) is by ABSOLUTE drainage AREA (km²), not percentile rank.
+// A percentile cut ("top 5% of land tiles") was wrong two ways: (1) it was RESOLUTION-
+// DEPENDENT — the same catchment sat at a different percentile at 320 vs 960 tiles wide, so
+// the river network re-shuffled with grid size; and (2) it UNDID the transmission loss — a
+// spurious channel dwindling across the desert toward a closed sink (the Himalaya→Caspian
+// corridor) still ranked "top 5%" against the near-empty arid interior and was redrawn. An
+// absolute catchment bar is resolution-invariant (a river of a given km² draws the same at
+// any grid) and honours the loss (a corridor whose flow the desert has eaten falls below the
+// bar and vanishes). Tuned so the global river DENSITY matches the old percentile output at
+// the shipped width — only the spurious terminal corridors drop out. Each tile's drainage is
+// runoff-weighted (a wet catchment makes a bigger river than a dry one of equal area), so the
+// bar is expressed in km² and converted to flow-accumulation units via the mean land runoff.
+const CATCH_STREAM = 70e3;    // km² of drainage to read as a Stream    (~small catchment)
+const CATCH_TRIB   = 300e3;   // Tributary (Ob/Lualaba scale)
+const CATCH_MAJOR  = 800e3;   // Major (Danube/Ganges scale)
+const CATCH_GREAT  = 2.4e6;   // Great (Nile/Congo/Amazon scale)
+const TERMINAL_STRICT = 2.5;  // closed-basin rivers need this × the catchment to show — only a genuinely large endorheic river (the Volga→Caspian) qualifies, not a transmission-lossed desert corridor
+const EARTH_KM2    = 5.10e8;   // global surface area — sets km² per tile from the grid size (resolution-invariance)
 
 // Mountain snowmelt volume (Step 3): converts the snow/glacier fraction × relief into
 // headwater runoff. Calibrated so the Himalaya/Pamir keep their old ~0.5 melt while the
@@ -400,7 +414,12 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     // while every sea-bound river — the cradles included — is untouched.
     for (let ti = 0; ti < N; ti++) {
       if (tElev[ti] <= 0 || drainsTerminal[ti] !== 1) continue;
-      const aridity = Math.max(0, Math.min(1, (0.30 - tMoist[ti]) / 0.30));        // 0 if moist≥0.30 → 1 bone-dry
+      // Dryness gate widened to SEMI-ARID (moist<0.45, not just true desert<0.30): a closed-
+      // basin through-river that threads the semi-arid interior (the Himalaya→Caspian corridor)
+      // still loses water it can't replace, where the old desert-only gate let it keep full flow
+      // across grassland-steppe. A genuinely WET endorheic river (the Volga, moist≈0.5) sits above
+      // the gate and is untouched, so legit inland-sea rivers survive while spurious corridors die.
+      const aridity = Math.max(0, Math.min(1, (0.45 - tMoist[ti]) / 0.45));        // 0 if moist≥0.45 → 1 bone-dry
       const warmth = 0.4 + 0.6 * Math.max(0, Math.min(1, (tTemp[ti] - 0.40) / 0.25)); // cold sink 0.4 → hot 1.0
       transmit[ti] = 1 - TRANS_LOSS * aridity * warmth;
     }
@@ -422,26 +441,24 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
 
   const riverMag = new Uint8Array(N);
 
-  // Collect all land accumulation values for percentile thresholds
-  const accums = [];
-  for (let ti = 0; ti < N; ti++) {
-    if (tElev[ti] > 0 && flowAccum[ti] > 0.1) accums.push(flowAccum[ti]);
-  }
-  accums.sort((a, b) => a - b);
-  const pct = (p) => accums[Math.min(accums.length - 1, Math.floor(accums.length * p / 100))];
+  // ABSOLUTE catchment thresholds (resolution-invariant). flowAccum is a runoff-weighted
+  // upstream sum: a catchment of area A km² carries ≈ (A / kmPerTile) tiles × the mean land
+  // runoff. So convert each km² bar to flow-accumulation units via the grid's km²/tile and the
+  // mean land runoff — the SAME physical river then clears the bar at any resolution, and a
+  // desert corridor the transmission loss has thinned simply falls below it.
+  let landRunoff = 0, landN = 0;
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0) { landRunoff += runoff[ti]; landN++; }
+  const avgRunoff = landN > 0 ? landRunoff / landN : 0.3;
+  const kmPerTile = EARTH_KM2 / (tw * th);
+  const accumFor = (km2) => (km2 / kmPerTile) * avgRunoff;   // km² of drainage → runoff-weighted flowAccum
 
-  if (maxAccum > 0 && accums.length > 0) {
-    // Top 5% = stream, 1% = tributary, 0.2% = major, 0.02% = great
-    // Two-tier thresholds. OCEAN-bound rivers get a GENEROUS cut so their main stem stays
-    // a visible river far upstream (the Mississippi, the Amazon, the Ob run thousands of km
-    // inland, not a stub near the mouth). TERMINAL-bound flow keeps the STRICT cut, so the
-    // desert channels that dwindle toward a closed sink / inland sea (the spurious Caspian
-    // run) drop out of the visible network instead of threading the whole interior.
-    const _g = RIVER_GEN;
-    const tStream = pct(95 - _g * 3),   tStreamS = pct(95);
-    const tTrib   = pct(99 - _g),       tTribS   = pct(99);
-    const tMajor  = pct(99.8 - _g*0.3), tMajorS  = pct(99.8);
-    const tGreat  = pct(99.98 - _g*0.03), tGreatS = pct(99.98);
+  if (maxAccum > 0 && landN > 0) {
+    // OCEAN-bound rivers use the real catchment bars; TERMINAL-bound (closed-basin) flow must
+    // clear TERMINAL_STRICT× as much, so only a genuinely large endorheic river (the Volga →
+    // Caspian) shows while a transmission-lossed desert corridor (the Himalaya→Caspian run)
+    // drops out of the visible network instead of threading the whole interior.
+    const tStream = accumFor(CATCH_STREAM), tTrib = accumFor(CATCH_TRIB), tMajor = accumFor(CATCH_MAJOR), tGreat = accumFor(CATCH_GREAT);
+    const tStreamS = tStream * TERMINAL_STRICT, tTribS = tTrib * TERMINAL_STRICT, tMajorS = tMajor * TERMINAL_STRICT, tGreatS = tGreat * TERMINAL_STRICT;
     for (let ti = 0; ti < N; ti++) {
       if (tElev[ti] <= 0) continue;
       const a = flowAccum[ti];
@@ -508,10 +525,9 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
         }
       }
     }
-    // Lake needs meaningful river inflow — at least stream-level accumulation
-    // Use the stream threshold from percentile classification
-    // Require at least some river flow entering the basin (90th percentile = modest stream)
-    const minInflow = accums.length > 0 ? accums[Math.min(accums.length - 1, Math.floor(accums.length * 0.93))] : 1;
+    // Lake needs meaningful river inflow — at least stream-level accumulation (the same
+    // resolution-invariant absolute Stream bar the classifier uses, so it holds at any grid).
+    const minInflow = accumFor(CATCH_STREAM);
     // ── Evaporation gate ──
     // A lake in a HOT basin loses far more water to evaporation than a cold one, so it
     // needs proportionally more river inflow to stay open water rather than drying to a
@@ -543,7 +559,7 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     }
   }
 
-  return { flowDir, flowAccum, riverMag, maxAccum, lake, lakeInfo };
+  return { flowDir, flowAccum, riverMag, maxAccum, lake, lakeInfo, drainsTerminal };
 }
 
 export function riverName(riverMag, ti) {
