@@ -54,9 +54,9 @@ const TRANS_LOSS = 0.30;
 // the shipped width — only the spurious terminal corridors drop out. Each tile's drainage is
 // runoff-weighted (a wet catchment makes a bigger river than a dry one of equal area), so the
 // bar is expressed in km² and converted to flow-accumulation units via the mean land runoff.
-const CATCH_STREAM = 70e3;    // km² of drainage to read as a Stream    (~small catchment)
-const CATCH_TRIB   = 300e3;   // Tributary (Ob/Lualaba scale)
-const CATCH_MAJOR  = 800e3;   // Major (Danube/Ganges scale)
+const CATCH_STREAM = 10e3;    // km² of drainage to read as a Stream — small, so the network BRANCHES densely (tributaries, headwaters) like the percentile model did, just resolution-invariantly
+const CATCH_TRIB   = 60e3;    // Tributary
+const CATCH_MAJOR  = 800e3;   // Major (Danube/Ganges scale) — unchanged: the corridor suppression lives here + TERMINAL_STRICT
 const CATCH_GREAT  = 2.4e6;   // Great (Nile/Congo/Amazon scale)
 const TERMINAL_STRICT = 2.5;  // closed-basin rivers need this × the catchment to show — only a genuinely large endorheic river (the Volga→Caspian) qualifies, not a transmission-lossed desert corridor
 const EARTH_KM2    = 5.10e8;   // global surface area — sets km² per tile from the grid size (resolution-invariance)
@@ -167,6 +167,20 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
         if (ny < 0 || ny >= th) continue;
         const ni = ny * tw + nx;
         if (tElev[ni] <= 0 && !trueOcean[ni]) { trueOcean[ni] = 1; oq.push(ni); }
+        else if (tElev[ni] > 0) {
+          // BRIDGE a 1-tile strait: a coarse grid pinches narrow ocean straits (Hormuz, the
+          // Bosphorus, Gibraltar) shut into solid land, so the basin behind them (the Persian
+          // Gulf, the Black Sea) reads as a CLOSED inland sea — which wrongly makes its EXORHEIC
+          // cradle rivers (the Tigris-Euphrates) terminal and subjects them to the closed-basin
+          // corridor suppression. If the tile just BEYOND this 1-tile land barrier is sub-sea,
+          // it is really part of the world ocean — connect it. A genuine inland sea (the Caspian,
+          // Aral) is walled off by HUNDREDS of km of land, never a single tile, so it never bridges.
+          const fy = ty + 2 * D8_DY[d];
+          if (fy >= 0 && fy < th) {
+            const fi = fy * tw + ((tx + 2 * D8_DX[d] + tw) % tw);
+            if (tElev[fi] <= 0 && !trueOcean[fi]) { trueOcean[fi] = 1; oq.push(fi); }
+          }
+        }
       }
     }
   }
@@ -414,12 +428,7 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     // while every sea-bound river — the cradles included — is untouched.
     for (let ti = 0; ti < N; ti++) {
       if (tElev[ti] <= 0 || drainsTerminal[ti] !== 1) continue;
-      // Dryness gate widened to SEMI-ARID (moist<0.45, not just true desert<0.30): a closed-
-      // basin through-river that threads the semi-arid interior (the Himalaya→Caspian corridor)
-      // still loses water it can't replace, where the old desert-only gate let it keep full flow
-      // across grassland-steppe. A genuinely WET endorheic river (the Volga, moist≈0.5) sits above
-      // the gate and is untouched, so legit inland-sea rivers survive while spurious corridors die.
-      const aridity = Math.max(0, Math.min(1, (0.45 - tMoist[ti]) / 0.45));        // 0 if moist≥0.45 → 1 bone-dry
+      const aridity = Math.max(0, Math.min(1, (0.30 - tMoist[ti]) / 0.30));        // 0 if moist≥0.30 → 1 bone-dry
       const warmth = 0.4 + 0.6 * Math.max(0, Math.min(1, (tTemp[ti] - 0.40) / 0.25)); // cold sink 0.4 → hot 1.0
       transmit[ti] = 1 - TRANS_LOSS * aridity * warmth;
     }
