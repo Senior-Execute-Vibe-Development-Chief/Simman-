@@ -362,7 +362,14 @@ tFert[ti]=tileFert(tTemp[ti],tMoist[ti],tElev[ti]);
 // of desert. A direct fertility lift on the wetted floodplain, strongest on DRY-land
 // valleys (the river is the only water → irrigation transforms it) and gentle in
 // already-wet land (the river just levels the terrain). tCoast deltas are richest.
-const allu=rm*(oldMoist<0.30?0.55:oldMoist<0.45?0.30:0.10);
+// Cold-gated like the base fertility (tileFert's tFactor): a FROZEN floodplain is not
+// prime cropland — the silt is there but the ground is frozen and the season too short
+// to work it. Without this, cold great-river valleys (the Lena, Ob, Yenisei) read as
+// alluvial breadbaskets and settle densely up into the Siberian taiga, which was in
+// reality near-empty. Warm cradles (the Nile +22°C, even the Yellow River +12°C) keep
+// full silt; the boreal north loses it.
+const alluCold=Math.min(1,Math.max(0,(tTemp[ti]-0.57)/0.13));
+const allu=rm*(oldMoist<0.30?0.55:oldMoist<0.45?0.30:0.10)*alluCold;
 tFert[ti]=Math.min(1,tFert[ti]+allu);
 // FLOODPLAIN: where a river runs through genuinely DRY land it lays a fertile
 // alluvial valley — a distinct ecosystem, not the savanna the moisture boost
@@ -514,9 +521,15 @@ if(e<=0){tCrop[ti]=0;tCross[ti]=1;continue;}
 tCrop[ti]=cropSuitability(t,m,e,tCoast[ti],rivers&&rivers.riverMag?rivers.riverMag[ti]:0,bDist?bDist[ti]:null);
 // An arid-river FLOODPLAIN is prime irrigated cropland (the Nile / Mesopotamia /
 // Indus alluvium — the most productive farmland there was), whatever the bare
-// climate would rate the hot dry valley as. The hottest cradles' later
-// salinisation (SOIL_EXHAUST, settlement.js) still applies the historical decline.
-if(tFlood[ti])tCrop[ti]=Math.max(tCrop[ti],0.92);
+// climate would rate the hot dry valley as — BUT only where it is warm enough to
+// farm. A floodplain in a short-season high-latitude interior (a frozen Siberian
+// river valley) is NOT the Nile, so gate the override by the SAME cold gate
+// cropSuitability uses. Without this, drying a cold continental interior (which
+// turns its river valleys "arid" and so flags them tFlood) would mint subarctic
+// breadbaskets that bypass the cold gate entirely — a runaway-primate landmine.
+// The hottest cradles' later salinisation (SOIL_EXHAUST, settlement.js) still
+// applies the historical decline.
+if(tFlood[ti]){const coldGate=Math.min(1,Math.max(0,(t-0.57)/0.13));tCrop[ti]=Math.max(tCrop[ti],0.92*coldGate);}
 // Crossing difficulty: average edge cost from each land neighbour
 // into this tile. Edge-based so slope shows up; averaged so the
 // overlay is direction-agnostic.

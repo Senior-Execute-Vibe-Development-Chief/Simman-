@@ -803,6 +803,26 @@ useEffect(()=>{layersRef.current=layers;},[layers]);
 // Country view: live per-country hue assignment (seeded by the previous solve so
 // colours drift smoothly as borders shift). Map: countryId → hue 0..360.
 const countryColorsRef=useRef(new Map());
+// Black diagonal stripes overlaid on COLONY territory (a dependency is drawn in its metropole's
+// colour, striped to mark it). A repeating canvas pattern anchored at the origin can miss a tiny
+// one-tile colony entirely — it lands in a gap between stripes and shows nothing — so instead we
+// CLIP to the colony cells and stroke parallel 45° lines whose spacing scales with the tile size.
+// That guarantees visible, continuous stripes on a colony of any size, down to a single tile.
+function stripeCells(ctx,cells,TR,alpha){
+  if(!cells||!cells.length)return;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  ctx.save();
+  ctx.beginPath();
+  for(let i=0;i<cells.length;i+=2){const x=cells[i],y=cells[i+1];ctx.rect(x,y,TR+0.6,TR+0.6);
+    if(x<minX)minX=x;if(y<minY)minY=y;if(x+TR>maxX)maxX=x+TR;if(y+TR>maxY)maxY=y+TR;}
+  ctx.clip();                                                 // stripes only fall on colony ground
+  const gap=Math.max(2.6,TR*0.9);                             // stripe spacing follows the zoom
+  ctx.strokeStyle=`rgba(0,0,0,${alpha})`;ctx.lineWidth=Math.max(1,TR*0.42);ctx.lineCap="butt";
+  ctx.beginPath();
+  for(let c=minX+minY;c<=maxX+maxY+gap;c+=gap){ctx.moveTo(c-minY,minY);ctx.lineTo(c-maxY,maxY);}  // x+y=c → 45°
+  ctx.stroke();
+  ctx.restore();
+}
 // Which collapsible sections of the settlement card are open. Persists
 // across re-renders (the card re-renders every few ticks) and across
 // selecting different settlements.
@@ -932,7 +952,7 @@ try{
     console.warn('[SimWorker] error — falling back to main-thread sim:',err.message);
     try{if(simWorkerRef.current){simWorkerRef.current.terminate();}}catch{/* already dead */}
     simWorkerRef.current=null;
-    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount});
+    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
     setPsStats(peopleSimStats(peopleRef.current));
   };
   simWorkerRef.current=sw;
@@ -949,7 +969,7 @@ try{
   const _gm={oceanLevel:oceanLevelRef.current,tecParams:_tecParams};
   const _pend=pendingSaveRef.current;
   if(_pend){pendingSaveRef.current=null;sw.postMessage({type:'load',json:_pend,genMeta:_gm});}
-  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount});
+  else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
   // Push current play/speed/view state to the fresh worker.
   sw.postMessage({type:'control',playing:false,speed:speedRef.current});
   sw.postMessage({type:'view',view:viewRef.current});
@@ -960,7 +980,7 @@ try{
 if(!usedWorker){
   const _pend2=pendingSaveRef.current;
   if(_pend2){pendingSaveRef.current=null;peopleRef.current=loadWorld(_pend2);}
-  else peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount});
+  else peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
   setPsStats(peopleSimStats(peopleRef.current));
 }
 setPlaying(false);playRef.current=false;
@@ -1914,7 +1934,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             // each tongue reads as its own region; fall back to the people's own
             // tongue only until the language layer seeds.
             const lg=lid>=0&&psw.languages?psw.languages.get(lid):null;
-            if(lg){const fh=((lg.id*2654435761)>>>0)%360;return{key:lg.id,h:fh,s:58,l:50};}
+            if(lg){const fh=(lg.hue!=null?lg.hue:((lg.id*2654435761)>>>0)%360)|0;return{key:lg.id,h:fh,s:58,l:50};}
             const c0=cid>=0&&psw.cultures?psw.cultures.get(cid):null;
             if(!c0)return null;const root0=c0.root??c0.id;const fh0=((root0*2654435761)>>>0)%360;return{key:cid,h:fh0,s:50,l:36+((c0.id*7)%6)*7};
           }
@@ -2087,7 +2107,13 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         const tw=psw.tw,th=psw.th;
         const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current);
         countryColorsRef.current=hues;
-        const fillByCountry=new Map();
+        // A single-settlement realm is an independent CITY-STATE, not a great power — its
+        // catchment IS its territory (so it now colours), but drawn in a muted/desaturated shade
+        // so the map reads "independent statelet" rather than as one more full-blown empire.
+        const cityState=new Set();
+        if(psw.countries)for(const[cid,c]of psw.countries){if(!c.memberIds||c.memberIds.length<=1)cityState.add(cid);}
+        const fillByCountry=new Map(),colonyByCC=new Map();
+        const colonyCells=[];   // sx,sy pairs of colony tiles → striped overlay below
         // opaque bold fills (cover the terrain so the colours read clean)
         let lastFs=null;
         for(let ti=0;ti<claimArr.length;ti++){
@@ -2095,10 +2121,22 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const py=(ti/tw)|0,px=ti-py*tw;
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           let fs=fillByCountry.get(cc);
-          if(fs===undefined){const h=(hues.get(cc)??((cc*61)%360+360)%360)|0;fs=`hsl(${h},60%,50%)`;fillByCountry.set(cc,fs);}
+          if(fs===undefined){
+            // A colony is drawn in its METROPOLE's exact colour (striped below to mark it),
+            // so it clearly reads as that empire's dependency, not an unrelated new state.
+            const cobj=psw.countries&&psw.countries.get(cc);
+            const over=cobj&&cobj._overlord>=0?cobj._overlord:-1;
+            colonyByCC.set(cc,over>=0);
+            const h=(over>=0?(hues.get(over)??((over*61)%360+360)%360):(hues.get(cc)??((cc*61)%360+360)%360))|0;
+            fs=cityState.has(cc)?`hsl(${h},22%,44%)`:`hsl(${h},60%,50%)`;
+            fillByCountry.set(cc,fs);
+          }
           if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
           octx.fillRect(sx,sy,TR+0.6,TR+0.6);   // slight overdraw kills inter-tile seams
+          if(colonyByCC.get(cc)){colonyCells.push(sx,sy);}
         }
+        // Black diagonal stripes over colonies (same colour as the metropole underneath).
+        stripeCells(octx,colonyCells,TR,0.62);
         // thick dark borders between neighbouring countries
         octx.strokeStyle="rgba(8,8,12,0.92)";octx.lineWidth=Math.max(1.6,TR*1.1);octx.lineJoin="round";octx.lineCap="round";octx.beginPath();
         for(let ti=0;ti<claimArr.length;ti++){
@@ -2112,7 +2150,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         octx.stroke();
       }
       if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&(L.tints||L.borders)&&claimArr){
-        const tw=psw.tw,th=psw.th,tintByCountry=new Map();
+        const tw=psw.tw,th=psw.th,tintByCountry=new Map(),colonyByCC=new Map(),colonyCells=[];
         if(L.borders){octx.strokeStyle="rgba(15,15,15,0.8)";octx.lineWidth=1;octx.setLineDash([2,2]);octx.beginPath();}
         let lastFs=null;
         for(let ti=0;ti<claimArr.length;ti++){
@@ -2121,9 +2159,10 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
           const sx=px*TR,sy=dataYtoScreenY(py*TR,H,CH);
           if(L.tints){
             let fs=tintByCountry.get(cc);
-            if(fs===undefined){const h=((cc*61)%360+360)%360;fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
+            if(fs===undefined){const co=psw.countries&&psw.countries.get(cc);const over=co&&co._overlord>=0?co._overlord:-1;colonyByCC.set(cc,over>=0);const h=(((over>=0?over:cc)*61)%360+360)%360;fs=`hsla(${h},50%,50%,0.34)`;tintByCountry.set(cc,fs);}
             if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
             octx.fillRect(sx,sy,TR,TR);
+            if(colonyByCC.get(cc)){colonyCells.push(sx,sy);}
           }
           if(!L.borders)continue;
           const ro=claimArr[py*tw+(px===tw-1?0:px+1)];
@@ -2132,6 +2171,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             if(dno>=0&&dno!==cc){const by=dataYtoScreenY((py+1)*TR,H,CH);octx.moveTo(sx,by);octx.lineTo(sx+TR,by);}}
         }
         if(L.borders){octx.stroke();octx.setLineDash([]);}
+        if(L.tints)stripeCells(octx,colonyCells,TR,0.5);
       } else if(!vmCountry&&!vmCulture&&!vmFaith&&!vmLanguage&&!vmAncestry&&!vmSociety&&(L.tints||L.borders)&&owner){
         const tw=psw.tw,th=psw.th;
         let maxId=0; for(const s of psw.settlements){if(s&&s.mode==="settled"&&s.id>maxId)maxId=s.id;}
@@ -2946,7 +2986,7 @@ const renderLanguages=()=>{
   const live=(f)=>f.rows.filter(r=>r.a.setts>0);
   const famList=[...fams.values()].filter(f=>live(f).length>0).sort((x,y)=>y.pop-x.pop);
   for(const f of famList)f.rows.sort((x,y)=>y.a.pop-x.a.pop);
-  const hueOf=(id)=>((id*2654435761)>>>0)%360;   // SAME formula the Languages lens uses
+  const hueOf=(l)=>((l&&l.hue!=null?l.hue:((((l&&l.id)||0)*2654435761)>>>0)%360))|0;   // SAME likeness hue the Languages lens uses
   const famName=(f)=>{const r=psw.languages.get(f.rootId);return (r&&r.name)||"?";};
   return(
     <div className="au-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"10px 12px",fontSize:11}}>
@@ -2960,7 +3000,7 @@ const renderLanguages=()=>{
           </div>
           {ls.map(({l,a})=>(
             <div key={l.id} style={{display:"flex",alignItems:"baseline",gap:7,padding:"3px 0 3px 8px",borderBottom:"1px solid rgba(58,38,20,0.08)"}}>
-              <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hueOf(l.id)},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
+              <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hueOf(l)},58%,50%)`,flexShrink:0,alignSelf:"center"}}/>
               <span style={{fontWeight:600}}>{l.name||"(tongue)"}</span>
               <div style={{flex:1}}/>
               <span className="au-fade">{a.setts} · {fmtPeople(a.pop)}</span>
@@ -3122,13 +3162,21 @@ const renderInspect=()=>{
       {(()=>{
         const ctry=psw.countries&&psw.countries.get(s.countryId);
         const n=ctry?ctry.members.length:1;
-        const hue=((s.countryId*61)%360+360)%360;
+        // A colonial dependency takes its METROPOLE's hue (the map colours it as a shade of the
+        // mother country), and is named as that country's colony rather than an independent state.
+        const overlord=(ctry&&ctry._overlord>=0)?ctry._overlord:-1;
+        const overCtry=overlord>=0&&psw.countries?psw.countries.get(overlord):null;
+        const overName=overlord>=0?((overCtry&&overCtry.name)||"its mother country"):null;
+        const hue=((((overlord>=0?overlord:s.countryId))*61)%360+360)%360;
         const cap=ctry&&ctry.capital;
         const isCap=cap&&cap.id===s.id;
         const byId=psw._byId||(()=>{const m=new Map();for(const o of psw.settlements)m.set(o.id,o);return m;})();
         const liege=(!isCap&&s.liegeId>=0)?byId.get(s.liegeId):null;
         let label;
-        if(n<=1)label="independent city-state";
+        if(overlord>=0){
+          label=(n<=1)?`colony of ${overName}`:(isCap?`colonial capital · ${n} settlements · answers to ${overName}`:`colonial settlement · realm of ${cap?cap.name:"?"}`);
+        }
+        else if(n<=1)label="independent city-state";
         else if(isCap)label=`national capital · ${n} settlements`;
         else{
           const role=(s._vassalCount>0)?"provincial seat":(tierName||"settlement");
@@ -3137,7 +3185,8 @@ const renderInspect=()=>{
         }
         return(
           <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,marginBottom:6}}>
-            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0}}/>
+            <span style={{width:9,height:9,borderRadius:2,background:`hsl(${hue},55%,50%)`,flexShrink:0,
+              backgroundImage:overlord>=0?"repeating-linear-gradient(45deg,rgba(0,0,0,0.65) 0 1.5px,transparent 1.5px 4px)":undefined}}/>
             <span className="au-fade" style={{textTransform:"capitalize"}}>{label}</span>
           </div>
         );
@@ -3312,6 +3361,7 @@ const renderInspect=()=>{
           <span className="au-fade">Grain stored</span><span>{fmtFood(s.food)}</span>
           <span className="au-fade">Produced /tick</span><span>{fmtFood(supply)}</span>
           {(s._fishYield||0)>0.01&&(<><span className="au-fade">· of which fish</span><span className="au-fade">{fmtFood(s._fishYield||0)}</span></>)}
+          {(s._pastoral||0)>0.01&&(<><span className="au-fade">· of which herds</span><span className="au-fade">{fmtFood(s._pastoral||0)}</span></>)}
           {importRate>0.001&&(<><span className="au-fade">Imported /tick</span><span>+{fmtFood(importRate)}</span></>)}
           <span className="au-fade">Consumed /tick</span><span>{fmtFood(demand)}</span>
           <span style={{color:statusColor}}>Balance</span>

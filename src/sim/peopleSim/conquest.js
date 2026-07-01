@@ -12,7 +12,7 @@
 // captured right at the frontier would secede the very next pass and get
 // re-taken, making the borders flicker.
 
-import { recordIn, recordOut, IN_AID, IN_STATE_PAY, IN_TARIFFS, IN_FINANCE, OUT_TRIBUTE } from "./money.js";
+import { recordIn, recordOut, IN_AID, IN_TRIBUTE, IN_STATE_PAY, IN_TARIFFS, IN_FINANCE, OUT_TRIBUTE, OUT_AID } from "./money.js";
 import { shockUnrest } from "./shocks.js";
 import { localEdgeCost } from "./transport.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
@@ -230,7 +230,12 @@ const CAP_DOM_W   = 0.9;   // extra capacity per (above-average power)^P
 const CAP_DOM_P   = 1.5;   // CONVEX: only genuine OUTLIERS tower — a power-law tail of a few great
                            // powers, not a uniformly bigger pack (sustainable size ≈ capacity^⅔, so
                            // the top core needs ~6–8× capacity to reach a Rome-scale share of the map)
-// (the dominance ceiling is now the T.CAP_DOM_MAX lever.) Imperial-hysteresis rates:
+// The dominance CEILING emerges from institutional development: T.CAP_DOM_MAX is the
+// MATURE-bureaucracy ceiling; a primitive realm (capCoh→0) saturates at this far
+// lower base instead (see the domCeil derivation in updatePolities). Not a fixed
+// era-blind clamp — the most a hegemon can tower scales with its delegation tech.
+const CAP_DOM_CEIL_BASE = 4;   // primitive (capCoh→0) dominance ceiling — early hegemons stay bounded
+// Imperial-hysteresis rates:
 const CAP_IMP_RISE  = 0.04;   // imperial-capacity stock rises toward live capacity (institutions accrete)
 const CAP_IMP_DECAY = 0.010;  // ...and decays ~4× slower when power falls (institutions persist → hysteresis)
 // Empire size is NOT capped. It emerges from the existing over-extension
@@ -312,6 +317,47 @@ const FRAG_SEPARATION = 18;   // successor capitals must be at least this far ap
 // budget + contagion) the moment it's pressured — the dynamic trigger for
 // overextension. The effect lingers a window past the last front, then the
 // budget recovers as the realm consolidates in peace.
+// ── Balance of power: emergent alliances against the regional threat ──────────
+// The missing self-correcting force. A realm grows by conquest where it out-powers
+// its neighbours — but in reality that very growth turns the neighbours into a
+// COALITION: weak and similar-sized powers that fear the same rising hegemon band
+// together, and their combined weight backs each member's defence, so the giant's
+// expansion stalls exactly when it has grown threatening enough to alarm a matching
+// bloc (Europe balancing Habsburg/Bourbon/Napoleonic France). Where no such bloc
+// can form — a realm facing only sparse, fragmented, far-weaker neighbours or empty
+// land (Russia into Siberia, the US across the plains) — nothing balances it and it
+// runs away. So empire size emerges from the NEIGHBOURHOOD, not a hard ceiling: the
+// coalition's strength relative to the hegemon IS the cap, and it is whatever the
+// map makes it. This replaces the stack of "can't swallow the continent" constants.
+const THREAT_RATIO   = 1.25;  // a bordering realm this many× your power is a "threat" you balance against
+export const BALANCE_W   = 1.1;   // how hard a coalition backs a member it defends (× the attack bar, ∝ bloc/hegemon power)
+export const BALANCE_CAP = 3.0;   // ceiling on that backing (a coalition deters, it doesn't make a member invincible)
+const ALLY_TRADE_REF = 6;     // cross-border money/tick at which two realms are "mutual-benefit" allies regardless of threat
+const ALLIANCE_EVERY = 600;   // recompute the (slow-drifting) alliance map this often
+
+// ── Colonial dependencies: a self-governing colony bound to an overlord ───────
+// An overseas colony (sea.js) is founded as its OWN realm — own capital, own LOCAL
+// administrative reach, so it holds and rolls its own frontier instead of stalling as
+// an unsheddable far province on the metropole's admin budget — but it is a DEPENDENCY
+// of its founder (polity._overlord): the two never fight and stand together as one bloc,
+// the colony's weight counts toward the metropole's empire, and goods/tribute flow home
+// while protection and tech flow out. It breaks free — one clean political INDEPENDENCE,
+// not per-province secession — once it has OUTGROWN the metropole (the US/Latin-America
+// arc), which emerges from their relative power, never from a date.
+const INDEPENDENCE_EVERY  = 600;   // how often the independence check runs (perf cadence)
+const INDEP_POWER_RATIO   = 0.8;   // a dependency whose power reaches this fraction of the force the metropole can PROJECT to it has outgrown the apron strings → independence
+const TRIBUTE_FRAC        = 0.15;  // share of a MATURE dependency's treasury remitted home to the overlord each polity pass
+const COLONY_TECH_DIFFUSE = 0.06;  // base per-pass rate the colony seat's knowledge is pulled toward the metropole's (× the metropole's reach)
+// Naval power projection: a metropole protects, supplies and holds a colony only as far as
+// its navy can REACH — projection DECAYS with distance and RISES with naval-logistics tech
+// (Spain's tenuous Pacific grip vs Britain's steam-navy global reach). proj = navalReach /
+// (navalReach + distance) ∈ (0,1]; it governs EVERY parent→colony flow and the independence
+// line, so protection and support are neither automatic nor perfect — the realistic limit on
+// how far, and how strongly, an empire can hold across the sea. This is WHY distant colonies
+// broke away: the metropole simply could not project enough force to hold them.
+const NAVAL_REACH_BASE    = 8;     // tiles a metropole can project with no naval tech (coastal reach)
+const NAVAL_REACH_NAV     = 70;    // extra projection tiles at full navigation tech
+
 const MULTIFRONT_PENALTY  = 0.35;  // each enemy beyond the first divides capacity by (1 + this)
 const SIEGE_CAPACITY_MULT = 0.5;   // capital's heartland under assault → budget halved
 const WAR_CAPACITY_MULT   = 0.8;   // capital's countryside merely raided → mild throttle
@@ -1441,11 +1487,175 @@ function capitalTransportCosts(world, c) {
   return { cost: out, cross };
 }
 
+// Recompute the balance-of-power alliance map (slow-drifting → amortised on
+// ALLIANCE_EVERY). Writes three world fields read by the war pass (armies.js):
+//   _allianceTarget : countryId → the hegemon it balances AGAINST (-1 = none)
+//   _allies         : countryId → Set of allied countryIds (won't attack each other)
+//   _blocMight      : hegemonId → total power of the coalition arrayed against it
+// and _countryPow (countryId → national coercive power) for the front-bar scaling.
+function updateAlliances(world) {
+  const countries = world.countries, owner = world._territoryOwner, byId = world._byId;
+  if (!countries || !owner || !byId) return;
+  const { tw, th } = world;
+  // Resolve a tile's SETTLEMENT owner to its COUNTRY — the war pass works on this
+  // granular per-settlement territory map (_territoryOwner), not the sparse cored
+  // _countryOwner (which barely touches between realms, so adjacency on it is empty).
+  const ccAt = (i) => { const o = owner[i]; if (o < 0) return -1; const s = byId.get(o); return s ? s.countryId : -1; };
+  // 1. national power = Σ settlementPower over every settled member of a realm (its whole
+  //    coercive weight, not just the capital — a big multi-city empire is more threatening).
+  const pow = new Map();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || s.countryId < 0) continue;
+    pow.set(s.countryId, (pow.get(s.countryId) || 0) + settlementPower(s));
+  }
+  // 2. adjacency (shared-border length) from the granular territory map.
+  const adj = new Map();   // id → Map(neighbourId → border tiles)
+  const bump = (a, b) => { if (a === b || a < 0 || b < 0) return; let m = adj.get(a); if (!m) adj.set(a, m = new Map()); m.set(b, (m.get(b) || 0) + 1); };
+  for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
+    const c = ccAt(y * tw + x); if (c < 0) continue;
+    const r = ccAt(y * tw + ((x + 1) % tw)); if (r !== c) { bump(c, r); bump(r, c); }
+    if (y + 1 < th) { const d = ccAt((y + 1) * tw + x); if (d !== c) { bump(c, d); bump(d, c); } }
+  }
+  // 3. cross-border trade per country pair (mutual benefit) from the carrying trade.
+  const tradePair = new Map(); const lm = world._linkMoney;
+  if (lm && byId) for (const [key, net] of lm) {
+    const colon = key.indexOf(":"); const Sa = byId.get(+key.slice(0, colon)), Sb = byId.get(+key.slice(colon + 1));
+    if (!Sa || !Sb || Sa.countryId < 0 || Sb.countryId < 0 || Sa.countryId === Sb.countryId) continue;
+    const k = Math.min(Sa.countryId, Sb.countryId) + ":" + Math.max(Sa.countryId, Sb.countryId);
+    tradePair.set(k, (tradePair.get(k) || 0) + Math.abs(net));
+  }
+  const tradeOf = (a, b) => tradePair.get(Math.min(a, b) + ":" + Math.max(a, b)) || 0;
+  // 4. each realm's dominant THREAT — the strongest neighbour that towers over it (but never
+  //    its own overlord/dependency — a colony does not balance against its metropole).
+  const ovT = world._overlordOf;
+  const bonded = (a, b) => ovT && (ovT.get(a) === b || ovT.get(b) === a);
+  const threat = new Map();
+  for (const [id, nb] of adj) {
+    const myPow = pow.get(id) || 1; let bestT = -1, bestR = THREAT_RATIO;
+    for (const n of nb.keys()) { if (bonded(id, n)) continue; const r = (pow.get(n) || 1) / myPow; if (r > bestR) { bestR = r; bestT = n; } }
+    threat.set(id, bestT);
+  }
+  // 5. allies = realms with a COMMON threat (balance against the same hegemon), PLUS
+  //    mutual-benefit partners (heavy trade) — but never your own threat.
+  const allies = new Map(); const ally = (a, b) => { if (a === b) return; let s = allies.get(a); if (!s) allies.set(a, s = new Set()); s.add(b); };
+  for (const [id, nb] of adj) {
+    const t = threat.get(id);
+    for (const n of nb.keys()) {
+      if (n === t || threat.get(n) === id) continue;          // your hegemon is no ally
+      if ((t >= 0 && threat.get(n) === t)                     // common enemy → coalition
+        || tradeOf(id, n) >= ALLY_TRADE_REF) { ally(id, n); ally(n, id); }   // or mutual benefit
+    }
+  }
+  // 5b. Colonial blocs: an overlord and its dependencies stand together and never fight, and
+  //     co-dependencies of the same metropole are bloc-mates too (the empire holds its colonies).
+  const ov = world._overlordOf;
+  if (ov) for (const [dep, over] of ov) {
+    ally(dep, over); ally(over, dep);
+    for (const [dep2, over2] of ov) if (over2 === over && dep2 !== dep) { ally(dep, dep2); }
+  }
+  // 6. coalition strength arrayed against each hegemon = Σ power of everyone balancing against it.
+  const bloc = new Map();
+  for (const [id, t] of threat) if (t >= 0) bloc.set(t, (bloc.get(t) || 0) + (pow.get(id) || 1));
+  world._allianceTarget = threat; world._allies = allies; world._blocMight = bloc; world._countryPow = pow;
+}
+
 export function updatePolities(world) {
   const _pf = world._dbgProfile ? (world.debug.pol = { rebuild: 0, transport: 0, loop: 0, absorb: 0 }) : null;
   let _pt = _pf ? performance.now() : 0;
   const countries = rebuildCountries(world);
   if (_pf) { _pf.rebuild = performance.now() - _pt; _pt = performance.now(); }
+
+  // ── Colonial dependencies: wire new colonies, validate links, grant independence ──
+  {
+    const blocPow = (c) => { let p = 0; for (const m of c.members) if (m.mode === "settled" && m.countryId === c.id) p += settlementPower(m); return p; };
+    // (a) Wire the founding marker (sea.js) → the durable polity link, once.
+    for (const s of world.settlements) {
+      if (s._overlordCC == null) continue;
+      const over = s._overlordCC; s._overlordCC = undefined;       // consume the marker
+      if (s.countryId !== s.id || over < 0 || over === s.id) continue;
+      const pol = getPolity(world, s.id);
+      if (pol && pol._overlord == null && countries.has(over)) {
+        pol._overlord = over;
+        inheritPersonality(world, over, s.id);                     // the colony carries the metropole's temperament
+        snapClaim(world, s.id);                                    // it administers its own ground at once
+        logEvent(world, "colony.founded", { polity: s.id, from: over, fromName: realmName(world, over),
+          seatName: s.name, x: s.pos.x | 0, y: s.pos.y | 0 });
+      }
+    }
+    // (b) Live overlord map + validation: an overlord whose realm has died frees its
+    //     dependencies; a self-referential or orphaned link is dropped.
+    const overlordOf = world._overlordOf = new Map();
+    for (const c of countries.values()) {
+      const pol = getPolity(world, c.id);
+      if (!pol || pol._overlord == null) continue;
+      if (pol._overlord === c.id || !countries.has(pol._overlord)) { pol._overlord = undefined; continue; }
+      overlordOf.set(c.id, pol._overlord);
+    }
+    // (b2) The metropole's naval REACH to each colony — how much force/supply it can project
+    //      across the distance, scaled by its naval-logistics tech. Governs protection, support
+    //      AND the independence line below, so nothing about the link is automatic or perfect.
+    const reachOf = world._overlordReach = new Map();
+    const tw = world.tw;
+    for (const [dep, over] of overlordOf) {
+      const dc = countries.get(dep), oc = countries.get(over);
+      if (!dc || !oc || !dc.capital || !oc.capital) { reachOf.set(dep, 0); continue; }
+      let dx = Math.abs(dc.capital.pos.x - oc.capital.pos.x); if (dx > tw / 2) dx = tw - dx;   // longitude wraps
+      const dy = dc.capital.pos.y - oc.capital.pos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const nav = (oc.capital.knowledge && oc.capital.knowledge.navigation) || 0;
+      const navalReach = NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV;
+      reachOf.set(dep, navalReach / (navalReach + dist));
+    }
+    // (c) INDEPENDENCE — emergent, never timed. A dependency cuts the apron strings once its own
+    //     power exceeds the force the metropole can PROJECT to it (its power × naval reach), not
+    //     the metropole's total: a DISTANT colony, which the navy can barely reach, breaks free at
+    //     far less relative strength than a near one. This is the American/Latin-American arc —
+    //     the metropole loses what it cannot hold across the sea, sooner the farther it is.
+    if (overlordOf.size && world.step % INDEPENDENCE_EVERY === 0) {
+      for (const [dep, over] of [...overlordOf]) {
+        const dc = countries.get(dep), oc = countries.get(over);
+        if (!dc || !oc) continue;
+        const projForce = blocPow(oc) * (reachOf.get(dep) ?? 0);   // what the metropole can actually bring to bear
+        if (blocPow(dc) >= INDEP_POWER_RATIO * projForce) {
+          const pol = getPolity(world, dep); if (pol) pol._overlord = undefined;
+          overlordOf.delete(dep);
+          logEvent(world, "colony.independent", { polity: dep, from: over,
+            fromName: realmName(world, over), name: realmName(world, dep) });
+        }
+      }
+    }
+    // (d) The colonial ECONOMY, both directions. The metropole INVESTS in a young or
+    //     struggling dependency — coin from its treasury, grain from its capital granary —
+    //     so a raw frontier survives (the COLONY_SUPPLY that used to flow inside one country
+    //     now flows ACROSS the overlord link, since a colony is its own realm). A MATURE,
+    //     solvent dependency pays TRIBUTE home — a share of its treasury. The net flow
+    //     reverses as the colony grows: investment out, then wealth extracted back — the arc
+    //     of empire. (Goods flow already happens for free via the cross-border carrying trade.)
+    for (const [dep, over] of overlordOf) {
+      const dpol = getPolity(world, dep), opol = getPolity(world, over);
+      const dc = countries.get(dep), oc = countries.get(over);
+      if (!dpol || !opol || !dc || !oc || !dc.capital || !oc.capital) continue;
+      const proj = reachOf.get(dep) ?? 0;   // how much the metropole can ship across the distance
+      const young = world.step - (dc.capital.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      if (young || (dpol.treasury || 0) < COLONY_SUPPLY_COIN) {
+        // Investment is limited by what the navy can carry — a colony beyond easy reach gets little.
+        const coin = Math.min(COLONY_SUPPLY_COIN * proj, Math.max(0, opol.treasury));
+        if (coin > 0) { opol.treasury -= coin; dpol.treasury += coin; recordIn(dc.capital, IN_AID, coin); recordOut(oc.capital, OUT_AID, coin); }
+        const need = (dc.capital._foodDemand || 0) - (dc.capital.food || 0);
+        const food = Math.min(COLONY_SUPPLY_FOOD * proj, Math.max(0, (oc.capital.food || 0) - 20));
+        if (need > 0 && food > 0) { oc.capital.food -= food; dc.capital.food = (dc.capital.food || 0) + food; }
+      } else {
+        const trib = TRIBUTE_FRAC * Math.max(0, dpol.treasury);
+        if (trib > 0) { dpol.treasury -= trib; opol.treasury += trib; recordOut(dc.capital, OUT_TRIBUTE, trib); recordIn(oc.capital, IN_TRIBUTE, trib); }
+      }
+      // TECH TRANSFER: the metropole sends engineers, books and administrators — but only as fast
+      // as it can REACH the colony, so a colony just within range keeps pace while a remote one
+      // drifts technologically. Pull the colony seat's knowledge toward the overlord seat's
+      // (× reach); it then diffuses onward through the colony's own settlements by the normal channel.
+      const ok = oc.capital.knowledge, dk = dc.capital.knowledge;
+      if (ok && dk) for (const key in ok) { const gap = ok[key] - (dk[key] || 0); if (gap > 0) dk[key] = (dk[key] || 0) + gap * COLONY_TECH_DIFFUSE * proj; }
+    }
+  }
 
   // Assimilation: a people held beyond living memory (HOMELAND_MEMORY) lose their
   // old national identity and become natives of their current ruler — so a LATE
@@ -1475,6 +1685,10 @@ export function updatePolities(world) {
     for (const c of countries.values()) if (c.capital && c.members.length > 1) cps.push(settlementPower(c.capital));
     cps.sort((a, b) => a - b);
     world._refCapPower = cps.length ? cps[cps.length >> 1] : 1; }
+  // Balance of power: recompute the (slow-drifting) alliance map periodically — and
+  // once on first run so the war pass never reads an undefined map. Self-calibrating,
+  // not time-gated: it's a perf cadence (how OFTEN), the content is pure world state.
+  if (!world._allianceTarget || world.step % ALLIANCE_EVERY === 0) updateAlliances(world);
   for (const c of countries.values()) {
     if (c.members.length <= 1) { if (c.members[0]) c.members[0].loyalty = 1; continue; }   // city-state: loyal to itself
 
@@ -1553,7 +1767,16 @@ export function updatePolities(world) {
     // Dominance: a capital far above the era's mean sustains a disproportionately
     // larger realm (the great-power tail), bounded and self-limiting (CAP_DOM_*).
     const relPow = capPower / Math.max(1, world._refCapPower || capPower);
-    const dominance = Math.min(T.CAP_DOM_MAX, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
+    // The ceiling is NOT a fixed, era-blind number — administrative dominance ROSE
+    // with each delegation revolution (satrapies → Roman governors → Han commanderies
+    // → modern bureaucracy), so the MOST a capital can tower over its peers EMERGES
+    // from its institutional development (capCoh), exactly as capacity does (instMul).
+    // A bronze-age hegemon saturates low (Sargon's Akkad was vast but fragile); a
+    // literate-bureaucratic empire towers far higher. This replaces the flat clamp
+    // with an emergent bound — no anachronistic continent-eating chiefdom, and the
+    // late-game ceiling still resolves to T.CAP_DOM_MAX as cohesion matures.
+    const domCeil = CAP_DOM_CEIL_BASE + capCoh * (T.CAP_DOM_MAX - CAP_DOM_CEIL_BASE);
+    const dominance = Math.min(domCeil, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
     c._dominance = dominance;   // info panel: how far this realm out-cores the age
     // GEOGRAPHIC CORE (absolute, founding-location advantage): a capital on a rich
     // river-valley / floodplain heartland projects power further than one on marginal

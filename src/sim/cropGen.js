@@ -45,7 +45,16 @@ function envGate(climate, t, m, e, coast, rm, bDist) {
   let allu = 0;
   if (rm >= 3) allu += 0.45; else if (rm >= 2) allu += 0.22; else if (rm >= 1) allu += 0.08;
   if (coast) allu += 0.15;
-  crop = crop + (1 - crop) * Math.min(0.65, allu);
+  // Cold-gate the alluvial pull: this bonus pulls crop TOWARD 1, so applied raw it
+  // overrode the cold gate entirely — a frozen great-river valley came out at crop≈0.45
+  // and read as prime cropland, settling the Lena/Ob/Yenisei taiga densely (near-empty in
+  // reality). The silt is real but worthless when the ground is frozen and the season too
+  // short. The gate is GENTLER than the crop bell, though: it must spare COOL-temperate
+  // river valleys (the Rhine, Danube, Po, Russian rivers at 0..+10 °C — genuinely prime
+  // farmland), so it only bites BELOW freezing — full at/above 0 °C (t≥0.60), gone by
+  // ~−10 °C (t≈0.50). Warm cradles keep full alluvium; only the boreal north loses it.
+  const coldGate = Math.min(1, Math.max(0, (t - 0.50) / 0.10));
+  crop = crop + (1 - crop) * Math.min(0.65, allu) * coldGate;
   return Math.max(0, Math.min(1, crop));
 }
 

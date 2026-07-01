@@ -77,8 +77,12 @@ export function createWorld(w, opts = {}) {
   // List of floodplain tiles so crystallisation can fill the river valley directly
   // (a thin ribbon is almost never hit by the random tile sweep — the Nile would
   // stay empty otherwise). Built once; the mask is static after worldgen.
+  // FERTILE tiles only: the tFlood mask spans the wetted corridor including barren
+  // hot-desert margins (near-zero fert) — almost half the mask — which the spawn
+  // sweep would then reject for f<MIN_FERT, wasting the oversampling. Restrict it to
+  // the actual green cropland ribbon so every oversampled draw lands on settleable land.
   world._floodTiles = [];
-  for (let i = 0; i < N; i++) if (world.tFlood[i]) world._floodTiles.push(i);
+  for (let i = 0; i < N; i++) if (world.tFlood[i] && (world.fert[i] || 0) >= 0.25) world._floodTiles.push(i);
   initAncestry(world, w, opts);
   initRiverMag(world, w);
   initWind(world, w);
@@ -161,13 +165,22 @@ function initAncestry(world, w, opts) {
   const { tw, th, N } = world;
   const anc = world.ancestry = new Int16Array(N); anc.fill(-1);
   world.ancestryCount = opts.ancestryCount || 0;
+  // Per-lineage HUE (peoples take their deep-ancestry colour so the Peoples map relates to the
+  // Ancestry map) and per-tile RESIDENCE time (0 = long-settled cradle of humanity → 1 = freshly
+  // reached frontier). The resident population a colony admixes with is dense where residence is
+  // long, sparse on a just-peopled frontier — the demographic lever behind blend/replace/bootload.
+  world.ancHue = opts.ancHue || null;
   const src = opts.tAncestry; if (!src) return;
   const stw = opts.terTw || w.width, sth = opts.terTh || w.height;
+  const arr = opts.tArrival || null;
+  const tArr = arr ? (world.tArrival = new Float32Array(N)) : null;
   for (let ty = 0; ty < th; ty++) {
     for (let tx = 0; tx < tw; tx++) {
       const ax = Math.min(stw - 1, ((tx * TILE_RES / w.width) * stw) | 0);
       const ay = Math.min(sth - 1, ((ty * TILE_RES / w.height) * sth) | 0);
-      anc[ty * tw + tx] = src[ay * stw + ax];
+      const si = ay * stw + ax, di = ty * tw + tx;
+      anc[di] = src[si];
+      if (tArr) tArr[di] = arr[si];
     }
   }
 }

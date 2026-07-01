@@ -32,8 +32,9 @@ const SETT_FIELDS = [
   "_homeland", "_homelandFell", "_sovereignSeat", "_integratedAt", "_conqueredAt",
   "_sackedAt", "_siegeAt", "_warAt", "_ambition",
   "_popPeak", "_witherSince", "lastFoundAttempt", "_lastColony", "_lastColonySent",
-  "_coloniesSent", "_isColony",
+  "_coloniesSent", "_isColony", "_overlordCC",
   "_famineUntil", "_harvestMul", "_plagueUntil", "_plagueImmuneUntil", "_plagueActive",
+  "_diseaseLoad", "_contacted", "_virginUntil",   // endemic immunity load + virgin-soil (Columbian) contact state
   "cultureId", "culMix", "faithMix", "langMix", "ancMix", "_isColony", "_isolatedSince", "_ethnoSince", "_driftSince", "_diverged",
   "_specKey", "_specStr",   // agglomeration: the town's locked-in craft specialty + its strength
   "_unfree", "_cashFrac", "_captives",   // coerced labour: unfree workforce, cash-crop land, unsold captives
@@ -150,7 +151,7 @@ export function loadWorld(data) {
   // Tuning first: granularity / cadence levers shape createWorld behavior.
   resetTuning();
   applyTuning(data.tuning);
-  const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tFlood: ter.tFlood, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount });
+  const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tFlood: ter.tFlood, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount, ancHue: ter.ancHue, tArrival: ter.tArrival });
 
   // Drop the freshly-seeded state (cradles + their events); the save replaces it.
   world.settlements.length = 0;

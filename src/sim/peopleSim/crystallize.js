@@ -18,9 +18,9 @@
 // near the cradle baseline.
 
 import { isContinentalLand } from "./state.js";
-import { makeSettlement } from "./settlement.js";
+import { makeSettlement, dominantAnc } from "./settlement.js";
 import { getPolity } from "./entities.js";
-import { dominantCulture, foundCulture, seedCulture, nameFor } from "./cultures.js";
+import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
 import { passRng } from "./rng.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
@@ -34,7 +34,7 @@ const TRANSPORT_REFRESH_TICKS   = 480;    // transport map is a global O(map) fl
                                           // weighting and drifts slowly, so refresh rarely
 const CANDIDATES_PER_SWEEP      = 120;    // wider net per sweep (was 80)
 const FLOOD_SAMPLE_FRAC         = 0.4;    // share of sweep candidates drawn from the arid-river FLOODPLAIN tile list directly — a thin ribbon is almost never hit by the uniform random sweep, so the Nile/Indus valley would stay empty otherwise
-const FLOOD_SPACING_MUL         = 0.5;    // floodplain packs DENSE: a real irrigated river valley was a near-continuous chain of villages, so halve the spacing floor there (the one place we want tighter-than-default packing)
+const FLOOD_SPACING_MUL         = 0.75;   // floodplain packs somewhat denser than ordinary land (a watered valley held more villages) — but only ×0.75, NOT the ×0.5 first tried: combined with the base-floor exemption below, ×0.5 gave a ~2-tile chain that over-packed the rivers (≈55% of ALL settlements crowded onto the ~1% floodplain — a stiff bead-string look). ×0.75 (≈3-tile spacing) keeps the valley a modest chain, not a lone cradle, while pulling the floodplain share back to ~45%.
 
 // Permissive fertility gates. Earth had hamlets in desert, tundra,
 // steppe, jungle — they just stayed small because the land couldn't
@@ -176,13 +176,16 @@ const COLONY_CHANCE           = 0.5;   // probability a pressed, eligible parent
 const COLONY_COOLDOWN         = 1500;  // ticks the parent waits between settler parties (recovery)
 const COLONY_HEADROOM         = 0.85;  // realm may only colonise while admin load is below this fraction of capacity
 const COLONY_MIN_SOLVENCY     = 0.80;  // ...and only while it can still (mostly) pay its army
-// Colonisation, like crystallisation (CRYSTAL_SATURATION_REF), slows as the
-// world fills: the per-parent send chance is scaled by 1/(1+alive/REF). Without
-// this, colonisation (undamped, and now the dominant settlement source) keeps
-// packing towns into already-claimed land forever — ever more provinces → ever
-// more over-extension secession → the steadily-climbing nation count and the
-// late-game splotchy churn. With it, settlement density plateaus.
-const COLONY_SATURATION_REF   = 1500;  // density guard — much higher so colonisation keeps filling the frontier (denser map), not plateauing at a few hundred
+// Colonisation slows as the FRONTIER AROUND A TOWN fills — a LOCAL density guard, not
+// a global one. A town on the edge of an empty continent has few neighbours and colonises
+// freely (its settler parties roll inland — how Russia took Siberia, the US the plains);
+// a town in a packed heartland is throttled (no infill churn). The old global guard
+// (1/(1+(total alive/REF)²)) wrongly froze NEW-WORLD frontiers the moment the OLD WORLD
+// filled — colonies stalled at their landing point because the planet's total count, not
+// the empty land next to them, set the brake. Local density is also the more emergent
+// gate: settlement spreads where there is room, regardless of how full elsewhere is.
+const FRONTIER_RADIUS         = 28;    // tiles around a parent that count as its "local" neighbourhood (~one colony hop)
+const COLONY_LOCAL_SAT_REF    = 8;     // local neighbours within FRONTIER_RADIUS at which the send-chance halves
 
 // Resource attraction. Each resource has a per-tier value (how
 // valuable it is to a civilisation at that tech level) and a
@@ -337,8 +340,16 @@ export function maybeCrystallize(world) {
     // so marginal land (rainforest, steppe, outback) ends up a sparse scatter
     // while fertile valleys pack tight.
     const capSp = capacitySpacingMul(f, hostilityAt(world, ty * world.tw + tx));
-    const floodSp = (world.tFlood && world.tFlood[ti]) ? FLOOD_SPACING_MUL : 1;   // dense chain down the river valley
-    const hf = hardFloor * capSp * floodSp, sd = softDist * capSp * floodSp;
+    const onFlood = !!(world.tFlood && world.tFlood[ti]);
+    // The irrigated floodplain was a near-continuous chain of villages — denser than
+    // the farming-region abstraction assumes — so its spacing comes off the BASE floor,
+    // NOT the DISSOLVE/LOCALITY-doubled one (spMul), then FLOOD_SPACING_MUL packs it
+    // tighter still. Without the exemption spMul exactly cancels the dense-pack intent,
+    // leaving the floodplain at ordinary density (the Nile/Indus stayed a lone cradle).
+    const floodSp = onFlood ? FLOOD_SPACING_MUL : 1;
+    const baseFloor = onFlood ? HARD_FLOOR : hardFloor;
+    const baseSoft  = onFlood ? SOFT_DIST  : softDist;
+    const hf = baseFloor * capSp * floodSp, sd = baseSoft * capSp * floodSp;
     if (nearestSq < hf * hf) continue;             // hard reject — overlap
     // Linear ramp between hf and sd on actual distance (not squared, so it
     // grows steeply near the floor and flattens out near the soft boundary —
@@ -460,9 +471,22 @@ export function maybeCrystallize(world) {
         tier: T.DISSOLVE_FARMS ? 1 : 0,   // DISSOLVE: there are no farming regions — new settlements are towns
       });
       gridAdd(world, born);   // same-pass candidates must see (and space off) it
+      // Whose PEOPLE is this? Anchored to the DEEP ANCESTRY of the ground, not to whoever
+      // colonised nearby first. If the local stock differs from the donor people's stock, the
+      // settlement crystallised among a DIFFERENT people — it roots in that local ancestry (its
+      // own family/tongue/gods), so the cradle peoples don't flood the world; only their
+      // CIVILISATION diffuses across (the bootload). Same stock → the donor people genuinely
+      // extends onto its own ground.
+      const localAnc = world.ancestry ? world.ancestry[ti] : -1;
+      const foreignSoil = connected && localAnc >= 0 && donor && localAnc !== dominantAnc(donor);
       if (!connected) {
         const cul = foundCulture(world, { origin: born });          // independent root: own family, language, gods
         seedCulture(world, born, cul.id);
+        born.name = nameFor(world, cul, "settlement");
+      } else if (foreignSoil) {
+        const cul = ancestryCulture(world, localAnc, born);         // the LOCAL people of this stock
+        seedCulture(world, born, cul.id);
+        born.cultureId = cul.id;
         born.name = nameFor(world, cul, "settlement");
       } else if (isBranch) {
         // proximity → derivation: a near offshoot speaks a dialect of its
@@ -693,9 +717,6 @@ function defensibilityFor(world, ti, tx, ty) {
 function maybeSendSettlers(world, alive, devFactor = 1) {
   if (!world.transportDist) return;
   const rng = passRng(world, "settlers");
-  // Saturation: colonies get rarer as the map fills, so settlement density
-  // plateaus instead of climbing forever (see COLONY_SATURATION_REF).
-  const colonySat = 1 / (1 + (alive / COLONY_SATURATION_REF) ** 2);
   for (const parent of world.settlements) {
     if (parent.mode !== "settled") continue;
     if (parent.people < COLONY_MIN_POP) continue;
@@ -714,8 +735,18 @@ function maybeSendSettlers(world, alive, devFactor = 1) {
     if (gov && (gov._solvency ?? 1) < COLONY_MIN_SOLVENCY) continue;
     // Pressed: at or near carrying capacity (either food or housing) — the
     // people would otherwise sit at the ceiling. updatePopulation set s._k.
+    // Pressed: at or near carrying capacity (either food or housing) — the
+    // people would otherwise sit at the ceiling. updatePopulation set s._k.
     const k = parent._k || 1;
     if (parent.people / k < COLONY_PRESS_FRAC) continue;
+    // LOCAL saturation: count settled neighbours within a frontier radius (discounting the
+    // parent itself). A frontier town with empty land around it colonises at near-full
+    // chance; a town hemmed in by a dense cluster is throttled — settlement spreads into
+    // room wherever it is, instead of stalling GLOBALLY once the cradles fill (the old
+    // total-count guard wrongly froze a New-World frontier the moment the Old World filled).
+    let localN = -1;
+    forEachNear(world, parent.pos.x, parent.pos.y, FRONTIER_RADIUS, () => { localN++; });
+    const colonySat = 1 / (1 + (Math.max(0, localN) / COLONY_LOCAL_SAT_REF) ** 2);
     if (rng() >= COLONY_CHANCE * colonySat * devFactor) continue;
     sendSettlers(world, parent);
   }

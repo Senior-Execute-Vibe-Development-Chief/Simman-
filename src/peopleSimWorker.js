@@ -114,7 +114,7 @@ self.onmessage = (e) => {
   if (m.type === "init") {
     try {
       genMeta = m.genMeta || {};
-      world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh, ancestryCount: m.ancestryCount });
+      world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh, ancestryCount: m.ancestryCount, ancHue: m.ancHue, tArrival: m.tArrival });
       world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
       // Re-init resets the per-run snapshot/selection state. playing/speed/view
       // are NOT reset (the main thread re-sends its current values right after
@@ -281,7 +281,7 @@ function packSelected(s) {
     id: s.id,
     knowledge: s.knowledge, localRes: s.localRes,
     _minedRate: s._minedRate, _terrTiles: s._terrTiles, _terrFertSum: s._terrFertSum,
-    waterAccess: s.waterAccess, _fishYield: s._fishYield,
+    waterAccess: s.waterAccess, _fishYield: s._fishYield, _pastoral: s._pastoral,
     _foodSupply: s._foodSupply, _foodDemand: s._foodDemand, _urbanFactor: s._urbanFactor,
     food: s.food, _foodImportRate: s._foodImportRate, _civFoodDemand: s._civFoodDemand,
     _luxSupply: s._luxSupply, _luxDemand: s._luxDemand,
@@ -321,6 +321,7 @@ function buildSnapshot() {
       const dyn = ruler ? getDynasty(world, ruler.dynastyId) : null;
       countries.push({
         id: c.id, capitalId: c.capitalId, name: realmName(world, c.id),
+        _overlord: pol && pol._overlord != null ? pol._overlord : -1,   // colonial dependency → its metropole's countryId (-1 = sovereign)
         ruler: ruler && ruler.died < 0 ? { name: ruler.name, female: !!ruler.female, age: Math.round(ageOf(world, ruler)), house: dyn ? dyn.name : null, title: ruler._title || null, gov: pol ? pol.gov || "monarchy" : "monarchy", trait: traitLabel(ruler.traits) } : null,
         faithId: pol ? pol.faithId : -1,
         memberIds: c.members.map(m => m.id),
@@ -438,10 +439,26 @@ function buildSnapshot() {
     tileComp = new Int32Array(N);
     for (let i = 0; i < N; i++) tileComp[i] = seen[i] === stamp ? tc[i] : -1;
   }
-  // National border claim — computed in the sim each territory pass
-  // (world._countryClaim); ship it with the static group like owner[]. The
-  // renderer draws country borders/tints from this (smoother than owner[]).
-  const countryClaim = sendStatic && world._countryClaim ? world._countryClaim.slice() : null;
+  // National border claim — computed in the sim each territory pass (world._countryClaim);
+  // shipped with the static group like owner[]. THE CATCHMENT IS TERRITORY: start from the
+  // crawled political border (which projects into the wilderness between settlements), then
+  // overlay every tile a settlement actually WORKS (world._territoryOwner) with that
+  // settlement's country. So a realm always colours the land its settlements farm — a
+  // settlement is never a bare dot on the map while its nascent capital's projected claim
+  // is still ~0. Render-only (a per-tick slice; nothing in the sim reads this).
+  let countryClaim = null;
+  if (sendStatic && world._countryClaim) {
+    countryClaim = world._countryClaim.slice();
+    const towner = world._territoryOwner, byId = world._byId;
+    if (towner && byId) {
+      for (let i = 0; i < countryClaim.length; i++) {
+        const sid = towner[i];
+        if (sid < 0) continue;
+        const s = byId.get(sid);
+        if (s && s.mode === "settled" && s.countryId >= 0) countryClaim[i] = s.countryId;
+      }
+    }
+  }
 
   const transfer = [];
   if (owner) transfer.push(owner.buffer);
@@ -487,7 +504,7 @@ function buildSnapshot() {
     languages: sendStatic && world.languages ? (() => {
       const ownerByLang = new Map();
       if (world.cultures) for (const c of world.cultures.values()) if (c.languageId >= 0 && !ownerByLang.has(c.languageId)) ownerByLang.set(c.languageId, c.name);
-      return [...world.languages.values()].map(l => ({ id: l.id, root: l.rootId ?? l.id, name: ownerByLang.get(l.id) || null }));
+      return [...world.languages.values()].map(l => ({ id: l.id, root: l.rootId ?? l.id, hue: l.hue, name: ownerByLang.get(l.id) || null }));
     })() : null,
     ships: world.ships ? world.ships.map(sh => ({ x: sh.x, y: sh.y, landTi: sh.landTi, countryId: sh.countryId })) : null,
     selected,

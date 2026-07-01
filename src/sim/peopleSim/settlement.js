@@ -163,7 +163,11 @@ const LUX_SPEND_FRAC  = 0.015;  // fraction of SPARE wealth a settlement spends 
 // substrate a settlement's population descends from. Seeded from the worldgen
 // field; admixed only by MIGRATION (founding), never by conquest/culture, so it
 // is the slow bedrock the peoples/languages drift away from.
-const ANC_ADMIX = 0.6;   // a colony's ancestry = this much founders' stock + the rest the local substrate it absorbs
+// How much of the LOCAL stock a new settlement absorbs, by residence density (tArrival):
+const ANC_LOCAL_FRONTIER = 0.22;  // on a just-peopled frontier (sparse residents) the founders dominate → replacement-leaning
+const ANC_LOCAL_SETTLED  = 0.85;  // on ancient, densely-settled land the incomers are absorbed → the place keeps its stock (bootload)
+const SETTLER_BARRIER    = 0.85;  // strength of the "white man's grave": how far an endemic-disease gap the incomers
+                                  // have no immunity to pushes the stock back toward the adapted locals (0 = none, 1 = total)
 export function dominantAnc(s) { return s.ancMix && s.ancMix.length ? s.ancMix[0][0] : -1; }
 function normAnc(pairs) {
   let t = 0; for (const e of pairs) t += e[1]; if (t <= 0) return [];
@@ -180,12 +184,34 @@ function blendAnc(a, wA, b, wB) {
 }
 function seedAncestry(world, s, opts) {
   const anc = world.ancestry;
-  const localId = anc ? anc[(s.pos.y | 0) * world.tw + (s.pos.x | 0)] : -1;
+  const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
+  const localId = anc ? anc[ti] : -1;
   const local = localId >= 0 ? [[localId, 1]] : [];
   const par = opts.parentId != null && opts.parentId >= 0 ? findSettlementById(world, opts.parentId) : null;
-  // A colony carries its FOUNDER's stock, admixed with the substrate it settles
-  // on; for a near spread the founder's stock ≈ the local one, so nothing shifts.
-  s.ancMix = (par && par.ancMix && par.ancMix.length) ? blendAnc(par.ancMix, ANC_ADMIX, local, 1 - ANC_ADMIX) : local;
+  if (!(par && par.ancMix && par.ancMix.length)) { s.ancMix = local; return; }
+  // DEMOGRAPHIC admixture — the share of LOCAL stock the settlement takes scales with how densely
+  // the destination is ALREADY peopled, read from residence time (tArrival: 0 = the ancient, deeply
+  // settled cradle of humanity → 1 = a frontier the wavefront only just reached). Long-settled land
+  // has a large resident population that ABSORBS the incomers (high local share → BOOTLOAD: Africa
+  // keeps its stock while adopting Old-World crops/iron); a thinly-peopled frontier is dominated by
+  // the FOUNDERS (low local share → REPLACEMENT-leaning: the settler Americas/Australia). Comparable
+  // weights → a real BLEND. The mode thus emerges from geography, never a per-region tag.
+  const arr = world.tArrival ? Math.max(0, Math.min(1, world.tArrival[ti])) : 0.5;
+  let localShare = localId >= 0 ? ANC_LOCAL_FRONTIER + (ANC_LOCAL_SETTLED - ANC_LOCAL_FRONTIER) * (1 - arr) : 0;
+  // SETTLER DISEASE BARRIER — "the white man's grave". The incomers carry immunity matched to their
+  // HOME pathogen burden; dropped into a land whose endemic tropical disease (malaria, yellow fever,
+  // sleeping sickness — habitability.js malariaSignal) far exceeds it, they die before they can
+  // establish a dense settler society, so the long-adapted LOCAL stock keeps the land even on a
+  // frontier (the Congo, the Amazon, New Guinea stay indigenous). A founder from an EQUALLY tropical
+  // home (a Bantu farmer expanding through the forest) carries that immunity → no barrier → they
+  // settle and admix freely. It is the disease-burden GAP, never a per-region tag, that does the work
+  // — and it is asymmetric (it bars the outsider, not the adapted local), which is the whole point.
+  if (localShare > 0 && world.temp && world.moist) {
+    const pti = (par.pos.y | 0) * world.tw + (par.pos.x | 0);
+    const barrier = Math.max(0, malariaSignal(world.temp[ti], world.moist[ti]) - malariaSignal(world.temp[pti], world.moist[pti]));
+    localShare = localShare + (1 - localShare) * barrier * SETTLER_BARRIER;
+  }
+  s.ancMix = localShare > 0 ? blendAnc(par.ancMix, 1 - localShare, local, localShare) : par.ancMix.slice();
 }
 
 export function makeSettlement(world, x, y, opts = {}) {
@@ -633,6 +659,8 @@ function cashSuit(s) {
   return Math.min(1.5, sugar + 0.5 * cotton);
 }
 const CASHCROP_LAND   = 0.85;   // fraction of arable a fully-cash-cropped settlement pulls OFF food
+const ALLUVIUM_COAST  = 0.5;    // coastal lowland gets this share of a river floodplain's silt-fertility lift (delta/plain/polder farming)
+const FISH_LAND_REF   = 8.0;    // land-food-per-tile above which farming is rich enough that fish stops mattering (the cradles sit well above)
 const SLAVE_MINE_PULL = 0.6;    // mining's coerced-labour demand weight
 
 // Evolve a settlement's coerced-labour stock, its cash-crop land allocation, and its
@@ -1224,7 +1252,15 @@ function computeRuggedness(world, x, y) {
 function livestockClimate(temp, moist) {
   const dryOK  = Math.min(1, Math.max(0, (moist - 0.10) / 0.18));   // not bare desert
   const wetOK  = Math.min(1, Math.max(0, (0.82 - moist) / 0.28));   // not rainforest / swamp
-  const warmOK = Math.min(1, Math.max(0, (temp - 0.26) / 0.16));    // not frozen
+  // Grazing needs a real growing/warm season: cattle, horses and oxen are a COOL-
+  // TEMPERATE steppe thing (annual mean ~0 °C and up — Mongolia, the Kazakh and
+  // Pontic steppe), not a taiga/tundra one. The old cutoff saturated to full support
+  // at −18 °C and only died at −34 °C, which fed dense herding (and, via livestockBonus,
+  // farm yield) deep into −12 °C Siberia — settling cold land that was near-empty in
+  // reality. Pull the band up: full at/above 0 °C (t≥0.60), fading to nothing by ~−15 °C
+  // (t≈0.45), so the steppe belt keeps its herds but the boreal north does not.
+  const warmOK = Math.min(1, Math.max(0, (temp - 0.45) / 0.15));    // not frozen
+
   // TSETSE BELT: subtract the warm sub-humid woodland-savanna where the fly killed
   // cattle, horses and oxen — the model used to hand this belt a livestock BONUS
   // (warm + moderate moisture scored high above), which is exactly the African
@@ -1863,26 +1899,76 @@ function updateFood(world, s) {
     irrigation = 1 + T.IRRIG_BOOST * arid * river * farmTech;
   }
   s._irrigation = irrigation;
+  // ALLUVIAL FLOODPLAIN — a river's annual flood lays down fresh silt, making the valley floor rich
+  // cropland regardless of rainfall. This is the flood-farming GRAIN that actually fed the first
+  // civilisations — the Nile's black land, the Mesopotamian/Indus/Yellow-River/Yangtze floodplains,
+  // the wet-rice river deltas of monsoon Asia. Where IRRIGATION above models only the ARID valley's
+  // water-concentration edge, this models the silt fertility EVERY floodplain gets, wet or dry, so a
+  // river CRADLE feeds its dense population from its own LAND (the granary, not the fishery). Coastal
+  // lowland — deltas, plains, reclaimed polder — shares a fraction of the lift. The river valley is the
+  // densely-settled breadbasket; the political union of those settlements IS the valley state.
+  let alluvium = 1;
+  if (T.ALLUVIUM > 0) {
+    const river = s._riverAcc || 0;                                                        // river floodplain — full silt fertility
+    const coast = Math.max(0, (s.waterAccess || 0) - river);                               // coastal lowland: delta, plain, reclaimed marsh
+    const lowland = river + ALLUVIUM_COAST * coast;
+    const farmTech = Math.min(1, ((s.knowledge && s.knowledge.agriculture) || 0) / 0.5);   // worked by a farming people
+    alluvium = 1 + T.ALLUVIUM * lowland * farmTech;
+  }
+  s._alluvium = alluvium;
   // CASH CROPS displace food: arable turned over to sugar/cotton/tobacco grows no grain,
   // so a plantation settlement must IMPORT food (the new dynamic — see updateCoercedLabour).
   const cashLand = T.SLAVERY ? (s._cashFrac || 0) * CASHCROP_LAND : 0;
-  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * aridBurden * soilBurden * workable * irrigation * (1 - cashLand);
+  const landFood0 = netFert * T.FARM_YIELD_PER_FERT * fy * agg * armyLabor * (s._eraProd || 1) * livestockBonus * diseaseBurden * aridBurden * soilBurden * workable * irrigation * alluvium * (1 - cashLand);
   // Famine (shocks.js): a regional bad-harvest window slashes the land yield.
-  const landFood = world.step < (s._famineUntil || 0)
+  const landFarm = world.step < (s._famineUntil || 0)
     ? landFood0 * (s._harvestMul || 1) : landFood0;
+  // ── Pastoral calories: the herd itself as FOOD (dairy, meat, blood) ──────
+  // Distinct from livestockBonus (oxen/manure LIFTING a farmed field): on open
+  // pasture too dry, too marginal or too disease-bound for dense cereal farming —
+  // the Eurasian steppe, the Sahel, the East-African cattle belt — people lived
+  // OFF the herd directly. A land-food source that does NOT need fertile cropland,
+  // so it feeds exactly the grassland the farm term leaves empty, scaled by the same
+  // herding suitability + domesticate-availability + tsetse gate already in
+  // s._livestock, the grazed territory, and development. LOW density (a steppe feeds
+  // far fewer per tile than a wheat field), so it never breeds a farming-grade
+  // primate; and it survives famine (herds are the classic crop-failure hedge), so
+  // it's added AFTER the harvest cut as a stable floor.
+  const agriK = (s.knowledge && s.knowledge.agriculture) || 0;
+  const grazeTiles = s._terrWorkTiles ?? s._terrTiles ?? 0;
+  const pastoral = T.LIVESTOCK_FOOD > 0
+    ? T.LIVESTOCK_FOOD * (s._livestock || 0) * grazeTiles * (s._eraProd || 1) * armyLabor * (0.3 + 0.7 * agriK)
+    : 0;
+  s._pastoral = pastoral;
+  const landFood = landFarm + pastoral;
 
-  // Fish: coastal/river settlements draw food from the water, scaled by
-  // water access (the site: minor river → great-river port) and by
-  // navigation (shore-gathering → deep-sea fleets). A fixed local-fishery
-  // flow, not pop-scaled, so it sets how many people the water alone can
-  // feed; a maritime city beyond that still imports. This is what lets a
-  // coastal city — which the housing cap already lets grow large — feed
-  // itself from the sea instead of relying entirely on shipped-in grain.
-  const wa = s.waterAccess || 0;
-  // ×_eraProd as for land food: scaling the water harvest too keeps a coastal /
-  // forager settlement's capacity responsive to the global productivity index,
-  // so the demographic anchor has no dead-zone to wind up against.
-  const fish = wa > 0 ? T.FISH_RATE * wa * techEff(s).fishFactor * (s._eraProd || 1) : 0;
+  // FISH — a LOCAL marine supplement, never a staple. History is emphatic: the great agrarian
+  // empires (Egypt, Mesopotamia, China, Rome) ran on GRAIN; fish was caloric noise to them. But fish
+  // WAS the foundation of a distinct class of societies — the cold-temperate fishing coasts where the
+  // sea teemed and the land farmed poorly: Norway's cod, the North-Sea/Baltic herring, the Pacific-
+  // Northwest salmon peoples (complex, sedentary, monument-building, NO agriculture), the Humboldt-
+  // anchovy coast that may have underwritten Caral, the oldest American civilisation. So fish here
+  // emerges exactly where it mattered and nowhere else: it scales UP where the SEA is rich and the
+  // LAND is poor, and falls to ~0 in the fertile river cradles and the nutrient-poor tropics.
+  const sea = Math.max(0, (s.waterAccess || 0) - (s._riverAcc || 0));   // SEA (coast) access — rivers are GRAIN-fed (alluvium), not fished
+  let fish = 0;
+  if (T.FISH_RATE > 0 && sea > 0.02) {
+    climateOf(world, s);
+    const t = s._climTemp ?? 0.7;
+    // Marine productivity: the world's great fisheries are COLD-temperate/subpolar (cold, nutrient-
+    // churned water teems); warm tropical seas are clear and barren; permanent ice locks the surface.
+    // So the catch peaks in the cool, ice-free band (~0–15°C) and tails off either side.
+    const iceCut  = Math.max(0, Math.min(1, (0.60 - t) / 0.10));         // sub-freezing → ice-locked, short season
+    const tropCut = Math.max(0, Math.min(1, (t - 0.80) / 0.15));         // warm tropical sea → nutrient-poor
+    const seaRich = (1 - T.COLD_FISH * iceCut) * (1 - 0.7 * tropCut);
+    // LAND-POOR gate: fish only supplements where the farmed LAND can't carry the people. landFood
+    // per workable tile measures how rich the local farming is — high in a cradle, low on a marginal
+    // coast — so a fertile valley draws ~no fish while a cold/barren shore leans on the sea.
+    const tiles = s._terrWorkTiles ?? s._terrTiles ?? 1;
+    const landPerTile = landFood / Math.max(1, tiles);
+    const poor = Math.max(0, Math.min(1, 1 - landPerTile / FISH_LAND_REF));
+    fish = T.FISH_RATE * sea * seaRich * poor;
+  }
   s._fishYield = fish;
 
   // Land food is STORABLE — it fills granaries and ships across the world

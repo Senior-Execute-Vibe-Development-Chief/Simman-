@@ -34,8 +34,9 @@ import { claimHostility } from "./habitability.js";
 // stay compact (the early map fragments into small city-states with wilderness
 // between) and high-org empires reach far (consolidation with the era). Beyond
 // it, land is wilderness — which is where stateless frontier hamlets live.
-const COUNTRY_REACH_BASE = 4;   // small base so ORGANISATION dominates reach — a weak chiefdom holds a tiny core, an empire projects far (was 8: even org→0 states sprawled)
-const COUNTRY_REACH_ORG  = 14;   // reach per organisation tech (was 20 — empires were continental too early)
+const _envNum = (k, d) => (typeof process !== "undefined" && process.env && +process.env[k]) || d;
+const COUNTRY_REACH_BASE = _envNum("SIM_REACH_BASE", 4);   // small base so ORGANISATION dominates reach — a weak chiefdom holds a tiny core, an empire projects far (was 8: even org→0 states sprawled)
+const COUNTRY_REACH_ORG  = _envNum("SIM_REACH_ORG", 14);   // reach per organisation tech (was 20 — empires were continental too early; a 14→26 trial over-inflated empires at APP resolution and was reverted — empire size is resolution-sensitive via the size-gate, so it must be calibrated at the shipped width, not the 240-wide gate)
 // ── Frontier-fill: claiming the harsh interior as engineering matures ──
 // For most of history great regions were politically EMPTY — no state claimed
 // the deep Sahara, the high Himalaya, the Amazon, interior Africa. They filled

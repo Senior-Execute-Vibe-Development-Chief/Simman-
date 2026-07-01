@@ -22,6 +22,55 @@ export const RIVER_GREAT = 4;      // Amazon, Nile, Congo scale
 
 export const RIVER_NAMES = ['', 'Stream', 'Tributary', 'Major River', 'Great River'];
 
+// Endorheic evaporation coefficient (Step 3b): per filled-basin tile, the share of a
+// reference river's flow that the open-water brim would evaporate, scaled by basin heat
+// and dryness. Higher ⇒ more interiors stay terminal (no sea outlet). Calibrated so the
+// arid closed interiors (Central Asia, the Caspian/Aral/Tarim, the Great Basin) seal
+// while cold/wet basins still overflow to the sea.
+const ENDO_EVAP = 2.0;
+
+// Transmission loss (Step 3): the share of through-flow a river loses PER TILE to
+// evaporation and bed seepage as it crosses ARID, warm land — so a channel fed by
+// far-off snowmelt dwindles instead of staying a great river across a whole desert.
+// Gated TWO ways: (1) only on flow bound for a TERMINAL sink — a closed basin or an
+// INLAND sea (the Caspian) — so every river that reaches the world ocean is untouched,
+// the arid cradle rivers included (the Nile, Tigris-Euphrates and Indus cross desert but
+// drain to the sea); and (2) scaled by local dryness+warmth, so humid stretches barely
+// register. This is the targeted form of a per-tile loss that was once applied globally
+// and reverted for thinning EVERY river; confining it to terminal drainage is what makes
+// it safe. Compounds along the path, so the long desert run of the spurious Caspian /
+// Aral / Tarim channels attenuates strongly.
+const TRANS_LOSS = 0.30;
+
+// River classification (Step 4) is by ABSOLUTE drainage AREA (km²), not percentile rank.
+// A percentile cut ("top 5% of land tiles") was wrong two ways: (1) it was RESOLUTION-
+// DEPENDENT — the same catchment sat at a different percentile at 320 vs 960 tiles wide, so
+// the river network re-shuffled with grid size; and (2) it UNDID the transmission loss — a
+// spurious channel dwindling across the desert toward a closed sink (the Himalaya→Caspian
+// corridor) still ranked "top 5%" against the near-empty arid interior and was redrawn. An
+// absolute catchment bar is resolution-invariant (a river of a given km² draws the same at
+// any grid) and honours the loss (a corridor whose flow the desert has eaten falls below the
+// bar and vanishes). Tuned so the global river DENSITY matches the old percentile output at
+// the shipped width — only the spurious terminal corridors drop out. Each tile's drainage is
+// runoff-weighted (a wet catchment makes a bigger river than a dry one of equal area), so the
+// bar is expressed in km² and converted to flow-accumulation units via the mean land runoff.
+const CATCH_STREAM = 10e3;    // km² of drainage to read as a Stream — small, so the network BRANCHES densely (tributaries, headwaters) like the percentile model did, just resolution-invariantly
+const CATCH_TRIB   = 60e3;    // Tributary
+const CATCH_MAJOR  = 800e3;   // Major (Danube/Ganges scale) — unchanged: the corridor suppression lives here + TERMINAL_STRICT
+const CATCH_GREAT  = 2.4e6;   // Great (Nile/Congo/Amazon scale)
+const TERMINAL_STRICT = 2.5;  // closed-basin rivers need this × the catchment to show — only a genuinely large endorheic river (the Volga→Caspian) qualifies, not a transmission-lossed desert corridor
+const EARTH_KM2    = 5.10e8;   // global surface area — sets km² per tile from the grid size (resolution-invariance)
+
+// Mountain snowmelt volume (Step 3): converts the snow/glacier fraction × relief into
+// headwater runoff. Calibrated so the Himalaya/Pamir keep their old ~0.5 melt while the
+// cold mid-latitude massifs that the old elevation-only term missed (the Anatolian–Zagros
+// highlands behind Mesopotamia, the Rockies, the Alps) finally shed water downstream.
+const SNOWMELT_K = 3.0;
+// Continental winter cooling: the WINTER mean runs this far (×0.38 = ~38°C at the pole, in
+// the t-scale where 0.01 = 1°C) below the ANNUAL mean, scaled by latitude — the seasonal
+// half-amplitude that makes a cold-winter mountain bank a snowpack the annual mean hides.
+const SNOWMELT_WINTER = 0.38;
+
 export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   const N = tw * th;
 
@@ -95,6 +144,55 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
       }
       heapPush(ni);
     }
+  }
+
+  // ── Step 1c: Inland seas — ocean connectivity from the map border ──
+  // Some below-sea-level water is NOT joined to the world ocean: the Caspian, and the
+  // Black Sea behind a Bosphorus too narrow to resolve. A river reaching such an INLAND
+  // sea is endorheic — it should dwindle crossing the desert to get there, exactly like
+  // one ending in a terminal lake — whereas a river reaching the TRUE ocean (the Nile to
+  // the Mediterranean, the Tigris to the Persian Gulf) keeps its water. Flood-fill the
+  // ocean from the edges; any sub-sea tile not reached is an inland sea.
+  const trueOcean = new Uint8Array(N);
+  {
+    // ── Phase 1: the OPEN ocean — sub-sea water connected to the map edge by water alone.
+    //    (Includes any sea joined by a strait wide enough to resolve as water: the Bosphorus.)
+    const flood = (seed) => {
+      const q = seed.slice(); let h = 0;
+      while (h < q.length) {
+        const ti = q[h++], tx = ti % tw, ty = (ti - tx) / tw;
+        for (let d = 0; d < 8; d++) {
+          const ny = ty + D8_DY[d]; if (ny < 0 || ny >= th) continue;
+          const ni = ny * tw + ((tx + D8_DX[d] + tw) % tw);
+          if (tElev[ni] <= 0 && !trueOcean[ni]) { trueOcean[ni] = 1; q.push(ni); }
+        }
+      }
+    };
+    const edge = [];
+    for (let x = 0; x < tw; x++) for (const y of [0, th - 1]) {
+      const i = y * tw + x; if (tElev[i] <= 0 && !trueOcean[i]) { trueOcean[i] = 1; edge.push(i); }
+    }
+    const oceanCore = [...edge]; flood(oceanCore);
+    for (let i = 0; i < N; i++) if (trueOcean[i]) oceanCore.push(i);   // every open-ocean tile may originate a bridge
+    // ── Phase 2: bridge 1-tile straits OUT of the open ocean, exactly ONCE. A sub-sea basin
+    //    cut off by a SINGLE land tile (the Strait of Hormuz, pinched shut by the grid) is part
+    //    of the ocean — flood it. But a bridged basin does NOT itself originate further bridges,
+    //    so a genuinely CLOSED sea reachable only by a CHAIN of 1-tile gaps across a dry low
+    //    corridor (the Caspian via the Kuma-Manych depression) stays terminal. This is what
+    //    stops the bridge from quietly opening the Caspian to the sea at fine resolutions —
+    //    which removed the closed-basin suppression and let the Himalaya→Caspian corridor return.
+    const bridged = [];
+    for (const ti of oceanCore) {
+      const tx = ti % tw, ty = (ti - tx) / tw;
+      for (let d = 0; d < 8; d++) {
+        const my = ty + D8_DY[d]; if (my < 0 || my >= th) continue;
+        const mi = my * tw + ((tx + D8_DX[d] + tw) % tw); if (tElev[mi] <= 0) continue;   // step ON a land tile
+        const fy = ty + 2 * D8_DY[d]; if (fy < 0 || fy >= th) continue;
+        const fi = fy * tw + ((tx + 2 * D8_DX[d] + tw) % tw);
+        if (tElev[fi] <= 0 && !trueOcean[fi]) { trueOcean[fi] = 1; bridged.push(fi); }
+      }
+    }
+    flood(bridged);   // fill each bridged basin (contiguous water), but these never bridge again
   }
 
   // ── Step 1b: Detect candidate lake depressions ──
@@ -173,19 +271,8 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
   }
 
   // ── Step 3: Flow accumulation (topological sort) ──
-  const inDegree = new Uint16Array(N);
-  for (let ti = 0; ti < N; ti++) {
-    const d = flowDir[ti];
-    if (d === 255) continue;
-    const tx = ti % tw, ty = (ti - tx) / tw;
-    const nx = (tx + D8_DX[d] + tw) % tw;
-    const ny = ty + D8_DY[d];
-    if (ny < 0 || ny >= th) continue;
-    inDegree[ny * tw + nx]++;
-  }
-
   // Each land tile contributes runoff = moisture minus evaporation, PLUS mountain melt.
-  const flowAccum = new Float32Array(N);
+  const runoff = new Float32Array(N);
   for (let ti = 0; ti < N; ti++) {
     if (tElev[ti] > 0 && tTemp[ti] >= 0.12) {
       const evapLoss = Math.max(0, tTemp[ti] - 0.3) * 0.3;
@@ -195,30 +282,175 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
       // rivers, which rise in dry-looking mountains and cross deserts (the Indus &
       // Ganges off the Himalaya, the Tigris/Euphrates off the Anatolian–Zagros
       // highlands, the Colorado off the Rockies, the Amu Darya off the Pamir), get no
-      // headwater and never form. Scales with height above the snow/orographic line.
-      const snowmelt = Math.max(0, tElev[ti] - 0.15) * 1.6;
-      flowAccum[ti] = Math.max(0.05, tMoist[ti] - evapLoss) + snowmelt;
+      // headwater and never form.
+      //
+      // Gated on COLD × RELIEF, not raw elevation. The old elevation-only term keyed melt
+      // to height alone, so it fed the towering tropical Himalaya but starved the cold but
+      // only moderately high mid-latitude massifs — exactly the Anatolian–Zagros highlands
+      // that birth the Tigris-Euphrates, which then arrived in Mesopotamia as a trickle. A
+      // mountain banks a meltwater snowpack because its WINTER is below freezing, which the
+      // annual-mean temperature hides at mid-latitudes (a continental winter runs tens of
+      // °C colder than the mean). We reconstruct that winter mean from latitude, and also
+      // keep a latitude-independent glacier term so very high tropical peaks (the Andes)
+      // still shed permanent ice. Either path × the relief above the foothill line × a
+      // moisture weight (a bone-dry massif yields less) gives the headwater volume.
+      const ty = (ti / tw) | 0;
+      const aLat = Math.abs((0.5 - ty / th) * 180);
+      const winterTemp = tTemp[ti] - (aLat / 90) * SNOWMELT_WINTER;
+      const snowpack = Math.max(0, Math.min(1, (0.60 - winterTemp) / 0.15));   // cold-winter snow
+      const glacier = Math.max(0, Math.min(1, (tElev[ti] - 0.32) / 0.20));     // permanent high-alt ice
+      const snowFrac = Math.max(snowpack, glacier);
+      const relief = Math.max(0, tElev[ti] - 0.04);
+      const snowmelt = snowFrac * relief * SNOWMELT_K * (0.35 + 0.65 * tMoist[ti]);
+      runoff[ti] = Math.max(0.05, tMoist[ti] - evapLoss) + snowmelt;
     }
   }
 
-  const queue = [];
-  for (let ti = 0; ti < N; ti++) {
-    if (tElev[ti] > 0 && inDegree[ti] === 0) queue.push(ti);
-  }
+  // Per-tile through-flow SURVIVAL (1 − transmission loss). Filled in AFTER the endorheic
+  // pass below: a river loses water to evaporation/seepage crossing arid land, but ONLY on
+  // flow bound for a terminal (endorheic) sink. Rivers that reach the SEA — every exotic
+  // cradle river included (the Nile, the Tigris-Euphrates, the Indus all cross desert yet
+  // drain to the ocean) — keep all their water, so this never thins the rivers the
+  // civilisation sim depends on. Starts at 1 (lossless) for the detection pass.
+  const transmit = new Float32Array(N).fill(1);
 
-  let head = 0;
-  while (head < queue.length) {
-    const ti = queue[head++];
-    const d = flowDir[ti];
-    if (d === 255) continue;
-    const tx = ti % tw, ty = (ti - tx) / tw;
-    const nx = (tx + D8_DX[d] + tw) % tw;
-    const ny = ty + D8_DY[d];
-    if (ny < 0 || ny >= th) continue;
-    const ni = ny * tw + nx;
-    flowAccum[ni] += flowAccum[ti];
-    inDegree[ni]--;
-    if (inDegree[ni] === 0) queue.push(ni);
+  // Accumulate runoff downstream along flowDir (Kahn topological sort), applying the
+  // transmission loss as water leaves each tile. Re-runnable: the endorheic pass below
+  // edits flowDir and the transmit field, then calls this again for the final field.
+  const flowAccum = new Float32Array(N);
+  function accumulate() {
+    flowAccum.set(runoff);
+    const inDegree = new Uint16Array(N);
+    for (let ti = 0; ti < N; ti++) {
+      const d = flowDir[ti];
+      if (d === 255) continue;
+      const tx = ti % tw, ty = (ti - tx) / tw;
+      const nx = (tx + D8_DX[d] + tw) % tw;
+      const ny = ty + D8_DY[d];
+      if (ny < 0 || ny >= th) continue;
+      inDegree[ny * tw + nx]++;
+    }
+    const queue = [];
+    for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0 && inDegree[ti] === 0) queue.push(ti);
+    let head = 0;
+    while (head < queue.length) {
+      const ti = queue[head++];
+      const d = flowDir[ti];
+      if (d === 255) continue;
+      const tx = ti % tw, ty = (ti - tx) / tw;
+      const nx = (tx + D8_DX[d] + tw) % tw;
+      const ny = ty + D8_DY[d];
+      if (ny < 0 || ny >= th) continue;
+      const ni = ny * tw + nx;
+      flowAccum[ni] += flowAccum[ti] * transmit[ti];   // lose a share crossing arid land
+      inDegree[ni]--;
+      if (inDegree[ni] === 0) queue.push(ni);
+    }
+  }
+  accumulate();
+
+  // ── Step 3b: Endorheic basins — terminate flow in closed arid sinks ──
+  // The priority-flood (Step 1) fills EVERY depression so all land drains to the ocean.
+  // That is wrong for INTERNALLY-DRAINING basins: real Central Asia, the Caspian/Aral/
+  // Tarim, the Great Basin and Lake Eyre collect their rivers into terminal lakes/playas
+  // that EVAPORATE — there is no outlet to the sea. Forcing them to spill routed the
+  // highland snowmelt as a through-river across the desert (the Caspian↔Himalaya
+  // corridor) and strung spurious lakes along it. A closed basin keeps its sea outlet
+  // ONLY if the water reaching its spill exceeds what the full basin would lose to
+  // evaporation when filled to the brim; otherwise it is endorheic — every exit is cut
+  // so flow pools inside (a terminal lake forms) and never reaches the ocean. Cold/wet
+  // basins still overflow (the Great Lakes → the St-Lawrence); hot and/or arid basins
+  // stay terminal. Keyed on temperature + dryness (state), never latitude/era.
+  const drainsTerminal = new Int8Array(N).fill(-1); // -1 unknown, 0 ocean-bound, 1 terminal (set in 3b, read in Step 4)
+  {
+    const basinId = new Int32Array(N).fill(-1);
+    const basins = [];
+    for (let ti = 0; ti < N; ti++) {
+      if (!isRaised[ti] || basinId[ti] >= 0 || tElev[ti] <= 0) continue;
+      const id = basins.length;
+      const q = [ti]; basinId[ti] = id; let h = 0;
+      const tiles = []; let tempSum = 0, moistSum = 0;
+      while (h < q.length) {
+        const ci = q[h++]; tiles.push(ci); tempSum += tTemp[ci]; moistSum += tMoist[ci];
+        const cx = ci % tw, cy = (ci - cx) / tw;
+        for (let d = 0; d < 8; d++) {
+          const nx = (cx + D8_DX[d] + tw) % tw, ny = cy + D8_DY[d];
+          if (ny < 0 || ny >= th) continue;
+          const ni = ny * tw + nx;
+          if (isRaised[ni] && basinId[ni] < 0 && tElev[ni] > 0) { basinId[ni] = id; q.push(ni); }
+        }
+      }
+      basins.push({ tiles, footprint: tiles.length, temp: tempSum / tiles.length, moist: moistSum / tiles.length });
+    }
+    // Edges that leave a basin (a basin tile flowing to a tile of a different / no basin).
+    const exitsOf = (b) => {
+      const exits = [];
+      let spillFlow = 0;
+      for (const ti of b.tiles) {
+        const d = flowDir[ti];
+        if (d === 255) continue;
+        const tx = ti % tw, ty = (ti - tx) / tw;
+        const nx = (tx + D8_DX[d] + tw) % tw, ny = ty + D8_DY[d];
+        if (ny < 0 || ny >= th) continue;
+        if (basinId[ny * tw + nx] === basinId[ti]) continue;
+        exits.push(ti);
+        if (flowAccum[ti] > spillFlow) spillFlow = flowAccum[ti];
+      }
+      return { exits, spillFlow };
+    };
+    for (const b of basins) {
+      const { exits, spillFlow } = exitsOf(b);
+      if (!exits.length) continue;
+      // Evaporative demand of the basin at the brim: the whole footprint is open water,
+      // and hot, dry air pulls far more from it than cold or humid air. A basin overflows
+      // only if the water reaching the spill beats this; otherwise it is a terminal sink.
+      // Dryness is the dominant lever — it is what separates an arid closed sink (the
+      // Tarim, the Aral, Lake Chad, Lake Eyre — all terminal) from a humid one that
+      // overflows (the Pannonian basin → the Danube).
+      const heat = 0.30 + Math.max(0, b.temp - 0.30) * 1.2;     // cold→0.30, hot→~0.9
+      const dry  = 0.20 + Math.max(0, 0.42 - b.moist) * 3.0;    // humid→0.20, desert→~1.1
+      const evapDemand = b.footprint * ENDO_EVAP * heat * dry;
+      if (spillFlow < evapDemand) {
+        for (const ti of exits) flowDir[ti] = 255; // terminate — flow pools inside
+      }
+    }
+    // Mark every tile whose flow ENDS in a terminal land sink (rather than the ocean),
+    // by tracing downstream once per tile with memoisation.
+    for (let s = 0; s < N; s++) {
+      if (tElev[s] <= 0 || drainsTerminal[s] !== -1) continue;
+      const path = []; let ti = s, verdict = 0;
+      while (ti >= 0 && drainsTerminal[ti] === -1) {
+        path.push(ti);
+        const d = flowDir[ti];
+        if (d === 255) { verdict = 1; break; }          // land tile with no outlet = terminal sink
+        const tx = ti % tw, ty = (ti - tx) / tw, ny = ty + D8_DY[d];
+        if (ny < 0 || ny >= th) { verdict = 0; break; }
+        const ni = ny * tw + ((tx + D8_DX[d] + tw) % tw);
+        if (tElev[ni] <= 0) { verdict = trueOcean[ni] ? 0 : 1; break; } // true ocean=exorheic, inland sea=terminal
+        ti = ni;
+      }
+      if (ti >= 0 && drainsTerminal[ti] !== -1) verdict = drainsTerminal[ti];
+      for (const p of path) drainsTerminal[p] = verdict;
+    }
+    // Apply transmission loss ONLY to terminal-draining arid/warm tiles, then re-accumulate
+    // for the final field. The sealed routing + the loss together shrink the closed-basin
+    // rivers (the Tarim/Central-Asian snowmelt) and starve their oversized terminal lakes,
+    // while every sea-bound river — the cradles included — is untouched.
+    // Terminal-bound (closed-basin) flow loses water crossing dry ground — and ONLY terminal flow
+    // does, so with the Persian Gulf now correctly OCEAN (the strait-bridge), the cradle rivers
+    // are exorheic and untouched. That frees the loss to be modelled in full: it bites across the
+    // SEMI-ARID interior (moist<0.45, not just true desert), and it has a temperature-independent
+    // SEEPAGE floor (0.7) because a river soaks into permeable ground even where it's cold — which
+    // is what finally drains the spurious through-river that threads cold arid Central Asia toward
+    // the Caspian over thousands of km, while a genuinely WET endorheic river (the Volga, moist≈0.5,
+    // aridity 0) loses nothing and stays a great river to its inland sea.
+    for (let ti = 0; ti < N; ti++) {
+      if (tElev[ti] <= 0 || drainsTerminal[ti] !== 1) continue;
+      const aridity = Math.max(0, Math.min(1, (0.45 - tMoist[ti]) / 0.45));        // 0 if moist≥0.45 → 1 bone-dry
+      const seepEvap = 0.7 + 0.3 * Math.max(0, Math.min(1, (tTemp[ti] - 0.40) / 0.25)); // seepage floor 0.7 → +evaporation to 1.0
+      transmit[ti] = 1 - TRANS_LOSS * aridity * seepEvap;
+    }
+    accumulate(); // final field: endorheic basins sealed + terminal-bound desert loss
   }
 
   // ── Step 4: Classify river magnitude ──
@@ -236,28 +468,34 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
 
   const riverMag = new Uint8Array(N);
 
-  // Collect all land accumulation values for percentile thresholds
-  const accums = [];
-  for (let ti = 0; ti < N; ti++) {
-    if (tElev[ti] > 0 && flowAccum[ti] > 0.1) accums.push(flowAccum[ti]);
-  }
-  accums.sort((a, b) => a - b);
-  const pct = (p) => accums[Math.min(accums.length - 1, Math.floor(accums.length * p / 100))];
+  // ABSOLUTE catchment thresholds (resolution-invariant). flowAccum is a runoff-weighted
+  // upstream sum: a catchment of area A km² carries ≈ (A / kmPerTile) tiles × the mean land
+  // runoff. So convert each km² bar to flow-accumulation units via the grid's km²/tile and the
+  // mean land runoff — the SAME physical river then clears the bar at any resolution, and a
+  // desert corridor the transmission loss has thinned simply falls below it.
+  let landRunoff = 0, landN = 0;
+  for (let ti = 0; ti < N; ti++) if (tElev[ti] > 0) { landRunoff += runoff[ti]; landN++; }
+  const avgRunoff = landN > 0 ? landRunoff / landN : 0.3;
+  const kmPerTile = EARTH_KM2 / (tw * th);
+  const accumFor = (km2) => (km2 / kmPerTile) * avgRunoff;   // km² of drainage → runoff-weighted flowAccum
 
-  if (maxAccum > 0 && accums.length > 0) {
-    // Top 5% = stream, 1% = tributary, 0.2% = major, 0.02% = great
-    const tStream = pct(95);
-    const tTributary = pct(99);
-    const tMajor = pct(99.8);
-    const tGreat = pct(99.98);
-
+  if (maxAccum > 0 && landN > 0) {
+    // OCEAN-bound rivers use the real catchment bars; TERMINAL-bound (closed-basin) flow must
+    // clear TERMINAL_STRICT× as much, so only a genuinely large endorheic river (the Volga →
+    // Caspian) shows while a transmission-lossed desert corridor (the Himalaya→Caspian run)
+    // drops out of the visible network instead of threading the whole interior.
+    const tStream = accumFor(CATCH_STREAM), tTrib = accumFor(CATCH_TRIB), tMajor = accumFor(CATCH_MAJOR), tGreat = accumFor(CATCH_GREAT);
+    const tStreamS = tStream * TERMINAL_STRICT, tTribS = tTrib * TERMINAL_STRICT, tMajorS = tMajor * TERMINAL_STRICT, tGreatS = tGreat * TERMINAL_STRICT;
     for (let ti = 0; ti < N; ti++) {
       if (tElev[ti] <= 0) continue;
       const a = flowAccum[ti];
-      if (a >= tGreat) riverMag[ti] = RIVER_GREAT;
-      else if (a >= tMajor) riverMag[ti] = RIVER_MAJOR;
-      else if (a >= tTributary) riverMag[ti] = RIVER_TRIBUTARY;
-      else if (a >= tStream) riverMag[ti] = RIVER_STREAM;
+      const term = drainsTerminal[ti] === 1;
+      const tG = term ? tGreatS : tGreat, tM = term ? tMajorS : tMajor;
+      const tT = term ? tTribS : tTrib,   tS = term ? tStreamS : tStream;
+      if (a >= tG) riverMag[ti] = RIVER_GREAT;
+      else if (a >= tM) riverMag[ti] = RIVER_MAJOR;
+      else if (a >= tT) riverMag[ti] = RIVER_TRIBUTARY;
+      else if (a >= tS) riverMag[ti] = RIVER_STREAM;
     }
 
     // ── Downstream consistency: a river can never shrink along its flow path ──
@@ -314,10 +552,9 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
         }
       }
     }
-    // Lake needs meaningful river inflow — at least stream-level accumulation
-    // Use the stream threshold from percentile classification
-    // Require at least some river flow entering the basin (90th percentile = modest stream)
-    const minInflow = accums.length > 0 ? accums[Math.min(accums.length - 1, Math.floor(accums.length * 0.93))] : 1;
+    // Lake needs meaningful river inflow — at least stream-level accumulation (the same
+    // resolution-invariant absolute Stream bar the classifier uses, so it holds at any grid).
+    const minInflow = accumFor(CATCH_STREAM);
     // ── Evaporation gate ──
     // A lake in a HOT basin loses far more water to evaporation than a cold one, so it
     // needs proportionally more river inflow to stay open water rather than drying to a
@@ -349,7 +586,7 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     }
   }
 
-  return { flowDir, flowAccum, riverMag, maxAccum, lake, lakeInfo };
+  return { flowDir, flowAccum, riverMag, maxAccum, lake, lakeInfo, drainsTerminal };
 }
 
 export function riverName(riverMag, ti) {

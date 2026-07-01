@@ -60,3 +60,71 @@ RIGHT:  pressure ∝ unrest, fiscal balance, identity grievance   // emergent co
   *how often code runs*, never *whether a piece of history is allowed to happen yet*.
 - When in doubt, ask: **"Does this fire because of WHEN it is, or because of WHAT
   the world has become?"** Only the latter is allowed.
+
+---
+
+## THE SECOND CARDINAL RULE — build the SYSTEM, never fit the OUTCOME
+
+> **Always create the emergent system from which a behaviour falls out as a
+> consequence. Never reach in and produce the desired outcome directly with a
+> shallow, special-cased fix. If a result is wrong, fix the MECHANISM that should
+> have produced the right one — do not bolt on a patch that hard-codes the answer.**
+
+The first rule bans gating on *time*. This one bans gating on the *answer*. A
+simulation's job is to PREDICT — the empires, the rivers, the famines are
+*outputs* you discover, not *targets* you dial in. The moment you write code that
+detects a specific case and grants it the result you wanted, you have stopped
+simulating and started scripting — just in space instead of time.
+
+### The tells (how to catch yourself)
+
+- **A constant with no independent physical meaning.** If `RIVER_UNIFY_FLOOR =
+  0.85` exists only because it makes Egypt come out ~1M km², it is a fitted
+  answer, not a mechanism. A real parameter means something on its own (a
+  transport cost, a per-capita demand, a diffusion rate) and the outcome is
+  whatever it implies — even if that surprises you.
+- **Detecting the case you want to fix.** `if (onGreatRiver(s)) giveMoreReach()`
+  reads "make THIS thing big." The question is never "is this Egypt?" — it is
+  "what mechanism makes a cheaply-connected, densely-settled region cohere?"
+  Build that, and Egypt (and the Indus, and the North China Plain, and maps you
+  have never seen) fall out for free, with no name in the code.
+- **Patching the symptom, not the cause.** When the cost model already prices
+  rivers cheap but a realm still won't follow one, the bug is the *blunt throttle
+  overriding the geography* — fix THAT, don't add a second override pointing the
+  other way. Two wrongs make a fragile, over-tuned mess.
+
+### Why this is absolute (learned the hard way)
+
+- **A fitted outcome only fits the case you looked at.** Tune a constant to land
+  Egypt and it silently mis-sizes every other river valley, every seed, every
+  resolution. A real mechanism is right everywhere because it models the actual
+  cause. (`RIVER_UNIFY` was tuned to the Nile at one resolution; it told us
+  nothing about, and quietly distorted, everywhere else.)
+- **Symptom-patches compound into un-tunable knots.** Each shallow fix overrides
+  the last; the subsystem accretes special cases until no one can predict what it
+  does and every change breaks three others. The codebase's own scars —
+  "continental too early," "confetti," "hollow husk" — are layers of this.
+- **Emergence is the entire product.** "Every empire on the map is the output of
+  local rules." A hard-coded outcome is, by definition, not. If you have to name
+  the result in the code, the system that should have produced it is missing —
+  go build *that*.
+
+### Right vs wrong
+
+```
+WRONG:  if (onGreatRiver(s)) reach = max(reach, FLOOR)   // make river realms big
+WRONG:  if (region === "nile") fertility *= 3            // make Egypt fertile
+WRONG:  clampEmpireSize(c, HISTORICAL_KM2[c])            // dial in the answer
+
+RIGHT:  cost ÷= (1 + riverMag*K)   // a river is cheap to move along — and a
+        // realm administered through that cost field follows the valley on its own
+RIGHT:  settle where fertility×water is high  // the Nile densely settles itself,
+        // and the political union of those settlements IS the valley state
+```
+
+- **When in doubt, ask: "Am I building the cause, or painting the effect?"** If you
+  are reaching past the mechanism to set the result, stop and find the mechanism.
+- **A surprising-but-mechanistic result beats a correct-but-fitted one.** If the
+  honest system makes Egypt a city-state, that is a TRUE finding about a missing
+  mechanism (here: river valleys don't densely settle yet) — surface it and build
+  the missing system, don't paper over it with a constant.

@@ -6,12 +6,35 @@
 export function solveMoisture(W, H, elevation, windX, windY, temperature, params = {}) {
   const p = (k, d) => params[k] !== undefined ? params[k] : d;
 
-  const _moistDecay      = p('moistDecay', 0.996);
   const _moistRecycling  = p('moistRecycling', 0.25);
   const _moistTBlock     = p('moistTerrainBlock', 0.4);
   const _moistElevDry    = p('moistElevDry', 2.0);
   const _moistAdvW       = p('moistAdvectWeight', 0.60);
   const _moistOcnW       = p('moistOceanWeight', 0.20);
+  // Depletive transport (replaces the old near-lossless max-of-neighbours flood).
+  // Moisture is a CONSERVED budget: replenished only at the ocean, it loses water to
+  // precipitation as it advects across land, so a deep interior reached only by a long
+  // overland fetch dries out on its own — continentality is emergent, not a flat decay.
+  //  - _moistDiffuse: weak, LOSSY isotropic spread modelling the seasonal/synoptic
+  //    transport the annual-mean wind misses. Far below 1 so it nudges moisture between
+  //    adjacent cells but, decaying ~half per cell, cannot carry ocean moisture dozens
+  //    of cells inland the way the old flood-fill did. This is the lateral leak that,
+  //    together with precipitation, makes interiors dry.
+  const _moistDiffuse    = p('moistDiffuse', 0.55);
+  // Evapotranspiration recycling strength (see the recycling term below). Boosted well
+  // above the legacy 0.06/0.08 so warm, wet interiors (Amazon, Congo) recharge their own
+  // air column now that the lossless max-fill no longer floods them for free. Temp-gated,
+  // so it lifts the rainforests without re-wetting cold/dry continental interiors.
+  const _moistRecyclRate = p('moistRecyclRate', 0.24);
+  const _moistRecyclCap  = p('moistRecyclCap', 0.30);
+  // Winter extratropical storm track (frontal/cyclonic rain). The sole rain source of
+  // Mediterranean (Cs) climates — absent from the model, which left the Levant, the
+  // Fertile-Crescent highlands, California and central Chile as desert. Fires only in
+  // the seasonal solves, in the WINTER hemisphere's ~30-45° band, fed by the upwind sea.
+  const _frontLat        = p('moistFrontLat', 37);   // band centre (degrees of latitude)
+  const _frontWidth      = p('moistFrontWidth', 7);  // band half-width (degrees)
+  const _frontStr        = p('moistFrontStr', 0.18);
+  const _frontReach      = p('moistFrontReach', 5);  // ocean-distance decay (cells) — keeps interiors dry
   const _moistSteps      = Math.round(p('moistSteps', 140));
   const _moistConvective = p('moistConvective', 0.04);
   const _moistSubsidLat  = p('moistSubsidenceLat', 28);
@@ -136,6 +159,25 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
     }
   }
 
+  // Distance (in cells) from each land tile to the nearest ocean — multi-source BFS,
+  // capped. Used by the winter storm-track term so its frontal rain reaches coasts and
+  // shrinking seas (the Mediterranean → the Levant) but fades out over deep interiors.
+  const distToOcean = new Int16Array(mN).fill(999);
+  {
+    const distCap = Math.round(12 * mW / 240); // ~18° of reach, resolution-independent
+    const dq = [];
+    for (let i = 0; i < mN; i++) if (isOcean[i]) { distToOcean[i] = 0; dq.push(i); }
+    let dh = 0;
+    while (dh < dq.length) {
+      const ci = dq[dh++], d = distToOcean[ci];
+      if (d >= distCap) continue;
+      const cx = ci % mW, cy = (ci - cx) / mW;
+      const nb = [cy * mW + ((cx + 1) % mW), cy * mW + ((cx - 1 + mW) % mW),
+        (cy + 1 < mH ? (cy + 1) * mW + cx : -1), (cy > 0 ? (cy - 1) * mW + cx : -1)];
+      for (const ni of nb) if (ni >= 0 && distToOcean[ni] === 999) { distToOcean[ni] = d + 1; dq.push(ni); }
+    }
+  }
+
   // ═══════════════════════════════════════════════════════
   // Phase 2: Iterative transport with precipitation
   // ═══════════════════════════════════════════════════════
@@ -146,6 +188,15 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
   // and desiccates every continental interior. Scale the reach by mW so °/step is
   // constant (this is what made the app far more desert than the 1440 test renders).
   const baseReach = (1.5 + _moistAdvW * 3.0) * (mW / 720); // 1.5-4.5 cells @ mW=720, scaled
+
+  // Per-cell isotropic-diffusion survival, resolution-normalized to a fixed per-DEGREE
+  // leak (same reasoning as baseReach above). _moistDiffuse is the survival across one
+  // ~1.5°-wide cell (the W=480 calibration grid, mW=240). At a finer grid each cell is
+  // fewer degrees, so the per-cell survival must be HIGHER to leak the same amount per
+  // degree — otherwise the lateral spread that feeds e.g. the Great Plains off the Gulf
+  // dies off in fewer degrees and over-dries interiors as the app's grid widens.
+  const _DIFF_REF_DEG = 360 / 240; // 1.5° — cell width at the calibration resolution
+  const diffPerCell = Math.pow(_moistDiffuse, (360 / mW) / _DIFF_REF_DEG);
 
   for (let step = 0; step < STEPS; step++) {
     atmosPrev.set(atmos);
@@ -186,22 +237,27 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
       const srcIdx = sy * mW + sx;
       if (isOcean[srcIdx]) upwind *= 0.5;
 
-      // Moisture transport:
-      // - Upwind (directional): full value from backward trace along mean wind
-      // - Isotropic spread: represents seasonal/synoptic moisture transport that
-      //   the annual mean wind misses (e.g. summer Gulf moisture reaching Atlanta
-      //   despite annual mean wind being westerly). Decay is gentle so moisture
-      //   can spread deep inland from ocean sources.
-      // - Self-persistence: previous value decayed
-      // Neighbor spreading: only from LAND neighbors (skip ocean to prevent
-      // coastal flooding of cold polar areas adjacent to warm ocean)
+      // Moisture transport — depletive advection (a conserved, drying budget):
+      // - Upwind (directional): the budget the wind carried in, backward-traced along
+      //   the mean wind. The traced source has ALREADY rained out its share at each
+      //   land cell it crossed (the precipitation block below ran there on prior steps
+      //   and was not undone by a max-refill), so the column dries MONOTONICALLY
+      //   downwind and a mountain-ringed interior with a long dry fetch ends up
+      //   near-rainless on its own. A parcel traced from OCEAN is the fresh source.
+      // - Isotropic diffusion: a WEAK, lossy spread (_moistDiffuse << 1) modelling
+      //   the seasonal/synoptic transport the annual-mean wind misses. It can seed
+      //   a cell from a wetter neighbour but, decaying ~half per cell, cannot carry
+      //   ocean moisture deep inland the way the old near-lossless max-fill did.
+      //   From LAND neighbours only (skip ocean to avoid flooding cold polar coasts).
+      let moist = upwind;
       const mxL = (mx - 1 + mW) % mW, mxR = (mx + 1) % mW;
       const iL = my * mW + mxL, iR = my * mW + mxR;
       const iU = (my - 1) * mW + mx, iD = (my + 1) * mW + mx;
       const nMax = Math.max(
         isOcean[iL] ? 0 : prev[iL], isOcean[iR] ? 0 : prev[iR],
         isOcean[iU] ? 0 : prev[iU], isOcean[iD] ? 0 : prev[iD]);
-      let moist = Math.max(upwind, nMax * _moistDecay, prev[ci] * _moistDecay);
+      const diffuse = nMax * diffPerCell;
+      if (diffuse > moist) moist = diffuse;
 
       // ── Temperature capacity clamp ──
       // Cold air can't hold much moisture (Clausius-Clapeyron)
@@ -285,12 +341,39 @@ export function solveMoisture(W, H, elevation, windX, windY, temperature, params
         moist *= 1 - subsidenceFactor * _moistSubsidStr * 5;
       }
 
-      // ── Transpiration recycling ──
+      // ── Winter extratropical storm track (frontal rain) ──
+      // In the WINTER hemisphere the westerly storm track swings equatorward into ~30-45°
+      // and its frontal cyclones drop ocean moisture as winter rain — the rain that makes
+      // the Mediterranean (Cs) climates: the Levant and the Med basin, California, central
+      // Chile, the Cape, SW Australia, and the Anatolian/Zagros highlands that feed the
+      // Tigris-Euphrates. The model had no such term, so all of these were desert. Only in
+      // the seasonal solves (itczLat≠0); the latitude window sits ABOVE the subtropical-
+      // high deserts (the Atacama/Namib at ~23° get nothing), and the ocean-distance decay
+      // keeps it off deep interiors (Central Asia), so it adds only where it should.
+      if (_itczLat !== 0 && latSgn * _itczLat < 0) {              // this hemisphere is in winter
+        const aLat = Math.abs(latSgn);
+        const front = Math.exp(-((aLat - _frontLat) * (aLat - _frontLat)) / (2 * _frontWidth * _frontWidth));
+        if (front > 0.03) {
+          moist += front * _frontStr * Math.exp(-distToOcean[ci] / (_frontReach * mW / 240));
+          if (moist > tempCapacity) { precip += moist - tempCapacity; moist = tempCapacity; }
+        }
+      }
+
+      // ── Transpiration / evapotranspiration recycling ──
+      // Vegetated, rained-on land returns moisture to the air column. This is the
+      // mechanism that keeps DEEP TROPICAL INTERIORS wet (Amazon, Congo): ~half of
+      // rainforest rainfall is locally recycled, so the budget is replenished as it
+      // crosses the warm wet basin even though the overland fetch is long. It is
+      // self-calibrating against the depletive transport: an arid interior has little
+      // accumulated rain to recycle, so it stays dry, while a rainforest recharges the
+      // column it sits under. Scales with surface water (accumulated rain) and with
+      // temperature squared (evaporative demand — strongly tropics-weighted, replacing
+      // the old latitude band so the source stays emergent), suppressed under subsidence.
       if (precipAccum[ci] > 0.01 && temp[ci] > 0.2) {
-        const warmFactor = lat < 0.5 ? 1.0 : Math.max(0, 1 - (lat - 0.5) * 3);
         const recycSuppress = 1 - subsidenceFactor * 0.6;
-        const recycled = precipAccum[ci] * _moistRecycling * warmFactor * 0.06 * recycSuppress;
-        moist += Math.min(0.08, recycled);
+        const tempWeight = temp[ci] * temp[ci];
+        const recycled = precipAccum[ci] * _moistRecycling * tempWeight * _moistRecyclRate * recycSuppress;
+        moist += Math.min(_moistRecyclCap, recycled);
       }
 
       atmos[ci] = Math.max(0, moist);

@@ -47,13 +47,94 @@ const PLAGUE_SPREAD   = 0.0006; // per-tick chance an infected node infects a tr
 const PLAGUE_SEA_MULT = 2.0;    // sea routes carried plague fast + far (Black Death by ship)
 const PLAGUE_MIN_POP  = 50;     // needs a real population to take hold / seed
 
+// ── ENDEMIC DISEASE LOAD + the VIRGIN-SOIL (Columbian) catastrophe ──
+// Every population carries an endemic disease load — the crowd plagues, the zoonoses caught off
+// livestock, and the shared immunity of belonging to a vast trade-connected host pool. It is built
+// by DENSITY (cities), LIVESTOCK (animal spillover) and CONNECTIVITY, and it DIFFUSES across the
+// trade graph so a whole interconnected landmass converges on its highest endemic load: the Old
+// World — one immense, dense, livestock-keeping, interlinked continent — climbs high, while an
+// isolated continent reached late and lightly (the New World, Sahul) stays low. That GAP is the
+// fuel: on the FIRST sea contact bridging it, the low-immunity people meet, all at once, every
+// disease the connected world long endured — a virgin-soil epidemic of up to ~90% mortality (the
+// Columbian collapse). The crash empties the land, which demographic admixture (settlement.js)
+// then repopulates with the immune incomers' stock — REPLACEMENT. The cause is simply contact
+// between disease pools that evolved in isolation; it emerges once a navy can cross the ocean.
+const LOAD_CHECK    = 300;    // ticks between endemic-load updates (slow, generational)
+const LOAD_RATE     = 0.08;   // how far load moves toward its target each update
+const LOAD_DIFFUSE  = 0.92;   // a peer's load reaches you at this fraction (shared immunity across the network)
+const CONTACT_CHECK = 600;    // ticks between first-contact scans
+const CONTACT_GAP   = 0.35;   // load gap that makes first contact catastrophic (an ocean between disease pools)
+const VIRGIN_MORT   = 6;      // mortality multiplier while a virgin-soil epidemic burns (no immunity)
+const VIRGIN_DUR    = 900;    // how long the virgin-soil wave keeps killing (it sweeps an unexposed people)
+const VIRGIN_RADIUS = 22;     // tiles of the contacted population swept by the wave
+
+function loadTarget(s) {
+  const urban = Math.min(1, Math.max(0, Math.log10(Math.max(1, s.people) / 200)) / 1.5);            // crowd diseases
+  const stock = Math.min(1, (s._livestock || 0) * 2.2);                                             // zoonotic spillover
+  const conn  = Math.min(1, ((s._tradeReach ? s._tradeReach.size : 0) + (s._seaReach ? s._seaReach.size : 0)) / 9); // connected host pool
+  return Math.min(1, 0.28 * urban + 0.30 * stock + 0.30 * conn);
+}
+
 function torusDist(world, ax, ay, bx, by) {
   let dx = Math.abs(ax - bx); if (dx > world.tw / 2) dx = world.tw - dx;
   const dy = ay - by; return Math.sqrt(dx * dx + dy * dy);
 }
 
+// Endemic load: grow each settlement toward max(its local target, the immunity it catches from
+// trade/sea peers). Diffusion converges a connected landmass on its highest endemic load.
+function updateDiseaseLoad(world) {
+  const setts = world.settlements;
+  const peerMax = new Map();
+  for (const s of setts) {
+    if (s.mode !== "settled") continue;
+    let m = 0;
+    const scan = (reach) => { if (reach) for (const id of reach.keys()) { const p = world._byId && world._byId.get(id); if (p && (p._diseaseLoad || 0) > m) m = p._diseaseLoad || 0; } };
+    scan(s._tradeReach); scan(s._seaReach);
+    peerMax.set(s.id, m);
+  }
+  for (const s of setts) {
+    if (s.mode !== "settled") continue;
+    const target = Math.max(loadTarget(s), (peerMax.get(s.id) || 0) * LOAD_DIFFUSE);
+    s._diseaseLoad = (s._diseaseLoad || 0) + (target - (s._diseaseLoad || 0)) * LOAD_RATE;
+  }
+}
+
+// First contact across an immunity gap → a virgin-soil epidemic on the low-immunity people.
+function contactEpidemic(world, rng) {
+  const _dt = world._dt || 1;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || !s._seaReach || s._seaReach.size === 0) continue;
+    const sl = s._diseaseLoad || 0;
+    for (const pid of s._seaReach.keys()) {
+      const p = world._byId && world._byId.get(pid);
+      if (!p || p.mode !== "settled") continue;
+      const lo = sl <= (p._diseaseLoad || 0) ? s : p, hi = lo === s ? p : s;
+      if (lo._contacted) continue;
+      if ((hi._diseaseLoad || 0) - (lo._diseaseLoad || 0) < CONTACT_GAP) continue;
+      // The diseases of the connected world arrive among a people with no immunity. Sweep the
+      // whole low-immunity population around the contact point (geographic — everyone is exposed).
+      const sev = Math.min(1, ((hi._diseaseLoad || 0) - (lo._diseaseLoad || 0)) / 0.6);
+      let struck = 0;
+      for (const n of world.settlements) {
+        if (n.mode !== "settled" || n._contacted) continue;
+        if ((n._diseaseLoad || 0) >= sl + CONTACT_GAP) continue;        // only the unexposed pool
+        if (torusDist(world, lo.pos.x, lo.pos.y, n.pos.x, n.pos.y) > VIRGIN_RADIUS) continue;
+        n._contacted = true;
+        n._virginUntil = world.step + (VIRGIN_DUR * sev) / _dt;
+        infect(world, n);
+        struck++;
+      }
+      if (struck) logEvent(world, "plague.virginSoil", { polity: lo.countryId, s: lo.id, sName: lo.name,
+        x: lo.pos.x | 0, y: lo.pos.y | 0, mortality: +(sev).toFixed(2) });
+      break;   // one contact event per source settlement per scan
+    }
+  }
+}
+
 export function updateShocks(world) {
   if (!world._plagued) world._plagued = new Set();
+  if (world.step % LOAD_CHECK === 0) updateDiseaseLoad(world);
+  if (world.step % CONTACT_CHECK === 0) contactEpidemic(world, passRng(world, "contact"));
   const famineCheck = world.step % FAMINE_CHECK === 0;
   const plagueCheck = world.step % PLAGUE_CHECK === 0;
   // Nothing shock-related can happen this tick (no spawn roll due, no active
@@ -118,7 +199,10 @@ export function updateShocks(world) {
       // time-granularity step so a plague kills the same share of a city per
       // unit of HISTORY at any SIM_GRANULARITY, not G× more.
       const urban = Math.max(0, Math.log10(Math.max(1, s.people) / 100));
-      const mort = T.PLAGUE_MORT * (1 + PLAGUE_URBAN * urban) * _dt;
+      // A virgin-soil people meets every disease of the connected world at once, with no
+      // inherited immunity: mortality is multiplied while the wave burns (the Columbian collapse).
+      const virgin = world.step < (s._virginUntil || 0) ? VIRGIN_MORT : 1;
+      const mort = T.PLAGUE_MORT * (1 + PLAGUE_URBAN * urban) * virgin * _dt;
       s.people = Math.max(1, s.people * (1 - mort));
       // Spread along the trade graph (road reach + sea lanes). The very links
       // that carry grain and coin carry the contagion. Per-tick infection odds

@@ -17,7 +17,7 @@
 
 import { coreRadiusFor } from "./territory.js";
 import { techEff, URBAN_BASE_RURAL } from "./settlement.js";
-import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation } from "./conquest.js";
+import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
 import { identityWeightsNow, casusBelliMul } from "./cohesion.js";
 import { realmName } from "./chronicle.js";
@@ -326,6 +326,45 @@ export function advanceFronts(world) {
   const domBarOf = (attCC) => { const c = world.countries && world.countries.get(attCC); const d = c && c._dominance ? c._dominance : 1; return 1 / Math.pow(Math.max(1, d), DOM_ATTACK_P); };
   const domCaptureOf = (attCC) => { const c = world.countries && world.countries.get(attCC); const d = c && c._dominance ? c._dominance : 1; return Math.pow(Math.max(1, d), DOM_CAPTURE_P); };
 
+  // ── Balance of power (conquest.js updateAlliances) ───────────────────────────
+  // The emergent brake on the runaway hegemon, replacing hard anti-runaway caps.
+  // When the DEFENDER balances against THIS attacker (it sees the attacker as the
+  // regional threat), a COALITION of everyone who fears the same hegemon backs the
+  // defence — the attack bar rises in proportion to how big that bloc is RELATIVE to
+  // the hegemon (blocMight / hegemonPower). A giant facing a matching coalition stalls;
+  // one facing only sparse, fragmented neighbours (no bloc can form) keeps rolling.
+  // ALLIES are strongly RELUCTANT to attack each other — a standing bloc holds its
+  // internal borders — but not INCAPABLE: an overwhelming intra-bloc imbalance can
+  // still erupt (a hard skip froze the top tier into a dead, deathless stalemate;
+  // history's coalitions fought internally even while arrayed against a common foe).
+  const allianceTarget = world._allianceTarget, blocMight = world._blocMight, countryPow = world._countryPow, alliesMap = world._allies;
+  const areAllies = (a, b) => { if (a === b) return false; const s = alliesMap && alliesMap.get(a); return !!(s && s.has(b)); };
+  const ALLY_BAR = 4;   // an ally requires ~4× the usual edge before a bloc member breaks ranks to attack it
+  const overlordOf = world._overlordOf, overlordReach = world._overlordReach;
+  const coalitionBarOf = (attCC, defCC) => {
+    let mul = 1;
+    if (areAllies(attCC, defCC)) mul *= ALLY_BAR;               // bloc cohesion: hard to fight an ally, not impossible
+    if (allianceTarget && allianceTarget.get(defCC) === attCC) {
+      const bloc = (blocMight && blocMight.get(attCC)) || 0;
+      const hp = (countryPow && countryPow.get(attCC)) || 1;
+      mul *= 1 + BALANCE_W * Math.min(BALANCE_CAP, bloc / hp);  // coalition weight backs the threatened member's defence
+    }
+    // Colonial PROTECTION: the metropole defends its colony — but only with the force its navy
+    // can PROJECT across the distance (conquest.js _overlordReach), not its full might. A colony
+    // just offshore is shielded by the whole mother country; one an ocean away, barely at all —
+    // so an attacker on a remote, weakly-held colony faces little more than the colony itself.
+    if (overlordOf) {
+      const over = overlordOf.get(defCC);
+      if (over != null && over !== attCC) {
+        const op = (countryPow && countryPow.get(over)) || 0;
+        const hp = (countryPow && countryPow.get(attCC)) || 1;
+        const proj = (overlordReach && overlordReach.get(defCC)) || 0;
+        mul *= 1 + BALANCE_W * Math.min(BALANCE_CAP, (op / hp) * proj);
+      }
+    }
+    return mul;
+  };
+
   // Wars END IN A PEACE (dyadic truces). The exhaustion bar alone could not break
   // the permanent-war equilibrium because it is MUSICAL CHAIRS: exhaustion stops a
   // realm attacking, but someone nearby is always rested, and the rested attack the
@@ -473,7 +512,7 @@ export function advanceFronts(world) {
     // one wants a clear advantage (personality.js aggressionAttackMul).
     const aCountry = world.countries && world.countries.get(A.countryId);
     const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
-    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId)) continue;
+    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -519,7 +558,7 @@ export function advanceFronts(world) {
         const key = A.id + ":" + pid;
         if (pairs.has(key)) continue;                        // already met on land
         const tf = tradeFactor(A.countryId, D.countryId);
-        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId)) continue;
+        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
         const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key };
         let l = amphibByDef.get(pid); if (!l) amphibByDef.set(pid, l = []);
         l.push(pc);
@@ -611,20 +650,17 @@ export function advanceFronts(world) {
       for (const [k, st] of seen) if (world.step - st > (WAR_MEMORY * 3) / (world._dt || 1)) seen.delete(k);
     }
   }
-  // (Siege relief is no longer a marching column — the national defensive-split already
-  // brings the realm's whole field army to bear on a besieged front; see defShareOf.)
+  // (Siege relief is no longer a marching column — the conserved defensive allocation
+  // already brings the realm's spare field army to bear on a besieged front.)
 
   // ── National war capacity ──────────────────────────────────────────────
   // Inter-state war is NOT a duel between two frontier garrisons — it is decided by
   // NATIONAL FIELD ARMIES (natMight = Σ garrison×tech, capped by manpower + treasury).
   // Per realm, tally the distinct enemy NATIONS it is engaged with — offensive fronts
-  // (it is attacking) vs defensive load/attackers (it is assaulted). From those:
-  //   • offMulPair — how the attacker ALLOCATES its national army to a front:
-  //     CONCENTRATED on the main effort (secondary fronts merely hold), sapped while
-  //     troops are pinned defending, worn by war-exhaustion. Times natMight = the force.
-  //   • defShareOf — how the defender SPLITS its national army across the fronts it is
-  //     attacked on (whole army vs one invader; divided among many). A border town's
-  //     garrison decides nothing in the open field — only the national armies do.
+  // (it is attacking) vs defensive load/attackers (it is assaulted). These feed the
+  // CONSERVED ALLOCATION below: a realm's one finite army is split across all its fronts
+  // (offence + defence, shares summing to one), so a border town's garrison decides
+  // nothing in the open field — only the national army's share on that front does.
   const allEnemies = new Map();   // cc → Set(enemy cc) either direction (depth divisor)
   const defLoad    = new Map();   // cc → Σ defensive weight it is under (besieged capital heaviest)
   const attNat     = new Map();   // attacker cc → Map(enemy cc → {prio, serious, conc}) — its national fronts
@@ -688,27 +724,57 @@ export function advanceFronts(world) {
     }
   }
 
-  // A front's offensive multiplier: its enemy-nation concentration rank × war-weariness
-  // ÷ defensive tie-down (troops pinned defending can't also attack).
+  // A front's offensive EFFICIENCY (0..1) — concentration rank × rest, pinned by
+  // defensive load. Retained only for the info panel / war-commitment proxy below;
+  // the FORCE that decides a front is the conserved allocation (next block).
   const concRestTied = (acc, dcc) => {
     const m = attNat.get(acc); const f = m && m.get(dcc);
     const tied = 1 + T.WAR_DEFENSE_DRAG * (defLoad.get(acc) || 0);
     const rested = 1 - Math.min(0.9, exh.get(acc) || 0);
     return (f ? f.conc : 1) * rested / tied;
   };
-  const offMulPair = (pc) => concRestTied(pc.att.countryId, pc.def.countryId);
-  // The NATIONAL FIELD ARMY is the force that decides a war — not the border garrison.
-  // A realm projects its whole army (natMight = Σ garrison×tech, itself capped by national
-  // MANPOWER and the treasury) onto a front, CONCENTRATED on its main effort. Its enemy
-  // resists with ITS national army, SPLIT across the fronts it is defending (a realm
-  // assailed by many divides its field army; one fighting a single war meets the invader
-  // whole). So who takes ground is the national-army RATIO on that front — manpower × tech
-  // × treasury — and a border town's garrison matters only as a fortress in a siege (below).
-  const defShareOf = (cc) => {
-    const a = attackersOf.get(cc);
-    return 1 / (1 + T.WAR_DEF_SPLIT * Math.max(0, (a ? a.size : 1) - 1));
-  };
-  const fieldForce = (cc) => (natMight.get(cc) || 0);
+
+  // ── Conserved national army allocation (the grounded field-army model) ───────
+  // The NATIONAL FIELD ARMY is the force that decides a war — not the border garrison
+  // (natMight = Σ garrison×tech, itself capped by MANPOWER and the treasury). But it is
+  // ONE FINITE POOL: a realm cannot throw its whole strength at every front at once. It
+  // SPLITS the army across the wars it fights — offensive AND defensive together — by
+  // priority: defence of the heartland first, then the concentrated main offensive effort,
+  // secondary fronts merely held. The shares SUM TO ONE, so the army is genuinely divided,
+  // not multiplied: a realm fighting two wars halves its weight on each; a realm whose
+  // capital is besieged pours most of its army into defence and has little left to expand.
+  // No more double-spending the same army on offence and defence (the old offMul/defShare
+  // multipliers each drew on the full pool). War-exhaustion scales the EFFECTIVE pool (a
+  // worn army fights at a fraction), and battle casualties drain the manpower pool, so a
+  // big war leaves a realm weak for a generation (musterArmies). For a clean 1-v-1 war the
+  // shares are 1.0 on each side — identical to the old model; conservation bites only when
+  // a realm is stretched across several fronts, which is exactly where it should.
+  const DEF_PRIORITY = 2.5;   // a SERIOUS defensive front (a town under storm) commands this × an equal offensive main effort — a realm defends its heartland before it expands
+  const offW = new Map();     // "A:D" → A's offensive weight against D (concentration rank, ≤1)
+  const defW = new Map();     // "D:A" → D's defensive weight vs attacker A (already priority-scaled)
+  for (const [acc, m] of attNat) for (const [dcc, f] of m) offW.set(acc + ":" + dcc, f.conc);
+  for (const pc of pairs.values()) {
+    const acc = pc.att.countryId, dcc = pc.def.countryId; if (acc === dcc) continue;
+    const dc = world.countries && world.countries.get(dcc);
+    const isCap = !!(dc && dc.capitalId === pc.def.id);
+    // A SERIOUS siege (a town being stormed) commands the national field army with priority;
+    // a mere border skirmish is held by the local garrison and barely competes with the
+    // realm's own offensives — so it must NOT tie down half the army the way a siege does.
+    const w = pc.canStorm ? DEF_PRIORITY * (isCap ? 1.6 : 1.0) : 0.4;
+    const k = dcc + ":" + acc;
+    defW.set(k, (defW.get(k) || 0) + w);
+  }
+  // Each realm's TOTAL committed weight = Σ its offensive efforts + Σ its (priority-scaled) defensive efforts.
+  const totW = new Map();
+  const addW = (cc, w) => totW.set(cc, (totW.get(cc) || 0) + w);
+  for (const [k, w] of offW) addW(+k.slice(0, k.indexOf(":")), w);
+  for (const [k, w] of defW) addW(+k.slice(0, k.indexOf(":")), w);
+  // Effective pool: the national field army, worn down by war-exhaustion.
+  const effPool = (cc) => (natMight.get(cc) || 0) * (1 - Math.min(0.9, exh.get(cc) || 0));
+  // The force a realm actually commits to one front — its pool × that front's share of its
+  // total weight. Sum over a realm's fronts = its whole pool (the conservation).
+  const offForceOf = (acc, dcc) => { const W = totW.get(acc) || 0; if (W <= 0) return 0; return ((offW.get(acc + ":" + dcc) || 0) / W) * effPool(acc); };
+  const defForceOf = (dcc, acc) => { const W = totW.get(dcc) || 0; if (W <= 0) return effPool(dcc); return ((defW.get(dcc + ":" + acc) || 0) / W) * effPool(dcc); };
 
   // ── Encirclement ─────────────────────────────────────────────────────
   // A settlement assaulted from many DIRECTIONS must split its defence across
@@ -762,9 +828,10 @@ export function advanceFronts(world) {
     // main effort, worn by war-weariness, sapped while pinned defending. The defender meets
     // it with its OWN national army, split across the fronts it defends and the directions
     // it is pressed from. Who takes the countryside is the national-army ratio here.
-    const attForce = fieldForce(acc) * offMulPair(pc);
+    const attForce = offForceOf(acc, dcc);             // A's share of its finite army on THIS front
     const em = encMulOf(def);                          // <1 if the defender is pressed from several sides
-    const adv = attForce / Math.max(1, fieldForce(dcc) * defShareOf(dcc) * em);
+    const defForce = defForceOf(dcc, acc);             // D's share of its finite army defending THIS front
+    const adv = attForce / Math.max(1, defForce * em);
 
     if (pc.canStorm) {
       // Front is at the heartland. The city defends with its garrison OR its
@@ -778,7 +845,7 @@ export function advanceFronts(world) {
       // relieved capital holds against a far larger invader; an isolated one (its field army
       // spent or pinned elsewhere) falls to its walls alone.
       const defHome = homeMight(def);
-      const advCity = attForce / Math.max(1, (fieldForce(dcc) * defShareOf(dcc) + defHome) * em);
+      const advCity = attForce / Math.max(1, (defForce + defHome) * em);
       // A recently-conquered city is still pacified (garrisoned) and can't be
       // besieged yet — that grace stops rival empires trading it back and forth.
       if (advCity >= T.CITY_STORM_RATIO && world.step - (def._conqueredAt ?? -Infinity) >= T.CONQUEST_GRACE) {
