@@ -548,7 +548,16 @@ export function computeCountryTerritory(world) {
   // reach-projection map; now durably re-assert the marches last pass's map held
   // that the live reach has since receded from, so borders track the conquest
   // ledger instead of snapping back with every fluctuation in a capital's strength.
-  if (prev) mergePersistentTerritory(world, co, prev);
+  if (prev) {
+    mergePersistentTerritory(world, co, prev);
+    // The merge re-stamps the map from raw settlement catchments + sticky marches, which
+    // UN-SMOOTHS the border straightening the pass above did — leaving ragged fringes and
+    // thin march tendrils. Re-run the majority-filter smoothing on the merged result:
+    // settlement home tiles are PINNED, so it never erases a settled corridor or a durable
+    // catchment core (that's real held land) — it only erodes the un-settled march
+    // protrusions, straightening a realm into a coherent blob.
+    smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0);
+  }
   return co;
 }
 
