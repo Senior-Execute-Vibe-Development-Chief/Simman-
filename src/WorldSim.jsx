@@ -2107,11 +2107,6 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
         const tw=psw.tw,th=psw.th;
         const hues=assignCountryColors(claimArr,tw,th,countryColorsRef.current);
         countryColorsRef.current=hues;
-        // A single-settlement realm is an independent CITY-STATE, not a great power — its
-        // catchment IS its territory (so it now colours), but drawn in a muted/desaturated shade
-        // so the map reads "independent statelet" rather than as one more full-blown empire.
-        const cityState=new Set();
-        if(psw.countries)for(const[cid,c]of psw.countries){if(!c.memberIds||c.memberIds.length<=1)cityState.add(cid);}
         const fillByCountry=new Map(),colonyByCC=new Map();
         const colonyCells=[];   // sx,sy pairs of colony tiles → striped overlay below
         // opaque bold fills (cover the terrain so the colours read clean)
@@ -2128,7 +2123,7 @@ ctx.beginPath();ctx.arc(p.x,p.y,0.8,0,Math.PI*2);ctx.fill();}
             const over=cobj&&cobj._overlord>=0?cobj._overlord:-1;
             colonyByCC.set(cc,over>=0);
             const h=(over>=0?(hues.get(over)??((over*61)%360+360)%360):(hues.get(cc)??((cc*61)%360+360)%360))|0;
-            fs=cityState.has(cc)?`hsl(${h},22%,44%)`:`hsl(${h},60%,50%)`;
+            fs=`hsl(${h},60%,50%)`;   // every realm drawn vibrant — no city-state muting
             fillByCountry.set(cc,fs);
           }
           if(fs!==lastFs){octx.fillStyle=fs;lastFs=fs;}
