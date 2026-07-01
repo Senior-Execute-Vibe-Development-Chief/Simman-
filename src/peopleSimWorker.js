@@ -439,10 +439,26 @@ function buildSnapshot() {
     tileComp = new Int32Array(N);
     for (let i = 0; i < N; i++) tileComp[i] = seen[i] === stamp ? tc[i] : -1;
   }
-  // National border claim — computed in the sim each territory pass
-  // (world._countryClaim); ship it with the static group like owner[]. The
-  // renderer draws country borders/tints from this (smoother than owner[]).
-  const countryClaim = sendStatic && world._countryClaim ? world._countryClaim.slice() : null;
+  // National border claim — computed in the sim each territory pass (world._countryClaim);
+  // shipped with the static group like owner[]. THE CATCHMENT IS TERRITORY: start from the
+  // crawled political border (which projects into the wilderness between settlements), then
+  // overlay every tile a settlement actually WORKS (world._territoryOwner) with that
+  // settlement's country. So a realm always colours the land its settlements farm — a
+  // settlement is never a bare dot on the map while its nascent capital's projected claim
+  // is still ~0. Render-only (a per-tick slice; nothing in the sim reads this).
+  let countryClaim = null;
+  if (sendStatic && world._countryClaim) {
+    countryClaim = world._countryClaim.slice();
+    const towner = world._territoryOwner, byId = world._byId;
+    if (towner && byId) {
+      for (let i = 0; i < countryClaim.length; i++) {
+        const sid = towner[i];
+        if (sid < 0) continue;
+        const s = byId.get(sid);
+        if (s && s.mode === "settled" && s.countryId >= 0) countryClaim[i] = s.countryId;
+      }
+    }
+  }
 
   const transfer = [];
   if (owner) transfer.push(owner.buffer);
