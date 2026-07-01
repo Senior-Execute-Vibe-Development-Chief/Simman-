@@ -160,11 +160,17 @@ const BASE_RATE                 = 0.030;   // 3x — the world settles ~3x faste
 // flew the flag of. Beyond this hop a wilderness candidate simply doesn't found here;
 // longer jumps into virgin land are the job of colony parties (maybeSendSettlers),
 // which carry full tech and pick a bounded site. ABSOLUTE tiles (NOT res-scaled):
-// settlement spacing itself (MIN_SETT_DIST=8, SOFT_DIST=10) is absolute at every
-// resolution, so a frontier extension is ~one-to-two spacings from the donor on any
-// map — the detached-exclave gaps this guards against are absolute, not a fraction of
-// the world (a res-scaled bound let 40-tile exclaves through on the full-res map).
-const FRONTIER_EXTEND_DIST      = 16;
+// settlement spacing itself is absolute at every resolution, so a frontier extension is
+// ~one spacing from the donor on any map — the detached-exclave gaps this guards against
+// are absolute, not a fraction of the world (a res-scaled bound let 40-tile exclaves
+// through on the full-res map). CALIBRATED TO THE SPACING MODEL: it must be at least the
+// MAXIMUM natural spacing — barren land spaces settlements MIN_SETT_DIST·(1+SPARSE_SPREAD)
+// = 20 tiles apart (capacitySpacingMul) — or a realm on marginal land can't reach its OWN
+// next village at its natural density and is frozen at a handful of settlements while
+// fertile river valleys (8-tile spacing) chain freely: the "river nations vast, everyone
+// else 4-7" divide. So set it one spacing PAST the barren maximum: contiguous frontier
+// extension works on every terrain at its own density, while true teleports are still cut.
+const FRONTIER_EXTEND_DIST      = MIN_SETT_DIST * (1 + SPARSE_SPREAD) + MIN_SETT_DIST;   // 20 (barren spacing) + 8 (one hop) = 28
 // A frontier village born INTO a realm shares that realm's DEVELOPMENT (its roads,
 // crops, administration, craft all diffuse to the new settlement), so it is never a
 // stone-age speck inside a developed empire. Floor its inherited knowledge at this
