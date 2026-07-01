@@ -2289,6 +2289,23 @@ function absorbWeakNeighbors(world, countries) {
     if (T.ABSORB_IDENTITY > 0 && target && target.capital) {
       prob *= 1 - T.ABSORB_IDENTITY * absorbResistance(target.capital, m, idW);
     }
+    // BALANCE OF POWER caps a hegemon's PEACEFUL growth too, not just its wars. If a
+    // coalition is arrayed against the absorber (updateAlliances → _blocMight: the Σ
+    // power of every realm balancing against it), the statelets it would swallow are
+    // propped up by that coalition — allied, subsidised, their independence guaranteed
+    // — and resist joining its orbit. This is the SAME deterrence armies.js applies to
+    // the hegemon's attacks (BALANCE_W / BALANCE_CAP), now also throttling absorption:
+    // without it a would-be continental hegemon simply vacuumed up the connected
+    // mainland (Europe → one nation) because peaceful absorption had no anti-hegemon
+    // check at all, while nationalism stays near-silent for most of history. A realm no
+    // one balances against — an isolated power facing only empty frontier or a
+    // fragmented far-weaker pack — is unaffected and still consolidates (Russia into
+    // Siberia). Emergent: the brake is the coalition's strength relative to the hegemon,
+    // whatever the map makes it — never a size cap or a geography constant.
+    if (world._blocMight && world._countryPow) {
+      const bm = world._blocMight.get(bestId) || 0;
+      if (bm > 0) prob /= Math.min(BALANCE_CAP, 1 + BALANCE_W * (bm / Math.max(1, world._countryPow.get(bestId) || 1)));
+    }
     // Deterministic per-(seed, settlement, step) roll via the shared avalanche
     // hash. Unlike the old linear-congruential hash it varies with the WORLD SEED
     // (defections used to be identical across every seed) and doesn't correlate
