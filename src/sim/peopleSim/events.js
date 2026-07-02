@@ -150,6 +150,11 @@ const NARRATE = {
   "colony.departed"(ev) { return `A colony fleet set sail from ${ev.sName}.`; },
   "colony.founded"(ev) { return `${ev.sName || "A colony"} was planted overseas under the flag of ${ev.fromName || "its mother country"}.`; },
   "colony.independent"(ev) { return `${ev.name || "The colony"} cast off ${ev.fromName || "its mother country"} and declared itself sovereign.`; },
+  "polity.submitted"(ev, as) {
+    return as === ev.to
+      ? `${ev.name || "A neighbouring statelet"} bent the knee and became a tributary of the realm.`
+      : `Facing hopeless odds, the court of ${ev.name || "the realm"} bowed to ${ev.toName || "a greater power"} — keeping its throne at the price of tribute.`;
+  },
   "plague.virginSoil"(ev) { return `A pestilence unknown to ${ev.sName || "the people"} came ashore with the strangers, and they had no defence against it.`; },
   "war.ended"(ev, as) {
     const other = as === ev.polity ? (ev.toName || "its enemy") : (ev.name || "its enemy");
@@ -283,6 +288,7 @@ export function categoryOf(ev, as = -1) {
     case "settlement.founded": case "colony.departed": return "founding";
     case "colony.founded": return "founding";
     case "colony.independent": return as === ev.from ? "loss" : "secession";
+    case "polity.submitted": return as === ev.to ? "annex" : "loss";
     case "plague.virginSoil": return "plague";
     case "war.indemnity": return as === ev.polity ? "loss" : "wealth";
     case "war.ended": return "war";

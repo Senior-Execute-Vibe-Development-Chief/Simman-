@@ -42,22 +42,19 @@ import { hash32 } from "./rng.js";
 // INSIDE the budget instead of instantly over-extending and seceding back
 // (the absorb↔secede oscillation that flipped whole swathes each pass).
 const ABSORB_HEADROOM  = 0.90;
-// Great-power engulfment of a weak STATELET: when a realm out-powers a
-// neighbour's WHOLE country by this much, it can absorb that neighbour's
-// settlements PAST its normal capacity headroom — up to LOPSIDED_HEADROOM ×
-// capacity (a great power over-extends to swallow tiny states) and at the faster
-// ENGULF_PROB rate. This is the consolidation force that pulls the late-game
-// splotch of tiny states into a few multi-city empires; it only fires on
-// lopsided matchups, so peer empires don't peel border villages off each other.
-const LOPSIDED_ENGULF  = 5.0;   // a realm must out-power a neighbour's WHOLE country by this much to engulf it past its normal admin headroom (the great-power consolidation that merges city-states into multi-city empires — the source of provinces)
-const ENGULF_PROB      = 0.35;  // per-pass engulf rate once lopsided
-// Capacity ceiling for lopsided engulfment: a great power may over-extend to
-// this MULTIPLE of its admin budget while engulfing statelets — enough to
-// consolidate a neighbourhood of city-states into a multi-city empire, but NOT
-// to swallow a continent. Past it, even a lopsided absorber must first shed an
-// over-extended province (the over-budget frontier secedes) before it can take
-// another — the boom-bust ceiling that stops one realm eating the whole map.
-const LOPSIDED_HEADROOM = 1.6;
+// ── Submission (vassalage) ────────────────────────────────────────────
+// A statelet facing hopeless odds SUBMITS to the dominant neighbour instead of
+// waiting to be ground down: it keeps its court, seat, faith and internal rule
+// but takes an overlord — entering the SAME dependency plumbing colonies use
+// (pol._overlord → tribute stream, bloc membership, no fronts inside the pair,
+// the independence line as the exit, full annexation only via the normal
+// absorb path once assimilation lowers identity resistance). This is the
+// consolidation force that organises the late-game map into suzerainty
+// networks — it replaces the old lopsided-engulfment override, which reached
+// past the admin-capacity mechanism to vacuum statelets off the map directly.
+const SUBMIT_RATIO = 5.0;  // odds (their whole country vs yours) past which a court chooses tribute over annihilation — resistance is demonstrably hopeless
+const SUBMIT_PROB  = 0.25; // per-polity-pass chance a hopelessly-outmatched court actually submits (after identity and coalition backing have had their say) — courts hold out for a generation or two, not forever
+const SUBMIT_REACH = 1.5;  // a suzerain overawes out to this multiple of its hold reach: a punitive expedition ranges past where a permanent garrison (direct administration) can sit, and a vassal costs no garrison — it administers itself
 // A realm's whole country must out-power a neighbour's whole country by
 // T.ABSORB_DOMINANCE before it can administratively absorb that neighbour's
 // frontier settlements (absorbWeakNeighbors). Hysteresis: only clearly-minor
@@ -335,6 +332,20 @@ export const BALANCE_W   = 1.1;   // how hard a coalition backs a member it defe
 export const BALANCE_CAP = 3.0;   // ceiling on that backing (a coalition deters, it doesn't make a member invincible)
 const ALLY_TRADE_REF = 6;     // cross-border money/tick at which two realms are "mutual-benefit" allies regardless of threat
 const ALLIANCE_EVERY = 600;   // recompute the (slow-drifting) alliance map this often
+// Amortised-cadence check usable INSIDE the phase-offset polity pass. The naive
+// `world.step % EVERY === 0` can never be true here: the polity pass fires at
+// step ≡ 37 (mod polity interval) — the _at() phase offsets in index.js — and
+// that residue never lands on 0 mod EVERY when the interval divides EVERY. (The
+// alliance map silently froze at its first, near-empty build and dependencies
+// never saw an independence check.) Instead fire on the FIRST polity pass of
+// each EVERY-wide window: a pure function of the step — no new state, so
+// determinism and save/load continuation are untouched — firing exactly once
+// per window at any granularity or phase.
+const _polityWindow = (world, every) => {
+  const G = T.SIM_GRANULARITY || 1;
+  const ivl = Math.max(1, Math.round(T.POLITY_INTERVAL * G));
+  return world.step % Math.max(ivl, Math.round(every * G)) < ivl;
+};
 
 // ── Colonial dependencies: a self-governing colony bound to an overlord ───────
 // An overseas colony (sea.js) is founded as its OWN realm — own capital, own LOCAL
@@ -1596,7 +1607,7 @@ export function updatePolities(world) {
     //     the metropole's total: a DISTANT colony, which the navy can barely reach, breaks free at
     //     far less relative strength than a near one. This is the American/Latin-American arc —
     //     the metropole loses what it cannot hold across the sea, sooner the farther it is.
-    if (overlordOf.size && world.step % INDEPENDENCE_EVERY === 0) {
+    if (overlordOf.size && _polityWindow(world, INDEPENDENCE_EVERY)) {
       for (const [dep, over] of [...overlordOf]) {
         const dc = countries.get(dep), oc = countries.get(over);
         if (!dc || !oc) continue;
@@ -1668,7 +1679,12 @@ export function updatePolities(world) {
   // Balance of power: recompute the (slow-drifting) alliance map periodically — and
   // once on first run so the war pass never reads an undefined map. Self-calibrating,
   // not time-gated: it's a perf cadence (how OFTEN), the content is pure world state.
-  if (!world._allianceTarget || world.step % ALLIANCE_EVERY === 0) updateAlliances(world);
+  if (!world._allianceTarget || _polityWindow(world, ALLIANCE_EVERY)) updateAlliances(world);
+  // Vassalage: hopelessly-outmatched statelets submit to the neighbour that
+  // towers over them (the threat map above), entering the dependency plumbing.
+  // Runs every polity pass on the (slow-drifting) alliance data; the new
+  // vassal's tribute/bloc wiring takes effect next pass via rebuildOverlords.
+  considerSubmissions(world, countries);
   for (const c of countries.values()) {
     if (c.members.length <= 1) {
       const solo = c.members[0];
@@ -2136,6 +2152,65 @@ export function updatePolities(world) {
   reconcilePolities(world, countries);
 }
 
+// ── Submission: a statelet facing hopeless odds takes an overlord ─────
+// The vassalage entry point (see SUBMIT_* above). Runs on the alliance data
+// updateAlliances just refreshed: each sovereign realm S whose dominant
+// adjacent threat H (a) out-powers S's whole country by SUBMIT_RATIO, (b) can
+// project force to S's seat (within SUBMIT_REACH × its hold reach), and
+// (c) isn't checked by a coalition, may submit — becoming H's dependency
+// through the exact plumbing colonies use. Willingness scales inversely with
+// identity resistance (kin submit; a wholly foreign court holds out for
+// generations) and with the balance of power (a statelet propped up by the
+// coalition against H keeps its independence — the same brake that throttles
+// peaceful absorption). All live state: power, adjacency, reach, identity.
+function considerSubmissions(world, countries) {
+  const threat = world._allianceTarget, pow = world._countryPow;
+  if (!threat || !pow) return;
+  const tw = world.tw;
+  for (const [sid, hid] of threat) {
+    if (hid < 0) continue;
+    const S = countries.get(sid), H = countries.get(hid);
+    if (!S || !H || !S.capital || !H.capital) continue;
+    const spol = getOrCreateRecord(world, sid, { seat: S.capital });
+    if (!spol || spol._overlord != null) continue;         // already someone's dependency
+    // No cycles: if H's own overlord chain leads back to S, S can't take H as
+    // suzerain (tribute pyramids — a vassal of a vassal — are fine; loops aren't).
+    let up = hid, cyc = false;
+    for (let hops = 0; hops < 16; hops++) {
+      const p = getPolity(world, up);
+      const o = p ? p._overlord : null;
+      if (o == null) break;
+      if (o === sid) { cyc = true; break; }
+      up = o;
+    }
+    if (cyc) continue;
+    const powS = pow.get(sid) || 1, powH = pow.get(hid) || 1;
+    if (powH < powS * SUBMIT_RATIO) continue;               // resistance not yet hopeless
+    // The suzerain must be able to PROJECT force to S's seat — overawing needs a
+    // credible punitive expedition, which ranges SUBMIT_REACH past garrison range.
+    let dx = Math.abs(H.capital.pos.x - S.capital.pos.x); if (dx > tw / 2) dx = tw - dx;
+    const dy = H.capital.pos.y - S.capital.pos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > SUBMIT_REACH * Math.max(1, H.holdReach || H.range || 0)) continue;
+    let prob = SUBMIT_PROB;
+    // Kin submit, foreigners resist longer. Vassalage keeps internal sovereignty
+    // (court, faith, tongue survive), so identity resists it at full weight but
+    // never absolutely — even a wholly foreign court eventually bends.
+    prob *= 1 - absorbResistance(H.capital, S.capital, identityWeightsFor(world, H.capital, S.capital));
+    // Balance of power: a coalition arrayed against H guarantees the statelets
+    // it would overawe — the same deterrence that throttles peaceful absorption.
+    if (world._blocMight) {
+      const bm = world._blocMight.get(hid) || 0;
+      if (bm > 0) prob /= Math.min(BALANCE_CAP, 1 + BALANCE_W * (bm / powH));
+    }
+    const r = hash32(world.seed || 1, "submit", sid, world.step) / 4294967296;
+    if (r > prob) continue;
+    spol._overlord = hid;
+    logEvent(world, "polity.submitted", { polity: sid, name: realmName(world, sid),
+      to: hid, toName: realmName(world, hid) });
+  }
+}
+
 // Live overlord map + validation (an overlord whose realm has died frees its
 // dependencies; self-referential/orphaned links drop) and the metropole's
 // naval REACH to each colony — how much force/supply it can project across
@@ -2160,7 +2235,16 @@ export function rebuildOverlords(world, countries) {
     const dist = Math.sqrt(dx * dx + dy * dy);
     const nav = (oc.capital.knowledge && oc.capital.knowledge.navigation) || 0;
     const navalReach = NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV;
-    reachOf.set(dep, navalReach / (navalReach + dist));
+    // Projection is by whichever ARM reaches: the navy across water (naval
+    // reach), or the army over land — which marches out to the overlord's hold
+    // reach, the same operational range that let a land VASSAL submit in the
+    // first place. Without the land arm, an adjacent vassal's independence was
+    // judged by the overlord's NAVY (near-zero pre-sail), so a freshly-submitted
+    // statelet sat above the independence line and oscillated submit↔free.
+    const seaProj = navalReach / (navalReach + dist);
+    const hold = Math.max(1, oc.holdReach || oc.range || 0);
+    const landProj = hold / (hold + dist);
+    reachOf.set(dep, Math.max(seaProj, landProj));
   }
   return { overlordOf, reachOf };
 }
@@ -2289,29 +2373,19 @@ function absorbWeakNeighbors(world, countries) {
     // counting what it has already taken on this pass.
     const target = countries.get(bestId);
     const committed = absorbedLoad.get(bestId) || 0;
-    // Lopsided: the absorber out-powers this settlement's WHOLE country by
-    // LOPSIDED_ENGULF — a great power vs a statelet. Then it engulfs even with no
-    // headroom (and faster, below); otherwise it must have spare capacity.
-    const myCountryPow = countryPower.get(m.countryId) || 1;
-    const lopsided = (countryPower.get(bestId) || 1) >= myCountryPow * LOPSIDED_ENGULF;
-    // Lopsided great powers may over-extend (up to LOPSIDED_HEADROOM × capacity)
-    // but are NOT exempt from the ceiling — without an upper bound a dominant
-    // realm engulfs the whole map. Past the ceiling it must shed before it grows.
-    if (!hasAbsorbHeadroom(target, committed, lopsided ? LOPSIDED_HEADROOM : ABSORB_HEADROOM)) continue;
+    if (!hasAbsorbHeadroom(target, committed)) continue;
     const myPower = Math.max(1, settlementPower(m));
-    // Defection chance per polity pass — caps at T.ABSORB_PROB_MAX normally; a
-    // lopsided great-power engulfment goes at the faster ENGULF_PROB so the
-    // splotch of tiny states is consolidated within a few passes, not never.
+    // Defection chance per polity pass — caps at T.ABSORB_PROB_MAX. (Hopelessly
+    // outmatched STATELETS are consolidated by the submission/vassalage pass in
+    // updatePolities, not by over-extending past the admin budget here.)
     const ratio = bestScore / myPower;
     let prob = Math.min(T.ABSORB_PROB_MAX, ratio * T.ABSORB_RATE);
-    if (lopsided) prob = Math.max(prob, ENGULF_PROB);
     // CULTURAL RESISTANCE: a city of the absorber's OWN people/tongue/faith slides
     // into its orbit (building a national core); a foreign one clings to independence
     // and must be taken by direct CONQUEST (armies.js) instead of peacefully defecting.
     // This is what stops one realm engulfing every neighbour it out-powers across two
-    // dozen cultures — realms coalesce into culturally-coherent nation-states. Applied
-    // AFTER the lopsided floor so even a great power can't peacefully vacuum up a wholly
-    // foreign city. Era-weighted (cohesion.js), so antiquity still permits multi-ethnic
+    // dozen cultures — realms coalesce into culturally-coherent nation-states.
+    // Era-weighted (cohesion.js), so antiquity still permits multi-ethnic
     // empires and the national age fractures them — emergent, never time-gated.
     if (T.ABSORB_IDENTITY > 0 && target && target.capital) {
       // Salience from the two parties actually meeting (cohesion.js): the
