@@ -1686,7 +1686,22 @@ export function updatePolities(world) {
   // not time-gated: it's a perf cadence (how OFTEN), the content is pure world state.
   if (!world._allianceTarget || world.step % ALLIANCE_EVERY === 0) updateAlliances(world);
   for (const c of countries.values()) {
-    if (c.members.length <= 1) { if (c.members[0]) c.members[0].loyalty = 1; continue; }   // city-state: loyal to itself
+    if (c.members.length <= 1) {
+      const solo = c.members[0];
+      if (solo) {
+        solo.loyalty = 1;   // a city-state is loyal to itself
+        // ...and its stocks keep LIVING: unrest cools here too (the relief
+        // used to live only in the multi-member loop, so a city-state born
+        // of a duress secession kept its pre-secession unrest forever), and
+        // the fiscal record recovers — disburseTreasury never runs for a
+        // lone town, so a stale _solvency snapshot from imperial days
+        // permanently deserted its garrison (BANKRUPT_DESERT every muster).
+        solo.unrest = Math.max(0, (solo.unrest || 0) - UNREST_RELIEF);
+        const soloGov = getPolity(world, c.id);
+        if (soloGov) { soloGov._solvency = 1; soloGov._taxRate = 0; }
+      }
+      continue;
+    }
 
     const cap = c.capital;
     const capPower = settlementPower(cap);
@@ -2441,9 +2456,19 @@ function eliminateEnclaves(world, countries) {
       if (oid < 0) continue;
       const s = byId.get(oid);
       if (s && s.countryId !== intoId) {
+        const oldCC = s.countryId;
         s.countryId = intoId;
         s.loyalty = 0.6;
         s._conqueredAt = world.step;
+        // Same bookkeeping as every other transfer channel: occupation
+        // memory (homeland identity, restoration claims) and the event log.
+        // An enclave swallowed silently left no trace in any chronicle and
+        // its people forgot their homeland instantly.
+        recordOccupation(s, oldCC, intoId, world.step);
+        logEvent(world, "settlement.annexed", { s: s.id, sName: s.name || "a settlement",
+          from: oldCC, fromName: oldCC >= 0 ? realmName(world, oldCC) : undefined,
+          to: intoId, toName: realmName(world, intoId),
+          x: s.pos.x | 0, y: s.pos.y | 0 });
       }
     }
   }

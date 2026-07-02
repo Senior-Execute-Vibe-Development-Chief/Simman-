@@ -337,9 +337,16 @@ export function peopleSimStats(world) {
   // computed worker-side). Capitals only, so it's a few dozen techState calls.
   let leadingEra = 0;
   if (world.countries) for (const c of world.countries.values()) {
-    treasury += c._treasury || 0;
     const k = c.capital && c.capital.knowledge;
     if (k) { const e = techState(k).era; if (e > leadingEra) leadingEra = e; }
+  }
+  // Sum LIVE polity treasuries (like invariants.js), not the per-polity-pass
+  // c._treasury snapshots: between passes the per-tick flows (tariffs, mint
+  // seigniorage) drain purses into the live treasuries, so the snapshot sum
+  // counted that coin in NEITHER place — the world-gold readout sawtoothed
+  // ~50% at exactly the polity cadence.
+  if (world.polities) for (const p of world.polities.values()) {
+    if (p.endedStep < 0) treasury += Math.max(0, p.treasury || 0);
   }
   return {
     step: world.step,
