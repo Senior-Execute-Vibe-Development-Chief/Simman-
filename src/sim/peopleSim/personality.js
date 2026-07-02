@@ -42,7 +42,7 @@
 // multipliers at the bottom of this file.
 
 import { entityRng } from "./rng.js";
-import { ensurePolity, getPolity } from "./entities.js";
+import { ensurePolity, getPolity, getOrCreateRecord } from "./entities.js";
 
 // Three INDEPENDENT outward-drive axes, each in −1..1 with 0 = neutral
 // (uncorrelated — so a realm can be high on two at once: the warlike merchant,
@@ -169,7 +169,7 @@ function makePersonality(world, c, rng) {
 
 // Get (or lazily create) a country's personality, stored on its polity record.
 export function personalityOf(world, c) {
-  const pol = ensurePolity(world, c.id, { silent: true, seat: c.capital });
+  const pol = getOrCreateRecord(world, c.id, { seat: c.capital });
   if (!pol) return null;
   if (!pol.personality) {
     const p = makePersonality(world, c, countryRng(world, c.id));
@@ -237,7 +237,7 @@ export function faithShapePersonality(world, c, target, rate = FAITH_SHAPE_RATE)
 // drifted), so the lineage's character persists. If the parent has no recorded
 // personality yet, the child is left to lazily self-seed.
 export function inheritPersonality(world, parentCountryId, childCountryId) {
-  const childPol = ensurePolity(world, childCountryId, { silent: true });
+  const childPol = getOrCreateRecord(world, childCountryId);
   if (!childPol) return;
   if (childPol.personality) return;   // already set — including an old nation
                                       // re-forming under its own id, which keeps

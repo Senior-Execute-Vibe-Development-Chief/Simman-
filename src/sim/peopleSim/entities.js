@@ -80,6 +80,20 @@ export function ensurePolity(world, id, opts = {}) {
   return p;
 }
 
+/**
+ * Bookkeeping accessor: get the record, creating it silently if missing —
+ * but NEVER touching the lifecycle. Hot fiscal/chronicle paths (govOf, tax,
+ * tariffs, personality) use this so that merely reading a dead realm's
+ * record cannot silently resurrect it (endedStep stays set until an
+ * explicit lifecycle site — reconcilePolities or a story event — reopens
+ * it and logs the restoration).
+ */
+export function getOrCreateRecord(world, id, opts = {}) {
+  if (id == null || id < 0) return null;
+  const reg = politiesOf(world);
+  return reg.get(id) || ensurePolity(world, id, { ...opts, silent: true });
+}
+
 /** Close a polity's lifecycle (record persists; history stays queryable). */
 export function endPolity(world, id, how = "dissolved", by = -1, byName = undefined) {
   const p = getPolity(world, id);
@@ -103,13 +117,24 @@ export function endPolity(world, id, how = "dissolved", by = -1, byName = undefi
  */
 export function reconcilePolities(world, countries) {
   const reg = politiesOf(world);
+  // The countries VIEW passed in was built at the TOP of the polity pass;
+  // states minted MID-pass (secession, rebellion, fragmentation) are not in
+  // it. Lifecycle truth is the settlements themselves — recompute the live
+  // id set here, so a realm born this pass is never closed as "dissolved"
+  // at birth (which also silently corrupted every lifespan statistic).
+  const live = new Set();
+  for (const s of world.settlements) {
+    if (s.mode === "settled" && s.countryId >= 0) live.add(s.countryId);
+  }
   for (const [id, c] of countries) {
+    if (!live.has(id)) continue;   // vanished mid-pass; the end-scan below closes it
     if (reg.has(id)) { const p = reg.get(id); if (p.endedStep >= 0) ensurePolity(world, id); p.capitalId = c.capitalId; continue; }
     const substantial = c.members.length > 1
       || (c.capital && (c.capital._sovereignSeat != null || (c.capital.tier | 0) >= 1));
     if (substantial) ensurePolity(world, id, { how: "emerged", seat: c.capital });
   }
   for (const p of reg.values()) {
-    if (p.endedStep < 0 && !countries.has(p.id)) endPolity(world, p.id, "dissolved");
+    if (p.endedStep >= 0 && live.has(p.id)) ensurePolity(world, p.id);   // alive again under its old id — log the restoration
+    else if (p.endedStep < 0 && !live.has(p.id)) endPolity(world, p.id, "dissolved");
   }
 }

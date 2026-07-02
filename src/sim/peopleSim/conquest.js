@@ -20,7 +20,7 @@ import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
 import { techEff, getWealthReserve } from "./settlement.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
-import { ensurePolity, endPolity, getPolity, reconcilePolities } from "./entities.js";
+import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities } from "./entities.js";
 import { identityWeightsNow, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
 import { T } from "./tuning.js";
 import { hash32 } from "./rng.js";
@@ -173,7 +173,8 @@ const SPOILS_DECAY = 0.85;   // war-weariness relief (banked on conquest in armi
 // revenue/spend, momentum and tax state all live on it and survive capital
 // changes, conquest, and restoration.
 export function govOf(world, countryId) {
-  return ensurePolity(world, countryId, { silent: true });
+  // Lifecycle-neutral: fiscal bookkeeping must never resurrect a dead realm.
+  return getOrCreateRecord(world, countryId);
 }
 
 // Bank conquest momentum onto the conquering country (armies.js calls this

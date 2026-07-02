@@ -9,7 +9,7 @@
 
 import { techState, ERAS } from "./tech.js";
 import { logEvent, eventsFor, narrate, categoryOf, condenseChronicle } from "./events.js";
-import { getPolity, ensurePolity } from "./entities.js";
+import { getPolity, ensurePolity, getOrCreateRecord } from "./entities.js";
 import { IN_MINING, IN_PILGRIM, IN_CARRY, IN_FINANCE, IN_SLAVE_TRADE } from "./money.js";
 
 // Per-settlement "this city became X" milestone flags (s._chronFlags bitmask), so each
@@ -52,7 +52,7 @@ export function chronicleTick(world) {
   let leadEra = 0;
   for (const c of world.countries.values()) {
     if (!c || !c.capital) continue;
-    const p = ensurePolity(world, c.id, { silent: true, seat: c.capital });
+    const p = getOrCreateRecord(world, c.id, { seat: c.capital });
     if (!p) continue;
     const m = p.chron;
 
