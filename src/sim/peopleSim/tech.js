@@ -407,11 +407,25 @@ const _fxCache = new Map();
 const _FX_CACHE_MAX = 4096;
 export function techEffects(k, blend = 1) {
   const _k = k || {};
-  const _key = (_k.agriculture || 0) + "," + (_k.construction || 0) + "," + (_k.organization || 0) + ","
-             + (_k.metallurgy || 0) + "," + (_k.navigation || 0) + "," + (_k.mobility || 0) + "|" + blend;
+  // Quantized key (1e-3 buckets): the tracks drift every tick, so exact float
+  // keys never repeated and the memo hit ~0% in steady state — every call paid
+  // the full DAG walk. A millibucket is far below any gate/effect threshold,
+  // deterministic, and turns the 8-tick refresh cadence into real cache hits.
+  const q = (v) => Math.round((v || 0) * 1000);
+  // CRITICAL for determinism: the effects are computed from the BUCKETED
+  // values (qk), not the raw ones — the memo must be a pure function of its
+  // key, or two nearby inputs sharing a bucket would return whichever was
+  // computed first (cache-history-dependent results broke same-seed runs).
+  const qk = {
+    agriculture: q(_k.agriculture) / 1000, construction: q(_k.construction) / 1000,
+    organization: q(_k.organization) / 1000, metallurgy: q(_k.metallurgy) / 1000,
+    navigation: q(_k.navigation) / 1000, mobility: q(_k.mobility) / 1000,
+  };
+  const _key = q(_k.agriculture) + "," + q(_k.construction) + "," + q(_k.organization) + ","
+             + q(_k.metallurgy) + "," + q(_k.navigation) + "," + q(_k.mobility) + "|" + blend;
   const _hit = _fxCache.get(_key);
   if (_hit) return _hit;
-  const have = techState(k).have;
+  const have = techState(qk).have;
   const ch = {}; for (const c of FX_CH) ch[c] = 0;
   const can = {}; for (const a of FX_ABIL) can[a] = false;
   // Imminent techs (prereqs met, knowledge in progress) lend a FRACTION of their
@@ -423,7 +437,7 @@ export function techEffects(k, blend = 1) {
     const fx = TECH_FX[TECHS[i].id]; if (!fx) continue;
     let credit;
     if (have[i]) credit = 1;
-    else { const ns = techNodeState(k, have, TECHS[i]); credit = ns.state === "next" ? ns.prog * PARTIAL : 0; }
+    else { const ns = techNodeState(qk, have, TECHS[i]); credit = ns.state === "next" ? ns.prog * PARTIAL : 0; }
     if (credit <= 0) continue;
     for (const key in fx) {
       const v = fx[key];
@@ -431,8 +445,8 @@ export function techEffects(k, blend = 1) {
       else if (key in ch) ch[key] += v * credit;
     }
   }
-  const ag = _k.agriculture || 0, cn = _k.construction || 0, nav = _k.navigation || 0,
-        met = _k.metallurgy || 0, mob = _k.mobility || 0, org = _k.organization || 0;
+  const ag = qk.agriculture, cn = qk.construction, nav = qk.navigation,
+        met = qk.metallurgy, mob = qk.mobility, org = qk.organization;
   const out = {
     have, ch, ...can,
     farmYield:  1 + lerp(ag * 1.2, ch.farm, blend),            // ×land food   (old 1+ag·1.2)

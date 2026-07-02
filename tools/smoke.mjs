@@ -65,12 +65,14 @@ console.log(`[smoke] cradles: distinct, separated seats`);
     cradles.map(c => `(${c.x},${c.y})`).join(" "));
 }
 
-console.log(`[smoke] determinism: 2 sims, same seed, ${DET_STEPS} steps`);
+console.log(`[smoke] determinism: 2 sims, same seed, ${DET_STEPS} steps (stats + full state hash)`);
 {
   const a = buildSim({ W, H, seed: SEED, preset: PRESET });
   const b = buildSim({ W, H, seed: SEED, preset: PRESET });
   stepPeopleSim(a, DET_STEPS);
   stepPeopleSim(b, DET_STEPS);
+  const { hashWorld: _hw } = await import("../src/sim/persist.js");
+  check("determinism: full state hashes identical", _hw(a) === _hw(b), `${_hw(a)} vs ${_hw(b)}`);
   const sa = peopleSimStats(a), sb = peopleSimStats(b);
   delete sa.tickMs; delete sb.tickMs;   // wall-clock, legitimately differs
   const ja = JSON.stringify(sa), jb = JSON.stringify(sb);

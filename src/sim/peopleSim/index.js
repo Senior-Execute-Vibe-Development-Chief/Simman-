@@ -155,6 +155,13 @@ export function stepPeopleSim(world, n = 1) {
     const _G = Math.max(1, T.SIM_GRANULARITY || 1);
     world._dt = 1 / _G;
     const _ivl = (base) => Math.max(1, Math.round(base * _G));
+    // Phase-offset a cadence: same interval, fired at a fixed offset so the
+    // heavy passes stop stacking on one tick. All intervals used to share
+    // phase 0 and their common factors made every multiple of 600 a
+    // sea+polity+culture+faith+war+dynasty mega-tick (measured worst ticks
+    // 174ms → 1197ms). Offsets are small distinct primes: pure scheduling —
+    // per-pass cadence, ordering-on-shared-ticks, and determinism unchanged.
+    const _at = (base, phase) => { const m = _ivl(base); return world.step % m === phase % m; };
     // Fast id → settlement lookup, refreshed each tick (the Map instance is
     // reused — clear+refill — so this allocates nothing per tick). Replaces
     // the O(n) linear scans the trade / knowledge passes would otherwise do
@@ -242,34 +249,34 @@ export function stepPeopleSim(world, n = 1) {
     // across borders, annexing a settlement when its heartland is stormed. Land
     // follows the cities: capturing a city flips it to the conqueror, and the
     // per-country Voronoi (computeCountryTerritory) re-draws its region cleanly.
-    if (world.step % _ivl(MUSTER_INTERVAL) === 0) musterArmies(world);
+    if (_at(MUSTER_INTERVAL, 23)) musterArmies(world);
     if (world.step % _ivl(T.CONQUEST_INTERVAL) === 0) advanceFronts(world);
     mark("armies");
     // Maritime: colony ships sail every tick; the port→port sea-lane graph
     // (sea trade peers) and overseas colonisation are rebuilt periodically.
     moveShips(world);
-    if (world.step % SEA_INTERVAL === 0) updateSea(world);
+    if (world.step % SEA_INTERVAL === 7 % SEA_INTERVAL) updateSea(world);
     mark("sea");
-    if (world.step % _ivl(SOIL_INTERVAL) === 0) updateSoil(world);   // rate pass: fatigue accrual per unit of HISTORY
+    if (_at(SOIL_INTERVAL, 11)) updateSoil(world);   // rate pass: fatigue accrual per unit of HISTORY
     mark("soil");
     // Polities: group settlements into countries, tribute, and let
     // over-extended members secede.
-    if (world.step % _ivl(T.POLITY_INTERVAL) === 0) updatePolities(world);
+    if (_at(T.POLITY_INTERVAL, 37)) updatePolities(world);
     mark("polities");
     // Peoples: assimilation toward the ruler's culture, colonial divergence,
     // per-polity culture refresh (cultures.js).
-    if (world.step % _ivl(CULTURE_INTERVAL) === 0) updateCultures(world);
+    if (_at(CULTURE_INTERVAL, 41)) updateCultures(world);
     // Faiths: folk-faith seeding, organized genesis, trade-graph conversion,
     // state adoption + legitimacy, schisms (faiths.js).
-    if (world.step % _ivl(FAITH_INTERVAL) === 0) updateFaiths(world);
+    if (_at(FAITH_INTERVAL, 43)) updateFaiths(world);
     // Pilgrimage economy: the faithful send offerings to each creed's holy see
     // (faiths.js) — a holy city grows rich on devotion, no local production needed.
-    if (world.step % _ivl(PILGRIM_INTERVAL) === 0) updatePilgrimage(world);
+    if (_at(PILGRIM_INTERVAL, 47)) updatePilgrimage(world);
     // Slave trade: raiding captures people from weaker neighbours; the market clears
     // captives into coerced labour where it's demanded (slavery.js, coerced-labour step 2).
-    if (world.step % _ivl(SLAVE_INTERVAL) === 0) updateSlaveTrade(world);
+    if (_at(SLAVE_INTERVAL, 53)) updateSlaveTrade(world);
     // Thrones: rulers age/marry/die, succession + crises (dynasties.js).
-    if (world.step % _ivl(DYNASTY_INTERVAL) === 0) updateDynasties(world);
+    if (_at(DYNASTY_INTERVAL, 59)) updateDynasties(world);
     // Per-tile identity field (identityField.js): for the lens the user is
     // viewing, partition each realm into town COUNTIES and blur the seams into
     // gradients (Stage 2). Render-only: nothing in the sim reads the field, so it

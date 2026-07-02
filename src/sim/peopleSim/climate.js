@@ -58,10 +58,12 @@ export function recomputeClimMod(world) {
   if (!cm || cm.length !== N) { cm = world.climMod = new Float32Array(N); cm.fill(1); }
   const eff = ((world._climIndex || 0) - (world._climShock || 0)) * (T.CLIMATE_AMP || 1);
   const denom = th > 1 ? th - 1 : 1;
-  for (let ti = 0; ti < N; ti++) {
-    const ty = (ti / tw) | 0;
+  // The multiplier depends only on the ROW (latitude) and one global scalar —
+  // compute th values and fill row spans instead of N divisions/clamps.
+  for (let ty = 0; ty < th; ty++) {
     const latW = 0.10 + 0.30 * Math.abs(ty / denom - 0.5) * 2;   // 0.1 at the equator → 0.4 at the poles
-    const v = 1 + eff * latW;
-    cm[ti] = v < FLOOR ? FLOOR : v > CEIL ? CEIL : v;
+    let v = 1 + eff * latW;
+    v = v < FLOOR ? FLOOR : v > CEIL ? CEIL : v;
+    cm.fill(v, ty * tw, ty * tw + tw);
   }
 }

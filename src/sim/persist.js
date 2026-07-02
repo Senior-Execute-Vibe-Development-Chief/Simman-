@@ -319,9 +319,17 @@ export function loadWorld(data, opts = {}) {
   computeTerritory(world);
   world._byId = new Map();
   for (const s of world.settlements) world._byId.set(s.id, s);
+  // The warm-up must not MUTATE persistent state: rebuildCountries lazily
+  // mints polity records (personality attach) for statelets born since the
+  // last polity pass — records the saved world does not have yet, breaking
+  // save→load→save identity. Snapshot the registry and drop any records the
+  // warm-up minted; the next polity pass re-mints them deterministically at
+  // exactly the tick the uninterrupted run would have.
+  const _polIds = new Set(world.polities.keys());
   rebuildCountries(world);
   rebuildOverlords(world, world.countries);   // colony↔metropole links must exist before the alliance map (else colonies balance against their own metropole until the next ALLIANCE_EVERY boundary)
   updateAlliances(world);
+  for (const id of [...world.polities.keys()]) if (!_polIds.has(id)) world.polities.delete(id);
   return world;
 }
 
