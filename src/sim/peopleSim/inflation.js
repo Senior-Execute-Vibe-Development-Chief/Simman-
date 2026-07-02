@@ -26,6 +26,14 @@
 // behaviour is unchanged from the pre-inflation calibration.
 
 import { exportValueOf } from "./settlement.js";
+import { TECHS } from "./tech.js";
+
+// The organization level at which stamped coin exists — read from the tech
+// tree's own Currency gate so the two can never drift apart. This is the
+// STATE condition for calibrating the price baseline: prices are measured
+// against the era when coin replaces barter, wherever and whenever a world
+// actually reaches it.
+const CURRENCY_ORG = (() => { const t = TECHS.find(t => t.id === "currency"); return t && t.gate ? t.gate[1] : 0.45; })();
 
 const INFLATION_INTERVAL = 50;        // ticks between recompute passes (slow drift)
 const EMA_ALPHA          = 0.05;      // per-pass smoothing — over many passes the
@@ -74,12 +82,21 @@ export function updateInflation(world) {
     T.set(root, (T.get(root) || 0) + out);
   }
 
-  // Calibrate REF once, late enough that the world has a real economy
-  // (multiple monetised components, total coin enough that the population-
-  // weighted mean M/T is a meaningful baseline). Stored on world._inflRef
-  // and used forever after — the whole point is that *changes* from this
-  // baseline are what inflation/deflation report.
-  if (world._inflRef === undefined && world.step >= 5000 && M.size >= 3) {
+  // Calibrate REF once, when the world's monetary economy has actually
+  // EMERGED — a state condition, never a step count (cardinal rule 1; the
+  // old `step >= 5000` gate locked the baseline at whatever development the
+  // clock happened to find, and broke under SIM_GRANULARITY). Conditions:
+  //   * stamped coinage exists: the leading capital's organization has
+  //     crossed the Currency tech's own gate — coin replaces barter exactly
+  //     then, on any map, any seed, at any pace;
+  //   * the coin economy is plural: >= 3 trading components actually hold
+  //     coin, so the baseline is a cross-network mean rather than one
+  //     mining town's ratio.
+  // Stored on world._inflRef and used forever after — the whole point is
+  // that *changes* from this baseline are what inflation/deflation report.
+  let coined = 0;
+  if (world._inflRef === undefined) for (const m of M.values()) if (m > 0) coined++;
+  if (world._inflRef === undefined && (world._leadOrg || 0) >= CURRENCY_ORG && coined >= 3) {
     let totalM = 0, totalT = 0;
     for (const [root, m] of M) {
       const t = T.get(root) || 1;
