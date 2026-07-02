@@ -540,14 +540,24 @@ function selectElected(world, c, polity, rng) {
   const law = polity.succLaw || LAW_MALE_PREF;
   const womenOk = law === LAW_ABSOLUTE;
   const cands = [];
-  // elders of every house currently seated in the realm (members carry dynastyId)
+  // Elders of the houses actually seated in THIS realm — its current ruling
+  // house plus the noble houses that have held its offices (polity.houses,
+  // maintained at every crowning). The old pool was every same-CULTURE house
+  // world-wide, so a republic could elect the sitting king of a different
+  // realm of the same culture — two thrones, one person, and the foreign
+  // realm's succession machinery breaking around the shared record.
   const seen = new Set();
+  const realmHouses = new Set(polity.houses || []);
+  if (polity.dynastyId != null && polity.dynastyId >= 0) realmHouses.add(polity.dynastyId);
+  const thrones = sittingRulers(world);
   if (world.dynasties) {
-    for (const d of world.dynasties.values()) {
-      if (d.endedStep >= 0 || d.cultureId !== polity.cultureId || !d.members) continue;
+    for (const did of realmHouses) {
+      const d = world.dynasties.get(did);
+      if (!d || d.endedStep >= 0 || !d.members) continue;
       for (const id of d.members) {
         const p = getPerson(world, id);
         if (!p || p.died >= 0 || ageOf(world, p) < 30) continue;
+        if (thrones.has(p.id)) continue;              // already reigns somewhere
         if (!womenOk && p.female) continue;
         // favour candidates in their PRIME (≈42) — electing the eldest greybeard
         // gives 5-year reigns and a carousel of magistrates; a vigorous man in his
@@ -654,6 +664,23 @@ function fillThrone(world, c, polity, dyn, law, rng) {
 // Reap the house by sampled lifespan (plus an acute plague hazard for kin in a
 // plague-struck capital). Non-ruler deaths are silent; the tree simply loses the
 // member from the LIVING roster (the person record stays for the tree's history).
+// Every living polity's sitting ruler, cached per step: a person on ANOTHER
+// realm's throne (a married-in queen who inherited, a shared elected magistrate)
+// must only die through that realm's own succession handler — off-handler
+// deaths left thrones pointing at corpses and re-founded houses instead of
+// running succession.
+function sittingRulers(world) {
+  let set = world._sittingRulers;
+  if (!set || world._sittingRulersStep !== world.step) {
+    set = world._sittingRulers = set || new Set(); set.clear();
+    if (world.polities) for (const p of world.polities.values()) {
+      if (p.endedStep < 0 && p.rulerId != null && p.rulerId >= 0) set.add(p.rulerId);
+    }
+    world._sittingRulersStep = world.step;
+  }
+  return set;
+}
+
 function reapHouse(world, dyn, over, mortF, rng, rulerId, plague) {
   if (!dyn || !dyn.members) return;
   const keep = [];
@@ -661,13 +688,17 @@ function reapHouse(world, dyn, over, mortF, rng, rulerId, plague) {
     const p = getPerson(world, id);
     if (!p) continue;
     if (p.died >= 0) continue;                 // already gone
-    if (p.id === rulerId) { keep.push(id); continue; }  // the monarch is reaped in the main loop
+    if (p.id === rulerId || sittingRulers(world).has(p.id)) { keep.push(id); continue; }  // monarchs die only through their own realm's succession handler
     if (p.lifespan < 0) p.lifespan = sampleLifespan(rng, mortF, true);   // migrate older saves
     const dead = ageOf(world, p) >= p.lifespan || (plague && rng() < over(PLAGUE_HAZARD_Y));
     if (dead) { p.died = world.step | 0; if (p.reignTo < 0 && p.reignFrom >= 0) p.reignTo = stepToYear(world, world.step) | 0; }
     else keep.push(id);
   }
-  dyn.members = keep.length <= MAX_HOUSE ? keep : keep.slice(0, MAX_HOUSE);
+  // The roster cap is enforced as a BREEDING gate (growCadets / the birth
+  // paths), never by dropping living members: a person sliced off the roster
+  // was outside every mortality sweep and lived FOREVER (immortal claimants
+  // aged 1800+ dyn-years were observed).
+  dyn.members = keep;
   // sweep married-in partners — they age and die on their own span (and outlive
   // their blood spouse as widows/widowers until then)
   if (dyn.inlaws && dyn.inlaws.length) {
@@ -707,7 +738,7 @@ function growCadets(world, c, polity, dyn, over, mortF, rng) {
       births++;
       // childbirth could take the mother (dev-scaled)
       const mother = p.female ? p : spouse;
-      if (mother && mother.died < 0 && rng() < MATERNAL_HAZARD * mortF) {
+      if (mother && mother.died < 0 && !sittingRulers(world).has(mother.id) && rng() < MATERNAL_HAZARD * mortF) {
         mother.died = world.step | 0;
         if (mother.reignTo < 0 && mother.reignFrom >= 0) mother.reignTo = stepToYear(world, world.step) | 0;
       }
@@ -883,7 +914,7 @@ export function updateDynasties(world) {
       if (mAge <= FERTILE_MAX && rng() < over(fert)) {
         birth(world, ruler, rng, false, mortF);
         const mother = ruler.female ? ruler : spouse;
-        if (mother && mother.died < 0 && mother.id !== ruler.id && rng() < MATERNAL_HAZARD * mortF) mother.died = world.step | 0;
+        if (mother && mother.died < 0 && mother.id !== ruler.id && !sittingRulers(world).has(mother.id) && rng() < MATERNAL_HAZARD * mortF) mother.died = world.step | 0;
       }
     }
     // an acknowledged royal bastard (no tracked mother) — a claimant of last resort
