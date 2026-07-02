@@ -55,6 +55,24 @@ function headScore(s) { return (s.tier | 0) * 1e7 + (s.people || 0); }
 // there" pathology). Falls back to the target only before the very first crawl
 // has run (step 1), when no claim array exists yet.
 const _adoptTarget = (typeof process !== "undefined" && process.env && +process.env.SIM_ADOPT_TARGET) || 0;
+// Adoption-safe variant: the crawled claim erodes over many relax passes, so
+// it can keep flying a DEAD realm's colours long after its last settlement
+// fell or seceded away. Villages adopting straight off the raw claim executed
+// s.countryId = <dead id>, resurrecting fallen realms as zombie states (~1 per
+// territory pass, measured). Resolve through the live-country set instead;
+// a dead id reads as wilderness (-1). The set is a per-step cached scan.
+export function grownLiveOwnerAt(world, ti) {
+  const id = grownOwnerAt(world, ti);
+  if (id < 0) return -1;
+  let alive = world._aliveCC;
+  if (!alive || world._aliveCCStep !== world.step) {
+    alive = world._aliveCC = alive || new Set(); alive.clear();
+    for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) alive.add(s.countryId);
+    world._aliveCCStep = world.step;
+  }
+  return alive.has(id) ? id : -1;
+}
+
 export function grownOwnerAt(world, ti) {
   if (_adoptTarget) { const co = world._countryOwner; return co ? co[ti] : -1; }   // A/B: adopt off the projected target (old behaviour)
   const claim = world._countryClaim;

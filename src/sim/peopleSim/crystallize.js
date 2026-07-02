@@ -24,7 +24,7 @@ import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } 
 import { passRng } from "./rng.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
-import { grownOwnerAt } from "./countryClaim.js";
+import { grownLiveOwnerAt } from "./countryClaim.js";
 import { T } from "./tuning.js";
 import { settleHostility } from "./habitability.js";
 
@@ -478,7 +478,7 @@ export function maybeCrystallize(world) {
       // has merely projected toward from flying that flag ahead of the border.
       // This keeps the political map clean however many villages spawn: villages
       // add people, never countries/flecks.
-      const region = grownOwnerAt(world, ti);
+      const region = grownLiveOwnerAt(world, ti);
       // ── Culture by CONNECTION (independent origins) ────────────────────
       // Who these people ARE depends on whether they have a living link to an
       // existing people:

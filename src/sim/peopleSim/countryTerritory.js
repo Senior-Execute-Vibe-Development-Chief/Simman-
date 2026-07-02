@@ -22,7 +22,7 @@
 
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
-import { grownOwnerAt } from "./countryClaim.js";
+import { grownLiveOwnerAt } from "./countryClaim.js";
 import { ensurePolity } from "./entities.js";
 import { settlementPower } from "./conquest.js";
 import { T } from "./tuning.js";
@@ -552,11 +552,12 @@ export function computeCountryTerritory(world) {
     mergePersistentTerritory(world, co, prev);
     // The merge re-stamps the map from raw settlement catchments + sticky marches, which
     // UN-SMOOTHS the border straightening the pass above did — leaving ragged fringes and
-    // thin march tendrils. Re-run the majority-filter smoothing on the merged result:
-    // settlement home tiles are PINNED, so it never erases a settled corridor or a durable
-    // catchment core (that's real held land) — it only erodes the un-settled march
-    // protrusions, straightening a realm into a coherent blob.
-    smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0);
+    // thin march tendrils. Re-run the majority-filter smoothing on the merged result with
+    // ALL worked (catchment) land pinned — that is real ledger-held land the merge just
+    // asserted, and the filter used to recolour its edges to rival majorities one pass
+    // after the merge granted them. Only the un-settled march protrusions erode,
+    // straightening a realm into a coherent blob without touching what it actually holds.
+    smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0, /*pinWorked*/ true);
   }
   return co;
 }
@@ -616,21 +617,56 @@ function mergePersistentTerritory(world, co, prev) {
     if (elev[ti] <= 0) continue;
     if (co[ti] < 0) { const p = prev[ti]; if (p >= 0 && alive.has(p)) co[ti] = p; }
   }
-  // Connectivity flood from the CORE anchors through same-owner tiles: any claimed tile
-  // (march) NOT reached from a core tile of its own owner is marooned (its owner's
-  // settlements have moved on) and is released to wilderness.
+  // Connectivity flood from the CORE anchors through same-owner tiles. A tile
+  // (march) NOT reached from a core tile of its own owner is marooned (its
+  // owner's settlements have moved on) and is released to wilderness.
+  //
+  // NAVAL CONTIGUITY: a land-only flood declared every across-water claim
+  // marooned, killing the mare-nostrum / colonial-coast pattern the fresh
+  // reach deliberately produces ("the two shores of a narrow sea knit into
+  // ONE contiguous realm"). Contiguity may instead hop open water on a budget
+  // set by the realm's own NAVIGATION: none below the seafaring floor (water
+  // still breaks a chiefdom's realm), a strait's width at coastal seafaring,
+  // a small sea for an ocean-going power. Resolution-scaled like every other
+  // reach quantity, and read from the same emergent tech that prices sea
+  // movement everywhere else — never from era or map identity.
+  const hopOf = new Map();   // countryId → max consecutive water tiles bridged
+  const hopBudget = (cid) => {
+    let h = hopOf.get(cid);
+    if (h === undefined) {
+      const c = world.countries && world.countries.get(cid);
+      const nav = (c && c.capital && c.capital.knowledge && c.capital.knowledge.navigation) || 0;
+      h = nav < 0.10 ? 0 : Math.round((1 + 7 * nav) * resScaleFor(tw));
+      hopOf.set(cid, h);
+    }
+    return h;
+  };
+  // waterDepth[ti]: consecutive water tiles crossed to reach ti (0 on land).
+  let wdep = world._persistWDep; if (!wdep || wdep.length !== N) wdep = world._persistWDep = new Uint8Array(N);
+  wdep.fill(0);
+  let wOc = world._persistWOc; if (!wOc || wOc.length !== N) wOc = world._persistWOc = new Int32Array(N);
   for (let qh = 0; qh < qt; qh++) {
-    const ti = q[qh]; const oc = co[ti];
+    const ti = q[qh];
+    const water = elev[ti] <= 0;
+    const oc = water ? wOc[ti] : co[ti];
+    const d = water ? wdep[ti] : 0;
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
     const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
     for (let k = 0; k < 4; k++) {
       const ni = ns[k];
-      if (ni < 0 || reached[ni] || elev[ni] <= 0) continue;
-      if (co[ni] === oc) { reached[ni] = 1; q[qt++] = ni; }
+      if (ni < 0 || reached[ni]) continue;
+      if (elev[ni] > 0) {
+        if (co[ni] === oc) { reached[ni] = 1; q[qt++] = ni; }
+      } else if (d < hopBudget(oc)) {
+        // step into open water carrying the owner (first realm to touch a
+        // water tile carries it this pass — strait contention is rare and
+        // the next pass re-floods from scratch)
+        reached[ni] = 1; wOc[ni] = oc; wdep[ni] = d + 1; q[qt++] = ni;
+      }
     }
   }
-  for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reached[ti]) co[ti] = -1;
+  for (let ti = 0; ti < N; ti++) if (elev[ti] > 0 && co[ti] >= 0 && !reached[ti]) co[ti] = -1;
 }
 
 // ── Capital colouring ────────────────────────────────────────────────────────
@@ -747,13 +783,24 @@ function fillEnclosedWaste(world, co) {
 // dissolve — area roughly preserved. Settlement HOME tiles are pinned, so no realm
 // is ever smoothed out of existence (its basin regrows next pass). Iterations =
 // BORDER_SMOOTH. O(passes·N).
-function smoothCountryBorders(world, co, iters) {
+function smoothCountryBorders(world, co, iters, pinWorked = false) {
   if (!(iters > 0)) return;
   const { N, tw, th, elev } = world;
   let prot = world._smoothProt;
   if (!prot || prot.length !== N) prot = world._smoothProt = new Uint8Array(N);
   prot.fill(0);
   for (const s of world.settlements) { if (s.mode === "settled") prot[(s.pos.y | 0) * tw + (s.pos.x | 0)] = 1; }
+  // Post-merge mode: every WORKED catchment tile (a live settlement's food
+  // territory — the durable ledger land the merge just stamped) is pinned too.
+  if (pinWorked && world._territoryOwner && world._byId) {
+    const own = world._territoryOwner, byId = world._byId;
+    for (let ti = 0; ti < N; ti++) {
+      const oid = own[ti];
+      if (oid < 0) continue;
+      const s = byId.get(oid);
+      if (s && s.mode === "settled" && s.countryId >= 0) prot[ti] = 1;
+    }
+  }
   let snap = world._smoothSnap;
   if (!snap || snap.length !== N) snap = world._smoothSnap = new Int32Array(N);
   // tiny fixed-size tally over the ≤8 distinct neighbour values (cheaper than a Map)
@@ -925,7 +972,7 @@ export function adoptAndFound(world) {
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     const ti = (s.pos.y | 0) * tw + (s.pos.x | 0);
-    const region = elev[ti] > 0 ? grownOwnerAt(world, ti) : -1;
+    const region = elev[ti] > 0 ? grownLiveOwnerAt(world, ti) : -1;
     // A CITY is a sovereign anchor; so is a frontier SEAT minted by
     // nucleateFrontierStates (a regional-leader town that founded a state — it
     // never reaches city tier in isolation, so it carries sovereignty by flag).

@@ -263,6 +263,14 @@ export function computeTerritory(world) {
   // wilderness in the snapshot are contestable — and they go to whoever
   // reaches them cheapest (true multi-source Voronoi over the free land).
   const base = owner.slice();
+  // Claimant carrier: water tiles propagate the cost frontier but are never
+  // OWNED, so re-deriving the claimant from owner[ti] at pop time lost it the
+  // moment the frontier stepped offshore (budget/knowledge read as nobody's →
+  // the documented "navy reaches the far shore" path silently never worked).
+  let clm = world._terrClaimant;
+  if (!clm || clm.length !== N) clm = world._terrClaimant = new Int32Array(N);
+  clm.fill(-1);
+  for (let ti = 0; ti < N; ti++) if (owner[ti] >= 0) clm[ti] = owner[ti];
 
   // Multi-source Dijkstra. Cost propagates through a settlement's OWN tiles
   // (so food falloff is correct across its whole domain); free wilderness
@@ -271,7 +279,8 @@ export function computeTerritory(world) {
   while (heap.n > 0) {
     const { ti, d } = heap.popMin();
     if (d > cost[ti]) continue;
-    const oid = owner[ti];
+    const oid = owner[ti] >= 0 ? owner[ti] : clm[ti];
+    if (oid < 0) continue;
     const bud = budget.get(oid) || 0;
     const kn  = knOf.get(oid);
     const tcHere = tcost[ti];
@@ -318,6 +327,7 @@ export function computeTerritory(world) {
       if (nd < cost[ni]) {
         cost[ni] = nd;
         tcost[ni] = tcHere + step;
+        clm[ni] = oid;   // the claimant rides the frontier, on land AND water
         // Walk THROUGH water (so a navy reaches the far shore) but don't
         // CLAIM water tiles — borders shouldn't bleed into the ocean.
         // Land tiles are claimed normally; water tiles just propagate
