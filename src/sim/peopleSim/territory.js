@@ -378,6 +378,7 @@ function tallyTerritory(world, owner, cost, byId) {
     s._terrFertSum = 0;
     s._terrTiles = 0;
     s._terrWorkTiles = 0;
+    s._terrFarmedWt = 0;   // falloff-weighted count of tiles actually ENTERING the harvest sum
     s._terrMinFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
     s._terrResAcc = {};
     s._minableTiles = [];
@@ -403,7 +404,17 @@ function tallyTerritory(world, owner, cost, byId) {
     const reachable = cost[ti] < Infinity;
     if (reachable) s._terrWorkTiles++;
     const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);   // climate scales the harvestable fertility
-    if (f >= s._terrMinFert) s._terrFertSum += f * foodFalloff(cost[ti]);
+    if (f >= s._terrMinFert) {
+      const w = foodFalloff(cost[ti]);
+      s._terrFertSum += f * w;
+      // The farm-labour floor (updateFood) is charged on FARMED tiles at the
+      // same distance discount as their harvest — never on barren/mountain
+      // tiles that contribute nothing (claiming worthless land used to
+      // actively DESTROY food via a phantom workforce), and a distant field
+      // costs proportionally less labour just as it yields less. Break-even
+      // stays exactly f = FARM_FERT_FLOOR, per the food model's contract.
+      s._terrFarmedWt += w;
+    }
     if (haveDep) {
       const acc = s._terrResAcc;
       for (const id of TERR_RES) {
@@ -438,7 +449,7 @@ export function seedLocalTerritory(world, s) {
   const cm = world.climMod;
   const sx = s.pos.x | 0, sy = s.pos.y | 0;
   const minFert = MIN_PLANTABLE_FERT_BASE - MIN_PLANTABLE_FERT_SLOPE * (s.knowledge.agriculture || 0);
-  let fertSum = 0, tiles = 0;
+  let fertSum = 0, tiles = 0, farmedWt = 0;
   const res = {};
   const minable = [];
   const haveDep = deposits && Object.keys(deposits).length > 0;
@@ -453,7 +464,7 @@ export function seedLocalTerritory(world, s) {
       tiles++;
       const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);
       const cost = Math.sqrt(dx * dx + dy * dy);
-      if (f >= minFert) fertSum += f * foodFalloff(cost);
+      if (f >= minFert) { const w = foodFalloff(cost); fertSum += f * w; farmedWt += w; }
       if (haveDep) {
         for (const id of TERR_RES) { const arr = deposits[id]; if (!arr) continue; const v = arr[ti] || 0; if (v > (res[id] || 0)) res[id] = v; }
         if (deposits.precious && deposits.precious[ti] > 0.05 && mineLive("precious", ti)) minable.push([ti, "precious"]);
@@ -464,6 +475,7 @@ export function seedLocalTerritory(world, s) {
   s._terrFertSum = fertSum;
   s._terrTiles = tiles;
   s._terrWorkTiles = tiles;   // local seed box is all walkable — everything counts as worked
+  s._terrFarmedWt = farmedWt;
   s.localRes = res;
   s._minableTiles = minable;
 }

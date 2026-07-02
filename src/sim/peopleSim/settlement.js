@@ -1745,10 +1745,13 @@ function updateFood(world, s) {
   // the NET food a region yields is (total fertility − area × floor) × yield, and land too
   // marginal to feed the people required to farm it (average fertility below the floor) yields
   // NOTHING and supports no settlement. The break-even fertility is exactly FARM_FERT_FLOOR.
-  // The labour floor is charged on WORKED tiles only (_terrWorkTiles — tiles the
-  // settlement can actually reach; territory.js): a fragment cut off by a war
-  // front grows nothing, so it costs no farmhands either.
-  const netFert = Math.max(0, (s._terrFertSum || 0) - (s._terrWorkTiles ?? s._terrTiles ?? 0) * T.FARM_FERT_FLOOR);
+  // The labour floor is charged on FARMED tiles only (_terrFarmedWt — the
+  // falloff-weighted tiles that actually entered the harvest sum;
+  // territory.js): a fragment cut off by a war front grows nothing so it
+  // costs no farmhands, and barren desert/mountain claims cost nothing
+  // either (they used to bill a phantom workforce, so claiming worthless
+  // land actively DESTROYED food).
+  const netFert = Math.max(0, (s._terrFertSum || 0) - (s._terrFarmedWt ?? s._terrWorkTiles ?? s._terrTiles ?? 0) * T.FARM_FERT_FLOOR);
   // MODEL B: EVERY settlement's territory (its rural hinterland) is farmed by the country
   // folk who live on it — a city does not grow food in its packed urban core, but the land
   // it controls IS worked and feeds it. So land food is produced from a settlement's territory
@@ -1981,7 +1984,11 @@ function updateFood(world, s) {
     const tiles = s._terrWorkTiles ?? s._terrTiles ?? 1;
     const landPerTile = landFood / Math.max(1, tiles);
     const poor = Math.max(0, Math.min(1, 1 - landPerTile / FISH_LAND_REF));
-    fish = T.FISH_RATE * sea * seaRich * poor;
+    // Fishery technology (tech.js fishFactor: 0.3 pre-tech baseline rising
+    // with navigation + fishing techs) — normalized to that baseline so a
+    // tech-less shore fishes exactly as calibrated and technique multiplies
+    // upward from there. (The channel existed but was read by nothing.)
+    fish = T.FISH_RATE * sea * seaRich * poor * ((techEff(s).fishFactor || 0.3) / 0.3);
   }
   s._fishYield = fish;
 
@@ -2264,7 +2271,12 @@ function updatePopulation(world, s) {
   if (s.food <= 0.01 && s.people > 1) {
     s.people *= Math.pow(0.985, _dt);                 // famine die-off, per-tick → granularity-scaled
   } else {
-    s.people = s.people + T.SETT_GROWTH * _dt * s.people * (1 - s.people / K);
+    // Exponential-form logistic: identical growth for small r·dt, but a
+    // carrying-capacity CRASH (war front severs the fields, famine guts the
+    // harvest, K collapses under people) declines smoothly instead of the
+    // raw Euler step killing a large city in ONE tick (or driving its
+    // population negative) — the granary/famine path gets time to bite.
+    s.people = s.people * Math.exp(T.SETT_GROWTH * _dt * (1 - s.people / K));
   }
   if (s.people < 1.5) {
     s.mode = "dead";

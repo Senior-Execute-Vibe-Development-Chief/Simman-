@@ -117,7 +117,7 @@ function contactEpidemic(world, rng) {
       let struck = 0;
       for (const n of world.settlements) {
         if (n.mode !== "settled" || n._contacted) continue;
-        if ((n._diseaseLoad || 0) >= sl + CONTACT_GAP) continue;        // only the unexposed pool
+        if ((hi._diseaseLoad || 0) - (n._diseaseLoad || 0) < CONTACT_GAP) continue;   // only pools genuinely naive to the ARRIVING diseases (comparing against the scanner's own load let a high-load port sweep in mid-load immune neighbours)
         if (torusDist(world, lo.pos.x, lo.pos.y, n.pos.x, n.pos.y) > VIRGIN_RADIUS) continue;
         n._contacted = true;
         n._virginUntil = world.step + (VIRGIN_DUR * sev) / _dt;

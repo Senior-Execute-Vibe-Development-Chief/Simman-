@@ -261,11 +261,27 @@ function initRiverMag(world, w) {
   if (!w.rivers || !w.rivers.riverMag) return;
   const { tw, th, tileRes, N } = world;
   const rm = new Uint8Array(N);
+  const srcRm = w.rivers.riverMag;
+  // MAX-POOL over the worldgen block, exactly like fert and the tFlood OR:
+  // rivers are 1-pixel-wide D8 flow chains — the thinnest feature in the whole
+  // pipeline — so the old top-left POINT sample dropped ~64% of major/great
+  // river tiles at the app's TILE_RES 2, fragmenting the navigable spine that
+  // territory reach, roads, confluence bonuses and transport all read. A river
+  // crossing ANY sub-pixel of the block marks the tile. (At tileRes 1 — the
+  // tools/harness path — this is byte-identical to the old sampling.)
   for (let ty = 0; ty < th; ty++) {
     for (let tx = 0; tx < tw; tx++) {
-      const px = Math.min(w.width - 1, tx * tileRes);
-      const py = Math.min(w.height - 1, ty * tileRes);
-      rm[ty * tw + tx] = w.rivers.riverMag[py * w.width + px] || 0;
+      let best = 0;
+      const py0 = ty * tileRes, px0 = tx * tileRes;
+      for (let dy = 0; dy < tileRes; dy++) {
+        const py = py0 + dy; if (py >= w.height) break;
+        for (let dx = 0; dx < tileRes; dx++) {
+          const px = px0 + dx; if (px >= w.width) break;
+          const v = srcRm[py * w.width + px] || 0;
+          if (v > best) best = v;
+        }
+      }
+      rm[ty * tw + tx] = best;
     }
   }
   world.riverMag = rm;
