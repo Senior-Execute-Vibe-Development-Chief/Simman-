@@ -1246,16 +1246,18 @@ function disburseTreasury(world, c, gov, warLevel) {
       gov.fineness = Math.min(1, f0 + DEBASE_RECOVER);
     }
   }
-  const armyPaid = Math.min(Math.max(0, gov.treasury), armyBill);
-  gov._solvency = armyBill > 0.01 ? armyPaid / armyBill : 1;   // 1 = fully paid; < 1 = arrears
-  if (armyPaid > 0 && totalArmy > 0) {
-    for (const s of members) {
-      if (s.countryId !== c.id || !(s.army > 0)) continue;
-      const share = armyPaid * (s.army / totalArmy);
-      s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
-    }
-    gov.treasury -= armyPaid; spent += armyPaid;
-  }
+  // CONTINUOUS PAY (review I93): financing decisions (loans, debasement) stay
+  // here — structural, periodic — but the CASH leaves on the muster cadence
+  // (armies.js payWages) at a per-tick rate. The old lump-sum pulsed up to
+  // ~78% of the whole money supply through treasuries and back in one tick
+  // every polity pass, whipsawing prices and the Hume flow at a fixed period.
+  // Solvency is refreshed by each pay tranche against what was actually due.
+  const passTicks = Math.max(1, Math.round(T.POLITY_INTERVAL * (T.SIM_GRANULARITY || 1)));
+  gov._wagePerTick = armyBill / passTicks;
+  spent += gov._wagePaidAccum || 0;   // wages the muster tranches actually paid since last pass (fiscal EMA input)
+  gov._wagePaidAccum = 0;
+  if (gov._lastWagePay === undefined) gov._lastWagePay = world.step;
+  if (gov._solvency === undefined) gov._solvency = 1;
 
   // ── 1.5 DEBT SERVICE ── interest on the crown's debt, paid to the financier city as
   // its 'war loans' income. Unpaid interest CAPITALISES (clamped to the ceiling): a

@@ -403,6 +403,7 @@ export function updateSea(world) {
   for (const src of ports) {
     if ((budget.get(src.id) || 0) <= 0) continue;       // non-sailing: leaf only
     const pd = new Map();   // portId -> cost
+    const pprev = new Map(); // portId -> prior port on the cheapest chain (relay reconstruction)
     const ph = new MinHeap();
     pd.set(src.id, 0); ph.push(src.id, 0);
     // Map portId -> direct edge tiles from src (1-hop), if any.
@@ -416,7 +417,7 @@ export function updateSea(world) {
       if (!la) continue;
       for (const e of la) {
         const nd = d + e.cost;
-        if (nd < (pd.get(e.to) ?? Infinity)) { pd.set(e.to, nd); ph.push(e.to, nd); }
+        if (nd < (pd.get(e.to) ?? Infinity)) { pd.set(e.to, nd); pprev.set(e.to, pid); ph.push(e.to, nd); }
       }
     }
     // Keep the partners this port derives the MOST VALUE from — gravity (the
@@ -438,7 +439,21 @@ export function updateSea(world) {
       const pid = reached[i][0], cost = reached[i][1];
       const peer = world._byId ? world._byId.get(pid) : null;
       if (!peer) continue;
-      linkSea(src, peer, cost, directTiles.get(pid) || null);
+      // Relay chain: the intermediate PORTS the cheapest lane-chain threads
+      // through (walked from the closure's predecessor map). Stored as
+      // link.inter, so sellGoods' existing toll/entrepôt machinery pays them —
+      // the brokerage that made Venice and Malacca rich on goods they never
+      // produced (review I16: the mechanism's own motivating case only fired
+      // on land routes). Capped: past a handful of relays the chain reads as
+      // open ocean, not a strait bazaar.
+      let inter = null;
+      let hops = 0;
+      for (let at = pprev.get(pid); at !== undefined && at !== src.id && hops < 6; at = pprev.get(at), hops++) {
+        const relay = world._byId ? world._byId.get(at) : null;
+        if (relay) (inter || (inter = [])).push(relay);
+      }
+      if (inter && inter.length > 4) inter.length = 4;
+      linkSea(src, peer, cost, directTiles.get(pid) || null, inter);
     }
   }
 
@@ -454,14 +469,14 @@ export function updateSea(world) {
 // (when present) run src→peer; the peer stores the reverse so the lower-id
 // endpoint — the one the trade pass iterates — has them oriented toward
 // the peer.
-function linkSea(src, peer, cost, tiles) {
+function linkSea(src, peer, cost, tiles, inter = null) {
   if (!src._seaReach) src._seaReach = new Map();
   if (!peer._seaReach) peer._seaReach = new Map();
   const exA = src._seaReach.get(peer.id);
-  if (!exA || cost < exA.cost) src._seaReach.set(peer.id, { cost, tiles, sea: true });
+  if (!exA || cost < exA.cost) src._seaReach.set(peer.id, { cost, tiles, sea: true, inter });
   const rev = tiles ? tiles.slice().reverse() : null;
   const exB = peer._seaReach.get(src.id);
-  if (!exB || cost < exB.cost) peer._seaReach.set(src.id, { cost, tiles: rev, sea: true });
+  if (!exB || cost < exB.cost) peer._seaReach.set(src.id, { cost, tiles: rev, sea: true, inter });
 }
 
 // Pick the best unsettled shore in port A's reachable waters and launch a

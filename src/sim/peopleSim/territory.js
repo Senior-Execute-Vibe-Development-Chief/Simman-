@@ -157,6 +157,31 @@ class MinHeap {
 // export goods). Precious/gems also feed mining wealth.
 const TERR_RES = ['timber','stone','copper','tin','iron','coal','horses','salt','precious','gems','spices','furs','incense','dyes'];
 
+// Recover ruin hoards: coin stranded where settlements died re-enters
+// circulation when a LIVE settlement's territory covers the ruin, at a rate
+// scaled by its organization (excavation, squatters, stone-robbing — a
+// bureaucratic state strips a ruin fast, a hamlet stumbles on pots slowly).
+// Fires purely from territorial coverage — never from time.
+const RUIN_RECLAIM = 0.15;   // share of a covered hoard recovered per territory pass at full organization
+function reclaimRuins(world) {
+  const m = world._ruinHoards;
+  if (!m || !m.size) return;
+  const owner = world._territoryOwner, byId = world._byId;
+  if (!owner || !byId) return;
+  for (const [ti, coin] of m) {
+    const oid = owner[ti];
+    if (oid < 0) continue;
+    const s = byId.get(oid);
+    if (!s || s.mode !== "settled") continue;
+    const take = coin * RUIN_RECLAIM * Math.max(0.1, (s.knowledge && s.knowledge.organization) || 0);
+    if (take > 0.01) {
+      s.wealth = (s.wealth || 0) + take;
+      const left = coin - take;
+      if (left < 0.5) m.delete(ti); else m.set(ti, left);
+    } else if (coin < 0.5) m.delete(ti);
+  }
+}
+
 export function computeTerritory(world) {
   const { N, tw, th, elev } = world;
   let owner = world._territoryOwner;
@@ -338,6 +363,8 @@ export function computeTerritory(world) {
   }
 
   tallyTerritory(world, owner, tcost, byId);   // food falloff uses TRUE haul cost, not value-discounted effort
+
+  reclaimRuins(world);   // stranded coin re-enters circulation where the land is worked again
   if (T.URBAN_NODES) assignMinesByProximity(world, byId);
 }
 

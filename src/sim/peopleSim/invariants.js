@@ -77,8 +77,16 @@ export function checkPeopleSimInvariants(world) {
       warnOnce(world, "unrest#" + s.id, `unrest out of range ${s.unrest}`); bump(world, "unrest");
     }
     coin += Math.max(0, w);
-    people += Math.max(0, p);
+    people += Math.max(0, p) + Math.max(0, s._captives || 0) + Math.max(0, s._unfree || 0);   // bonded people are still people (they were moved OUT of `people` by conserved transfers)
   }
+  // In-transit colony ships carry people AND an endowment for many ticks —
+  // both used to vanish from the totals at launch and reappear at landing.
+  if (world.ships) for (const sh of world.ships) {
+    coin += Math.max(0, sh.wealth || 0);
+    people += Math.max(0, sh.people || 0);
+  }
+  // Coin stranded in ruin hoards is out of PURSES but not out of the WORLD.
+  if (world._ruinHoards) for (const v of world._ruinHoards.values()) coin += Math.max(0, v);
   // (No owner-array liveness check here on purpose: territory ownership is
   // PERSISTENT, so tiles legitimately reference a dead settlement until the
   // next computeTerritory pass releases them — that transient is by design.)

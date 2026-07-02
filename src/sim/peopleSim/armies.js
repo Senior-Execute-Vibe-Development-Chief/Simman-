@@ -26,6 +26,7 @@ import { getPolity as _getPolity } from "./entities.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { T } from "./tuning.js";
+import { recordIn, IN_STATE_PAY } from "./money.js";
 
 // Army size is gated by TIER and FOOD, not coin. A garrison is a slice of
 // population (capped by tier — villages keep a token watch, cities/capitals
@@ -159,10 +160,18 @@ function might(s) { return (s.army || 0) * techMul(s); }
 // of its paid garrison and the citizen militia its population can raise — the
 // militia weighted by the city's morale (a disloyal/rioting populace barely
 // defends the regime).
+// Fortification: the construction tree's defense channel (masonry → the
+// arch → castles/cathedral masons → star forts), which GUNPOWDER erodes
+// (tech.js: gunpowder carries negative defense fx — the end of the castle
+// age arrives per-theatre, when a neighbour's chemistry matures, never on a
+// date). Weight: a fully-fortified city is ~2.5x harder to storm — walls
+// decided sieges without making them unwinnable (starvation still works).
+const WALL_W = 1.5;
 function homeMight(s) {
   const morale = Math.max(MILITIA_MORALE_FLOOR, (s.loyalty ?? 1) - 0.5 * (s.unrest || 0));
   const militia = (s.people || 0) * T.HOME_MILITIA_FRAC * morale;
-  return Math.max(s.army || 0, militia) * techMul(s);
+  const walls = 1 + WALL_W * Math.max(0, techEff(s).defenseLevel || 0);
+  return Math.max(s.army || 0, militia) * techMul(s) * walls;
 }
 
 // (The old marching-reinforcement columns — dispatchReinforcements/moveArmies
@@ -187,7 +196,36 @@ function armyCapFrac(world, s) {
 }
 
 // ── Periodic: grow + provision garrisons ──
+// Pay the standing armies the wages accrued since the last tranche (the rate
+// is set by the polity pass's fiscal block — see conquest.js). Solvency is
+// the tranche's paid/due, EMA-smoothed so one lean week doesn't read as
+// bankruptcy but sustained arrears does.
+function payWages(world) {
+  if (!world.countries || !world.polities) return;
+  for (const c of world.countries.values()) {
+    const gov = world.polities.get(c.id);
+    if (!gov || gov.endedStep >= 0 || !(gov._wagePerTick > 0)) continue;
+    const elapsed = world.step - (gov._lastWagePay ?? world.step);
+    gov._lastWagePay = world.step;
+    if (elapsed <= 0) continue;
+    const due = gov._wagePerTick * elapsed;
+    let totalArmy = 0;
+    for (const s of c.members) if (s.countryId === c.id && s.army > 0) totalArmy += s.army;
+    const paid = Math.min(Math.max(0, gov.treasury), due);
+    if (paid > 0 && totalArmy > 0) {
+      for (const s of c.members) {
+        if (s.countryId !== c.id || !(s.army > 0)) continue;
+        const share = paid * (s.army / totalArmy);
+        s.wealth = (s.wealth || 0) + share; recordIn(s, IN_STATE_PAY, share);
+      }
+      gov.treasury -= paid; gov._wagePaidAccum = (gov._wagePaidAccum || 0) + paid;   // folded into the fiscal EMA at the polity pass
+    }
+    if (due > 0.01) gov._solvency = 0.5 * (gov._solvency ?? 1) + 0.5 * (paid / due);
+  }
+}
+
 export function musterArmies(world) {
+  payWages(world);   // wages flow before the solvency-driven desertion below reads the result
   // National MANPOWER pool — the trained men a realm can field. It REGENERATES from
   // POPULATION (recruits coming of age) toward a ceiling (a fraction of national pop),
   // and is DRAINED by battle casualties (advanceFronts). The standing army can never

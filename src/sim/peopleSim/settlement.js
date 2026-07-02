@@ -352,6 +352,20 @@ export function makeSettlement(world, x, y, opts = {}) {
 // on a great river), scanned over the 3×3 block around home. Coast
 // contributes 0.5; river magnitude scales linearly: mag 1 → 0.2,
 // mag 3 → 0.6, mag 4 → 0.8. Capped at 1.
+// A dying settlement's coin doesn't evaporate (review B72 — the last silent
+// drain on the closed supply): it is STRANDED in the ground at its home tile
+// as a ruin hoard, recovered gradually by whoever later works that land
+// (territory.js reclaimRuins) — buried strongboxes, spolia, the classic
+// hoard archaeology. Conserved: the invariant watch counts hoards.
+export function bankRuinHoard(world, s) {
+  const w = s.wealth || 0;
+  if (!(w > 0)) return;
+  const ti = (s.pos.y | 0) * world.tw + (s.pos.x | 0);
+  const m = world._ruinHoards || (world._ruinHoards = new Map());
+  m.set(ti, (m.get(ti) || 0) + w);
+  s.wealth = 0;
+}
+
 // Static site attributes — pure functions of position + immutable terrain,
 // computed once at founding. Exported so loadWorld can re-derive them for
 // settlements whose save predates their serialization (cheap and
@@ -2358,6 +2372,7 @@ function updatePopulation(world, s) {
   }
   if (s.people < 1.5) {
     s.mode = "dead";
+    bankRuinHoard(world, s);
     logEvent(world, "settlement.abandoned", { s: s.id, sName: s.name, polity: s.countryId });
     return;
   }
@@ -2368,6 +2383,7 @@ function updatePopulation(world, s) {
     if (s._witherSince === undefined) s._witherSince = world.step;
     if (world.step - s._witherSince > 2000 / _dt) {   // same wither-window in history-time at any granularity
       s.mode = "dead";
+      bankRuinHoard(world, s);
       logEvent(world, "settlement.withered", { s: s.id, sName: s.name, polity: s.countryId });
     }
   } else {
