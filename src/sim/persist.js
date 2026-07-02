@@ -6,21 +6,38 @@
 // so the loader rebuilds it from the meta via the same pipeline the app
 // uses, then lays the dynamic state back over it.
 //
-// What round-trips EXACTLY: everything in the save (verified by the smoke
-// test's save→load→save hash identity). What re-warms instead: per-pass
+// What round-trips EXACTLY: everything in the save (the smoke test checks
+// save→load→save hash identity AND that a loaded world's continuation stays
+// close to the uninterrupted run). What re-warms instead: per-pass
 // transients that the sim rebuilds on its own cadence anyway — war fronts
 // (next muster/conquest tick), road trade-reach caches (next plan cycle),
 // sea lanes (next sea pass), spatial grids (next tick). A loaded world is
 // the same world mid-breath, not a frame-exact clone of an uninterrupted
 // run across those warm-up intervals.
+//
+// RULE: any field that carries real cross-tick state — anything a mechanism
+// reads back on a later tick that is not deterministically rebuilt from other
+// saved state — MUST be serialized here (settlement fields in SETT_FIELDS,
+// world state in maps{}/tables{}) or re-derived in loadWorld. The smoke
+// test's continuation gate exists to catch omissions.
 
 import { buildWorld as pipelineBuild } from "./pipeline.js";
 import { initPeopleSim } from "./peopleSim/index.js";
 import { reindexEvents } from "./peopleSim/events.js";
 import { computeTerritory } from "./peopleSim/territory.js";
+import { rederiveSiteStatics } from "./peopleSim/settlement.js";
+import { reindexRoads } from "./peopleSim/roads.js";
+import { recomputeClimMod } from "./peopleSim/climate.js";
+import { rebuildCountries, updateAlliances } from "./peopleSim/conquest.js";
 import { T, applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js";
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
+// v1 → v2: added settlement fields (_riverAcc/_confine/_rugged/_orgApt/_credit/
+// _lastBorrow/_rivalN), world tables (truces, warSeenAt, schismAt, cBudgetRamp,
+// inheritReach, inflP, inflRef, lastSyncretismAt), sparse per-tile maps
+// (tileCapturedAt, soilFatigue), claimPress, and the realWind identity flag.
+// Loading is additive-tolerant: every new field has a load default (or is
+// re-derived), so v1 saves migrate by simply loading.
 
 // Persistent per-settlement state. Everything else on a settlement object is
 // a derived cache some pass rebuilds (territory tallies, trade reach, money
@@ -41,6 +58,11 @@ const SETT_FIELDS = [
   "_serf",                               // serfdom: land-tenure coercion level (0..1)
   "_chronFlags",                         // chronicle: which "became X" archetype events have fired
   "_peakTier",                           // chronicle: highest tier ever reached (so growth is announced once)
+  "_riverAcc", "_confine", "_rugged",    // static site attributes (re-derived on load if absent — v1 saves)
+  "_orgApt",                             // heritable organisation aptitude (seasonal-selection ratchet)
+  "_credit",                             // banking: how much of wealth is conjured credit (Phase 5)
+  "_lastBorrow",                         // crop-package borrow cooldown (T.CROP_AXIS)
+  "_rivalN",                             // rival-polity contact count (competition signal)
 ];
 
 // ── typed-array <-> base64 ──────────────────────────────────────────────
@@ -68,6 +90,29 @@ if (typeof globalThis.btoa === "undefined" && _Buf) {
 
 const mapToArr = (m) => (m ? [...m.entries()] : []);
 const arrToMap = (a) => new Map(a || []);
+
+// Sparse serialization for near-empty per-tile arrays: only entries differing
+// from the default are stored as [tile, value] pairs. Also sidesteps JSON's
+// inability to carry -Infinity (the capture clock's default) in a raw dump.
+function sparseFromTyped(arr, dflt) {
+  if (!arr) return null;
+  const out = [];
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i];
+    if (v !== dflt && !(Number.isNaN(v) && Number.isNaN(dflt))) out.push(i, v);
+  }
+  return out;
+}
+function typedFromSparse(pairs, Ctor, len, dflt) {
+  if (!pairs || !pairs.length) return null;
+  const a = new Ctor(len);
+  if (dflt !== 0) a.fill(dflt);
+  for (let i = 0; i + 1 < pairs.length; i += 2) {
+    const ti = pairs[i];
+    if (ti >= 0 && ti < len) a[ti] = pairs[i + 1];
+  }
+  return a;
+}
 
 // ── save ────────────────────────────────────────────────────────────────
 export function saveWorld(world, meta = {}) {
@@ -97,6 +142,8 @@ export function saveWorld(world, meta = {}) {
     meta: {
       W: world.width, H: world.height, seed: world.seed,
       preset: world.preset, oceanLevel: meta.oceanLevel ?? 0.78, tecParams: meta.tecParams || {},
+      realWind: !!(meta.realWind ?? world._realWindGen),   // terrain identity: NCEP real winds were used
+
     },
     step: world.step,
     eraAt: world._eraAt,              // display-calendar timeline (step each era was reached)
@@ -120,16 +167,28 @@ export function saveWorld(world, meta = {}) {
       countryClaim: b64FromTyped(world._countryClaim),
       countryOwner: b64FromTyped(world._countryOwner),
       territoryOwner: b64FromTyped(world._territoryOwner),
-      capturedAt: b64FromTyped(world._capturedAt),
+      claimPress: b64FromTyped(world._claimPress),
+      // sparse [tile, value] pairs — these arrays are near-empty and carry
+      // non-JSON values (-Infinity) in their defaults
+      tileCapturedAt: sparseFromTyped(world._tileCapturedAt, -Infinity),
+      soilFatigue: sparseFromTyped(world._soilFatigue, 0),
     },
     reserves,
     tables: {
       warExhaust: mapToArr(world._warExhaust),
       linkMoney: mapToArr(world._linkMoney),
       inflRaw: mapToArr(world._inflRaw),
+      inflP: mapToArr(world._inflP),                     // sim-facing price levels
       manpower: mapToArr(world._manpower),
       plagueEvAt: mapToArr(world._plagueEvAt),
       plagued: world._plagued ? [...world._plagued] : [],
+      truces: mapToArr(world._truces),                   // binding dyadic peace treaties
+      warSeenAt: mapToArr(world._warSeenAt),             // war.began dedup hysteresis
+      schismAt: mapToArr(world._schismAt),               // per-religion-family schism cooldown
+      cBudgetRamp: mapToArr(world._cBudgetRamp),         // per-country eased reach budget
+      inheritReach: world._inheritReach ? [...world._inheritReach] : [],  // secession heirs skip the ramp
+      inflRef: world._inflRef ?? null,                   // permanent M/T price baseline
+      lastSyncretismAt: world._lastSyncretismAt ?? null, // world syncretism cooldown
     },
     seaReach,
   };
@@ -140,14 +199,26 @@ export function serializeWorld(world, meta) {
 }
 
 // ── load ────────────────────────────────────────────────────────────────
-export function loadWorld(data) {
+export function loadWorld(data, opts = {}) {
   if (typeof data === "string") data = JSON.parse(data);
-  if (!data || data.v !== SAVE_VERSION) {
-    throw new Error(`Unsupported save version ${data && data.v} (expected ${SAVE_VERSION})`);
+  // Accept any older version: the schema is additive and every newer field has
+  // a load default (or is re-derived below), so old saves migrate by loading.
+  // Only saves NEWER than this code are rejected.
+  if (!data || !(data.v >= 1) || data.v > SAVE_VERSION) {
+    throw new Error(`Unsupported save version ${data && data.v} (this build reads up to ${SAVE_VERSION})`);
   }
   const m = data.meta;
+  // Terrain identity guards: a save is only loadable where its terrain can be
+  // rebuilt EXACTLY. Silently regenerating different terrain under a saved
+  // civilization is worse than a clear error.
+  if (m.preset === "import") {
+    throw new Error("This save was made on an imported map, whose terrain is not stored in the save. Re-import the source heightmap/Azgaar file, then load.");
+  }
+  if (m.realWind && !opts.realWindFns) {
+    throw new Error("This save uses real NCEP winds, which are unavailable in this context (worker). Load it from the main thread with realWindFns.");
+  }
   // Rebuild terrain + pipeline deterministically from the recorded identity.
-  const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams });
+  const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
   // Tuning first: granularity / cadence levers shape createWorld behavior.
   resetTuning();
   applyTuning(data.tuning);
@@ -182,7 +253,11 @@ export function loadWorld(data) {
   for (const rec of data.settlements) {
     const s = { kind: "settlement", localRes: {}, _tradeReach: null, crops: [], ...rec };
     world.settlements.push(s);
+    // v1 saves predate the static site attributes — re-derive them from the
+    // rebuilt terrain (pure deterministic functions of position).
+    if (s._riverAcc === undefined || s._confine === undefined) rederiveSiteStatics(world, s);
   }
+  world._realWindGen = !!m.realWind;
   for (const [id, p] of data.polities) world.polities.set(id, p);
   world.events = data.events || [];
   reindexEvents(world);
@@ -196,8 +271,15 @@ export function loadWorld(data) {
     world._countryClaim = loadTyped(data.maps.countryClaim, Int32Array, N) || world._countryClaim;
     world._countryOwner = loadTyped(data.maps.countryOwner, Int32Array, N) || world._countryOwner;
     world._territoryOwner = loadTyped(data.maps.territoryOwner, Int32Array, N) || world._territoryOwner;
-    world._capturedAt = loadTyped(data.maps.capturedAt, Int32Array, N) || world._capturedAt;
+    world._claimPress = loadTyped(data.maps.claimPress, Float32Array, N) || world._claimPress;
+    const capAt = typedFromSparse(data.maps.tileCapturedAt, Float64Array, N, -Infinity);
+    if (capAt) world._tileCapturedAt = capAt;           // conquest hold clock (armies.js)
+    const soil = typedFromSparse(data.maps.soilFatigue, Float32Array, N, 0);
+    if (soil) world._soilFatigue = soil;                // "the land remembers" (settlement.js)
   }
+  // The road/flow sparse indices were created empty at init and no longer
+  // match the loaded arrays — rebuild them or decay/paving skip every tile.
+  reindexRoads(world);
   if (data.reserves && world.depositReserve) {
     for (const id in data.reserves) {
       const a = typedFromB64(data.reserves[id], Float32Array);
@@ -208,9 +290,18 @@ export function loadWorld(data) {
   world._warExhaust = arrToMap(t.warExhaust);
   world._linkMoney = arrToMap(t.linkMoney);
   world._inflRaw = arrToMap(t.inflRaw);
+  world._inflP = arrToMap(t.inflP);
   world._manpower = arrToMap(t.manpower);
   world._plagueEvAt = arrToMap(t.plagueEvAt);
   world._plagued = new Set(t.plagued || []);
+  world._truces = arrToMap(t.truces);
+  world._warSeenAt = arrToMap(t.warSeenAt);
+  world._schismAt = arrToMap(t.schismAt);
+  world._cBudgetRamp = arrToMap(t.cBudgetRamp);
+  world._inheritReach = new Set(t.inheritReach || []);
+  // undefined (not null) means "baseline not yet calibrated" — preserve that.
+  if (t.inflRef != null) world._inflRef = t.inflRef;
+  if (t.lastSyncretismAt != null) world._lastSyncretismAt = t.lastSyncretismAt;
   if (data.seaReach) {
     for (const [sid, entries] of data.seaReach) {
       const s = world.settlements.find(x => x.id === sid);
@@ -218,9 +309,17 @@ export function loadWorld(data) {
     }
   }
 
-  // Warm the economy immediately (territory tallies feed every settlement
-  // update); political/military passes re-run on their own cadence.
+  // Warm the world in dependency order so the first post-load ticks read the
+  // same state the saved world had:
+  //   climate overlay (fertility multiplier) → territory tallies (food) →
+  //   countries view (leadOrg/_civYear, dynasties, muster) → alliance map
+  //   (coalition bars, casus belli).
+  recomputeClimMod(world);
   computeTerritory(world);
+  world._byId = new Map();
+  for (const s of world.settlements) world._byId.set(s.id, s);
+  rebuildCountries(world);
+  updateAlliances(world);
   return world;
 }
 
@@ -251,5 +350,15 @@ export function hashWorld(world) {
   }
   mixNum(world.events ? world.events.length : 0);
   if (world.roadQuality) { const rq = world.roadQuality; for (let i = 0; i < rq.length; i += 97) mixNum(rq[i]); }
+  if (world.roadFlow) { const rf = world.roadFlow; for (let i = 0; i < rf.length; i += 97) mixNum(rf[i]); }
+  // Presence-normalized: an unallocated lazy array hashes identically to an
+  // allocated all-default one (sparse serialization drops empty arrays).
+  { const sf = world._soilFatigue; for (let i = 0; i < world.N; i += 97) mixNum(sf ? sf[i] : 0); }
+  { const ca = world._tileCapturedAt; let n = 0, sum = 0; if (ca) for (let i = 0; i < ca.length; i++) if (Number.isFinite(ca[i])) { n++; sum += ca[i]; } mixNum(n); mixNum(sum); }
+  mixNum(world._inflRef ?? -1);
+  mixNum(world._inflP ? world._inflP.size : 0);
+  mixNum(world._truces ? world._truces.size : 0);
+  mixNum(world._warSeenAt ? world._warSeenAt.size : 0);
+  if (world._cBudgetRamp) { const ks = [...world._cBudgetRamp.keys()].sort((a, b) => a - b); for (const k of ks) { mixNum(k); mixNum(world._cBudgetRamp.get(k)); } }
   return (h >>> 0).toString(16);
 }

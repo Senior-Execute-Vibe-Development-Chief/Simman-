@@ -145,13 +145,30 @@ console.log(`[smoke] save/load: roundtrip identity + functional resume`);
   const h1 = hashWorld(loaded);
   check("loaded state hashes identical", h0 === h1, `${h0} vs ${h1}`);
   check(`save size sane (${(json.length / 1024).toFixed(0)}KB)`, json.length < 30e6);
+  // Continuation equivalence: a loaded world's future must stay CLOSE to the
+  // uninterrupted run. Exact identity is not required (per-pass transients —
+  // trade reach, fronts, sea lanes — re-warm on their own cadence), but any
+  // cross-tick state dropped by persist.js shows up here as runaway drift
+  // (the pre-fix bug measured ~65% population divergence; the honest bound
+  // is ~2%). Tolerances are deliberately loose multiples of the observed
+  // residual so the gate only trips on real persistence regressions.
   loaded._checkInvariants = true;
-  stepPeopleSim(loaded, 500);
-  const st = peopleSimStats(loaded);
+  const M = 1000;
+  stepPeopleSim(world, M);
+  stepPeopleSim(loaded, M);
+  const stA = peopleSimStats(world), st = peopleSimStats(loaded);
   const hits = loaded.debug && loaded.debug.invariantHits;
   let hitTotal = 0; if (hits) for (const k of Object.keys(hits)) hitTotal += hits[k];
   check("loaded world resumes cleanly", hitTotal === 0 && st.settlements > 0 && Number.isFinite(st.totalWealth),
     `${st.settlements} settlements, hits ${JSON.stringify(hits)}`);
+  const drift = (x, y) => Math.abs(x - y) / Math.max(1, Math.abs(x));
+  check(`loaded continuation tracks original (+${M} steps: pop ${(100 * drift(stA.totalPeople, st.totalPeople)).toFixed(1)}%, wealth ${(100 * drift(stA.totalWealth, st.totalWealth)).toFixed(1)}%)`,
+    drift(stA.totalPeople, st.totalPeople) < 0.10 &&
+    drift(stA.totalWealth, st.totalWealth) < 0.25 &&
+    Math.abs(stA.settlements - st.settlements) <= 3 &&
+    Math.abs(stA.countries - st.countries) <= 3 &&
+    Math.abs(stA.landPct - st.landPct) < 0.03,
+    `pop ${stA.totalPeople} vs ${st.totalPeople} · wealth ${stA.totalWealth} vs ${st.totalWealth} · setts ${stA.settlements} vs ${st.settlements} · countries ${stA.countries} vs ${st.countries} · land ${(stA.landPct * 100).toFixed(1)} vs ${(st.landPct * 100).toFixed(1)}%`);
 }
 
 console.log(`[smoke] DISSOLVE_FARMS lever: no tier-0, deterministic, alive`);

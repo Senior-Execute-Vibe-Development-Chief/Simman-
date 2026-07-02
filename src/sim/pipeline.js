@@ -565,8 +565,8 @@ const{tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOri
 return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,tFlood,deposits,rivers,tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy,stepCount:0};}
 
 // Full headless compose: generateWorld + buildTerritory in one call.
-export function buildWorld({W=480,H=W>>1,seed=1,preset="earth_sim",oceanLevel=0.78,tecParams={}}={}){
-  const w=generateWorld(W,H,seed,preset,oceanLevel,true,false,tecParams);
+export function buildWorld({W=480,H=W>>1,seed=1,preset="earth_sim",oceanLevel=0.78,tecParams={},realWind=false,realWindFns=null}={}){
+  const w=generateWorld(W,H,seed,preset,oceanLevel,true,realWind,tecParams,realWindFns);
   const ter=buildTerritory(w,1);
   return{w,ter};
 }

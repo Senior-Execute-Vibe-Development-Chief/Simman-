@@ -1493,7 +1493,7 @@ function capitalTransportCosts(world, c) {
 //   _allies         : countryId → Set of allied countryIds (won't attack each other)
 //   _blocMight      : hegemonId → total power of the coalition arrayed against it
 // and _countryPow (countryId → national coercive power) for the front-bar scaling.
-function updateAlliances(world) {
+export function updateAlliances(world) {
   const countries = world.countries, owner = world._territoryOwner, byId = world._byId;
   if (!countries || !owner || !byId) return;
   const { tw, th } = world;

@@ -933,7 +933,12 @@ if(t.deposits)w.deposits=t.deposits;
 // Runs in a Web Worker (off the render thread); peopleRef.current becomes a
 // snapshot-fed mirror. Falls back to a main-thread sim if the worker fails.
 let usedWorker=false;
+// Real-wind saves must load on the MAIN thread: the NCEP wind data lives in
+// this bundle only, so the worker's loadWorld would rebuild sim-wind terrain
+// under a civilization that grew on real-wind terrain.
+const _pendRW=pendingSaveRef.current&&pendingSaveRef.current.indexOf('"realWind":true')>=0;
 try{
+  if(_pendRW)throw new Error('real-wind save — loading on the main thread');
   if(simWorkerRef.current){simWorkerRef.current.terminate();simWorkerRef.current=null;}
   const sw=new PeopleSimWorker();
   sw.onmessage=(e)=>{
@@ -966,7 +971,7 @@ try{
     windX:w.windX,windY:w.windY,
     rivers:(w.rivers&&w.rivers.riverMag)?{riverMag:w.rivers.riverMag}:null,
     deposits:w.deposits};
-  const _gm={oceanLevel:oceanLevelRef.current,tecParams:_tecParams};
+  const _gm={oceanLevel:oceanLevelRef.current,tecParams:_tecParams,realWind:!!w.realWindUsed};
   const _pend=pendingSaveRef.current;
   if(_pend){pendingSaveRef.current=null;sw.postMessage({type:'load',json:_pend,genMeta:_gm});}
   else sw.postMessage({type:'init',w:initW,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,seed:w.seed,genMeta:_gm,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
@@ -979,8 +984,8 @@ try{
 }catch(e){console.warn('[SimWorker] init failed — main-thread sim:',e);}
 if(!usedWorker){
   const _pend2=pendingSaveRef.current;
-  if(_pend2){pendingSaveRef.current=null;peopleRef.current=loadWorld(_pend2);}
-  else peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
+  if(_pend2){pendingSaveRef.current=null;peopleRef.current=loadWorld(_pend2,{realWindFns:{isRealWindAvailable,fillRealWind}});}
+  else{peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});peopleRef.current._realWindGen=!!w.realWindUsed;}
   setPsStats(peopleSimStats(peopleRef.current));
 }
 setPlaying(false);playRef.current=false;
@@ -1008,7 +1013,7 @@ finalizeWorld(generateWorld(W,H,s,presetRef.current,_ol,true,false,_tecParams));
 worker.postMessage({type:'generate',W,H,seed:s,preset:presetRef.current,oceanLevel:_ol,tecParams:_tecParams});
 return;}catch(e){console.warn('[Worker] Init failed:',e);}}
 // Main thread: real-wind Earth-Sim (or worker init failure fallback).
-finalizeWorld(generateWorld(W,H,s,presetRef.current,_ol,true,_realWind,_tecParams,{isRealWindAvailable,fillRealWind}));},[finalizeWorld]);
+finalizeWorld(Object.assign(generateWorld(W,H,s,presetRef.current,_ol,true,_realWind,_tecParams,{isRealWindAvailable,fillRealWind}),{realWindUsed:_realWind}));},[finalizeWorld]);
 useEffect(()=>{generate(seed)},[seed,generate]);
 // Build globe texture at 2048×1024 (GPU-friendly power-of-2) with polar blending
 // Clear caches when globe toggled off (canvas remounts)

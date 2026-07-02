@@ -317,10 +317,7 @@ export function makeSettlement(world, x, y, opts = {}) {
     const aptPar = (opts.parentId != null && opts.parentId >= 0) ? findSettlementById(world, opts.parentId) : null;
     s._orgApt = aptPar ? (aptPar._orgApt || 0) : 0;
   }
-  { const _wa = computeWaterAccess(world, x | 0, y | 0); s.waterAccess = _wa.wa; s._riverAcc = _wa.river; }
-  s._buildableArea = computeBuildableArea(world, x | 0, y | 0);
-  s._confine = computeConfinement(world, x | 0, y | 0);   // circumscription (static terrain)
-  s._rugged  = computeRuggedness(world, x | 0, y | 0);    // broken terrain → fragmentation (static)
+  rederiveSiteStatics(world, s);
   s._rivalN = 0;                                           // distinct rival polities in contact (refreshed in updateKnowledge)
   world.settlements.push(s);
   seedLocalTerritory(world, s);   // food/resource stats until the first full territory pass
@@ -354,6 +351,20 @@ export function makeSettlement(world, x, y, opts = {}) {
 // on a great river), scanned over the 3×3 block around home. Coast
 // contributes 0.5; river magnitude scales linearly: mag 1 → 0.2,
 // mag 3 → 0.6, mag 4 → 0.8. Capped at 1.
+// Static site attributes — pure functions of position + immutable terrain,
+// computed once at founding. Exported so loadWorld can re-derive them for
+// settlements whose save predates their serialization (cheap and
+// deterministic, so recomputation is exact).
+export function rederiveSiteStatics(world, s) {
+  const x = s.pos.x | 0, y = s.pos.y | 0;
+  const _wa = computeWaterAccess(world, x, y);
+  s.waterAccess = _wa.wa;
+  s._riverAcc = _wa.river;                       // river component of water access (aridSignal input)
+  s._buildableArea = computeBuildableArea(world, x, y);
+  s._confine = computeConfinement(world, x, y);  // circumscription (static terrain)
+  s._rugged = computeRuggedness(world, x, y);    // broken terrain → fragmentation (static)
+}
+
 function computeWaterAccess(world, sx, sy) {
   const { tw, th, coast, riverMag } = world;
   let coastBit = 0, bestMag = 0;

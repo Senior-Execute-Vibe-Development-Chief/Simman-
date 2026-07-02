@@ -252,7 +252,21 @@ function ensureRoadArrays(world) {
     const rq = world.roadQuality;
     for (let ti = 0; ti < rq.length; ti++) if (rq[ti] < 1.0) world._roadTiles.add(ti);
   }
-  if (!world._flowTiles) world._flowTiles = new Set();
+  if (!world._flowTiles) {
+    world._flowTiles = new Set();
+    const rf = world.roadFlow;
+    for (let ti = 0; ti < rf.length; ti++) if (rf[ti] >= FLOW_EPS) world._flowTiles.add(ti);
+  }
+}
+
+// After a state load replaces roadQuality/roadFlow wholesale, the sparse
+// indices (created empty at init) no longer match the arrays — the decay
+// and paving sweeps would then skip every loaded tile forever. Rebuild
+// both from the arrays they index.
+export function reindexRoads(world) {
+  world._roadTiles = null;
+  world._flowTiles = null;
+  ensureRoadArrays(world);
 }
 
 // Paint a single tile as a fresh road, keeping the sparse road-tile

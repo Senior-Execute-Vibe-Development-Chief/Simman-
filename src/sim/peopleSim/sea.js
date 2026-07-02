@@ -259,7 +259,7 @@ export function updateSea(world) {
   let wobble = world._seaWobble;
   if (!wobble || wobble.length !== N) {
     wobble = world._seaWobble = new Float32Array(N);
-    const seed = (world._seed | 0) || 1;
+    const seed = (world.seed | 0) || 1;
     const SCALE = 6;   // tiles per noise lattice cell (wobble wavelength ≈ 2×)
     const h2 = (x, y) => {
       let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, 0x9E3779B1)) | 0;
