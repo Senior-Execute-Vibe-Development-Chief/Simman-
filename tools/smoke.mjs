@@ -50,6 +50,21 @@ const { w, rivers, tCrop, deposits } = buildWorld({ W, H, seed: SEED, preset: PR
   check("deposits placed", oreT > 30, `${oreT} iron/copper/timber tiles`);
 }
 
+console.log(`[smoke] cradles: distinct, separated seats`);
+{
+  const world = buildSim({ W, H, seed: SEED, preset: PRESET });
+  const cradles = world.settlements.map(s => ({ x: s.pos.x | 0, y: s.pos.y | 0, name: s.name }));
+  let minD2 = Infinity;
+  for (let i = 0; i < cradles.length; i++) for (let j = i + 1; j < cradles.length; j++) {
+    const ddx = Math.min(Math.abs(cradles[i].x - cradles[j].x), world.tw - Math.abs(cradles[i].x - cradles[j].x));
+    const ddy = cradles[i].y - cradles[j].y;
+    minD2 = Math.min(minD2, ddx * ddx + ddy * ddy);
+  }
+  check(`cradles distinct & separated (${cradles.length} seats, min gap ${minD2 === Infinity ? "n/a" : Math.sqrt(minD2).toFixed(1)} tiles)`,
+    cradles.length >= 2 && minD2 >= 9,
+    cradles.map(c => `(${c.x},${c.y})`).join(" "));
+}
+
 console.log(`[smoke] determinism: 2 sims, same seed, ${DET_STEPS} steps`);
 {
   const a = buildSim({ W, H, seed: SEED, preset: PRESET });
