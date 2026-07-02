@@ -55,6 +55,36 @@ export function eraIdentityWeights(year) {
 }
 export function identityWeightsNow(world) { return eraIdentityWeights(world._civYear ?? -9000); }
 
+// Organisation → development pseudo-year (moved from index.js so the identity
+// layer owns its own development mapping). Calibrated to the historical
+// organisation-vs-time curve; the YEARS are labels for the ramp anchors above,
+// the INPUT is always emergent state.
+export const CIV_ORG_YEAR = [
+  [0.10, -6000], [0.18, -3300], [0.38, -800], [0.50, 200], [0.62, 1100],
+  [0.81, 1560], [0.88, 1680], [0.94, 1800], [0.98, 1875], [0.995, 1960],
+];
+export function civYearFromOrg(org) {
+  const A = CIV_ORG_YEAR;
+  if (org <= A[0][0]) return A[0][1];
+  if (org >= A[A.length - 1][0]) return A[A.length - 1][1];
+  let i = 1; while (i < A.length && org > A[i][0]) i++;
+  const a = A[i - 1], b = A[i], t = (org - a[0]) / (b[0] - a[0]);
+  return a[1] + (b[1] - a[1]) * t;
+}
+
+// Salience for the states actually INVOLVED — reads the more developed
+// party's own capital organisation, never the planet-wide leader. (The old
+// global read gave every realm the single most advanced capital's era: an
+// uncontacted bronze-age continent acquired modern nationalist politics the
+// moment anyone, anywhere, industrialised.) Taking the MAX of the two sides
+// is deliberate: ideas travel with contact, and the more modern party brings
+// the national/confessional question into the relationship with it — while
+// two ancient states in contact stay ancient. Self-calibrating per region.
+export function identityWeightsFor(world, a, b) {
+  const orgOf = (x) => (x && x.knowledge && x.knowledge.organization) || 0;
+  return eraIdentityWeights(civYearFromOrg(Math.max(orgOf(a), orgOf(b))));
+}
+
 const GRIEVANCE_W = 0.6;   // peak identity contribution to a province's unrest (hunger still dominates)
 const FRICTION_W  = 0.6;   // peak language surcharge on admin load (a wholly foreign-tongue province ≈ +0.45×)
 

@@ -19,7 +19,7 @@ import { coreRadiusFor } from "./territory.js";
 import { techEff, URBAN_BASE_RURAL } from "./settlement.js";
 import { fragmentRealm, bankMomentum, MOMENTUM_PER_TILE, MOMENTUM_PER_STORM, recordOccupation, BALANCE_W, BALANCE_CAP } from "./conquest.js";
 import { aggressionAttackMul, aggressionArmyMul } from "./personality.js";
-import { identityWeightsNow, casusBelliMul } from "./cohesion.js";
+import { identityWeightsFor, casusBelliMul } from "./cohesion.js";
 import { realmName } from "./chronicle.js";
 import { inCrisis } from "./dynasties.js";
 import { getPolity as _getPolity } from "./entities.js";
@@ -317,10 +317,16 @@ export function advanceFronts(world) {
   // / co-national kinship restrains it; a province of the attacker's OWN people under
   // foreign rule is eagerly liberated. Era-weighted → ~neutral in antiquity. The state
   // CORE is the capital's dominant identity, looked up per country once per pass.
-  const idW = identityWeightsNow(world);
   const capOf = new Map();
   if (world.countries) for (const c of world.countries.values()) if (c.capital) capOf.set(c.id, c.capital);
-  const casusOf = (attCC, defCC, tileOwner) => casusBelliMul(capOf.get(attCC), capOf.get(defCC), tileOwner, idW);
+  // Salience per PAIR of belligerents (cohesion.js): the more developed side
+  // brings its era's political question to the war — righteous religion
+  // between medieval courts, the national cause once either party
+  // industrialises — while two ancient rivals fight ancient wars.
+  const casusOf = (attCC, defCC, tileOwner) => {
+    const A = capOf.get(attCC), D = capOf.get(defCC);
+    return casusBelliMul(A, D, tileOwner, identityWeightsFor(world, A, D));
+  };
   // A dominant realm projects military power — it attacks on a slimmer margin, so a
   // great power expands by conquest where the pack stalls (Rome, the Mongols).
   const domBarOf = (attCC) => { const c = world.countries && world.countries.get(attCC); const d = c && c._dominance ? c._dominance : 1; return 1 / Math.pow(Math.max(1, d), DOM_ATTACK_P); };

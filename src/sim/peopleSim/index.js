@@ -131,18 +131,8 @@ function applyDemographicAnchor(world, popTotal, capTotal) {
 // antiquity never closes it. The anchor points trace organisation against the
 // historical timeline, so a typical run still lines the gates up with real history —
 // but nothing is pinned to the calendar; it is the tech that drives the clock.
-const CIV_ORG_YEAR = [
-  [0.10, -6000], [0.18, -3300], [0.38, -800], [0.50, 200], [0.62, 1100],
-  [0.81, 1560], [0.88, 1680], [0.94, 1800], [0.98, 1875], [0.995, 1960],
-];
-export function civYearFromOrg(org) {
-  const A = CIV_ORG_YEAR;
-  if (org <= A[0][0]) return A[0][1];
-  if (org >= A[A.length - 1][0]) return A[A.length - 1][1];
-  let i = 1; while (i < A.length && org > A[i][0]) i++;
-  const a = A[i - 1], b = A[i], t = (org - a[0]) / (b[0] - a[0]);
-  return a[1] + (b[1] - a[1]) * t;
-}
+import { civYearFromOrg } from "./cohesion.js";
+export { civYearFromOrg };
 
 export function stepPeopleSim(world, n = 1) {
   // Optional per-pass timing (set world._dbgProfile to capture a breakdown of

@@ -21,7 +21,7 @@ import { techEff, getWealthReserve } from "./settlement.js";
 import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities } from "./entities.js";
-import { identityWeightsNow, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
+import { identityWeightsFor, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
 import { T } from "./tuning.js";
 import { hash32 } from "./rng.js";
 
@@ -1672,11 +1672,6 @@ export function updatePolities(world) {
     }
   }
 
-  // Era-weighted salience of the four identity layers (cohesion.js). One read per
-  // pass — the year is global — shared by the unrest grievance and the admin-load
-  // friction below. The axis of conflict it emphasises shifts with the calendar:
-  // faith in the medieval, language across the bureaucratic eras, peoples in the modern.
-  const idW = identityWeightsNow(world);
   // MEDIAN capital power across the REAL states (multi-member) this pass — the era
   // baseline the dominant-empire boost is measured against (see CAP_DOM_W). The median
   // (not the mean) is deliberate: it is robust to the hegemon's OWN outsized core, so a
@@ -1695,6 +1690,12 @@ export function updatePolities(world) {
 
     const cap = c.capital;
     const capPower = settlementPower(cap);
+    // Era-weighted salience of the four identity layers, from THIS realm's own
+    // development (cohesion.js identityWeightsFor) — the axis of conflict each
+    // realm feels shifts as ITS society develops: faith in its medieval,
+    // language across its bureaucratic era, the national idea when IT (or a
+    // neighbour it faces) industrialises. Never the planet-wide leader.
+    const idW = identityWeightsFor(world, cap);
     // The realm's mustered force (sum of member garrisons) — its monopoly on
     // organised violence, the thing that actually SUPPRESSES a province's revolt.
     let natArmy = 0; for (const m of c.members) natArmy += (m.army || 0);
@@ -2245,9 +2246,6 @@ function absorbWeakNeighbors(world, countries) {
   // hasAbsorbHeadroom — without this the gate checks every candidate against
   // the same stale pre-pass load and the realm over-extends in one tick).
   const absorbedLoad = new Map();
-  // Era-weighted identity salience for the cultural-resistance gate below (one read
-  // per pass). See cohesion.js absorbResistance — keyed on emergent development.
-  const idW = identityWeightsNow(world);
   for (const [settId, scoreMap] of perSett) {
     const m = byId.get(settId);
     if (!m || m.mode !== "settled") continue;
@@ -2288,7 +2286,9 @@ function absorbWeakNeighbors(world, countries) {
     // foreign city. Era-weighted (cohesion.js), so antiquity still permits multi-ethnic
     // empires and the national age fractures them — emergent, never time-gated.
     if (T.ABSORB_IDENTITY > 0 && target && target.capital) {
-      prob *= 1 - T.ABSORB_IDENTITY * absorbResistance(target.capital, m, idW);
+      // Salience from the two parties actually meeting (cohesion.js): the
+      // absorber's court and the absorbed community.
+      prob *= 1 - T.ABSORB_IDENTITY * absorbResistance(target.capital, m, identityWeightsFor(world, target.capital, m));
     }
     // BALANCE OF POWER caps a hegemon's PEACEFUL growth too, not just its wars. If a
     // coalition is arrayed against the absorber (updateAlliances → _blocMight: the Σ
