@@ -13,6 +13,7 @@
 import { passRng } from "./rng.js";
 import { logEvent } from "./events.js";
 import { T } from "./tuning.js";
+import { techEff } from "./settlement.js";
 
 // ── FAMINE — a regional bad-harvest event ──
 // Hits a geographic cluster of settlements for a window, slashing their land-
@@ -202,7 +203,13 @@ export function updateShocks(world) {
       // A virgin-soil people meets every disease of the connected world at once, with no
       // inherited immunity: mortality is multiplied while the wave burns (the Columbian collapse).
       const virgin = world.step < (s._virginUntil || 0) ? VIRGIN_MORT : 1;
-      const mort = T.PLAGUE_MORT * (1 + PLAGUE_URBAN * urban) * virgin * _dt;
+      // Health technology (tech.js health channel): sanitation blunts the
+      // CROWDING term (sewers attack exactly the density-borne burden) and
+      // medicine cuts base mortality — a society that never earns them keeps
+      // its plagues forever, one that does gets its mortality transition
+      // when IT does (review D36; germ_theory/medicine had no effects at all).
+      const relief = techEff(s).healthRelief || 0;
+      const mort = T.PLAGUE_MORT * (1 - relief) * (1 + PLAGUE_URBAN * urban * (1 - relief)) * virgin * _dt;
       s.people = Math.max(1, s.people * (1 - mort));
       // Spread along the trade graph (road reach + sea lanes). The very links
       // that carry grain and coin carry the contagion. Per-tick infection odds

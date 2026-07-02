@@ -317,7 +317,9 @@ export const TECH_FX = {
   masonry:      { build:0.14, defense:0.25, walls:true },
   monuments:    { build:0.06, cohesion:0.05 },
   the_arch:     { build:0.10, defense:0.10 },
-  aqueducts:    { build:0.14, defense:0.04 },
+  aqueducts:    { build:0.14, defense:0.04, health:0.25 },   // sewers + clean water: the first real blow against crowd disease
+  germ_theory:  { health:0.45 },   // vaccines, antisepsis, clean-water science
+  medicine:     { health:0.30 },   // antibiotics, anaesthesia, modern surgery
   machinery:    { build:0.06, trade:0.10 },
   cathedrals:   { build:0.08, cohesion:0.06, defense:0.10 },
   architecture: { build:0.08, defense:0.10 },
@@ -378,8 +380,11 @@ export const TECH_FX = {
 };
 
 const lerp = (a, b, t) => a + (b - a) * t;
-const FX_CH = ["farm", "fish", "build", "military", "reach", "cohesion", "defense", "trade", "wealth", "seaSpeed", "seaRange", "logistics"];
+const FX_CH = ["farm", "fish", "build", "military", "reach", "cohesion", "defense", "trade", "wealth", "seaSpeed", "seaRange", "logistics", "health"];
 const FX_ABIL = ["embark", "ocean", "colonize", "walls", "market"];
+// (health channel consumers: shocks.js plague mortality/spread and the
+// urban-mortality drag in settlement.js — epidemics fade exactly when and
+// where a society earns sanitation, never on a date.)
 
 // Full-tech channel totals (every tech's contribution summed). Used to NORMALISE
 // the "level" channels — the ones that stand in for a 0..1 track inside a formula
@@ -464,6 +469,10 @@ export function techEffects(k, blend = 1) {
     // trade-tech cities capture more of the (fixed, mining-minted) coin pool.
     // 1.0 at blend 0 (no change), up to ~1.5 fully teched.
     tradeMult:  1 + blend * lvl(ch.trade, "trade") * 0.5,
+    // 0 (no sanitation) → ~1 (full modern medicine): fraction of crowd-disease
+    // burden the settlement's own discovered techs remove. Sum of health fx,
+    // capped — aqueducts alone ≈ a quarter, germ theory the great leap.
+    healthRelief: Math.min(0.9, ch.health),
     wealthMult: 1 + blend * lvl(ch.wealth, "wealth") * 0.5,     // exposed for later (treasury/mining); not yet wired
   };
   if (_fxCache.size >= _FX_CACHE_MAX) _fxCache.clear();

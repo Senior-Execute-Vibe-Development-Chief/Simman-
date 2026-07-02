@@ -8,6 +8,7 @@
 // knowledge from their nearest neighbour weighted by transport distance.
 
 import { seedLocalTerritory } from "./territory.js";
+import { mergeReach } from "./roads.js";
 import { techEffects } from "./tech.js";
 import { agriGate, bestPackageAt, pkgSuitAt } from "./agriculture.js";
 import { CROP_BY_ID } from "../cropPackages.js";
@@ -404,9 +405,10 @@ function findSettlementById(world, id) {
 }
 function effectiveLocalRes(world, s) {
   const own = s.localRes || {};
-  if (!s._tradeReach || s._tradeReach.size === 0) return own;
+  const reach = mergeReach(s);   // road + sea: the tin trade crossed water (review I41)
+  if (!reach || reach.size === 0) return own;
   const out = { ...own };
-  for (const peerId of s._tradeReach.keys()) {
+  for (const peerId of reach.keys()) {
     const peer = findSettlementById(world, peerId);
     if (!peer || peer.mode !== "settled") continue;
     const peerRes = peer.localRes || {};
@@ -1570,17 +1572,35 @@ function updateKnowledge(world, s) {
   // Diffusion is throttled to every KNOW_INTERVAL ticks (staggered by id),
   // with the rate scaled up to match — technique spreads over ~1700 ticks,
   // so an 8-tick cadence is indistinguishable while costing 8× less.
-  if (s._tradeReach && s._tradeReach.size > 0 && world._byId
-      && (world.step + s.id) % KNOW_INTERVAL === 0) {
+  // Ideas travel wherever GOODS travel: diffusion iterates the MERGED road +
+  // sea reach (review I41/D37) — sea lanes carried trade, plague and language
+  // but no knowledge, so island civilizations could never converge. Each
+  // track's pull is damped by the ROUTE COST of the partner holding the best
+  // level: a busy strait floods technique across, a hard ocean crossing
+  // trickles — the channel scales with the same emergent lanes and ship tech
+  // that built it. Land partners' costs are small, so the pre-sea calibration
+  // is preserved.
+  if (world._byId && (world.step + s.id) % KNOW_INTERVAL === 0) {
+    const reach = mergeReach(s);
+    if (!reach || reach.size === 0) {
+      s._rivalN = 0;   // no contact, no competition signal (used to go stale forever)
+    } else {
     const km = { agriculture:0, construction:0, organization:0,
                  metallurgy:0, navigation:0, mobility:0 };
     // Climate similarity to the partner that holds each track's best level —
     // 1 = same climate band, → 0 = opposite climate.
     const kmSim = { agriculture:1, construction:1, organization:1,
                     metallurgy:1, navigation:1, mobility:1 };
+    // Route-cost damping of the best-holder's pull. The scale means "the
+    // route cost at which contact is too thin to carry technique well" —
+    // ~3× a nav-0 port's whole sea range; a typical neighbourly land link
+    // costs a fraction of it (weight ≈ 1).
+    const DIFFUSE_COST_K = 30;
+    const kmCostW = { agriculture:1, construction:1, organization:1,
+                      metallurgy:1, navigation:1, mobility:1 };
     let any = false;
     const rivals = new Set();
-    for (const pid of s._tradeReach.keys()) {
+    for (const [pid, link] of reach) {
       const p = world._byId.get(pid);
       if (!p || p.mode !== "settled" || !p.knowledge) continue;
       any = true;
@@ -1593,7 +1613,8 @@ function updateKnowledge(world, s) {
       climateOf(world, p);
       const dLat = s._climLat - p._climLat, dT = s._climTemp - p._climTemp;
       const sim = Math.exp(-(dLat * dLat) / (2 * 0.22 * 0.22) - (dT * dT) / (2 * 0.10 * 0.10));
-      for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) { km[t] = v; kmSim[t] = sim; } }
+      const costW = Math.exp(-((link && link.cost) || 0) / DIFFUSE_COST_K);
+      for (const t of KTRACKS) { const v = pk[t] || 0; if (v > km[t]) { km[t] = v; kmSim[t] = sim; kmCostW[t] = costW; } }
     }
     s._rivalN = rivals.size;   // distinct rival polities in contact → competition term in sciMul next pass
     if (any) {
@@ -1617,10 +1638,11 @@ function updateKnowledge(world, s) {
           const axisW = t === "agriculture"
             ? Math.max(0.05, 1 - T.AXIS_BIAS * (1 - kmSim[t]))
             : 1;
-          k[t] = clamp01(k[t] + rate * axisW * gap);
+          k[t] = clamp01(k[t] + rate * axisW * kmCostW[t] * gap);
         }
       }
     }
+    }   // reach else-branch (merged road+sea diffusion)
   }
 
   // ── Crop diffusion + domestication (T.CROP_AXIS) ──────────────────────
@@ -2283,6 +2305,10 @@ function updatePopulation(world, s) {
   // modernity (urban majority + literate bureaucracy + secure food) fertility
   // falls to ~15% of the Malthusian rate — near-replacement, not extinction.
   const DEMO_TRANSITION = 0.85;
+  // Urban graveyard strength, RELATIVE to intrinsic growth: at full endemic
+  // load, full urbanity and zero sanitation, crowd disease slightly more than
+  // cancels natural increase (1.2x) — the city needs migrants to grow.
+  const URBAN_GRAVEYARD_W = 1.2;
   const K = (T.LOCALITY_MODE || T.DISSOLVE_FARMS)
     ? Math.max(K_MIN_VIABLE, foodK)
     : Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
@@ -2317,7 +2343,18 @@ function updatePopulation(world, s) {
       const modern = Math.min(1, urbShare / 0.5) * lit * fed;
       r *= 1 - DEMO_TRANSITION * modern;
     }
-    s.people = s.people * Math.exp(r * _dt * grow);
+    // THE URBAN GRAVEYARD (review D57): dense settlements carry a chronic
+    // crowd-disease mortality ∝ their endemic disease load × how urban they
+    // are, blunted by their own discovered health tech. At full endemic load
+    // an un-sanitized city's excess deaths roughly cancel natural increase —
+    // the historical pattern where great cities grew only by drawing people
+    // in — and the sink lifts exactly when aqueducts/germ theory arrive.
+    // Villages (low urban share) and clean-tech cities are untouched.
+    const urbShare2 = (s._urbanPop || 0) / Math.max(1, s.people);
+    const sink = T.SETT_GROWTH * URBAN_GRAVEYARD_W
+      * (s._diseaseLoad || 0) * Math.min(1, urbShare2 / 0.3)
+      * (1 - (techEff(s).healthRelief || 0));
+    s.people = s.people * Math.exp((r * grow - sink) * _dt);
   }
   if (s.people < 1.5) {
     s.mode = "dead";

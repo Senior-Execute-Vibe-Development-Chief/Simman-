@@ -1146,7 +1146,7 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
 // sea-lane peers (sea.js, on s._seaReach). Returns the road map directly
 // when there's no sea reach (the common case — only ports sail), so we
 // only allocate a merged map for actual ports.
-function mergeReach(s) {
+export function mergeReach(s) {
   const road = s._tradeReach, sea = s._seaReach;
   if (!sea || sea.size === 0) return road;
   if (!road || road.size === 0) return sea;
