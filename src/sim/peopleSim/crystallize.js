@@ -250,13 +250,31 @@ const RESOURCE_TIER_VALUE = {
 // (which is parent-driven and intentional) is NOT subject to this — the
 // mother country can still push outward into the frontier.
 const CRYSTAL_SATURATION_REF = 1500;  // density guard — much higher so the world keeps filling with villages (a denser, more alive map) instead of plateauing at a few hundred
-// Coverage tempo (applied as devFactor in maybeCrystallize): the habitable world
-// starts a SPARSE frontier and fills in gradually over the developmental arc,
-// instead of saturating at once. Ungated, crystallisation+colonisation grabbed all
-// the easy terrain by the classical era and then sat static; ramping the spread
-// rate up over the eras makes the wilderness recede the way it did historically.
-const COVERAGE_FLOOR = 0.22;   // stone-age frontier spread rate, as a fraction of full
-const COVERAGE_RAMP  = 17000;  // steps over which the spread rate ramps to full (~renaissance)
+// Coverage tempo (pioneerTempo below): the habitable world starts a SPARSE
+// frontier and fills in gradually over the developmental arc, instead of
+// saturating at once. Ungated, crystallisation+colonisation grabbed all the
+// easy terrain by the classical era and then sat static.
+const COVERAGE_FLOOR = 0.22;   // pre-agricultural (forager-margin) spread rate, as a fraction of full
+// The neolithic package a fresh independent village invents on its own —
+// shared with inheritKnowledgeAt's baseline so the tempo and the inherited
+// knowledge describe the same starting point.
+const NEOLITHIC_AGRI = 0.45;
+// Wave-of-advance pioneering tempo (replaces the old COVERAGE_RAMP step
+// clock, a cardinal-rule-1 violation: it let the wilderness recede because
+// of WHEN it was, not what the world had become). The real cause of slow
+// early spread is that pioneers can only settle as fast as their FARMING
+// CAPABILITY sustains new villages (the demic "wave of advance"): tempo
+// rises from the forager floor to full as the relevant people's agriculture
+// matures from the neolithic baseline to the maturity point the food model
+// already defines (T.AGRI_FULL_AT). Purely local state — a stalled
+// stone-age region keeps a sparse frontier forever, a precocious cradle
+// fills its valley early, a colonised coast spreads at the colonists' own
+// tempo — self-calibrating on any map, seed, or pace.
+const pioneerTempo = (agri) => {
+  const span = Math.max(0.05, (T.AGRI_FULL_AT || 0.7) - NEOLITHIC_AGRI);
+  const dev = Math.min(1, Math.max(0, ((agri || 0) - NEOLITHIC_AGRI) / span));
+  return COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * dev;
+};
 export function maybeCrystallize(world) {
   if (world.step % CRYSTAL_INTERVAL !== 0) return;
 
@@ -271,11 +289,6 @@ export function maybeCrystallize(world) {
   let _alive = 0;
   for (const s of world.settlements) if (s.mode === "settled") _alive++;
 
-  // Coverage tempo: settlement spreads GRADUALLY as civilisation matures rather
-  // than all at once (see COVERAGE_FLOOR / COVERAGE_RAMP). Scales both the random
-  // crystallisation sweep and mother-country colonisation, so the early map stays a
-  // sparse frontier and the wilderness recedes over the eras.
-  const devFactor = Math.min(1, COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * (world.step * (world._dt || 1)) / COVERAGE_RAMP);   // ramp over HISTORY, not raw ticks (SIM_GRANULARITY)
   // Spread is measured in TILES, so a finer-resolution map must scale it like the
   // territory reach does (countryTerritory's RES_REF_W = 240) — otherwise the
   // frontier crawls the same ABSOLUTE tiles/step and a big map fills a far smaller
@@ -290,7 +303,7 @@ export function maybeCrystallize(world) {
   // Rate passes stretch their cadence with granularity (index.js convention),
   // so settler parties and town genesis fire at the same HISTORY rate at any G.
   const _ivlG = (base) => Math.max(1, Math.round(base * (T.SIM_GRANULARITY || 1)));
-  if (world.step % _ivlG(COLONY_CHECK_INTERVAL) === 0) maybeSendSettlers(world, _alive, devFactor);
+  if (world.step % _ivlG(COLONY_CHECK_INTERVAL) === 0) maybeSendSettlers(world, _alive);
 
   // Urban genesis: a mature farming region births a TOWN within its catchment
   // (the rural→urban transition is a spawn, not an in-place relabel). Gated at a
@@ -437,9 +450,21 @@ export function maybeCrystallize(world) {
     const td = transportDist[ti];
     const diffusionMul = isFinite(td) ? Math.exp(-td / (KNOWLEDGE_DECAY_SCALE * resScale)) * NEAR_RATE : 0;   // diffusion REACHES proportionally farther on a finer map
     const independent = isFinite(td) ? INDEPENDENT_RATE : OVERSEAS_INDEPENDENT_RATE;
-    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor * devFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
+    const p = quality * (diffusionMul + independent) * BASE_RATE * saturationDamper * spacingFactor * marketFactor * (world._dt || 1);   // granularity: per-tick settling odds scale with the time-step
 
-    if (rng() < p) {
+    // One draw per candidate (stream-stable), tested twice: first against the
+    // full-tempo probability (cheap reject), then against the wave-of-advance
+    // tempo of the nearest people — the frontier advances at the pace of the
+    // farming capability actually arriving at it. No donor in the disk = a
+    // genuinely isolated site = forager-floor pace.
+    const _r = rng();
+    if (_r >= p) continue;
+    let _donorAgri = NEOLITHIC_AGRI, _bd2 = Infinity;
+    forEachNear(world, tx, ty, INHERIT_NEAR_RADIUS, (s, d2) => {
+      if (d2 < _bd2) { _bd2 = d2; _donorAgri = (s.knowledge && s.knowledge.agriculture) || NEOLITHIC_AGRI; }
+    });
+    if (_r >= p * pioneerTempo(_donorAgri)) continue;
+    {
       // Inherited knowledge: blend from nearest settlement, weighted by
       // distance. Far sites start near baseline neolithic knowledge.
       const inherited = inheritKnowledgeAt(world, ti, td);
@@ -762,7 +787,7 @@ function defensibilityFor(world, ti, tx, ty) {
 // founds a daughter joining the parent's realm. Cooldown stops a single town
 // from spamming colonies; settler-cost shaves the parent's population so
 // expansion has a real demographic cost (you trade headcount for territory).
-function maybeSendSettlers(world, alive, devFactor = 1) {
+function maybeSendSettlers(world, alive) {
   if (!world.transportDist) return;
   const rng = passRng(world, "settlers");
   for (const parent of world.settlements) {
@@ -795,7 +820,9 @@ function maybeSendSettlers(world, alive, devFactor = 1) {
     let localN = -1;
     forEachNear(world, parent.pos.x, parent.pos.y, FRONTIER_RADIUS, () => { localN++; });
     const colonySat = 1 / (1 + (Math.max(0, localN) / COLONY_LOCAL_SAT_REF) ** 2);
-    if (rng() >= COLONY_CHANCE * colonySat * devFactor) continue;
+    // Wave-of-advance tempo from the PARENT's own agriculture: a mature
+    // farming people colonises at full rate, a marginal one trickles.
+    if (rng() >= COLONY_CHANCE * colonySat * pioneerTempo(parent.knowledge && parent.knowledge.agriculture)) continue;
     sendSettlers(world, parent);
   }
 }
@@ -1013,7 +1040,7 @@ function inheritKnowledgeAt(world, ti, td) {
   // navigation, and mobility stay at zero — they're resource-gated and
   // only kick in once the site touches ore / water / horses.
   const baseline = {
-    agriculture: 0.45,
+    agriculture: NEOLITHIC_AGRI,
     construction: 0.1,
     organization: 0.1,
   };
