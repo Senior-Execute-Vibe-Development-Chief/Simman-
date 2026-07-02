@@ -326,7 +326,12 @@ const EARTH_HEARTH_SITES = [
                                                             // generated earth sits up by the CASPIAN — seeding "Mesopotamia" on an
                                                             // inland sea. The tight radius keeps it in the Crescent (a dry-fertile
                                                             // irrigation cradle, like the real one) instead of chasing the Caspian river.
-  { name: "Yangtze",     fx: 0.828, fy: 0.271 },   // temperate East-Asian river basin
+  { name: "Yellow River", fx: 0.811, fy: 0.305, r: 0.016 },   // the Huang He / Central Plain (~35°N, ~112°E) — the
+                                                            // conventional cradle of Chinese civilisation (Erlitou/Shang
+                                                            // Zhongyuan heartland), NOT the Yangtze. TIGHT search radius: the
+                                                            // wide default drifted it ~7° NORTH onto the bigger (mag-4) rivers
+                                                            // at ~42–43°N (the Ordos loop / Inner Mongolia), seeding "China" in
+                                                            // the steppe; this radius keeps it on the Central-Plain river.
 ];
 function seedEarthHearths(world) {
   const { tw, th, elev, temp, moist, fert, riverMag } = world;

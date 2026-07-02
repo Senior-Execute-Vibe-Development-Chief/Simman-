@@ -151,6 +151,32 @@ const OVERSEAS_INDEPENDENT_RATE = 0.02;
 const INDEPENDENT_DIST          = 185;
 const NEAR_RATE                 = 1.50;
 const BASE_RATE                 = 0.030;   // 3x — the world settles ~3x faster/denser (a fuller map of villages); the saturation guard (REF) sets where it plateaus
+// FRONTIER EXTENSION vs TELEPORT: a village crystallising in WILDERNESS (a tile no
+// realm's border has reached, region<0) joins the realm of the settlement it springs
+// from — but ONLY if that settlement is within a frontier HOP. Without this bound the
+// donor could be up to INDEPENDENT_DIST (185) of travel away, so the sweep dropped
+// tech-naked villages FAR out in open country that snapped to a distant nation — a
+// "wave of no-tech settlements in isolated wilderness" detached from the realm they
+// flew the flag of. Beyond this hop a wilderness candidate simply doesn't found here;
+// longer jumps into virgin land are the job of colony parties (maybeSendSettlers),
+// which carry full tech and pick a bounded site. ABSOLUTE tiles (NOT res-scaled):
+// settlement spacing itself is absolute at every resolution, so a frontier extension is
+// ~one spacing from the donor on any map — the detached-exclave gaps this guards against
+// are absolute, not a fraction of the world (a res-scaled bound let 40-tile exclaves
+// through on the full-res map). CALIBRATED TO THE SPACING MODEL: it must be at least the
+// MAXIMUM natural spacing — barren land spaces settlements MIN_SETT_DIST·(1+SPARSE_SPREAD)
+// = 20 tiles apart (capacitySpacingMul) — or a realm on marginal land can't reach its OWN
+// next village at its natural density and is frozen at a handful of settlements while
+// fertile river valleys (8-tile spacing) chain freely: the "river nations vast, everyone
+// else 4-7" divide. So set it one spacing PAST the barren maximum: contiguous frontier
+// extension works on every terrain at its own density, while true teleports are still cut.
+const FRONTIER_EXTEND_DIST      = MIN_SETT_DIST * (1 + SPARSE_SPREAD) + MIN_SETT_DIST;   // 20 (barren spacing) + 8 (one hop) = 28
+// A frontier village born INTO a realm shares that realm's DEVELOPMENT (its roads,
+// crops, administration, craft all diffuse to the new settlement), so it is never a
+// stone-age speck inside a developed empire. Floor its inherited knowledge at this
+// fraction of the realm's (capital's) level. Emergent — keyed on the nation's actual
+// development, never a date/era.
+const NATION_TECH_FLOOR         = 0.5;
 // A settlement spontaneously arising on a STATE'S land (its core or claimed
 // marches, world._countryOwner) is born INTO that state; one arising in genuine
 // wilderness is born INDEPENDENT (a new country). See the spawn block below.
@@ -461,9 +487,28 @@ export function maybeCrystallize(world) {
       const donorCountry = connected && donor && donor.mode === "settled" ? donor.countryId : -1;
       const joinCountry = region >= 0 ? region : donorCountry;
       if (joinCountry < 0) continue;
+      // Wilderness founding (region<0) must be a CONTIGUOUS frontier extension of the
+      // donor's realm, not a detached tech-less exclave far out in the wild (see
+      // FRONTIER_EXTEND_DIST). On the realm's OWN claimed land (region>=0) this doesn't
+      // apply — that ground is already the nation's.
+      if (region < 0 && donor) {
+        let ddx = Math.abs(donor.pos.x - (tx + 0.5)); if (ddx > tw / 2) ddx = tw - ddx;
+        const ddy = donor.pos.y - (ty + 0.5);
+        if (ddx * ddx + ddy * ddy > FRONTIER_EXTEND_DIST * FRONTIER_EXTEND_DIST) continue;
+      }
+      // Share the joining realm's development: floor the (distance-decayed) inherited
+      // knowledge at NATION_TECH_FLOOR of the realm's capital, so a frontier village of
+      // a developed empire is born developed, not neolithic. Cloned so we never mutate
+      // inheritKnowledgeAt's shared baseline object.
+      const bornKnow = { ...inherited };
+      const jc = world.countries && world.countries.get(joinCountry);
+      if (jc && jc.capital && jc.capital.knowledge) {
+        const nk = jc.capital.knowledge;
+        for (const kk in bornKnow) { const fl = NATION_TECH_FLOOR * (nk[kk] || 0); if (fl > bornKnow[kk]) bornKnow[kk] = fl; }
+      }
       const born = makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: 18 + (rng.int(8)),
-        knowledge: inherited,
+        knowledge: bornKnow,
         countryId: joinCountry,   // born into the realm it sits in / extends — never stateless
         parentId: donor.id,   // carries the donor's ancestry; a long jump admixes with the local substrate
         // near spread keeps the donor's people; otherwise we assign below

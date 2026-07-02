@@ -35,6 +35,15 @@ import { claimHostility } from "./habitability.js";
 // between) and high-org empires reach far (consolidation with the era). Beyond
 // it, land is wilderness — which is where stateless frontier hamlets live.
 const _envNum = (k, d) => (typeof process !== "undefined" && process.env && +process.env[k]) || d;
+// Persistent-territory master switch: the T lever (live-tunable) OR the SIM_PERSIST_TERR
+// env (for headless A/B — mirrors the SIM_* override pattern used throughout this file).
+// SIM_PERSIST_TERR=1 forces ON, =0 forces OFF, unset defers to the lever.
+const _persistEnv = (typeof process !== "undefined" && process.env && process.env.SIM_PERSIST_TERR) || "";
+function persistentTerritoryOn() {
+  if (_persistEnv === "1") return true;
+  if (_persistEnv === "0") return false;
+  return T.PERSISTENT_TERRITORY > 0;
+}
 const COUNTRY_REACH_BASE = _envNum("SIM_REACH_BASE", 4);   // small base so ORGANISATION dominates reach — a weak chiefdom holds a tiny core, an empire projects far (was 8: even org→0 states sprawled)
 const COUNTRY_REACH_ORG  = _envNum("SIM_REACH_ORG", 14);   // reach per organisation tech (was 20 — empires were continental too early; a 14→26 trial over-inflated empires at APP resolution and was reverted — empire size is resolution-sensitive via the size-gate, so it must be calibrated at the shipped width, not the 240-wide gate)
 // ── Frontier-fill: claiming the harsh interior as engineering matures ──
@@ -276,7 +285,25 @@ export function computeCountryTerritory(world) {
   const { N, tw, th, elev, fert, temp, moist } = world;
   const resScale = resScaleFor(tw);   // tile budgets are res-relative → keep the same world-fraction at any grid size (see RES_REF_W)
   let co = world._countryOwner;
-  if (!co || co.length !== N) co = world._countryOwner = new Int32Array(N);
+  let coFresh = false;
+  if (!co || co.length !== N) { co = world._countryOwner = new Int32Array(N); coFresh = true; }
+  // PERSISTENT TERRITORY (T.PERSISTENT_TERRITORY): the reach-Voronoi below is a
+  // STATELESS recompute — it drops any land a realm's live reach no longer covers,
+  // so conquered ground snaps back to wilderness the moment the capital weakens and
+  // the map never carries the history of who took what. When the lever is on we
+  // demote the Voronoi to a FRONTIER-PROJECTION layer and make _countryOwner sticky:
+  // snapshot last pass's map now (before the recompute wipes it), rebuild the fresh
+  // reach map as usual, then durably re-assert the marches the reach receded from
+  // (mergePersistentTerritory at the end). _coPrev is scratch — it's rebuilt from the
+  // already-saved _countryOwner each pass, so persistence adds no new save state.
+  const persist = persistentTerritoryOn();
+  let prev = null;
+  if (persist && !coFresh) {   // a fresh (all-zero) array is not a prior map — skip persistence on the very first pass / after a resize
+    let cp = world._coPrev;
+    if (!cp || cp.length !== N) cp = world._coPrev = new Int32Array(N);
+    cp.set(co);
+    prev = cp;
+  }
   co.fill(-1);
   let cost = world._countryCost;
   if (!cost || cost.length !== N) cost = world._countryCost = new Float64Array(N);
@@ -517,7 +544,93 @@ export function computeCountryTerritory(world) {
   fillEnclosedWaste(world, co);
   closeRealmGaps(world, co, T.REALM_GAP_FILL);
   smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0);
+  // Persistent-territory merge (lever on): the passes above produced the FRESH
+  // reach-projection map; now durably re-assert the marches last pass's map held
+  // that the live reach has since receded from, so borders track the conquest
+  // ledger instead of snapping back with every fluctuation in a capital's strength.
+  if (prev) {
+    mergePersistentTerritory(world, co, prev);
+    // The merge re-stamps the map from raw settlement catchments + sticky marches, which
+    // UN-SMOOTHS the border straightening the pass above did — leaving ragged fringes and
+    // thin march tendrils. Re-run the majority-filter smoothing on the merged result:
+    // settlement home tiles are PINNED, so it never erases a settled corridor or a durable
+    // catchment core (that's real held land) — it only erodes the un-settled march
+    // protrusions, straightening a realm into a coherent blob.
+    smoothCountryBorders(world, co, T.BORDER_SMOOTH | 0);
+  }
   return co;
+}
+
+// ── Persistent territory (sticky political map) ────────────────────────────────
+// The stateless reach-Voronoi (co, freshly computed this pass) sets borders on the
+// CAPITAL cost-bisector (recolorByCapital), so worked land flips between two realms
+// the instant their relative strength/reach shifts — with no conquest at all. That is
+// the "samey / snapping" map: history doesn't show because the border tracks live
+// power, not who actually HOLDS the ground. Persistence fixes the REPRESENTATION:
+//
+//   • CORE — a tile physically WORKED by a settlement (its food catchment,
+//     _territoryOwner) is coloured by that settlement's COUNTRY (the conquest ledger),
+//     overriding the capital bisector. A settlement's countryId changes only by
+//     conquest / absorption / secession (conquest.js, armies.js), so worked land is
+//     durable and path-dependent by construction — the union of a realm's catchments
+//     IS its persistent heartland, and heavy-tailed seat counts become heavy-tailed
+//     worked AREA. (Cities are cost-0 sources, so they never change hands here.)
+//   • MARCH — a claimed tile with no settlement on it keeps the FRESH reach projection
+//     (the frontier-projection layer the spec demotes the Voronoi to), but is made
+//     STICKY: a march the reach receded from is durably re-asserted from last pass's
+//     map (`prev`) while its owner lives.
+//
+// Two self-cleaning rules stop the map ratcheting solid: a march whose owner is dead,
+// or no longer CONTIGUOUS (through same-owner land) with any core/reached tile of that
+// owner, is released to wilderness — so when a realm's settlements move away its
+// marooned marches fall back. Over-extension still sheds through secession (conquest.js).
+function mergePersistentTerritory(world, co, prev) {
+  const { N, tw, th, elev } = world;
+  const owner = world._territoryOwner, byId = world._byId;   // per-settlement catchment → settlement
+  // Countries still alive (hold ≥1 settled member) — a dead realm's marches must not linger.
+  const alive = world._persistAlive || (world._persistAlive = new Set());
+  alive.clear();
+  for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) alive.add(s.countryId);
+  // CORE: recolour every WORKED tile to the country of the settlement that works it —
+  // the ledger, not the capital bisector. These are the anchors the connectivity flood
+  // below spreads from.
+  let q = world._persistQ; if (!q || q.length !== N) q = world._persistQ = new Int32Array(N);
+  let reached = world._persistReach; if (!reached || reached.length !== N) reached = world._persistReach = new Uint8Array(N);
+  reached.fill(0);
+  let qt = 0;
+  if (owner && byId) {
+    for (let ti = 0; ti < N; ti++) {
+      if (elev[ti] <= 0) continue;
+      const oid = owner[ti];
+      if (oid < 0) continue;
+      const s = byId.get(oid);
+      if (!s || s.mode !== "settled" || s.countryId < 0) continue;
+      co[ti] = s.countryId;                    // worked land = its settlement's realm (durable)
+      reached[ti] = 1; q[qt++] = ti;           // and an anchor for march connectivity
+    }
+  }
+  // MARCH stickiness: re-assert a march the fresh reach left WILD (co === -1) from last
+  // pass while its owner lives; every other claimed tile (a fresh reach projection) is a
+  // candidate march, connectivity-checked below.
+  for (let ti = 0; ti < N; ti++) {
+    if (elev[ti] <= 0) continue;
+    if (co[ti] < 0) { const p = prev[ti]; if (p >= 0 && alive.has(p)) co[ti] = p; }
+  }
+  // Connectivity flood from the CORE anchors through same-owner tiles: any claimed tile
+  // (march) NOT reached from a core tile of its own owner is marooned (its owner's
+  // settlements have moved on) and is released to wilderness.
+  for (let qh = 0; qh < qt; qh++) {
+    const ti = q[qh]; const oc = co[ti];
+    const ty = (ti / tw) | 0, tx = ti - ty * tw;
+    const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
+    const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+    for (let k = 0; k < 4; k++) {
+      const ni = ns[k];
+      if (ni < 0 || reached[ni] || elev[ni] <= 0) continue;
+      if (co[ni] === oc) { reached[ni] = 1; q[qt++] = ni; }
+    }
+  }
+  for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reached[ti]) co[ti] = -1;
 }
 
 // ── Capital colouring ────────────────────────────────────────────────────────

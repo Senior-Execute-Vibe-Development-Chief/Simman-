@@ -72,10 +72,31 @@ Make the political map DERIVE from the ledger, persistently:
 
 1. **[DONE this session]** Colour territory by settlement catchments (worker overlay + muted
    city-states). Territory now reflects worked land.
-2. **Make `_countryOwner` PERSISTENT.** Seed it once from the current Voronoi, then only *mutate*
-   it on events: found/colonise → add the new catchment; conquer → transfer the taken settlements'
-   territory durably; secede/collapse → release it. Reach stops redrawing it. Gate behind a lever
-   (e.g. `T.PERSISTENT_TERRITORY`) so it A/Bs cleanly against the Voronoi.
+2. **[DONE this session]** **Make `_countryOwner` PERSISTENT**, behind the lever
+   `T.PERSISTENT_TERRITORY` (default 0 = off; headless A/B via `SIM_PERSIST_TERR=1`). When on, the
+   reach-Voronoi is demoted to a FRONTIER-PROJECTION layer and the political map is derived from the
+   ledger, persistently, in `countryTerritory.js mergePersistentTerritory`:
+   - **CORE = worked land tracks the ledger.** Each tile in a settlement's food catchment
+     (`_territoryOwner`) is coloured by that settlement's *country* — overriding the capital
+     cost-bisector (`recolorByCapital`) that used to flip worked land between realms on relative
+     strength alone. A settlement's `countryId` changes only by conquest/absorption/secession, so
+     worked land is durable and path-dependent *by construction*; the union of a realm's catchments
+     IS its persistent heartland. (Cities are cost-0 Voronoi sources → still change hands only by
+     conquest, never by projection.)
+   - **MARCH = sticky frontier.** A claimed tile with no settlement keeps the fresh reach projection
+     but is re-asserted from last pass (`prev`) where the live reach receded, while its owner lives.
+   - **Self-cleaning** (no monotonic map-fill): a march whose owner is dead, or no longer contiguous
+     (through same-owner land) with a core/reached tile of that owner, is released to wilderness. No
+     event-site hooks needed — territory follows `s.countryId` (already the persistent ledger).
+   - `_coPrev` is scratch, rebuilt each pass from the already-saved `_countryOwner`, so **no new save
+     state** (save/load identity holds — verified ON and OFF; "resume==straight" fails identically at
+     baseline, a pre-existing unserialized-scratch property, not introduced here).
+   - **Measured (seed 8817, 480×240, 20k steps):** claimed land 33%→**58%**; area max/median
+     133→**18** and Gini 0.80→**0.62** — the OFF map is one giant over a sea of 1-tile specks; ON is a
+     *graded* heavy-tailed hierarchy (top realms 1683·926·565·388·274…). All `npm run validate` gates
+     stay green with the lever on (empire tail 13.0). Determinism holds.
+   - **Still to verify visually (in-app A/B):** border read (catchment colouring is un-smoothed, may
+     look bubblier than the capital-bisector map); tune whether marches should also re-smooth.
 3. **Verify map AREA now tracks seat count** (heavy-tailed area, not just seat count) and that
    maps are **path-dependent** (different seeds → visibly different histories/borders).
 4. **If great powers still aren't dominant enough**, tune the *emergent* dominance tail
