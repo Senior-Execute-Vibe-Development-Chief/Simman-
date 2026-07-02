@@ -151,6 +151,10 @@ const NARRATE = {
   "colony.founded"(ev) { return `${ev.sName || "A colony"} was planted overseas under the flag of ${ev.fromName || "its mother country"}.`; },
   "colony.independent"(ev) { return `${ev.name || "The colony"} cast off ${ev.fromName || "its mother country"} and declared itself sovereign.`; },
   "plague.virginSoil"(ev) { return `A pestilence unknown to ${ev.sName || "the people"} came ashore with the strangers, and they had no defence against it.`; },
+  "war.indemnity"(ev, as) {
+    if (as === ev.polity) return `Peace was bought dearly: a great indemnity was paid to ${ev.toName || "the victors"}.`;
+    return `${ev.name || "The beaten realm"} paid a heavy indemnity to ${ev.toName || "the victors"} at the peace.`;
+  },
   "famine.struck"(ev) { void ev; return "A famine gripped the land."; },
   "plague.outbreak"(ev) { return ev.sName ? `Plague broke out in ${ev.sName} and swept through the realm.` : "Plague swept through the realm."; },
   "era.reached"(ev) { return `Reached the ${ev.eraName} era.`; },
@@ -275,6 +279,7 @@ export function categoryOf(ev, as = -1) {
     case "colony.founded": return "founding";
     case "colony.independent": return as === ev.from ? "loss" : "secession";
     case "plague.virginSoil": return "plague";
+    case "war.indemnity": return as === ev.polity ? "loss" : "wealth";
     case "culture.born": case "culture.diverged": return "founding";
     case "language.shift": return "growth";
     case "faith.founded": case "polity.adoptedFaith": case "faith.syncretized": return "discovery";

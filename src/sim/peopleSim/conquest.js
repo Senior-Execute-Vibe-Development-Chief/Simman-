@@ -1526,6 +1526,7 @@ export function updateAlliances(world) {
     tradePair.set(k, (tradePair.get(k) || 0) + Math.abs(net));
   }
   const tradeOf = (a, b) => tradePair.get(Math.min(a, b) + ":" + Math.max(a, b)) || 0;
+  world._tradePairs = tradePair;   // read by the truce pass: peace lasts while it pays (trade-scaled truce duration)
   // 4. each realm's dominant THREAT — the strongest neighbour that towers over it (but never
   //    its own overlord/dependency — a colony does not balance against its metropole).
   const ovT = world._overlordOf;

@@ -46,6 +46,10 @@ const CONSCRIPT_DEF    = 0.5;  // mobilisation intensity per unit of DEFENSIVE l
 const CONSCRIPT_OFF    = 0.18; // mobilisation intensity per OFFENSIVE front (a campaign of choice mobilises less)
 const MOBILIZE_SPEED   = 4;    // the levy musters in / disbands ×this faster than peacetime recruitment
 const WAR_SPOILS    = 0.6;    // war-weariness relief a realm banks each time it storms a city (conquest.js)
+const PLUNDER_FRAC  = 0.30;   // share of a stormed city's coin that is portable and seizable — sacks pay (a conserved transfer to the victor's treasury)
+const INDEMNITY_FRAC = 0.25;  // max share of the beaten side's treasury paid as reparations at a truce (scaled by how one-sided the exhaustion is)
+const TRADE_PEACE_W  = 2.0;   // how much mutual trade LENGTHENS a truce: at pairTrade >= its own war-relief scale the peace holds ~3x as long (merchants fund the settlement)
+const CONGRESS_JOIN  = 0.75;  // a third belligerent already worn past this fraction of TRUCE_EXHAUST joins the settlement (wars end at conferences, not dyad by dyad)
 export const MUSTER_INTERVAL   = 100;
 // CONQUEST_INTERVAL (war-pass cadence) is a runtime lever — tuning.js
 // T.CONQUEST_INTERVAL; index.js gates advanceFronts on it.
@@ -719,13 +723,69 @@ export function advanceFronts(world) {
   // TRUCE_EXHAUST ends in a truce binding BOTH for T.TRUCE_TICKS (header above).
   // Stateless raiders (countryId < 0) sign nothing — the wild marches stay wild.
   if (T.TRUCE_TICKS > 0) {
+    // Peace terms are emergent state, not a flat cooldown:
+    //  * DURATION scales with the pair's mutual trade (world._tradePairs,
+    //    tallied from the live cross-border money flows): war between heavy
+    //    trading partners interrupts profitable exchange, so their merchants
+    //    fund a durable settlement — an integrated late-game world signs
+    //    LONG peaces while subsistence antiquity stays endemic-warlike.
+    //    This is the brake on late-game all-pairs war saturation.
+    //  * INDEMNITY: a clearly-beaten side (one-sided exhaustion) pays
+    //    reparations from its treasury — a conserved transfer, so losing a
+    //    war has a fiscal bill beyond the wage book.
+    //  * CONGRESS: when a pair settles, any third belligerent of either side
+    //    already worn near the truce bar joins the settlement — wars end at
+    //    conferences, not dyad by dyad.
+    const pairTrade = world._tradePairs;
+    // "Heavily interdependent" is measured against the era's OWN median
+    // pair-trade — self-calibrating across eras, maps and money supplies
+    // (an absolute coin threshold would mean nothing in both 3000 BC and 1900).
+    let tradeRef = 1e-6;
+    if (pairTrade && pairTrade.size) {
+      const vs = [...pairTrade.values()].sort((x, y) => x - y);
+      tradeRef = Math.max(1e-6, 2 * vs[vs.length >> 1]);
+    }
+    const signPeace = (a, b) => {
+      const key = Math.min(a, b) + ":" + Math.max(a, b);
+      if ((truces.get(key) || 0) > world.step) return false;   // already at peace
+      const trade = pairTrade ? (pairTrade.get(key) || 0) : 0;
+      const tradeW = Math.min(1, trade / tradeRef);
+      const dur = (T.TRUCE_TICKS * (1 + TRADE_PEACE_W * tradeW)) / (world._dt || 1);
+      truces.set(key, world.step + dur);
+      // reparations from the clearly-beaten side, proportional to how
+      // one-sided the exhaustion is and bounded by what it can actually pay
+      const eA2 = exh.get(a) || 0, eB2 = exh.get(b) || 0;
+      const gap = Math.abs(eA2 - eB2) / Math.max(1e-6, TRUCE_EXHAUST);
+      if (gap > 0.25) {
+        const loser = eA2 > eB2 ? a : b, winner = eA2 > eB2 ? b : a;
+        const lg = getPolity(world, loser), wg = getPolity(world, winner);
+        if (lg && wg && (lg.treasury || 0) > 0) {
+          const pay = Math.max(0, lg.treasury) * INDEMNITY_FRAC * Math.min(1, gap);
+          lg.treasury -= pay; wg.treasury = (wg.treasury || 0) + pay;
+          logEvent(world, "war.indemnity", { polity: loser, name: realmName(world, loser),
+            to: winner, toName: realmName(world, winner), amount: Math.round(pay) });
+        }
+      }
+      return true;
+    };
     for (const [cc, es] of allEnemies) {
       if (cc < 0) continue;
       const eA = exh.get(cc) || 0;
       for (const ecc of es) {
         if (ecc <= cc || ecc < 0) continue;          // each pair once
-        if (eA >= TRUCE_EXHAUST || (exh.get(ecc) || 0) >= TRUCE_EXHAUST)
-          truces.set(cc + ":" + ecc, world.step + T.TRUCE_TICKS / (world._dt || 1));   // ×G ticks: same peace span in history-time
+        if (eA >= TRUCE_EXHAUST || (exh.get(ecc) || 0) >= TRUCE_EXHAUST) {
+          if (!signPeace(cc, ecc)) continue;
+          // the congress: exhausted co-belligerents of either side settle too
+          for (const side of [cc, ecc]) {
+            const others = allEnemies.get(side);
+            if (!others) continue;
+            for (const third of others) {
+              if (third < 0 || third === cc || third === ecc) continue;
+              if ((exh.get(third) || 0) >= TRUCE_EXHAUST * CONGRESS_JOIN
+                  || (exh.get(side) || 0) >= TRUCE_EXHAUST) signPeace(side, third);
+            }
+          }
+        }
       }
     }
   }
@@ -900,6 +960,17 @@ export function advanceFronts(world) {
           // Spoils of war ease the victor's war-weariness (conquest.js unrest).
           const ag = getPolity(world, att.countryId);
           if (ag) ag._spoils = Math.min(2, (ag._spoils || 0) + WAR_SPOILS);
+          // PLUNDER: a sack strips a share of the city's portable coin into the
+          // victor's war chest — a conserved TRANSFER (the old model left every
+          // stormed city's wealth untouched, so conquest paid nothing and war
+          // had no fiscal upside to weigh against its wage bill). The fraction
+          // means "the share of coin that is seizable in a sack"; the rest is
+          // hidden, buried, or not coin at all.
+          if (ag && (def.wealth || 0) > 0) {
+            const plunder = (def.wealth || 0) * PLUNDER_FRAC;
+            def.wealth -= plunder;
+            ag.treasury = (ag.treasury || 0) + plunder;
+          }
           // Sack: the storm burns institutions, records and workshops. A
           // stormed CAPITAL loses its whole administrative apparatus — the
           // classic dark-age trigger (the fall of Rome, the Bronze-Age

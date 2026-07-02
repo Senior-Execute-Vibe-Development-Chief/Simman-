@@ -1502,11 +1502,30 @@ function updateKnowledge(world, s) {
       * (0.5 + 0.5 * wa) * (1 + k.construction * 0.6 + sciSqrt * 0.04));
   }
 
-  // Mobility — gated by horses, paced so even modest horse country becomes
-  // cavalry country in step with the tree.
+  // Mobility — gated by horses, paced like metallurgy's thin-ore rule: you
+  // need SOME horses to become a rider culture, not RICH herds (the steppe
+  // was never "rich" in the deposit sense — presence + practice is what
+  // builds horsemanship). The old rate scaled with raw richness and ran at
+  // ~60% of its siblings' pace, so chariots (0.45) and cavalry (0.70) were
+  // NEVER invented on any seed — the whole steppe branch was dead content.
+  // Saturates at modest herd size (0.2) and paces with the tree.
   if (horses > horsesThr) {
-    k.mobility = clamp01(k.mobility + T.LEARN_BASE * 1.5 * sciMul * (1 - k.mobility)
-      * (0.5 + 0.5 * horses) * (1 + k.construction * 0.4 + metalEff * 0.6));   // metal bits/shoes/tack — capability, not awareness
+    const herd = Math.min(1, horses / 0.2);
+    k.mobility = clamp01(k.mobility + T.LEARN_BASE * 2.2 * sciMul * (1 - k.mobility)
+      * (0.5 + 0.5 * herd) * (1 + k.construction * 0.4 + metalEff * 0.6 + sciSqrt * 0.04));   // metal bits/shoes/tack — capability, not awareness
+  }
+  // Industrial mobility — machines replace horses at the top of the tree:
+  // rail, steam haulage and the telegraph made land movement a MACHINE
+  // capability. Opens a horse-independent term in the same org+metallurgy
+  // industrial band that gates industrial agronomy above, so a horseless
+  // industrial nation still learns modern logistics — while a world stuck
+  // in antiquity never sees it. (Review idea D75.)
+  {
+    const indBand = Math.min(1, Math.max(0, (k.organization - 0.78) / 0.18))
+                  * Math.min(1, Math.max(0, (k.metallurgy   - 0.78) / 0.18));
+    if (indBand > 0) {
+      k.mobility = clamp01(k.mobility + T.LEARN_BASE * 2.0 * sciMul * (1 - k.mobility) * indBand);
+    }
   }
 
   // ── Dark ages: knowledge is lost when a society collapses ─────────────
@@ -2260,6 +2279,10 @@ function updatePopulation(world, s) {
   // size cap — a locality IS its hinterland, so a rich-land centre simply holds
   // more people (→ a city) and a poor one stays a town. Money is a separate
   // closed layer (commerce/mining), unrelated to how big the place is.
+  // How far the demographic transition can depress intrinsic growth: at full
+  // modernity (urban majority + literate bureaucracy + secure food) fertility
+  // falls to ~15% of the Malthusian rate — near-replacement, not extinction.
+  const DEMO_TRANSITION = 0.85;
   const K = (T.LOCALITY_MODE || T.DISSOLVE_FARMS)
     ? Math.max(K_MIN_VIABLE, foodK)
     : Math.max(K_MIN_VIABLE, Math.min(foodK, houseK));
@@ -2276,7 +2299,25 @@ function updatePopulation(world, s) {
     // harvest, K collapses under people) declines smoothly instead of the
     // raw Euler step killing a large city in ONE tick (or driving its
     // population negative) — the granary/famine path gets time to bite.
-    s.people = s.people * Math.exp(T.SETT_GROWTH * _dt * (1 - s.people / K));
+    //
+    // DEMOGRAPHIC TRANSITION (review D4): the intrinsic growth RATE itself
+    // bends as a society modernises — an urban, literate-bureaucratic,
+    // food-secure population chooses smaller families (every historical
+    // society that reached all three did). The escape from Malthus used to
+    // raise only K (via _eraProd), so the world stayed maximum-fertility
+    // forever. All three inputs are the settlement's own live state — a
+    // world that never industrialises never transitions, a region that
+    // modernises early transitions early, never a date anywhere.
+    const grow = 1 - s.people / K;
+    let r = T.SETT_GROWTH;
+    if (grow > 0) {
+      const urbShare = (s._urbanPop || 0) / Math.max(1, s.people);
+      const lit = Math.min(1, Math.max(0, (((s.knowledge && s.knowledge.organization) || 0) - 0.6) / 0.3));
+      const fed = Math.min(1, (s._foodSupply || 0) / Math.max(1, s._foodDemand || 1));
+      const modern = Math.min(1, urbShare / 0.5) * lit * fed;
+      r *= 1 - DEMO_TRANSITION * modern;
+    }
+    s.people = s.people * Math.exp(r * _dt * grow);
   }
   if (s.people < 1.5) {
     s.mode = "dead";
