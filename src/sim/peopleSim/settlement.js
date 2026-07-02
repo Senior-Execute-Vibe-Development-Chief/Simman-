@@ -641,7 +641,7 @@ function computeLuxury(s, world) {
   // the most skilled labour, so a sacked town's silk/dye/spice production
   // collapses harder than its grain (which the same sackPenalty above only
   // dents). Squaring takes 0.3 → 0.09 at the floor.
-  const sp = sackPenalty(s, world && world.step);
+  const sp = sackPenalty(s, world);
   s._luxSupply = luxRes * LUX_SUPPLY_RATE * popF * sp * sp;
   const spare = Math.max(0, (s.wealth || 0) - getWealthReserve(s));
   // Luxury is URBAN / elite consumption — silks, spices, furs for a town's wealthy class. A
@@ -777,12 +777,15 @@ export function updateCoercedLabour(world, s) {
 // city long ago and re-took it — sacks always cost real productive value.
 // SACK_PRODUCTION_FLOOR -> runtime lever (tuning.js T.SACK_PRODUCTION_FLOOR)
 const CONQUEST_RECOVERY     = 5000;  // ticks to recover linearly to full output
-function sackPenalty(s, worldStep) {
-  if (s._sackedAt == null || worldStep == null) return 1;
-  const age = worldStep - s._sackedAt;
-  if (age >= CONQUEST_RECOVERY) return 1;
+function sackPenalty(s, world) {
+  if (s._sackedAt == null || !world || world.step == null) return 1;
+  // Recovery span in HISTORY time: same healing arc at any SIM_GRANULARITY
+  // (matches the wither/isolation windows in this file).
+  const recov = CONQUEST_RECOVERY / (world._dt || 1);
+  const age = world.step - s._sackedAt;
+  if (age >= recov) return 1;
   if (age < 0) return 1;
-  return T.SACK_PRODUCTION_FLOOR + (1 - T.SACK_PRODUCTION_FLOOR) * (age / CONQUEST_RECOVERY);
+  return T.SACK_PRODUCTION_FLOOR + (1 - T.SACK_PRODUCTION_FLOOR) * (age / recov);
 }
 export function computeExportValue(s, world) {
   const k = s.knowledge || {};
@@ -865,7 +868,7 @@ export function computeExportValue(s, world) {
   // Soldiers don't produce trade goods; a sacked settlement's output is depressed
   // for a while (sackPenalty); tech scales the lot.
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
-  const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step) * techEff(s).tradeMult;
+  const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world) * techEff(s).tradeMult;
   ag *= mult; man *= mult; agFood *= mult; agMat *= mult;
   const v = ag + man;
   s._exportFoodFrac = v > 0 ? agFood / v : 0;           // share booked as "food & farm goods"
@@ -927,7 +930,7 @@ export function getExportBreakdown(s, world) {
   const tier = s.tier | 0;
   const craftFrac = tier < 1 ? T.FARM_CRAFT_FRAC : 1;      // a village manufactures little (computeExportValue)
   const armyFrac = (s.army || 0) / Math.max(1, s.people);
-  const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world && world.step) * techEff(s).tradeMult;
+  const mult = Math.max(0.1, 1 - armyFrac) * sackPenalty(s, world) * techEff(s).tradeMult;
   const out = [{ label: "Baseline", value: 1.0 * mult }];
   // Manufactured / service crafts — textiles (the universal town good), the
   // ore-gated metalwork specialty, pottery/leather, crafted wares and the

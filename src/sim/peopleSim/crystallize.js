@@ -287,12 +287,15 @@ export function maybeCrystallize(world) {
   // Mother-country expansion: pressed towns send settler parties (see
   // sendSettlers — this is the entire "population pressure → new colony"
   // axis, distinct from the random crystallisation sweep below).
-  if (world.step % COLONY_CHECK_INTERVAL === 0) maybeSendSettlers(world, _alive, devFactor);
+  // Rate passes stretch their cadence with granularity (index.js convention),
+  // so settler parties and town genesis fire at the same HISTORY rate at any G.
+  const _ivlG = (base) => Math.max(1, Math.round(base * (T.SIM_GRANULARITY || 1)));
+  if (world.step % _ivlG(COLONY_CHECK_INTERVAL) === 0) maybeSendSettlers(world, _alive, devFactor);
 
   // Urban genesis: a mature farming region births a TOWN within its catchment
   // (the rural→urban transition is a spawn, not an in-place relabel). Gated at a
   // multiple of CRYSTAL_INTERVAL so it actually fires past the early return above.
-  if (world.step % URBAN_CHECK_INTERVAL === 0) maybeUrbanGenesis(world);
+  if (world.step % _ivlG(URBAN_CHECK_INTERVAL) === 0) maybeUrbanGenesis(world);
 
   // Crystallisation saturation: settlement-count-dependent damper.
   const saturationDamper = 1 / (1 + (_alive / CRYSTAL_SATURATION_REF) ** 2);
@@ -765,7 +768,7 @@ function maybeSendSettlers(world, alive, devFactor = 1) {
   for (const parent of world.settlements) {
     if (parent.mode !== "settled") continue;
     if (parent.people < COLONY_MIN_POP) continue;
-    if (world.step - (parent._lastColonySent ?? -Infinity) < COLONY_COOLDOWN) continue;
+    if (world.step - (parent._lastColonySent ?? -Infinity) < COLONY_COOLDOWN / (world._dt || 1)) continue;
     // Don't expand a realm that can't hold what it already governs. A young
     // colony is an UNSHEDDABLE, SUBSIDISED province (it pays no tribute and
     // draws food + coin for COLONY_SUPPLY_TICKS, and can't secede however

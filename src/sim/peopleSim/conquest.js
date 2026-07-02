@@ -1129,7 +1129,7 @@ function rebel(world, c, seeds) {
       if (m === seed || m.countryId !== c.id || m.id === c.capitalId) continue;
       if ((m.unrest ?? 0) < UNREST_JOIN) continue;                    // content → doesn't rise
       const pacified = world.step - (m._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
-      const infant   = m.parentSettlementId >= 0 && world.step - (m.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      const infant   = m.parentSettlementId >= 0 && world.step - (m.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
       if (pacified || infant) continue;                              // garrison holds it down for now
       if (dist(world, seed.pos.x, seed.pos.y, m.pos.x, m.pos.y) > radius) continue;
       bloc.push(m);
@@ -1667,7 +1667,7 @@ export function updatePolities(world) {
   for (const s of world.settlements) {
     if (s.mode !== "settled" || (s._homeland ?? -1) < 0) continue;
     if (s._homeland === s.countryId
-        || ((s._homelandFell ?? -1) >= 0 && world.step - s._homelandFell > HOMELAND_MEMORY)) {
+        || ((s._homelandFell ?? -1) >= 0 && world.step - s._homelandFell > HOMELAND_MEMORY / (world._dt || 1))) {
       s._homeland = -1; s._homelandFell = -1;
     }
   }
@@ -1807,8 +1807,8 @@ export function updatePolities(world) {
     // (fronts are tallied in armies.js advanceFronts → world._fronts.)
     const fb = world._fronts && world._fronts.byCountry;
     const fronts = fb ? (fb.get(c.id) ? fb.get(c.id).size : 0) : 0;
-    const besiegedCap = world.step - (cap._siegeAt ?? -Infinity) < SIEGE_WINDOW;
-    const raidedCap   = world.step - (cap._warAt   ?? -Infinity) < SIEGE_WINDOW;
+    const besiegedCap = world.step - (cap._siegeAt ?? -Infinity) < SIEGE_WINDOW / (world._dt || 1);
+    const raidedCap   = world.step - (cap._warAt   ?? -Infinity) < SIEGE_WINDOW / (world._dt || 1);
     let duress = 1;
     if (fronts > 1) duress /= (1 + MULTIFRONT_PENALTY * Math.min(3, fronts - 1));   // split army/attention (capped)
     if (besiegedCap)     duress *= SIEGE_CAPACITY_MULT;                  // throne pinned

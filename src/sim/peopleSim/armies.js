@@ -207,7 +207,7 @@ export function musterArmies(world) {
       // updateFood), and the levy demobilises in peace as the cap drops back to the professional core.
       let frac = armyCapFrac(world, s);
       const c = world.countries && world.countries.get(s.countryId);
-      const atWar = c && (world.step - (c._warStamp ?? -1e9)) < CONSCRIPT_WINDOW;
+      const atWar = c && (world.step - (c._warStamp ?? -1e9)) < CONSCRIPT_WINDOW / (world._dt || 1);   // history-span, like TRUCE_TICKS
       // Defence of the heartland is unconditional; the OFFENSIVE levy is gated by the
       // realm's value-vs-cost war commitment (advanceFronts) — it won't bleed its people
       // for a war it is losing or that isn't worth the cost, unless pride drives it on.

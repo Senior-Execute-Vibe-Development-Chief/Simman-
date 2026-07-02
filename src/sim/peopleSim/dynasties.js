@@ -35,7 +35,16 @@ import { getFaith, dominantFaith } from "./faiths.js";
 // and the tree's years sit in the same 3000 BC → ~2000 AD range as the display
 // calendar. The DISPLAY calendar itself is era-anchored and non-uniform, so it
 // can't time durations — this clock tracks it only approximately, by design.
-import { dynYear as stepToYear, dynStep as yearToStep } from "../calendar.js";
+import { dynYear as _rawDynYear, dynStep as _rawDynStep } from "../calendar.js";
+
+// Dynastic time in HISTORY units: SIM_GRANULARITY stretches the same history
+// over G× more ticks (index.js), so the dyn clock weights ticks by world._dt
+// like every other duration in the sim. Without this, rulers aged per raw
+// TICK — at G=4 a realm burned through 4× the sovereigns over the same
+// history, desyncing dynastic pacing (and its crisis-wars) from everything
+// else. DYN_RATE now means "human years per history-tick" at any granularity.
+const stepToYear = (world, step) => _rawDynYear(step * (world._dt || 1));
+const yearToStep = (world, year) => _rawDynStep(year) / (world._dt || 1);
 
 export const DYNASTY_INTERVAL = 25;     // small pass, runs often (reigns span a few passes)
 const LITERACY_MIN = 0.22;              // organization needed for recorded dynastic history
@@ -168,9 +177,9 @@ function legitFormBase(gov) {
 }
 function applyLegitimacy(world, c, polity, dyn, ruler, gov, law) {
   const hereditary = gov === GOV_MONARCHY || gov === GOV_THEOCRACY;
-  const dynAgeY = dyn ? Math.max(0, stepToYear(world.step) - stepToYear(dyn.foundedStep)) : 0;
+  const dynAgeY = dyn ? Math.max(0, stepToYear(world, world.step) - stepToYear(world, dyn.foundedStep)) : 0;
   const tenure = hereditary ? Math.min(0.25, dynAgeY / 600) : Math.min(0.08, dynAgeY / 900);
-  const reignY = ruler ? Math.max(0, stepToYear(world.step) - stepToYear(polity._reignSince ?? world.step)) : 0;
+  const reignY = ruler ? Math.max(0, stepToYear(world, world.step) - stepToYear(world, polity._reignSince ?? world.step)) : 0;
   const reignStab = Math.min(0.10, reignY / 400);
   const heir = houseHasAdultHeir(world, dyn, ruler ? ruler.id : -1, law)
     ? 0.10 : (hereditary ? -0.15 : 0);          // a clear heir reassures; an empty cradle unsettles a crown
@@ -201,7 +210,7 @@ export function getDynasty(world, id) { return id >= 0 && world.dynasties ? worl
 
 export function ageOf(world, person) {
   if (!person) return 0;
-  return Math.max(0, stepToYear(world.step) - stepToYear(person.born));
+  return Math.max(0, stepToYear(world, world.step) - stepToYear(world, person.born));
 }
 
 function newPerson(world, fields) {
@@ -248,7 +257,7 @@ function newDynasty(world, founder, polityId) {
 }
 
 function bornYearsAgo(world, years) {
-  return Math.round(yearToStep(stepToYear(world.step) - years));
+  return Math.round(yearToStep(world, stepToYear(world, world.step) - years));
 }
 
 function makeAdult(world, cultureId, female, rng, ageYears, extra, mortF = 0.78, traitKind = "random") {
@@ -566,11 +575,11 @@ function selectElected(world, c, polity, rng) {
 function crown(world, polity, person, how, gov) {
   // close out the previous ruler's reign record (for the tree's reign spans)
   const prev = polity.rulerId >= 0 ? getPerson(world, polity.rulerId) : null;
-  if (prev && prev.id !== person.id && prev.reignTo < 0) prev.reignTo = stepToYear(world.step) | 0;
+  if (prev && prev.id !== person.id && prev.reignTo < 0) prev.reignTo = stepToYear(world, world.step) | 0;
 
   polity.rulerId = person.id;
   polity._reignSince = world.step;
-  person.reignFrom = stepToYear(world.step) | 0;
+  person.reignFrom = stepToYear(world, world.step) | 0;
   person.reignTo = -1;
   // open the reign's deed ledger (read back at death to earn an epithet)
   const cc = world.countries ? world.countries.get(polity.id) : null;
@@ -593,7 +602,7 @@ function crown(world, polity, person, how, gov) {
   // The realm's ROLL of sovereigns — the king-list that spans every house and
   // form of rule (dynasties, elected councils, theocratic lines). Denormalised so
   // it survives the person-prune; the open entry closes when the next is crowned.
-  const curY = stepToYear(world.step) | 0;
+  const curY = stepToYear(world, world.step) | 0;
   if (!polity.rulers) polity.rulers = [];
   const roll = polity.rulers;
   for (let i = roll.length - 1; i >= 0; i--) { if (roll[i].toY < 0) { roll[i].toY = curY; break; } }
@@ -655,7 +664,7 @@ function reapHouse(world, dyn, over, mortF, rng, rulerId, plague) {
     if (p.id === rulerId) { keep.push(id); continue; }  // the monarch is reaped in the main loop
     if (p.lifespan < 0) p.lifespan = sampleLifespan(rng, mortF, true);   // migrate older saves
     const dead = ageOf(world, p) >= p.lifespan || (plague && rng() < over(PLAGUE_HAZARD_Y));
-    if (dead) { p.died = world.step | 0; if (p.reignTo < 0 && p.reignFrom >= 0) p.reignTo = stepToYear(world.step) | 0; }
+    if (dead) { p.died = world.step | 0; if (p.reignTo < 0 && p.reignFrom >= 0) p.reignTo = stepToYear(world, world.step) | 0; }
     else keep.push(id);
   }
   dyn.members = keep.length <= MAX_HOUSE ? keep : keep.slice(0, MAX_HOUSE);
@@ -700,7 +709,7 @@ function growCadets(world, c, polity, dyn, over, mortF, rng) {
       const mother = p.female ? p : spouse;
       if (mother && mother.died < 0 && rng() < MATERNAL_HAZARD * mortF) {
         mother.died = world.step | 0;
-        if (mother.reignTo < 0 && mother.reignFrom >= 0) mother.reignTo = stepToYear(world.step) | 0;
+        if (mother.reignTo < 0 && mother.reignFrom >= 0) mother.reignTo = stepToYear(world, world.step) | 0;
       }
     }
   }
@@ -786,7 +795,7 @@ function reapIdleHouses(world) {
   for (const d of world.dynasties.values()) {
     if (!d.members || ruling.has(d.id)) continue;
     const overdue = (p) => p && p.died < 0 && p.lifespan >= 0 && ageOf(world, p) >= p.lifespan;
-    const reap = (p) => { p.died = world.step | 0; if (p.reignTo < 0 && p.reignFrom >= 0) p.reignTo = stepToYear(world.step) | 0; };
+    const reap = (p) => { p.died = world.step | 0; if (p.reignTo < 0 && p.reignFrom >= 0) p.reignTo = stepToYear(world, world.step) | 0; };
     d.members = d.members.filter(id => { const p = getPerson(world, id); if (!p || p.died >= 0) return false; if (overdue(p)) { reap(p); return false; } return true; });
     if (d.inlaws) d.inlaws = d.inlaws.filter(id => { const p = getPerson(world, id); if (!p || p.died >= 0) return false; if (overdue(p)) { reap(p); return false; } return true; });
   }
@@ -802,7 +811,7 @@ export function updateDynasties(world) {
   // this span. One pass can be 30 years in the bronze age and one year later;
   // rulers live human lives either way.
   const ivl = Math.max(1, Math.round(DYNASTY_INTERVAL * Math.max(1, (world._dt ? 1 / world._dt : 1))));
-  const years = Math.max(0.05, stepToYear(world.step) - stepToYear(world.step - ivl));
+  const years = Math.max(0.05, stepToYear(world, world.step) - stepToYear(world, world.step - ivl));
   const over = (annual) => 1 - Math.pow(1 - Math.min(0.95, annual), years);
 
   // royal marriage market, computed once per pass (the heirs of every throne)
@@ -889,8 +898,8 @@ export function updateDynasties(world) {
     const died = rAge >= ruler.lifespan || (plague && rng() < over(PLAGUE_HAZARD_Y * 2));
     if (died) {
       ruler.died = world.step | 0;
-      ruler.reignTo = stepToYear(world.step) | 0;
-      const reignY = Math.round(ruler.reignTo - stepToYear(polity._reignSince ?? ruler.born));
+      ruler.reignTo = stepToYear(world, world.step) | 0;
+      const reignY = Math.round(ruler.reignTo - stepToYear(world, polity._reignSince ?? ruler.born));
       const gov0 = polity.gov || GOV_MONARCHY;
       // the name history keeps them by — earned from the deeds of their reign
       ruler.epithet = epithetFor(ruler, polity, reignY, countCities(c) - (polity._reignCities || 0), gov0);
@@ -987,7 +996,7 @@ export function getDynastyTree(world, countryId, capPerHouse = 90) {
   // years, so it must stay on the mechanic clock — the era-anchored display
   // calendar compresses later eras and would crush a 50-year reign into "5 years".
   // (The chronicle ribbon, which shows absolute position only, uses displayYear.)
-  const nowMech = stepToYear(world.step) | 0;
+  const nowMech = stepToYear(world, world.step) | 0;
 
   // index every surviving person by their house (one scan)
   const byDyn = new Map();
@@ -1003,14 +1012,14 @@ export function getDynastyTree(world, countryId, capPerHouse = 90) {
   if (polity.houses) for (let i = polity.houses.length - 1; i >= 0; i--) pushH(polity.houses[i]);
 
   const nodeOf = (p, keepSet) => {
-    const bornMech = stepToYear(p.born) | 0;
+    const bornMech = stepToYear(world, p.born) | 0;
     return {
       id: p.id, name: p.name || "?", female: !!p.female,
       bastard: !!p.bastard, foreign: !!p.foreign,
       parentId: keepSet.has(p.parentId) ? p.parentId : -1,
       spouseId: keepSet.has(p.spouseId) ? p.spouseId : -1,
-      bornY: bornMech, age: p.died >= 0 ? (stepToYear(p.died) | 0) - bornMech : nowMech - bornMech,
-      diedY: p.died >= 0 ? stepToYear(p.died) | 0 : -1,
+      bornY: bornMech, age: p.died >= 0 ? (stepToYear(world, p.died) | 0) - bornMech : nowMech - bornMech,
+      diedY: p.died >= 0 ? stepToYear(world, p.died) | 0 : -1,
       reignFrom: p.reignFrom >= 0 ? p.reignFrom : -1,
       reignTo: p.reignFrom >= 0 ? (p.reignTo >= 0 ? p.reignTo : nowMech) : -1,
       isRuler: p.id === rulerId,
@@ -1038,7 +1047,7 @@ export function getDynastyTree(world, countryId, capPerHouse = 90) {
         if (p.reignFrom >= 0) s += 200;
         if (p.died < 0) s += 80;
         if (d && id === d.founderId) s += 60;
-        s += Math.max(0, 50 - (nowMech - (stepToYear(p.born) | 0)) / 8);
+        s += Math.max(0, 50 - (nowMech - (stepToYear(world, p.born) | 0)) / 8);
         return s;
       };
       ids.sort((a, b) => score(b) - score(a));
@@ -1049,8 +1058,8 @@ export function getDynastyTree(world, countryId, capPerHouse = 90) {
     houses.push({
       dynastyId: dynId, name: d ? d.name : (members[0] && members[0].name) || "?",
       isCurrent: dynId === polity.dynastyId,
-      founded: d ? stepToYear(d.foundedStep) | 0 : (nodes.length ? Math.min(...nodes.map(n => n.bornY)) : 0),
-      ended: d && d.endedStep >= 0 ? stepToYear(d.endedStep) | 0 : -1,
+      founded: d ? stepToYear(world, d.foundedStep) | 0 : (nodes.length ? Math.min(...nodes.map(n => n.bornY)) : 0),
+      ended: d && d.endedStep >= 0 ? stepToYear(world, d.endedStep) | 0 : -1,
       nodes,
     });
   }

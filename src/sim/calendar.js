@@ -32,13 +32,14 @@ export function dynYear(step){ return DYN_START + step * DYN_RATE; }
 export function dynStep(year){ return (year - DYN_START) / DYN_RATE; }
 
 // ── DISPLAY calendar: THE clock, anchored to the EMERGENT tech era ──
-// The displayed year — and everything timed against it (a ruler's age, a reign's
-// length, how often thrones turn over) — tracks how far the world has actually
-// DEVELOPED, not a fixed linear count that drifts to "10250 AD". It's pinned to
-// the historical date each era was reached and interpolated between. Because the
-// dynasty layer measures time on THIS calendar too, reigns and successions pace
-// with the displayed years and FIT the displayed history (~100 sovereigns across
-// 3000 BC → ~1950 AD, not 200 crammed in). This is read-only — derived from
+// The displayed year tracks how far the world has actually DEVELOPED, not a
+// fixed linear count that drifts to "10250 AD". It's pinned to the historical
+// date each era was reached and interpolated between. (The dynasty layer does
+// NOT use this display calendar: rulers age on the uniform dyn clock above —
+// dynYear — which advances at a fixed rate per history-tick, so reigns and
+// human lifespans stay biologically plausible however fast or slow the world
+// develops. The two clocks approximate each other over a typical run but are
+// deliberately independent.) This is read-only — derived from
 // emergent development, never an input to a mechanic — exactly as the calendar is
 // meant to be used.
 //

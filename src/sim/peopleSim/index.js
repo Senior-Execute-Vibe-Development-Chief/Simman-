@@ -195,7 +195,7 @@ export function stepPeopleSim(world, n = 1) {
     // Dynamic climate: advance the slow global state + per-tile fertility overlay
     // BEFORE the territory pass tallies food (territory.js multiplies fert by climMod),
     // so a harsh century is felt across every realm's catchment at once.
-    if (world.step === 1 || world.step % CLIMATE_INTERVAL === 0) updateClimate(world);
+    if (world.step === 1 || world.step % _ivl(CLIMATE_INTERVAL) === 0) updateClimate(world);   // rate pass: walk/eruptions per unit of HISTORY
     // Recompute territory periodically: each settlement claims the land it
     // reaches cheapest, and its food / resources are tallied from it.
     if (world.step === 1 || world.step % T.TERRITORY_INTERVAL === 0) {
@@ -260,7 +260,7 @@ export function stepPeopleSim(world, n = 1) {
     moveShips(world);
     if (world.step % SEA_INTERVAL === 0) updateSea(world);
     mark("sea");
-    if (world.step % SOIL_INTERVAL === 0) updateSoil(world);   // soil exhaustion / salinisation (settlement.js)
+    if (world.step % _ivl(SOIL_INTERVAL) === 0) updateSoil(world);   // rate pass: fatigue accrual per unit of HISTORY
     mark("soil");
     // Polities: group settlements into countries, tribute, and let
     // over-extended members secede.
