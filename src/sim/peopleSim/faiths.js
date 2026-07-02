@@ -228,7 +228,7 @@ export function dominantFaith(s) {
 }
 
 const MIX_K = 4;
-function normalizeMix(mix) {
+function normalizeMix(mix, keepId = -1) {
   mix.sort((a, b) => b[1] - a[1]);
   if (mix.length > MIX_K) {
     let tail = 0;
@@ -236,9 +236,17 @@ function normalizeMix(mix) {
     mix.length = MIX_K;
     mix[0][1] += tail;
   }
-  // drop negligible tails so a settlement that has consolidated reads as a single
-  // faith rather than carrying a permanent 1-2% ghost minority.
-  while (mix.length > 1 && mix[mix.length - 1][1] < MIX_FLOOR) mix.pop();
+  // Drop negligible tails so a settlement that has consolidated reads as a
+  // single faith rather than carrying a permanent 1-2% ghost minority — but
+  // NEVER the entry actively being converted-to this call (keepId). Popping
+  // it made conversion all-or-nothing: every per-pass increment below the
+  // floor was inserted, immediately deleted, and renormalized back to the
+  // prior state — zero net conversion, forever, for any pull weaker than the
+  // floor. A growing minority now accumulates from zero like real conversion.
+  for (let i = mix.length - 1; i >= 1 && mix.length > 1; i--) {
+    if (mix[i][1] >= MIX_FLOOR) break;                    // sorted desc: everything above is larger
+    if (mix[i][0] !== keepId) mix.splice(i, 1);           // pop ghosts, skip the growing convert
+  }
   let sum = 0;
   for (const e of mix) sum += e[1];
   if (sum > 0 && Math.abs(sum - 1) > 1e-9) for (const e of mix) e[1] /= sum;
@@ -251,7 +259,7 @@ function mixFaithToward(s, fid, frac) {
   let entry = null;
   for (const e of mix) { e[1] *= scale; if (e[0] === fid) entry = e; }
   if (entry) entry[1] += frac; else mix.push([fid, frac]);
-  normalizeMix(mix);
+  normalizeMix(mix, fid);
 }
 
 export function updateFaiths(world) {

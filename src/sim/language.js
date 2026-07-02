@@ -212,7 +212,10 @@ export function driftLanguage(world, lang) {
 export function branchLanguage(world, parent, divergence = 0.4) {
   const id = world._nextLanguageId || 1;
   world._nextLanguageId = id + 1;
-  const s = hash32(parent.seed, "branch", parent.gen, world.step) >>> 0;
+  // The child id is part of the seed: two branches of the SAME parent in the
+  // same pass otherwise got identical seeds — byte-identical "different"
+  // tongues whose names collide forever (sibling nations speaking one clone).
+  const s = hash32(parent.seed, "branch", parent.gen, world.step, id) >>> 0;
   const child = {
     id, seed: s, parentId: parent.id, bornStep: world.step | 0, gen: 0,
     rootId: parent.rootId ?? parent.id,                       // stays in the parent's language family
