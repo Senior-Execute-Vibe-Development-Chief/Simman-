@@ -105,7 +105,12 @@ export function endPolity(world, id, how = "dissolved", by = -1, byName = undefi
   // Money accounting counts ALIVE polities only, so a dead chest reads as
   // out of circulation either way (same as the old prune-deletion).
   p._momentum = 0;
-  logEvent(world, "polity.ended", { polity: id, name: p.name, how, by, byName });
+  // Log WHERE the realm fell (its capital) so historiography's information
+  // horizon applies — a coordinate-less ending was heard everywhere on the
+  // planet instantly (distance defaulted to zero).
+  const capS = world._byId ? world._byId.get(p.capitalId) : null;
+  logEvent(world, "polity.ended", { polity: id, name: p.name, how, by, byName,
+    x: capS ? capS.pos.x | 0 : undefined, y: capS ? capS.pos.y | 0 : undefined });
 }
 
 /**

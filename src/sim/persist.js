@@ -150,7 +150,7 @@ export function saveWorld(world, meta = {}) {
     eraProd: world._eraProd,          // demographic anchor: global productivity index
     climIndex: world._climIndex, climShock: world._climShock,   // dynamic-climate state (climate.js)
     popTotal: world._popTotal,        // last tick's world total (anchor input)
-    counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1, language: world._nextLanguageId || 1 },
+    counters: { settlement: world._nextSettlementId || 1, ship: world._nextShipId || 0, culture: world._nextCultureId || 1, faith: world._nextFaithId || 1, person: world._nextPersonId || 1, dynasty: world._nextDynastyId || 1, language: world._nextLanguageId || 1, event: world._nextEventId ?? (world.events ? world.events.length : 0) },
     tuning,
     settlements,
     polities,
@@ -246,6 +246,7 @@ export function loadWorld(data, opts = {}) {
   world.cultures = new Map(data.cultures || []);
   world.languages = new Map(data.languages || []);
   world._nextLanguageId = (data.counters && data.counters.language) || 1;
+  world._nextEventId = (data.counters && data.counters.event) ?? (data.events ? data.events.length : 0);
   world.faiths = new Map(data.faiths || []);
   world.persons = new Map(data.persons || []);
   world.dynasties = new Map(data.dynasties || []);

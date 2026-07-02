@@ -59,7 +59,7 @@ export function chronicleTick(world) {
     const era = techState(c.capital.knowledge || {}).era;
     if (era > leadEra) leadEra = era;
     if (era > m.era) {
-      if (m.era >= 0 && ERAS[era]) logEvent(world, "era.reached", { polity: c.id, name: realmName(world, c.id), era, eraName: ERAS[era] });
+      if (m.era >= 0 && ERAS[era]) logEvent(world, "era.reached", { polity: c.id, name: realmName(world, c.id), era, eraName: ERAS[era], x: c.capital ? c.capital.pos.x | 0 : undefined, y: c.capital ? c.capital.pos.y | 0 : undefined });
       m.era = era;
     }
 

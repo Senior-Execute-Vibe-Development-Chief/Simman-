@@ -374,13 +374,18 @@ function buildSnapshot() {
   let feed = null;
   {
     const evs = world.events || [];
-    if (evs.length > lastEvSent) {
+    // Cursor on permanent event IDS, not array length — compaction shortens
+    // the array without renumbering, which froze a length cursor forever.
+    const lastId = evs.length ? evs[evs.length - 1].id : -1;
+    if (lastId >= lastEvSent) {
       feed = [];
-      for (let i = Math.max(lastEvSent, evs.length - 40); i < evs.length; i++) {
+      const base = evs.length ? evs[0].id : 0;
+      for (let i = Math.max(lastEvSent - base, evs.length - 40); i < evs.length; i++) {
+        if (i < 0) continue;
         const ev = evs[i];
         feed.push({ step: ev.step, type: ev.type, text: narrate(world, ev, -1), x: ev.x, y: ev.y });
       }
-      lastEvSent = evs.length;
+      lastEvSent = lastId + 1;
     }
   }
 

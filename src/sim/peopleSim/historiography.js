@@ -53,7 +53,12 @@ function capitalOf(world, viewerId) {
 }
 
 function distTo(world, cap, ev) {
-  if (!cap || ev.x === undefined || ev.y === undefined) return 0;
+  // No vantage point (a fallen realm whose capital record was pruned) or no
+  // event location = the scribes never hear of it. The old 0 default made
+  // exactly these cases OMNISCIENT: every coordinate-less event was recorded
+  // planet-wide (132/132 measured), and a long-dead realm's tradition kept
+  // perfect knowledge of the world forever.
+  if (!cap || ev.x === undefined || ev.y === undefined) return Infinity;
   let dx = Math.abs(cap.pos.x - ev.x);
   if (dx > world.tw / 2) dx = world.tw - dx;
   const dy = cap.pos.y - ev.y;
@@ -140,9 +145,12 @@ export function perspectiveChronicle(world, viewerId, limit = 0) {
     world_.push(ev);
   }
   // a tradition has no scribes before the realm existed — foreign events
-  // older than the founding never entered any archive of OURS
+  // older than the founding never entered any archive of OURS — and a FALLEN
+  // realm's archive stops when its scribes do: nothing after endedStep enters
+  // the tradition (a restoration reopens the record and the archive with it).
   const born = p ? p.foundedStep : 0;
-  const all = own.concat(world_.filter(e => e.step >= born)).sort((a, b) => a.step - b.step || a.id - b.id);
+  const died = p && p.endedStep >= 0 ? p.endedStep : Infinity;
+  const all = own.concat(world_.filter(e => e.step >= born && e.step <= died)).sort((a, b) => a.step - b.step || a.id - b.id);
 
   // the realm's catastrophes: each sack of its story burns older records
   const sackSteps = own.filter(e => e.type === "polity.shattered" && e.polity === viewerId).map(e => e.step);

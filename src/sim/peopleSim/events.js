@@ -43,15 +43,21 @@ const EVENT_CAP = 200000, EVENT_KEEP = 150000;
 function compactEvents(world) {
   const events = world.events;
   events.splice(0, events.length - EVENT_KEEP);
-  for (let i = 0; i < events.length; i++) events[i].id = i;
+  // Ids are PERMANENT (never reassigned): historiography keys every
+  // deterministic know/rumor/burn roll on ev.id, so renumbering survivors
+  // re-randomized every realm's tradition after one compaction (and froze
+  // the worker's length-cursor ticker). Lookups map id → position via the
+  // id of events[0] (ids are contiguous ascending by construction).
   reindexEvents(world);
 }
+const evBase = (events) => (events.length ? events[0].id : 0);
 
 /** Append one event. Returns its id. `fields` is spread flat onto the record. */
 export function logEvent(world, type, fields) {
   const events = eventsOf(world);
   if (events.length >= EVENT_CAP) compactEvents(world);   // keep the live log bounded
-  const ev = { id: events.length, step: world.step | 0, type, ...fields };
+  if (world._nextEventId === undefined) world._nextEventId = events.length ? events[events.length - 1].id + 1 : 0;
+  const ev = { id: world._nextEventId++, step: world.step | 0, type, ...fields };
   events.push(ev);
   if (!world._evIndex) world._evIndex = new Map();
   for (const k of indexKeys(ev)) {
@@ -67,8 +73,9 @@ export function eventsFor(world, key, limit = 0) {
   const idx = world._evIndex && world._evIndex.get(key);
   if (!idx) return [];
   const events = eventsOf(world);
+  const base = evBase(events);
   const ids = limit > 0 && idx.length > limit ? idx.slice(-limit) : idx;
-  return ids.map(i => events[i]);
+  return ids.map(i => events[i - base]).filter(Boolean);   // compaction may have dropped the oldest
 }
 
 /** Rebuild the index from the log (used after loading a save). */
@@ -141,6 +148,9 @@ const NARRATE = {
       : `${ev.sName} declined to a ${ev.tierName}.`;
   },
   "colony.departed"(ev) { return `A colony fleet set sail from ${ev.sName}.`; },
+  "colony.founded"(ev) { return `${ev.sName || "A colony"} was planted overseas under the flag of ${ev.fromName || "its mother country"}.`; },
+  "colony.independent"(ev) { return `${ev.name || "The colony"} cast off ${ev.fromName || "its mother country"} and declared itself sovereign.`; },
+  "plague.virginSoil"(ev) { return `A pestilence unknown to ${ev.sName || "the people"} came ashore with the strangers, and they had no defence against it.`; },
   "famine.struck"(ev) { void ev; return "A famine gripped the land."; },
   "plague.outbreak"(ev) { return ev.sName ? `Plague broke out in ${ev.sName} and swept through the realm.` : "Plague swept through the realm."; },
   "era.reached"(ev) { return `Reached the ${ev.eraName} era.`; },
@@ -262,6 +272,9 @@ export function categoryOf(ev, as = -1) {
     case "growth.cities": return "growth";
     case "wealth.milestone": return "wealth";
     case "settlement.founded": case "colony.departed": return "founding";
+    case "colony.founded": return "founding";
+    case "colony.independent": return as === ev.from ? "loss" : "secession";
+    case "plague.virginSoil": return "plague";
     case "culture.born": case "culture.diverged": return "founding";
     case "language.shift": return "growth";
     case "faith.founded": case "polity.adoptedFaith": case "faith.syncretized": return "discovery";
