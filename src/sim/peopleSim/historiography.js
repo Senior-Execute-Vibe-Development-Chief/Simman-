@@ -163,6 +163,7 @@ export function perspectiveChronicle(world, viewerId, limit = 0) {
     let rumor = false;
     if (!mine) {
       const d = distTo(world, cap, ev);
+      if (d === Infinity) continue;                 // no location / no vantage point: truly deaf (the 0.04 floor leaked ~4% of these planet-wide)
       const know = Math.max(0.04, Math.min(1, 1.35 - d / horizon));
       const r = roll(world, viewerId, ev.id, "know");
       if (r > know) continue;                       // never heard of it

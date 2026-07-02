@@ -39,8 +39,15 @@ export function ensurePolity(world, id, opts = {}) {
   if (p) {
     if (p.endedStep >= 0) {   // re-opened: an old nation re-forming under its id
       p.endedStep = -1;
+      // The restored realm's seat is wherever it re-formed NOW — the previous
+      // life's capitalId may point at a foreign city (or a ruin) and chronicle/
+      // historiography locate the realm through it until the next polity pass.
+      if (opts.seat) p.capitalId = opts.seat.id;
+      const capS = world._byId ? world._byId.get(p.capitalId) : null;
       if (!opts.silent) logEvent(world, "polity.restored", {
         polity: id, name: p.name, fromName: opts.fromName, from: opts.from ?? -1,
+        x: capS ? capS.pos.x | 0 : (opts.seat ? opts.seat.pos.x | 0 : undefined),
+        y: capS ? capS.pos.y | 0 : (opts.seat ? opts.seat.pos.y | 0 : undefined),
       });
     }
     return p;
@@ -133,7 +140,7 @@ export function reconcilePolities(world, countries) {
   }
   for (const [id, c] of countries) {
     if (!live.has(id)) continue;   // vanished mid-pass; the end-scan below closes it
-    if (reg.has(id)) { const p = reg.get(id); if (p.endedStep >= 0) ensurePolity(world, id); p.capitalId = c.capitalId; continue; }
+    if (reg.has(id)) { const p = reg.get(id); if (p.endedStep >= 0) ensurePolity(world, id, { seat: c.capital }); p.capitalId = c.capitalId; continue; }
     const substantial = c.members.length > 1
       || (c.capital && (c.capital._sovereignSeat != null || (c.capital.tier | 0) >= 1));
     if (substantial) ensurePolity(world, id, { how: "emerged", seat: c.capital });

@@ -269,8 +269,7 @@ export function computeTerritory(world) {
   // the documented "navy reaches the far shore" path silently never worked).
   let clm = world._terrClaimant;
   if (!clm || clm.length !== N) clm = world._terrClaimant = new Int32Array(N);
-  clm.fill(-1);
-  for (let ti = 0; ti < N; ti++) if (owner[ti] >= 0) clm[ti] = owner[ti];
+  clm.set(owner);   // owner is -1 on unowned tiles already — one memcpy
 
   // Multi-source Dijkstra. Cost propagates through a settlement's OWN tiles
   // (so food falloff is correct across its whole domain); free wilderness

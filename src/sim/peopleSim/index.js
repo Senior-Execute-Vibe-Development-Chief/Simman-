@@ -339,14 +339,15 @@ export function peopleSimStats(world) {
   if (world.countries) for (const c of world.countries.values()) {
     const k = c.capital && c.capital.knowledge;
     if (k) { const e = techState(k).era; if (e > leadingEra) leadingEra = e; }
-  }
-  // Sum LIVE polity treasuries (like invariants.js), not the per-polity-pass
-  // c._treasury snapshots: between passes the per-tick flows (tariffs, mint
-  // seigniorage) drain purses into the live treasuries, so the snapshot sum
-  // counted that coin in NEITHER place — the world-gold readout sawtoothed
-  // ~50% at exactly the polity cadence.
-  if (world.polities) for (const p of world.polities.values()) {
-    if (p.endedStep < 0) treasury += Math.max(0, p.treasury || 0);
+    // Sum the LIVE polity treasury (like invariants.js), not the per-pass
+    // c._treasury snapshot: between passes the per-tick flows (tariffs, mint
+    // seigniorage) drain purses into the live treasuries, so the snapshot sum
+    // counted that coin in NEITHER place — the world-gold readout sawtoothed
+    // ~50% at exactly the polity cadence. Reading through the countries view
+    // keeps this O(live realms); world.polities keeps every realm EVER (a
+    // ~30x/s snapshot path must not scale with total history).
+    const pol = world.polities ? world.polities.get(c.id) : null;
+    if (pol && pol.endedStep < 0) treasury += Math.max(0, pol.treasury || 0);
   }
   return {
     step: world.step,

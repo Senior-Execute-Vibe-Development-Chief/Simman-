@@ -28,7 +28,7 @@ import { computeTerritory } from "./peopleSim/territory.js";
 import { rederiveSiteStatics } from "./peopleSim/settlement.js";
 import { reindexRoads } from "./peopleSim/roads.js";
 import { recomputeClimMod } from "./peopleSim/climate.js";
-import { rebuildCountries, updateAlliances } from "./peopleSim/conquest.js";
+import { rebuildCountries, updateAlliances, rebuildOverlords } from "./peopleSim/conquest.js";
 import { T, applyTuning, resetTuning, tuningDefaults } from "./peopleSim/tuning.js";
 
 export const SAVE_VERSION = 2;
@@ -142,7 +142,7 @@ export function saveWorld(world, meta = {}) {
     meta: {
       W: world.width, H: world.height, seed: world.seed,
       preset: world.preset, oceanLevel: meta.oceanLevel ?? 0.78, tecParams: meta.tecParams || {},
-      realWind: !!(meta.realWind ?? world._realWindGen),   // terrain identity: NCEP real winds were used
+      realWind: !!(world._realWindGen ?? meta.realWind),   // terrain identity: the WORLD knows what it grew on; caller meta is a fallback for pre-flag worlds
 
     },
     step: world.step,
@@ -320,6 +320,7 @@ export function loadWorld(data, opts = {}) {
   world._byId = new Map();
   for (const s of world.settlements) world._byId.set(s.id, s);
   rebuildCountries(world);
+  rebuildOverlords(world, world.countries);   // colony↔metropole links must exist before the alliance map (else colonies balance against their own metropole until the next ALLIANCE_EVERY boundary)
   updateAlliances(world);
   return world;
 }

@@ -1583,30 +1583,11 @@ export function updatePolities(world) {
           seatName: s.name, x: s.pos.x | 0, y: s.pos.y | 0 });
       }
     }
-    // (b) Live overlord map + validation: an overlord whose realm has died frees its
-    //     dependencies; a self-referential or orphaned link is dropped.
-    const overlordOf = world._overlordOf = new Map();
-    for (const c of countries.values()) {
-      const pol = getPolity(world, c.id);
-      if (!pol || pol._overlord == null) continue;
-      if (pol._overlord === c.id || !countries.has(pol._overlord)) { pol._overlord = undefined; continue; }
-      overlordOf.set(c.id, pol._overlord);
-    }
-    // (b2) The metropole's naval REACH to each colony — how much force/supply it can project
-    //      across the distance, scaled by its naval-logistics tech. Governs protection, support
-    //      AND the independence line below, so nothing about the link is automatic or perfect.
-    const reachOf = world._overlordReach = new Map();
-    const tw = world.tw;
-    for (const [dep, over] of overlordOf) {
-      const dc = countries.get(dep), oc = countries.get(over);
-      if (!dc || !oc || !dc.capital || !oc.capital) { reachOf.set(dep, 0); continue; }
-      let dx = Math.abs(dc.capital.pos.x - oc.capital.pos.x); if (dx > tw / 2) dx = tw - dx;   // longitude wraps
-      const dy = dc.capital.pos.y - oc.capital.pos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const nav = (oc.capital.knowledge && oc.capital.knowledge.navigation) || 0;
-      const navalReach = NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV;
-      reachOf.set(dep, navalReach / (navalReach + dist));
-    }
+    // (b/b2) Live overlord map + naval reach — extracted so loadWorld can warm
+    //        the same state before its updateAlliances call (an overlord-blind
+    //        alliance map let colonies balance against their own metropole for
+    //        a whole post-load window).
+    const { overlordOf, reachOf } = rebuildOverlords(world, countries);
     // (c) INDEPENDENCE — emergent, never timed. A dependency cuts the apron strings once its own
     //     power exceeds the force the metropole can PROJECT to it (its power × naval reach), not
     //     the metropole's total: a DISTANT colony, which the navy can barely reach, breaks free at
@@ -1637,7 +1618,7 @@ export function updatePolities(world) {
       const dc = countries.get(dep), oc = countries.get(over);
       if (!dpol || !opol || !dc || !oc || !dc.capital || !oc.capital) continue;
       const proj = reachOf.get(dep) ?? 0;   // how much the metropole can ship across the distance
-      const young = world.step - (dc.capital.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      const young = world.step - (dc.capital.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
       if (young || (dpol.treasury || 0) < COLONY_SUPPLY_COIN) {
         // Investment is limited by what the navy can carry — a colony beyond easy reach gets little.
         const coin = Math.min(COLONY_SUPPLY_COIN * proj, Math.max(0, opol.treasury));
@@ -2000,7 +1981,7 @@ export function updatePolities(world) {
       cum += load;
       const covered  = cum <= capacity;
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
-      const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
       if (pacified || infant) {
         // Held by garrison / colonial project: nudge loyalty toward its base
         // but never secede yet.
@@ -2047,7 +2028,7 @@ export function updatePolities(world) {
       if (s.countryId !== c.id || s.id === c.capitalId) continue;     // gone / is the throne
       const seat = (s.tier | 0) >= CITY_TIER;    // must be a CITY (a province seat) — it takes its province with it
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
-      const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+      const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
       const ratio = settlementPower(s) / capPower;                    // strength vs the throne
       // Same blended distance as the hold load — a governor across a
       // mountain range is "farther" than its straight-line reading,
@@ -2078,7 +2059,7 @@ export function updatePolities(world) {
     for (const s of c.members) {
       if (s.id === c.capitalId || s.countryId !== c.id) continue;
       const youngColony = s.parentSettlementId >= 0 &&
-                          world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS;
+                          world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
       if (youngColony) {
         const food = Math.min(COLONY_SUPPLY_FOOD, Math.max(0, (c.capital.food || 0) - 20));
         if (food > 0) { c.capital.food -= food; s.food = (s.food || 0) + food; }
@@ -2150,6 +2131,35 @@ export function updatePolities(world) {
   // substantial newcomers, close the records of realms that vanished. (No
   // pruning — fallen realms keep their record, history and temperament.)
   reconcilePolities(world, countries);
+}
+
+// Live overlord map + validation (an overlord whose realm has died frees its
+// dependencies; self-referential/orphaned links drop) and the metropole's
+// naval REACH to each colony — how much force/supply it can project across
+// the distance, scaled by its naval-logistics tech. Governs protection,
+// support and the independence line. Called from updatePolities every pass
+// and from loadWorld to warm the maps before the post-load alliance rebuild.
+export function rebuildOverlords(world, countries) {
+  const overlordOf = world._overlordOf = new Map();
+  for (const c of countries.values()) {
+    const pol = getPolity(world, c.id);
+    if (!pol || pol._overlord == null) continue;
+    if (pol._overlord === c.id || !countries.has(pol._overlord)) { pol._overlord = undefined; continue; }
+    overlordOf.set(c.id, pol._overlord);
+  }
+  const reachOf = world._overlordReach = new Map();
+  const tw = world.tw;
+  for (const [dep, over] of overlordOf) {
+    const dc = countries.get(dep), oc = countries.get(over);
+    if (!dc || !oc || !dc.capital || !oc.capital) { reachOf.set(dep, 0); continue; }
+    let dx = Math.abs(dc.capital.pos.x - oc.capital.pos.x); if (dx > tw / 2) dx = tw - dx;   // longitude wraps
+    const dy = dc.capital.pos.y - oc.capital.pos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const nav = (oc.capital.knowledge && oc.capital.knowledge.navigation) || 0;
+    const navalReach = NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV;
+    reachOf.set(dep, navalReach / (navalReach + dist));
+  }
+  return { overlordOf, reachOf };
 }
 
 // Does this realm have administrative room for one more province? A realm

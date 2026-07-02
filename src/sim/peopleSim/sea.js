@@ -240,6 +240,7 @@ export function updateSea(world) {
     // chain marches outward without each link first growing into a city.
     const qgoal = (T.SEA_LUX_QUEST > 0 && pop >= T.COLONY_QUEST_MIN_POP) ? luxuryGoal(world, p) : null;
     p._questGoal = qgoal;
+    p._seaReachPrev = null;   // snapshot served its purpose (quest guards); don't retain a second copy of the lane graph between passes
     if (pop >= T.COLONY_MIN_POP || qgoal) {
       eligible.add(p.id);
       shoreCand.set(p.id, []);

@@ -271,7 +271,7 @@ const NEOLITHIC_AGRI = 0.45;
 // fills its valley early, a colonised coast spreads at the colonists' own
 // tempo — self-calibrating on any map, seed, or pace.
 const pioneerTempo = (agri) => {
-  const span = Math.max(0.05, (T.AGRI_FULL_AT || 0.7) - NEOLITHIC_AGRI);
+  const span = Math.max(0.05, T.AGRI_FULL_AT - NEOLITHIC_AGRI);   // T always carries the schema default
   const dev = Math.min(1, Math.max(0, ((agri || 0) - NEOLITHIC_AGRI) / span));
   return COVERAGE_FLOOR + (1 - COVERAGE_FLOOR) * dev;
 };
@@ -459,15 +459,20 @@ export function maybeCrystallize(world) {
     // genuinely isolated site = forager-floor pace.
     const _r = rng();
     if (_r >= p) continue;
-    let _donorAgri = NEOLITHIC_AGRI, _bd2 = Infinity;
+    // One nearest-donor lookup, shared: the tempo gate reads its agriculture
+    // and, on accept, the SAME donor seeds inheritance (passing it as a hint
+    // avoids a second identical grid scan, and guarantees tempo and inherited
+    // knowledge describe the same people).
+    let _donor = null, _bd2 = Infinity;
     forEachNear(world, tx, ty, INHERIT_NEAR_RADIUS, (s, d2) => {
-      if (d2 < _bd2) { _bd2 = d2; _donorAgri = (s.knowledge && s.knowledge.agriculture) || NEOLITHIC_AGRI; }
+      if (d2 < _bd2) { _bd2 = d2; _donor = s; }
     });
+    const _donorAgri = _donor && _donor.knowledge ? (_donor.knowledge.agriculture || NEOLITHIC_AGRI) : NEOLITHIC_AGRI;
     if (_r >= p * pioneerTempo(_donorAgri)) continue;
-    {
+    { // ── accepted: found the settlement (block kept to avoid a 100-line reindent; no semantic scope) ──
       // Inherited knowledge: blend from nearest settlement, weighted by
       // distance. Far sites start near baseline neolithic knowledge.
-      const inherited = inheritKnowledgeAt(world, ti, td);
+      const inherited = inheritKnowledgeAt(world, ti, td, _donor);
       // A spawned village is NEVER its own country. It ADOPTS the country whose
       // border has actually GROWN over the tile it's founded on (grownOwnerAt →
       // world._countryClaim), or is born STATELESS (-1) if the front hasn't
@@ -1012,16 +1017,17 @@ function maybeUrbanGenesis(world) {
 // blend its knowledge with a baseline based on how isolated this site
 // is in transport terms. Settlements that crystallise right next to a
 // city inherit most of its tech; isolated cradles start near baseline.
-function inheritKnowledgeAt(world, ti, td) {
+function inheritKnowledgeAt(world, ti, td, nearestHint = null) {
   world._lastInheritDonor = null;
   const { tw } = world;
   const ty = (ti / tw) | 0, tx = ti - ty * tw;
-  let nearest = null, bestD2 = Infinity;
+  let nearest = nearestHint, bestD2 = Infinity;
   // Fast path via the spatial grid: the nearest settlement within a generous
   // radius IS the global nearest (nothing closer can exist outside the disk).
+  // A caller that already ran the disk scan passes the result as nearestHint.
   // Only when the disk is empty (a genuinely isolated spawn) do we fall back to
   // the full O(settlements) scan — so this is behaviour-identical, just cheaper.
-  forEachNear(world, tx, ty, INHERIT_NEAR_RADIUS, (s, d2) => {
+  if (!nearest) forEachNear(world, tx, ty, INHERIT_NEAR_RADIUS, (s, d2) => {
     if (d2 < bestD2) { bestD2 = d2; nearest = s; }
   });
   if (!nearest) {

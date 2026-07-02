@@ -636,35 +636,64 @@ function mergePersistentTerritory(world, co, prev) {
     if (h === undefined) {
       const c = world.countries && world.countries.get(cid);
       const nav = (c && c.capital && c.capital.knowledge && c.capital.knowledge.navigation) || 0;
-      h = nav < 0.10 ? 0 : Math.round((1 + 7 * nav) * resScaleFor(tw));
+      // The seafaring floor is the SAME lever that gates water in the
+      // transport cost field (T.NAV_EMBARK_THRESH) — claim production and
+      // claim retention must agree on who can put to sea, or moving the
+      // lever maroons legitimately-sailed shores (or retains unsailable
+      // ones). Above the floor the bridgeable width ramps with navigation,
+      // resolution-scaled like every reach quantity.
+      h = nav < (T.NAV_EMBARK_THRESH ?? 0.10) ? 0 : Math.round((1 + 7 * nav) * resScaleFor(tw));
       hopOf.set(cid, h);
     }
     return h;
   };
-  // waterDepth[ti]: consecutive water tiles crossed to reach ti (0 on land).
-  let wdep = world._persistWDep; if (!wdep || wdep.length !== N) wdep = world._persistWDep = new Uint8Array(N);
-  wdep.fill(0);
-  let wOc = world._persistWOc; if (!wOc || wOc.length !== N) wOc = world._persistWOc = new Int32Array(N);
+  // Water hops carry (owner, depth) as explicit frontier entries, and a water
+  // tile may be crossed by SEVERAL realms in one pass — exclusive first-touch
+  // ownership let deterministic BFS order hand a contested strait to the same
+  // realm every merge, marooning the rival's far-shore march every pass
+  // forever. Land tiles stay single-owner (reached[] as before); only the
+  // small coastal water fringe pays the per-owner bookkeeping.
+  const wSeen = new Map();   // water ti → Set(ownerIds that crossed it)
+  let wq = [];               // water frontier: [ti, owner, depth] triples
+  const pushWater = (ni, oc, d) => {
+    let s = wSeen.get(ni);
+    if (!s) wSeen.set(ni, s = new Set());
+    if (s.has(oc)) return;
+    s.add(oc); wq.push(ni, oc, d);
+  };
   for (let qh = 0; qh < qt; qh++) {
     const ti = q[qh];
-    const water = elev[ti] <= 0;
-    const oc = water ? wOc[ti] : co[ti];
-    const d = water ? wdep[ti] : 0;
+    const oc = co[ti];
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
     const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
     for (let k = 0; k < 4; k++) {
       const ni = ns[k];
-      if (ni < 0 || reached[ni]) continue;
+      if (ni < 0) continue;
       if (elev[ni] > 0) {
-        if (co[ni] === oc) { reached[ni] = 1; q[qt++] = ni; }
-      } else if (d < hopBudget(oc)) {
-        // step into open water carrying the owner (first realm to touch a
-        // water tile carries it this pass — strait contention is rare and
-        // the next pass re-floods from scratch)
-        reached[ni] = 1; wOc[ni] = oc; wdep[ni] = d + 1; q[qt++] = ni;
+        if (!reached[ni] && co[ni] === oc) { reached[ni] = 1; q[qt++] = ni; }
+      } else if (hopBudget(oc) > 0) {
+        pushWater(ni, oc, 1);
       }
     }
+    // Drain the water frontier interleaved: land found across water re-enters
+    // the main land queue and continues flooding normally.
+    for (let wh = 0; wh < wq.length; wh += 3) {
+      const wi = wq[wh], woc = wq[wh + 1], wd = wq[wh + 2];
+      const wy = (wi / tw) | 0, wx = wi - wy * tw;
+      const wxm = wx === 0 ? tw - 1 : wx - 1, wxp = wx === tw - 1 ? 0 : wx + 1;
+      const wns = [wy * tw + wxm, wy * tw + wxp, wy > 0 ? wi - tw : -1, wy < th - 1 ? wi + tw : -1];
+      for (let k = 0; k < 4; k++) {
+        const ni = wns[k];
+        if (ni < 0) continue;
+        if (elev[ni] > 0) {
+          if (!reached[ni] && co[ni] === woc) { reached[ni] = 1; q[qt++] = ni; }
+        } else if (wd < hopBudget(woc)) {
+          pushWater(ni, woc, wd + 1);
+        }
+      }
+    }
+    wq.length = 0;
   }
   for (let ti = 0; ti < N; ti++) if (elev[ti] > 0 && co[ti] >= 0 && !reached[ti]) co[ti] = -1;
 }
@@ -792,14 +821,11 @@ function smoothCountryBorders(world, co, iters, pinWorked = false) {
   for (const s of world.settlements) { if (s.mode === "settled") prot[(s.pos.y | 0) * tw + (s.pos.x | 0)] = 1; }
   // Post-merge mode: every WORKED catchment tile (a live settlement's food
   // territory — the durable ledger land the merge just stamped) is pinned too.
-  if (pinWorked && world._territoryOwner && world._byId) {
-    const own = world._territoryOwner, byId = world._byId;
-    for (let ti = 0; ti < N; ti++) {
-      const oid = own[ti];
-      if (oid < 0) continue;
-      const s = byId.get(oid);
-      if (s && s.mode === "settled" && s.countryId >= 0) prot[ti] = 1;
-    }
+  if (pinWorked && world._territoryOwner) {
+    const own = world._territoryOwner;
+    const pinnable = new Set();
+    for (const s of world.settlements) if (s.mode === "settled" && s.countryId >= 0) pinnable.add(s.id);
+    for (let ti = 0; ti < N; ti++) { const oid = own[ti]; if (oid >= 0 && pinnable.has(oid)) prot[ti] = 1; }
   }
   let snap = world._smoothSnap;
   if (!snap || snap.length !== N) snap = world._smoothSnap = new Int32Array(N);

@@ -116,6 +116,7 @@ self.onmessage = (e) => {
       genMeta = m.genMeta || {};
       world = initPeopleSim(m.w, { seed: m.seed, tCrop: m.tCrop, tFlood: m.tFlood, tileRes: m.tileRes, deposits: m.w.deposits, tAncestry: m.tAncestry, terTw: m.terTw, terTh: m.terTh, ancestryCount: m.ancestryCount, ancHue: m.ancHue, tArrival: m.tArrival });
       world._wantMoneyFlows = (viewMode === "money");   // build the money-flow overlay only when its view is up
+      world._realWindGen = !!(genMeta && genMeta.realWind);   // terrain identity rides the WORLD (saves read it; caller meta is only a fallback)
       // Re-init resets the per-run snapshot/selection state. playing/speed/view
       // are NOT reset (the main thread re-sends its current values right after
       // init) — but if a previous world was mid-play, keep stepping the new one

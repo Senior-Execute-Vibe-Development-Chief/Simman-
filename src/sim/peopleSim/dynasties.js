@@ -589,6 +589,10 @@ function crown(world, polity, person, how, gov) {
 
   polity.rulerId = person.id;
   polity._reignSince = world.step;
+  // Keep the per-step sitting-ruler cache current: realms later in this same
+  // pass consult it (election pools, off-handler death exemptions) — a
+  // mid-pass crownee must be protected immediately, not next step.
+  if (world._sittingRulers && world._sittingRulersStep === world.step) world._sittingRulers.add(person.id);
   person.reignFrom = stepToYear(world, world.step) | 0;
   person.reignTo = -1;
   // open the reign's deed ledger (read back at death to earn an epithet)
@@ -866,7 +870,14 @@ export function updateDynasties(world) {
     if (!polity || polity.endedStep >= 0 || !c || !c.capital) continue;
     const k = c.capital.knowledge || {};
     const org = k.organization || 0;
-    if (org < LITERACY_MIN) continue;          // the time of legends — no records yet
+    // Literacy gates the FOUNDING of recorded dynastic history (a realm that
+    // never crossed it has no court to run). But a realm whose capital
+    // REGRESSED below literacy (sacked, relocated to a backwater) keeps its
+    // existing court: people still age, die and succeed even when the
+    // records lapse — skipping them entirely made the sitting ruler
+    // immortal (exempt from every other death sweep, and this, the only
+    // handler that can kill them, never ran).
+    if (org < LITERACY_MIN && !(polity.rulerId >= 0)) continue;   // the time of legends — no records yet
 
     // development → mortality softener (medicine/sanitation, read off the world)
     const dev = clamp01((org - 0.2) / 0.6);
@@ -914,7 +925,10 @@ export function updateDynasties(world) {
       if (mAge <= FERTILE_MAX && rng() < over(fert)) {
         birth(world, ruler, rng, false, mortF);
         const mother = ruler.female ? ruler : spouse;
-        if (mother && mother.died < 0 && mother.id !== ruler.id && !sittingRulers(world).has(mother.id) && rng() < MATERNAL_HAZARD * mortF) mother.died = world.step | 0;
+        if (mother && mother.died < 0 && mother.id !== ruler.id && !sittingRulers(world).has(mother.id) && rng() < MATERNAL_HAZARD * mortF) {
+          mother.died = world.step | 0;
+          if (mother.reignTo < 0 && mother.reignFrom >= 0) mother.reignTo = stepToYear(world, world.step) | 0;   // a dowager's reign closes at death (every other death site does this)
+        }
       }
     }
     // an acknowledged royal bastard (no tracked mother) — a claimant of last resort

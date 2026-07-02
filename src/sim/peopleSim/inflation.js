@@ -33,7 +33,11 @@ import { TECHS } from "./tech.js";
 // STATE condition for calibrating the price baseline: prices are measured
 // against the era when coin replaces barter, wherever and whenever a world
 // actually reaches it.
-const CURRENCY_ORG = (() => { const t = TECHS.find(t => t.id === "currency"); return t && t.gate ? t.gate[1] : 0.45; })();
+const CURRENCY_ORG = (() => {
+  const t = TECHS.find(t => t.id === "currency");
+  if (!t || !t.gate) throw new Error("inflation.js: tech tree has no 'currency' gate — the price-baseline condition must track it");
+  return t.gate[1];
+})();
 
 const INFLATION_INTERVAL = 50;        // ticks between recompute passes (slow drift)
 const EMA_ALPHA          = 0.05;      // per-pass smoothing — over many passes the

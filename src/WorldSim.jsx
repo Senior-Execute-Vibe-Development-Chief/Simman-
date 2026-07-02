@@ -935,11 +935,17 @@ if(t.deposits)w.deposits=t.deposits;
 let usedWorker=false;
 // Real-wind saves must load on the MAIN thread: the NCEP wind data lives in
 // this bundle only, so the worker's loadWorld would rebuild sim-wind terrain
-// under a civilization that grew on real-wind terrain.
-const _pendRW=pendingSaveRef.current&&pendingSaveRef.current.indexOf('"realWind":true')>=0;
+// under a civilization that grew on real-wind terrain. Decide from the
+// save's PARSED meta — a string sniff broke on any re-serialized save.
+let _pendMeta=null;
+if(pendingSaveRef.current){try{_pendMeta=JSON.parse(pendingSaveRef.current).meta||null;}catch{/* malformed JSON: loadWorld below raises the real error */}}
+const _pendRW=!!(_pendMeta&&_pendMeta.realWind);
 try{
-  if(_pendRW)throw new Error('real-wind save — loading on the main thread');
+  // Retire the previous sim worker FIRST, on every path: on the main-thread
+  // load route a surviving worker kept stepping the OLD world (the rAF loop
+  // defers to simWorkerRef) and its snapshots clobbered the loaded one.
   if(simWorkerRef.current){simWorkerRef.current.terminate();simWorkerRef.current=null;}
+  if(_pendRW)throw new Error('real-wind save — loading on the main thread');
   const sw=new PeopleSimWorker();
   sw.onmessage=(e)=>{
     const d=e.data;
@@ -951,7 +957,8 @@ try{
       a.download=`simman-history-t${d.step??""}.json`;a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href),5000);
     }
-    else if(d.type==='error'){console.error('[SimWorker]',d.message,d.stack);}
+    else if(d.type==='error'){console.error('[SimWorker]',d.message,d.stack);
+      if(d.message&&d.message.indexOf('load failed')===0)alert('Could not load save: '+d.message.slice('load failed: '.length));}
   };
   sw.onerror=(err)=>{
     console.warn('[SimWorker] error — falling back to main-thread sim:',err.message);
@@ -984,7 +991,14 @@ try{
 }catch(e){console.warn('[SimWorker] init failed — main-thread sim:',e);}
 if(!usedWorker){
   const _pend2=pendingSaveRef.current;
-  if(_pend2){pendingSaveRef.current=null;peopleRef.current=loadWorld(_pend2,{realWindFns:{isRealWindAvailable,fillRealWind}});}
+  if(_pend2){pendingSaveRef.current=null;
+  try{peopleRef.current=loadWorld(_pend2,{realWindFns:{isRealWindAvailable,fillRealWind}});}
+  catch(err){
+    console.error("load failed:",err);
+    alert("Could not load save: "+(err&&err.message));
+    peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});
+    peopleRef.current._realWindGen=!!w.realWindUsed;
+  }}
   else{peopleRef.current=initPeopleSim(w,{seed:w.seed,tCrop:t.tCrop,tFlood:t.tFlood,tileRes:RES,deposits:t.deposits,tAncestry:t.tAncestry,terTw:t.tw,terTh:t.th,ancestryCount:t.ancestryCount,ancHue:t.ancHue,tArrival:t.tArrival});peopleRef.current._realWindGen=!!w.realWindUsed;}
   setPsStats(peopleSimStats(peopleRef.current));
 }
@@ -3803,6 +3817,12 @@ return(
             pendingSaveRef.current=json;
             presetRef.current=meta.preset;setPreset(meta.preset);
             oceanLevelRef.current=meta.oceanLevel??0.78;
+            // The DISPLAYED terrain must be rebuilt with the save's own wind
+            // identity, not whatever the toggle happens to be — otherwise the
+            // rendered map and the simulated terrain diverge tile-by-tile,
+            // and the next save would be stamped with the wrong identity.
+            const _rw=!!meta.realWind;
+            if(useRealWindRef.current!==_rw){setUseRealWind(_rw);useRealWindRef.current=_rw;}
             if(meta.seed===seed)generate(seed);else setSeed(meta.seed);
           }catch(err){console.error("load failed:",err);alert("Could not load save: "+err.message);}
         }}/>

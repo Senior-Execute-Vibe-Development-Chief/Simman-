@@ -1054,8 +1054,10 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   // Intermediates are object references captured when trade reach was built
   // (a ~120-tick stagger) — a hub that died since then can neither charge nor
   // collect (paying a dead record leaked coin out of the closed supply).
-  const liveInters = intermediates ? intermediates.filter((x) => x.mode === "settled") : null;
-  if (liveInters) for (const inter of liveInters) {
+  // Liveness is checked inline: sellGoods runs per trading pair on the hot
+  // path, so no per-sale array allocation.
+  if (intermediates) for (const inter of intermediates) {
+    if (inter.mode !== "settled") continue;
     tollSum += 1 + TOLL_CHOKE_W * Math.min(1, inter.waterAccess || 0);   // chokepoint transit toll
     brokerSum += entrepotShare(inter);                                    // market re-export brokerage (0..1 per hub)
   }
@@ -1118,8 +1120,9 @@ function sellGoods(world, seller, buyer, goodsValue, freight, intermediates, num
   recordOut(buyer, OUT_MATERIALS, matPaid);
   recordOut(buyer, OUT_GOODS, goodsPaid);
   recordOut(buyer, OUT_TOLLS, (freight + totalToll + totalBroker) * scale);
-  if (liveInters) {
-    for (const inter of liveInters) {
+  if (intermediates) {
+    for (const inter of intermediates) {
+      if (inter.mode !== "settled") continue;
       const tollPer = goodsValue * TOLL_RATE * (1 + TOLL_CHOKE_W * Math.min(1, inter.waterAccess || 0)) * scale;
       inter.wealth = (inter.wealth || 0) + tollPer; recordIn(inter, IN_TOLLS, tollPer);
       // Re-export brokerage: the great market hubs (high entrepôt share) capture a
