@@ -205,7 +205,7 @@ const SEAT_BONUS_CAP = 10;   // total seat contribution is capped (admin has dim
 // from its coercive POWER, not fixed dials. capacity = CAP_K · log2(1 + capPower
 // / POW_REF) + seat bonuses. A stronger capital (army + people + development)
 // holds more; war / insolvency sap it; circumscription eases it. Replaces the
-// old CAP_BASE / CAP_POP / CAP_ORG count-forcing dials.
+// old count-forcing dials (CAP_BASE/CAP_POP/CAP_ORG — all removed).
 //
 // CAP_K is the coercion coefficient — how many reach-units of province a unit of
 // log-power holds. It sets the SUSTAINABLE empire size: the floor a realm

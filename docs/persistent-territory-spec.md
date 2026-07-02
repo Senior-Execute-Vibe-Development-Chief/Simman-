@@ -1,6 +1,6 @@
 # Spec — Make the political map TRACK the conquest ledger (live, variable nations)
 
-Status: proposed / not started. Owner: next session. Branch: `claude/ecstatic-keller-qy6100`.
+Status: **implemented, default-on** (PR #38: mergePersistentTerritory in countryTerritory.js). See docs/review-2026-07-civ-engine.md for post-merge fixes (zombie adoption, naval contiguity, smoothing pins).
 
 ## TL;DR
 

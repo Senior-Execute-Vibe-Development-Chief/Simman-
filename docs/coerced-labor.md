@@ -1,6 +1,6 @@
 # Coerced labour: slavery, cash crops & serfdom — design spec
 
-Status: **proposal** (not yet built). A plan for adding coerced labour as a real
+Status: **implemented, default-on** (slavery.js + updateCoercedLabour; levers T.SLAVERY / T.SLAVE_RAID / T.CASH_CROPS / T.SERFDOM). Originally a plan for adding coerced labour as a real
 economic factor, not a relabel of `people`.
 
 ---

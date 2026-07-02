@@ -79,7 +79,7 @@ const DOM_CAPTURE_P     = 0.4;         // …and BLITZES: its fronts take more c
 const ASSAULT_MARGIN    = 2;           // front must reach within (defender core + this) of the home
 const ASSAULT_ARMY_COST = 0.4;         // share of the victor's garrison spent taking a city
 // Offensive throttle & strategic depth now live in the NATIONAL WAR CAPACITY block
-// inside advanceFronts (national field army × WAR_CONCENTRATION / WAR_DEFENSE_DRAG / WAR_DEF_SPLIT / war-exhaustion):
+// inside advanceFronts (national field army × WAR_CONCENTRATION / WAR_DEFENSE_DRAG / DEF_PRIORITY / war-exhaustion):
 // a realm has finite force split across its fronts, so it can't conquer on one while
 // overrun on another, nor knife many neighbours at once, and an established power
 // fields reserves a small upstart can't match.
