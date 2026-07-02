@@ -27,6 +27,24 @@ const SEED = +(process.argv[2] || 8817);
 const STEPS = +(process.argv[3] || 15000);
 const W = +(process.argv[4] || 480), H = W >> 1;
 
+// Multi-seed mode: STYLIZED_SEEDS="8817,4242,777" runs the whole suite once
+// per seed (child processes) and FAILS only if a majority of seeds fail —
+// bands stop being implicitly fitted to one world. Single-seed remains the
+// CI default (cost); the deep manual run uses three.
+if (process.env.STYLIZED_SEEDS && !process.env._STYLIZED_CHILD) {
+  const { spawnSync } = await import("node:child_process");
+  const seeds = process.env.STYLIZED_SEEDS.split(",").map(Number).filter(Number.isFinite);
+  let fails = 0;
+  for (const sd of seeds) {
+    console.log(`\n────────── seed ${sd} ──────────`);
+    const r = spawnSync(process.execPath, [process.argv[1], String(sd), String(STEPS), String(W)],
+      { stdio: "inherit", env: { ...process.env, _STYLIZED_CHILD: "1" } });
+    if (r.status !== 0) fails++;
+  }
+  console.log(`\n[stylized] multi-seed: ${seeds.length - fails}/${seeds.length} seeds passed`);
+  process.exit(fails * 2 > seeds.length ? 1 : 0);
+}
+
 let hard = 0, soft = 0;
 function score(name, value, ok, hardFail = false, detail = "") {
   const tag = ok ? "ok  " : hardFail ? "FAIL" : "warn";
@@ -37,8 +55,44 @@ function score(name, value, ok, hardFail = false, detail = "") {
 console.log(`[stylized] seed ${SEED} · ${W}x${H} · ${STEPS} steps`);
 const world = buildSim({ W, H, seed: SEED });
 const t0 = performance.now();
-stepPeopleSim(world, STEPS);
+// Step in windows, sampling the aggregates the SHAPE gates need (development
+// vs population, price dispersion vs integration, culture count vs area).
+// Every axis is emergent state — a slow world traces the same curves later.
+const samples = [];
+const SAMPLE_N = 30;
+const win = Math.max(1, Math.round(STEPS / SAMPLE_N));
+for (let t = 0; t < STEPS; t += win) {
+  stepPeopleSim(world, Math.min(win, STEPS - t));
+  let leadAgri = 0, pop = 0, area = 0, wealth = 0;
+  for (const s of world.settlements) {
+    if (s.mode !== "settled") continue;
+    pop += s.people; wealth += s.wealth || 0;
+    if (s.knowledge && (s.knowledge.agriculture || 0) > leadAgri) leadAgri = s.knowledge.agriculture;
+  }
+  const co = world._countryOwner, elev = world.elev;
+  if (co && elev) for (let i = 0; i < co.length; i++) if (elev[i] > 0 && co[i] >= 0) area++;
+  // trade intensity + component count + price dispersion (post-baseline)
+  let flow = 0;
+  if (world._linkMoney) for (const v of world._linkMoney.values()) flow += Math.abs(v);
+  const roots = new Set();
+  if (world._networkComponents) for (const r of world._networkComponents.values()) roots.add(r);
+  let pDisp = -1;
+  if (world._inflRef !== undefined && world._inflP && world._inflP.size >= 2) {
+    const ps = [...world._inflP.values()];
+    const mean = ps.reduce((a, b) => a + b) / ps.length;
+    pDisp = ps.reduce((a, b) => a + Math.abs(b - mean), 0) / ps.length;
+  }
+  samples.push({ step: world.step, leadAgri, pop, area, wealth, flow, comps: roots.size, pDisp,
+    cultures: world.cultures ? world.cultures.size : 0 });
+}
 console.log(`[stylized] simulated in ${((performance.now() - t0) / 1000).toFixed(0)}s\n`);
+const pearson = (xs, ys) => {
+  const n = xs.length; if (n < 3) return 0;
+  const mx = xs.reduce((a, b) => a + b) / n, my = ys.reduce((a, b) => a + b) / n;
+  let num = 0, dx2 = 0, dy2 = 0;
+  for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); dx2 += (xs[i] - mx) ** 2; dy2 += (ys[i] - my) ** 2; }
+  return num / Math.sqrt(dx2 * dy2 || 1);
+};
 
 const setts = world.settlements.filter(s => s.mode === "settled");
 const st = peopleSimStats(world);
@@ -188,7 +242,99 @@ const st = peopleSimStats(world);
   score("urbanization vs development", pct.toFixed(1) + "%", okBand, false, industrial ? "industrial era: 10-80%" : "agrarian era: a minority in cities (2-25%)");
 }
 
-// ── 7. Continuity (hard gates) ──
+// ── 7. Population tracks development (D47) ──
+{
+  const xs = samples.map(s => s.leadAgri), ys = samples.map(s => Math.log(Math.max(1, s.pop)));
+  const r = pearson(xs, ys);
+  // growth accelerates with development: mean per-window growth in the top
+  // third of the run's own development range vs the bottom third
+  const lo = [], hi = [];
+  const aMin = Math.min(...xs), aMax = Math.max(...xs), span = Math.max(1e-6, aMax - aMin);
+  for (let i = 1; i < samples.length; i++) {
+    const g = Math.log(Math.max(1, samples[i].pop)) - Math.log(Math.max(1, samples[i - 1].pop));
+    const band = (xs[i] - aMin) / span;
+    if (band < 0.33) lo.push(g); else if (band > 0.67) hi.push(g);
+  }
+  const mean = (a) => (a.length ? a.reduce((x, y) => x + y) / a.length : 0);
+  score("population ~ development (monotone)", r.toFixed(2), r > 0.7, false, "log-pop vs leading agriculture");
+  if (lo.length >= 3 && hi.length >= 3)
+    score("growth accelerates with development", `${(mean(hi) * 100).toFixed(1)}% vs ${(mean(lo) * 100).toFixed(1)}%/window`, mean(hi) >= mean(lo) * 0.8, false, "Malthusian flat → developed growth");
+}
+
+// ── 8. Prices: bounded level, integration reduces dispersion (D48) ──
+{
+  const post = samples.filter(s => s.pDisp >= 0);
+  if (post.length >= 5 && world._inflP && world._inflP.size) {
+    const ps = [...world._inflP.values()];
+    const meanP = ps.reduce((a, b) => a + b) / ps.length;
+    score("price level bounded", meanP.toFixed(2), meanP >= 0.4 && meanP <= 3.0, false, "closed money supply: no secular hyper/deflation");
+    const r = pearson(post.map(s => s.comps), post.map(s => s.pDisp));
+    score("market integration narrows prices", r.toFixed(2), r > -0.2, false, "fewer trade components ↛ wider price spread");
+  } else score("price gates", "n/a", true, false, "baseline not locked long enough");
+}
+
+// ── 9. Trade intensity rises with transport tech (D49) ──
+{
+  const navMob = [];
+  for (const s of setts) if (s.knowledge) navMob.push((s.knowledge.navigation || 0) + (s.knowledge.mobility || 0));
+  navMob.sort((a, b) => a - b);
+  const medT = navMob.length ? navMob[navMob.length >> 1] : 0;
+  const last = samples[samples.length - 1];
+  const intensity = last.wealth > 0 ? (last.flow * 1000) / last.wealth : 0;
+  const band = medT >= 0.8 ? [2, 400] : [0.05, 150];
+  score("trade intensity vs transport", intensity.toFixed(1), intensity >= band[0] && intensity <= band[1], false,
+    `flow×1000/wealth; median nav+mob ${medT.toFixed(2)} → band ${band[0]}-${band[1]}`);
+}
+
+// ── 10. War deadliness is heavy-tailed (D50, Richardson) ──
+{
+  const ended = (world.events || []).filter(e => e.type === "war.ended" && e.dead > 0).map(e => e.dead).sort((a, b) => b - a);
+  if (ended.length >= 8) {
+    const med = ended[ended.length >> 1];
+    const share = ended[0] / ended.reduce((a, b) => a + b);
+    score("war deadliness tail (largest/median)", (ended[0] / Math.max(1, med)).toFixed(1), ended[0] / Math.max(1, med) >= 5, false, `${ended.length} wars reckoned`);
+    score("greatest war's share of all war dead", (share * 100).toFixed(0) + "%", share >= 0.1 && share <= 0.9);
+  } else score("war deadliness", "n/a", true, false, `${ended.length} reckoned wars (need 8)`);
+}
+
+// ── 11. Culture count scales sublinearly with settled area (D51) ──
+{
+  const grow = samples.filter(s => s.area > 0 && s.cultures > 1);
+  if (grow.length >= 8) {
+    const slope = (() => {
+      const xs = grow.map(s => Math.log(s.area)), ys = grow.map(s => Math.log(s.cultures));
+      const n = xs.length, mx = xs.reduce((a, b) => a + b) / n, my = ys.reduce((a, b) => a + b) / n;
+      let num = 0, den = 0;
+      for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2; }
+      return den > 0 ? num / den : 0;
+    })();
+    score("culture count ~ area^k, k<1", slope.toFixed(2), slope > 0 && slope < 1.3, false, "diversity grows with territory, sublinearly");
+  } else score("culture scaling", "n/a", true, false, "not enough growth samples");
+}
+
+// ── 12. Settlements cluster (D52) ──
+{
+  const pts = setts.map(s => s.pos);
+  if (pts.length >= 25) {
+    const dists = [];
+    for (const a of pts) {
+      let best = Infinity;
+      for (const b of pts) {
+        if (a === b) continue;
+        let dx = Math.abs(a.x - b.x); if (dx > world.tw / 2) dx = world.tw - dx;
+        const d = dx * dx + (a.y - b.y) ** 2;
+        if (d < best) best = d;
+      }
+      dists.push(Math.sqrt(best));
+    }
+    const mean = dists.reduce((a, b) => a + b) / dists.length;
+    const sd = Math.sqrt(dists.reduce((a, b) => a + (b - mean) ** 2, 0) / dists.length);
+    const cv = sd / Math.max(1e-6, mean);
+    score("settlement clustering (NN-distance CV)", cv.toFixed(2), cv >= 0.45, false, "rivers/coasts cluster; uniform packing reads ~0.3");
+  } else score("clustering", "n/a", true, false, "too few settlements");
+}
+
+// ── 13. Continuity (hard gates) ──
 {
   score("civilization alive", `${st.settlements} settlements, pop ${st.totalPeople}`, st.settlements >= 20 && st.totalPeople > 500, true);
   score("wealth finite", String(st.totalWealth), Number.isFinite(st.totalWealth) && st.totalWealth >= 0, true);

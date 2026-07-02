@@ -184,6 +184,7 @@ export function saveWorld(world, meta = {}) {
       plagued: world._plagued ? [...world._plagued] : [],
       truces: mapToArr(world._truces),                   // binding dyadic peace treaties
       warSeenAt: mapToArr(world._warSeenAt),             // war.began dedup hysteresis
+      warDead: mapToArr(world._warDead),                 // per-pair casualty ledger (war.ended events)
       schismAt: mapToArr(world._schismAt),               // per-religion-family schism cooldown
       cBudgetRamp: mapToArr(world._cBudgetRamp),         // per-country eased reach budget
       inheritReach: world._inheritReach ? [...world._inheritReach] : [],  // secession heirs skip the ramp
@@ -297,6 +298,7 @@ export function loadWorld(data, opts = {}) {
   world._plagued = new Set(t.plagued || []);
   world._truces = arrToMap(t.truces);
   world._warSeenAt = arrToMap(t.warSeenAt);
+  world._warDead = arrToMap(t.warDead);
   world._schismAt = arrToMap(t.schismAt);
   world._cBudgetRamp = arrToMap(t.cBudgetRamp);
   world._inheritReach = new Set(t.inheritReach || []);

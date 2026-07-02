@@ -18,7 +18,7 @@
 // (plate-boundary adjustments, the young-soil discount), pull more of
 // createTerritory in.
 
-import { buildWorld } from "./_harness.mjs";
+import { buildWorld, buildSim } from "./_harness.mjs";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 import { settlementPower } from "../src/sim/peopleSim/conquest.js";
 
@@ -57,7 +57,11 @@ for (const id in deposits) {
 }
 console.log(`[earthRun] deposits (richness>0.1):`, depCounts);
 t0 = performance.now();
-const world = initPeopleSim(w, { seed: w.seed, tCrop, tileRes: RES, deposits });
+// App-identical init via the harness (buildSim wires tFlood/tAncestry/tArrival
+// and the ancestry layer): the old hand-rolled initPeopleSim dropped the
+// floodplain mask, so every long-run report measured a floodplain-less world
+// the browser never simulates (review B63).
+const world = buildSim({ W, H, seed: SEED });
 console.log(`[earthRun] peopleSim init done in ${((performance.now() - t0) / 1000).toFixed(1)}s — cradle planted`);
 
 // ── 6. Step + report ─────────────────────────────────────────────────
