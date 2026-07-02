@@ -1,0 +1,445 @@
+[19] CONFIRMED CRITICAL src/sim/peopleSim/roads.js:255 (trade-networks)
+  _flowTiles sparse index never rebuilt from loaded roadFlow — unbounded flow growth and dead decay after save/load
+  DESC: ensureRoadArrays rebuilds _roadTiles from roadQuality after a load ('Rebuild from roadQuality if it exists but the index doesn't'), but for the flow index it only does `if (!world._flowTiles) world._flowTiles = new Set();`. persist.js:195 restores roadFlow with nonzero values, so every loaded flow tile is orphaned: the per-tick decay sweep in updateTrade (lines 783-790) iterates only _flowTiles an
+  FIX: Mirror the roadQuality rebuild: when _flowTiles is missing but roadFlow exists, populate it with every tile where roadFlow[ti] >= FLOW_EPS.
+
+[42] CONFIRMED CRITICAL src/sim/peopleSim/entities.js:113 (events-history+events-history+history-shape+history-shape)
+  reconcilePolities runs against a stale countries map — every same-pass secession is instantly logged 'Dissolved'
+  DESC: reconcilePolities (called at conquest.js:2135, end of updatePolities) checks registered polities against the `countries` map built by rebuildCountries at the TOP of the same pass (conquest.js:1565). But shedPatch (conquest.js:977) and declareIndependence (conquest.js:1100) mint new states MID-pass — they register the polity (silently) and log polity.seceded, but never enter the stale map. Reconcil
+  FIX: Reconcile against the CURRENT truth, not the pass-start snapshot: recompute the set of live country ids from world.settlements (s.mode==='settled' && s.countryId>=0) inside reconcilePolities, or defer the end-scan to the start of the NEXT polity pass
+
+[52] CONFIRMED CRITICAL src/sim/persist.js:182 (persistence)
+  Static site attributes _riverAcc/_confine/_rugged are computed only in makeSettlement and never restored on load
+  DESC: makeSettlement (settlement.js:320-323) derives _riverAcc, _confine and _rugged from terrain once at founding. loadWorld reconstructs settlements by spreading the saved record ({kind:'settlement', ...rec}) without calling makeSettlement or recomputing these, and they are not in SETT_FIELDS — so after load every settlement has them undefined forever (probe: 23/23 settled had them before save, 0/23 a
+  FIX: In loadWorld, after pushing each settlement, recompute the three static derivations from terrain (deterministic, cheap): re-run computeWaterAccess/computeConfinement/computeRuggedness — export them or a `rederiveSiteStatics(world, s)` helper from set
+
+[75] CONFIRMED CRITICAL src/sim/peopleSim/settlement.js:320 (save-load+save-load)
+  Creation-only settlement statics _riverAcc/_confine/_rugged not in SETT_FIELDS and never recomputed — loaded river-valley cradles turn into penalized desert
+  DESC: makeSettlement computes s._riverAcc (river component of water access), s._confine (circumscription) and s._rugged (ruggedness) once at creation; they are read forever with '|| 0' fallbacks and are NOT in SETT_FIELDS (waterAccess and _buildableArea, computed on the same lines, ARE saved). Loaded settlements therefore read 0 permanently: aridSignal(s._climTemp, s._climMoist, s._riverAcc || 0) applie
+  FIX: Recompute these deterministically in loadWorld's settlement loop (they are pure functions of pos + static terrain), or add them to SETT_FIELDS.
+
+[1] CONFIRMED MAJOR src/sim/peopleSim/armies.js:242 (war-conquest)
+  Stale gov._solvency permanently deserts the garrisons of realms that shrink to a single member
+  DESC: updatePolities skips single-member realms entirely (conquest.js:1693 `if (c.members.length <= 1) { ... continue; }`), so disburseTreasury never runs for them and gov._solvency (set at conquest.js:1249) is never recomputed. The polity record persists (entities.js; endPolity resets _momentum but not _solvency). musterArmies reads that stale value every muster and applies BANKRUPT_DESERT. The design 
+  FIX: Reset gov._solvency = 1 (and gov._taxRate) in the single-member branch of updatePolities, or in endPolity/ensurePolity-restore alongside _momentum.
+
+[2] CONFIRMED MAJOR src/sim/peopleSim/armies.js:210 (war-conquest)
+  CONSCRIPT_WINDOW (and sibling tick windows) not scaled for SIM_GRANULARITY — conscription silently never fires at G >= 4
+  DESC: The granularity system stretches pass intervals by G (index.js _ivl) and the same file scales TRUCE_TICKS and WAR_MEMORY by /(world._dt) (armies.js:636, 722), but CONSCRIPT_WINDOW = 200 raw ticks (line 44) is compared against c._warStamp, which is only refreshed every CONQUEST_INTERVAL*G ticks. With defaults (CONQUEST_INTERVAL=50, MUSTER_INTERVAL=100) at G=4 the war pass runs every 200 ticks and m
+  FIX: Divide every duration constant compared against world.step by world._dt (or multiply by G), exactly as the truce/WAR_MEMORY code already does: CONSCRIPT_WINDOW, SIEGE_WINDOW, HOMELAND_MEMORY, COLONY_SUPPLY_TICKS (and audit T.CONQUEST_GRACE / T.RECENC
+
+[5] CONFIRMED MAJOR src/sim/peopleSim/settlement.js:2253 (demography-food)
+  Unclamped Euler logistic: a carrying-capacity crash kills a large city in one tick (population can go negative), bypassing the designed granary/famine path
+  DESC: Population update is `s.people += T.SETT_GROWTH * _dt * s.people * (1 - s.people / K)` with no clamp on the decline side. When K crashes far below people (K = max(8, foodK); foodK can drop to ~0 when a war front cuts _terrWorkTiles to 0, a secession severs the liege food tree, or cash-crops/famine gut landFood), the term (1 - people/K) is hugely negative. For people/K > 1/(SETT_GROWTH*_dt)+1 (~556
+  FIX: Clamp the decline branch, e.g. multiply by max(1 - people/K, -DECLINE_FLOOR) or use the exponential form people *= exp(r·(1-P/K)·dt); route K-crash starvation through the same 0.985^dt die-off so the granary actually buffers.
+
+[6] CONFIRMED MAJOR src/sim/peopleSim/settlement.js:1737 (demography-food)
+  Farm-labour floor is charged on every reachable territory tile, but the harvest sum excludes sub-minFert and distance-discounted tiles — claiming worthless land actively destroys food
+  DESC: netFert = max(0, _terrFertSum − _terrWorkTiles × FARM_FERT_FLOOR). In territory.js tallyTerritory (lines 397–406), _terrWorkTiles counts EVERY owned reachable tile, while _terrFertSum adds only tiles with f ≥ _terrMinFert (0.30 − 0.20·ag) and weights them by foodFalloff(cost). So barren desert/mountain tiles contribute zero harvest but full 0.05 labour cost, and far fertile tiles are harvest-disco
+  FIX: Charge the labour floor only on tiles that are actually farmed (the ones entering fertSum), and discount it with the same foodFalloff — i.e. accumulate max(0, f − FLOOR) · falloff per tile, which preserves the intended per-tile break-even at f = FLOO
+
+[7] CONFIRMED MAJOR src/sim/peopleSim/settlement.js:1970 (demography-food)
+  Fishing yield ignores technology entirely: techEffects.fishFactor is computed but never read, so navigation/fishery techs are a no-op
+  DESC: The fish formula is `fish = T.FISH_RATE * sea * seaRich * poor` — pure static climate/geography. tech.js:439 computes fishFactor (0.3 + lerp(nav·1.2, ch.fish, blend)), explicitly documented as 'what the sim reads', and the fish techs in the tree grant ch.fish — but a repo-wide grep shows nothing consumes fishFactor. The stale header comment at settlement.js:154-158 still describes the old formula 
+  FIX: Multiply the catch by techEff(s).fishFactor (and by _eraProd, or update the index.js comment), and make FISH_LAND_REF scale with _eraProd so 'land-poor' stays a relative, era-consistent signal.
+
+[9] CONFIRMED MAJOR src/sim/peopleSim/shocks.js:120 (demography-food+performance+long-run)
+  Virgin-soil sweep filters the 'unexposed pool' against the scanning port's load, not the low side's — immune mid-load settlements get 6× virgin mortality when the high-load port hosts the sea link
+  DESC: contactEpidemic sets lo/hi correctly, but the sweep skip condition is `(n._diseaseLoad||0) >= sl + CONTACT_GAP` where sl is the SCANNING settlement s's load. When s is the HIGH-load side (the Old-World port whose _seaReach holds the link), sl+GAP sits above every load in the world, so the filter admits everything within VIRGIN_RADIUS of lo — including settlements whose load is within CONTACT_GAP o
+  FIX: Compare against the epidemic's actual immunity frontier: skip when (hi._diseaseLoad − n._diseaseLoad) < CONTACT_GAP (or n.load >= lo.load + small margin).
+
+[11] CONFIRMED MAJOR src/sim/persist.js:129 (money-economy+territory-map+culture-faith+persistence+time-gates+time-gates+time-gates+outcome-fitting+determinism+conservation+conservation+conservation+save-load+integration-deadcode+integration-deadcode)
+  Inflation baseline (_inflRef) and sim price levels (_inflP) are not persisted — save/load silently resets the whole price system
+  DESC: saveWorld persists only the DISPLAY inflation map (`inflRaw`); neither `world._inflRef` (the permanent M/T calibration reference, documented in inflation.js as 'used forever after — the whole point is that *changes* from this baseline are what inflation/deflation report') nor `world._inflP` (the sim-facing per-component price levels) is saved. On load, `_inflRef` is undefined, so the next updateIn
+  FIX: Persist `world._inflRef` (a scalar) and `world._inflP` (mapToArr like inflRaw) in saveWorld/loadWorld, and mix them (or at least _inflRef) into hashWorld so the roundtrip test guards them.
+
+[12] CONFIRMED MAJOR src/sim/peopleSim/slavery.js:41 (money-economy+money-economy+conservation+integration-deadcode)
+  Slave raiding double-scales with SIM_GRANULARITY (×dt on a pass whose interval is already stretched by G)
+  DESC: updateSlaveTrade is invoked at `world.step % _ivl(SLAVE_INTERVAL) === 0` (index.js:280), i.e. the pass interval is stretched ×G so each pass always covers the same span of HISTORY — the convention under which per-pass amounts must stay unscaled (taxes, pilgrimage, tribute all do this). But the raid grab additionally multiplies by `dt = 1/G`: `(v.people) * T.SLAVE_RAID * dt`. Per unit of history, r
+  FIX: Drop the `* dt` from the raid grab (the _ivl-stretched cadence already keeps the per-history rate constant), or gate the pass on unstretched SLAVE_INTERVAL and keep ×dt — one scaling, not two.
+
+[15] CONFIRMED MAJOR src/sim/persist.js:40 (money-economy+persistence+persistence+conservation)
+  s._credit is not persisted — with banking on, every save/load re-mints credit on top of credit-inflated wealth
+  DESC: SETT_FIELDS carries the coerced-labour stocks (`_unfree`, `_cashFrac`, `_captives`) but not `_credit`, the Phase-5 record of how much of a hub's wealth is bank-conjured. `s.wealth` (which INCLUDES the credit already added) is saved; `_credit` is dropped. After load, updateWealth sees `cur = 0`, so `base = wealth − 0` counts the old credit as specie backing and conjures a fresh credit layer on top 
+  FIX: Add "_credit" to SETT_FIELDS.
+
+[20] CONFIRMED MAJOR src/sim/peopleSim/sea.js:182 (trade-networks)
+  luxuryGoal reads _seaReach immediately after updateSea nulls it — the spice-quest 'sated' and 'already reachable' guards are dead code
+  DESC: updateSea's first loop sets `s._seaReach = null` for every settled settlement (line 182). The colony-eligibility pass then calls luxuryGoal(world, p) at line 235 — BEFORE the ocean flood and transitive closure rebuild the reach (lines 286-436). Inside luxuryGoal, `if (A._seaReach && byId)` (line 482) is always false, so reachSupply is always 0 and the `reachSupply >= A._luxDemand` sated check (lin
+  FIX: Snapshot each port's previous-pass reach before clearing (or defer the _seaReach = null clear until after the eligibility pass, or compute quest goals after the transitive closure).
+
+[23] CONFIRMED MAJOR src/sim/peopleSim/countryTerritory.js:971 (territory-map+founding-state)
+  adoptAndFound assigns DEAD country ids off the stale rendered claim — resurrects fallen realms and rips towns out of live ones
+  DESC: Villages/towns take their country from grownOwnerAt (countryClaim.js:58), which returns world._countryClaim — the slowly-eroding RENDER crawl — with no check that the returned country still exists (has any settled member). When a country dies mid-interval, its drawn claim lingers for many relax passes; at the next territory tick every village/town standing on those tiles executes `s.countryId = re
+  FIX: In adoptAndFound/crystallize, resolve region through an alive-set (countries with ≥1 settled member, already computed as `alive` in mergePersistentTerritory) and treat dead ids as -1; optionally have relaxClaim erode dead-country claim tiles immediat
+
+[25] CONFIRMED MAJOR src/sim/peopleSim/territory.js:274 (territory-map)
+  Settlement food-catchment Dijkstra cannot cross water: owner is lost at water tiles, killing the documented navy far-shore reach
+  DESC: The catchment Dijkstra pushes water tiles to propagate the cost frontier ('Walk THROUGH water (so a navy reaches the far shore)', lines 320-324) but never assigns them an owner (`if (lk < 0 && elev[ni] > 0) owner[ni] = oid`). When a water tile is popped, the claimant is recovered from `owner[ti]` (line 274) — which is -1 for water — so `bud = budget.get(-1) || 0` = 0 and `kn = undefined`, and ever
+  FIX: Carry the claimant id in the heap entries (3-field heap like countryTerritory.js's MinHeap) instead of re-deriving it from owner[ti].
+
+[27] CONFIRMED MAJOR src/sim/peopleSim/countryTerritory.js:389 (territory-map+persistence+determinism+save-load)
+  Reach-ramp (_cBudgetRamp) and claim pressure (_claimPress) are unserialized — every realm's reach snaps back to the cradle base on load
+  DESC: world._cBudgetRamp (the eased per-country reach budget, BUDGET_RAMP=0.06/pass) and world._claimPress (front breakthrough pressure) survive across passes but are not in persist.js. On load, every existing country re-enters the `prev === undefined` branch and is re-seeded at `Math.min(target, COUNTRY_REACH_BASE * resScale)` — a mature empire's fresh projection collapses to cradle reach and takes ~1/
+  FIX: Serialize _cBudgetRamp (a small countryId→number map) and _claimPress, or on load seed ramp entries at their full size-scaled targets (treat every loaded country as _inheritReach).
+
+[28] CONFIRMED MAJOR src/sim/peopleSim/state.js:360 (founding-state+determinism+cradle-probe+cradle-probe)
+  seedEarthHearths has no cross-hearth separation — Nile and Mesopotamia cradles seat on the identical tile (95,28) on the smoke map
+  DESC: Each entry in EARTH_HEARTH_SITES is snapped independently to the best fertile river tile in a search window of radius R = Math.max(6, Math.round(tw * (site.r ?? 0.04))) (line 341), with no check that a previously-seeded hearth already took (or is near) the chosen tile. On the smoke map (320x160 -> tw=160) the Nile centre is cx=93 and Mesopotamia's cx=100, only 7 tiles apart, while the Math.max(6,.
+  FIX: Track picked hearth tiles in seedEarthHearths; when scoring a site, exclude candidates within a minimum separation of an already-seeded hearth (reuse CRADLE_MIN_SEP scaled to tw, or at minimum the effective settlement spacing); if a site's whole wind
+
+[29] CONFIRMED MAJOR src/sim/peopleSim/crystallize.js:795 (founding-state)
+  Colony parties and urban genesis ignore SIM_GRANULARITY — at G>1 they run G× faster per unit of history than the rest of the sim
+  DESC: index.js's granularity contract (lines 156-167) is that per-tick rate processes scale by dt=1/G or stretch their interval by G so 'the SAME emergent history unfolds over G× more ticks'. The crystallization sweep honors it — its spawn probability multiplies by (world._dt || 1) (crystallize.js:437). But in the same file, maybeSendSettlers rolls `rng() >= COLONY_CHANCE * colonySat * devFactor` (line 
+  FIX: Treat colony and urban-genesis rolls as rate passes: either multiply COLONY_CHANCE/URBAN_CHANCE by world._dt, or stretch COLONY_CHECK_INTERVAL, URBAN_CHECK_INTERVAL and COLONY_COOLDOWN by G the way index.js stretches MUSTER/CONQUEST/POLITY intervals.
+
+[32] CONFIRMED MAJOR src/sim/language.js:215 (culture-faith)
+  branchLanguage seed collision: same-parent branches in one pass are byte-identical clone languages
+  DESC: branchLanguage derives the child seed as hash32(parent.seed, 'branch', parent.gen, world.step) and never increments parent.gen or folds in a per-child discriminator. Two branches of the same parent tongue created at the same world.step therefore get the SAME seed, copy the same active arrays, and apply identical drift sequences — producing two 'different' language ids that are perfect clones (same
+  FIX: Fold the freshly allocated child id into the seed: const s = hash32(parent.seed, 'branch', parent.gen, world.step, id) >>> 0; (id is already computed two lines above). Deterministic, and no two branches can ever share a seed.
+
+[33] CONFIRMED MAJOR src/sim/peopleSim/faiths.js:241 (culture-faith)
+  MIX_FLOOR pops sub-5% conversion increments every pass — faith spread has a hidden all-or-nothing threshold
+  DESC: normalizeMix pops any tail entry below MIX_FLOOR=0.05 whenever mix.length > 1, and mixFaithToward calls it after every conversion nudge. The per-pass conversion increment is T.FAITH_SPREAD_RATE * str * 3 = 0.165·str with str = min(0.5, bw/3), so any pull with bw < ~0.91 produces an increment < 0.05 that is inserted, immediately popped, and renormalized back to exactly the prior state — zero net co
+  FIX: Only apply the floor to entries that are DECAYING (were present last pass and fell below the floor), or skip the pop for the entry just added this call, letting CONFORMITY/consolidation erase true ghosts. Alternatively accumulate sub-floor pressure o
+
+[35] CONFIRMED MAJOR src/sim/peopleSim/dynasties.js:661 (dynasties)
+  MAX_HOUSE roster slice silently orphans LIVING royals who then never die (immortal claimants)
+  DESC: reapHouse caps the living roster with `keep.slice(0, MAX_HOUSE)`, dropping the newest-enrolled living members (typically newborn royals). Removal from `dyn.members` is the ONLY path by which lifespan mortality is applied to non-ruler persons (reapHouse and reapIdleHouses both iterate rosters; prunePersons only deletes the dead). A sliced-off living person is never reaped by anything, so they age f
+  FIX: Never remove living persons from the roster to enforce the cap — enforce MAX_HOUSE only as a breeding gate (as growCadets already does, and add the same gate to the monarch-birth/bastard paths). If a hard roster cap must exist, mark the overflow dead
+
+[36] CONFIRMED MAJOR src/sim/peopleSim/dynasties.js:538 (dynasties)
+  selectElected draws candidates from every same-culture house world-wide, including other realms' ruling houses and sitting monarchs
+  DESC: The candidate loop filters only on `d.endedStep >= 0 || d.cultureId !== polity.cultureId`, contradicting its own comment ('elders of every house currently seated in the realm'). Any republic/elective realm can elect an elder — or the reigning king — of a house currently ruling a DIFFERENT realm of the same culture. crown() then sets this polity's rulerId/dynastyId to the foreign person/house: two 
+  FIX: Restrict the pool to houses tied to THIS polity (polity.houses + polity.dynastyId — exactly what nobleUpkeep maintains), and exclude any person who is currently some polity's rulerId or another court's spouse.
+
+[38] CONFIRMED MAJOR src/sim/peopleSim/dynasties.js:204 (dynasties)
+  Dynasty clock ignores SIM_GRANULARITY: rulers age per tick, not per unit of history
+  DESC: Every other duration system scales by world._dt so 'the SAME emergent history unfolds over G× more ticks' (index.js:157-165; cultures/faiths/shocks all divide durations by _dt). But ageOf/reigns/tenure use dynYear = DYN_START + step*0.25 — a fixed per-TICK rate. updateDynasties even compensates its pass span (`ivl = DYNASTY_INTERVAL * 1/_dt`, line 804) and inCrisis scales its window by _dt, showin
+  FIX: Define dynastic time in history-units: accumulate a dyn-year counter advanced by DYN_RATE * world._dt per tick (persisted), or pass _dt into dynYear. DYN_RATE then means 'human-life years per history-unit' — a physical rate — instead of being tuned t
+
+[43] CONFIRMED MAJOR src/sim/peopleSim/historiography.js:56 (events-history)
+  Information horizon bypassed for coordinate-less TRAVELS events — every realm hears every era advance and realm death worldwide
+  DESC: distTo returns 0 when the event has no x/y, i.e. 'unknown location' is treated as 'happened at our capital'. Two of the seven TRAVELS types are always logged without coordinates: era.reached (chronicle.js:62) and polity.ended (entities.js:94) — measured 33/33 and 102/102 missing x/y. With d=0, know clamps to 1 and the `r > know` skip can never fire, so 100% of these foreign events (132/132 in the 
+  FIX: Log the polity's capital coordinates on era.reached and polity.ended (both call sites have the capital in hand), and make distTo treat a missing location as beyond the horizon (return Infinity) or resolve it from the event's polity's capital — unknow
+
+[49] CONFIRMED MAJOR src/sim/peopleSim/settlement.js:1406 (tech)
+  Construction learning still scales with raw province population, defeating the documented urban-core fix
+  DESC: The comment at lines 1291-1302 explains that specialist-class tech growth was deliberately moved from sqrt(s.people) to sqrt(s._urbanPop) (sciSqrt) because under DISSOLVE_FARMS (default 1) a settlement's `people` bundles its whole rural province, and keying tech growth off it "let a big farming region race up the tech ladder". Organization, metallurgy, navigation and mobility were converted to sci
+  FIX: Use sciSqrt (and consider a min(1, ·/REF) clamp like popF) in the construction multiplier; keep raw fc/population only where peasant labour genuinely drives the track (agriculture already uses territory tiles, not pop).
+
+[53] CONFIRMED MAJOR src/sim/settlement.js:1667 (persistence)
+  Per-tile soil fatigue (world._soilFatigue) is not saved — millennia of salinisation erased by load
+  DESC: updateSoil maintains a cumulative per-tile Float32Array explicitly designed so 'The LAND remembers ... a region that wrecked its soil stays poor even as settlements come and go' (SOIL_EXHAUST default 0.5, on). It is neither in the save's maps{} nor rebuildable — it is history, not a cache. On load it silently re-allocates zeroed (probe: 493 fatigued tiles before save, array absent after load), and
+  FIX: Add `soilFatigue: b64FromTyped(world._soilFatigue)` to maps{} and restore it in loadWorld (same loadTyped pattern, Float32Array, length N).
+
+[54] CONFIRMED MAJOR src/sim/persist.js:161 (persistence+time-gates+determinism+save-load)
+  world.countries left empty after load until the next polity pass — political layer (alliances, dominance, civYear, anchor) blind for up to POLITY_INTERVAL ticks
+  DESC: loadWorld sets `world.countries = new Map()` and never repopulates it; the only rebuild is rebuildCountries inside updatePolities (conquest.js:1565), which runs every T.POLITY_INTERVAL=150 ticks. During that window: index.js:189-194 computes _leadOrg=0 so world._civYear=-6000 (identity-era weights in cohesion.js snap to ancient, casus-belli neutralised); updateAlliances (conquest.js:1691) hasn't r
+  FIX: At the end of loadWorld call rebuildCountries(world) and updateAlliances(world) (or persist and restore _civYear/_leadOrg), so the first ticks read the same political state the saved world had.
+
+[55] CONFIRMED MAJOR src/sim/peopleSim/armies.js:377 (persistence+determinism+save-load)
+  Peace treaties (world._truces) and war hysteresis (world._warSeenAt) not saved — wars restart early and duplicate war.began events after load
+  DESC: Truces are binding dyadic treaties lasting T.TRUCE_TICKS (default 1500) — the mechanism that makes war episodic — and _warSeenAt is the WAR_MEMORY dedup that stops an ongoing front re-logging 'war.began'. Neither is in the save's tables{} (which does save the related _warExhaust and _manpower, so war state was clearly meant to persist). Probe: 4 live truces before save, Map gone after load.
+  FIX: Add `truces: mapToArr(world._truces)` and `warSeenAt: mapToArr(world._warSeenAt)` to tables{} and restore with arrToMap in loadWorld.
+
+[56] CONFIRMED MAJOR src/sim/peopleSim/inflation.js:82 (persistence+save-load)
+  Inflation persists the cosmetic map (_inflRaw) but drops the behavioral ones (_inflP price level and _inflRef baseline)
+  DESC: persist.js tables{} saves world._inflRaw — the DISPLAY-facing wheat-ticker map — but not world._inflP (the SIM-facing price level read by localP/localPByCountry for wages, food prices, building costs) nor world._inflRef (the baseline 'used forever after'; the comment says 'the whole point is that *changes* from this baseline are what inflation/deflation report'). After load, localP returns 1 every
+  FIX: Persist _inflRef (scalar) and _inflP (mapToArr) alongside _inflRaw; restore both in loadWorld.
+
+[57] CONFIRMED MAJOR src/sim/peopleSim/countryTerritory.js:373 (persistence+save-load)
+  Dead read of world.personalities — expansionism no longer affects territorial claim budgets
+  DESC: Personalities were moved onto the persistent polity record (entities.js header: 'temperament (the old world.personalities...)'; personality.js:171-180 stores pol.personality), but countryTerritory.js still reads `world.personalities`, which is never assigned anywhere in the codebase (verified by grep). persMul is therefore always 1 and CLAIM_PERS_SPAN ('±25% budget at the expansionism poles', line
+  FIX: Read the polity record instead: `const p = getPolity(world, c); const pers = p && p.personality;` (or `world.countries.get(c)?.personality`).
+
+[61] CONFIRMED MAJOR src/sim/peopleSim/state.js:268 (worldgen-coupling)
+  River network point-sampled to the sim grid drops ~64% of major/great river tiles, fragmenting the navigable spine
+  DESC: initRiverMag downsamples the pixel-resolution riverMag into the sim's TILE_RES=2 grid by POINT-sampling the top-left pixel of each 2x2 block (`rm[ty*tw+tx] = w.rivers.riverMag[py*w.width+px]`). Rivers are 1-pixel-wide D8 flow chains — the thinnest feature in the whole pipeline. This is exactly the failure that initTerrain's fert MAX-POOL (state.js:120-131) and the tFlood block-OR (state.js:143-155
+  FIX: MAX-POOL riverMag over the TILE_RES x TILE_RES worldgen block exactly like fert/tFlood: take the max riverMag across the block so a river passing through ANY sub-pixel marks the tile, preserving connectivity of the navigable spine at the sim resoluti
+
+[63] CONFIRMED MAJOR tools/earthRun.mjs:60 (tools-validation)
+  earthRun builds the sim without tFlood/tAncestry/tArrival — not app-identical despite claiming to be
+  DESC: earthRun.mjs uses the harness's buildWorld() but then hand-rolls initPeopleSim with only {seed, tCrop, tileRes, deposits}, dropping tFlood (the arid-river floodplain mask that drives dense Nile/Indus valley settlement and a moisture floor of 0.45 per state.js:143-155), tAncestry/tArrival/ancestryCount/ancHue (the ancestry layer), and terTw/terTh. The app passes all of these (peopleSimWorker.js:117
+  FIX: Replace lines 42-61 with `const world = buildSim({ W, H, seed: SEED });` (it accepts the same W/H/seed and returns an app-identical running sim), keeping the worldgen stat prints by reading world fields.
+
+[64] CONFIRMED MAJOR tools/stylized.mjs:48 (tools-validation)
+  Zipf gate measures province populations (urban+rural), not city sizes, under the default DISSOLVE model
+  DESC: The gate claims 'city sizes follow a rank-size power law' but ranks s.people. With DISSOLVE_FARMS=1 (the default, tuning.js:45), s.people is the whole province: urban core PLUS rural countryside (settlement.js:2279-2280 splits s.people into _ruralPop/_urbanPop). The suite's own urbanization gate 30 lines later explicitly corrects for this ('a settlement's people = urban core + rural countryside, s
+  FIX: Mirror the urbanization gate's mode switch: `const sizes = setts.map(s => hasRural ? (s._urbanPop || 0) : s.people).filter(p => p > 50)...`, and fit with the Gabaix–Ibragimov rank−1/2 correction to remove the known OLS small-sample bias.
+
+[67] CONFIRMED MAJOR src/sim/peopleSim/settlement.js:1668 (determinism+save-load)
+  world._soilFatigue (millennia of soil exhaustion) is not saved — load silently resets every field to pristine
+  DESC: Soil fatigue is genuine, irreplaceable cross-tick state: updateSoil accumulates per-tile fatigue from farming and heals it slowly, and updateFood applies it as a production penalty (settlement.js:1853). persist.js's own contract says real cross-tick state belongs in the save, yet saveWorld serializes neither world._soilFatigue nor s._soilFatigue; loadWorld recreates a zeroed Float32Array on first 
+  FIX: Add world._soilFatigue to persist.js maps (b64FromTyped like roadQuality) and restore it in loadWorld; extend hashWorld to sample it so the smoke test guards it.
+
+[68] CONFIRMED MAJOR src/sim/persist.js:98 (determinism)
+  Save meta omits the real-wind flag (and import raster): loadWorld rebuilds different terrain under the saved civilization
+  DESC: Saves record only {W,H,seed,preset,oceanLevel,tecParams}. loadWorld → pipeline.buildWorld → generateWorld(...,true,false,tecParams) hard-codes realWind=false (pipeline.js:569), and the peopleSim worker that executes 'load' cannot access the NCEP data anyway (it lives only in the main bundle — worldGenWorker.js header). worldgen.js:258 shows real winds replace the whole wind field, changing moistur
+  FIX: Record realWind in meta and refuse/mark saves it can't reproduce (or route real-wind loads through the main thread that owns the data); for preset 'import', either embed the rasterised elevation in the save or reject saving with a clear message.
+
+[71] CONFIRMED MAJOR src/sim/peopleSim/state.js:339 (conservation+integration-deadcode+cradle-probe)
+  Earth hearth seeding has no separation check — Nile and Mesopotamia cradles found on the SAME tile
+  DESC: seedEarthHearths loops over EARTH_HEARTH_SITES and independently picks each site's best tile with no minimum-separation or occupancy check (the algorithmic path enforces CRADLE_MIN_SEP=60). The Nile (fx 0.580, default r=0.04·tw) and Mesopotamia (fx 0.622, r=0.02·tw) search boxes overlap at most resolutions, so both snap to the identical best river tile and two cradle settlements are founded at exa
+  FIX: Track already-seeded hearth tiles and reject candidates within CRADLE_MIN_SEP (or at least within the other sites' search radii); optionally shrink the Nile's default search radius the way Mesopotamia's and the Yellow River's were tightened.
+
+[79] CONFIRMED MAJOR src/sim/peopleSim/conquest.js:1562 (performance)
+  updatePolities is a monolithic ~0.7s pass whose cost grows with development (per-country Dijkstra area ∝ range²)
+  DESC: The whole polity pass — rebuildCountries, one capitalTransportCosts Dijkstra per country (search bound maxCost = c.range*25, so explored AREA grows quadratically as org/logistics tech raises range), the per-member load/unrest/tax loops, absorbWeakNeighbors, eliminateEnclaves (full-map flood, 1.33s self in the profile), and updateAlliances (O(N) tile scan with two Map lookups per tile every 600 tic
+  FIX: Spread the pass: process k countries per tick round-robin (each country still updated every POLITY_INTERVAL on its own phase), and amortize eliminateEnclaves/updateAlliances the same way. All state is per-country, so this is a mechanical restructure 
+
+[24] PLAUSIBLE MAJOR src/sim/peopleSim/countryTerritory.js:633 (territory-map)
+  Persistent merge wipes ALL across-water reach claims — the mare-nostrum / colonial-coast mechanism is dead with the default lever ON
+  DESC: mergePersistentTerritory's connectivity flood is seeded ONLY from worked-catchment core tiles (lines 601-611) and propagates 4-neighbour over LAND (`elev[ni] <= 0 continue`, line 629). The fresh reach-Voronoi deliberately lets a naval realm claim the far shore of a strait/enclosed sea (line 536: 'the two shores of a narrow sea knit into ONE contiguous realm'), and relaxClaim has a dedicated across
+  FIX: Also seed the connectivity flood from tiles the FRESH reach actually reached this pass (world._countryCost[ti] finite and co[ti]===owner), per the spec's 'core/reached' wording; or allow the flood to hop water within a navigation-scaled budget.
+
+[78] UNVERIFIED MAJOR src/sim/peopleSim/tuning.js:213 (performance)
+  SEA_MAX_PEERS=64 defeats the 12-partner trade bound — trade pass grows super-linearly and becomes the #2 tick cost
+  DESC: roads.js caps land trade reach at MAX_PARTNERS=12 explicitly to keep the bilateral trade pass O(settlements x 12) — its comment calls this 'the single biggest lever on the per-tick trade cost'. But every sailing port also keeps up to T.SEA_MAX_PEERS = 64 sea partners (sea.js:429 'const keep = reached.length > T.SEA_MAX_PEERS ? T.SEA_MAX_PEERS : reached.length'), and runTradePass iterates mergeReac
+  FIX: Either lower the default toward the land cap (~12-16), or keep 64 lanes for plague/knowledge topology but trade only with the top-K sea peers by value per sweep (K~12), rotating through the rest on later sweeps so total flow is preserved at bounded p
+
+[80] UNVERIFIED MAJOR src/sim/peopleSim/sea.js:292 (performance)
+  updateSea floods the entire ocean plus an O(N) lane-edge scan in one tick — the recurring 100-800ms hitch
+  DESC: Every SEA_INTERVAL=600 ticks, updateSea does a full multi-source flood over the ocean with visitCap = min(N, MAX_SEA_VISITS * resScale²) — i.e. effectively the whole map at shipped resolution — plus three O(N) array fills, an O(N) edge scan to find lane meeting points, a transitive closure per port, and per-port shore-candidate collection, all in the same tick. The header comment itself admits it 
+  FIX: Amortize like road planning: run the flood incrementally (a bounded number of heap pops per tick across several ticks, publishing the new lane set when complete), and skip the rebuild entirely when the port set and per-port budgets are unchanged sinc
+
+[81] UNVERIFIED MAJOR src/sim/peopleSim/countryClaim.js:190 (performance)
+  relaxClaim rescans all N tiles per ring (rings ∝ map width) plus three more full-map scans, every 12 ticks
+  DESC: The border crawl 'advances one ring' by iterating the ENTIRE tile array once per ring — 'for (let r = 0; r < rings; r++) { ... for (let ti = 0; ti < N; ti++)' — with ringsPerRelax(tw)=tw/240 (4 rings at shipped res), so the crawl is O(N * tw/240) every CLAIM_RELAX_INTERVAL=12 ticks. On top of that each call does an O(N) foothold/claimComps scan (line 149) and two more O(N) scans for the across-wat
+  FIX: Maintain a persistent frontier set: tiles where claim!==target that have a target-owned orthogonal neighbour. Seed it when _countryOwner changes (territory pass) and update it locally as tiles flip; each relax then touches O(front length) tiles. Keep
+
+[85] UNVERIFIED MAJOR src/sim/peopleSim/climate.js:28 (integration-deadcode)
+  Volcanic winters are invisible to the food economy — the shock decays ~4x faster than territory samples climMod
+  DESC: climate.js advertises volcanic winters ('the 536 AD year without a summer') as sudden harvest failures. The shock decays by VOLC_DECAY=0.55 per climate update (every 20 ticks) — >88% gone within 60 ticks — but the ONLY consumer of world.climMod is the territory fertility tally (territory.js:405), which reruns every T.TERRITORY_INTERVAL=144 ticks. A random eruption is sampled on average ~72 ticks a
+  FIX: Route the transient shock through a per-tick channel the way famines do (updateFood already reads s._harvestMul every tick): on eruption, set a latitude-weighted harvest multiplier with its own decay, and logEvent('climate.volcanicWinter'). Keep clim
+
+[86] UNVERIFIED MAJOR src/sim/peopleSim/index.js:350 (long-run)
+  peopleSimStats totalWealth reads stale c._treasury snapshots — world-gold readout sawtooths ~50% and understates the money supply
+  DESC: peopleSimStats sums state treasuries via `c._treasury`, which is a snapshot written only once per polity pass (conquest.js:2109 `c._treasury = gov.treasury;`). Between passes, per-tick flows (customs tariffs roads.js:1112, mint seigniorage settlement.js:613) drain settlement purses into the live polity treasuries, so the stat counts that coin in neither place. Empirical probe (320x160 seed 4242, s
+  FIX: Sum live treasuries in peopleSimStats exactly as invariants.js does: `if (world.polities) for (const p of world.polities.values()) if (p.endedStep < 0) treasury += Math.max(0, p.treasury || 0);` (drop the per-country _treasury sum from this stat; kee
+
+[88] UNVERIFIED MAJOR src/sim/peopleSim/entities.js:41 (history-shape)
+  ensurePolity silently resurrects ended polities on any bookkeeping read, corrupting lifespans and the event log
+  DESC: ensurePolity re-opens a dead record (`p.endedStep = -1`) whenever it is touched, and logs polity.restored only when not silent. govOf (conquest.js:175-177) is exactly `ensurePolity(world, countryId, { silent: true })` and is called on hot bookkeeping paths — the fiscal block at conquest.js:1800 for every multi-member country each polity pass, tariff collection at roads.js:1112, bankMomentum — so a
+  FIX: Make govOf lifecycle-neutral (return the record without touching endedStep); route all re-openings through an explicit restore path that always logs and stamps a `_reopenedAt`, and derive lifespans from open/close segments rather than foundedStep/end
+
+[3] CONFIRMED MINOR src/sim/peopleSim/conquest.js:1693 (war-conquest+war-conquest)
+  Unrest stock is frozen for single-member realms — never cools, permanently depressing their militia defence
+  DESC: The only place s.unrest decays (UNREST_RELIEF, conquest.js:1896) is inside the per-member loop of multi-member countries; the single-member branch continues before it. shedPatch and declareIndependence create successor states without resetting unrest (they reset loyalty/_ambition only, lines 970-976, 1094-1099), so a city-state born of a duress secession keeps its pre-secession unrest (often near 
+  FIX: In the single-member branch, also cool unrest (s.unrest = max(0, s.unrest - UNREST_RELIEF)); and/or reset unrest on secession in shedPatch/declareIndependence the way rebel() does.
+
+[4] CONFIRMED MINOR src/sim/peopleSim/conquest.js:2443 (war-conquest)
+  Enclave annexation bypasses occupation memory and the event log
+  DESC: eliminateEnclaves flips settlements' countryId directly — including whole engulfed city-STATES via the CITY_ENCLAVE_DOMINANCE/POWER path — without calling recordOccupation() and without logEvent(). Every other transfer channel does both (absorbWeakNeighbors lines 2316-2320 calls recordOccupation + logs settlement.annexed; storms call recordOccupation + settlement.captured). So a nation absorbed as
+  FIX: In the enclave flip, call recordOccupation(s, oldCC, intoId, world.step) and log a settlement.annexed (or polity-level) event, mirroring absorbWeakNeighbors.
+
+[8] CONFIRMED MINOR src/sim/peopleSim/index.js:198 (demography-food+core-loop+integration-deadcode)
+  Climate walk and soil-exhaustion passes are not granularity-scaled: at SIM_GRANULARITY G, volcanic winters and salinisation run G× faster per unit of history
+  DESC: The step loop's own taxonomy (lines 160-165) says rate passes stretch their interval by G (`_ivl`) while only recompute passes keep theirs. updateClimate (step % CLIMATE_INTERVAL, line 198) and updateSoil (step % SOIL_INTERVAL, line 263) are rate processes — the climate index random-walks and volcanoes roll per call (climate.js WALK/VOLC_CHANCE, no ×_dt), and soil fatigue accrues T.SOIL_GAIN per p
+  FIX: Gate both on _ivl(CLIMATE_INTERVAL)/_ivl(SOIL_INTERVAL), or scale WALK/REVERT/VOLC_CHANCE/VOLC_DECAY and T.SOIL_GAIN/SOIL_RECOVER by world._dt.
+
+[10] CONFIRMED MINOR src/sim/peopleSim/agriculture.js:96 (demography-food)
+  Domestication-ceiling cache bakes live tuning levers in forever — dragging AGRI_CEIL_FLOOR / AGRI_TROPIC_PENALTY silently does nothing
+  DESC: computeAgriCeiling reads T.AGRI_CEIL_FLOOR and T.AGRI_TROPIC_PENALTY, and its result is cached permanently on world._agriCeil (agriGate: `if (!world._agriCeil) world._agriCeil = computeAgriCeiling(world)`), never invalidated. tuning.js's contract is that every module 'reads T.KEY at USE TIME... dragging a slider mutates T and the next pass picks it up — no restart'. These two levers (exposed in th
+  FIX: Record the lever values used on the cache and recompute when they differ (or recompute on a slow cadence), matching the live-lever contract.
+
+[13] CONFIRMED MINOR src/sim/peopleSim/roads.js:1102 (money-economy+trade-networks)
+  Tolls and brokerage are credited to stale intermediate references — coin paid to dead settlements leaks out of the closed supply
+  DESC: sellGoods pays each route intermediate its toll and entrepôt margin via `link.inter`, an array of settlement OBJECT references captured at reach-build time (computeReach → intermediatesOnPath). Trade reach is rebuilt only on a ~REACH_SPREAD=120-tick stagger, and unlike the seller/buyer (checked `mode !== "settled"` in runTradePass) intermediates are never re-validated. If an intermediate dies (wit
+  FIX: In sellGoods, skip intermediates with `inter.mode !== "settled"` when summing tollSum/brokerSum AND when paying (both places, so the buyer isn't charged for a toll no one collects).
+
+[14] CONFIRMED MINOR src/sim/peopleSim/roads.js:965 (money-economy)
+  Hume competitiveness is not volume-neutral as the code claims — gross trade volume rises with any price-level gap
+  DESC: The comment states the scaling is 'RECIPROCAL (compA·compB = 1), so it shifts the trade BALANCE without changing total volume'. The product is 1 but the two legs are scaled independently and SUMMED: total gross flow ∝ evA·compA + evB·compB, and for x=compA≠1 the factor (x + 1/x)/2 > 1. Equal-export partners with a 4× price gap (compA=0.5, compB=2 at HUME_ELASTICITY=0.5) trade 25% MORE gross value 
+  FIX: Normalise the pair so compA+compB = 2 (e.g. compA' = 2x/(x+1/x)·... or simply divide both by (compA+compB)/2), preserving the balance shift while keeping gross volume fixed — matching the stated Phase-2 design.
+
+[17] CONFIRMED MINOR src/sim/peopleSim/settlement.js:572 (money-economy+save-load)
+  Bank-credit creation/contraction is booked as goods trade (IN_GOODS/OUT_GOODS) in the money-provenance panel
+  DESC: When a banking hub conjures credit, the minted delta is recorded as `IN_GOODS` ('goods sold') and a bust's call-in as `OUT_GOODS` ('goods bought'). money.js exists precisely to show WHERE coin comes from, and it already has a finance channel (IN_FINANCE, 'war loans'). A Venice-archetype hub therefore reads as a goods exporter when a large share of its income is conjured credit, and a credit crunch
+  FIX: Add dedicated IN/OUT categories (e.g. IN_CREDIT 'bank credit created' / OUT_CREDIT 'credit called in') or reuse IN_FINANCE, so conjured money is never presented as trade income.
+
+[18] CONFIRMED MINOR src/sim/peopleSim/settlement.js:768 (money-economy)
+  Sack-recovery window (CONQUEST_RECOVERY) is raw ticks, not granularity-scaled — sacked economies heal G× faster in history time
+  DESC: sackPenalty recovers linearly over `CONQUEST_RECOVERY = 5000` ticks of raw `worldStep - s._sackedAt`. Other duration windows in the same file divide by `world._dt` to keep the same span of HISTORY at any granularity (e.g. the wither window `2000 / _dt` at line 2265, the isolation cutoff `2000 / (world._dt||1)` at line 1514). At G=4 a stormed city's export value, luxury output (sackPenalty² in comp
+  FIX: Scale the window: `const recov = CONQUEST_RECOVERY / (world && world._dt || 1)` (thread world/_dt in, as the other windows do).
+
+[22] CONFIRMED MINOR src/sim/peopleSim/roads.js:879 (trade-networks+trade-networks)
+  linkMoney fallback orientation books the lower-id side's third-party fees as coin that reached the higher-id settlement
+  DESC: When the higher-id settlement runs an asymmetrically-listed pair, the code stores `-net` where net is the LOWER-id peer's wealth change. The pair is not zero-sum — the lo side's payments include tolls to intermediates, brokerage, and tariffs to a third-party state — so -(lo's change) ≠ coin that reached hi, violating the documented convention ('coin /tick that reached the HIGHER-id settlement'). a
+  FIX: Measure the higher-id settlement's wealth delta directly (snapshot both endpoints and always store hi's net), instead of negating lo's.
+
+[37] CONFIRMED MINOR src/sim/peopleSim/dynasties.js:877 (dynasties)
+  Sitting rulers of OTHER realms can be killed outside their death handler, and the recovery path then founds a new house instead of running succession
+  DESC: The maternal-childbirth hazard exempts only THIS realm's ruler (`mother.id !== ruler.id`); growCadets' maternal hazard (line 701) and reapHouse (when two realms share a dynasty via the selectElected bug) have the same hole. A foreign-court spouse who has since inherited her own throne is another polity's sitting ruler, and can be killed here. Her realm then hits the `ruler.died >= 0 → ruler = null
+  FIX: Exempt any person who is ANY polity's current rulerId from off-handler deaths (maternal, reapHouse) — or better, make the vacant-throne path for a monarchy with a live dynasty run heirByLaw over the late ruler before falling back to a new founder.
+
+[0] PLAUSIBLE MINOR src/sim/peopleSim/conquest.js:726 (war-conquest)
+  blocHasCity requires a full CITY (tier 2), re-introducing the documented 'immortal empire' bug for rebellions and governor breakaways
+  DESC: blocHasCity gates both rebel() (line 1146) and declareIndependence() (line 1082). Its own comment states the intended bar is 'town or above (tier >= CITY_TIER seat (town+))' and explicitly says 'Requiring a full CITY (tier 2) here was the bug that made empires immortal'. But CITY_TIER is 2 (countryTerritory.js:242, re-exported line 1079; tier 1 = town, tier 2 = city per settlement.js TIER_NAME). G
+  FIX: Change the gate to `(m.tier | 0) >= 1 || m._sovereignSeat` (the town bar the comment documents), or introduce a distinct SEAT_TIER = 1 constant so future changes to CITY_TIER can't silently retune secession.
+
+[16] REFUTED MINOR src/sim/peopleSim/conquest.js:2094 (money-economy)
+  FARM_RENT charges the base POLITY_INTERVAL, not the granularity-stretched interval the pass actually runs at
+  DESC: The produce levy converts the per-tick harvest into a per-pass rent by multiplying `_landFood` (a per-tick flow) by `T.POLITY_INTERVAL`. But updatePolities runs every `_ivl(T.POLITY_INTERVAL)` = POLITY_INTERVAL×G ticks (index.js:267), so at G>1 each pass covers G× more ticks of harvest than it charges rent on: the state under-collects the harvest tithe by exactly 1/G. Treasuries (and everything th
+  FIX: Multiply by the effective elapsed interval — `T.POLITY_INTERVAL * Math.max(1, Math.round(T.SIM_GRANULARITY||1))` (or record ticks since the last pass) — so the levy covers the harvest actually gathered.
+
+[21] REFUTED MINOR src/sim/peopleSim/roads.js:716 (trade-networks)
+  Network components ignore river corridors that trade reach uses — river-connected pairs bypass the shortcut-gain test and get redundant parallel roads
+  DESC: computeReach treats navigable rivers (mag >= 3) as trade corridors with no road (line 430), so two towns linked only by a river ARE trading partners (s._tradeReach.has(peer.id) true, link.river volume ×T.RIVER_TRADE_MULT=3.5). But buildNetworkComponents walks only road + settlement tiles (line 343: `if (rq[ni] >= 1.0 && !stMap.has(ni)) continue;`), so the same pair is in DIFFERENT components. In t
+  FIX: Apply the shortcut-gain test whenever the peer is already in s._tradeReach regardless of component membership (reach connectivity, not component identity, is what makes a road redundant), or include navigable-river tiles in the component BFS.
+
+[26] UNVERIFIED MINOR src/sim/peopleSim/countryTerritory.js:756 (territory-map)
+  Post-merge border smoothing recolours WORKED (ledger-held) land to rival realms and wilderness — only settlement home tiles are pinned
+  DESC: The comment introducing the re-smoothing after mergePersistentTerritory (lines 556-559) claims 'settlement home tiles are PINNED, so it never erases a settled corridor or a durable catchment core (that's real held land) — it only erodes the un-settled march protrusions'. But `prot` marks ONLY the single home tile of each settlement (line 756); every other worked-catchment tile is fair game for the
+  FIX: For the post-merge smoothing call, extend `prot` to all core-anchored tiles (the `reached[ti]===1` set the merge already computed from worked land), so the filter only erodes un-settled marches as the comment intends.
+
+[30] UNVERIFIED MINOR src/sim/peopleSim/crystallize.js:513 (founding-state)
+  Null dereference: `parentId: donor.id` crashes the sweep when a settlement crystallizes on still-claimed land after total settlement extinction
+  DESC: In the spawn block, joinCountry can be >=0 purely from region (the crawled claim, grownOwnerAt) with donor === null: inheritKnowledgeAt sets world._lastInheritDonor = null when no SETTLED settlement exists anywhere (both the grid path and the full-scan fallback filter mode==='settled', crystallize.js:994-1005). The claim array world._countryClaim persists across ticks and only decays ring-by-ring 
+  FIX: `parentId: donor ? donor.id : -1` (makeSettlement already treats parentId -1 as 'no parent'), or `if (!donor && region < 0) continue;` plus the null-safe parentId.
+
+[31] UNVERIFIED MINOR src/sim/peopleSim/crystallize.js:469 (founding-state)
+  INDEPENDENT_DIST and culture-branch thresholds are not resolution-scaled while the diffusion term in the same expression is — culture fragmentation is resolution-dependent
+  DESC: transportDist is a terrain-weighted Dijkstra cost in tile units (plain tile = 1.0, transport.js header), so the same geographic separation costs ~2x more td when tw doubles. The sweep already acknowledges this: diffusion uses `Math.exp(-td / (KNOWLEDGE_DECAY_SCALE * resScale))` with resScale = max(1, tw/240) (lines 285, 435, comment 'diffusion REACHES proportionally farther on a finer map'). But t
+  FIX: Scale INDEPENDENT_DIST, the 70/38 branch thresholds, and inheritKnowledgeAt's decay length by the same resScale (they are all 'geographic travel cost' quantities, unlike the deliberately-absolute settlement-spacing constants), or express them once as
+
+[34] UNVERIFIED MINOR src/sim/peopleSim/cultures.js:611 (culture-faith)
+  Culture forks seedCulture() whole settlements, wiping minority peoples and the spoken-language mixture in one tick
+  DESC: All three divergence paths (isolation line 450/455, distance-drift line 531/539, political ethnogenesis line 611) convert settlements with seedCulture(), which is documented as 'Initialize a NEWBORN settlement' and hard-resets s.culMix = [[daughter,1]] and s.langMix = [[daughter tongue,1]]. On an established, mixed settlement this deletes every OTHER people's share (a 45% minority vanishes from th
+  FIX: Fork by RENAMING the parent component only: replace the [parentCid, share] entry with [daughterCid, share] (and for langMix, replace only the parent/prestige-tongue share with the daughter tongue), leaving other peoples' and tongues' shares untouched
+
+[39] UNVERIFIED MINOR src/sim/peopleSim/dynasties.js:829 (dynasties)
+  Literacy regression freezes an existing court: immortal rulers and centuries-long reigns
+  DESC: `if (org < LITERACY_MIN) continue;` skips the whole per-realm block — including the ruler's death check and reapHouse for the RULING house, which reapIdleHouses explicitly exempts (line 785). The gate is correct for realms that never crossed literacy, but a realm whose capital organization later drops below 0.22 (capital captured, capital moved to a lowly town) keeps its entire court frozen: the r
+  FIX: Gate only the FOUNDING of recorded dynastic history on literacy; once a realm has a ruler/house, keep running mortality, succession and reapHouse (optionally suppressing chronicle events while sub-literate — records lapse, people still die).
+
+[40] UNVERIFIED MINOR src/sim/peopleSim/dynasties.js:760 (dynasties)
+  world.dynasties is never pruned and prunePersons pins every founder forever — slow unbounded registry growth
+  DESC: No code path ever deletes a dynasty record (only persons.delete exists in the codebase), and prunePersons keeps `keepLine(d.founderId)` for EVERY house ever founded — including extinct, memberless houses that will never be shown. Republics/electives mint a fresh house for every self-made winner, so the map grows steadily and accelerates with realm count; each record pins at least its founder in wo
+  FIX: In prunePersons, first sweep dynasties: delete records that are ended/memberless AND not referenced by any living polity's dynastyId, polity.houses, or retained roll entries; only keepLine founders of surviving records.
+
+[41] UNVERIFIED MINOR src/sim/peopleSim/dynasties.js:696 (dynasties)
+  Cross-court couples double-breed: one couple produces two independent child sets split across two houses
+  DESC: A foreign-court spouse remains a member of her own house. Her realm's growCadets pass breeds her (children → her dynasty, parentId = her) while her husband's realm's monarch path independently breeds him (children → his dynasty, parentId = him). Nothing links the two streams: the couple gets up to 2×MAX_CHILDREN offspring, each capped separately, and the genealogy shows the king with one set of ch
+  FIX: Skip persons whose spouse is a sitting ruler (or whose spouse's realm tracks the couple) in growCadets/nobleUpkeep, or record children on both parents and share the MAX_CHILDREN cap per couple.
+
+[44] UNVERIFIED MINOR src/sim/peopleSim/events.js:244 (events-history)
+  narrate() falls back to the raw type string for plague.virginSoil, colony.founded and colony.independent
+  DESC: NARRATE has no templates for 'plague.virginSoil' (shocks.js:127), 'colony.founded' (conquest.js:1581) or 'colony.independent' (conquest.js:1622), so narrate returns ev.type verbatim. All three index under p:* keys, so the literal strings appear in realm chronicles, the live event ticker (peopleSimWorker feed uses narrate), and the world-bible export. categoryOf also lacks cases, so a virgin-soil p
+  FIX: Add NARRATE templates (e.g. virginSoil: 'A pestilence unknown to {sName} came ashore with the strangers, and the people had no defence against it.') and categoryOf cases ('plague', 'founding', 'founding'/'secession') for the three types; consider a d
+
+[45] UNVERIFIED MINOR src/sim/peopleSim/historiography.js:159 (events-history)
+  know is clamped to 1 before the rumor test, so 35% of even adjacent foreign events are recorded as mere rumor
+  DESC: know = Math.max(0.04, Math.min(1, 1.35 - d/horizon)) caps at 1, and the rumor test `r > know - RUMOR_BAND` then leaves a fixed 0.35-wide rumor band at every distance below 0.35*horizon. The unclamped expression was evidently designed so that events within 0.35*horizon satisfy know-RUMOR_BAND >= 1 and are always full records — matching HORIZON_BASE's own comment 'tiles within which distant MAJOR ev
+  FIX: Keep an unclamped knowRaw = 1.35 - d/horizon for the rumor threshold (`rumor = r > knowRaw - RUMOR_BAND`) and clamp only the skip probability; then rumor genuinely marks the marginal band and vanishes for nearby events.
+
+[46] UNVERIFIED MINOR src/sim/peopleSim/events.js:46 (events-history)
+  Compaction reassigns event ids, silently rewriting every realm's tradition and permanently freezing the worker's event ticker
+  DESC: compactEvents drops the oldest 50k events and renumbers survivors (ev.id = new position). Historiography keys every deterministic roll on ev.id (roll(world, viewerId, ev.id, salt)), so after one compaction every surviving event's know/rumor/burn/shame outcome re-randomizes — rumors appear and vanish, burned archives resurrect — violating the module's stated guarantee (historiography.js:20-21: 'det
+  FIX: Give events a permanent monotonically-increasing id (world._nextEventId++) decoupled from array position; store ids in _evIndex and binary-search (or keep an offset = id of events[0]) for O(1) lookup. Both the historiography rolls and the worker's cu
+
+[47] UNVERIFIED MINOR src/sim/peopleSim/historiography.js:145 (events-history)
+  A fallen realm's tradition never closes and, once its capital is pruned, becomes omniscient
+  DESC: The world-events merge filters only `e.step >= born` — there is no endedStep cutoff, so a polity dead for millennia keeps 'recording' new TRAVELS events into its tradition. Worse, capitalOf for a long-dead realm returns null once the capital settlement is pruned from world._byId (pruneDead runs every 32 steps), and distTo's `if (!cap ...) return 0` then treats EVERY event as happening at distance 
+  FIX: For an ended polity, cap the world-events merge at endedStep (its archive stops when its scribes do; a restoration reopens it), and make distTo with a null capital return Infinity rather than 0 so a missing vantage point means deaf, not omniscient.
+
+[48] UNVERIFIED MINOR src/sim/peopleSim/historiography.js:193 (events-history)
+  Founding-myth trigger only recognises polity.founded, so sacked secession-born realms get a myth alongside their intact true origin
+  DESC: Most realms are not born via polity.founded — secession states log polity.seceded (25 vs 9 founded in the measured run) and colonies log colony.founded. The myth condition `sackSteps.length && !own.some(e => e.type === "polity.founded")` is therefore true for every sacked secession-born realm even when its actual origin record (the seceded event) SURVIVED the archive burn, prepending 'In the age b
+  FIX: Treat polity.seceded (where ev.polity === viewerId), polity.restored and colony.founded as founding records: track them in the foundingLost bookkeeping and in the surviving-record check, so the myth fires only when the realm's true origin — whatever 
+
+[50] UNVERIFIED MINOR src/sim/peopleSim/settlement.js:1565 (tech)
+  _rivalN competition signal goes stale forever when a settlement loses all trade partners
+  DESC: s._rivalN (distinct rival polities in contact, feeding the competF innovation boost in sciMul) is only recomputed inside the diffusion block, which is guarded by `s._tradeReach && s._tradeReach.size > 0`. If a settlement's reach empties (partners die, roads decay, network splits), the block never runs again and the old rival count persists indefinitely.
+  FIX: Reset s._rivalN = 0 (or recompute) on the KNOW_INTERVAL cadence regardless of reach size, e.g. before the diffusion guard.
+
+[51] UNVERIFIED MINOR src/sim/peopleSim/settlement.js:349 (tech)
+  Fresh settlements seed _techEff from raw knowledge, skipping the practisedK metallurgy cap
+  DESC: makeSettlement caches s._techEff = techEffects(s.knowledge, ...) using the raw knowledge object, while every later refresh (line 1625) and the lazy path (techEff, lines 525-527) use practisedK(k, metalCap), which caps metallurgy at the reachable-ore tier. At creation _metalCap is undefined, so the cap is skipped entirely.
+  FIX: Compute the ore tier at creation (oreTier(s.localRes) is available after seedLocalTerritory) and seed via techEffects(practisedK(s.knowledge, cap), ...), or leave _techEff unset and let the lazy techEff() path fill it after _metalCap exists.
+
+[58] UNVERIFIED MINOR src/sim/persist.js:223 (persistence+save-load)
+  loadWorld tallies territory with neutral climate — climMod not rebuilt from the saved climate state before computeTerritory
+  DESC: _climIndex/_climShock are saved, but the per-tile multiplier world.climMod is only recomputed in updateClimate, which after load next runs at the following step%CLIMATE_INTERVAL==0 boundary (up to 20 ticks). loadWorld's computeTerritory therefore tallies every settlement's food catchment with climMod treated as 1, and those tallies persist until the next TERRITORY_INTERVAL (144) pass — so during a
+  FIX: Call updateClimate(world) in loadWorld before computeTerritory — it deterministically rebuilds climMod from the restored _climIndex/_climShock (the pass RNG draw can be skipped by factoring the recompute step out).
+
+[59] UNVERIFIED MINOR src/sim/peopleSim/faiths.js:492 (persistence+save-load)
+  Schism and syncretism cooldowns (world._schismAt, world._lastSyncretismAt) lost on load
+  DESC: Both are cross-tick throttle state: _schismAt enforces SCHISM_ROOT_COOLDOWN per religion family, _lastSyncretismAt enforces SYNCRETISM_WORLD_COOLDOWN. Neither is saved, and both default to -Infinity semantics on load, so faiths that just schismed can schism again immediately and a world-level syncretism can fire right after one that occurred just before the save.
+  FIX: Add `schismAt: mapToArr(world._schismAt)` and `lastSyncretismAt: world._lastSyncretismAt` to the save and restore them.
+
+[60] UNVERIFIED MINOR src/sim/peopleSim/sea.js:262 (persistence+determinism)
+  Sea-lane wobble noise seeds from world._seed, which is never set — every world shares the same meander field
+  DESC: The wobble field is documented as 'a fixed function of tile + seed', but it reads world._seed — a field no code assigns (the world's seed lives in world.seed, state.js:69). `(world._seed | 0) || 1` therefore evaluates to 1 for every world and every save, so sea lanes meander identically across all seeds. (claimNoise in countryTerritory.js:262 does it correctly with `world.seed`.) Deterministic, so
+  FIX: Use `(world.seed | 0) || 1`.
+
+[62] UNVERIFIED MINOR src/sim/pipeline.js:303 (worldgen-coupling+determinism)
+  tCoast populated with a tile index into a pixel-resolution coastal array (latent RES>1 mismatch)
+  DESC: In buildTerritory pass 1, every sibling field samples the worldgen arrays with the pixel index i (`w.elevation[i]`, `w.temperature[i]`, `w.moisture[i]`), but tCoast is assigned `w.coastal[ti]` using the TILE index ti. w.coastal is always built at worldgen's module RES=1 (size W*H). It happens to be harmless today only because buildTerritory's single production caller passes RES=1, making ti===i. I
+  FIX: Use the pixel index consistently: `tCoast[ti]=w.coastal[i]` (or, if a coarser-res coastal is ever intended, resample it the same way as elevation).
+
+[65] UNVERIFIED MINOR tools/stylized.mjs:97 (tools-validation)
+  Step-denominated gates (war rate, lifespans) are not invariant to SIM_GRANULARITY, which the harness explicitly supports for gates
+  DESC: _harness.mjs advertises SIM_TUNE for 'a probe OR a gate (smoke/stylized)' (lines 14-16), and SIM_GRANULARITY is a supported lever (tuning.js:25) that stretches the same emergent history over G× more ticks (index.js:156-167: rate passes stretch by G, clocks advance dt=1/G). But stylized measures wars per 1000 raw steps and polity lifespans in raw steps: under G=4 the identical history scores a 4×-l
+  FIX: Convert step counts to history units before scoring: divide durations and the rate denominator by G (read T.SIM_GRANULARITY), i.e. score wars per 1000 history-ticks and lifespans in history-ticks, so thresholds keep one meaning across levers.
+
+[66] UNVERIFIED MINOR tools/stylized.mjs:81 (tools-validation)
+  Lifespan sample counts restored-then-refallen polities as one span including the dead interregnum
+  DESC: The gate takes p.endedStep - p.foundedStep for every polity record with endedStep >= 0. But entities.js re-opens a fallen record when an old nation re-forms under its id (entities.js:40-41 sets endedStep back to -1) without touching foundedStep. A polity that lived 500 steps, was dead for 4000, was restored and fell again reports one 5000-step 'lifespan' — the interregnum is counted as life, and t
+  FIX: Record discrete reign spans on the polity record (push {founded, ended} to a spans list on each end/restore in entities.js) and have the gate measure spans; or at minimum have restoration stamp foundedStep = world.step for the new span.
+
+[69] UNVERIFIED MINOR src/sim/peopleSim/shocks.js:189 (determinism)
+  Plague loop iterates world._plagued while infect() adds to it — same-tick multi-hop spread and same-tick mortality bias the calibrated R0
+  DESC: JS Sets visit members added during iteration. The lifecycle loop `for (const id of world._plagued)` calls spreadFrom → infect → world._plagued.add(peer), so a settlement infected this tick is processed later in the SAME tick: it takes a mortality hit immediately and rolls its own spread, letting an epidemic hop multiple trade links per tick. The PLAGUE_SPREAD constant is documented as 'tuned for R
+  FIX: Snapshot the infected set before the loop (`for (const id of [...world._plagued])`) so newly infected settlements begin their lifecycle next tick.
+
+[70] UNVERIFIED MINOR src/sim/peopleSim/settlement.js:479 (determinism)
+  Agglomeration idiosyncrasy hashes (settlementId, craft) WITHOUT the world seed — identical multipliers across all seeds
+  DESC: The per-town craft-idiosyncrasy multiplier uses hash32(sid, key), omitting world.seed, unlike every other stream in the codebase (rng.js contract: 'Every system derives its own stream from (world.seed, systemName, ...)'). Settlement #57's leather multiplier is therefore the same number in every world ever generated. Determinism per seed is preserved, but the seed does not fully drive the world, an
+  FIX: Use hash32(world.seed || 1, "agglom", sid, key) (thread world into the helper or precompute per settlement).
+
+[72] UNVERIFIED MINOR src/sim/peopleSim/state.js:448 (conservation)
+  A dying settlement's coin is destroyed silently — an unaccounted drain on the closed money supply
+  DESC: When a settlement dies (famine `people<1.5` or withering, settlement.js:2255-2267) its `wealth` stays on the dead record, drops out of the invariant supply total, and is deleted outright at pruneDead. Nothing salvages or transfers it. This is inconsistent with the codebase's own conservation standard: fragmentRealm explicitly seizes a dead polity's treasury 'to keep the coin conserved', foundColon
+  FIX: On settlement death, transfer remaining wealth somewhere accountable — the realm's treasury, the nearest surviving neighbour (refugees carry their coin), or an explicit logged drain counter — so the supply ledger stays attributable.
+
+[73] UNVERIFIED MINOR src/sim/peopleSim/invariants.js:79 (conservation)
+  Conservation watch blind spots: ships in transit, captives and the unfree are outside totalCoin/totalPeople
+  DESC: checkPeopleSimInvariants sums settlement wealth + alive-polity treasuries for totalCoin, and settlement `people` for totalPeople. But (a) colony ships in transit carry both people (30) and an endowment (up to 5000 coin) in world.ships for many ticks — both vanish from the totals at launch and reappear at landing; (b) `_captives` and `_unfree` are populations moved OUT of `people` by conserved tran
+  FIX: Fold `Σ ship.wealth`/`Σ ship.people` and `Σ (_captives + _unfree)` into the debug totals (or expose them as separate tracked pools) so the closed-supply watch is actually closed.
+
+[74] UNVERIFIED MINOR src/sim/peopleSim/conquest.js:1296 (conservation)
+  disburseTreasury can spend the treasury negative when the spending levers sum past 1
+  DESC: After debt repayment, `mon = budget * T.SPEND_MONUMENT` is deducted from the treasury but NOT from `budget`; `infra = budget * T.SPEND_INFRA` is then spent via spendInfrastructure, which decrements the treasury with no remaining-balance guard. Only the relief leg re-checks `gov.treasury - reserve`. At the defaults (0.15+0.2+0.6 = 0.95) this is safe, but the exposed levers each range to 1.0: with S
+  FIX: Deduct each leg from `budget` as it is spent (as the repay leg does) or clamp each leg to `max(0, gov.treasury - reserve)` before deducting.
+
+[76] UNVERIFIED MINOR src/sim/peopleSim/armies.js:634 (save-load)
+  war memory (world._warSeenAt) not saved — duplicate 'war.began' events and spurious ruler war-counts after load
+  DESC: The war.began hysteresis map (pair → last step at war, WAR_MEMORY 900) is not persisted. On the first conquest pass after load, every ongoing war reads last === undefined and re-logs 'war.began', also re-incrementing pa._reignWars (which feeds ruler epithets).
+  FIX: Persist world._warSeenAt in tables (mapToArr/arrToMap).
+
+[77] UNVERIFIED MINOR src/sim/peopleSim/cultures.js:344 (save-load)
+  Crop-borrowing cooldown s._lastBorrow not saved (CROP_AXIS lever)
+  DESC: The per-settlement crop-package borrow throttle (6000-tick cooldown) is not in SETT_FIELDS, so after load every settlement is immediately eligible to borrow again. Only matters when the experimental T.CROP_AXIS lever is on (def 0).
+  FIX: Add "_lastBorrow" to SETT_FIELDS.
+
+[82] UNVERIFIED MINOR src/sim/peopleSim/tech.js:410 (performance)
+  techEffects memo has ~0% steady-state hit rate — keys are full-precision floats that change every tick
+  DESC: techEffects memoises on the exact concatenation of the six knowledge floats. But updateKnowledge mutates all six tracks EVERY tick (only the reach-iterating parts are KNOW_INTERVAL-staggered), so by the time a settlement's s._techEff refreshes 8 ticks later its key is always new. In steady state every call is a miss: build a ~120-char string key, walk the whole TECH tree with techState() (itself a
+  FIX: Quantize the key (e.g. round each track to 1e-3 — bounded, deterministic drift far below any gameplay threshold), or cache per settlement keyed on a version counter bumped only in the KNOW_INTERVAL branch of updateKnowledge.
+
+[83] UNVERIFIED MINOR src/sim/peopleSim/foodHierarchy.js:121 (performance)
+  aggregateFoodHierarchy allocates Maps/Sets/arrays every tick — 4.2% CPU plus GC churn for structures that could be reused
+  DESC: The central-place pass runs every tick and allocates fresh 'children = new Map()' (with a new array per parent), 'budget = new Map()', 'seen = new Set()', plus a two-element tuple array per tree node pushed on the stack ('stack.push([k, false])'). At 238 settlements that is ~1000+ short-lived objects per tick, every tick, forever. Profile: 5.08s self (4.2%) plus a share of the 3.54s (2.9%) GC time
+  FIX: Hoist reusable scratch onto world (children arrays keyed by id in a reused Map, an Int32Array stack of node ids with a parallel state byte, a stamp-based 'seen'), mirroring the _byId / _polHeap pattern already used elsewhere.
+
+[84] UNVERIFIED MINOR src/sim/peopleSim/climate.js:50 (performance)
+  updateClimate recomputes a full O(N) per-tile array whose value depends only on the row and one global scalar
+  DESC: Every CLIMATE_INTERVAL=20 ticks, updateClimate writes all N tiles of world.climMod where the value is 'clamp(1 + eff * latW)' and latW is a pure function of the tile's ROW (ty). There are only th distinct values per pass (480 at shipped res), yet the loop does N=460k divisions/abs/clamps — 0.86s (0.7%) of the profile at half resolution, 4x that at shipped size, for a computation reducible to O(th)
+  FIX: Compute the th row values once per pass and fill each row span (cm.fill(v, rowStart, rowEnd)), or store a per-row table and fold eff at the two read sites (territory.js fert scaling, seedLocalTerritory).
+
+[87] UNVERIFIED MINOR src/sim/peopleSim/tuning.js:285 (cradle-probe)
+  EARTH_HEARTHS user-facing label/desc describes the wrong hearths and the wrong count
+  DESC: The tuning entry is labelled 'Earth: fixed Nile+Yangtze cradles' and its desc says 'seed exactly two civilisation cradles ... the Nile and the Yangtze'. The code actually seeds THREE sites — Nile, Mesopotamia, Yellow River — and the Yellow River comment (state.js:329-334) explicitly says 'NOT the Yangtze'. The same stale claim appears in state.js:372 ('the two historical hearths (Nile + Yangtze)')
+  FIX: Update the label/desc (and state.js:372 comment) to name the actual three sites and count.
+

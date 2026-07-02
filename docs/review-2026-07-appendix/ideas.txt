@@ -1,0 +1,415 @@
+[D0] small (war-conquest)
+  Sack plunder and truce indemnities — make war couple to money on the winning side
+  DESC: Today war money-coupling is cost-only: the attacker pays wages/attrition, and the sole prize is the treasury seized on a capital fall plus non-monetary _spoils. An ordinary stormed city keeps 100% of its wealth. Add (1) SACK: on storm, transfer a fraction of def.wealth to the attacker's treasury and
+  MECH: Fires purely from war state the sim already tracks (storm events, _warExhaust gap at truce signing, occupied-tile counts) — never from time. Self-calibrating across maps/seeds because both plunder and indemnity are fractions of the loser's own emergent wealth/revenue: a poor bronze-age war transfers
+
+[D1] medium (war-conquest)
+  Succession-crisis casus belli — wars of succession as a mechanism, not an annotation
+  DESC: armies.js currently records `crisis: inCrisis(world, defId)` on war.began purely as a log annotation; the stylized-facts suite scores war-crisis correlation, but the only causal path is a small capital-unrest bump. Make a succession crisis a real window of opportunity: while inCrisis(defender), scal
+  MECH: Gated entirely on emergent dynastic state (a bare house, which itself emerges from sampled births/deaths) and the emergent marriage network — never on a date or era. Self-calibrates: crisis frequency falls as realms develop succession institutions (regency already depends on org via dynasties), so w
+
+[D2] large (war-conquest)
+  Protection-for-tribute vassalage: the mechanism that should replace lopsided engulfment
+  DESC: Give a statelet facing a LOPSIDED_ENGULF-class neighbour a third option between annexation and doomed independence: SUBMIT as a tributary. Reuse the existing colonial-dependency plumbing (polity._overlord, tribute flows, bloc alliance, no mutual fronts) — the vassal keeps internal sovereignty, pays 
+  MECH: Submission fires from the local power ratio and threat map already computed (countryPower, _allianceTarget): a statelet submits when independence is hopeless AND no coalition protects it — whatever map, seed or era produces that condition. Self-calibrating because the tributary load on the overlord 
+
+[D3] medium (war-conquest)
+  Supply-limited fronts: tile capture decays with transport cost from the attacker's realm
+  DESC: Front advance is currently budgeted by a flat per-pass cap (T.MAX_CAPTURE x dominance) with no geography on the ATTACKER's side — a front 3 tiles from the attacker's heartland and one 60 tiles deep in enemy country advance at the same rate. Scale each pair's capture budget by a supply factor = reach
+  MECH: Fires from geography plus the attacker's emergent logistics tech (the same channel that already sets admin hold-range), never from era or step: a bronze-age host can only fight next door, a rail empire projects deep — timing emerges per-realm from its own tech. Self-calibrates across map resolutions
+
+[D4] medium (demography-food)
+  Demographic transition: fertility declines with development
+  DESC: Scale the intrinsic growth rate per settlement: r = SETT_GROWTH × g(urban share, organization, food-per-capita margin), with g falling toward ~0 (or slightly negative) as a settlement becomes urban, literate-bureaucratic and food-secure. Pre-industrial worlds are untouched (g≈1); industrialized real
+  MECH: Fires purely on world STATE — each settlement's own _urbanPop share, knowledge.organization and _foodSupply/_foodDemand margin — never on step/year/era. Self-calibrates: a world that industrializes late transitions late; one that never industrializes stays Malthusian forever; different regions of on
+
+[D5] medium (demography-food)
+  Tax-in-kind grain levy up the liege tree (the pre-coin granary state)
+  DESC: Before/alongside the coin market in foodHierarchy, let each liege requisition a fraction of its children's grain offer without payment, the fraction gated by the liege's organization knowledge (state capacity to assess, collect and store) and capped by a peasant-retention floor (below which unrest r
+  MECH: Gated on the liege's organization level and the existence of the liege tree (state formation), both emergent; the levy share ramps with org, so temple-economy grain flows appear exactly when states do, on any map — never keyed to a date. It also self-limits: over-levy → unrest → rebellion via the ex
+
+[D6] medium (demography-food)
+  Depletable-renewable fish stocks (the fishery as a commons)
+  DESC: Give each coastal region a fish stock analogous to depositReserve/soilFatigue: logistic regeneration scaled by seaRich, harvest = fishers × techEff.fishFactor (re-wiring the currently-dead tech channel). Low-tech fishing sits far below regeneration; industrial fleets can overshoot it, collapsing the
+  MECH: Collapse fires when harvest rate (population × technology, both emergent) exceeds the stock's state-dependent regeneration — a pure state condition that self-calibrates: richer cold seas sustain more pressure, tropical seas less; a world that never industrializes its fleets never collapses a fishery
+
+[D7] medium (demography-food)
+  Hunger-driven long-range emigration (colonization by pressure, not just adjacent drift)
+  DESC: urbanise() only drifts people to the largest LOCAL trade partner. Add an emigration channel: when a settlement sits at people ≈ K with high unrest or active famine, it emits settler parties toward known under-capacity destinations (low people/_k) reachable through its trade/sea network — the Greek/P
+  MECH: Triggered by the P/K ratio, unrest and famine state of the source and the K-headroom of destinations — all live world state, discovered through the emergent trade/sea graph. Self-calibrates: a sparse world emits nothing; a full one radiates settlers outward exactly where pressure and connectivity co
+
+[D8] medium (money-economy)
+  Scarcity-responsive grain prices in the central-place market
+  DESC: GRAIN_PRICE_BY_TIER is a fixed [2,8,14,22] ladder: a famine, a siege, or a bumper harvest never moves the price of grain, so coin does not chase shortage and breadbaskets earn the same in dearth as in glut. Multiply the seller-tier base price by a bounded regional scarcity factor derived from state 
+  MECH: Fires purely from the food-balance state (_storableSupply, _grainHunger, pool) of the trading region at that moment — a shortage anywhere, from any cause (war, plague, soil exhaustion, climate shock), raises price exactly there and only while it lasts. Self-calibrating across maps/seeds because the 
+
+[D9] medium (money-economy)
+  Clear the slave trade along the trade/sea network with distance-priced captives
+  DESC: Replace the global pot with clearing over connectivity: captives move seller→buyer only along merged road/sea reach (transitively through intermediate slaver ports that skim the same toll/entrepôt margins sellGoods already charges), freight discounts the seller's realised price with the same link-co
+  MECH: Gated entirely on world state: military dominance creates supply, wealth+cash-crop suitability creates demand, and the EXISTING emergent road/sea graph determines who can trade with whom — an isolated continent cannot buy captives until someone builds the sea lane, and the Atlantic-style pattern app
+
+[D10] small (money-economy)
+  Stock-based seigniorage with costly recoinage (fixes the debasement pump)
+  DESC: Re-derive the mint's emergency revenue from the coin it can actually re-strike: seigniorage = (Δfineness/fineness) × (realm coin stock reachable by the mint) × an org-gated throughput fraction; restoring fineness consumes treasury in proportion to the coin re-struck at the better standard. Pair with
+  MECH: Every quantity is a live world stock: the circulating coin (settlement wealth in the realm), the treasury, and organisation tech set both the size of the prize and the mint's ability to capture it. A barter-poor early realm physically cannot debase its way out of insolvency (it has no coinage to mel
+
+[D11] medium (money-economy)
+  Monetisation-gated taxation: cash tax collectable only where the economy is coined
+  DESC: The state currently taxes a flat share of every member's coin hoard at the same rate from the first chiefdom onward. Split fiscal capacity into the two historical channels the sim already half-has: the in-kind produce levy (FARM_RENT — universal, ancient) and the CASH tax, whose collectable share sc
+  MECH: The gate is the settlement's own monetisation state (coin stock vs reserve, trade connectivity) and the capital's organisation — quantities produced by the mining faucet, the trade network and the knowledge system, never by a date. A world whose mines are poor or whose trade never fuses stays a trib
+
+[D12] large (trade-networks)
+  Canal cutting by high-construction realms
+  DESC: Where two navigable water systems (river↔river or river↔sea) approach within a few tiles and the land gap already carries heavy roadFlow, let the owning realm spend treasury proportional to length × elevation profile to paint navigable channel tiles (riverMag-equivalent), joining the systems. Grand 
+  MECH: Fires from world state only: construction knowledge (the same channel that already cuts params.port), accumulated roadFlow across the isthmus (demand proven by existing traffic), and treasury balance. Self-calibrates across maps/seeds because candidate sites are found by scanning the actual water gr
+
+[D13] large (trade-networks)
+  Piracy and convoy costs on rich sea lanes
+  DESC: Coastal settlements that are stateless (or belong to weak/hostile realms) adjacent to high-value sea lanes skim or raid a share of passing trade value; endpoints respond by paying an escort premium scaling with their naval tech and state military budget. Creates the Cilician/Barbary/Malacca-strait d
+  MECH: Predation intensity derives from lane money flow (world._linkMoney magnitudes along tiles near the settlement) minus projected naval control (endpoint seaSpeed tech × state treasury) — all live state. Self-calibrating: on a map with poor sea trade there is nothing to steal, so no pirates; as maritim
+
+[D14] small (trade-networks)
+  Tech-extended river navigability (dredging and locks)
+  DESC: The navigable-corridor threshold is hard-coded at riverMag >= 3 in computeReach (and >= 2 in the reach-spine lever). Let construction knowledge lower the effective threshold continuously — e.g. navigable when riverMag >= 3 − construction — so minor rivers become barge corridors as engineering mature
+  MECH: Gated purely on the trading settlement's construction/navigation knowledge (already threaded into localEdgeCost params), so the corridor network deepens at each region's own emergent pace; a stone-age valley sees only the great rivers, a high-construction one barges its tributaries. Same rule everyw
+
+[D15] medium (trade-networks)
+  Desert caravan mode (camel/oasis routes)
+  DESC: Hot-dry land currently only penalizes (transport.js line 237), so Sahara-type gaps stay walls forever. Add a mobility-tech-scaled discount on the hot-dry penalty analogous to OPEN_RIDE's steppe highway (a 'ship of the desert' term), and let oasis tiles (high moisture pockets in arid belts) act as th
+  MECH: The discount rides the mobility knowledge channel (like params.ride) times the luxury-price differential across the desert (exportValue/luxury supply gradients on either side — live state), so routes open only when a culture has the transport tech AND the trade is worth it. Self-calibrates: no luxur
+
+[D16] medium (territory-map)
+  March upkeep: unadministered frontier claims fade instead of persisting forever
+  DESC: Sticky marches currently persist unconditionally while their owner lives and stays land-contiguous — a realm that shrinks in capability keeps its maximal historical march extent until secession or death, so map area ratchets. Give each march tile a slow reversion pressure proportional to how far (in
+  MECH: Fires purely from state: the same per-country cost field and org/logistics-derived budget that grant reach also price its upkeep — a realm whose organization or size collapses sees its outermost marches fade first, at a rate set by cost excess, never by step count or era. Self-calibrates across maps
+
+[D17] small (territory-map)
+  Naval contiguity: water hops in the merge's connectivity flood, scaled by navigation tech
+  DESC: Fix the mare-nostrum wipe as a mechanism rather than a patch: let mergePersistentTerritory's connectivity flood cross water tiles with a hop budget derived from the owner's navigation/logistics (0 for pre-naval realms — water still breaks contiguity; a few tiles at coastal seafaring — straits knit; 
+  MECH: Keyed to each realm's knowledge.navigation / logisticsLevel, so the same rule yields walled-by-the-sea chiefdoms and strait-spanning thalassocracies on any map, with the transition emerging exactly when a civilization's own tech crosses the embark threshold the transport cost core already defines — 
+
+[D18] medium (territory-map)
+  March warfare: contest unsettled frontier tiles by projected military power
+  DESC: Today the only military path to land is storming settlements (armies.js flips worked tiles; cities gate everything); march tiles change hands only via reach recomputation, so wars between adjacent realms leave the empty frontier untouched until a city falls. Add a border-grind over marches: where tw
+  MECH: Driven entirely by relative military power, distance attenuation through the existing transport-cost field, and adjacency in _countryOwner — a stronger, closer, better-supplied army pushes the frontier regardless of date; stalemates emerge where power balances. Resolution-independent because attenua
+
+[D19] medium (territory-map)
+  Make the tile-value field live: irrigation and clearing raise desirability with local tech
+  DESC: territory.js's two-field design explicitly promises 'both mutable, so each can shift in-sim... value climbs as it learns to irrigate a desert valley', but _tileValue is built once by initTileValue and never updated. Let a settlement's agriculture/construction knowledge slowly raise the value of floo
+  MECH: Value rises only where a people with the relevant knowledge actually works the land — a function of local tech, terrain (tFlood/riverMag), and occupation history, never of the calendar. It self-calibrates: on any map, whichever valleys are settled and irrigated first become the high-value corridors 
+
+[D20] medium (founding-state)
+  Emergent second-genesis hearths on isolated landmasses
+  DESC: Let civilization arise independently where and only where conditions warrant, instead of exclusively at t=0 seeds: on a slow cadence, evaluate the existing algorithmic cradle score (fertility x warm river x circumscription, state.js cradleSurround) restricted to tiles whose transportDist is Infinity
+  MECH: Fires purely from world STATE: terrain quality (cradle score), demographic substrate (residence time), and isolation (infinite transport distance) — never from a step count or era. Self-calibrates across maps/seeds/resolutions because the cradle score and the isolation test are the same ones genesis
+
+[D21] medium (founding-state)
+  Replace the coverage-tempo clock with knowledge- and pressure-driven pioneering
+  DESC: The step-ramp devFactor exists because ungated spread 'grabbed all the easy terrain by the classical era'. Model the real cause of slow Neolithic spread instead: a spawn/colony rate multiplier f = g(donor agriculture+construction knowledge) x h(donor population pressure people/_k). Stone-age village
+  MECH: Gated on the donor settlement's knowledge tracks and its people/_k ratio — pure local state. Self-calibrates: a world stalled in antiquity keeps a sparse frontier forever (the ramp's 22% floor would not); a precocious industrializer fills its map early; a new continent's tempo is set by the colonist
+
+[D22] small (founding-state)
+  Demographic-wave emigration: pressure- and shock-driven settler parties
+  DESC: COLONY_CHANCE is a flat 0.5 coin flip once a town crosses the pressed threshold. Make the send-rate proportional to accumulated excess pressure (integral of max(0, people/_k − COLONY_PRESS_FRAC) since the last party) plus push factors the sim already computes — recent famine (updateShocks), unrest, 
+  MECH: Every input is emergent local state (carrying-capacity pressure, shock history, soil fatigue); no clock anywhere. Self-calibrates across maps and seeds because _k is local terrain-derived: a lush valley builds pressure fast and radiates early, a marginal steppe town almost never does, and a famine a
+
+[D23] medium (culture-faith)
+  Migration carries identity: population flows transfer culture/faith/language shares
+  DESC: Today culMix/faithMix/langMix change only via assimilation math; actual people-moves (urbanise rural→city drift, colony ships, slave-trade captives, plague/famine flight) move population without moving identity, so there are no diasporas, no creole ports, no forced-migration minority populations. Wh
+  MECH: Fires purely from population-flow events already simulated, in proportion to the people actually moved — no time or era input, and the N/(pop+N) weighting is dimensionless so it self-calibrates across map sizes, seeds, and demographic-anchor settings.
+
+[D24] small (culture-faith)
+  Liturgical/literate conservatism: sound-change rate scales with the speakers' literacy
+  DESC: LANG_DRIFT_EVERY is one flat constant for every tongue. Real languages ossify under writing and scripture (Latin, Sanskrit, Quranic Arabic) and churn fast when purely oral. Scale each tongue's drift interval by the mean organization/writing knowledge of the settlements currently speaking it (already
+  MECH: Gated on the knowledge state of the speakers and the existence of an organized faith using the tongue — pure world state, no dates; because it is a multiplier on an existing per-history-time cadence it inherits granularity- and map-invariance automatically.
+
+[D25] medium (culture-faith)
+  Pilgrimage decays with transport cost and pays route tolls
+  DESC: updatePilgrimage currently transfers the same wealth sliver from a follower on the far side of the planet as from a next-door town, with no route. Weight each offering by reachability (reuse s._tradeReach/_seaReach costs to the see: give ×= 1/(1+cost/reachRef)), and skim a small share to the settlem
+  MECH: Reads the emergent trade-cost graph and each faith's live follower distribution; the decay is a function of transport cost, so as logistics/navigation knowledge rises the effective pilgrimage basin widens on its own — self-calibrating across maps because costs are already resolution-scaled.
+
+[D26] medium (culture-faith)
+  Persecution-driven emigration of heterodox minorities
+  DESC: The loyalty bleed under a militant state church (LOYAL_CLASH) already exists, but persecuted minorities have no exit. Where a settlement holds a minority organized faith above some share and the state creed's militancy × (1−minority syncretism) is high, move a small population fraction per pass alon
+  MECH: Triggered by the joint state of doctrine (militancy, syncretism), the settlement's faith mixture, and trade-graph reachability — all emergent quantities; flow size proportional to the persecuted share makes it scale-free across seeds and map sizes.
+
+[D27] medium (culture-faith)
+  Court conversion as a contested event, not an automatic readout
+  DESC: State faith today snaps to the capital's dominant faith every pass (faiths.js step 4), so conversion is frictionless bookkeeping. Make court adoption a probabilistic threshold event weighted by the realm's personality-vs-faith affinity (affinityMul already exists), the dynasty's continuity (a fresh 
+  MECH: Every input (capital mixture share, affinity of doctrine to realm temperament, dynasty age, member faith aggregate) is world state; thresholds are shares and dot-products, dimensionless and independent of map size or clock — the event fires when the balance of belief and character tips, whenever tha
+
+[D28] large (dynasties)
+  Claimant politics: succession crises resolve through rival claimants, not an anonymous new founder
+  DESC: When heirByLaw fails or returns a contested heir, enumerate the passed-over claimants that already exist in the tree (legitimised bastards, agnatically-excluded women's sons, senior cadets, foreign rulers married into the house) and stage a contest: loyalty of members splits toward claimant-aligned 
+  MECH: Fires purely from house state — who is alive in the kin graph, their eligibility under the realm's emergent law, and which courts they married into. Self-calibrates across maps/seeds: realms with agnatic law and thin trees produce many disputes, dense intermarried court networks produce interstate s
+
+[D29] medium (dynasties)
+  Personal unions and dynastic inheritance across realms
+  DESC: If the person crowned in realm A is (or is married to) the sitting sovereign of realm B, form a personal union: shared war/peace posture, no fronts between them, tribute-free trade; if the union persists across a generation with high legitimacy in both, merge the junior realm as a member polity (its
+  MECH: Triggered only by a detected state of the genealogy (one person/couple holding two thrones), which itself only arises from emergent court marriages under inheritance law — never from a date. Self-calibrating: unions become likelier exactly where many literate courts of compatible cultures adjoin, an
+
+[D30] small (dynasties)
+  Regency councils: a child on the throne weakens the crown until majority
+  DESC: While the crowned ruler's age is below majority, applyRulerMods should treat the realm like an institution-run state: clamp the `ruler` weight toward 0 (the regents, not the infant's dealt traits, steer), apply a small standing order penalty, and let neighbouring realms' existing war-appetite lever 
+  MECH: Gated on the ruler's age — emergent person state on the dynasty clock, not the calendar or step count. Self-calibrates everywhere: harsher mortality worlds produce more minorities and thus more regency windows; developed realms with deep houses rarely see one, with no per-map tuning.
+
+[D31] small (dynasties)
+  Royal remarriage driven by heirlessness pressure
+  DESC: spouseId is never cleared at death, so a widowed monarch never remarries and a king widowed at 25 dies childless — inflating succession crises beyond what mortality alone implies. Let a widowed ruler (and heirless cadets) remarry with a chance that scales with the emergent stakes: no living legitima
+  MECH: Fires from house state (widowhood + measured heir scarcity via the existing houseHasAdultHeir), never from time. Self-calibrating: crisis-prone realms (high mortality, agnatic law) generate more remarriages exactly when their line is thinnest, damping crises endogenously instead of via a tuned crisi
+
+[D32] medium (events-history)
+  News travels the emergent trade network, not euclidean space
+  DESC: Replace distTo's straight-line distance with cost over the road + sea-lane graph the sim already maintains for trade (roads.js networks, sea.js port graph): P(know) decays with network cost from the event site to the viewer's capital, boosted by literacy at both endpoints. Rumor hops could even take
+  MECH: Fires purely from world state: the network is itself emergent (roads follow trade, sea lanes follow navigation tech), so an isolated island hears nothing until someone builds the lane, a silk-road entrepot hears everything, and a realm that loses its ports goes dark. Self-calibrates across maps, see
+
+[D33] medium (events-history)
+  Archive capture on conquest — the victor inherits the vanquished's surviving records
+  DESC: When a capital is stormed (polity.shattered), roll each of the defeated realm's surviving records once: a share burns (the existing sack mechanic, viewed from the loser), a share is CARRIED OFF into the conqueror's tradition — rendered thereafter with the conqueror's bias (the fallen realm's victori
+  MECH: Triggered only by conquest events that actually happened, and the material transferred is exactly what the defeated realm's own sack/horizon history left surviving — both emergent state. Self-calibrating: worlds with little conquest keep parochial archives; a world with a serial hegemon spontaneousl
+
+[D34] medium (events-history)
+  Literacy-gated record density — annals begin when writing does
+  DESC: Weight each OWN event's chance of ever entering the tradition by the capital's organization (literacy) AT THE EVENT'S STEP (recoverable from the event log's era.reached/knowledge trail or a small per-polity literacy timeline): preliterate polities retain only major events, with dates quantized to a 
+  MECH: Gated on knowledge.organization — pure development state, never a step or era label. A world that stalls in the bronze age keeps sparse oral-tradition chronicles forever; one that literates early gets dense annals early. Self-calibrates on any pace/map because the gate is the same tech track that al
+
+[D35] small (events-history)
+  Rumor distortion of content, not just framing
+  DESC: For rumor-flagged lines, deterministically distort the quantitative and nominal payload at render time: casualty/population figures inflated by a hash-keyed factor growing with distance, foreign realm names replaced by the viewer culture's exonym (langWord of the viewer's language keyed on the forei
+  MECH: Distortion magnitude derives from the same emergent knowledge probability already computed (know), so it scales with real distance/literacy conditions, not time; exonyms derive from the viewer's emergent phonology. Self-calibrates everywhere because it adds no new thresholds — it reuses the horizon'
+
+[D36] small (tech)
+  Tech-earned epidemic relief
+  DESC: Give aqueducts, germ_theory and medicine real epidemiological effects: scale plague mortality, infection probability (spreadFrom) and the endemic disease load by a relief factor summed from the settlement's discovered health techs, and let germ_theory also blunt the PLAGUE_URBAN crowding penalty (sa
+  MECH: Fires purely from each settlement's tech state (techState/TECH_FX channels that already exist as plumbing), never from a date: a world that never industrialises keeps its plagues forever; one that reaches germ theory early gets its mortality transition early. Self-calibrates across maps/seeds becaus
+
+[D37] medium (tech)
+  Maritime knowledge diffusion with cost-weighted contact
+  DESC: Run the updateKnowledge diffusion, effectiveLocalRes ore-merge, crop adoption and rival counting over mergeReach (road + sea) instead of _tradeReach, with the per-partner pull scaled by exp(-linkCost/K) so a hard ocean crossing diffuses slowly and a busy strait quickly.
+  MECH: The channel exists only where the sea system has already, emergently, built a lane (ports, navigation tech, seaRange budgets), and its bandwidth grows with the endpoints' seaSpeed techs — sail-era trickle, steamship-era flood — all read from world state. Self-calibrating: a landlocked world is uncha
+
+[D38] small (tech)
+  Records survive collapse: writing/paper/printing as archive resilience in dark ages
+  DESC: Scale the KNOW_DECAY dark-age losses (settlement.js 1516-1524) per track by the settlement's record techs: a preliterate chiefdom that collapses loses most of its organisation and craft, a paper-and-printing civilisation loses little — knowledge stored outside living specialists persists through dem
+  MECH: Reads only the discovered-tech set at the moment of collapse — no era or date. Produces the historical asymmetry for free: Bronze-Age-style collapses erase whole scripts (low org, no paper), while print-era societies bounce back from plagues with technique intact. Self-calibrates on any seed because
+
+[D39] medium (tech)
+  Wire fortification into siege: defenseLevel + walls as the storming bar, with gunpowder flipping it
+  DESC: Consume the currently-dead defense channel and walls flag in armies.js/conquest.js: a settlement's storming threshold scales with its own defenseLevel (masonry→arch→cathedrals→architecture), and the attacker's gunpowder degrades it (the negative fx already encodes this) — giving the castle age and i
+  MECH: Both sides' values come from their own discovered techs, which come from tracks gated on local stone, ore, organisation and trade — so walled city-state survivorship rises exactly where masonry cultures emerge, and the fortress advantage ends per-theatre when a neighbour's metallurgy/alchemy actuall
+
+[D40] medium (core-loop)
+  Emergent famine ignition: gate the spawn roll on vulnerability, not a flat dice roll
+  DESC: Famine currently fires from a fixed cadence (FAMINE_CHECK=700) times a flat probability T.FAMINE_CHANCE (shocks.js:149), striking a uniformly-random qualifying settlement. The world's own famine-relevant STATE — soil fatigue, climate downturn, population pressure against carrying capacity, granary d
+  MECH: Per-settlement famine hazard ∝ (people/_k population pressure) × (1 − world.climMod at its tile, the climate downturn) × s._soilFatigue × 1/(granary depth). All are existing normalized state fields, so it fires from WHAT the region has become (exhausted/stressed/crowded), never from step or year. Se
+
+[D41] medium (persistence)
+  Worked-land capital: per-tile improvement memory (the inverse of soil fatigue)
+  DESC: Alongside world._soilFatigue, keep a per-tile 'improvement' field — cleared fields, terraces, drainage, irrigation works — that accrues where settlements actually farm with sufficient construction/agriculture knowledge and decays slowly when land lies abandoned. Food tallies read it as a fertility m
+  MECH: Accrual is driven purely by state — each tile's actual farming intensity and the farmer's knowledge this pass — and decay by the absence of that state (no owner working the tile). No step, year or era input anywhere. Self-calibrates across maps/seeds/paces because a tile only holds as much capital a
+
+[D42] medium (persistence)
+  Treaties as polity-attached entity records with terms and oath-breaker costs
+  DESC: Replace the bare world._truces Map with treaty records attached to the persistent polity registry (which serializes wholesale — persistence by construction): parties, the step signed, and simple terms (recognised border snapshot hash, optional tribute). Breaking a treaty early becomes an observable 
+  MECH: Treaty creation already fires from world state (war-exhaustion crossing TRUCE_EXHAUST); breach consequences fire from the relationship state at the moment of breach — bloc membership, shared identity weights, relative power — all existing computed quantities, never a date. Self-calibrating: coalitio
+
+[D43] small (persistence)
+  Hoards: a recoverable money sink driven by insecurity
+  DESC: Split T.COIN_LOSS_RATE into true loss (wear, shipwreck) and HOARDING: a per-settlement buried-wealth stock that grows faster where threat is high (recent _warAt/_sackedAt, unrest, plague — all existing signals; hoarding under danger is one of the best-attested monetary behaviours) and re-enters circ
+  MECH: Both directions key on per-settlement state the sim already computes each tick (war recency, unrest, plague load; organization, trade connectivity) — nothing reads the clock. Self-calibrates across seeds and paces because the hoard equilibrium at each settlement is the fixed point of threat-scaled i
+
+[D44] medium (worldgen-coupling)
+  Cold-current upwelling fisheries: seed a renewable marine-food resource from the SST anomaly already computed
+  DESC: worldgen (earth_sim) already computes currentAnom / coastCur — the ocean-gyre SST anomaly, strongly negative on cold eastern-boundary upwelling coasts (California, Humboldt, Benguela, Canary). These are Earth's richest fisheries and the reason arid coasts (coastal Peru, Namibia, Morocco) sustained d
+  MECH: Fires purely from ocean-current STATE (currentAnom sign/magnitude), which is itself derived from coastline geometry (distance-to-coast east/west, basin openness) — so it self-calibrates on any map or seed: any world that grows a west-facing coast under a subtropical gyre gets upwelling fisheries the
+
+[D45] small (worldgen-coupling)
+  River-mouth delta super-fertility as a distinct signal
+  DESC: Great rivers depositing at the sea build the most fertile land on Earth (Nile, Ganges-Brahmaputra, Mekong, Mississippi deltas). Today coast (+0.06) and river (alluvial bonus) each add fertility independently, but there is no explicit delta where a great channel meets the sea at low elevation. Add a 
+  MECH: Gated entirely on emergent geography — river magnitude (a flow-accumulation output), the coastal flag, and low elevation — so it appears wherever a large catchment happens to drain to a coast on any generated world, and never where rivers die inland or stay small. Magnitude-scaled, so it self-sizes 
+
+[D46] medium (worldgen-coupling)
+  Aeolian loess downwind of deserts
+  DESC: The most fertile dryland soils (North China Loess Plateau, the Pampas, the US Palouse) are windblown silt deflated from deserts and dropped on their downwind margin. Using the wind field already carried on the world object, add a fertility bonus to semi-arid land that lies immediately DOWNWIND of a 
+  MECH: Driven by the aridity gradient (neighbouring moisture) sampled along the local wind vector — both emergent state fields. It forms wherever a desert sits upwind of steppe on any map/seed and self-calibrates because the source strength scales with how arid the upwind tiles are and how strong the wind 
+
+[D47] small (tools-validation)
+  Population-growth-shape gate: log-population vs development curve
+  DESC: Sample (leading agriculture/organization knowledge, total population) pairs during the stylized run and gate the SHAPE: population should be monotone-nondecreasing in development on a smoothed basis, near-flat (Malthusian) below a mid agriculture level, and show its growth-rate maximum in the highes
+  MECH: Both axes are emergent world state (knowledge and population), so the gate fires on what the world has become, never on the step count; a slow world traces the same curve later and still passes. Self-calibrates across maps/seeds because the reference point (where growth accelerates) is defined relat
+
+[D48] small (tools-validation)
+  Price-stability and market-integration gate
+  DESC: The sim already computes per-trade-component price levels (updateInflation, world._inflRaw) under a closed money supply. Gate two stylized facts: (1) the population-weighted global price level stays bounded (no secular hyperinflation/deflation without a monetary faucet — e.g. within [0.4, 3.0], cons
+  MECH: Reads only emergent monetary/trade state; the integration test is a correlation between two emergent series (dispersion vs connectivity) within the run, so it holds at any pace and any map — an isolated archipelago world with few links is only required to converge as ITS links form.
+
+[D49] medium (tools-validation)
+  Trade-share-of-economy gate conditioned on transport knowledge
+  DESC: Measure trade flow (sum over world._linkMoney, as diag_full already does) as a share of total settlement income, and gate that the share RISES with median navigation+mobility knowledge and sits in era-plausible bands (a few percent of output in low-transport worlds, tens of percent once seafaring ma
+  MECH: The band selector is the run's own transport knowledge, not a date: a world that never learns navigation is only ever held to the low-trade band. Normalizing by total income makes it scale-free across map sizes and population levels.
+
+[D50] medium (tools-validation)
+  War-deadliness heavy-tail gate (Richardson's law)
+  DESC: Log casualties per war (armies.js already grinds army/population losses along fronts; accumulate per war-pair between war.began and front dissolution, attach to a war.ended event) and gate the tail: the largest war's death share and a CCDF slope over war sizes should be heavy-tailed (power-law-ish, 
+  MECH: Purely a distributional property of emergent events; wars fire from fronts/crises/temperament, and the gate normalizes by contemporaneous world population, so it self-calibrates across map sizes, seeds and development paces.
+
+[D51] medium (tools-validation)
+  Culture-count scaling gate: diversity vs consolidation
+  DESC: Gate the culture registry against two facts of real ethnolinguistic geography: culture count scales sublinearly with settled land area (diversity grows with territory but not 1:1), and the culture-population distribution is heavy-tailed (a few huge peoples, a long tail of small ones, like real langu
+  MECH: All inputs (culture registry, settled area, polity count) are emergent state; the scaling comparison is internal to the run (area vs count at successive samples), so no absolute constant needs re-tuning per map — an archipelago seed with fragmented geography is allowed its naturally higher diversity
+
+[D52] small (tools-validation)
+  Promote earthRun's nearest-neighbour clustering statistic into a stylized gate
+  DESC: earthRun.mjs:148-188 already computes the nearest-neighbour distance distribution and its CV with the explicit interpretation 'low CV → uniform grid; high CV → natural clusters', but nothing gates it. Add to stylized: CV above a floor (~0.5) so settlement placement is river/coast-clustered rather th
+  MECH: Measures the spatial pattern the settlement mechanics produced, from state alone; CV is dimensionless and scale-free, so the same floor is meaningful at any resolution, map, or settlement count without re-tuning.
+
+[D53] medium (time-gates)
+  Migration-pressure-driven frontier expansion (replaces the elapsed-time coverage ramp)
+  DESC: Instead of scaling crystallisation/colonisation odds by a clock ramp, generate explicit migrant flux: each settlement with people > COLONY_PRESS_FRAC x carrying capacity emits migrants proportional to its surplus, who walk the existing transport-cost field (transportDist already computed for crystal
+  MECH: Fires purely from state: population-vs-capacity pressure (demography), transport cost (tech + terrain), and site quality (geography). Self-calibrates across maps, seeds and paces because pressure is local — a stalled stone-age world never generates the surplus to fill its continent, an early industr
+
+[D54] medium (time-gates)
+  Contact-diffused 'modernity' field for identity politics
+  DESC: Add a per-settlement idea-level (0..1) built locally from organisation/literacy/printing techs and diffused along trade and sea reach at a rate scaled by connection volume — the exact pattern shocks.js already uses for endemic disease load. eraIdentityWeights then reads the LOCAL idea level instead 
+  MECH: Gated on each settlement's own tech state plus graph connectivity; isolated continents stay pre-national until a navy bridges the ocean (mirroring the virgin-soil contact mechanic), and the axis of political conflict shifts region by region rather than planet-wide at once. Self-calibrating: no histo
+
+[D55] small (time-gates)
+  Per-trade-component development index for the demographic anchor
+  DESC: When ANCHOR_POP=1, compute a separate _eraProd per network component (world._networkComponents, already maintained for inflation) with the target derived from that component's own leading organisation, and blend components' indices when roads/sea lanes merge them — exactly how the money supply and p
+  MECH: The anchor's driving signal (leading org) and its scope (connected component) are both emergent world state; component merges happen when emergent trade links form. Self-calibrates on any map topology: one-continent worlds behave exactly as today, multi-continent worlds get independent demographic h
+
+[D56] medium (outcome-fitting)
+  Currency debasement / seigniorage as a fiscal-military inflation spiral
+  DESC: A cash-strapped state under military strain debases its coin — minting more money units per unit of extracted metal — injecting M into its trade-network component. Because the closed-money quantity-theory system already sets prices from M/T per network component, the extra coin raises local prices, 
+  MECH: Fires purely from world STATE — treasury balance, war exhaustion, and standing-army-vs-revenue ratio — never from a date. It self-calibrates because the resulting price rise is computed network-relative by the existing inflation module (localP): a small isolated economy debases to ruin quickly, a la
+
+[D57] medium (outcome-fitting)
+  Sanitation-gated urban mortality ceiling driven by endemic disease load
+  DESC: Great pre-modern cities were demographic sinks — density bred crowd disease that capped size until public-health/engineering tech (aqueducts, sewers, germ theory). Add a chronic per-tick mortality drag on a settlement proportional to its endemic _diseaseLoad × crowding (log pop), reduced by a public
+  MECH: Gated entirely on emergent STATE: the settlement's own _diseaseLoad (already built from density, livestock, and trade connectivity in shocks.js) and its accumulated public-health tech — never on a step or era. Self-calibrating across maps because _diseaseLoad diffuses along each world's actual trade
+
+[D58] small (determinism)
+  Continuation-equivalence determinism gate in CI
+  DESC: Extend smoke with the exact experiment run in this audit: build, step N, save; then step the original and the loaded copy M further steps and compare an extended hashWorld (covering soil fatigue, truces, capture clocks, reach ramps) at several checkpoints, with an explicit allowlist of fields permit
+  MECH: Fires purely from world STATE by construction — it asserts that two evolutions of identical state are identical, a property independent of map, seed, resolution or pace; no tuned constants, no time gates. Self-calibrates because any newly added cross-tick state either round-trips or the gate fails o
+
+[D59] medium (determinism)
+  Diplomacy as persistent entity attachments: treaties, alliances and war exhaustion on polity records
+  DESC: Move _truces, _allies/_allianceTarget and _warExhaust from pass-local world maps onto the persistent polity records (entities.js), and log treaty events ('signed the Peace of X after the Y war', 'joined the coalition against Z') into the structured event log. This both fixes the persistence leaks at
+  MECH: Treaties already emerge from state (exhaustion crossing TRUCE_EXHAUST, coalition mass vs hegemon power) — no new gates or constants. Attaching them to entities makes them survive rebuilds and saves like every other emergent attachment (faith, temperament, fisc), and the event log turns emergent dipl
+
+[D60] medium (determinism)
+  Soil memory as a first-class, visible terrain layer
+  DESC: Promote _soilFatigue to a saved per-tile layer with a map lens (pristine → worn → salinised) and let chronicle/milestone code read a realm's catchment mean, so the emergent 'centre of civilisation migrates off the exhausted cradle' story becomes visible and narratable ('the black earth of the delta 
+  MECH: The layer is already produced by pure state dynamics — farming intensity accumulates fatigue, fallow land heals at SOIL_RECOVER — with no time or outcome inputs. It self-calibrates across maps because fatigue tracks realized farming density: an untouched frontier stays pristine on any seed, and any 
+
+[D61] small (conservation)
+  Ruin hoards: dead settlements strand their coin in the ground for neighbours to salvage
+  DESC: Instead of a dying settlement's wealth evaporating (bug above), bank it into a per-tile 'ruin hoard' at its home tile. Any settlement whose territory later covers that tile recovers it gradually (a small fraction per tick, scaled by organization — excavation, squatters, stone-robbing). This closes t
+  MECH: Fires purely from world state — a settlement death event and later territorial coverage of the ruin tile — never from time or era. Self-calibrating across maps/seeds because hoard sizes are whatever the emergent economy actually accumulated there, and recovery rides the existing territory-claim mech
+
+[D62] medium (conservation)
+  Truce indemnities: wars end in a conserved reparations transfer
+  DESC: When the truce block signs a peace (armies.js), have the more-exhausted / territorially-losing side pay an indemnity from its treasury to the victor — a fraction proportional to the exhaustion gap and the net tiles lost during the war (both already tracked: _warExhaust, bankMomentum's capture tallie
+  MECH: Triggered only by the emergent truce condition (exhaustion crossing TRUCE_EXHAUST), sized by emergent quantities (relative exhaustion, actual tiles taken, the loser's actual treasury) — a pure conserved transfer, no minting, no calendar input. Scales itself on any map because every input is a ratio 
+
+[D63] medium (conservation)
+  Velocity-scaled coin wear: hoards decay, circulating money doesn't
+  DESC: Replace the flat COIN_LOSS_RATE drain with one weighted by how IDLE a settlement's coin is: drain applies mainly to balances above the reserve that exceed a multiple of the settlement's recent trade turnover (already tracked in _mInRate/_mOutRate). Coin that circulates is continually re-minted/re-st
+  MECH: The drain rate at each settlement is a function of its own emergent stock-to-flow ratio (wealth vs smoothed trade turnover), so it fires from what the local economy IS, never from when it is; it self-calibrates across map sizes and eras because turnover and wealth grow together under the same trade 
+
+[D64] medium (save-load)
+  Promote truces to persistent TREATY records on the polity registry
+  DESC: Replace the anonymous world._truces Map with treaty entities attached to the two polity records (parties, signedStep, terms, laps/breach). This fixes the persistence gap for free (polities are saved wholesale), gives historiography citable peace treaties ('the Peace of X'), and enables breach conseq
+  MECH: Treaties are signed exactly when war exhaustion crosses TRUCE_EXHAUST (a state condition already computed from actual fighting load) and are broken only when a realm's power/temperament margin overwhelms the ALLY_BAR-style penalty — both read live world state, never a date. Self-calibrates across ma
+
+[D65] medium (save-load)
+  Generalize _tileCapturedAt into a per-tile war-devastation stock ('the land remembers war')
+  DESC: Like _soilFatigue but fed by combat: each tile a front captures or a siege grinds over gains devastation that depresses fertility/production and local repopulation, healing slowly in peace. This replaces the binary forever-marker with a decaying physical quantity (also easier to serialize), and prod
+  MECH: Devastation accrues only where armies actually fight (tile flips and storms already banked in advanceFronts), in proportion to the combat that occurred, and decays at a fixed physical recovery rate — so its geography is entirely an output of emergent wars, self-calibrating to any map: peaceful world
+
+[D66] large (save-load)
+  Per-tile improvement capital — the positive twin of soil fatigue
+  DESC: A persistent per-tile stock of irrigation works/terraces/drainage that settlements build with construction+agriculture tech under food pressure, that boosts effective fertility, decays under abandonment, and transfers with the land on conquest. Makes conquering a developed valley genuinely worth mor
+  MECH: Investment fires from local state: a settlement whose population presses its food ceiling AND holds the requisite tech converts surplus labour into tile capital on the tiles it farms; decay fires from depopulation/abandonment. No thresholds keyed to time or named places — the Nile accumulates works 
+
+[D67] medium (performance)
+  Equilibrium-gated settlement LOD (state-driven strides)
+  DESC: Give each settlement an activity level derived purely from its state: distance from carrying capacity (|people-K|/K), recent wealth/army/unrest deltas, active shocks, war stamps, and trade-balance movement. Settlements in demonstrable steady state update their slow economics on a long stride at scal
+  MECH: The stride is a function of WHAT the settlement currently is (its distance from equilibrium), never of when it is — a settlement founded at step 40k and one at step 400 with identical state get identical treatment. It self-calibrates across maps and seeds because activity is measured locally: dense 
+
+[D68] small (performance)
+  Active-front border crawl
+  DESC: Replace relaxClaim's full-map ring sweeps with a persistent frontier set: when the territory pass writes _countryOwner, diff it against the drawn claim and enqueue only tiles where they disagree AND a neighbour already holds the target. Each relax pops the queue, applies the pressure/resistance test
+  MECH: Compute is driven by political change itself — the moving front IS the work list, so a peaceful century costs ~zero and a continental war costs exactly its front length. It self-calibrates across resolutions automatically (front length scales with tw, not tw x th), removing the ringsPerRelax width h
+
+[D69] medium (performance)
+  Change-driven maritime rebuild with incremental flood
+  DESC: Rebuild sea lanes only when the maritime world has actually changed: a port founded/died, a port's seaRange budget crossing a threshold (new naval tech), or a lane endpoint conquered. Keep the last lane graph otherwise. When a rebuild is due, run the ocean flood as a budgeted background job (a bound
+  MECH: The rebuild fires on world-state deltas (new ports, tech thresholds, conquests), not on a calendar: a landlocked bronze-age world never pays for the ocean at all, while an age of exploration triggers frequent rebuilds exactly when maritime state is actually in flux. Cost therefore scales with naval 
+
+[D70] small (integration-deadcode)
+  Wire fortification tech into siege defence (make 'walls' real)
+  DESC: homeMight and the siege-break test currently read only the military channel, so masonry/castles/cathedrals change nothing about how long a city holds. Multiply the home-core defence by (1 + defenseLevel * WALL_W) and let SIEGE_DMG grind it down — the already-computed, already-tooltipped defenseLevel
+  MECH: Fires purely from each settlement's own construction-track tech state (techEffects), never from era or date: a stone-age village has no walls, a realm that invests in construction gets defensible cities whenever it reaches them, on any map or seed. Self-calibrates because defenseLevel is normalised 
+
+[D71] medium (integration-deadcode)
+  Deserters become brigands: unpaid armies turn into stateless raider bands
+  DESC: Insolvency currently just multiplies garrisons away (armies.js:242) — the men evaporate. Instead, convert a share of deserting soldiers into a hostile stateless raider stock around the bankrupt realm (reusing the existing raid machinery from slavery.js/settlementPower): they pillage wealth/food from
+  MECH: Triggered by gov._solvency < 1 (an emergent fiscal state driven by war bills, tax base, and debt), scaled by how many soldiers actually deserted; the bands dissipate when regional wealth/army balance turns against them. No time or era input anywhere, and it self-calibrates: bigger armies and worse b
+
+[D72] medium (integration-deadcode)
+  Truce settlements with teeth: reparations/tribute flows from the exhausted loser
+  DESC: Truces today only block new fronts for T.TRUCE_TICKS; the war's outcome leaves no economic trace unless a city fell. At truce signing, compare the two sides' war-exhaustion and remaining natMight, and bind the clearly-beaten side to a treasury tribute stream (reusing the existing colonial TRIBUTE_FR
+  MECH: Both trigger and magnitude come from emergent war state at the moment of peace (exhaustion gap, surviving national-army ratio, treasuries), and payment flows through the existing conserved-money channels. Self-calibrating across eras and maps because it is expressed in ratios of the combatants' own 
+
+[D73] small (integration-deadcode)
+  Log climate epochs and volcanic winters into the event system so scribes can cite the bad centuries
+  DESC: climate.js is the only shock system with no logEvent: harsh epochs and eruptions shape harvests (once the sampling bug is fixed) but leave no trace in the structured log, so chronicles/historiography can never say 'a decade of failed harvests' — realms just mysteriously fray. Emit climate.volcanicWi
+  MECH: Events fire from the climate walk's own state (index/shock crossing thresholds) — the same persisted, deterministic values the fertility overlay is computed from — never from the calendar. Threshold crossings are self-calibrating because the walk is mean-reverting and bounded, so 'harsh epoch' means
+
+[D74] small (long-run)
+  Colonies inherit their founders' endemic disease load
+  DESC: Seed a new settlement's _diseaseLoad in makeSettlement by blending the parent's load with the local substrate exactly as ancMix already blends genetic stock (settlement.js seedAncestry). Then first-contact severity is computed from the real immunological gap between the people actually standing ther
+  MECH: Disease load becomes a property carried by population movement, not by location: the virgin-soil catastrophe fires only where founder stocks with genuinely disjoint disease pools meet, whatever the map or seed. No thresholds need retuning — the gap CONTACT_GAP is already measured between loads; inhe
+
+[D75] small (long-run)
+  Industrial mobility channel — machines replace horses at the top of the tree
+  DESC: Open a second, horse-independent term in the mobility learning rate once a settlement's metallurgy AND organization cross the same industrial band the code already uses for indAgri (settlement.js:1427, (org−0.78)/0.18 × (met−0.78)/0.18): rail, steam haulage and the telegraph made land movement a MAC
+  MECH: Gated purely on reached knowledge (the same two tracks that gate industrial agronomy), so it fires when a civilisation industrialises — early on a coal-rich seed, never in a world stuck in antiquity — and is entirely independent of the calendar. Self-calibrates across maps because the gate is the de
+
+[D76] large (long-run)
+  Pastoral nomad confederations on the horse steppe
+  DESC: Where land is open and flat (the OPEN_RIDE terrain class), fertility is below the farming floor, and horse deposits are present, let population organise as a herder polity: tiny fixed settlements but a large mobile 'horde' power projected along low-cost open terrain, funded by livestock plus tribute
+  MECH: Every ingredient is world state: terrain openness and horses from worldgen, the farming floor from fert/tech, raid pressure from the emergent wealth differential between steppe and sown, horde reach from mobility knowledge × OPEN_RIDE cost discounts. On maps with no steppe belt it simply never appea
+
+[D77] large (cradle-probe)
+  Emergent agricultural hearths: invent farming where wild-cereal conditions + density + circumscription co-occur, instead of seeding cradles at t=0
+  DESC: Remove cradle seeding entirely. Start the world with a sparse forager population field that diffuses over habitable land (the ancestry/arrival machinery already models peopling). Agriculture is then INVENTED locally when a tile's state crosses a joint threshold: arid-alluvium floodplain (tFlood, alr
+  MECH: Fires purely from world state — floodplain mask, climate, accumulated forager density, circumscription — never from step or year. Self-calibrates: on real-Earth heightmaps the Crescent/Nile/Indus/Huang He satisfy the conditions first and become hearths without any named coordinate; on random maps wh
+
+[D78] small (cradle-probe)
+  Arid-floodplain weighting in the algorithmic cradle score (mechanistic fix for the Caspian/steppe drift)
+  DESC: The algorithmic scorer (state.js:394-402) weights raw riverMag most heavily, which is exactly why it drifted 'Mesopotamia' to the bigger Caspian-feeding river and 'China' to the mag-4 steppe rivers — the failures the hand radii were fitted to hide. Add a term for tFlood/irrigation potential (aridity
+  MECH: The score reads only physical tile state (floodplain mask, aridity, temperature, fertility, circumscription) already produced by worldgen for every map; no coordinates, no era, no step. Self-calibrates because tFlood and aridity are computed per-tile at any resolution and seed — the Crescent wins on
+
+[D79] medium (cradle-probe)
+  Physical (km-scale) hearth separation with competitive merging
+  DESC: Replace the tile-unit CRADLE_MIN_SEP greedy filter with separation derived from a physical distance (fraction of world circumference -> km), and let near-threshold candidate hearths within the early-farming diffusion radius of a stronger one be absorbed rather than rejected outright — nearby strong 
+  MECH: Separation stops being an arbitrary tile count and becomes the distance early agricultural diffusion actually covers before a rival package arrives — a rate (diffusion speed) x state (terrain cost field), both already modelled. Resolution-invariant by construction: the same planet yields the same nu
+
+[D80] large (history-shape)
+  Pastoral nomad confederations — the missing hegemon-killer
+  DESC: A non-settlement polity type: herding confederations that form on open low-crop/high-graze land, hold no bordered territory, and project raids into the settled rim. They monetize the existing momentum mechanism (bankMomentum) — a charismatic confederation on a winning raid streak snowballs into a co
+  MECH: Fires purely from world state: requires (a) graze-capable open terrain with low crop fertility (already computed: fert, OPEN_RIDE terrain class), (b) horse access + mobility knowledge past the riding threshold (the existing hard gate), and (c) a wealth gradient to adjacent settled realms (their trea
+
+[D81] medium (history-shape)
+  Interdependence-driven peace congresses
+  DESC: Extend the existing alliance map into multilateral settlements: when a connected bloc of realms crosses thresholds of mutual war exhaustion AND cross-border trade value (both already computed per pair in updateAlliances / roads), the bloc signs a congress treaty — a truce web binding all members wit
+  MECH: Gated on emergent quantities only: bloc trade share (roads.js flows), accumulated war exhaustion (armies.js), and bloc topology (updateAlliances). A fragmented low-trade antiquity never qualifies — wars stay endemic; a world that integrates early gets its concert early. Self-calibrates because the t
+
+[D82] small (history-shape)
+  Scriptural canon gives organized faiths survivability
+  DESC: Add a per-faith 'canon' stock that accumulates while the faith's follower settlements hold writing/printing techs (already in techState). The cull test (faiths.js:600-606) weighs canon — a written creed survives with few dominant settlements (diaspora religions: Judaism is exactly the case the curre
+  MECH: Canon growth is gated on the followers' tech state (writing → printing), never on era or date: a world that never reaches writing keeps churning oral cults forever; one that prints early locks in its world religions early. Cross-map self-calibration is automatic because the canon threshold competes 
+
