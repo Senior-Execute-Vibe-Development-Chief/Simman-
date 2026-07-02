@@ -179,6 +179,12 @@ export function updateSea(world) {
   const portByEmbark = new Map();
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
+    // Snapshot the previous pass's reach before clearing: the colony/quest
+    // eligibility pass below runs BEFORE the flood rebuilds reach, so its
+    // "demand already met" / "already reachable" guards must read LAST
+    // pass's lanes (reading the nulled field made both guards dead code and
+    // directed colonisation over-fired forever).
+    s._seaReachPrev = s._seaReach;
     s._seaReach = null;
     // Only settlements that belong to a NATION project sea lanes. A stateless
     // farming region or town (countryId < 0) has no state to mount or protect
@@ -478,8 +484,9 @@ function luxuryGoal(world, A) {
   // reaching one minor source doesn't sate a hungry market (Europe reached the
   // Levant yet still craved the Indies). So the questers are the wealthy ports FAR
   // from luxury — the Atlantic powers — exactly who drove the spice trade.
+  const reach = A._seaReachPrev || A._seaReach;   // last pass's lanes (this pass's are being rebuilt)
   let reachSupply = 0;
-  if (A._seaReach && byId) for (const pid of A._seaReach.keys()) {
+  if (reach && byId) for (const pid of reach.keys()) {
     const p = byId.get(typeof pid === "number" ? pid : +pid);
     if (p) reachSupply += p._luxSupply || 0;
   }
@@ -488,7 +495,7 @@ function luxuryGoal(world, A) {
   let goal = null, best = Infinity;
   for (const p of world.settlements) {
     if (p.mode !== "settled" || luxResOf(p) < LUX_SOURCE_MIN) continue;
-    if (A._seaReach && A._seaReach.has(p.id)) continue;    // already reachable
+    if (reach && reach.has(p.id)) continue;                // already reachable
     let dx = Math.abs(p.pos.x - ax); if (dx > tw / 2) dx = tw - dx; const dy = p.pos.y - ay;
     const d = dx * dx + dy * dy;
     if (d < best) { best = d; goal = p; }
