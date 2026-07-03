@@ -230,9 +230,10 @@ export function exportHistory(world, { traditions = 12 } = {}) {
   // histories, sacks, burned archives, founding myths) are disproportionately the great
   // FALLEN empires; picking by live member count excluded exactly the realms the
   // historiography layer exists to showcase.
-  const prominence = (id) => eventsFor(world, "p:" + id).length;
+  const prom = new Map();
+  for (const p of polities) prom.set(p.id, eventsFor(world, "p:" + p.id).length);   // compute prominence ONCE per polity, not O(n log n)× rebuilding the event array inside the comparator
   const realms = polities.slice()
-    .sort((a, b) => prominence(b.id) - prominence(a.id))
+    .sort((a, b) => (prom.get(b.id) || 0) - (prom.get(a.id) || 0))
     .slice(0, traditions);
   return {
     step: world.step,

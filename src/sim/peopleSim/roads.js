@@ -984,9 +984,11 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
     if (Pa > 0 && Pb > 0 && Pa !== Pb) {
       compA = Math.pow(Pb / Pa, T.HUME_ELASTICITY); compB = 1 / compA;
       // The raw reciprocal legs are summed into gross flow (evA·compA + evB·compB), and
-      // (x + 1/x)/2 >= 1, so a price gap would INFLATE total trade — not volume-neutral as
-      // claimed. Rescale so compA + compB = 2: the ratio (the balance shift) is preserved,
-      // the average scaling is exactly 1, so gross volume is held fixed (B14).
+      // (x + 1/x)/2 >= 1, so a price gap systematically INFLATED total trade. Rescale so
+      // compA + compB = 2: the ratio (the balance shift) is preserved and the AVERAGE
+      // scaling is exactly 1, removing that bias. (Exactly volume-neutral for equal legs;
+      // for asymmetric flows a small SECOND-ORDER term remains — but signed, not the old
+      // one-way inflation.) (B14)
       const norm = (compA + compB) / 2;
       compA /= norm; compB /= norm;
     }

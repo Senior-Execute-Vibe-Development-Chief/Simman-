@@ -51,7 +51,7 @@ export const DYNASTY_INTERVAL = 25;     // small pass, runs often (reigns span a
 const LITERACY_MIN = 0.22;              // organization needed for recorded dynastic history
 const CROWN_AGE_MIN = 18, CROWN_AGE_SPAN = 22;   // a founder is crowned at 18–40
 const FERTILE_MAX = 45;                 // no births past this age
-const REGENCY_AGE = 16;                 // below this the sovereign is a CHILD ruling under regents (D30) — projects no personal agency, and the crown reads as weak to its neighbours
+const REGENCY_AGE = 14;                 // below this the sovereign is a CHILD ruling under regents (D30). Matches heirByLaw's adult threshold (searchLine treats <14 as a minor → a minor accession is already flagged a crisis, so regency and the crisis record AGREE rather than contradict). A child projects no personal agency, and the crown reads as weak to neighbours.
 const BIRTH_RATE_Y = 0.30;              // annual chance of a royal birth while married & fertile
 const CADET_BIRTH_Y = 0.22;             // annual birth chance for a married cadet branch
 const BASTARD_RATE_Y = 0.018;           // annual chance the monarch sires an acknowledged bastard
@@ -286,7 +286,6 @@ function makeAdult(world, cultureId, female, rng, ageYears, extra, mortF = 0.78,
 // but their children with a house member are full members.
 function wed(world, a, b, polityId, tiePolity, rng) {
   a.spouseId = b.id; b.spouseId = a.id;
-  a._wasWed = true; b._wasWed = true;   // "has been married" — distinguishes a widow (remarriage is gated) from a never-wed founder
   // a generated, ownerless partner is tracked as an in-law of the blood spouse's
   // house so it can be reaped (royal matches from a foreign court die on their own
   // house's roster instead).
@@ -337,17 +336,19 @@ function birth(world, parent, rng, bastard, mortF) {
   return child;
 }
 
-// Every death flows through here (R4). One site to: mark the person dead, close any
-// open reign, and WIDOW the surviving spouse — clearing the survivor's spouseId frees a
-// widowed monarch to remarry (D31) and stops a cross-court couple from being bred
-// independently from two courts (B41: the widow is no longer "married to a corpse" that
-// the other realm's roster keeps breeding against). Idempotent: a second call no-ops.
+// Every death flows through here (R4): mark the person dead and close any open reign — one
+// site so no death path forgets the reign-close. The guard tests `reignFrom !== -1` (the
+// never-reigned sentinel from newPerson), NOT `>= 0`: dyn-years run NEGATIVE in antiquity
+// (calendar DYN_START), so a BC-era ruler's reignFrom is a real-but-negative year and a
+// `>= 0` guard would wrongly skip it — leaving reignTo at -1 and computing a garbage
+// multi-millennium reign span (wrong epithet + spurious long-reign event). Idempotent.
+// Widowhood is deliberately NOT recorded by clearing spouseId here: the surviving monarch's
+// remarriage (D31) reads the consort's `died` flag instead, so a late consort stays linked
+// in the family tree until — and unless — a new match is actually made.
 function killPerson(world, p) {
   if (!p || p.died >= 0) return;
   p.died = world.step | 0;
-  if (p.reignTo < 0 && p.reignFrom >= 0) p.reignTo = stepToYear(world, world.step) | 0;
-  const sp = p.spouseId >= 0 ? getPerson(world, p.spouseId) : null;
-  if (sp && sp.died < 0 && sp.spouseId === p.id) sp.spouseId = -1;   // the survivor is widowed — single again
+  if (p.reignTo < 0 && p.reignFrom !== -1) p.reignTo = stepToYear(world, world.step) | 0;
 }
 
 // ── Governance: derive how a realm is ruled from its STATE ───────────────────
@@ -529,20 +530,21 @@ function heirByLaw(world, ruler, dyn, law) {
   return null;
 }
 
-// How badly the line needs a fresh heir: 1.0 = no adult heir at all (urgent), falling
-// to a small floor when several spares already stand. Read off the LIVING house (the
-// distance from a secure succession), never a clock — it gates a widowed monarch's
+// How badly the line needs a fresh heir: 1.0 = no eligible adult heir BEYOND the sovereign
+// (the line about to die out — most urgent), falling to a small floor when several spares
+// already stand. Counts the living house EXCLUDING the ruler themself — a sovereign is not
+// their own heir, and counting them made the heirless-crown (1.0) case unreachable and
+// halved the pressure. Read off house STATE, never a clock — it gates a widowed monarch's
 // remarriage (D31), so a heirless crown urgently remarries while a secure one rarely does.
 function heirScarcity(world, ruler, dyn, law) {
-  if (!dyn) return 1;
-  const succ = heirByLaw(world, ruler, dyn, law);
-  if (!succ || succ.minor) return 1;                       // no eligible ADULT heir anywhere — most urgent
-  let adults = 0;
-  if (dyn.members) for (const id of dyn.members) {
+  if (!dyn || !dyn.members) return 1;
+  let spares = 0;
+  for (const id of dyn.members) {
+    if (id === ruler.id) continue;                         // the sovereign is not their own heir
     const p = getPerson(world, id);
-    if (p && p.died < 0 && ageOf(world, p) >= 14 && eligible(world, p, law, false) && ++adults >= 3) break;
+    if (p && p.died < 0 && ageOf(world, p) >= 14 && eligible(world, p, law, false) && ++spares >= 3) break;
   }
-  return adults >= 3 ? 0.12 : adults === 2 ? 0.3 : 0.6;    // fewer spare heirs → more pressure to remarry
+  return spares === 0 ? 1 : spares >= 3 ? 0.12 : spares === 2 ? 0.3 : 0.6;   // 0 spare adult heirs → most urgent
 }
 
 // Theocracy: the office passes to the priesthood, not the blood. A senior elder
@@ -767,7 +769,7 @@ function growCadets(world, c, polity, dyn, over, mortF, rng) {
     if (!p || p.died >= 0 || p.id === polity.rulerId) continue;
     const age = ageOf(world, p);
     if (age < 16) continue;
-    if (p.spouseId < 0) { if (!p._wasWed && age <= 40 && rng() < 0.5) marry(world, p, c.id, rng, false, mortF); continue; }   // never-wed cadets marry; a widowed cadet stays single (only monarchs remarry — D31)
+    if (p.spouseId < 0) { if (age <= 40 && rng() < 0.5) marry(world, p, c.id, rng, false, mortF); continue; }   // a single cadet marries; a widowed one keeps its (dead) spouse link and so stays single — only the crown remarries (D31)
     const spouse = getPerson(world, p.spouseId);
     if (!spouse || spouse.died >= 0) continue;
     if (sittingRulers(world).has(p.spouseId)) continue;   // spouse reigns elsewhere — THAT realm's monarch path breeds the couple; breeding here too double-breeds the pair across two houses (B41)
@@ -806,7 +808,7 @@ function nobleUpkeep(world, c, polity, over, mortF, rng) {
       if (!p || p.died >= 0) continue;
       const age = ageOf(world, p);
       if (age < 18 || age > FERTILE_MAX) continue;
-      if (p.spouseId < 0) { if (!p._wasWed && age <= 40 && rng() < 0.4) marry(world, p, c.id, rng, false, mortF); continue; }   // widowed nobles stay single (parity with growCadets / D31)
+      if (p.spouseId < 0) { if (age <= 40 && rng() < 0.4) marry(world, p, c.id, rng, false, mortF); continue; }   // a single noble marries; a widowed one keeps its (dead) spouse link and stays single (parity with growCadets / D31)
       const sp = getPerson(world, p.spouseId);
       if (!sp || sp.died >= 0 || (p.children || []).length >= 4) continue;
       if (sittingRulers(world).has(p.spouseId)) continue;   // spouse reigns elsewhere — that realm breeds the couple (B41)
@@ -960,15 +962,20 @@ export function updateDynasties(world) {
 
     // the living house: marry & breed the monarch, grow cadet branches, reap all
     const plague = !!c.capital._plagueActive;
-    // A never-wed monarch weds; a WIDOWED one (killPerson cleared the spouse link)
-    // remarries only under heir pressure — D31, gated on the line's survival need, not
-    // the calendar. A secure house rarely bothers; a crown with no adult heir urgently
-    // seeks a fertile new match, so crises stay common without lines dying for want of a
-    // second chance.
-    if (ruler.spouseId < 0) {
-      if (!ruler._wasWed) marry(world, ruler, cid, rng, true, mortF);
-      else if (ageOf(world, ruler) <= FERTILE_MAX && rng() < over(REMARRY_Y * heirScarcity(world, ruler, dyn, law)))
+    // A never-wed monarch weds; a WIDOWED one remarries only under heir pressure — D31,
+    // gated on the line's survival need, not the calendar. Widowhood is read from the
+    // consort's `died` flag (killPerson leaves the spouse link intact, so the late consort
+    // stays in the family tree); the link is released only if a new match is actually made.
+    // A secure house rarely bothers; a crown with no spare heir urgently seeks a fertile
+    // new match, so crises stay common without lines dying for want of a second chance.
+    const curSpouse = ruler.spouseId >= 0 ? getPerson(world, ruler.spouseId) : null;
+    if (!curSpouse || curSpouse.died >= 0) {                     // single: never wed, or widowed
+      if (ruler.spouseId < 0) {
+        marry(world, ruler, cid, rng, true, mortF);             // never married — the first match
+      } else if (ageOf(world, ruler) <= FERTILE_MAX && rng() < over(REMARRY_Y * heirScarcity(world, ruler, dyn, law))) {
+        ruler.spouseId = -1;                                     // let go of the late consort so marry() proceeds
         marry(world, ruler, cid, rng, true, mortF);
+      }
     }
     const spouse = getPerson(world, ruler.spouseId);
     const rAge = ageOf(world, ruler);
