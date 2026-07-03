@@ -3199,7 +3199,7 @@ const renderInspect=()=>{
           label=(n<=1)?`colony of ${overName}`:(isCap?`colonial capital · ${n} settlements · answers to ${overName}`:`colonial settlement · realm of ${cap?cap.name:"?"}`);
         }
         else if(n<=1)label="independent city-state";
-        else if(isCap)label=`national capital · ${n} settlements`;
+        else if(isCap)label=`${ctry&&ctry._nomadic?"horde capital":"national capital"} · ${n} settlements`;
         else{
           const role=(s._vassalCount>0)?"provincial seat":(tierName||"settlement");
           label=`${role} · answers to ${liege?liege.name:(cap?cap.name:"?")}`;

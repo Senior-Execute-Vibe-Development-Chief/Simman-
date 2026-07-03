@@ -324,6 +324,7 @@ function buildSnapshot() {
         id: c.id, capitalId: c.capitalId, name: realmName(world, c.id),
         _overlord: pol && pol._overlord != null ? pol._overlord : -1,   // dependency → its overlord's countryId (-1 = sovereign)
         _depKind: pol && pol._overlord != null ? (pol._depKind || "colony") : null,   // "colony" (planted, drawn in the metropole's colour) vs "vassal" (submitted court, keeps its own)
+        _nomadic: !!c._nomadic,   // steppe confederation (derived each polity pass — conquest.js classifyNomads)
         ruler: ruler && ruler.died < 0 ? { name: ruler.name, female: !!ruler.female, age: Math.round(ageOf(world, ruler)), house: dyn ? dyn.name : null, title: ruler._title || null, gov: pol ? pol.gov || "monarchy" : "monarchy", trait: traitLabel(ruler.traits) } : null,
         faithId: pol ? pol.faithId : -1,
         memberIds: c.members.map(m => m.id),

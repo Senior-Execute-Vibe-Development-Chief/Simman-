@@ -111,6 +111,7 @@ const NARRATE = {
     void as;
     if (ev.how === "conquest") return `Fell to ${ev.byName || "its conquerors"} and was erased from the map.`;
     if (ev.how === "absorbed") return `Was absorbed into ${ev.byName || "a neighbouring realm"}.`;
+    if (ev.how === "succession") return "Shattered over a contested succession — its hordes and provinces going their separate ways under rival heirs.";
     return "Dissolved — its last cities scattered or fell silent.";
   },
   "polity.restored"(ev) {
@@ -154,6 +155,12 @@ const NARRATE = {
     return as === ev.to
       ? `${ev.name || "A neighbouring statelet"} bent the knee and became a tributary of the realm.`
       : `Facing hopeless odds, the court of ${ev.name || "the realm"} bowed to ${ev.toName || "a greater power"} — keeping its throne at the price of tribute.`;
+  },
+  "horde.raid"(ev, as) {
+    if (as === ev.from) return `A raid season against ${ev.name || "the settled lands"} paid richly — the wagons came home heavy.`;
+    const loot = ev.loot >= 1 ? ` ${ev.loot} in coin was carried off` : "";
+    const cap = ev.captives >= 1 ? `${loot ? ";" : ""} ${ev.captives} souls were driven into the captive trains` : "";
+    return `Riders out of the steppe — ${ev.fromName || "a horde"} — swept the borderlands.${loot}${cap}${loot || cap ? "." : ""}`;
   },
   "plague.virginSoil"(ev) { return `A pestilence unknown to ${ev.sName || "the people"} came ashore with the strangers, and they had no defence against it.`; },
   "war.ended"(ev, as) {
@@ -289,6 +296,7 @@ export function categoryOf(ev, as = -1) {
     case "colony.founded": return "founding";
     case "colony.independent": return as === ev.from ? "loss" : "secession";
     case "polity.submitted": return as === ev.to ? "annex" : "loss";
+    case "horde.raid": return as === ev.from ? "wealth" : "loss";
     case "plague.virginSoil": return "plague";
     case "war.indemnity": return as === ev.polity ? "loss" : "wealth";
     case "war.ended": return "war";

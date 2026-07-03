@@ -18,7 +18,8 @@
 // near the cradle baseline.
 
 import { isContinentalLand } from "./state.js";
-import { makeSettlement, dominantAnc } from "./settlement.js";
+import { makeSettlement, dominantAnc, livestockClimate } from "./settlement.js";
+import { tileOpenness } from "./transport.js";
 import { getPolity } from "./entities.js";
 import { dominantCulture, foundCulture, seedCulture, nameFor, ancestryCulture } from "./cultures.js";
 import { passRng } from "./rng.js";
@@ -46,6 +47,7 @@ const FLOOD_SPACING_MUL         = 0.75;   // floodplain packs somewhat denser th
 // a desert spot spawns a tiny hamlet over millennia. Carrying
 // capacity (K ∝ farmland × fert) keeps marginal hamlets small.
 const MIN_FERT                  = 0.03;   // basically "is there any soil?"
+const PASTURE_SITE_W            = 0.9;    // site value of PEAK herding country ≈ middling rain-fed cropland (f≈0.55 worth) — the steppe fed real peoples off the herd, an order below the river valleys
 const MIN_AREA_FERT             = 1.0;    // 5×5 box must have *some* support
 // Tighter spacing → a lush continent fills with a denser web of
 // smaller settlements rather than a handful of ever-growing
@@ -171,6 +173,14 @@ const BASE_RATE                 = 0.030;   // 3x — the world settles ~3x faste
 // else 4-7" divide. So set it one spacing PAST the barren maximum: contiguous frontier
 // extension works on every terrain at its own density, while true teleports are still cut.
 const FRONTIER_EXTEND_DIST      = MIN_SETT_DIST * (1 + SPARSE_SPREAD) + MIN_SETT_DIST;   // 20 (barren spacing) + 8 (one hop) = 28
+// A MOUNTED people's frontier reaches farther over OPEN country: to riders the
+// grass is a highway (transport.js tileOpenness — same openness the cost core
+// discounts), so the wave of advance that walks tile-by-tile through forest
+// LEAPS across steppe. At full mobility over fully open ground the extension
+// triples — a day's ride against a day's walk — which is what lets herding
+// peoples actually fill the steppe (the Yamnaya pattern) instead of the wave
+// stalling at the grass line for want of a donor within foot range.
+const RIDE_EXTEND               = 2;
 // A frontier village born INTO a realm shares that realm's DEVELOPMENT (its roads,
 // crops, administration, craft all diffuse to the new settlement), so it is never a
 // stone-age speck inside a developed empire. Floor its inherited knowledge at this
@@ -417,7 +427,17 @@ export function maybeCrystallize(world) {
     // farmland) → 5–10 (river valley / coast) → 15+ (river-mouth port, pass,
     // confluence). The multiplicative form (rather than additive bonuses) is
     // what makes rivers/coasts dominate by enough to leave bad land empty.
-    const fertilityScore = 0.4 + f * 1.5 + Math.min(2.0, areaFert * 0.1);
+    // PASTORAL PULL: open grassland converts to calories through the HERD — the
+    // same livestockClimate suitability the food model feeds herders by
+    // (settlement.js pastoral channel), times how open the country is
+    // (transport.js tileOpenness). Without this term a site's food potential
+    // was purely ARABLE, so the steppe scored near-zero and never founded the
+    // settlements its pastoral calories could actually feed — no steppe
+    // peoples, no hordes, on any map. Weighted so PEAK herding country scores
+    // like middling rain-fed cropland: the steppe carried real populations,
+    // but an order below the river valleys (which keep their ×6 magnet).
+    const pasture = livestockClimate(world.temp[ti], world.moist[ti]) * tileOpenness(world, ti);
+    const fertilityScore = 0.4 + f * 1.5 + Math.min(2.0, areaFert * 0.1) + pasture * PASTURE_SITE_W;
     let locMul = 1;
     if (hasRiver) locMul *= 6;            // rivers were *the* historical magnet —
                                           // strong multiplier so river valleys
@@ -518,8 +538,8 @@ export function maybeCrystallize(world) {
       // seeded at world-gen, so the world still bootstraps. (Existing settlements may
       // still become stateless when their realm collapses — a separate path.)
       const donorCountry = connected && donor && donor.mode === "settled" ? donor.countryId : -1;
-      const joinCountry = region >= 0 ? region : donorCountry;
-      if (joinCountry < 0) continue;
+      let joinCountry = region >= 0 ? region : donorCountry;
+      let rodeAway = false;
       // Wilderness founding (region<0) must be a CONTIGUOUS frontier extension of the
       // donor's realm, not a detached tech-less exclave far out in the wild (see
       // FRONTIER_EXTEND_DIST). On the realm's OWN claimed land (region>=0) this doesn't
@@ -527,8 +547,22 @@ export function maybeCrystallize(world) {
       if (region < 0 && donor) {
         let ddx = Math.abs(donor.pos.x - (tx + 0.5)); if (ddx > tw / 2) ddx = tw - ddx;
         const ddy = donor.pos.y - (ty + 0.5);
-        if (ddx * ddx + ddy * ddy > FRONTIER_EXTEND_DIST * FRONTIER_EXTEND_DIST) continue;
+        const dd2 = ddx * ddx + ddy * ddy;
+        // Mounted donors extend far over open country (see RIDE_EXTEND).
+        const ride = 1 + RIDE_EXTEND * ((donor.knowledge && donor.knowledge.mobility) || 0) * tileOpenness(world, ti);
+        const lim = FRONTIER_EXTEND_DIST * ride;
+        if (dd2 > lim * lim) continue;
+        // Beyond the FOOT frontier — ground only the RIDE made reachable — the
+        // camp is not an administered extension of the donor's realm: it is kin
+        // who RODE AWAY. The donor's court projects nothing three days' ride
+        // into the open grass, so the camp is born STATELESS and founds (or
+        // joins) a steppe polity when it matures — adoptAndFound's wilderness
+        // path, the same one collapsed realms' orphans use. This is how the
+        // steppe gets its OWN peoples instead of every camp flying the flag of
+        // a farming court that has never seen it.
+        if (dd2 > FRONTIER_EXTEND_DIST * FRONTIER_EXTEND_DIST) { rodeAway = true; joinCountry = -1; }
       }
+      if (joinCountry < 0 && !rodeAway) continue;
       // Share the joining realm's development: floor the (distance-decayed) inherited
       // knowledge at NATION_TECH_FLOOR of the realm's capital, so a frontier village of
       // a developed empire is born developed, not neolithic. Cloned so we never mutate
@@ -542,7 +576,7 @@ export function maybeCrystallize(world) {
       const born = makeSettlement(world, tx + 0.5, ty + 0.5, {
         people: 18 + (rng.int(8)),
         knowledge: bornKnow,
-        countryId: joinCountry,   // born into the realm it sits in / extends — never stateless
+        countryId: joinCountry,   // born into the realm it sits in / extends — stateless (-1) only for a rode-away steppe camp
         parentId: donor.id,   // carries the donor's ancestry; a long jump admixes with the local substrate
         // near spread keeps the donor's people; otherwise we assign below
         cultureId: (connected && !isBranch) ? dCul : -1,

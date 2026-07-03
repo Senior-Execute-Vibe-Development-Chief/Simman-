@@ -14,7 +14,9 @@
 
 import { recordIn, recordOut, IN_AID, IN_TRIBUTE, IN_STATE_PAY, IN_TARIFFS, IN_FINANCE, OUT_TRIBUTE, OUT_AID } from "./money.js";
 import { shockUnrest } from "./shocks.js";
-import { localEdgeCost } from "./transport.js";
+import { localEdgeCost, tileOpenness } from "./transport.js";
+import { TECHS } from "./tech.js";
+import { inCrisis } from "./dynasties.js";
 import { personalityOf, inheritPersonality, driftPersonality, expansionReachMul } from "./personality.js";
 import { CITY_TIER, resScaleFor } from "./countryTerritory.js";
 import { techEff, getWealthReserve } from "./settlement.js";
@@ -61,6 +63,32 @@ const SUBMIT_RATIO = 5.0;  // odds (their whole network vs yours) past which a c
 const SUBMIT_HAZARD   = 0.0017; // per-tick capitulation hazard under hopeless odds
 const SUBMIT_PROB_CAP = 0.5;    // ceiling per pass — even a very long pass never makes capitulation a certainty
 const SUBMIT_REACH = 1.5;  // a suzerain overawes out to this multiple of its hold reach: a punitive expedition ranges past where a permanent garrison (direct administration) can sit, and a vassal costs no garrison — it administers itself
+// ── Nomad confederations (a polity MODE, derived every pass — see classifyNomads) ──
+// Riding is REAL past the chariot gate — the same mobility threshold the tech
+// tree itself uses (throws if the tree ever renames it, instead of silently
+// classifying nobody).
+const _chariotTech = TECHS.find(t => t.id === "chariots");
+if (!_chariotTech) throw new Error("conquest.js: TECHS has no 'chariots' — nomad classification needs its mobility gate");
+const CHARIOT_MOB = _chariotTech.gate[1];
+const NOMAD_OPEN_MIN   = 0.5;   // a tile is saddle-country when at least half the full riding discount is available there (transport.js tileOpenness: dry grass, low relief)
+const NOMAD_FERT_MAX   = 0.35;  // ...and too poor to farm: below this yield the herd beats the plough (floodplain agriculture is indexed from fert ≥ 0.25; 0.35 is marginal cropland at best)
+const NOMAD_HORSES_MIN = 0.05;  // herds must actually be reachable at the seat — the same floor the economy uses for horse wealth to exist at all
+const NOMAD_MOMENTUM   = 2;     // a confederation is a charisma-glued winning streak: banked conquest/raid momentum counts (and can carry) double for a nomadic realm — and evaporates on the same decay clock, so a stalled horde deflates fast
+// Post-khan shatter: a contested succession disputes the ONLY thing holding a
+// confederation together. Hazard per tick of history while a dynastic crisis is
+// live — ≈ even odds across one crisis window, because steppe confederations
+// rarely survived a contested succession intact.
+const NOMAD_SHATTER_HAZARD = 0.0023;
+// The raid economy (hordeRaids): what the steppe cannot grow it takes from the
+// sown. Per-tick hazard of a raid season against a given rich neighbour
+// (≈ one season per generation per target when undeterred); the take is the
+// same "portable, seizable share" logic as a sack's PLUNDER_FRAC, spread over
+// a season of border raids instead of one storm, scaled by the wealth gradient
+// and throttled by the defender's power.
+const RAID_REACH   = 2.0;    // a horde raids out to this multiple of its hold reach — raiding parties range far past what the khan governs
+const RAID_HAZARD  = 0.0017; // per-tick chance of a raid season against one target realm
+const RAID_TAKE    = 0.10;   // ceiling share of a reachable settlement's portable coin one season carries off (before gradient/defence scaling)
+const RAID_CAPTIVE = 0.03;   // ceiling share of a raided settlement's people swept into the captive trains (slave machinery; only when T.SLAVERY)
 // A realm's whole country must out-power a neighbour's whole country by
 // T.ABSORB_DOMINANCE before it can administratively absorb that neighbour's
 // frontier settlements (absorbWeakNeighbors). Hysteresis: only clearly-minor
@@ -341,6 +369,9 @@ const ALLIANCE_EVERY = 600;   // recompute the (slow-drifting) alliance map this
 // Naive `world.step % EVERY === 0` is DEAD inside this phase-offset pass (it
 // froze the alliance map at its first build) — see passWindow (tuning.js).
 const _polityWindow = (world, every) => passWindow(world, T.POLITY_INTERVAL, every);
+// The polity pass's span in ticks — per-tick hazards multiply by this so a
+// per-history rate never varies with the POLITY_INTERVAL perf lever.
+const _passTicks = () => Math.max(1, Math.round(T.POLITY_INTERVAL * (T.SIM_GRANULARITY || 1)));
 
 // ── Colonial dependencies: a self-governing colony bound to an overlord ───────
 // An overseas colony (sea.js) is founded as its OWN realm — own capital, own LOCAL
@@ -990,7 +1021,11 @@ function shedPatch(world, c, members) {
 // regional successor states around their strongest cities. Called from
 // armies.js the moment a capital is stormed. The conqueror (excludeId) keeps
 // only the captured throne-city; everything else fragments.
-export function fragmentRealm(world, oldId, excludeId) {
+// `how` labels the polity.ended record: "conquest" (default — a stormed
+// capital, excludeId = the conqueror's settlement) or "succession" (the
+// post-khan shatter — no conqueror, excludeId -1, every member fragments and
+// the dead khan's chest stays on the record, buried with the house).
+export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
   // The conqueror sacks the treasury — the fallen state's war-chest is seized
   // into the victor's coffers (keeps the coin conserved + a great war prize).
   // Only zero the dead chest once it has actually been CREDITED somewhere; if
@@ -1010,7 +1045,7 @@ export function fragmentRealm(world, oldId, excludeId) {
   {
     const conq = world._byId ? world._byId.get(excludeId) : null;
     const by = conq && conq.countryId != null ? conq.countryId : -1;
-    endPolity(world, oldId, "conquest", by, by >= 0 ? realmName(world, by) : undefined);
+    endPolity(world, oldId, how, by, by >= 0 ? realmName(world, by) : undefined);
   }
   let survivors = [];
   for (const s of world.settlements) {
@@ -1580,6 +1615,9 @@ export function updatePolities(world) {
   let _pt = _pf ? performance.now() : 0;
   const countries = rebuildCountries(world);
   if (_pf) { _pf.rebuild = performance.now() - _pt; _pt = performance.now(); }
+  // Nomad classification first — everything downstream (momentum, raids, the
+  // post-khan shatter) reads this pass's fresh flags, never last pass's world.
+  classifyNomads(world, countries);
 
   // ── Colonial dependencies: wire new colonies, validate links, grant independence ──
   {
@@ -1694,6 +1732,10 @@ export function updatePolities(world) {
   // Runs every polity pass on the (slow-drifting) alliance data; the new
   // vassal's tribute/bloc wiring takes effect next pass via rebuildOverlords.
   considerSubmissions(world, countries);
+  // The steppe collects: hordes raid the rich settled rim (or honour the
+  // treaties of those who submitted above). After submissions so a court that
+  // bent the knee this pass is spared this pass's raid season.
+  hordeRaids(world, countries);
   for (const c of countries.values()) {
     if (c.members.length <= 1) {
       const solo = c.members[0];
@@ -1858,8 +1900,12 @@ export function updatePolities(world) {
     // propped-up frontier sheds in a few passes (hard snap). Added on top of
     // the throttled budget so even a multi-front war-machine over-holds while
     // it's winning, then shatters when it stalls.
-    const momentum = Math.min(T.MOMENTUM_CAP, gov._momentum || 0);
-    gov._momentum = momentum * MOMENTUM_DECAY;     // decay each pass; conquest re-banks it (armies.js)
+    // For a NOMADIC realm the streak IS the state: charisma-glued confederations
+    // are held together by success, so momentum counts (and can carry) double —
+    // and rides the same decay clock, so a stalled horde deflates twice as hard.
+    const banked = Math.min(T.MOMENTUM_CAP, gov._momentum || 0);   // the bank stays clamped at the settled cap, as ever
+    const momentum = banked * (c._nomadic ? NOMAD_MOMENTUM : 1);   // ...but a horde RIDES it double
+    gov._momentum = banked * MOMENTUM_DECAY;     // decay each pass; conquest re-banks it (armies.js)
     const capacity = peaceCapacity * duress * fiscalDuress + momentum;
     c._capacity = capacity;        // (already duress-adjusted) for the info panel
     c._momentum = momentum;        // for the info panel
@@ -2155,10 +2201,126 @@ export function updatePolities(world) {
   absorbWeakNeighbors(world, countries);
   if (_pf) _pf.absorb = performance.now() - _pt;
 
+  // ── Post-khan shatter ──────────────────────────────────────────────
+  // A nomad confederation is a winning streak with a khan at its head, not an
+  // institutionalized state — and a CONTESTED succession (a live dynastic
+  // crisis) disputes the only thing holding it together. While the crisis
+  // runs, the whole confederation can shatter wholesale into successor hordes
+  // (fragmentRealm — the Diadochi machinery, entered by succession rather
+  // than by a stormed capital). Settled realms are untouched: they shatter
+  // only the ways they always could. Emergent both ways — a horde that
+  // sedentarizes (flag off) outgrows the shatter the same pass.
+  {
+    const passTicks = _passTicks();
+    for (const c of [...countries.values()]) {
+      if (!c._nomadic || c.members.length < 3) continue;
+      if (!inCrisis(world, c.id)) continue;
+      const r = hash32(world.seed || 1, "hordeShatter", c.id, world.step) / 4294967296;
+      if (r > NOMAD_SHATTER_HAZARD * passTicks) continue;
+      fragmentRealm(world, c.id, -1, "succession");
+    }
+  }
+
   // Reconcile the persistent polity registry against the live view: register
   // substantial newcomers, close the records of realms that vanished. (No
   // pruning — fallen realms keep their record, history and temperament.)
   reconcilePolities(world, countries);
+}
+
+// ── Nomad confederations: a polity MODE, derived, never stored ─────────
+// A realm is NOMADIC when its SEAT sits in saddle-country (open riding
+// terrain — the same openness the transport core discounts for mounted
+// cultures — too poor to farm), its herds are real (horses reachable at the
+// seat) and its riding is real (mobility at the chariot gate). No steppe, no
+// horses, or no riding → never fires, on any map. The SEAT is the right
+// granularity, not a population majority: everything a realm IS in this
+// model — knowledge, personality, reach — reads from its capital, and
+// rebuildCountries seats the court at the strongest member, so a horde that
+// takes a rich farming city finds its court sitting in the sown next pass
+// and the flag flips off — sedentarization (the Yuan arc) falls out of seat
+// selection for free, while a farming empire that holds steppe marches never
+// reads as a horde. Recomputed from live state every polity pass.
+function classifyNomads(world, countries) {
+  const tw = world.tw, fert = world.fert;
+  for (const c of countries.values()) {
+    c._nomadic = false;
+    const cap = c.capital; if (!cap) continue;
+    if (((cap.knowledge && cap.knowledge.mobility) || 0) < CHARIOT_MOB) continue;  // no riding, no horde
+    const res = cap._effRes || cap.localRes || {};
+    if ((res.horses || 0) < NOMAD_HORSES_MIN) continue;                            // no herds, no horde
+    const ti = (cap.pos.y | 0) * tw + (cap.pos.x | 0);
+    c._nomadic = tileOpenness(world, ti) >= NOMAD_OPEN_MIN && (fert ? fert[ti] || 0 : 1) < NOMAD_FERT_MAX;
+  }
+}
+
+// ── The raid economy of the steppe ─────────────────────────────────────
+// A nomadic realm farms little — its land can't. What the steppe yields is
+// force projection, and the horde converts it into the sown's wealth. Each
+// polity pass, a settled realm within a horde's raiding range faces the
+// steppe's terms: where tribute already flows (it SUBMITTED — the Xiongnu
+// treaty, handled by the same considerSubmissions machinery as any hopeless
+// matchup) or a truce holds, the treaty is honoured; otherwise the horde
+// raids — a conserved sweep of portable coin (and captives, into the slave
+// machinery) out of the victim's reachable settlements. Intensity rides the
+// WEALTH GRADIENT between steppe and sown (a poor rim breeds no hordes) and
+// is throttled by the defender's power (a strong empire suffers pinpricks; a
+// soft one bleeds). A good season banks the same momentum conquest does —
+// the confederation is glued together by success, so raiding snowballs
+// toward the submission line — and the borderlands' unrest carries the fear.
+function hordeRaids(world, countries) {
+  // Per-realm live power / coin / heads, one sweep over the settlements.
+  const pow = new Map(), coin = new Map(), heads = new Map();
+  for (const s of world.settlements) {
+    if (s.mode !== "settled" || s.countryId < 0) continue;
+    pow.set(s.countryId, (pow.get(s.countryId) || 0) + settlementPower(s));
+    coin.set(s.countryId, (coin.get(s.countryId) || 0) + (s.wealth || 0));
+    heads.set(s.countryId, (heads.get(s.countryId) || 0) + (s.people || 0));
+  }
+  const passTicks = _passTicks();
+  const ov = world._overlordOf, truces = world._truces;
+  const bondedPair = (a, b) => ov && (ov.get(a) === b || ov.get(b) === a);
+  const inTruce = (a, b) => {
+    if (!truces) return false;
+    const u = truces.get(Math.min(a, b) + ":" + Math.max(a, b));
+    return u !== undefined && u > world.step;
+  };
+  for (const N of countries.values()) {
+    if (!N._nomadic || !N.capital) continue;
+    const wN = (coin.get(N.id) || 0) / Math.max(1, heads.get(N.id) || 1);   // the steppe's own wealth per head
+    const reach = RAID_REACH * Math.max(1, N.holdReach);
+    const powN = pow.get(N.id) || 1;
+    for (const S of countries.values()) {
+      if (S === N || !S.capital || S._nomadic) continue;   // the horde milks the SOWN — steppe-on-steppe is war, not business
+      if (bondedPair(N.id, S.id) || inTruce(N.id, S.id)) continue;   // the treaty is honoured while it holds
+      if (dist(world, N.capital.pos.x, N.capital.pos.y, S.capital.pos.x, S.capital.pos.y) > reach) continue;
+      const wS = (coin.get(S.id) || 0) / Math.max(1, heads.get(S.id) || 1);
+      if (wS <= wN) continue;                              // a poor rim breeds no hordes
+      const r = hash32(world.seed || 1, "hordeRaid", N.id * 65537 + S.id, world.step) / 4294967296;
+      if (r > RAID_HAZARD * passTicks) continue;
+      const grad  = (wS - wN) / wS;                        // how much richer the sown is (0..1)
+      const evade = powN / (powN + (pow.get(S.id) || 1));  // the share of the season the defence fails to parry
+      const frac  = RAID_TAKE * grad * evade;
+      if (frac <= 0.001) continue;
+      let loot = 0, took = 0;
+      for (const v of S.members) {
+        if (v.mode !== "settled" || v.countryId !== S.id) continue;
+        if (dist(world, N.capital.pos.x, N.capital.pos.y, v.pos.x, v.pos.y) > reach) continue;   // only what the riders can reach
+        const p = (v.wealth || 0) * frac;
+        if (p > 0) { v.wealth -= p; loot += p; }
+        if (T.SLAVERY) {
+          const g = Math.min((v.people || 0) * RAID_CAPTIVE * evade, (v.people || 0) * 0.2);
+          if (g >= 1) { v.people -= g; took += g; }
+        }
+        v.unrest = Math.min(1, (v.unrest || 0) + 0.05);    // the borderlands live in fear
+      }
+      if (loot <= 0 && took < 1) continue;
+      if (loot > 0) { const npol = govOf(world, N.id); npol.treasury = (npol.treasury || 0) + loot; }   // conserved, like a sack's plunder
+      if (took >= 1) N.capital._captives = (N.capital._captives || 0) + took;   // the captive trains ride for the slave markets
+      bankMomentum(world, N.id, MOMENTUM_PER_STORM * evade);
+      logEvent(world, "horde.raid", { polity: S.id, name: realmName(world, S.id),
+        from: N.id, fromName: realmName(world, N.id), loot: Math.round(loot), captives: Math.round(took) });
+    }
+  }
 }
 
 // ── Submission: a statelet facing hopeless odds takes an overlord ─────
@@ -2187,8 +2349,7 @@ function considerSubmissions(world, countries) {
   const eff = new Map(own);
   if (ov) for (const [dep, over] of ov) if (eff.has(over)) eff.set(over, (eff.get(over) || 0) + (own.get(dep) || 0));
   // Cadence-invariant per-pass probability: hazard × the pass's actual span.
-  const passTicks = Math.max(1, Math.round(T.POLITY_INTERVAL * (T.SIM_GRANULARITY || 1)));
-  const probBase = Math.min(SUBMIT_PROB_CAP, SUBMIT_HAZARD * passTicks);
+  const probBase = Math.min(SUBMIT_PROB_CAP, SUBMIT_HAZARD * _passTicks());
   for (const [sid, hid] of threat) {
     if (hid < 0) continue;
     const S = countries.get(sid), H = countries.get(hid);

@@ -1279,7 +1279,9 @@ function computeRuggedness(world, x, y) {
 // range, tsetse, foot-rot) and frozen ground are not. Combined in updateFood with
 // the regional domesticate-availability gate (the agri ceiling — isolated New-World
 // landmasses and the wet tropics score low, Diamond's "no large domesticates").
-function livestockClimate(temp, moist) {
+// Exported: crystallize.js scores SITE quality with the same suitability the
+// food model feeds herders by — one definition of "herding country".
+export function livestockClimate(temp, moist) {
   const dryOK  = Math.min(1, Math.max(0, (moist - 0.10) / 0.18));   // not bare desert
   const wetOK  = Math.min(1, Math.max(0, (0.82 - moist) / 0.28));   // not rainforest / swamp
   // Grazing needs a real growing/warm season: cattle, horses and oxen are a COOL-
@@ -1527,8 +1529,20 @@ function updateKnowledge(world, s) {
   // Saturates at modest herd size (0.2) and paces with the tree.
   if (horses > horsesThr) {
     const herd = Math.min(1, horses / 0.2);
+    // SADDLE-LIFE: a people whose FOOD is the herd (s._pastShare — the pastoral
+    // share of subsistence, from the food model) lives on horseback: children
+    // grow up riding, the camp moves with the grass. Horsemanship compounds
+    // accordingly — the steppe INVENTED riding and the sown adopted it a step
+    // behind (chariots reached the river valleys from the grass; China faced
+    // Xiongnu cavalry before it fielded its own). A fully pastoral camp
+    // practices at 3× the rate of a farm town that merely OWNS horses; a
+    // farming realm with a herding fringe gets a sliver. Without this
+    // differential every culture learned riding at the same resource-gated
+    // pace, mounted AGRARIAN empires swept the steppe before any steppe
+    // people could ride, and the nomad branch was unreachable on any map.
+    const saddleLife = 1 + 2 * (s._pastShare || 0);
     k.mobility = clamp01(k.mobility + T.LEARN_BASE * 2.2 * sciMul * (1 - k.mobility)
-      * (0.5 + 0.5 * herd) * (1 + k.construction * 0.4 + metalEff * 0.6 + sciSqrt * 0.04));   // metal bits/shoes/tack — capability, not awareness
+      * (0.5 + 0.5 * herd) * saddleLife * (1 + k.construction * 0.4 + metalEff * 0.6 + sciSqrt * 0.04));   // metal bits/shoes/tack — capability, not awareness
   }
   // Industrial mobility — machines replace horses at the top of the tree:
   // rail, steam haulage and the telegraph made land movement a MACHINE
@@ -2013,6 +2027,10 @@ function updateFood(world, s) {
     : 0;
   s._pastoral = pastoral;
   const landFood = landFarm + pastoral;
+  // The share of subsistence that comes OFF THE HERD — the emergent measure of
+  // saddle-life. Read by the mobility-learning pass: a people who EAT from the
+  // herd live on horseback, and horsemanship compounds accordingly.
+  s._pastShare = landFood > 0 ? pastoral / landFood : 0;
 
   // FISH — a LOCAL marine supplement, never a staple. History is emphatic: the great agrarian
   // empires (Egypt, Mesopotamia, China, Rome) ran on GRAIN; fish was caloric noise to them. But fish

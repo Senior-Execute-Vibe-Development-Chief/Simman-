@@ -186,6 +186,22 @@ function _paramsFromKnowledge(kn) {
   };
 }
 
+// The shared definition of OPEN RIDING COUNTRY — dry grass (the canopy closes
+// by m≈0.65), low relief (forest, hills and broken country snap the ride).
+// This is the same openness the land branch of _edgeCost discounts for mounted
+// cultures (which additionally folds per-edge SLOPE into its relief — an edge
+// property this per-tile view can't see; keep the two formulas in step).
+// Consumers: the ride discount below, and the nomad classification
+// (conquest.js) — a people are nomadic where this is high and farming is poor.
+export function tileOpenness(world, ti) {
+  const e = world.elev[ti];
+  if (e <= 0) return 0;
+  const m = world.moist[ti];
+  const relief = e * 5 + e * e * 14;
+  return (m < 0.45 ? 1 : Math.max(0, 1 - (m - 0.45) / 0.20))
+       * Math.max(0, 1 - Math.max(0, relief - 0.6) / 1.4);
+}
+
 function _tileMode(world, ti) {
   // 0 = land, 1 = river, 2 = water. Matches the trans-test convention.
   if (world.elev[ti] <= 0) return 2;
