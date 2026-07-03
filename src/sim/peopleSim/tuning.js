@@ -503,6 +503,23 @@ for (const cat of TUNING_SCHEMA) for (const p of cat.params) DEFAULTS[p.key] = p
 // Live, mutable values the sim reads. Starts at defaults (== old constants).
 export const T = { ...DEFAULTS };
 
+// Amortised-cadence check usable INSIDE a phase-offset pass. index.js fires the
+// heavy passes at distinct phase offsets (`_at(base, phase)` — step ≡ phase mod
+// interval), which makes any naive `world.step % EVERY === 0` inside such a
+// pass DEAD: the pass's residue never lands on 0 mod EVERY (this silently froze
+// the alliance map at its first build, and left prunePersons unreachable).
+// Instead, fire on the FIRST firing of the given pass inside each EVERY-wide
+// window: a pure function of the step — no new state, so determinism and
+// save/load continuation are untouched — firing exactly once per window at any
+// granularity or phase. `passBase` is the calling pass's own base interval
+// (e.g. T.POLITY_INTERVAL, DYNASTY_INTERVAL); the Math.max clamp covers a
+// window narrower than the pass interval (then every pass qualifies).
+export function passWindow(world, passBase, every) {
+  const G = T.SIM_GRANULARITY || 1;
+  const ivl = Math.max(1, Math.round(passBase * G));
+  return world.step % Math.max(ivl, Math.round(every * G)) < ivl;
+}
+
 // Monotonic version stamp, bumped on every lever change. Lets per-tick caches
 // derived from T (e.g. transport.js edge-cost params) invalidate immediately
 // when a slider moves, instead of serving stale numbers for the rest of a tick.

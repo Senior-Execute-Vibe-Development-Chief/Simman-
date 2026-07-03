@@ -322,7 +322,8 @@ function buildSnapshot() {
       const dyn = ruler ? getDynasty(world, ruler.dynastyId) : null;
       countries.push({
         id: c.id, capitalId: c.capitalId, name: realmName(world, c.id),
-        _overlord: pol && pol._overlord != null ? pol._overlord : -1,   // colonial dependency → its metropole's countryId (-1 = sovereign)
+        _overlord: pol && pol._overlord != null ? pol._overlord : -1,   // dependency → its overlord's countryId (-1 = sovereign)
+        _depKind: pol && pol._overlord != null ? (pol._depKind || "colony") : null,   // "colony" (planted, drawn in the metropole's colour) vs "vassal" (submitted court, keeps its own)
         ruler: ruler && ruler.died < 0 ? { name: ruler.name, female: !!ruler.female, age: Math.round(ageOf(world, ruler)), house: dyn ? dyn.name : null, title: ruler._title || null, gov: pol ? pol.gov || "monarchy" : "monarchy", trait: traitLabel(ruler.traits) } : null,
         faithId: pol ? pol.faithId : -1,
         memberIds: c.members.map(m => m.id),

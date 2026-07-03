@@ -24,6 +24,7 @@
 // genealogy rides saves (serialized verbatim with the world).
 
 import { passRng } from "./rng.js";
+import { passWindow } from "./tuning.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { getCulture, nameFor, dominantCulture } from "./cultures.js";
@@ -840,7 +841,11 @@ export function updateDynasties(world) {
   if (!world.countries) return;
   const rng = passRng(world, "dynasty");
   reapIdleHouses(world);
-  if (world.step % (DYNASTY_INTERVAL * 24) === 0) prunePersons(world);
+  // Phase-aware window (tuning.js passWindow): this pass fires at step ≡ 59 mod
+  // its interval (index.js _at phase offsets), so the old naive
+  // `step % (DYNASTY_INTERVAL*24) === 0` was NEVER true — prunePersons was dead
+  // code and the person registry grew without bound for the whole run.
+  if (passWindow(world, DYNASTY_INTERVAL, DYNASTY_INTERVAL * 24)) prunePersons(world);
   // Years elapsed since the last pass — the step→year mapping compresses early
   // eras, so every per-pass rate below is computed from ANNUAL hazards raised to
   // this span. One pass can be 30 years in the bronze age and one year later;

@@ -22,8 +22,9 @@ import { realmName } from "./chronicle.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, endPolity, getPolity, getOrCreateRecord, reconcilePolities } from "./entities.js";
 import { identityWeightsFor, identityGrievance, adminFriction, identityGrievanceCause, absorbResistance } from "./cohesion.js";
-import { T } from "./tuning.js";
+import { T, passWindow } from "./tuning.js";
 import { hash32 } from "./rng.js";
+import { closeWar } from "./armies.js";
 
 // POLITY_INTERVAL (the polity-pass cadence) is a runtime lever — see tuning.js
 // (T.POLITY_INTERVAL); index.js gates the pass on it.
@@ -52,8 +53,13 @@ const ABSORB_HEADROOM  = 0.90;
 // consolidation force that organises the late-game map into suzerainty
 // networks — it replaces the old lopsided-engulfment override, which reached
 // past the admin-capacity mechanism to vacuum statelets off the map directly.
-const SUBMIT_RATIO = 5.0;  // odds (their whole country vs yours) past which a court chooses tribute over annihilation — resistance is demonstrably hopeless
-const SUBMIT_PROB  = 0.25; // per-polity-pass chance a hopelessly-outmatched court actually submits (after identity and coalition backing have had their say) — courts hold out for a generation or two, not forever
+const SUBMIT_RATIO = 5.0;  // odds (their whole network vs yours) past which a court chooses tribute over annihilation — resistance is demonstrably hopeless
+// Submission is a HAZARD per tick of history, not a per-pass roll — so the
+// POLITY_INTERVAL perf lever never changes how fast courts capitulate (per-pass
+// rolls would run 5× hotter at interval 30 than at 150). ≈ once per ~600 ticks
+// of sustained hopeless odds: a court holds out a generation or two, not forever.
+const SUBMIT_HAZARD   = 0.0017; // per-tick capitulation hazard under hopeless odds
+const SUBMIT_PROB_CAP = 0.5;    // ceiling per pass — even a very long pass never makes capitulation a certainty
 const SUBMIT_REACH = 1.5;  // a suzerain overawes out to this multiple of its hold reach: a punitive expedition ranges past where a permanent garrison (direct administration) can sit, and a vassal costs no garrison — it administers itself
 // A realm's whole country must out-power a neighbour's whole country by
 // T.ABSORB_DOMINANCE before it can administratively absorb that neighbour's
@@ -332,20 +338,9 @@ export const BALANCE_W   = 1.1;   // how hard a coalition backs a member it defe
 export const BALANCE_CAP = 3.0;   // ceiling on that backing (a coalition deters, it doesn't make a member invincible)
 const ALLY_TRADE_REF = 6;     // cross-border money/tick at which two realms are "mutual-benefit" allies regardless of threat
 const ALLIANCE_EVERY = 600;   // recompute the (slow-drifting) alliance map this often
-// Amortised-cadence check usable INSIDE the phase-offset polity pass. The naive
-// `world.step % EVERY === 0` can never be true here: the polity pass fires at
-// step ≡ 37 (mod polity interval) — the _at() phase offsets in index.js — and
-// that residue never lands on 0 mod EVERY when the interval divides EVERY. (The
-// alliance map silently froze at its first, near-empty build and dependencies
-// never saw an independence check.) Instead fire on the FIRST polity pass of
-// each EVERY-wide window: a pure function of the step — no new state, so
-// determinism and save/load continuation are untouched — firing exactly once
-// per window at any granularity or phase.
-const _polityWindow = (world, every) => {
-  const G = T.SIM_GRANULARITY || 1;
-  const ivl = Math.max(1, Math.round(T.POLITY_INTERVAL * G));
-  return world.step % Math.max(ivl, Math.round(every * G)) < ivl;
-};
+// Naive `world.step % EVERY === 0` is DEAD inside this phase-offset pass (it
+// froze the alliance map at its first build) — see passWindow (tuning.js).
+const _polityWindow = (world, every) => passWindow(world, T.POLITY_INTERVAL, every);
 
 // ── Colonial dependencies: a self-governing colony bound to an overlord ───────
 // An overseas colony (sea.js) is founded as its OWN realm — own capital, own LOCAL
@@ -1514,6 +1509,12 @@ export function updateAlliances(world) {
   // Resolve a tile's SETTLEMENT owner to its COUNTRY — the war pass works on this
   // granular per-settlement territory map (_territoryOwner), not the sparse cored
   // _countryOwner (which barely touches between realms, so adjacency on it is empty).
+  // KNOWN LIMIT: tiles with no settlement catchment read as wilderness here, so a
+  // statelet ringed by an empire's unsettled MARCH feels no threat and never
+  // submits (absorbWeakNeighbors sees marches and still consolidates it). Widening
+  // this map to marches was tried and rejected: it inflates the balance-of-power
+  // deterrent world-wide and flattens the war-deadliness tail — the threat map
+  // wars calibrate against must not be quietly redefined by the vassalage pass.
   const ccAt = (i) => { const o = owner[i]; if (o < 0) return -1; const s = byId.get(o); return s ? s.countryId : -1; };
   // 1. national power = Σ settlementPower over every settled member of a realm (its whole
   //    coercive weight, not just the capital — a big multi-city empire is more threatening).
@@ -1591,6 +1592,7 @@ export function updatePolities(world) {
       const pol = getPolity(world, s.id);
       if (pol && pol._overlord == null && countries.has(over)) {
         pol._overlord = over;
+        pol._depKind = "colony";                                   // a planted dependency (vs a submitted vassal) — drives investment and map rendering
         inheritPersonality(world, over, s.id);                     // the colony carries the metropole's temperament
         snapClaim(world, s.id);                                    // it administers its own ground at once
         logEvent(world, "colony.founded", { polity: s.id, from: over, fromName: realmName(world, over),
@@ -1613,15 +1615,15 @@ export function updatePolities(world) {
         if (!dc || !oc) continue;
         const projForce = blocPow(oc) * (reachOf.get(dep) ?? 0);   // what the metropole can actually bring to bear
         if (blocPow(dc) >= INDEP_POWER_RATIO * projForce) {
-          const pol = getPolity(world, dep); if (pol) pol._overlord = undefined;
+          const pol = getPolity(world, dep); if (pol) { pol._overlord = undefined; pol._depKind = undefined; }
           overlordOf.delete(dep);
           logEvent(world, "colony.independent", { polity: dep, from: over,
             fromName: realmName(world, over), name: realmName(world, dep) });
         }
       }
     }
-    // (d) The colonial ECONOMY, both directions. The metropole INVESTS in a young or
-    //     struggling dependency — coin from its treasury, grain from its capital granary —
+    // (d) The colonial ECONOMY, both directions. The metropole INVESTS in a young
+    //     dependency — coin from its treasury, grain from its capital granary —
     //     so a raw frontier survives (the COLONY_SUPPLY that used to flow inside one country
     //     now flows ACROSS the overlord link, since a colony is its own realm). A MATURE,
     //     solvent dependency pays TRIBUTE home — a share of its treasury. The net flow
@@ -1633,14 +1635,21 @@ export function updatePolities(world) {
       if (!dpol || !opol || !dc || !oc || !dc.capital || !oc.capital) continue;
       const proj = reachOf.get(dep) ?? 0;   // how much the metropole can ship across the distance
       const young = world.step - (dc.capital.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
-      if (young || (dpol.treasury || 0) < COLONY_SUPPLY_COIN) {
-        // Investment is limited by what the navy can carry — a colony beyond easy reach gets little.
+      if (young) {
+        // Investment flows only while the plantation is YOUNG — the metropole
+        // funds its own venture through its formative years. It does NOT flow to
+        // any mature dependency that happens to be poor: a submitted pauper
+        // vassal would otherwise draw a perpetual subsidy every pass (a hegemon
+        // with a ring of poor tributaries bled its treasury dry), inverting the
+        // tribute relationship submission exists to create.
         const coin = Math.min(COLONY_SUPPLY_COIN * proj, Math.max(0, opol.treasury));
         if (coin > 0) { opol.treasury -= coin; dpol.treasury += coin; recordIn(dc.capital, IN_AID, coin); recordOut(oc.capital, OUT_AID, coin); }
         const need = (dc.capital._foodDemand || 0) - (dc.capital.food || 0);
         const food = Math.min(COLONY_SUPPLY_FOOD * proj, Math.max(0, (oc.capital.food || 0) - 20));
         if (need > 0 && food > 0) { oc.capital.food -= food; dc.capital.food = (dc.capital.food || 0) + food; }
-      } else {
+      } else if ((dpol.treasury || 0) >= COLONY_SUPPLY_COIN) {
+        // A mature, solvent dependency pays tribute home; a poor one neither
+        // receives nor pays — tribute waits until its treasury can bear it.
         const trib = TRIBUTE_FRAC * Math.max(0, dpol.treasury);
         if (trib > 0) { dpol.treasury -= trib; opol.treasury += trib; recordOut(dc.capital, OUT_TRIBUTE, trib); recordIn(oc.capital, IN_TRIBUTE, trib); }
       }
@@ -2153,62 +2162,143 @@ export function updatePolities(world) {
 }
 
 // ── Submission: a statelet facing hopeless odds takes an overlord ─────
-// The vassalage entry point (see SUBMIT_* above). Runs on the alliance data
-// updateAlliances just refreshed: each sovereign realm S whose dominant
-// adjacent threat H (a) out-powers S's whole country by SUBMIT_RATIO, (b) can
-// project force to S's seat (within SUBMIT_REACH × its hold reach), and
-// (c) isn't checked by a coalition, may submit — becoming H's dependency
-// through the exact plumbing colonies use. Willingness scales inversely with
-// identity resistance (kin submit; a wholly foreign court holds out for
-// generations) and with the balance of power (a statelet propped up by the
-// coalition against H keeps its independence — the same brake that throttles
-// peaceful absorption). All live state: power, adjacency, reach, identity.
+// The vassalage entry point (see SUBMIT_* above). The alliance threat map
+// nominates the candidate pairs (who towers over whom, slow-drifting); the
+// DECISION is then made on live state — a court reads the odds it faces
+// TODAY, not the ones from the last alliance rebuild: live network power
+// (own settlements plus each side's direct dependencies — a metropole with a
+// mighty network is no statelet, however small its home province), the
+// suzerain's live reach, identity, and the coalition brake. On success the
+// pair's war (if any) ends in capitulation and the dependency wiring is
+// applied LIVE — the war pass must never sack a realm that has already knelt.
 function considerSubmissions(world, countries) {
-  const threat = world._allianceTarget, pow = world._countryPow;
-  if (!threat || !pow) return;
-  const tw = world.tw;
+  const threat = world._allianceTarget;
+  if (!threat || !world._countryPow) return;
+  // Live power, network-inclusive (the same Σ settlementPower measure war uses;
+  // recomputed here like absorbWeakNeighbors does, because up to three polity
+  // passes roll between alliance rebuilds and courts don't submit to a hegemon
+  // that was shattered two passes ago).
+  const own = new Map();
+  for (const c of countries.values()) {
+    let p = 0; for (const m of c.members) if (m.mode === "settled" && m.countryId === c.id) p += settlementPower(m);
+    own.set(c.id, p);
+  }
+  const ov = world._overlordOf;
+  const eff = new Map(own);
+  if (ov) for (const [dep, over] of ov) if (eff.has(over)) eff.set(over, (eff.get(over) || 0) + (own.get(dep) || 0));
+  // Cadence-invariant per-pass probability: hazard × the pass's actual span.
+  const passTicks = Math.max(1, Math.round(T.POLITY_INTERVAL * (T.SIM_GRANULARITY || 1)));
+  const probBase = Math.min(SUBMIT_PROB_CAP, SUBMIT_HAZARD * passTicks);
   for (const [sid, hid] of threat) {
     if (hid < 0) continue;
     const S = countries.get(sid), H = countries.get(hid);
     if (!S || !H || !S.capital || !H.capital) continue;
-    const spol = getOrCreateRecord(world, sid, { seat: S.capital });
-    if (!spol || spol._overlord != null) continue;         // already someone's dependency
-    // No cycles: if H's own overlord chain leads back to S, S can't take H as
-    // suzerain (tribute pyramids — a vassal of a vassal — are fine; loops aren't).
-    let up = hid, cyc = false;
-    for (let hops = 0; hops < 16; hops++) {
-      const p = getPolity(world, up);
-      const o = p ? p._overlord : null;
-      if (o == null) break;
-      if (o === sid) { cyc = true; break; }
-      up = o;
-    }
-    if (cyc) continue;
-    const powS = pow.get(sid) || 1, powH = pow.get(hid) || 1;
+    const spol = getPolity(world, sid);                     // pure read — the record is only minted on an actual submission
+    if (spol && spol._overlord != null) continue;           // already someone's dependency
+    const powS = eff.get(sid) || 1, powH = eff.get(hid) || 1;
     if (powH < powS * SUBMIT_RATIO) continue;               // resistance not yet hopeless
     // The suzerain must be able to PROJECT force to S's seat — overawing needs a
     // credible punitive expedition, which ranges SUBMIT_REACH past garrison range.
-    let dx = Math.abs(H.capital.pos.x - S.capital.pos.x); if (dx > tw / 2) dx = tw - dx;
-    const dy = H.capital.pos.y - S.capital.pos.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > SUBMIT_REACH * Math.max(1, H.holdReach || H.range || 0)) continue;
-    let prob = SUBMIT_PROB;
-    // Kin submit, foreigners resist longer. Vassalage keeps internal sovereignty
-    // (court, faith, tongue survive), so identity resists it at full weight but
-    // never absolutely — even a wholly foreign court eventually bends.
-    prob *= 1 - absorbResistance(H.capital, S.capital, identityWeightsFor(world, H.capital, S.capital));
+    const d = dist(world, H.capital.pos.x, H.capital.pos.y, S.capital.pos.x, S.capital.pos.y);
+    if (d > SUBMIT_REACH * Math.max(1, H.holdReach)) continue;
+    // Deterministic per-(seed, settlement, step) roll — a pure function of its
+    // key, so rolling BEFORE the identity/coalition work is free rejection.
+    const r = hash32(world.seed || 1, "submit", sid, world.step) / 4294967296;
+    if (r > probBase) continue;
+    // No cycles: if H's own overlord chain leads back to S, S can't take H as
+    // suzerain (tribute pyramids — a vassal of a vassal — are fine; loops
+    // aren't). An acyclic chain can't be longer than the live polity count.
+    let up = hid, cyc = false;
+    if (ov) for (let hops = 0; hops < countries.size && ov.has(up); hops++) {
+      up = ov.get(up);
+      if (up === sid) { cyc = true; break; }
+    }
+    if (cyc) continue;
+    let prob = probBase;
+    // Kin submit, foreigners resist longer. Same era-weighted identity brake as
+    // peaceful absorption (T.ABSORB_IDENTITY) — it slows a wholly foreign court
+    // by the full lever weight but never to zero (absorbResistance saturates at
+    // exactly 1 for fully disjoint peoples; unscaled it made foreign submission
+    // impossible forever, the opposite of "eventually bends").
+    prob *= 1 - T.ABSORB_IDENTITY * absorbResistance(H.capital, S.capital, identityWeightsFor(world, H.capital, S.capital));
     // Balance of power: a coalition arrayed against H guarantees the statelets
     // it would overawe — the same deterrence that throttles peaceful absorption.
-    if (world._blocMight) {
-      const bm = world._blocMight.get(hid) || 0;
-      if (bm > 0) prob /= Math.min(BALANCE_CAP, 1 + BALANCE_W * (bm / powH));
-    }
-    const r = hash32(world.seed || 1, "submit", sid, world.step) / 4294967296;
+    prob /= coalitionBrake(world, hid, world._countryPow.get(hid) || 1);
     if (r > prob) continue;
-    spol._overlord = hid;
+    const rec = getOrCreateRecord(world, sid, { seat: S.capital });
+    if (!rec || rec._overlord != null) continue;
+    rec._overlord = hid;
+    rec._depKind = "vassal";                                // a submitted sovereign court, not a planted colony
+    // Wire the bond LIVE — rebuildOverlords/updateAlliances only refresh later,
+    // and in that window the war pass would read the old world: the suzerain
+    // still opening fronts on its fresh tributary, the vassal's power still
+    // counted in the coalition AGAINST its own overlord.
+    if (world._overlordOf) world._overlordOf.set(sid, hid);
+    if (world._allies) {
+      let sa = world._allies.get(sid); if (!sa) world._allies.set(sid, sa = new Set()); sa.add(hid);
+      let ha = world._allies.get(hid); if (!ha) world._allies.set(hid, ha = new Set()); ha.add(sid);
+    }
+    if (threat.get(sid) === hid) {
+      threat.set(sid, -1);
+      if (world._blocMight) {
+        const bm = world._blocMight.get(hid) || 0;
+        world._blocMight.set(hid, Math.max(0, bm - (world._countryPow.get(sid) || 0)));
+      }
+    }
+    // Submission IS the peace: any running war between the pair ends in
+    // capitulation (its dead are reckoned), and a truce binds the suzerain —
+    // a lord who accepts tribute does not sack the payer.
+    if (T.TRUCE_TICKS > 0) {
+      const truces = world._truces || (world._truces = new Map());
+      const key = Math.min(sid, hid) + ":" + Math.max(sid, hid);
+      truces.set(key, world.step + T.TRUCE_TICKS / (world._dt || 1));
+      if (world._warDead && world._warDead.has(key)) closeWar(world, key, "submission");
+    }
     logEvent(world, "polity.submitted", { polity: sid, name: realmName(world, sid),
       to: hid, toName: realmName(world, hid) });
   }
+}
+
+// Connected-landmass labels (4-neighbour flood over elev>0, longitude wraps).
+// Elevation is written once at world init (state.js initTerrain) and never
+// mutated, so the labels are computed once and cached — deterministic and
+// identical after a save/load. Used to decide whether an ARMY can march
+// between two seats (same landmass) or only a NAVY can reach them.
+function landLabels(world) {
+  let lab = world._landLabel;
+  if (lab && lab.length === world.N) return lab;
+  const { tw, th, N, elev } = world;
+  lab = world._landLabel = new Int32Array(N).fill(-1);
+  const q = [];
+  let next = 0;
+  for (let start = 0; start < N; start++) {
+    if (lab[start] >= 0 || elev[start] <= 0) continue;
+    const id = next++;
+    lab[start] = id; q.length = 0; q.push(start);
+    while (q.length) {
+      const ti = q.pop();
+      const ty = (ti / tw) | 0, tx = ti - ty * tw;
+      const ns = [ty * tw + (tx === 0 ? tw - 1 : tx - 1), ty * tw + (tx === tw - 1 ? 0 : tx + 1),
+                  ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
+      for (let k = 0; k < 4; k++) {
+        const ni = ns[k];
+        if (ni >= 0 && lab[ni] < 0 && elev[ni] > 0) { lab[ni] = id; q.push(ni); }
+      }
+    }
+  }
+  return lab;
+}
+
+// Balance-of-power brake shared by peaceful absorption and submission: the
+// coalition arrayed against a hegemon (updateAlliances → _blocMight) props up
+// the statelets it would swallow or overawe. One definition so the two
+// consolidation paths can never drift apart — a statelet a coalition protects
+// from annexation must not quietly submit as a vassal instead.
+function coalitionBrake(world, hegemonId, hegemonPow) {
+  if (!world._blocMight) return 1;
+  const bm = world._blocMight.get(hegemonId) || 0;
+  if (!(bm > 0)) return 1;
+  return Math.min(BALANCE_CAP, 1 + BALANCE_W * (bm / Math.max(1, hegemonPow)));
 }
 
 // Live overlord map + validation (an overlord whose realm has died frees its
@@ -2222,17 +2312,16 @@ export function rebuildOverlords(world, countries) {
   for (const c of countries.values()) {
     const pol = getPolity(world, c.id);
     if (!pol || pol._overlord == null) continue;
-    if (pol._overlord === c.id || !countries.has(pol._overlord)) { pol._overlord = undefined; continue; }
+    if (pol._overlord === c.id || !countries.has(pol._overlord)) { pol._overlord = undefined; pol._depKind = undefined; continue; }
     overlordOf.set(c.id, pol._overlord);
   }
   const reachOf = world._overlordReach = new Map();
   const tw = world.tw;
+  const lab = landLabels(world);
   for (const [dep, over] of overlordOf) {
     const dc = countries.get(dep), oc = countries.get(over);
     if (!dc || !oc || !dc.capital || !oc.capital) { reachOf.set(dep, 0); continue; }
-    let dx = Math.abs(dc.capital.pos.x - oc.capital.pos.x); if (dx > tw / 2) dx = tw - dx;   // longitude wraps
-    const dy = dc.capital.pos.y - oc.capital.pos.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const d = dist(world, dc.capital.pos.x, dc.capital.pos.y, oc.capital.pos.x, oc.capital.pos.y);
     const nav = (oc.capital.knowledge && oc.capital.knowledge.navigation) || 0;
     const navalReach = NAVAL_REACH_BASE + nav * NAVAL_REACH_NAV;
     // Projection is by whichever ARM reaches: the navy across water (naval
@@ -2241,9 +2330,17 @@ export function rebuildOverlords(world, countries) {
     // first place. Without the land arm, an adjacent vassal's independence was
     // judged by the overlord's NAVY (near-zero pre-sail), so a freshly-submitted
     // statelet sat above the independence line and oscillated submit↔free.
-    const seaProj = navalReach / (navalReach + dist);
-    const hold = Math.max(1, oc.holdReach || oc.range || 0);
-    const landProj = hold / (hold + dist);
+    // The army arm exists ONLY where an army can MARCH — both seats on the same
+    // landmass. Without that check the res-scaled hold reach dwarfed the raw
+    // naval reach and an army "marched" across open ocean to overseas colonies,
+    // silencing the very independence arc (remote colonies break free) the
+    // naval-projection model exists to produce.
+    const seaProj = navalReach / (navalReach + d);
+    const oTi = (oc.capital.pos.y | 0) * tw + (oc.capital.pos.x | 0);
+    const dTi = (dc.capital.pos.y | 0) * tw + (dc.capital.pos.x | 0);
+    const sameLand = lab[oTi] >= 0 && lab[oTi] === lab[dTi];
+    const hold = Math.max(1, oc.holdReach);
+    const landProj = sameLand ? hold / (hold + d) : 0;
     reachOf.set(dep, Math.max(seaProj, landProj));
   }
   return { overlordOf, reachOf };
@@ -2260,11 +2357,11 @@ export function rebuildOverlords(world, countries) {
 // dozen villages at once and is massively over-extended next pass (the very
 // absorb↔secede oscillation this gate exists to stop). Charging each
 // absorption forward closes that hole — a pass fills only the real headroom.
-function hasAbsorbHeadroom(c, extra = 0, mult = ABSORB_HEADROOM) {
+function hasAbsorbHeadroom(c, extra = 0) {
   if (!c) return false;
   const cap = c._capacity, load = c._loadTotal;
   if (cap == null || load == null) return true;        // no budget data yet → allow
-  return load + extra < cap * mult;
+  return load + extra < cap * ABSORB_HEADROOM;
 }
 
 // Cheap estimate of the admin load a freshly-absorbed province adds to a realm
@@ -2274,9 +2371,7 @@ function hasAbsorbHeadroom(c, extra = 0, mult = ABSORB_HEADROOM) {
 // above; the real load is recomputed from scratch next polity pass.
 function estAbsorbLoad(world, c, m) {
   const cap = c.capital; if (!cap) return 1;
-  let dx = Math.abs(cap.pos.x - m.pos.x); if (dx > world.tw / 2) dx = world.tw - dx;
-  const dy = cap.pos.y - m.pos.y;
-  const eucl = Math.sqrt(dx * dx + dy * dy);
+  const eucl = dist(world, cap.pos.x, cap.pos.y, m.pos.x, m.pos.y);
   return Math.max(0.5, eucl / Math.max(1, c.holdReach || c.range));   // eucl is a map distance → res-scaled grip
 }
 
@@ -2405,10 +2500,7 @@ function absorbWeakNeighbors(world, countries) {
     // fragmented far-weaker pack — is unaffected and still consolidates (Russia into
     // Siberia). Emergent: the brake is the coalition's strength relative to the hegemon,
     // whatever the map makes it — never a size cap or a geography constant.
-    if (world._blocMight && world._countryPow) {
-      const bm = world._blocMight.get(bestId) || 0;
-      if (bm > 0) prob /= Math.min(BALANCE_CAP, 1 + BALANCE_W * (bm / Math.max(1, world._countryPow.get(bestId) || 1)));
-    }
+    if (world._countryPow) prob /= coalitionBrake(world, bestId, world._countryPow.get(bestId) || 1);
     // Deterministic per-(seed, settlement, step) roll via the shared avalanche
     // hash. Unlike the old linear-congruential hash it varies with the WORLD SEED
     // (defections used to be identical across every seed) and doesn't correlate

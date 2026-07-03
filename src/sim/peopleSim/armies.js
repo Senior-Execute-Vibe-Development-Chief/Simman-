@@ -63,7 +63,9 @@ function tallyDead(world, ccA, ccB, n) {
   const key = Math.min(ccA, ccB) + ":" + Math.max(ccA, ccB);
   m.set(key, (m.get(key) || 0) + n);
 }
-function closeWar(world, key, how) {
+// Exported: conquest.js settles a war the same way when a belligerent SUBMITS
+// (capitulation is a peace — the war's dead are reckoned at the knee-bending).
+export function closeWar(world, key, how) {
   const m = world._warDead;
   const dead = m ? m.get(key) || 0 : 0;
   if (m) m.delete(key);
@@ -449,6 +451,12 @@ export function advanceFronts(world) {
     const u = truces.get(a < b ? a + ":" + b : b + ":" + a);
     return u !== undefined && u > world.step;
   };
+  // A suzerain and its dependency never open fronts on each other — read LIVE
+  // from the overlord map (a submission mid-window must stop the war NOW), not
+  // from the amortised _allies rebuild, whose staleness let a hegemon keep
+  // sacking a statelet that had already bent the knee.
+  const ovFr = world._overlordOf;
+  const bondedCC = (a, b) => !!ovFr && (ovFr.get(a) === b || ovFr.get(b) === a);
 
   const natMight = new Map();   // countryId → Σ might = the NATIONAL FIELD ARMY (Σ garrison × tech)
   for (const s of world.settlements) {
@@ -513,7 +521,8 @@ export function advanceFronts(world) {
       const a = owner[ni]; if (a < 0 || a === d) continue;
       const A = byId.get(a);
       if (!A || A.mode !== "settled" || A.countryId === D.countryId
-          || inTruce(A.countryId, D.countryId)) continue;   // a signed peace holds
+          || inTruce(A.countryId, D.countryId)
+          || bondedCC(A.countryId, D.countryId)) continue;   // a signed peace holds; a suzerain-vassal bond holds harder
       if (A._M > bestM) { bestM = A._M; bestA = a; }
     }
     if (bestA < 0) continue;
@@ -622,7 +631,8 @@ export function advanceFronts(world) {
       for (const pid of A._seaReach.keys()) {
         const D = byId.get(pid);
         if (!D || D.mode !== "settled" || D.countryId === A.countryId
-            || inTruce(A.countryId, D.countryId)) continue;   // a signed peace holds at sea too
+            || inTruce(A.countryId, D.countryId)
+            || bondedCC(A.countryId, D.countryId)) continue;   // a signed peace holds at sea too; so does the suzerain-vassal bond
         const key = A.id + ":" + pid;
         if (pairs.has(key)) continue;                        // already met on land
         const tf = tradeFactor(A.countryId, D.countryId);
