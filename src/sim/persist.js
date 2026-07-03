@@ -65,6 +65,19 @@ const SETT_FIELDS = [
   "_rivalN",                             // rival-polity contact count (competition signal)
 ];
 
+// Declarative registry of persistent WORLD-LEVEL maps — dyadic / per-id / per-tile state
+// (id→value) that carries real cross-tick meaning. Registered ONCE here; saveWorld,
+// loadWorld and hashWorld all iterate it, so adding a world map is a SINGLE line, not three
+// separate edits that are easy to forget — the omission class that left _wasWed unmigrated
+// and needed _succClaims wired into save+load+hash by hand (W6-G / R1, scoped to world maps).
+// Uniform `Map` state only; Sets and scalars (_plagued, _inheritReach, _inflRef,
+// _lastSyncretismAt) keep their bespoke handling below. The JSON key is the field name
+// without its leading underscore (unchanged v2 schema).
+const WORLD_MAPS = [
+  "_warExhaust", "_linkMoney", "_inflRaw", "_inflP", "_manpower", "_plagueEvAt",
+  "_truces", "_warSeenAt", "_warDead", "_ruinHoards", "_schismAt", "_cBudgetRamp",
+];
+
 // ── typed-array <-> base64 ──────────────────────────────────────────────
 function b64FromTyped(arr) {
   if (!arr) return null;
@@ -137,6 +150,13 @@ export function saveWorld(world, meta = {}) {
   const reserves = {};
   if (world.depositReserve) for (const id in world.depositReserve) reserves[id] = b64FromTyped(world.depositReserve[id]);
 
+  const tables = {};
+  for (const k of WORLD_MAPS) tables[k.slice(1)] = mapToArr(world[k]);     // registered world maps (save side)
+  tables.plagued = world._plagued ? [...world._plagued] : [];             // Set: infected settlement ids
+  tables.inheritReach = world._inheritReach ? [...world._inheritReach] : []; // Set: secession heirs that skip the reach ramp
+  tables.inflRef = world._inflRef ?? null;                                // scalar: permanent M/T price baseline
+  tables.lastSyncretismAt = world._lastSyncretismAt ?? null;              // scalar: world syncretism cooldown
+
   return {
     v: SAVE_VERSION,
     meta: {
@@ -174,24 +194,7 @@ export function saveWorld(world, meta = {}) {
       soilFatigue: sparseFromTyped(world._soilFatigue, 0),
     },
     reserves,
-    tables: {
-      warExhaust: mapToArr(world._warExhaust),
-      linkMoney: mapToArr(world._linkMoney),
-      inflRaw: mapToArr(world._inflRaw),
-      inflP: mapToArr(world._inflP),                     // sim-facing price levels
-      manpower: mapToArr(world._manpower),
-      plagueEvAt: mapToArr(world._plagueEvAt),
-      plagued: world._plagued ? [...world._plagued] : [],
-      truces: mapToArr(world._truces),                   // binding dyadic peace treaties
-      warSeenAt: mapToArr(world._warSeenAt),             // war.began dedup hysteresis
-      warDead: mapToArr(world._warDead),                 // per-pair casualty ledger (war.ended events)
-      ruinHoards: mapToArr(world._ruinHoards),           // coin stranded at dead settlements (tile → coin)
-      schismAt: mapToArr(world._schismAt),               // per-religion-family schism cooldown
-      cBudgetRamp: mapToArr(world._cBudgetRamp),         // per-country eased reach budget
-      inheritReach: world._inheritReach ? [...world._inheritReach] : [],  // secession heirs skip the ramp
-      inflRef: world._inflRef ?? null,                   // permanent M/T price baseline
-      lastSyncretismAt: world._lastSyncretismAt ?? null, // world syncretism cooldown
-    },
+    tables,
     seaReach,
   };
 }
@@ -290,19 +293,8 @@ export function loadWorld(data, opts = {}) {
     }
   }
   const t = data.tables || {};
-  world._warExhaust = arrToMap(t.warExhaust);
-  world._linkMoney = arrToMap(t.linkMoney);
-  world._inflRaw = arrToMap(t.inflRaw);
-  world._inflP = arrToMap(t.inflP);
-  world._manpower = arrToMap(t.manpower);
-  world._plagueEvAt = arrToMap(t.plagueEvAt);
+  for (const k of WORLD_MAPS) world[k] = arrToMap(t[k.slice(1)]);   // registered world maps (load side); arrToMap handles absent (old-save) keys → empty Map
   world._plagued = new Set(t.plagued || []);
-  world._truces = arrToMap(t.truces);
-  world._warSeenAt = arrToMap(t.warSeenAt);
-  world._warDead = arrToMap(t.warDead);
-  world._ruinHoards = arrToMap(t.ruinHoards);
-  world._schismAt = arrToMap(t.schismAt);
-  world._cBudgetRamp = arrToMap(t.cBudgetRamp);
   world._inheritReach = new Set(t.inheritReach || []);
   // undefined (not null) means "baseline not yet calibrated" — preserve that.
   if (t.inflRef != null) world._inflRef = t.inflRef;
@@ -370,9 +362,7 @@ export function hashWorld(world) {
   { const sf = world._soilFatigue; for (let i = 0; i < world.N; i += 97) mixNum(sf ? sf[i] : 0); }
   { const ca = world._tileCapturedAt; let n = 0, sum = 0; if (ca) for (let i = 0; i < ca.length; i++) if (Number.isFinite(ca[i])) { n++; sum += ca[i]; } mixNum(n); mixNum(sum); }
   mixNum(world._inflRef ?? -1);
-  mixNum(world._inflP ? world._inflP.size : 0);
-  mixNum(world._truces ? world._truces.size : 0);
-  mixNum(world._warSeenAt ? world._warSeenAt.size : 0);
-  if (world._cBudgetRamp) { const ks = [...world._cBudgetRamp.keys()].sort((a, b) => a - b); for (const k of ks) { mixNum(k); mixNum(world._cBudgetRamp.get(k)); } }
+  for (const k of WORLD_MAPS) mixNum(world[k] ? world[k].size : 0);   // registered world maps: presence + size (every one now covered, not just a hand-picked few)
+  if (world._cBudgetRamp) { const ks = [...world._cBudgetRamp.keys()].sort((a, b) => a - b); for (const k of ks) { mixNum(k); mixNum(world._cBudgetRamp.get(k)); } }   // + cBudgetRamp full key/values
   return (h >>> 0).toString(16);
 }
