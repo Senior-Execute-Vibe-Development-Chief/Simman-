@@ -43,9 +43,26 @@
 // fresh _storableSupply / _houseK / _foodK), producing _foodNet for the NEXT
 // tick's updateFood — a 1-tick lag that's invisible (production drifts slowly).
 
-import { getWealthReserve } from "./settlement.js";
+import { getWealthReserve, techEff } from "./settlement.js";
 import { recordIn, recordOut, IN_FOOD, OUT_FOOD } from "./money.js";
 import { T } from "./tuning.js";
+
+// ── In-kind levy (the temple/palace redistributive economy) ───────────
+// The first cities were fed by REQUISITION, not purchase: a temple- or
+// palace-state gathered the countryside's surplus grain in kind and
+// redistributed it to the centre, centuries before coined money existed
+// (Uruk, Old-Kingdom Egypt, Shang, the Andean storehouse states). The market
+// (coin buying grain, below) EXTENDS that flow as money spreads, but the levy
+// is what lets a PRE-COINAGE city exist at all — without it a coin-poor centre
+// simply starved ("no coin, no grain"), so no city could form before money.
+// The levy requires ADMINISTRATION (a bureaucracy to assess, collect and haul):
+// below LEVY_ORG_MIN a society is too politically primitive to run one (a
+// chiefdom takes tribute, not a systematic grain levy), and it ramps with the
+// liege's statecraft to LEVY_MAX — capped so a market residual always remains
+// for coin to buy. Emergent: gated on the realm's own organisation, never a
+// date or era.
+const LEVY_ORG_MIN = 0.35;   // statecraft (reachLevel) a liege needs before it can run a redistributive grain levy at all — the proto-state threshold below which there is no city-feeding bureaucracy
+const LEVY_MAX     = 0.7;    // ceiling on the in-kind share of a child's shippable surplus a fully-organised state requisitions without payment (the rest is left to the coin market)
 
 // ── Grain haul: distance, tech & water gate (replaces the old flat per-hop loss) ──
 // Grain spoils and costs money to cart, so a region only ships up the food it can get
@@ -111,7 +128,17 @@ export function aggregateFoodHierarchy(world) {
     // pricing grain by localP squeezed them for money sitting elsewhere and made
     // population depend on the money supply. Real decisions now ignore the
     // absolute money level; localP still drives Hume competitiveness + the ticker.
-    s._grainPrice = GRAIN_PRICE_BY_TIER[Math.min(3, Math.max(0, s.tier | 0))];
+    // SCARCITY PRICING: the base tier price × how tight local supply is. In a
+    // dearth (famine, siege, over-crowding) demand outruns the harvest and grain
+    // gets DEAR; in a glut it's cheap. Read from last tick's food balance
+    // (updateFood's _foodDemand/_foodSupply). Conserved — it's a price the buy
+    // loop pays, so coin still balances; it just redistributes coin toward the
+    // breadbaskets when the region is hungry (famines enrich grain sellers, a
+    // siege spikes the besieged city's bread, the wheat ticker means something
+    // locally). Clamped so a shock can't send the price to zero or infinity.
+    const scarcity = Math.min(3, Math.max(0.5,
+      (s._foodDemand || 1) / Math.max(0.01, s._foodSupply || 1)));
+    s._grainPrice = GRAIN_PRICE_BY_TIER[Math.min(3, Math.max(0, s.tier | 0))] * scarcity;
   }
 
   // ── children lists from the CURRENT liege tree ──────────────────────
@@ -165,20 +192,36 @@ export function aggregateFoodHierarchy(world) {
         stack.pop();
         let pool = node._storableSupply || 0;                // own production (0 for tier > FARM_MAX_TIER)
         let spare = budget.get(node.id) || 0;
+        // The liege's in-kind requisition share — how much of a child's shippable
+        // surplus this centre can gather WITHOUT paying, from its administrative
+        // reach (see LEVY_* above). A proto-state (org < LEVY_ORG_MIN) has none and
+        // must buy everything with coin (so it can't feed a city until money or
+        // statecraft arrives); an organised state requisitions up to LEVY_MAX.
+        const org = techEff(node).reachLevel;
+        const levyShare = org > LEVY_ORG_MIN
+          ? LEVY_MAX * Math.min(1, (org - LEVY_ORG_MIN) / (1 - LEVY_ORG_MIN))
+          : 0;
         const kids = children.get(node.id);
         if (kids) for (const k of kids) {
           const offer = k._foodOffer || 0;                   // grain the child put up for sale
           if (offer <= 0) continue;
+          // 1. LEVY: requisition the org-scaled share in kind, no coin paid.
+          const levied = offer * levyShare;
+          // 2. MARKET: coin buys as much of the REMAINDER as spare coin allows.
           const price = k._grainPrice || 0;
-          const bought = price > 0 ? Math.min(offer, spare / price) : offer;   // afford only what coin allows
-          if (bought <= 0) continue;
-          const pay = bought * price;
-          node.wealth -= pay; k.wealth = (k.wealth || 0) + pay;
-          recordOut(node, OUT_FOOD, pay);   // money-flow panel: grain bought
-          recordIn(k, IN_FOOD, pay);        //                   grain sold
-          spare -= pay;
-          pool += bought;
-          k._foodNet = (k._foodNet || 0) - bought;           // child keeps less — it sold `bought`
+          const rest = offer - levied;
+          const bought = price > 0 ? Math.min(rest, spare / price) : rest;
+          if (bought > 0) {
+            const pay = bought * price;
+            node.wealth -= pay; k.wealth = (k.wealth || 0) + pay;
+            recordOut(node, OUT_FOOD, pay);   // money-flow panel: grain bought
+            recordIn(k, IN_FOOD, pay);        //                   grain sold
+            spare -= pay;
+          }
+          const took = levied + Math.max(0, bought);         // grain that moved UP (levy + purchase)
+          if (took <= 0) continue;
+          pool += took;
+          k._foodNet = (k._foodNet || 0) - took;             // child keeps less — it gave up `took`
         }
         node._foodPool = pool;
         node._foodNet = pool;                                // keeps it all unless its OWN parent buys (when parent is processed)

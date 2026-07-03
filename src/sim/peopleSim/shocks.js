@@ -26,6 +26,26 @@ const FAMINE_MIN_DUR  = 400;
 const FAMINE_MAX_DUR  = 1200;
 const FAMINE_SEVERITY = 0.35;   // harvest multiplier during famine (0.35 = ~65% crop loss)
 const FAMINE_MIN_POP  = 30;     // only seed on a real settlement
+// Famine as VULNERABILITY, not a blind die-roll. A bad harvest becomes a FAMINE
+// where the society has no cushion — packed against its food ceiling, on
+// exhausted soil, with empty granaries, already running a shortfall. The famine
+// OCCURRENCE rate is left exactly as it was (so the long-run mean frequency the
+// world was validated at is preserved — no calibration risk), and only the SEED
+// PICK is weighted by fragility: when a famine strikes, it lands on the
+// over-extended, soil-mined, hungry region, not a slack well-stored one. The
+// distribution moves toward the fragile — and toward hungry EPOCHS, since a bad
+// climate/harvest window makes more of the map fragile at once, so the weighted
+// pick concentrates there — while the mean stays put. A vulnerability floor
+// keeps even a fat, well-fed world in the draw (no region is perfectly famine-
+// proof), so the pick never degenerates to a single hotspot.
+function famineVuln(s) {
+  const foodK = s._foodK || s._houseK || 1;
+  const pressure = Math.min(2.5, (s.people || 0) / Math.max(1, foodK));           // crowding toward the food ceiling (Malthus)
+  const soil     = 1 + (s._soilFatigue || 0);                                     // mined-out land yields a thinner margin
+  const granary  = 1 - 0.85 * Math.min(1, (s.food || 0) / (80 + (s.tier | 0) * 200));  // empty stores → no buffer (full stores still leave a 0.15 floor: no one is famine-proof)
+  const shortfall = Math.min(3, (s._foodDemand || 1) / Math.max(0.01, s._foodSupply || 1));  // already short → a shock tips it over (also the climate/harvest signal)
+  return 0.05 + pressure * soil * granary * shortfall;                            // + a small absolute floor so the weighted draw always has support
+}
 
 // ── PLAGUE — an epidemic that SPREADS along the trade graph ──
 // Crashes population (worse in dense cities), then burns out leaving survivors
@@ -150,7 +170,14 @@ export function updateShocks(world) {
   if (famineCheck && rng() < T.FAMINE_CHANCE * _dt) {
     const pool = world.settlements.filter(s => s.mode === "settled" && s.people >= FAMINE_MIN_POP);
     if (pool.length) {
-      const seed = pool[(rng() * pool.length) | 0];
+      // Same occurrence rate as ever (mean preserved); the SEED is drawn weighted
+      // by vulnerability, so the famine lands on the fragile region, not a random
+      // one. (Reduces to a uniform pick if every settlement is equally fragile.)
+      let totV = 0; const vs = new Float64Array(pool.length);
+      for (let i = 0; i < pool.length; i++) { const v = famineVuln(pool[i]); vs[i] = v; totV += v; }
+      let r = rng() * totV, si = pool.length - 1;
+      for (let i = 0; i < pool.length; i++) { r -= vs[i]; if (r <= 0) { si = i; break; } }
+      const seed = pool[si];
       const dur = ((FAMINE_MIN_DUR + rng() * (FAMINE_MAX_DUR - FAMINE_MIN_DUR)) / _dt) | 0;   // ×G ticks → same span in history-time
       const until = world.step + dur;
       const hitPolities = new Set();
