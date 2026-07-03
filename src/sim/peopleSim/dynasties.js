@@ -51,9 +51,11 @@ export const DYNASTY_INTERVAL = 25;     // small pass, runs often (reigns span a
 const LITERACY_MIN = 0.22;              // organization needed for recorded dynastic history
 const CROWN_AGE_MIN = 18, CROWN_AGE_SPAN = 22;   // a founder is crowned at 18–40
 const FERTILE_MAX = 45;                 // no births past this age
+const REGENCY_AGE = 16;                 // below this the sovereign is a CHILD ruling under regents (D30) — projects no personal agency, and the crown reads as weak to its neighbours
 const BIRTH_RATE_Y = 0.30;              // annual chance of a royal birth while married & fertile
 const CADET_BIRTH_Y = 0.22;             // annual birth chance for a married cadet branch
 const BASTARD_RATE_Y = 0.018;           // annual chance the monarch sires an acknowledged bastard
+const REMARRY_Y      = 0.4;             // annual remarriage hazard for a WIDOWED monarch at MAXIMAL heir scarcity; scaled down by the spare heirs already standing (D31 — crises stay common, rarer than mortality alone implies)
 const MAX_CHILDREN = 8;
 const MAX_HOUSE = 28;                    // living blood-members tracked per house (collateral cap)
 const FOREIGN_MATCH = 0.25;             // chance a royal spouse comes from another court
@@ -140,9 +142,11 @@ function countCities(c) {
 // the reverse); the ruler's character then swings it — but only as far as the form
 // lets one person matter (`ruler`: a crown/strongman ride on the individual, an
 // institution dampens them). During an interregnum only the form's baseline applies.
-function applyRulerMods(c, ruler, gov) {
+function applyRulerMods(c, ruler, gov, minor) {
   const fx = GOV_FX[gov] || GOV_FX.monarchy;
-  const t = (ruler && ruler.traits) || null;
+  // A child on the throne (regency, D30) projects no personal boldness/wit/ruthlessness —
+  // the regents hold a passive, baseline line, exactly as in an interregnum.
+  const t = (ruler && !minor && ruler.traits) || null;
   const rw = fx.ruler;
   const bold = t ? (t.boldness || 0) : 0, wit = t ? (t.wit || 0) : 0, ruth = t ? (t.ruthlessness || 0) : 0;
   c._rulerWar    = fx.war * (1 + bold * 0.30 * rw);
@@ -176,7 +180,7 @@ function legitFormBase(gov) {
   return gov === GOV_MONARCHY ? 0.55 : gov === GOV_THEOCRACY ? 0.50
        : gov === GOV_DESPOTISM ? 0.40 : gov === GOV_ELECTIVE ? 0.38 : 0.42;   // republic 0.42
 }
-function applyLegitimacy(world, c, polity, dyn, ruler, gov, law) {
+function applyLegitimacy(world, c, polity, dyn, ruler, gov, law, minor) {
   const hereditary = gov === GOV_MONARCHY || gov === GOV_THEOCRACY;
   const dynAgeY = dyn ? Math.max(0, stepToYear(world, world.step) - stepToYear(world, dyn.foundedStep)) : 0;
   const tenure = hereditary ? Math.min(0.25, dynAgeY / 600) : Math.min(0.08, dynAgeY / 900);
@@ -184,7 +188,8 @@ function applyLegitimacy(world, c, polity, dyn, ruler, gov, law) {
   const reignStab = Math.min(0.10, reignY / 400);
   const heir = houseHasAdultHeir(world, dyn, ruler ? ruler.id : -1, law)
     ? 0.10 : (hereditary ? -0.15 : 0);          // a clear heir reassures; an empty cradle unsettles a crown
-  const target = clamp01(legitFormBase(gov) + tenure + reignStab + heir);
+  const regencyHit = minor ? -0.18 : 0;         // a child on the throne is a standing weakness — royal authority is in abeyance under the regents (D30)
+  const target = clamp01(legitFormBase(gov) + tenure + reignStab + heir + regencyHit);
   const cur = polity._dynLegit == null ? target : polity._dynLegit;
   polity._dynLegit = cur + (target - cur) * 0.15;        // drifts slowly
   // a legitimate, settled house keeps the realm calm; a shaky one frays it
@@ -281,6 +286,7 @@ function makeAdult(world, cultureId, female, rng, ageYears, extra, mortF = 0.78,
 // but their children with a house member are full members.
 function wed(world, a, b, polityId, tiePolity, rng) {
   a.spouseId = b.id; b.spouseId = a.id;
+  a._wasWed = true; b._wasWed = true;   // "has been married" — distinguishes a widow (remarriage is gated) from a never-wed founder
   // a generated, ownerless partner is tracked as an in-law of the blood spouse's
   // house so it can be reaped (royal matches from a foreign court die on their own
   // house's roster instead).
@@ -329,6 +335,19 @@ function birth(world, parent, rng, bastard, mortF) {
   parent.children.push(child.id);
   enroll(world, child);
   return child;
+}
+
+// Every death flows through here (R4). One site to: mark the person dead, close any
+// open reign, and WIDOW the surviving spouse — clearing the survivor's spouseId frees a
+// widowed monarch to remarry (D31) and stops a cross-court couple from being bred
+// independently from two courts (B41: the widow is no longer "married to a corpse" that
+// the other realm's roster keeps breeding against). Idempotent: a second call no-ops.
+function killPerson(world, p) {
+  if (!p || p.died >= 0) return;
+  p.died = world.step | 0;
+  if (p.reignTo < 0 && p.reignFrom >= 0) p.reignTo = stepToYear(world, world.step) | 0;
+  const sp = p.spouseId >= 0 ? getPerson(world, p.spouseId) : null;
+  if (sp && sp.died < 0 && sp.spouseId === p.id) sp.spouseId = -1;   // the survivor is widowed — single again
 }
 
 // ── Governance: derive how a realm is ruled from its STATE ───────────────────
@@ -508,6 +527,22 @@ function heirByLaw(world, ruler, dyn, law) {
     }
   }
   return null;
+}
+
+// How badly the line needs a fresh heir: 1.0 = no adult heir at all (urgent), falling
+// to a small floor when several spares already stand. Read off the LIVING house (the
+// distance from a secure succession), never a clock — it gates a widowed monarch's
+// remarriage (D31), so a heirless crown urgently remarries while a secure one rarely does.
+function heirScarcity(world, ruler, dyn, law) {
+  if (!dyn) return 1;
+  const succ = heirByLaw(world, ruler, dyn, law);
+  if (!succ || succ.minor) return 1;                       // no eligible ADULT heir anywhere — most urgent
+  let adults = 0;
+  if (dyn.members) for (const id of dyn.members) {
+    const p = getPerson(world, id);
+    if (p && p.died < 0 && ageOf(world, p) >= 14 && eligible(world, p, law, false) && ++adults >= 3) break;
+  }
+  return adults >= 3 ? 0.12 : adults === 2 ? 0.3 : 0.6;    // fewer spare heirs → more pressure to remarry
 }
 
 // Theocracy: the office passes to the priesthood, not the blood. A senior elder
@@ -696,7 +731,7 @@ function reapHouse(world, dyn, over, mortF, rng, rulerId, plague) {
     if (p.id === rulerId || sittingRulers(world).has(p.id)) { keep.push(id); continue; }  // monarchs die only through their own realm's succession handler
     if (p.lifespan < 0) p.lifespan = sampleLifespan(rng, mortF, true);   // migrate older saves
     const dead = ageOf(world, p) >= p.lifespan || (plague && rng() < over(PLAGUE_HAZARD_Y));
-    if (dead) { p.died = world.step | 0; if (p.reignTo < 0 && p.reignFrom >= 0) p.reignTo = stepToYear(world, world.step) | 0; }
+    if (dead) killPerson(world, p);
     else keep.push(id);
   }
   // The roster cap is enforced as a BREEDING gate (growCadets / the birth
@@ -712,7 +747,7 @@ function reapHouse(world, dyn, over, mortF, rng, rulerId, plague) {
       const sp = getPerson(world, id);
       if (!sp || sp.died >= 0) continue;
       if (sp.lifespan < 0) sp.lifespan = sampleLifespan(rng, mortF, true);
-      if (ageOf(world, sp) >= sp.lifespan) sp.died = world.step | 0;
+      if (ageOf(world, sp) >= sp.lifespan) killPerson(world, sp);
       else live.push(id);
     }
     dyn.inlaws = live;
@@ -732,9 +767,10 @@ function growCadets(world, c, polity, dyn, over, mortF, rng) {
     if (!p || p.died >= 0 || p.id === polity.rulerId) continue;
     const age = ageOf(world, p);
     if (age < 16) continue;
-    if (p.spouseId < 0) { if (age <= 40 && rng() < 0.5) marry(world, p, c.id, rng, false, mortF); continue; }
+    if (p.spouseId < 0) { if (!p._wasWed && age <= 40 && rng() < 0.5) marry(world, p, c.id, rng, false, mortF); continue; }   // never-wed cadets marry; a widowed cadet stays single (only monarchs remarry — D31)
     const spouse = getPerson(world, p.spouseId);
     if (!spouse || spouse.died >= 0) continue;
+    if (sittingRulers(world).has(p.spouseId)) continue;   // spouse reigns elsewhere — THAT realm's monarch path breeds the couple; breeding here too double-breeds the pair across two houses (B41)
     if ((p.children || []).length >= MAX_CHILDREN) continue;
     const mAge = p.female ? age : ageOf(world, spouse);
     if (mAge > FERTILE_MAX) continue;
@@ -744,8 +780,7 @@ function growCadets(world, c, polity, dyn, over, mortF, rng) {
       // childbirth could take the mother (dev-scaled)
       const mother = p.female ? p : spouse;
       if (mother && mother.died < 0 && !sittingRulers(world).has(mother.id) && rng() < MATERNAL_HAZARD * mortF) {
-        mother.died = world.step | 0;
-        if (mother.reignTo < 0 && mother.reignFrom >= 0) mother.reignTo = stepToYear(world, world.step) | 0;
+        killPerson(world, mother);
       }
     }
   }
@@ -771,9 +806,10 @@ function nobleUpkeep(world, c, polity, over, mortF, rng) {
       if (!p || p.died >= 0) continue;
       const age = ageOf(world, p);
       if (age < 18 || age > FERTILE_MAX) continue;
-      if (p.spouseId < 0) { if (age <= 40 && rng() < 0.4) marry(world, p, c.id, rng, false, mortF); continue; }
+      if (p.spouseId < 0) { if (!p._wasWed && age <= 40 && rng() < 0.4) marry(world, p, c.id, rng, false, mortF); continue; }   // widowed nobles stay single (parity with growCadets / D31)
       const sp = getPerson(world, p.spouseId);
       if (!sp || sp.died >= 0 || (p.children || []).length >= 4) continue;
+      if (sittingRulers(world).has(p.spouseId)) continue;   // spouse reigns elsewhere — that realm breeds the couple (B41)
       if (rng() < over(CADET_BIRTH_Y * 0.25 * (vigorFertility(p) + vigorFertility(sp)))) { birth(world, p, rng, false, mortF); break; }
     }
   }
@@ -831,7 +867,7 @@ function reapIdleHouses(world) {
   for (const d of world.dynasties.values()) {
     if (!d.members || ruling.has(d.id)) continue;
     const overdue = (p) => p && p.died < 0 && p.lifespan >= 0 && ageOf(world, p) >= p.lifespan;
-    const reap = (p) => { p.died = world.step | 0; if (p.reignTo < 0 && p.reignFrom >= 0) p.reignTo = stepToYear(world, world.step) | 0; };
+    const reap = (p) => killPerson(world, p);
     d.members = d.members.filter(id => { const p = getPerson(world, id); if (!p || p.died >= 0) return false; if (overdue(p)) { reap(p); return false; } return true; });
     if (d.inlaws) d.inlaws = d.inlaws.filter(id => { const p = getPerson(world, id); if (!p || p.died >= 0) return false; if (overdue(p)) { reap(p); return false; } return true; });
   }
@@ -915,13 +951,25 @@ export function updateDynasties(world) {
       continue;
     }
 
-    // the form + the ruler's character drive the realm this pass (war, dev, order)
-    applyRulerMods(c, ruler, polity.gov);
-    applyLegitimacy(world, c, polity, dyn, ruler, polity.gov, law);
+    // the form + the ruler's character drive the realm this pass (war, dev, order).
+    // A minor on the throne rules under regents (D30): no personal agency (traits zeroed
+    // below), a dented crown, and — via the raised unrest that follows — a soft target.
+    const regency = ageOf(world, ruler) < REGENCY_AGE;
+    applyRulerMods(c, ruler, polity.gov, regency);
+    applyLegitimacy(world, c, polity, dyn, ruler, polity.gov, law, regency);
 
     // the living house: marry & breed the monarch, grow cadet branches, reap all
     const plague = !!c.capital._plagueActive;
-    marry(world, ruler, cid, rng, true, mortF);
+    // A never-wed monarch weds; a WIDOWED one (killPerson cleared the spouse link)
+    // remarries only under heir pressure — D31, gated on the line's survival need, not
+    // the calendar. A secure house rarely bothers; a crown with no adult heir urgently
+    // seeks a fertile new match, so crises stay common without lines dying for want of a
+    // second chance.
+    if (ruler.spouseId < 0) {
+      if (!ruler._wasWed) marry(world, ruler, cid, rng, true, mortF);
+      else if (ageOf(world, ruler) <= FERTILE_MAX && rng() < over(REMARRY_Y * heirScarcity(world, ruler, dyn, law)))
+        marry(world, ruler, cid, rng, true, mortF);
+    }
     const spouse = getPerson(world, ruler.spouseId);
     const rAge = ageOf(world, ruler);
     if (spouse && spouse.died < 0 && (ruler.children || []).length < MAX_CHILDREN) {
@@ -931,8 +979,7 @@ export function updateDynasties(world) {
         birth(world, ruler, rng, false, mortF);
         const mother = ruler.female ? ruler : spouse;
         if (mother && mother.died < 0 && mother.id !== ruler.id && !sittingRulers(world).has(mother.id) && rng() < MATERNAL_HAZARD * mortF) {
-          mother.died = world.step | 0;
-          if (mother.reignTo < 0 && mother.reignFrom >= 0) mother.reignTo = stepToYear(world, world.step) | 0;   // a dowager's reign closes at death (every other death site does this)
+          killPerson(world, mother);
         }
       }
     }
@@ -947,8 +994,7 @@ export function updateDynasties(world) {
     if (ruler.lifespan < 0) ruler.lifespan = sampleLifespan(rng, mortF, true);
     const died = rAge >= ruler.lifespan || (plague && rng() < over(PLAGUE_HAZARD_Y * 2));
     if (died) {
-      ruler.died = world.step | 0;
-      ruler.reignTo = stepToYear(world, world.step) | 0;
+      killPerson(world, ruler);   // marks dead, closes reignTo, widows the consort (D31 remarriage of the NEXT ruler's line; here the consort is freed)
       const reignY = Math.round(ruler.reignTo - stepToYear(world, polity._reignSince ?? ruler.born));
       const gov0 = polity.gov || GOV_MONARCHY;
       // the name history keeps them by — earned from the deeds of their reign
