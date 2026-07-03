@@ -225,8 +225,15 @@ export function perspectiveText(world, viewerId, limit = 0) {
 export function exportHistory(world, { traditions = 12 } = {}) {
   const polities = [];
   if (world.polities) for (const [id, p] of world.polities) polities.push({ id, ...p });
-  const realms = (world.countries ? [...world.countries.values()] : [])
-    .sort((a, b) => b.members.length - a.members.length).slice(0, traditions);
+  // Rank traditions by HISTORICAL PROMINENCE across the whole registry — alive AND ended —
+  // by own-event count, not by current live size (I40). The richest traditions (long
+  // histories, sacks, burned archives, founding myths) are disproportionately the great
+  // FALLEN empires; picking by live member count excluded exactly the realms the
+  // historiography layer exists to showcase.
+  const prominence = (id) => eventsFor(world, "p:" + id).length;
+  const realms = polities.slice()
+    .sort((a, b) => prominence(b.id) - prominence(a.id))
+    .slice(0, traditions);
   return {
     step: world.step,
     seed: world.seed,
@@ -240,6 +247,7 @@ export function exportHistory(world, { traditions = 12 } = {}) {
     traditions: realms.map(c => ({
       polity: c.id,
       name: realmName(world, c.id),
+      ended: c.endedStep >= 0,                                     // mark fallen traditions (I40 — the bible now includes great dead empires)
       trueChronicle: eventsFor(world, "p:" + c.id).map(ev => `[${ev.step}] ${narrate(world, ev, c.id)}`),
       asRecorded: perspectiveText(world, c.id),
     })),

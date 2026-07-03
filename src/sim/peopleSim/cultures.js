@@ -325,7 +325,14 @@ function cohesionRadius(world, s) {
 export function updateCultures(world) {
   // ── living languages: slow sound change; borrowing under contact ──
   if (world.cultures) {
+    // A tongue no one speaks doesn't change: skip drift + the language.shift logging for
+    // cultures with zero living settlements (I34 — dead peoples' languages drifted and
+    // logged forever, and the registry only ever grew). dominantCulture maps each live
+    // settlement to its people, exactly as the split pass below tallies pcount.
+    const spoken = new Set();
+    for (const s of world.settlements) { if (s.mode === "settled") { const cid = dominantCulture(s); if (cid >= 0) spoken.add(cid); } }
     for (const cul of world.cultures.values()) {
+      if (!spoken.has(cul.id)) continue;
       const lang = languageOf(world, cul);
       const due = (cul._lastDrift ?? cul.foundedStep) + LANG_DRIFT_EVERY / (world._dt || 1);
       if (world.step >= due) {

@@ -972,15 +972,24 @@ function runGeneralTradeBetween(world, a, b, link, stride = 1) {
   // scales with how cheap it is vs its trade partner. A specie-rich region has a
   // high price level (localP), so its goods are dear — it exports LESS and (as
   // the partner's cheap goods undersell it) imports MORE, bleeding specie until
-  // its prices fall back. The scaling is RECIPROCAL (compA·compB = 1), so it
-  // shifts the trade BALANCE without changing total volume: specie self-
-  // distributes across regions and none hoards unboundedly. (Self-correcting, so
+  // its prices fall back. The scaling is RECIPROCAL (compA·compB = 1) and then
+  // NORMALISED to compA + compB = 2, so it shifts the trade BALANCE without changing
+  // total volume: specie self-distributes across regions and none hoards unboundedly.
+  // (Self-correcting, so
   // it bounds the price-level spread rather than expanding the money supply —
   // which is why it doesn't need the inflation-neutrality work.)
   let compA = 1, compB = 1;
   if (T.HUME_ELASTICITY > 0) {
     const Pa = localP(world, a), Pb = localP(world, b);
-    if (Pa > 0 && Pb > 0 && Pa !== Pb) { compA = Math.pow(Pb / Pa, T.HUME_ELASTICITY); compB = 1 / compA; }
+    if (Pa > 0 && Pb > 0 && Pa !== Pb) {
+      compA = Math.pow(Pb / Pa, T.HUME_ELASTICITY); compB = 1 / compA;
+      // The raw reciprocal legs are summed into gross flow (evA·compA + evB·compB), and
+      // (x + 1/x)/2 >= 1, so a price gap would INFLATE total trade — not volume-neutral as
+      // claimed. Rescale so compA + compB = 2: the ratio (the balance shift) is preserved,
+      // the average scaling is exactly 1, so gross volume is held fixed (B14).
+      const norm = (compA + compB) / 2;
+      compA /= norm; compB /= norm;
+    }
   }
   // FX / exchange rate (Currency Phase 4): on a FOREIGN purchase the buyer pays
   // the exchange rate = seller's currency ÷ buyer's (their fineness ratio). A

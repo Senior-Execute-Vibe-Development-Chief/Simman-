@@ -224,7 +224,12 @@ export function updateShocks(world) {
   // ── Plague lifecycle + spread ──
   if (world._plagued.size) {
     const recovered = [];
-    for (const id of world._plagued) {
+    // Snapshot the infected set: infect() adds to world._plagued mid-loop, and JS Sets
+    // visit members added during iteration — so without the copy a settlement infected
+    // THIS tick would take a mortality hit and roll its own spread the same tick, letting
+    // an epidemic hop multiple links per tick and biasing the calibrated R0 (B69). The
+    // snapshot makes newly-infected nodes begin their lifecycle next tick.
+    for (const id of [...world._plagued]) {
       const s = world._byId ? world._byId.get(id) : null;
       if (!s || s.mode !== "settled") { recovered.push(id); continue; }
       if (world.step >= (s._plagueUntil || 0)) {            // burns out → immune

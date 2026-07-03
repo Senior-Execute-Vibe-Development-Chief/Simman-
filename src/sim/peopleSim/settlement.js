@@ -17,7 +17,7 @@ import { ensurePolity, getPolity } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor } from "./cultures.js";
 import { T } from "./tuning.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
-import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, OUT_GOODS, OUT_MATERIALS } from "./money.js";
+import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
 
 // Settlement ids count up PER WORLD (world._nextSettlementId), not at module
@@ -344,7 +344,11 @@ export function makeSettlement(world, x, y, opts = {}) {
     parent: opts.parentId ?? -1, polity: opts.countryId ?? -1,
   });
   if (opts.cradle) ensurePolity(world, s.id, { how: "cradle", seat: s });
-  s._techEff = techEffects(s.knowledge, T.TECH_EFFECTS);   // tech bonuses available from tick 0 (refreshed in updateKnowledge)
+  // _techEff is left UNSET here: at creation _metalCap is undefined, so seeding it now
+  // (techEffects(s.knowledge, …)) would bake in an UNCAPPED metallurgy tier that ignores
+  // the reachable-ore cap (B51). The lazy techEff() path fills it — via practisedK, so it
+  // respects _metalCap — on first use, and the KNOW_INTERVAL refresh keeps it capped;
+  // direct readers (territory.js, countryTerritory.js) already fall back when it's unset.
   return s;
 }
 
@@ -596,8 +600,8 @@ function updateWealth(world, s) {
     const reachF = s._tradeReach ? Math.min(1, s._tradeReach.size / 12) : 0;
     const bankF = Math.max(0, (org - 0.45) / 0.55) * reachF;             // needs Banking-era org + commerce
     const delta = (base * (T.CREDIT_MAX_MULT - 1) * bankF - cur) * T.CREDIT_RATE;
-    if (delta > 0) { s._credit = cur + delta; s.wealth = (s.wealth || 0) + delta; recordIn(s, IN_GOODS, delta); }
-    else if (delta < 0) { const take = Math.min(-delta, s.wealth || 0, cur); if (take > 0) { s._credit = cur - take; s.wealth -= take; recordOut(s, OUT_GOODS, take); } }
+    if (delta > 0) { s._credit = cur + delta; s.wealth = (s.wealth || 0) + delta; recordIn(s, IN_CREDIT, delta); }   // conjured money is FINANCE, not goods sold (B17)
+    else if (delta < 0) { const take = Math.min(-delta, s.wealth || 0, cur); if (take > 0) { s._credit = cur - take; s.wealth -= take; recordOut(s, OUT_CREDIT, take); } }   // credit called in, not goods bought (B17)
   }
   // Luxury budgets refresh for EVERY settlement, every tick — supply from the
   // luxury resources its territory holds, demand from its spare coin. This must
