@@ -60,8 +60,7 @@ const SUBMIT_RATIO = 5.0;  // odds (their whole network vs yours) past which a c
 // POLITY_INTERVAL perf lever never changes how fast courts capitulate (per-pass
 // rolls would run 5× hotter at interval 30 than at 150). ≈ once per ~600 ticks
 // of sustained hopeless odds: a court holds out a generation or two, not forever.
-const SUBMIT_HAZARD   = 0.0017; // per-tick capitulation hazard under hopeless odds
-const SUBMIT_PROB_CAP = 0.5;    // ceiling per pass — even a very long pass never makes capitulation a certainty
+const SUBMIT_HAZARD   = 0.0017; // per-tick capitulation hazard under hopeless odds (converted to a per-pass probability by _passProb, which never saturates)
 const SUBMIT_REACH = 1.5;  // a suzerain overawes out to this multiple of its hold reach: a punitive expedition ranges past where a permanent garrison (direct administration) can sit, and a vassal costs no garrison — it administers itself
 // ── Nomad confederations (a polity MODE, derived every pass — see classifyNomads) ──
 // Riding is REAL past the chariot gate — the same mobility threshold the tech
@@ -372,6 +371,12 @@ const _polityWindow = (world, every) => passWindow(world, T.POLITY_INTERVAL, eve
 // The polity pass's span in ticks — per-tick hazards multiply by this so a
 // per-history rate never varies with the POLITY_INTERVAL perf lever.
 const _passTicks = () => Math.max(1, Math.round(T.POLITY_INTERVAL * (T.SIM_GRANULARITY || 1)));
+// Per-pass probability of a per-tick HAZARD firing at least once across the
+// pass span — the EXACT compounding 1-(1-h)^ticks, which is cadence-invariant
+// AND can never reach 1 (a naive hazard×ticks saturates past 1 once the perf
+// lever is turned up, silently making the event fire every pass — a rate set by
+// the cadence, not the world). Used by every per-tick hazard in this pass.
+const _passProb = (hazard) => 1 - Math.pow(1 - hazard, _passTicks());
 
 // ── Colonial dependencies: a self-governing colony bound to an overlord ───────
 // An overseas colony (sea.js) is founded as its OWN realm — own capital, own LOCAL
@@ -1078,6 +1083,14 @@ export function fragmentRealm(world, oldId, excludeId, how = "conquest") {
   const capitals = [];
   for (const s of ranked) {
     if (capitals.length >= maxStates) break;
+    // Never re-anchor a successor on the DEAD realm's own id: country ids ARE
+    // settlement ids, so a successor whose seat is the founder settlement
+    // (s.id === oldId) would reuse oldId — and ensurePolity would REOPEN the
+    // record endPolity just closed, logging a spurious ended+restored pair and
+    // handing the "shattered" realm its own buried war-chest back (the succession
+    // shatter degrading to a self-rename). The founder settlement still joins its
+    // nearest successor below; the id dies with the house, as intended.
+    if (s.id === oldId) continue;
     let far = true;
     for (const cap of capitals) {
       if (dist(world, s.pos.x, s.pos.y, cap.pos.x, cap.pos.y) < FRAG_SEPARATION) { far = false; break; }
@@ -2211,12 +2224,12 @@ export function updatePolities(world) {
   // only the ways they always could. Emergent both ways — a horde that
   // sedentarizes (flag off) outgrows the shatter the same pass.
   {
-    const passTicks = _passTicks();
+    const shatterP = _passProb(NOMAD_SHATTER_HAZARD);
     for (const c of [...countries.values()]) {
       if (!c._nomadic || c.members.length < 3) continue;
       if (!inCrisis(world, c.id)) continue;
       const r = hash32(world.seed || 1, "hordeShatter", c.id, world.step) / 4294967296;
-      if (r > NOMAD_SHATTER_HAZARD * passTicks) continue;
+      if (r > shatterP) continue;
       fragmentRealm(world, c.id, -1, "succession");
     }
   }
@@ -2246,10 +2259,15 @@ function classifyNomads(world, countries) {
     c._nomadic = false;
     const cap = c.capital; if (!cap) continue;
     if (((cap.knowledge && cap.knowledge.mobility) || 0) < CHARIOT_MOB) continue;  // no riding, no horde
-    const res = cap._effRes || cap.localRes || {};
+    // Herds gate reads the seat's OWN-GROUND deposits (localRes), not the
+    // trade-folded _effRes: a horde's herds are its own steppe, and localRes is
+    // load-stable (re-derived on load by rederiveSiteStatics) whereas _effRes is
+    // an unpersisted cache — keying a hard classification boolean on it forked
+    // save/load continuations for any capital near the horse floor.
+    const res = cap.localRes || {};
     if ((res.horses || 0) < NOMAD_HORSES_MIN) continue;                            // no herds, no horde
     const ti = (cap.pos.y | 0) * tw + (cap.pos.x | 0);
-    c._nomadic = tileOpenness(world, ti) >= NOMAD_OPEN_MIN && (fert ? fert[ti] || 0 : 1) < NOMAD_FERT_MAX;
+    c._nomadic = tileOpenness(world, ti) >= NOMAD_OPEN_MIN && (fert[ti] || 0) < NOMAD_FERT_MAX;
   }
 }
 
@@ -2268,7 +2286,16 @@ function classifyNomads(world, countries) {
 // the confederation is glued together by success, so raiding snowballs
 // toward the submission line — and the borderlands' unrest carries the fear.
 function hordeRaids(world, countries) {
-  // Per-realm live power / coin / heads, one sweep over the settlements.
+  // Nothing to do on a world with no hordes — the common case. Skip the whole
+  // settlement sweep and Map builds rather than pay them every polity pass.
+  let anyNomad = false;
+  for (const c of countries.values()) if (c._nomadic) { anyNomad = true; break; }
+  if (!anyNomad) return;
+  // Per-realm live power / coin / heads, one sweep over the settlements. Coin
+  // folds in the polity TREASURY (where raid loot lands) so a horde that has
+  // grown rich reads as rich — the wealth GRADIENT the raid intensity rides
+  // then closes from both sides as the steppe enriches (self-limiting), instead
+  // of a one-way ratchet where looted coin is invisible to the gradient.
   const pow = new Map(), coin = new Map(), heads = new Map();
   for (const s of world.settlements) {
     if (s.mode !== "settled" || s.countryId < 0) continue;
@@ -2276,7 +2303,11 @@ function hordeRaids(world, countries) {
     coin.set(s.countryId, (coin.get(s.countryId) || 0) + (s.wealth || 0));
     heads.set(s.countryId, (heads.get(s.countryId) || 0) + (s.people || 0));
   }
-  const passTicks = _passTicks();
+  for (const c of countries.values()) {
+    const gp = getPolity(world, c.id);
+    if (gp && gp.treasury > 0) coin.set(c.id, (coin.get(c.id) || 0) + gp.treasury);
+  }
+  const raidP = _passProb(RAID_HAZARD);
   const ov = world._overlordOf, truces = world._truces;
   const bondedPair = (a, b) => ov && (ov.get(a) === b || ov.get(b) === a);
   const inTruce = (a, b) => {
@@ -2295,13 +2326,18 @@ function hordeRaids(world, countries) {
       if (dist(world, N.capital.pos.x, N.capital.pos.y, S.capital.pos.x, S.capital.pos.y) > reach) continue;
       const wS = (coin.get(S.id) || 0) / Math.max(1, heads.get(S.id) || 1);
       if (wS <= wN) continue;                              // a poor rim breeds no hordes
-      const r = hash32(world.seed || 1, "hordeRaid", N.id * 65537 + S.id, world.step) / 4294967296;
-      if (r > RAID_HAZARD * passTicks) continue;
+      // Pair-unique deterministic key. hash32 takes two numeric args, so pass
+      // N.id and S.id as SEPARATE fields — the old N.id*65537+S.id packing
+      // collided once settlement ids passed 65537, correlating unrelated
+      // raid pairs; the tagged two-arg form is collision-free for any ids.
+      const r = hash32(world.seed || 1, "hordeRaid:" + N.id, S.id, world.step) / 4294967296;
+      if (r > raidP) continue;
       const grad  = (wS - wN) / wS;                        // how much richer the sown is (0..1)
       const evade = powN / (powN + (pow.get(S.id) || 1));  // the share of the season the defence fails to parry
       const frac  = RAID_TAKE * grad * evade;
       if (frac <= 0.001) continue;
       let loot = 0, took = 0;
+      const hit = [];
       for (const v of S.members) {
         if (v.mode !== "settled" || v.countryId !== S.id) continue;
         if (dist(world, N.capital.pos.x, N.capital.pos.y, v.pos.x, v.pos.y) > reach) continue;   // only what the riders can reach
@@ -2311,12 +2347,18 @@ function hordeRaids(world, countries) {
           const g = Math.min((v.people || 0) * RAID_CAPTIVE * evade, (v.people || 0) * 0.2);
           if (g >= 1) { v.people -= g; took += g; }
         }
-        v.unrest = Math.min(1, (v.unrest || 0) + 0.05);    // the borderlands live in fear
+        hit.push(v);
       }
-      if (loot <= 0 && took < 1) continue;
+      if (loot <= 0 && took < 1) continue;                 // a barren season leaves no mark — and no unrest (a raid that took nothing was no raid)
+      for (const v of hit) v.unrest = Math.min(1, (v.unrest || 0) + 0.05);   // the borderlands that actually felt the riders live in fear
       if (loot > 0) { const npol = govOf(world, N.id); npol.treasury = (npol.treasury || 0) + loot; }   // conserved, like a sack's plunder
       if (took >= 1) N.capital._captives = (N.capital._captives || 0) + took;   // the captive trains ride for the slave markets
-      bankMomentum(world, N.id, MOMENTUM_PER_STORM * evade);
+      // Prestige from a raid scales with how much it ENRICHED the horde relative
+      // to what it had — a season that lifted a fortune glues the confederation,
+      // a token skirmish barely registers (momentum ∝ achievement, like a sack's
+      // plunder-scaled bank, not a flat city-storm bounty per poor-rim pinprick).
+      const gain = Math.min(1, loot / Math.max(1, coin.get(N.id) || 1));
+      bankMomentum(world, N.id, MOMENTUM_PER_STORM * evade * gain);
       logEvent(world, "horde.raid", { polity: S.id, name: realmName(world, S.id),
         from: N.id, fromName: realmName(world, N.id), loot: Math.round(loot), captives: Math.round(took) });
     }
@@ -2348,8 +2390,8 @@ function considerSubmissions(world, countries) {
   const ov = world._overlordOf;
   const eff = new Map(own);
   if (ov) for (const [dep, over] of ov) if (eff.has(over)) eff.set(over, (eff.get(over) || 0) + (own.get(dep) || 0));
-  // Cadence-invariant per-pass probability: hazard × the pass's actual span.
-  const probBase = Math.min(SUBMIT_PROB_CAP, SUBMIT_HAZARD * _passTicks());
+  // Cadence-invariant per-pass probability (exact compounding, never saturates).
+  const probBase = _passProb(SUBMIT_HAZARD);
   for (const [sid, hid] of threat) {
     if (hid < 0) continue;
     const S = countries.get(sid), H = countries.get(hid);

@@ -181,6 +181,12 @@ const FRONTIER_EXTEND_DIST      = MIN_SETT_DIST * (1 + SPARSE_SPREAD) + MIN_SETT
 // peoples actually fill the steppe (the Yamnaya pattern) instead of the wave
 // stalling at the grass line for want of a donor within foot range.
 const RIDE_EXTEND               = 2;
+// A rode-away camp is born only on genuine steppe — the same "dry, open, too
+// poor to farm" test the nomad classifier uses (conquest.js NOMAD_FERT_MAX /
+// NOMAD_OPEN_MIN) — so the stateless-birth exemption can't leak into ordinary
+// open scrub off a mounted farm realm's frontier.
+const RIDE_AWAY_FERT_MAX        = 0.35;
+const RIDE_AWAY_OPEN_MIN        = 0.5;
 // A frontier village born INTO a realm shares that realm's DEVELOPMENT (its roads,
 // crops, administration, craft all diffuse to the new settlement), so it is never a
 // stone-age speck inside a developed empire. Floor its inherited knowledge at this
@@ -436,7 +442,14 @@ export function maybeCrystallize(world) {
     // peoples, no hordes, on any map. Weighted so PEAK herding country scores
     // like middling rain-fed cropland: the steppe carried real populations,
     // but an order below the river valleys (which keep their ×6 magnet).
-    const pasture = livestockClimate(world.temp[ti], world.moist[ti]) * tileOpenness(world, ti);
+    // Gated by the SAME domesticate-availability ceiling the food model applies
+    // to pastoral calories (settlement.js s._livestock = livestockClimate ×
+    // world._agriCeil): on an isolated continent or a tsetse belt where the
+    // ceiling is ~0, no large herds → the herd calories the site would be scored
+    // on are never delivered, so the site must not be scored for them either
+    // (else hamlets crystallise onto grass that cannot feed them).
+    const agriCeil = world._agriCeil ? (world._agriCeil[ti] || 0) : 1;
+    const pasture = livestockClimate(world.temp[ti], world.moist[ti]) * tileOpenness(world, ti) * agriCeil;
     const fertilityScore = 0.4 + f * 1.5 + Math.min(2.0, areaFert * 0.1) + pasture * PASTURE_SITE_W;
     let locMul = 1;
     if (hasRiver) locMul *= 6;            // rivers were *the* historical magnet —
@@ -559,8 +572,21 @@ export function maybeCrystallize(world) {
         // joins) a steppe polity when it matures — adoptAndFound's wilderness
         // path, the same one collapsed realms' orphans use. This is how the
         // steppe gets its OWN peoples instead of every camp flying the flag of
-        // a farming court that has never seen it.
-        if (dd2 > FRONTIER_EXTEND_DIST * FRONTIER_EXTEND_DIST) { rodeAway = true; joinCountry = -1; }
+        // a farming court that has never seen it. Two gates keep it honest:
+        //   • RIDABLE ground — the donor must be reachable overland (isFinite td),
+        //     so a rider cannot "ride away" across a strait or an impassable wall
+        //     and mint a fresh people on a landmass only ships reach.
+        //   • genuine STEPPE — dry, open, unfarmable (the classifier's own test):
+        //     without it any high-mobility FARM realm (mobility rises everywhere
+        //     via diffusion) would spray stateless camps into ordinary open scrub,
+        //     the detached-exclave confetti the never-stateless rule exists to kill.
+        if (dd2 > FRONTIER_EXTEND_DIST * FRONTIER_EXTEND_DIST
+            && isFinite(td)
+            && (world.fert[ti] || 0) < RIDE_AWAY_FERT_MAX
+            && tileOpenness(world, ti) >= RIDE_AWAY_OPEN_MIN) { rodeAway = true; joinCountry = -1; }
+        // Past the foot ring but NOT genuine ridable steppe → not a frontier
+        // extension the court can hold, and not a horde birth → no settlement.
+        if (dd2 > FRONTIER_EXTEND_DIST * FRONTIER_EXTEND_DIST && !rodeAway) continue;
       }
       if (joinCountry < 0 && !rodeAway) continue;
       // Share the joining realm's development: floor the (distance-decayed) inherited

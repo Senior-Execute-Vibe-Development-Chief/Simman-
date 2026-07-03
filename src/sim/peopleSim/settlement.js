@@ -2029,7 +2029,13 @@ function updateFood(world, s) {
   const landFood = landFarm + pastoral;
   // The share of subsistence that comes OFF THE HERD — the emergent measure of
   // saddle-life. Read by the mobility-learning pass: a people who EAT from the
-  // herd live on horseback, and horsemanship compounds accordingly.
+  // herd live on horseback, and horsemanship compounds accordingly. Measured
+  // against ACTUAL calories (landFood, post-harvest) on purpose: when the
+  // harvest fails a mixed farming-herding people leans on the flock (crisis
+  // transhumance — herds are the famine hedge, as the pastoral-food note above
+  // says), genuinely living more on horseback that season. The pastoral share
+  // rising in a dearth is a real behaviour, not an artefact to correct away —
+  // and it is what the emergent history validates against across seeds.
   s._pastShare = landFood > 0 ? pastoral / landFood : 0;
 
   // FISH — a LOCAL marine supplement, never a staple. History is emphatic: the great agrarian

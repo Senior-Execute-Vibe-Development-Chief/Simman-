@@ -2491,7 +2491,7 @@ const applySnapshot=useCallback((snap)=>{
   for(const c of (snap.countries||[])){
     const members=c.memberIds.map(id=>byId.get(id)).filter(Boolean);
     const capital=byId.get(c.capitalId)||members[0]||null;
-    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,name:c.name,ruler:c.ruler,faithId:c.faithId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_momentum:c._momentum,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel,personality:c.personality});
+    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,name:c.name,ruler:c.ruler,faithId:c.faithId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_momentum:c._momentum,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel,personality:c.personality,_overlord:c._overlord,_depKind:c._depKind,_nomadic:c._nomadic});
   }
   psw.countries=countries;
   // HUD state updates re-render the whole component, so throttle them to ~5Hz
