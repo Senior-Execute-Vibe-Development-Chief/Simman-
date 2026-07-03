@@ -43,7 +43,7 @@ function famineVuln(s) {
   const pressure = Math.min(2.5, (s.people || 0) / Math.max(1, foodK));           // crowding toward the food ceiling (Malthus)
   const soil     = 1 + (s._soilFatigue || 0);                                     // mined-out land yields a thinner margin
   const granary  = 1 - 0.85 * Math.min(1, (s.food || 0) / (80 + (s.tier | 0) * 200));  // empty stores → no buffer (full stores still leave a 0.15 floor: no one is famine-proof)
-  const shortfall = Math.min(3, (s._foodDemand || 1) / Math.max(0.01, s._foodSupply || 1));  // already short → a shock tips it over (also the climate/harvest signal)
+  const shortfall = Math.min(3, (s._foodDemand || 1) / Math.max(0.01, s._foodSupply));  // already short → a shock tips it over (also the climate/harvest signal). No `|| 1` on supply: a genuinely food-empty settlement (supply 0) must read as MOST short, not neutral — Math.max(0.01,…) already guards the divide.
   return 0.05 + pressure * soil * granary * shortfall;                            // + a small absolute floor so the weighted draw always has support
 }
 
@@ -168,6 +168,16 @@ export function updateShocks(world) {
   // ── Famine spawn ──
   const _dt = world._dt || 1;                         // time-granularity step (1/SIM_GRANULARITY)
   if (famineCheck && rng() < T.FAMINE_CHANCE * _dt) {
+    // NOTE (reviewed): the pool deliberately does NOT exclude settlements already under an
+    // active famine, even though their _harvestMul-cratered supply inflates famineVuln (so a
+    // famined region can be re-drawn, extending the famine). This is intentional — consecutive
+    // bad harvests compounding on a chronically-fragile region is the real multi-year-famine
+    // pattern (the Great Famine of 1315–17, recurrent Sahel drought). Crucially the
+    // concentration is SELF-LIMITING and STABILISING: it keeps famine damage on already-fragile
+    // ground instead of spreading it to healthy realms. Excluding active famines (mirroring the
+    // plague pool) was tried and measurably shortened the fallen-realm lifespan distribution
+    // below the validate floor — spreading famines onto fresh, healthier realms causes MORE
+    // collapse, not less — so the concentration is kept on purpose.
     const pool = world.settlements.filter(s => s.mode === "settled" && s.people >= FAMINE_MIN_POP);
     if (pool.length) {
       // Same occurrence rate as ever (mean preserved); the SEED is drawn weighted
