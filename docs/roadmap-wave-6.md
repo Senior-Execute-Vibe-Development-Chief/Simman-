@@ -209,6 +209,28 @@ The kin graph finally does politics. All triggers are house state.
   historical prominence. R4 lands here too: one `killPerson()` for every death
   site (closes B41's double-breeding while touching the same code).
 
+> **Session-5 status.** killPerson/B41, remarriage (D31) and regencies (D30) are
+> DONE + reviewed. **Claimant wars + personal unions (D28/D1/D29) are BLOCKED on an
+> unstated precondition** and were implemented-then-reverted after a probe showed the
+> mechanism is inert. Root cause (measured, seed 8817, ~12k steps): the sim's dynasties
+> are **realm-siloed** — every realm has its own house, **no house ever rules more than
+> one realm**, and a sitting ruler almost never has a *housed* foreign consort (foreign
+> matches overwhelmingly generate a house-LESS in-law via `makeAdult({foreign:true})`,
+> not a real foreign-heir marriage). So the cross-realm blood/marriage kin a dynastic
+> claim needs (a cadet branch reigning elsewhere; a foreign king wed to the disputed
+> line's princess) essentially never exists at the moment of a contested succession →
+> **zero claims fire** even after broadening the trigger and raising `FOREIGN_MATCH` to
+> 0.6. PREREQUISITE: enrich the royal marriage market so foreign matches routinely wed a
+> REAL foreign-house heir (retaining their birth `dynastyId`) instead of a houseless
+> generated consort — that is what seeds the cross-realm kin graph the whole feature
+> stands on. Only once housed cross-realm ties are common should claimant wars be rebuilt
+> (the reverted design — realm→realm `_succClaims` claim keyed on a contested succession,
+> an `claimBarOf` succession casus belli in the armies.js attack-bar product, a submit-
+> pass-style power-gated resolution that `crownForeign()`s the claimant into a personal
+> union via the `_overlord` no-fronts bond, union split on the monarch's death / merge via
+> the normal absorb path — was sound; it just had nothing to fire on). Lever it behind
+> `T.CLAIMANT_WARS` per the size-distribution caution below.
+
 ## Phase W6-G — Structure & performance (M/L)
 
 1. **Declarative persistence** (R1): modules register their state once
