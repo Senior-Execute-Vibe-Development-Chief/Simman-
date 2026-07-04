@@ -230,6 +230,23 @@ substrate actually works before rewiring adoption onto it. This is a
 > resolve or accept it, add a 3rd seed, then flip. Until then it stays opt-in.
 > (Persist/hash of `_ownerSince`/`_adminOwner` deferred with it — only needed once it
 > goes default; the lever documents "don't save mid-run with it on".)
+>
+> **RE-CHECK (W6-F dynastic levers now default-on) — STILL BLOCKED.** The open question
+> was whether the trade-graph reshaping from the dynastic work (`CLAIMANT_WARS` +
+> `CROSS_REALM_HEIRS` + `CLAIM_POWER_WIN`, all now default-on and shown to repair the
+> fragile clustering / market-integration canaries on 31337 & 4242) had also cleared the
+> 8817 market-integration regression, making the lever flippable. **It has not.** Re-ran
+> the 15 k suite with `ADOPT_ADMIN=1` on the current defaults, all 3 seeds:
+> **8817 = 2 warn** (growth + *market-integration −0.26* — essentially unchanged from
+> −0.28); **31337 = 1 warn** (growth; clustering still FIXED → 0.82); **4242 = 1 warn**
+> (growth; market-integration 0.04 OK, clustering 0.55 OK). So administered-tenure
+> adoption still reshapes 8817's trade-component/price-spread relationship the same way —
+> the regression is intrinsic to the adoption-source change, not something the dynastic
+> map repaired. **Verdict stands: do NOT flip.** The two blockers are both still live:
+> (1) the 8817 market-integration regression (1→2 warn, at-budget, non-tunable), and
+> (2) the un-productionised `_ownerSince`/`_adminOwner` persist/hash spike. `stylized.mjs`
+> now honours `ADOPT_ADMIN` / `ADOPT_ADMIN_DELAY` env so this re-check is one command
+> (`ADOPT_ADMIN=1 npm run validate`); the lever stays opt-in.
 
 ---
 
