@@ -153,3 +153,36 @@ budget of 2. It is **chaos, not a shape defect**: the same perturbation *repairs
 canary (0.44→0.60), and 8817 stays at 1 warning. Per the size-distribution caution in
 `roadmap-wave-6.md`, a mechanism that moves the size tail goes in behind a lever and the default is
 flipped only once the gates hold on **3 seeds** — same rule the task states for `T.CLAIMANT_WARS`.
+
+## Building claimant wars on this graph — the shared-house subtleties (scoped, NOT built)
+
+The kin graph is ready; the remaining work is the machinery that makes a claim *fire*. Scoping it
+this session surfaced why it was deferred — the moment ONE house rules TWO realms, several existing
+per-realm assumptions break and must be handled together (this is the real content of the build, not
+the claim enumeration, which `tools/probe_claims.mjs` already demonstrates):
+
+1. **House maintenance is per-REALM but must become per-HOUSE.** `growCadets` / `reapHouse` /
+   `nobleUpkeep` are called once per realm on that realm's ruling `dyn`. If house X rules realms A
+   and B, both passes iterate house X's roster → its cadets are bred and married TWICE per pass
+   (a new B41 at the house level). Fix: run house maintenance once per house (key on the house's
+   primary/lowest realm), or dedupe by `dyn.id` within the pass.
+2. **A house member who rules ANOTHER realm must be skipped by his birth-house's passes.**
+   `reapHouse` already guards `sittingRulers(world).has(p.id)` (line ~736); `growCadets` (line ~769)
+   and `nobleUpkeep` (line ~808) do NOT — they'd try to re-marry/re-breed the cross-realm sovereign.
+   Add the same guard (byte-identical when off: with no cross-realm rulers it only re-skips the
+   realm's own ruler, already skipped).
+3. **Cross-realm succession.** When the shared/foreign monarch of B dies, `heirByLaw(B, ruler, dyn=X)`
+   searches house X's roster — the SAME pool realm A draws from, so both realms can crown the same
+   person. The union must SPLIT (B takes a different X-member, or founds fresh) or MERGE (the
+   Castile-Aragon arc) — decide on legitimacy, and make sure `crown()` doesn't reset the surviving
+   sovereign's `reignFrom` (it overwrites it — fine for a fresh cadet crownee, corrupting for a true
+   personal union where one person already reigns).
+4. **Two paths, both seeded now.** (a) *Peaceful inheritance* (D29 / direction 3): on a crisis, a
+   foreign-reigning house with a blood claim on the vacant throne inherits it (a cadet, avoiding the
+   shared-monarch reign-record issue) — contained to `dynasties.js`, delivers `houses ruling >1 realm`
+   > 0. (b) *Claimant wars* (D28): the strongest external claimant's realm gets a succession casus
+   belli (`claimBarOf` in the `armies.js` attack-bar), and decisive victory `crownForeign`s the
+   claimant into the defender via the `_overlord` no-fronts bond — touches `armies.js` + the overlord
+   plumbing. Path (a) is the smaller first slice; (b) is the headline "wars OF succession."
+   Gate both behind `T.CLAIMANT_WARS` (default off); the emergent triggers are kin + who sits which
+   throne + the crisis, never a date.
