@@ -9,7 +9,9 @@ of the run on 8817). Both levers ON pass all hard stylized gates on 3 seeds (881
 soft warning each — a NET IMPROVEMENT over the old baseline on 31337 (2→1) and 4242 (2→1). Fully
 reversible: set both levers to 0 to recover the throne-siloed behaviour (round-trip `d69f113` /
 `9c5ecf94`). The byte-identity guard `tools/probe_hashbase.mjs` is unaffected (its 2500-step run is
-pre-dynasty). Deferred follow-up: `crownForeign` on war victory (see **## Claimant wars — BUILT**).
+pre-dynasty). `crownForeign` on war victory is DONE — both the strict capital-siege resolution and,
+under `T.CLAIM_POWER_WIN` (default on), a power-gated resolution for a decisively-winning claimant
+(see **## Claimant wars — BUILT**).
 **Owner area:** `src/sim/peopleSim/dynasties.js` (the marriage market: `marry` / `wed` /
 `world._royalCourt`).
 
@@ -200,11 +202,29 @@ rule (`CROSS_REALM_HEIRS=1 CLAIMANT_WARS=1 STYLIZED_SEEDS=… node tools/stylize
   A capital-siege succession war is rare (~1/run at 480×240) but decisive — the one win lifted
   houses ruling >1 realm 0.58→**0.76** (present ~61 % of the run on 8817).
 
-All 3 seeds still pass every hard gate within budget (8817=1, 31337=1, 4242=2 soft warnings); the
-`levers=0` escape hatch stays exact (`d69f113`/`9c5ecf94`); `probe_roundtrip_deep` baseline
-`84c5a036`/`4a41b71c`. **Remaining nice-to-have:** raising the capital-siege rate would need a
-power-gated resolution (a readable `countryPower` in the dynasties pass) rather than the strict
-siege signal — a small follow-up if more war-driven unions are wanted.
+- **Power-gated `crownForeign`** (`CLAIM_POWER_WIN`, default on) — the previously-deferred
+  nice-to-have, now BUILT. The strict capital-siege signal caught only ~1 union/run; a decisively-winning claimant no
+  longer has to storm the literal capital. When the claimant holds a live blood claim, is pressing a
+  serious front, AND decisively out-powers the defender nationally — `world._countryPow[A] ≥
+  world._countryPow[B] × T.ABSORB_DOMINANCE` (the same Σ `settlementPower` measure war balances on,
+  reusing the map's 2.6× consolidation-dominance ratio — no new fitted constant) — the union is
+  installed without a siege, via the identical `crown(…, "claim")` path. Emergent: the claim + a live
+  pressed war + a decisive power edge, never a date. **Measured (480×240, 8817):** claimant wars won
+  **2 → 4** (≈2× the war-driven-union flow) — exactly the "more war-driven unions" this follow-up was
+  for. It does NOT raise the crisis-war gate (resolving succession wars into unions faster leaves
+  fewer independent realms to have crises, so that metric is flat/slightly lower — an honest finding,
+  not the hoped-for rise). Behind a default-off sub-lever until the 3-seed validation held, then
+  flipped: with `CLAIM_POWER_WIN=1` all three seeds (8817/31337/4242) still pass every hard gate at
+  1 soft warning (budget 2). Fully gated — inert when `CLAIMANT_WARS=0`.
+
+All 3 seeds still pass every hard gate within budget (8817=1, 31337=1, 4242=1 soft warnings); the
+`levers=0` escape hatch stays exact (`d69f113`/`9c5ecf94`); `probe_hashbase` unaffected
+(`6df86092`/`82c7f3f`, pre-dynasty at 2500) and the default `probe_roundtrip_deep` baseline is
+`28abc46d`/`ef4fc665` (the power path is dormant at that 8000-step / 320-wide scale, so the flip
+leaves it unchanged; at 15000/320 where it fires it still round-trips byte-identically,
+`2d632b89`/`b1bd7e3f`). Set `CLAIM_POWER_WIN=0` (env or lever) to recover the strict siege-only
+resolution; `tools/stylized.mjs`, `tools/probe_marriage.mjs` and `tools/probe_roundtrip_deep.mjs`
+all honour the env override.
 
 ### The shared-house subtleties (the real content of the build, now handled)
 

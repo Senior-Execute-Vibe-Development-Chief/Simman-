@@ -287,9 +287,17 @@ The kin graph finally does politics. All triggers are house state.
 > kin where war can reach — lifting the **crisis-war gate** (8817 7.7 %→12 %, 31337 4.8 %→9.2 %) and
 > houses ruling >1 realm (39 %→55 %) — and `crownForeign` now resolves a besieged succession war into
 > a personal union (off `world._fronts` + capital `_siegeAt`, byte-identical when it doesn't fire).
-> All 3 seeds still within budget; roundtrip re-baselined `84c5a036`/`4a41b71c`. Remaining nice-to-have:
-> a power-gated (not siege-gated) resolution to raise the war-union rate. Full detail in
-> `docs/marriage-market-cross-realm.md`.
+> All 3 seeds still within budget. **Power-gated `crownForeign` (`CLAIM_POWER_WIN`, default on)** then
+> replaced the "remaining nice-to-have": a decisively-winning claimant (live claim + serious front +
+> Σ`settlementPower` ≥ `T.ABSORB_DOMINANCE`× the defender, read off `world._countryPow` — no new
+> constant) installs the union WITHOUT a full capital siege, ≈2×-ing the war-driven-union flow
+> (claimant wars won 2→4 on 8817 at 480×240). It does NOT raise the crisis-war gate — faster union
+> resolution leaves fewer independent realms to have crises — so that metric is flat/slightly lower;
+> the gain is the union flow (the honest measured finding). Default-off sub-lever until the 3-seed
+> validation held (all pass every hard gate at 1 soft warning), then flipped; fully gated (inert with
+> `CLAIMANT_WARS=0`), and byte-identical at the byte-identity-gate scales (`probe_hashbase`
+> `6df86092`/`82c7f3f`, default `probe_roundtrip_deep` `28abc46d`/`ef4fc665`, the power path dormant
+> there). Full detail in `docs/marriage-market-cross-realm.md`.
 
 ## Phase W6-G — Structure & performance (M/L)
 

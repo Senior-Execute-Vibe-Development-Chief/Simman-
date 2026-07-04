@@ -23,6 +23,7 @@ const WARMUP = 4000;                      // ignore pre-dynasty steps
 // to measure). CROSS_REALM_HEIRS=0 env recovers the realm-siloed baseline.
 T.CROSS_REALM_HEIRS = process.env.CROSS_REALM_HEIRS != null ? +process.env.CROSS_REALM_HEIRS : 1;
 T.CLAIMANT_WARS = process.env.CLAIMANT_WARS != null ? +process.env.CLAIMANT_WARS : 1;   // both default ON since the W6-F flip
+T.CLAIM_POWER_WIN = process.env.CLAIM_POWER_WIN != null ? +process.env.CLAIM_POWER_WIN : T.CLAIM_POWER_WIN;   // power-gated crownForeign (W6-F follow-up) — env-overridable to A/B
 
 // One measurement of the current live cross-realm kin graph.
 function measure(world) {

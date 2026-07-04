@@ -13,10 +13,15 @@
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { serializeWorld, loadWorld, hashWorld } from "../src/sim/persist.js";
+import { T } from "../src/sim/peopleSim/tuning.js";
 
 const STEPS = parseInt(process.argv[2] || "8000", 10);
 const SEEDS = [8817, 31337];
 const W = 320, H = 160;
+// Optional lever overrides (env unset = defaults = the baseline in the header comment):
+// set CROSS_REALM_HEIRS=0 CLAIMANT_WARS=0 to recover the throne-siloed round-trip
+// (d69f113 / 9c5ecf94), or CLAIM_POWER_WIN to A/B the power-gated crownForeign resolution.
+for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS", "CLAIM_POWER_WIN"]) if (process.env[k] != null) T[k] = +process.env[k];
 let fail = 0;
 for (const seed of SEEDS) {
   const w = buildSim({ W, H, seed });

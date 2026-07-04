@@ -1050,16 +1050,34 @@ function resolveClaimWars(world) {
   const fronts = world._fronts && world._fronts.byCountry;
   if (!fronts) return;
   const siegeWin = CLAIM_SIEGE_WINDOW / (world._dt || 1);
+  const cpow = world._countryPow;   // Σ settlementPower per realm (conquest.js updateAlliances) — the coercive weight war balances on
   for (const [bid, claim] of [...world._succClaims]) {
     const aid = claim.by;
     const atk = fronts.get(bid);
-    if (!atk || !atk.has(aid)) continue;                                   // A isn't pressing B
+    if (!atk || !atk.has(aid)) continue;                                   // A isn't pressing a serious front on B
+    // Two ways a pressed succession war RESOLVES into a personal union — both stand on the
+    // live blood claim + the serious front above, and both crown A's sovereign into B via the
+    // same crown(..., "claim") path below:
+    //   (1) SIEGE — A has stormed B's heartland (its capital besieged within the window). Always on.
+    //   (2) POWER (T.CLAIM_POWER_WIN) — A decisively out-powers B nationally (Σ settlementPower
+    //       ≥ T.ABSORB_DOMINANCE×, the SAME dominance the map's consolidation uses), so a
+    //       decisively-winning claimant installs the union WITHOUT needing to take the capital.
+    //       A capital siege is rare (~1/run); this is the common decisive-victory resolution.
+    // Emergent: gated on the claim + a live pressed war + (siege | decisive power), never a date.
     const bc = world.countries.get(bid), bCap = bc && bc.capital;
-    if (!bCap || world.step - (bCap._siegeAt ?? -Infinity) > siegeWin) continue;   // B's heartland not besieged
+    const besieged = !!bCap && world.step - (bCap._siegeAt ?? -Infinity) <= siegeWin;   // B's heartland stormed
+    const pb = cpow ? (cpow.get(bid) || 0) : 0;
+    const decisive = !!T.CLAIM_POWER_WIN && pb > 0 && (cpow.get(aid) || 0) >= pb * T.ABSORB_DOMINANCE;
+    if (!besieged && !decisive) continue;                                  // war not yet decisively won
     const aPol = getPolity(world, aid), bPol = getPolity(world, bid);
     const claimant = aPol && aPol.rulerId >= 0 ? getPerson(world, aPol.rulerId) : null;
     if (!claimant || claimant.died >= 0 || !bPol || bPol.endedStep >= 0 || !(bPol.dynastyId >= 0)) continue;
     if (bPol.rulerId === claimant.id) continue;                            // already the same crown
+    // Resolution trusts the published claim; it does not re-derive blood at this instant. So if A
+    // was itself taken over EARLIER in this same ascending-bid pass (a chained cascade), the crownee
+    // is A's now-current sovereign — a valid, live, re-checked person seated into a legitimate
+    // (if slightly surprising) cascading union. Same as the pre-existing siege path; re-verifying
+    // here would diverge the lever-off byte-identity, so it's left as designed.
     crown(world, bPol, claimant, "claim", bPol.gov || GOV_MONARCHY);       // A's sovereign takes B — a personal union (pt.3 shared-monarch machinery holds it)
     world._succClaims.delete(bid);
     if (T.TRUCE_TICKS > 0) {                                               // a truce binds the union so it isn't re-fought
