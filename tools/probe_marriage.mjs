@@ -93,7 +93,8 @@ console.log(`cross-court marriages over run (dynasty.union events): ${unions}`);
 if (T.CLAIMANT_WARS) {
   const wars = (world.events || []).filter(e => e && e.type === "war.began");
   const claimWars = wars.filter(e => e.claim).length;
-  console.log(`CLAIMANT_WARS: succession crises ${crises} · foreign-inheritance crownings ${inherits} · wars ${wars.length} of which claim-pressed ${claimWars}`);
+  const claimWon = (world.events || []).filter(e => e && e.type === "war.claimWon").length;
+  console.log(`CLAIMANT_WARS: succession crises ${crises} · foreign-inheritance crownings ${inherits} · wars ${wars.length} of which claim-pressed ${claimWars} · claimant wars WON (personal union) ${claimWon}`);
   console.log(`  live succession claims per pass: mean ${(claimsSum / Math.max(1, claimsSamples)).toFixed(2)} · peak ${claimsPeak}`);
 }
 if (lastExamples.length) { console.log(`recent live cross-realm ties:`); for (const e of lastExamples) console.log(`  · ${e}`); }

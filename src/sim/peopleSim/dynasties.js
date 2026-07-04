@@ -63,6 +63,7 @@ const CLAIM_INHERIT = 0.6;              // CLAIMANT_WARS: chance a legitimate fo
 const CLAIM_WINDOW = 2600;              // CLAIMANT_WARS: history-units a contested succession stays pressable (a foreign claimant's casus belli)
 const CLAIM_CONTEST = 0.3;             // CLAIMANT_WARS: chance a strong foreign blood-claim WINS a contested (weak) local accession — a personal union / foreign cadet branch
 const MARRY_REACH_FRAC = 0.16;         // CROSS_REALM_HEIRS: royal-marriage reach as a fraction of world width — the scale over which foreign matches PREFER nearer courts, so the kin (and its claims) clusters where war can actually reach
+const CLAIM_SIEGE_WINDOW = 300;        // CLAIMANT_WARS: ticks a defender's capital counts as "besieged" for resolving a claimant war (matches conquest.js SIEGE_WINDOW)
 const CRISIS_LOYALTY_HIT = 0.10;        // members' loyalty shock when the line fails
 const CRISIS_UNREST_HIT = 0.18;         // capital unrest spike on a failed succession
 const DISPUTE_UNREST_HIT = 0.06;        // smaller spike when a contested heir takes the throne
@@ -1019,6 +1020,38 @@ function updateSuccClaims(world) {
   }
 }
 
+// CLAIMANT_WARS (D28): resolve a succession war the claimant is WINNING. When realm A holds
+// a live claim on B, is pressing a front on B, and has driven the war to B's HEARTLAND (B's
+// capital besieged), A's sovereign takes B's throne by right of the claim — a personal union
+// — rather than the war grinding on to ordinary annexation. A truce then binds the pair so
+// the union holds. The claim is consumed (one resolution per war). Emergent: gated on the
+// blood claim + an actual won war, never a date. No-op unless the lever is on.
+function resolveClaimWars(world) {
+  if (!T.CLAIMANT_WARS || !world._succClaims || !world._succClaims.size) return;
+  const fronts = world._fronts && world._fronts.byCountry;
+  if (!fronts) return;
+  const siegeWin = CLAIM_SIEGE_WINDOW / (world._dt || 1);
+  for (const [bid, claim] of [...world._succClaims]) {
+    const aid = claim.by;
+    const atk = fronts.get(bid);
+    if (!atk || !atk.has(aid)) continue;                                   // A isn't pressing B
+    const bc = world.countries.get(bid), bCap = bc && bc.capital;
+    if (!bCap || world.step - (bCap._siegeAt ?? -Infinity) > siegeWin) continue;   // B's heartland not besieged
+    const aPol = getPolity(world, aid), bPol = getPolity(world, bid);
+    const claimant = aPol && aPol.rulerId >= 0 ? getPerson(world, aPol.rulerId) : null;
+    if (!claimant || claimant.died >= 0 || !bPol || bPol.endedStep >= 0 || !(bPol.dynastyId >= 0)) continue;
+    if (bPol.rulerId === claimant.id) continue;                            // already the same crown
+    crown(world, bPol, claimant, "claim", bPol.gov || GOV_MONARCHY);       // A's sovereign takes B — a personal union (pt.3 shared-monarch machinery holds it)
+    world._succClaims.delete(bid);
+    if (T.TRUCE_TICKS > 0) {                                               // a truce binds the union so it isn't re-fought
+      const truces = world._truces || (world._truces = new Map());
+      truces.set(Math.min(aid, bid) + ":" + Math.max(aid, bid), world.step + T.TRUCE_TICKS / (world._dt || 1));
+    }
+    logEvent(world, "war.claimWon", { polity: aid, name: aPol.name, to: bid, toName: bPol.name,
+      person: claimant.id, personName: claimant.name, dynasty: claimant.dynastyId });
+  }
+}
+
 export function updateDynasties(world) {
   if (!world.countries) return;
   const rng = passRng(world, "dynasty");
@@ -1298,8 +1331,10 @@ export function updateDynasties(world) {
     }
   }
 
-  // publish the live succession casus-belli map for the war pass (CLAIMANT_WARS)
+  // publish the live succession casus-belli map for the war pass, then resolve any
+  // succession war the claimant has already won into a personal union (CLAIMANT_WARS)
   updateSuccClaims(world);
+  resolveClaimWars(world);
 }
 
 // Deterministic helper for war-cause annotation (armies.js): was this realm in a

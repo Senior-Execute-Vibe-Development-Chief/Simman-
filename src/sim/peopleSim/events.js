@@ -180,6 +180,10 @@ const NARRATE = {
     if (as === ev.to) return `${ev.name || "An enemy"} marched against the realm${why}.`;
     return `Marched to war against ${ev.defName || "a neighbour"}${why}.`;
   },
+  "war.claimWon"(ev, as) {
+    if (as === ev.to) return `The war was lost — ${ev.personName} of ${ev.name || "a foreign house"} pressed a claim and took the throne; the realm passed under a foreign crown.`;
+    return `The war of succession was won: ${ev.personName} pressed the claim and was crowned in ${ev.toName || "the enemy realm"}, uniting the two crowns.`;
+  },
   "ruler.crowned"(ev) {
     const t = ev.title || (ev.female ? "Queen" : "King");
     const h = ev.dynastyName || "?";
