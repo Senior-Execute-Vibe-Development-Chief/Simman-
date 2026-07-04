@@ -97,15 +97,31 @@ settlement hash iterates them — a declared registry so the guard can't drift f
 what's persisted again (the omission class R1 fixed for world maps). Smoke's
 determinism + save/load both still pass (proving these fields round-trip cleanly);
 baseline hash moved to `20b4f37e`/`43c73b01`.
+**C1b — kin-graph / culture / faith registries unhashed. ✅ FIXED** (this
+session, the follow-up C1 surfaced). `hashWorld` covered these NOT AT ALL (only
+`polities`, minimally), so a determinism or round-trip bug in the dynastic /
+cultural state — the state W6-F builds on — was invisible. Now `persons` and
+`dynasties` are hashed field-by-field (declared `PERSON_HASH_NUM`/`_STR`,
+`DYN_HASH_NUM`, + `children`/`members`/`inlaws`/`traits`), and
+`cultures`/`faiths`/`languages` by a divergence signature (count + id + name +
+`foundedStep` + `nameCounter`); their deep naming/lineage state is static and its
+emergent effect flows through the settlement mixes (already hashed in C1). Verified
+byte-identical at 8000 steps with dynasties present (`tools/probe_roundtrip_deep.mjs`:
+8817 → 1674p/38d, 31337 → 2004p/22d, `h0 == h1`).
+
+> **Coverage caveat (recorded, deliberately NOT fixed):** *no automated gate*
+> exercises this. Smoke's determinism runs 600 steps and its save/load 1500 —
+> both BELOW the ~5–6 k steps at which `persons`/`dynasties` first populate — and
+> `validate` does no round-trip check at all. So the dynastic-round-trip guard is
+> only run on demand via `tools/probe_roundtrip_deep.mjs`. Wiring it into a gate
+> costs ~+10 s of smoke (a 6 k-step run for even 4 dynasties; ~15 s for a
+> meaningful ~38) against a 25–35 s budget — a runtime-vs-coverage call left to
+> the owner. Recommended trigger: run the deep probe by hand after any change to
+> `dynasties.js`, the person/dynasty shape, or `persist.js`.
+>
 > **Still unhashed (deliberate, lower value):** static re-derived site attrs
 > (`_riverAcc`/`_confine`/`_rugged`/`waterAccess`/`_buildableArea` — deterministic
-> from terrain), cosmetic chronicle bookkeeping (`_chronFlags`/`_peakTier`), and —
-> **bigger gap, separate item** — the entire **kin graph / culture / faith
-> registries** (`world.persons`, `world.dynasties`, `world.cultures`,
-> `world.faiths`) are not hashed at ALL (only `polities` is, minimally). A
-> determinism or round-trip bug in the dynastic/cultural registries is currently
-> invisible to `hashWorld`. That is the next hardening target if the guard matters
-> for the W6-F dynastic work.
+> from terrain) and cosmetic chronicle bookkeeping (`_chronFlags`/`_peakTier`).
 
 **C2 — the 31337 clustering stylized fact sits ON its gate boundary.** Observed
 across W6-F: seed 31337's settlement-clustering value hovers at ~0.44–0.5 against
@@ -156,8 +172,11 @@ updateKnowledge already uses. Unverified.
    **marriage-market prerequisite** that blocks claimant wars + personal unions
    (`docs/marriage-market-cross-realm.md`). That is the actual product — dynastic
    politics falling out of the kin graph — and it is *blocked*, not done.
-3. **Hardening `hashWorld` — settlement half ✅ DONE (C1).** The guard now covers
-   the economy/society settlement state recent waves added. The **next** hardening
-   target (surfaced while doing C1) is the un-hashed **kin-graph / culture / faith
-   registries** — which matters specifically for verifying the W6-F dynastic work
-   is deterministic and round-trips.
+3. **Hardening `hashWorld` ✅ DONE (C1 + C1b).** The guard now covers the
+   economy/society settlement state AND the kin-graph / culture / faith registries.
+   The dynastic round-trip is verified byte-identical (`probe_roundtrip_deep.mjs`).
+   Remaining loose end: no *automated gate* runs that deep check (smoke stops below
+   dynasty formation) — see the C1b caveat. With the guard in place, the natural
+   next move is the **marriage-market prerequisite** (unblocks claimant wars /
+   personal unions) — now buildable on a hash that can actually catch a dynastic
+   determinism or persistence regression.

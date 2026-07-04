@@ -77,6 +77,21 @@ const SETT_FIELDS = [
 const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_orgApt", "_rivalN", "_ambition", "_diseaseLoad", "_specStr"];
 const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix"];
 
+// Kin-graph / society registry hashing. hashWorld covered these NOT AT ALL (only
+// `polities`, minimally), so a determinism or save/load bug in the dynastic or
+// cultural state was invisible — precisely the state W6-F builds on. persons +
+// dynasties carry real MUTABLE state (marriages, deaths, reigns, house rosters)
+// mirrored nowhere else, so they are hashed field-by-field; cultures/faiths/
+// languages are largely static naming/lineage metadata whose emergent effect
+// already flows through the settlement mixes (culMix/faithMix/langMix, hashed
+// above), so a divergence SIGNATURE (count + id + name + founding) suffices —
+// deeper coverage of them is a noted follow-up. All these registries ARE fully
+// serialized (save/loadWorld round-trip whole Map entries), so hashing them is
+// save/load-safe; the declared lists keep the guard from drifting from the shape.
+const PERSON_HASH_NUM = ["id", "female", "born", "died", "dynastyId", "cultureId", "parentId", "spouseId", "reignFrom", "reignTo", "lifespan", "bastard", "foreign"];
+const PERSON_HASH_STR = ["name", "epithet"];
+const DYN_HASH_NUM = ["id", "cultureId", "founderId", "foundedStep", "endedStep"];
+
 // Declarative registry of persistent WORLD-LEVEL maps — dyadic / per-id / per-tile state
 // (id→value) that carries real cross-tick meaning. Registered ONCE here; saveWorld,
 // loadWorld and hashWorld all iterate it, so adding a world map is a SINGLE line, not three
@@ -367,6 +382,36 @@ export function hashWorld(world) {
     for (const id of ids) {
       const p = world.polities.get(id);
       mixNum(id); mixNum(p.foundedStep); mixNum(p.endedStep); mixNum(p.treasury); mixStr(p.name);
+    }
+  }
+  // Kin graph — persons (marriage / death / reign / lineage) + dynasties (house
+  // rosters). Field-by-field: this is the W6-F dynastic state, mirrored nowhere else.
+  if (world.persons) {
+    for (const id of [...world.persons.keys()].sort((a, b) => a - b)) {
+      const p = world.persons.get(id); if (!p) continue;
+      for (const f of PERSON_HASH_NUM) mixNum(p[f]);
+      for (const f of PERSON_HASH_STR) mixStr(p[f]);
+      if (p.children) for (const c of p.children) mixNum(c);
+      if (p.traits) for (const k of Object.keys(p.traits).sort()) mixNum(p.traits[k]);
+    }
+  }
+  if (world.dynasties) {
+    for (const id of [...world.dynasties.keys()].sort((a, b) => a - b)) {
+      const d = world.dynasties.get(id); if (!d) continue;
+      for (const f of DYN_HASH_NUM) mixNum(d[f]);
+      mixStr(d.name);
+      if (d.members) for (const m of d.members) mixNum(m);
+      if (d.inlaws)  for (const m of d.inlaws)  mixNum(m);
+    }
+  }
+  // Society registries — divergence signature (deep naming/lineage state is static
+  // and its emergent effect flows through the settlement mixes hashed above).
+  for (const reg of [world.cultures, world.faiths, world.languages]) {
+    if (!reg) continue;
+    mixNum(reg.size);
+    for (const id of [...reg.keys()].sort((a, b) => a - b)) {
+      const e = reg.get(id); if (!e) continue;
+      mixNum(id); mixStr(e.name); mixNum(e.foundedStep); mixNum(e.nameCounter);
     }
   }
   mixNum(world.events ? world.events.length : 0);

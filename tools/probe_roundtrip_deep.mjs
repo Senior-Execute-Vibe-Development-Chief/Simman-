@@ -1,0 +1,33 @@
+// Deep save/load round-trip verifier — the ONE gate that reaches DYNASTY
+// FORMATION. Smoke's save/load runs at 1500 steps and its determinism at 600;
+// both are BELOW the ~5–6k steps at which world.persons / world.dynasties first
+// populate, so neither exercises the kin-graph hash. This runs long enough that
+// persons + dynasties exist, then asserts serialize→load is byte-identical
+// (hashWorld covers them since W6-G) — the check that guards the W6-F dynastic
+// work against a lossy/nondeterministic round-trip. Run it after any change to
+// dynasties.js / the person or dynasty shape / persist.js.
+//   node tools/probe_roundtrip_deep.mjs [steps]
+// Baseline (8000 steps): 8817 h=d69f113 (1674p/38d), 31337 h=9c5ecf94 (2004p/22d).
+import { buildSim } from "./_harness.mjs";
+import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
+import { serializeWorld, loadWorld, hashWorld } from "../src/sim/persist.js";
+
+const STEPS = parseInt(process.argv[2] || "8000", 10);
+const SEEDS = [8817, 31337];
+const W = 320, H = 160;
+let fail = 0;
+for (const seed of SEEDS) {
+  const w = buildSim({ W, H, seed });
+  stepPeopleSim(w, STEPS);
+  const persons = w.persons ? w.persons.size : 0, dyn = w.dynasties ? w.dynasties.size : 0;
+  const h0 = hashWorld(w);
+  const json = serializeWorld(w);
+  const h1 = hashWorld(loadWorld(json));
+  const populated = persons > 0 && dyn > 0;
+  const ok = h0 === h1 && populated;
+  if (!ok) fail++;
+  const why = !populated ? "  (WARN: kin graph empty — raise steps)" : "";
+  console.log(`${ok ? "ok  " : "FAIL"} seed=${seed} persons=${persons} dyn=${dyn}  ${h0}${h0 === h1 ? " == " : " != "}${h1}${why}`);
+}
+console.log(fail ? `\n${fail} seed(s) FAILED round-trip` : `\nall seeds round-trip byte-identical at ${STEPS} steps`);
+process.exit(fail ? 1 : 0);

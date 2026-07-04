@@ -5,8 +5,11 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps, post hash-hardening): 8817=20b4f37e 31337=43c73b01
-//   (pre-hardening was 11ad8765 / 27063acb — different hashWorld field set).
+// Current baseline (2500 steps, settlement + registry hash-hardening):
+//   8817=6df86092  31337=82c7f3f   (was 20b4f37e/43c73b01 before registry hashing,
+//   11ad8765/27063acb before any hardening — each a different hashWorld field set).
+// NB: at 2500 steps the kin graph is still EMPTY — for dynasty-bearing coverage use
+// tools/probe_roundtrip_deep.mjs (8000 steps).
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { hashWorld } from "../src/sim/persist.js";
