@@ -22,7 +22,7 @@ const WARMUP = 4000;                      // ignore pre-dynasty steps
 // The lever under test — default ON (the enriched market is what this probe exists
 // to measure). CROSS_REALM_HEIRS=0 env recovers the realm-siloed baseline.
 T.CROSS_REALM_HEIRS = process.env.CROSS_REALM_HEIRS != null ? +process.env.CROSS_REALM_HEIRS : 1;
-T.CLAIMANT_WARS = process.env.CLAIMANT_WARS != null ? +process.env.CLAIMANT_WARS : 0;
+T.CLAIMANT_WARS = process.env.CLAIMANT_WARS != null ? +process.env.CLAIMANT_WARS : 1;   // both default ON since the W6-F flip
 
 // One measurement of the current live cross-realm kin graph.
 function measure(world) {
