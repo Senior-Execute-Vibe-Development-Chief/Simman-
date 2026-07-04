@@ -190,6 +190,22 @@ substrate actually works before rewiring adoption onto it. This is a
 > fragile 31337 gate. Worth a go/no-go on the effort before the build phase, or an
 > implement-behind-`SIM_ADOPT_TARGET`-and-measure spike to resolve the design
 > tension empirically.*
+>
+> **SPIKE RESULT — the concept is VIABLE** (`T.ADOPT_ADMIN`, default off,
+> byte-identical when off). Wired administered-tenure adoption behind a lever: a tile
+> is administered once held in `_countryOwner` for a logistics-derived delay
+> (`ADOPT_ADMIN_DELAY / (0.4 + 1.2·org)`), adoption reads that. Measured
+> (`probe_adopt_ab`, 8 k, 480×240): it **reproduces the anti-runaway throttle** — top
+> realm 8817 5.1 % / 31337 5.7 % (vs crawl 4.7/5.4 %, vs target-runaway 13.4 %), claimed
+> land and pop in the crawl's regime, no ballooning. So a delay-based throttle DOES
+> replace the crawl-gating. The size distribution isn't a clean match yet (gini runs
+> higher on 8817, lower on 31337; delay tuning moves it non-monotonically) — that is
+> the remaining PRODUCTIONISATION work: (1) persist + hash `_ownerSince`/`_adminOwner`
+> (C1); (2) tune `ADOPT_ADMIN_DELAY` (± distance-grading) to match the crawl's
+> empire-size distribution; (3) clear the full 3-seed stylized suite incl. the fragile
+> 31337 clustering; (4) then flip default and let the crawl become pure paint. The
+> spike (lever + `administeredOwnerAt`/`updateAdminTenure` in `countryClaim.js`) is
+> committed; productionisation is a data-informed go/no-go.
 
 ---
 

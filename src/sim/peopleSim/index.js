@@ -15,7 +15,7 @@ import { maybeBuildRoads, updateTrade } from "./roads.js";
 import { computeTerritory } from "./territory.js";
 import { computeCountryTerritory, adoptAndFound, nucleateFrontierStates } from "./countryTerritory.js";
 import { buildSettlementGrid } from "./spatialGrid.js";
-import { relaxClaim } from "./countryClaim.js";
+import { relaxClaim, updateAdminTenure } from "./countryClaim.js";
 
 // How often the drawn border crawls one ring toward the country-primary
 // territory target (world._countryOwner). Small so borders visibly creep
@@ -198,6 +198,7 @@ export function stepPeopleSim(world, n = 1) {
     if (world.step === 1 || world.step % T.TERRITORY_INTERVAL === 0) {
       computeTerritory(world);          // per-settlement food catchments (economy)
       computeCountryTerritory(world);   // clean per-country cost-Voronoi (the political map)
+      if (T.ADOPT_ADMIN) updateAdminTenure(world);   // W6-G item 3 (exp.): stamp administered-tenure from _countryOwner changes before adoption reads it
       adoptAndFound(world);             // settlements take their politics from the territory (villages adopt; stateless cities found)
       nucleateFrontierStates(world);    // primary state formation: a developed stateless frontier cluster mints a NEW country
     }
