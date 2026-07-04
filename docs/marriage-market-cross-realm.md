@@ -1,6 +1,9 @@
 # The royal marriage market needs cross-realm heirs (claimant-wars prerequisite)
 
-**Status:** open problem — blocks W6-F claimant wars + personal unions (D28/D1/D29).
+**Status:** direction 1 BUILT behind `T.CROSS_REALM_HEIRS` (default off, byte-identical off) —
+it materially enriches the cross-court *flow* but the *live* stock is still only occasional; a
+second lever (extend the foreign reach to the direct royal line) is the next step before
+claimant wars. See **## Progress** below.
 **Owner area:** `src/sim/peopleSim/dynasties.js` (the marriage market: `marry` / `wed` /
 `world._royalCourt`).
 
@@ -66,3 +69,55 @@ Re-run the probe; the fix is working when it reports, over a full run: at least 
 **houses ruling >1 realm** and a materially higher count of **sovereigns married into another
 realm's house**. Then the reverted `_succClaims` / `claimBarOf` / `crownForeign` machinery
 will actually trigger, and the validate crisis-war gate should rise (the W6-F target).
+
+## Progress (this session)
+
+**Baseline re-confirmed** (`tools/probe_marriage.mjs`, seed 8817, 12 000 steps, 320×160): 10–11
+ruling houses, **0 houses ruling >1 realm**, **0** *housed* live consorts at end-of-run (the
+snapshot fluctuates ~0–1), 46 cross-court `dynasty.union` events over the run. Realm-siloed, as
+documented.
+
+**Direction 1 BUILT** — behind lever `T.CROSS_REALM_HEIRS` (default **off**; when off the pool is
+the old children-only list and the trajectory is byte-identical — hashbase `6df86092`/`82c7f3f`,
+deep round-trip `d69f113`/`9c5ecf94`, validate 8817=1 / 31337=2 all unchanged). When **on**, the
+court pool is every eligible (living, trueborn, unwed, adult) member of every house that currently
+sits a throne, tagged with that realm (idle houses excluded; sitting monarchs excluded).
+
+**Measured, lever on** (sampled every 250 steps after a 4 000 warmup — one end snapshot is noisy):
+
+| metric | 8817 off→on | 31337 off→on |
+|---|---|---|
+| cross-court marriages / run (flow) | 46 → **87** | 35 → **65** |
+| live housed cross-realm consorts (mean) | 0.21 → **0.61** | 0.52 → 0.45 |
+| ≥1 live cross-realm consort (% of time) | 12% → **42%** | 27% → **36%** |
+| houses ruling >1 realm | 0 → 0 | 0 → 0 |
+
+So direction 1 does exactly what the doc predicted — it roughly **doubles the cross-court marriage
+flow** (the FOREIGN_MATCH path now finds a real heir instead of falling through to a houseless
+in-law). But two findings temper it:
+
+1. **The live stock lags the flow.** Flow doubled, yet live cross-realm consorts are only
+   *occasional* (≥1 live ~40% of the time, mean ~0.5, peak 3; on 31337 the mean is flat — chaos).
+   Root cause: **rulers overwhelmingly accede already-married *locally*.** Cadets and heirs marry
+   through `growCadets`/`nobleUpkeep` with `isRuler=false` (line ~772/811) → a houseless local
+   in-law → and `marry()` early-returns for an already-wed accession, so the sitting ruler never
+   reaches the foreign path. Only a ruler who accedes *unmarried* reaches abroad, a shrinking
+   minority. **Next step:** extend the foreign reach to the *direct royal line* (the reigning
+   house's marriageable heirs — a crown prince's foreign match is the canonical dynastic marriage,
+   currently under-modelled), so an heir accedes already holding a foreign-house consort and the
+   live stock rises across the accession. Fold under the same lever.
+2. **`houses ruling >1 realm` is a claimant-wars *output*, not a direction-1 output.** Every current
+   succession path crowns from the realm's *own* house (`heirByLaw`), fresh founders (crisis), or a
+   realm-local elected pool (`selectElected` explicitly excludes sitting rulers) — there is **no**
+   code path by which an existing house takes a *second* throne. `crown()` *would* seat a second
+   realm on an existing house (`polity.dynastyId = person.dynastyId` when the crownee already has a
+   house), but nothing feeds it a foreign-house crownee. That path is direction 3 / the
+   `crownForeign()` half of claimant wars — so this metric stays 0 until that machinery lands.
+
+**Why default-off** (the disciplined choice, mirroring the W6-G adoption lever): the richer marriage
+flow perturbs the RNG stream, and on the fragile 31337 seed (note C2) that chaotic reshuffling pushes
+it to 3 soft warnings (empire-size-tail 2.6 `<`3 and market-integration −0.72 `<`−0.2) — over the
+budget of 2. It is **chaos, not a shape defect**: the same perturbation *repairs* 31337's clustering
+canary (0.44→0.60), and 8817 stays at 1 warning. Per the size-distribution caution in
+`roadmap-wave-6.md`, a mechanism that moves the size tail goes in behind a lever and the default is
+flipped only once the gates hold on **3 seeds** — same rule the task states for `T.CLAIMANT_WARS`.

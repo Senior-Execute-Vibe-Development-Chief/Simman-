@@ -24,7 +24,7 @@
 // genealogy rides saves (serialized verbatim with the world).
 
 import { passRng } from "./rng.js";
-import { passWindow } from "./tuning.js";
+import { T, passWindow } from "./tuning.js";
 import { logEvent } from "./events.js";
 import { getPolity } from "./entities.js";
 import { getCulture, nameFor, dominantCulture } from "./cultures.js";
@@ -892,16 +892,55 @@ export function updateDynasties(world) {
   const years = Math.max(0.05, stepToYear(world, world.step) - stepToYear(world, world.step - ivl));
   const over = (annual) => 1 - Math.pow(1 - Math.min(0.95, annual), years);
 
-  // royal marriage market, computed once per pass (the heirs of every throne)
+  // royal marriage market, computed once per pass — the pool a reigning monarch's
+  // FOREIGN_MATCH reaches into. Two shapes, gated on T.CROSS_REALM_HEIRS (W6-F
+  // prerequisite, docs/marriage-market-cross-realm.md):
+  //   OFF (default): only the reigning monarch's own unwed adult children. This is
+  //     too thin, so the foreign path overwhelmingly falls through to a generated
+  //     houseLESS in-law (dynastyId = -1) that carries no realm's blood and seeds no
+  //     cross-realm claim — dynasties stay realm-siloed. (Byte-identical to before
+  //     the lever existed.)
+  //   ON (direction 1): every eligible (living, trueborn, unwed, adult) member of
+  //     every house that currently SITS a throne — cadets, siblings and heirs, not
+  //     just the monarch's children. A foreign match then weds a REAL heir of
+  //     another realm's house who keeps their birth dynastyId (and thus that realm's
+  //     blood) — the married-in kin a dynastic claim stands on. Houses that sit no
+  //     throne are excluded: a marriage plants a pressable claim only into a house
+  //     reigning somewhere, and it keeps every union tie pointed at a real realm.
+  //     Order is dynasty-id then roster order — fully deterministic (the array
+  //     indexes an rng draw in marry()). Emergent: gated on kin + who holds which
+  //     throne, never a date.
   const court = [];
-  for (const c0 of world.countries.values()) {
-    const op = getPolity(world, c0.id);
-    if (!op || op.rulerId == null || op.rulerId < 0) continue;
-    const or = getPerson(world, op.rulerId);
-    if (!or) continue;
-    for (const cid0 of or.children || []) {
-      const ch = getPerson(world, cid0);
-      if (ch && ch.died < 0 && ch.spouseId < 0 && !ch.bastard && ageOf(world, ch) >= 16) court.push([ch, c0.id]);
+  if (T.CROSS_REALM_HEIRS) {
+    const seatOfHouse = new Map();        // dynastyId → realm it reigns (lowest id if it holds several)
+    for (const c0 of world.countries.values()) {
+      const op = getPolity(world, c0.id);
+      if (!op || op.endedStep >= 0 || !(op.dynastyId >= 0)) continue;
+      const prev = seatOfHouse.get(op.dynastyId);
+      if (prev === undefined || c0.id < prev) seatOfHouse.set(op.dynastyId, c0.id);
+    }
+    for (const dynId of [...seatOfHouse.keys()].sort((a, b) => a - b)) {
+      const d = getDynasty(world, dynId);
+      if (!d || d.endedStep >= 0 || !d.members) continue;
+      const realmId = seatOfHouse.get(dynId);
+      const seatPol = getPolity(world, realmId);
+      const seatRuler = seatPol ? seatPol.rulerId : -1;
+      for (const mid of d.members) {
+        if (mid === seatRuler) continue;  // the sitting monarch weds through their own realm, not the market
+        const m = getPerson(world, mid);
+        if (m && m.died < 0 && m.spouseId < 0 && !m.bastard && ageOf(world, m) >= 16) court.push([m, realmId]);
+      }
+    }
+  } else {
+    for (const c0 of world.countries.values()) {
+      const op = getPolity(world, c0.id);
+      if (!op || op.rulerId == null || op.rulerId < 0) continue;
+      const or = getPerson(world, op.rulerId);
+      if (!or) continue;
+      for (const cid0 of or.children || []) {
+        const ch = getPerson(world, cid0);
+        if (ch && ch.died < 0 && ch.spouseId < 0 && !ch.bastard && ageOf(world, ch) >= 16) court.push([ch, c0.id]);
+      }
     }
   }
   world._royalCourt = court;

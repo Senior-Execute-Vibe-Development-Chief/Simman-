@@ -498,6 +498,14 @@ export const TUNING_SCHEMA = [
         desc: "Base per-tick mortality of an active outbreak. Up = Black-Death-scale population collapses." },
     ],
   },
+  {
+    category: "Dynastic politics",
+    blurb: "The royal kin graph across realms and the succession politics it drives. Experimental W6-F work — off by default while the cross-realm history it produces is validated across seeds.",
+    params: [
+      { key: "CROSS_REALM_HEIRS", label: "Foreign royal heirs marry in (exp.)", def: 0, min: 0, max: 1, step: 1,
+        desc: "EXPERIMENTAL (W6-F prerequisite, docs/marriage-market-cross-realm.md). Shapes the royal marriage-market pool a reigning monarch's foreign match reaches into. 0 (default) = the pool holds only the monarch's OWN unwed children, so a foreign match rarely finds a real heir and falls through to a generated HOUSELESS in-law (dynastyId −1) that carries no realm's blood — dynasties stay realm-siloed and no cross-realm succession claim can ever form. 1 = the pool holds every eligible (living, trueborn, unwed, adult) member of every house that currently SITS a throne (cadets, siblings, heirs), so a foreign royal match weds a REAL heir of another realm's house who keeps their birth dynastyId — planting the cross-realm blood/marriage kin a dynastic (succession) claim stands on. Emergent: gated on kin + who holds which throne, never a date. Off by default because the richer marriage flow perturbs the empire-size-tail / market-integration stylized gates on the fragile 31337 seed (chaotic reshuffling, not a shape defect — it even repairs 31337's clustering canary); flip only once the gates hold on 3 seeds (see roadmap-wave-6 W6-F)." },
+    ],
+  },
 ];
 
 // Build the live value object and the immutable defaults from the schema.
