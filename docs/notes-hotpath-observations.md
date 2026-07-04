@@ -162,10 +162,34 @@ reproduce those guards. Substrate exists (`_tileCapturedAt` entry timestamps,
 C3 shows part of that machinery may be inert, so step one is verifying the integration
 substrate actually works before rewiring adoption onto it. This is a
 **trajectory-changing** refactor of the most visually load-bearing system, gated on
-3-seed stylized + the fragile 31337 clustering fact (C2). *Recommendation: deliberate
-go-ahead + design-first behind the lever, not a drive-by — and since perf is
-deprioritised and the higher-value marriage market is deferred, confirm it is the
-priority before sinking the effort.*
+3-seed stylized + the fragile 31337 clustering fact (C2).
+
+> **Recon results (`tools/probe_adopt_ab.mjs`, default vs `SIM_ADOPT_TARGET=1`,
+> 8 k steps, 480×240):**
+> 1. **The crawl-gating IS the load-bearing anti-runaway throttle.** Adopting off
+>    the raw target instead of the crawled border balloons seed 8817's top realm
+>    4.7 % → **13.4 %** of land (gini 0.35 → 0.50, ~3× the top realm); 31337 gains
+>    claimed land (25→31 %), realms (14→22) and pop (17.5k→24k). So the render
+>    crawl is doing real expansion-throttling the refactor must REPLACE, not remove.
+> 2. **The substrate is incomplete.** `_tileCapturedAt` is CONQUEST-only
+>    (territory.js:280 uses it to protect "battlefield land, not free
+>    countryside") — it does NOT timestamp peaceful entry into `_countryOwner`. So
+>    "administered once inside `_countryOwner` for a delay" needs a NEW per-tile
+>    `_ownerSince` array (reset on owner change), which — per C1 — must be persisted
+>    AND hashed.
+> 3. **Design tension.** The crawl throttles by DISTANCE (creeps ring-by-ring from
+>    the existing claim); a uniform time-delay-since-captured does NOT. Whether the
+>    target's own gradual reach-growth supplies enough distance-grading for a plain
+>    delay to hold the size distribution is an empirical question — the naive
+>    version risks under-throttling into the runaway (1). The robust version is
+>    essentially the crawl re-expressed as a logistics-paced administration FRONT in
+>    the logic layer.
+>
+> *Net: bigger + riskier than the roadmap line implies — new persisted/hashed
+> state, a real anti-runaway throttle to reproduce, and a tuning problem against the
+> fragile 31337 gate. Worth a go/no-go on the effort before the build phase, or an
+> implement-behind-`SIM_ADOPT_TARGET`-and-measure spike to resolve the design
+> tension empirically.*
 
 ---
 
