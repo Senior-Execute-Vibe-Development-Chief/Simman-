@@ -283,10 +283,13 @@ The kin graph finally does politics. All triggers are house state.
 > `tools/stylized.mjs` honours the `CROSS_REALM_HEIRS`/`CLAIMANT_WARS` env for measuring the off-path).
 > Fully reversible (levers = 0 → the throne-siloed round-trip `d69f113`/`9c5ecf94`); `probe_hashbase`
 > is unaffected (pre-dynasty at 2500), `probe_roundtrip_deep` re-baselined to `8500addf`/`67de64f6`.
-> DEFERRED (a refinement, not a blocker): `crownForeign` on war victory (succession wars fire via
-> the casus belli but resolve as ordinary conquests; the crisis-war gate holds but doesn't markedly
-> rise — raising it needs `crownForeign` + neighbour-preferred royal marriages so a claimant borders
-> its target). Full detail in `docs/marriage-market-cross-realm.md`.
+> **Tier-1 completion (done):** neighbour-preferred royal marriages (`MARRY_REACH_FRAC`) cluster the
+> kin where war can reach — lifting the **crisis-war gate** (8817 7.7 %→12 %, 31337 4.8 %→9.2 %) and
+> houses ruling >1 realm (39 %→55 %) — and `crownForeign` now resolves a besieged succession war into
+> a personal union (off `world._fronts` + capital `_siegeAt`, byte-identical when it doesn't fire).
+> All 3 seeds still within budget; roundtrip re-baselined `84c5a036`/`4a41b71c`. Remaining nice-to-have:
+> a power-gated (not siege-gated) resolution to raise the war-union rate. Full detail in
+> `docs/marriage-market-cross-realm.md`.
 
 ## Phase W6-G — Structure & performance (M/L)
 

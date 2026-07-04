@@ -187,12 +187,24 @@ baseline on 31337 (2→1) and 4242 (2→1) and unchanged on 8817 (1) — the cha
 the fragile clustering / market-integration canaries. So the feature is flip-ready by the 3-seed
 rule (`CROSS_REALM_HEIRS=1 CLAIMANT_WARS=1 STYLIZED_SEEDS=… node tools/stylized.mjs`).
 
-**Deferred (a refinement, not a blocker):** `crownForeign` on war VICTORY — a won succession war
-installing the claimant — is not built. Succession wars DO fire (the casus belli), but resolve as
-ordinary conquests; the union rate is carried by the peaceful inheritance / contested-accession
-paths instead. The crisis-war stylized gate therefore holds (~5–8 %) but does not markedly RISE —
-raising it needs `crownForeign` + kin that aligns with adjacency (royal marriages preferring
-neighbours), since a claimant can only march on a realm it borders. Both are clean follow-ups.
+**Tier-1 completion — BUILT (both defaults on).** The two follow-ups are now done:
+- **Neighbour-preferred royal marriages** (`MARRY_REACH_FRAC`, `CROSS_REALM_HEIRS`) — foreign
+  matches are weighted by capital proximity, so the kin (and its claims) clusters where realms can
+  actually reach one another by war. This lifted the **crisis-war stylized gate** — 8817 7.7 %→
+  **12 %**, 31337 4.8 %→**9.2 %** (baseline ~7 %) — and raised houses ruling >1 realm 39 %→**55 %**,
+  foreign-house crownings 4→10, claim-pressed wars 1→3.
+- **`crownForeign` on war victory** (`CLAIMANT_WARS`) — when the claimant realm presses a front on
+  the defender and besieges its capital, the claimant's sovereign takes the throne (a personal
+  union) instead of the war annexing it; a truce binds the union. Resolved in the dynasties pass off
+  `world._fronts` + capital `_siegeAt` (no conquest.js surgery), byte-identical when it doesn't fire.
+  A capital-siege succession war is rare (~1/run at 480×240) but decisive — the one win lifted
+  houses ruling >1 realm 0.58→**0.76** (present ~61 % of the run on 8817).
+
+All 3 seeds still pass every hard gate within budget (8817=1, 31337=1, 4242=2 soft warnings); the
+`levers=0` escape hatch stays exact (`d69f113`/`9c5ecf94`); `probe_roundtrip_deep` baseline
+`84c5a036`/`4a41b71c`. **Remaining nice-to-have:** raising the capital-siege rate would need a
+power-gated resolution (a readable `countryPower` in the dynasties pass) rather than the strict
+siege signal — a small follow-up if more war-driven unions are wanted.
 
 ### The shared-house subtleties (the real content of the build, now handled)
 
