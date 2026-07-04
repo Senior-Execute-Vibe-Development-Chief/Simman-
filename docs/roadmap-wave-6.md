@@ -247,13 +247,13 @@ The kin graph finally does politics. All triggers are house state.
    a tile is "administered" once it has been inside `_countryOwner` for a
    logistics-derived integration delay; adoption reads that, and the claim
    crawl goes back to being pure paint.
-4. **Perf, in order of measured value:** settlement economics fast/slow split
-   (I82 — climate-static factors cached, knowledge-driven multipliers refreshed
-   on the existing KNOW_INTERVAL stagger, per-tick integrator multiplies; ~27%
-   of CPU, target 3–5×); incremental sea flood (B80 — budgeted heap pops across
-   ticks, publish lanes on completion); frontier-set border crawl (B81); sea
-   trade top-K peers (B78 — keep 64 lanes for topology, trade the best ~16 by
-   value).
+4. **Perf, in order of measured value:** ~~settlement economics fast/slow split
+   (I82)~~ **— MEASURED and largely dead byte-identically; see the I82 verdict
+   below.** The remaining reducible passes are tile-bound and do NOT touch the
+   emergent economic trajectory: incremental sea flood (B80 — budgeted heap pops
+   across ticks, publish lanes on completion); frontier-set border crawl (B81);
+   sea trade top-K peers (B78 — keep 64 lanes for topology, trade the best ~16 by
+   value). Prefer these over I82.
 5. **G-equivalence closure:** an instrumented probe diffs per-pass aggregate
    RATES between G=1 and G=4 to locate the remaining unscaled sites; when the
    histories track, a loose G-gate lands in smoke.
@@ -265,26 +265,47 @@ The kin graph finally does politics. All triggers are house state.
 > are heterogeneous (dense b64 vs sparse, four Ctors, per-array custom hashing), so a
 > registry would *add* metadata complexity, not remove it; leave them hand-coded.
 >
-> **I82 scoping (de-risks the real refactor).** `world.temp`/`world.moist` are never
-> mutated after worldgen — dynamic climate (`updateClimate`) only moves the global scalars
-> `_climIndex`/`_climShock` — so `s._climTemp`/`_climMoist` are STATIC and every pure
-> climate fn is byte-identically cacheable. `climateOf(world, s)` (memoised, re-derived on
-> load, called at the top of each climate-using fn) is the natural cache site. BUT: (a) the
-> named climate fns are a red herring for the 27% — in the HOT per-tick path (updateFood/
-> updatePopulation/updateWealth/updateCoercedLabour/computeLuxury) there is essentially ONE
-> climate recompute (`seasonalSelect` at the seasonStore line in updateFood); the others
-> (`updateKnowledge`'s `seasonalSelect`/`livestockClimate`) are already KNOW_INTERVAL-
-> staggered, and `_livestock`/`_wetTropic`/`_aridity`/`_cashSuit` are already cached. The
-> 27% is the ECONOMIC ARITHMETIC (dozens of slow-drifting terms) recomputed each tick, so
-> the win is the genuine slow/fast split of those updaters, not a climate-fn cache. (b)
-> Several factors fold in LIVE LEVERS (`livestockClimate` uses `T.TSETSE`; seasonStore uses
-> `T.SEASON_STORE`), so a cache must either key on the lever value (à la the B10 fix) or
-> decompose into climate-static × per-tick lever-multiply — never a naive cache-once, which
-> would silently break the live-lever contract. (c) Preserve the falsy-zero quirks exactly
-> for byte-identity (e.g. the `s._climTemp || 0.5` at the seasonStore line differs from the
-> raw `seasonalSelect(s._climTemp, …)` in updateKnowledge for a temp-0 tile). Gate the whole
-> thing on the smoke determinism hash. This is genuinely M/L and correctness-critical — give
-> it a dedicated pass, not a drive-by.
+> **I82 VERDICT — the byte-identical 3–5× is a MIRAGE; MEASURED, not guessed.** I built
+> the split, proved it byte-identical, measured it, and reverted it. The premise ("~27% is
+> redundant slow-factor recompute") is FALSE. Findings, for whoever revisits:
+>
+> - **Where the time is (sub-profile of the settlement pass, 960×480, `probe_perf_passes`
+>   + a throwaway per-updater hook):** `updateKnowledge` ≈ 31 %, `updateFood` ≈ 29 %,
+>   then wealth 11 / pop 10 / dev 9 / coerce 8 / tier 2. So know + food ≈ **60 %** of the
+>   pass — and that 60 % is per-tick *integration arithmetic*, not cacheable slow factors.
+> - **The only byte-identical target — the static climate fns — is < 1 % and unmeasurable.**
+>   `s._climTemp`/`_climMoist`/`_riverAcc` are static, so `seasonalSelect`/`livestockClimate`/
+>   `malariaSignal`/`aridSignal` (recomputed every tick at ~5 sites, my earlier scoping was
+>   WRONG that `_livestock`/`_wetTropic`/`_aridity` were "already cached" — they are
+>   reassigned every tick) memoise byte-identically. I did exactly that (4 memo helpers,
+>   lever-keyed for `T.TSETSE`; hash held at `11ad8765`/`27063acb`, 2500 steps, seeds
+>   8817/31337 — see `tools/probe_hashbase.mjs`). A/B on the `settlements` pass: baseline
+>   0.941/0.949 ms vs cached 0.976/1.008 ms — **within noise, no win.** Reason: `malaria`/
+>   `arid` short-circuit to ~0 for the temperate majority (`tropicalWarmth`/`dry` gate first),
+>   so only `seasonalSelect`'s 2 `exp`×2 calls are consistently paid ≈ 1 %. Reverted — 5 new
+>   settlement fields in the hottest file for < 1 % is unearned complexity (cardinal-rule-2
+>   scar tissue).
+> - **Why the 60 % can't be staggered byte-identically — the real blocker.** Knowledge
+>   *mutates every tick*: `k.construction`/`k.agriculture`/… are written unconditionally at
+>   `settlement.js:~1440`, NOT inside a `% KNOW_INTERVAL` guard (only the reach-WALKING —
+>   `_effRes`, diffusion, `_techEff`, crop-axis — is staggered). So every economic term that
+>   reads knowledge *fresh* (`irrigation`/`alluvium`'s `farmTech`, pastoral `agriK`,
+>   `_eraProd`'s `agri^POW`, and `updateKnowledge`'s own `sciMul` + the six KTRACK writes)
+>   changes every tick. Folding them into a KNOW_INTERVAL-refreshed base reads knowledge up to
+>   8 ticks stale between refreshes → the value differs → **the emergent trajectory shifts.**
+>   That is not a byte-identical refactor; it is a deliberate change to the emergent history —
+>   which *is* the product (cardinal rule 1's corollary). And it is RISKY: 31337's clustering
+>   fact already flickers at its 0.5 gate boundary, so even a small perturbation can trip
+>   `SOFT_BUDGET` and force re-validation/re-tuning.
+>
+> **Recommendation.** Treat I82 as **closed — not worth it byte-identically.** If the
+> settlement pass ever must shrink, the honest lever is a *trajectory-shifting* stagger of the
+> knowledge-driven economic terms (precedented: `_techEff` is already KNOW_INTERVAL-staggered
+> and the baseline bakes in its staleness) — but that is a **history-changing product
+> decision**, gated on re-passing validate + both stylized seeds, NOT a "perf refactor." Spend
+> perf effort on the tile-bound passes instead (B80/B81/B78), which don't touch the economy's
+> emergent output. `tools/probe_hashbase.mjs` stays as the byte-identity guard for any future
+> attempt.
 
 ## Phase W6-H — The minor-bug batch (S, one commit)
 
