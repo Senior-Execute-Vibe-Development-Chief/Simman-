@@ -133,6 +133,40 @@ I82 verdict). Worth either understanding *why* 31337 clusters weakly (is 0.5 the
 right floor for it, or is the map genuinely more dispersed?) or widening the
 tolerance with a written justification. *Not a bug; a fragile gate.*
 
+**C3 — `INTEGRATE_TICKS` is a fixed-tick, G-dependent integration ramp — but the
+ramp is OUTPUT-INERT.** Found scoping adoption-off-render. `countryTerritory.js`
+ramps a just-adopted settlement's reach INTEGRATE_MIN→full over
+`age / INTEGRATE_TICKS`, with `age = world.step − _integratedAt` in *steps* and
+`INTEGRATE_TICKS = 3000` fixed — so at G=4 the ramp completes in ¼ the history-time
+(land fills 4× faster: a real G-non-invariance, and a fixed-tick smell the wither
+timer's `2000/_dt` already avoids). Applied the obvious fix (`INTEGRATE_TICKS/_dt`,
+byte-identical at G=1) and it was **output-inert** — G=4 pop/wealth byte-identical
+with/without it at BOTH 256×128 and 480×240. The reach-ramp rarely *binds*
+(territory is limited by geography/neighbours first, and `_integratedAt` is only set
+on adoption, uncommon at these scales), so its timing never reaches the emergent
+output. **Reverted** (I82 discipline — no measurable benefit; and per cardinal-rule-2,
+making an inert mechanism's timing "correct" polishes a symptom). *The real question
+it raises:* is the "gradual integration / anti-bloom" reach-ramp doing ANYTHING? A
+ramp-on-vs-off A/B would say whether it is load-bearing or dead — worth knowing
+BEFORE adoption-off-render builds on that machinery.
+
+**C4 — Adoption-off-render (W6-G item 3): scoped, NOT started; bigger than it looks.**
+The item wants political adoption (`s.countryId`, set in `adoptAndFound`) to stop
+reading the RENDER layer (`grownLiveOwnerAt` → the crawled `_countryClaim` border)
+and instead read an explicit "tile administered for a logistics-derived delay" state,
+freeing the claim crawl to be pure paint. But that render-coupling is **load-bearing**:
+the surrounding comments document anti-runaway-growth, anti-zombie-state and
+anti-nationless-megacity fixes all clustered on it, so any replacement delay must
+reproduce those guards. Substrate exists (`_tileCapturedAt` entry timestamps,
+`_integratedAt`, the `INTEGRATE_*` machinery, a `SIM_ADOPT_TARGET` A/B lever) — but
+C3 shows part of that machinery may be inert, so step one is verifying the integration
+substrate actually works before rewiring adoption onto it. This is a
+**trajectory-changing** refactor of the most visually load-bearing system, gated on
+3-seed stylized + the fragile 31337 clustering fact (C2). *Recommendation: deliberate
+go-ahead + design-first behind the lever, not a drive-by — and since perf is
+deprioritised and the higher-value marriage market is deferred, confirm it is the
+priority before sinking the effort.*
+
 ---
 
 ## D. Spotted in passing — UNVERIFIED (flags, not findings)
