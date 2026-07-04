@@ -61,6 +61,7 @@ const MAX_HOUSE = 28;                    // living blood-members tracked per hou
 const FOREIGN_MATCH = 0.25;             // chance a royal spouse comes from another court
 const CLAIM_INHERIT = 0.6;              // CLAIMANT_WARS: chance a legitimate foreign blood-claim inherits a failed throne (vs a fresh local line rising)
 const CLAIM_WINDOW = 2600;              // CLAIMANT_WARS: history-units a contested succession stays pressable (a foreign claimant's casus belli)
+const CLAIM_CONTEST = 0.3;             // CLAIMANT_WARS: chance a strong foreign blood-claim WINS a contested (weak) local accession — a personal union / foreign cadet branch
 const CRISIS_LOYALTY_HIT = 0.10;        // members' loyalty shock when the line fails
 const CRISIS_UNREST_HIT = 0.18;         // capital unrest spike on a failed succession
 const DISPUTE_UNREST_HIT = 0.06;        // smaller spike when a contested heir takes the throne
@@ -641,7 +642,11 @@ function crown(world, polity, person, how, gov) {
   // pass consult it (election pools, off-handler death exemptions) — a
   // mid-pass crownee must be protected immediately, not next step.
   if (world._sittingRulers && world._sittingRulersStep === world.step) world._sittingRulers.add(person.id);
-  person.reignFrom = stepToYear(world, world.step) | 0;
+  // A person already reigning ELSEWHERE (a personal union — one monarch on two thrones,
+  // CLAIMANT_WARS) keeps their original accession year; only a genuinely new reign starts
+  // the clock. Off, and for every ordinary accession, the crownee has never reigned
+  // (reignFrom === -1), so this sets it exactly as before (byte-identical).
+  if (person.reignFrom === -1 || person.reignTo !== -1) person.reignFrom = stepToYear(world, world.step) | 0;
   person.reignTo = -1;
   // open the reign's deed ledger (read back at death to earn an epithet)
   const cc = world.countries ? world.countries.get(polity.id) : null;
@@ -931,7 +936,6 @@ function foreignClaimant(world, polity, primaryRealmOf) {
   const houseB = polity.dynastyId;
   if (!(houseB >= 0)) return null;
   const law = polity.succLaw || LAW_MALE_PREF;
-  const thrones = sittingRulers(world);
   let best = null, bestStr = 0;
   for (const dynId of [...primaryRealmOf.keys()].sort((a, b) => a - b)) {
     if (dynId === houseB || primaryRealmOf.get(dynId) === polity.id) continue;
@@ -939,8 +943,13 @@ function foreignClaimant(world, polity, primaryRealmOf) {
     if (!d || d.endedStep >= 0 || !d.members) continue;
     for (const mid of d.members) {
       const p = getPerson(world, mid);
-      if (!p || p.died >= 0 || thrones.has(p.id)) continue;          // a spare cadet, not already a sovereign
-      if (ageOf(world, p) < 16 || !eligible(world, p, law, false)) continue;
+      // Inline eligibility (NOT eligible(), which bars sitting rulers): the claim path
+      // may crown a foreign SOVEREIGN, forming a personal union (one monarch, two thrones)
+      // — as well as a free cadet, forming a lasting cadet branch. Both keep their house,
+      // which then reigns in two realms. Trueborn + adult + admissible under B's law.
+      if (!p || p.died >= 0 || p.bastard) continue;
+      if (law === LAW_AGNATIC && p.female) continue;
+      if (ageOf(world, p) < 16) continue;
       const str = claimStrength(world, p, houseB);
       if (str > 0 && (str > bestStr || (str === bestStr && best !== null && p.id < best.id))) { best = p; bestStr = str; }
     }
@@ -1005,11 +1014,12 @@ export function updateDynasties(world) {
   // primary realm so a house on two thrones isn't bred and reaped twice. Cheap and
   // deterministic; inert (byte-identical) until a house actually holds a second realm.
   const primaryRealmOf = new Map();          // dynastyId → its lowest-id reigning realm
+  const rulerPrimaryRealm = new Map();       // rulerId → its lowest-id realm (for a shared monarch — a personal union)
   for (const c0 of world.countries.values()) {
     const op = getPolity(world, c0.id);
-    if (!op || op.endedStep >= 0 || !(op.dynastyId >= 0)) continue;
-    const prev = primaryRealmOf.get(op.dynastyId);
-    if (prev === undefined || c0.id < prev) primaryRealmOf.set(op.dynastyId, c0.id);
+    if (!op || op.endedStep >= 0) continue;
+    if (op.dynastyId >= 0) { const prev = primaryRealmOf.get(op.dynastyId); if (prev === undefined || c0.id < prev) primaryRealmOf.set(op.dynastyId, c0.id); }
+    if (op.rulerId >= 0) { const prev = rulerPrimaryRealm.get(op.rulerId); if (prev === undefined || c0.id < prev) rulerPrimaryRealm.set(op.rulerId, c0.id); }
   }
 
   // royal marriage market, computed once per pass — the pool a reigning monarch's
@@ -1127,6 +1137,14 @@ export function updateDynasties(world) {
     applyRulerMods(c, ruler, polity.gov, regency);
     applyLegitimacy(world, c, polity, dyn, ruler, polity.gov, law, regency);
 
+    // A shared monarch (one person on two thrones — a personal union, CLAIMANT_WARS) is
+    // wed, bred, and dies in their PRIMARY (lowest-id) realm's pass only; here, in the
+    // secondary realm, they've already applied their realm-effects above, so defer the
+    // rest of the lifecycle. The union SPLITS naturally: when the primary pass buries the
+    // monarch, this realm sees the throne empty next and raises its own successor. Inert
+    // when off / for any single-throne ruler (their primary IS this realm).
+    if (T.CLAIMANT_WARS && rulerPrimaryRealm.get(ruler.id) !== cid) continue;
+
     // the living house: marry & breed the monarch, grow cadet branches, reap all
     const plague = !!c.capital._plagueActive;
     // A never-wed monarch weds; a WIDOWED one remarries only under heir pressure — D31,
@@ -1204,7 +1222,23 @@ export function updateDynasties(world) {
       const legitSmooth = 1 - 0.45 * (polity._dynLegit || 0.5);
       const instab = (2 - (c._govStab || 1)) * legitSmooth;     // monarchy 1.0, despotism ~1.28, ÷ legitimacy
       const succ = dyn ? heirByLaw(world, ruler, dyn, law) : null;
-      if (succ) {
+      // A CONTESTED accession (a minor, a bastard, a distant cadet — a faltering local
+      // line) invites a foreign blood-claimant of this very house to press their claim:
+      // a STRONG claim (a direct grandchild of the line through a married-out princess)
+      // occasionally prevails over the weak heir and seats a foreign house on the throne
+      // — a personal union if that claimant already reigns, else a foreign cadet branch
+      // (CLAIMANT_WARS / D29). Gated on the weak succession + strong kin, never a date.
+      let foreignHeir = null;
+      if (T.CLAIMANT_WARS && succ && succ.contested) {
+        const cand = foreignClaimant(world, polity, primaryRealmOf);
+        if (cand && claimStrength(world, cand, polity.dynastyId) >= 2 && rng() < CLAIM_CONTEST) foreignHeir = cand;
+      }
+      if (foreignHeir) {
+        crown(world, polity, foreignHeir, "claim", gov);                 // a foreign house wins the disputed throne
+        polity._dynLegit = (polity._dynLegit || 0.5) * 0.8;
+        polity._crisisAt = world.step;
+        c.capital.unrest = Math.min(1, (c.capital.unrest || 0) + DISPUTE_UNREST_HIT * instab);
+      } else if (succ) {
         crown(world, polity, succ.heir, succ.minor ? (succ.how === "bastard" ? "bastard" : "regency") : succ.how, gov);
         // A DISPUTED accession (a minor under regency, a raised bastard) is a real
         // crisis — it sets the crisis clock the war-historians read. An orderly
