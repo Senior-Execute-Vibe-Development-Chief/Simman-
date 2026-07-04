@@ -206,6 +206,30 @@ substrate actually works before rewiring adoption onto it. This is a
 > 31337 clustering; (4) then flip default and let the crawl become pure paint. The
 > spike (lever + `administeredOwnerAt`/`updateAdminTenure` in `countryClaim.js`) is
 > committed; productionisation is a data-informed go/no-go.
+>
+> **STYLIZED VALIDATION (full 15 k suite, lever on, `ADOPT_ADMIN_DELAY` swept).** It
+> passes ALL HARD gates on both gate seeds at every delay tried — genuinely close to
+> landable — but soft warnings redistribute rather than clear. Baseline (off): 8817 =
+> 1 warn (growth); 31337 = 2 warn (growth + **clustering 0.44**). Lever on @ delay 240:
+> **8817 = 2 warn** (growth + *market-integration −0.28*); **31337 = 1 warn** (growth;
+> **clustering FIXED → 0.75**). So on 31337 the lever is a NET WIN — it repairs the
+> fragile clustering canary (C2). On 8817 it adds a persistent **market-integration**
+> warning ("fewer trade components ↛ wider price spread"; the changed political map
+> reshapes the trade graph) that does NOT cleanly tune away — non-monotonic in delay
+> (−0.38 @120, −0.28 @240, −0.86 @360) and longer delays concentrate the top realm
+> (30 % @360, 35 % @480). Net warning COUNT is a wash (3 total either way); delay 240 is
+> the sweet spot (now the lever default).
+>
+> **VERDICT: do NOT flip the default yet.** It passes all hard gates and is a wash on
+> soft warnings, but flipping changes EVERY history for architectural value while
+> putting 8817 at-budget (1→2) with a non-tunable side-effect, on only 2 seeds (rule is
+> 3). The lever is BANKED, validated, delay-tuned, and it even repairs the 31337
+> clustering fact. **The one real blocker to default is the 8817 market-integration
+> regression** — understand WHY administered-tenure adoption reshapes the
+> trade-component/price-spread relationship there (same sensitive gate B70 tipped),
+> resolve or accept it, add a 3rd seed, then flip. Until then it stays opt-in.
+> (Persist/hash of `_ownerSince`/`_adminOwner` deferred with it — only needed once it
+> goes default; the lever documents "don't save mid-run with it on".)
 
 ---
 
