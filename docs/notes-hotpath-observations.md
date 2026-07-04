@@ -83,22 +83,29 @@ re-attempt as a perf play.** Kept here so nobody re-scopes it from scratch.
 
 ## C. Verification / test-robustness gaps (more important than §A/§B)
 
-**C1 — `hashWorld` has blind spots vs `SETT_FIELDS`.** `persist.js:335` hashes
-only: `id, mode, name, tier, countryId, people, food, wealth, army, loyalty,
-unrest, infrastructure, _foodNet`, and the knowledge tracks. But `SETT_FIELDS`
-*persists* many more cross-tick state fields that the hash never touches directly:
-`_credit`, `_unfree`, `_cashFrac`, `_captives`, `_serf`, `_orgApt`, `_rivalN`,
-`_specKey`/`_specStr`, `culMix`/`faithMix`/`langMix`/`ancMix`, `_diseaseLoad`,
-`_famineUntil`/`_harvestMul`, `_ambition`, `_witherSince`, … A save/load
-regression in any of these **passes the "loaded state hashes identical" smoke
-check** and is only caught *indirectly*, if and when the field perturbs a hashed
-quantity within the +1000-step functional-continuation window (which itself
-tolerates 1.5 % pop / 4.3 % wealth drift). This is a real hole in the
-determinism/round-trip net. Recommended: fold the economically-load-bearing ones
-(`_credit`, `_unfree`, `_cashFrac`, `_serf`, `_orgApt`) into the settlement hash.
-*This is the highest-value item in this doc — it hardens the guard every other
-change relies on.* Note: the W6-F/W6-E work added `_credit`/`_serf`/etc. exactly
-in this unhashed zone.
+**C1 — `hashWorld` blind spots vs `SETT_FIELDS`. ✅ FIXED** (this session). The
+core loop hashed only `id, mode, name, tier, countryId, people, food, wealth,
+army, loyalty, unrest, infrastructure, _foodNet` + knowledge, while `SETT_FIELDS`
+persisted much more cross-tick state the hash never touched — so a save/load
+regression in the economy/society fields passed the "loaded state hashes
+identical" check and was caught only *indirectly*, via the +1000-step functional
+continuation (1.5 % pop / 4.3 % wealth tolerance). Now `persist.js` declares
+`SETT_HASH_NUM` (`_credit`, `_unfree`, `_cashFrac`, `_captives`, `_serf`,
+`_orgApt`, `_rivalN`, `_ambition`, `_diseaseLoad`, `_specStr`) + `_specKey` +
+`SETT_HASH_MIX` (`culMix`/`faithMix`/`langMix`/`ancMix`, element-wise) and the
+settlement hash iterates them — a declared registry so the guard can't drift from
+what's persisted again (the omission class R1 fixed for world maps). Smoke's
+determinism + save/load both still pass (proving these fields round-trip cleanly);
+baseline hash moved to `20b4f37e`/`43c73b01`.
+> **Still unhashed (deliberate, lower value):** static re-derived site attrs
+> (`_riverAcc`/`_confine`/`_rugged`/`waterAccess`/`_buildableArea` — deterministic
+> from terrain), cosmetic chronicle bookkeeping (`_chronFlags`/`_peakTier`), and —
+> **bigger gap, separate item** — the entire **kin graph / culture / faith
+> registries** (`world.persons`, `world.dynasties`, `world.cultures`,
+> `world.faiths`) are not hashed at ALL (only `polities` is, minimally). A
+> determinism or round-trip bug in the dynastic/cultural registries is currently
+> invisible to `hashWorld`. That is the next hardening target if the guard matters
+> for the W6-F dynastic work.
 
 **C2 — the 31337 clustering stylized fact sits ON its gate boundary.** Observed
 across W6-F: seed 31337's settlement-clustering value hovers at ~0.44–0.5 against
@@ -149,6 +156,8 @@ updateKnowledge already uses. Unverified.
    **marriage-market prerequisite** that blocks claimant wars + personal unions
    (`docs/marriage-market-cross-realm.md`). That is the actual product — dynastic
    politics falling out of the kin graph — and it is *blocked*, not done.
-3. **Hardening `hashWorld` (C1) is the cheapest high-leverage thing** — it makes
-   the guard that underwrites every future change actually cover the state that
-   recent waves added.
+3. **Hardening `hashWorld` — settlement half ✅ DONE (C1).** The guard now covers
+   the economy/society settlement state recent waves added. The **next** hardening
+   target (surfaced while doing C1) is the un-hashed **kin-graph / culture / faith
+   registries** — which matters specifically for verifying the W6-F dynastic work
+   is deterministic and round-trips.

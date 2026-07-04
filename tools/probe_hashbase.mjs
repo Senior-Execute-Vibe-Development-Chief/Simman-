@@ -1,8 +1,12 @@
-// Byte-identity guard for the I82 refactor: run fixed seeds a fixed number of
-// steps and print the full-state hash. Capture at baseline, compare after each
-// change — identical hash ⇒ byte-identical trajectory (stronger than the smoke
-// determinism check, which only compares run-to-run on the same code).
+// Byte-identity guard for any settlement/persist change: run fixed seeds a fixed
+// number of steps and print the full-state hash. Capture at baseline, compare
+// after each change — identical hash ⇒ byte-identical trajectory (stronger than
+// the smoke determinism check, which only compares run-to-run on the same code).
+// NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
+// baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
+// Current baseline (2500 steps, post hash-hardening): 8817=20b4f37e 31337=43c73b01
+//   (pre-hardening was 11ad8765 / 27063acb — different hashWorld field set).
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { hashWorld } from "../src/sim/persist.js";

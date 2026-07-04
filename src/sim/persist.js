@@ -65,6 +65,18 @@ const SETT_FIELDS = [
   "_rivalN",                             // rival-polity contact count (competition signal)
 ];
 
+// Load-bearing per-settlement DYNAMIC state that the hashWorld core loop omitted:
+// money (credit), coerced labour, heritable aptitude, competition, endemic-immunity
+// load, agglomeration strength, and the ethnogenesis mixes. ALL are in SETT_FIELDS
+// (persisted), so hashing them closes the determinism + save/load blind spot for the
+// economy/society state recent waves added — a round-trip bug in `_credit`, `_serf`,
+// `_orgApt`, `culMix`, … used to slip straight past the hash (the core loop only mixed
+// people/food/wealth/army/loyalty/unrest/knowledge). Declared here so the guard can't
+// silently drift from what's persisted (the same omission class R1 fixed for world maps).
+// _specKey is a string → mixed as such; the mixes are [[id,share],…] → element-wise.
+const SETT_HASH_NUM = ["_credit", "_unfree", "_cashFrac", "_captives", "_serf", "_orgApt", "_rivalN", "_ambition", "_diseaseLoad", "_specStr"];
+const SETT_HASH_MIX = ["culMix", "faithMix", "langMix", "ancMix"];
+
 // Declarative registry of persistent WORLD-LEVEL maps — dyadic / per-id / per-tile state
 // (id→value) that carries real cross-tick meaning. Registered ONCE here; saveWorld,
 // loadWorld and hashWorld all iterate it, so adding a world map is a SINGLE line, not three
@@ -346,6 +358,9 @@ export function hashWorld(world) {
     mixNum(s.people); mixNum(s.food); mixNum(s.wealth); mixNum(s.army);
     mixNum(s.loyalty); mixNum(s.unrest); mixNum(s.infrastructure); mixNum(s._foodNet);
     if (s.knowledge) for (const k of Object.keys(s.knowledge).sort()) mixNum(s.knowledge[k]);
+    for (const f of SETT_HASH_NUM) mixNum(s[f]);   // economy / labour / heritable state (was unhashed)
+    mixStr(s._specKey);                            // agglomeration specialty (string half of the pair)
+    for (const f of SETT_HASH_MIX) { const a = s[f]; if (a) for (const m of a) { if (Array.isArray(m)) { mixNum(m[0]); mixNum(m[1]); } else mixNum(m); } }   // ethnogenesis mixes [[id,share],…]
   }
   if (world.polities) {
     const ids = [...world.polities.keys()].sort((a, b) => a - b);
