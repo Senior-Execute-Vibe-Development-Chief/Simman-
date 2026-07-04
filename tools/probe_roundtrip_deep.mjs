@@ -7,8 +7,8 @@
 // work against a lossy/nondeterministic round-trip. Run it after any change to
 // dynasties.js / the person or dynasty shape / persist.js.
 //   node tools/probe_roundtrip_deep.mjs [steps]
-// Baseline (8000 steps, CROSS_REALM_HEIRS+CLAIMANT_WARS now default ON): 8817 h=8500addf
-// (1563p/41d), 31337 h=67de64f6 (1878p/23d). (Pre-flip, throne-siloed, it was
+// Baseline (8000 steps, CROSS_REALM_HEIRS+CLAIMANT_WARS default ON): 8817 h=84c5a036
+// (1705p/30d), 31337 h=4a41b71c (1966p/21d). (Pre-flip, throne-siloed, it was
 // d69f113 (1674p/38d) / 9c5ecf94 (2004p/22d) — recover with both levers = 0.)
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";

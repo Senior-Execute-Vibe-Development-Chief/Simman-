@@ -62,6 +62,7 @@ const FOREIGN_MATCH = 0.25;             // chance a royal spouse comes from anot
 const CLAIM_INHERIT = 0.6;              // CLAIMANT_WARS: chance a legitimate foreign blood-claim inherits a failed throne (vs a fresh local line rising)
 const CLAIM_WINDOW = 2600;              // CLAIMANT_WARS: history-units a contested succession stays pressable (a foreign claimant's casus belli)
 const CLAIM_CONTEST = 0.3;             // CLAIMANT_WARS: chance a strong foreign blood-claim WINS a contested (weak) local accession — a personal union / foreign cadet branch
+const MARRY_REACH_FRAC = 0.16;         // CROSS_REALM_HEIRS: royal-marriage reach as a fraction of world width — the scale over which foreign matches PREFER nearer courts, so the kin (and its claims) clusters where war can actually reach
 const CRISIS_LOYALTY_HIT = 0.10;        // members' loyalty shock when the line fails
 const CRISIS_UNREST_HIT = 0.18;         // capital unrest spike on a failed succession
 const DISPUTE_UNREST_HIT = 0.06;        // smaller spike when a contested heir takes the throne
@@ -306,6 +307,12 @@ function wed(world, a, b, polityId, tiePolity, rng) {
   }
 }
 
+// Wrapped-x capital distance (the world is a cylinder), for royal-marriage proximity.
+function capDist(world, a, b) {
+  let dx = Math.abs(a.x - b.x); const tw = world.tw || 1; if (dx > tw / 2) dx = tw - dx;
+  const dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy);
+}
+
 function marry(world, person, polityId, rng, stateMatch, mortF) {
   if (person.spouseId >= 0) return;
   if (ageOf(world, person) < 16) return;   // a child reigns under regents — no match yet
@@ -318,7 +325,28 @@ function marry(world, person, polityId, rng, stateMatch, mortF) {
   if (stateMatch && rng() < FOREIGN_MATCH && world._royalCourt && world._royalCourt.length) {
     const courts = world._royalCourt.filter(([ch, pid]) =>
       pid !== polityId && ch.died < 0 && ch.spouseId < 0 && ch.female !== person.female);
-    if (courts.length) [spouse, tiePolity] = courts[rng.int(courts.length)];
+    if (courts.length) {
+      // Royal houses marry their NEIGHBOURS far more than distant realms — so the kin
+      // (and the claims it carries) clusters where realms can actually reach one another
+      // by war, which is what makes a succession claim pressable. Weight the match by
+      // capital proximity. CROSS_REALM_HEIRS only: with the lever off the old uniform
+      // pick stands, keeping that escape-hatch trajectory exact.
+      const myC = world.countries && world.countries.get(polityId), myCap = myC && myC.capital;
+      if (T.CROSS_REALM_HEIRS && myCap && myCap.pos) {
+        const reach = Math.max(1, MARRY_REACH_FRAC * (world.tw || 1));
+        let tot = 0; const wts = [];
+        for (const [, pid] of courts) {
+          const oc = world.countries.get(pid), cap = oc && oc.capital;
+          const d = cap && cap.pos ? capDist(world, myCap.pos, cap.pos) : reach;
+          const wt = Math.exp(-d / reach); wts.push(wt); tot += wt;
+        }
+        let pick = rng() * tot;
+        for (let k = 0; k < courts.length; k++) { pick -= wts[k]; if (pick <= 0) { [spouse, tiePolity] = courts[k]; break; } }
+        if (!spouse) [spouse, tiePolity] = courts[courts.length - 1];   // fp safety
+      } else {
+        [spouse, tiePolity] = courts[rng.int(courts.length)];
+      }
+    }
   }
   if (!spouse) {
     spouse = makeAdult(world, person.cultureId, !person.female, rng, 16 + rng() * 14, { foreign: true }, mortF);
