@@ -126,6 +126,26 @@ enumerates over is now materially seeded. Two findings remain:
    house), but nothing feeds it a foreign-house crownee. That path is direction 3 / the
    `crownForeign()` half of claimant wars — so this metric stays 0 until that machinery lands.
 
+**The step-4 gate is MET** (`tools/probe_claims.mjs`). Consort counts are a proxy; the real question
+is whether a *fireable* claim stands when a succession is contested — a foreign sovereign OF,
+MARRIED INTO, or DESCENDED FROM the disputed house. Measuring the standing claim graph (distinct
+claimant-realm → target-realm pairs live at once):
+
+| fireable claimant-war pairs, live at once | baseline (off) | lever on |
+|---|---|---|
+| 8817 — mean · ≥1-present · ≥2 | 0.55 · 33% · 15% | **1.58 · 67% · 52%** |
+| 31337 — mean · ≥1-present · ≥2 | ~0.5 · 33% · — | **1.97 · 64% · 55%** |
+
+So with the lever on a cross-realm claim is standing **~⅔ of the time** (mean ~1.6–2.0, peak 5–6) —
+roughly **tripling** the baseline. **Descent** claims ("women's sons" — a ruler of foreign-house
+blood) dominate the count and outnumber live married-in consorts, because a foreign-blooded ruler
+carries the claim for their whole reign whereas a consort must be currently alive — so the graph is
+denser and more persistent than the consort snapshot alone suggested. **Conclusion: cross-realm
+housed kin are now common enough for claimant wars to fire regularly** — the prerequisite the whole
+feature was blocked on. Build claimant wars next (the reverted `_succClaims`/`claimBarOf`/
+`crownForeign` design), behind `T.CLAIMANT_WARS`, firing on this graph; it is what finally makes
+`houses ruling >1 realm` (the of-the-house claim, currently 0) non-zero.
+
 **Why default-off** (the disciplined choice, mirroring the W6-G adoption lever): the richer marriage
 flow perturbs the RNG stream, and on the fragile 31337 seed (note C2) that chaotic reshuffling pushes
 it to 3 soft warnings (empire-size-tail 2.6 `<`3 and market-integration −0.72 `<`−0.2) — over the
