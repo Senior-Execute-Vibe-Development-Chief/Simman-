@@ -176,7 +176,7 @@ const NARRATE = {
   "plague.outbreak"(ev) { return ev.sName ? `Plague broke out in ${ev.sName} and swept through the realm.` : "Plague swept through the realm."; },
   "era.reached"(ev) { return `Reached the ${ev.eraName} era.`; },
   "war.began"(ev, as) {
-    const why = ev.crisis ? " as the succession failed" : ev.faithClash ? " under the banner of the faith" : "";
+    const why = ev.claim ? " to press a claim to its throne" : ev.crisis ? " as the succession failed" : ev.faithClash ? " under the banner of the faith" : "";
     if (as === ev.to) return `${ev.name || "An enemy"} marched against the realm${why}.`;
     return `Marched to war against ${ev.defName || "a neighbour"}${why}.`;
   },

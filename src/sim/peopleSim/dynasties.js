@@ -60,6 +60,7 @@ const MAX_CHILDREN = 8;
 const MAX_HOUSE = 28;                    // living blood-members tracked per house (collateral cap)
 const FOREIGN_MATCH = 0.25;             // chance a royal spouse comes from another court
 const CLAIM_INHERIT = 0.6;              // CLAIMANT_WARS: chance a legitimate foreign blood-claim inherits a failed throne (vs a fresh local line rising)
+const CLAIM_WINDOW = 2600;              // CLAIMANT_WARS: history-units a contested succession stays pressable (a foreign claimant's casus belli)
 const CRISIS_LOYALTY_HIT = 0.10;        // members' loyalty shock when the line fails
 const CRISIS_UNREST_HIT = 0.18;         // capital unrest spike on a failed succession
 const DISPUTE_UNREST_HIT = 0.06;        // smaller spike when a contested heir takes the throne
@@ -947,6 +948,40 @@ function foreignClaimant(world, polity, primaryRealmOf) {
   return best;
 }
 
+// CLAIMANT_WARS: publish the live succession claims the war pass reads. A realm B in a
+// WEAK succession (a crisis or contested accession within CLAIM_WINDOW) invites its
+// strongest FOREIGN claimant — a sitting ruler OF, MARRIED INTO, or DESCENDED FROM B's
+// house — to press its throne: that claimant's realm gains a succession casus belli
+// (claimBarOf in the armies.js attack-bar) until the window lapses. Transient (rebuilt
+// each pass from live kin + crisis state, never persisted), deterministic, gated on kin
+// + the crisis (never a date). Left empty unless the lever is on.
+function updateSuccClaims(world) {
+  const claims = new Map();          // defender realm B → { by: claimant realm A, str, until }
+  world._succClaims = claims;
+  if (!T.CLAIMANT_WARS || !world.countries) return;
+  const win = CLAIM_WINDOW / (world._dt || 1);
+  const ids = [...world.countries.keys()].sort((a, b) => a - b);
+  for (const bid of ids) {
+    const bp = getPolity(world, bid);
+    if (!bp || bp.endedStep >= 0 || !(bp.dynastyId >= 0)) continue;
+    if (!(bp._crisisAt >= 0) || world.step - bp._crisisAt > win) continue;   // not in a pressable window
+    const houseB = bp.dynastyId;
+    let bestA = -1, bestStr = 0;
+    for (const aid of ids) {                 // ascending: a tie keeps the lowest-id realm (deterministic)
+      if (aid === bid) continue;
+      const ap = getPolity(world, aid);
+      if (!ap || ap.endedStep >= 0 || ap.rulerId == null || ap.rulerId < 0) continue;
+      const ra = getPerson(world, ap.rulerId);
+      if (!ra || ra.died >= 0) continue;
+      let str = ra.dynastyId === houseB ? 3 : claimStrength(world, ra, houseB);   // OF the house, or descended (2/1)
+      const sp = ra.spouseId >= 0 ? getPerson(world, ra.spouseId) : null;
+      if (sp && sp.died < 0 && sp.dynastyId === houseB) str = Math.max(str, 2);   // MARRIED INTO the house
+      if (str > bestStr) { bestStr = str; bestA = aid; }
+    }
+    if (bestA >= 0) claims.set(bid, { by: bestA, str: bestStr, until: Math.round(bp._crisisAt + win) });
+  }
+}
+
 export function updateDynasties(world) {
   if (!world.countries) return;
   const rng = passRng(world, "dynasty");
@@ -1200,6 +1235,9 @@ export function updateDynasties(world) {
       }
     }
   }
+
+  // publish the live succession casus-belli map for the war pass (CLAIMANT_WARS)
+  updateSuccClaims(world);
 }
 
 // Deterministic helper for war-cause annotation (armies.js): was this realm in a

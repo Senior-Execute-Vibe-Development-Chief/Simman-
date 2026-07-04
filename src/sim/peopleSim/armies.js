@@ -97,6 +97,8 @@ export const MUSTER_INTERVAL   = 100;
 // (tuning.js). ATTACK_MIN_RATIO's old 1.12×1.05 re-anchored the 0.5-pivot
 // aggressionAttackMul — its tuning default (1.176) preserves that exactly.
 const CAPTURE_SCALE     = 5;           // tiles/pass per unit of power-ratio advantage
+const CLAIM_BAR         = 0.62;        // CLAIMANT_WARS: a live succession claim on the defender cuts the claimant's
+                                       // attack bar to this — a real casus belli, so wars OF succession actually fire
 const DOM_ATTACK_P      = 0.45;        // a DOMINANT realm (conquest.js _dominance) attacks on a slimmer margin —
                                        // bar ÷ dominance^this — so a great power expands by conquest where the pack
                                        // stalls (Rome, the Mongols, the Ottomans). Bounded by the dominance cap.
@@ -394,6 +396,14 @@ export function advanceFronts(world) {
   // A dominant realm projects military power — it attacks on a slimmer margin, so a
   // great power expands by conquest where the pack stalls (Rome, the Mongols).
   const domBarOf = (attCC) => { const c = world.countries && world.countries.get(attCC); const d = c && c._dominance ? c._dominance : 1; return 1 / Math.pow(Math.max(1, d), DOM_ATTACK_P); };
+  // A live succession claim on the DEFENDER (dynasties.js world._succClaims) is a casus
+  // belli: the claimant's realm presses the throne on a slimmer margin — a war OF
+  // succession. Only that specific claimant realm gets the discount, only while the claim
+  // window holds; 1 (no effect) for everyone else and whenever CLAIMANT_WARS is off.
+  const claimBarOf = (attCC, defCC) => {
+    const cl = T.CLAIMANT_WARS && world._succClaims ? world._succClaims.get(defCC) : null;
+    return cl && cl.by === attCC && world.step <= cl.until ? CLAIM_BAR : 1;
+  };
   const domCaptureOf = (attCC) => { const c = world.countries && world.countries.get(attCC); const d = c && c._dominance ? c._dominance : 1; return Math.pow(Math.max(1, d), DOM_CAPTURE_P); };
 
   // ── Balance of power (conquest.js updateAlliances) ───────────────────────────
@@ -589,7 +599,7 @@ export function advanceFronts(world) {
     // one wants a clear advantage (personality.js aggressionAttackMul).
     const aCountry = world.countries && world.countries.get(A.countryId);
     const aggMul = aCountry && aCountry.personality ? aggressionAttackMul(aCountry.personality) : 1;
-    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
+    if (A._M < effDef * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * claimBarOf(A.countryId, D.countryId) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
     // Distance of this tile from the defender's home (longitude wraps).
     const dh = D._homeTi, dhy = (dh / tw) | 0, dhx = dh - dhy * tw;
     let ddx = Math.abs(tx - dhx); if (ddx > tw / 2) ddx = tw - ddx;
@@ -636,7 +646,7 @@ export function advanceFronts(world) {
         const key = A.id + ":" + pid;
         if (pairs.has(key)) continue;                        // already met on land
         const tf = tradeFactor(A.countryId, D.countryId);
-        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
+        if (A._M < D._M * T.ATTACK_MIN_RATIO * aggMul * (1 + tf * TRADE_PEACE_MAX) * T.AMPHIB_BAR * warBarOf(A.countryId) * casusOf(A.countryId, D.countryId, D) * claimBarOf(A.countryId, D.countryId) * domBarOf(A.countryId) * coalitionBarOf(A.countryId, D.countryId)) continue;
         const pc = { att: A, def: D, tiles: [], canStorm: false, _key: key };
         let l = amphibByDef.get(pid); if (!l) amphibByDef.set(pid, l = []);
         l.push(pc);
@@ -719,6 +729,7 @@ export function advanceFronts(world) {
         from: attId, to: defId,
         name: realmName(world, attId), defName: realmName(world, defId),
         crisis: inCrisis(world, defId) ? 1 : 0,
+        claim: (T.CLAIMANT_WARS && world._succClaims && (world._succClaims.get(defId) || {}).by === attId) ? 1 : 0,
         faithClash: fa >= 0 && fd >= 0 && fa !== fd ? 1 : 0,
         aggression: pers ? +(pers.aggression || 0).toFixed(2) : 0,
       });

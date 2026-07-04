@@ -16,7 +16,7 @@ import { T } from "../src/sim/peopleSim/tuning.js";
 
 const STEPS = parseInt(process.argv[2] || "12000", 10);
 const SEED = parseInt(process.argv[3] || "8817", 10);
-const W = 320, H = 160;
+const W = +(process.env.W || 320), H = +(process.env.H || 160);
 const SAMPLE = 250;                       // sample cadence (steps)
 const WARMUP = 4000;                      // ignore pre-dynasty steps
 // The lever under test — default ON (the enriched market is what this probe exists
@@ -62,8 +62,10 @@ function measure(world) {
 const world = buildSim({ W, H, seed: SEED });
 const acc = { multiRealm: [], crossRealm: [], foreignHouse: [], housed: [] };
 let peakCross = 0, peakMulti = 0, lastExamples = [];
+let claimsSum = 0, claimsPeak = 0, claimsSamples = 0;
 for (let s = 0; s < STEPS; s += SAMPLE) {
   stepPeopleSim(world, Math.min(SAMPLE, STEPS - s));
+  if (T.CLAIMANT_WARS && world._succClaims) { const n = world._succClaims.size; claimsSum += n; if (n > claimsPeak) claimsPeak = n; claimsSamples++; }
   if (s + SAMPLE < WARMUP) continue;
   const m = measure(world);
   acc.multiRealm.push(m.multiRealm); acc.crossRealm.push(m.crossRealm);
@@ -88,5 +90,10 @@ console.log(`HOUSES RULING >1 REALM      · mean ${mean(acc.multiRealm).toFixed(
 console.log(`housed cross-realm consorts · mean ${mean(acc.crossRealm).toFixed(2)} · peak ${peakCross} · ≥1 live in ${(frac(acc.crossRealm) * 100).toFixed(0)}% · ≥2 in ${(atLeast(acc.crossRealm, 2) * 100).toFixed(0)}%`);
 console.log(`  (of a foreign house, live · mean ${mean(acc.foreignHouse).toFixed(2)}) · (any housed consort · mean ${mean(acc.housed).toFixed(2)})`);
 console.log(`cross-court marriages over run (dynasty.union events): ${unions}`);
-if (T.CLAIMANT_WARS) console.log(`CLAIMANT_WARS: succession crises ${crises} · foreign-inheritance crownings ${inherits}`);
+if (T.CLAIMANT_WARS) {
+  const wars = (world.events || []).filter(e => e && e.type === "war.began");
+  const claimWars = wars.filter(e => e.claim).length;
+  console.log(`CLAIMANT_WARS: succession crises ${crises} · foreign-inheritance crownings ${inherits} · wars ${wars.length} of which claim-pressed ${claimWars}`);
+  console.log(`  live succession claims per pass: mean ${(claimsSum / Math.max(1, claimsSamples)).toFixed(2)} · peak ${claimsPeak}`);
+}
 if (lastExamples.length) { console.log(`recent live cross-realm ties:`); for (const e of lastExamples) console.log(`  · ${e}`); }
