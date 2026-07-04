@@ -185,6 +185,7 @@ const NARRATE = {
     const h = ev.dynastyName || "?";
     if (ev.how === "first") return `${t} ${ev.personName} of house ${h} took the throne — the first recorded sovereign.`;
     if (ev.how === "crisis") return `Out of the interregnum, ${t} ${ev.personName} of the new house ${h} seized the throne.`;
+    if (ev.how === "claim") return `With the old line spent, ${t} ${ev.personName} of the foreign house ${h} pressed a blood claim and took the throne — a crown now shared with another realm.`;
     if (ev.how === "regency") return `The child ${ev.personName} took the throne of house ${h} at ${ev.age}, under a regency council.`;
     if (ev.how === "bastard") return `For want of a true-born heir, the bastard ${ev.personName} was raised to the throne of house ${h}.`;
     if (ev.how === "sibling") return `${t} ${ev.personName}, ${ev.female ? "sister" : "brother"} of the late sovereign, took up the crown of house ${h}.`;

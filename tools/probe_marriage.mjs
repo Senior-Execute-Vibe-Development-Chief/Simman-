@@ -22,6 +22,7 @@ const WARMUP = 4000;                      // ignore pre-dynasty steps
 // The lever under test — default ON (the enriched market is what this probe exists
 // to measure). CROSS_REALM_HEIRS=0 env recovers the realm-siloed baseline.
 T.CROSS_REALM_HEIRS = process.env.CROSS_REALM_HEIRS != null ? +process.env.CROSS_REALM_HEIRS : 1;
+T.CLAIMANT_WARS = process.env.CLAIMANT_WARS != null ? +process.env.CLAIMANT_WARS : 0;
 
 // One measurement of the current live cross-realm kin graph.
 function measure(world) {
@@ -76,6 +77,8 @@ const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
 const frac = a => a.length ? a.filter(x => x > 0).length / a.length : 0;
 const atLeast = (a, n) => a.length ? a.filter(x => x >= n).length / a.length : 0;
 const unions = (world.events || []).filter(e => e && e.type === "dynasty.union").length;
+const inherits = (world.events || []).filter(e => e && e.type === "ruler.crowned" && e.how === "claim").length;
+const crises = (world.events || []).filter(e => e && e.type === "succession.crisis").length;
 const end = measure(world);
 
 console.log(`── marriage-market acceptance probe · seed ${SEED} · ${STEPS} steps · ${W}×${H} · CROSS_REALM_HEIRS=${T.CROSS_REALM_HEIRS} · sampled every ${SAMPLE} after warmup ${WARMUP} ──`);
@@ -85,4 +88,5 @@ console.log(`HOUSES RULING >1 REALM      · mean ${mean(acc.multiRealm).toFixed(
 console.log(`housed cross-realm consorts · mean ${mean(acc.crossRealm).toFixed(2)} · peak ${peakCross} · ≥1 live in ${(frac(acc.crossRealm) * 100).toFixed(0)}% · ≥2 in ${(atLeast(acc.crossRealm, 2) * 100).toFixed(0)}%`);
 console.log(`  (of a foreign house, live · mean ${mean(acc.foreignHouse).toFixed(2)}) · (any housed consort · mean ${mean(acc.housed).toFixed(2)})`);
 console.log(`cross-court marriages over run (dynasty.union events): ${unions}`);
+if (T.CLAIMANT_WARS) console.log(`CLAIMANT_WARS: succession crises ${crises} · foreign-inheritance crownings ${inherits}`);
 if (lastExamples.length) { console.log(`recent live cross-realm ties:`); for (const e of lastExamples) console.log(`  · ${e}`); }
