@@ -303,13 +303,16 @@ function wed(world, a, b, polityId, tiePolity, rng) {
   }
 }
 
-function marry(world, person, polityId, rng, isRuler, mortF) {
+function marry(world, person, polityId, rng, stateMatch, mortF) {
   if (person.spouseId >= 0) return;
   if (ageOf(world, person) < 16) return;   // a child reigns under regents — no match yet
   let spouse = null, tiePolity = -1;
-  // Only the reigning monarch reaches abroad for a foreign match (a state union);
-  // cadets marry locally.
-  if (isRuler && rng() < FOREIGN_MATCH && world._royalCourt && world._royalCourt.length) {
+  // A foreign match is a STATE marriage — contracted by the crown for those in its
+  // direct line of succession. The reigning monarch always qualifies (a state
+  // union); their direct heirs qualify too when CROSS_REALM_HEIRS is on (a crown
+  // prince's foreign match is the canonical dynastic marriage — the caller decides).
+  // Distant cadets and minor nobility marry locally.
+  if (stateMatch && rng() < FOREIGN_MATCH && world._royalCourt && world._royalCourt.length) {
     const courts = world._royalCourt.filter(([ch, pid]) =>
       pid !== polityId && ch.died < 0 && ch.spouseId < 0 && ch.female !== person.female);
     if (courts.length) [spouse, tiePolity] = courts[rng.int(courts.length)];
@@ -769,10 +772,21 @@ function growCadets(world, c, polity, dyn, over, mortF, rng) {
     if (!p || p.died >= 0 || p.id === polity.rulerId) continue;
     const age = ageOf(world, p);
     if (age < 16) continue;
-    if (p.spouseId < 0) { if (age <= 40 && rng() < 0.5) marry(world, p, c.id, rng, false, mortF); continue; }   // a single cadet marries; a widowed one keeps its (dead) spouse link and so stays single — only the crown remarries (D31)
+    // a single cadet marries; a widowed one keeps its (dead) spouse link and so stays
+    // single — only the crown remarries (D31). The reigning monarch's DIRECT children
+    // are the crown's heirs: when CROSS_REALM_HEIRS is on they contract a foreign STATE
+    // match like the monarch (a dynastic marriage arranged for the succession); other
+    // cadets marry locally.
+    const heirAbroad = !!T.CROSS_REALM_HEIRS && p.parentId === polity.rulerId;
+    if (p.spouseId < 0) { if (age <= 40 && rng() < 0.5) marry(world, p, c.id, rng, heirAbroad, mortF); continue; }
     const spouse = getPerson(world, p.spouseId);
     if (!spouse || spouse.died >= 0) continue;
     if (sittingRulers(world).has(p.spouseId)) continue;   // spouse reigns elsewhere — THAT realm's monarch path breeds the couple; breeding here too double-breeds the pair across two houses (B41)
+    // a cross-court cadet couple (heir-abroad match: spouse is trueborn blood of ANOTHER
+    // house) is bred by exactly ONE side — the husband's house (agnatic issue) — so the
+    // pair isn't double-bred across both rosters (B41). Lever-gated: with CROSS_REALM_HEIRS
+    // off no cadet ever has a foreign-house spouse, so this is inert (byte-identical).
+    if (T.CROSS_REALM_HEIRS && spouse.dynastyId >= 0 && spouse.dynastyId !== p.dynastyId && p.female) continue;
     if ((p.children || []).length >= MAX_CHILDREN) continue;
     const mAge = p.female ? age : ageOf(world, spouse);
     if (mAge > FERTILE_MAX) continue;
@@ -812,6 +826,7 @@ function nobleUpkeep(world, c, polity, over, mortF, rng) {
       const sp = getPerson(world, p.spouseId);
       if (!sp || sp.died >= 0 || (p.children || []).length >= 4) continue;
       if (sittingRulers(world).has(p.spouseId)) continue;   // spouse reigns elsewhere — that realm breeds the couple (B41)
+      if (T.CROSS_REALM_HEIRS && sp.dynastyId >= 0 && sp.dynastyId !== p.dynastyId && p.female) continue;   // cross-court couple: the husband's house breeds it once (B41)
       if (rng() < over(CADET_BIRTH_Y * 0.25 * (vigorFertility(p) + vigorFertility(sp)))) { birth(world, p, rng, false, mortF); break; }
     }
   }

@@ -1,9 +1,10 @@
 # The royal marriage market needs cross-realm heirs (claimant-wars prerequisite)
 
-**Status:** direction 1 BUILT behind `T.CROSS_REALM_HEIRS` (default off, byte-identical off) —
-it materially enriches the cross-court *flow* but the *live* stock is still only occasional; a
-second lever (extend the foreign reach to the direct royal line) is the next step before
-claimant wars. See **## Progress** below.
+**Status:** the marriage market is BUILT behind `T.CROSS_REALM_HEIRS` (default off, byte-identical
+off) — direction 1 (widen the court pool) + heir-reach (the direct royal line marries abroad).
+Cross-court marriage flow ≈3× baseline and live cross-realm consorts are present ~half the time;
+`houses ruling >1 realm` stays 0 (a claimant-wars output, not a marriage-market one). Next is
+claimant wars behind `T.CLAIMANT_WARS`, firing on this now-seeded kin graph. See **## Progress**.
 **Owner area:** `src/sim/peopleSim/dynasties.js` (the marriage market: `marry` / `wed` /
 `world._royalCourt`).
 
@@ -77,36 +78,47 @@ ruling houses, **0 houses ruling >1 realm**, **0** *housed* live consorts at end
 snapshot fluctuates ~0–1), 46 cross-court `dynasty.union` events over the run. Realm-siloed, as
 documented.
 
-**Direction 1 BUILT** — behind lever `T.CROSS_REALM_HEIRS` (default **off**; when off the pool is
-the old children-only list and the trajectory is byte-identical — hashbase `6df86092`/`82c7f3f`,
-deep round-trip `d69f113`/`9c5ecf94`, validate 8817=1 / 31337=2 all unchanged). When **on**, the
-court pool is every eligible (living, trueborn, unwed, adult) member of every house that currently
-sits a throne, tagged with that realm (idle houses excluded; sitting monarchs excluded).
+**Both enrichments BUILT** — behind one lever `T.CROSS_REALM_HEIRS` (default **off**; when off the
+trajectory is byte-identical — hashbase `6df86092`/`82c7f3f`, deep round-trip `d69f113`/`9c5ecf94`,
+validate 8817=1 / 31337=2 all unchanged, and the on-path is itself deterministic + round-trips with
+zero invariant violations). When **on** it does two things:
+
+- **Direction 1 — widen the pool.** The court pool is every eligible (living, trueborn, unwed,
+  adult) member of every house that currently sits a throne, tagged with that realm (idle houses
+  excluded; sitting monarchs excluded) — not just the reigning monarch's own children.
+- **Heir-reach — the direct royal line marries abroad.** The reigning monarch's DIRECT children
+  contract a foreign state match like the monarch (a crown prince's foreign marriage is the
+  canonical dynastic union), instead of all cadets marrying locally — so an heir accedes already
+  holding a foreign-house consort and the LIVE cross-realm stock persists across accessions instead
+  of resetting each reign. Cross-court cadet couples are bred once, on the husband's side, so the
+  pair isn't double-bred across both houses' rosters (B41).
 
 **Measured, lever on** (sampled every 250 steps after a 4 000 warmup — one end snapshot is noisy):
 
-| metric | 8817 off→on | 31337 off→on |
-|---|---|---|
-| cross-court marriages / run (flow) | 46 → **87** | 35 → **65** |
-| live housed cross-realm consorts (mean) | 0.21 → **0.61** | 0.52 → 0.45 |
-| ≥1 live cross-realm consort (% of time) | 12% → **42%** | 27% → **36%** |
-| houses ruling >1 realm | 0 → 0 | 0 → 0 |
+| metric (8817 · 31337) | baseline | + pool (dir 1) | + heir-reach |
+|---|---|---|---|
+| cross-court marriages / run (flow) | 46 · 35 | 87 · 65 | **150 · 143** |
+| live cross-realm consorts (mean) | 0.21 · 0.52 | 0.61 · 0.45 | **0.64 · 0.82** |
+| ≥1 live cross-realm consort (% of time) | 12% · 27% | 42% · 36% | **48% · 45%** |
+| ≥2 live ("multiple") (% of time) | 6% · 18% | 15% · 6% | **15% · 24%** |
+| houses ruling >1 realm | 0 · 0 | 0 · 0 | 0 · 0 |
 
-So direction 1 does exactly what the doc predicted — it roughly **doubles the cross-court marriage
-flow** (the FOREIGN_MATCH path now finds a real heir instead of falling through to a houseless
-in-law). But two findings temper it:
+So the pool-widening roughly **doubles the cross-court marriage flow** (the FOREIGN_MATCH path now
+finds a real heir instead of a houseless in-law), and heir-reach **doubles it again** (≈3× baseline)
+by letting every reigning house's heirs — not only the occasional ruler who accedes unwed — marry
+abroad. The *live* stock followed: ≥1 live cross-realm consort is now present ~**half the time**
+(vs ~⅓ at baseline) and "multiple" (≥2) 15–24% of the time. It is still *bounded by mortality* (a
+consort from a past reign is dead now) so it plateaus around a mean of ~0.6–0.8 rather than climbing
+with the flow — but combined with the *descent* kin every one of those ~150 marriages plants (a
+foreign princess's children carry a maternal-line claim), the cross-realm kin graph a claim
+enumerates over is now materially seeded. Two findings remain:
 
-1. **The live stock lags the flow.** Flow doubled, yet live cross-realm consorts are only
-   *occasional* (≥1 live ~40% of the time, mean ~0.5, peak 3; on 31337 the mean is flat — chaos).
-   Root cause: **rulers overwhelmingly accede already-married *locally*.** Cadets and heirs marry
-   through `growCadets`/`nobleUpkeep` with `isRuler=false` (line ~772/811) → a houseless local
-   in-law → and `marry()` early-returns for an already-wed accession, so the sitting ruler never
-   reaches the foreign path. Only a ruler who accedes *unmarried* reaches abroad, a shrinking
-   minority. **Next step:** extend the foreign reach to the *direct royal line* (the reigning
-   house's marriageable heirs — a crown prince's foreign match is the canonical dynastic marriage,
-   currently under-modelled), so an heir accedes already holding a foreign-house consort and the
-   live stock rises across the accession. Fold under the same lever.
-2. **`houses ruling >1 realm` is a claimant-wars *output*, not a direction-1 output.** Every current
+1. **The root cause of the old thinness was the marry path, now fixed.** Cadets/heirs married
+   through `growCadets`/`nobleUpkeep` with `isRuler=false`, so a ruler who acceded already-wed
+   (most of them) never reached abroad — only an unwed accession did, a shrinking minority.
+   Heir-reach removes that throttle for the direct line (the caller now passes a `stateMatch` flag,
+   the renamed `isRuler`). The remaining ceiling is consort mortality, which is inherent.
+2. **`houses ruling >1 realm` is a claimant-wars *output*, not a marriage-market output.** Every current
    succession path crowns from the realm's *own* house (`heirByLaw`), fresh founders (crisis), or a
    realm-local elected pool (`selectElected` explicitly excludes sitting rulers) — there is **no**
    code path by which an existing house takes a *second* throne. `crown()` *would* seat a second

@@ -244,22 +244,27 @@ The kin graph finally does politics. All triggers are house state.
 > the dynasty probe to re-confirm the "0 houses rule >1 realm" baseline, then fix direction 1
 > (widen `world._royalCourt` to living house members across realms) and re-measure.
 >
-> **Session-6 status — direction 1 BUILT behind `T.CROSS_REALM_HEIRS` (default off).** Baseline
-> re-confirmed (`tools/probe_marriage.mjs`: 0 houses ruling >1 realm, ~0–1 live housed consorts).
-> Direction 1 (the widened court pool — every eligible member of every *reigning* house, not just
-> the monarch's children) is implemented and lever-gated. **Off = byte-identical** (hashbase
-> `6df86092`/`82c7f3f`, deep round-trip `d69f113`/`9c5ecf94`, validate 8817=1/31337=2 — all baseline).
-> **On** roughly **doubles the cross-court marriage flow** (8817 46→87, 31337 35→65 `dynasty.union`
-> events) and lifts live cross-realm consorts (8817 ≥1-live 12%→42%, mean 0.21→0.61). TWO findings:
-> (a) the *live* stock still lags the flow — rulers mostly accede *already married locally* (cadets
-> wed via `growCadets`/`nobleUpkeep` with `isRuler=false`), so the sitting monarch rarely reaches
-> the foreign path; **next lever: extend the foreign reach to the direct royal line** so heirs bring
-> a foreign consort to the throne. (b) `houses ruling >1 realm` stays 0 by construction — no
-> succession path seats an existing house on a second throne; that is the `crownForeign()` half of
-> claimant wars, not a marriage-market output. **Default stays off** because the richer flow trips
-> 31337's fragile size-tail/market-integration gates to 3 warnings (chaos — it *fixes* 31337
-> clustering; 8817 unaffected); flip only after the gates hold on 3 seeds (same rule as
-> `T.CLAIMANT_WARS`). Full measurements + the reasoning in `docs/marriage-market-cross-realm.md`.
+> **Session-6 status — the marriage market is BUILT behind `T.CROSS_REALM_HEIRS` (default off).**
+> Baseline re-confirmed (`tools/probe_marriage.mjs`: 0 houses ruling >1 realm, ~0–1 live housed
+> consorts). Two enrichments under one lever: **(1)** widen the court pool to every eligible member
+> of every *reigning* house (not just the monarch's children); **(2) heir-reach** — the reigning
+> monarch's DIRECT children marry abroad like the monarch (cross-court couples bred once, husband's
+> side — B41). **Off = byte-identical** (hashbase `6df86092`/`82c7f3f`, deep round-trip
+> `d69f113`/`9c5ecf94`, validate 8817=1/31337=2 — all baseline); the **on-path itself** is
+> deterministic, round-trips, zero invariant violations. **On** takes the cross-court marriage flow
+> to ≈**3× baseline** (8817 46→150, 31337 35→143 `dynasty.union` events) and live cross-realm
+> consorts to ≥1-present ~half the time (mean ~0.6–0.8; ≥2 "multiple" 15–24%). TWO findings persist:
+> (a) the live stock plateaus (bounded by consort mortality) rather than climbing with the flow —
+> but the *descent* kin each of ~150 marriages plants seeds the graph a claim enumerates over;
+> (b) `houses ruling >1 realm` stays 0 by construction — no succession path seats an existing house
+> on a second throne, that is the `crownForeign()` half of claimant wars, not a marriage-market
+> output. **Default stays off**: the richer flow trips 31337's fragile size-tail/market-integration
+> gates past budget (chaos — it *fixes* 31337 clustering; 8817 unaffected); flip only after the
+> gates hold on 3 seeds (same rule as `T.CLAIMANT_WARS`). Full measurements in
+> `docs/marriage-market-cross-realm.md`. **NEXT: claimant wars** — the reverted `_succClaims` /
+> `claimBarOf` / `crownForeign` design (below) now has a seeded kin graph to fire on; build it behind
+> `T.CLAIMANT_WARS` (default off), gate on kin + who sits which throne, and it is what finally makes
+> `houses ruling >1 realm` non-zero (the personal-union output).
 
 ## Phase W6-G — Structure & performance (M/L)
 
