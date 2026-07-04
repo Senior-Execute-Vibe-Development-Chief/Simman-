@@ -230,6 +230,19 @@ The kin graph finally does politics. All triggers are house state.
 > union via the `_overlord` no-fronts bond, union split on the monarch's death / merge via
 > the normal absorb path — was sound; it just had nothing to fire on). Lever it behind
 > `T.CLAIMANT_WARS` per the size-distribution caution below.
+>
+> **DEFERRED (owner decision).** Claimant wars / personal unions are consciously parked, not
+> abandoned: the prerequisite is a real subsystem change (the royal marriage market), not a
+> tweak, and it is the right next *feature* effort — but it is being sequenced AFTER the
+> remaining W6-G structural work. The full prerequisite + rebuild design lives in
+> `docs/marriage-market-cross-realm.md` (three fix directions, an acceptance probe, and the
+> reverted claimant-wars machinery to restore on top). The hashWorld hardening this session
+> (C1/C1b — persons + dynasties now hashed and round-trip-verified via
+> `tools/probe_roundtrip_deep.mjs`) was done deliberately FIRST, so that when the marriage
+> market is built a dynastic determinism or persistence regression is caught immediately.
+> **Resume trigger:** when dynastic content is prioritized over structure — start by re-running
+> the dynasty probe to re-confirm the "0 houses rule >1 realm" baseline, then fix direction 1
+> (widen `world._royalCourt` to living house members across realms) and re-measure.
 
 ## Phase W6-G — Structure & performance (M/L)
 
@@ -254,9 +267,26 @@ The kin graph finally does politics. All triggers are house state.
    across ticks, publish lanes on completion); frontier-set border crawl (B81);
    sea trade top-K peers (B78 — keep 64 lanes for topology, trade the best ~16 by
    value). Prefer these over I82.
-5. **G-equivalence closure:** an instrumented probe diffs per-pass aggregate
-   RATES between G=1 and G=4 to locate the remaining unscaled sites; when the
-   histories track, a loose G-gate lands in smoke.
+5. **G-equivalence closure — MEASURED (`tools/probe_gequiv.mjs`).** Built the probe
+   (samples aggregate state at matched HISTORY-time `h = step/G` for G=1 vs G=4).
+   **Verdict: G-equivalence holds for the SHAPE of history, not the exact
+   magnitudes.** Development (`leadOrg`, the smooth self-averaging signal) tracks
+   within ≤ 4 % (mostly ≤ 1 %) on seeds 8817/31337/4242 — because the growth/decay
+   mechanics are already exact-exponential (`Math.exp(rate·dt)`, settlement.js:2399;
+   famine `pow(0.985, dt)`), which is cadence-invariant for a fixed rate. But
+   pop/wealth/polity-count wander **20–40 %, with the SIGN flipping by seed** (8817
+   pop +22 %, 31337/4242 −35 %). A systematic unscaled rate would bias ONE direction
+   on every seed; the flip ⇒ this is **trajectory chaos** — changing G perturbs the
+   RNG stream (G× more draws per history-unit) and the chaotic system amplifies it
+   like a *seed* change. So the index.js "the SAME emergent history unfolds" comment
+   is right about the development ARC and overstated about the exact figures (at
+   higher G you get a seed-like *variant* with the same statistical character).
+   **Gate:** `probe_gequiv.mjs` exits non-zero only if DEVELOPMENT diverges (a real
+   unscaled-rate alarm); magnitudes are informational. Kept as an on-demand probe
+   rather than wired into smoke — a G-diff needs a 2× (G=1 + G=4) run, too costly for
+   the 25–35 s fast gate. *Open (not chased): a faint 2-of-3-seeds-lower lean could
+   be a small residual bias under the chaos; a ~10-seed mean of the G=4−G1 pop delta
+   would separate bias from noise — deferred as low-value vs the marriage market.*
 
 > **W6-G status / scoping.** **R1 is DONE for world maps** — the 12 uniform world
 > `Map`s are registered once in `persist.js` `WORLD_MAPS` and save/load/hashWorld iterate
