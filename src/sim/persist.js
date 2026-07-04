@@ -206,6 +206,7 @@ export function saveWorld(world, meta = {}) {
     faiths: world.faiths ? [...world.faiths.entries()] : [],
     persons: world.persons ? [...world.persons.entries()] : [],
     dynasties: world.dynasties ? [...world.dynasties.entries()] : [],
+    succClaims: world._succClaims ? [...world._succClaims.entries()] : [],   // live succession casus-belli (armies.js reads it cross-pass — must survive a mid-run save/load, else the loaded run's claim wars diverge until the next dynasty pass rebuilds it)
     events: world.events || [],
     ships: world.ships || [],
     maps: {
@@ -282,6 +283,7 @@ export function loadWorld(data, opts = {}) {
   world.faiths = new Map(data.faiths || []);
   world.persons = new Map(data.persons || []);
   world.dynasties = new Map(data.dynasties || []);
+  world._succClaims = new Map(data.succClaims || []);
 
   for (const rec of data.settlements) {
     const s = { kind: "settlement", localRes: {}, _tradeReach: null, crops: [], ...rec };
