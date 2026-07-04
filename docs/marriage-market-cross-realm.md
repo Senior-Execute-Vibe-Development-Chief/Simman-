@@ -1,10 +1,13 @@
 # The royal marriage market needs cross-realm heirs (claimant-wars prerequisite)
 
-**Status:** the marriage market is BUILT behind `T.CROSS_REALM_HEIRS` (default off, byte-identical
-off) — direction 1 (widen the court pool) + heir-reach (the direct royal line marries abroad).
-Cross-court marriage flow ≈3× baseline and live cross-realm consorts are present ~half the time;
-`houses ruling >1 realm` stays 0 (a claimant-wars output, not a marriage-market one). Next is
-claimant wars behind `T.CLAIMANT_WARS`, firing on this now-seeded kin graph. See **## Progress**.
+**Status:** DONE — the marriage market (`T.CROSS_REALM_HEIRS`) AND claimant wars / personal unions
+(`T.CLAIMANT_WARS`) are both built, both default-off, both byte-identical off. The market seeds the
+cross-realm kin (consorts present ~half the time; a fireable claim stands ~⅔ of the time); claimant
+wars turn that into `houses ruling >1 realm` (personal unions + foreign cadet branches, present ~39%
+of the run on 8817). **With both levers ON the stylized suite passes all hard gates on 3 seeds
+(8817/31337/4242) at exactly 1 soft warning each — better than baseline on 2 of 3** (it repairs the
+fragile clustering / market-integration warnings). Flip-ready per the 3-seed rule. See
+**## Progress** and **## Claimant wars — BUILT**.
 **Owner area:** `src/sim/peopleSim/dynasties.js` (the marriage market: `marry` / `wed` /
 `world._royalCourt`).
 
@@ -154,12 +157,45 @@ canary (0.44→0.60), and 8817 stays at 1 warning. Per the size-distribution cau
 `roadmap-wave-6.md`, a mechanism that moves the size tail goes in behind a lever and the default is
 flipped only once the gates hold on **3 seeds** — same rule the task states for `T.CLAIMANT_WARS`.
 
-## Building claimant wars on this graph — the shared-house subtleties (scoped, NOT built)
+## Claimant wars — BUILT (behind `T.CLAIMANT_WARS`, default off)
 
-The kin graph is ready; the remaining work is the machinery that makes a claim *fire*. Scoping it
-this session surfaced why it was deferred — the moment ONE house rules TWO realms, several existing
-per-realm assumptions break and must be handled together (this is the real content of the build, not
-the claim enumeration, which `tools/probe_claims.mjs` already demonstrates):
+Built in four parts, each byte-identical off and each deterministic / round-tripping / zero
+invariant violations on. **Emergent throughout: every trigger is kin + who sits which throne + the
+crisis, never a date.**
+
+1. **Shared-house infrastructure** (`dynasties.js`). `primaryRealmOf` (each house's lowest-id
+   realm) + `rulerPrimaryRealm` (each monarch's) let a house — and a shared monarch — be bred,
+   reaped and buried ONCE, from the primary realm; `growCadets`/`nobleUpkeep` skip a member reigning
+   elsewhere; `eligible()` bars a sitting ruler from ORDINARY succession (no accidental unions).
+2. **Inherited thrones** (D29). On a full extinction, a foreign house carrying the extinct line's
+   blood inherits before a fresh local line rises.
+3. **Succession casus belli** (D28, partial). `world._succClaims` publishes, each pass, the
+   strongest foreign claimant on every realm in a weak succession; `armies.js` `claimBarOf` cuts
+   that claimant's attack bar (a war OF succession), and `war.began` is annotated `claim`.
+4. **Personal unions + contested inheritance** (D29, the driver). A sitting SOVEREIGN can inherit
+   (a personal union that splits on their death) as well as a cadet (a lasting branch); and — the
+   common trigger — at a CONTESTED accession a strong foreign blood-claim (`CLAIM_CONTEST`) prevails
+   over the faltering local heir, seating a foreign house. `crown()` preserves a reigning monarch's
+   accession year; the union SPLITS naturally when the primary pass buries the shared monarch.
+
+**Measured (480×240, both levers on):** `houses ruling >1 realm` present ~39 % of the run on 8817
+(mean 0.55, peak 3) vs ~0 before; weaker on 31337 (transient unions — seed/chaos). **Stylized, both
+on, 3 seeds:** all HARD gates pass; soft warnings = 1 each (8817/31337/4242), a NET IMPROVEMENT over
+baseline on 31337 (2→1) and 4242 (2→1) and unchanged on 8817 (1) — the changed political map repairs
+the fragile clustering / market-integration canaries. So the feature is flip-ready by the 3-seed
+rule (`CROSS_REALM_HEIRS=1 CLAIMANT_WARS=1 STYLIZED_SEEDS=… node tools/stylized.mjs`).
+
+**Deferred (a refinement, not a blocker):** `crownForeign` on war VICTORY — a won succession war
+installing the claimant — is not built. Succession wars DO fire (the casus belli), but resolve as
+ordinary conquests; the union rate is carried by the peaceful inheritance / contested-accession
+paths instead. The crisis-war stylized gate therefore holds (~5–8 %) but does not markedly RISE —
+raising it needs `crownForeign` + kin that aligns with adjacency (royal marriages preferring
+neighbours), since a claimant can only march on a realm it borders. Both are clean follow-ups.
+
+### The shared-house subtleties (the real content of the build, now handled)
+
+The moment ONE house rules TWO realms, several per-realm assumptions break; these are handled as
+above (recorded so the invariants are clear to the next reader):
 
 1. **House maintenance is per-REALM but must become per-HOUSE.** `growCadets` / `reapHouse` /
    `nobleUpkeep` are called once per realm on that realm's ruling `dyn`. If house X rules realms A

@@ -265,6 +265,25 @@ The kin graph finally does politics. All triggers are house state.
 > `claimBarOf` / `crownForeign` design (below) now has a seeded kin graph to fire on; build it behind
 > `T.CLAIMANT_WARS` (default off), gate on kin + who sits which throne, and it is what finally makes
 > `houses ruling >1 realm` non-zero (the personal-union output).
+>
+> **Session-6 status — CLAIMANT WARS + PERSONAL UNIONS BUILT behind `T.CLAIMANT_WARS` (default off).**
+> Four parts (all byte-identical off; deterministic / round-tripping / zero invariant violations on):
+> (1) shared-house infra — `primaryRealmOf`/`rulerPrimaryRealm` so a house or a shared monarch on two
+> thrones is bred/reaped/buried ONCE (from the primary realm), maintenance guards, and an `eligible()`
+> bar so ordinary succession never makes an accidental union; (2) inherited thrones (D29) on a full
+> extinction; (3) the succession casus belli (D28) — `world._succClaims` + `armies.js` `claimBarOf`
+> cuts the claimant's attack bar, `war.began` annotated `claim`; (4) personal unions + the CONTESTED-
+> ACCESSION takeover (the driver) — a sitting sovereign can inherit (a union that splits on death) and
+> a strong foreign blood-claim can win a faltering local succession, with `crown()` preserving a
+> reigning monarch's accession year and the union splitting naturally when the primary pass buries the
+> shared monarch. **Measured:** `houses ruling >1 realm` present ~39 % of the run on 8817 (mean 0.55,
+> peak 3). **Stylized with BOTH levers on holds on 3 seeds** (8817/31337/4242): all hard gates pass,
+> 1 soft warning each — a NET IMPROVEMENT over baseline on 31337 (2→1) and 4242 (2→1) — so it is
+> **flip-ready by the 3-seed rule** (`tools/stylized.mjs` now honours `CROSS_REALM_HEIRS`/`CLAIMANT_WARS`
+> env). DEFERRED (a refinement, not a blocker): `crownForeign` on war victory (succession wars fire via
+> the casus belli but resolve as ordinary conquests; the crisis-war gate holds but doesn't markedly
+> rise — raising it needs `crownForeign` + neighbour-preferred royal marriages so a claimant borders
+> its target). Full detail in `docs/marriage-market-cross-realm.md`.
 
 ## Phase W6-G — Structure & performance (M/L)
 

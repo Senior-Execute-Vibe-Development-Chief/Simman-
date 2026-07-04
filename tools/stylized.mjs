@@ -21,6 +21,7 @@
 // Exits non-zero only on hard failures (degenerate world); soft misses warn.
 
 import { buildSim } from "./_harness.mjs";
+import { T } from "../src/sim/peopleSim/tuning.js";
 import { stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 
 const SEED = +(process.argv[2] || 8817);
@@ -54,6 +55,9 @@ function score(name, value, ok, hardFail = false, detail = "") {
 
 console.log(`[stylized] seed ${SEED} · ${W}x${H} · ${STEPS} steps`);
 const world = buildSim({ W, H, seed: SEED });
+// Optional experimental-lever overrides (default runs unaffected — env unset = no-op),
+// so the stylized suite can measure a lever's on-trajectory ahead of a default flip.
+for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS"]) if (process.env[k] != null) { T[k] = +process.env[k]; console.log(`[stylized]   lever ${k}=${T[k]}`); }
 const t0 = performance.now();
 // Step in windows, sampling the aggregates the SHAPE gates need (development
 // vs population, price dispersion vs integration, culture count vs area).
