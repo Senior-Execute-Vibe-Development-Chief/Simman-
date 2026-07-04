@@ -258,6 +258,34 @@ The kin graph finally does politics. All triggers are house state.
    RATES between G=1 and G=4 to locate the remaining unscaled sites; when the
    histories track, a loose G-gate lands in smoke.
 
+> **W6-G status / scoping.** **R1 is DONE for world maps** — the 12 uniform world
+> `Map`s are registered once in `persist.js` `WORLD_MAPS` and save/load/hashWorld iterate
+> it (adding a world map is now one line; hash covers all 12). R1's typed-array/tile maps
+> (`roadQuality`, `_countryOwner`, `_soilFatigue`…) were deliberately NOT folded in — they
+> are heterogeneous (dense b64 vs sparse, four Ctors, per-array custom hashing), so a
+> registry would *add* metadata complexity, not remove it; leave them hand-coded.
+>
+> **I82 scoping (de-risks the real refactor).** `world.temp`/`world.moist` are never
+> mutated after worldgen — dynamic climate (`updateClimate`) only moves the global scalars
+> `_climIndex`/`_climShock` — so `s._climTemp`/`_climMoist` are STATIC and every pure
+> climate fn is byte-identically cacheable. `climateOf(world, s)` (memoised, re-derived on
+> load, called at the top of each climate-using fn) is the natural cache site. BUT: (a) the
+> named climate fns are a red herring for the 27% — in the HOT per-tick path (updateFood/
+> updatePopulation/updateWealth/updateCoercedLabour/computeLuxury) there is essentially ONE
+> climate recompute (`seasonalSelect` at the seasonStore line in updateFood); the others
+> (`updateKnowledge`'s `seasonalSelect`/`livestockClimate`) are already KNOW_INTERVAL-
+> staggered, and `_livestock`/`_wetTropic`/`_aridity`/`_cashSuit` are already cached. The
+> 27% is the ECONOMIC ARITHMETIC (dozens of slow-drifting terms) recomputed each tick, so
+> the win is the genuine slow/fast split of those updaters, not a climate-fn cache. (b)
+> Several factors fold in LIVE LEVERS (`livestockClimate` uses `T.TSETSE`; seasonStore uses
+> `T.SEASON_STORE`), so a cache must either key on the lever value (à la the B10 fix) or
+> decompose into climate-static × per-tick lever-multiply — never a naive cache-once, which
+> would silently break the live-lever contract. (c) Preserve the falsy-zero quirks exactly
+> for byte-identity (e.g. the `s._climTemp || 0.5` at the seasonStore line differs from the
+> raw `seasonalSelect(s._climTemp, …)` in updateKnowledge for a temp-0 tile). Gate the whole
+> thing on the smoke determinism hash. This is genuinely M/L and correctness-critical — give
+> it a dedicated pass, not a drive-by.
+
 ## Phase W6-H — The minor-bug batch (S, one commit)
 
 B10 (agri-ceiling cache vs live levers) · B14 (Hume volume neutrality) ·
