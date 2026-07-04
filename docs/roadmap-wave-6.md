@@ -277,10 +277,13 @@ The kin graph finally does politics. All triggers are house state.
 > a strong foreign blood-claim can win a faltering local succession, with `crown()` preserving a
 > reigning monarch's accession year and the union splitting naturally when the primary pass buries the
 > shared monarch. **Measured:** `houses ruling >1 realm` present ~39 % of the run on 8817 (mean 0.55,
-> peak 3). **Stylized with BOTH levers on holds on 3 seeds** (8817/31337/4242): all hard gates pass,
-> 1 soft warning each — a NET IMPROVEMENT over baseline on 31337 (2→1) and 4242 (2→1) — so it is
-> **flip-ready by the 3-seed rule** (`tools/stylized.mjs` now honours `CROSS_REALM_HEIRS`/`CLAIMANT_WARS`
-> env). DEFERRED (a refinement, not a blocker): `crownForeign` on war victory (succession wars fire via
+> peak 3). **Stylized with BOTH levers on held on 3 seeds** (8817/31337/4242): all hard gates pass,
+> 1 soft warning each — a NET IMPROVEMENT over baseline on 31337 (2→1) and 4242 (2→1) — so per the
+> 3-seed rule **both defaults were FLIPPED to 1** (cross-realm dynasties now ship in every history;
+> `tools/stylized.mjs` honours the `CROSS_REALM_HEIRS`/`CLAIMANT_WARS` env for measuring the off-path).
+> Fully reversible (levers = 0 → the throne-siloed round-trip `d69f113`/`9c5ecf94`); `probe_hashbase`
+> is unaffected (pre-dynasty at 2500), `probe_roundtrip_deep` re-baselined to `8500addf`/`67de64f6`.
+> DEFERRED (a refinement, not a blocker): `crownForeign` on war victory (succession wars fire via
 > the casus belli but resolve as ordinary conquests; the crisis-war gate holds but doesn't markedly
 > rise — raising it needs `crownForeign` + neighbour-preferred royal marriages so a claimant borders
 > its target). Full detail in `docs/marriage-market-cross-realm.md`.

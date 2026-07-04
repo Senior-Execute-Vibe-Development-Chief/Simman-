@@ -1,13 +1,15 @@
 # The royal marriage market needs cross-realm heirs (claimant-wars prerequisite)
 
-**Status:** DONE — the marriage market (`T.CROSS_REALM_HEIRS`) AND claimant wars / personal unions
-(`T.CLAIMANT_WARS`) are both built, both default-off, both byte-identical off. The market seeds the
+**Status:** DONE and DEFAULT-ON. The marriage market (`T.CROSS_REALM_HEIRS`) and claimant wars /
+personal unions (`T.CLAIMANT_WARS`) are built and, after the 3-seed validation held, **flipped to
+default = 1** — cross-realm dynasties are now part of every generated history. The market seeds the
 cross-realm kin (consorts present ~half the time; a fireable claim stands ~⅔ of the time); claimant
 wars turn that into `houses ruling >1 realm` (personal unions + foreign cadet branches, present ~39%
-of the run on 8817). **With both levers ON the stylized suite passes all hard gates on 3 seeds
-(8817/31337/4242) at exactly 1 soft warning each — better than baseline on 2 of 3** (it repairs the
-fragile clustering / market-integration warnings). Flip-ready per the 3-seed rule. See
-**## Progress** and **## Claimant wars — BUILT**.
+of the run on 8817). Both levers ON pass all hard stylized gates on 3 seeds (8817/31337/4242) at 1
+soft warning each — a NET IMPROVEMENT over the old baseline on 31337 (2→1) and 4242 (2→1). Fully
+reversible: set both levers to 0 to recover the throne-siloed behaviour (round-trip `d69f113` /
+`9c5ecf94`). The byte-identity guard `tools/probe_hashbase.mjs` is unaffected (its 2500-step run is
+pre-dynasty). Deferred follow-up: `crownForeign` on war victory (see **## Claimant wars — BUILT**).
 **Owner area:** `src/sim/peopleSim/dynasties.js` (the marriage market: `marry` / `wed` /
 `world._royalCourt`).
 

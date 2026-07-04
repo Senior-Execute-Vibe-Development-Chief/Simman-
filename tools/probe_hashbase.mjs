@@ -9,7 +9,9 @@
 //   8817=6df86092  31337=82c7f3f   (was 20b4f37e/43c73b01 before registry hashing,
 //   11ad8765/27063acb before any hardening — each a different hashWorld field set).
 // NB: at 2500 steps the kin graph is still EMPTY — for dynasty-bearing coverage use
-// tools/probe_roundtrip_deep.mjs (8000 steps).
+// tools/probe_roundtrip_deep.mjs (8000 steps). So the W6-F dynastic levers
+// (CROSS_REALM_HEIRS / CLAIMANT_WARS), though now default ON, do not fire here and this
+// baseline is unchanged by that flip — it stays a pure settlement/persist byte guard.
 import { buildSim } from "./_harness.mjs";
 import { stepPeopleSim } from "../src/sim/peopleSim/index.js";
 import { hashWorld } from "../src/sim/persist.js";
