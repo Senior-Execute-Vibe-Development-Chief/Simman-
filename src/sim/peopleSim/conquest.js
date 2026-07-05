@@ -266,6 +266,22 @@ const CAP_DOM_P   = 1.5;   // CONVEX: only genuine OUTLIERS tower — a power-la
 // lower base instead (see the domCeil derivation in updatePolities). Not a fixed
 // era-blind clamp — the most a hegemon can tower scales with its delegation tech.
 const CAP_DOM_CEIL_BASE = 4;   // primitive (capCoh→0) dominance ceiling — early hegemons stay bounded
+// CAP_MODEL (T.CAP_MODEL, W6-C R5) — the GROUNDED replacement for the fitted CAP_DOM_W/P
+// tail. Instead of asserting "capacity ∝ (relative power)^1.5" (a curve-fit exponent with
+// no mechanism), dominance is derived from Tilly's real levers: a realm towers over its
+// peers when it EXTRACTS more fiscal surplus than they do AND has the LOGISTICS to project
+// it — and the two COMPOUND: surplus funds the roads/administration that extend reach, which
+// holds more territory, which raises revenue. That compounding (a term in fiscalSurplus²) is
+// where the increasing-returns CONVEXITY now comes FROM — a mechanism, not an exponent — and
+// it correctly predicts that sprawling logistically-integrated empires only emerge once the
+// reach techs exist (bronze-age hegemons stay linear and small; the rail age towers). The two
+// weights are physical coefficients (provinces per unit fiscal surplus; reach gained per unit
+// logistics tech), each with independent meaning — not a shape dialled to an outcome. Same
+// emergent ceiling (domCeil). Reads world._refRevenue + gov._lastRevenue (see updatePolities).
+// The two coefficients live in tuning.js (T.CAP_FISC, T.CAP_LOG) so the grounded tail can be
+// A/B-calibrated against the size gates without a rebuild — CAP_FISC = capacity per unit of
+// above-median fiscal extraction; CAP_LOG = how strongly logistics tech multiplies the
+// surplus-funded reach (the compounding that makes the tail convex).
 // Imperial-hysteresis rates:
 const CAP_IMP_RISE  = 0.04;   // imperial-capacity stock rises toward live capacity (institutions accrete)
 const CAP_IMP_DECAY = 0.010;  // ...and decays ~4× slower when power falls (institutions persist → hysteresis)
@@ -1736,6 +1752,14 @@ export function updatePolities(world) {
     for (const c of countries.values()) if (c.capital && c.members.length > 1) cps.push(settlementPower(c.capital));
     cps.sort((a, b) => a - b);
     world._refCapPower = cps.length ? cps[cps.length >> 1] : 1; }
+  // CAP_MODEL: the MEDIAN fiscal extraction across real states — the peer baseline the
+  // grounded dominance tail is measured against (revenue is Tilly's real currency of
+  // administrative reach, and it differs from raw coercive power by extraction efficiency).
+  // Same robust-median rationale as _refCapPower. Only read when the lever is on.
+  if (T.CAP_MODEL) { const revs = [];
+    for (const c of countries.values()) if (c.capital && c.members.length > 1) revs.push(govOf(world, c.id)._lastRevenue || 0);
+    revs.sort((a, b) => a - b);
+    world._refRevenue = revs.length ? Math.max(1, revs[revs.length >> 1]) : 1; }
   // Balance of power: recompute the (slow-drifting) alliance map periodically — and
   // once on first run so the war pass never reads an undefined map. Self-calibrating,
   // not time-gated: it's a perf cadence (how OFTEN), the content is pure world state.
@@ -1857,7 +1881,19 @@ export function updatePolities(world) {
     // with an emergent bound — no anachronistic continent-eating chiefdom, and the
     // late-game ceiling still resolves to T.CAP_DOM_MAX as cohesion matures.
     const domCeil = CAP_DOM_CEIL_BASE + capCoh * (T.CAP_DOM_MAX - CAP_DOM_CEIL_BASE);
-    const dominance = Math.min(domCeil, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
+    let dominance;
+    if (T.CAP_MODEL) {
+      // GROUNDED tail (CAP_FISC/CAP_LOG): fiscal surplus over peers, its reach multiplied by
+      // logistics — the two compounding into convexity. relFisc = last pass's extraction vs the
+      // peer median (revenue, not raw power, is what funds administration). Logistics≈0 in the
+      // bronze age ⇒ the tail is near-linear and small; it steepens only as the reach techs
+      // (roads→rails) arrive ⇒ integrated mega-empires are a LATE, earned phenomenon.
+      const fiscalSurplus = Math.max(0, (govOf(world, c.id)._lastRevenue || 0) / (world._refRevenue || 1) - 1);
+      const logistics = capE.logistics || 0;
+      dominance = Math.min(domCeil, 1 + T.CAP_FISC * fiscalSurplus * (1 + T.CAP_LOG * logistics * fiscalSurplus));
+    } else {
+      dominance = Math.min(domCeil, 1 + CAP_DOM_W * Math.pow(Math.max(0, relPow - 1), CAP_DOM_P));
+    }
     c._dominance = dominance;   // info panel: how far this realm out-cores the age
     // GEOGRAPHIC CORE (absolute, founding-location advantage): a capital on a rich
     // river-valley / floodplain heartland projects power further than one on marginal
@@ -2193,6 +2229,7 @@ export function updatePolities(world) {
     disburseTreasury(world, c, gov, warLevel);
     c._treasury = gov.treasury;
     c._fineness = gov.fineness ?? 1;   // currency strength (1 = full metal; < 1 = debased) — for the UI
+    gov._lastRevenue = gov._revenue;                  // CAP_MODEL: carry this pass's total fiscal extraction to next pass's capacity calc (revenue isn't accumulated yet when capacity runs). Persistent on gov; inert unless CAP_MODEL reads it.
     c._govRevenue = gov._revenue; gov._revenue = 0;   // per-pass revenue, for the panel
     c._govSpend = gov._spend;
 

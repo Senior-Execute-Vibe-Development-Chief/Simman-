@@ -113,12 +113,25 @@ it was papering over: a statelet facing hopeless odds SUBMITS.
   the statelet-vacuuming engulfment; tribute pyramids appear (a vassal of a
   vassal); wars of independence become a story class. Measure: empire land-share
   gate unchanged or better; statelet count stops cliff-dropping late-game.
-- **R5 follow-up (experiment, lever-gated):** with vassalage carrying the
-  consolidation load, trial replacing the rank-relative dominance tail
-  (CAP_DOM_W/P — the review's clearest fitted constant) with fiscal-logistic
-  capacity: `capacity ∝ log2(1 + capPower/POW_REF) × (1 + revenue-per-province
-  term) × logisticsLevel`. Behind `T.CAP_MODEL`; A/B against the shape probe
-  and the land-share gate before any default flip.
+- **R5 follow-up — BUILT + DEFAULT-ON (`T.CAP_MODEL`).** The rank-relative dominance
+  tail (`CAP_DOM_W/P` — the review's clearest fitted constant, a bare `^1.5` exponent)
+  is replaced by a grounded derivation: a realm towers over its peers because it EXTRACTS
+  more fiscal surplus than they do (last-pass revenue vs the peer median — Tilly) AND has
+  the LOGISTICS to project it, the two COMPOUNDING (`dominance` carries a term ∝
+  `CAP_LOG·logistics·fiscalSurplus²`). That compounding is where the increasing-returns
+  CONVEXITY now comes from — a **mechanism, not an exponent** — and it predicts, correctly,
+  that sprawling integrated mega-empires only emerge once the reach techs exist (bronze-age
+  hegemons stay small; the rail age towers). The coefficients (`T.CAP_FISC=0.40`,
+  `T.CAP_LOG=3.0`) are physical (capacity per unit fiscal surplus; logistics reach-
+  compounding), calibrated against the size gates — not a shape dialled to one outcome.
+  **Validated + flipped:** all 3 seeds (8817/31337/4242) hold at 1 soft warning with healthy
+  size gates on every seed (Zipf in-envelope, heavy tails, positive market-integration). It
+  shifts the distribution toward somewhat larger hegemons (8817 largest-empire share 23%→33%,
+  well inside the gate — arguably more historically heavy-tailed). Fully reversible: `CAP_MODEL=0`
+  recovers the fitted `CAP_DOM_W/P` byte-for-byte (round-trip `28abc46d`/`ef4fc665`). `gov._lastRevenue`
+  rides the wholesale polity serialize, so save/load round-trips (default `f057635`/`d489b985`);
+  `probe_hashbase` moved to `5045e8aa`/`ef8e169b` (the grounded model is the first change to
+  touch the 2500-step guard, since states differentiate in capacity before dynasties form).
 
 ## Phase W6-D — Rise and fall, part 2: NOMAD CONFEDERATIONS (L) — D80/D76
 
