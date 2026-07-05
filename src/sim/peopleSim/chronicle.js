@@ -49,7 +49,7 @@ export function realmName(world, countryId) {
 // persistent polity record (polity.chron).
 export function chronicleTick(world) {
   if (!world.countries) return;
-  let leadEra = 0;
+  let leadEra = 0, leadEraCid = -1;
   for (const c of world.countries.values()) {
     if (!c || !c.capital) continue;
     const p = getOrCreateRecord(world, c.id, { seat: c.capital });
@@ -57,7 +57,7 @@ export function chronicleTick(world) {
     const m = p.chron;
 
     const era = techState(c.capital.knowledge || {}).era;
-    if (era > leadEra) leadEra = era;
+    if (era > leadEra) { leadEra = era; leadEraCid = c.id; }
     if (era > m.era) {
       if (m.era >= 0 && ERAS[era]) logEvent(world, "era.reached", { polity: c.id, name: realmName(world, c.id), era, eraName: ERAS[era], x: c.capital ? c.capital.pos.x | 0 : undefined, y: c.capital ? c.capital.pos.y | 0 : undefined });
       m.era = era;
@@ -118,7 +118,20 @@ export function chronicleTick(world) {
   // first reached each era. The cosmetic year (calendar.js displayYear) is pinned
   // to this — read-only, never an input to a mechanic.
   if (!world._eraAt) world._eraAt = [0];
-  for (let e = world._eraAt.length; e <= leadEra; e++) world._eraAt[e] = world.step | 0;
+  const FINAL_ERA = ERAS.length - 1;   // "Modern" — the top of the knowledge tree
+  for (let e = world._eraAt.length; e <= leadEra; e++) {
+    world._eraAt[e] = world.step | 0;
+    // EMERGENT ENDGAME: the moment the LEADING civilisation first enters the final
+    // (Modern) era, the world's developmental arc is COMPLETE — it has climbed the
+    // whole knowledge tree. Fires ONCE (the loop only ever EXTENDS _eraAt, and _eraAt
+    // persists across save/load, so a reload never re-fires it), gated purely on
+    // reached development — a fast world arrives early, a stalled one never does, and
+    // nothing keys a mechanic off it (read-only, like the rest of the era timeline).
+    // "Arc complete" is thereafter derivable anywhere as (world._eraAt.length > FINAL_ERA).
+    // Most runs top out well short of Modern, so this never fires in them — byte-identical.
+    if (e === FINAL_ERA) logEvent(world, "arc.complete", { step: world.step | 0, era: e, eraName: ERAS[e],
+      polity: leadEraCid, name: leadEraCid >= 0 ? realmName(world, leadEraCid) : undefined });
+  }
 }
 
 function fmtCoin(v) {

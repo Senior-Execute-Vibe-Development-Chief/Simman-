@@ -49,7 +49,7 @@ export function dynStep(year){ return (year - DYN_START) / DYN_RATE; }
 const ERA_ANCHOR = [-3300, -3000, -700, 500, 1450, 1800, 1950];
 const ERA_FLOOR = 0.04;        // min display-years per step (time never stops; slow worlds drift their eras later)
 const ERA_OPEN_STEPS = 2600;   // expected steps to cross an era, for dating the CURRENT (open-ended) era
-const ERA_MODERN_CAP = 2200;   // the Modern frontier heads toward this date
+const ERA_MODERN_CAP = 2100;   // the Modern frontier (the emergent endgame) heads toward this date
 
 function anchor(e){ return ERA_ANCHOR[e < 0 ? 0 : e >= ERA_ANCHOR.length ? ERA_ANCHOR.length - 1 : e]; }
 

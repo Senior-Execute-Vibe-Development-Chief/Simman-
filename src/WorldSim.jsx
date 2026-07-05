@@ -2814,6 +2814,10 @@ const _ys=yr(_step);
 // era) — the old ribbon averaged the dead tribe arrays and so sat frozen on
 // "Stone Age" forever.
 const _era=ERAS[psStats.leadingEra||0]||ERAS[0];
+// Emergent endgame: the leading civ has climbed the whole knowledge tree (reached
+// the final, Modern era). Read-only flag derived from the era timeline — celebrated
+// with a marker in the ribbon; nothing keys a mechanic off it.
+const _arcComplete=(psStats.leadingEra||0)>=ERAS.length-1;
 const _psw=peopleRef.current;
 const _countryCount=(_psw&&_psw.countries)?_psw.countries.size:0;
 
@@ -3787,6 +3791,7 @@ return(
   </div>
   <span className="au-vrule" style={{height:20}}/>
   <span className="au-era" style={{fontSize:14}}>{_era}</span>
+  {_arcComplete&&<span className="au-era" title="The leading civilisation has climbed the whole knowledge tree — the developmental arc is complete." style={{fontSize:11,color:"#c9a227",fontWeight:700,letterSpacing:0.3}}>✦ Arc Complete</span>}
   <span className="au-year" style={{fontSize:13}}>{_ys}</span>
   <span className="au-fade" style={{fontSize:10}}>step {_step.toLocaleString()}</span>
   <span className="au-vrule" style={{height:20}}/>

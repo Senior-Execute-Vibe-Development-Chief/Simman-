@@ -21,6 +21,8 @@
 import { buildWorld, buildSim } from "./_harness.mjs";
 import { initPeopleSim, stepPeopleSim, peopleSimStats } from "../src/sim/peopleSim/index.js";
 import { settlementPower } from "../src/sim/peopleSim/conquest.js";
+import { ERAS } from "../src/sim/peopleSim/tech.js";
+import { displayYear } from "../src/sim/calendar.js";
 
 const STEPS = parseInt(process.argv[2] || "10000", 10);
 const SEED  = parseInt(process.argv[3] || "8817", 10);
@@ -117,6 +119,20 @@ for (let s = 1; s <= STEPS; s++) {
 }
 const dt = (performance.now() - t0) / 1000;
 console.log(`[earthRun] ${STEPS} steps in ${dt.toFixed(1)}s (${Math.round(STEPS / dt)} steps/s)`);
+
+// Emergent endgame: did the world climb the whole knowledge tree? (chronicle.js:
+// _eraAt[6] = the step the leading civ first reached the Modern era — the arc-complete
+// milestone. Never a date; a slow world simply never gets here.)
+{
+  const eraAt = world._eraAt || [0];
+  const FINAL = ERAS.length - 1;
+  if (eraAt.length > FINAL) {
+    const step = eraAt[FINAL];
+    console.log(`[earthRun] ARC COMPLETE — reached the ${ERAS[FINAL]} era at step ${step} (display year ~${Math.round(displayYear(eraAt, step))})`);
+  } else {
+    console.log(`[earthRun] arc incomplete — leading civ topped out at the ${ERAS[eraAt.length - 1]} era (never reached ${ERAS[FINAL]})`);
+  }
+}
 
 // ── 7. Event tally + verdict ─────────────────────────────────────────
 const ev = {};

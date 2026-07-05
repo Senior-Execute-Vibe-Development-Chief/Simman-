@@ -408,10 +408,29 @@ B70 (agglomeration hash omits world seed) · I34 (dead tongues drift forever)
    the Crescent/Nile/Huang He win on merit, flip the default to algorithmic and
    keep the pinned list as a labelled scenario. Decision: purity vs guaranteed
    familiar openings.
+   > **DECIDED: keep hand-picked on the Earth map.** The pinned `EARTH_HEARTH_SITES`
+   > (state.js) stay for the Earth preset — familiar openings there; the algorithmic
+   > cradle scorer already handles every other map. It's a deliberate, labelled
+   > scenario (which the cardinal rule explicitly permits), so no action / no D78 needed.
 2. **Tech ceiling / endgame semantics** (I99): (a) open-ended log-scale tracks
    above 1.0 with flattening effects ("modern" keeps inching), or (b) declared
    arc-complete state that validate reports and the UI celebrates. Decision
    shapes what "winning the tech race" means.
+   > **DECIDED (b) + BUILT — the EMERGENT endgame.** The arc is COMPLETE when the
+   > LEADING civilisation first reaches the final (Modern) era — the top of the
+   > knowledge tree — NOT when the calendar hits a date (pinning the endgame to
+   > "year 2100" would be the two-clock violation the cardinal rule bans). chronicle.js
+   > fires a one-shot `arc.complete` event the moment `_eraAt` extends to the Modern
+   > era (derivable anywhere as `_eraAt.length > ERAS.length-1`; persists via `_eraAt`,
+   > so a reload never re-fires it); the ribbon shows a ✦ Arc Complete marker and the
+   > event feed celebrates it; earthRun reports it. The DISPLAY calendar's Modern
+   > frontier now eases toward **2100** (`ERA_MODERN_CAP`, calendar.js) — so a typical
+   > run's arc-complete READS ~2100 as a consequence, never as the trigger. Measured:
+   > reachable (~step 22.5k on 8817 at 320×160, development then plateaus at maxed
+   > knowledge); byte-identical for every validated run (they top out ~Medieval, so
+   > `arc.complete` never fires — hashbase / roundtrip / 3-seed validate all unchanged).
+   > Chose (b) over (a): development genuinely tops out (all tracks → 1.0 and freeze),
+   > so a declared terminal state is truer than pretending "modern keeps inching."
 3. **ANCHOR_POP retirement**: the un-anchored S-curve is healthy through
    civYear ~1960; propose deleting the anchor entirely once W6-B2 (health tech)
    and W6-E have bedded in, keeping it only as a validation overlay.
