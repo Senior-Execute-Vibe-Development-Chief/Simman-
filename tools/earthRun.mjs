@@ -39,6 +39,12 @@ const H = parseInt(process.env.EARTH_H || "960", 10);
 const RES = 1;
 const TW = Math.ceil(W / RES), TH = Math.ceil(H / RES);
 
+// Optional experimental-lever overrides (env unset = defaults = no-op), mirroring
+// tools/stylized.mjs — so long Earth runs can measure a lever's on-trajectory
+// (e.g. RES_INVARIANT_POP=1 for the resolution-invariance validation matrix).
+import { T } from "../src/sim/peopleSim/tuning.js";
+for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS", "CLAIM_POWER_WIN", "CAP_MODEL", "CAP_FISC", "CAP_LOG", "RES_INVARIANT_POP", "ANCHOR_POP"]) if (process.env[k] != null) { T[k] = +process.env[k]; console.log(`[earthRun]   lever ${k}=${T[k]}`); }
+
 console.log(`[earthRun] seed=${SEED} steps=${STEPS} W=${W} H=${H}`);
 
 // ── 1-5. Worldgen → rivers → tCrop → deposits → sim (app-identical) ──

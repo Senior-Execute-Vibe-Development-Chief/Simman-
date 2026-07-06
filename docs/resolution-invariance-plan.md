@@ -39,6 +39,32 @@ smoke green; the 480-pixel reference is on≡off EXACTLY, the fixed point holds)
 > Also fixed en route: the same-real-catchment change means settlement counts at 960
 > now track the reference in REAL density (~0.8–1.2×) across the whole run.
 
+> **Multi-seed verdict (3 seeds × {480 ref, 960 on}, matched org).** Ratios 960/480:
+> org 0.25 → 0.47/0.39/0.60 (**mean 0.49** — all seeds low ⇒ SYSTEMATIC); org 0.35 →
+> 0.54/0.44/0.67 (**0.55** — systematic); org 0.45 → 0.88/0.31/1.19 (**0.79**, spread
+> 4× ⇒ noise-dominated); org 0.55 → 0.93/0.57/1.01 (**0.84** — noise-dominated). The
+> seed-to-seed spread at FIXED 480 is itself ±40%, so mid/late single-cell deviations
+> are chaos — no mechanism to fix there. The EARLY (org ≤ 0.35) ~0.5× undershoot is
+> real and remains **OPEN**.
+>
+> **Phase 3 attempt — candidate throughput: MEASURED, NO EFFECT, REVERTED.** The
+> dimensionally-obvious fix (CANDIDATES_PER_SWEEP × rNorm², constant founding
+> attempts per real area) moved early settlement counts only ~5–10% and the 3-seed
+> population ratio not at all (0.46/0.44 vs 0.49/0.55) despite 4× the candidates —
+> candidate throughput is NOT the binding early channel. Reverted per the I82
+> precedent (16× per-tick cost at full size, unearned). Next decomposition for the
+> open undershoot: at matched org, compare (a) settled REAL area (is the founding
+> WAVE slower?) vs (b) pop per settled real area (are young settlements smaller?) —
+> then chase whichever channel carries it (colony cadence per settlement, spawn
+> probability per candidate, or early per-settlement growth).
+>
+> **Full-size (1920×960) validation — the original problem is FIXED.** Lever on,
+> seed 8817, 30k steps: **53 steps/s sustained** (the off-path collapsed 200→3.6
+> steps/s by 40k), reaching the INDUSTRIAL era by step 30k with **746k pop-units
+> (~0.75B people)** — the right historical ballpark for industrial, vs the off-path's
+> 18B-at-Medieval runaway. 235 settlements vs ~590 (and climbing) off. earthRun.mjs
+> now honours the lever env vars for exactly this matrix.
+
 > **Phase-1 results (probe: `tools/probe_resinvariance.mjs`, seed 8817, sampled at
 > matched leading-org so pacing differences can't contaminate the comparison).**
 > The invariant is TOTAL population (same Earth ⇒ same people). Ratio to the 480-pixel

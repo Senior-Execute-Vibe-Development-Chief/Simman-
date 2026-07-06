@@ -366,6 +366,16 @@ export function maybeCrystallize(world) {
   const hardFloor   = HARD_FLOOR * spMul * rn;
   const softDist    = SOFT_DIST  * spMul * rn;
   const floodTiles = world._floodTiles, nFlood = floodTiles ? floodTiles.length : 0;
+  // NB (RES_INVARIANT_POP, measured): scaling THIS candidate count by rn² — the
+  // dimensionally-obvious "founding pressure per real area" Phase-3 fix for the
+  // 3-seed-systematic ~0.5× EARLY-population undershoot at 2× resolution — was
+  // built and MEASURED to do nothing: with 4× the candidates, early settlement
+  // counts moved only ~5–10% and the population ratio not at all (0.46/0.44 vs
+  // 0.49/0.55 at org 0.25/0.35). Candidate throughput is NOT the binding early
+  // channel (spawn success is gated elsewhere — probability/fertility/colony
+  // cadence), so the rn²× per-tick cost (16× at full size) was unearned and it
+  // was reverted per the I82 precedent. The early undershoot remains OPEN — see
+  // docs/resolution-invariance-plan.md for the decomposition to run next.
   for (let i = 0; i < CANDIDATES_PER_SWEEP; i++) {
     // Draw a share of candidates straight from the FLOODPLAIN ribbon so the arid
     // river valley actually fills — the uniform random sweep almost never lands on
