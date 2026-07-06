@@ -171,7 +171,16 @@ export function saveWorld(world, meta = {}) {
 
   const seaReach = [];
   for (const s of world.settlements) {
-    if (s._seaReach && s._seaReach.size) seaReach.push([s.id, [...s._seaReach.entries()]]);
+    // link.inter holds LIVE settlement references (the relay ports sellGoods tolls —
+    // deliberate on the hot path). Serialize them as IDS: raw refs made the save
+    // (a) CRASH once the object graph went cyclic (_questGoal/_foodParent chains in a
+    // dense modern sea network — caught by the full-size recording run at step 30k),
+    // (b) bloat the save with ~4 duplicated settlement objects per link, and (c)
+    // worst, LOAD as detached ghost copies, so post-load relay tolls credited
+    // unreachable objects — coin leaking from the closed supply until the next sea
+    // pass rebuilt the lanes.
+    if (s._seaReach && s._seaReach.size) seaReach.push([s.id, [...s._seaReach.entries()].map(([pid, l]) =>
+      [pid, l && l.inter ? { ...l, inter: l.inter.map(h => h.id) } : l])]);
   }
 
   const reserves = {};
@@ -329,9 +338,15 @@ export function loadWorld(data, opts = {}) {
   if (t.inflRef != null) world._inflRef = t.inflRef;
   if (t.lastSyncretismAt != null) world._lastSyncretismAt = t.lastSyncretismAt;
   if (data.seaReach) {
+    const _sById = new Map(world.settlements.map(x => [x.id, x]));
     for (const [sid, entries] of data.seaReach) {
-      const s = world.settlements.find(x => x.id === sid);
-      if (s) s._seaReach = new Map(entries);
+      const s = _sById.get(sid);
+      if (!s) continue;
+      // Re-link relay-port IDs to LIVE settlement objects (sellGoods tolls mutate
+      // them). A missing id — or an OBJECT from a pre-fix save (the ghost-copy bug)
+      // — drops out; the sea pass re-derives the chain on its next rebuild.
+      s._seaReach = new Map(entries.map(([pid, l]) => [pid,
+        l && l.inter ? { ...l, inter: l.inter.map(h => _sById.get(h)).filter(Boolean) } : l]));
     }
   }
 
