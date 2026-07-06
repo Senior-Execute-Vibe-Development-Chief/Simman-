@@ -136,38 +136,42 @@ for (let s = 0; s < STEPS; s += SERIES) {
   const row = series((performance.now() - c0) / 1000);
   if (world.step % CKPT === 0 || s + SERIES >= STEPS) {
     deep(); console.log(`[rec] step ${world.step}  yr ${row.year}  era ${row.leadEra}  pop ${row.pop}  setts ${row.setts}  cnt ${row.countries}  ${row.sps} sps  rss ${row.rssMB}MB`);
-    // EVENT FLUSH — write the log incrementally so a killed/crashed run loses nothing
-    // (the first full-size run stalled for hours with the whole log held in memory only).
+    // FULL FLUSH — events, provisional history artifacts AND a resumable world
+    // snapshot at every checkpoint, so a container restart costs at most CKPT steps
+    // (the first full-size run died at step ~32k holding the event log in memory).
     const all = eventsOf(world);
     { const f = fs.createWriteStream(OUT + ".events.jsonl"); for (const e of all) f.write(JSON.stringify(e) + "\n"); f.end(); }
+    writeHistory();
+    fs.writeFileSync(OUT + ".world.json", serializeWorld(world));
   }
 }
 console.log(`[rec] ${STEPS} steps in ${((performance.now() - t0) / 1000 / 60).toFixed(1)} min`);
 
-// ── C: full event log + windowed type counts ──
-const evs = eventsOf(world);
-{ const f = fs.createWriteStream(OUT + ".events.jsonl"); for (const e of evs) f.write(JSON.stringify(e) + "\n"); f.end(); }
-const byWin = {};
-for (const e of evs) { const w0 = Math.floor((e.step || 0) / 5000) * 5000; (byWin[w0] = byWin[w0] || {})[e.type] = ((byWin[w0] || {})[e.type] || 0) + 1; }
-
-// ── D: history artifacts ──
-const eraAt = world._eraAt || [0];
-const hall = [...track.entries()].map(([id, t]) => ({ id, peak: t.peak, life: (t.alive ? world.step : t.last) - t.first, alive: t.alive }))
-  .sort((a, b) => b.peak * Math.log10(1 + b.life) - a.peak * Math.log10(1 + a.life)).slice(0, 15);
-const topRealms = record.checkpoints.length ? record.checkpoints[record.checkpoints.length - 1].rows.slice(0, 6) : [];
-const chronicles = topRealms.map(r => {
-  const pol = getPolity(world, r.id);
-  const kings = pol && pol.rulers ? pol.rulers.slice(-12).map(k => `${k.fromY}–${k.toY < 0 ? "" : k.toY} ${k.title || ""} ${k.name}${k.house ? " of House " + k.house : ""} (${k.how})`) : [];
-  const tail = evs.filter(e => e.polity === r.id || e.from === r.id || e.to === r.id).slice(-25).map(e => `[${e.step}] ${narrate(world, e, r.id) || e.type}`);
-  return { id: r.id, name: r.name, kings, chronicle: tail };
-});
-fs.writeFileSync(OUT + ".history.json", JSON.stringify({
-  eraTimeline: eraAt.map((s, i) => ({ era: ERAS[i], step: s, year: Math.round(displayYear(eraAt, s)) })),
-  arcComplete: eraAt.length > ERAS.length - 1, arcStep: eraAt[ERAS.length - 1] ?? null,
-  invariantHits: world.debug?.invariantHits || {},
-  eventTypeTotals: evs.reduce((m, e) => (m[e.type] = (m[e.type] || 0) + 1, m), {}),
-  eventWindows: byWin, hall, chronicles,
-  registries: { persons: world.persons?.size, dynasties: world.dynasties?.size, cultures: world.cultures?.size, faiths: world.faiths?.size, polities: world.polities?.size, events: evs.length },
-}, null, 1));
+// ── C+D final flush (same writer the checkpoints use) ──
+function writeHistory() {
+  const evs = eventsOf(world);
+  const byWin = {};
+  for (const e of evs) { const w0 = Math.floor((e.step || 0) / 5000) * 5000; (byWin[w0] = byWin[w0] || {})[e.type] = ((byWin[w0] || {})[e.type] || 0) + 1; }
+  const eraAt = world._eraAt || [0];
+  const hall = [...track.entries()].map(([id, t]) => ({ id, peak: t.peak, life: (t.alive ? world.step : t.last) - t.first, alive: t.alive }))
+    .sort((a, b) => b.peak * Math.log10(1 + b.life) - a.peak * Math.log10(1 + a.life)).slice(0, 15);
+  const topRealms = record.checkpoints.length ? record.checkpoints[record.checkpoints.length - 1].rows.slice(0, 6) : [];
+  const chronicles = topRealms.map(r => {
+    const pol = getPolity(world, r.id);
+    const kings = pol && pol.rulers ? pol.rulers.slice(-12).map(k => `${k.fromY}–${k.toY < 0 ? "" : k.toY} ${k.title || ""} ${k.name}${k.house ? " of House " + k.house : ""} (${k.how})`) : [];
+    const tail = evs.filter(e => e.polity === r.id || e.from === r.id || e.to === r.id).slice(-25).map(e => `[${e.step}] ${narrate(world, e, r.id) || e.type}`);
+    return { id: r.id, name: r.name, kings, chronicle: tail };
+  });
+  fs.writeFileSync(OUT + ".history.json", JSON.stringify({
+    step: world.step,
+    eraTimeline: eraAt.map((s, i) => ({ era: ERAS[i], step: s, year: Math.round(displayYear(eraAt, s)) })),
+    arcComplete: eraAt.length > ERAS.length - 1, arcStep: eraAt[ERAS.length - 1] ?? null,
+    invariantHits: world.debug?.invariantHits || {},
+    eventTypeTotals: evs.reduce((m, e) => (m[e.type] = (m[e.type] || 0) + 1, m), {}),
+    eventWindows: byWin, hall, chronicles,
+    registries: { persons: world.persons?.size, dynasties: world.dynasties?.size, cultures: world.cultures?.size, faiths: world.faiths?.size, polities: world.polities?.size, events: evs.length },
+  }, null, 1));
+}
+writeHistory();
 fs.writeFileSync(OUT + ".world.json", serializeWorld(world));
 console.log(`[rec] artifacts: ${OUT}.series.jsonl / .json / .events.jsonl / .history.json / .world.json`);
