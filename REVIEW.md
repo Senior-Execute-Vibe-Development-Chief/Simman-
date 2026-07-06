@@ -11,6 +11,8 @@ _An ultra-deep, whole-app audit: every file in `src/`, `tools/`, `docs/`, and CI
 
 **Baseline health (verified directly on a fresh clone):** `npm run lint` ✅ (1 warning), `npm test` ✅ (determinism, 4000-step invariants, save/load hash identity), `npm run validate` ✅ (all hard gates, 1 soft warning), `npm run build` ✅. The app is alive and its core loop is sound. Everything below is about making it *right*.
 
+> **Status — fixed on this branch** (the player-visible batch): lakes as farmable land (pipeline.js), one-tick city annihilation (settlement.js), the `blocHasCity` immortal-empire tier bar (conquest.js), the cross-water territory wipe + 4/8-connectivity mismatch (countryTerritory.js), the silent event feed after log compaction (peopleSimWorker.js), and in WorldSim.jsx: the base-cache corruption family (shared-canvas overwrite, `[object Object]` resource key, stale cache across worlds), dropped `_overlord` (colonies now render), the dead wheel-zoom after a globe toggle, and the Sim Levers panel gate. After these fixes `npm run validate` passes with **zero** soft warnings — the previously-thin fallen-polity lifespan tail (2.4) is now 8.4 with 24 fallen polities, i.e. empires actually fall.
+
 ---
 
 ## 0. Fix immediately — CI deploys feature branches to production

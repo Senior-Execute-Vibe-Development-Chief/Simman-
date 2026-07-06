@@ -580,10 +580,12 @@ export function computeCountryTerritory(world) {
 //     STICKY: a march the reach receded from is durably re-asserted from last pass's
 //     map (`prev`) while its owner lives.
 //
-// Two self-cleaning rules stop the map ratcheting solid: a march whose owner is dead,
-// or no longer CONTIGUOUS (through same-owner land) with any core/reached tile of that
-// owner, is released to wilderness — so when a realm's settlements move away its
-// marooned marches fall back. Over-extension still sheds through secession (conquest.js).
+// Two self-cleaning rules stop the map ratcheting solid: a STICKY march whose owner is
+// dead, or no longer CONTIGUOUS (through same-owner land, 8-connected) with any core or
+// live-reach tile of that owner, is released to wilderness — so when a realm's
+// settlements move away its marooned marches fall back. Freshly-reached claims are
+// live-backed by construction and are never released here (they may sit across water).
+// Over-extension still sheds through secession (conquest.js).
 function mergePersistentTerritory(world, co, prev) {
   const { N, tw, th, elev } = world;
   const owner = world._territoryOwner, byId = world._byId;   // per-settlement catchment → settlement
@@ -610,27 +612,42 @@ function mergePersistentTerritory(world, co, prev) {
     }
   }
   // MARCH stickiness: re-assert a march the fresh reach left WILD (co === -1) from last
-  // pass while its owner lives; every other claimed tile (a fresh reach projection) is a
-  // candidate march, connectivity-checked below.
+  // pass while its owner lives. Only these STICKY tiles face the contiguity test below.
+  // A tile claimed by LIVE reach this pass is backed by the reach Dijkstra by
+  // construction — which deliberately projects across narrow water (the far shore of a
+  // strait a naval realm holds, countryClaim's mare-nostrum snap) — so a land-only
+  // flood must not veto it: releasing fresh claims here is what silently wiped every
+  // cross-water holding each pass. Fresh claims also SEED the flood, so a sticky march
+  // hanging off live-reach frontier (not just off worked cores) survives.
+  let sticky = world._persistSticky; if (!sticky || sticky.length !== N) sticky = world._persistSticky = new Uint8Array(N);
+  sticky.fill(0);
   for (let ti = 0; ti < N; ti++) {
     if (elev[ti] <= 0) continue;
-    if (co[ti] < 0) { const p = prev[ti]; if (p >= 0 && alive.has(p)) co[ti] = p; }
+    if (co[ti] < 0) { const p = prev[ti]; if (p >= 0 && alive.has(p)) { co[ti] = p; sticky[ti] = 1; } }
+    else if (co[ti] >= 0 && !reached[ti]) { reached[ti] = 1; q[qt++] = ti; }
   }
-  // Connectivity flood from the CORE anchors through same-owner tiles: any claimed tile
-  // (march) NOT reached from a core tile of its own owner is marooned (its owner's
-  // settlements have moved on) and is released to wilderness.
+  // Connectivity flood from the CORE anchors + live-reach claims through same-owner
+  // tiles — 8-connected, matching the claiming Dijkstra, gap-fill and border-smoothing
+  // passes (a 4-connected flood spuriously released the diagonal-stepped march lobes
+  // those passes routinely produce along coasts and ridges). A STICKY march NOT reached
+  // from its owner's live territory is marooned (its owner's settlements have moved on)
+  // and is released to wilderness.
   for (let qh = 0; qh < qt; qh++) {
     const ti = q[qh]; const oc = co[ti];
     const ty = (ti / tw) | 0, tx = ti - ty * tw;
     const xm = tx === 0 ? tw - 1 : tx - 1, xp = tx === tw - 1 ? 0 : tx + 1;
-    const ns = [ty * tw + xm, ty * tw + xp, ty > 0 ? ti - tw : -1, ty < th - 1 ? ti + tw : -1];
-    for (let k = 0; k < 4; k++) {
+    const yu = ty > 0, yd = ty < th - 1;
+    const ns = [ty * tw + xm, ty * tw + xp,
+                yu ? ti - tw : -1, yd ? ti + tw : -1,
+                yu ? (ty - 1) * tw + xm : -1, yu ? (ty - 1) * tw + xp : -1,
+                yd ? (ty + 1) * tw + xm : -1, yd ? (ty + 1) * tw + xp : -1];
+    for (let k = 0; k < 8; k++) {
       const ni = ns[k];
       if (ni < 0 || reached[ni] || elev[ni] <= 0) continue;
       if (co[ni] === oc) { reached[ni] = 1; q[qt++] = ni; }
     }
   }
-  for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && !reached[ti]) co[ti] = -1;
+  for (let ti = 0; ti < N; ti++) if (co[ti] >= 0 && sticky[ti] && !reached[ti]) co[ti] = -1;
 }
 
 // ── Capital colouring ────────────────────────────────────────────────────────

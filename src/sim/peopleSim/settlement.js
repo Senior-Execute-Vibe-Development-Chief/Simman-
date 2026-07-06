@@ -2250,7 +2250,14 @@ function updatePopulation(world, s) {
   if (s.food <= 0.01 && s.people > 1) {
     s.people *= Math.pow(0.985, _dt);                 // famine die-off, per-tick → granularity-scaled
   } else {
-    s.people = s.people + T.SETT_GROWTH * _dt * s.people * (1 - s.people / K);
+    // Logistic growth, with the DECLINE side clamped at the famine die-off pace.
+    // When a siege or catchment loss crashes K in one tick (people/K in the
+    // hundreds), the raw Euler step would annihilate the city instantly — and
+    // store NEGATIVE population — bypassing the whole granary→famine→wither arc
+    // that exists for exactly that case. People starve over years; they don't
+    // evaporate in a season.
+    const g = T.SETT_GROWTH * _dt * (1 - s.people / K);
+    s.people = s.people * (1 + Math.max(Math.pow(0.985, _dt) - 1, g));
   }
   if (s.people < 1.5) {
     s.mode = "dead";

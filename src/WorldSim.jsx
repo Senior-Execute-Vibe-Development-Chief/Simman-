@@ -984,6 +984,9 @@ if(!usedWorker){
   setPsStats(peopleSimStats(peopleRef.current));
 }
 setPlaying(false);playRef.current=false;
+// Also drop the base-layer raster cache: two worlds can share a _seed (imports
+// never set one), so a stale key would blit the PREVIOUS world's terrain.
+baseLayerKey.current=null;
 terrainCache.current=null;atlasCache.current=null;imgRef.current=null;},[]);
 const generate=useCallback((s,ol)=>{
 // Import path
@@ -1406,7 +1409,12 @@ const _staticBase=(BASE_CACHE_VIEWS.has(vm)||_stepCacheV)&&!isGlobe;
 // raster refreshes as the world changes (and is stable/blitted while paused).
 const _simStep=(peopleRef.current&&peopleRef.current.step)||0;
 const _stepTag=_stepCacheV?('|s'+((_simStep/STEP_CACHE_REGEN)|0)):'';
-const _baseKey=_staticBase?(vm+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+(activeResRef.current||'')+'|'+oceanLevelRef.current+_stepTag):null;
+// activeRes is an OBJECT — serialize the enabled set deterministically ('[object
+// Object]' made every toggle state produce the same key, so hiding a resource in
+// the legend never invalidated the cached raster). Include the preset too: two
+// worlds can share a _seed (imports leave it undefined) yet differ entirely.
+const _resTag=activeResRef.current?Object.keys(activeResRef.current).filter(k=>activeResRef.current[k]).sort().join(','):'';
+const _baseKey=_staticBase?(vm+'|'+(w.preset||'')+'|'+(w._seed)+'|'+CH+'|'+(showPlatesRef.current?1:0)+(showRiversRef.current?1:0)+(showStreamsRef.current?1:0)+(showLakesRef.current?1:0)+'|'+(depthFromSeaRef.current?1:0)+'|'+depthCeilRef.current+'|'+_resTag+'|'+oceanLevelRef.current+_stepTag):null;
 let _baseHit=false;
 if(_staticBase&&ctx&&baseLayerRef.current&&baseLayerRef.current.width===CW&&baseLayerRef.current.height===CH&&baseLayerKey.current===_baseKey){ctx.drawImage(baseLayerRef.current,0,0);_baseHit=true;}
 if(!_baseHit){
@@ -1670,6 +1678,10 @@ if(!_baseHit){
     if(!baseLayerRef.current)baseLayerRef.current=document.createElement('canvas');
     const _bl=baseLayerRef.current;if(_bl.width!==CW||_bl.height!==CH){_bl.width=CW;_bl.height=CH;}
     _bl.getContext('2d').putImageData(img,0,0);ctx.drawImage(_bl,0,0);
+    // The shared offscreen canvas now holds a NON-cached raster (e.g. an identity
+    // lens' grey base) — invalidate the key or the next cached view whose key
+    // still matches would blit this raster as its own map.
+    baseLayerKey.current=null;
   }
 }
 // Wind particles — animated white streaks that flow along wind vectors
@@ -2470,7 +2482,7 @@ const applySnapshot=useCallback((snap)=>{
   for(const c of (snap.countries||[])){
     const members=c.memberIds.map(id=>byId.get(id)).filter(Boolean);
     const capital=byId.get(c.capitalId)||members[0]||null;
-    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,name:c.name,ruler:c.ruler,faithId:c.faithId,hue:c.hue,range:c.range,_capacity:c._capacity,_loadTotal:c._loadTotal,_momentum:c._momentum,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel,personality:c.personality});
+    countries.set(c.id,{id:c.id,members,capital,capitalId:c.capitalId,name:c.name,ruler:c.ruler,faithId:c.faithId,hue:c.hue,range:c.range,_overlord:c._overlord,_capacity:c._capacity,_loadTotal:c._loadTotal,_momentum:c._momentum,_fronts:c._fronts,_capitalBesieged:c._capitalBesieged,_treasury:c._treasury,_govRevenue:c._govRevenue,_govSpend:c._govSpend,_solvency:c._solvency,_taxRate:c._taxRate,_priceLevel:c._priceLevel,personality:c.personality});
   }
   psw.countries=countries;
   // HUD state updates re-render the whole component, so throttle them to ~5Hz
@@ -2734,7 +2746,10 @@ useEffect(()=>{
   };
   c.addEventListener("wheel",onWheel,{passive:false});
   return()=>c.removeEventListener("wheel",onWheel);
-},[CW,CH,draw]);
+// showGlobe: the canvas is conditionally rendered behind the globe toggle, so it
+// REMOUNTS as a new element when the globe closes — re-run to bind the listener
+// to the new canvas (otherwise wheel-zoom is permanently dead after one toggle).
+},[CW,CH,draw,showGlobe]);
 const onCanvasMouseDown=useCallback((ev)=>{
   // Any button (left, middle, right) can start a drag. onCanvasClick fires
   // only if the mouse hardly moved (see the moved>3 check there), so plain
@@ -4165,7 +4180,8 @@ return(
         setMenuOpen(false);
       }}>📜 Export history</button>
       <div className="au-rule"/>
-      {preset==="earth_sim"&&<button className="au-rail-tab" onClick={()=>{setLeversOpen(v=>!v);setMenuOpen(false);}}>⚖ Sim levers</button>}
+      {/* The levers tune the people sim, which runs on EVERY preset — no gate. */}
+      <button className="au-rail-tab" onClick={()=>{setLeversOpen(v=>!v);setMenuOpen(false);}}>⚖ Sim levers</button>
       {(preset==="earth"||preset==="earth_sim")&&<button className="au-rail-tab" onClick={()=>{setRightPanel(rightPanel==="params"?"":"params");setMenuOpen(false);}}>🌬 Wind &amp; moisture</button>}
       {preset==="tectonic"&&<button className="au-rail-tab" onClick={()=>{setShowTuning(true);setMenuOpen(false);}}>⚙ Worldgen tuning</button>}
       {!DEV&&<div className="au-fade" style={{fontSize:9,padding:"6px 14px 2px",fontStyle:"italic"}}>add ?dev to the URL for worldgen diagnostic lenses</div>}

@@ -398,9 +398,12 @@ const oldM=tMoist[ni];
 if(oldM<0.45){tMoist[ni]=Math.min(0.50,oldM+boost);}
 else{tMoist[ni]=Math.min(1,oldM+boost*0.08);}
 tFert[ni]=tileFert(tTemp[ni],tMoist[ni],tElev[ni]);}}}
-// Lake tiles themselves: water, not land — zero fertility, impassable
+// Lake tiles themselves: water, not land — zero fertility, impassable.
+// Also strip the floodplain flag (set in Pass 1 before lakes were known):
+// open water is not irrigable alluvium, and tFlood feeds the tCrop 0.92
+// override, spawn oversampling and transport relief downstream.
 for(let ti=0;ti<tw*th;ti++){
-if(rivers.lake[ti]>=0){tMoist[ti]=0.8;tFert[ti]=0;tDiff[ti]=1.0;}}}
+if(rivers.lake[ti]>=0){tMoist[ti]=0.8;tFert[ti]=0;tDiff[ti]=1.0;tFlood[ti]=0;}}}
 
 // ── Pass 2: Geological fertility modifiers ──
 // These require neighbor access so run after base pass.
@@ -506,9 +509,13 @@ const tCross=new Float32Array(tw*th);
 const CROSS_MAX=6.0;
 const crossWorld={elev:tElev,temp:tTemp,moist:tMoist,coast:tCoast,
                   riverMag:rivers&&rivers.riverMag?rivers.riverMag:null};
+const lakeArr=rivers&&rivers.lake?rivers.lake:null;
 for(let ti=0;ti<tw*th;ti++){
 const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
-if(e<=0){tCrop[ti]=0;tCross[ti]=1;continue;}
+// Lakes are open water: no cropland, max crossing difficulty. Without this,
+// Pass 3 reads the lake's boosted tMoist (0.8) + e>0 and rates the water
+// surface as farmland — settlements then crystallize ON the lake.
+if(e<=0||(lakeArr&&lakeArr[ti]>=0)){tCrop[ti]=0;tCross[ti]=1;continue;}
 // Crop suitability. Temperature is now calibrated to real annual-mean air temp
 // (t = 0.60 + °C/100, see tools/probe_temperature.mjs), so the optimum is a
 // realistic agricultural band rather than the old wide bell (which, tuned to the
@@ -552,6 +559,9 @@ tCross[ti]=Math.min(1,cAvg/CROSS_MAX);}
 
 // ── Natural resource deposits ──
 const deposits=generateResources(tw,th,tElev,tTemp,tMoist,tCoast,w,w._seed||0,rivers);
+// Lakes carry no land deposits: the resource pass classifies biome from
+// (elev>0, tMoist=0.8) and would seed forest timber etc. on open water.
+if(rivers&&rivers.lake){for(let ti=0;ti<tw*th;ti++){if(rivers.lake[ti]>=0){for(const k in deposits)deposits[k][ti]=0;}}}
 // (The legacy tribe-seeding / background-population layer that lived here —
 // valley scoring, bgPop/cityPop, tribe knowledge/budget/port/coast tables —
 // was removed with the tribe system itself: the peopleSim worker owns ALL

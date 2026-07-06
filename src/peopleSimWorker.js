@@ -374,6 +374,10 @@ function buildSnapshot() {
   let feed = null;
   {
     const evs = world.events || [];
+    // Event-log compaction (events.js) splices the log down when it hits its cap;
+    // an absolute cursor past the new length would silence the feed until tens of
+    // thousands of new events re-accumulated. Clamp it to the log.
+    if (lastEvSent > evs.length) lastEvSent = evs.length;
     if (evs.length > lastEvSent) {
       feed = [];
       for (let i = Math.max(lastEvSent, evs.length - 40); i < evs.length; i++) {

@@ -722,8 +722,11 @@ function hasOutsideBorder(world, parentCountryId, bloc) {
 // villages (the normal case: a town capital ruling a sea of villages) had NO
 // member that could ever lead a breakaway, so its frontier revolts ALL failed
 // the gate, re-pacified, and stayed however far past the hold budget it sat.
+// (Note: CITY_TIER is 2 — a full city — so the town+ bar documented above is
+// tier ≥ 1. A frontier seat minted by nucleateFrontierStates (_sovereignSeat)
+// also counts, mirroring the sovereignty-anchor rule in countryTerritory.js.)
 function blocHasCity(bloc) {
-  for (const m of bloc) if ((m.tier | 0) >= CITY_TIER) return true;
+  for (const m of bloc) if ((m.tier | 0) >= 1 || m._sovereignSeat) return true;
   return false;
 }
 
