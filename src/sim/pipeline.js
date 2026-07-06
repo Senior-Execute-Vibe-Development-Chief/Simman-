@@ -12,6 +12,7 @@ import { cropSuitability } from "./cropGen.js";
 import { generateResources } from "./resourceGen.js";
 import { baseEdgeCost } from "./peopleSim/transport.js";
 import { mkRng, hash32 } from "./peopleSim/rng.js";
+import { T } from "./peopleSim/tuning.js";
 
 // Base climate fertility: temperature fitness × moisture bell curve, penalized by elevation
 // Temperature fitness uses a COLD GATE (calibrated air-temp scale t=0.60+°C/100):
@@ -323,7 +324,17 @@ const tFlood=new Uint8Array(tw*th);   // arid-river floodplain mask (Nile/Indus/
 {// Every river down to a STREAM waters a floodplain — the band where farming
 // concentrates. Widened and strengthened: a river's valley is its breadbasket, so it
 // must be broad enough and wet enough to read as prime cropland, not a one-tile thread.
-const riverRadius=[0,1,2,3,3];// NONE,STREAM,TRIB,MAJOR,GREAT (~21-42km/tile)
+// RES_INVARIANT_POP (docs/resolution-invariance-plan.md, the worldgen channel): a river
+// is a LINEAR feature, so a FIXED tile radius makes the floodplain's share of land scale
+// as 1/resolution (measured: 21%→14%→7% of land at 320/480/960-pixel — halving per 2×).
+// The ribbon is a real WIDTH of valley: scale its radius by tw/240 so the floodplain
+// covers the same real fraction at any grid. NB pipeline runs on the PIXEL grid (the
+// sim tile grid is half this), so the calibrated reference here is 480 — exactly ×1
+// there and whenever the lever is off (byte-identical). This was the measured
+// source of the early per-settlement-growth undershoot: young river-valley settlements
+// at high res sat on proportionally half the prime cropland.
+const rrScale=T.RES_INVARIANT_POP?tw/480:1;
+const riverRadius=[0,1,2,3,3].map((r,i)=>i===0?0:Math.max(1,Math.round(r*rrScale)));// NONE,STREAM,TRIB,MAJOR,GREAT (constant real width)
 const riverMoistPeak=[0,0.22,0.45,0.52,0.58];
 for(let ti=0;ti<tw*th;ti++){
 const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;

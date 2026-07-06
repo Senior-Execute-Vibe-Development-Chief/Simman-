@@ -58,6 +58,21 @@ smoke green; the 480-pixel reference is on≡off EXACTLY, the fixed point holds)
 > then chase whichever channel carries it (colony cadence per settlement, spawn
 > probability per candidate, or early per-settlement growth).
 >
+> **Worldgen channel — floodplain ribbon FIXED; early undershoot still OPEN.** Measured
+> (probe_worldgen_res.mjs): rivers are LINEAR features, so the fixed riverRadius made the
+> floodplain share of land halve per 2× resolution (21%→14%→7% at 320/480/960-pixel) and
+> mean fertility drift down. pipeline.js now scales the ribbon radius by pixelW/480 under
+> the lever (NB pipeline runs on the PIXEL grid — its reference is 480, not 240; second
+> units trap, recorded). Result: fertility distribution now matches across resolutions
+> (meanFert 0.93×, fert≥0.8 0.91×; flood share 20% vs 14% — radius-rounding overshoot).
+> BUT the early pop undershoot is UNCHANGED (0.54/0.49 at org 0.25/0.35) — so the map
+> inconsistency was real and is fixed on its own merit, yet it was NOT the binding
+> early-growth channel either. ELIMINATED so far: founding-candidate throughput,
+> floodplain share. Next suspects: early knowledge/agriculture pace on river tiles
+> (riverMag fraction per land still halves per 2× — the drainage NETWORK density is a
+> riverGen accumulation-threshold matter), or the young-settlement growth integrator
+> itself. Decompose per-settlement food at matched org next.
+>
 > **Full-size (1920×960) validation — the original problem is FIXED.** Lever on,
 > seed 8817, 30k steps: **53 steps/s sustained** (the off-path collapsed 200→3.6
 > steps/s by 40k), reaching the INDUSTRIAL era by step 30k with **746k pop-units
