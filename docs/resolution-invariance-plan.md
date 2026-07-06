@@ -1,7 +1,7 @@
 # Resolution-invariant carrying capacity — design & scope
 
 **Status:** Phases 1 (spacing → real distance) AND 2 (catchment → real area) BUILT and
-MEASURED behind `T.RES_INVARIANT_POP` (default off — every default baseline
+MEASURED behind `T.RES_INVARIANT_POP` (**default ON** since the flip criteria held: stylized-960 all hard gates pass at 1 warning; the settled-area wave invariant 0.89-1.00×; full-size 53 steps/s + ~historical population. The open early undershoot is per-settlement GROWTH (decomp probe: settledArea 0.89-1.00× but pop/area ~0.55×), suspected WORLDGEN field sampling — rivers/floodplain ribbons don’t scale linearly with grid — a different subsystem. Escape hatch RES_INVARIANT_POP=0; formerly default off — every default baseline
 byte-identical; verified hashbase `5045e8aa`/`ef8e169b`, roundtrip `f057635`/`d489b985`,
 smoke green; the 480-pixel reference is on≡off EXACTLY, the fixed point holds).
 

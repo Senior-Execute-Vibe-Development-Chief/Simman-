@@ -7,8 +7,9 @@
 // work against a lossy/nondeterministic round-trip. Run it after any change to
 // dynasties.js / the person or dynasty shape / persist.js.
 //   node tools/probe_roundtrip_deep.mjs [steps]
-// Baseline (8000 steps, all W6 defaults ON incl. CAP_MODEL): 8817 h=f057635 (1765p/49d),
-// 31337 h=d489b985 (2176p/38d). Recoveries via env:
+// Baseline (8000 steps, all defaults ON incl. RES_INVARIANT_POP): 8817 h=aea33955 (2985p/80d),
+// 31337 h=e2514877 (2427p/45d). Recoveries via env:
+//   RES_INVARIANT_POP=0                 → f057635 / d489b985 (tile-unit density, CAP_MODEL era)
 //   CAP_MODEL=0                         → 28abc46d / ef4fc665 (the legacy fitted-tail size model)
 //   CROSS_REALM_HEIRS=0 CLAIMANT_WARS=0 → the throne-siloed dynasties (on the current size model)
 //   CROSS_REALM_HEIRS=0 CLAIMANT_WARS=0 CAP_MODEL=0 → d69f113 / 9c5ecf94 (the full pre-W6-F/R5 baseline)
@@ -23,7 +24,7 @@ const W = 320, H = 160;
 // Optional lever overrides (env unset = defaults = the baseline in the header comment):
 // set CROSS_REALM_HEIRS=0 CLAIMANT_WARS=0 to recover the throne-siloed round-trip
 // (d69f113 / 9c5ecf94), or CLAIM_POWER_WIN to A/B the power-gated crownForeign resolution.
-for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS", "CLAIM_POWER_WIN", "CAP_MODEL", "CAP_FISC", "CAP_LOG"]) if (process.env[k] != null) T[k] = +process.env[k];
+for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS", "CLAIM_POWER_WIN", "CAP_MODEL", "CAP_FISC", "CAP_LOG", "RES_INVARIANT_POP"]) if (process.env[k] != null) T[k] = +process.env[k];
 let fail = 0;
 for (const seed of SEEDS) {
   const w = buildSim({ W, H, seed });

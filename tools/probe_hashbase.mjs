@@ -5,8 +5,8 @@
 // NB: the hash DEFINITION itself changes when hashWorld's field set changes, so a
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
-// Current baseline (2500 steps, CAP_MODEL default ON):
-//   8817=5045e8aa  31337=ef8e169b
+// Current baseline (2500 steps, RES_INVARIANT_POP default ON — this probe grid is 320-pixel/tw160, rNorm 0.67):
+//   8817=f50432a0  31337=d9ecbe71   (RES_INVARIANT_POP=0 recovers 5045e8aa/ef8e169b)
 //   (CAP_MODEL=0 recovers the legacy fitted-tail baseline 6df86092/82c7f3f — the grounded
 //   capacity model is the first change to move THIS 2500-step guard, since real states
 //   extract revenue and differentiate in capacity well before dynasties form. Earlier
@@ -23,7 +23,7 @@ const STEPS = parseInt(process.argv[2] || "2500", 10);
 const SEEDS = [8817, 31337];
 const W = 320, H = 160;
 // Env-overridable levers (unset = defaults): CAP_MODEL=0 recovers the fitted-tail baseline.
-for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS", "CLAIM_POWER_WIN", "CAP_MODEL", "CAP_FISC", "CAP_LOG"]) if (process.env[k] != null) T[k] = +process.env[k];
+for (const k of ["CROSS_REALM_HEIRS", "CLAIMANT_WARS", "CLAIM_POWER_WIN", "CAP_MODEL", "CAP_FISC", "CAP_LOG", "RES_INVARIANT_POP"]) if (process.env[k] != null) T[k] = +process.env[k];
 for (const seed of SEEDS) {
   const world = buildSim({ W, H, seed });
   stepPeopleSim(world, STEPS);
