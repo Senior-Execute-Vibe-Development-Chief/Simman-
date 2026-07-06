@@ -94,6 +94,23 @@ const MARKET_PULL_WEIGHT        = 0.4;   // modest pull so clusters form but don
 // hard reject because mother-country colony parties already pick deliberately
 // (the founder doesn't accidentally plant at 4 tiles).
 const MIN_SETT_DIST             = 8;          // daughter-colony spacing floor (grid near-query radius)
+// ── Resolution-invariant spacing (T.RES_INVARIANT_POP — Phase 1 of ─────
+// docs/resolution-invariance-plan.md). Every founding-spacing rule in this file
+// is calibrated in TILES at the 480-wide reference grid. On any other grid a
+// fixed tile gap is a DIFFERENT real distance, so settlement density — and
+// through it total population — silently scales with the pixel count (measured:
+// ~2.1× total pop per 2× resolution at matched development; the full-Earth
+// 18-billion-at-Medieval artefact). rNorm converts each spacing back to constant
+// REAL distance: ×1 at the reference (byte-identical by construction), ×4 at the
+// 1920-pixel full Earth, ×0.67 at the 320-pixel probe grid — the same convention
+// territory reach / sea range / knowledge diffusion already use (resScaleFor).
+// NB world.tw is the SIM TILE grid — half the requested pixel width (the app and
+// tools/_harness run tileRes 2) — so the reference is 240 TILES (= the calibrated
+// 480-pixel world), the very same RES_REF_W countryTerritory.js normalises reach
+// against. This closes the DENSITY half of that inconsistency; catchment area and
+// per-tile yields are the plan's later phases. Lever off ⇒ exactly 1.
+const POP_REF_W = 240;   // tile-grid width of the calibrated 480-pixel reference (== countryTerritory RES_REF_W)
+function rNormFor(world) { return T.RES_INVARIANT_POP ? world.tw / POP_REF_W : 1; }
 // ── Density ∝ carrying capacity ───────────────────────────────────────
 // Without this, spacing was a fixed distance, so EVERY habitable tile filled
 // to the same settlement density — the low-capacity wet tropics (Congo, the
@@ -345,8 +362,9 @@ export function maybeCrystallize(world) {
   const spMul = T.LOCALITY_MODE ? Math.max(1, T.LOCALITY_SPACING || 3)
               : T.DISSOLVE_FARMS ? 2     // tuned: fewer/larger town-regions, but keeping a rural town layer so urbanisation stays realistic (~60%)
               : 1;
-  const hardFloor   = HARD_FLOOR * spMul;
-  const softDist    = SOFT_DIST  * spMul;
+  const rn = rNormFor(world);            // spacing in REAL distance, not tiles (RES_INVARIANT_POP)
+  const hardFloor   = HARD_FLOOR * spMul * rn;
+  const softDist    = SOFT_DIST  * spMul * rn;
   const floodTiles = world._floodTiles, nFlood = floodTiles ? floodTiles.length : 0;
   for (let i = 0; i < CANDIDATES_PER_SWEEP; i++) {
     // Draw a share of candidates straight from the FLOODPLAIN ribbon so the arid
@@ -405,8 +423,8 @@ export function maybeCrystallize(world) {
     // tighter still. Without the exemption spMul exactly cancels the dense-pack intent,
     // leaving the floodplain at ordinary density (the Nile/Indus stayed a lone cradle).
     const floodSp = onFlood ? FLOOD_SPACING_MUL : 1;
-    const baseFloor = onFlood ? HARD_FLOOR : hardFloor;
-    const baseSoft  = onFlood ? SOFT_DIST  : softDist;
+    const baseFloor = onFlood ? HARD_FLOOR * rn : hardFloor;
+    const baseSoft  = onFlood ? SOFT_DIST  * rn : softDist;
     const hf = baseFloor * capSp * floodSp, sd = baseSoft * capSp * floodSp;
     if (nearestSq < hf * hf) continue;             // hard reject — overlap
     // Linear ramp between hf and sd on actual distance (not squared, so it
@@ -563,7 +581,8 @@ export function maybeCrystallize(world) {
         const dd2 = ddx * ddx + ddy * ddy;
         // Mounted donors extend far over open country (see RIDE_EXTEND).
         const ride = 1 + RIDE_EXTEND * ((donor.knowledge && donor.knowledge.mobility) || 0) * tileOpenness(world, ti);
-        const lim = FRONTIER_EXTEND_DIST * ride;
+        const fed = FRONTIER_EXTEND_DIST * rn;   // frontier reach in REAL distance (RES_INVARIANT_POP)
+        const lim = fed * ride;
         if (dd2 > lim * lim) continue;
         // Beyond the FOOT frontier — ground only the RIDE made reachable — the
         // camp is not an administered extension of the donor's realm: it is kin
@@ -580,13 +599,13 @@ export function maybeCrystallize(world) {
         //     without it any high-mobility FARM realm (mobility rises everywhere
         //     via diffusion) would spray stateless camps into ordinary open scrub,
         //     the detached-exclave confetti the never-stateless rule exists to kill.
-        if (dd2 > FRONTIER_EXTEND_DIST * FRONTIER_EXTEND_DIST
+        if (dd2 > fed * fed
             && isFinite(td)
             && (world.fert[ti] || 0) < RIDE_AWAY_FERT_MAX
             && tileOpenness(world, ti) >= RIDE_AWAY_OPEN_MIN) { rodeAway = true; joinCountry = -1; }
         // Past the foot ring but NOT genuine ridable steppe → not a frontier
         // extension the court can hold, and not a horde birth → no settlement.
-        if (dd2 > FRONTIER_EXTEND_DIST * FRONTIER_EXTEND_DIST && !rodeAway) continue;
+        if (dd2 > fed * fed && !rodeAway) continue;
       }
       if (joinCountry < 0 && !rodeAway) continue;
       // Share the joining realm's development: floor the (distance-decayed) inherited
@@ -901,9 +920,10 @@ function sendSettlers(world, parent) {
   let best = null, bestQ = -Infinity;
   for (let i = 0; i < COLONY_CANDIDATES; i++) {
     // Sample a tile in an annulus around the parent: random angle, random
-    // radius in [COLONY_MIN_RANGE, COLONY_RANGE].
+    // radius in [COLONY_MIN_RANGE, COLONY_RANGE] — in REAL distance (the rng
+    // draws are identical either way; RES_INVARIANT_POP only scales the radius).
     const ang = rng() * Math.PI * 2;
-    const r = COLONY_MIN_RANGE + rng() * (COLONY_RANGE - COLONY_MIN_RANGE);
+    const r = (COLONY_MIN_RANGE + rng() * (COLONY_RANGE - COLONY_MIN_RANGE)) * rNormFor(world);
     const tx = ((px + Math.round(Math.cos(ang) * r)) % tw + tw) % tw;
     const ty = py + Math.round(Math.sin(ang) * r);
     if (ty < 1 || ty >= th - 1) continue;
@@ -913,7 +933,7 @@ function sendSettlers(world, parent) {
     // Spacing check against existing settlements (grid-bounded near query — any
     // settled neighbour within the capacity-scaled spacing disqualifies the
     // site, so low-fertility frontier spreads its colonies far thinner).
-    const spacing = MIN_SETT_DIST * capacitySpacingMul(fert[ti], hostilityAt(world, ti));
+    const spacing = MIN_SETT_DIST * rNormFor(world) * capacitySpacingMul(fert[ti], hostilityAt(world, ti));
     let tooClose = false;
     forEachNear(world, tx, ty, spacing, () => { tooClose = true; });
     if (tooClose) continue;
@@ -998,7 +1018,7 @@ function maybeUrbanGenesis(world) {
     if (region.people < URBAN_MIN_POP) continue;           // cheap floor: too small to seed any town (the site discount can't go below this)
     // One market town per catchment: skip if an urban node already serves nearby.
     let served = false;
-    forEachNear(world, region.pos.x, region.pos.y, URBAN_CATCHMENT, (s) => { if ((s.tier | 0) >= 1) served = true; });
+    forEachNear(world, region.pos.x, region.pos.y, URBAN_CATCHMENT * rNormFor(world), (s) => { if ((s.tier | 0) >= 1) served = true; });
     if (served) continue;
     // Pick the best nearby site within the catchment — a ford, a harbour, a hill,
     // the richest farmland edge — where a village would thicken into a market or a
@@ -1008,7 +1028,7 @@ function maybeUrbanGenesis(world) {
     let best = null, bestQ = -Infinity, bestSV = 0;
     for (let i = 0; i < URBAN_CANDIDATES; i++) {
       const ang = rng() * Math.PI * 2;
-      const r = URBAN_MIN_RANGE + rng() * (URBAN_RANGE - URBAN_MIN_RANGE);
+      const r = (URBAN_MIN_RANGE + rng() * (URBAN_RANGE - URBAN_MIN_RANGE)) * rNormFor(world);   // real-distance annulus (RES_INVARIANT_POP)
       const tx = ((px + Math.round(Math.cos(ang) * r)) % tw + tw) % tw;
       const ty = py + Math.round(Math.sin(ang) * r);
       if (ty < 1 || ty >= th - 1) continue;
@@ -1017,7 +1037,7 @@ function maybeUrbanGenesis(world) {
       // Spacing: don't plant on top of another settlement (a looser floor than
       // the colony rule — a market town belongs INSIDE its dense countryside).
       let tooClose = false;
-      forEachNear(world, tx, ty, URBAN_SPACING, () => { tooClose = true; });
+      forEachNear(world, tx, ty, URBAN_SPACING * rNormFor(world), () => { tooClose = true; });
       if (tooClose) continue;
       // Trade + defence value of the site (commerce/stronghold potential).
       const siteVal = geoBonusFor(world, ti, tx, ty) + defensibilityFor(world, ti, tx, ty)

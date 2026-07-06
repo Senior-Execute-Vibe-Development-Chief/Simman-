@@ -1,6 +1,37 @@
 # Resolution-invariant carrying capacity — design & scope
 
-**Status:** SCOPED, not started. Owner review requested before implementation.
+**Status:** Phase 1 (spacing → real distance) BUILT and MEASURED behind
+`T.RES_INVARIANT_POP` (default off — every default baseline byte-identical; verified
+hashbase `5045e8aa`/`ef8e169b`, roundtrip `f057635`/`d489b985`, smoke green). Phases 2+
+not started.
+
+> **Phase-1 results (probe: `tools/probe_resinvariance.mjs`, seed 8817, sampled at
+> matched leading-org so pacing differences can't contaminate the comparison).**
+> The invariant is TOTAL population (same Earth ⇒ same people). Ratio to the 480-pixel
+> reference at org 0.25/0.35/0.45/0.55/0.65:
+>
+> | cell | off (the bug) | Phase 1 on |
+> |---|---|---|
+> | 960-pixel pop | 1.40 / 1.41 / 2.59 / 2.05 / 3.17 | **0.79 / 1.41 / 1.36 / 1.55 / 1.54** |
+> | 320-pixel pop | 0.66 / 0.51 / 0.72 / 0.43 / 0.79 | **0.74 / 0.81 / 0.90 / 0.85 / —** |
+> | 960 settlement count | 1.6–2.1× ref | **0.71–0.85× ref** |
+> | 480 reference | (rNorm = 1) | **byte-identical to off — fixed point holds** |
+>
+> So Phase 1 essentially FIXES the settlement-density channel (counts now ±20–30%
+> instead of ~2×) and HALVES the population non-invariance (960: ~2.1× → ~1.3×). The
+> residual is exactly the predicted Phase-2/3 channel, now directly measured: with
+> correct (sparser) settlement counts at 960, each settlement's tile-catchment covers
+> ~4× the tiles ⇒ per-settlement population runs ~2.2× the reference. Catchment-area
+> caps (× rNorm²) and per-tile yields (÷ rNorm²) are what close that.
+>
+> **UNITS GOTCHA (cost one wasted measurement round — don't re-trip):** `world.tw` is
+> the SIM TILE grid, which is HALF the requested pixel width (the app and
+> `tools/_harness` run tileRes 2): `buildSim({W:960})` ⇒ `world.tw = 480`. The rNorm
+> reference is therefore **240 TILES** (`POP_REF_W = 240` — the same `RES_REF_W` that
+> `resScaleFor` normalises reach against), NOT 480. With the reference mistakenly at
+> 480 the lever was a silent no-op at 960-pixel (rNorm=1) and over-corrected 2× at
+> smaller grids. All plan text below that says "480" means the 480-PIXEL world = the
+> 240-tile sim grid.
 
 ## The problem (measured)
 
