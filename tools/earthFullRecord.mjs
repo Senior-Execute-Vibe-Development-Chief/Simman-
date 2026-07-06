@@ -146,8 +146,8 @@ for (let s = world.step; s < STEPS; s += SERIES) {
     // FULL FLUSH — events, provisional history artifacts AND a resumable world
     // snapshot at every checkpoint, so a container restart costs at most CKPT steps
     // (the first full-size run died at step ~32k holding the event log in memory).
-    const all = eventsOf(world);
-    { const f = fs.createWriteStream(OUT + ".events.jsonl"); for (const e of all) f.write(JSON.stringify(e) + "\n"); f.end(); }
+    // sync write: a buffered stream never flushed when the process was killed mid-run
+    fs.writeFileSync(OUT + ".events.jsonl", eventsOf(world).map(e => JSON.stringify(e)).join("\n") + "\n");
     writeHistory();
     fs.writeFileSync(OUT + ".world.json", serializeWorld(world));
   }
