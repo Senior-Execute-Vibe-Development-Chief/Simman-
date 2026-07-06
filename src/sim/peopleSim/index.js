@@ -36,7 +36,7 @@ import { updateFaiths, FAITH_INTERVAL, updatePilgrimage, PILGRIM_INTERVAL } from
 import { updateSlaveTrade, SLAVE_INTERVAL } from "./slavery.js";
 import { updateDynasties, DYNASTY_INTERVAL } from "./dynasties.js";
 import { diffuseIdentityField } from "./identityField.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 
 const CHRONICLE_INTERVAL = 300;   // ticks between per-country chronicle milestone checks
 // Per-tile identity field (identityField.js): mirror each settlement's
@@ -195,7 +195,15 @@ export function stepPeopleSim(world, n = 1) {
     if (world.step === 1 || world.step % _ivl(CLIMATE_INTERVAL) === 0) updateClimate(world);   // rate pass: walk/eruptions per unit of HISTORY
     // Recompute territory periodically: each settlement claims the land it
     // reaches cheapest, and its food / resources are tallied from it.
-    if (world.step === 1 || world.step % T.TERRITORY_INTERVAL === 0) {
+    // PERF CADENCE at large maps (RES_INVARIANT_POP): the territory flood's work grows
+    // ~rNorm² (same real catchments over rNorm²× tiles — measured 63-203 s per firing at
+    // 1920-pixel Modern, 97% of all compute), so its cadence stretches by rNorm to keep
+    // the amortized cost bounded. Cadence only — how OFTEN the same computation runs,
+    // never whether/what; clamped so the reference grid and anything below it (all byte-
+    // identity probes) keep the exact base interval. The real fix (B80-style budgeted
+    // incremental flood) is designed in docs/roadmap-wave-6.md.
+    const _terrIvl = Math.max(T.TERRITORY_INTERVAL, Math.round(T.TERRITORY_INTERVAL * rNormPop(world)));
+    if (world.step === 1 || world.step % _terrIvl === 0) {
       computeTerritory(world);          // per-settlement food catchments (economy)
       computeCountryTerritory(world);   // clean per-country cost-Voronoi (the political map)
       if (T.ADOPT_ADMIN) updateAdminTenure(world);   // W6-G item 3 (exp.): stamp administered-tenure from _countryOwner changes before adoption reads it

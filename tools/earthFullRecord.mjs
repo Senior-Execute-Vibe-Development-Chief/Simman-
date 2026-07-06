@@ -27,7 +27,7 @@ import { getPolity } from "../src/sim/peopleSim/entities.js";
 import { serializeWorld } from "../src/sim/persist.js";
 import { T } from "../src/sim/peopleSim/tuning.js";
 
-const STEPS = +(process.argv[2] || 80000), SEED = +(process.argv[3] || 8817);
+const STEPS_ARG = +(process.argv[2] || 80000), SEED = +(process.argv[3] || 8817);
 const W = +(process.argv[4] || 1920), H = W >> 1;
 const OUT = process.argv[5] || `/tmp/fullrecord_${SEED}_${W}`;
 const SERIES = 250, CKPT = 10000;
@@ -38,10 +38,17 @@ const sum = a => a.reduce((x, y) => x + y, 0);
 const med = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
 
 let t0 = performance.now();
-const world = buildSim({ W, H, seed: SEED });
+// RESUME=path loads a checkpoint world snapshot (persist.js) instead of rebuilding —
+// recording continues from its step; pass the SAME out prefix vars but a fresh suffix
+// so series files don't interleave.
+const RESUME = process.env.RESUME || null;
+const world = RESUME
+  ? (await import("../src/sim/persist.js")).loadWorld(fs.readFileSync(RESUME, "utf8"))
+  : buildSim({ W, H, seed: SEED });
 world._checkInvariants = true;   // per-tick finiteness/range checks + conservation totals
 world._dbgProfile = true;        // per-pass timing (world.debug.pass) — names the culprit when the pace cliffs
-console.log(`[rec] built ${W}x${H} (tw=${world.tw}) seed=${SEED} in ${((performance.now() - t0) / 1000).toFixed(1)}s → recording to ${OUT}.*`);
+const STEPS = STEPS_ARG;   // absolute target step
+console.log(`[rec] ${RESUME ? `RESUMED at step ${world.step}` : `built ${W}x${H}`} (tw=${world.tw}) seed=${SEED} in ${((performance.now() - t0) / 1000).toFixed(1)}s → recording to ${OUT}.* (target step ${STEPS})`);
 fs.writeFileSync(OUT + ".series.jsonl", "");
 
 // realm lifecycle tracker (hall of fame)
@@ -129,7 +136,7 @@ function trackRealms() {
 
 // ── run ──
 t0 = performance.now();
-for (let s = 0; s < STEPS; s += SERIES) {
+for (let s = world.step; s < STEPS; s += SERIES) {
   const c0 = performance.now();
   stepPeopleSim(world, Math.min(SERIES, STEPS - s));
   trackRealms();
