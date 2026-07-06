@@ -40,6 +40,7 @@ const med = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - 
 let t0 = performance.now();
 const world = buildSim({ W, H, seed: SEED });
 world._checkInvariants = true;   // per-tick finiteness/range checks + conservation totals
+world._dbgProfile = true;        // per-pass timing (world.debug.pass) — names the culprit when the pace cliffs
 console.log(`[rec] built ${W}x${H} (tw=${world.tw}) seed=${SEED} in ${((performance.now() - t0) / 1000).toFixed(1)}s → recording to ${OUT}.*`);
 fs.writeFileSync(OUT + ".series.jsonl", "");
 
@@ -89,6 +90,8 @@ function series(dt) {
     persons: world.persons ? world.persons.size : 0, dynasties: world.dynasties ? world.dynasties.size : 0,
     cultures: world.cultures ? world.cultures.size : 0, faiths: world.faiths ? world.faiths.size : 0,
     events: eventsOf(world).length, sps: r2(SERIES / Math.max(0.001, dt)), rssMB: Math.round(process.memoryUsage().rss / 1048576),
+    slow: (() => { const p = world.debug && world.debug.pass; if (!p) return "";   // 3 slowest passes last tick (ms) — the perf-cliff fingerprint
+      return Object.entries(p).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k}:${v.toFixed(0)}`).join(" "); })(),
   };
   fs.appendFileSync(OUT + ".series.jsonl", JSON.stringify(row) + "\n");
   return row;
@@ -131,7 +134,13 @@ for (let s = 0; s < STEPS; s += SERIES) {
   stepPeopleSim(world, Math.min(SERIES, STEPS - s));
   trackRealms();
   const row = series((performance.now() - c0) / 1000);
-  if (world.step % CKPT === 0 || s + SERIES >= STEPS) { deep(); console.log(`[rec] step ${world.step}  yr ${row.year}  era ${row.leadEra}  pop ${row.pop}  setts ${row.setts}  cnt ${row.countries}  ${row.sps} sps  rss ${row.rssMB}MB`); }
+  if (world.step % CKPT === 0 || s + SERIES >= STEPS) {
+    deep(); console.log(`[rec] step ${world.step}  yr ${row.year}  era ${row.leadEra}  pop ${row.pop}  setts ${row.setts}  cnt ${row.countries}  ${row.sps} sps  rss ${row.rssMB}MB`);
+    // EVENT FLUSH — write the log incrementally so a killed/crashed run loses nothing
+    // (the first full-size run stalled for hours with the whole log held in memory only).
+    const all = eventsOf(world);
+    { const f = fs.createWriteStream(OUT + ".events.jsonl"); for (const e of all) f.write(JSON.stringify(e) + "\n"); f.end(); }
+  }
 }
 console.log(`[rec] ${STEPS} steps in ${((performance.now() - t0) / 1000 / 60).toFixed(1)} min`);
 
