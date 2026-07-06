@@ -1,9 +1,43 @@
 # Resolution-invariant carrying capacity — design & scope
 
-**Status:** Phase 1 (spacing → real distance) BUILT and MEASURED behind
-`T.RES_INVARIANT_POP` (default off — every default baseline byte-identical; verified
-hashbase `5045e8aa`/`ef8e169b`, roundtrip `f057635`/`d489b985`, smoke green). Phases 2+
-not started.
+**Status:** Phases 1 (spacing → real distance) AND 2 (catchment → real area) BUILT and
+MEASURED behind `T.RES_INVARIANT_POP` (default off — every default baseline
+byte-identical; verified hashbase `5045e8aa`/`ef8e169b`, roundtrip `f057635`/`d489b985`,
+smoke green; the 480-pixel reference is on≡off EXACTLY, the fixed point holds).
+
+> **Phase-2 results (same probe/protocol as Phase 1).** Phase 2 = the economic
+> catchment in real terms: (a) the settlement territory REACH BUDGET × rNorm (it was a
+> fixed tile radius — the same settlement farmed ¼ the real land at 2× resolution; the
+> same fix countryTerritory applies to POLITICAL reach); (b) territory sums
+> (`_terrTiles`/`_terrWorkTiles`/`_terrFertSum`/`_terrFarmedWt`) accumulate ×1/rNorm²
+> (reference-area units) at ONE point in tallyTerritory + seedLocalTerritory, so every
+> consumer (the /120 caps, fish land-gate, farm-labour floor, graze counts) sees
+> reference-scale numbers automatically; (c) `foodFalloff(cost/rNorm)` — the harvest
+> kernel in real distance; (d) `SOIL_CATCH_R`, `SPACE_RADIUS` (+ buildable-area count
+> ×1/rNorm²), and the grain-haul `FOOD_HAUL_RANGE` × rNorm.
+>
+> Total population vs the 480-pixel reference at org 0.25/0.35/0.45/0.55/0.65:
+>
+> | cell | off (bug) | Phase 1 only | Phases 1+2 |
+> |---|---|---|---|
+> | 960-pixel | 1.40/1.41/2.59/2.05/3.17 | 0.79/1.41/1.36/1.55/1.54 | **0.47/0.54/0.88/0.93/1.59** |
+> | 320-pixel | 0.66/0.51/0.72/0.43/0.79 | 0.74/0.81/0.90/0.85/— | **1.09/1.41/1.22/1.54/1.81** |
+>
+> MID-DEVELOPMENT (org 0.45–0.55, the bulk of a run's history) is now within ~10% at
+> 960. Two residuals, both diagnosed:
+> 1. **Early undershoot at 960 (0.47–0.54): the founding-THROUGHPUT channel** —
+>    candidates-per-sweep is a fixed absolute number per map, so a 4×-tile map fills
+>    its (now correctly sparser) settlement lattice more slowly in early history.
+>    Phase-3 candidate: scale `CANDIDATES_PER_SWEEP` (and the per-settlement colony
+>    cadence?) by rNorm²; must not double the sweep's rng-draw structure carelessly.
+> 2. **Late drift HIGH on BOTH sides (320 +1.8×, 960 +1.6×): likely chaos, not bias** —
+>    both directions overshooting symmetrically is the signature of single-seed
+>    trajectory noise (the G-equivalence study measured ±20–40% late-magnitude wander
+>    with seed-dependent sign from pure chaos). Needs a ~5-seed mean per cell to
+>    separate a real residual from noise before any further mechanism is touched.
+>
+> Also fixed en route: the same-real-catchment change means settlement counts at 960
+> now track the reference in REAL density (~0.8–1.2×) across the whole run.
 
 > **Phase-1 results (probe: `tools/probe_resinvariance.mjs`, seed 8817, sampled at
 > matched leading-org so pacing differences can't contaminate the comparison).**

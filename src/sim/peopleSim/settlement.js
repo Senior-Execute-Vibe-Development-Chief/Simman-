@@ -15,7 +15,7 @@ import { CROP_BY_ID } from "../cropPackages.js";
 import { logEvent } from "./events.js";
 import { ensurePolity, getPolity } from "./entities.js";
 import { foundCulture, getCulture, seedCulture, nameFor } from "./cultures.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 import { malariaSignal, tsetseSignal, aridSignal } from "./habitability.js";
 import { recordIn, recordOut, IN_MINING, IN_GOODS, IN_MATERIALS, IN_CREDIT, OUT_GOODS, OUT_MATERIALS, OUT_CREDIT } from "./money.js";
 import { hash32 } from "./rng.js";
@@ -1760,7 +1760,13 @@ export function updateSoil(world) {
   // tile, so the farmed REGION degrades as a whole and an expanding frontier can't
   // dilute it away), and caches the catchment-mean fatigue on the settlement for
   // updateFood's cheap per-tick penalty read.
-  const th = world.th, elev = world.elev, R = SOIL_CATCH_R, R2 = R * R;
+  // Catchment radius in REAL distance (RES_INVARIANT_POP Phase 2): the farmed
+  // region a settlement tires is the same real land at any grid resolution
+  // (rounded — exact at the 240-tile reference where rNormPop is 1). Per-tile
+  // fatigue GAIN needs no area factor: it is an intensity (people per real area
+  // are already invariant), and the catchment MEAN read back is scale-free.
+  const _rnS = rNormPop(world);
+  const th = world.th, elev = world.elev, R = Math.max(1, Math.round(SOIL_CATCH_R * _rnS)), R2 = R * R;
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     climateOf(world, s);
@@ -2142,14 +2148,21 @@ function updateFood(world, s) {
 // mountains don't count. Cached on the settlement (terrain is static).
 function computeBuildableArea(world, sx, sy) {
   const { tw, th, elev } = world;
+  // Urban footprint in REAL distance, counted in REFERENCE tiles (RES_INVARIANT_POP
+  // Phase 2): spaceCapacity multiplies this area by a per-reference-tile density
+  // (DENSITY_BASE, calibrated at the 240-tile grid), so both the scan radius and the
+  // area unit must be resolution-invariant or a finer grid's cities hold rn²× fewer
+  // (smaller real footprint) people at rn²× the count. Off ⇒ radius 14, count raw.
+  const _rn = rNormPop(world), _invA = 1 / (_rn * _rn);
+  const rr = Math.max(1, Math.round(SPACE_RADIUS * _rn));
   let n = 0;
-  for (let dy = -SPACE_RADIUS; dy <= SPACE_RADIUS; dy++) {
+  for (let dy = -rr; dy <= rr; dy++) {
     const ny = sy + dy;
     if (ny < 0 || ny >= th) continue;
-    for (let dx = -SPACE_RADIUS; dx <= SPACE_RADIUS; dx++) {
+    for (let dx = -rr; dx <= rr; dx++) {
       const nx = ((sx + dx) % tw + tw) % tw;
       const e = elev[ny * tw + nx];
-      if (e > 0 && e < 0.6) n++;        // habitable land only
+      if (e > 0 && e < 0.6) n += _invA;        // habitable land only, in reference-tile units
     }
   }
   return n;

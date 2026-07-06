@@ -26,7 +26,7 @@ import { passRng } from "./rng.js";
 import { computeTransport } from "./transport.js";
 import { forEachNear, gridAdd } from "./spatialGrid.js";
 import { grownLiveOwnerAt } from "./countryClaim.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 import { settleHostility } from "./habitability.js";
 
 const CRYSTAL_INTERVAL          = 24;     // sweep more often (was 32)
@@ -107,10 +107,10 @@ const MIN_SETT_DIST             = 8;          // daughter-colony spacing floor (
 // NB world.tw is the SIM TILE grid — half the requested pixel width (the app and
 // tools/_harness run tileRes 2) — so the reference is 240 TILES (= the calibrated
 // 480-pixel world), the very same RES_REF_W countryTerritory.js normalises reach
-// against. This closes the DENSITY half of that inconsistency; catchment area and
-// per-tile yields are the plan's later phases. Lever off ⇒ exactly 1.
-const POP_REF_W = 240;   // tile-grid width of the calibrated 480-pixel reference (== countryTerritory RES_REF_W)
-function rNormFor(world) { return T.RES_INVARIANT_POP ? world.tw / POP_REF_W : 1; }
+// against. This closes the DENSITY half of that inconsistency; the catchment-area /
+// per-tile-yield half lives in territory.js + settlement.js (Phase 2). The shared
+// factor is tuning.js rNormPop. Lever off ⇒ exactly 1.
+const rNormFor = rNormPop;
 // ── Density ∝ carrying capacity ───────────────────────────────────────
 // Without this, spacing was a fixed distance, so EVERY habitable tile filled
 // to the same settlement density — the low-capacity wet tropics (Congo, the

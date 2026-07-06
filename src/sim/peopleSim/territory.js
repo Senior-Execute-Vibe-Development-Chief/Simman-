@@ -21,7 +21,7 @@
 
 import { localEdgeCost } from "./transport.js";
 import { forEachNear } from "./spatialGrid.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 
 // Reach budget, in transport-cost units (a plain tile = 1.0). Pure
 // function of ORGANIZATION — the centre's willingness/ability to
@@ -204,10 +204,19 @@ export function computeTerritory(world) {
   const byId = new Map();
   const budget = new Map();
   const knOf = new Map();   // owner id → snapshot of its knowledge for localEdgeCost
+  // The reach budget is in transport-cost units where a plain TILE costs ~1, so a
+  // fixed budget is a fixed TILE radius — a smaller REAL catchment on a finer grid
+  // (the second half of the Phase-2 resolution bug: the same settlement farmed ¼
+  // the real land at 2× resolution, quartering its food after area normalisation).
+  // Scale it by rNormPop so the economic catchment covers the same REAL area at any
+  // resolution — exactly what countryTerritory.js already does for the POLITICAL
+  // reach via resScaleFor. (foodFalloff reads cost/rNorm, keeping the harvest
+  // kernel's real shape consistent with the widened budget.) Off ⇒ ×1.
+  const _rnB = rNormPop(world);
   for (const s of world.settlements) {
     if (s.mode !== "settled") continue;
     byId.set(s.id, s);
-    budget.set(s.id, reachBudget(s));
+    budget.set(s.id, reachBudget(s) * _rnB);
     knOf.set(s.id, s.knowledge || {});
   }
 
@@ -425,12 +434,22 @@ function tallyTerritory(world, owner, cost, byId) {
   // deposit stays on the map but no longer grants luxury budgets / value-cling.
   const mineLive = (id, ti) => !reserve || !reserve[id] || reserve[id][ti] > 0;
   const cm = world.climMod;   // dynamic-climate fertility overlay (undefined = none → ×1)
+  // Resolution-invariant AREA accounting (T.RES_INVARIANT_POP, Phase 2 of
+  // docs/resolution-invariance-plan.md): a finer grid cuts the same real land into
+  // rn²× more tiles, so raw tile SUMS (_terrTiles/_terrFertSum/…) inflate with the
+  // pixel count and every consumer calibrated at the 240-tile reference (the /120
+  // caps, per-tile fish gate, graze counts, the farm-labour floor) mis-scales.
+  // Each tile therefore accumulates as invA = 1/rn² REFERENCE-tiles (its real
+  // area), and the harvest falloff reads its transport cost in REAL units
+  // (cost/rn). One normalisation point — every downstream consumer then sees
+  // reference-scale numbers automatically. Off ⇒ rn=1, invA=1: byte-identical.
+  const _rn = rNormPop(world), _invA = 1 / (_rn * _rn);
   for (let ti = 0; ti < N; ti++) {
     const oid = owner[ti];
     if (oid < 0) continue;
     const s = byId.get(oid);
     if (!s) continue;
-    s._terrTiles++;
+    s._terrTiles += _invA;
     // WORKED tiles are those the settlement can actually reach this pass
     // (finite transport cost). Disconnected fragments — land kept by the
     // persistent-ownership rule after a front cut them off — contribute no
@@ -438,18 +457,18 @@ function tallyTerritory(world, owner, cost, byId) {
     // either (they used to actively REDUCE net food, a phantom workforce
     // farming land nobody could get to). updateFood reads _terrWorkTiles.
     const reachable = cost[ti] < Infinity;
-    if (reachable) s._terrWorkTiles++;
+    if (reachable) s._terrWorkTiles += _invA;
     const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);   // climate scales the harvestable fertility
     if (f >= s._terrMinFert) {
-      const w = foodFalloff(cost[ti]);
-      s._terrFertSum += f * w;
+      const w = foodFalloff(cost[ti] / _rn);
+      s._terrFertSum += f * w * _invA;
       // The farm-labour floor (updateFood) is charged on FARMED tiles at the
       // same distance discount as their harvest — never on barren/mountain
       // tiles that contribute nothing (claiming worthless land used to
       // actively DESTROY food via a phantom workforce), and a distant field
       // costs proportionally less labour just as it yields less. Break-even
       // stays exactly f = FARM_FERT_FLOOR, per the food model's contract.
-      s._terrFarmedWt += w;
+      s._terrFarmedWt += w * _invA;
     }
     if (haveDep) {
       const acc = s._terrResAcc;
@@ -491,16 +510,20 @@ export function seedLocalTerritory(world, s) {
   const haveDep = deposits && Object.keys(deposits).length > 0;
   const reserve = world.depositReserve;
   const mineLive = (id, ti) => !reserve || !reserve[id] || reserve[id][ti] > 0;
-  for (let dy = -3; dy <= 3; dy++) {
+  // Real-distance seed box + reference-area accumulation (RES_INVARIANT_POP,
+  // same normalisation as tallyTerritory above; off ⇒ rb=3, invA=1, identical).
+  const _rn = rNormPop(world), _invA = 1 / (_rn * _rn);
+  const rb = Math.max(1, Math.round(3 * _rn));
+  for (let dy = -rb; dy <= rb; dy++) {
     const ny = sy + dy; if (ny < 0 || ny >= th) continue;
-    for (let dx = -3; dx <= 3; dx++) {
+    for (let dx = -rb; dx <= rb; dx++) {
       const nx = ((sx + dx) % tw + tw) % tw;
       const ti = ny * tw + nx;
       if ((world.elev[ti] || 0) <= 0) continue;
-      tiles++;
+      tiles += _invA;
       const f = (fert[ti] || 0) * (cm ? cm[ti] : 1);
-      const cost = Math.sqrt(dx * dx + dy * dy);
-      if (f >= minFert) { const w = foodFalloff(cost); fertSum += f * w; farmedWt += w; }
+      const cost = Math.sqrt(dx * dx + dy * dy) / _rn;
+      if (f >= minFert) { const w = foodFalloff(cost); fertSum += f * w * _invA; farmedWt += w * _invA; }
       if (haveDep) {
         for (const id of TERR_RES) { const arr = deposits[id]; if (!arr) continue; const v = arr[ti] || 0; if (v > (res[id] || 0)) res[id] = v; }
         if (deposits.precious && deposits.precious[ti] > 0.05 && mineLive("precious", ti)) minable.push([ti, "precious"]);

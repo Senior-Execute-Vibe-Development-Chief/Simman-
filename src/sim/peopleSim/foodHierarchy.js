@@ -48,7 +48,7 @@
 
 import { getWealthReserve, techEff } from "./settlement.js";
 import { recordIn, recordOut, IN_FOOD, OUT_FOOD } from "./money.js";
-import { T } from "./tuning.js";
+import { T, rNormPop } from "./tuning.js";
 
 // ── In-kind levy (the temple/palace redistributive economy) ───────────
 // The first cities were fed by REQUISITION, not purchase: a temple- or
@@ -87,7 +87,7 @@ function foodHaulArrive(world, child, parent) {
   let dx = Math.abs(child.pos.x - parent.pos.x); if (dx > tw / 2) dx = tw - dx;
   const dy = child.pos.y - parent.pos.y;
   const d = Math.sqrt(dx * dx + dy * dy);
-  let range = T.FOOD_HAUL_RANGE * FOOD_RANGE_BY_TIER[Math.min(3, Math.max(0, parent.tier | 0))];
+  let range = T.FOOD_HAUL_RANGE * FOOD_RANGE_BY_TIER[Math.min(3, Math.max(0, parent.tier | 0))] * rNormPop(world);   // grain hauls a REAL distance, not a tile count (RES_INVARIANT_POP)
   // Transport tech of the shipping region: roads (construction) + wagons (mobility),
   // plus an industrial leap (rail / refrigeration / canning) as construction passes ~0.85.
   const k = child.knowledge || {};
