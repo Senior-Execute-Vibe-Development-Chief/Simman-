@@ -325,10 +325,23 @@ const tFlood=new Uint8Array(tw*th);   // arid-river floodplain mask (Nile/Indus/
 // must be broad enough and wet enough to read as prime cropland, not a one-tile thread.
 const riverRadius=[0,1,2,3,3];// NONE,STREAM,TRIB,MAJOR,GREAT (~21-42km/tile)
 const riverMoistPeak=[0,0.22,0.45,0.52,0.58];
+// FLOODPLAIN width scales with DISCHARGE: the alluvial plain a river builds is a
+// function of its flood volume and sediment flux — a great river meanders across a
+// broad valley, a tributary lays down only its own narrow strip, and a stream builds
+// no plain at all at this tile scale (~21-42km/tile: a tributary's plain is
+// SUB-tile, so it marks only the channel tile itself; a major river reaches the
+// adjacent rows; a great river its full wetted ribbon). The wetted-moisture
+// corridor above keeps the full riverRadius (a river really does green its whole
+// valley); this table only bounds how far the PRIME-CROPLAND floodplain mark may
+// extend from each channel — without it a tributary painted a plain 3 tiles wide,
+// nearly the Nile's, and minor streams carried most of the world's "floodplain".
+const floodRadius=[0,0,0,1,2];
+const floodOK=new Uint8Array(tw*th);
 for(let ti=0;ti<tw*th;ti++){
 const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;
 const R=riverRadius[mag],peak=riverMoistPeak[mag];
 if(R<1)continue;
+const fR=floodRadius[mag];
 const sx=ti%tw,sy=(ti-sx)/tw;
 for(let dy=-R;dy<=R;dy++){const ny=sy+dy;if(ny<0||ny>=th)continue;
 for(let dx=-R;dx<=R;dx++){const nx=(sx+dx+tw)%tw;
@@ -337,6 +350,7 @@ if(tElev[ni]<=0)continue;
 let ddx=Math.abs(dx);if(ddx>tw/2)ddx=tw-ddx;
 const dist=Math.sqrt(ddx*ddx+dy*dy);
 if(dist>R)continue;
+if(dist<=fR)floodOK[ni]=1;
 // Clamp minimum distance so center tile blends with surroundings (no biome spike)
 const effDist=Math.max(dist,0.8);
 const t2=effDist/R;const falloff=0.5+0.5*Math.cos(t2*Math.PI);
@@ -373,10 +387,11 @@ const allu=rm*(oldMoist<0.30?0.55:oldMoist<0.45?0.30:0.10)*alluCold;
 tFert[ti]=Math.min(1,tFert[ti]+allu);
 // FLOODPLAIN: where a river runs through genuinely DRY land it lays a fertile
 // alluvial valley — a distinct ecosystem, not the savanna the moisture boost
-// alone reads as. Mark the whole wetted GREEN corridor (boosted moisture past the
+// alone reads as. Mark the wetted GREEN corridor (boosted moisture past the
 // vegetation line) when the underlying land is arid — the Nile / Indus / Euphrates
-// ribbon through desert, the full width that reads as non-desert.
-if(oldMoist<0.32&&tMoist[ti]>0.14&&rm>0.04)tFlood[ti]=1;}}
+// ribbon through desert — bounded by floodOK: the plain reaches only as far as the
+// discharge of the river that waters it can actually build (floodRadius above).
+if(oldMoist<0.32&&tMoist[ti]>0.14&&rm>0.04&&floodOK[ti])tFlood[ti]=1;}}
 
 // ── Lake moisture boost: lakes act as local moisture sources ──
 if(rivers.lake){
