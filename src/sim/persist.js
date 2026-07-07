@@ -259,11 +259,17 @@ export function loadWorld(data, opts = {}) {
   if (m.realWind && !opts.realWindFns) {
     throw new Error("This save uses real NCEP winds, which are unavailable in this context (worker). Load it from the main thread with realWindFns.");
   }
-  // Rebuild terrain + pipeline deterministically from the recorded identity.
-  const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
-  // Tuning first: granularity / cadence levers shape createWorld behavior.
+  // Tuning BEFORE terrain: the pipeline itself reads levers now (the floodplain
+  // ribbon is gated on T.RES_INVARIANT_POP), so the save's tuning is part of the
+  // TERRAIN IDENTITY. Applying it after pipelineBuild silently rebuilt different
+  // terrain under the saved civilization whenever the saving and loading sessions
+  // disagreed on a worldgen-facing lever (e.g. a lever-off save loaded in a fresh
+  // worker at default lever-on: different tFlood/fert, moved wasteland walls) —
+  // exactly the mismatch the preset/realWind guards above exist to prevent.
   resetTuning();
   applyTuning(data.tuning);
+  // Rebuild terrain + pipeline deterministically from the recorded identity.
+  const { w, ter } = pipelineBuild({ W: m.W, H: m.H, seed: m.seed, preset: m.preset, oceanLevel: m.oceanLevel, tecParams: m.tecParams, realWind: !!m.realWind, realWindFns: opts.realWindFns || null });
   const world = initPeopleSim(w, { seed: w.seed, tCrop: ter.tCrop, tFlood: ter.tFlood, tileRes: 1, deposits: ter.deposits, tAncestry: ter.tAncestry, terTw: ter.tw, terTh: ter.th, ancestryCount: ter.ancestryCount, ancHue: ter.ancHue, tArrival: ter.tArrival });
 
   // Drop the freshly-seeded state (cradles + their events); the save replaces it.
@@ -378,11 +384,18 @@ export function loadWorld(data, opts = {}) {
     if (!reg) continue;
     for (const e of reg.values()) if (e && e.nameCounter !== undefined) _nameCtrs.push([e, e.nameCounter]);
   }
+  // rebuildOverlords prunes dangling pol._overlord/_depKind links (an overlord that
+  // died between the save's last polity pass and the save) — a persistent-record
+  // mutation the uninterrupted run wouldn't perform until its NEXT pass. Snapshot
+  // and restore those too, same contract as the polity/nameCounter rollback above.
+  const _overlords = [];
+  for (const p of world.polities.values()) _overlords.push([p, p._overlord, p._depKind]);
   rebuildCountries(world);
   rebuildOverlords(world, world.countries);   // colony↔metropole links must exist before the alliance map (else colonies balance against their own metropole until the next ALLIANCE_EVERY boundary)
   updateAlliances(world);
   for (const id of [...world.polities.keys()]) if (!_polIds.has(id)) world.polities.delete(id);
   for (const [e, n] of _nameCtrs) e.nameCounter = n;
+  for (const [p, ov, dk] of _overlords) { p._overlord = ov; p._depKind = dk; }
   return world;
 }
 

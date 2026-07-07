@@ -678,9 +678,10 @@ function buildHierarchy(world, c) {
 }
 
 // The REGIONAL radius a provincial seat administers (reference tiles; res-scaled
-// like every other map distance). Same physical "one region" scale the frontier
-// nucleation cluster uses (countryTerritory NUCLEATE_R): a province is the land
-// within a region's span of its seat.
+// like every other map distance): a province is the land within a region's span of
+// its seat. Numerically equal to countryTerritory's NUCLEATE_R at the 240 reference
+// — but NB NUCLEATE_R is used UNSCALED there (a latent res-invariance inconsistency,
+// noted, not this change's to fix), so the two diverge on larger grids.
 const PROVINCE_SPAN = 9;
 // PROVINCES — assign every member to the nearest SEAT of its realm: the capital,
 // any CITY, and any LOCALLY-STRONGEST member (no stronger realm-mate within a
@@ -698,13 +699,16 @@ const PROVINCE_SPAN = 9;
 function assignProvinces(world, c) {
   const seats = [];
   const span = PROVINCE_SPAN * resScaleFor(world.tw);
-  for (const m of c.members) {
+  const span2 = span * span, halfTw = world.tw / 2;
+  const pow = c.members.map(m => settlementPower(m));      // precomputed once — the pair loop below is O(n²)
+  const d2 = (a, b) => { let dx = Math.abs(a.pos.x - b.pos.x); if (dx > halfTw) dx = world.tw - dx; const dy = a.pos.y - b.pos.y; return dx * dx + dy * dy; };
+  for (let i = 0; i < c.members.length; i++) {
+    const m = c.members[i];
     if (m.id === c.capitalId || (m.tier | 0) >= CITY_TIER) { seats.push(m); continue; }
     let localTop = true;                                   // locally-strongest member = regional seat
-    const mp = settlementPower(m);
-    for (const o of c.members) {
-      if (o === m) continue;
-      if (settlementPower(o) > mp && dist(world, m.pos.x, m.pos.y, o.pos.x, o.pos.y) < span) { localTop = false; break; }
+    for (let j = 0; j < c.members.length; j++) {
+      if (j === i) continue;
+      if (pow[j] > pow[i] && d2(m, c.members[j]) < span2) { localTop = false; break; }
     }
     if (localTop) seats.push(m);
   }
@@ -712,7 +716,7 @@ function assignProvinces(world, c) {
   for (const s of c.members) {
     let best = seats[0], bd = Infinity;
     for (const seat of seats) {
-      const d = dist(world, s.pos.x, s.pos.y, seat.pos.x, seat.pos.y);
+      const d = d2(s, seat);
       if (d < bd) { bd = d; best = seat; }
     }
     s._provinceCity = best ? best.id : c.capitalId;
@@ -1776,20 +1780,28 @@ export function updatePolities(world) {
     for (const c of countries.values()) if (c.capital && c.members.length > 1) cps.push(settlementPower(c.capital));
     cps.sort((a, b) => a - b);
     world._refCapPower = cps.length ? cps[cps.length >> 1] : 1; }
-  // CAP_MODEL: the MEDIAN fiscal extraction PER PROVINCE across real states — the peer
+  // CAP_MODEL: the MEDIAN fiscal extraction PER MEMBER across real states — the peer
   // baseline the grounded dominance tail is measured against (revenue is Tilly's real
   // currency of administrative reach, and it differs from raw coercive power by
-  // extraction EFFICIENCY). Per member, not per realm: total revenue is member-count ×
-  // per-province take, so a realm-total baseline paid the dominance tail for BULK — a
-  // 17-province realm of ordinary provinces read ~5× "dominant" and its capacity
-  // compounded on its own size (measured: capacity 225 vs load 24 at 17 members — the
-  // immortal-juggernaut loop the log2 was built to prevent, reintroduced through the
-  // tail). Efficiency per province is what actually let Rome hold more than its peers.
+  // extraction EFFICIENCY). Per MEMBER, not per realm — the member is the unit the
+  // load/capacity model counts slots in, so efficiency per member is the like-for-like
+  // normalization. A realm-total baseline paid the dominance tail for BULK: total
+  // revenue is member-count × per-member take, so a 17-member realm of ordinary
+  // members read ~5× "dominant" and its capacity compounded on its own size (measured:
+  // capacity 225 vs load 24 at 17 members — the immortal-juggernaut loop the log2 was
+  // built to prevent, reintroduced through the tail). Efficiency per unit ruled is
+  // what actually let Rome hold more than its peers.
   // Same robust-median rationale as _refCapPower. Only read when the lever is on.
   if (T.CAP_MODEL) { const revs = [];
     for (const c of countries.values()) if (c.capital && c.members.length > 1) revs.push((govOf(world, c.id)._lastRevenue || 0) / c.members.length);
     revs.sort((a, b) => a - b);
-    world._refRevenue = revs.length ? Math.max(1e-6, revs[revs.length >> 1]) : 1; }
+    // Floor at ONE COIN per member per pass — the same unit-ful "is fiscal extraction a
+    // real phenomenon yet?" quantum the old per-realm floor encoded (mature per-member
+    // revenue runs 10²-10³, so the floor is inert once coinage exists). A near-zero
+    // floor (1e-6) made the first realm to mine a sliver of silver read a ~10⁶ fiscal
+    // surplus while the peer median was still 0 — the early tail is bounded by domCeil
+    // either way, but the graduated response is the honest one.
+    world._refRevenue = revs.length ? Math.max(1, revs[revs.length >> 1]) : 1; }
   // Balance of power: recompute the (slow-drifting) alliance map periodically — and
   // once on first run so the war pass never reads an undefined map. Self-calibrating,
   // not time-gated: it's a perf cadence (how OFTEN), the content is pure world state.
@@ -1915,8 +1927,8 @@ export function updatePolities(world) {
     if (T.CAP_MODEL) {
       // GROUNDED tail (CAP_FISC/CAP_LOG): fiscal surplus over peers, its reach multiplied by
       // logistics — the two compounding into convexity. relFisc = last pass's extraction PER
-      // PROVINCE vs the peer per-province median (revenue, not raw power, is what funds
-      // administration — and it must be measured per province ruled, or the tail rewards
+      // MEMBER vs the peer per-member median (revenue, not raw power, is what funds
+      // administration — and it must be measured per unit ruled, or the tail rewards
       // sheer SIZE and capacity compounds on itself; see the _refRevenue note). Logistics≈0
       // in the bronze age ⇒ the tail is near-linear and small; it steepens only as the reach
       // techs (roads→rails) arrive ⇒ integrated mega-empires are a LATE, earned phenomenon.
@@ -2198,7 +2210,13 @@ export function updatePolities(world) {
       const seat = (s.tier | 0) >= CITY_TIER || s._provinceCity === s.id;
       const pacified = world.step - (s._conqueredAt ?? -Infinity) < T.CONQUEST_GRACE;
       const infant   = s.parentSettlementId >= 0 && world.step - (s.foundedStep || 0) < COLONY_SUPPLY_TICKS / (world._dt || 1);
-      const ratio = (provPower.get(s.id) || settlementPower(s)) / capPower;   // the province's strength vs the throne
+      // Province vs PROVINCE, not province vs the capital city alone: the throne's
+      // strength is likewise its whole home province (court + the heartland around
+      // it). Aggregate-vs-solo let any 4-village frontier province out-"power" an
+      // imperial capital city and set every far seat scheming at once. Falls back
+      // to the raw capital power if the throne's bucket is missing this pass.
+      const thronePower = provPower.get(c.capitalId) || capPower;
+      const ratio = (provPower.get(s.id) || settlementPower(s)) / Math.max(1, thronePower);   // the province's strength vs the throne's province
       // Same blended distance as the hold load — a governor across a
       // mountain range is "farther" than its straight-line reading,
       // proportionally embolder.
