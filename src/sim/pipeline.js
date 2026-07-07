@@ -321,25 +321,47 @@ const rivers=computeRivers(tw,th,tElev,tMoist,tTemp);
 // Biome classification, resources, and all downstream systems react correctly.
 const riverMoist=new Float32Array(tw*th);
 const tFlood=new Uint8Array(tw*th);   // arid-river floodplain mask (Nile/Indus/Euphrates valley): its own biome + prime cropland
-{// Every river down to a STREAM waters a floodplain — the band where farming
-// concentrates. Widened and strengthened: a river's valley is its breadbasket, so it
-// must be broad enough and wet enough to read as prime cropland, not a one-tile thread.
-// RES_INVARIANT_POP (docs/resolution-invariance-plan.md, the worldgen channel): a river
-// is a LINEAR feature, so a FIXED tile radius makes the floodplain's share of land scale
-// as 1/resolution (measured: 21%→14%→7% of land at 320/480/960-pixel — halving per 2×).
-// The ribbon is a real WIDTH of valley: scale its radius by tw/240 so the floodplain
-// covers the same real fraction at any grid. NB pipeline runs on the PIXEL grid (the
-// sim tile grid is half this), so the calibrated reference here is 480 — exactly ×1
-// there and whenever the lever is off (byte-identical). This was the measured
-// source of the early per-settlement-growth undershoot: young river-valley settlements
-// at high res sat on proportionally half the prime cropland.
-const rrScale=T.RES_INVARIANT_POP?tw/480:1;
-const riverRadius=[0,1,2,3,3].map((r,i)=>i===0?0:Math.max(1,Math.round(r*rrScale)));// NONE,STREAM,TRIB,MAJOR,GREAT (constant real width)
+{// A river waters the floodplain band where farming concentrates — and how WIDE that
+// band is is a property of the RIVER, not of the pixel grid. Hydraulic geometry: the
+// alluvial valley a river lays down scales with the discharge that built it (valley
+// width ∝ √flow), so the ribbon half-width here is FLOOD_W_KM · √(discharge-equivalent
+// catchment km², from flowAccum) — a REAL distance, converted to pixels at whatever
+// grid is in use. A great river's valley (the Nile/Indus corridor, ~10⁶ km² of
+// catchment → HW ~50–120 km) spans pixels at any resolution and reads as the full
+// breadbasket ribbon; a STREAM's alluvial strip (10⁴ km² → ~5 km) is far narrower
+// than one pixel, so its pixel column reads only the pixel-AVERAGE: the same water
+// spread across the whole column (peak × width-fraction — mass conservation), a
+// faint riparian trace that never reads as a plain. Resolution-invariant by
+// construction (all quantities in km), converging on the physically-resolved fine
+// limit rather than any grid's artifact.
+//   History: this replaced a per-class tile radius rescaled by tw/480, which kept the
+// ribbon's drawn GEOMETRY constant but broke its physics — normalizing the falloff by
+// the scaled radius lifted a stream's channel-pixel moisture from 0.02 (sub-threshold:
+// streams stamped NO floodplain at the 480 reference) to ~0.2, so at the app's
+// 1920-pixel grid every creek wore a ~150-km plain: floodplain share of land jumped
+// 2.5% → 14.5% (6×), the fertility carpet dissolved the wasteland walls that bound
+// political claims (countryTerritory's CLAIM_FERT_REF hostility), and realms ballooned
+// far past their (otherwise healthy) dynamics.
+//   Lever OFF (RES_INVARIANT_POP=0) keeps the legacy fixed tile radii byte-identically.
+const FLOOD_W_KM=0.05;   // alluvial-valley HALF-width: km per √(discharge-equivalent km² of catchment). Hydraulic geometry (width ∝ √Q); ~2× generous vs Earth valleys for map legibility, but ORDER-true: Nile-scale → ~70 km, a 10⁴-km² stream → ~5 km
+const kmPerPx=Math.sqrt(rivers.km2PerTile||1);   // linear km per pixel (area convention — matches riverGen's catchment bars)
+const riverRadius=[0,1,2,3,3];   // legacy path (lever OFF): fixed NONE,STREAM,TRIB,MAJOR,GREAT tile radii
 const riverMoistPeak=[0,0.22,0.45,0.52,0.58];
+const resInv=!!T.RES_INVARIANT_POP;
 for(let ti=0;ti<tw*th;ti++){
 const mag=rivers.riverMag[ti];if(mag<RIVER_STREAM)continue;
-const R=riverRadius[mag],peak=riverMoistPeak[mag];
+let R,effHW,peak,minD;
+if(resInv){
+const hwPx=FLOOD_W_KM*Math.sqrt(Math.max(0,rivers.flowAccum[ti]*(rivers.km2PerAccum||0)))/kmPerPx;
+effHW=Math.max(hwPx,0.8);                        // the grid can't draw a ribbon narrower than ~a pixel…
+peak=riverMoistPeak[mag]*Math.min(1,hwPx/effHW); // …so a sub-pixel valley's water spreads over the column: proportionally damper
+if(peak<0.01)continue;                           // below the apply cutoff everywhere — nothing to stamp
+minD=0.25;                                       // channel pixel reads the profile ~¼ px off-axis (its own footprint average) — calibrated so the sub-pixel column reads ≈ its exact mass-conserving mean
+R=Math.ceil(effHW);
+}else{
+R=riverRadius[mag];effHW=R;peak=riverMoistPeak[mag];minD=0.8;
 if(R<1)continue;
+}
 const sx=ti%tw,sy=(ti-sx)/tw;
 for(let dy=-R;dy<=R;dy++){const ny=sy+dy;if(ny<0||ny>=th)continue;
 for(let dx=-R;dx<=R;dx++){const nx=(sx+dx+tw)%tw;
@@ -347,10 +369,10 @@ const ni=ny*tw+nx;
 if(tElev[ni]<=0)continue;
 let ddx=Math.abs(dx);if(ddx>tw/2)ddx=tw-ddx;
 const dist=Math.sqrt(ddx*ddx+dy*dy);
-if(dist>R)continue;
-// Clamp minimum distance so center tile blends with surroundings (no biome spike)
-const effDist=Math.max(dist,0.8);
-const t2=effDist/R;const falloff=0.5+0.5*Math.cos(t2*Math.PI);
+if(dist>effHW)continue;
+// Clamp minimum distance so the channel pixel blends with its surroundings (no biome spike)
+const effDist=Math.max(dist,minD);
+const t2=Math.min(1,effDist/effHW);const falloff=0.5+0.5*Math.cos(t2*Math.PI);
 const v=peak*falloff;
 riverMoist[ni]=Math.max(riverMoist[ni],v);}}}
 // Apply moisture boost and recompute fertility

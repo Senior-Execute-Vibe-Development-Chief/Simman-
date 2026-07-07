@@ -6,8 +6,10 @@
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
 // Current baseline (2500 steps, RES_INVARIANT_POP default ON — this probe grid is 320-pixel/tw160, rNorm 0.67):
-//   8817=316e19ea  31337=9d292e22   (RES_INVARIANT_POP=0 recovers 5045e8aa/ef8e169b — the lever
-//   now also covers the worldgen floodplain-ribbon width, so its 320-pixel grid regenerates)
+//   8817=f2b5211b  31337=2f83e5c5   (RES_INVARIANT_POP=0 recovers 5045e8aa/ef8e169b — the lever
+//   covers the worldgen floodplain ribbon, which is now the REAL-width hydraulic-geometry
+//   model in pipeline.js, so the default-ON world regenerated; earlier ribbon-scaling
+//   baseline was 316e19ea/9d292e22)
 //   (CAP_MODEL=0 recovers the legacy fitted-tail baseline 6df86092/82c7f3f — the grounded
 //   capacity model is the first change to move THIS 2500-step guard, since real states
 //   extract revenue and differentiate in capacity well before dynasties form. Earlier

@@ -73,6 +73,37 @@ smoke green; the 480-pixel reference is on≡off EXACTLY, the fixed point holds)
 > riverGen accumulation-threshold matter), or the young-settlement growth integrator
 > itself. Decompose per-settlement food at matched org next.
 >
+> **Worldgen channel, REVISED — the ribbon rescale was itself a regression; superseded by
+> a real-width (hydraulic-geometry) model.** The pixelW/480 radius rescale preserved the
+> ribbon's drawn geometry but not its physics: normalizing the cosine falloff by the
+> scaled radius lifted a STREAM's channel-pixel moisture from 0.02 (below the 0.04 flood
+> threshold — streams stamped NO floodplain at the 480 reference) to ~0.2, so at the
+> app's 1920-pixel grid every 10⁴-km² creek wore a ~150-km-wide plain. Measured: flood
+> share of land 2.5% → 14.5% (6×) at 1920 (~20% at the sim grid after the block-OR); the
+> fertility carpet dissolved the wasteland walls that bound political claims
+> (CLAIM_FERT_REF hostility + FLOOD_VALUE), and max realm size roughly DOUBLED (960 grid,
+> step 6k: max 1152 vs 492 tiles) — the user-visible "countries far too large,
+> floodplains everywhere" report. Root lesson: equalizing the flood SHARE across grids
+> anchored on the COARSE artifact (a binary mask over-represents any sub-pixel linear
+> feature); the physical anchor is the FINE limit. pipeline.js now derives the ribbon
+> from the river itself: half-width = FLOOD_W_KM·√(discharge-equivalent catchment km²,
+> from flowAccum via riverGen's km2PerAccum) — a REAL distance at any grid — and a
+> valley narrower than a pixel pours the same water into its single column at
+> proportionally lower peak (mass conservation), so it reads as a faint riparian trace,
+> never a plain. Flood share now 6.7 / 7.6 / 5.5% of sim land at 480/960/1920 (vs
+> halving per 2× before the program, and 14–20% under the rescale); meanFert 0.29/0.26/
+> 0.24; cradle ribbons (Nile/Indus/Mesopotamia) present at all grids (probe_floodfert);
+> stylized 480 gates ALL pass at 0 warnings; smoke green; RES_INVARIANT_POP=0 recovers
+> the legacy fixed radii byte-identically (hashbase 5045e8aa/ef8e169b). Residual: the
+> share still varies ~±20% across grids — the irreducible representation limit of a
+> BINARY tile mask over a thin linear feature (a fractional-coverage tFlood would close
+> it; noted as a possible future refactor, big consumer blast-radius). The per-class
+> moisture PEAKS ([0.22,0.45,0.52,0.58]) are unchanged; only the WIDTH is continuous.
+> (Also surfaced+fixed by the new trajectory: loadWorld's warm-up rebuildCountries
+> minted polity records whose realm-name coining incremented culture nameCounters —
+> persistent-state mutation the polity rollback didn't cover; persist.js now restores
+> the counters, keeping save→load→save byte-identical.)
+>
 > **Full-size (1920×960) validation — the original problem is FIXED.** Lever on,
 > seed 8817, 30k steps: **53 steps/s sustained** (the off-path collapsed 200→3.6
 > steps/s by 40k), reaching the INDUSTRIAL era by step 30k with **746k pop-units

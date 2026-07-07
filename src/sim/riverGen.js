@@ -586,7 +586,14 @@ export function computeRivers(tw, th, tElev, tMoist, tTemp) {
     }
   }
 
-  return { flowDir, flowAccum, riverMag, maxAccum, lake, lakeInfo, drainsTerminal };
+  // km2PerTile / km2PerAccum: the grid's physical scale and the flowAccum→catchment-km²
+  // conversion (inverse of accumFor), so downstream consumers (the pipeline's floodplain
+  // ribbon) can express river-scaled features in REAL kilometres. km2PerAccum is
+  // runoff-weighted: it converts accumulation to DISCHARGE-equivalent km² — a wet
+  // catchment reads bigger than a dry one of equal area, which is exactly what a
+  // discharge-carved feature (a valley) should key on.
+  return { flowDir, flowAccum, riverMag, maxAccum, lake, lakeInfo, drainsTerminal,
+           km2PerTile: kmPerTile, km2PerAccum: avgRunoff > 0 ? kmPerTile / avgRunoff : 0 };
 }
 
 export function riverName(riverMag, ti) {

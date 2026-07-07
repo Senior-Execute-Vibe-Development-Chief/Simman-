@@ -7,8 +7,9 @@
 // work against a lossy/nondeterministic round-trip. Run it after any change to
 // dynasties.js / the person or dynasty shape / persist.js.
 //   node tools/probe_roundtrip_deep.mjs [steps]
-// Baseline (8000 steps, all defaults ON incl. RES_INVARIANT_POP + its worldgen ribbon):
-// 8817 h=d8906420 (3092p/55d), 31337 h=29eec7f5 (3262p/52d). Recoveries via env:
+// Baseline (8000 steps, all defaults ON incl. RES_INVARIANT_POP + the real-width worldgen
+// floodplain ribbon): 8817 h=67aeea45 (2732p/60d), 31337 h=2958a5c6 (2523p/43d).
+// (Previous ribbon-scaling baseline: d8906420/29eec7f5.) Recoveries via env:
 //   RES_INVARIANT_POP=0                 → f057635 / d489b985 (tile-unit density, CAP_MODEL era)
 //   CAP_MODEL=0                         → 28abc46d / ef4fc665 (the legacy fitted-tail size model)
 //   CROSS_REALM_HEIRS=0 CLAIMANT_WARS=0 → the throne-siloed dynasties (on the current size model)

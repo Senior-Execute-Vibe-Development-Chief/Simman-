@@ -366,10 +366,23 @@ export function loadWorld(data, opts = {}) {
   // warm-up minted; the next polity pass re-mints them deterministically at
   // exactly the tick the uninterrupted run would have.
   const _polIds = new Set(world.polities.keys());
+  // Minting a polity record coins its realm NAME (entities.js ensurePolity →
+  // nameFor), which increments the coining culture's nameCounter — a persistent
+  // registry mutation the polity-record rollback below does not undo. Snapshot
+  // the counters and restore them too, or a load consumes a name the saved
+  // world never spent: the next real polity pass then names the statelet with
+  // counter n+1 instead of n, and the loaded trajectory (and the registry
+  // hash) silently diverges from the uninterrupted run.
+  const _nameCtrs = [];
+  for (const reg of [world.cultures, world.faiths, world.languages]) {
+    if (!reg) continue;
+    for (const e of reg.values()) if (e && e.nameCounter !== undefined) _nameCtrs.push([e, e.nameCounter]);
+  }
   rebuildCountries(world);
   rebuildOverlords(world, world.countries);   // colony↔metropole links must exist before the alliance map (else colonies balance against their own metropole until the next ALLIANCE_EVERY boundary)
   updateAlliances(world);
   for (const id of [...world.polities.keys()]) if (!_polIds.has(id)) world.polities.delete(id);
+  for (const [e, n] of _nameCtrs) e.nameCounter = n;
   return world;
 }
 
