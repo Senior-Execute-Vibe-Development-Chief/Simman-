@@ -2922,6 +2922,20 @@ function eliminateEnclaves(world, countries) {
     if (bestBord < totBord * needFrac) continue;    // no realm clearly surrounds it → leave it
     const into = countries.get(intoId);
     if (!into) continue;
+    // STATECRAFT + CAPACITY gate — the same bars every other peaceful-transfer
+    // channel pays (absorbWeakNeighbors): swallowing an engulfed community is an
+    // act of ADMINISTRATION, not geometry. Ungated, this was the largest single
+    // consolidation channel (measured: cradle realms at org 0.26-0.40 — BELOW
+    // T.ABSORB_ORG_MIN — logging 30-41 enclave annexations apiece), and the new
+    // ridge-relief walls made it worse: every mountain-pocket statelet pinched
+    // between a realm's marches and a range read as an "enclave" and was vacuumed.
+    // Historically those pockets are precisely where enclave statelets SURVIVE
+    // (Andorra, San Marino — both alive today inside their surrounders). A realm
+    // below the absorption bar, or already at its administrative budget, leaves
+    // the pocket be; it persists until a QUALIFIED administration reaches it (or
+    // it is taken by armies, which this never gated).
+    if (!into.capital || (techEff(into.capital).reachLevel || 0) < T.ABSORB_ORG_MIN) continue;
+    if (!hasAbsorbHeadroom(into)) continue;
     // Claim it POLITICALLY: flip the settlements in the region. The land
     // itself follows on the next territory pass — settlements that changed
     // country re-seed the country Voronoi, and computeTerritory grows the

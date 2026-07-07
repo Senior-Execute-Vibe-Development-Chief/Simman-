@@ -218,3 +218,53 @@ Recorded so the pattern is recognisable next time.
    (diag_countries, render_country) bypass the pipeline entirely, so they measure
    a world without the floodplain/fertility substrate the sim actually runs on
    (also worth fixing).
+
+## Update: the Europe mega-country — RIDGE RELIEF + the enclave gate
+
+User report after the mortality fixes: sizes right in China/India/SE-Asia, but
+Europe (and some of Africa) still soldered into mega-realms. Measured cause, in
+two layers:
+
+**1. Sim-Europe had no walls.** Region audit at 960: W-Europe wall-grade land
+(elev>0.30) **0.1%** vs China 8.9% / India 14.7%; claim-hostility wasteland 1.7%
+vs 13-15%; ZERO mag≥3 rivers (no river tolls); ruggedness 0.03-0.09. Crossing
+probe (zero-tech claim frame): **the Alps cost 37.7 — the same as an equal-length
+Paris→Frankfurt plain march (35.7)** — while the Tibet edge read 143. Root cause:
+cell-MEAN elevation is blind to what a mountain RANGE is. A 4000 m ridge-and-valley
+system averages to ~0.31 cells (below every altitude threshold) with byte-level
+passes reading as rolling hills, while a flat plateau of the same mean keeps its
+full height. The mirror image of the floodplain bug: a thin LINEAR feature erased
+by mean-sampling — there a corridor, here a barrier.
+
+Fix (mechanism): **relief** — the local vertical range, max−min elevation over the
+3×3 neighbourhood (`worldgenUtils.computeRelief`) — is a first-class terrain field.
+Measured distribution separates exactly as the physics says it should: Alps p50
+0.145 / Pyrenees 0.111 / Zagros 0.093 light up; plains (0.02-0.04) and Tibet's flat
+INTERIOR (0.054) stay dark; the Himalaya front reads 0.40. The transport edge cost
+gains a ridge term past a 0.07 floor (plains p90 ≈ 0.06), coefficient 130 eased to
+50 by construction (engineered crossings — Rome earns its Alpine roads), scaled by
+the existing MOUNTAIN_COST_MULT lever; state.js max-pools it to sim tiles like fert
+(a one-pixel ridge line must survive downsampling). Post-fix crossings: Alps 108.7
+(3× plain), Pyrenees 70.8, Zagros 136, Himalaya 348, Paris→Frankfurt byte-identical
+35.7. NOT yet fed into tDiff (ancestry/biome) — deliberate, to keep the peoples
+layer stable; noted as a possible follow-up.
+
+**2. The relief walls then exposed the ungated enclave-swallow channel.** With
+pockets pinched between marches and ranges, `eliminateEnclaves` — which had NO
+org/capacity gate — became the dominant consolidation flow (cradle realms at org
+0.26-0.40, BELOW T.ABSORB_ORG_MIN, logging 30-41 enclave annexations each; global
+annexed 91 by step 12k vs 34 without relief). Swallowing an engulfed community is
+administration, not geometry — and mountain pockets are precisely where enclave
+statelets historically SURVIVE (Andorra, San Marino). The channel now pays the same
+statecraft (ABSORB_ORG_MIN on the surrounder's reachLevel) and headroom bars as
+absorbWeakNeighbors. Measured: annexed=0 until statecraft actually arrives
+(~step 14-16k), then the channel opens; realm count 18→26 across 24k with no
+mid-game dip; deaths 107→79.
+
+Results: the 960/16k political map shows Europe as several compartmented realms
+(Iberia behind the Pyrenees — trans-Gibraltar with the Maghreb, an Umayyad shape;
+Scandinavia separate; the largest European realm on the open EASTERN plain, the
+Russia analog — the North European Plain remains the one open corridor, as in
+history). probe_egypt: **86-91% of modern Egypt through the whole org 0.10-0.25
+span** (was 130-220%), expanding to 269% only at org 0.31 — the most accurate
+cradle trajectory measured to date.

@@ -8,10 +8,10 @@
 // dynasties.js / the person or dynasty shape / persist.js.
 //   node tools/probe_roundtrip_deep.mjs [steps]
 // Baseline (8000 steps, all defaults ON incl. RES_INVARIANT_POP, the real-width worldgen
-// floodplain ribbon, statecraft symmetry, and the empire-mortality mechanisms):
-// 8817 h=a8c69cbd (2550p/53d), 31337 h=78210a0b (3288p/55d). (Prior: 400fe557/e834530
-// pre-mortality; 67aeea45/2958a5c6 pre-symmetry; d8906420/29eec7f5 ribbon-scaling.)
-// Recoveries via env:
+// floodplain ribbon, statecraft symmetry, empire mortality, and ridge relief + the gated
+// enclave swallow): 8817 h=b4ad4366 (2678p/44d), 31337 h=d827e128 (2908p/40d).
+// (Prior: a8c69cbd/78210a0b pre-relief; 400fe557/e834530 pre-mortality;
+// 67aeea45/2958a5c6 pre-symmetry; d8906420/29eec7f5 ribbon-scaling.) Recoveries via env:
 //   RES_INVARIANT_POP=0                 → f057635 / d489b985 (tile-unit density, CAP_MODEL era)
 //   CAP_MODEL=0                         → 28abc46d / ef4fc665 (the legacy fitted-tail size model)
 //   CROSS_REALM_HEIRS=0 CLAIMANT_WARS=0 → the throne-siloed dynasties (on the current size model)

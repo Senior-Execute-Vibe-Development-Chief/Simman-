@@ -11,6 +11,7 @@ import { computeRivers, RIVER_STREAM } from "./riverGen.js";
 import { cropSuitability } from "./cropGen.js";
 import { generateResources } from "./resourceGen.js";
 import { baseEdgeCost } from "./peopleSim/transport.js";
+import { computeRelief } from "./worldgenUtils.js";
 import { mkRng, hash32 } from "./peopleSim/rng.js";
 import { T } from "./peopleSim/tuning.js";
 
@@ -537,7 +538,8 @@ const tCross=new Float32Array(tw*th);
 // gradient — plains stay bright green, hills go yellow, real
 // mountains hit red.
 const CROSS_MAX=6.0;
-const crossWorld={elev:tElev,temp:tTemp,moist:tMoist,coast:tCoast,
+const tRelief=computeRelief(tElev,tw,th);   // local vertical range — the ridge term in the edge cost (see transport.js)
+const crossWorld={elev:tElev,temp:tTemp,moist:tMoist,coast:tCoast,relief:tRelief,
                   riverMag:rivers&&rivers.riverMag?rivers.riverMag:null};
 for(let ti=0;ti<tw*th;ti++){
 const e=tElev[ti],t=tTemp[ti],m=tMoist[ti];
@@ -595,7 +597,7 @@ if(w.seed==null)w.seed=w._seed??1;
 w.rivers=rivers;w.deposits=deposits;
 // Deep ancestry substrate (the pre-civilisation genetic map), from geography.
 const{tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy}=generateAncestry(tw,th,tElev,tTemp,tMoist,tDiff,tFert,(w._seed??w.seed??1),w.preset);
-return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,tFlood,deposits,rivers,tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy,stepCount:0};}
+return{tw,th,tElev,tTemp,tMoist,tCoast,tDiff,tFert,tCrop,tCross,tFlood,tRelief,deposits,rivers,tAncestry,ancestryCount,tArrival,ancBirth,ancParent,ancHue,ancLight,ancOriginFx,ancOriginFy,stepCount:0};}
 
 // Full headless compose: generateWorld + buildTerritory in one call.
 export function buildWorld({W=480,H=W>>1,seed=1,preset="earth_sim",oceanLevel=0.78,tecParams={},realWind=false,realWindFns=null}={}){

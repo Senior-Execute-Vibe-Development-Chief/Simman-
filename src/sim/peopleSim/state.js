@@ -6,6 +6,7 @@
 import { makeSettlement } from "./settlement.js";
 import { resetInvariantState } from "./invariants.js";
 import { T } from "./tuning.js";
+import { computeRelief } from "../worldgenUtils.js";
 
 const TILE_RES = 2;
 
@@ -51,6 +52,7 @@ export function createWorld(w, opts = {}) {
     temp:  new Float32Array(N),
     moist: new Float32Array(N),
     fert:  new Float32Array(N),
+    relief: new Float32Array(N), // local vertical range (worldgenUtils computeRelief) — the ridge term in the edge cost; a range walls what its mean altitude never would
     tFlood: new Uint8Array(N),   // arid-river floodplain mask (Nile/Indus valley) — drives dense valley settlement + the floodplain biome
     coast: new Uint8Array(N),
     riverMag: null,
@@ -94,6 +96,11 @@ export function createWorld(w, opts = {}) {
 
 function initTerrain(world, w, tCrop, tFloodSrc) {
   const { tw, th, elev, temp, moist, fert, coast } = world;
+  // Pixel-grid relief, max-pooled to sim tiles below (like fert): a one-pixel
+  // ridge LINE is exactly the feature mean-sampling erases — the reason the Alps
+  // never walled anything (see transport.js ridge term). Recomputed here, never
+  // persisted — a pure function of the elevation field.
+  const pixRelief = computeRelief(w.elevation, w.width, w.height);
   // The fert max-pool and the floodplain block-OR index the source arrays at full
   // pixel resolution (stride w.width). They are only correct when territory was
   // built at RES=1 (tCrop/tFlood are pixel-res). Assert it rather than silently
@@ -129,6 +136,19 @@ function initTerrain(world, w, tCrop, tFloodSrc) {
         }
         fert[ti] = f;
       } else fert[ti] = bellFert(t, m, e);
+      // RELIEF: max-pool like fert — the ridge line must survive downsampling.
+      {
+        let r = 0;
+        for (let oy = 0; oy < TILE_RES; oy++) {
+          const sy = Math.min(w.height - 1, ty * TILE_RES + oy);
+          for (let ox = 0; ox < TILE_RES; ox++) {
+            const sx = Math.min(w.width - 1, tx * TILE_RES + ox);
+            const v = pixRelief[sy * w.width + sx];
+            if (v > r) r = v;
+          }
+        }
+        world.relief[ti] = r;
+      }
       // FLOODPLAIN: the arid-river alluvial valley (Nile / Indus / Euphrates) — its own
       // biome and prime cropland, watered by the river, not the rain. Use the mask the
       // PIPELINE already computed (block-OR over the worldgen cell, exactly like fert's
