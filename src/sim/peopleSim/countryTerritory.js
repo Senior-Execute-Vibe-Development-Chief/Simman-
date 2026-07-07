@@ -80,6 +80,16 @@ const CLAIM_SOFT      = 0.12;
 // square of the shortfall, so only genuine wasteland resists hard.
 const CLAIM_FERT_REF  = 0.12;  // fertility below which hostility starts. Deliberately LOW: only TRUE wasteland (deep desert, bare rock, fert→0) resists. Steppe/savanna/dry marginal land claims at plain transport cost — historically that was LOW-resistance land (open, sparse, nobody to fight), how Russia/the khanates/Sahel states got huge. Fertility caps POPULATION, not political reach.
 const CLAIM_HOSTILITY = 3.0;   // ×(1 + this·deficit²) on barren land: 0 = old isotropic blob, up = tighter river/coast ribbons
+// PHASE 3 (T.POP_FIELD): political territory is grown by CAPACITY, not stamped from the
+// economic food-catchment. The catchment stamp made realm area = member-count × catchment
+// and left the capacity target slack (the crux finding, docs/field-polity-spec.md), so no
+// size lever could bind. Under the lever a small pinned CORE per member is the only stamp
+// (stability floor); the rest of the realm's extent is grown toward FIELD_SPAN·capacity and
+// trimmed to it — so size finally tracks region-capacity. The fill rate is boosted so that
+// capacity-bounded coverage builds up over a handful of passes (there is no catchment bulk
+// to seed it). The economic catchment (_territoryOwner) still feeds FOOD, unchanged.
+const CORE_R   = 1;   // half-width (tiles) of the pinned urban core stamped per member
+const POP_FILL = 6;   // rateCap multiplier under POP_FIELD (faster capacity-driven coverage)
 // Wet-tropic claim resistance: hot AND wet rainforest (the Congo, the Amazon, New
 // Guinea) was easy to walk through but near-impossible to ADMINISTER — disease,
 // no roads, leached soil, no storable surplus to tax or garrison. So it amplifies
@@ -345,7 +355,24 @@ function fieldPolityTerritory(world) {
   const terr = world._territoryOwner, byId = world._byId;
   let worked = world._fpWorked; if (!worked || worked.length !== N) worked = world._fpWorked = new Uint8Array(N);
   worked.fill(0);
-  if (terr && byId) {
+  if (T.POP_FIELD) {
+    // PHASE 3: stamp only a small pinned CORE per member (the stability floor) — NOT the
+    // economic catchment. Political extent beyond the cores is grown by capacity (steps
+    // 4-6), so realm size tracks region-capacity instead of the catchment union.
+    for (const [cid, arr] of homeTiles) {
+      for (const hti of arr) {
+        const hy = (hti / tw) | 0, hx = hti - hy * tw;
+        for (let dy = -CORE_R; dy <= CORE_R; dy++) {
+          const yy = hy + dy; if (yy < 0 || yy >= th) continue;
+          for (let dx = -CORE_R; dx <= CORE_R; dx++) {
+            const ni = yy * tw + ((hx + dx + tw) % tw);
+            if (elev[ni] <= 0) continue;
+            co[ni] = cid; worked[ni] = 1;
+          }
+        }
+      }
+    }
+  } else if (terr && byId) {
     for (let ti = 0; ti < N; ti++) {
       if (elev[ti] <= 0) continue;
       const oid = terr[ti]; if (oid < 0) continue;
@@ -404,7 +431,9 @@ function fieldPolityTerritory(world) {
   //   extra ×resScale (→ EXPAND_RATE·resScale³) to hold real-area-grown-per-step
   //   constant. Calibrated at the 480-probe (resScale 2).
   const target = new Map(), grow = new Map();
-  const rateCap = Math.max(1, Math.round((T.EXPAND_RATE || 1.5) * r2 * resScale));
+  // Phase 3 fills coverage from cores (no catchment bulk), so the per-pass integration cap
+  // is boosted (POP_FILL) to reach the capacity target over a handful of passes.
+  const rateCap = Math.max(1, Math.round((T.EXPAND_RATE || 1.5) * r2 * resScale * (T.POP_FIELD ? POP_FILL : 1)));
   for (const [cid, cp] of capOf) {
     // A realm with NO real capacity yet — a newborn minted after the last polity pass,
     // or every realm on the FIRST territory pass after a LOAD (capacity is recomputed in
