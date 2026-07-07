@@ -182,3 +182,39 @@ endpoint still consolidates toward ~19 realms with 20M-km² leaders — right or
 for industrial great powers, but decolonization-style dependency breakup and the
 settlement-count bound (finding 1) remain the next levers if more late-game
 granularity is wanted.
+
+## Post-mortem: why every prior review and gate missed this
+
+Recorded so the pattern is recognisable next time.
+
+1. **Part of it WAS found and lost in triage.** The July-2026 fleet review filed the
+   blocHasCity re-break as finding "[0] PLAUSIBLE MINOR" (bugs.txt:277) with the
+   exact fix later applied — adversarial verification split on it, MINOR read as
+   cosmetic, and the fix waves worked the CONFIRMED-critical clusters (save/load,
+   cardinal-rule violations). A local gate misread as minor was actually one leg of
+   the map's dominant failure: severity-by-local-reading cannot see systemic effect.
+2. **One defect was CREATED by a review fix.** The review correctly flagged the old
+   CAP_DOM_P dominance tail as a fitted exponent; the grounded CAP_MODEL replacement
+   shipped with the per-realm-vs-per-province units error, so the "mechanism" paid
+   for size. New mechanism, new bug, after the review's snapshot — and calibrated
+   against gates that cannot see immortality.
+3. **The gates measure distributional SHAPE at an instant; immortality is a
+   TRAJECTORY property.** Share-%, tail ratios, Zipf, and fallen-lifespan (which
+   excludes the immortals by construction) all pass a frozen-leaderboard world.
+4. **The pathology lives past the validation horizon.** The leaderboard freezes from
+   ~step 16k; CI runs 15k. Measured while attempting a gate: at 15k a broken build
+   is indistinguishable (top-3 churn 9 vs 12); at 24k it separates only weakly
+   (7 vs 10) AND the other bands — calibrated at 15k — false-warn on legitimately
+   modern worlds. Hence NO scored gate: `tools/probe_empires.mjs` (top-realm ages,
+   capacity-vs-load, war/absorb flows at 24k) is the instrument, and stylized now
+   prints the churn/secession numbers unscored for the deep manual tier.
+5. **Compensating errors tuned in different eras.** "Everything shatters" was fixed
+   by adding capacity (CAP_K, instMul, dominance, hysteresis — each individually
+   justified); "micro-state swarm" was fixed by raising CITY_TIER. Each was
+   validated against the complaint it addressed; nobody re-measured the PAIR, and
+   when the secession side silently died, the capacity side had no opponent left.
+   The diagnostic instruments to see any of this (realm age/flows/capacity-slack)
+   did not exist until this session — and the pre-existing country diagnostics
+   (diag_countries, render_country) bypass the pipeline entirely, so they measure
+   a world without the floodplain/fertility substrate the sim actually runs on
+   (also worth fixing).
