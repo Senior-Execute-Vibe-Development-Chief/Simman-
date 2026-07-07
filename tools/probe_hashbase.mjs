@@ -6,10 +6,14 @@
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
 // Current baseline (2500 steps, RES_INVARIANT_POP default ON — this probe grid is 320-pixel/tw160, rNorm 0.67):
-//   8817=ed576254  31337=92744c20   (FIELD POLITY — countries are persistent tile blobs
-//   that grow at their frontier by capacity, settlements are dressing; the whole political
-//   layer is re-keyed. FIELD_POLITY=0 recovers the ENTITY model byte-identically:
-//   7a3afd73/7e8d33f — so that hash is now the lever-off baseline too. Prior default
+//   8817=809cfa67  31337=8da625d2   (FIELD-SIMULATION model, POP_FIELD default ON — people
+//   live on a per-tile population field, a country's hold-capacity draws on the population it
+//   GOVERNS, and its territory is grown by that capacity from member cores instead of stamped
+//   from the settlements' economic food-catchment. This is what fixed country size — the
+//   catchment stamp was 84-89% of the political map. POP_FIELD=0 recovers the pre-field
+//   settlement model byte-identically: 8817=ed576254 31337=92744c20 — so that hash is now the
+//   lever-off baseline. Under POP_FIELD=0, FIELD_POLITY=0 further recovers the ENTITY model
+//   7a3afd73/7e8d33f. Prior default
 //   (REGION_SPACING 1.2, entity model) was 7a3afd73/7e8d33f; RES_INVARIANT_POP=0 under it
 //   478cd406/827e1f09. Earlier: 8a3eca3c/2a354abf (ridge relief); 38a440bb/53cd01ed
 //   (empire mortality); 22b292be/53cd01ed (statecraft symmetry); f2b5211b/2f83e5c5

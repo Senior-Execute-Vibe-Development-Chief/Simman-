@@ -343,15 +343,28 @@ rise and fall). Coverage climbs 42→54% and is still rising — the "empty map"
 (gradual frontier fill from cores), not a floor. The 24k map reads as a proper political atlas:
 many compact moderate realms on every continent, Europe fractured, no blob. Smoke green.
 
-Remaining (cosmetic / tunable, not blocking):
-- **`FIELD_SPAN` doesn't bind** (6 ≡ 12) — at equilibrium realms settle at a healthy uniform
-  6-8M by the growth/consolidation balance, not the capacity target (still slack). The OUTCOME
-  is good, but size isn't yet directly tunable via capacity; tighten the target or raise
-  `POP_FILL` if direct control is wanted later.
-- **Gradual fill** — coverage reaches ~54% by 24k and rises; raise `POP_FILL`/`CORE_R` if the
-  app should look filled sooner at a given horizon.
-- **Default-on** — POP_FIELD is still an off-by-default lever; making it the model needs the
-  stylized battery re-run/recalibrated for this (healthier, more-fragmented) regime.
+Refinement (Phase 3b): `POP_FILL` raised 6→12 so realms reach their capacity target in fewer
+passes — coverage fills sooner and, at the late tech-plateau, `FIELD_SPAN` binds (size is
+capped by `FIELD_SPAN·capacity`, not by how far growth got). Note `FIELD_SPAN` is a SOFT,
+late-binding size lever: capacity rises with development, so the target is a moving goalpost the
+growth chases through the run; it only firmly binds once tech plateaus (~24k at 480), where the
+equilibrium is already the nice 43-realm/uniform band. Crisp real-time size control is a future
+item (tie the target to a more stable capacity measure); the default regime is healthy as-is.
+
+## DEFAULT-ON — POP_FIELD is now the model (def 1)
+
+`T.POP_FIELD` flipped to default 1: the field-simulation model is the canonical sim.
+Validation for the flip:
+- **Stylized 3/3 seeds pass** (8817/4242/777) — all hard gates, exactly 2 soft warnings each
+  (growth-accel + settlement-clustering, the same regime-shape artifacts, consistent across
+  seeds). Cleaner than the pre-field default (2 soft on 2/3). largest-empire share 10%, area
+  tail 5.0, pop~development 0.96, wealth finite — core health solid and MORE historical.
+- **Roundtrip byte-identical** (8817=9f0ebe23, 31337=38b95edf at 8k) — field state save/loads.
+- **Smoke green**; determinism + save/load self-consistent.
+- **`POP_FIELD=0` recovers the pre-field settlement model byte-for-byte** (hashbase
+  ed576254/92744c20, roundtrip ff050141/cff49050) — the fully-validated legacy layer is one
+  lever away.
+- New default hashbase: 8817=809cfa67, 31337=8da625d2.
 
 ## Phase 3 — settlements become emergent LABELS on the field (planned)
 
