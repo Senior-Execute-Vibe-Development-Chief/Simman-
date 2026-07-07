@@ -6,12 +6,12 @@
 // baseline is only comparable within one hashWorld version.
 //   node tools/probe_hashbase.mjs [steps]
 // Current baseline (2500 steps, RES_INVARIANT_POP default ON — this probe grid is 320-pixel/tw160, rNorm 0.67):
-//   8817=8a3eca3c  31337=2a354abf   (ridge-relief terrain field in the edge cost +
-//   statecraft/headroom gate on enclave swallowing — transport/state/pipeline/conquest.
-//   Terrain-affecting, so BOTH lever paths moved: RES_INVARIANT_POP=0 → 5778675a/ffb260e2.
-//   Prior: 38a440bb/53cd01ed + 5d220542/20b1faf3 (empire mortality); 22b292be/53cd01ed +
-//   be6365b/20b1faf3 (statecraft symmetry); f2b5211b/2f83e5c5 + 5045e8aa/ef8e169b
-//   (real-width floodplain ribbon); 316e19ea/9d292e22 (ribbon rescale).)
+//   8817=7a3afd73  31337=7e8d33f   (REGION_SPACING 2.0→1.2 — finer town-region granularity;
+//   lever-off (RES_INVARIANT_POP=0): 478cd406/827e1f09. Prior: 8a3eca3c/2a354abf +
+//   5778675a/ffb260e2 (ridge relief + gated enclave swallow); 38a440bb/53cd01ed +
+//   5d220542/20b1faf3 (empire mortality); 22b292be/53cd01ed + be6365b/20b1faf3 (statecraft
+//   symmetry); f2b5211b/2f83e5c5 + 5045e8aa/ef8e169b (real-width floodplain ribbon);
+//   316e19ea/9d292e22 (ribbon rescale).)
 //   (CAP_MODEL=0 recovers the legacy fitted-tail baseline 6df86092/82c7f3f — the grounded
 //   capacity model is the first change to move THIS 2500-step guard, since real states
 //   extract revenue and differentiate in capacity well before dynasties form. Earlier

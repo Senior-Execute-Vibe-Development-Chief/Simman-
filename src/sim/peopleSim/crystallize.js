@@ -360,7 +360,7 @@ export function maybeCrystallize(world) {
   // fills with fewer, larger localities — each farming a bigger catchment —
   // instead of a dense village scatter.
   const spMul = T.LOCALITY_MODE ? Math.max(1, T.LOCALITY_SPACING || 3)
-              : T.DISSOLVE_FARMS ? 2     // tuned: fewer/larger town-regions, but keeping a rural town layer so urbanisation stays realistic (~60%)
+              : T.DISSOLVE_FARMS ? (T.REGION_SPACING || 2)   // the model's GRANULARITY constant: how much countryside one town-region entity abstracts (see tuning.js REGION_SPACING)
               : 1;
   const rn = rNormFor(world);            // spacing in REAL distance, not tiles (RES_INVARIANT_POP)
   const hardFloor   = HARD_FLOOR * spMul * rn;

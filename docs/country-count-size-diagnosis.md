@@ -97,6 +97,15 @@ by absorbing members.
 4. **The settlement count itself** (42–70 at 480; ~235 at the full-Earth 30k run) is
    the deep bound on any count target — that's crystallize spacing / DISSOLVE_FARMS
    territory, with sim-wide blast radius; treat as its own project.
+   **RESOLVED (REGION_SPACING):** the hardcoded ×2 DISSOLVE spacing multiplier is now
+   the T.REGION_SPACING lever — the model's granularity constant — swept 2.0/1.5/1.2
+   at 480×15k (77/90/101 settled → 20/23/31 realms, empire tail intact, median realm
+   ~1.4M km² at 1.2) and defaulted to 1.2. At 960×16k: 27 realms (was 14), top realm
+   6.9M km². Stylized 3/3 seeds pass (27-31 polities, 44-49 cities, Zipf in-envelope,
+   urbanization 10%); cost: ~+55% per-tick (documented on the lever). Two soft-warn
+   residuals to watch: the growth-acceleration signature is now chronically soft on
+   all seeds (the longer stateless phase + finer granularity — candidate follow-up),
+   and NN-clustering reads more uniform on one seed (denser packing, expected).
 
 ## Update: fix #2 (statecraft symmetry) — IMPLEMENTED
 
