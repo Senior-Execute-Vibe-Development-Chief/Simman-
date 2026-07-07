@@ -225,6 +225,11 @@ export function saveWorld(world, meta = {}) {
       countryOwner: b64FromTyped(world._countryOwner),
       territoryOwner: b64FromTyped(world._territoryOwner),
       claimPress: b64FromTyped(world._claimPress),
+      // Phase-1 population field (T.POP_FIELD). popField carries state (a
+      // migration integral), so it IS saved; capField is re-derived each step so
+      // it isn't. Absent unless the lever ran → undefined key, dropped by
+      // JSON.stringify, so a default (lever-off) save stays byte-identical.
+      popField: world.popField ? b64FromTyped(world.popField) : undefined,
       // sparse [tile, value] pairs — these arrays are near-empty and carry
       // non-JSON values (-Infinity) in their defaults
       tileCapturedAt: sparseFromTyped(world._tileCapturedAt, -Infinity),
@@ -322,6 +327,8 @@ export function loadWorld(data, opts = {}) {
     world._countryOwner = loadTyped(data.maps.countryOwner, Int32Array, N) || world._countryOwner;
     world._territoryOwner = loadTyped(data.maps.territoryOwner, Int32Array, N) || world._territoryOwner;
     world._claimPress = loadTyped(data.maps.claimPress, Float32Array, N) || world._claimPress;
+    const pf = loadTyped(data.maps.popField, Float32Array, N);
+    if (pf) { world.popField = pf; world.capField = new Float32Array(N); world._popNext = new Float32Array(N); }   // phase-1 pop field (capField re-derived next step)
     const capAt = typedFromSparse(data.maps.tileCapturedAt, Float64Array, N, -Infinity);
     if (capAt) world._tileCapturedAt = capAt;           // conquest hold clock (armies.js)
     const soil = typedFromSparse(data.maps.soilFatigue, Float32Array, N, 0);

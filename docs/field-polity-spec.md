@@ -174,3 +174,67 @@ warnings); 41 realms / 66.8% claimed at 480×20k; smoke green; roundtrip byte-id
 The stylized budget-2 was calibrated on the entity (fewer-bigger) regime. The war-death-
 concentration, growth-acceleration and clustering bands want re-derivation for a 37-realm
 world before the field model's gate profile reads clean. Recorded, not done here.
+
+---
+
+# The field-simulation rewrite — people live on the LAND (T.POP_FIELD)
+
+The field-polity above put COUNTRIES on the map but left the demographic and economic
+resolution on settlement entities — so a country's extent was still quantized by a
+settlement scatter (the residual "still too big"). The rewrite moves population, then
+food/economy, then the settlements themselves onto per-tile fields, so a country's
+extent becomes REGION DEVELOPMENT, not a settlement-to-settlement claim. Staged, each
+phase behind a lever, default-off byte-identical, validated before the next.
+
+## Phase 1 — the population field (IMPLEMENTED, `T.POP_FIELD`, default OFF)
+
+Two per-tile fields (`src/sim/peopleSim/popField.js`):
+- `world.capField[t]` = `fert[t] · CAP_PER_FERT · dev` — carrying capacity. `dev =
+  DEV_BASE + DEV_TECH·leadAgri` is a GLOBAL agricultural-development multiplier read
+  from the leading agriculture across settlements (emergent world STATE, never a clock);
+  a later phase makes tech a field. Re-derived each step (not persisted).
+- `world.popField[t]` = people on the tile. Each step: (1) recompute capacity; (2)
+  LOGISTIC growth `p += POP_GROWTH·dt·p·(1−p/k)`; (3) capacity-seeking MIGRATION —
+  each tile sends `POP_MIGRATE·dt·p` to its 4-neighbours weighted by their SPARE
+  capacity (`cap−pop`), double-buffered so it's deterministic. People flow from
+  crowded land into empty fertile land; nothing flows into zero-capacity tiles, so a
+  fertile valley in a desert stays put (doesn't bleed into the sand). Carries state →
+  serialized (`persist.js maps.popField`); absent when the lever never ran, so a
+  default save stays byte-identical.
+
+Seeded from the deep-ancestry wavefront (`tArrival`): long-settled cradle high, late
+frontier near-empty, filled by migration — the peopling of the world as a diffusion.
+
+Runs in `index.js` AFTER the settlement pass (reads this tick's leading agriculture),
+gated on `T.POP_FIELD`; honours `SIM_GRANULARITY` dt. **Phase 1 is a passive SUBSTRATE
+— nothing downstream reads it** — so it cannot perturb history: with the lever off it
+never runs (byte-identical); with it on the settlement sim is untouched.
+
+### Phase-1 validation (`tools/render_popfield.mjs`, 480×240 seed 8817 @12k)
+
+- **pop↔fert rank ρ = 0.991** — people track carrying capacity almost perfectly.
+- **45% of land empty** — deserts/tundra/dry interiors (fert ≤ 0.03 → cap ≈ 0) stay
+  unpeopled; the Sahara, Arabia, central Australia, the dry interiors read dark.
+- **top-decile share 19%** — DELIBERATELY not over-concentrated: capacity is fertility
+  ALONE in phase 1, so the field mirrors fertility and no more. Valley-scale
+  concentration (a Nile blazing through its desert relative to an equally-fertile wet
+  belt) needs capacity to reward RIVERS/IRRIGATION/COAST/agglomeration — a genuine
+  mechanism (irrigation carrying capacity, not a fitted constant), deferred to phase 2's
+  region-capacity so each phase stays reviewable.
+- Byte-identity held: hashbase `ed576254/92744c20`, deep roundtrip `ff050141/cff49050`
+  both unchanged with the lever off; with it on, popField save/loads array-exact.
+
+## Phase 2 — food & economy from the REGION (planned)
+
+Carrying capacity gains its real terms (river/irrigation, coast, terrain, agglomeration
+increasing-returns) so the field CONCENTRATES into valley/coastal cores; food and
+economic output integrate `capField`/`popField` over a polity's TILES instead of summing
+per-settlement catchments (`_territoryOwner`). Country capacity (Tilly) then reads region
+population/surplus, so extent scales with a dense core, not a settlement count.
+
+## Phase 3 — settlements become emergent LABELS on the field (planned)
+
+Settlements stop having any physical claim: no `s.pos`-anchored territory, no
+per-settlement food. They are read OUT of the pop field as the names/dynasties/culture/
+trade/courts that sit on dense tiles — "abstract story and economic units, no PHYSICAL
+impact." Political territory is keyed entirely to region development.

@@ -1,0 +1,126 @@
+// ── Phase 1 of the field-simulation rewrite (T.POP_FIELD) ──────────────────────
+//
+// Population lives on the LAND, not on settlement entities. Two per-tile fields:
+//   world.capField[ti] — carrying capacity (people the tile can feed) = fertility ×
+//     a global agricultural-DEVELOPMENT multiplier (emergent, never a clock).
+//   world.popField[ti] — people actually living on the tile. Grows LOGISTICALLY
+//     toward the tile's capacity, and MIGRATES down the capacity gradient so a full
+//     cradle spills its surplus into empty fertile land (the peopling of the world
+//     as a diffusion, not a settlement scatter).
+//
+// Seeded from the deep-ancestry peopling (tArrival: long-settled cradles start
+// populated, the frontier near-empty), so the field reproduces where civilisation
+// actually massed — dense river valleys and fertile belts, sparse deserts/tundra.
+//
+// LEVER-GATED, default OFF: when off, none of this runs and the settlement sim is
+// byte-identical. When on (phase 1) it runs ALONGSIDE the settlement model purely as
+// the demographic substrate to validate; phases 2-3 move food, territory and the
+// settlements themselves onto it. Pure function of the terrain + emergent tech, fully
+// deterministic (double-buffered migration), never persisted-vs-recomputed ambiguous
+// (both fields are re-derivable, but popField carries state so it IS saved — see persist).
+
+import { T } from "./tuning.js";
+
+const DIRS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+// Carrying capacity: people per unit (fertility × development) on one tile at
+// saturation. A calibration constant — its absolute value sets total world
+// population; the DISTRIBUTION (the point of phase 1) is set by fertility alone.
+const CAP_PER_FERT = 1200;
+// Development multiplier: local carrying capacity rises with AGRICULTURAL tech —
+// a hunter-gatherer land feeds a thin scatter, an irrigated-plough society feeds a
+// dense one. Emergent (read from the world's leading agriculture in phase 1);
+// becomes a field in a later phase. base at neolithic → ~×3.3 at full farming tech.
+const DEV_BASE = 0.30, DEV_TECH = 3.0;
+const POP_GROWTH = 0.03;    // logistic intrinsic growth per step (r in pop += r·pop·(1−pop/K))
+const POP_MIGRATE = 0.06;   // share of a tile's people that migrate toward spare capacity per step
+const SEED_POP = 0.4;       // people seeded per habitable tile (the spark logistic growth needs)
+
+export function initPopField(world) {
+  const N = world.N;
+  const pop = world.popField = new Float32Array(N);
+  world.capField = new Float32Array(N);
+  world._popNext = new Float32Array(N);
+  const { elev, fert, tArrival } = world;
+  for (let i = 0; i < N; i++) {
+    if (!(elev[i] > 0) || !(fert[i] > 0.03)) continue;
+    // Residence: 1 in the long-settled cradle of humanity (tArrival→0), →0 on the
+    // late-reached frontier (tArrival→1). Long-peopled land starts with a real seed
+    // population; the frontier starts near-empty and fills by migration.
+    const residence = tArrival ? (1 - Math.min(1, Math.max(0, tArrival[i]))) : 0.5;
+    pop[i] = SEED_POP * (0.15 + 0.85 * residence);
+  }
+}
+
+// Advance the population field one step: capacity → logistic growth → migration.
+export function stepPopField(world) {
+  const N = world.N, tw = world.tw, th = world.th;
+  const { elev, fert } = world;
+  let pop = world.popField, cap = world.capField;
+  if (!pop || pop.length !== N) { initPopField(world); pop = world.popField; cap = world.capField; }
+
+  // Global agricultural development (emergent — phase 1 reads it from settlements'
+  // leading agriculture; a later phase makes tech a field of its own).
+  let leadAgri = 0;
+  for (const s of world.settlements) if (s.mode === "settled") { const a = (s.knowledge && s.knowledge.agriculture) || 0; if (a > leadAgri) leadAgri = a; }
+  const dev = DEV_BASE + DEV_TECH * leadAgri;
+  // Time-granularity dt: at G=2 the field advances half as much per tick over
+  // twice the ticks — same emergent trajectory, finer-grained (the cardinal
+  // per-tick-clock discipline the rest of the sim follows).
+  const dt = Math.min(1, world._dt || 1);
+
+  // 1. Carrying capacity per tile.
+  for (let i = 0; i < N; i++) cap[i] = elev[i] > 0 ? fert[i] * CAP_PER_FERT * dev : 0;
+
+  // 2. Logistic growth toward capacity (in place).
+  for (let i = 0; i < N; i++) {
+    const k = cap[i];
+    if (k <= 0) { pop[i] = 0; continue; }
+    const p = pop[i];
+    if (p > 0) pop[i] = p + POP_GROWTH * dt * p * (1 - p / k);
+  }
+
+  // 3. Capacity-seeking migration (double-buffered → deterministic). Each tile sends
+  //    a share of its people to neighbours weighted by their SPARE capacity (cap−pop):
+  //    people flow from crowded land toward empty fertile land, which is what carries
+  //    the cradle populations out across the map over deep time. No flow into water/
+  //    zero-capacity tiles.
+  let nxt = world._popNext; if (!nxt || nxt.length !== N) nxt = world._popNext = new Float32Array(N);
+  nxt.set(pop);
+  for (let y = 0; y < th; y++) {
+    for (let x = 0; x < tw; x++) {
+      const i = y * tw + x;
+      const p = pop[i]; if (p <= 0) continue;
+      let sumSpare = 0;
+      const spare = _spare4; // reused scratch
+      for (let d = 0; d < 4; d++) {
+        const ny = y + DIRS4[d][1];
+        if (ny < 0 || ny >= th) { spare[d] = 0; continue; }
+        const nx = (x + DIRS4[d][0] + tw) % tw;
+        const ni = ny * tw + nx;
+        const s = cap[ni] - pop[ni];
+        spare[d] = s > 0 ? s : 0;
+        sumSpare += spare[d];
+      }
+      if (sumSpare <= 0) continue;                 // hemmed in by full/empty land — nobody leaves
+      const move = POP_MIGRATE * dt * p;           // total leaving this tile this step
+      nxt[i] -= move;
+      for (let d = 0; d < 4; d++) {
+        if (spare[d] <= 0) continue;
+        const ny = y + DIRS4[d][1], nx = (x + DIRS4[d][0] + tw) % tw;
+        nxt[ny * tw + nx] += move * (spare[d] / sumSpare);
+      }
+    }
+  }
+  world.popField = nxt;
+  world._popNext = pop;   // swap buffers
+}
+
+const _spare4 = new Float64Array(4);
+
+// Total field population — for the demographic anchor / validation.
+export function popFieldTotal(world) {
+  const p = world.popField; if (!p) return 0;
+  let s = 0; for (let i = 0; i < p.length; i++) s += p[i];
+  return s;
+}
