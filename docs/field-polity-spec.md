@@ -280,6 +280,35 @@ not the sum-rewards-area failure mode. The remaining levers for "too big / too f
   (relief/water gaps from 2a) to be sharp enough, plus competing-core nucleation. To be
   validated at 960 where Europe is resolved (the resolution the complaint lives at).
 
+## THE CRUX FINDING — country size IS the catchment stamp, not capacity
+
+After 2b landed only a partial win, a sweep isolated the real driver. `FIELD_SPAN=6`
+(halving the tiles-per-capacity target) had **literally zero effect** — the run was
+byte-for-byte the `FIELD_SPAN=12` baseline (top realm 22.3M km², same realms). So the
+capacity target is **SLACK**: realms are under target, and neither the target nor its
+source (all of 2b) governs their size. The coupling probe says why:
+
+    step 16000: claimed=5508 | STAMPED-catchment=4654 (84%) | grown-march=854 (16%)
+
+**84–89% of every realm's territory is the union of its members' worked food-catchments**
+(`_territoryOwner`, stamped into the political field each pass, step 1b), pinned against
+the shed. Only 11–16% is capacity-driven march — the only part any capacity/`FIELD_SPAN`
+lever can move. So:
+
+- Realm area ≈ member-count × catchment-area. Conquest/absorption add members → area
+  grows without limit; capacity never binds.
+- This is why EVERY prior size fix (reach, dominance, CAP_MODEL, region-capacity,
+  `FIELD_SPAN`) had muted effect — they all move the slack 15%.
+- One entity (the settlement) carries demographic + economic (catchment/food) + political
+  (stamp) resolution at once; the catchment radius sets all three, so they can't be tuned
+  apart. **That is the whole case for the rewrite**, now proven mechanistically.
+
+The naive fix (delete the stamp) already FAILED once (smoke broke, realm count crashed,
+churn) because the stamp also provided coverage + stability + war/secession transfer while
+capacity/membership still flowed from settlements. The correct fix supplies those from the
+FIELD: grow political territory from each realm's cores to cover the surrounding POPULATED
+land (popField) up to its region-capacity, with no economic-catchment stamp — phase 3.
+
 ## Phase 3 — settlements become emergent LABELS on the field (planned)
 
 Settlements stop having any physical claim: no `s.pos`-anchored territory, no
