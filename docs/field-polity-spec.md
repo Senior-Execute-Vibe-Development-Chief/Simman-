@@ -329,16 +329,29 @@ are a tight uniform great-power band, with the same rise/fall flows (captured 97
 shattered 33). The map fractures into many moderate compact realms; Europe visibly breaks up.
 Removing the catchment stamp did what five rounds of capacity/reach/dominance tuning could not.
 
-Open items:
-- **`FIELD_SPAN` still doesn't bind** (6 ≡ 12): realms are GROWTH/reachability-limited, not
-  target-limited — capacity is high enough the target is still slack. Size is now set by how
-  far a realm grows from its cores within the run, not by capacity. To make capacity actually
-  govern size (so it is tunable), either the fill must reach the target (higher `POP_FILL`) or
-  the target must be tighter.
-- **Coverage 42% and still rising** (14.7%→26.2%→42.2% over 8-16k): the map fills gradually as
-  realms grow from cores (no instant catchment coverage). More realistic (frontier expands over
-  history) but reads emptier; equilibrium coverage TBD (24k run). May want a higher `POP_FILL`
-  or bigger `CORE_R` if the app should look filled sooner.
+**Equilibrium (480 seed 8817 @24k)** — the concerns resolve favourably:
+
+    step  realms  claimed   top-5 (M km²)
+     16k     32    42.2%     7.4 5.6 4.9 4.1 3.9
+     20k     40    47.2%
+     24k     43    54.4%     8.0 7.1 6.9 6.5 6.4
+
+Realm count RISES as the map fills (29→34→32→40→43) — MORE countries than baseline (41) with a
+top empire less than half the size (8.0 vs 17.1M), a tight uniform band, and vigorous turnover
+(176 captured / 68 annexed / 72 seceded / 85 shattered; top realms span ages 14.8k-24k → they
+rise and fall). Coverage climbs 42→54% and is still rising — the "empty map" is transient
+(gradual frontier fill from cores), not a floor. The 24k map reads as a proper political atlas:
+many compact moderate realms on every continent, Europe fractured, no blob. Smoke green.
+
+Remaining (cosmetic / tunable, not blocking):
+- **`FIELD_SPAN` doesn't bind** (6 ≡ 12) — at equilibrium realms settle at a healthy uniform
+  6-8M by the growth/consolidation balance, not the capacity target (still slack). The OUTCOME
+  is good, but size isn't yet directly tunable via capacity; tighten the target or raise
+  `POP_FILL` if direct control is wanted later.
+- **Gradual fill** — coverage reaches ~54% by 24k and rises; raise `POP_FILL`/`CORE_R` if the
+  app should look filled sooner at a given horizon.
+- **Default-on** — POP_FIELD is still an off-by-default lever; making it the model needs the
+  stylized battery re-run/recalibrated for this (healthier, more-fragmented) regime.
 
 ## Phase 3 — settlements become emergent LABELS on the field (planned)
 
