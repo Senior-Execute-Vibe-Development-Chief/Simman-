@@ -95,8 +95,15 @@ export function stepPopField(world, sub = 1) {
   //    concentrates people onto FERTILE valleys and shores (a barren river bank
   //    stays empty — you can't irrigate rock) rather than blooming deserts.
   const accessDev = ACCESS_DEV0 + ACCESS_DEVK * leadAgri;   // transport premium grows with tech (emergent)
-  for (let i = 0; i < N; i++) {
-    if (!(elev[i] > 0)) { cap[i] = 0; continue; }
+  // Iterate LAND tiles only. ~45% of the grid is ocean, where cap/pop are always 0
+  // (water cap stays at its init 0, never written; nothing migrates into it) — so
+  // skipping it is byte-identical, it just drops the field pass's dead iterations
+  // (the whole field-model overhead scales with this loop count). The land index is
+  // static (terrain), built once.
+  const land = world._popLand && world._popLand.length ? world._popLand : (world._popLand = buildLandList(world));
+  const nLand = land.length;
+  for (let li = 0; li < nLand; li++) {
+    const i = land[li];
     const water = riverMag ? Math.min(1, riverMag[i] / RM_FULL) : 0;
     const access = ACCESS_RIVER * water + ACCESS_COAST * (coast ? coast[i] : 0);
     const reach = 1 + access * accessDev;
@@ -105,7 +112,8 @@ export function stepPopField(world, sub = 1) {
   }
 
   // 2. Logistic growth toward capacity (in place).
-  for (let i = 0; i < N; i++) {
+  for (let li = 0; li < nLand; li++) {
+    const i = land[li];
     const k = cap[i];
     if (k <= 0) { pop[i] = 0; continue; }
     const p = pop[i];
@@ -119,29 +127,28 @@ export function stepPopField(world, sub = 1) {
   //    zero-capacity tiles.
   let nxt = world._popNext; if (!nxt || nxt.length !== N) nxt = world._popNext = new Float32Array(N);
   nxt.set(pop);
-  for (let y = 0; y < th; y++) {
-    for (let x = 0; x < tw; x++) {
-      const i = y * tw + x;
-      const p = pop[i]; if (p <= 0) continue;
-      let sumSpare = 0;
-      const spare = _spare4; // reused scratch
-      for (let d = 0; d < 4; d++) {
-        const ny = y + DIRS4[d][1];
-        if (ny < 0 || ny >= th) { spare[d] = 0; continue; }
-        const nx = (x + DIRS4[d][0] + tw) % tw;
-        const ni = ny * tw + nx;
-        const s = cap[ni] - pop[ni];
-        spare[d] = s > 0 ? s : 0;
-        sumSpare += spare[d];
-      }
-      if (sumSpare <= 0) continue;                 // hemmed in by full/empty land — nobody leaves
-      const move = POP_MIGRATE * dt * p;           // total leaving this tile this step
-      nxt[i] -= move;
-      for (let d = 0; d < 4; d++) {
-        if (spare[d] <= 0) continue;
-        const ny = y + DIRS4[d][1], nx = (x + DIRS4[d][0] + tw) % tw;
-        nxt[ny * tw + nx] += move * (spare[d] / sumSpare);
-      }
+  for (let li = 0; li < nLand; li++) {
+    const i = land[li];
+    const p = pop[i]; if (p <= 0) continue;
+    const y = (i / tw) | 0, x = i - y * tw;
+    let sumSpare = 0;
+    const spare = _spare4; // reused scratch
+    for (let d = 0; d < 4; d++) {
+      const ny = y + DIRS4[d][1];
+      if (ny < 0 || ny >= th) { spare[d] = 0; continue; }
+      const nx = (x + DIRS4[d][0] + tw) % tw;
+      const ni = ny * tw + nx;
+      const s = cap[ni] - pop[ni];
+      spare[d] = s > 0 ? s : 0;
+      sumSpare += spare[d];
+    }
+    if (sumSpare <= 0) continue;                 // hemmed in by full/empty land — nobody leaves
+    const move = POP_MIGRATE * dt * p;           // total leaving this tile this step
+    nxt[i] -= move;
+    for (let d = 0; d < 4; d++) {
+      if (spare[d] <= 0) continue;
+      const ny = y + DIRS4[d][1], nx = (x + DIRS4[d][0] + tw) % tw;
+      nxt[ny * tw + nx] += move * (spare[d] / sumSpare);
     }
   }
   world.popField = nxt;
@@ -149,6 +156,16 @@ export function stepPopField(world, sub = 1) {
 }
 
 const _spare4 = new Float64Array(4);
+
+// Static list of LAND tile indices (ascending, so the field loops keep their exact
+// iteration order). Terrain is fixed, so this is built once and reused.
+function buildLandList(world) {
+  const { N, elev } = world;
+  let n = 0; for (let i = 0; i < N; i++) if (elev[i] > 0) n++;
+  const a = new Int32Array(n); let k = 0;
+  for (let i = 0; i < N; i++) if (elev[i] > 0) a[k++] = i;
+  return a;
+}
 
 // Total field population — for the demographic anchor / validation.
 export function popFieldTotal(world) {
